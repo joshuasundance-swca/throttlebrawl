@@ -1,0 +1,13 @@
+{
+  "$comment": "Tests outside src/, the scripts' tests, tools and the TypeScript config files; they run in Node or drive a browser from Node. allowJs lets tests import the .mjs scripts (not type-checked themselves).",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["tests/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts", "*.config.ts"],
+  "exclude": ["tests/typecheck/**"]
+}

@@ -1,0 +1,7 @@
+# Prose is written by hand; Prettier would reflow its tables and lists.
+*.md
+package-lock.json
+dist/
+.cache/
+test-results/
+playwright-report/

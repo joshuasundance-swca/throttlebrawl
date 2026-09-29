@@ -1,0 +1,9 @@
+{
+  "$comment": "The app: everything under src/, with DOM types. src/sim and src/road are also checked DOM-free by tsconfig.sim.json.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts"]
+}

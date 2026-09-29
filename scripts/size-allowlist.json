@@ -1,0 +1,4 @@
+{
+  "$comment": "Files allowed over 1 MB. Map each repo-relative path to the reason it must live in git.",
+  "files": {}
+}

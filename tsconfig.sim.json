@@ -1,0 +1,10 @@
+{
+  "$comment": "DOM-free check for the simulation and the road model (docs/architecture.md, dependency rules). No DOM lib and no ambient @types, so a browser or Node global in src/sim, src/road or src/core is a compile error. tests/typecheck/sim-no-dom.ts proves this config stays DOM-free.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/sim/**/*.ts", "src/road/**/*.ts", "src/core/**/*.ts", "tests/typecheck/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

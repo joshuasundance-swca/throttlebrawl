@@ -1,0 +1,5 @@
+{
+  "$comment": "M1 hard budget (docs/engineering.md, perf check). Changing a limit is a normal PR with the reason in its note. dev-2 adds the draw-call and triangle limits.",
+  "jsGzipKB": 500,
+  "firstLoadKB": 3072
+}
