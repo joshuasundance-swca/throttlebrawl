@@ -22,9 +22,10 @@ function fromExamined(out) {
   return { n: firstNumber(text), text: text || 'printed no [examined] line' };
 }
 function fromVitest(out) {
-  const tests = /Tests\s+(?:\d+ failed \| )?(\d+) passed/.exec(out)?.[1];
-  const files = /Test Files\s+(?:\d+ failed \| )?(\d+) passed/.exec(out)?.[1];
-  return { n: Number(tests ?? 0), text: `${tests ?? 0} tests passed in ${files ?? 0} files` };
+  const m = /^\s*Tests\s+(?:(\d+) failed \| )?(\d+) passed/m.exec(out);
+  const files = /Test Files\s+(?:\d+ failed \| )?(\d+) passed/.exec(out)?.[1] ?? '0';
+  const failed = m?.[1] ? `, ${m[1]} failed` : '';
+  return { n: Number(m?.[2] ?? 0), text: `${m?.[2] ?? 0} tests passed${failed} (${files} files passed)` };
 }
 function fromPlaywright(out) {
   const passed = /(\d+) passed/.exec(out)?.[1];
