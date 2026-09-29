@@ -1,0 +1,16 @@
+{
+  "type": "rider",
+  "id": "deacon-vane",
+  "name": "Deacon Vane",
+  "role": "rival",
+  "roster": "regular",
+  "tags": ["preacher", "chopper"],
+  "blurb": "A preacher in a duster on a chopper.",
+  "bike": "rustbucket-400",
+  "stats": { "massKg": 95, "healthMax": 110, "skill": 0.6 },
+  "personality": { "style": "heavy-hitter" },
+  "meta": {
+    "status": "live",
+    "notes": "The walking skeleton's one box rival. ai-1 owns the four rival files and their personalities."
+  }
+}

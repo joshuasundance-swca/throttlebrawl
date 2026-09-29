@@ -1,0 +1,53 @@
+{
+  "type": "hud-layout",
+  "id": "classic",
+  "name": "Classic",
+  "appliesTo": ["touch", "desktop"],
+  "elements": [
+    {
+      "element": "speedometer",
+      "visible": true,
+      "anchor": "bottom-left",
+      "offset": [0.03, 0.04],
+      "scale": 1.0,
+      "opacity": 1.0
+    },
+    {
+      "element": "position",
+      "visible": true,
+      "anchor": "top-left",
+      "offset": [0.03, 0.03],
+      "scale": 1.0,
+      "opacity": 1.0
+    },
+    {
+      "element": "touch-attack",
+      "visible": true,
+      "anchor": "bottom-right",
+      "offset": [0.08, 0.1],
+      "scale": 1.2,
+      "opacity": 0.7,
+      "touchOnly": true
+    },
+    {
+      "element": "touch-brake",
+      "visible": true,
+      "anchor": "bottom-right",
+      "offset": [0.4, 0.06],
+      "scale": 0.9,
+      "opacity": 0.7,
+      "touchOnly": true
+    },
+    {
+      "element": "touch-stick-zone",
+      "visible": true,
+      "anchor": "bottom-left",
+      "offset": [0.0, 0.0],
+      "size": [0.9, 1.0],
+      "opacity": 0.0,
+      "touchOnly": true
+    }
+  ],
+  "mirror": false,
+  "meta": { "status": "live", "notes": "Walking-skeleton layout. ui-1 owns HUD presets." }
+}

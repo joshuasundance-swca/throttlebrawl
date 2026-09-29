@@ -1,0 +1,10 @@
+{
+  "type": "rider",
+  "id": "player",
+  "name": "You",
+  "role": "player-preset",
+  "roster": "regular",
+  "bike": "rustbucket-400",
+  "stats": { "massKg": 80, "healthMax": 100, "skill": 0.5 },
+  "meta": { "status": "live", "notes": "The M1 player preset." }
+}

@@ -1,0 +1,18 @@
+{
+  "type": "event",
+  "id": "m1-skeleton-sprint",
+  "name": "Causeway Sprint",
+  "kind": "classic-race",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [{ "id": "standard", "route": "m1-skeleton-sprint", "laps": 1 }],
+  "field": { "riders": ["deacon-vane"], "paceMps": 31 },
+  "cops": { "mode": "none" },
+  "rules": {},
+  "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
+  "rewards": { "byPlaceCash": [1500, 900, 600, 300, 150] },
+  "meta": {
+    "status": "live",
+    "notes": "The walking skeleton's race: you against one box. riders-3 owns events and builds the M1 classic race."
+  }
+}

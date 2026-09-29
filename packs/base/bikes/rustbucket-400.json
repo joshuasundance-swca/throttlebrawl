@@ -1,0 +1,19 @@
+{
+  "type": "bike",
+  "id": "rustbucket-400",
+  "name": "Rustbucket 400",
+  "class": "rat",
+  "tags": ["starter", "slow"],
+  "handling": {
+    "topSpeedMps": 38.0,
+    "accelMps2": 4.2,
+    "brakeMps2": 9.0,
+    "steerRateMps": 5.5,
+    "massKg": 180
+  },
+  "engineSound": { "preset": "single-thump" },
+  "meta": {
+    "status": "live",
+    "notes": "The slow M1 starter, about 85 mph. Walking-skeleton numbers; riders-1 tunes the handling."
+  }
+}
