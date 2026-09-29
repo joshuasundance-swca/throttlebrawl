@@ -1,0 +1,12 @@
+# Working space and private notes (never committed)
+scratch/
+*.local.md
+local/
+.cache/
+
+# Build output and dependencies
+node_modules/
+dist/
+
+# Environment files
+.env*

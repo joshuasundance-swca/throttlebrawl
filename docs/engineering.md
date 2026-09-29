@@ -1,0 +1,457 @@
+# Engineering: how throttlebrawl is built, checked and shipped
+
+**In plain words.** This page describes the workshop, not the game. The code lives in a public GitHub repository. Several AI coding agents work on it at the same time, each on its own branch and in its own part of the code. When an agent finishes a piece of work, a robot runs the checks: the code compiles, the tests pass, a bot plays a full race in a real browser, the game stays fast on a phone-like profile, and there is a short note saying what changed. If everything is green, the work merges itself. Every green merge updates the playable game on a Hugging Face web page (the maintainer's answer), and a second "staging" page always shows the newest work in progress. Each update also copies the project's source files to that page, so the Hugging Face copy doubles as a browsable mirror of the GitHub repository. The maintainer plays on a phone, says what feels good or bad, and is only asked about taste, money over the cap, and anything public or irreversible.
+
+Tags used on this page:
+
+- `[decided]`: traces to a maintainer answer.
+- `[default]`: a proposal. The maintainer may change it; an agent may change it only in a PR that updates the doc and says why in its `changes/` note. Until changed, agents follow it.
+- `[open]`: waiting on the maintainer. Each one is listed in [Open questions](#open-questions).
+- `(unverified)`: an external fact this page could not confirm.
+
+External facts marked "verified 2026-09-29" were fetched from the vendor's own docs on that date and are quoted.
+
+## Contents
+
+- [Principles](#principles)
+- [Repo layout](#repo-layout)
+- [Toolchain](#toolchain)
+- [npm scripts](#npm-scripts)
+- [The gate: definition of done](#the-gate-definition-of-done)
+- [Pre-commit hooks and leak scan](#pre-commit-hooks-and-leak-scan)
+- [CI on GitHub Actions](#ci-on-github-actions)
+- [Branch protection and auto-merge](#branch-protection-and-auto-merge)
+- [Deploy: game Space and staging Space](#deploy-game-space-and-staging-space)
+- [Big and generated assets](#big-and-generated-assets)
+- [Phone testing](#phone-testing)
+- [What-changed notes, in-game changelog and releases](#what-changed-notes-in-game-changelog-and-releases)
+- [Parallel agent lanes](#parallel-agent-lanes)
+- [Dev-time AI spend](#dev-time-ai-spend)
+- [What always needs the maintainer](#what-always-needs-the-maintainer)
+- [Open questions](#open-questions)
+- [Verified external facts](#verified-external-facts)
+
+## Principles
+
+- **Velocity over ceremony.** `[decided]` The maintainer asked to "focus on velocity not just a million redundant checks". The gate below is the whole list; agents do not add parallel checks, review rituals or approval steps.
+- **Decide only what is hard to change later.** `[decided]` Everything else gets a seam: an interface, a versioned file format or a config switch.
+- **Main is always playable.** `[decided]` Every session ends with main green and the game Space showing a build you can play on the phone.
+- **The maintainer is never a gate.** `[decided]` Work merges on green checks without a human review. See [What always needs the maintainer](#what-always-needs-the-maintainer) for the only exceptions.
+- **Verify what the player sees.** `[default]` Checks assert rendered, observable results: the canvas is not blank, the race reaches the finish, the note text reaches the changelog. Internal flags alone do not count.
+- **One toolchain.** `[decided]` npm, because the maintainer's other JavaScript repos use npm and pnpm needs "compelling reasons".
+- **Python only offline.** `[default]` Python tools are allowed only under `tools/` and never in the game build.
+
+## Repo layout
+
+`[default]` The module folders under `src/` mirror the module map in [architecture.md](./architecture.md). **If they disagree, architecture.md wins**, and this section gets fixed in the same PR.
+
+```text
+/
+├─ AGENTS.md              binding rules for every coding agent
+├─ CLAUDE.md              one line: @AGENTS.md (Claude Code reads it; Codex and Copilot read AGENTS.md)
+├─ README.md              what the game is, how to play, how to run it
+├─ LICENSE                MIT; the holder line reads "the throttlebrawl contributors" (see below)
+├─ THIRD_PARTY_ASSETS.md  every non-original asset: source, licence, where it is used
+├─ docs/                  public design docs (this file, architecture, spec, milestones)
+├─ changes/               what-changed notes, one small file per PR
+├─ packs/                 content packs (pack zero is packs/base): rivals, bikes, weapons, barks, events, event modifiers, radio stations, regions, HUD presets
+├─ src/                   the module map, copied from architecture.md (editor JSON Schema is generated on demand into git-ignored .cache/schemas/, see content-packs.md)
+│  ├─ core/               shared types, deterministic math, seeded RNG, event types
+│  ├─ road/               road network model and queries (DOM-free, like sim)
+│  ├─ sim/                fixed-step simulation and its public contract (api.ts); DOM-free
+│  ├─ content/            pack loading, validation, registry
+│  ├─ tuning/             the parameter registry and presets (declarations live beside their systems)
+│  ├─ input/              devices to actions, haptics
+│  ├─ assets/             asset manifest loader (baked now, remote later)
+│  ├─ stream/             chunk manager
+│  ├─ render/             three.js scene, look layer, overlay
+│  ├─ camera/             camera modes and rigs
+│  ├─ audio/              synthesized engine, sfx, music, buses
+│  ├─ ui/                 HUD, menus, touch layout, tuning panel (ui/tuning/), barks and interludes (ui/narrative/), changelog card
+│  ├─ career/             progression, shop, fines, grudge memory (M4)
+│  ├─ platform/           fullscreen, orientation, wake lock, service worker
+│  ├─ save/               versioned local save and export code
+│  ├─ replay/             input recorder and player
+│  ├─ app/                boot, main loop, state machine, wiring
+│  └─ dev/                test handle, bot player, perf probe, debug report
+│  (plus src/main.ts, the composition root outside the module graph)
+├─ public/                small static files (icons, web manifest)
+├─ tests/
+│  ├─ sim/                shared seeded-race batch and per-lane hooks
+│  ├─ e2e/                Playwright bot race, device-path tests and screenshots
+│  ├─ perf/               Playwright perf profile, budget.json and baseline.json
+│  ├─ fixtures/           golden fixtures: save/ from M4, migrations/ from the first outside pack (neither exists at scaffold)
+│  └─ replays/            bug-repro input recordings; not part of the gate
+├─ tools/                 offline pipelines, never shipped: packs/, road/, gis/, blender/, audio/, ai/
+├─ scripts/               Node helper scripts used by npm scripts and CI
+├─ space/                 Hugging Face Space README templates (prod and staging)
+└─ .github/workflows/     ci.yml, staging.yml
+```
+
+- Unit tests sit next to the code as `*.test.ts`. `[default]`
+- **The licence holder is not a person.** `[default]` `LICENSE` reads "Copyright (c) 2026 the throttlebrawl contributors". `package.json` has no `author` and no `contributors` field, and no tracked file names the maintainer personally. Changing the holder line is the maintainer's call. (Git history cannot be scrubbed later, and this is the first file every visitor opens.)
+- `scratch/`, `*.local.md`, `local/`, `.cache/`, agent logs, `dist/`, `test-results/`, `playwright-report/` and `.env*` are git-ignored. `[decided]` for scratch ("scratch ignored") and for agent logs ("agent logs and scratch files are ignored by git"), `[default]` for the rest.
+- `assets.lock.json` and the dataset-fetch scripts do not exist at scaffold. They arrive in the PR that adds the first dataset asset (see [Big and generated assets](#big-and-generated-assets)).
+- `tools/gis/` gets its own Python project file the day it is created. Blender scripts in `tools/blender/` run inside Blender's own interpreter, are linted with `ruff` only, and each exported GLB is validated. They are called through npm scripts that read a `BLENDER_EXE` environment variable. `[default]`, following the scaffold tweaks the maintainer approved.
+- **`<lane-id>`** in branch names is the module folder name from architecture.md's ownership table (for example `lane/road/junctions`), or `infra` for shared files. `[default]`
+
+## Toolchain
+
+`[decided]` TypeScript, Three.js and Vite, installed with npm. The rest is `[default]`.
+
+| Tool | Version line | Why |
+|---|---|---|
+| Node.js | 22 LTS at `>=22.13`, pinned in `.nvmrc` and `engines` | ESLint 10 needs `^22.13.0` and Vitest 5 needs `^22.12.0` (npm registry, 2026-09-29), so a bare "22" could resolve to a Node that is too old; CI uses the same pin |
+| TypeScript | `~6.0` | typescript-eslint 8.71.0 declares `typescript: '>=4.8.4 <6.1.0'` (npm registry, 2026-09-29), while the newest TypeScript is 7.0.2. Revisit when typescript-eslint widens its range. |
+| Vite | 8.x | build and dev server |
+| Three.js | r186 (`three` 0.186.x) with `@types/three` | renderer |
+| ESLint | 10.x flat config with typescript-eslint typed rules | lint |
+| Prettier | 3.x | format; no style debates |
+| Vitest | 5.x | unit tests, sim tests, headless race batches |
+| Playwright (`@playwright/test`) | 1.63.x, Chromium | bot playthrough, screenshots, perf profile |
+| simple-git-hooks + lint-staged | current | git hooks without a second toolchain |
+| secretlint | 13.x | secret patterns in the leak scan |
+| knip | current | dead-code report; advisory, not in the gate |
+
+Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `package-lock.json`, and `.npmrc` sets `save-exact=true`.
+
+**TypeScript settings.** `[default]` `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitReturns` and `verbatimModuleSyntax`. `src/sim/` **and** `src/road/` have their own `tsconfig` with `lib: ["ES2022"]` and no DOM types, and an ESLint `no-restricted-imports` rule bans `three`, `render/`, `audio/`, `ui/`, `input/` and browser globals from both (the ban list is architecture.md's [dependency rules](./architecture.md#dependency-rules)). "The sim does not depend on the renderer" becomes a compile error instead of a code-review comment.
+
+**npm hardening.** `[default]` CI installs with `npm ci`. `.npmrc` sets `ignore-scripts=true`, so dependencies cannot run install scripts. Playwright browsers and git hooks are installed by explicit commands (`npx playwright install chromium`, `npm run hooks:install`). CI runs `npm audit signatures`. A dependency that truly needs its install script is allowlisted in `.npmrc` comments with the reason.
+
+**Vite settings.** `[default]`
+- `base: './'`, so the same build works at a Space root or under any sub-path.
+- `server.host: '127.0.0.1'`, `preview.host: '127.0.0.1'` and `strictPort: true` on 5173 (dev) and 4173 (preview); `npm run phone` forwards exactly these ports. The host is set explicitly because Vite may bind only the IPv6 loopback on some systems, and `adb reverse` against an IPv6-only listener is untested (unverified). Never bind all interfaces (`host: true`).
+- The build injects `BUILD_ID` (short commit), `BUILD_CHANNEL` (`prod`, `staging` or `dev`) and `BUILD_BRANCH`. The main menu footer and the debug report show them.
+
+**Test handle.** `[default]` `window.__game` exists only when Playwright sets an init flag before the page loads. It exposes read-only sim state, the bot switch and a seed control, as in architecture.md's [testing seams](./architecture.md#testing-seams). The same init flag can also pin render settings (quality tier, dynamic resolution, device pixel ratio) for the perf run; those are not sim state. Production players never get it.
+
+## npm scripts
+
+`[default]` Names are stable, because CI, hooks and agents call them.
+
+| Script | What it does |
+|---|---|
+| `dev` | Vite dev server |
+| `build` | typecheck, then `vite build`, then `changelog:build` into `dist/` |
+| `preview` | serve `dist/` locally |
+| `typecheck` | `tsc` for the app and for the DOM-free sim config |
+| `lint` / `lint:fix` | ESLint over `src/`, `tests/`, `scripts/`, `tools/` and config files |
+| `format` / `format:check` | Prettier |
+| `test` | Vitest: unit tests, sim tests, and, once they exist (save fixtures from M4; pack-migration fixtures from the first outside pack) `[default]`, the save-format and pack-migration fixture tests (`tests/fixtures/save/`, `tests/fixtures/migrations/`) |
+| `test:sim` | headless batch of seeded bot races (default 50, as in architecture.md) asserting that races finish, nothing is NaN, and each recorded race replays **in the same run** to identical state hashes |
+| `packs:check` / `packs:migrate` | validate every file under `packs/` (schema, references, licence rules, jump-curvature rule), or (`packs:migrate`) a helper for format-bump PRs that rewrites the repo's own packs to the current format, with no fixtures until outside packs exist; owned by [content-packs.md](./content-packs.md#validation) |
+| `e2e` | Playwright: one bot race at the phone-landscape viewport, plus two short device-path tests (keyboard, and pointer events on the touch overlay), with screenshots |
+| `perf` | Playwright perf run on the throttled phone-like profile, compared with `tests/perf/budget.json` and `tests/perf/baseline.json` |
+| `leakscan` / `leakscan:all` | staged files, or the whole tree (see [leak scan](#pre-commit-hooks-and-leak-scan)) |
+| `sizecheck` | fails on any committed file over 1 MB that is not allowlisted |
+| `notes:check` | fails if the branch adds no file under `changes/` |
+| `changelog:build` | turns `changes/` into `dist/changelog.json` |
+| `assets:fetch` / `assets:verify` | added with the first dataset asset, not at scaffold: pull the pinned dataset files into `.cache/assets/` and check their sha256 |
+| `check` | runs the whole gate in CI order and prints what each step examined |
+| `phone` | helper for `adb reverse` (see [Phone testing](#phone-testing)) |
+| `hooks:install` | installs the git hooks |
+| `knip` | dead-code report, advisory |
+
+## The gate: definition of done
+
+`[decided]` The maintainer's done bar is "tests/lint/types + bot playthrough + perf + plain changelog". They added "focus on velocity not a million redundant checks", so agents add no further checks. The leak scan is also `[decided]` (a quick scan on every commit, "audit before public"). The remaining rows are cheap `[default]` additions that the gate needs to work. The table is the complete list.
+
+| Step | Script | Passes when | Source |
+|---|---|---|---|
+| Types | `typecheck` | zero errors, app and sim/road configs | `[decided]` |
+| Lint and format | `lint`, `format:check` | zero errors | lint `[decided]`, format `[default]` |
+| Packs | `packs:check` | zero errors (warnings print) | `[default]`, required by [content-packs.md](./content-packs.md#validation) |
+| Leak scan | `leakscan:all` | zero findings, and a nonzero count of files examined | `[decided]` |
+| Size | `sizecheck` | no unexpected file over 1 MB | `[default]` |
+| Unit and sim | `test`, `test:sim` | all green; seeded bot races replay to identical state hashes in the same run; save and pack-migration fixtures migrate, once they exist (save fixtures from M4; pack-migration fixtures from the first outside pack) | `[decided]` for the tests and replays; `[default]` for the fixtures |
+| Build | `build` | `dist/` builds; the bundle stays within budget | `[default]` |
+| Bot playthrough | `e2e` | see below | `[decided]` |
+| Perf | `perf` | see below | `[decided]` |
+| Notes | `notes:check` | on a pull request, at least one new `changes/` file; skipped on push to main | plain changelog `[decided]`, the per-PR file `[default]` |
+
+`[default]` The details:
+
+- **One command.** `npm run check` runs every step locally in the same order as CI. CI calls the same npm scripts, never its own copies. Each step prints what it examined (files linted, tests run, races simulated, screenshots taken, frames sampled), because a check that looked at nothing reads exactly like a pass.
+- **Prove the gate can fail.** When the scaffold lands, break one spec on purpose, watch CI go red, then revert it. That happens once, not every PR.
+- **Bot playthrough.** As in architecture.md's [testing seams](./architecture.md#testing-seams), the bot is a `BotController` that reads the sim snapshot and writes into the input layer's action state. It computes its action once per sim tick from that tick's snapshot, so a seeded run is deterministic and independent of frame rate. Playwright loads the production build from `vite preview`, starts the shortest race (race length is a setting), and lets the bot ride, once, at the phone-landscape viewport. The run passes when the assertions below hold.
+  - **Assertions switch on with the feature that makes them possible.** From the scaffold: the page boots, a WebGL2 context was created, no console errors, and the screenshot canvas is not blank. From the PR that lands the race loop: the race reaches the finish before a timeout and a placing is recorded. From the PR that lands combat: at least one attack connects, on a seeded race where the bot is known to connect. Turning an assertion on, or adding a test for new behaviour, is normal agent work.
+  - "Not blank" means pixel variance above a threshold, so a black or empty canvas fails. Screenshots at the start, mid-race and finish are uploaded as CI artifacts for eyeballing and kept 7 days.
+  - **Two short device-path tests prove the real devices,** since the bot writes action state directly: one presses keys, one dispatches pointer events on the touch-control overlay elements, and each asserts the resulting `SimInput`.
+- **CI rendering.** CI renders WebGL in software, and Chromium has announced that WebGL context creation will fail instead of falling back to SwiftShader (blink-dev "Intent to Remove: SwiftShader Fallback", seen only through a summarizer, so treat it as unverified; whether Playwright's bundled headless Chromium is affected is also unverified). Playwright therefore launches Chromium with `--use-angle=swiftshader --enable-unsafe-swiftshader`, which is harmless if not needed. The first assertion of every browser test is that a WebGL2 context exists, and the renderer string is printed. CI e2e and perf pin device pixel ratio 1 and quality tier `low`. The gate job targets under 10 minutes wall-clock `[default]`; if it grows past that, cut work before adding runners.
+- **Perf check.** Wall-clock timing on shared CI runners is noisy. So perf has two tiers, and both force tier `low` with `auto` and dynamic resolution disabled (fixed scale 1.0) through the test flag, because architecture.md's `auto` tier and dynamic resolution would otherwise make draw calls depend on runner speed:
+  - **Hard gate, deterministic.** Draw calls and triangles from `renderer.info` at fixed camera checkpoints of a seeded race, and initial download size (M1 starting budget: JavaScript at most 500 KB gzip, whole first load at most 3 MB). The 3 MB is the M1 CI limit; architecture.md's 15 MB first-play figure is the ceiling for the A16 as content grows, and the stricter number binds CI. The limits live in `tests/perf/budget.json`, and changing them is a normal PR with the reason in its note.
+  - **Soft tier, throttled.** Chromium with 4x CPU throttling (the DevTools protocol's `Emulation.setCPUThrottlingRate`) and a phone-like landscape viewport (about 900×400 CSS pixels, touch, mobile). It records p50 and p95 frame time and sim step time p95 (from `dev/perf`) over 20 seconds of bot racing. It fails only on a catastrophic regression, above twice the stored baseline in `tests/perf/baseline.json`, and always prints the numbers and the renderer string. The baseline is measured on CI runners and updated by a PR whose note gives the reason.
+  - **Truth.** The benchmark phone (Galaxy A16 5G) is the real test `[decided]`. The in-game debug overlay (`?debug=1`) shows fps, frame time and the renderer string. Any performance claim names the device, the renderer and the scene.
+- **Recordings.** `tests/replays/` holds bug-repro input recordings, not gate fixtures. architecture.md says a replay plays only on a build with the same replay key (the hash of the sim code plus the sim content hash), so a committed recording would go stale on every content or tuning PR. A recording whose replay key no longer matches is skipped with a printed notice.
+- **Main red after a merge.** Checks are not required to run against the very latest main (see [Branch protection](#branch-protection-and-auto-merge)), so two green PRs can rarely combine into a red main. CI runs again on every push to main. If main goes red, prod deploy does not run, so the public game stays on the last green build, and the next agent session's first job is a fix-forward or revert PR. A revert is a new commit, never a history rewrite.
+
+## Pre-commit hooks and leak scan
+
+`[decided]` A quick leak scan runs on every commit; machine-specific certificate settings stay in user-level config; `scratch/` is ignored; private context stays out of the repo.
+
+`[default]` The hook tool is **simple-git-hooks + lint-staged**, not the Python pre-commit framework. It keeps one toolchain (npm), works the same for Claude Code, Codex and Copilot, and runs on every OS without extra installs. Install with `npm run hooks:install` after `npm ci`.
+
+| Hook | Runs | Budget |
+|---|---|---|
+| `pre-commit` | lint-staged (ESLint fix and Prettier on staged files), `leakscan` on staged files, `sizecheck` on staged files, `packs:check` when pack files are staged | a few seconds |
+| `commit-msg` | leak scan of the commit message | instant |
+| `pre-push` | `typecheck` and `test` | under a minute |
+
+The browser tiers (e2e, perf) run in CI and in `npm run check`, not in hooks. Hooks are never skipped (`--no-verify` is banned in [AGENTS.md](../AGENTS.md)); if a hook is wrong, fix the hook.
+
+**The leak scan** (`scripts/leak-scan.mjs`) is deliberately light:
+
+- **Generic rules, committed in the repo:**
+  - secretlint's recommended rules (API tokens, private keys, cloud credentials);
+  - absolute user-home paths such as `C:\Users\<name>\`, `/Users/<name>/` and `/home/<name>/`;
+  - email addresses, except a short committed allowlist that starts with `*@users.noreply.github.com`, `noreply@github.com` and `noreply@anthropic.com` (the address in Claude Code's commit trailer; without it the `commit-msg` hook would block every such commit and push agents toward the banned `--no-verify`);
+  - private-network addresses and hostnames that look like machine names;
+  - `.env` files and key files by name.
+  - **Placeholders never match:** text in angle brackets such as `<name>` or `<owner>` is not a path or address. A unit test uses this doc's own examples as must-not-match cases and a real-looking path as a must-match case, so `leakscan:all` does not fail on the docs themselves.
+- **Maintainer-specific denylist, never in the repo.** Employer names, personal details and anything else specific to the maintainer live in the maintainer's user-level git config, for example `git config --global --add throttlebrawl.leakscan.deny '<regex>'`. The script reads them with `git config --get-all throttlebrawl.leakscan.deny`. The repo never lists what is being hidden, which would itself be a leak. CI has no such config, so CI enforces only the generic rules; the local hook is the only place the private denylist applies.
+- **Certificates and proxies.** Machine-specific network or certificate settings (for example `NODE_EXTRA_CA_CERTS` or proxy variables) live in user-level environment or config, never in the repo's `.npmrc`, scripts or workflows.
+- **It reports what it examined.** The scan prints the number of files and bytes it checked, and fails if it checked zero files while files were staged. A scanner that looked at nothing and "passed" is the failure this rule exists for.
+- **Before the first push** `[decided]` ("audit before public"). The first push is the docs-only commit, and it is made before `leakscan:all` exists (infra-1 builds it). `[default]` So the lead agent first sets the no-reply identity in user-level git config, then runs a one-off scan over the staged files and the commit with the same generic rules (secret patterns, user-home paths, non-no-reply emails, private addresses) plus the maintainer's private denylist. It checks `git log --format='%ae %ce'`, prints the number of files and bytes examined, and pushes only if it found nothing. infra-1's `leakscan:all` then re-audits the whole tree and `git log -p` from the docs commit onward, in infra-1's first PR, and checks that every commit carries the no-reply identity (see [Commit identity](#commit-identity)).
+
+### Commit identity
+
+`[decided]` (cockpit answer, 2026-09-29): public commits, the maintainer's and the agents', use the maintainer's GitHub no-reply address, which has the form `<id>+<login>@users.noreply.github.com`. The real number and login are set in user-level git config on the dev machine and are never written into the repo or the docs. The maintainer also chose GitHub's "block pushes that expose my email" switch and will turn it on later.
+
+`[default]` Until that switch is on, the leak scan is the guard, and it has to be able to fire on the author field, not only on file contents:
+
+- The `commit-msg` hook also checks the author and committer email of the commit being made (`git var GIT_AUTHOR_IDENT`, `git var GIT_COMMITTER_IDENT`) against the same email allowlist, so a real address fails locally before it is ever pushed.
+- CI's `static` job checks the author and committer email of every commit in the PR's own range (`git log --format='%ae %ce' origin/main..${{ github.event.pull_request.head.sha }}`, not `HEAD`, which on a `pull_request` run is GitHub's synthetic merge commit) against the allowlist.
+- Squash merges are made by GitHub, which picks their author email from the account's own email settings *(unverified)*. Because the repo is squash-only, every commit on `main` is one of these, and neither the local hook nor the PR-range check ever sees it. So `[default]` the maintainer's "Keep my email addresses private" setting must be on **before the first auto-merge** (only the block-pushes switch itself can wait). It sits on the same GitHub email settings page as the block switch *(unverified)*. infra-1 asks for it in its one "what's missing" message and does not arm auto-merge until the maintainer confirms.
+- On `push` to `main`, `ci.yml`'s `static` job also checks `git log -1 --format='%ae %ce'` against the allowlist and fails loudly, so a squash commit carrying a real address is caught at the first merge and the maintainer can fix the setting. (After the fact, since history cannot be rewritten; the setting above is the real prevention.)
+
+## CI on GitHub Actions
+
+`[decided]` The repo is public from day one, and changes reach main by auto-merge on green checks. Actions minutes are free for this case: "GitHub Actions usage is **free** for **self-hosted runners** and for **public repositories** that use standard GitHub-hosted runners" (GitHub docs, verified 2026-09-29).
+
+`[default]` Two workflows:
+
+**`ci.yml`**, triggered on `pull_request` to main and on `push` to main:
+
+```mermaid
+flowchart LR
+  A[static: types, lint, format, packs, leak scan, size, notes] --> G[gate]
+  B[unit: vitest, sim batch with same-run replay, fixtures] --> G
+  C[browser: build, bot playthrough, perf] --> G
+  G -->|push to main only| D[deploy-prod]
+  D --> R[release notes]
+```
+
+- `static`, `unit` and `browser` run in parallel. `gate` has `needs:` on all three, runs with `if: always()`, and fails unless all three succeeded. **`gate` is the only required status check.** A single aggregate check means adding or renaming a job never strands PRs, and GitHub's own tip applies: "make sure that job names are unique across all workflows" (verified 2026-09-29).
+- **No `paths:` filter on `ci.yml`.** A required check behind a path filter never reports on a docs-only PR, which leaves that PR unmergeable forever. Docs-only PRs just run the fast path.
+- Checkout uses `fetch-depth: 0` in both workflows, so `notes:check` and `changelog:build` can read history.
+- `notes:check` runs only on `pull_request` events, diffing `origin/main...HEAD`. On `push` to main it is skipped, because there is no branch to diff and the squash commit already carries the note.
+- `deploy-prod` and the release job run under `concurrency: { group: prod-deploy, cancel-in-progress: false }`. GitHub keeps only the newest pending run, so with several lanes merging, the last merge wins and an older run cannot overwrite a newer build. Deploy also checks that `GITHUB_SHA` is still the head of `main` before uploading, and exits green without uploading if it is not. `[default]`
+- Caches: npm cache and Playwright browsers.
+- `permissions:` are set per job to the minimum. Only the deploy and release jobs get `id-token: write` or `contents: write`.
+- Actions from `actions/*` are pinned to major versions; any third-party action is pinned to a full commit SHA.
+- Fork PRs get no secrets and no OIDC token, which is GitHub's default for `pull_request` from forks. Deploy jobs never run for them.
+
+**`staging.yml`**, triggered on `push` to any branch except main, plus a manual `workflow_dispatch` with a branch input:
+
+- It runs `leakscan:all` and `sizecheck` (seconds; both are existing gate steps, so this adds no new check), then `build` plus a boot smoke test (the page loads, the canvas renders, no errors), then deploys to the staging Space as the same source mirror plus `dist/` that prod gets ([Deploy](#deploy-game-space-and-staging-space)).
+- `concurrency: { group: staging-space, cancel-in-progress: true }`, so the newest push wins. That is what "staging shows the newest feature branch" means in practice.
+- The manual trigger lets the maintainer, or the lead agent on request, pin a specific lane's branch to staging.
+- Staging does not wait for the full gate. It is for playing work in progress, and the build stamp shows which branch and commit it is.
+
+## Branch protection and auto-merge
+
+`[decided]` Merge on green, with no human gate. Protection on a free plan requires a public repo: "Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations" (GitHub docs, verified 2026-09-29).
+
+`[decided]` (cockpit answer, 2026-09-29): the repo and both Spaces are created now. The repo's first commit is these docs, after a leak scan, and the Spaces stay empty until the first deploy. `[default]` That first docs commit is the one push that goes straight to `main`, because the branch has to exist before its rules can do anything. Every later change arrives through a PR. [AGENTS.md](../AGENTS.md#branches-and-merging) records this one exception.
+
+`[default]` The first commit is an explicit allowlist, not "everything in the project folder": `docs/`, `AGENTS.md`, `CLAUDE.md` (the one-line import) and a minimal `.gitignore` that already lists `scratch/`, `*.local.md`, `local/`, `.cache/`, `node_modules/`, `dist/` and `.env*`. It is staged with `git add <each path>`, never `git add -A` or `git add .`. Before pushing, `git ls-files` must print exactly those paths. Nothing else in the project folder (planning notes, research, copies of source manuals) is ever committed, because a public repo cannot be scrubbed without a history rewrite, which is banned.
+
+`[default]` Settings on `main`, applied once when the repo is created:
+
+- Require a pull request before merging, with **0** required approvals. There is one human, and agents act with the maintainer's credentials, so an approval rule would either block everything or approve nothing.
+- Require the status check `gate`.
+- **Do not** require branches to be up to date before merging. Merge queues would handle that safely, but "Pull request merge queues are available in any public repository owned by an organization" (verified 2026-09-29), which a personal-account repo is not. Strict mode without a queue forces every parallel lane to rebase and re-run after each merge, which serializes the whole fleet. Post-merge CI on main covers the rare semantic conflict. The repo owner is the maintainer's personal account `[decided]`. If conflicts between lanes turn out to be common, moving the repo to a free organization (which unlocks merge queues) is a later call for the maintainer, and GitHub can transfer a repo; see [Open questions](#open-questions).
+- Keep the defaults that block force pushes and branch deletion on main: "By default, each branch protection rule disables force pushes to the matching branches and prevents the matching branches from being deleted" (verified 2026-09-29).
+- Turn on **"Do not allow bypassing the above settings"**. Agents push with the maintainer's own credentials, and "By default, the restrictions of a branch protection rule don't apply to people with admin permissions" (verified 2026-09-29). Without this setting, an agent could push straight to main.
+- Repo settings: **Allow auto-merge** on; squash merging only; **Automatically delete head branches off**, because agents never delete (branches can be tidied later by the maintainer).
+
+**How an agent merges.** Open the PR and arm auto-merge in the same step: `gh pr merge --auto --squash`. Do not wait for checks and then merge, since that races GitHub's mergeability computation. Confirm the merge by asking GitHub for the PR's state (`gh pr view --json state,mergedAt`), never by trusting a command's exit code.
+
+## Deploy: game Space and staging Space
+
+`[decided]` The game is hosted on a Hugging Face Space covered by the maintainer's existing plan ("don't want new bills"). A second staging Space gets the agents' latest branch. The phone always opens the direct `*.hf.space` URL, not the huggingface.co page, which wraps the game in an iframe.
+
+`[decided]` (cockpit answer, 2026-09-29): the plan was ratified with one note, "Mirror repo to hf", given on both the ratify card and the repo-creation card. The maintainer left the design to the coordinator ("whatever seems best according to best practices…"), so the mechanics below that carry it out are `[default]`.
+
+Names `[default]`: the GitHub repo is `<github-owner>/throttlebrawl` (public, MIT), and the two Spaces sit under the maintainer's Hugging Face account as `<hf-user>/throttlebrawl` (the game) and `<hf-user>/throttlebrawl-staging`. The placeholders stand for the maintainer's own account names, which the repo URL and the Space URLs show anyway; this doc does not repeat them. (The GitHub login contains an employer abbreviation that the maintainer's private denylist may list, so a tracked file that spelled it out could fail the local leak-scan hook on its own commit; the placeholders and the variables below avoid that.)
+
+`[default]` **Workflows never hard-code account names.** The GitHub side uses `${{ github.repository }}` and `${{ github.repository_owner }}`. The Hugging Face side uses two GitHub Actions repository variables, `HF_SPACE_PROD` and `HF_SPACE_STAGING`, holding the full `<hf-user>/<space>` ids (`<hf-user>/throttlebrawl` and `<hf-user>/throttlebrawl-staging`). The maintainer sets them once, when the Spaces are created, beside the Trusted Publisher claims. Workflows use `${{ vars.HF_SPACE_PROD }}` for `hf upload` and `HF_OIDC_RESOURCE: spaces/${{ vars.HF_SPACE_PROD }}` (staging likewise). The README links to the game by its `*.hf.space` URL and to the source by relative paths, and no tracked file spells out the GitHub owner. At the real-name move (M5), only these variables and the Trusted Publisher claims change. Where this doc writes `<hf-user>`, it means the Hugging Face account; `<github-owner>` is the GitHub account; the two are never interchangeable.
+
+`[default]` The mechanics:
+
+- **GitHub stays canonical.** All work happens in the GitHub repo. A Space is a read-only mirror plus the host: nobody commits to a Space by hand, and the next deploy overwrites any edit made there.
+- **Static Spaces, built in CI.** "Static Spaces are free for everyone: they are served directly without running on compute" (HF docs, verified 2026-09-29). HF's "Static HTML Spaces" docs describe two modes: commit the built files and point `app_file` at them, or have HF run the build itself through `app_build_command` in a build job. We use the first. Vite builds in GitHub Actions, which is free for public repos (see [CI](#ci-on-github-actions)), and the bytes the gate tested are the bytes players get. HF build jobs would run, and spend build credits, on every auto-merged push; how those credits are billed is *(unverified)*.
+- **The Space README frontmatter:** `sdk: static`, `app_file: dist/index.html`, and **no** `app_build_command`. Vite's `base: './'` keeps every asset path relative, so the build works from the `dist/` folder. Whether the `*.hf.space` address serves `app_file` from a sub-folder exactly like a root `index.html` is *(unverified)*; infra-1's staging smoke test checks it on the served URL.
+  - `[default]` **Fallback layout.** If the smoke test shows the build does not boot from `app_file: dist/index.html` (a blank canvas, 404s on `./assets/`, or the root serving the source `index.html` that the mirror also places at the Space root), `space-stage.mjs` switches layout: the contents of `dist/` go at the Space root with `app_file: index.html`, and the tracked source tree goes under `source/`. It is the same single normal commit, and the file-list check then compares `source/` with `git ls-files`.
+- **Each deploy uploads a source mirror plus the prebuilt `dist/`.** The upload is the full tracked source tree (exactly what `git ls-files` lists at the deployed commit) plus the `dist/` folder the gate built, sent as one normal commit on the Space. It is never a force-push and never a history rewrite. The Space is then both a browsable copy of the source and the host. A Node script, `scripts/space-stage.mjs`, stages the upload, and the deploy runs, in effect:
+
+  ```bash
+  node scripts/space-stage.mjs --out .cache/space --readme space/README.prod.md
+  # copies every file `git ls-files` lists, then dist/, then writes README.md as
+  # the Space frontmatter followed by the repo README's body
+  hf upload "${{ vars.HF_SPACE_PROD }}" .cache/space . --repo-type space --delete "*" --commit-message "deploy ${GITHUB_SHA::7}"
+  ```
+
+  - **Exclusions come from git itself.** Only tracked files are copied, so `node_modules/`, `.git/`, `scratch/`, `*.local.md`, `.cache/`, `.env*` and everything else git ignores never reach the Space. `dist/` is the one ignored folder that is added on purpose.
+  - **One README.** The repo's own `README.md` has no Space frontmatter, so the staged copy replaces it with the template's frontmatter followed by the repo README's body.
+  - `--delete "*"` removes files that are no longer in the tracked tree or the build, such as the previous build's stale hashed files, as in HF's own example, which syncs "the local Space by deleting remote files and uploading all files except the ones in `/logs`". Replacing a deploy target's files this way is deployment, not the kind of deletion AGENTS.md forbids.
+  - **What the upload examined.** The stage script prints the number of files and bytes it staged. infra-1 checks once that the Space's file list equals `git ls-files` plus `dist/`, so an exclusion that silently stops working shows up.
+  - Mirroring publishes nothing new: the GitHub repo is already public, and the leak scan and size check have already passed on every mirrored file: in the gate for prod, and in `staging.yml` itself for staging.
+- **Staging** gets the same mirror, built from the newest feature-branch push: `staging.yml` stages that branch's tracked tree plus its `dist/` and uploads it to `${{ vars.HF_SPACE_STAGING }}` with `space/README.staging.md`.
+- **File size rules** (verified 2026-09-29):
+  - `hf upload` needs no Git LFS or Xet setup: "you don't need to set up Git LFS or git-xet for the Hub: large files are stored in Xet automatically."
+  - Only a git push to a Space has the 10 MB rule: "With a git push, files larger than 10MB must be tracked with git-xet (recommended) or Git LFS."
+  - We never git-push to Spaces, so the Spaces should need no `.gitattributes` *(unverified)*. HF creates each Space with a default `.gitattributes`, and `--delete "*"` removes it (or replaces it with the repo's own file if one is tracked), so infra-1 checks that the served build still loads and that the file list shows no pointer-file artefacts after the first deploy; if it does matter, `space-stage.mjs` copies HF's default into the staged folder. If anyone ever does push by git, the 10 MB rule applies.
+  - HF's hard limit is "500GB" per file, and it recommends fewer than 10k entries per folder. Neither matters at our size.
+  - The mirror stays small anyway: `sizecheck` keeps every tracked file under 1 MB, `dist/` sits inside the first-load budget, and big or generated assets live in the HF dataset repo ([Big and generated assets](#big-and-generated-assets)), not in the tracked tree.
+- **Auth: Trusted Publishers, no stored token.** HF can exchange GitHub's OIDC token for a one-hour token scoped to one repo (verified 2026-09-29).
+  - The workflow sets `permissions: id-token: write` and `HF_OIDC_RESOURCE: spaces/${{ vars.HF_SPACE_PROD }}` (staging: `HF_SPACE_STAGING`), and uses `huggingface_hub>=1.19.0` (the standalone `hf` installer).
+  - "Claims are matched exactly. No regex, no prefix matching." So the **prod** Space trusts repository + workflow `ci.yml` + branch `main`, and the **staging** Space trusts repository + workflow `staging.yml` with no branch claim.
+  - Fallback: a fine-grained HF token scoped to the two Spaces, stored as the GitHub secret `HF_TOKEN`.
+  - Both need the maintainer once, in the HF settings UI, when the Spaces are created (along with setting the two repository variables above).
+- **When prod deploys.** `[decided]` (cockpit answer, 2026-09-29): every green merge goes live on the game Space, so the public game is always the newest working build and the maintainer is never a gate. This replaces the first rule set's "only preview links" on purpose. Every green push to main runs `deploy-prod` after `gate`; a red build never deploys. Switching to a manual "ship" step later would be a one-line workflow change `[default]`.
+- **Origins are separate.** Prod and staging are different `*.hf.space` subdomains, so their saves, caches and service workers never collide. A staging save does not carry over to prod; the save export code bridges them.
+- **Renaming a Space changes its URL,** and that loses every player's local save and PWA install on that origin. The real name (due before M5 `[decided]`) is therefore a planned move. `[decided]` (cockpit answer, 2026-09-29): at the real-name time, new Spaces are created under the real name, and the old game Space becomes a one-page "we moved" link. Nothing is deleted, and saves move with the export code. `[default]` The old staging Space stops receiving deploys and gets the same one-page link, the changelog announces the move, and creating the new Spaces is still confirmed with the maintainer at the time. Earlier hosting research quotes HF custom domains as "part of PRO" (not re-checked here); a custom domain would be a new bill, which the maintainer ruled out for now.
+- **Offline.** `[decided]` "Offline definitely preferable". `[default]` There is no service worker in M1; the milestone plan schedules offline play later. When it is added, it uses a per-request policy: content-hashed assets and baked packs are cache-first (their names change whenever their bytes do); `index.html`, `changelog.json` and the manifest are network-first with a 3 s timeout and then the cache. Caches are keyed by build id, the worker is scoped to the build base, and it uses `skipWaiting` and `clients.claim`, so a reload gets the newest build; the same policy runs on the staging Space. A cache-first worker for the HTML entry would show the previous build after every deploy and break the "play the newest build, tell me in chat" loop, and plain network-first for everything would hang a launch on a weak mobile signal for no benefit on hashed files.
+
+## Big and generated assets
+
+`[decided]` Large or generated assets live in a Hugging Face dataset repo, which keeps git lean. All assets load through one manifest, so bundling now and streaming later is a switch: "I don't want to be limited in the future".
+
+`[default]` The mechanics:
+
+- **In git:** code, data packs, small hand-made files. Anything over 1 MB is blocked by `sizecheck` unless it is allowlisted with a reason. No Git LFS in the GitHub repo.
+- **In the dataset repo** (public, for example `<hf-user>/throttlebrawl-assets`, with a dataset card): generated audio, baked GIS tracks above the size limit, concept art, Blender outputs, AI-generated voice lines.
+- **The asset manifest** lists every logical asset, and the game asks the manifest loader for ids and never hard-codes URLs. The schema is owned by [architecture.md](./architecture.md#asset-manifest) (`baked`, `remote` and `procedural` sources); this page does not repeat it. A `license` field is wanted there for `THIRD_PARTY_ASSETS.md`; that is a request to the architecture owner.
+- **M1 has no dataset assets** (code-made assets come first `[decided]`). So the lock file and the fetch and verify scripts do **not** exist at scaffold. They are built in the PR that adds the first `remote` or dataset asset, and that PR's build step copies the fetched files into `dist/`.
+- **`assets.lock.json`** (then) pins the dataset repo and an exact commit revision. Builds are reproducible, and changing assets is a normal PR that bumps the revision.
+- **At build time, in that PR,** `assets:fetch` downloads the pinned files from `https://huggingface.co/datasets/<hf-user>/<repo>/resolve/<revision>/<path>` (public, no token) into `.cache/assets/`, `assets:verify` checks each sha256, and the build copies them into `dist/` (bake-in mode). The equivalent CLI is `hf download <repo> --repo-type dataset --revision <sha> --local-dir .cache/assets`, verified 2026-09-29. The resolve-URL pattern itself is unverified here.
+- **Stream mode, later.** The same manifest entry can be fetched at runtime and cached, for big GIS regions. Browser CORS behaviour of HF resolve URLs is unverified, and it must be probed before stream mode is relied on.
+- **Uploading new assets:** `hf upload <hf-user>/throttlebrawl-assets ./out <path> --repo-type dataset` from a machine where the maintainer's `hf` CLI is already logged in. Agents never run an interactive login. Then open a PR that bumps the lock file.
+- **Licences:** every non-original asset goes in `THIRD_PARTY_ASSETS.md`. AI-generated assets are labelled as such. Baked tracks derived from OpenStreetMap carry the ODbL notice and attribution the GIS research describes; which data source is used is the world lane's call.
+
+## Phone testing
+
+`[decided]` Before a build is on a Space, the phone reaches the dev machine through Android wireless debugging, with `adb reverse` to `localhost`, so the phone treats the game as a secure site, which tilt (DeviceOrientation) requires; later features such as a service worker would need it too. Fullscreen, orientation lock and vibration are gated on a user tap instead (per MDN's API notes; unverified on the device). A USB cable is the fallback.
+
+`[default]` Steps:
+
+1. **One time:** install Android platform-tools on the dev machine. On the phone, enable Developer options, then Wireless debugging.
+2. **Pair:** Wireless debugging → "Pair device with pairing code", then `adb pair <phone-address>:<pairing-port>` and enter the code. Then run `adb connect <phone-address>:<port>` with the port shown on the Wireless debugging screen. Phone and computer must be on the same network. Some networks block this, and that is when the cable is used.
+3. **Tunnel:** `npm run phone` runs `adb reverse tcp:5173 tcp:5173` for the dev server (and `tcp:4173` for `vite preview`), checks that the device is listed, and prints the URL.
+4. **Play:** open `http://localhost:5173` in Chrome on the phone. `localhost` is a secure context. A plain `http://` LAN address is not, so tilt would silently fail there; never hand the phone one.
+5. **Inspect:** `chrome://inspect` on the desktop browser shows the phone's tab, with console and performance tools.
+6. **Cable fallback:** USB debugging on, plug in, then the same `npm run phone`.
+
+For a quick look without a dev machine, open the staging Space's `*.hf.space` URL on the phone; it is HTTPS already. Add `?debug=1` for the fps overlay.
+
+## What-changed notes, in-game changelog and releases
+
+`[decided]` The game shows "what's new since you last played" on each device, tracking the last build seen locally instead of assuming. It also has a full changelog page in the menu, and the same notes go into GitHub releases. Notes are written in plain words.
+
+`[default]` The mechanics:
+
+- **One small file per PR** in `changes/`, named `<yyyy-mm-dd>-<slug>.md`. Parallel lanes never edit the same file, so notes never cause merge conflicts.
+
+  ```markdown
+  ---
+  kind: new        # new | fixed | changed | tuning | dev
+  audience: player # player | dev
+  ---
+  Cops now chase you. Go down near one and you're busted.
+  ```
+
+  Write it for the player: what they will notice, in one or two sentences. Internal work uses `audience: dev`, which shows only on the full changelog page's developer section. Every PR adds at least one file (`notes:check`).
+- **Build:** `changelog:build` reads every note, takes the date and commit when each file first appeared in history, and writes `dist/changelog.json`. Notes are never deleted or edited after merge. A correction is a new note.
+- **In game:** the client stores the last build time it showed. On launch, the "since you last played" card lists player notes newer than that, and the menu page lists everything. A first launch shows a short welcome instead of the whole history.
+- **GitHub releases:** after a prod deploy, the release job collects player notes added since the last `build-*` tag. If there are any, it creates tag `build-<yyyy.mm.dd>-<run>` and a release whose body is those notes (`gh release create`). A merge with only developer notes makes no release. Tags and releases are created by the workflow, which is not a push to main, so branch protection is unaffected.
+
+## Parallel agent lanes
+
+`[decided]` Many agents work in parallel in separate areas and merge on green. Claude Code leads, with Codex and Copilot as helpers, all bound by the repo's AGENTS.md. Every session ends playable. When the maintainer returns after a break, the lead agent gives a three-line resume card in chat, with no nudges, ever.
+
+`[default]` How that works:
+
+- **One lane, one area, one branch.** Branches are named `lane/<lane-id>/<topic>`, where `<lane-id>` is defined in [Repo layout](#repo-layout). File ownership follows the module map in [architecture.md](./architecture.md#ownership-table). A lane edits only its own folders plus its own `changes/` note and tests.
+- **Shared files have one owner.** `package.json`, `package-lock.json`, `tsconfig*`, ESLint and Vite config, `.github/`, `AGENTS.md` and this doc belong to the infra lane (the lead agent by default). A lane that needs a new dependency opens a tiny dependency PR first, or regenerates the lock file with `npm install` after rebasing. Nobody hand-merges `package-lock.json`.
+- **Shared contracts change first.** A change to a data-pack schema or a cross-module interface lands as its own small PR, merged before the lanes that use it. That keeps lanes from coding against a moving target.
+- **Local isolation:** parallel agents on one machine each use their own `git worktree`, never the same checkout.
+- **Lanes emit status.** `[decided]` Each lane writes a small machine-readable status record (lane id, task id, state, PR link, last gate result) to the orchestrator's journal outside the repo, for a maintainer-private progress view. Big orchestrated runs resume from their journals after usage limits `[decided]`. The field list is `[default]`.
+- **Small PRs, merged often.** A lane opens a PR as soon as something is playable, and arms auto-merge immediately.
+- **Main always playable.** Main is only ever changed by green merges, prod deploys only from green main, and a red main is fixed forward first (see [the gate](#the-gate-definition-of-done)).
+- **Session end.** Each lane leaves its branch pushed, and either merged or as a draft PR with a line saying what's missing. Nothing lives only on one machine.
+- **Resume card** (composed by the lead agent from `gh pr list`, recent notes and the Space links):
+
+  ```text
+  Play: <game Space link> (build <id>) · WIP: <staging link> (<lane>)
+  New since you left: <two or three player notes>
+  Waiting on you: <taste calls or open questions, or "nothing">
+  ```
+
+- **Feel-critical tuning** (camera, steering, hit response) stays in one tight loop `[default]`, rather than being split across lanes. The loop is driven by the maintainer's playtests (play, then tell in chat `[decided]`) and the in-game tuning panel with presets from M1 `[decided]`.
+- **No autonomous work between sessions.** `[decided]` Agents do not schedule or run unattended weekly or overnight work (usage limits). Auto-progress stays on the idea shelf ("maybe later").
+
+## Dev-time AI spend
+
+`[decided]` Up to about $25 per batch and $75 per month; "prove before scaling, and do so intentionally"; local GPU or Hugging Face runs preferred; a plain cost note after each run.
+
+`[default]` The mechanics:
+
+- **What counts:** metered money spent while building the game: paid API calls, rented GPU time, paid inference. Existing subscriptions the maintainer already pays for do not count. Adding any new subscription or bill needs the maintainer.
+- **Prove small first:** run a pipeline on a handful of items, show the result and its cost, and only then run the batch.
+- **Before a batch:** estimate the cost. If the estimate is over $25, or month-to-date spend plus the estimate would pass $75, stop and ask. If month-to-date spend cannot be established, ask.
+- **After a batch:** one plain line in the session report: what ran, where (local GPU, HF, or a paid API), the cost, and the month-to-date total.
+- **The ledger** lives in the git-ignored `local/spend-ledger.md` on the maintainer's machine, not in the public repo.
+- **Keys:** never ship a key in the client. A static Space exposes its variables to browser JavaScript (`window.huggingface.variables`, HF docs verified 2026-09-29). Live AI features are parked until the game is fun `[decided]`.
+
+## What always needs the maintainer
+
+`[decided]` These, and only these: taste calls, spending over the cap, anything irreversible or public-facing, and repo creation. Concretely:
+
+- **Creating** any GitHub repo, HF Space or HF dataset repo (confirmed at the time `[decided]`), and the one-time settings that come with it: branch protection, Trusted Publisher claims, secrets. The repo and both Spaces were approved for creation on 2026-09-29 `[decided]` (cockpit answer); the dataset repo, and the new Spaces at the real-name time, are still confirmed when they are needed.
+- **The public commit identity** is settled: the GitHub no-reply address `[decided]` (cockpit answer, 2026-09-29; see [Commit identity](#commit-identity)). Turning on GitHub's "block pushes that expose my email" switch is the maintainer's own later step.
+- **Deleting** branches, tags, releases, repos, Spaces or datasets, or files inside a dataset repo. `[decided]` ("never delete"). Removing or renaming tracked files inside a normal PR (refactors, dead code, vetoed content) is ordinary editing and is allowed when the PR note says why; git history keeps them `[default]`. Deploys that replace a Space's files (the source mirror and the build) are also allowed.
+- **Changing** repo visibility, licence, ownership or protection rules. `[decided]` Removing a whole check from the gate needs the maintainer `[default]`; adding assertions, fixing a check or tuning a budget is a normal PR with the reason in its note.
+- **Renaming** the game, repo or Spaces (this changes public URLs and loses local saves). How the Spaces follow the real name is decided (see [Deploy](#deploy-game-space-and-staging-space)); acting on it is still confirmed at the time.
+- **Money:** a batch or month over the spend cap, or any new subscription or bill.
+- **Going outward** beyond the pipeline: announcing, posting links, submitting to stores or directories. The v1 public launch is gated on feel, look, runs well on the A16, and personality `[decided]`.
+- **Taste:** the look style, final names, and vetoes on invented content. Agents invent freely within the tone guide and there is a taste log `[decided]`; the maintainer vetoes after the fact rather than approving before. The mechanism is owned by the content docs and is not repeated here `[default]`: a vetoed item gets `status: "vetoed"` in its pack file (the loader skips it and the generator reads it as a negative example), and the lesson goes into the [tone guide's taste log](./tone-guide.md#taste-log). See [content-packs.md](./content-packs.md#in-game-veto-cut-this).
+- **Vetoes arrive two ways** `[decided]`: in chat, or in game, where a long-press on a bark subtitle, billboard or sign (and, from M4, a radio track, long-pressed in the pause menu's station panel `[decided]`) offers "cut this" and adds a flag to the debug report. Agents treat each flag as a work item: they mark the item vetoed in a normal PR with a `changes/` note, and log the lesson. The report lists flags as content references (`<packId>:<type>/<entryId>#<itemId>`, per content-packs.md). Nobody waits to be asked.
+
+Everything else, agents decide, record as `[default]` in the docs, and keep moving.
+
+## Open questions
+
+None are open. Both of this page's questions were answered in the maintainer's cockpit on 2026-09-29:
+
+- **Public commit identity** `[decided]`: the GitHub no-reply address, with the "block pushes that expose my email" switch to follow. See [Commit identity](#commit-identity).
+- **Does every green merge go straight to the public game Space?** `[decided]`: yes. See [Deploy](#deploy-game-space-and-staging-space).
+
+The same round ratified the plan with the note "Mirror repo to hf" (carried out in [Deploy](#deploy-game-space-and-staging-space)), approved creating the repo and both Spaces now, and approved launching the M1 run right after the repo exists `[decided]`.
+
+Not open: the repo owner is the maintainer's personal account `[decided]`. Moving to a free organization for merge queues would only be raised if lane conflicts turn out to be common; it blocks nothing.
+
+## Verified external facts
+
+Fetched 2026-09-29 from the vendor's own documentation and quoted above:
+
+- Hugging Face static Spaces (`spaces-sdks-static`, the "Static HTML Spaces" page): free, no compute; the two modes, committed build files with `app_file` or an HF-run build through `app_build_command`; variables exposed via `window.huggingface.variables`. How HF build jobs are billed was not checked.
+- Hugging Face Spaces with GitHub Actions (`spaces-github-actions`, `repositories-github-actions`): `hf upload` stores large files in Xet automatically; the 10 MB rule for git pushes; `hub-sync` parameters.
+- Hugging Face Trusted Publishers (`trusted-publishers`): OIDC exchange, one-hour repo-scoped tokens, exact claim matching, `HF_OIDC_RESOURCE`.
+- Hugging Face storage limits (`storage-limits`): the 500 GB per-file hard limit; fewer than 10k entries per folder.
+- Hugging Face CLI guide: `hf upload --delete`, `hf download --revision --local-dir`.
+- GitHub docs: protected-branch availability on the free plan for public repos, admin bypass defaults, merge-queue availability, the auto-merge setting, Actions billing for public repos.
+- npm registry: current versions and typescript-eslint's TypeScript peer range.
+
+Unverified and to be probed when first used: CORS on HF resolve URLs and the resolve-URL pattern; `adb reverse` against an IPv6-only listener; HF custom-domain terms; whether Playwright's headless Chromium still gets WebGL without the SwiftShader flags; whether a static Space serves `app_file: dist/index.html` at the `*.hf.space` address like a root page; HF build-credit billing; which email GitHub puts on squash-merge commits (and on the synthetic merge commit of a pull request run); whether removing HF's default `.gitattributes` is harmless.
