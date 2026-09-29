@@ -1,0 +1,31 @@
+{
+  "type": "route",
+  "id": "m1-skeleton-sprint",
+  "network": "keys-m1",
+  "start": {
+    "road": "m1-marina-run",
+    "s": 40,
+    "dir": 1
+  },
+  "finish": {
+    "road": "m1-sandbar-causeway",
+    "s": 760
+  },
+  "mainPath": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
+  "allowedRoads": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
+  "checkpoints": [
+    {
+      "road": "m1-pelican-bridge",
+      "s": 450
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "pack",
+  "id": "base",
+  "name": "Throttlebrawl base game",
+  "version": "0.1.0",
+  "formatVersion": 1,
+  "gameVersion": ">=0.1.0",
+  "dependencies": {},
+  "description": "Pack zero. Everything in the base game, including Region 1: the Florida Keys.",
+  "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
+  "license": "MIT",
+  "licenseRules": [],
+  "assetSources": { "default": "baked", "rules": [] },
+  "defaults": { "tuning": "registry", "hud": "classic" },
+  "idAliases": {},
+  "meta": {
+    "notes": "The base game is itself a pack so every content path is exercised from day one."
+  }
+}
