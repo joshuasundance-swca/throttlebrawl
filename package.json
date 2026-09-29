@@ -1,0 +1,61 @@
+{
+  "name": "throttlebrawl",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A browser motorcycle brawler: race the coast, fight the field, outrun the law.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build && npm run changelog:build",
+    "preview": "vite preview",
+    "typecheck": "node scripts/typecheck.mjs",
+    "lint": "node scripts/lint.mjs",
+    "lint:fix": "node scripts/lint.mjs --fix",
+    "format": "node scripts/format.mjs --write",
+    "format:check": "node scripts/format.mjs",
+    "test": "vitest run --project unit",
+    "test:sim": "vitest run --project sim",
+    "packs:check": "node scripts/packs-check.mjs",
+    "e2e": "playwright test --project=e2e",
+    "perf": "node scripts/perf.mjs",
+    "leakscan": "node scripts/leak-scan.mjs --staged",
+    "leakscan:all": "node scripts/leak-scan.mjs --all",
+    "sizecheck": "node scripts/size-check.mjs",
+    "notes:check": "node scripts/notes-check.mjs",
+    "changelog:build": "node scripts/changelog-build.mjs",
+    "check": "node scripts/check.mjs",
+    "phone": "node scripts/phone.mjs",
+    "hooks:install": "simple-git-hooks",
+    "knip": "knip"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npx --no-install lint-staged && node scripts/leak-scan.mjs --staged && node scripts/size-check.mjs --staged",
+    "commit-msg": "node scripts/leak-scan.mjs --commit-msg \"$1\"",
+    "pre-push": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@secretlint/core": "13.0.6",
+    "@secretlint/secretlint-rule-preset-recommend": "13.0.6",
+    "@types/node": "22.20.4",
+    "@types/three": "0.186.0",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "knip": "6.38.0",
+    "lint-staged": "16.4.0",
+    "prettier": "3.9.9",
+    "simple-git-hooks": "2.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}

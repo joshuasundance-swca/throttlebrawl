@@ -111,7 +111,7 @@ flowchart LR
 
 Arrows point from a module to what it depends on. `render --> sim` means "render imports the sim's public snapshot and event types", never sim internals. Every `--> sim` edge means "imports `src/sim/api.ts`" (types only), never anything deeper. Edges into `content` mean "imports registry read types".
 
-`[default]` **This graph is the enforced allow-list.** A per-folder `no-restricted-imports` rule (or `eslint-plugin-boundaries`) allows exactly these edges and nothing else, so a wrong import is a lint error rather than a review comment. An agent that needs an edge that is not drawn changes this graph in the same contract PR.
+`[default]` **This graph is the enforced allow-list.** A lint rule allows exactly these edges and nothing else, so a wrong import is a lint error rather than a review comment. It is a small local ESLint rule that reads the graph as data from `scripts/module-map.mjs` (chosen over per-folder `no-restricted-imports` patterns, which cannot resolve relative paths, and over `eslint-plugin-boundaries`, one more dependency); a unit test checks that file against the graph above, edge for edge. An agent that needs an edge that is not drawn changes this graph and that file in the same contract PR.
 
 ### Ownership table
 

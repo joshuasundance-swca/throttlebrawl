@@ -1,0 +1,4 @@
+# LF line endings in the repo and in every working copy.
+# This file is also mirrored to the Spaces, where it replaces the default .gitattributes that
+# `hf upload --delete "*"` never removes (docs/engineering.md, deploy section).
+* text=auto eol=lf

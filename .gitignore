@@ -4,9 +4,18 @@ scratch/
 local/
 .cache/
 
+# Agent working state and logs
+.claude/
+*.log
+
 # Build output and dependencies
 node_modules/
 dist/
+*.tsbuildinfo
+
+# Test output
+test-results/
+playwright-report/
 
 # Environment files
 .env*
