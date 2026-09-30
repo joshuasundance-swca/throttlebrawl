@@ -3,7 +3,7 @@
 // non-default presets, not only Normal.
 //
 // dev-4's shared batch runs Normal only, so the comparison runs here, kept small: the same seeds per
-// preset, the bot in the player slot as in the batch, each race run to its end (no replay). A cop
+// preset (16 of them), the bot in the player slot as in the batch, each race run to its end (no replay). A cop
 // spawn is his siren sounding (sim/cops sounds it just before he pulls out; a cop who stays in the
 // lot never sounds it). When dev-4's Easy and Hard batch lands, these counts move onto it.
 /// <reference types="vite/client" />
@@ -14,7 +14,10 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { BATCH_TIMEOUT_MS, MAX_TICKS } from './batch';
 
-const SEEDS = Array.from({ length: 8 }, (_, i) => i + 1);
+// 16 seeds per preset (8 until the 100 mph starter, playtest 1 item 10): at the new speeds fights are
+// shorter and rarer, and over 8 seeds one race's swing (seed 4: Easy 15 hits, Hard 7) outweighed
+// the presets' difference (Easy 56, Hard 53). Over 16: Easy 94, Hard 108. [default]
+const SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
 
 const print = (line: string) => process.stdout.write(line + '\n');
 

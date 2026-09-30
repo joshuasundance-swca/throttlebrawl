@@ -3,7 +3,36 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONTROL_OPTIONS } from '../input';
 import { DEFAULT_SETTINGS } from '../save';
-import { controlOptionsOf } from './controls';
+import { controlOptionsOf, liveControlSettings } from './controls';
+
+describe('app: which control settings are live (the input-2 rows show, playtest 1b run)', () => {
+  it('a phone that can vibrate gets all five control settings', () => {
+    expect(liveControlSettings({ vibrate: true, tilt: true })).toEqual([
+      'steering',
+      'tiltSensitivity',
+      'throttle',
+      'pullBackBrake',
+      'haptics',
+    ]);
+  });
+
+  it('vibration stays hidden where the browser cannot vibrate (M2 input-2)', () => {
+    expect(liveControlSettings({ vibrate: false, tilt: true })).not.toContain('haptics');
+  });
+
+  it('tilt steering and its sensitivity stay hidden where tilt cannot work', () => {
+    expect(liveControlSettings({ vibrate: true, tilt: false })).toEqual([
+      'throttle',
+      'pullBackBrake',
+      'haptics',
+    ]);
+  });
+
+  it('every live control setting is a field of the settings record', () => {
+    const got = liveControlSettings({ vibrate: true, tilt: true });
+    expect(got.every((id) => id in DEFAULT_SETTINGS)).toBe(true);
+  });
+});
 
 describe('app: settings to input control options', () => {
   it('the default settings give input its default options', () => {

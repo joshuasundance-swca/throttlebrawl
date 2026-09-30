@@ -166,13 +166,21 @@ export interface Harness {
 
 const NEUTRAL: SimInput = { steer: 0, throttle: 0, brake: 0, flags: 0 };
 
+/** Extras for combat-4's tests: stand-ins for later phases (traffic, tumble) and the slow-mo toggle. */
+export interface HarnessOptions {
+  systems?: Partial<Record<SystemName, SimSystem>>;
+  slowMo?: boolean;
+}
+
 export function makeHarness(
   placements: readonly Placement[],
   script: Script,
   tuning?: Record<string, number>,
   extraWeapons: readonly SimWeaponDef[] = [],
+  opts: HarnessOptions = {},
 ): Harness {
   const config = harnessConfig(placements, tuning, extraWeapons);
+  config.slowMo = opts.slowMo ?? false;
   const world = createWorld(config);
   placements.forEach((p, i) => {
     const m = addMover(world, 'rider', { edge: 0, s: p.s, d: p.d, dir: 1 }, i);
@@ -211,7 +219,7 @@ export function makeHarness(
           ? riders
           : name === 'combat'
             ? combatSystem
-            : noop(name),
+            : (opts.systems?.[name] ?? noop(name)),
     ),
   );
   for (const s of systems) s.init(world, config);
