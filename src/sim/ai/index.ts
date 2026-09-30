@@ -132,7 +132,7 @@ const TAU = 6.283185307179586;
 /** A rail this close to the target's side of the road (metres of d) is worth pushing it toward. */
 const RAIL_NEAR_M = 3.5;
 /** An oncoming car within this many seconds of closing (plus a margin) makes the oncoming side the pick. */
-const ONCOMING_WARN_S = 3;
+const ONCOMING_WARN_S = 4;
 const ONCOMING_MARGIN_M = 20;
 /** Changing sides round a target is done only this far ahead of or behind it, never through it. */
 const SIDE_SWITCH_S = 2.5;
@@ -233,8 +233,9 @@ function pickByPreference(
 /**
  * Takedown intent (ai-2): the way along road d (+1 or −1) a hit should push the target, or 0 for
  * no preference. An oncoming car about to pass the target on its oncoming side wins; then a rail
- * close to the target; then the oncoming lane itself (traffic will come). The victim of a hit is
- * knocked away from the attacker, so the attacker rides on the other side.
+ * close to the target. With neither, there is nothing to push the target into, so no preference:
+ * the brawler keeps the side it is on (M1), rather than circling a target for an empty road. The
+ * victim of a hit is knocked away from the attacker, so the attacker rides on the other side.
  */
 export function takedownPush(
   road: RoadNetwork,
@@ -276,7 +277,7 @@ export function takedownPush(
       if (Math.abs(rim - t.d) <= RAIL_NEAR_M) return side;
     }
   }
-  return oncoming;
+  return 0;
 }
 
 /**

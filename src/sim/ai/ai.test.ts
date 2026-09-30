@@ -707,46 +707,61 @@ describe('ai-2: takedown intent', () => {
     return takedownPush(sc.config.road, them, seen);
   };
 
-  it('picks the oncoming side by default, a rail when one is close, and an oncoming car over both', () => {
-    // No rail, no cars: toward the oncoming lane (−d when riding toward +s).
-    expect(pushFor({}, 1.7, [])).toBe(-1);
+  it('picks a rail when one is close, an oncoming car over that, and nothing on an empty road', () => {
+    // No rail, no cars: nothing to push the player into, so no preference.
+    expect(pushFor({}, 1.7, [])).toBe(0);
     // A rail on the right, 3.2 m from a player in the middle of their lane: toward the rail.
     expect(pushFor(ON_RAIL, 1.7, [])).toBe(1);
     // ...but not when the player is across the road from it.
-    expect(pushFor(ON_RAIL, -1.7, [])).toBe(-1);
+    expect(pushFor(ON_RAIL, -1.7, [])).toBe(0);
     // An oncoming car about to pass: toward it, rail or not.
+    expect(pushFor({}, 1.7, [{ s: 200, d: -1.7, v: 24, dir: -1 }])).toBe(-1);
     expect(pushFor(ON_RAIL, 1.7, [{ s: 200, d: -1.7, v: 24, dir: -1 }])).toBe(-1);
     // An oncoming car still far off does not count yet; one already past does not either.
-    expect(pushFor(ON_RAIL, 1.7, [{ s: 700, d: -1.7, v: 24, dir: -1 }])).toBe(1);
+    expect(pushFor(ON_RAIL, 1.7, [{ s: 800, d: -1.7, v: 24, dir: -1 }])).toBe(1);
     expect(pushFor(ON_RAIL, 1.7, [{ s: 80, d: -1.7, v: 24, dir: -1 }])).toBe(1);
     // A car going the player's own way is not oncoming traffic.
     expect(pushFor(ON_RAIL, 1.7, [{ s: 150, d: -1.7, v: 10, dir: 1 }])).toBe(1);
   });
 
-  it('a heavy hitter works round to the player’s far side, so its hits push them toward oncoming traffic', () => {
-    const run = (style: string) => {
+  /** Oncoming cars every 200 m in the other lane, so one is always on its way. */
+  const ONCOMING = Array.from({ length: 11 }, (_, i) => ({
+    s: 250 + 200 * i,
+    d: -1.7,
+    v: 24,
+    dir: -1 as const,
+  }));
+
+  it('with oncoming traffic, a heavy hitter works round to the player’s far side, so its hits push them into it', () => {
+    const run = (style: string, vehicles: typeof ONCOMING) => {
       const sc = scene(
         [rival(style, { aggression: 0.8 }), PLAYER],
         [
           { s: 30, d: 0.6, v: 28 }, // starts on the player's −d side (the oncoming side)
           { s: 50, d: 1.7, v: 28 },
         ],
+        vehicles,
       );
       if (style === 'racer') noteGrudge(sc.world, 0, 1); // a racer hunts only with a grudge
       return pressesOn(sc, 0, 1, 25, cruise(sc, 1));
     };
-    const brawler = run('heavy-hitter');
-    const racer = run('racer');
+    const brawler = run('heavy-hitter', ONCOMING);
+    const racer = run('racer', ONCOMING);
+    const empty = run('heavy-hitter', []);
     const fromPlus = (xs: { side: number }[]) => xs.filter((x) => x.side > 0).length;
     console.log(
       `presses from the player's +d side (pushing toward oncoming): heavy hitter ${fromPlus(brawler)} of ${brawler.length}, ` +
-        `racer with a grudge (no intent) ${fromPlus(racer)} of ${racer.length}`,
+        `racer with a grudge (no intent) ${fromPlus(racer)} of ${racer.length}, ` +
+        `heavy hitter on an empty road ${fromPlus(empty)} of ${empty.length}`,
     );
     expect(brawler.length).toBeGreaterThan(3);
     expect(fromPlus(brawler) / brawler.length).toBeGreaterThanOrEqual(0.8);
-    // Without takedown intent a hunter stays on the side it started on.
+    // Without takedown intent, or with nothing to push the player into, a hunter stays on the
+    // side it started on.
     expect(racer.length).toBeGreaterThan(3);
     expect(fromPlus(racer) / racer.length).toBeLessThanOrEqual(0.2);
+    expect(empty.length).toBeGreaterThan(3);
+    expect(fromPlus(empty) / empty.length).toBeLessThanOrEqual(0.2);
   });
 
   it('on a railed bridge, a heavy hitter works round to push the player toward the rail', () => {
@@ -774,15 +789,17 @@ describe('ai-2: takedown intent', () => {
           { s: 30, d: 1.7, v: 28 },
           { s: 50, d: 1.7, v: 28 },
         ],
+        [],
+        ON_RAIL,
       );
       const got = pressesOn(sc, 0, 1, 90, cruise(sc, 1));
       return { kicks: got.filter((x) => x.kick).length, n: got.length };
     };
-    // Riding toward +s, `right` is the player's +d side: its hits push them toward the oncoming lane.
-    const toward = run('right');
-    const away = run('left');
+    // Riding toward +s, `left` is the player's −d side: its hits push them toward the rail.
+    const toward = run('left');
+    const away = run('right');
     console.log(
-      `kick share: ${toward.kicks}/${toward.n} pushing toward oncoming, ${away.kicks}/${away.n} pushing toward the verge`,
+      `kick share: ${toward.kicks}/${toward.n} pushing toward the rail, ${away.kicks}/${away.n} pushing away from it`,
     );
     expect(toward.n).toBeGreaterThan(10);
     expect(away.n).toBeGreaterThan(10);
