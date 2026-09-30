@@ -300,6 +300,11 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
   passBy: patch((b, t) => {
     b.noise('bandpass', 600, 2200, 1.6, t, 0.35, 0.22, 0.06);
   }),
+  // A boost pad (playtest 1b): a rising rush of air under a quick upward sweep.
+  boost: patch((b, t) => {
+    b.noise('bandpass', 400, 3200, 1.2, t, 0.5, 0.45, 0.03);
+    b.tone('sawtooth', 180, 720, t, 0.18, 0.35);
+  }),
 };
 
 export interface SirenVoice {

@@ -45,7 +45,9 @@ export type MaterialKind =
   | 'flash'
   | 'board'
   // Playtest 1 item 10: speed lines (an overlay) and roadside palms (vertex-coloured props).
-  | 'streak';
+  | 'streak'
+  // Playtest 1b quick wins: the boost pads' glow and a boosting bike's flame.
+  | 'boost';
 
 export interface MaterialParams {
   color?: string;
@@ -106,10 +108,11 @@ const PALETTE: Record<MaterialKind, string> = {
   flash: '#ffffff',
   board: '#ffffff',
   streak: '#ffffff',
+  boost: '#2de2ff',
 };
 
 /** Unlit kinds: they must read as light sources (the cop's bar, the steal glint). */
-const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board', 'streak']);
+const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board', 'streak', 'boost']);
 
 const SKY_BY_TIME: Record<string, string> = {
   dawn: '#f3c6a5',
