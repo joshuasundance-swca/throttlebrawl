@@ -1,6 +1,7 @@
 // Zod schemas for the M1 minimum (docs/content-packs.md, "What M1 needs"). Each type's fields
 // follow its section in that doc; everything beyond the M1 minimum is optional or passes through.
-// content-1 adds the reserved type names, the refinements and the lint.
+// The reserved types (event-modifier, station, patch) are claimed here so nothing else takes the
+// names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
 
@@ -10,10 +11,41 @@ export const packSchema = z.looseObject({
   name: z.string(),
   version: z.string().regex(/^\d+\.\d+\.\d+/, 'must be a semantic version'),
   formatVersion: z.number().int().min(1),
+  gameVersion: z.string().optional(),
+  description: z.string().optional(),
+  authors: z.array(z.string()).optional(),
   license: z.string(),
+  licenseRules: z
+    .array(
+      z.looseObject({
+        paths: z.array(z.string()).min(1),
+        spdx: z.string(),
+        attribution: z.string(),
+        licenseFile: z.string().optional(),
+      }),
+    )
+    .optional(),
+  assetSources: z
+    .looseObject({
+      default: z.enum(['baked', 'remote']),
+      rules: z.array(z.looseObject({ match: z.string(), source: z.enum(['baked', 'remote']) })),
+    })
+    .optional(),
   dependencies: z.record(z.string(), z.string()).optional(),
   defaults: z.looseObject({ tuning: z.string(), hud: z.string(), look: z.string().optional() }),
   idAliases: z.record(z.string(), z.string()).optional(),
+});
+
+/** A vetoable item inside an entry: a sign, a billboard, a bark line or a station track. */
+const itemStatus = { status: statusSchema.optional(), note: z.string().optional() };
+
+/** A sign or billboard in a region file (docs/content-packs.md, "Region"). */
+const signSchema = z.looseObject({
+  id: idSchema,
+  text: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+  imageAsset: z.string().optional(),
+  ...itemStatus,
 });
 
 export const bikeSchema = entry('bike', {
@@ -94,6 +126,9 @@ export const weaponSchema = entry('weapon', {
   recoveryS: nonNegative,
   cooldownS: nonNegative.optional(),
   damage: nonNegative,
+  knockback: z
+    .looseObject({ lateralMps: nonNegative, staggerS: nonNegative, takedownBonus: unit01.optional() })
+    .optional(),
   hitStopMs: nonNegative.optional(),
   steal: z
     .looseObject({ allowed: z.boolean(), windowStartS: nonNegative, windowEndS: nonNegative })
@@ -123,6 +158,13 @@ export const eventSchema = entry('event', {
     )
     .min(1),
   rewards: z.looseObject({ byPlaceCash: z.array(z.number().int().min(0)) }),
+  modifiers: z
+    .looseObject({
+      pool: z.union([z.literal('region-default'), z.array(refSchema)]),
+      maxPerRace: z.number().int().min(0),
+      chanceScale: nonNegative.optional(),
+    })
+    .optional(),
 });
 
 const laneSchema = z.looseObject({
@@ -202,13 +244,34 @@ export const routeSchema = entry('route', {
     .optional(),
 });
 
+const trafficKindSchema = z.looseObject({ kind: refSchema, weight: z.number().positive() });
+
 export const regionSchema = entry('region', {
   networks: z.array(idSchema).min(1),
   timeOfDayOptions: z.array(z.looseObject({ id: z.string(), lighting: z.string() })).min(1),
   palette: z.record(z.string(), z.string()).optional(),
   traffic: z.looseObject({
-    mix: z.array(z.looseObject({ kind: refSchema, weight: z.number().positive() })),
+    mix: z.array(trafficKindSchema),
+    pedestrians: z.array(trafficKindSchema).optional(),
+    animals: z.array(trafficKindSchema).optional(),
   }),
+  signs: z.array(signSchema).optional(),
+  billboards: z.array(signSchema).optional(),
+});
+
+export const crewSchema = entry('crew', {
+  kind: z.enum(['gang', 'sponsor-team', 'law']),
+  region: idSchema.optional(),
+  stanceTowardPlayer: z.enum(['hostile', 'neutral', 'friendly']).optional(),
+  gangUp: z
+    .looseObject({
+      enabled: z.boolean(),
+      maxJoiners: z.number().int().min(0).optional(),
+      joinRadiusM: z.number().positive().optional(),
+      chance: unit01.optional(),
+    })
+    .optional(),
+  rivalCrews: z.array(refSchema).optional(),
 });
 
 export const trafficTypeSchema = entry('traffic-type', {
@@ -220,12 +283,21 @@ export const trafficTypeSchema = entry('traffic-type', {
 });
 
 export const barkSetSchema = entry('bark-set', {
+  defaults: z
+    .looseObject({
+      speaker: z.string().optional(),
+      cooldownS: nonNegative.optional(),
+      weight: nonNegative.optional(),
+    })
+    .optional(),
   lines: z.array(
     z.looseObject({
       id: idSchema,
       trigger: z.string(),
       text: z.string().min(1),
-      status: statusSchema.optional(),
+      speaker: z.string().optional(),
+      target: z.string().optional(),
+      ...itemStatus,
     }),
   ),
 });
@@ -261,10 +333,65 @@ export const tuningPresetSchema = entry('tuning-preset', {
   values: z.record(z.string(), z.number()),
 });
 
-/** Every M1 entry type, keyed by its `type` string. */
+// Reserved types (docs/content-packs.md): claimed now so the names cannot be taken, with the
+// documented shape. No M1 content uses them.
+
+/** A weird-event modifier (reserved, M4 or the shelf). */
+export const eventModifierSchema = entry('event-modifier', {
+  kind: z.enum(['nature', 'human', 'wasteland', 'league']),
+  rarityWeight: nonNegative,
+  eligibility: z
+    .looseObject({
+      regions: z.array(refSchema).optional(),
+      eventKinds: z.array(z.string()).optional(),
+      timeOfDay: z.array(z.string()).optional(),
+    })
+    .optional(),
+  trigger: z.looseObject({ chance: unit01, atProgress: z.tuple([unit01, unit01]).optional() }),
+  durationS: nonNegative,
+  effects: z.array(
+    z.looseObject({
+      kind: z.enum([
+        'lateral-gust',
+        'spawn-hazard',
+        'spawn-convoy',
+        'traffic-override',
+        'cash-multiplier-zone',
+        'bounty-on-player',
+        'guest-rider',
+        'show-billboard',
+      ]),
+    }),
+  ),
+});
+
+/** A radio station (reserved, later). Tracks are vetoable items. */
+export const stationSchema = entry('station', {
+  genre: z.string(),
+  regions: z.array(refSchema),
+  tracks: z.array(
+    z.looseObject({
+      id: idSchema,
+      title: z.string().min(1),
+      audioAsset: z.string().optional(),
+      origin: z.enum(['human', 'agent', 'ai-batch']).optional(),
+      ...itemStatus,
+    }),
+  ),
+  djBarkSet: refSchema.nullable().optional(),
+});
+
+/** A JSON Merge Patch on another pack's entry (reserved; patches are not applied in v1). */
+export const patchSchema = entry('patch', {
+  target: refSchema,
+  merge: z.record(z.string(), z.unknown()),
+});
+
+/** Every entry type, keyed by its `type` string. */
 export const ENTRY_SCHEMAS = {
   bike: bikeSchema,
   rider: riderSchema,
+  crew: crewSchema,
   weapon: weaponSchema,
   event: eventSchema,
   region: regionSchema,
@@ -275,9 +402,52 @@ export const ENTRY_SCHEMAS = {
   'bark-set': barkSetSchema,
   'hud-layout': hudLayoutSchema,
   'tuning-preset': tuningPresetSchema,
+  'event-modifier': eventModifierSchema,
+  station: stationSchema,
+  patch: patchSchema,
 } as const;
 
 export type EntryType = keyof typeof ENTRY_SCHEMAS;
+
+/** Reserved types: valid files, but not loaded into the registry yet. */
+export const RESERVED_TYPES: readonly EntryType[] = ['patch'];
+
+/**
+ * Top-level fields left out of the sim content hash, per type (docs/content-packs.md, "Which
+ * fields count as sim-facing"). Everything else in an entry of that type is sim-facing, so a field
+ * a later lane adds counts toward the sim hash until it is listed here: a missed presentation
+ * field only renews the replay key, while a missed sim field would let replays silently diverge.
+ * `null` means the whole type is presentation-only (full hash only).
+ */
+export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] | null>> = {
+  bike: ['name', 'tags', 'meta', 'look', 'engineSound', 'blurb'],
+  rider: ['name', 'tags', 'meta', 'look', 'paint', 'blurb'],
+  crew: ['name', 'tags', 'meta'],
+  weapon: ['name', 'tags', 'meta', 'look', 'sounds'],
+  event: ['name', 'tags', 'meta', 'interludes'],
+  region: ['name', 'tags', 'meta', 'blurb', 'chapter', 'palette', 'timeOfDayOptions', 'signs', 'billboards'],
+  'road-network': ['name', 'meta', 'provenance'],
+  road: ['name', 'realName', 'meta', 'provenance'],
+  route: ['name', 'meta'],
+  'traffic-type': ['name', 'tags', 'meta', 'look'],
+  'tuning-preset': ['name', 'tags', 'meta'],
+  'event-modifier': ['name', 'tags', 'meta', 'announce'],
+  'bark-set': null,
+  'hud-layout': null,
+  station: null,
+  patch: null,
+};
+
+/**
+ * The lists of vetoable items per type (docs/content-packs.md, "In-game veto"): each item has an
+ * id unique in its entry and an optional `status`; the loader drops vetoed (and, in release
+ * builds, draft) items, and the file keeps them as the taste log.
+ */
+export const VETOABLE_ITEMS: Readonly<Partial<Record<EntryType, readonly string[]>>> = {
+  'bark-set': ['lines'],
+  region: ['signs', 'billboards'],
+  station: ['tracks'],
+};
 export type PackManifest = z.infer<typeof packSchema>;
 export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
@@ -291,3 +461,7 @@ export type TrafficType = z.infer<typeof trafficTypeSchema>;
 export type BarkSet = z.infer<typeof barkSetSchema>;
 export type HudLayout = z.infer<typeof hudLayoutSchema>;
 export type TuningPreset = z.infer<typeof tuningPresetSchema>;
+export type Crew = z.infer<typeof crewSchema>;
+export type EventModifier = z.infer<typeof eventModifierSchema>;
+export type Station = z.infer<typeof stationSchema>;
+export type Patch = z.infer<typeof patchSchema>;
