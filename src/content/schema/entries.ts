@@ -230,7 +230,19 @@ export const roadSchema = entry('road', {
   features: z
     .array(
       z.looseObject({
-        kind: z.enum(['ramp', 'gap', 'hazard', 'roadsideZone', 'copSpawn', 'raceMarker', 'billboard']),
+        kind: z.enum([
+          'ramp',
+          'gap',
+          'hazard',
+          'roadsideZone',
+          'copSpawn',
+          'raceMarker',
+          'billboard',
+          // Playtest 1b quick wins (docs/content-packs.md, "Road file"): a speed-boost pad, and a
+          // parked car-carrier whose rear deck is a jump ramp.
+          'boostPad',
+          'rampTruck',
+        ]),
         id: idSchema,
         s0: z.number(),
         s1: z.number(),

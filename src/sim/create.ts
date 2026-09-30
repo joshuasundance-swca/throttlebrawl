@@ -126,6 +126,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       tumble: m.kind === 'rider' ? tumbleOf(m.id) : null,
       styleTally: world.facts.styleTally[m.id] ?? 0,
       grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
+      boostS: m.kind === 'rider' ? (riders.boost[m.id] ?? 0) / 60 : 0,
     };
   });
   return {

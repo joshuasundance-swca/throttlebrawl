@@ -113,6 +113,8 @@ export interface RiderState {
   shove: number[];
   /** Last tick each pair of riders ("lowId-highId") touched, so one contact emits one event. */
   contactTick: Record<string, number>;
+  /** Scaled ticks of speed boost left from a `boostPad` (playtest 1b quick wins); the snapshot's boostS. */
+  boost: number[];
 }
 
 /** m/s² when off the throttle, before air drag. */
@@ -183,6 +185,7 @@ export function riderState(world: World): RiderState {
     lastTick: [],
     shove: [],
     contactTick: {},
+    boost: [],
   }));
 }
 

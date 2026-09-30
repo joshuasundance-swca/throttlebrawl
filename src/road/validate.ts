@@ -87,6 +87,8 @@ const FEATURE_KINDS: readonly FeatureKind[] = [
   'copSpawn',
   'raceMarker',
   'billboard',
+  'boostPad',
+  'rampTruck',
 ];
 const REQUIRED_COLUMNS = ['x', 'y', 'z', 'kappa', 'grade'] as const;
 
