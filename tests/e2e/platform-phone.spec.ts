@@ -50,7 +50,7 @@ test('a failed orientation lock on a portrait phone shows the rotate screen', as
   expect(problems).toEqual([]);
 });
 
-test('hiding the page pauses the race, and showing it resumes', async ({ page }) => {
+test('hiding the page pauses the race, and coming back lands on the pause screen', async ({ page }) => {
   const problems = watchProblems(page);
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
@@ -80,11 +80,20 @@ test('hiding the page pauses the race, and showing it resumes', async ({ page })
   expect(later, 'no sim ticks while the page is hidden').toBe(pausedAt);
   expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
 
+  // A resume lands behind the pause menu, never straight back into the race (docs/architecture.md,
+  // "Fixed timestep and the loop"): the race stays still until the player taps Resume.
   await setHidden(false);
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  await page.waitForTimeout(500);
+  const shownAt = await tick();
+  console.log(`shown: pause screen up, tick ${shownAt}`);
+  expect(shownAt, 'still paused behind the pause menu').toBe(pausedAt);
+
+  await page.locator('#pause-resume').click();
   await page.waitForFunction(
     (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t + 30,
     pausedAt,
   );
-  console.log(`shown: tick ${await tick()}`);
+  console.log(`resumed: tick ${await tick()}`);
   expect(problems).toEqual([]);
 });

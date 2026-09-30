@@ -7,8 +7,8 @@
 // checkReplay() let dev/ carry and verify the recording without importing replay/.
 // app-2 owns this folder after app-1.
 import { createAssetManifest } from '../assets';
-import { createAudio } from '../audio';
-import { CAMERA_TUNING, createFollowCamera, type CameraPose } from '../camera';
+import { createAudio, type EngineSoundSpec } from '../audio';
+import { createFollowCamera, type CameraPose } from '../camera';
 import { assetIndex, contentHashes, loadBasePack, lookup } from '../content';
 import { createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
@@ -18,22 +18,29 @@ import { createSettingsStore, type StorageLike } from '../save';
 import {
   createSim,
   SIM_DT,
-  SIM_TUNING,
   type GetReplayAndSettings,
   type OnCopyReport,
   type RendererStatsFn,
   type RoadQueriesFn,
   type Sim,
+  type SimConfig,
   type SimEvent,
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { createTuningRegistry } from '../tuning';
+import {
+  createFrameGate,
+  createPresetStore,
+  createTuningRegistry,
+  FRAME_DIVISOR_ID,
+  REGISTRY_PRESET_ID,
+  resolvePreset,
+} from '../tuning';
 import { createUi } from '../ui';
-import { AUDIO_TUNING } from '../audio';
 import { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
 import { createLoop } from './loop';
 import { transition, type AppEvent, type AppState } from './states';
+import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
@@ -41,6 +48,7 @@ export { buildSimConfig, DEFAULT_EVENT } from './config';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
 export type { AppState, AppEvent } from './states';
+export { APP_TUNING } from './tuning';
 export type { ActionState } from '../input';
 
 export interface AppBuild {
@@ -151,18 +159,44 @@ export function createApp(opts: AppOptions): AppHandle {
   const layout: TouchLayout = { id: hud.id, mirror: settings.mirror || hud.mirror, elements: hud.elements };
   const recorder = createInputRecorder();
   const pendingTuning: { id: string; value: number }[] = [];
-  const tuning = createTuningRegistry([...SIM_TUNING, ...CAMERA_TUNING, ...AUDIO_TUNING], (id, value) => {
-    // A sim-affecting change mid-race: applied between steps and recorded at that tick.
-    if (race) pendingTuning.push({ id, value });
-  });
+  // Every module's declarations (app/tuning.ts); the shipped preset (pack.json `defaults.tuning`)
+  // under the device's saved one; exported presets carry this build's id.
+  const shippedId = registry.packs[0]?.defaults.tuning ?? REGISTRY_PRESET_ID;
+  const shippedPreset = resolvePreset(
+    (id) => registry.tuningPresets[id.includes(':') ? id : `base:${id}`],
+    shippedId,
+  );
+  const tuning = createTuningRegistry(
+    APP_TUNING,
+    (id, value) => {
+      // A sim-affecting change mid-race: applied between steps and recorded at that tick.
+      if (race) pendingTuning.push({ id, value });
+    },
+    {
+      store: createPresetStore({ storage: safeStorage(), keyPrefix: APP_ID, build: build.id }),
+      shippedPreset,
+      build: build.id,
+    },
+  );
+  // The frame-rate cap: the loop runs one animation frame in every `display.frameDivisor`.
+  const frameGate = createFrameGate(() => tuning.get(FRAME_DIVISOR_ID));
 
-  // Presentation.
+  // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
   const renderer = createRenderer(opts.canvas);
-  renderer.setRoad(stream.road, { timeOfDay: event.timeOfDay });
-  const camera = createFollowCamera();
-  tuning.onChange((id, value) => camera.setParam(id, value));
+  const dressing = Object.fromEntries(stream.road.edges.map((e) => [e.id, lookup(registry.roads, e.id)]));
+  renderer.setRoad(stream.road, { timeOfDay: event.timeOfDay }, dressing);
+  const camera = createFollowCamera({ road: stream.road });
   const audio = createAudio();
   audio.setVolumes(settings.volumes, settings.mute);
+  /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
+  const engineSounds = (config: SimConfig): Record<string, EngineSoundSpec> => {
+    const out: Record<string, EngineSoundSpec> = {};
+    for (const r of config.riders) {
+      const bike = registry.bikes[r.bike.contentId];
+      if (bike) out[r.contentId] = bike.engineSound;
+    }
+    return out;
+  };
 
   let race: Sim | null = null;
   let prev: SimSnapshot | null = null;
@@ -178,6 +212,8 @@ export function createApp(opts: AppOptions): AppHandle {
       tuning: tuning.simValues(),
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
+    renderer.setTrafficTypes(config.trafficTypes);
+    audio.setEngineSounds(engineSounds(config));
     return createSim(config);
   };
   // The attract scene: the grid, before anyone moves.
@@ -189,14 +225,27 @@ export function createApp(opts: AppOptions): AppHandle {
     return next !== null;
   };
 
-  // The pause screen (ui-1): pausing stops the loop and the sound; the lifecycle's onShown never
-  // resumes a race the player paused.
-  let hidden = false;
-  const unpause = () => {
-    if (hidden) return;
+  // What holds the game still: the pause screen (ui.paused), a hidden page, a lost WebGL context.
+  // The loop and the sound run only when nothing holds them. A hidden page mid-race opens the pause
+  // screen too, so coming back always lands behind the pause menu (docs/architecture.md, "Fixed
+  // timestep and the loop": "a resume always lands behind the pause menu, never straight back into
+  // a race").
+  const holds = new Set<'hidden' | 'context'>();
+  const syncRunning = () => {
+    if (holds.size > 0 || ui.paused) {
+      loop.pause();
+      audio.suspend();
+      return;
+    }
     loop.resume();
-    void audio.resume();
+    if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
   };
+  const hold = (reason: 'hidden' | 'context', on: boolean) => {
+    if (on) holds.add(reason);
+    else holds.delete(reason);
+    syncRunning();
+  };
+  const unpause = syncRunning;
   const ui = createUi(opts.host, {
     stampText: `throttlebrawl · ${build.channel} · ${build.branch} · ${build.id}`,
     layout,
@@ -208,10 +257,7 @@ export function createApp(opts: AppOptions): AppHandle {
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
-      onPause: () => {
-        loop.pause();
-        audio.suspend();
-      },
+      onPause: syncRunning,
       onResume: unpause,
       onRestart: () => {
         unpause();
@@ -231,6 +277,19 @@ export function createApp(opts: AppOptions): AppHandle {
   });
   if (settingsStore.notice) ui.notice(settingsStore.notice);
   const input = createInput({ keys: window, surface: ui.touchSurface, layout });
+
+  // Presentation-only tuning (camera, audio, input thresholds, barks) applies at once; sim values
+  // go through the recorder above. Boot values (a shipped or saved preset) are pushed once here.
+  // Routed by id prefix: each module owns its prefix, and barks refuse ids they do not declare.
+  const applyPresentationParam = (id: string, value: number) => {
+    const owner = presentationOwner(id);
+    if (owner === 'camera') camera.setParam(id, value);
+    else if (owner === 'audio') audio.setParam(id, value);
+    else if (owner === 'input') input.setParam(id, value);
+    else if (owner === 'barks') ui.narrative.setParam(id, value);
+  };
+  tuning.onChange(applyPresentationParam);
+  for (const d of tuning.decls) if (!d.affectsSim) applyPresentationParam(d.id, tuning.get(d.id));
 
   const finishRace = () => {
     if (!race || !curr || !go('finished')) return;
@@ -266,6 +325,9 @@ export function createApp(opts: AppOptions): AppHandle {
     if (events.length) {
       recent = recent.concat(events).slice(-300);
       ui.narrative.onEvents(events, { snapshot: curr, seed: race.config.seed });
+      camera.onEvents(events);
+      audio.onEvents(events, curr);
+      renderer.pushEvents(events);
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     stepListener?.(curr, events);
@@ -280,14 +342,21 @@ export function createApp(opts: AppOptions): AppHandle {
     {
       stepping: () => state === 'race',
       step,
+      shouldRunFrame: () => frameGate.shouldRun(),
       render(alpha, dt) {
         const me = curr ? interpolateEntity(state === 'race' ? prev : null, curr, alpha, playerId) : null;
         let pose: CameraPose | null = attractPose;
-        if (me && state === 'race') pose = camera.update(me, dt);
-        else if (me && !attractPose) pose = attractPose = camera.snap(me);
+        if (me && state === 'race') {
+          // The low chase cam reads the road (look-ahead), the rider's mode and auto-target (framing
+          // bias) and the other riders' positions (camera-1).
+          const at = curr?.entities[playerId];
+          pose = camera.update({ ...me, mode: at?.mode, targetId: at?.targetId, road: at?.road }, dt, {
+            entities: curr?.entities,
+          });
+        } else if (me && !attractPose) pose = attractPose = camera.snap(me);
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
-        const player = curr?.entities[playerId] ?? null;
-        audio.update(state === 'race' ? player : null);
+        // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
+        audio.frame(state === 'race' ? curr : null, playerId);
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
         // and your target's.
         if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
@@ -297,20 +366,16 @@ export function createApp(opts: AppOptions): AppHandle {
   );
 
   watchLifecycle({
+    // An app switch, a screen lock, a lost fullscreen or the rotate screen: mid-race the pause
+    // screen opens, so the player comes back to it and resumes by choice.
     onHidden: () => {
-      hidden = true;
-      loop.pause();
-      audio.suspend();
+      if (state === 'race') ui.pause();
+      hold('hidden', true);
     },
-    // The race resumes where it stopped, unless the player had paused it. (Whether a resume should
-    // land behind the pause screen instead, as the architecture doc's default says, is app-2's.)
-    onShown: () => {
-      hidden = false;
-      if (ui.paused) return;
-      loop.resume();
-      if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
-    },
+    onShown: () => hold('hidden', false),
   });
+  // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
+  renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());
 
   const handle: AppHandle = {
