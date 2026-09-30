@@ -18,6 +18,10 @@
 // worker computes it under a lock file while the others wait, and a change to any source makes a
 // new key. SIM_BATCH_CACHE=0 turns the disk cache off. For a single scenario with per-tick access,
 // call runSeededRace(seed, { onTick }) directly instead.
+//
+// The ImportMeta augmentation below gives this Node-side program the Vite type for
+// import.meta.glob, which the base pack loader it imports uses (the app program gets it from
+// src/vite-env.d.ts).
 import { createHash } from 'node:crypto';
 import {
   closeSync,
@@ -37,6 +41,13 @@ import { createHeadlessRace } from '../../src/app';
 import { createBot, moverProblem, type BotStats } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { EntitySnapshot, SimEvent, SimInput, SimSnapshot } from '../../src/sim/api';
+import type { ImportGlobFunction } from 'vite';
+
+declare global {
+  interface ImportMeta {
+    glob: ImportGlobFunction;
+  }
+}
 
 /** Bump when the result shape or the way races are run changes, to retire old caches. */
 const BATCH_FORMAT = 1;
