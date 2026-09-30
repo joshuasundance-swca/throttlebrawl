@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, type ActionState } from '../../src/app';
 import { loadBasePack, lookup, type ContentRegistry } from '../../src/content';
-import { createStubBot } from '../../src/dev';
+import { createBot } from '../../src/dev';
 import { lintRoadNetwork } from '../../src/road';
 import { createSim, quantizeInput, type SimConfig } from '../../src/sim/api';
 import { activateRegion, type RegionStream } from '../../src/stream';
@@ -44,16 +44,14 @@ function botRace(seed: number) {
   const config = realRoadConfig(seed);
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
-  const bot = createStubBot();
+  const bot = createBot();
   const edges: number[] = [];
   const hashes: number[] = [];
   let invalid = 0;
   let playerFinishTick = -1;
   while (!sim.isOver() && sim.tick < 60 * 900) {
-    const me = sim.snapshot().entities[playerId];
-    if (!me) throw new Error('no player');
     const a = blank();
-    bot.drive(me, config.route, a);
+    bot.drive(sim.snapshot(), playerId, config.route, a);
     sim.step([quantizeInput({ ...a, flags: 0 })]);
     const snap = sim.snapshot();
     for (const m of snap.entities) {
