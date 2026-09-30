@@ -60,7 +60,7 @@ export {
   type Haptics,
   type VibrateFn,
 } from './feedback';
-export { gestureTimingProblems, gestureWindowTicks, type WindupEntry } from './gesture';
+export { gestureTimingProblems, gestureWindowTicks, kickConvertTicks, type WindupEntry } from './gesture';
 export { applyInputParam, INPUT_TUNING, inputDefaults, type InputThresholds } from './tuning';
 
 export interface InputSystem {
