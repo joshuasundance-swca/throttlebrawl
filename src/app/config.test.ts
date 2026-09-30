@@ -212,3 +212,48 @@ describe('app/config: a bike’s combat block reaches the sim (the combat-3 cont
     expect(bike?.hitPowerScale).toBe(1);
   });
 });
+
+describe('app/config: the region traffic mix reaches the sim (the traffic-3 contract wire)', () => {
+  const withRegion = (edit: (traffic: Record<string, unknown>) => void) => {
+    const reg = buildRegistry(
+      basePackFiles().map((f) => {
+        const json = f.json as { type?: string; traffic?: Record<string, unknown> };
+        if (json.type !== 'region' || !json.traffic) return f;
+        const traffic = structuredClone(json.traffic);
+        edit(traffic);
+        return { ...f, json: { ...json, traffic } };
+      }),
+    );
+    const c = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    return Object.fromEntries(c.trafficTypes.map((t) => [t.contentId, t.weight]));
+  };
+
+  it('writes each type its weight from the region file (mix, pedestrians and animals)', () => {
+    const w = withRegion((t) => {
+      t['mix'] = [
+        { kind: 'sedan-rental', weight: 7, hazard: 'normal' },
+        { kind: 'base:box-truck', weight: 0.5, hazard: 'big' },
+      ];
+      t['pedestrians'] = [{ kind: 'fisherman', weight: 3 }];
+    });
+    expect(w['base:sedan-rental']).toBe(7);
+    expect(w['base:box-truck']).toBe(0.5);
+    expect(w['base:fisherman']).toBe(3);
+    // Listed nowhere in the region: never picked.
+    expect(w['base:pickup']).toBe(0);
+    expect(w['base:tourist-with-cooler']).toBe(0);
+    // The animals list is untouched.
+    expect(w['base:chicken']).toBe(1);
+  });
+
+  it('matches the base pack region today', () => {
+    expect(withRegion(() => undefined)).toEqual({
+      'base:box-truck': 2,
+      'base:chicken': 1,
+      'base:fisherman': 1,
+      'base:pickup': 5,
+      'base:sedan-rental': 5,
+      'base:tourist-with-cooler': 1,
+    });
+  });
+});
