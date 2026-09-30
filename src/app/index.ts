@@ -45,7 +45,9 @@ import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
-export { buildSimConfig, DEFAULT_EVENT } from './config';
+export { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
+export { resumeFromRecording, roadsForHeader } from './resume';
+export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
 export type { AppState, AppEvent } from './states';
