@@ -54,10 +54,11 @@ async function startRace(page: Page, problems: string[]) {
 }
 
 /**
- * One 26 px swipe down, stamped over 180 ms (24 px, kickSwipePx, is crossed only at the end).
- * `realMs` is how long to wait, in real time, before sending the end of the swipe (0: all at once).
+ * One 26 px swipe down, stamped over `durS` (default 180 ms; 24 px, kickSwipePx, is crossed only at
+ * the end). `realMs` is how long to wait, in real time, before sending the end of the swipe (0: all
+ * at once).
  */
-async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number) {
+async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number, durS = 0.18) {
   const view = page.viewportSize() ?? { width: 915, height: 412 };
   const attack = attackCenter(view.width, view.height);
   const from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
@@ -67,9 +68,9 @@ async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number) {
   });
   const t0 = Date.now() / 1000;
   const moves = [
-    [8, 0.06],
-    [16, 0.12],
-    [26, 0.18],
+    [8, durS / 3],
+    [16, (2 * durS) / 3],
+    [26, durS],
   ] as const;
   if (realMs === 0) {
     await Promise.all([
@@ -83,7 +84,7 @@ async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number) {
       moves.map(([dy, dt]) => touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + dy, id }], t0 + dt)),
     );
   }
-  await touch(cdp, 'touchEnd', [], t0 + 0.19);
+  await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
   // The kick's wind-up, active moment, recovery and cooldown all play out.
   await page.waitForTimeout(1500);
 
@@ -120,7 +121,7 @@ const endsInKick = (chain: ChainEvent[]) => {
   );
 };
 
-test('a scripted 180 ms swipe down on the attack button kicks, not punches', async ({ page }) => {
+test('a scripted 150 or 180 ms swipe down on the attack button kicks, not punches', async ({ page }) => {
   test.setTimeout(180_000);
   const problems: string[] = [];
   await startRace(page, problems);
@@ -135,6 +136,16 @@ test('a scripted 180 ms swipe down on the attack button kicks, not punches', asy
   expect(burst.kick, 'the 180 ms swipe set the kick flag').toBeGreaterThanOrEqual(burst.press);
   expect(isKickChain(burst.chain), 'the attack is a kick').toBe(true);
   expect(hasPunchOutcome(burst.chain), 'no punch landed or missed').toBe(false);
+
+  // Playtest 1b: a quicker natural swipe, about 150 ms, kicks too.
+  const quick = await swipe(page, cdp, 2, 0, 0.15);
+  console.log(
+    `150 ms burst swipe: attack at +${quick.press}, kick flag at +${quick.kick}; ${JSON.stringify(quick.chain)}`,
+  );
+  expect(quick.press, 'the press reached the sim').toBeGreaterThanOrEqual(0);
+  expect(quick.kick, 'the 150 ms swipe set the kick flag').toBeGreaterThanOrEqual(quick.press);
+  expect(isKickChain(quick.chain), 'the 150 ms swipe is a kick').toBe(true);
+  expect(hasPunchOutcome(quick.chain), 'no punch landed or missed after the 150 ms swipe').toBe(false);
 
   // Real time: the kick flag reaches the sim after the punch's wind-up; combat converts it.
   let judged = false;
