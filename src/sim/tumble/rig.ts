@@ -9,13 +9,14 @@
 // it hashes and replays like the rest of the sim.
 //
 // Collisions, per step:
-// - the road surface, per particle (surfaceHeight after project), with a bounce and friction;
+// - the road surface, per particle (surfaceHeight at its offset from the centre's projection),
+//   with a bounce and friction;
 // - the barrier line, per cluster: when the cluster's centre leaves the band between the edge's
 //   outer drivable offsets, it bounces back off a wall, unless that side has a `rail` and the
 //   centre is higher above the deck than the rail, in which case the cluster goes overboard and
 //   falls free until it reaches the water plane (world y = 0).
 import { clamp } from '../../core';
-import type { RoadNetwork } from '../../road';
+import type { RoadNetwork, RoadPos } from '../../road';
 import { wallBand, type TumbleBody } from './body';
 
 const GRAVITY = 9.81;
@@ -252,48 +253,70 @@ export interface ClusterContact {
  * the water once overboard. `mu` is the sliding friction, as a multiple of g.
  */
 export function stepCluster(road: RoadNetwork, c: Cluster, dt: number, mu: number): ClusterContact {
-  if (c.splashed) {
-    const at = centre(c.p);
-    const p = road.project(at.x, at.z, at.edge);
-    const band = wallBand(road, p.edge);
-    return {
-      edge: p.edge,
-      s: p.s,
-      d: clamp(p.d, band.lo, band.hi),
-      ground: 0,
-      railOver: false,
-      splash: false,
-    };
-  }
+  if (c.splashed) return overboardContact(road, c, false, false);
   for (const q of c.p) {
     q.vy -= GRAVITY * dt;
     q.x += q.vx * dt;
     q.y += q.vy * dt;
     q.z += q.vz * dt;
   }
-  let railOver = false;
   if (c.overboard) {
     relax(c);
-  } else {
-    // The ground under each particle, found once per step; the links and the ground are then
-    // solved together, so a wheel on the road keeps the frame rigid.
-    const floor = c.p.map((q) => groundUnder(road, q));
-    const hit = c.p.map((q, i) => q.y < (floor[i] ?? -Infinity));
-    for (let it = 0; it < ITERATIONS; it++) {
-      linkPositions(c);
-      c.p.forEach((q, i) => (q.y = Math.max(q.y, floor[i] ?? -Infinity)));
-    }
-    c.p.forEach((q, i) => groundVelocity(q, floor[i] ?? -Infinity, hit[i] ?? false, dt, mu));
-    for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
-    railOver = barrierLine(road, c);
+    return fallToWater(road, c, false);
   }
+  // One projection per cluster per step (road.project scans the edge's samples): the centre's.
+  // The link corrections are equal and opposite and the ground only lifts, so the centre's x and
+  // z stay put through the solve below, and each particle's (s, d) is the centre's plus its offset
+  // along the road's frame there.
+  const at = centre(c.p);
+  const pc = road.project(at.x, at.z, at.edge);
+  const f = road.frameAt(pc.edge, pc.s);
+  const band = wallBand(road, pc.edge);
+  const len = road.edges[pc.edge]?.length ?? 0;
+  const floor = c.p.map((q) => {
+    q.edge = pc.edge;
+    const ox = q.x - at.x;
+    const oz = q.z - at.z;
+    const s = clamp(pc.s + ox * f.tx + oz * f.tz, 0, len);
+    const d = clamp(pc.d - ox * f.tz + oz * f.tx, band.lo, band.hi);
+    return road.surfaceHeight(pc.edge, s, d);
+  });
+  const hit = c.p.map((q, i) => q.y < (floor[i] ?? -Infinity));
+  // The links and the ground solved together, so a wheel on the road keeps the frame rigid.
+  for (let it = 0; it < ITERATIONS; it++) {
+    linkPositions(c);
+    c.p.forEach((q, i) => (q.y = Math.max(q.y, floor[i] ?? -Infinity)));
+  }
+  c.p.forEach((q, i) => groundVelocity(q, floor[i] ?? -Infinity, hit[i] ?? false, dt, mu));
+  for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
+  if (barrierLine(road, c, pc)) return fallToWater(road, c, true);
+  // Inside the band, or put back on the barrier line: the centre's road position is known.
+  const d = clamp(pc.d, band.lo, band.hi);
+  return {
+    edge: pc.edge,
+    s: pc.s,
+    d,
+    ground: road.surfaceHeight(pc.edge, pc.s, d),
+    railOver: false,
+    splash: false,
+  };
+}
+
+/** Where an overboard cluster's centre lies over the road (for the mover). */
+function overboardContact(road: RoadNetwork, c: Cluster, railOver: boolean, splash: boolean): ClusterContact {
   const at = centre(c.p);
   const p = road.project(at.x, at.z, at.edge);
   const band = wallBand(road, p.edge);
   const d = clamp(p.d, band.lo, band.hi);
+  return { edge: p.edge, s: p.s, d, ground: road.surfaceHeight(p.edge, p.s, d), railOver, splash };
+}
+
+/** An overboard cluster falls free; at the water plane it floats, centre at the surface, still. */
+function fallToWater(road: RoadNetwork, c: Cluster, railOver: boolean): ClusterContact {
+  const at = centre(c.p);
   let splash = false;
-  if (c.overboard && at.y <= 0) {
-    // In the water: the cluster floats with its centre at the surface, and stops. No swimming.
+  if (at.y <= 0) {
+    // In the water: no swimming.
     c.splashed = true;
     splash = true;
     for (const q of c.p) {
@@ -303,15 +326,7 @@ export function stepCluster(road: RoadNetwork, c: Cluster, dt: number, mu: numbe
       q.vz = 0;
     }
   }
-  return { edge: p.edge, s: p.s, d, ground: road.surfaceHeight(p.edge, p.s, d), railOver, splash };
-}
-
-/** The road surface height under a particle (inside the barrier band); updates its edge hint. */
-function groundUnder(road: RoadNetwork, q: Particle): number {
-  const p = road.project(q.x, q.z, q.edge);
-  q.edge = p.edge;
-  const band = wallBand(road, p.edge);
-  return road.surfaceHeight(p.edge, p.s, clamp(p.d, band.lo, band.hi));
+  return overboardContact(road, c, railOver, splash);
 }
 
 /** A particle that reached the ground this step bounces; one touching it slides with friction. */
@@ -335,13 +350,13 @@ function groundVelocity(q: Particle, ground: number, hit: boolean, dt: number, m
 }
 
 /**
- * The barrier line, for the whole cluster: past the band, a rail lets it over when its centre is
- * higher above the deck than the rail; anything else (a wall, a low crossing, no barrier listed,
- * a dead end) puts it back and reflects the outward velocity. Returns true when it went over.
+ * The barrier line, for the whole cluster (`p` is its centre's projection): past the band, a
+ * rail lets it over when its centre is higher above the deck than the rail; anything else (a
+ * wall, a low crossing, no barrier listed, a dead end) puts it back on the line and reflects the
+ * outward velocity. Returns true when it went over.
  */
-function barrierLine(road: RoadNetwork, c: Cluster): boolean {
+function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos): boolean {
   const at = centre(c.p);
-  const p = road.project(at.x, at.z, at.edge);
   const band = wallBand(road, p.edge);
   const d = clamp(p.d, band.lo, band.hi);
   const w = road.toWorld(p.edge, p.s, d, 0);

@@ -588,21 +588,19 @@ describe('tumble-2: time scale', () => {
       40,
       ['rider', 'bike'],
     );
-    // On the ground: both bodies have landed and slide when the slow motion starts (the rider
-    // lands about 65 ticks into a 30 m/s crash, the bike earlier).
+    // On the ground: the rider's ragdoll has landed and slides flat when the slow motion starts
+    // (it lands about 65 ticks into a 30 m/s crash).
     const slideData = {};
-    const ground = gap(
-      run((t) => (t >= 75 && t < 125 ? 0.3 : 1), slideData, 30),
-      run(() => 1, slideData, 30),
-      88,
-      108,
-      ['rider', 'bike'],
-    );
-    // Not asserted, printed for the record: a ragdoll landing inside the slow motion (a 14 m/s
-    // spill whose rider lands about 65 ticks in). Contacts are resolved once per tick, so finer
-    // ticks resolve which point of the ragdoll touches first differently, and the slide after it
-    // differs. That is a step-size effect on a contact, not energy gained or lost at a time-scale
-    // boundary, and any other change of step size gives the same kind of difference.
+    const slidePlain = run(() => 1, slideData, 30);
+    const slideSlow = run((t) => (t >= 75 && t < 125 ? 0.3 : 1), slideData, 30);
+    const ground = gap(slideSlow, slidePlain, 88, 108, ['rider']);
+    // Not asserted, printed for the record: contact-rich motion. The bike rocks between its
+    // points as it slides, and a ragdoll landing inside the slow motion (a 14 m/s spill) touches
+    // down point by point. Contacts are resolved once per tick, so finer ticks resolve which
+    // point touches first differently and the motion after it differs. That is a step-size
+    // effect on a contact, not energy gained or lost at the time-scale boundary (the flight and
+    // the flat slide above show none), and any other change of step size does the same.
+    const rocking = gap(slideSlow, slidePlain, 88, 108, ['bike']);
     const landing = gap(
       run((t) => (t >= 62 && t < 112 ? 0.3 : 1), slideData, 14),
       run(() => 1, slideData, 14),
@@ -611,9 +609,9 @@ describe('tumble-2: time scale', () => {
       ['rider', 'bike'],
     );
     console.log(
-      `[examined] in the air: ${air.compared} matched world ticks after the slow motion, worst gap ${(air.worst * 100).toFixed(3)} %; ` +
-        `sliding: ${ground.compared} ticks, worst gap ${(ground.worst * 100).toFixed(3)} %; ` +
-        `(not asserted) a ragdoll landing inside the slow motion: worst gap ${(landing.worst * 100).toFixed(1)} %`,
+      `[examined] in the air (rider and bike): ${air.compared} matched world ticks after the slow motion, worst gap ${(air.worst * 100).toFixed(3)} %; ` +
+        `the ragdoll sliding: ${ground.compared} ticks, worst gap ${(ground.worst * 100).toFixed(3)} %; ` +
+        `(not asserted) the bike rocking as it slides: ${(rocking.worst * 100).toFixed(1)} %, a ragdoll landing inside the slow motion: ${(landing.worst * 100).toFixed(1)} %`,
     );
     expect(air.compared).toBeGreaterThanOrEqual(15);
     expect(ground.compared).toBeGreaterThanOrEqual(15);

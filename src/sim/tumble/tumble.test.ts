@@ -448,8 +448,10 @@ describe('tumble: skipping the run-back', () => {
       () => h.rival.mode === 'OnFoot',
       () => full(h.player, InputFlag.skipRunBack),
     );
-    h.step(full(h.player, InputFlag.skipRunBack));
     expect(tumbleRecord(h.world, 0)?.skip).toBe(-1);
+    h.step(full(h.player, InputFlag.skipRunBack));
+    // Still running, or already remounted (tumble-2's bike may stop right beside the rider).
+    expect(tumbleRecord(h.world, 0)?.skip ?? -1).toBe(-1);
   });
 });
 

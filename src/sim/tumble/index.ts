@@ -149,7 +149,7 @@ const REST_MPS = 0.5;
  * the hand-back) and land the rider a few metres from the bike, so the run-back starts fast.
  */
 const RIDER_MU = 1.6;
-const BIKE_MU = 1.4;
+const BIKE_MU = 2.2;
 const RIDER_THROW = 0.55;
 const BIKE_THROW = 0.9;
 /** At or above this riding speed a crash is a big one: the bike cartwheels end over end (m/s). */
@@ -421,11 +421,18 @@ function onContact(
 }
 
 /** Contacts for one cluster against the boxes near it. */
-function contacts(world: World, config: SimConfig, m: Mover, r: TumbleRecord, c: Cluster): void {
+function contacts(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  r: TumbleRecord,
+  c: Cluster,
+  near: ClusterContact,
+): void {
   if (c.overboard) return;
   const at = centre(c.p);
   let pushed = false;
-  for (const box of nearbyBoxes(world, config, at.x, at.z, m.id)) {
+  for (const box of nearbyBoxes(world, config, near, at.x, at.z, m.id)) {
     const impact = collideBox(c, box);
     if (impact < 0) continue;
     pushed = true;
@@ -465,8 +472,8 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   if (dt > 0) {
     const on = stepCluster(road, r.riderRig, dt, RIDER_MU);
     const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU);
-    contacts(world, config, m, r, r.riderRig);
-    contacts(world, config, m, r, r.bikeRig);
+    contacts(world, config, m, r, r.riderRig, on);
+    contacts(world, config, m, r, r.bikeRig, bikeAt);
     railEvents(world, m, r, r.riderRig, on);
     railEvents(world, m, r, r.bikeRig, bikeAt);
     r.rider = { ...centre(r.riderRig.p), edge: on.edge };

@@ -34,14 +34,26 @@ const RIDER_BOX = { lengthM: 2.0, widthM: 0.8, heightM: 1.6 };
 const NEAR_M = 25;
 const RESTITUTION = 0.3;
 
-/** The boxes near a world point, in entity order: vehicles, and riders on their bikes. */
-export function nearbyBoxes(world: World, config: SimConfig, x: number, z: number, exclude: EntityId): Box[] {
+/**
+ * The boxes near a world point (at road position `near`), in entity order: vehicles, and riders
+ * on their bikes. Movers on the same edge far along it are skipped before any world maths.
+ */
+export function nearbyBoxes(
+  world: World,
+  config: SimConfig,
+  near: { edge: number; s: number },
+  x: number,
+  z: number,
+  exclude: EntityId,
+): Box[] {
   const road = config.road;
   const out: Box[] = [];
   for (const m of world.movers) {
     if (m.id === exclude) continue;
     const riding = m.kind === 'rider' && (m.mode === 'Road' || m.mode === 'Airborne');
     if (m.kind !== 'vehicle' && !riding) continue;
+    // s runs at most a little faster than ground distance (curvature), so 2× is a safe margin.
+    if (m.pos.edge === near.edge && Math.abs(m.pos.s - near.s) > 2 * NEAR_M) continue;
     const w = road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
     const dx = w.x - x;
     const dz = w.z - z;
