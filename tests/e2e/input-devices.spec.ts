@@ -54,11 +54,25 @@ function layoutRect(element: string, width: number, height: number) {
 }
 
 type Point = { x: number; y: number; id: number };
+/**
+ * One touch event. `at` (seconds since the epoch) stamps the event: Chrome carries it into the
+ * Pointer Event's timeStamp, which is what the gesture windows measure. The timed gestures below
+ * stamp their events explicitly, so their timing does not depend on how fast CDP round trips are
+ * on a loaded runner (about 40 ms each on the dev machine, enough to push an unstamped swipe past
+ * the 80 ms window and fail at random).
+ */
 const touch = (
   cdp: CDPSession,
   type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel',
   points: Point[],
-) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  at?: number,
+) =>
+  cdp.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints: points,
+    ...(at === undefined ? {} : { timestamp: at }),
+  });
+const now = () => Date.now() / 1000;
 
 test('touch: the stick, the brake and the attack gestures produce the expected SimInput', async ({
   page,
@@ -102,26 +116,29 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
     false,
   );
 
-  // A quick 30 px drag to the right picks the right side.
+  // A quick 30 px drag to the right (in 40 ms) picks the right side.
   from = await tickCount(page);
-  await touch(cdp, 'touchStart', [{ ...attack, id: 4 }]);
-  await touch(cdp, 'touchMove', [{ x: attack.x + 30, y: attack.y, id: 4 }]);
+  let t0 = now();
+  await Promise.all([
+    touch(cdp, 'touchStart', [{ ...attack, id: 4 }], t0),
+    touch(cdp, 'touchMove', [{ x: attack.x + 15, y: attack.y, id: 4 }], t0 + 0.02),
+    touch(cdp, 'touchMove', [{ x: attack.x + 30, y: attack.y, id: 4 }], t0 + 0.04),
+  ]);
   seen = await inputsSince(page, from);
   await touch(cdp, 'touchEnd', []);
   expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
   expect(seen.some((s) => has(s, 'attackSideRight'))).toBe(true);
 
-  // A swipe down: attack, then kick, with the kick seen before the 7-tick punch wind-up ends.
-  // The events go out back to back without waiting on each round trip: one CDP round trip here
-  // takes about 40 ms, so awaiting each would stretch the swipe past the 80 ms window. A phone's
-  // digitizer reports at 60 Hz or faster, so a real swipe is not limited this way.
+  // A 32 px swipe down in 50 ms: attack, then kick, with the kick seen before the 7-tick punch
+  // wind-up ends. The events go out back to back, as a phone's digitizer (60 Hz or faster) would.
   from = await tickCount(page);
+  t0 = now();
   await Promise.all([
-    touch(cdp, 'touchStart', [{ ...attack, id: 5 }]),
-    touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 15, id: 5 }]),
-    touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 32, id: 5 }]),
+    touch(cdp, 'touchStart', [{ ...attack, id: 5 }], t0),
+    touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 15, id: 5 }], t0 + 0.025),
+    touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 32, id: 5 }], t0 + 0.05),
   ]);
-  await touch(cdp, 'touchEnd', []);
+  await touch(cdp, 'touchEnd', [], t0 + 0.06);
   seen = await inputsSince(page, from);
   const pressTick = seen.findIndex((s) => has(s, 'attack'));
   const kickTick = seen.findIndex((s) => has(s, 'kick'));
@@ -131,14 +148,15 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
   expect(kickTick - pressTick).toBeLessThan(7);
   expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
 
-  // A slow drag down (30 px over about 300 ms) stays a punch.
+  // A slow drag down (30 px over 300 ms) stays a punch.
   from = await tickCount(page);
-  await touch(cdp, 'touchStart', [{ ...attack, id: 6 }]);
+  t0 = now();
+  await touch(cdp, 'touchStart', [{ ...attack, id: 6 }], t0);
   for (let i = 1; i <= 10; i++) {
     await page.waitForTimeout(30);
-    await touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 3 * i, id: 6 }]);
+    await touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 3 * i, id: 6 }], t0 + 0.03 * i);
   }
-  await touch(cdp, 'touchEnd', []);
+  await touch(cdp, 'touchEnd', [], t0 + 0.31);
   seen = await inputsSince(page, from);
   expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
   expect(seen.some((s) => has(s, 'kick'))).toBe(false);

@@ -118,4 +118,25 @@ describe('combat-1 through the real sim', () => {
     expect(first.hits).toBeGreaterThan(0);
     expect(second.hashes).toEqual(first.hashes);
   });
+
+  it('shows attack phase, target and last attacker in the snapshot', () => {
+    const sim = createSim(duelConfig());
+    // Entity 0 is the rival (slot 1), entity 1 the player (slot 0).
+    const seen: { tick: number; phase: string; target: number; rivalLast: number }[] = [];
+    for (let t = 0; t < 80; t++) {
+      sim.step([ride(t === 10 ? F.attack | F.kick : 0), ride()]);
+      const [rival, player] = sim.snapshot().entities;
+      seen.push({
+        tick: t,
+        phase: player?.attackPhase ?? '',
+        target: player?.targetId ?? -2,
+        rivalLast: rival?.lastAttackerId ?? -2,
+      });
+    }
+    expect(seen[9]).toMatchObject({ phase: 'idle', target: -1, rivalLast: -1 });
+    expect(seen[10]).toMatchObject({ phase: 'windup', target: 0, rivalLast: -1 });
+    expect(seen[23]).toMatchObject({ phase: 'active', target: 0, rivalLast: 1 });
+    expect(seen.some((s) => s.phase === 'recovery')).toBe(true);
+    expect(seen.some((s) => s.phase === 'cooldown')).toBe(true);
+  });
 });
