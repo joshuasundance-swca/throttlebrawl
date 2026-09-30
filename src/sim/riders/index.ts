@@ -244,8 +244,11 @@ function assistYaw(config: SimConfig, m: Mover, level: SimSteerAssist, maxYaw: n
   const ahead = pos.d + pos.dir * m.speed * sin(m.yaw) * ASSIST_LOOKAHEAD_S;
   const hi = limits.hi - BIKE_HALF_WIDTH_M;
   const lo = limits.lo + BIKE_HALF_WIDTH_M;
-  const towardPlus = clamp((ahead - (hi - ASSIST_MARGIN_M)) / ASSIST_MARGIN_M, 0, 1);
-  const towardMinus = clamp((lo + ASSIST_MARGIN_M - ahead) / ASSIST_MARGIN_M, 0, 1);
+  // Never push a rider away from a branch it may be taking (playtest 1b): inside a split zone, and
+  // where a sibling branch overlaps this edge, the edge on that side is a way on, not a wall.
+  const branch = config.road.branchSideAt(pos.edge, pos.s);
+  const towardPlus = branch > 0 ? 0 : clamp((ahead - (hi - ASSIST_MARGIN_M)) / ASSIST_MARGIN_M, 0, 1);
+  const towardMinus = branch < 0 ? 0 : clamp((lo + ASSIST_MARGIN_M - ahead) / ASSIST_MARGIN_M, 0, 1);
   // A heading that moves toward -d is -dir: dd/dt = dir * v * sin(yaw).
   return (towardMinus - towardPlus) * pos.dir * gain * maxYaw;
 }
@@ -267,6 +270,20 @@ function onShoulder(config: SimConfig, m: Mover): boolean {
     if (Math.abs(m.pos.d - lane.dCenterM) <= lane.widthM / 2) return true;
   }
   return false;
+}
+
+/**
+ * Playtest 1b ([decided] 2026-09-30, "you get forced away like it's a barrier"): past its own edge's
+ * drivable band where a sibling branch is drawn overlapping (just past a split or before a merge), a
+ * rider moves onto that branch, keeping its world position and heading, and no barrier event fires.
+ * Only onto the race's allowed edges. Traffic never does this: it only calls road.advance.
+ */
+function crossToBranch(config: SimConfig, m: Mover): void {
+  const pos = m.pos;
+  const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
+  if (pos.d >= lo && pos.d <= hi) return;
+  const turn = config.road.handover(pos, BIKE_HALF_WIDTH_M, (e) => config.route.allows(e));
+  if (turn !== null) m.yaw += turn;
 }
 
 /**
@@ -358,6 +375,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   m.h = 0;
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
+  crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
@@ -438,6 +456,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const y = (st.yAbs[m.id] ?? 0) + vy * dt - 0.5 * gravity * dt * dt;
   st.vy[m.id] = vy - gravity * dt;
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
+  crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 

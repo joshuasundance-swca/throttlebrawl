@@ -1,6 +1,7 @@
 # Dependabot version updates (docs/engineering.md, "Dependabot"). Built into GitHub: no new
 # service, account or bill. One entry per ecosystem in the repo: npm at the root, the workflows'
-# actions, and the uv-managed GIS tool. Minor and patch bumps come as one grouped PR per ecosystem
+# actions, the uv-managed GIS tool, and the deploy steps' hf CLI (pip, .github/deploy/requirements.txt).
+# Minor and patch bumps come as one grouped PR per ecosystem
 # each week; a major bump gets its own PR. .github/workflows/dependabot-auto-merge.yml arms
 # auto-merge on the npm and actions minor/patch PRs, so the required `gate` check decides.
 # Labels are off (`labels: []`): Dependabot would otherwise create a `dependencies` label and
@@ -40,6 +41,9 @@ updates:
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
+        # fetch-metadata runs with a write token in dependabot-auto-merge.yml, which never arms a
+        # bump of it. Kept out of the group so it comes alone and the other actions still auto-merge.
+        exclude-patterns: ['dependabot/fetch-metadata']
 
   - package-ecosystem: uv
     directory: /tools/gis
@@ -52,4 +56,19 @@ updates:
       prefix: deps(gis)
     groups:
       gis-minor-patch:
+        update-types: [minor, patch]
+
+  # The hf CLI the deploy steps install (ci.yml deploy-prod, staging.yml). The gate never runs an
+  # upload, so these PRs wait for review; the auto-merge workflow arms only npm and actions.
+  - package-ecosystem: pip
+    directory: /.github/deploy
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    labels: []
+    commit-message:
+      prefix: deps(deploy)
+    groups:
+      deploy-minor-patch:
         update-types: [minor, patch]
