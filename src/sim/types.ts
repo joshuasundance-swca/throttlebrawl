@@ -116,6 +116,8 @@ export type SimEventType =
   | 'hit'
   | 'kick'
   | 'weaponGrab'
+  /** A rider lost stability without going down (barrier scrape, rough landing, a first contact). */
+  | 'wobble'
   | 'crash'
   | 'takedown'
   | 'nearMiss'
