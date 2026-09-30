@@ -26,6 +26,8 @@ export type MaterialKind =
   | 'post'
   | 'rail'
   | 'deck'
+  // Playtest 1b: ground beside the road (sand, under the roadside zones).
+  | 'land'
   | 'water'
   | 'bike'
   | 'rider'
@@ -41,7 +43,9 @@ export type MaterialKind =
   | 'splash'
   | 'tint'
   | 'flash'
-  | 'board';
+  | 'board'
+  // Playtest 1 item 10: speed lines (an overlay) and roadside palms (vertex-coloured props).
+  | 'streak';
 
 export interface MaterialParams {
   color?: string;
@@ -85,6 +89,7 @@ const PALETTE: Record<MaterialKind, string> = {
   post: '#e8e2c8',
   rail: '#cfd3d6',
   deck: '#a39c90',
+  land: '#d8c08c',
   water: '#19b5b0',
   bike: '#2b2b2b',
   rider: '#f2c14e',
@@ -100,10 +105,11 @@ const PALETTE: Record<MaterialKind, string> = {
   tint: '#3a5cff',
   flash: '#ffffff',
   board: '#ffffff',
+  streak: '#ffffff',
 };
 
 /** Unlit kinds: they must read as light sources (the cop's bar, the steal glint). */
-const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board']);
+const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board', 'streak']);
 
 const SKY_BY_TIME: Record<string, string> = {
   dawn: '#f3c6a5',

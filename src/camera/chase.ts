@@ -56,6 +56,25 @@ export interface CameraContext {
   entities?: readonly Pick<EntitySnapshot, 'id' | 'x' | 'y' | 'z'>[] | undefined;
   /** The input's held `lookBack` action: the camera looks behind the rider while it is true. */
   lookBack?: boolean | undefined;
+  /**
+   * The view's width over its height. A wide, short phone-landscape view gets a higher camera,
+   * further back (playtest 1, item 11); absent means a laptop-shaped view (no change).
+   */
+  aspect?: number | undefined;
+}
+
+/**
+ * How phone-shaped a view is, 0..1: 0 at or below `wideAspectFrom` (laptops: 16:9 is 1.78),
+ * 1 at or above `wideAspectFull` (phones in landscape: 19.5:9 is 2.17, 20:9 is 2.22).
+ */
+export function wideAmount(
+  aspect: number | undefined,
+  p: Pick<ChaseParams, 'wideAspectFrom' | 'wideAspectFull'>,
+): number {
+  if (aspect === undefined || !Number.isFinite(aspect)) return 0;
+  const span = p.wideAspectFull - p.wideAspectFrom;
+  if (!(span > 0)) return aspect >= p.wideAspectFull ? 1 : 0;
+  return Math.min(1, Math.max(0, (aspect - p.wideAspectFrom) / span));
 }
 
 export interface CameraPose {
@@ -105,6 +124,10 @@ export interface ChaseParams {
   joltM: number;
   joltFullImpulse: number;
   joltRate: number;
+  wideAspectFrom: number;
+  wideAspectFull: number;
+  wideHeightM: number;
+  wideDistanceM: number;
 }
 
 export interface ChaseRig {
@@ -280,10 +303,12 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     }
 
     const kick = params.fovKickSpeedMps > 0 ? Math.min(1, Math.max(0, t.speed / params.fovKickSpeedMps)) : 0;
+    // A phone-shaped view sits higher and further back: its short height shows less road ahead.
+    const wide = wideAmount(ctx?.aspect, params);
     return {
       yaw: yawOf(fx, fz),
-      distance: params.chaseDistanceM,
-      height: params.heightM,
+      distance: params.chaseDistanceM + wide * params.wideDistanceM,
+      height: params.heightM + wide * params.wideHeightM,
       side,
       aimX: aimX - t.x,
       aimY: aimY - t.y,

@@ -49,6 +49,7 @@ import { createRaceTally } from './race-feed';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
+import { keyLegend } from '../input';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export type { RaceResult } from './format';
@@ -188,6 +189,10 @@ ${CHANGELOG_CSS}
   75% { opacity: 1; } 100% { transform: translateY(-14px); opacity: 0; } }
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
+#pause-keys { padding: 4px 12px; }
+#pause-keys summary { cursor: pointer; font-weight: 800; }
+#pause-keys .keys-grid { display: grid; grid-template-rows: repeat(4, auto); grid-auto-flow: column; gap: 2px 18px;
+  margin-top: 4px; }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
 #busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
@@ -463,6 +468,20 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     return b;
   };
   const pauseBuild = el('div', { id: 'pause-build', textContent: `build ${buildId}` });
+  // The keyboard legend (playtest 1, 2026-09-30: "idk how to kick on the laptop"): on the pause
+  // screen only, never on the in-race HUD [decided] ("don't clutter the in-game HUD"). Open where
+  // the pointer is fine (a laptop), folded on a touch screen, where it is one line.
+  const keyRows = [...keyLegend(), { keys: 'Esc', action: 'pause' }, { keys: '`', action: 'tuning panel' }];
+  const pauseKeys = el(
+    'details',
+    { id: 'pause-keys', className: 'card', open: !coarse },
+    el('summary', { textContent: 'Keyboard' }),
+    el(
+      'div',
+      { className: 'keys-grid' },
+      ...keyRows.map((r) => el('div', {}, el('b', { textContent: r.keys }), ` ${r.action}`)),
+    ),
+  );
   const restartButton = entry(
     button('pause-restart', 'small', 'Restart', () => {
       closePause();
@@ -522,6 +541,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       ),
       saveFileButton,
     ),
+    pauseKeys,
     pauseBuild,
   );
   syncPauseEntries();

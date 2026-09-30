@@ -364,6 +364,22 @@ describe('input-2: tilt', () => {
     expect(t.steer()).toBeCloseTo(-0.5, 3);
   });
 
+  it('a race-start calibration takes the angle now, not the last race’s smoothed angle', () => {
+    // Race 1 ends with the phone turned 20 degrees; in the menus (no samples) it goes back level.
+    const t = new TiltState(inputDefaults());
+    t.reading(0);
+    t.steer();
+    t.calibrate();
+    t.reading(20);
+    for (let i = 0; i < 120; i++) t.steer(DT);
+    t.reading(0); // the menus: readings arrive, nothing samples
+    t.calibrate(); // race 2 starts with the phone level
+    expect(t.steer(DT)).toBe(0);
+    t.reading(2 + 11.5); // half way from the 2-degree dead zone to the 25-degree full lock
+    for (let i = 0; i < 120; i++) t.steer(DT);
+    expect(t.steer(DT)).toBeCloseTo(0.5, 3);
+  });
+
   it('sensitivity 2 needs half the tilt; the smoothing is a 0.1 s low-pass', () => {
     const t = new TiltState(inputDefaults());
     t.reading(0);

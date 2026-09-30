@@ -146,3 +146,137 @@ describe('road-2: the boat-ramp cut on the M1 track', () => {
     expect(vehicleTicks).toBeGreaterThan(1000);
   }, 120_000);
 });
+
+// Playtest 1b ([decided] 2026-09-30: "you've got to get way over to the right or you can't pass
+// through onto it. you get forced away like it's a barrier"). The diagnosis (the run's
+// diag-shortcut lane) found two walls: the split picks a branch at one instant, and past it the
+// main connector and the shortcut's are drawn overlapping for about 58 m while each walls its own
+// riders in. The fix is a rider-only handover between the overlapping edges, plus no steering-assist
+// pushback inside split zones. These runs put the player alone on the road (no traffic, rivals or
+// cop), holding the right lane's centre until a trigger point, then doing one of the moves below.
+
+type Move = 'laneKeep' | 'holdRight' | 'aimCut';
+
+const CUT_EDGES = ['c-boat-ramp-in', 'm1-boat-ramp-cut'];
+const MAIN_AFTER_SPLIT = ['c-marina-split-main', 'm1-marina-bends'];
+
+function soloSetup(steerAssist: 'off' | 'light' | 'strong' = 'off') {
+  const reg = loadBasePack();
+  const event = lookup(reg.events, DEFAULT_EVENT);
+  const routeFile = lookup(reg.routes, event.lengths[0]?.route ?? '');
+  const network = lookup(reg.networks, routeFile.network);
+  const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
+  const built = buildSimConfig(reg, stream, {
+    seed: 7,
+    tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+  });
+  const config = {
+    ...built,
+    riders: built.riders.filter((r) => r.controller.kind === 'player'),
+    slots: [{ assists: { steer: steerAssist, autoThrottle: false } }],
+  };
+  return { sim: createSim(config), config };
+}
+
+/**
+ * Rides from the grid past the split: the right lane's centre (or `laneD`) on marina-run until
+ * `triggerS`, then the move. `holdRight` holds full right lock until on a cut edge, then keeps the
+ * cut's centre; `aimCut` steers at the drawn cut's centre (d 6 in the main road's frame, just past
+ * the split) until on a cut edge. Stops 150 m down either branch.
+ */
+function ridePastSplit(
+  move: Move,
+  triggerS: number,
+  opts: { laneD?: number; assist?: 'off' | 'strong' } = {},
+) {
+  const { sim, config } = soloSetup(opts.assist ?? 'off');
+  const E = (id: string) => config.road.edgeIndex(id);
+  const run = E('m1-marina-run');
+  const cut = new Set(CUT_EDGES.map(E));
+  const name = (e: number) => config.road.edges[e]?.id ?? '?';
+  const edges: string[] = [];
+  const walls: string[] = [];
+  const progress: { edge: string; progress: number }[] = [];
+  let dAtSplit = NaN;
+  let lastRunD = NaN;
+  for (let t = 0; t < 60 * 90; t++) {
+    const me = sim.snapshot().entities[0] as EntitySnapshot;
+    const { edge, s, d, dir, yaw } = me.road;
+    if (edges[edges.length - 1] !== name(edge)) {
+      if (edges[edges.length - 1] === 'm1-marina-run') dAtSplit = lastRunD;
+      edges.push(name(edge));
+    }
+    if (edge === run) lastRunD = d;
+    progress.push({ edge: name(edge), progress: me.progress });
+    if ((edge === E('m1-marina-bends') || edge === E('m1-boat-ramp-cut')) && s > 150) break;
+    const a = blank();
+    a.throttle = 1;
+    const v = Math.max(me.speed, 5);
+    const kappa = config.road.kappaAt(edge, s) * dir;
+    const keep = (target: number) =>
+      Math.max(-1, Math.min(1, 0.35 * (target - d) * dir - 2.5 * yaw + (kappa * v * v) / 22));
+    const triggered = edge !== run || s >= triggerS;
+    if (!triggered || move === 'laneKeep') a.steer = keep(opts.laneD ?? 2);
+    else if (cut.has(edge)) a.steer = keep(0);
+    else if (move === 'holdRight') a.steer = 1;
+    else a.steer = keep(edge === run ? 4 : 6);
+    sim.step([quantizeInput({ ...a, flags: 0 })]);
+    for (const ev of sim.events()) {
+      if (ev.actor !== 0 || (ev.type !== 'wobble' && ev.type !== 'crash')) continue;
+      const now = sim.snapshot().entities[0] as EntitySnapshot;
+      walls.push(`${ev.type}(${String(ev.data['cause'])})@${name(now.road.edge)} s=${now.road.s.toFixed(1)}`);
+    }
+  }
+  return { edges, walls, dAtSplit, progress, gainM: config.route.shortcuts[0]?.gainM ?? NaN };
+}
+
+describe('playtest 1b: no invisible wall at the boat-ramp cut', () => {
+  it('1. full right lock from 2 m before the split takes the cut, with no barrier wobble or crash', () => {
+    const r = ridePastSplit('holdRight', 298);
+    console.log(
+      `hold right from s 298: ${r.edges.join('>')}; d at split ${r.dAtSplit.toFixed(2)}; ${r.walls.join(', ') || 'no walls'}`,
+    );
+    expect(r.edges[r.edges.length - 1]).toBe('m1-boat-ramp-cut');
+    expect(r.walls).toEqual([]);
+  });
+
+  it('2. through the split in the right lane, then steering at the drawn cut, takes it with no barrier events', () => {
+    const r = ridePastSplit('aimCut', 300);
+    console.log(
+      `aim at the drawn cut after the split: ${r.edges.join('>')}; ${r.walls.join(', ') || 'no walls'}`,
+    );
+    expect(r.edges).toContain('c-marina-split-main'); // it really did pass the split on the main road
+    expect(r.edges[r.edges.length - 1]).toBe('m1-boat-ramp-cut');
+    expect(r.walls).toEqual([]);
+  });
+
+  it('3. guard: a lane-keeper in the right lane stays on the main road, no walls', () => {
+    const r = ridePastSplit('laneKeep', 0);
+    expect(r.edges).toEqual(['m1-marina-run', ...MAIN_AFTER_SPLIT]);
+    expect(r.walls).toEqual([]);
+  });
+
+  it('with the strong steering assist, holding d 4 through the split zone takes the cut', () => {
+    const r = ridePastSplit('laneKeep', 0, { laneD: 4, assist: 'strong' });
+    console.log(`strong assist holding d 4: ${r.edges.join('>')}; d at split ${r.dAtSplit.toFixed(2)}`);
+    expect(r.dAtSplit).toBeGreaterThan(3);
+    expect(r.edges).toContain('c-boat-ramp-in');
+  });
+
+  it('race progress: a handover onto the cut gains what the split gains, and never more', () => {
+    const r = ridePastSplit('aimCut', 300);
+    let jump = 0;
+    for (let i = 1; i < r.progress.length; i++) {
+      const a = r.progress[i - 1];
+      const b = r.progress[i];
+      if (a && b && a.edge !== b.edge && CUT_EDGES.includes(b.edge) && MAIN_AFTER_SPLIT.includes(a.edge)) {
+        jump = b.progress - a.progress;
+      }
+    }
+    console.log(
+      `progress jump at the handover ${jump.toFixed(2)} m; the split's gain ${r.gainM.toFixed(2)} m`,
+    );
+    expect(jump).toBeGreaterThan(r.gainM - 3);
+    expect(jump).toBeLessThan(r.gainM + 3);
+  });
+});
