@@ -118,7 +118,9 @@ test('the bot races to results with a placing at phone landscape', async ({ page
 
   const placing = (await page.locator('#results-place').textContent()) ?? '';
   console.log(`results: ${placing} · ${(await page.locator('#results-prize').textContent()) ?? ''}`);
-  expect(placing).toMatch(/^\d+(st|nd|rd|th) of \d+$/);
+  // A placing, or Busted: the batch rule (dev-1). The seeded race's outcome shifts whenever the
+  // sim changes (rider contact turned seed 1 into a bust), and both end on the results screen.
+  expect(placing).toMatch(/^(\d+(st|nd|rd|th) of \d+|Busted)$/);
 
   const checks = (await page.evaluate(() => (window as TestWindow).__game?.checks())) as Checks;
   console.log(`race checks: ${JSON.stringify(checks)}`);
