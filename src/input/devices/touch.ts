@@ -62,6 +62,8 @@ export class TouchState {
   private readonly brakes = new Set<number>();
   private brakeLatched = false;
   private readonly t: InputThresholds;
+  /** M2 input-2 options: tilt-only steering turns the stick's steering off; pull-back brake. */
+  readonly options = { stickSteers: true, pullBackBrake: false };
 
   constructor(thresholds: InputThresholds) {
     this.t = thresholds;
@@ -136,8 +138,13 @@ export class TouchState {
       const up = clamp((this.stick.y0 - this.stick.y) / r, 0, 1);
       const dz = this.t.stickDeadZone;
       const steer = Math.abs(sx) <= dz ? 0 : (Math.sign(sx) * (Math.abs(sx) - dz)) / (1 - dz);
-      if (steer !== 0) a.steer = steer;
+      if (steer !== 0 && this.options.stickSteers) a.steer = steer;
       a.throttle = Math.max(a.throttle, up);
+      if (this.options.pullBackBrake) {
+        // Pulling the stick down brakes, past the same dead zone as steering (M2 input-2).
+        const down = clamp((this.stick.y - this.stick.y0) / r, 0, 1);
+        if (down > dz) a.brake = Math.max(a.brake, (down - dz) / (1 - dz));
+      }
     }
     if (this.brakes.size > 0 || this.brakeLatched) a.brake = 1;
     this.brakeLatched = false;

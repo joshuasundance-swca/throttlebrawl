@@ -16,6 +16,14 @@ export interface InputThresholds {
   stickRangePx: number;
   /** Stick steering dead zone, as a fraction of full deflection. */
   stickDeadZone: number;
+  /** Gamepad stick dead zone, radial, as a fraction of full deflection (M2 input-2). */
+  gamepadDeadZone: number;
+  /** Tilt steering dead zone either side of the calibrated rest angle, degrees (M2 input-2). */
+  tiltDeadZoneDeg: number;
+  /** Tilt from the rest angle that gives full steer at sensitivity 1, degrees (M2 input-2). */
+  tiltFullLockDeg: number;
+  /** Tilt low-pass time constant, seconds (M2 input-2). */
+  tiltSmoothingS: number;
 }
 
 const decl = (
@@ -47,6 +55,11 @@ export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('kickSwipeMs', 'Kick swipe window', 80, 30, 80, 5, 'ms'),
   decl('stickRangePx', 'Stick range', 60, 30, 140, 5, 'px'),
   decl('stickDeadZone', 'Stick steer dead zone', 0.08, 0, 0.3, 0.01, ''),
+  // M2 input-2 starting numbers (docs/milestones/M2.md, "Starting numbers").
+  decl('gamepadDeadZone', 'Gamepad stick dead zone', 0.12, 0, 0.4, 0.01, ''),
+  decl('tiltDeadZoneDeg', 'Tilt dead zone', 2, 0, 10, 0.5, 'deg'),
+  decl('tiltFullLockDeg', 'Tilt full lock', 25, 8, 60, 1, 'deg'),
+  decl('tiltSmoothingS', 'Tilt smoothing', 0.1, 0, 0.5, 0.01, 's'),
 ];
 
 /** The shipped thresholds. */

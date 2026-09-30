@@ -2,7 +2,9 @@
 // meshes from the road profiles (road-mesh.ts); entities are pooled primitive views updated from
 // interpolated snapshots (views.ts); the look is swappable (look.ts). WebGL2 straight to the
 // canvas with a device-pixel-ratio cap of 1.5, and a crude handler for a lost WebGL context.
-import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+// M2 render-2 adds the feel visuals (effects.ts: sparks, the splash, the slow-motion tint), the
+// placeholder signs and billboards with the veto's picking (boards.ts), and RENDER_TUNING.
+import { PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -11,14 +13,21 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
+import { Boards, type BoardCatalog, type BoardSlot } from './boards';
+import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { buildRoadScene, type RoadDressing, type RoadScene } from './road-mesh';
+import { applyRenderParam, defaultRenderParams } from './tuning';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
 
 export type { LookEnv, LookStyle, MaterialKind, MaterialParams } from './look';
 export { MIN_THREAT_DRAW_M, createFlatLook } from './look';
 export type { BarrierSpan, EdgeDressing, FeatureSpan, RoadDressing, TagSpan } from './road-mesh';
 export type { EntityViewCounts, RiderProportions } from './views';
+export type { BoardCatalog, BoardItem, BoardKind } from './boards';
+export type { FeelCounts } from './effects';
+export type { RenderParams } from './tuning';
+export { RENDER_TUNING } from './tuning';
 
 export const MAX_PIXEL_RATIO = 1.5;
 
@@ -62,9 +71,23 @@ export function interpolateEntity(
   };
 }
 
+/** A pointer position in client (CSS) pixels to normalized device coordinates over a rect. */
+export function clientToNdc(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+): { x: number; y: number } {
+  const w = Math.max(1, rect.width);
+  const h = Math.max(1, rect.height);
+  return { x: ((clientX - rect.left) / w) * 2 - 1, y: 1 - ((clientY - rect.top) / h) * 2 };
+}
+
 export interface GameRenderer {
-  /** Builds the road meshes for a network (once per region). Dressing: barriers, features, tags. */
-  setRoad(road: RoadNetwork, env: LookEnv, dressing?: RoadDressing): void;
+  /**
+   * Builds the road meshes for a network (once per region). Dressing: barriers, features, tags.
+   * `boards` resolves the road's `billboard` slots to vetoable items (none: no boards are drawn).
+   */
+  setRoad(road: RoadNetwork, env: LookEnv, dressing?: RoadDressing, boards?: BoardCatalog): void;
   /** The traffic catalog, so cars and trucks get their sizes (from `SimConfig.trafficTypes`). */
   setTrafficTypes(defs: readonly SimTrafficTypeDef[]): void;
   /** Sim events for visual cues: hit wobble, the kick pose, pedestrian dives. */
@@ -77,6 +100,19 @@ export interface GameRenderer {
   /** Called with true when the WebGL context is lost and false when it comes back (app/ pauses). */
   onContextChange(listener: (lost: boolean) => void): void;
   readonly contextLost: boolean;
+  /** Applies a `render.*` tuning value at once; other ids are ignored. */
+  setParam(id: string, value: number): void;
+  /**
+   * The veto's picker: the content reference of the sign or billboard under a pointer position in
+   * client (CSS) pixels, as the last frame drew it, or null (docs/architecture.md, "In-game veto").
+   */
+  pickContentAt(clientX: number, clientY: number): string | null;
+  /** Content references of the signs and billboards in view in the last frame (for "recently seen"). */
+  visibleContentRefs(): string[];
+  /** Stops drawing these items at once (a veto on this device; presentation only). */
+  hideContent(refs: Iterable<string>): void;
+  /** Live feel effects, for tests and the debug overlay. */
+  feelCounts(): FeelCounts;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -89,8 +125,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   const scene = new Scene();
   const camera = new PerspectiveCamera(62, 16 / 9, 0.3, 1500);
-  const views = new EntityViews(look, opts);
-  scene.add(views.root);
+  const params = defaultRenderParams();
+  const effects = new FeelEffects(look, params);
+  const views = new EntityViews(look, { ...opts, effects, params });
+  const boards = new Boards(look);
+  // The tint rides on the camera, so the camera joins the scene graph.
+  camera.add(effects.tint);
+  const persistent = new Set<Object3D>([views.root, effects.root, boards.root, camera]);
+  for (const o of persistent) scene.add(o);
   let roadScene: RoadScene | null = null;
   let lost = false;
   let rendererName = '';
@@ -123,15 +165,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const now = () => performance.now() / 1000;
 
   return {
-    setRoad(road, env, dressing) {
+    setRoad(road, env, dressing, catalog) {
       if (roadScene) {
         scene.remove(roadScene.group);
         roadScene.dispose();
       }
-      for (const child of [...scene.children]) if (child !== views.root) scene.remove(child);
+      for (const child of [...scene.children]) if (!persistent.has(child)) scene.remove(child);
       look.setupScene(scene, env);
       roadScene = buildRoadScene(road, look, dressing);
       scene.add(roadScene.group);
+      boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },
     setTrafficTypes(defs) {
       views.setTrafficTypes(defs);
@@ -147,6 +190,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       camera.position.set(pose.x, pose.y, pose.z);
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
       if (pose.roll) camera.rotateZ(pose.roll);
+      effects.fitTint(camera);
       renderer.render(scene, camera);
     },
     resize,
@@ -172,5 +216,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     get contextLost() {
       return lost;
     },
+    setParam(id, value) {
+      applyRenderParam(params, id, value);
+    },
+    pickContentAt(clientX, clientY) {
+      const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
+      return boards.pick(ndc.x, ndc.y, camera);
+    },
+    visibleContentRefs: () => boards.visibleRefs(camera),
+    hideContent(refs) {
+      boards.hide(refs);
+    },
+    feelCounts: () => effects.counts(),
   };
 }

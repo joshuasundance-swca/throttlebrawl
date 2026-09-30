@@ -22,6 +22,8 @@ describe('app/tuning: presentationOwner', () => {
     expect(routed.map((d) => d.id)).toEqual([]);
     expect(presentationOwner('display.frameDivisor')).toBeNull();
     expect(presentationOwner('barks.minGapGlobalS')).toBe('barks');
+    expect(presentationOwner('render.sparkCount')).toBe('render');
+    expect(APP_TUNING.filter((d) => d.id.startsWith('render.')).length).toBeGreaterThan(0);
   });
 });
 
