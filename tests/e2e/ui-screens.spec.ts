@@ -153,6 +153,7 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
   await page.locator('#pause-quit').click();
   await expect(page.locator('#menu')).toBeVisible();
   await page.locator('#menu-settings').click();
+  await page.locator('#settings-tab-controls').click(); // the mirror lives on the Controls tab (ui-2)
   await page.locator('#settings-mirror').check();
   await page.keyboard.press('Escape'); // back to the menu
   await page.locator('#menu-race').click();
