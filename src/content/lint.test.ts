@@ -329,10 +329,11 @@ describe('content lint: tuning keys', () => {
 describe('content lint: extra rules (the road lane hook)', () => {
   const rule: PackRule = {
     id: 'road-demo',
-    description: 'every road is shorter than 1 km',
+    // A threshold no real road reaches, so the test does not depend on the track's data.
+    description: 'every road is shorter than 1000 km',
     check: (ctx) =>
       ctx.entries('road').flatMap((e) =>
-        (e.data['lengthM'] as number) >= 1000
+        (e.data['lengthM'] as number) >= 1_000_000
           ? [
               {
                 level: 'error' as const,
@@ -348,9 +349,8 @@ describe('content lint: extra rules (the road lane hook)', () => {
 
   it('runs a hooked rule over the parsed packs', () => {
     expect(errors(pack(), 'road-demo', [rule])).toEqual([]);
-    const long = pack({}, { 'regions/florida-keys/roads/m1-marina-run.json': (j) => (j['lengthM'] = 1200) });
-    expect(errors(long, 'road-demo', [rule])).toEqual([
-      'regions/florida-keys/roads/m1-marina-run.json /lengthM: too long',
-    ]);
+    const road = basePackFiles().find((f) => (f.json as Json)['type'] === 'road')?.path ?? '';
+    const long = pack({}, { [road]: (j) => (j['lengthM'] = 2_000_000) });
+    expect(errors(long, 'road-demo', [rule])).toEqual([`${road} /lengthM: too long`]);
   });
 });
