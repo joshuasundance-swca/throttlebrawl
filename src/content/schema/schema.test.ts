@@ -113,6 +113,13 @@ describe('content schema: the M2 formats', () => {
     ]);
   });
 
+  it('accepts the playtest 1b quick-win features, boostPad and rampTruck, and no misspelling', () => {
+    const pad = { kind: 'boostPad', id: 'pad-1', s0: 100, s1: 106, d0: 0.5, d1: 3, params: { boostMps: 8 } };
+    const truck = { kind: 'rampTruck', id: 'carrier-1', s0: 200, s1: 222, d0: 1.9, d1: 4.4 };
+    expect(issues('road', { ...road(), features: [pad, truck] })).toEqual([]);
+    expect(issues('road', { ...road(), features: [{ ...pad, kind: 'boostpad' }] })).toHaveLength(1);
+  });
+
   const event = (rewards: unknown) => ({
     type: 'event',
     id: 'keys-t1-sunburn-sprint',
