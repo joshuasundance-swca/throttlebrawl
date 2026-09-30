@@ -24,8 +24,9 @@ import { SPEED_MULTIPLIER_MIN } from '../../src/sim/riders';
 // - a 0.8 speed multiplier makes the bot's route time about 1/0.8 as long, within 5 %;
 // - at the minimum multiplier the bot still takes the boat-ramp shortcut and lands clean;
 // - the assists and the multiplier are in the replay header and reproduce their hashes.
-// Like road-2's timing test, the timed runs leave out traffic and the cop and keep rivals from
-// swinging, so they time the road and the riding model, not fights.
+// The timed runs put the player alone on the road (no traffic, rivals or cop), so they time the
+// road and the riding model: since rider contact (playtest 1), a pack's bumps would make the
+// ratio depend on how each run happens to meet the rivals.
 
 const blank = (): ActionState => ({
   throttle: 0,
@@ -44,9 +45,8 @@ const QUIET = { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0, 'ai.aggr
 
 function quietRace(setup: Partial<RaceSetup>) {
   const base = createHeadlessRace({ seed: 11, ...setup, tuning: { ...QUIET, ...setup.tuning } });
-  // The cop rides last on the grid, so leaving him out moves no other id.
-  const config = { ...base.config, riders: base.config.riders.filter((r) => r.faction !== 'law') };
-  return { sim: createSim(config), route: config.route, playerId: base.playerId };
+  const config = { ...base.config, riders: base.config.riders.filter((r) => r.controller.kind === 'player') };
+  return { sim: createSim(config), route: config.route, playerId: 0 };
 }
 
 /** road-2's shortcut rider: the stub bot's lane-keeping, aiming for the split zone when asked. */
