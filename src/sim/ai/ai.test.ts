@@ -257,6 +257,44 @@ describe('ai: traffic', () => {
     expect(route.progressAt(r.pos.edge, r.pos.s) - before).toBeGreaterThan(200);
   });
 
+  it('passes a slower car in its lane without cutting back into it while alongside', () => {
+    const sc = scene(
+      [rival('racer', { weave: 0 })],
+      [{ s: 30, d: 1.7, v: 30 }],
+      [{ s: 110, d: 1.7, v: 20, dir: 1 }],
+    );
+    const [r] = sc.riders;
+    const [car] = sc.vehicles;
+    if (!r || !car) throw new Error('scene');
+    let touched = 0;
+    for (let t = 0; t < 60 * 20; t++) {
+      step(sc);
+      if (overlaps(r, car)) touched++;
+    }
+    expect(touched).toBe(0);
+    expect(along(car, r)).toBeGreaterThan(20); // it got past
+  });
+
+  it('caught in the oncoming lane with a car coming, it gets out of that car’s way', () => {
+    const sc = scene(
+      [rival('racer', { weave: 0 })],
+      [{ s: 30, d: -0.6, v: 30 }],
+      [
+        { s: 42, d: 1.7, v: 29, dir: 1 }, // a car just ahead in its own lane
+        { s: 160, d: -1.7, v: 24, dir: -1 }, // and one coming the other way
+      ],
+    );
+    const [r] = sc.riders;
+    const oncoming = sc.vehicles[1];
+    if (!r || !oncoming) throw new Error('scene');
+    let touched = 0;
+    for (let t = 0; t < 60 * 6; t++) {
+      step(sc);
+      if (overlaps(r, oncoming)) touched++;
+    }
+    expect(touched).toBe(0);
+  });
+
   it('four rivals behind one parked car do not all pile into it', () => {
     const defs = ['a', 'b', 'c', 'd'].map((n) =>
       rival(n === 'a' || n === 'c' ? 'heavy-hitter' : 'racer', {}, n),

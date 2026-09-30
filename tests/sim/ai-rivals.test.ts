@@ -19,7 +19,11 @@ const SEEDS = Array.from({ length: 50 }, (_, i) => 1000 + i * 7919);
 const STUCK_TICKS = 600; // 10 s
 const MAX_TICKS = 60 * 60 * 6;
 
-/** The base pack, with the default event's field holding all four rivals (a no-op once it does). */
+/**
+ * The base pack with draft content (traffic types are drafts until the traffic lane flips them), as
+ * the dev and staging builds and dev-1's shared batch load it, and with the default event's field
+ * holding all four rivals (a no-op once riders-3's field lands).
+ */
 function registry(): ContentRegistry {
   const files = basePackFiles().map((f) => {
     const json = f.json as { type?: string; field?: { riders?: string[] } };
@@ -28,13 +32,14 @@ function registry(): ContentRegistry {
     for (const id of RIVALS) if (!riders.includes(id)) riders.push(id);
     return { ...f, json: { ...json, field: { ...json.field, riders } } };
   });
-  return buildRegistry(files);
+  return buildRegistry(files, { includeDrafts: true });
 }
 
 const REG = registry();
 const STREAM = streamForEvent(REG);
 const configFor = (seed: number): SimConfig => buildSimConfig(REG, STREAM, { seed });
 const COMBAT_LIVE = configFor(1).weapons.some((w) => w.contentId.endsWith(':punch'));
+const VEHICLES_LIVE = configFor(1).trafficTypes.some((t) => t.category !== 'pedestrian');
 
 /** The player: full throttle, steering to its lane centre (the stub bot's policy). */
 function playerInput(me: EntitySnapshot | undefined, config: SimConfig) {
@@ -58,6 +63,8 @@ interface RaceResult {
   /** Per rival: longest stretch without 1 m of progress while not down and not finished, ticks. */
   longestStall: Record<number, number>;
   hitsOnPlayer: number;
+  /** Rival wobbles and crashes from contact with traffic. */
+  trafficContacts: number;
   /** Rivals placed by the race-end timeout (riders-3's `classified` finish) rather than the line. */
   classified: number;
   finishTicks: Record<number, number>;
@@ -78,6 +85,7 @@ function runRace(seed: number): RaceResult {
   const finishTicks: Record<number, number> = {};
   let classified = 0;
   const hitCauses = new Set<number>();
+  let trafficContacts = 0;
   let spread = -1;
   for (const id of rivals) {
     best[id] = Infinity;
@@ -95,6 +103,13 @@ function runRace(seed: number): RaceResult {
       }
       if ((e.type === 'hit' || e.type === 'kick') && e.target === playerId && rivals.includes(e.actor)) {
         hitCauses.add(e.causeId ?? -e.tick);
+      }
+      if (
+        (e.type === 'wobble' || e.type === 'crash') &&
+        e.data['cause'] === 'traffic' &&
+        rivals.includes(e.actor)
+      ) {
+        trafficContacts++;
       }
     }
     const snap = sim.snapshot();
@@ -133,6 +148,7 @@ function runRace(seed: number): RaceResult {
     endState,
     longestStall,
     hitsOnPlayer: hitCauses.size,
+    trafficContacts,
     classified,
     finishTicks,
     spreadAtFirstFinish: spread,
@@ -206,6 +222,17 @@ describe('ai-1: four box rivals over 50 seeded races', () => {
         `(race-end timeout ${(configFor(1).event.raceEndTimeoutTicks / 60).toFixed(0)} s)`,
     );
     expect(ok.length).toBe(results.length);
+  });
+
+  it('prints how often rivals touch traffic (so they do not all pile into the same car)', () => {
+    const contacts = results.reduce((n, r) => n + r.trafficContacts, 0);
+    const vehicles = VEHICLES_LIVE ? 'traffic present' : 'NO traffic in the pack yet';
+    console.log(
+      `rival traffic contacts (wobble or crash): ${contacts} over ${results.length} races, ` +
+        `${(contacts / (results.length * 4)).toFixed(2)} per rival per race (${vehicles})`,
+    );
+    // A loose guard, not a target: about a quarter per rival per race when this was written.
+    expect(contacts / (results.length * 4)).toBeLessThan(1);
   });
 
   it.skipIf(!COMBAT_LIVE)('rivals land hits on the player (fails at zero)', () => {
