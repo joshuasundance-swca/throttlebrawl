@@ -11,7 +11,7 @@
   "behaviour": { "carFollowing": true, "laneChanges": true, "dives": false },
   "look": { "procedural": { "preset": "sedan" }, "paintOptions": ["#f4f1e8", "#c9d6df", "#e8c07d"] },
   "meta": {
-    "status": "live",
+    "status": "draft",
     "notes": "The common car. Cruises at 55 mph, the product spec's fairness example. Driven by someone reading a paper map.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }

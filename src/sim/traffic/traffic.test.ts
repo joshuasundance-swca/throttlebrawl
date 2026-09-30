@@ -111,7 +111,9 @@ function rider(role: SimRiderDef['role'], i: number): SimRiderDef {
     controller:
       role === 'player'
         ? { kind: 'player', slot: 0 }
-        : { kind: 'ai', style: role === 'cop' ? 'cop' : 'racer' },
+        : role === 'cop'
+          ? { kind: 'cop' }
+          : { kind: 'ai', style: 'racer' },
     bike,
     massKg: 85,
     healthMax: 100,
@@ -481,6 +483,10 @@ describe('traffic-1 sim acceptance', () => {
       events.push(...stepWorld(world, config, SCENARIO, [hold(255)]));
     expect(st.contactWith[0]).not.toBe(-1);
     expect(events.filter((e) => e.type === 'crash')).toEqual([]);
+    const wobbles = events.filter((e) => e.type === 'wobble');
+    expect(wobbles).toHaveLength(1);
+    expect(wobbles[0]?.data['cause']).toBe('traffic');
+    expect(wobbles[0]?.target).toBe(st.id[0]);
     expect(st.unstableS[0]).toBeGreaterThan(1);
     expect(world.movers[0]?.speed ?? 99).toBeLessThanOrEqual(15);
     // Still unstable: swerve into the oncoming lane and meet a car head-on.

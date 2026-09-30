@@ -11,7 +11,7 @@
   "behaviour": { "carFollowing": true, "laneChanges": true, "dives": false },
   "look": { "procedural": { "preset": "pickup" }, "paintOptions": ["#8a3b2e", "#2f4f5f", "#d9d4c7"] },
   "meta": {
-    "status": "live",
+    "status": "draft",
     "notes": "A local. A little slower than the rentals and never in a hurry.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }

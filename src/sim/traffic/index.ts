@@ -12,9 +12,9 @@
 //   M1 speeds). Vehicles that leave the window are recycled to its front. Rolls come from
 //   world.rng.traffic only.
 // - Density per direction is a tuning slider, so oncoming traffic can go to zero.
-// - Contacts: a first contact with a `normal` vehicle wobbles the rider; a contact while still
-//   unstable, or any contact with a `big` one (trucks), crashes the rider (a `crash` event for
-//   tumble-1). A close pass with no contact fires `nearMiss`.
+// - Contacts: a first contact with a `normal` vehicle wobbles the rider (a `wobble` event); a
+//   contact while still unstable, or any contact with a `big` one (trucks), crashes the rider (a
+//   `crash` event for tumble-1). Both carry data.cause `traffic` and target the vehicle. A close pass with no contact fires `nearMiss`.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
@@ -613,6 +613,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             const away = dcd > 0 ? -1 : 1;
             m.yaw = clamp(m.yaw + away * r.dir * T.wobbleKickRad, -1.2, 1.2);
             st.unstableS[r.id] = T.unstableS;
+            emit(world, 'wobble', r.id, data, { target: vid });
           }
         }
         // Push the rider out of the vehicle's box: sideways for a head-on or a side swipe,
