@@ -16,6 +16,14 @@ updates:
     labels: []
     commit-message:
       prefix: deps
+    ignore:
+      # Node's types follow the Node major pinned in .nvmrc and engines (22), not the newest Node.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # TypeScript stays on ~6.0 until typescript-eslint's peer range allows 7 (docs/engineering.md,
+      # Toolchain). Remove this when it does; until then the bump cannot resolve and fails the run.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
     groups:
       npm-minor-patch:
         update-types: [minor, patch]

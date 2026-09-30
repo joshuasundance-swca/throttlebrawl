@@ -9,6 +9,10 @@ export interface RaceResult {
   /** Went down near a cop: the race ended in a bust (cops-1). */
   busted?: boolean;
   fineCash?: number;
+  /** The player's takedowns this race (ui-3); the results screen's tally shows when either is set. */
+  takedowns?: number;
+  /** The player's style cash this race (the snapshot's `styleTally`). */
+  styleCash?: number;
 }
 
 export function ordinal(n: number): string {
@@ -34,18 +38,32 @@ function cash(n: number): string {
   return `$${Math.round(n).toLocaleString('en-US')}`;
 }
 
-/** The results screen's two lines. The headline format `1st of 5` is read by the bot race test. */
-export function resultText(r: RaceResult): { headline: string; detail: string; busted: boolean } {
+/**
+ * The results screen's lines. The headline format `1st of 5` is read by the bot race test. The
+ * tally (takedowns and style, ui-3) is null when the result carries neither.
+ */
+export function resultText(r: RaceResult): {
+  headline: string;
+  detail: string;
+  tally: string | null;
+  busted: boolean;
+} {
+  const tally =
+    r.takedowns === undefined && r.styleCash === undefined
+      ? null
+      : `Takedowns: ${r.takedowns ?? 0}. Style: ${cash(r.styleCash ?? 0)}.`;
   if (r.busted) {
     return {
       headline: 'Busted',
       detail: `Fine: ${cash(r.fineCash ?? 0)}. Nobody is collecting it yet.`,
+      tally,
       busted: true,
     };
   }
   return {
     headline: `${ordinal(r.place)} of ${r.of}`,
     detail: `${r.eventName}. Prize: ${cash(r.prizeCash)}. Nobody is paying it yet.`,
+    tally,
     busted: false,
   };
 }

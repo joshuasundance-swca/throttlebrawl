@@ -37,7 +37,10 @@ function realRoadConfig(seed: number): SimConfig {
   const defaultRoute = lookup(reg.routes, lookup(reg.events, 'm1-skeleton-sprint').lengths[0]!.route);
   const base = buildSimConfig(reg, streamFor(reg, defaultRoute.network), { seed });
   const real = streamFor(reg, NETWORK);
-  return { ...base, road: real.road, route: real.routeFor(lookup(reg.routes, ROUTE)) };
+  // The field without the cop: this proves the road, and a bust (going down near him) ends the
+  // bot's race before the finish on some seeds, whenever sim changes elsewhere move a crash.
+  const riders = base.riders.filter((r) => r.faction !== 'law');
+  return { ...base, riders, road: real.road, route: real.routeFor(lookup(reg.routes, ROUTE)) };
 }
 
 function botRace(seed: number) {

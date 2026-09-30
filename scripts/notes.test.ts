@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEPENDABOT_EMAIL, NOTE_NAME, dependabotExempt, parseNote } from './notes.mjs';
+import { DEPENDABOT_EMAIL, NOTE_NAME, dependabotExempt, dependabotOnlyCommits, parseNote } from './notes.mjs';
 
 describe('what-changed notes', () => {
   it('parses a player note', () => {
@@ -40,6 +40,21 @@ describe('what-changed notes', () => {
 
     it('does not exempt a Dependabot PR with no commits to look at', () => {
       expect(dependabotExempt('dependabot[bot]', [])).toBe(false);
+    });
+
+    it('reads the branch without merge commits and counts Dependabot commits when exempt', () => {
+      const calls: string[][] = [];
+      const git = (log: string) => (args: string[]) => {
+        calls.push(args);
+        return log;
+      };
+      expect(dependabotOnlyCommits(git(`${bot}\n${bot}\n`), 'abc', 'dependabot[bot]')).toBe(2);
+      expect(calls[0]).toEqual(['log', '--no-merges', '--format=%ae', 'abc..HEAD']);
+      expect(dependabotOnlyCommits(git(`${bot}\n${human}\n`), 'abc', 'dependabot[bot]')).toBe(0);
+      expect(dependabotOnlyCommits(git(`${bot}\n`), 'abc', 'someone')).toBe(0);
+      calls.length = 0;
+      expect(dependabotOnlyCommits(git(`${bot}\n`), 'abc', undefined)).toBe(0);
+      expect(calls).toEqual([]); // no PR author: git is not even asked
     });
   });
 
