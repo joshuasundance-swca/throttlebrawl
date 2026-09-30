@@ -1,7 +1,8 @@
 // sim/ai: the AIController (M1 ai-1), run in the controllers phase. Rivals drive through SimInput
 // exactly like the player: this phase only writes world.inputs, and riders and combat act on them.
 // Each tick an AI rider:
-//   1. holds the event's pace, times its own jitter, the `ai.paceScale` tuning and the rubber band;
+//   1. holds the event's pace, times its own jitter, the `ai.paceScale` tuning and the race's
+//      rubber-band factor (riders-3, `rubberBandFactor` in sim/race);
 //   2. picks a line: its spot in the lane, a weave, or alongside a fight target (brawlers hunt);
 //   3. dodges traffic ahead crudely: around it (into the oncoming lane only as risk allows) or brakes;
 //   4. swings at whoever is in its reach window, the player or another rival, with side and kick flags;
@@ -10,7 +11,7 @@
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import { maxYawAt, riderState } from '../riders';
-import { raceState } from '../race';
+import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
 import { PED_SIZE, see, vehicleSize, weaponReach, type ObstacleSize, type Reach, type Seen } from './sense';
@@ -96,10 +97,6 @@ export function aiState(world: World): AiState {
 // ---- Numbers (M1 starting values, [default]) ------------------------------------------------
 
 const COAST_DECEL = 0.6;
-/** The rubber band's reach: the full push applies at this gap to the player, metres. */
-const RUBBER_GAP_M = 150;
-/** The rubber band's strength at the full gap, as a pace fraction, before difficulty scales it. */
-const RUBBER_MAX = 0.06;
 /** Acquisition box for a swing (M1 starting numbers): |Δs| ≤ 4 m, |Δd| ≤ 3 m. */
 const ACQUIRE_S = 4;
 const ACQUIRE_D = 3;
@@ -128,30 +125,6 @@ function playerIds(world: World, config: SimConfig): EntityId[] {
   const out: EntityId[] = [];
   for (const m of world.movers) if (config.riders[m.riderIndex]?.controller.kind === 'player') out.push(m.id);
   return out;
-}
-
-/**
- * The slight rubber band ([decided]: "arcade fair, slight rubberband"): a pace factor that pushes a
- * rival toward the nearest player, up to ±6 % at 150 m, scaled by `difficulty.rubberBand`.
- * Interim: riders-3 builds the race's rubber-band factor; when it lands, this reads it instead.
- */
-export function rubberBand(world: World, config: SimConfig, id: EntityId): number {
-  const race = raceState(world);
-  const mine = race.distanceToFinish[id];
-  if (mine === undefined) return 1;
-  let gap = 0;
-  let best = Infinity;
-  for (const p of playerIds(world, config)) {
-    const theirs = race.distanceToFinish[p];
-    if (theirs === undefined) continue;
-    const g = mine - theirs; // positive: I am behind the player
-    if (Math.abs(g) < best) {
-      best = Math.abs(g);
-      gap = g;
-    }
-  }
-  if (best === Infinity) return 1;
-  return 1 + clamp(gap / RUBBER_GAP_M, -1, 1) * RUBBER_MAX * config.difficulty.rubberBand;
 }
 
 function canFight(world: World, config: SimConfig, other: Mover, me: Mover): boolean {
@@ -295,8 +268,7 @@ function driveRider(
 
   // 1. Pace.
   const paceScale = world.params['ai.paceScale'] ?? 1;
-  let speedTarget =
-    config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBand(world, config, id);
+  let speedTarget = config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBandFactor(world, id);
   if (finished) speedTarget = Math.min(speedTarget, 12);
   else if (playersDone) speedTarget = def?.bike.topSpeedMps ?? speedTarget;
 

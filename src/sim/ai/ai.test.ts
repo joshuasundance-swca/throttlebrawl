@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { FNV_OFFSET } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
-import { raceSystem } from '../race';
+import { raceSystem, rubberBandFactor } from '../race';
 import { ridersSystem } from '../riders';
 import { InputFlag, type SimAiPersonality, type SimConfig, type SimInput, type SimRiderDef } from '../types';
 import {
@@ -19,7 +19,7 @@ import {
   type SystemName,
   type World,
 } from '../world';
-import { aiState, aiSystem, resolveProfile, rubberBand } from './index';
+import { aiState, aiSystem, resolveProfile } from './index';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });
 const SYSTEMS = orderSystems(
@@ -183,33 +183,25 @@ describe('ai: style presets and personality overrides', () => {
 });
 
 describe('ai: the rubber band', () => {
-  it('pushes a rival toward the player, within ±6 % scaled by difficulty', () => {
+  it('holds pace × its jitter × the race’s rubber-band factor: faster behind the player, slower ahead', () => {
     const sc = scene(
-      [rival('racer'), rival('racer', undefined, 'r2'), PLAYER],
+      [rival('racer', { weave: 0 }, 'ahead'), rival('racer', { weave: 0 }, 'behind'), PLAYER],
       [
-        { s: 400, d: 1.7, v: 30 },
+        { s: 700, d: 1.7, v: 30 },
         { s: 40, d: 1.7, v: 30 },
-        { s: 200, d: 1.7, v: 30 },
+        { s: 400, d: 1.7, v: 30 },
       ],
     );
-    step(sc);
-    const ahead = rubberBand(sc.world, sc.config, 0);
-    const behind = rubberBand(sc.world, sc.config, 1);
-    expect(ahead).toBeLessThan(1);
-    expect(behind).toBeGreaterThan(1);
-    expect(ahead).toBeGreaterThanOrEqual(0.94);
-    expect(behind).toBeLessThanOrEqual(1.06);
-    const off = scene(
-      [rival('racer'), PLAYER],
-      [
-        { s: 400, d: 1.7, v: 30 },
-        { s: 40, d: 1.7, v: 30 },
-      ],
-      [],
-      { difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 0 } },
-    );
-    step(off);
-    expect(rubberBand(off.world, off.config, 0)).toBe(1);
+    const player = cruise(sc, 2);
+    for (let t = 0; t < 60 * 10; t++) step(sc, { ...player(), throttle: 255 });
+    const st = aiState(sc.world);
+    const factors = [rubberBandFactor(sc.world, 0), rubberBandFactor(sc.world, 1)];
+    expect(factors[0]).toBeLessThan(1);
+    expect(factors[1]).toBeGreaterThan(1);
+    for (const id of [0, 1]) {
+      const want = sc.config.event.paceMps * (st.paceJitter[id] ?? 1) * (factors[id] ?? 1);
+      expect(Math.abs((sc.riders[id]?.speed ?? 0) - want)).toBeLessThan(0.6);
+    }
   });
 });
 

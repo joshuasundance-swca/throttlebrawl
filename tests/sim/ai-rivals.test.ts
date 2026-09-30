@@ -58,6 +58,8 @@ interface RaceResult {
   /** Per rival: longest stretch without 1 m of progress while not down and not finished, ticks. */
   longestStall: Record<number, number>;
   hitsOnPlayer: number;
+  /** Rivals placed by the race-end timeout (riders-3's `classified` finish) rather than the line. */
+  classified: number;
   finishTicks: Record<number, number>;
   /** Metres from first to last when the first rider finished. */
   spreadAtFirstFinish: number;
@@ -74,6 +76,7 @@ function runRace(seed: number): RaceResult {
   const longestStall: Record<number, number> = {};
   const busted = new Set<number>();
   const finishTicks: Record<number, number> = {};
+  let classified = 0;
   const hitCauses = new Set<number>();
   let spread = -1;
   for (const id of rivals) {
@@ -86,7 +89,10 @@ function runRace(seed: number): RaceResult {
     sim.step([playerInput(before.entities[playerId], config)]);
     for (const e of sim.events()) {
       if (e.type === 'bust' && e.target !== undefined) busted.add(e.target);
-      if (e.type === 'finish') finishTicks[e.actor] = e.tick;
+      if (e.type === 'finish') {
+        finishTicks[e.actor] = e.tick;
+        if (e.data['classified'] === true && rivals.includes(e.actor)) classified++;
+      }
       if ((e.type === 'hit' || e.type === 'kick') && e.target === playerId && rivals.includes(e.actor)) {
         hitCauses.add(e.causeId ?? -e.tick);
       }
@@ -127,6 +133,7 @@ function runRace(seed: number): RaceResult {
     endState,
     longestStall,
     hitsOnPlayer: hitCauses.size,
+    classified,
     finishTicks,
     spreadAtFirstFinish: spread,
     finalHash: sim.hash(),
@@ -153,7 +160,8 @@ describe('ai-1: four box rivals over 50 seeded races', () => {
     for (const r of results) for (const s of Object.values(r.endState)) counts[s]++;
     console.log(
       `[examined] ${results.length} races, ${results.length * 4} rival results: ` +
-        `finished ${counts.finished}, down ${counts.down}, busted ${counts.busted}, running ${counts.running}`,
+        `finished ${counts.finished} (of which classified at the timeout ${results.reduce((n, r) => n + r.classified, 0)}), ` +
+        `down ${counts.down}, busted ${counts.busted}, running ${counts.running}`,
     );
     expect(bad).toEqual([]);
   });
