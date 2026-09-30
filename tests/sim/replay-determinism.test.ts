@@ -41,6 +41,8 @@ interface Recorded {
   recording: Recording;
   finalHash: number;
   ticks: number;
+  /** The player's mode before each tick's step ('Road' is riding). */
+  playerModes: string[];
   makeSim: () => Sim;
 }
 
@@ -54,6 +56,7 @@ function recordRace(
   const bot = createStubBot();
   const recorder = createInputRecorder();
   recorder.beginRace(sim, makeReplayKey('test-build', 'test-content'));
+  const playerModes: string[] = [];
   while (!sim.isOver() && sim.tick < MAX_TICKS) {
     const tick = sim.tick;
     if (tuningAt && tuningAt.tick === tick) {
@@ -62,6 +65,7 @@ function recordRace(
     }
     const me = sim.snapshot().entities[playerId];
     if (!me) throw new Error('no player');
+    playerModes.push(me.mode);
     const a = blank();
     bot.drive(me, route, a);
     const cmd = [quantizeInput({ ...a, flags: 0 })];
@@ -74,7 +78,7 @@ function recordRace(
   if (!recording) throw new Error('no recording');
   // A fresh sim from the recording's own header, with the region's road handles.
   const makeSim = () => createSim(configFromHeader(recording.header, race.config.road, race.config.route));
-  return { recording, finalHash: sim.hash(), ticks: sim.tick, makeSim };
+  return { recording, finalHash: sim.hash(), ticks: sim.tick, playerModes, makeSim };
 }
 
 describe('replay-1: record-then-replay over real races', () => {
@@ -112,9 +116,20 @@ describe('replay-1: record-then-replay over real races', () => {
     const r = races[1];
     if (!r) throw new Error('no race');
     const tampered = structuredClone(r.recording);
-    const at = 1000;
+    // A tick where the player is riding with the throttle open, so one tick off the gas changes
+    // the state: a tick picked blindly can land in a tumble or a run-back, where the throttle is
+    // ignored and nothing desyncs (the sim's changes move where the player is at a fixed tick).
+    const lastCheckpoint = Math.floor((r.ticks - 1) / HASH_EVERY_TICKS) * HASH_EVERY_TICKS;
+    const riding = (t: number) =>
+      r.playerModes[t] === 'Road' &&
+      r.playerModes[t + 1] === 'Road' &&
+      (tampered.inputs[t]?.[0]?.throttle ?? 0) > 0;
+    let at = 1000;
+    while (at < lastCheckpoint && !riding(at)) at++;
+    expect(at, 'a riding tick with a checkpoint after it').toBeLessThan(lastCheckpoint);
     const slot = tampered.inputs[at]?.[0];
     if (!slot) throw new Error(`no tick ${at}`);
+    console.log(`[examined] tampered tick ${at} (seed ${r.seed}; first riding tick from 1000)`);
     slot.throttle = 0; // one tick off the gas
     const result = createReplayController(tampered).run(r.makeSim());
     expect(result.desync?.tick).toBe(Math.ceil(at / HASH_EVERY_TICKS) * HASH_EVERY_TICKS);

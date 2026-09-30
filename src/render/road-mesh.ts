@@ -23,7 +23,7 @@ const LAND_DIVE_M = 4.5;
 const LAND_FAR_M = 7;
 /** Metres over which a land strip tapers into the verge past each end of its zone. */
 const LAND_TAPER_M = 8;
-/** Land sits just under the verge (-0.02), so the two never draw at one height. */
+/** Land sits 4 cm under the verge (-0.02) and any overlapping road, so none of them flicker. */
 const LAND_LIFT_M = -0.06;
 
 export interface BarrierSpan {
