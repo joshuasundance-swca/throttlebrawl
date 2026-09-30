@@ -11,6 +11,9 @@ import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
 import { emit, systemState, type SimSystem, type World } from '../world';
+import { closeStyle, scoreStyle, STYLE_TUNING } from './style';
+
+export { STYLE_TUNING } from './style';
 
 export const RACE_TUNING: readonly TuningParamDecl[] = [
   {
@@ -35,6 +38,7 @@ export const RACE_TUNING: readonly TuningParamDecl[] = [
     unit: 'm',
     affectsSim: true,
   },
+  ...STYLE_TUNING,
 ];
 
 /** A hard stop so a race always ends, whatever the riders do (15 minutes). */
@@ -284,6 +288,7 @@ export const raceSystem: SimSystem = {
       st.bustOrder.push(who);
     }
 
+    scoreStyle(world, config, (id) => isRacer(config, world, id) && st.status[id] === 'racing');
     passCheckpoints(config, world, st);
     for (const m of world.movers) {
       if (!isRacer(config, world, m.id) || st.status[m.id] !== 'racing') continue;
@@ -312,5 +317,9 @@ export const raceSystem: SimSystem = {
     if ((playersDone && (everyoneDone || timedOut)) || world.tick >= MAX_RACE_TICKS) {
       endRace(config, world, st);
     }
+    closeStyle(world, config, (id) => {
+      const status = st.status[id];
+      return status === 'racing' || status === 'finished' ? status : 'other';
+    });
   },
 };

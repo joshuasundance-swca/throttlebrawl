@@ -372,7 +372,14 @@ describe('riders-3: the rubber band', () => {
   });
 
   it('declares its tuning parameters inside their ranges', () => {
-    expect(RACE_TUNING.map((d) => d.id)).toEqual(['race.rubberBandStrength', 'race.rubberBandRangeM']);
+    expect(RACE_TUNING.map((d) => d.id)).toEqual([
+      'race.rubberBandStrength',
+      'race.rubberBandRangeM',
+      'race.styleAirtimeMinS',
+      'race.styleOncomingMinS',
+      'race.styleOncomingSpeedShare',
+      'race.styleComboWindowS',
+    ]);
     for (const d of RACE_TUNING) {
       expect(d.affectsSim).toBe(true);
       expect(d.default).toBeGreaterThanOrEqual(d.min);
