@@ -176,3 +176,18 @@ export interface BakedNetworkBundle {
   /** The network's roads, in any order; the network's `roads` list fixes the edge numbering. */
   roads: readonly BakedRoad[];
 }
+
+/** A rampTruck's defaults, from the prop brief: 13.7° over an 11.5 m run to a 2.8 m lip. */
+export const RAMP_TRUCK_DEFAULTS = { rampLengthM: 11.5, lipHeightM: 2.8 } as const;
+
+/** A rampTruck's ramp: its run (m, from s0 to the lip) and its lip height above the road (m). */
+export function rampTruckShape(f: BakedFeature): { run: number; lip: number } {
+  const n = (key: string, fallback: number) => {
+    const v = f.params?.[key];
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  return {
+    run: n('rampLengthM', RAMP_TRUCK_DEFAULTS.rampLengthM),
+    lip: n('lipHeightM', RAMP_TRUCK_DEFAULTS.lipHeightM),
+  };
+}

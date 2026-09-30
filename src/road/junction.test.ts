@@ -333,6 +333,16 @@ describe('road-2: the lint rules for junctions, connectors and jumps', () => {
     ).toEqual([]);
   });
 
+  it('jump: a ramp truck on a bend fails; on the straight shortcut it passes (playtest 1b)', () => {
+    const truck: BakedFeature = { kind: 'rampTruck', id: 'carrier', s0: 20, s1: 42, d0: 0.5, d1: 2.5 };
+    const b = bundle();
+    (b.roads.find((r) => r.id === 'b')?.features as BakedFeature[]).push({ ...truck });
+    expect(rules(b)).toContain('jump /features/0');
+    const ok = bundle();
+    (ok.roads.find((r) => r.id === 'cut')?.features as BakedFeature[]).push({ ...truck });
+    expect(rules(ok).filter((r) => r.startsWith('jump'))).toEqual([]);
+  });
+
   it('jump: a gap on a bend fails too', () => {
     const b = bundle();
     const road = b.roads.find((r) => r.id === 'b');

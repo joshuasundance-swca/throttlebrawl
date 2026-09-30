@@ -6,6 +6,7 @@
 // road-2 adds junctions with connector roads (continuity per connector row, split zones, the
 // traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
 import {
+  rampTruckShape,
   readConnector,
   type BakedConnector,
   type BakedFeature,
@@ -288,10 +289,10 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
   (road.barriers ?? []).forEach((b, i) => range(`/barriers/${i}`, b.s0, b.s1));
 
   // Jumps: an airborne body bends with the road (docs/architecture.md, "Jumps, ramps and
-  // airtime"), so a ramp or gap must sit on road that is nearly straight from its start to where
-  // a bike at top speed would land.
+  // airtime"), so a ramp, gap or ramp truck must sit on road that is nearly straight from its start
+  // to where a bike at top speed would land.
   (road.features ?? []).forEach((f: BakedFeature, fi) => {
-    if (f.kind !== 'ramp' && f.kind !== 'gap') return;
+    if (f.kind !== 'ramp' && f.kind !== 'gap' && f.kind !== 'rampTruck') return;
     const s0 = Math.max(0, f.s0);
     const s1 = Math.min(L, expectedFlightEnd(f, last + 1, sp, y));
     const i0 = Math.floor(s0 / sp);
@@ -320,18 +321,29 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
 /**
  * Where a jump's expected flight ends, in s: for a ramp, a bike leaving its highest sample at
  * ROAD_LINT.jumpSpeedMps with the slope just before it, flying until it meets the surface again;
- * for a gap, its end plus a run-out. Clamped to the road.
+ * for a ramp truck the same from its lip (its deck is not in the samples); for a gap, its end plus a
+ * run-out. Clamped to the road.
  */
 function expectedFlightEnd(f: BakedFeature, count: number, sp: number, y: readonly number[]): number {
   const L = (count - 1) * sp;
   if (f.kind === 'gap') return Math.min(L, f.s1 + ROAD_LINT.gapRunOutM);
-  const iA = Math.max(0, Math.floor(f.s0 / sp));
-  const iB = Math.min(count - 1, Math.ceil(f.s1 / sp));
-  let lip = iA;
-  for (let i = iA; i <= iB; i++) if ((y[i] as number) > (y[lip] as number)) lip = i;
-  const slope = lip > 0 ? ((y[lip] as number) - (y[lip - 1] as number)) / sp : 0;
+  let lip: number;
+  let slope: number;
+  let yLip: number;
+  if (f.kind === 'rampTruck') {
+    const shape = rampTruckShape(f);
+    lip = Math.min(count - 1, Math.round((f.s0 + shape.run) / sp));
+    slope = shape.lip / shape.run;
+    yLip = (y[lip] as number) + shape.lip;
+  } else {
+    const iA = Math.max(0, Math.floor(f.s0 / sp));
+    const iB = Math.min(count - 1, Math.ceil(f.s1 / sp));
+    lip = iA;
+    for (let i = iA; i <= iB; i++) if ((y[i] as number) > (y[lip] as number)) lip = i;
+    slope = lip > 0 ? ((y[lip] as number) - (y[lip - 1] as number)) / sp : 0;
+    yLip = y[lip] as number;
+  }
   const v = ROAD_LINT.jumpSpeedMps;
-  const yLip = y[lip] as number;
   for (let i = lip + 1; i < count; i++) {
     const dx = (i - lip) * sp;
     const t = dx / v;

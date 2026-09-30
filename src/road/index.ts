@@ -29,7 +29,7 @@ export type {
   RouteSource,
   TrackSource,
 } from './compile';
-export { readConnector } from './types';
+export { RAMP_TRUCK_DEFAULTS, rampTruckShape, readConnector } from './types';
 export type {
   BakedBarrier,
   BakedConnector,

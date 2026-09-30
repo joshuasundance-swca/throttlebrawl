@@ -43,6 +43,24 @@
       "d0": 6.5,
       "d1": 9,
       "item": "ices-before-road"
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-bridge-flat",
+      "s0": 570,
+      "s1": 576,
+      "d0": 3,
+      "d1": 5,
+      "params": { "boostMps": 8, "holdS": 1.5 }
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-bridge-flat",
+      "s0": 620,
+      "s1": 642,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8 }
     }
   ],
   "barriers": [{ "s0": 0, "s1": 1250, "side": "both", "kind": "rail", "heightM": 1 }],
