@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+dev-4, first part. The copied debug report now says what the race was played with: difficulty, assists, throttle mode, speed, slow motion, length and steering. It also has a line for the saved race, meaning its replay key and tick, a refused key, and the fast-forward time. Until app-4 wires the saved race in, that time is an estimate from the live sim step. The `?debug=1` overlay shows the estimate too, as `6-min ff ~X s`, so a phone can read it now. The shared seeded batch gains 20 Easy and 20 Hard races (`presetBatch`), cached like the Normal batch, and a small hook registry (`tests/sim/hooks/`) so lanes can add per-tick numbers without racing on their own. Three M2 bot checks print NOT ACTIVE with the reason: a takedown by the bot, slow motion in the batch, and the perf run's slow-motion checkpoint. combat-4's takedowns are in, but the bot never fights a rival down; teaching it to is the next dev-4 part. On current main, Hard beats Easy on both rival hits on the player (133 against 109) and cop spawns (20 against 9). Just before combat-4, rival hits went the other way, so that direction is sensitive to sim changes.

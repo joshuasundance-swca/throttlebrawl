@@ -19,6 +19,12 @@
 // new key. SIM_BATCH_CACHE=0 turns the disk cache off. For a single scenario with per-tick access,
 // call runSeededRace(seed, { onTick }) directly instead.
 //
+// M2 (dev-4, docs/milestones/M2.md): `presetBatch('easy' | 'hard')` runs PRESET_RACES more races per
+// preset on the same seeds (no replay: the Normal batch proves determinism), cached the same way,
+// so the Easy-versus-Hard comparisons share one set of races. A lane that needs per-tick numbers
+// the RaceResult does not keep registers a hook in tests/sim/hooks/ (see hooks/index.ts) instead of
+// running races of its own; hook results land in `race.hooks[id]` in every batch.
+//
 // The ImportMeta augmentation below gives this Node-side program the Vite type for
 // import.meta.glob, which the base pack loader it imports uses (the app program gets it from
 // src/vite-env.d.ts).
@@ -38,10 +44,12 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHeadlessRace, type HeadlessRace } from '../../src/app';
+import type { DifficultyPreset } from '../../src/core';
 import { createBot, moverProblem, type BotStats } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { EntitySnapshot, SimEvent, SimInput, SimSnapshot } from '../../src/sim/api';
 import type { ImportGlobFunction } from 'vite';
+import { BATCH_HOOKS } from './hooks';
 
 declare global {
   interface ImportMeta {
@@ -50,9 +58,12 @@ declare global {
 }
 
 /** Bump when the result shape or the way races are run changes, to retire old caches. */
-const BATCH_FORMAT = 1;
+const BATCH_FORMAT = 2;
 export const BATCH_RACES = 50;
 export const BATCH_SEEDS: readonly number[] = Array.from({ length: BATCH_RACES }, (_, i) => i + 1);
+/** Races per non-default preset (Easy, Hard) in presetBatch: seeds 1..PRESET_RACES. [default] */
+export const PRESET_RACES = 20;
+export const PRESET_SEEDS: readonly number[] = Array.from({ length: PRESET_RACES }, (_, i) => i + 1);
 /** A state hash is taken every this many ticks, plus one at the end. */
 export const HASH_EVERY_TICKS = 60;
 /** A trace sample of every mover is kept every this many ticks. */
@@ -91,6 +102,8 @@ export interface FieldSummary {
 
 export interface RaceResult {
   seed: number;
+  /** The difficulty preset the race ran on (the Normal batch: 'normal'). */
+  difficulty: DifficultyPreset;
   /** Ticks stepped. */
   ticks: number;
   over: boolean;
@@ -120,6 +133,8 @@ export interface RaceResult {
   /** Every mover every TRACE_EVERY_TICKS ticks. */
   trace: { tick: number; movers: MoverSample[] }[];
   bot: BotStats;
+  /** Each registered hook's result for this race, by hook id (tests/sim/hooks/). */
+  hooks: Record<string, unknown>;
   /** Wall-clock milliseconds for the race and its replay. */
   ms: number;
 }
@@ -136,8 +151,10 @@ export interface BatchResult {
 export interface RaceOptions {
   /** Called after every step with the new snapshot and that tick's events. */
   onTick?: (snap: SimSnapshot, events: readonly SimEvent[]) => void;
-  /** Skip the replay (for quick scenario runs). */
+  /** Skip the replay (for quick scenario runs, and the preset batches). */
   noReplay?: boolean;
+  /** Easy, Normal or Hard (default Normal). */
+  difficulty?: DifficultyPreset;
 }
 
 function sample(m: EntitySnapshot): MoverSample {
@@ -162,15 +179,17 @@ function sample(m: EntitySnapshot): MoverSample {
  * (and CI's browser race) load it: lanes land new content as drafts (traffic types, for one), and
  * the batch must cover it. createHeadlessRace's default is live content only, like the prod build.
  */
-export function createBatchRace(seed: number): HeadlessRace {
-  return createHeadlessRace({ seed }, { includeDrafts: true });
+export function createBatchRace(seed: number, difficulty: DifficultyPreset = 'normal'): HeadlessRace {
+  return createHeadlessRace({ seed, difficulty }, { includeDrafts: true });
 }
 
 /** Runs one seeded race with the bot in the player slot, then replays it from its inputs. */
 export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult {
   const t0 = performance.now();
-  const { sim, config, route, playerId } = createBatchRace(seed);
+  const difficulty = opts.difficulty ?? 'normal';
+  const { sim, config, route, playerId } = createBatchRace(seed, difficulty);
   const bot = createBot();
+  const hooks = BATCH_HOOKS.map((h) => ({ id: h.id, run: h.create({ seed, difficulty, playerId, config }) }));
   const inputs: SimInput[] = [];
   const hashes: number[] = [];
   const events: SimEvent[] = [];
@@ -232,6 +251,7 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
     field.pedsMax = Math.max(field.pedsMax, peds);
     if (sim.tick % HASH_EVERY_TICKS === 0) hashes.push(sim.hash());
     if (sim.tick % TRACE_EVERY_TICKS === 0) trace.push({ tick: sim.tick, movers: snap.entities.map(sample) });
+    for (const h of hooks) h.run.onTick(snap, stepEvents);
     opts.onTick?.(snap, stepEvents);
   }
   hashes.push(sim.hash());
@@ -239,7 +259,7 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
   // The same-run replay: a fresh sim from the same seed, stepped with the recorded inputs.
   const replayHashes: number[] = [];
   if (!opts.noReplay) {
-    const replay = createBatchRace(seed).sim;
+    const replay = createBatchRace(seed, difficulty).sim;
     for (const input of inputs) {
       replay.step([input]);
       if (replay.tick % HASH_EVERY_TICKS === 0) replayHashes.push(replay.hash());
@@ -253,6 +273,7 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
   const playerFinished = finishOrder.includes(playerId);
   return {
     seed,
+    difficulty,
     ticks: sim.tick,
     over: sim.isOver(),
     playerId,
@@ -272,6 +293,7 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
     inputs,
     trace,
     bot: bot.stats(),
+    hooks: Object.fromEntries(hooks.map((h) => [h.id, h.run.result()])),
     ms: performance.now() - t0,
   };
 }
@@ -279,6 +301,14 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
 /** Runs the batch now, without the cache. */
 export function runBatch(seeds: readonly number[] = BATCH_SEEDS): RaceResult[] {
   return seeds.map((seed) => runSeededRace(seed));
+}
+
+/** Runs a preset's batch now, without the cache: no replay (the Normal batch covers determinism). */
+export function runPresetBatch(
+  difficulty: DifficultyPreset,
+  seeds: readonly number[] = PRESET_SEEDS,
+): RaceResult[] {
+  return seeds.map((seed) => runSeededRace(seed, { difficulty, noReplay: true }));
 }
 
 // ---- The shared cache ---------------------------------------------------------------------
@@ -296,10 +326,15 @@ function filesUnder(dir: string): string[] {
 }
 
 /** A hash of everything the batch's results depend on. */
-export function batchKey(seeds: readonly number[] = BATCH_SEEDS): string {
+export function batchKey(seeds: readonly number[] = BATCH_SEEDS, variant = 'normal'): string {
   const h = createHash('sha256');
-  h.update(`format ${BATCH_FORMAT}; node ${process.version}; seeds ${seeds.join(',')}\n`);
-  for (const f of [...filesUnder('src'), ...filesUnder('packs'), 'tests/sim/batch.ts']) {
+  h.update(`format ${BATCH_FORMAT}; node ${process.version}; ${variant}; seeds ${seeds.join(',')}\n`);
+  for (const f of [
+    ...filesUnder('src'),
+    ...filesUnder('packs'),
+    ...filesUnder('tests/sim/hooks'),
+    'tests/sim/batch.ts',
+  ]) {
     h.update(`${f}\n`);
     h.update(readFileSync(path.join(repoRoot, f)));
   }
@@ -329,27 +364,47 @@ function readCache(file: string, key: string): BatchResult | null {
 }
 
 let memo: Promise<BatchResult> | null = null;
+const presetMemo = new Map<string, Promise<BatchResult>>();
 
 /**
  * The shared batch: 50 seeded bot races with their replays, computed once per source tree.
  * Every lane's tests/sim/<lane>-*.test.ts reads this; nobody runs their own 50 races.
  */
 export function simBatch(): Promise<BatchResult> {
-  memo ??= loadOrCompute();
+  memo ??= loadOrCompute('normal', BATCH_SEEDS, () => runBatch());
   return memo;
 }
 
-async function loadOrCompute(): Promise<BatchResult> {
-  const key = batchKey();
+/**
+ * The Easy or Hard batch (dev-4): PRESET_RACES seeded bot races on that preset, no replay, cached
+ * like the Normal batch. The Easy-versus-Hard comparisons read these instead of racing their own.
+ */
+export function presetBatch(difficulty: 'easy' | 'hard'): Promise<BatchResult> {
+  let p = presetMemo.get(difficulty);
+  if (!p) {
+    p = loadOrCompute(difficulty, PRESET_SEEDS, () => runPresetBatch(difficulty));
+    presetMemo.set(difficulty, p);
+  }
+  return p;
+}
+
+async function loadOrCompute(
+  variant: string,
+  seeds: readonly number[],
+  run: () => RaceResult[],
+): Promise<BatchResult> {
+  const key = batchKey(seeds, variant);
   const compute = (): BatchResult => {
     const t0 = performance.now();
-    const races = runBatch();
+    const races = run();
     return { format: BATCH_FORMAT, key, races, ms: performance.now() - t0, fromCache: false };
   };
   if (process.env['SIM_BATCH_CACHE'] === '0') return compute();
 
   mkdirSync(cacheDir, { recursive: true });
-  const file = path.join(cacheDir, `sim-batch-${key}.json`);
+  // The Normal batch keeps its M1 file name; the presets add theirs.
+  const stem = variant === 'normal' ? 'sim-batch' : `sim-batch-${variant}`;
+  const file = path.join(cacheDir, `${stem}-${key}.json`);
   const lock = `${file}.lock`;
   const deadline = Date.now() + BATCH_TIMEOUT_MS;
   for (;;) {
@@ -374,10 +429,10 @@ async function loadOrCompute(): Promise<BatchResult> {
       const tmp = `${file}.${process.pid}.tmp`;
       writeFileSync(tmp, JSON.stringify(result));
       renameSync(tmp, file);
-      // Older batches (other source trees) are dead weight now.
+      // Older batches of this variant (other source trees) are dead weight now.
+      const old = new RegExp(`^${stem}-[0-9a-f]+\\.json$`);
       for (const f of readdirSync(cacheDir))
-        if (/^sim-batch-[0-9a-f]+\.json$/.test(f) && f !== path.basename(file))
-          rmSync(path.join(cacheDir, f), { force: true });
+        if (old.test(f) && f !== path.basename(file)) rmSync(path.join(cacheDir, f), { force: true });
       return result;
     } finally {
       closeSync(fd);

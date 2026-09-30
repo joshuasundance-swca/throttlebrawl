@@ -184,6 +184,12 @@ test('the bot races to results with a placing at phone landscape', async ({ page
     );
   }
 
+  // M2 dev-4: "the bot lands a takedown" is asserted across the shared seeded batch
+  // (tests/sim/dev-presets.test.ts), where one seed's luck cannot flip it; this race only prints.
+  console.log(
+    `[print] takedowns in this race: ${checks.events['takedown'] ?? 0} (asserted over the seeded batch, not one seed)`,
+  );
+
   // dev-3: the finished race's debug file replays, from its own header, to every stored hash and
   // to the final hash taken when the race ended.
   const replayCheck = await page.evaluate(() => {
