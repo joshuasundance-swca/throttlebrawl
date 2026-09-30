@@ -49,6 +49,23 @@ export const KICK: SimWeaponDef = {
   steal: null,
 };
 
+/** The lead pipe (docs/milestones/M1.md, combat-2): 20 / 6 / 25 ticks, steal window ticks 7–20. */
+export const PIPE: SimWeaponDef = {
+  contentId: 'base:lead-pipe',
+  unarmed: false,
+  reachSM: 1.6,
+  reachDM: 1.4,
+  windupTicks: 20,
+  activeTicks: 6,
+  recoveryTicks: 25,
+  cooldownTicks: 0,
+  damage: 22,
+  hitStopMs: 70,
+  knockbackMps: 4.5,
+  staggerTicks: 21,
+  steal: { startTick: 7, endTick: 20 },
+};
+
 export const F = InputFlag;
 
 export interface Placement {
@@ -72,6 +89,7 @@ const BIKE = {
 export function harnessConfig(
   placements: readonly Placement[],
   tuning: Record<string, number> = {},
+  extraWeapons: readonly SimWeaponDef[] = [],
 ): SimConfig {
   const road = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0 }]));
   const route = createRouteProgress(road, {
@@ -108,7 +126,7 @@ export function harnessConfig(
       raceEndTimeoutTicks: 1800,
     },
     riders,
-    weapons: [PUNCH, KICK],
+    weapons: [PUNCH, KICK, ...extraWeapons],
     trafficTypes: [],
     road,
     route,
@@ -139,8 +157,9 @@ export function makeHarness(
   placements: readonly Placement[],
   script: Script,
   tuning?: Record<string, number>,
+  extraWeapons: readonly SimWeaponDef[] = [],
 ): Harness {
-  const config = harnessConfig(placements, tuning);
+  const config = harnessConfig(placements, tuning, extraWeapons);
   const world = createWorld(config);
   placements.forEach((p, i) => {
     const m = addMover(world, 'rider', { edge: 0, s: p.s, d: p.d, dir: 1 }, i);

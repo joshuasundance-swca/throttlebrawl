@@ -41,7 +41,7 @@ function race(seed: number) {
     // At each route checkpoint: finishers in order, then the rest by distance to finish.
     checkpointMoments++;
     const snap = sim.snapshot();
-    const racers = snap.entities.filter((e) => e.faction !== 'law');
+    const racers = snap.entities.filter((e) => e.kind === 'rider' && e.faction !== 'law');
     const done = [...snap.race.finishOrder];
     const rest = racers
       .filter((e) => !done.includes(e.id))
@@ -57,7 +57,7 @@ function race(seed: number) {
     checkpointMoments,
     misplaced,
     checkpoints: config.route.checkpoints.length,
-    racers: snap.entities.filter((e) => e.faction !== 'law'),
+    racers: snap.entities.filter((e) => e.kind === 'rider' && e.faction !== 'law'),
   };
 }
 

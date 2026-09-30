@@ -1,0 +1,25 @@
+{
+  "type": "weapon",
+  "id": "lead-pipe",
+  "name": "Lead Pipe",
+  "category": "blunt",
+  "behaviour": "melee.swing",
+  "tags": ["roadside", "starter"],
+  "unarmed": false,
+  "reach": { "sM": 1.6, "dM": 1.4 },
+  "windupS": 0.34,
+  "activeS": 0.1,
+  "recoveryS": 0.42,
+  "cooldownS": 0,
+  "damage": 22,
+  "knockback": { "lateralMps": 4.5, "staggerS": 0.35 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.12, "windowEndS": 0.34 },
+  "uses": { "durabilityHits": null, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 3, "regions": [] },
+  "meta": {
+    "status": "live",
+    "notes": "M1 starting numbers (docs/milestones/M1.md): 20 / 6 / 25 ticks, steal window ticks 7-20 of the wind-up. Damage, knockback and hit-stop are combat-2's [default] starting values: slower than a kick, hits harder. In M1 the sim lays one at each of three spots along the route (sim/combat PICKUP_ROUTE_FRACTIONS), uses are unlimited, and it always drops on a wreck.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}
