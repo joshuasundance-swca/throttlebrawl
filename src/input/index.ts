@@ -1,99 +1,21 @@
 // input: devices -> one action state -> one quantized SimInput per tick (docs/architecture.md,
-// "Input"). The skeleton has the keyboard map from the product spec, a minimal touch layout (a
-// floating stick in the left zone, brake and attack buttons from the layout record) and latching,
-// so a tap shorter than a tick is never lost. input-1 owns this folder after app-1: the full
-// gesture timing, pointer capture polish, the mirror and the device-path tests.
-import { InputFlag, placeElement, quantizeInput, type SimInput, type TouchLayout } from '../sim/api';
+// "Input"; docs/milestones/M1.md, "input-1"). Touch (the floating stick, the brake and the attack
+// button with its side drag and swipe-down kick) and the keyboard write into one ActionState; the
+// app samples it once per sim tick. Presses are latched until a tick samples them. The left-handed
+// mirror comes from the layout record. Tilt is a seam. Gamepad and haptics arrive in M2.
+import { placeElement, type SimInput, type TouchLayout } from '../sim/api';
+import { emptyActions, toSimInput, type ActionState } from './actions';
+import { KeyboardState, type KeyMap } from './devices/keyboard';
+import type { TiltSource } from './devices/tilt';
+import { TouchState, type TouchZones } from './devices/touch';
+import { applyInputParam, inputDefaults, type InputThresholds } from './tuning';
 
-export interface ActionState {
-  /** 0..1 */
-  throttle: number;
-  /** 0..1 */
-  brake: number;
-  /** -1 (left) .. 1 (right) */
-  steer: number;
-  attack: boolean;
-  /** -1 forced left, 1 forced right, 0 auto-target side. */
-  attackSide: -1 | 0 | 1;
-  kick: boolean;
-  lookBack: boolean;
-  skipRunBack: boolean;
-}
-
-export function emptyActions(): ActionState {
-  return {
-    throttle: 0,
-    brake: 0,
-    steer: 0,
-    attack: false,
-    attackSide: 0,
-    kick: false,
-    lookBack: false,
-    skipRunBack: false,
-  };
-}
-
-/** Converts an action state to the quantized command the sim steps on. */
-export function toSimInput(a: ActionState): SimInput {
-  let flags = 0;
-  if (a.attack) flags |= InputFlag.attack;
-  if (a.attackSide < 0) flags |= InputFlag.attackSideLeft;
-  if (a.attackSide > 0) flags |= InputFlag.attackSideRight;
-  if (a.kick) flags |= InputFlag.kick;
-  if (a.lookBack) flags |= InputFlag.lookBack;
-  if (a.skipRunBack) flags |= InputFlag.skipRunBack;
-  return quantizeInput({ steer: a.steer, throttle: a.throttle, brake: a.brake, flags });
-}
-
-/** Keys held and presses latched since the last sample. Pure, so it is unit-testable. */
-export class KeyboardState {
-  private held = new Set<string>();
-  private latched = new Set<string>();
-  private throttle = 0;
-
-  down(code: string): void {
-    if (!this.held.has(code)) this.latched.add(code);
-    this.held.add(code);
-  }
-  up(code: string): void {
-    this.held.delete(code);
-  }
-  clear(): void {
-    this.held.clear();
-  }
-  private is(...codes: string[]): boolean {
-    return codes.some((c) => this.held.has(c) || this.latched.has(c));
-  }
-  /** Writes this tick's keyboard actions into `a` and clears the latches. */
-  sample(a: ActionState, dt: number): void {
-    // Throttle ramps up while held (product spec, keyboard map), and drops at once on release.
-    this.throttle = this.is('KeyW', 'ArrowUp') ? Math.min(1, this.throttle + dt * 3) : 0;
-    a.throttle = Math.max(a.throttle, this.throttle);
-    if (this.is('KeyS', 'ArrowDown')) a.brake = 1;
-    const steer = (this.is('KeyD', 'ArrowRight') ? 1 : 0) - (this.is('KeyA', 'ArrowLeft') ? 1 : 0);
-    if (steer !== 0) a.steer = steer;
-    if (this.is('KeyJ', 'KeyU', 'KeyO', 'KeyK')) a.attack = true;
-    if (this.is('KeyU')) a.attackSide = -1;
-    if (this.is('KeyO')) a.attackSide = 1;
-    if (this.is('KeyK')) a.kick = true;
-    if (this.is('KeyL')) a.lookBack = true;
-    if (this.is('Space')) a.skipRunBack = true;
-    this.latched.clear();
-  }
-}
-
-interface StickTouch {
-  id: number;
-  x0: number;
-  y0: number;
-  x: number;
-  y: number;
-}
-
-/** Stick travel for full deflection, CSS px. */
-const STICK_RANGE_PX = 60;
-/** Touches this close to the screen edge are ignored: the phone's back gesture owns them. */
-const EDGE_PX = 24;
+export { emptyActions, toSimInput, type ActionState } from './actions';
+export { DEFAULT_KEY_MAP, KeyboardState, type KeyAction, type KeyMap } from './devices/keyboard';
+export { EDGE_PX, TouchState, type TouchZones } from './devices/touch';
+export type { TiltSource } from './devices/tilt';
+export { gestureTimingProblems, gestureWindowTicks, type WindupEntry } from './gesture';
+export { applyInputParam, INPUT_TUNING, inputDefaults, type InputThresholds } from './tuning';
 
 export interface InputSystem {
   /** Samples this tick's command and clears latched presses. `dt` is the sim step, seconds. */
@@ -102,93 +24,134 @@ export interface InputSystem {
   lastActions(): Readonly<ActionState>;
   /** A driver (the bot) that writes the action state each tick instead of the devices. */
   setDriver(driver: ((a: ActionState) => void) | null): void;
+  /** The touch layout record, including the left-handed mirror. */
   setLayout(layout: TouchLayout): void;
+  /** Applies an `input.*` tuning value (INPUT_TUNING); other ids are ignored. */
+  setParam(id: string, value: number): void;
+  /** Tilt steering, added to the thumb (null switches it off). */
+  setTilt(source: TiltSource | null): void;
   dispose(): void;
+}
+
+type Listener = (e: Event) => void;
+type Listenable = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
+
+/** The play surface: an element over the canvas that receives the touches. */
+export interface InputSurface extends Listenable {
+  getBoundingClientRect(): { left: number; top: number; width: number; height: number };
+  setPointerCapture?(pointerId: number): void;
+  style?: { touchAction: string; pointerEvents: string };
 }
 
 export interface InputOptions {
   /** Where key events arrive (the window). */
-  keys: Pick<Window, 'addEventListener' | 'removeEventListener'>;
+  keys: Listenable;
   /** The full-screen touch surface over the canvas. */
-  surface: HTMLElement;
+  surface: InputSurface;
   layout: TouchLayout;
+  /** Remapped keys; the product spec's map by default. */
+  keyMap?: KeyMap;
+}
+
+interface PointerLike {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  timeStamp: number;
+  preventDefault(): void;
 }
 
 export function createInput(opts: InputOptions): InputSystem {
-  const keyboard = new KeyboardState();
+  const thresholds: InputThresholds = inputDefaults();
+  const keyboard = new KeyboardState(opts.keyMap);
+  const touch = new TouchState(thresholds);
+  const { surface } = opts;
   let layout = opts.layout;
   let driver: ((a: ActionState) => void) | null = null;
-  let stick: StickTouch | null = null;
-  const brakes = new Set<number>();
-  let attackLatched = false;
+  let tilt: TiltSource | null = null;
   let last = emptyActions();
 
-  const rectOf = (element: string) => {
-    const el = layout.elements.find((e) => e.element === element && e.visible);
-    const { width, height } = opts.surface.getBoundingClientRect();
-    return el ? placeElement(el, width, height, layout.mirror) : null;
-  };
-  const inside = (r: { x: number; y: number; w: number; h: number } | null, x: number, y: number) =>
-    !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  // The play surface must receive touches: no browser panning or zooming on it, and pointer
+  // events on even when an overlay parent turns them off (ui's #ui root has pointer-events none).
+  if (surface.style) {
+    surface.style.touchAction = 'none';
+    surface.style.pointerEvents = 'auto';
+  }
 
-  const onKeyDown = (e: Event) => {
+  const zones = (box: { width: number; height: number }): TouchZones => {
+    const rect = (element: string) => {
+      const el = layout.elements.find((e) => e.element === element && e.visible);
+      return el ? placeElement(el, box.width, box.height, layout.mirror) : null;
+    };
+    return {
+      width: box.width,
+      height: box.height,
+      stick: rect('touch-stick-zone'),
+      brake: rect('touch-brake'),
+      attack: rect('touch-attack'),
+    };
+  };
+
+  const onKeyDown: Listener = (e) => {
     const k = e as KeyboardEvent;
     if (k.code === 'Backquote' || k.code === 'Escape') return; // the tuning panel and pause are ui's
     keyboard.down(k.code);
   };
-  const onKeyUp = (e: Event) => keyboard.up((e as KeyboardEvent).code);
-  const onBlur = () => keyboard.clear();
-
-  const onPointerDown = (e: PointerEvent) => {
-    const box = opts.surface.getBoundingClientRect();
-    const x = e.clientX - box.left;
-    const y = e.clientY - box.top;
-    if (x < EDGE_PX || x > box.width - EDGE_PX) return;
-    if (inside(rectOf('touch-attack'), x, y)) attackLatched = true;
-    else if (inside(rectOf('touch-brake'), x, y)) brakes.add(e.pointerId);
-    else if (!stick && inside(rectOf('touch-stick-zone'), x, y))
-      stick = { id: e.pointerId, x0: x, y0: y, x, y };
-    else return;
-    opts.surface.setPointerCapture?.(e.pointerId);
-    e.preventDefault();
+  const onKeyUp: Listener = (e) => keyboard.up((e as KeyboardEvent).code);
+  const onBlur: Listener = () => {
+    keyboard.clear();
+    touch.clear();
   };
-  const onPointerMove = (e: PointerEvent) => {
-    if (stick && e.pointerId === stick.id) {
-      const box = opts.surface.getBoundingClientRect();
-      stick.x = e.clientX - box.left;
-      stick.y = e.clientY - box.top;
+
+  const onPointerDown: Listener = (e) => {
+    const p = e as unknown as PointerLike;
+    const box = surface.getBoundingClientRect();
+    const got = touch.down(p.pointerId, p.clientX - box.left, p.clientY - box.top, p.timeStamp, zones(box));
+    if (!got) return;
+    try {
+      surface.setPointerCapture?.(p.pointerId);
+    } catch {
+      // No active pointer with that id (a synthetic event): capture is a nicety, not a need.
     }
+    p.preventDefault();
   };
-  const onPointerUp = (e: PointerEvent) => {
-    if (stick && e.pointerId === stick.id) stick = null; // lift to coast
-    brakes.delete(e.pointerId);
+  const onPointerMove: Listener = (e) => {
+    const p = e as unknown as PointerLike;
+    const box = surface.getBoundingClientRect();
+    touch.move(p.pointerId, p.clientX - box.left, p.clientY - box.top, p.timeStamp);
   };
+  // pointerup, pointercancel and a lost capture are all a release.
+  const onPointerUp: Listener = (e) => touch.up((e as unknown as PointerLike).pointerId);
 
-  opts.keys.addEventListener('keydown', onKeyDown);
-  opts.keys.addEventListener('keyup', onKeyUp);
-  opts.keys.addEventListener('blur', onBlur);
-  opts.surface.addEventListener('pointerdown', onPointerDown);
-  opts.surface.addEventListener('pointermove', onPointerMove);
-  opts.surface.addEventListener('pointerup', onPointerUp);
-  opts.surface.addEventListener('pointercancel', onPointerUp); // cancel is a release
+  const pointerEvents: [string, Listener][] = [
+    ['pointerdown', onPointerDown],
+    ['pointermove', onPointerMove],
+    ['pointerup', onPointerUp],
+    ['pointercancel', onPointerUp],
+    ['lostpointercapture', onPointerUp],
+  ];
+  const keyEvents: [string, Listener][] = [
+    ['keydown', onKeyDown],
+    ['keyup', onKeyUp],
+    ['blur', onBlur],
+  ];
+  for (const [type, fn] of keyEvents) opts.keys.addEventListener(type, fn);
+  for (const [type, fn] of pointerEvents) surface.addEventListener(type, fn);
 
   return {
     sample(dt) {
       const a = emptyActions();
       if (driver) {
         driver(a);
+        // The devices' latches still drain, so a press made while the bot drove does not leak.
+        keyboard.sample(emptyActions(), dt);
+        touch.sample(emptyActions());
       } else {
         keyboard.sample(a, dt);
-        if (stick) {
-          const dx = (stick.x - stick.x0) / STICK_RANGE_PX;
-          const up = (stick.y0 - stick.y) / STICK_RANGE_PX;
-          a.steer = Math.max(-1, Math.min(1, dx));
-          a.throttle = Math.max(a.throttle, Math.max(0, Math.min(1, up)));
-        }
-        if (brakes.size > 0) a.brake = 1;
-        if (attackLatched) a.attack = true;
+        touch.sample(a);
+        const tiltSteer = tilt?.steer() ?? null;
+        if (tiltSteer !== null) a.steer = Math.max(-1, Math.min(1, a.steer + tiltSteer));
       }
-      attackLatched = false;
       last = a;
       return toSimInput(a);
     },
@@ -199,14 +162,15 @@ export function createInput(opts: InputOptions): InputSystem {
     setLayout(l) {
       layout = l;
     },
+    setParam(id, value) {
+      applyInputParam(thresholds, id, value);
+    },
+    setTilt(source) {
+      tilt = source;
+    },
     dispose() {
-      opts.keys.removeEventListener('keydown', onKeyDown);
-      opts.keys.removeEventListener('keyup', onKeyUp);
-      opts.keys.removeEventListener('blur', onBlur);
-      opts.surface.removeEventListener('pointerdown', onPointerDown);
-      opts.surface.removeEventListener('pointermove', onPointerMove);
-      opts.surface.removeEventListener('pointerup', onPointerUp);
-      opts.surface.removeEventListener('pointercancel', onPointerUp);
+      for (const [type, fn] of keyEvents) opts.keys.removeEventListener(type, fn);
+      for (const [type, fn] of pointerEvents) surface.removeEventListener(type, fn);
     },
   };
 }
