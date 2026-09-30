@@ -6,7 +6,9 @@
 // - An attack starts on the tick its `attack` flag rises (docs/architecture.md, "Movers"): a
 //   wind-up, a short active moment, a recovery, and for a weapon with a cooldown (the kick) a
 //   cooldown after that. Presses during wind-up, active or recovery are ignored. A kick asked for
-//   during its cooldown becomes a punch, so the button never feels dead.
+//   during its cooldown becomes a punch, so the button never feels dead. For the same reason a
+//   press made while staggered is kept, and the attack starts on the tick the stagger ends
+//   (M2 combat-3); the kick flag is read then, so a swipe held through the stagger still kicks.
 // - Phase timers count scaled time (world.timeScale per tick); only the hit-stop countdown runs
 //   on raw ticks, because a countdown scaled by a zero timeScale would never end.
 // - Auto-target picks the nearest valid rider in the acquisition box, preferring a non-cop. The
@@ -232,6 +234,8 @@ export interface CombatState {
   lastAttackerId: EntityId[];
   /** Last tick's flags, for press edges. */
   prevFlags: number[];
+  /** An attack press made while staggered, kept until the stagger ends. */
+  pending: boolean[];
   /** Raw ticks of hit-stop left, and the timeScale to restore afterwards. */
   hitStopTicks: number;
   resumeTimeScale: number;
@@ -267,6 +271,7 @@ export function combatState(world: World): CombatState {
     regenAcc: [],
     lastAttackerId: [],
     prevFlags: [],
+    pending: [],
     hitStopTicks: 0,
     resumeTimeScale: 1,
     held: [],
@@ -827,6 +832,7 @@ export const combatSystem: SimSystem = {
       st.regenAcc[m.id] = 0;
       st.lastAttackerId[m.id] = -1;
       st.prevFlags[m.id] = 0;
+      st.pending[m.id] = false;
       st.held[m.id] = '';
       st.heldPickup[m.id] = -1;
       st.stealCued[m.id] = false;
@@ -864,6 +870,7 @@ export const combatSystem: SimSystem = {
 
       if (!isRiding(a) || (health[id] ?? 0) <= 0) {
         if (st.phase[id] !== 'idle') endAttack(st, id);
+        st.pending[id] = false;
         continue;
       }
       advance(world, config, st, a, ts);
@@ -872,7 +879,11 @@ export const combatSystem: SimSystem = {
       const wantKick = (flags & InputFlag.kick) !== 0;
       const override = sideFlag(flags);
       if (st.phase[id] === 'idle') {
-        if (pressed[id] && (st.stagger[id] ?? 0) <= EPS) {
+        const staggered = (st.stagger[id] ?? 0) > EPS;
+        // A press while staggered is kept and starts the attack as the stagger ends (combat-3).
+        if (pressed[id] && staggered) st.pending[id] = true;
+        if ((pressed[id] || st.pending[id]) && !staggered) {
+          st.pending[id] = false;
           const w = resolveWeapon(config, st, id, wantKick);
           if (w) {
             const aimed = aim(world, config, a, override);

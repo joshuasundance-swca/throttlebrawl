@@ -10,7 +10,10 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 //
 // Assertions switch on with the feature that makes them possible, and print ACTIVE or NOT ACTIVE
 // with the reason, so a switched-off check never reads as a pass:
-// - an attack connects: on since combat-1 (the seeded race, seed 1, is one the bot connects in);
+// - an attack connects: on since combat-1. The race is seeded (BOT_RACE_SEED) with one the bot
+//   connects in. combat-3's kick shove changed seed 1's race so the bot pressed once, while
+//   staggered, and missed; seed 3 connects in the headless bot race both before combat-3 (2 hits)
+//   and after it (10 hits from 13 presses), so it carries some margin;
 // - the bot took the shortcut: active once the bot's route has a split zone onto a shortcut
 //   (road-2's boat-ramp cut) or its road offers a `shortcut` lane.
 
@@ -48,6 +51,7 @@ interface Handle {
   } | null;
   playerId(): number;
   setBot(on: boolean): void;
+  setSeed(seed: number): void;
   checks(): Checks;
   rendererStats(): Stats;
   frameStats(): { samples: number; p50: number; p95: number; max: number };
@@ -61,6 +65,9 @@ interface Handle {
   };
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+
+/** The race's seed: one the bot connects in (see the header). */
+const BOT_RACE_SEED = 3;
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   drawCallsMax: number;
@@ -96,7 +103,11 @@ test('the bot races to results with a placing at phone landscape', async ({ page
 
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.evaluate((seed) => {
+    const game = (window as TestWindow).__game;
+    game?.setSeed(seed);
+    game?.setBot(true);
+  }, BOT_RACE_SEED);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 

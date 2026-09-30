@@ -282,6 +282,21 @@ describe('combat-3: the swipe-down kick (playtest 1 item 3, sim side)', () => {
     expect(ofType(after.events, 'attackStart').map((e) => e.data['weapon'])).toEqual(['base:punch']);
   });
 
+  it('a press while staggered is kept, and the attack (a kick, if the swipe is held) starts as the stagger ends', () => {
+    // The rival's kick lands on tick 13 and staggers the player 21 world ticks (after the 4-tick
+    // hit-stop, ticks 18–38). The player presses on tick 20 and holds the kick flag.
+    const h = makeHarness(
+      pair({ role: 'rival' }, { role: 'player' }),
+      scriptOf({
+        0: once(0, KICK_PRESS),
+        1: (t) => (t === 20 ? flags(F.attack | F.kick) : t > 20 && t < 60 ? flags(F.kick) : undefined),
+      }),
+    );
+    h.run(80);
+    const mine = ofType(h.events, 'attackStart').filter((e) => e.actor === 1);
+    expect(mine.map((e) => [e.tick, e.data['weapon']])).toEqual([[38, 'base:kick']]);
+  });
+
   it('a kick still cooling down does not convert a punch', () => {
     // Kick on tick 0 (its cycle and hit-stop end on tick 50, cooldown to tick 80), a swipe on 55.
     const h = makeHarness(
