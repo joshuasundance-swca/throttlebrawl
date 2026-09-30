@@ -116,6 +116,12 @@ export type SimEventType =
   | 'hit'
   | 'kick'
   | 'weaponGrab'
+  /**
+   * The steal cue: a held weapon's wind-up has reached its snatch window (render glints, audio
+   * cues). Actor = the holder, target = its current target when it has one; `data.weapon`, and
+   * `data.ticks`, the window's length in ticks at timeScale 1. The attack's causeId.
+   */
+  | 'stealWindow'
   /** A rider lost stability without going down (barrier scrape, rough landing, a first contact). */
   | 'wobble'
   | 'crash'
