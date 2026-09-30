@@ -6,6 +6,8 @@ export type { ContentRegistry, LoadOptions, PackFile, PackIndexRow } from './reg
 export type {
   BarkSet,
   Bike,
+  Crew,
+  EventModifier,
   HudLayout,
   PackManifest,
   RaceEvent,
@@ -14,6 +16,7 @@ export type {
   RoadFile,
   RoadNetworkFile,
   RouteFile,
+  Station,
   TrafficType,
   TuningPreset,
   Weapon,
