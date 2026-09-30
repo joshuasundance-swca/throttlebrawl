@@ -245,6 +245,16 @@ export interface SimBikeDef {
   /** Maximum lateral speed across the road, m/s. */
   steerRateMps: number;
   massKg: number;
+  /**
+   * The bike file's `combat.knockbackResistance`, 0..1 (M2 combat-3): the share of a landed hit's
+   * shove this bike shrugs off. Absent means 0; buildSimConfig always writes it.
+   */
+  knockbackResistance?: number;
+  /**
+   * The bike file's `combat.hitPowerScale` (M2 combat-3): scales the shove this rider's hits give.
+   * Absent means 1; buildSimConfig always writes it.
+   */
+  hitPowerScale?: number;
 }
 
 /**

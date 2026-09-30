@@ -185,3 +185,30 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
     expect(c.riders.filter((r) => r.controller.kind === 'ai')).toHaveLength(4);
   });
 });
+
+describe('app/config: a bike’s combat block reaches the sim (the combat-3 contract wire)', () => {
+  const withCombat = (combat: Record<string, unknown> | null) => {
+    const reg = buildRegistry(
+      basePackFiles().map((f) => {
+        const json = f.json as { type?: string; combat?: unknown };
+        if (json.type !== 'bike') return f;
+        const { combat: _drop, ...plain } = json;
+        return { ...f, json: combat ? { ...plain, combat } : plain };
+      }),
+    );
+    const c = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    return c.riders.find((r) => r.controller.kind === 'player')?.bike;
+  };
+
+  it('carries knockbackResistance and hitPowerScale into SimBikeDef', () => {
+    const bike = withCombat({ knockbackResistance: 0.4, hitPowerScale: 0.8 });
+    expect(bike?.knockbackResistance).toBe(0.4);
+    expect(bike?.hitPowerScale).toBe(0.8);
+  });
+
+  it('defaults to no resistance and full hit power when the bike has no combat block', () => {
+    const bike = withCombat(null);
+    expect(bike?.knockbackResistance).toBe(0);
+    expect(bike?.hitPowerScale).toBe(1);
+  });
+});
