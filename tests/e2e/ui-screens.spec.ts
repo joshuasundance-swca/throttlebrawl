@@ -153,6 +153,7 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
   await page.locator('#pause-quit').click();
   await expect(page.locator('#menu')).toBeVisible();
   await page.locator('#menu-settings').click();
+  await page.locator('#settings-tab-controls').click(); // the mirror lives on the Controls tab (ui-2)
   await page.locator('#settings-mirror').check();
   await page.keyboard.press('Escape'); // back to the menu
   await page.locator('#menu-race').click();
@@ -257,8 +258,11 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
 
   // Results.
   await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
-  await expect(page.locator('#results-place')).toHaveText(/^\d+(st|nd|rd|th) of \d+$/);
-  await expect(page.locator('#results-prize')).toContainText('Prize: $');
+  // A placing and its prize, or Busted and the fine (the batch rule: the seeded race's outcome
+  // shifts whenever the sim changes, and both are results screens).
+  await expect(page.locator('#results-place')).toHaveText(/^(\d+(st|nd|rd|th) of \d+|Busted)$/);
+  const busted = (await page.locator('#results-place').textContent()) === 'Busted';
+  await expect(page.locator('#results-prize')).toContainText(busted ? 'Fine: $' : 'Prize: $');
   await expect(page.locator('#results-race')).toBeVisible();
   console.log(`results: ${await page.locator('#results-place').textContent()}`);
 
