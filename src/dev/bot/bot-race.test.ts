@@ -21,7 +21,11 @@ function botRace(seed: number) {
     snap = sim.snapshot();
     for (const m of snap.entities) invalid ??= moverProblem(m, route);
     const me = snap.entities[playerId];
-    if (me && edges[edges.length - 1] !== me.road.edge) edges.push(me.road.edge);
+    // The route is the edges the bot rides: a crash's tumble body can flick across a junction and
+    // back within a tick or two (seed 7 after a box-truck hit, edge 8 -> 4 -> 8), which is not the
+    // bot turning back, so edges are counted only while riding.
+    const riding = me?.mode === 'Road' || me?.mode === 'Airborne';
+    if (me && riding && edges[edges.length - 1] !== me.road.edge) edges.push(me.road.edge);
     if (sim.tick % 60 === 0) hashes.push(sim.hash());
   }
   return { sim, playerId, edges, hashes, invalid, busted, stats: bot.stats() };

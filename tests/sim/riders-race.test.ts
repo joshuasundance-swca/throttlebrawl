@@ -29,6 +29,7 @@ function race(seed: number) {
   const events: SimEvent[] = [];
   let checkpointMoments = 0;
   let misplaced = 0;
+  const busted: number[] = [];
   while (!sim.isOver() && sim.tick < 60 * 900) {
     const me = sim.snapshot().entities[playerId];
     if (!me) throw new Error('no player');
@@ -37,18 +38,32 @@ function race(seed: number) {
     sim.step([quantizeInput({ ...a, flags: 0 })]);
     const now = sim.events();
     events.push(...now);
+    const racerIds = new Set(
+      sim
+        .snapshot()
+        .entities.filter((e) => e.kind === 'rider' && e.faction !== 'law')
+        .map((e) => e.id),
+    );
+    for (const e of now) {
+      if (e.type !== 'bust') continue;
+      const who = [e.target, e.actor].find(
+        (id) => id !== undefined && racerIds.has(id) && !busted.includes(id),
+      );
+      if (who !== undefined) busted.push(who);
+    }
     if (!now.some((e) => e.type === 'lapOrCheckpoint')) continue;
-    // At each route checkpoint: finishers in order, then the rest by distance to finish.
+    // At each route checkpoint: finishers in order, then the rest by distance to finish, then the
+    // busted in bust order (a cop can bust a rival too; the race places them last).
     checkpointMoments++;
     const snap = sim.snapshot();
     const racers = snap.entities.filter((e) => e.kind === 'rider' && e.faction !== 'law');
     const done = [...snap.race.finishOrder];
     const rest = racers
-      .filter((e) => !done.includes(e.id))
+      .filter((e) => !done.includes(e.id) && !busted.includes(e.id))
       .sort((p, q) => p.distanceToFinish - q.distanceToFinish || p.id - q.id)
       .map((e) => e.id);
     const byPlace = [...racers].sort((p, q) => p.place - q.place).map((e) => e.id);
-    if (byPlace.join() !== [...done, ...rest].join()) misplaced++;
+    if (byPlace.join() !== [...done, ...rest, ...busted].join()) misplaced++;
   }
   const snap = sim.snapshot();
   return {
