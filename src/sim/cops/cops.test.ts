@@ -3,15 +3,17 @@ import { tuningDefaults } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
 import {
   createSim,
+  InputFlag,
   quantizeInput,
   SIM_TUNING,
   type SimConfig,
   type SimEvent,
   type SimRiderDef,
 } from '../api';
+import { KICK, PUNCH } from '../combat/harness.test-util';
 import { ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
-import { copsState, copsSystem, COPS_TUNING } from './index';
+import { copsState, copsSystem, COPS_TUNING, HANG_BACK_TICKS, MOVE_IN_TICKS } from './index';
 
 const bike = {
   contentId: 'base:bike',
@@ -50,7 +52,7 @@ const COP: SimRiderDef = {
   controller: { kind: 'cop' },
   bike: { ...bike, topSpeedMps: 38 * 1.05 },
   massKg: 95,
-  healthMax: 120,
+  healthMax: 100,
   law: {
     agency: 'base:test-deputies',
     bustRadiusM: 14,
@@ -368,21 +370,104 @@ describe('cops: the chase', () => {
     expect(sim.snapshot().entities[COP_ID]?.speed).toBeGreaterThan(10); // then gives chase
   });
 
-  it('catches a player who stops, then holds the follow gap behind him instead of shadowing', () => {
+  it('catches a player who stops, and ends up stopped alongside him without passing', () => {
     const { sim, events, gaps } = runChase();
     const sirenOn = events.find((e) => e.type === 'siren' && e.data['on'] === true);
     expect(sirenOn?.tick).toBe(60);
     // The cop starts on the grid beside the player and falls behind while parked. The player
-    // stops hard after 12 s but stays upright: the cop pulls up behind him, near the 40 m gap
-    // (a little closer, because the player brakes harder than the cop plans for).
+    // stops hard after 12 s but stays upright; the cop catches up, and after his spell hanging
+    // back he moves in alongside a player who is not going anywhere.
     const final = gaps[gaps.length - 1] ?? Infinity;
-    expect(final).toBeGreaterThan(20);
-    expect(final).toBeLessThan(50);
-    expect(Math.min(...gaps.slice(60 * 10))).toBeGreaterThan(14); // never inside bust range of a rider who is up
+    expect(Math.abs(final)).toBeLessThanOrEqual(4);
+    expect(Math.min(...gaps)).toBeGreaterThan(-2); // never passes him
     expect(sim.snapshot().entities[COP_ID]?.speed).toBeLessThan(1);
     for (const e of sim.snapshot().entities) {
       expect(Number.isFinite(e.road.s) && Number.isFinite(e.road.d)).toBe(true);
     }
+    expect(events.filter((e) => e.type === 'bust')).toHaveLength(0);
+  });
+
+  it('rides in alongside a cruising player inside punch and kick reach, then drops back', () => {
+    const w = copWorld({ 'cops.followGapM': 40 });
+    w.place(0, 20); // the rival sits out of the way at the back
+    w.place(PLAYER_ID, 160);
+    w.place(COP_ID, 100);
+    for (const id of [PLAYER_ID, COP_ID]) {
+      const m = w.world.movers[id];
+      if (m) m.speed = 25;
+    }
+    const inputs = w.world.inputs;
+    const ahead: number[] = [];
+    const across: number[] = [];
+    for (let t = 0; t < 60 * 30; t++) {
+      const me = w.world.movers[PLAYER_ID];
+      const cop = w.world.movers[COP_ID];
+      if (!me || !cop) throw new Error('missing movers');
+      // The player cruises in his lane (steering like the fixture race in sim.test.ts).
+      const steer = Math.max(-1, Math.min(1, (1.7 - me.pos.d) * 0.3 - me.yaw * 2));
+      inputs[PLAYER_ID] = quantizeInput({ throttle: 0.55, brake: 0, steer, flags: 0 });
+      inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      w.step(1, true);
+      const route = w.config.route;
+      ahead.push(route.progressAt(me.pos.edge, me.pos.s) - route.progressAt(cop.pos.edge, cop.pos.s));
+      across.push(me.pos.d - cop.pos.d);
+    }
+    const onStation = ahead.findIndex((g) => g < 50);
+    const spell = ahead.slice(onStation, onStation + 60 * 7);
+    expect(Math.min(...spell)).toBeGreaterThan(14);
+    // Moving in: inside the auto-target box and the punch's sideways reach, at the player's speed.
+    const inReach = ahead.findIndex(
+      (g, t) => t > onStation && Math.abs(g) <= 1.2 && Math.abs(across[t] ?? 99) <= 1.4,
+    );
+    expect(inReach).toBeGreaterThan(onStation + HANG_BACK_TICKS - 60);
+    // ...and after the spell alongside he drops back toward the follow gap.
+    expect(Math.max(...ahead.slice(inReach + MOVE_IN_TICKS))).toBeGreaterThan(25);
+    expect(w.busts()).toHaveLength(0);
+  });
+
+  it('can be knocked off like any rider: punches take his health, he tumbles, then rides again', () => {
+    const config = {
+      ...fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40 }),
+      weapons: [PUNCH, KICK],
+    };
+    const sim = createSim(config);
+    const events: SimEvent[] = [];
+    let downAt = -1;
+    let upAgainAt = -1;
+    for (let t = 0; t < 60 * 60 && upAgainAt < 0; t++) {
+      const snap = sim.snapshot();
+      const me = snap.entities[PLAYER_ID];
+      const cop = snap.entities[COP_ID];
+      if (!me || !cop) throw new Error('missing entities');
+      // Cruise in lane; punch when the cop is inside punch reach, kick when only kick reach fits.
+      const ds = cop.progress - me.progress;
+      const dd = cop.road.d - me.road.d;
+      const up = cop.mode === 'Road';
+      const punch = up && Math.abs(ds) <= 1.1 && Math.abs(dd) <= 1.35;
+      const kick = up && !punch && Math.abs(ds) <= 0.9 && Math.abs(dd) <= 1.65;
+      const side = dd < 0 ? InputFlag.attackSideLeft : InputFlag.attackSideRight;
+      // A fresh press every half second (a held button is one press).
+      const press = t % 30 === 0;
+      const flags = !press
+        ? 0
+        : punch
+          ? InputFlag.attack | side
+          : kick
+            ? InputFlag.attack | InputFlag.kick | side
+            : 0;
+      const steer = Math.max(-1, Math.min(1, (1.7 - me.road.d) * 0.3 - me.road.yaw * 2));
+      sim.step([quantizeInput({ throttle: 0.55, brake: 0, steer, flags })]);
+      events.push(...sim.events());
+      const mode = sim.snapshot().entities[COP_ID]?.mode;
+      if (downAt < 0 && mode === 'Tumble') downAt = t;
+      if (downAt >= 0 && mode === 'Road') upAgainAt = t;
+    }
+    const hitsOnCop = events.filter((e) => e.type === 'hit' && e.target === COP_ID);
+    const knockedOff = events.find((e) => e.type === 'crash' && e.actor === COP_ID);
+    expect(hitsOnCop.length).toBeGreaterThan(0);
+    expect(knockedOff?.data['reason']).toBe('knockedOff');
+    expect(downAt).toBeGreaterThan(0);
+    expect(upAgainAt).toBeGreaterThan(downAt); // run back and remounted
     expect(events.filter((e) => e.type === 'bust')).toHaveLength(0);
   });
 
@@ -402,6 +487,34 @@ describe('cops: the chase', () => {
     const off = w.events.find((e) => e.type === 'siren' && e.data['on'] === false);
     expect(off?.tick).toBe(bust?.tick);
     expect(cop?.speed).toBeLessThan(0.5);
+  });
+
+  it('end to end: crash into the barrier with him alongside, and he busts you', () => {
+    // A touchy barrier (crash from 3 m/s into it), so a swerve at cruising speed is a sure crash.
+    const sim = createSim(
+      fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+    );
+    const events: SimEvent[] = [];
+    let swerve = false;
+    for (let t = 0; t < 60 * 60 && !events.some((e) => e.type === 'bust'); t++) {
+      const snap = sim.snapshot();
+      const me = snap.entities[PLAYER_ID];
+      const cop = snap.entities[COP_ID];
+      if (!me || !cop) throw new Error('missing entities');
+      // Cruise in lane until the cop is alongside, then swerve hard into the right barrier.
+      if (!swerve && me.speed > 20 && Math.abs(cop.progress - me.progress) <= 3) swerve = true;
+      const keep = Math.max(-1, Math.min(1, (1.7 - me.road.d) * 0.3 - me.road.yaw * 2));
+      sim.step([quantizeInput({ throttle: swerve ? 1 : 0.7, brake: 0, steer: swerve ? 1 : keep, flags: 0 })]);
+      events.push(...sim.events());
+    }
+    const crash = events.find((e) => e.type === 'crash' && e.actor === PLAYER_ID);
+    const bust = events.find((e) => e.type === 'bust');
+    expect(swerve).toBe(true);
+    expect(crash).toBeDefined();
+    expect(bust?.actor).toBe(COP_ID);
+    expect(bust?.target).toBe(PLAYER_ID);
+    expect(bust?.data['fineCash']).toBe(400);
+    expect((bust?.tick ?? Infinity) - (crash?.tick ?? 0)).toBeLessThan(60 * 8);
   });
 
   it('a scripted chase gives the same hash every run', () => {
