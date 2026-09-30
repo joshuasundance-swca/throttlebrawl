@@ -37,10 +37,20 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHeadlessRace } from '../../src/app';
+import { buildSimConfig, streamForEvent } from '../../src/app/config';
+import { loadBasePack } from '../../src/content';
 import { createBot, moverProblem, type BotStats } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import type { EntitySnapshot, SimEvent, SimInput, SimSnapshot } from '../../src/sim/api';
+import {
+  createSim,
+  type EntitySnapshot,
+  type RouteQueries,
+  type Sim,
+  type SimConfig,
+  type SimEvent,
+  type SimInput,
+  type SimSnapshot,
+} from '../../src/sim/api';
 import type { ImportGlobFunction } from 'vite';
 
 declare global {
@@ -157,10 +167,27 @@ function sample(m: EntitySnapshot): MoverSample {
   };
 }
 
+/**
+ * The base event's race for a seed, with draft content included, as the dev and staging builds
+ * (and CI's browser race) load it: lanes land new content as drafts (traffic types, for one), and
+ * the batch must cover it. app's createHeadlessRace loads live content only, like the prod build.
+ */
+export function createBatchRace(seed: number): {
+  sim: Sim;
+  config: SimConfig;
+  route: RouteQueries;
+  playerId: number;
+} {
+  const reg = loadBasePack({ includeDrafts: true });
+  const config = buildSimConfig(reg, streamForEvent(reg), { seed });
+  const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
+  return { sim: createSim(config), config, route: config.route, playerId };
+}
+
 /** Runs one seeded race with the bot in the player slot, then replays it from its inputs. */
 export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult {
   const t0 = performance.now();
-  const { sim, config, route, playerId } = createHeadlessRace({ seed });
+  const { sim, config, route, playerId } = createBatchRace(seed);
   const bot = createBot();
   const inputs: SimInput[] = [];
   const hashes: number[] = [];
@@ -230,7 +257,7 @@ export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult 
   // The same-run replay: a fresh sim from the same seed, stepped with the recorded inputs.
   const replayHashes: number[] = [];
   if (!opts.noReplay) {
-    const replay = createHeadlessRace({ seed }).sim;
+    const replay = createBatchRace(seed).sim;
     for (const input of inputs) {
       replay.step([input]);
       if (replay.tick % HASH_EVERY_TICKS === 0) replayHashes.push(replay.hash());
