@@ -1,6 +1,7 @@
 // A small world for combat tests: riders placed by hand on one straight fixture road, driven by a
 // script, moved by a plain kinematic stand-in for the riders phase (speed along s, brake at the
 // bike's rate), so these tests pin combat's rules and not the riding model's feel.
+import { tuningDefaults } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork } from '../../road';
 import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimWeaponDef } from '../types';
 import { InputFlag } from '../types';
@@ -14,9 +15,12 @@ import {
   type SystemName,
   type World,
 } from '../world';
-import { combatSystem } from './index';
+import { COMBAT_TUNING, combatSystem } from './index';
 
-/** The M1 starting numbers (docs/milestones/M1.md), as buildSimConfig resolves the base pack. */
+/**
+ * The M1 timing numbers (docs/milestones/M1.md), as buildSimConfig resolves the base pack, with
+ * combat-3's shove speeds (packs/base/weapons/: the kick shoves about a lane, the punch staggers).
+ */
 export const PUNCH: SimWeaponDef = {
   contentId: 'base:punch',
   unarmed: true,
@@ -28,7 +32,7 @@ export const PUNCH: SimWeaponDef = {
   cooldownTicks: 0,
   damage: 10,
   hitStopMs: 60,
-  knockbackMps: 2,
+  knockbackMps: 3.3,
   staggerTicks: 12,
   steal: null,
 };
@@ -44,7 +48,7 @@ export const KICK: SimWeaponDef = {
   cooldownTicks: 30,
   damage: 18,
   hitStopMs: 60,
-  knockbackMps: 5,
+  knockbackMps: 18,
   staggerTicks: 21,
   steal: null,
 };
@@ -61,7 +65,7 @@ export const PIPE: SimWeaponDef = {
   cooldownTicks: 0,
   damage: 22,
   hitStopMs: 70,
-  knockbackMps: 4.5,
+  knockbackMps: 7.5,
   staggerTicks: 21,
   steal: { startTick: 7, endTick: 20 },
 };
@@ -75,6 +79,11 @@ export interface Placement {
   /** 'player' riders take part in hit-stop; 'cop' is faction law. */
   role?: 'player' | 'rival' | 'cop';
   healthMax?: number;
+  /** Rider mass, kg (80 when absent); the bike adds 180. */
+  massKg?: number;
+  /** The bike's `combat` block (combat-3): resistance 0..1 and hit power. */
+  knockbackResistance?: number;
+  hitPowerScale?: number;
 }
 
 const BIKE = {
@@ -112,8 +121,12 @@ export function harnessConfig(
         : p.role === 'cop'
           ? { kind: 'cop' }
           : { kind: 'ai', style: 'racer' },
-    bike: BIKE,
-    massKg: 80,
+    bike: {
+      ...BIKE,
+      ...(p.knockbackResistance !== undefined ? { knockbackResistance: p.knockbackResistance } : {}),
+      ...(p.hitPowerScale !== undefined ? { hitPowerScale: p.hitPowerScale } : {}),
+    },
+    massKg: p.massKg ?? 80,
     healthMax: p.healthMax ?? 100,
   }));
   return {
@@ -132,7 +145,7 @@ export function harnessConfig(
     route,
     modifiers: [],
     grudges: {},
-    tuning: { 'combat.hitStopScale': 1, 'combat.knockbackScale': 1, ...tuning },
+    tuning: { ...tuningDefaults(COMBAT_TUNING), ...tuning },
     difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
     assists: 'off',
     slowMo: false,
@@ -178,7 +191,7 @@ export function makeHarness(
     init(w, c) {
       const health: number[] = [];
       for (const m of w.movers) health[m.id] = c.riders[m.riderIndex]?.healthMax ?? 0;
-      w.systems['riders'] = { throttle: [], brake: [], rpm: [], gear: [], lean: [], health };
+      w.systems['riders'] = { throttle: [], brake: [], rpm: [], gear: [], lean: [], health, wobble: [] };
     },
     step(w, c) {
       const dt = w.timeScale / 60;
