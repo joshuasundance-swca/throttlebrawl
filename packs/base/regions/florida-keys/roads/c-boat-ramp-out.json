@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-boat-ramp-out",
+  "name": "Boat yard exit",
+  "realName": null,
+  "network": "keys-m1",
+  "from": "j-keys-m1-2",
+  "to": "j-keys-m1-2",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "palms" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -107.4902, -107.638, -107.7745, -107.9, -108.0151, -108.1204, -108.2167, -108.3049, -108.3862,
+        -108.4617, -108.5325, -108.5998, -108.6646, -108.7279, -108.7905, -108.8529
+      ],
+      "y": [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+      "z": [
+        -1109.2432, -1111.2378, -1113.2331, -1115.2291, -1117.2258, -1119.2231, -1121.2207, -1123.2188,
+        -1125.2171, -1127.2157, -1129.2145, -1131.2133, -1133.2123, -1135.2113, -1137.2103, -1139.2093
+      ],
+      "kappa": [
+        0.002850758, 0.002825476, 0.002750302, 0.002627264, 0.002459739, 0.002252459, 0.002011504,
+        0.001744307, 0.001459654, 0.00116768, 0.000879873, 0.0006090711, 0.0003694653, 0.0001765973,
+        0.00004736057, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/keys-m1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

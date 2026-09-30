@@ -1,7 +1,9 @@
 // The M1 track, hand-authored (M1 road-1): about 3.5 km of Keys-flavoured coastal highway, only
 // inspired by the Overseas Highway (the real one is the GIS side quest's). One main road through
-// Catmull-Rom control points, cut into three roads joined by pass-through junctions. The Keys are
-// nearly flat, so the hills are exaggerated bridge humps. Every name and joke is a placeholder
+// Catmull-Rom control points, cut into roads. Road-2 adds one junction pair: the boat-ramp cut
+// splits off after the Marina Run, jumps a ramp and rejoins at the Pelican Channel Bridge, about
+// 50 m shorter than the S-bends it skips. The Keys are nearly flat, so the hills are exaggerated
+// bridge humps. Every name and joke is a placeholder
 // the maintainer may veto. Bake with `node tools/road/bake.mjs`.
 //
 // Frame: metres, x east, z south (north is -z). The start faces north.
@@ -21,28 +23,30 @@ export const KEYS_M1: TrackSource = {
     region: 'florida-keys',
     crs: { kind: 'tmerc', originLatDeg: 24.7, originLonDeg: -81.1, originElevM: 0 },
     notes:
-      'The M1 track: one main road cut into three roads joined end to end by pass-through junctions. road-2 adds the junction and the ramp shortcut.',
+      'The M1 track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through.',
   },
   createdAt: '2026-09-30',
   points: [
+    // The marina S-bends swing west (left) first, so the boat-ramp cut runs straight up their
+    // east side. Everything after them is the road-1 shape, moved 220 m west.
     [0, 0],
     [0, -220],
-    [40, -410],
-    [150, -570],
-    [190, -760],
-    [110, -960],
-    [110, -1200],
-    [160, -1430],
-    [280, -1630],
-    [440, -1780],
-    [640, -1880],
-    [860, -1920],
-    [1060, -1930],
-    [1240, -2010],
-    [1330, -2190],
-    [1320, -2400],
-    [1250, -2600],
-    [1250, -2800],
+    [-40, -410],
+    [-150, -570],
+    [-190, -760],
+    [-110, -960],
+    [-110, -1200],
+    [-60, -1430],
+    [60, -1630],
+    [220, -1780],
+    [420, -1880],
+    [640, -1920],
+    [840, -1930],
+    [1020, -2010],
+    [1110, -2190],
+    [1100, -2400],
+    [1030, -2600],
+    [1030, -2800],
   ],
   baseElevationM: 1.5,
   spacingM: 2,
@@ -52,27 +56,64 @@ export const KEYS_M1: TrackSource = {
     {
       id: 'm1-marina-run',
       name: 'Marina Run',
-      lengthM: 1200,
+      lengthM: 300,
       speedLimitMps: 24.6,
       surface: 'asphalt',
-      humps: [{ centreM: 760, lengthM: 220, heightM: 2.5 }],
+      humps: [],
       tags: [
-        { s0: 0, s1: 520, side: 'right', tag: 'marina' },
-        { s0: 0, s1: 520, side: 'left', tag: 'strip-mall' },
-        { s0: 520, s1: 'end', side: 'both', tag: 'palms' },
+        { s0: 0, s1: 'end', side: 'right', tag: 'marina' },
+        { s0: 0, s1: 'end', side: 'left', tag: 'strip-mall' },
+      ],
+      features: [{ kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 5.5, d1: 9 }],
+      barriers: [],
+    },
+    {
+      id: 'c-marina-split-main',
+      name: 'Marina split',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'marina' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'm1-marina-bends',
+      name: 'Marina Bends',
+      lengthM: 840,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 430, lengthM: 220, heightM: 2.5 }],
+      tags: [
+        { s0: 0, s1: 190, side: 'left', tag: 'marina' },
+        { s0: 0, s1: 190, side: 'right', tag: 'strip-mall' },
+        { s0: 190, s1: 'end', side: 'both', tag: 'palms' },
       ],
       features: [
-        { kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 5.5, d1: 9 },
         {
           kind: 'roadsideZone',
           id: 'marina-boardwalk',
-          s0: 380,
-          s1: 480,
-          d0: 5,
-          d1: 12,
+          s0: 50,
+          s1: 150,
+          d0: -12,
+          d1: -5,
           params: { spawns: 'pedestrians' },
         },
       ],
+      barriers: [],
+    },
+    {
+      id: 'c-marina-merge-main',
+      name: 'Marina merge',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'palms' }],
+      features: [],
       barriers: [],
     },
     {
@@ -137,13 +178,69 @@ export const KEYS_M1: TrackSource = {
       barriers: [],
     },
   ],
+  branches: [
+    {
+      // The boat-ramp cut: a gravelly service lane through the boat yard, straight up the east
+      // side of the S-bends, over one launch ramp. Hug the right edge before the split to take it.
+      leave: {
+        road: 'm1-marina-run',
+        offsetM: 3.4,
+        lane: 'R1',
+        zone: { lengthM: 40, d0: 2.4, d1: 4.9 },
+      },
+      join: { road: 'm1-pelican-bridge', offsetM: 2.4, lane: 'R1' },
+      turnsM: [60, 60],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      roads: [
+        {
+          id: 'c-boat-ramp-in',
+          name: 'Boat yard gate',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'asphalt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'marina' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-boat-ramp-cut',
+          name: 'Boat Ramp Cut',
+          speedLimitMps: 24.6,
+          surface: 'asphalt',
+          humps: [],
+          ramps: [{ id: 'boat-ramp', s0: 400, lengthM: 15, heightM: 1.5, backM: 5 }],
+          tags: [
+            { s0: 0, s1: 'end', side: 'both', tag: 'marina' },
+            { s0: 300, s1: 'end', side: 'right', tag: 'water-shallow' },
+          ],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'c-boat-ramp-out',
+          name: 'Boat yard exit',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'asphalt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'palms' }],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
+  ],
   route: {
     id: 'm1-skeleton-sprint',
     start: { road: 'm1-marina-run', s: 40, dir: 1 },
     finish: { road: 'm1-sandbar-causeway', s: -40 },
+    // On roads both paths share, so a shortcut rider passes them too.
     checkpoints: [
-      { road: 'm1-marina-run', s: 900 },
-      { road: 'm1-pelican-bridge', s: 625 },
+      { road: 'm1-pelican-bridge', s: 300 },
+      { road: 'm1-pelican-bridge', s: 1000 },
       { road: 'm1-sandbar-causeway', s: 500 },
     ],
     startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
