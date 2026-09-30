@@ -5,7 +5,7 @@
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3 } from 'three';
 import type { Edge, RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
-import { StripAccumulator, type Point3 } from './geometry';
+import { mergeBoxes, StripAccumulator, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 
@@ -218,7 +218,44 @@ interface Clip {
   goreR: boolean;
 }
 
-export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: RoadDressing): RoadScene {
+export interface RoadSceneOptions {
+  /** Roadside palms: 1 = one per PALM_SPACING_M a side, 0 = none (`render.roadsideDensity`). */
+  roadsideDensity?: number;
+}
+
+/** Metres between roadside palms on one side at density 1. [default] */
+const PALM_SPACING_M = 20;
+/** Palms stand this far past the verge, plus up to PALM_SPREAD_M more. [default] */
+const PALM_OFFSET_M = 2.2;
+const PALM_SPREAD_M = 5;
+
+/** A placeholder palm on its own little sand mound (so it can stand in the shallows). */
+function palmGeometry() {
+  const parts: BoxPart[] = [
+    { size: [2.6, 1.2, 2.6], at: [0, -0.55, 0], color: '#d8c08c' },
+    { size: [0.28, 2.4, 0.28], at: [0.1, 1.2, 0], color: '#8a6a45', rotX: 0.05 },
+    { size: [0.24, 2.4, 0.24], at: [0.35, 3.4, 0.1], color: '#7d5f3d', rotX: -0.12 },
+    { size: [3.2, 0.25, 0.9], at: [0.5, 4.7, 0.1], color: '#3f8f4a', rotY: 0.4 },
+    { size: [0.9, 0.25, 3.2], at: [0.5, 4.75, 0.1], color: '#357d40', rotY: 0.4 },
+  ];
+  return mergeBoxes(parts);
+}
+
+/** A small deterministic hash to 0..1 (placement jitter; presentation only). */
+function hash01(a: number, b: number, c: number): number {
+  let h = Math.imul(a + 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.round(b * 16) + 0x27d4eb2f, 0xc2b2ae35);
+  h ^= Math.imul(c + 0x165667b1, 0x27d4eb2f);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h ^= h >>> 12;
+  return (h >>> 0) / 4294967296;
+}
+
+export function buildRoadScene(
+  road: RoadNetwork,
+  look: LookStyle,
+  dressing?: RoadDressing,
+  opts: RoadSceneOptions = {},
+): RoadScene {
   const acc: Partial<Record<Layer, StripAccumulator>> = {};
   const strip = (kind: Layer): StripAccumulator => (acc[kind] ??= new StripAccumulator());
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
@@ -241,6 +278,8 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   const postSpots: Point3[] = [];
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
+  const palmSpots: { p: Point3; turn: number; size: number }[] = [];
+  const density = Math.max(0, opts.roadsideDensity ?? 1);
   let railM = 0;
   let rampStripes = 0;
   let landM = 0;
@@ -488,6 +527,31 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
         if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
       }
     }
+    // Roadside palms (playtest 1 item 10: things close by the road, for a sense of speed). Each
+    // stands a few metres past the verge on its own sand mound, jittered along and across; none on
+    // a deck or beside a rail, and none on or next to another road.
+    if (density > 0) {
+      const spacing = PALM_SPACING_M / density;
+      for (const side of [-1, 1] as const) {
+        const rails = barriersFor(road, e, dress, side < 0 ? 'left' : 'right');
+        const outer = side < 0 ? -outerL : outerR;
+        for (let k = 0; ; k++) {
+          const s = (k + 0.2 + 0.6 * hash01(e.index, k, side)) * spacing;
+          if (s > e.length) break;
+          if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue;
+          if (rails.some((b) => s >= b.s0 - 5 && s <= b.s1 + 5)) continue;
+          const d = side * (outer + PALM_OFFSET_M + PALM_SPREAD_M * hash01(e.index, k, side + 7));
+          const p = w(e.index, s, d, LAND_LIFT_M);
+          if (locator.covered(p.x, p.z, e.index, (o) => [o.dMin - VERGE_M - 2, o.dMax + VERGE_M + 2]))
+            continue;
+          palmSpots.push({
+            p,
+            turn: hash01(e.index, k, side + 13) * Math.PI * 2,
+            size: 0.8 + 0.4 * hash01(k, s, side),
+          });
+        }
+      }
+    }
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
     for (const [side, d] of [
       ['left', outerL + 0.05],
@@ -587,6 +651,23 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   // Unit-height boxes standing on their base, stretched by the instance scale.
   addInstanced('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
   addInstanced('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
+  if (palmSpots.length) {
+    const geo = palmGeometry();
+    const palms = new InstancedMesh(geo, look.material('prop', { vertexColors: true }), palmSpots.length);
+    const turn = new Quaternion();
+    const up = new Vector3(0, 1, 0);
+    palmSpots.forEach(({ p, turn: a, size }, i) =>
+      palms.setMatrixAt(
+        i,
+        m.compose(new Vector3(p.x, p.y, p.z), turn.setFromAxisAngle(up, a), new Vector3(size, size, size)),
+      ),
+    );
+    palms.instanceMatrix.needsUpdate = true;
+    palms.computeBoundingSphere();
+    palms.name = 'road-palms';
+    triangles += ((geo.index?.count ?? 0) / 3) * palmSpots.length;
+    group.add(palms);
+  }
 
   // The sea, at world y = 0 (sea level in the network frame).
   const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
