@@ -65,11 +65,17 @@ export interface AnalogInput {
   flags: number;
 }
 
+/**
+ * Rounds to a canonical integer: never -0 (Math.round(-0.3) is -0, which JSON writes as 0, so a
+ * recording replayed from a file would hash differently) and never NaN.
+ */
+const level = (x: number, scale: number) => Math.round(x * scale) || 0;
+
 export function quantizeInput(a: AnalogInput): SimInput {
   return {
-    steer: Math.round(clamp(a.steer, -1, 1) * 127),
-    throttle: Math.round(clamp(a.throttle, 0, 1) * 255),
-    brake: Math.round(clamp(a.brake, 0, 1) * 255),
+    steer: level(clamp(a.steer, -1, 1), 127),
+    throttle: level(clamp(a.throttle, 0, 1), 255),
+    brake: level(clamp(a.brake, 0, 1), 255),
     flags: a.flags & 0xff,
   };
 }
