@@ -2,7 +2,9 @@
 // "Ownership table"). Capabilities the module map does not draw travel as plain callbacks typed in
 // core (reached through sim/api): main.ts injects onCopyReport; app wires resumeAudio (audio ->
 // platform), recordTuningChange (tuning -> replay and the sim), packIndex (content -> assets), and
-// hands rendererStats, roadQueries and getReplayAndSettings to dev/ through the AppHandle.
+// hands rendererStats, roadQueries and getReplayAndSettings to dev/ through the AppHandle. main.ts
+// may also inject onSaveDebugFile (dev-3's "save debug file"); the AppHandle's replayFile() and
+// checkReplay() let dev/ carry and verify the recording without importing replay/.
 // app-2 owns this folder after app-1.
 import { createAssetManifest } from '../assets';
 import { createAudio } from '../audio';
@@ -11,7 +13,7 @@ import { assetIndex, contentHashes, loadBasePack, lookup } from '../content';
 import { createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity } from '../render';
-import { createInputRecorder, REPLAY_FORMAT_VERSION } from '../replay';
+import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import { createSettingsStore, type StorageLike } from '../save';
 import {
   createSim,
@@ -50,6 +52,20 @@ export interface AppBuild {
 /** Callbacks from the composition root (src/main.ts). */
 export interface AppCallbacks {
   onCopyReport: OnCopyReport;
+  /** The pause screen's "save debug file" (dev-3). The button stays hidden without it. */
+  onSaveDebugFile?: () => Promise<void>;
+}
+
+/** What replaying a recording against a fresh sim found (`AppHandle.checkReplay`). */
+export interface ReplayCheck {
+  /** Ticks stepped. */
+  ticks: number;
+  /** State hashes compared (every 60 ticks, plus the end once the race finished). */
+  checked: number;
+  /** The first checkpoint whose hash differs, or null when every hash matched. */
+  desync: { tick: number; expected: number; actual: number } | null;
+  /** The recording's replay key equals this build's. */
+  keyMatches: boolean;
 }
 
 export interface AppOptions {
@@ -89,6 +105,10 @@ export interface AppHandle {
   rendererStats: RendererStatsFn;
   roadQueries: RoadQueriesFn;
   getReplayAndSettings: GetReplayAndSettings;
+  /** The last race's recording as the run-length-encoded replay file (plain JSON), or null. */
+  replayFile(): unknown;
+  /** Replays a replay file (parsed JSON) against a fresh sim of this build and compares hashes. */
+  checkReplay(file: unknown): ReplayCheck;
   frameStats(): FrameStats;
   /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
   stepTimes(): readonly number[];
@@ -187,6 +207,7 @@ export function createApp(opts: AppOptions): AppHandle {
       onRace: () => handle.startRace(),
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
+      ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
       onPause: () => {
         loop.pause();
         audio.suspend();
@@ -248,7 +269,10 @@ export function createApp(opts: AppOptions): AppHandle {
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     stepListener?.(curr, events);
-    if (race.isOver()) finishRace();
+    if (race.isOver()) {
+      recorder.finish(tick, race.hash());
+      finishRace();
+    }
   };
 
   let attractPose: CameraPose | null = null;
@@ -314,13 +338,8 @@ export function createApp(opts: AppOptions): AppHandle {
       if (!go('race')) return;
       race = newSim();
       pendingTuning.length = 0;
-      recorder.begin({
-        formatVersion: REPLAY_FORMAT_VERSION,
-        replayKey,
-        seed,
-        eventId: race.config.event.contentId,
-        tuning: { ...race.config.tuning },
-      });
+      // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
+      recorder.beginRace(race, replayKey);
       prev = null;
       curr = race.snapshot();
       recent = [];
@@ -339,6 +358,20 @@ export function createApp(opts: AppOptions): AppHandle {
       replay: recorder.current(),
       settings: settingsStore.record() ?? settings,
     }),
+    replayFile: () => recorder.file(),
+    checkReplay(file) {
+      const rec = decodeReplay(file);
+      // M1 has one event and one region, so the road and route handles are this build's.
+      const base = buildSimConfig(registry, stream, { seed: rec.header.seed, eventId: DEFAULT_EVENT });
+      const sim = createSim(configFromHeader(rec.header, base.road, base.route));
+      const result = createReplayController(rec).run(sim);
+      return {
+        ticks: result.ticks,
+        checked: result.checked,
+        desync: result.desync,
+        keyMatches: rec.header.replayKey === replayKey,
+      };
+    },
     frameStats() {
       const times = [...loop.frameTimes()].sort((a, b) => a - b);
       return {
