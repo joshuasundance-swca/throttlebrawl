@@ -12,6 +12,9 @@ import { ALL_TUNING } from './tuning';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Fixtures are written at test time under the git-ignored .cache/, so no broken JSON is committed.
 const FIXTURE = '.cache/test-fixtures/packs-check';
+// The CLI tests spawn Node plus Vite's module runner. That takes about a second alone, but far
+// longer when parallel agents load the dev machine, so they get a generous limit.
+const CLI_TIMEOUT_MS = 120_000;
 
 function write(rel: string, content: unknown): void {
   const file = path.join(root, FIXTURE, rel);
@@ -89,29 +92,37 @@ describe('packs:check', () => {
     expect(row?.hash).toBe(createHash('sha256').update(bytes).digest('hex'));
   });
 
-  it('fails a broken pack through the real CLI, with repo paths and JSON pointers', () => {
-    const run = spawnSync(process.execPath, ['tools/packs/check.mjs', '--packs', `${FIXTURE}/bad`], {
-      cwd: root,
-      encoding: 'utf8',
-    });
-    expect(run.status).toBe(1);
-    const out = `${run.stdout}\n${run.stderr}`;
-    const pack = `${FIXTURE}/bad/base`;
-    expect(out).toContain(`${pack}/weapons/trailing-comma.json: not strict JSON`);
-    expect(out).toContain(`${pack}/bikes/slowpoke.json /handling/topSpeedMps:`);
-    expect(out).toContain(
-      `${pack}/weapons/long-pipe.json /steal/windowEndS: the steal window ends at tick 30`,
-    );
-    expect(out).toMatch(/\[examined\] 5 pack files in 1 pack\(s\)/);
-    expect(out).toContain('packs:check: FAILED');
-  }, 30_000);
+  it(
+    'fails a broken pack through the real CLI, with repo paths and JSON pointers',
+    () => {
+      const run = spawnSync(process.execPath, ['tools/packs/check.mjs', '--packs', `${FIXTURE}/bad`], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      expect(run.status).toBe(1);
+      const out = `${run.stdout}\n${run.stderr}`;
+      const pack = `${FIXTURE}/bad/base`;
+      expect(out).toContain(`${pack}/weapons/trailing-comma.json: not strict JSON`);
+      expect(out).toContain(`${pack}/bikes/slowpoke.json /handling/topSpeedMps:`);
+      expect(out).toContain(
+        `${pack}/weapons/long-pipe.json /steal/windowEndS: the steal window ends at tick 30`,
+      );
+      expect(out).toMatch(/\[examined\] 5 pack files in 1 pack\(s\)/);
+      expect(out).toContain('packs:check: FAILED');
+    },
+    CLI_TIMEOUT_MS,
+  );
 
-  it('prints a nonzero examined count for the real packs through the npm entry', () => {
-    const run = spawnSync(process.execPath, ['scripts/packs-check.mjs'], { cwd: root, encoding: 'utf8' });
-    expect(run.status).toBe(0);
-    const n = /\[examined\] (\d+) pack files/.exec(run.stdout)?.[1];
-    expect(Number(n)).toBeGreaterThan(0);
-  }, 30_000);
+  it(
+    'prints a nonzero examined count for the real packs through the npm entry',
+    () => {
+      const run = spawnSync(process.execPath, ['scripts/packs-check.mjs'], { cwd: root, encoding: 'utf8' });
+      expect(run.status).toBe(0);
+      const n = /\[examined\] (\d+) pack files/.exec(run.stdout)?.[1];
+      expect(Number(n)).toBeGreaterThan(0);
+    },
+    CLI_TIMEOUT_MS,
+  );
 
   it('knows the tuning declarations of every module that has them, each id once', () => {
     const ids = ALL_TUNING.map((d) => d.id);
