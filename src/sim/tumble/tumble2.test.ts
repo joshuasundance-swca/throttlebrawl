@@ -490,6 +490,29 @@ describe('tumble-2: over the rail', () => {
   });
 });
 
+describe('tumble-2: the hand-back side', () => {
+  it('parks the bike on the rider’s own side, even when the crash throws it into the oncoming lanes', () => {
+    let across = 0;
+    for (const dir of [1, -1] as const) {
+      // Thrown hard to the left: toward the lanes that run the other way.
+      const h = harness([{ tick: 2, type: 'crash', actor: 1, data: { sideMps: -10 } }], { barrier: null });
+      h.player.pos = { edge: 0, s: dir === 1 ? 300 : 900, d: 1.7 * dir, dir };
+      h.player.speed = 20;
+      until(h, () => h.player.mode === 'OnFoot');
+      const bike = tumbleRecord(h.world, 1)?.parked;
+      const r = tumbleRecord(h.world, 1);
+      if (!bike || !r) throw new Error('no parked bike');
+      const thrown = h.config.road.project(r.bike.x, r.bike.z, r.bike.edge);
+      if (thrown.d * dir < 0) across++;
+      // Own side: the lanes that run the rider's way (d > 0 for dir +1), half a metre off the line.
+      expect(bike.d * dir, `dir ${dir}`).toBeGreaterThanOrEqual(0.5 - 1e-9);
+      expect(inside(h, bike)).toBe(true);
+      expect(bike.dir).toBe(dir);
+    }
+    expect(across).toBeGreaterThan(0); // the throw really did land on the far side
+  });
+});
+
 describe('tumble-2: rivals get up', () => {
   it('a rival knocked off by the player stands, shakes a fist, notes the grudge, then runs back', () => {
     const h = harness([

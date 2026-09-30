@@ -58,3 +58,28 @@ export function standingBand(road: RoadNetwork, edge: number, s: number): { lo: 
   const mid = (lanes.lo + lanes.hi) / 2;
   return { lo: mid, hi: mid };
 }
+
+/**
+ * Where a crashed rider's bike is parked, or a splashed rider respawns, at (edge, s) for a rider
+ * travelling `dir`: the standing band, kept to the side whose lanes run the rider's way, half a
+ * metre in from the centre line. A rider who remounts at rest in an oncoming lane faces a car that
+ * stops for it, and the two can wait on each other. Roads with no lane the rider's way (or no room
+ * on it) keep the whole standing band.
+ */
+export function ownSideBand(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  dir: 1 | -1,
+): { lo: number; hi: number } {
+  const band = standingBand(road, edge, s);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const lane of road.lanesAt(edge, s)) {
+    if (!drivable(lane) || lane.direction !== dir) continue;
+    lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+    hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+  }
+  const own = { lo: Math.max(band.lo, lo + 0.5), hi: Math.min(band.hi, hi - 0.5) };
+  return own.lo <= own.hi ? own : band;
+}

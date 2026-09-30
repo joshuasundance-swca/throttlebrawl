@@ -44,7 +44,7 @@ import type { RoadPos } from '../../road';
 import { riderState } from '../riders';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
-import { standingBand, wallBand, type TumbleBody } from './body';
+import { ownSideBand, standingBand, wallBand, type TumbleBody } from './body';
 import { collideBox, nearbyBoxes, type Box } from './contacts';
 import {
   centre,
@@ -522,13 +522,15 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
 /** Parks the bike at the nearest standing spot and stands the rider up on foot beside it. */
 function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
   const road = config.road;
-  const place = (b: TumbleBody): RoadPos => {
+  const place = (b: TumbleBody, ownSide: boolean): RoadPos => {
     const p = road.project(b.x, b.z, b.edge);
-    const band = standingBand(road, p.edge, p.s);
+    const dir = dirAlong(config, p.edge, p.s, r.travelX, r.travelZ);
+    const band = ownSide ? ownSideBand(road, p.edge, p.s, dir) : standingBand(road, p.edge, p.s);
     const d = p.d < band.lo ? band.lo : p.d > band.hi ? band.hi : p.d;
-    return { edge: p.edge, s: p.s, d, dir: dirAlong(config, p.edge, p.s, r.travelX, r.travelZ) };
+    return { edge: p.edge, s: p.s, d, dir };
   };
-  const bike = place(r.bike);
+  // The bike is parked on the rider's own side of the road, so the remount never faces traffic.
+  const bike = place(r.bike, true);
   r.parked = bike;
   r.phase = 'onFoot';
   r.handbackTick = world.tick;
@@ -545,7 +547,7 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
     m.pos = { ...bike };
     r.skip = 0;
   } else {
-    m.pos = place(r.rider);
+    m.pos = place(r.rider, false);
   }
 }
 
@@ -593,14 +595,10 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
 /** After the splash penalty: back on the bike, at rest, on the bridge where the body went over. */
 function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
   const at = r.railAt ?? m.pos;
-  const band = standingBand(config.road, at.edge, at.s);
+  const dir = dirAlong(config, at.edge, at.s, r.travelX, r.travelZ);
+  const band = ownSideBand(config.road, at.edge, at.s, dir);
   const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
-  const pos: RoadPos = {
-    edge: at.edge,
-    s: at.s,
-    d,
-    dir: dirAlong(config, at.edge, at.s, r.travelX, r.travelZ),
-  };
+  const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
   emit(
     world,
     'respawn',
