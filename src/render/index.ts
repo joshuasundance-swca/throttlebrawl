@@ -4,6 +4,8 @@
 // canvas with a device-pixel-ratio cap of 1.5, and a crude handler for a lost WebGL context.
 // M2 render-2 adds the feel visuals (effects.ts: sparks, the splash, the slow-motion tint), the
 // placeholder signs and billboards with the veto's picking (boards.ts), and RENDER_TUNING.
+// Playtest 1b item 6 adds the playable looks (looks/): `classic` (the default) and `kodak`, the ink +
+// 1960s film look, switched at any time with `setLook`; `kodak` draws through one final film pass.
 import { PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type {
   EntitySnapshot,
@@ -16,6 +18,7 @@ import type {
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
+import { createLookSet, LookPost } from './looks';
 import { buildRoadScene, type RoadDressing, type RoadScene } from './road-mesh';
 import { SpeedLines, type SpeedLineCounts } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
@@ -30,6 +33,8 @@ export type { FeelCounts } from './effects';
 export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
 export { RENDER_TUNING } from './tuning';
+export { DEFAULT_LOOK, isLookId, LOOK_IDS } from './looks';
+export type { LookId } from './looks';
 
 export const MAX_PIXEL_RATIO = 1.5;
 /** The render camera's far plane, metres: just past the placeholder look's fog end (700 m). */
@@ -121,6 +126,13 @@ export interface GameRenderer {
   speedLineCounts(): SpeedLineCounts;
   /** The canvas's width over its height, for the camera's phone-shape adaptation. */
   readonly aspect: number;
+  /**
+   * Switches the look (`LOOK_IDS`: `classic`, `kodak`) at once; an unknown id is ignored. Render
+   * only: it never reaches the sim. The first frame after a switch recompiles the lit materials.
+   */
+  setLook(id: string): void;
+  /** The current look's id. */
+  readonly look: string;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -128,9 +140,12 @@ export interface RendererOptions extends EntityViewOptions {
 }
 
 export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
-  const look = opts.look ?? createFlatLook();
+  const look = createLookSet(opts.look ?? createFlatLook());
   const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+  // A look with a film pass draws twice a frame: count the whole frame, not only the last draw.
+  renderer.info.autoReset = false;
+  let post: LookPost | null = null;
   const scene = new Scene();
   // The far plane sits just past the fog's end (look.ts: fully fogged at 700 m, so nothing beyond
   // it shows): the road chunks past it are culled, and the depth buffer is finer up close.
@@ -222,7 +237,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
-      renderer.render(scene, camera);
+      renderer.info.reset();
+      look.frame(t, params);
+      const film = look.post(params);
+      if (film) (post ??= new LookPost()).render(renderer, scene, camera, film, t);
+      else renderer.render(scene, camera);
     },
     resize,
     stats() {
@@ -267,6 +286,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     speedLineCounts: () => speedLines.counts(),
     get aspect() {
       return camera.aspect;
+    },
+    setLook(id) {
+      look.select(id);
+    },
+    get look() {
+      return look.id;
     },
   };
 }

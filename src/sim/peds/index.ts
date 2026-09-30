@@ -1,7 +1,7 @@
 // sim/peds: roadside pedestrians (and the odd chicken) who dive clear, cartoonishly
 // (docs/milestones/M1.md, traffic-2; docs/architecture.md, "Pedestrians and animals").
 //
-// - Spawns: at race start, from every `roadsideZone` feature on the network, one per
+// - Spawns: at race start, from every `roadsideZone` feature on the route's allowed roads, one per
 //   PEDS.perZoneM of zone length (at most PEDS.maxPerZone), off the drivable road on the zone's
 //   side. Kinds are the `traffic-type` entries with category `pedestrian` or `animal`: a zone whose
 //   `params.spawns` is `pedestrians` gets people plus the odd stray animal, `animals` gets
@@ -583,6 +583,9 @@ export const pedsSystem: SimSystem = {
     });
     if (people.length + animals.length === 0) return;
     for (const e of config.road.edges) {
+      // Only the race route's roads: a network with longer routes carries zones past a shorter
+      // route's finish, where nobody rides in this race.
+      if (!config.route.allows(e.index)) continue;
       for (const f of config.road.featuresOf(e.index, 'roadsideZone')) {
         spawnZone(world, config, e.index, f, people, animals);
       }
