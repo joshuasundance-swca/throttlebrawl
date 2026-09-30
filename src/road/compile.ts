@@ -92,7 +92,12 @@ export interface TrackSource {
   roads: readonly RoadSource[];
   /** Side roads that split off the main road and rejoin it (road-2's ramp shortcut). */
   branches?: readonly BranchSource[];
-  route: RouteSource;
+  /**
+   * The routes on this network, in order (road-3: one per race length). Each runs along the main
+   * road from its start road to its finish road; it allows those roads, the connectors between
+   * them, and every branch that leaves and rejoins inside that stretch.
+   */
+  routes: readonly RouteSource[];
 }
 
 /** A branch off the main road: it splits at one connector junction and rejoins at another. */
@@ -438,7 +443,7 @@ const provenance = (createdAt: string) => ({
 export interface CompiledTrack {
   network: Record<string, unknown> & { id: string };
   roads: (Record<string, unknown> & { id: string })[];
-  route: Record<string, unknown> & { id: string };
+  routes: (Record<string, unknown> & { id: string })[];
 }
 
 interface Cut {
@@ -549,6 +554,8 @@ export function compileTrack(src: TrackSource): CompiledTrack {
 
   // Branches: the curve, its roads, and their rows in the two junctions' tables.
   const branchCuts: Cut[] = [];
+  /** Each branch's roads, with the main-road indices it leaves after and rejoins at. */
+  const branchSpans: { leave: number; join: number; ids: string[] }[] = [];
   const offsetPoint = (s: number, offset: number): [number, number, number] => {
     const h = sampleAt(line.heading, line.step, s);
     // The right of heading h (0 = north, + toward east) is (cos h, sin h) in (x, z).
@@ -617,6 +624,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       to: { road: b.road.id, end: 'from', lane: br.join.lane },
     });
     branchCuts.push(...cuts);
+    branchSpans.push({ leave: ai, join: bi, ids: cuts.map((c) => c.road.id) });
   }
 
   const roads = [...main, ...branchCuts].map((cut) => {
@@ -688,25 +696,36 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     meta: { status: 'live', notes: src.network.notes },
   };
 
-  const lengthOf = (id: string): number => {
-    const c = main.find((k) => k.road.id === id);
-    if (!c) throw new Error(`route ${src.route.id}: no main road ${id}`);
-    return c.length;
-  };
-  const r = src.route;
-  const finishS = r.finish.s < 0 ? lengthOf(r.finish.road) + r.finish.s : r.finish.s;
-  const route = {
-    type: 'route',
-    id: r.id,
-    network: netId,
-    start: r.start,
-    finish: { road: r.finish.road, s: r4(finishS) },
-    mainPath: main.filter((c) => !c.road.connector).map((c) => c.road.id),
-    allowedRoads: roads.map((x) => x.id),
-    checkpoints: r.checkpoints,
-    closed: false,
-    startGrid: r.startGrid,
-    meta: { status: 'live' },
-  };
-  return { network, roads, route };
+  const routes = src.routes.map((r) => {
+    const indexOf = (id: string): number => {
+      const i = main.findIndex((k) => k.road.id === id && !k.road.connector);
+      if (i < 0) throw new Error(`route ${r.id}: no main road ${id}`);
+      return i;
+    };
+    const first = indexOf(r.start.road);
+    const last = indexOf(r.finish.road);
+    if (last < first) throw new Error(`route ${r.id}: the finish road comes before the start road`);
+    const span = main.slice(first, last + 1);
+    const allowed = new Set(span.map((c) => c.road.id));
+    for (const b of branchSpans) {
+      if (b.leave >= first && b.join <= last) for (const id of b.ids) allowed.add(id);
+    }
+    const finishCut = main[last] as Cut;
+    const finishS = r.finish.s < 0 ? finishCut.length + r.finish.s : r.finish.s;
+    return {
+      type: 'route',
+      id: r.id,
+      network: netId,
+      start: r.start,
+      finish: { road: r.finish.road, s: r4(finishS) },
+      mainPath: span.filter((c) => !c.road.connector).map((c) => c.road.id),
+      // In the network's road order, so the full route lists every road as before.
+      allowedRoads: roads.map((x) => x.id).filter((id) => allowed.has(id)),
+      checkpoints: r.checkpoints,
+      closed: false,
+      startGrid: r.startGrid,
+      meta: { status: 'live' },
+    };
+  });
+  return { network, roads, routes };
 }

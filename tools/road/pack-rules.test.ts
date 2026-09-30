@@ -39,8 +39,8 @@ const roadFindings = (files: PackFile[]) => {
 };
 
 describe('tools/road: the road lint hooked into packs:check', () => {
-  it('exports one rule, and finds nothing wrong with the real base pack', () => {
-    expect(packRules.map((r) => r.id)).toEqual(['roads']);
+  it('exports the road rule and the lap-count rule, and finds nothing wrong with the real base pack', () => {
+    expect(packRules.map((r) => r.id)).toEqual(['roads', 'laps']);
     const res = roadFindings(packFiles());
     console.log(
       `road hook: ${res.networks} networks, ${res.roads} roads examined, ${res.findings.length} findings`,
@@ -71,5 +71,29 @@ describe('tools/road: the road lint hooked into packs:check', () => {
     expect(hit?.file).toBe('regions/florida-keys/roads/m1-marina-bends.json');
     expect(hit?.pointer).toMatch(/^\/samples\/data\/kappa\/\d+$/);
     expect(hit?.level).toBe('error');
+  });
+
+  it('road-3, the lap-count rule: an event length with laps > 1 needs a closed route', () => {
+    const files = packFiles();
+    const events = files.filter((f) => f.path.startsWith('events/'));
+    const withLengths = events.filter((f) => Array.isArray((f.json as { lengths?: unknown }).lengths));
+    const lengths = withLengths.flatMap((f) => (f.json as { lengths: unknown[] }).lengths).length;
+    console.log(`lap rule: ${withLengths.length} events, ${lengths} lengths examined on the real pack`);
+    expect(lengths).toBeGreaterThanOrEqual(1);
+    expect(roadFindings(files).findings.filter((f) => f.rule === 'road-laps')).toEqual([]);
+    // Two laps of the point-to-point M1 sprint: refused, against the event file and its length.
+    const ev = events.find((f) => f.path === 'events/m1-skeleton-sprint.json');
+    const j = ev?.json as { lengths: { id: string; route: string; laps: number }[] };
+    j.lengths.push({ id: 'twice', route: 'm1-skeleton-sprint', laps: 2 });
+    const hits = roadFindings(files).findings.filter((f) => f.rule === 'road-laps');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.file).toBe('events/m1-skeleton-sprint.json');
+    expect(hits[0]?.pointer).toBe(`/lengths/${j.lengths.length - 1}/laps`);
+    expect(hits[0]?.level).toBe('error');
+    expect(hits[0]?.message).toMatch(/closed/);
+    // The same length on a closed route passes.
+    const route = files.find((f) => f.path === 'regions/florida-keys/routes/m1-skeleton-sprint.json');
+    (route?.json as { closed: boolean }).closed = true;
+    expect(roadFindings(files).findings.filter((f) => f.rule === 'road-laps')).toEqual([]);
   });
 });

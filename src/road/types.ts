@@ -20,6 +20,9 @@ export interface BakedFeature {
   d0: number;
   d1: number;
   params?: Readonly<Record<string, unknown>> | undefined;
+  /** A `billboard` slot's region item (a sign or billboard id), or the pool that fills it. */
+  item?: string | undefined;
+  pool?: 'signs' | 'billboards' | undefined;
 }
 
 /** A scenery tag over an s range (closed vocabulary in the content schema). */

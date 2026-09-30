@@ -176,8 +176,10 @@ describe('content lint: references', () => {
     const slot = (item: string) => (j: Json) => {
       j['features'] = [{ kind: 'billboard', id: 'bb-1', s0: 100, s1: 120, d0: 6, d1: 9, item }];
     };
+    // The region's real boards stay (the base roads' own slots name them, road-3), plus a vetoed one.
     const withBoards = (j: Json) => {
       j['billboards'] = [
+        ...((j['billboards'] as Json[] | undefined) ?? []).filter((b) => b['id'] !== 'timeshare'),
         { id: 'timeshare', text: 'OWN A PIECE OF PARADISE.' },
         { id: 'old-joke', text: 'OLD JOKE.', status: 'vetoed', note: 'stale' },
       ];

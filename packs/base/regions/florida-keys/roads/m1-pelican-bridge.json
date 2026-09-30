@@ -34,6 +34,15 @@
       "d0": -7.1,
       "d1": -5.5,
       "params": { "spawns": "pedestrians" }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-bridge-ices",
+      "s0": 20,
+      "s1": 30,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "ices-before-road"
     }
   ],
   "barriers": [{ "s0": 0, "s1": 1250, "side": "both", "kind": "rail", "heightM": 1 }],
