@@ -7,10 +7,29 @@
   "tags": ["preacher", "chopper"],
   "blurb": "A preacher in a duster on a chopper.",
   "bike": "rustbucket-400",
-  "stats": { "massKg": 95, "healthMax": 110, "skill": 0.6 },
-  "personality": { "style": "heavy-hitter" },
+  "stats": {
+    "massKg": 95,
+    "healthMax": 110,
+    "skill": 0.6
+  },
+  "personality": {
+    "style": "heavy-hitter",
+    "aggression": 0.85,
+    "dirtiness": 0.35,
+    "courage": 0.9,
+    "riskTaking": 0.3,
+    "chatter": 0.7,
+    "weave": 0.05,
+    "targetPreference": ["player", "nearest"],
+    "preferredSide": "either"
+  },
   "meta": {
     "status": "live",
-    "notes": "The walking skeleton's one box rival. ai-1 owns the four rival files and their personalities."
+    "notes": "M1 box rival (ai-1). A heavy hitter who hunts you first and anyone near second. Hits hard, rarely kicks, holds his line.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-30"
+    }
   }
 }

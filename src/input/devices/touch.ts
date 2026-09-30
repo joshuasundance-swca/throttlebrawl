@@ -1,0 +1,154 @@
+// Touch (docs/architecture.md, "Input"; docs/milestones/M1.md, "input-1"). Pure pointer
+// bookkeeping by pointerId, so it is unit-testable without a DOM: createInput feeds it Pointer
+// Events. Coordinates are CSS px relative to the play surface; times are event timestamps, ms.
+//
+// - The floating stick appears where the left thumb lands inside the stick zone; drag up for
+//   scaled throttle, sideways to steer, lift to coast. Its base sits at least one stick radius
+//   from the screen edge.
+// - The brake button brakes while held.
+// - The attack button sets `attack` on the press (one tick), with the auto-target side. Within
+//   attackDragMs, a sideways drag beyond attackDragPx picks a side; within kickSwipeMs, a swipe
+//   down beyond kickSwipePx at 45 degrees or steeper below horizontal turns it into a kick. Side
+//   and kick are level-held while the finger stays down. After the windows the gesture is locked.
+//   The press also asks to skip the run-back; the sim acts on it only while on foot.
+// - Touches within EDGE_PX of the left or right edge are ignored: the back gesture owns them.
+// - Every press is latched until a tick samples it, so a tap shorter than a tick is never lost.
+import type { Rect } from '../../core';
+import type { ActionState } from '../actions';
+import type { InputThresholds } from '../tuning';
+
+/** Touches this close to the left or right screen edge are ignored (the Android back gesture). */
+export const EDGE_PX = 24;
+
+export interface TouchZones {
+  width: number;
+  height: number;
+  stick: Rect | null;
+  brake: Rect | null;
+  attack: Rect | null;
+}
+
+interface Stick {
+  id: number;
+  x0: number;
+  y0: number;
+  x: number;
+  y: number;
+}
+
+interface AttackGesture {
+  id: number;
+  x0: number;
+  y0: number;
+  t0: number;
+  side: -1 | 0 | 1;
+  kick: boolean;
+  /** The press has not been sampled yet. */
+  fresh: boolean;
+  /** The finger lifted; the gesture is cleared after the next sample. */
+  released: boolean;
+}
+
+const inside = (r: Rect | null, x: number, y: number): boolean =>
+  !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+export type TouchTarget = 'stick' | 'brake' | 'attack' | null;
+
+export class TouchState {
+  private stick: Stick | null = null;
+  private attack: AttackGesture | null = null;
+  private readonly brakes = new Set<number>();
+  private brakeLatched = false;
+  private readonly t: InputThresholds;
+
+  constructor(thresholds: InputThresholds) {
+    this.t = thresholds;
+  }
+
+  /** A pointer went down. Returns what it grabbed, or null when it is not ours. */
+  down(id: number, x: number, y: number, time: number, zones: TouchZones): TouchTarget {
+    if (x < EDGE_PX || x > zones.width - EDGE_PX) return null;
+    if (inside(zones.attack, x, y)) {
+      this.attack = { id, x0: x, y0: y, t0: time, side: 0, kick: false, fresh: true, released: false };
+      return 'attack';
+    }
+    if (inside(zones.brake, x, y)) {
+      this.brakes.add(id);
+      this.brakeLatched = true;
+      return 'brake';
+    }
+    if (!this.stick && inside(zones.stick, x, y)) {
+      const r = this.t.stickRangePx;
+      const x0 = clamp(x, r, Math.max(r, zones.width - r));
+      const y0 = clamp(y, r, Math.max(r, zones.height - r));
+      this.stick = { id, x0, y0, x, y };
+      return 'stick';
+    }
+    return null;
+  }
+
+  move(id: number, x: number, y: number, time: number): void {
+    if (this.stick?.id === id) {
+      this.stick.x = x;
+      this.stick.y = y;
+    }
+    const g = this.attack;
+    if (g?.id === id && !g.released) {
+      const dx = x - g.x0;
+      const dy = y - g.y0;
+      const elapsed = time - g.t0;
+      // At least 45 degrees below horizontal: down at least as far as sideways.
+      if (!g.kick && elapsed <= this.t.kickSwipeMs && dy >= this.t.kickSwipePx && dy >= Math.abs(dx))
+        g.kick = true;
+      if (
+        g.side === 0 &&
+        !g.kick &&
+        elapsed <= this.t.attackDragMs &&
+        Math.abs(dx) >= this.t.attackDragPx &&
+        Math.abs(dx) > dy
+      )
+        g.side = dx > 0 ? 1 : -1;
+    }
+  }
+
+  /** A pointer lifted, was cancelled or lost its capture: all are a release. */
+  up(id: number): void {
+    if (this.stick?.id === id) this.stick = null; // lift to coast
+    this.brakes.delete(id);
+    if (this.attack?.id === id) this.attack.released = true;
+  }
+
+  /** Releases everything (the window lost focus). */
+  clear(): void {
+    this.stick = null;
+    this.brakes.clear();
+    this.brakeLatched = false;
+    if (this.attack) this.attack.released = true;
+  }
+
+  /** Writes this tick's touch actions into `a` and clears what the tick consumed. */
+  sample(a: ActionState): void {
+    if (this.stick) {
+      const r = this.t.stickRangePx;
+      const sx = clamp((this.stick.x - this.stick.x0) / r, -1, 1);
+      const up = clamp((this.stick.y0 - this.stick.y) / r, 0, 1);
+      const dz = this.t.stickDeadZone;
+      const steer = Math.abs(sx) <= dz ? 0 : (Math.sign(sx) * (Math.abs(sx) - dz)) / (1 - dz);
+      if (steer !== 0) a.steer = steer;
+      a.throttle = Math.max(a.throttle, up);
+    }
+    if (this.brakes.size > 0 || this.brakeLatched) a.brake = 1;
+    this.brakeLatched = false;
+    const g = this.attack;
+    if (g) {
+      if (g.fresh) a.attack = true;
+      if (g.side !== 0) a.attackSide = g.side;
+      if (g.kick) a.kick = true;
+      a.skipRunBack = true;
+      g.fresh = false;
+      if (g.released) this.attack = null;
+    }
+  }
+}

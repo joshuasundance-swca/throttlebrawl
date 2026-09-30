@@ -1,87 +1,100 @@
 // camera: camera modes as small rigs that read only the interpolated snapshot and the road
-// (docs/architecture.md, "Camera"). The skeleton's follow camera sits behind and above the rider
-// and eases toward it; camera-1 builds the low chase cam's damped spring, roll, FOV kick and shake.
-import type { EntitySnapshot, TuningParamDecl } from '../sim/api';
+// (docs/architecture.md, "Camera"). M1 builds the low chase cam (camera-1): a critically damped
+// spring aimed at a look-ahead point on the road, roll at a fraction of the bike's lean, an FOV
+// kick with speed, a framing bias toward the auto-target, and event shake scaled by
+// camera.shakeScale. Far chase, helmet, look-back and the replay cams are later modes.
+import type { RoadNetwork, SimEvent, TuningParamDecl } from '../sim/api';
+import {
+  createChaseRig,
+  type CameraContext,
+  type CameraPose,
+  type CameraTarget,
+  type ChaseParams,
+} from './chase';
+
+export type { CameraContext, CameraPose, CameraTarget } from './chase';
+export { SHAKE_TRAUMA } from './shake';
+
+/** Camera modes. M1 has one; the architecture doc lists the rest (farChase, helmet, lookBack...). */
+export type CameraMode = 'lowChase';
+
+// Every constant of the rig is a tuning parameter [default] (docs/architecture.md, "Camera").
+// None affects the sim, so they never enter SimConfig or a replay's outcome.
+const decl = (
+  key: keyof ChaseParams,
+  label: string,
+  def: number,
+  min: number,
+  max: number,
+  step: number,
+  unit: string,
+): TuningParamDecl => ({
+  id: `camera.${key}`,
+  group: 'camera',
+  label,
+  default: def,
+  min,
+  max,
+  step,
+  unit,
+  affectsSim: false,
+});
 
 export const CAMERA_TUNING: readonly TuningParamDecl[] = [
-  {
-    id: 'camera.chaseDistanceM',
-    group: 'camera',
-    label: 'Chase distance',
-    default: 6.5,
-    min: 3,
-    max: 14,
-    step: 0.25,
-    unit: 'm',
-    affectsSim: false,
-  },
+  decl('chaseDistanceM', 'Chase distance', 5.5, 3, 14, 0.25, 'm'),
+  decl('heightM', 'Camera height', 1.6, 0.8, 5, 0.1, 'm'),
+  decl('lookAheadM', 'Look-ahead', 18, 5, 40, 1, 'm'),
+  decl('lookHeightM', 'Aim height', 0.9, 0, 3, 0.1, 'm'),
+  decl('springRate', 'Camera stiffness', 5, 1, 15, 0.5, '1/s'),
+  decl('rollFraction', 'Roll with lean', 0.3, 0, 0.6, 0.05, ''),
+  decl('fovBaseDeg', 'Field of view', 60, 45, 80, 1, '°'),
+  decl('fovKickDeg', 'Speed FOV kick', 12, 0, 25, 1, '°'),
+  decl('fovKickSpeedMps', 'Full kick at', 38, 10, 80, 1, 'm/s'),
+  decl('targetBias', 'Target framing', 0.35, 0, 1, 0.05, ''),
+  decl('shakeScale', 'Camera shake', 1, 0, 2, 0.05, ''),
 ];
 
-export interface CameraPose {
-  x: number;
-  y: number;
-  z: number;
-  lookX: number;
-  lookY: number;
-  lookZ: number;
-  /** Vertical field of view, degrees. */
-  fov: number;
-}
-
 export interface FollowCamera {
-  /** Moves the camera toward its target; `dt` is the real frame time in seconds. */
-  update(target: Pick<EntitySnapshot, 'x' | 'y' | 'z' | 'heading' | 'speed'>, dt: number): CameraPose;
-  /** Jumps straight to the target (race start, a respawn). */
-  snap(target: Pick<EntitySnapshot, 'x' | 'y' | 'z' | 'heading' | 'speed'>): CameraPose;
+  readonly mode: CameraMode;
+  /**
+   * Moves the camera toward its target; `dt` is the real frame time in seconds (clamped to 0.25,
+   * and 0 or NaN holds the springs). `ctx.entities` lets it frame the rider's auto-target.
+   */
+  update(target: CameraTarget, dt: number, ctx?: CameraContext): CameraPose;
+  /** Jumps straight to the target's ideal framing and clears any shake (race start, a respawn). */
+  snap(target: CameraTarget, ctx?: CameraContext): CameraPose;
+  /** Hands the camera a tick's sim events; the ones involving the followed rider shake it. */
+  onEvents(events: readonly SimEvent[]): void;
+  /** The road handle to aim along; null falls back to the rider's heading. */
+  setRoad(road: RoadNetwork | null): void;
+  /** Applies a `camera.*` tuning value; other ids are ignored. */
   setParam(id: string, value: number): void;
 }
 
-export function createFollowCamera(): FollowCamera {
-  let distance = CAMERA_TUNING[0]?.default ?? 6.5;
-  const height = 2.3;
-  const lookAhead = 12;
-  let pose: CameraPose | null = null;
+export interface FollowCameraOptions {
+  road?: RoadNetwork | null;
+}
 
-  const ideal = (t: Pick<EntitySnapshot, 'x' | 'y' | 'z' | 'heading' | 'speed'>): CameraPose => {
-    const fx = -Math.sin(t.heading);
-    const fz = -Math.cos(t.heading);
-    return {
-      x: t.x - fx * distance,
-      y: t.y + height,
-      z: t.z - fz * distance,
-      lookX: t.x + fx * lookAhead,
-      lookY: t.y + 0.9,
-      lookZ: t.z + fz * lookAhead,
-      fov: 62 + Math.min(10, t.speed * 0.2),
-    };
-  };
+function defaults(): ChaseParams {
+  const p: Record<string, number> = {};
+  for (const d of CAMERA_TUNING) p[d.id.slice('camera.'.length)] = d.default;
+  return p as unknown as ChaseParams;
+}
 
+/** The low chase cam. The name is the skeleton's; the rig behind it is camera-1's. */
+export function createFollowCamera(opts: FollowCameraOptions = {}): FollowCamera {
+  const params = defaults();
+  const rig = createChaseRig(params, opts.road ?? null);
   return {
-    update(target, dt) {
-      const want = ideal(target);
-      if (!pose) {
-        pose = want;
-        return pose;
-      }
-      const k = 1 - Math.exp(-dt * 10);
-      const p = pose;
-      pose = {
-        x: p.x + (want.x - p.x) * k,
-        y: p.y + (want.y - p.y) * k,
-        z: p.z + (want.z - p.z) * k,
-        lookX: p.lookX + (want.lookX - p.lookX) * k,
-        lookY: p.lookY + (want.lookY - p.lookY) * k,
-        lookZ: p.lookZ + (want.lookZ - p.lookZ) * k,
-        fov: p.fov + (want.fov - p.fov) * k,
-      };
-      return pose;
-    },
-    snap(target) {
-      pose = ideal(target);
-      return pose;
-    },
+    mode: 'lowChase',
+    update: (t, dt, ctx) => rig.update(t, dt, ctx),
+    snap: (t, ctx) => rig.snap(t, ctx),
+    onEvents: (events) => rig.onEvents(events),
+    setRoad: (road) => rig.setRoad(road),
     setParam(id, value) {
-      if (id === 'camera.chaseDistanceM') distance = value;
+      if (!id.startsWith('camera.') || !Number.isFinite(value)) return;
+      const key = id.slice('camera.'.length);
+      if (key in params) (params as unknown as Record<string, number>)[key] = value;
     },
   };
 }

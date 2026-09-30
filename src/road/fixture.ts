@@ -54,11 +54,19 @@ export function fixtureNetwork(specs: readonly FixtureEdgeSpec[], id = 'fixture'
       to: `j${n + 1}`,
       lengthM: spec.lengthM,
       sampleSpacingM: spacing,
-      laneSections: [{ s0: 0, lanes: FIXTURE_LANES }],
+      // Copies, so a test that edits one fixture's lanes never leaks into the next fixture.
+      laneSections: [{ s0: 0, lanes: FIXTURE_LANES.map((l) => ({ ...l })) }],
       samples: { encoding: 'json-columns', columns: Object.keys(data), data },
     };
   });
   const junctions = specs.map((_s, n) => ({ n })).concat([{ n: specs.length }]);
+  // Each junction sits where its roads end, so the fixture passes the road lint.
+  const endPoint = (n: number): [number, number, number] => {
+    const road = roads[n] ?? roads[n - 1];
+    const d = road?.samples.data;
+    const i = roads[n] ? 0 : (d?.['x']?.length ?? 1) - 1;
+    return [d?.['x']?.[i] ?? 0, d?.['y']?.[i] ?? 0, d?.['z']?.[i] ?? 0];
+  };
   return {
     network: {
       id,
@@ -66,11 +74,12 @@ export function fixtureNetwork(specs: readonly FixtureEdgeSpec[], id = 'fixture'
       junctions: junctions.map(({ n }) => {
         const prev = specs[n - 1];
         const next = specs[n];
+        const [jx, jy, jz] = endPoint(n);
         return {
           id: `j${n}`,
-          x: 0,
-          y: 0,
-          z: 0,
+          x: jx,
+          y: jy,
+          z: jz,
           ends: [
             ...(prev ? [{ road: prev.id, end: 'to' as const }] : []),
             ...(next ? [{ road: next.id, end: 'from' as const }] : []),
