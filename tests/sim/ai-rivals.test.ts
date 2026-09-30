@@ -184,6 +184,19 @@ describe('ai-1: four box rivals over 50 seeded races', () => {
         `over ${ok.length} races; field spread when the winner finished: median ${median(spreads).toFixed(0)} m, ` +
         `max ${(spreads[spreads.length - 1] ?? NaN).toFixed(0)} m`,
     );
+    // The margin against the race-end timeout (30 s after the player): the latest rival home.
+    const late = results
+      .map((r) => {
+        const pf = r.finishTicks[r.playerId];
+        const rivals = r.rivals.map((id) => r.finishTicks[id]).filter((x) => x !== undefined);
+        return pf === undefined || rivals.length === 0 ? NaN : (Math.max(...rivals) - pf) / 60;
+      })
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    console.log(
+      `latest rival home after the player: median ${median(late).toFixed(1)} s, max ${(late[late.length - 1] ?? NaN).toFixed(1)} s ` +
+        `(race-end timeout ${(configFor(1).event.raceEndTimeoutTicks / 60).toFixed(0)} s)`,
+    );
     expect(ok.length).toBe(results.length);
   });
 

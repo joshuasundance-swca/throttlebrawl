@@ -105,6 +105,8 @@ const ACQUIRE_S = 4;
 const ACQUIRE_D = 3;
 /** Lateral offset a brawler holds from its target, inside every reach box. */
 const FIGHT_OFFSET_D = 1.1;
+/** How much faster than its pace a hunter rides after a player who got away ahead. */
+const HUNT_PACE = 0.08;
 /** A rider's half width plus a margin, for avoidance. */
 const RIDER_CLEAR = 0.9;
 const STUCK_TICKS = 240;
@@ -275,6 +277,9 @@ function driveRider(
   const dLo = (edge?.dMin ?? -5) + 0.7;
   const dHi = (edge?.dMax ?? 5) - 0.7;
   const finished = race.finishOrder.includes(id);
+  // Once every player is home the fight is over: the rest hurry to the line for the results.
+  const playersDone = players.length > 0 && players.every((p) => race.finishOrder.includes(p));
+  const racing = !finished && !playersDone;
 
   // Progress watch: unstick after STUCK_TICKS without 2 m of progress.
   const dist = race.distanceToFinish[id] ?? Infinity;
@@ -293,6 +298,7 @@ function driveRider(
   let speedTarget =
     config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBand(world, config, id);
   if (finished) speedTarget = Math.min(speedTarget, 12);
+  else if (playersDone) speedTarget = def?.bike.topSpeedMps ?? speedTarget;
 
   // 2. The line: own spot in the lane, plus a weave.
   const lanes = road.lanesAt(pos.edge, pos.s);
@@ -327,7 +333,7 @@ function driveRider(
   const health = riderState(world).health[id] ?? healthMax;
   const brave = health / Math.max(1, healthMax) >= 0.5 * (1 - prof.courage);
   let target: Seen | null = null;
-  if (!finished && !unsticking && prof.behaviour === 'brawler' && brave && aggr > 0) {
+  if (racing && !unsticking && prof.behaviour === 'brawler' && brave && aggr > 0) {
     const seekRange = 10 + 30 * Math.min(1, aggr);
     const current = st.targetId[id] ?? -1;
     const keep = riders.find((r) => r.mover.id === current && Math.abs(r.ahead) <= seekRange * 1.3);
@@ -348,10 +354,23 @@ function driveRider(
     if (d < dLo || d > dHi) d = target.mover.pos.d - side * FIGHT_OFFSET_D;
     dTarget = clamp(d, dLo, dHi);
     lateralMax = 3.5;
-    // Close the gap along the road. A brawler waits (drops below its pace) only for a player
-    // behind it; a rival behind it is left to catch up, so rival fights don't stall the pack.
+    // Close the gap along the road: chase hard, wait gently. A brawler waits (drops below its
+    // pace) only for a player behind it, easing off rather than braking so it is still near the
+    // player's speed when they meet; a rival behind it is left to catch up, so rival fights don't
+    // stall the pack.
     const waitsFor = players.includes(target.mover.id) ? config.event.paceMps * 0.6 : speedTarget;
-    speedTarget = clamp(target.vAlong + target.ahead * 0.8, waitsFor, speedTarget * 1.15);
+    const gain = target.ahead >= 0 ? 0.8 : 0.25;
+    speedTarget = clamp(target.vAlong + target.ahead * gain, waitsFor, speedTarget * 1.15);
+  } else if (
+    racing &&
+    prof.behaviour === 'brawler' &&
+    brave &&
+    aggr > 0 &&
+    prof.targetPreference[0] === 'player' &&
+    players.some((p) => (race.distanceToFinish[p] ?? Infinity) < dist)
+  ) {
+    // A hunter keeps after a player who got away ahead, a little above its pace.
+    speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
 
   // Unsticking: back up to pace (traffic below still has the last word on speed).
@@ -404,7 +423,7 @@ function driveRider(
   const held =
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
-  if (!finished && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
+  if (racing && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
     flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players);
   }
 

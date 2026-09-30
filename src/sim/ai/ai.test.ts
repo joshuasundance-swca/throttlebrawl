@@ -415,6 +415,25 @@ describe('ai: fights', () => {
 });
 
 describe('ai: the rest of the controller', () => {
+  it('once the player is home, the rest stop fighting and hurry to the line', () => {
+    const sc = scene(
+      [rival('heavy-hitter', {}, 'a'), rival('racer', {}, 'b'), PLAYER],
+      [
+        { s: 30, d: 1.2, v: 28 },
+        { s: 32, d: 2.4, v: 28 },
+        { s: 2385, d: 1.7, v: 20 }, // past the finish (c at 780)
+      ],
+    );
+    let swings = 0;
+    for (let t = 0; t < 60 * 15; t++) {
+      step(sc);
+      for (const id of [0, 1]) if ((sc.world.inputs[id]?.flags ?? 0) & InputFlag.attack) swings++;
+    }
+    expect(swings).toBe(0);
+    expect(sc.riders[0]?.speed).toBeGreaterThan(35);
+    expect(sc.riders[1]?.speed).toBeGreaterThan(35);
+  });
+
   it('asks for the quick remount while down, and leaves cops to the cops phase', () => {
     const cop: SimRiderDef = {
       ...rival('racer'),
