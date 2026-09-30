@@ -237,6 +237,25 @@ describe('peds: spawning from roadside zones', () => {
     }
   });
 
+  it('spawns only on roads the race route allows (a longer network carries zones past the finish)', () => {
+    const base = makeConfig();
+    const route = createRouteProgress(base.road, {
+      id: 'short',
+      network: 'fixture',
+      start: { road: 'a', s: 20, dir: 1 },
+      finish: { road: 'a', s: 580 },
+      mainPath: ['a'],
+      allowedRoads: ['a'],
+      closed: false,
+    });
+    const config: SimConfig = { ...base, route };
+    const world = scenario(config, [{ s: 20, d: 1.7, speed: 0 }]);
+    const st = pedsState(world);
+    // Edge a's 100 m zone gives 4; edge b's zone is past the finish, off the route: none there.
+    expect(st.id.length).toBe(4);
+    for (const id of st.id) expect(world.movers[id]?.pos.edge).toBe(0);
+  });
+
   it('spawns nothing without roadside zones or without pedestrian and animal types', () => {
     const noZones = scenario(makeConfig({ features: {} }), [{ s: 20, d: 1.7, speed: 0 }]);
     expect(pedsState(noZones).id).toHaveLength(0);
