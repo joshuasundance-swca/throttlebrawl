@@ -1,6 +1,7 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { placeElement, type TouchLayout } from '../../src/core/layout.ts';
+import { inputDefaults } from '../../src/input/tuning.ts';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
 
 // input-1 browser device-path specs (docs/milestones/M1.md, "input-1"): real touches, sent through
@@ -189,9 +190,10 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
 
   // A slow drag down (30 px over 300 ms) stays a punch. The input judges a swipe by the pointer
   // events' own timeStamps, so the check is made against what the page actually received: an
-  // attempt the loaded runner delivered as a fast swipe (24 px down within 80 ms of the press)
-  // proves nothing either way and is sent again, up to 3 times. A slow delivery that still kicks
-  // is a real failure.
+  // attempt the loaded runner delivered as a fast swipe (24 px down within the kick swipe window,
+  // 180 ms since playtest 1) proves nothing either way and is sent again, up to 3 times. A slow
+  // delivery that still kicks is a real failure.
+  const swipeMs = inputDefaults().kickSwipeMs;
   await recordPointers(page);
   let judged = false;
   for (let attempt = 1; attempt <= 3 && !judged; attempt++) {
@@ -218,7 +220,7 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
     console.log(
       `slow drag, attempt ${attempt}: ${got.length} pointer events received, 24 px down after ${fastest.toFixed(0)} ms; kick ${kicked}`,
     );
-    if (!down || fastest <= 80) continue; // delivered as a fast swipe: inconclusive, send it again
+    if (!down || fastest <= swipeMs) continue; // delivered as a fast swipe: inconclusive, send it again
     judged = true;
     expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
     expect(kicked, 'a slow drag, received slow, stays a punch').toBe(false);

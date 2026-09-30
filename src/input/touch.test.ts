@@ -146,14 +146,27 @@ describe('input-1: the attack button', () => {
     expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
   });
 
-  it('a swipe down that takes 100 ms does not convert', () => {
+  it('playtest 1: a natural 180 ms swipe down sets kick (the window was 80 ms in M1)', () => {
     const { fire, sample } = setup();
     const [x, y] = center('touch-attack');
     fire('pointerdown', 1, x, y, 1000);
-    fire('pointermove', 1, x, y + 10, 1033);
-    fire('pointermove', 1, x, y + 20, 1066);
-    fire('pointermove', 1, x, y + 30, 1100);
-    fire('pointerup', 1, x, y + 30, 1105);
+    fire('pointermove', 1, x, y + 8, 1060);
+    fire('pointermove', 1, x, y + 16, 1120);
+    fire('pointermove', 1, x, y + 26, 1180); // crosses 24 px at 180 ms
+    fire('pointerup', 1, x, y + 26, 1185);
+    const s = sample();
+    expect(has(s, 'attack')).toBe(true);
+    expect(has(s, 'kick')).toBe(true);
+  });
+
+  it('a swipe down that takes 250 ms does not convert', () => {
+    const { fire, sample } = setup();
+    const [x, y] = center('touch-attack');
+    fire('pointerdown', 1, x, y, 1000);
+    fire('pointermove', 1, x, y + 10, 1083);
+    fire('pointermove', 1, x, y + 20, 1166);
+    fire('pointermove', 1, x, y + 30, 1250);
+    fire('pointerup', 1, x, y + 30, 1255);
     const s = sample();
     expect(has(s, 'attack')).toBe(true);
     expect(has(s, 'kick')).toBe(false);
