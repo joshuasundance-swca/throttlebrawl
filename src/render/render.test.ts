@@ -249,17 +249,10 @@ describe('rider poses', () => {
   });
 
   it('glints a held weapon through the wind-up (the steal cue), and not otherwise', () => {
+    // By name: the rider's group also carries other unlit, single-child meshes (the boost flame).
     const find = (g: Group, name: 'weapon' | 'glint'): Mesh | undefined => {
-      let found: Mesh | undefined;
-      g.traverse((o) => {
-        if (
-          o instanceof Mesh &&
-          (name === 'glint' ? o.material instanceof MeshBasicMaterial : o.children.length === 1)
-        ) {
-          found ??= o;
-        }
-      });
-      return found;
+      const o = g.getObjectByName(`views-${name}`);
+      return o instanceof Mesh ? o : undefined;
     };
     const windup = setup({ attackPhase: 'windup', heldWeapon: 'base:lead-pipe' }, 1);
     const glint = find(windup.group, 'glint');

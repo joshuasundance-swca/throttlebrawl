@@ -112,6 +112,12 @@ export interface EntitySnapshot {
    * hand-built snapshots; the sim fills it for every entity.
    */
   grudgeNotedBy?: readonly EntityId[];
+  /**
+   * Seconds of speed boost this rider has left from a `boostPad` (playtest 1b quick wins), 0 when
+   * none; 0 for other kinds. Presentation only (a boost flame, speed lines). Optional for
+   * hand-built snapshots; the sim fills it for every entity.
+   */
+  boostS?: number;
 }
 
 /** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
@@ -238,6 +244,12 @@ export type SimEventType =
    * it). Actor = the rival holding the grudge; target = the rider it is against.
    */
   | 'grudgeNoted'
+  /**
+   * A rider rode onto a `boostPad` (playtest 1b quick wins). Actor = the rider; `data.feature` is
+   * the pad's feature id, `data.speed` the rider's speed on entry, m/s, and `data.holdS` how long
+   * the boost lasts. One event per pad crossing.
+   */
+  | 'boost'
   | 'modifierStart'
   | 'modifierEnd';
 

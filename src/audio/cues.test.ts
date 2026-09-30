@@ -94,6 +94,16 @@ describe('event cues', () => {
     }
   });
 
+  it('whooshes up on a boost pad (playtest 1b quick wins), for anyone who hits one', () => {
+    // `boost` is the road lane's contract event (#134); cast until it is in SimEventType on main.
+    const boost = 'boost' as SimEventType;
+    expect(cueForEvent(ev(boost, 0, undefined, { feature: 'p1', speed: 30, holdS: 1.5 }), 0)?.cue).toBe(
+      'boost',
+    );
+    expect(cueForEvent(ev(boost, 3), 0)?.cue).toBe('boost');
+    expect(CUE_PATCHES.boost).toBeTypeOf('function');
+  });
+
   it('has a synth patch for every cue id', () => {
     for (const id of CUE_IDS) expect(CUE_PATCHES[id], id).toBeTypeOf('function');
   });

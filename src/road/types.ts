@@ -10,7 +10,26 @@ export interface BakedLaneSection {
 
 /** Feature kinds, exactly the architecture doc's list. */
 export type FeatureKind =
-  'ramp' | 'gap' | 'hazard' | 'roadsideZone' | 'copSpawn' | 'raceMarker' | 'billboard';
+  | 'ramp'
+  | 'gap'
+  | 'hazard'
+  | 'roadsideZone'
+  | 'copSpawn'
+  | 'raceMarker'
+  | 'billboard'
+  /**
+   * A speed-boost pad (playtest 1b): a rider who rides over its s/d box gets a short boost.
+   * `params.boostMps` (speed added, default 8) and `params.holdS` (how long, default 1.5).
+   */
+  | 'boostPad'
+  /**
+   * A parked car-carrier tow truck whose rear deck is a jump ramp (playtest 1b). s0 is the foot of
+   * the ramp and s1 the truck's front; d0..d1 its width. The deck rises from the road at s0 to
+   * `params.lipHeightM` (2.8) over `params.rampLengthM` (11.5, a 13.7° slope), then stays at the lip
+   * height to s1. It faces riders travelling toward increasing s. Not baked into the road profile:
+   * it covers only its own width.
+   */
+  | 'rampTruck';
 
 export interface BakedFeature {
   kind: string;
