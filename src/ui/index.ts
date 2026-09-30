@@ -1,37 +1,83 @@
 // ui: DOM screens over the canvas (docs/architecture.md, "Rendering": DOM UI is not drawn in
-// WebGL). The skeleton has the start screen, a menu with Race, a HUD with speed and position,
-// results with the placing, the build stamp and the touch-control visuals. ui-1 owns this folder
-// after app-1 (except ui/tuning and ui/narrative): pause, settings, rotate screen, HUD presets.
-import { placeElement, type EntitySnapshot, type OnCopyReport, type TouchLayout } from '../sim/api';
+// WebGL). ui-1 (docs/milestones/M1.md): the start screen with a controls card; the menu with Race,
+// Settings (four volumes, mute, the left-handed mirror) and the build id in the footer; the HUD
+// (speed, position, your health, your target's health) placed from the layout record; the touch
+// visuals (stick ring, attack and brake buttons); the pause screen (resume, restart, quit, copy
+// debug report, save debug file, and the build id that opens the tuning panel on a long-press);
+// results (place and prize, or Busted and the fine); and the rotate-your-phone screen.
+// ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
+// changes leaves through the callbacks app/ injects.
+import {
+  placeElement,
+  type EntitySnapshot,
+  type LayoutElement,
+  type OnCopyReport,
+  type SimSnapshot,
+  type TouchLayout,
+} from '../sim/api';
+import { DEFAULT_SETTINGS, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
+import {
+  buildIdFromStamp,
+  formatSpeed,
+  healthFraction,
+  ordinal,
+  resultText,
+  riderCount,
+  targetOf,
+  type RaceResult,
+} from './format';
+import { hudStyle } from './placement';
+import { applySettingsChange, VOLUME_BUSES, type SettingsChange } from './settings';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
 
-export type Screen = 'start' | 'menu' | 'race' | 'results';
+export { ordinal, resultText, formatSpeed } from './format';
+export type { RaceResult } from './format';
+export { HUD_ELEMENTS, hudStyle } from './placement';
+export { applySettingsChange } from './settings';
+export type { SettingsChange } from './settings';
+
+export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results';
 
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
   onStartTap(): void;
+  /** Race from the menu, or "Race again" from the results. */
   onRace(): void;
   onBackToMenu(): void;
   onCopyReport: OnCopyReport;
-}
-
-export interface RaceResult {
-  place: number;
-  of: number;
-  prizeCash: number;
-  eventName: string;
+  /** The pause screen opened (Esc, the pause button, or app/ calling `pause()`). */
+  onPause?: () => void;
+  /** Resume from the pause screen. */
+  onResume?: () => void;
+  /** Restart the race from the pause screen. The button is hidden until this is wired. */
+  onRestart?: () => void;
+  /** Quit to the menu from the pause screen; falls back to onBackToMenu. */
+  onQuit?: () => void;
+  /** A settings change (volumes, mute, mirror): app/ saves it and applies it. */
+  onSettingsChange?: (settings: Settings) => void;
+  /** "Save debug file" (dev-3). The button is hidden until this is wired. */
+  onSaveDebugFile?: () => Promise<void>;
 }
 
 export interface GameUi {
   show(screen: Screen): void;
+  /** Skeleton form of the HUD update; `updateRace` also fills the health bars. */
   updateHud(player: EntitySnapshot | null, riders: number, units: 'mph' | 'kmh'): void;
+  /** The HUD from a whole snapshot: speed, position among riders, your health and your target's. */
+  updateRace(snapshot: SimSnapshot, playerId: number, units: 'mph' | 'kmh'): void;
   showResults(result: RaceResult): void;
+  /** Opens the pause screen over the race (lifecycle auto-pause lands here too). */
+  pause(): void;
+  readonly paused: boolean;
+  /** Forces the rotate-your-phone screen (platform's failed orientation lock). */
+  setRotateNeeded(needed: boolean): void;
   /** The full-screen surface input/ listens on for touches. */
   readonly touchSurface: HTMLElement;
   setLayout(layout: TouchLayout): void;
   notice(text: string): void;
+  readonly settings: Readonly<Settings>;
   readonly tuningPanel: TuningPanel;
   readonly narrative: Narrative;
 }
@@ -41,31 +87,78 @@ export interface UiOptions {
   layout: TouchLayout;
   tuning: TuningRegistry;
   callbacks: UiCallbacks;
+  /** The loaded settings record; defaults when absent. */
+  settings?: Settings;
 }
 
+/** Long-press length for the build id (docs/architecture.md, "The gesture"). */
+export const LONG_PRESS_MS = 500;
+/** How far the stick knob travels, in CSS pixels (visual only; input/ owns the real range). */
+const STICK_RING_PX = 60;
+/** Touches this close to the edge belong to the phone's back gesture (input/ ignores them too). */
+const EDGE_PX = 24;
+
 const CSS = `
-#ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff; }
-#ui button { pointer-events: auto; font: inherit; }
+#ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#ui button, #ui input, #ui label { pointer-events: auto; font: inherit; }
 #ui .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 12px; text-align: center; background: rgb(20 10 40 / 45%); }
-#ui .screen[hidden], #ui [hidden] { display: none; }
-#ui .title { font-size: 34px; font-weight: 800; letter-spacing: 0.04em; text-shadow: 0 2px 0 #000; }
-#ui .big { font-size: 22px; padding: 14px 34px; border: 3px solid #fff; border-radius: 10px;
-  background: #e0543a; color: #fff; cursor: pointer; }
-#ui .small { font-size: 13px; padding: 6px 12px; border: 1px solid #fff8; border-radius: 6px;
-  background: #0006; color: #fff; cursor: pointer; }
-#ui .card { max-width: 440px; font-size: 13px; font-weight: 500; background: #0008; padding: 8px 12px; border-radius: 8px; }
+  justify-content: center; gap: 10px; text-align: center; background: rgb(20 10 40 / 50%);
+  padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); box-sizing: border-box; }
+#ui .screen[hidden], #ui [hidden] { display: none !important; }
+#ui .title { font-size: 32px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
+  background: #111; color: #f2ead8; padding: 2px 14px; transform: rotate(-1.5deg); box-shadow: 4px 4px 0 #e0543a; }
+#ui .big, #ui .small { cursor: pointer; font-family: ui-monospace, 'Courier New', monospace; font-weight: 800;
+  color: #111; background: #f2ead8; border: 3px solid #111; box-shadow: 3px 3px 0 #111; }
+#ui .big { font-size: 22px; min-height: 52px; padding: 8px 34px; background: #f5c542; }
+#ui .small { font-size: 15px; min-height: 44px; padding: 6px 16px; }
+#ui .big:active, #ui .small:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #111; }
+#ui .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+#ui .card { max-width: min(560px, 92vw); font: 500 13px/1.4 ui-monospace, 'Courier New', monospace; background: #000a;
+  padding: 8px 12px; border: 1px dashed #fff8; text-align: left; box-sizing: border-box; }
+#ui .card b { color: #f5c542; }
+#ui .footer { position: absolute; bottom: 6px; left: 0; right: 0; font: 500 12px ui-monospace, monospace; opacity: 0.8; }
 #start-screen { pointer-events: auto; cursor: pointer; }
-#hud-speed, #hud-position { position: absolute; padding: 4px 10px; background: #0007; border-radius: 6px; }
-#hud-speed { left: max(12px, env(safe-area-inset-left)); bottom: 12px; font-size: 22px; }
-#hud-position { left: max(12px, env(safe-area-inset-left)); top: 10px; font-size: 22px; }
+#start-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+#hud-speed, #hud-position, #hud-health, #hud-target { position: absolute; padding: 4px 10px; background: #0008;
+  border-radius: 4px; white-space: nowrap; }
+#hud-speed, #hud-position { font-size: 22px; font-weight: 800; }
+#hud-health, #hud-target { font: 700 12px ui-monospace, monospace; }
+.hud-bar { width: 130px; height: 9px; margin-top: 3px; background: #fff3; border: 1px solid #fff9; }
+.hud-bar > div { height: 100%; width: 100%; background: #f5c542; }
+#hud-target .hud-bar > div { background: #e0543a; }
+#hud-target .hud-name { display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+#hud-pause { position: absolute; top: 8px; right: max(8px, env(safe-area-inset-right)); width: 48px; height: 44px;
+  pointer-events: auto; font: 900 16px ui-monospace, monospace; color: #fff; background: #0008;
+  border: 2px solid #fffa; border-radius: 6px; cursor: pointer; }
+#hud-pause.mirrored { right: auto; left: max(8px, env(safe-area-inset-left)); }
 #touch-surface { position: absolute; inset: 0; touch-action: none; }
 #touch-surface[hidden] { display: none; }
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
-  display: flex; align-items: center; justify-content: center; font-size: 13px; pointer-events: none; }
-#tuning-panel { position: absolute; right: 10px; top: 10px; width: 260px; padding: 8px 10px; pointer-events: auto;
-  background: rgb(0 0 0 / 60%); border-radius: 8px; font-size: 13px; }
-#tuning-panel .tuning-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; }
+  display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
+  pointer-events: none; box-sizing: border-box; }
+#touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
+  margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
+  background: #0003; pointer-events: none; box-sizing: border-box; }
+#touch-stick-knob { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  border-radius: 50%; background: #fffa; }
+#settings .settings-grid { display: grid; grid-template-columns: auto minmax(140px, 260px) 3.5em; gap: 4px 10px;
+  align-items: center; font: 700 14px ui-monospace, monospace; text-align: left; }
+#settings input[type=range] { width: 100%; height: 30px; accent-color: #f5c542; }
+#settings .toggles label { display: inline-flex; gap: 8px; align-items: center; min-height: 40px; padding: 0 12px;
+  background: #000a; font: 700 14px ui-monospace, monospace; cursor: pointer; }
+#settings .toggles input { width: 22px; height: 22px; accent-color: #f5c542; }
+#pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
+#pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
+  touch-action: none; }
+#rotate-screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 24px; text-align: center; background: #140a28; pointer-events: auto; z-index: 10; }
+#rotate-screen .phone { width: 44px; height: 76px; border: 4px solid #f2ead8; border-radius: 8px;
+  animation: tb-rotate 2.2s ease-in-out infinite; }
+@keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (pointer: coarse) { #rotate-screen { display: flex; } }
+#ui.rotate-forced #rotate-screen { display: flex; }
+#ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 #build-stamp.in-race { display: none; }
 `;
 
@@ -73,86 +166,195 @@ function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: Partial<HTMLElementTagNameMap[K]> = {},
   ...kids: (Node | string)[]
-) {
-  const node = Object.assign(document.createElement(tag), props);
+): HTMLElementTagNameMap[K] {
+  const node: HTMLElementTagNameMap[K] = document.createElement(tag);
+  Object.assign(node, props);
   node.append(...kids);
   return node;
 }
 
-export function ordinal(n: number): string {
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 13) return `${n}th`;
-  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+function button(id: string, cls: 'big' | 'small', text: string, onClick: () => void): HTMLButtonElement {
+  const b = el('button', { id, className: cls, textContent: text, type: 'button' });
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** A labelled bar; returns the wrapper, the label and the fill. */
+function healthWidget(id: string, label: string) {
+  const name = el('span', { className: 'hud-name', textContent: label });
+  const fill = el('div');
+  const bar = el('div', { className: 'hud-bar' }, fill);
+  return { root: el('div', { id }, name, bar), name, fill };
 }
 
 export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
+  const cb = opts.callbacks;
   const style = el('style', { textContent: CSS });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
-
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
+  const buildId = buildIdFromStamp(opts.stampText);
+  let settings: Settings = opts.settings
+    ? { ...opts.settings, volumes: { ...opts.settings.volumes } }
+    : { ...DEFAULT_SETTINGS, volumes: { ...DEFAULT_SETTINGS.volumes } };
+  let layout: TouchLayout = opts.layout;
+  let current: Screen = 'start';
+  let paused = false;
 
+  // ---- Start screen ------------------------------------------------------------------------
+  const controlsCard = el(
+    'div',
+    { id: 'start-controls', className: 'card' },
+    el('div', {}, el('b', { textContent: 'Keys' })),
+    el('div', {}, el('b', { textContent: 'Touch' })),
+    el('div', { textContent: 'W / Up ride · S / Down brake' }),
+    el('div', { textContent: 'Left thumb: drag up to ride' }),
+    el('div', { textContent: 'A / D steer · J hit · K kick' }),
+    el('div', { textContent: 'Sideways to steer, lift to coast' }),
+    el('div', { textContent: 'Esc pause' }),
+    el('div', { textContent: 'HIT to punch, swipe down on it to kick' }),
+  );
   const start = el(
     'div',
     { id: 'start-screen', className: 'screen' },
     el('div', { className: 'title', textContent: 'throttlebrawl' }),
     el('div', { className: 'big', textContent: 'Tap to start' }),
-    el('div', {
-      className: 'card',
-      textContent:
-        'Keys: W or Up to ride, S or Down to brake, A and D to steer, J to attack. ' +
-        'Touch: drag up with your left thumb to ride, sideways to steer, lift to coast.',
-    }),
+    controlsCard,
   );
-  start.addEventListener('click', () => opts.callbacks.onStartTap());
+  start.addEventListener('click', () => cb.onStartTap());
 
-  const raceButton = el('button', { id: 'menu-race', className: 'big', textContent: 'Race' });
-  raceButton.addEventListener('click', () => opts.callbacks.onRace());
-  const copyButton = el('button', {
-    id: 'menu-copy-report',
-    className: 'small',
-    textContent: 'Copy debug report',
-  });
-  copyButton.addEventListener('click', () => {
-    void opts.callbacks.onCopyReport();
-  });
+  // ---- Menu --------------------------------------------------------------------------------
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
     el('div', { className: 'title', textContent: 'throttlebrawl' }),
-    raceButton,
-    copyButton,
+    button('menu-race', 'big', 'Race', () => cb.onRace()),
+    el(
+      'div',
+      { className: 'row' },
+      button('menu-settings', 'small', 'Settings', () => show('settings')),
+      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+    ),
+    el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` }),
   );
 
+  // ---- Settings ----------------------------------------------------------------------------
+  const change = (c: SettingsChange) => {
+    const next = applySettingsChange(settings, c);
+    const mirrorChanged = next.mirror !== settings.mirror;
+    settings = next;
+    if (mirrorChanged) {
+      layout = { ...layout, mirror: next.mirror };
+      placeAll();
+    }
+    cb.onSettingsChange?.(next);
+  };
+  const grid = el('div', { className: 'settings-grid' });
+  const sliders = new Map<string, { input: HTMLInputElement; out: HTMLOutputElement }>();
+  for (const { bus, label } of VOLUME_BUSES) {
+    const input = el('input', {
+      id: `settings-volume-${bus}`,
+      type: 'range',
+      min: '0',
+      max: '100',
+      step: '1',
+    });
+    input.setAttribute('aria-label', `${label} volume`);
+    const out = el('output', { id: `settings-volume-${bus}-value` });
+    input.addEventListener('input', () => {
+      out.textContent = `${input.value}%`;
+      change({ kind: 'volume', bus, value: Number(input.value) / 100 });
+    });
+    sliders.set(bus, { input, out });
+    grid.append(el('label', { htmlFor: input.id, textContent: label }), input, out);
+  }
+  const mute = el('input', { id: 'settings-mute', type: 'checkbox' });
+  mute.addEventListener('change', () => change({ kind: 'mute', value: mute.checked }));
+  const mirror = el('input', { id: 'settings-mirror', type: 'checkbox' });
+  mirror.addEventListener('change', () => change({ kind: 'mirror', value: mirror.checked }));
+  const settingsScreen = el(
+    'div',
+    { id: 'settings', className: 'screen', hidden: true },
+    el('div', { className: 'title', textContent: 'Settings' }),
+    grid,
+    el(
+      'div',
+      { className: 'row toggles' },
+      el('label', {}, mute, 'Mute'),
+      el('label', {}, mirror, 'Left-handed'),
+    ),
+    button('settings-back', 'small', 'Back', () => show('menu')),
+  );
+  const syncSettingsControls = () => {
+    for (const { bus } of VOLUME_BUSES) {
+      const s = sliders.get(bus);
+      if (!s) continue;
+      const pct = Math.round(settings.volumes[bus] * 100);
+      s.input.value = String(pct);
+      s.out.textContent = `${pct}%`;
+    }
+    mute.checked = settings.mute;
+    mirror.checked = settings.mirror;
+  };
+  syncSettingsControls();
+
+  // ---- HUD ---------------------------------------------------------------------------------
   const speed = el('div', { id: 'hud-speed' });
   const position = el('div', { id: 'hud-position' });
-  const hud = el('div', { id: 'hud', hidden: true }, speed, position);
-
-  const resultPlace = el('div', { id: 'results-place', className: 'title' });
-  const resultPrize = el('div', { id: 'results-prize', className: 'card' });
-  const backButton = el('button', { id: 'results-menu', className: 'big', textContent: 'Back to menu' });
-  backButton.addEventListener('click', () => opts.callbacks.onBackToMenu());
-  const results = el(
+  const selfHealth = healthWidget('hud-health', 'YOU');
+  const targetHealth = healthWidget('hud-target', '');
+  const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
+  pauseButton.setAttribute('aria-label', 'Pause');
+  pauseButton.addEventListener('click', () => pause());
+  const hud = el(
     'div',
-    { id: 'results', className: 'screen', hidden: true },
-    resultPlace,
-    resultPrize,
-    backButton,
+    { id: 'hud', hidden: true },
+    speed,
+    position,
+    selfHealth.root,
+    targetHealth.root,
+    pauseButton,
   );
+  const hudPieces: Record<string, HTMLElement> = {
+    speedometer: speed,
+    position,
+    'health-self': selfHealth.root,
+    'health-target': targetHealth.root,
+  };
+  let targetShown = false;
 
+  // ---- Touch visuals -----------------------------------------------------------------------
   const touchSurface = el('div', { id: 'touch-surface', hidden: true });
   const touchButtons: HTMLElement[] = [];
+  const knob = el('div', { id: 'touch-stick-knob' });
+  const ring = el('div', { id: 'touch-stick-ring', hidden: true }, knob);
+  touchSurface.append(ring);
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  let layout = opts.layout;
-  const drawTouch = () => {
+  const screenSize = () => ({
+    w: touchSurface.clientWidth || window.innerWidth,
+    h: touchSurface.clientHeight || window.innerHeight,
+  });
+  const elementOf = (name: string): LayoutElement | undefined =>
+    layout.elements.find((e) => e.element === name && e.visible);
+
+  const placeAll = () => {
+    const { w, h } = screenSize();
+    const unit = Math.min(w, h);
+    for (const [name, node] of Object.entries(hudPieces)) {
+      const e = elementOf(name);
+      const hide = !e || (e.touchOnly && !coarse) || (name === 'health-target' && !targetShown);
+      node.hidden = !!hide;
+      if (e) Object.assign(node.style, hudStyle(e, unit, layout.mirror));
+    }
+    // The pause button sits in the top corner away from the position readout, and mirrors with it.
+    pauseButton.classList.toggle('mirrored', layout.mirror);
     for (const b of touchButtons.splice(0)) b.remove();
     if (!coarse) return;
-    const w = touchSurface.clientWidth || window.innerWidth;
-    const h = touchSurface.clientHeight || window.innerHeight;
     for (const e of layout.elements) {
-      if (!e.visible || !e.element.startsWith('touch-') || e.element === 'touch-stick-zone') continue;
+      if (!e.visible || (e.element !== 'touch-attack' && e.element !== 'touch-brake')) continue;
       const r = placeElement(e, w, h, layout.mirror);
       const b = el('div', {
+        id: e.element,
         className: 'touch-button',
         textContent: e.element === 'touch-attack' ? 'HIT' : 'BRAKE',
       });
@@ -167,53 +369,253 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       touchButtons.push(b);
     }
   };
-  window.addEventListener('resize', drawTouch);
+  window.addEventListener('resize', placeAll);
 
-  const noticeBox = el('div', { className: 'card', hidden: true });
-  Object.assign(noticeBox.style, {
-    position: 'absolute',
-    top: '10px',
-    left: '50%',
-    transform: 'translateX(-50%)',
+  // The stick ring: drawn where the left thumb lands inside the stick zone, the knob follows it.
+  let stickPointer: number | null = null;
+  let stickOrigin = { x: 0, y: 0 };
+  const localPoint = (e: PointerEvent) => {
+    const box = touchSurface.getBoundingClientRect();
+    return { x: e.clientX - box.left, y: e.clientY - box.top, w: box.width, h: box.height };
+  };
+  touchSurface.addEventListener('pointerdown', (e) => {
+    if (stickPointer !== null) return;
+    const p = localPoint(e);
+    if (p.x < EDGE_PX || p.x > p.w - EDGE_PX) return;
+    const zone = elementOf('touch-stick-zone');
+    if (!zone) return;
+    const inButton = ['touch-attack', 'touch-brake'].some((name) => {
+      const b = elementOf(name);
+      if (!b) return false;
+      const r = placeElement(b, p.w, p.h, layout.mirror);
+      return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    });
+    const z = placeElement(zone, p.w, p.h, layout.mirror);
+    if (inButton || p.x < z.x || p.x > z.x + z.w || p.y < z.y || p.y > z.y + z.h) return;
+    stickPointer = e.pointerId;
+    stickOrigin = { x: p.x, y: p.y };
+    Object.assign(ring.style, { left: `${p.x}px`, top: `${p.y}px` });
+    knob.style.transform = '';
+    ring.hidden = false;
   });
+  touchSurface.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== stickPointer) return;
+    const p = localPoint(e);
+    let dx = p.x - stickOrigin.x;
+    let dy = p.y - stickOrigin.y;
+    const len = Math.hypot(dx, dy);
+    if (len > STICK_RING_PX) {
+      dx = (dx / len) * STICK_RING_PX;
+      dy = (dy / len) * STICK_RING_PX;
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+  const stickUp = (e: PointerEvent) => {
+    if (e.pointerId !== stickPointer) return;
+    stickPointer = null;
+    ring.hidden = true;
+  };
+  touchSurface.addEventListener('pointerup', stickUp);
+  touchSurface.addEventListener('pointercancel', stickUp);
 
-  root.append(touchSurface, hud, start, menu, results, noticeBox);
+  // ---- Pause -------------------------------------------------------------------------------
+  const pauseBuild = el('div', { id: 'pause-build', textContent: `build ${buildId}` });
+  const restartButton = button('pause-restart', 'small', 'Restart', () => {
+    closePause();
+    cb.onRestart?.();
+  });
+  restartButton.hidden = !cb.onRestart;
+  const saveFileButton = button('pause-save-file', 'small', 'Save debug file', () => {
+    void cb.onSaveDebugFile?.();
+  });
+  saveFileButton.hidden = !cb.onSaveDebugFile;
+  const pauseScreen = el(
+    'div',
+    { id: 'pause-screen', className: 'screen', hidden: true },
+    el('div', { className: 'title', textContent: 'Paused' }),
+    button('pause-resume', 'big', 'Resume', () => resume()),
+    el(
+      'div',
+      { className: 'row' },
+      restartButton,
+      button('pause-quit', 'small', 'Quit to menu', () => {
+        closePause();
+        (cb.onQuit ?? cb.onBackToMenu)();
+      }),
+    ),
+    el(
+      'div',
+      { className: 'row' },
+      button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      saveFileButton,
+    ),
+    pauseBuild,
+  );
+  // The tuning panel hides behind a long-press on the build id, or a three-finger tap.
+  let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  const cancelPress = () => {
+    if (pressTimer !== null) clearTimeout(pressTimer);
+    pressTimer = null;
+  };
+  pauseBuild.addEventListener('pointerdown', () => {
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      tuningPanel.toggle(true);
+    }, LONG_PRESS_MS);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+    pauseBuild.addEventListener(type, cancelPress);
+  }
+  pauseBuild.addEventListener('contextmenu', (e) => e.preventDefault());
+  const pauseTouches = new Set<number>();
+  pauseScreen.addEventListener('pointerdown', (e) => {
+    pauseTouches.add(e.pointerId);
+    if (pauseTouches.size >= 3) tuningPanel.toggle(true);
+  });
+  for (const type of ['pointerup', 'pointercancel'] as const) {
+    pauseScreen.addEventListener(type, (e) => pauseTouches.delete(e.pointerId));
+  }
+
+  const closePause = () => {
+    paused = false;
+    pauseScreen.hidden = true;
+    pauseTouches.clear();
+    cancelPress();
+    touchSurface.hidden = current !== 'race';
+  };
+  function pause() {
+    if (current !== 'race' || paused) return;
+    paused = true;
+    pauseScreen.hidden = false;
+    touchSurface.hidden = true; // taps on the pause screen never reach input/
+    stickPointer = null;
+    ring.hidden = true;
+    cb.onPause?.();
+  }
+  function resume() {
+    if (!paused) return;
+    closePause();
+    cb.onResume?.();
+  }
+
+  // ---- Results -----------------------------------------------------------------------------
+  const resultPlace = el('div', { id: 'results-place', className: 'title' });
+  const resultPrize = el('div', { id: 'results-prize', className: 'card' });
+  const results = el(
+    'div',
+    { id: 'results', className: 'screen', hidden: true },
+    resultPlace,
+    resultPrize,
+    el(
+      'div',
+      { className: 'row' },
+      button('results-menu', 'big', 'Back to menu', () => cb.onBackToMenu()),
+      button('results-race', 'small', 'Race again', () => cb.onRace()),
+    ),
+  );
+
+  // ---- Rotate your phone -------------------------------------------------------------------
+  const rotate = el(
+    'div',
+    { id: 'rotate-screen' },
+    el('div', { className: 'phone' }),
+    el('div', { className: 'title', textContent: 'Turn it sideways' }),
+    el('div', { className: 'card', textContent: 'This game only rides in landscape.' }),
+  );
+
+  const noticeBox = el('div', { className: 'card notice', hidden: true });
+
+  root.append(touchSurface, hud, start, menu, settingsScreen, results, pauseScreen, noticeBox, rotate);
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
   const narrative = createNarrative();
 
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Escape' || e.repeat) return;
+    if (current === 'race') {
+      if (paused) resume();
+      else pause();
+    } else if (current === 'settings') show('menu');
+  });
+
   const screens: Record<Screen, HTMLElement[]> = {
     start: [start],
     menu: [menu],
+    settings: [settingsScreen],
     race: [hud, touchSurface],
     results: [results],
   };
 
+  function show(screen: Screen) {
+    current = screen;
+    for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
+    if (paused) closePause();
+    stamp.classList.toggle('in-race', screen === 'race');
+    if (screen === 'settings') syncSettingsControls();
+    if (screen === 'race') {
+      targetShown = false;
+      placeAll();
+    }
+  }
+
+  const setText = (node: HTMLElement, text: string) => {
+    if (node.textContent !== text) node.textContent = text;
+  };
+  const setFill = (fill: HTMLElement, fraction: number) => {
+    const w = `${Math.round(fraction * 1000) / 10}%`;
+    if (fill.style.width !== w) fill.style.width = w;
+  };
+
+  const updateHud = (player: EntitySnapshot | null, riders: number, units: 'mph' | 'kmh') => {
+    if (!player) return;
+    setText(speed, formatSpeed(player.speed, units));
+    setText(position, `${ordinal(player.place)} / ${riders}`);
+    setFill(selfHealth.fill, healthFraction(player.health, player.healthMax));
+  };
+
   return {
-    show(screen) {
-      for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
-      stamp.classList.toggle('in-race', screen === 'race');
-      if (screen === 'race') drawTouch();
-    },
-    updateHud(player, riders, units) {
-      if (!player) return;
-      const v = units === 'mph' ? player.speed * 2.2369363 : player.speed * 3.6;
-      speed.textContent = `${Math.round(v)} ${units === 'mph' ? 'mph' : 'km/h'}`;
-      position.textContent = `${ordinal(player.place)} / ${riders}`;
+    show,
+    updateHud,
+    updateRace(snapshot, playerId, units) {
+      const player = snapshot.entities[playerId] ?? null;
+      updateHud(player, riderCount(snapshot), units);
+      const target = targetOf(snapshot, player);
+      const shown = !!target && !!elementOf('health-target');
+      if (shown !== targetShown) {
+        targetShown = shown;
+        targetHealth.root.hidden = !shown;
+      }
+      if (target) {
+        setText(targetHealth.name, target.name || target.contentId);
+        setFill(targetHealth.fill, healthFraction(target.health, target.healthMax));
+      }
     },
     showResults(r) {
-      resultPlace.textContent = `${ordinal(r.place)} of ${r.of}`;
-      resultPrize.textContent = `${r.eventName}. Prize: $${r.prizeCash.toLocaleString('en-US')}. Nobody is paying it yet.`;
+      const t = resultText(r);
+      resultPlace.textContent = t.headline;
+      resultPrize.textContent = t.detail;
+      results.classList.toggle('busted', t.busted);
+    },
+    pause,
+    get paused() {
+      return paused;
+    },
+    setRotateNeeded(needed) {
+      root.classList.toggle('rotate-forced', needed);
     },
     touchSurface,
     setLayout(l) {
       layout = l;
-      drawTouch();
+      placeAll();
     },
     notice(text) {
       noticeBox.textContent = text;
       noticeBox.hidden = false;
       setTimeout(() => (noticeBox.hidden = true), 4000);
+    },
+    get settings() {
+      return settings;
     },
     tuningPanel,
     narrative,

@@ -1,0 +1,259 @@
+import { expect, test, type Page } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+
+// ui-1's browser tests (docs/milestones/M1.md, ui-1): menu, race and results show a placing; the
+// pause screen opens and closes; the HUD elements are present; the settings page works (the mirror
+// moves the touch buttons); the rotate screen shows in portrait; and no text overflows or leaves
+// the screen at the phone-landscape viewport. Pause freezing the race and the volume reaching the
+// master gain need app/'s wiring and live in ui-pause.spec.ts.
+
+interface Handle {
+  state(): string;
+  snapshot(): { tick: number } | null;
+  setBot(on: boolean): void;
+}
+type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+
+/** Every visible element with its own text must sit inside the viewport and not overflow its box. */
+async function expectNoOverflow(page: Page, where: string) {
+  const problems = await findOverflow(page);
+  console.log(`${where}: ${problems.examined} text elements checked for overflow`);
+  expect(problems.examined, `${where}: something was examined`).toBeGreaterThan(0);
+  expect(problems.out, `${where}: no text overflows`).toEqual([]);
+}
+
+function findOverflow(page: Page) {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const nodes = document.querySelectorAll<HTMLElement>('#ui *, #build-stamp');
+    let examined = 0;
+    for (const e of nodes) {
+      if (e.closest('#tuning-panel')) continue; // the tuning lane's panel
+      if (!e.checkVisibility()) continue;
+      const ownText = [...e.childNodes].some((c) => c.nodeType === 3 && (c.textContent ?? '').trim() !== '');
+      if (!ownText) continue;
+      examined++;
+      const r = e.getBoundingClientRect();
+      const name = `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 30)}"`;
+      if (r.left < -0.5 || r.top < -0.5 || r.right > vw + 0.5 || r.bottom > vh + 0.5) {
+        out.push(`${name} leaves the screen: ${JSON.stringify(r)}`);
+      }
+      if (getComputedStyle(e).display !== 'inline') {
+        if (e.scrollWidth > e.clientWidth + 1) out.push(`${name} overflows sideways`);
+        if (e.scrollHeight > e.clientHeight + 1) out.push(`${name} overflows downwards`);
+      }
+    }
+    return { out, examined };
+  });
+}
+
+/** The HUD pieces, the pause button and the touch buttons must not cover each other. */
+async function expectNoHudOverlap(page: Page, where: string) {
+  const found = await page.evaluate(() => {
+    const ids = [
+      'hud-speed',
+      'hud-position',
+      'hud-health',
+      'hud-target',
+      'hud-pause',
+      'touch-attack',
+      'touch-brake',
+    ];
+    const boxes = ids
+      .map((id) => document.getElementById(id))
+      .filter((e): e is HTMLElement => !!e && e.checkVisibility())
+      .map((e) => ({ id: e.id, r: e.getBoundingClientRect() }));
+    const out: string[] = [];
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (!a || !b) continue;
+        const overlap =
+          a.r.left < b.r.right && b.r.left < a.r.right && a.r.top < b.r.bottom && b.r.top < a.r.bottom;
+        if (overlap) out.push(`${a.id} overlaps ${b.id}`);
+      }
+    }
+    return { out, examined: boxes.length };
+  });
+  console.log(`${where}: ${found.examined} HUD pieces checked for overlap`);
+  expect(found.examined, `${where}: HUD pieces examined`).toBeGreaterThanOrEqual(5);
+  expect(found.out, `${where}: no HUD overlap`).toEqual([]);
+}
+
+async function shot(page: Page, name: string) {
+  mkdirSync('test-results/screenshots', { recursive: true });
+  await page.screenshot({ path: `test-results/screenshots/ui-${name}.png` });
+}
+
+function watchErrors(page: Page): string[] {
+  const problems: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+  return problems;
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+});
+
+test('start, menu and settings: controls card, build id, sliders, and the mirror moves the buttons', async ({
+  page,
+}) => {
+  const problems = watchErrors(page);
+  await page.goto('./');
+  await expect(page.locator('#start-screen')).toBeVisible();
+  await expect(page.locator('#start-controls')).toContainText('Esc pause');
+  await expectNoOverflow(page, 'start');
+  await shot(page, 'start');
+
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  await expect(page.locator('#menu-settings')).toBeVisible();
+  await expect(page.locator('#menu-build')).toHaveText(/^build [0-9a-f]{7}$/);
+  await expectNoOverflow(page, 'menu');
+  await shot(page, 'menu');
+
+  await page.locator('#menu-settings').click();
+  for (const bus of ['master', 'music', 'effects', 'voices']) {
+    await expect(page.locator(`#settings-volume-${bus}`)).toBeVisible();
+  }
+  await expect(page.locator('#settings-volume-master-value')).toHaveText('80%');
+  await expect(page.locator('#settings-mute')).toBeVisible();
+  await expect(page.locator('#settings-mirror')).not.toBeChecked();
+  await expectNoOverflow(page, 'settings');
+  await shot(page, 'settings');
+
+  // Without the mirror the attack button sits on the right; with it, on the left.
+  await page.locator('#settings-back').click();
+  await page.locator('#menu-race').click();
+  await expect(page.locator('#touch-attack')).toBeVisible();
+  const vw = page.viewportSize()?.width ?? 0;
+  const plain = await page.locator('#touch-attack').boundingBox();
+  expect(plain && plain.x > vw / 2, 'attack button on the right').toBe(true);
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 10);
+  await expectNoHudOverlap(page, 'race');
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-quit').click();
+  await expect(page.locator('#menu')).toBeVisible();
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-mirror').check();
+  await page.keyboard.press('Escape'); // back to the menu
+  await page.locator('#menu-race').click();
+  const mirrored = await page.locator('#touch-attack').boundingBox();
+  expect(mirrored && mirrored.x + mirrored.width < vw / 2, 'attack button on the left').toBe(true);
+  const health = await page.locator('#hud-health').boundingBox();
+  expect(health && health.x > vw / 2, 'your health bar follows the mirror').toBe(true);
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 10);
+  await expectNoHudOverlap(page, 'race, mirrored');
+  await shot(page, 'race-mirrored');
+
+  expect(problems).toEqual([]);
+});
+
+test('a race: HUD, pause screen, tuning long-press, and results with a placing', async ({ page }) => {
+  test.setTimeout(300_000);
+  const problems = watchErrors(page);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.locator('#menu-race').click();
+
+  // The HUD.
+  await expect(page.locator('#hud-speed')).toBeVisible();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120);
+  await expect(page.locator('#hud-speed')).toHaveText(/^\d+ mph$/);
+  await expect(page.locator('#hud-position')).toHaveText(/^\d+(st|nd|rd|th) \/ \d+$/);
+  await expect(page.locator('#hud-health')).toBeVisible();
+  await expect(page.locator('#hud-health .hud-bar > div')).toHaveAttribute('style', /width: 100%/);
+  await expect(page.locator('#hud-target')).toBeAttached(); // shown while you have a target
+  await expect(page.locator('#hud-pause')).toBeVisible();
+  await expect(page.locator('#touch-attack')).toBeVisible();
+  await expect(page.locator('#touch-brake')).toBeVisible();
+  await expect(page.locator('#build-stamp')).toBeHidden();
+  await expectNoOverflow(page, 'race');
+  await shot(page, 'race');
+
+  // The pause screen: Esc opens it, the build id's long-press opens the tuning panel.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  await expect(page.locator('#pause-resume')).toBeVisible();
+  await expect(page.locator('#pause-quit')).toBeVisible();
+  await expect(page.locator('#pause-copy-report')).toBeVisible();
+  await expect(page.locator('#touch-surface')).toBeHidden();
+  await expectNoOverflow(page, 'pause');
+  await shot(page, 'pause');
+  await expect(page.locator('#tuning-panel')).toBeHidden();
+  const build = await page.locator('#pause-build').boundingBox();
+  expect(build).not.toBeNull();
+  if (build) {
+    await page.mouse.move(build.x + build.width / 2, build.y + build.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+  }
+  await expect(page.locator('#tuning-panel')).toBeVisible();
+  await page.keyboard.press('Backquote'); // close it again
+  await page.locator('#pause-resume').click();
+  await expect(page.locator('#pause-screen')).toBeHidden();
+  await expect(page.locator('#touch-surface')).toBeVisible();
+
+  // The pause button does the same as Esc.
+  await page.locator('#hud-pause').click();
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-screen')).toBeHidden();
+
+  // Results.
+  await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
+  await expect(page.locator('#results-place')).toHaveText(/^\d+(st|nd|rd|th) of \d+$/);
+  await expect(page.locator('#results-prize')).toContainText('Prize: $');
+  await expect(page.locator('#results-race')).toBeVisible();
+  console.log(`results: ${await page.locator('#results-place').textContent()}`);
+  await expectNoOverflow(page, 'results');
+  await shot(page, 'results');
+  await page.locator('#results-menu').click();
+  await expect(page.locator('#menu')).toBeVisible();
+
+  expect(problems).toEqual([]);
+});
+
+test('the overflow check fires on planted overflowing text (negative control)', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.locator('#start-screen')).toBeVisible();
+  await page.evaluate(() => {
+    const clipped = document.createElement('div');
+    clipped.textContent = 'a label far too long for its little box';
+    Object.assign(clipped.style, { width: '40px', overflow: 'hidden', whiteSpace: 'nowrap' });
+    const offscreen = document.createElement('div');
+    offscreen.textContent = 'off the edge';
+    Object.assign(offscreen.style, {
+      position: 'absolute',
+      left: '900px',
+      top: '20px',
+      whiteSpace: 'nowrap',
+    });
+    document.getElementById('start-screen')?.append(clipped, offscreen);
+  });
+  const found = await findOverflow(page);
+  console.log(`negative control: ${JSON.stringify(found.out)}`);
+  expect(found.out.some((p) => p.includes('overflows sideways'))).toBe(true);
+  expect(found.out.some((p) => p.includes('leaves the screen'))).toBe(true);
+});
+
+test('the rotate screen shows in portrait and hides in landscape', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.goto('./');
+  await expect(page.locator('#rotate-screen')).toBeVisible();
+  await expect(page.locator('#rotate-screen')).toContainText('Turn it sideways');
+  await expectNoOverflow(page, 'rotate');
+  await shot(page, 'rotate');
+  await page.setViewportSize({ width: 915, height: 412 });
+  await expect(page.locator('#rotate-screen')).toBeHidden();
+});
