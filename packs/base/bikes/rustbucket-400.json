@@ -5,8 +5,8 @@
   "class": "rat",
   "tags": ["starter", "slow"],
   "handling": {
-    "topSpeedMps": 38.0,
-    "accelMps2": 4.2,
+    "topSpeedMps": 44.7,
+    "accelMps2": 4.9,
     "brakeMps2": 9.0,
     "steerRateMps": 5.5,
     "massKg": 180
@@ -14,6 +14,6 @@
   "engineSound": { "preset": "single-thump" },
   "meta": {
     "status": "live",
-    "notes": "The slow M1 starter, about 85 mph (38.0 m/s). riders-1 handling: the tuning panel scales top speed, acceleration and steering on top of these numbers."
+    "notes": "The M1 starter. Playtest 1 (2026-09-30, \"faster + stronger cues\") raised it from 85 mph (38.0 m/s, accel 4.2) to about 100 mph (44.7 m/s), with acceleration scaled by the same 100/85 so it reaches top speed in the same time (M2 riders-5). riders-1 handling: the tuning panel scales top speed (0.85 gives back the old 85 mph), acceleration and steering on top of these numbers."
   }
 }
