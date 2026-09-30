@@ -1,19 +1,28 @@
 // The test handle (docs/architecture.md, "Testing seams"): `window.__game`, only when the test
 // flag is set before the page loads. Read-only views of the game, the bot switch and the seed; no
 // write access to sim state. It also keeps the per-tick checks the browser race asserts on:
-// every mover finite with a valid road position, and the player's edges in order.
+// every mover finite with a known mode and a valid road position, the player's edges in order,
+// event counts, the player's landed hits and what the bot did.
 import type { AppHandle } from '../../app';
 import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
-import { createStubBot } from '../bot';
+import { createBot, type BotController, type BotStats } from '../bot';
+import { moverProblem } from './checks';
+
+export { MOVER_MODES, moverProblem } from './checks';
 
 export interface RaceChecks {
   ticks: number;
   /** Player edges in the order first entered (repeats collapsed). */
   playerEdges: number[];
-  /** Ticks where some mover had a non-finite field or an invalid road position. */
+  /** Ticks where some mover had a non-finite field, an unknown mode or an invalid road position. */
   invalidTicks: number;
   firstInvalid: string | null;
+  /** Every event type seen this race, with its count. */
   events: Record<string, number>;
+  /** `hit` events whose actor is the player: attacks that connected. */
+  playerHits: number;
+  /** The bot's own counters (zeros when the bot is off). */
+  bot: BotStats;
 }
 
 export interface TestHandle {
@@ -48,29 +57,64 @@ export function testFlagSet(): boolean {
   return window.__GAME_TEST__ === true;
 }
 
+function freshChecks(bot: BotController | null): RaceChecks {
+  return {
+    ticks: 0,
+    playerEdges: [],
+    invalidTicks: 0,
+    firstInvalid: null,
+    events: {},
+    playerHits: 0,
+    bot: bot?.stats() ?? {
+      attackPresses: 0,
+      skipTicks: 0,
+      shortcutTicks: 0,
+      shortcutSeenTicks: 0,
+      trafficDodges: 0,
+      engagements: 0,
+    },
+  };
+}
+
 export function installTestHandle(app: AppHandle): TestHandle {
-  const bot = createStubBot();
-  let checks: RaceChecks = { ticks: 0, playerEdges: [], invalidTicks: 0, firstInvalid: null, events: {} };
+  let botOn = false;
+  let bot: BotController | null = null;
+  let checks = freshChecks(null);
 
   app.onStep((snap, events) => {
     checks.ticks++;
-    for (const e of events) checks.events[e.type] = (checks.events[e.type] ?? 0) + 1;
+    const playerId = app.playerId();
+    for (const e of events) {
+      checks.events[e.type] = (checks.events[e.type] ?? 0) + 1;
+      if (e.type === 'hit' && e.actor === playerId) checks.playerHits++;
+    }
     const route = app.roadQueries();
     for (const m of snap.entities) {
-      const values = [m.x, m.y, m.z, m.heading, m.speed, m.road.s, m.road.d, m.road.h, m.road.yaw];
-      const length = route ? route.edgeLength(m.road.edge) : NaN;
-      const valid =
-        values.every(Number.isFinite) && Number.isInteger(m.road.edge) && m.road.s >= 0 && m.road.s <= length;
-      if (!valid) {
+      const problem = route ? moverProblem(m, route) : 'no route';
+      if (problem) {
         checks.invalidTicks++;
-        checks.firstInvalid ??= `tick ${snap.tick} entity ${m.id}: ${JSON.stringify(m.road)}`;
+        checks.firstInvalid ??= `tick ${snap.tick} entity ${m.id} (${m.kind}, ${m.mode}): ${problem}`;
         break;
       }
     }
-    const me = snap.entities[app.playerId()];
+    const me = snap.entities[playerId];
     if (me && checks.playerEdges[checks.playerEdges.length - 1] !== me.road.edge)
       checks.playerEdges.push(me.road.edge);
+    if (bot) checks.bot = bot.stats();
   });
+
+  const installDriver = () => {
+    bot = botOn ? createBot() : null;
+    const driver = bot;
+    app.setTickDriver(
+      driver
+        ? (snap, actions) => {
+            const route = app.roadQueries();
+            if (route) driver.drive(snap, app.playerId(), route, actions);
+          }
+        : null,
+    );
+  };
 
   const handle: TestHandle = {
     state: () => app.state(),
@@ -78,20 +122,15 @@ export function installTestHandle(app: AppHandle): TestHandle {
     events: () => app.recentEvents(),
     playerId: () => app.playerId(),
     setBot(on) {
-      app.setTickDriver(
-        on
-          ? (snap, actions) => {
-              const me = snap.entities[app.playerId()];
-              const route = app.roadQueries();
-              if (me && route) bot.drive(me, route, actions);
-            }
-          : null,
-      );
+      botOn = on;
+      installDriver();
     },
     setSeed: (seed) => app.setSeed(seed),
     tap: () => app.tap(),
     startRace() {
-      checks = { ticks: 0, playerEdges: [], invalidTicks: 0, firstInvalid: null, events: {} };
+      // A fresh bot per race, so its counters and memory start clean.
+      if (botOn) installDriver();
+      checks = freshChecks(bot);
       app.startRace();
     },
     checks: () => checks,
