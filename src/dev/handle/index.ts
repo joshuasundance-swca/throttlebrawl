@@ -3,7 +3,7 @@
 // write access to sim state. It also keeps the per-tick checks the browser race asserts on:
 // every mover finite with a valid road position, and the player's edges in order.
 import type { AppHandle } from '../../app';
-import type { SimEvent, SimSnapshot } from '../../sim/api';
+import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
 import { createStubBot } from '../bot';
 
 export interface RaceChecks {
@@ -29,6 +29,11 @@ export interface TestHandle {
   rendererStats(): ReturnType<AppHandle['rendererStats']>;
   frameStats(): ReturnType<AppHandle['frameStats']>;
   contentHashes(): { sim: string; full: string };
+  /**
+   * The player slot's recorded SimInputs this race, one per stepped tick, from `from` on (default
+   * 0). The input lane's browser specs read it to prove the touch and keyboard paths.
+   */
+  inputs(from?: number): SimInput[];
 }
 
 declare global {
@@ -93,6 +98,13 @@ export function installTestHandle(app: AppHandle): TestHandle {
     rendererStats: () => app.rendererStats(),
     frameStats: () => app.frameStats(),
     contentHashes: () => app.contentHashes(),
+    inputs(from = 0) {
+      // The replay arrives untyped along the callback (dev/ does not import replay/).
+      const rec = app.getReplayAndSettings().replay as { inputs?: readonly (readonly SimInput[])[] } | null;
+      const out: SimInput[] = [];
+      for (const slots of rec?.inputs?.slice(from) ?? []) if (slots[0]) out.push({ ...slots[0] });
+      return out;
+    },
   };
   window.__game = handle;
   return handle;

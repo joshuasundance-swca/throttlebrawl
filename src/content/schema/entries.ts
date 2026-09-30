@@ -126,6 +126,9 @@ export const weaponSchema = entry('weapon', {
   recoveryS: nonNegative,
   cooldownS: nonNegative.optional(),
   damage: nonNegative,
+  knockback: z
+    .looseObject({ lateralMps: nonNegative, staggerS: nonNegative, takedownBonus: unit01.optional() })
+    .optional(),
   hitStopMs: nonNegative.optional(),
   steal: z
     .looseObject({ allowed: z.boolean(), windowStartS: nonNegative, windowEndS: nonNegative })
