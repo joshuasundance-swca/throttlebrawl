@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+replay-2: the race's recording can now be saved and resumed after a reload. The code is in `src/replay/store.ts`. A store writes the recording to Web Storage synchronously, never throws, and hands it back on boot. It resumes only when the recording's replay key matches the running build. Otherwise it gives a one-line notice and keeps the old recording for the debug file. An autosave writes every 5 s and at once on a pause or a hide. The recorder can carry a resumed recording on. A new headless sim test hides a bot race at tick 1234, "reloads", re-runs the race to that tick with app's `resumeFromRecording`, rides on, and matches the uninterrupted run at every checkpoint up to tick 2400. It also prints the fast-forward time. Projected to a 6-minute race, it came to 3.6 s and 5.2 s in two runs on a loaded dev machine, above the 3 s line, so the phone's own number matters. The app does not call any of this yet; app-4 wires it in, with the resume card and the browser reload test.

@@ -23,6 +23,16 @@ export interface RenderParams {
   getUpS: number;
   /** How long a rider shakes a fist, seconds. */
   fistShakeS: number;
+  // Playtest 1 item 10 (speed cues).
+  /** The speed lines' opacity at full speed, 0 = off. */
+  streakOpacity: number;
+  /** How many speed lines show at once. */
+  streakCount: number;
+  /** Speed where the speed lines start, and where they are full, m/s. */
+  streakFromMps: number;
+  streakFullMps: number;
+  /** Roadside palms per stretch of road (1 = one per 20 m a side), 0 = none. Rebuilds the road. */
+  roadsideDensity: number;
 }
 
 const decl = (
@@ -55,6 +65,12 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   decl('reactorS', 'Gator or fisherman stays', 3, 1, 8, 0.25, 's'),
   decl('getUpS', 'Get-up time', 0.5, 0.2, 1.5, 0.05, 's'),
   decl('fistShakeS', 'Fist shake', 1.2, 0.3, 3, 0.1, 's'),
+  // Playtest 1 item 10 [decided]: speed cues. [default] numbers.
+  decl('streakOpacity', 'Speed lines', 0.45, 0, 1, 0.05, ''),
+  decl('streakCount', 'Speed line count', 40, 0, 64, 1, ''),
+  decl('streakFromMps', 'Speed lines from', 20, 0, 60, 1, 'm/s'),
+  decl('streakFullMps', 'Speed lines full at', 45, 10, 80, 1, 'm/s'),
+  decl('roadsideDensity', 'Roadside palms', 1, 0, 3, 0.25, ''),
 ];
 
 export function defaultRenderParams(): RenderParams {

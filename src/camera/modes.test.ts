@@ -499,7 +499,8 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
       if (n === 120) cam.onEvents([takedownAt(n), slowmo('slowmoStart', n)]);
       if (n === 150) cam.onEvents([slowmo('slowmoEnd', n)]);
       if (n === 200) cam.onEvents([takedownAt(n)]); // no slow motion: the hold time applies
-      const pose = cam.update(t, DT, { entities: [rival(s)], lookBack: n >= 260 && n < 280 });
+      // Between a laptop's and a phone's shape, so every phone-camera slider moves the trace.
+      const pose = cam.update(t, DT, { entities: [rival(s)], lookBack: n >= 260 && n < 280, aspect: 2 });
       out.push(pose.x, pose.y, pose.z, pose.lookX, pose.lookY, pose.lookZ, pose.fov, pose.roll);
     }
     return out;

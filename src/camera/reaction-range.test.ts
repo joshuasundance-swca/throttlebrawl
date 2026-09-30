@@ -132,8 +132,9 @@ function sight(
   for (const [id, v] of Object.entries(params)) cam.setParam(id, v);
   const s = 200;
   const t = riderAt(road, { edge: 0, s, d: riderD, dir: 1 }, speed);
-  let pose = cam.snap(t);
-  for (let n = 0; n < 240; n++) pose = cam.update(t, DT);
+  // The camera knows the view's shape, as the app tells it (playtest 1 item 11: phones sit higher).
+  let pose = cam.snap(t, { aspect });
+  for (let n = 0; n < 240; n++) pose = cam.update(t, DT, { aspect });
   const view = renderCamera(pose, aspect);
   const car = project(boxOnRoad(road, s + REACTION_RANGE_M, carD, CAR), view);
   const rider = project(boxOnRoad(road, s, riderD, ENVELOPE), view);
@@ -158,7 +159,7 @@ describe('playtest 1: an oncoming car at the reaction range is in view', () => {
 
   for (const c of cases) {
     it(`sees a car 125 m ahead ${c.name}, standing and at top speed, on both screen shapes`, () => {
-      for (const speed of [0, 38])
+      for (const speed of [0, 38, 45])
         for (const aspect of ASPECTS)
           for (const road of [straightRoad(), bend()]) {
             const seen = sight(road, c.riderD, c.carD, speed, aspect);
@@ -177,11 +178,16 @@ describe('playtest 1: an oncoming car at the reaction range is in view', () => {
       `[examined] ${examined} sightings of a car at ${REACTION_RANGE_M} m; at top speed on the phone's ` +
         `screen it is ${straight.heightPx.toFixed(1)} CSS px tall`,
     );
-    expect(examined).toBe(cases.length * 2 * ASPECTS.length * 2);
+    expect(examined).toBe(cases.length * 3 * ASPECTS.length * 2);
   });
 
   it("catches the complaint: M1's low camera (5.5 m back, 1.6 m up) hides the car behind the rider", () => {
-    const m1 = { 'camera.chaseDistanceM': 5.5, 'camera.heightM': 1.6 };
+    const m1 = {
+      'camera.chaseDistanceM': 5.5,
+      'camera.heightM': 1.6,
+      'camera.wideHeightM': 0,
+      'camera.wideDistanceM': 0,
+    };
     for (const c of cases) {
       const seen = sight(straightRoad(), c.riderD, c.carD, 38, ASPECTS[0] ?? 2, m1);
       expect(seen.hiddenByRider, c.name).toBe(true);
