@@ -6,7 +6,7 @@
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
   "lengths": [{ "id": "standard", "route": "m1-skeleton-sprint", "laps": 1 }],
-  "field": { "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"], "paceMps": 31 },
+  "field": { "riders": ["deacon-vane"], "paceMps": 31 },
   "cops": { "mode": "none" },
   "rules": {},
   "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],

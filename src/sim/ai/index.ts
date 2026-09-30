@@ -203,7 +203,14 @@ function lineClear(
   return true;
 }
 
-function steerFor(world: World, config: SimConfig, m: Mover, dTarget: number, lateralMax: number): number {
+function steerFor(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  dTarget: number,
+  lateralMax: number,
+  gain: number,
+): number {
   const def = config.riders[m.riderIndex];
   const bike = def?.bike;
   if (!bike) return 0;
@@ -212,7 +219,7 @@ function steerFor(world: World, config: SimConfig, m: Mover, dTarget: number, la
   const v = m.speed;
   const steerScale = world.params['riders.steerScale'] ?? 1;
   // Lateral speed wanted, in the rider's frame (its right is −d when riding toward −s).
-  const vLat = clamp((dTarget - pos.d) * 1.0, -lateralMax, lateralMax) * pos.dir;
+  const vLat = clamp((dTarget - pos.d) * gain, -lateralMax, lateralMax) * pos.dir;
   const wantYaw = vLat / Math.max(v, 5);
   const turn = pos.dir * road.kappaAt(pos.edge, pos.s) * v + 3 * (wantYaw - m.yaw);
   const yawTarget = m.yaw + turn / 4;
@@ -280,6 +287,17 @@ function driveRider(
   const weave = prof.weave * 1.4 * sin((st.weavePhase[id] ?? 0) + (tick * TAU) / WEAVE_PERIOD_TICKS);
   let dTarget = laneCentre + clamp((st.laneOffset[id] ?? 0) + weave, -laneHalf, laneHalf);
   let lateralMax = 3;
+  let lateralGain = 1;
+  if (finished) {
+    // Home: pull onto its own side's shoulder, clear of the lane, so nobody still racing (and no
+    // car behind it) is walled off by a rider parked in the lane at the road's end.
+    const shoulder = lanes.find((l) => l.kind === 'shoulder' && l.direction === pos.dir);
+    if (shoulder) {
+      dTarget = shoulder.dCenterM;
+      lateralMax = 5;
+      lateralGain = 3; // the road ends soon after the line: get across quickly
+    }
+  }
 
   // Everyone this rider can see.
   const look = clamp(14 + v * 2.2, 14, 90);
@@ -400,7 +418,7 @@ function driveRider(
   }
 
   const { throttle, brake } = throttleFor(config, m, speedTarget);
-  const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax);
+  const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax, lateralGain);
   return {
     steer: Math.round(steer * 127),
     throttle: Math.round(throttle * 255),

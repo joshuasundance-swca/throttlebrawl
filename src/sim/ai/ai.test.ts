@@ -39,7 +39,7 @@ const route = createRouteProgress(road, {
   id: 'r',
   network: 'fixture',
   start: { road: 'a', s: 20, dir: 1 },
-  finish: { road: 'c', s: 780 },
+  finish: { road: 'c', s: 760 }, // 40 m before the road's end, like the M1 track
   mainPath: ['a', 'b', 'c'],
   allowedRoads: ['a', 'b', 'c'],
   closed: false,
@@ -407,13 +407,26 @@ describe('ai: fights', () => {
 });
 
 describe('ai: the rest of the controller', () => {
+  it('a rival who has finished pulls onto the shoulder, out of the lane', () => {
+    const sc = scene(
+      [rival('racer', { weave: 0 }), PLAYER],
+      [
+        { s: 2362, d: 1.7, v: 25 }, // just past the finish (c at 760)
+        { s: 30, d: 1.7, v: 0 },
+      ],
+    );
+    for (let t = 0; t < 60 * 3; t++) step(sc);
+    // The drive lane toward +s spans d 0..3.4; its shoulder is centred at 4.15.
+    expect(sc.riders[0]?.pos.d).toBeGreaterThan(3.4);
+  });
+
   it('once the player is home, the rest stop fighting and hurry to the line', () => {
     const sc = scene(
       [rival('heavy-hitter', {}, 'a'), rival('racer', {}, 'b'), PLAYER],
       [
         { s: 30, d: 1.2, v: 28 },
         { s: 32, d: 2.4, v: 28 },
-        { s: 2385, d: 1.7, v: 20 }, // past the finish (c at 780)
+        { s: 2385, d: 1.7, v: 20 }, // past the finish (c at 760)
       ],
     );
     let swings = 0;
