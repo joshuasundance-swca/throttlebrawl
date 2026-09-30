@@ -27,18 +27,18 @@ export interface CameraTarget {
   heading: number;
   speed: number;
   /** Entity id, so the rig can pick out the events that involve this rider. */
-  id?: number;
-  lean?: number;
-  mode?: MoverMode;
+  id?: number | undefined;
+  lean?: number | undefined;
+  mode?: MoverMode | undefined;
   /** The rider's current auto-target, or -1. */
-  targetId?: number;
+  targetId?: number | undefined;
   /** The rider's road position in the snapshot, used as a hint to find it on the road. */
-  road?: { edge: number };
+  road?: { edge: number } | undefined;
 }
 
 /** Other entities the rig may frame (the auto-target), from the same snapshot. */
 export interface CameraContext {
-  entities?: readonly Pick<EntitySnapshot, 'id' | 'x' | 'y' | 'z'>[];
+  entities?: readonly Pick<EntitySnapshot, 'id' | 'x' | 'y' | 'z'>[] | undefined;
 }
 
 export interface CameraPose {
