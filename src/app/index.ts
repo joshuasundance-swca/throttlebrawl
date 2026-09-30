@@ -230,7 +230,9 @@ export function createApp(opts: AppOptions): AppHandle {
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         const player = curr?.entities[playerId] ?? null;
         audio.update(state === 'race' ? player : null);
-        if (state === 'race') ui.updateHud(player, curr?.entities.length ?? 0, settings.units);
+        // "1st / N" counts the racers, not the traffic.
+        const racers = curr ? curr.entities.filter((e) => e.kind === 'rider').length : 0;
+        if (state === 'race') ui.updateHud(player, racers, settings.units);
       },
     },
     SIM_DT,
