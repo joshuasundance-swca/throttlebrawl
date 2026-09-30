@@ -32,6 +32,8 @@ export type { RenderParams } from './tuning';
 export { RENDER_TUNING } from './tuning';
 
 export const MAX_PIXEL_RATIO = 1.5;
+/** The render camera's far plane, metres: just past the placeholder look's fog end (700 m). */
+export const CAMERA_FAR_M = 760;
 
 /** A camera pose (the camera module's output, structurally). */
 export interface ViewPose {
@@ -130,7 +132,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   const scene = new Scene();
-  const camera = new PerspectiveCamera(62, 16 / 9, 0.3, 1500);
+  // The far plane sits just past the fog's end (look.ts: fully fogged at 700 m, so nothing beyond
+  // it shows): the road chunks past it are culled, and the depth buffer is finer up close.
+  const camera = new PerspectiveCamera(62, 16 / 9, 0.3, CAMERA_FAR_M);
   const params = defaultRenderParams();
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });

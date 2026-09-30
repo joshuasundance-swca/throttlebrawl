@@ -126,14 +126,16 @@ function palms(road: RoadNetwork, density?: number): Vector3[] {
     undefined,
     density === undefined ? {} : { roadsideDensity: density },
   );
-  const mesh = group.getObjectByName('road-palms');
-  if (!(mesh instanceof InstancedMesh)) return [];
+  // Every chunk's palms (the road is merged per chunk).
   const m = new Matrix4();
   const out: Vector3[] = [];
-  for (let i = 0; i < mesh.count; i++) {
-    mesh.getMatrixAt(i, m);
-    out.push(new Vector3().setFromMatrixPosition(m));
-  }
+  group.traverse((mesh) => {
+    if (!(mesh instanceof InstancedMesh) || mesh.name !== 'road-palms') return;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, m);
+      out.push(new Vector3().setFromMatrixPosition(m));
+    }
+  });
   return out;
 }
 
