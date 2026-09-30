@@ -36,34 +36,39 @@ test('a rival barks at race start in a readable bubble that then goes away', asy
   const bubble = page.locator('#bark-bubble');
   await expect(bubble).toBeVisible({ timeout: 10_000 });
   const shownAt = Date.now();
-  const ref = (await bubble.getAttribute('data-content-ref')) ?? '';
-  const speaker = (await bubble.locator('.bark-speaker').textContent()) ?? '';
-  const text = (await bubble.locator('.bark-text').textContent()) ?? '';
-  console.log(`bark: ${speaker}: "${text}" (${ref})`);
+  // Everything about the painted bubble is read in one go, while it is up: a slow software-rendered
+  // screenshot can outlast a 2 s bubble, so nothing is measured after the screenshot.
+  const seen = await bubble.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return {
+      ref: el.getAttribute('data-content-ref') ?? '',
+      speaker: el.querySelector('.bark-speaker')?.textContent ?? '',
+      text: el.querySelector('.bark-text')?.textContent ?? '',
+      box: { x: r.x, y: r.y, width: r.width, height: r.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      opacity: s.opacity,
+      visibility: s.visibility,
+      fontSize: parseFloat(s.fontSize),
+    };
+  });
+  const { ref, speaker, text, box, viewport } = seen;
+  console.log(`bark: ${speaker}: "${text}" (${ref}); box ${JSON.stringify(box)}`);
   expect(LINES.get(ref), `${ref} is a base-pack line`).toBe(text);
   expect(ref).toMatch(/#.+-start-/);
   expect(speaker.length).toBeGreaterThan(0);
 
   // Painted, not just present: the bubble has a real box on screen, inside the viewport.
+  expect(box.width).toBeGreaterThan(100);
+  expect(box.height).toBeGreaterThan(30);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(seen.opacity).toBe('1');
+  expect(seen.visibility).toBe('visible');
+  expect(seen.fontSize).toBeGreaterThanOrEqual(18);
   mkdirSync('test-results/screenshots', { recursive: true });
   await page.screenshot({ path: 'test-results/screenshots/narrative-bubble.png' });
-  const box = await bubble.boundingBox();
-  const viewport = page.viewportSize();
-  expect(box && viewport).toBeTruthy();
-  if (box && viewport) {
-    expect(box.width).toBeGreaterThan(100);
-    expect(box.height).toBeGreaterThan(30);
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-  }
-  const style = await bubble.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return { opacity: s.opacity, visibility: s.visibility, fontSize: parseFloat(s.fontSize) };
-  });
-  expect(style.opacity).toBe('1');
-  expect(style.visibility).toBe('visible');
-  expect(style.fontSize).toBeGreaterThanOrEqual(18);
 
   const durationS = Math.max(2, [...text].length / 15);
   await expect(bubble).toBeHidden({ timeout: durationS * 1000 + 2000 });
