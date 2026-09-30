@@ -49,3 +49,42 @@ describe('app: buildSimConfig resolves weapons', () => {
     expect(w?.staggerTicks).toBe(0);
   });
 });
+
+describe('app: the base pack punch and kick (combat-1, M1 starting numbers)', () => {
+  const reg = buildRegistry(basePackFiles());
+  const config = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+  const byId = (id: string) => config.weapons.find((w) => w.contentId === id);
+
+  it('punch: 7 / 5 / 15 ticks, reach 1.2 m × 1.4 m, 60 ms hit-stop, no cooldown', () => {
+    expect(byId('base:punch')).toMatchObject({
+      unarmed: true,
+      reachSM: 1.2,
+      reachDM: 1.4,
+      windupTicks: 7,
+      activeTicks: 5,
+      recoveryTicks: 15,
+      cooldownTicks: 0,
+      hitStopMs: 60,
+    });
+  });
+
+  it('kick: 13 / 6 / 27 ticks, a 30-tick cooldown, reach 1.0 m × 1.7 m, and a harder shove', () => {
+    const kick = byId('base:kick');
+    expect(kick).toMatchObject({
+      unarmed: true,
+      reachSM: 1.0,
+      reachDM: 1.7,
+      windupTicks: 13,
+      activeTicks: 6,
+      recoveryTicks: 27,
+      cooldownTicks: 30,
+      hitStopMs: 60,
+    });
+    expect(kick?.knockbackMps ?? 0).toBeGreaterThan(byId('base:punch')?.knockbackMps ?? 0);
+  });
+
+  it('starts the combat tuning scales at 1', () => {
+    expect(config.tuning['combat.hitStopScale']).toBe(1);
+    expect(config.tuning['combat.knockbackScale']).toBe(1);
+  });
+});
