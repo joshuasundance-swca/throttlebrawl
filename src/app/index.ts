@@ -285,7 +285,7 @@ export function createApp(opts: AppOptions): AppHandle {
   if (settingsStore.notice) ui.notice(settingsStore.notice);
   const input = createInput({ keys: window, surface: ui.touchSurface, layout });
 
-  // Presentation-only tuning (camera, audio, input thresholds, barks) applies at once; sim values
+  // Presentation-only tuning (camera, audio, input thresholds, barks, visuals) applies at once; sim values
   // go through the recorder above. Boot values (a shipped or saved preset) are pushed once here.
   // Routed by id prefix: each module owns its prefix, and barks refuse ids they do not declare.
   const applyPresentationParam = (id: string, value: number) => {
@@ -294,6 +294,7 @@ export function createApp(opts: AppOptions): AppHandle {
     else if (owner === 'audio') audio.setParam(id, value);
     else if (owner === 'input') input.setParam(id, value);
     else if (owner === 'barks') ui.narrative.setParam(id, value);
+    else if (owner === 'render') renderer.setParam(id, value);
   };
   tuning.onChange(applyPresentationParam);
   for (const d of tuning.decls) if (!d.affectsSim) applyPresentationParam(d.id, tuning.get(d.id));
