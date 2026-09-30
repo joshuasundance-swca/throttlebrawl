@@ -12,11 +12,11 @@
   "recoveryS": 0.45,
   "cooldownS": 0.5,
   "damage": 18,
-  "knockback": { "lateralMps": 5.0, "staggerS": 0.35 },
+  "knockback": { "lateralMps": 18.0, "staggerS": 0.35 },
   "hitStopMs": 60,
   "meta": {
     "status": "live",
-    "notes": "M1 starting numbers (docs/milestones/M1.md): 13 / 6 / 27 ticks and a 30-tick cooldown. Damage and knockback are combat-1's [default] starting values; the kick shoves harder than the punch.",
+    "notes": "M1 starting numbers (docs/milestones/M1.md): 13 / 6 / 27 ticks and a 30-tick cooldown. Damage is combat-1's [default]. The shove is combat-3's (playtest 1, 2026-09-30: a landed kick pushes the target about a lane width, like a forced swerve): 18 m/s peak, falling to zero over the 0.4 s shove, moves the target 3.6 m at equal mass. The tuning panel's 'Kick shove' and 'Shove length' sliders adjust it.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-29" }
   }
 }

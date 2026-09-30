@@ -471,8 +471,10 @@ describe('cops: the chase', () => {
   });
 
   it('can be knocked off like any rider: punches take his health, he tumbles, then rides again', () => {
+    // No out-of-combat recovery (combat-3): each kick now shoves him a lane away, and he would heal
+    // while he rides back, so the knock-off would come too late for this one-minute window.
     const config = {
-      ...fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40 }),
+      ...fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'combat.regenPerS': 0 }),
       weapons: [PUNCH, KICK],
     };
     const sim = createSim(config);

@@ -12,11 +12,11 @@
   "recoveryS": 0.25,
   "cooldownS": 0,
   "damage": 10,
-  "knockback": { "lateralMps": 2.0, "staggerS": 0.2 },
+  "knockback": { "lateralMps": 1.5, "staggerS": 0.2 },
   "hitStopMs": 60,
   "meta": {
     "status": "live",
-    "notes": "M1 starting numbers (docs/milestones/M1.md): 7 / 5 / 15 ticks. Damage and knockback are combat-1's [default] starting values for the tuning panel.",
+    "notes": "M1 starting numbers (docs/milestones/M1.md): 7 / 5 / 15 ticks. Damage is combat-1's [default]. Punches stagger rather than shove (playtest 1, 2026-09-30): a 1.5 m/s peak moves the target 0.3 m, and the 0.2 s stagger wobbles its steering (combat-3).",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-29" }
   }
 }
