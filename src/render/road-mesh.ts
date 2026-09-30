@@ -5,7 +5,7 @@
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3 } from 'three';
 import type { Edge, RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
-import { StripAccumulator, type Point3 } from './geometry';
+import { mergeBoxes, StripAccumulator, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 
@@ -14,6 +14,17 @@ export const ELEVATED_M = 2.5;
 /** Metres of shoulder beyond the outermost lane, drawn as verge. */
 const VERGE_M = 0.6;
 const STEP_M = 2;
+/**
+ * Land under roadside zones (playtest 1b). The zone's side reaches its far edge plus a pedestrian's
+ * dive (sim peds: 3.5 m) and some body width; the far side reaches where a crossing pedestrian
+ * stops (about 2.6 m past the drivable edge) plus a dive. [default]
+ */
+const LAND_DIVE_M = 4.5;
+const LAND_FAR_M = 7;
+/** Metres over which a land strip tapers into the verge past each end of its zone. */
+const LAND_TAPER_M = 8;
+/** Land sits 4 cm under the verge (-0.02) and any overlapping road, so none of them flicker. */
+const LAND_LIFT_M = -0.06;
 
 export interface BarrierSpan {
   s0: number;
@@ -54,6 +65,8 @@ export interface RoadSceneStats {
   railM: number;
   rampStripes: number;
   pylons: number;
+  /** Metres of road with a land strip beside it (roadside zones; walkways on railed sides excluded). */
+  landM: number;
 }
 
 export interface RoadScene {
@@ -205,7 +218,44 @@ interface Clip {
   goreR: boolean;
 }
 
-export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: RoadDressing): RoadScene {
+export interface RoadSceneOptions {
+  /** Roadside palms: 1 = one per PALM_SPACING_M a side, 0 = none (`render.roadsideDensity`). */
+  roadsideDensity?: number;
+}
+
+/** Metres between roadside palms on one side at density 1. [default] */
+const PALM_SPACING_M = 20;
+/** Palms stand this far past the verge, plus up to PALM_SPREAD_M more. [default] */
+const PALM_OFFSET_M = 2.2;
+const PALM_SPREAD_M = 5;
+
+/** A placeholder palm on its own little sand mound (so it can stand in the shallows). */
+function palmGeometry() {
+  const parts: BoxPart[] = [
+    { size: [2.6, 1.2, 2.6], at: [0, -0.55, 0], color: '#d8c08c' },
+    { size: [0.28, 2.4, 0.28], at: [0.1, 1.2, 0], color: '#8a6a45', rotX: 0.05 },
+    { size: [0.24, 2.4, 0.24], at: [0.35, 3.4, 0.1], color: '#7d5f3d', rotX: -0.12 },
+    { size: [3.2, 0.25, 0.9], at: [0.5, 4.7, 0.1], color: '#3f8f4a', rotY: 0.4 },
+    { size: [0.9, 0.25, 3.2], at: [0.5, 4.75, 0.1], color: '#357d40', rotY: 0.4 },
+  ];
+  return mergeBoxes(parts);
+}
+
+/** A small deterministic hash to 0..1 (placement jitter; presentation only). */
+function hash01(a: number, b: number, c: number): number {
+  let h = Math.imul(a + 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.round(b * 16) + 0x27d4eb2f, 0xc2b2ae35);
+  h ^= Math.imul(c + 0x165667b1, 0x27d4eb2f);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h ^= h >>> 12;
+  return (h >>> 0) / 4294967296;
+}
+
+export function buildRoadScene(
+  road: RoadNetwork,
+  look: LookStyle,
+  dressing?: RoadDressing,
+  opts: RoadSceneOptions = {},
+): RoadScene {
   const acc: Partial<Record<Layer, StripAccumulator>> = {};
   const strip = (kind: Layer): StripAccumulator => (acc[kind] ??= new StripAccumulator());
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
@@ -228,8 +278,11 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   const postSpots: Point3[] = [];
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
+  const palmSpots: { p: Point3; turn: number; size: number }[] = [];
+  const density = Math.max(0, opts.roadsideDensity ?? 1);
   let railM = 0;
   let rampStripes = 0;
+  let landM = 0;
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -385,6 +438,52 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
         }
       }
     }
+    // Land under the roadside zones (playtest 1b: pedestrians stood in the water). The sim stands
+    // pedestrians anywhere across a zone, crosses some to the far side and dives them clear, all
+    // at road height, so each zone gets a strip of land out past its far edge plus a dive, and the
+    // far side gets one too unless a rail stops anyone crossing. Beside a railed road it is a
+    // walkway (a fishing catwalk on the bridge). Each strip tapers into the verge at both ends and
+    // shelves down into the water along its outer edge.
+    for (const f of (dress.features ?? []).filter((x) => x.kind === 'roadsideZone')) {
+      const zoneSide = f.d0 + f.d1 < 0 ? -1 : 1;
+      const far = Math.max(Math.abs(f.d0), Math.abs(f.d1));
+      for (const side of [-1, 1] as const) {
+        const railed = barriersFor(road, e, dress, side < 0 ? 'left' : 'right').some(
+          (b) => b.s0 < f.s1 && b.s1 > f.s0,
+        );
+        if (side !== zoneSide && railed) continue;
+        const inner = side < 0 ? -outerL : outerR;
+        const reach = Math.max(inner, side === zoneSide ? far + LAND_DIVE_M : e.dMax + LAND_FAR_M);
+        const a = Math.max(0, f.s0 - LAND_TAPER_M);
+        const b = Math.min(e.length, f.s1 + LAND_TAPER_M);
+        const rows: { near: Point3; edge: Point3; low: Point3 }[] = [];
+        for (let s = a; ; s = Math.min(b, s + STEP_M)) {
+          const outside = s < f.s0 ? f.s0 - s : s > f.s1 ? s - f.s1 : 0;
+          const width = inner + (reach - inner) * Math.max(0, 1 - outside / LAND_TAPER_M);
+          const edge = w(e.index, s, side * width, LAND_LIFT_M);
+          rows.push({
+            near: w(e.index, s, side * inner, LAND_LIFT_M),
+            edge,
+            low: railed ? { ...edge, y: edge.y - 0.5 } : { ...w(e.index, s, side * (width + 2), 0), y: -0.4 },
+          });
+          if (s >= b) break;
+        }
+        // Pairs run in increasing d, so the faces point up (and out, on the shelf).
+        const ground = strip(railed ? 'deck' : 'land');
+        for (const [inside, outside] of [
+          ['near', 'edge'],
+          ['edge', 'low'],
+        ] as const) {
+          ground.breakStrip();
+          for (const r of rows) {
+            if (side < 0) ground.pair(r[outside], r[inside]);
+            else ground.pair(r[inside], r[outside]);
+          }
+          ground.breakStrip();
+        }
+        if (!railed) landM += b - a;
+      }
+    }
     // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
     for (const [d, out] of [
       [outerL, -1],
@@ -426,6 +525,31 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
         const p = w(e.index, s, d, 0);
         if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
+      }
+    }
+    // Roadside palms (playtest 1 item 10: things close by the road, for a sense of speed). Each
+    // stands a few metres past the verge on its own sand mound, jittered along and across; none on
+    // a deck or beside a rail, and none on or next to another road.
+    if (density > 0) {
+      const spacing = PALM_SPACING_M / density;
+      for (const side of [-1, 1] as const) {
+        const rails = barriersFor(road, e, dress, side < 0 ? 'left' : 'right');
+        const outer = side < 0 ? -outerL : outerR;
+        for (let k = 0; ; k++) {
+          const s = (k + 0.2 + 0.6 * hash01(e.index, k, side)) * spacing;
+          if (s > e.length) break;
+          if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue;
+          if (rails.some((b) => s >= b.s0 - 5 && s <= b.s1 + 5)) continue;
+          const d = side * (outer + PALM_OFFSET_M + PALM_SPREAD_M * hash01(e.index, k, side + 7));
+          const p = w(e.index, s, d, LAND_LIFT_M);
+          if (locator.covered(p.x, p.z, e.index, (o) => [o.dMin - VERGE_M - 2, o.dMax + VERGE_M + 2]))
+            continue;
+          palmSpots.push({
+            p,
+            turn: hash01(e.index, k, side + 13) * Math.PI * 2,
+            size: 0.8 + 0.4 * hash01(k, s, side),
+          });
+        }
       }
     }
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
@@ -527,6 +651,23 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   // Unit-height boxes standing on their base, stretched by the instance scale.
   addInstanced('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
   addInstanced('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
+  if (palmSpots.length) {
+    const geo = palmGeometry();
+    const palms = new InstancedMesh(geo, look.material('prop', { vertexColors: true }), palmSpots.length);
+    const turn = new Quaternion();
+    const up = new Vector3(0, 1, 0);
+    palmSpots.forEach(({ p, turn: a, size }, i) =>
+      palms.setMatrixAt(
+        i,
+        m.compose(new Vector3(p.x, p.y, p.z), turn.setFromAxisAngle(up, a), new Vector3(size, size, size)),
+      ),
+    );
+    palms.instanceMatrix.needsUpdate = true;
+    palms.computeBoundingSphere();
+    palms.name = 'road-palms';
+    triangles += ((geo.index?.count ?? 0) / 3) * palmSpots.length;
+    group.add(palms);
+  }
 
   // The sea, at world y = 0 (sea level in the network frame).
   const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
@@ -538,7 +679,14 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
 
   return {
     group,
-    stats: { meshes: group.children.length, triangles, railM, rampStripes, pylons: pylonSpots.length },
+    stats: {
+      meshes: group.children.length,
+      triangles,
+      railM,
+      rampStripes,
+      pylons: pylonSpots.length,
+      landM,
+    },
     dispose() {
       group.traverse((o) => {
         if (o instanceof Mesh) (o.geometry as BoxGeometry).dispose();

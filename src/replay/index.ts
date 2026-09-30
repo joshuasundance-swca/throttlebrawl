@@ -73,6 +73,11 @@ export interface InputRecorder {
   begin(header: ReplayHeader): void;
   /** Starts a recording from the race's own config (the full header). */
   beginRace(sim: Pick<Sim, 'config'>, replayKey: string): void;
+  /**
+   * Carries on a saved recording after a resume (replay-2): the next `record` is for the tick
+   * after its last input. A finished recording's end marker is dropped.
+   */
+  resume(rec: Recording): void;
   /** Records the inputs stepped at `tick` (ticks must arrive in order, starting at 0). */
   record(tick: number, inputs: readonly SimInput[]): void;
   recordParam(tick: number, id: string, value: number): void;
@@ -94,6 +99,14 @@ export function createInputRecorder(): InputRecorder {
     },
     beginRace(sim, replayKey) {
       recorder.begin(replayHeader(sim.config, replayKey));
+    },
+    resume(saved) {
+      rec = {
+        header: saved.header,
+        inputs: saved.inputs.map((t) => t.map((i) => ({ ...i }))),
+        params: saved.params.map((p) => ({ ...p })),
+        hashes: saved.hashes.map((h) => ({ ...h })),
+      };
     },
     record(tick, inputs) {
       if (!rec) return;
@@ -287,3 +300,23 @@ export function createReplayController(rec: Recording): ReplayController {
   };
   return controller;
 }
+
+// ---- The saved recording (replay-2) ---------------------------------------------------------
+
+export {
+  createAutosave,
+  createRecordingStore,
+  NOTICE_STALE,
+  NOTICE_UNREADABLE,
+  recordingKey,
+  SAVE_EVERY_TICKS,
+  staleRecordingKey,
+} from './store';
+export type {
+  Autosave,
+  RecordingStorage,
+  RecordingStore,
+  RecordingStoreOptions,
+  ResumeOffer,
+  SaveResult,
+} from './store';

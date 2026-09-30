@@ -38,6 +38,13 @@ export interface World {
   rng: Record<RngStreamName, RngState>;
   /** Events being emitted during the current step. */
   events: SimEvent[];
+  /**
+   * The previous tick's events, every phase's, as stepWorld flushed them (empty before the first
+   * step). A system early in the tick order reads here what later phases emitted last tick: combat
+   * credits a takedown from a crash that traffic, peds or tumble emitted after combat's phase
+   * (M2 combat-4). Derived from the last step, so not hashed, like `events`.
+   */
+  lastEvents: readonly SimEvent[];
   /** Per-system plain data, by system name. */
   systems: Record<string, unknown>;
   /** Next id for causeId links. */
@@ -71,6 +78,7 @@ export function createWorld(config: SimConfig): World {
     inputs: [],
     rng: createStreams(config.seed),
     events: [],
+    lastEvents: [],
     systems: {},
     nextCauseId: 1,
     facts: { slowmo: { remainingTicks: 0 }, styleTally: {}, grudgeNotedBy: {} },

@@ -16,6 +16,12 @@ export interface InputThresholds {
   stickRangePx: number;
   /** Stick steering dead zone, as a fraction of full deflection. */
   stickDeadZone: number;
+  /**
+   * Stick steering response curve past the dead zone: steer = t^expo, t the 0..1 deflection past
+   * the dead zone. 1 is a straight line (M1); above 1, small deflections steer less and full lock
+   * stays full lock (playtest 1: the road felt narrow only on the phone).
+   */
+  stickSteerExpo: number;
   /** Gamepad stick dead zone, radial, as a fraction of full deflection (M2 input-2). */
   gamepadDeadZone: number;
   /** Tilt steering dead zone either side of the calibrated rest angle, degrees (M2 input-2). */
@@ -58,6 +64,9 @@ export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('kickSwipeMs', 'Kick swipe window', 200, 30, 230, 5, 'ms'),
   decl('stickRangePx', 'Stick range', 60, 30, 140, 5, 'px'),
   decl('stickDeadZone', 'Stick steer dead zone', 0.08, 0, 0.3, 0.01, ''),
+  // Playtest 1 (2026-09-30, "on the phone it was more difficult to get through traffic"): a
+  // modest curve, [default]. The numbers are in the input lane's playtest-1b report.
+  decl('stickSteerExpo', 'Stick steer curve', 1.5, 1, 3, 0.1, ''),
   // M2 input-2 starting numbers (docs/milestones/M2.md, "Starting numbers").
   decl('gamepadDeadZone', 'Gamepad stick dead zone', 0.12, 0, 0.4, 0.01, ''),
   decl('tiltDeadZoneDeg', 'Tilt dead zone', 2, 0, 10, 0.5, 'deg'),
