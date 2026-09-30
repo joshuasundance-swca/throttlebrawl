@@ -127,6 +127,31 @@ describe('dev/bot: the BotController', () => {
     expect(Math.abs(a.steer)).toBeGreaterThan(0.1); // moving off the rival's line to ride beside it
   });
 
+  it('treats only vehicles as traffic: riders ahead on the grid, or the cop beside it, never make it brake', () => {
+    // An oncoming car 150 m out closes the pass lane, as real traffic does, so dodging is no way out.
+    const oncoming = mover(9, { kind: 'vehicle', s: 250, d: -1.7, speed: 24 });
+    oncoming.road = { ...oncoming.road, dir: -1 };
+    // The grid start: two rivals 8 m ahead in its line (riders pass through each other in the sim).
+    const bot = createBot();
+    const a = blank();
+    const grid = [
+      mover(ME, { s: 100, d: 0.9, speed: 0 }),
+      mover(1, { s: 108, d: 0.9, speed: 0 }),
+      mover(2, { s: 108, d: 2.4, speed: 0 }),
+      oncoming,
+    ];
+    bot.drive(snapshot(1, grid), ME, route(), a);
+    expect(a.throttle).toBe(1);
+    expect(a.brake).toBe(0);
+    // The cop pulled up 1 m ahead in its line, matching its speed: no brake, no swerve away.
+    const b = blank();
+    const cop = mover(5, { s: 101, d: 1.2, speed: 20, faction: 'law' });
+    bot.drive(snapshot(9, [mover(ME, { speed: 20 }), cop, oncoming]), ME, route(), b);
+    expect(b.throttle).toBe(1);
+    expect(b.brake).toBe(0);
+    expect(bot.stats().trafficDodges).toBe(0);
+  });
+
   it('skips the run-back while down', () => {
     const bot = createBot();
     for (const mode of ['Tumble', 'OnFoot'] as const) {
@@ -170,5 +195,64 @@ describe('dev/bot: the BotController', () => {
     const c = blank();
     bot.drive(snapshot(8, [mover(ME, { d: 1.7 })]), ME, route(withShortcut), c);
     expect(Math.abs(c.steer)).toBeLessThan(0.01);
+  });
+});
+
+describe('bot: road-2 ramp shortcut behind a split zone', () => {
+  // road-2's cut is its own road: the route lists a split zone at the end of edge 0 (the right
+  // edge of the road, d 2.4 to 4.9) whose connector leads onto it.
+  const zone = { edge: 0, s0: 260, s1: 300, d0: 2.4, d1: 4.9, toEdge: 6, gainM: 54 };
+  const zoned = (): RouteQueries => ({ ...route(), shortcuts: [zone] }) as RouteQueries;
+
+  it('steers into the split zone on the approach, and not before', () => {
+    const early = blank();
+    const bot = createBot();
+    bot.drive(snapshot(5, [mover(ME, { s: 60 })]), ME, zoned(), early);
+    expect(Math.abs(early.steer)).toBeLessThan(0.01); // still in its lane, 200 m out
+    const near = blank();
+    bot.drive(snapshot(6, [mover(ME, { s: 200 })]), ME, zoned(), near);
+    expect(near.steer).toBeGreaterThan(0.3); // heading right, into the zone
+    expect(bot.stats().shortcutApproachTicks).toBe(1);
+  });
+
+  it('holds its line through the zone and past it the approach ends', () => {
+    const bot = createBot();
+    const inZone = blank();
+    bot.drive(snapshot(5, [mover(ME, { s: 280, d: 3.3 })]), ME, zoned(), inZone);
+    expect(Math.abs(inZone.steer)).toBeLessThan(0.05);
+    const past = blank();
+    bot.drive(
+      snapshot(6, [mover(ME, { s: 290, d: 3.3, road: { edge: 7, s: 5, d: 3.3, h: 0, dir: 1, yaw: 0 } })]),
+      ME,
+      zoned(),
+      past,
+    );
+    expect(bot.stats().shortcutApproachTicks).toBe(1);
+  });
+
+  it('keeps its line on the approach: swings at a rival already in reach, never chases one', () => {
+    // A rival alongside, inside the attack window: it swings, but holds the zone line.
+    const a = blank();
+    const alongside = mover(2, { s: 200.3, d: 2.5 });
+    createBot().drive(snapshot(40, [mover(ME, { s: 200, d: 3.3 }), alongside]), ME, zoned(), a);
+    expect(a.attack).toBe(true);
+    expect(Math.abs(a.steer)).toBeLessThan(0.05);
+    expect(a.throttle).toBe(1);
+    // A rival 20 m ahead: no chase off the line, no swing.
+    const b = blank();
+    const ahead = mover(3, { s: 220, d: 1.7 });
+    createBot().drive(snapshot(40, [mover(ME, { s: 200, d: 3.3 }), ahead]), ME, zoned(), b);
+    expect(b.attack).toBe(false);
+    expect(Math.abs(b.steer)).toBeLessThan(0.05);
+    expect(b.throttle).toBe(1);
+  });
+
+  it('on the approach it follows a car in its line rather than swerving out of the zone', () => {
+    const a = blank();
+    const car = mover(3, { kind: 'vehicle', s: 225, d: 3.3, speed: 24 });
+    createBot().drive(snapshot(5, [mover(ME, { s: 200, d: 3.3 }), car]), ME, zoned(), a);
+    expect(a.throttle).toBe(0);
+    expect(a.brake).toBeGreaterThan(0);
+    expect(a.steer).toBeGreaterThan(-0.05); // not off to the oncoming lane
   });
 });

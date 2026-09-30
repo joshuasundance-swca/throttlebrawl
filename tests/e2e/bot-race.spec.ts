@@ -11,7 +11,8 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // Assertions switch on with the feature that makes them possible, and print ACTIVE or NOT ACTIVE
 // with the reason, so a switched-off check never reads as a pass:
 // - an attack connects: on since combat-1 (the seeded race, seed 1, is one the bot connects in);
-// - the bot took the shortcut: active once the bot's road offers a `shortcut` lane (road-2).
+// - the bot took the shortcut: active once the bot's route has a split zone onto a shortcut
+//   (road-2's boat-ramp cut) or its road offers a `shortcut` lane.
 
 interface Checks {
   ticks: number;
@@ -25,6 +26,7 @@ interface Checks {
     skipTicks: number;
     shortcutTicks: number;
     shortcutSeenTicks: number;
+    shortcutApproachTicks: number;
     trafficDodges: number;
     engagements: number;
   };
@@ -135,12 +137,14 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   );
   expect(checks.events['attackStart'] ?? 0, 'the sim answers attacks').toBeGreaterThan(0);
   expect(checks.playerHits, 'at least one attack by the bot connects').toBeGreaterThan(0);
-  if (checks.bot.shortcutSeenTicks > 0) {
-    console.log(`[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutTicks} ticks on it)`);
+  if (checks.bot.shortcutApproachTicks > 0 || checks.bot.shortcutSeenTicks > 0) {
+    console.log(
+      `[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutApproachTicks} ticks lining up, ${checks.bot.shortcutTicks} ticks on it)`,
+    );
     expect(checks.bot.shortcutTicks, 'the bot took the shortcut').toBeGreaterThan(0);
   } else {
     console.log(
-      '[assert] the bot took the shortcut: NOT ACTIVE (no shortcut lane on its road; road-2 not on this build)',
+      '[assert] the bot took the shortcut: NOT ACTIVE (its route has no split zone and its road no shortcut lane)',
     );
   }
 

@@ -48,7 +48,9 @@ function setup(seed: number, withDrafts: boolean) {
   const routeFile = lookup(reg.routes, event.lengths[0]?.route ?? '');
   const network = lookup(reg.networks, routeFile.network);
   const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
-  const config = buildSimConfig(reg, stream, { seed });
+  // Rivals don't swing here (ai.aggressionScale 0): with the full field, fights would make the cut
+  // run and the main-path run unlike for like, and this test compares the two paths only.
+  const config = buildSimConfig(reg, stream, { seed, tuning: { 'ai.aggressionScale': 0 } });
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   return { sim: createSim(config), config, route: config.route, playerId };
 }
