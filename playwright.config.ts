@@ -1,10 +1,17 @@
 import { defineConfig } from '@playwright/test';
+import { resolvePreviewPort } from './scripts/preview-port.mjs';
 
 // Browser tiers (docs/engineering.md, "The gate"). By default the tests run against the
 // production build served by `vite preview`. E2E_BASE_URL points them at a deployed build
 // instead, such as the staging Space.
 const externalUrl = process.env.E2E_BASE_URL;
-const previewUrl = 'http://127.0.0.1:4173/';
+// Locally each run gets its own free port, so parallel lane worktrees never test each other's
+// build; CI keeps 4173, and PREVIEW_PORT picks one by hand (scripts/preview-port.mjs). The choice
+// goes into PREVIEW_PORT because Playwright's workers load this file again: they inherit the
+// runner's environment, so they read the same port instead of picking a new one.
+const preview = await resolvePreviewPort();
+process.env.PREVIEW_PORT = String(preview.port);
+const previewUrl = `http://127.0.0.1:${preview.port}/`;
 
 export default defineConfig({
   outputDir: 'test-results/output',
@@ -36,9 +43,12 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: 'npm run preview',
+          // --port overrides vite.config.ts's 4173; strictPort there still fails loudly if taken.
+          command: `npm run preview -- --port ${preview.port}`,
           url: previewUrl,
-          reuseExistingServer: !process.env.CI,
+          // Reuse only a server someone pointed us at by hand. A free port has nothing to reuse,
+          // and reusing the fixed port is how lanes ended up testing another worktree's build.
+          reuseExistingServer: preview.source === 'env',
           timeout: 60_000,
         },
       }),
