@@ -4,11 +4,14 @@
 import { describe, expect, it } from 'vitest';
 import { createHeadlessRace, type ActionState } from '../../src/app';
 import { createStubBot } from '../../src/dev/bot';
-import { quantizeInput } from '../../src/sim/api';
+import { createSim, quantizeInput } from '../../src/sim/api';
 
 // M1 road-1 acceptance: how long the bot takes on the M1 route, printed, and failing outside
 // 60–240 s (the route is sized for a race of about two minutes). It rides the base pack's default
-// race headless, so it measures the real baked track with the real riding model.
+// race headless, so it measures the real baked track with the real riding model. It times the
+// road, not the traffic or the law: the lane-keeping stub bot never dodges, so the race runs with
+// both traffic densities at 0 and without the cop (last on the grid, so no other id moves), as it
+// did before traffic and the cop were live content.
 
 const blank = (): ActionState => ({
   throttle: 0,
@@ -23,7 +26,12 @@ const blank = (): ActionState => ({
 
 describe('road: the bot on the M1 route', () => {
   it('finishes in 60–240 s', () => {
-    const { sim, route, playerId } = createHeadlessRace({ seed: 11 });
+    const base = createHeadlessRace({
+      seed: 11,
+      tuning: { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+    });
+    const { route, playerId } = base;
+    const sim = createSim({ ...base.config, riders: base.config.riders.filter((r) => r.faction !== 'law') });
     const bot = createStubBot();
     let finishTick = -1;
     const edges: number[] = [];

@@ -11,7 +11,7 @@
   "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
   "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#ff8fab", "#8fd3f0", "#f2c14e"] },
   "meta": {
-    "status": "draft",
+    "status": "live",
     "notes": "Crosses the highway to reach a slightly different beach. Dives clear with the cooler held level; the drinks are the priority.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }
