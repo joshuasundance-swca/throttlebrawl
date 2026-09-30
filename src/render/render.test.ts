@@ -384,6 +384,21 @@ describe('the road meshes', () => {
     expect(dressed.rampStripes).toBe(10);
   });
 
+  it('lays land under a roadside zone on both sides, and only a walkway beside a railed road', () => {
+    const road = createRoadNetwork(fixtureNetwork([{ id: 'flat', lengthM: 300, kappa: 0 }]));
+    const zone = { kind: 'roadsideZone', s0: 100, s1: 150, d0: 6, d1: 12 };
+    expect(buildRoadScene(road, look).stats.landM).toBe(0);
+    const open = buildRoadScene(road, look, { flat: { features: [zone] } });
+    // Two strips (the zone's side and the far side), each 50 m plus an 8 m taper at both ends.
+    expect(open.stats.landM).toBe(2 * 66);
+    expect(open.group.getObjectByName('road-land')).toBeDefined();
+    const railed = buildRoadScene(road, look, {
+      flat: { features: [zone], barriers: [{ s0: 0, s1: 300, side: 'both', kind: 'rail' }] },
+    });
+    expect(railed.stats.landM).toBe(0);
+    expect(railed.group.getObjectByName('road-land')).toBeUndefined();
+  });
+
   it('finds lane spans and the centre line between opposite directions', () => {
     const spans = laneSpans([
       { id: 'L0', dCenterM: -4.15, widthM: 1.5, direction: -1, kind: 'shoulder' },

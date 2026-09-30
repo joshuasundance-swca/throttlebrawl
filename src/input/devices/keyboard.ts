@@ -31,6 +31,71 @@ export const DEFAULT_KEY_MAP: KeyMap = {
   skipRunBack: ['Space'],
 };
 
+/** What each key action does, in player words, for the pause screen's legend (playtest 1). */
+export const KEY_ACTION_NAMES: Readonly<Record<KeyAction, string>> = {
+  throttle: 'ride',
+  brake: 'brake',
+  steerLeft: 'steer left',
+  steerRight: 'steer right',
+  attack: 'punch',
+  attackLeft: 'punch left',
+  attackRight: 'punch right',
+  kick: 'kick',
+  lookBack: 'look back',
+  skipRunBack: 'skip the run back',
+};
+
+/** The legend's order: riding first, then fighting, then the rest. */
+const LEGEND_ORDER: readonly KeyAction[] = [
+  'throttle',
+  'brake',
+  'steerLeft',
+  'steerRight',
+  'kick',
+  'attack',
+  'attackLeft',
+  'attackRight',
+  'lookBack',
+  'skipRunBack',
+];
+
+const ARROWS: Readonly<Record<string, string>> = {
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+};
+
+/** A key code as printed on the key: `KeyK` is K, `ArrowUp` an arrow, `Escape` Esc. */
+export function keyLabel(code: string): string {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  const arrow = ARROWS[code];
+  if (arrow) return arrow;
+  if (code === 'Escape') return 'Esc';
+  if (code === 'Backquote') return '`';
+  return code;
+}
+
+export interface KeyLegendRow {
+  /** The action's key labels, joined with " / ". */
+  keys: string;
+  /** What the keys do. */
+  action: string;
+}
+
+/**
+ * The keyboard legend for the pause screen (playtest 1, 2026-09-30: "idk how to kick on the
+ * laptop"), drawn from the key map in use so a remap shows up. It is never shown on the in-race
+ * HUD [decided]. Unbound actions are left out.
+ */
+export function keyLegend(map: KeyMap = DEFAULT_KEY_MAP): KeyLegendRow[] {
+  return LEGEND_ORDER.filter((a) => map[a].length > 0).map((a) => ({
+    keys: map[a].map(keyLabel).join(' / '),
+    action: KEY_ACTION_NAMES[a],
+  }));
+}
+
 /** Seconds from no throttle to full while the throttle key is held. */
 const THROTTLE_RAMP_S = 1 / 3;
 
