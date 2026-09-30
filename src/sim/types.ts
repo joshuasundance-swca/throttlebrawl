@@ -175,6 +175,10 @@ export interface SimWeaponDef {
   cooldownTicks: number;
   damage: number;
   hitStopMs: number;
+  /** Sideways speed a landed hit gives the target, m/s (the weapon's `knockback.lateralMps`; 0 if absent). */
+  knockbackMps: number;
+  /** How long a landed hit staggers the target, in ticks (`knockback.staggerS`; 0 if absent). */
+  staggerTicks: number;
   steal: { startTick: number; endTick: number } | null;
 }
 

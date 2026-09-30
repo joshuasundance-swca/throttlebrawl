@@ -95,6 +95,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     cooldownTicks: w.cooldownS ? secondsToTicks(w.cooldownS) : 0,
     damage: w.damage,
     hitStopMs: w.hitStopMs ?? 0,
+    knockbackMps: w.knockback?.lateralMps ?? 0,
+    staggerTicks: w.knockback?.staggerS ? secondsToTicks(w.knockback.staggerS) : 0,
     steal: w.steal?.allowed
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
