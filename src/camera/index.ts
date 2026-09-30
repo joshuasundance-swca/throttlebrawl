@@ -2,7 +2,9 @@
 // (docs/architecture.md, "Camera"). M1 builds the low chase cam (camera-1): a critically damped
 // spring aimed at a look-ahead point on the road, roll at a fraction of the bike's lean, an FOV
 // kick with speed, a framing bias toward the auto-target, and event shake scaled by
-// camera.shakeScale. Far chase, helmet, look-back and the replay cams are later modes.
+// camera.shakeScale. M2 (camera-2) adds look-back on the held action, a takedown framing that holds
+// the victim in view through the slow motion, a directional hit jolt, and the reduce-shake setting
+// (setShakeAmount). Far chase, helmet and the replay cams are later modes.
 import type { RoadNetwork, SimEvent, TuningParamDecl } from '../sim/api';
 import {
   createChaseRig,
@@ -10,13 +12,18 @@ import {
   type CameraPose,
   type CameraTarget,
   type ChaseParams,
+  type RigMode,
 } from './chase';
 
 export type { CameraContext, CameraPose, CameraTarget } from './chase';
+export { FALLBACK_IMPULSE } from './jolt';
 export { SHAKE_TRAUMA } from './shake';
 
-/** Camera modes. M1 has one; the architecture doc lists the rest (farChase, helmet, lookBack...). */
-export type CameraMode = 'lowChase';
+/**
+ * Camera modes. M1 built the chase cam; M2 (camera-2) adds look-back (the held action) and the
+ * takedown framing. The architecture doc lists the rest (farChase, helmet, replayCinematic).
+ */
+export type CameraMode = RigMode;
 
 // Every constant of the rig is a tuning parameter [default] (docs/architecture.md, "Camera").
 // None affects the sim, so they never enter SimConfig or a replay's outcome.
@@ -56,13 +63,28 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('fovKickSpeedMps', 'Full kick at', 38, 10, 80, 1, 'm/s'),
   decl('targetBias', 'Target framing', 0.35, 0, 1, 0.05, ''),
   decl('shakeScale', 'Camera shake', 1, 0, 2, 0.05, ''),
+  // camera-2 (docs/milestones/M2.md) [default]: look-back, the takedown framing and the hit jolt.
+  decl('lookBackDistanceM', 'Look-back: ahead of rider', 2.5, 1, 8, 0.25, 'm'),
+  decl('lookBackHeightM', 'Look-back: height', 2.3, 1, 4, 0.1, 'm'),
+  decl('lookBackAimM', 'Look-back: aim behind', 25, 5, 60, 1, 'm'),
+  decl('takedownDistanceM', 'Takedown cam distance', 9, 4, 20, 0.5, 'm'),
+  decl('takedownHeightM', 'Takedown cam height', 3.6, 1.5, 8, 0.1, 'm'),
+  decl('takedownSwingDeg', 'Takedown cam swing', 30, 0, 75, 1, '°'),
+  decl('takedownFocus', 'Takedown: aim at victim', 0.6, 0, 1, 0.05, ''),
+  decl('takedownBlendS', 'Takedown cam blend', 0.3, 0.05, 1, 0.05, 's'),
+  decl('takedownHoldS', 'Takedown hold (no slow-mo)', 1, 0.3, 3, 0.1, 's'),
+  decl('joltM', 'Hit jolt', 0.35, 0, 1, 0.05, 'm'),
+  decl('joltFullImpulse', 'Full jolt at knockback', 6, 1, 20, 0.5, 'm/s'),
+  decl('joltRate', 'Jolt snap-back', 14, 4, 30, 1, '1/s'),
 ];
 
 export interface FollowCamera {
+  /** The mode whose framing the last update showed. */
   readonly mode: CameraMode;
   /**
    * Moves the camera toward its target; `dt` is the real frame time in seconds (clamped to 0.25,
-   * and 0 or NaN holds the springs). `ctx.entities` lets it frame the rider's auto-target.
+   * and 0 or NaN holds the springs). `ctx.entities` lets it frame the rider's auto-target, a
+   * takedown's victim and a hit's attacker; `ctx.lookBack` is the held look-back action.
    */
   update(target: CameraTarget, dt: number, ctx?: CameraContext): CameraPose;
   /** Jumps straight to the target's ideal framing and clears any shake (race start, a respawn). */
@@ -73,6 +95,11 @@ export interface FollowCamera {
   setRoad(road: RoadNetwork | null): void;
   /** Applies a `camera.*` tuning value; other ids are ignored. */
   setParam(id: string, value: number): void;
+  /**
+   * The player's reduce-screen-shake setting, from 1 (full shake and hit jolt) to 0 (none). It
+   * multiplies `camera.shakeScale`; values outside 0..1 are clamped, and NaN means 1.
+   */
+  setShakeAmount(amount: number): void;
 }
 
 export interface FollowCameraOptions {
@@ -85,12 +112,15 @@ function defaults(): ChaseParams {
   return p as unknown as ChaseParams;
 }
 
-/** The low chase cam. The name is the skeleton's; the rig behind it is camera-1's. */
+/** The chase cam with its M2 modes. The name is the skeleton's; the rig is camera-1's and camera-2's. */
 export function createFollowCamera(opts: FollowCameraOptions = {}): FollowCamera {
   const params = defaults();
   const rig = createChaseRig(params, opts.road ?? null);
   return {
-    mode: 'lowChase',
+    get mode() {
+      return rig.mode;
+    },
+    setShakeAmount: (amount) => rig.setShakeAmount(amount),
     update: (t, dt, ctx) => rig.update(t, dt, ctx),
     snap: (t, ctx) => rig.snap(t, ctx),
     onEvents: (events) => rig.onEvents(events),
