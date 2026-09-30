@@ -62,8 +62,14 @@ const COP: SimRiderDef = {
   },
 };
 
-/** Rival 0, player 1, cop 2, on a 1.3 km fixture road. */
-function fixtureConfig(tuning: Record<string, number> = {}): SimConfig {
+/**
+ * Rival 0, player 1, cop 2, on a 1.3 km fixture road. The siren lead defaults to 0 here, so the
+ * M1 tests keep timing the pull-out from the siren; the cops-2 tests set it explicitly.
+ */
+function fixtureConfig(
+  tuning: Record<string, number> = {},
+  difficulty: Partial<SimConfig['difficulty']> = {},
+): SimConfig {
   const road = createRoadNetwork(
     fixtureNetwork([
       { id: 'a', lengthM: 400, kappa: 0 },
@@ -96,8 +102,8 @@ function fixtureConfig(tuning: Record<string, number> = {}): SimConfig {
     route,
     modifiers: [],
     grudges: {},
-    tuning: { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), ...tuning },
-    difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
+    tuning: { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), 'cops.sirenLeadS': 0, ...tuning },
+    difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1, ...difficulty },
     assists: 'off',
     slowMo: false,
     playerSlots: 1,
@@ -144,11 +150,13 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the four cop parameters inside their ranges, all sim-affecting', () => {
+  it('declares the six cop parameters inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustRadiusScale',
       'cops.followGapM',
+      'cops.sirenLeadS',
+      'cops.spawnChance',
       'cops.spawnDelayS',
     ]);
     for (const d of COPS_TUNING) {
@@ -630,5 +638,177 @@ describe('cops: the chase', () => {
     const b = runChase().hashes;
     expect(b).toEqual(a);
     expect(new Set(a).size).toBeGreaterThan(2000);
+  });
+});
+
+// cops-2 (docs/milestones/M2.md): the spawn chance and the time to first spawn scale with the
+// difficulty's cop frequency, and the siren leads his pull-out by `cops.sirenLeadS`.
+describe('cops-2: a difficulty-aware cop', () => {
+  const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
+
+  /** The cops system alone for `ticks`; returns the siren-on tick (or -1) and the pull-out tick. */
+  function spawnRun(seed: number, tuning: Record<string, number>, copFrequency: number, ticks: number) {
+    const config = { ...fixtureConfig(tuning, { copFrequency }), seed };
+    const world = createWorld(config);
+    addMover(world, 'rider', { edge: 0, s: 100, d: 1.7, dir: 1 }, 0);
+    addMover(world, 'rider', { edge: 0, s: 200, d: 1.7, dir: 1 }, 1);
+    addMover(world, 'rider', { edge: 0, s: 190, d: 1.7, dir: 1 }, 2);
+    ridersSystem.init(world, config);
+    copsSystem.init(world, config);
+    let siren = -1;
+    let pullOut = -1;
+    for (let t = 0; t < ticks; t++) {
+      world.events = [];
+      copsSystem.step(world, config);
+      if (siren < 0 && world.events.some((e) => e.type === 'siren' && e.data['on'] === true)) siren = t;
+      if (pullOut < 0 && (world.inputs[COP_ID]?.brake ?? 255) < 255) pullOut = t;
+      world.tick++;
+    }
+    return { siren, pullOut, world };
+  }
+  const spawned = (tuning: Record<string, number>, copFrequency: number) =>
+    SEEDS.filter((seed) => spawnRun(seed, { 'cops.spawnDelayS': 1, ...tuning }, copFrequency, 150).siren >= 0)
+      .length;
+
+  it('declares the spawn chance (1 = always on Normal) and the siren lead (3 s)', () => {
+    const chance = COPS_TUNING.find((d) => d.id === 'cops.spawnChance');
+    const lead = COPS_TUNING.find((d) => d.id === 'cops.sirenLeadS');
+    expect(chance).toMatchObject({ default: 1, min: 0, max: 1, affectsSim: true });
+    expect(lead).toMatchObject({ default: 3, unit: 's', affectsSim: true });
+  });
+
+  it('on Normal he comes out in every race; at half the cop frequency in about half; at 1.5 in all', () => {
+    const normal = spawned({}, 1);
+    const easy = spawned({}, 0.5);
+    const hard = spawned({}, 1.5);
+    console.log(
+      `[examined] cops-2 spawn chance: ${SEEDS.length} seeds; normal ${normal}, easy ${easy}, hard ${hard}`,
+    );
+    expect(normal).toBe(SEEDS.length);
+    expect(hard).toBe(SEEDS.length);
+    expect(easy).toBeGreaterThan(SEEDS.length * 0.25);
+    expect(easy).toBeLessThan(SEEDS.length * 0.75);
+  });
+
+  it('the spawn chance tuning value multiplies with the cop frequency (non-default values)', () => {
+    const quarter = spawned({ 'cops.spawnChance': 0.25 }, 1);
+    expect(quarter).toBeGreaterThan(0);
+    expect(quarter).toBeLessThan(SEEDS.length * 0.5);
+    expect(spawned({ 'cops.spawnChance': 0.5 }, 2)).toBe(SEEDS.length); // 0.5 x 2 = always
+    expect(spawned({ 'cops.spawnChance': 0 }, 1.5)).toBe(0);
+  });
+
+  it('a cop who does not come out stays parked and silent all race', () => {
+    const seed = SEEDS.find((s) => spawnRun(s, { 'cops.spawnDelayS': 1 }, 0.5, 150).siren < 0);
+    expect(seed).toBeDefined();
+    const run = spawnRun(seed ?? 0, { 'cops.spawnDelayS': 1 }, 0.5, 60 * 60);
+    expect(run.siren).toBe(-1);
+    expect(run.pullOut).toBe(-1);
+  });
+
+  it('the time to first spawn divides by the cop frequency, and the siren leads the pull-out', () => {
+    const tuning = { 'cops.spawnDelayS': 3, 'cops.sirenLeadS': 1 };
+    const seed = SEEDS.find((s) => spawnRun(s, tuning, 0.5, 400).siren >= 0) ?? 0;
+    const normal = spawnRun(seed, tuning, 1, 400);
+    const hard = spawnRun(seed, tuning, 1.5, 400);
+    const easy = spawnRun(seed, tuning, 0.5, 400);
+    expect([normal.siren, normal.pullOut]).toEqual([120, 180]);
+    expect([hard.siren, hard.pullOut]).toEqual([60, 120]);
+    expect([easy.siren, easy.pullOut]).toEqual([300, 360]);
+  });
+
+  it('keeps the full lead even when the spawn delay is shorter than it', () => {
+    const run = spawnRun(1, { 'cops.spawnDelayS': 1, 'cops.sirenLeadS': 3 }, 1, 400);
+    expect([run.siren, run.pullOut]).toEqual([0, 180]);
+  });
+
+  it('while the siren leads he stays parked and cannot bust: the dwell starts at the pull-out', () => {
+    const w = copWorld({ 'cops.spawnDelayS': 5, 'cops.sirenLeadS': 3 });
+    w.mode(PLAYER_ID, 'Tumble'); // down 10 m in front of him
+    w.step(120);
+    expect(w.events.filter((e) => e.type === 'siren')).toHaveLength(0);
+    w.step(1);
+    expect(w.events.filter((e) => e.type === 'siren' && e.data['on'] === true)).toHaveLength(1);
+    w.step(300 - 121); // ticks 121..299
+    expect(w.busts()).toHaveLength(0);
+    expect(w.world.inputs[COP_ID]?.brake).toBe(255); // still parked at tick 299
+    w.step(59); // ticks 300..358
+    expect(w.busts()).toHaveLength(0);
+    w.step(1);
+    expect(w.busts()).toHaveLength(1); // pull-out at 300, plus the 60-tick dwell
+    expect(w.busts()[0]?.tick).toBe(359);
+  });
+
+  it('a scripted race on each preset hashes the same every run, and the presets differ', () => {
+    const run = (copFrequency: number) => {
+      const sim = createSim({
+        ...fixtureConfig({ 'cops.spawnDelayS': 2, 'cops.sirenLeadS': 1 }, { copFrequency }),
+        seed: 7,
+      });
+      for (let t = 0; t < 600; t++) sim.step([quantizeInput({ throttle: 1, brake: 0, steer: 0, flags: 0 })]);
+      return sim.hash();
+    };
+    for (const f of [0.5, 1, 1.5]) expect(run(f)).toBe(run(f));
+    expect(new Set([run(0.5), run(1), run(1.5)]).size).toBe(3);
+  });
+});
+
+describe('cops-2: a knocked-down cop cannot bust anyone until he is back up (full sim)', () => {
+  it('knock him off, crash beside him: no bust while he is down, and he rides on after', () => {
+    // A touchy barrier (crash from 3 m/s into it), so the player's swerve after the knock-off is a
+    // sure crash near the tumbling cop. Everything runs through the real systems: combat knocks
+    // him off, tumble takes him down and hands him back, and sim/cops decides the bust.
+    const config = {
+      ...fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+      weapons: [PUNCH, KICK],
+    };
+    const sim = createSim(config);
+    const events: SimEvent[] = [];
+    let copDownAt = -1;
+    let copUpAt = -1;
+    let overlap = 0; // ticks where both were down and within his 14 m bust radius
+    const bustsWhileCopDown: number[] = [];
+    for (let t = 0; t < 60 * 90 && copUpAt < 0; t++) {
+      const snap = sim.snapshot();
+      const me = snap.entities[PLAYER_ID];
+      const cop = snap.entities[COP_ID];
+      if (!me || !cop) throw new Error('missing entities');
+      let flags = 0;
+      let steer = Math.max(-1, Math.min(1, (1.7 - me.road.d) * 0.3 - me.road.yaw * 2));
+      if (copDownAt < 0) {
+        // Cruise in lane; punch when he is inside punch reach, kick when only kick reach fits.
+        const up = cop.mode === 'Road';
+        const ds = cop.progress - me.progress;
+        const dd = cop.road.d - me.road.d;
+        const punch = up && Math.abs(ds) <= 1.1 && Math.abs(dd) <= 1.35;
+        const kick = up && !punch && Math.abs(ds) <= 0.9 && Math.abs(dd) <= 1.65;
+        const side = dd < 0 ? InputFlag.attackSideLeft : InputFlag.attackSideRight;
+        if (t % 30 === 0 && punch) flags = InputFlag.attack | side;
+        else if (t % 30 === 0 && kick) flags = InputFlag.attack | InputFlag.kick | side;
+      } else steer = 1; // he is down: swerve into the right barrier beside him
+      sim.step([quantizeInput({ throttle: copDownAt < 0 ? 0.55 : 0.3, brake: 0, steer, flags })]);
+      const stepped = sim.events();
+      events.push(...stepped);
+      const after = sim.snapshot();
+      const c = after.entities[COP_ID];
+      const p = after.entities[PLAYER_ID];
+      const copDown = c?.mode !== 'Road';
+      if (copDownAt < 0 && copDown) copDownAt = t;
+      if (copDownAt >= 0 && !copDown) copUpAt = t;
+      const playerDown = p?.mode === 'Tumble' || p?.mode === 'OnFoot';
+      if (copDown && playerDown && c && p && Math.hypot(c.x - p.x, c.z - p.z) <= 14) overlap++;
+      if (copDown && stepped.some((e) => e.type === 'bust')) bustsWhileCopDown.push(t);
+    }
+    const playerCrash = events.find((e) => e.type === 'crash' && e.actor === PLAYER_ID);
+    console.log(
+      `[examined] cops-2 downed cop: down t${copDownAt}, up t${copUpAt}, player crash t${playerCrash?.tick}, ` +
+        `${overlap} ticks both down within 14 m, busts while he was down: ${bustsWhileCopDown.length}`,
+    );
+    expect(copDownAt).toBeGreaterThan(0);
+    expect(playerCrash).toBeDefined();
+    expect(overlap).toBeGreaterThan(60); // longer than a full bust dwell: the guard was exercised
+    expect(bustsWhileCopDown).toEqual([]);
+    expect(copUpAt).toBeGreaterThan(copDownAt); // got up and back on the bike
+    expect(events.some((e) => e.type === 'siren' && e.data['on'] === false)).toBe(false); // chase on
   });
 });
