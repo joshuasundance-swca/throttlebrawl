@@ -97,3 +97,40 @@ test('hiding the page pauses the race, and coming back lands on the pause screen
   console.log(`resumed: tick ${await tick()}`);
   expect(problems).toEqual([]);
 });
+
+// platform-2 (docs/milestones/M2.md): pagehide on its own (a tab swiped away, a bfcache entry)
+// pauses the race too, and coming back through pageshow lands on the pause screen. The
+// "recording written" half of the acceptance waits for replay-2 and app-4's wiring.
+test('pagehide pauses the race, and pageshow lands on the pause screen', async ({ page }) => {
+  const problems = watchProblems(page);
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 30);
+  const tick = () => page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? -1);
+
+  // The page stays visible: only pagehide fires, so the pause comes from it alone.
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+  const pausedAt = await tick();
+  await page.waitForTimeout(750);
+  const later = await tick();
+  console.log(`pagehide: tick ${pausedAt} -> ${later} after 750 ms`);
+  expect(later, 'no sim ticks after pagehide').toBe(pausedAt);
+  expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
+
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await expect(page.locator('#pause-screen')).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await tick(), 'still paused behind the pause menu').toBe(pausedAt);
+
+  await page.locator('#pause-resume').click();
+  await page.waitForFunction(
+    (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t + 30,
+    pausedAt,
+  );
+  expect(problems).toEqual([]);
+});
