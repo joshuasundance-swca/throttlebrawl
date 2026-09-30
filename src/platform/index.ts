@@ -1,6 +1,7 @@
 // platform: the start-tap sequence, the rotate-your-phone trigger, every lifecycle listener, the
-// page guards and the app-id constant (docs/architecture.md, "Input" and "Fixed timestep and the
-// loop"; docs/milestones/M1.md, platform-1). platform/ may import only core/, so audio arrives as
+// page guards, the screen wake lock and the app-id constant (docs/architecture.md, "Input" and
+// "Fixed timestep and the loop"; docs/milestones/M1.md, platform-1; docs/milestones/M2.md,
+// platform-2). platform/ may import only core/, so audio arrives as
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
 // tests drive the same code with mocks.
 import type { ResumeAudio } from '../core';
@@ -25,6 +26,8 @@ export interface PlatformEnv {
   lockLandscape: (() => Promise<void>) | null;
   /** The tilt permission prompt, where the browser has one (iOS); null elsewhere. */
   requestTiltPermission: (() => Promise<string>) | null;
+  /** The Screen Wake Lock (`navigator.wakeLock.request('screen')`); null where there is none. */
+  requestWakeLock: (() => Promise<WakeLockHandle>) | null;
   isPortrait(): boolean;
   /** A phone or tablet: the only devices the rotate screen is for. */
   isTouchDevice(): boolean;
@@ -33,6 +36,13 @@ export interface PlatformEnv {
   showRotate(need: boolean): void;
   /** Adds a style sheet; returns a function that removes it. */
   injectStyle(css: string): () => void;
+}
+
+/** A held screen wake lock: the browser's `WakeLockSentinel`, reduced to what platform/ uses. */
+export interface WakeLockHandle {
+  release(): Promise<void>;
+  /** Called once when the lock ends, whether released by us or dropped by the browser. */
+  onRelease(cb: () => void): void;
 }
 
 export interface StartTapResult {
@@ -55,6 +65,15 @@ export interface Platform {
   runStartTap(resumeAudio: ResumeAudio): Promise<StartTapResult>;
   watchLifecycle(cb: LifecycleCallbacks): () => void;
   rotateNeeded(): boolean;
+  /**
+   * Whether a race wants the screen kept on. The lock is held only while this is on, the page is
+   * visible and no pause reason stands; it is re-requested when those hold again (the browser
+   * drops it whenever the page hides). app/ turns it on when a race runs and off on pause and in
+   * menus, so a pad-only or tilt-only ride with no touches does not let the screen time out.
+   */
+  keepAwake(on: boolean): void;
+  /** Whether a wake lock is held right now (for the debug report and the M5 soak). */
+  wakeLockHeld(): boolean;
 }
 
 /** How long the tap's result waits for a lock that never settles (some browsers hold it). */
@@ -111,15 +130,47 @@ export function createPlatform(env: PlatformEnv): Platform {
   let wasFullscreen = env.isFullscreen();
   let keeperInstalled = false;
 
+  // The screen wake lock: wanted by a running race, held only while nothing pauses the game.
+  let wantAwake = false;
+  let sentinel: WakeLockHandle | null = null;
+  let requesting = false;
+  let wakeWatchInstalled = false;
+  const shouldHold = () => wantAwake && reasons.size === 0 && !env.isHidden();
+  const syncWake = () => {
+    if (!shouldHold()) {
+      if (sentinel) {
+        const s = sentinel;
+        sentinel = null;
+        void attempt(() => s.release());
+      }
+      return;
+    }
+    if (sentinel || requesting || !env.requestWakeLock) return;
+    requesting = true;
+    void attempt(env.requestWakeLock).then((r) => {
+      requesting = false;
+      if (!r.ok) return; // refused (hidden, battery saver): the next return to the page retries
+      const s = r.value;
+      s.onRelease(() => {
+        if (sentinel === s) sentinel = null;
+      });
+      // The race may have stopped wanting it while the request was in flight.
+      if (!shouldHold()) void attempt(() => s.release());
+      else sentinel = s;
+    });
+  };
+
   const pause = (reason: PauseReason) => {
     if (reasons.has(reason)) return;
     const first = reasons.size === 0;
     reasons.add(reason);
     if (first) for (const w of watchers) w.onHidden(reason);
+    syncWake();
   };
   const clear = (reason: PauseReason) => {
     if (!reasons.delete(reason) || reasons.size > 0) return;
     for (const w of watchers) w.onShown();
+    syncWake();
   };
 
   const lock = () => attempt(env.lockLandscape).then((r) => r.ok);
@@ -212,6 +263,18 @@ export function createPlatform(env: PlatformEnv): Platform {
     },
 
     rotateNeeded: () => rotate,
+
+    keepAwake(on) {
+      if (!wakeWatchInstalled) {
+        // The lock is re-requested on every return to the page, lifecycle watcher or not.
+        wakeWatchInstalled = true;
+        env.doc.addEventListener('visibilitychange', syncWake);
+      }
+      wantAwake = on;
+      syncWake();
+    },
+
+    wakeLockHeld: () => sentinel !== null,
   };
   return platform;
 }
@@ -247,6 +310,29 @@ function showRotateScreen(need: boolean): void {
   document.documentElement.dataset['rotate'] = need ? 'needed' : 'ok';
 }
 
+/** The part of `navigator` the wake lock needs; the real one or a test's stand-in. */
+interface WakeLockNavigator {
+  wakeLock?: {
+    request(type: 'screen'): Promise<EventTarget & { release(): Promise<void> }>;
+  };
+}
+
+/**
+ * Adapts `navigator.wakeLock` (Chrome 84 and later on desktop and Android) to `WakeLockHandle`;
+ * null where the browser has none.
+ */
+export function wakeLockRequester(
+  nav: WakeLockNavigator | undefined,
+): (() => Promise<WakeLockHandle>) | null {
+  const api = nav?.wakeLock;
+  if (!api || typeof api.request !== 'function') return null;
+  return () =>
+    api.request('screen').then((s) => ({
+      release: () => s.release(),
+      onRelease: (cb) => s.addEventListener('release', () => cb(), { once: true }),
+    }));
+}
+
 /** The real browser, read lazily so importing platform/ has no side effects. */
 export function browserEnv(): PlatformEnv {
   const media = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -268,6 +354,7 @@ export function browserEnv(): PlatformEnv {
     isFullscreen: () => document.fullscreenElement != null,
     lockLandscape: lock ? () => lock('landscape') : null,
     requestTiltPermission: askTilt ? () => askTilt() : null,
+    requestWakeLock: wakeLockRequester(typeof navigator !== 'undefined' ? navigator : undefined),
     isPortrait: () => media('(orientation: portrait)'),
     isTouchDevice: () => media('(pointer: coarse)'),
     isHidden: () => document.visibilityState === 'hidden',
@@ -307,4 +394,18 @@ export function runStartTap(resumeAudio: ResumeAudio): Promise<StartTapResult> {
  */
 export function watchLifecycle(cb: LifecycleCallbacks): () => void {
   return page().watchLifecycle(cb);
+}
+
+/**
+ * Keeps the screen on while a race runs (the Screen Wake Lock): on when the race starts or
+ * resumes, off on pause and in menus. Re-requested whenever the page comes back while still on;
+ * a browser without the API simply never holds it.
+ */
+export function keepAwake(on: boolean): void {
+  page().keepAwake(on);
+}
+
+/** Whether the screen wake lock is held right now. */
+export function wakeLockHeld(): boolean {
+  return page().wakeLockHeld();
 }

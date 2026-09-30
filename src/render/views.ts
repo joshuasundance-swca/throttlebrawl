@@ -2,6 +2,9 @@
 // entity id, updated from the interpolated snapshot. Riders are merged primitive boxes with a lean,
 // an attack pose from the attack phase, a wobble, a held weapon with the steal glint, and (for the
 // law) a flashing light bar. Cars, trucks and pedestrians are instanced, one draw call per shape.
+// M2 render-2 adds the feel: a hit target flashes and throws sparks, a crashed rider ragdolls while
+// the bike cartwheels clear on its own body (EntitySnapshot.tumble), a knocked-off rider gets up and
+// shakes a fist, and a body over the rail makes a splash (the effects live in effects.ts).
 // Everything here is presentation: it may use wall-clock time and Math freely.
 import {
   BufferGeometry,
@@ -15,9 +18,17 @@ import {
   Vector3,
   type Material,
 } from 'three';
-import type { EntitySnapshot, SimEvent, SimSnapshot, SimTrafficTypeDef } from '../sim/api';
+import type {
+  EntitySnapshot,
+  SimEvent,
+  SimSnapshot,
+  SimTrafficTypeDef,
+  TumbleBodySnapshot,
+} from '../sim/api';
+import type { FeelEffects, Point } from './effects';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
+import { defaultRenderParams, type RenderParams } from './tuning';
 
 /** Body proportions from rider data (a later look test compares exaggerated against realistic). */
 export interface RiderProportions {
@@ -29,6 +40,10 @@ export const DEFAULT_PROPORTIONS: RiderProportions = { height: 1, bulk: 1, head:
 
 export interface EntityViewOptions {
   proportions?: (contentId: string) => RiderProportions;
+  /** Where sparks and splashes go (the renderer's effects); none in bare view tests. */
+  effects?: FeelEffects;
+  /** The feel numbers, shared with the renderer so a tuning change applies at once. */
+  params?: RenderParams;
 }
 
 /** Interpolated pose fields, written into a caller-owned object (no allocation per frame). */
@@ -207,9 +222,72 @@ interface RiderView {
   lightBar: Mesh;
   /** The bike standing apart while the rider runs back to it (EntitySnapshot.parkedBike). */
   parked: Mesh;
+  /** The bike cartwheeling on its own while the rider tumbles (pivot at its middle). */
+  tumbleBike: Group;
+  tumbleBikeMesh: Mesh;
+  spin: Spin;
+  flashing: boolean;
   scheme: string;
-  onFoot: boolean;
+  /** Off the bike: tumbling or on foot (the body is drawn without the bike). */
+  detached: boolean;
 }
+
+/** Tumble angles, integrated per frame from the bodies' speeds (radians). */
+interface Spin {
+  pitch: number;
+  heading: number;
+  bikePitch: number;
+  bikeRoll: number;
+  bikeHeading: number;
+}
+
+function freshSpin(): Spin {
+  return { pitch: 0, heading: 0, bikePitch: 0, bikeRoll: 0, bikeHeading: 0 };
+}
+
+/** Moves `a` toward `b` by a fraction (a frame-rate-light ease). */
+function ease(a: number, b: number, k: number): number {
+  return a + (b - a) * Math.min(1, Math.max(0, k));
+}
+
+/** The angle equal to `target` modulo 2 pi that is nearest to `from`. */
+function nearestTurn(from: number, target: number): number {
+  const turns = Math.round((from - target) / (2 * Math.PI));
+  return target + turns * 2 * Math.PI;
+}
+
+/** Interpolates a tumble body into `out` (no allocation per frame); null when there is none. */
+function lerpBody(
+  a: TumbleBodySnapshot | undefined,
+  b: TumbleBodySnapshot | undefined,
+  t: number,
+  out: TumbleBodySnapshot,
+): TumbleBodySnapshot | null {
+  if (!b) return null;
+  const from = a ?? b;
+  out.x = from.x + (b.x - from.x) * t;
+  out.y = from.y + (b.y - from.y) * t;
+  out.z = from.z + (b.z - from.z) * t;
+  out.vx = b.vx;
+  out.vy = b.vy;
+  out.vz = b.vz;
+  return out;
+}
+
+const zeroBody = (): TumbleBodySnapshot => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+
+/** A body's centre for effects: the tumble body when there is one, else the entity. */
+function bodyPoint(e: EntitySnapshot, which: 'rider' | 'bike'): Point {
+  const b = e.tumble?.[which];
+  return b ? { x: b.x, y: b.y, z: b.z } : { x: e.x, y: e.y, z: e.z };
+}
+
+/** Rider body centre above its model origin, and a bike's (pivots for the tumble spin). */
+const RIDER_CENTRE_M = 0.9;
+const BIKE_CENTRE_M = 0.45;
+const BIKE_SIDE_M = 0.22;
+/** Pending effect events kept between frames (menus stop the render while the sim may run). */
+const PENDING_CAP = 64;
 
 interface PickupView {
   root: Group;
@@ -250,6 +328,16 @@ export class EntityViews {
   private readonly wobbles = new Map<number, Timer>();
   private readonly dives = new Map<number, Timer>();
   private readonly kicks = new Set<number>();
+  private readonly flashes = new Map<number, number>();
+  private readonly getUps = new Map<number, number>();
+  private readonly fists = new Map<number, { until: number; target: number }>();
+  private readonly pending: SimEvent[] = [];
+  private readonly effects: FeelEffects | null;
+  private readonly params: RenderParams;
+  private alpha = 1;
+  private dt = 0;
+  private readonly riderBody = zeroBody();
+  private readonly bikeBody = zeroBody();
   private readonly pose: Pose = { x: 0, y: 0, z: 0, heading: 0, lean: 0 };
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
@@ -263,6 +351,8 @@ export class EntityViews {
   constructor(look: LookStyle, opts: EntityViewOptions = {}) {
     this.look = look;
     this.proportions = opts.proportions ?? (() => DEFAULT_PROPORTIONS);
+    this.effects = opts.effects ?? null;
+    this.params = opts.params ?? defaultRenderParams();
     this.root.name = 'entities';
     this.instanced = {
       car: this.makeInstanced('car', CAR_PARTS, 'vehicle', 32),
@@ -277,12 +367,37 @@ export class EntityViews {
     for (const d of defs) this.trafficTypes.set(d.contentId, d);
   }
 
-  /** Sim events that drive purely visual cues: hit wobble, the kick pose, the pedestrian dive. */
+  /**
+   * Sim events that drive purely visual cues: hit wobble and flash, the kick pose, the pedestrian
+   * dive, the get-up and the fist shake; and (at the next sync, where positions are known) sparks
+   * on hits, crashes and rail scrapes, and the splash.
+   */
   pushEvents(events: readonly SimEvent[]): void {
+    const P = this.params;
     for (const ev of events) {
       const side = typeof ev.data['side'] === 'number' ? Math.sign(ev.data['side']) || 1 : null;
       if ((ev.type === 'hit' || ev.type === 'kick') && ev.target !== undefined) {
         this.wobbles.set(ev.target, { until: this.now + WOBBLE_S, side });
+        this.flashes.set(ev.target, this.now + P.hitFlashS);
+      }
+      if (ev.type === 'takedown' && ev.target !== undefined) {
+        this.flashes.set(ev.target, this.now + 2 * P.hitFlashS);
+      }
+      if (ev.type === 'getUp') this.getUps.set(ev.actor, this.now + P.getUpS);
+      if (ev.type === 'fistShake') {
+        this.getUps.delete(ev.actor);
+        this.fists.set(ev.actor, { until: this.now + P.fistShakeS, target: ev.target ?? -1 });
+      }
+      if (
+        ev.type === 'hit' ||
+        ev.type === 'kick' ||
+        ev.type === 'crash' ||
+        ev.type === 'takedown' ||
+        ev.type === 'railOver' ||
+        ev.type === 'splash'
+      ) {
+        if (this.pending.length >= PENDING_CAP) this.pending.shift();
+        this.pending.push(ev);
       }
       if (ev.type === 'land' && (ev.data['wobble'] === true || ev.data['quality'] === 'wobble')) {
         this.wobbles.set(ev.actor, { until: this.now + WOBBLE_S, side });
@@ -299,8 +414,14 @@ export class EntityViews {
 
   /** Updates every view from the snapshots. `timeS` is wall-clock seconds, for visual cues only. */
   sync(prev: SimSnapshot | null, curr: SimSnapshot, alpha: number, timeS: number): void {
+    // Real seconds since the last frame, and the world's share of them (0 in a hit-stop, 0.3 in
+    // slow motion): spins and effects crawl with the world.
+    const dtReal = Math.min(0.1, Math.max(0, timeS - this.now));
+    const scale = Math.min(1, Math.max(0, curr.timeScale));
+    this.dt = dtReal * scale;
     this.now = timeS;
     const t = Math.min(1, Math.max(0, alpha));
+    this.alpha = t;
     this.prevById.clear();
     if (prev) for (const e of prev.entities) this.prevById.set(e.id, e);
     this.seen.clear();
@@ -311,7 +432,7 @@ export class EntityViews {
       const a = this.prevById.get(e.id) ?? e;
       const p = lerpPose(a, e, t, this.pose);
       if (e.kind === 'rider') {
-        this.updateRider(this.riderView(e), e, p, curr);
+        this.updateRider(this.riderView(e), e, a, p, curr);
         this.seen.add(e.id);
         riders++;
       } else if (e.kind === 'pickup') {
@@ -363,6 +484,13 @@ export class EntityViews {
     for (const [id, view] of this.pickups) if (!this.seen.has(id)) this.releasePickup(id, view);
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
     for (const [id, d] of this.dives) if (d.until < timeS) this.dives.delete(id);
+    for (const [id, f] of this.flashes) if (f < timeS) this.flashes.delete(id);
+    for (const [id, g] of this.getUps) if (g < timeS) this.getUps.delete(id);
+    for (const [id, f] of this.fists) if (f.until < timeS) this.fists.delete(id);
+    this.resolveEffects(curr);
+    const slowmo = curr.slowmo?.active === true || (curr.timeScale > 0 && curr.timeScale < 0.999);
+    // In a hit-stop the world is frozen, but sparks keep drifting a little so the hit reads.
+    this.effects?.update(scale > 0 ? this.dt : dtReal * 0.15, dtReal, slowmo);
     this.counts = {
       riders,
       vehicles: slots.car + slots.truck,
@@ -449,7 +577,8 @@ export class EntityViews {
     if (!view) {
       view = this.freeRiders.pop() ?? this.buildRider();
       this.riders.set(e.id, view);
-      this.root.add(view.root, view.parked);
+      this.root.add(view.root, view.parked, view.tumbleBike);
+      view.spin = freshSpin();
       view.scheme = '';
     }
     return view;
@@ -498,6 +627,14 @@ export class EntityViews {
     const parked = new Mesh(empty, this.material('rider'));
     parked.name = 'views-parked-bike';
     parked.visible = false;
+    // The crashed bike, pivoting about its middle so it cartwheels end over end.
+    const tumbleBike = new Group();
+    tumbleBike.name = 'views-tumble-bike';
+    tumbleBike.rotation.order = 'YXZ';
+    const tumbleBikeMesh = new Mesh(empty, this.material('rider'));
+    tumbleBikeMesh.position.y = -BIKE_CENTRE_M;
+    tumbleBike.add(tumbleBikeMesh);
+    tumbleBike.visible = false;
     return {
       root,
       body,
@@ -509,17 +646,25 @@ export class EntityViews {
       glint,
       lightBar,
       parked,
+      tumbleBike,
+      tumbleBikeMesh,
+      spin: freshSpin(),
+      flashing: false,
       scheme: '',
-      onFoot: false,
+      detached: false,
     };
   }
 
   private releaseRider(id: number, view: RiderView): void {
     this.riders.delete(id);
     view.parked.visible = false;
-    this.root.remove(view.root, view.parked);
+    view.tumbleBike.visible = false;
+    this.root.remove(view.root, view.parked, view.tumbleBike);
     this.freeRiders.push(view);
     this.kicks.delete(id);
+    this.flashes.delete(id);
+    this.getUps.delete(id);
+    this.fists.delete(id);
   }
 
   private pickupView(id: number): PickupView {
@@ -563,22 +708,41 @@ export class EntityViews {
     return dot < 0 ? -1 : 1;
   }
 
-  private updateRider(view: RiderView, e: EntitySnapshot, p: Pose, curr: SimSnapshot): void {
+  private updateRider(
+    view: RiderView,
+    e: EntitySnapshot,
+    prev: EntitySnapshot,
+    p: Pose,
+    curr: SimSnapshot,
+  ): void {
     const time = this.now;
     const onFoot = e.mode === 'OnFoot';
+    const tumbling = e.mode === 'Tumble';
+    const detached = onFoot || tumbling;
     const scheme = schemeFor(e);
     const key = `${scheme.bike}|${scheme.rider}|${scheme.helmet}|${scheme.law ? 1 : 0}|${e.contentId}`;
-    if (view.scheme !== key || view.onFoot !== onFoot) {
+    if (view.scheme !== key || view.detached !== detached) {
       const props = this.proportions(e.contentId);
       const pk = `${props.height},${props.bulk},${props.head}`;
-      view.body.geometry = onFoot
+      view.body.geometry = detached
         ? this.geometry(`foot:${scheme.rider}|${scheme.helmet}|${pk}`, () => onFootParts(scheme, props))
         : this.geometry(`ride:${key}|${pk}`, () => ridingParts(scheme, props));
       const arm = this.geometry(`arm:${scheme.rider}`, () => armParts(scheme));
       view.armMeshes[0].geometry = arm;
       view.armMeshes[1].geometry = arm;
+      view.tumbleBikeMesh.geometry = this.geometry(`bike:${scheme.bike}`, () => bikeParts(scheme));
       view.scheme = key;
-      view.onFoot = onFoot;
+      view.detached = detached;
+    }
+    // A hit's flash: the body and arms wash toward white for a moment.
+    const flashing = (this.flashes.get(e.id) ?? -1) >= time;
+    if (flashing !== view.flashing) {
+      const mat = this.look.material(flashing ? 'flash' : 'rider', { vertexColors: true });
+      view.body.material = mat;
+      view.armMeshes[0].material = mat;
+      view.armMeshes[1].material = mat;
+      view.kickMesh.material = mat;
+      view.flashing = flashing;
     }
     const root = view.root;
     root.visible = true;
@@ -596,11 +760,6 @@ export class EntityViews {
     const wob = wobble ? Math.sin(time * 40) * 0.22 * Math.max(0, (wobble.until - time) / WOBBLE_S) : 0;
     root.rotation.x = e.mode === 'Airborne' ? 0.12 : 0; // nose up
     root.rotation.z = -p.lean + wob;
-    if (e.mode === 'Tumble') {
-      root.rotation.x = time * 7;
-      root.rotation.z = time * 3;
-    }
-    if (onFoot) root.position.y += Math.abs(Math.sin(time * 10)) * 0.08;
 
     // Arms: the attack side takes the pose, the other holds the bars (or swings when running).
     const side = this.sideOf(e, p, curr);
@@ -609,13 +768,15 @@ export class EntityViews {
     const kicking = this.kicks.has(e.id) && e.attackPhase !== 'idle';
     if (e.attackPhase === 'idle' || e.attackPhase === 'cooldown') this.kicks.delete(e.id);
     for (const arm of view.arms) arm.rotation.set(1.1, 0, 0);
-    if (onFoot) {
-      left.rotation.set(Math.sin(time * 10) * 0.8, 0, -0.1);
-      right.rotation.set(-Math.sin(time * 10) * 0.8, 0, 0.1);
-    } else if (e.mode === 'Tumble') {
-      left.rotation.set(0, 0, -1.4);
-      right.rotation.set(0, 0, 1.4);
-    } else if (!kicking) {
+    if (tumbling) {
+      this.poseTumble(view, e, prev, p);
+    } else {
+      view.tumbleBike.visible = false;
+      view.spin = freshSpin();
+      view.spin.heading = p.heading;
+    }
+    if (onFoot) this.poseOnFoot(view, e, p, curr);
+    else if (!tumbling && !kicking) {
       switch (e.attackPhase) {
         case 'windup':
           attackArm.rotation.set(-0.6, 0, side * 0.5);
@@ -631,14 +792,14 @@ export class EntityViews {
       }
     }
     // Kick: a leg swings out on the attack side.
-    view.kickLeg.visible = kicking && !onFoot;
+    view.kickLeg.visible = kicking && !detached;
     if (kicking) {
       view.kickLeg.position.x = side * 0.22;
       const angle = e.attackPhase === 'windup' ? 0.5 : e.attackPhase === 'active' ? 1.35 : 0.7;
       view.kickLeg.rotation.set(0, 0, side * angle);
     }
     // A held weapon rides in the attack-side fist; it glints through the wind-up (the steal cue).
-    const held = e.heldWeapon !== null && e.mode !== 'Tumble';
+    const held = e.heldWeapon !== null && !tumbling;
     if (held && view.weapon.parent !== attackArm) attackArm.add(view.weapon);
     view.weapon.visible = held;
     view.glint.visible = held && e.attackPhase === 'windup';
@@ -647,11 +808,147 @@ export class EntityViews {
       view.glint.rotation.z = time * 6;
     }
     // The law: a light bar flashing red and blue at 4 Hz.
-    view.lightBar.visible = scheme.law && !onFoot && e.mode !== 'Tumble';
+    view.lightBar.visible = scheme.law && !detached;
     if (view.lightBar.visible) {
       const red = Math.floor(time * 8) % 2 === 0;
       view.lightBar.material = this.look.material('lightbar', { color: red ? LIGHT_RED : LIGHT_BLUE });
     }
+  }
+
+  /**
+   * A crash: the rider ragdolls on the rider body and the bike cartwheels on its own body, each
+   * spinning at a rate set by its speed, and both lie down once they slow. Without body data (a
+   * hand-built snapshot), the bike is thrown a little to the side of the rider.
+   */
+  private poseTumble(view: RiderView, e: EntitySnapshot, prev: EntitySnapshot, p: Pose): void {
+    const dt = this.dt;
+    const rate = this.params.cartwheelRate;
+    const s = view.spin;
+    const rb = lerpBody(prev.tumble?.rider, e.tumble?.rider, this.alpha, this.riderBody);
+    const bb = lerpBody(prev.tumble?.bike, e.tumble?.bike, this.alpha, this.bikeBody);
+    const fwdX = -Math.sin(p.heading);
+    const fwdZ = -Math.cos(p.heading);
+
+    // The rider: tumbles head over heels about the body's middle, then lies face down.
+    const rvx = rb ? rb.vx : fwdX * e.speed;
+    const rvz = rb ? rb.vz : fwdZ * e.speed;
+    const rSpeed = rb ? Math.hypot(rb.vx, rb.vy, rb.vz) : e.speed;
+    if (Math.hypot(rvx, rvz) > 1) s.heading = Math.atan2(-rvx, -rvz);
+    if (rSpeed > 1.2) s.pitch += Math.min(0.6, dt * (rSpeed / RIDER_CENTRE_M) * 0.6 * rate);
+    else s.pitch = ease(s.pitch, nearestTurn(s.pitch, Math.PI / 2), dt * 6);
+    const root = view.root;
+    root.rotation.set(-s.pitch, s.heading, rSpeed > 1.2 ? Math.sin(s.pitch * 0.5) * 0.4 : 0);
+    const cx = rb ? rb.x : p.x;
+    const cy = (rb ? rb.y : p.y) + 0.25;
+    const cz = rb ? rb.z : p.z;
+    this.v.set(0, RIDER_CENTRE_M, 0).applyEuler(root.rotation);
+    root.position.set(cx - this.v.x, cy - this.v.y, cz - this.v.z);
+    const [left, right] = view.arms;
+    const flail = rSpeed > 1.2 ? 1 : 0.15;
+    left.rotation.set(Math.sin(this.now * 13) * 0.6 * flail, 0, -1.4 + Math.sin(this.now * 9) * 0.3 * flail);
+    right.rotation.set(-Math.sin(this.now * 11) * 0.6 * flail, 0, 1.4 - Math.sin(this.now * 8) * 0.3 * flail);
+
+    // The bike: end over end while it flies and skids, then down on its side.
+    const bx = bb ? bb.x : cx + Math.cos(p.heading) * 1.2;
+    const by = bb ? bb.y : p.y;
+    const bz = bb ? bb.z : cz - Math.sin(p.heading) * 1.2;
+    const bvx = bb ? bb.vx : rvx;
+    const bvz = bb ? bb.vz : rvz;
+    const bSpeed = bb ? Math.hypot(bb.vx, bb.vy, bb.vz) : e.speed;
+    const bHoriz = Math.hypot(bvx, bvz);
+    if (bHoriz > 1) s.bikeHeading = Math.atan2(-bvx, -bvz);
+    if (bSpeed > 1) {
+      s.bikePitch += Math.min(0.8, dt * (bHoriz / BIKE_CENTRE_M) * rate);
+      s.bikeRoll = ease(s.bikeRoll, 0, dt * 4);
+    } else {
+      s.bikePitch = ease(s.bikePitch, nearestTurn(s.bikePitch, 0), dt * 6);
+      s.bikeRoll = ease(s.bikeRoll, Math.PI / 2, dt * 6);
+    }
+    const bike = view.tumbleBike;
+    bike.visible = true;
+    bike.rotation.set(-s.bikePitch, s.bikeHeading, s.bikeRoll);
+    const lying = Math.min(1, Math.abs(s.bikeRoll) / (Math.PI / 2));
+    bike.position.set(bx, by + BIKE_CENTRE_M + (BIKE_SIDE_M - BIKE_CENTRE_M) * lying, bz);
+  }
+
+  /** On foot: the get-up, the fist shake at whoever knocked them off, or the run back. */
+  private poseOnFoot(view: RiderView, e: EntitySnapshot, p: Pose, curr: SimSnapshot): void {
+    const time = this.now;
+    const root = view.root;
+    const [left, right] = view.arms;
+    const getUp = this.getUps.get(e.id);
+    const fist = this.fists.get(e.id);
+    if (getUp !== undefined && getUp >= time) {
+      // From lying face down to standing, pivoting at the feet, pushing up with both arms.
+      const k = 1 - Math.max(0, getUp - time) / Math.max(0.01, this.params.getUpS);
+      const up = 1 - (1 - k) * (1 - k);
+      root.rotation.set(-(Math.PI / 2) * (1 - up), p.heading, 0);
+      left.rotation.set(1.3 * (1 - up), 0, -0.2);
+      right.rotation.set(1.3 * (1 - up), 0, 0.2);
+      return;
+    }
+    if (fist && fist.until >= time) {
+      // Stand facing the rider they blame and shake a fist overhead.
+      const target = fist.target >= 0 ? entityById(curr, fist.target) : undefined;
+      const heading = target ? Math.atan2(-(target.x - p.x), -(target.z - p.z)) : p.heading;
+      root.rotation.set(0, heading, 0);
+      right.rotation.set(0, 0, 2.9 + Math.sin(time * 22) * 0.25);
+      left.rotation.set(0, 0, -0.15);
+      return;
+    }
+    root.position.y += Math.abs(Math.sin(time * 10)) * 0.08;
+    left.rotation.set(Math.sin(time * 10) * 0.8, 0, -0.1);
+    right.rotation.set(-Math.sin(time * 10) * 0.8, 0, 0.1);
+  }
+
+  /** Sparks and splashes for the events since the last frame, now that positions are known. */
+  private resolveEffects(curr: SimSnapshot): void {
+    const fx = this.effects;
+    if (!fx) {
+      this.pending.length = 0;
+      return;
+    }
+    for (const ev of this.pending) {
+      const actor = entityById(curr, ev.actor);
+      const target = ev.target !== undefined ? entityById(curr, ev.target) : undefined;
+      switch (ev.type) {
+        case 'hit':
+        case 'kick': {
+          if (!target) break;
+          let dx = actor ? target.x - actor.x : 0;
+          let dz = actor ? target.z - actor.z : 0;
+          const len = Math.hypot(dx, dz);
+          dx = len > 1e-6 ? dx / len : 0;
+          dz = len > 1e-6 ? dz / len : 0;
+          const strength = (ev.type === 'kick' ? 1.5 : 1) * (ev.data['weapon'] ? 1.25 : 1);
+          fx.burst({ x: target.x - dx * 0.3, y: target.y + 1.15, z: target.z - dz * 0.3 }, strength, dx, dz);
+          break;
+        }
+        case 'crash':
+          if (actor) {
+            const at = bodyPoint(actor, 'rider');
+            fx.burst({ x: at.x, y: at.y + 0.3, z: at.z }, 2);
+          }
+          break;
+        case 'takedown':
+          if (target) fx.burst({ x: target.x, y: target.y + 1, z: target.z }, 1.5);
+          break;
+        case 'railOver':
+          if (actor) fx.burst(bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider'), 0.8);
+          break;
+        case 'splash':
+          if (actor) {
+            const at = bodyPoint(actor, ev.data['body'] === 'bike' ? 'bike' : 'rider');
+            // Away from the bridge: from the rider's spot on the road out to the splash.
+            const reactor = (ev.actor + ev.tick) % 2 === 0 ? 'gator' : 'fisherman';
+            fx.splash(at, reactor, at.x - actor.x, at.z - actor.z);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+    this.pending.length = 0;
   }
 
   private diveAmount(

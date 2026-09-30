@@ -6,6 +6,7 @@
 import { AUDIO_TUNING } from '../audio';
 import { CAMERA_TUNING } from '../camera';
 import { INPUT_TUNING } from '../input';
+import { RENDER_TUNING } from '../render';
 import { SIM_TUNING, type TuningParamDecl } from '../sim/api';
 import { BARK_TUNING } from '../ui';
 
@@ -15,10 +16,11 @@ export const APP_TUNING: readonly TuningParamDecl[] = [
   ...AUDIO_TUNING,
   ...INPUT_TUNING,
   ...BARK_TUNING,
+  ...RENDER_TUNING,
 ];
 
 /** The presentation modules that take a tuning value at once through their own `setParam`. */
-export type PresentationOwner = 'camera' | 'audio' | 'input' | 'barks';
+export type PresentationOwner = 'camera' | 'audio' | 'input' | 'barks' | 'render';
 
 /**
  * A value read only at race start, by buildSimConfig (the `difficulty.*` scales): neither the sim
@@ -35,7 +37,11 @@ export function isRaceStartParam(id: string): boolean {
  */
 export function presentationOwner(id: string): PresentationOwner | null {
   const prefix = id.slice(0, id.indexOf('.'));
-  return prefix === 'camera' || prefix === 'audio' || prefix === 'input' || prefix === 'barks'
+  return prefix === 'camera' ||
+    prefix === 'audio' ||
+    prefix === 'input' ||
+    prefix === 'barks' ||
+    prefix === 'render'
     ? prefix
     : null;
 }
