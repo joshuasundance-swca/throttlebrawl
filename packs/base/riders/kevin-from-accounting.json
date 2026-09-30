@@ -1,0 +1,35 @@
+{
+  "type": "rider",
+  "id": "kevin-from-accounting",
+  "name": "Kevin from Accounting",
+  "role": "rival",
+  "roster": "regular",
+  "tags": ["office", "scooter"],
+  "blurb": "Suit and tie on a scooter, weirdly vicious.",
+  "bike": "rustbucket-400",
+  "stats": {
+    "massKg": 78,
+    "healthMax": 105,
+    "skill": 0.5
+  },
+  "personality": {
+    "style": "heavy-hitter",
+    "aggression": 0.7,
+    "dirtiness": 0.8,
+    "courage": 0.75,
+    "riskTaking": 0.15,
+    "chatter": 0.6,
+    "weave": 0,
+    "targetPreference": ["player", "nearest"],
+    "preferredSide": "left"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "M1 box rival (ai-1). The tone guide makes him a grudge-keeper; grudges arrive in M4, so in M1 he is a heavy hitter: brutal up close (kicks a lot), always from your left, never takes a risk in traffic. He rides the starter bike until his scooter exists.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-30"
+    }
+  }
+}
