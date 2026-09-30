@@ -94,6 +94,14 @@ export interface EntitySnapshot {
    */
   parkedBike?: ParkedBikeSnapshot | null;
   /**
+   * A rider's crash bodies while it tumbles (mode `Tumble`), else null: the rider's and the bike's
+   * world-space centres and velocities, so render can throw the bike clear and cartwheel it apart
+   * from the rider (M2 render-2). Presentation only. Optional for hand-built snapshots; the sim
+   * fills it for every rider from the tumble system's own bodies (tumble-1's today, tumble-2's rig
+   * centres when it lands).
+   */
+  tumble?: TumbleSnapshot | null;
+  /**
    * Style cash this rider has scored this race (M2 riders-5), 0 for other kinds. Optional for
    * hand-built snapshots; the sim fills it for every entity.
    */
@@ -118,6 +126,22 @@ export interface ParkedBikeSnapshot {
   y: number;
   z: number;
   heading: number;
+}
+
+/** One crash tumble body: world position (x east, y up, z south) and velocity in m/s. */
+export interface TumbleBodySnapshot {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
+
+/** A tumbling rider's two bodies (EntitySnapshot.tumble). */
+export interface TumbleSnapshot {
+  rider: TumbleBodySnapshot;
+  bike: TumbleBodySnapshot;
 }
 
 export interface RaceSnapshot {
