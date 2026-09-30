@@ -65,19 +65,25 @@ describe('the lint rules against the real folders', () => {
     }
   });
 
-  it('lints the real tree clean under the module-map and determinism rules', async () => {
-    const eslint = new ESLint({ cwd: repoRoot, overrideConfig: [tseslint.configs.disableTypeChecked] });
-    const results = await eslint.lintFiles(['src']);
-    const findings = results.flatMap((r) =>
-      r.messages
-        .filter((m) => PROJECT_RULES.has(m.ruleId ?? '') || m.fatal)
-        .map((m) => `${path.relative(repoRoot, r.filePath)}:${m.line} ${m.ruleId ?? 'fatal'} ${m.message}`),
-    );
-    console.log(`[examined] ${results.length} real src files against the project lint rules`);
-    expect(results.length).toBe(files.length);
-    expect(results.length).toBeGreaterThan(50);
-    expect(findings).toEqual([]);
-  });
+  // ESLint over the whole src/ tree takes 5-9 s on the dev machine while parallel lanes build, so
+  // the default 5 s test timeout failed the pre-push hook with no lint finding; the tree grows.
+  it(
+    'lints the real tree clean under the module-map and determinism rules',
+    { timeout: 60_000 },
+    async () => {
+      const eslint = new ESLint({ cwd: repoRoot, overrideConfig: [tseslint.configs.disableTypeChecked] });
+      const results = await eslint.lintFiles(['src']);
+      const findings = results.flatMap((r) =>
+        r.messages
+          .filter((m) => PROJECT_RULES.has(m.ruleId ?? '') || m.fatal)
+          .map((m) => `${path.relative(repoRoot, r.filePath)}:${m.line} ${m.ruleId ?? 'fatal'} ${m.message}`),
+      );
+      console.log(`[examined] ${results.length} real src files against the project lint rules`);
+      expect(results.length).toBe(files.length);
+      expect(results.length).toBeGreaterThan(50);
+      expect(findings).toEqual([]);
+    },
+  );
 
   it('keeps every relative import on a drawn edge, and app/ and dev/ behind the composition root', () => {
     let edges = 0;
