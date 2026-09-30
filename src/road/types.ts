@@ -8,6 +8,10 @@ export interface BakedLaneSection {
   lanes: readonly LaneInfo[];
 }
 
+/** Feature kinds, exactly the architecture doc's list. */
+export type FeatureKind =
+  'ramp' | 'gap' | 'hazard' | 'roadsideZone' | 'copSpawn' | 'raceMarker' | 'billboard';
+
 export interface BakedFeature {
   kind: string;
   id: string;
@@ -15,6 +19,24 @@ export interface BakedFeature {
   s1: number;
   d0: number;
   d1: number;
+  params?: Readonly<Record<string, unknown>> | undefined;
+}
+
+/** A scenery tag over an s range (closed vocabulary in the content schema). */
+export interface BakedTag {
+  s0: number;
+  s1: number;
+  side: 'left' | 'right' | 'both';
+  tag: string;
+}
+
+/** A rail or wall along one side of a road (docs/content-packs.md, "Barriers"). */
+export interface BakedBarrier {
+  s0: number;
+  s1: number;
+  side: 'left' | 'right' | 'both';
+  kind: 'rail' | 'wall';
+  heightM: number;
 }
 
 export interface BakedSamples {
@@ -25,12 +47,16 @@ export interface BakedSamples {
 
 export interface BakedRoad {
   id: string;
+  /** The network this road belongs to (checked by the road lint when present). */
+  network?: string | undefined;
   from: string;
   to: string;
   lengthM: number;
   sampleSpacingM: number;
   laneSections: readonly BakedLaneSection[];
+  tags?: readonly BakedTag[] | undefined;
   features?: readonly BakedFeature[] | undefined;
+  barriers?: readonly BakedBarrier[] | undefined;
   samples: BakedSamples;
 }
 
@@ -61,6 +87,7 @@ export interface BakedRoute {
   finish: { road: string; s: number };
   mainPath: readonly string[];
   allowedRoads: readonly string[];
+  checkpoints?: readonly { road: string; s: number }[] | undefined;
   closed: boolean;
   startGrid?: { rows: number; perRow: number; rowGapM: number } | undefined;
 }
