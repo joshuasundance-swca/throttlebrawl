@@ -14,6 +14,17 @@ export const ELEVATED_M = 2.5;
 /** Metres of shoulder beyond the outermost lane, drawn as verge. */
 const VERGE_M = 0.6;
 const STEP_M = 2;
+/**
+ * Land under roadside zones (playtest 1b). The zone's side reaches its far edge plus a pedestrian's
+ * dive (sim peds: 3.5 m) and some body width; the far side reaches where a crossing pedestrian
+ * stops (about 2.6 m past the drivable edge) plus a dive. [default]
+ */
+const LAND_DIVE_M = 4.5;
+const LAND_FAR_M = 7;
+/** Metres over which a land strip tapers into the verge past each end of its zone. */
+const LAND_TAPER_M = 8;
+/** Land sits 4 cm under the verge (-0.02) and any overlapping road, so none of them flicker. */
+const LAND_LIFT_M = -0.06;
 
 export interface BarrierSpan {
   s0: number;
@@ -54,6 +65,8 @@ export interface RoadSceneStats {
   railM: number;
   rampStripes: number;
   pylons: number;
+  /** Metres of road with a land strip beside it (roadside zones; walkways on railed sides excluded). */
+  landM: number;
 }
 
 export interface RoadScene {
@@ -230,6 +243,7 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   const pylonSpots: { p: Point3; h: number }[] = [];
   let railM = 0;
   let rampStripes = 0;
+  let landM = 0;
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -385,6 +399,52 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
         }
       }
     }
+    // Land under the roadside zones (playtest 1b: pedestrians stood in the water). The sim stands
+    // pedestrians anywhere across a zone, crosses some to the far side and dives them clear, all
+    // at road height, so each zone gets a strip of land out past its far edge plus a dive, and the
+    // far side gets one too unless a rail stops anyone crossing. Beside a railed road it is a
+    // walkway (a fishing catwalk on the bridge). Each strip tapers into the verge at both ends and
+    // shelves down into the water along its outer edge.
+    for (const f of (dress.features ?? []).filter((x) => x.kind === 'roadsideZone')) {
+      const zoneSide = f.d0 + f.d1 < 0 ? -1 : 1;
+      const far = Math.max(Math.abs(f.d0), Math.abs(f.d1));
+      for (const side of [-1, 1] as const) {
+        const railed = barriersFor(road, e, dress, side < 0 ? 'left' : 'right').some(
+          (b) => b.s0 < f.s1 && b.s1 > f.s0,
+        );
+        if (side !== zoneSide && railed) continue;
+        const inner = side < 0 ? -outerL : outerR;
+        const reach = Math.max(inner, side === zoneSide ? far + LAND_DIVE_M : e.dMax + LAND_FAR_M);
+        const a = Math.max(0, f.s0 - LAND_TAPER_M);
+        const b = Math.min(e.length, f.s1 + LAND_TAPER_M);
+        const rows: { near: Point3; edge: Point3; low: Point3 }[] = [];
+        for (let s = a; ; s = Math.min(b, s + STEP_M)) {
+          const outside = s < f.s0 ? f.s0 - s : s > f.s1 ? s - f.s1 : 0;
+          const width = inner + (reach - inner) * Math.max(0, 1 - outside / LAND_TAPER_M);
+          const edge = w(e.index, s, side * width, LAND_LIFT_M);
+          rows.push({
+            near: w(e.index, s, side * inner, LAND_LIFT_M),
+            edge,
+            low: railed ? { ...edge, y: edge.y - 0.5 } : { ...w(e.index, s, side * (width + 2), 0), y: -0.4 },
+          });
+          if (s >= b) break;
+        }
+        // Pairs run in increasing d, so the faces point up (and out, on the shelf).
+        const ground = strip(railed ? 'deck' : 'land');
+        for (const [inside, outside] of [
+          ['near', 'edge'],
+          ['edge', 'low'],
+        ] as const) {
+          ground.breakStrip();
+          for (const r of rows) {
+            if (side < 0) ground.pair(r[outside], r[inside]);
+            else ground.pair(r[inside], r[outside]);
+          }
+          ground.breakStrip();
+        }
+        if (!railed) landM += b - a;
+      }
+    }
     // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
     for (const [d, out] of [
       [outerL, -1],
@@ -538,7 +598,14 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
 
   return {
     group,
-    stats: { meshes: group.children.length, triangles, railM, rampStripes, pylons: pylonSpots.length },
+    stats: {
+      meshes: group.children.length,
+      triangles,
+      railM,
+      rampStripes,
+      pylons: pylonSpots.length,
+      landM,
+    },
     dispose() {
       group.traverse((o) => {
         if (o instanceof Mesh) (o.geometry as BoxGeometry).dispose();

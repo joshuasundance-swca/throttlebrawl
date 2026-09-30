@@ -17,6 +17,14 @@
     "cpuThrottle": 4,
     "seconds": 20,
     "frameMs": { "p50": 33.3, "p95": 66.6 },
-    "stepMs": { "p95": 2.1 }
+    "stepMs": { "p95": 3.7 },
+    "stepMsRebaselined": {
+      "measuredAt": "2026-09-30",
+      "reason": "The sim gained M2 features (traffic contacts, rider bumps, combat shove, style scoring) since PR 52's 2.1 ms. Ten CI runs of this check from 2026-09-30 (main and lane branches) printed sim step p95 of 2.9, 3.1, 3.2, 3.4, 3.5, 3.8, 3.9, 3.9, 4.2 and 5.1 ms; the median is 3.65 ms, rounded up to the timer's 0.1 ms step. Two of the ten failed the old 4.2 ms limit on runs whose changes did not touch the sim.",
+      "runs": [
+        36773709876, 36772904029, 36772688091, 36772010523, 36769788399, 36769077234, 36767150877,
+        36766212810, 36773593901, 36774800533
+      ]
+    }
   }
 }

@@ -28,6 +28,7 @@ import { createMusic, type MusicLoop } from './music';
 import { distance, distanceGain, dopplerFactor, moving } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
+import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
 
 export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
@@ -147,6 +148,40 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: '',
     affectsSim: false,
   },
+  // Playtest 1 item 10 (speed cues): the wind rises with your speed (wind.ts).
+  {
+    id: 'audio.windGain',
+    group: 'audio',
+    label: 'Wind level (0 = off)',
+    default: WIND_DEFAULTS.gain,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.windFromMps',
+    group: 'audio',
+    label: 'Wind: starts at',
+    default: WIND_DEFAULTS.fromMps,
+    min: 0,
+    max: 40,
+    step: 1,
+    unit: 'm/s',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.windFullMps',
+    group: 'audio',
+    label: 'Wind: full at',
+    default: WIND_DEFAULTS.fullMps,
+    min: 10,
+    max: 80,
+    step: 1,
+    unit: 'm/s',
+    affectsSim: false,
+  },
 ];
 
 export interface Volumes {
@@ -187,6 +222,8 @@ export interface AudioInspect {
   musicPlaying: boolean;
   /** The slow-motion treatment: whether it is on, and what the bus filter and music duck aim for. */
   slowmo: { active: boolean; lowpassHz: number; musicLevel: number; pitch: number };
+  /** The level the wind aims for (0 = silent). */
+  windLevel: number;
 }
 
 export interface AudioSystem {
@@ -257,7 +294,17 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     slowmoPitchSemis: SLOWMO_DEFAULTS.pitchSemis,
     slowmoMusicDuck: SLOWMO_DEFAULTS.musicDuck,
     crashImpactScale: 1,
+    windGain: WIND_DEFAULTS.gain as number,
+    windFromMps: WIND_DEFAULTS.fromMps as number,
+    windFullMps: WIND_DEFAULTS.fullMps as number,
   };
+  const windParams = () => ({
+    gain: params.windGain,
+    fromMps: params.windFromMps,
+    fullMps: params.windFullMps,
+  });
+  /** The wind's voice, made on the first racing frame (outside the voice pool, like the music). */
+  let wind: WindVoice | null = null;
   const slowmoParams = () => ({
     lowpassHz: params.slowmoLowpassHz,
     pitchSemis: params.slowmoPitchSemis,
@@ -382,6 +429,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     slowmoByEvents = false;
     g.slowmo.set(false);
     playerEngine?.voice.setLevel(0);
+    wind?.set(0, windParams());
     for (const id of [...others.keys()]) dropOther(id);
     dropSiren();
     g.music.pump(g.ctx.currentTime, false, 0);
@@ -416,6 +464,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     g.slowmo.set(slowmoByEvents);
     const pitch = g.slowmo.pitch();
     drivePlayer(g, me, hitStop);
+    // The wind: your speed, heard. Off while you tumble or run, and ducked in a hit-stop.
+    wind ??= createWindVoice(g.ctx, g.slowmo.fxIn);
+    const down = me.mode === 'Tumble' || me.mode === 'OnFoot';
+    wind.set(me.speed, windParams(), down ? 0 : hitStop ? 0.3 : 1);
     const listener = moving(me);
 
     // Other riders' engines: the nearest few, cheaper patch, distance and Doppler.
@@ -582,6 +634,15 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         case 'audio.crashImpactScale':
           params.crashImpactScale = value;
           break;
+        case 'audio.windGain':
+          params.windGain = value;
+          break;
+        case 'audio.windFromMps':
+          params.windFromMps = value;
+          break;
+        case 'audio.windFullMps':
+          params.windFullMps = value;
+          break;
       }
     },
     setEngineSounds(byRider) {
@@ -610,6 +671,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         musicLevel: graph?.slowmo.musicTarget() ?? 1,
         pitch: graph?.slowmo.pitch() ?? 1,
       },
+      windLevel: wind?.level() ?? 0,
     }),
   };
 }
