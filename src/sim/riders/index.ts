@@ -4,6 +4,10 @@
 // model is scaled throttle against a drag that makes full throttle converge to top speed, plus a
 // coasting drag, the brake and gravity along the grade. The barrier rule (docs/architecture.md,
 // "Movers on the network") turns a contact into a wobble or a crash by the speed into the wall.
+// Airtime (riders-2) follows "Jumps, ramps and airtime": a grounded rider tracks its vertical speed
+// along the surface; when its ballistic height next tick clears the surface it goes Airborne with an
+// absolute height and vertical speed, reports h above the road, and lands clean, wobbling or crashing
+// by its sideways speed (and, far less, how hard it comes down).
 import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig } from '../types';
@@ -54,6 +58,17 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     unit: 'm/s',
     affectsSim: true,
   },
+  {
+    id: 'riders.landingCrashMps',
+    group: 'crashes',
+    label: 'Landing crash sideways speed',
+    default: 4,
+    min: 1.5,
+    max: 10,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
 ];
 
 /** Per-rider plain state, by entity id. */
@@ -71,6 +86,14 @@ export interface RiderState {
   wobble: number[];
   /** 1 while the rider is in contact with a barrier, so one contact emits one event. */
   touching: number[];
+  /** Absolute height of the rider while airborne, metres (the surface height while grounded). */
+  yAbs: number[];
+  /** Vertical speed, m/s: along the surface while grounded, ballistic while airborne. */
+  vy: number[];
+  /** Scaled ticks in the air in the current jump. */
+  airTicks: number[];
+  /** Tick of this rider's last riders step, so a rider put down by another system starts fresh. */
+  lastTick: number[];
 }
 
 /** m/s² when off the throttle, before air drag. */
@@ -100,6 +123,15 @@ const UNSTABLE_CRASH_FRACTION = 0.4;
 /** Lean follows its target at this rate, 1/s (the "weighty" part). */
 const LEAN_RESPONSE = 8;
 const MAX_LEAN = 0.8;
+/** The ballistic height must clear the surface by this much to take off (ignores sample kinks). */
+export const TAKEOFF_CLEARANCE_M = 0.02;
+/** Heading change steering can make in the air, rad/s at full lock. */
+const AIR_TURN_RATE = 0.6;
+/** A landing wobbles from this fraction of the landing crash sideways speed. */
+const LANDING_WOBBLE_FRACTION = 0.4;
+/** Coming down harder than this into the surface wobbles, and much harder crashes, m/s. */
+const LANDING_WOBBLE_VERTICAL = 14;
+const LANDING_CRASH_VERTICAL = 22;
 
 export function riderState(world: World): RiderState {
   return systemState<RiderState>(world, 'riders', () => ({
@@ -112,6 +144,10 @@ export function riderState(world: World): RiderState {
     health: [],
     wobble: [],
     touching: [],
+    yAbs: [],
+    vy: [],
+    airTicks: [],
+    lastTick: [],
   }));
 }
 
@@ -203,6 +239,11 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const grade = road.frameAt(pos.edge, pos.s).grade * pos.dir;
   const wobble = st.wobble[m.id] ?? 0;
   if (wobble > 0) st.wobble[m.id] = Math.max(0, wobble - world.timeScale);
+  // Vertical: where the bike is now, and how fast it was rising if it was riding last tick too.
+  const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  const fresh = st.lastTick[m.id] !== world.tick - 1;
+  const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
+  st.lastTick[m.id] = world.tick;
 
   // Longitudinal: full throttle on the flat converges to top speed.
   const v = m.speed;
@@ -226,16 +267,39 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   barrierContact(world, config, st, m, dt);
 
+  // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
+  const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  const ballistic = yBefore + vyBefore * dt - 0.5 * GRAVITY * dt * dt;
+  if (dt > 0 && !fresh && ballistic > surface + TAKEOFF_CLEARANCE_M) {
+    m.mode = 'Airborne';
+    m.h = ballistic - surface;
+    st.yAbs[m.id] = ballistic;
+    st.vy[m.id] = vyBefore - GRAVITY * dt;
+    st.airTicks[m.id] = 0;
+    emit(world, 'jump', m.id, { speed: m.speed, vyMps: vyBefore });
+  } else {
+    st.yAbs[m.id] = surface;
+    if (dt > 0) st.vy[m.id] = (surface - yBefore) / dt;
+  }
+
   // Lean from sideways acceleration (the heading's world turn rate is the rider's own turn rate).
-  const leanTarget = clamp(atan((m.speed * ownTurn) / GRAVITY), -MAX_LEAN, MAX_LEAN);
+  settle(world, st, m, atan((m.speed * ownTurn) / GRAVITY), dt);
+  st.throttle[m.id] = throttle;
+  st.brake[m.id] = brake;
+  gearAndRpm(st, m);
+}
+
+/** Smooths the lean toward its target and adds the wobble shake. */
+function settle(world: World, st: RiderState, m: Mover, target: number, dt: number): void {
+  const leanTarget = clamp(target, -MAX_LEAN, MAX_LEAN);
   const base = st.leanBase[m.id] ?? 0;
   const leanBase = base + (leanTarget - base) * Math.min(1, LEAN_RESPONSE * dt);
   st.leanBase[m.id] = leanBase;
   const shake = ((st.wobble[m.id] ?? 0) / WOBBLE_TICKS) * WOBBLE_LEAN * sin(world.tick * 0.9);
   st.lean[m.id] = clamp(leanBase + shake, -MAX_LEAN, MAX_LEAN);
+}
 
-  st.throttle[m.id] = throttle;
-  st.brake[m.id] = brake;
+function gearAndRpm(st: RiderState, m: Mover): void {
   let gear = 1;
   let low = 0;
   for (const topOfGear of GEAR_TOP_MPS) {
@@ -246,6 +310,86 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const high = GEAR_TOP_MPS[gear - 1] ?? 40;
   st.gear[m.id] = gear;
   st.rpm[m.id] = 1200 + 8800 * clamp((m.speed - low) / Math.min(high - low, 12), 0, 1);
+}
+
+/**
+ * Airborne: s and d advance with the take-off velocity (air drag only), steering nudges the heading,
+ * gravity acts on the absolute height, and h = yAbs - surface. It lands when h reaches 0.
+ */
+function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover): void {
+  const def = config.riders[m.riderIndex];
+  const input = world.inputs[m.id];
+  if (!def || !input) return;
+  const dt = world.timeScale / 60;
+  const road = config.road;
+  const pos = m.pos;
+  const bike = def.bike;
+  st.lastTick[m.id] = world.tick;
+  const wobble = st.wobble[m.id] ?? 0;
+  if (wobble > 0) st.wobble[m.id] = Math.max(0, wobble - world.timeScale);
+  const steer = clamp(input.steer / 127, -1, 1);
+  const throttle = clamp(input.throttle / 255, 0, 1);
+
+  const top = topSpeedOf(world, bike.topSpeedMps);
+  const a = bike.accelMps2 * (world.params['riders.accelScale'] ?? 1);
+  m.speed = Math.max(0, m.speed - ((a * m.speed * m.speed) / (top * top)) * dt);
+  const kappa = road.kappaAt(pos.edge, pos.s);
+  const ownTurn = steer * AIR_TURN_RATE;
+  const along = m.speed * cos(m.yaw) * sRateFactor(kappa, pos.d);
+  m.yaw = clamp(m.yaw + (ownTurn - pos.dir * kappa * along) * dt, -1.2, 1.2);
+  pos.s += pos.dir * along * dt;
+  pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
+  const vy = st.vy[m.id] ?? 0;
+  const y = (st.yAbs[m.id] ?? 0) + vy * dt - 0.5 * GRAVITY * dt * dt;
+  st.vy[m.id] = vy - GRAVITY * dt;
+  if (road.advance(pos) === 'deadEnd') m.speed = 0;
+  barrierContact(world, config, st, m, dt);
+  st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
+
+  const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  if (y - surface <= 0) land(world, config, st, m, surface);
+  else {
+    m.h = y - surface;
+    st.yAbs[m.id] = y;
+  }
+  settle(world, st, m, 0, dt);
+  st.throttle[m.id] = throttle;
+  st.brake[m.id] = 0;
+  gearAndRpm(st, m);
+  st.rpm[m.id] = Math.max(st.rpm[m.id] ?? 0, 1200 + 8800 * throttle); // the engine revs free in the air
+}
+
+/**
+ * Landing quality: sideways speed decides it (a straight landing is clean), with a very hard drop
+ * into the surface as a second way to wobble or crash. Emits `land`, plus `wobble` or `crash`.
+ */
+function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface: number): void {
+  const pos = m.pos;
+  const grade = config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
+  const slopeVy = grade * m.speed * cos(m.yaw);
+  const vertical = Math.max(0, slopeVy - (st.vy[m.id] ?? 0));
+  const lateral = Math.abs(m.speed * sin(m.yaw));
+  const crashAt = world.params['riders.landingCrashMps'] ?? 4;
+  const unstable = (st.wobble[m.id] ?? 0) > 0;
+  const crashes =
+    lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL || (unstable && lateral >= crashAt * 0.5);
+  const wobbles = lateral >= crashAt * LANDING_WOBBLE_FRACTION || vertical >= LANDING_WOBBLE_VERTICAL;
+  const quality = crashes ? 'crash' : wobbles ? 'wobble' : 'clean';
+  const airTicks = st.airTicks[m.id] ?? 0;
+  m.mode = 'Road';
+  m.h = 0;
+  st.yAbs[m.id] = surface;
+  st.vy[m.id] = slopeVy;
+  st.airTicks[m.id] = 0;
+  const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed };
+  const cause = emit(world, 'land', m.id, data);
+  if (quality === 'crash') {
+    st.wobble[m.id] = 0;
+    emit(world, 'crash', m.id, { ...data, cause: 'landing', yaw: m.yaw }, { causeId: cause });
+  } else if (quality === 'wobble') {
+    st.wobble[m.id] = WOBBLE_TICKS;
+    emit(world, 'wobble', m.id, { ...data, cause: 'landing' }, { causeId: cause });
+  }
 }
 
 export const ridersSystem: SimSystem = {
@@ -264,6 +408,10 @@ export const ridersSystem: SimSystem = {
       st.health[m.id] = def.healthMax;
       st.wobble[m.id] = 0;
       st.touching[m.id] = 0;
+      st.yAbs[m.id] = config.road.surfaceHeight(m.pos.edge, m.pos.s, m.pos.d);
+      st.vy[m.id] = 0;
+      st.airTicks[m.id] = 0;
+      st.lastTick[m.id] = -2;
     }
   },
   step(world: World, config: SimConfig) {
@@ -271,6 +419,7 @@ export const ridersSystem: SimSystem = {
     for (const m of world.movers) {
       if (m.kind !== 'rider' || m.riderIndex < 0) continue;
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
+      else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
     }
   },
 };

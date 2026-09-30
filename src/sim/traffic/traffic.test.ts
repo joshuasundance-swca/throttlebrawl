@@ -591,11 +591,13 @@ describe('traffic-1 sim acceptance', () => {
         if (t % 60 === 0) hashes.push(sim.hash());
       }
       const vehicles = sim.snapshot().entities.filter((e) => e.kind === 'vehicle');
-      return { hashes, vehicles: vehicles.length };
+      return { hashes, vehicles: vehicles.length, ids: vehicles.map((v) => v.contentId) };
     };
     const a = run(5, TYPES);
     const b = run(5, TYPES);
     expect(a.vehicles).toBeGreaterThan(0);
+    // The snapshot names each vehicle's traffic type, so render can draw a truck as a truck.
+    expect(new Set(a.ids)).toEqual(new Set([CAR.contentId, TRUCK.contentId]));
     expect(a.hashes).toEqual(b.hashes);
     expect(run(6, TYPES).hashes).not.toEqual(a.hashes);
     expect(run(5, []).hashes).not.toEqual(a.hashes);
