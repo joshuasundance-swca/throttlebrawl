@@ -77,12 +77,13 @@ function ride(sim: Sim, route: RouteProgress, playerId: number, driver: 'bot' | 
   while (!sim.isOver() && sim.tick < 60 * 900 && finishTick < 0) {
     const me = sim.snapshot().entities[playerId];
     if (!me) throw new Error('no player');
-    if (me.finished) finishTick = sim.tick;
     const a = blank();
     if (driver === 'bot') bot.drive(me, route, a);
     else drive(me, route, a);
     sim.step([quantizeInput({ ...a, flags: 0 })]);
     for (const e of sim.events()) {
+      // The player's finish event (the race can end on the same tick, when the player is last).
+      if (e.actor === playerId && e.type === 'finish') finishTick = sim.tick;
       if (e.actor === playerId && (e.type === 'jump' || e.type === 'land' || e.type === 'crash'))
         air.push({ type: e.type, data: { ...e.data }, edge: edgeName(sim, playerId) });
     }
