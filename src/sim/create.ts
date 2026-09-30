@@ -1,6 +1,6 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
-import { atan2, cos, sin, type TuningParamDecl } from '../core';
+import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
@@ -21,7 +21,11 @@ import type {
 } from './types';
 import { addMover, createWorld, orderSystems, stepWorld, worldHash, type World } from './world';
 
-/** Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. */
+/**
+ * Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. The difficulty
+ * scales (core/difficulty) are among them with `affectsSim` false: buildSimConfig resolves them
+ * into SimConfig.difficulty at race start, so they never reach `sim.applyParam`.
+ */
 export const SIM_TUNING: readonly TuningParamDecl[] = [
   ...RIDERS_TUNING,
   ...COMBAT_TUNING,
@@ -32,6 +36,7 @@ export const SIM_TUNING: readonly TuningParamDecl[] = [
   ...RACE_TUNING,
   ...AI_TUNING,
   ...MODIFIERS_TUNING,
+  ...DIFFICULTY_TUNING,
 ];
 
 const SYSTEMS = orderSystems([

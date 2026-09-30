@@ -1,16 +1,28 @@
-// buildSimConfig: resolves content into the plain data a race starts from (docs/architecture.md,
-// "Sim contract"). The sim never imports content/ or tuning/; everything arrives here. M2 adds the
-// Easy/Normal/Hard preset resolution to `difficulty` without any reader changing.
-import { lookup, type ContentRegistry, type Rider } from '../content';
+// buildSimConfig: resolves settings and content into the plain data a race starts from
+// (docs/architecture.md, "Sim contract"; docs/milestones/M2.md, app-3 item 3). The sim never
+// imports content/ or tuning/; everything arrives here. It is the one place that resolves the
+// difficulty preset (from its `difficulty.<preset>.*` tuning values), the per-slot assists, the
+// speed multiplier, the slow-motion toggle and the race length. Settings that feed SimConfig apply
+// at the next race start or restart: a mid-race change would break the replay.
+import { lookup, type ContentRegistry, type RaceEvent, type Rider } from '../content';
 import {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTY_SCALES,
+  DIFFICULTY_TUNING,
   SIM_TUNING,
+  difficultyTuningId,
   secondsToTicks,
   tuningDefaults,
+  type DifficultyPreset,
   type SimAiPersonality,
+  type SimAssists,
   type SimConfig,
   type SimController,
+  type SimDifficulty,
   type SimRiderDef,
+  type SimSlotConfig,
   type SimWeaponDef,
+  type TuningParamDecl,
 } from '../sim/api';
 import { activateRegion, type RegionStream } from '../stream';
 
@@ -22,15 +34,76 @@ export const RACE_END_TIMEOUT_S = 30;
 export interface RaceSetup {
   seed: number;
   eventId?: string;
-  /** Sim-affecting tuning values; missing ids take their declared defaults. */
+  /**
+   * Tuning values in force; missing ids take their declared defaults. Sim-affecting ids go into
+   * SimConfig.tuning; the `difficulty.*` ids resolve the chosen preset (see `raceStartValues`).
+   */
   tuning?: Readonly<Record<string, number>>;
+  /** Easy, Normal or Hard (default Normal). */
+  difficulty?: DifficultyPreset;
+  /** The event length id (`short`, `standard`, `long`); default, or one the event lacks: its first. */
+  length?: string;
+  /** Assists per human slot, index = slot; a missing slot gets none. */
+  assists?: readonly SimAssists[];
+  /** The lower-overall-speed multiplier in (0, 1]; anything else means 1 (default 1). */
+  speedMultiplier?: number;
+  /** The takedown slow motion (default on [decided]). */
+  slowMo?: boolean;
 }
 
+const NO_ASSISTS: SimAssists = { steer: 'off', autoThrottle: false };
+const DIFFICULTY_PREFIX = 'difficulty.';
+
+/** The event length a race uses: the chosen one, or the event's first when it lacks that id. */
+export function eventLength(event: RaceEvent, lengthId?: string): RaceEvent['lengths'][number] {
+  const length = event.lengths.find((l) => l.id === lengthId) ?? event.lengths[0];
+  if (!length) throw new Error(`event ${event.id} has no length`);
+  return length;
+}
+
+/**
+ * The values `buildSimConfig` reads at race start besides the sim's own: every `difficulty.*`
+ * declaration's value from the panel (`get`, normally the tuning registry's).
+ */
+export function raceStartValues(
+  decls: readonly TuningParamDecl[],
+  get: (id: string) => number,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const d of decls) if (d.id.startsWith(DIFFICULTY_PREFIX)) out[d.id] = get(d.id);
+  return out;
+}
+
+/** Resolves a difficulty preset from its tuning values (declared defaults for missing ids). */
+export function resolveDifficulty(
+  preset: DifficultyPreset,
+  values: Readonly<Record<string, number>> = {},
+): SimDifficulty {
+  const defaults = tuningDefaults(DIFFICULTY_TUNING);
+  const scale = (s: (typeof DIFFICULTY_SCALES)[number]) => {
+    const id = difficultyTuningId(preset, s);
+    const v = values[id];
+    return v !== undefined && Number.isFinite(v) && v >= 0 ? v : (defaults[id] ?? 1);
+  };
+  return {
+    presetId: preset,
+    riderAggression: scale('riderAggression'),
+    copFrequency: scale('copFrequency'),
+    rubberBand: scale('rubberBand'),
+  };
+}
+
+const validSpeed = (m: number | undefined) =>
+  m !== undefined && Number.isFinite(m) && m > 0 && m <= 1 ? m : 1;
+
 /** Activates the region stream for an event's route network (one per network, cached by caller). */
-export function streamForEvent(reg: ContentRegistry, eventId = DEFAULT_EVENT): RegionStream {
+export function streamForEvent(
+  reg: ContentRegistry,
+  eventId = DEFAULT_EVENT,
+  lengthId?: string,
+): RegionStream {
   const event = lookup(reg.events, eventId);
-  const length = event.lengths[0];
-  if (!length) throw new Error(`event ${eventId} has no length`);
+  const length = eventLength(event, lengthId);
   const route = lookup(reg.routes, length.route);
   const network = lookup(reg.networks, route.network);
   return activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
@@ -133,9 +206,9 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] 
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = setup.eventId ?? DEFAULT_EVENT;
   const event = lookup(reg.events, eventId);
-  const length = event.lengths[0];
-  if (!length) throw new Error(`event ${eventId} has no length`);
-  const route = stream.routeFor(lookup(reg.routes, length.route));
+  const length = eventLength(event, setup.length);
+  const routeDef = lookup(reg.routes, length.route);
+  const route = stream.routeFor(routeDef);
   const pace = event.field.paceMps ?? 30;
   const rivals = (event.field.riders ?? []).map((id) =>
     riderDef(reg, id, aiController(lookup(reg.riders, id).personality), pace),
@@ -161,7 +234,13 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
   }));
-  const tuning = { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), ...(setup.tuning ?? {}) };
+  const given = setup.tuning ?? {};
+  const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
+  for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;
+  const playerSlots = 1;
+  const slots: SimSlotConfig[] = Array.from({ length: playerSlots }, (_, i) => ({
+    assists: { ...(setup.assists?.[i] ?? NO_ASSISTS) },
+  }));
   return {
     seed: setup.seed >>> 0,
     event: {
@@ -170,6 +249,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       paceMps: pace,
       byPlaceCash: event.rewards.byPlaceCash,
       raceEndTimeoutTicks: secondsToTicks(RACE_END_TIMEOUT_S),
+      lengthId: length.id,
+      routeId: `base:${routeDef.id}`,
     },
     riders,
     weapons,
@@ -186,9 +267,11 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     modifiers: [],
     grudges: {},
     tuning,
-    difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
+    difficulty: resolveDifficulty(setup.difficulty ?? DEFAULT_DIFFICULTY, given),
     assists: 'off',
-    slowMo: false,
-    playerSlots: 1,
+    slowMo: setup.slowMo ?? true,
+    playerSlots,
+    slots,
+    speedMultiplier: validSpeed(setup.speedMultiplier),
   };
 }
