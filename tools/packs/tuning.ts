@@ -7,6 +7,7 @@ import { AUDIO_TUNING } from '../../src/audio';
 import { CAMERA_TUNING } from '../../src/camera';
 import { INPUT_TUNING } from '../../src/input/tuning';
 import { SIM_TUNING, type TuningParamDecl } from '../../src/sim/api';
+import { FRAME_CAP_TUNING } from '../../src/tuning/frame-cap';
 import { BARK_TUNING } from '../../src/ui/narrative/selector';
 
 export const ALL_TUNING: readonly TuningParamDecl[] = [
@@ -15,4 +16,6 @@ export const ALL_TUNING: readonly TuningParamDecl[] = [
   ...AUDIO_TUNING,
   ...INPUT_TUNING,
   ...BARK_TUNING,
+  // tuning/'s own declarations (the registry always includes them).
+  ...FRAME_CAP_TUNING,
 ];
