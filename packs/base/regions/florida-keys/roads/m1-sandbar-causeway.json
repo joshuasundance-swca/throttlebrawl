@@ -14,10 +14,10 @@
     {
       "s0": 0,
       "lanes": [
-        { "id": "L0", "dCenterM": -4.15, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
-        { "id": "L1", "dCenterM": -1.7, "widthM": 3.4, "direction": -1, "kind": "drive" },
-        { "id": "R1", "dCenterM": 1.7, "widthM": 3.4, "direction": 1, "kind": "drive" },
-        { "id": "R0", "dCenterM": 4.15, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+        { "id": "L0", "dCenterM": -4.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
       ]
     }
   ],
@@ -33,8 +33,8 @@
       "id": "sandbar-beach",
       "s0": 150,
       "s1": 260,
-      "d0": 5,
-      "d1": 14,
+      "d0": 5.6,
+      "d1": 14.6,
       "params": { "spawns": "pedestrians" }
     },
     {
@@ -42,8 +42,8 @@
       "id": "tiki-stand",
       "s0": 820,
       "s1": 900,
-      "d0": -12,
-      "d1": -5,
+      "d0": -12.6,
+      "d1": -5.6,
       "params": { "spawns": "pedestrians" }
     }
   ],

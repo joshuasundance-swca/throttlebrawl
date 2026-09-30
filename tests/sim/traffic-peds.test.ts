@@ -109,6 +109,9 @@ function perTickRace(seed: number): TickCheck {
   const smallWidth = Math.min(...kinds.map((t) => t.widthM));
   const band = (PEDS.riderWidthM + smallWidth) / 2 + PEDS.lateralM;
   const diveTicks = Math.ceil(PEDS.diveS * 60) + 1;
+  // Dive ages count scaled ticks (the sum of timeScale), as the sim's dive timer does: a hit-stop
+  // freezes a dive in mid-air, so in raw ticks it lasts longer than diveTicks.
+  let scaledTicks = 0;
   const lastDive = new Map<number, number>();
   const touching = new Set<string>();
   const out: TickCheck = {
@@ -123,7 +126,8 @@ function perTickRace(seed: number): TickCheck {
     noReplay: true,
     onTick(snap, events) {
       out.ticks++;
-      for (const e of events) if (e.type === 'pedDive') lastDive.set(e.actor, e.tick);
+      scaledTicks += snap.timeScale;
+      for (const e of events) if (e.type === 'pedDive') lastDive.set(e.actor, scaledTicks);
       const peds = snap.entities.filter((e) => e.kind === 'ped');
       for (const r of snap.entities) {
         if (r.kind !== 'rider' || !(r.mode === 'Road' || r.mode === 'Airborne' || r.mode === 'Tumble'))
@@ -153,7 +157,7 @@ function perTickRace(seed: number): TickCheck {
           if (Math.abs(rel.side) >= band - 0.1) continue;
           out.threatTicks++;
           out.threatened.add(p.id);
-          if (snap.tick - (lastDive.get(p.id) ?? -1e9) > diveTicks) {
+          if (scaledTicks - (lastDive.get(p.id) ?? -1e9) > diveTicks) {
             out.undived.push(`seed ${seed} tick ${snap.tick} rider ${r.id} ped ${p.id}`);
           }
         }
