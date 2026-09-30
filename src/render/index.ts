@@ -17,6 +17,7 @@ import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { buildRoadScene, type RoadDressing, type RoadScene } from './road-mesh';
+import { SpeedLines, type SpeedLineCounts } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
 
@@ -26,6 +27,7 @@ export type { BarrierSpan, EdgeDressing, FeatureSpan, RoadDressing, TagSpan } fr
 export type { EntityViewCounts, RiderProportions } from './views';
 export type { BoardCatalog, BoardItem, BoardKind } from './boards';
 export type { FeelCounts } from './effects';
+export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
 export { RENDER_TUNING } from './tuning';
 
@@ -113,6 +115,10 @@ export interface GameRenderer {
   hideContent(refs: Iterable<string>): void;
   /** Live feel effects, for tests and the debug overlay. */
   feelCounts(): FeelCounts;
+  /** The speed lines as the last frame drew them (playtest 1 item 10). */
+  speedLineCounts(): SpeedLineCounts;
+  /** The canvas's width over its height, for the camera's phone-shape adaptation. */
+  readonly aspect: number;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -129,11 +135,24 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });
   const boards = new Boards(look);
-  // The tint rides on the camera, so the camera joins the scene graph.
-  camera.add(effects.tint);
+  // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
+  const speedLines = new SpeedLines(look, params);
+  camera.add(effects.tint, speedLines.root);
   const persistent = new Set<Object3D>([views.root, effects.root, boards.root, camera]);
   for (const o of persistent) scene.add(o);
   let roadScene: RoadScene | null = null;
+  /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
+  let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
+  let lastFrameAt = -1;
+  const buildRoad = () => {
+    if (!roadArgs) return;
+    if (roadScene) {
+      scene.remove(roadScene.group);
+      roadScene.dispose();
+    }
+    roadScene = buildRoadScene(roadArgs.road, look, roadArgs.dressing, { roadsideDensity: roadArgs.density });
+    scene.add(roadScene.group);
+  };
   let lost = false;
   let rendererName = '';
   const contextListeners: ((lost: boolean) => void)[] = [];
@@ -170,10 +189,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         scene.remove(roadScene.group);
         roadScene.dispose();
       }
+      roadScene = null;
       for (const child of [...scene.children]) if (!persistent.has(child)) scene.remove(child);
       look.setupScene(scene, env);
-      roadScene = buildRoadScene(road, look, dressing);
-      scene.add(roadScene.group);
+      roadArgs = { road, dressing, density: params.roadsideDensity };
+      buildRoad();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },
     setTrafficTypes(defs) {
@@ -191,6 +211,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
       if (pose.roll) camera.rotateZ(pose.roll);
       effects.fitTint(camera);
+      // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
+      const t = now();
+      const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
+      lastFrameAt = t;
+      const me = curr?.entities.find((e) => e.slot === 0);
+      const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
+      speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
       renderer.render(scene, camera);
     },
     resize,
@@ -218,6 +245,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     setParam(id, value) {
       applyRenderParam(params, id, value);
+      // The palms are part of the merged road scene: a new density rebuilds it.
+      if (roadArgs && params.roadsideDensity !== roadArgs.density) {
+        roadArgs.density = params.roadsideDensity;
+        buildRoad();
+      }
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
@@ -228,5 +260,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards.hide(refs);
     },
     feelCounts: () => effects.counts(),
+    speedLineCounts: () => speedLines.counts(),
+    get aspect() {
+      return camera.aspect;
+    },
   };
 }
