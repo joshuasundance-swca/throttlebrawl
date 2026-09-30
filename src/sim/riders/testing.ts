@@ -23,6 +23,7 @@ export interface TestConfigOptions {
   start?: { road: string; s: number; dir: 1 | -1 };
   finish?: { road: string; s: number };
   startGrid?: { rows: number; perRow: number; rowGapM: number };
+  checkpoints?: readonly { road: string; s: number }[];
   rubberBand?: number;
   raceEndTimeoutTicks?: number;
   paceMps?: number;
@@ -44,9 +45,8 @@ export function testConfig(opts: TestConfigOptions = {}): SimConfig {
     allowedRoads: edges.map((e) => e.id),
     closed: false,
     startGrid: opts.startGrid,
+    checkpoints: opts.checkpoints ? [...opts.checkpoints] : undefined,
   });
-  // Mirror the route file's start grid onto the route handle, as stream/ would once road exposes it.
-  if (opts.startGrid) Object.assign(route, { startGrid: opts.startGrid });
   const rider = (i: number, player: boolean): SimRiderDef => ({
     contentId: player ? 'base:player' : `base:rival-${i}`,
     name: player ? 'You' : `Rival ${i}`,
