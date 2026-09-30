@@ -6,6 +6,7 @@ import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quater
 import type { Edge, RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
 import { StripAccumulator, type Point3 } from './geometry';
+import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 
 /** Surface higher than this above sea level (world y = 0) counts as a bridge deck. */
@@ -136,10 +137,94 @@ function barriersFor(
   return spans;
 }
 
+/** The shortcut surface sits this far above the main road, so the two never flicker where they overlap. */
+export const SHORTCUT_LIFT_M = 0.05;
+/** Lift of the painted split zone over the main road (under the lane markings at 0.03). */
+const ZONE_LIFT_M = 0.015;
+/** Width of a painted line, m. */
+const LINE_M = 0.15;
+/** How far down the shortcut the split zone's inner edge keeps bounding it, m. */
+const GORE_REACH_M = 150;
+
+/** The drawn span of an edge, verges included: what hides a surface drawn under it. */
+function outerSpan(e: Edge): readonly [number, number] {
+  return [e.dMin - VERGE_M, e.dMax + VERGE_M];
+}
+
+function hasShortcut(e: Edge): boolean {
+  return e.sections.some((sec) => sec.lanes.some((l) => l.kind === 'shortcut'));
+}
+
+/** Across a join, the next edge's d = σ·d + dShift, where σ = −1 when the join flips orientation. */
+function flipAt(leaving: 'from' | 'to', entersAt: 'from' | 'to'): number {
+  return leaving === entersAt ? -1 : 1;
+}
+
+/**
+ * Where a split zone's inner edge runs on the edges downstream of it, in each edge's own d: the
+ * line between "stays on the main road" and "takes the shortcut" at the split, carried down the
+ * shortcut while the two overlap. Keyed by edge index.
+ */
+function goreLines(road: RoadNetwork): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const z of road.splitZones()) {
+    const from = road.edges[z.edge];
+    if (!from) continue;
+    const link = (z.end === 'to' ? from.nextLinks : from.prevLinks).find((l) => l.edge === z.toEdge);
+    if (!link) continue;
+    const inner = Math.abs(z.d0) < Math.abs(z.d1) ? z.d0 : z.d1;
+    let g = flipAt(z.end, link.entersAt) * inner + (link.dShift ?? 0);
+    let edge = road.edges[link.edge];
+    let enteredAt = link.entersAt;
+    let travelled = 0;
+    while (edge && travelled < GORE_REACH_M && !out.has(edge.index)) {
+      out.set(edge.index, g);
+      travelled += edge.length;
+      const leaving = enteredAt === 'from' ? 'to' : 'from';
+      const next = leaving === 'to' ? edge.next : edge.prev;
+      if (!next) break;
+      g = flipAt(leaving, next.entersAt) * g + (next.dShift ?? 0);
+      edge = road.edges[next.edge];
+      enteredAt = next.entersAt;
+    }
+  }
+  return out;
+}
+
+/** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
+type Layer = MaterialKind | 'splitZone' | 'splitMark';
+const kindOf = (layer: Layer): MaterialKind =>
+  layer === 'splitZone' ? 'shortcut' : layer === 'splitMark' ? 'marking' : layer;
+
+interface Clip {
+  lo: number;
+  hi: number;
+  vergeL: boolean;
+  vergeR: boolean;
+  goreL: boolean;
+  goreR: boolean;
+}
+
 export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: RoadDressing): RoadScene {
-  const acc: Partial<Record<MaterialKind, StripAccumulator>> = {};
-  const strip = (kind: MaterialKind): StripAccumulator => (acc[kind] ??= new StripAccumulator());
+  const acc: Partial<Record<Layer, StripAccumulator>> = {};
+  const strip = (kind: Layer): StripAccumulator => (acc[kind] ??= new StripAccumulator());
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
+  const locator = new EdgeLocator(road);
+  const gores = goreLines(road);
+  const zones = road.splitZones();
+  /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
+  const underMain = (e: Edge, s: number, d: number): boolean => {
+    const p = w(e.index, s, d, 0);
+    return locator.covered(p.x, p.z, e.index, outerSpan, (o) => !hasShortcut(o));
+  };
+  /** Whether another road's lanes (drive or shortcut) run under a point of edge e. */
+  const onOtherLanes = (e: Edge, s: number, d: number): boolean => {
+    const p = w(e.index, s, d, 0);
+    return locator.covered(p.x, p.z, e.index, (o, os) => {
+      const l = laneSpans(road.lanesAt(o.index, os));
+      return l.drive ?? l.shortcut;
+    });
+  };
   const postSpots: Point3[] = [];
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
@@ -155,39 +240,150 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
     const ss = samplesOf(e);
     const outerL = e.dMin - VERGE_M;
     const outerR = e.dMax + VERGE_M;
+    const shortcutEdge = hasShortcut(e);
+    const gore = gores.get(e.index);
+    const lift = shortcutEdge ? SHORTCUT_LIFT_M : 0;
     for (const kind of ['road', 'shortcut', 'shoulder', 'marking', 'markingCenter', 'deck'] as const) {
       strip(kind).breakStrip();
     }
-    // Surfaces and solid edge lines, sample by sample, pausing where a span is absent.
-    const surfaces: { kind: MaterialKind; span: (l: LaneSpans) => [number, number] | null; lift: number }[] =
-      [
-        { kind: 'road', span: (l) => l.drive, lift: 0 },
-        { kind: 'shortcut', span: (l) => l.shortcut, lift: 0 },
-        { kind: 'shoulder', span: (l) => [outerL, (l.drive ?? l.shortcut ?? [0, 0])[0]], lift: -0.02 },
-        { kind: 'shoulder', span: (l) => [(l.drive ?? l.shortcut ?? [0, 0])[1], outerR], lift: -0.02 },
-        {
-          kind: 'marking',
-          span: (l) => (l.drive ? [l.drive[0] + 0.1, l.drive[0] + 0.25] : null),
-          lift: 0.03,
-        },
-        {
-          kind: 'marking',
-          span: (l) => (l.drive ? [l.drive[1] - 0.25, l.drive[1] - 0.1] : null),
-          lift: 0.03,
-        },
-      ];
+    // A shortcut that overlaps a main road is clipped to the part beside it or, near a split, to
+    // the split zone's inner edge, so what is drawn on top matches where the sim sends a rider (at
+    // the split, d inside the zone takes the shortcut). Its verges go where they would lie under
+    // the main road.
+    const clips: Clip[] = ss.map((s) => {
+      const l = laneSpans(road.lanesAt(e.index, s));
+      const span = l.drive ?? l.shortcut ?? ([0, 0] as [number, number]);
+      const c: Clip = { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
+      if (!shortcutEdge) return c;
+      if (underMain(e, s, outerL)) {
+        c.vergeL = false;
+        let free = span[0];
+        while (free < span[1] && underMain(e, s, free)) free += 0.1;
+        if (gore !== undefined && gore > span[0] && gore < free) {
+          c.lo = gore;
+          c.goreL = true;
+        } else c.lo = Math.min(free, span[1]);
+      }
+      if (underMain(e, s, outerR)) {
+        c.vergeR = false;
+        let free = span[1];
+        while (free > c.lo && underMain(e, s, free)) free -= 0.1;
+        if (gore !== undefined && gore < span[1] && gore > free) {
+          c.hi = gore;
+          c.goreR = true;
+        } else c.hi = Math.max(free, c.lo);
+      }
+      return c;
+    });
+    const zonesHere = zones.filter((z) => z.edge === e.index);
+    const inZone = (s: number, d: number) =>
+      zonesHere.some(
+        (z) => s >= z.s0 && s <= z.s1 && d >= Math.min(z.d0, z.d1) - 0.3 && d <= Math.max(z.d0, z.d1) + 0.3,
+      );
+    // Surfaces and solid edge lines, sample by sample, pausing where a span is absent. The edge
+    // line breaks across a split zone: that is where a rider may leave.
+    const lanesSpan = (l: LaneSpans): [number, number] => l.drive ?? l.shortcut ?? [0, 0];
+    const surfaces: {
+      kind: MaterialKind;
+      span: (l: LaneSpans, c: Clip) => [number, number] | null;
+      lift: number;
+      skip?: (s: number, span: [number, number]) => boolean;
+    }[] = [
+      { kind: 'road', span: (l) => l.drive, lift: 0 },
+      { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
+      { kind: 'shoulder', span: (l, c) => (c.vergeL ? [outerL, lanesSpan(l)[0]] : null), lift: -0.02 },
+      { kind: 'shoulder', span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR] : null), lift: -0.02 },
+      {
+        kind: 'marking',
+        span: (l) => (l.drive ? [l.drive[0] + 0.1, l.drive[0] + 0.25] : null),
+        lift: 0.03,
+        skip: (s, span) => inZone(s, span[0]),
+      },
+      {
+        kind: 'marking',
+        span: (l) => (l.drive ? [l.drive[1] - 0.25, l.drive[1] - 0.1] : null),
+        lift: 0.03,
+        skip: (s, span) => inZone(s, span[1]),
+      },
+    ];
     for (const surf of surfaces) {
       const a = strip(surf.kind);
       a.breakStrip();
-      for (const s of ss) {
-        const span = surf.span(laneSpans(road.lanesAt(e.index, s)));
-        if (!span || span[1] - span[0] < 0.01) {
+      ss.forEach((s, i) => {
+        const c = clips[i];
+        const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
+        if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) {
           a.breakStrip();
-          continue;
+          return;
         }
         a.pair(w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift));
-      }
+      });
       a.breakStrip();
+    }
+    // The gore line: where the split zone's inner edge bounds the shortcut, a solid white line.
+    for (const left of [true, false]) {
+      const m = strip('splitMark');
+      m.breakStrip();
+      ss.forEach((s, i) => {
+        const c = clips[i];
+        if (!c || !(left ? c.goreL : c.goreR)) {
+          m.breakStrip();
+          return;
+        }
+        const d = left ? c.lo : c.hi;
+        m.pair(w(e.index, s, d, lift + 0.03), w(e.index, s, d + (left ? LINE_M : -LINE_M), lift + 0.03));
+      });
+      m.breakStrip();
+    }
+    // The split zone: where a rider must be to take the shortcut, painted in the shortcut's colour,
+    // with its inner edge as a solid line and chevrons pointing the way off.
+    for (const z of zonesHere) {
+      const lo = Math.min(z.d0, z.d1);
+      const hi = Math.max(z.d0, z.d1);
+      const inner = Math.abs(z.d0) < Math.abs(z.d1) ? z.d0 : z.d1;
+      const out = inner === lo ? 1 : -1;
+      const s0 = Math.max(0, z.s0);
+      const s1 = Math.min(e.length, z.s1);
+      if (s1 <= s0) continue;
+      const fill = strip('splitZone');
+      const mark = strip('splitMark');
+      fill.breakStrip();
+      mark.breakStrip();
+      for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
+        fill.pair(w(e.index, s, lo, ZONE_LIFT_M), w(e.index, s, hi, ZONE_LIFT_M));
+        if (s >= s1) break;
+      }
+      fill.breakStrip();
+      for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
+        mark.pair(w(e.index, s, inner, 0.03), w(e.index, s, inner + out * LINE_M, 0.03));
+        if (s >= s1) break;
+      }
+      mark.breakStrip();
+      // Chevrons: two bars meeting at a point toward the split.
+      const toward = z.end === 'to' ? 1 : -1;
+      const mid = (lo + hi) / 2;
+      const half = (hi - lo) * 0.3;
+      const n = Math.max(1, Math.round((s1 - s0) / 10));
+      for (let k = 0; k < n; k++) {
+        const sc = s0 + ((k + 0.5) * (s1 - s0)) / n;
+        const tip = { s: sc + toward * 1.5, d: mid };
+        for (const tail of [
+          { s: sc - toward * 1.5, d: mid - half },
+          { s: sc - toward * 1.5, d: mid + half },
+        ]) {
+          const ds = tip.s - tail.s;
+          const dd = tip.d - tail.d;
+          const len = Math.hypot(ds, dd) || 1;
+          const ns = (-dd / len) * LINE_M;
+          const nd = (ds / len) * LINE_M;
+          mark.quad(
+            w(e.index, tail.s, tail.d, 0.03),
+            w(e.index, tail.s + ns, tail.d + nd, 0.03),
+            w(e.index, tip.s, tip.d, 0.03),
+            w(e.index, tip.s + ns, tip.d + nd, 0.03),
+          );
+        }
+      }
     }
     // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
     for (const [d, out] of [
@@ -221,7 +417,10 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
     // Delineator posts every 25 m on the verge: a sense of speed. Pylons under the deck every 24 m.
     for (let s = 0; s < e.length; s += 25) {
       if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue; // the rails do this job on bridges
-      postSpots.push(w(e.index, s, outerL + 0.25, 0.55), w(e.index, s, outerR - 0.25, 0.55));
+      for (const d of [outerL + 0.25, outerR - 0.25]) {
+        // Where two roads overlap, a post on one road's verge can stand in the other's lane.
+        if (!onOtherLanes(e, s, d)) postSpots.push(w(e.index, s, d, 0.55));
+      }
     }
     for (let s = 12; s < e.length; s += 24) {
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
@@ -271,10 +470,10 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
     for (const r of ramps) {
       for (let s = r.s0; s + 0.5 <= r.s1; s += 1) {
         strip('rampMark').quad(
-          w(e.index, s, r.d0, 0.04),
-          w(e.index, s, r.d1, 0.04),
-          w(e.index, s + 0.5, r.d0, 0.04),
-          w(e.index, s + 0.5, r.d1, 0.04),
+          w(e.index, s, r.d0, lift + 0.04),
+          w(e.index, s, r.d1, lift + 0.04),
+          w(e.index, s + 0.5, r.d0, lift + 0.04),
+          w(e.index, s + 0.5, r.d1, lift + 0.04),
         );
         rampStripes++;
       }
@@ -291,11 +490,12 @@ export function buildRoadScene(road: RoadNetwork, look: LookStyle, dressing?: Ro
   group.name = 'road';
   let triangles = 0;
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
-  for (const [kind, a] of Object.entries(acc) as [MaterialKind, StripAccumulator][]) {
+  for (const [layer, a] of Object.entries(acc) as [Layer, StripAccumulator][]) {
     if (a.isEmpty) continue;
     triangles += a.triangleCount;
+    const kind = kindOf(layer);
     const mesh = new Mesh(a.build(), look.material(kind, { doubleSided: doubleSided.has(kind) }));
-    mesh.name = `road-${kind}`;
+    mesh.name = `road-${layer}`;
     group.add(mesh);
   }
   const m = new Matrix4();
