@@ -14,6 +14,7 @@ interface Snap {
   entities: { road: { d: number; s: number }; speed: number }[];
 }
 interface Handle {
+  state(): string;
   snapshot(): Snap | null;
   playerId(): number;
   setBot(on: boolean): void;
@@ -46,9 +47,9 @@ async function paramIds(page: Page): Promise<string[]> {
 }
 
 /**
- * Starts a seeded race and records every rider's state at every tick the page sees. With `bot`,
- * the stub bot rides; without it, whatever keys the test holds down ride (held before the start,
- * they are sampled identically from tick 0, so the run is repeatable).
+ * Starts a seeded race and records every mover's state at every race tick the page sees (only in
+ * the race state: the menu's attract scene is also tick 0, from another seed). With `bot`, the
+ * stub bot rides; without it, whatever keys the test holds down ride.
  */
 async function startTracedRace(page: Page, bot = true): Promise<void> {
   await page.evaluate(
@@ -58,7 +59,7 @@ async function startTracedRace(page: Page, bot = true): Promise<void> {
       w.__game?.setBot(withBot);
       w.__trace = {};
       const loop = () => {
-        const s = w.__game?.snapshot();
+        const s = w.__game?.state() === 'race' ? w.__game.snapshot() : null;
         if (s && w.__trace)
           w.__trace[s.tick] = s.entities.map((e) => `${e.road.s},${e.road.d},${e.speed}`).join('|');
         requestAnimationFrame(loop);
@@ -228,10 +229,13 @@ test('a mid-race steering change through the panel reaches the seeded race, comp
     `steering change at tick ${c.changedAt}: control vs control ${controls.common} ticks compared, ${controls.differ.length} differ; ` +
       `control vs changed after the change ${after.common} ticks compared, ${after.differ.length} differ`,
   );
-  expect(controls.common, 'the controls share ticks').toBeGreaterThan(100);
+  // The trace samples one tick per animation frame; a slow software renderer runs several sim
+  // steps per frame, so only a fraction of ticks is sampled. The floors are what the proof needs.
+  expect(controls.common, 'the controls share ticks').toBeGreaterThanOrEqual(30);
   expect(controls.differ, 'two control runs are identical').toEqual([]);
   const earlyDiffer = before.differ.filter((t) => t <= c.before);
   expect(earlyDiffer, 'identical before the change').toEqual([]);
+  expect(after.common, 'ticks sampled after the change').toBeGreaterThanOrEqual(10);
   expect(after.differ.length, 'the change reached the sim').toBeGreaterThan(0);
 });
 
@@ -242,8 +246,8 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
   const END = 900;
   // A seeded fight ridden by the bot (one driver call per tick, so a run repeats exactly).
   // Knockback is set on the panel before the race; the mid-race path is the steering test's. Two
-  // control runs prove the fight itself repeats. The stub bot never swings, so this activates when
-  // dev-1's attacking bot lands; tests/sim/tuning-knockback.test.ts covers knockback until then.
+  // control runs prove the fight itself repeats. The hits come from the rivals (ai-1) or an
+  // attacking bot; with none, it skips, and tests/sim/tuning-knockback.test.ts still covers it.
   const run = async (knockbackMax: boolean) => {
     const page = await browser.newPage();
     const problems = await boot(page);
@@ -274,7 +278,7 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
   if (!control) return;
   const hits = control.events['hit'] ?? 0;
   console.log(`knockback fight: control events ${JSON.stringify(control.events)}`);
-  test.skip(hits === 0, 'NOT ACTIVE: the bot lands no hit yet (needs the attacking bot, dev-1)');
+  test.skip(hits === 0, 'NOT ACTIVE: no hit landed in the seeded control fight');
   const again = await run(false);
   const strong = await run(true);
   if (!again || !strong) throw new Error('the knockback slider vanished between runs');
@@ -285,12 +289,14 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
       `control vs control ${repeat.common} ticks compared, ${repeat.differ.length} differ; ` +
       `control vs strong ${diff.common} ticks compared, ${diff.differ.length} differ`,
   );
-  expect(repeat.common).toBeGreaterThan(100);
+  expect(repeat.common, 'the controls share ticks').toBeGreaterThanOrEqual(30);
   expect(repeat.differ, 'the seeded fight repeats').toEqual([]);
   expect(diff.differ.length, 'knockback changed the fight').toBeGreaterThan(0);
 });
 
 test('"Copy preset as JSON" gives a tuning-preset that packs:check accepts', async ({ page, context }) => {
+  // packs:check runs twice (it becomes the full validator when content-1 lands): room for both.
+  test.setTimeout(120_000);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const problems = await boot(page);
   await page.keyboard.press('Backquote');
