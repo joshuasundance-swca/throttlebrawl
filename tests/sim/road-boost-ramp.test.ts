@@ -89,14 +89,13 @@ describe('playtest 1b quick wins on keys-m1', () => {
     expect(peak).toBeGreaterThan(r.top + 3);
   }, 60_000);
 
-  it('the bridge pad and the ramp truck: boosted up the deck, airborne, landed clean', () => {
-    // The truck's line (d 4.4) from 150 m before the pad to its lip, then the lane again.
+  it('the ramp truck on the bridge: up the deck, airborne, landed clean', () => {
+    // The truck's line (d 4.4) from 200 m before it to its lip, then the lane again.
     const line = (edge: string, s: number) =>
       edge === 'm1-pelican-bridge' && s > 420 && s < 640 ? 4.4 : null;
     const r = rideLine(line, 'm1-pelican-bridge', 900);
     const onBridge = (type: string) =>
       r.events.filter((e) => e.ev.type === type && e.edge === 'm1-pelican-bridge' && e.s > 500 && e.s < 900);
-    const boost = onBridge('boost')[0];
     const jump = onBridge('jump')[0];
     const land = onBridge('land')[0];
     const air = r.trace.filter((p) => p.edge === 'm1-pelican-bridge' && p.mode === 'Airborne' && p.s > 600);
@@ -104,12 +103,11 @@ describe('playtest 1b quick wins on keys-m1', () => {
       (p) => p.edge === 'm1-pelican-bridge' && p.mode === 'Road' && p.s > 621 && p.s < 631,
     );
     console.log(
-      `bridge: boost at s ${boost?.s.toFixed(1)}, jump at s ${jump?.s.toFixed(1)} (${Number(jump?.ev.data['speed']).toFixed(1)} m/s), ` +
+      `bridge: jump at s ${jump?.s.toFixed(1)} (${Number(jump?.ev.data['speed']).toFixed(1)} m/s), ` +
         `${air.length} ticks airborne, peak h ${Math.max(0, ...air.map((p) => p.h)).toFixed(2)} m, ` +
         `landed at s ${land?.s.toFixed(1)} (${land?.ev.data['quality']}); other rider events ` +
         `${r.events.filter((e) => e.ev.type === 'crash' || e.ev.type === 'wobble').length}`,
     );
-    expect(boost?.ev.data['feature']).toBe('pad-bridge-flat');
     expect(deck.length).toBeGreaterThan(3); // it rode up the deck: h above the road, grounded
     for (const p of deck) expect(p.h).toBeGreaterThan(0);
     expect(jump).toBeDefined();

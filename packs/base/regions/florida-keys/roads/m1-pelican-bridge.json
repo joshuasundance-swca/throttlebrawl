@@ -45,15 +45,6 @@
       "item": "ices-before-road"
     },
     {
-      "kind": "boostPad",
-      "id": "pad-bridge-flat",
-      "s0": 570,
-      "s1": 576,
-      "d0": 3,
-      "d1": 5,
-      "params": { "boostMps": 8, "holdS": 1.5 }
-    },
-    {
       "kind": "rampTruck",
       "id": "carrier-bridge-flat",
       "s0": 620,

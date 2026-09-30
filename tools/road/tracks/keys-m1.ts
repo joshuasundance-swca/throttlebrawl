@@ -175,19 +175,11 @@ export const KEYS_M1: TrackSource = {
           d1: 9,
           item: 'ices-before-road',
         },
-        // Playtest 1b quick wins, on the flat between the humps: a boost pad lined up with a
-        // car-carrier tow truck parked on the right shoulder, its rear deck down as a ramp. Hit the
-        // pad, ride up the deck, fly. The truck's box stops 0.2 m clear of the widest traffic
-        // vehicle in the right lane; the flight lands before the second hump at 44.7 m/s.
-        {
-          kind: 'boostPad',
-          id: 'pad-bridge-flat',
-          s0: 570,
-          s1: 576,
-          d0: 3,
-          d1: 5,
-          params: { boostMps: 8, holdS: 1.5 },
-        },
+        // Playtest 1b quick wins, on the flat between the humps: a car-carrier tow truck parked on
+        // the right shoulder, its rear deck down as a ramp. Ride up the deck, fly. The truck's box
+        // stops 0.2 m clear of the widest traffic vehicle in the right lane, and the flight lands
+        // before the second hump at 44.7 m/s. No boost pad feeds it: boosted to 52.7 m/s, the
+        // 13.7° deck throws a bike 11 m up and it lands hard enough to wobble.
         {
           kind: 'rampTruck',
           id: 'carrier-bridge-flat',
@@ -241,7 +233,17 @@ export const KEYS_M1: TrackSource = {
           d1: -5.6,
           params: { spawns: 'pedestrians' },
         },
-        // Playtest 1b quick wins: a last boost pad in the right lane for the sprint to the line.
+        // Playtest 1b quick wins: a boost pad in the right lane off the bridge (the causeway's hump
+        // is gentle enough not to launch a boosted bike), and a last one for the sprint to the line.
+        {
+          kind: 'boostPad',
+          id: 'pad-causeway-start',
+          s0: 40,
+          s1: 46,
+          d0: 0.5,
+          d1: 3,
+          params: { boostMps: 8, holdS: 1.5 },
+        },
         {
           kind: 'boostPad',
           id: 'pad-causeway-sprint',

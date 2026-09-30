@@ -211,7 +211,14 @@ describe('tools/road: the baked M1 track', () => {
   });
 
   it('never launches a grounded bike at top speed: crest curvature × v² stays below g', () => {
-    const top = 38; // the M1 bike's 85 mph
+    // The starter bike's top speed from the pack (100 mph since playtest 1, item 10; M1 had 85).
+    const bike = JSON.parse(
+      readFileSync(path.join(root, 'packs/base/bikes/rustbucket-400.json'), 'utf8'),
+    ) as {
+      handling: { topSpeedMps: number };
+    };
+    const top = bike.handling.topSpeedMps;
+    expect(top).toBeGreaterThan(44);
     let checked = 0;
     for (const r of roads) {
       const y = r.samples.data['y'] ?? [];

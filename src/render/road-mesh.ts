@@ -25,6 +25,8 @@ const LAND_FAR_M = 7;
 const LAND_TAPER_M = 8;
 /** Land sits 4 cm under the verge (-0.02) and any overlapping road, so none of them flicker. */
 const LAND_LIFT_M = -0.06;
+/** Boost pads sit above the lane markings (0.03) and the ramp stripes (0.04). */
+const BOOST_LIFT_M = 0.045;
 
 export interface BarrierSpan {
   s0: number;
@@ -43,6 +45,8 @@ export interface FeatureSpan {
   id?: string | undefined;
   item?: string | undefined;
   pool?: string | undefined;
+  /** Kind-specific numbers (a `rampTruck`'s `lipHeightM` and `rampLengthM`, a `boostPad`'s boost). */
+  params?: Readonly<Record<string, unknown>> | undefined;
 }
 export interface TagSpan {
   s0: number;
@@ -67,6 +71,9 @@ export interface RoadSceneStats {
   pylons: number;
   /** Metres of road with a land strip beside it (roadside zones; walkways on railed sides excluded). */
   landM: number;
+  /** Boost pads and ramp trucks drawn (playtest 1b quick wins). */
+  boostPads: number;
+  rampTrucks: number;
 }
 
 export interface RoadScene {
@@ -205,9 +212,102 @@ function goreLines(road: RoadNetwork): Map<number, number> {
 }
 
 /** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
-type Layer = MaterialKind | 'splitZone' | 'splitMark';
-const kindOf = (layer: Layer): MaterialKind =>
-  layer === 'splitZone' ? 'shortcut' : layer === 'splitMark' ? 'marking' : layer;
+type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark';
+const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
+  splitZone: 'shortcut',
+  splitMark: 'marking',
+  boostPad: 'boost',
+  boostMark: 'marking',
+};
+const kindOf = (layer: Layer): MaterialKind => LAYER_KIND[layer] ?? (layer as MaterialKind);
+
+/** The ramp truck's defaults, as the road lane's contract gives them (docs/content-packs.md). */
+export const RAMP_TRUCK_DEFAULTS = { lipHeightM: 2.8, rampLengthM: 11.5 } as const;
+
+const num = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
+/**
+ * A placeholder car-carrier tow truck whose rear deck is a jump ramp (playtest 1b), as boxes in
+ * road space. The light deck rises from the road at s0 to the lip over the ramp length, then runs
+ * flat at the lip to the front bumper at s1: exactly the deck the sim gives riders. Two cars ride
+ * on the lower level under the flat deck, the cab sits under its front end.
+ */
+function rampTruckParts(road: RoadNetwork, edge: number, f: FeatureSpan): BoxPart[] {
+  const lip = Math.max(0.3, num(f.params?.['lipHeightM'], RAMP_TRUCK_DEFAULTS.lipHeightM));
+  const rampLen = Math.max(1, num(f.params?.['rampLengthM'], RAMP_TRUCK_DEFAULTS.rampLengthM));
+  const len = Math.max(rampLen + 1, f.s1 - f.s0);
+  const width = Math.abs(f.d1 - f.d0);
+  const dMid = (f.d0 + f.d1) / 2;
+  const heading = (u: number) => {
+    const fr = road.frameAt(edge, f.s0 + u);
+    return Math.atan2(-fr.tx, -fr.tz);
+  };
+  const DECK = '#efe6c8';
+  const FRAME = '#4a4f57';
+  const DARK = '#1f2226';
+  const T = 0.1;
+  const parts: BoxPart[] = [];
+  /** A box centred at u along the truck, w across (right positive), h above the road. */
+  const box = (u: number, w: number, h: number, size: [number, number, number], color: string, rotX = 0) => {
+    const p = road.toWorld(edge, f.s0 + u, dMid + w, h);
+    parts.push({ size: [size[0], size[1], size[2]], at: [p.x, p.y, p.z], color, rotX, rotY: heading(u) });
+  };
+  const pitch = Math.atan2(lip, rampLen);
+  // The ramp: its top surface runs from the road at s0 up to the lip.
+  box(
+    rampLen / 2,
+    0,
+    lip / 2 - T / 2 / Math.cos(pitch),
+    [width - 0.2, T, Math.hypot(rampLen, lip)],
+    DECK,
+    pitch,
+  );
+  // The flat deck from the ramp's top to the front.
+  box((rampLen + len) / 2, 0, lip - T / 2, [width - 0.2, T, len - rampLen], DECK);
+  // Frame: girders under the flat deck's edges, posts down to the chassis, the chassis and wheels.
+  // Nothing pokes through the ramp: the chassis and wheels start where the ramp is 1.1 m up.
+  const tall = Math.min(len - 1, (rampLen * 1.1) / lip);
+  for (const w of [-1, 1]) {
+    box((rampLen + len) / 2, w * (width / 2 - 0.2), lip - 0.45, [0.14, 0.6, len - rampLen], FRAME);
+    for (const u of [rampLen * 0.6, rampLen, (rampLen + len) / 2, len - 3]) {
+      if (u > len - 0.5 || u < tall) continue;
+      const top = u < rampLen ? (lip * u) / rampLen : lip;
+      box(u, w * (width / 2 - 0.25), (1 + top - T) / 2, [0.16, Math.max(0.1, top - T - 1), 0.16], FRAME);
+    }
+    for (const u of [tall + 0.6, tall + 2, len - 5, len - 1.6]) {
+      if (u >= tall && u < len) box(u, w * (width / 2 - 0.35), 0.45, [0.5, 0.9, 0.9], DARK);
+    }
+  }
+  box((tall + len) / 2, 0, 0.75, [Math.min(1.4, width - 0.8), 0.5, len - tall], DARK);
+  // The cab under the front of the deck, and two cars on the lower level.
+  const cabLen = Math.min(2.6, len - rampLen);
+  const cabTop = Math.max(1, lip - T - 0.15);
+  box(
+    len - cabLen / 2,
+    0,
+    0.4 + (cabTop - 0.4) / 2,
+    [Math.min(2.4, width - 0.2), cabTop - 0.4, cabLen],
+    '#c8412e',
+  );
+  box(
+    len - cabLen - 0.05,
+    0,
+    0.4 + (cabTop - 0.4) * 0.35,
+    [Math.min(2.3, width - 0.3), 0.6, 0.12],
+    '#bfe3f0',
+  );
+  const room = len - cabLen - rampLen;
+  const carTop = Math.min(2.2, lip - T - 0.2);
+  const carColors = ['#3b6fd1', '#e0c23a'];
+  for (let i = 0; i < 2; i++) {
+    const carLen = Math.min(3.8, room / 2 - 0.2);
+    if (carLen < 1.5 || carTop < 1.5) break;
+    const u = rampLen + (room * (i + 0.5)) / 2;
+    box(u, 0, (1 + carTop) / 2, [Math.min(1.7, width - 0.6), carTop - 1, carLen], carColors[i] ?? '#888888');
+  }
+  return parts;
+}
 
 interface Clip {
   lo: number;
@@ -228,6 +328,8 @@ const PALM_SPACING_M = 20;
 /** Palms stand this far past the verge, plus up to PALM_SPREAD_M more. [default] */
 const PALM_OFFSET_M = 2.2;
 const PALM_SPREAD_M = 5;
+/** Features a palm never stands in. */
+const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck']);
 
 /** A placeholder palm on its own little sand mound (so it can stand in the shallows). */
 function palmGeometry() {
@@ -279,6 +381,9 @@ export function buildRoadScene(
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
   const palmSpots: { p: Point3; turn: number; size: number }[] = [];
+  const truckParts: BoxPart[] = [];
+  let boostPads = 0;
+  let rampTrucks = 0;
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   let railM = 0;
   let rampStripes = 0;
@@ -541,6 +646,18 @@ export function buildRoadScene(
           if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue;
           if (rails.some((b) => s >= b.s0 - 5 && s <= b.s1 + 5)) continue;
           const d = side * (outer + PALM_OFFSET_M + PALM_SPREAD_M * hash01(e.index, k, side + 7));
+          // Nor inside a sign, a pad or a ramp truck (with room for the mound and the crown).
+          if (
+            (dress.features ?? []).some(
+              (f) =>
+                KEEP_CLEAR.has(f.kind) &&
+                s >= Math.min(f.s0, f.s1) - 3 &&
+                s <= Math.max(f.s0, f.s1) + 3 &&
+                d >= Math.min(f.d0, f.d1) - 3 &&
+                d <= Math.max(f.d0, f.d1) + 3,
+            )
+          )
+            continue;
           const p = w(e.index, s, d, LAND_LIFT_M);
           if (locator.covered(p.x, p.z, e.index, (o) => [o.dMin - VERGE_M - 2, o.dMax + VERGE_M + 2]))
             continue;
@@ -602,6 +719,51 @@ export function buildRoadScene(
         rampStripes++;
       }
     }
+    // Quick wins (playtest 1b): boost pads glow on the road with chevrons pointing along +s, and
+    // ramp trucks are placeholder boxes (their parts are merged into one mesh below).
+    for (const f of dress.features ?? []) {
+      if (f.kind === 'boostPad') {
+        const s0 = Math.max(0, Math.min(f.s0, f.s1));
+        const s1 = Math.min(e.length, Math.max(f.s0, f.s1));
+        const lo = Math.min(f.d0, f.d1);
+        const hi = Math.max(f.d0, f.d1);
+        if (s1 <= s0) continue;
+        const pad = strip('boostPad');
+        pad.breakStrip();
+        for (let s = s0; ; s = Math.min(s1, s + 1)) {
+          pad.pair(w(e.index, s, lo, lift + BOOST_LIFT_M), w(e.index, s, hi, lift + BOOST_LIFT_M));
+          if (s >= s1) break;
+        }
+        pad.breakStrip();
+        const mark = strip('boostMark');
+        const mid = (lo + hi) / 2;
+        const half = (hi - lo) * 0.3;
+        for (let s = s0 + 0.5; s + 1.2 <= s1; s += 1.6) {
+          for (const side of [-1, 1]) {
+            // One arm of a chevron, from the back corner to the tip ahead.
+            const tail = { s, d: mid + side * half };
+            const tip = { s: s + 1.2, d: mid };
+            const ds = tip.s - tail.s;
+            const dd = tip.d - tail.d;
+            const l = Math.hypot(ds, dd) || 1;
+            const ns = (-dd / l) * 0.18;
+            const nd = (ds / l) * 0.18;
+            const h = lift + BOOST_LIFT_M + 0.015;
+            const a = w(e.index, tail.s, tail.d, h);
+            const b = w(e.index, tail.s + ns, tail.d + nd, h);
+            const c = w(e.index, tip.s, tip.d, h);
+            const d = w(e.index, tip.s + ns, tip.d + nd, h);
+            // Pairs in increasing d, so the faces point up.
+            if (nd >= 0) mark.quad(a, b, c, d);
+            else mark.quad(b, a, d, c);
+          }
+        }
+        boostPads++;
+      } else if (f.kind === 'rampTruck') {
+        truckParts.push(...rampTruckParts(road, e.index, f));
+        rampTrucks++;
+      }
+    }
     for (let i = 0; i < e.count; i++) {
       minX = Math.min(minX, e.x[i] ?? 0);
       maxX = Math.max(maxX, e.x[i] ?? 0);
@@ -651,6 +813,12 @@ export function buildRoadScene(
   // Unit-height boxes standing on their base, stretched by the instance scale.
   addInstanced('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
   addInstanced('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
+  if (truckParts.length) {
+    const trucks = new Mesh(mergeBoxes(truckParts), look.material('vehicle', { vertexColors: true }));
+    trucks.name = 'road-rampTrucks';
+    triangles += (trucks.geometry.index?.count ?? 0) / 3;
+    group.add(trucks);
+  }
   if (palmSpots.length) {
     const geo = palmGeometry();
     const palms = new InstancedMesh(geo, look.material('prop', { vertexColors: true }), palmSpots.length);
@@ -686,6 +854,8 @@ export function buildRoadScene(
       rampStripes,
       pylons: pylonSpots.length,
       landM,
+      boostPads,
+      rampTrucks,
     },
     dispose() {
       group.traverse((o) => {

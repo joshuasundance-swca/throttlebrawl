@@ -136,6 +136,17 @@ describe('the ramp truck', () => {
     expect(r.events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toHaveLength(0);
   });
 
+  it('lands clean at the starter bike’s 100 mph (44.7 m/s), the fastest it meets the truck unboosted', () => {
+    const config = withFeatures([TRUCK]);
+    const fast = {
+      ...config,
+      riders: config.riders.map((r) => ({ ...r, bike: { ...r.bike, topSpeedMps: 44.7 } })),
+    };
+    const r = ride(fast, { s: 450, d: 3.4, speed: 44.7 }, 60 * 8);
+    expect(r.events.find((e) => e.type === 'jump')).toBeDefined();
+    expect(r.events.find((e) => e.type === 'land')?.data['quality']).toBe('clean');
+  });
+
   it('is solid from the side: steering into it mid-deck is a barrier contact, never a climb', () => {
     const r = ride(withFeatures([TRUCK]), { s: 590, d: 1.2, speed: 30 }, 60, 1);
     const hits = r.events.filter(
