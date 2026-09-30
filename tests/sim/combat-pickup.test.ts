@@ -30,7 +30,10 @@ describe('combat-2 on the base pack', () => {
     const { sim } = createBatchRace(1);
     const pickups = sim.snapshot().entities.filter((e) => e.kind === 'pickup');
     expect(pickups).toHaveLength(3);
-    for (const p of pickups) expect(p.mode).toBe('Road');
+    for (const p of pickups) {
+      expect(p.mode).toBe('Road');
+      expect(p.contentId).toBe(PIPE);
+    }
   });
 });
 

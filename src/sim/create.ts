@@ -2,7 +2,7 @@
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan2, cos, FNV_OFFSET, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING } from './ai';
-import { combatSystem, combatView, COMBAT_TUNING } from './combat';
+import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING } from './modifiers';
 import { pedsSystem, PEDS_TUNING } from './peds';
@@ -64,9 +64,14 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       heading: atan2(-fx, -fz),
       speed: m.speed,
       lean: riders.lean[m.id] ?? 0,
-      // A vehicle carries its traffic type, so render can size and shape it.
+      // A vehicle carries its traffic type, so render can size and shape it; a pickup, its weapon.
       contentId:
-        def?.contentId ?? (m.kind === 'vehicle' ? (vehicleInfo(world, config, m.id)?.contentId ?? '') : ''),
+        def?.contentId ??
+        (m.kind === 'vehicle'
+          ? (vehicleInfo(world, config, m.id)?.contentId ?? '')
+          : m.kind === 'pickup'
+            ? pickupWeapon(world, m.id)
+            : ''),
       name: def?.name ?? '',
       faction: def?.faction ?? 'rider',
       slot: def?.controller.kind === 'player' ? def.controller.slot : -1,
@@ -77,7 +82,6 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
       ...combatView(world, m.id),
-      heldWeapon: null,
       progress: race.progress[m.id] ?? 0,
       distanceToFinish: race.distanceToFinish[m.id] ?? 0,
       place: race.place[m.id] ?? 0,
