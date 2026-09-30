@@ -1,12 +1,23 @@
-// content: pack loading, validation and the frozen registry (docs/architecture.md, "Content
-// registry"). The content lane (content-1) owns this folder after app-1; schema/ is a contract.
+// content: pack loading, validation, the lint and the frozen registry (docs/architecture.md,
+// "Content registry"; docs/content-packs.md, "Validation"). The content lane owns this folder;
+// schema/ is a contract.
 export { loadBasePack, basePackFiles } from './base-pack';
 export { assetIndex, buildRegistry, ContentError, contentHashes, lookup } from './registry';
-export type { ContentRegistry, LoadOptions, PackFile, PackIndexRow } from './registry';
+export type { ContentRegistry, LoadOptions, PackIndexRow } from './registry';
+export type { ContentHashes } from './hashes';
+export { FORMAT_VERSION, isEntryFile, parsePack } from './parse';
+export type { EntryStatus, PackFile, ParsedEntry, ParsedPack } from './parse';
+export { BUILT_IN_RULES, lintPacks, stealTicks } from './lint';
+export type { LintContext, LintOptions, PackRule } from './lint';
+export { formatFinding, pointer } from './findings';
+export type { Finding } from './findings';
+export { buildPackIndex } from './pack-index';
+export type { PackIndex, PackIndexFile, PackIndexInput } from './pack-index';
 export type {
   BarkSet,
   Bike,
   Crew,
+  EntryType,
   EventModifier,
   HudLayout,
   PackManifest,

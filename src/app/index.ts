@@ -230,9 +230,9 @@ export function createApp(opts: AppOptions): AppHandle {
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         const player = curr?.entities[playerId] ?? null;
         audio.update(state === 'race' ? player : null);
-        // "1st / N" counts the racers, not the traffic.
-        const racers = curr ? curr.entities.filter((e) => e.kind === 'rider').length : 0;
-        if (state === 'race') ui.updateHud(player, racers, settings.units);
+        // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
+        // and your target's.
+        if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
       },
     },
     SIM_DT,
