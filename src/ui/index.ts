@@ -9,6 +9,8 @@
 // ui-2 (docs/milestones/M2.md): the tabbed settings screen drawn from settings.ts, the full pause
 // menu (resume, restart, quit, controls and HUD, the tuning panel when enabled, copy debug report)
 // and the resume card after a reload (ui draws it and reports the tap; app/ does the rest).
+// ui-3: the "what's new since you last played" card beside the menu, the changelog page (both from
+// dist/changelog.json), the results screen's takedowns and style tally, and the style pop-ups.
 // ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
 // changes leaves through the callbacks app/ injects.
 import {
@@ -34,6 +36,7 @@ import {
 import { hudStyle } from './placement';
 import {
   applySettingsChange,
+  lastSeenPersists,
   settingPersists,
   settingValue,
   visibleSettings,
@@ -41,6 +44,9 @@ import {
   type SettingsChange,
 } from './settings';
 import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
+import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './changelog-screen';
+import { createRaceTally } from './race-feed';
+import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
 
@@ -52,7 +58,7 @@ export type { SettingId, SettingsChange, SettingValue } from './settings';
 // The barks' tuning declarations (narrative-1), for app/'s collected list.
 export { BARK_TUNING } from './narrative';
 
-export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results';
+export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results' | 'changelog';
 
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
@@ -171,6 +177,15 @@ const CSS = `
 #touch-stick-knob { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
   border-radius: 50%; background: #fffa; }
 ${SETTINGS_CSS}
+${CHANGELOG_CSS}
+#style-popups { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); display: flex;
+  flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.style-pop { font: 900 22px ui-monospace, 'Courier New', monospace; letter-spacing: 0.04em; color: #111;
+  background: #f5c542; padding: 2px 10px; box-shadow: 3px 3px 0 #111; white-space: nowrap;
+  animation: tb-pop 1.4s ease-out forwards; }
+@keyframes tb-pop { 0% { transform: scale(0.6); opacity: 0; } 12% { transform: scale(1.08); opacity: 1; }
+  75% { opacity: 1; } 100% { transform: translateY(-14px); opacity: 0; } }
+#results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
@@ -252,17 +267,28 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   start.addEventListener('click', () => cb.onStartTap());
 
   // ---- Menu --------------------------------------------------------------------------------
+  // The what's-new card sits beside the menu (ui-3), so the Race button stays where it was.
+  const whatsNewCard = createWhatsNewCard({
+    onOpenChangelog: () => show('changelog'),
+    onHide: () => menu.classList.remove('with-news'),
+  });
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
-    el('div', { className: 'title', textContent: 'throttlebrawl' }),
-    button('menu-race', 'big', 'Race', () => cb.onRace()),
     el(
       'div',
-      { className: 'row' },
-      button('menu-settings', 'small', 'Settings', () => show('settings')),
-      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      { className: 'menu-main' },
+      el('div', { className: 'title', textContent: 'throttlebrawl' }),
+      button('menu-race', 'big', 'Race', () => cb.onRace()),
+      el(
+        'div',
+        { className: 'row' },
+        button('menu-settings', 'small', 'Settings', () => show('settings')),
+        button('menu-changelog', 'small', "What's new", () => show('changelog')),
+        button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      ),
     ),
+    whatsNewCard.root,
     el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` }),
   );
 
@@ -552,11 +578,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // ---- Results -----------------------------------------------------------------------------
   const resultPlace = el('div', { id: 'results-place', className: 'title' });
   const resultPrize = el('div', { id: 'results-prize', className: 'card' });
+  const resultTally = el('div', { id: 'results-tally', hidden: true });
   const results = el(
     'div',
     { id: 'results', className: 'screen', hidden: true },
     resultPlace,
     resultPrize,
+    resultTally,
     el(
       'div',
       { className: 'row' },
@@ -590,12 +618,69 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const busyText = el('div', { id: 'busy-text' });
   const busy = el('div', { id: 'busy', className: 'screen', hidden: true }, busyText);
 
+  // ---- The changelog page, the what's-new check and the style pop-ups (ui-3) -----------------
+  const changelogScreen = createChangelogScreen({ onBack: () => show('menu') });
+  let changelog: Promise<ChangelogNote[] | null> | null = null;
+  /** dist/changelog.json, fetched once; null when it is missing (a dev server) or unreadable. */
+  const loadChangelog = () =>
+    (changelog ??= fetch('changelog.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: unknown) => (d === null ? null : parseChangelog(d)))
+      .catch(() => null));
+  // The card needs the record to keep the last build seen, or it would greet every launch.
+  const newsAllowed = lastSeenPersists(sanitiseSettings) && buildId.length > 0;
+  let newsChecked = false;
+  let pendingNews: WhatsNew | null = null;
+  const markSeen = () => {
+    if (settings.lastSeenBuild !== buildId) change({ kind: 'seen', build: buildId });
+  };
+  const offerNews = () => {
+    if (!pendingNews || current !== 'menu') return;
+    whatsNewCard.show(pendingNews);
+    menu.classList.add('with-news');
+    pendingNews = null;
+    markSeen(); // seen once it is on screen
+  };
+  const checkNews = () => {
+    if (newsChecked || !newsAllowed) return;
+    newsChecked = true;
+    const seen = settings.lastSeenBuild;
+    if (!seen) {
+      pendingNews = { kind: 'welcome' };
+      offerNews();
+      return;
+    }
+    if (sameBuild(seen, buildId)) return;
+    void loadChangelog().then((notes) => {
+      if (!notes) return; // unreadable: try again next launch, and keep the old mark
+      const w = whatsNewSince(notes, seen);
+      if (w.kind === 'none') markSeen();
+      else {
+        pendingNews = w;
+        offerNews();
+      }
+    });
+  };
+
+  const tally = createRaceTally();
+  let tallyPlayer = -1;
+  const popups = el('div', { id: 'style-popups' });
+  hud.append(popups);
+  const MAX_POPUPS = 3;
+  const popUp = (text: string) => {
+    const pop = el('div', { className: 'style-pop', textContent: text });
+    popups.append(pop);
+    while (popups.childElementCount > MAX_POPUPS) popups.firstElementChild?.remove();
+    setTimeout(() => pop.remove(), 1400);
+  };
+
   root.append(
     touchSurface,
     hud,
     start,
     menu,
     settingsScreen.root,
+    changelogScreen.root,
     results,
     pauseScreen,
     resumeCard,
@@ -604,7 +689,20 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
-  const narrative = createNarrative();
+  const barks = createNarrative();
+  // app/ hands every step's events to the narrative; ui reads the same feed for the style pop-ups
+  // and the results tally (ui-3), so they need no wiring of their own.
+  const narrative: Narrative = {
+    ...barks,
+    onEvents(events, context) {
+      if (current === 'race') {
+        const me =
+          tallyPlayer >= 0 ? tallyPlayer : (context?.snapshot.entities.find((e) => e.slot === 0)?.id ?? -1);
+        tally.onEvents(events, me);
+      }
+      barks.onEvents(events, context);
+    },
+  };
 
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;
@@ -621,6 +719,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     settings: [settingsScreen.root],
     race: [hud, touchSurface],
     results: [results],
+    changelog: [changelogScreen.root],
   };
 
   function show(screen: Screen) {
@@ -634,8 +733,16 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     if (screen === 'race') {
       targetShown = false;
+      tally.reset();
+      tallyPlayer = -1;
+      popups.replaceChildren();
       placeAll();
     }
+    if (screen === 'menu') {
+      checkNews();
+      offerNews();
+    }
+    if (screen === 'changelog') void loadChangelog().then((notes) => changelogScreen.setNotes(notes));
   }
 
   const setText = (node: HTMLElement, text: string) => {
@@ -659,6 +766,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     updateRace(snapshot, playerId, units) {
       const player = snapshot.entities[playerId] ?? null;
       updateHud(player, riderCount(snapshot), units);
+      tallyPlayer = playerId;
+      tally.noteSnapshotTally(player?.styleTally);
+      for (const text of tally.takePopups()) popUp(text);
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {
@@ -671,9 +781,16 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       }
     },
     showResults(r) {
-      const t = resultText(r);
+      // The tally is ui's own count unless app/ sends one (combat-4 counts takedowns in the sim).
+      const t = resultText({
+        ...r,
+        takedowns: r.takedowns ?? tally.takedowns,
+        styleCash: r.styleCash ?? tally.styleCash,
+      });
       resultPlace.textContent = t.headline;
       resultPrize.textContent = t.detail;
+      resultTally.textContent = t.tally ?? '';
+      resultTally.hidden = t.tally === null;
       results.classList.toggle('busted', t.busted);
     },
     pause,
