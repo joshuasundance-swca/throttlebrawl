@@ -10,18 +10,30 @@ export type {
   RoadNeighbour,
   RoadNetwork,
   RoadPos,
+  SplitZoneInfo,
   WorldPoint,
 } from './network';
 export { createRouteProgress } from './route';
-export type { RouteCheckpoint, RouteProgress } from './route';
-export { FIXTURE_LANES, fixtureNetwork } from './fixture';
-export type { FixtureEdgeSpec } from './fixture';
+export type { RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
+export { FIXTURE_LANES, fixtureBranchNetwork, fixtureBranchTrack, fixtureNetwork } from './fixture';
+export type { BranchFixtureOptions, FixtureEdgeSpec } from './fixture';
 export { lintRoad, lintRoadNetwork, ROAD_LINT } from './validate';
 export type { RoadFileLabel, RoadLintInput, RoadLintIssue, RoadLintRule } from './validate';
-export { buildCentreline, compileTrack, humpProfile } from './compile';
-export type { CompiledTrack, HumpSource, RoadSource, RouteSource, TrackSource } from './compile';
+export { buildBranchCurve, buildCentreline, compileTrack, humpProfile, rampProfile } from './compile';
+export type {
+  BranchSource,
+  CompiledTrack,
+  HumpSource,
+  RampSource,
+  RoadSource,
+  RouteSource,
+  TrackSource,
+} from './compile';
+export { readConnector } from './types';
 export type {
   BakedBarrier,
+  BakedConnector,
+  BakedConnectorEnd,
   BakedFeature,
   BakedJunction,
   BakedJunctionEnd,
@@ -31,6 +43,7 @@ export type {
   BakedRoad,
   BakedRoute,
   BakedSamples,
+  BakedSplitZone,
   BakedTag,
   FeatureKind,
 } from './types';

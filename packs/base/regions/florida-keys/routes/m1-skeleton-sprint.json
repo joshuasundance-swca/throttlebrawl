@@ -4,11 +4,21 @@
   "network": "keys-m1",
   "start": { "road": "m1-marina-run", "s": 40, "dir": 1 },
   "finish": { "road": "m1-sandbar-causeway", "s": 1140 },
-  "mainPath": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
-  "allowedRoads": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
+  "mainPath": ["m1-marina-run", "m1-marina-bends", "m1-pelican-bridge", "m1-sandbar-causeway"],
+  "allowedRoads": [
+    "m1-marina-run",
+    "c-marina-split-main",
+    "m1-marina-bends",
+    "c-marina-merge-main",
+    "m1-pelican-bridge",
+    "m1-sandbar-causeway",
+    "c-boat-ramp-in",
+    "m1-boat-ramp-cut",
+    "c-boat-ramp-out"
+  ],
   "checkpoints": [
-    { "road": "m1-marina-run", "s": 900 },
-    { "road": "m1-pelican-bridge", "s": 625 },
+    { "road": "m1-pelican-bridge", "s": 300 },
+    { "road": "m1-pelican-bridge", "s": 1000 },
     { "road": "m1-sandbar-causeway", "s": 500 }
   ],
   "closed": false,

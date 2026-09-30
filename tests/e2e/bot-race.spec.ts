@@ -100,7 +100,8 @@ test('the stub bot races to results with a placing at phone landscape', async ({
   console.log(`race checks: ${JSON.stringify(checks)}`);
   expect(checks.ticks).toBeGreaterThan(600);
   expect(checks.invalidTicks, checks.firstInvalid ?? '').toBe(0);
-  expect(checks.playerEdges).toEqual([0, 1, 2]); // the three edges, both junctions crossed
+  // The main path's six edges (road-2: four roads and the two junctions' connector roads).
+  expect(checks.playerEdges).toEqual([0, 1, 2, 3, 4, 5]);
   expect(checks.events['finish'] ?? 0).toBeGreaterThan(0);
 
   const frames = (await page.evaluate(() => (window as TestWindow).__game?.frameStats())) as ReturnType<

@@ -65,13 +65,69 @@ export interface BakedJunctionEnd {
   end: 'from' | 'to';
 }
 
+/** One side of a connector row: a road end and a lane on that road. */
+export interface BakedConnectorEnd {
+  road: string;
+  end: 'from' | 'to';
+  lane: string;
+}
+
+/** Where on the `from` road a rider's lateral position picks this connector (no button press). */
+export interface BakedSplitZone {
+  s0: number;
+  s1: number;
+  d0: number;
+  d1: number;
+}
+
+/**
+ * One row of a junction's lane-level table (docs/content-packs.md, "Network file"): the `from`
+ * road end meets the connector road's `from` end, the `to` road end meets its `to` end. A row
+ * whose lanes run with direction −1 carries oncoming traffic back from `to` to `from`.
+ */
+export interface BakedConnector {
+  id: string;
+  road: string;
+  from: BakedConnectorEnd;
+  to: BakedConnectorEnd;
+  splitZone?: BakedSplitZone | undefined;
+}
+
 export interface BakedJunction {
   id: string;
   x: number;
   y: number;
   z: number;
   ends: readonly BakedJunctionEnd[];
+  /** Connector rows. Typed loosely, because parsed pack files may hold anything; see readConnector. */
   connectors: readonly unknown[];
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+function readEnd(v: unknown): BakedConnectorEnd | null {
+  if (!isRecord(v)) return null;
+  const { road, end, lane } = v;
+  if (typeof road !== 'string' || (end !== 'from' && end !== 'to') || typeof lane !== 'string') return null;
+  return { road, end, lane };
+}
+
+/** A connector row read from untyped data, or null when it is malformed (the road lint says why). */
+export function readConnector(v: unknown): BakedConnector | null {
+  if (!isRecord(v)) return null;
+  const from = readEnd(v['from']);
+  const to = readEnd(v['to']);
+  if (typeof v['id'] !== 'string' || typeof v['road'] !== 'string' || !from || !to) return null;
+  const out: BakedConnector = { id: v['id'], road: v['road'], from, to };
+  const z = v['splitZone'];
+  if (z !== undefined) {
+    if (!isRecord(z)) return null;
+    const { s0, s1, d0, d1 } = z;
+    if (typeof s0 !== 'number' || typeof s1 !== 'number' || typeof d0 !== 'number' || typeof d1 !== 'number')
+      return null;
+    out.splitZone = { s0, s1, d0, d1 };
+  }
+  return out;
 }
 
 export interface BakedNetwork {

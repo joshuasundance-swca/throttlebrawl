@@ -12,10 +12,32 @@
 //     it, so baked positions and curvature agree by construction (the lint checks they do);
 //  4. the one main-road curve is cut into roads at the given lengths, so tangent and curvature
 //     are continuous across the pass-through junctions.
-// Elevation is a base height plus smooth humps over each road's own s (bridge humps; a ramp lip
-// is road-2's), and grade is its exact derivative.
+// Elevation is a base height plus smooth humps and ramp lips over each road's own s, and grade is
+// its exact derivative.
+//
+// Branches (M1 road-2): a main-road piece marked `connector` is a junction's connector road. A
+// branch leaves the `to` end of the road before one such piece and rejoins the `from` end of the
+// road after another. Its curve is a smooth turn, a straight and a smooth turn, solved (Newton, on
+// the turn angle and the straight's length) to start and end offset beside the main road with the
+// main road's heading. Its first and last roads are the two junctions' connector roads, and the
+// compiler writes each junction's lane-level table: main-through rows for every drive lane (both
+// directions) and one row into and out of the branch, the first with the split zone.
 import { atan2, cos, sin, type LaneInfo } from '../core';
 import type { BakedBarrier, BakedFeature, BakedTag } from './types';
+
+/**
+ * A ramp lip baked into the elevation (docs/content-packs.md, "Features"): a kicker rising
+ * `heightM` over `lengthM` with a steepening slope (y = h·u²), then a back that drops to the base
+ * over `backM`. The compiler adds the matching `ramp` feature across the road's width.
+ */
+export interface RampSource {
+  id: string;
+  /** Where the kicker starts, in the road's own s. */
+  s0: number;
+  lengthM: number;
+  heightM: number;
+  backM: number;
+}
 
 /** A smooth hump: zero value and slope at both ends, peak `heightM` at `centreM`. */
 export interface HumpSource {
@@ -31,7 +53,10 @@ export interface RoadSource {
   lengthM?: number;
   speedLimitMps: number;
   surface: string;
+  /** A junction's connector road (on the main list: between the two roads it joins). */
+  connector?: boolean;
   humps: readonly HumpSource[];
+  ramps?: readonly RampSource[];
   /** Tag ranges; an s1 of 'end' means the road's end. */
   tags: readonly (Omit<BakedTag, 's1'> & { s1: number | 'end' })[];
   features: readonly BakedFeature[];
@@ -65,7 +90,34 @@ export interface TrackSource {
   smoothingM: number;
   lanes: readonly LaneInfo[];
   roads: readonly RoadSource[];
+  /** Side roads that split off the main road and rejoin it (road-2's ramp shortcut). */
+  branches?: readonly BranchSource[];
   route: RouteSource;
+}
+
+/** A branch off the main road: it splits at one connector junction and rejoins at another. */
+export interface BranchSource {
+  /**
+   * The main road whose `to` end the branch leaves (the next main road must be a connector), the
+   * lateral offset on that road where the branch centreline starts, the main lane its row names,
+   * and the split zone: the last `lengthM` of the road, between d0 and d1.
+   */
+  leave: {
+    road: string;
+    offsetM: number;
+    lane: string;
+    zone: { lengthM: number; d0: number; d1: number };
+  };
+  /** The main road whose `from` end the branch rejoins (the previous main road must be a connector). */
+  join: { road: string; offsetM: number; lane: string };
+  /** Lengths of the smooth turns at the branch's two ends, metres. */
+  turnsM: readonly [number, number];
+  lanes: readonly LaneInfo[];
+  /**
+   * Roads cut from the branch curve, in order; the first and last are the junctions' connector
+   * roads. Every road but the last needs `lengthM`; the last takes what is left.
+   */
+  roads: readonly RoadSource[];
 }
 
 const FINE_STEP = 0.5; // metres between fine heading samples
@@ -240,11 +292,146 @@ export function humpProfile(humps: readonly HumpSource[], s: number): [number, n
   return [y, g];
 }
 
+/** Height of the ramps at s, and its slope (docs on RampSource). */
+export function rampProfile(ramps: readonly RampSource[], s: number): [number, number] {
+  let y = 0;
+  let g = 0;
+  for (const r of ramps) {
+    const lip = r.s0 + r.lengthM;
+    if (s > r.s0 && s <= lip) {
+      const u = (s - r.s0) / r.lengthM;
+      y += r.heightM * u * u;
+      g += (2 * r.heightM * u) / r.lengthM;
+    } else if (s > lip && s < lip + r.backM) {
+      const v = 1 - (s - lip) / r.backM;
+      y += r.heightM * v * v;
+      g -= (2 * r.heightM * v) / r.backM;
+    }
+  }
+  return [y, g];
+}
+
+/** The ramp feature a RampSource marks: its whole range, across the road's lanes. */
+function rampFeature(r: RampSource, lanes: readonly LaneInfo[]): BakedFeature {
+  let d0 = 0;
+  let d1 = 0;
+  for (const l of lanes) {
+    d0 = Math.min(d0, l.dCenterM - l.widthM / 2);
+    d1 = Math.max(d1, l.dCenterM + l.widthM / 2);
+  }
+  return { kind: 'ramp', id: r.id, s0: r.s0, s1: r.s0 + r.lengthM + r.backM, d0, d1 };
+}
+
+/** The smoothstep integral 10t³ − 15t⁴ + 6t⁵ (0→1 with zero slope and curvature at both ends). */
+const easeTurn = (t: number): number => t * t * t * (10 - 15 * t + 6 * t * t);
+/** Its derivative, 30t²(1 − t)², which integrates to 1 over 0..1. */
+const easeRate = (t: number): number => 30 * t * t * (1 - t) * (1 - t);
+
+interface BranchShape {
+  h0: number;
+  phi1: number;
+  phi2: number;
+  l1: number;
+  ls: number;
+  l2: number;
+}
+
+function headingAt(b: BranchShape, u: number): number {
+  if (u <= b.l1) return b.h0 + b.phi1 * easeTurn(u / b.l1);
+  if (u <= b.l1 + b.ls) return b.h0 + b.phi1;
+  const t = (u - b.l1 - b.ls) / b.l2;
+  return b.h0 + b.phi1 + b.phi2 * easeTurn(t > 1 ? 1 : t);
+}
+
+function kappaAt(b: BranchShape, u: number): number {
+  if (u <= b.l1) return (b.phi1 / b.l1) * easeRate(u / b.l1);
+  if (u <= b.l1 + b.ls) return 0;
+  const t = (u - b.l1 - b.ls) / b.l2;
+  return (b.phi2 / b.l2) * easeRate(t > 1 ? 1 : t);
+}
+
+/** Integrates a branch shape from (x0, z0) in n midpoint steps; returns the end point. */
+function integrateBranch(b: BranchShape, x0: number, z0: number, n: number): [number, number] {
+  const du = (b.l1 + b.ls + b.l2) / n;
+  let x = x0;
+  let z = z0;
+  for (let k = 0; k < n; k++) {
+    const h = headingAt(b, (k + 0.5) * du);
+    x += sin(h) * du;
+    z -= cos(h) * du;
+  }
+  return [x, z];
+}
+
+/**
+ * The branch curve from (x0, z0) heading h0 to (x1, z1) heading h1: a smooth turn of l1 metres, a
+ * straight, and a smooth turn of l2 metres. Newton solves the first turn's angle and the
+ * straight's length so the end lands on the target; the second turn takes the rest of the heading.
+ */
+export function buildBranchCurve(
+  x0: number,
+  z0: number,
+  h0: number,
+  x1: number,
+  z1: number,
+  h1: number,
+  l1: number,
+  l2: number,
+): Centreline {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const chord = Math.sqrt(dx * dx + dz * dz);
+  let hc = atan2(dx, -dz);
+  while (hc - h0 > 3.141592653589793) hc -= 6.283185307179586;
+  while (hc - h0 < -3.141592653589793) hc += 6.283185307179586;
+  const n = Math.max(8, Math.round(chord / FINE_STEP));
+  const shape = (phi1: number, ls: number): BranchShape => ({ h0, phi1, phi2: h1 - h0 - phi1, l1, ls, l2 });
+  let phi1 = hc - h0;
+  let ls = chord - (l1 + l2) / 2;
+  for (let iter = 0; iter < 40; iter++) {
+    const [ex, ez] = integrateBranch(shape(phi1, ls), x0, z0, n);
+    const rx = ex - x1;
+    const rz = ez - z1;
+    if (rx * rx + rz * rz < 1e-18) break;
+    const ep = 1e-7;
+    const el = 1e-5;
+    const [px, pz] = integrateBranch(shape(phi1 + ep, ls), x0, z0, n);
+    const [lx, lz] = integrateBranch(shape(phi1, ls + el), x0, z0, n);
+    const a = (px - ex) / ep;
+    const c = (pz - ez) / ep;
+    const bb = (lx - ex) / el;
+    const d = (lz - ez) / el;
+    const det = a * d - bb * c;
+    if (det === 0) throw new Error('branch: the turn and straight cannot reach the target');
+    phi1 -= (d * rx - bb * rz) / det;
+    ls -= (-c * rx + a * rz) / det;
+  }
+  if (!(ls > 0)) throw new Error(`branch: no room for a straight (${ls} m); shorten the turns`);
+  const b = shape(phi1, ls);
+  const [ex, ez] = integrateBranch(b, x0, z0, n);
+  const miss = Math.sqrt((ex - x1) * (ex - x1) + (ez - z1) * (ez - z1));
+  if (miss > 1e-3) throw new Error(`branch: the curve misses its target by ${miss} m`);
+  const length = l1 + ls + l2;
+  const du = length / n;
+  const x: number[] = [x0];
+  const z: number[] = [z0];
+  const heading: number[] = [h0];
+  const kappa: number[] = [kappaAt(b, 0)];
+  for (let k = 1; k <= n; k++) {
+    const h = headingAt(b, (k - 0.5) * du);
+    x.push((x[k - 1] as number) + sin(h) * du);
+    z.push((z[k - 1] as number) - cos(h) * du);
+    heading.push(headingAt(b, k * du));
+    kappa.push(kappaAt(b, k * du));
+  }
+  return { step: du, length, x, z, heading, kappa };
+}
+
 const provenance = (createdAt: string) => ({
   origin: 'agent',
   author: 'agent',
   createdAt,
-  tool: { name: 'tools/road/bake.mjs', version: '1.0.0' },
+  tool: { name: 'tools/road/bake.mjs', version: '1.1.0' },
   sources: [] as string[],
 });
 
@@ -254,39 +441,193 @@ export interface CompiledTrack {
   route: Record<string, unknown> & { id: string };
 }
 
+interface Cut {
+  road: RoadSource;
+  line: Centreline;
+  start: number;
+  length: number;
+  lanes: readonly LaneInfo[];
+  from: string;
+  to: string;
+}
+
+/**
+ * Cuts a curve into consecutive roads. One road may leave out `lengthM` and take whatever the
+ * others leave; if every road but the last gives one, the last takes the rest.
+ */
+function cutCurve(line: Centreline, roads: readonly RoadSource[], lanes: readonly LaneInfo[]): Cut[] {
+  const open = roads.filter((r) => r.lengthM === undefined);
+  const fixed = roads.reduce((sum, r) => sum + (r.lengthM ?? 0), 0);
+  const cuts: Cut[] = [];
+  let at = 0;
+  roads.forEach((road, i) => {
+    const isLast = i === roads.length - 1;
+    const takesRest = open.length === 0 ? isLast : road.lengthM === undefined;
+    const length =
+      open.length === 0 && isLast ? line.length - at : takesRest ? line.length - fixed : (road.lengthM ?? 0);
+    if (open.length > 1) throw new Error(`only one road may leave out lengthM (${road.id})`);
+    if (!(length > 0) || at + length > line.length + 1e-9) {
+      throw new Error(`road ${road.id}: length ${length} does not fit the ${line.length} m curve`);
+    }
+    cuts.push({ road, line, start: at, length, lanes, from: '', to: '' });
+    at += length;
+  });
+  return cuts;
+}
+
 /** Compiles a track into the three kinds of baked files, as plain JSON-ready objects. */
 export function compileTrack(src: TrackSource): CompiledTrack {
   const line = buildCentreline(src);
   const netId = src.network.id;
-  // Cut the main curve into roads.
-  const cuts: { road: RoadSource; start: number; length: number }[] = [];
-  let at = 0;
-  src.roads.forEach((road, i) => {
-    const isLast = i === src.roads.length - 1;
-    const length = isLast ? line.length - at : (road.lengthM ?? 0);
-    if (!(length > 0) || at + length > line.length + 1e-9) {
-      throw new Error(`road ${road.id}: length ${length} does not fit the ${line.length} m curve`);
-    }
-    cuts.push({ road, start: at, length });
-    at += length;
-  });
+  const main = cutCurve(line, src.roads, src.lanes);
+  if (main.length === 0) throw new Error('a track needs at least one road');
 
-  // Humps are zero at road ends, so every junction sits at the base elevation.
-  const junctionAt = (s: number, n: number) => ({
-    id: `j-${netId}-${n}`,
-    x: r4(sampleAt(line.x, line.step, s)),
+  type JunctionOut = {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    ends: { road: string; end: 'from' | 'to' }[];
+    connectors: Record<string, unknown>[];
+  };
+  const junctions: JunctionOut[] = [];
+  const point = (l: Centreline, s: number) => ({
+    x: r4(sampleAt(l.x, l.step, s)),
     y: r4(src.baseElevationM),
-    z: r4(sampleAt(line.z, line.step, s)),
+    z: r4(sampleAt(l.z, l.step, s)),
   });
+  const newJunction = (at: { x: number; y: number; z: number }): JunctionOut => {
+    const j = { id: `j-${netId}-${junctions.length}`, ...at, ends: [], connectors: [] };
+    junctions.push(j);
+    return j;
+  };
+  // Main-road junctions, in order: a connector piece and the roads either side share one junction
+  // (at the piece's middle); every other boundary is a pass-through join. Humps and ramps are zero
+  // at road ends, so every junction sits at the base elevation.
+  const junctionOfConnector = new Map<number, JunctionOut>();
+  const first = main[0] as Cut;
+  const start = newJunction(point(line, 0));
+  start.ends.push({ road: first.road.id, end: 'from' });
+  first.from = start.id;
+  for (let i = 0; i < main.length; i++) {
+    const cut = main[i] as Cut;
+    const next = main[i + 1];
+    if (cut.road.connector) {
+      const before = main[i - 1];
+      if (!before || !next || before.road.connector || next.road.connector) {
+        throw new Error(`connector ${cut.road.id} must sit between two ordinary roads`);
+      }
+      const j = newJunction(point(line, cut.start + cut.length / 2));
+      junctionOfConnector.set(i, j);
+      before.to = j.id;
+      cut.from = j.id;
+      cut.to = j.id;
+      next.from = j.id;
+      j.ends.push({ road: before.road.id, end: 'to' }, { road: next.road.id, end: 'from' });
+      for (const lane of cut.lanes) {
+        if (lane.kind !== 'drive') continue;
+        j.connectors.push({
+          id: `cx-${cut.road.id}-${lane.id.toLowerCase()}`,
+          road: cut.road.id,
+          from: { road: before.road.id, end: 'to', lane: lane.id },
+          to: { road: next.road.id, end: 'from', lane: lane.id },
+        });
+      }
+      continue;
+    }
+    if (next && !next.road.connector) {
+      const j = newJunction(point(line, cut.start + cut.length));
+      j.ends.push({ road: cut.road.id, end: 'to' }, { road: next.road.id, end: 'from' });
+      cut.to = j.id;
+      next.from = j.id;
+    }
+  }
+  const lastCut = main[main.length - 1] as Cut;
+  const endJ = newJunction(point(line, lastCut.start + lastCut.length));
+  endJ.ends.push({ road: lastCut.road.id, end: 'to' });
+  lastCut.to = endJ.id;
 
-  const junctions = cuts.map((c, n) => junctionAt(c.start, n));
-  const endCut = cuts[cuts.length - 1];
-  if (!endCut) throw new Error('a track needs at least one road');
-  junctions.push(junctionAt(endCut.start + endCut.length, cuts.length));
+  // Branches: the curve, its roads, and their rows in the two junctions' tables.
+  const branchCuts: Cut[] = [];
+  const offsetPoint = (s: number, offset: number): [number, number, number] => {
+    const h = sampleAt(line.heading, line.step, s);
+    // The right of heading h (0 = north, + toward east) is (cos h, sin h) in (x, z).
+    return [
+      sampleAt(line.x, line.step, s) + offset * cos(h),
+      sampleAt(line.z, line.step, s) + offset * sin(h),
+      h,
+    ];
+  };
+  for (const br of src.branches ?? []) {
+    const ai = main.findIndex((c) => c.road.id === br.leave.road);
+    const bi = main.findIndex((c) => c.road.id === br.join.road);
+    const a = main[ai];
+    const b = main[bi];
+    const jSplit = junctionOfConnector.get(ai + 1);
+    const jMerge = junctionOfConnector.get(bi - 1);
+    if (!a || !b || !jSplit || !jMerge || bi <= ai) {
+      throw new Error(
+        `branch ${br.roads[0]?.id}: leave and join need a connector piece after and before them`,
+      );
+    }
+    if (br.roads.length < 3) throw new Error('a branch needs a connector, a road and a connector');
+    const sA = a.start + a.length;
+    const sB = b.start;
+    const [x0, z0, h0] = offsetPoint(sA, br.leave.offsetM);
+    const [x1, z1, h1] = offsetPoint(sB, br.join.offsetM);
+    const curve = buildBranchCurve(x0, z0, h0, x1, z1, h1, br.turnsM[0], br.turnsM[1]);
+    const cuts = cutCurve(curve, br.roads, br.lanes);
+    const kIn = cuts[0] as Cut;
+    const kOut = cuts[cuts.length - 1] as Cut;
+    const firstRoad = cuts[1] as Cut;
+    const lastRoad = cuts[cuts.length - 2] as Cut;
+    const lane = (br.lanes.find((l) => l.kind === 'shortcut') ?? br.lanes[0])?.id ?? '';
+    kIn.from = jSplit.id;
+    kIn.to = jSplit.id;
+    firstRoad.from = jSplit.id;
+    kOut.from = jMerge.id;
+    kOut.to = jMerge.id;
+    lastRoad.to = jMerge.id;
+    for (let i = 1; i < cuts.length - 2; i++) {
+      const c = cuts[i] as Cut;
+      const n = cuts[i + 1] as Cut;
+      const j = newJunction(point(curve, c.start + c.length));
+      j.ends.push({ road: c.road.id, end: 'to' }, { road: n.road.id, end: 'from' });
+      c.to = j.id;
+      n.from = j.id;
+    }
+    jSplit.ends.push({ road: firstRoad.road.id, end: 'from' });
+    jSplit.connectors.push({
+      id: `cx-${kIn.road.id}`,
+      road: kIn.road.id,
+      from: { road: a.road.id, end: 'to', lane: br.leave.lane },
+      to: { road: firstRoad.road.id, end: 'from', lane },
+      splitZone: {
+        s0: r4(a.length - br.leave.zone.lengthM),
+        s1: a.length,
+        d0: br.leave.zone.d0,
+        d1: br.leave.zone.d1,
+      },
+    });
+    jMerge.ends.push({ road: lastRoad.road.id, end: 'to' });
+    jMerge.connectors.push({
+      id: `cx-${kOut.road.id}`,
+      road: kOut.road.id,
+      from: { road: lastRoad.road.id, end: 'to', lane },
+      to: { road: b.road.id, end: 'from', lane: br.join.lane },
+    });
+    branchCuts.push(...cuts);
+  }
 
-  const roads = cuts.map(({ road, start, length }, n) => {
+  const roads = [...main, ...branchCuts].map((cut) => {
+    const { road, line: l, start, length } = cut;
     const intervals = Math.max(1, Math.round(length / src.spacingM));
     const spacing = length / intervals;
+    // A ramp's lip lands on a sample, so the sampled surface keeps its full height and its kink.
+    const ramps = (road.ramps ?? []).map((r) => {
+      const lip = Math.round((r.s0 + r.lengthM) / spacing) * spacing;
+      return { ...r, s0: r4(lip - r.lengthM) };
+    });
     const cols = {
       x: [] as number[],
       y: [] as number[],
@@ -299,29 +640,31 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       const sLocal = i === intervals ? length : i * spacing;
       const s = start + sLocal;
       const [hy, hg] = humpProfile(road.humps, sLocal);
-      cols.x.push(r4(sampleAt(line.x, line.step, s)));
-      cols.y.push(r4(src.baseElevationM + hy));
-      cols.z.push(r4(sampleAt(line.z, line.step, s)));
-      cols.kappa.push(sig7(sampleAt(line.kappa, line.step, s)));
-      cols.grade.push(sig7(hg));
+      const [ry, rg] = rampProfile(ramps, sLocal);
+      cols.x.push(r4(sampleAt(l.x, l.step, s)));
+      cols.y.push(r4(src.baseElevationM + hy + ry));
+      cols.z.push(r4(sampleAt(l.z, l.step, s)));
+      cols.kappa.push(sig7(sampleAt(l.kappa, l.step, s)));
+      cols.grade.push(sig7(hg + rg));
       cols.bankRad.push(0);
     }
     const end = (v: number | 'end'): number => (v === 'end' ? length : v);
+    const features = [...road.features, ...ramps.map((r) => rampFeature(r, cut.lanes))];
     return {
       type: 'road',
       id: road.id,
       name: road.name,
       realName: null,
       network: netId,
-      from: `j-${netId}-${n}`,
-      to: `j-${netId}-${n + 1}`,
+      from: cut.from,
+      to: cut.to,
       lengthM: length,
       sampleSpacingM: spacing,
       speedLimitMps: road.speedLimitMps,
       surface: road.surface,
-      laneSections: [{ s0: 0, lanes: src.lanes }],
+      laneSections: [{ s0: 0, lanes: cut.lanes.map((l) => ({ ...l })) }],
       tags: road.tags.map((t) => ({ ...t, s1: end(t.s1) })),
-      features: road.features,
+      features,
       barriers: road.barriers.map((b) => ({ ...b, s1: end(b.s1) })),
       samples: { encoding: 'json-columns', columns: Object.keys(cols), data: cols },
       provenance: provenance(src.createdAt),
@@ -339,27 +682,15 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     region: src.network.region,
     crs: src.network.crs,
     chunking: { kind: 'none' },
-    roads: cuts.map((c) => c.road.id),
-    junctions: junctions.map((j, i) => {
-      const prev = cuts[i - 1];
-      const next = cuts[i];
-      return {
-        ...j,
-        ends: [
-          ...(prev ? [{ road: prev.road.id, end: 'to' }] : []),
-          ...(next ? [{ road: next.road.id, end: 'from' }] : []),
-        ],
-        connectors: [],
-        control: 'none',
-      };
-    }),
+    roads: roads.map((r) => r.id),
+    junctions: junctions.map((j) => ({ ...j, control: 'none' })),
     provenance: provenance(src.createdAt),
     meta: { status: 'live', notes: src.network.notes },
   };
 
   const lengthOf = (id: string): number => {
-    const c = cuts.find((k) => k.road.id === id);
-    if (!c) throw new Error(`route ${src.route.id}: no road ${id}`);
+    const c = main.find((k) => k.road.id === id);
+    if (!c) throw new Error(`route ${src.route.id}: no main road ${id}`);
     return c.length;
   };
   const r = src.route;
@@ -370,8 +701,8 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     network: netId,
     start: r.start,
     finish: { road: r.finish.road, s: r4(finishS) },
-    mainPath: cuts.map((c) => c.road.id),
-    allowedRoads: cuts.map((c) => c.road.id),
+    mainPath: main.filter((c) => !c.road.connector).map((c) => c.road.id),
+    allowedRoads: roads.map((x) => x.id),
     checkpoints: r.checkpoints,
     closed: false,
     startGrid: r.startGrid,

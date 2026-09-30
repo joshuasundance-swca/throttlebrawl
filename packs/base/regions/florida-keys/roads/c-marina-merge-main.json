@@ -1,0 +1,60 @@
+{
+  "type": "road",
+  "id": "c-marina-merge-main",
+  "name": "Marina merge",
+  "realName": null,
+  "network": "keys-m1",
+  "from": "j-keys-m1-2",
+  "to": "j-keys-m1-2",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        { "id": "L0", "dCenterM": -4.15, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -1.7, "widthM": 3.4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 1.7, "widthM": 3.4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.15, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+      ]
+    }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "palms" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -109.8374, -109.9539, -110.0683, -110.1803, -110.2896, -110.396, -110.4993, -110.5993, -110.6957,
+        -110.7884, -110.877, -110.9614, -111.0413, -111.1165, -111.1867, -111.2517
+      ],
+      "y": [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+      "z": [
+        -1109.1688, -1111.1654, -1113.1621, -1115.159, -1117.156, -1119.1532, -1121.1505, -1123.148,
+        -1125.1457, -1127.1435, -1129.1416, -1131.1398, -1133.1382, -1135.1368, -1137.1355, -1139.1345
+      ],
+      "kappa": [
+        0.0004945195, 0.0005506608, 0.0006069193, 0.0006633135, 0.0007198615, 0.00077658, 0.0008334858,
+        0.0008905965, 0.0009479278, 0.001005495, 0.001063314, 0.001121399, 0.001179765, 0.001238425,
+        0.001297391, 0.001356677
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/keys-m1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

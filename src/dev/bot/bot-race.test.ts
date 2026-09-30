@@ -54,7 +54,7 @@ describe('dev/bot: the stub bot races the skeleton track (M1 app-1 acceptance, h
     );
     expect(run.sim.isOver()).toBe(true);
     expect(snap.race.finishOrder).toContain(run.playerId);
-    expect(run.edges).toEqual([0, 1, 2]); // two junction crossings
+    expect(run.edges).toEqual([0, 1, 2, 3, 4, 5]); // the main path (road-2: with connector roads)
     expect(run.invalid).toBe(0);
     expect(run.maxOffLane).toBeLessThan(1.7); // stays in its lane
   });

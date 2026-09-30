@@ -7,12 +7,40 @@
 //   bank positive when the surface tilts down toward positive d.
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
 import { cos, sin, type LaneInfo } from '../core';
-import type { BakedBarrier, BakedFeature, BakedNetworkBundle, BakedRoad, BakedTag } from './types';
+import {
+  readConnector,
+  type BakedBarrier,
+  type BakedFeature,
+  type BakedNetworkBundle,
+  type BakedRoad,
+  type BakedSplitZone,
+  type BakedTag,
+} from './types';
 
 /** How a mover leaving one edge enters the next: at the next edge's `from` or `to` end. */
 export interface EdgeLink {
   edge: number;
   entersAt: 'from' | 'to';
+  /**
+   * The lateral shift across the join: the next edge's d = σ·d + dShift, where σ is −1 when the
+   * join flips orientation (to-to or from-from) and +1 otherwise. 0 (or absent) at pass-through
+   * joins; measured from the geometry where a connector road starts off the centreline.
+   */
+  dShift?: number;
+  /** A split zone on the edge being left: a mover whose d is inside it takes this link. */
+  splitZone?: BakedSplitZone;
+  /** The connector row id(s) this link comes from, for debugging and tools. */
+  connector?: string;
+}
+
+/** A split zone as a query result: where on `edge` a rider's d picks the connector `toEdge`. */
+export interface SplitZoneInfo extends BakedSplitZone {
+  /** The edge the zone is on, and the end it leads out of. */
+  edge: number;
+  end: 'from' | 'to';
+  /** The connector edge the zone picks. */
+  toEdge: number;
+  connector: string;
 }
 
 export interface Edge {
@@ -42,10 +70,19 @@ export interface Edge {
   barriers: readonly BakedBarrier[];
   fromJunction: string;
   toJunction: string;
-  /** Leaving through the `to` end (s > length). Null at a dead end. */
+  /**
+   * Leaving through the `to` end (s > length): the default way on, the one a mover outside every
+   * split zone takes. Null at a dead end.
+   */
   next: EdgeLink | null;
-  /** Leaving through the `from` end (s < 0). Null at a dead end. */
+  /** Leaving through the `from` end (s < 0): the default way on. Null at a dead end. */
   prev: EdgeLink | null;
+  /** Every way on through the `to` end: the default first, then split-zone links. */
+  nextLinks: readonly EdgeLink[];
+  /** Every way on through the `from` end. */
+  prevLinks: readonly EdgeLink[];
+  /** Whether this edge is a junction's connector road. */
+  isConnector: boolean;
 }
 
 /** A mover's road position. Plain mutable data, so sim state can hold it directly. */
@@ -74,12 +111,17 @@ export interface RoadFrame extends WorldPoint {
 
 export type AdvanceResult = 'ok' | 'deadEnd';
 
-/** An edge near an edge end. This edge's s = sOffset + sSign · the neighbour's s. */
+/**
+ * An edge near an edge end. This edge's s = sOffset + sSign · the neighbour's s, and its
+ * d = sSign · the neighbour's d + dOffset.
+ */
 export interface RoadNeighbour {
   edge: number;
   sOffset: number;
   /** −1 when the two edges are joined the other way round (to-to or from-from). */
   sSign: 1 | -1;
+  /** 0 at pass-through joins; nonzero where a connector road starts off the centreline. */
+  dOffset: number;
 }
 
 /** Rates of a mover on a curved road (per second), from curvedRoadRates. */
@@ -101,9 +143,16 @@ export interface RoadNetwork {
   surfaceHeight(edge: number, s: number, d: number): number;
   lanesAt(edge: number, s: number): readonly LaneInfo[];
   kappaAt(edge: number, s: number): number;
+  /** Every edge a mover can enter through one end: the default way on first, then split links. */
   nextEdges(edge: number, end: 'from' | 'to'): readonly EdgeLink[];
-  /** Carries an s that ran past an edge end into the next edge. Mutates pos. */
+  /**
+   * Carries an s that ran past an edge end into the next edge. Mutates pos. At a split, a mover
+   * whose d is inside a connector's split zone takes that connector; any other takes the default
+   * way on. d maps across the join (EdgeLink.dShift), so the world position is continuous.
+   */
   advance(pos: RoadPos): AdvanceResult;
+  /** Every split zone in the network, in edge order. */
+  splitZones(): readonly SplitZoneInfo[];
   /** Nearest road position to a world point, searching the hint edge and its neighbours. */
   project(x: number, z: number, hintEdge?: number): RoadPos;
   /** Edges within range of s across an edge end, with the mapping of their s into this edge's. */
@@ -167,10 +216,24 @@ function buildEdge(road: BakedRoad, index: number): Edge {
   const tx = new Float64Array(count);
   const tz = new Float64Array(count);
   for (let i = 0; i < count; i++) {
-    const a = i === 0 ? 0 : i - 1;
-    const b = i === count - 1 ? count - 1 : i + 1;
-    const dx = (x[b] ?? 0) - (x[a] ?? 0);
-    const dz = (z[b] ?? 0) - (z[a] ?? 0);
+    let dx: number;
+    let dz: number;
+    if (count >= 3 && (i === 0 || i === count - 1)) {
+      // Ends: the second-order one-sided difference (−3p0 + 4p1 − p2), so the end tangent is as
+      // true on a bend as the centred ones inside. Road ends meet at junctions, and a one-sided
+      // chord there would tilt the frame by kappa × half a spacing: centimetres at the road edge.
+      const k = i === 0 ? 1 : -1;
+      const p0 = i;
+      const p1 = i + k;
+      const p2 = i + 2 * k;
+      dx = k * (-3 * (x[p0] ?? 0) + 4 * (x[p1] ?? 0) - (x[p2] ?? 0));
+      dz = k * (-3 * (z[p0] ?? 0) + 4 * (z[p1] ?? 0) - (z[p2] ?? 0));
+    } else {
+      const a = i === 0 ? 0 : i - 1;
+      const b = i === count - 1 ? count - 1 : i + 1;
+      dx = (x[b] ?? 0) - (x[a] ?? 0);
+      dz = (z[b] ?? 0) - (z[a] ?? 0);
+    }
     const len = Math.sqrt(dx * dx + dz * dz) || 1;
     tx[i] = dx / len;
     tz[i] = dz / len;
@@ -208,16 +271,22 @@ function buildEdge(road: BakedRoad, index: number): Edge {
     toJunction: road.to,
     next: null,
     prev: null,
+    nextLinks: [],
+    prevLinks: [],
+    isConnector: false,
   };
 }
+
+/** Mutable view used while linking. */
+type LinkingEdge = Edge & { nextLinks: EdgeLink[]; prevLinks: EdgeLink[]; isConnector: boolean };
 
 /** Builds the network. Road ids are numbered in the order of the network file's `roads` list. */
 export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
   const byId = new Map(bundle.roads.map((r) => [r.id, r]));
-  const edges: Edge[] = bundle.network.roads.map((id, i) => {
+  const edges: LinkingEdge[] = bundle.network.roads.map((id, i) => {
     const road = byId.get(id);
     if (!road) throw new Error(`network ${bundle.network.id}: road ${id} is missing`);
-    return buildEdge(road, i);
+    return buildEdge(road, i) as LinkingEdge;
   });
   const indexOf = new Map(edges.map((e) => [e.id, e.index]));
   const edgeIndex = (id: string): number => {
@@ -226,9 +295,19 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     return i;
   };
 
-  // Pass-through junctions: exactly two road ends and no connectors. Lanes carry over by id
-  // (M1 roads share one lane layout). Junctions with connectors (splits and merges) are road-1
-  // and road-2's; until then their ends stay unlinked, like dead ends.
+  const addLink = (from: LinkingEdge, end: 'from' | 'to', l: EdgeLink) => {
+    const list = end === 'to' ? from.nextLinks : from.prevLinks;
+    const same = list.find((o) => o.edge === l.edge && o.entersAt === l.entersAt);
+    if (!same) {
+      list.push(l);
+      return;
+    }
+    if (l.connector) same.connector = same.connector ? `${same.connector}+${l.connector}` : l.connector;
+    if (l.splitZone && !same.splitZone) same.splitZone = l.splitZone;
+  };
+
+  // Pass-through junctions: exactly two road ends and no connectors. The two ends join directly,
+  // lanes carry over by id and d carries over unchanged (dShift 0).
   for (const j of bundle.network.junctions) {
     if (j.ends.length !== 2 || j.connectors.length > 0) continue;
     const [a, b] = j.ends;
@@ -236,13 +315,74 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     const ea = edges[edgeIndex(a.road)];
     const eb = edges[edgeIndex(b.road)];
     if (!ea || !eb) continue;
-    const link = (from: Edge, end: 'from' | 'to', to: Edge, toEnd: 'from' | 'to') => {
-      const l: EdgeLink = { edge: to.index, entersAt: toEnd };
-      if (end === 'to') from.next = l;
-      else from.prev = l;
+    addLink(ea, a.end, { edge: eb.index, entersAt: b.end });
+    addLink(eb, b.end, { edge: ea.index, entersAt: a.end });
+  }
+
+  // Junctions with connectors (road-2): each row joins its `from` road end to the connector road's
+  // `from` end, and the connector's `to` end to its `to` road end. d maps by the geometry: the
+  // lateral offset of one road's end point in the other's end frame (+ - * / only).
+  const endFrame = (e: Edge, end: 'from' | 'to') => {
+    const i = end === 'from' ? 0 : e.count - 1;
+    return { x: e.x[i] ?? 0, z: e.z[i] ?? 0, tx: e.tx[i] ?? 1, tz: e.tz[i] ?? 0 };
+  };
+  const join = (
+    a: LinkingEdge,
+    aEnd: 'from' | 'to',
+    b: LinkingEdge,
+    bEnd: 'from' | 'to',
+    extra: Partial<EdgeLink>,
+  ) => {
+    const sigma = aEnd === bEnd ? -1 : 1;
+    const fa = endFrame(a, aEnd);
+    const fb = endFrame(b, bEnd);
+    // Lateral offset of b's end point in a's frame (right normal of (tx, tz) is (−tz, tx)), and back.
+    const dAB = -(fb.x - fa.x) * fa.tz + (fb.z - fa.z) * fa.tx;
+    const dBA = -(fa.x - fb.x) * fb.tz + (fa.z - fb.z) * fb.tx;
+    addLink(a, aEnd, { edge: b.index, entersAt: bEnd, dShift: -sigma * dAB, ...extra });
+    addLink(b, bEnd, {
+      edge: a.index,
+      entersAt: aEnd,
+      dShift: -sigma * dBA,
+      ...(extra.connector ? { connector: extra.connector } : {}),
+    });
+  };
+  for (const j of bundle.network.junctions) {
+    for (const raw of j.connectors) {
+      const row = readConnector(raw);
+      if (!row) continue; // the road lint reports malformed rows
+      const c = edges[edgeIndex(row.road)];
+      const a = edges[edgeIndex(row.from.road)];
+      const b = edges[edgeIndex(row.to.road)];
+      if (!c || !a || !b) continue;
+      c.isConnector = true;
+      join(a, row.from.end, c, 'from', {
+        connector: row.id,
+        ...(row.splitZone ? { splitZone: { ...row.splitZone } } : {}),
+      });
+      join(c, 'to', b, row.to.end, { connector: row.id });
+    }
+  }
+
+  // The default way on through each end: the first link without a split zone, preferring edges
+  // that carry no shortcut lane, then the lowest edge index. Split links follow it.
+  const hasShortcut = (e: Edge | undefined) =>
+    !!e && e.sections.some((sec) => sec.lanes.some((l) => l.kind === 'shortcut'));
+  for (const e of edges) {
+    for (const list of [e.nextLinks, e.prevLinks]) {
+      list.sort(
+        (p, q) =>
+          Number(!!p.splitZone) - Number(!!q.splitZone) ||
+          Number(hasShortcut(edges[p.edge])) - Number(hasShortcut(edges[q.edge])) ||
+          p.edge - q.edge,
+      );
+    }
+    const first = (list: EdgeLink[]) => {
+      const l = list[0];
+      return l && !l.splitZone ? l : null;
     };
-    link(ea, a.end, eb, b.end);
-    link(eb, b.end, ea, a.end);
+    e.next = first(e.nextLinks);
+    e.prev = first(e.prevLinks);
   }
 
   const edgeAt = (edge: number): Edge => {
@@ -308,8 +448,16 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
 
   const nextEdges = (edge: number, end: 'from' | 'to'): readonly EdgeLink[] => {
     const e = edgeAt(edge);
-    const l = end === 'to' ? e.next : e.prev;
-    return l ? [l] : [];
+    return end === 'to' ? e.nextLinks : e.prevLinks;
+  };
+
+  /** The link a mover at lateral d takes out of an edge end: a matching split zone, else the default. */
+  const pickLink = (e: Edge, end: 'from' | 'to', d: number): EdgeLink | null => {
+    for (const l of end === 'to' ? e.nextLinks : e.prevLinks) {
+      const z = l.splitZone;
+      if (z && d >= z.d0 && d <= z.d1) return l;
+    }
+    return end === 'to' ? e.next : e.prev;
   };
 
   const advance = (pos: RoadPos): AdvanceResult => {
@@ -326,7 +474,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
       } else {
         return 'ok';
       }
-      const link = exitEnd === 'to' ? e.next : e.prev;
+      const link = pickLink(e, exitEnd, pos.d);
       if (!link) {
         pos.s = exitEnd === 'to' ? e.length : 0;
         return 'deadEnd';
@@ -339,9 +487,24 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
         pos.d = -pos.d;
         pos.dir = pos.dir === 1 ? -1 : 1;
       }
+      // A connector road that starts off the centreline shifts d, so the world position holds.
+      if (link.dShift) pos.d += link.dShift;
     }
     return 'ok';
   };
+
+  const zones: SplitZoneInfo[] = [];
+  for (const e of edges) {
+    for (const [end, list] of [
+      ['to', e.nextLinks],
+      ['from', e.prevLinks],
+    ] as const) {
+      for (const l of list) {
+        if (!l.splitZone) continue;
+        zones.push({ ...l.splitZone, edge: e.index, end, toEdge: l.edge, connector: l.connector ?? '' });
+      }
+    }
+  }
 
   const projectOnEdge = (e: Edge, x: number, z: number): { s: number; d: number; dist2: number } => {
     let best = 0;
@@ -380,7 +543,8 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     const candidates = new Set<number>();
     if (hintEdge !== undefined && edges[hintEdge]) {
       candidates.add(hintEdge);
-      for (const l of [edgeAt(hintEdge).next, edgeAt(hintEdge).prev]) if (l) candidates.add(l.edge);
+      const h = edgeAt(hintEdge);
+      for (const l of [...h.nextLinks, ...h.prevLinks]) candidates.add(l.edge);
     } else {
       for (const e of edges) candidates.add(e.index);
     }
@@ -399,23 +563,28 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
   const neighbours = (edge: number, s: number, range: number): readonly RoadNeighbour[] => {
     const e = edgeAt(edge);
     const out: RoadNeighbour[] = [];
-    // Pass-through neighbours, either way round. road-2 adds the connector edges at junctions.
-    if (e.next && e.length - s <= range) {
+    // Every edge joined at a near end, either way round, connector roads included. A link's
+    // dShift maps our d into theirs (theirs = σ·ours + dShift), so ours = σ·theirs − σ·dShift.
+    if (e.length - s <= range) {
       // Past our `to` end: entering their `from` end runs with us, their `to` end against us.
-      const other = edgeAt(e.next.edge);
-      out.push(
-        e.next.entersAt === 'from'
-          ? { edge: other.index, sOffset: e.length, sSign: 1 }
-          : { edge: other.index, sOffset: e.length + other.length, sSign: -1 },
-      );
+      for (const l of e.nextLinks) {
+        const other = edgeAt(l.edge);
+        out.push(
+          l.entersAt === 'from'
+            ? { edge: other.index, sOffset: e.length, sSign: 1, dOffset: l.dShift ? -l.dShift : 0 }
+            : { edge: other.index, sOffset: e.length + other.length, sSign: -1, dOffset: l.dShift ?? 0 },
+        );
+      }
     }
-    if (e.prev && s <= range) {
-      const other = edgeAt(e.prev.edge);
-      out.push(
-        e.prev.entersAt === 'to'
-          ? { edge: other.index, sOffset: -other.length, sSign: 1 }
-          : { edge: other.index, sOffset: 0, sSign: -1 },
-      );
+    if (s <= range) {
+      for (const l of e.prevLinks) {
+        const other = edgeAt(l.edge);
+        out.push(
+          l.entersAt === 'to'
+            ? { edge: other.index, sOffset: -other.length, sSign: 1, dOffset: l.dShift ? -l.dShift : 0 }
+            : { edge: other.index, sOffset: 0, sSign: -1, dOffset: l.dShift ?? 0 },
+        );
+      }
     }
     return out;
   };
@@ -449,6 +618,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     kappaAt,
     nextEdges,
     advance,
+    splitZones: () => zones,
     project,
     neighbours,
     featuresOf,
