@@ -220,6 +220,8 @@ interface RiderView {
   weapon: Mesh;
   glint: Mesh;
   lightBar: Mesh;
+  /** The boost flame out of the back of the bike (a child of the body). */
+  flame: Mesh;
   /** The bike standing apart while the rider runs back to it (EntitySnapshot.parkedBike). */
   parked: Mesh;
   /** The bike cartwheeling on its own while the rider tumbles (pivot at its middle). */
@@ -617,12 +619,24 @@ export class EntityViews {
     );
     glint.position.set(0, 0, -0.5);
     weapon.add(glint);
+    weapon.name = 'views-weapon';
+    glint.name = 'views-glint';
     const lightBar = new Mesh(
       this.geometry('lightbar', () => [{ size: [0.5, 0.1, 0.12], at: [0, 0, 0], color: '#ffffff' }]),
       this.look.material('lightbar', { color: LIGHT_RED }),
     );
     lightBar.position.set(0, 1.32, 0.72);
     root.add(body, left, right, kickLeg, lightBar);
+    // The boost flame rides on the body (so the rider's group keeps its five children), pivoting
+    // at the exhaust so its flicker stretches it backward.
+    const flame = new Mesh(
+      this.geometry('flame', () => [{ size: [0.22, 0.22, 0.9], at: [0, 0, 0.45], color: '#ffffff' }]),
+      this.look.material('boost'),
+    );
+    flame.name = 'views-boost-flame';
+    flame.position.set(0, 0.55, 1.05);
+    flame.visible = false;
+    body.add(flame);
     // Its own mesh in the views root (not in the rider's group): it stands still where it was parked.
     const parked = new Mesh(empty, this.material('rider'));
     parked.name = 'views-parked-bike';
@@ -645,6 +659,7 @@ export class EntityViews {
       weapon,
       glint,
       lightBar,
+      flame,
       parked,
       tumbleBike,
       tumbleBikeMesh,
@@ -807,6 +822,10 @@ export class EntityViews {
       view.glint.scale.setScalar(0.8 + 0.7 * Math.abs(Math.sin(time * 18)));
       view.glint.rotation.z = time * 6;
     }
+    // A boost (playtest 1b): a flickering flame out of the back of the bike while it lasts.
+    const boostS = (e as EntitySnapshot & { boostS?: number }).boostS ?? 0;
+    view.flame.visible = boostS > 0 && !detached;
+    if (view.flame.visible) view.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(time * 31)));
     // The law: a light bar flashing red and blue at 4 Hz.
     view.lightBar.visible = scheme.law && !detached;
     if (view.lightBar.visible) {
