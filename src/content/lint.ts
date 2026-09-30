@@ -1,11 +1,11 @@
 // The pack lint (docs/content-packs.md, "Validation", step 2): the checks a single file cannot
 // make. M1 rules: references, ids, public safety, the weapon steal window (in ticks) and tuning
-// keys. Other lanes' rules (the road lane's first) plug in as PackRule hooks, so a new rule never
+// keys; M2 (content-2) adds barks and licences. Other lanes' rules (the road lane's first) plug in as PackRule hooks, so a new rule never
 // edits this file. Runs over already-parsed packs; see parse.ts for the per-file checks.
 import { secondsToTicks, type TuningParamDecl } from '../core';
 import { error, pointer, warning, type Finding } from './findings';
 import type { EntryStatus, ParsedEntry, ParsedPack } from './parse';
-import { VETOABLE_ITEMS, type EntryType } from './schema';
+import { BARK_TRIGGERS, barkFact, VETOABLE_ITEMS, type BarkOp, type EntryType } from './schema';
 
 type Json = Record<string, unknown>;
 type Path = (string | number)[];
@@ -461,6 +461,152 @@ function checkTuning(ctx: LintContext, decls: readonly TuningParamDecl[]): Findi
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Barks: triggers and `when` facts are in the vocabularies, ops and values fit the fact, and the
+// text is short enough to read at speed (docs/content-packs.md, "Validation": Barks). [default]
+
+/** Bubbles must be readable at speed on a phone (docs/content-packs.md, "Line fields"). */
+export const BARK_TEXT_MAX = 80;
+
+const NUMBER_OPS: readonly BarkOp[] = ['gt', 'gte', 'lt', 'lte'];
+
+/** What is wrong with one condition, or null. `soft` problems warn: the line can still play. */
+function conditionProblem(c: Json): Problem | null {
+  const fact = String(c['fact']);
+  const decl = barkFact(fact);
+  if (!decl)
+    return {
+      message: `unknown fact "${fact}" (the vocabulary is in src/content/schema/vocab.ts)`,
+      soft: false,
+    };
+  const op = c['op'] as BarkOp;
+  if (op === 'has') {
+    return { message: `"has" needs a list-valued fact, and "${fact}" is a ${decl.kind}`, soft: false };
+  }
+  if (NUMBER_OPS.includes(op) && decl.kind !== 'number') {
+    return { message: `"${op}" compares numbers, and "${fact}" is a ${decl.kind}`, soft: false };
+  }
+  const values = Array.isArray(c['value']) ? (c['value'] as unknown[]) : [c['value']];
+  for (const v of values) {
+    if (typeof v !== decl.kind) {
+      return { message: `"${fact}" is a ${decl.kind}, so ${JSON.stringify(v)} never matches`, soft: false };
+    }
+    if (decl.values && !decl.values.includes(v as string)) {
+      return {
+        message: `"${String(v)}" is not a value of "${fact}" (one of: ${decl.values.join(', ')})`,
+        soft: false,
+      };
+    }
+    if (decl.range && typeof v === 'number' && (v < decl.range[0] || v > decl.range[1])) {
+      return {
+        message: `${v} is outside "${fact}"'s range ${decl.range[0]}..${decl.range[1]}, so the condition is constant`,
+        soft: true,
+      };
+    }
+  }
+  return null;
+}
+
+function checkBarks(ctx: LintContext): Finding[] {
+  const out: Finding[] = [];
+  const triggers: readonly string[] = BARK_TRIGGERS;
+  for (const e of ctx.entries('bark-set')) {
+    arr(e.data['lines']).forEach((line, i) => {
+      if (!isObj(line) || line['status'] === 'vetoed') return; // a vetoed line is the taste log
+      const trigger = String(line['trigger']);
+      if (!triggers.includes(trigger)) {
+        out.push(
+          error(
+            'barks',
+            e.path,
+            pointer(['lines', i, 'trigger']),
+            `unknown trigger "${trigger}" (the v1 list is in src/content/schema/vocab.ts)`,
+          ),
+        );
+      }
+      arr(line['when']).forEach((c, j) => {
+        const bad = isObj(c) ? conditionProblem(c) : null;
+        if (!bad) return;
+        const ptr = pointer(['lines', i, 'when', j]);
+        out.push(
+          bad.soft ? warning('barks', e.path, ptr, bad.message) : error('barks', e.path, ptr, bad.message),
+        );
+      });
+      const text = typeof line['text'] === 'string' ? line['text'] : '';
+      if (text.length > BARK_TEXT_MAX) {
+        out.push(
+          warning(
+            'barks',
+            e.path,
+            pointer(['lines', i, 'text']),
+            `${text.length} characters; keep bubbles to ${BARK_TEXT_MAX} or fewer so they read at speed`,
+          ),
+        );
+      }
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Licences: a file built from a source under another licence is covered by a licenseRules entry
+// for that licence (docs/content-packs.md, "Validation": Licences, "with the first OSM-derived
+// road"). Public-domain sources need no rule: their credit is a courtesy. [default]
+
+/** Source licences that need no licenseRules entry. [default] */
+export const PUBLIC_DOMAIN_SPDX: readonly string[] = ['LicenseRef-US-Public-Domain', 'CC0-1.0'];
+
+/** A licenseRules path pattern as a RegExp: `*` stays inside one folder, `**` crosses folders. */
+export function pathPattern(glob: string): RegExp {
+  const body = glob
+    .split('**')
+    .map((part) =>
+      part
+        .split('*')
+        .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[^/]*'),
+    )
+    .join('.*');
+  return new RegExp(`^${body}$`);
+}
+
+function checkLicenses(ctx: LintContext): Finding[] {
+  const out: Finding[] = [];
+  for (const pack of ctx.packs) {
+    const rules = (pack.manifest.licenseRules ?? []).map((r) => ({
+      spdx: r.spdx,
+      attribution: r.attribution.trim(),
+      patterns: r.paths.map(pathPattern),
+    }));
+    for (const e of pack.entries) {
+      if (e.status === 'vetoed') continue;
+      const meta = e.data['meta'];
+      const top = isObj(e.data['provenance']) ? e.data['provenance'] : undefined;
+      const provenance = top ?? (isObj(meta) && isObj(meta['provenance']) ? meta['provenance'] : undefined);
+      const base = top ? ['provenance'] : ['meta', 'provenance'];
+      arr(provenance?.['sources']).forEach((src, i) => {
+        const spdx = isObj(src) ? src['spdx'] : undefined;
+        if (typeof spdx !== 'string' || spdx === pack.manifest.license || PUBLIC_DOMAIN_SPDX.includes(spdx))
+          return;
+        const covered = rules.some(
+          (r) => r.spdx === spdx && r.attribution !== '' && r.patterns.some((p) => p.test(e.path)),
+        );
+        if (!covered) {
+          out.push(
+            error(
+              'licenses',
+              e.path,
+              pointer([...base, 'sources', i, 'spdx']),
+              `built from ${spdx} data, but no licenseRules entry in pack.json covers this path with ${spdx} and an attribution`,
+            ),
+          );
+        }
+      });
+    }
+  }
+  return out;
+}
+
 /** The built-in rules' ids and what they check, for the tool's summary. */
 export const BUILT_IN_RULES: readonly { id: string; description: string }[] = [
   { id: 'schema', description: 'strict JSON, the Zod schema for each type, pack format version' },
@@ -469,12 +615,21 @@ export const BUILT_IN_RULES: readonly { id: string; description: string }[] = [
   { id: 'public-safety', description: 'no banned name in display text, authors are roles' },
   { id: 'steal-window', description: 'the steal window sits inside the wind-up, in ticks' },
   { id: 'tuning-keys', description: 'tuning preset keys exist and values are in range' },
+  { id: 'barks', description: 'bark triggers and when-facts are in the vocabularies; text length' },
+  { id: 'licenses', description: 'files built from licensed sources match a licenseRules entry' },
 ];
 
 /** Runs the cross-file rules over parsed packs (all packs at once, so references can cross). */
 export function lintPacks(packs: readonly ParsedPack[], options: LintOptions = {}): Finding[] {
   const ctx = createContext(packs);
-  const out = [...checkIds(ctx), ...checkRefs(ctx), ...checkSafety(ctx), ...checkSteal(ctx)];
+  const out = [
+    ...checkIds(ctx),
+    ...checkRefs(ctx),
+    ...checkSafety(ctx),
+    ...checkSteal(ctx),
+    ...checkBarks(ctx),
+    ...checkLicenses(ctx),
+  ];
   if (options.tuning) out.push(...checkTuning(ctx, options.tuning));
   for (const rule of options.rules ?? []) {
     try {

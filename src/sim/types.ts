@@ -357,6 +357,13 @@ export interface SimTrafficTypeDef {
   widthM: number;
   cruiseMps: number;
   hazard: 'normal' | 'big';
+  /**
+   * How often traffic (or peds) picks this type, relative to the others in its pool: the weight
+   * the event's region file gives the type in `traffic.mix`, `pedestrians` or `animals`; 0 when
+   * the region lists it nowhere, so it is never picked (M2 traffic-3). Absent in hand-built
+   * configs, which means the sim's own category default. buildSimConfig always writes it.
+   */
+  weight?: number;
 }
 
 export interface SimEventDef {

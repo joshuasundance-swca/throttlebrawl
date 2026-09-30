@@ -78,3 +78,110 @@ describe('content schema: types and field lists', () => {
     expect(VETOABLE_ITEMS['bark-set']).toEqual(['lines']);
   });
 });
+
+// M2 content-2: every new field has a passing fixture and a failing one.
+describe('content schema: the M2 formats', () => {
+  const road = (barriers?: unknown) => ({
+    type: 'road',
+    id: 'bridge-hump',
+    network: 'keys-m1',
+    from: 'j-a',
+    to: 'j-b',
+    lengthM: 1200,
+    sampleSpacingM: 2,
+    laneSections: [{ s0: 0, lanes: [{ id: 'R1', dCenterM: 1.7, widthM: 3.4, direction: 1, kind: 'drive' }] }],
+    samples: { encoding: 'json-columns', columns: ['x'], data: { x: [0] } },
+    ...(barriers === undefined ? {} : { barriers }),
+  });
+  const rail = { s0: 0, s1: 1200, side: 'both', kind: 'rail', heightM: 1 };
+  const issues = (type: EntryType, value: unknown) => {
+    const r = ENTRY_SCHEMAS[type].safeParse(value);
+    return r.success ? [] : r.error.issues.map((i) => `${i.path.join('/')}: ${i.message}`);
+  };
+
+  it('accepts a road with no barriers, a rail and a wall', () => {
+    expect(issues('road', road())).toEqual([]);
+    expect(issues('road', road([rail, { ...rail, side: 'left', kind: 'wall', heightM: 0.8 }]))).toEqual([]);
+  });
+
+  it('rejects a barrier with an unknown kind or side, no height, or an empty span', () => {
+    expect(issues('road', road([{ ...rail, kind: 'hedge' }]))).toHaveLength(1);
+    expect(issues('road', road([{ ...rail, side: 'middle' }]))).toHaveLength(1);
+    expect(issues('road', road([{ ...rail, heightM: 0 }]))).toHaveLength(1);
+    expect(issues('road', road([{ ...rail, s0: 500, s1: 500 }]))).toEqual([
+      'barriers/0/s1: s1 must be past s0',
+    ]);
+  });
+
+  const event = (rewards: unknown) => ({
+    type: 'event',
+    id: 'keys-t1-sunburn-sprint',
+    kind: 'classic-race',
+    region: 'florida-keys',
+    timeOfDay: 'golden-hour',
+    lengths: [{ id: 'short', route: 'overseas-sprint-short', laps: 1 }],
+    field: {},
+    cops: { mode: 'every-race' },
+    rules: {},
+    objectives: [{ id: 'podium', kind: 'finish-place', required: true }],
+    rewards,
+  });
+  // The rewards block from the doc's example event.
+  const rewards = {
+    byPlaceCash: [1500, 900, 600, 300, 150],
+    perTakedownCash: 200,
+    perNearMissCash: 25,
+    perAirtimeCash: 40,
+    perOncomingSecondCash: 10,
+    takedownComboScale: 0.5,
+    perStealCash: 60,
+  };
+
+  it('accepts the style cash fields, and leaves them optional', () => {
+    expect(issues('event', event(rewards))).toEqual([]);
+    expect(issues('event', event({ byPlaceCash: [100] }))).toEqual([]);
+  });
+
+  it('rejects negative or fractional style cash', () => {
+    expect(issues('event', event({ ...rewards, perAirtimeCash: -40 }))).toHaveLength(1);
+    expect(issues('event', event({ ...rewards, perOncomingSecondCash: 2.5 }))).toHaveLength(1);
+    expect(issues('event', event({ ...rewards, takedownComboScale: -1 }))).toHaveLength(1);
+  });
+
+  const barks = (line: Record<string, unknown>, defaults: Record<string, unknown> = {}) => ({
+    type: 'bark-set',
+    id: 'kevin-core',
+    defaults: { speaker: 'kevin-from-accounting', ...defaults },
+    lines: [{ id: 'kevin-line', trigger: 'overtaken', target: 'player', text: 'Noted.', ...line }],
+  });
+
+  it("accepts the doc's line fields: when, chance, priority, oncePerCareer, audio and replies", () => {
+    const line = {
+      when: [
+        { fact: 'grudge.speakerTowardTarget', op: 'gte', value: 4 },
+        { fact: 'target.bikeClass', op: 'in', value: ['scooter', 'moped'] },
+        { fact: 'history.lastRace.targetBeatSpeaker', op: 'eq', value: true },
+      ],
+      chance: 0.6,
+      weight: 3,
+      priority: 2,
+      cooldownS: 90,
+      oncePerCareer: true,
+      audioAsset: null,
+      replyTo: 'kevin-other-line',
+    };
+    expect(issues('bark-set', barks(line, { chance: 0.5, priority: 1 }))).toEqual([]);
+  });
+
+  it('rejects a bad op, a list outside "in", a single value for "in", and out-of-range numbers', () => {
+    const when = (c: Record<string, unknown>) => barks({ when: [{ fact: 'race.progress', ...c }] });
+    expect(issues('bark-set', when({ op: 'approx', value: 1 }))).toHaveLength(1);
+    expect(issues('bark-set', when({ op: 'eq', value: [1, 2] }))).toEqual([
+      'lines/0/when/0/value: "in" takes a list of values; every other op takes one value',
+    ]);
+    expect(issues('bark-set', when({ op: 'in', value: 0.5 }))).toHaveLength(1);
+    expect(issues('bark-set', barks({ chance: 1.5 }))).toHaveLength(1);
+    expect(issues('bark-set', barks({ priority: 4 }))).toHaveLength(1);
+    expect(issues('bark-set', barks({}, { chance: -0.1 }))).toHaveLength(1);
+  });
+});

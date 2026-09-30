@@ -13,6 +13,17 @@ export { formatFinding, pointer } from './findings';
 export type { Finding } from './findings';
 export { buildPackIndex } from './pack-index';
 export type { PackIndex, PackIndexFile, PackIndexInput } from './pack-index';
+export {
+  BARK_FACTS,
+  BARK_OPS,
+  BARK_TRIGGERS,
+  barkFact,
+  BIKE_CLASSES,
+  EVENT_KINDS,
+  MODIFIER_KINDS,
+  TIMES_OF_DAY,
+} from './schema';
+export type { BarkFactDecl, BarkOp, BarkTrigger } from './schema';
 export type {
   BarkSet,
   Bike,

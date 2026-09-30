@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { TuningParamDecl } from '../core';
 import { basePackFiles } from './base-pack';
 import { formatFinding, lintPacks, parsePack, type Finding, type PackFile, type PackRule } from './index';
+import { pathPattern } from './lint';
 
 type Json = Record<string, unknown>;
 
@@ -212,6 +213,114 @@ describe('content lint: bark speakers and targets', () => {
       ['warning', '/defaults/speaker'],
       ['warning', '/lines/0/target'],
     ]);
+  });
+});
+
+describe('content lint: bark triggers, facts and text (M2 content-2)', () => {
+  const line = (extra: Json): Record<string, unknown> => ({
+    'barks/probe.json': {
+      type: 'bark-set',
+      id: 'probe',
+      defaults: { speaker: 'deacon-vane' },
+      lines: [{ id: 'probe-1', trigger: 'overtaken', target: 'player', text: 'Move.', ...extra }],
+    },
+  });
+  const barks = (extra: Json, level: Finding['level'] = 'error') =>
+    run(pack(line(extra)))
+      .filter((f) => f.rule === 'barks' && f.level === level)
+      .map((f) => formatFinding(f));
+  const when = (...conds: Json[]) => ({ when: conds });
+
+  it("passes the doc's example conditions and every M2 trigger", () => {
+    const ok = when(
+      { fact: 'grudge.speakerTowardTarget', op: 'gte', value: 4 },
+      { fact: 'history.takedowns.targetOnSpeaker', op: 'gte', value: 1 },
+      { fact: 'target.bikeClass', op: 'in', value: ['scooter', 'moped'] },
+      { fact: 'history.lastRace.targetBeatSpeaker', op: 'eq', value: true },
+      { fact: 'flags.metTheMayor', op: 'neq', value: false },
+      { fact: 'speaker.weapon', op: 'eq', value: 'lead-pipe' },
+    );
+    expect(barks(ok)).toEqual([]);
+    expect(barks(ok, 'warning')).toEqual([]);
+    for (const trigger of ['takedown-into-traffic', 'knocked-down-by-target', 'crash-self', 'near-miss']) {
+      expect(barks({ trigger })).toEqual([]);
+    }
+  });
+
+  it('fails an unknown trigger, and skips a vetoed line (it is the taste log)', () => {
+    expect(barks({ trigger: 'sneeze' })).toEqual([
+      expect.stringMatching(/^barks\/probe\.json \/lines\/0\/trigger: unknown trigger "sneeze"/),
+    ]);
+    expect(barks({ trigger: 'sneeze', status: 'vetoed' })).toEqual([]);
+  });
+
+  it('fails an unknown fact, a mistyped value, a value outside a closed list, and a misfit op', () => {
+    expect(barks(when({ fact: 'target.mood', op: 'eq', value: 'grumpy' }))).toEqual([
+      expect.stringMatching(/\/lines\/0\/when\/0: unknown fact "target\.mood"/),
+    ]);
+    expect(barks(when({ fact: 'race.progress', op: 'eq', value: 'half' }))).toEqual([
+      expect.stringMatching(/"race\.progress" is a number/),
+    ]);
+    expect(barks(when({ fact: 'target.bikeClass', op: 'in', value: ['scooter', 'hovercraft'] }))).toEqual([
+      expect.stringMatching(/"hovercraft" is not a value of "target\.bikeClass"/),
+    ]);
+    expect(barks(when({ fact: 'target.weapon', op: 'gt', value: 'lead-pipe' }))).toEqual([
+      expect.stringMatching(/"gt" compares numbers/),
+    ]);
+    expect(barks(when({ fact: 'speaker.weapon', op: 'has', value: 'lead-pipe' }))).toEqual([
+      expect.stringMatching(/"has" needs a list-valued fact/),
+    ]);
+    expect(barks(when({ fact: 'flags.', op: 'eq', value: true }))).toHaveLength(1);
+  });
+
+  it('warns, without failing, on a number outside the fact range and on long text', () => {
+    const outOfRange = when({ fact: 'grudge.speakerTowardTarget', op: 'gte', value: 11 });
+    expect(barks(outOfRange)).toEqual([]);
+    expect(barks(outOfRange, 'warning')).toEqual([expect.stringMatching(/11 is outside .*0\.\.10/)]);
+    expect(barks({ text: 'x'.repeat(80) }, 'warning')).toEqual([]);
+    expect(barks({ text: 'x'.repeat(81) }, 'warning')).toEqual([
+      expect.stringMatching(/\/lines\/0\/text: 81 characters/),
+    ]);
+  });
+});
+
+describe('content lint: licences (M2 content-2)', () => {
+  const osmRoad = 'regions/florida-keys/roads/osm-bahia-honda-bridge.json';
+  const licences = (files: PackFile[]) => errors(files, 'licenses');
+
+  it('passes the real pack, whose OSM roads match the ODbL rule', () => {
+    expect(basePackFiles().some((f) => f.path === osmRoad)).toBe(true);
+    expect(licences(pack())).toEqual([]);
+  });
+
+  it('fails an OSM-built file that no ODbL rule covers, or whose rule has no attribution', () => {
+    const noRules = pack({}, { 'pack.json': (j) => delete j['licenseRules'] });
+    expect(licences(noRules)).toContainEqual(
+      expect.stringMatching(
+        /osm-bahia-honda-bridge\.json \/provenance\/sources\/0\/spdx: built from ODbL-1\.0/,
+      ),
+    );
+    const blank = pack({}, { 'pack.json': (j) => ((j['licenseRules'] as Json[])[0]!['attribution'] = ' ') });
+    expect(licences(blank).length).toBeGreaterThan(0);
+  });
+
+  it('fails a hand-named file built from OSM data outside the osm- prefix, and not a public-domain one', () => {
+    const src = (spdx: string) => (j: Json) =>
+      (j['provenance'] = { origin: 'human', author: 'agent', sources: [{ name: 'x', spdx }] });
+    const road = 'regions/florida-keys/roads/m1-marina-run.json';
+    expect(licences(pack({}, { [road]: src('ODbL-1.0') }))).toEqual([
+      expect.stringMatching(/m1-marina-run\.json \/provenance\/sources\/0\/spdx: /),
+    ]);
+    expect(licences(pack({}, { [road]: src('LicenseRef-US-Public-Domain') }))).toEqual([]);
+  });
+
+  it('matches licenseRules path patterns: * stays inside a folder, ** crosses folders', () => {
+    const p = pathPattern('regions/*/roads/osm-*.json');
+    expect(p.test('regions/florida-keys/roads/osm-big-pine-bend.json')).toBe(true);
+    expect(p.test('regions/florida-keys/roads/m1-marina-run.json')).toBe(false);
+    expect(p.test('regions/a/b/roads/osm-x.json')).toBe(false);
+    expect(p.test('regions/florida-keys/roads/osm-x.jsonx')).toBe(false);
+    expect(pathPattern('regions/**/osm-*.json').test('regions/a/b/roads/osm-x.json')).toBe(true);
   });
 });
 

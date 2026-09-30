@@ -20,6 +20,16 @@
       "spdx": "ODbL-1.0",
       "attribution": "Road data © OpenStreetMap contributors, available under the Open Database License.",
       "licenseFile": "LICENSES/ODbL-1.0.txt"
+    },
+    {
+      "paths": [
+        "regions/*/networks/tiger-*.json",
+        "regions/*/roads/tiger-*.json",
+        "regions/*/roads/tiger-*.bin",
+        "regions/*/routes/tiger-*.json"
+      ],
+      "spdx": "LicenseRef-US-Public-Domain",
+      "attribution": "Road data: U.S. Census Bureau, TIGER/Line Shapefiles (public domain). Map services and data available from U.S. Geological Survey, National Geospatial Program."
     }
   ],
   "assetSources": { "default": "baked", "rules": [] },
