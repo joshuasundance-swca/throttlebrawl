@@ -34,7 +34,7 @@ import { createLoop } from './loop';
 import { transition, type AppEvent, type AppState } from './states';
 
 export { createHeadlessRace } from './headless';
-export type { HeadlessRace } from './headless';
+export type { HeadlessOptions, HeadlessRace } from './headless';
 export { buildSimConfig, DEFAULT_EVENT } from './config';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
@@ -90,6 +90,8 @@ export interface AppHandle {
   roadQueries: RoadQueriesFn;
   getReplayAndSettings: GetReplayAndSettings;
   frameStats(): FrameStats;
+  /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
+  stepTimes(): readonly number[];
   contentHashes(): { sim: string; full: string };
   replayKey(): string;
 }
@@ -223,6 +225,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ui.show('results');
   };
 
+  const stepMs: number[] = [];
   const step = () => {
     if (!race) return;
     for (const change of pendingTuning.splice(0)) {
@@ -232,7 +235,10 @@ export function createApp(opts: AppOptions): AppHandle {
     const tick = race.tick;
     const cmd = input.sample(SIM_DT);
     recorder.record(tick, [cmd]);
+    const t0 = performance.now();
     race.step([cmd]);
+    stepMs.push(performance.now() - t0);
+    if (stepMs.length > 600) stepMs.shift();
     prev = curr;
     curr = race.snapshot();
     const events = race.events();
@@ -342,6 +348,7 @@ export function createApp(opts: AppOptions): AppHandle {
         max: times[times.length - 1] ?? 0,
       };
     },
+    stepTimes: () => stepMs,
     contentHashes: () => hashes,
     replayKey: () => replayKey,
   };

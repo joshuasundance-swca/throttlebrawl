@@ -1,0 +1,160 @@
+{
+  "type": "road-network",
+  "id": "osm-keys-bahia-honda",
+  "name": "Overseas Highway: Bahia Honda and Spanish Harbor (OSM bake)",
+  "region": "florida-keys",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 24.7,
+    "originLonDeg": -81.1,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-bahia-honda-key",
+    "osm-bahia-honda-bridge",
+    "osm-spanish-harbor-keys",
+    "osm-spanish-harbor-bridge",
+    "osm-big-pine-bend"
+  ],
+  "junctions": [
+    {
+      "id": "osm-keys-bahia-honda-j0",
+      "x": -16342.0079,
+      "y": 1.8692,
+      "z": 3817.3847,
+      "ends": [
+        {
+          "road": "osm-bahia-honda-key",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-bahia-honda-j1",
+      "x": -17704.1498,
+      "y": 1.7324,
+      "z": 4312.1544,
+      "ends": [
+        {
+          "road": "osm-bahia-honda-key",
+          "end": "to"
+        },
+        {
+          "road": "osm-bahia-honda-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-bahia-honda-j2",
+      "x": -19719.498,
+      "y": 4.2287,
+      "z": 4703.7549,
+      "ends": [
+        {
+          "road": "osm-bahia-honda-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-spanish-harbor-keys",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-bahia-honda-j3",
+      "x": -21393.114,
+      "y": 2.6094,
+      "z": 5339.6592,
+      "ends": [
+        {
+          "road": "osm-spanish-harbor-keys",
+          "end": "to"
+        },
+        {
+          "road": "osm-spanish-harbor-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-bahia-honda-j4",
+      "x": -22452.8058,
+      "y": 3.1969,
+      "z": 5445.34,
+      "ends": [
+        {
+          "road": "osm-spanish-harbor-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-big-pine-bend",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-bahia-honda-j5",
+      "x": -22804.728,
+      "y": 1.9879,
+      "z": 5242.8935,
+      "ends": [
+        {
+          "road": "osm-big-pine-bend",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-09-30",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-keys-bahia-honda.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"][\"ref\"~\"(^|;) ?US 1( ?;|$)\"](24.54,-81.82,25.20,-80.35);\nout tags geom;",
+        "retrievedAt": "2026-09-30T00:51:02Z",
+        "sha256": "0a7b41fd91d01ded93bb5d8cfddc3a8ae2e21d0057e4ab6142bc745bb5891e42"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 416 points (lon, lat WGS84), bilinear",
+        "retrievedAt": "2026-09-30T01:00:29Z",
+        "sha256": "9973c353ad4fb924c344f0f95cfff2a34a1ccb3630cceebcf04e70316fd1116d"
+      }
+    ],
+    "modified": true,
+    "modifications": "US 1 ways stitched along the travel carriageway, heading Gaussian-smoothed (sigma 35 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (753 m to 60%, 663 m to 60%, 762 m to 60%; bridges kept); land elevation from 3DEP low-pass filtered (sigma 60 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): 4 m deck, 12 m x 420 m hump on bridges over 800 m (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Real-road alternative to the hand-made network (gis-1 side quest). Roads joined end to end by pass-through junctions. The same frame as keys-m1, so the two line up."
+  }
+}
