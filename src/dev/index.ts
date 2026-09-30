@@ -5,8 +5,9 @@
 import type { AppHandle } from '../app';
 import { installTestHandle, testFlagSet } from './handle';
 
-export { createBot } from './bot';
-export type { BotController, BotStats } from './bot';
+// createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
+export { createBot, createStubBot } from './bot';
+export type { BotController, BotStats, StubBot } from './bot';
 export { copyReport, reportText } from './report';
 export { runSelfTest, selfTestRequested } from './selftest';
 export type { SelfTestResult, SelfTestStatus } from './selftest';
