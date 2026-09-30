@@ -256,22 +256,25 @@ function nearestTurn(from: number, target: number): number {
   return target + turns * 2 * Math.PI;
 }
 
+/** Interpolates a tumble body into `out` (no allocation per frame); null when there is none. */
 function lerpBody(
   a: TumbleBodySnapshot | undefined,
   b: TumbleBodySnapshot | undefined,
   t: number,
+  out: TumbleBodySnapshot,
 ): TumbleBodySnapshot | null {
   if (!b) return null;
   const from = a ?? b;
-  return {
-    x: from.x + (b.x - from.x) * t,
-    y: from.y + (b.y - from.y) * t,
-    z: from.z + (b.z - from.z) * t,
-    vx: b.vx,
-    vy: b.vy,
-    vz: b.vz,
-  };
+  out.x = from.x + (b.x - from.x) * t;
+  out.y = from.y + (b.y - from.y) * t;
+  out.z = from.z + (b.z - from.z) * t;
+  out.vx = b.vx;
+  out.vy = b.vy;
+  out.vz = b.vz;
+  return out;
 }
+
+const zeroBody = (): TumbleBodySnapshot => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
 
 /** A body's centre for effects: the tumble body when there is one, else the entity. */
 function bodyPoint(e: EntitySnapshot, which: 'rider' | 'bike'): Point {
@@ -333,6 +336,8 @@ export class EntityViews {
   private readonly params: RenderParams;
   private alpha = 1;
   private dt = 0;
+  private readonly riderBody = zeroBody();
+  private readonly bikeBody = zeroBody();
   private readonly pose: Pose = { x: 0, y: 0, z: 0, heading: 0, lean: 0 };
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
@@ -819,8 +824,8 @@ export class EntityViews {
     const dt = this.dt;
     const rate = this.params.cartwheelRate;
     const s = view.spin;
-    const rb = lerpBody(prev.tumble?.rider, e.tumble?.rider, this.alpha);
-    const bb = lerpBody(prev.tumble?.bike, e.tumble?.bike, this.alpha);
+    const rb = lerpBody(prev.tumble?.rider, e.tumble?.rider, this.alpha, this.riderBody);
+    const bb = lerpBody(prev.tumble?.bike, e.tumble?.bike, this.alpha, this.bikeBody);
     const fwdX = -Math.sin(p.heading);
     const fwdZ = -Math.cos(p.heading);
 
