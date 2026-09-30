@@ -9,10 +9,20 @@ import { mkdirSync } from 'node:fs';
 
 interface Handle {
   state(): string;
-  snapshot(): { tick: number } | null;
+  snapshot(): {
+    tick: number;
+    entities: { id: number; kind: string; targetId: number }[];
+  } | null;
+  playerId(): number;
   setBot(on: boolean): void;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+interface TargetProbe {
+  samples: number;
+  targeted: number;
+  shownWhileTargeted: number;
+  shownWithoutTarget: number;
+}
+type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __targetProbe?: TargetProbe };
 
 /** Every visible element with its own text must sit inside the viewport and not overflow its box. */
 async function expectNoOverflow(page: Page, where: string) {
@@ -165,6 +175,30 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await page.locator('#menu-race').click();
 
+  // The target bar follows the player's auto-target all race: sampled every 100 ms.
+  await page.evaluate(() => {
+    const w = window as TestWindow;
+    const probe: TargetProbe = { samples: 0, targeted: 0, shownWhileTargeted: 0, shownWithoutTarget: 0 };
+    w.__targetProbe = probe;
+    setInterval(() => {
+      const g = w.__game;
+      const s = g?.snapshot();
+      if (!g || !s || g.state() !== 'race') return;
+      const me = s.entities[g.playerId()];
+      const target =
+        me && me.targetId >= 0 && me.targetId !== me.id
+          ? s.entities.find((e) => e.id === me.targetId && e.kind === 'rider')
+          : undefined;
+      const bar = document.getElementById('hud-target');
+      const shown = !!bar && bar.checkVisibility();
+      probe.samples++;
+      if (target) {
+        probe.targeted++;
+        if (shown) probe.shownWhileTargeted++;
+      } else if (shown) probe.shownWithoutTarget++;
+    }, 100);
+  });
+
   // The HUD.
   await expect(page.locator('#hud-speed')).toBeVisible();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 120);
@@ -216,6 +250,14 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await expect(page.locator('#results-prize')).toContainText('Prize: $');
   await expect(page.locator('#results-race')).toBeVisible();
   console.log(`results: ${await page.locator('#results-place').textContent()}`);
+
+  // The target bar: shown while there is a target, hidden otherwise (a frame of lag allowed).
+  const probe = (await page.evaluate(() => (window as TestWindow).__targetProbe)) as TargetProbe;
+  console.log(`target bar probe: ${JSON.stringify(probe)}`);
+  expect(probe.samples).toBeGreaterThan(100);
+  expect(probe.shownWhileTargeted).toBeGreaterThanOrEqual(Math.floor(probe.targeted * 0.9));
+  expect(probe.shownWithoutTarget).toBeLessThanOrEqual(Math.ceil(probe.samples * 0.02));
+  if (probe.targeted === 0) console.log('target bar probe: the player never had a target; bar unexamined');
   await expectNoOverflow(page, 'results');
   await shot(page, 'results');
   await page.locator('#results-menu').click();
