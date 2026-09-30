@@ -1,0 +1,47 @@
+# Dependabot version updates (docs/engineering.md, "Dependabot"). Built into GitHub: no new
+# service, account or bill. One entry per ecosystem in the repo: npm at the root, the workflows'
+# actions, and the uv-managed GIS tool. Minor and patch bumps come as one grouped PR per ecosystem
+# each week; a major bump gets its own PR. .github/workflows/dependabot-auto-merge.yml arms
+# auto-merge on the npm and actions minor/patch PRs, so the required `gate` check decides.
+# Labels are off (`labels: []`): Dependabot would otherwise create a `dependencies` label and
+# per-ecosystem labels in the repo, and creating labels is a settings change.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: []
+    commit-message:
+      prefix: deps
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: []
+    commit-message:
+      prefix: deps(actions)
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /tools/gis
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: []
+    commit-message:
+      prefix: deps(gis)
+    groups:
+      gis-minor-patch:
+        update-types: [minor, patch]

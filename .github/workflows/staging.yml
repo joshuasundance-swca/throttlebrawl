@@ -2,11 +2,14 @@
 # runs the leak scan and size check, builds, boot-tests the build and deploys it to the staging
 # Space as the same source mirror plus dist/ that prod gets. The newest push wins. It does not wait
 # for the full gate: staging is for playing work in progress, and its stamp names branch and commit.
+# Dependabot branches never deploy: their runs get no repository secrets (so the upload would fail),
+# and because this workflow's concurrency cancels older runs, a bump would knock a person's build
+# off the staging Space. They are ignored here, before a run exists, not skipped inside the job.
 name: staging
 
 on:
   push:
-    branches-ignore: [main]
+    branches-ignore: [main, 'dependabot/**']
   workflow_dispatch:
     inputs:
       branch:
@@ -23,6 +26,8 @@ concurrency:
 jobs:
   deploy-staging:
     name: deploy-staging
+    # A second guard, in case a Dependabot push ever lands outside dependabot/**.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

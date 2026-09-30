@@ -24,6 +24,9 @@ env:
   # Author and committer of the PR's own commits (never HEAD, the synthetic merge commit), or on
   # a push to main the squash commit GitHub just made.
   LEAKSCAN_IDENTITY_RANGE: ${{ github.event_name == 'pull_request' && format('origin/main..{0}', github.event.pull_request.head.sha) || 'HEAD~1..HEAD' }}
+  # Who opened the PR, from the event (a branch cannot set it). notes:check exempts a PR only
+  # when this is dependabot[bot] and every commit on it is Dependabot's (scripts/notes.mjs).
+  NOTES_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
 
 jobs:
   static:
