@@ -64,9 +64,13 @@ describe('buses and settings', () => {
     expect(expected.voices).toBe(0);
     expect(audio.inspect().busTargets).toEqual(expected);
 
-    // The graph itself was told those targets: every bus feeds master, master feeds the limiter.
+    // The graph itself was told those targets: every bus feeds master, master feeds the limiter,
+    // and the limiter reaches the destination through the ceiling (M2: a gain into a shaper).
     const limiter = ctx.nodes.find((n) => n.kind === 'compressor');
-    expect(limiter?.outputs).toContain(ctx.destination);
+    const ceiling = limiter?.outputs[0];
+    expect(ceiling?.kind).toBe('gain');
+    expect(ceiling?.outputs[0]?.kind).toBe('shaper');
+    expect(ceiling?.outputs[0]?.outputs).toContain(ctx.destination);
     const master = ctx.inputsOf(limiter!, 'gain')[0]!;
     expect(master.gain.target).toBeCloseTo(expected.master);
     const buses = ctx.inputsOf(master, 'gain').map((b) => b.gain.target);
@@ -85,7 +89,11 @@ describe('buses and settings', () => {
     await audio.resume();
     expect(audio.state()).toBe('running');
     const limiter = ctx.nodes.find((n) => n.kind === 'compressor')!;
-    expect(ctx.inputsOf(limiter, 'gain')[0]?.gain.target).toBe(1);
+    const master = ctx.inputsOf(limiter, 'gain')[0]!;
+    expect(master.gain.target).toBe(1);
+    // M2: every gain starts at its setting, so the first frame has no swell from the defaults.
+    expect(master.gain.value).toBe(1);
+    expect(ctx.inputsOf(master, 'gain').map((b) => b.gain.value)).toEqual([0.25, 0.25, 0.25]);
   });
 
   it('declares its tuning as presentation-only', () => {

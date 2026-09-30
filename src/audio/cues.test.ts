@@ -28,15 +28,49 @@ const M1_EVENT_TYPES = [
   'style',
   'modifierStart',
   'modifierEnd',
+  // Added to the contract during M1 (cops-1, combat-2, riders).
+  'siren',
+  'stealWindow',
+  'wobble',
 ] as const satisfies readonly SimEventType[];
+
+// The M2 event types (app-3 contract 1, docs/milestones/M2.md), and the ones that must make a
+// sound (audio-2: "every M2 event type that should make a sound has a cue").
+const M2_EVENT_TYPES = [
+  'slowmoStart',
+  'slowmoEnd',
+  'railOver',
+  'splash',
+  'respawn',
+  'getUp',
+  'fistShake',
+  'grudgeNoted',
+] as const satisfies readonly SimEventType[];
+const M2_SOUNDING = [
+  'takedown',
+  'style',
+  'slowmoStart',
+  'slowmoEnd',
+  'railOver',
+  'splash',
+  'respawn',
+] as const;
 
 const ev = (type: SimEventType, actor = 0, target?: number, data: SimEvent['data'] = {}): SimEvent =>
   target === undefined ? { tick: 10, type, actor, data } : { tick: 10, type, actor, target, data };
 
 describe('event cues', () => {
-  it('has a decision (a cue or deliberate silence) for every M1 event type', () => {
-    const missing = M1_EVENT_TYPES.filter((t) => !(t in EVENT_CUES));
+  it('has a decision (a cue or deliberate silence) for every M1 and M2 event type', () => {
+    const missing = [...M1_EVENT_TYPES, ...M2_EVENT_TYPES].filter((t) => !(t in EVENT_CUES));
     expect(missing).toEqual([]);
+  });
+
+  it('gives every M2 event that should make a sound a cue with a synth patch', () => {
+    for (const t of M2_SOUNDING) {
+      expect(SOUNDING_EVENTS, t).toContain(t);
+      const cue = EVENT_CUES[t];
+      expect(CUE_PATCHES[cue as keyof typeof CUE_PATCHES], `${t} -> ${String(cue)}`).toBeTypeOf('function');
+    }
   });
 
   it('gives every sounding M1 event a cue with a synth patch', () => {
