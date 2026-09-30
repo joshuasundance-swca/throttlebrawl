@@ -20,7 +20,12 @@ function boot(): void {
     app = createApp({
       host: document.body,
       canvas,
-      build: { id: __BUILD_ID__, channel: __BUILD_CHANNEL__, branch: __BUILD_BRANCH__ },
+      build: {
+        id: __BUILD_ID__,
+        channel: __BUILD_CHANNEL__,
+        branch: __BUILD_BRANCH__,
+        simCodeHash: __SIM_CODE_HASH__,
+      },
       callbacks: {
         onCopyReport: () => (app ? copyReport(app) : Promise.resolve()),
         onSaveDebugFile: () => (app ? saveDebugFile(app) : Promise.resolve()),

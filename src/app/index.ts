@@ -39,6 +39,7 @@ import {
 import { createUi } from '../ui';
 import { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
 import { createLoop } from './loop';
+import { appReplayKey } from './replay-key';
 import { createOutcome, raceResult, resultsDue } from './results';
 import { transition, type AppEvent, type AppState } from './states';
 import { APP_TUNING, presentationOwner } from './tuning';
@@ -56,6 +57,8 @@ export interface AppBuild {
   id: string;
   channel: 'prod' | 'staging' | 'dev';
   branch: string;
+  /** The sim chunk's code hash, the replay key's code part (absent or a placeholder in dev). */
+  simCodeHash?: string;
 }
 
 /** Callbacks from the composition root (src/main.ts). */
@@ -147,7 +150,7 @@ export function createApp(opts: AppOptions): AppHandle {
   // Content, the region, and the layout record.
   const registry = loadBasePack({ includeDrafts: build.channel !== 'prod' });
   const hashes = contentHashes(registry);
-  const replayKey = `${build.id}+${hashes.sim}`;
+  const replayKey = appReplayKey(build, hashes.sim);
   const stream = streamForEvent(registry, DEFAULT_EVENT);
   const event = lookup(registry.events, DEFAULT_EVENT);
   const hudId = registry.packs[0]?.defaults.hud ?? 'classic';
