@@ -45,6 +45,8 @@ export type {
 // Shared core types and helpers, for modules the module map keeps away from core.
 export type {
   AssetIndexEntry,
+  DifficultyPreset,
+  DifficultyScale,
   GetReplayAndSettings,
   LaneInfo,
   LayoutElement,
@@ -61,7 +63,18 @@ export type {
   TuningParamDecl,
   TuningValues,
 } from '../core';
-export { hashHex, placeElement, secondsToTicks, tuningDefaults } from '../core';
+export {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTY_PRESETS,
+  DIFFICULTY_SCALES,
+  DIFFICULTY_TUNING,
+  difficultyTuningId,
+  hashHex,
+  isDifficultyPreset,
+  placeElement,
+  secondsToTicks,
+  tuningDefaults,
+} from '../core';
 export type { RoadFrame, RoadNetwork, RouteProgress, WorldPoint } from '../road';
 
 /** Analog controls (steer −1..1, throttle and brake 0..1) plus flag bits, quantized for the sim. */

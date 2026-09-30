@@ -37,7 +37,7 @@ import {
   resolvePreset,
 } from '../tuning';
 import { createUi } from '../ui';
-import { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
+import { buildSimConfig, DEFAULT_EVENT, raceStartValues, streamForEvent } from './config';
 import { createLoop } from './loop';
 import { createOutcome, raceResult, resultsDue } from './results';
 import { transition, type AppEvent, type AppState } from './states';
@@ -210,7 +210,8 @@ export function createApp(opts: AppOptions): AppHandle {
     const config = buildSimConfig(registry, stream, {
       seed,
       eventId: DEFAULT_EVENT,
-      tuning: tuning.simValues(),
+      // The sim's values plus the difficulty scales, read once at race start (app-3).
+      tuning: { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) },
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
     renderer.setTrafficTypes(config.trafficTypes);

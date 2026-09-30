@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_TUNING } from '../../tools/packs/tuning';
 import { createTuningRegistry } from '../tuning';
-import { APP_TUNING, presentationOwner } from './tuning';
+import { APP_TUNING, isRaceStartParam, presentationOwner } from './tuning';
 
 describe('app/tuning: presentationOwner', () => {
   it('routes every presentation-only value to the module that declares it', () => {
-    const unrouted = APP_TUNING.filter((d) => !d.affectsSim && presentationOwner(d.id) === null);
+    const unrouted = APP_TUNING.filter(
+      (d) => !d.affectsSim && !isRaceStartParam(d.id) && presentationOwner(d.id) === null,
+    );
     expect(unrouted.map((d) => d.id)).toEqual([]);
+  });
+
+  it('keeps the race-start values (the difficulty scales) away from the sim and presentation', () => {
+    const raceStart = APP_TUNING.filter((d) => isRaceStartParam(d.id));
+    expect(raceStart).toHaveLength(9);
+    expect(raceStart.filter((d) => d.affectsSim || presentationOwner(d.id) !== null)).toEqual([]);
   });
 
   it('never routes a sim value or the frame cap', () => {
