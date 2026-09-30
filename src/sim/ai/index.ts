@@ -106,6 +106,15 @@ const FIGHT_OFFSET_D = 1.1;
 const HUNT_PACE = 0.08;
 /** A rider's half width plus a margin, for avoidance. */
 const RIDER_CLEAR = 0.9;
+/** How far out traffic is seen, and how many seconds of closing make a car a blocker. */
+const SEE_TRAFFIC_M = 250;
+const BLOCK_AHEAD_S = 4;
+/** Look-ahead for checking a chosen line against traffic, metres (plus 2.5 s of closing). */
+const LINE_CHECK_M = 15;
+/** Seconds of warning a rider takes from a faster car coming up behind it. */
+const PASS_WARN_S = 3;
+/** Along-road margin past a vehicle's ends within which it counts as alongside, m. */
+const ALONGSIDE_MARGIN_M = 2.5;
 const STUCK_TICKS = 240;
 const UNSTICK_TICKS = 150;
 const WEAVE_PERIOD_TICKS = 240;
@@ -170,16 +179,21 @@ function pickByPreference(
   return nearest();
 }
 
-/** Finds the nearest mover blocking the line `d` within `look` metres ahead. */
+/**
+ * Finds the nearest mover blocking the line `d` within `look` metres ahead, or further when it is
+ * closing fast (an oncoming car is seen BLOCK_AHEAD_S seconds out, whatever the distance).
+ */
 function blockerAt(
   seen: readonly { s: Seen; size: ObstacleSize }[],
+  v: number,
   d: number,
   look: number,
 ): { s: Seen; size: ObstacleSize } | null {
   let best: { s: Seen; size: ObstacleSize } | null = null;
   for (const o of seen) {
     const front = o.s.ahead - o.size.halfLength;
-    if (o.s.ahead + o.size.halfLength < 0 || front > look) continue;
+    const reach = Math.max(look, (v - o.s.vAlong) * BLOCK_AHEAD_S);
+    if (o.s.ahead + o.size.halfLength < 0 || front > reach) continue;
     if (Math.abs(o.s.mover.pos.d - d) >= o.size.halfWidth + RIDER_CLEAR) continue;
     if (!best || o.s.ahead < best.s.ahead) best = o;
   }
@@ -199,6 +213,21 @@ function lineClear(
     const front = o.s.ahead - o.size.halfLength;
     if (o.s.ahead + o.size.halfLength < -2) continue;
     if (front < reach + closing * 2.5) return false;
+  }
+  return true;
+}
+
+/** Whether every line from `from` to `to` (every half metre) is clear: getting there is safe too. */
+function pathClear(
+  seen: readonly { s: Seen; size: ObstacleSize }[],
+  v: number,
+  from: number,
+  to: number,
+  reach: number,
+): boolean {
+  const steps = Math.max(1, Math.ceil(Math.abs(to - from) / 0.5));
+  for (let i = 1; i <= steps; i++) {
+    if (!lineClear(seen, v, from + ((to - from) * i) / steps, reach)) return false;
   }
   return true;
 }
@@ -311,7 +340,7 @@ function driveRider(
       const s = see(road, m, other, 60);
       if (s) riders.push(s);
     } else if (other.kind === 'vehicle' || other.kind === 'ped') {
-      const s = see(road, m, other, look + 60);
+      const s = see(road, m, other, SEE_TRAFFIC_M);
       if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
     }
   }
@@ -363,13 +392,37 @@ function driveRider(
     speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
 
+  // A fight or weave line into the path of traffic is not worth it: back to its own spot in its
+  // own lane when that is clear and the chosen line is not.
+  if (!pathClear(obstacles, v, pos.d, dTarget, LINE_CHECK_M)) {
+    const home = laneCentre + clamp(st.laneOffset[id] ?? 0, -laneHalf, laneHalf);
+    // Neither is safe to reach: hold the line it is on (the blocker rules below still apply).
+    dTarget = pathClear(obstacles, v, pos.d, home, LINE_CHECK_M) ? home : pos.d;
+  }
+  // A car coming up from behind faster passes in its lane: give it room, own side of the road first.
+  for (const o of obstacles) {
+    if (o.s.ahead >= 0 || o.s.vAlong <= v) continue;
+    if (-o.s.ahead - o.size.halfLength > (o.s.vAlong - v) * PASS_WARN_S + 5) continue;
+    const od = o.s.mover.pos.d;
+    const room = o.size.halfWidth + RIDER_CLEAR + 0.2;
+    if (Math.abs(dTarget - od) >= room) continue;
+    const sides = [od + room * pos.dir, od - room * pos.dir].filter(
+      (c) => c >= dLo && c <= dHi && pathClear(obstacles, v, pos.d, c, LINE_CHECK_M),
+    );
+    const away = sides[0];
+    if (away !== undefined) {
+      dTarget = away;
+      lateralMax = Math.max(lateralMax, 4);
+    }
+  }
+
   // Unsticking: back up to pace (traffic below still has the last word on speed).
   if (unsticking) speedTarget = Math.max(speedTarget, config.event.paceMps * 0.8);
 
   // 3. Traffic: go around the nearest blocker, or brake behind it.
   const committed = (st.avoidUntil[id] ?? -1) >= tick;
   if (committed) dTarget = st.avoidD[id] ?? dTarget;
-  const blocker = blockerAt(obstacles, dTarget, look) ?? blockerAt(obstacles, pos.d, look * 0.5);
+  const blocker = blockerAt(obstacles, v, dTarget, look) ?? blockerAt(obstacles, v, pos.d, look * 0.5);
   if (blocker) {
     const o = blocker.s;
     const gap = o.ahead - blocker.size.halfLength;
@@ -383,6 +436,9 @@ function driveRider(
       for (const cand of [od - w, od + w, od - w - 1, od + w + 1]) {
         if (cand < dLo || cand > dHi) continue;
         if (!lineClear(obstacles, v, cand, gap + 20)) continue;
+        // Crossing other traffic's lines on the way there counts too (not the blocker's own).
+        const others = obstacles.filter((x) => x !== blocker);
+        if (!pathClear(others, v, pos.d, cand, LINE_CHECK_M)) continue;
         const risk = unsticking ? 1 : prof.riskTaking;
         const oncoming = cand * pos.dir < 0 ? (1.2 - risk) * 4 : 0;
         const cost = Math.abs(cand - pos.d) + oncoming;
@@ -395,11 +451,21 @@ function driveRider(
         dTarget = best;
         lateralMax = 5;
         st.avoidD[id] = best;
-        st.avoidUntil[id] =
-          tick + Math.round(((gap + 2 * blocker.size.halfLength + 8) / Math.max(v, 5)) * 60) + 20;
+        // Held until the blocker is passed: its length plus a margin, at the closing speed.
+        const passS = (Math.max(0, gap) + 2 * blocker.size.halfLength + 8) / Math.max(Math.abs(closing), 2);
+        st.avoidUntil[id] = tick + Math.round(Math.min(passS, 12) * 60) + 20;
         // Not across yet and close: ease off until the line opens.
         if (Math.abs(pos.d - best) > w * 0.6 && gap < v * 0.9)
           speedTarget = Math.min(speedTarget, o.vAlong + 3);
+      } else if (o.vAlong < 0) {
+        // Boxed in by an oncoming car: braking does not help. Get out of its band on this
+        // rider's own side of it, as fast as it can, and let the next tick sort out the rest.
+        const escape = clamp(od + w * pos.dir, dLo, dHi);
+        dTarget = escape;
+        lateralMax = 5;
+        lateralGain = 3;
+        st.avoidD[id] = escape;
+        st.avoidUntil[id] = tick + 30;
       } else {
         // Boxed in: a speed that stops about 4 m behind it, braking at 5 m/s².
         const room = Math.max(0, gap - 4);
@@ -408,6 +474,16 @@ function driveRider(
       }
     }
   }
+  // Hard rule last: never steer into a vehicle alongside; hold at least its clearance from it.
+  for (const o of obstacles) {
+    const along = o.size.halfLength + ALONGSIDE_MARGIN_M;
+    if (o.s.ahead > along || o.s.ahead < -along) continue;
+    const od = o.s.mover.pos.d;
+    const clearance = o.size.halfWidth + RIDER_CLEAR;
+    if (pos.d >= od) dTarget = Math.max(dTarget, Math.min(od + clearance, dHi));
+    else dTarget = Math.min(dTarget, Math.max(od - clearance, dLo));
+  }
+
   // 4. Swing at whoever is in the reach window (predicted to the end of the wind-up).
   let flags = 0;
   const held =
