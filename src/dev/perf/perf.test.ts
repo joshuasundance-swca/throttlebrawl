@@ -44,6 +44,28 @@ describe('dev/perf: the numbers', () => {
     expect(formatOverlay({ ...r, heapMB: null, refreshHz: null })).not.toContain('heap');
   });
 
+  it('the overlay prints the 6-minute fast-forward estimate from the sim step p50 (replay-2)', () => {
+    const base: PerfReport = {
+      renderer: 'ANGLE (test)',
+      pixelRatio: 1,
+      width: 915,
+      height: 412,
+      drawCalls: 1,
+      triangles: 1,
+      frameMs: { samples: 60, p50: 16.7, p95: 16.7, max: 16.7 },
+      fps: 60,
+      stepMs: { samples: 600, p50: 0.25, p95: 0.5, max: 1 },
+      refreshHz: 60,
+      heapMB: null,
+    };
+    // 21600 ticks x 0.25 ms = 5.4 s; a faster step says less.
+    expect(formatOverlay(base)).toContain('6-min ff ~5.4 s');
+    expect(formatOverlay({ ...base, stepMs: { ...base.stepMs, p50: 0.1 } })).toContain('6-min ff ~2.2 s');
+    expect(formatOverlay({ ...base, stepMs: { samples: 0, p50: 0, p95: 0, max: 0 } })).not.toContain(
+      '6-min ff',
+    );
+  });
+
   it('is requested by ?debug=1 only', () => {
     expect(debugRequested('?debug=1')).toBe(true);
     expect(debugRequested('?selftest=1&debug=1')).toBe(true);

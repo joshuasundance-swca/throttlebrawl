@@ -27,6 +27,25 @@ export interface ReportPercentiles {
   max: number;
 }
 
+/**
+ * The saved race and the resume (M2 replay-2 and app-4). app/ reports it through an optional
+ * `resumeInfo()` on the AppHandle; until app-4 wires the saved recording in, the report says the
+ * saved race is not wired and prints only the fast-forward estimate from the live sim step time.
+ */
+export interface ResumeReport {
+  /** The replay key of the recording saved in storage now, or null when none is saved. */
+  savedReplayKey: string | null;
+  /** The tick a resume of the saved recording would land on, or null. */
+  savedTick: number | null;
+  /** The replay key of a recording refused at boot (kept for the debug file), or null. */
+  staleReplayKey: string | null;
+  /** The last resume's measured headless fast-forward, or null when none ran this session. */
+  fastForward: { ticks: number; ms: number } | null;
+}
+
+/** A 6-minute race, in ticks: the fast-forward the resume printout projects to (replay-2). */
+export const SIX_MINUTE_TICKS = 6 * 60 * 60;
+
 /** Everything the report says, as plain data. */
 export interface ReportData {
   /** ISO time the report was taken. */
@@ -59,6 +78,8 @@ export interface ReportData {
   errors: readonly ReportError[];
   /** The app's recent events, oldest first. */
   events: readonly SimEvent[];
+  /** The saved race and the resume; absent until app/ reports it (app-4). */
+  resume?: ResumeReport | null;
 }
 
 const encoder = new TextEncoder();
@@ -106,6 +127,47 @@ function settingsLine(settings: unknown): string {
   const units = typeof s['units'] === 'string' ? s['units'] : '?';
   const preset = typeof s['tuningPreset'] === 'string' ? s['tuningPreset'] : '?';
   return `settings vol ${vol.join('/')} · mute ${onOff(s['mute'])} · mirror ${onOff(s['mirror'])} · ${units} · preset ${clip(preset, 40)}`;
+}
+
+/** What the race is played with (M2): difficulty, assists, speed, slow motion and length. */
+function playLine(settings: unknown): string {
+  const s = settingsData(settings);
+  const str = (v: unknown) => (typeof v === 'string' ? clip(v, 16) : '?');
+  const assists = isObject(s['assists']) ? s['assists'] : {};
+  const speed = typeof s['speedMultiplier'] === 'number' ? `x${num(s['speedMultiplier'], 2)}` : '?';
+  const slowMo = s['slowMo'] === true ? 'on' : s['slowMo'] === false ? 'off' : '?';
+  return (
+    `play difficulty ${str(s['difficulty'])} · steer assist ${str(assists['steer'])} · ` +
+    `throttle ${str(s['throttle'])} · speed ${speed} · slow-mo ${slowMo} · length ${str(s['raceLength'])} · ` +
+    `steering ${str(s['steering'])}`
+  );
+}
+
+/** Seconds to fast-forward a 6-minute race at a per-step time, ms. */
+export function fastForwardSeconds(stepMs: number, ticks = SIX_MINUTE_TICKS): number {
+  return (stepMs * ticks) / 1000;
+}
+
+/** The saved race, the refused one, and the fast-forward: measured when a resume ran, else estimated. */
+function resumeLine(d: ReportData): string {
+  const r = d.resume;
+  const estimate =
+    d.step.samples > 0
+      ? `6-min fast-forward est ${num(fastForwardSeconds(d.step.p50), 2)} s (sim step p50 ${num(d.step.p50, 2)} ms)`
+      : '6-min fast-forward est n/a (no sim steps timed)';
+  if (r === undefined || r === null) return `saved race not wired (app-4) · ${estimate}`;
+  const saved =
+    r.savedReplayKey === null
+      ? 'saved race none'
+      : `saved race key ${clip(r.savedReplayKey, 80)} at tick ${r.savedTick ?? '?'}`;
+  const stale = r.staleReplayKey === null ? '' : ` · refused key ${clip(r.staleReplayKey, 80)}`;
+  const ff = r.fastForward
+    ? `fast-forward ${r.fastForward.ticks} ticks in ${Math.round(r.fastForward.ms)} ms (6-min ${num(
+        fastForwardSeconds(r.fastForward.ms / Math.max(1, r.fastForward.ticks)),
+        2,
+      )} s)`
+    : estimate;
+  return `${saved}${stale} · ${ff}`;
 }
 
 /** Veto flags (M2 stores them in the settings record) as content references. */
@@ -200,10 +262,12 @@ function headLines(d: ReportData, full: boolean): string[] {
     `device ${c(oneLine(d.device), 110)}`,
     race,
     settingsLine(d.settings),
+    playLine(d.settings),
     tuningLine(view, d.tuningDefaults),
     `frames p50 ${num(d.frame.p50)} p95 ${num(d.frame.p95)} max ${num(d.frame.max)} ms (n ${d.frame.samples}) · sim step p95 ${num(d.step.p95, 2)} ms${
       d.heapMB === null ? '' : ` · heap ${Math.round(d.heapMB)} MB`
     }`,
+    c(resumeLine(d), 260),
     vetoes.length ? c(`vetoes ${vetoes.length}: ${vetoes.join(', ')}`, 300) : 'vetoes none',
   ];
 }
@@ -247,6 +311,7 @@ export function buildDebugFile(d: ReportData): string {
     `tuning at race start ${JSON.stringify(view?.startTuning ?? null)}`,
     `tuning mid-race ${JSON.stringify(view?.params ?? [])}`,
     `settings record ${JSON.stringify(d.settings ?? null)}`,
+    `resume ${JSON.stringify(d.resume ?? null)}`,
     `frames ${JSON.stringify(d.frame)} · sim step ${JSON.stringify(d.step)}`,
     `errors ${d.errors.length}`,
     ...d.errors.map((e) => formatError(e, 4000)),

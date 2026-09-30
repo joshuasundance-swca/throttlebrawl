@@ -9,10 +9,40 @@ import type { AppHandle } from '../../app';
 import { SIM_TUNING, tuningDefaults } from '../../sim/api';
 import { percentiles } from '../perf';
 import { captureErrors, createErrorLog, type ErrorLog, type ErrorSource } from './errors';
-import { buildDebugFile, buildSummary, debugFileName, utf8Bytes, type ReportData } from './summary';
+import {
+  buildDebugFile,
+  buildSummary,
+  debugFileName,
+  utf8Bytes,
+  type ReportData,
+  type ResumeReport,
+} from './summary';
 
-export { buildDebugFile, buildSummary, debugFileName, parseDebugFile, SUMMARY_MAX_BYTES } from './summary';
-export type { ReportData, ReportError } from './summary';
+export {
+  buildDebugFile,
+  buildSummary,
+  debugFileName,
+  fastForwardSeconds,
+  parseDebugFile,
+  SIX_MINUTE_TICKS,
+  SUMMARY_MAX_BYTES,
+} from './summary';
+export type { ReportData, ReportError, ResumeReport } from './summary';
+
+/**
+ * The seam for app-4: once the AppHandle gains `resumeInfo()` (the saved recording's replay key
+ * and tick, a refused one, and the last resume's measured fast-forward), the report prints it. Read
+ * by feature detection so this lands before app-4 without an AppHandle contract change.
+ */
+function resumeInfo(app: AppHandle): ResumeReport | null {
+  const get = (app as AppHandle & { resumeInfo?: () => ResumeReport | null }).resumeInfo;
+  if (typeof get !== 'function') return null;
+  try {
+    return get.call(app) ?? null;
+  } catch {
+    return null;
+  }
+}
 export { captureErrors, createErrorLog, MAX_ERRORS } from './errors';
 export type { ErrorLog } from './errors';
 
@@ -57,6 +87,7 @@ export function gatherReport(app: AppHandle): ReportData {
     heapMB: memory ? memory.usedJSHeapSize / (1024 * 1024) : null,
     errors: [...errorLog.list()],
     events: [...app.recentEvents()],
+    resume: resumeInfo(app),
   };
 }
 

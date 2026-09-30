@@ -5,6 +5,7 @@ import {
   buildDebugFile,
   buildSummary,
   debugFileName,
+  fastForwardSeconds,
   parseDebugFile,
   SUMMARY_MAX_BYTES,
   utf8Bytes,
@@ -78,6 +79,105 @@ function data(over: Partial<ReportData> = {}): ReportData {
     ...over,
   };
 }
+
+describe('dev/report: M2 lines (dev-4)', () => {
+  const m2Settings = (over: Record<string, unknown>) => ({
+    format: 'settings',
+    version: 1,
+    build: 'abc1234',
+    savedAt: '2026-09-30T02:00:00.000Z',
+    data: {
+      volumes: { master: 0.8, music: 0.6, effects: 0.9, voices: 0.9 },
+      mute: false,
+      mirror: false,
+      tuningPreset: 'registry',
+      units: 'mph',
+      difficulty: 'normal',
+      assists: { steer: 'off' },
+      throttle: 'scaled',
+      speedMultiplier: 1,
+      slowMo: true,
+      raceLength: 'standard',
+      steering: 'thumb',
+      vetoes: [],
+      ...over,
+    },
+  });
+
+  it('prints the difficulty and assists, and a non-default choice changes the line', () => {
+    const plain = buildSummary(data({ settings: m2Settings({}) }));
+    expect(plain).toContain(
+      'play difficulty normal · steer assist off · throttle scaled · speed x1 · slow-mo on · length standard · steering thumb',
+    );
+    const hard = buildSummary(
+      data({
+        settings: m2Settings({
+          difficulty: 'hard',
+          assists: { steer: 'strong' },
+          throttle: 'auto',
+          speedMultiplier: 0.75,
+          slowMo: false,
+          steering: 'tilt',
+        }),
+      }),
+    );
+    expect(hard).toContain(
+      'play difficulty hard · steer assist strong · throttle auto · speed x0.75 · slow-mo off · length standard · steering tilt',
+    );
+    // An M1-era record has none of these: the line says so rather than guessing.
+    expect(buildSummary(data())).toContain('play difficulty ? · steer assist ?');
+  });
+
+  it('lists the vetoed content references', () => {
+    const text = buildSummary(
+      data({
+        settings: m2Settings({
+          vetoes: [
+            { contentRef: 'base:barks/taunts#t3', raceId: 'r1', tick: 400 },
+            { contentRef: 'base:billboards/ads#b2', raceId: 'r1', tick: 900 },
+          ],
+        }),
+      }),
+    );
+    expect(text).toContain('vetoes 2: base:barks/taunts#t3, base:billboards/ads#b2');
+  });
+
+  it('says the saved race is not wired until app/ reports it, with the fast-forward estimate', () => {
+    // step p50 0.31 ms x 21600 ticks = 6.7 s.
+    const text = buildSummary(data());
+    expect(text).toContain(
+      'saved race not wired (app-4) · 6-min fast-forward est 6.7 s (sim step p50 0.31 ms)',
+    );
+    expect(fastForwardSeconds(0.5)).toBeCloseTo(10.8, 5);
+  });
+
+  it("prints the saved recording's replay key, a refused one and the measured fast-forward", () => {
+    const text = buildSummary(
+      data({
+        resume: {
+          savedReplayKey: 'abc1234+0badf00d',
+          savedTick: 1234,
+          staleReplayKey: 'old5678+0badf00d',
+          fastForward: { ticks: 9000, ms: 1500 },
+        },
+      }),
+    );
+    // 1500 ms / 9000 ticks x 21600 = 3.6 s.
+    expect(text).toContain(
+      'saved race key abc1234+0badf00d at tick 1234 · refused key old5678+0badf00d · fast-forward 9000 ticks in 1500 ms (6-min 3.6 s)',
+    );
+    const none = buildSummary(
+      data({ resume: { savedReplayKey: null, savedTick: null, staleReplayKey: null, fastForward: null } }),
+    );
+    expect(none).toContain('saved race none · 6-min fast-forward est');
+    const file = buildDebugFile(
+      data({ resume: { savedReplayKey: 'k', savedTick: 5, staleReplayKey: null, fastForward: null } }),
+    );
+    expect(file).toContain(
+      'resume {"savedReplayKey":"k","savedTick":5,"staleReplayKey":null,"fastForward":null}',
+    );
+  });
+});
 
 describe('dev/report: the copied summary', () => {
   it('carries the build, replay key, hashes, renderer, settings, tuning, frames, errors, events and vetoes', () => {
