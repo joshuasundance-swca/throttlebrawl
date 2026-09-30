@@ -40,6 +40,8 @@ export type {
   SlowmoSnapshot,
   StyleKind,
   TakedownKind,
+  TumbleBodySnapshot,
+  TumbleSnapshot,
 } from './types';
 
 // Shared core types and helpers, for modules the module map keeps away from core.
