@@ -101,7 +101,7 @@ External facts marked "verified 2026-09-29" were fetched from the vendor's own d
 
 | Tool | Version line | Why |
 |---|---|---|
-| Node.js | 22 LTS at `>=22.13`, pinned in `.nvmrc` and `engines` | ESLint 10 needs `^22.13.0` and Vitest 5 needs `^22.12.0` (npm registry, 2026-09-29), so a bare "22" could resolve to a Node that is too old; CI uses the same pin |
+| Node.js | 22 LTS. `.nvmrc` pins the Node CI runs (22.23.3); `engines` holds the floor the installed packages need (`>=22.13`) | ESLint 10 needs `^22.13.0` and Vitest 5 needs `^22.12.0` (npm registry, 2026-09-29), so a bare "22" could resolve to a Node that is too old. `.nvmrc` moved to the newest 22.x (22.23.3, released 2026-09-23) on 2026-09-30 so CI can install lint-staged 17, which needs `>=22.22.1`. `engines` stays at 22.13 until lint-staged 17 actually lands: `.npmrc` sets `engine-strict=true`, which also checks the root package, so raising the floor early makes `npm ci` refuse to run on any machine still on an older 22.x (checked on the dev machine, Node 22.20.0: "notsup Not compatible with your version of node/npm"). Whoever merges lint-staged 17 raises `engines` to `>=22.22.1` in the same PR, and every local machine needs Node 22.22.1 or newer first. `[default]` |
 | TypeScript | `~6.0` | typescript-eslint 8.71.0 declares `typescript: '>=4.8.4 <6.1.0'` (npm registry, 2026-09-29), while the newest TypeScript is 7.0.2. Revisit when typescript-eslint widens its range. |
 | Vite | 8.x | build and dev server |
 | Three.js | r186 (`three` 0.186.x) with `@types/three` | renderer |
