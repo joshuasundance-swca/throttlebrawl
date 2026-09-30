@@ -39,24 +39,29 @@ function drive(me: EntitySnapshot, route: RouteProgress, a: ActionState, takeSho
 }
 
 /**
- * The default event's race on the base pack. With drafts, the M1 traffic types (drafts until they
- * are drawn) are in, so the traffic check has vehicles to watch; release builds leave them out.
+ * The default event's race on the base pack (live content: the full field, traffic both ways and
+ * pedestrians). The timing comparison runs without traffic and without the cop, as it did before
+ * both were live: this lane-keeping rider never dodges, and the test compares the two paths only.
+ * The traffic check keeps the traffic, so it has vehicles to watch.
  */
-function setup(seed: number, withDrafts: boolean) {
-  const reg = loadBasePack({ includeDrafts: withDrafts });
+function setup(seed: number, withTraffic: boolean) {
+  const reg = loadBasePack();
   const event = lookup(reg.events, DEFAULT_EVENT);
   const routeFile = lookup(reg.routes, event.lengths[0]?.route ?? '');
   const network = lookup(reg.networks, routeFile.network);
   const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
   // Rivals don't swing here (ai.aggressionScale 0): with the full field, fights would make the cut
-  // run and the main-path run unlike for like, and this test compares the two paths only.
-  const config = buildSimConfig(reg, stream, { seed, tuning: { 'ai.aggressionScale': 0 } });
+  // run and the main-path run unlike for like.
+  const quiet = withTraffic ? {} : { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 };
+  const built = buildSimConfig(reg, stream, { seed, tuning: { 'ai.aggressionScale': 0, ...quiet } });
+  // The cop rides last on the grid, so leaving him out moves no other id.
+  const config = withTraffic ? built : { ...built, riders: built.riders.filter((r) => r.faction !== 'law') };
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   return { sim: createSim(config), config, route: config.route, playerId };
 }
 
-function race(seed: number, takeShortcut: boolean, withDrafts = false) {
-  const { sim, route, playerId, config } = setup(seed, withDrafts);
+function race(seed: number, takeShortcut: boolean, withTraffic = false) {
+  const { sim, route, playerId, config } = setup(seed, withTraffic);
   const shortcutEdges = new Set(
     ['c-boat-ramp-in', 'm1-boat-ramp-cut', 'c-boat-ramp-out'].map((id) => config.road.edgeIndex(id)),
   );

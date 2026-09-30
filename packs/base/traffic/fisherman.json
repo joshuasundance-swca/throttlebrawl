@@ -11,7 +11,7 @@
   "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
   "look": { "procedural": { "preset": "ped-fisherman" }, "paintOptions": ["#7a8b5c", "#d9d9d9", "#4a6fa5"] },
   "meta": {
-    "status": "draft",
+    "status": "live",
     "notes": "The tone guide's pedestrian: fishes off the bridge rail and dives clear still holding the rod. Has seen worse.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }
