@@ -6,19 +6,20 @@ import { InputFlag, type SimEvent, type SimInput } from '../../src/sim/types.ts'
 // Playtest 1 (2026-09-30), item 3: "Can't kick". A scripted 180 ms swipe down on the attack
 // button, a natural swipe rather than M1's 80 ms flick, produces a kick and not a punch, end to end
 // in the production build: real touches (Chrome's touch emulation) reach input, the kick flag
-// reaches the sim, and the player's attack chain is a `base:kick` with no punch landing or
-// missing in it.
+// reaches the sim, and the player's attack ends in a `base:kick`.
 //
 // Two paths:
 // - burst: the whole swipe arrives at once, stamped over 180 ms, so input sees the swipe before
-//   the press is sampled and the attack starts as a kick (input's window alone);
+//   the press is sampled and the attack starts as a kick (input's window alone), with no punch
+//   outcome at all;
 // - real time: the swipe's end arrives about 150 ms after the press, so the punch has already
 //   started and its 7-tick wind-up is over when the kick flag reaches the sim; only combat's
-//   kick-conversion window (combat.kickConvertMs, 15 ticks) turns it into a kick. The events are
-//   stamped (the gesture is judged by the stamps), but when they are *delivered* depends on the
-//   runner's load: an attempt whose kick flag reached the sim outside 7-15 ticks after the press,
-//   or whose punch landed before the kick flag arrived, proves nothing about the conversion and
-//   is sent again, up to 4 times.
+//   kick-conversion window (combat.kickConvertMs, 15 ticks) turns it into a kick, so the attack
+//   ends in a kick (the punch's miss may be reported first when the flag arrives after its
+//   active moment). The events are stamped (the gesture is judged by the stamps), but when they
+//   are *delivered* depends on the runner's load: an attempt whose kick flag reached the sim
+//   outside 7-15 ticks after the press, or whose punch landed before the kick flag arrived,
+//   proves nothing about the conversion and is sent again, up to 4 times.
 
 interface Handle {
   inputs(from?: number): SimInput[];
@@ -106,6 +107,18 @@ const isKickChain = (chain: ChainEvent[]) =>
   chain.some((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
 const hasPunchOutcome = (chain: ChainEvent[]) =>
   chain.some((e) => (e.type === 'hit' || e.type === 'attackMiss') && e.data['weapon'] === 'base:punch');
+/** The chain's last attack is a kick, and that kick resolves (lands or misses). */
+const endsInKick = (chain: ChainEvent[]) => {
+  const starts = chain.filter((e) => e.type === 'attackStart');
+  const last = starts[starts.length - 1];
+  if (!last || last.data['weapon'] !== 'base:kick') return false;
+  return chain.some(
+    (e) =>
+      e.tick >= last.tick &&
+      (e.type === 'hit' || e.type === 'attackMiss') &&
+      e.data['weapon'] === 'base:kick',
+  );
+};
 
 test('a scripted 180 ms swipe down on the attack button kicks, not punches', async ({ page }) => {
   test.setTimeout(180_000);
@@ -136,8 +149,12 @@ test('a scripted 180 ms swipe down on the attack button kicks, not punches', asy
     const landed = r.chain.some((e) => e.type === 'hit' && e.data['weapon'] === 'base:punch');
     if (r.press < 0 || r.kick < 0 || lag < 7 || lag > 15 || landed) continue;
     judged = true;
-    expect(isKickChain(r.chain), 'the punch converted into a kick').toBe(true);
-    expect(hasPunchOutcome(r.chain), 'no punch landed or missed').toBe(false);
+    // combat-3's rule: the kick flag converts an attack at most combat.kickConvertMs (15 ticks) old
+    // in any phase. A flag that arrives after the punch's active moment has ended still converts,
+    // after the punch's miss has been reported; the swipe still ends in a kick, never a lone punch.
+    const whiffed = r.chain.some((e) => e.type === 'attackMiss' && e.data['weapon'] === 'base:punch');
+    console.log(`real-time swipe: the punch's miss was reported before the kick: ${whiffed}`);
+    expect(endsInKick(r.chain), 'the swipe ends in a kick that lands or misses').toBe(true);
   }
   expect(
     judged,
