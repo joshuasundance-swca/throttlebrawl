@@ -1,6 +1,6 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
-import { atan2, cos, FNV_OFFSET, sin, type TuningParamDecl } from '../core';
+import { atan2, cos, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
@@ -19,7 +19,7 @@ import type {
   SimInput,
   SimSnapshot,
 } from './types';
-import { addMover, createWorld, hashPlain, orderSystems, stepWorld, type World } from './world';
+import { addMover, createWorld, orderSystems, stepWorld, worldHash, type World } from './world';
 
 /** Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. */
 export const SIM_TUNING: readonly TuningParamDecl[] = [
@@ -103,6 +103,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       place: race.place[m.id] ?? 0,
       finished: race.finishOrder.includes(m.id),
       parkedBike: m.kind === 'rider' ? parkedOf(m.id) : null,
+      styleTally: world.facts.styleTally[m.id] ?? 0,
+      grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
     };
   });
   return {
@@ -110,17 +112,26 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
     timeScale: world.timeScale,
     entities,
     race: { over: race.over, routeLength: config.route.length, finishOrder: [...race.finishOrder] },
+    slowmo: {
+      active: world.facts.slowmo.remainingTicks > 0,
+      remainingTicks: world.facts.slowmo.remainingTicks,
+    },
   };
 }
 
 export function createSim(config: SimConfig): Sim {
+  return createSimWithWorld(config).sim;
+}
+
+/** createSim plus its world, for the sim's own tests (not exported through sim/api). */
+export function createSimWithWorld(config: SimConfig): { sim: Sim; world: World } {
   const known = new Set(SIM_TUNING.filter((d) => d.affectsSim).map((d) => d.id));
   const world = createWorld(config);
   config.riders.forEach((_def, i) => addMover(world, 'rider', gridPosition(config, i), i));
   for (const system of SYSTEMS) system.init(world, config);
   let last: SimEvent[] = [];
 
-  return {
+  const sim: Sim = {
     config,
     get tick() {
       return world.tick;
@@ -130,10 +141,7 @@ export function createSim(config: SimConfig): Sim {
     },
     snapshot: () => snapshotOf(world, config),
     events: () => last,
-    hash() {
-      const { tick, timeScale, params, movers, inputs, rng, systems } = world;
-      return hashPlain(FNV_OFFSET, { tick, timeScale, params, movers, inputs, rng, systems });
-    },
+    hash: () => worldHash(world),
     applyParam(id: string, value: number) {
       if (!known.has(id)) throw new Error(`sim.applyParam: ${id} is not a sim tuning parameter`);
       if (!Number.isFinite(value)) throw new Error(`sim.applyParam: ${id} must be a finite number`);
@@ -141,4 +149,5 @@ export function createSim(config: SimConfig): Sim {
     },
     isOver: () => raceState(world).over,
   };
+  return { sim, world };
 }

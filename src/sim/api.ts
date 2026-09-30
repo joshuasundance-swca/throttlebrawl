@@ -34,6 +34,7 @@ export type {
   SimSnapshot,
   SimTrafficTypeDef,
   SimWeaponDef,
+  SlowmoSnapshot,
 } from './types';
 
 // Shared core types and helpers, for modules the module map keeps away from core.
