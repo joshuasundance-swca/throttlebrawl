@@ -27,6 +27,7 @@ export type {
   SimEventDef,
   SimEventType,
   SimInput,
+  SimLawDef,
   SimRiderDef,
   SimSnapshot,
   SimTrafficTypeDef,

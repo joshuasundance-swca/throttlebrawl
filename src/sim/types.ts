@@ -122,6 +122,8 @@ export type SimEventType =
   | 'takedown'
   | 'nearMiss'
   | 'bust'
+  /** The cop's siren cue for audio: `data.on` is true when a chase starts, false when it ends. */
+  | 'siren'
   | 'jump'
   | 'land'
   | 'pedDive'
@@ -152,7 +154,23 @@ export interface SimBikeDef {
   massKg: number;
 }
 
-export type SimController = { kind: 'player'; slot: number } | { kind: 'ai'; style: string };
+/**
+ * Who drives a rider. `cop` is an in-sim AIController like `ai`, but sim/cops runs it in the cops
+ * phase, so its command takes effect on the next tick; the controllers phase leaves it alone.
+ */
+export type SimController =
+  { kind: 'player'; slot: number } | { kind: 'ai'; style: string } | { kind: 'cop' };
+
+/** A cop's `law` block (docs/content-packs.md, "Rider"), as the sim reads it. */
+export interface SimLawDef {
+  /** Content id of the agency (a `law` crew). */
+  agency: string;
+  bustRadiusM: number;
+  bustDwellS: number;
+  fineCash: number;
+  /** Informational: the resolver has already scaled the cop's `bike.topSpeedMps` by it. */
+  pursuitSpeedScale: number;
+}
 
 export interface SimRiderDef {
   contentId: string;
@@ -163,6 +181,8 @@ export interface SimRiderDef {
   bike: SimBikeDef;
   massKg: number;
   healthMax: number;
+  /** Present on a cop (role `cop`, faction `law`). */
+  law?: SimLawDef | undefined;
 }
 
 /** A weapon with its timings already converted to ticks (docs/content-packs.md, "Units and axes"). */
