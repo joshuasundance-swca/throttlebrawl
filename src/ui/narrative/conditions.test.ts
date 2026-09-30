@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { BARK_FACTS } from '../../content';
 import {
-  BARK_FACTS,
   conditionHolds,
   conditionsFrom,
   isKnownFact,
@@ -15,8 +15,8 @@ const c = (fact: string, op: BarkCondition['op'], value: unknown): BarkCondition
 
 describe('bark conditions', () => {
   it('know the v1 fact list and the flags family, and nothing else', () => {
-    expect(BARK_FACTS.length).toBe(20);
-    for (const f of BARK_FACTS) expect(isKnownFact(f), f).toBe(true);
+    expect(Object.keys(BARK_FACTS).length).toBe(20);
+    for (const f of Object.keys(BARK_FACTS)) expect(isKnownFact(f), f).toBe(true);
     expect(isKnownFact('flags.met-the-mayor')).toBe(true);
     expect(isKnownFact('flags.')).toBe(false);
     expect(isKnownFact('target.shoeSize')).toBe(false);

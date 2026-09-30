@@ -8,6 +8,7 @@
 // Time is race time in seconds (sim tick ÷ 60), so the gates are exact and testable. [default]
 // In M1 a "session" is one race: reset() at race start clears the rings, cooldowns and gaps
 // (race time starts again at 0), and career-long memory arrives with career/ in M4.
+import { BARK_TRIGGERS } from '../../content';
 import type { TuningParamDecl } from '../../sim/api';
 import {
   conditionsFrom,
@@ -18,30 +19,8 @@ import {
   type FactResolver,
 } from './conditions';
 
-/** The closed v1 trigger list (docs/content-packs.md, "Line fields"). */
-export const V1_TRIGGERS = [
-  'race-start',
-  'race-end-win',
-  'race-end-lose',
-  'overtake',
-  'overtaken',
-  'alongside-idle',
-  'hit-landed',
-  'hit-taken',
-  'weapon-stolen-by-speaker',
-  'weapon-stolen-from-speaker',
-  'knocked-down-target',
-  'knocked-down-by-target',
-  'takedown-into-traffic',
-  'near-miss',
-  'crash-self',
-  'busted',
-  'cop-siren',
-  'grudge-spotted',
-  'gang-up-join',
-  'interlude',
-  'modifier-start',
-] as const;
+/** The closed v1 trigger list: content/'s registry (src/content/schema/vocab.ts). */
+export const V1_TRIGGERS = BARK_TRIGGERS;
 
 /** The triggers M1 fires (docs/milestones/M1.md, narrative-1). */
 export const M1_TRIGGERS = ['race-start', 'overtake', 'hit-landed'] as const;

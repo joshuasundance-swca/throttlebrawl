@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BARK_FACTS } from '../../content';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../../sim/api';
 import { createRaceMemory, factsFor, GRUDGE_POINTS_PER_NOTE } from './memory';
 
@@ -127,5 +128,25 @@ describe('fact resolver', () => {
       expect(f(fact), fact).toBeUndefined();
     }
     expect(f('race.position.speaker')).toBe(1);
+  });
+
+  it("answers every fact in content/'s vocabulary, except the career ones until M4", () => {
+    const CAREER = new Set(['history.lastRace.targetBeatSpeaker', 'history.racesTogether']);
+    const memory = createRaceMemory();
+    memory.observe([ev('modifierStart', -1, undefined, { kind: 'league', id: 'base:bounty' })]);
+    const f = factsFor({
+      snapshot,
+      memory,
+      speaker,
+      target: player,
+      setting: { eventKind: 'classic-race', regionId: 'base:florida-keys', timeOfDay: 'noon' },
+      bikeClassOf: () => 'rat',
+    });
+    const facts = [...Object.keys(BARK_FACTS), 'flags.met-the-mayor'];
+    expect(facts.length).toBe(21);
+    for (const fact of facts) {
+      const career = CAREER.has(fact) || fact.startsWith('flags.');
+      expect(f(fact) === undefined, fact).toBe(career);
+    }
   });
 });

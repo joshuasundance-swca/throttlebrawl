@@ -9,7 +9,13 @@
 import type { EntityId } from '../core';
 import { placeElement, type SimEvent, type SimInput, type TouchLayout } from '../sim/api';
 import { emptyActions, toSimInput, type ActionState } from './actions';
-import { GamepadState, type GamepadMap, type PadLike } from './devices/gamepad';
+import {
+  DEFAULT_PAD_MAP,
+  GamepadState,
+  padMapFromBindings,
+  type GamepadMap,
+  type PadLike,
+} from './devices/gamepad';
 import { KeyboardState, type KeyMap } from './devices/keyboard';
 import { browserScreenAngle, createTilt, type TiltSource } from './devices/tilt';
 import { TouchState, type TouchZones } from './devices/touch';
@@ -21,6 +27,7 @@ export {
   DEFAULT_PAD_MAP,
   GamepadState,
   PAD,
+  padMapFromBindings,
   type GamepadMap,
   type PadButtonAction,
   type PadLike,
@@ -90,6 +97,11 @@ export interface ControlOptions {
   pullBackBrake: boolean;
   /** Vibration on hits, takedowns and crashes. On by default [decided]. */
   haptics: boolean;
+  /**
+   * Gamepad remaps from the settings (`gamepadBindings`): action id to tokens such as `button3`,
+   * or `axis2` for `steer`. Only remapped actions are listed; {} means the default bindings.
+   */
+  padBindings: Readonly<Record<string, readonly string[]>>;
 }
 
 export const DEFAULT_CONTROL_OPTIONS: Readonly<ControlOptions> = Object.freeze({
@@ -98,6 +110,7 @@ export const DEFAULT_CONTROL_OPTIONS: Readonly<ControlOptions> = Object.freeze({
   autoThrottle: false,
   pullBackBrake: false,
   haptics: true,
+  padBindings: Object.freeze({}),
 });
 
 type Listener = (e: Event) => void;
@@ -154,7 +167,9 @@ export function createInput(opts: InputOptions): InputSystem {
   const thresholds: InputThresholds = inputDefaults();
   const keyboard = new KeyboardState(opts.keyMap);
   const touch = new TouchState(thresholds);
-  const gamepad = new GamepadState(opts.padMap);
+  const padBase = opts.padMap ?? DEFAULT_PAD_MAP;
+  const gamepad = new GamepadState(padBase);
+  let padBindings: ControlOptions['padBindings'] | null = null;
   const readPads = opts.gamepads ?? browserGamepads;
   const haptics = createHaptics(opts.vibrate === undefined ? {} : { vibrate: opts.vibrate });
   let controls: ControlOptions = { ...DEFAULT_CONTROL_OPTIONS, ...opts.controls };
@@ -171,6 +186,10 @@ export function createInput(opts: InputOptions): InputSystem {
     touch.options.stickSteers = controls.steering !== 'tilt';
     touch.options.pullBackBrake = controls.pullBackBrake;
     haptics.setEnabled(controls.haptics);
+    if (controls.padBindings !== padBindings) {
+      padBindings = controls.padBindings;
+      gamepad.setMap(padMapFromBindings(padBindings, padBase));
+    }
     const wantSensors = controls.steering !== 'thumb' && !injectedTilt;
     if (wantSensors && !sensorTilt)
       sensorTilt = createTilt(opts.motion ?? opts.keys, thresholds, opts.screenAngle ?? browserScreenAngle);
