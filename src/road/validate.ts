@@ -3,8 +3,18 @@
 // pack validator (tools/packs) calls it. It reports; it never throws. Every issue carries a file
 // label and a JSON pointer, so an agent can fix it without searching.
 //
-// This file has type-only imports, so Node's type stripping can load it directly as well as Vite.
-import type { BakedFeature, BakedJunction, BakedNetwork, BakedRoad, BakedRoute, FeatureKind } from './types';
+// road-2 adds junctions with connector roads (continuity per connector row, split zones, the
+// traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
+import {
+  readConnector,
+  type BakedConnector,
+  type BakedFeature,
+  type BakedJunction,
+  type BakedNetwork,
+  type BakedRoad,
+  type BakedRoute,
+  type FeatureKind,
+} from './types';
 
 export type RoadLintRule =
   | 'samples'
@@ -15,6 +25,8 @@ export type RoadLintRule =
   | 'junction-ends'
   | 'lanes'
   | 'network'
+  | 'connectors'
+  | 'jump'
   | 'route';
 
 export interface RoadLintIssue {
@@ -50,7 +62,22 @@ export const ROAD_LINT = {
   gradeAbsTol: 0.01,
   /** A road's end samples must lie within this of their junctions, metres. */
   junctionTolM: 0.5,
+  /**
+   * At a junction with connector roads, the ends it lists must lie within this of its point: the
+   * connector roads span the junction, and continuity is checked along each of them instead.
+   */
+  junctionRadiusM: 60,
+  /** A connector's end and the road end it joins must point the same way within this, radians (3°). */
+  joinAngleRad: 0.0524,
+  /** Jump lint: the speed the expected flight is worked out at (the M1 bike's top speed), m/s. */
+  jumpSpeedMps: 38,
+  /** Jump lint: the largest |kappa| allowed from a ramp's start to its expected landing (500 m radius). */
+  jumpMaxKappa: 0.002,
+  /** Jump lint: road checked past the end of a `gap` feature, metres. */
+  gapRunOutM: 20,
 } as const;
+
+const GRAVITY = 9.81;
 
 const FEATURE_KINDS: readonly FeatureKind[] = [
   'ramp',
@@ -206,7 +233,12 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
     const b = i === last ? last : i + 1;
     gPos[i] = ((y[b] as number) - (y[a] as number)) / ((b - a) * sp);
   }
+  // A ramp lip is a deliberate kink in the profile, so its range (and two samples either side,
+  // for the averaging) is left out; the jump rule below covers ramps.
+  const lips = (road.features ?? []).filter((f) => f.kind === 'ramp');
+  const nearLip = (s: number) => lips.some((f) => s >= f.s0 - 2 * sp && s <= f.s1 + 2 * sp);
   for (let i = 0; i <= last; i++) {
+    if (nearLip(i * sp)) continue;
     const err = smooth(gPos, i, 0, last) - smooth(grade, i, 0, last);
     if ((err < 0 ? -err : err) > ROAD_LINT.gradeAbsTol) {
       add(
@@ -252,7 +284,124 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
   });
   (road.tags ?? []).forEach((t, i) => range(`/tags/${i}`, t.s0, t.s1));
   (road.barriers ?? []).forEach((b, i) => range(`/barriers/${i}`, b.s0, b.s1));
+
+  // Jumps: an airborne body bends with the road (docs/architecture.md, "Jumps, ramps and
+  // airtime"), so a ramp or gap must sit on road that is nearly straight from its start to where
+  // a bike at top speed would land.
+  (road.features ?? []).forEach((f: BakedFeature, fi) => {
+    if (f.kind !== 'ramp' && f.kind !== 'gap') return;
+    const s0 = Math.max(0, f.s0);
+    const s1 = Math.min(L, expectedFlightEnd(f, last + 1, sp, y));
+    const i0 = Math.floor(s0 / sp);
+    const i1 = Math.min(last, Math.ceil(s1 / sp));
+    let worst = 0;
+    let at = i0;
+    for (let i = i0; i <= i1; i++) {
+      const k = kappa[i] as number;
+      const a = k < 0 ? -k : k;
+      if (a > worst) {
+        worst = a;
+        at = i;
+      }
+    }
+    if (worst > ROAD_LINT.jumpMaxKappa) {
+      add(
+        'jump',
+        `/features/${fi}`,
+        `${f.kind} ${f.id} sits on a bend: |kappa| ${worst.toPrecision(3)} at s ${(at * sp).toFixed(1)} is over ${ROAD_LINT.jumpMaxKappa} between s ${s0.toFixed(1)} and its expected landing at s ${s1.toFixed(1)}`,
+      );
+    }
+  });
   return out;
+}
+
+/**
+ * Where a jump's expected flight ends, in s: for a ramp, a bike leaving its highest sample at
+ * ROAD_LINT.jumpSpeedMps with the slope just before it, flying until it meets the surface again;
+ * for a gap, its end plus a run-out. Clamped to the road.
+ */
+function expectedFlightEnd(f: BakedFeature, count: number, sp: number, y: readonly number[]): number {
+  const L = (count - 1) * sp;
+  if (f.kind === 'gap') return Math.min(L, f.s1 + ROAD_LINT.gapRunOutM);
+  const iA = Math.max(0, Math.floor(f.s0 / sp));
+  const iB = Math.min(count - 1, Math.ceil(f.s1 / sp));
+  let lip = iA;
+  for (let i = iA; i <= iB; i++) if ((y[i] as number) > (y[lip] as number)) lip = i;
+  const slope = lip > 0 ? ((y[lip] as number) - (y[lip - 1] as number)) / sp : 0;
+  const v = ROAD_LINT.jumpSpeedMps;
+  const yLip = y[lip] as number;
+  for (let i = lip + 1; i < count; i++) {
+    const dx = (i - lip) * sp;
+    const t = dx / v;
+    if (yLip + slope * dx - 0.5 * GRAVITY * t * t <= (y[i] as number)) return i * sp;
+  }
+  return L;
+}
+
+/** A road's end sample: position, and the unit horizontal direction of increasing s there. */
+function endOf(road: BakedRoad, end: 'from' | 'to') {
+  const xs = road.samples.data['x'];
+  const ys = road.samples.data['y'];
+  const zs = road.samples.data['z'];
+  if (!xs || !ys || !zs || xs.length < 2) return null;
+  const i = end === 'from' ? 0 : xs.length - 1;
+  const k = end === 'from' ? 1 : xs.length - 2;
+  const sign = end === 'from' ? 1 : -1;
+  let tx = sign * ((xs[k] as number) - (xs[i] as number));
+  let tz = sign * ((zs[k] as number) - (zs[i] as number));
+  const len = Math.sqrt(tx * tx + tz * tz) || 1;
+  tx /= len;
+  tz /= len;
+  return { i, x: xs[i] as number, y: (ys[i] as number) ?? 0, z: zs[i] as number, tx, tz };
+}
+
+/** Every lane on a road, all sections. */
+function lanesOf(road: BakedRoad) {
+  return road.laneSections.flatMap((s) => s.lanes);
+}
+
+/**
+ * A connector's end must meet the road end it joins: on that end's cross-section (within
+ * junctionTolM along the road and vertically, and inside its width) and pointing the same way.
+ */
+function joinCheck(
+  c: BakedRoad,
+  cEnd: 'from' | 'to',
+  r: BakedRoad,
+  rEnd: 'from' | 'to',
+  report: (message: string) => void,
+): void {
+  const pc = endOf(c, cEnd);
+  const pr = endOf(r, rEnd);
+  if (!pc || !pr) return;
+  const dx = pc.x - pr.x;
+  const dz = pc.z - pr.z;
+  const along = dx * pr.tx + dz * pr.tz;
+  const lat = -dx * pr.tz + dz * pr.tx;
+  let half = 0;
+  for (const l of lanesOf(r)) {
+    const lo = l.dCenterM - l.widthM / 2;
+    const hi = l.dCenterM + l.widthM / 2;
+    half = Math.max(half, lo < 0 ? -lo : lo, hi < 0 ? -hi : hi);
+  }
+  const dy = pc.y - pr.y;
+  const tol = ROAD_LINT.junctionTolM;
+  if (!(
+    (along < 0 ? -along : along) <= tol &&
+    (dy < 0 ? -dy : dy) <= tol &&
+    (lat < 0 ? -lat : lat) <= half
+  )) {
+    report(
+      `the ${cEnd} end of connector ${c.id} misses the ${rEnd} end of ${r.id}: ${along.toFixed(3)} m along, ${lat.toFixed(3)} m across (width ±${half} m), ${dy.toFixed(3)} m up`,
+    );
+    return;
+  }
+  // Joining a `from` end to a `to` end keeps the direction of s; to-to or from-from reverses it.
+  const sigma = cEnd === rEnd ? -1 : 1;
+  const cosLimit = 1 - (ROAD_LINT.joinAngleRad * ROAD_LINT.joinAngleRad) / 2;
+  if (sigma * (pc.tx * pr.tx + pc.tz * pr.tz) < cosLimit) {
+    report(`the ${cEnd} end of connector ${c.id} does not line up with the ${rEnd} end of ${r.id}`);
+  }
 }
 
 /** Lints a network, its roads and its routes together. */
@@ -284,6 +433,27 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
     }),
   );
 
+  // Connector rows, read once. A connector road belongs to the one junction whose rows name it.
+  const rowsOf = new Map<string, { row: BakedConnector; ji: number; ci: number }[]>();
+  const junctionsNaming = new Map<string, Set<string>>();
+  net.junctions.forEach((j, ji) =>
+    j.connectors.forEach((raw, ci) => {
+      const row = readConnector(raw);
+      if (!row) {
+        out.push({
+          rule: 'connectors',
+          file: netFile,
+          pointer: `/junctions/${ji}/connectors/${ci}`,
+          message:
+            'a connector row needs id, road, from {road, end, lane} and to {road, end, lane}, and numbers s0, s1, d0, d1 in any splitZone',
+        });
+        return;
+      }
+      rowsOf.set(j.id, [...(rowsOf.get(j.id) ?? []), { row, ji, ci }]);
+      junctionsNaming.set(row.road, new Set([...(junctionsNaming.get(row.road) ?? []), j.id]));
+    }),
+  );
+
   for (const road of input.roads) {
     const file = label('road', road.id);
     out.push(...lintRoad(road, label));
@@ -303,6 +473,30 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
         message: `road ${road.id} is not listed`,
       });
     }
+    const naming = junctionsNaming.get(road.id);
+    if (naming) {
+      // A connector road spans its junction: both its ends name it, and no junction lists them.
+      const [only] = [...naming];
+      if (naming.size !== 1 || road.from !== only || road.to !== only) {
+        out.push({
+          rule: 'connectors',
+          file,
+          pointer: '/from',
+          message: `connector road ${road.id} must run from and to the one junction whose rows name it (${[...naming].join(', ')})`,
+        });
+      }
+      for (const end of ['from', 'to'] as const) {
+        if ((endCount.get(`${road.id}:${end}`) ?? 0) > 0) {
+          out.push({
+            rule: 'connectors',
+            file: netFile,
+            pointer: '/junctions',
+            message: `the ${end} end of connector road ${road.id} is listed in a junction's ends; connector ends are joined by their rows instead`,
+          });
+        }
+      }
+      continue;
+    }
     for (const end of ['from', 'to'] as const) {
       const jid = road[end];
       const j = junctions.get(jid);
@@ -320,37 +514,103 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
           message: `the ${end} end of ${road.id} must be listed by exactly its junction ${jid} (found ${count})`,
         });
       }
-      const xs = road.samples.data['x'];
-      const ys = road.samples.data['y'];
-      const zs = road.samples.data['z'];
-      if (!xs || !ys || !zs || xs.length === 0) continue;
-      const i = end === 'from' ? 0 : xs.length - 1;
-      const dx = (xs[i] as number) - j.x;
-      const dy = (ys[i] as number) - j.y;
-      const dz = (zs[i] as number) - j.z;
+      const p = endOf(road, end);
+      if (!p) continue;
+      const dx = p.x - j.x;
+      const dy = p.y - j.y;
+      const dz = p.z - j.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (!(dist <= ROAD_LINT.junctionTolM)) {
+      const limit = rowsOf.has(j.id) ? ROAD_LINT.junctionRadiusM : ROAD_LINT.junctionTolM;
+      if (!(dist <= limit)) {
         out.push({
           rule: 'junction-ends',
           file,
-          pointer: `/samples/data/x/${i}`,
-          message: `the ${end} end is ${dist.toFixed(3)} m from junction ${jid} (limit ${ROAD_LINT.junctionTolM} m)`,
+          pointer: `/samples/data/x/${p.i}`,
+          message: `the ${end} end is ${dist.toFixed(3)} m from junction ${jid} (limit ${limit} m)`,
         });
       }
     }
   }
 
-  // Which road ends meet at a junction (pass-through joins and connector ends alike).
-  const meets = (a: string, b: string): boolean =>
-    net.junctions.some(
-      (j) =>
-        j.ends.some((e) => e.road === a && e.end === 'to') &&
-        (j.ends.some((e) => e.road === b && e.end === 'from') ||
-          j.connectors.some((c) => {
-            const cc = c as { from?: { road?: string }; to?: { road?: string } };
-            return cc.from?.road === a && cc.to?.road === b;
-          })),
-    );
+  // Each connector row: roads and lanes exist, the connector meets both road ends it joins, the
+  // split zone sits at the end it leads out of, and traffic cannot reach a shortcut through it.
+  for (const [jid, rows] of rowsOf) {
+    const j = junctions.get(jid);
+    for (const { row, ji, ci } of rows) {
+      const ptr = `/junctions/${ji}/connectors/${ci}`;
+      const add = (rule: RoadLintRule, pointer: string, message: string) =>
+        out.push({ rule, file: netFile, pointer: `${ptr}${pointer}`, message });
+      const c = byId.get(row.road);
+      const a = byId.get(row.from.road);
+      const b = byId.get(row.to.road);
+      if (!c) add('connectors', '/road', `unknown connector road ${row.road}`);
+      if (!a) add('connectors', '/from/road', `unknown road ${row.from.road}`);
+      if (!b) add('connectors', '/to/road', `unknown road ${row.to.road}`);
+      if (!c || !a || !b || !j) continue;
+      for (const [side, e] of [
+        ['from', row.from],
+        ['to', row.to],
+      ] as const) {
+        if (!j.ends.some((x) => x.road === e.road && x.end === e.end))
+          add('connectors', `/${side}`, `the ${e.end} end of ${e.road} is not one of junction ${jid}'s ends`);
+        const r = side === 'from' ? a : b;
+        if (!lanesOf(r).some((l) => l.id === e.lane))
+          add('connectors', `/${side}/lane`, `road ${e.road} has no lane ${e.lane}`);
+      }
+      joinCheck(c, 'from', a, row.from.end, (m) => add('junction-ends', '/from', m));
+      joinCheck(c, 'to', b, row.to.end, (m) => add('junction-ends', '/to', m));
+      const z = row.splitZone;
+      if (z) {
+        const L = a.lengthM;
+        const atEnd =
+          row.from.end === 'to'
+            ? Math.abs(z.s1 - L) <= ROAD_LINT.junctionTolM
+            : Math.abs(z.s0) <= ROAD_LINT.junctionTolM;
+        if (!(z.s0 >= 0 && z.s1 <= L && z.s0 < z.s1 && z.d0 < z.d1))
+          add(
+            'connectors',
+            '/splitZone',
+            `split zone s ${z.s0}–${z.s1}, d ${z.d0}–${z.d1} must lie inside ${a.id} (0–${L}) with s0 < s1 and d0 < d1`,
+          );
+        else if (!atEnd)
+          add(
+            'connectors',
+            '/splitZone',
+            `split zone must reach the ${row.from.end} end of ${a.id}, where the connector leaves`,
+          );
+      }
+      const shortcut = (r: BakedRoad) => lanesOf(r).some((l) => l.kind === 'shortcut');
+      if ((shortcut(a) || shortcut(b)) && lanesOf(c).some((l) => l.kind === 'drive')) {
+        add(
+          'connectors',
+          '/road',
+          `connector ${c.id} leads onto or off a shortcut road but carries a drive lane, so traffic could take it`,
+        );
+      }
+    }
+  }
+
+  // How a road's `to` end leads into the next road's `from` end: a pass-through join, or a row.
+  const joinOf = (a: string, b: string): { ok: boolean; via?: string } => {
+    for (const j of net.junctions) {
+      if (!j.ends.some((e) => e.road === a && e.end === 'to')) continue;
+      const rows = rowsOf.get(j.id) ?? [];
+      if (rows.length === 0) {
+        if (j.ends.length === 2 && j.ends.some((e) => e.road === b && e.end === 'from')) return { ok: true };
+        continue;
+      }
+      const r = rows.find(
+        ({ row }) =>
+          row.from.road === a &&
+          row.from.end === 'to' &&
+          row.to.road === b &&
+          row.to.end === 'from' &&
+          !row.splitZone,
+      );
+      if (r) return { ok: true, via: r.row.road };
+    }
+    return { ok: false };
+  };
 
   for (const route of input.routes ?? []) {
     const file = label('route', route.id);
@@ -375,8 +635,11 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
       if (!route.allowedRoads.includes(r))
         add(`/mainPath/${i}`, `${r} is on the main path but not in allowedRoads`);
       const prev = route.mainPath[i - 1];
-      if (prev !== undefined && !meets(prev, r))
-        add(`/mainPath/${i}`, `${prev} does not lead into ${r} at a junction`);
+      if (prev === undefined) return;
+      const join = joinOf(prev, r);
+      if (!join.ok) add(`/mainPath/${i}`, `${prev} does not lead into ${r} at a junction`);
+      else if (join.via !== undefined && !route.allowedRoads.includes(join.via))
+        add(`/mainPath/${i}`, `the connector ${join.via} from ${prev} into ${r} is not in allowedRoads`);
     });
     if (route.mainPath[0] !== route.start.road)
       add('/start/road', 'the start is not on the first main-path road');

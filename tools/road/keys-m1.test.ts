@@ -50,7 +50,16 @@ describe('tools/road: the baked M1 track', () => {
     console.log(
       `M1 track: ${roads.map((r) => `${r.id} ${r.lengthM.toFixed(1)} m`).join(', ')}; route ${progress.length.toFixed(1)} m`,
     );
-    expect(net.edges.length).toBe(3);
+    // road-2: four main roads and two connector roads on the main path, and the shortcut's three.
+    expect(net.edges.length).toBe(9);
+    expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
+      'm1-marina-run',
+      'c-marina-split-main',
+      'm1-marina-bends',
+      'c-marina-merge-main',
+      'm1-pelican-bridge',
+      'm1-sandbar-causeway',
+    ]);
     expect(progress.length).toBeGreaterThan(3300);
     expect(progress.length).toBeLessThan(3800);
     expect(progress.distanceToFinish(progress.start.edge, progress.start.s)).toBeCloseTo(progress.length, 6);
@@ -78,8 +87,9 @@ describe('tools/road: the baked M1 track', () => {
     const g = progress.startGrid;
     expect(route.start.s - (g ? (g.rows - 1) * g.rowGapM : 0)).toBeGreaterThanOrEqual(0);
     // The bridge has rails both sides.
-    expect(net.barrierAt(1, 500, 'left')?.kind).toBe('rail');
-    expect(net.barrierAt(1, 500, 'right')?.kind).toBe('rail');
+    const bridge = net.edgeIndex('m1-pelican-bridge');
+    expect(net.barrierAt(bridge, 500, 'left')?.kind).toBe('rail');
+    expect(net.barrierAt(bridge, 500, 'right')?.kind).toBe('rail');
   });
 
   it('round-trips toWorld and project within 1 cm on its straights and bends', () => {
@@ -120,15 +130,21 @@ describe('tools/road: the baked M1 track', () => {
 
   it('never launches a grounded bike at top speed: crest curvature × v² stays below g', () => {
     const top = 38; // the M1 bike's 85 mph
+    let checked = 0;
     for (const r of roads) {
       const y = r.samples.data['y'] ?? [];
       const h = r.sampleSpacingM;
+      // Except on purpose: a ramp's lip (road-2), with two samples either side for the average.
+      const ramps = (r.features ?? []).filter((f) => f.kind === 'ramp');
       for (let i = 2; i < y.length - 2; i++) {
+        if (ramps.some((f) => i * h >= f.s0 - 2 * h && i * h <= f.s1 + 2 * h)) continue;
+        checked++;
         // Second difference over 4 m, which smooths the 0.1 mm rounding.
         const curv = ((y[i + 2] ?? 0) - 2 * (y[i] ?? 0) + (y[i - 2] ?? 0)) / (4 * h * h);
         expect(-curv * top * top, `${r.id} sample ${i}`).toBeLessThan(9.81 * 0.8);
       }
     }
+    expect(checked).toBeGreaterThan(1700);
   });
 
   it('keeps world distance for movers inside and outside a real bend (the 1 − kappa·d rule)', () => {
@@ -163,25 +179,102 @@ describe('tools/road: the baked M1 track', () => {
     expect(inside.gained).toBeGreaterThan(outside.gained);
   });
 
-  it('carries movers both ways across both junctions with no lost or doubled distance', () => {
-    for (const dir of [1, -1] as const) {
-      const pos: RoadPos = dir === 1 ? { edge: 0, s: 1100, d: 1.7, dir } : { edge: 2, s: 100, d: -1.7, dir };
-      let prev = net.toWorld(pos.edge, pos.s, pos.d, 0);
-      const seen = [pos.edge];
-      let worst = 0;
-      for (let t = 0; t < 2000; t++) {
-        pos.s += dir * 1.1;
-        expect(net.advance(pos)).toBe('ok');
-        if (seen[seen.length - 1] !== pos.edge) seen.push(pos.edge);
-        const w = net.toWorld(pos.edge, pos.s, pos.d, 0);
-        const expected = 1.1 * (1 - net.kappaAt(pos.edge, pos.s) * pos.d);
-        worst = Math.max(worst, Math.abs(Math.hypot(w.x - prev.x, w.y - prev.y, w.z - prev.z) - expected));
-        prev = w;
-        if (seen.length === 3 && (dir === 1 ? pos.s > 100 : pos.s < 1100)) break;
+  /** Steps a mover 1.1 m of s at a time from `pos` until `stop`; returns the edges and the worst step error. */
+  const walk = (pos: RoadPos, stop: (p: RoadPos) => boolean) => {
+    let prev = net.toWorld(pos.edge, pos.s, pos.d, 0);
+    const seen = [pos.edge];
+    let worst = 0;
+    for (let t = 0; t < 6000 && !stop(pos); t++) {
+      const k = net.kappaAt(pos.edge, pos.s);
+      pos.s += pos.dir * 1.1;
+      expect(net.advance(pos)).toBe('ok');
+      if (seen[seen.length - 1] !== pos.edge) seen.push(pos.edge);
+      const w = net.toWorld(pos.edge, pos.s, pos.d, 0);
+      // Ground covered: 1.1 m of s scaled by 1 − kappa·d (kappa averaged over the step).
+      const expected = 1.1 * (1 - ((k + net.kappaAt(pos.edge, pos.s)) / 2) * pos.d);
+      const step = Math.hypot(w.x - prev.x, w.z - prev.z);
+      worst = Math.max(worst, Math.abs(step - expected));
+      prev = w;
+    }
+    return { seen: seen.map((e) => net.edges[e]?.id), worst };
+  };
+  const id = (name: string) => net.edgeIndex(name);
+
+  it('carries movers both ways along the main path, across every junction, with no lost or doubled distance', () => {
+    const fwd = walk(
+      { edge: id('m1-marina-run'), s: 200, d: 1.7, dir: 1 },
+      (p) => p.edge === id('m1-sandbar-causeway') && p.s > 100,
+    );
+    expect(fwd.seen).toEqual(progress.mainEdges.map((e) => net.edges[e]?.id));
+    const back = walk(
+      { edge: id('m1-sandbar-causeway'), s: 100, d: -1.7, dir: -1 },
+      (p) => p.edge === id('m1-marina-run') && p.s < 200,
+    );
+    expect(back.seen).toEqual([...progress.mainEdges].reverse().map((e) => net.edges[e]?.id));
+    console.log(
+      `main path: worst step error ${(fwd.worst * 1000).toFixed(2)} / ${(back.worst * 1000).toFixed(2)} mm`,
+    );
+    // 1 cm per step, which covers the sampled positions.
+    expect(fwd.worst).toBeLessThan(0.01);
+    expect(back.worst).toBeLessThan(0.01);
+  });
+
+  it('road-2: a mover hugging the right edge takes the boat-ramp cut and rejoins on the bridge', () => {
+    const run = walk(
+      { edge: id('m1-marina-run'), s: 200, d: 3.6, dir: 1 },
+      (p) => p.edge === id('m1-pelican-bridge') && p.s > 100,
+    );
+    expect(run.seen).toEqual([
+      'm1-marina-run',
+      'c-boat-ramp-in',
+      'm1-boat-ramp-cut',
+      'c-boat-ramp-out',
+      'm1-pelican-bridge',
+    ]);
+    console.log(`shortcut path: worst step error ${(run.worst * 1000).toFixed(2)} mm`);
+    expect(run.worst).toBeLessThan(0.01);
+  });
+
+  it('road-2: the shortcut saves 40–80 m to the finish, progress never falls on it, and its ramp is straight', () => {
+    expect(progress.shortcuts).toHaveLength(1);
+    const cut = progress.shortcuts[0];
+    console.log(
+      `boat-ramp cut: split zone s ${cut?.s0}–${cut?.s1}, d ${cut?.d0}–${cut?.d1} on ${net.edges[cut?.edge ?? 0]?.id}; saves ${cut?.gainM.toFixed(1)} m`,
+    );
+    expect(cut?.edge).toBe(id('m1-marina-run'));
+    expect(cut?.gainM).toBeGreaterThan(40);
+    expect(cut?.gainM).toBeLessThan(80);
+    // Progress along the shortcut path, sampled every metre, never falls.
+    let prev = -Infinity;
+    for (const name of [
+      'm1-marina-run',
+      'c-boat-ramp-in',
+      'm1-boat-ramp-cut',
+      'c-boat-ramp-out',
+      'm1-pelican-bridge',
+    ]) {
+      const e = id(name);
+      for (let s = 0; s <= (net.edges[e]?.length ?? 0); s += 1) {
+        const g = progress.progressAt(e, s);
+        expect(g, `${name} ${s}`).toBeGreaterThanOrEqual(prev - 1e-9);
+        prev = g;
       }
-      expect(seen).toEqual(dir === 1 ? [0, 1, 2] : [2, 1, 0]);
-      // 1 cm per step, which covers the sampled positions and grade.
-      expect(worst).toBeLessThan(0.01);
+    }
+    // The ramp: one on the cut, on road with no curvature from its start to past the landing.
+    const ramps = net.featuresOf(id('m1-boat-ramp-cut'), 'ramp');
+    expect(ramps).toHaveLength(1);
+    const r = ramps[0];
+    for (let s = r?.s0 ?? 0; s <= (r?.s1 ?? 0) + 80; s += 2)
+      expect(Math.abs(net.kappaAt(id('m1-boat-ramp-cut'), s))).toBeLessThan(1e-4);
+    // Its lip stands about 1.5 m above the kicker's foot.
+    const lip = (r?.s0 ?? 0) + 15;
+    expect(
+      net.surfaceHeight(id('m1-boat-ramp-cut'), lip, 0) -
+        net.surfaceHeight(id('m1-boat-ramp-cut'), r?.s0 ?? 0, 0),
+    ).toBeGreaterThan(1.3);
+    // Traffic can never route onto it: every edge of the shortcut carries only a shortcut lane.
+    for (const name of ['c-boat-ramp-in', 'm1-boat-ramp-cut', 'c-boat-ramp-out']) {
+      expect(net.lanesAt(id(name), 5).map((l) => l.kind)).toEqual(['shortcut']);
     }
   });
 });
