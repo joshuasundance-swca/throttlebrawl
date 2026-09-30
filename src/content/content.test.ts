@@ -14,7 +14,7 @@ describe('content: the base pack', () => {
   it('loads and validates every M1 file the skeleton ships', () => {
     const reg = loadBasePack();
     expect(reg.packs[0]?.id).toBe('base');
-    expect(lookup(reg.bikes, 'rustbucket-400').handling.topSpeedMps).toBeCloseTo(38.0);
+    expect(lookup(reg.bikes, 'rustbucket-400').handling.topSpeedMps).toBeCloseTo(44.7);
     expect(lookup(reg.riders, 'deacon-vane').role).toBe('rival');
     // The hand-made roads; the GIS side quest adds osm- prefixed roads beside them.
     const handMade = Object.keys(reg.roads).filter((k) => !k.startsWith('base:osm-'));
