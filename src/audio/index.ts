@@ -1,16 +1,23 @@
 // audio: one AudioContext, created or resumed on the start tap, and the bus graph (docs/
 // architecture.md, "Audio"): sources -> music, effects, voices -> master -> light limiter ->
-// destination. audio-1 (M1.md) fills it in: the synthesized engine for the player and, cheaper,
+// ceiling (M2) -> destination. audio-1 (M1.md) fills it in: the synthesized engine for the player and, cheaper,
 // for nearby riders with distance and Doppler; synthesized cues for punch, kick, hit, miss and
 // crash, played the moment their event arrives (the hit-stop tick); the oncoming-traffic horn and
 // the cop's siren as telegraphs; a crude original music loop; and a cap on voices.
+//
+// audio-2 (M2.md, the mix) adds cues for the M2 events (takedown, slow motion, rail, splash,
+// respawn, style cash, the steal glint, wobbles and close passes), crashes layered by impact, the
+// slow-motion treatment (slowmo.ts: effects pitched down and low-passed, music ducked) and the
+// fuller sixteen-bar score. Every feel number is a presentation tuning slider below.
 //
 // Wiring (app/): `frame(snapshot, playerId)` once per rendered frame drives everything placed in
 // the world; `onEvents(events)` after each sim step plays the cues. The skeleton's
 // `update(player)` still works and drives the player's engine and the music alone.
 import type { EntitySnapshot, SimEvent, SimSnapshot, TuningParamDecl } from '../sim/api';
 import { CUE_PATCHES, createSirenVoice, type SirenVoice } from './cue-patches';
+import { createCeiling } from './ceiling';
 import { cueForEvent, type CueId } from './cues';
+import { createSlowmoTreatment, SLOWMO_DEFAULTS, type SlowmoTreatment } from './slowmo';
 import {
   createEngineVoice,
   resolveEngineProfile,
@@ -25,6 +32,7 @@ import { VoicePool, type PoolEntry } from './voices';
 export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
+export { SLOWMO_DEFAULTS } from './slowmo';
 export type { CueId } from './cues';
 
 /** Presentation-only tuning (applies at once, never recorded; docs/architecture.md, "Tuning"). */
@@ -84,6 +92,61 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: 'm',
     affectsSim: false,
   },
+  {
+    id: 'audio.hornLaneHalfWidthM',
+    group: 'audio',
+    label: 'Horn: your line half-width',
+    default: HORN_DEFAULTS.laneHalfWidthM,
+    min: 0.5,
+    max: 4,
+    step: 0.1,
+    unit: 'm',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.slowmoLowpassHz',
+    group: 'audio',
+    label: 'Slow motion: effects low-pass',
+    default: SLOWMO_DEFAULTS.lowpassHz,
+    min: 200,
+    max: 20000,
+    step: 50,
+    unit: 'Hz',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.slowmoPitchSemis',
+    group: 'audio',
+    label: 'Slow motion: pitch',
+    default: SLOWMO_DEFAULTS.pitchSemis,
+    min: -12,
+    max: 0,
+    step: 0.5,
+    unit: 'st',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.slowmoMusicDuck',
+    group: 'audio',
+    label: 'Slow motion: music level',
+    default: SLOWMO_DEFAULTS.musicDuck,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.crashImpactScale',
+    group: 'audio',
+    label: 'Crash size from impact',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.1,
+    unit: '',
+    affectsSim: false,
+  },
 ];
 
 export interface Volumes {
@@ -122,6 +185,8 @@ export interface AudioInspect {
   otherEngines: number[];
   sirenLevel: number;
   musicPlaying: boolean;
+  /** The slow-motion treatment: whether it is on, and what the bus filter and music duck aim for. */
+  slowmo: { active: boolean; lowpassHz: number; musicLevel: number; pitch: number };
 }
 
 export interface AudioSystem {
@@ -149,12 +214,19 @@ export interface AudioSystem {
 export interface AudioOptions {
   /** Makes the context; tests pass a fake. */
   createContext?: () => AudioContext;
+  /**
+   * The context is an OfflineAudioContext driven by a test render: treat it as live while its
+   * rendering is suspended, and never call its `resume()` from `resume()`.
+   */
+  offline?: boolean;
 }
 
 interface Graph {
   ctx: AudioContext;
   master: GainNode;
   buses: { music: GainNode; effects: GainNode; voices: GainNode };
+  /** Every effects source feeds `slowmo.fxIn`; the music feeds `slowmo.musicIn`. */
+  slowmo: SlowmoTreatment;
   music: MusicLoop;
 }
 
@@ -180,7 +252,19 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     maxVoices: 32,
     dopplerScale: 1,
     hornRangeM: HORN_DEFAULTS.rangeM,
+    hornLaneHalfWidthM: HORN_DEFAULTS.laneHalfWidthM,
+    slowmoLowpassHz: SLOWMO_DEFAULTS.lowpassHz,
+    slowmoPitchSemis: SLOWMO_DEFAULTS.pitchSemis,
+    slowmoMusicDuck: SLOWMO_DEFAULTS.musicDuck,
+    crashImpactScale: 1,
   };
+  const slowmoParams = () => ({
+    lowpassHz: params.slowmoLowpassHz,
+    pitchSemis: params.slowmoPitchSemis,
+    musicDuck: params.slowmoMusicDuck,
+  });
+  /** Slow motion as the events last said, for snapshots that do not carry `slowmo`. */
+  let slowmoByEvents = false;
   let engineSounds: Readonly<Record<string, EngineSoundSpec>> = {};
   const pool = new VoicePool(params.maxVoices);
   let playerEngine: Held<EngineVoice> | null = null;
@@ -210,19 +294,25 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     limiter.ratio.value = 12;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.15;
-    limiter.connect(ctx.destination);
+    // The ceiling after it guarantees a pile-up saturates instead of clipping (ceiling.ts).
+    limiter.connect(createCeiling(ctx, ctx.destination));
+    // Every gain starts at its setting, so the first frame has no swell from the defaults.
+    const start = busTargets(volumes, muted);
     const master = ctx.createGain();
+    master.gain.value = start.master;
     master.connect(limiter);
-    const bus = () => {
+    const bus = (level: number) => {
       const g = ctx.createGain();
+      g.gain.value = level;
       g.connect(master);
       return g;
     };
-    const buses = { music: bus(), effects: bus(), voices: bus() };
-    return { ctx, master, buses, music: createMusic(ctx, buses.music) };
+    const buses = { music: bus(start.music), effects: bus(start.effects), voices: bus(start.voices) };
+    const slowmo = createSlowmoTreatment(ctx, buses.effects, buses.music, slowmoParams());
+    return { ctx, master, buses, slowmo, music: createMusic(ctx, slowmo.musicIn) };
   };
 
-  const live = (): Graph | null => (graph && graph.ctx.state === 'running' ? graph : null);
+  const live = (): Graph | null => (graph && (opts.offline || graph.ctx.state === 'running') ? graph : null);
 
   /** Registers a long-lived voice in the pool; if it is ever stolen, `onLost` forgets it. */
   const hold = <T extends { stop(): void }>(
@@ -262,7 +352,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     dropPlayerEngine();
     const voice = createEngineVoice(
       g.ctx,
-      g.buses.effects,
+      g.slowmo.fxIn,
       resolveEngineProfile(engineSounds[contentId]),
       'full',
     );
@@ -285,20 +375,27 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     const down = me.mode === 'Tumble' || me.mode === 'OnFoot';
     held.voice.set(down ? { rpm: 0, throttle: 0 } : { rpm: me.rpm, throttle: me.throttle });
     held.voice.setLevel(0.5 * params.engineGain * (down ? 0.3 : 1) * (hitStop ? 0.3 : 1));
+    held.voice.setDoppler(g.slowmo.pitch());
   };
 
   const silenceScene = (g: Graph) => {
+    slowmoByEvents = false;
+    g.slowmo.set(false);
     playerEngine?.voice.setLevel(0);
     for (const id of [...others.keys()]) dropOther(id);
     dropSiren();
     g.music.pump(g.ctx.currentTime, false, 0);
   };
 
-  const playCue = (g: Graph, cue: CueId, priority: number, gain: number) => {
+  /** Cues that mark the slow motion's edges play at their own pitch. */
+  const UNPITCHED: ReadonlySet<CueId> = new Set(['slowIn', 'slowOut']);
+
+  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1) => {
     const level = gain * params.cueGain;
     if (level <= 0.001) return;
     const at = g.ctx.currentTime;
-    const playing = CUE_PATCHES[cue](g.ctx, g.buses.effects, at, level);
+    const pitch = UNPITCHED.has(cue) ? 1 : g.slowmo.pitch();
+    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch });
     const entry = pool.add(priority, playing);
     if (!entry) return;
     playing.onEnded(() => pool.release(entry));
@@ -314,6 +411,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const scene = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
     const now = g.ctx.currentTime;
     const hitStop = snap.timeScale === 0;
+    // The snapshot's slow motion is the truth when it carries it (after a resume, too).
+    if (snap.slowmo) slowmoByEvents = snap.slowmo.active;
+    g.slowmo.set(slowmoByEvents);
+    const pitch = g.slowmo.pitch();
     drivePlayer(g, me, hitStop);
     const listener = moving(me);
 
@@ -335,7 +436,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       if (!held) {
         const voice = createEngineVoice(
           g.ctx,
-          g.buses.effects,
+          g.slowmo.fxIn,
           resolveEngineProfile(engineSounds[e.contentId]),
           'lite',
         );
@@ -350,14 +451,14 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       }
       held.voice.set({ rpm: e.rpm, throttle: e.throttle });
       held.voice.setLevel(0.35 * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
-      held.voice.setDoppler(dopplerFactor(listener, moving(e), params.dopplerScale));
+      held.voice.setDoppler(pitch * dopplerFactor(listener, moving(e), params.dopplerScale));
     }
 
     // The siren while the cop is near.
     const cop = findSiren(me, snap.entities);
     if (cop) {
       if (!siren) {
-        const voice = createSirenVoice(g.ctx, g.buses.effects);
+        const voice = createSirenVoice(g.ctx, g.slowmo.fxIn);
         const h: Held<SirenVoice> = { voice, contentId: cop.contentId, entry: null as unknown as PoolEntry };
         const entry = hold(PRIORITY.siren, voice, () => {
           if (siren === h) siren = null;
@@ -369,7 +470,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       }
       if (siren) {
         siren.voice.setLevel(0.45 * params.cueGain * distanceGain(distance(me, cop), 12, 250));
-        siren.voice.setDoppler(dopplerFactor(listener, moving(cop), params.dopplerScale));
+        siren.voice.setDoppler(pitch * dopplerFactor(listener, moving(cop), params.dopplerScale));
       }
     } else dropSiren();
 
@@ -378,6 +479,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       const honks = findHonks(me, snap.entities, now, lastHonk, {
         ...HORN_DEFAULTS,
         rangeM: params.hornRangeM,
+        laneHalfWidthM: params.hornLaneHalfWidthM,
       });
       for (const h of honks) {
         playCue(g, h.truck ? 'truckHorn' : 'horn', h.truck ? 62 : 60, distanceGain(h.distanceM, 25, 220));
@@ -392,7 +494,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     async resume() {
       graph ??= build();
       applyVolumes();
-      if (graph.ctx.state !== 'running') await graph.ctx.resume();
+      if (!opts.offline && graph.ctx.state !== 'running') await graph.ctx.resume();
     },
     setVolumes(v, mute) {
       volumes = v;
@@ -427,14 +529,20 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       const snap = snapshot ?? lastSnap;
       const me = snap ? findEntity(snap, lastPlayerId) : null;
       for (const e of events) {
-        const choice = cueForEvent(e, lastPlayerId);
+        // The slow motion starts on its event's tick, before the next frame's snapshot says so.
+        if (e.type === 'slowmoStart' || e.type === 'slowmoEnd') {
+          slowmoByEvents = e.type === 'slowmoStart';
+          g.slowmo.set(slowmoByEvents);
+        }
+        const src = snap ? findEntity(snap, e.actor) : null;
+        const choice = cueForEvent(e, lastPlayerId, src ? src.speed : null);
         if (!choice) continue;
         let gain = 1;
         if (!choice.playerInvolved && snap && me) {
-          const src = findEntity(snap, e.actor);
           gain = src ? distanceGain(distance(me, src), 8, 180) : 0.6;
         }
-        playCue(g, choice.cue, choice.priority, gain);
+        const impact = Math.min(1, choice.impact * params.crashImpactScale);
+        playCue(g, choice.cue, choice.priority, gain, impact);
       }
     },
     setParam(id, value) {
@@ -455,6 +563,24 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           break;
         case 'audio.hornRangeM':
           params.hornRangeM = value;
+          break;
+        case 'audio.hornLaneHalfWidthM':
+          params.hornLaneHalfWidthM = value;
+          break;
+        case 'audio.slowmoLowpassHz':
+          params.slowmoLowpassHz = value;
+          graph?.slowmo.setParams(slowmoParams());
+          break;
+        case 'audio.slowmoPitchSemis':
+          params.slowmoPitchSemis = value;
+          graph?.slowmo.setParams(slowmoParams());
+          break;
+        case 'audio.slowmoMusicDuck':
+          params.slowmoMusicDuck = value;
+          graph?.slowmo.setParams(slowmoParams());
+          break;
+        case 'audio.crashImpactScale':
+          params.crashImpactScale = value;
           break;
       }
     },
@@ -478,6 +604,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       otherEngines: [...others.keys()].sort((a, b) => a - b),
       sirenLevel: siren?.voice.level() ?? 0,
       musicPlaying: graph?.music.playing() ?? false,
+      slowmo: {
+        active: graph?.slowmo.active() ?? false,
+        lowpassHz: graph?.slowmo.lowpassTarget() ?? 0,
+        musicLevel: graph?.slowmo.musicTarget() ?? 1,
+        pitch: graph?.slowmo.pitch() ?? 1,
+      },
     }),
   };
 }
