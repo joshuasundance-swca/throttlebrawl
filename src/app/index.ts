@@ -15,6 +15,7 @@ import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import { createSettingsStore, type StorageLike } from '../save';
+import { controlOptionsOf } from './controls';
 import {
   createSim,
   SIM_DT,
@@ -279,11 +280,18 @@ export function createApp(opts: AppOptions): AppHandle {
         settingsStore.save(next);
         audio.setVolumes(next.volumes, next.mute);
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
+        input.setOptions(controlOptionsOf(next));
       },
     },
   });
   if (settingsStore.notice) ui.notice(settingsStore.notice);
-  const input = createInput({ keys: window, surface: ui.touchSurface, layout });
+  // Touch, keyboard, the gamepad and (when chosen) tilt; haptics answer the player's events (input-2).
+  const input = createInput({
+    keys: window,
+    surface: ui.touchSurface,
+    layout,
+    controls: controlOptionsOf(settings),
+  });
 
   // Presentation-only tuning (camera, audio, input thresholds, barks, visuals) applies at once; sim values
   // go through the recorder above. Boot values (a shipped or saved preset) are pushed once here.
@@ -336,6 +344,7 @@ export function createApp(opts: AppOptions): AppHandle {
       camera.onEvents(events);
       audio.onEvents(events, curr);
       renderer.pushEvents(events);
+      input.onEvents(events, playerId);
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     outcome.note(events, playerId, tick);
@@ -420,6 +429,7 @@ export function createApp(opts: AppOptions): AppHandle {
       recent = [];
       const me = curr.entities[playerId];
       if (me) camera.snap(me);
+      input.calibrateTilt(); // the phone's angle now is straight ahead
       ui.show('race');
     },
     backToMenu() {

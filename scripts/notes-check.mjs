@@ -2,10 +2,11 @@
 // notes:check: a branch must add at least one valid note under changes/ (docs/engineering.md).
 // It compares with the merge base of NOTES_BASE (default origin/main), counting committed,
 // staged and untracked new notes, so it works before and after committing. On a push to main
-// there is no branch to compare, so it is skipped.
+// there is no branch to compare, so it is skipped. A Dependabot PR (opened by Dependabot, only
+// Dependabot commits) is exempt too.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { NOTE_NAME, parseNote } from './notes.mjs';
+import { NOTE_NAME, dependabotExempt, parseNote } from './notes.mjs';
 import { examined, git, refExists, repoRoot, splitZ } from './lib.mjs';
 
 if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs/heads/main') {
@@ -19,6 +20,21 @@ if (!refExists(base)) {
   process.exit(1);
 }
 const mergeBase = git(['merge-base', base, 'HEAD']).trim();
+
+// Dependabot PRs are exempt (notes.mjs, dependabotExempt). CI passes the PR's author from the
+// pull_request event; --no-merges skips the synthetic merge commit CI checks out.
+const prAuthor = process.env.NOTES_PR_AUTHOR;
+if (prAuthor) {
+  const authors = git(['log', '--no-merges', '--format=%ae', `${mergeBase}..HEAD`])
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (dependabotExempt(prAuthor, authors)) {
+    examined(`0 notes: skipped, a Dependabot PR with ${authors.length} Dependabot-only commit(s)`);
+    process.exit(0);
+  }
+}
+
 const added = new Set([
   ...splitZ(git(['diff', '--name-only', '-z', '--diff-filter=A', mergeBase, '--', 'changes/'])),
   ...splitZ(git(['ls-files', '-z', '--others', '--exclude-standard', '--', 'changes/'])),
