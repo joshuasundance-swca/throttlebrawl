@@ -1,25 +1,32 @@
 /// <reference types="vite/client" />
 // tuning-1 acceptance (unit tier): every declaration's default lies inside its range, over every
-// module's declarations as app/ gathers them (the sim's arrive aggregated through sim/api). The
-// registry also refuses a bad declaration at boot, so the browser race would fail too.
+// module's declarations (the sim's arrive aggregated through sim/api). The registry also refuses a
+// bad declaration at boot, so the browser race would fail too. The list includes declarations app/
+// does not hand the registry yet (the barks), so a bad one is caught before it is wired.
 import { describe, expect, it } from 'vitest';
 import { AUDIO_TUNING } from '../../src/audio';
 import { CAMERA_TUNING } from '../../src/camera';
 import { SIM_TUNING, type TuningParamDecl } from '../../src/sim/api';
 import { createTuningRegistry, TUNING_OWN } from '../../src/tuning';
-import { PANEL_GROUP_ORDER } from '../../src/ui/tuning/model';
+import { BARK_TUNING } from '../../src/ui/narrative';
+import { PANEL_GROUP_ORDER, placeOf } from '../../src/ui/tuning/model';
 
-// The same list app/ hands the registry (src/app/index.ts), plus tuning's own frame-rate cap.
-const ALL: readonly TuningParamDecl[] = [...SIM_TUNING, ...CAMERA_TUNING, ...AUDIO_TUNING, ...TUNING_OWN];
+const ALL: readonly TuningParamDecl[] = [
+  ...SIM_TUNING,
+  ...CAMERA_TUNING,
+  ...AUDIO_TUNING,
+  ...BARK_TUNING,
+  ...TUNING_OWN,
+];
 
 describe('tuning declarations from every module', () => {
   it('examines a nonzero number of declarations', () => {
-    const groups = [...new Set(ALL.map((d) => d.group))];
-    const planned = PANEL_GROUP_ORDER.filter((g) => groups.includes(g));
-    const waiting = PANEL_GROUP_ORDER.filter((g) => !groups.includes(g));
+    const places = new Set(ALL.map(placeOf));
+    const present = PANEL_GROUP_ORDER.filter((g) => places.has(g));
+    const waiting = PANEL_GROUP_ORDER.filter((g) => !places.has(g));
     console.log(
       `tuning declarations: ${ALL.length} (${ALL.map((d) => d.id).join(', ')}); ` +
-        `planned groups present: ${planned.join(', ') || 'none'}; not declared yet: ${waiting.join(', ') || 'none'}`,
+        `planned panel groups filled: ${present.join(', ') || 'none'}; not declared yet: ${waiting.join(', ') || 'none'}`,
     );
     expect(ALL.length).toBeGreaterThan(0);
   });

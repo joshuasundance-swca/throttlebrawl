@@ -45,21 +45,28 @@ async function paramIds(page: Page): Promise<string[]> {
     .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset['param'] ?? ''));
 }
 
-/** Starts a seeded bot race and records every rider's state at every tick the page sees. */
-async function startTracedRace(page: Page): Promise<void> {
-  await page.evaluate((seed) => {
-    const w = window as TestWindow;
-    w.__game?.setSeed(seed);
-    w.__game?.setBot(true);
-    w.__trace = {};
-    const loop = () => {
-      const s = w.__game?.snapshot();
-      if (s && w.__trace)
-        w.__trace[s.tick] = s.entities.map((e) => `${e.road.s},${e.road.d},${e.speed}`).join('|');
+/**
+ * Starts a seeded race and records every rider's state at every tick the page sees. With `bot`,
+ * the stub bot rides; without it, whatever keys the test holds down ride (held before the start,
+ * they are sampled identically from tick 0, so the run is repeatable).
+ */
+async function startTracedRace(page: Page, bot = true): Promise<void> {
+  await page.evaluate(
+    ([seed, withBot]) => {
+      const w = window as TestWindow;
+      w.__game?.setSeed(seed);
+      w.__game?.setBot(withBot);
+      w.__trace = {};
+      const loop = () => {
+        const s = w.__game?.snapshot();
+        if (s && w.__trace)
+          w.__trace[s.tick] = s.entities.map((e) => `${e.road.s},${e.road.d},${e.speed}`).join('|');
+        requestAnimationFrame(loop);
+      };
       requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  }, SEED);
+    },
+    [SEED, bot] as const,
+  );
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 }
@@ -97,6 +104,15 @@ test('backquote opens the see-through panel with one control per declaration; th
     .locator('#tuning-panel [data-group]')
     .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset['group']));
   expect(groups.slice(0, 4)).toEqual(['hit-stop', 'knockback', 'steering', 'shake']);
+  // Each declared decided slider sits under its decided heading, whatever group its module used.
+  for (const [group, id] of [
+    ['hit-stop', 'combat.hitStopScale'],
+    ['knockback', 'combat.knockbackScale'],
+    ['steering', 'riders.steerScale'],
+  ] as const) {
+    if (!ids.includes(id)) continue;
+    await expect(page.locator(`#tuning-panel [data-group="${group}"] [data-param="${id}"]`)).toHaveCount(1);
+  }
 
   // It fits the phone-landscape viewport, scrolls rather than overflowing, and is see-through.
   const box = await panel.boundingBox();
@@ -222,44 +238,56 @@ test('a mid-race steering change through the panel reaches the seeded race, comp
 test('changing knockback changes the outcome of a seeded fight, compared with a control run', async ({
   browser,
 }) => {
-  test.setTimeout(240_000);
-  const END = 1500;
+  test.setTimeout(300_000);
+  const END = 900;
+  // A seeded fight ridden by the bot (one driver call per tick, so a run repeats exactly).
+  // Knockback is set on the panel before the race; the mid-race path is the steering test's. Two
+  // control runs prove the fight itself repeats. The stub bot never swings, so this activates when
+  // dev-1's attacking bot lands; tests/sim/tuning-knockback.test.ts covers knockback until then.
   const run = async (knockbackMax: boolean) => {
     const page = await browser.newPage();
-    await boot(page);
+    const problems = await boot(page);
     await page.keyboard.press('Backquote');
     const slider = page.locator('#tuning-panel input[data-param="combat.knockbackScale"]');
     if ((await slider.count()) === 0) {
       await page.close();
       return null;
     }
-    await page.keyboard.press('Backquote');
-    await startTracedRace(page);
     if (knockbackMax) {
-      await waitTick(page, 30);
-      await page.keyboard.press('Backquote');
       await slider.fill(await slider.evaluate((el) => (el as HTMLInputElement).max));
     }
+    const value = await page
+      .locator('#tuning-panel output[data-param-value="combat.knockbackScale"]')
+      .textContent();
+    await page.keyboard.press('Backquote');
+    await expect(page.locator('#tuning-panel')).toBeHidden();
+    await startTracedRace(page, true);
     await waitTick(page, END);
     const trace = await traceOf(page);
     const events = await page.evaluate(() => (window as TestWindow).__game?.checks().events ?? {});
     await page.close();
-    return { trace, events };
+    expect(problems).toEqual([]);
+    return { trace, events, value };
   };
   const control = await run(false);
-  test.skip(control === null, 'NOT ACTIVE: no module declares combat.knockbackScale yet (combat-1)');
-  const hits = control?.events['hit'] ?? 0;
-  test.skip(
-    hits === 0,
-    'NOT ACTIVE: no hit landed in the seeded control run (needs an attacking bot, dev-1)',
-  );
+  test.skip(control === null, 'NOT ACTIVE: no module declares combat.knockbackScale');
+  if (!control) return;
+  const hits = control.events['hit'] ?? 0;
+  console.log(`knockback fight: control events ${JSON.stringify(control.events)}`);
+  test.skip(hits === 0, 'NOT ACTIVE: the bot lands no hit yet (needs the attacking bot, dev-1)');
+  const again = await run(false);
   const strong = await run(true);
-  if (!control || !strong) throw new Error('unreachable');
+  if (!again || !strong) throw new Error('the knockback slider vanished between runs');
+  const repeat = compare(control.trace, again.trace);
   const diff = compare(control.trace, strong.trace);
   console.log(
-    `knockback: ${hits} hits in the control run; ${diff.common} ticks compared, ${diff.differ.length} differ`,
+    `knockback ${control.value} vs ${strong.value}: ${hits} hits in the control fight; ` +
+      `control vs control ${repeat.common} ticks compared, ${repeat.differ.length} differ; ` +
+      `control vs strong ${diff.common} ticks compared, ${diff.differ.length} differ`,
   );
-  expect(diff.differ.length).toBeGreaterThan(0);
+  expect(repeat.common).toBeGreaterThan(100);
+  expect(repeat.differ, 'the seeded fight repeats').toEqual([]);
+  expect(diff.differ.length, 'knockback changed the fight').toBeGreaterThan(0);
 });
 
 test('"Copy preset as JSON" gives a tuning-preset that packs:check accepts', async ({ page, context }) => {

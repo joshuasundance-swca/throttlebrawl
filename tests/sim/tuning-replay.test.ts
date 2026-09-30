@@ -8,13 +8,14 @@
 import { describe, expect, it } from 'vitest';
 import { createHeadlessRace, type ActionState } from '../../src/app';
 import { createStubBot } from '../../src/dev/bot';
+import { toSimInput } from '../../src/input';
 import {
   createInputRecorder,
   createReplayController,
   REPLAY_FORMAT_VERSION,
   type Recording,
 } from '../../src/replay';
-import { quantizeInput, SIM_TUNING, type SimInput } from '../../src/sim/api';
+import { SIM_TUNING, type SimInput } from '../../src/sim/api';
 import { createTuningRegistry } from '../../src/tuning';
 
 const TICKS = 720;
@@ -69,7 +70,7 @@ function liveRace(seed: number): Recording {
     if (!me) throw new Error('no player');
     const a = blank();
     bot.drive(me, route, a);
-    const cmd = quantizeInput({ ...a, flags: 0 });
+    const cmd = toSimInput(a);
     recorder.record(tick, [cmd]);
     sim.step([cmd]);
     if (tick % 60 === 0) recorder.checkpoint(tick, sim.hash());

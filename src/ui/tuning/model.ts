@@ -43,12 +43,31 @@ function titleOf(group: string): string {
   return TITLES[group] ?? group.charAt(0).toUpperCase() + group.slice(1).replace(/-/g, ' ');
 }
 
+/**
+ * Where a declaration sits on the panel: its own group when that is a planned one; otherwise a
+ * planned group its id names (modules group by system, so `combat.hitStopScale` in group `combat`
+ * still lands under Hit-stop); otherwise its own group, after the planned ones.
+ */
+const BY_ID: readonly (readonly [RegExp, string])[] = [
+  [/hitstop/i, 'hit-stop'],
+  [/knockback/i, 'knockback'],
+  [/steer/i, 'steering'],
+  [/shake/i, 'shake'],
+  [/^traffic\./, 'traffic'],
+];
+
+export function placeOf(d: TuningParamDecl): string {
+  if ((PANEL_GROUP_ORDER as readonly string[]).includes(d.group)) return d.group;
+  return BY_ID.find(([re]) => re.test(d.id))?.[1] ?? d.group;
+}
+
 export function panelGroups(decls: readonly TuningParamDecl[]): PanelGroup[] {
   const byGroup = new Map<string, PanelControl[]>();
   for (const d of decls) {
-    const list = byGroup.get(d.group) ?? [];
+    const place = placeOf(d);
+    const list = byGroup.get(place) ?? [];
     list.push({ kind: d.id === FRAME_DIVISOR_ID ? 'frame-cap' : 'slider', decl: d });
-    byGroup.set(d.group, list);
+    byGroup.set(place, list);
   }
   const planned: readonly string[] = PANEL_GROUP_ORDER;
   const others = [...byGroup.keys()].filter((g) => !planned.includes(g)).sort();

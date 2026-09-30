@@ -30,6 +30,31 @@ describe('tuning panel model', () => {
     expect(ids.sort()).toEqual(decls.map((d) => d.id).sort());
   });
 
+  it('places a declaration in a planned group by its group, or by its id when its module groups differently', () => {
+    const real = [
+      decl('combat.hitStopScale', 'combat'),
+      decl('combat.knockbackScale', 'combat'),
+      decl('camera.shakeScale', 'camera'),
+      decl('traffic.oncomingDensityScale', 'traffic-density'),
+      decl('riders.speedScale', 'speed'),
+      decl('riders.crashImpactMps', 'crashes'),
+      decl('camera.chaseDistanceM', 'camera'),
+    ];
+    const where = Object.fromEntries(
+      panelGroups(real).flatMap((g) => g.controls.map((c) => [c.decl.id, g.group] as const)),
+    );
+    expect(where).toEqual({
+      'combat.hitStopScale': 'hit-stop',
+      'combat.knockbackScale': 'knockback',
+      'camera.shakeScale': 'shake',
+      'traffic.oncomingDensityScale': 'traffic',
+      'riders.speedScale': 'speed',
+      'riders.crashImpactMps': 'crashes',
+      'camera.chaseDistanceM': 'camera',
+    });
+    expect(panelGroups(real).find((g) => g.group === 'combat')).toBeUndefined();
+  });
+
   it('orders the decided groups first, then speed, traffic and the frame-rate cap, then the rest', () => {
     const groups = panelGroups(decls).map((g) => g.group);
     expect(groups).toEqual([...PANEL_GROUP_ORDER, 'audio', 'camera']);
