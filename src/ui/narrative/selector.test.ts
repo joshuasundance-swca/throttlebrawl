@@ -260,3 +260,153 @@ describe('selector', () => {
     expect(() => sel.setParam('barks.nope', 1)).toThrow();
   });
 });
+
+describe('selector: M2 conditions, specificity, priority and cuts', () => {
+  const facts = (table: Record<string, number | string>) => () => (f: string) => table[f];
+  const DIAL = 'base:dial-up';
+
+  it('reads when, priority and oncePerCareer, and drops lines with a malformed when', () => {
+    const out = lines(
+      set('kevin-core', 'kevin-from-accounting', [
+        {
+          id: 'grudge',
+          trigger: 'overtake',
+          text: 'g',
+          priority: 2,
+          when: [{ fact: 'grudge.speakerTowardTarget', op: 'gte', value: 4 }],
+        },
+        { id: 'once', trigger: 'race-start', text: 'o', oncePerCareer: true, priority: 9 },
+        {
+          id: 'bad',
+          trigger: 'overtake',
+          text: 'b',
+          when: [{ fact: 'target.shoeSize', op: 'eq', value: 9 }],
+        },
+        { id: 'any', trigger: 'overtake', text: 'a', speaker: 'any' },
+      ]),
+    );
+    expect(out.map((l) => l.id)).toEqual(['any', 'grudge', 'once']);
+    expect(out.find((l) => l.id === 'grudge')).toMatchObject({
+      priority: 2,
+      exactSpeaker: true,
+      oncePerCareer: false,
+    });
+    expect(out.find((l) => l.id === 'grudge')?.when).toEqual([
+      { fact: 'grudge.speakerTowardTarget', op: 'gte', value: 4 },
+    ]);
+    expect(out.find((l) => l.id === 'once')).toMatchObject({ priority: 3, oncePerCareer: true });
+    expect(out.find((l) => l.id === 'any')).toMatchObject({ priority: 0, exactSpeaker: false, when: [] });
+  });
+
+  it('plays a conditioned line only when every condition holds', () => {
+    const pool = lines(
+      set('kevin-core', 'kevin-from-accounting', [
+        {
+          id: 'grudge',
+          trigger: 'overtake',
+          text: 'g',
+          when: [
+            { fact: 'grudge.speakerTowardTarget', op: 'gte', value: 4 },
+            { fact: 'race.position.speaker', op: 'eq', value: 1 },
+          ],
+        },
+      ]),
+    );
+    const ask = (table: Record<string, number>) =>
+      createBarkSelector(pool).request({ ...req([KEVIN], 0), facts: facts(table) });
+    expect(ask({ 'grudge.speakerTowardTarget': 5, 'race.position.speaker': 1 })?.line.id).toBe('grudge');
+    expect(ask({ 'grudge.speakerTowardTarget': 3, 'race.position.speaker': 1 })).toBeNull();
+    expect(ask({ 'grudge.speakerTowardTarget': 5 })).toBeNull();
+    // No facts at all (no context): conditioned lines stay quiet.
+    expect(createBarkSelector(pool).request(req([KEVIN], 0))).toBeNull();
+  });
+
+  it('favours the specific, memory-aware line by its specificity score', () => {
+    // plain: 1 × 1.5 (exact speaker); memory: (1 + 0.5 + 1.0) × 1.5. Share = 2.5 / 3.5 ≈ 0.714.
+    const pool = lines(
+      set('kevin-core', 'kevin-from-accounting', [
+        { id: 'plain', trigger: 'overtake', text: 'p' },
+        {
+          id: 'memory',
+          trigger: 'overtake',
+          text: 'm',
+          when: [{ fact: 'history.takedowns.targetOnSpeaker', op: 'gte', value: 1 }],
+        },
+      ]),
+    );
+    let memory = 0;
+    const n = 4000;
+    for (let seed = 0; seed < n; seed++) {
+      const sel = createBarkSelector(pool, barkParamDefaults(), seed);
+      const bark = sel.request({
+        ...req([KEVIN], 0),
+        facts: facts({ 'history.takedowns.targetOnSpeaker': 1 }),
+      });
+      if (bark?.line.id === 'memory') memory++;
+    }
+    expect(memory / n).toBeGreaterThan(0.68);
+    expect(memory / n).toBeLessThan(0.75);
+  });
+
+  it('scales by novelty through the heardCount seam', () => {
+    const pool = lines(
+      set('kevin-core', 'kevin-from-accounting', [
+        { id: 'fresh', trigger: 'overtake', text: 'f' },
+        { id: 'stale', trigger: 'overtake', text: 's' },
+      ]),
+    );
+    let stale = 0;
+    for (let seed = 0; seed < 2000; seed++) {
+      const sel = createBarkSelector(pool, barkParamDefaults(), seed, {
+        heardCount: (ref) => (ref.endsWith('#stale') ? 3 : 0),
+      });
+      if (sel.request(req([KEVIN], 0))?.line.id === 'stale') stale++;
+    }
+    // 0.125 / 1.125 ≈ 0.11.
+    expect(stale / 2000).toBeGreaterThan(0.08);
+    expect(stale / 2000).toBeLessThan(0.14);
+  });
+
+  it('lets a higher-priority line interrupt the bubble, and nothing else', () => {
+    const pool = lines(
+      set('kevin-core', 'kevin-from-accounting', [{ id: 'low', trigger: 'overtake', text: 'Low.' }]),
+      set('deacon-core', 'deacon-vane', [
+        { id: 'same', trigger: 'overtake', text: 'Same.' },
+        { id: 'high', trigger: 'crash-self', text: 'High.', priority: 2 },
+      ]),
+      set('dial-up-core', 'dial-up', [
+        { id: 'equal', trigger: 'near-miss', text: 'Equal.', priority: 2 },
+        { id: 'top', trigger: 'crash-self', text: 'Top.', priority: 3 },
+      ]),
+    );
+    const sel = createBarkSelector(pool);
+    expect(sel.request(req([KEVIN], 0))?.line.id).toBe('low');
+    // The bubble is up for 2 s: an equal-priority line waits.
+    expect(sel.request(req([DEACON], 0.5))).toBeNull();
+    expect(sel.request(req([DEACON], 0.6, 'crash-self'))?.line.id).toBe('high');
+    // Priority 2 is on screen now: another priority 2 waits, a 3 interrupts.
+    expect(sel.request(req([DIAL], 1, 'near-miss'))).toBeNull();
+    expect(sel.request(req([DIAL], 1.1, 'crash-self'))?.line.id).toBe('top');
+  });
+
+  it('never plays a cut line, and says a once-per-career line once, across races', () => {
+    const pool = lines(
+      set('kevin-core', 'kevin-from-accounting', [
+        { id: 'cut', trigger: 'overtake', text: 'c' },
+        { id: 'kept', trigger: 'overtake', text: 'k' },
+        { id: 'once', trigger: 'race-start', text: 'o', oncePerCareer: true },
+      ]),
+    );
+    const sel = createBarkSelector(pool, { ...barkParamDefaults(), ringSize: 0 }, 0, {
+      vetoed: ['base:bark-set/kevin-core#cut'],
+    });
+    for (let i = 0; i < 50; i++) expect(sel.request(req([KEVIN], i * 10))?.line.id).toBe('kept');
+    sel.veto('base:bark-set/kevin-core#kept');
+    expect(sel.isVetoed('base:bark-set/kevin-core#kept')).toBe(true);
+    expect(sel.request(req([KEVIN], 1000))).toBeNull();
+
+    expect(sel.request(req([KEVIN], 2000, 'race-start'))?.line.id).toBe('once');
+    sel.reset(5);
+    expect(sel.request(req([KEVIN], 0, 'race-start'))).toBeNull();
+  });
+});
