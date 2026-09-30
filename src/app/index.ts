@@ -230,7 +230,8 @@ export function createApp(opts: AppOptions): AppHandle {
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         const player = curr?.entities[playerId] ?? null;
         audio.update(state === 'race' ? player : null);
-        if (state === 'race') ui.updateHud(player, curr?.entities.length ?? 0, settings.units);
+        // The whole-snapshot HUD: speed, place among the riders, your health and your target's.
+        if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
       },
     },
     SIM_DT,
