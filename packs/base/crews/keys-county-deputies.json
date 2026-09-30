@@ -1,0 +1,14 @@
+{
+  "type": "crew",
+  "id": "keys-county-deputies",
+  "name": "Keys County Deputies",
+  "kind": "law",
+  "region": "florida-keys",
+  "stanceTowardPlayer": "hostile",
+  "rivalCrews": [],
+  "meta": {
+    "status": "live",
+    "notes": "Parody county law for Region 1: real agency structure (county deputies) under a made-up name, no real agency names, badges or logos. Sgt. Pruitt rides for them.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}
