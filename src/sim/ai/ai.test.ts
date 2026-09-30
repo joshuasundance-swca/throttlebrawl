@@ -780,31 +780,6 @@ describe('ai-2: takedown intent', () => {
     expect(got.length).toBeGreaterThan(3);
     expect(fromMinus / got.length).toBeGreaterThanOrEqual(0.8);
   });
-
-  it('kicks more when the kick would shove the player toward danger', () => {
-    const run = (preferredSide: 'left' | 'right') => {
-      const sc = scene(
-        [rival('heavy-hitter', { aggression: 1, dirtiness: 0.5, preferredSide }), PLAYER],
-        [
-          { s: 30, d: 1.7, v: 28 },
-          { s: 50, d: 1.7, v: 28 },
-        ],
-        [],
-        ON_RAIL,
-      );
-      const got = pressesOn(sc, 0, 1, 90, cruise(sc, 1));
-      return { kicks: got.filter((x) => x.kick).length, n: got.length };
-    };
-    // Riding toward +s, `left` is the player's −d side: its hits push them toward the rail.
-    const toward = run('left');
-    const away = run('right');
-    console.log(
-      `kick share: ${toward.kicks}/${toward.n} pushing toward the rail, ${away.kicks}/${away.n} pushing away from it`,
-    );
-    expect(toward.n).toBeGreaterThan(10);
-    expect(away.n).toBeGreaterThan(10);
-    expect(toward.kicks / toward.n).toBeGreaterThan(away.kicks / away.n);
-  });
 });
 
 describe('ai-2: difficulty', () => {
@@ -826,5 +801,45 @@ describe('ai-2: difficulty', () => {
     const hard = run(1.25);
     console.log(`heavy-hitter presses on the player in 60 s: Easy scale ${easy}, Hard scale ${hard}`);
     expect(hard).toBeGreaterThan(easy);
+  });
+
+  it("Hard's rubber-band scale leaves the pack's first-to-last gap wider than Easy's", () => {
+    // Four racers who never fight, around a player holding 28 m/s below the event's 30 m/s pace:
+    // the band eases those ahead back and pulls those behind on, harder on Easy (1.5) than Hard (0.5).
+    const run = (rubberBand: number) => {
+      const defs = ['a', 'b', 'c', 'd'].map((n) => rival('racer', { aggression: 0, weave: 0 }, n));
+      const sc = scene(
+        [...defs, PLAYER],
+        [
+          { s: 20, d: 1.2, v: 28 },
+          { s: 35, d: 2.2, v: 28 },
+          { s: 140, d: 1.2, v: 28 },
+          { s: 160, d: 2.2, v: 28 },
+          { s: 90, d: 1.7, v: 28 },
+        ],
+        [],
+        { difficulty: { presetId: 'custom', riderAggression: 1, copFrequency: 1, rubberBand } },
+      );
+      const player = cruise(sc, 4);
+      let sum = 0;
+      let n = 0;
+      for (let t = 0; t < 60 * 40; t++) {
+        step(sc, player());
+        if (t % 60 === 59) {
+          const p = sc.riders.map((r) => route.progressAt(r.pos.edge, r.pos.s));
+          sum += Math.max(...p) - Math.min(...p);
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    const easy = run(1.5);
+    const normal = run(1);
+    const hard = run(0.5);
+    console.log(
+      `pack spread, mean over 40 s: Easy band ${easy.toFixed(0)} m, Normal ${normal.toFixed(0)} m, Hard ${hard.toFixed(0)} m`,
+    );
+    expect(hard).toBeGreaterThan(normal);
+    expect(normal).toBeGreaterThan(easy);
   });
 });

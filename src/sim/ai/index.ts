@@ -10,7 +10,7 @@
 // M2 ai-2 adds: a race-long grudge (a rider who noted a grudge against someone, through tumble-2's
 // noteGrudge, puts them first in its target choice and comes looking for them until the finish),
 // takedown intent (a brawler rides on the side of its target that lets its hits push the target
-// toward oncoming traffic or a rail, and kicks more when they would), and difficulty (the preset's
+// toward an oncoming car or a rail), and difficulty (the preset's
 // aggression scale here; its rubber-band scale in sim/race's rubberBandBounds).
 // Law riders (cops) are not driven here: cops-1 writes their inputs from the cops phase.
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
@@ -80,6 +80,9 @@ export interface AiState {
   pressesOnPlayer: number[];
   /** Ticks spent hunting a player as its fight target (for tests and the debug report). */
   huntTicksOnPlayer: number[];
+  /** Takedown intent (ai-2): the push direction it committed to (±1, 0 none) and until which tick. */
+  pushSide: number[];
+  pushUntil: number[];
 }
 
 export function aiState(world: World): AiState {
@@ -100,6 +103,8 @@ export function aiState(world: World): AiState {
     presses: [],
     pressesOnPlayer: [],
     huntTicksOnPlayer: [],
+    pushSide: [],
+    pushUntil: [],
   }));
 }
 
@@ -138,8 +143,8 @@ const ONCOMING_MARGIN_M = 20;
 const SIDE_SWITCH_S = 2.5;
 /** While changing sides, a brawler holds the target this far ahead of itself. */
 const SWITCH_BACK_M = 4;
-/** Extra kick chance, times dirtiness, when a hit would push the victim toward the danger side. */
-const INTENT_KICK_BONUS = 0.5;
+/** How long a brawler sticks to a push direction once it picks one, so passing cars and a rail don't flip it. */
+const PUSH_COMMIT_TICKS = 180;
 
 function isAiRider(config: SimConfig, m: Mover): boolean {
   const def = config.riders[m.riderIndex];
@@ -278,6 +283,20 @@ export function takedownPush(
     }
   }
   return 0;
+}
+
+/**
+ * The push direction a brawler acts on: a new nonzero pick holds for PUSH_COMMIT_TICKS, and while
+ * it holds, a different pick (or none) does not replace it.
+ */
+function committedPush(st: AiState, id: EntityId, tick: number, raw: number): number {
+  const held = st.pushSide[id] ?? 0;
+  if (held !== 0 && tick < (st.pushUntil[id] ?? -1) && raw !== held) return held;
+  if (raw !== 0) {
+    st.pushSide[id] = raw;
+    st.pushUntil[id] = tick + PUSH_COMMIT_TICKS;
+  }
+  return raw;
 }
 
 /**
@@ -486,12 +505,13 @@ function driveRider(
     let switching = false;
     if (side === 0) {
       const intent = brawler && players.includes(target.mover.id);
-      const push = intent ? takedownPush(road, target.mover, obstacles) : 0;
+      const push = intent ? committedPush(st, id, tick, takedownPush(road, target.mover, obstacles)) : 0;
       side = push !== 0 ? -push : current;
+      // Never through the target, and never out of a fight it is already in: alongside, it keeps
+      // its side and fights; it crosses over only while it is still closing in.
       if (side !== current) {
-        switching = true;
-        // Never through the target: alongside it, hold this side until there is room to cross.
         if (Math.abs(target.ahead) < SIDE_SWITCH_S) side = current;
+        else switching = true;
       }
     }
     let d = target.mover.pos.d + side * FIGHT_OFFSET_D;
@@ -618,7 +638,7 @@ function driveRider(
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
   if (racing && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
-    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges, obstacles);
+    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges);
   }
 
   const { throttle, brake } = throttleFor(config, m, speedTarget);
@@ -647,7 +667,6 @@ function trySwing(
   aggr: number,
   players: readonly EntityId[],
   grudges: readonly EntityId[],
-  obstacles: readonly { s: Seen; size: ObstacleSize }[],
 ): number {
   const punch = weaponReach(config, 'punch');
   const kick = weaponReach(config, 'kick');
@@ -664,11 +683,9 @@ function trySwing(
   if (nextFloat(rng) >= chance) return 0;
   const canKick = inReach(victim, v, kick);
   const canPunch = inReach(victim, v, punch);
-  // Takedown intent (ai-2): a brawler kicks more when the kick's shove (away from it, along d)
-  // would send the victim toward oncoming traffic or a rail.
-  const push = prof.behaviour === 'brawler' ? takedownPush(config.road, victim.mover, obstacles) : 0;
-  const toward = push !== 0 && push * victim.dd > 0 ? INTENT_KICK_BONUS * prof.dirtiness : 0;
-  const useKick = canKick && (!canPunch || nextFloat(rng) < 0.25 + 0.6 * prof.dirtiness + toward);
+  // The kick-or-punch mix stays M1's: a kick-when-it-shoves-toward-danger bonus is a feel number,
+  // held for combat-3's playtest-tuned kick shove (M2 prep rules).
+  const useKick = canKick && (!canPunch || nextFloat(rng) < 0.25 + 0.6 * prof.dirtiness);
   const r = useKick ? kick : punch;
   // Side flags are in the rider's frame: its right is +d when riding toward +s.
   const side = victim.dd * m.pos.dir > 0 ? InputFlag.attackSideRight : InputFlag.attackSideLeft;
@@ -709,6 +726,8 @@ export const aiSystem: SimSystem = {
       st.presses[m.id] = 0;
       st.pressesOnPlayer[m.id] = 0;
       st.huntTicksOnPlayer[m.id] = 0;
+      st.pushSide[m.id] = 0;
+      st.pushUntil[m.id] = -1;
     }
   },
   step(world: World, config: SimConfig) {
