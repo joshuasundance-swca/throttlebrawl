@@ -8,5 +8,7 @@ npm packages are dependencies, not assets: their licences travel with them in `p
 
 | Asset | Source | Licence | AI-generated | Used in |
 | ----- | ------ | ------- | ------------ | ------- |
+| Road geometry and tags of US 1 (the Overseas Highway), baked by `tools/gis` | [OpenStreetMap](https://www.openstreetmap.org/copyright), © OpenStreetMap contributors | ODbL 1.0 (text in `packs/base/LICENSES/ODbL-1.0.txt`; the pack's `licenseRules` cover every `osm-` file) | No | `packs/base/regions/florida-keys/{networks,roads,routes}/osm-*.json` |
+| Land elevation along the baked roads | [USGS 3DEP](https://www.usgs.gov/3d-elevation-program): "Map services and data available from U.S. Geological Survey, National Geospatial Program." | Public domain (US Government work) | No | the same `osm-` road files (`y` samples on land) |
 
-None yet. Everything in the build so far is original or made in code.
+Everything else in the build so far is original or made in code.
