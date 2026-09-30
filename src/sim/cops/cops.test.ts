@@ -13,7 +13,7 @@ import {
 import { KICK, PUNCH } from '../combat/harness.test-util';
 import { ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
-import { copsState, copsSystem, COPS_TUNING, HANG_BACK_TICKS, MOVE_IN_TICKS } from './index';
+import { COP_DONE, copsState, copsSystem, COPS_TUNING, HANG_BACK_TICKS, MOVE_IN_TICKS } from './index';
 
 const bike = {
   contentId: 'base:bike',
@@ -515,6 +515,69 @@ describe('cops: the chase', () => {
     expect(bust?.target).toBe(PLAYER_ID);
     expect(bust?.data['fineCash']).toBe(400);
     expect((bust?.tick ?? Infinity) - (crash?.tick ?? 0)).toBeLessThan(60 * 8);
+  });
+
+  it('ahead of a stopped target he never stops in the travel lane: he waits on the shoulder, then follows', () => {
+    // The M1 skeptic's seed 37: the cop passed a downed player, then braked to a standstill in the
+    // lane ahead of him, and traffic queued behind the cop for minutes (it never passes a stopped
+    // rider in its lane). Now he eases onto the shoulder, clear of the lane, and waits there.
+    const w = copWorld({ 'cops.followGapM': 40 });
+    w.place(0, 20); // the rival sits out of the way at the back
+    w.place(PLAYER_ID, 200);
+    w.place(COP_ID, 260); // 60 m ahead of his target
+    const cop = w.world.movers[COP_ID];
+    if (cop) cop.speed = 25;
+    const inputs = w.world.inputs;
+    const stillInLane: number[] = [];
+    for (let t = 0; t < 60 * 30; t++) {
+      inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      inputs[PLAYER_ID] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 }); // stays put
+      w.step(1, true);
+      const c = w.world.movers[COP_ID];
+      if (c && c.speed < 0.5 && c.pos.d < 1.7 + 1.7 + 0.3) stillInLane.push(t);
+    }
+    const parked = w.world.movers[COP_ID];
+    expect(stillInLane).toEqual([]);
+    expect(parked?.speed).toBeLessThan(0.5); // he waits...
+    expect(parked?.pos.d).toBeGreaterThanOrEqual(3.7); // ...on the shoulder, clear of the lane
+    expect(parked?.pos.s).toBeLessThan(400); // not riding off down the road
+    // The player rides on past him; the cop leaves the shoulder and follows.
+    for (let t = 0; t < 60 * 25; t++) {
+      const me = w.world.movers[PLAYER_ID];
+      if (!me) throw new Error('missing player');
+      const steer = Math.max(-1, Math.min(1, (1.7 - me.pos.d) * 0.3 - me.yaw * 2));
+      inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      inputs[PLAYER_ID] = quantizeInput({ throttle: 0.55, brake: 0, steer, flags: 0 });
+      w.step(1, true);
+    }
+    const me = w.world.movers[PLAYER_ID];
+    const after = w.world.movers[COP_ID];
+    const route = w.config.route;
+    const gap =
+      route.progressAt(me?.pos.edge ?? 0, me?.pos.s ?? 0) -
+      route.progressAt(after?.pos.edge ?? 0, after?.pos.s ?? 0);
+    expect(gap).toBeGreaterThan(0); // behind his target again
+    expect(after?.speed).toBeGreaterThan(10); // and chasing
+    expect(after?.pos.d).toBeLessThan(3.4); // back in the travel lane
+    expect(w.busts()).toHaveLength(0);
+  });
+
+  it('with nobody to chase he pulls onto the shoulder rather than stopping in the lane', () => {
+    const w = copWorld();
+    w.place(0, 20);
+    w.place(PLAYER_ID, 100);
+    w.place(COP_ID, 200);
+    const cop = w.world.movers[COP_ID];
+    if (cop) cop.speed = 20;
+    copsState(w.world).phase[COP_ID] = COP_DONE; // the chase is over, nobody busted
+    for (let t = 0; t < 60 * 20; t++) {
+      w.world.inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      w.world.inputs[PLAYER_ID] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      w.step(1, true);
+    }
+    const after = w.world.movers[COP_ID];
+    expect(after?.speed).toBeLessThan(0.5);
+    expect(after?.pos.d).toBeGreaterThanOrEqual(3.7);
   });
 
   it('a scripted chase gives the same hash every run', () => {
