@@ -10,8 +10,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 //   regression, and always prints the numbers with the renderer string.
 // - Slow-motion pile-up checkpoint (M2 dev-4): the first frame the sim's takedown slow motion is
 //   active during the run is a checkpoint too, held to the same draw-call and triangle budget. It
-//   prints NOT ACTIVE while no slow motion happens in the run (combat-4 brings takedown slow motion;
-//   a staged pile-up scene can replace the seeded race's luck once the test handle can set one up).
+//   prints NOT ACTIVE while no slow motion happens in the run: combat-4's slow motion needs a
+//   player-involved takedown, which the seeded bot race may not have in its first seconds. A staged
+//   pile-up scene can replace the seeded race's luck once the test handle can set one up.
 // Not active yet: forcing quality tier `low` with dynamic resolution off through the test flag
 // (render has no quality tiers or dynamic resolution in M1; the DPR is pinned to 1 by the config).
 
@@ -167,7 +168,7 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     expect(slowmo.triangles, 'triangles in slow motion').toBeLessThanOrEqual(budget.trianglesMax);
   } else {
     console.log(
-      `[assert] slow-motion pile-up checkpoint: NOT ACTIVE (no takedown slow motion in the first ${SOFT_SECONDS} s of the seeded race; combat-4)`,
+      `[assert] slow-motion pile-up checkpoint: NOT ACTIVE (no player-involved takedown slow motion in the first ${SOFT_SECONDS} s of the seeded race; a staged pile-up is dev-4 part 2)`,
     );
   }
 
