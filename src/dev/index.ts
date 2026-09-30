@@ -10,7 +10,7 @@ import { installErrorCapture } from './report';
 import { selfTestRequested, showSelfTest } from './selftest';
 
 // createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
-export { createBot, createStubBot } from './bot';
+export { blankActions, botInput, createBot, createStubBot } from './bot';
 export type { BotController, BotStats, StubBot } from './bot';
 export {
   copyReport,
@@ -25,8 +25,8 @@ export { createPerfProbe, debugRequested, formatOverlay, percentiles } from './p
 export type { PerfProbe, PerfReport, Percentiles } from './perf';
 export { runSelfTest, selfTestRequested, showSelfTest } from './selftest';
 export type { SelfTestResult, SelfTestStatus } from './selftest';
-export { installTestHandle, moverProblem, MOVER_MODES, testFlagSet } from './handle';
-export type { RaceChecks, TestHandle } from './handle';
+export { botAttackRun, installTestHandle, moverProblem, MOVER_MODES, testFlagSet } from './handle';
+export type { AttackRun, AttackRunOptions, RaceChecks, TestHandle } from './handle';
 
 /** Installs whatever the page's flags ask for. */
 export function installDev(app: AppHandle): void {
