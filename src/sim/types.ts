@@ -382,6 +382,25 @@ export interface SimEventDef {
    */
   lengthId?: string;
   routeId?: string;
+  /**
+   * The event's style-cash values (M2 riders-5), from its `rewards` block. Optional for hand-built
+   * configs, where absent means every source scores 0; buildSimConfig always writes it.
+   */
+  style?: SimStyleRewards;
+}
+
+/**
+ * Style cash per source, from the event file's `rewards` style fields (docs/content-packs.md,
+ * "Event"); each is 0 when the file leaves it out. sim/race scores them as `style` events.
+ */
+export interface SimStyleRewards {
+  perNearMissCash: number;
+  perAirtimeCash: number;
+  perOncomingSecondCash: number;
+  /** A takedown's base cash; a combo's k-th takedown scores it × `takedownComboScale` × k. */
+  perTakedownCash: number;
+  takedownComboScale: number;
+  perStealCash: number;
 }
 
 /** Resolved difficulty scales, 1.0 = Normal. The preset id travels for display only. */

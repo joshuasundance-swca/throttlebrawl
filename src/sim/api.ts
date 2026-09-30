@@ -35,6 +35,7 @@ export type {
   SimSlotConfig,
   SimSnapshot,
   SimSteerAssist,
+  SimStyleRewards,
   SimTrafficTypeDef,
   SimWeaponDef,
   SlowmoSnapshot,

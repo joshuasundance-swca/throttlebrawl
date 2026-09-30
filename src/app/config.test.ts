@@ -257,3 +257,48 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
     });
   });
 });
+
+describe('app/config: the event’s style cash reaches the sim (the riders-5 contract wire)', () => {
+  const withRewards = (extra: Record<string, unknown>) => {
+    const reg = buildRegistry(
+      basePackFiles().map((f) => {
+        const json = f.json as { type?: string; rewards?: Record<string, unknown> };
+        if (json.type !== 'event' || !json.rewards) return f;
+        const { byPlaceCash } = json.rewards;
+        return { ...f, json: { ...json, rewards: { byPlaceCash, ...extra } } };
+      }),
+    );
+    return buildSimConfig(reg, streamForEvent(reg), { seed: 1 }).event.style;
+  };
+
+  it('carries every style field from the event’s rewards', () => {
+    expect(
+      withRewards({
+        perNearMissCash: 25,
+        perAirtimeCash: 40,
+        perOncomingSecondCash: 10,
+        perTakedownCash: 200,
+        takedownComboScale: 0.5,
+        perStealCash: 60,
+      }),
+    ).toEqual({
+      perNearMissCash: 25,
+      perAirtimeCash: 40,
+      perOncomingSecondCash: 10,
+      perTakedownCash: 200,
+      takedownComboScale: 0.5,
+      perStealCash: 60,
+    });
+  });
+
+  it('writes 0 for each style field the event leaves out', () => {
+    expect(withRewards({ perNearMissCash: 7 })).toEqual({
+      perNearMissCash: 7,
+      perAirtimeCash: 0,
+      perOncomingSecondCash: 0,
+      perTakedownCash: 0,
+      takedownComboScale: 0,
+      perStealCash: 0,
+    });
+  });
+});
