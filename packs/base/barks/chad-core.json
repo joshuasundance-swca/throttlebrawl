@@ -1,0 +1,47 @@
+{
+  "type": "bark-set",
+  "id": "chad-core",
+  "name": "Chad Speedwell: M1 lines",
+  "tags": ["rival", "m1"],
+  "defaults": {
+    "speaker": "chad-speedwell",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "chad-start-sponsored",
+      "trigger": "race-start",
+      "text": "This crash is sponsored by nobody. Sorry."
+    },
+    {
+      "id": "chad-pass-chat",
+      "trigger": "overtake",
+      "text": "Chat says you're slow. Chat is right."
+    },
+    {
+      "id": "chad-pass-wave",
+      "trigger": "overtake",
+      "text": "Wave for the stream. Too late."
+    },
+    {
+      "id": "chad-hit-subscribe",
+      "trigger": "hit-landed",
+      "text": "Smash that subscri— oh. You're smashed."
+    },
+    {
+      "id": "chad-hit-lie-still",
+      "trigger": "hit-landed",
+      "text": "Like, comment, and lie still."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "chad-hit-subscribe is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-29"
+    }
+  }
+}

@@ -210,7 +210,7 @@ export function createApp(opts: AppOptions): AppHandle {
     const events = race.events();
     if (events.length) {
       recent = recent.concat(events).slice(-300);
-      ui.narrative.onEvents(events);
+      ui.narrative.onEvents(events, { snapshot: curr, seed: race.config.seed });
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     stepListener?.(curr, events);
