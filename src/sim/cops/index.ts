@@ -7,7 +7,9 @@
 //   passed, then sounds the siren and gives chase. "Slow to start a chase, then relentless."
 // - Chase: he targets the nearest player, or whoever caused chaos (a hit or kick) near him in the
 //   last 10 s. While the target rides he closes to `cops.followGapM` behind and holds there, so
-//   he does not shadow every crash; once the target is down he pulls up beside him.
+//   he does not shadow every crash; after 8 s on station he moves in alongside for 6 s (inside
+//   punch and kick reach, so he can be knocked down), then drops back. Once the target is down he
+//   pulls up beside him.
 // - Bust: a player who is down (Tumble or OnFoot) within `law.bustRadiusM` × `cops.bustRadiusScale`
 //   of an upright, spawned cop for `law.bustDwellS` × `cops.bustDwellScale` of scaled time is
 //   busted: a `bust` event with the fine, once per player. Race end on a bust is sim/race's.
@@ -78,6 +80,15 @@ export const CHAOS_RADIUS_M = 60;
 export const CHAOS_MEMORY_TICKS = 600;
 /** Where he pulls up behind a downed target (well inside the bust radius). */
 const PULL_UP_GAP_M = 6;
+/** Hanging back: no further back than the follow gap plus this counts as on station. */
+const STATION_M = 10;
+/** Scaled ticks on station before he moves in (8 s), and how long he then stays alongside (6 s). */
+export const HANG_BACK_TICKS = 480;
+export const MOVE_IN_TICKS = 360;
+/** Moving in, he rides this far to the side of his target: inside punch and kick reach. */
+const ALONGSIDE_D_M = 1.2;
+/** Within this along the road counts as alongside (the auto-target box is 4 m). */
+const ALONGSIDE_S_M = 3;
 const COAST_DECEL = 0.6; // m/s², the riding model's off-throttle deceleration
 
 export interface CopsState {
@@ -91,6 +102,10 @@ export interface CopsState {
   target: EntityId[];
   /** By cop id: the clock value when his chaos target expires (0 when none). */
   chaosUntil: number[];
+  /** By cop id: 1 while he moves in alongside his target, 0 while he hangs back. */
+  closing: number[];
+  /** By cop id: scaled ticks on station while hanging back, or alongside while moving in. */
+  closingFor: number[];
   /** By player id: scaled ticks spent down within a cop's bust radius, in a row. */
   dwell: number[];
   /** Players busted, in order. */
@@ -104,6 +119,8 @@ export function copsState(world: World): CopsState {
     phase: [],
     target: [],
     chaosUntil: [],
+    closing: [],
+    closingFor: [],
     dwell: [],
     busted: [],
   }));
@@ -198,11 +215,34 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
       vWant = room > 0 ? Math.sqrt(2 * decel * room) : 0;
       dWant = target.pos.d;
     } else {
-      // Close to the follow gap, then match his speed; brake early enough not to overshoot.
+      // Hang back at the follow gap; after a spell on station, move in alongside for a while
+      // (so he can be hit, and is there if you fall), then drop back. Either way: close to the
+      // goal gap, match his speed, and brake early enough not to overshoot.
+      const id = cop.id;
       const followGap = world.params['cops.followGapM'] ?? 40;
-      const room = gap - followGap;
+      let spell = st.closingFor[id] ?? 0;
+      if (st.closing[id] === 1) {
+        if (Math.abs(gap) <= ALONGSIDE_S_M) spell += world.timeScale;
+        if (spell >= MOVE_IN_TICKS) {
+          st.closing[id] = 0;
+          spell = 0;
+        }
+      } else {
+        if (gap <= followGap + STATION_M) spell += world.timeScale;
+        if (spell >= HANG_BACK_TICKS) {
+          st.closing[id] = 1;
+          spell = 0;
+        }
+      }
+      st.closingFor[id] = spell;
+      const closing = st.closing[id] === 1;
+      const room = gap - (closing ? 0 : followGap);
       vWant = room > 0 ? target.speed + Math.sqrt(2 * decel * room) : target.speed + 0.5 * room;
-      if (gap < 30) dWant = target.pos.d;
+      if (closing) {
+        const edge = config.road.edges[pos.edge];
+        const centre = edge ? (edge.dMin + edge.dMax) / 2 : 0;
+        dWant = target.pos.d + (target.pos.d > centre ? -ALONGSIDE_D_M : ALONGSIDE_D_M);
+      } else if (gap < 30) dWant = target.pos.d;
     }
     vWant = clamp(vWant, 0, bike.topSpeedMps);
   }
@@ -224,7 +264,9 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   const edge = config.road.edges[pos.edge];
   if (edge) dWant = clamp(dWant, edge.dMin + 0.8, edge.dMax - 0.8);
   const steerScale = world.params['riders.steerScale'] ?? 1;
-  const vLat = clamp((dWant - pos.d) * 0.8, -3, 3) * pos.dir;
+  // Alongside he holds his line firmly, so a knockback does not keep him out of reach for long.
+  const gain = st.closing[cop.id] === 1 ? 1.6 : 0.8;
+  const vLat = clamp((dWant - pos.d) * gain, -3, 3) * pos.dir;
   const wantYaw = vLat / Math.max(v, 5);
   const turn = pos.dir * config.road.kappaAt(pos.edge, pos.s) * v + 3 * (wantYaw - cop.yaw);
   const yawTarget = cop.yaw + turn / 4;
@@ -286,6 +328,8 @@ export const copsSystem: SimSystem = {
       st.phase[m.id] = COP_PARKED;
       st.target[m.id] = -1;
       st.chaosUntil[m.id] = 0;
+      st.closing[m.id] = 0;
+      st.closingFor[m.id] = 0;
       world.inputs[m.id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
     }
   },
@@ -303,7 +347,12 @@ export const copsSystem: SimSystem = {
         emit(world, 'siren', id, { on: true });
       }
       if (st.phase[id] === COP_CHASING) {
+        const before = st.target[id];
         st.target[id] = pickTarget(world, config, st, cop);
+        if (st.target[id] !== before) {
+          st.closing[id] = 0; // a new target: hang back first
+          st.closingFor[id] = 0;
+        }
         if (st.target[id] === -1) endChase(world, st, id);
       }
     }
