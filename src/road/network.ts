@@ -6,8 +6,8 @@
 //   kappa positive when the road turns right (toward positive d);
 //   bank positive when the surface tilts down toward positive d.
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
-import type { LaneInfo } from '../core';
-import type { BakedNetworkBundle, BakedRoad } from './types';
+import { cos, sin, type LaneInfo } from '../core';
+import type { BakedBarrier, BakedFeature, BakedNetworkBundle, BakedRoad, BakedTag } from './types';
 
 /** How a mover leaving one edge enters the next: at the next edge's `from` or `to` end. */
 export interface EdgeLink {
@@ -35,6 +35,11 @@ export interface Edge {
   /** Outer drivable edges of the widest section, lanes and shoulders included. */
   dMin: number;
   dMax: number;
+  /** Features (ramps, roadside zones, cop spawns...), sorted by s0. */
+  features: readonly BakedFeature[];
+  /** Scenery tags over s ranges. */
+  tags: readonly BakedTag[];
+  barriers: readonly BakedBarrier[];
   fromJunction: string;
   toJunction: string;
   /** Leaving through the `to` end (s > length). Null at a dead end. */
@@ -69,6 +74,24 @@ export interface RoadFrame extends WorldPoint {
 
 export type AdvanceResult = 'ok' | 'deadEnd';
 
+/** An edge near an edge end. This edge's s = sOffset + sSign · the neighbour's s. */
+export interface RoadNeighbour {
+  edge: number;
+  sOffset: number;
+  /** −1 when the two edges are joined the other way round (to-to or from-from). */
+  sSign: 1 | -1;
+}
+
+/** Rates of a mover on a curved road (per second), from curvedRoadRates. */
+export interface CurvedRates {
+  /** ds/dt, signed: negative for a mover travelling toward decreasing s (dir −1). */
+  ds: number;
+  /** dd/dt. */
+  dd: number;
+  /** The road turning under the mover: add to its own turn rate to get d(yaw)/dt. */
+  yawDrift: number;
+}
+
 export interface RoadNetwork {
   readonly id: string;
   readonly edges: readonly Edge[];
@@ -83,14 +106,47 @@ export interface RoadNetwork {
   advance(pos: RoadPos): AdvanceResult;
   /** Nearest road position to a world point, searching the hint edge and its neighbours. */
   project(x: number, z: number, hintEdge?: number): RoadPos;
-  /** Edges within range of s across an edge end, with the offset that maps their s into this edge's. */
-  neighbours(edge: number, s: number, range: number): readonly { edge: number; sOffset: number }[];
+  /** Edges within range of s across an edge end, with the mapping of their s into this edge's. */
+  neighbours(edge: number, s: number, range: number): readonly RoadNeighbour[];
+  /** The edge's features, optionally of one kind, sorted by s0. */
+  featuresOf(edge: number, kind?: string): readonly BakedFeature[];
+  /** The barrier on one side at s (left is negative d), or null. */
+  barrierAt(
+    edge: number,
+    s: number,
+    side: 'left' | 'right',
+  ): { kind: 'rail' | 'wall'; heightM: number } | null;
 }
 
 /** 1 / (1 − kappa·d), with the denominator clamped to at least 0.1 (curved-road kinematics). */
 export function sRateFactor(kappa: number, d: number): number {
   const den = 1 - kappa * d;
   return 1 / (den < 0.1 ? 0.1 : den);
+}
+
+/**
+ * The curved-road kinematics (docs/architecture.md, "Coordinates") for a mover at speed v,
+ * offset d, travel direction dir and yaw (its heading offset from its own direction of travel,
+ * positive to its right), on road curvature kappa:
+ *   ds/dt = dir · v·cos(yaw) / (1 − kappa·d), denominator clamped to at least 0.1;
+ *   dd/dt = dir · v·sin(yaw);
+ *   d(yaw)/dt = own turn rate + yawDrift, with yawDrift = −dir · kappa · |ds/dt|.
+ * For dir −1 the mover's right is −d and the road turns the other way under it, hence the signs.
+ * Writes into `out` (no allocation) and returns it.
+ */
+export function curvedRoadRates(
+  kappa: number,
+  d: number,
+  dir: 1 | -1,
+  speed: number,
+  yaw: number,
+  out: CurvedRates,
+): CurvedRates {
+  const along = speed * cos(yaw) * sRateFactor(kappa, d);
+  out.ds = dir * along;
+  out.dd = dir * speed * sin(yaw);
+  out.yawDrift = -dir * kappa * along;
+  return out;
 }
 
 function column(road: BakedRoad, name: string): Float64Array {
@@ -145,6 +201,9 @@ function buildEdge(road: BakedRoad, index: number): Edge {
     sections,
     dMin,
     dMax,
+    features: [...(road.features ?? [])].sort((p, q) => p.s0 - q.s0),
+    tags: road.tags ?? [],
+    barriers: road.barriers ?? [],
     fromJunction: road.from,
     toJunction: road.to,
     next: null,
@@ -337,21 +396,46 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     return best;
   };
 
-  const neighbours = (
-    edge: number,
-    s: number,
-    range: number,
-  ): readonly { edge: number; sOffset: number }[] => {
+  const neighbours = (edge: number, s: number, range: number): readonly RoadNeighbour[] => {
     const e = edgeAt(edge);
-    const out: { edge: number; sOffset: number }[] = [];
-    // Only same-orientation pass-through neighbours in M1; road-1 extends this across connectors.
-    if (e.next && e.next.entersAt === 'from' && e.length - s <= range) {
-      out.push({ edge: e.next.edge, sOffset: e.length });
+    const out: RoadNeighbour[] = [];
+    // Pass-through neighbours, either way round. road-2 adds the connector edges at junctions.
+    if (e.next && e.length - s <= range) {
+      // Past our `to` end: entering their `from` end runs with us, their `to` end against us.
+      const other = edgeAt(e.next.edge);
+      out.push(
+        e.next.entersAt === 'from'
+          ? { edge: other.index, sOffset: e.length, sSign: 1 }
+          : { edge: other.index, sOffset: e.length + other.length, sSign: -1 },
+      );
     }
-    if (e.prev && e.prev.entersAt === 'to' && s <= range) {
-      out.push({ edge: e.prev.edge, sOffset: -edgeAt(e.prev.edge).length });
+    if (e.prev && s <= range) {
+      const other = edgeAt(e.prev.edge);
+      out.push(
+        e.prev.entersAt === 'to'
+          ? { edge: other.index, sOffset: -other.length, sSign: 1 }
+          : { edge: other.index, sOffset: 0, sSign: -1 },
+      );
     }
     return out;
+  };
+
+  const featuresOf = (edge: number, kind?: string): readonly BakedFeature[] => {
+    const all = edgeAt(edge).features;
+    return kind === undefined ? all : all.filter((f) => f.kind === kind);
+  };
+
+  const barrierAt = (
+    edge: number,
+    s: number,
+    side: 'left' | 'right',
+  ): { kind: 'rail' | 'wall'; heightM: number } | null => {
+    for (const b of edgeAt(edge).barriers) {
+      if (s >= b.s0 && s <= b.s1 && (b.side === side || b.side === 'both')) {
+        return { kind: b.kind, heightM: b.heightM };
+      }
+    }
+    return null;
   };
 
   return {
@@ -367,5 +451,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     advance,
     project,
     neighbours,
+    featuresOf,
+    barrierAt,
   };
 }

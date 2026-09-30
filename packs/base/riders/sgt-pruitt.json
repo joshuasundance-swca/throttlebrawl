@@ -8,7 +8,7 @@
   "tags": ["deputy", "tired", "local-law"],
   "blurb": "A tired county deputy. Slow to start a chase, then relentless.",
   "bike": "rustbucket-400",
-  "stats": { "massKg": 95, "healthMax": 120, "skill": 0.6 },
+  "stats": { "massKg": 95, "healthMax": 100, "skill": 0.6 },
   "personality": { "style": "cop" },
   "law": {
     "agency": "keys-county-deputies",
