@@ -33,6 +33,21 @@ export interface RenderParams {
   streakFullMps: number;
   /** Roadside palms per stretch of road (1 = one per 20 m a side), 0 = none. Rebuilds the road. */
   roadsideDensity: number;
+  // Playtest 1b item 6: the "Ink + 1960s film" look (render/looks). They change that look only.
+  /** Ink outline strength, 0 = none. */
+  inkLines: number;
+  /** Ink outline width, device pixels. */
+  inkWidthPx: number;
+  /** Hatch lines per metre in the inked shadows. */
+  hatchPerM: number;
+  /** Inked waves on the sea, 0 = plain water. */
+  seaInk: number;
+  /** The Kodachrome grade's strength, 0 = ungraded. */
+  filmGrade: number;
+  /** The film vignette, 0 = none. */
+  vignette: number;
+  /** Film grain, 0 = none. */
+  filmGrain: number;
 }
 
 const decl = (
@@ -71,6 +86,14 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   decl('streakFromMps', 'Speed lines from', 20, 0, 60, 1, 'm/s'),
   decl('streakFullMps', 'Speed lines full at', 45, 10, 80, 1, 'm/s'),
   decl('roadsideDensity', 'Roadside palms', 1, 0, 3, 0.25, ''),
+  // Playtest 1b item 6 [decided]: the ink + film look. [default] numbers; the classic look ignores them.
+  decl('inkLines', 'Ink look: outlines', 1, 0, 1, 0.05, ''),
+  decl('inkWidthPx', 'Ink look: outline width', 1.5, 0.5, 3, 0.25, 'px'),
+  decl('hatchPerM', 'Ink look: hatch lines per metre', 5, 1, 12, 0.5, '/m'),
+  decl('seaInk', 'Ink look: inked waves', 1, 0, 1, 0.05, ''),
+  decl('filmGrade', 'Ink look: film grade', 1, 0, 1, 0.05, ''),
+  decl('vignette', 'Ink look: vignette', 0.4, 0, 1, 0.05, ''),
+  decl('filmGrain', 'Ink look: film grain', 0.05, 0, 0.2, 0.01, ''),
 ];
 
 export function defaultRenderParams(): RenderParams {
