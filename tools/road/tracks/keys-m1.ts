@@ -1,10 +1,13 @@
-// The M1 track, hand-authored (M1 road-1): about 3.5 km of Keys-flavoured coastal highway, only
-// inspired by the Overseas Highway (the real one is the GIS side quest's). One main road through
-// Catmull-Rom control points, cut into roads. Road-2 adds one junction pair: the boat-ramp cut
-// splits off after the Marina Run, jumps a ramp and rejoins at the Pelican Channel Bridge, about
-// 50 m shorter than the S-bends it skips. The Keys are nearly flat, so the hills are exaggerated
-// bridge humps. Every name and joke is a placeholder
-// the maintainer may veto. Bake with `node tools/road/bake.mjs`.
+// The M1 track, hand-authored (M1 road-1): Keys-flavoured coastal highway, only inspired by the
+// Overseas Highway (the real one is the GIS side quest's). One main road through Catmull-Rom
+// control points, cut into roads. Road-2 adds one junction pair: the boat-ramp cut splits off
+// after the Marina Run, jumps a ramp and rejoins at the Pelican Channel Bridge, about 50 m shorter
+// than the S-bends it skips. Road-3 (M2) carries the road on past the Sandbar Causeway, about
+// 7.4 km more, so one network hosts three race lengths: short (the M1 sprint, about 3.5 km),
+// standard (about 7.2 km, to the end of Conch Row) and long (about 11 km, over the long bridge to
+// the Last Resort Causeway). The Keys are nearly flat, so the hills are exaggerated bridge humps.
+// Every name and joke is a placeholder the maintainer may veto. Bake with
+// `node tools/road/bake.mjs`.
 //
 // Frame: metres, x east, z south (north is -z). The start faces north.
 import type { TrackSource } from '../../../src/road/compile';
@@ -25,7 +28,7 @@ export const KEYS_M1: TrackSource = {
     region: 'florida-keys',
     crs: { kind: 'tmerc', originLatDeg: 24.7, originLonDeg: -81.1, originElevM: 0 },
     notes:
-      'The M1 track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through.',
+      'The hand-made Keys track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through. Three routes share it, one per race length (road-3).',
   },
   createdAt: '2026-09-30',
   points: [
@@ -49,6 +52,35 @@ export const KEYS_M1: TrackSource = {
     [1100, -2400],
     [1030, -2600],
     [1030, -2800],
+    // road-3: on north through the mangroves, then east along the flats, through town, over the
+    // long bridge and out along the last causeway.
+    [1060, -3000],
+    [1150, -3180],
+    [1150, -3380],
+    [1060, -3560],
+    [1080, -3760],
+    [1200, -3920],
+    [1380, -4010],
+    [1600, -4040],
+    [1820, -4000],
+    [2040, -4060],
+    [2240, -4180],
+    [2380, -4350],
+    [2560, -4460],
+    [2780, -4500],
+    [3000, -4480],
+    [3240, -4520],
+    [3700, -4600],
+    [4200, -4640],
+    [4700, -4620],
+    [5200, -4560],
+    [5550, -4560],
+    [5850, -4640],
+    [6100, -4800],
+    [6300, -4980],
+    [6600, -5080],
+    [6900, -5060],
+    [7250, -5000],
   ],
   baseElevationM: 1.5,
   spacingM: 2,
@@ -66,7 +98,19 @@ export const KEYS_M1: TrackSource = {
         { s0: 0, s1: 'end', side: 'right', tag: 'marina' },
         { s0: 0, s1: 'end', side: 'left', tag: 'strip-mall' },
       ],
-      features: [{ kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 }],
+      features: [
+        { kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
+        // road-3: a billboard in view from the start grid, across from the strip mall's lot.
+        {
+          kind: 'billboard',
+          id: 'bb-marina-timeshare',
+          s0: 150,
+          s1: 190,
+          d0: -16,
+          d1: -7,
+          item: 'timeshare',
+        },
+      ],
       barriers: [],
     },
     {
@@ -142,12 +186,23 @@ export const KEYS_M1: TrackSource = {
           d1: -5.5,
           params: { spawns: 'pedestrians' },
         },
+        // road-3: a road sign at the foot of the bridge, just outside the right-hand rail.
+        {
+          kind: 'billboard',
+          id: 'sign-bridge-ices',
+          s0: 20,
+          s1: 30,
+          d0: 6.5,
+          d1: 9,
+          item: 'ices-before-road',
+        },
       ],
       barriers: [{ s0: 0, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
     },
     {
       id: 'm1-sandbar-causeway',
       name: 'Sandbar Causeway',
+      lengthM: 1180,
       speedLimitMps: 24.6,
       surface: 'asphalt',
       humps: [{ centreM: 560, lengthM: 240, heightM: 4 }],
@@ -167,6 +222,16 @@ export const KEYS_M1: TrackSource = {
           d1: 14.6,
           params: { spawns: 'pedestrians' },
         },
+        // road-3: the streaming outfit's billboard over the beach.
+        {
+          kind: 'billboard',
+          id: 'bb-causeway-stream',
+          s0: 320,
+          s1: 360,
+          d0: 7,
+          d1: 16,
+          item: 'stream-outfit',
+        },
         {
           kind: 'roadsideZone',
           id: 'tiki-stand',
@@ -177,6 +242,115 @@ export const KEYS_M1: TrackSource = {
           params: { spawns: 'pedestrians' },
         },
       ],
+      barriers: [],
+    },
+    // road-3: the standard and long race lengths carry on from here.
+    {
+      id: 'm1-mangrove-cut',
+      name: 'Mangrove Cut',
+      lengthM: 1250,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 900, lengthM: 200, heightM: 2 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
+        { s0: 0, s1: 600, side: 'left', tag: 'swamp' },
+        { s0: 900, s1: 'end', side: 'right', tag: 'water-shallow' },
+      ],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'm1-tarpon-flats',
+      name: 'Tarpon Flats',
+      lengthM: 1250,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'left', tag: 'water-shallow' },
+        { s0: 0, s1: 700, side: 'right', tag: 'beach' },
+        { s0: 700, s1: 'end', side: 'right', tag: 'palms' },
+      ],
+      features: [
+        {
+          kind: 'roadsideZone',
+          id: 'flats-anglers',
+          s0: 300,
+          s1: 400,
+          d0: 5.6,
+          d1: 12.6,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      id: 'm1-conch-row',
+      name: 'Conch Row',
+      lengthM: 1300,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 1050, lengthM: 220, heightM: 2.5 }],
+      tags: [
+        { s0: 0, s1: 900, side: 'both', tag: 'town' },
+        { s0: 900, s1: 'end', side: 'left', tag: 'strip-mall' },
+        { s0: 900, s1: 'end', side: 'right', tag: 'trailer-park' },
+      ],
+      features: [
+        {
+          kind: 'roadsideZone',
+          id: 'conch-row-sidewalk',
+          s0: 200,
+          s1: 300,
+          d0: -12.6,
+          d1: -5.6,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      id: 'm1-long-bridge',
+      name: 'Almost Seven Mile Bridge',
+      lengthM: 2300,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [
+        { centreM: 500, lengthM: 400, heightM: 9 },
+        { centreM: 1300, lengthM: 600, heightM: 12 },
+        { centreM: 1950, lengthM: 300, heightM: 5 },
+      ],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'bridge' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'water-open' },
+      ],
+      features: [
+        {
+          kind: 'roadsideZone',
+          id: 'long-bridge-fishing-rail',
+          s0: 1700,
+          s1: 1800,
+          d0: -7.1,
+          d1: -5.5,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [{ s0: 0, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
+    },
+    {
+      id: 'm1-last-resort-causeway',
+      name: 'Last Resort Causeway',
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 700, lengthM: 240, heightM: 4 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'causeway' },
+        { s0: 0, s1: 500, side: 'left', tag: 'beach' },
+        { s0: 0, s1: 600, side: 'right', tag: 'water-shallow' },
+        { s0: 600, s1: 'end', side: 'right', tag: 'mangrove' },
+      ],
+      features: [],
       barriers: [],
     },
   ],
@@ -235,16 +409,50 @@ export const KEYS_M1: TrackSource = {
       ],
     },
   ],
-  route: {
-    id: 'm1-skeleton-sprint',
-    start: { road: 'm1-marina-run', s: 40, dir: 1 },
-    finish: { road: 'm1-sandbar-causeway', s: -40 },
-    // On roads both paths share, so a shortcut rider passes them too.
-    checkpoints: [
-      { road: 'm1-pelican-bridge', s: 300 },
-      { road: 'm1-pelican-bridge', s: 1000 },
-      { road: 'm1-sandbar-causeway', s: 500 },
-    ],
-    startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
-  },
+  routes: [
+    {
+      id: 'm1-skeleton-sprint',
+      start: { road: 'm1-marina-run', s: 40, dir: 1 },
+      finish: { road: 'm1-sandbar-causeway', s: -40 },
+      // On roads both paths share, so a shortcut rider passes them too.
+      checkpoints: [
+        { road: 'm1-pelican-bridge', s: 300 },
+        { road: 'm1-pelican-bridge', s: 1000 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+      ],
+      startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+    },
+    {
+      // road-3: the standard length, to the end of Conch Row.
+      id: 'm1-standard-run',
+      start: { road: 'm1-marina-run', s: 40, dir: 1 },
+      finish: { road: 'm1-conch-row', s: -40 },
+      checkpoints: [
+        { road: 'm1-pelican-bridge', s: 300 },
+        { road: 'm1-pelican-bridge', s: 1000 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+        { road: 'm1-mangrove-cut', s: 600 },
+        { road: 'm1-tarpon-flats', s: 600 },
+        { road: 'm1-conch-row', s: 600 },
+      ],
+      startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+    },
+    {
+      // road-3: the long length, over the long bridge to the Last Resort Causeway.
+      id: 'm1-long-haul',
+      start: { road: 'm1-marina-run', s: 40, dir: 1 },
+      finish: { road: 'm1-last-resort-causeway', s: -40 },
+      checkpoints: [
+        { road: 'm1-pelican-bridge', s: 300 },
+        { road: 'm1-pelican-bridge', s: 1000 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+        { road: 'm1-mangrove-cut', s: 600 },
+        { road: 'm1-tarpon-flats', s: 600 },
+        { road: 'm1-conch-row', s: 600 },
+        { road: 'm1-long-bridge', s: 1150 },
+        { road: 'm1-last-resort-causeway', s: 500 },
+      ],
+      startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+    },
+  ],
 };

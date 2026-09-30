@@ -100,7 +100,9 @@ describe('app: resume a race from its saved recording', () => {
       const input = scripted(tick);
       recorder.record(tick, [input]);
       sim.step([input]);
-      if (tick % 60 === 0) recorder.checkpoint(tick, sim.hash() ^ (tick === 60 ? 1 : 0));
+      // `>>> 0` keeps the hash unsigned, as sim.hash() returns it: a bare `^` turns a hash with its
+      // top bit set negative, which reads as a desync at tick 0 instead of the planted one at 60.
+      if (tick % 60 === 0) recorder.checkpoint(tick, (sim.hash() ^ (tick === 60 ? 1 : 0)) >>> 0);
     }
     const rec = recorder.current();
     if (!rec) throw new Error('no recording');

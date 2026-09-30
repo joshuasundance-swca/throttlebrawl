@@ -30,7 +30,11 @@ for (const t of TRACKS) {
   const src = mod[t.exportName];
   const out = compiler.compileTrack(src);
   const region = path.join(root, 'packs/base/regions', src.network.region);
-  const targets = [['networks', out.network], ...out.roads.map((r) => ['roads', r]), ['routes', out.route]];
+  const targets = [
+    ['networks', out.network],
+    ...out.roads.map((r) => ['roads', r]),
+    ...out.routes.map((r) => ['routes', r]),
+  ];
   for (const [dir, value] of targets) {
     const file = path.join(region, dir, `${value.id}.json`);
     const text = await prettier.format(JSON.stringify(value), {

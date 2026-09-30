@@ -24,10 +24,15 @@ describe('content: the base pack', () => {
       'base:c-marina-merge-main',
       'base:c-marina-split-main',
       'base:m1-boat-ramp-cut',
+      'base:m1-conch-row',
+      'base:m1-last-resort-causeway',
+      'base:m1-long-bridge',
+      'base:m1-mangrove-cut',
       'base:m1-marina-bends',
       'base:m1-marina-run',
       'base:m1-pelican-bridge',
       'base:m1-sandbar-causeway',
+      'base:m1-tarpon-flats',
     ]);
     expect(reg.index.length).toBe(basePackFiles().length - 1);
     expect(Object.isFrozen(lookup(reg.bikes, 'rustbucket-400').handling)).toBe(true);

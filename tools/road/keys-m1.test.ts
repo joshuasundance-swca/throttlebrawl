@@ -27,7 +27,10 @@ const read = (dir: string, id: string): unknown =>
 const compiled = compileTrack(KEYS_M1);
 const network = read('networks', 'keys-m1') as BakedNetwork;
 const roads = network.roads.map((id) => read('roads', id) as BakedRoad);
-const route = read('routes', 'm1-skeleton-sprint') as BakedRoute;
+// road-3: one route per race length, all on this network.
+const ROUTE_IDS = ['m1-skeleton-sprint', 'm1-standard-run', 'm1-long-haul'] as const;
+const routes = ROUTE_IDS.map((id) => read('routes', id) as BakedRoute);
+const route = routes[0] as BakedRoute; // the short length: the M1 sprint
 const net = createRoadNetwork({ network, roads });
 const progress = createRouteProgress(net, route);
 
@@ -35,23 +38,24 @@ describe('tools/road: the baked M1 track', () => {
   it('is fresh: the pack files equal a new compile of tools/road/tracks/keys-m1.ts', () => {
     expect(network).toEqual(compiled.network);
     expect(roads).toEqual(compiled.roads);
-    expect(route).toEqual(compiled.route);
+    expect(routes).toEqual(compiled.routes);
   });
 
   it('passes the content schemas and the road lint with no issues', () => {
     expect(roadNetworkSchema.safeParse(network).success).toBe(true);
     for (const r of roads) expect(roadSchema.safeParse(r).success, r.id).toBe(true);
-    expect(routeSchema.safeParse(route).success).toBe(true);
-    const issues = lintRoadNetwork({ network, roads, routes: [route] });
+    for (const r of routes) expect(routeSchema.safeParse(r).success, r.id).toBe(true);
+    const issues = lintRoadNetwork({ network, roads, routes });
     expect(issues).toEqual([]);
   });
 
-  it('is about 3.5 km of three roads, joined end to end, with bridge humps', () => {
+  it('its short route is about 3.5 km of the M1 roads, joined end to end, with bridge humps', () => {
     console.log(
       `M1 track: ${roads.map((r) => `${r.id} ${r.lengthM.toFixed(1)} m`).join(', ')}; route ${progress.length.toFixed(1)} m`,
     );
-    // road-2: four main roads and two connector roads on the main path, and the shortcut's three.
-    expect(net.edges.length).toBe(9);
+    // road-2: four main roads and two connector roads on the main path, and the shortcut's three;
+    // road-3: five more main roads past the Sandbar Causeway.
+    expect(net.edges.length).toBe(14);
     expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
       'm1-marina-run',
       'c-marina-split-main',
@@ -71,9 +75,10 @@ describe('tools/road: the baked M1 track', () => {
     expect(Math.min(...ks)).toBeLessThan(-1 / 300);
   });
 
-  it('has three or four roadside zones, a cop spawn, a start grid, a finish and checkpoints', () => {
+  it('has three or four roadside zones on the short route, a cop spawn, a start grid, a finish and checkpoints', () => {
     const all = net.edges.flatMap((e) => e.features);
-    const zones = all.filter((f) => f.kind === 'roadsideZone').length;
+    const short = net.edges.filter((e) => progress.allows(e.index)).flatMap((e) => e.features);
+    const zones = short.filter((f) => f.kind === 'roadsideZone').length;
     expect(zones).toBeGreaterThanOrEqual(3);
     expect(zones).toBeLessThanOrEqual(4);
     expect(all.filter((f) => f.kind === 'copSpawn').length).toBe(1);
@@ -110,22 +115,112 @@ describe('tools/road: the baked M1 track', () => {
       expect(Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)), e.id).toBeCloseTo(5.5, 9);
       checked++;
     }
-    expect(checked).toBe(6); // the main path's six edges
+    expect(checked).toBe(11); // the long route's main path: nine roads and two connectors
   });
 
-  it('road-3: barrierAt returns the rail on the bridge stretch and nothing off it; the water is y = 0', () => {
-    const bridge = id('m1-pelican-bridge');
-    let on = 0;
-    for (let s = 0; s <= (net.edges[bridge]?.length ?? 0); s += 25) {
-      for (const side of ['left', 'right'] as const) {
-        expect(net.barrierAt(bridge, s, side), `bridge ${s} ${side}`).toEqual({ kind: 'rail', heightM: 1 });
-        on++;
+  it('road-3: three race lengths, short, standard and long, each longer route carrying on from the last', () => {
+    // M2's starting numbers: about 2, 4 and 6 minutes at M1's 29–32 m/s average.
+    const want = [
+      [3300, 3800],
+      [7000, 7700],
+      [10400, 11500],
+    ] as const;
+    const lines: string[] = [];
+    routes.forEach((r, i) => {
+      const p = createRouteProgress(net, r);
+      const [lo, hi] = want[i] ?? [0, 0];
+      lines.push(`${r.id} ${(p.length / 1000).toFixed(2)} km, ${p.checkpoints.length} checkpoints`);
+      expect(p.length, r.id).toBeGreaterThan(lo);
+      expect(p.length, r.id).toBeLessThan(hi);
+      expect(r.closed, r.id).toBe(false); // point to point: one lap
+      // Same start and grid; each main path extends the previous one.
+      expect(r.start).toEqual(route.start);
+      expect(r.startGrid).toEqual(route.startGrid);
+      const prev = routes[i - 1];
+      if (prev) expect(r.mainPath.slice(0, prev.mainPath.length)).toEqual(prev.mainPath);
+      // The boat-ramp cut is on every length, with the same saving.
+      expect(p.shortcuts.map((c) => c.gainM)).toEqual(progress.shortcuts.map((c) => c.gainM));
+      // Checkpoints in order, strictly inside the race.
+      let last = 0;
+      for (const c of p.checkpoints) {
+        expect(c.progress, r.id).toBeGreaterThan(last);
+        last = c.progress;
       }
-      // Sea level is world y = 0 (docs/content-packs.md, "Barriers"): the deck is always above it.
-      expect(net.surfaceHeight(bridge, s, 0)).toBeGreaterThan(0);
+      expect(last, r.id).toBeLessThan(p.length);
+      // A route allows only the roads up to its finish: nothing past it.
+      const finishAt = p.progressAt(p.finish.edge, p.finish.s);
+      for (const e of net.edges) {
+        if (!p.allows(e.index)) continue;
+        expect(p.progressAt(e.index, 0), `${r.id} ${e.id}`).toBeLessThanOrEqual(finishAt);
+      }
+    });
+    console.log(`race lengths: ${lines.join('; ')}`);
+  });
+
+  it('road-3: two or three sign and billboard slots, each naming a live region item, off the road, on every length', () => {
+    const regionFile = JSON.parse(readFileSync(path.join(region, 'region.json'), 'utf8')) as {
+      signs?: { id: string; status?: string }[];
+      billboards?: { id: string; status?: string }[];
+    };
+    const items = new Map(
+      [...(regionFile.signs ?? []), ...(regionFile.billboards ?? [])].map((i) => [i.id, i]),
+    );
+    const slots = net.edges.flatMap((e) =>
+      e.features.filter((f) => f.kind === 'billboard').map((f) => ({ e, f })),
+    );
+    console.log(
+      `board slots: ${slots.map(({ e, f }) => `${f.id} -> ${f.item} on ${e.id} s ${f.s0}-${f.s1} d ${f.d0}..${f.d1}`).join('; ')}`,
+    );
+    expect(slots.length).toBeGreaterThanOrEqual(2);
+    expect(slots.length).toBeLessThanOrEqual(3);
+    expect(new Set(slots.map(({ f }) => f.id)).size).toBe(slots.length);
+    for (const { e, f } of slots) {
+      // A named item (a stable content reference for the veto), live in the region file.
+      expect(typeof f.item, f.id).toBe('string');
+      expect(items.get(f.item ?? '')?.status ?? 'live', f.id).toBe('live');
+      expect(items.has(f.item ?? ''), f.id).toBe(true);
+      // Off the road on one side: clear of the 5.5 m edge, and of the rail posts beyond it.
+      expect(Math.sign(f.d0), f.id).toBe(Math.sign(f.d1));
+      expect(Math.min(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeGreaterThanOrEqual(6.5);
+      // Clear of the other features on its road.
+      for (const g of e.features) {
+        if (g === f) continue;
+        const overlap = g.s0 < f.s1 && f.s0 < g.s1 && g.d0 < f.d1 && f.d0 < g.d1;
+        expect(overlap, `${f.id} overlaps ${g.id ?? g.kind}`).toBe(false);
+      }
+      // On the short route, so every race length passes it.
+      for (const r of routes)
+        expect(createRouteProgress(net, r).allows(e.index), `${f.id} ${r.id}`).toBe(true);
+    }
+  });
+
+  it('road-3: barrierAt returns the rail on the bridge stretches and nothing off them; the water is y = 0', () => {
+    let on = 0;
+    for (const name of ['m1-pelican-bridge', 'm1-long-bridge']) {
+      const bridge = id(name);
+      for (let s = 0; s <= (net.edges[bridge]?.length ?? 0); s += 25) {
+        for (const side of ['left', 'right'] as const) {
+          expect(net.barrierAt(bridge, s, side), `${name} ${s} ${side}`).toEqual({
+            kind: 'rail',
+            heightM: 1,
+          });
+          on++;
+        }
+        // Sea level is world y = 0 (docs/content-packs.md, "Barriers"): the deck is always above it.
+        expect(net.surfaceHeight(bridge, s, 0)).toBeGreaterThan(0);
+      }
     }
     let off = 0;
-    for (const name of ['m1-marina-run', 'm1-marina-bends', 'm1-sandbar-causeway', 'm1-boat-ramp-cut']) {
+    for (const name of [
+      'm1-marina-run',
+      'm1-marina-bends',
+      'm1-sandbar-causeway',
+      'm1-boat-ramp-cut',
+      'm1-mangrove-cut',
+      'm1-tarpon-flats',
+      'm1-conch-row',
+      'm1-last-resort-causeway',
+    ]) {
       const e = id(name);
       for (let s = 0; s <= (net.edges[e]?.length ?? 0); s += 25) {
         for (const side of ['left', 'right'] as const) {
@@ -135,8 +230,8 @@ describe('tools/road: the baked M1 track', () => {
       }
     }
     console.log(`barrierAt: ${on} rail answers on the bridge, ${off} empty answers off it`);
-    expect(on).toBeGreaterThan(90);
-    expect(off).toBeGreaterThan(150);
+    expect(on).toBeGreaterThan(280);
+    expect(off).toBeGreaterThan(500);
   });
 
   it('round-trips toWorld and project within 1 cm on its straights and bends', () => {

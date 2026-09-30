@@ -160,13 +160,15 @@ export function fixtureBranchTrack(opts: BranchFixtureOptions = {}): TrackSource
         ],
       },
     ],
-    route: {
-      id: 'r',
-      start: { road: 'a', s: 20, dir: 1 },
-      finish: { road: 'd', s: -20 },
-      checkpoints: [{ road: 'd', s: 50 }],
-      startGrid: { rows: 1, perRow: 2, rowGapM: 8 },
-    },
+    routes: [
+      {
+        id: 'r',
+        start: { road: 'a', s: 20, dir: 1 },
+        finish: { road: 'd', s: -20 },
+        checkpoints: [{ road: 'd', s: 50 }],
+        startGrid: { rows: 1, perRow: 2, rowGapM: 8 },
+      },
+    ],
   };
 }
 
@@ -178,6 +180,6 @@ export function fixtureBranchNetwork(
   return {
     network: out.network as unknown as BakedNetwork,
     roads: out.roads as unknown as BakedRoad[],
-    route: out.route as unknown as BakedRoute,
+    route: out.routes[0] as unknown as BakedRoute,
   };
 }
