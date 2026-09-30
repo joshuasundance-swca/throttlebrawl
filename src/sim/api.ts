@@ -16,6 +16,7 @@ export type {
   EntitySnapshot,
   Faction,
   MoverMode,
+  ParkedBikeSnapshot,
   RaceSnapshot,
   RoadPosSnapshot,
   Sim,
