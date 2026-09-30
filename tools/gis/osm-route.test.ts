@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSimConfig, type ActionState } from '../../src/app';
 import { loadBasePack, lookup, type ContentRegistry } from '../../src/content';
 import { createStubBot } from '../../src/dev';
+import { lintRoadNetwork } from '../../src/road';
 import { createSim, quantizeInput, type SimConfig } from '../../src/sim/api';
 import { activateRegion, type RegionStream } from '../../src/stream';
 
@@ -86,6 +87,23 @@ describe('gis: the real Overseas Highway stretch', () => {
     }
     const route = streamFor(reg, NETWORK).routeFor(lookup(reg.routes, ROUTE));
     expect(route.edgeLength(0)).toBeGreaterThan(0);
+  });
+
+  it('passes the road lint (src/road/validate.ts), which also fires on a broken copy', () => {
+    const reg = loadBasePack();
+    const network = lookup(reg.networks, NETWORK);
+    const roads = network.roads.map((id) => lookup(reg.roads, id));
+    const routes = [lookup(reg.routes, ROUTE)];
+    const issues = lintRoadNetwork({ network, roads, routes });
+    const samples = roads.reduce((n, r) => n + (r.samples.data['x']?.length ?? 0), 0);
+    console.log(`road lint: ${roads.length} roads, ${samples} samples, 1 route, ${issues.length} issues`);
+    expect(issues).toEqual([]);
+    // Negative control: bend one road's stored curvature and the same lint must say so.
+    const bent = structuredClone<typeof roads>(roads);
+    const kappa = bent[1]!.samples.data['kappa'] as number[];
+    kappa[500] = (kappa[500] ?? 0) + 0.02;
+    kappa[501] = (kappa[501] ?? 0) + 0.02;
+    expect(lintRoadNetwork({ network, roads: bent, routes }).map((i) => i.rule)).toContain('curvature');
   });
 
   it('the bot finishes a race on the real route, crossing every junction, every tick valid', () => {

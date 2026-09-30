@@ -38,8 +38,8 @@ def r4(v: float) -> float:
     return round(float(v), 4)
 
 
-def r7(v: float) -> float:
-    return float(f"{float(v):.7g}")
+def r5(v: float) -> float:
+    return float(f"{float(v):.5g}")
 
 
 def road_splits(cfg: BakeConfig, p: Profile) -> list[tuple[int, int]]:
@@ -126,8 +126,8 @@ def bake(
             "x": [r4(v) for v in np.interp(s, p.s, p.x)],
             "y": [r4(v) for v in np.interp(s, p.s, p.y)],
             "z": [r4(v) for v in np.interp(s, p.s, p.z)],
-            "kappa": [r7(v) for v in np.interp(s, p.s, p.kappa)],
-            "grade": [r7(v) for v in np.interp(s, p.s, p.grade)],
+            "kappa": [r5(v) for v in np.interp(s, p.s, p.kappa)],
+            "grade": [r5(v) for v in np.interp(s, p.s, p.grade)],
             "bankRad": [0.0] * (n + 1),
         }
         tags: list[Json] = []
