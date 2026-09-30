@@ -21,6 +21,7 @@ import {
   type SimDifficulty,
   type SimRiderDef,
   type SimSlotConfig,
+  type SimStyleRewards,
   type SimWeaponDef,
   type TuningParamDecl,
 } from '../sim/api';
@@ -53,6 +54,18 @@ export interface RaceSetup {
 
 const NO_ASSISTS: SimAssists = { steer: 'off', autoThrottle: false };
 const DIFFICULTY_PREFIX = 'difficulty.';
+
+/** The event's style-cash values (its `rewards` style fields), each 0 when the file leaves it out. */
+function styleRewards(rewards: RaceEvent['rewards']): SimStyleRewards {
+  return {
+    perNearMissCash: rewards.perNearMissCash ?? 0,
+    perAirtimeCash: rewards.perAirtimeCash ?? 0,
+    perOncomingSecondCash: rewards.perOncomingSecondCash ?? 0,
+    perTakedownCash: rewards.perTakedownCash ?? 0,
+    takedownComboScale: rewards.takedownComboScale ?? 0,
+    perStealCash: rewards.perStealCash ?? 0,
+  };
+}
 
 /** The event length a race uses: the chosen one, or the event's first when it lacks that id. */
 export function eventLength(event: RaceEvent, lengthId?: string): RaceEvent['lengths'][number] {
@@ -273,6 +286,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       raceEndTimeoutTicks: secondsToTicks(RACE_END_TIMEOUT_S),
       lengthId: length.id,
       routeId: `base:${routeDef.id}`,
+      style: styleRewards(event.rewards),
     },
     riders,
     weapons,
