@@ -27,6 +27,10 @@ export interface FeatureSpan {
   s1: number;
   d0: number;
   d1: number;
+  /** A `billboard` slot's own id, and the region item or pool it shows (boards.ts). */
+  id?: string | undefined;
+  item?: string | undefined;
+  pool?: string | undefined;
 }
 export interface TagSpan {
   s0: number;
