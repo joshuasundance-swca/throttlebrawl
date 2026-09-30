@@ -5,8 +5,13 @@
 //
 // - Parked: he waits at the route's first `copSpawn` feature (the lot beside the road), on the
 //   shoulder at the lot's road edge, until `cops.spawnDelayS` (÷ difficulty.copFrequency) has
-//   passed, then sounds the siren and pulls out after you. "Slow to start a chase, then
-//   relentless." A route with no `copSpawn` leaves him on sim/race's grid slot behind the field.
+//   passed, then pulls out after you. "Slow to start a chase, then relentless." A route with no
+//   `copSpawn` leaves him on sim/race's grid slot behind the field.
+// - Difficulty (M2, cops-2): whether he comes out at all is rolled once per race from the `cops`
+//   stream, with chance `cops.spawnChance` × difficulty.copFrequency (at most 1, so Normal always
+//   fields him and Easy about half the time); one who stays in the lot stays parked and silent.
+//   His siren sounds `cops.sirenLeadS` before he pulls out, and he cannot bust anyone during that
+//   lead, so you hear him before he can reach you (the lead holds even when the delay is shorter).
 // - Chase: he targets the nearest player, or whoever caused chaos (a hit or kick) near him in the
 //   last 10 s. While the target rides he closes to `cops.followGapM` behind and holds there, so
 //   he does not shadow every crash; after 8 s on station he moves in alongside for 6 s (inside
@@ -23,7 +28,7 @@
 //
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
-import { clamp, type EntityId, type TuningParamDecl } from '../../core';
+import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
 import { barrierLimits, maxYawAt } from '../riders';
 import type { SimConfig, SimRiderDef } from '../types';
@@ -38,6 +43,28 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     min: 0,
     max: 120,
     step: 1,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.spawnChance',
+    group: 'cops',
+    label: 'Cop spawn chance (× cop frequency)',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.sirenLeadS',
+    group: 'cops',
+    label: 'Siren before the cop pulls out',
+    default: 3,
+    min: 0,
+    max: 10,
+    step: 0.5,
     unit: 's',
     affectsSim: true,
   },
@@ -110,6 +137,10 @@ export interface CopsState {
   cops: EntityId[];
   /** By cop id: COP_PARKED, COP_CHASING or COP_DONE. */
   phase: number[];
+  /** By cop id: 1 when this race's roll brings him out of the lot, 0 when he stays parked. */
+  spawns: number[];
+  /** By cop id: 1 once his siren has sounded for the pull-out. */
+  sirenOn: number[];
   /** By cop id: whom he is chasing, or -1. */
   target: EntityId[];
   /** By cop id: the clock value when his chaos target expires (0 when none). */
@@ -129,6 +160,8 @@ export function copsState(world: World): CopsState {
     clock: 0,
     cops: [],
     phase: [],
+    spawns: [],
+    sirenOn: [],
     target: [],
     chaosUntil: [],
     closing: [],
@@ -360,6 +393,19 @@ export function copSpawnPos(config: SimConfig): RoadPos | null {
   return null;
 }
 
+/**
+ * When the siren sounds and when he pulls out, in scaled ticks of the cops clock. The time to the
+ * pull-out is `cops.spawnDelayS` ÷ the difficulty's cop frequency (never, at frequency 0), but
+ * never shorter than the siren lead; the siren sounds the lead before it.
+ */
+export function copTiming(world: World, config: SimConfig): { sirenTicks: number; pullOutTicks: number } {
+  const frequency = config.difficulty.copFrequency;
+  const delayTicks = frequency > 0 ? ((world.params['cops.spawnDelayS'] ?? 20) * 60) / frequency : Infinity;
+  const leadTicks = Math.max(0, world.params['cops.sirenLeadS'] ?? 3) * 60;
+  const pullOutTicks = Math.max(delayTicks, leadTicks);
+  return { sirenTicks: pullOutTicks - leadTicks, pullOutTicks };
+}
+
 function endChase(world: World, st: CopsState, copId: EntityId): void {
   if (st.phase[copId] !== COP_CHASING) return;
   st.phase[copId] = COP_DONE;
@@ -414,6 +460,10 @@ export const copsSystem: SimSystem = {
       }
       st.cops.push(m.id);
       st.phase[m.id] = COP_PARKED;
+      // One roll per cop per race, always drawn (so the stream advances the same on every preset).
+      const chance = clamp((world.params['cops.spawnChance'] ?? 1) * config.difficulty.copFrequency, 0, 1);
+      st.spawns[m.id] = nextFloat(world.rng.cops) < chance ? 1 : 0;
+      st.sirenOn[m.id] = 0;
       st.target[m.id] = -1;
       st.chaosUntil[m.id] = 0;
       st.closing[m.id] = 0;
@@ -424,15 +474,17 @@ export const copsSystem: SimSystem = {
   step(world: World, config: SimConfig) {
     const st = copsState(world);
     if (st.cops.length === 0) return;
-    const frequency = config.difficulty.copFrequency;
-    const delayTicks = frequency > 0 ? ((world.params['cops.spawnDelayS'] ?? 20) * 60) / frequency : Infinity;
+    const { sirenTicks, pullOutTicks } = copTiming(world, config);
     for (const id of st.cops) {
       const cop = world.movers[id];
       const def = defOf(config, cop);
       if (!cop || !def) continue;
-      if (st.phase[id] === COP_PARKED && st.clock >= delayTicks) {
-        st.phase[id] = COP_CHASING;
-        emit(world, 'siren', id, { on: true });
+      if (st.phase[id] === COP_PARKED && st.spawns[id] === 1) {
+        if (st.sirenOn[id] !== 1 && st.clock >= sirenTicks) {
+          st.sirenOn[id] = 1;
+          emit(world, 'siren', id, { on: true });
+        }
+        if (st.clock >= pullOutTicks) st.phase[id] = COP_CHASING;
       }
       if (st.phase[id] === COP_CHASING) {
         const before = st.target[id];

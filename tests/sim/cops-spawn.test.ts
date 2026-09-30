@@ -1,8 +1,9 @@
 // cops-1: Sgt. Pruitt is spawned from the road's `copSpawn` feature (docs/milestones/M1.md,
 // cops-1 Builds), not from a grid slot. The base event's road-1 track puts one, the bait-shop lot
-// (`bait-shop-lot`), beside Marina Run at s 4..20, d 5.5..9. He waits, parked on the shoulder at
-// the lot's road edge, until his siren, then pulls out after the player. Checked on the real base
-// race (the producer the batch uses), then over the shared batch's traces.
+// (`bait-shop-lot`), beside Marina Run at s 4..20, d 6.1..9.6 (5.5..9 before playtest 1's wider
+// lanes). He waits, parked on the shoulder at the lot's road edge, until his siren, then pulls out
+// after the player. Checked on the real base race (the producer the batch uses), then over the
+// shared batch's traces.
 /// <reference types="vite/client" />
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
@@ -33,6 +34,14 @@ describe('cops: Sgt. Pruitt starts from the copSpawn feature', () => {
 
   it('in every batch race he sits at the lot until his siren, then pulls out and gives chase', () => {
     const lines: string[] = [];
+    // The lot's right-hand shoulder centre on the base track (4.75 m since playtest 1's wider lanes).
+    const { config } = createBatchRace(1);
+    const marina = config.road.edgeIndex('m1-marina-run');
+    const lot = config.road.featuresOf(marina, 'copSpawn')[0];
+    const shoulderD = config.road
+      .lanesAt(marina, lot?.s0 ?? 0)
+      .find((l) => l.kind === 'shoulder' && l.dCenterM > 0)?.dCenterM;
+    expect(shoulderD).toBe(4.75);
     for (const r of batch.races) {
       const siren = r.events.find((e) => e.type === 'siren' && e.data['on'] === true)?.tick ?? Infinity;
       const samples = r.trace.map((t) => ({ tick: t.tick, cop: t.movers.find((m) => m.faction === 'law') }));
@@ -43,7 +52,7 @@ describe('cops: Sgt. Pruitt starts from the copSpawn feature', () => {
         expect(x.cop?.speed, `seed ${r.seed} t${x.tick}: parked`).toBe(0);
         expect(x.cop?.edge).toBe(first?.edge);
         expect(x.cop?.s).toBeCloseTo(first?.s ?? NaN, 5);
-        expect(x.cop?.d).toBeCloseTo(4.15, 5);
+        expect(x.cop?.d).toBeCloseTo(shoulderD ?? NaN, 5);
       }
       // Within 30 s of the siren he is riding at chase speed.
       const chasing = samples.find(

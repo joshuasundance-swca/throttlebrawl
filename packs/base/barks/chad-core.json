@@ -1,8 +1,8 @@
 {
   "type": "bark-set",
   "id": "chad-core",
-  "name": "Chad Speedwell: M1 lines",
-  "tags": ["rival", "m1"],
+  "name": "Chad Speedwell: core lines",
+  "tags": ["rival", "m1", "m2"],
   "defaults": {
     "speaker": "chad-speedwell",
     "cooldownS": 90,
@@ -33,6 +33,66 @@
       "id": "chad-hit-lie-still",
       "trigger": "hit-landed",
       "text": "Like, comment, and lie still."
+    },
+    {
+      "id": "chad-traffic-clip",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Clip that. Clip that right now."
+    },
+    {
+      "id": "chad-traffic-sponsor",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "That truck just earned a sponsorship."
+    },
+    {
+      "id": "chad-down-dont-clip",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Chat, don't clip that. Do not."
+    },
+    {
+      "id": "chad-down-content",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "This is not the content I planned."
+    },
+    {
+      "id": "chad-down-again",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Again? Okay, this is a series now."
+    },
+    {
+      "id": "chad-crash-staged",
+      "trigger": "crash-self",
+      "text": "Totally staged. Totally meant it."
+    },
+    {
+      "id": "chad-crash-stream",
+      "trigger": "crash-self",
+      "text": "Stream's down. I'm fine. Stream's down."
+    },
+    {
+      "id": "chad-near-selfie",
+      "trigger": "near-miss",
+      "text": "Mirror selfie with a semi. Iconic."
+    },
+    {
+      "id": "chad-near-screaming",
+      "trigger": "near-miss",
+      "text": "Chat's screaming. Good screaming."
     }
   ],
   "meta": {

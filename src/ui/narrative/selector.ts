@@ -1,40 +1,40 @@
-// The M1 bark selector (docs/content-packs.md, "Bark sets and line selection", its staging note):
-// a trigger match (with the speaker and target selectors), a cooldown per line, a no-repeat ring
-// per speaker, and a weighted pick on a presentation random stream that never touches the sim.
-// `when` conditions, specificity, career-long novelty and memory facts arrive in M2 or later.
+// The bark selector (docs/content-packs.md, "Bark sets and line selection"): a trigger match
+// (with the speaker and target selectors), `when` conditions, a cooldown per line, a no-repeat ring
+// per speaker, priority interrupts, and a pick weighted by `weight × specificity × novelty` on a
+// presentation random stream that never touches the sim. M2 (narrative-2) added the conditions,
+// specificity, priority and `oncePerCareer`, and skips lines cut on this device. Career-long
+// novelty and heard-counts arrive with career/ in M4, through the `heardCount` seam.
 //
 // Time is race time in seconds (sim tick ÷ 60), so the gates are exact and testable. [default]
 // In M1 a "session" is one race: reset() at race start clears the rings, cooldowns and gaps
 // (race time starts again at 0), and career-long memory arrives with career/ in M4.
+import { BARK_TRIGGERS } from '../../content';
 import type { TuningParamDecl } from '../../sim/api';
+import {
+  conditionsFrom,
+  matchConditions,
+  novelty,
+  specificity,
+  type BarkCondition,
+  type FactResolver,
+} from './conditions';
 
-/** The closed v1 trigger list (docs/content-packs.md, "Line fields"). */
-export const V1_TRIGGERS = [
-  'race-start',
-  'race-end-win',
-  'race-end-lose',
-  'overtake',
-  'overtaken',
-  'alongside-idle',
-  'hit-landed',
-  'hit-taken',
-  'weapon-stolen-by-speaker',
-  'weapon-stolen-from-speaker',
-  'knocked-down-target',
-  'knocked-down-by-target',
-  'takedown-into-traffic',
-  'near-miss',
-  'crash-self',
-  'busted',
-  'cop-siren',
-  'grudge-spotted',
-  'gang-up-join',
-  'interlude',
-  'modifier-start',
-] as const;
+/** The closed v1 trigger list: content/'s registry (src/content/schema/vocab.ts). */
+export const V1_TRIGGERS = BARK_TRIGGERS;
 
 /** The triggers M1 fires (docs/milestones/M1.md, narrative-1). */
 export const M1_TRIGGERS = ['race-start', 'overtake', 'hit-landed'] as const;
+
+/** The triggers M2 adds (docs/milestones/M2.md, narrative-2). */
+export const M2_TRIGGERS = [
+  'takedown-into-traffic',
+  'knocked-down-by-target',
+  'crash-self',
+  'near-miss',
+] as const;
+
+/** The highest line priority (docs/content-packs.md, "Line fields": 0–3). */
+export const MAX_PRIORITY = 3;
 
 /** `barks.*` tuning (docs/content-packs.md, "Selection algorithm": all its numbers are tuning). */
 export const BARK_TUNING: readonly TuningParamDecl[] = [
@@ -141,6 +141,13 @@ export interface BarkLine {
   readonly cooldownS: number;
   readonly weight: number;
   readonly chance: number;
+  /** Conditions, all of which must hold. */
+  readonly when: readonly BarkCondition[];
+  /** 0–3: a higher-priority line may interrupt a lower one on screen. */
+  readonly priority: number;
+  readonly oncePerCareer: boolean;
+  /** The speaker is an exact rider id rather than a selector (specificity ×1.5). */
+  readonly exactSpeaker: boolean;
 }
 
 type Obj = Record<string, unknown>;
@@ -158,7 +165,8 @@ function qualify(packId: string, selector: string): string {
 /**
  * Flattens the registry's bark-set table (keyed `<pack>:<set>`) into live lines, sorted by
  * content reference so a pick depends only on the seed. Vetoed lines are skipped (the loader
- * already skips vetoed sets), and draft lines unless `includeDrafts` is set.
+ * already skips vetoed sets), and draft lines unless `includeDrafts` is set. A line whose `when`
+ * is malformed or names an unknown fact is dropped: it could only ever play out of context.
  */
 export function barkLinesFrom(
   sets: Readonly<Record<string, unknown>>,
@@ -178,18 +186,28 @@ export function barkLinesFrom(
       if (!id || !trigger || !text) continue;
       const status = str(line.status) ?? 'live';
       if (status === 'vetoed' || (status === 'draft' && !options.includeDrafts)) continue;
+      const when = conditionsFrom(line.when);
+      if (!when) continue;
+      const speaker = qualify(packId, str(line.speaker) ?? str(defaults.speaker) ?? 'any');
       out.push({
         ref: `${packId}:bark-set/${setId}#${id}`,
         packId,
         setId,
         id,
         trigger,
-        speaker: qualify(packId, str(line.speaker) ?? str(defaults.speaker) ?? 'any'),
+        speaker,
         target: qualify(packId, str(line.target) ?? str(defaults.target) ?? 'any'),
         text,
         cooldownS: num(line.cooldownS) ?? num(defaults.cooldownS) ?? 0,
         weight: Math.max(0, num(line.weight) ?? num(defaults.weight) ?? 1),
         chance: Math.min(1, Math.max(0, num(line.chance) ?? num(defaults.chance) ?? 1)),
+        when,
+        priority: Math.min(
+          MAX_PRIORITY,
+          Math.max(0, Math.floor(num(line.priority) ?? num(defaults.priority) ?? 0)),
+        ),
+        oncePerCareer: line.oncePerCareer === true,
+        exactSpeaker: speaker !== 'any' && speaker !== 'player' && !/^(?:role|crew|tag):/.test(speaker),
       });
     }
   }
@@ -209,6 +227,8 @@ export interface BarkRequest {
   target: BarkTarget | null;
   /** Race time in seconds. */
   nowS: number;
+  /** The facts for a candidate speaker's `when` conditions; without them, conditioned lines stay quiet. */
+  facts?: ((speaker: string) => FactResolver | undefined) | undefined;
 }
 
 export interface Bark {
@@ -226,6 +246,16 @@ export interface BarkSelector {
   /** Applies a `barks.*` tuning change. Unknown ids throw. */
   setParam(id: string, value: number): void;
   readonly params: Readonly<BarkParams>;
+  /** Cuts a line on this device ("cut this"): it never plays again. */
+  veto(ref: string): void;
+  isVetoed(ref: string): boolean;
+}
+
+export interface BarkSelectorOptions {
+  /** Times a line was heard over the career (M4's career/); 0 until then, so novelty is 1. */
+  heardCount?: (ref: string) => number;
+  /** Content references already cut on this device. */
+  vetoed?: Iterable<string>;
 }
 
 /** mulberry32 over a seed mixed away from the sim's streams: presentation only. */
@@ -251,8 +281,14 @@ export function createBarkSelector(
   lines: readonly BarkLine[],
   initial: BarkParams = barkParamDefaults(),
   seed = 0,
+  options: BarkSelectorOptions = {},
 ): BarkSelector {
   const params: BarkParams = { ...initial };
+  const vetoed = new Set<string>(options.vetoed ?? []);
+  // `oncePerCareer` lines already said. Until the career saves them (M4), "once" is once per page
+  // session: reset() at race start keeps this set. [default]
+  const spent = new Set<string>();
+  let onScreenPriority = 0;
   let random = presentationRandom(seed);
   let rings = new Map<string, string[]>();
   let cooldownUntil = new Map<string, number>();
@@ -269,43 +305,66 @@ export function createBarkSelector(
       lastSpokeAt = new Map();
       bubbleEndS = -Infinity;
       lastEndS = -Infinity;
+      onScreenPriority = 0;
     },
+    veto(ref) {
+      vetoed.add(ref);
+    },
+    isVetoed: (ref) => vetoed.has(ref),
     setParam(id, value) {
       const key = PARAM_KEY[id];
       if (!key) throw new Error(`barks: unknown parameter ${id}`);
       params[key] = value;
     },
-    request({ trigger, speakers, target, nowS }) {
-      // 1. Gate on rate: one bubble at a time, a quiet gap after every bark, a gap per speaker.
-      if (nowS < bubbleEndS || nowS < lastEndS + params.minGapGlobalS) return null;
+    request({ trigger, speakers, target, nowS, facts }) {
+      // 1. Gate on rate: one bubble at a time and a quiet gap after every bark, unless the new
+      // line's priority is higher than the last bark's; and a gap per speaker, always.
+      const busy = nowS < bubbleEndS || nowS < lastEndS + params.minGapGlobalS;
+      const minPriority = busy ? onScreenPriority + 1 : 0;
+      if (minPriority > MAX_PRIORITY) return null;
       const ready = speakers.filter((s) => {
         const last = lastSpokeAt.get(s);
         return last === undefined || nowS - last >= params.minGapPerSpeakerS;
       });
       if (!ready.length) return null;
-      // 2. Filter: trigger, speaker and target selectors, the line's cooldown and the ring.
+      // 2. Filter: trigger, speaker and target selectors, priority while busy, cuts, the line's
+      // cooldown, the ring, a spent once-line, and every `when` condition.
       const ringSize = Math.max(0, Math.floor(params.ringSize));
-      const candidates: { line: BarkLine; speaker: string }[] = [];
+      const candidates: { line: BarkLine; speaker: string; score: number }[] = [];
       for (const speaker of ready) {
         const ring = rings.get(speaker) ?? [];
         const recent = ring.slice(Math.max(0, ring.length - ringSize));
+        let resolver: FactResolver | undefined;
+        let resolved = false;
         for (const line of lines) {
           if (line.trigger !== trigger) continue;
           if (line.speaker !== 'any' && line.speaker !== speaker) continue;
           if (!targetMatches(line.target, target)) continue;
+          if (line.priority < minPriority) continue;
+          if (vetoed.has(line.ref)) continue;
           if (nowS < (cooldownUntil.get(line.ref) ?? -Infinity)) continue;
           if (ringSize > 0 && recent.includes(line.ref)) continue;
+          if (line.oncePerCareer && spent.has(line.ref)) continue;
           if (line.weight <= 0) continue;
-          candidates.push({ line, speaker });
+          if (line.when.length && !resolved) {
+            resolver = facts?.(speaker);
+            resolved = true;
+          }
+          const match = matchConditions(line.when, resolver, line.packId);
+          if (!match) continue;
+          // 3. Score: weight × specificity × novelty.
+          const heard = options.heardCount?.(line.ref) ?? 0;
+          const score = line.weight * specificity(match, line.exactSpeaker) * novelty(heard);
+          candidates.push({ line, speaker, score });
         }
       }
       if (!candidates.length) return null;
-      // 3-4. Score (weight only in M1) and pick by weighted random on the presentation stream.
-      const total = candidates.reduce((sum, c) => sum + c.line.weight, 0);
+      // 4. Pick by weighted random on the presentation stream.
+      const total = candidates.reduce((sum, c) => sum + c.score, 0);
       let r = random() * total;
       let pick = candidates[candidates.length - 1];
       for (const c of candidates) {
-        r -= c.line.weight;
+        r -= c.score;
         if (r < 0) {
           pick = c;
           break;
@@ -321,6 +380,8 @@ export function createBarkSelector(
       rings.set(pick.speaker, ring);
       cooldownUntil.set(pick.line.ref, nowS + pick.line.cooldownS);
       lastSpokeAt.set(pick.speaker, nowS);
+      if (pick.line.oncePerCareer) spent.add(pick.line.ref);
+      onScreenPriority = pick.line.priority;
       const durationS = bubbleDurationS(pick.line.text, params);
       bubbleEndS = lastEndS = nowS + durationS;
       return { line: pick.line, speaker: pick.speaker, startS: nowS, durationS };

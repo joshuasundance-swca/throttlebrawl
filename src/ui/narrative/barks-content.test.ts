@@ -4,13 +4,15 @@
 // tests hold this lane's own files to the same bar, and to a few rules only barks have.
 import { describe, expect, it } from 'vitest';
 import { basePackFiles, loadBasePack } from '../../content';
-import { barkLinesFrom, bubbleDurationS, M1_TRIGGERS, V1_TRIGGERS } from './selector';
+import { conditionsFrom, isMemoryFact } from './conditions';
+import { barkLinesFrom, bubbleDurationS, M1_TRIGGERS, M2_TRIGGERS, V1_TRIGGERS } from './selector';
 
 interface RawLine {
   id: string;
   trigger: string;
   text: string;
   status?: string;
+  when?: unknown;
 }
 interface RawSet {
   id: string;
@@ -47,6 +49,30 @@ describe('base pack bark sets', () => {
       }
       expect(mine.map((l) => l.text)).toContain(APPROVED[rival]);
     }
+  });
+
+  it('give each rival at least two lines for every M2 trigger (docs/milestones/M2.md, narrative-2)', () => {
+    for (const rival of RIVALS) {
+      const mine = sets.filter((s) => s.defaults?.speaker === rival).flatMap((s) => s.lines);
+      for (const trigger of M2_TRIGGERS) {
+        const plain = mine.filter((l) => l.trigger === trigger && !l.when);
+        expect(plain.length, `${rival} ${trigger}`).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
+  it('read every when condition, and give every memory line a plain sibling (tone guide rule 6)', () => {
+    for (const s of sets) {
+      for (const l of s.lines) {
+        if (l.when === undefined) continue;
+        const conds = conditionsFrom(l.when);
+        expect(conds, l.id).not.toBeNull();
+        if (!conds?.some((c) => isMemoryFact(c.fact))) continue;
+        const siblings = s.lines.filter((x) => x.trigger === l.trigger && x.when === undefined);
+        expect(siblings.length, `${l.id} needs a plain ${l.trigger} sibling`).toBeGreaterThan(0);
+      }
+    }
+    expect(allLines.filter((l) => l.when !== undefined).length).toBeGreaterThan(0);
   });
 
   it('give every line a content id, unique within its set and across the pack', () => {

@@ -16,7 +16,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { DEFAULT_SETTINGS, type Settings } from '../save';
+import { DEFAULT_SETTINGS, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
   buildIdFromStamp,
@@ -137,7 +137,8 @@ const CSS = `
 #touch-surface[hidden] { display: none; }
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
   display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
-  pointer-events: none; box-sizing: border-box; }
+  pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
+.touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
 #touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
   margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
   background: #0003; pointer-events: none; box-sizing: border-box; }
@@ -357,6 +358,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         className: 'touch-button',
         textContent: e.element === 'touch-attack' ? 'HIT' : 'BRAKE',
       });
+      // The kick hint (playtest 1, 2026-09-30: "Can't kick"): swipe down on the button to kick.
+      if (e.element === 'touch-attack')
+        b.append(el('span', { className: 'touch-hint', id: 'touch-kick-hint', textContent: '▼ kick' }));
       Object.assign(b.style, {
         left: `${r.x}px`,
         top: `${r.y}px`,
@@ -519,7 +523,26 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   root.append(touchSurface, hud, start, menu, settingsScreen, results, pauseScreen, noticeBox);
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
-  const narrative = createNarrative();
+  // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
+  // the bubble's long-press ignores presses in the stick and attack zones mid-race.
+  const narrative = createNarrative({
+    vetoed: settings.vetoes.map((v) => v.contentRef),
+    onVeto: (flag) => {
+      settings = withVeto(settings, flag);
+      cb.onSettingsChange?.(settings);
+    },
+    inControlZone: (x, y) => {
+      if (current !== 'race' || paused) return false;
+      const box = touchSurface.getBoundingClientRect();
+      const [px, py] = [x - box.left, y - box.top];
+      return layout.elements.some((e) => {
+        if (!e.visible || (e.element !== 'touch-stick-zone' && e.element !== 'touch-attack')) return false;
+        const r = placeElement(e, box.width, box.height, layout.mirror);
+        return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+      });
+    },
+  });
+  pauseScreen.insertBefore(narrative.mountRecentlySeen(pauseScreen).element, pauseBuild);
 
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;

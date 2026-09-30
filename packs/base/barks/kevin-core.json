@@ -1,8 +1,8 @@
 {
   "type": "bark-set",
   "id": "kevin-core",
-  "name": "Kevin from Accounting: M1 lines",
-  "tags": ["rival", "m1"],
+  "name": "Kevin from Accounting: core lines",
+  "tags": ["rival", "m1", "m2"],
   "defaults": {
     "speaker": "kevin-from-accounting",
     "cooldownS": 90,
@@ -33,6 +33,66 @@
       "id": "kevin-hit-warning",
       "trigger": "hit-landed",
       "text": "Consider this your written warning."
+    },
+    {
+      "id": "kevin-traffic-losses",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Filed under: acceptable losses."
+    },
+    {
+      "id": "kevin-traffic-delegated",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Delegated. To a pickup truck."
+    },
+    {
+      "id": "kevin-down-escalating",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "I'm escalating this to management."
+    },
+    {
+      "id": "kevin-down-filed",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Noted. Timestamped. Filed."
+    },
+    {
+      "id": "kevin-down-again",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Repeat offender. Opening a spreadsheet."
+    },
+    {
+      "id": "kevin-crash-minutes",
+      "trigger": "crash-self",
+      "text": "Strike that from the minutes."
+    },
+    {
+      "id": "kevin-crash-ooo",
+      "trigger": "crash-self",
+      "text": "Out of office. Effective immediately."
+    },
+    {
+      "id": "kevin-near-budget",
+      "trigger": "near-miss",
+      "text": "Close call. Still under budget."
+    },
+    {
+      "id": "kevin-near-rounding",
+      "trigger": "near-miss",
+      "text": "Missed it by a rounding error."
     }
   ],
   "meta": {

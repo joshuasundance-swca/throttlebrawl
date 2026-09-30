@@ -11,6 +11,7 @@ import {
   INPUT_TUNING,
   inputDefaults,
   PAD,
+  padMapFromBindings,
   tiltAngleFromEuler,
   tiltAngleFromGravity,
   TiltState,
@@ -262,6 +263,41 @@ describe('input-2: gamepad', () => {
     const s = sample();
     expect(s.steer).toBe(0);
     expect(s.throttle).toBe(255);
+  });
+
+  it('saved remaps (settings gamepadBindings tokens) rebind buttons and the steer axis', () => {
+    const map = padMapFromBindings({
+      kick: ['button4'],
+      lookBack: ['button5', 'button7'],
+      steer: ['axis2'],
+      attack: ['bogus', 'button99'], // no valid token: keeps its default
+      notAnAction: ['button1'],
+    });
+    expect(map.buttons.kick).toEqual([4]);
+    expect(map.buttons.lookBack).toEqual([5, 7]);
+    expect(map.buttons.attack).toEqual(DEFAULT_PAD_MAP.buttons.attack);
+    expect(map.buttons.brake).toEqual(DEFAULT_PAD_MAP.buttons.brake);
+    expect([map.steerAxis, map.steerAxisPair]).toEqual([2, 3]);
+    expect(padMapFromBindings({})).toEqual(DEFAULT_PAD_MAP);
+  });
+
+  it('setOptions({ padBindings }) remaps a live pad; {} goes back to the defaults', () => {
+    const p = pad();
+    const { input, sample } = setup({ pads: [p] });
+    input.setOptions({ padBindings: { kick: ['button4'], steer: ['axis2'] } });
+    p.press(PAD.triangle);
+    expect(has(sample(), 'kick')).toBe(false);
+    p.release(PAD.triangle);
+    p.press(PAD.l1);
+    expect(has(sample(), 'kick')).toBe(true);
+    p.release(PAD.l1);
+    p.axes[0] = 1;
+    expect(sample().steer).toBe(0); // the left stick no longer steers
+    p.axes[2] = -1;
+    expect(sample().steer).toBe(-127);
+    input.setOptions({ padBindings: {} });
+    p.axes[2] = 0;
+    expect(sample().steer).toBe(127);
   });
 });
 

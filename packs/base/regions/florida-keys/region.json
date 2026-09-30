@@ -37,6 +37,6 @@
   "weather": null,
   "meta": {
     "status": "live",
-    "notes": "M1 stub; the traffic lane owns this file in M1. The mix weights equal the sim's per-category defaults (car 5, truck 2), because SimConfig does not carry the mix yet: see the traffic-1 changes note. For the same reason the pedestrian and animal weights are all 1, which is how sim/peds picks them (evenly within a list; a `pedestrians` roadside zone gets the odd stray animal): see the traffic-2 changes note. The signs and billboards are the placeholder items from the content-pack doc's region stub (M2 traffic-3), for road-3's `billboard` slots; each id is stable, so the in-game veto can name it."
+    "notes": "M1 stub; the traffic lane owns this file. Since M2 traffic-3 the mix, pedestrian and animal weights reach the race (SimTrafficTypeDef.weight) and pick the kinds; a kind listed nowhere never spawns. The weights still equal M1's per-category defaults (car 5, truck 2, and 1 each for pedestrians and animals, where a `pedestrians` roadside zone gets the odd stray animal). The signs and billboards are the placeholder items from the content-pack doc's region stub (M2 traffic-3), for road-3's `billboard` slots; each id is stable, so the in-game veto can name it."
   }
 }
