@@ -88,7 +88,12 @@ export function harnessConfig(
     name: `R${i}`,
     role: p.role === 'cop' ? 'cop' : p.role === 'player' ? 'player' : 'rival',
     faction: p.role === 'cop' ? 'law' : 'rider',
-    controller: p.role === 'player' ? { kind: 'player', slot: 0 } : { kind: 'ai', style: 'racer' },
+    controller:
+      p.role === 'player'
+        ? { kind: 'player', slot: 0 }
+        : p.role === 'cop'
+          ? { kind: 'cop' }
+          : { kind: 'ai', style: 'racer' },
     bike: BIKE,
     massKg: 80,
     healthMax: p.healthMax ?? 100,

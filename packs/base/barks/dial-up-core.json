@@ -1,0 +1,47 @@
+{
+  "type": "bark-set",
+  "id": "dial-up-core",
+  "name": "Dial-Up: M1 lines",
+  "tags": ["rival", "m1"],
+  "defaults": {
+    "speaker": "dial-up",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "dial-up-start-dialing",
+      "trigger": "race-start",
+      "text": "Dialing in. Nobody pick up the phone."
+    },
+    {
+      "id": "dial-up-pass-lost",
+      "trigger": "overtake",
+      "text": "Connection lost. Yours."
+    },
+    {
+      "id": "dial-up-pass-hold",
+      "trigger": "overtake",
+      "text": "Your call is important to nobody."
+    },
+    {
+      "id": "dial-up-hit-mail",
+      "trigger": "hit-landed",
+      "text": "You've got mail. It's my boot."
+    },
+    {
+      "id": "dial-up-hit-buffering",
+      "trigger": "hit-landed",
+      "text": "Buffering… buffering… hit."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "dial-up-hit-mail is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-29"
+    }
+  }
+}
