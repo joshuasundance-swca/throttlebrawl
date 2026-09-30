@@ -1,12 +1,587 @@
-// sim/peds: roadside pedestrians who dive clear (traffic-2 builds it). Stub from the walking
-// skeleton. Rolls come from world.rng.peds only.
-import type { TuningParamDecl } from '../../core';
-import type { SimSystem } from '../world';
+// sim/peds: roadside pedestrians (and the odd chicken) who dive clear, cartoonishly
+// (docs/milestones/M1.md, traffic-2; docs/architecture.md, "Pedestrians and animals").
+//
+// - Spawns: at race start, from every `roadsideZone` feature on the network, one per
+//   PEDS.perZoneM of zone length (at most PEDS.maxPerZone), off the drivable road on the zone's
+//   side. Kinds are the `traffic-type` entries with category `pedestrian` or `animal`: a zone whose
+//   `params.spawns` is `pedestrians` gets people plus the odd stray animal, `animals` gets
+//   animals, anything else gets both. Rolls come from world.rng.peds only.
+// - Some cross the road and back after a seeded wait; the rest loiter. Nobody crosses where a
+//   rail or wall lines the road.
+// - The threat check: a rider on a bike (or a sliding crash) comes within pedThreatRangeM(speed)
+//   ahead, which grows with the rider's speed, and within PEDS.lateralM (plus both half widths)
+//   across. The pedestrian then dives: a short scripted arc to the side (PEDS.diveDistM in
+//   PEDS.diveS), away from the riders, preferring to land off the road, and emits `pedDive`.
+//   They lie down a moment, get up, and walk off the road.
+// - Contacts should never happen. If one does (a rider already on top of someone), the pedestrian
+//   is knocked into a dive (`pedDive` with data.bumped) and nobody gets hurt; a `big` kind
+//   crashes the rider instead (a `crash` event with data.cause `ped`, for tumble-1).
+// Pedestrians move only across the road (d), never along it (s). Every number below is a
+// [default] starting value, to be tuned on the phone.
+import { clamp, HALF_PI, nextFloat, type TuningParamDecl } from '../../core';
+import type { BakedFeature, RoadNeighbour, RoadNetwork } from '../../road';
+import type { SimConfig, SimTrafficTypeDef } from '../types';
+import { vehicleInfo } from '../traffic';
+import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const PEDS_TUNING: readonly TuningParamDecl[] = [];
 
+/** [default] starting values. */
+export const PEDS = {
+  /** One pedestrian per this many metres of roadside zone. */
+  perZoneM: 25,
+  maxPerZone: 4,
+  /** Waiting pedestrians stand at least this far outside the drivable road, m (plus half width). */
+  offRoadMarginM: 0.6,
+  /** Chance a pedestrian (or an animal) is a road crosser. */
+  crossChancePedestrian: 0.5,
+  crossChanceAnimal: 0.8,
+  /** Chance a spawn in a `pedestrians` zone is a stray animal instead, when there are animals. */
+  strayAnimalChance: 0.2,
+  /** Seeded wait before a crosser sets off, s (scaled time). */
+  waitMinS: 2,
+  waitMaxS: 12,
+  /**
+   * The worst-moment gag: a waiting crosser may instead step out as a rider comes, when the rider
+   * is this far beyond its threat range, m (this chance per wait).
+   */
+  lureChance: 0.6,
+  lureLeadMinM: 10,
+  lureLeadMaxM: 50,
+  /** The threat range: base + rider speed × reaction time, m. */
+  threatBaseM: 6,
+  threatReactS: 1.1,
+  /** A rider this far past a pedestrian still threatens it, m. */
+  threatBehindM: 1.5,
+  /** Riders slower than this threaten nobody, m/s. */
+  threatMinMps: 3,
+  /** Side-to-side threat band beyond the two half widths, m. */
+  lateralM: 1.6,
+  /** The dive: sideways distance, duration (scaled time) and the arc's peak height. */
+  diveDistM: 3.5,
+  diveS: 0.5,
+  diveHeightM: 0.8,
+  /** Time lying down after a dive, s. */
+  downS: 1.2,
+  /** The rider's contact box. */
+  riderLengthM: 2.0,
+  riderWidthM: 0.8,
+  /** Riders higher than this above a pedestrian pass over, m. */
+  maxContactH: 1.5,
+  /** A walker waits rather than step within this of a rider's box, m. */
+  walkClearM: 0.4,
+};
+
+/** Phase codes kept in PedsState.phase (plain numbers, so the state hashes and serializes). */
+export const PED_PHASE = { loiter: 0, walk: 1, dive: 2, down: 3 } as const;
+
+/** The threat range for a rider at `speed` m/s: it grows with speed. */
+export function pedThreatRangeM(speed: number): number {
+  return PEDS.threatBaseM + Math.max(0, speed) * PEDS.threatReactS;
+}
+
+/** Pedestrians' plain state, indexed by pedestrian slot. The mover holds the road position. */
+export interface PedsState {
+  id: number[];
+  /** Index into config.trafficTypes. */
+  type: number[];
+  phase: number[];
+  /** Seconds left in the current wait, dive or lie-down (scaled time). */
+  timer: number[];
+  /** 1 for a crosser. */
+  crosses: number[];
+  /** The two waiting spots (road d) a crosser walks between; a loiterer stays at homeD. */
+  homeD: number[];
+  farD: number[];
+  /** Where the current walk ends. */
+  targetD: number[];
+  /** The current dive: from and to (road d). */
+  fromD: number[];
+  toD: number[];
+  /** Rider entity id this pedestrian is touching, or -1. */
+  touching: number[];
+  /** 1 when this wait ends as a rider comes (PEDS.lureChance), not on the timer. */
+  lure: number[];
+  spawned: number;
+  dives: number;
+  /** Rider contacts (the acceptance says none), and car contacts (not expected either). */
+  contacts: number;
+  vehicleContacts: number;
+}
+
+export function pedsState(world: World): PedsState {
+  return systemState<PedsState>(world, 'peds', () => ({
+    id: [],
+    type: [],
+    phase: [],
+    timer: [],
+    crosses: [],
+    homeD: [],
+    farD: [],
+    targetD: [],
+    fromD: [],
+    toD: [],
+    touching: [],
+    lure: [],
+    spawned: 0,
+    dives: 0,
+    contacts: 0,
+    vehicleContacts: 0,
+  }));
+}
+
+// ---- helpers -----------------------------------------------------------------------------
+
+function isPedType(t: SimTrafficTypeDef | undefined): boolean {
+  return t?.category === 'pedestrian' || t?.category === 'animal';
+}
+
+function typeOf(config: SimConfig, st: PedsState, k: number): SimTrafficTypeDef {
+  const t = config.trafficTypes[st.type[k] ?? -1];
+  if (!t) throw new Error(`peds: pedestrian slot ${k} has no type`);
+  return t;
+}
+
+/** The drivable road's edges at (edge, s): the outer lane edges, lo < 0 < hi. */
+function roadEdges(road: RoadNetwork, edge: number, s: number): { lo: number; hi: number } {
+  let lo = 0;
+  let hi = 0;
+  for (const lane of road.lanesAt(edge, s)) {
+    lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+    hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+  }
+  return { lo, hi };
+}
+
+/** A waiting spot on `side` (+1 right, −1 left): at least `d` out, and clear of the road. */
+function offRoadD(road: RoadNetwork, edge: number, s: number, side: number, halfW: number, d = 0): number {
+  const { lo, hi } = roadEdges(road, edge, s);
+  const clear = (side > 0 ? hi : -lo) + PEDS.offRoadMarginM + halfW;
+  return side * Math.max(Math.abs(d), clear);
+}
+
+function onRoad(road: RoadNetwork, m: Mover, halfW: number): boolean {
+  const { lo, hi } = roadEdges(road, m.pos.edge, m.pos.s);
+  return m.pos.d + halfW > lo && m.pos.d - halfW < hi;
+}
+
+/** Riders who can threaten or touch a pedestrian: on the bike, or sliding in a crash. */
+function isThreatRider(m: Mover): boolean {
+  return m.kind === 'rider' && (m.mode === 'Road' || m.mode === 'Airborne' || m.mode === 'Tumble');
+}
+
+/** How far across an edge end a threat looks for pedestrians, m (beyond any threat range). */
+const NEIGHBOUR_RANGE_M = 150;
+
+/**
+ * Something a pedestrian keeps clear of, found once per tick: a threatening rider, or a traffic
+ * vehicle (cars do not stop for pedestrians, so pedestrians dive from them too), with its box and
+ * its edge neighbours.
+ */
+interface Near {
+  m: Mover;
+  vehicle: boolean;
+  lengthM: number;
+  widthM: number;
+  nb: readonly RoadNeighbour[];
+}
+
+function nearThreats(world: World, config: SimConfig): Near[] {
+  const out: Near[] = [];
+  const nb = (m: Mover) => config.road.neighbours(m.pos.edge, m.pos.s, NEIGHBOUR_RANGE_M);
+  for (const m of world.movers) {
+    if (isThreatRider(m)) {
+      out.push({ m, vehicle: false, lengthM: PEDS.riderLengthM, widthM: PEDS.riderWidthM, nb: nb(m) });
+    } else if (m.kind === 'vehicle') {
+      const info = vehicleInfo(world, config, m.id);
+      if (info) out.push({ m, vehicle: true, lengthM: info.lengthM, widthM: info.widthM, nb: nb(m) });
+    }
+  }
+  return out;
+}
+
+interface Rel {
+  /** Metres from the rider to the pedestrian along the road, in the rider's travel direction. */
+  ahead: number;
+  /** Pedestrian d − rider d, in the rider's edge frame. */
+  dd: number;
+  /** The rider's d in the pedestrian's edge frame. */
+  riderD: number;
+  /** −1 when the two edges run opposite ways (d flips between their frames). */
+  sign: 1 | -1;
+}
+
+/** Where pedestrian `p` is from rider `near`, across one edge end at most; null when out of range. */
+function relate(near: Near, p: Mover, range: number): Rel | null {
+  const r = near.m;
+  let ps = p.pos.s;
+  let sign: 1 | -1 = 1;
+  if (r.pos.edge !== p.pos.edge) {
+    const n = near.nb.find((q) => q.edge === p.pos.edge);
+    if (!n) return null;
+    ps = n.sOffset + n.sSign * p.pos.s;
+    sign = n.sSign;
+  }
+  const ahead = (ps - r.pos.s) * r.pos.dir;
+  if (ahead > range || ahead < -range) return null;
+  return { ahead, dd: sign * p.pos.d - r.pos.d, riderD: sign * r.pos.d, sign };
+}
+
+function rollWait(world: World): number {
+  return PEDS.waitMinS + nextFloat(world.rng.peds) * (PEDS.waitMaxS - PEDS.waitMinS);
+}
+
+/**
+ * Adds a pedestrian of type `type` at (edge, s, d). Used by the zone spawner and by scripted
+ * scenarios. A crosser walks between homeD and farD (both default to the off-road spots nearest d
+ * on each side); `timer` is its first wait.
+ */
+export function placePed(
+  world: World,
+  config: SimConfig,
+  spec: {
+    type: number;
+    edge: number;
+    s: number;
+    d: number;
+    crosses?: boolean;
+    homeD?: number;
+    farD?: number;
+    timer?: number;
+    lure?: boolean;
+  },
+): number {
+  const st = pedsState(world);
+  const t = config.trafficTypes[spec.type];
+  if (!isPedType(t)) throw new Error(`peds: traffic type ${spec.type} is not a pedestrian or animal`);
+  const half = (t?.widthM ?? 0.5) / 2;
+  const side = spec.d < 0 ? -1 : 1;
+  const mover = addMover(world, 'ped', { edge: spec.edge, s: spec.s, d: spec.d, dir: 1 });
+  mover.yaw = -side * HALF_PI;
+  st.id.push(mover.id);
+  st.type.push(spec.type);
+  st.phase.push(PED_PHASE.loiter);
+  st.timer.push(spec.timer ?? 0);
+  st.crosses.push(spec.crosses ? 1 : 0);
+  st.homeD.push(spec.homeD ?? offRoadD(config.road, spec.edge, spec.s, side, half));
+  st.farD.push(spec.farD ?? offRoadD(config.road, spec.edge, spec.s, -side, half));
+  st.targetD.push(spec.d);
+  st.fromD.push(spec.d);
+  st.toD.push(spec.d);
+  st.touching.push(-1);
+  st.lure.push(spec.lure ? 1 : 0);
+  st.spawned++;
+  return mover.id;
+}
+
+function pick(world: World, pool: readonly number[]): number {
+  const i = Math.floor(nextFloat(world.rng.peds) * pool.length);
+  return pool[Math.min(i, pool.length - 1)] ?? -1;
+}
+
+/** Spawns the pedestrians of one roadside zone. */
+function spawnZone(
+  world: World,
+  config: SimConfig,
+  edge: number,
+  f: BakedFeature,
+  people: readonly number[],
+  animals: readonly number[],
+): void {
+  const spawns = f.params?.['spawns'];
+  const length = Math.max(0, f.s1 - f.s0);
+  const n = Math.min(PEDS.maxPerZone, Math.max(1, Math.floor(length / PEDS.perZoneM)));
+  const side = f.d0 + f.d1 < 0 ? -1 : 1;
+  const edgeLength = config.road.edges[edge]?.length ?? 0;
+  for (let i = 0; i < n; i++) {
+    const r = world.rng.peds;
+    const s = clamp(f.s0 + ((i + 0.2 + 0.6 * nextFloat(r)) * length) / n, 0, edgeLength);
+    let pool: readonly number[];
+    if (spawns === 'animals') pool = animals;
+    else if (spawns === 'pedestrians')
+      pool = animals.length > 0 && nextFloat(r) < PEDS.strayAnimalChance ? animals : people;
+    else pool = [...people, ...animals];
+    if (pool.length === 0) pool = people.length > 0 ? people : animals;
+    const type = pick(world, pool);
+    const t = config.trafficTypes[type];
+    if (!t) continue;
+    const half = t.widthM / 2;
+    const d = offRoadD(config.road, edge, s, side, half, f.d0 + nextFloat(r) * (f.d1 - f.d0));
+    const railed =
+      config.road.barrierAt(edge, s, 'left') !== null || config.road.barrierAt(edge, s, 'right') !== null;
+    const chance = t.category === 'animal' ? PEDS.crossChanceAnimal : PEDS.crossChancePedestrian;
+    const crosses = !railed && nextFloat(r) < chance;
+    const far = offRoadD(config.road, edge, s, -side, half, 0) - side * nextFloat(r) * 1.5;
+    const timer = rollWait(world);
+    const lure = nextFloat(r) < PEDS.lureChance;
+    placePed(world, config, { type, edge, s, d, crosses, homeD: d, farD: far, timer, lure });
+  }
+}
+
+/** Starts a dive for slot k, away from the riders and cars near it, preferring to land off the road. */
+function startDive(
+  world: World,
+  config: SimConfig,
+  st: PedsState,
+  k: number,
+  threat: Mover,
+  bumped: boolean,
+  threats: readonly Near[],
+): void {
+  const p = world.movers[st.id[k] ?? -1];
+  if (!p) return;
+  const t = typeOf(config, st, k);
+  const half = t.widthM / 2;
+  const { lo, hi } = roadEdges(config.road, p.pos.edge, p.pos.s);
+  // Keep clear of the threat, plus anyone coming who could reach the pedestrian: for each rider or
+  // car, the window of time its box passes the pedestrian's s (straight on at its speed), and the
+  // stretch of the dive the pedestrian covers in that window. A side scores the smallest
+  // side-to-side clearance, box edge to box edge, over those stretches, so a dive that would cross
+  // a rider's line as it arrives scores badly even when the landing spot is clear.
+  const near: { d: number; halfW: number; t0: number; t1: number }[] = [];
+  for (const r of threats) {
+    const rel = relate(r, p, pedThreatRangeM(r.m.speed) + 10);
+    if (!rel) continue;
+    const pass = (r.lengthM + t.lengthM) / 2 + 0.3;
+    const v = r.m.speed;
+    if (rel.ahead + pass < 0) continue;
+    const t0 = v > 0.1 ? Math.max(0, (rel.ahead - pass) / v) : 0;
+    const t1 = v > 0.1 ? (rel.ahead + pass) / v : Infinity;
+    near.push({ d: rel.riderD, halfW: r.widthM / 2, t0, t1 });
+  }
+  let best = 1;
+  let bestScore = -Infinity;
+  const from = p.pos.d;
+  for (const side of [1, -1] as const) {
+    const to = from + side * PEDS.diveDistM;
+    const at = (time: number) => from + (to - from) * Math.min(1, time / PEDS.diveS);
+    let score = Infinity;
+    for (const q of near) {
+      const a = at(q.t0);
+      const b = at(q.t1);
+      const gap =
+        q.d < Math.min(a, b) ? Math.min(a, b) - q.d : q.d > Math.max(a, b) ? q.d - Math.max(a, b) : 0;
+      score = Math.min(score, gap - q.halfW - half);
+    }
+    if (!Number.isFinite(score)) score = 100;
+    if (to - half >= hi || to + half <= lo) score += 0.75;
+    // Tie-break: away from the road's centre line.
+    if (side === (p.pos.d < 0 ? -1 : 1)) score += 1e-6;
+    if (score > bestScore) {
+      bestScore = score;
+      best = side;
+    }
+  }
+  st.phase[k] = PED_PHASE.dive;
+  st.timer[k] = PEDS.diveS;
+  st.fromD[k] = p.pos.d;
+  st.toD[k] = p.pos.d + best * PEDS.diveDistM;
+  st.dives++;
+  p.yaw = 0;
+  emit(
+    world,
+    'pedDive',
+    p.id,
+    {
+      side: best,
+      kind: t.contentId,
+      threatMps: threat.speed,
+      rangeM: pedThreatRangeM(threat.speed),
+      bumped,
+    },
+    { target: threat.id },
+  );
+}
+
+/** Whether a rider's (or car's) box is within `pad` of a pedestrian at d. */
+function boxNear(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number): boolean {
+  const gap = sideGap(r, p, t, d, pad);
+  return gap !== null && gap < pad;
+}
+
+/**
+ * Side-to-side clearance, box edge to box edge, between a rider's (or car's) box and a pedestrian
+ * at d, when their boxes overlap along the road within `pad`; null when they don't.
+ */
+function sideGap(r: Near, p: Mover, t: SimTrafficTypeDef, d: number, pad: number): number | null {
+  const rel = relate(r, p, 10);
+  if (!rel) return null;
+  if (Math.abs(rel.ahead) >= (r.lengthM + t.lengthM) / 2 + pad) return null;
+  if (Math.abs(r.m.h - p.h) >= PEDS.maxContactH) return null;
+  const dd = rel.dd + rel.sign * (d - p.pos.d);
+  return Math.abs(dd) - (r.widthM + t.widthM) / 2;
+}
+
+/** Whether a rider is coming at p from just beyond its threat range (the worst-moment gag). */
+function riderComing(config: SimConfig, p: Mover, threats: readonly Near[]): boolean {
+  for (const near of threats) {
+    // The gag plays for the players only: rivals and the cop are not lured into swerving.
+    if (near.vehicle || near.m.speed < PEDS.threatMinMps) continue;
+    if (config.riders[near.m.riderIndex]?.controller.kind !== 'player') continue;
+    const range = pedThreatRangeM(near.m.speed);
+    const rel = relate(near, p, range + PEDS.lureLeadMaxM);
+    if (rel && rel.ahead >= range + PEDS.lureLeadMinM) return true;
+  }
+  return false;
+}
+
+/** Walks, waits, dives and lie-downs: one tick of movement for slot k. */
+function move(
+  world: World,
+  config: SimConfig,
+  st: PedsState,
+  k: number,
+  dt: number,
+  threats: readonly Near[],
+): void {
+  const p = world.movers[st.id[k] ?? -1];
+  if (!p) return;
+  const t = typeOf(config, st, k);
+  const half = t.widthM / 2;
+  st.timer[k] = (st.timer[k] ?? 0) - dt;
+  const phase = st.phase[k];
+  if (phase === PED_PHASE.dive) {
+    const u = clamp(1 - (st.timer[k] ?? 0) / PEDS.diveS, 0, 1);
+    const from = st.fromD[k] ?? p.pos.d;
+    const to = st.toD[k] ?? p.pos.d;
+    p.pos.d = from + (to - from) * u;
+    p.h = 4 * PEDS.diveHeightM * u * (1 - u);
+    p.speed = dt > 0 ? PEDS.diveDistM / PEDS.diveS : 0;
+    if (u >= 1) {
+      p.h = 0;
+      p.speed = 0;
+      st.phase[k] = PED_PHASE.down;
+      st.timer[k] = PEDS.downS;
+    }
+    return;
+  }
+  if (phase === PED_PHASE.down) {
+    if ((st.timer[k] ?? 0) > 0) return;
+    // Up again: off the road first, to the nearer side; then wait (or loiter) there.
+    if (onRoad(config.road, p, half)) {
+      const { lo, hi } = roadEdges(config.road, p.pos.edge, p.pos.s);
+      const side = hi - p.pos.d < p.pos.d - lo ? 1 : -1;
+      st.targetD[k] = offRoadD(config.road, p.pos.edge, p.pos.s, side, half);
+      st.phase[k] = PED_PHASE.walk;
+    } else {
+      st.phase[k] = PED_PHASE.loiter;
+      st.timer[k] = rollWait(world);
+      st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance ? 1 : 0;
+      p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
+    }
+    return;
+  }
+  if (phase === PED_PHASE.loiter) {
+    p.speed = 0;
+    if (st.crosses[k] !== 1) return;
+    if ((st.timer[k] ?? 0) > 0 && !(st.lure[k] === 1 && riderComing(config, p, threats))) return;
+    const home = st.homeD[k] ?? p.pos.d;
+    const far = st.farD[k] ?? p.pos.d;
+    st.targetD[k] = Math.abs(p.pos.d - home) < Math.abs(p.pos.d - far) ? far : home;
+    st.phase[k] = PED_PHASE.walk;
+  }
+  // Walking across the road, at the kind's own pace. A walker waits for a rider or car in the way.
+  const target = st.targetD[k] ?? p.pos.d;
+  const step = clamp(target - p.pos.d, -t.cruiseMps * dt, t.cruiseMps * dt);
+  const next = p.pos.d + step;
+  // Blocked only by a step that closes in on someone: a stopped rider beside a pedestrian never
+  // pins them, because stepping away is always allowed.
+  let blocked = false;
+  for (const r of threats) {
+    const after = sideGap(r, p, t, next, PEDS.walkClearM);
+    if (after === null || after >= PEDS.walkClearM) continue;
+    const now = sideGap(r, p, t, p.pos.d, PEDS.walkClearM);
+    if (now === null || after < now) {
+      blocked = true;
+      break;
+    }
+  }
+  p.speed = blocked ? 0 : Math.abs(step) / Math.max(dt, 1e-9);
+  if (!blocked) p.pos.d = next;
+  p.yaw = (step >= 0 ? 1 : -1) * HALF_PI;
+  if (Math.abs(target - p.pos.d) < 1e-6) {
+    p.pos.d = target;
+    p.speed = 0;
+    st.phase[k] = PED_PHASE.loiter;
+    st.timer[k] = rollWait(world);
+    st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance ? 1 : 0;
+    p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
+  }
+}
+
+/**
+ * Contacts first (someone already on top of a pedestrian knocks them over), then the threat check:
+ * a rider or car inside pedThreatRangeM(its speed) ahead and inside the side band.
+ */
+function react(world: World, config: SimConfig, st: PedsState, k: number, threats: readonly Near[]): void {
+  const p = world.movers[st.id[k] ?? -1];
+  if (!p) return;
+  const t = typeOf(config, st, k);
+  // Contacts: counted once per toucher, and never expected.
+  let touching: Near | null = null;
+  for (const r of threats) {
+    if (boxNear(r, p, t, p.pos.d, 0)) {
+      touching = r;
+      break;
+    }
+  }
+  if (!touching) {
+    st.touching[k] = -1;
+  } else if (st.touching[k] !== touching.m.id) {
+    st.touching[k] = touching.m.id;
+    if (touching.vehicle) {
+      st.vehicleContacts++;
+    } else {
+      st.contacts++;
+      if (t.hazard === 'big') {
+        const data = { cause: 'ped', hazard: 'big', kind: t.contentId };
+        emit(world, 'crash', touching.m.id, data, { target: p.id });
+      }
+    }
+    if (st.phase[k] !== PED_PHASE.dive) startDive(world, config, st, k, touching.m, true, threats);
+  }
+  if (st.phase[k] === PED_PHASE.dive) return;
+  let threat: Mover | null = null;
+  let closest = Infinity;
+  for (const near of threats) {
+    const r = near.m;
+    if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
+    const rel = relate(near, p, pedThreatRangeM(r.speed));
+    const band = (near.widthM + t.widthM) / 2 + PEDS.lateralM;
+    if (!rel || rel.ahead < -PEDS.threatBehindM || Math.abs(rel.dd) >= band) continue;
+    if (Math.abs(rel.ahead) < closest) {
+      closest = Math.abs(rel.ahead);
+      threat = r;
+    }
+  }
+  if (threat) startDive(world, config, st, k, threat, false, threats);
+}
+
 export const pedsSystem: SimSystem = {
   name: 'peds',
-  init() {},
-  step() {},
+  init(world: World, config: SimConfig) {
+    pedsState(world);
+    const people: number[] = [];
+    const animals: number[] = [];
+    config.trafficTypes.forEach((t, i) => {
+      if (t.category === 'pedestrian') people.push(i);
+      else if (t.category === 'animal') animals.push(i);
+    });
+    if (people.length + animals.length === 0) return;
+    for (const e of config.road.edges) {
+      for (const f of config.road.featuresOf(e.index, 'roadsideZone')) {
+        spawnZone(world, config, e.index, f, people, animals);
+      }
+    }
+  },
+  step(world: World, config: SimConfig) {
+    const st = pedsState(world);
+    if (st.id.length === 0) return;
+    const dt = world.timeScale / 60;
+    const threats = nearThreats(world, config);
+    for (let k = 0; k < st.id.length; k++) {
+      move(world, config, st, k, dt, threats);
+      react(world, config, st, k, threats);
+    }
+  },
 };

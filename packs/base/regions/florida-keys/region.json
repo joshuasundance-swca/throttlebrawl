@@ -15,14 +15,17 @@
       { "kind": "pickup", "weight": 5, "hazard": "normal" },
       { "kind": "box-truck", "weight": 2, "hazard": "big" }
     ],
-    "pedestrians": [],
-    "animals": []
+    "pedestrians": [
+      { "kind": "tourist-with-cooler", "weight": 1 },
+      { "kind": "fisherman", "weight": 1 }
+    ],
+    "animals": [{ "kind": "chicken", "weight": 1, "big": false }]
   },
   "signs": [],
   "billboards": [],
   "weather": null,
   "meta": {
     "status": "live",
-    "notes": "M1 stub; the traffic lane owns this file in M1. The mix weights equal the sim's per-category defaults (car 5, truck 2), because SimConfig does not carry the mix yet: see the traffic-1 changes note."
+    "notes": "M1 stub; the traffic lane owns this file in M1. The mix weights equal the sim's per-category defaults (car 5, truck 2), because SimConfig does not carry the mix yet: see the traffic-1 changes note. For the same reason the pedestrian and animal weights are all 1, which is how sim/peds picks them (evenly within a list; a `pedestrians` roadside zone gets the odd stray animal): see the traffic-2 changes note."
   }
 }
