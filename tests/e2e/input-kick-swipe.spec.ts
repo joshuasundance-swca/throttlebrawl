@@ -26,7 +26,7 @@ interface Handle {
   playerId(): number;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
-type ChainEvent = { tick: number; type: string; causeId?: number; data: SimEvent['data'] };
+type ChainEvent = { tick: number; type: string; causeId: number | undefined; data: SimEvent['data'] };
 
 type Point = { x: number; y: number; id: number };
 const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', points: Point[], at: number) =>
