@@ -1,0 +1,35 @@
+{
+  "type": "rider",
+  "id": "dial-up",
+  "name": "Dial-Up",
+  "role": "rival",
+  "roster": "regular",
+  "tags": ["speed-freak", "modem"],
+  "blurb": "A screeching speed freak on a janky bike.",
+  "bike": "rustbucket-400",
+  "stats": {
+    "massKg": 68,
+    "healthMax": 80,
+    "skill": 0.7
+  },
+  "personality": {
+    "style": "racer",
+    "aggression": 0.45,
+    "dirtiness": 0.75,
+    "courage": 0.35,
+    "riskTaking": 0.9,
+    "chatter": 0.8,
+    "weave": 0.8,
+    "targetPreference": ["nearest", "player"],
+    "preferredSide": "either"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "M1 box rival (ai-1). The tone guide makes him a weaver; M1 has no weaver preset yet, so he is a racer with a high weave and risk-taking: fast, erratic, swerves across his lane, dodges through the oncoming lane, and kicks more than he punches. Low health.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-30"
+    }
+  }
+}
