@@ -105,6 +105,8 @@ describe('ui formatting', () => {
   it('counts only riders, and finds the player target only when it is another rider', () => {
     const s = snap([rider(0), rider(1, { targetId: 0 }), rider(2, { kind: 'vehicle' })]);
     expect(riderCount(s)).toBe(2);
+    // The law chases but never races, so "1st / N" leaves him out.
+    expect(riderCount(snap([rider(0), rider(1), rider(2, { faction: 'law' })]))).toBe(2);
     const me = s.entities[1] ?? null;
     expect(targetOf(s, me)?.id).toBe(0);
     expect(targetOf(s, rider(1, { targetId: -1 }))).toBeNull();

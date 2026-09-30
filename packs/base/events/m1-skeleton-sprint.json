@@ -6,13 +6,13 @@
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
   "lengths": [{ "id": "standard", "route": "m1-skeleton-sprint", "laps": 1 }],
-  "field": { "riders": ["deacon-vane"], "paceMps": 31 },
-  "cops": { "mode": "none" },
+  "field": { "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"], "paceMps": 31 },
+  "cops": { "mode": "every-race", "baseCount": 1 },
   "rules": {},
   "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
   "rewards": { "byPlaceCash": [1500, 900, 600, 300, 150] },
   "meta": {
     "status": "live",
-    "notes": "The M1 classic race: one length, one required objective (finish), prize by place. riders-3 (M1) owns it; the field grows to the four rivals when ai-1's rider files land."
+    "notes": "The M1 classic race: you, the four regular rivals and one cop; one length, one required objective (finish), prize by place. riders-3 (M1) owns it; app-2 landed the full field (riders-3's draft #42)."
   }
 }
