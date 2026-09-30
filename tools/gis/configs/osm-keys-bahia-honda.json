@@ -1,0 +1,90 @@
+{
+  "id": "osm-keys-bahia-honda",
+  "name": "Overseas Highway: Bahia Honda and Spanish Harbor (OSM bake)",
+  "region": "florida-keys",
+  "crs": {
+    "originLatDeg": 24.7,
+    "originLonDeg": -81.1
+  },
+  "osmExtract": ".cache/osm/keys-us1.json",
+  "elevationExtract": ".cache/usgs/osm-keys-bahia-honda.json",
+  "pathFrom": {
+    "lat": 24.6725407,
+    "lon": -81.2452662
+  },
+  "pathTo": {
+    "lat": 24.6694374,
+    "lon": -81.3447933
+  },
+  "start": {
+    "lat": 24.66555,
+    "lon": -81.2615
+  },
+  "end": {
+    "lat": 24.6498378,
+    "lon": -81.333216
+  },
+  "roads": [
+    {
+      "id": "osm-bahia-honda-key",
+      "name": "Bahia Honda Key",
+      "tags": ["palms", "beach"],
+      "features": [
+        {
+          "kind": "copSpawn",
+          "id": "roadside-pullout",
+          "s0": 4,
+          "s1": 20,
+          "d0": 5.5,
+          "d1": 9
+        },
+        {
+          "kind": "roadsideZone",
+          "id": "park-beach",
+          "s0": 1000,
+          "s1": 1100,
+          "d0": 5,
+          "d1": 14,
+          "params": {
+            "spawns": "pedestrians"
+          }
+        }
+      ]
+    },
+    {
+      "id": "osm-bahia-honda-bridge",
+      "name": "Bahia Honda Bridge"
+    },
+    {
+      "id": "osm-spanish-harbor-keys",
+      "name": "Spanish Harbor Keys",
+      "tags": ["mangrove"],
+      "features": [
+        {
+          "kind": "roadsideZone",
+          "id": "boat-ramp",
+          "s0": 600,
+          "s1": 700,
+          "d0": -12,
+          "d1": -5,
+          "params": {
+            "spawns": "pedestrians"
+          }
+        }
+      ]
+    },
+    {
+      "id": "osm-spanish-harbor-bridge",
+      "name": "Spanish Harbor Channel Bridge"
+    },
+    {
+      "id": "osm-big-pine-bend",
+      "name": "Big Pine Bend",
+      "tags": ["mangrove"]
+    }
+  ],
+  "route": {
+    "id": "osm-bahia-honda-run",
+    "name": "Bahia Honda Run"
+  }
+}

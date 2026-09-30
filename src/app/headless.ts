@@ -16,8 +16,16 @@ export interface HeadlessRace {
 
 let stream: RegionStream | null = null;
 
-export function createHeadlessRace(setup: Partial<RaceSetup> = {}): HeadlessRace {
-  const reg = loadBasePack();
+export interface HeadlessOptions {
+  /**
+   * Load draft content too, as the dev and staging builds do (default false, like prod). The
+   * seeded batch and the self-test use it so content that lands as a draft is exercised.
+   */
+  includeDrafts?: boolean;
+}
+
+export function createHeadlessRace(setup: Partial<RaceSetup> = {}, opts: HeadlessOptions = {}): HeadlessRace {
+  const reg = loadBasePack({ includeDrafts: opts.includeDrafts ?? false });
   stream ??= streamForEvent(reg, setup.eventId);
   const config = buildSimConfig(reg, stream, { seed: setup.seed ?? 1, ...setup });
   const sim = createSim(config);

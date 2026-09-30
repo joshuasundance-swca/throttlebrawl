@@ -1,0 +1,83 @@
+{
+  "type": "route",
+  "id": "osm-bahia-honda-run",
+  "name": "Bahia Honda Run",
+  "network": "osm-keys-bahia-honda",
+  "start": {
+    "road": "osm-bahia-honda-key",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-big-pine-bend",
+    "s": 375.0026
+  },
+  "mainPath": [
+    "osm-bahia-honda-key",
+    "osm-bahia-honda-bridge",
+    "osm-spanish-harbor-keys",
+    "osm-spanish-harbor-bridge",
+    "osm-big-pine-bend"
+  ],
+  "allowedRoads": [
+    "osm-bahia-honda-key",
+    "osm-bahia-honda-bridge",
+    "osm-spanish-harbor-keys",
+    "osm-spanish-harbor-bridge",
+    "osm-big-pine-bend"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-bahia-honda-bridge",
+      "s": 1028.0065
+    },
+    {
+      "road": "osm-spanish-harbor-keys",
+      "s": 909.0057
+    },
+    {
+      "road": "osm-spanish-harbor-bridge",
+      "s": 533.5033
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-09-30",
+      "tool": {
+        "name": "tools/gis/src/tbgis/cli.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/configs/osm-keys-bahia-honda.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"][\"ref\"~\"(^|;) ?US 1( ?;|$)\"](24.54,-81.82,25.20,-80.35);\nout tags geom;",
+          "retrievedAt": "2026-09-30T00:51:02Z",
+          "sha256": "0a7b41fd91d01ded93bb5d8cfddc3a8ae2e21d0057e4ab6142bc745bb5891e42"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 416 points (lon, lat WGS84), bilinear",
+          "retrievedAt": "2026-09-30T01:00:29Z",
+          "sha256": "9973c353ad4fb924c344f0f95cfff2a34a1ccb3630cceebcf04e70316fd1116d"
+        }
+      ]
+    }
+  }
+}
