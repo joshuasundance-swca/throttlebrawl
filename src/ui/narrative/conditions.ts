@@ -6,38 +6,11 @@
 // M4, a setting the app has not passed) makes its condition fail, whatever the op, so a line that
 // needs it stays quiet instead of playing out of context. A malformed `when` drops the line.
 
-/** The v1 fact vocabulary (docs/content-packs.md, "Line fields"). `flags.<name>` is a family. */
-export const BARK_FACTS = [
-  // Memory. Until M4's career (docs/architecture.md, "Barks and narrative"), from the current race.
-  'grudge.speakerTowardTarget',
-  'grudge.targetTowardSpeaker',
-  'history.takedowns.targetOnSpeaker',
-  'history.takedowns.speakerOnTarget',
-  'history.lastRace.targetBeatSpeaker',
-  'history.racesTogether',
-  // Race state.
-  'race.progress',
-  'race.position.speaker',
-  'race.position.target',
-  'speaker.healthFrac',
-  'target.healthFrac',
-  'speaker.weapon',
-  'target.weapon',
-  'target.bikeClass',
-  'heat.level',
-  'modifier.kind',
-  'modifier.id',
-  // Setting.
-  'event.kind',
-  'region.id',
-  'timeOfDay',
-] as const;
+import { BARK_OPS, barkFact, type BarkOp } from '../../content';
 
-export type BarkFact = (typeof BARK_FACTS)[number];
-
-/** The `op` values a condition may use. */
-export const CONDITION_OPS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'has'] as const;
-export type ConditionOp = (typeof CONDITION_OPS)[number];
+/** The `op` values a condition may use: content/'s closed list, the one packs:check lints against. */
+export const CONDITION_OPS = BARK_OPS;
+export type ConditionOp = BarkOp;
 
 export interface BarkCondition {
   readonly fact: string;
@@ -51,17 +24,17 @@ export type FactValue = number | string | boolean | null | readonly (string | nu
 /** Answers facts for one speaker and target. */
 export type FactResolver = (fact: string) => FactValue;
 
-const FACTS = new Set<string>(BARK_FACTS);
-const FLAG = /^flags\.[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*$/i;
-
-/** True for a fact in the v1 list, or a `flags.<name>` story flag. */
+/**
+ * True for a fact in content/'s vocabulary (src/content/schema/vocab.ts), story flags included.
+ * The narrative reads the same registry the pack lint checks, so the two never disagree.
+ */
 export function isKnownFact(fact: string): boolean {
-  return FACTS.has(fact) || FLAG.test(fact);
+  return barkFact(fact) !== undefined;
 }
 
 /** Memory facts: grudges, history and story flags (the ones that weigh 1.0 more in specificity). */
 export function isMemoryFact(fact: string): boolean {
-  return fact.startsWith('grudge.') || fact.startsWith('history.') || fact.startsWith('flags.');
+  return barkFact(fact)?.memory === true;
 }
 
 const isOp = (v: unknown): v is ConditionOp =>
