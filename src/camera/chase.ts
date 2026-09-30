@@ -1,4 +1,5 @@
-// The low chase cam (docs/architecture.md, "Camera"; docs/milestones/M1.md, camera-1).
+// The chase cam and its M2 modes (docs/architecture.md, "Camera"; docs/milestones/M1.md, camera-1;
+// docs/milestones/M2.md, camera-2).
 //
 // The rig keeps its state as springs on the camera's placement *relative to the rider*: a bearing
 // (yaw), a distance, a height, a small sideways shift, and the aim point's offset. The rider's
@@ -12,11 +13,24 @@
 //   rider is going, and aims at a point `camera.lookAheadM` further along the road in the rider's
 //   lane. Weaving on the bars does not swing the camera; a bend does.
 // - Without it (or at a dead end), it faces the rider's heading.
+//
+// The M2 modes sit on top of the chase springs, which keep running underneath, so leaving a mode
+// lands on the same chase framing as if the mode had never run:
+// - `lookBack` (the held action): a hard cut to a camera ahead of the rider looking back down the
+//   road, and a hard cut back on release. A cut is the quickest read, and nothing swings through
+//   the rider.
+// - `takedown`: when the followed rider is credited with a takedown, the camera blends (smoothstep,
+//   takedown.ts) to a higher, wider framing swung away from the victim and aimed between the rider
+//   and the victim, then blends back after the slow motion ends.
+// - The hit jolt (jolt.ts) and the trauma shake (shake.ts) are added to the output pose only, and
+//   both scale with `camera.shakeScale` times the reduce-shake setting.
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
+import { createJolt } from './jolt';
 import { createShake } from './shake';
 import { spring, stepAngleSpring, stepSpring } from './spring';
+import { createTakedownTracker } from './takedown';
 
 /** What the rig reads about the rider it follows: the interpolated snapshot fields. */
 export interface CameraTarget {
@@ -36,9 +50,12 @@ export interface CameraTarget {
   road?: { edge: number } | undefined;
 }
 
-/** Other entities the rig may frame (the auto-target), from the same snapshot. */
+/** Per-frame context: other entities from the same snapshot, and the held camera actions. */
 export interface CameraContext {
+  /** Other entities the rig may frame (the auto-target, a takedown's victim, a hit's attacker). */
   entities?: readonly Pick<EntitySnapshot, 'id' | 'x' | 'y' | 'z'>[] | undefined;
+  /** The input's held `lookBack` action: the camera looks behind the rider while it is true. */
+  lookBack?: boolean | undefined;
 }
 
 export interface CameraPose {
@@ -61,6 +78,9 @@ export interface CameraPose {
   upZ: number;
 }
 
+/** The mode whose framing the rig is showing (a takedown blend counts from its first frame). */
+export type RigMode = 'lowChase' | 'lookBack' | 'takedown';
+
 export interface ChaseParams {
   chaseDistanceM: number;
   heightM: number;
@@ -73,6 +93,18 @@ export interface ChaseParams {
   fovKickSpeedMps: number;
   targetBias: number;
   shakeScale: number;
+  lookBackDistanceM: number;
+  lookBackHeightM: number;
+  lookBackAimM: number;
+  takedownDistanceM: number;
+  takedownHeightM: number;
+  takedownSwingDeg: number;
+  takedownFocus: number;
+  takedownBlendS: number;
+  takedownHoldS: number;
+  joltM: number;
+  joltFullImpulse: number;
+  joltRate: number;
 }
 
 export interface ChaseRig {
@@ -80,6 +112,9 @@ export interface ChaseRig {
   snap(target: CameraTarget, ctx?: CameraContext): CameraPose;
   onEvents(events: readonly SimEvent[]): void;
   setRoad(road: RoadNetwork | null): void;
+  /** The reduce-screen-shake setting: 1 is full shake and jolt, 0 is none. */
+  setShakeAmount(amount: number): void;
+  readonly mode: RigMode;
   readonly params: ChaseParams;
 }
 
@@ -100,6 +135,8 @@ const DIR_CONFIDENCE = 0.25;
 const MIN_AIM_M = 2;
 /** The longest frame the rig integrates; the loop already clamps to this. */
 const MAX_DT = 0.25;
+/** A victim flung further than this is framed as if it were this far away. */
+const TAKEDOWN_REACH_M = 40;
 
 interface Goal {
   yaw: number;
@@ -113,11 +150,37 @@ interface Goal {
   fov: number;
 }
 
+/** A camera placement before shake and roll: where it is, where it looks, and its FOV. */
+interface Placement {
+  x: number;
+  y: number;
+  z: number;
+  lookX: number;
+  lookY: number;
+  lookZ: number;
+  fov: number;
+  roll: number;
+}
+
 const finite = (v: number): boolean => Number.isFinite(v);
 
 function yawOf(fx: number, fz: number): number {
   // Heading convention: forward = (-sin yaw, -cos yaw).
   return Math.atan2(-fx, -fz);
+}
+
+function lerpPlacement(a: Placement, b: Placement, w: number): Placement {
+  const l = (p: number, q: number) => p + (q - p) * w;
+  return {
+    x: l(a.x, b.x),
+    y: l(a.y, b.y),
+    z: l(a.z, b.z),
+    lookX: l(a.lookX, b.lookX),
+    lookY: l(a.lookY, b.lookY),
+    lookZ: l(a.lookZ, b.lookZ),
+    fov: l(a.fov, b.fov),
+    roll: l(a.roll, b.roll),
+  };
 }
 
 export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | null = null): ChaseRig {
@@ -129,6 +192,13 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   let haveTravel = false;
   let pending: SimEvent[] = [];
   const shake = createShake();
+  const jolt = createJolt();
+  const takedown = createTakedownTracker();
+  let shakeAmount = 1;
+  let lookingBack = false;
+  /** The takedown victim's last known offset from the rider (it may leave the snapshot). */
+  let victimOffset: { x: number; y: number; z: number } | null = null;
+  let victimSeen = -1;
 
   const s = {
     yaw: spring(0),
@@ -141,6 +211,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     roll: spring(0),
     fov: spring(params.fovBaseDeg),
   };
+  /** The takedown framing's aim, as an offset from the rider, so a tumbling victim is followed smoothly. */
+  const focus = { x: spring(0), y: spring(0), z: spring(0) };
   let ready = false;
   let last: CameraPose | null = null;
 
@@ -239,17 +311,66 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     ready = true;
   };
 
-  const poseFrom = (t: CameraTarget, shakeSide: number, shakeUp: number, shakeRoll: number): CameraPose => {
+  /** The chase framing's forward (horizontal unit vector) and its right. */
+  const axes = () => {
     const fx = -Math.sin(s.yaw.x);
     const fz = -Math.cos(s.yaw.x);
-    const rx = -fz;
-    const rz = fx;
-    let x = t.x - fx * s.distance.x + rx * s.side.x;
-    let y = t.y + s.height.x;
-    let z = t.z - fz * s.distance.x + rz * s.side.x;
-    let lookX = t.x + s.aimX.x;
-    let lookY = t.y + s.aimY.x;
-    let lookZ = t.z + s.aimZ.x;
+    return { fx, fz, rx: -fz, rz: fx };
+  };
+
+  const chasePlacement = (t: CameraTarget): Placement => {
+    const { fx, fz, rx, rz } = axes();
+    return {
+      x: t.x - fx * s.distance.x + rx * s.side.x,
+      y: t.y + s.height.x,
+      z: t.z - fz * s.distance.x + rz * s.side.x,
+      lookX: t.x + s.aimX.x,
+      lookY: t.y + s.aimY.x,
+      lookZ: t.z + s.aimZ.x,
+      fov: s.fov.x,
+      roll: s.roll.x,
+    };
+  };
+
+  /** Ahead of the rider, looking back down the road the rider came along. */
+  const lookBackPlacement = (t: CameraTarget): Placement => {
+    const { fx, fz } = axes();
+    return {
+      x: t.x + fx * params.lookBackDistanceM,
+      y: t.y + params.lookBackHeightM,
+      z: t.z + fz * params.lookBackDistanceM,
+      lookX: t.x - fx * params.lookBackAimM,
+      lookY: t.y + params.lookHeightM,
+      lookZ: t.z - fz * params.lookBackAimM,
+      fov: params.fovBaseDeg,
+      roll: 0,
+    };
+  };
+
+  /** Higher and wider, swung to the side away from the victim, aimed between rider and victim. */
+  const takedownPlacement = (t: CameraTarget): Placement => {
+    const { fx, fz, rx, rz } = axes();
+    const lateral = victimOffset ? victimOffset.x * rx + victimOffset.z * rz : 0;
+    const away = lateral > 0 ? -1 : 1;
+    const a = (Math.max(0, params.takedownSwingDeg) * Math.PI) / 180;
+    const bx = -fx * Math.cos(a) + rx * Math.sin(a) * away;
+    const bz = -fz * Math.cos(a) + rz * Math.sin(a) * away;
+    return {
+      x: t.x + bx * params.takedownDistanceM,
+      y: t.y + params.takedownHeightM,
+      z: t.z + bz * params.takedownDistanceM,
+      lookX: t.x + focus.x.x,
+      lookY: t.y + params.lookHeightM + focus.y.x,
+      lookZ: t.z + focus.z.x,
+      fov: params.fovBaseDeg,
+      roll: 0,
+    };
+  };
+
+  /** Applies the view basis, the shake and jolt offsets and the roll. */
+  const finish = (pl: Placement, shakeSide: number, shakeUp: number, shakeRoll: number): CameraPose => {
+    let { x, y, z, lookX, lookY, lookZ } = pl;
+    const { fx, fz, rx, rz } = axes();
 
     // View basis: right = view × worldUp, up = right × view.
     let vx = lookX - x;
@@ -291,7 +412,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       lookZ += oz * 0.4;
     }
 
-    const roll = s.roll.x + shakeRoll;
+    const roll = pl.roll + shakeRoll;
     const sr = Math.sin(roll);
     const cr = Math.cos(roll);
     return {
@@ -301,7 +422,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       lookX,
       lookY,
       lookZ,
-      fov: s.fov.x,
+      fov: pl.fov,
       roll,
       upX: -bx * sr + ux * cr,
       upY: uy * cr,
@@ -313,18 +434,62 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   const targetValid = (t: CameraTarget): boolean =>
     finite(t.x) && finite(t.y) && finite(t.z) && finite(t.heading) && finite(t.speed);
 
-  const snap = (t: CameraTarget, ctx?: CameraContext): CameraPose => {
+  const clearModes = (): void => {
     pending = [];
     shake.reset();
+    jolt.reset();
+    takedown.reset();
+    victimOffset = null;
+    victimSeen = -1;
+    for (const sp of [focus.x, focus.y, focus.z]) sp.x = sp.v = 0;
+  };
+
+  const snap = (t: CameraTarget, ctx?: CameraContext): CameraPose => {
+    clearModes();
+    lookingBack = ctx?.lookBack === true;
     if (!targetValid(t)) return last ?? fallbackPose();
     settle(goalFor(t, ctx));
-    last = poseFrom(t, 0, 0, 0);
+    last = finish(lookingBack ? lookBackPlacement(t) : chasePlacement(t), 0, 0, 0);
     return last;
+  };
+
+  /** Follows the takedown victim through the snapshot, remembering where it was last seen. */
+  const trackVictim = (t: CameraTarget, ctx: CameraContext | undefined, dt: number): void => {
+    const id = takedown.victim;
+    if (id < 0) {
+      victimOffset = null;
+      victimSeen = -1;
+      for (const sp of [focus.x, focus.y, focus.z]) sp.x = sp.v = 0;
+      return;
+    }
+    if (id !== victimSeen) victimOffset = null;
+    victimSeen = id;
+    const v = ctx?.entities?.find((e) => e.id === id);
+    if (v && finite(v.x) && finite(v.y) && finite(v.z)) {
+      let ox = v.x - t.x;
+      let oz = v.z - t.z;
+      const reach = Math.hypot(ox, oz);
+      if (reach > TAKEDOWN_REACH_M) {
+        ox *= TAKEDOWN_REACH_M / reach;
+        oz *= TAKEDOWN_REACH_M / reach;
+      }
+      victimOffset = { x: ox, y: v.y - t.y, z: oz };
+    }
+    const k = Math.min(1, Math.max(0, params.takedownFocus));
+    const goal = victimOffset ?? { x: 0, y: 0, z: 0 };
+    const w = params.springRate * AIM_RATE;
+    stepSpring(focus.x, goal.x * k, w, dt);
+    stepSpring(focus.y, goal.y * k, w, dt);
+    stepSpring(focus.z, goal.z * k, w, dt);
   };
 
   return {
     params,
     snap,
+    get mode(): RigMode {
+      if (lookingBack) return 'lookBack';
+      return takedown.weight > 0 ? 'takedown' : 'lowChase';
+    },
     update(t, dtIn, ctx) {
       if (!targetValid(t)) return last ?? fallbackPose();
       if (!ready) return snap(t, ctx);
@@ -341,16 +506,37 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       stepSpring(s.roll, g.roll, w * ROLL_RATE, dt);
       stepSpring(s.fov, g.fov, w * FOV_RATE, dt);
 
+      const me = t.id ?? -1;
       if (pending.length) {
-        shake.add(pending, t.id ?? -1);
+        const { rx, rz } = axes();
+        const lateralOf = (id: number): number | undefined => {
+          const e = ctx?.entities?.find((o) => o.id === id);
+          return e ? (e.x - t.x) * rx + (e.z - t.z) * rz : undefined;
+        };
+        shake.add(pending, me);
+        jolt.add(pending, me, lateralOf, params);
+        takedown.add(pending, me);
         pending = [];
       }
-      const k = shake.step(dt, params.shakeScale);
-      const pose = poseFrom(t, k.side, k.up, k.roll);
+      const weight = takedown.step(dt, params);
+      trackVictim(t, ctx, dt);
+      lookingBack = ctx?.lookBack === true;
+
+      const amount = Math.max(0, params.shakeScale) * shakeAmount;
+      const k = shake.step(dt, amount);
+      const j = jolt.step(dt, params);
+      const chase = chasePlacement(t);
+      const placement = lookingBack
+        ? lookBackPlacement(t)
+        : weight > 0
+          ? lerpPlacement(chase, takedownPlacement(t), weight)
+          : chase;
+      const pose = finish(placement, k.side + j.side * amount, k.up + j.up * amount, k.roll);
       if (!valid(pose)) {
         // Never hand render a NaN: start over from the ideal framing.
+        clearModes();
         settle(goalFor(t, ctx));
-        last = poseFrom(t, 0, 0, 0);
+        last = finish(chasePlacement(t), 0, 0, 0);
         return last;
       }
       last = pose;
@@ -362,6 +548,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     setRoad(next) {
       road = next && next.edges.length > 0 ? next : null;
       hintEdge = undefined;
+    },
+    setShakeAmount(amount) {
+      shakeAmount = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 1;
     },
   };
 

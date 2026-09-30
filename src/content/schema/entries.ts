@@ -4,6 +4,7 @@
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
+import { BARK_OPS, BIKE_CLASSES, EVENT_KINDS, MODIFIER_KINDS, TIMES_OF_DAY } from './vocab';
 
 export const packSchema = z.looseObject({
   type: z.literal('pack'),
@@ -49,18 +50,7 @@ const signSchema = z.looseObject({
 });
 
 export const bikeSchema = entry('bike', {
-  class: z.enum([
-    'scooter',
-    'moped',
-    'dirt',
-    'rat',
-    'sport',
-    'super',
-    'chopper',
-    'lawnmower',
-    'mobility-scooter',
-    'golf-cart',
-  ]),
+  class: z.enum(BIKE_CLASSES),
   handling: z.looseObject({
     topSpeedMps: z.number().positive(),
     accelMps2: z.number().positive(),
@@ -135,10 +125,13 @@ export const weaponSchema = entry('weapon', {
     .optional(),
 });
 
+/** A whole-cash amount. */
+const cash = z.number().int().min(0);
+
 export const eventSchema = entry('event', {
-  kind: z.enum(['classic-race', 'takedown-hunt', 'cop-escape', 'grudge-match']),
+  kind: z.enum(EVENT_KINDS),
   region: idSchema,
-  timeOfDay: z.enum(['dawn', 'noon', 'golden-hour', 'dusk', 'night']),
+  timeOfDay: z.enum(TIMES_OF_DAY),
   lengths: z.array(z.looseObject({ id: idSchema, route: refSchema, laps: z.number().int().min(1) })).min(1),
   field: z.looseObject({
     riders: z.array(refSchema).optional(),
@@ -157,7 +150,17 @@ export const eventSchema = entry('event', {
       }),
     )
     .min(1),
-  rewards: z.looseObject({ byPlaceCash: z.array(z.number().int().min(0)) }),
+  // The style fields are optional and default to 0, so adding them is not a format bump
+  // (docs/content-packs.md, "Event"; M2 content-2).
+  rewards: z.looseObject({
+    byPlaceCash: z.array(cash),
+    perTakedownCash: cash.optional(),
+    perNearMissCash: cash.optional(),
+    perAirtimeCash: cash.optional(),
+    perOncomingSecondCash: cash.optional(),
+    takedownComboScale: nonNegative.optional(),
+    perStealCash: cash.optional(),
+  }),
   modifiers: z
     .looseObject({
       pool: z.union([z.literal('region-default'), z.array(refSchema)]),
@@ -166,6 +169,21 @@ export const eventSchema = entry('event', {
     })
     .optional(),
 });
+
+/**
+ * A barrier span along a road (docs/content-packs.md, "Road file"; M2 content-2): a `rail` lets a
+ * tumble body above `heightM` cross it, a `wall` does not. Water is the region's sea level, world
+ * y = 0, so there is no per-road water height. The road lint checks the span lies inside the road.
+ */
+export const barrierSchema = z
+  .looseObject({
+    s0: nonNegative,
+    s1: nonNegative,
+    side: z.enum(['left', 'right', 'both']),
+    kind: z.enum(['rail', 'wall']),
+    heightM: z.number().positive(),
+  })
+  .refine((b) => b.s1 > b.s0, { message: 's1 must be past s0', path: ['s1'] });
 
 const laneSchema = z.looseObject({
   id: z.string(),
@@ -221,6 +239,7 @@ export const roadSchema = entry('road', {
       }),
     )
     .optional(),
+  barriers: z.array(barrierSchema).optional(),
   samples: z.looseObject({
     encoding: z.literal('json-columns'),
     columns: z.array(z.string()),
@@ -282,21 +301,51 @@ export const trafficTypeSchema = entry('traffic-type', {
   hazard: z.enum(['normal', 'big']),
 });
 
+/**
+ * One `when` condition (docs/content-packs.md, "Line fields"): `{ fact, op, value }`, no free-form
+ * expressions. `in` takes a list and every other op a single value; the content lint checks the
+ * fact against the vocabulary (./vocab.ts) and the op and value against the fact's kind.
+ */
+export const barkConditionSchema = z
+  .looseObject({
+    fact: z.string().min(1),
+    op: z.enum(BARK_OPS),
+    value: z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()])).min(1)]),
+  })
+  .refine((c) => (c.op === 'in') === Array.isArray(c.value), {
+    message: '"in" takes a list of values; every other op takes one value',
+    path: ['value'],
+  });
+
+/** Line fields a set's `defaults` may fill in, and each line may override. */
+const barkLineTuning = {
+  cooldownS: nonNegative.optional(),
+  weight: nonNegative.optional(),
+  chance: unit01.optional(),
+  priority: z.number().int().min(0).max(3).optional(),
+};
+
 export const barkSetSchema = entry('bark-set', {
   defaults: z
     .looseObject({
       speaker: z.string().optional(),
-      cooldownS: nonNegative.optional(),
-      weight: nonNegative.optional(),
+      ...barkLineTuning,
     })
     .optional(),
   lines: z.array(
     z.looseObject({
       id: idSchema,
+      // A closed list in code, checked by the content lint rather than here, so a line with a
+      // newer trigger than this build knows stays loadable (it simply never fires).
       trigger: z.string(),
       text: z.string().min(1),
       speaker: z.string().optional(),
       target: z.string().optional(),
+      when: z.array(barkConditionSchema).optional(),
+      oncePerCareer: z.boolean().optional(),
+      audioAsset: z.string().nullable().optional(),
+      replyTo: idSchema.optional(),
+      ...barkLineTuning,
       ...itemStatus,
     }),
   ),
@@ -338,7 +387,7 @@ export const tuningPresetSchema = entry('tuning-preset', {
 
 /** A weird-event modifier (reserved, M4 or the shelf). */
 export const eventModifierSchema = entry('event-modifier', {
-  kind: z.enum(['nature', 'human', 'wasteland', 'league']),
+  kind: z.enum(MODIFIER_KINDS),
   rarityWeight: nonNegative,
   eligibility: z
     .looseObject({
