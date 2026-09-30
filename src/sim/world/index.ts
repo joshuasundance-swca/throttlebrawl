@@ -5,3 +5,4 @@ export type { Mover, World, WorldFacts } from './store';
 export { orderSystems, stepWorld, TICK_ORDER } from './tick';
 export type { SimSystem, SystemName } from './tick';
 export { hashPlain, worldHash } from './hash';
+export { NO_ASSISTS, slotAssists, speedMultiplierOf } from './config';

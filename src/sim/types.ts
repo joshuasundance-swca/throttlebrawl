@@ -344,6 +344,21 @@ export interface SimDifficulty {
   rubberBand: number;
 }
 
+/** Steering assist strength (M2 riders-4): nudges yaw away from the shoulder and barriers. */
+export type SimSteerAssist = 'off' | 'light' | 'strong';
+
+/** One human slot's assists (M2 riders-4). Independent of the input method. */
+export interface SimAssists {
+  steer: SimSteerAssist;
+  /** The sim holds full throttle for this slot (the input's throttle is ignored). */
+  autoThrottle: boolean;
+}
+
+/** Per player slot settings that are sim state (M2). AI riders have no slot and ignore them. */
+export interface SimSlotConfig {
+  assists: SimAssists;
+}
+
 export interface SimConfig {
   seed: number;
   event: SimEventDef;
@@ -361,9 +376,26 @@ export interface SimConfig {
   /** Sim-affecting tuning values at race start, by declaration id. */
   tuning: TuningValues;
   difficulty: SimDifficulty;
-  assists: 'off' | 'light' | 'strong';
+  /**
+   * The M1 placeholder, superseded by `slots[i].assists` in M2 and read by nothing. Kept so the
+   * lanes' hand-built test configs still compile; removed once none sets it.
+   */
+  assists: SimSteerAssist;
+  /** The takedown slow motion toggle (on by default in buildSimConfig; combat-4 reads it). */
   slowMo: boolean;
   playerSlots: number;
+  /**
+   * Per player slot, index = slot (M2). Absent or short means no assists for the missing slots;
+   * sim code reads it through `slotAssists(config, slot)` in sim/world. buildSimConfig always
+   * writes it, so the replay header carries it.
+   */
+  slots?: readonly SimSlotConfig[];
+  /**
+   * The lower-overall-speed multiplier m (M2 riders-4), in (0, 1]; absent means 1. It scales every
+   * mover's speed and acceleration (gravity by m²), never the time scale, and changes only between
+   * races. Sim code reads it through `speedMultiplierOf(config)` in sim/world.
+   */
+  speedMultiplier?: number;
 }
 
 export interface Sim {
