@@ -18,7 +18,15 @@ export default mergeConfig(
         },
         {
           extends: true,
-          test: { name: 'sim', include: ['tests/sim/**/*.test.ts'], environment: 'node' },
+          // Sim tests run whole seeded races (the full field, traffic both ways, pedestrians), which
+          // take several seconds each on a CI runner: Vitest's 5 s default timed out a passing replay
+          // test on main (5.8 s). Each race still has its own tick cap.
+          test: {
+            name: 'sim',
+            include: ['tests/sim/**/*.test.ts'],
+            environment: 'node',
+            testTimeout: 60_000,
+          },
         },
       ],
     },
