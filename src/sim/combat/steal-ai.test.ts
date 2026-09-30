@@ -91,16 +91,26 @@ const PLAYER = 1;
 function race(seed: number, reactToCue: boolean) {
   const sim = createSim(brawlConfig(seed));
   const events: SimEvent[] = [];
+  /** The snapshot's heldWeapon of both sides of each weaponGrab, on its tick. */
+  const held: { source: unknown; actor: string | null; target: string | null }[] = [];
   let press = false;
   for (let t = 0; t < 60 * 50 && !sim.isOver(); t++) {
     const input: SimInput = quantizeInput({ throttle: 0.8, brake: 0, steer: 0, flags: press ? F.attack : 0 });
     sim.step([input]);
     const evs = sim.events();
     events.push(...evs);
+    for (const g of evs.filter((e) => e.type === 'weaponGrab')) {
+      const ents = sim.snapshot().entities;
+      held.push({
+        source: g.data['source'],
+        actor: ents[g.actor]?.heldWeapon ?? null,
+        target: ents[g.target ?? -1]?.heldWeapon ?? null,
+      });
+    }
     press =
       reactToCue && evs.some((e) => e.type === 'stealWindow' && e.actor === RIVAL && e.target === PLAYER);
   }
-  return { sim, events };
+  return { sim, events, held };
 }
 
 const of = (events: readonly SimEvent[], type: SimEvent['type']) => events.filter((e) => e.type === type);
@@ -138,6 +148,13 @@ describe('combat-2 through the real sim, against ai-1', () => {
     expect(steals[0]?.actor).toBe(PLAYER);
     expect(steals[0]?.target).toBe(RIVAL);
     expect(steals[0]?.data['windupTick']).toBe(8);
+    // The snapshot shows the pipe move: in the thief's hand, out of the rival's.
+    expect(thief.held.find((h) => h.source === 'steal')).toEqual({
+      source: 'steal',
+      actor: PIPE.contentId,
+      target: null,
+    });
+    expect(thief.held.find((h) => h.source === 'road')?.actor).toBe(PIPE.contentId);
     // The same seed replays to the same hash.
     expect(race(3, true).sim.hash()).toBe(thief.sim.hash());
   });
