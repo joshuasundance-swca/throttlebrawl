@@ -189,12 +189,34 @@ function referencesOf(e: ParsedEntry): Ref[] {
   return refs;
 }
 
-function statusProblem(source: EntryStatus, target: ParsedEntry | { status: EntryStatus }, what: string) {
-  if (target.status === 'vetoed') return `points at the vetoed ${what}`;
+interface Problem {
+  message: string;
+  /** Warn instead of fail. */
+  soft: boolean;
+}
+
+/**
+ * Pointing at a vetoed entry or item fails (docs: nothing live references a vetoed one). A live
+ * entry pointing at a draft only warns: release builds leave drafts out, so the reference is empty
+ * there, which is how a lane keeps unfinished content (traffic-1's vehicle types) out of prod.
+ */
+function statusProblem(
+  source: EntryStatus,
+  target: ParsedEntry | { status: EntryStatus },
+  what: string,
+): Problem | null {
+  if (target.status === 'vetoed') return { message: `points at the vetoed ${what}`, soft: false };
   if (target.status === 'draft' && source === 'live') {
-    return `points at the draft ${what}; drafts load only in dev builds, so a live entry cannot use one`;
+    return {
+      message: `points at the draft ${what}; release builds leave drafts out, so there it resolves to nothing`,
+      soft: true,
+    };
   }
   return null;
+}
+
+function push(out: Finding[], file: string, ptr: string, p: Problem): void {
+  out.push(p.soft ? warning('refs', file, ptr, p.message) : error('refs', file, ptr, p.message));
 }
 
 /** The region a road sits in, through its network. */
@@ -212,12 +234,14 @@ function checkRefs(ctx: LintContext): Finding[] {
       for (const r of referencesOf(e)) {
         const ptr = pointer(r.path);
         const { entry, problem } = ctx.resolve(pack.packId, r.ref, r.type);
-        const bad = entry
-          ? (statusProblem(e.status, entry, `${r.type} "${r.ref}"`) ?? r.require?.(entry) ?? null)
-          : (problem ?? `no ${r.type} "${r.ref}"`);
+        const required = entry ? r.require?.(entry) : undefined;
+        let bad: Problem | null = !entry
+          ? { message: problem ?? `no ${r.type} "${r.ref}"`, soft: false }
+          : (statusProblem(e.status, entry, `${r.type} "${r.ref}"`) ??
+            (required ? { message: required, soft: false } : null));
         if (!bad) continue;
-        if (r.soft) out.push(warning('refs', e.path, ptr, `${bad}; these lines stay silent until it loads`));
-        else out.push(error('refs', e.path, ptr, bad));
+        if (r.soft) bad = { message: `${bad.message}; these lines stay silent until it loads`, soft: true };
+        push(out, e.path, ptr, bad);
       }
       // A billboard slot on a road names an item in its region's signs or billboards.
       if (e.type === 'road') {
@@ -236,16 +260,17 @@ function checkRefs(ctx: LintContext): Finding[] {
           }
           const status = (item['status'] as EntryStatus | undefined) ?? 'live';
           const bad = statusProblem(e.status, { status }, `item ${region.id}#${String(f['item'])}`);
-          if (bad) out.push(error('refs', e.path, ptr, bad));
+          if (bad) push(out, e.path, ptr, bad);
         });
       }
     }
-    // The pack's shipped defaults (only base's are read, but every pack's must resolve).
+    // The pack's shipped defaults (only base's are read, but every pack's must resolve). A draft
+    // default fails too: release builds would ship without it.
     const defaults = pack.manifest.defaults;
     const check = (ref: string, type: EntryType, ptr: string) => {
       const { entry, problem } = ctx.resolve(pack.packId, ref, type);
       const bad = entry
-        ? statusProblem('live', entry, `${type} "${ref}"`)
+        ? statusProblem('live', entry, `${type} "${ref}"`)?.message
         : (problem ?? `no ${type} "${ref}"`);
       if (bad) out.push(error('refs', 'pack.json', ptr, bad));
     };

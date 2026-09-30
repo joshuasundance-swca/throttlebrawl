@@ -119,11 +119,17 @@ describe('content lint: references', () => {
     expect(errors(files, 'refs')).toHaveLength(1);
   });
 
-  it('fails a live reference to a vetoed or a draft entry', () => {
+  it('fails a reference to a vetoed entry, and only warns on a live one to a draft', () => {
     const vetoed = pack({}, { 'bikes/rustbucket-400.json': (j) => (j['meta'] = { status: 'vetoed' }) });
     expect(errors(vetoed, 'refs')).toContainEqual(expect.stringMatching(/\/bike: .*vetoed/));
     const draft = pack({}, { 'bikes/rustbucket-400.json': (j) => (j['meta'] = { status: 'draft' }) });
-    expect(errors(draft, 'refs')).toContainEqual(expect.stringMatching(/\/bike: .*draft/));
+    expect(errors(draft, 'refs')).toEqual([]);
+    const warned = run(draft).filter((f) => f.rule === 'refs' && f.level === 'warning');
+    expect(warned.map((f) => formatFinding(f))).toContainEqual(
+      expect.stringMatching(/\/bike: .*draft .*resolves to nothing/),
+    );
+    const draftHud = pack({}, { 'hud/classic.json': (j) => (j['meta'] = { status: 'draft' }) });
+    expect(errors(draftHud, 'refs')).toEqual([expect.stringMatching(/pack\.json \/defaults\/hud: .*draft/)]);
   });
 
   it('accepts a qualified reference into its own pack and fails one into an undeclared pack', () => {
