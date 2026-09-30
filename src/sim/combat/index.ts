@@ -20,11 +20,30 @@
 //   `crash` event (tumble-1 turns it into the tumble). A hit involving a player sets timeScale to
 //   0 for hitStopMs × combat.hitStopScale (rival-against-rival hits get none).
 // - One cause id per attack: attackStart, hit, kick, attackMiss and the resulting crash share it.
+//
+// Pickup weapons and the steal (docs/milestones/M1.md, combat-2):
+// - Each non-unarmed weapon in the config (the lead pipe in M1) lies on the road as a `pickup`
+//   entity at fixed spots along the route. A riding rider (not a cop) who holds nothing and passes
+//   over one picks it up (a `weaponGrab` event with `data.source` 'road').
+// - A held weapon replaces the punch: an attack press swings it (its own wind-up, active moment
+//   and recovery from data). The kick stays a kick, and a kick flag during any wind-up but the
+//   kick's own still turns the attack into a kick.
+// - The steal: an attack press by a rider who holds nothing, while an opponent's held weapon is in
+//   its wind-up at an age inside the weapon's steal window (ticks 7–20 of the pipe's 20, both ends
+//   included, counted in scaled time) and the thief is inside that weapon's reach box, takes the
+//   weapon instead of starting an attack. The swing is cancelled, and one `weaponGrab` event
+//   (`data.source` 'steal', target = the robbed rider, the swing's causeId) records the move. The
+//   steal pass runs before any attack advances, so the outcome does not depend on entity order.
+// - The telegraph: when a held weapon's wind-up reaches its steal window, a `stealWindow` event
+//   (render's glint, audio's cue).
+// - A rider who wrecks (leaves Road/Airborne, or reaches zero health) drops the weapon where it
+//   is; it lies on the road as a pickup again. A held pickup entity is stowed below the road
+//   (h = STOWED_H) so presentation shows it only through the holder's `heldWeapon`.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { riderState } from '../riders';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef } from '../types';
-import { emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COMBAT_TUNING: readonly TuningParamDecl[] = [
   {
@@ -63,6 +82,16 @@ const KNOCKBACK_DECAY = 3;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
 
+/** Where the roadside weapons lie: fractions of the route length. [default] */
+export const PICKUP_ROUTE_FRACTIONS: readonly number[] = [0.2, 0.45, 0.7];
+/** A rider picks up a weapon within this box: |Δs| ≤ 1 m (a tick at top speed is 0.63 m), |Δd| ≤ 1.5 m. */
+export const PICKUP_S_M = 1;
+export const PICKUP_D_M = 1.5;
+/** Riders higher than this above the road (mid-jump) fly over a pickup. */
+const PICKUP_MAX_H = 1.5;
+/** Height of a held pickup entity: below the road, out of sight (the holder shows it). */
+export const STOWED_H = -20;
+
 type ActivePhase = Exclude<AttackPhase, 'cooldown'>;
 
 /** Per-rider plain state, by entity id. */
@@ -91,6 +120,16 @@ export interface CombatState {
   /** Raw ticks of hit-stop left, and the timeScale to restore afterwards. */
   hitStopTicks: number;
   resumeTimeScale: number;
+  /** Held weapon content id per rider ('' = none), and the pickup entity it came from. */
+  held: string[];
+  heldPickup: EntityId[];
+  /** Whether the current attack's steal cue has been emitted. */
+  stealCued: boolean[];
+  /** Pickup entity ids, in spawn order. */
+  pickups: EntityId[];
+  /** Per pickup entity: its weapon content id, and who holds it (-1 = lying on the road). */
+  pickupWeapon: string[];
+  pickupHolder: EntityId[];
 }
 
 export function combatState(world: World): CombatState {
@@ -110,6 +149,12 @@ export function combatState(world: World): CombatState {
     prevFlags: [],
     hitStopTicks: 0,
     resumeTimeScale: 1,
+    held: [],
+    heldPickup: [],
+    stealCued: [],
+    pickups: [],
+    pickupWeapon: [],
+    pickupHolder: [],
   }));
 }
 
@@ -118,6 +163,7 @@ export interface CombatView {
   attackPhase: AttackPhase;
   targetId: EntityId;
   lastAttackerId: EntityId;
+  heldWeapon: string | null;
 }
 
 export function combatView(world: World, id: EntityId): CombatView {
@@ -127,7 +173,13 @@ export function combatView(world: World, id: EntityId): CombatView {
     attackPhase: phase === 'idle' && (st.cooldown[id] ?? 0) > EPS ? 'cooldown' : phase,
     targetId: phase === 'idle' ? -1 : (st.targetId[id] ?? -1),
     lastAttackerId: st.lastAttackerId[id] ?? -1,
+    heldWeapon: st.held[id] || null,
   };
+}
+
+/** A pickup entity's weapon content id ('' for any other entity). */
+export function pickupWeapon(world: World, id: EntityId): string {
+  return combatState(world).pickupWeapon[id] ?? '';
 }
 
 /** Where `b` is relative to `a`: metres ahead along a's travel, and metres to a's right. */
@@ -235,6 +287,7 @@ function startAttack(
   st.weapon[id] = w.contentId;
   st.elapsed[id] = 0;
   st.landed[id] = false;
+  st.stealCued[id] = false;
   const target = st.targetId[id] ?? -1;
   const extra: { target?: EntityId; causeId?: number } = {};
   if (target >= 0) extra.target = target;
@@ -283,17 +336,20 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
   }
 }
 
-/** The weapon a request resolves to: a weapon still cooling down falls back to the punch. */
+/**
+ * The weapon a request resolves to: the held weapon (or the punch, bare-handed), or the kick when
+ * asked for. A kick still cooling down falls back to the held weapon or the punch.
+ */
 function resolveWeapon(
   config: SimConfig,
   st: CombatState,
   id: EntityId,
   wantKick: boolean,
 ): SimWeaponDef | undefined {
-  const punch = weaponById(config, PUNCH_ID);
-  if (!wantKick) return punch;
+  const main = (st.held[id] ? weaponById(config, st.held[id]) : undefined) ?? weaponById(config, PUNCH_ID);
+  if (!wantKick) return main;
   const cooling = (st.cooldown[id] ?? 0) > EPS && st.cooldownWeapon[id] === KICK_ID;
-  return cooling ? punch : (weaponById(config, KICK_ID) ?? punch);
+  return cooling ? main : (weaponById(config, KICK_ID) ?? main);
 }
 
 function land(
@@ -374,6 +430,171 @@ function slide(world: World, config: SimConfig, st: CombatState, dt: number): vo
   }
 }
 
+// ---- Pickup weapons and the steal (combat-2) ------------------------------------------------
+
+type Spot = { edge: number; s: number; d: number; dir: 1 | -1 };
+
+/**
+ * Road positions for the roadside weapons: at each PICKUP_ROUTE_FRACTIONS point of the route, in
+ * the middle of the travel lane. A fraction the main path cannot place is skipped.
+ */
+export function roadsideSpots(config: SimConfig): Spot[] {
+  const { route, road } = config;
+  const out: Spot[] = [];
+  for (const f of PICKUP_ROUTE_FRACTIONS) {
+    const x = f * route.length;
+    for (const e of route.mainEdges) {
+      const len = road.edges[e]?.length ?? 0;
+      const p0 = route.progressAt(e, 0);
+      const p1 = route.progressAt(e, len);
+      if (!Number.isFinite(p0) || !Number.isFinite(p1) || p0 === p1) continue;
+      if (x < Math.min(p0, p1) || x > Math.max(p0, p1)) continue;
+      const s = ((x - p0) / (p1 - p0)) * len;
+      const dir: 1 | -1 = p1 > p0 ? 1 : -1;
+      const lanes = road.lanesAt(e, s);
+      const lane = lanes.find((l) => l.kind === 'drive' && l.direction === dir) ?? lanes[0];
+      out.push({ edge: e, s, d: lane?.dCenterM ?? 0, dir });
+      break;
+    }
+  }
+  return out;
+}
+
+/** Puts a weapon on the road as a new pickup entity (the race start and tests use it). */
+export function spawnPickup(world: World, weapon: string, spot: Spot): EntityId {
+  const st = combatState(world);
+  const m = addMover(world, 'pickup', { edge: spot.edge, s: spot.s, d: spot.d, dir: spot.dir });
+  st.pickups.push(m.id);
+  st.pickupWeapon[m.id] = weapon;
+  st.pickupHolder[m.id] = -1;
+  return m.id;
+}
+
+/** Gives a rider a pickup's weapon; the pickup entity is stowed out of sight. */
+function takePickup(st: CombatState, rider: Mover, pickup: Mover): void {
+  st.held[rider.id] = st.pickupWeapon[pickup.id] ?? '';
+  st.heldPickup[rider.id] = pickup.id;
+  st.pickupHolder[pickup.id] = rider.id;
+  pickup.h = STOWED_H;
+}
+
+/** Puts a held weapon back on the road where its holder is. */
+function dropWeapon(world: World, config: SimConfig, st: CombatState, holder: Mover): void {
+  const pid = st.heldPickup[holder.id] ?? -1;
+  const pickup = world.movers[pid];
+  st.held[holder.id] = '';
+  st.heldPickup[holder.id] = -1;
+  if (!pickup) return;
+  st.pickupHolder[pid] = -1;
+  const edge = config.road.edges[holder.pos.edge];
+  pickup.pos.edge = holder.pos.edge;
+  pickup.pos.s = edge ? clamp(holder.pos.s, 0, edge.length) : holder.pos.s;
+  pickup.pos.d = edge ? clamp(holder.pos.d, edge.dMin + 0.5, edge.dMax - 0.5) : holder.pos.d;
+  pickup.pos.dir = holder.pos.dir;
+  pickup.h = 0;
+}
+
+/** Whether a rider may take a weapon now: riding, conscious, empty-handed, and not a cop. */
+function canTake(world: World, config: SimConfig, st: CombatState, m: Mover): boolean {
+  return isRiding(m) && (riderState(world).health[m.id] ?? 0) > 0 && !st.held[m.id] && !isLaw(config, m);
+}
+
+/** Whether `holder` is winding up its held weapon (not a kick it switched to). */
+function swingingHeld(st: CombatState, holder: Mover): boolean {
+  const id = holder.id;
+  return st.phase[id] === 'windup' && !!st.held[id] && st.weapon[id] === st.held[id];
+}
+
+/**
+ * The steal pass, before any attack advances this tick. `pressed` marks the riders whose attack
+ * press rose this tick; a steal consumes the thief's press. The wind-up's age this tick is its
+ * elapsed scaled time plus this tick's timeScale: on tick T + k of a wind-up started on tick T,
+ * it is k at timeScale 1.
+ */
+function stealPass(world: World, config: SimConfig, st: CombatState, pressed: boolean[], ts: number): void {
+  for (const thief of world.movers) {
+    if (thief.kind !== 'rider' || !pressed[thief.id]) continue;
+    if (st.phase[thief.id] !== 'idle' || (st.stagger[thief.id] ?? 0) > EPS) continue;
+    if (!canTake(world, config, st, thief)) continue;
+    let best: { holder: Mover; mine: boolean; dist2: number } | null = null;
+    for (const holder of world.movers) {
+      if (holder.id === thief.id || holder.kind !== 'rider' || !isRiding(holder)) continue;
+      if (!swingingHeld(st, holder)) continue;
+      const w = weaponById(config, st.held[holder.id] ?? '');
+      if (!w?.steal) continue;
+      const age = (st.elapsed[holder.id] ?? 0) + ts;
+      if (age + EPS < w.steal.startTick || age - EPS > w.steal.endTick) continue;
+      // The thief must be where the weapon is going: inside the holder's reach box, either side.
+      const rel = relative(config.road, holder, thief, w.reachSM + 2);
+      if (!rel || Math.abs(rel.ds) > w.reachSM || Math.abs(rel.dd) > w.reachDM) continue;
+      const mine = st.targetId[holder.id] === thief.id;
+      const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
+      if (!best || (mine && !best.mine) || (mine === best.mine && dist2 < best.dist2)) {
+        best = { holder, mine, dist2 };
+      }
+    }
+    if (!best) continue;
+    const hid = best.holder.id;
+    const weapon = st.held[hid] ?? '';
+    const age = (st.elapsed[hid] ?? 0) + ts;
+    const cause = st.cause[hid] ?? 0;
+    const pickup = world.movers[st.heldPickup[hid] ?? -1];
+    st.held[hid] = '';
+    st.heldPickup[hid] = -1;
+    endAttack(st, hid);
+    if (pickup) takePickup(st, thief, pickup);
+    else st.held[thief.id] = weapon;
+    pressed[thief.id] = false;
+    emit(
+      world,
+      'weaponGrab',
+      thief.id,
+      { weapon, source: 'steal', windupTick: Math.round(age * 1000) / 1000 },
+      { target: hid, causeId: cause },
+    );
+  }
+}
+
+/** Emits the steal cue once per attack, on the tick a held weapon's wind-up reaches its window. */
+function stealCue(world: World, config: SimConfig, st: CombatState, a: Mover): void {
+  const id = a.id;
+  if (st.stealCued[id] || !swingingHeld(st, a)) return;
+  const w = weaponById(config, st.held[id] ?? '');
+  if (!w?.steal || (st.elapsed[id] ?? 0) + EPS < w.steal.startTick) return;
+  st.stealCued[id] = true;
+  const extra: { target?: EntityId; causeId?: number } = { causeId: st.cause[id] ?? 0 };
+  const target = st.targetId[id] ?? -1;
+  if (target >= 0) extra.target = target;
+  const ticks = w.steal.endTick - w.steal.startTick + 1;
+  emit(world, 'stealWindow', id, { weapon: w.contentId, ticks }, extra);
+}
+
+/** Wrecked holders drop their weapon; then empty-handed riders pick up what lies on the road. */
+function pickupPass(world: World, config: SimConfig, st: CombatState): void {
+  const health = riderState(world).health;
+  for (const m of world.movers) {
+    if (m.kind === 'rider' && st.held[m.id] && (!isRiding(m) || (health[m.id] ?? 0) <= 0)) {
+      dropWeapon(world, config, st, m);
+    }
+  }
+  for (const pid of st.pickups) {
+    const pickup = world.movers[pid];
+    if (!pickup || (st.pickupHolder[pid] ?? -1) >= 0) continue;
+    let best: { rider: Mover; dist2: number } | null = null;
+    for (const m of world.movers) {
+      if (m.kind !== 'rider' || m.h > PICKUP_MAX_H || !canTake(world, config, st, m)) continue;
+      const rel = relative(config.road, m, pickup, PICKUP_S_M + 2);
+      if (!rel || Math.abs(rel.ds) > PICKUP_S_M || Math.abs(rel.dd) > PICKUP_D_M) continue;
+      const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
+      if (!best || dist2 < best.dist2) best = { rider: m, dist2 };
+    }
+    if (!best) continue;
+    const weapon = st.pickupWeapon[pid] ?? '';
+    takePickup(st, best.rider, pickup);
+    emit(world, 'weaponGrab', best.rider.id, { weapon, source: 'road' }, { target: pid });
+  }
+}
+
 export const combatSystem: SimSystem = {
   name: 'combat',
   init(world: World, config: SimConfig) {
@@ -396,7 +617,16 @@ export const combatSystem: SimSystem = {
       st.knockVel[m.id] = 0;
       st.lastAttackerId[m.id] = -1;
       st.prevFlags[m.id] = 0;
+      st.held[m.id] = '';
+      st.heldPickup[m.id] = -1;
+      st.stealCued[m.id] = false;
     }
+    // The roadside weapons: every non-unarmed weapon, one per spot in turn.
+    const armed = config.weapons.filter((w) => !w.unarmed);
+    roadsideSpots(config).forEach((spot, i) => {
+      const w = armed[i % Math.max(1, armed.length)];
+      if (w) spawnPickup(world, w.contentId, spot);
+    });
   },
   step(world: World, config: SimConfig) {
     const st = combatState(world);
@@ -405,25 +635,34 @@ export const combatSystem: SimSystem = {
     slide(world, config, st, ts / 60);
     const health = riderState(world).health;
 
+    // Press edges first, for everyone, so the steal pass sees every thief before any attack moves.
+    const pressed: boolean[] = [];
+    for (const a of world.movers) {
+      if (a.kind !== 'rider') continue;
+      const flags = world.inputs[a.id]?.flags ?? 0;
+      pressed[a.id] = (flags & ~(st.prevFlags[a.id] ?? 0) & InputFlag.attack) !== 0;
+      st.prevFlags[a.id] = flags;
+      st.cooldown[a.id] = Math.max(0, (st.cooldown[a.id] ?? 0) - ts);
+      st.stagger[a.id] = Math.max(0, (st.stagger[a.id] ?? 0) - ts);
+    }
+    stealPass(world, config, st, pressed, ts);
+
     for (const a of world.movers) {
       if (a.kind !== 'rider') continue;
       const id = a.id;
       const flags = world.inputs[id]?.flags ?? 0;
-      const pressed = (flags & ~(st.prevFlags[id] ?? 0) & InputFlag.attack) !== 0;
-      st.prevFlags[id] = flags;
-      st.cooldown[id] = Math.max(0, (st.cooldown[id] ?? 0) - ts);
-      st.stagger[id] = Math.max(0, (st.stagger[id] ?? 0) - ts);
 
       if (!isRiding(a) || (health[id] ?? 0) <= 0) {
         if (st.phase[id] !== 'idle') endAttack(st, id);
         continue;
       }
       advance(world, config, st, a, ts);
+      stealCue(world, config, st, a);
 
       const wantKick = (flags & InputFlag.kick) !== 0;
       const override = sideFlag(flags);
       if (st.phase[id] === 'idle') {
-        if (pressed && (st.stagger[id] ?? 0) <= EPS) {
+        if (pressed[id] && (st.stagger[id] ?? 0) <= EPS) {
           const w = resolveWeapon(config, st, id, wantKick);
           if (w) {
             const aimed = aim(world, config, a, override);
@@ -439,13 +678,14 @@ export const combatSystem: SimSystem = {
           st.targetId[id] = aimed.target;
           st.side[id] = aimed.side;
         }
-        if (wantKick && st.weapon[id] === PUNCH_ID) {
+        if (wantKick && st.weapon[id] !== KICK_ID) {
           const kick = resolveWeapon(config, st, id, true);
           if (kick && kick.contentId === KICK_ID) startAttack(world, st, a, kick, st.cause[id]);
         }
       }
       hitTest(world, config, st, a);
     }
+    pickupPass(world, config, st);
 
     // The hit-stop counts raw ticks, starting the tick after it began, so riders (which move
     // before combat) and combat's own knockback both hold still for exactly its length.
