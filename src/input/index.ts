@@ -32,7 +32,16 @@ export {
   type PadButtonAction,
   type PadLike,
 } from './devices/gamepad';
-export { DEFAULT_KEY_MAP, KeyboardState, type KeyAction, type KeyMap } from './devices/keyboard';
+export {
+  DEFAULT_KEY_MAP,
+  KEY_ACTION_NAMES,
+  KeyboardState,
+  keyLabel,
+  keyLegend,
+  type KeyAction,
+  type KeyLegendRow,
+  type KeyMap,
+} from './devices/keyboard';
 export {
   createTilt,
   tiltAngleFromEuler,
