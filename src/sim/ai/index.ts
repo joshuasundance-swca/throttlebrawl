@@ -1,7 +1,8 @@
 // sim/ai: the AIController (M1 ai-1), run in the controllers phase. Rivals drive through SimInput
 // exactly like the player: this phase only writes world.inputs, and riders and combat act on them.
 // Each tick an AI rider:
-//   1. holds the event's pace, times its own jitter, the `ai.paceScale` tuning and the rubber band;
+//   1. holds the event's pace, times its own jitter, the `ai.paceScale` tuning and the race's
+//      rubber-band factor (riders-3, `rubberBandFactor` in sim/race);
 //   2. picks a line: its spot in the lane, a weave, or alongside a fight target (brawlers hunt);
 //   3. dodges traffic ahead crudely: around it (into the oncoming lane only as risk allows) or brakes;
 //   4. swings at whoever is in its reach window, the player or another rival, with side and kick flags;
@@ -10,7 +11,7 @@
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import { maxYawAt, riderState } from '../riders';
-import { raceState } from '../race';
+import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
 import { PED_SIZE, see, vehicleSize, weaponReach, type ObstacleSize, type Reach, type Seen } from './sense';
@@ -96,15 +97,13 @@ export function aiState(world: World): AiState {
 // ---- Numbers (M1 starting values, [default]) ------------------------------------------------
 
 const COAST_DECEL = 0.6;
-/** The rubber band's reach: the full push applies at this gap to the player, metres. */
-const RUBBER_GAP_M = 150;
-/** The rubber band's strength at the full gap, as a pace fraction, before difficulty scales it. */
-const RUBBER_MAX = 0.06;
 /** Acquisition box for a swing (M1 starting numbers): |Δs| ≤ 4 m, |Δd| ≤ 3 m. */
 const ACQUIRE_S = 4;
 const ACQUIRE_D = 3;
 /** Lateral offset a brawler holds from its target, inside every reach box. */
 const FIGHT_OFFSET_D = 1.1;
+/** How much faster than its pace a hunter rides after a player who got away ahead. */
+const HUNT_PACE = 0.08;
 /** A rider's half width plus a margin, for avoidance. */
 const RIDER_CLEAR = 0.9;
 const STUCK_TICKS = 240;
@@ -126,30 +125,6 @@ function playerIds(world: World, config: SimConfig): EntityId[] {
   const out: EntityId[] = [];
   for (const m of world.movers) if (config.riders[m.riderIndex]?.controller.kind === 'player') out.push(m.id);
   return out;
-}
-
-/**
- * The slight rubber band ([decided]: "arcade fair, slight rubberband"): a pace factor that pushes a
- * rival toward the nearest player, up to ±6 % at 150 m, scaled by `difficulty.rubberBand`.
- * Interim: riders-3 builds the race's rubber-band factor; when it lands, this reads it instead.
- */
-export function rubberBand(world: World, config: SimConfig, id: EntityId): number {
-  const race = raceState(world);
-  const mine = race.distanceToFinish[id];
-  if (mine === undefined) return 1;
-  let gap = 0;
-  let best = Infinity;
-  for (const p of playerIds(world, config)) {
-    const theirs = race.distanceToFinish[p];
-    if (theirs === undefined) continue;
-    const g = mine - theirs; // positive: I am behind the player
-    if (Math.abs(g) < best) {
-      best = Math.abs(g);
-      gap = g;
-    }
-  }
-  if (best === Infinity) return 1;
-  return 1 + clamp(gap / RUBBER_GAP_M, -1, 1) * RUBBER_MAX * config.difficulty.rubberBand;
 }
 
 function canFight(world: World, config: SimConfig, other: Mover, me: Mover): boolean {
@@ -228,7 +203,14 @@ function lineClear(
   return true;
 }
 
-function steerFor(world: World, config: SimConfig, m: Mover, dTarget: number, lateralMax: number): number {
+function steerFor(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  dTarget: number,
+  lateralMax: number,
+  gain: number,
+): number {
   const def = config.riders[m.riderIndex];
   const bike = def?.bike;
   if (!bike) return 0;
@@ -237,7 +219,7 @@ function steerFor(world: World, config: SimConfig, m: Mover, dTarget: number, la
   const v = m.speed;
   const steerScale = world.params['riders.steerScale'] ?? 1;
   // Lateral speed wanted, in the rider's frame (its right is −d when riding toward −s).
-  const vLat = clamp((dTarget - pos.d) * 1.0, -lateralMax, lateralMax) * pos.dir;
+  const vLat = clamp((dTarget - pos.d) * gain, -lateralMax, lateralMax) * pos.dir;
   const wantYaw = vLat / Math.max(v, 5);
   const turn = pos.dir * road.kappaAt(pos.edge, pos.s) * v + 3 * (wantYaw - m.yaw);
   const yawTarget = m.yaw + turn / 4;
@@ -275,6 +257,9 @@ function driveRider(
   const dLo = (edge?.dMin ?? -5) + 0.7;
   const dHi = (edge?.dMax ?? 5) - 0.7;
   const finished = race.finishOrder.includes(id);
+  // Once every player is home the fight is over: the rest hurry to the line for the results.
+  const playersDone = players.length > 0 && players.every((p) => race.finishOrder.includes(p));
+  const racing = !finished && !playersDone;
 
   // Progress watch: unstick after STUCK_TICKS without 2 m of progress.
   const dist = race.distanceToFinish[id] ?? Infinity;
@@ -290,9 +275,9 @@ function driveRider(
 
   // 1. Pace.
   const paceScale = world.params['ai.paceScale'] ?? 1;
-  let speedTarget =
-    config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBand(world, config, id);
+  let speedTarget = config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBandFactor(world, id);
   if (finished) speedTarget = Math.min(speedTarget, 12);
+  else if (playersDone) speedTarget = def?.bike.topSpeedMps ?? speedTarget;
 
   // 2. The line: own spot in the lane, plus a weave.
   const lanes = road.lanesAt(pos.edge, pos.s);
@@ -302,6 +287,17 @@ function driveRider(
   const weave = prof.weave * 1.4 * sin((st.weavePhase[id] ?? 0) + (tick * TAU) / WEAVE_PERIOD_TICKS);
   let dTarget = laneCentre + clamp((st.laneOffset[id] ?? 0) + weave, -laneHalf, laneHalf);
   let lateralMax = 3;
+  let lateralGain = 1;
+  if (finished) {
+    // Home: pull onto its own side's shoulder, clear of the lane, so nobody still racing (and no
+    // car behind it) is walled off by a rider parked in the lane at the road's end.
+    const shoulder = lanes.find((l) => l.kind === 'shoulder' && l.direction === pos.dir);
+    if (shoulder) {
+      dTarget = shoulder.dCenterM;
+      lateralMax = 5;
+      lateralGain = 3; // the road ends soon after the line: get across quickly
+    }
+  }
 
   // Everyone this rider can see.
   const look = clamp(14 + v * 2.2, 14, 90);
@@ -327,7 +323,7 @@ function driveRider(
   const health = riderState(world).health[id] ?? healthMax;
   const brave = health / Math.max(1, healthMax) >= 0.5 * (1 - prof.courage);
   let target: Seen | null = null;
-  if (!finished && !unsticking && prof.behaviour === 'brawler' && brave && aggr > 0) {
+  if (racing && !unsticking && prof.behaviour === 'brawler' && brave && aggr > 0) {
     const seekRange = 10 + 30 * Math.min(1, aggr);
     const current = st.targetId[id] ?? -1;
     const keep = riders.find((r) => r.mover.id === current && Math.abs(r.ahead) <= seekRange * 1.3);
@@ -348,10 +344,23 @@ function driveRider(
     if (d < dLo || d > dHi) d = target.mover.pos.d - side * FIGHT_OFFSET_D;
     dTarget = clamp(d, dLo, dHi);
     lateralMax = 3.5;
-    // Close the gap along the road. A brawler waits (drops below its pace) only for a player
-    // behind it; a rival behind it is left to catch up, so rival fights don't stall the pack.
+    // Close the gap along the road: chase hard, wait gently. A brawler waits (drops below its
+    // pace) only for a player behind it, easing off rather than braking so it is still near the
+    // player's speed when they meet; a rival behind it is left to catch up, so rival fights don't
+    // stall the pack.
     const waitsFor = players.includes(target.mover.id) ? config.event.paceMps * 0.6 : speedTarget;
-    speedTarget = clamp(target.vAlong + target.ahead * 0.8, waitsFor, speedTarget * 1.15);
+    const gain = target.ahead >= 0 ? 0.8 : 0.25;
+    speedTarget = clamp(target.vAlong + target.ahead * gain, waitsFor, speedTarget * 1.15);
+  } else if (
+    racing &&
+    prof.behaviour === 'brawler' &&
+    brave &&
+    aggr > 0 &&
+    prof.targetPreference[0] === 'player' &&
+    players.some((p) => (race.distanceToFinish[p] ?? Infinity) < dist)
+  ) {
+    // A hunter keeps after a player who got away ahead, a little above its pace.
+    speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
 
   // Unsticking: back up to pace (traffic below still has the last word on speed).
@@ -404,12 +413,12 @@ function driveRider(
   const held =
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
-  if (!finished && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
+  if (racing && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
     flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players);
   }
 
   const { throttle, brake } = throttleFor(config, m, speedTarget);
-  const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax);
+  const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax, lateralGain);
   return {
     steer: Math.round(steer * 127),
     throttle: Math.round(throttle * 255),
