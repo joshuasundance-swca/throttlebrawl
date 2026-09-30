@@ -82,8 +82,14 @@ export class TiltState implements TiltSource {
     if (angleDeg !== null && Number.isFinite(angleDeg)) this.raw = angleDeg;
   }
 
+  /**
+   * The angle now becomes the rest angle, and the filter starts from it. The newest reading, not
+   * the smoothed one: the filter runs only while a race samples, so between races it still holds
+   * the last race's angle, and the phone may have turned since.
+   */
   calibrate(): void {
-    this.rest = this.filtered ?? this.raw;
+    if (this.raw !== null) this.filtered = this.raw;
+    this.rest = this.raw;
   }
 
   steer(dt = 1 / 60): number | null {
