@@ -1,7 +1,8 @@
 // Hashing plain sim data (docs/architecture.md, sim.hash()): numbers by their exact float64 bits,
 // strings by code units, objects by sorted keys. Because every system keeps plain data, a lane's
 // new state is covered without touching this file.
-import { fnvByte, fnvF64, fnvString } from '../../core';
+import { FNV_OFFSET, fnvByte, fnvF64, fnvString } from '../../core';
+import type { World } from './store';
 
 export function hashPlain(hash: number, value: unknown): number {
   if (typeof value === 'number') return fnvF64(fnvByte(hash, 1), value);
@@ -21,4 +22,13 @@ export function hashPlain(hash: number, value: unknown): number {
     return fnvByte(h, 8);
   }
   throw new Error(`sim state must be plain data, found ${typeof value}`);
+}
+
+/**
+ * `sim.hash()`: the whole world state (everything but the per-step event buffer, the pending
+ * tuning queue, which is applied before the next step, and the cause counter).
+ */
+export function worldHash(world: World): number {
+  const { tick, timeScale, params, movers, inputs, rng, systems, facts } = world;
+  return hashPlain(FNV_OFFSET, { tick, timeScale, params, movers, inputs, rng, systems, facts });
 }

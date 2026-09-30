@@ -42,6 +42,23 @@ export interface World {
   systems: Record<string, unknown>;
   /** Next id for causeId links. */
   nextCauseId: number;
+  /** Race facts the snapshot shows, published by their owning systems (see `WorldFacts`). */
+  facts: WorldFacts;
+}
+
+/**
+ * Facts one system owns and presentation reads from the snapshot (M2, app-3 item 5). Each has one
+ * writer, through the helpers below, so createSim's snapshot shows them with no wiring PR:
+ * - `slowmo`: a takedown's slow motion (combat-4, `setSlowmo`), in raw ticks left;
+ * - `styleTally`: style cash per rider entity id (sim/race, `addStyle`);
+ * - `grudgeNotedBy`: per rider entity id, the riders who noted a grudge against them this race,
+ *   in the order noted (tumble-2, `noteGrudge`; ai-2 reads it for target choice).
+ * Plain data, hashed with the rest of the world.
+ */
+export interface WorldFacts {
+  slowmo: { remainingTicks: number };
+  styleTally: Record<number, number>;
+  grudgeNotedBy: Record<number, EntityId[]>;
 }
 
 export function createWorld(config: SimConfig): World {
@@ -56,7 +73,24 @@ export function createWorld(config: SimConfig): World {
     events: [],
     systems: {},
     nextCauseId: 1,
+    facts: { slowmo: { remainingTicks: 0 }, styleTally: {}, grudgeNotedBy: {} },
   };
+}
+
+/** Sets the takedown slow motion's raw ticks left; 0 ends it (combat-4 is the one writer). */
+export function setSlowmo(world: World, remainingTicks: number): void {
+  world.facts.slowmo.remainingTicks = Math.max(0, remainingTicks);
+}
+
+/** Adds style cash to a rider's tally (sim/race is the one writer, beside its `style` event). */
+export function addStyle(world: World, riderId: EntityId, points: number): void {
+  world.facts.styleTally[riderId] = (world.facts.styleTally[riderId] ?? 0) + points;
+}
+
+/** Notes that `holderId` holds a grudge against `againstId` for the rest of the race (once). */
+export function noteGrudge(world: World, holderId: EntityId, againstId: EntityId): void {
+  const list = (world.facts.grudgeNotedBy[againstId] ??= []);
+  if (!list.includes(holderId)) list.push(holderId);
 }
 
 /** Adds an entity and returns it. Ids are dense and ascending. */

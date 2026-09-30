@@ -34,6 +34,7 @@ export type {
   SimSnapshot,
   SimTrafficTypeDef,
   SimWeaponDef,
+  SlowmoSnapshot,
   StyleKind,
   TakedownKind,
 } from './types';

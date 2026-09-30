@@ -93,6 +93,23 @@ export interface EntitySnapshot {
    * the entity's own. Optional for hand-built snapshots; the sim fills it for every rider.
    */
   parkedBike?: ParkedBikeSnapshot | null;
+  /**
+   * Style cash this rider has scored this race (M2 riders-5), 0 for other kinds. Optional for
+   * hand-built snapshots; the sim fills it for every entity.
+   */
+  styleTally?: number;
+  /**
+   * Entity ids of the riders who noted a grudge against this rider this race, in the order noted
+   * (M2 tumble-2; the HUD's "grudge noted" marker). Empty for other kinds. Optional for
+   * hand-built snapshots; the sim fills it for every entity.
+   */
+  grudgeNotedBy?: readonly EntityId[];
+}
+
+/** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
+export interface SlowmoSnapshot {
+  active: boolean;
+  remainingTicks: number;
 }
 
 /** Where a parked bike stands, for render (EntitySnapshot.parkedBike). */
@@ -115,6 +132,8 @@ export interface SimSnapshot {
   timeScale: number;
   entities: readonly EntitySnapshot[];
   race: RaceSnapshot;
+  /** The takedown slow motion. Optional for hand-built snapshots; the sim always fills it. */
+  slowmo?: SlowmoSnapshot;
 }
 
 // ---- Events ------------------------------------------------------------------------------
