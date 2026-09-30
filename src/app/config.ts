@@ -1,12 +1,14 @@
 // buildSimConfig: resolves content into the plain data a race starts from (docs/architecture.md,
 // "Sim contract"). The sim never imports content/ or tuning/; everything arrives here. M2 adds the
 // Easy/Normal/Hard preset resolution to `difficulty` without any reader changing.
-import { lookup, type ContentRegistry } from '../content';
+import { lookup, type ContentRegistry, type Rider } from '../content';
 import {
   SIM_TUNING,
   secondsToTicks,
   tuningDefaults,
+  type SimAiPersonality,
   type SimConfig,
+  type SimController,
   type SimRiderDef,
   type SimWeaponDef,
 } from '../sim/api';
@@ -32,6 +34,26 @@ export function streamForEvent(reg: ContentRegistry, eventId = DEFAULT_EVENT): R
   const route = lookup(reg.routes, length.route);
   const network = lookup(reg.networks, route.network);
   return activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
+}
+
+const PERSONALITY_NUMBERS = ['aggression', 'dirtiness', 'courage', 'riskTaking', 'chatter', 'weave'] as const;
+const SIDES = ['left', 'right', 'either'] as const;
+
+/**
+ * A rival's AI controller: its style id plus its own personality numbers, which override the style
+ * preset in sim/ai (docs/content-packs.md, "Rider"). Fields of the wrong type are left out.
+ */
+export function aiController(personality: Rider['personality']): SimController {
+  const own: SimAiPersonality = {};
+  for (const key of PERSONALITY_NUMBERS) {
+    const value: unknown = personality?.[key];
+    if (typeof value === 'number' && Number.isFinite(value)) own[key] = value;
+  }
+  const prefs: unknown = personality?.['targetPreference'];
+  if (Array.isArray(prefs) && prefs.every((p) => typeof p === 'string')) own.targetPreference = [...prefs];
+  const side = SIDES.find((s) => s === personality?.['preferredSide']);
+  if (side) own.preferredSide = side;
+  return { kind: 'ai', style: personality?.style ?? 'racer', personality: own };
 }
 
 function riderDef(
@@ -78,10 +100,9 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   if (!length) throw new Error(`event ${eventId} has no length`);
   const route = stream.routeFor(lookup(reg.routes, length.route));
   const pace = event.field.paceMps ?? 30;
-  const rivals = (event.field.riders ?? []).map((id) => {
-    const style = lookup(reg.riders, id).personality?.style ?? 'racer';
-    return riderDef(reg, id, { kind: 'ai', style }, pace);
-  });
+  const rivals = (event.field.riders ?? []).map((id) =>
+    riderDef(reg, id, aiController(lookup(reg.riders, id).personality), pace),
+  );
   // Grid order: rivals ahead, the player at the back of the grid.
   const riders = [...rivals, riderDef(reg, PLAYER_PRESET, { kind: 'player', slot: 0 }, pace)];
   const weapons: SimWeaponDef[] = Object.values(reg.weapons).map((w) => ({

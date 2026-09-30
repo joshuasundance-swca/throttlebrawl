@@ -19,6 +19,7 @@ export type {
   RaceSnapshot,
   RoadPosSnapshot,
   Sim,
+  SimAiPersonality,
   SimBikeDef,
   SimConfig,
   SimController,

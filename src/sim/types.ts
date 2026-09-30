@@ -150,7 +150,25 @@ export interface SimBikeDef {
   massKg: number;
 }
 
-export type SimController = { kind: 'player'; slot: number } | { kind: 'ai'; style: string };
+/**
+ * A rider's own personality numbers (docs/content-packs.md, "Rider"), resolved from its file. They
+ * override the style preset's values in sim/ai; a missing field keeps the preset's. Numbers are 0..1.
+ */
+export interface SimAiPersonality {
+  aggression?: number;
+  dirtiness?: number;
+  courage?: number;
+  riskTaking?: number;
+  chatter?: number;
+  /** Lane habit: how much the rider drifts across its lane (0 holds a line). */
+  weave?: number;
+  /** Whom to fight first: `grudge`, `player`, `leader`, `nearest`, `crew-enemy`. */
+  targetPreference?: readonly string[];
+  preferredSide?: 'left' | 'right' | 'either';
+}
+
+export type SimController =
+  { kind: 'player'; slot: number } | { kind: 'ai'; style: string; personality?: SimAiPersonality };
 
 export interface SimRiderDef {
   contentId: string;
