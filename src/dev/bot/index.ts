@@ -18,7 +18,46 @@
 //   ATTACK_OFFSET_M, matches speed, and presses attack (one press edge) when the rival is inside
 //   its window. It gives up on a rival after ENGAGE_LIMIT_TICKS and rests before the next fight.
 import type { ActionState } from '../../app';
-import type { EntitySnapshot, LaneInfo, RouteProgress, RouteQueries, SimSnapshot } from '../../sim/api';
+import {
+  InputFlag,
+  quantizeInput,
+  type EntitySnapshot,
+  type LaneInfo,
+  type RouteProgress,
+  type RouteQueries,
+  type SimInput,
+  type SimSnapshot,
+} from '../../sim/api';
+
+/**
+ * The bot's action state as the quantized command the sim steps on, the way input's toSimInput
+ * does it (dev/ may not import input/). Headless bot races (the unit test, the in-page attack
+ * runs) use it.
+ */
+export function botInput(a: ActionState): SimInput {
+  let flags = 0;
+  if (a.attack) flags |= InputFlag.attack;
+  if (a.attackSide < 0) flags |= InputFlag.attackSideLeft;
+  if (a.attackSide > 0) flags |= InputFlag.attackSideRight;
+  if (a.kick) flags |= InputFlag.kick;
+  if (a.lookBack) flags |= InputFlag.lookBack;
+  if (a.skipRunBack) flags |= InputFlag.skipRunBack;
+  return quantizeInput({ steer: a.steer, throttle: a.throttle, brake: a.brake, flags });
+}
+
+/** An empty action state (nothing pressed), for headless bot races. */
+export function blankActions(): ActionState {
+  return {
+    throttle: 0,
+    brake: 0,
+    steer: 0,
+    attack: false,
+    attackSide: 0,
+    kick: false,
+    lookBack: false,
+    skipRunBack: false,
+  };
+}
 
 /** Lateral offset the bot holds beside a rival to punch it, m (punch reach |Δd| ≤ 1.4 m). */
 export const ATTACK_OFFSET_M = 1.1;

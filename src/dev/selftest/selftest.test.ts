@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { runSelfTest, selfTestRequested } from './index';
 import { createSelfTestRace, runSelfTestRace, SELFTEST_TICKS, selfTestConfig } from './race';
 
+// Each self-test race is 3600 ticks of the full field: a few seconds, longer on a loaded machine
+// (one ran 5.9 s beside parallel lanes), so the race-running tests carry their own timeout.
+const RACE_TIMEOUT_MS = 30_000;
+
 describe('dev/selftest: the fixed self-test race', () => {
   it('puts every rider on the in-sim AI (never the BotController) and has no player slot', () => {
     const config = selfTestConfig();
@@ -10,33 +14,45 @@ describe('dev/selftest: the fixed self-test race', () => {
     expect(config.playerSlots).toBe(0);
   });
 
-  it('runs a fixed number of ticks and gives the same hash every run', () => {
-    const a = runSelfTestRace();
-    const b = runSelfTestRace();
-    console.log(`self-test race: ${JSON.stringify(a)}`);
-    expect(a.ticks).toBe(SELFTEST_TICKS);
-    expect(a.hash).toMatch(/^[0-9a-f]{8}$/);
-    expect(b).toEqual(a);
-  });
+  it(
+    'runs a fixed number of ticks and gives the same hash every run',
+    () => {
+      const a = runSelfTestRace();
+      const b = runSelfTestRace();
+      console.log(`self-test race: ${JSON.stringify(a)}`);
+      expect(a.ticks).toBe(SELFTEST_TICKS);
+      expect(a.hash).toMatch(/^[0-9a-f]{8}$/);
+      expect(b).toEqual(a);
+    },
+    RACE_TIMEOUT_MS,
+  );
 
-  it('gives the same hash when stepped in chunks, as the browser does', () => {
-    const race = createSelfTestRace();
-    while (!race.step(97)) {
-      // keep stepping
-    }
-    expect(race.result()).toEqual(runSelfTestRace());
-  });
+  it(
+    'gives the same hash when stepped in chunks, as the browser does',
+    () => {
+      const race = createSelfTestRace();
+      while (!race.step(97)) {
+        // keep stepping
+      }
+      expect(race.result()).toEqual(runSelfTestRace());
+    },
+    RACE_TIMEOUT_MS,
+  );
 
-  it('reports MATCH, MISMATCH and not-built against the expected result', async () => {
-    const actual = runSelfTestRace();
-    expect((await runSelfTest({ expected: () => Promise.resolve(actual) })).status).toBe('MATCH');
-    const wrong = { ...actual, hash: actual.hash === '00000000' ? '00000001' : '00000000' };
-    const mismatch = await runSelfTest({ expected: () => Promise.resolve(wrong) });
-    expect(mismatch.status).toBe('MISMATCH');
-    expect(mismatch.actual).toBe(actual.hash);
-    expect(mismatch.expected).toBe(wrong.hash);
-    expect((await runSelfTest({ expected: () => Promise.resolve(null) })).status).toBe('not-built');
-  });
+  it(
+    'reports MATCH, MISMATCH and not-built against the expected result',
+    async () => {
+      const actual = runSelfTestRace();
+      expect((await runSelfTest({ expected: () => Promise.resolve(actual) })).status).toBe('MATCH');
+      const wrong = { ...actual, hash: actual.hash === '00000000' ? '00000001' : '00000000' };
+      const mismatch = await runSelfTest({ expected: () => Promise.resolve(wrong) });
+      expect(mismatch.status).toBe('MISMATCH');
+      expect(mismatch.actual).toBe(actual.hash);
+      expect(mismatch.expected).toBe(wrong.hash);
+      expect((await runSelfTest({ expected: () => Promise.resolve(null) })).status).toBe('not-built');
+    },
+    RACE_TIMEOUT_MS,
+  );
 
   it('is requested by ?selftest=1 only', () => {
     expect(selfTestRequested('?selftest=1')).toBe(true);
