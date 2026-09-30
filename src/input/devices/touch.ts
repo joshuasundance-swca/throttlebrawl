@@ -137,7 +137,9 @@ export class TouchState {
       const sx = clamp((this.stick.x - this.stick.x0) / r, -1, 1);
       const up = clamp((this.stick.y0 - this.stick.y) / r, 0, 1);
       const dz = this.t.stickDeadZone;
-      const steer = Math.abs(sx) <= dz ? 0 : (Math.sign(sx) * (Math.abs(sx) - dz)) / (1 - dz);
+      // Past the dead zone, the response curve (stickSteerExpo; 1 is M1's straight line).
+      const past = Math.abs(sx) <= dz ? 0 : (Math.abs(sx) - dz) / (1 - dz);
+      const steer = past === 0 ? 0 : Math.sign(sx) * past ** Math.max(1, this.t.stickSteerExpo);
       if (steer !== 0 && this.options.stickSteers) a.steer = steer;
       a.throttle = Math.max(a.throttle, up);
       if (this.options.pullBackBrake) {
