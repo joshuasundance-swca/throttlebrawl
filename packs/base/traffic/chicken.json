@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "chicken",
+  "name": "Chicken",
+  "category": "animal",
+  "tags": ["local"],
+  "lengthM": 0.4,
+  "widthM": 0.3,
+  "cruiseMps": 2.2,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-chicken" }, "paintOptions": ["#b5552b", "#f4f1e8", "#2f2f2f"] },
+  "meta": {
+    "status": "draft",
+    "notes": "A free-range Keys chicken. Crosses the road for reasons it has not shared, and always makes it.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}
