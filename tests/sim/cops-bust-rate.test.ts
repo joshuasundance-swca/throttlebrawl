@@ -4,6 +4,10 @@
 // the base pack's race with Sgt. Pruitt appended, resolved the way buildSimConfig should resolve
 // a cop, and the stub bot in the player slot. When the shared batch carries the cop, this file
 // should read its cached results instead of running races.
+//
+// The reference below gives this Node-side file the Vite client types (`import.meta.glob`), which
+// the base-pack loader it imports through src/app and src/content uses.
+/// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
 import { createHeadlessRace, type ActionState } from '../../src/app';
 import { loadBasePack, lookup } from '../../src/content';
