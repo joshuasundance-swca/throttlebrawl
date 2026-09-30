@@ -11,7 +11,7 @@ interface Handle {
   state(): string;
   snapshot(): {
     tick: number;
-    entities: { id: number; kind: string; targetId: number }[];
+    entities: { id: number; kind: string; targetId: number; health: number; healthMax: number }[];
   } | null;
   playerId(): number;
   setBot(on: boolean): void;
@@ -205,7 +205,7 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await expect(page.locator('#hud-speed')).toHaveText(/^\d+ mph$/);
   await expect(page.locator('#hud-position')).toHaveText(/^\d+(st|nd|rd|th) \/ \d+$/);
   await expect(page.locator('#hud-health')).toBeVisible();
-  await expect(page.locator('#hud-health .hud-bar > div')).toHaveAttribute('style', /width: 100%/);
+  await expect(page.locator('#hud-health .hud-bar > div')).toHaveAttribute('style', /width: \d+(\.\d+)?%/);
   await expect(page.locator('#hud-target')).toBeAttached(); // shown while you have a target
   await expect(page.locator('#hud-pause')).toBeVisible();
   await expect(page.locator('#touch-attack')).toBeVisible();
@@ -221,6 +221,17 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await expect(page.locator('#pause-quit')).toBeVisible();
   await expect(page.locator('#pause-copy-report')).toBeVisible();
   await expect(page.locator('#touch-surface')).toBeHidden();
+  // Paused, the sim stands still: your health bar must match your health in the snapshot.
+  await page.waitForTimeout(100); // a frame or two for the HUD to catch the last step
+  const health = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    const me = g?.snapshot()?.entities[g.playerId()];
+    const fill = document.querySelector<HTMLElement>('#hud-health .hud-bar > div');
+    return { health: me?.health ?? -1, max: me?.healthMax ?? -1, width: fill?.style.width ?? '' };
+  });
+  console.log(`health bar: ${JSON.stringify(health)}`);
+  expect(health.max).toBeGreaterThan(0);
+  expect(parseFloat(health.width)).toBeCloseTo((100 * health.health) / health.max, 0);
   await expectNoOverflow(page, 'pause');
   await shot(page, 'pause');
   await expect(page.locator('#tuning-panel')).toBeHidden();
