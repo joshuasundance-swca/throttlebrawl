@@ -80,6 +80,7 @@ function freshChecks(bot: BotController | null): RaceChecks {
       skipTicks: 0,
       shortcutTicks: 0,
       shortcutSeenTicks: 0,
+      shortcutApproachTicks: 0,
       trafficDodges: 0,
       engagements: 0,
     },

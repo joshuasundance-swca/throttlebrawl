@@ -7,14 +7,18 @@
 // - down (Tumble or OnFoot): holds skipRunBack, so the run-back is skipped;
 // - airborne: holds the throttle and the bars straight;
 // - rides the route: the centre of a travel lane in its direction, or a `shortcut` lane when the
-//   road offers one (road-2's ramp shortcut; it takes it once);
+//   road offers one; and it takes road-2's ramp shortcut once: in the last SHORTCUT_APPROACH_M
+//   before a split zone on the route (`RouteProgress.shortcuts`) it moves into the zone, holds off
+//   fights, and follows a car rather than swerve out of the zone;
 // - avoids traffic: a vehicle ahead in its line makes it pick another lane of its own direction,
-//   pass in the oncoming lane when that is clear far enough ahead, or brake and follow;
+//   pass in the oncoming lane when that is clear far enough ahead, or brake and follow. Only
+//   vehicles count: riders pass through each other in the sim, so a rival (or the cop) in its line
+//   is never a reason to brake;
 // - fights: with a rival rider (never the cop) ahead on the same road, it pulls alongside at
 //   ATTACK_OFFSET_M, matches speed, and presses attack (one press edge) when the rival is inside
 //   its window. It gives up on a rival after ENGAGE_LIMIT_TICKS and rests before the next fight.
 import type { ActionState } from '../../app';
-import type { EntitySnapshot, LaneInfo, RouteQueries, SimSnapshot } from '../../sim/api';
+import type { EntitySnapshot, LaneInfo, RouteProgress, RouteQueries, SimSnapshot } from '../../sim/api';
 
 /** Lateral offset the bot holds beside a rival to punch it, m (punch reach |Δd| ≤ 1.4 m). */
 export const ATTACK_OFFSET_M = 1.1;
@@ -32,6 +36,32 @@ const TRAFFIC_LOOKAHEAD_M = 45;
 const PASS_CLEAR_M = 160;
 /** Half the width the bot keeps clear around its line (half a bike plus margin), m. */
 const LINE_HALF_WIDTH_M = 1.3;
+/** How far before a split zone the bot starts moving into it, m. */
+export const SHORTCUT_APPROACH_M = 150;
+/** The bot's line in a split zone: this far into the zone from its inner edge, m. */
+const SHORTCUT_LINE_IN_M = 0.9;
+
+type ShortcutZone = RouteProgress['shortcuts'][number];
+
+/** The route's split zones, when the route is a full RouteProgress (it is, in the game). */
+function zonesOf(route: RouteQueries): readonly ShortcutZone[] {
+  return 'shortcuts' in route ? (route as RouteProgress).shortcuts : [];
+}
+
+/** A zone on this edge that the bot is approaching or inside, in its travel direction. */
+function approaching(z: ShortcutZone, edge: number, s: number, dir: 1 | -1): boolean {
+  if (z.edge !== edge) return false;
+  return dir > 0
+    ? s >= z.s0 - SHORTCUT_APPROACH_M && s <= z.s1
+    : s <= z.s1 + SHORTCUT_APPROACH_M && s >= z.s0;
+}
+
+/** The line to hold through a zone: just inside its inner edge (the edge nearer the centre line). */
+function zoneLine(z: ShortcutZone): number {
+  const inner = Math.abs(z.d0) <= Math.abs(z.d1) ? z.d0 : z.d1;
+  const outer = inner === z.d0 ? z.d1 : z.d0;
+  return inner + Math.sign(outer - inner) * Math.min(SHORTCUT_LINE_IN_M, Math.abs(outer - inner) / 2);
+}
 
 /** What the bot has done so far this race (the browser test and the batch print these). */
 export interface BotStats {
@@ -40,6 +70,8 @@ export interface BotStats {
   shortcutTicks: number;
   /** Ticks the bot saw a `shortcut` lane at its own position. */
   shortcutSeenTicks: number;
+  /** Ticks the bot spent moving into a split zone that leads onto a shortcut (road-2). */
+  shortcutApproachTicks: number;
   trafficDodges: number;
   engagements: number;
 }
@@ -72,6 +104,7 @@ export function createBot(): BotController {
     skipTicks: 0,
     shortcutTicks: 0,
     shortcutSeenTicks: 0,
+    shortcutApproachTicks: 0,
     trafficDodges: 0,
     engagements: 0,
   };
@@ -83,14 +116,14 @@ export function createBot(): BotController {
   let onShortcut = false;
   let dodging = false;
 
-  /** Is a stretch of road clear of vehicles and riders around lateral `d`, from s0 to s1 ahead? */
+  /** Is a stretch of road clear of vehicles around lateral `d`, from s0 to s1 ahead? */
   function clearAt(snap: SimSnapshot, me: EntitySnapshot, d: number, s0: number, s1: number): boolean {
     for (const o of snap.entities) {
-      if (o.id === me.id || o.kind === 'ped' || o.kind === 'pickup') continue;
+      // Only traffic blocks a line: riders (rivals, the cop) and pedestrians never collide with it.
+      if (o.kind !== 'vehicle') continue;
       const rel = relative(me, o);
       if (!rel || rel.ds < s0 || rel.ds > s1) continue;
-      const width = o.kind === 'vehicle' ? 1.2 : 0.5;
-      if (Math.abs(o.road.d - d) < width + LINE_HALF_WIDTH_M) return false;
+      if (Math.abs(o.road.d - d) < 1.2 + LINE_HALF_WIDTH_M) return false;
     }
     return true;
   }
@@ -168,8 +201,17 @@ export function createBot(): BotController {
       let throttle = 1;
       let brake = 0;
 
-      // Fight a rival riding ahead.
-      const rival = onShortcut ? null : pickRival(snap, me);
+      // road-2's ramp shortcut: a split zone ahead on this edge, not yet taken.
+      const zone = shortcutDone ? undefined : zonesOf(route).find((z) => approaching(z, edge, s, dir));
+      if (zone) {
+        stats.shortcutApproachTicks++;
+        targetD = zoneLine(zone);
+      }
+
+      // Fight a rival riding ahead. While committed to the shortcut (lining up for it, or on it) the
+      // bot keeps its line and speed, and only swings at a rival already inside its window.
+      const committed = onShortcut || zone !== undefined;
+      const rival = pickRival(snap, me);
       if (rival) {
         if (rival.id !== targetId) {
           targetId = rival.id;
@@ -181,13 +223,15 @@ export function createBot(): BotController {
           targetId = -1;
         } else {
           const rel = relative(me, rival);
-          if (rel) {
+          if (rel && !committed) {
             // Hold the side the bot is already on (its own frame), if the road has room there.
             const sideFrame = rel.dd > 0 ? -1 : 1;
             const want = rival.road.d + sideFrame * ATTACK_OFFSET_M * dir;
             const other = rival.road.d - sideFrame * ATTACK_OFFSET_M * dir;
             targetD = want >= bounds.lo && want <= bounds.hi ? want : other;
-            if (rel.ds < 6) {
+          }
+          if (rel) {
+            if (rel.ds < 6 && !committed) {
               // Match speed so the rival stays alongside.
               const vWant = rival.speed + 0.9 * rel.ds;
               throttle = me.speed < vWant - 0.2 ? 1 : me.speed < vWant + 0.8 ? 0.4 : 0;
@@ -210,7 +254,11 @@ export function createBot(): BotController {
 
       // Traffic in the bot's line: another own-direction lane, a pass in the oncoming lane, or follow.
       targetD = clamp(targetD, bounds.lo, bounds.hi);
-      if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
+      if (zone && !clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
+        // Committed to the zone: follow the car rather than swerve out of it.
+        throttle = 0;
+        brake = 0.5;
+      } else if (!clearAt(snap, me, targetD, 0.5, TRAFFIC_LOOKAHEAD_M)) {
         const choices = [
           ...own.map((l) => ({ d: l.dCenterM, reach: TRAFFIC_LOOKAHEAD_M })),
           ...lanes

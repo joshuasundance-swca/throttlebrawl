@@ -56,9 +56,10 @@ export function buildIdFromStamp(stamp: string): string {
   return parts[parts.length - 1]?.trim() ?? '';
 }
 
+/** The racers: riders, not traffic or pickups, and not the law (a cop chases but never places). */
 export function riderCount(snapshot: SimSnapshot): number {
   let n = 0;
-  for (const e of snapshot.entities) if (e.kind === 'rider') n++;
+  for (const e of snapshot.entities) if (e.kind === 'rider' && e.faction !== 'law') n++;
   return n;
 }
 

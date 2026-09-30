@@ -1,20 +1,17 @@
-// cops-1 acceptance over a 50-race seeded batch: the player-bust rate is printed and fails above
-// 30% (docs/milestones/M1.md, cops-1). Until dev-1's shared batch (tests/sim/batch.ts) runs the
-// cop, and until app-2 puts him in the field through buildSimConfig, this file runs its own batch:
-// the base pack's race with Sgt. Pruitt appended, resolved the way buildSimConfig should resolve
-// a cop, and the stub bot in the player slot. When the shared batch carries the cop, this file
-// should read its cached results instead of running races.
+// cops-1 acceptance over the shared 50-race seeded batch: the player-bust rate is printed and fails
+// above 30% (docs/milestones/M1.md, cops-1). The base event now fields Sgt. Pruitt every race
+// (app-2 resolves him in buildSimConfig), so this file reads dev-1's cached batch instead of
+// running its own races. `pruitt()` is the cops lane's own resolution of him, kept as the oracle
+// that buildSimConfig resolves him the same way.
 //
 // The reference below gives this Node-side file the Vite client types (`import.meta.glob`), which
 // the base-pack loader it imports through src/app and src/content uses.
 /// <reference types="vite/client" />
-import { describe, expect, it } from 'vitest';
-import { createHeadlessRace, type ActionState } from '../../src/app';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { loadBasePack, lookup } from '../../src/content';
-import { createStubBot } from '../../src/dev/bot';
-import { createSim, quantizeInput, type SimConfig, type SimEvent, type SimRiderDef } from '../../src/sim/api';
+import type { SimRiderDef } from '../../src/sim/api';
+import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
 
-const RACES = 50;
 const MAX_BUST_RATE = 0.3;
 
 /** Sgt. Pruitt as a SimRiderDef: the base bike scaled by his pursuit speed, and his law block. */
@@ -50,75 +47,35 @@ function pruitt(): SimRiderDef {
   };
 }
 
-function blank(): ActionState {
-  return {
-    throttle: 0,
-    brake: 0,
-    steer: 0,
-    attack: false,
-    attackSide: 0,
-    kick: false,
-    lookBack: false,
-    skipRunBack: false,
-  };
-}
+let batch: BatchResult;
+beforeAll(async () => {
+  batch = await simBatch();
+}, BATCH_TIMEOUT_MS);
 
-interface RaceResult {
-  busted: boolean;
-  finished: boolean;
-  chased: boolean;
-  closestM: number;
-  ticks: number;
-}
+describe('cops: Sgt. Pruitt in the race field', () => {
+  it('rides in every batch race, resolved the way the cops lane resolves him, behind the player', () => {
+    const { config, playerId } = createBatchRace(1);
+    const cops = config.riders.filter((r) => r.controller.kind === 'cop');
+    expect(cops).toEqual([pruitt()]);
+    expect(config.riders.findIndex((r) => r.controller.kind === 'cop')).toBeGreaterThan(playerId);
+    for (const race of batch.races) expect(race.field.cops, `seed ${race.seed}`).toBe(1);
+  });
+});
 
-/** One race, until the player finishes or is busted (all the bust rate needs), or 10 minutes. */
-function race(seed: number, cop: SimRiderDef): RaceResult {
-  const base = createHeadlessRace({ seed });
-  const config: SimConfig = { ...base.config, riders: [...base.config.riders, cop] };
-  const copId = config.riders.length - 1;
-  const sim = createSim(config);
-  const bot = createStubBot();
-  const events: SimEvent[] = [];
-  let closestM = Infinity;
-  for (;;) {
-    const snap = sim.snapshot();
-    const me = snap.entities[base.playerId];
-    const law = snap.entities[copId];
-    if (!me || !law) throw new Error('missing player or cop');
-    if (law.speed > 0) closestM = Math.min(closestM, Math.abs(me.progress - law.progress));
-    const busted = events.some((e) => e.type === 'bust' && e.target === base.playerId);
-    if (busted || me.finished || sim.isOver() || sim.tick >= 60 * 600) {
-      return {
-        busted,
-        finished: me.finished,
-        chased: events.some((e) => e.type === 'siren'),
-        closestM,
-        ticks: sim.tick,
-      };
-    }
-    const a = blank();
-    bot.drive(me, base.route, a);
-    sim.step([quantizeInput({ ...a, flags: 0 })]);
-    events.push(...sim.events());
-  }
-}
-
-describe('cops: the player-bust rate over 50 seeded races', () => {
+describe('cops: the player-bust rate over the 50 seeded races', () => {
   it(`prints the rate and stays at or under ${MAX_BUST_RATE * 100}%`, () => {
-    const cop = pruitt();
-    const results = Array.from({ length: RACES }, (_, i) => race(1000 + i, cop));
-    const busts = results.filter((r) => r.busted).length;
-    const chased = results.filter((r) => r.chased).length;
-    const finished = results.filter((r) => r.finished).length;
-    const closest = Math.min(...results.map((r) => r.closestM));
-    const rate = busts / RACES;
+    const races = batch.races;
+    const busted = races.filter((r) => r.events.some((e) => e.type === 'bust' && e.target === r.playerId));
+    const chased = races.filter((r) => r.events.some((e) => e.type === 'siren' && e.data['on'] === true));
+    const rate = busted.length / races.length;
     // Straight to stdout: Vitest hides console output from passing tests, and this line must show.
     process.stdout.write(
-      `cops batch: ${RACES} seeded races with the cop: player busted ${busts} (${(rate * 100).toFixed(1)}%), ` +
-        `finished ${finished}, cop gave chase in ${chased}, closest moving cop-to-player gap ${closest.toFixed(1)} m\n`,
+      `cops batch: ${races.length} seeded races with the cop: player busted ${busted.length} ` +
+        `(${(rate * 100).toFixed(1)}%${busted.length ? `: seeds ${busted.map((r) => r.seed).join(', ')}` : ''}), ` +
+        `the cop gave chase in ${chased.length}\n`,
     );
-    expect(results).toHaveLength(RACES);
-    expect(chased).toBe(RACES); // he always spawns and gives chase
+    expect(races).toHaveLength(50);
+    expect(chased).toHaveLength(races.length); // he always spawns and gives chase
     expect(rate).toBeLessThanOrEqual(MAX_BUST_RATE);
-  }, 120_000);
+  });
 });

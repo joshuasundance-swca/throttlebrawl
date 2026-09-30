@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { basePackFiles, buildRegistry, loadBasePack } from '../content';
+import { basePackFiles, buildRegistry, loadBasePack, lookup } from '../content';
 import { aiController, buildSimConfig, streamForEvent } from './config';
 
 const shove = {
@@ -134,5 +134,54 @@ describe('app/config: rival personalities reach the sim (the ai-1 contract wire)
       expect(typeof r.controller.style).toBe('string');
       expect(r.controller.personality).toBeTypeOf('object');
     }
+  });
+});
+
+describe('app/config: the M1 race field (four rivals and a cop)', () => {
+  const reg = loadBasePack();
+  const config = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+
+  it('fields the four regulars ahead of the player, and the player ahead of the law', () => {
+    expect(config.riders.map((r) => r.contentId)).toEqual([
+      'base:deacon-vane',
+      'base:dial-up',
+      'base:chad-speedwell',
+      'base:kevin-from-accounting',
+      'base:player',
+      'base:sgt-pruitt',
+    ]);
+    expect(config.riders.map((r) => r.controller.kind)).toEqual(['ai', 'ai', 'ai', 'ai', 'player', 'cop']);
+  });
+
+  it('resolves Sgt. Pruitt as a cop: the law faction, his bike scaled by his pursuit speed, his law block', () => {
+    const cop = config.riders.find((r) => r.role === 'cop');
+    const bike = lookup(reg.bikes, 'rustbucket-400').handling;
+    expect(cop).toMatchObject({
+      name: 'Sgt. Pruitt',
+      faction: 'law',
+      controller: { kind: 'cop' },
+      healthMax: 100,
+      law: {
+        agency: 'base:keys-county-deputies',
+        bustRadiusM: 14,
+        bustDwellS: 1,
+        fineCash: 400,
+        pursuitSpeedScale: 1.05,
+      },
+    });
+    // No pace floor for the law: his speed comes from his bike and his pursuit scale alone.
+    expect(cop?.bike.topSpeedMps).toBeCloseTo(bike.topSpeedMps * 1.05, 9);
+  });
+
+  it('fields no cop when the event says none', () => {
+    const quiet = buildRegistry(
+      basePackFiles().map((f) => {
+        const json = f.json as { type?: string; cops?: unknown };
+        return json.type === 'event' ? { ...f, json: { ...json, cops: { mode: 'none' } } } : f;
+      }),
+    );
+    const c = buildSimConfig(quiet, streamForEvent(quiet), { seed: 1 });
+    expect(c.riders.some((r) => r.faction === 'law')).toBe(false);
+    expect(c.riders.filter((r) => r.controller.kind === 'ai')).toHaveLength(4);
   });
 });

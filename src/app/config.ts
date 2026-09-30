@@ -67,6 +67,10 @@ function riderDef(
   const h = bike.handling;
   // Rival pace comes from the event, not the bike: a rival's bike is raised to at least the pace.
   const floor = controller.kind === 'ai' ? paceMps : 0;
+  // A cop rides his bike scaled by his pursuit speed, with no pace floor, and carries his law
+  // block (cops-1; docs/content-packs.md, "Rider").
+  const law = controller.kind === 'cop' ? rider.law : undefined;
+  const speedScale = law?.pursuitSpeedScale ?? 1;
   return {
     contentId: `base:${rider.id}`,
     name: rider.name ?? rider.id,
@@ -82,7 +86,7 @@ function riderDef(
     controller,
     bike: {
       contentId: `base:${bike.id}`,
-      topSpeedMps: Math.max(h.topSpeedMps, floor),
+      topSpeedMps: Math.max(h.topSpeedMps * speedScale, floor),
       accelMps2: h.accelMps2,
       brakeMps2: h.brakeMps2,
       steerRateMps: h.steerRateMps,
@@ -90,7 +94,40 @@ function riderDef(
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
+    ...(law
+      ? {
+          law: {
+            agency: law.agency.includes(':') ? law.agency : `base:${law.agency}`,
+            bustRadiusM: law.bustRadiusM,
+            bustDwellS: law.bustDwellS,
+            fineCash: law.fineCash,
+            pursuitSpeedScale: law.pursuitSpeedScale,
+          },
+        }
+      : {}),
   };
+}
+
+/**
+ * The event's law (docs/content-packs.md, "Event": `cops`). `every-race` fields `baseCount` cops
+ * (default 1): the region's cop riders, in id order, at the back of the grid behind the player.
+ * `tier-rising` and `chaos-summoned` need the career and the chaos meter (M4), so they field none
+ * in M1, like `none`. [default]
+ */
+export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] {
+  const event = lookup(reg.events, eventId);
+  const cops = event.cops as { mode: string; baseCount?: unknown };
+  if (cops.mode !== 'every-race') return [];
+  const count =
+    typeof cops.baseCount === 'number' && Number.isFinite(cops.baseCount)
+      ? Math.max(0, Math.floor(cops.baseCount))
+      : 1;
+  const pool = Object.values(reg.riders)
+    .filter((r) => r.role === 'cop' && r.law && (!r.region || r.region === event.region))
+    .map((r) => r.id)
+    .sort();
+  if (pool.length === 0) return [];
+  return Array.from({ length: count }, (_, i) => pool[i % pool.length] ?? '');
 }
 
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
@@ -103,8 +140,10 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const rivals = (event.field.riders ?? []).map((id) =>
     riderDef(reg, id, aiController(lookup(reg.riders, id).personality), pace),
   );
-  // Grid order: rivals ahead, the player at the back of the grid.
-  const riders = [...rivals, riderDef(reg, PLAYER_PRESET, { kind: 'player', slot: 0 }, pace)];
+  // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
+  // (the race parks him a row back and he never takes a place).
+  const cops = copIds(reg, eventId).map((id) => riderDef(reg, id, { kind: 'cop' }, pace));
+  const riders = [...rivals, riderDef(reg, PLAYER_PRESET, { kind: 'player', slot: 0 }, pace), ...cops];
   const weapons: SimWeaponDef[] = Object.values(reg.weapons).map((w) => ({
     contentId: `base:${w.id}`,
     unarmed: w.unarmed,

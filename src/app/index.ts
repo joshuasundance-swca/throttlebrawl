@@ -39,6 +39,7 @@ import {
 import { createUi } from '../ui';
 import { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
 import { createLoop } from './loop';
+import { createOutcome, raceResult, resultsDue } from './results';
 import { transition, type AppEvent, type AppState } from './states';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -291,17 +292,17 @@ export function createApp(opts: AppOptions): AppHandle {
   tuning.onChange(applyPresentationParam);
   for (const d of tuning.decls) if (!d.affectsSim) applyPresentationParam(d.id, tuning.get(d.id));
 
+  // The player's own finish or bust (app/results.ts): results, or "Busted" and the fine.
+  let outcome = createOutcome();
   const finishRace = () => {
     if (!race || !curr || !go('finished')) return;
-    const me = curr.entities[playerId];
-    const order = curr.race.finishOrder;
-    const place = me ? (order.includes(playerId) ? order.indexOf(playerId) + 1 : me.place) : 0;
-    ui.showResults({
-      place,
-      of: curr.entities.filter((e) => e.kind === 'rider').length,
-      prizeCash: event.rewards.byPlaceCash[place - 1] ?? 0,
-      eventName: event.name ?? event.id,
-    });
+    ui.showResults(
+      raceResult(curr, playerId, outcome, {
+        id: event.id,
+        name: event.name,
+        byPlaceCash: event.rewards.byPlaceCash,
+      }),
+    );
     ui.show('results');
   };
 
@@ -330,8 +331,9 @@ export function createApp(opts: AppOptions): AppHandle {
       renderer.pushEvents(events);
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
+    outcome.note(events, playerId, tick);
     stepListener?.(curr, events);
-    if (race.isOver()) {
+    if (resultsDue(outcome, tick, race.isOver())) {
       recorder.finish(tick, race.hash());
       finishRace();
     }
@@ -405,6 +407,7 @@ export function createApp(opts: AppOptions): AppHandle {
       pendingTuning.length = 0;
       // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
       recorder.beginRace(race, replayKey);
+      outcome = createOutcome();
       prev = null;
       curr = race.snapshot();
       recent = [];
