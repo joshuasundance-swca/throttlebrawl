@@ -334,6 +334,13 @@ export interface SimEventDef {
   byPlaceCash: readonly number[];
   /** Race-end timeout after the player finishes, in ticks. */
   raceEndTimeoutTicks: number;
+  /**
+   * The event length raced (`short`, `standard`, `long`; M2 riders-5) and its route's content id,
+   * so a replay header names the route to rebuild. Optional for hand-built configs; buildSimConfig
+   * always writes both.
+   */
+  lengthId?: string;
+  routeId?: string;
 }
 
 /** Resolved difficulty scales, 1.0 = Normal. The preset id travels for display only. */

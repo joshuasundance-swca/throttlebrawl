@@ -21,6 +21,14 @@ export const APP_TUNING: readonly TuningParamDecl[] = [
 export type PresentationOwner = 'camera' | 'audio' | 'input' | 'barks';
 
 /**
+ * A value read only at race start, by buildSimConfig (the `difficulty.*` scales): neither the sim
+ * nor a presentation module takes it mid-race, so the pause menu says "applies next race".
+ */
+export function isRaceStartParam(id: string): boolean {
+  return id.startsWith('difficulty.');
+}
+
+/**
  * Which module a presentation-only value goes to, by id prefix, or null. Sim values never come here
  * (they reach the sim through SimConfig and `sim.applyParam`), and `display.*` is read by the
  * frame gate directly.
