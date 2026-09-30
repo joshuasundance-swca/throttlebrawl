@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InputFlag } from '../sim/api';
-import { emptyActions, KeyboardState, toSimInput } from './index';
+import { DEFAULT_KEY_MAP, emptyActions, KeyboardState, toSimInput } from './index';
 
 describe('input: keyboard and latching', () => {
   it('latches a tap shorter than one tick until the next sample, exactly once', () => {
@@ -41,5 +41,56 @@ describe('input: keyboard and latching', () => {
     expect(input.brake).toBe(255);
     expect(input.flags & InputFlag.attackSideLeft).toBeTruthy();
     expect(input.flags & InputFlag.kick).toBeTruthy();
+  });
+
+  it('holding an attack key attacks once; the side and kick stay held while the key is down', () => {
+    const kb = new KeyboardState();
+    kb.down('KeyO');
+    const ticks = Array.from({ length: 10 }, () => {
+      const a = emptyActions();
+      kb.sample(a, 1 / 60);
+      return toSimInput(a);
+    });
+    expect(ticks.filter((t) => t.flags & InputFlag.attack)).toHaveLength(1);
+    expect(ticks.every((t) => t.flags & InputFlag.attackSideRight)).toBe(true);
+    kb.up('KeyO');
+    const after = emptyActions();
+    kb.sample(after, 1 / 60);
+    expect(toSimInput(after).flags).toBe(0);
+  });
+
+  it('a key tapped between ticks still lands its side and kick flags', () => {
+    const kb = new KeyboardState();
+    kb.down('KeyK');
+    kb.up('KeyK');
+    const a = emptyActions();
+    kb.sample(a, 1 / 60);
+    const flags = toSimInput(a).flags;
+    expect(flags & InputFlag.attack).toBeTruthy();
+    expect(flags & InputFlag.kick).toBeTruthy();
+  });
+
+  it('maps look back, skip run-back and leaves the reserved cruise key unbound', () => {
+    const kb = new KeyboardState();
+    kb.down('KeyL');
+    kb.down('Space');
+    kb.down('KeyC');
+    const a = emptyActions();
+    kb.sample(a, 1 / 60);
+    const input = toSimInput(a);
+    expect(input.flags).toBe(InputFlag.lookBack | InputFlag.skipRunBack);
+    expect(Object.values(DEFAULT_KEY_MAP).flat()).not.toContain('KeyC');
+  });
+
+  it('keys are remappable', () => {
+    const kb = new KeyboardState({ ...DEFAULT_KEY_MAP, attack: ['KeyF'] });
+    kb.down('KeyJ');
+    const a = emptyActions();
+    kb.sample(a, 1 / 60);
+    expect(a.attack).toBe(false);
+    kb.down('KeyF');
+    const b = emptyActions();
+    kb.sample(b, 1 / 60);
+    expect(b.attack).toBe(true);
   });
 });

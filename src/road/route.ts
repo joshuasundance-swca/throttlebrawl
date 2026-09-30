@@ -5,12 +5,23 @@ import type { RouteQueries } from '../core';
 import type { RoadNetwork } from './network';
 import type { BakedRoute } from './types';
 
+/** A checkpoint on the route, with its progress (distance from the start). */
+export interface RouteCheckpoint {
+  edge: number;
+  s: number;
+  progress: number;
+}
+
 export interface RouteProgress extends RouteQueries {
   readonly routeId: string;
   /** Route length from the start position to the finish, in metres. */
   readonly length: number;
   readonly start: { edge: number; s: number; dir: 1 | -1 };
   readonly finish: { edge: number; s: number };
+  /** Checkpoints in route order. */
+  readonly checkpoints: readonly RouteCheckpoint[];
+  /** The start grid from the route file, when it has one. */
+  readonly startGrid: { rows: number; perRow: number; rowGapM: number } | null;
   /** Distance from the start along the route (0 at the start line), or -Infinity off the route. */
   progressAt(edge: number, s: number): number;
   /** Whether the edge is in the route's allowed set. */
@@ -44,11 +55,20 @@ export function createRouteProgress(net: RoadNetwork, route: BakedRoute): RouteP
     const off = offsets.get(edge);
     return off === undefined ? -Infinity : off + s - startAt;
   };
+  const checkpoints = (route.checkpoints ?? [])
+    .map((c) => {
+      const edge = net.edgeIndex(c.road);
+      return { edge, s: c.s, progress: progressAt(edge, c.s) };
+    })
+    .sort((a, b) => a.progress - b.progress);
+  const grid = route.startGrid;
   return {
     routeId: route.id,
     length: finishAt - startAt,
     start: { edge: startEdge, s: route.start.s, dir: route.start.dir },
     finish: { edge: finishEdge, s: route.finish.s },
+    checkpoints,
+    startGrid: grid ? { rows: grid.rows, perRow: grid.perRow, rowGapM: grid.rowGapM } : null,
     progressAt,
     allows: (edge) => allowed.has(edge),
     distanceToFinish: (edge, s) => {
