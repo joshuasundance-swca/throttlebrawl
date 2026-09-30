@@ -10,12 +10,12 @@ import { createAssetManifest } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, type CameraPose } from '../camera';
 import { assetIndex, contentHashes, loadBasePack, lookup } from '../content';
-import { createInput, type ActionState } from '../input';
+import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import { createSettingsStore, type StorageLike } from '../save';
-import { controlOptionsOf } from './controls';
+import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import {
   createSim,
   SIM_DT,
@@ -259,6 +259,9 @@ export function createApp(opts: AppOptions): AppHandle {
     layout,
     tuning,
     settings,
+    // The control settings input-2 wired (#106); input itself is made after the ui, below, so the
+    // vibration check asks input's haptics the same question on a throwaway (no side effects).
+    liveSettings: liveControlSettings(browserControlDevice(createHaptics().supported)),
     callbacks: {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
