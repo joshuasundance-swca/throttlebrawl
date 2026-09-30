@@ -32,6 +32,14 @@ beforeAll(() => {
     version: '0.1.0',
     formatVersion: 1,
     license: 'MIT',
+    licenseRules: [
+      {
+        paths: ['regions/*/roads/osm-*.json'],
+        spdx: 'ODbL-1.0',
+        attribution: 'Road data © OpenStreetMap contributors.',
+        licenseFile: 'LICENSES/missing.txt',
+      },
+    ],
     defaults: { tuning: 'registry', hud: 'classic' },
   });
   write(`${b}/hud/classic.json`, {
@@ -106,6 +114,9 @@ describe('packs:check', () => {
       expect(out).toContain(`${pack}/bikes/slowpoke.json /handling/topSpeedMps:`);
       expect(out).toContain(
         `${pack}/weapons/long-pipe.json /steal/windowEndS: the steal window ends at tick 30`,
+      );
+      expect(out).toContain(
+        `${pack}/pack.json /licenseRules/0/licenseFile: the licence text "LICENSES/missing.txt" is not in the pack`,
       );
       expect(out).toMatch(/\[examined\] 5 pack files in 1 pack\(s\)/);
       expect(out).toContain('packs:check: FAILED');
