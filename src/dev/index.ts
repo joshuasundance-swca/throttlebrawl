@@ -6,12 +6,21 @@
 import type { AppHandle } from '../app';
 import { installTestHandle, testFlagSet } from './handle';
 import { createPerfProbe, debugRequested, mountDebugOverlay } from './perf';
+import { installErrorCapture } from './report';
 import { selfTestRequested, showSelfTest } from './selftest';
 
 // createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
 export { createBot, createStubBot } from './bot';
 export type { BotController, BotStats, StubBot } from './bot';
-export { copyReport, reportText } from './report';
+export {
+  copyReport,
+  debugFileText,
+  gatherReport,
+  installErrorCapture,
+  parseDebugFile,
+  reportText,
+  saveDebugFile,
+} from './report';
 export { createPerfProbe, debugRequested, formatOverlay, percentiles } from './perf';
 export type { PerfProbe, PerfReport, Percentiles } from './perf';
 export { runSelfTest, selfTestRequested, showSelfTest } from './selftest';
@@ -22,6 +31,7 @@ export type { RaceChecks, TestHandle } from './handle';
 /** Installs whatever the page's flags ask for. */
 export function installDev(app: AppHandle): void {
   const search = window.location.search;
+  installErrorCapture();
   if (testFlagSet()) installTestHandle(app);
   if (debugRequested(search)) mountDebugOverlay(document, createPerfProbe(app));
   if (selfTestRequested(search)) void showSelfTest(document, () => app.rendererStats().renderer);

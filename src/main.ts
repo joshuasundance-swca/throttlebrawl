@@ -3,7 +3,7 @@
 // debug report from dev/ reaches the UI through app/. Nothing else imports dev/, so dev/ ships in
 // production builds without any module depending on it.
 import { createApp, type AppHandle } from './app';
-import { copyReport, installDev, testFlagSet } from './dev';
+import { copyReport, installDev, saveDebugFile, testFlagSet } from './dev';
 
 function randomSeed(): number {
   const buf = new Uint32Array(1);
@@ -21,7 +21,10 @@ function boot(): void {
       host: document.body,
       canvas,
       build: { id: __BUILD_ID__, channel: __BUILD_CHANNEL__, branch: __BUILD_BRANCH__ },
-      callbacks: { onCopyReport: () => (app ? copyReport(app) : Promise.resolve()) },
+      callbacks: {
+        onCopyReport: () => (app ? copyReport(app) : Promise.resolve()),
+        onSaveDebugFile: () => (app ? saveDebugFile(app) : Promise.resolve()),
+      },
       seed: testFlagSet() ? 1 : randomSeed(),
     });
   } catch (err) {

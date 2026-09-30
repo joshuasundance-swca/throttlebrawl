@@ -1,0 +1,7 @@
+---
+kind: new
+audience: player
+---
+When something breaks on your phone, the pause screen can now tell us exactly what happened. "Copy debug report" puts a short summary on the clipboard (never more than 2 KB, so it pastes cleanly into a chat) and says so at the top of the screen. It covers the build, the graphics chip, your settings and tuning changes, frame times, recent errors and the last 30 things that happened in the race. "Save debug file" hands the whole report plus a recording of your race to the phone's share sheet, or downloads it where there is no share sheet. The recording lets an agent replay your exact race. Nothing is ever sent anywhere by itself.
+
+For agents (M1 dev-3): `src/dev/report/summary.ts` builds the summary (events trimmed first, then older errors, then a hard byte cut) and the debug file (summary, full report, then `===== replay (one line of JSON) =====` and replay-1's encoded file); `parseDebugFile` reads it back. `errors.ts` collects uncaught errors, unhandled rejections and `console.error` from `installDev` on (the last 50). The veto list reads `vetoes` from the settings record, which is empty until M2. To replay a pasted file in the page, call `window.__game.checkDebugFile(text)` (test flag on); it goes through `AppHandle.checkReplay`. Tests: `src/dev/report/report.test.ts` (unit), `tests/e2e/dev-report.spec.ts` (mocked clipboard from the menu and the pause screen, the download, a tampered copy that must desync, and a mocked share sheet), and the bot race now replays its finished debug file to the final hash.
