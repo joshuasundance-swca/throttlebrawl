@@ -260,6 +260,9 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
   await expect(page.locator('#results-place')).toHaveText(/^\d+(st|nd|rd|th) of \d+$/);
   await expect(page.locator('#results-prize')).toContainText('Prize: $');
+  // ui-3: the takedowns and style tally (zero until combat-4 and riders-5 emit them).
+  await expect(page.locator('#results-tally')).toHaveText(/^Takedowns: \d+\. Style: \$[\d,]+\.$/);
+  console.log(`results tally: ${await page.locator('#results-tally').textContent()}`);
   await expect(page.locator('#results-race')).toBeVisible();
   console.log(`results: ${await page.locator('#results-place').textContent()}`);
 

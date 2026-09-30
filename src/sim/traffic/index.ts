@@ -13,10 +13,14 @@
 //   of an anchor (fastest anchor top speed plus fastest cruise speed, times 2 s: about 125 m at
 //   M1 speeds). Vehicles that leave the window are recycled to its front. Rolls come from
 //   world.rng.traffic only.
-// - Density per direction is a tuning slider, so oncoming traffic can go to zero.
-// - Contacts: a first contact with a `normal` vehicle wobbles the rider (a `wobble` event); a
-//   contact while still unstable, or any contact with a `big` one (trucks), crashes the rider (a
-//   `crash` event for tumble-1). Both carry data.cause `traffic` and target the vehicle. A close pass with no contact fires `nearMiss`.
+// - Density per direction is a tuning slider, so oncoming traffic can go to zero; oncoming density
+//   can also ease in over the start of a race (M2 traffic-3, off by default). The region's
+//   `traffic.mix` weights pick the vehicle types (SimTrafficTypeDef.weight).
+// - Contacts (playtest 1): a solid frontal or rear hit crashes the rider inelastically; a side
+//   brush, a graze or a slow nudge wobbles (a `wobble` event), unless the rider is still unstable
+//   or the vehicle is `big` (trucks), which crashes (a `crash` event for the tumble). Both carry
+//   data.cause `traffic`, `hit` and `impactMps`, and target the vehicle. A close, fast pass with no
+//   contact fires `nearMiss`. The full rule is on contacts() below.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
@@ -49,6 +53,42 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     max: 3,
     step: 0.1,
     unit: '×',
+    affectsSim: true,
+  },
+  {
+    // M2 traffic-3: 0 is off. Playtest 1 found nothing unfair, so it ships off. [default]
+    id: 'traffic.oncomingEaseInS',
+    group: 'traffic',
+    label: 'Oncoming ease-in',
+    default: 0,
+    min: 0,
+    max: 120,
+    step: 5,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    // M2 traffic-3: a pass slower than this is not a near miss (no farming parked cars). [default]
+    id: 'traffic.nearMissClosingMps',
+    group: 'traffic',
+    label: 'Near miss: closing speed',
+    default: 12,
+    min: 0,
+    max: 40,
+    step: 1,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Playtest 1: a frontal or rear hit at least this fast throws the rider off. [default]
+    id: 'traffic.solidHitMps',
+    group: 'traffic',
+    label: 'Car hit: wipeout speed',
+    default: 6,
+    min: 0,
+    max: 40,
+    step: 0.5,
+    unit: 'm/s',
     affectsSim: true,
   },
 ];
@@ -92,18 +132,36 @@ export const TRAFFIC = {
   unstableS: 1.5,
   /** A pass this close (side to side, box to box) with no contact is a near miss, m. */
   nearMissM: 1.0,
+  /** The rider must be moving at least this fast too, so standing by the road never scores. */
   nearMissMinMps: 8,
+  /** Fallback for the `traffic.nearMissClosingMps` slider: the least closing speed of a near miss. */
+  nearMissClosingMps: 12,
+  /** Fallback for `traffic.solidHitMps`: an end-on hit at least this fast crashes the rider. */
+  solidHitMps: 6,
+  /** An end-on contact overlapping sideways by less than this is a graze (a wobble), m. */
+  grazeM: 0.3,
+  /** With the ease-in on, oncoming density starts at this fraction of its slider value. */
+  oncomingEaseFrom: 0.25,
   /** Riders higher than this above the road pass over traffic, m. */
   maxContactH: 1.2,
 };
 
-/** Category defaults until the region's mix weights reach SimConfig (see the lane report). */
+/**
+ * The road-vehicle categories. `weight` is the fallback when a type carries no region weight
+ * (hand-built configs); buildSimConfig writes the region's `traffic.mix` weight (M2 traffic-3).
+ */
 const CATEGORY: Readonly<Record<string, { weight: number; laneChanges: boolean } | undefined>> = {
   car: { weight: 5, laneChanges: true },
   truck: { weight: 2, laneChanges: false },
   rv: { weight: 1.5, laneChanges: false },
   oddity: { weight: 0.5, laneChanges: false },
 };
+
+/** How often traffic picks a road-vehicle type: its region weight, else its category default. */
+function weightOf(t: SimTrafficTypeDef | undefined): number {
+  const w = t?.weight ?? CATEGORY[t?.category ?? '']?.weight ?? 0;
+  return Number.isFinite(w) && w > 0 ? w : 0;
+}
 
 /** Traffic's plain state. Per-vehicle arrays are indexed by vehicle slot; per-rider by entity id. */
 export interface TrafficState {
@@ -136,6 +194,8 @@ export interface TrafficState {
   recycles: number;
   /** Vehicles moved out of every window after driving off the end of the traffic road. */
   parks: number;
+  /** World time since the race started (the sum of timeScale / 60), s: the ease-in's clock. */
+  clockS: number;
 }
 
 export function trafficState(world: World): TrafficState {
@@ -160,6 +220,7 @@ export function trafficState(world: World): TrafficState {
     spawns: 0,
     recycles: 0,
     parks: 0,
+    clockS: 0,
   }));
 }
 
@@ -243,9 +304,21 @@ function windowLength(anchors: readonly number[], c: Corridor): number {
   return total;
 }
 
+/**
+ * The oncoming ease-in (M2 traffic-3): with `traffic.oncomingEaseInS` above 0, oncoming density
+ * grows linearly from `oncomingEaseFrom` of its slider value at the start to all of it once that
+ * much world time has passed. 1 when the ease-in is off.
+ */
+export function oncomingEase(world: World, clockS: number): number {
+  const easeS = world.params['traffic.oncomingEaseInS'] ?? 0;
+  if (!(easeS > 0)) return 1;
+  const from = TRAFFIC.oncomingEaseFrom;
+  return from + (1 - from) * clamp(clockS / easeS, 0, 1);
+}
+
 function densityFor(world: World, st: TrafficState, dir: number): number {
-  const id = dir === st.corridor.routeDir ? 'traffic.densitySame' : 'traffic.densityOncoming';
-  return clamp(world.params[id] ?? 1, 0, 10);
+  if (dir === st.corridor.routeDir) return clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
+  return clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
 }
 
 function targetCount(world: World, st: TrafficState, anchors: readonly number[], dir: number): number {
@@ -257,10 +330,10 @@ function targetCount(world: World, st: TrafficState, anchors: readonly number[],
 
 function rollType(world: World, config: SimConfig, st: TrafficState): number {
   let total = 0;
-  for (const i of st.types) total += CATEGORY[config.trafficTypes[i]?.category ?? '']?.weight ?? 0;
+  for (const i of st.types) total += weightOf(config.trafficTypes[i]);
   let r = nextFloat(world.rng.traffic) * total;
   for (const i of st.types) {
-    r -= CATEGORY[config.trafficTypes[i]?.category ?? '']?.weight ?? 0;
+    r -= weightOf(config.trafficTypes[i]);
     if (r < 0) return i;
   }
   return st.types[st.types.length - 1] ?? 0;
@@ -639,9 +712,24 @@ function putRider(world: World, config: SimConfig, st: TrafficState, r: RiderVie
   return !pinned;
 }
 
-/** Wobbles, crashes and near misses between riders and vehicles. */
+/**
+ * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
+ * playtest 1, 2026-09-30: "hitting cars feels bouncy"). A first contact is classed by how the
+ * boxes met:
+ * - **end-on** (they were not side by side last tick, so the rider met the car's front or tail, or
+ *   it met the rider's), overlapping sideways by at least `grazeM`, at a closing speed of at least
+ *   `traffic.solidHitMps`: a solid hit (`hit` `frontal` or `rear`). The rider crashes (the tumble
+ *   hand-off) and the collision is inelastic: the rider is left at the car's speed along the road
+ *   (0 for a head-on), just touching it, never thrown back;
+ * - otherwise a **side brush**, a **graze** (end-on but barely overlapping) or a slow **nudge**:
+ *   a wobble with the speed scrub, pushed just clear of the car. It is still a crash when the rider
+ *   is unstable from an earlier wobble, or the vehicle is `big` (M1's rules).
+ * A close, fast pass with no contact fires `nearMiss`.
+ */
 function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
   const T = TRAFFIC;
+  const solidMps = world.params['traffic.solidHitMps'] ?? T.solidHitMps;
+  const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
   for (const r of riders) {
     st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
     st.lastRel[r.id] ??= st.id.map(() => 0);
@@ -661,16 +749,35 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       if (!r.touchable) continue;
       if (st.contactWith[r.id] === vid && (overU < -1 || overD < -0.5)) st.contactWith[r.id] = -1;
       if (overU > 0 && overD > 0) {
+        const vDir = st.dir[k] ?? 1;
+        const vSpeed = world.movers[vid]?.speed ?? 0;
+        // The vehicle's velocity along the rider's direction, and how fast they came together.
+        const vAlong = vDir === r.dir ? vSpeed : -vSpeed;
+        let solid = false;
         if (st.contactWith[r.id] !== vid) {
           st.contactWith[r.id] = vid;
-          const crash = t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
+          // Side by side last tick (their boxes overlapped along the road): it came in from the side.
+          const halfLen = (t.lengthM + T.riderLengthM) / 2;
+          const endOn = prev === 0 ? overU < overD : Math.abs(prev) >= halfLen;
+          const front = du * r.dir > 0;
+          const closing = Math.abs(m.speed - vAlong);
+          const graze = endOn && overD < T.grazeM;
+          solid = endOn && !graze && closing >= solidMps;
+          const crash = solid || t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
+          const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
           const data = {
             cause: 'traffic',
             hazard: t.hazard,
             vehicle: t.contentId,
             contact: crash ? 'crash' : 'wobble',
+            hit,
+            impactMps: closing,
           };
-          if (crash) {
+          if (solid) {
+            // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back.
+            m.speed = Math.max(0, vAlong);
+            emit(world, 'crash', r.id, data, { target: vid });
+          } else if (crash) {
             m.speed *= T.crashScrub;
             emit(world, 'crash', r.id, data, { target: vid });
           } else {
@@ -681,10 +788,9 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             emit(world, 'wobble', r.id, data, { target: vid });
           }
         }
-        // Push the rider out of the vehicle's box: sideways for a head-on or a side swipe,
-        // backward (and down to its speed) for a rear-end.
-        const vDir = st.dir[k] ?? 1;
-        const lateral = vDir !== r.dir || overD < overU;
+        // Push the rider just out of the vehicle's box: back along the road for a solid hit;
+        // sideways for a head-on brush or a side swipe; backward (and down to its speed) for a nudge.
+        const lateral = !solid && (vDir !== r.dir || overD < overU);
         let resolved = false;
         if (lateral) {
           r.cd += (dcd > 0 ? -1 : 1) * (overD + 0.02);
@@ -694,14 +800,15 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           r.u -= (du > 0 ? 1 : -1) * (overU + 0.02);
           putRider(world, config, st, r);
           // Into its tail: slow to its speed. Hit from behind: shoved up to its speed.
-          const vSpeed = world.movers[vid]?.speed ?? 0;
           if (vDir === r.dir) m.speed = du > 0 ? Math.min(m.speed, vSpeed) : Math.max(m.speed, vSpeed);
         }
         config.road.advance(m.pos);
         rel[k] = r.dir * ((st.u[k] ?? 0) - r.u) || -1e-9;
         continue;
       }
-      // Near miss: the rider passed the vehicle (it went from ahead to behind) close, untouched.
+      // Near miss (M2 traffic-3): the rider passed the vehicle (it went from ahead to behind),
+      // within about 1 m sideways, untouched, at a closing speed of at least the slider's, so
+      // crawling past a parked car never scores.
       if (
         prev > 0 &&
         ahead <= 0 &&
@@ -711,12 +818,19 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         m.speed >= T.nearMissMinMps
       ) {
         const clearance = -overD;
-        if (clearance > 0 && clearance <= T.nearMissM) {
+        const vSpeed = world.movers[vid]?.speed ?? 0;
+        const closing = m.speed - ((st.dir[k] ?? 1) === r.dir ? vSpeed : -vSpeed);
+        if (clearance > 0 && clearance <= T.nearMissM && closing >= closingMin) {
           emit(
             world,
             'nearMiss',
             r.id,
-            { clearanceM: clearance, oncoming: (st.dir[k] ?? 1) !== r.dir, vehicle: t.contentId },
+            {
+              clearanceM: clearance,
+              oncoming: (st.dir[k] ?? 1) !== r.dir,
+              vehicle: t.contentId,
+              closingMps: closing,
+            },
             { target: vid },
           );
         }
@@ -730,7 +844,8 @@ export const trafficSystem: SimSystem = {
   init(world: World, config: SimConfig) {
     const st = trafficState(world);
     st.corridor = buildCorridor(config);
-    st.types = config.trafficTypes.flatMap((t, i) => (CATEGORY[t.category] ? [i] : []));
+    // Road vehicles the region mix gives a weight; a weight of 0 means it never spawns.
+    st.types = config.trafficTypes.flatMap((t, i) => (CATEGORY[t.category] && weightOf(t) > 0 ? [i] : []));
     let topSpeed = 0;
     for (const m of world.movers) {
       if (isAnchor(config, m))
@@ -752,6 +867,7 @@ export const trafficSystem: SimSystem = {
     const st = trafficState(world);
     if (st.types.length === 0 && st.id.length === 0) return;
     const dt = world.timeScale / 60;
+    st.clockS += dt;
     if (world.tick % TRAFFIC.populateEveryTicks === 0) populate(world, config, st);
     laneChanges(world, config, st, dt);
     move(world, config, st, riderViews(world, st), dt);

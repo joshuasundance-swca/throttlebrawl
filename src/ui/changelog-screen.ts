@@ -10,7 +10,7 @@ export const CHANGELOG_CSS = `
 #whats-new .wn-title { font: 800 15px ui-monospace, monospace; color: #f5c542; }
 #whats-new ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 #whats-new .row { justify-content: flex-start; gap: 8px; }
-#changelog { justify-content: flex-start; padding-top: 8px; gap: 8px; }
+#changelog { justify-content: flex-start; padding-top: 8px; padding-bottom: 34px; gap: 8px; }
 #changelog .settings-bar { display: flex; gap: 6px; justify-content: center; }
 #changelog-list { width: min(680px, 94vw); flex: 1 1 auto; min-height: 0; overflow-y: auto; text-align: left;
   pointer-events: auto; touch-action: pan-y; background: #000a; padding: 6px 12px; box-sizing: border-box;

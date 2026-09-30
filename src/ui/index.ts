@@ -21,7 +21,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { DEFAULT_SETTINGS, sanitiseSettings, type Settings } from '../save';
+import { DEFAULT_SETTINGS, sanitiseSettings, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
   buildIdFromStamp,
@@ -170,7 +170,8 @@ const CSS = `
 #touch-surface[hidden] { display: none; }
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
   display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
-  pointer-events: none; box-sizing: border-box; }
+  pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
+.touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
 #touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
   margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
   background: #0003; pointer-events: none; box-sizing: border-box; }
@@ -192,8 +193,6 @@ ${CHANGELOG_CSS}
 #busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
   border-radius: 50%; animation: tb-spin 0.9s linear infinite; }
 @keyframes tb-spin { to { transform: rotate(360deg); } }
-.touch-button .kick-hint { display: block; font: 700 10px ui-monospace, monospace; opacity: 0.9; }
-.touch-button { flex-direction: column; }
 #pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
   touch-action: none; }
 #rotate-screen { flex-direction: column; gap: 18px; background: #140a28 !important; color: #f2ead8 !important;
@@ -392,9 +391,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         className: 'touch-button',
         textContent: e.element === 'touch-attack' ? 'HIT' : 'BRAKE',
       });
-      // Playtest 1: "Can't kick". The attack button says how to kick (swipe down on it).
+      // The kick hint (playtest 1, 2026-09-30: "Can't kick"): swipe down on the button to kick.
       if (e.element === 'touch-attack')
-        b.append(el('span', { className: 'kick-hint', textContent: '▼ KICK' }));
+        b.append(el('span', { className: 'touch-hint', id: 'touch-kick-hint', textContent: '▼ kick' }));
       Object.assign(b.style, {
         left: `${r.x}px`,
         top: `${r.y}px`,
@@ -689,7 +688,25 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
-  const barks = createNarrative();
+  // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
+  // the bubble's long-press ignores presses in the stick and attack zones mid-race.
+  const barks = createNarrative({
+    vetoed: settings.vetoes.map((v) => v.contentRef),
+    onVeto: (flag) => {
+      settings = withVeto(settings, flag);
+      cb.onSettingsChange?.(settings);
+    },
+    inControlZone: (x, y) => {
+      if (current !== 'race' || paused) return false;
+      const box = touchSurface.getBoundingClientRect();
+      const [px, py] = [x - box.left, y - box.top];
+      return layout.elements.some((e) => {
+        if (!e.visible || (e.element !== 'touch-stick-zone' && e.element !== 'touch-attack')) return false;
+        const r = placeElement(e, box.width, box.height, layout.mirror);
+        return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+      });
+    },
+  });
   // app/ hands every step's events to the narrative; ui reads the same feed for the style pop-ups
   // and the results tally (ui-3), so they need no wiring of their own.
   const narrative: Narrative = {
@@ -703,6 +720,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       barks.onEvents(events, context);
     },
   };
+  pauseScreen.insertBefore(narrative.mountRecentlySeen(pauseScreen).element, pauseBuild);
 
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;

@@ -77,13 +77,54 @@ export const DEFAULT_PAD_MAP: GamepadMap = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+const PAD_ACTIONS = Object.keys(DEFAULT_PAD_MAP.buttons) as PadButtonAction[];
+const MAX_INDEX = 63;
+
+/**
+ * The saved remaps (settings `gamepadBindings`: action id to control tokens) as a GamepadMap.
+ * Tokens are `button<N>` for a button action and `axis<N>` for `steer` (the stick's other axis is
+ * its pair: 0 with 1, 2 with 3). Only listed actions change; an action whose tokens are all unknown
+ * keeps its default, so a bad record never leaves an action unbound.
+ */
+export function padMapFromBindings(
+  bindings: Readonly<Record<string, readonly string[]>>,
+  base: GamepadMap = DEFAULT_PAD_MAP,
+): GamepadMap {
+  const index = (token: string, kind: 'button' | 'axis'): number | null => {
+    const m = new RegExp(`^${kind}(\\d{1,2})$`).exec(token);
+    const n = m ? Number(m[1]) : NaN;
+    return Number.isInteger(n) && n <= MAX_INDEX ? n : null;
+  };
+  const buttons = { ...base.buttons };
+  for (const action of PAD_ACTIONS) {
+    const tokens: unknown = bindings[action];
+    if (!Array.isArray(tokens)) continue;
+    const got = (tokens as unknown[])
+      .map((t) => (typeof t === 'string' ? index(t, 'button') : null))
+      .filter((n): n is number => n !== null);
+    if (got.length > 0) buttons[action] = got;
+  }
+  let { steerAxis, steerAxisPair } = base;
+  const axis = (bindings['steer'] ?? []).map((t) => index(t, 'axis')).find((n) => n !== null);
+  if (axis !== undefined && axis !== null) {
+    steerAxis = axis;
+    steerAxisPair = axis % 2 === 0 ? axis + 1 : axis - 1;
+  }
+  return { steerAxis, steerAxisPair, buttons };
+}
+
 /** Tracks pads between polls, for press edges. */
 export class GamepadState {
-  private readonly map: GamepadMap;
+  private map: GamepadMap;
   /** Whether each press-edge action was held at the last poll. */
   private wasHeld = new Set<PadButtonAction>();
 
   constructor(map: GamepadMap = DEFAULT_PAD_MAP) {
+    this.map = map;
+  }
+
+  /** Replaces the bindings (a remap in the settings). */
+  setMap(map: GamepadMap): void {
     this.map = map;
   }
 

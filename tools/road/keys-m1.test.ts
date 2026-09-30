@@ -92,6 +92,53 @@ describe('tools/road: the baked M1 track', () => {
     expect(net.barrierAt(bridge, 500, 'right')?.kind).toBe('rail');
   });
 
+  it('playtest 1: travel lanes about 4 m wide (M1 had 3.4 m), with rideable shoulders both sides', () => {
+    let checked = 0;
+    for (const e of net.edges) {
+      const lanes = net.lanesAt(e.index, e.length / 2);
+      if (lanes.some((l) => l.kind === 'shortcut')) continue;
+      const drive = lanes.filter((l) => l.kind === 'drive');
+      const shoulders = lanes.filter((l) => l.kind === 'shoulder');
+      expect(
+        drive.map((l) => l.widthM),
+        e.id,
+      ).toEqual([4, 4]);
+      expect(shoulders.map((l) => Math.sign(l.dCenterM)).sort(), e.id).toEqual([-1, 1]);
+      for (const sh of shoulders) expect(sh.widthM, e.id).toBeGreaterThanOrEqual(1.5);
+      // No gaps: the shoulder starts where the travel lane ends.
+      expect(Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2)), e.id).toBeCloseTo(-5.5, 9);
+      expect(Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)), e.id).toBeCloseTo(5.5, 9);
+      checked++;
+    }
+    expect(checked).toBe(6); // the main path's six edges
+  });
+
+  it('road-3: barrierAt returns the rail on the bridge stretch and nothing off it; the water is y = 0', () => {
+    const bridge = id('m1-pelican-bridge');
+    let on = 0;
+    for (let s = 0; s <= (net.edges[bridge]?.length ?? 0); s += 25) {
+      for (const side of ['left', 'right'] as const) {
+        expect(net.barrierAt(bridge, s, side), `bridge ${s} ${side}`).toEqual({ kind: 'rail', heightM: 1 });
+        on++;
+      }
+      // Sea level is world y = 0 (docs/content-packs.md, "Barriers"): the deck is always above it.
+      expect(net.surfaceHeight(bridge, s, 0)).toBeGreaterThan(0);
+    }
+    let off = 0;
+    for (const name of ['m1-marina-run', 'm1-marina-bends', 'm1-sandbar-causeway', 'm1-boat-ramp-cut']) {
+      const e = id(name);
+      for (let s = 0; s <= (net.edges[e]?.length ?? 0); s += 25) {
+        for (const side of ['left', 'right'] as const) {
+          expect(net.barrierAt(e, s, side), `${name} ${s} ${side}`).toBeNull();
+          off++;
+        }
+      }
+    }
+    console.log(`barrierAt: ${on} rail answers on the bridge, ${off} empty answers off it`);
+    expect(on).toBeGreaterThan(90);
+    expect(off).toBeGreaterThan(150);
+  });
+
   it('round-trips toWorld and project within 1 cm on its straights and bends', () => {
     let checked = 0;
     let worst = 0;

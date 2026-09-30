@@ -14,10 +14,10 @@
     {
       "s0": 0,
       "lanes": [
-        { "id": "L0", "dCenterM": -4.15, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
-        { "id": "L1", "dCenterM": -1.7, "widthM": 3.4, "direction": -1, "kind": "drive" },
-        { "id": "R1", "dCenterM": 1.7, "widthM": 3.4, "direction": 1, "kind": "drive" },
-        { "id": "R0", "dCenterM": 4.15, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+        { "id": "L0", "dCenterM": -4.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
       ]
     }
   ],
@@ -31,8 +31,8 @@
       "id": "fishing-rail",
       "s0": 680,
       "s1": 780,
-      "d0": -6.5,
-      "d1": -4.9,
+      "d0": -7.1,
+      "d1": -5.5,
       "params": { "spawns": "pedestrians" }
     }
   ],

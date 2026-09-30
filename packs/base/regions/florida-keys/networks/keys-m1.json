@@ -54,7 +54,7 @@
           "road": "c-boat-ramp-in",
           "from": { "road": "m1-marina-run", "end": "to", "lane": "R1" },
           "to": { "road": "m1-boat-ramp-cut", "end": "from", "lane": "S1" },
-          "splitZone": { "s0": 260, "s1": 300, "d0": 2.4, "d1": 4.9 }
+          "splitZone": { "s0": 260, "s1": 300, "d0": 3, "d1": 5.5 }
         }
       ],
       "control": "none"

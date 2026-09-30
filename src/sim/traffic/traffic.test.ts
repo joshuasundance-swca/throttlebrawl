@@ -533,43 +533,54 @@ describe('traffic-1 sim acceptance', () => {
     expect(results['wide']).toEqual([]);
   });
 
-  it('a first contact wobbles, a second while unstable crashes, and a truck always crashes', () => {
-    // Rear-end a car: a wobble, no crash, speed scrubbed.
+  it('a first side brush wobbles, a second while unstable crashes, and a truck always crashes', () => {
+    // Ride alongside a car and lean into it: a wobble, no crash, speed scrubbed.
     const config = makeConfig({ riders: SOLO, types: [CAR, TRUCK], tuning: NO_TRAFFIC });
-    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 1.7, dir: 1 }, speed: 36 }]);
-    placeVehicle(world, config, { type: 0, u: 160, dir: 1, v0: 15, speed: 15 });
+    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 0.3, dir: 1 }, speed: 20 }]);
+    placeVehicle(world, config, { type: 0, u: 101, dir: 1, v0: 20, speed: 20 });
     const st = trafficState(world);
     const events: SimEvent[] = [];
     let t = 0;
-    while (st.contactWith[0] === -1 && t++ < 600)
-      events.push(...stepWorld(world, config, SCENARIO, [hold(255)]));
+    let before = 0;
+    while (st.contactWith[0] === -1 && t++ < 600) {
+      before = world.movers[0]?.speed ?? 0;
+      events.push(...stepWorld(world, config, SCENARIO, [{ steer: 40, throttle: 150, brake: 0, flags: 0 }]));
+    }
     expect(st.contactWith[0]).not.toBe(-1);
     expect(events.filter((e) => e.type === 'crash')).toEqual([]);
     const wobbles = events.filter((e) => e.type === 'wobble');
     expect(wobbles).toHaveLength(1);
     expect(wobbles[0]?.data['cause']).toBe('traffic');
+    expect(wobbles[0]?.data['hit']).toBe('side');
     expect(wobbles[0]?.target).toBe(st.id[0]);
     expect(st.unstableS[0]).toBeGreaterThan(1);
-    expect(world.movers[0]?.speed ?? 99).toBeLessThanOrEqual(15);
-    // Still unstable: swerve into the oncoming lane and meet a car head-on.
-    const m = world.movers[0];
-    if (m) m.pos.d = -1.7;
-    placeVehicle(world, config, { type: 0, u: uOf(world, 0) + 25, dir: -1 });
-    for (let i = 0; i < 90 && !events.some((e) => e.type === 'crash'); i++) {
-      events.push(...stepWorld(world, config, SCENARIO, [hold(255)]));
-    }
-    const crash = events.find((e) => e.type === 'crash');
+    // Speed lost (the scrub), and nothing thrown back: the rider sits just clear of the car's side.
+    expect(world.movers[0]?.speed ?? 99).toBeLessThan(before * TRAFFIC.wobbleScrub + 0.2);
+    const side =
+      Math.abs((st.cd[0] ?? 0) - (world.movers[0]?.pos.d ?? 0)) - (CAR.widthM + TRAFFIC.riderWidthM) / 2;
+    expect(side).toBeGreaterThanOrEqual(0);
+    expect(side).toBeLessThan(0.1);
+    // Still unstable: pull clear for a moment, then brush the car again and crash.
+    const again: SimEvent[] = [];
+    const rider0 = world.movers[0];
+    if (rider0) rider0.pos.d -= 0.6;
+    again.push(...stepWorld(world, config, SCENARIO, [hold(150)]));
+    expect(st.contactWith[0]).toBe(-1);
+    if (rider0) rider0.pos.d = (st.cd[0] ?? 0) - (CAR.widthM + TRAFFIC.riderWidthM) / 2 + 0.3;
+    again.push(...stepWorld(world, config, SCENARIO, [hold(150)]));
+    const crash = again.find((e) => e.type === 'crash');
     expect(crash?.data['cause']).toBe('traffic');
     expect(crash?.data['hazard']).toBe('normal');
 
-    // A truck crashes you on the first touch.
-    const w2 = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 1.7, dir: 1 }, speed: 36 }]);
-    const truck = placeVehicle(w2, config, { type: 1, u: 160, dir: 1, v0: 15, speed: 15 });
+    // A truck crashes you on the first touch, even a side brush.
+    const w2 = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 0.1, dir: 1 }, speed: 20 }]);
+    const truck = placeVehicle(w2, config, { type: 1, u: 101, dir: 1, v0: 20, speed: 20 });
     const e2: SimEvent[] = [];
     for (let i = 0; i < 600 && !e2.some((e) => e.type === 'crash'); i++)
-      e2.push(...stepWorld(w2, config, SCENARIO, [hold(255)]));
+      e2.push(...stepWorld(w2, config, SCENARIO, [{ steer: 40, throttle: 150, brake: 0, flags: 0 }]));
     const truckCrash = e2.find((e) => e.type === 'crash');
     expect(truckCrash?.data['hazard']).toBe('big');
+    expect(truckCrash?.data['hit']).toBe('side');
     expect(truckCrash?.target).toBe(trafficState(w2).id[truck]);
     expect(vehicleInfo(w2, config, truckCrash?.target ?? -1)?.contentId).toBe('base:truck');
   });
@@ -634,4 +645,221 @@ describe('traffic-1 sim acceptance', () => {
     expect(run(6, TYPES).hashes).not.toEqual(a.hashes);
     expect(run(5, []).hashes).not.toEqual(a.hashes);
   }, 60_000);
+});
+
+describe('traffic-3 (M2): near misses, oncoming ease-in, the region mix', () => {
+  /** Rides the solo rider past a parked car at a constant speed, 0.5 m clear, and returns its events. */
+  const passParked = (speed: number) => {
+    const config = makeConfig({ riders: SOLO, types: [CAR, BROKEN], tuning: NO_TRAFFIC });
+    // The car's lane centre is d 1.7; the boxes clear by 0.5 m with the rider at d −0.1.
+    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: -0.1, dir: 1 }, speed }]);
+    placeVehicle(world, config, { type: 1, u: 130, dir: 1, speed: 0 });
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 60 * 8; t++) {
+      const m = world.movers[0];
+      if (m) m.speed = speed;
+      events.push(...stepWorld(world, config, SCENARIO, [hold(0)]));
+    }
+    return { events, near: events.filter((e) => e.type === 'nearMiss'), world };
+  };
+
+  it('a slow pass fires no nearMiss, and a fast one fires exactly one', () => {
+    // 9 m/s is above M1's 8 m/s rider-speed rule, so the old rule fired here; the closing speed is too low.
+    const slow = passParked(9);
+    const fast = passParked(30);
+    const clearance = fast.near[0]?.data['clearanceM'];
+    console.log(
+      `near-miss rule: closing speed at least ${TRAFFIC.nearMissClosingMps} m/s and at most ${TRAFFIC.nearMissM} m clear; ` +
+        `slow pass (9 m/s past a parked car) ${slow.near.length} nearMiss, fast pass (30 m/s) ${fast.near.length} ` +
+        `(clearance ${typeof clearance === 'number' ? clearance.toFixed(2) : '?'} m, closing ${String(fast.near[0]?.data['closingMps'])} m/s)`,
+    );
+    expect(slow.near).toEqual([]);
+    expect(fast.near).toHaveLength(1);
+    expect(fast.near[0]?.data['oncoming']).toBe(false);
+    expect(fast.near[0]?.data['closingMps']).toBeCloseTo(30, 0);
+    expect(clearance).toBeCloseTo(0.5, 1);
+    for (const r of [slow, fast])
+      expect(r.events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toEqual([]);
+  });
+
+  it('the near-miss closing speed is a slider: lowered, the slow pass counts', () => {
+    const config = makeConfig({
+      riders: SOLO,
+      types: [CAR, BROKEN],
+      tuning: { ...NO_TRAFFIC, 'traffic.nearMissClosingMps': 8 },
+    });
+    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: -0.1, dir: 1 }, speed: 9 }]);
+    placeVehicle(world, config, { type: 1, u: 130, dir: 1, speed: 0 });
+    const near: SimEvent[] = [];
+    for (let t = 0; t < 60 * 8; t++) {
+      const m = world.movers[0];
+      if (m) m.speed = 9;
+      near.push(...stepWorld(world, config, SCENARIO, [hold(0)]).filter((e) => e.type === 'nearMiss'));
+    }
+    expect(near).toHaveLength(1);
+  });
+
+  it('with ease-in on, oncoming density at the start is below its full value, and reaches it', () => {
+    const oncoming = (world: World) => {
+      const st = trafficState(world);
+      return st.dir.filter((d, k) => d !== st.corridor.routeDir && st.retired[k] === 0).length;
+    };
+    const sameWay = (world: World) => {
+      const st = trafficState(world);
+      return st.dir.filter((d, k) => d === st.corridor.routeDir && st.retired[k] === 0).length;
+    };
+    const lines: string[] = [];
+    const run = (easeS: number) => {
+      const config = makeConfig({ seed: 3, tuning: { 'traffic.oncomingEaseInS': easeS } });
+      const world = raceWorld(config);
+      const at: Record<string, number> = { start: oncoming(world), sameStart: sameWay(world) };
+      while (world.tick < 60 * 90) {
+        stepWorld(world, config, ALL, [scripted(world.tick)]);
+        if (world.tick === 60 * 10) at['10s'] = oncoming(world);
+        if (world.tick === 60 * 90) at['90s'] = oncoming(world);
+      }
+      lines.push(
+        `ease-in ${easeS} s: oncoming ${at['start']} at the start, ${at['10s']} at 10 s, ${at['90s']} at 90 s (same way ${at['sameStart']} at the start)`,
+      );
+      return at;
+    };
+    const off = run(0);
+    const on = run(60);
+    console.log(`oncoming ease-in (from ${TRAFFIC.oncomingEaseFrom} of full density): ${lines.join('; ')}`);
+    expect(on['start'] ?? 99).toBeLessThan(off['start'] ?? 0);
+    expect(on['10s'] ?? 99).toBeLessThan(off['10s'] ?? 0);
+    // Once the ease-in is over, both have the full count; your-way traffic never eases.
+    expect(Math.abs((on['90s'] ?? 0) - (off['90s'] ?? 99))).toBeLessThanOrEqual(1);
+    expect(on['sameStart']).toBe(off['sameStart']);
+  }, 120_000);
+
+  it('the region mix picks the vehicles: weight 0 never spawns, and no weight means the category default', () => {
+    const spawned = (types: readonly SimTrafficTypeDef[]) => {
+      const config = makeConfig({
+        seed: 4,
+        types,
+        tuning: { 'traffic.densitySame': 2, 'traffic.densityOncoming': 2 },
+      });
+      const world = raceWorld(config);
+      const seen = new Map<string, number>();
+      const st = trafficState(world);
+      while (world.tick < 60 * 40) {
+        stepWorld(world, config, ALL, [scripted(world.tick)]);
+        for (let k = 0; k < st.id.length; k++) {
+          if (st.spawnTick[k] !== world.tick - 1) continue;
+          const id = config.trafficTypes[st.type[k] ?? -1]?.contentId ?? '?';
+          seen.set(id, (seen.get(id) ?? 0) + 1);
+        }
+      }
+      return seen;
+    };
+    const trucksOnly = spawned([{ ...CAR, weight: 0 }, { ...TRUCK, weight: 1 }, PED]);
+    const defaults = spawned(TYPES);
+    const carHeavy = spawned([{ ...CAR, weight: 1 }, { ...TRUCK, weight: 0.05 }, PED]);
+    const fmt = (m: Map<string, number>) => [...m].map(([k, v]) => `${k} ${v}`).join(', ');
+    console.log(
+      `region mix: trucks only {${fmt(trucksOnly)}}; defaults {${fmt(defaults)}}; car-heavy {${fmt(carHeavy)}}`,
+    );
+    expect(trucksOnly.get(CAR.contentId) ?? 0).toBe(0);
+    expect(trucksOnly.get(TRUCK.contentId) ?? 0).toBeGreaterThan(0);
+    expect(defaults.get(CAR.contentId) ?? 0).toBeGreaterThan(0);
+    expect(defaults.get(TRUCK.contentId) ?? 0).toBeGreaterThan(0);
+    expect(carHeavy.get(CAR.contentId) ?? 0).toBeGreaterThan(5 * (carHeavy.get(TRUCK.contentId) ?? 0));
+  }, 120_000);
+});
+
+describe('traffic contacts, playtest 1: head-on is a wipeout, a graze is a wobble, no rebound', () => {
+  const run = (o: {
+    rider: { d: number; speed: number };
+    vehicle: { u: number; dir: 1 | -1; speed: number; d?: number };
+    tuning?: Record<string, number>;
+    throttle?: number;
+  }) => {
+    const config = makeConfig({
+      riders: SOLO,
+      types: [CAR, TRUCK],
+      tuning: { ...NO_TRAFFIC, ...(o.tuning ?? {}) },
+    });
+    const world = scenarioWorld(config, [
+      { pos: { edge: 0, s: 100, d: o.rider.d, dir: 1 }, speed: o.rider.speed },
+    ]);
+    const slot = placeVehicle(world, config, {
+      type: 0,
+      u: o.vehicle.u,
+      dir: o.vehicle.dir,
+      v0: o.vehicle.speed,
+      speed: o.vehicle.speed,
+    });
+    const st = trafficState(world);
+    if (o.vehicle.d !== undefined) st.cd[slot] = o.vehicle.d;
+    const events: SimEvent[] = [];
+    let t = 0;
+    while (st.contactWith[0] === -1 && t++ < 600)
+      events.push(...stepWorld(world, config, SCENARIO, [hold(o.throttle ?? 255)]));
+    const m = world.movers[0];
+    const along = Math.abs((st.u[slot] ?? 0) - uOf(world, 0)) - (CAR.lengthM + TRAFFIC.riderLengthM) / 2;
+    return {
+      events,
+      crash: events.find((e) => e.type === 'crash'),
+      wobble: events.find((e) => e.type === 'wobble'),
+      speed: m?.speed ?? -1,
+      carSpeed: world.movers[st.id[slot] ?? -1]?.speed ?? -1,
+      along,
+    };
+  };
+
+  it('rear-ending a car at speed throws you off, at the car speed, with no bounce back', () => {
+    const r = run({ rider: { d: 1.7, speed: 36 }, vehicle: { u: 160, dir: 1, speed: 15 } });
+    console.log(
+      `rear-end at 36 m/s into a 15 m/s car: ${r.crash ? 'crash' : 'no crash'} (hit ${String(r.crash?.data['hit'])}, ` +
+        `impact ${Number(r.crash?.data['impactMps']).toFixed(1)} m/s), rider left at ${r.speed.toFixed(2)} m/s, ` +
+        `${r.along.toFixed(3)} m behind the car's tail`,
+    );
+    expect(r.wobble).toBeUndefined();
+    expect(r.crash?.data['cause']).toBe('traffic');
+    expect(r.crash?.data['hit']).toBe('frontal');
+    expect(r.crash?.data['contact']).toBe('crash');
+    expect(Number(r.crash?.data['impactMps'])).toBeGreaterThan(15);
+    // Inelastic: the rider ends at the car's speed along the road, never faster, never thrown back.
+    expect(r.speed).toBeCloseTo(r.carSpeed, 6);
+    expect(r.along).toBeGreaterThanOrEqual(0);
+    expect(r.along).toBeLessThan(0.1);
+  });
+
+  it('a head-on with an oncoming car throws you off, stopped dead, even when stable', () => {
+    const r = run({ rider: { d: -1.7, speed: 30 }, vehicle: { u: 180, dir: -1, speed: 24.6 } });
+    expect(r.wobble).toBeUndefined();
+    expect(r.crash?.data['hit']).toBe('frontal');
+    expect(Number(r.crash?.data['impactMps'])).toBeGreaterThan(50);
+    expect(r.speed).toBe(0);
+    expect(r.along).toBeGreaterThanOrEqual(0);
+    expect(r.along).toBeLessThan(0.1);
+  });
+
+  it('a slow nudge into a tail is a wobble, not a wipeout', () => {
+    // Coasting at 18 m/s into a 15 m/s car's tail 3 m ahead: a closing speed of about 3 m/s.
+    const r = run({ rider: { d: 1.7, speed: 18 }, vehicle: { u: 106.3, dir: 1, speed: 15 }, throttle: 0 });
+    expect(Number(r.wobble?.data['impactMps'])).toBeLessThan(TRAFFIC.solidHitMps);
+    expect(r.crash).toBeUndefined();
+    expect(r.wobble?.data['hit']).toBe('frontal');
+    expect(r.speed).toBeLessThanOrEqual(r.carSpeed + 1e-9);
+  });
+
+  it('the solid-hit speed is a slider: raised, the rear-end is a wobble', () => {
+    const r = run({
+      rider: { d: 1.7, speed: 36 },
+      vehicle: { u: 160, dir: 1, speed: 15 },
+      tuning: { 'traffic.solidHitMps': 30 },
+    });
+    expect(r.crash).toBeUndefined();
+    expect(r.wobble).toBeDefined();
+  });
+
+  it('clipping a car corner end-on is a graze: a wobble, not a wipeout', () => {
+    // Lateral overlap 0.15 m, under the graze width.
+    const graze = (CAR.widthM + TRAFFIC.riderWidthM) / 2 - 0.15;
+    const r = run({ rider: { d: 1.7 - graze, speed: 36 }, vehicle: { u: 160, dir: 1, speed: 15 } });
+    expect(r.crash).toBeUndefined();
+    expect(r.wobble?.data['hit']).toBe('graze');
+  });
 });
