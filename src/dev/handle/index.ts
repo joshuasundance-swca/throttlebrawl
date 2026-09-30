@@ -8,9 +8,12 @@ import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
 import { createBot, type BotController, type BotStats } from '../bot';
 import { createPerfProbe, type PerfReport } from '../perf';
 import { debugFileText, parseDebugFile, reportText } from '../report';
+import { botAttackRun, type AttackRun } from './attacks';
 import { moverProblem } from './checks';
 
 export { MOVER_MODES, moverProblem } from './checks';
+export { botAttackRun } from './attacks';
+export type { AttackRun, AttackRunOptions } from './attacks';
 
 export interface RaceChecks {
   ticks: number;
@@ -53,6 +56,11 @@ export interface TestHandle {
   debugFileText(): string;
   /** Reads a debug file's replay and replays it against a fresh sim of this build (dev-3's check). */
   checkDebugFile(text: string): ReturnType<AppHandle['checkReplay']> & { summary: string };
+  /**
+   * Headless bot races in the page, one per seed, each up to the bot's first landed hit (the
+   * browser race's multi-seed "an attack connects" check). Content as this build loads it.
+   */
+  botAttackRuns(seeds: readonly number[]): AttackRun[];
 }
 
 declare global {
@@ -163,6 +171,8 @@ export function installTestHandle(app: AppHandle): TestHandle {
       const { summary, replay } = parseDebugFile(text);
       return { ...app.checkReplay(replay), summary };
     },
+    botAttackRuns: (seeds) =>
+      seeds.map((seed) => botAttackRun(seed, { includeDrafts: app.build.channel !== 'prod' })),
   };
   window.__game = handle;
   return handle;
