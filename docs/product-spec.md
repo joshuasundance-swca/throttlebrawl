@@ -214,7 +214,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
   - Hazards have audio telegraphs, such as horns from oncoming cars.
   - Dynamic hazards spawn only beyond reaction range, unless the player caused them.
   - Fog or draw distance never hides oncoming traffic inside reaction range.
-  - A first small contact wobbles you; you crash only once you're already unstable.
+  - A first small contact (a side brush or a graze) wobbles you; you crash only once you're already unstable. A solid head-on or rear hit throws you off, with no bounce. [decided for the solid hit: playtest 1, 2026-09-30]
   - **Reaction range** is closing speed times about 2 seconds (a tuning value). At the top bike's 160 mph against a 55 mph oncoming car, closing speed is about 96 m/s, so the range is about 190 m. Fog and draw distance for the oncoming lane are set from the fastest bike in the event.
 - Florida examples: rental scooters, RVs, boat trailers, golf carts and gators. Wasteland oddities include a boat abandoned in a lane and a mobile home rolling with no truck. More ideas are in [the tone guide](./tone-guide.md#region-flavor). [default]
 - Near-misses pay cash. [decided]
