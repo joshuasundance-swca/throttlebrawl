@@ -125,7 +125,7 @@ export function createApp(opts: AppOptions): AppHandle {
 
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
-  const settings = settingsStore.load();
+  let settings = settingsStore.load();
   const layout: TouchLayout = { id: hud.id, mirror: settings.mirror || hud.mirror, elements: hud.elements };
   const recorder = createInputRecorder();
   const pendingTuning: { id: string; value: number }[] = [];
@@ -167,15 +167,43 @@ export function createApp(opts: AppOptions): AppHandle {
     return next !== null;
   };
 
+  // The pause screen (ui-1): pausing stops the loop and the sound; the lifecycle's onShown never
+  // resumes a race the player paused.
+  let hidden = false;
+  const unpause = () => {
+    if (hidden) return;
+    loop.resume();
+    void audio.resume();
+  };
   const ui = createUi(opts.host, {
     stampText: `throttlebrawl · ${build.channel} · ${build.branch} · ${build.id}`,
     layout,
     tuning,
+    settings,
     callbacks: {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
+      onPause: () => {
+        loop.pause();
+        audio.suspend();
+      },
+      onResume: unpause,
+      onRestart: () => {
+        unpause();
+        if (go('back')) handle.startRace();
+      },
+      onQuit: () => {
+        unpause();
+        handle.backToMenu();
+      },
+      onSettingsChange: (next) => {
+        settings = next;
+        settingsStore.save(next);
+        audio.setVolumes(next.volumes, next.mute);
+        input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
+      },
     },
   });
   if (settingsStore.notice) ui.notice(settingsStore.notice);
@@ -240,11 +268,15 @@ export function createApp(opts: AppOptions): AppHandle {
 
   watchLifecycle({
     onHidden: () => {
+      hidden = true;
       loop.pause();
       audio.suspend();
     },
-    // ui-1's pause screen will catch this; until then the race resumes where it stopped.
+    // The race resumes where it stopped, unless the player had paused it. (Whether a resume should
+    // land behind the pause screen instead, as the architecture doc's default says, is app-2's.)
     onShown: () => {
+      hidden = false;
+      if (ui.paused) return;
       loop.resume();
       if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
     },

@@ -16,7 +16,9 @@ describe('content: the base pack', () => {
     expect(reg.packs[0]?.id).toBe('base');
     expect(lookup(reg.bikes, 'rustbucket-400').handling.topSpeedMps).toBeCloseTo(38.0);
     expect(lookup(reg.riders, 'deacon-vane').role).toBe('rival');
-    expect(Object.keys(reg.roads).sort()).toEqual([
+    // The hand-made roads; the GIS side quest adds osm- prefixed roads beside them.
+    const handMade = Object.keys(reg.roads).filter((k) => !k.startsWith('base:osm-'));
+    expect(handMade.sort()).toEqual([
       'base:m1-marina-run',
       'base:m1-pelican-bridge',
       'base:m1-sandbar-causeway',
