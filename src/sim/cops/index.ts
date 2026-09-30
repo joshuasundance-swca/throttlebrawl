@@ -10,6 +10,11 @@
 //   he does not shadow every crash; after 8 s on station he moves in alongside for 6 s (inside
 //   punch and kick reach, so he can be knocked down), then drops back. Once the target is down he
 //   pulls up beside him.
+// - He never stands still in a travel lane except beside his target (pulled up by a downed one,
+//   or alongside one who has stopped) or with the man he busted:
+//   traffic follows riders in its lane and never passes one, so a cop parked in the lane jams the
+//   road (the M1 skeptic's seed 37). Ahead of his target, or with nobody to chase, he eases onto
+//   his side's shoulder, holding at least CRAWL_MPS until he is clear of the lane, and waits there.
 // - Bust: a player who is down (Tumble or OnFoot) within `law.bustRadiusM` × `cops.bustRadiusScale`
 //   of an upright, spawned cop for `law.bustDwellS` × `cops.bustDwellScale` of scaled time is
 //   busted: a `bust` event with the fine, once per player. Race end on a bust is sim/race's.
@@ -17,6 +22,7 @@
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
+import type { RoadPos } from '../../road';
 import { maxYawAt } from '../riders';
 import type { SimConfig, SimRiderDef } from '../types';
 import { emit, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -90,6 +96,10 @@ const ALONGSIDE_D_M = 1.2;
 /** Within this along the road counts as alongside (the auto-target box is 4 m). */
 const ALONGSIDE_S_M = 3;
 const COAST_DECEL = 0.6; // m/s², the riding model's off-throttle deceleration
+/** Slowest he rides while any part of him is still in a travel lane (unless his target is down). */
+export const CRAWL_MPS = 4;
+/** Clear of the lane: his centre at least this far outside the drive lane's edge. */
+const CLEAR_OF_LANE_M = 0.3;
 
 export interface CopsState {
   /** Scaled ticks stepped before the current one (0 on the first tick). */
@@ -197,59 +207,99 @@ function holdThrottle(accel: number, top: number, v: number): number {
   return (accel * ((v * v) / (top * top)) + COAST_DECEL) / (accel + COAST_DECEL);
 }
 
+/** His side's drive lane and shoulder at his position (the lanes whose direction is his). */
+function sideLanes(config: SimConfig, pos: RoadPos) {
+  const lanes = config.road.lanesAt(pos.edge, pos.s);
+  const drive =
+    lanes.find((l) => l.kind === 'drive' && l.direction === pos.dir) ?? lanes.find((l) => l.kind === 'drive');
+  const shoulder = lanes.find((l) => l.kind === 'shoulder' && l.direction === pos.dir);
+  return { drive, shoulder };
+}
+
+/** Whether his centre is clear of every drive lane here (so traffic does not queue behind him). */
+function clearOfLanes(config: SimConfig, pos: RoadPos): boolean {
+  for (const l of config.road.lanesAt(pos.edge, pos.s)) {
+    if (l.kind !== 'drive') continue;
+    if (Math.abs(pos.d - l.dCenterM) < l.widthM / 2 + CLEAR_OF_LANE_M) return false;
+  }
+  return true;
+}
+
 /** The cop's command for the next tick: close on the target, hold the gap, or pull up beside him. */
 function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: SimRiderDef): void {
   const bike = def.bike;
   const pos = cop.pos;
   const v = cop.speed;
   const target = st.phase[cop.id] === COP_CHASING ? world.movers[st.target[cop.id] ?? -1] : undefined;
+  const { drive: lane, shoulder } = sideLanes(config, pos);
 
+  // Default line: the centre line, the inner edge of his own lane, where traffic in both
+  // directions leaves him room to ride through (a cop splitting the lanes).
   let vWant = 0;
-  let dWant = pos.d;
-  if (target) {
+  let dWant = lane ? lane.dCenterM - lane.direction * (lane.widthM / 2) : pos.d;
+  // He may stop in a lane only beside his target (a downed one he is busting, or one who has
+  // stopped with him alongside) or with the man he busted; anywhere else, only off the lanes.
+  let mayStop = false;
+  let feedBrake = 0;
+  if (target && isDown(target)) {
     const gap = gapAlongRoute(config, cop, target);
     const decel = bike.brakeMps2 * 0.6;
-    if (isDown(target)) {
-      // Pull up just behind him: the speed from which braking stops the bike in time.
-      const room = gap - PULL_UP_GAP_M;
-      vWant = room > 0 ? Math.sqrt(2 * decel * room) : 0;
-      dWant = target.pos.d;
-    } else {
-      // Hang back at the follow gap; after a spell on station, move in alongside for a while
-      // (so he can be hit, and is there if you fall), then drop back. Either way: close to the
-      // goal gap, match his speed, and brake early enough not to overshoot.
-      const id = cop.id;
-      const followGap = world.params['cops.followGapM'] ?? 40;
-      let spell = st.closingFor[id] ?? 0;
-      if (st.closing[id] === 1) {
-        if (Math.abs(gap) <= ALONGSIDE_S_M) spell += world.timeScale;
-        if (spell >= MOVE_IN_TICKS) {
-          st.closing[id] = 0;
-          spell = 0;
-        }
-      } else {
-        if (gap <= followGap + STATION_M) spell += world.timeScale;
-        if (spell >= HANG_BACK_TICKS) {
-          st.closing[id] = 1;
-          spell = 0;
-        }
+    // Pull up just behind him: the speed from which braking stops the bike in time, with the
+    // braking that stopping distance needs fed forward (so he does not sail past).
+    const room = gap - PULL_UP_GAP_M;
+    vWant = room > 0 ? Math.sqrt(2 * decel * room) : 0;
+    if (v > vWant) feedBrake = room > 0.5 ? (v * v - vWant * vWant) / (2 * room * bike.brakeMps2) : 1;
+    dWant = target.pos.d;
+    mayStop = true;
+  } else if (target) {
+    const gap = gapAlongRoute(config, cop, target);
+    const decel = bike.brakeMps2 * 0.6;
+    // Hang back at the follow gap; after a spell on station, move in alongside for a while
+    // (so he can be hit, and is there if you fall), then drop back. Either way: close to the
+    // goal gap, match his speed, and brake early enough not to overshoot.
+    const id = cop.id;
+    const followGap = world.params['cops.followGapM'] ?? 40;
+    let spell = st.closingFor[id] ?? 0;
+    if (st.closing[id] === 1) {
+      if (Math.abs(gap) <= ALONGSIDE_S_M) spell += world.timeScale;
+      if (spell >= MOVE_IN_TICKS) {
+        st.closing[id] = 0;
+        spell = 0;
       }
-      st.closingFor[id] = spell;
-      const closing = st.closing[id] === 1;
-      const room = gap - (closing ? 0 : followGap);
-      vWant = room > 0 ? target.speed + Math.sqrt(2 * decel * room) : target.speed + 0.5 * room;
-      if (closing) {
-        const edge = config.road.edges[pos.edge];
-        const centre = edge ? (edge.dMin + edge.dMax) / 2 : 0;
-        dWant = target.pos.d + (target.pos.d > centre ? -ALONGSIDE_D_M : ALONGSIDE_D_M);
-      } else if (gap < 30) dWant = target.pos.d;
+    } else {
+      if (gap <= followGap + STATION_M) spell += world.timeScale;
+      if (spell >= HANG_BACK_TICKS) {
+        st.closing[id] = 1;
+        spell = 0;
+      }
     }
-    vWant = clamp(vWant, 0, bike.topSpeedMps);
+    st.closingFor[id] = spell;
+    const closing = st.closing[id] === 1;
+    const room = gap - (closing ? 0 : followGap);
+    vWant = room > 0 ? target.speed + Math.sqrt(2 * decel * room) : target.speed + 0.5 * room;
+    mayStop = Math.abs(gap) <= ALONGSIDE_S_M;
+    if (closing) {
+      const edge = config.road.edges[pos.edge];
+      const centre = edge ? (edge.dMin + edge.dMax) / 2 : 0;
+      dWant = target.pos.d + (target.pos.d > centre ? -ALONGSIDE_D_M : ALONGSIDE_D_M);
+    } else if (gap < -ALONGSIDE_S_M && shoulder) {
+      // Ahead of him: ease onto the shoulder and let him come past, then fall in behind.
+      dWant = shoulder.dCenterM;
+    } else if (gap < 30) dWant = target.pos.d;
+  } else if (st.phase[cop.id] === COP_DONE && st.busted.length > 0) {
+    // The chase ended in a bust: he stays with the man he busted.
+    dWant = pos.d;
+    mayStop = true;
+  } else if (shoulder) {
+    // Nothing to chase: pull onto the shoulder and stop there.
+    dWant = shoulder.dCenterM;
   }
-  if (!target) {
-    // Nothing to chase: keep to the travel lane and roll to a stop.
-    const lanes = config.road.lanesAt(pos.edge, pos.s);
-    dWant = (lanes.find((l) => l.kind === 'drive' && l.direction === pos.dir) ?? lanes[0])?.dCenterM ?? pos.d;
+  vWant = clamp(vWant, 0, bike.topSpeedMps);
+  // Never stand still in a travel lane: below the crawl, head for the shoulder and keep rolling
+  // until he is clear of the lane (traffic never passes a stopped rider in its lane).
+  if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {
+    vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
+    if (shoulder) dWant = shoulder.dCenterM;
   }
 
   const err = vWant - v;
@@ -258,7 +308,7 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   if (vWant <= 0.05 && v < 0.5) brake = 1;
   else if (err >= 0)
     throttle = clamp(holdThrottle(bike.accelMps2, bike.topSpeedMps, vWant) + 0.5 * err, 0, 1);
-  else if (err < -0.5) brake = clamp(-err * 0.3, 0, 1);
+  else if (err < -0.5) brake = clamp(Math.max(-err * 0.3, feedBrake), 0, 1);
 
   // Steering: a lateral speed toward dWant, with the road's curvature fed forward (as sim/ai).
   const edge = config.road.edges[pos.edge];
