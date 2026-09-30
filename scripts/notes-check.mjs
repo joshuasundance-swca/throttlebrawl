@@ -6,7 +6,7 @@
 // Dependabot commits) is exempt too.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { NOTE_NAME, dependabotExempt, parseNote } from './notes.mjs';
+import { NOTE_NAME, dependabotOnlyCommits, parseNote } from './notes.mjs';
 import { examined, git, refExists, repoRoot, splitZ } from './lib.mjs';
 
 if (process.env.GITHUB_EVENT_NAME === 'push' && process.env.GITHUB_REF === 'refs/heads/main') {
@@ -21,18 +21,12 @@ if (!refExists(base)) {
 }
 const mergeBase = git(['merge-base', base, 'HEAD']).trim();
 
-// Dependabot PRs are exempt (notes.mjs, dependabotExempt). CI passes the PR's author from the
-// pull_request event; --no-merges skips the synthetic merge commit CI checks out.
-const prAuthor = process.env.NOTES_PR_AUTHOR;
-if (prAuthor) {
-  const authors = git(['log', '--no-merges', '--format=%ae', `${mergeBase}..HEAD`])
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (dependabotExempt(prAuthor, authors)) {
-    examined(`0 notes: skipped, a Dependabot PR with ${authors.length} Dependabot-only commit(s)`);
-    process.exit(0);
-  }
+// Dependabot PRs are exempt (notes.mjs). CI passes the PR's author from the pull_request event.
+// `npm run check` lists this case as NOT ACTIVE and never runs this script for it.
+const botCommits = dependabotOnlyCommits(git, mergeBase, process.env.NOTES_PR_AUTHOR);
+if (botCommits) {
+  examined(`0 notes: skipped, a Dependabot PR with ${botCommits} Dependabot-only commit(s)`);
+  process.exit(0);
 }
 
 const added = new Set([
