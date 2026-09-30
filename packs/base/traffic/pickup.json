@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "pickup",
+  "name": "Pickup With a Kayak",
+  "category": "car",
+  "tags": ["local"],
+  "lengthM": 5.4,
+  "widthM": 2.0,
+  "cruiseMps": 23.5,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": true, "laneChanges": true, "dives": false },
+  "look": { "procedural": { "preset": "pickup" }, "paintOptions": ["#8a3b2e", "#2f4f5f", "#d9d4c7"] },
+  "meta": {
+    "status": "live",
+    "notes": "A local. A little slower than the rentals and never in a hurry.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}

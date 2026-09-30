@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "box-truck",
+  "name": "Box Truck",
+  "category": "truck",
+  "tags": ["commercial"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "cruiseMps": 22.0,
+  "hazard": "big",
+  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": {
+    "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 2.8 } },
+    "paintOptions": ["#e8e2c8", "#7fd1c7", "#d9d9d9"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The big hazard: hitting one crashes you. The content-pack doc's example truck.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}
