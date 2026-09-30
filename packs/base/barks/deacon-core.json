@@ -1,0 +1,52 @@
+{
+  "type": "bark-set",
+  "id": "deacon-core",
+  "name": "Deacon Vane: M1 lines",
+  "tags": ["rival", "m1"],
+  "defaults": {
+    "speaker": "deacon-vane",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "deacon-start-ditch",
+      "trigger": "race-start",
+      "text": "Pray the ditch is soft, sinner."
+    },
+    {
+      "id": "deacon-start-tithe",
+      "trigger": "race-start",
+      "text": "Tithe is ten percent. Of your bike."
+    },
+    {
+      "id": "deacon-pass-behind",
+      "trigger": "overtake",
+      "text": "Get thee behind me. Stay there."
+    },
+    {
+      "id": "deacon-pass-meek",
+      "trigger": "overtake",
+      "text": "The meek inherit the earth. Not this road."
+    },
+    {
+      "id": "deacon-hit-baptized",
+      "trigger": "hit-landed",
+      "text": "Consider yourself baptized."
+    },
+    {
+      "id": "deacon-hit-amen",
+      "trigger": "hit-landed",
+      "text": "Say amen. Say it from the ditch."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "deacon-start-ditch is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-29"
+    }
+  }
+}
