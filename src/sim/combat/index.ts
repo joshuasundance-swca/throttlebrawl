@@ -36,7 +36,11 @@
 //   (1 − the target's bike knockbackResistance). At the defaults a kick (18 m/s over 0.4 s) moves
 //   the target 3.6 m, about a lane, like a forced swerve, possibly into traffic; a punch (1.5 m/s)
 //   moves it 0.3 m and mostly staggers. The shove stops at the drivable edge (riders'
-//   barrierLimits). Each `hit` event carries `hitImpulse`, a 0..1 strength for the camera jolt
+//   barrierLimits). A non-player's hit on a player shoves and wobbles by combat.onPlayerScale
+//   (default 0.4, so a rival's kick moves you about 1.4 m, near M1's 1.7 m): the big shove is the
+//   player's new tool, and playtest 1 asked that rivals stay as hard as they were. At 1.0 an 8-race
+//   bot batch saw hits on the player rise from 27 to 51 and knock-offs from 0 to 7; at 0.4, 30
+//   and 0. Each `hit` event carries `hitImpulse`, a 0..1 strength for the camera jolt
 //   and haptics: (damage + peak shove m/s) / 40, capped at 1.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding rider regains combat.regenPerS points a second,
@@ -132,6 +136,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     max: 400,
     step: 10,
     unit: 'ms',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.onPlayerScale',
+    group: 'combat',
+    label: 'Rival hits on you',
+    default: 0.4,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -481,8 +496,13 @@ function land(
   const kick = w.contentId === KICK_ID;
   const health = Math.max(0, (riders.health[vid] ?? 0) - w.damage);
   riders.health[vid] = health;
-  const peak = shovePeak(world, config, a, victim, w);
-  const hitImpulse = Math.min(1, (w.damage + peak) / HIT_IMPULSE_FULL);
+  const fullPeak = shovePeak(world, config, a, victim, w);
+  // A rider's hit on a player shoves and staggers less (combat.onPlayerScale): the kick shove is
+  // the player's new tool, and the playtest asked that rivals stay as hard as they were.
+  const onPlayer =
+    isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
+  const peak = fullPeak * onPlayer;
+  const hitImpulse = Math.min(1, (w.damage + fullPeak) / HIT_IMPULSE_FULL);
   emit(
     world,
     'hit',
@@ -500,7 +520,8 @@ function land(
   // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
   const stagger = Math.round(w.staggerTicks * (world.params['combat.staggerScale'] ?? 1));
   st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
-  if (stagger > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, stagger);
+  const wobble = Math.round(stagger * onPlayer);
+  if (wobble > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, wobble);
   st.lastAttackerId[vid] = id;
   if (st.phase[vid] === 'windup') endAttack(st, vid);
 

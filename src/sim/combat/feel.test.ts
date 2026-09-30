@@ -138,6 +138,23 @@ describe('combat-3: knockback is a short curve (playtest 1 item 4: a kick shoves
     ).toBeCloseTo(2, 6);
   });
 
+  it('a rival’s hit on the player shoves and wobbles by combat.onPlayerScale (0.4); the player’s own hits are full', () => {
+    const kick = scriptOf({ 0: once(0, KICK_PRESS) });
+    const onRival = lateralTrace(pair(), kick, 90);
+    const onPlayer = lateralTrace(pair({ role: 'rival' }, { role: 'player' }), kick, 90);
+    expect(onPlayer.moved / onRival.moved).toBeCloseTo(0.4, 6);
+    expect(riderState(onRival.h.world).wobble[1]).toBe(21);
+    expect(riderState(onPlayer.h.world).wobble[1]).toBe(Math.round(21 * 0.4));
+    // The hit's strength for the camera and haptics is the same either way.
+    const impulse = (h: typeof onRival.h) => ofType(h.events, 'hit')[0]?.data['hitImpulse'];
+    expect(impulse(onPlayer.h)).toBe(impulse(onRival.h));
+    // A non-default value: 1 treats the player like anyone else.
+    const full = lateralTrace(pair({ role: 'rival' }, { role: 'player' }), kick, 90, {
+      'combat.onPlayerScale': 1,
+    });
+    expect(full.moved).toBeCloseTo(onRival.moved, 9);
+  });
+
   it('a shove stops at the barrier line and does not push the target through it', () => {
     const { ds, speeds } = lateralTrace(
       pair({ d: 2.5 }, { d: 3.7 }),
