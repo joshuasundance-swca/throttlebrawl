@@ -26,6 +26,8 @@ export type MaterialKind =
   | 'post'
   | 'rail'
   | 'deck'
+  // Playtest 1b: ground beside the road (sand, under the roadside zones).
+  | 'land'
   | 'water'
   | 'bike'
   | 'rider'
@@ -85,6 +87,7 @@ const PALETTE: Record<MaterialKind, string> = {
   post: '#e8e2c8',
   rail: '#cfd3d6',
   deck: '#a39c90',
+  land: '#d8c08c',
   water: '#19b5b0',
   bike: '#2b2b2b',
   rider: '#f2c14e',

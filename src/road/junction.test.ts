@@ -210,6 +210,108 @@ describe('road-2: the split, the shortcut and the merge', () => {
   });
 });
 
+// Playtest 1b ([decided] 2026-09-30, "you get forced away like it's a barrier"): past the split the
+// main connector and the shortcut's connector are drawn overlapping, but each edge walls its own
+// riders in. handover() is the rider-only way across: a rider past its own edge's drivable band,
+// whose world point lies inside a sibling branch's band, moves onto that sibling with its world
+// position and heading kept. advance() never does it, so traffic stays off shortcut edges.
+describe('playtest 1b: the rider-only handover between overlapping branches', () => {
+  /** A rider's drivable half-width margin (the riders lane's BIKE_HALF_WIDTH_M). */
+  const MARGIN = 0.5;
+
+  it('moves a rider past c-split’s right edge onto c-in, world position unchanged within 1e-6', () => {
+    const { net, e } = fixture();
+    for (const [s, d] of [
+      [2, 4.5],
+      [8, 4.6],
+      [15, 4.45],
+    ] as const) {
+      const pos: RoadPos = { edge: e('c-split'), s, d, dir: 1 };
+      const before = net.toWorld(pos.edge, pos.s, pos.d, 0);
+      const delta = net.handover(pos, MARGIN);
+      expect(net.edges[pos.edge]?.id, `s ${s} d ${d}`).toBe('c-in');
+      expect(delta).not.toBeNull();
+      expect(Math.abs(delta ?? 1)).toBeLessThan(0.3); // a few degrees: the branches diverge gently
+      expect(pos.dir).toBe(1);
+      const after = net.toWorld(pos.edge, pos.s, pos.d, 0);
+      expect(Math.hypot(after.x - before.x, after.z - before.z), `s ${s} d ${d}`).toBeLessThan(1e-6);
+      // Inside the sibling's band, less the margin: no barrier waits on the far side.
+      expect(pos.d).toBeGreaterThan(-2.5 + MARGIN);
+      expect(pos.d).toBeLessThan(2.5 - MARGIN);
+    }
+  });
+
+  it('keeps the heading: the world direction of travel is the same after the handover', () => {
+    const { net, e } = fixture();
+    const pos: RoadPos = { edge: e('c-split'), s: 12, d: 4.55, dir: 1 };
+    const yaw = 0.2;
+    const heading = (p: RoadPos, y: number) => {
+      const f = net.frameAt(p.edge, p.s);
+      // velocity ∝ dir · (cos(yaw)·T + sin(yaw)·R), R = (−tz, tx)
+      return {
+        x: p.dir * (Math.cos(y) * f.tx - Math.sin(y) * f.tz),
+        z: p.dir * (Math.cos(y) * f.tz + Math.sin(y) * f.tx),
+      };
+    };
+    const h0 = heading(pos, yaw);
+    const delta = net.handover(pos, MARGIN) ?? NaN;
+    const h1 = heading(pos, yaw + delta);
+    expect(net.edges[pos.edge]?.id).toBe('c-in');
+    expect(Math.hypot(h1.x - h0.x, h1.z - h0.z)).toBeLessThan(1e-3);
+  });
+
+  it('works back the other way: off c-in’s left edge onto c-split', () => {
+    const { net, e } = fixture();
+    const pos: RoadPos = { edge: e('c-in'), s: 6, d: -2.1, dir: 1 };
+    const before = net.toWorld(pos.edge, pos.s, pos.d, 0);
+    expect(net.handover(pos, MARGIN)).not.toBeNull();
+    expect(net.edges[pos.edge]?.id).toBe('c-split');
+    const after = net.toWorld(pos.edge, pos.s, pos.d, 0);
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(1e-6);
+  });
+
+  it('leaves a rider inside its own band, or far from any sibling, where it is (the wall stays)', () => {
+    const { net, e } = fixture();
+    const inside: RoadPos = { edge: e('c-split'), s: 5, d: 3.9, dir: 1 };
+    expect(net.handover(inside, MARGIN)).toBeNull();
+    expect(inside).toEqual({ edge: e('c-split'), s: 5, d: 3.9, dir: 1 });
+    // Far down the S-bend the shortcut is well away: past the edge is past the edge.
+    const far: RoadPos = { edge: e('b'), s: 120, d: 4.6, dir: 1 };
+    expect(net.handover(far, MARGIN)).toBeNull();
+    expect(far.edge).toBe(e('b'));
+    // The oncoming side of the main road has no sibling at all.
+    const left: RoadPos = { edge: e('c-split'), s: 5, d: -4.6, dir: 1 };
+    expect(net.handover(left, MARGIN)).toBeNull();
+    // [default] Splits only: at the merge both roads lead into d a few metres on.
+    const merge: RoadPos = { edge: e('c-out'), s: 25, d: -2.1, dir: 1 };
+    expect(net.handover(merge, MARGIN)).toBeNull();
+    expect(merge.edge).toBe(e('c-out'));
+  });
+
+  it('only onto an allowed edge, when the caller says which are allowed', () => {
+    const { net, e } = fixture();
+    const pos: RoadPos = { edge: e('c-split'), s: 5, d: 4.6, dir: 1 };
+    expect(net.handover(pos, MARGIN, (edge) => edge !== e('c-in'))).toBeNull();
+    expect(pos.edge).toBe(e('c-split'));
+  });
+
+  it('advance() never hands over: traffic past the edge stays on its own road', () => {
+    const { net, e } = fixture();
+    const pos: RoadPos = { edge: e('c-split'), s: 5, d: 4.6, dir: 1 };
+    expect(net.advance(pos)).toBe('ok');
+    expect(pos.edge).toBe(e('c-split'));
+  });
+
+  it('says which side a sibling branch lies on, in the split zone and along the overlap', () => {
+    const { net, e } = fixture();
+    expect(net.branchSideAt(e('a'), 180)).toBe(1); // the split zone, right edge
+    expect(net.branchSideAt(e('a'), 100)).toBe(0); // before it
+    expect(net.branchSideAt(e('c-split'), 5)).toBe(1);
+    expect(net.branchSideAt(e('c-in'), 5)).toBe(-1);
+    expect(net.branchSideAt(e('b'), 150)).toBe(0);
+  });
+});
+
 describe('road-2: the lint rules for junctions, connectors and jumps', () => {
   const bundle = () => fixtureBranchNetwork() as Mutable<ReturnType<typeof fixtureBranchNetwork>>;
   const rules = (b: ReturnType<typeof bundle>) =>

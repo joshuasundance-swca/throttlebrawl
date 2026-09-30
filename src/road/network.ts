@@ -6,7 +6,7 @@
 //   kappa positive when the road turns right (toward positive d);
 //   bank positive when the surface tilts down toward positive d.
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
-import { cos, sin, type LaneInfo } from '../core';
+import { atan, cos, sin, type LaneInfo } from '../core';
 import {
   readConnector,
   type BakedBarrier,
@@ -165,7 +165,26 @@ export interface RoadNetwork {
     s: number,
     side: 'left' | 'right',
   ): { kind: 'rail' | 'wall'; heightM: number } | null;
+  /**
+   * RIDERS ONLY (playtest 1b): where the branches out of a split are drawn overlapping, a mover past its own edge's drivable band (the outer lane edges less
+   * `margin`) whose world point lies inside a sibling branch's band moves onto that sibling. Its
+   * world position is kept (pos is mutated: edge, s, d, and dir if the sibling runs the other way)
+   * and the return value is the heading change to add to its yaw. Returns null, pos untouched, when
+   * there is nothing to hand over to: then the barrier rule applies as before. Never called by
+   * advance(), so traffic, which only advances, can never reach a shortcut this way. `allow`, when
+   * given, limits the siblings it may move onto (a race passes its route's allowed edges).
+   */
+  handover(pos: RoadPos, margin: number, allow?: (edge: number) => boolean): number | null;
+  /**
+   * Which side of the edge a sibling branch lies on at s: +1 (toward +d), −1, or 0 for none. It is
+   * nonzero inside a split zone (the zone's side) and along the stretches where handover() can
+   * act. The steering assist reads it so it never pushes a rider away from a branch it is taking.
+   */
+  branchSideAt(edge: number, s: number): -1 | 0 | 1;
 }
+
+/** How far down each branch the handover looks for drawn overlap with its siblings, m [default]. */
+const HANDOVER_SEARCH_M = 150;
 
 /** 1 / (1 − kappa·d), with the denominator clamped to at least 0.1 (curved-road kinematics). */
 export function sRateFactor(kappa: number, d: number): number {
@@ -560,6 +579,191 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     return best;
   };
 
+  // ---- The rider-only handover between overlapping branches (playtest 1b) ----
+  // The branches leaving a split (the main connector and the shortcut's, and the roads after them)
+  // are drawn overlapping for a stretch, but each edge walls its own movers in. The tables below
+  // record, for each edge, the stretches where its drawn surface overlaps a sibling branch's;
+  // handover() moves a rider across inside them. Built once, deterministic (+ - * / sqrt).
+  // [default] Splits only, the diagnosed wall: a merge's two roads overlap too, but both lead to the
+  // same road a few metres on, so the wall there costs a rider little; it is a follow-up.
+
+  /** The drawn surface's outer edges at (edge, s): the outermost lane edges, 0 on a side with none. */
+  const outerAt = (edge: number, s: number): { lo: number; hi: number } => {
+    let lo = 0;
+    let hi = 0;
+    for (const lane of lanesAt(edge, s)) {
+      lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+      hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+    }
+    return { lo, hi };
+  };
+
+  /**
+   * The foot of a world point on an edge, searching only samples within [sLo, sHi]: the nearest
+   * sample, then Newton steps on s until the offset is square to the tangent, with d taken at the
+   * final s. `along` is what is left over along the tangent: about 0 for a foot inside the edge,
+   * nonzero when the point lies past an end (s is clamped there).
+   */
+  const projectNear = (e: Edge, x: number, z: number, sLo: number, sHi: number) => {
+    const i0 = Math.max(0, Math.floor(sLo / e.spacing));
+    const i1 = Math.min(e.count - 1, Math.ceil(sHi / e.spacing));
+    let best = i0;
+    let bestD2 = Infinity;
+    for (let i = i0; i <= i1; i++) {
+      const dx = x - (e.x[i] ?? 0);
+      const dz = z - (e.z[i] ?? 0);
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    let s = best * e.spacing;
+    let d = 0;
+    let along = 0;
+    for (let iter = 0; iter < 24; iter++) {
+      s = s < 0 ? 0 : s > e.length ? e.length : s;
+      const f = frameAt(e.index, s);
+      const ox = x - f.x;
+      const oz = z - f.z;
+      d = -ox * f.tz + oz * f.tx;
+      along = ox * f.tx + oz * f.tz;
+      if (along < 1e-10 && along > -1e-10) break;
+      const next = s + along * sRateFactor(f.kappa, d);
+      if ((next <= 0 && s === 0) || (next >= e.length && s === e.length)) break; // past an end
+      s = next;
+    }
+    return { s, d, along };
+  };
+
+  /** One edge's overlap with one sibling: the s stretch on each, and the side the sibling is on. */
+  interface Overlap {
+    s0: number;
+    s1: number;
+    partner: number;
+    /** Where to look for the rider's foot on the partner. */
+    p0: number;
+    p1: number;
+    side: 1 | -1;
+  }
+  const overlaps = new Map<number, Overlap[]>();
+
+  /** A branch walked away from a junction end: each edge with the s range within the search. */
+  const branchFrom = (first: EdgeLink): { edge: number; s0: number; s1: number }[] => {
+    const out: { edge: number; s0: number; s1: number }[] = [];
+    let link: EdgeLink | null = first;
+    let left = HANDOVER_SEARCH_M;
+    while (link && left > 0 && out.length < 4) {
+      const e = edgeAt(link.edge);
+      if (out.some((o) => o.edge === e.index)) break;
+      const span = Math.min(left, e.length);
+      out.push(
+        link.entersAt === 'from'
+          ? { edge: e.index, s0: 0, s1: span }
+          : { edge: e.index, s0: e.length - span, s1: e.length },
+      );
+      left -= e.length;
+      link = link.entersAt === 'from' ? e.next : e.prev;
+    }
+    return out;
+  };
+
+  const addOverlaps = (
+    x: { edge: number; s0: number; s1: number },
+    y: { edge: number; s0: number; s1: number },
+  ): void => {
+    const ex = edgeAt(x.edge);
+    const ey = edgeAt(y.edge);
+    let s0 = Infinity;
+    let s1 = -Infinity;
+    let p0 = Infinity;
+    let p1 = -Infinity;
+    let side: 1 | -1 | 0 = 0;
+    for (let i = Math.floor(x.s0 / ex.spacing); i * ex.spacing <= x.s1 && i < ex.count; i++) {
+      const s = i * ex.spacing;
+      const own = outerAt(x.edge, s);
+      for (const sd of [1, -1] as const) {
+        if (side !== 0 && sd !== side) continue;
+        const w = toWorld(x.edge, s, sd > 0 ? own.hi : own.lo, 0);
+        const p = projectNear(ey, w.x, w.z, y.s0, y.s1);
+        if (p.along > 1e-3 || p.along < -1e-3) continue;
+        const theirs = outerAt(y.edge, p.s);
+        if (p.d < theirs.lo || p.d > theirs.hi) continue;
+        side = sd;
+        s0 = Math.min(s0, s);
+        s1 = Math.max(s1, s);
+        p0 = Math.min(p0, p.s);
+        p1 = Math.max(p1, p.s);
+      }
+    }
+    if (side === 0) return;
+    const pad = 10; // the rider's point sits up to a band's margin past the drawn edge
+    const list = overlaps.get(x.edge) ?? [];
+    list.push({
+      s0: Math.max(0, s0 - ex.spacing),
+      s1: Math.min(ex.length, s1 + ex.spacing),
+      partner: y.edge,
+      p0: Math.max(0, p0 - pad),
+      p1: Math.min(ey.length, p1 + pad),
+      side,
+    });
+    overlaps.set(x.edge, list);
+  };
+
+  for (const e of edges) {
+    for (const list of [e.nextLinks, e.prevLinks]) {
+      if (list.length < 2 || !list.some((l) => l.splitZone)) continue;
+      const branches = list.map(branchFrom);
+      for (let i = 0; i < branches.length; i++) {
+        for (let j = 0; j < branches.length; j++) {
+          if (i === j) continue;
+          for (const x of branches[i] ?? []) for (const y of branches[j] ?? []) addOverlaps(x, y);
+        }
+      }
+    }
+  }
+  for (const list of overlaps.values()) list.sort((p, q) => p.partner - q.partner || p.s0 - q.s0);
+
+  const handover = (pos: RoadPos, margin: number, allow?: (edge: number) => boolean): number | null => {
+    const list = overlaps.get(pos.edge);
+    if (!list) return null;
+    const own = outerAt(pos.edge, pos.s);
+    if (pos.d >= own.lo + margin && pos.d <= own.hi - margin) return null;
+    let w: WorldPoint | null = null;
+    for (const o of list) {
+      if (pos.s < o.s0 || pos.s > o.s1) continue;
+      if ((pos.d > 0 ? 1 : -1) !== o.side || (allow && !allow(o.partner))) continue;
+      w ??= toWorld(pos.edge, pos.s, pos.d, 0);
+      const p = projectNear(edgeAt(o.partner), w.x, w.z, o.p0, o.p1);
+      if (p.along > 1e-6 || p.along < -1e-6) continue;
+      const band = outerAt(o.partner, p.s);
+      if (p.d < band.lo + margin || p.d > band.hi - margin) continue;
+      const fx = frameAt(pos.edge, pos.s);
+      const fy = frameAt(o.partner, p.s);
+      const dot = fx.tx * fy.tx + fx.tz * fy.tz;
+      const dir: 1 | -1 = dot >= 0 ? pos.dir : pos.dir === 1 ? -1 : 1;
+      // The heading change: the angle from the sibling's direction of travel to ours, measured
+      // toward the right (the right of (tx, tz) is (−tz, tx)). Both sides flip with dir.
+      const k = pos.dir * dir;
+      const across = k * (-fx.tx * fy.tz + fx.tz * fy.tx);
+      const ahead = k * dot;
+      pos.edge = o.partner;
+      pos.s = p.s;
+      pos.d = p.d;
+      pos.dir = dir;
+      return atan(across / ahead);
+    }
+    return null;
+  };
+
+  const branchSideAt = (edge: number, s: number): -1 | 0 | 1 => {
+    for (const z of zones) {
+      if (z.edge === edge && s >= z.s0 && s <= z.s1) return z.d0 + z.d1 >= 0 ? 1 : -1;
+    }
+    for (const o of overlaps.get(edge) ?? []) if (s >= o.s0 && s <= o.s1) return o.side;
+    return 0;
+  };
+
   const neighbours = (edge: number, s: number, range: number): readonly RoadNeighbour[] => {
     const e = edgeAt(edge);
     const out: RoadNeighbour[] = [];
@@ -623,5 +827,7 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     neighbours,
     featuresOf,
     barrierAt,
+    handover,
+    branchSideAt,
   };
 }
