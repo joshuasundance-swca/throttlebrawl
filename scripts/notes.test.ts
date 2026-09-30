@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOTE_NAME, parseNote } from './notes.mjs';
+import { DEPENDABOT_EMAIL, NOTE_NAME, dependabotExempt, parseNote } from './notes.mjs';
 
 describe('what-changed notes', () => {
   it('parses a player note', () => {
@@ -15,6 +15,32 @@ describe('what-changed notes', () => {
     expect(() => parseNote('a.md', '---\nkind: new\naudience: everyone\n---\nx')).toThrow(/audience/);
     expect(() => parseNote('a.md', '---\nkind: new\naudience: dev\n---\n  \n')).toThrow(/no text/);
     expect(() => parseNote('a.md', 'Just text.')).toThrow(/frontmatter/);
+  });
+
+  describe('the Dependabot exemption', () => {
+    const bot = DEPENDABOT_EMAIL;
+    const human = '12345+someone@users.noreply.github.com';
+
+    it('exempts a PR that Dependabot opened and only Dependabot committed to', () => {
+      expect(dependabotExempt('dependabot[bot]', [bot])).toBe(true);
+      expect(dependabotExempt('dependabot[bot]', [bot, bot])).toBe(true);
+    });
+
+    it('does not exempt a PR opened by anyone else, even with Dependabot commits', () => {
+      expect(dependabotExempt('someone', [bot])).toBe(false);
+      expect(dependabotExempt('', [bot])).toBe(false);
+      expect(dependabotExempt(undefined, [bot])).toBe(false);
+      expect(dependabotExempt('dependabot', [bot])).toBe(false);
+    });
+
+    it('does not exempt a Dependabot PR that someone else also committed to', () => {
+      expect(dependabotExempt('dependabot[bot]', [bot, human])).toBe(false);
+      expect(dependabotExempt('dependabot[bot]', [human])).toBe(false);
+    });
+
+    it('does not exempt a Dependabot PR with no commits to look at', () => {
+      expect(dependabotExempt('dependabot[bot]', [])).toBe(false);
+    });
   });
 
   it('accepts dated slug names only', () => {

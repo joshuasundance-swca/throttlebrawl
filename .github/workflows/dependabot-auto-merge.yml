@@ -1,0 +1,52 @@
+# Dependabot auto-merge (docs/engineering.md, "Dependabot"). On a Dependabot PR that bumps npm
+# packages or workflow actions by a minor or patch version, arm GitHub's auto-merge (squash). It
+# merges only when the required `gate` check is green, exactly like any other PR. Majors, the uv
+# (GIS tool) PRs the gate does not test, and bumps whose package changed maintainers stay open for
+# a person or agent to review.
+#
+# `pull_request`, not `pull_request_target`: nothing here checks out or runs PR code, and GitHub's
+# Dependabot token is read-only unless the job asks for more, which this one job does (it needs
+# contents and pull-requests write to arm auto-merge). Every other job and PR gets no token rights.
+name: dependabot-auto-merge
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'joshuasundance-swca/throttlebrawl'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Dependabot metadata
+        id: meta
+        # v3.1.0, pinned by commit because this job holds a write token.
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98
+      # package-ecosystem is read from the branch name (dependabot/<ecosystem>/...), so npm shows
+      # as npm_and_yarn and actions as github_actions (fetch-metadata v3.1.0 update_metadata.ts).
+      - name: Arm auto-merge (squash) for a minor or patch bump
+        if: >-
+          (steps.meta.outputs.package-ecosystem == 'npm_and_yarn' ||
+           steps.meta.outputs.package-ecosystem == 'github_actions') &&
+          (steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+           steps.meta.outputs.update-type == 'version-update:semver-patch') &&
+          steps.meta.outputs.maintainer-changes != 'true'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}
+      - name: Say why a PR was left for review
+        if: steps.meta.outcome == 'success'
+        env:
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          MAINTAINER_CHANGES: ${{ steps.meta.outputs.maintainer-changes }}
+          NAMES: ${{ steps.meta.outputs.dependency-names }}
+        run: echo "ecosystem=$ECOSYSTEM update=$UPDATE_TYPE maintainer-changes=$MAINTAINER_CHANGES deps=$NAMES"
