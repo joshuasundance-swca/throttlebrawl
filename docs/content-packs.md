@@ -128,6 +128,8 @@ tools/packs/                    # validator CLI, indexer, schema emitter (npm sc
 
 The file `pack.index.json` is **generated** by the indexer at dev and build time and is not committed. It lists every file in the pack with its type and, for assets, the manifest fields `{id, kind, source, path, bytes, hash, packId}` that [the architecture doc](./architecture.md#asset-manifest) defines (`hash` is a SHA-256). The runtime's asset manifest is the union of the loaded packs' indexes. A static web host cannot list folders, so the runtime reads this index instead of guessing paths, and agents never hand-maintain it. Where this doc and [the engineering doc](./engineering.md#big-and-generated-assets) describe the manifest differently, the architecture doc wins.
 
+Where the index lives `[default]` (M1 content-1): `npm run packs:check` writes each pack's index to `.cache/packs/<packId>/pack.index.json`, a folder git ignores, so it can never be committed by accident. M1 bundles the base pack through Vite's `import.meta.glob`, so the runtime does not read the file yet; the build copies it next to a pack when the first streamed pack or remote asset needs it.
+
 ### The manifest: `pack.json`
 
 ```json
@@ -248,6 +250,8 @@ Almost every field beyond the core few is optional, with a default documented in
 ### Which fields count as sim-facing
 
 The registry computes a **sim content hash** over only each entry's sim-facing fields, and a **full content hash** over everything ([architecture](./architecture.md#content-registry)). Sim-facing fields are the ones that enter `SimConfig`: a bike's `handling` and `combat`; a rider's `stats`, `personality`, `grudge` and `law`; a weapon's timing, reach, damage, knockback, steal and uses; a traffic type's size, speed, hazard and behaviour; events, modifiers, roads and sim-affecting tuning. `look`, `engineSound`, `paint`, `blurb`, `tags` and `meta` are presentation-only and excluded, so a paint or proportion edit never changes the replay key. `src/content/schema/` lists the sim-facing fields per type.
+
+How the list is kept `[default]` (M1 content-1): `SIM_EXCLUDED_FIELDS` in `src/content/schema/entries.ts` names, per type, the top-level fields left out of the sim hash; every other field counts as sim-facing. So a rider's `bike`, `role`, `crew` and `startingWeapon` count too, because they decide what enters `SimConfig`, and a field a later lane adds renews the replay key until it is listed, rather than risking replays that silently diverge. Bark sets, HUD layouts and stations are presentation-only. All of a tuning preset's `values` count, since the file does not say which keys affect the sim.
 
 ## Asset references
 
@@ -1265,6 +1269,8 @@ Tag: `[decided]` that checks run on every change and stay fast ("focus on veloci
    - **Tuning:** keys exist in the parameter registry, and values are in range.
    - **Barks** (with the first AI batch): triggers and facts are in the registries; `text` exists and is 80 characters or fewer (warning); no near-duplicate text across sets; a coverage report shows, per rival, which key triggers (`race-start`, `overtake`, `overtaken`, `hit-landed`, `hit-taken`, `knocked-down-by-target`) have no lines.
    - **Licences** (with the first OSM-derived road): every file is covered by `license` or a `licenseRules` entry; any road with an OSM source matches an ODbL rule with attribution.
+
+Other lanes' rules plug in without editing the validator `[default]` (M1 content-1): a module that exports `packRules` (a list of `PackRule`, typed in `src/content/lint.ts`) and is listed in `HOOK_MODULES` in `tools/packs/run.ts` runs with the built-in rules. The road lane's `tools/road/pack-rules.ts` is listed already and switches on when the file lands. Two reference checks only warn `[default]`. A bark set's `speaker` or `target` naming a rider that is missing, vetoed or draft: such lines simply never play, which cannot break a race, and bark sets may land before their riders' files. And a live entry naming a `draft` one: release builds leave drafts out, so the reference is empty there, which is how a lane keeps unfinished content out of the public game (the M1 traffic types ship as drafts until they are drawn). A reference to a `vetoed` entry or item still fails, and so does a pack default (`defaults.tuning`, `defaults.hud`) that names a draft.
 
 Errors fail the check. Warnings print but pass, so velocity is not blocked by, for example, a slightly long bark. Every message carries a file path and a JSON pointer, such as `packs/base/riders/kevin-from-accounting.json /personality/aggression: expected 0..1, got 1.4`, so an agent can fix it without searching.
 
