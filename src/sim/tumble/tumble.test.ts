@@ -523,7 +523,9 @@ describe('tumble: 50 seeded races with scripted crashes', () => {
             const a = h.config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, 0);
             const b = h.config.road.toWorld(bike.edge, bike.s, bike.d, 0);
             const dist = Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
-            runBudget[id] = Math.ceil((dist / RUN_MPS) * 60) + 5;
+            // A rival someone knocked off (tumble-2) stands and shakes a fist before running.
+            const getUp = tumbleRecord(h.world, id)?.getUpTotal ?? 0;
+            runBudget[id] = Math.ceil((dist / RUN_MPS) * 60) + 5 + getUp;
           } else if (m.mode === 'Road' && was === 'onFoot') {
             phase[id] = 'none';
             remounts++;

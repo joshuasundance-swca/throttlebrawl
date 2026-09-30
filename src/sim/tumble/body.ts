@@ -1,8 +1,7 @@
-// The crude M1 tumble body (docs/architecture.md, "Crash tumble"): one world-space point body
-// each for the rider and the bike, with an explicit velocity integrated at dt = timeScale / 60,
-// colliding with the road surface (surfaceHeight after project) and with barrier walls at the
-// edge's outer drivable offsets. Traffic and rider contacts arrive with M2's fuller rig.
-import { clamp, type LaneInfo } from '../../core';
+// Tumble bodies and the road's bands (docs/architecture.md, "Crash tumble"). A TumbleBody is a
+// crash cluster's centre and mean velocity (see ./rig.ts for the particles), which the snapshot
+// shows and the hand-back projects. The bands say where bodies, parked bikes and runners may be.
+import type { LaneInfo } from '../../core';
 import type { RoadNetwork } from '../../road';
 
 export interface TumbleBody {
@@ -16,24 +15,8 @@ export interface TumbleBody {
   edge: number;
 }
 
-export const GRAVITY = 9.81;
-/** Bodies stay this far inside the barrier walls (a crude body radius, metres). */
+/** A cluster's centre stays this far inside the barrier line (a crude body radius, metres). */
 export const BODY_RADIUS_M = 0.35;
-const GROUND_RESTITUTION = 0.35;
-const WALL_RESTITUTION = 0.3;
-/** A bounce slower than this settles instead (m/s). */
-const SETTLE_MPS = 1;
-/** Within this height of the surface a body counts as touching it, and slides with friction. */
-const CONTACT_M = 0.05;
-
-/** Where a body lies over the road after a step: its projection with d kept inside the walls. */
-export interface BodyContact {
-  edge: number;
-  s: number;
-  d: number;
-  /** Surface height under the body. */
-  ground: number;
-}
 
 /** The walls of an edge: its widest drivable offsets (lanes and shoulders), less the body radius. */
 export function wallBand(road: RoadNetwork, edge: number): { lo: number; hi: number } {
@@ -74,63 +57,4 @@ export function standingBand(road: RoadNetwork, edge: number, s: number): { lo: 
   if (lo <= hi) return { lo, hi };
   const mid = (lanes.lo + lanes.hi) / 2;
   return { lo: mid, hi: mid };
-}
-
-/**
- * Advances one body by dt: gravity, motion, barrier walls, then the ground with a bounce and
- * sliding friction (`mu`, as a multiple of g). Mutates the body; returns where it lies.
- */
-export function stepBody(road: RoadNetwork, b: TumbleBody, dt: number, mu: number): BodyContact {
-  b.vy -= GRAVITY * dt;
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
-  b.z += b.vz * dt;
-
-  const p = road.project(b.x, b.z, b.edge);
-  b.edge = p.edge;
-  const band = wallBand(road, p.edge);
-  const d = clamp(p.d, band.lo, band.hi);
-  const w = road.toWorld(p.edge, p.s, d, 0);
-  const ox = b.x - w.x;
-  const oz = b.z - w.z;
-  const off = Math.sqrt(ox * ox + oz * oz);
-  // Outside the walls, or past a dead end's last sample: put the body back and reflect the
-  // velocity's outward part. Inside, the projection residual is far below this threshold.
-  if (d !== p.d || off > 0.05) {
-    if (off > 1e-9) {
-      const nx = ox / off;
-      const nz = oz / off;
-      const vn = b.vx * nx + b.vz * nz;
-      if (vn > 0) {
-        b.vx -= (1 + WALL_RESTITUTION) * vn * nx;
-        b.vz -= (1 + WALL_RESTITUTION) * vn * nz;
-      }
-    }
-    b.x = w.x;
-    b.z = w.z;
-  }
-
-  const ground = road.surfaceHeight(p.edge, p.s, d);
-  if (b.y < ground) {
-    b.y = ground;
-    if (b.vy < 0) b.vy = -b.vy * GROUND_RESTITUTION;
-    if (b.vy < SETTLE_MPS) b.vy = 0;
-  }
-  if (b.y <= ground + CONTACT_M) {
-    const vh = Math.sqrt(b.vx * b.vx + b.vz * b.vz);
-    const dv = mu * GRAVITY * dt;
-    if (vh <= dv) {
-      b.vx = 0;
-      b.vz = 0;
-    } else {
-      const k = (vh - dv) / vh;
-      b.vx *= k;
-      b.vz *= k;
-    }
-  }
-  return { edge: p.edge, s: p.s, d, ground };
-}
-
-export function bodySpeed(b: TumbleBody): number {
-  return Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
 }
