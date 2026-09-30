@@ -1,0 +1,5 @@
+---
+kind: new
+audience: dev
+---
+narrative-1, part one: the bark selector and the four rivals' first lines. `src/ui/narrative/` now has the M1 selector from the content-pack doc's staging note (trigger, speaker and target match; a cooldown per line; a no-repeat ring per speaker; a weighted pick on a presentation random stream seeded from the race seed, which never touches the sim), a director that maps `raceStart`, `overtake` and `hit` to `race-start`, `overtake` and `hit-landed`, and one bubble at a time that stays up for max(2 s, characters ÷ 15 per second). `packs/base/barks/` has one set per regular rival (Deacon Vane, Dial-Up, Chad Speedwell, Kevin from Accounting): each rival's approved line from the tone guide plus agent drafts, 21 lines, every one with a content id for the M2 veto and none over 42 characters. The `barks.*` numbers are exported as tuning declarations (`BARK_TUNING`). In M1 the rings and cooldowns last one race [default]; career-long memory arrives with career/. Nothing shows in the game until app/ passes the snapshot and seed to `onEvents` (a one-line wire, next PR).
