@@ -38,6 +38,8 @@ export type { RaceResult } from './format';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange } from './settings';
 export type { SettingsChange } from './settings';
+// The barks' tuning declarations (narrative-1), for app/'s collected list.
+export { BARK_TUNING } from './narrative';
 
 export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results';
 

@@ -36,6 +36,11 @@ export interface LoopHooks {
   stepping(): boolean;
   /** Draws a frame; alpha interpolates between the last two snapshots. */
   render(alpha: number, frameDtS: number): void;
+  /**
+   * The frame-rate cap (tuning's frame gate): false skips this animation frame entirely, so the
+   * next frame that runs sees the whole elapsed time and the sim keeps real time.
+   */
+  shouldRunFrame?: () => boolean;
 }
 
 export interface GameLoop {
@@ -54,6 +59,10 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
   let started = false;
   const times: number[] = [];
   const frame = (now: number) => {
+    if (hooks.shouldRunFrame && !hooks.shouldRunFrame()) {
+      requestAnimationFrame(frame);
+      return;
+    }
     const elapsed = last < 0 ? 0 : (now - last) / 1000;
     last = now;
     if (elapsed > 0) {
