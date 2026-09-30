@@ -24,7 +24,7 @@ Tags in docs: `[decided]` is the maintainer's call, so don't change it without a
 - the bot plays a race in a real browser and the screenshots are not blank;
 - the perf budget holds on the throttled phone-like profile;
 - the leak scan and size check are clean;
-- the PR adds a plain-words note under `changes/`.
+- the PR adds a plain-words note under `changes/`. A PR that only Dependabot opened and committed to is exempt; the gate checks both ([Dependabot](docs/engineering.md#dependabot)).
 
 Locally, the pre-push hook (typecheck and tests) must pass. Run `npm run check`, or single browser tiers, when you touch render, input, UI or perf-relevant code. Any edit after a green CI run reopens the gate: push and let CI re-run. Report what each check examined, not only that it passed. Performance claims name the device, the renderer and the scene. Agents cannot verify a milestone on the benchmark phone: report "done, not phone-verified"; the maintainer's playtest phone-verifies it, and nothing waits for that.
 
