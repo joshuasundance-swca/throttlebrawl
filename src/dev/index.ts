@@ -8,8 +8,9 @@ import { installTestHandle, testFlagSet } from './handle';
 import { createPerfProbe, debugRequested, mountDebugOverlay } from './perf';
 import { selfTestRequested, showSelfTest } from './selftest';
 
-export { createBot } from './bot';
-export type { BotController, BotStats } from './bot';
+// createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
+export { createBot, createStubBot } from './bot';
+export type { BotController, BotStats, StubBot } from './bot';
 export { copyReport, reportText } from './report';
 export { createPerfProbe, debugRequested, formatOverlay, percentiles } from './perf';
 export type { PerfProbe, PerfReport, Percentiles } from './perf';
