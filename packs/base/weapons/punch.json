@@ -1,0 +1,22 @@
+{
+  "type": "weapon",
+  "id": "punch",
+  "name": "Punch",
+  "category": "unarmed",
+  "behaviour": "melee.swing",
+  "tags": ["unarmed"],
+  "unarmed": true,
+  "reach": { "sM": 1.2, "dM": 1.4 },
+  "windupS": 0.12,
+  "activeS": 0.08,
+  "recoveryS": 0.25,
+  "cooldownS": 0,
+  "damage": 10,
+  "knockback": { "lateralMps": 2.0, "staggerS": 0.2 },
+  "hitStopMs": 60,
+  "meta": {
+    "status": "live",
+    "notes": "M1 starting numbers (docs/milestones/M1.md): 7 / 5 / 15 ticks. Damage and knockback are combat-1's [default] starting values for the tuning panel.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-29" }
+  }
+}
