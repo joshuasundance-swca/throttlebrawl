@@ -1,0 +1,26 @@
+{
+  "type": "rider",
+  "id": "sgt-pruitt",
+  "name": "Sgt. Pruitt",
+  "role": "cop",
+  "roster": "local",
+  "region": "florida-keys",
+  "tags": ["deputy", "tired", "local-law"],
+  "blurb": "A tired county deputy. Slow to start a chase, then relentless.",
+  "bike": "rustbucket-400",
+  "stats": { "massKg": 95, "healthMax": 120, "skill": 0.6 },
+  "personality": { "style": "cop" },
+  "law": {
+    "agency": "keys-county-deputies",
+    "bustRadiusM": 14,
+    "bustDwellS": 1.0,
+    "fineCash": 400,
+    "pursuitSpeedScale": 1.05,
+    "radioVoice": "tired-deputy"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}

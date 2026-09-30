@@ -1,0 +1,9 @@
+---
+kind: new
+audience: player
+---
+Touch controls now work on the phone, and the keyboard is as good. Put your left thumb down anywhere on the left side: a stick appears under it. Push up to open the throttle, slide sideways to steer, lift to coast. The brake button brakes while you hold it. Tap the HIT button to punch at once; flick sideways off it to pick a side, or swipe down on it to kick. On a keyboard, W or Up throttles (it winds up over a third of a second), S or Down brakes, A/D or the arrows steer, J attacks, U and O attack left and right, K kicks, L looks back and Space skips the run-back. A quick tap is never lost, and holding an attack key or the button attacks once, not over and over.
+
+Before this, touches on the phone never reached the controls at all: the overlay that holds them had touch input switched off.
+
+For developers: the thresholds are tuning values (`input.attackDragPx`, `input.attackDragMs`, `input.kickSwipePx`, `input.kickSwipeMs`, `input.stickRangePx`, `input.stickDeadZone`) in `INPUT_TUNING`, not yet wired into the tuning panel (a one-line app-2 wire). `attackDragMs` is new, `[default]`: M1's starting numbers already give the side drag an 80 ms window and ask the timing invariant to check it, so architecture.md's gesture-timing bullet now names it and says that 45 degrees or steeper below horizontal counts as a downward swipe. The invariant (`gestureTimingProblems`) checks both windows plus one tick against every shipped weapon's wind-up; with no weapon files yet it uses M1's 0.12 s punch. `attack` is a one-tick press; the side and kick flags are held while the gesture or key holds, and every press is latched until a tick samples it. A tap on the attack button also sets `skipRunBack`; the sim acts on it only on foot. Tilt is an interface only.

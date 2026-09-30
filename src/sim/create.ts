@@ -2,7 +2,7 @@
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan2, cos, FNV_OFFSET, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING } from './ai';
-import { combatSystem, COMBAT_TUNING } from './combat';
+import { combatSystem, combatView, COMBAT_TUNING } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING } from './modifiers';
 import { pedsSystem, PEDS_TUNING } from './peds';
@@ -74,10 +74,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       grounded: m.h <= 0,
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
-      attackPhase: 'idle',
+      ...combatView(world, m.id),
       heldWeapon: null,
-      targetId: -1,
-      lastAttackerId: -1,
       progress: race.progress[m.id] ?? 0,
       distanceToFinish: race.distanceToFinish[m.id] ?? 0,
       place: race.place[m.id] ?? 0,
