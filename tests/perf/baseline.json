@@ -1,5 +1,5 @@
 {
-  "$comment": "First numbers from the walking skeleton (M1 app-1), printed by tests/e2e/bot-race.spec.ts. Draw calls and triangles depend only on the scene. Frame times are a CI-style software renderer on the dev machine with no CPU throttling, so they only show the loop holds 60 Hz; they are not phone evidence. dev-2 re-baselines the soft tier on CI runners with 4x CPU throttling, in a PR whose note gives the reason.",
+  "$comment": "Top-level fields: the walking skeleton's first numbers (M1 app-1), printed by tests/e2e/bot-race.spec.ts on the dev machine with no throttling; informational only. `soft` is the perf check's soft-tier baseline (tests/perf/perf.spec.ts fails above 2x it), measured on a CI runner as docs/engineering.md asks. Update it in a PR whose changes note gives the reason.",
   "measuredAt": "2026-09-29",
   "source": "dev machine, headless Chromium from @playwright/test 1.63.0, viewport 915x412 CSS px, device pixel ratio 1, no CPU throttling",
   "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
@@ -9,5 +9,14 @@
     "midway": { "drawCalls": 11, "triangles": 7944 },
     "finish": { "drawCalls": 9, "triangles": 7920 }
   },
-  "frameMs": { "samples": 600, "p50": 16.7, "p95": 16.8, "max": 16.8 }
+  "frameMs": { "samples": 600, "p50": 16.7, "p95": 16.8, "max": 16.8 },
+  "soft": {
+    "measuredAt": "2026-09-30",
+    "source": "GitHub Actions ubuntu runner, CI run 36662486374 (PR 52), headless Chromium shell from @playwright/test 1.63.0, SwiftShader, viewport 915x412 @1, 4x CPU throttling from the race start, 20 s of the seed-1 bot race",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "cpuThrottle": 4,
+    "seconds": 20,
+    "frameMs": { "p50": 33.3, "p95": 66.6 },
+    "stepMs": { "p95": 2.1 }
+  }
 }
