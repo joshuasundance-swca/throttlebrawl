@@ -20,7 +20,8 @@ function pruitt(): SimRiderDef {
   const rider = lookup(reg.riders, 'sgt-pruitt');
   const law = rider.law;
   if (rider.role !== 'cop' || !law) throw new Error('sgt-pruitt must be a cop with a law block');
-  const h = lookup(reg.bikes, rider.bike).handling;
+  const bike = lookup(reg.bikes, rider.bike);
+  const h = bike.handling;
   return {
     contentId: `base:${rider.id}`,
     name: rider.name ?? rider.id,
@@ -34,6 +35,8 @@ function pruitt(): SimRiderDef {
       brakeMps2: h.brakeMps2,
       steerRateMps: h.steerRateMps,
       massKg: h.massKg,
+      knockbackResistance: bike.combat?.knockbackResistance ?? 0,
+      hitPowerScale: bike.combat?.hitPowerScale ?? 1,
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
