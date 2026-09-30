@@ -46,13 +46,16 @@ const decl = (
   affectsSim: false,
 });
 
-// The ms maxima keep the timing invariant (gesture.ts) true against M1's 7-tick punch wind-up:
-// ceil(80 ms at 60 Hz) = 5 ticks, plus the sampling tick, is 6, under 7.
+// The ms maxima keep the timing invariant (gesture.ts) true. The side drag works only during the
+// wind-up: ceil(80 ms at 60 Hz) = 5 ticks, plus the sampling tick, is 6, under the punch's 7. The
+// kick swipe window (playtest 1: 200 ms, so a natural 150-200 ms swipe counts) must land inside
+// combat's 250 ms (15-tick) kick-conversion window: ceil(200 ms) = 12 ticks, plus the sampling
+// tick, is 13; the slider's maximum, ceil(230 ms) = 14, plus 1 is 15.
 export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('attackDragPx', 'Attack side drag', 24, 8, 80, 1, 'px'),
   decl('attackDragMs', 'Attack side drag window', 80, 30, 80, 5, 'ms'),
   decl('kickSwipePx', 'Kick swipe distance', 24, 8, 80, 1, 'px'),
-  decl('kickSwipeMs', 'Kick swipe window', 80, 30, 80, 5, 'ms'),
+  decl('kickSwipeMs', 'Kick swipe window', 200, 30, 230, 5, 'ms'),
   decl('stickRangePx', 'Stick range', 60, 30, 140, 5, 'px'),
   decl('stickDeadZone', 'Stick steer dead zone', 0.08, 0, 0.3, 0.01, ''),
   // M2 input-2 starting numbers (docs/milestones/M2.md, "Starting numbers").
