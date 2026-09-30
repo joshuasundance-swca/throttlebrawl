@@ -151,7 +151,7 @@ const REST_MPS = 0.5;
 const RIDER_MU = 1.6;
 const BIKE_MU = 2.2;
 const RIDER_THROW = 0.55;
-const BIKE_THROW = 0.9;
+const BIKE_THROW = 0.75;
 /** At or above this riding speed a crash is a big one: the bike cartwheels end over end (m/s). */
 const CARTWHEEL_MPS = 12;
 /** A hit this recent names who knocked a rider off (the takedown attribution window, 2 s). */
