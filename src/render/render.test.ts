@@ -269,6 +269,27 @@ describe('rider poses', () => {
     expect(find(idle.group, 'glint')?.visible).toBe(false);
   });
 
+  it('draws the parked bike where the snapshot says while the rider runs back, and hides it otherwise', () => {
+    const views = new EntityViews(createFlatLook());
+    const parked = () =>
+      views.root.children.filter(
+        (c): c is Mesh => c instanceof Mesh && c.name === 'views-parked-bike' && c.visible,
+      );
+    const bikeAt = { x: 12, y: 1.5, z: -40, heading: 0.3 };
+    views.sync(null, snap([entity(0, 'rider', { mode: 'OnFoot', parkedBike: bikeAt })]), 1, 0);
+    expect(parked()).toHaveLength(1);
+    const bike = parked()[0];
+    expect([bike?.position.x, bike?.position.y, bike?.position.z]).toEqual([12, 1.5, -40]);
+    expect(bike?.rotation.y).toBeCloseTo(0.3);
+    expect(drawLoad(views.root).triangles).toBeGreaterThan(0);
+    // Back on the bike: no second bike. Gone with the rider too.
+    views.sync(null, snap([entity(0, 'rider', { mode: 'Road', parkedBike: null })]), 1, 0.1);
+    expect(parked()).toHaveLength(0);
+    views.sync(null, snap([entity(0, 'rider', { mode: 'OnFoot', parkedBike: bikeAt })]), 1, 0.2);
+    views.sync(null, snap([]), 1, 0.3);
+    expect(parked()).toHaveLength(0);
+  });
+
   it('puts a light bar on the law only', () => {
     expect(setup({ faction: 'law' }, 1).lightBar.visible).toBe(true);
     expect(setup({ faction: 'rider' }, 1).lightBar.visible).toBe(false);

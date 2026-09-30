@@ -9,8 +9,16 @@ import { pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
-import { tumbleSystem, TUMBLE_TUNING } from './tumble';
-import type { EntitySnapshot, Sim, SimConfig, SimEvent, SimInput, SimSnapshot } from './types';
+import { parkedBike, tumbleSystem, TUMBLE_TUNING } from './tumble';
+import type {
+  EntitySnapshot,
+  ParkedBikeSnapshot,
+  Sim,
+  SimConfig,
+  SimEvent,
+  SimInput,
+  SimSnapshot,
+} from './types';
 import { addMover, createWorld, hashPlain, orderSystems, stepWorld, type World } from './world';
 
 /** Every sim tuning declaration, aggregated so app/ never imports a sim sub-folder. */
@@ -42,6 +50,14 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
   const riders = riderState(world);
   const race = raceState(world);
   const road = config.road;
+  /** A rider's bike where tumble-1 parked it (on foot after a crash), facing along the road. */
+  const parkedOf = (id: number): ParkedBikeSnapshot | null => {
+    const at = parkedBike(world, id);
+    if (!at) return null;
+    const p = road.toWorld(at.edge, at.s, at.d, 0);
+    const f = road.frameAt(at.edge, at.s);
+    return { x: p.x, y: p.y, z: p.z, heading: atan2(-f.tx * at.dir, -f.tz * at.dir) };
+  };
   const entities: EntitySnapshot[] = world.movers.map((m) => {
     const def = config.riders[m.riderIndex];
     const p = road.toWorld(m.pos.edge, m.pos.s, m.pos.d, m.h);
@@ -86,6 +102,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       distanceToFinish: race.distanceToFinish[m.id] ?? 0,
       place: race.place[m.id] ?? 0,
       finished: race.finishOrder.includes(m.id),
+      parkedBike: m.kind === 'rider' ? parkedOf(m.id) : null,
     };
   });
   return {
