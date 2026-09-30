@@ -63,7 +63,9 @@ function botRace(seed: number) {
         invalid++;
     }
     const after = snap.entities[playerId];
-    if (after && edges[edges.length - 1] !== after.road.edge) edges.push(after.road.edge);
+    // Edges ridden, in order: a crash can throw the bot across a junction and send it back on foot
+    // to its bike (the 100 mph starter's seed 7 does, at the end of edge 2), which is no re-crossing.
+    if (after?.mode === 'Road' && edges[edges.length - 1] !== after.road.edge) edges.push(after.road.edge);
     if (playerFinishTick < 0 && snap.race.finishOrder.includes(playerId)) playerFinishTick = sim.tick;
     if (sim.tick % 60 === 0) hashes.push(sim.hash());
   }

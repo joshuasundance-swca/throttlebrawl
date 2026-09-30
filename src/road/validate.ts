@@ -69,8 +69,11 @@ export const ROAD_LINT = {
   junctionRadiusM: 60,
   /** A connector's end and the road end it joins must point the same way within this, radians (3°). */
   joinAngleRad: 0.0524,
-  /** Jump lint: the speed the expected flight is worked out at (the M1 bike's top speed), m/s. */
-  jumpSpeedMps: 38,
+  /**
+   * Jump lint: the speed the expected flight is worked out at, m/s: the starter bike's top speed,
+   * 100 mph since playtest 1 item 10 (M1's 85 mph was 38).
+   */
+  jumpSpeedMps: 44.7,
   /** Jump lint: the largest |kappa| allowed from a ramp's start to its expected landing (500 m radius). */
   jumpMaxKappa: 0.002,
   /** Jump lint: road checked past the end of a `gap` feature, metres. */

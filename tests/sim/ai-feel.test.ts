@@ -1,23 +1,77 @@
-// ai-2's seeded-race assertion (docs/milestones/M2.md, "ai-2 · Rivals who feel the hits"): on
-// dev-4's shared seeded batch, a rival who noted a grudge against the player swings at them more
-// often afterwards than before (printed counts; fails only if it doesn't rise). tumble-2 notes the
-// grudge (`grudgeNoted`, when a knocked-off rival gets up); until it lands the batch holds none, and
-// the check prints NOT ACTIVE. The shared batch's replays cover "scripted races hash the same
-// every run". Hard's wider pack is a scripted scene in src/sim/ai/ai.test.ts (the band's effect is
-// smaller than seed-to-seed noise across a dozen bot races; see the ai-2 PR).
+// ai-2's seeded-race assertion (docs/milestones/M2.md, "ai-2 · Rivals who feel the hits"): a rival
+// who noted a grudge against the player swings at them more often afterwards. tumble-2 notes the
+// grudge (`grudgeNoted`, when a knocked-off rival gets up). Hard's wider pack is a scripted scene in
+// src/sim/ai/ai.test.ts (the band's effect is smaller than seed-to-seed noise across a dozen bot
+// races; see the ai-2 PR). The shared batch's replays cover "scripted races hash the same every run".
 //
-// The rate is per minute the holder and the player spent within hunting range of each other, both
-// riding (playtest 1 item 10's faster starter, [default] 2026-09-30). The grudge changes whom a
-// rival picks from the riders it can reach (ai-2's seek range, at most 40 m), so time spent far
-// apart says nothing about it. Per minute of the whole race, the check measured the finishing
-// order instead: at the new speeds most grudge holders finish well ahead of the bot, so their
-// "after" minutes were mostly spent out of reach. The whole-race rates are still printed.
+// Replaced for playtest 1 item 10's faster starter ([default] 2026-09-30, the riders-5 amendment):
+// - The shared batch's before-and-after rates are still printed, whole-race and per minute the two
+//   spent within hunting range, but no longer asserted. At the new speeds the batch holds only a
+//   handful of grudges against the bot (4 to 6 in 50 races, against 12 to 13 at 85 mph), and those
+//   compare unlike windows: "before" always ends with the fight that knocked the holder off, and
+//   "after" ends when either finishes, so the rate tracked the finishing order and the fight that
+//   caused the grudge, not the grudge.
+// - What is asserted is the grudge's own effect, as an A/B on the real race: the same seeded race
+//   run twice, identical until a racer-style rival first rides within 30 m of the player after 20 s;
+//   then in one run it holds a grudge against the player (noteGrudge, the fact tumble-2 writes) and
+//   in the other it does not. Over the next 60 s it must swing at the player more, and ride close
+//   to them longer, with the grudge. A racer only hunts someone it holds a grudge against; a
+//   heavy-hitter already hunts the player first, so a grudge changes nothing measurable for it.
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createBot } from '../../src/dev';
+import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent } from '../../src/sim/api';
+import { createSimWithWorld } from '../../src/sim/create';
+import { noteGrudge } from '../../src/sim/world';
 import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, TRACE_EVERY_TICKS, type BatchResult } from './batch';
 
 /** Hunting range: ai-2's widest seek range (10 m + 30 m at full aggression), metres of progress. */
 const NEAR_M = 40;
+/** The A/B's seeds, its window and "close" (a fight's distance), [default]. */
+const AB_SEEDS = [1, 2, 3, 4, 5, 6];
+const AB_WINDOW_TICKS = 60 * 60;
+const AB_CLOSE_M = 6;
+
+/**
+ * One A/B run: the base race with the bot, until a racer-style rival first rides within 30 m of the
+ * player after 20 s; then, with `grudge`, that rival notes a grudge against the player. Returns its
+ * swings at the player and the seconds it rode within AB_CLOSE_M of them over the next 60 s.
+ */
+function grudgeRun(seed: number, grudge: boolean) {
+  const { config, playerId, route } = createBatchRace(seed);
+  const { sim, world } = createSimWithWorld(config);
+  const bot = createBot();
+  let snap = sim.snapshot();
+  let t0 = -1;
+  let holder = -1;
+  let swings = 0;
+  let closeTicks = 0;
+  while (!sim.isOver() && (t0 < 0 ? sim.tick < 60 * 600 : sim.tick < t0 + AB_WINDOW_TICKS)) {
+    const me = snap.entities[playerId];
+    if (t0 < 0 && sim.tick >= 60 * 20 && me?.mode === 'Road') {
+      for (const e of snap.entities) {
+        const c = config.riders[e.id]?.controller;
+        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || c.style !== 'racer') continue;
+        if (Math.abs(e.progress - me.progress) > 30) continue;
+        holder = e.id;
+        t0 = sim.tick;
+        if (grudge) noteGrudge(world, holder, playerId);
+        break;
+      }
+    }
+    const a = emptyActions();
+    bot.drive(snap, playerId, route, a);
+    sim.step([toSimInput(a)]);
+    snap = sim.snapshot();
+    if (t0 < 0) continue;
+    for (const e of sim.events())
+      if (e.type === 'attackStart' && e.actor === holder && e.target === playerId) swings++;
+    const h = snap.entities[holder];
+    const p = snap.entities[playerId];
+    if (h && p && !h.finished && !p.finished && Math.abs(h.progress - p.progress) <= AB_CLOSE_M) closeTicks++;
+  }
+  return { t0, holder, swings, closeS: closeTicks / 60 };
+}
 
 // Vitest hides console output of passing tests, so the summary goes straight to stdout.
 const print = (line: string) => process.stdout.write(line + '\n');
@@ -85,7 +139,7 @@ describe('ai-2: a rival you knocked off comes after you (shared batch)', () => {
     return out;
   }
 
-  it('a rival who noted a grudge against the player swings at them more often afterwards', () => {
+  it('prints the batch’s grudges against the player, before and after (not asserted)', () => {
     const rates = grudgeRates();
     const grudgeEvents = batch.races.reduce((n, r) => n + (r.eventCounts['grudgeNoted'] ?? 0), 0);
     if (rates.length === 0) {
@@ -117,9 +171,38 @@ describe('ai-2: a rival you knocked off comes after you (shared batch)', () => {
           sum((r) => r.minAfter),
         ).toFixed(2)}/min after`,
     );
-    // Something to examine on both sides, then the rate within reach must rise.
-    expect(nearBefore).toBeGreaterThan(0);
-    expect(nearAfter).toBeGreaterThan(0);
-    expect(after).toBeGreaterThan(before);
   });
+
+  it('a rival who holds a grudge against the player swings at them more, and rides closer (A/B)', () => {
+    const rows: string[] = [];
+    let swingsOff = 0;
+    let swingsOn = 0;
+    let closeOff = 0;
+    let closeOn = 0;
+    let examined = 0;
+    for (const seed of AB_SEEDS) {
+      const off = grudgeRun(seed, false);
+      const on = grudgeRun(seed, true);
+      // Both runs are the same race until the grudge: the same moment and the same rival.
+      expect(on.t0, `seed ${seed}`).toBe(off.t0);
+      expect(on.holder, `seed ${seed}`).toBe(off.holder);
+      if (off.t0 < 0) continue;
+      examined++;
+      swingsOff += off.swings;
+      swingsOn += on.swings;
+      closeOff += off.closeS;
+      closeOn += on.closeS;
+      rows.push(
+        `seed ${seed} rival ${off.holder}: ${off.swings}→${on.swings} swings, ${off.closeS.toFixed(1)}→${on.closeS.toFixed(1)} s close`,
+      );
+    }
+    print(
+      `[ai-2] grudge A/B over ${examined} races (60 s after a racer-style rival first rides within 30 m of the player): ` +
+        `swings at the player ${swingsOff} without the grudge, ${swingsOn} with it; within ${AB_CLOSE_M} m ` +
+        `${closeOff.toFixed(1)} s without, ${closeOn.toFixed(1)} s with. ${rows.join('; ')}`,
+    );
+    expect(examined).toBeGreaterThanOrEqual(AB_SEEDS.length - 1);
+    expect(swingsOn).toBeGreaterThan(swingsOff);
+    expect(closeOn).toBeGreaterThan(closeOff);
+  }, 300_000);
 });
