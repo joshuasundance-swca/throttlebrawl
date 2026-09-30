@@ -16,6 +16,7 @@ import {
 } from './chase';
 
 export type { CameraContext, CameraPose, CameraTarget } from './chase';
+export { wideAmount } from './chase';
 export { FALLBACK_IMPULSE } from './jolt';
 export { SHAKE_TRAUMA } from './shake';
 
@@ -76,6 +77,12 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('joltM', 'Hit jolt', 0.35, 0, 1, 0.05, 'm'),
   decl('joltFullImpulse', 'Full jolt at hit strength', 0.9, 0.1, 2, 0.05, ''),
   decl('joltRate', 'Jolt snap-back', 14, 4, 30, 1, '1/s'),
+  // Playtest 1 item 11 [decided]: "phone may just be harder". A wide, short phone-landscape view
+  // gets a camera higher and further back; a laptop-shaped one is unchanged.
+  decl('wideAspectFrom', 'Phone cam: from aspect', 1.9, 1.3, 2.5, 0.05, ''),
+  decl('wideAspectFull', 'Phone cam: full at aspect', 2.1, 1.4, 2.8, 0.05, ''),
+  decl('wideHeightM', 'Phone cam: extra height', 0.6, 0, 3, 0.1, 'm'),
+  decl('wideDistanceM', 'Phone cam: extra distance', 1, 0, 5, 0.25, 'm'),
 ];
 
 export interface FollowCamera {
