@@ -87,6 +87,20 @@ export interface EntitySnapshot {
   /** Live race position, 1 = leading. */
   place: number;
   finished: boolean;
+  /**
+   * A rider's bike while it stands apart from them: parked after a crash hand-back while the rider
+   * runs back to it on foot (tumble-1), else null. World position and heading, in the same frame as
+   * the entity's own. Optional for hand-built snapshots; the sim fills it for every rider.
+   */
+  parkedBike?: ParkedBikeSnapshot | null;
+}
+
+/** Where a parked bike stands, for render (EntitySnapshot.parkedBike). */
+export interface ParkedBikeSnapshot {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
 }
 
 export interface RaceSnapshot {
