@@ -1,8 +1,8 @@
 {
   "type": "bark-set",
   "id": "deacon-core",
-  "name": "Deacon Vane: M1 lines",
-  "tags": ["rival", "m1"],
+  "name": "Deacon Vane: core lines",
+  "tags": ["rival", "m1", "m2"],
   "defaults": {
     "speaker": "deacon-vane",
     "cooldownS": 90,
@@ -38,6 +38,66 @@
       "id": "deacon-hit-amen",
       "trigger": "hit-landed",
       "text": "Say amen. Say it from the ditch."
+    },
+    {
+      "id": "deacon-traffic-maker",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Go meet your maker. He drives a truck."
+    },
+    {
+      "id": "deacon-traffic-works",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "The Lord works in oncoming traffic."
+    },
+    {
+      "id": "deacon-down-test",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "A test of faith. You failed it."
+    },
+    {
+      "id": "deacon-down-forgive",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Forgive them. Then run them over."
+    },
+    {
+      "id": "deacon-down-again",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Again? I am praying for your brakes."
+    },
+    {
+      "id": "deacon-crash-soft",
+      "trigger": "crash-self",
+      "text": "The ditch was soft. Praise be."
+    },
+    {
+      "id": "deacon-crash-humbling",
+      "trigger": "crash-self",
+      "text": "A humbling. I needed that, apparently."
+    },
+    {
+      "id": "deacon-near-sea",
+      "trigger": "near-miss",
+      "text": "Parted it like the Red Sea."
+    },
+    {
+      "id": "deacon-near-angel",
+      "trigger": "near-miss",
+      "text": "Guardian angel's on overtime."
     }
   ],
   "meta": {

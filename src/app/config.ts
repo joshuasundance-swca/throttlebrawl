@@ -205,6 +205,25 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] 
   return Array.from({ length: count }, (_, i) => pool[i % pool.length] ?? '');
 }
 
+/**
+ * The event region's traffic weights by qualified traffic-type id (M2 traffic-3): `traffic.mix`
+ * for road vehicles, `pedestrians` and `animals` for peds. A type the region lists nowhere gets 0,
+ * so it is never picked. Null when the event's region is not in the registry, which leaves the
+ * sim's own category defaults.
+ */
+function regionTrafficWeights(reg: ContentRegistry, event: RaceEvent): Map<string, number> | null {
+  const qualify = (pack: string, id: string) => (id.includes(':') ? id : `${pack}:${id}`);
+  const region = reg.regions[qualify('base', event.region)];
+  if (!region) return null;
+  const out = new Map<string, number>();
+  const t = region.traffic;
+  for (const k of [...t.mix, ...(t.pedestrians ?? []), ...(t.animals ?? [])]) {
+    const id = qualify('base', k.kind);
+    out.set(id, (out.get(id) ?? 0) + k.weight);
+  }
+  return out;
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = setup.eventId ?? DEFAULT_EVENT;
   const event = lookup(reg.events, eventId);
@@ -236,6 +255,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
   }));
+  const weights = regionTrafficWeights(reg, event);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
   for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;
@@ -263,6 +283,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       widthM: t.widthM,
       cruiseMps: t.cruiseMps,
       hazard: t.hazard,
+      ...(weights ? { weight: weights.get(`base:${t.id}`) ?? 0 } : {}),
     })),
     road: stream.road,
     route,

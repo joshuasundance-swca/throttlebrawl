@@ -126,3 +126,130 @@ describe('bark director', () => {
     expect(shown.filter((b) => b.contentRef.endsWith('#deacon-pass')).length).toBe(2);
   });
 });
+
+describe('bark director: M2 triggers', () => {
+  const evd = (
+    tick: number,
+    type: SimEvent['type'],
+    actor: number,
+    target: number | undefined,
+    data: Record<string, string | number | boolean>,
+    causeId?: number,
+  ): SimEvent => ({
+    tick,
+    type,
+    actor,
+    ...(target === undefined ? {} : { target }),
+    ...(causeId === undefined ? {} : { causeId }),
+    data,
+  });
+
+  function m2Pool() {
+    const line = (id: string, trigger: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      trigger,
+      text: id,
+      ...extra,
+    });
+    return barkLinesFrom({
+      'base:deacon-core': {
+        type: 'bark-set',
+        id: 'deacon-core',
+        defaults: { speaker: 'deacon-vane', cooldownS: 0 },
+        lines: [
+          line('deacon-traffic', 'takedown-into-traffic'),
+          line('deacon-down', 'knocked-down-by-target', { target: 'player' }),
+          line('deacon-crash', 'crash-self'),
+          line('deacon-near', 'near-miss'),
+        ],
+      },
+      'base:kevin-core': {
+        type: 'bark-set',
+        id: 'kevin-core',
+        defaults: { speaker: 'kevin-from-accounting', cooldownS: 0 },
+        lines: [
+          line('kevin-down', 'knocked-down-by-target'),
+          line('kevin-down-again', 'knocked-down-by-target', {
+            weight: 1000,
+            when: [{ fact: 'history.takedowns.targetOnSpeaker', op: 'gte', value: 2 }],
+          }),
+        ],
+      },
+    });
+  }
+  const refs = (shown: ShownBark[]) => shown.map((b) => b.contentRef.slice(b.contentRef.indexOf('#') + 1));
+
+  it('has the rival who scored a traffic takedown gloat, and the rider who went down answer later', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(m2Pool()), view);
+    // Deacon (0) takes Kevin (1) down into traffic: Deacon speaks; Kevin's line waits for the bubble.
+    d.onEvents(
+      [
+        evd(600, 'crash', 1, 7, { cause: 'traffic', contact: 'crash' }),
+        evd(600, 'takedown', 0, 1, { kind: 'traffic' }, 3),
+      ],
+      { snapshot: SNAP, seed: 1 },
+    );
+    expect(refs(shown)).toEqual(['deacon-traffic']);
+    expect(shown[0]?.tick).toBe(600);
+    expect(shown[0]?.raceId).toBe('seed-1');
+  });
+
+  it('has a rival knocked down by you answer you, once per fall, however many events describe it', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(m2Pool()), view);
+    // combat's knock-off (actor = the rider knocked off, target = the attacker) and combat-4's
+    // health takedown for the same hit, in one tick: one bark.
+    d.onEvents(
+      [
+        evd(600, 'crash', 0, 2, { reason: 'knockedOff', by: 2 }, 5),
+        evd(600, 'takedown', 2, 0, { kind: 'health' }, 5),
+      ],
+      { snapshot: SNAP, seed: 1, raceId: 'race-7' },
+    );
+    expect(refs(shown)).toEqual(['deacon-down']);
+    expect(shown[0]?.raceId).toBe('race-7');
+    // A knock-off by another rival: Deacon's line is for the player only, so silence.
+    d.onEvents([evd(1200, 'crash', 0, 1, { reason: 'knockedOff', by: 1 }, 6)], { snapshot: SNAP, seed: 1 });
+    expect(refs(shown)).toEqual(['deacon-down']);
+  });
+
+  it('reads memory facts from the current race: the second takedown unlocks the memory line', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(m2Pool()), view);
+    d.onEvents([evd(0, 'raceStart', -1, undefined, {})], { snapshot: SNAP, seed: 3 });
+    shown.length = 0;
+    d.onEvents([evd(600, 'takedown', 2, 1, { kind: 'scenery' }, 1)], { snapshot: SNAP, seed: 3 });
+    d.onEvents([evd(1200, 'takedown', 2, 1, { kind: 'scenery' }, 2)], { snapshot: SNAP, seed: 3 });
+    expect(refs(shown)).toEqual(['kevin-down', 'kevin-down-again']);
+    // A new race forgets: the first takedown gets the plain line again.
+    d.onEvents([evd(0, 'raceStart', -1, undefined, {})], { snapshot: SNAP, seed: 4 });
+    shown.length = 0;
+    d.onEvents([evd(600, 'takedown', 2, 1, { kind: 'scenery' }, 1)], { snapshot: SNAP, seed: 4 });
+    expect(refs(shown)).toEqual(['kevin-down']);
+  });
+
+  it('maps a crash nobody caused to crash-self, and a near miss to near-miss, for rivals only', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(m2Pool()), view);
+    d.onEvents([evd(600, 'crash', 0, undefined, { cause: 'barrier' })], { snapshot: SNAP, seed: 1 });
+    d.onEvents([evd(1200, 'nearMiss', 0, 9, { clearanceM: 0.3, oncoming: true })], {
+      snapshot: SNAP,
+      seed: 1,
+    });
+    // The player's own crash and near miss make no rival speak for them.
+    d.onEvents([evd(1800, 'crash', 2, undefined, { cause: 'barrier' })], { snapshot: SNAP, seed: 1 });
+    d.onEvents([evd(2400, 'nearMiss', 2, 9, { clearanceM: 0.3 })], { snapshot: SNAP, seed: 1 });
+    expect(refs(shown)).toEqual(['deacon-crash', 'deacon-near']);
+  });
+
+  it('reports every shown bark to onShown, for the recently seen list', () => {
+    const { view } = fakeView();
+    const seen: string[] = [];
+    const d = createBarkDirector(createBarkSelector(m2Pool()), view, {
+      onShown: (b) => seen.push(b.contentRef),
+    });
+    d.onEvents([evd(600, 'nearMiss', 0, 9, {})], { snapshot: SNAP, seed: 1 });
+    expect(seen).toEqual(['base:bark-set/deacon-core#deacon-near']);
+  });
+});

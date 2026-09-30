@@ -41,6 +41,7 @@ const opts = (storage: StorageLike | null, extra = {}) => ({
 });
 
 const custom: Settings = {
+  ...DEFAULT_SETTINGS,
   volumes: { master: 0.5, music: 0.1, effects: 0.2, voices: 0.3 },
   mute: true,
   mirror: true,
@@ -136,6 +137,7 @@ describe('the settings record', () => {
     };
     const { storage } = memoryStorage({ 'app:settings': JSON.stringify(record) });
     expect(createSettingsStore(opts(storage)).load()).toEqual({
+      ...DEFAULT_SETTINGS,
       volumes: { master: 1, music: 0, effects: DEFAULT_SETTINGS.volumes.effects, voices: 0.25 },
       mute: DEFAULT_SETTINGS.mute,
       mirror: true,

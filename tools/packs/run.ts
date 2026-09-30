@@ -137,6 +137,17 @@ export async function checkPacks(options: CheckOptions): Promise<CheckResult> {
     for (const f of findings) report(dir, f);
     if (pack) {
       parsed.push({ dir, pack });
+      // A licence rule's licence text ships in the pack (the lint cannot see non-entry files).
+      (pack.manifest.licenseRules ?? []).forEach((r, i) => {
+        if (r.licenseFile === undefined || rels.includes(r.licenseFile)) return;
+        report(dir, {
+          level: 'error',
+          rule: 'licenses',
+          file: 'pack.json',
+          pointer: `/licenseRules/${i}/licenseFile`,
+          message: `the licence text "${r.licenseFile}" is not in the pack`,
+        });
+      });
       result.entries += pack.entries.length;
       if (pack.packId !== d.name) {
         report(dir, {
