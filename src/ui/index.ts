@@ -19,7 +19,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { DEFAULT_SETTINGS, sanitiseSettings } from '../save';
+import { DEFAULT_SETTINGS, sanitiseSettings, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
   buildIdFromStamp,
@@ -39,7 +39,6 @@ import {
   visibleSettings,
   type SettingId,
   type SettingsChange,
-  type UiSettings,
 } from './settings';
 import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
 import { createNarrative, type Narrative } from './narrative';
@@ -49,7 +48,7 @@ export { ordinal, resultText, formatSpeed } from './format';
 export type { RaceResult } from './format';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
-export type { M2Settings, SettingId, SettingsChange, SettingValue, UiSettings } from './settings';
+export type { SettingId, SettingsChange, SettingValue } from './settings';
 // The barks' tuning declarations (narrative-1), for app/'s collected list.
 export { BARK_TUNING } from './narrative';
 
@@ -72,9 +71,9 @@ export interface UiCallbacks {
   onQuit?: () => void;
   /**
    * A settings change: app/ saves it and applies it. The record carries the M2 fields too
-   * (`UiSettings`); settings that feed SimConfig apply at the next race start or restart.
+   * (save-2's fields); settings that feed SimConfig apply at the next race start or restart.
    */
-  onSettingsChange?: (settings: UiSettings) => void;
+  onSettingsChange?: (settings: Settings) => void;
   /** "Save debug file" (dev-3). The button is hidden until this is wired. */
   onSaveDebugFile?: () => Promise<void>;
 }
@@ -100,7 +99,7 @@ export interface GameUi {
   showResumeCard(onChoice: (choice: 'resume' | 'startOver') => void): void;
   /** A spinner with a line of text over everything (the resume fast-forward), or null to hide it. */
   setBusy(text: string | null): void;
-  readonly settings: Readonly<UiSettings>;
+  readonly settings: Readonly<Settings>;
   readonly tuningPanel: TuningPanel;
   readonly narrative: Narrative;
 }
@@ -111,7 +110,7 @@ export interface UiOptions {
   tuning: TuningRegistry;
   callbacks: UiCallbacks;
   /** The loaded settings record; defaults when absent. */
-  settings?: UiSettings;
+  settings?: Settings;
   /**
    * The settings whose effect app/ has wired. Each appears on the settings screen once the saved
    * record keeps it too; units and the tuning entry need no wiring. `?settings=all` in the page
@@ -223,7 +222,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const root = el('div', { id: 'ui' });
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
   const buildId = buildIdFromStamp(opts.stampText);
-  let settings: UiSettings = opts.settings
+  let settings: Settings = opts.settings
     ? { ...opts.settings, volumes: { ...opts.settings.volumes } }
     : { ...DEFAULT_SETTINGS, volumes: { ...DEFAULT_SETTINGS.volumes } };
   let layout: TouchLayout = opts.layout;
@@ -465,7 +464,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     'tuning',
   );
   const syncPauseEntries = () => {
-    tuningButton.hidden = settingValue(settings, 'showTuning') !== true;
+    tuningButton.hidden = settingValue(settings, 'showTuningPanel') !== true;
   };
   const pauseScreen = el(
     'div',

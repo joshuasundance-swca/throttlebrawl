@@ -3,6 +3,7 @@
 // mute), Race (everything that feeds SimConfig), Controls (the mirror and the input options) and
 // Display. Opened from the pause menu, the Race rows say "applies next race". Big targets and
 // 16px type, so it reads at arm's length.
+import type { Settings } from '../save';
 import {
   settingDef,
   settingValue,
@@ -12,7 +13,6 @@ import {
   type SettingId,
   type SettingsChange,
   type SettingsTab,
-  type UiSettings,
 } from './settings';
 
 export const SETTINGS_CSS = `
@@ -46,7 +46,7 @@ export interface SettingsScreen {
   /** Shows the controls for these settings (the rest stay hidden), then redraws. */
   setVisible(ids: readonly SettingId[]): void;
   /** Reads the record into every control. */
-  sync(settings: Readonly<UiSettings>): void;
+  sync(settings: Readonly<Settings>): void;
   /** Opens a tab (the first one when left out) for the menu or over the paused race. */
   open(context: Context, tab?: SettingsTab): void;
   readonly context: Context;
@@ -141,7 +141,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
   );
 
   // ---- The table's rows --------------------------------------------------------------------
-  const rows = new Map<SettingId, { row: HTMLElement; sync(s: Readonly<UiSettings>): void }>();
+  const rows = new Map<SettingId, { row: HTMLElement; sync(s: Readonly<Settings>): void }>();
   const nextRaceTags: HTMLElement[] = [];
   const order: SettingId[] = [];
   const addRow = (id: SettingId) => {
@@ -155,13 +155,17 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
     const row = node('div', { className: 'setting-row' }, label);
     row.dataset['setting'] = id;
     if (def.kind === 'toggle') {
-      const box = node('input', { id: `settings-${id}`, type: 'checkbox' });
+      const box = node('input', { id: `settings-${id.replace('.', '-')}`, type: 'checkbox' });
       box.setAttribute('aria-label', def.label);
       box.addEventListener('change', () => opts.onChange({ kind: 'set', id, value: box.checked }));
       row.append(box);
       rows.set(id, { row, sync: (s) => (box.checked = settingValue(s, id) === true) });
     } else {
-      const group = node('div', { id: `settings-${id}`, className: 'choices', role: 'radiogroup' });
+      const group = node('div', {
+        id: `settings-${id.replace('.', '-')}`,
+        className: 'choices',
+        role: 'radiogroup',
+      });
       group.setAttribute('aria-label', def.label);
       const buttons = (def.options ?? []).map((o) => {
         const b = node('button', { type: 'button', textContent: o.label });

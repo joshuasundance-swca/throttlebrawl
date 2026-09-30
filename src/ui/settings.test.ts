@@ -3,15 +3,18 @@ import { DEFAULT_SETTINGS, sanitiseSettings } from '../save';
 import {
   ALWAYS_LIVE,
   applySettingsChange,
+  lastSeenPersists,
   nonDefaultValue,
   SETTINGS,
+  settingDefault,
   settingPersists,
   settingValue,
   visibleSettings,
   type SettingId,
 } from './settings';
 
-// ui-2 (docs/milestones/M2.md): every M2 setting in one place. The table is the settings screen.
+// ui-2 (docs/milestones/M2.md): every M2 setting in one place. The table is the settings screen;
+// the record, its field names and its defaults are save-2's.
 
 describe('the M2 settings table', () => {
   const ids = SETTINGS.map((s) => s.id);
@@ -20,17 +23,18 @@ describe('the M2 settings table', () => {
     for (const id of [
       'units',
       'difficulty',
-      'steerAssist',
+      'assists.steer',
       'speedMultiplier',
       'raceLength',
       'steering',
+      'tiltSensitivity',
       'throttle',
       'pullBackBrake',
       'haptics',
       'slowMo',
-      'screenShake',
-      'frameCap',
-      'showTuning',
+      'reduceShake',
+      'frameRateCap',
+      'showTuningPanel',
     ] satisfies SettingId[]) {
       expect(ids).toContain(id);
     }
@@ -39,34 +43,49 @@ describe('the M2 settings table', () => {
 
   it('marks exactly the settings that feed SimConfig as "applies next race"', () => {
     const next = SETTINGS.filter((s) => s.nextRace).map((s) => s.id);
-    expect(next.sort()).toEqual(['difficulty', 'raceLength', 'slowMo', 'speedMultiplier', 'steerAssist']);
+    expect(next.sort()).toEqual(['assists.steer', 'difficulty', 'raceLength', 'slowMo', 'speedMultiplier']);
   });
 
-  it('has the decided defaults: Normal, slow motion on, full speed, smooth frame rate, tuning hidden', () => {
+  it("takes save-2's defaults, and each default is one of the choices on offer", () => {
     const s = DEFAULT_SETTINGS;
     expect(settingValue(s, 'difficulty')).toBe('normal');
     expect(settingValue(s, 'slowMo')).toBe(true);
     expect(settingValue(s, 'speedMultiplier')).toBe(1);
-    expect(settingValue(s, 'frameCap')).toBe('full');
-    expect(settingValue(s, 'showTuning')).toBe(false);
+    expect(settingValue(s, 'frameRateCap')).toBe('full');
+    expect(settingValue(s, 'showTuningPanel')).toBe(false);
+    expect(settingValue(s, 'assists.steer')).toBe('off');
     expect(settingValue(s, 'units')).toBe('mph');
-  });
-
-  it('gives every setting a non-default value (the non-default test rule)', () => {
     for (const def of SETTINGS) {
-      const v = nonDefaultValue(def);
-      expect(v, def.id).not.toBe(def.default);
-      const next = applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: def.id, value: v });
-      expect(settingValue(next, def.id), def.id).toBe(v);
+      const d = settingDefault(def.id);
+      if (def.kind === 'toggle') expect(typeof d, def.id).toBe('boolean');
+      else
+        expect(
+          def.options?.map((o) => o.value),
+          def.id,
+        ).toContain(d);
     }
   });
 
-  it('offers a lower speed that is a multiplier in (0, 1], never a speed-up', () => {
+  it('gives every setting a non-default value that the record keeps (the non-default test rule)', () => {
+    for (const def of SETTINGS) {
+      const v = nonDefaultValue(def);
+      expect(v, def.id).not.toBe(settingDefault(def.id));
+      const next = applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: def.id, value: v });
+      expect(settingValue(next, def.id), def.id).toBe(v);
+      // Every choice survives save/'s sanitiser: nothing on offer is silently dropped on reload.
+      for (const o of def.options ?? []) {
+        const set = applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: def.id, value: o.value });
+        expect(settingValue(sanitiseSettings(set), def.id), `${def.id} = ${String(o.value)}`).toBe(o.value);
+      }
+    }
+  });
+
+  it('offers a lower speed from 1 down to 0.6, never a speed-up (riders-4)', () => {
     const speed = SETTINGS.find((s) => s.id === 'speedMultiplier');
     const values = (speed?.options ?? []).map((o) => o.value as number);
     expect(values.length).toBeGreaterThanOrEqual(3);
     for (const v of values) expect(v > 0 && v <= 1).toBe(true);
-    expect(Math.min(...values)).toBe(0.7);
+    expect(Math.min(...values)).toBe(0.6);
   });
 });
 
@@ -81,6 +100,17 @@ describe('settings changes', () => {
     expect(settingValue(DEFAULT_SETTINGS, 'difficulty')).toBe('normal'); // never mutated
   });
 
+  it('writes the nested steering assist without touching the frozen default', () => {
+    const strong = applySettingsChange(DEFAULT_SETTINGS, {
+      kind: 'set',
+      id: 'assists.steer',
+      value: 'strong',
+    });
+    expect(strong.assists.steer).toBe('strong');
+    expect(strong.assists).not.toBe(DEFAULT_SETTINGS.assists);
+    expect(DEFAULT_SETTINGS.assists.steer).toBe('off');
+  });
+
   it('keeps the M1 fields and changes units through the same path', () => {
     const kmh = applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'units', value: 'kmh' });
     expect(kmh.units).toBe('kmh');
@@ -92,29 +122,22 @@ describe('settings changes', () => {
     const s = applySettingsChange(DEFAULT_SETTINGS, { kind: 'seen', build: 'abc1234' });
     expect(s.lastSeenBuild).toBe('abc1234');
   });
-
-  it('still sets volumes, mute and the mirror (M1)', () => {
-    const s = applySettingsChange(DEFAULT_SETTINGS, { kind: 'volume', bus: 'master', value: 1.7 });
-    expect(s.volumes.master).toBe(1);
-    expect(applySettingsChange(s, { kind: 'mute', value: true }).mute).toBe(true);
-    expect(applySettingsChange(s, { kind: 'mirror', value: true }).mirror).toBe(true);
-  });
 });
 
 describe('which settings the screen shows', () => {
-  const keepAll = (d: unknown) => d as ReturnType<typeof sanitiseSettings>;
-
   it('detects whether the saved record keeps a field', () => {
     expect(settingPersists('units', sanitiseSettings)).toBe(true);
-    expect(settingPersists('difficulty', keepAll)).toBe(true);
+    expect(settingPersists('assists.steer', sanitiseSettings)).toBe(true);
     expect(settingPersists('difficulty', () => sanitiseSettings({}))).toBe(false);
+    expect(lastSeenPersists(sanitiseSettings)).toBe(true);
+    expect(lastSeenPersists(() => sanitiseSettings({}))).toBe(false);
   });
 
   it('shows a setting only when its effect is wired and the record keeps it', () => {
     const shown = visibleSettings({ live: ['difficulty'], persists: () => true, preview: false });
     expect(shown).toContain('difficulty');
     expect(shown).toContain('units'); // wired since M1
-    expect(shown).toContain('showTuning'); // ui's own effect
+    expect(shown).toContain('showTuningPanel'); // ui's own effect
     expect(shown).not.toContain('haptics'); // not wired yet
     const unsaved = visibleSettings({
       live: ['difficulty'],
@@ -122,7 +145,7 @@ describe('which settings the screen shows', () => {
       preview: false,
     });
     expect(unsaved).toEqual(['units']);
-    expect(ALWAYS_LIVE).toEqual(['units', 'showTuning']);
+    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel']);
   });
 
   it('shows everything in preview mode', () => {

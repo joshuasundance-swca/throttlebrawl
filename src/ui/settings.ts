@@ -1,13 +1,14 @@
 // The settings screen as data (docs/milestones/M2.md, ui-2): one table row per setting, one change
 // at a time, applied to a copy of the record. The screen draws the table; app/ applies each value
-// (to SimConfig at the next race, to input, camera, the loop) and save/ stores the record.
+// (to SimConfig at the next race, to input, camera, the loop) and save/ stores the record (save-2
+// owns its fields, names and defaults; the table reads its defaults from there).
 //
 // A setting shows only when its effect is live and the saved record keeps it: a setting whose
 // non-default value changes nothing observable is a bug (M2's cross-lane rules), and one that
 // forgets itself on reload is too. "Live" means app/ has wired it (`UiOptions.liveSettings`), or
 // the effect is ui's own (the tuning entry) or was wired in M1 (units). "Kept" is checked against
-// save/'s own sanitiser, so each setting appears by itself once save-2 adds its field.
-import type { Settings } from '../save';
+// save/'s own sanitiser.
+import { DEFAULT_SETTINGS, type Settings } from '../save';
 
 export type VolumeBus = keyof Settings['volumes'];
 export const VOLUME_BUSES: readonly { bus: VolumeBus; label: string }[] = [
@@ -17,36 +18,22 @@ export const VOLUME_BUSES: readonly { bus: VolumeBus; label: string }[] = [
   { bus: 'voices', label: 'Voices' },
 ];
 
-/**
- * The M2 fields of the settings record, by the names the settings screen writes (save-2 owns the
- * record and its defaults; these names are the ones ui reads and writes). [default]
- */
-export interface M2Settings {
-  difficulty: 'easy' | 'normal' | 'hard';
-  raceLength: 'short' | 'standard' | 'long';
-  /** The lower-overall-speed multiplier, in (0, 1]. */
-  speedMultiplier: number;
-  steerAssist: 'off' | 'light' | 'strong';
-  /** The takedown slow motion. */
-  slowMo: boolean;
-  steering: 'thumb' | 'tilt' | 'both';
-  throttle: 'scaled' | 'auto';
-  pullBackBrake: boolean;
-  haptics: boolean;
-  /** The reduce-screen-shake setting: 1 full shake and hit jolt, 0 none (camera's setShakeAmount). */
-  screenShake: number;
-  /** Smooth (the display's full rate) or the battery saver (about 30 fps). */
-  frameCap: 'full' | 'saver';
-  /** "Show tuning panel in the pause menu". */
-  showTuning: boolean;
-  /** The last build whose what's-new card this device showed (ui-3). */
-  lastSeenBuild: string;
-}
-
-/** The record as ui sees it: save/'s fields, plus the M2 fields once save/ keeps them. */
-export type UiSettings = Settings & Partial<M2Settings>;
-
-export type SettingId = 'units' | Exclude<keyof M2Settings, 'lastSeenBuild'>;
+/** A setting's path in the record: a field name, or `assists.steer` for the one nested field. */
+export type SettingId =
+  | 'units'
+  | 'difficulty'
+  | 'raceLength'
+  | 'speedMultiplier'
+  | 'assists.steer'
+  | 'slowMo'
+  | 'steering'
+  | 'tiltSensitivity'
+  | 'throttle'
+  | 'pullBackBrake'
+  | 'haptics'
+  | 'reduceShake'
+  | 'frameRateCap'
+  | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
 export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
 
@@ -57,7 +44,6 @@ export interface SettingDef {
   kind: 'choice' | 'toggle';
   /** Choices, in display order (choice settings only). */
   options?: readonly { value: SettingValue; label: string }[];
-  default: SettingValue;
   /** Feeds SimConfig: applies at the next race start or restart, never mid-race. */
   nextRace?: boolean;
 }
@@ -82,7 +68,6 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'normal', label: 'Normal' },
       { value: 'hard', label: 'Hard' },
     ],
-    default: 'normal',
     nextRace: true,
   },
   {
@@ -95,10 +80,10 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'standard', label: 'Standard' },
       { value: 'long', label: 'Long' },
     ],
-    default: 'standard',
     nextRace: true,
   },
   {
+    // riders-4 offers 0.6 to 1.0 (SPEED_MULTIPLIER_MIN in sim/riders).
     id: 'speedMultiplier',
     tab: 'race',
     label: 'Game speed',
@@ -108,12 +93,12 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 0.9, label: '90%' },
       { value: 0.8, label: '80%' },
       { value: 0.7, label: '70%' },
+      { value: 0.6, label: '60%' },
     ],
-    default: 1,
     nextRace: true,
   },
   {
-    id: 'steerAssist',
+    id: 'assists.steer',
     tab: 'race',
     label: 'Steering assist',
     kind: 'choice',
@@ -122,10 +107,9 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'light', label: 'Light' },
       { value: 'strong', label: 'Strong' },
     ],
-    default: 'off',
     nextRace: true,
   },
-  { id: 'slowMo', tab: 'race', label: 'Takedown slow motion', kind: 'toggle', default: true, nextRace: true },
+  { id: 'slowMo', tab: 'race', label: 'Takedown slow motion', kind: 'toggle', nextRace: true },
   // Controls.
   {
     id: 'steering',
@@ -137,7 +121,18 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'tilt', label: 'Tilt' },
       { value: 'both', label: 'Both' },
     ],
-    default: 'thumb',
+  },
+  {
+    id: 'tiltSensitivity',
+    tab: 'controls',
+    label: 'Tilt sensitivity',
+    kind: 'choice',
+    options: [
+      { value: 0.5, label: 'Low' },
+      { value: 1, label: 'Normal' },
+      { value: 1.5, label: 'High' },
+      { value: 2, label: 'Max' },
+    ],
   },
   {
     id: 'throttle',
@@ -148,10 +143,9 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'scaled', label: 'Drag' },
       { value: 'auto', label: 'Auto' },
     ],
-    default: 'scaled',
   },
-  { id: 'pullBackBrake', tab: 'controls', label: 'Pull back to brake', kind: 'toggle', default: false },
-  { id: 'haptics', tab: 'controls', label: 'Vibration', kind: 'toggle', default: true },
+  { id: 'pullBackBrake', tab: 'controls', label: 'Pull back to brake', kind: 'toggle' },
+  { id: 'haptics', tab: 'controls', label: 'Vibration', kind: 'toggle' },
   // Display.
   {
     id: 'units',
@@ -162,32 +156,22 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'mph', label: 'mph' },
       { value: 'kmh', label: 'km/h' },
     ],
-    default: 'mph',
   },
+  { id: 'reduceShake', tab: 'display', label: 'Reduce screen shake', kind: 'toggle' },
   {
-    id: 'screenShake',
-    tab: 'display',
-    label: 'Screen shake',
-    kind: 'choice',
-    options: [
-      { value: 1, label: 'Full' },
-      { value: 0.5, label: 'Less' },
-      { value: 0, label: 'Off' },
-    ],
-    default: 1,
-  },
-  {
-    id: 'frameCap',
+    // Divisors of the display's refresh: smooth first, half is the ~30 fps battery saver on a 60 Hz
+    // screen (docs/product-spec.md, "Settings").
+    id: 'frameRateCap',
     tab: 'display',
     label: 'Frame rate',
     kind: 'choice',
     options: [
       { value: 'full', label: 'Smooth' },
-      { value: 'saver', label: 'Battery saver' },
+      { value: 'half', label: 'Half' },
+      { value: 'third', label: 'Third' },
     ],
-    default: 'full',
   },
-  { id: 'showTuning', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle', default: false },
+  { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },
 ];
 
 const byId = new Map(SETTINGS.map((s) => [s.id, s]));
@@ -199,13 +183,15 @@ export function settingDef(id: SettingId): SettingDef {
 }
 
 /** Settings live without app/ declaring them: units (wired in M1) and the tuning entry (ui's own). */
-export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuning'];
+export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel'];
 
-/** The setting's value in the record, or its default when the record lacks it. */
-export function settingValue(s: Readonly<UiSettings>, id: SettingId): SettingValue {
-  const v = (s as Readonly<Record<string, unknown>>)[id];
-  const def = settingDef(id);
-  return typeof v === typeof def.default ? (v as SettingValue) : def.default;
+/** The raw value at a setting's path. */
+function read(s: unknown, id: SettingId): unknown {
+  let v: unknown = s;
+  for (const key of id.split('.')) {
+    v = typeof v === 'object' && v !== null ? (v as Record<string, unknown>)[key] : undefined;
+  }
+  return v;
 }
 
 function valid(def: SettingDef, value: unknown): value is SettingValue {
@@ -213,10 +199,22 @@ function valid(def: SettingDef, value: unknown): value is SettingValue {
   return (def.options ?? []).some((o) => o.value === value);
 }
 
+/** The setting's default: save/'s. */
+export function settingDefault(id: SettingId): SettingValue {
+  return read(DEFAULT_SETTINGS, id) as SettingValue;
+}
+
+/** The setting's value in the record, or its default when the record's value is not on offer. */
+export function settingValue(s: Readonly<Settings>, id: SettingId): SettingValue {
+  const v = read(s, id);
+  return valid(settingDef(id), v) ? v : settingDefault(id);
+}
+
 /** The first value that is not the default: a toggle flipped, or the first other choice. */
 export function nonDefaultValue(def: SettingDef): SettingValue {
-  if (def.kind === 'toggle') return !def.default;
-  const other = (def.options ?? []).find((o) => o.value !== def.default);
+  const d = settingDefault(def.id);
+  if (def.kind === 'toggle') return !d;
+  const other = (def.options ?? []).find((o) => o.value !== d);
   if (!other) throw new Error(`ui: setting ${def.id} has no second choice`);
   return other.value;
 }
@@ -230,13 +228,32 @@ export type SettingsChange =
 
 const unit = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
-export function applySettingsChange(s: Readonly<UiSettings>, c: SettingsChange): UiSettings {
-  const next: UiSettings = { ...s, volumes: { ...s.volumes } };
+/** A copy of `obj` with the value at `path` replaced, copying each object on the way down. */
+function writePath(
+  obj: Record<string, unknown>,
+  path: readonly string[],
+  value: unknown,
+): Record<string, unknown> {
+  const [key, ...rest] = path;
+  if (key === undefined) return obj;
+  const inner = obj[key];
+  const child = typeof inner === 'object' && inner !== null ? (inner as Record<string, unknown>) : {};
+  return { ...obj, [key]: rest.length ? writePath(child, rest, value) : value };
+}
+
+export function applySettingsChange(s: Readonly<Settings>, c: SettingsChange): Settings {
+  const next: Settings = { ...s, volumes: { ...s.volumes } };
   if (c.kind === 'volume') next.volumes[c.bus] = unit(c.value);
   else if (c.kind === 'mute') next.mute = c.value;
   else if (c.kind === 'mirror') next.mirror = c.value;
   else if (c.kind === 'seen') next.lastSeenBuild = c.build;
-  else if (valid(settingDef(c.id), c.value)) (next as unknown as Record<string, unknown>)[c.id] = c.value;
+  else if (valid(settingDef(c.id), c.value)) {
+    return writePath(
+      next as unknown as Record<string, unknown>,
+      c.id.split('.'),
+      c.value,
+    ) as unknown as Settings;
+  }
   return next;
 }
 
@@ -246,17 +263,14 @@ export function applySettingsChange(s: Readonly<UiSettings>, c: SettingsChange):
  */
 export function settingPersists(id: SettingId, sanitise: (data: unknown) => Settings): boolean {
   const value = nonDefaultValue(settingDef(id));
-  const kept = (sanitise({ [id]: value }) as unknown as Readonly<Record<string, unknown>>)[id];
-  return kept === value;
+  const probe = writePath({}, id.split('.'), value);
+  return read(sanitise(probe), id) === value;
 }
 
 /** Whether the record keeps the last-seen build (the what's-new card needs it, or it would nag). */
 export function lastSeenPersists(sanitise: (data: unknown) => Settings): boolean {
   const probe = 'probe-build';
-  return (
-    (sanitise({ lastSeenBuild: probe }) as unknown as Readonly<Record<string, unknown>>)['lastSeenBuild'] ===
-    probe
-  );
+  return read(sanitise({ lastSeenBuild: probe }), 'lastSeenBuild' as SettingId) === probe;
 }
 
 export interface VisibleOptions {

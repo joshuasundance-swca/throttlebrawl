@@ -151,7 +151,7 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
 
   // Enable the tuning entry on the Display tab, then go back: the entry shows and opens the panel.
   await page.locator('#settings-tab-display').click();
-  await page.locator('#settings-showTuning').check();
+  await page.locator('#settings-showTuningPanel').check();
   await page.locator('#settings-back').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
   expect(await pauseEntries(page)).toEqual(['resume', 'restart', 'quit', 'controls', 'tuning', 'report']);
@@ -203,10 +203,10 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       );
     },
   },
-  showTuning: {
+  showTuningPanel: {
     set: async (page) => {
       await page.locator('#settings-tab-display').click();
-      await page.locator('#settings-showTuning').check();
+      await page.locator('#settings-showTuningPanel').check();
     },
     effect: async (page) => {
       await page.locator('#settings-back').click();
@@ -217,7 +217,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     persisted: async (page) => {
       await page.locator('#settings-tab-display').click();
-      await expect(page.locator('#settings-showTuning')).toBeChecked();
+      await expect(page.locator('#settings-showTuningPanel')).toBeChecked();
     },
   },
 };
