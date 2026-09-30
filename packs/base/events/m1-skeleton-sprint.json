@@ -13,6 +13,6 @@
   "rewards": { "byPlaceCash": [1500, 900, 600, 300, 150] },
   "meta": {
     "status": "live",
-    "notes": "The walking skeleton's race: you against one box. riders-3 owns events and builds the M1 classic race."
+    "notes": "The M1 classic race: one length, one required objective (finish), prize by place. riders-3 (M1) owns it; the field grows to the four rivals when ai-1's rider files land."
   }
 }
