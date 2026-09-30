@@ -5,13 +5,13 @@
 // Each axis is a critically damped spring at rest on zero that receives a velocity kick. From rest,
 // x(t) = v0 * t * e^(-w t): it rises to v0 / (w e) at t = 1/w and returns without crossing zero,
 // so a single jolt never overshoots. The size comes from the hit event's `data.hitImpulse` (combat-3),
-// read as the target's knockback speed in m/s; until combat-3 publishes it, the kick flag picks a
-// stand-in from M1's knockback numbers (kick 5 m/s, punch 2 m/s).
+// a 0..1 hit strength (about 0.3 for a punch, 0.9 for a kick); a hit event without one gets the
+// kick flag's stand-in at those same strengths.
 import type { SimEvent } from '../sim/api';
 import { spring, stepSpring } from './spring';
 
-/** Stand-in impulses (m/s) while a hit event carries no `hitImpulse`: M1's kick and punch knockback. */
-export const FALLBACK_IMPULSE = { kick: 5, other: 2 } as const;
+/** Stand-in strengths for a hit event with no `hitImpulse`: combat-3's kick and punch values. */
+export const FALLBACK_IMPULSE = { kick: 0.9, other: 0.3 } as const;
 /** The rider who threw the hit feels a smaller recoil than the one who took it. */
 const ATTACKER_SHARE = 0.5;
 /** A little downward dip with every jolt, as a share of the sideways push. */
@@ -20,7 +20,7 @@ const DIP_SHARE = 0.35;
 export interface JoltParams {
   /** Peak sideways offset of a full-strength jolt, metres. */
   joltM: number;
-  /** The impulse (m/s) that gives a full-strength jolt. */
+  /** The hit strength (combat-3's 0..1 `hitImpulse`) that gives a full-strength jolt. */
   joltFullImpulse: number;
   /** Spring rate, 1/s: the jolt peaks at 1/rate seconds. */
   joltRate: number;

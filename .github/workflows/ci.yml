@@ -153,9 +153,11 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SPACE: ${{ vars.HF_SPACE_PROD }}
+        # The hf CLI's version is pinned in .github/deploy/requirements.txt, where Dependabot sees it.
         run: |
-          pipx install "huggingface_hub==1.30.0"
-          hf upload "$SPACE" .cache/space . --repo-type space --delete "*" \
+          python3 -m venv "$RUNNER_TEMP/hf"
+          "$RUNNER_TEMP/hf/bin/pip" install --quiet --disable-pip-version-check -r .github/deploy/requirements.txt
+          "$RUNNER_TEMP/hf/bin/hf" upload "$SPACE" .cache/space . --repo-type space --delete "*" \
             --commit-message "deploy ${GITHUB_SHA::7}"
 
   release:
