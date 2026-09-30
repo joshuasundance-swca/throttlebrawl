@@ -169,7 +169,7 @@ const SKIFF_PARTS: BoxPart[] = [
 
 const ARM_PARTS: BoxPart[] = [{ size: [0.13, 0.6, 0.13], at: [0, -0.3, 0], color: '#f2c14e' }];
 
-const SPARK_PARTS: BoxPart[] = [{ size: [0.07, 0.07, 0.07], at: [0, 0, 0], color: '#ffffff' }];
+const SPARK_PARTS: BoxPart[] = [{ size: [0.12, 0.12, 0.12], at: [0, 0, 0], color: '#ffc23a' }];
 const DROP_PARTS: BoxPart[] = [{ size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#ffffff' }];
 
 /** A flat quad with a vignette: faint in the middle, full at the edges (per-vertex alpha). */

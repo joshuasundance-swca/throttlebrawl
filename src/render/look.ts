@@ -119,8 +119,9 @@ export function createFlatLook(): LookStyle {
     id: 'flat-lowpoly',
     material(kind, params) {
       const vertexColors = params?.vertexColors ?? false;
-      // Vertex-coloured geometry carries its own colours, so the base stays white.
-      const color = params?.color ?? (vertexColors ? '#ffffff' : PALETTE[kind]);
+      // Vertex-coloured geometry carries its own colours, so the base stays white; an overlay's
+      // vertex colours only carry its vignette alpha, so it keeps its kind's colour.
+      const color = params?.color ?? (vertexColors && !params?.overlay ? '#ffffff' : PALETTE[kind]);
       const doubleSided = params?.doubleSided ?? false;
       const map = params?.map ?? null;
       const overlay = params?.overlay ?? false;

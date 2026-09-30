@@ -8,6 +8,7 @@ import {
   Group,
   InstancedMesh,
   Mesh,
+  MeshBasicMaterial,
   PerspectiveCamera,
   Scene,
   type BufferGeometry,
@@ -258,6 +259,13 @@ describe('the slow-motion tint', () => {
     expect(tintAfter(slow, { slowmoTint: 0 }).counts().tint).toBe(0);
     expect(tintAfter(snap([rider(0)], { timeScale: 0 })).counts().tint).toBe(0);
     expect(tintAfter(snap([rider(0)])).counts().tint).toBe(0);
+  });
+
+  it('tints cool blue, not white (its vertex colours only carry the vignette)', () => {
+    const { fx } = rig();
+    const color = (fx.tint.material as MeshBasicMaterial).color;
+    expect(color.b).toBeGreaterThan(color.r + 0.3);
+    expect(color.getHexString()).not.toBe('ffffff');
   });
 
   it('sizes the tint to cover the camera view', () => {
