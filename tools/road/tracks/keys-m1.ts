@@ -9,11 +9,13 @@
 // Frame: metres, x east, z south (north is -z). The start faces north.
 import type { TrackSource } from '../../../src/road/compile';
 
+// Travel lanes 4.0 m wide (M1 had 3.4 m): playtest 1 found the road too narrow to weave round
+// traffic. The rideable shoulders stay 1.5 m, so the road's edge is 5.5 m either side of centre.
 const LANES = [
-  { id: 'L0', dCenterM: -4.15, widthM: 1.5, direction: -1, kind: 'shoulder' },
-  { id: 'L1', dCenterM: -1.7, widthM: 3.4, direction: -1, kind: 'drive' },
-  { id: 'R1', dCenterM: 1.7, widthM: 3.4, direction: 1, kind: 'drive' },
-  { id: 'R0', dCenterM: 4.15, widthM: 1.5, direction: 1, kind: 'shoulder' },
+  { id: 'L0', dCenterM: -4.75, widthM: 1.5, direction: -1, kind: 'shoulder' },
+  { id: 'L1', dCenterM: -2, widthM: 4, direction: -1, kind: 'drive' },
+  { id: 'R1', dCenterM: 2, widthM: 4, direction: 1, kind: 'drive' },
+  { id: 'R0', dCenterM: 4.75, widthM: 1.5, direction: 1, kind: 'shoulder' },
 ] as const;
 
 export const KEYS_M1: TrackSource = {
@@ -64,7 +66,7 @@ export const KEYS_M1: TrackSource = {
         { s0: 0, s1: 'end', side: 'right', tag: 'marina' },
         { s0: 0, s1: 'end', side: 'left', tag: 'strip-mall' },
       ],
-      features: [{ kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 5.5, d1: 9 }],
+      features: [{ kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 }],
       barriers: [],
     },
     {
@@ -97,8 +99,8 @@ export const KEYS_M1: TrackSource = {
           id: 'marina-boardwalk',
           s0: 50,
           s1: 150,
-          d0: -12,
-          d1: -5,
+          d0: -12.6,
+          d1: -5.6,
           params: { spawns: 'pedestrians' },
         },
       ],
@@ -136,8 +138,8 @@ export const KEYS_M1: TrackSource = {
           id: 'fishing-rail',
           s0: 680,
           s1: 780,
-          d0: -6.5,
-          d1: -4.9,
+          d0: -7.1,
+          d1: -5.5,
           params: { spawns: 'pedestrians' },
         },
       ],
@@ -161,8 +163,8 @@ export const KEYS_M1: TrackSource = {
           id: 'sandbar-beach',
           s0: 150,
           s1: 260,
-          d0: 5,
-          d1: 14,
+          d0: 5.6,
+          d1: 14.6,
           params: { spawns: 'pedestrians' },
         },
         {
@@ -170,8 +172,8 @@ export const KEYS_M1: TrackSource = {
           id: 'tiki-stand',
           s0: 820,
           s1: 900,
-          d0: -12,
-          d1: -5,
+          d0: -12.6,
+          d1: -5.6,
           params: { spawns: 'pedestrians' },
         },
       ],
@@ -184,11 +186,11 @@ export const KEYS_M1: TrackSource = {
       // side of the S-bends, over one launch ramp. Hug the right edge before the split to take it.
       leave: {
         road: 'm1-marina-run',
-        offsetM: 3.4,
+        offsetM: 4,
         lane: 'R1',
-        zone: { lengthM: 40, d0: 2.4, d1: 4.9 },
+        zone: { lengthM: 40, d0: 3, d1: 5.5 },
       },
-      join: { road: 'm1-pelican-bridge', offsetM: 2.4, lane: 'R1' },
+      join: { road: 'm1-pelican-bridge', offsetM: 3, lane: 'R1' },
       turnsM: [60, 60],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       roads: [

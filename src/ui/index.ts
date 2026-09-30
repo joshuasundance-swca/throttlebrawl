@@ -164,7 +164,8 @@ const CSS = `
 #touch-surface[hidden] { display: none; }
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
   display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
-  pointer-events: none; box-sizing: border-box; }
+  pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
+.touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
 #touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
   margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
   background: #0003; pointer-events: none; box-sizing: border-box; }
@@ -177,8 +178,6 @@ ${SETTINGS_CSS}
 #busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
   border-radius: 50%; animation: tb-spin 0.9s linear infinite; }
 @keyframes tb-spin { to { transform: rotate(360deg); } }
-.touch-button .kick-hint { display: block; font: 700 10px ui-monospace, monospace; opacity: 0.9; }
-.touch-button { flex-direction: column; }
 #pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
   touch-action: none; }
 #rotate-screen { flex-direction: column; gap: 18px; background: #140a28 !important; color: #f2ead8 !important;
@@ -366,9 +365,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         className: 'touch-button',
         textContent: e.element === 'touch-attack' ? 'HIT' : 'BRAKE',
       });
-      // Playtest 1: "Can't kick". The attack button says how to kick (swipe down on it).
+      // The kick hint (playtest 1, 2026-09-30: "Can't kick"): swipe down on the button to kick.
       if (e.element === 'touch-attack')
-        b.append(el('span', { className: 'kick-hint', textContent: '▼ KICK' }));
+        b.append(el('span', { className: 'touch-hint', id: 'touch-kick-hint', textContent: '▼ kick' }));
       Object.assign(b.style, {
         left: `${r.x}px`,
         top: `${r.y}px`,

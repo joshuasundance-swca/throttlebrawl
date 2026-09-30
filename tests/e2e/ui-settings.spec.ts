@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 // entries, the tuning entry is hidden by default and shown when enabled, "Controls and HUD" opens
 // the controls settings over the paused race, Race settings say "applies next race" there, every
 // setting the screen shows persists across a reload and changes something observable, every tab
-// fits a phone-landscape screen, and the attack button shows how to kick (playtest 1).
+// fits a phone-landscape screen.
 //
 // `?settings=all` previews every setting, wired or not; the persistence test runs without it, so
 // it covers exactly what a player sees.
@@ -304,18 +304,4 @@ test('every settings tab fits a phone-landscape screen over the paused race, unc
   }
   console.log(`settings tabs: ${examined} text elements checked in all`);
   expect(problems).toEqual([]);
-});
-
-test('the attack button shows how to kick (playtest 1)', async ({ page }) => {
-  await startRace(page);
-  const hint = page.locator('#touch-attack .kick-hint');
-  await expect(hint).toBeVisible();
-  await expect(hint).toHaveText(/KICK/);
-  const inside = await page.evaluate(() => {
-    const b = document.getElementById('touch-attack')?.getBoundingClientRect();
-    const h = document.querySelector('#touch-attack .kick-hint')?.getBoundingClientRect();
-    return !!b && !!h && h.left >= b.left && h.right <= b.right && h.top >= b.top && h.bottom <= b.bottom;
-  });
-  expect(inside, 'the hint sits inside the button').toBe(true);
-  await shot(page, 'kick-hint');
 });

@@ -274,9 +274,22 @@ export function placePed(
   return mover.id;
 }
 
-function pick(world: World, pool: readonly number[]): number {
-  const i = Math.floor(nextFloat(world.rng.peds) * pool.length);
-  return pool[Math.min(i, pool.length - 1)] ?? -1;
+/** A type's pick weight: its region weight (M2 traffic-3), else 1, so a pool without weights is even. */
+function weightOf(t: SimTrafficTypeDef | undefined): number {
+  const w = t?.weight ?? 1;
+  return Number.isFinite(w) && w > 0 ? w : 0;
+}
+
+/** One weighted pick from the pool, from one roll (so equal weights pick as M1's even pick did). */
+function pick(world: World, config: SimConfig, pool: readonly number[]): number {
+  let total = 0;
+  for (const i of pool) total += weightOf(config.trafficTypes[i]);
+  let r = nextFloat(world.rng.peds) * total;
+  for (const i of pool) {
+    r -= weightOf(config.trafficTypes[i]);
+    if (r < 0) return i;
+  }
+  return pool[pool.length - 1] ?? -1;
 }
 
 /** Spawns the pedestrians of one roadside zone. */
@@ -302,7 +315,7 @@ function spawnZone(
       pool = animals.length > 0 && nextFloat(r) < PEDS.strayAnimalChance ? animals : people;
     else pool = [...people, ...animals];
     if (pool.length === 0) pool = people.length > 0 ? people : animals;
-    const type = pick(world, pool);
+    const type = pick(world, config, pool);
     const t = config.trafficTypes[type];
     if (!t) continue;
     const half = t.widthM / 2;
@@ -564,6 +577,7 @@ export const pedsSystem: SimSystem = {
     const people: number[] = [];
     const animals: number[] = [];
     config.trafficTypes.forEach((t, i) => {
+      if (weightOf(t) <= 0) return; // the region lists it nowhere: never spawns
       if (t.category === 'pedestrian') people.push(i);
       else if (t.category === 'animal') animals.push(i);
     });
