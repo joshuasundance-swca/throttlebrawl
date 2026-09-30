@@ -244,6 +244,35 @@ describe('peds: spawning from roadside zones', () => {
     expect(pedsState(noTypes).id).toHaveLength(0);
   });
 
+  it('picks kinds by the region weights (M2 traffic-3): weight 0 never spawns, heavier comes more', () => {
+    const kinds = (types: readonly SimTrafficTypeDef[]) => {
+      const counts = new Map<string, number>();
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const config = makeConfig({ seed, types, features: { a: [{ ...ZONE, params: {} }] } });
+        const st = pedsState(scenario(config, [{ s: 20, d: 1.7, speed: 0 }]));
+        for (const t of st.type) {
+          const id = config.trafficTypes[t]?.contentId ?? '?';
+          counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+      }
+      return counts;
+    };
+    const noTourists = kinds([CAR, { ...TOURIST, weight: 0 }, { ...CHICKEN, weight: 1 }]);
+    const even = kinds([CAR, TOURIST, CHICKEN]);
+    const touristHeavy = kinds([CAR, { ...TOURIST, weight: 9 }, { ...CHICKEN, weight: 1 }]);
+    const fmt = (m: Map<string, number>) => [...m].map(([k, v]) => `${k} ${v}`).join(', ');
+    console.log(
+      `peds by region weight: no tourists {${fmt(noTourists)}}; unweighted {${fmt(even)}}; tourist-heavy {${fmt(touristHeavy)}}`,
+    );
+    expect(noTourists.get(TOURIST.contentId) ?? 0).toBe(0);
+    expect(noTourists.get(CHICKEN.contentId) ?? 0).toBeGreaterThan(0);
+    expect(even.get(TOURIST.contentId) ?? 0).toBeGreaterThan(0);
+    expect(even.get(CHICKEN.contentId) ?? 0).toBeGreaterThan(0);
+    expect(touristHeavy.get(TOURIST.contentId) ?? 0).toBeGreaterThan(
+      3 * (touristHeavy.get(CHICKEN.contentId) ?? 0),
+    );
+  });
+
   it('lets some pedestrians cross the road and back, and none cross where rails line the road', () => {
     const open = makeConfig({ seed: 3, features: { a: [{ ...ZONE, s1: 500 }] } });
     const world = scenario(open, [{ s: 20, d: 1.7, speed: 0 }]);
