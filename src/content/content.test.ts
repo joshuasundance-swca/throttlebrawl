@@ -55,25 +55,104 @@ describe('content: the base pack', () => {
     expect(() => buildRegistry(files)).toThrow(/needs format 2/);
   });
 
-  it('keeps presentation edits out of the sim content hash (interim hashes)', () => {
-    const before = contentHashes(buildRegistry(basePackFiles()));
-    const blurb = contentHashes(
-      buildRegistry(
-        edited('riders/deacon-vane.json', (j) => {
-          j['blurb'] = 'Still a preacher.';
-        }),
-      ),
-    );
-    const handling = contentHashes(
-      buildRegistry(
-        edited('bikes/rustbucket-400.json', (j) => {
-          (j['handling'] as Record<string, unknown>)['accelMps2'] = 5;
-        }),
-      ),
-    );
-    expect(blurb.full).not.toBe(before.full);
-    expect(blurb.sim).toBe(before.sim);
-    expect(handling.full).not.toBe(before.full);
-    expect(handling.sim).not.toBe(before.sim);
+  it('drops vetoed items (and drafts in release builds) but keeps them in the file', () => {
+    const files = edited('regions/florida-keys/region.json', (j) => {
+      j['signs'] = [
+        { id: 'ices-before-road', text: 'BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES.' },
+        { id: 'stale', text: 'STALE JOKE.', status: 'vetoed', note: 'cut by the maintainer' },
+        { id: 'maybe', text: 'MAYBE.', status: 'draft' },
+      ];
+    });
+    const ids = (includeDrafts: boolean) =>
+      (lookup(buildRegistry(files, { includeDrafts }).regions, 'florida-keys').signs ?? []).map((s) => s.id);
+    expect(ids(false)).toEqual(['ices-before-road']);
+    expect(ids(true)).toEqual(['ices-before-road', 'maybe']);
+  });
+});
+
+describe('content: the sim and full content hashes', () => {
+  const BARKS = {
+    type: 'bark-set',
+    id: 'hash-probe',
+    defaults: { speaker: 'deacon-vane' },
+    lines: [{ id: 'deacon-pass', trigger: 'overtake', target: 'any', text: 'Pray for traction.' }],
+  };
+  const withBarks = (text: string): PackFile[] => [
+    ...basePackFiles(),
+    { path: 'barks/hash-probe.json', json: { ...BARKS, lines: [{ ...BARKS.lines[0], text }] } },
+  ];
+  const hashes = (files: PackFile[]) => contentHashes(buildRegistry(files));
+  const base = hashes(withBarks('Pray for traction.'));
+
+  it('is stable for the same content and 8 hex digits each', () => {
+    expect(hashes(withBarks('Pray for traction.'))).toEqual(base);
+    expect(base.sim).toMatch(/^[0-9a-f]{8}$/);
+    expect(base.full).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it('editing a bark changes the full hash but not the sim hash', () => {
+    const bark = hashes(withBarks('Traction is a state of grace.'));
+    expect(bark.full).not.toBe(base.full);
+    expect(bark.sim).toBe(base.sim);
+  });
+
+  it("editing a bike's handling changes both hashes", () => {
+    const files = [
+      ...edited('bikes/rustbucket-400.json', (j) => {
+        (j['handling'] as Record<string, unknown>)['accelMps2'] = 5;
+      }),
+      { path: 'barks/hash-probe.json', json: BARKS },
+    ];
+    const h = hashes(files);
+    expect(h.full).not.toBe(base.full);
+    expect(h.sim).not.toBe(base.sim);
+  });
+
+  it("editing a bike's paint changes only the full hash", () => {
+    const files = [
+      ...edited('bikes/rustbucket-400.json', (j) => {
+        j['look'] = { paintSlots: ['body'], defaultPaint: { body: '#f2c14e' }, paintOptions: ['#f2c14e'] };
+      }),
+      { path: 'barks/hash-probe.json', json: BARKS },
+    ];
+    const h = hashes(files);
+    expect(h.full).not.toBe(base.full);
+    expect(h.sim).toBe(base.sim);
+  });
+
+  it("editing a rider's blurb or paint changes only the full hash; its stats change both", () => {
+    const blurb = hashes([
+      ...edited('riders/deacon-vane.json', (j) => {
+        j['blurb'] = 'Still a preacher.';
+        j['paint'] = { body: '#000000' };
+      }),
+      { path: 'barks/hash-probe.json', json: BARKS },
+    ]);
+    expect(blurb.full).not.toBe(base.full);
+    expect(blurb.sim).toBe(base.sim);
+    const stats = hashes([
+      ...edited('riders/deacon-vane.json', (j) => {
+        j['stats'] = { massKg: 96 };
+      }),
+      { path: 'barks/hash-probe.json', json: BARKS },
+    ]);
+    expect(stats.sim).not.toBe(base.sim);
+  });
+
+  it('a vetoed bark line changes the full hash, since the registry drops it', () => {
+    const files = [
+      ...basePackFiles(),
+      {
+        path: 'barks/hash-probe.json',
+        json: { ...BARKS, lines: [{ ...BARKS.lines[0], status: 'vetoed' }] },
+      },
+    ];
+    const h = hashes(files);
+    expect(h.full).not.toBe(base.full);
+    expect(h.sim).toBe(base.sim);
+  });
+
+  it('does not depend on the order the files arrive in', () => {
+    expect(hashes([...withBarks('Pray for traction.')].reverse())).toEqual(base);
   });
 });
