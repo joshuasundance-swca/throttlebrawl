@@ -14,7 +14,7 @@
     "paintOptions": ["#e8e2c8", "#7fd1c7", "#d9d9d9"]
   },
   "meta": {
-    "status": "draft",
+    "status": "live",
     "notes": "The big hazard: hitting one crashes you. The content-pack doc's example truck.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }
