@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkPacks, loadHookRules } from './run';
+import { ALL_TUNING } from './tuning';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Fixtures are written at test time under the git-ignored .cache/, so no broken JSON is committed.
@@ -111,6 +112,14 @@ describe('packs:check', () => {
     const n = /\[examined\] (\d+) pack files/.exec(run.stdout)?.[1];
     expect(Number(n)).toBeGreaterThan(0);
   }, 30_000);
+
+  it('knows the tuning declarations of every module that has them, each id once', () => {
+    const ids = ALL_TUNING.map((d) => d.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const prefix of ['camera.', 'audio.', 'input.', 'barks.', 'combat.']) {
+      expect(ids.some((id) => id.startsWith(prefix))).toBe(true);
+    }
+  });
 
   it('loads hooked rules, and reports a hook module without packRules', async () => {
     const good = await loadHookRules(root, [`/${FIXTURE}/hook-rule.ts`]);
