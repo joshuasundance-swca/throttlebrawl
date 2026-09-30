@@ -29,10 +29,13 @@ function fromVitest(out) {
 }
 function fromPlaywright(out) {
   const passed = /(\d+) passed/.exec(out)?.[1];
+  const failed = /(\d+) failed/.exec(out)?.[1];
+  const flaky = /(\d+) flaky/.exec(out)?.[1];
   const renderer = /renderer: (.*)/.exec(out)?.[1];
+  const bad = [failed && `${failed} failed`, flaky && `${flaky} flaky`].filter(Boolean).join(', ');
   return {
     n: Number(passed ?? 0),
-    text: `${passed ?? 0} browser tests passed${renderer ? `; ${renderer.trim()}` : ''}`,
+    text: `${passed ?? 0} browser tests passed${bad ? `, ${bad}` : ''}${renderer ? `; ${renderer.trim()}` : ''}`,
   };
 }
 function fromDist() {
