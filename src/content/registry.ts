@@ -9,6 +9,7 @@ import {
   packSchema,
   type BarkSet,
   type Bike,
+  type Crew,
   type EntryType,
   type HudLayout,
   type PackManifest,
@@ -44,6 +45,7 @@ export interface ContentRegistry {
   readonly index: readonly PackIndexRow[];
   readonly bikes: Table<Bike>;
   readonly riders: Table<Rider>;
+  readonly crews: Table<Crew>;
   readonly weapons: Table<Weapon>;
   readonly events: Table<RaceEvent>;
   readonly regions: Table<Region>;
@@ -59,6 +61,7 @@ export interface ContentRegistry {
 const TABLE_OF: Record<EntryType, keyof ContentRegistry> = {
   bike: 'bikes',
   rider: 'riders',
+  crew: 'crews',
   weapon: 'weapons',
   event: 'events',
   region: 'regions',

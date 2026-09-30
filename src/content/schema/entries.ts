@@ -84,6 +84,14 @@ export const riderSchema = entry('rider', {
     .optional(),
 });
 
+/** A crew: a gang, a sponsor team or a law agency (docs/content-packs.md, "Crew"). */
+export const crewSchema = entry('crew', {
+  kind: z.enum(['gang', 'sponsor-team', 'law']),
+  region: idSchema.optional(),
+  stanceTowardPlayer: z.enum(['hostile', 'neutral', 'friendly']).optional(),
+  rivalCrews: z.array(refSchema).optional(),
+});
+
 export const weaponSchema = entry('weapon', {
   category: z.enum(['unarmed', 'blunt', 'chain', 'junk', 'shock', 'improvised']),
   behaviour: z.string(),
@@ -265,6 +273,7 @@ export const tuningPresetSchema = entry('tuning-preset', {
 export const ENTRY_SCHEMAS = {
   bike: bikeSchema,
   rider: riderSchema,
+  crew: crewSchema,
   weapon: weaponSchema,
   event: eventSchema,
   region: regionSchema,
@@ -281,6 +290,7 @@ export type EntryType = keyof typeof ENTRY_SCHEMAS;
 export type PackManifest = z.infer<typeof packSchema>;
 export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
+export type Crew = z.infer<typeof crewSchema>;
 export type Weapon = z.infer<typeof weaponSchema>;
 export type RaceEvent = z.infer<typeof eventSchema>;
 export type Region = z.infer<typeof regionSchema>;
