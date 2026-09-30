@@ -258,6 +258,9 @@ describe('traffic corridor and route choice', () => {
     const c = buildCorridor(config);
     expect(c.edges).toEqual([0, 1, 2]);
     expect(c.length).toBeCloseTo(2000, 6);
+    // Traffic's span ends at the finish line (road c, s 580), not at the road's end.
+    expect(c.lo).toBe(0);
+    expect(c.hi).toBeCloseTo(1980, 6);
     const p = toCorridor(c, { edge: 1, s: 123, d: -1.7, dir: -1 });
     expect(p).toEqual({ u: 723, cd: -1.7, dir: -1 });
   });
@@ -427,7 +430,7 @@ describe('traffic-1 sim acceptance', () => {
     });
     const world = raceWorld(config);
     const st = trafficState(world);
-    const endU = st.corridor.length;
+    const endU = st.corridor.hi; // the finish is off the traffic road here, so this is its end
     const route = config.route;
     let vehicleTicks = 0;
     let onShortcut = 0;
@@ -475,6 +478,35 @@ describe('traffic-1 sim acceptance', () => {
     expect(waitingAtEnd).toBe(0);
     expect(tooClose.slice(0, 3)).toEqual([]);
   }, 60_000);
+
+  it('traffic ends at the finish line: no queue behind riders parked past it walls off the line', () => {
+    // A finished rival has rolled to a stop at the road's end, 5 m past the line's 20 m run-out.
+    // Four cars head that way ahead of the player, who still has to cross the line.
+    const riders = [rider('rival', 0), rider('player', 1)];
+    // Straight roads, so the player can hold its lane with no steering at all.
+    const straight = EDGES.map((e) => ({ ...e, kappa: 0 }));
+    const config = makeConfig({ edges: straight, riders, tuning: NO_TRAFFIC });
+    const world = scenarioWorld(config, [
+      { pos: { edge: 2, s: 595, d: 1.7, dir: 1 }, speed: 0 },
+      { pos: { edge: 2, s: 60, d: 1.7, dir: 1 }, speed: 30 },
+    ]);
+    const st = trafficState(world);
+    for (const u of [1560, 1590, 1620, 1650]) placeVehicle(world, config, { type: 0, u, dir: 1, v0: 20 });
+    let playerBest = 0;
+    let pastLine = 0;
+    for (let t = 0; t < 60 * 40; t++) {
+      stepWorld(world, config, SCENARIO, [hold(255)]);
+      playerBest = Math.max(playerBest, uOf(world, 1));
+      for (let k = 0; k < st.id.length; k++) if ((st.u[k] ?? 0) > st.corridor.hi + 1e-9) pastLine++;
+    }
+    console.log(
+      `finish run: player reached u ${playerBest.toFixed(1)} (line at ${st.corridor.hi}), ` +
+        `${st.parks} parked and ${st.retired.filter((r) => r === 1).length} retired at the line, ${pastLine} vehicle-ticks past it`,
+    );
+    expect(pastLine).toBe(0);
+    expect(playerBest).toBeGreaterThan(st.corridor.hi);
+    expect(st.retired.every((r) => r === 1)).toBe(true); // both sliders at zero: none come back
+  }, 30_000);
 
   it('a scripted close pass fires nearMiss; a wide pass does not', () => {
     const results: Record<string, SimEvent[]> = {};

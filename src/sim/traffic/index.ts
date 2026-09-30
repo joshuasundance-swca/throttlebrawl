@@ -5,8 +5,9 @@
 //   lane rank per direction. Each tick the mover's road position is written from those.
 // - Intelligent-Driver-Model car-following in each lane (./idm.ts). The leader is the nearest
 //   vehicle ahead in the lane, or a rider in the lane (a stopped rider or a crash makes cars
-//   brake). A vehicle that drives off the end of the traffic road is recycled into a window, or
-//   parked far outside every window, so it never waits at the end as a wall.
+//   brake). The traffic road ends at the finish line (or at the last road traffic may use). A
+//   vehicle that drives off its end is recycled into a window, or parked far outside every
+//   window, so it never waits at the end as a wall, nor queues behind riders parked past the line.
 // - Population: deterministic, in a window of ±400 m around the sim anchors (the player slots and
 //   the event's rivals; the leader is one of them). A vehicle never spawns inside reaction range
 //   of an anchor (fastest anchor top speed plus fastest cruise speed, times 2 s: about 125 m at
@@ -139,7 +140,7 @@ export interface TrafficState {
 
 export function trafficState(world: World): TrafficState {
   return systemState<TrafficState>(world, 'traffic', () => ({
-    corridor: { edges: [], o: [], off: [], len: [], length: 0, routeDir: 1 },
+    corridor: { edges: [], o: [], off: [], len: [], length: 0, routeDir: 1, lo: 0, hi: 0 },
     types: [],
     reactionM: 0,
     id: [],
@@ -220,8 +221,8 @@ function nearestAnchor(anchors: readonly number[], u: number): number {
 
 /** Length of the union of the anchor windows, inside the corridor's spawnable span. */
 function windowLength(anchors: readonly number[], c: Corridor): number {
-  const lo = TRAFFIC.endMarginM;
-  const hi = c.length - TRAFFIC.endMarginM;
+  const lo = c.lo + TRAFFIC.endMarginM;
+  const hi = c.hi - TRAFFIC.endMarginM;
   const spans = anchors
     .map((a) => [Math.max(lo, a - TRAFFIC.windowM), Math.min(hi, a + TRAFFIC.windowM)] as const)
     .filter(([a, b]) => b > a)
@@ -374,7 +375,7 @@ function trySpawn(
     ahead -= TRAFFIC.slotStepM
   ) {
     const u = rd * ahead;
-    if (u < TRAFFIC.endMarginM || u > c.length - TRAFFIC.endMarginM) continue;
+    if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) continue;
     if (nearestAnchor(anchors, u) > TRAFFIC.windowM) continue;
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
@@ -391,7 +392,7 @@ function trySpawn(
 
 function atCorridorEnd(st: TrafficState, k: number): boolean {
   const u = st.u[k] ?? 0;
-  const end = (st.dir[k] ?? 1) === 1 ? st.corridor.length : 0;
+  const end = (st.dir[k] ?? 1) === 1 ? st.corridor.hi : st.corridor.lo;
   return Math.abs(end - u) < 6;
 }
 
@@ -413,8 +414,8 @@ function park(
   const clear = TRAFFIC.windowM + TRAFFIC.despawnMarginM + TRAFFIC.slotStepM;
   for (let i = 0; ; i++) {
     const along = TRAFFIC.endMarginM + i * TRAFFIC.slotStepM;
-    if (along > c.length - TRAFFIC.endMarginM) return false;
-    const u = dir === 1 ? along : c.length - along;
+    if (along > c.hi - c.lo - TRAFFIC.endMarginM) return false;
+    const u = dir === 1 ? c.lo + along : c.hi - along;
     if (nearestAnchor(anchors, u) <= clear) continue;
     if (lanesAt(config.road, c, u, dir).length === 0) continue;
     if (!laneClear(config, st, u, dir, 0, t.lengthM, TRAFFIC.spawnGapM, k)) continue;
@@ -426,11 +427,20 @@ function park(
   }
 }
 
-/** A vehicle that drove off the end of the traffic road: recycle it to a window, else park it. */
+/**
+ * A vehicle that drove off the end of the traffic road: recycle it to a window while its
+ * direction is not over its slider's target, else retire it; park whatever is not recycled.
+ */
 function leaveRoad(world: World, config: SimConfig, st: TrafficState, k: number): void {
   const anchors = anchorUs(world, config, st);
   const dir = (st.dir[k] ?? 1) === 1 ? 1 : -1;
-  if (anchors.length > 0 && st.retired[k] === 0 && trySpawn(world, config, st, anchors, dir, k)) return;
+  if (anchors.length > 0 && st.retired[k] === 0) {
+    let active = 0;
+    for (let j = 0; j < st.id.length; j++) if (st.dir[j] === dir && st.retired[j] === 0) active++;
+    const target = targetCount(world, st, anchors, dir);
+    if (active > target) st.retired[k] = 1;
+    else if (trySpawn(world, config, st, anchors, dir, k)) return;
+  }
   park(world, config, st, anchors, k);
 }
 
@@ -590,8 +600,8 @@ function move(
   for (let k = 0; k < n; k++) {
     const dir = st.dir[k] ?? 1;
     let u = st.u[k] ?? 0;
-    if (u < 0 || u > c.length) {
-      u = clamp(u, 0, c.length);
+    if (u < c.lo || u > c.hi) {
+      u = clamp(u, c.lo, c.hi);
       nextV[k] = 0;
     }
     st.u[k] = u;
@@ -747,7 +757,7 @@ export const trafficSystem: SimSystem = {
     move(world, config, st, riderViews(world, st), dt);
     for (let k = 0; k < st.id.length; k++) {
       const u = st.u[k] ?? 0;
-      if ((st.dir[k] === 1 && u >= st.corridor.length) || (st.dir[k] === -1 && u <= 0))
+      if ((st.dir[k] === 1 && u >= st.corridor.hi) || (st.dir[k] === -1 && u <= st.corridor.lo))
         leaveRoad(world, config, st, k);
     }
     contacts(world, config, st, riderViews(world, st), dt);

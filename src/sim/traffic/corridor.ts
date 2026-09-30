@@ -22,6 +22,12 @@ export interface Corridor {
   length: number;
   /** The route's travel direction in corridor terms (+1 or -1). */
   routeDir: number;
+  /**
+   * The span traffic uses, lo..hi in u. It ends at the finish line: past it, finished riders roll
+   * to a stop at the road's end, and cars queued behind them would wall off the line itself.
+   */
+  lo: number;
+  hi: number;
 }
 
 /** A drive lane in corridor terms. */
@@ -82,7 +88,16 @@ export function buildCorridor(config: SimConfig): Corridor {
     back.push(cur);
   }
   const chain = [...back.reverse(), { edge: start, o: 1 }, ...fwd];
-  const corridor: Corridor = { edges: [], o: [], off: [], len: [], length: 0, routeDir: route.start.dir };
+  const corridor: Corridor = {
+    edges: [],
+    o: [],
+    off: [],
+    len: [],
+    length: 0,
+    routeDir: route.start.dir,
+    lo: 0,
+    hi: 0,
+  };
   for (const link of chain) {
     const len = road.edges[link.edge]?.length ?? 0;
     corridor.edges.push(link.edge);
@@ -90,6 +105,12 @@ export function buildCorridor(config: SimConfig): Corridor {
     corridor.off.push(corridor.length);
     corridor.len.push(len);
     corridor.length += len;
+  }
+  corridor.hi = corridor.length;
+  const finish = toCorridor(corridor, { edge: route.finish.edge, s: route.finish.s, d: 0, dir: 1 });
+  if (finish) {
+    if (corridor.routeDir === 1) corridor.hi = finish.u;
+    else corridor.lo = finish.u;
   }
   return corridor;
 }
