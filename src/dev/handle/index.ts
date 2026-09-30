@@ -6,6 +6,7 @@
 import type { AppHandle } from '../../app';
 import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
 import { createBot, type BotController, type BotStats } from '../bot';
+import { createPerfProbe, type PerfReport } from '../perf';
 import { moverProblem } from './checks';
 
 export { MOVER_MODES, moverProblem } from './checks';
@@ -37,6 +38,8 @@ export interface TestHandle {
   checks(): RaceChecks;
   rendererStats(): ReturnType<AppHandle['rendererStats']>;
   frameStats(): ReturnType<AppHandle['frameStats']>;
+  /** The perf probe's numbers: frame and sim step percentiles, draw calls, triangles, heap. */
+  perf(): PerfReport;
   contentHashes(): { sim: string; full: string };
   /**
    * The player slot's recorded SimInputs this race, one per stepped tick, from `from` on (default
@@ -80,6 +83,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
   let botOn = false;
   let bot: BotController | null = null;
   let checks = freshChecks(null);
+  const probe = createPerfProbe(app);
 
   app.onStep((snap, events) => {
     checks.ticks++;
@@ -136,6 +140,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
     checks: () => checks,
     rendererStats: () => app.rendererStats(),
     frameStats: () => app.frameStats(),
+    perf: () => probe.report(),
     contentHashes: () => app.contentHashes(),
     inputs(from = 0) {
       // The replay arrives untyped along the callback (dev/ does not import replay/).
