@@ -12,13 +12,23 @@
 // - Auto-target picks the nearest valid rider in the acquisition box, preferring a non-cop. The
 //   side is the sign of the target's lateral offset; the side flags override it during the
 //   wind-up (and re-pick the target on that side), never once the active moment has started.
-//   A `kick` flag during a punch wind-up converts it into a kick wind-up.
+// - The kick conversion (M2 combat-3, playtest 1 item 3): a `kick` flag converts any attack but a
+//   kick into a kick while it is still in its wind-up (M1's rule), or while it is no older than
+//   combat.kickConvertMs (default 250 ms, 15 ticks) in any phase. A natural swipe-down takes longer
+//   than the punch's 7-tick wind-up to recognise, so the window reaches past it. Inside the window
+//   the kick keeps the attack's age (capped one tick short of the kick's wind-up), so a swipe lands
+//   on the kick's own schedule from the press, never later; outside it (a late change of mind
+//   during a long pipe wind-up) the kick's wind-up starts from zero, as in M1. A punch that has
+//   already landed stands: the jab, then the kick. The input lane's gesture-timing invariant checks
+//   its swipe window against this window.
 // - The hit test runs only while active, against that weapon's reach box on the chosen side. One
 //   hit per attack; no hit by the end of the active moment is an `attackMiss`.
 // - A landed hit: damage to health, a stagger (the target cannot start an attack, and its own
 //   wind-up is interrupted), sideways knockback away from the attacker, and at zero health a
 //   `crash` event (tumble-1 turns it into the tumble). A hit involving a player sets timeScale to
-//   0 for hitStopMs × combat.hitStopScale (rival-against-rival hits get none).
+//   0 for hitStopMs × combat.hitStopScale (rival-against-rival hits get none). Each `hit` event
+//   carries `hitImpulse` (M2 combat-3), a 0..1 strength for the camera jolt and the haptics:
+//   (damage + the shove's speed in m/s) / 40, capped at 1.
 // - One cause id per attack: attackStart, hit, kick, attackMiss and the resulting crash share it.
 //
 // Pickup weapons and the steal (docs/milestones/M1.md, combat-2):
@@ -68,6 +78,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    id: 'combat.kickConvertMs',
+    group: 'combat',
+    label: 'Kick swipe grace',
+    default: 250,
+    min: 0,
+    max: 400,
+    step: 10,
+    unit: 'ms',
+    affectsSim: true,
+  },
 ];
 
 /** The unarmed weapon entries, by content id. */
@@ -79,6 +100,8 @@ export const ACQUIRE_S_M = 4;
 export const ACQUIRE_D_M = 3;
 /** Knockback speed decays at this rate, 1/s (a kick of 5 m/s slides the target about 1.7 m). */
 const KNOCKBACK_DECAY = 3;
+/** hitImpulse = (damage + shove m/s) / this, capped at 1. */
+const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
 
@@ -101,6 +124,8 @@ export interface CombatState {
   weapon: string[];
   /** Scaled ticks spent in the current phase. */
   elapsed: number[];
+  /** Scaled ticks since the current attack started (its age across phases). */
+  age: number[];
   /** Attack side in the attacker's frame: +1 right, -1 left. */
   side: number[];
   targetId: EntityId[];
@@ -137,6 +162,7 @@ export function combatState(world: World): CombatState {
     phase: [],
     weapon: [],
     elapsed: [],
+    age: [],
     side: [],
     targetId: [],
     landed: [],
@@ -275,17 +301,20 @@ function durationOf(w: SimWeaponDef, phase: ActivePhase): number {
   return w.recoveryTicks;
 }
 
+/** Starts a wind-up; `age` is where it starts (non-zero only for a kick conversion). */
 function startAttack(
   world: World,
   st: CombatState,
   a: Mover,
   w: SimWeaponDef,
   cause: number | undefined,
+  age = 0,
 ): void {
   const id = a.id;
   st.phase[id] = 'windup';
   st.weapon[id] = w.contentId;
-  st.elapsed[id] = 0;
+  st.elapsed[id] = age;
+  st.age[id] = age;
   st.landed[id] = false;
   st.stealCued[id] = false;
   const target = st.targetId[id] ?? -1;
@@ -308,6 +337,7 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
   const w = weaponById(config, st.weapon[id] ?? '');
   if (st.phase[id] === 'idle' || !w) return;
   st.elapsed[id] = (st.elapsed[id] ?? 0) + ts;
+  st.age[id] = (st.age[id] ?? 0) + ts;
   for (;;) {
     const phase: ActivePhase = st.phase[id] ?? 'idle';
     if (phase === 'idle') return;
@@ -369,11 +399,13 @@ function land(
   const kick = w.contentId === KICK_ID;
   const health = Math.max(0, (riders.health[vid] ?? 0) - w.damage);
   riders.health[vid] = health;
+  const shove = w.knockbackMps * (world.params['combat.knockbackScale'] ?? 1);
+  const hitImpulse = Math.min(1, (w.damage + shove) / HIT_IMPULSE_FULL);
   emit(
     world,
     'hit',
     id,
-    { weapon: w.contentId, damage: w.damage, kick, health },
+    { weapon: w.contentId, damage: w.damage, kick, health, hitImpulse },
     { target: vid, causeId: cause },
   );
   if (kick) emit(world, 'kick', id, { weapon: w.contentId }, { target: vid, causeId: cause });
@@ -595,6 +627,22 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
   }
 }
 
+/**
+ * The kick flag on an attack that is not a kick: converts it while it is in its wind-up, or while
+ * it is inside the kick-conversion window (keeping its age); the file header has the rule.
+ */
+function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover): void {
+  const id = a.id;
+  const age = st.age[id] ?? 0;
+  const window = Math.round(((world.params['combat.kickConvertMs'] ?? 250) * 60) / 1000);
+  const early = age <= window + EPS;
+  if (!early && st.phase[id] !== 'windup') return;
+  const kick = resolveWeapon(config, st, id, true);
+  if (!kick || kick.contentId !== KICK_ID) return;
+  const carried = early ? Math.min(age, Math.max(0, kick.windupTicks - 1)) : 0;
+  startAttack(world, st, a, kick, st.cause[id], carried);
+}
+
 export const combatSystem: SimSystem = {
   name: 'combat',
   init(world: World, config: SimConfig) {
@@ -607,6 +655,7 @@ export const combatSystem: SimSystem = {
       st.phase[m.id] = 'idle';
       st.weapon[m.id] = '';
       st.elapsed[m.id] = 0;
+      st.age[m.id] = 0;
       st.side[m.id] = 1;
       st.targetId[m.id] = -1;
       st.landed[m.id] = false;
@@ -678,11 +727,9 @@ export const combatSystem: SimSystem = {
           st.targetId[id] = aimed.target;
           st.side[id] = aimed.side;
         }
-        if (wantKick && st.weapon[id] !== KICK_ID) {
-          const kick = resolveWeapon(config, st, id, true);
-          if (kick && kick.contentId === KICK_ID) startAttack(world, st, a, kick, st.cause[id]);
-        }
       }
+      if (st.phase[id] !== 'idle' && wantKick && st.weapon[id] !== KICK_ID)
+        convertToKick(world, config, st, a);
       hitTest(world, config, st, a);
     }
     pickupPass(world, config, st);
