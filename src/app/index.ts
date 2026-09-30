@@ -230,7 +230,8 @@ export function createApp(opts: AppOptions): AppHandle {
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         const player = curr?.entities[playerId] ?? null;
         audio.update(state === 'race' ? player : null);
-        // The whole-snapshot HUD: speed, place among the riders, your health and your target's.
+        // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
+        // and your target's.
         if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
       },
     },
