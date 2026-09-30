@@ -135,6 +135,53 @@ describe('riders-3: placing, finish and race end', () => {
     finishes.forEach((e, i) => expect(e.data['place']).toBe(i + 1));
   });
 
+  it("fires a checkpoint event per racer at each of the route's checkpoints, with places matching progress", () => {
+    const config = testConfig({
+      edges: TRACK,
+      rivals: 4,
+      paceMps: 28,
+      checkpoints: [
+        { road: 'a', s: 300 },
+        { road: 'b', s: 300 },
+        { road: 'c', s: 200 },
+      ],
+    });
+    expect(config.route.checkpoints.map((c) => c.progress)).toEqual([
+      300 - 40,
+      500 + 300 - 40,
+      1100 + 200 - 40,
+    ]);
+    const sim = createSim(config);
+    const seen = new Map<number, number[]>();
+    let atCheckpoint = 0;
+    for (let t = 0; t < 60 * 240 && !sim.isOver(); t++) {
+      const me = sim.snapshot().entities.find((e) => e.slot === 0);
+      sim.step([botInput(me, config)]);
+      const cps = sim.events().filter((e) => e.type === 'lapOrCheckpoint');
+      if (cps.length === 0) continue;
+      const snap = sim.snapshot();
+      for (const e of cps) {
+        seen.set(e.actor, [...(seen.get(e.actor) ?? []), Number(e.data['checkpoint'])]);
+        const me2 = snap.entities.find((x) => x.id === e.actor);
+        const cp = config.route.checkpoints[Number(e.data['checkpoint'])];
+        expect(me2?.progress).toBeGreaterThanOrEqual(cp?.progress ?? Infinity);
+      }
+      // The placing matches progress at the checkpoint moment.
+      const done = [...snap.race.finishOrder];
+      const rest = snap.entities
+        .filter((e) => !done.includes(e.id))
+        .sort((p, q) => p.distanceToFinish - q.distanceToFinish || p.id - q.id)
+        .map((e) => e.id);
+      expect([...snap.entities].sort((p, q) => p.place - q.place).map((e) => e.id)).toEqual([
+        ...done,
+        ...rest,
+      ]);
+      atCheckpoint++;
+    }
+    expect(atCheckpoint).toBeGreaterThan(0);
+    for (const id of sim.snapshot().race.finishOrder) expect(seen.get(id)).toEqual([0, 1, 2]);
+  });
+
   it('ends every racer finished, down or busted, and says so in the raceEnd event', () => {
     const config = testConfig({ edges: TRACK, rivals: 4, paceMps: 28 });
     const sim = createSim(config);

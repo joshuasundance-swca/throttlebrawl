@@ -17,7 +17,7 @@ export const RACE_TUNING: readonly TuningParamDecl[] = [
     id: 'race.rubberBandStrength',
     group: 'race',
     label: 'Rubber band',
-    default: 0.05,
+    default: 0.06,
     min: 0,
     max: 0.2,
     step: 0.01,
@@ -58,6 +58,8 @@ export interface RaceState {
   status: RiderStatus[];
   /** By entity id: the pace factor the AI reads (1 = no pull), within rubberBandBounds. */
   rubberBand: number[];
+  /** By entity id: how many of the route's checkpoints the racer has passed. */
+  checkpoint: number[];
   /** Tick every player was done (finished or busted), or -1. */
   playerFinishTick: number;
 }
@@ -72,6 +74,7 @@ export function raceState(world: World): RaceState {
     bustOrder: [],
     status: [],
     rubberBand: [],
+    checkpoint: [],
     playerFinishTick: -1,
   }));
 }
@@ -84,15 +87,13 @@ interface StartGrid {
 
 const DEFAULT_GRID: StartGrid = { rows: 3, perRow: 2, rowGapM: 8 };
 
-/**
- * The route's start grid. The route file carries `startGrid`; the road lane's route handle does not
- * expose it yet, so it is read structurally when present and the default is used otherwise.
- */
+/** The route's start grid (the route file's `startGrid`), or two per row, 8 m apart. */
 function startGridOf(config: SimConfig): StartGrid {
-  const g = (config.route as { startGrid?: Partial<StartGrid> }).startGrid;
-  const perRow = g?.perRow !== undefined && g.perRow >= 1 ? Math.floor(g.perRow) : DEFAULT_GRID.perRow;
-  const rowGapM = g?.rowGapM !== undefined && g.rowGapM > 0 ? g.rowGapM : DEFAULT_GRID.rowGapM;
-  const rows = g?.rows !== undefined && g.rows >= 1 ? Math.floor(g.rows) : DEFAULT_GRID.rows;
+  const g = config.route.startGrid;
+  if (!g) return DEFAULT_GRID;
+  const perRow = g.perRow >= 1 ? Math.floor(g.perRow) : DEFAULT_GRID.perRow;
+  const rowGapM = g.rowGapM > 0 ? g.rowGapM : DEFAULT_GRID.rowGapM;
+  const rows = g.rows >= 1 ? Math.floor(g.rows) : DEFAULT_GRID.rows;
   return { rows, perRow, rowGapM };
 }
 
@@ -137,7 +138,7 @@ export function gridPosition(config: SimConfig, index: number): RoadPos {
 
 /** The lowest and highest rubber-band factor this race can give: [1 − k, 1 + k]. */
 export function rubberBandBounds(config: SimConfig, world: Pick<World, 'params'>): [number, number] {
-  const k = (world.params['race.rubberBandStrength'] ?? 0.05) * Math.max(0, config.difficulty.rubberBand);
+  const k = (world.params['race.rubberBandStrength'] ?? 0.06) * Math.max(0, config.difficulty.rubberBand);
   return [1 - k, 1 + k];
 }
 
@@ -176,26 +177,58 @@ function finish(world: World, st: RaceState, id: EntityId, classified: boolean):
   emit(world, 'finish', id, { place: st.finishOrder.length, classified });
 }
 
-/** The rubber band: an AI rival behind the leading player is pulled forward, one ahead eased back. */
+/**
+ * The rubber band: an AI rival behind the nearest racing player is pulled forward, one ahead eased
+ * back, up to ±k at `range` metres. With no player still racing, nobody is pulled.
+ */
 function pullRubberBand(config: SimConfig, world: World, st: RaceState): void {
   const [lo, hi] = rubberBandBounds(config, world);
   const k = hi - 1;
   const range = world.params['race.rubberBandRangeM'] ?? 150;
-  let reference = Infinity;
+  const players: number[] = [];
   for (const m of world.movers) {
     const def = config.riders[m.riderIndex];
-    if (def?.controller.kind !== 'player' || st.status[m.id] !== 'racing') continue;
-    reference = Math.min(reference, st.distanceToFinish[m.id] ?? Infinity);
+    if (def?.controller.kind === 'player' && st.status[m.id] === 'racing') {
+      players.push(st.distanceToFinish[m.id] ?? Infinity);
+    }
   }
   for (const m of world.movers) {
     if (m.kind !== 'rider') continue;
     const def = config.riders[m.riderIndex];
-    if (reference === Infinity || def?.controller.kind !== 'ai' || st.status[m.id] !== 'racing') {
+    const mine = st.distanceToFinish[m.id];
+    if (
+      players.length === 0 ||
+      def?.controller.kind !== 'ai' ||
+      st.status[m.id] !== 'racing' ||
+      mine === undefined
+    ) {
       st.rubberBand[m.id] = 1;
       continue;
     }
-    const gap = (st.distanceToFinish[m.id] ?? reference) - reference; // positive: behind the player
+    let gap = 0; // positive: behind the player
+    let nearest = Infinity;
+    for (const theirs of players) {
+      if (Math.abs(mine - theirs) < nearest) {
+        nearest = Math.abs(mine - theirs);
+        gap = mine - theirs;
+      }
+    }
     st.rubberBand[m.id] = clamp(1 + k * clamp(gap / range, -1, 1), lo, hi);
+  }
+}
+
+/** A `lapOrCheckpoint` event each time a racer passes the next of the route's checkpoints. */
+function passCheckpoints(config: SimConfig, world: World, st: RaceState): void {
+  const cps = config.route.checkpoints;
+  for (const m of world.movers) {
+    if (!isRacer(config, world, m.id) || st.status[m.id] !== 'racing') continue;
+    let next = st.checkpoint[m.id] ?? 0;
+    const progress = st.progress[m.id] ?? 0;
+    while (next < cps.length && progress >= (cps[next]?.progress ?? Infinity)) {
+      next++;
+      emit(world, 'lapOrCheckpoint', m.id, { checkpoint: next - 1, lap: 1 });
+    }
+    st.checkpoint[m.id] = next;
   }
 }
 
@@ -228,6 +261,7 @@ export const raceSystem: SimSystem = {
       if (m.kind !== 'rider') continue;
       st.status[m.id] = isLaw(config, m.riderIndex) ? 'law' : 'racing';
       st.rubberBand[m.id] = 1;
+      st.checkpoint[m.id] = 0;
     }
     measure(world, config, st);
     standings(config, world, st).forEach((id, i) => (st.place[id] = i + 1));
@@ -250,6 +284,7 @@ export const raceSystem: SimSystem = {
       st.bustOrder.push(who);
     }
 
+    passCheckpoints(config, world, st);
     for (const m of world.movers) {
       if (!isRacer(config, world, m.id) || st.status[m.id] !== 'racing') continue;
       if ((st.distanceToFinish[m.id] ?? Infinity) <= 0) finish(world, st, m.id, false);
