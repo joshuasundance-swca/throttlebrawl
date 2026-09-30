@@ -3,11 +3,13 @@
 // triangle budgets; the road is a flat number of draw calls; threats are never fogged out.
 import {
   Fog,
+  Frustum,
   Group,
   InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  PerspectiveCamera,
   Scene,
   type BufferGeometry,
   type Object3D,
@@ -96,12 +98,14 @@ function world(mix: Mix): EntitySnapshot[] {
 }
 
 /** What the renderer would submit with no frustum culling: an upper bound on draw calls. */
-function drawLoad(root: Object3D): { drawCalls: number; triangles: number } {
+function drawLoad(root: Object3D, frustum?: Frustum): { drawCalls: number; triangles: number } {
   let drawCalls = 0;
   let triangles = 0;
   const visit = (o: Object3D) => {
     if (!o.visible) return;
-    if (o instanceof Mesh) {
+    // The road is merged per chunk and culled by three.js; entities are counted regardless.
+    const culled = frustum && o instanceof Mesh && o.name.startsWith('road-') && !frustum.intersectsObject(o);
+    if (o instanceof Mesh && !culled) {
       const g = (o as Mesh<BufferGeometry>).geometry;
       const tris = (g.index ? g.index.count : g.getAttribute('position').count) / 3;
       const n = o instanceof InstancedMesh ? o.count : 1;
@@ -350,17 +354,28 @@ describe('the road meshes', () => {
     }
   });
 
-  it('keeps the draw calls flat however many edges there are', () => {
-    const three = createRoadNetwork(
-      fixtureNetwork([0, 1, 2].map((i) => ({ id: `r${i}`, lengthM: 200, kappa: 0.002 }))),
+  it('keeps the draw calls per chunk flat however many edges pass through it', () => {
+    // Many short edges in one small area against a few long ones: the meshes per chunk are one per
+    // material (and instanced kind), however many edges were merged into it.
+    const many = createRoadNetwork(
+      fixtureNetwork(Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, lengthM: 20, kappa: 0.002 }))),
     );
-    const nine = createRoadNetwork(
-      fixtureNetwork([0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({ id: `r${i}`, lengthM: 200, kappa: -0.002 }))),
-    );
-    const a = buildRoadScene(three, look).stats;
-    const b = buildRoadScene(nine, look).stats;
+    const few = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 240, kappa: 0.002 }]));
+    const a = buildRoadScene(few, look).stats;
+    const b = buildRoadScene(many, look).stats;
+    expect(b.chunks).toBe(a.chunks);
     expect(b.meshes).toBe(a.meshes);
-    expect(b.triangles).toBeGreaterThan(a.triangles * 2.5);
+    // And a longer road adds chunks, not meshes per chunk.
+    const nine = buildRoadScene(
+      createRoadNetwork(
+        fixtureNetwork(
+          [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({ id: `r${i}`, lengthM: 200, kappa: -0.002 })),
+        ),
+      ),
+      look,
+    ).stats;
+    expect(nine.chunks).toBeGreaterThan(a.chunks);
+    expect((nine.meshes - 1) / nine.chunks).toBeLessThanOrEqual(12);
   });
 
   it('uses barriers and ramp features from the dressing', () => {
@@ -408,7 +423,7 @@ describe('the road meshes', () => {
   });
 });
 
-describe('the M1 scene budget (no frustum culling, so an upper bound)', () => {
+describe('the M1 scene budget (entities not culled, so an upper bound; the road culled per chunk)', () => {
   it('stays inside the draw-call and triangle budgets with the whole M1 field on screen', () => {
     const look = createFlatLook();
     const scene = new Scene();
@@ -423,8 +438,23 @@ describe('the M1 scene budget (no frustum culling, so an upper bound)', () => {
       e.kind === 'rider' ? { ...e, attackPhase: 'windup' as const, heldWeapon: 'base:lead-pipe' } : e,
     );
     views.sync(null, snap(field), 1, 0);
-    const load = drawLoad(scene);
-    console.log(`[examined] M1 scene upper bound: ${load.drawCalls} draw calls, ${load.triangles} triangles`);
+    // The chase camera near the start of the first road: the road chunks it cannot see are culled.
+    const cam = new PerspectiveCamera(62, 915 / 412, 0.3, 1500);
+    const eye = road.toWorld(0, 20, 2, 2.6);
+    const at = road.toWorld(0, 45, 2, 1);
+    cam.position.set(eye.x, eye.y, eye.z);
+    cam.lookAt(at.x, at.y, at.z);
+    cam.updateMatrixWorld(true);
+    scene.updateMatrixWorld(true);
+    const frustum = new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+    );
+    const load = drawLoad(scene, frustum);
+    const all = drawLoad(scene);
+    console.log(
+      `[examined] M1 scene upper bound: ${load.drawCalls} draw calls, ${load.triangles} triangles ` +
+        `(everything, road unculled: ${all.drawCalls} and ${all.triangles})`,
+    );
     expect(load.drawCalls).toBeLessThanOrEqual(budget.drawCallsMax);
     expect(load.triangles).toBeLessThanOrEqual(budget.trianglesMax);
   });

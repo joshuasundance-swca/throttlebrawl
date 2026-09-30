@@ -5,8 +5,10 @@
 // a slow-motion pile-up. Browser screenshots of a real takedown and splash wait for combat-4 and
 // tumble-2 to emit those events in a race (dev-4's bot race).
 import {
+  Frustum,
   Group,
   InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -121,13 +123,17 @@ function named(root: Object3D, name: string): Object3D {
   return o;
 }
 
-/** What the renderer would submit with no frustum culling: an upper bound on draw calls. */
-function drawLoad(root: Object3D): { drawCalls: number; triangles: number } {
+/**
+ * What the renderer would submit: every entity and effect (no culling, so an upper bound), and the
+ * road's chunk meshes that `frustum` can see (the road is merged per chunk and culled that way).
+ */
+function drawLoad(root: Object3D, frustum?: Frustum): { drawCalls: number; triangles: number } {
   let drawCalls = 0;
   let triangles = 0;
   const visit = (o: Object3D) => {
     if (!o.visible) return;
-    if (o instanceof Mesh) {
+    const culled = frustum && o instanceof Mesh && o.name.startsWith('road-') && !frustum.intersectsObject(o);
+    if (o instanceof Mesh && !culled) {
       const g = (o as Mesh<BufferGeometry>).geometry;
       const tris = (g.index ? g.index.count : g.getAttribute('position').count) / 3;
       const n = o instanceof InstancedMesh ? o.count : 1;
@@ -644,7 +650,21 @@ function realNetwork(): RoadNetwork {
   return createRoadNetwork({ network, roads: roads.filter((r) => network.roads.includes(r.id)) });
 }
 
-describe('the draw budget in a slow-motion pile-up (no frustum culling, so an upper bound)', () => {
+/** The chase camera's view from near the start of the network's first road (for road culling). */
+function startFrustum(road: RoadNetwork): Frustum {
+  const cam = new PerspectiveCamera(62, 915 / 412, 0.3, 1500);
+  const eye = road.toWorld(0, 20, 2, 2.6);
+  const at = road.toWorld(0, 45, 2, 1);
+  cam.position.set(eye.x, eye.y, eye.z);
+  cam.lookAt(at.x, at.y, at.z);
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  return new Frustum().setFromProjectionMatrix(
+    new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+  );
+}
+
+describe('the draw budget in a slow-motion pile-up (entities not culled, so an upper bound)', () => {
   it('stays inside the draw-call and triangle budgets', () => {
     const look = createFlatLook();
     const params = defaultRenderParams();
@@ -699,9 +719,10 @@ describe('the draw budget in a slow-motion pile-up (no frustum culling, so an up
     expect(fx.counts().sparks).toBeGreaterThan(0);
     expect(fx.counts().reactors).toBe(2);
     expect(fx.tint.visible).toBe(true);
-    const load = drawLoad(scene);
+    scene.updateMatrixWorld(true);
+    const load = drawLoad(scene, startFrustum(road));
     console.log(
-      `[examined] slow-motion pile-up upper bound: ${load.drawCalls} draw calls, ${load.triangles} triangles`,
+      `[examined] slow-motion pile-up upper bound (road culled from the start line): ${load.drawCalls} draw calls, ${load.triangles} triangles`,
     );
     expect(load.drawCalls).toBeLessThanOrEqual(budget.drawCallsMax);
     expect(load.triangles).toBeLessThanOrEqual(budget.trianglesMax);

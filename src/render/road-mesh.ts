@@ -1,11 +1,24 @@
 // The road as meshes (M1 render-1): surfaces from the road profiles, markings, posts, bridge rails,
-// deck fascias and pylons, the ramp's warning stripes and the sea. Every edge goes into the same
-// merged geometry per material, so the draw-call count stays flat however many edges the network
-// has (docs/architecture.md, "Performance budgets": merged static geometry per chunk).
-import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3 } from 'three';
+// deck fascias and pylons, the ramp's warning stripes and the sea. Geometry is merged per material
+// within each square chunk of the world (M2; docs/architecture.md, "Performance budgets": merged
+// static geometry per chunk), so the draw calls per chunk stay flat however many edges pass through
+// it, and the renderer culls the chunks the camera cannot see: a frame's road cost does not grow
+// with the length of the road.
+import {
+  BoxGeometry,
+  Group,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  PlaneGeometry,
+  Quaternion,
+  Vector3,
+  type BufferGeometry,
+  type Material,
+} from 'three';
 import type { Edge, RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
-import { mergeBoxes, StripAccumulator, type BoxPart, type Point3 } from './geometry';
+import { ChunkedStrips, mergeBoxes, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 
@@ -63,8 +76,24 @@ export interface EdgeDressing {
 /** Set dressing keyed by road id. Road files satisfy EdgeDressing, so app/ can pass them as-is. */
 export type RoadDressing = Readonly<Record<string, EdgeDressing>>;
 
+/**
+ * The side of a road chunk, metres [default]: the architecture doc's visual-chunk grid. Smaller
+ * culls more triangles but costs more draw calls. Measured on the real track from 20 chase-camera
+ * spots with the far plane at the fog's end: 256 m chunks drew at most 72 road meshes and 37k
+ * triangles, 512 m at most 48 and 41k. One mesh per material for the whole network drew every triangle
+ * (64,832 on this track) from everywhere, and grows with the road.
+ */
+export const ROAD_CHUNK_M = 512;
+
+/** The chunk a world point falls in. */
+export function chunkKey(x: number, z: number): string {
+  return `${Math.floor(x / ROAD_CHUNK_M)},${Math.floor(z / ROAD_CHUNK_M)}`;
+}
+
 export interface RoadSceneStats {
   meshes: number;
+  /** Chunks with any static road geometry. */
+  chunks: number;
   triangles: number;
   railM: number;
   rampStripes: number;
@@ -358,8 +387,8 @@ export function buildRoadScene(
   dressing?: RoadDressing,
   opts: RoadSceneOptions = {},
 ): RoadScene {
-  const acc: Partial<Record<Layer, StripAccumulator>> = {};
-  const strip = (kind: Layer): StripAccumulator => (acc[kind] ??= new StripAccumulator());
+  const acc: Partial<Record<Layer, ChunkedStrips>> = {};
+  const strip = (kind: Layer): ChunkedStrips => (acc[kind] ??= new ChunkedStrips(chunkKey));
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
   const gores = goreLines(road);
@@ -775,66 +804,100 @@ export function buildRoadScene(
   const group = new Group();
   group.name = 'road';
   let triangles = 0;
+  let meshes = 0;
+  /** The group of one chunk, made on first use (static road, merged per chunk so it can be culled). */
+  const chunkGroups = new Map<string, Group>();
+  const addMesh = (key: string, mesh: Mesh) => {
+    let g = chunkGroups.get(key);
+    if (!g) {
+      g = new Group();
+      g.name = `road-chunk-${key}`;
+      chunkGroups.set(key, g);
+      group.add(g);
+    }
+    g.add(mesh);
+    meshes++;
+  };
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
-  for (const [layer, a] of Object.entries(acc) as [Layer, StripAccumulator][]) {
-    if (a.isEmpty) continue;
-    triangles += a.triangleCount;
+  for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
     const kind = kindOf(layer);
-    const mesh = new Mesh(a.build(), look.material(kind, { doubleSided: doubleSided.has(kind) }));
-    mesh.name = `road-${layer}`;
-    group.add(mesh);
+    for (const [key, part] of a.chunks) {
+      if (part.isEmpty) continue;
+      triangles += part.triangleCount;
+      const mesh = new Mesh(part.build(), look.material(kind, { doubleSided: doubleSided.has(kind) }));
+      mesh.name = `road-${layer}`;
+      addMesh(key, mesh);
+    }
   }
   const m = new Matrix4();
   const q = new Quaternion();
   const one = new Vector3(1, 1, 1);
-  const addInstanced = (
+  /** Instanced scenery, one InstancedMesh per chunk that has any, so it culls with its chunk. */
+  const addInstanced = <T extends { p: Point3 }>(
+    name: string,
+    geo: BufferGeometry,
+    material: Material,
+    spots: readonly T[],
+    matrixOf: (spot: T) => Matrix4,
+  ) => {
+    const byChunk = new Map<string, T[]>();
+    for (const s of spots) {
+      const key = chunkKey(s.p.x, s.p.z);
+      const list = byChunk.get(key);
+      if (list) list.push(s);
+      else byChunk.set(key, [s]);
+    }
+    for (const [key, list] of byChunk) {
+      const mesh = new InstancedMesh(geo, material, list.length);
+      list.forEach((s, i) => mesh.setMatrixAt(i, matrixOf(s)));
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      mesh.name = name;
+      triangles += ((geo.index?.count ?? 0) / 3) * list.length;
+      addMesh(key, mesh);
+    }
+  };
+  const boxes = (
     name: string,
     geo: BoxGeometry,
     kind: MaterialKind,
     spots: readonly { p: Point3; h: number }[],
-  ) => {
-    if (!spots.length) return;
-    const mesh = new InstancedMesh(geo, look.material(kind), spots.length);
-    spots.forEach(({ p, h }, i) =>
-      mesh.setMatrixAt(i, m.compose(new Vector3(p.x, p.y, p.z), q, one.clone().setY(h))),
+  ) =>
+    addInstanced(name, geo, look.material(kind), spots, ({ p, h }) =>
+      m.compose(new Vector3(p.x, p.y, p.z), q, one.clone().setY(h)),
     );
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    mesh.name = name;
-    triangles += ((geo.index?.count ?? 0) / 3) * spots.length;
-    group.add(mesh);
-  };
-  addInstanced(
+  boxes(
     'road-posts',
     new BoxGeometry(0.15, 1.1, 0.15),
     'post',
     postSpots.map((p) => ({ p, h: 1 })),
   );
   // Unit-height boxes standing on their base, stretched by the instance scale.
-  addInstanced('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
-  addInstanced('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
+  boxes('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
+  boxes('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
   if (truckParts.length) {
+    // Few and small: one mesh for every truck on the network.
     const trucks = new Mesh(mergeBoxes(truckParts), look.material('vehicle', { vertexColors: true }));
     trucks.name = 'road-rampTrucks';
     triangles += (trucks.geometry.index?.count ?? 0) / 3;
     group.add(trucks);
+    meshes++;
   }
   if (palmSpots.length) {
-    const geo = palmGeometry();
-    const palms = new InstancedMesh(geo, look.material('prop', { vertexColors: true }), palmSpots.length);
     const turn = new Quaternion();
     const up = new Vector3(0, 1, 0);
-    palmSpots.forEach(({ p, turn: a, size }, i) =>
-      palms.setMatrixAt(
-        i,
-        m.compose(new Vector3(p.x, p.y, p.z), turn.setFromAxisAngle(up, a), new Vector3(size, size, size)),
-      ),
+    addInstanced(
+      'road-palms',
+      palmGeometry(),
+      look.material('prop', { vertexColors: true }),
+      palmSpots,
+      (s) =>
+        m.compose(
+          new Vector3(s.p.x, s.p.y, s.p.z),
+          turn.setFromAxisAngle(up, s.turn),
+          new Vector3(s.size, s.size, s.size),
+        ),
     );
-    palms.instanceMatrix.needsUpdate = true;
-    palms.computeBoundingSphere();
-    palms.name = 'road-palms';
-    triangles += ((geo.index?.count ?? 0) / 3) * palmSpots.length;
-    group.add(palms);
   }
 
   // The sea, at world y = 0 (sea level in the network frame).
@@ -843,12 +906,14 @@ export function buildRoadScene(
   water.position.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
   water.name = 'road-water';
   group.add(water);
+  meshes++;
   triangles += 2;
 
   return {
     group,
     stats: {
-      meshes: group.children.length,
+      meshes,
+      chunks: chunkGroups.size,
       triangles,
       railM,
       rampStripes,
@@ -858,8 +923,13 @@ export function buildRoadScene(
       rampTrucks,
     },
     dispose() {
+      // Instanced chunks share one geometry per kind: dispose each once.
+      const seen = new Set<BufferGeometry>();
       group.traverse((o) => {
-        if (o instanceof Mesh) (o.geometry as BoxGeometry).dispose();
+        if (o instanceof Mesh && !seen.has(o.geometry as BufferGeometry)) {
+          seen.add(o.geometry as BufferGeometry);
+          (o.geometry as BufferGeometry).dispose();
+        }
       });
     },
   };

@@ -133,14 +133,19 @@ describe('the shortcut split (playtest 1b)', () => {
   });
 
   it("stands no delineator post on another road's drivable surface", () => {
-    const posts = group.getObjectByName('road-posts');
-    if (!(posts instanceof InstancedMesh)) throw new Error('no posts');
+    // Every chunk's posts (the road is merged per chunk).
     const m = new Matrix4();
-    const p = new Vector3();
+    const spots: Vector3[] = [];
+    group.traverse((o) => {
+      if (!(o instanceof InstancedMesh) || o.name !== 'road-posts') return;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m);
+        spots.push(new Vector3().setFromMatrixPosition(m));
+      }
+    });
+    expect(spots.length).toBeGreaterThan(100);
     let bad = 0;
-    for (let i = 0; i < posts.count; i++) {
-      posts.getMatrixAt(i, m);
-      p.setFromMatrixPosition(m);
+    for (const p of spots) {
       for (const e of road.edges) {
         // Brute force: the nearest centre-line sample, then the offset across it.
         let best = -1;
@@ -164,7 +169,7 @@ describe('the shortcut split (playtest 1b)', () => {
         if (span && d > span[0] + 0.1 && d < span[1] - 0.1) bad++;
       }
     }
-    console.log(`[examined] ${posts.count} delineator posts against ${road.edges.length} edges`);
+    console.log(`[examined] ${spots.length} delineator posts against ${road.edges.length} edges`);
     expect(bad).toBe(0);
   });
 });

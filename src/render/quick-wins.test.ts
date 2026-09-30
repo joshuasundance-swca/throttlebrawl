@@ -143,18 +143,23 @@ describe('the car-carrier ramp truck (playtest 1b, item 5)', () => {
     // A truck parked well off the road, where palms would otherwise stand, at a high palm density.
     const far: FeatureSpan = { kind: 'rampTruck', s0: 100, s1: 300, d0: 7, d1: 12.5 };
     const { group: g } = buildRoadScene(road, look, { r: { features: [far] } }, { roadsideDensity: 3 });
-    const palms = g.getObjectByName('road-palms') as InstancedMesh;
     const m = new Matrix4();
+    const spots: Vector3[] = [];
+    g.traverse((o) => {
+      if (!(o instanceof InstancedMesh) || o.name !== 'road-palms') return;
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m);
+        spots.push(new Vector3().setFromMatrixPosition(m));
+      }
+    });
     let inside = 0;
-    for (let i = 0; i < palms.count; i++) {
-      palms.getMatrixAt(i, m);
-      const p = new Vector3().setFromMatrixPosition(m);
+    for (const p of spots) {
       for (let s = 100; s <= 300; s += 1) {
         const c = road.toWorld(0, s, 9.75, 0);
         if (Math.hypot(p.x - c.x, p.z - c.z) < 2.75) inside++;
       }
     }
-    expect(palms.count).toBeGreaterThan(10); // the other side still has its palms
+    expect(spots.length).toBeGreaterThan(10); // the other side still has its palms
     expect(inside).toBe(0);
   });
 });

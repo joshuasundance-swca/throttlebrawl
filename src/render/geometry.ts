@@ -100,3 +100,65 @@ export class StripAccumulator {
     return g;
   }
 }
+
+/**
+ * Strips split into square world chunks (M2: per-chunk road meshes, so the renderer can cull what
+ * the camera cannot see). Same interface as StripAccumulator. Each quad of a strip belongs to the
+ * chunk of its far pair: where a strip crosses into a new chunk, that chunk's strip starts from the
+ * last pair, so the surface stays continuous and no quad is drawn twice.
+ */
+export class ChunkedStrips {
+  readonly chunks = new Map<string, StripAccumulator>();
+  private last: [Point3, Point3] | null = null;
+  private key = '';
+
+  constructor(private readonly keyOf: (x: number, z: number) => string) {}
+
+  private acc(key: string): StripAccumulator {
+    let a = this.chunks.get(key);
+    if (!a) this.chunks.set(key, (a = new StripAccumulator()));
+    return a;
+  }
+
+  pair(a: Point3, b: Point3): void {
+    const key = this.keyOf((a.x + b.x) / 2, (a.z + b.z) / 2);
+    if (!this.last) {
+      const acc = this.acc(key);
+      acc.breakStrip();
+      acc.pair(a, b);
+    } else if (key !== this.key) {
+      this.acc(this.key).breakStrip();
+      const acc = this.acc(key);
+      acc.breakStrip();
+      acc.pair(this.last[0], this.last[1]);
+      acc.pair(a, b);
+    } else {
+      this.acc(key).pair(a, b);
+    }
+    this.key = key;
+    this.last = [a, b];
+  }
+
+  breakStrip(): void {
+    if (this.last) this.acc(this.key).breakStrip();
+    this.last = null;
+  }
+
+  /** A single quad, in the chunk of its centre. */
+  quad(a0: Point3, b0: Point3, a1: Point3, b1: Point3): void {
+    this.breakStrip();
+    const key = this.keyOf((a0.x + b0.x + a1.x + b1.x) / 4, (a0.z + b0.z + a1.z + b1.z) / 4);
+    this.acc(key).quad(a0, b0, a1, b1);
+  }
+
+  get triangleCount(): number {
+    let n = 0;
+    for (const a of this.chunks.values()) n += a.triangleCount;
+    return n;
+  }
+
+  get isEmpty(): boolean {
+    for (const a of this.chunks.values()) if (!a.isEmpty) return false;
+    return true;
+  }
+}
