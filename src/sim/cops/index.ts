@@ -3,8 +3,10 @@
 // controller: this system is his AIController. It runs in the cops phase, after riders and
 // combat, so the command it writes takes effect on the next tick; the controllers phase skips him.
 //
-// - Parked: he waits where he starts until `cops.spawnDelayS` (÷ difficulty.copFrequency) has
-//   passed, then sounds the siren and gives chase. "Slow to start a chase, then relentless."
+// - Parked: he waits at the route's first `copSpawn` feature (the lot beside the road), on the
+//   shoulder at the lot's road edge, until `cops.spawnDelayS` (÷ difficulty.copFrequency) has
+//   passed, then sounds the siren and pulls out after you. "Slow to start a chase, then
+//   relentless." A route with no `copSpawn` leaves him on sim/race's grid slot behind the field.
 // - Chase: he targets the nearest player, or whoever caused chaos (a hit or kick) near him in the
 //   last 10 s. While the target rides he closes to `cops.followGapM` behind and holds there, so
 //   he does not shadow every crash; after 8 s on station he moves in alongside for 6 s (inside
@@ -23,7 +25,7 @@
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
-import { maxYawAt } from '../riders';
+import { barrierLimits, maxYawAt } from '../riders';
 import type { SimConfig, SimRiderDef } from '../types';
 import { emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
@@ -329,6 +331,35 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   };
 }
 
+/**
+ * Where a cop waits before the chase: the route's first `copSpawn` feature (in route order), at
+ * the middle of its range along the road, on the shoulder on the lot's side (or at the drivable
+ * edge on that side when there is no shoulder), facing the route's direction of travel there.
+ * Null when the route passes no `copSpawn`.
+ */
+export function copSpawnPos(config: SimConfig): RoadPos | null {
+  const { road, route } = config;
+  for (const edge of route.mainEdges) {
+    for (const f of road.featuresOf(edge, 'copSpawn')) {
+      const a = route.progressAt(edge, f.s0);
+      const b = route.progressAt(edge, f.s1);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      const s = (f.s0 + f.s1) / 2;
+      const side = f.d0 + f.d1 >= 0 ? 1 : -1;
+      const lanes = road.lanesAt(edge, s);
+      const shoulder = lanes.find((l) => l.kind === 'shoulder' && Math.sign(l.dCenterM) === side);
+      let d: number;
+      if (shoulder) d = shoulder.dCenterM;
+      else {
+        const { lo, hi } = barrierLimits(config, edge, s);
+        d = side > 0 ? hi : lo;
+      }
+      return { edge, s, d, dir: b >= a ? 1 : -1 };
+    }
+  }
+  return null;
+}
+
 function endChase(world: World, st: CopsState, copId: EntityId): void {
   if (st.phase[copId] !== COP_CHASING) return;
   st.phase[copId] = COP_DONE;
@@ -372,8 +403,15 @@ export const copsSystem: SimSystem = {
   name: 'cops',
   init(world: World, config: SimConfig) {
     const st = copsState(world);
+    const spawn = copSpawnPos(config);
     for (const m of world.movers) {
       if (defOf(config, m)?.controller.kind !== 'cop') continue;
+      // From the lot, not the grid (M1 fields one cop; M4's spawn mix decides where more wait).
+      if (spawn) {
+        m.pos = { ...spawn };
+        m.yaw = 0;
+        m.speed = 0;
+      }
       st.cops.push(m.id);
       st.phase[m.id] = COP_PARKED;
       st.target[m.id] = -1;
