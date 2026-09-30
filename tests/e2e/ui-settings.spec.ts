@@ -213,10 +213,17 @@ const chosen = async (page: Page, tab: string, id: string, value: string) => {
   );
 };
 
-/** From the settings screen into a race the player rides alone: no bot, no touches, no keys. */
+/**
+ * From the settings screen into a race the player rides alone: no bot, no touches, no keys, and
+ * the phone held level as the race starts (a real sensor keeps reporting; this one reports once, so
+ * the race-start tilt calibration sees level and not the previous race's last angle).
+ */
 async function raceAlone(page: Page) {
   await page.locator('#settings-back').click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
+  await page.evaluate(() => {
+    (window as TestWindow).__game?.setBot(false);
+    window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 0, gamma: 0 }));
+  });
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
 }
