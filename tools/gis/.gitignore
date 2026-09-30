@@ -1,0 +1,6 @@
+# Python tooling state for the offline bake (the fetched extracts live in .cache/, ignored repo-wide)
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
