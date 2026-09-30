@@ -9,7 +9,19 @@
   "description": "Pack zero. Everything in the base game, including Region 1: the Florida Keys.",
   "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
   "license": "MIT",
-  "licenseRules": [],
+  "licenseRules": [
+    {
+      "paths": [
+        "regions/*/networks/osm-*.json",
+        "regions/*/roads/osm-*.json",
+        "regions/*/roads/osm-*.bin",
+        "regions/*/routes/osm-*.json"
+      ],
+      "spdx": "ODbL-1.0",
+      "attribution": "Road data © OpenStreetMap contributors, available under the Open Database License.",
+      "licenseFile": "LICENSES/ODbL-1.0.txt"
+    }
+  ],
   "assetSources": { "default": "baked", "rules": [] },
   "defaults": { "tuning": "registry", "hud": "classic" },
   "idAliases": {},
