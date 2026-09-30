@@ -27,6 +27,8 @@ test('?debug=1 shows fps, frame time, sim step, refresh rate and the renderer', 
   );
   expect(Number(/^(\d+) fps/.exec(text)?.[1])).toBeGreaterThan(0);
   expect(Number(/ (\d+) draws/.exec(text)?.[1])).toBeGreaterThan(0);
+  // M2 dev-4: the 6-minute fast-forward estimate for replay-2's resume, last on the numbers line.
+  expect(text.split('\n')[0]).toMatch(/ · 6-min ff ~\d+\.\d s$/);
   // The second line is the renderer string, the same one the renderer reports.
   const renderer = await page.evaluate(
     () =>

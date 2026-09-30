@@ -64,13 +64,13 @@ export function formatOverlay(r: PerfReport): string {
     `frame ${round1(r.frameMs.p50)} ms (p95 ${round1(r.frameMs.p95)})`,
     `sim ${r.stepMs.p95.toFixed(2)} ms p95`,
   ];
-  // replay-2's resume re-runs the race headlessly: at this step time a 6-minute race takes this
-  // long to fast-forward (an estimate from the live sim step p50; the measured one is in the report).
-  if (r.stepMs.samples > 0) parts.push(`6-min ff ~${fastForwardSeconds(r.stepMs.p50).toFixed(1)} s`);
   if (r.refreshHz !== null) parts.push(`${Math.round(r.refreshHz)} Hz display`);
   parts.push(`${r.drawCalls} draws`, `${(r.triangles / 1000).toFixed(1)}k tris`);
   if (r.heapMB !== null) parts.push(`heap ${Math.round(r.heapMB)} MB`);
   parts.push(`${r.width}x${r.height} @${r.pixelRatio}`);
+  // replay-2's resume re-runs the race headlessly: at this step time a 6-minute race takes this
+  // long to fast-forward (an estimate from the live sim step p50; the measured one is in the report).
+  if (r.stepMs.samples > 0) parts.push(`6-min ff ~${fastForwardSeconds(r.stepMs.p50).toFixed(1)} s`);
   return `${parts.join(' · ')}\n${r.renderer}`;
 }
 
