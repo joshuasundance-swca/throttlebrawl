@@ -4,7 +4,8 @@
 // (speed, position, your health, your target's health) placed from the layout record; the touch
 // visuals (stick ring, attack and brake buttons); the pause screen (resume, restart, quit, copy
 // debug report, save debug file, and the build id that opens the tuning panel on a long-press);
-// results (place and prize, or Busted and the fine); and the rotate-your-phone screen.
+// results (place and prize, or Busted and the fine); and the look of the rotate-your-phone screen
+// (platform/ creates and toggles `#rotate-screen` after the start tap; ui only restyles it).
 // ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
 // changes leaves through the callbacks app/ injects.
 import {
@@ -71,8 +72,6 @@ export interface GameUi {
   /** Opens the pause screen over the race (lifecycle auto-pause lands here too). */
   pause(): void;
   readonly paused: boolean;
-  /** Forces the rotate-your-phone screen (platform's failed orientation lock). */
-  setRotateNeeded(needed: boolean): void;
   /** The full-screen surface input/ listens on for touches. */
   readonly touchSurface: HTMLElement;
   setLayout(layout: TouchLayout): void;
@@ -151,13 +150,11 @@ const CSS = `
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 #pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
   touch-action: none; }
-#rotate-screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center;
-  justify-content: center; gap: 12px; padding: 24px; text-align: center; background: #140a28; pointer-events: auto; z-index: 10; }
-#rotate-screen .phone { width: 44px; height: 76px; border: 4px solid #f2ead8; border-radius: 8px;
+#rotate-screen { flex-direction: column; gap: 18px; background: #140a28 !important; color: #f2ead8 !important;
+  font: 900 22px/1.3 system-ui, sans-serif !important; text-transform: uppercase; letter-spacing: 0.04em; }
+#rotate-screen::before { content: ''; width: 44px; height: 76px; border: 4px solid #f2ead8; border-radius: 8px;
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
-@media (orientation: portrait) and (pointer: coarse) { #rotate-screen { display: flex; } }
-#ui.rotate-forced #rotate-screen { display: flex; }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 #build-stamp.in-race { display: none; }
 `;
@@ -515,18 +512,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     ),
   );
 
-  // ---- Rotate your phone -------------------------------------------------------------------
-  const rotate = el(
-    'div',
-    { id: 'rotate-screen' },
-    el('div', { className: 'phone' }),
-    el('div', { className: 'title', textContent: 'Turn it sideways' }),
-    el('div', { className: 'card', textContent: 'This game only rides in landscape.' }),
-  );
-
   const noticeBox = el('div', { className: 'card notice', hidden: true });
 
-  root.append(touchSurface, hud, start, menu, settingsScreen, results, pauseScreen, noticeBox, rotate);
+  root.append(touchSurface, hud, start, menu, settingsScreen, results, pauseScreen, noticeBox);
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
   const narrative = createNarrative();
@@ -600,9 +588,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     pause,
     get paused() {
       return paused;
-    },
-    setRotateNeeded(needed) {
-      root.classList.toggle('rotate-forced', needed);
     },
     touchSurface,
     setLayout(l) {

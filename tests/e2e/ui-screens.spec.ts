@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 
 // ui-1's browser tests (docs/milestones/M1.md, ui-1): menu, race and results show a placing; the
 // pause screen opens and closes; the HUD elements are present; the settings page works (the mirror
-// moves the touch buttons); the rotate screen shows in portrait; and no text overflows or leaves
+// moves the touch buttons); the rotate screen wears the ui look; and no text overflows or leaves
 // the screen at the phone-landscape viewport. Pause freezing the race and the volume reaching the
 // master gain need app/'s wiring and live in ui-pause.spec.ts.
 
@@ -247,13 +247,31 @@ test('the overflow check fires on planted overflowing text (negative control)', 
   expect(found.out.some((p) => p.includes('leaves the screen'))).toBe(true);
 });
 
-test('the rotate screen shows in portrait and hides in landscape', async ({ page }) => {
+// platform/ creates and toggles #rotate-screen (its own spec covers when); ui gives it the look.
+test('the rotate screen wears the ui style and its text fits a portrait phone', async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 915 });
+  await page.addInitScript(() => {
+    Object.defineProperty(screen.orientation, 'lock', {
+      configurable: true,
+      value: () => Promise.reject(new DOMException('lock refused by the test', 'NotSupportedError')),
+    });
+  });
   await page.goto('./');
-  await expect(page.locator('#rotate-screen')).toBeVisible();
-  await expect(page.locator('#rotate-screen')).toContainText('Turn it sideways');
-  await expectNoOverflow(page, 'rotate');
+  await page.locator('#start-screen').click();
+  const rotate = page.locator('#rotate-screen');
+  await expect(rotate).toBeVisible();
+  const look = await rotate.evaluate((e) => ({
+    background: getComputedStyle(e).backgroundColor,
+    transform: getComputedStyle(e).textTransform,
+    icon: getComputedStyle(e, '::before').content,
+    box: e.getBoundingClientRect().toJSON() as DOMRect,
+    fits: e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1,
+  }));
+  console.log(`rotate screen: ${JSON.stringify(look)}`);
+  expect(look.background).toBe('rgb(20, 10, 40)');
+  expect(look.transform).toBe('uppercase');
+  expect(look.icon).not.toBe('none'); // the phone outline
+  expect(look.fits).toBe(true);
+  expect(look.box.width).toBeLessThanOrEqual(412);
   await shot(page, 'rotate');
-  await page.setViewportSize({ width: 915, height: 412 });
-  await expect(page.locator('#rotate-screen')).toBeHidden();
 });
