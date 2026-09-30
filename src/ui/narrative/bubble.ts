@@ -2,11 +2,12 @@
 // speed on a phone. It carries the line's content reference for the "cut this" long-press
 // (docs/architecture.md, "In-game veto"). It never takes a touch itself (pointer-events none), so
 // it can never steal one from steering: veto-ui.ts watches presses on its box from the document
-// and ignores those that start in the stick or attack zones.
+// and ignores those that start in the stick or attack zones. It sits under every other layer of
+// the UI root (z-index -1), so a bubble still up when the game pauses never covers the pause menu.
 import type { BarkView, ShownBark } from './director';
 
 const CSS = `
-#bark-bubble { position: absolute; left: 50%; top: max(52px, env(safe-area-inset-top)); transform: translateX(-50%);
+#bark-bubble { position: absolute; z-index: -1; left: 50%; top: max(52px, env(safe-area-inset-top)); transform: translateX(-50%);
   max-width: min(80vw, 560px); padding: 8px 14px 9px; border-radius: 14px; background: rgb(255 255 255 / 94%);
   color: #111; font: 700 20px/1.25 system-ui, sans-serif; text-align: center; pointer-events: none;
   box-shadow: 0 3px 0 rgb(0 0 0 / 55%); }

@@ -24,7 +24,7 @@ const CSS = `
 #cut-menu #cut-confirm { background: #e0543a; border-color: #e0543a; color: #fff; }
 #cut-done { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60;
   padding: 6px 12px; background: #000c; color: #fff; font: 600 14px system-ui, sans-serif; pointer-events: none; }
-#recently-seen { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-height: 34vh; overflow-y: auto;
+#recently-seen { pointer-events: auto; width: min(560px, calc(100vw - 32px)); max-height: 26vh; overflow-y: auto;
   box-sizing: border-box; text-align: left; background: #000a; border: 1px dashed #fff8; padding: 6px 8px; }
 #recently-seen .rs-title { font: 700 12px ui-monospace, 'Courier New', monospace; opacity: 0.85; margin-bottom: 4px; }
 #recently-seen ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -202,6 +202,8 @@ export function watchBubblePresses(bubble: BubbleView, opts: BubblePressOptions)
     if (!el || el.hidden || !bark) return;
     const r = el.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+    // A press on a control drawn over the bubble (a pause-menu button, the cut card) is that control's.
+    if (e.target instanceof Element && e.target.closest('button, input, select, label, a, #cut-menu')) return;
     if (opts.inControlZone) {
       if (opts.inControlZone(e.clientX, e.clientY)) return;
     } else if (e.pointerType === 'touch' && opts.racing()) {

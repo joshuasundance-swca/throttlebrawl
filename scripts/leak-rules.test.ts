@@ -59,6 +59,7 @@ describe('leak scan: must not match', () => {
     ['a numeric no-reply address', '12345+someone@users.noreply.github.com'],
     ['the commit trailer address', 'Co-Authored-By: Claude <noreply@anthropic.com>'],
     ['the GitHub squash committer', 'GitHub <noreply@github.com>'],
+    ['the Dependabot author', 'dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'],
     ['an example.com address', 'player@example.com'],
     ['the public users folder', 'C:\\Users\\Public\\Desktop'],
     ['the loopback address', "host: '127.0.0.1'"],
@@ -70,6 +71,11 @@ describe('leak scan: must not match', () => {
     ['angle-bracket placeholders', 'hf upload <hf-user>/<space> and <github-owner>/throttlebrawl'],
   ])('passes %s', (_name, text) => {
     expect(scanText(text)).toEqual([]);
+  });
+
+  it('allows the identities on a Dependabot commit (author and the GitHub committer)', () => {
+    expect(isAllowedEmail('49699333+dependabot[bot]@users.noreply.github.com')).toBe(true);
+    expect(isAllowedEmail('noreply@github.com')).toBe(true);
   });
 
   it('passes safe file names', () => {

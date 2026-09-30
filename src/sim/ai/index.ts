@@ -7,9 +7,15 @@
 //   3. dodges traffic ahead crudely: around it (into the oncoming lane only as risk allows) or brakes;
 //   4. swings at whoever is in its reach window, the player or another rival, with side and kick flags;
 //   5. unsticks itself if it has made no progress for a while.
+// M2 ai-2 adds: a race-long grudge (a rider who noted a grudge against someone, through tumble-2's
+// noteGrudge, puts them first in its target choice and comes looking for them until the finish),
+// takedown intent (a brawler rides on the side of its target that lets its hits push the target
+// toward an oncoming car or a rail), and difficulty (the preset's
+// aggression scale here; its rubber-band scale in sim/race's rubberBandBounds).
 // Law riders (cops) are not driven here: cops-1 writes their inputs from the cops phase.
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
+import type { RoadNetwork } from '../../road';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
@@ -72,6 +78,11 @@ export interface AiState {
   /** Swings started, by rider and by target (for tests and the debug report). */
   presses: number[];
   pressesOnPlayer: number[];
+  /** Ticks spent hunting a player as its fight target (for tests and the debug report). */
+  huntTicksOnPlayer: number[];
+  /** Takedown intent (ai-2): the push direction it committed to (±1, 0 none) and until which tick. */
+  pushSide: number[];
+  pushUntil: number[];
 }
 
 export function aiState(world: World): AiState {
@@ -91,6 +102,9 @@ export function aiState(world: World): AiState {
     unstickUntil: [],
     presses: [],
     pressesOnPlayer: [],
+    huntTicksOnPlayer: [],
+    pushSide: [],
+    pushUntil: [],
   }));
 }
 
@@ -119,6 +133,18 @@ const STUCK_TICKS = 240;
 const UNSTICK_TICKS = 150;
 const WEAVE_PERIOD_TICKS = 240;
 const TAU = 6.283185307179586;
+// ai-2 takedown intent (M2, [default]).
+/** A rail this close to the target's side of the road (metres of d) is worth pushing it toward. */
+const RAIL_NEAR_M = 3.5;
+/** An oncoming car within this many seconds of closing (plus a margin) makes the oncoming side the pick. */
+const ONCOMING_WARN_S = 4;
+const ONCOMING_MARGIN_M = 20;
+/** Changing sides round a target is done only this far ahead of or behind it, never through it. */
+const SIDE_SWITCH_S = 2.5;
+/** While changing sides, a brawler holds the target this far ahead of itself. */
+const SWITCH_BACK_M = 4;
+/** How long a brawler sticks to a push direction once it picks one, so passing cars and a rail don't flip it. */
+const PUSH_COMMIT_TICKS = 180;
 
 function isAiRider(config: SimConfig, m: Mover): boolean {
   const def = config.riders[m.riderIndex];
@@ -145,12 +171,33 @@ function canFight(world: World, config: SimConfig, other: Mover, me: Mover): boo
   return !raceState(world).finishOrder.includes(other.id);
 }
 
+/**
+ * The riders `id` holds a race-long grudge against (noted by tumble-2 through `noteGrudge`), in
+ * ascending id order. Racers who have finished are left out: the grudge ends at their finish.
+ */
+export function grudgeTargets(world: World, id: EntityId): EntityId[] {
+  const out: EntityId[] = [];
+  const race = raceState(world);
+  for (const [against, holders] of Object.entries(world.facts.grudgeNotedBy)) {
+    const target = Number(against);
+    if (holders.includes(id) && !race.finishOrder.includes(target)) out.push(target);
+  }
+  return out;
+}
+
+/** The target preference with `grudge` first when this rider holds a grudge (ai-2). */
+function preferences(prof: AiProfile, grudges: readonly EntityId[]): readonly string[] {
+  if (grudges.length === 0) return prof.targetPreference;
+  return ['grudge', ...prof.targetPreference.filter((p) => p !== 'grudge')];
+}
+
 /** Picks from candidates by the profile's target preference; `nearest` is the fallback. */
 function pickByPreference(
   world: World,
   config: SimConfig,
   cands: readonly Seen[],
   prefs: readonly string[],
+  grudges: readonly EntityId[] = [],
 ): Seen | null {
   if (cands.length === 0) return null;
   const race = raceState(world);
@@ -162,7 +209,15 @@ function pickByPreference(
     return best;
   };
   for (const pref of prefs) {
-    if (pref === 'player') {
+    if (pref === 'grudge') {
+      // The race-long grudge (ai-2): the nearest rider this one holds a grudge against.
+      let best: Seen | null = null;
+      for (const c of cands) {
+        if (!grudges.includes(c.mover.id)) continue;
+        if (!best || Math.abs(c.ahead) + Math.abs(c.dd) < Math.abs(best.ahead) + Math.abs(best.dd)) best = c;
+      }
+      if (best) return best;
+    } else if (pref === 'player') {
       const hit = cands.find((c) => config.riders[c.mover.riderIndex]?.controller.kind === 'player');
       if (hit) return hit;
     } else if (pref === 'leader') {
@@ -174,9 +229,74 @@ function pickByPreference(
     } else if (pref === 'nearest') {
       return nearest();
     }
-    // `grudge` and `crew-enemy` need the career's grudges and crews (M4): skipped in M1.
+    // `crew-enemy` needs the career's crews (M4): skipped until then. The career's grudges that
+    // outlast a race (M4) will join the race-long ones in `grudges`.
   }
   return nearest();
+}
+
+/**
+ * Takedown intent (ai-2): the way along road d (+1 or −1) a hit should push the target, or 0 for
+ * no preference. An oncoming car about to pass the target on its oncoming side wins; then a rail
+ * close to the target. With neither, there is nothing to push the target into, so no preference:
+ * the brawler keeps the side it is on (M1), rather than circling a target for an empty road. The
+ * victim of a hit is knocked away from the attacker, so the attacker rides on the other side.
+ */
+export function takedownPush(
+  road: RoadNetwork,
+  target: Mover,
+  obstacles: readonly { s: Seen; size: ObstacleSize }[],
+): number {
+  const t = target.pos;
+  // The oncoming side of the road: where its drive lanes lie against the target's own.
+  let own = 0;
+  let ownN = 0;
+  let other = 0;
+  let otherN = 0;
+  for (const l of road.lanesAt(t.edge, t.s)) {
+    if (l.kind !== 'drive') continue;
+    if (l.direction === t.dir) {
+      own += l.dCenterM;
+      ownN++;
+    } else {
+      other += l.dCenterM;
+      otherN++;
+    }
+  }
+  const oncoming = otherN === 0 ? 0 : other / otherN >= (ownN === 0 ? t.d : own / ownN) ? 1 : -1;
+  if (oncoming !== 0) {
+    for (const o of obstacles) {
+      if (o.s.vAlong >= 0 || o.s.mover.kind !== 'vehicle') continue;
+      if ((o.s.mover.pos.d - t.d) * oncoming <= 0) continue;
+      const front = o.s.ahead - o.size.halfLength;
+      if (o.s.ahead + o.size.halfLength < 0) continue;
+      if (front <= (target.speed - o.s.vAlong) * ONCOMING_WARN_S + ONCOMING_MARGIN_M) return oncoming;
+    }
+  }
+  const edge = road.edges[t.edge];
+  if (edge) {
+    for (const side of [1, -1] as const) {
+      const b = road.barrierAt(t.edge, t.s, side > 0 ? 'right' : 'left');
+      if (b?.kind !== 'rail') continue;
+      const rim = side > 0 ? edge.dMax : edge.dMin;
+      if (Math.abs(rim - t.d) <= RAIL_NEAR_M) return side;
+    }
+  }
+  return 0;
+}
+
+/**
+ * The push direction a brawler acts on: a new nonzero pick holds for PUSH_COMMIT_TICKS, and while
+ * it holds, a different pick (or none) does not replace it.
+ */
+function committedPush(st: AiState, id: EntityId, tick: number, raw: number): number {
+  const held = st.pushSide[id] ?? 0;
+  if (held !== 0 && tick < (st.pushUntil[id] ?? -1) && raw !== held) return held;
+  if (raw !== 0) {
+    st.pushSide[id] = raw;
+    st.pushUntil[id] = tick + PUSH_COMMIT_TICKS;
+  }
+  return raw;
 }
 
 /**
@@ -351,24 +471,49 @@ function driveRider(
   const healthMax = def?.healthMax ?? 100;
   const health = riderState(world).health[id] ?? healthMax;
   const brave = health / Math.max(1, healthMax) >= 0.5 * (1 - prof.courage);
+  // A race-long grudge (ai-2) makes any rider a hunter of the riders it holds the grudge against;
+  // a brawler hunts anyone, grudges first.
+  const grudges = grudgeTargets(world, id);
+  const prefs = preferences(prof, grudges);
+  const brawler = prof.behaviour === 'brawler';
   let target: Seen | null = null;
-  if (racing && !unsticking && prof.behaviour === 'brawler' && brave && aggr > 0) {
+  if (racing && !unsticking && (brawler || grudges.length > 0) && brave && aggr > 0) {
     const seekRange = 10 + 30 * Math.min(1, aggr);
+    const pool = riders.filter(
+      (r) => Math.abs(r.ahead) <= seekRange && (brawler || grudges.includes(r.mover.id)),
+    );
     const current = st.targetId[id] ?? -1;
-    const keep = riders.find((r) => r.mover.id === current && Math.abs(r.ahead) <= seekRange * 1.3);
-    target =
-      keep ??
-      pickByPreference(
-        world,
-        config,
-        riders.filter((r) => Math.abs(r.ahead) <= seekRange),
-        prof.targetPreference,
-      );
+    const grudge = pickByPreference(world, config, pool, ['grudge'], grudges);
+    const held = grudge && grudges.includes(grudge.mover.id) ? grudge : null;
+    const keep = riders.find(
+      (r) =>
+        r.mover.id === current &&
+        Math.abs(r.ahead) <= seekRange * 1.3 &&
+        (brawler || grudges.includes(r.mover.id)),
+    );
+    target = held ?? keep ?? pickByPreference(world, config, pool, prefs, grudges);
   }
   st.targetId[id] = target ? target.mover.id : -1;
   if (target) {
+    if (players.includes(target.mover.id)) st.huntTicksOnPlayer[id] = (st.huntTicksOnPlayer[id] ?? 0) + 1;
+    // Which side of the target to ride on (+1: its +d side). A rider's own preferred side wins;
+    // otherwise a brawler after a player takes the side that pushes them toward danger (takedown
+    // intent), and anyone else stays on the side it is already on. Rival-against-rival fights keep
+    // the M1 rule: two brawlers each wanting the other's far side would circle forever.
+    const current = target.dd > 0 ? -1 : 1;
     let side = prof.preferredSide === 'left' ? -pos.dir : prof.preferredSide === 'right' ? pos.dir : 0;
-    if (side === 0) side = target.dd > 0 ? -1 : 1; // stay on the side I'm already on
+    let switching = false;
+    if (side === 0) {
+      const intent = brawler && players.includes(target.mover.id);
+      const push = intent ? committedPush(st, id, tick, takedownPush(road, target.mover, obstacles)) : 0;
+      side = push !== 0 ? -push : current;
+      // Never through the target, and never out of a fight it is already in: alongside, it keeps
+      // its side and fights; it crosses over only while it is still closing in.
+      if (side !== current) {
+        if (Math.abs(target.ahead) < SIDE_SWITCH_S) side = current;
+        else switching = true;
+      }
+    }
     let d = target.mover.pos.d + side * FIGHT_OFFSET_D;
     if (d < dLo || d > dHi) d = target.mover.pos.d - side * FIGHT_OFFSET_D;
     dTarget = clamp(d, dLo, dHi);
@@ -376,19 +521,22 @@ function driveRider(
     // Close the gap along the road: chase hard, wait gently. A brawler waits (drops below its
     // pace) only for a player behind it, easing off rather than braking so it is still near the
     // player's speed when they meet; a rival behind it is left to catch up, so rival fights don't
-    // stall the pack.
+    // stall the pack. Changing sides, it keeps the target a few metres ahead until it is across.
     const waitsFor = players.includes(target.mover.id) ? config.event.paceMps * 0.6 : speedTarget;
-    const gain = target.ahead >= 0 ? 0.8 : 0.25;
-    speedTarget = clamp(target.vAlong + target.ahead * gain, waitsFor, speedTarget * 1.15);
+    const ahead = switching ? target.ahead - SWITCH_BACK_M : target.ahead;
+    const gain = ahead >= 0 ? 0.8 : 0.25;
+    speedTarget = clamp(target.vAlong + ahead * gain, waitsFor, speedTarget * 1.15);
   } else if (
     racing &&
-    prof.behaviour === 'brawler' &&
     brave &&
     aggr > 0 &&
-    prof.targetPreference[0] === 'player' &&
-    players.some((p) => (race.distanceToFinish[p] ?? Infinity) < dist)
+    ((brawler &&
+      prof.targetPreference[0] === 'player' &&
+      players.some((p) => (race.distanceToFinish[p] ?? Infinity) < dist)) ||
+      grudges.some((g) => (race.distanceToFinish[g] ?? Infinity) < dist))
   ) {
-    // A hunter keeps after a player who got away ahead, a little above its pace.
+    // A hunter keeps after a player (or anyone it holds a grudge against) who got away ahead, a
+    // little above its pace.
     speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
 
@@ -490,7 +638,7 @@ function driveRider(
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
   if (racing && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
-    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players);
+    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges);
   }
 
   const { throttle, brake } = throttleFor(config, m, speedTarget);
@@ -518,6 +666,7 @@ function trySwing(
   target: Seen | null,
   aggr: number,
   players: readonly EntityId[],
+  grudges: readonly EntityId[],
 ): number {
   const punch = weaponReach(config, 'punch');
   const kick = weaponReach(config, 'kick');
@@ -527,13 +676,15 @@ function trySwing(
   if (reachable.length === 0) return 0;
   const victim =
     (target && reachable.find((r) => r.mover.id === target.mover.id)) ??
-    pickByPreference(world, config, reachable, prof.targetPreference);
+    pickByPreference(world, config, reachable, preferences(prof, grudges), grudges);
   if (!victim) return 0;
   const rng = world.rng.ai;
   const chance = Math.min(0.5, (0.02 + 0.1 * aggr) * (target && victim.mover.id === target.mover.id ? 2 : 1));
   if (nextFloat(rng) >= chance) return 0;
   const canKick = inReach(victim, v, kick);
   const canPunch = inReach(victim, v, punch);
+  // The kick-or-punch mix stays M1's: a kick-when-it-shoves-toward-danger bonus is a feel number,
+  // held for combat-3's playtest-tuned kick shove (M2 prep rules).
   const useKick = canKick && (!canPunch || nextFloat(rng) < 0.25 + 0.6 * prof.dirtiness);
   const r = useKick ? kick : punch;
   // Side flags are in the rider's frame: its right is +d when riding toward +s.
@@ -574,6 +725,9 @@ export const aiSystem: SimSystem = {
       st.unstickUntil[m.id] = -1;
       st.presses[m.id] = 0;
       st.pressesOnPlayer[m.id] = 0;
+      st.huntTicksOnPlayer[m.id] = 0;
+      st.pushSide[m.id] = 0;
+      st.pushUntil[m.id] = -1;
     }
   },
   step(world: World, config: SimConfig) {
