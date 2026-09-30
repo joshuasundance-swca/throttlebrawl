@@ -66,7 +66,19 @@ export const KEYS_M1: TrackSource = {
         { s0: 0, s1: 'end', side: 'right', tag: 'marina' },
         { s0: 0, s1: 'end', side: 'left', tag: 'strip-mall' },
       ],
-      features: [{ kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 }],
+      features: [
+        { kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
+        // road-3: a billboard in view from the start grid, across from the strip mall's lot.
+        {
+          kind: 'billboard',
+          id: 'bb-marina-timeshare',
+          s0: 150,
+          s1: 190,
+          d0: -16,
+          d1: -7,
+          item: 'timeshare',
+        },
+      ],
       barriers: [],
     },
     {
@@ -142,6 +154,16 @@ export const KEYS_M1: TrackSource = {
           d1: -5.5,
           params: { spawns: 'pedestrians' },
         },
+        // road-3: a road sign at the foot of the bridge, just outside the right-hand rail.
+        {
+          kind: 'billboard',
+          id: 'sign-bridge-ices',
+          s0: 20,
+          s1: 30,
+          d0: 6.5,
+          d1: 9,
+          item: 'ices-before-road',
+        },
       ],
       barriers: [{ s0: 0, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
     },
@@ -166,6 +188,16 @@ export const KEYS_M1: TrackSource = {
           d0: 5.6,
           d1: 14.6,
           params: { spawns: 'pedestrians' },
+        },
+        // road-3: the streaming outfit's billboard over the beach.
+        {
+          kind: 'billboard',
+          id: 'bb-causeway-stream',
+          s0: 320,
+          s1: 360,
+          d0: 7,
+          d1: 16,
+          item: 'stream-outfit',
         },
         {
           kind: 'roadsideZone',
@@ -235,16 +267,18 @@ export const KEYS_M1: TrackSource = {
       ],
     },
   ],
-  route: {
-    id: 'm1-skeleton-sprint',
-    start: { road: 'm1-marina-run', s: 40, dir: 1 },
-    finish: { road: 'm1-sandbar-causeway', s: -40 },
-    // On roads both paths share, so a shortcut rider passes them too.
-    checkpoints: [
-      { road: 'm1-pelican-bridge', s: 300 },
-      { road: 'm1-pelican-bridge', s: 1000 },
-      { road: 'm1-sandbar-causeway', s: 500 },
-    ],
-    startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
-  },
+  routes: [
+    {
+      id: 'm1-skeleton-sprint',
+      start: { road: 'm1-marina-run', s: 40, dir: 1 },
+      finish: { road: 'm1-sandbar-causeway', s: -40 },
+      // On roads both paths share, so a shortcut rider passes them too.
+      checkpoints: [
+        { road: 'm1-pelican-bridge', s: 300 },
+        { road: 'm1-pelican-bridge', s: 1000 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+      ],
+      startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+    },
+  ],
 };

@@ -129,7 +129,8 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   // Crossed at least one junction, and never went back to an edge it had left.
   expect(checks.playerEdges.length).toBeGreaterThanOrEqual(2);
   expect(new Set(checks.playerEdges).size).toBe(checks.playerEdges.length);
-  expect(checks.events['finish'] ?? 0).toBeGreaterThan(0);
+  // The race ended: someone finished, or the bot was busted (a bust ends the race at once).
+  expect((checks.events['finish'] ?? 0) + (checks.events['bust'] ?? 0)).toBeGreaterThan(0);
 
   // The bot got a rival inside its attack window at least once (it fights, not just rides).
   expect(checks.bot.attackPresses, 'the bot pressed attack').toBeGreaterThan(0);

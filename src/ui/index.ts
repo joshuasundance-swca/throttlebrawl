@@ -6,6 +6,11 @@
 // debug report, save debug file, and the build id that opens the tuning panel on a long-press);
 // results (place and prize, or Busted and the fine); and the look of the rotate-your-phone screen
 // (platform/ creates and toggles `#rotate-screen` after the start tap; ui only restyles it).
+// ui-2 (docs/milestones/M2.md): the tabbed settings screen drawn from settings.ts, the full pause
+// menu (resume, restart, quit, controls and HUD, the tuning panel when enabled, copy debug report)
+// and the resume card after a reload (ui draws it and reports the tap; app/ does the rest).
+// ui-3: the "what's new since you last played" card beside the menu, the changelog page (both from
+// dist/changelog.json), the results screen's takedowns and style tally, and the style pop-ups.
 // ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
 // changes leaves through the callbacks app/ injects.
 import {
@@ -16,7 +21,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { DEFAULT_SETTINGS, withVeto, type Settings } from '../save';
+import { DEFAULT_SETTINGS, sanitiseSettings, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
   buildIdFromStamp,
@@ -29,19 +34,31 @@ import {
   type RaceResult,
 } from './format';
 import { hudStyle } from './placement';
-import { applySettingsChange, VOLUME_BUSES, type SettingsChange } from './settings';
+import {
+  applySettingsChange,
+  lastSeenPersists,
+  settingPersists,
+  settingValue,
+  visibleSettings,
+  type SettingId,
+  type SettingsChange,
+} from './settings';
+import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
+import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './changelog-screen';
+import { createRaceTally } from './race-feed';
+import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export type { RaceResult } from './format';
 export { HUD_ELEMENTS, hudStyle } from './placement';
-export { applySettingsChange } from './settings';
-export type { SettingsChange } from './settings';
+export { applySettingsChange, SETTINGS, settingValue } from './settings';
+export type { SettingId, SettingsChange, SettingValue } from './settings';
 // The barks' tuning declarations (narrative-1), for app/'s collected list.
 export { BARK_TUNING } from './narrative';
 
-export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results';
+export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results' | 'changelog';
 
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
@@ -58,7 +75,10 @@ export interface UiCallbacks {
   onRestart?: () => void;
   /** Quit to the menu from the pause screen; falls back to onBackToMenu. */
   onQuit?: () => void;
-  /** A settings change (volumes, mute, mirror): app/ saves it and applies it. */
+  /**
+   * A settings change: app/ saves it and applies it. The record carries the M2 fields too
+   * (save-2's fields); settings that feed SimConfig apply at the next race start or restart.
+   */
   onSettingsChange?: (settings: Settings) => void;
   /** "Save debug file" (dev-3). The button is hidden until this is wired. */
   onSaveDebugFile?: () => Promise<void>;
@@ -78,6 +98,13 @@ export interface GameUi {
   readonly touchSurface: HTMLElement;
   setLayout(layout: TouchLayout): void;
   notice(text: string): void;
+  /**
+   * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
+   * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
+   */
+  showResumeCard(onChoice: (choice: 'resume' | 'startOver') => void): void;
+  /** A spinner with a line of text over everything (the resume fast-forward), or null to hide it. */
+  setBusy(text: string | null): void;
   readonly settings: Readonly<Settings>;
   readonly tuningPanel: TuningPanel;
   readonly narrative: Narrative;
@@ -90,6 +117,12 @@ export interface UiOptions {
   callbacks: UiCallbacks;
   /** The loaded settings record; defaults when absent. */
   settings?: Settings;
+  /**
+   * The settings whose effect app/ has wired. Each appears on the settings screen once the saved
+   * record keeps it too; units and the tuning entry need no wiring. `?settings=all` in the page
+   * address previews every setting, wired or not (for agents and layout tests).
+   */
+  liveSettings?: readonly SettingId[];
 }
 
 /** Long-press length for the build id (docs/architecture.md, "The gesture"). */
@@ -104,7 +137,7 @@ const CSS = `
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #ui button, #ui input, #ui label { pointer-events: auto; font: inherit; }
 #ui .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 10px; text-align: center; background: rgb(20 10 40 / 50%);
+  justify-content: center; gap: 10px; text-align: center; background: rgb(20 10 40 / 50%); z-index: 2;
   padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); box-sizing: border-box; }
 #ui .screen[hidden], #ui [hidden] { display: none !important; }
 #ui .title { font-size: 32px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
@@ -144,13 +177,22 @@ const CSS = `
   background: #0003; pointer-events: none; box-sizing: border-box; }
 #touch-stick-knob { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
   border-radius: 50%; background: #fffa; }
-#settings .settings-grid { display: grid; grid-template-columns: auto minmax(140px, 260px) 3.5em; gap: 4px 10px;
-  align-items: center; font: 700 14px ui-monospace, monospace; text-align: left; }
-#settings input[type=range] { width: 100%; height: 30px; accent-color: #f5c542; }
-#settings .toggles label { display: inline-flex; gap: 8px; align-items: center; min-height: 40px; padding: 0 12px;
-  background: #000a; font: 700 14px ui-monospace, monospace; cursor: pointer; }
-#settings .toggles input { width: 22px; height: 22px; accent-color: #f5c542; }
+${SETTINGS_CSS}
+${CHANGELOG_CSS}
+#style-popups { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); display: flex;
+  flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.style-pop { font: 900 22px ui-monospace, 'Courier New', monospace; letter-spacing: 0.04em; color: #111;
+  background: #f5c542; padding: 2px 10px; box-shadow: 3px 3px 0 #111; white-space: nowrap;
+  animation: tb-pop 1.4s ease-out forwards; }
+@keyframes tb-pop { 0% { transform: scale(0.6); opacity: 0; } 12% { transform: scale(1.08); opacity: 1; }
+  75% { opacity: 1; } 100% { transform: translateY(-14px); opacity: 0; } }
+#results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
+#resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
+#busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
+#busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
+  border-radius: 50%; animation: tb-spin 0.9s linear infinite; }
+@keyframes tb-spin { to { transform: rotate(360deg); } }
 #pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
   touch-action: none; }
 #rotate-screen { flex-direction: column; gap: 18px; background: #140a28 !important; color: #f2ead8 !important;
@@ -224,17 +266,28 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   start.addEventListener('click', () => cb.onStartTap());
 
   // ---- Menu --------------------------------------------------------------------------------
+  // The what's-new card sits beside the menu (ui-3), so the Race button stays where it was.
+  const whatsNewCard = createWhatsNewCard({
+    onOpenChangelog: () => show('changelog'),
+    onHide: () => menu.classList.remove('with-news'),
+  });
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
-    el('div', { className: 'title', textContent: 'throttlebrawl' }),
-    button('menu-race', 'big', 'Race', () => cb.onRace()),
     el(
       'div',
-      { className: 'row' },
-      button('menu-settings', 'small', 'Settings', () => show('settings')),
-      button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      { className: 'menu-main' },
+      el('div', { className: 'title', textContent: 'throttlebrawl' }),
+      button('menu-race', 'big', 'Race', () => cb.onRace()),
+      el(
+        'div',
+        { className: 'row' },
+        button('menu-settings', 'small', 'Settings', () => show('settings')),
+        button('menu-changelog', 'small', "What's new", () => show('changelog')),
+        button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      ),
     ),
+    whatsNewCard.root,
     el('div', { id: 'menu-build', className: 'footer', textContent: `build ${buildId}` }),
   );
 
@@ -247,56 +300,36 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       layout = { ...layout, mirror: next.mirror };
       placeAll();
     }
+    settingsScreen.sync(settings);
+    syncPauseEntries();
     cb.onSettingsChange?.(next);
   };
-  const grid = el('div', { className: 'settings-grid' });
-  const sliders = new Map<string, { input: HTMLInputElement; out: HTMLOutputElement }>();
-  for (const { bus, label } of VOLUME_BUSES) {
-    const input = el('input', {
-      id: `settings-volume-${bus}`,
-      type: 'range',
-      min: '0',
-      max: '100',
-      step: '1',
-    });
-    input.setAttribute('aria-label', `${label} volume`);
-    const out = el('output', { id: `settings-volume-${bus}-value` });
-    input.addEventListener('input', () => {
-      out.textContent = `${input.value}%`;
-      change({ kind: 'volume', bus, value: Number(input.value) / 100 });
-    });
-    sliders.set(bus, { input, out });
-    grid.append(el('label', { htmlFor: input.id, textContent: label }), input, out);
-  }
-  const mute = el('input', { id: 'settings-mute', type: 'checkbox' });
-  mute.addEventListener('change', () => change({ kind: 'mute', value: mute.checked }));
-  const mirror = el('input', { id: 'settings-mirror', type: 'checkbox' });
-  mirror.addEventListener('change', () => change({ kind: 'mirror', value: mirror.checked }));
-  const settingsScreen = el(
-    'div',
-    { id: 'settings', className: 'screen', hidden: true },
-    el('div', { className: 'title', textContent: 'Settings' }),
-    grid,
-    el(
-      'div',
-      { className: 'row toggles' },
-      el('label', {}, mute, 'Mute'),
-      el('label', {}, mirror, 'Left-handed'),
-    ),
-    button('settings-back', 'small', 'Back', () => show('menu')),
-  );
-  const syncSettingsControls = () => {
-    for (const { bus } of VOLUME_BUSES) {
-      const s = sliders.get(bus);
-      if (!s) continue;
-      const pct = Math.round(settings.volumes[bus] * 100);
-      s.input.value = String(pct);
-      s.out.textContent = `${pct}%`;
+  const preview = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('settings') === 'all';
+    } catch {
+      return false;
     }
-    mute.checked = settings.mute;
-    mirror.checked = settings.mirror;
+  })();
+  const settingsScreen = createSettingsScreen({
+    onChange: change,
+    onBack: () => closeSettings(),
+  });
+  settingsScreen.setVisible(
+    visibleSettings({
+      live: opts.liveSettings ?? [],
+      persists: (id) => settingPersists(id, sanitiseSettings),
+      preview,
+    }),
+  );
+  settingsScreen.sync(settings);
+  /** Back from the settings screen: to the pause menu when it was opened there, else the menu. */
+  const closeSettings = () => {
+    if (settingsScreen.context === 'pause' && paused) {
+      settingsScreen.root.hidden = true;
+      pauseScreen.hidden = false;
+    } else show('menu');
   };
-  syncSettingsControls();
 
   // ---- HUD ---------------------------------------------------------------------------------
   const speed = el('div', { id: 'hud-speed' });
@@ -422,38 +455,76 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   touchSurface.addEventListener('pointercancel', stickUp);
 
   // ---- Pause -------------------------------------------------------------------------------
+  // The decided entries (docs/product-spec.md, "UX and menus"), each tagged `data-entry`: resume,
+  // restart, quit, controls and HUD, the tuning panel (only when the setting is on) and copy debug
+  // report ("save debug file" rides in the report's row, dev-3).
+  const entry = (b: HTMLButtonElement, name: string) => {
+    b.dataset['entry'] = name;
+    return b;
+  };
   const pauseBuild = el('div', { id: 'pause-build', textContent: `build ${buildId}` });
-  const restartButton = button('pause-restart', 'small', 'Restart', () => {
-    closePause();
-    cb.onRestart?.();
-  });
+  const restartButton = entry(
+    button('pause-restart', 'small', 'Restart', () => {
+      closePause();
+      cb.onRestart?.();
+    }),
+    'restart',
+  );
   restartButton.hidden = !cb.onRestart;
   const saveFileButton = button('pause-save-file', 'small', 'Save debug file', () => {
     void cb.onSaveDebugFile?.();
   });
   saveFileButton.hidden = !cb.onSaveDebugFile;
+  // Controls and HUD: the controls settings for now (the HUD editor is M3).
+  const controlsButton = entry(
+    button('pause-controls', 'small', 'Controls and HUD', () => {
+      pauseScreen.hidden = true;
+      settingsScreen.sync(settings);
+      settingsScreen.open('pause', 'controls');
+    }),
+    'controls',
+  );
+  const tuningButton = entry(
+    button('pause-tuning', 'small', 'Tuning panel', () => tuningPanel.toggle(true)),
+    'tuning',
+  );
+  const syncPauseEntries = () => {
+    tuningButton.hidden = settingValue(settings, 'showTuningPanel') !== true;
+  };
   const pauseScreen = el(
     'div',
     { id: 'pause-screen', className: 'screen', hidden: true },
     el('div', { className: 'title', textContent: 'Paused' }),
-    button('pause-resume', 'big', 'Resume', () => resume()),
+    entry(
+      button('pause-resume', 'big', 'Resume', () => resume()),
+      'resume',
+    ),
     el(
       'div',
       { className: 'row' },
       restartButton,
-      button('pause-quit', 'small', 'Quit to menu', () => {
-        closePause();
-        (cb.onQuit ?? cb.onBackToMenu)();
-      }),
+      entry(
+        button('pause-quit', 'small', 'Quit to menu', () => {
+          closePause();
+          (cb.onQuit ?? cb.onBackToMenu)();
+        }),
+        'quit',
+      ),
+      controlsButton,
+      tuningButton,
     ),
     el(
       'div',
       { className: 'row' },
-      button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+      entry(
+        button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+        'report',
+      ),
       saveFileButton,
     ),
     pauseBuild,
   );
+  syncPauseEntries();
   // The tuning panel hides behind a long-press on the build id, or a three-finger tap.
   let pressTimer: ReturnType<typeof setTimeout> | null = null;
   const cancelPress = () => {
@@ -483,6 +554,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const closePause = () => {
     paused = false;
     pauseScreen.hidden = true;
+    if (current === 'race') settingsScreen.root.hidden = true;
     pauseTouches.clear();
     cancelPress();
     touchSurface.hidden = current !== 'race';
@@ -505,11 +577,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // ---- Results -----------------------------------------------------------------------------
   const resultPlace = el('div', { id: 'results-place', className: 'title' });
   const resultPrize = el('div', { id: 'results-prize', className: 'card' });
+  const resultTally = el('div', { id: 'results-tally', hidden: true });
   const results = el(
     'div',
     { id: 'results', className: 'screen', hidden: true },
     resultPlace,
     resultPrize,
+    resultTally,
     el(
       'div',
       { className: 'row' },
@@ -520,12 +594,103 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
 
   const noticeBox = el('div', { className: 'card notice', hidden: true });
 
-  root.append(touchSurface, hud, start, menu, settingsScreen, results, pauseScreen, noticeBox);
+  // ---- The resume card and the busy spinner --------------------------------------------------
+  let resumeChoice: ((choice: 'resume' | 'startOver') => void) | null = null;
+  const choose = (choice: 'resume' | 'startOver') => {
+    const report = resumeChoice;
+    resumeChoice = null;
+    resumeCard.hidden = true;
+    report?.(choice);
+  };
+  const resumeCard = el(
+    'div',
+    { id: 'resume-card', className: 'screen', hidden: true },
+    el('div', { className: 'title', textContent: 'Race in progress' }),
+    el('div', { className: 'card', textContent: 'You left mid-race. Pick up where you were?' }),
+    el(
+      'div',
+      { className: 'row' },
+      button('resume-race', 'big', 'Resume race', () => choose('resume')),
+      button('resume-start-over', 'small', 'Start over', () => choose('startOver')),
+    ),
+  );
+  const busyText = el('div', { id: 'busy-text' });
+  const busy = el('div', { id: 'busy', className: 'screen', hidden: true }, busyText);
+
+  // ---- The changelog page, the what's-new check and the style pop-ups (ui-3) -----------------
+  const changelogScreen = createChangelogScreen({ onBack: () => show('menu') });
+  let changelog: Promise<ChangelogNote[] | null> | null = null;
+  /** dist/changelog.json, fetched once; null when it is missing (a dev server) or unreadable. */
+  const loadChangelog = () =>
+    (changelog ??= fetch('changelog.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: unknown) => (d === null ? null : parseChangelog(d)))
+      .catch(() => null));
+  // The card needs the record to keep the last build seen, or it would greet every launch.
+  const newsAllowed = lastSeenPersists(sanitiseSettings) && buildId.length > 0;
+  let newsChecked = false;
+  let pendingNews: WhatsNew | null = null;
+  const markSeen = () => {
+    if (settings.lastSeenBuild !== buildId) change({ kind: 'seen', build: buildId });
+  };
+  const offerNews = () => {
+    if (!pendingNews || current !== 'menu') return;
+    whatsNewCard.show(pendingNews);
+    menu.classList.add('with-news');
+    pendingNews = null;
+    markSeen(); // seen once it is on screen
+  };
+  const checkNews = () => {
+    if (newsChecked || !newsAllowed) return;
+    newsChecked = true;
+    const seen = settings.lastSeenBuild;
+    if (!seen) {
+      pendingNews = { kind: 'welcome' };
+      offerNews();
+      return;
+    }
+    if (sameBuild(seen, buildId)) return;
+    void loadChangelog().then((notes) => {
+      if (!notes) return; // unreadable: try again next launch, and keep the old mark
+      const w = whatsNewSince(notes, seen);
+      if (w.kind === 'none') markSeen();
+      else {
+        pendingNews = w;
+        offerNews();
+      }
+    });
+  };
+
+  const tally = createRaceTally();
+  let tallyPlayer = -1;
+  const popups = el('div', { id: 'style-popups' });
+  hud.append(popups);
+  const MAX_POPUPS = 3;
+  const popUp = (text: string) => {
+    const pop = el('div', { className: 'style-pop', textContent: text });
+    popups.append(pop);
+    while (popups.childElementCount > MAX_POPUPS) popups.firstElementChild?.remove();
+    setTimeout(() => pop.remove(), 1400);
+  };
+
+  root.append(
+    touchSurface,
+    hud,
+    start,
+    menu,
+    settingsScreen.root,
+    changelogScreen.root,
+    results,
+    pauseScreen,
+    resumeCard,
+    busy,
+    noticeBox,
+  );
   host.append(root, stamp);
   const tuningPanel = createTuningPanel(root, opts.tuning);
   // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
   // the bubble's long-press ignores presses in the stick and attack zones mid-race.
-  const narrative = createNarrative({
+  const barks = createNarrative({
     vetoed: settings.vetoes.map((v) => v.contentRef),
     onVeto: (flag) => {
       settings = withVeto(settings, flag);
@@ -542,12 +707,26 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       });
     },
   });
+  // app/ hands every step's events to the narrative; ui reads the same feed for the style pop-ups
+  // and the results tally (ui-3), so they need no wiring of their own.
+  const narrative: Narrative = {
+    ...barks,
+    onEvents(events, context) {
+      if (current === 'race') {
+        const me =
+          tallyPlayer >= 0 ? tallyPlayer : (context?.snapshot.entities.find((e) => e.slot === 0)?.id ?? -1);
+        tally.onEvents(events, me);
+      }
+      barks.onEvents(events, context);
+    },
+  };
   pauseScreen.insertBefore(narrative.mountRecentlySeen(pauseScreen).element, pauseBuild);
 
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;
     if (current === 'race') {
-      if (paused) resume();
+      if (!settingsScreen.root.hidden) closeSettings();
+      else if (paused) resume();
       else pause();
     } else if (current === 'settings') show('menu');
   });
@@ -555,9 +734,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const screens: Record<Screen, HTMLElement[]> = {
     start: [start],
     menu: [menu],
-    settings: [settingsScreen],
+    settings: [settingsScreen.root],
     race: [hud, touchSurface],
     results: [results],
+    changelog: [changelogScreen.root],
   };
 
   function show(screen: Screen) {
@@ -565,11 +745,22 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
     if (paused) closePause();
     stamp.classList.toggle('in-race', screen === 'race');
-    if (screen === 'settings') syncSettingsControls();
+    if (screen === 'settings') {
+      settingsScreen.sync(settings);
+      settingsScreen.open('menu');
+    }
     if (screen === 'race') {
       targetShown = false;
+      tally.reset();
+      tallyPlayer = -1;
+      popups.replaceChildren();
       placeAll();
     }
+    if (screen === 'menu') {
+      checkNews();
+      offerNews();
+    }
+    if (screen === 'changelog') void loadChangelog().then((notes) => changelogScreen.setNotes(notes));
   }
 
   const setText = (node: HTMLElement, text: string) => {
@@ -593,6 +784,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     updateRace(snapshot, playerId, units) {
       const player = snapshot.entities[playerId] ?? null;
       updateHud(player, riderCount(snapshot), units);
+      tallyPlayer = playerId;
+      tally.noteSnapshotTally(player?.styleTally);
+      for (const text of tally.takePopups()) popUp(text);
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {
@@ -605,9 +799,16 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       }
     },
     showResults(r) {
-      const t = resultText(r);
+      // The tally is ui's own count unless app/ sends one (combat-4 counts takedowns in the sim).
+      const t = resultText({
+        ...r,
+        takedowns: r.takedowns ?? tally.takedowns,
+        styleCash: r.styleCash ?? tally.styleCash,
+      });
       resultPlace.textContent = t.headline;
       resultPrize.textContent = t.detail;
+      resultTally.textContent = t.tally ?? '';
+      resultTally.hidden = t.tally === null;
       results.classList.toggle('busted', t.busted);
     },
     pause,
@@ -623,6 +824,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       noticeBox.textContent = text;
       noticeBox.hidden = false;
       setTimeout(() => (noticeBox.hidden = true), 4000);
+    },
+    showResumeCard(onChoice) {
+      resumeChoice = onChoice;
+      resumeCard.hidden = false;
+    },
+    setBusy(text) {
+      busyText.textContent = text ?? '';
+      busy.hidden = text === null;
     },
     get settings() {
       return settings;

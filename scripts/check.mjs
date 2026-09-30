@@ -11,7 +11,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { fmtBytes, git, repoRoot, treeFiles } from './lib.mjs';
+import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
+import { dependabotOnlyCommits } from './notes.mjs';
 
 const stripAnsi = (s) => stripVTControlCharacters(s);
 const lastExamined = (out) => [...out.matchAll(/^\[examined\] (.*)$/gm)].pop()?.[1] ?? '';
@@ -74,10 +75,17 @@ const STEPS = [
     name: 'notes',
     script: 'notes:check',
     count: fromExamined,
-    active: () =>
-      onMainPush || localBranch() === 'main'
-        ? 'on main there is no branch to compare (notes ride in the PR)'
-        : true,
+    active: () => {
+      if (onMainPush || localBranch() === 'main')
+        return 'on main there is no branch to compare (notes ride in the PR)';
+      const base = process.env.NOTES_BASE ?? 'origin/main';
+      if (!refExists(base)) return true; // notes:check reports the missing base itself
+      const mergeBase = git(['merge-base', base, 'HEAD']).trim();
+      const bot = dependabotOnlyCommits(git, mergeBase, process.env.NOTES_PR_AUTHOR);
+      return bot
+        ? `a Dependabot PR (${bot} Dependabot-only commit(s)) carries no note (docs/engineering.md, Dependabot)`
+        : true;
+    },
   },
   { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest },
   {

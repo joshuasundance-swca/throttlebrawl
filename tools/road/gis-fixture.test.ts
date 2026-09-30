@@ -51,13 +51,15 @@ const SOURCE: TrackSource = {
       barriers: [],
     },
   ],
-  route: {
-    id: 'osm-fixture-sprint',
-    start: { road: 'osm-overseas-stretch', s: 20, dir: 1 },
-    finish: { road: 'osm-overseas-stretch', s: -20 },
-    checkpoints: [],
-    startGrid: { rows: 2, perRow: 2, rowGapM: 8 },
-  },
+  routes: [
+    {
+      id: 'osm-fixture-sprint',
+      start: { road: 'osm-overseas-stretch', s: 20, dir: 1 },
+      finish: { road: 'osm-overseas-stretch', s: -20 },
+      checkpoints: [],
+      startGrid: { rows: 2, perRow: 2, rowGapM: 8 },
+    },
+  ],
 };
 
 const GIS_PROVENANCE = {
@@ -93,7 +95,7 @@ function gisFiles() {
     provenance: GIS_PROVENANCE,
   };
   const network = { ...out.network, provenance: GIS_PROVENANCE };
-  return { network, road, route: out.route };
+  return { network, road, route: out.routes[0] };
 }
 
 describe('tools/road: a fixture in the GIS output shape', () => {

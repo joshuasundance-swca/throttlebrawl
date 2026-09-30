@@ -25,7 +25,18 @@
     { "s0": 0, "s1": 300, "side": "right", "tag": "marina" },
     { "s0": 0, "s1": 300, "side": "left", "tag": "strip-mall" }
   ],
-  "features": [{ "kind": "copSpawn", "id": "bait-shop-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 }],
+  "features": [
+    { "kind": "copSpawn", "id": "bait-shop-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
+    {
+      "kind": "billboard",
+      "id": "bb-marina-timeshare",
+      "s0": 150,
+      "s1": 190,
+      "d0": -16,
+      "d1": -7,
+      "item": "timeshare"
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
