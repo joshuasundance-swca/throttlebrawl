@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
+import { inputDefaults } from '../../src/input/tuning.ts';
+import type { SimEvent, SimInput } from '../../src/sim/types.ts';
 
 // ui-2's browser tests (docs/milestones/M2.md, ui-2): the pause menu lists exactly the decided
 // entries, the tuning entry is hidden by default and shown when enabled, "Controls and HUD" opens
@@ -14,8 +17,16 @@ interface Handle {
   state(): string;
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
+  inputs(from?: number): SimInput[];
+  events(): readonly SimEvent[];
+  playerId(): number;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+type TestWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __game?: Handle;
+  /** navigator.vibrate's calls, recorded by the stub below. */
+  __buzzes?: unknown[];
+};
 
 function watchErrors(page: Page): string[] {
   const problems: string[] = [];
@@ -102,6 +113,14 @@ function findOverflow(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
+    // Record vibrations instead of making them, so the vibration setting's effect can be seen.
+    Object.defineProperty(Navigator.prototype, 'vibrate', {
+      configurable: true,
+      value(pattern: unknown) {
+        ((window as TestWindow).__buzzes ??= []).push(pattern);
+        return true;
+      },
+    });
   });
 });
 
@@ -181,6 +200,97 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
 // on screen without a probe fails the test, so a new one cannot ship without its non-default test
 // (M2's cross-lane rules). The M1 volumes, mute and mirror have theirs in ui-pause and ui-screens.
 type Probe = (page: Page) => Promise<void>;
+
+const choose = async (page: Page, tab: string, id: string, value: string) => {
+  await page.locator(`#settings-tab-${tab}`).click();
+  await page.locator(`#settings-${id} [data-value="${value}"]`).click();
+};
+const chosen = async (page: Page, tab: string, id: string, value: string) => {
+  await page.locator(`#settings-tab-${tab}`).click();
+  await expect(page.locator(`#settings-${id} [data-value="${value}"]`)).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+};
+
+/** From the settings screen into a race the player rides alone: no bot, no touches, no keys. */
+async function raceAlone(page: Page) {
+  await page.locator('#settings-back').click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
+}
+async function quitRace(page: Page) {
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-quit').click();
+  await expect(page.locator('#menu')).toBeVisible();
+}
+
+/**
+ * One phone-angle reading, as the browser's orientation sensor would send it, then 10 sim ticks so
+ * the input samples it (the first sampled reading is the rest angle, so two readings sent between
+ * the same two ticks would leave the rest angle at the tilt and steer nothing).
+ */
+async function tiltTo(page: Page, beta: number, gamma: number) {
+  const tick = await page.evaluate(
+    ([b, g]) => {
+      window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: b, gamma: g }));
+      return (window as TestWindow).__game?.snapshot()?.tick ?? 0;
+    },
+    [beta, gamma] as const,
+  );
+  await page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t + 10, tick);
+}
+
+/** Waits until the latest recorded SimInput passes `ok`, and returns it. */
+async function waitLast(page: Page, ok: (s: SimInput) => boolean): Promise<SimInput> {
+  let last: SimInput | undefined;
+  await expect
+    .poll(
+      async () => {
+        last = await page.evaluate(() => (window as TestWindow).__game?.inputs().at(-1));
+        return !!last && ok(last);
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  return last!;
+}
+
+/**
+ * From the settings screen into a bot race, until the player has had at least one event that
+ * buzzes (a hit landed or taken, a takedown or a crash); returns how many, and the vibrate calls
+ * made since the race began (the Start tap's own first buzz is left out).
+ */
+async function raceUntilHapticEvent(page: Page) {
+  await page.locator('#settings-back').click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 5);
+  const from = await page.evaluate(() => {
+    (window as TestWindow).__buzzes = [];
+    return (window as TestWindow).__game?.snapshot()?.tick ?? 0;
+  });
+  const count = () =>
+    page.evaluate((t) => {
+      const g = (window as TestWindow).__game!;
+      const me = g.playerId();
+      return g
+        .events()
+        .filter((e) => e.tick > t)
+        .filter(
+          (e) =>
+            (e.type === 'hit' && (e.actor === me || e.target === me)) ||
+            ((e.type === 'takedown' || e.type === 'crash') && e.actor === me),
+        ).length;
+    }, from);
+  await expect.poll(count, { timeout: 120_000, intervals: [500] }).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+  return {
+    events: await count(),
+    buzzes: await page.evaluate(() => (window as TestWindow).__buzzes ?? []),
+  };
+}
 const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = {
   units: {
     set: async (page) => {
@@ -201,6 +311,107 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         'aria-pressed',
         'true',
       );
+    },
+  },
+  // The input-2 control settings (app/ lists them in liveSettings; tilt ones on a touch device with
+  // motion sensors, vibration where the browser can vibrate). The probes run in the table's order
+  // without resetting, so the tilt sensitivity probe rides on the steering probe's "Tilt".
+  steering: {
+    set: (page) => choose(page, 'controls', 'steering', 'tilt'),
+    effect: async (page) => {
+      // Thumb steering never listens to the sensors: a tilt steers only when tilt is chosen.
+      await raceAlone(page);
+      await tiltTo(page, 0, 0);
+      await tiltTo(page, 20, 20);
+      const steer = await waitLast(page, (s) => s.steer !== 0);
+      console.log(`steering tilt: a 20° tilt steers ${steer.steer}`);
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'controls', 'steering', 'tilt'),
+  },
+  tiltSensitivity: {
+    set: (page) => choose(page, 'controls', 'tiltSensitivity', '2'),
+    effect: async (page) => {
+      // "Max" (2) halves the full-lock angle: an 8° tilt steers about twice as far as at "Normal".
+      await raceAlone(page);
+      const angle = await page.evaluate(() => screen.orientation?.angle ?? 90);
+      const a = Math.abs(tiltAngleFromEuler(8, 8, angle) ?? 0);
+      const t = inputDefaults();
+      const at = (sens: number) =>
+        Math.round((127 * (a - t.tiltDeadZoneDeg)) / (t.tiltFullLockDeg / sens - t.tiltDeadZoneDeg));
+      await tiltTo(page, 0, 0);
+      await tiltTo(page, 8, 8);
+      await page.waitForTimeout(800); // the tilt filter (0.1 s) settles
+      const last = await waitLast(page, (s) => s.steer !== 0);
+      console.log(
+        `tilt sensitivity 2: ${a.toFixed(1)}° steers ${last.steer}; expected ${at(2)}, Normal ${at(1)}`,
+      );
+      expect(Math.abs(Math.abs(last.steer) - at(2))).toBeLessThanOrEqual(4);
+      expect(Math.abs(Math.abs(last.steer) - at(1))).toBeGreaterThan(20);
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'controls', 'tiltSensitivity', '2'),
+  },
+  throttle: {
+    set: (page) => choose(page, 'controls', 'throttle', 'auto'),
+    effect: async (page) => {
+      // No finger on the screen and no key: auto-throttle rides at full throttle anyway.
+      await raceAlone(page);
+      const last = await waitLast(page, (s) => s.throttle === 255);
+      expect(last.brake).toBe(0);
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'controls', 'throttle', 'auto'),
+  },
+  pullBackBrake: {
+    set: async (page) => {
+      await page.locator('#settings-tab-controls').click();
+      await page.locator('#settings-pullBackBrake').check();
+    },
+    effect: async (page) => {
+      // Pulling the stick down brakes (off, it only lets go of the throttle).
+      await raceAlone(page);
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: 150, y: 200, id: 1 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 150, y: 235, id: 1 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: 150, y: 270, id: 1 }],
+      });
+      const last = await waitLast(page, (s) => s.brake === 255);
+      console.log(`pull-back brake: ${JSON.stringify(last)}`);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-controls').click();
+      await expect(page.locator('#settings-pullBackBrake')).toBeChecked();
+    },
+  },
+  haptics: {
+    set: async (page) => {
+      await page.locator('#settings-tab-controls').click();
+      await page.locator('#settings-haptics').uncheck();
+    },
+    effect: async (page) => {
+      // Vibration off: the player's hits, takedowns and crashes buzz nothing (the positive control,
+      // vibration on, is its own test below).
+      const { events, buzzes } = await raceUntilHapticEvent(page);
+      console.log(`vibration off: ${events} haptic events for the player, ${buzzes.length} buzzes`);
+      expect(events).toBeGreaterThan(0);
+      expect(buzzes).toEqual([]);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-controls').click();
+      await expect(page.locator('#settings-haptics')).not.toBeChecked();
     },
   },
   showTuningPanel: {
@@ -225,7 +436,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
 test('every setting on screen persists across a reload and changes something observable', async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(600_000);
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
@@ -238,6 +449,10 @@ test('every setting on screen persists across a reload and changes something obs
   );
   console.log(`settings on screen: ${shown.join(', ')}`);
   expect(shown.length, 'at least units is on screen').toBeGreaterThan(0);
+  // The phone profile (touch, motion sensors, vibration) shows every control setting input-2 wired.
+  expect(shown).toEqual(
+    expect.arrayContaining(['steering', 'tiltSensitivity', 'throttle', 'pullBackBrake', 'haptics']),
+  );
   const missing = shown.filter((id) => !(id in PROBES));
   expect(missing, 'every setting on screen has a non-default probe in ui-settings.spec.ts').toEqual([]);
 
@@ -257,6 +472,46 @@ test('every setting on screen persists across a reload and changes something obs
     await page.locator('#menu-settings').click();
   }
   expect(problems).toEqual([]);
+});
+
+test('vibration on (the default): the player\'s hits buzz (the control for the "off" probe)', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await page.locator('#menu-settings').click();
+  await page.locator('#settings-tab-controls').click();
+  await expect(page.locator('#settings-haptics')).toBeChecked();
+  const { events, buzzes } = await raceUntilHapticEvent(page);
+  console.log(`vibration on: ${events} haptic events for the player, ${buzzes.length} buzzes`);
+  expect(buzzes.length).toBeGreaterThan(0);
+});
+
+test('where tilt and vibration cannot work, their settings stay hidden', async ({ browser }) => {
+  // A laptop: no touch, a fine pointer, and a browser without navigator.vibrate.
+  const context = await browser.newContext({
+    isMobile: false,
+    hasTouch: false,
+    viewport: { width: 1280, height: 720 },
+  });
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+    delete (Navigator.prototype as { vibrate?: unknown }).vibrate;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await page.locator('#menu-settings').click();
+  const shown = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('#settings [data-setting]')]
+      .filter((e) => !e.hidden)
+      .map((e) => e.dataset['setting'] ?? ''),
+  );
+  console.log(`laptop settings on screen: ${shown.join(', ')}`);
+  expect(shown).toEqual(expect.arrayContaining(['throttle', 'pullBackBrake']));
+  for (const id of ['steering', 'tiltSensitivity', 'haptics']) expect(shown).not.toContain(id);
+  await context.close();
 });
 
 test('every settings tab fits a phone-landscape screen over the paused race, uncovered', async ({ page }) => {
