@@ -235,7 +235,7 @@ describe('the low chase cam: a step change settles without overshoot', () => {
 });
 
 describe('the low chase cam: no NaN at zero speed or across the junction', () => {
-  it('sits low and behind a rider standing still on the grid, frame after frame', () => {
+  it('sits behind and above a rider standing still on the grid, frame after frame', () => {
     const road = straightRoad();
     const cam = createFollowCamera({ road });
     const t = riderAt(road, { edge: 0, s: 40, d: 1.7, dir: 1 }, 0);
@@ -248,7 +248,10 @@ describe('the low chase cam: no NaN at zero speed or across the junction', () =>
     const pose = cam.update(t, DT);
     expect(behind(pose, t)).toBeCloseTo(DEFAULT('camera.chaseDistanceM'), 3);
     expect(pose.y - t.y).toBeCloseTo(DEFAULT('camera.heightM'), 3);
-    expect(pose.y - t.y).toBeLessThan(2); // low
+    // Playtest 1 [decided]: above the rider's helmet (about 1.9 m), so the rider does not hide the
+    // road ahead; still a chase cam, not a crane shot.
+    expect(pose.y - t.y).toBeGreaterThan(2);
+    expect(pose.y - t.y).toBeLessThan(3.5);
   });
 
   it('stays finite standing still with no road, and at every road end', () => {

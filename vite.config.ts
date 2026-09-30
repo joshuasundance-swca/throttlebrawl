@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, runnerImport, type Plugin } from 'vite';
+import { SIM_CODE_HASH_PLACEHOLDER, simChunkGroup, simCodeHashPlugin } from './scripts/sim-chunk.mjs';
 
 // Build stamp (docs/engineering.md, "Vite settings"). CI sets BUILD_ID, BUILD_CHANNEL and
 // BUILD_BRANCH; a local build falls back to git and the `dev` channel.
@@ -50,17 +51,24 @@ function selfTestHash(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [selfTestHash()],
+  // The sim chunk's code hash, the code part of the replay key (scripts/sim-chunk.mjs).
+  plugins: [selfTestHash(), simCodeHashPlugin()],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
     __BUILD_CHANNEL__: JSON.stringify(buildChannel),
     __BUILD_BRANCH__: JSON.stringify(buildBranch),
+    __SIM_CODE_HASH__: JSON.stringify(SIM_CODE_HASH_PLACEHOLDER),
   },
   // Explicit loopback hosts and fixed ports: `npm run phone` forwards exactly these.
   // Never bind all interfaces.
   server: { host: '127.0.0.1', port: 5173, strictPort: true },
   preview: { host: '127.0.0.1', port: 4173, strictPort: true },
-  build: { target: 'es2022' },
+  build: {
+    target: 'es2022',
+    // src/sim, src/road and src/core in one chunk, so its content hash names the sim's code
+    // (docs/architecture.md, "Replay and input recording").
+    rolldownOptions: { output: { codeSplitting: { groups: [simChunkGroup()] } } },
+  },
 });

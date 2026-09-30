@@ -9,7 +9,7 @@ import { pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
-import { parkedBike, tumbleSystem, TUMBLE_TUNING } from './tumble';
+import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
 import type {
   EntitySnapshot,
   ParkedBikeSnapshot,
@@ -18,6 +18,8 @@ import type {
   SimEvent,
   SimInput,
   SimSnapshot,
+  TumbleBodySnapshot,
+  TumbleSnapshot,
 } from './types';
 import { addMover, createWorld, orderSystems, stepWorld, worldHash, type World } from './world';
 
@@ -62,6 +64,19 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
     const p = road.toWorld(at.edge, at.s, at.d, 0);
     const f = road.frameAt(at.edge, at.s);
     return { x: p.x, y: p.y, z: p.z, heading: atan2(-f.tx * at.dir, -f.tz * at.dir) };
+  };
+  /** A tumbling rider's two crash bodies, as the tumble system steps them; else null. */
+  const body = (b: TumbleBody): TumbleBodySnapshot => ({
+    x: b.x,
+    y: b.y,
+    z: b.z,
+    vx: b.vx,
+    vy: b.vy,
+    vz: b.vz,
+  });
+  const tumbleOf = (id: number): TumbleSnapshot | null => {
+    const r = tumbleRecord(world, id);
+    return r && r.phase === 'tumble' ? { rider: body(r.rider), bike: body(r.bike) } : null;
   };
   const entities: EntitySnapshot[] = world.movers.map((m) => {
     const def = config.riders[m.riderIndex];
@@ -108,6 +123,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       place: race.place[m.id] ?? 0,
       finished: race.finishOrder.includes(m.id),
       parkedBike: m.kind === 'rider' ? parkedOf(m.id) : null,
+      tumble: m.kind === 'rider' ? tumbleOf(m.id) : null,
       styleTally: world.facts.styleTally[m.id] ?? 0,
       grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
     };
