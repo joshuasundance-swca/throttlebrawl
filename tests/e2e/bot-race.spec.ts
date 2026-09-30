@@ -8,9 +8,9 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // a placing, the start, midway and finish screenshots are not blank, every mover is valid at every
 // tick, and the draw-call, triangle and frame-time numbers are printed with the renderer string.
 //
-// Assertions switch on with the feature that makes them possible, and each prints whether it is
-// ACTIVE or NOT ACTIVE with the reason, so a switched-off check never reads as a pass:
-// - an attack connects: active once the sim answers the bot's attack presses (combat-1);
+// Assertions switch on with the feature that makes them possible, and print ACTIVE or NOT ACTIVE
+// with the reason, so a switched-off check never reads as a pass:
+// - an attack connects: on since combat-1 (the seeded race, seed 1, is one the bot connects in);
 // - the bot took the shortcut: active once the bot's road offers a `shortcut` lane (road-2).
 
 interface Checks {
@@ -121,17 +121,12 @@ test('the bot races to results with a placing at phone landscape', async ({ page
 
   // The bot got a rival inside its attack window at least once (it fights, not just rides).
   expect(checks.bot.attackPresses, 'the bot pressed attack').toBeGreaterThan(0);
-  const answered = (checks.events['attackStart'] ?? 0) + (checks.events['attackMiss'] ?? 0);
-  if (answered > 0) {
-    console.log(
-      `[assert] an attack connects: ACTIVE (${checks.playerHits} hits from ${checks.bot.attackPresses} presses)`,
-    );
-    expect(checks.playerHits, 'at least one attack by the bot connects').toBeGreaterThan(0);
-  } else {
-    console.log(
-      `[assert] an attack connects: NOT ACTIVE (the sim answered none of ${checks.bot.attackPresses} attack presses; combat-1 not on this build)`,
-    );
-  }
+  // Combat is in (combat-1): on this seeded race the bot is known to connect.
+  console.log(
+    `[assert] an attack connects: ACTIVE (${checks.playerHits} hits from ${checks.bot.attackPresses} presses)`,
+  );
+  expect(checks.events['attackStart'] ?? 0, 'the sim answers attacks').toBeGreaterThan(0);
+  expect(checks.playerHits, 'at least one attack by the bot connects').toBeGreaterThan(0);
   if (checks.bot.shortcutSeenTicks > 0) {
     console.log(`[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutTicks} ticks on it)`);
     expect(checks.bot.shortcutTicks, 'the bot took the shortcut').toBeGreaterThan(0);

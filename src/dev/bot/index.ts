@@ -241,3 +241,24 @@ export function createBot(): BotController {
     },
   };
 }
+
+/** The skeleton's throttle-only lane follower (app-1), kept for lanes whose scenario tests use it. */
+export interface StubBot {
+  drive(me: EntitySnapshot, route: RouteQueries, actions: ActionState): void;
+}
+
+export function createStubBot(): StubBot {
+  return {
+    drive(me, route, a) {
+      const { edge, s, d, dir, yaw } = me.road;
+      const v = Math.max(me.speed, 5);
+      const lanes = route.lanesAt(edge, s);
+      const lane = lanes.find((l) => l.kind === 'drive' && l.direction === dir) ?? lanes[0];
+      const lateral = ((lane?.dCenterM ?? 0) - d) * dir;
+      const kappa = route.kappaAt(edge, s) * dir;
+      a.throttle = 1;
+      a.brake = 0;
+      a.steer = clamp(0.35 * lateral - 2.5 * yaw + (kappa * v * v) / 22, -1, 1);
+    },
+  };
+}
