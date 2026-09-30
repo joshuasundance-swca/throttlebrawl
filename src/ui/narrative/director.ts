@@ -1,10 +1,20 @@
 // Turns sim events into bark requests (docs/architecture.md, "Barks and narrative": it never reads
-// sim internals; everything arrives as snapshot fields and events). M1 maps three events:
+// sim internals; everything arrives as snapshot fields and events). The speaker is always the
+// rider the trigger is about, as in `hit-landed`; only AI riders speak (slot -1), never the cop.
 //   raceStart -> `race-start`, spoken by one of the rivals, to the player;
 //   overtake  -> `overtake`, spoken by the overtaker, about the rider passed;
 //   hit       -> `hit-landed`, spoken by the attacker, about the rider hit.
-// Only AI riders speak (slot -1). It holds no DOM: the view is injected, so it is unit-tested.
+// M2 (narrative-2) adds [default]:
+//   takedown (data.kind traffic) -> `takedown-into-traffic`, spoken by the rider credited, about
+//     the rider who went down;
+//   takedown, or combat's knocked-off crash -> `knocked-down-by-target`, spoken by the rider who
+//     went down, about the rider credited (one fall is one bark, however many events describe it);
+//   crash with nobody to blame -> `crash-self`, spoken by the rider who crashed;
+//   nearMiss -> `near-miss`, spoken by the rider who scraped past.
+// Memory facts for `when` conditions come from the current race (memory.ts). It holds no DOM: the
+// view is injected, so it is unit-tested.
 import { SIM_HZ, type EntitySnapshot, type SimEvent, type SimSnapshot } from '../../sim/api';
+import { createRaceMemory, factsFor, type NarrativeSetting } from './memory';
 import type { BarkSelector, BarkTarget } from './selector';
 
 /** What the app hands along with each tick's events. */
@@ -12,6 +22,10 @@ export interface NarrativeContext {
   snapshot: SimSnapshot;
   /** The race seed: the presentation stream is seeded from it at race start. */
   seed: number;
+  /** Names this race in "cut this" flags; `seed-<seed>` when absent. */
+  raceId?: string;
+  /** The event kind, region and time of day, for `when` conditions; unknown when absent. */
+  setting?: NarrativeSetting | null;
 }
 
 export interface ShownBark {
@@ -20,6 +34,9 @@ export interface ShownBark {
   text: string;
   startS: number;
   durationS: number;
+  /** The sim tick it started on, and the race, for a "cut this" flag. */
+  tick: number;
+  raceId: string;
 }
 
 export interface BarkView {
@@ -31,31 +48,71 @@ export interface BarkDirector {
   onEvents(events: readonly SimEvent[], context?: NarrativeContext | null): void;
 }
 
+export interface BarkDirectorOptions {
+  /** A rider's bike class, for `target.bikeClass`. */
+  bikeClassOf?: (riderContentId: string) => string | undefined;
+  /** Called for every bark shown (the "recently seen" list). */
+  onShown?: (bark: ShownBark) => void;
+}
+
 const isRival = (e: EntitySnapshot | undefined): e is EntitySnapshot =>
   !!e && e.kind === 'rider' && e.slot < 0 && e.faction !== 'law';
 
-function asTarget(e: EntitySnapshot | undefined): BarkTarget | null {
+const isRider = (e: EntitySnapshot | undefined): e is EntitySnapshot => !!e && e.kind === 'rider';
+
+function asTarget(e: EntitySnapshot | null | undefined): BarkTarget | null {
   return e && e.kind === 'rider' ? { contentRef: e.contentId, isPlayer: e.slot >= 0 } : null;
 }
 
-export function createBarkDirector(selector: BarkSelector, view: BarkView): BarkDirector {
+/** The race id a flag carries when the app names none. */
+export const raceIdOf = (context: NarrativeContext): string => context.raceId ?? `seed-${context.seed}`;
+
+export function createBarkDirector(
+  selector: BarkSelector,
+  view: BarkView,
+  options: BarkDirectorOptions = {},
+): BarkDirector {
+  const memory = createRaceMemory();
+
   const say = (
+    context: NarrativeContext,
     trigger: string,
     speakers: readonly EntitySnapshot[],
-    target: BarkTarget | null,
-    nowS: number,
+    target: EntitySnapshot | null,
+    tick: number,
   ) => {
     if (!speakers.length) return;
-    const bark = selector.request({ trigger, speakers: speakers.map((s) => s.contentId), target, nowS });
+    const bark = selector.request({
+      trigger,
+      speakers: speakers.map((s) => s.contentId),
+      target: asTarget(target),
+      nowS: tick / SIM_HZ,
+      facts: (speakerId) => {
+        const speaker = speakers.find((s) => s.contentId === speakerId);
+        if (!speaker) return undefined;
+        return factsFor({
+          snapshot: context.snapshot,
+          memory,
+          speaker,
+          target,
+          setting: context.setting,
+          bikeClassOf: options.bikeClassOf,
+        });
+      },
+    });
     if (!bark) return;
     const who = speakers.find((s) => s.contentId === bark.speaker);
-    view.show({
+    const shown: ShownBark = {
       contentRef: bark.line.ref,
       speakerName: who?.name ?? bark.speaker,
       text: bark.line.text,
       startS: bark.startS,
       durationS: bark.durationS,
-    });
+      tick,
+      raceId: raceIdOf(context),
+    };
+    view.show(shown);
+    options.onShown?.(shown);
   };
 
   return {
@@ -65,21 +122,69 @@ export function createBarkDirector(selector: BarkSelector, view: BarkView): Bark
       const entities = context.snapshot.entities;
       const byId = (id: number | undefined) =>
         id === undefined ? undefined : entities.find((e) => e.id === id);
+      // Riders a takedown names this tick: their crash is not a crash-self, and one fall barks once.
+      const takenDown = new Set<number>();
+      for (const e of events) if (e.type === 'takedown' && e.target !== undefined) takenDown.add(e.target);
+      const fallBarked = new Set<number>();
+      const knockedDown = (
+        downed: EntitySnapshot | undefined,
+        by: EntitySnapshot | undefined,
+        tick: number,
+      ) => {
+        if (!isRival(downed) || fallBarked.has(downed.id)) return;
+        fallBarked.add(downed.id);
+        say(context, 'knocked-down-by-target', [downed], isRider(by) ? by : null, tick);
+      };
+
       for (const e of events) {
-        const nowS = e.tick / SIM_HZ;
+        if (e.type === 'raceStart') {
+          selector.reset(context.seed);
+          memory.reset();
+        }
+        memory.observe([e]);
         switch (e.type) {
           case 'raceStart': {
-            selector.reset(context.seed);
             view.hide();
             const player = entities.find((x) => x.kind === 'rider' && x.slot >= 0);
-            say('race-start', entities.filter(isRival), asTarget(player), nowS);
+            say(context, 'race-start', entities.filter(isRival), player ?? null, e.tick);
             break;
           }
           case 'overtake':
           case 'hit': {
             const speaker = byId(e.actor);
             if (!isRival(speaker)) break;
-            say(e.type === 'hit' ? 'hit-landed' : 'overtake', [speaker], asTarget(byId(e.target)), nowS);
+            const target = byId(e.target);
+            say(
+              context,
+              e.type === 'hit' ? 'hit-landed' : 'overtake',
+              [speaker],
+              isRider(target) ? target : null,
+              e.tick,
+            );
+            break;
+          }
+          case 'takedown': {
+            const credited = byId(e.actor);
+            const downed = byId(e.target);
+            if (e.data['kind'] === 'traffic' && isRival(credited)) {
+              say(context, 'takedown-into-traffic', [credited], isRider(downed) ? downed : null, e.tick);
+            }
+            knockedDown(downed, credited, e.tick);
+            break;
+          }
+          case 'crash': {
+            const rider = byId(e.actor);
+            if (e.data['reason'] === 'knockedOff') {
+              // combat: actor = the rider knocked off, target = the attacker.
+              knockedDown(rider, byId(e.target), e.tick);
+            } else if (isRival(rider) && !takenDown.has(rider.id)) {
+              say(context, 'crash-self', [rider], null, e.tick);
+            }
+            break;
+          }
+          case 'nearMiss': {
+            const rider = byId(e.actor);
+            if (isRival(rider)) say(context, 'near-miss', [rider], null, e.tick);
             break;
           }
           case 'raceEnd':

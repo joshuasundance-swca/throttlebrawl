@@ -1,8 +1,8 @@
 {
   "type": "bark-set",
   "id": "dial-up-core",
-  "name": "Dial-Up: M1 lines",
-  "tags": ["rival", "m1"],
+  "name": "Dial-Up: core lines",
+  "tags": ["rival", "m1", "m2"],
   "defaults": {
     "speaker": "dial-up",
     "cooldownS": 90,
@@ -33,6 +33,66 @@
       "id": "dial-up-hit-buffering",
       "trigger": "hit-landed",
       "text": "Buffering… buffering… hit."
+    },
+    {
+      "id": "dial-up-traffic-packet",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Packet loss. You were the packet."
+    },
+    {
+      "id": "dial-up-traffic-forward",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Forwarded you to a truck. No reply."
+    },
+    {
+      "id": "dial-up-down-reset",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Connection reset by peer. You, peer."
+    },
+    {
+      "id": "dial-up-down-reboot",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Rebooting. Do not unplug me."
+    },
+    {
+      "id": "dial-up-down-again",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Disconnected again. Logging your IP."
+    },
+    {
+      "id": "dial-up-crash-fatal",
+      "trigger": "crash-self",
+      "text": "Fatal exception. Press any key."
+    },
+    {
+      "id": "dial-up-crash-blue",
+      "trigger": "crash-self",
+      "text": "Blue screen. Blue sky. Same thing."
+    },
+    {
+      "id": "dial-up-near-ping",
+      "trigger": "near-miss",
+      "text": "Ping three. Too close. Loved it."
+    },
+    {
+      "id": "dial-up-near-lag",
+      "trigger": "near-miss",
+      "text": "Lag saved me. Lag always saves me."
     }
   ],
   "meta": {
