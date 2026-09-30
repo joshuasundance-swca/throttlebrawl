@@ -159,14 +159,39 @@ test('backquote opens the see-through panel with one control per declaration; th
     zone('probe-three-finger', 'data-tuning-three-finger', 300);
   });
   await page.mouse.move(60, 160);
+  // A short press, with real mouse input. The page stamps when it handled the down and the up:
+  // on a loaded machine the up can be handled long after it was sent, and then the press was not
+  // short as far as the page is concerned. So the check counts only presses the page saw as short
+  // (under the panel's 600 ms LONG_PRESS_MS), and tries up to three times to get one.
+  await page.evaluate(() => {
+    const w = window as unknown as { __press: number[] };
+    w.__press = [];
+    for (const type of ['pointerdown', 'pointerup'])
+      document.addEventListener(type, () => w.__press.push(performance.now()), { capture: true });
+  });
+  const shortGaps: number[] = [];
+  for (let attempt = 0; attempt < 3 && shortGaps.length === 0; attempt++) {
+    await page.evaluate(() => ((window as unknown as { __press: number[] }).__press = []));
+    await page.mouse.down();
+    await page.waitForTimeout(200);
+    await page.mouse.up();
+    const [down = 0, up = 0] = await page.evaluate(
+      () => (window as unknown as { __press: number[] }).__press,
+    );
+    const gap = up - down;
+    console.log(`short press ${attempt + 1}: the page saw ${gap.toFixed(0)} ms between down and up`);
+    if (gap < 600 - 50) {
+      shortGaps.push(gap);
+      await expect(panel, 'a short press does not open it').toBeHidden();
+    } else if (await panel.isVisible()) {
+      await page.locator('#tuning-close').click(); // a long press after all: close and retry
+    }
+  }
+  expect(shortGaps.length, 'the page saw at least one short press').toBe(1);
+  // A long-press: hold until the panel opens (the hold is the page's own 600 ms timer), then let go.
   await page.mouse.down();
-  await page.waitForTimeout(200);
+  await expect(panel, 'a long-press opens it').toBeVisible({ timeout: 10_000 });
   await page.mouse.up();
-  await expect(panel, 'a short press does not open it').toBeHidden();
-  await page.mouse.down();
-  await page.waitForTimeout(800);
-  await page.mouse.up();
-  await expect(panel, 'a long-press opens it').toBeVisible();
   await page.locator('#tuning-close').click();
   await expect(panel).toBeHidden();
 

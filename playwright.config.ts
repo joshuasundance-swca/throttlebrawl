@@ -10,6 +10,12 @@ export default defineConfig({
   outputDir: 'test-results/output',
   forbidOnly: !!process.env.CI,
   retries: 0,
+  // Every spec renders WebGL in software (SwiftShader), which is CPU-hungry and multithreaded, and
+  // several specs time real presses and frames. Playwright's default (half the logical CPUs) ran
+  // 12 of them at once on a 24-thread dev machine and starved them: wall-clock specs failed at
+  // random while CI (4 vCPUs, so 2 workers) stayed green. Locally we cap it at 4; CI keeps its
+  // default. [default] (M1 skeptic, mustFix 2)
+  ...(process.env.CI ? {} : { workers: 4 }),
   reporter: [['list']],
   use: {
     browserName: 'chromium',
