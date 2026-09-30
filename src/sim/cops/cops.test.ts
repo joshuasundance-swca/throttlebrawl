@@ -331,6 +331,51 @@ describe('cops: whom he chases', () => {
   });
 });
 
+describe('cops: where he waits (copSpawn)', () => {
+  /** The fixture race with a copSpawn lot on road `a` at s 20..30, on the given side. */
+  function withLot(side: 1 | -1): SimConfig {
+    const base = fixtureConfig({ 'cops.spawnDelayS': 1 });
+    const bundle = fixtureNetwork([
+      { id: 'a', lengthM: 400, kappa: 0 },
+      { id: 'b', lengthM: 500, kappa: 1 / 300, grade: 0.02 },
+      { id: 'c', lengthM: 400, kappa: -1 / 400 },
+    ]);
+    const [a, ...rest] = bundle.roads;
+    if (!a) throw new Error('no road a');
+    const lot = { kind: 'copSpawn', id: 'lot', s0: 20, s1: 30, d0: side * 5.5, d1: side * 9 };
+    const road = createRoadNetwork({ ...bundle, roads: [{ ...a, features: [lot] }, ...rest] });
+    const route = createRouteProgress(road, {
+      id: 'r',
+      network: 'fixture',
+      start: { road: 'a', s: 60, dir: 1 },
+      finish: { road: 'c', s: 380 },
+      mainPath: ['a', 'b', 'c'],
+      allowedRoads: ['a', 'b', 'c'],
+      closed: false,
+    });
+    return { ...base, road, route };
+  }
+
+  it('waits at the lot, on the shoulder on its side, then pulls out after his siren', () => {
+    for (const side of [1, -1] as const) {
+      const sim = createSim(withLot(side));
+      const cop = sim.snapshot().entities[COP_ID];
+      expect(cop?.road).toMatchObject({ edge: 0, s: 25, d: side * 4.15, dir: 1 });
+      for (let t = 0; t < 50; t++) sim.step([quantizeInput({ throttle: 1, brake: 0, steer: 0, flags: 0 })]);
+      expect(sim.snapshot().entities[COP_ID]?.road.s).toBe(25); // parked during the spawn delay
+      for (let t = 50; t < 400; t++) sim.step([quantizeInput({ throttle: 1, brake: 0, steer: 0, flags: 0 })]);
+      expect(sim.snapshot().entities[COP_ID]?.speed).toBeGreaterThan(10); // then gives chase
+    }
+  });
+
+  it('without a copSpawn on the route he keeps his grid slot behind the field', () => {
+    const config = fixtureConfig();
+    const sim = createSim(config);
+    expect(sim.snapshot().entities[COP_ID]?.road.s).toBeLessThan(config.route.start.s);
+    expect(Math.abs(sim.snapshot().entities[COP_ID]?.road.d ?? 9)).toBeLessThan(3.4);
+  });
+});
+
 describe('cops: the chase', () => {
   /** Full throttle for `rideTicks`, then brake to a stop and wait. */
   function scripted(tick: number, rideTicks: number) {
