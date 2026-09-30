@@ -156,6 +156,8 @@ function canFight(world: World, config: SimConfig, other: Mover, me: Mover): boo
   if (other.id === me.id || other.kind !== 'rider' || other.mode !== 'Road') return false;
   const def = config.riders[other.riderIndex];
   if (!def || def.faction === 'law') return false;
+  // Someone knocked off (health 0) is out of the fight, as combat's auto-target also says.
+  if ((riderState(world).health[other.id] ?? def.healthMax) <= 0) return false;
   return !raceState(world).finishOrder.includes(other.id);
 }
 
@@ -346,8 +348,10 @@ function driveRider(
     if (d < dLo || d > dHi) d = target.mover.pos.d - side * FIGHT_OFFSET_D;
     dTarget = clamp(d, dLo, dHi);
     lateralMax = 3.5;
-    // Close the gap along the road; a brawler waits for a target behind it, within reason.
-    speedTarget = clamp(target.vAlong + target.ahead * 0.8, config.event.paceMps * 0.6, speedTarget * 1.15);
+    // Close the gap along the road. A brawler waits (drops below its pace) only for a player
+    // behind it; a rival behind it is left to catch up, so rival fights don't stall the pack.
+    const waitsFor = players.includes(target.mover.id) ? config.event.paceMps * 0.6 : speedTarget;
+    speedTarget = clamp(target.vAlong + target.ahead * 0.8, waitsFor, speedTarget * 1.15);
   }
 
   // Unsticking: back up to pace (traffic below still has the last word on speed).
