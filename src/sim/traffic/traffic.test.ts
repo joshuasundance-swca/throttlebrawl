@@ -419,31 +419,61 @@ describe('traffic-1 sim acceptance', () => {
     expect(spawns).toBeGreaterThan(50);
   }, 120_000);
 
-  it('no vehicle ever enters a shortcut edge', () => {
+  it('no vehicle ever enters a shortcut edge, nor waits at the end of the traffic road', () => {
+    // The third road carries a shortcut lane, so traffic lives on the first two only; riders ride on.
     const config = makeConfig({
       edges: [...EDGES, { id: 'd', lengthM: 300, kappa: 0 }],
       lanes: { c: WITH_SHORTCUT },
     });
     const world = raceWorld(config);
     const st = trafficState(world);
+    const endU = st.corridor.length;
+    const route = config.route;
     let vehicleTicks = 0;
-    let riderOnShortcut = 0;
+    let onShortcut = 0;
+    let waitingAtEnd = 0;
+    let spawnChecks = 0;
+    const tooClose: string[] = [];
     while (world.tick < 60 * 90) {
-      stepWorld(world, config, ALL, [scripted(world.tick)]);
+      const tick = world.tick;
+      stepWorld(world, config, ALL, [scripted(tick)]);
       for (const m of world.movers) {
         if (m.kind === 'vehicle') {
           vehicleTicks++;
           expect(m.pos.edge).not.toBe(2);
         } else if (m.pos.edge === 2) {
-          riderOnShortcut++;
+          onShortcut++;
+        }
+      }
+      for (let k = 0; k < st.id.length; k++) {
+        // Driving through the last metre is fine; standing there is a wall.
+        const atEnd = Math.abs((st.u[k] ?? 0) - (st.dir[k] === 1 ? endU : 0)) < 5;
+        if (atEnd && (world.movers[st.id[k] ?? -1]?.speed ?? 0) < 1) waitingAtEnd++;
+        if (st.spawnTick[k] !== tick) continue;
+        // Fairness measured along the route, so riders past the junction (off the traffic road) count.
+        const v = world.movers[st.id[k] ?? -1];
+        if (!v) continue;
+        const vDtf = route.distanceToFinish(v.pos.edge, v.pos.s);
+        for (const r of world.movers) {
+          const role = config.riders[r.riderIndex]?.role;
+          if (r.kind !== 'rider' || (role !== 'player' && role !== 'rival')) continue;
+          spawnChecks++;
+          const gap = Math.abs(route.distanceToFinish(r.pos.edge, r.pos.s) - vDtf);
+          // The vehicle has already moved one tick since it spawned (under 0.5 m).
+          if (gap < REACTION_M - 3) tooClose.push(`tick ${tick} slot ${k}: ${gap.toFixed(1)} m`);
         }
       }
     }
     console.log(
-      `shortcut run: ${vehicleTicks} vehicle-ticks, riders on the shortcut road for ${riderOnShortcut} rider-ticks, ${st.spawns} spawns`,
+      `shortcut run: ${vehicleTicks} vehicle-ticks, riders past the traffic road's end for ${onShortcut} rider-ticks, ` +
+        `${st.spawns} spawns, ${st.parks} parked off the end, ${waitingAtEnd} vehicle-ticks at the end, ` +
+        `${spawnChecks} spawn-to-anchor checks`,
     );
     expect(vehicleTicks).toBeGreaterThan(1000);
-    expect(riderOnShortcut).toBeGreaterThan(0);
+    expect(onShortcut).toBeGreaterThan(600);
+    expect(st.parks).toBeGreaterThan(0);
+    expect(waitingAtEnd).toBe(0);
+    expect(tooClose.slice(0, 3)).toEqual([]);
   }, 60_000);
 
   it('a scripted close pass fires nearMiss; a wide pass does not', () => {
