@@ -17,6 +17,7 @@
 import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
+import { applyShove, riderContacts } from './contact';
 import {
   emit,
   slotAssists,
@@ -108,6 +109,10 @@ export interface RiderState {
   airTicks: number[];
   /** Tick of this rider's last riders step, so a rider put down by another system starts fresh. */
   lastTick: number[];
+  /** Sideways shove from bumping another rider, m/s along +d (sim/riders/contact). */
+  shove: number[];
+  /** Last tick each pair of riders ("lowId-highId") touched, so one contact emits one event. */
+  contactTick: Record<string, number>;
 }
 
 /** m/s² when off the throttle, before air drag. */
@@ -176,6 +181,8 @@ export function riderState(world: World): RiderState {
     vy: [],
     airTicks: [],
     lastTick: [],
+    shove: [],
+    contactTick: {},
   }));
 }
 
@@ -349,6 +356,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   pos.s += pos.dir * along * dt;
   pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
   m.h = 0;
+  applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   barrierContact(world, config, st, m, dt);
 
@@ -479,6 +487,8 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   }
 }
 
+const CONTACT_RULES = { wobbleTicks: WOBBLE_TICKS, limits: barrierLimits };
+
 export const ridersSystem: SimSystem = {
   name: 'riders',
   init(world: World, config: SimConfig) {
@@ -499,6 +509,7 @@ export const ridersSystem: SimSystem = {
       st.vy[m.id] = 0;
       st.airTicks[m.id] = 0;
       st.lastTick[m.id] = -2;
+      st.shove[m.id] = 0;
     }
   },
   step(world: World, config: SimConfig) {
@@ -508,5 +519,6 @@ export const ridersSystem: SimSystem = {
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
       else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
     }
+    riderContacts(world, config, st, CONTACT_RULES);
   },
 };

@@ -124,6 +124,55 @@ export function riderHarness(
   };
 }
 
+export interface RiderPlacement {
+  edge?: number;
+  s: number;
+  d: number;
+  dir?: 1 | -1;
+  speed?: number;
+  yaw?: number;
+}
+
+export interface PackHarness {
+  world: World;
+  config: SimConfig;
+  /** One mover per placement, rider index = placement index. */
+  riders: Mover[];
+  /** Steps the riding model once with one input per rider; returns the events it emitted. */
+  step(inputs: readonly SimInput[]): SimEvent[];
+}
+
+/**
+ * Several riders on the fixture road, stepped by the riding model alone (the controllers phase is
+ * skipped: each rider gets its input directly). Needs a config with at least as many riders.
+ */
+export function packHarness(config: SimConfig, at: readonly RiderPlacement[]): PackHarness {
+  const world = createWorld(config);
+  const riders = at.map((p, i) => {
+    const m = addMover(world, 'rider', { edge: p.edge ?? 0, s: p.s, d: p.d, dir: p.dir ?? 1 }, i);
+    m.speed = p.speed ?? 0;
+    m.yaw = p.yaw ?? 0;
+    return m;
+  });
+  ridersSystem.init(world, config);
+  return {
+    world,
+    config,
+    riders,
+    step(inputs: readonly SimInput[]) {
+      world.events = [];
+      riders.forEach((m, i) => {
+        world.inputs[m.id] = { ...(inputs[i] ?? input(0)) };
+      });
+      ridersSystem.step(world, config);
+      world.tick++;
+      const out = world.events;
+      world.events = [];
+      return out;
+    },
+  };
+}
+
 /** A SimInput from analog values (steer −1..1, throttle and brake 0..1). */
 export function input(throttle: number, brake = 0, steer = 0): SimInput {
   return {
