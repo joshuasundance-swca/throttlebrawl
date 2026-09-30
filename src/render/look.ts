@@ -13,6 +13,7 @@ import {
   MeshLambertMaterial,
   type Material,
   type Scene,
+  type Texture,
 } from 'three';
 
 export type MaterialKind =
@@ -34,7 +35,13 @@ export type MaterialKind =
   | 'weapon'
   | 'glint'
   | 'lightbar'
-  | 'sky';
+  | 'sky'
+  // M2 render-2's feel visuals.
+  | 'spark'
+  | 'splash'
+  | 'tint'
+  | 'flash'
+  | 'board';
 
 export interface MaterialParams {
   color?: string;
@@ -42,6 +49,13 @@ export interface MaterialParams {
   vertexColors?: boolean;
   /** Draw both faces (vertical strips such as rails and deck fascias). */
   doubleSided?: boolean;
+  /** A texture (a board's printed face). */
+  map?: Texture;
+  /**
+   * A screen overlay (the slow-motion tint): transparent, drawn over everything, no depth and no
+   * fog. Its owner animates the material's `opacity`, so it is one material per overlay colour.
+   */
+  overlay?: boolean;
 }
 
 export interface LookEnv {
@@ -81,10 +95,15 @@ const PALETTE: Record<MaterialKind, string> = {
   glint: '#fffbe0',
   lightbar: '#ff2a2a',
   sky: '#f6b26b',
+  spark: '#ffd25a',
+  splash: '#e8fbff',
+  tint: '#3a5cff',
+  flash: '#ffffff',
+  board: '#ffffff',
 };
 
 /** Unlit kinds: they must read as light sources (the cop's bar, the steal glint). */
-const UNLIT = new Set<MaterialKind>(['glint', 'lightbar']);
+const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board']);
 
 const SKY_BY_TIME: Record<string, string> = {
   dawn: '#f3c6a5',
@@ -103,13 +122,44 @@ export function createFlatLook(): LookStyle {
       // Vertex-coloured geometry carries its own colours, so the base stays white.
       const color = params?.color ?? (vertexColors ? '#ffffff' : PALETTE[kind]);
       const doubleSided = params?.doubleSided ?? false;
-      const key = `${kind}:${color}:${vertexColors ? 'v' : '-'}:${doubleSided ? 'd' : '-'}`;
+      const map = params?.map ?? null;
+      const overlay = params?.overlay ?? false;
+      const key = `${kind}:${color}:${vertexColors ? 'v' : '-'}:${doubleSided ? 'd' : '-'}:${map?.uuid ?? '-'}:${overlay ? 'o' : '-'}`;
       let m = cache.get(key);
       if (!m) {
         const side = doubleSided ? DoubleSide : FrontSide;
-        m = UNLIT.has(kind)
-          ? new MeshBasicMaterial({ color: new Color(color), vertexColors, side })
-          : new MeshLambertMaterial({ color: new Color(color), flatShading: true, vertexColors, side });
+        if (overlay) {
+          m = new MeshBasicMaterial({
+            color: new Color(color),
+            vertexColors,
+            side,
+            transparent: true,
+            opacity: 0,
+            depthTest: false,
+            depthWrite: false,
+            fog: false,
+          });
+        } else if (UNLIT.has(kind)) {
+          m = new MeshBasicMaterial({ color: new Color(color), vertexColors, side, map });
+        } else if (kind === 'flash') {
+          // A hit's flash: the body's own colours, washed toward white.
+          m = new MeshLambertMaterial({
+            color: new Color(color),
+            flatShading: true,
+            vertexColors,
+            side,
+            emissive: new Color('#ffffff'),
+            emissiveIntensity: 0.6,
+          });
+        } else {
+          m = new MeshLambertMaterial({
+            color: new Color(color),
+            flatShading: true,
+            vertexColors,
+            side,
+            map,
+          });
+        }
         cache.set(key, m);
       }
       return m;
