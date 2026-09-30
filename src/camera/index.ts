@@ -40,9 +40,13 @@ const decl = (
   affectsSim: false,
 });
 
+// Playtest 1 (2026-09-30) [decided]: "Camera too low to see oncoming traffic". M1's 5.5 m back and
+// 1.6 m up put the camera below the rider's helmet (about 1.9 m), so the rider hid the horizon
+// where oncoming traffic appears. At 7 m back and 2.6 m up the sight line to a car 125 m ahead
+// (the reaction range) clears the helmet with room to spare (reaction-range.test.ts).
 export const CAMERA_TUNING: readonly TuningParamDecl[] = [
-  decl('chaseDistanceM', 'Chase distance', 5.5, 3, 14, 0.25, 'm'),
-  decl('heightM', 'Camera height', 1.6, 0.8, 5, 0.1, 'm'),
+  decl('chaseDistanceM', 'Chase distance', 7, 3, 14, 0.25, 'm'),
+  decl('heightM', 'Camera height', 2.6, 0.8, 5, 0.1, 'm'),
   decl('lookAheadM', 'Look-ahead', 18, 5, 40, 1, 'm'),
   decl('lookHeightM', 'Aim height', 0.9, 0, 3, 0.1, 'm'),
   decl('springRate', 'Camera stiffness', 5, 1, 15, 0.5, '1/s'),
