@@ -60,13 +60,31 @@ test.beforeEach(async ({ page }) => {
 });
 
 /** The build id from the stamp, and the replay key this build should report. */
+/**
+ * The replay key the page must report: `simCodeHash + simContentHash` (M2 app-3), where the code
+ * part is the first 12 hex digits of the SHA-256 of the sim chunk the page actually loaded.
+ */
 async function expectedKey(page: Page): Promise<{ id: string; key: string }> {
   const stamp = await page.locator('#build-stamp').innerText();
   const id = stamp.trim().split(' · ').pop() ?? '';
   const sim = await page.evaluate(() => (window as TestWindow).__game?.contentHashes().sim ?? '');
+  const code = await page.evaluate(async () => {
+    const url = performance
+      .getEntriesByType('resource')
+      .map((e) => e.name)
+      .find((n) => /\/assets\/sim-[^/]*\.js$/.test(n));
+    if (!url) return '';
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    return [...digest]
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, 12);
+  });
   expect(id).toMatch(/^[0-9a-f]{7}$/);
   expect(sim.length).toBeGreaterThan(0);
-  return { id, key: `${id}+${sim}` };
+  expect(code).toMatch(/^[0-9a-f]{12}$/);
+  return { id, key: `${code}+${sim}` };
 }
 
 async function lastCopied(page: Page, count: number): Promise<string> {
