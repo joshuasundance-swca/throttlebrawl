@@ -74,7 +74,7 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('takedownBlendS', 'Takedown cam blend', 0.3, 0.05, 1, 0.05, 's'),
   decl('takedownHoldS', 'Takedown hold (no slow-mo)', 1, 0.3, 3, 0.1, 's'),
   decl('joltM', 'Hit jolt', 0.35, 0, 1, 0.05, 'm'),
-  decl('joltFullImpulse', 'Full jolt at knockback', 6, 1, 20, 0.5, 'm/s'),
+  decl('joltFullImpulse', 'Full jolt at hit strength', 0.9, 0.1, 2, 0.05, ''),
   decl('joltRate', 'Jolt snap-back', 14, 4, 30, 1, '1/s'),
 ];
 
