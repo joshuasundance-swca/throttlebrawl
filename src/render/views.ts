@@ -90,10 +90,9 @@ function schemeFor(e: EntitySnapshot): Scheme {
 
 // ---- Rider geometry ----------------------------------------------------------------------
 
-function ridingParts(c: Scheme, p: RiderProportions): BoxPart[] {
-  const h = p.height;
-  const b = p.bulk;
-  const parts: BoxPart[] = [
+/** The bike alone: wheels, frame, tank, seat, fork, headlight and bars. */
+function bikeParts(c: Pick<Scheme, 'bike'>): BoxPart[] {
+  return [
     { size: [0.18, 0.62, 0.62], at: [0, 0.31, 0.62], color: '#161616' },
     { size: [0.18, 0.62, 0.62], at: [0, 0.31, -0.66], color: '#161616' },
     { size: [0.34, 0.36, 1.2], at: [0, 0.58, 0], color: c.bike },
@@ -102,6 +101,14 @@ function ridingParts(c: Scheme, p: RiderProportions): BoxPart[] {
     { size: [0.1, 0.55, 0.1], at: [0, 0.72, -0.62], color: '#9a9a9a' },
     { size: [0.22, 0.16, 0.08], at: [0, 0.94, -0.72], color: '#fff4c0' },
     { size: [0.7, 0.06, 0.06], at: [0, 1.04, -0.52], color: '#333333' },
+  ];
+}
+
+function ridingParts(c: Scheme, p: RiderProportions): BoxPart[] {
+  const h = p.height;
+  const b = p.bulk;
+  const parts: BoxPart[] = [
+    ...bikeParts(c),
     // The rider, leaning into the bars.
     { size: [0.44 * b, 0.26, 0.5], at: [0, 0.98, 0.28], color: '#2d2f3a' },
     { size: [0.14 * b, 0.45, 0.14 * b], at: [-0.24, 0.72, 0.1], color: '#2d2f3a' },
@@ -198,6 +205,8 @@ interface RiderView {
   weapon: Mesh;
   glint: Mesh;
   lightBar: Mesh;
+  /** The bike standing apart while the rider runs back to it (EntitySnapshot.parkedBike). */
+  parked: Mesh;
   scheme: string;
   onFoot: boolean;
 }
@@ -440,7 +449,7 @@ export class EntityViews {
     if (!view) {
       view = this.freeRiders.pop() ?? this.buildRider();
       this.riders.set(e.id, view);
-      this.root.add(view.root);
+      this.root.add(view.root, view.parked);
       view.scheme = '';
     }
     return view;
@@ -485,6 +494,10 @@ export class EntityViews {
     );
     lightBar.position.set(0, 1.32, 0.72);
     root.add(body, left, right, kickLeg, lightBar);
+    // Its own mesh in the views root (not in the rider's group): it stands still where it was parked.
+    const parked = new Mesh(empty, this.material('rider'));
+    parked.name = 'views-parked-bike';
+    parked.visible = false;
     return {
       root,
       body,
@@ -495,6 +508,7 @@ export class EntityViews {
       weapon,
       glint,
       lightBar,
+      parked,
       scheme: '',
       onFoot: false,
     };
@@ -502,7 +516,8 @@ export class EntityViews {
 
   private releaseRider(id: number, view: RiderView): void {
     this.riders.delete(id);
-    this.root.remove(view.root);
+    view.parked.visible = false;
+    this.root.remove(view.root, view.parked);
     this.freeRiders.push(view);
     this.kicks.delete(id);
   }
@@ -569,6 +584,14 @@ export class EntityViews {
     root.visible = true;
     root.position.set(p.x, p.y, p.z);
     root.rotation.y = p.heading;
+    // The bike the rider is running back to (tumble-1 parks it at the hand-back).
+    const bikeAt = onFoot ? e.parkedBike : null;
+    view.parked.visible = !!bikeAt;
+    if (bikeAt) {
+      view.parked.geometry = this.geometry(`bike:${scheme.bike}`, () => bikeParts(scheme));
+      view.parked.position.set(bikeAt.x, bikeAt.y, bikeAt.z);
+      view.parked.rotation.set(0, bikeAt.heading, 0);
+    }
     const wobble = this.wobbles.get(e.id);
     const wob = wobble ? Math.sin(time * 40) * 0.22 * Math.max(0, (wobble.until - time) / WOBBLE_S) : 0;
     root.rotation.x = e.mode === 'Airborne' ? 0.12 : 0; // nose up
