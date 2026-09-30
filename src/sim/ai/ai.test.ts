@@ -1,16 +1,18 @@
-// ai-1 unit tests: the AIController against scripted scenes on a fixture road. Only the phases
-// the AI needs run (controllers, riders, race); every other phase is a no-op here, so these tests
-// pin the AI's own behaviour while the sibling lanes fill theirs in.
+// ai-1 and ai-2 unit tests: the AIController against scripted scenes on a fixture road. Only the
+// phases the AI needs run (controllers, riders, race); every other phase is a no-op here, so these
+// tests pin the AI's own behaviour while the sibling lanes fill theirs in. The race-long grudge is
+// noted here with the world's `noteGrudge`, the one call tumble-2 makes when a rival gets up.
 import { describe, expect, it } from 'vitest';
 import { FNV_OFFSET } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
-import { raceSystem, rubberBandFactor } from '../race';
+import { raceState, raceSystem, rubberBandFactor } from '../race';
 import { ridersSystem } from '../riders';
 import { InputFlag, type SimAiPersonality, type SimConfig, type SimInput, type SimRiderDef } from '../types';
 import {
   addMover,
   createWorld,
   hashPlain,
+  noteGrudge,
   orderSystems,
   stepWorld,
   TICK_ORDER,
@@ -19,7 +21,8 @@ import {
   type SystemName,
   type World,
 } from '../world';
-import { aiState, aiSystem, resolveProfile } from './index';
+import { aiState, aiSystem, grudgeTargets, resolveProfile, takedownPush } from './index';
+import { see, vehicleSize } from './sense';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });
 const SYSTEMS = orderSystems(
@@ -534,5 +537,309 @@ describe('ai: the rest of the controller', () => {
     const a = run();
     expect(run()).toEqual(a);
     expect(new Set(a).size).toBeGreaterThan(50);
+  });
+});
+
+// ---- ai-2 ------------------------------------------------------------------------------------
+
+/** The fixture chain with a rail along its right side (+d) on every road, like the M1 bridge. */
+const railBundle = (() => {
+  const b = fixtureNetwork([
+    { id: 'a', lengthM: 800, kappa: 0 },
+    { id: 'b', lengthM: 800, kappa: 1 / 600 },
+    { id: 'c', lengthM: 800, kappa: 0 },
+  ]);
+  return {
+    ...b,
+    roads: b.roads.map((r) => ({
+      ...r,
+      barriers: [{ s0: 0, s1: r.lengthM, side: 'right' as const, kind: 'rail' as const, heightM: 1 }],
+    })),
+  };
+})();
+const railRoad = createRoadNetwork(railBundle);
+const railRoute = createRouteProgress(railRoad, {
+  id: 'r',
+  network: 'fixture',
+  start: { road: 'a', s: 20, dir: 1 },
+  finish: { road: 'c', s: 760 },
+  mainPath: ['a', 'b', 'c'],
+  allowedRoads: ['a', 'b', 'c'],
+  closed: false,
+});
+const ON_RAIL: Partial<SimConfig> = { road: railRoad, route: railRoute };
+
+/** Every attack press by rider `id` on the player `pid`: which side of them it came from, and whether it kicked. */
+function pressesOn(sc: Scene, id: number, pid: number, seconds: number, player: () => SimInput) {
+  const out: { side: number; kick: boolean }[] = [];
+  for (let t = 0; t < 60 * seconds; t++) {
+    step(sc, player());
+    const flags = sc.world.inputs[id]?.flags ?? 0;
+    const me = sc.world.movers[id];
+    const them = sc.world.movers[pid];
+    if (flags & InputFlag.attack && me && them && aiState(sc.world).targetId[id] === pid) {
+      // +1: the attacker is on the player's +d side, so its hit pushes the player toward −d.
+      out.push({ side: me.pos.d > them.pos.d ? 1 : -1, kick: (flags & InputFlag.kick) !== 0 });
+    }
+  }
+  return out;
+}
+
+describe('ai-2: the race-long grudge', () => {
+  it('a racer who holds a grudge against the player hunts them and swings at them far more', () => {
+    const run = (grudge: boolean) => {
+      const sc = scene(
+        [rival('racer', { aggression: 0.6 }), PLAYER],
+        [
+          { s: 30, d: 1.0, v: 28 },
+          { s: 50, d: 2.2, v: 28 },
+        ],
+      );
+      if (grudge) noteGrudge(sc.world, 0, 1);
+      presses(sc, 0, 25, cruise(sc, 1));
+      const st = aiState(sc.world);
+      return { presses: st.pressesOnPlayer[0] ?? 0, hunt: st.huntTicksOnPlayer[0] ?? 0 };
+    };
+    const before = run(false);
+    const after = run(true);
+    console.log(
+      `racer presses on the player in 25 s: ${before.presses} without a grudge, ${after.presses} with one; ` +
+        `ticks hunting the player: ${before.hunt} and ${after.hunt}`,
+    );
+    expect(before.hunt).toBe(0);
+    expect(after.hunt).toBeGreaterThan(60 * 10);
+    expect(after.presses).toBeGreaterThan(before.presses);
+    expect(after.presses).toBeGreaterThan(2);
+  });
+
+  it('a grudge comes first in a brawler’s target choice, ahead of its own preference', () => {
+    const run = (grudge: boolean) => {
+      const sc = scene(
+        [rival('heavy-hitter', {}, 'a'), rival('racer', { aggression: 0, weave: 0 }, 'b'), PLAYER],
+        [
+          { s: 30, d: 1.7, v: 28 },
+          { s: 44, d: 1.0, v: 28 },
+          { s: 40, d: 2.4, v: 28 },
+        ],
+      );
+      if (grudge) noteGrudge(sc.world, 0, 1);
+      const player = cruise(sc, 2);
+      const picks = new Map<number, number>();
+      for (let t = 0; t < 60 * 5; t++) {
+        step(sc, player());
+        const target = aiState(sc.world).targetId[0] ?? -1;
+        picks.set(target, (picks.get(target) ?? 0) + 1);
+      }
+      return picks;
+    };
+    // The heavy hitter prefers the player; a grudge against rival b turns it onto b.
+    expect(run(false).get(2) ?? 0).toBeGreaterThan(60 * 4);
+    expect(run(true).get(1) ?? 0).toBeGreaterThan(60 * 4);
+  });
+
+  it('lists who a rider holds a grudge against, and drops a rider once they finish', () => {
+    const sc = scene(
+      [rival('racer', {}, 'a'), rival('racer', {}, 'b'), PLAYER],
+      [
+        { s: 30, d: 1.2, v: 0 },
+        { s: 30, d: 2.2, v: 0 },
+        { s: 22, d: 1.7, v: 0 },
+      ],
+    );
+    noteGrudge(sc.world, 0, 2);
+    noteGrudge(sc.world, 0, 1);
+    noteGrudge(sc.world, 1, 2);
+    expect(grudgeTargets(sc.world, 0)).toEqual([1, 2]);
+    expect(grudgeTargets(sc.world, 1)).toEqual([2]);
+    expect(grudgeTargets(sc.world, 2)).toEqual([]);
+    raceState(sc.world).finishOrder.push(2);
+    expect(grudgeTargets(sc.world, 0)).toEqual([1]);
+  });
+
+  it('a race with a grudge noted mid-race gives the same hash every run', () => {
+    const run = () => {
+      const sc = scene(
+        [rival('heavy-hitter', {}, 'a'), rival('racer', { weave: 0.8 }, 'b'), PLAYER],
+        [
+          { s: 30, d: 1.2, v: 0 },
+          { s: 30, d: 2.2, v: 0 },
+          { s: 22, d: 1.7, v: 0 },
+        ],
+        [{ s: 900, d: -1.7, v: 24, dir: -1 }],
+      );
+      const player = cruise(sc, 2);
+      const hashes: number[] = [];
+      for (let t = 0; t < 60 * 20; t++) {
+        if (t === 300) noteGrudge(sc.world, 1, 2);
+        step(sc, player());
+        if (t % 30 === 0)
+          hashes.push(hashPlain(FNV_OFFSET, { movers: sc.world.movers, systems: sc.world.systems }));
+      }
+      return hashes;
+    };
+    expect(run()).toEqual(run());
+  });
+});
+
+describe('ai-2: takedown intent', () => {
+  const cars = vehicleSize(config([PLAYER]));
+  /** takedownPush for a player at d with the given cars, seen from a heavy hitter 3 m behind. */
+  const pushFor = (
+    over: Partial<SimConfig>,
+    d: number,
+    vehicles: { s: number; d: number; v: number; dir: 1 | -1 }[],
+  ) => {
+    const sc = scene(
+      [rival('heavy-hitter'), PLAYER],
+      [
+        { s: 97, d: d - 1, v: 28 },
+        { s: 100, d, v: 28 },
+      ],
+      vehicles,
+      over,
+    );
+    const [me, them] = sc.riders;
+    if (!me || !them) throw new Error('scene');
+    const seen = sc.vehicles.flatMap((v) => {
+      const s = see(sc.config.road, me, v, 250);
+      return s ? [{ s, size: cars }] : [];
+    });
+    return takedownPush(sc.config.road, them, seen);
+  };
+
+  it('picks a rail when one is close, an oncoming car over that, and nothing on an empty road', () => {
+    // No rail, no cars: nothing to push the player into, so no preference.
+    expect(pushFor({}, 1.7, [])).toBe(0);
+    // A rail on the right, 3.2 m from a player in the middle of their lane: toward the rail.
+    expect(pushFor(ON_RAIL, 1.7, [])).toBe(1);
+    // ...but not when the player is across the road from it.
+    expect(pushFor(ON_RAIL, -1.7, [])).toBe(0);
+    // An oncoming car about to pass: toward it, rail or not.
+    expect(pushFor({}, 1.7, [{ s: 200, d: -1.7, v: 24, dir: -1 }])).toBe(-1);
+    expect(pushFor(ON_RAIL, 1.7, [{ s: 200, d: -1.7, v: 24, dir: -1 }])).toBe(-1);
+    // An oncoming car still far off does not count yet; one already past does not either.
+    expect(pushFor(ON_RAIL, 1.7, [{ s: 800, d: -1.7, v: 24, dir: -1 }])).toBe(1);
+    expect(pushFor(ON_RAIL, 1.7, [{ s: 80, d: -1.7, v: 24, dir: -1 }])).toBe(1);
+    // A car going the player's own way is not oncoming traffic.
+    expect(pushFor(ON_RAIL, 1.7, [{ s: 150, d: -1.7, v: 10, dir: 1 }])).toBe(1);
+  });
+
+  /** Oncoming cars every 200 m in the other lane, so one is always on its way. */
+  const ONCOMING = Array.from({ length: 11 }, (_, i) => ({
+    s: 250 + 200 * i,
+    d: -1.7,
+    v: 24,
+    dir: -1 as const,
+  }));
+
+  it('with oncoming traffic, a heavy hitter works round to the player’s far side, so its hits push them into it', () => {
+    const run = (style: string, vehicles: typeof ONCOMING) => {
+      const sc = scene(
+        [rival(style, { aggression: 0.8 }), PLAYER],
+        [
+          { s: 30, d: 0.6, v: 28 }, // starts on the player's −d side (the oncoming side)
+          { s: 50, d: 1.7, v: 28 },
+        ],
+        vehicles,
+      );
+      if (style === 'racer') noteGrudge(sc.world, 0, 1); // a racer hunts only with a grudge
+      return pressesOn(sc, 0, 1, 25, cruise(sc, 1));
+    };
+    const brawler = run('heavy-hitter', ONCOMING);
+    const racer = run('racer', ONCOMING);
+    const empty = run('heavy-hitter', []);
+    const fromPlus = (xs: { side: number }[]) => xs.filter((x) => x.side > 0).length;
+    console.log(
+      `presses from the player's +d side (pushing toward oncoming): heavy hitter ${fromPlus(brawler)} of ${brawler.length}, ` +
+        `racer with a grudge (no intent) ${fromPlus(racer)} of ${racer.length}, ` +
+        `heavy hitter on an empty road ${fromPlus(empty)} of ${empty.length}`,
+    );
+    expect(brawler.length).toBeGreaterThan(3);
+    expect(fromPlus(brawler) / brawler.length).toBeGreaterThanOrEqual(0.8);
+    // Without takedown intent, or with nothing to push the player into, a hunter stays on the
+    // side it started on.
+    expect(racer.length).toBeGreaterThan(3);
+    expect(fromPlus(racer) / racer.length).toBeLessThanOrEqual(0.2);
+    expect(empty.length).toBeGreaterThan(3);
+    expect(fromPlus(empty) / empty.length).toBeLessThanOrEqual(0.2);
+  });
+
+  it('on a railed bridge, a heavy hitter works round to push the player toward the rail', () => {
+    const sc = scene(
+      [rival('heavy-hitter', { aggression: 0.8 }), PLAYER],
+      [
+        { s: 30, d: 2.8, v: 28 }, // starts on the rail side of the player
+        { s: 50, d: 1.7, v: 28 },
+      ],
+      [],
+      ON_RAIL,
+    );
+    const got = pressesOn(sc, 0, 1, 25, cruise(sc, 1));
+    const fromMinus = got.filter((x) => x.side < 0).length;
+    console.log(`presses from the player's −d side (pushing toward the rail): ${fromMinus} of ${got.length}`);
+    expect(got.length).toBeGreaterThan(3);
+    expect(fromMinus / got.length).toBeGreaterThanOrEqual(0.8);
+  });
+});
+
+describe('ai-2: difficulty', () => {
+  it('the preset’s aggression scale changes how often a rival swings (Hard above Easy)', () => {
+    const run = (riderAggression: number) => {
+      const sc = scene(
+        [rival('heavy-hitter', { aggression: 0.5 }), PLAYER],
+        [
+          { s: 30, d: 1.7, v: 28 },
+          { s: 50, d: 1.7, v: 28 },
+        ],
+        [],
+        { difficulty: { presetId: 'hard', riderAggression, copFrequency: 1, rubberBand: 1 } },
+      );
+      presses(sc, 0, 60, cruise(sc, 1));
+      return aiState(sc.world).pressesOnPlayer[0] ?? 0;
+    };
+    const easy = run(0.75);
+    const hard = run(1.25);
+    console.log(`heavy-hitter presses on the player in 60 s: Easy scale ${easy}, Hard scale ${hard}`);
+    expect(hard).toBeGreaterThan(easy);
+  });
+
+  it("Hard's rubber-band scale leaves the pack's first-to-last gap wider than Easy's", () => {
+    // Four racers who never fight, around a player holding 28 m/s below the event's 30 m/s pace:
+    // the band eases those ahead back and pulls those behind on, harder on Easy (1.5) than Hard (0.5).
+    const run = (rubberBand: number) => {
+      const defs = ['a', 'b', 'c', 'd'].map((n) => rival('racer', { aggression: 0, weave: 0 }, n));
+      const sc = scene(
+        [...defs, PLAYER],
+        [
+          { s: 20, d: 1.2, v: 28 },
+          { s: 35, d: 2.2, v: 28 },
+          { s: 140, d: 1.2, v: 28 },
+          { s: 160, d: 2.2, v: 28 },
+          { s: 90, d: 1.7, v: 28 },
+        ],
+        [],
+        { difficulty: { presetId: 'custom', riderAggression: 1, copFrequency: 1, rubberBand } },
+      );
+      const player = cruise(sc, 4);
+      let sum = 0;
+      let n = 0;
+      for (let t = 0; t < 60 * 40; t++) {
+        step(sc, player());
+        if (t % 60 === 59) {
+          const p = sc.riders.map((r) => route.progressAt(r.pos.edge, r.pos.s));
+          sum += Math.max(...p) - Math.min(...p);
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    const easy = run(1.5);
+    const normal = run(1);
+    const hard = run(0.5);
+    console.log(
+      `pack spread, mean over 40 s: Easy band ${easy.toFixed(0)} m, Normal ${normal.toFixed(0)} m, Hard ${hard.toFixed(0)} m`,
+    );
+    expect(hard).toBeGreaterThan(normal);
+    expect(normal).toBeGreaterThan(easy);
   });
 });
