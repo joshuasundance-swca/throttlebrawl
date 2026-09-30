@@ -60,7 +60,8 @@ describe('preset export', () => {
       meta: {
         status: 'live',
         notes: 'Exported from the tuning panel on build abc1234.',
-        provenance: { origin: 'human', author: 'playtester', createdAt: '2026-09-30' },
+        // A role, as the public-safety lint requires: a pasted preset is the maintainer's playtest.
+        provenance: { origin: 'human', author: 'maintainer', createdAt: '2026-09-30' },
       },
     });
     expect(Object.keys(preset.values)).toEqual(['camera.shakeScale', 'riders.steerScale']);

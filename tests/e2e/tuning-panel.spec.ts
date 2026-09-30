@@ -338,11 +338,12 @@ test('"Copy preset as JSON" gives a tuning-preset that packs:check accepts', asy
   writeFileSync(file, text);
   try {
     const withPreset = packsCheck();
-    console.log(
-      `packs:check with ${file}: exit ${withPreset.status}; ${withPreset.out.trim().split('\n').pop()}`,
-    );
+    const summary = /\[examined\].*/.exec(withPreset.out)?.[0] ?? '';
+    console.log(`packs:check with ${file}: exit ${withPreset.status}; ${summary}`);
     expect(withPreset.status, withPreset.out).toBe(0);
     expect(withPreset.examined).toBe(baseline.examined + 1);
+    // content-1's validator: the schema, public-safety and tuning-key rules ran over the preset.
+    for (const rule of ['schema', 'public-safety', 'tuning-keys']) expect(summary).toContain(rule);
   } finally {
     unlinkSync(file);
     if (madeDir && readdirSync(dir).length === 0) rmdirSync(dir);

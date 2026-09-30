@@ -59,7 +59,9 @@ export function exportPreset(
     meta: {
       status: 'live',
       notes: `Exported from the tuning panel on build ${opts.build}.`,
-      provenance: { origin: 'human', author: 'playtester', createdAt: date },
+      // A role, never a name (the pack lint's public-safety rule): a pasted preset is the
+      // maintainer's playtest, committed by an agent.
+      provenance: { origin: 'human', author: 'maintainer', createdAt: date },
     },
   };
 }
