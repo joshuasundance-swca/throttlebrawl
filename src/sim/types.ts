@@ -158,6 +158,11 @@ export type SimEventType =
   /** A rider lost stability without going down (barrier scrape, rough landing, a first contact). */
   | 'wobble'
   | 'crash'
+  /**
+   * A rider went down within the attribution window of someone's hit (M2 combat-4). Actor = the
+   * rider credited, target = the rider who went down; `data.kind` is a `TakedownKind`. The
+   * causeId is the crash's (or the finishing hit's, for `health`).
+   */
   | 'takedown'
   | 'nearMiss'
   | 'bust'
@@ -167,9 +172,58 @@ export type SimEventType =
   | 'land'
   | 'pedDive'
   | 'cashAward'
+  /**
+   * Risky riding scored (M2 riders-5; emitted by sim/race). Actor = the rider who scored;
+   * `data.kind` is a `StyleKind` and `data.points` the style cash it adds to that rider's tally
+   * (a number, in the event's cash units, from the event's `rewards`). The causeId is the source
+   * event's where there is one (the near miss, the landing, the takedown, the grab).
+   */
   | 'style'
+  /**
+   * A takedown's slow motion begins (M2 combat-4): actor = the rider credited, target = the rider
+   * who went down, causeId = the takedown's. `data.ticks` is its length in raw ticks and
+   * `data.timeScale` the scale it runs at.
+   */
+  | 'slowmoStart'
+  /** The slow motion ends: the same actor, target and causeId as its `slowmoStart`. */
+  | 'slowmoEnd'
+  /**
+   * A tumble body crossed a `rail` barrier (M2 tumble-2). Actor = the rider; `data.body` is
+   * `rider` or `bike`. The causeId is the crash's.
+   */
+  | 'railOver'
+  /**
+   * A body that went over the rail reached the water plane (world y = 0). Actor = the rider;
+   * `data.body` as for `railOver`, and `data.penaltyTicks` the time penalty before the respawn.
+   */
+  | 'splash'
+  /**
+   * A rider is put back on the road away from where they went down (after a splash, M2). Actor =
+   * the rider; `data.reason` names why (`splash`). The causeId is the crash's.
+   */
+  | 'respawn'
+  /** A knocked-off rider stands up after the tumble settles (M2 tumble-2). Actor = the rider. */
+  | 'getUp'
+  /**
+   * The stood-up rider shakes a fist. Actor = the rider; target = whom they blame (the rider
+   * credited with knocking them off) when there is one.
+   */
+  | 'fistShake'
+  /**
+   * A knocked-off rival notes a grudge for the rest of the race (M2 tumble-2 emits it, ai-2 reads
+   * it). Actor = the rival holding the grudge; target = the rider it is against.
+   */
+  | 'grudgeNoted'
   | 'modifierStart'
   | 'modifierEnd';
+
+/** `data.kind` of a `takedown` event: into traffic, into scenery, or out of health. */
+export const TAKEDOWN_KINDS = ['traffic', 'scenery', 'health'] as const;
+export type TakedownKind = (typeof TAKEDOWN_KINDS)[number];
+
+/** `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md). */
+export const STYLE_KINDS = ['nearMiss', 'airtime', 'oncoming', 'takedownCombo', 'weaponSteal'] as const;
+export type StyleKind = (typeof STYLE_KINDS)[number];
 
 export interface SimEvent {
   tick: number;

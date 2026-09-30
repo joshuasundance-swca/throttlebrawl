@@ -9,7 +9,7 @@ import { clamp } from '../core';
 import { InputFlag, type SimInput } from './types';
 
 export { createSim, SIM_TUNING } from './create';
-export { InputFlag, SIM_DT, SIM_HZ } from './types';
+export { InputFlag, SIM_DT, SIM_HZ, STYLE_KINDS, TAKEDOWN_KINDS } from './types';
 export type {
   AttackPhase,
   EntityKind,
@@ -35,6 +35,8 @@ export type {
   SimTrafficTypeDef,
   SimWeaponDef,
   SlowmoSnapshot,
+  StyleKind,
+  TakedownKind,
 } from './types';
 
 // Shared core types and helpers, for modules the module map keeps away from core.
