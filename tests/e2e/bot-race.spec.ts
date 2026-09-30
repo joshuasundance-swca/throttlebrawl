@@ -49,6 +49,14 @@ interface Handle {
   checks(): Checks;
   rendererStats(): Stats;
   frameStats(): { samples: number; p50: number; p95: number; max: number };
+  debugFileText(): string;
+  checkDebugFile(text: string): {
+    ticks: number;
+    checked: number;
+    desync: { tick: number } | null;
+    keyMatches: boolean;
+    summary: string;
+  };
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
@@ -135,6 +143,22 @@ test('the bot races to results with a placing at phone landscape', async ({ page
       '[assert] the bot took the shortcut: NOT ACTIVE (no shortcut lane on its road; road-2 not on this build)',
     );
   }
+
+  // dev-3: the finished race's debug file replays, from its own header, to every stored hash and
+  // to the final hash taken when the race ended.
+  const replayCheck = await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    if (!g) return null;
+    const text = g.debugFileText();
+    return { ...g.checkDebugFile(text), hasEnd: text.includes('"end":{"tick":') };
+  });
+  console.log(
+    `[assert] the debug file replays the whole race: ${JSON.stringify({ ...replayCheck, summary: undefined })}`,
+  );
+  expect(replayCheck?.hasEnd, 'the recording was closed with the final hash').toBe(true);
+  expect(replayCheck?.desync ?? null).toBeNull();
+  expect(replayCheck?.ticks).toBe(checks.ticks);
+  expect(replayCheck?.checked ?? 0).toBeGreaterThan(checks.ticks / 60);
 
   const frames = (await page.evaluate(() => (window as TestWindow).__game?.frameStats())) as ReturnType<
     Handle['frameStats']

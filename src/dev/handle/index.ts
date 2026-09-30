@@ -7,6 +7,7 @@ import type { AppHandle } from '../../app';
 import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
 import { createBot, type BotController, type BotStats } from '../bot';
 import { createPerfProbe, type PerfReport } from '../perf';
+import { debugFileText, parseDebugFile, reportText } from '../report';
 import { moverProblem } from './checks';
 
 export { MOVER_MODES, moverProblem } from './checks';
@@ -46,6 +47,12 @@ export interface TestHandle {
    * 0). The input lane's browser specs read it to prove the touch and keyboard paths.
    */
   inputs(from?: number): SimInput[];
+  /** The "copy debug report" summary, as it would be copied now. */
+  reportText(): string;
+  /** The debug file's text, as "save debug file" would write it now. */
+  debugFileText(): string;
+  /** Reads a debug file's replay and replays it against a fresh sim of this build (dev-3's check). */
+  checkDebugFile(text: string): ReturnType<AppHandle['checkReplay']> & { summary: string };
 }
 
 declare global {
@@ -148,6 +155,12 @@ export function installTestHandle(app: AppHandle): TestHandle {
       const out: SimInput[] = [];
       for (const slots of rec?.inputs?.slice(from) ?? []) if (slots[0]) out.push({ ...slots[0] });
       return out;
+    },
+    reportText: () => reportText(app),
+    debugFileText: () => debugFileText(app),
+    checkDebugFile(text) {
+      const { summary, replay } = parseDebugFile(text);
+      return { ...app.checkReplay(replay), summary };
     },
   };
   window.__game = handle;
