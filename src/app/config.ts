@@ -164,6 +164,8 @@ function riderDef(
       brakeMps2: h.brakeMps2,
       steerRateMps: h.steerRateMps,
       massKg: h.massKg,
+      knockbackResistance: bike.combat?.knockbackResistance ?? 0,
+      hitPowerScale: bike.combat?.hitPowerScale ?? 1,
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
