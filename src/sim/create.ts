@@ -8,7 +8,7 @@ import { modifiersSystem, MODIFIERS_TUNING } from './modifiers';
 import { pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
-import { trafficSystem, TRAFFIC_TUNING } from './traffic';
+import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { tumbleSystem, TUMBLE_TUNING } from './tumble';
 import type { EntitySnapshot, Sim, SimConfig, SimEvent, SimInput, SimSnapshot } from './types';
 import { addMover, createWorld, hashPlain, orderSystems, stepWorld, type World } from './world';
@@ -64,7 +64,9 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       heading: atan2(-fx, -fz),
       speed: m.speed,
       lean: riders.lean[m.id] ?? 0,
-      contentId: def?.contentId ?? '',
+      // A vehicle carries its traffic type, so render can size and shape it.
+      contentId:
+        def?.contentId ?? (m.kind === 'vehicle' ? (vehicleInfo(world, config, m.id)?.contentId ?? '') : ''),
       name: def?.name ?? '',
       faction: def?.faction ?? 'rider',
       slot: def?.controller.kind === 'player' ? def.controller.slot : -1,
