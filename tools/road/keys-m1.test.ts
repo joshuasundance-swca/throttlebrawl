@@ -35,7 +35,7 @@ describe('tools/road: the baked M1 track', () => {
   it('is fresh: the pack files equal a new compile of tools/road/tracks/keys-m1.ts', () => {
     expect(network).toEqual(compiled.network);
     expect(roads).toEqual(compiled.roads);
-    expect(route).toEqual(compiled.route);
+    expect([route]).toEqual(compiled.routes);
   });
 
   it('passes the content schemas and the road lint with no issues', () => {
@@ -111,6 +111,41 @@ describe('tools/road: the baked M1 track', () => {
       checked++;
     }
     expect(checked).toBe(6); // the main path's six edges
+  });
+
+  it('road-3: two or three sign and billboard slots, each naming a live region item, off the road, on the route', () => {
+    const regionFile = JSON.parse(readFileSync(path.join(region, 'region.json'), 'utf8')) as {
+      signs?: { id: string; status?: string }[];
+      billboards?: { id: string; status?: string }[];
+    };
+    const items = new Map(
+      [...(regionFile.signs ?? []), ...(regionFile.billboards ?? [])].map((i) => [i.id, i]),
+    );
+    const slots = net.edges.flatMap((e) =>
+      e.features.filter((f) => f.kind === 'billboard').map((f) => ({ e, f })),
+    );
+    console.log(
+      `board slots: ${slots.map(({ e, f }) => `${f.id} -> ${f.item} on ${e.id} s ${f.s0}-${f.s1} d ${f.d0}..${f.d1}`).join('; ')}`,
+    );
+    expect(slots.length).toBeGreaterThanOrEqual(2);
+    expect(slots.length).toBeLessThanOrEqual(3);
+    expect(new Set(slots.map(({ f }) => f.id)).size).toBe(slots.length);
+    for (const { e, f } of slots) {
+      // A named item (a stable content reference for the veto), live in the region file.
+      expect(items.has(f.item ?? ''), f.id).toBe(true);
+      expect(items.get(f.item ?? '')?.status ?? 'live', f.id).toBe('live');
+      // Off the road on one side: clear of the 5.5 m edge, and of the rail posts beyond it.
+      expect(Math.sign(f.d0), f.id).toBe(Math.sign(f.d1));
+      expect(Math.min(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeGreaterThanOrEqual(6.5);
+      // Clear of the other features on its road.
+      for (const g of e.features) {
+        if (g === f) continue;
+        const overlap = g.s0 < f.s1 && f.s0 < g.s1 && g.d0 < f.d1 && f.d0 < g.d1;
+        expect(overlap, `${f.id} overlaps ${g.id}`).toBe(false);
+      }
+      // On the race's route, so every race passes it.
+      expect(progress.allows(e.index), f.id).toBe(true);
+    }
   });
 
   it('road-3: barrierAt returns the rail on the bridge stretch and nothing off it; the water is y = 0', () => {

@@ -38,6 +38,15 @@
       "params": { "spawns": "pedestrians" }
     },
     {
+      "kind": "billboard",
+      "id": "bb-causeway-stream",
+      "s0": 320,
+      "s1": 360,
+      "d0": 7,
+      "d1": 16,
+      "item": "stream-outfit"
+    },
+    {
       "kind": "roadsideZone",
       "id": "tiki-stand",
       "s0": 820,

@@ -51,11 +51,44 @@ function checkRoads(ctx: LintContext): Finding[] {
   return out;
 }
 
+/**
+ * The lap-count rule (docs/content-packs.md, "Event" and "Route file"): an event length with
+ * `laps` above 1 must name a `closed` route. A point-to-point route runs once. A reference that
+ * does not resolve is left to the built-in reference rule.
+ */
+function checkLaps(ctx: LintContext): Finding[] {
+  const out: Finding[] = [];
+  for (const ev of ctx.entries('event')) {
+    const lengths = ev.data['lengths'];
+    if (!Array.isArray(lengths)) continue;
+    lengths.forEach((l: unknown, i) => {
+      if (typeof l !== 'object' || l === null) return;
+      const { laps, route } = l as { laps?: unknown; route?: unknown };
+      if (typeof laps !== 'number' || laps <= 1 || typeof route !== 'string') return;
+      const target = ctx.resolve(ev.packId, route, 'route').entry;
+      if (!target || target.data['closed'] === true) return;
+      out.push({
+        level: 'error',
+        rule: 'road-laps',
+        file: ev.path,
+        pointer: `/lengths/${i}/laps`,
+        message: `${laps} laps need a closed route, and route ${route} is point to point (closed: false)`,
+      });
+    });
+  }
+  return out;
+}
+
 export const packRules: PackRule[] = [
   {
     id: 'roads',
     description:
       'the road lint on every network: samples, curvature, grade, width, features, junctions and connectors, jumps, routes',
     check: checkRoads,
+  },
+  {
+    id: 'laps',
+    description: 'an event length with laps > 1 names a closed route',
+    check: checkLaps,
   },
 ];
