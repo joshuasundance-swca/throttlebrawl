@@ -10,7 +10,26 @@ export interface BakedLaneSection {
 
 /** Feature kinds, exactly the architecture doc's list. */
 export type FeatureKind =
-  'ramp' | 'gap' | 'hazard' | 'roadsideZone' | 'copSpawn' | 'raceMarker' | 'billboard';
+  | 'ramp'
+  | 'gap'
+  | 'hazard'
+  | 'roadsideZone'
+  | 'copSpawn'
+  | 'raceMarker'
+  | 'billboard'
+  /**
+   * A speed-boost pad (playtest 1b): a rider who rides over its s/d box gets a short boost.
+   * `params.boostMps` (speed added, default 8) and `params.holdS` (how long, default 1.5).
+   */
+  | 'boostPad'
+  /**
+   * A parked car-carrier tow truck whose rear deck is a jump ramp (playtest 1b). s0 is the foot of
+   * the ramp and s1 the truck's front; d0..d1 its width. The deck rises from the road at s0 to
+   * `params.lipHeightM` (2.8) over `params.rampLengthM` (11.5, a 13.7° slope), then stays at the lip
+   * height to s1. It faces riders travelling toward increasing s. Not baked into the road profile:
+   * it covers only its own width.
+   */
+  | 'rampTruck';
 
 export interface BakedFeature {
   kind: string;
@@ -156,4 +175,19 @@ export interface BakedNetworkBundle {
   network: BakedNetwork;
   /** The network's roads, in any order; the network's `roads` list fixes the edge numbering. */
   roads: readonly BakedRoad[];
+}
+
+/** A rampTruck's defaults, from the prop brief: 13.7° over an 11.5 m run to a 2.8 m lip. */
+export const RAMP_TRUCK_DEFAULTS = { rampLengthM: 11.5, lipHeightM: 2.8 } as const;
+
+/** A rampTruck's ramp: its run (m, from s0 to the lip) and its lip height above the road (m). */
+export function rampTruckShape(f: BakedFeature): { run: number; lip: number } {
+  const n = (key: string, fallback: number) => {
+    const v = f.params?.[key];
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  return {
+    run: n('rampLengthM', RAMP_TRUCK_DEFAULTS.rampLengthM),
+    lip: n('lipHeightM', RAMP_TRUCK_DEFAULTS.lipHeightM),
+  };
 }

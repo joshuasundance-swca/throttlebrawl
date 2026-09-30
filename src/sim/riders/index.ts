@@ -17,6 +17,8 @@
 import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
+import { applyShove, riderContacts } from './contact';
+import { BOOST_ACCEL_MPS2, boostOf, boostPadAt, deckHeight, KERB_M, rampTruckAt } from './features';
 import {
   emit,
   slotAssists,
@@ -108,6 +110,18 @@ export interface RiderState {
   airTicks: number[];
   /** Tick of this rider's last riders step, so a rider put down by another system starts fresh. */
   lastTick: number[];
+  /** Sideways shove from bumping another rider, m/s along +d (sim/riders/contact). */
+  shove: number[];
+  /** Last tick each pair of riders ("lowId-highId") touched, so one contact emits one event. */
+  contactTick: Record<string, number>;
+  /** Scaled ticks of speed boost left from a `boostPad` (playtest 1b quick wins); the snapshot's boostS. */
+  boost: number[];
+  /** The speed the current boost adds to top speed, m/s (before the speed multiplier). */
+  boostMps: number[];
+  /** 1 while the rider is on a boost pad, so one crossing gives one boost. */
+  onPad: number[];
+  /** 1 while the rider is held against a ramp truck's side, so one contact emits one event. */
+  truckTouch: number[];
 }
 
 /** m/s² when off the throttle, before air drag. */
@@ -176,6 +190,12 @@ export function riderState(world: World): RiderState {
     vy: [],
     airTicks: [],
     lastTick: [],
+    shove: [],
+    contactTick: {},
+    boost: [],
+    boostMps: [],
+    onPad: [],
+    truckTouch: [],
   }));
 }
 
@@ -237,8 +257,11 @@ function assistYaw(config: SimConfig, m: Mover, level: SimSteerAssist, maxYaw: n
   const ahead = pos.d + pos.dir * m.speed * sin(m.yaw) * ASSIST_LOOKAHEAD_S;
   const hi = limits.hi - BIKE_HALF_WIDTH_M;
   const lo = limits.lo + BIKE_HALF_WIDTH_M;
-  const towardPlus = clamp((ahead - (hi - ASSIST_MARGIN_M)) / ASSIST_MARGIN_M, 0, 1);
-  const towardMinus = clamp((lo + ASSIST_MARGIN_M - ahead) / ASSIST_MARGIN_M, 0, 1);
+  // Never push a rider away from a branch it may be taking (playtest 1b): inside a split zone, and
+  // where a sibling branch overlaps this edge, the edge on that side is a way on, not a wall.
+  const branch = config.road.branchSideAt(pos.edge, pos.s);
+  const towardPlus = branch > 0 ? 0 : clamp((ahead - (hi - ASSIST_MARGIN_M)) / ASSIST_MARGIN_M, 0, 1);
+  const towardMinus = branch < 0 ? 0 : clamp((lo + ASSIST_MARGIN_M - ahead) / ASSIST_MARGIN_M, 0, 1);
   // A heading that moves toward -d is -dir: dd/dt = dir * v * sin(yaw).
   return (towardMinus - towardPlus) * pos.dir * gain * maxYaw;
 }
@@ -263,6 +286,20 @@ function onShoulder(config: SimConfig, m: Mover): boolean {
 }
 
 /**
+ * Playtest 1b ([decided] 2026-09-30, "you get forced away like it's a barrier"): past its own edge's
+ * drivable band where a sibling branch is drawn overlapping (just past a split or before a merge), a
+ * rider moves onto that branch, keeping its world position and heading, and no barrier event fires.
+ * Only onto the race's allowed edges. Traffic never does this: it only calls road.advance.
+ */
+function crossToBranch(config: SimConfig, m: Mover): void {
+  const pos = m.pos;
+  const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
+  if (pos.d >= lo && pos.d <= hi) return;
+  const turn = config.road.handover(pos, BIKE_HALF_WIDTH_M, (e) => config.route.allows(e));
+  if (turn !== null) m.yaw += turn;
+}
+
+/**
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
  * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble.
@@ -276,29 +313,111 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   }
   const side = pos.d > hi ? 1 : -1; // road-frame side of the wall
   const v = m.speed;
-  // Speed across the road toward the wall (the rider's right is -d when riding toward -s).
-  const vAcross = pos.dir * v * sin(m.yaw);
-  const impact = vAcross * side > 0 ? vAcross * side : 0;
   const yawBefore = m.yaw;
+  const impact = scrapeAlong(config, m, side, dt);
   pos.d = side > 0 ? hi : lo;
-  // The wall takes the across component and turns the bike along it: the rider scrapes along.
+  const newContact = st.touching[m.id] !== 1;
+  st.touching[m.id] = 1;
+  wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact });
+}
+
+/**
+ * A rider meeting a wall on its `side` (road frame): the wall takes the speed across the road and
+ * turns the bike along it, so the rider scrapes along. Returns the speed it hit the wall with.
+ */
+function scrapeAlong(config: SimConfig, m: Mover, side: 1 | -1, dt: number): number {
+  const v = m.speed;
+  // Speed across the road toward the wall (the rider's right is -d when riding toward -s).
+  const vAcross = m.pos.dir * v * sin(m.yaw);
   const m2 = accelMultiplierOf(config);
   m.speed = Math.max(0, v * cos(m.yaw) - SCRAPE_DRAG * m2 * dt);
   m.yaw = 0;
-  const newContact = st.touching[m.id] !== 1;
-  st.touching[m.id] = 1;
+  return vAcross * side > 0 ? vAcross * side : 0;
+}
+
+/** A wall contact's outcome: a crash, a wobble, or (still wobbling) a longer wobble. */
+function wallOutcome(
+  world: World,
+  st: RiderState,
+  m: Mover,
+  hit: {
+    impact: number;
+    v: number;
+    yawBefore: number;
+    side: 1 | -1;
+    newContact: boolean;
+    extra?: Record<string, string>;
+  },
+): void {
+  const { impact, v, yawBefore, side } = hit;
   const crashAt = world.params['riders.crashImpactMps'] ?? 6;
   const unstable = (st.wobble[m.id] ?? 0) > 0;
   const crashes = impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
+  const data = { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side, ...hit.extra };
   if (crashes) {
     st.wobble[m.id] = 0;
-    emit(world, 'crash', m.id, { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side });
+    emit(world, 'crash', m.id, data);
   } else if (unstable) {
     st.wobble[m.id] = WOBBLE_TICKS; // still shaky from the last one: the wobble goes on
-  } else if (newContact) {
+  } else if (hit.newContact) {
     st.wobble[m.id] = WOBBLE_TICKS;
-    emit(world, 'wobble', m.id, { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side });
+    emit(world, 'wobble', m.id, data);
   }
+}
+
+/**
+ * The ramp truck is solid (playtest 1b quick wins): a grounded rider whose deck height would jump by
+ * more than a kerb in one tick rode into its side or front, not up its ramp. From the side it is
+ * held beside the truck and scrapes, like the barrier rule; head on, it stops where it was and
+ * takes the whole speed as the impact. Events carry `object: 'rampTruck'` and the truck's id.
+ */
+function truckContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number; deck: number },
+  dt: number,
+): void {
+  const pos = m.pos;
+  const truck = rampTruckAt(config, pos.edge, pos.s, pos.d);
+  if (!truck || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
+    st.truckTouch[m.id] = 0;
+    return;
+  }
+  const v = m.speed;
+  const yawBefore = m.yaw;
+  const newContact = st.truckTouch[m.id] !== 1;
+  st.truckTouch[m.id] = 1;
+  const extra = { object: 'rampTruck', feature: truck.id };
+  const outside = before.d < truck.d0 || before.d > truck.d1;
+  if (before.edge === pos.edge && outside) {
+    const side = before.d < truck.d0 ? 1 : -1; // the truck is on this side of the rider
+    const impact = scrapeAlong(config, m, side, dt);
+    pos.d = side > 0 ? truck.d0 - 0.01 : truck.d1 + 0.01;
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    return;
+  }
+  pos.edge = before.edge;
+  pos.s = before.s;
+  pos.d = before.d;
+  m.speed = 0;
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
+}
+
+/** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
+function touchPads(world: World, config: SimConfig, st: RiderState, m: Mover): void {
+  const pad = boostPadAt(config, m.pos.edge, m.pos.s, m.pos.d);
+  if (!pad) {
+    st.onPad[m.id] = 0;
+    return;
+  }
+  if (st.onPad[m.id] === 1) return;
+  st.onPad[m.id] = 1;
+  const { mps, holdS } = boostOf(pad);
+  st.boost[m.id] = holdS * 60;
+  st.boostMps[m.id] = mps;
+  emit(world, 'boost', m.id, { feature: pad.id, speed: m.speed, holdS });
 }
 
 function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover): void {
@@ -320,18 +439,29 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const grade = road.frameAt(pos.edge, pos.s).grade * pos.dir;
   const wobble = st.wobble[m.id] ?? 0;
   if (wobble > 0) st.wobble[m.id] = Math.max(0, wobble - world.timeScale);
-  // Vertical: where the bike is now, and how fast it was rising if it was riding last tick too.
-  const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  // Vertical: where the bike is now (a ramp truck's deck included), and how fast it was rising if it
+  // was riding last tick too.
+  const deckBefore = deckHeight(config, pos.edge, pos.s, pos.d);
+  const before = { edge: pos.edge, s: pos.s, d: pos.d, deck: deckBefore };
+  const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const fresh = st.lastTick[m.id] !== world.tick - 1;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
 
-  // Longitudinal: full throttle on the flat converges to top speed.
+  // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
+  // top speed for a while and pushes the bike toward it.
   const v = m.speed;
-  const top = topSpeedOf(world, config, bike.topSpeedMps);
+  const boostLeft = st.boost[m.id] ?? 0;
+  const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
+  const top = topSpeedOf(world, config, bike.topSpeedMps) + boostTop;
   const a = bike.accelMps2 * accelScale * m2;
   let accel = throttle * a - (a * v * v) / (top * top);
   accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
+  if (boostLeft > 0) {
+    // The push stops at the raised top speed; it never carries the bike past it.
+    if (v < top) accel = Math.max(accel, Math.min(accel + BOOST_ACCEL_MPS2 * m2, (top - v) / dt));
+    st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
+  }
   if (onShoulder(config, m)) accel -= SHOULDER_DRAG * m2;
   if (wobble > 0) accel -= WOBBLE_DRAG * m2;
   m.speed = Math.max(0, v + accel * dt);
@@ -349,13 +479,19 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   pos.s += pos.dir * along * dt;
   pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
   m.h = 0;
+  applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
+  crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
+  truckContact(world, config, st, m, before, dt);
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
+  // The ground is the road, or a ramp truck's deck: h is always the height above the road.
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
+  const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
-  if (dt > 0 && !fresh && ballistic > surface + TAKEOFF_CLEARANCE_M) {
+  if (dt > 0 && !fresh && ballistic > ground + TAKEOFF_CLEARANCE_M) {
     m.mode = 'Airborne';
     m.h = ballistic - surface;
     st.yAbs[m.id] = ballistic;
@@ -363,8 +499,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     st.airTicks[m.id] = 0;
     emit(world, 'jump', m.id, { speed: m.speed, vyMps: vyBefore });
   } else {
-    st.yAbs[m.id] = surface;
-    if (dt > 0) st.vy[m.id] = (surface - yBefore) / dt;
+    m.h = deck;
+    st.yAbs[m.id] = ground;
+    if (dt > 0) st.vy[m.id] = (ground - yBefore) / dt;
+    touchPads(world, config, st, m);
   }
 
   // Lean from sideways acceleration (the heading's world turn rate is the rider's own turn rate).
@@ -416,8 +554,11 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const throttle = throttleOf(config, def, input);
   const m2 = accelMultiplierOf(config);
   const gravity = GRAVITY * m2;
+  const boostLeft = st.boost[m.id] ?? 0;
+  if (boostLeft > 0) st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
 
-  const top = topSpeedOf(world, config, bike.topSpeedMps);
+  const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
+  const top = topSpeedOf(world, config, bike.topSpeedMps) + boostTop;
   const a = bike.accelMps2 * (world.params['riders.accelScale'] ?? 1) * m2;
   m.speed = Math.max(0, m.speed - ((a * m.speed * m.speed) / (top * top)) * dt);
   const kappa = road.kappaAt(pos.edge, pos.s);
@@ -430,11 +571,13 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const y = (st.yAbs[m.id] ?? 0) + vy * dt - 0.5 * gravity * dt * dt;
   st.vy[m.id] = vy - gravity * dt;
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
+  crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  if (y - surface <= 0) land(world, config, st, m, surface);
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
+  if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
     st.yAbs[m.id] = y;
@@ -450,7 +593,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
  * Landing quality: sideways speed decides it (a straight landing is clean), with a very hard drop
  * into the surface as a second way to wobble or crash. Emits `land`, plus `wobble` or `crash`.
  */
-function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface: number): void {
+function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface: number, deck = 0): void {
   const pos = m.pos;
   const grade = config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
   const slopeVy = grade * m.speed * cos(m.yaw);
@@ -464,8 +607,8 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   const quality = crashes ? 'crash' : wobbles ? 'wobble' : 'clean';
   const airTicks = st.airTicks[m.id] ?? 0;
   m.mode = 'Road';
-  m.h = 0;
-  st.yAbs[m.id] = surface;
+  m.h = deck; // on a ramp truck's deck, or 0 on the road
+  st.yAbs[m.id] = surface + deck;
   st.vy[m.id] = slopeVy;
   st.airTicks[m.id] = 0;
   const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed };
@@ -478,6 +621,8 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
     emit(world, 'wobble', m.id, { ...data, cause: 'landing' }, { causeId: cause });
   }
 }
+
+const CONTACT_RULES = { wobbleTicks: WOBBLE_TICKS, limits: barrierLimits };
 
 export const ridersSystem: SimSystem = {
   name: 'riders',
@@ -499,6 +644,11 @@ export const ridersSystem: SimSystem = {
       st.vy[m.id] = 0;
       st.airTicks[m.id] = 0;
       st.lastTick[m.id] = -2;
+      st.shove[m.id] = 0;
+      st.boost[m.id] = 0;
+      st.boostMps[m.id] = 0;
+      st.onPad[m.id] = 0;
+      st.truckTouch[m.id] = 0;
     }
   },
   step(world: World, config: SimConfig) {
@@ -508,5 +658,6 @@ export const ridersSystem: SimSystem = {
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
       else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
     }
+    riderContacts(world, config, st, CONTACT_RULES);
   },
 };

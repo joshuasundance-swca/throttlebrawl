@@ -29,6 +29,7 @@ export const CUE_IDS = [
   'glint',
   'wobble',
   'passBy',
+  'boost',
 ] as const;
 export type CueId = (typeof CUE_IDS)[number];
 
@@ -69,6 +70,8 @@ export const EVENT_CUES: Readonly<Record<string, CueId | null>> = {
   railOver: 'railClang',
   splash: 'splash',
   respawn: 'respawn',
+  // A boost pad (playtest 1b quick wins): a rising whoosh, heard for anyone, quieter with distance.
+  boost: 'boost',
   // The get-up, fist shake and grudge are seen (render, HUD) and said (barks); a sound would
   // step on the rival's bark.
   getUp: null,
@@ -110,6 +113,7 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   glint: 64,
   wobble: 48,
   passBy: 46,
+  boost: 58,
 };
 
 /** Added to a cue's priority when the player is the actor or the target. */

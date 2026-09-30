@@ -1,8 +1,10 @@
 # Dependabot auto-merge (docs/engineering.md, "Dependabot"). On a Dependabot PR that bumps npm
 # packages or workflow actions by a minor or patch version, arm GitHub's auto-merge (squash). It
 # merges only when the required `gate` check is green, exactly like any other PR. Majors, the uv
-# (GIS tool) PRs the gate does not test, and bumps whose package changed maintainers stay open for
-# a person or agent to review.
+# (GIS tool) and pip (deploy CLI) PRs the gate does not test, and bumps whose package changed
+# maintainers stay open for
+# a person or agent to review, and so does any bump of dependabot/fetch-metadata, the action this
+# workflow runs with a write token (it must not be able to merge a new version of itself).
 #
 # `pull_request`, not `pull_request_target`: nothing here checks out or runs PR code, and GitHub's
 # Dependabot token is read-only unless the job asks for more, which this one job does (it needs
@@ -31,13 +33,18 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98
       # package-ecosystem is read from the branch name (dependabot/<ecosystem>/...), so npm shows
       # as npm_and_yarn and actions as github_actions (fetch-metadata v3.1.0 update_metadata.ts).
+      # A bump of dependabot/fetch-metadata itself is never armed: this job runs that action with a
+      # write token, so a new version of it waits for review. (dependabot.yml also keeps it out of
+      # the grouped actions PR, so the other actions still auto-merge.) contains() on the
+      # comma-separated names string is a case-insensitive substring match.
       - name: Arm auto-merge (squash) for a minor or patch bump
         if: >-
           (steps.meta.outputs.package-ecosystem == 'npm_and_yarn' ||
            steps.meta.outputs.package-ecosystem == 'github_actions') &&
           (steps.meta.outputs.update-type == 'version-update:semver-minor' ||
            steps.meta.outputs.update-type == 'version-update:semver-patch') &&
-          steps.meta.outputs.maintainer-changes != 'true'
+          steps.meta.outputs.maintainer-changes != 'true' &&
+          !contains(steps.meta.outputs.dependency-names, 'dependabot/fetch-metadata')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

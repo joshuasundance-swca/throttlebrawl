@@ -3,7 +3,7 @@
 // release handling under test are the real ones.
 import { describe, expect, it } from 'vitest';
 import { InputFlag, placeElement, type SimInput, type TouchLayout } from '../sim/api';
-import { createInput, type InputSystem } from './index';
+import { createInput, inputDefaults, type InputSystem } from './index';
 
 const W = 915;
 const H = 412;
@@ -146,14 +146,27 @@ describe('input-1: the attack button', () => {
     expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
   });
 
-  it('a swipe down that takes 100 ms does not convert', () => {
+  it('playtest 1: a natural 180 ms swipe down sets kick (the window was 80 ms in M1)', () => {
     const { fire, sample } = setup();
     const [x, y] = center('touch-attack');
     fire('pointerdown', 1, x, y, 1000);
-    fire('pointermove', 1, x, y + 10, 1033);
-    fire('pointermove', 1, x, y + 20, 1066);
-    fire('pointermove', 1, x, y + 30, 1100);
-    fire('pointerup', 1, x, y + 30, 1105);
+    fire('pointermove', 1, x, y + 8, 1060);
+    fire('pointermove', 1, x, y + 16, 1120);
+    fire('pointermove', 1, x, y + 26, 1180); // crosses 24 px at 180 ms
+    fire('pointerup', 1, x, y + 26, 1185);
+    const s = sample();
+    expect(has(s, 'attack')).toBe(true);
+    expect(has(s, 'kick')).toBe(true);
+  });
+
+  it('a swipe down that takes 250 ms does not convert', () => {
+    const { fire, sample } = setup();
+    const [x, y] = center('touch-attack');
+    fire('pointerdown', 1, x, y, 1000);
+    fire('pointermove', 1, x, y + 10, 1083);
+    fire('pointermove', 1, x, y + 20, 1166);
+    fire('pointermove', 1, x, y + 30, 1250);
+    fire('pointerup', 1, x, y + 30, 1255);
     const s = sample();
     expect(has(s, 'attack')).toBe(true);
     expect(has(s, 'kick')).toBe(false);
@@ -206,6 +219,30 @@ describe('input-1: the stick, the brake and releases', () => {
     const after = sample();
     expect(after.throttle).toBe(0);
     expect(after.steer).toBe(0);
+  });
+
+  it('playtest 1 ("narrow on the phone"): the steer curve softens small deflections, full lock unchanged', () => {
+    expect(inputDefaults().stickSteerExpo).toBe(1.5);
+    const { input, fire, sample } = setup();
+    fire('pointerdown', 7, 150, 250, 1000);
+    // Half the 60 px range sideways: past the 0.08 dead zone that is (0.5 - 0.08) / 0.92 = 0.457 of
+    // the way, and the 1.5 curve makes it 0.457^1.5 = 0.309 of full steer (39, not 58).
+    fire('pointermove', 7, 180, 250, 1010);
+    expect(sample().steer).toBe(Math.round(127 * ((0.5 - 0.08) / 0.92) ** 1.5));
+    // A thumb pushing "up" 20 degrees off vertical for full throttle: 22 px sideways.
+    fire('pointermove', 7, 150 + 60 * Math.tan(Math.PI / 9), 190, 1020);
+    const push = sample();
+    expect(push.throttle).toBe(255);
+    expect(push.steer).toBe(22); // linear (M1): 39
+    // Full lock is still full lock.
+    fire('pointermove', 7, 215, 250, 1030);
+    expect(sample().steer).toBe(127);
+    fire('pointermove', 7, 85, 250, 1040);
+    expect(sample().steer).toBe(-127);
+    // The slider: 1 is M1's straight line.
+    input.setParam('input.stickSteerExpo', 1);
+    fire('pointermove', 7, 180, 250, 1050);
+    expect(sample().steer).toBe(Math.round(127 * ((0.5 - 0.08) / 0.92)));
   });
 
   it('small thumb wobble inside the dead zone does not steer', () => {

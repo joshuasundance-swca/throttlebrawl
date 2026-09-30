@@ -2,7 +2,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, fixtureNetwork, type RoadNetwork } from '../road';
 import type { SimEvent } from '../sim/api';
-import { createJolt, type JoltParams } from './jolt';
+import { createJolt, FALLBACK_IMPULSE, type JoltParams } from './jolt';
 import {
   CAMERA_TUNING,
   createFollowCamera,
@@ -390,8 +390,14 @@ describe('camera-2: the hit jolt', () => {
     expect(peakOf([hit(1, ME, { hitImpulse: P.joltFullImpulse * 3 })])).toBeCloseTo(full, 6);
     expect(peakOf([hit(ME, 1, { hitImpulse: P.joltFullImpulse })])).toBeCloseTo(full / 2, 6);
     // Before combat-3 publishes hitImpulse: a kick stands in at 5 m/s, anything else at 2 m/s.
-    expect(peakOf([hit(1, ME, { kick: true })])).toBeCloseTo((full * 5) / P.joltFullImpulse, 6);
-    expect(peakOf([hit(1, ME, { kick: false })])).toBeCloseTo((full * 2) / P.joltFullImpulse, 6);
+    expect(peakOf([hit(1, ME, { kick: true })])).toBeCloseTo(
+      (full * Math.min(P.joltFullImpulse, FALLBACK_IMPULSE.kick)) / P.joltFullImpulse,
+      6,
+    );
+    expect(peakOf([hit(1, ME, { kick: false })])).toBeCloseTo(
+      (full * FALLBACK_IMPULSE.other) / P.joltFullImpulse,
+      6,
+    );
   });
 
   it('ignores hits between other riders, and events that are not hits', () => {
@@ -488,12 +494,13 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
       s += 30 * DT;
       const t = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
       if (n === 20)
-        cam.onEvents([{ tick: n, type: 'hit', actor: VICTIM, target: ME, data: { hitImpulse: 4 } }]);
+        cam.onEvents([{ tick: n, type: 'hit', actor: VICTIM, target: ME, data: { hitImpulse: 0.5 } }]);
       if (n === 60) cam.onEvents([{ tick: n, type: 'crash', actor: ME, data: {} }]);
       if (n === 120) cam.onEvents([takedownAt(n), slowmo('slowmoStart', n)]);
       if (n === 150) cam.onEvents([slowmo('slowmoEnd', n)]);
       if (n === 200) cam.onEvents([takedownAt(n)]); // no slow motion: the hold time applies
-      const pose = cam.update(t, DT, { entities: [rival(s)], lookBack: n >= 260 && n < 280 });
+      // Between a laptop's and a phone's shape, so every phone-camera slider moves the trace.
+      const pose = cam.update(t, DT, { entities: [rival(s)], lookBack: n >= 260 && n < 280, aspect: 2 });
       out.push(pose.x, pose.y, pose.z, pose.lookX, pose.lookY, pose.lookZ, pose.fov, pose.roll);
     }
     return out;

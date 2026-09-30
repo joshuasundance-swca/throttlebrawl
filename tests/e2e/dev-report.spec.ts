@@ -128,6 +128,14 @@ test('copy debug report puts the build id and replay key on the clipboard, withi
   expect(fromPause).toContain(`replay key ${key}`);
   expect(fromPause).toMatch(/state race · tick \d+ · seed 1 · replay \d+ ticks/);
   expect(fromPause).toMatch(/frames p50 [\d.]+ p95 [\d.]+ max [\d.]+ ms/);
+  // M2 dev-4: what the race is played with, and the saved race with the fast-forward time (an
+  // estimate from the live sim step until app-4 reports the saved recording and a measured resume).
+  expect(fromPause).toMatch(
+    /play difficulty (easy|normal|hard) · steer assist (off|light|strong) · throttle/,
+  );
+  expect(fromPause).toMatch(
+    /(saved race not wired \(app-4\)|saved race) .*6-min fast-forward (est )?[\d.]+ s/,
+  );
   expect(eventLines).toBeGreaterThan(0);
   expect(bytes).toBeLessThanOrEqual(2048);
   expect(problems).toEqual([]);

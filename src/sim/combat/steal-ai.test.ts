@@ -95,7 +95,12 @@ function race(seed: number, reactToCue: boolean) {
   const held: { source: unknown; actor: string | null; target: string | null }[] = [];
   let press = false;
   for (let t = 0; t < 60 * 50 && !sim.isOver(); t++) {
-    const input: SimInput = quantizeInput({ throttle: 0.8, brake: 0, steer: 0, flags: press ? F.attack : 0 });
+    // The player holds its lane (1.7 m right of centre), as a person steers back after a shove;
+    // combat-3's kick moves a rider about a lane, so a player who never steered would end up on
+    // the shoulder and draw the rival past the roadside pipes.
+    const me = sim.snapshot().entities[PLAYER];
+    const steer = me ? Math.max(-1, Math.min(1, (1.7 - me.road.d) * 0.3 - me.road.yaw * 2)) : 0;
+    const input: SimInput = quantizeInput({ throttle: 0.8, brake: 0, steer, flags: press ? F.attack : 0 });
     sim.step([input]);
     const evs = sim.events();
     events.push(...evs);

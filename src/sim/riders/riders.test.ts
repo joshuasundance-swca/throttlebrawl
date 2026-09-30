@@ -245,6 +245,18 @@ describe('riders-1: the shoulder and the barrier', () => {
     }
     expect(shoulder.rider.speed).toBeLessThan(lane.rider.speed - 1);
   });
+
+  it('tops out clearly slower on the shoulder, flat out (playtest 1 item 2: shoulders stay slower)', () => {
+    // Wider travel lanes (road lane) must not make the shoulder a free overtaking lane.
+    const lane = riderHarness(testConfig(), { s: 10, d: 1.7 });
+    const shoulder = riderHarness(testConfig(), { s: 10, d: 4.15 });
+    for (let t = 0; t < 60 * 40; t++) {
+      lane.step(input(1));
+      shoulder.step(input(1));
+    }
+    expect(shoulder.rider.pos.d).toBeCloseTo(4.15, 6); // still on the shoulder
+    expect(shoulder.rider.speed).toBeLessThan(lane.rider.speed * 0.85);
+  });
 });
 
 describe('riders-1: robustness and determinism', () => {

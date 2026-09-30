@@ -32,7 +32,16 @@ export {
   type PadButtonAction,
   type PadLike,
 } from './devices/gamepad';
-export { DEFAULT_KEY_MAP, KeyboardState, type KeyAction, type KeyMap } from './devices/keyboard';
+export {
+  DEFAULT_KEY_MAP,
+  KEY_ACTION_NAMES,
+  KeyboardState,
+  keyLabel,
+  keyLegend,
+  type KeyAction,
+  type KeyLegendRow,
+  type KeyMap,
+} from './devices/keyboard';
 export {
   createTilt,
   tiltAngleFromEuler,
@@ -51,7 +60,7 @@ export {
   type Haptics,
   type VibrateFn,
 } from './feedback';
-export { gestureTimingProblems, gestureWindowTicks, type WindupEntry } from './gesture';
+export { gestureTimingProblems, gestureWindowTicks, kickConvertTicks, type WindupEntry } from './gesture';
 export { applyInputParam, INPUT_TUNING, inputDefaults, type InputThresholds } from './tuning';
 
 export interface InputSystem {

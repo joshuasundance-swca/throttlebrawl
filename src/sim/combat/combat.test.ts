@@ -25,7 +25,7 @@ describe('combat-1: the kick needs reach', () => {
     expect(miss).toHaveLength(1);
     expect(miss[0]?.causeId).toBe(start[0]?.causeId);
     expect(h.world.movers[1]?.pos.d).toBe(3);
-    expect(combatState(h.world).knockVel[1]).toBe(0);
+    expect(combatState(h.world).knockPeak[1] ?? 0).toBe(0);
   });
 
   it('2. a kick with the rival 1.2 m alongside lands exactly one hit, while active, and shoves the rival', () => {
@@ -288,17 +288,18 @@ describe('combat-1: scaled time and the hit-stop', () => {
   });
 
   it('combat.knockbackScale scales the shove (0 → none)', () => {
+    // Placed left of centre so the kick's full shove (about a lane) stays clear of the barrier.
     const slideAfter = (scale: number) => {
       const h = makeHarness(
         [
-          { s: 100, d: 0, role: 'player' },
-          { s: 100, d: 1.2 },
+          { s: 100, d: -3, role: 'player' },
+          { s: 100, d: -1.8 },
         ],
         scriptOf({ 0: once(0, KICK_PRESS) }),
         { 'combat.knockbackScale': scale },
       );
       h.run(60);
-      return (h.world.movers[1]?.pos.d ?? 0) - 1.2;
+      return (h.world.movers[1]?.pos.d ?? 0) + 1.8;
     };
     expect(slideAfter(0)).toBe(0);
     const one = slideAfter(1);

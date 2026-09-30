@@ -35,6 +35,15 @@
       "d0": -16,
       "d1": -7,
       "item": "timeshare"
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-marina-run",
+      "s0": 230,
+      "s1": 236,
+      "d0": 2.5,
+      "d1": 4.5,
+      "params": { "boostMps": 8, "holdS": 1.5 }
     }
   ],
   "barriers": [],

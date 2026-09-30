@@ -1,35 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createHeadlessRace, type ActionState } from '../../app';
-import { InputFlag, quantizeInput, type SimInput } from '../../sim/api';
+import { createHeadlessRace } from '../../app';
 import { moverProblem } from '../handle/checks';
-import { createBot } from './index';
+import { blankActions, botInput, createBot } from './index';
 
 // One quick headless race in the unit tier (the pre-push hook runs it); the 50-race batch is in
-// tests/sim/. dev/ may not import input/, so the action state is quantized here the way input's
-// toSimInput does it.
-function toInput(a: ActionState): SimInput {
-  let flags = 0;
-  if (a.attack) flags |= InputFlag.attack;
-  if (a.attackSide < 0) flags |= InputFlag.attackSideLeft;
-  if (a.attackSide > 0) flags |= InputFlag.attackSideRight;
-  if (a.kick) flags |= InputFlag.kick;
-  if (a.skipRunBack) flags |= InputFlag.skipRunBack;
-  return quantizeInput({ steer: a.steer, throttle: a.throttle, brake: a.brake, flags });
-}
-
-function blank(): ActionState {
-  return {
-    throttle: 0,
-    brake: 0,
-    steer: 0,
-    attack: false,
-    attackSide: 0,
-    kick: false,
-    lookBack: false,
-    skipRunBack: false,
-  };
-}
-
+// tests/sim/.
 function botRace(seed: number) {
   const { sim, route, playerId } = createHeadlessRace({ seed });
   const bot = createBot();
@@ -39,14 +14,18 @@ function botRace(seed: number) {
   let busted = false;
   let snap = sim.snapshot();
   while (!sim.isOver() && sim.tick < 60 * 900) {
-    const a = blank();
+    const a = blankActions();
     bot.drive(snap, playerId, route, a);
-    sim.step([toInput(a)]);
+    sim.step([botInput(a)]);
     busted ||= sim.events().some((e) => e.type === 'bust' && e.target === playerId);
     snap = sim.snapshot();
     for (const m of snap.entities) invalid ??= moverProblem(m, route);
     const me = snap.entities[playerId];
-    if (me && edges[edges.length - 1] !== me.road.edge) edges.push(me.road.edge);
+    // The route is the edges the bot rides: a crash's tumble body can flick across a junction and
+    // back within a tick or two (seed 7 after a box-truck hit, edge 8 -> 4 -> 8), which is not the
+    // bot turning back, so edges are counted only while riding.
+    const riding = me?.mode === 'Road' || me?.mode === 'Airborne';
+    if (me && riding && edges[edges.length - 1] !== me.road.edge) edges.push(me.road.edge);
     if (sim.tick % 60 === 0) hashes.push(sim.hash());
   }
   return { sim, playerId, edges, hashes, invalid, busted, stats: bot.stats() };

@@ -6,20 +6,69 @@
 // - An attack starts on the tick its `attack` flag rises (docs/architecture.md, "Movers"): a
 //   wind-up, a short active moment, a recovery, and for a weapon with a cooldown (the kick) a
 //   cooldown after that. Presses during wind-up, active or recovery are ignored. A kick asked for
-//   during its cooldown becomes a punch, so the button never feels dead.
+//   during its cooldown becomes a punch, so the button never feels dead. For the same reason a
+//   player's press made while staggered is kept, and the attack starts on the tick the stagger ends
+//   (M2 combat-3); the kick flag is read then, so a swipe held through the stagger still kicks.
 // - Phase timers count scaled time (world.timeScale per tick); only the hit-stop countdown runs
 //   on raw ticks, because a countdown scaled by a zero timeScale would never end.
 // - Auto-target picks the nearest valid rider in the acquisition box, preferring a non-cop. The
 //   side is the sign of the target's lateral offset; the side flags override it during the
 //   wind-up (and re-pick the target on that side), never once the active moment has started.
-//   A `kick` flag during a punch wind-up converts it into a kick wind-up.
+// - The kick conversion (M2 combat-3, playtest 1 item 3): a `kick` flag converts any attack but a
+//   kick into a kick while it is still in its wind-up (M1's rule), or while it is no older than
+//   combat.kickConvertMs (default 250 ms, 15 ticks) in any phase. A natural swipe-down takes longer
+//   than the punch's 7-tick wind-up to recognise, so the window reaches past it. Inside the window
+//   the kick keeps the attack's age (capped one tick short of the kick's wind-up), so a swipe lands
+//   on the kick's own schedule from the press, never later; outside it (a late change of mind
+//   during a long pipe wind-up) the kick's wind-up starts from zero, as in M1. A punch that has
+//   already landed stands: the jab, then the kick. The input lane's gesture-timing invariant checks
+//   its swipe window against this window.
 // - The hit test runs only while active, against that weapon's reach box on the chosen side. One
 //   hit per attack; no hit by the end of the active moment is an `attackMiss`.
-// - A landed hit: damage to health, a stagger (the target cannot start an attack, and its own
-//   wind-up is interrupted), sideways knockback away from the attacker, and at zero health a
-//   `crash` event (tumble-1 turns it into the tumble). A hit involving a player sets timeScale to
-//   0 for hitStopMs × combat.hitStopScale (rival-against-rival hits get none).
+// - A landed hit: damage to health, a stagger (the target cannot start an attack, its own wind-up
+//   is interrupted, and the riders phase's wobble halves its steering and shakes the bike for the
+//   stagger's length), a sideways shove away from the attacker, and at zero health a `crash` event
+//   (tumble-1 turns it into the tumble). A hit involving a player sets timeScale to 0 for
+//   hitStopMs × combat.hitStopScale (rival-against-rival hits get none).
+// - The shove (M2 combat-3, playtest 1 item 4) is a short curve: the lateral speed peaks on the
+//   hit and falls linearly to zero over combat.knockbackDecayS of world time, so it moves the
+//   target peak × decay / 2 metres, integrated exactly per tick. The peak is the weapon's
+//   knockbackMps × combat.knockbackScale (× combat.kickShoveScale for a kick) × the total-mass
+//   ratio attacker/target (rider plus bike, clamped 0.5–2) × the attacker's bike hitPowerScale ×
+//   (1 − the target's bike knockbackResistance). At the defaults a kick (18 m/s over 0.4 s) moves
+//   the target 3.6 m, about a lane, like a forced swerve, possibly into traffic. A punch
+//   (3.3 m/s) and the pipe (7.5 m/s) keep M1's nudges, 0.66 m and 1.5 m: the stagger is what is
+//   new for them. (A 0.3 m punch kept the bot's fights alongside a rival going, which slowed it
+//   and raised the cop's bust rate from 9 to 13 in 40 bot races; M1's nudge ends a fight as before.)
+//   The shove stops at the drivable edge (riders' barrierLimits). A non-player's kick on a player
+//   shoves by combat.onPlayerScale, and any non-player's hit on a player wobbles by it (default
+//   0.4, so a rival's kick moves you about 1.4 m, near M1's 1.7 m, and a rival's punch keeps M1's
+//   0.66 m): the big shove is the player's new tool, and playtest 1 asked that rivals stay as hard
+//   as they were. At 1.0 an 8-race bot batch saw hits on the player rise from 27 to 51 and
+//   knock-offs from 0 to 7. Each `hit` event
+//   carries `hitImpulse`, a 0..1 strength for the camera jolt and haptics: (damage + peak shove
+//   m/s) / 40, capped at 1.
+// - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
+//   attack started, landed or received, a riding player regains combat.regenPerS points a second,
+//   in whole points, up to the maximum. Rivals and the cop do not recover.
+// - The momentum kick (playtest 1 item 9): a kick's shove adds the kicker's own sideways speed
+//   toward the target (speed × sin(yaw) along d), × combat.momentumKickGain (1), capped at
+//   combat.momentumKickMaxMps (8 m/s, 1.6 m more). Steering away adds nothing.
 // - One cause id per attack: attackStart, hit, kick, attackMiss and the resulting crash share it.
+//
+// Takedowns and the slow motion (docs/milestones/M2.md, combat-4):
+// - A rider who goes down within combat.takedownWindowS (2 s, raw ticks from the hit to the crash)
+//   of a landed hit is a `takedown` for its lastAttackerId: `data.kind` `health` (the finishing
+//   hit), `traffic` (a car, a big pedestrian or animal, a flying body) or `scenery` (anything
+//   else). Crashes come from world.lastEvents, since traffic, peds and tumble run after combat,
+//   so the takedown comes one tick after the crash and carries its causeId. A crash with
+//   data.contact `tumble` (a body already down touching a car) never counts; one fall is one
+//   takedown at most.
+// - A traffic or scenery takedown with a player on either side, with SimConfig.slowMo on, starts
+//   the slow motion on the takedown's tick: timeScale combat.slowmoScale (0.3) for
+//   combat.slowmoS (0.8 s, 48 raw ticks), `slowmoStart` then `slowmoEnd`, none within
+//   combat.slowmoCooldownS (8 s) of the last start. A hit-stop inside it pauses its count and
+//   restores the slow scale; world.facts.slowmo shows the ticks left.
 //
 // Pickup weapons and the steal (docs/milestones/M1.md, combat-2):
 // - Each non-unarmed weapon in the config (the lead pipe in M1) lies on the road as a `pickup`
@@ -39,11 +88,11 @@
 // - A rider who wrecks (leaves Road/Airborne, or reaches zero health) drops the weapon where it
 //   is; it lies on the road as a pickup again. A held pickup entity is stowed below the road
 //   (h = STOWED_H) so presentation shows it only through the holder's `heldWeapon`.
-import { clamp, type EntityId, type TuningParamDecl } from '../../core';
+import { clamp, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
-import { riderState } from '../riders';
-import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef } from '../types';
-import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import { barrierLimits, riderState } from '../riders';
+import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
+import { addMover, emit, setSlowmo, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COMBAT_TUNING: readonly TuningParamDecl[] = [
   {
@@ -68,6 +117,160 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    id: 'combat.kickShoveScale',
+    group: 'combat',
+    label: 'Kick shove',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.knockbackDecayS',
+    group: 'combat',
+    label: 'Shove length',
+    default: 0.4,
+    min: 0.1,
+    max: 1,
+    step: 0.05,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.staggerScale',
+    group: 'combat',
+    label: 'Stagger',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.kickConvertMs',
+    group: 'combat',
+    label: 'Kick swipe grace',
+    default: 250,
+    min: 0,
+    max: 400,
+    step: 10,
+    unit: 'ms',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.onPlayerScale',
+    group: 'combat',
+    label: 'Rival hits on you',
+    default: 0.4,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.regenDelayS',
+    group: 'combat',
+    label: 'Recover after',
+    default: 5,
+    min: 0,
+    max: 20,
+    step: 0.5,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.regenClearM',
+    group: 'combat',
+    label: 'Recover when clear by',
+    default: 15,
+    min: 0,
+    max: 60,
+    step: 1,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.regenPerS',
+    group: 'combat',
+    label: 'Recovery rate',
+    default: 3,
+    min: 0,
+    max: 20,
+    step: 0.5,
+    unit: 'hp/s',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.momentumKickGain',
+    group: 'combat',
+    label: 'Momentum kick',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.momentumKickMaxMps',
+    group: 'combat',
+    label: 'Momentum kick cap',
+    default: 8,
+    min: 0,
+    max: 20,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.takedownWindowS',
+    group: 'combat',
+    label: 'Takedown credit window',
+    default: 2,
+    min: 0.5,
+    max: 5,
+    step: 0.1,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.slowmoScale',
+    group: 'combat',
+    label: 'Slow motion speed',
+    default: 0.3,
+    min: 0.1,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.slowmoS',
+    group: 'combat',
+    label: 'Slow motion length',
+    default: 0.8,
+    min: 0.2,
+    max: 3,
+    step: 0.05,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.slowmoCooldownS',
+    group: 'combat',
+    label: 'Slow motion cooldown',
+    default: 8,
+    min: 0,
+    max: 30,
+    step: 0.5,
+    unit: 's',
+    affectsSim: true,
+  },
 ];
 
 /** The unarmed weapon entries, by content id. */
@@ -77,8 +280,11 @@ export const KICK_ID = 'base:kick';
 /** Auto-target acquisition box (M1 starting numbers): |Δs| ≤ 4 m, |Δd| ≤ 3 m. */
 export const ACQUIRE_S_M = 4;
 export const ACQUIRE_D_M = 3;
-/** Knockback speed decays at this rate, 1/s (a kick of 5 m/s slides the target about 1.7 m). */
-const KNOCKBACK_DECAY = 3;
+/** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
+const MASS_RATIO_MIN = 0.5;
+const MASS_RATIO_MAX = 2;
+/** hitImpulse = (damage + peak shove m/s) / this, capped at 1. */
+const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
 
@@ -101,6 +307,8 @@ export interface CombatState {
   weapon: string[];
   /** Scaled ticks spent in the current phase. */
   elapsed: number[];
+  /** Scaled ticks since the current attack started (its age across phases). */
+  age: number[];
   /** Attack side in the attacker's frame: +1 right, -1 left. */
   side: number[];
   targetId: EntityId[];
@@ -112,11 +320,36 @@ export interface CombatState {
   cooldownWeapon: string[];
   /** Scaled ticks of stagger left. */
   stagger: number[];
-  /** Knockback speed along +d, m/s. */
-  knockVel: number[];
+  /** The current shove's peak speed along +d, m/s (0 = none). */
+  knockPeak: number[];
+  /** Scaled ticks into the current shove, and its whole length in ticks. */
+  knockT: number[];
+  knockTicks: number[];
+  /** Scaled ticks since this rider last started, landed or took an attack. */
+  calm: number[];
+  /** Recovery owed, in 1/60 points (whole points are paid into health). */
+  regenAcc: number[];
   lastAttackerId: EntityId[];
+  /** Raw tick of the last hit this rider took (-1: none), for takedown credit. */
+  hitTick: number[];
+  /** Whether this rider's current fall has been looked at for a takedown (reset while riding). */
+  downSeen: boolean[];
+  /** Takedowns credited to each rider this race. */
+  takedowns: number[];
+  /** The takedown slow motion in progress (its raw ticks left are world.facts.slowmo). */
+  slowmo: {
+    actor: EntityId;
+    target: EntityId;
+    cause: number;
+    /** The time scale to go back to when it ends. */
+    resume: number;
+    /** Raw tick it started (-1: never), for the length and the cooldown. */
+    startTick: number;
+  };
   /** Last tick's flags, for press edges. */
   prevFlags: number[];
+  /** An attack press made while staggered, kept until the stagger ends. */
+  pending: boolean[];
   /** Raw ticks of hit-stop left, and the timeScale to restore afterwards. */
   hitStopTicks: number;
   resumeTimeScale: number;
@@ -137,6 +370,7 @@ export function combatState(world: World): CombatState {
     phase: [],
     weapon: [],
     elapsed: [],
+    age: [],
     side: [],
     targetId: [],
     landed: [],
@@ -144,9 +378,18 @@ export function combatState(world: World): CombatState {
     cooldown: [],
     cooldownWeapon: [],
     stagger: [],
-    knockVel: [],
+    knockPeak: [],
+    knockT: [],
+    knockTicks: [],
+    calm: [],
+    regenAcc: [],
     lastAttackerId: [],
+    hitTick: [],
+    downSeen: [],
+    takedowns: [],
+    slowmo: { actor: -1, target: -1, cause: 0, resume: 1, startTick: -1 },
     prevFlags: [],
+    pending: [],
     hitStopTicks: 0,
     resumeTimeScale: 1,
     held: [],
@@ -275,17 +518,21 @@ function durationOf(w: SimWeaponDef, phase: ActivePhase): number {
   return w.recoveryTicks;
 }
 
+/** Starts a wind-up; `age` is where it starts (non-zero only for a kick conversion). */
 function startAttack(
   world: World,
   st: CombatState,
   a: Mover,
   w: SimWeaponDef,
   cause: number | undefined,
+  age = 0,
 ): void {
   const id = a.id;
   st.phase[id] = 'windup';
   st.weapon[id] = w.contentId;
-  st.elapsed[id] = 0;
+  st.elapsed[id] = age;
+  st.age[id] = age;
+  st.calm[id] = 0;
   st.landed[id] = false;
   st.stealCued[id] = false;
   const target = st.targetId[id] ?? -1;
@@ -308,6 +555,7 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
   const w = weaponById(config, st.weapon[id] ?? '');
   if (st.phase[id] === 'idle' || !w) return;
   st.elapsed[id] = (st.elapsed[id] ?? 0) + ts;
+  st.age[id] = (st.age[id] ?? 0) + ts;
   for (;;) {
     const phase: ActivePhase = st.phase[id] ?? 'idle';
     if (phase === 'idle') return;
@@ -366,23 +614,45 @@ function land(
   const vid = victim.id;
   const cause = st.cause[id] ?? 0;
   st.landed[id] = true;
+  st.calm[id] = 0;
+  st.calm[vid] = 0;
   const kick = w.contentId === KICK_ID;
   const health = Math.max(0, (riders.health[vid] ?? 0) - w.damage);
   riders.health[vid] = health;
+  // The shove along d, away from the attacker (the attack side when they are level).
+  const away = (dd === 0 ? (st.side[id] ?? 1) : dd < 0 ? -1 : 1) * a.pos.dir;
+  // The momentum kick (playtest 1 item 9): a player kicking while steering into the target adds
+  // their own sideways speed toward it to the shove, × combat.momentumKickGain, capped. Players
+  // only: rivals steer constantly, and with it their pack fights changed enough to halve the
+  // grudge holders' swings at the player (playtest 1 item 7: rivals stay as they are).
+  const surge = kick && isPlayer(config, a) ? momentum(world, a, away) : 0;
+  const fullPeak = shovePeak(world, config, a, victim, w) + surge;
+  // A rider's kick on a player shoves less, and any rider's hit on a player wobbles less
+  // (combat.onPlayerScale): the kick's lane-wide shove and the wobble are new, and the playtest
+  // asked that rivals stay as hard as they were. A punch or the pipe keeps M1's nudge.
+  const onPlayer =
+    isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
+  const peak = fullPeak * (kick ? onPlayer : 1);
+  const hitImpulse = Math.min(1, (w.damage + fullPeak) / HIT_IMPULSE_FULL);
   emit(
     world,
     'hit',
     id,
-    { weapon: w.contentId, damage: w.damage, kick, health },
+    { weapon: w.contentId, damage: w.damage, kick, health, hitImpulse },
     { target: vid, causeId: cause },
   );
   if (kick) emit(world, 'kick', id, { weapon: w.contentId }, { target: vid, causeId: cause });
 
-  // Knockback along d, away from the attacker (the attack side when they are level).
-  const away = (dd === 0 ? (st.side[id] ?? 1) : dd < 0 ? -1 : 1) * a.pos.dir;
-  st.knockVel[vid] = away * w.knockbackMps * (world.params['combat.knockbackScale'] ?? 1);
-  st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, w.staggerTicks);
+  st.knockPeak[vid] = away * peak;
+  st.knockT[vid] = 0;
+  st.knockTicks[vid] = Math.max(1, Math.round((world.params['combat.knockbackDecayS'] ?? 0.4) * 60));
+  // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
+  const stagger = Math.round(w.staggerTicks * (world.params['combat.staggerScale'] ?? 1));
+  st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
+  const wobble = Math.round(stagger * onPlayer);
+  if (wobble > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, wobble);
   st.lastAttackerId[vid] = id;
+  st.hitTick[vid] = world.tick;
   if (st.phase[vid] === 'windup') endAttack(st, vid);
 
   if (health <= 0) {
@@ -410,24 +680,185 @@ function hitTest(world: World, config: SimConfig, st: CombatState, a: Mover): vo
   if (pick && victim) land(world, config, st, a, victim, w, pick.dd);
 }
 
-/** Moves knocked-back riders sideways (scaled time) and keeps them on the drivable width. */
-function slide(world: World, config: SimConfig, st: CombatState, dt: number): void {
+function totalMass(config: SimConfig, m: Mover): number {
+  const def = config.riders[m.riderIndex];
+  return def ? def.massKg + def.bike.massKg : 1;
+}
+
+/** A landed hit's peak shove speed, m/s (unsigned): the file header gives the formula. */
+function shovePeak(world: World, config: SimConfig, a: Mover, victim: Mover, w: SimWeaponDef): number {
+  const p = world.params;
+  const kickScale = w.contentId === KICK_ID ? (p['combat.kickShoveScale'] ?? 1) : 1;
+  const ratio = clamp(totalMass(config, a) / totalMass(config, victim), MASS_RATIO_MIN, MASS_RATIO_MAX);
+  const power = config.riders[a.riderIndex]?.bike.hitPowerScale ?? 1;
+  const resist = clamp(config.riders[victim.riderIndex]?.bike.knockbackResistance ?? 0, 0, 1);
+  const peak = w.knockbackMps * (p['combat.knockbackScale'] ?? 1) * kickScale * ratio * power * (1 - resist);
+  return Math.max(0, peak);
+}
+
+function endShove(st: CombatState, id: EntityId): void {
+  st.knockPeak[id] = 0;
+  st.knockT[id] = 0;
+}
+
+/**
+ * Moves shoved riders sideways by `ts` scaled ticks of their shove curve (speed peak·(1 − t/N)
+ * over N ticks, integrated exactly, so the distance does not depend on the time scale) and keeps
+ * them inside the drivable limits; reaching a limit ends the shove.
+ */
+function slide(world: World, config: SimConfig, st: CombatState, ts: number): void {
   for (const m of world.movers) {
-    const v = st.knockVel[m.id] ?? 0;
-    if (v === 0) continue;
+    const peak = st.knockPeak[m.id] ?? 0;
+    if (peak === 0) continue;
     if (!isRiding(m)) {
-      st.knockVel[m.id] = 0;
+      endShove(st, m.id);
       continue;
     }
-    if (dt <= 0) continue;
-    const edge = config.road.edges[m.pos.edge];
-    const d = m.pos.d + v * dt;
-    const lo = edge ? edge.dMin + 0.5 : d;
-    const hi = edge ? edge.dMax - 0.5 : d;
+    if (ts <= 0) continue;
+    const n = st.knockTicks[m.id] ?? 1;
+    const t0 = st.knockT[m.id] ?? 0;
+    const t1 = Math.min(n, t0 + ts);
+    const d = m.pos.d + (peak / 60) * (t1 - t0 - (t1 * t1 - t0 * t0) / (2 * n));
+    const { lo, hi } = barrierLimits(config, m.pos.edge, m.pos.s);
     m.pos.d = clamp(d, lo, hi);
-    const decayed = v * (1 - KNOCKBACK_DECAY * dt);
-    st.knockVel[m.id] = m.pos.d !== d || Math.abs(decayed) < 0.05 ? 0 : decayed;
+    st.knockT[m.id] = t1;
+    if (m.pos.d !== d || t1 >= n - EPS) endShove(st, m.id);
   }
+}
+
+/** Whether another riding rider is within `rangeM` of `m` along the road (either way). */
+function riderNear(world: World, config: SimConfig, m: Mover, rangeM: number): boolean {
+  for (const o of world.movers) {
+    if (o.id === m.id || !isRiding(o)) continue;
+    const rel = relative(config.road, m, o, rangeM + 2);
+    if (rel && Math.abs(rel.ds) <= rangeM) return true;
+  }
+  return false;
+}
+
+/**
+ * Out-of-combat recovery: whole points into a player's health once they have been calm long
+ * enough, clear of other riders. Players only: the product spec's "back off until your energy is
+ * restored" is the player's, and rivals and the cop keep M1's durability. Both limits came from
+ * the fighting dev bot's cop busts on the 50-seed batch: 9 with no recovery, 14 when everyone
+ * healed, 15 when the player healed while still riding in the pack.
+ */
+function recover(world: World, config: SimConfig, st: CombatState, ts: number): void {
+  const health = riderState(world).health;
+  const delay = Math.round((world.params['combat.regenDelayS'] ?? 5) * 60);
+  const rate = world.params['combat.regenPerS'] ?? 3;
+  const clearM = world.params['combat.regenClearM'] ?? 15;
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || !isPlayer(config, m)) continue;
+    // Backing off counts only once no other riding rider is within clearM along the road.
+    if (clearM > 0 && isRiding(m) && riderNear(world, config, m, clearM)) st.calm[m.id] = 0;
+    const calm = (st.calm[m.id] ?? 0) + ts;
+    st.calm[m.id] = calm;
+    const max = config.riders[m.riderIndex]?.healthMax ?? 0;
+    const hp = health[m.id] ?? 0;
+    if (!isRiding(m) || hp <= 0 || hp >= max || calm + EPS < delay) {
+      st.regenAcc[m.id] = 0;
+      continue;
+    }
+    let acc = (st.regenAcc[m.id] ?? 0) + rate * ts;
+    const whole = Math.floor((acc + EPS) / 60);
+    acc -= whole * 60;
+    st.regenAcc[m.id] = acc;
+    if (whole > 0) health[m.id] = Math.min(max, hp + whole);
+  }
+}
+
+/**
+ * The momentum kick's extra shove speed, m/s: the kicker's sideways speed along d toward the
+ * target (`away` is the shove's d sign), × combat.momentumKickGain, capped at
+ * combat.momentumKickMaxMps. Steering away adds nothing.
+ */
+function momentum(world: World, a: Mover, away: number): number {
+  const toward = a.pos.dir * a.speed * sin(a.yaw) * away;
+  const gain = world.params['combat.momentumKickGain'] ?? 1;
+  const max = world.params['combat.momentumKickMaxMps'] ?? 8;
+  return clamp(gain * Math.max(0, toward), 0, Math.max(0, max));
+}
+
+// ---- Takedowns and the slow motion (M2 combat-4) ---------------------------------------------
+
+/** How a fall counts: the finishing hit, a moving hazard, or anything else in the way. */
+function takedownKind(data: Readonly<Record<string, unknown>>): TakedownKind {
+  if (data['reason'] === 'knockedOff') return 'health';
+  const cause = data['cause'];
+  return cause === 'traffic' || cause === 'ped' || cause === 'tumble' ? 'traffic' : 'scenery';
+}
+
+/** A takedown count, for the results screen and M4's takedown hunts. */
+export function takedownCount(world: World, id: EntityId): number {
+  return combatState(world).takedowns[id] ?? 0;
+}
+
+/**
+ * Credits last tick's falls (world.lastEvents: every phase's crashes, traffic's and tumble's
+ * included, which run after this one). A rider's first crash of a fall is a takedown for its
+ * lastAttackerId when that rider's hit landed within combat.takedownWindowS (raw ticks, from the
+ * hit to the crash). A crash whose data.contact is `tumble` (a body already down touching a car)
+ * never counts. The takedown carries the crash's causeId, one tick after the crash.
+ */
+function creditTakedowns(world: World, config: SimConfig, st: CombatState): void {
+  for (const m of world.movers) if (m.kind === 'rider' && isRiding(m)) st.downSeen[m.id] = false;
+  const window = Math.round((world.params['combat.takedownWindowS'] ?? 2) * 60);
+  for (const e of world.lastEvents) {
+    if (e.type !== 'crash' || e.data['contact'] === 'tumble') continue;
+    const victim = world.movers[e.actor];
+    if (!victim || victim.kind !== 'rider' || isRiding(victim) || st.downSeen[victim.id]) continue;
+    st.downSeen[victim.id] = true;
+    const by = st.lastAttackerId[victim.id] ?? -1;
+    const hitAt = st.hitTick[victim.id] ?? -1;
+    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) continue;
+    const kind = takedownKind(e.data);
+    st.takedowns[by] = (st.takedowns[by] ?? 0) + 1;
+    const extra: { target: EntityId; causeId?: number } = { target: victim.id };
+    if (e.causeId !== undefined) extra.causeId = e.causeId;
+    const cause = emit(world, 'takedown', by, { kind }, extra);
+    const attacker = world.movers[by];
+    const playerInvolved = isPlayer(config, victim) || (attacker !== undefined && isPlayer(config, attacker));
+    if (kind !== 'health' && playerInvolved && config.slowMo) startSlowmo(world, st, by, victim.id, cause);
+  }
+}
+
+/**
+ * The in-flow slow motion on a big, player-involved takedown: combat.slowmoScale for
+ * combat.slowmoS of raw ticks, unless one started within combat.slowmoCooldownS. It starts on the
+ * takedown's tick, after this phase's own step time was taken, so every phase sees the same count
+ * of slow ticks. During a hit-stop it takes over the scale the hit-stop restores.
+ */
+function startSlowmo(world: World, st: CombatState, actor: EntityId, target: EntityId, cause: number): void {
+  const sm = st.slowmo;
+  const cooldown = Math.round((world.params['combat.slowmoCooldownS'] ?? 8) * 60);
+  if (world.facts.slowmo.remainingTicks > 0) return;
+  if (sm.startTick >= 0 && world.tick - sm.startTick < cooldown) return;
+  const ticks = Math.max(1, Math.round((world.params['combat.slowmoS'] ?? 0.8) * 60));
+  const scale = world.params['combat.slowmoScale'] ?? 0.3;
+  st.slowmo = { actor, target, cause, resume: 1, startTick: world.tick };
+  if (st.hitStopTicks > 0) {
+    st.slowmo.resume = st.resumeTimeScale;
+    st.resumeTimeScale = scale;
+  } else {
+    st.slowmo.resume = world.timeScale;
+    world.timeScale = scale;
+  }
+  setSlowmo(world, ticks);
+  emit(world, 'slowmoStart', actor, { ticks, timeScale: scale }, { target, causeId: cause });
+}
+
+/** Counts the slow motion down on ticks the world moved, and ends it (restoring the scale). */
+function stepSlowmo(world: World, st: CombatState, frozenAtStart: boolean): void {
+  const left = world.facts.slowmo.remainingTicks;
+  const sm = st.slowmo;
+  if (left <= 0 || frozenAtStart || sm.startTick === world.tick) return;
+  setSlowmo(world, left - 1);
+  if (left - 1 > 0) return;
+  // A hit-stop that began this tick restores the scale the slow motion leaves behind.
+  if (st.hitStopTicks > 0) st.resumeTimeScale = sm.resume;
+  else world.timeScale = sm.resume;
+  emit(world, 'slowmoEnd', sm.actor, {}, { target: sm.target, causeId: sm.cause });
 }
 
 // ---- Pickup weapons and the steal (combat-2) ------------------------------------------------
@@ -595,6 +1026,22 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
   }
 }
 
+/**
+ * The kick flag on an attack that is not a kick: converts it while it is in its wind-up, or while
+ * it is inside the kick-conversion window (keeping its age); the file header has the rule.
+ */
+function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover): void {
+  const id = a.id;
+  const age = st.age[id] ?? 0;
+  const window = Math.round(((world.params['combat.kickConvertMs'] ?? 250) * 60) / 1000);
+  const early = age <= window + EPS;
+  if (!early && st.phase[id] !== 'windup') return;
+  const kick = resolveWeapon(config, st, id, true);
+  if (!kick || kick.contentId !== KICK_ID) return;
+  const carried = early ? Math.min(age, Math.max(0, kick.windupTicks - 1)) : 0;
+  startAttack(world, st, a, kick, st.cause[id], carried);
+}
+
 export const combatSystem: SimSystem = {
   name: 'combat',
   init(world: World, config: SimConfig) {
@@ -607,6 +1054,7 @@ export const combatSystem: SimSystem = {
       st.phase[m.id] = 'idle';
       st.weapon[m.id] = '';
       st.elapsed[m.id] = 0;
+      st.age[m.id] = 0;
       st.side[m.id] = 1;
       st.targetId[m.id] = -1;
       st.landed[m.id] = false;
@@ -614,9 +1062,17 @@ export const combatSystem: SimSystem = {
       st.cooldown[m.id] = 0;
       st.cooldownWeapon[m.id] = '';
       st.stagger[m.id] = 0;
-      st.knockVel[m.id] = 0;
+      st.knockPeak[m.id] = 0;
+      st.knockT[m.id] = 0;
+      st.knockTicks[m.id] = 1;
+      st.calm[m.id] = 0;
+      st.regenAcc[m.id] = 0;
       st.lastAttackerId[m.id] = -1;
+      st.hitTick[m.id] = -1;
+      st.downSeen[m.id] = false;
+      st.takedowns[m.id] = 0;
       st.prevFlags[m.id] = 0;
+      st.pending[m.id] = false;
       st.held[m.id] = '';
       st.heldPickup[m.id] = -1;
       st.stealCued[m.id] = false;
@@ -632,7 +1088,9 @@ export const combatSystem: SimSystem = {
     const st = combatState(world);
     const frozenAtStart = st.hitStopTicks > 0;
     const ts = world.timeScale;
-    slide(world, config, st, ts / 60);
+    // Last tick's falls first: a takedown (and its slow motion, from the phases after this one).
+    creditTakedowns(world, config, st);
+    slide(world, config, st, ts);
     const health = riderState(world).health;
 
     // Press edges first, for everyone, so the steal pass sees every thief before any attack moves.
@@ -654,6 +1112,7 @@ export const combatSystem: SimSystem = {
 
       if (!isRiding(a) || (health[id] ?? 0) <= 0) {
         if (st.phase[id] !== 'idle') endAttack(st, id);
+        st.pending[id] = false;
         continue;
       }
       advance(world, config, st, a, ts);
@@ -662,7 +1121,12 @@ export const combatSystem: SimSystem = {
       const wantKick = (flags & InputFlag.kick) !== 0;
       const override = sideFlag(flags);
       if (st.phase[id] === 'idle') {
-        if (pressed[id] && (st.stagger[id] ?? 0) <= EPS) {
+        const staggered = (st.stagger[id] ?? 0) > EPS;
+        // A player's press while staggered is kept and starts the attack as the stagger ends
+        // (combat-3). AI controllers press again when they want to, so theirs is dropped as in M1.
+        if (pressed[id] && staggered && isPlayer(config, a)) st.pending[id] = true;
+        if ((pressed[id] || st.pending[id]) && !staggered) {
+          st.pending[id] = false;
           const w = resolveWeapon(config, st, id, wantKick);
           if (w) {
             const aimed = aim(world, config, a, override);
@@ -678,14 +1142,13 @@ export const combatSystem: SimSystem = {
           st.targetId[id] = aimed.target;
           st.side[id] = aimed.side;
         }
-        if (wantKick && st.weapon[id] !== KICK_ID) {
-          const kick = resolveWeapon(config, st, id, true);
-          if (kick && kick.contentId === KICK_ID) startAttack(world, st, a, kick, st.cause[id]);
-        }
       }
+      if (st.phase[id] !== 'idle' && wantKick && st.weapon[id] !== KICK_ID)
+        convertToKick(world, config, st, a);
       hitTest(world, config, st, a);
     }
     pickupPass(world, config, st);
+    recover(world, config, st, ts);
 
     // The hit-stop counts raw ticks, starting the tick after it began, so riders (which move
     // before combat) and combat's own knockback both hold still for exactly its length.
@@ -696,5 +1159,7 @@ export const combatSystem: SimSystem = {
         world.timeScale = st.resumeTimeScale;
       }
     }
+    // The slow motion's raw ticks run only on ticks the world moved (a hit-stop pauses them).
+    stepSlowmo(world, st, frozenAtStart);
   },
 };

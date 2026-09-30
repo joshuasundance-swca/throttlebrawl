@@ -112,6 +112,12 @@ export interface EntitySnapshot {
    * hand-built snapshots; the sim fills it for every entity.
    */
   grudgeNotedBy?: readonly EntityId[];
+  /**
+   * Seconds of speed boost this rider has left from a `boostPad` (playtest 1b quick wins), 0 when
+   * none; 0 for other kinds. Presentation only (a boost flame, speed lines). Optional for
+   * hand-built snapshots; the sim fills it for every entity.
+   */
+  boostS?: number;
 }
 
 /** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
@@ -238,6 +244,12 @@ export type SimEventType =
    * it). Actor = the rival holding the grudge; target = the rider it is against.
    */
   | 'grudgeNoted'
+  /**
+   * A rider rode onto a `boostPad` (playtest 1b quick wins). Actor = the rider; `data.feature` is
+   * the pad's feature id, `data.speed` the rider's speed on entry, m/s, and `data.holdS` how long
+   * the boost lasts. One event per pad crossing.
+   */
+  | 'boost'
   | 'modifierStart'
   | 'modifierEnd';
 
@@ -382,6 +394,25 @@ export interface SimEventDef {
    */
   lengthId?: string;
   routeId?: string;
+  /**
+   * The event's style-cash values (M2 riders-5), from its `rewards` block. Optional for hand-built
+   * configs, where absent means every source scores 0; buildSimConfig always writes it.
+   */
+  style?: SimStyleRewards;
+}
+
+/**
+ * Style cash per source, from the event file's `rewards` style fields (docs/content-packs.md,
+ * "Event"); each is 0 when the file leaves it out. sim/race scores them as `style` events.
+ */
+export interface SimStyleRewards {
+  perNearMissCash: number;
+  perAirtimeCash: number;
+  perOncomingSecondCash: number;
+  /** A takedown's base cash; a combo's k-th takedown scores it × `takedownComboScale` × k. */
+  perTakedownCash: number;
+  takedownComboScale: number;
+  perStealCash: number;
 }
 
 /** Resolved difficulty scales, 1.0 = Normal. The preset id travels for display only. */

@@ -10,12 +10,12 @@ import { createAssetManifest } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, type CameraPose } from '../camera';
 import { assetIndex, contentHashes, loadBasePack, lookup } from '../content';
-import { createInput, type ActionState } from '../input';
+import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import { createSettingsStore, type StorageLike } from '../save';
-import { controlOptionsOf } from './controls';
+import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import {
   createSim,
   SIM_DT,
@@ -190,6 +190,8 @@ export function createApp(opts: AppOptions): AppHandle {
 
   // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
   const renderer = createRenderer(opts.canvas);
+  /** The canvas's width over its height, as the renderer's camera uses it. */
+  const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const dressing = Object.fromEntries(stream.road.edges.map((e) => [e.id, lookup(registry.roads, e.id)]));
   renderer.setRoad(stream.road, { timeOfDay: event.timeOfDay }, dressing);
   const camera = createFollowCamera({ road: stream.road });
@@ -259,6 +261,9 @@ export function createApp(opts: AppOptions): AppHandle {
     layout,
     tuning,
     settings,
+    // The control settings input-2 wired (#106); input itself is made after the ui, below, so the
+    // vibration check asks input's haptics the same question on a throwaway (no side effects).
+    liveSettings: liveControlSettings(browserControlDevice(createHaptics().supported)),
     callbacks: {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
@@ -370,8 +375,10 @@ export function createApp(opts: AppOptions): AppHandle {
           const at = curr?.entities[playerId];
           pose = camera.update({ ...me, mode: at?.mode, targetId: at?.targetId, road: at?.road }, dt, {
             entities: curr?.entities,
+            // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
+            aspect: viewAspect(),
           });
-        } else if (me && !attractPose) pose = attractPose = camera.snap(me);
+        } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).
         audio.frame(state === 'race' ? curr : null, playerId);
@@ -428,7 +435,7 @@ export function createApp(opts: AppOptions): AppHandle {
       curr = race.snapshot();
       recent = [];
       const me = curr.entities[playerId];
-      if (me) camera.snap(me);
+      if (me) camera.snap(me, { aspect: viewAspect() });
       input.calibrateTilt(); // the phone's angle now is straight ahead
       ui.show('race');
     },

@@ -8,6 +8,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // - Soft tier: after 20 s of racing, frame-time p50/p95 and sim-step p95 from dev/perf stay within
 //   twice the stored baseline (tests/perf/baseline.json, `soft`). It fails only on a catastrophic
 //   regression, and always prints the numbers with the renderer string.
+// - Slow-motion pile-up checkpoint (M2 dev-4): the first frame the sim's takedown slow motion is
+//   active during the run is a checkpoint too, held to the same draw-call and triangle budget. It
+//   prints NOT ACTIVE while no slow motion happens in the run: combat-4's slow motion needs a
+//   player-involved takedown, which the seeded bot race may not have in its first seconds. A staged
+//   pile-up scene can replace the seeded race's luck once the test handle can set one up.
 // Not active yet: forcing quality tier `low` with dynamic resolution off through the test flag
 // (render has no quality tiers or dynamic resolution in M1; the DPR is pinned to 1 by the config).
 
@@ -31,11 +36,17 @@ interface PerfReport {
   heapMB: number | null;
 }
 interface Handle {
-  snapshot(): { tick: number; entities: unknown[] } | null;
+  snapshot(): { tick: number; entities: unknown[]; slowmo?: { active: boolean } } | null;
   setBot(on: boolean): void;
   perf(): PerfReport;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+interface Checkpoint {
+  tick: number;
+  drawCalls: number;
+  triangles: number;
+  movers: number;
+}
+type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __slowmoCheckpoint?: Checkpoint };
 
 interface Budget {
   drawCallsMax: number;
@@ -72,9 +83,28 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   await page.locator('#menu-race').click();
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
   const started = Date.now();
+  // The slow-motion checkpoint: the first animation frame with the takedown slow motion active.
+  await page.evaluate(() => {
+    const w = window as TestWindow;
+    const watch = () => {
+      const g = w.__game;
+      const s = g?.snapshot();
+      if (g && s?.slowmo?.active && !w.__slowmoCheckpoint) {
+        const r = g.perf();
+        w.__slowmoCheckpoint = {
+          tick: s.tick,
+          drawCalls: r.drawCalls,
+          triangles: r.triangles,
+          movers: s.entities.length,
+        };
+      }
+      if (!w.__slowmoCheckpoint) requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  });
 
   // Hard gate: the scene at fixed sim ticks.
-  const checkpoints: { tick: number; drawCalls: number; triangles: number; movers: number }[] = [];
+  const checkpoints: Checkpoint[] = [];
   for (const tick of CHECKPOINT_TICKS) {
     await page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) >= t, tick, {
       timeout: 120_000,
@@ -98,6 +128,9 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   const wait = SOFT_SECONDS * 1000 - (Date.now() - started);
   if (wait > 0) await page.waitForTimeout(wait);
   const report = (await page.evaluate(() => (window as TestWindow).__game?.perf())) as PerfReport;
+  const slowmo = await page.evaluate<Checkpoint | null>(
+    () => (window as TestWindow).__slowmoCheckpoint ?? null,
+  );
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
   const printed = {
@@ -107,6 +140,7 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     cpuThrottle: CPU_THROTTLE,
     seconds: SOFT_SECONDS,
     checkpoints,
+    slowmoCheckpoint: slowmo,
     frameMs: report.frameMs,
     fps: Math.round(report.fps * 10) / 10,
     stepMs: report.stepMs,
@@ -124,6 +158,18 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     expect(c.drawCalls, `draw calls at tick ${c.tick}`).toBeGreaterThan(0);
     expect(c.drawCalls, `draw calls at tick ${c.tick}`).toBeLessThanOrEqual(budget.drawCallsMax);
     expect(c.triangles, `triangles at tick ${c.tick}`).toBeLessThanOrEqual(budget.trianglesMax);
+  }
+
+  if (slowmo) {
+    console.log(
+      `[assert] slow-motion pile-up checkpoint: ACTIVE (tick ${slowmo.tick}, ${slowmo.movers} movers)`,
+    );
+    expect(slowmo.drawCalls, 'draw calls in slow motion').toBeLessThanOrEqual(budget.drawCallsMax);
+    expect(slowmo.triangles, 'triangles in slow motion').toBeLessThanOrEqual(budget.trianglesMax);
+  } else {
+    console.log(
+      `[assert] slow-motion pile-up checkpoint: NOT ACTIVE (no player-involved takedown slow motion in the first ${SOFT_SECONDS} s of the seeded race; a staged pile-up is dev-4 part 2)`,
+    );
   }
 
   // Soft tier.
