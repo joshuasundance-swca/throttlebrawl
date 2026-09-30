@@ -322,6 +322,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.speedScale',
       'riders.accelScale',
       'riders.crashImpactMps',
+      'riders.landingCrashMps',
     ]);
     for (const d of RIDERS_TUNING) {
       expect(d.affectsSim).toBe(true);

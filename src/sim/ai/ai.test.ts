@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { FNV_OFFSET } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type RoadPos } from '../../road';
-import { raceSystem } from '../race';
+import { raceSystem, rubberBandFactor } from '../race';
 import { ridersSystem } from '../riders';
 import { InputFlag, type SimAiPersonality, type SimConfig, type SimInput, type SimRiderDef } from '../types';
 import {
@@ -19,7 +19,7 @@ import {
   type SystemName,
   type World,
 } from '../world';
-import { aiState, aiSystem, resolveProfile, rubberBand } from './index';
+import { aiState, aiSystem, resolveProfile } from './index';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });
 const SYSTEMS = orderSystems(
@@ -39,7 +39,7 @@ const route = createRouteProgress(road, {
   id: 'r',
   network: 'fixture',
   start: { road: 'a', s: 20, dir: 1 },
-  finish: { road: 'c', s: 780 },
+  finish: { road: 'c', s: 760 }, // 40 m before the road's end, like the M1 track
   mainPath: ['a', 'b', 'c'],
   allowedRoads: ['a', 'b', 'c'],
   closed: false,
@@ -183,33 +183,25 @@ describe('ai: style presets and personality overrides', () => {
 });
 
 describe('ai: the rubber band', () => {
-  it('pushes a rival toward the player, within ±6 % scaled by difficulty', () => {
+  it('holds pace × its jitter × the race’s rubber-band factor: faster behind the player, slower ahead', () => {
     const sc = scene(
-      [rival('racer'), rival('racer', undefined, 'r2'), PLAYER],
+      [rival('racer', { weave: 0 }, 'ahead'), rival('racer', { weave: 0 }, 'behind'), PLAYER],
       [
-        { s: 400, d: 1.7, v: 30 },
+        { s: 700, d: 1.7, v: 30 },
         { s: 40, d: 1.7, v: 30 },
-        { s: 200, d: 1.7, v: 30 },
+        { s: 400, d: 1.7, v: 30 },
       ],
     );
-    step(sc);
-    const ahead = rubberBand(sc.world, sc.config, 0);
-    const behind = rubberBand(sc.world, sc.config, 1);
-    expect(ahead).toBeLessThan(1);
-    expect(behind).toBeGreaterThan(1);
-    expect(ahead).toBeGreaterThanOrEqual(0.94);
-    expect(behind).toBeLessThanOrEqual(1.06);
-    const off = scene(
-      [rival('racer'), PLAYER],
-      [
-        { s: 400, d: 1.7, v: 30 },
-        { s: 40, d: 1.7, v: 30 },
-      ],
-      [],
-      { difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 0 } },
-    );
-    step(off);
-    expect(rubberBand(off.world, off.config, 0)).toBe(1);
+    const player = cruise(sc, 2);
+    for (let t = 0; t < 60 * 10; t++) step(sc, { ...player(), throttle: 255 });
+    const st = aiState(sc.world);
+    const factors = [rubberBandFactor(sc.world, 0), rubberBandFactor(sc.world, 1)];
+    expect(factors[0]).toBeLessThan(1);
+    expect(factors[1]).toBeGreaterThan(1);
+    for (const id of [0, 1]) {
+      const want = sc.config.event.paceMps * (st.paceJitter[id] ?? 1) * (factors[id] ?? 1);
+      expect(Math.abs((sc.riders[id]?.speed ?? 0) - want)).toBeLessThan(0.6);
+    }
   });
 });
 
@@ -415,6 +407,38 @@ describe('ai: fights', () => {
 });
 
 describe('ai: the rest of the controller', () => {
+  it('a rival who has finished pulls onto the shoulder, out of the lane', () => {
+    const sc = scene(
+      [rival('racer', { weave: 0 }), PLAYER],
+      [
+        { s: 2362, d: 1.7, v: 25 }, // just past the finish (c at 760)
+        { s: 30, d: 1.7, v: 0 },
+      ],
+    );
+    for (let t = 0; t < 60 * 3; t++) step(sc);
+    // The drive lane toward +s spans d 0..3.4; its shoulder is centred at 4.15.
+    expect(sc.riders[0]?.pos.d).toBeGreaterThan(3.4);
+  });
+
+  it('once the player is home, the rest stop fighting and hurry to the line', () => {
+    const sc = scene(
+      [rival('heavy-hitter', {}, 'a'), rival('racer', {}, 'b'), PLAYER],
+      [
+        { s: 30, d: 1.2, v: 28 },
+        { s: 32, d: 2.4, v: 28 },
+        { s: 2385, d: 1.7, v: 20 }, // past the finish (c at 760)
+      ],
+    );
+    let swings = 0;
+    for (let t = 0; t < 60 * 15; t++) {
+      step(sc);
+      for (const id of [0, 1]) if ((sc.world.inputs[id]?.flags ?? 0) & InputFlag.attack) swings++;
+    }
+    expect(swings).toBe(0);
+    expect(sc.riders[0]?.speed).toBeGreaterThan(35);
+    expect(sc.riders[1]?.speed).toBeGreaterThan(35);
+  });
+
   it('asks for the quick remount while down, and leaves cops to the cops phase', () => {
     const cop: SimRiderDef = {
       ...rival('racer'),

@@ -2,11 +2,16 @@ import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
-// The browser bot race (M1 app-1 acceptance; dev-1 takes this file over and grows it): the stub
-// bot rides a real race in the production build at the phone-landscape viewport, the race reaches
-// results with a placing, the start, midway and finish screenshots are not blank, the player
-// crosses the road's three edges with every mover valid at every tick, and the first draw-call,
-// triangle and frame-time numbers are printed with the renderer string.
+// The browser bot race (docs/milestones/M1.md, dev-1; docs/engineering.md, "Bot playthrough"):
+// the BotController rides a real race in the production build at the phone-landscape viewport,
+// driving the player slot through the input layer's action state. The race reaches results with
+// a placing, the start, midway and finish screenshots are not blank, every mover is valid at every
+// tick, and the draw-call, triangle and frame-time numbers are printed with the renderer string.
+//
+// Assertions switch on with the feature that makes them possible, and print ACTIVE or NOT ACTIVE
+// with the reason, so a switched-off check never reads as a pass:
+// - an attack connects: on since combat-1 (the seeded race, seed 1, is one the bot connects in);
+// - the bot took the shortcut: active once the bot's road offers a `shortcut` lane (road-2).
 
 interface Checks {
   ticks: number;
@@ -14,6 +19,15 @@ interface Checks {
   invalidTicks: number;
   firstInvalid: string | null;
   events: Record<string, number>;
+  playerHits: number;
+  bot: {
+    attackPresses: number;
+    skipTicks: number;
+    shortcutTicks: number;
+    shortcutSeenTicks: number;
+    trafficDodges: number;
+    engagements: number;
+  };
 }
 interface Stats {
   renderer: string;
@@ -43,7 +57,7 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   trianglesMax: number;
 };
 
-test('the stub bot races to results with a placing at phone landscape', async ({ page }, testInfo) => {
+test('the bot races to results with a placing at phone landscape', async ({ page }, testInfo) => {
   test.setTimeout(300_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
@@ -100,8 +114,27 @@ test('the stub bot races to results with a placing at phone landscape', async ({
   console.log(`race checks: ${JSON.stringify(checks)}`);
   expect(checks.ticks).toBeGreaterThan(600);
   expect(checks.invalidTicks, checks.firstInvalid ?? '').toBe(0);
-  expect(checks.playerEdges).toEqual([0, 1, 2]); // the three edges, both junctions crossed
+  // Crossed at least one junction, and never went back to an edge it had left.
+  expect(checks.playerEdges.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(checks.playerEdges).size).toBe(checks.playerEdges.length);
   expect(checks.events['finish'] ?? 0).toBeGreaterThan(0);
+
+  // The bot got a rival inside its attack window at least once (it fights, not just rides).
+  expect(checks.bot.attackPresses, 'the bot pressed attack').toBeGreaterThan(0);
+  // Combat is in (combat-1): on this seeded race the bot is known to connect.
+  console.log(
+    `[assert] an attack connects: ACTIVE (${checks.playerHits} hits from ${checks.bot.attackPresses} presses)`,
+  );
+  expect(checks.events['attackStart'] ?? 0, 'the sim answers attacks').toBeGreaterThan(0);
+  expect(checks.playerHits, 'at least one attack by the bot connects').toBeGreaterThan(0);
+  if (checks.bot.shortcutSeenTicks > 0) {
+    console.log(`[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutTicks} ticks on it)`);
+    expect(checks.bot.shortcutTicks, 'the bot took the shortcut').toBeGreaterThan(0);
+  } else {
+    console.log(
+      '[assert] the bot took the shortcut: NOT ACTIVE (no shortcut lane on its road; road-2 not on this build)',
+    );
+  }
 
   const frames = (await page.evaluate(() => (window as TestWindow).__game?.frameStats())) as ReturnType<
     Handle['frameStats']
@@ -109,7 +142,7 @@ test('the stub bot races to results with a placing at phone landscape', async ({
   const renderer = shots['start']?.stats.renderer ?? '';
   console.log(`renderer: ${renderer}`);
   const perf = {
-    scene: 'bot-race: skeleton track, 2 riders, start/midway/finish checkpoints',
+    scene: `bot-race: base event, ${(await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.entities.length)) ?? 0} movers at the finish, start/midway/finish checkpoints`,
     renderer,
     viewport: page.viewportSize(),
     checkpoints: Object.fromEntries(

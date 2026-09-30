@@ -34,7 +34,7 @@ import { createLoop } from './loop';
 import { transition, type AppEvent, type AppState } from './states';
 
 export { createHeadlessRace } from './headless';
-export type { HeadlessRace } from './headless';
+export type { HeadlessOptions, HeadlessRace } from './headless';
 export { buildSimConfig, DEFAULT_EVENT } from './config';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
@@ -90,6 +90,8 @@ export interface AppHandle {
   roadQueries: RoadQueriesFn;
   getReplayAndSettings: GetReplayAndSettings;
   frameStats(): FrameStats;
+  /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
+  stepTimes(): readonly number[];
   contentHashes(): { sim: string; full: string };
   replayKey(): string;
 }
@@ -125,7 +127,7 @@ export function createApp(opts: AppOptions): AppHandle {
 
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
-  const settings = settingsStore.load();
+  let settings = settingsStore.load();
   const layout: TouchLayout = { id: hud.id, mirror: settings.mirror || hud.mirror, elements: hud.elements };
   const recorder = createInputRecorder();
   const pendingTuning: { id: string; value: number }[] = [];
@@ -167,15 +169,43 @@ export function createApp(opts: AppOptions): AppHandle {
     return next !== null;
   };
 
+  // The pause screen (ui-1): pausing stops the loop and the sound; the lifecycle's onShown never
+  // resumes a race the player paused.
+  let hidden = false;
+  const unpause = () => {
+    if (hidden) return;
+    loop.resume();
+    void audio.resume();
+  };
   const ui = createUi(opts.host, {
     stampText: `throttlebrawl · ${build.channel} · ${build.branch} · ${build.id}`,
     layout,
     tuning,
+    settings,
     callbacks: {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
+      onPause: () => {
+        loop.pause();
+        audio.suspend();
+      },
+      onResume: unpause,
+      onRestart: () => {
+        unpause();
+        if (go('back')) handle.startRace();
+      },
+      onQuit: () => {
+        unpause();
+        handle.backToMenu();
+      },
+      onSettingsChange: (next) => {
+        settings = next;
+        settingsStore.save(next);
+        audio.setVolumes(next.volumes, next.mute);
+        input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
+      },
     },
   });
   if (settingsStore.notice) ui.notice(settingsStore.notice);
@@ -195,6 +225,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ui.show('results');
   };
 
+  const stepMs: number[] = [];
   const step = () => {
     if (!race) return;
     for (const change of pendingTuning.splice(0)) {
@@ -204,7 +235,10 @@ export function createApp(opts: AppOptions): AppHandle {
     const tick = race.tick;
     const cmd = input.sample(SIM_DT);
     recorder.record(tick, [cmd]);
+    const t0 = performance.now();
     race.step([cmd]);
+    stepMs.push(performance.now() - t0);
+    if (stepMs.length > 600) stepMs.shift();
     prev = curr;
     curr = race.snapshot();
     const events = race.events();
@@ -230,7 +264,9 @@ export function createApp(opts: AppOptions): AppHandle {
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         const player = curr?.entities[playerId] ?? null;
         audio.update(state === 'race' ? player : null);
-        if (state === 'race') ui.updateHud(player, curr?.entities.length ?? 0, settings.units);
+        // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
+        // and your target's.
+        if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
       },
     },
     SIM_DT,
@@ -238,11 +274,15 @@ export function createApp(opts: AppOptions): AppHandle {
 
   watchLifecycle({
     onHidden: () => {
+      hidden = true;
       loop.pause();
       audio.suspend();
     },
-    // ui-1's pause screen will catch this; until then the race resumes where it stopped.
+    // The race resumes where it stopped, unless the player had paused it. (Whether a resume should
+    // land behind the pause screen instead, as the architecture doc's default says, is app-2's.)
     onShown: () => {
+      hidden = false;
+      if (ui.paused) return;
       loop.resume();
       if (state !== 'boot' && state !== 'tapToStart') void audio.resume();
     },
@@ -308,6 +348,7 @@ export function createApp(opts: AppOptions): AppHandle {
         max: times[times.length - 1] ?? 0,
       };
     },
+    stepTimes: () => stepMs,
     contentHashes: () => hashes,
     replayKey: () => replayKey,
   };
