@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "tourist-with-cooler",
+  "name": "Tourist With Cooler",
+  "category": "pedestrian",
+  "tags": ["tourist"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.3,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#ff8fab", "#8fd3f0", "#f2c14e"] },
+  "meta": {
+    "status": "draft",
+    "notes": "Crosses the highway to reach a slightly different beach. Dives clear with the cooler held level; the drinks are the priority.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+  }
+}

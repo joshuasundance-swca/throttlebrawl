@@ -5,7 +5,17 @@
   "region": "florida-keys",
   "crs": { "kind": "tmerc", "originLatDeg": 24.7, "originLonDeg": -81.1, "originElevM": 0 },
   "chunking": { "kind": "none" },
-  "roads": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
+  "roads": [
+    "m1-marina-run",
+    "c-marina-split-main",
+    "m1-marina-bends",
+    "c-marina-merge-main",
+    "m1-pelican-bridge",
+    "m1-sandbar-causeway",
+    "c-boat-ramp-in",
+    "m1-boat-ramp-cut",
+    "c-boat-ramp-out"
+  ],
   "junctions": [
     {
       "id": "j-keys-m1-0",
@@ -18,21 +28,74 @@
     },
     {
       "id": "j-keys-m1-1",
-      "x": 104.6463,
+      "x": -13.0189,
       "y": 1.5,
-      "z": -1138.8826,
+      "z": -313.9946,
       "ends": [
         { "road": "m1-marina-run", "end": "to" },
-        { "road": "m1-pelican-bridge", "end": "from" }
+        { "road": "m1-marina-bends", "end": "from" },
+        { "road": "m1-boat-ramp-cut", "end": "from" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-marina-split-main-l1",
+          "road": "c-marina-split-main",
+          "from": { "road": "m1-marina-run", "end": "to", "lane": "L1" },
+          "to": { "road": "m1-marina-bends", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-marina-split-main-r1",
+          "road": "c-marina-split-main",
+          "from": { "road": "m1-marina-run", "end": "to", "lane": "R1" },
+          "to": { "road": "m1-marina-bends", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-boat-ramp-in",
+          "road": "c-boat-ramp-in",
+          "from": { "road": "m1-marina-run", "end": "to", "lane": "R1" },
+          "to": { "road": "m1-boat-ramp-cut", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 260, "s1": 300, "d0": 2.4, "d1": 4.9 }
+        }
+      ],
       "control": "none"
     },
     {
       "id": "j-keys-m1-2",
-      "x": 908.406,
+      "x": -110.648,
       "y": 1.5,
-      "z": -1924.8247,
+      "z": -1124.1468,
+      "ends": [
+        { "road": "m1-marina-bends", "end": "to" },
+        { "road": "m1-pelican-bridge", "end": "from" },
+        { "road": "m1-boat-ramp-cut", "end": "to" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-marina-merge-main-l1",
+          "road": "c-marina-merge-main",
+          "from": { "road": "m1-marina-bends", "end": "to", "lane": "L1" },
+          "to": { "road": "m1-pelican-bridge", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-marina-merge-main-r1",
+          "road": "c-marina-merge-main",
+          "from": { "road": "m1-marina-bends", "end": "to", "lane": "R1" },
+          "to": { "road": "m1-pelican-bridge", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-boat-ramp-out",
+          "road": "c-boat-ramp-out",
+          "from": { "road": "m1-boat-ramp-cut", "end": "to", "lane": "S1" },
+          "to": { "road": "m1-pelican-bridge", "end": "from", "lane": "R1" }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-3",
+      "x": 688.2277,
+      "y": 1.5,
+      "z": -1925.0227,
       "ends": [
         { "road": "m1-pelican-bridge", "end": "to" },
         { "road": "m1-sandbar-causeway", "end": "from" }
@@ -41,10 +104,10 @@
       "control": "none"
     },
     {
-      "id": "j-keys-m1-3",
-      "x": 1251.3299,
+      "id": "j-keys-m1-4",
+      "x": 1030.8426,
       "y": 1.5,
-      "z": -2803.7202,
+      "z": -2804.2226,
       "ends": [{ "road": "m1-sandbar-causeway", "end": "to" }],
       "connectors": [],
       "control": "none"
@@ -54,11 +117,11 @@
     "origin": "agent",
     "author": "agent",
     "createdAt": "2026-09-30",
-    "tool": { "name": "tools/road/bake.mjs", "version": "1.0.0" },
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
     "sources": []
   },
   "meta": {
     "status": "live",
-    "notes": "The M1 track: one main road cut into three roads joined end to end by pass-through junctions. road-2 adds the junction and the ramp shortcut."
+    "notes": "The M1 track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through."
   }
 }

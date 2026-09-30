@@ -2,7 +2,8 @@
 // constant-curvature arc, joined end to end by pass-through junctions, in the baked format.
 // Built with core/math so it may live in src/road under the determinism rules.
 import { cos, sin, type LaneInfo } from '../core';
-import type { BakedNetworkBundle, BakedRoad } from './types';
+import { compileTrack, type RampSource, type RoadSource, type TrackSource } from './compile';
+import type { BakedNetwork, BakedNetworkBundle, BakedRoad, BakedRoute } from './types';
 
 export const FIXTURE_LANES: readonly LaneInfo[] = [
   { id: 'L0', dCenterM: -4.15, widthM: 1.5, direction: -1, kind: 'shoulder' },
@@ -89,5 +90,94 @@ export function fixtureNetwork(specs: readonly FixtureEdgeSpec[], id = 'fixture'
       }),
     },
     roads,
+  };
+}
+
+const plainRoad = (id: string, extra: Partial<RoadSource> = {}): RoadSource => ({
+  id,
+  name: id,
+  speedLimitMps: 24.6,
+  surface: 'asphalt',
+  humps: [],
+  tags: [],
+  features: [],
+  barriers: [],
+  ...extra,
+});
+
+export interface BranchFixtureOptions {
+  /** Where the fixture's one ramp goes: on the straight of the shortcut (default) or on the main bend. */
+  rampOn?: 'shortcut' | 'bend';
+}
+
+/**
+ * A small track with one split and one merge (road-2), compiled by the real road compiler: main
+ * roads `a`, `b` and `d` (b swings through an S-bend), main-through connectors `c-split` and
+ * `c-merge`, and a straight shortcut `cut` with its connectors `c-in` and `c-out` and a ramp. The
+ * split zone is the last 40 m of `a`, d 2.4 to 4.9 (the right edge). Route `r` runs a to d.
+ */
+export function fixtureBranchTrack(opts: BranchFixtureOptions = {}): TrackSource {
+  const ramp: RampSource = { id: 'kicker', s0: 100, lengthM: 15, heightM: 1.5, backM: 5 };
+  const onBend = opts.rampOn === 'bend';
+  return {
+    network: {
+      id: 'fixture-y',
+      name: 'Fixture with a shortcut',
+      region: 'fixture',
+      crs: { kind: 'tmerc', originLatDeg: 0, originLonDeg: 0, originElevM: 0 },
+      notes: 'test fixture',
+    },
+    createdAt: '2026-09-30',
+    points: [
+      [0, 0],
+      [0, -200],
+      [-60, -330],
+      [-60, -470],
+      [0, -600],
+      [0, -800],
+    ],
+    baseElevationM: 1,
+    spacingM: 2,
+    smoothingM: 40,
+    lanes: FIXTURE_LANES,
+    roads: [
+      plainRoad('a', { lengthM: 200 }),
+      plainRoad('c-split', { lengthM: 30, connector: true }),
+      plainRoad('b', onBend ? { ramps: [{ ...ramp, s0: 60 }] } : {}),
+      plainRoad('c-merge', { lengthM: 30, connector: true }),
+      plainRoad('d', { lengthM: 200 }),
+    ],
+    branches: [
+      {
+        leave: { road: 'a', offsetM: 3.4, lane: 'R1', zone: { lengthM: 40, d0: 2.4, d1: 4.9 } },
+        join: { road: 'd', offsetM: 2.4, lane: 'R1' },
+        turnsM: [40, 40],
+        lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+        roads: [
+          plainRoad('c-in', { lengthM: 30, connector: true }),
+          plainRoad('cut', onBend ? {} : { ramps: [ramp] }),
+          plainRoad('c-out', { lengthM: 30, connector: true }),
+        ],
+      },
+    ],
+    route: {
+      id: 'r',
+      start: { road: 'a', s: 20, dir: 1 },
+      finish: { road: 'd', s: -20 },
+      checkpoints: [{ road: 'd', s: 50 }],
+      startGrid: { rows: 1, perRow: 2, rowGapM: 8 },
+    },
+  };
+}
+
+/** fixtureBranchTrack compiled: the network bundle and the route, in the baked format. */
+export function fixtureBranchNetwork(
+  opts: BranchFixtureOptions = {},
+): BakedNetworkBundle & { route: BakedRoute } {
+  const out = compileTrack(fixtureBranchTrack(opts));
+  return {
+    network: out.network as unknown as BakedNetwork,
+    roads: out.roads as unknown as BakedRoad[],
+    route: out.route as unknown as BakedRoute,
   };
 }

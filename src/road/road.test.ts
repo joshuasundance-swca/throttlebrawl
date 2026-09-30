@@ -60,8 +60,8 @@ describe('road: the network model', () => {
     expect(net.lanesAt(1, 50).map((l) => l.id)).toEqual(['L0', 'L1', 'R1', 'R0']);
     expect(net.nextEdges(0, 'to')).toEqual([{ edge: 1, entersAt: 'from' }]);
     expect(net.nextEdges(0, 'from')).toEqual([]);
-    expect(net.neighbours(0, 295, 10)).toEqual([{ edge: 1, sOffset: 300, sSign: 1 }]);
-    expect(net.neighbours(1, 5, 10)).toEqual([{ edge: 0, sOffset: -300, sSign: 1 }]);
+    expect(net.neighbours(0, 295, 10)).toEqual([{ edge: 1, sOffset: 300, sSign: 1, dOffset: 0 }]);
+    expect(net.neighbours(1, 5, 10)).toEqual([{ edge: 0, sOffset: -300, sSign: 1, dOffset: 0 }]);
   });
 
   it('curved-road kinematics: the same speed covers the same world distance inside and outside a bend', () => {

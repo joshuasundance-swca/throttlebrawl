@@ -19,6 +19,12 @@ describe('content: the base pack', () => {
     // The hand-made roads; the GIS side quest adds osm- prefixed roads beside them.
     const handMade = Object.keys(reg.roads).filter((k) => !k.startsWith('base:osm-'));
     expect(handMade.sort()).toEqual([
+      'base:c-boat-ramp-in',
+      'base:c-boat-ramp-out',
+      'base:c-marina-merge-main',
+      'base:c-marina-split-main',
+      'base:m1-boat-ramp-cut',
+      'base:m1-marina-bends',
       'base:m1-marina-run',
       'base:m1-pelican-bridge',
       'base:m1-sandbar-causeway',
