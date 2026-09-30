@@ -1,80 +1,51 @@
 {
   "type": "road-network",
   "id": "keys-m1",
-  "name": "Keys M1 skeleton (hand-authored placeholder)",
+  "name": "Keys M1 coastal highway (hand-authored)",
   "region": "florida-keys",
-  "crs": {
-    "kind": "tmerc",
-    "originLatDeg": 24.7,
-    "originLonDeg": -81.1,
-    "originElevM": 0
-  },
-  "chunking": {
-    "kind": "none"
-  },
+  "crs": { "kind": "tmerc", "originLatDeg": 24.7, "originLonDeg": -81.1, "originElevM": 0 },
+  "chunking": { "kind": "none" },
   "roads": ["m1-marina-run", "m1-pelican-bridge", "m1-sandbar-causeway"],
   "junctions": [
     {
-      "id": "j-m1-0",
+      "id": "j-keys-m1-0",
       "x": 0,
       "y": 1.5,
       "z": 0,
+      "ends": [{ "road": "m1-marina-run", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-1",
+      "x": 104.6463,
+      "y": 1.5,
+      "z": -1138.8826,
       "ends": [
-        {
-          "road": "m1-marina-run",
-          "end": "from"
-        }
+        { "road": "m1-marina-run", "end": "to" },
+        { "road": "m1-pelican-bridge", "end": "from" }
       ],
       "connectors": [],
       "control": "none"
     },
     {
-      "id": "j-m1-1",
-      "x": 159.6652,
+      "id": "j-keys-m1-2",
+      "x": 908.406,
       "y": 1.5,
-      "z": -771.768,
+      "z": -1924.8247,
       "ends": [
-        {
-          "road": "m1-marina-run",
-          "end": "to"
-        },
-        {
-          "road": "m1-pelican-bridge",
-          "end": "from"
-        }
+        { "road": "m1-pelican-bridge", "end": "to" },
+        { "road": "m1-sandbar-causeway", "end": "from" }
       ],
       "connectors": [],
       "control": "none"
     },
     {
-      "id": "j-m1-2",
-      "x": 256.825,
+      "id": "j-keys-m1-3",
+      "x": 1251.3299,
       "y": 1.5,
-      "z": -1660.5715,
-      "ends": [
-        {
-          "road": "m1-pelican-bridge",
-          "end": "to"
-        },
-        {
-          "road": "m1-sandbar-causeway",
-          "end": "from"
-        }
-      ],
-      "connectors": [],
-      "control": "none"
-    },
-    {
-      "id": "j-m1-3",
-      "x": 230.9733,
-      "y": 1.5,
-      "z": -2437.4219,
-      "ends": [
-        {
-          "road": "m1-sandbar-causeway",
-          "end": "to"
-        }
-      ],
+      "z": -2803.7202,
+      "ends": [{ "road": "m1-sandbar-causeway", "end": "to" }],
       "connectors": [],
       "control": "none"
     }
@@ -82,11 +53,12 @@
   "provenance": {
     "origin": "agent",
     "author": "agent",
-    "createdAt": "2026-09-29",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.0.0" },
     "sources": []
   },
   "meta": {
     "status": "live",
-    "notes": "Three roads joined end to end by pass-through junctions (two ends, no connectors)."
+    "notes": "The M1 track: one main road cut into three roads joined end to end by pass-through junctions. road-2 adds the junction and the ramp shortcut."
   }
 }
