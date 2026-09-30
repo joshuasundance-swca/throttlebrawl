@@ -1,0 +1,47 @@
+{
+  "type": "bark-set",
+  "id": "kevin-core",
+  "name": "Kevin from Accounting: M1 lines",
+  "tags": ["rival", "m1"],
+  "defaults": {
+    "speaker": "kevin-from-accounting",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "kevin-start-sync",
+      "trigger": "race-start",
+      "text": "Quick sync before we start: you lose."
+    },
+    {
+      "id": "kevin-pass-email",
+      "trigger": "overtake",
+      "text": "Per my last email: move."
+    },
+    {
+      "id": "kevin-pass-pin",
+      "trigger": "overtake",
+      "text": "Let's put a pin in you."
+    },
+    {
+      "id": "kevin-hit-denied",
+      "trigger": "hit-landed",
+      "text": "Your claim has been denied."
+    },
+    {
+      "id": "kevin-hit-warning",
+      "trigger": "hit-landed",
+      "text": "Consider this your written warning."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "kevin-pass-email is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-29"
+    }
+  }
+}

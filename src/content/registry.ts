@@ -7,9 +7,13 @@ import { fnvString, FNV_OFFSET, hashHex, qualify, type AssetIndexEntry } from '.
 import {
   ENTRY_SCHEMAS,
   packSchema,
+  RESERVED_TYPES,
   type BarkSet,
   type Bike,
+  type Crew,
   type EntryType,
+  type EventModifier,
+  type Station,
   type HudLayout,
   type PackManifest,
   type RaceEvent,
@@ -44,6 +48,7 @@ export interface ContentRegistry {
   readonly index: readonly PackIndexRow[];
   readonly bikes: Table<Bike>;
   readonly riders: Table<Rider>;
+  readonly crews: Table<Crew>;
   readonly weapons: Table<Weapon>;
   readonly events: Table<RaceEvent>;
   readonly regions: Table<Region>;
@@ -54,11 +59,18 @@ export interface ContentRegistry {
   readonly barkSets: Table<BarkSet>;
   readonly hudLayouts: Table<HudLayout>;
   readonly tuningPresets: Table<TuningPreset>;
+  /** Reserved: weird-event modifiers (M4 or the shelf). */
+  readonly modifiers: Table<EventModifier>;
+  /** Reserved: radio stations (later). */
+  readonly stations: Table<Station>;
 }
 
-const TABLE_OF: Record<EntryType, keyof ContentRegistry> = {
+type LoadedType = Exclude<EntryType, 'patch'>;
+
+const TABLE_OF: Record<LoadedType, keyof ContentRegistry> = {
   bike: 'bikes',
   rider: 'riders',
+  crew: 'crews',
   weapon: 'weapons',
   event: 'events',
   region: 'regions',
@@ -69,6 +81,8 @@ const TABLE_OF: Record<EntryType, keyof ContentRegistry> = {
   'bark-set': 'barkSets',
   'hud-layout': 'hudLayouts',
   'tuning-preset': 'tuningPresets',
+  'event-modifier': 'modifiers',
+  station: 'stations',
 };
 
 export class ContentError extends Error {}
@@ -131,7 +145,11 @@ export function buildRegistry(files: readonly PackFile[], options: LoadOptions =
     index.push({ packId, path: file.path, type, id: entry.id });
     const status = entry.meta?.status ?? 'live';
     if (status === 'vetoed' || (status === 'draft' && !options.includeDrafts)) continue;
-    const table = tables[TABLE_OF[type as EntryType]];
+    if (RESERVED_TYPES.includes(type as EntryType)) {
+      errors.push(`${file.path} /type: ${type} entries are reserved and not loaded yet`);
+      continue;
+    }
+    const table = tables[TABLE_OF[type as LoadedType]];
     const key = qualify(packId, entry.id);
     if (table && key in table) errors.push(`${file.path} /id: duplicate ${type} id ${entry.id}`);
     else if (table) table[key] = entry;
@@ -185,7 +203,7 @@ function hashValue(h: number, value: unknown, skip: ReadonlySet<string> | null):
 export function contentHashes(reg: ContentRegistry): { sim: string; full: string } {
   let sim = FNV_OFFSET;
   let full = FNV_OFFSET;
-  const all = Object.keys(TABLE_OF).map((t) => TABLE_OF[t as EntryType]);
+  const all = Object.keys(TABLE_OF).map((t) => TABLE_OF[t as LoadedType]);
   for (const name of [...new Set(all)].sort()) {
     const table = reg[name] as Table<unknown>;
     for (const id of Object.keys(table).sort()) {

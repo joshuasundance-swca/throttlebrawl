@@ -14,6 +14,6 @@
   "engineSound": { "preset": "single-thump" },
   "meta": {
     "status": "live",
-    "notes": "The slow M1 starter, about 85 mph. Walking-skeleton numbers; riders-1 tunes the handling."
+    "notes": "The slow M1 starter, about 85 mph (38.0 m/s). riders-1 handling: the tuning panel scales top speed, acceleration and steering on top of these numbers."
   }
 }
