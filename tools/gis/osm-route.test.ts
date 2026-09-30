@@ -1,3 +1,4 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, type ActionState } from '../../src/app';
 import { loadBasePack, lookup, type ContentRegistry } from '../../src/content';
@@ -77,8 +78,10 @@ describe('gis: the real Overseas Highway stretch', () => {
     expect(roads.length).toBe(5);
     expect(total).toBeGreaterThanOrEqual(5000);
     expect(total).toBeLessThanOrEqual(8000);
+    // Road files carry scenery tags over s ranges (the registry types tags loosely).
+    type RangeTag = { s0: number; s1: number; tag: string };
     const bridges = roads.flatMap((r) =>
-      (r.tags ?? []).filter((t) => t.tag === 'bridge').map((t) => t.s1 - t.s0),
+      ((r.tags ?? []) as unknown as RangeTag[]).filter((t) => t.tag === 'bridge').map((t) => t.s1 - t.s0),
     );
     expect(Math.max(...bridges)).toBeGreaterThanOrEqual(1500);
     for (const file of [network, ...roads]) {
@@ -87,6 +90,30 @@ describe('gis: the real Overseas Highway stretch', () => {
     }
     const route = streamFor(reg, NETWORK).routeFor(lookup(reg.routes, ROUTE));
     expect(route.edgeLength(0)).toBeGreaterThan(0);
+  });
+
+  it('the ODbL licence rule in pack.json covers every osm- file, with the OSM attribution', () => {
+    const pack = JSON.parse(readFileSync('packs/base/pack.json', 'utf8')) as {
+      licenseRules: { paths: string[]; spdx: string; attribution: string; licenseFile?: string }[];
+    };
+    const odbl = pack.licenseRules.filter((r) => r.spdx === 'ODbL-1.0');
+    const glob = (g: string) => new RegExp(`^${g.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]*')}$`);
+    const files = ['networks', 'roads', 'routes'].flatMap((dir) =>
+      readdirSync(`packs/base/regions/florida-keys/${dir}`)
+        .filter((f) => f.startsWith('osm-'))
+        .map((f) => `regions/florida-keys/${dir}/${f}`),
+    );
+    expect(files.length).toBe(7); // 1 network, 5 roads, 1 route
+    for (const f of files) {
+      const rule = odbl.find((r) => r.paths.some((p) => glob(p).test(f)));
+      expect(rule, `${f} is under an ODbL rule`).toBeDefined();
+      expect(rule?.attribution).toMatch(/OpenStreetMap contributors/);
+      expect(existsSync(`packs/base/${rule?.licenseFile ?? ''}`)).toBe(true);
+    }
+    // Negative control: a rule's `*` stays inside one folder, so a roads-only rule misses a route.
+    expect(
+      glob('regions/*/roads/osm-*.json').test('regions/florida-keys/routes/osm-bahia-honda-run.json'),
+    ).toBe(false);
   });
 
   it('passes the road lint (src/road/validate.ts), which also fires on a broken copy', () => {
