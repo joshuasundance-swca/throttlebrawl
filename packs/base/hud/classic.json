@@ -21,6 +21,22 @@
       "opacity": 1.0
     },
     {
+      "element": "health-self",
+      "visible": true,
+      "anchor": "bottom-left",
+      "offset": [0.03, 0.2],
+      "scale": 1.0,
+      "opacity": 1.0
+    },
+    {
+      "element": "health-target",
+      "visible": true,
+      "anchor": "top-right",
+      "offset": [0.2, 0.03],
+      "scale": 1.0,
+      "opacity": 1.0
+    },
+    {
       "element": "touch-attack",
       "visible": true,
       "anchor": "bottom-right",
@@ -49,5 +65,8 @@
     }
   ],
   "mirror": false,
-  "meta": { "status": "live", "notes": "Walking-skeleton layout. ui-1 owns HUD presets." }
+  "meta": {
+    "status": "live",
+    "notes": "M1 layout: speed, position, both health bars and the touch controls. The target bar sits top right, left of the pause button, clear of both thumbs. Full and Minimal presets arrive with the M3 HUD editor."
+  }
 }
