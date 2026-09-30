@@ -36,7 +36,8 @@ export function orderSystems(systems: readonly SimSystem[]): SimSystem[] {
 
 /**
  * Steps the world one tick: apply pending tuning changes, hand player inputs to their riders, run
- * every system in order, then flush this tick's events. Returns the flushed events.
+ * every system in order, then flush this tick's events. Returns the flushed events, which stay
+ * readable as `world.lastEvents` during the next step.
  */
 export function stepWorld(
   world: World,
@@ -57,6 +58,7 @@ export function stepWorld(
   for (const system of systems) system.step(world, config);
   const flushed = world.events;
   world.events = [];
+  world.lastEvents = flushed;
   world.tick++;
   return flushed;
 }
