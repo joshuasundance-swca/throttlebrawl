@@ -144,7 +144,12 @@ The file `pack.index.json` is **generated** by the indexer at dev and build time
   "license": "MIT",
   "licenseRules": [
     {
-      "paths": ["regions/*/roads/osm-*.json", "regions/*/roads/osm-*.bin"],
+      "paths": [
+        "regions/*/networks/osm-*.json",
+        "regions/*/roads/osm-*.json",
+        "regions/*/roads/osm-*.bin",
+        "regions/*/routes/osm-*.json"
+      ],
       "spdx": "ODbL-1.0",
       "attribution": "Road data © OpenStreetMap contributors, available under the Open Database License.",
       "licenseFile": "LICENSES/ODbL-1.0.txt"
@@ -973,7 +978,7 @@ Every network and road carries `provenance.sources`. The GIS pipeline fills them
 ```
 
 - Three source families are expected: **OSM** (ODbL 1.0), **US Census TIGER/Line** (public domain; the research quotes "Copyright protection is not available for any work of the United States Government"), and **USGS The National Map / 3DEP** (public domain; the requested credit is "Map services and data available from U.S. Geological Survey, National Geospatial Program."). Hand-authored roads have `sources: []`.
-- **OSM-derived road files use an `osm-` filename prefix**, which the manifest's `licenseRules` match to put them under ODbL with attribution. This follows the research's low-cost compliance move: keep baked tracks under ODbL with an attribution file, publish the preprocessing script, and keep the game code on its own licence. The research is explicit that this is its reading and not legal advice; how ODbL applies to a game asset is (unverified).
+- **OSM-derived road files use an `osm-` filename prefix**, which the manifest's `licenseRules` match to put them under ODbL with attribution. A baked stretch's network and route files carry the same prefix and the same rule, since they hold OSM-derived data too `[default]` (gis-1). This follows the research's low-cost compliance move: keep baked tracks under ODbL with an attribution file, publish the preprocessing script, and keep the game code on its own licence. The research is explicit that this is its reading and not legal advice; how ODbL applies to a game asset is (unverified).
 - TIGER/Line® is a Census Bureau trademark. Credit the data, but never use the name in branding.
 - **The credits screen is generated from the data.** The loader collects every distinct `attribution` from the loaded packs' `licenseRules` and sources. For games, the OSMF attribution guideline allows "a splash screen … the credits page, in the menu", with a link "in an easily locatable part … (e.g. in the menu under "Data licences")". Nobody hand-maintains the credits.
 

@@ -7,3 +7,5 @@ The real-road side quest (gis-1) has its first stretch: about 6.8 km of the real
 The Keys data probe came first (`tools/gis/probe/keys-us1.md`): US 1 is continuous and well tagged in OpenStreetMap, but mostly straight and flat, and long bridges are drawn as a few straight segments. So the bake smooths the line, shortens long straights on land, and synthesizes the bridge decks and humps (the elevation data is bare earth, which has no bridges). The humps are exaggerated for fun and are not measured heights.
 
 The pipeline is its own small Python project in `tools/gis/` (fetch once, bake offline, never at runtime). Every baked file names its sources, query, retrieval time and hash in `provenance`, and OSM-derived files carry the `osm-` prefix for the ODbL licence rule.
+
+One `[default]` doc edit: content-packs.md's example `licenseRules` and the provenance section now cover the `osm-` network and route files as well as the roads, because a baked stretch needs all three and all three hold OSM-derived data. The pack manifest already has that rule.
