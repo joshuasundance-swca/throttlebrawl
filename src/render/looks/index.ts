@@ -14,8 +14,21 @@
 // patch on or off (a recompile of the lit materials, once, at the switch), sets the shared ink
 // uniforms, restyles the sky and fog, and says whether (and how) the renderer runs the final pass.
 // The look is render-only: nothing here reaches the sim, its config or a replay.
+//
+// Region palettes (playtest 1c integration: the Pacific Northwest grey-green and foggy, San
+// Francisco's fog, the Keys unchanged). A region's colours are written against the classic look:
+// a palette colour that differs from the classic colour of its kind (or from the classic sky at
+// that time of day, for `sky`) replaces that colour in every look, and the ink looks still ink,
+// hatch and grade it. A palette colour equal to the classic one means "the look's own", which is
+// how the Keys, whose palette is the classic look's, stay exactly as they were in every look.
 import { Color, MeshLambertMaterial, type Fog, type Material, type Scene } from 'three';
-import type { LookEnv, LookStyle, MaterialKind, MaterialParams } from '../look';
+import {
+  CLASSIC_PALETTE,
+  type LookEnv,
+  type LookStyle,
+  type MaterialKind,
+  type MaterialParams,
+} from '../look';
 import { inkModeOf, patchInkShader, type InkMode, type InkUniforms } from './ink';
 import type { PostSettings } from './post';
 import { BRUSH, KODAK, skyOf, WASTELAND, type InkRecipe } from './recipes';
@@ -87,6 +100,14 @@ const linear = (hex: string): [number, number, number] => {
   return [c.r, c.g, c.b];
 };
 
+const toArray = (c: Color): [number, number, number] => [c.r, c.g, c.b];
+
+const isKind = (k: string): k is MaterialKind =>
+  k !== 'sky' && Object.prototype.hasOwnProperty.call(CLASSIC_PALETTE, k);
+
+/** How far an ink look's sky top leans toward a region's sky (the horizon takes it fully). [default] */
+export const REGION_SKY_TOP = 0.7;
+
 export function createLookSet(base: LookStyle): LookSet {
   let current: LookId = DEFAULT_LOOK;
   const tracked = new Map<Material, Tracked>();
@@ -104,6 +125,24 @@ export function createLookSet(base: LookStyle): LookSet {
   let scene: Scene | null = null;
   let env: LookEnv | null = null;
   let classicSky: { background: Color | null; fog: Color | null } = { background: null, fog: null };
+  /** The race region's own colours: per material kind, the sky and the haze (null: the look's). */
+  let overrides = new Map<MaterialKind, Color>();
+  let skyOverride: Color | null = null;
+  let fogOverride: Color | null = null;
+
+  const regionColours = (e: LookEnv) => {
+    overrides = new Map();
+    const palette = e.palette ?? {};
+    const differs = (hex: string, classic: string | Color) =>
+      new Color(hex).getHex() !== (classic instanceof Color ? classic.getHex() : new Color(classic).getHex());
+    for (const [k, hex] of Object.entries(palette)) {
+      if (isKind(k) && differs(hex, CLASSIC_PALETTE[k])) overrides.set(k, new Color(hex));
+    }
+    const sky = palette['sky'];
+    skyOverride = sky && classicSky.background && differs(sky, classicSky.background) ? new Color(sky) : null;
+    const fog = palette['fog'];
+    fogOverride = fog ? new Color(fog) : skyOverride;
+  };
 
   const recipe = (): InkRecipe | null => (current === 'classic' ? null : INK_RECIPES[current]);
   const inked = () => current !== 'classic';
@@ -112,7 +151,9 @@ export function createLookSet(base: LookStyle): LookSet {
     const m = t.material as Material & { color?: Color };
     if (t.classic && m.color) {
       const hex = recipe()?.palette[t.kind];
-      if (hex) m.color.set(hex);
+      const own = overrides.get(t.kind);
+      if (own) m.color.copy(own);
+      else if (hex) m.color.set(hex);
       else m.color.copy(t.classic);
     }
     // The ink patch changes the lit program: recompile once, now.
@@ -134,11 +175,14 @@ export function createLookSet(base: LookStyle): LookSet {
     const r = recipe();
     if (r) {
       const sky = skyOf(r, env?.timeOfDay);
-      scene.background = new Color(sky.horizon);
-      if (fog) fog.color.set(sky.horizon);
+      scene.background = skyOverride ? skyOverride.clone() : new Color(sky.horizon);
+      if (fog) {
+        if (fogOverride) fog.color.copy(fogOverride);
+        else fog.color.set(sky.horizon);
+      }
     } else {
-      scene.background = classicSky.background ? classicSky.background.clone() : null;
-      if (fog && classicSky.fog) fog.color.copy(classicSky.fog);
+      scene.background = skyOverride?.clone() ?? classicSky.background?.clone() ?? null;
+      if (fog && (fogOverride ?? classicSky.fog)) fog.color.copy((fogOverride ?? classicSky.fog) as Color);
     }
   };
 
@@ -162,7 +206,7 @@ export function createLookSet(base: LookStyle): LookSet {
       m.customProgramCacheKey = () => (inked() ? `ink-${mode}` : 'classic');
     }
     tracked.set(m, t);
-    if (current !== DEFAULT_LOOK) applyMaterial(t);
+    if (current !== DEFAULT_LOOK || overrides.size > 0) applyMaterial(t, current !== DEFAULT_LOOK);
     return m;
   };
 
@@ -182,6 +226,9 @@ export function createLookSet(base: LookStyle): LookSet {
         background: s.background instanceof Color ? s.background.clone() : null,
         fog: fog ? fog.color.clone() : null,
       };
+      // A new region recolours every material it has handed out (colours only: no recompile).
+      regionColours(e);
+      for (const t of tracked.values()) applyMaterial(t, false);
       applyUniforms();
       applyScene();
     },
@@ -211,8 +258,8 @@ export function createLookSet(base: LookStyle): LookSet {
         inkWidthPx: p.inkWidthPx * r.lineWeight,
         inkFarM: 350,
         inkColor: uniforms.uInkColor.value,
-        skyTop: linear(sky.top),
-        skyHorizon: linear(sky.horizon),
+        skyTop: skyOverride ? toArray(new Color(sky.top).lerp(skyOverride, REGION_SKY_TOP)) : linear(sky.top),
+        skyHorizon: skyOverride ? toArray(skyOverride) : linear(sky.horizon),
         grade: Math.min(1, p.filmGrade * r.gradeAmount),
         lut: r.grade,
         brush: r.brush,
