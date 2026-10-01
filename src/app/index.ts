@@ -8,7 +8,7 @@
 // app-2 owns this folder after app-1.
 import { createAssetManifest } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
-import { createFollowCamera, type CameraMode, type CameraPose, type ViewMode } from '../camera';
+import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
 import {
   assetIndex,
   contentHashes,
@@ -277,8 +277,8 @@ export function createApp(opts: AppOptions): AppHandle {
       stream.road.edges.map((e) => [e.id, lookup(registry.roads, qualifyIn(roadPack, e.id))]),
     );
     const vetoed = new Set(settings.vetoes.map((v) => v.contentRef));
-    // `palette` waits for the render lane to read it (docs/content-packs.md, "Region packs at
-    // runtime", Palette); until then the renderer ignores it and draws the look's own palette.
+    // `palette` is the region's colours (docs/content-packs.md, "Region packs at runtime",
+    // Palette), which the renderer reads over the look's own (#205).
     const env: LookEnv & { palette: Record<string, string> } = {
       timeOfDay: event.timeOfDay,
       palette: racePalette(registry, regionKey, event.timeOfDay),
@@ -497,8 +497,9 @@ export function createApp(opts: AppOptions): AppHandle {
     const tick = race.tick;
     const cmd = input.sample(SIM_DT);
     recorder.record(tick, [cmd]);
-    // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input.
-    if (input.lastActions().cycleCamera) camera.cycleView();
+    // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
+    // becomes the saved View, so the settings row shows it and a pick there takes effect.
+    if (input.lastActions().cycleCamera) ui.syncLive({ view: VIEW_MODES.indexOf(camera.cycleView()) });
     const t0 = performance.now();
     race.step([cmd]);
     stepMs.push(performance.now() - t0);

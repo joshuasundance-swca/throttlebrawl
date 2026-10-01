@@ -8,7 +8,7 @@ import { CAMERA_TUNING } from '../camera';
 import { INPUT_TUNING } from '../input';
 import { RENDER_TUNING } from '../render';
 import { SIM_TUNING, type TuningParamDecl } from '../sim/api';
-import { BARK_TUNING } from '../ui';
+import { BARK_TUNING, HUD_TUNING } from '../ui';
 
 export const APP_TUNING: readonly TuningParamDecl[] = [
   ...SIM_TUNING,
@@ -17,6 +17,8 @@ export const APP_TUNING: readonly TuningParamDecl[] = [
   ...INPUT_TUNING,
   ...BARK_TUNING,
   ...RENDER_TUNING,
+  // The HUD's own (the live style meter); ui reads them from the registry itself.
+  ...HUD_TUNING,
 ];
 
 /** The presentation modules that take a tuning value at once through their own `setParam`. */
@@ -28,6 +30,14 @@ export type PresentationOwner = 'camera' | 'audio' | 'input' | 'barks' | 'render
  */
 export function isRaceStartParam(id: string): boolean {
   return id.startsWith('difficulty.');
+}
+
+/**
+ * A presentation value its module reads straight from the registry, so it needs no routing: the
+ * HUD's `hud.*` (ui/hud-tuning.ts).
+ */
+export function isReadDirect(id: string): boolean {
+  return id.startsWith('hud.');
 }
 
 /**

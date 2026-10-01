@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_TUNING } from '../../tools/packs/tuning';
 import { createTuningRegistry } from '../tuning';
-import { APP_TUNING, isRaceStartParam, presentationOwner } from './tuning';
+import { APP_TUNING, isRaceStartParam, isReadDirect, presentationOwner } from './tuning';
 
 describe('app/tuning: presentationOwner', () => {
   it('routes every presentation-only value to the module that declares it', () => {
     const unrouted = APP_TUNING.filter(
-      (d) => !d.affectsSim && !isRaceStartParam(d.id) && presentationOwner(d.id) === null,
+      (d) =>
+        !d.affectsSim && !isRaceStartParam(d.id) && !isReadDirect(d.id) && presentationOwner(d.id) === null,
     );
     expect(unrouted.map((d) => d.id)).toEqual([]);
   });
@@ -49,6 +50,16 @@ describe('app/tuning: the collected tuning declarations', () => {
       'barks',
     ])
       expect(groups, prefix).toContain(prefix);
+  });
+
+  it("lists the style meter's two feel numbers in the tuning panel and the preset lint", () => {
+    // The integration skeptic's mustFix 2 (2026-10-01): "every feel number is a slider".
+    const panel = createTuningRegistry(APP_TUNING, () => undefined).decls.map((d) => d.id);
+    const linted = ALL_TUNING.map((d) => d.id);
+    for (const id of ['hud.meterShowAfterS', 'hud.meterLandS']) {
+      expect(panel, id).toContain(id);
+      expect(linted, id).toContain(id);
+    }
   });
 
   it('gives the registry the same list packs:check lints presets against', () => {
