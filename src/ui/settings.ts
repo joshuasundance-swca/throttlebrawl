@@ -37,6 +37,7 @@ export type SettingId =
   | 'stylePopups'
   | 'view'
   | 'radio'
+  | 'voicesOn'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
 export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
@@ -61,6 +62,10 @@ export const SETTINGS_TABS: readonly { tab: SettingsTab; label: string }[] = [
 
 /** Every M2 setting except the M1 volumes, mute and mirror, which the screen draws itself. */
 export const SETTINGS: readonly SettingDef[] = [
+  // Sound: the voices off switch (run W-O, maintainer 2026-10-01: "add a Voices volume and an off
+  // switch"), under the four volume sliders; off silences the spoken barks and keeps the Voices
+  // slider's level. Applies at once.
+  { id: 'voicesOn', tab: 'sound', label: 'Voices on', kind: 'toggle' },
   // Sound: the radio (radio-1), below the volumes. Applies at once; the pause menu's radio panel
   // and the R key switch stations mid-race.
   {

@@ -44,6 +44,7 @@ const opts = (storage: StorageLike | null, build = 'm2build') => ({
 const m2Custom: Settings = {
   volumes: { master: 0.5, music: 0.1, effects: 0.2, voices: 0.3 },
   mute: true,
+  voicesOn: false,
   mirror: true,
   tuningPreset: 'base:floaty',
   units: 'kmh',
@@ -90,6 +91,8 @@ const M2_FIELDS = [
   'gamepadBindings',
   'lastSeenBuild',
   'vetoes',
+  // Run W-O (maintainer, 2026-10-01): the voices off switch.
+  'voicesOn',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -224,6 +227,7 @@ describe('the M2 settings record', () => {
       gamepadBindings: ['button3'],
       lastSeenBuild: 42,
       vetoes: 'all of them',
+      voicesOn: 'off',
     });
     for (const f of M2_FIELDS) expect(bad[f], f).toEqual(DEFAULT_SETTINGS[f]);
 
