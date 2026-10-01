@@ -150,21 +150,27 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the six cop parameters inside their ranges, all sim-affecting', () => {
+  it('declares the twelve cop parameters (M4 cops-3 added six) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustRadiusScale',
+      'cops.chaosDecayPerS',
+      'cops.chaosSummonAt',
+      'cops.fineTierScale',
       'cops.followGapM',
+      'cops.maxActive',
       'cops.sirenLeadS',
       'cops.spawnChance',
       'cops.spawnDelayS',
+      'cops.swingEveryS',
+      'cops.waveGapS',
     ]);
     for (const d of COPS_TUNING) {
       expect(d.affectsSim).toBe(true);
       expect(d.default).toBeGreaterThanOrEqual(d.min);
       expect(d.default).toBeLessThanOrEqual(d.max);
     }
-    const scales = COPS_TUNING.filter((d) => d.id.endsWith('Scale'));
+    const scales = COPS_TUNING.filter((d) => d.id.startsWith('cops.bust') && d.id.endsWith('Scale'));
     expect(scales.map((d) => d.default)).toEqual([1, 1]);
   });
 });

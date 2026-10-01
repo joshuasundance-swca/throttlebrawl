@@ -1,0 +1,25 @@
+{
+  "type": "weapon",
+  "id": "pool-noodle",
+  "name": "Pool Noodle",
+  "category": "improvised",
+  "behaviour": "melee.swing",
+  "tags": ["test-fixture"],
+  "unarmed": false,
+  "reach": { "sM": 1.8, "dM": 1.5 },
+  "windupS": 0.25,
+  "activeS": 0.1,
+  "recoveryS": 0.3,
+  "damage": 1,
+  "knockback": { "lateralMps": 4.0, "staggerS": 0.1 },
+  "hitStopMs": 40,
+  "steal": { "allowed": true, "windowStartS": 0.05, "windowEndS": 0.25 },
+  "uses": { "durabilityHits": 8, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 1, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "Test fixture for weapons-2's 'a new weapon added as data only plays without code changes'. Not in the base pack.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

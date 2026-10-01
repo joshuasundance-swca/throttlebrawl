@@ -16,6 +16,12 @@
 // - Contacts should never happen. If one does (a rider already on top of someone), the pedestrian
 //   is knocked into a dive (`pedDive` with data.bumped) and nobody gets hurt; a `big` kind
 //   crashes the rider instead (a `crash` event with data.cause `ped`, for tumble-1).
+// - Animals (M3 traffic-4, head start): the region's `animals` list, picked by weight. They stand
+//   only where render lays land (the roadside zones) and never on a bridge walkway: a zone stretch
+//   with a rail on either side, or a `bridge` tag, gets people only (the fisherman stays). A kind
+//   with no walking speed (the gator on a lawn chair) never crosses. A `big` kind (the gator) is
+//   never lured into stepping out, and its reaction time scales by `peds.bigReactScale`: at 1 it
+//   dives like everyone else; lower it and gators dive late enough to be hit, which crashes you.
 // Pedestrians move only across the road (d), never along it (s). Every number below is a
 // [default] starting value, to be tuned on the phone.
 import { clamp, HALF_PI, nextFloat, type TuningParamDecl } from '../../core';
@@ -24,7 +30,34 @@ import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { vehicleInfo } from '../traffic';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
-export const PEDS_TUNING: readonly TuningParamDecl[] = [];
+export const PEDS_TUNING: readonly TuningParamDecl[] = [
+  {
+    // M3 traffic-4 (head start): the chance a spawn in a `pedestrians` zone is an animal, when the
+    // region lists any. [default]
+    id: 'peds.strayAnimalChance',
+    group: 'traffic',
+    label: 'Animals by the road',
+    default: 0.35,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: true,
+  },
+  {
+    // M3 traffic-4 (head start): a scale on a big animal's reaction range. 1 = it dives as early as
+    // anyone; lower = it dives late and can be hit (hitting something big crashes you). [default]
+    id: 'peds.bigReactScale',
+    group: 'traffic',
+    label: 'Gators: reaction',
+    default: 1,
+    min: 0,
+    max: 1.5,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+];
 
 /** [default] starting values. */
 export const PEDS = {
@@ -36,8 +69,10 @@ export const PEDS = {
   /** Chance a pedestrian (or an animal) is a road crosser. */
   crossChancePedestrian: 0.5,
   crossChanceAnimal: 0.8,
-  /** Chance a spawn in a `pedestrians` zone is a stray animal instead, when there are animals. */
-  strayAnimalChance: 0.2,
+  /** Fallback for `peds.strayAnimalChance`: a `pedestrians` zone spawn is an animal instead. */
+  strayAnimalChance: 0.35,
+  /** Fallback for `peds.bigReactScale`. */
+  bigReactScale: 1,
   /** Seeded wait before a crosser sets off, s (scaled time). */
   waitMinS: 2,
   waitMaxS: 12,
@@ -78,6 +113,16 @@ export const PED_PHASE = { loiter: 0, walk: 1, dive: 2, down: 3 } as const;
 /** The threat range for a rider at `speed` m/s: it grows with speed. */
 export function pedThreatRangeM(speed: number): number {
   return PEDS.threatBaseM + Math.max(0, speed) * PEDS.threatReactS;
+}
+
+/**
+ * The threat range a kind reacts at: pedThreatRangeM, except that a `big` kind's range scales by
+ * `peds.bigReactScale` (so at 0 it never sees you coming).
+ */
+export function kindThreatRangeM(world: World, t: SimTrafficTypeDef, speed: number): number {
+  if (t.hazard !== 'big') return pedThreatRangeM(speed);
+  const k = clamp(world.params['peds.bigReactScale'] ?? PEDS.bigReactScale, 0, 10);
+  return k * pedThreatRangeM(speed);
 }
 
 /** Pedestrians' plain state, indexed by pedestrian slot. The mover holds the road position. */
@@ -134,6 +179,41 @@ export function pedsState(world: World): PedsState {
 
 function isPedType(t: SimTrafficTypeDef | undefined): boolean {
   return t?.category === 'pedestrian' || t?.category === 'animal';
+}
+
+/** What render and the snapshot need to know about a pedestrian entity, or null for other kinds. */
+export function pedInfo(
+  world: World,
+  config: SimConfig,
+  entityId: number,
+): {
+  contentId: string;
+  category: 'pedestrian' | 'animal';
+  lengthM: number;
+  widthM: number;
+  hazard: 'normal' | 'big';
+} | null {
+  const st = pedsState(world);
+  const k = st.id.indexOf(entityId);
+  const t = k < 0 ? undefined : config.trafficTypes[st.type[k] ?? -1];
+  if (!t || (t.category !== 'pedestrian' && t.category !== 'animal')) return null;
+  return {
+    contentId: t.contentId,
+    category: t.category,
+    lengthM: t.lengthM,
+    widthM: t.widthM,
+    hazard: t.hazard,
+  };
+}
+
+/**
+ * A bridge walkway: a rail or wall on either side at s, or a `bridge` scenery tag over s. People
+ * may stand there (the fisherman); animals never do.
+ */
+export function onBridgeWalkway(road: RoadNetwork, edge: number, s: number): boolean {
+  if (road.barrierAt(edge, s, 'left') !== null || road.barrierAt(edge, s, 'right') !== null) return true;
+  const tags = road.edges[edge]?.tags ?? [];
+  return tags.some((t) => t.tag === 'bridge' && s >= t.s0 && s <= t.s1);
 }
 
 function typeOf(config: SimConfig, st: PedsState, k: number): SimTrafficTypeDef {
@@ -309,12 +389,15 @@ function spawnZone(
   for (let i = 0; i < n; i++) {
     const r = world.rng.peds;
     const s = clamp(f.s0 + ((i + 0.2 + 0.6 * nextFloat(r)) * length) / n, 0, edgeLength);
+    const stray = clamp(world.params['peds.strayAnimalChance'] ?? PEDS.strayAnimalChance, 0, 1);
     let pool: readonly number[];
     if (spawns === 'animals') pool = animals;
-    else if (spawns === 'pedestrians')
-      pool = animals.length > 0 && nextFloat(r) < PEDS.strayAnimalChance ? animals : people;
+    else if (spawns === 'pedestrians') pool = animals.length > 0 && nextFloat(r) < stray ? animals : people;
     else pool = [...people, ...animals];
-    if (pool.length === 0) pool = people.length > 0 ? people : animals;
+    // A bridge walkway is no place for an animal: people only there (traffic-4).
+    if (onBridgeWalkway(config.road, edge, s)) pool = people;
+    else if (pool.length === 0) pool = people.length > 0 ? people : animals;
+    if (pool.length === 0) continue;
     const type = pick(world, config, pool);
     const t = config.trafficTypes[type];
     if (!t) continue;
@@ -323,10 +406,12 @@ function spawnZone(
     const railed =
       config.road.barrierAt(edge, s, 'left') !== null || config.road.barrierAt(edge, s, 'right') !== null;
     const chance = t.category === 'animal' ? PEDS.crossChanceAnimal : PEDS.crossChancePedestrian;
-    const crosses = !railed && nextFloat(r) < chance;
+    // A kind with no walking speed (a gator on a lawn chair) stays put.
+    const crosses = !railed && nextFloat(r) < chance && t.cruiseMps > 0;
     const far = offRoadD(config.road, edge, s, -side, half, 0) - side * nextFloat(r) * 1.5;
     const timer = rollWait(world);
-    const lure = nextFloat(r) < PEDS.lureChance;
+    // A big kind is never lured out in front of a rider at the worst moment.
+    const lure = nextFloat(r) < PEDS.lureChance && t.hazard !== 'big';
     placePed(world, config, { type, edge, s, d, crosses, homeD: d, farD: far, timer, lure });
   }
 }
@@ -479,7 +564,7 @@ function move(
     } else {
       st.phase[k] = PED_PHASE.loiter;
       st.timer[k] = rollWait(world);
-      st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance ? 1 : 0;
+      st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && t.hazard !== 'big' ? 1 : 0;
       p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
     }
     return;
@@ -517,7 +602,7 @@ function move(
     p.speed = 0;
     st.phase[k] = PED_PHASE.loiter;
     st.timer[k] = rollWait(world);
-    st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance ? 1 : 0;
+    st.lure[k] = nextFloat(world.rng.peds) < PEDS.lureChance && t.hazard !== 'big' ? 1 : 0;
     p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
   }
 }
@@ -559,7 +644,7 @@ function react(world: World, config: SimConfig, st: PedsState, k: number, threat
   for (const near of threats) {
     const r = near.m;
     if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
-    const rel = relate(near, p, pedThreatRangeM(r.speed));
+    const rel = relate(near, p, kindThreatRangeM(world, t, r.speed));
     const band = (near.widthM + t.widthM) / 2 + PEDS.lateralM;
     if (!rel || rel.ahead < -PEDS.threatBehindM || Math.abs(rel.dd) >= band) continue;
     if (Math.abs(rel.ahead) < closest) {

@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "iguana",
+  "name": "Iguana",
+  "category": "animal",
+  "tags": ["local"],
+  "lengthM": 0.9,
+  "widthM": 0.3,
+  "cruiseMps": 1.2,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-iguana" }, "paintOptions": ["#5f8f3a", "#8aa84b", "#c97b3a"] },
+  "meta": {
+    "status": "draft",
+    "notes": "Suns itself on the warm verge and considers the road its own. Dives clear with the air of someone who was leaving anyway. M3 traffic-4 head start.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

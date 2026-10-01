@@ -26,12 +26,35 @@
 //   of an upright, spawned cop for `law.bustDwellS` × `cops.bustDwellScale` of scaled time is
 //   busted: a `bust` event with the fine, once per player. Race end on a bust is sim/race's.
 //
+// The law (docs/milestones/M4.md, cops-3; a head start, crude first):
+// - The spawn mix, from the event's `cops` block (SimEventDef.cops). With none, every fielded cop
+//   rolls to come out as above (the M2 rule, unchanged). With one, the mode says how many of the
+//   fielded cops leave the lot at the start of the chase: `every-race` brings `baseCount`,
+//   `tier-rising` brings `baseCount` + `tierScale` × (tier − 1), `chaos-summoned` brings
+//   `baseCount` (usually 0) and leans on chaos, and `none` brings nobody, chaos or not. Each one
+//   still rolls the spawn chance. They pull out `cops.waveGapS` apart, and `randomness` jitters
+//   the count and the gaps (all drawn from the `cops` stream at the start).
+// - The hidden chaos meter (with `chaosSummon`, or in `chaos-summoned`): hits involving a player
+//   add 1 (2 more on a cop), a player's takedown adds 3, and it drains `cops.chaosDecayPerS` a
+//   second. At `cops.chaosSummonAt` (jittered by `randomness`) the next cop still in the lot is
+//   summoned: his siren sounds at once and he pulls out after the siren lead. The siren event
+//   carries `cause` (`every-race`, `tier-rising` or `chaos`) when the event has a `cops` block.
+// - At most `cops.maxActive` cops chase at once (the plan's "at most 2 on screen"); the next one
+//   waits in the lot, siren off, until a chase ends.
+// - Fines: a bust's `fineCash` is the cop's fineCash × (1 + (tier − 1) × cops.fineTierScale),
+//   rounded; the event also carries `tier` and `fineBaseCash`. There is no career cash yet: the
+//   amount travels in the event (and so in the debug report) for career-1 to charge.
+// - A cop holding a weapon (his startingWeapon: Pruitt's baton, a trooper's taser) swings it at
+//   the man he chases when he is within its reach, at most every `cops.swingEveryS`, so the M1
+//   steal can take it off him mid-swing. An unarmed cop never attacks, as before.
+//
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
+import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt } from '../riders';
-import type { SimConfig, SimRiderDef } from '../types';
+import { InputFlag, type SimConfig, type SimRiderDef } from '../types';
 import { emit, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
@@ -101,7 +124,80 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    id: 'cops.waveGapS',
+    group: 'cops',
+    label: 'Gap between cops pulling out',
+    default: 8,
+    min: 0,
+    max: 60,
+    step: 1,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.maxActive',
+    group: 'cops',
+    label: 'Most cops chasing at once',
+    default: 2,
+    min: 1,
+    max: 6,
+    step: 1,
+    unit: '',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.chaosSummonAt',
+    group: 'cops',
+    label: 'Chaos to summon a cop',
+    default: 10,
+    min: 1,
+    max: 50,
+    step: 1,
+    unit: 'pts',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.chaosDecayPerS',
+    group: 'cops',
+    label: 'Chaos cool-off',
+    default: 0.1,
+    min: 0,
+    max: 2,
+    step: 0.05,
+    unit: 'pts/s',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.fineTierScale',
+    group: 'cops',
+    label: 'Fine growth per tier',
+    default: 0.5,
+    min: 0,
+    max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'cops.swingEveryS',
+    group: 'cops',
+    label: 'Cop swings at most every',
+    default: 6,
+    min: 0.5,
+    max: 15,
+    step: 0.5,
+    unit: 's',
+    affectsSim: true,
+  },
 ];
+
+/** Chaos points (cops-3's hidden meter): a hit with a player in it, one on a cop, a player's takedown. */
+export const CHAOS_HIT = 1;
+export const CHAOS_HIT_COP = 2;
+export const CHAOS_TAKEDOWN = 3;
+/** How far behind the lot each further cop parks, m (so the lot does not stack them). */
+const PARK_GAP_M = 8;
 
 /** Cop phases, stored as numbers so the state stays plain data. */
 export const COP_PARKED = 0;
@@ -153,6 +249,17 @@ export interface CopsState {
   dwell: number[];
   /** Players busted, in order. */
   busted: EntityId[];
+  /** By cop id (cops-3): extra scaled ticks after the base pull-out, for the waves. */
+  extraTicks: number[];
+  /** By cop id: the clock value a chaos summon came in at (-1: not summoned). */
+  summonAt: number[];
+  /** By cop id: why he came out ('' for the M2 rule): every-race, tier-rising or chaos. */
+  cause: string[];
+  /** By cop id: the clock value from which he may swing again. */
+  swingAt: number[];
+  /** The hidden chaos meter, and the (jittered) level that summons the next cop. */
+  chaos: number;
+  chaosAt: number;
 }
 
 export function copsState(world: World): CopsState {
@@ -168,7 +275,42 @@ export function copsState(world: World): CopsState {
     closingFor: [],
     dwell: [],
     busted: [],
+    extraTicks: [],
+    summonAt: [],
+    cause: [],
+    swingAt: [],
+    chaos: 0,
+    chaosAt: 0,
   }));
+}
+
+/** The event's tier (1 for the first; absent is 1). */
+function tierOf(config: SimConfig): number {
+  return Math.max(1, Math.floor(config.event.tier ?? 1));
+}
+
+/** 1 ± randomness, from one draw of the cops stream. */
+function jitter(world: World, randomness: number): number {
+  return 1 + clamp(randomness, 0, 1) * (2 * nextFloat(world.rng.cops) - 1);
+}
+
+/** Whether mayhem can summon cops in this race. */
+function chaosSummons(config: SimConfig): boolean {
+  const c = config.event.cops;
+  return !!c && c.mode !== 'none' && (c.chaosSummon || c.mode === 'chaos-summoned');
+}
+
+/**
+ * How many cops leave the lot at the start of the chase under the event's `cops` block (before
+ * each one's spawn-chance roll), jittered by `randomness`; the file header has the rule.
+ */
+function startingCopCount(world: World, config: SimConfig): number {
+  const c = config.event.cops;
+  if (!c) return Infinity;
+  const base = Math.max(0, c.baseCount);
+  const want =
+    c.mode === 'none' ? 0 : c.mode === 'tier-rising' ? base + c.tierScale * (tierOf(config) - 1) : base;
+  return Math.max(0, Math.round(want * jitter(world, c.randomness)));
 }
 
 function defOf(config: SimConfig, m: Mover | undefined): SimRiderDef | undefined {
@@ -440,9 +582,70 @@ function checkBusts(world: World, config: SimConfig, st: CopsState): void {
     const law = defOf(config, by)?.law;
     if (!law || dwell < law.bustDwellS * dwellScale * 60 - 1e-9) continue;
     st.busted.push(m.id);
-    emit(world, 'bust', by.id, { fineCash: law.fineCash, dwellTicks: dwell }, { target: m.id });
+    // The fine grows with the tier (cops-3). An event seam only: career-1 charges it.
+    const tier = tierOf(config);
+    const fineCash = Math.round(
+      law.fineCash * (1 + (tier - 1) * Math.max(0, world.params['cops.fineTierScale'] ?? 0.5)),
+    );
+    emit(
+      world,
+      'bust',
+      by.id,
+      { fineCash, tier, fineBaseCash: law.fineCash, dwellTicks: dwell },
+      { target: m.id },
+    );
     endChase(world, st, by.id);
   }
+}
+
+/**
+ * The hidden chaos meter (cops-3): this tick's hits and takedowns with a player in them fill it,
+ * it drains with time, and a full meter summons the next cop still in the lot.
+ */
+function stepChaos(world: World, config: SimConfig, st: CopsState): void {
+  const player = (id: EntityId | undefined) => {
+    const m = world.movers[id ?? -1];
+    return !!m && isPlayer(config, m);
+  };
+  const law = (id: EntityId | undefined) => defOf(config, world.movers[id ?? -1])?.faction === 'law';
+  let add = 0;
+  for (const e of world.events) {
+    if (e.type === 'hit' && !law(e.actor) && (player(e.actor) || player(e.target))) {
+      add += CHAOS_HIT + (law(e.target) ? CHAOS_HIT_COP : 0);
+    } else if (e.type === 'takedown' && player(e.actor)) add += CHAOS_TAKEDOWN;
+  }
+  const decay = Math.max(0, world.params['cops.chaosDecayPerS'] ?? 0.1) * (world.timeScale / 60);
+  st.chaos = Math.max(0, st.chaos - decay) + add;
+  if (st.chaos < st.chaosAt) return;
+  const next = st.cops.find((id) => st.phase[id] === COP_PARKED && st.spawns[id] !== 1);
+  if (next === undefined) {
+    st.chaos = st.chaosAt; // nobody left to summon: the meter stays full
+    return;
+  }
+  st.chaos -= st.chaosAt;
+  st.spawns[next] = 1;
+  st.summonAt[next] = st.clock;
+  st.cause[next] = 'chaos';
+  const mix = config.event.cops;
+  st.chaosAt = Math.max(1, (world.params['cops.chaosSummonAt'] ?? 10) * jitter(world, mix?.randomness ?? 0));
+}
+
+/**
+ * An armed cop's attack press for the next tick: within his weapon's reach of the rider he chases
+ * (who is riding), idle, and not swung for cops.swingEveryS. Unarmed cops never press.
+ */
+function copSwing(world: World, config: SimConfig, st: CopsState, cop: Mover): boolean {
+  const combat = combatState(world);
+  const held = combat.held[cop.id];
+  if (!held || st.phase[cop.id] !== COP_CHASING || combat.phase[cop.id] !== 'idle') return false;
+  if (st.clock < (st.swingAt[cop.id] ?? 0)) return false;
+  const target = world.movers[st.target[cop.id] ?? -1];
+  const w = config.weapons.find((x) => x.contentId === held);
+  if (!target || !w || target.mode !== 'Road') return false;
+  const rel = relative(config.road, cop, target, w.reachSM + 2);
+  if (!rel || Math.abs(rel.ds) > w.reachSM || Math.abs(rel.dd) > w.reachDM) return false;
+  st.swingAt[cop.id] = st.clock + Math.max(0.5, world.params['cops.swingEveryS'] ?? 6) * 60;
+  return true;
 }
 
 export const copsSystem: SimSystem = {
@@ -450,11 +653,14 @@ export const copsSystem: SimSystem = {
   init(world: World, config: SimConfig) {
     const st = copsState(world);
     const spawn = copSpawnPos(config);
+    const mix = config.event.cops;
     for (const m of world.movers) {
       if (defOf(config, m)?.controller.kind !== 'cop') continue;
-      // From the lot, not the grid (M1 fields one cop; M4's spawn mix decides where more wait).
+      // From the lot, not the grid; each further cop waits PARK_GAP_M further back along the road.
       if (spawn) {
-        m.pos = { ...spawn };
+        const len = config.road.edges[spawn.edge]?.length ?? spawn.s;
+        const back = st.cops.length * PARK_GAP_M * spawn.dir;
+        m.pos = { ...spawn, s: clamp(spawn.s - back, 0, len) };
         m.yaw = 0;
         m.speed = 0;
       }
@@ -468,23 +674,59 @@ export const copsSystem: SimSystem = {
       st.chaosUntil[m.id] = 0;
       st.closing[m.id] = 0;
       st.closingFor[m.id] = 0;
+      st.extraTicks[m.id] = 0;
+      st.summonAt[m.id] = -1;
+      st.cause[m.id] = '';
+      st.swingAt[m.id] = 0;
       world.inputs[m.id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
     }
+    if (!mix) return;
+    // cops-3's spawn mix: the first `count` cops come out (each still on his roll), a wave gap
+    // apart; the rest wait in the lot for a chaos summon.
+    const count = startingCopCount(world, config);
+    const gapTicks = Math.max(0, world.params['cops.waveGapS'] ?? 8) * 60;
+    st.cops.forEach((id, k) => {
+      const jittered = jitter(world, mix.randomness); // always drawn, so the stream stays aligned
+      if (k >= count) st.spawns[id] = 0;
+      else {
+        st.extraTicks[id] = k * gapTicks * jittered;
+        st.cause[id] = mix.mode === 'tier-rising' ? 'tier-rising' : 'every-race';
+      }
+    });
+    st.chaosAt = Math.max(1, (world.params['cops.chaosSummonAt'] ?? 10) * jitter(world, mix.randomness));
   },
   step(world: World, config: SimConfig) {
     const st = copsState(world);
     if (st.cops.length === 0) return;
     const { sirenTicks, pullOutTicks } = copTiming(world, config);
+    const leadTicks = pullOutTicks - sirenTicks;
+    if (chaosSummons(config)) stepChaos(world, config, st);
+    const maxActive = Math.max(1, Math.round(world.params['cops.maxActive'] ?? 2));
+    // Chasing, or parked with the siren going: each holds one of the maxActive places.
+    let active = st.cops.filter(
+      (id) => st.phase[id] === COP_CHASING || (st.phase[id] === COP_PARKED && st.sirenOn[id] === 1),
+    ).length;
     for (const id of st.cops) {
       const cop = world.movers[id];
       const def = defOf(config, cop);
       if (!cop || !def) continue;
       if (st.phase[id] === COP_PARKED && st.spawns[id] === 1) {
-        if (st.sirenOn[id] !== 1 && st.clock >= sirenTicks) {
-          st.sirenOn[id] = 1;
-          emit(world, 'siren', id, { on: true });
+        // A summoned cop goes from his summons; the others at the base time plus their wave gap.
+        const summoned = st.summonAt[id] ?? -1;
+        const out = summoned >= 0 ? summoned + leadTicks : pullOutTicks + (st.extraTicks[id] ?? 0);
+        if (st.sirenOn[id] !== 1 && st.clock >= out - leadTicks) {
+          if (active >= maxActive) {
+            // No place free: he waits in the lot, and his timing slides with the clock (the lead holds).
+            if (summoned >= 0) st.summonAt[id] = summoned + world.timeScale;
+            else st.extraTicks[id] = (st.extraTicks[id] ?? 0) + world.timeScale;
+          } else {
+            st.sirenOn[id] = 1;
+            active++;
+            const cause = st.cause[id] ?? '';
+            emit(world, 'siren', id, cause ? { on: true, cause } : { on: true });
+          }
         }
-        if (st.clock >= pullOutTicks) st.phase[id] = COP_CHASING;
+        if (st.sirenOn[id] === 1 && st.clock >= out) st.phase[id] = COP_CHASING;
       }
       if (st.phase[id] === COP_CHASING) {
         const before = st.target[id];
@@ -503,7 +745,11 @@ export const copsSystem: SimSystem = {
       const def = defOf(config, cop);
       if (!cop || !def || cop.mode !== 'Road') continue;
       if (st.phase[id] === COP_PARKED) world.inputs[id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
-      else drive(world, config, st, cop, def);
+      else {
+        drive(world, config, st, cop, def);
+        const input = world.inputs[id];
+        if (input && copSwing(world, config, st, cop)) input.flags |= InputFlag.attack;
+      }
     }
     st.clock += world.timeScale;
   },

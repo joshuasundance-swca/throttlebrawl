@@ -64,6 +64,20 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Playtest 1c ("It also feels like the bikes accelerate slowly"): the engine's push at a
+    // standstill, as a multiple of the bike's acceleration, fading to 1× at LAUNCH_FADE_SHARE of
+    // top speed. 1 is the M1/M2 model. [default] 3: the starter does 0-60 mph in about 2.9 s, not 6.3 s.
+    id: 'riders.launchGain',
+    group: 'speed',
+    label: 'Launch punch',
+    default: 3,
+    min: 1,
+    max: 4,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
     id: 'riders.crashImpactMps',
     group: 'crashes',
     label: 'Barrier crash speed',
@@ -124,6 +138,18 @@ export interface RiderState {
   truckTouch: number[];
 }
 
+/**
+ * The launch punch (riders.launchGain) fades out linearly by this share of top speed [default], so
+ * cruising (the shoulder's and a wobble's slower top speeds, gentle hills) is exactly as before.
+ */
+export const LAUNCH_FADE_SHARE = 0.75;
+/**
+ * The punch comes in as the throttle opens from this to full [default]. Below it the model is
+ * exactly the M1/M2 one, so the AI's and the cops' feed-forward throttle (which hold a speed with a
+ * partial throttle) are unchanged; a player on full throttle, and any rider accelerating flat out,
+ * gets the whole punch.
+ */
+export const LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
 const GRAVITY = 9.81;
@@ -299,10 +325,34 @@ function crossToBranch(config: SimConfig, m: Mover): void {
   if (turn !== null) m.yaw += turn;
 }
 
+/** How far before a split zone its outer edge already guides rather than walls, m [default]. */
+export const SPLIT_GUIDE_LEAD_M = 15;
+
+/**
+ * Playtest 1c ([decided] 2026-09-30, the skeptic's mustFix from playtest 1b): a rider who commits
+ * early and hard to a branch reaches the painted split zone's outer edge before the split, and that
+ * edge is also the road's. There it guides instead of walling: inside a split zone that runs out to
+ * the edge on its side (and a short lead-in before it), a rider at the edge slides along it to the
+ * split with no barrier event, no scrape and no speed lost, and its d stays inside the zone, so it
+ * takes the branch. Only where the zone leads onto an edge the race allows.
+ */
+function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, limit: number): boolean {
+  for (const z of config.road.splitZones()) {
+    if (z.edge !== edge || (z.d0 + z.d1 >= 0 ? 1 : -1) !== side) continue;
+    const s0 = z.end === 'to' ? z.s0 - SPLIT_GUIDE_LEAD_M : z.s0;
+    const s1 = z.end === 'to' ? z.s1 : z.s1 + SPLIT_GUIDE_LEAD_M;
+    if (s < s0 || s > s1) continue;
+    if (side > 0 ? z.d1 < limit || z.d0 > limit : z.d0 > limit || z.d1 < limit) continue;
+    if (config.route.allows(z.toEdge)) return true;
+  }
+  return false;
+}
+
 /**
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
- * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble.
+ * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble. At a split
+ * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead.
  */
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
   const pos = m.pos;
@@ -312,6 +362,12 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     return;
   }
   const side = pos.d > hi ? 1 : -1; // road-frame side of the wall
+  if (splitGuideAt(config, pos.edge, pos.s, side, side > 0 ? hi : lo)) {
+    pos.d = side > 0 ? hi : lo;
+    m.yaw = 0;
+    st.touching[m.id] = 0;
+    return;
+  }
   const v = m.speed;
   const yawBefore = m.yaw;
   const impact = scrapeAlong(config, m, side, dt);
@@ -449,13 +505,23 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.lastTick[m.id] = world.tick;
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
-  // top speed for a while and pushes the bike toward it.
+  // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
+  // the engine's push at a standstill, fading linearly to 1× at LAUNCH_FADE_SHARE of the bike's own
+  // top speed, so top speed, the drag (engine braking when you let go) and cruising are as before.
+  // It comes in only as the throttle opens fully (LAUNCH_THROTTLE), and it is the racers' (the
+  // player's and the rivals'): the cop rides as before (playtest 1 item 7 keeps cop difficulty).
+  // With the punch his catch-up from the lot left him following at about 40 m at top speed, too
+  // close to stop behind a player braking hard, so he overshot (a follow-up for the cops lane).
   const v = m.speed;
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const top = topSpeedOf(world, config, bike.topSpeedMps) + boostTop;
+  const ownTop = topSpeedOf(world, config, bike.topSpeedMps);
+  const top = ownTop + boostTop;
   const a = bike.accelMps2 * accelScale * m2;
-  let accel = throttle * a - (a * v * v) / (top * top);
+  const fade = clamp(1 - v / (ownTop * LAUNCH_FADE_SHARE), 0, 1);
+  const open = clamp((throttle - LAUNCH_THROTTLE) / (1 - LAUNCH_THROTTLE), 0, 1);
+  const launch = def.faction === 'law' ? 1 : 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open;
+  let accel = throttle * a * launch - (a * v * v) / (top * top);
   accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
   if (boostLeft > 0) {
     // The push stops at the raised top speed; it never carries the bike past it.

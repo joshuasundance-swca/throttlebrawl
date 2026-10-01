@@ -1,0 +1,55 @@
+{
+  "type": "rider",
+  "id": "tammy-two-stroke",
+  "name": "Tammy Two-Stroke",
+  "role": "rival",
+  "roster": "local",
+  "region": "florida-keys",
+  "crew": "swamp-kin",
+  "tags": ["smoker", "veteran", "dirt"],
+  "blurb": "A chain-smoking auntie on a dirt bike.",
+  "bike": "rustbucket-400",
+  "stats": {
+    "massKg": 72,
+    "healthMax": 100,
+    "skill": 0.7
+  },
+  "personality": {
+    "style": "scrapper",
+    "aggression": 0.6,
+    "dirtiness": 0.6,
+    "courage": 1,
+    "riskTaking": 0.8,
+    "chatter": 0.7,
+    "weave": 0.3,
+    "targetPreference": ["grudge", "rival", "nearest", "player"],
+    "preferredSide": "either",
+    "rivals": ["deacon-vane"],
+    "preferredWeapon": "tire-iron"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 3,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 1,
+    "huntThreshold": 4,
+    "max": 10,
+    "reliefWhenHelped": 2,
+    "shareWithCrew": 0.5
+  },
+  "look": {
+    "description": "Big sunglasses, a sun visor over a frosted perm, a cigarette that never seems to burn down. Rides a mud-caked dirt bike with a cooler strapped behind the seat.",
+    "bikeClass": "dirt",
+    "palette": ["#c0392b", "#f5e6c8", "#2b2b2b", "#3fa7a0"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Florida local, Swamp Kin. M4 rivals-1 (built early): a scrapper. Quick off the line, never backs down whatever her health, and goes straight back at whoever just hit her for a few seconds. Throwing roadside junk waits for weapons-2's throw behaviour. Rivalry: Deacon Vane; she has heard his sermon before. Prefers a tire iron (weapons-2 adds it). Rides the starter bike until her dirt bike exists. Not in any event yet (events are the riders lane's). Approved line: \"Honey, I've passed hearses faster than you.\"",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

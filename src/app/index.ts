@@ -9,10 +9,18 @@
 import { createAssetManifest } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, type CameraPose } from '../camera';
-import { assetIndex, contentHashes, loadBasePack, lookup } from '../content';
+import {
+  assetIndex,
+  contentHashes,
+  createPackLibrary,
+  lookup,
+  packClosure,
+  packOf,
+  packSubset,
+} from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
-import { createRenderer, interpolateEntity } from '../render';
+import { createRenderer, interpolateEntity, type LookEnv } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import { createSettingsStore, type StorageLike } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
@@ -38,22 +46,44 @@ import {
   resolvePreset,
 } from '../tuning';
 import { createUi } from '../ui';
-import { buildSimConfig, DEFAULT_EVENT, raceStartValues, streamForEvent } from './config';
+import { buildSimConfig, DEFAULT_EVENT, eventKey, networkKeyOf, qualifyIn, raceStartValues } from './config';
 import { createLoop } from './loop';
 import { appReplayKey } from './replay-key';
 import { createOutcome, raceResult, resultsDue } from './results';
+import {
+  boardCatalog,
+  createStreamCache,
+  racePalette,
+  regionChoices,
+  regionKeyOf,
+  routeKeyOf,
+  type RegionChoice,
+} from './regions';
+import { roadsForHeader } from './resume';
+import { createRaceSeeds, type SeedSource } from './seed';
 import { transition, type AppEvent, type AppState } from './states';
 import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
-export { buildSimConfig, DEFAULT_EVENT, streamForEvent } from './config';
+export { buildSimConfig, DEFAULT_EVENT, eventKey, qualifyIn, streamForEvent, streamForRoute } from './config';
+export {
+  boardCatalog,
+  createStreamCache,
+  racePalette,
+  regionChoices,
+  regionKeyOf,
+  routeKeyOf,
+} from './regions';
+export type { RegionChoice, StreamCache } from './regions';
 export { resumeFromRecording, roadsForHeader } from './resume';
 export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
 export type { AppState, AppEvent } from './states';
 export { APP_TUNING } from './tuning';
+export { createRaceSeeds, cryptoSeed } from './seed';
+export type { RaceSeeds, SeedSource } from './seed';
 export type { ActionState } from '../input';
 
 export interface AppBuild {
@@ -88,8 +118,13 @@ export interface AppOptions {
   canvas: HTMLCanvasElement;
   build: AppBuild;
   callbacks: AppCallbacks;
-  /** Race seed; a fixed seed makes a test run repeatable. */
+  /**
+   * A fixed race seed: every race uses it, so a test run repeats (the test flag passes 1). Left
+   * out, each new race draws a fresh seed from `seedSource` (playtest 1c item 2).
+   */
   seed?: number;
+  /** Where a fresh race seed comes from when no seed is fixed (default: crypto random). */
+  seedSource?: SeedSource;
 }
 
 export type TickDriver = (snapshot: SimSnapshot, actions: ActionState) => void;
@@ -148,14 +183,23 @@ function safeStorage(): StorageLike | null {
 export function createApp(opts: AppOptions): AppHandle {
   const { build } = opts;
   let state: AppState = 'boot';
-  let seed = opts.seed ?? 1;
+  // A fresh seed per race unless one is fixed (playtest 1c item 2); the seed goes into SimConfig,
+  // so the recording's header carries it and replay and resume reproduce the race.
+  const seeds = createRaceSeeds(opts.seed, opts.seedSource);
 
-  // Content, the region, and the layout record.
-  const registry = loadBasePack({ includeDrafts: build.channel !== 'prod' });
-  const hashes = contentHashes(registry);
-  const replayKey = appReplayKey(build, hashes.sim);
-  const stream = streamForEvent(registry, DEFAULT_EVENT);
-  const event = lookup(registry.events, DEFAULT_EVENT);
+  // Content: every pack the build carries (base whole; a region pack's road data is fetched the
+  // first time a race there starts), the regions the menu offers, and the race's event.
+  const library = createPackLibrary({ includeDrafts: build.channel !== 'prod' });
+  let registry = library.registry();
+  const regions = regionChoices(registry);
+  const streams = createStreamCache();
+  /** The race's content hashes: its own packs only, so the Keys' replay key never moves. */
+  const raceHashes = (id: string) => contentHashes(packSubset(registry, packClosure(registry, packOf(id))));
+  let eventId = eventKey(DEFAULT_EVENT);
+  let stream = streams.forEvent(registry, eventId);
+  let event = lookup(registry.events, eventId);
+  let hashes = raceHashes(eventId);
+  let replayKey = appReplayKey(build, hashes.sim);
   const hudId = registry.packs[0]?.defaults.hud ?? 'classic';
   const hud = lookup(registry.hudLayouts, hudId);
   createAssetManifest(() => assetIndex(registry));
@@ -194,9 +238,42 @@ export function createApp(opts: AppOptions): AppHandle {
   renderer.setLook(settings.look);
   /** The canvas's width over its height, as the renderer's camera uses it. */
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
-  const dressing = Object.fromEntries(stream.road.edges.map((e) => [e.id, lookup(registry.roads, e.id)]));
-  renderer.setRoad(stream.road, { timeOfDay: event.timeOfDay }, dressing);
   const camera = createFollowCamera({ road: stream.road });
+  let attractPose: CameraPose | null = null;
+  /** The network the renderer and camera show, so a race in the same region rebuilds nothing. */
+  let shownRoad: unknown = null;
+  /**
+   * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
+   * its signs and billboards (minus this device's cuts), its time of day and palette.
+   */
+  const showRegion = () => {
+    if (shownRoad === stream.road) return;
+    shownRoad = stream.road;
+    const regionKey = regionKeyOf(registry, eventId);
+    const roadPack = packOf(networkKeyOf(registry, routeKeyOf(registry, eventId)));
+    const dressing = Object.fromEntries(
+      stream.road.edges.map((e) => [e.id, lookup(registry.roads, qualifyIn(roadPack, e.id))]),
+    );
+    const vetoed = new Set(settings.vetoes.map((v) => v.contentRef));
+    // `palette` waits for the render lane to read it (docs/content-packs.md, "Region packs at
+    // runtime", Palette); until then the renderer ignores it and draws the look's own palette.
+    const env: LookEnv & { palette: Record<string, string> } = {
+      timeOfDay: event.timeOfDay,
+      palette: racePalette(registry, regionKey, event.timeOfDay),
+    };
+    renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
+    camera.setRoad(stream.road);
+    attractPose = null;
+  };
+  /** Makes `id` (a qualified event) the race's event; its pack's road data must be loaded. */
+  const useEvent = (id: string) => {
+    if (id === eventId) return;
+    eventId = id;
+    stream = streams.forEvent(registry, eventId);
+    event = lookup(registry.events, eventId);
+    hashes = raceHashes(eventId);
+    replayKey = appReplayKey(build, hashes.sim);
+  };
   const audio = createAudio();
   audio.setVolumes(settings.volumes, settings.mute);
   /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
@@ -216,10 +293,10 @@ export function createApp(opts: AppOptions): AppHandle {
   let playerId = 0;
   let stepListener: ((s: SimSnapshot, e: readonly SimEvent[]) => void) | null = null;
 
-  const newSim = (): Sim => {
+  const newSim = (seed: number): Sim => {
     const config = buildSimConfig(registry, stream, {
       seed,
-      eventId: DEFAULT_EVENT,
+      eventId,
       // The sim's values plus the difficulty scales, read once at race start (app-3).
       tuning: { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) },
     });
@@ -229,7 +306,8 @@ export function createApp(opts: AppOptions): AppHandle {
     return createSim(config);
   };
   // The attract scene: the grid, before anyone moves.
-  curr = newSim().snapshot();
+  curr = newSim(seeds.next()).snapshot();
+  showRegion();
 
   const go = (e: AppEvent) => {
     const next = transition(state, e);
@@ -266,7 +344,11 @@ export function createApp(opts: AppOptions): AppHandle {
     // The control settings input-2 wired (#106); input itself is made after the ui, below, so the
     // vibration check asks input's haptics the same question on a throwaway (no side effects).
     liveSettings: [...liveControlSettings(browserControlDevice(createHaptics().supported)), 'look'],
+    // The menu's region picker (#160): every carried region with an event, the Keys picked.
+    regions: regions.map((r) => ({ id: r.id, name: r.name, ...(r.blurb ? { blurb: r.blurb } : {}) })),
+    region: regionKeyOf(registry, eventId),
     callbacks: {
+      onRegionChange: (id) => pickRegion(id),
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
       onBackToMenu: () => handle.backToMenu(),
@@ -363,7 +445,6 @@ export function createApp(opts: AppOptions): AppHandle {
     }
   };
 
-  let attractPose: CameraPose | null = null;
   const loop = createLoop(
     {
       stepping: () => state === 'race',
@@ -406,6 +487,52 @@ export function createApp(opts: AppOptions): AppHandle {
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());
 
+  // The region picker (playtest 1c): a pick fetches that region's road data in the background,
+  // and the menu's backdrop shows its road once loaded; Race starts there.
+  let loadingRoads = false;
+  const pickedChoice = (): RegionChoice | undefined => {
+    const picked = ui.region;
+    return picked ? regions.find((r) => r.id === picked) : undefined;
+  };
+  /** Fetches a region pack's road data, with a busy line; false (and a notice) when it fails. */
+  const loadRegion = async (choice: RegionChoice): Promise<boolean> => {
+    loadingRoads = true;
+    ui.setBusy(`Loading ${choice.name}`);
+    try {
+      registry = await library.loadRoads(choice.packId);
+      return true;
+    } catch (err) {
+      console.warn('region road data did not load', err);
+      ui.notice(`${choice.name} did not load. Check the connection and tap Race again.`);
+      return false;
+    } finally {
+      loadingRoads = false;
+      ui.setBusy(null);
+    }
+  };
+  /** The menu backdrop follows the pick: the grid on that region's road. */
+  const showPicked = () => {
+    const choice = pickedChoice();
+    if (!choice || state === 'race' || !library.hasRoads(choice.packId)) return;
+    useEvent(choice.eventId);
+    showRegion();
+    curr = newSim(seeds.next()).snapshot();
+    prev = null;
+  };
+  const pickRegion = (id: string) => {
+    const choice = regions.find((r) => r.id === id);
+    if (!choice) return;
+    if (library.hasRoads(choice.packId)) showPicked();
+    else
+      void library.loadRoads(choice.packId).then(
+        (reg) => {
+          registry = reg;
+          showPicked();
+        },
+        () => undefined, // Race tries again and says so if it fails
+      );
+  };
+
   const handle: AppHandle = {
     build,
     state: () => state,
@@ -419,7 +546,7 @@ export function createApp(opts: AppOptions): AppHandle {
       stepListener = listener;
     },
     setSeed(s) {
-      seed = s >>> 0;
+      seeds.fix(s);
     },
     tap() {
       if (state !== 'tapToStart') return;
@@ -428,8 +555,20 @@ export function createApp(opts: AppOptions): AppHandle {
       ui.show('menu');
     },
     startRace() {
+      if (transition(state, 'race') === null || loadingRoads) return;
+      // The race runs in the region picked on the menu. A region pack's road data is fetched the
+      // first time (docs/content-packs.md, "Region packs at runtime"); the race starts after.
+      const choice = pickedChoice();
+      if (choice && !library.hasRoads(choice.packId)) {
+        void loadRegion(choice).then((ok) => {
+          if (ok) handle.startRace();
+        });
+        return;
+      }
+      if (choice) useEvent(choice.eventId);
+      showRegion();
       if (!go('race')) return;
-      race = newSim();
+      race = newSim(seeds.next());
       pendingTuning.length = 0;
       // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
       recorder.beginRace(race, replayKey);
@@ -456,15 +595,17 @@ export function createApp(opts: AppOptions): AppHandle {
     replayFile: () => recorder.file(),
     checkReplay(file) {
       const rec = decodeReplay(file);
-      // M1 has one event and one region, so the road and route handles are this build's.
-      const base = buildSimConfig(registry, stream, { seed: rec.header.seed, eventId: DEFAULT_EVENT });
-      const sim = createSim(configFromHeader(rec.header, base.road, base.route));
+      // The road and route handles come from the recording's own event and route, in any region
+      // whose road data this session has loaded.
+      const { road, route } = roadsForHeader(registry, streams)(rec.header);
+      const sim = createSim(configFromHeader(rec.header, road, route));
       const result = createReplayController(rec).run(sim);
+      const key = eventKey(rec.header.eventId || DEFAULT_EVENT);
       return {
         ticks: result.ticks,
         checked: result.checked,
         desync: result.desync,
-        keyMatches: rec.header.replayKey === replayKey,
+        keyMatches: rec.header.replayKey === appReplayKey(build, raceHashes(key).sim),
       };
     },
     frameStats() {

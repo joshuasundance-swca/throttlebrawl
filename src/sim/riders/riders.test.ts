@@ -28,9 +28,11 @@ describe('riders-1: longitudinal', () => {
     expect(slow.rider.speed).toBeGreaterThan(TOP * 0.8 - 0.5);
     expect(slow.rider.speed).toBeLessThanOrEqual(TOP * 0.8);
 
+    // Half a second from a standstill: the launch punch (playtest 1c) fades as the bike nears 75 % of
+    // top speed, so over a longer run the quicker bike loses more of it and the ratio shrinks.
     const quick = riderHarness(testConfig({ tuning: { 'riders.accelScale': 1.5 } }), { s: 10, d: 1.7 });
     const base = riderHarness(testConfig(), { s: 10, d: 1.7 });
-    for (let t = 0; t < 120; t++) {
+    for (let t = 0; t < 30; t++) {
       quick.step(input(1));
       base.step(input(1));
     }
@@ -333,6 +335,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.steerScale',
       'riders.speedScale',
       'riders.accelScale',
+      'riders.launchGain',
       'riders.crashImpactMps',
       'riders.landingCrashMps',
     ]);

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { SimEvent } from '../../src/sim/api';
-import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
+import { BATCH_SEEDS, BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
 
 // combat-2 over the real base pack and the shared 50-race batch (docs/milestones/M1.md,
 // combat-2). The rules themselves are pinned by src/sim/combat/steal.test.ts; here: the pack
@@ -26,14 +26,28 @@ describe('combat-2 on the base pack', () => {
     expect([pipe?.reachSM, pipe?.reachDM]).toEqual([1.6, 1.4]);
   });
 
-  it('lays three pipes on the route at race start', () => {
-    const { sim } = createBatchRace(1);
-    const pickups = sim.snapshot().entities.filter((e) => e.kind === 'pickup');
-    expect(pickups).toHaveLength(3);
-    for (const p of pickups) {
-      expect(p.mode).toBe('Road');
-      expect(p.contentId).toBe(PIPE);
-    }
+  // M4 weapons-2 (head start): each spot now draws its weapon from the seed, weighted by the
+  // weapon's roadsideWeight. Until buildSimConfig maps that weight (an app-lane follow-up), every
+  // armed weapon in the config weighs 1.
+  it('lays three armed weapons on the route at race start, drawn from the seed', () => {
+    const lay = (seed: number) => {
+      const { sim, config } = createBatchRace(seed);
+      const armed = new Set(
+        config.weapons.filter((w) => !w.unarmed && (w.roadsideWeight ?? 1) > 0).map((w) => w.contentId),
+      );
+      // On the road, that is: a held weapon's pickup is stowed below it.
+      const pickups = sim.snapshot().entities.filter((e) => e.kind === 'pickup' && e.road.h > -1);
+      expect(pickups).toHaveLength(3);
+      for (const p of pickups) {
+        expect(p.mode).toBe('Road');
+        expect(armed.has(p.contentId), p.contentId).toBe(true);
+      }
+      return pickups.map((p) => p.contentId);
+    };
+    expect(lay(1)).toEqual(lay(1));
+    const seen = new Set(BATCH_SEEDS.slice(0, 10).flatMap(lay));
+    print(`[weapons-2] roadside weapons over seeds 1-10: ${[...seen].sort().join(', ')}`);
+    expect(seen.size).toBeGreaterThan(1);
   });
 });
 
@@ -44,7 +58,15 @@ function audit(events: readonly SimEvent[]) {
   const out = { road: 0, steal: 0, cues: 0, pipeHits: 0, problem: '' };
   for (const e of events) {
     if (e.type === 'stealWindow') out.cues++;
-    if (e.type === 'hit' && e.data['weapon'] === PIPE) out.pipeHits++;
+    if (e.type === 'hit' && e.data['weapon'] !== 'base:punch' && e.data['weapon'] !== 'base:kick')
+      out.pipeHits++;
+    // A weapon used up (M4 weapons-2: charges or durability) is gone after the swing whose hit or
+    // miss says `spent`; it never returns to the road.
+    if ((e.type === 'hit' || e.type === 'attackMiss') && e.data['spent'] === true) {
+      const pid = holding.get(e.actor);
+      if (pid !== undefined) holderOf.delete(pid);
+      holding.delete(e.actor);
+    }
     // A rider who crashes or is knocked off drops the pipe (drops have no event of their own).
     if (e.type === 'crash') {
       const pid = holding.get(e.actor);
@@ -78,7 +100,7 @@ function audit(events: readonly SimEvent[]) {
 }
 
 describe('combat-2 over the shared seeded-race batch', () => {
-  it('pipes get picked up, and every weapon move is consistent', () => {
+  it('weapons get picked up, and every weapon move is consistent', () => {
     let road = 0;
     let steal = 0;
     let cues = 0;
@@ -96,7 +118,7 @@ describe('combat-2 over the shared seeded-race batch', () => {
     }
     print(
       `[combat-2 batch] ${batch.races.length} races: ${road} roadside pickups (in ${racesWithGrab} races), ` +
-        `${steal} steals, ${cues} steal cues, ${pipeHits} pipe hits`,
+        `${steal} steals, ${cues} steal cues, ${pipeHits} held-weapon hits`,
     );
     expect(problems).toEqual([]);
     expect(road).toBeGreaterThan(0);

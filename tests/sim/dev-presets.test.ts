@@ -16,12 +16,15 @@ import type { DevHookResult } from './hooks/dev';
 // more cop spawns on Hard) are printed here with PASS or FAIL. The assertions stay with the lanes
 // that own the difficulty scales: riders-5 in riders-difficulty.test.ts and cops-2 in
 // cops-difficulty.test.ts. Those lanes move their comparisons onto presetBatch() when they choose.
-// The batch hooks run in every race. The M2 bot assertions that cannot hold yet print NOT ACTIVE
-// with the reason, so a switched-off check never reads as a pass:
-// - the bot lands a takedown: ACTIVE once BOT_TAKEDOWNS is set, by the part of dev-4 that teaches
-//   the bot to fight a rival down (combat-4's takedowns are in; the bot's are not);
-// - slow motion is counted per tick by the dev hook: ACTIVE once any race spends a tick in it.
-const BOT_TAKEDOWNS = false;
+// The batch hooks run in every race. The M2 bot assertions:
+// - the bot lands takedowns (dev-4 part 2 taught it to fight a rival down: kick from the side that
+//   shoves the rival toward traffic, steer into the kick for the momentum shove, finish the weakest
+//   rival): at least one in the Normal batch, at least one of them a traffic takedown (a rival
+//   kicked into a vehicle), and it still finishes at least BOT_MIN_FINISH of its races;
+// - slow motion is counted per tick by the dev hook: ACTIVE once any race spends a tick in it, and
+//   NOT ACTIVE with the reason until then, so a switched-off check never reads as a pass.
+/** The share of Normal races the fighting bot must still finish (it finished 45 of 50 when it learned to fight). [default] */
+const BOT_MIN_FINISH = 0.7;
 //
 // A cop spawn is his siren sounding (sim/cops sounds it as he pulls out), as riders-5 counts it.
 
@@ -93,31 +96,49 @@ describe('dev-4: the Easy and Hard batches', () => {
   });
 });
 
-describe('dev-4: batch hooks and the held bot assertions', () => {
+describe('dev-4: batch hooks and the bot assertions', () => {
   it('every registered hook ran in every race of every batch', () => {
     for (const b of [normal, easy, hard])
       for (const r of b.races) expect(r.hooks['dev'], `${r.difficulty} seed ${r.seed}`).toBeDefined();
   });
 
-  it('the bot lands at least one takedown in the Normal batch (switches on with the bot that can)', () => {
+  it('the bot fights rivals down: takedowns in the Normal batch, one into traffic, and it still finishes', () => {
     const all = sum(normal, (r) => r.events.filter((e) => e.type === 'takedown').length);
-    const mine = sum(
-      normal,
-      (r) => r.events.filter((e) => e.type === 'takedown' && e.actor === r.playerId).length,
+    const mine = normal.races.flatMap((r) =>
+      r.events.filter((e) => e.type === 'takedown' && e.actor === r.playerId),
     );
-    if (!BOT_TAKEDOWNS) {
-      // combat-4's takedowns are in the sim (on 2026-09-30 the batch saw them), but the bot punches
-      // about twice a race and gives up after 8 s, so it never fights a rival down: probes with
-      // kicks on every press, or a 40 s engagement, still landed 0 in 12 races. Teaching the bot
-      // to finish a fight is dev-4's next part; it sets BOT_TAKEDOWNS and this asserts.
+    const kinds: Record<string, number> = {};
+    for (const e of mine) kinds[String(e.data['kind'])] = (kinds[String(e.data['kind'])] ?? 0) + 1;
+    const races = normal.races.filter((r) =>
+      r.events.some((e) => e.type === 'takedown' && e.actor === r.playerId),
+    ).length;
+    const finished = normal.races.filter((r) => r.playerFinished).length;
+    const kicks = sum(normal, (r) => r.bot.kickPresses);
+    const kicksLanded = sum(
+      normal,
+      (r) => r.events.filter((e) => e.type === 'kick' && e.actor === r.playerId).length,
+    );
+    const danger = sum(normal, (r) => r.bot.dangerKicks);
+    print(
+      `[assert] the bot lands takedowns: ACTIVE (${mine.length} bot takedowns of ${all} in ${normal.races.length} races, ` +
+        `in ${races} races; by kind ${JSON.stringify(kinds)}; kicks pressed ${kicks}, landed ${kicksLanded}, ` +
+        `aimed into traffic ${danger}; the bot finished ${finished} of ${normal.races.length})`,
+    );
+    for (const [name, b] of [
+      ['easy', easy],
+      ['hard', hard],
+    ] as const) {
+      const n = sum(b, (r) => r.events.filter((e) => e.type === 'takedown' && e.actor === r.playerId).length);
       print(
-        `[assert] the bot lands a takedown: NOT ACTIVE (the bot does not fight to a takedown yet: dev-4 part 2; ` +
-          `${mine} bot takedowns of ${all} in ${normal.races.length} races)`,
+        `[print] ${name}: ${n} bot takedowns, the bot finished ${b.races.filter((r) => r.playerFinished).length} of ${b.races.length}`,
       );
-      return;
     }
-    print(`[assert] the bot lands a takedown: ACTIVE (${mine} bot takedowns of ${all})`);
-    expect(mine).toBeGreaterThan(0);
+    expect(mine.length).toBeGreaterThan(0);
+    expect(kinds['traffic'] ?? 0, 'a rival kicked into traffic').toBeGreaterThan(0);
+    expect(
+      finished / normal.races.length,
+      'the fighting bot still finishes its races',
+    ).toBeGreaterThanOrEqual(BOT_MIN_FINISH);
   });
 
   it('prints the slow-motion ticks the dev hook counted (switches on with combat-4)', () => {

@@ -17,10 +17,15 @@
 //   in the other it does not. Over the next 60 s it must swing at the player more, and ride close
 //   to them longer, with the grudge. A racer only hunts someone it holds a grudge against; a
 //   heavy-hitter already hunts the player first, so a grudge changes nothing measurable for it.
+//   M4 rivals-1 gave the four regulars their own styles, so "racer-style" now means any style that
+//   does not hunt by itself (`plainHunter` below: Dial-Up the weaver and Chad the showboat in the
+//   base race). With `ai.styleQuirks` on, the showboat is left out too: he will not take on a
+//   player healthier than him, grudge or not.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent } from '../../src/sim/api';
+import { huntsByDefault, resolveProfile } from '../../src/sim/ai';
 import { createSimWithWorld } from '../../src/sim/create';
 import { noteGrudge } from '../../src/sim/world';
 import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, TRACE_EVERY_TICKS, type BatchResult } from './batch';
@@ -28,9 +33,19 @@ import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, TRACE_EVERY_TICKS, type Ba
 /** Hunting range: ai-2's widest seek range (10 m + 30 m at full aggression), metres of progress. */
 const NEAR_M = 40;
 /** The A/B's seeds, its window and "close" (a fight's distance), [default]. */
-const AB_SEEDS = [1, 2, 3, 4, 5, 6];
+/**
+ * Seeds are drawn from this pool, in order, until AB_RACES of them have a racer-style rival within
+ * 30 m of the player after 20 s. (A fixed list of six stopped being enough when the playtest 1c
+ * launch punch spread the field: seeds 1 and 3 no longer qualify.)
+ */
+const AB_SEED_POOL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const AB_RACES = 6;
 const AB_WINDOW_TICKS = 60 * 60;
 const AB_CLOSE_M = 6;
+
+/** A style that hunts only whom it holds a grudge against, and picks no fights by looks (rivals-1). */
+const plainHunter = (style: string, quirks: boolean): boolean =>
+  !huntsByDefault(style) && !(quirks && resolveProfile(style, undefined).traits.showboat);
 
 /**
  * One A/B run: the base race with the bot, until a racer-style rival first rides within 30 m of the
@@ -39,6 +54,7 @@ const AB_CLOSE_M = 6;
  */
 function grudgeRun(seed: number, grudge: boolean) {
   const { config, playerId, route } = createBatchRace(seed);
+  const quirks = (config.tuning['ai.styleQuirks'] ?? 0) >= 0.5;
   const { sim, world } = createSimWithWorld(config);
   const bot = createBot();
   let snap = sim.snapshot();
@@ -51,7 +67,8 @@ function grudgeRun(seed: number, grudge: boolean) {
     if (t0 < 0 && sim.tick >= 60 * 20 && me?.mode === 'Road') {
       for (const e of snap.entities) {
         const c = config.riders[e.id]?.controller;
-        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || c.style !== 'racer') continue;
+        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || !plainHunter(c.style, quirks))
+          continue;
         if (Math.abs(e.progress - me.progress) > 30) continue;
         holder = e.id;
         t0 = sim.tick;
@@ -180,7 +197,8 @@ describe('ai-2: a rival you knocked off comes after you (shared batch)', () => {
     let closeOff = 0;
     let closeOn = 0;
     let examined = 0;
-    for (const seed of AB_SEEDS) {
+    for (const seed of AB_SEED_POOL) {
+      if (examined >= AB_RACES) break;
       const off = grudgeRun(seed, false);
       const on = grudgeRun(seed, true);
       // Both runs are the same race until the grudge: the same moment and the same rival.
@@ -201,7 +219,7 @@ describe('ai-2: a rival you knocked off comes after you (shared batch)', () => {
         `swings at the player ${swingsOff} without the grudge, ${swingsOn} with it; within ${AB_CLOSE_M} m ` +
         `${closeOff.toFixed(1)} s without, ${closeOn.toFixed(1)} s with. ${rows.join('; ')}`,
     );
-    expect(examined).toBeGreaterThanOrEqual(AB_SEEDS.length - 1);
+    expect(examined).toBe(AB_RACES);
     expect(swingsOn).toBeGreaterThan(swingsOff);
     expect(closeOn).toBeGreaterThan(closeOff);
   }, 300_000);

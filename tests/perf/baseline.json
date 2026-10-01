@@ -26,5 +26,12 @@
         36766212810, 36773593901, 36774800533
       ]
     }
+  },
+  "softInk": {
+    "measuredAt": "2026-10-01",
+    "source": "GitHub Actions ubuntu runners, the perf job's kodak-look run (tests/perf/perf-looks.spec.ts), same scene and throttling as `soft`",
+    "frameMs": { "p50": 50, "p95": 116.7 },
+    "reason": "The ink looks draw the scene offscreen and add a full-screen pass, which SwiftShader pays for in CPU time. Seven CI runs on 2026-10-01 printed kodak frame p95 of 66.6, 116.6, 116.6, 116.7, 116.7, 133.3 and 133.4 ms (p50 33.3 to 50.1 ms). Against classic's 66.6 ms baseline the limit was 133.2 ms, so 2 of the 7 failed, one of them on main. The median p95 is 116.7 ms and the median p50 50 ms. The phone number comes from the maintainer's playtest, not from this tier.",
+    "runs": [36807875167, 36807866015, 36807850601, 36807803194, 36807700069, 36807674331, 36807131982]
   }
 }

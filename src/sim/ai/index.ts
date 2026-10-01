@@ -12,19 +12,25 @@
 // takedown intent (a brawler rides on the side of its target that lets its hits push the target
 // toward an oncoming car or a rail), and difficulty (the preset's
 // aggression scale here; its rubber-band scale in sim/race's rubberBandBounds).
+// M4 rivals-1 (built early) adds the cast's styles (styles.ts: weaver, showboat, grudge-keeper,
+// scrapper, crowd-pleaser, crew-boss), authored rivalries (a rider's `rivals` are hunted like a
+// grudge, with no grudge needed), the career's saved grudge table (`SimConfig.grudges`: points at or
+// above `ai.grudgeHuntAt` make the holder hunt that rider from the start), and a preferred weapon
+// (an unarmed rider steers over a lying pickup of it).
 // Law riders (cops) are not driven here: cops-1 writes their inputs from the cops phase.
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
+import { combatView, pickupWeapon, STOWED_H } from '../combat';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
 import { PED_SIZE, see, vehicleSize, weaponReach, type ObstacleSize, type Reach, type Seen } from './sense';
-import { resolveProfile, type AiProfile } from './styles';
+import { bareId, resolveProfile, type AiProfile } from './styles';
 
-export { AI_PRESETS, resolveProfile } from './styles';
-export type { AiBehaviour, AiProfile } from './styles';
+export { AI_PRESETS, AI_STYLE_IDS, bareId, huntsByDefault, NEUTRAL_TRAITS, resolveProfile } from './styles';
+export type { AiBehaviour, AiProfile, AiStyleId, AiTraits } from './styles';
 export { relativeS } from './sense';
 
 export const AI_TUNING: readonly TuningParamDecl[] = [
@@ -48,6 +54,34 @@ export const AI_TUNING: readonly TuningParamDecl[] = [
     max: 2,
     step: 0.05,
     unit: '×',
+    affectsSim: true,
+  },
+  {
+    // rivals-1: 1 gives each style its quirks (weaver swerves, showboat picks safe fights and so on);
+    // 0 keeps the style's numbers but rides M1's two behaviour sets. Off by default [default] until
+    // the maintainer's playtest: with it off, the base race replays exactly as before rivals-1, so
+    // playtest 1's difficulty and the seeded race tests of the lanes running alongside hold.
+    id: 'ai.styleQuirks',
+    group: 'rivals',
+    label: 'Rival style quirks',
+    default: 0,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
+    affectsSim: true,
+  },
+  {
+    // rivals-1: grudge points (from the career's saved table) at which a rival hunts the rider it holds
+    // them against from the start of the race; the content-pack doc's example `huntThreshold`.
+    id: 'ai.grudgeHuntAt',
+    group: 'rivals',
+    label: 'Career grudge to hunt',
+    default: 4,
+    min: 1,
+    max: 10,
+    step: 1,
+    unit: 'pts',
     affectsSim: true,
   },
 ];
@@ -83,6 +117,18 @@ export interface AiState {
   /** Takedown intent (ai-2): the push direction it committed to (±1, 0 none) and until which tick. */
   pushSide: number[];
   pushUntil: number[];
+  /** rivals-1: hits taken, by victim entity id, then attacker entity id (the grudge-keeper's tally). */
+  wrongs: Record<string, Record<string, number>>;
+  /** rivals-1: who last landed a hit on this rider, and on which tick (-1: nobody yet). */
+  lastHitBy: number[];
+  lastHitTick: number[];
+  /** rivals-1: riders this one hunts from the start, from the career's grudge table (entity ids). */
+  careerGrudge: number[][];
+  /** rivals-1 counters, for tests and the debug report: swings at the race leader, ticks spent
+   * fleeing, and ticks spent steering for a preferred weapon. */
+  pressesOnLeader: number[];
+  fleeTicks: number[];
+  seekTicks: number[];
 }
 
 export function aiState(world: World): AiState {
@@ -105,6 +151,13 @@ export function aiState(world: World): AiState {
     huntTicksOnPlayer: [],
     pushSide: [],
     pushUntil: [],
+    wrongs: {},
+    lastHitBy: [],
+    lastHitTick: [],
+    careerGrudge: [],
+    pressesOnLeader: [],
+    fleeTicks: [],
+    seekTicks: [],
   }));
 }
 
@@ -131,7 +184,22 @@ const PASS_WARN_S = 3;
 const ALONGSIDE_MARGIN_M = 2.5;
 const STUCK_TICKS = 240;
 const UNSTICK_TICKS = 150;
-const WEAVE_PERIOD_TICKS = 240;
+// rivals-1 (M4, [default]).
+/** How long a launch trait (slow or quick off the line) lasts from the start, ticks. */
+const LAUNCH_TICKS = 720;
+/** A fleeing rider moves this far across from the nearest rider within FLEE_NEAR_M, and rides faster. */
+const FLEE_AWAY_M = 3;
+const FLEE_NEAR_M = 12;
+const FLEE_PACE = 0.05;
+/** A road weaver swerves only inside its lane while another rider is this close along the road, m. */
+const ROAD_WEAVE_CLEAR_M = 10;
+/** A defending rider counts a rider this far behind it (metres) as closing in on it. */
+const CHASER_BEHIND_M = 8;
+/** How far ahead an unarmed rider looks for its preferred weapon lying on the road, metres. */
+const WEAPON_SEEK_M = 80;
+/** The grudge-keeper's swing chance grows by this much per wrong, for up to TALLY_KEEN_MAX wrongs. */
+const TALLY_KEEN = 0.25;
+const TALLY_KEEN_MAX = 4;
 const TAU = 6.283185307179586;
 // ai-2 takedown intent (M2, [default]).
 /** A rail this close to the target's side of the road (metres of d) is worth pushing it toward. */
@@ -151,9 +219,50 @@ function isAiRider(config: SimConfig, m: Mover): boolean {
   return m.kind === 'rider' && def?.controller.kind === 'ai' && def.faction !== 'law';
 }
 
-function profileOf(config: SimConfig, m: Mover): AiProfile {
+function profileOf(world: World, config: SimConfig, m: Mover): AiProfile {
   const c = config.riders[m.riderIndex]?.controller;
-  return c?.kind === 'ai' ? resolveProfile(c.style, c.personality) : resolveProfile('racer', undefined);
+  const quirks = (world.params['ai.styleQuirks'] ?? 0) >= 0.5;
+  return c?.kind === 'ai'
+    ? resolveProfile(c.style, c.personality, quirks)
+    : resolveProfile('racer', undefined, quirks);
+}
+
+/** A mover's bare rider id (`chad-speedwell`), or '' for a non-rider. */
+function riderIdOf(config: SimConfig, m: Mover): string {
+  const def = config.riders[m.riderIndex];
+  return m.kind === 'rider' && def ? bareId(def.contentId) : '';
+}
+
+/**
+ * Everyone `id` hunts as a grudge this tick, in ascending id order: the race-long grudges (ai-2),
+ * the career's saved ones, the grudge-keeper's tally, and the scrapper's fresh score to settle.
+ * Riders who have finished are left out. The tally hunts players only: every wrong is counted (and
+ * makes him swing harder at whoever did it), but a tally against another rival would pull him off
+ * the player, and playtest 1 asked that the rivals' pressure on the player stay as it was.
+ */
+function huntList(
+  world: World,
+  st: AiState,
+  prof: AiProfile,
+  id: EntityId,
+  players: readonly EntityId[],
+): EntityId[] {
+  const out = grudgeTargets(world, id);
+  const done = raceState(world).finishOrder;
+  const add = (g: number): void => {
+    if (g >= 0 && g !== id && !out.includes(g) && !done.includes(g)) out.push(g);
+  };
+  for (const g of st.careerGrudge[id] ?? []) add(g);
+  const tr = prof.traits;
+  if (tr.tally > 0) {
+    for (const [k, n] of Object.entries(st.wrongs[id] ?? {})) {
+      if (n >= tr.tally && players.includes(Number(k))) add(Number(k));
+    }
+  }
+  if (tr.retaliateTicks > 0 && world.tick - (st.lastHitTick[id] ?? -1e9) <= tr.retaliateTicks) {
+    add(st.lastHitBy[id] ?? -1);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 function playerIds(world: World, config: SimConfig): EntityId[] {
@@ -198,6 +307,7 @@ function pickByPreference(
   cands: readonly Seen[],
   prefs: readonly string[],
   grudges: readonly EntityId[] = [],
+  rivals: readonly string[] = [],
 ): Seen | null {
   if (cands.length === 0) return null;
   const race = raceState(world);
@@ -217,6 +327,22 @@ function pickByPreference(
         if (!best || Math.abs(c.ahead) + Math.abs(c.dd) < Math.abs(best.ahead) + Math.abs(best.dd)) best = c;
       }
       if (best) return best;
+    } else if (pref === 'rival') {
+      // An authored rivalry (rivals-1): the nearest rider on this one's `rivals` list.
+      let best: Seen | null = null;
+      for (const c of cands) {
+        if (!rivals.includes(riderIdOf(config, c.mover))) continue;
+        if (!best || Math.abs(c.ahead) + Math.abs(c.dd) < Math.abs(best.ahead) + Math.abs(best.dd)) best = c;
+      }
+      if (best) return best;
+    } else if (pref === 'chaser') {
+      // Someone closing in from behind (rivals-1's crew-boss): the nearest rider just behind or level.
+      let best: Seen | null = null;
+      for (const c of cands) {
+        if (c.ahead > 1 || c.ahead < -CHASER_BEHIND_M) continue;
+        if (!best || Math.abs(c.ahead) + Math.abs(c.dd) < Math.abs(best.ahead) + Math.abs(best.dd)) best = c;
+      }
+      if (best) return best;
     } else if (pref === 'player') {
       const hit = cands.find((c) => config.riders[c.mover.riderIndex]?.controller.kind === 'player');
       if (hit) return hit;
@@ -229,8 +355,8 @@ function pickByPreference(
     } else if (pref === 'nearest') {
       return nearest();
     }
-    // `crew-enemy` needs the career's crews (M4): skipped until then. The career's grudges that
-    // outlast a race (M4) will join the race-long ones in `grudges`.
+    // `crew-enemy` needs crews in SimConfig (a follow-up): skipped until then. The career's saved
+    // grudges join the race-long ones in `grudges` (rivals-1).
   }
   return nearest();
 }
@@ -397,7 +523,8 @@ function driveRider(
   const road = config.road;
   const def = config.riders[m.riderIndex];
   const race = raceState(world);
-  const prof = profileOf(config, m);
+  const prof = profileOf(world, config, m);
+  const tr = prof.traits;
   const pos = m.pos;
   const v = m.speed;
   const id = m.id;
@@ -424,17 +551,30 @@ function driveRider(
 
   // 1. Pace.
   const paceScale = world.params['ai.paceScale'] ?? 1;
-  let speedTarget = config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBandFactor(world, id);
+  let speedTarget =
+    config.event.paceMps * (st.paceJitter[id] ?? 1) * paceScale * rubberBandFactor(world, id) * tr.paceBias;
+  // Quick off the line (rivals-1): it aims higher for the first seconds. Slow off the line caps the
+  // throttle instead, below.
+  const launching = tick < LAUNCH_TICKS;
+  if (launching && tr.launch > 1) speedTarget *= tr.launch;
   if (finished) speedTarget = Math.min(speedTarget, 12);
   else if (playersDone) speedTarget = def?.bike.topSpeedMps ?? speedTarget;
 
-  // 2. The line: own spot in the lane, plus a weave.
+  // 2. The line: own spot in the lane, plus a weave. An erratic weaver's swing jumps now and then,
+  // and a road weaver's swing is not held inside its own lane (traffic checks below still apply).
   const lanes = road.lanesAt(pos.edge, pos.s);
   const lane = lanes.find((l) => l.kind === 'drive' && l.direction === pos.dir) ?? lanes[0];
   const laneCentre = lane?.dCenterM ?? 0;
   const laneHalf = Math.max(0, (lane?.widthM ?? 3) / 2 - 0.6);
-  const weave = prof.weave * 1.4 * sin((st.weavePhase[id] ?? 0) + (tick * TAU) / WEAVE_PERIOD_TICKS);
-  let dTarget = laneCentre + clamp((st.laneOffset[id] ?? 0) + weave, -laneHalf, laneHalf);
+  if (tr.erratic > 0 && racing && nextFloat(world.rng.ai) < tr.erratic / 60) {
+    st.weavePhase[id] = ((st.weavePhase[id] ?? 0) + (0.5 + nextFloat(world.rng.ai)) * (TAU / 2)) % TAU;
+  }
+  const weave =
+    prof.weave * tr.weaveSpanM * sin((st.weavePhase[id] ?? 0) + (tick * TAU) / tr.weavePeriodTicks);
+  const swing = (st.laneOffset[id] ?? 0) + weave;
+  let dTarget = tr.roadWeave
+    ? clamp(laneCentre + swing, dLo, dHi)
+    : laneCentre + clamp(swing, -laneHalf, laneHalf);
   let lateralMax = 3;
   let lateralGain = 1;
   if (finished) {
@@ -464,36 +604,78 @@ function driveRider(
       if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
     }
   }
+  // A road weaver keeps its swerve inside its lane while other riders are close, so a bunched pack
+  // (the start, a fight) does not turn its swerve into random bumps (rivals-1).
+  if (tr.roadWeave && !finished && riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M)) {
+    dTarget = laneCentre + clamp(swing, -laneHalf, laneHalf);
+  }
 
   // Fight: brawlers hunt a target when healthy enough; everyone swings at whoever is in reach.
   const aggr =
     prof.aggression * (world.params['ai.aggressionScale'] ?? 1) * config.difficulty.riderAggression;
   const healthMax = def?.healthMax ?? 100;
   const health = riderState(world).health[id] ?? healthMax;
-  const brave = health / Math.max(1, healthMax) >= 0.5 * (1 - prof.courage);
-  // A race-long grudge (ai-2) makes any rider a hunter of the riders it holds the grudge against;
-  // a brawler hunts anyone, grudges first.
-  const grudges = grudgeTargets(world, id);
+  const healthFrac = health / Math.max(1, healthMax);
+  const brave = tr.fearless || healthFrac >= 0.5 * (1 - prof.courage);
+  // A crowd-pleaser whose fight has turned stops fighting and rides away (rivals-1).
+  const fleeing = racing && tr.fleeBelow > 0 && healthFrac < tr.fleeBelow;
+  // A race-long grudge (ai-2) makes any rider a hunter of the riders it holds the grudge against,
+  // and so do the career's saved grudges, the grudge-keeper's tally, the scrapper's score to settle
+  // and an authored rivalry (rivals-1); a brawler hunts anyone, grudges first.
+  const grudges = huntList(world, st, prof, id, players);
   const prefs = preferences(prof, grudges);
   const brawler = prof.behaviour === 'brawler';
+  const isRival = (r: Seen): boolean =>
+    prof.rivals.length > 0 && prof.rivals.includes(riderIdOf(config, r.mover));
+  const huntable = (r: Seen): boolean =>
+    (brawler || grudges.includes(r.mover.id) || isRival(r)) && looksGood(world, config, prof, r, healthFrac);
   let target: Seen | null = null;
-  if (racing && !unsticking && (brawler || grudges.length > 0) && brave && aggr > 0) {
+  if (
+    racing &&
+    !unsticking &&
+    !fleeing &&
+    (brawler || grudges.length > 0 || prof.rivals.length > 0) &&
+    brave &&
+    aggr > 0
+  ) {
     const seekRange = 10 + 30 * Math.min(1, aggr);
-    const pool = riders.filter(
-      (r) => Math.abs(r.ahead) <= seekRange && (brawler || grudges.includes(r.mover.id)),
-    );
+    const pool = riders.filter((r) => Math.abs(r.ahead) <= seekRange && huntable(r));
     const current = st.targetId[id] ?? -1;
     const grudge = pickByPreference(world, config, pool, ['grudge'], grudges);
     const held = grudge && grudges.includes(grudge.mover.id) ? grudge : null;
     const keep = riders.find(
-      (r) =>
-        r.mover.id === current &&
-        Math.abs(r.ahead) <= seekRange * 1.3 &&
-        (brawler || grudges.includes(r.mover.id)),
+      (r) => r.mover.id === current && Math.abs(r.ahead) <= seekRange * 1.3 && huntable(r),
     );
-    target = held ?? keep ?? pickByPreference(world, config, pool, prefs, grudges);
+    // Where a rivalry ranks against the player is the rider's `targetPreference` (its `rival` entry);
+    // a rider who only hunts grudges and rivals has nobody else in its pool anyway.
+    target = held ?? keep ?? pickByPreference(world, config, pool, prefs, grudges, prof.rivals);
   }
   st.targetId[id] = target ? target.mover.id : -1;
+  if (fleeing) {
+    // Away from the nearest rider, a little faster than its pace.
+    st.fleeTicks[id] = (st.fleeTicks[id] ?? 0) + 1;
+    let near: Seen | null = null;
+    for (const r of riders) {
+      if (Math.abs(r.ahead) > FLEE_NEAR_M) continue;
+      if (!near || Math.abs(r.ahead) + Math.abs(r.dd) < Math.abs(near.ahead) + Math.abs(near.dd)) near = r;
+    }
+    if (near) {
+      const away = near.dd > 0 ? -1 : 1;
+      let d = pos.d + away * FLEE_AWAY_M;
+      if (d < dLo || d > dHi) d = pos.d - away * FLEE_AWAY_M;
+      dTarget = clamp(d, dLo, dHi);
+      lateralMax = 4;
+    }
+    speedTarget *= 1 + FLEE_PACE;
+  } else if (!target && racing && !unsticking && prof.preferredWeapon !== null) {
+    // An unarmed rider (or one holding something else) steers over its preferred weapon lying ahead.
+    const seek = weaponAhead(world, config, m, prof.preferredWeapon);
+    if (seek) {
+      dTarget = clamp(seek.mover.pos.d, dLo, dHi);
+      lateralMax = 3;
+      st.seekTicks[id] = (st.seekTicks[id] ?? 0) + 1;
+    }
+  }
   if (target) {
     if (players.includes(target.mover.id)) st.huntTicksOnPlayer[id] = (st.huntTicksOnPlayer[id] ?? 0) + 1;
     // Which side of the target to ride on (+1: its +d side). A rider's own preferred side wins;
@@ -522,16 +704,19 @@ function driveRider(
     // pace) only for a player behind it, easing off rather than braking so it is still near the
     // player's speed when they meet; a rival behind it is left to catch up, so rival fights don't
     // stall the pack. Changing sides, it keeps the target a few metres ahead until it is across.
-    const waitsFor = players.includes(target.mover.id) ? config.event.paceMps * 0.6 : speedTarget;
+    // A defending crew boss (rivals-1) waits for nobody: she fights from the front.
+    const waitsFor =
+      players.includes(target.mover.id) && !tr.defends ? config.event.paceMps * 0.6 : speedTarget;
     const ahead = switching ? target.ahead - SWITCH_BACK_M : target.ahead;
     const gain = ahead >= 0 ? 0.8 : 0.25;
     speedTarget = clamp(target.vAlong + ahead * gain, waitsFor, speedTarget * 1.15);
   } else if (
     racing &&
     brave &&
+    !fleeing &&
     aggr > 0 &&
     ((brawler &&
-      prof.targetPreference[0] === 'player' &&
+      prof.targetPreference.find((p) => p !== 'grudge') === 'player' &&
       players.some((p) => (race.distanceToFinish[p] ?? Infinity) < dist)) ||
       grudges.some((g) => (race.distanceToFinish[g] ?? Infinity) < dist))
   ) {
@@ -637,11 +822,14 @@ function driveRider(
   const held =
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
-  if (racing && !unsticking && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
-    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges);
+  if (racing && !unsticking && !fleeing && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
+    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges, healthFrac);
   }
 
-  const { throttle, brake } = throttleFor(config, m, speedTarget);
+  const drive = throttleFor(config, m, speedTarget);
+  const brake = drive.brake;
+  // Slow off the line (rivals-1): the throttle is capped for the first seconds.
+  const throttle = launching && tr.launch < 1 ? Math.min(drive.throttle, tr.launch) : drive.throttle;
   const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax, lateralGain);
   return {
     steer: Math.round(steer * 127),
@@ -667,19 +855,28 @@ function trySwing(
   aggr: number,
   players: readonly EntityId[],
   grudges: readonly EntityId[],
+  healthFrac: number,
 ): number {
   const punch = weaponReach(config, 'punch');
   const kick = weaponReach(config, 'kick');
   const v = m.speed;
   const box = riders.filter((r) => Math.abs(r.ahead) <= ACQUIRE_S && Math.abs(r.dd) <= ACQUIRE_D);
-  const reachable = box.filter((r) => inReach(r, v, punch) || inReach(r, v, kick));
+  const reachable = box.filter(
+    (r) => (inReach(r, v, punch) || inReach(r, v, kick)) && looksGood(world, config, prof, r, healthFrac),
+  );
   if (reachable.length === 0) return 0;
   const victim =
     (target && reachable.find((r) => r.mover.id === target.mover.id)) ??
-    pickByPreference(world, config, reachable, preferences(prof, grudges), grudges);
+    pickByPreference(world, config, reachable, preferences(prof, grudges), grudges, prof.rivals);
   if (!victim) return 0;
   const rng = world.rng.ai;
-  const chance = Math.min(0.5, (0.02 + 0.1 * aggr) * (target && victim.mover.id === target.mover.id ? 2 : 1));
+  // The grudge-keeper's tally (rivals-1): each wrong this victim did him makes him keener, up to 4.
+  const wrongs = prof.traits.tally > 0 ? (st.wrongs[m.id]?.[victim.mover.id] ?? 0) : 0;
+  const keen = 1 + TALLY_KEEN * Math.min(TALLY_KEEN_MAX, wrongs);
+  const chance = Math.min(
+    0.5,
+    (0.02 + 0.1 * aggr) * (target && victim.mover.id === target.mover.id ? 2 : 1) * keen,
+  );
   if (nextFloat(rng) >= chance) return 0;
   const canKick = inReach(victim, v, kick);
   const canPunch = inReach(victim, v, punch);
@@ -699,7 +896,76 @@ function trySwing(
     tick + r.cycleTicks + Math.round((1 - Math.min(1, aggr)) * 40 + nextFloat(rng) * 20);
   st.presses[id] = (st.presses[id] ?? 0) + 1;
   if (players.includes(victim.mover.id)) st.pressesOnPlayer[id] = (st.pressesOnPlayer[id] ?? 0) + 1;
+  if (raceState(world).place[victim.mover.id] === 1)
+    st.pressesOnLeader[id] = (st.pressesOnLeader[id] ?? 0) + 1;
   return InputFlag.attack | hold;
+}
+
+/**
+ * Whether a fight with `r` suits this rider's style (rivals-1). A showboat fights only when it will
+ * look good: never the race leader (he sides with whoever is winning), and never anyone healthier
+ * than him. Every other style fights anyone.
+ */
+function looksGood(world: World, config: SimConfig, prof: AiProfile, r: Seen, healthFrac: number): boolean {
+  if (!prof.traits.showboat) return true;
+  if (raceState(world).place[r.mover.id] === 1) return false;
+  const def = config.riders[r.mover.riderIndex];
+  const max = def?.healthMax ?? 100;
+  const theirs = (riderState(world).health[r.mover.id] ?? max) / Math.max(1, max);
+  return theirs <= healthFrac;
+}
+
+/** The nearest lying pickup of `weapon` ahead of `m` within WEAPON_SEEK_M, unless it already holds one. */
+function weaponAhead(world: World, config: SimConfig, m: Mover, weapon: string): Seen | null {
+  const heldNow = combatView(world, m.id).heldWeapon;
+  if (heldNow !== null && bareId(heldNow) === weapon) return null;
+  let best: Seen | null = null;
+  for (const p of world.movers) {
+    if (p.kind !== 'pickup' || p.h < STOWED_H / 2) continue;
+    if (bareId(pickupWeapon(world, p.id)) !== weapon) continue;
+    const s = see(config.road, m, p, WEAPON_SEEK_M);
+    if (!s || s.ahead < 2 || s.ahead > WEAPON_SEEK_M) continue;
+    if (!best || s.ahead < best.ahead) best = s;
+  }
+  return best;
+}
+
+/**
+ * Tallies last tick's landed hits on AI riders (rivals-1): who hit whom, how often, and when. A kick
+ * also emits a `kick` event; only the `hit` is counted.
+ */
+function noteHits(world: World, config: SimConfig, st: AiState): void {
+  for (const e of world.lastEvents) {
+    if (e.type !== 'hit' || e.target === undefined) continue;
+    const victim = world.movers[e.target];
+    if (!victim || !isAiRider(config, victim) || e.actor === e.target) continue;
+    const row = (st.wrongs[e.target] ??= {});
+    row[e.actor] = (row[e.actor] ?? 0) + 1;
+    st.lastHitBy[e.target] = e.actor;
+    st.lastHitTick[e.target] = e.tick;
+  }
+}
+
+/**
+ * The career's saved grudges (rivals-1): the riders `holder` holds at least `ai.grudgeHuntAt` points
+ * against in `SimConfig.grudges`, by entity id. The table is keyed by content id; a bare rider id is
+ * accepted on either side.
+ */
+function careerGrudgesOf(world: World, config: SimConfig, holder: Mover): number[] {
+  const def = config.riders[holder.riderIndex];
+  if (!def) return [];
+  const table = config.grudges[def.contentId] ?? config.grudges[bareId(def.contentId)];
+  if (!table) return [];
+  const at = world.params['ai.grudgeHuntAt'] ?? 4;
+  const out: number[] = [];
+  for (const o of world.movers) {
+    if (o.kind !== 'rider' || o.id === holder.id) continue;
+    const od = config.riders[o.riderIndex];
+    if (!od) continue;
+    const pts = table[od.contentId] ?? table[bareId(od.contentId)] ?? 0;
+    if (pts >= at) out.push(o.id);
+  }
+  return out;
 }
 
 export const aiSystem: SimSystem = {
@@ -728,11 +994,18 @@ export const aiSystem: SimSystem = {
       st.huntTicksOnPlayer[m.id] = 0;
       st.pushSide[m.id] = 0;
       st.pushUntil[m.id] = -1;
+      st.lastHitBy[m.id] = -1;
+      st.lastHitTick[m.id] = -1;
+      st.careerGrudge[m.id] = careerGrudgesOf(world, config, m);
+      st.pressesOnLeader[m.id] = 0;
+      st.fleeTicks[m.id] = 0;
+      st.seekTicks[m.id] = 0;
     }
   },
   step(world: World, config: SimConfig) {
     const st = aiState(world);
     const players = playerIds(world, config);
+    noteHits(world, config, st);
     for (const m of world.movers) {
       if (!isAiRider(config, m)) continue;
       if (m.mode === 'Road') {

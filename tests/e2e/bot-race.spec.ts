@@ -15,7 +15,11 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 //   headless in the page plus this browser race: at least ATTACK_MIN_CONNECTS of them connect
 //   (the shared batch connects in about 9 races of 10);
 // - the bot took the shortcut: active once the bot's route has a split zone onto a shortcut
-//   (road-2's boat-ramp cut) or its road offers a `shortcut` lane.
+//   (road-2's boat-ramp cut) or its road offers a `shortcut` lane;
+// - the bot lands a takedown (M2 exit criterion 9, on since dev-4 part 2 taught the bot to fight a
+//   rival down): like the attack check, an aggregate over this race plus TAKEDOWN_SEEDS run headless
+//   in the page, each up to the bot's first takedown. The full count is asserted over the shared
+//   seeded batch (tests/sim/dev-presets.test.ts).
 
 interface Checks {
   ticks: number;
@@ -24,6 +28,7 @@ interface Checks {
   firstInvalid: string | null;
   events: Record<string, number>;
   playerHits: number;
+  playerTakedowns?: number;
   bot: {
     attackPresses: number;
     skipTicks: number;
@@ -32,6 +37,8 @@ interface Checks {
     shortcutApproachTicks: number;
     trafficDodges: number;
     engagements: number;
+    kickPresses?: number;
+    dangerKicks?: number;
   };
 }
 interface Stats {
@@ -63,13 +70,18 @@ interface Handle {
     summary: string;
   };
   botAttackRuns(seeds: readonly number[]): AttackRun[];
+  botTakedownRuns(seeds: readonly number[]): AttackRun[];
+  botShortcutRuns(seeds: readonly number[]): AttackRun[];
 }
 interface AttackRun {
   seed: number;
   ticks: number;
   hits: number;
+  takedowns: number;
+  takedownKind: string | null;
   attackPresses: number;
   attackStarts: number;
+  shortcutTicks: number;
   over: boolean;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
@@ -78,6 +90,20 @@ type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 const ATTACK_SEEDS = [2, 3, 4, 5, 6, 7];
 /** How many of the browser race plus ATTACK_SEEDS must land a hit. */
 const ATTACK_MIN_CONNECTS = 3;
+/**
+ * Extra seeds for "the bot lands a takedown", run headless in the page up to the bot's first
+ * takedown. On 2026-10-01 each of them, and the browser race's seed 1, had one (seeds 2, 3, 8 and
+ * 10 by tick 3600). [default]
+ */
+const TAKEDOWN_SEEDS = [2, 3, 8, 10];
+/**
+ * Extra seeds for "the bot took the shortcut", run headless in the page up to the bot's first tick
+ * on the cut. With the playtest 1c launch, seeds 2 to 5 took it and seeds 1 and 7 were boxed in by a
+ * rival (headless, 2026-10-01). [default]
+ */
+const SHORTCUT_SEEDS = [2, 3, 4, 5];
+/** How many of the browser race plus SHORTCUT_SEEDS must take the cut. */
+const SHORTCUT_MIN_TAKEN = 3;
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   drawCallsMax: number;
@@ -174,21 +200,49 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   ).toBeGreaterThan(0);
   expect(connected, 'the bot connects in enough seeded races').toBeGreaterThanOrEqual(ATTACK_MIN_CONNECTS);
   if (checks.bot.shortcutApproachTicks > 0 || checks.bot.shortcutSeenTicks > 0) {
-    console.log(
-      `[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutApproachTicks} ticks lining up, ${checks.bot.shortcutTicks} ticks on it)`,
+    // Whether a rival boxes the bot in on the approach is one seed's luck (the playtest 1c launch
+    // punch flipped seed 1), so this race and SHORTCUT_SEEDS are asked together, as for attacks.
+    const shortcutRuns = (await page.evaluate(
+      (seeds) => (window as TestWindow).__game?.botShortcutRuns(seeds) ?? [],
+      SHORTCUT_SEEDS,
+    )) as AttackRun[];
+    const took = [{ seed: 1, shortcutTicks: checks.bot.shortcutTicks }, ...shortcutRuns].filter(
+      (r) => r.shortcutTicks > 0,
     );
-    expect(checks.bot.shortcutTicks, 'the bot took the shortcut').toBeGreaterThan(0);
+    console.log(
+      `[assert] the bot took the shortcut: ACTIVE (browser race: ${checks.bot.shortcutApproachTicks} ticks lining up, ` +
+        `${checks.bot.shortcutTicks} on it); ${took.length} of ${shortcutRuns.length + 1} seeded races took it ` +
+        `(seeds ${took.map((r) => r.seed).join(', ') || 'none'}), need ${SHORTCUT_MIN_TAKEN}`,
+    );
+    expect(shortcutRuns, 'every headless seed ran').toHaveLength(SHORTCUT_SEEDS.length);
+    expect(took.length, 'the bot took the shortcut in enough seeded races').toBeGreaterThanOrEqual(
+      SHORTCUT_MIN_TAKEN,
+    );
   } else {
     console.log(
       '[assert] the bot took the shortcut: NOT ACTIVE (its route has no split zone and its road no shortcut lane)',
     );
   }
 
-  // M2 dev-4: "the bot lands a takedown" is asserted across the shared seeded batch
-  // (tests/sim/dev-presets.test.ts), where one seed's luck cannot flip it; this race only prints.
+  // M2 exit criterion 9: the bot lands a takedown. One seed's luck flips with any sim change, so
+  // this race and TAKEDOWN_SEEDS are asked together; the batch asserts the full count.
+  const takedownRuns = (await page.evaluate(
+    (seeds) => (window as TestWindow).__game?.botTakedownRuns(seeds) ?? [],
+    TAKEDOWN_SEEDS,
+  )) as AttackRun[];
+  const browserTakedowns = checks.playerTakedowns ?? 0;
+  const landed = takedownRuns.filter((r) => r.takedowns > 0).length + (browserTakedowns > 0 ? 1 : 0);
   console.log(
-    `[print] takedowns in this race: ${checks.events['takedown'] ?? 0} (asserted over the seeded batch, not one seed)`,
+    `[assert] the bot lands a takedown: ACTIVE (${landed} of ${takedownRuns.length + 1} seeded races land one; ` +
+      `this race, seed 1: ${browserTakedowns} bot takedowns of ${checks.events['takedown'] ?? 0}, ` +
+      `${checks.bot.kickPresses ?? 0} kicks pressed; headless: ` +
+      takedownRuns
+        .map((r) => `seed ${r.seed} ${r.takedowns ? `${r.takedownKind} at tick ${r.ticks}` : 'none'}`)
+        .join('; ') +
+      ')',
   );
+  expect(takedownRuns, 'every headless takedown seed ran').toHaveLength(TAKEDOWN_SEEDS.length);
+  expect(landed, 'the bot lands a takedown in a seeded race').toBeGreaterThan(0);
 
   // dev-3: the finished race's debug file replays, from its own header, to every stored hash and
   // to the final hash taken when the race ended.
