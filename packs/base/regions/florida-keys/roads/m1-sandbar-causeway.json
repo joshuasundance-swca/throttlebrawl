@@ -62,7 +62,7 @@
       "s1": 46,
       "d0": 0.5,
       "d1": 3,
-      "params": { "boostMps": 8, "holdS": 1.5 }
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "keys-pad-causeway" }
     },
     {
       "kind": "boostPad",
@@ -71,7 +71,25 @@
       "s1": 1046,
       "d0": 0.5,
       "d1": 3,
-      "params": { "boostMps": 8, "holdS": 1.5 }
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "keys-pad-sprint" }
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-causeway-beach",
+      "s0": 280,
+      "s1": 286,
+      "d0": 0.5,
+      "d1": 3,
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "keys-pad-causeway" }
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-causeway-sprint-early",
+      "s0": 960,
+      "s1": 966,
+      "d0": 0.5,
+      "d1": 3,
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "keys-pad-sprint" }
     }
   ],
   "barriers": [],

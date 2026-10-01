@@ -1,0 +1,7 @@
+---
+kind: changed
+audience: player
+---
+The ramp truck and the boost pads move from race to race. Each race now picks one of two or three spots for the truck and for each pad, in the Keys, the Pacific Northwest and San Francisco, so you no longer meet them in the same place every time. A replay of a race keeps that race's spots.
+
+For developers: every `boostPad` and `rampTruck` on keys-m1, pnw-c1 and sf-hills now carries a `params.slot`, so #190's `chooseSetPieces` picks among them. `tests/sim/road-setpieces-live.test.ts` checks the slots, the safety rules (one kind and the same race lengths per slot, no pad within 400 m before a truck spot, straight to the landing) and rides every candidate. Tests moved with it, in the open: the PNW track test expects three truck spots and five pads; the Keys boost-and-ramp rides and the early-commit shortcut rides pick the first seed that places the pad and truck they ride (seed 3 and seed 7 used to, when every piece was always there; the pad's other spot, mid-lane at s 150, would boost the shortcut riders before their trigger); render's set-piece test reads the live slots, and strips them for its "no slots, as before" check; and the PNW region race tries seeds 1 to 3 per length until the bot finishes, with every miss required to be a bust (a new placement re-rolls the traffic, and the dev bot sometimes rear-ends a log truck and is busted; on seed 1 the long route ended that way 2255 m from the line).
