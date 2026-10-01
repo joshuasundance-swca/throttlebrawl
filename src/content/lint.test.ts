@@ -3,7 +3,7 @@
 // one edit away from it.
 import { describe, expect, it } from 'vitest';
 import type { TuningParamDecl } from '../core';
-import { basePackFiles } from './base-pack';
+import { wholeBasePackFiles as basePackFiles } from './base-pack-whole';
 import { formatFinding, lintPacks, parsePack, type Finding, type PackFile, type PackRule } from './index';
 import { pathPattern } from './lint';
 

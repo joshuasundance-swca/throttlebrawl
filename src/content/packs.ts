@@ -8,13 +8,22 @@
 // Packs combine into one registry keyed by qualified id, base first and then in dependency order
 // (ties by id). A race reads the subset its own packs make (`packSubset`), so loading another
 // region never changes the Keys race or its replay key.
-import { loadBasePack } from './base-pack';
+import { basePackFiles, loadBasePack } from './base-pack';
 import type { PackFile } from './parse';
 import { buildRegistry, ContentError, type ContentRegistry, type LoadOptions } from './registry';
 
 /** Baked road data: network, road and route files under `regions/<region>/`. */
 export function isRoadDataPath(path: string): boolean {
   return /^regions\/[^/]+\/(?:networks|roads|routes)\//.test(path);
+}
+
+/**
+ * Real-road data (`osm-*` networks, roads and routes, built from map data by tools/gis): the base
+ * pack's are fetched on demand too (run W-P), never bundled, since only a race on a real road needs
+ * them.
+ */
+export function isRealRoadPath(path: string): boolean {
+  return /^regions\/[^/]+\/(?:networks|roads|routes)\/osm-[^/]+\.json$/.test(path);
 }
 
 /** The pack a qualified id (`region-pnw:old-growth`) belongs to; `base` for a bare id. */
@@ -154,7 +163,10 @@ export function registryFromGlob(
 export interface PackSources {
   /** Every non-base pack file except road data, as parsed JSON, keyed `/packs/<id>/<path>`. */
   entries: Readonly<Record<string, unknown>>;
-  /** Every non-base road data file's URL, keyed the same way. */
+  /**
+   * Every road data file's URL to fetch on demand, keyed the same way: a region pack's road data,
+   * and the base pack's real-road data (`isRealRoadPath`; its hand-made roads are bundled).
+   */
   roadUrls: Readonly<Record<string, string>>;
   /** Fetches and parses one road data file (default: `fetch`). */
   fetchJson?: (url: string) => Promise<unknown>;
@@ -173,15 +185,26 @@ function bundledSources(): PackSources {
       ],
       { eager: true, import: 'default' },
     ),
-    roadUrls: import.meta.glob<string>(
-      [
-        '/packs/*/regions/*/networks/*.json',
-        '/packs/*/regions/*/roads/*.json',
-        '/packs/*/regions/*/routes/*.json',
-        '!/packs/base/**',
-      ],
-      { eager: true, query: '?url', import: 'default' },
-    ),
+    roadUrls: {
+      ...import.meta.glob<string>(
+        [
+          '/packs/*/regions/*/networks/*.json',
+          '/packs/*/regions/*/roads/*.json',
+          '/packs/*/regions/*/routes/*.json',
+          '!/packs/base/**',
+        ],
+        { eager: true, query: '?url', import: 'default' },
+      ),
+      // The base pack's real roads (the Bahia Honda run): base-pack.ts leaves them out of the bundle.
+      ...import.meta.glob<string>(
+        [
+          '/packs/base/regions/*/networks/osm-*.json',
+          '/packs/base/regions/*/roads/osm-*.json',
+          '/packs/base/regions/*/routes/osm-*.json',
+        ],
+        { eager: true, query: '?url', import: 'default' },
+      ),
+    },
   };
 }
 
@@ -197,7 +220,11 @@ export interface PackLibrary {
   registry(): ContentRegistry;
   /** The carried pack ids in load order, base first. */
   readonly packIds: readonly string[];
-  /** True when the pack's road data is in the registry (always for base). */
+  /**
+   * True when the pack's road data is in the registry. For base, its real-road data (the Keys'
+   * hand-made roads are always in): a race on the Keys' own road needs nothing fetched, but the
+   * Keys' content hash covers the real roads too, so app/ starts a Keys race once they are in.
+   */
   hasRoads(packId: string): boolean;
   /** Fetches a pack's road data once; resolves to the registry that includes it. */
   loadRoads(packId: string): Promise<ContentRegistry>;
@@ -215,11 +242,12 @@ export function createPackLibrary(options: LoadOptions & { sources?: PackSources
       files.map((f) => ({ path: f.path, url: String(f.json) })),
     );
   }
-  entryFiles.delete('base');
+  // Base is the bundled base pack (base-pack.ts), whatever the sources list for it.
+  entryFiles.set('base', basePackFiles());
   const perPack = new Map<string, ContentRegistry>([['base', loadBasePack(drafts)]]);
-  const withRoads = new Set<string>(['base']);
+  const withRoads = new Set<string>();
   for (const [packId, files] of entryFiles) {
-    perPack.set(packId, buildRegistry(files, drafts));
+    if (packId !== 'base') perPack.set(packId, buildRegistry(files, drafts));
     if (!roadFiles.has(packId)) withRoads.add(packId);
   }
   let combined = combineRegistries([...perPack.values()]);

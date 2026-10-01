@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadBasePack, registryFromGlob } from '../content';
+import { registryFromGlob } from '../content';
 import type { ReplayHeader } from '../replay';
 import { buildSimConfig, raceRouteKey, realRoutes, streamForEvent } from './config';
 import { createHeadlessRace } from './headless';
@@ -11,7 +11,8 @@ import { roadsForHeader } from './resume';
 // carries (a network baked from map data by tools/gis) is offered by its name. The base pack has one
 // already: the Overseas Highway stretch at Bahia Honda (gis-1), so these checks run on the Keys.
 
-const BASE = loadBasePack();
+// The whole base pack: the bundled one leaves the real roads out until fetched (run W-P).
+const BASE = registryFromGlob(import.meta.glob('/packs/base/**/*.json', { eager: true, import: 'default' }));
 const ALL = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const KEYS = 'base:m1-skeleton-sprint';
 const BAHIA = 'base:osm-bahia-honda-run';
@@ -84,7 +85,7 @@ describe('app: real-road routes', () => {
   });
 
   it('a headless race (the bot batch, the self-test) runs a chosen real road on its own stream', () => {
-    const race = createHeadlessRace({ seed: 3, eventId: KEYS, route: BAHIA });
+    const race = createHeadlessRace({ seed: 3, eventId: KEYS, route: BAHIA }, { registry: BASE });
     expect(race.config.event.routeId).toBe(BAHIA);
     expect(race.config.route.length).toBeGreaterThan(5000);
     expect(createHeadlessRace({ seed: 3, eventId: KEYS }).config.event.routeId).toBe(KEYS);
