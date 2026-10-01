@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static, unit and browser as parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static, unit, sim, browser and perf as
+//                                    parallel jobs)
+//   npm run check -- --tier sim --shard 1/2
+//                                    one slice of a tier: the sim batch (Vitest's --shard) or the
+//                                    browser tests (Playwright's --shard). Every test file lands in
+//                                    exactly one slice; CI runs the slices as parallel jobs. A step
+//                                    marked everySlice (the build) runs whole in every slice.
 //
 // Every step must print what it examined, and an active step that examined nothing fails: a
 // check that looked at nothing reads exactly like a pass. A step whose subject does not exist
@@ -89,22 +95,27 @@ const STEPS = [
   },
   { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest },
   {
-    tier: 'unit',
+    tier: 'sim',
     name: 'sim batch',
     script: 'test:sim',
+    shardable: true,
     count: fromVitest,
     active: () =>
       hasFiles('tests/sim/', /\.test\.ts$/) ||
       'no seeded-race batch yet (dev-1 adds tests/sim/batch.ts and its tests)',
   },
-  { tier: 'browser', name: 'build', script: 'build', count: fromDist },
-  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright },
-  { tier: 'browser', name: 'perf', script: 'perf', count: fromExamined },
+  // The build belongs to both browser tiers: CI runs e2e slices and perf as separate jobs, and
+  // each job tests its own build. A plain `npm run check` still builds once.
+  { tier: ['browser', 'perf'], name: 'build', script: 'build', count: fromDist, everySlice: true },
+  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: true },
+  // perf never shards: its probes time frames one at a time on an otherwise idle runner.
+  { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined },
 ];
 
-function run(script) {
+function run(script, args = []) {
   return new Promise((resolve) => {
-    const child = spawn('npm', ['run', script], { cwd: repoRoot, shell: process.platform === 'win32' });
+    const npmArgs = ['run', script, ...(args.length ? ['--', ...args] : [])];
+    const child = spawn('npm', npmArgs, { cwd: repoRoot, shell: process.platform === 'win32' });
     let out = '';
     const onData = (stream) => (chunk) => {
       out += chunk.toString();
@@ -118,10 +129,27 @@ function run(script) {
 
 const tierArg = process.argv.indexOf('--tier');
 const tier = tierArg > -1 ? process.argv[tierArg + 1] : null;
-const steps = STEPS.filter((s) => !tier || s.tier === tier);
+const steps = STEPS.filter((s) => !tier || [s.tier].flat().includes(tier));
 if (steps.length === 0) {
-  console.error(`check: unknown tier ${tier} (static, unit, browser)`);
+  console.error(`check: unknown tier ${tier} (static, unit, sim, browser, perf)`);
   process.exit(1);
+}
+// --shard i/n runs one slice of the shardable steps, through the test runner's own --shard
+// (Vitest, Playwright), which puts each test file in exactly one slice. Every other step in the
+// tier must be marked everySlice (it runs whole in each slice), so a slice can never quietly drop
+// a step.
+const shardArg = process.argv.indexOf('--shard');
+const shard = shardArg > -1 ? (process.argv[shardArg + 1] ?? '') : null;
+if (shard !== null) {
+  const m = /^(\d+)\/(\d+)$/.exec(shard);
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) {
+    console.error(`check: --shard wants i/n with 1 <= i <= n, got "${shard}"`);
+    process.exit(1);
+  }
+  if (!tier || !steps.some((s) => s.shardable) || steps.some((s) => !s.shardable && !s.everySlice)) {
+    console.error('check: --shard needs a --tier whose steps all shard (sim, browser)');
+    process.exit(1);
+  }
 }
 
 const rows = [];
@@ -132,18 +160,20 @@ for (const step of steps) {
     rows.push([step.name, 'NOT ACTIVE', active]);
     continue;
   }
-  console.log(`\n=== ${step.name}: npm run ${step.script} ===`);
+  const args = shard && step.shardable ? [`--shard=${shard}`] : [];
+  const label = args.length ? `${step.name} (shard ${shard})` : step.name;
+  console.log(`\n=== ${label}: npm run ${step.script}${args.length ? ` -- ${args.join(' ')}` : ''} ===`);
   const started = Date.now();
-  const { code, out } = await run(step.script);
+  const { code, out } = await run(step.script, args);
   const { n, text } = step.count(out);
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   let result = code === 0 ? 'pass' : 'FAIL';
   if (code === 0 && n === 0) result = 'FAIL (examined nothing)';
   if (result !== 'pass') failed = true;
-  rows.push([step.name, result, `${text} (${secs}s)`]);
+  rows.push([label, result, `${text} (${secs}s)`]);
 }
 
-console.log(`\n=== gate summary${tier ? ` (${tier} tier)` : ''} ===`);
+console.log(`\n=== gate summary${tier ? ` (${tier} tier${shard ? `, shard ${shard}` : ''})` : ''} ===`);
 const w = Math.max(...rows.map((r) => r[0].length));
 const w2 = Math.max(...rows.map((r) => r[1].length));
 for (const [name, result, text] of rows) console.log(`${name.padEnd(w)}  ${result.padEnd(w2)}  ${text}`);

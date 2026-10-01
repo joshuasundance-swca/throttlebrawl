@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "rideshare-hatchback",
+  "name": "Rideshare Hatchback",
+  "category": "car",
+  "tags": ["region-sf"],
+  "lengthM": 4.3,
+  "widthM": 1.8,
+  "cruiseMps": 20.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": true,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "sedan"
+    },
+    "paintOptions": ["#2f3a4a", "#d9d9d9", "#5c6b73"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The most common car in the city: a hatchback looking for a pickup, a little slower than everyone else. Placeholder shape: the sedan preset.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

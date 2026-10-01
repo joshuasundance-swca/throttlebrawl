@@ -6,9 +6,13 @@
 // so a re-bake of an unchanged source changes nothing. tools/road/keys-m1.test.ts fails when the
 // pack files and a fresh compile disagree.
 //
+// Every module in tools/road/tracks/ is a track source: each export shaped like a TrackSource
+// (a `network` and `points`) is baked into `packs/<PACK>/regions/<network.region>/`, where PACK is
+// the module's optional `PACK` export (default `base`), so a region pack's track needs no edit here.
+//
 //   node tools/road/bake.mjs            bake every track
 //   node tools/road/bake.mjs --check    exit 1 if a baked file is stale (writes nothing)
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
@@ -18,18 +22,29 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const check = process.argv.includes('--check');
 const opts = { root, configFile: false, logLevel: 'silent' };
 
-/** Every track source, and the region folder it bakes into. */
-const TRACKS = [{ source: 'tools/road/tracks/keys-m1.ts', exportName: 'KEYS_M1' }];
+/** Every track source module, in name order. */
+const TRACKS = readdirSync(path.join(root, 'tools/road/tracks'))
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+  .sort()
+  .map((f) => `tools/road/tracks/${f}`);
 
 const { module: compiler } = await runnerImport(path.join(root, 'src/road/compile.ts'), opts);
 let written = 0;
 let stale = 0;
 let files = 0;
-for (const t of TRACKS) {
-  const { module: mod } = await runnerImport(path.join(root, t.source), opts);
-  const src = mod[t.exportName];
+const sources = [];
+for (const file of TRACKS) {
+  const { module: mod } = await runnerImport(path.join(root, file), opts);
+  const pack = typeof mod.PACK === 'string' ? mod.PACK : 'base';
+  for (const value of Object.values(mod)) {
+    if (value && typeof value === 'object' && 'network' in value && 'points' in value) {
+      sources.push({ src: value, pack });
+    }
+  }
+}
+for (const { src, pack } of sources) {
   const out = compiler.compileTrack(src);
-  const region = path.join(root, 'packs/base/regions', src.network.region);
+  const region = path.join(root, 'packs', pack, 'regions', src.network.region);
   const targets = [
     ['networks', out.network],
     ...out.roads.map((r) => ['roads', r]),

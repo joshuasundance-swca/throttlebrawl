@@ -1,0 +1,383 @@
+// The San Francisco track, hand-authored (playtest 1c, 2026-09-30: "Pnw and sf first then
+// others"): a crude first city course for the region-sf pack. It is only inspired by the city: no
+// real street names and no landmark branding. From the waterfront it turns uphill into a grid of
+// steep blocks with crest lips you catch air over, snakes down a switchback street (or drops
+// straight down the stair alley shortcut), runs along a row of painted houses, climbs into the fog
+// and finishes on the approach to a big orange suspension bridge. Every name and number is a
+// placeholder the maintainer may veto. Bake with `node tools/road/bake.mjs`.
+//
+// Limits of the road format this track works inside (follow-ups in the region-sf report):
+//   - elevation is a base height plus humps per road, so every road starts and ends at the base
+//     height: the hills are separate humps, and the course never climbs for good;
+//   - beyond the verge the renderer draws water, not city ground.
+//
+// Frame: metres, x east, z south (north is -z). The start faces north along the waterfront.
+import type { TrackSource } from '../../../src/road/compile';
+
+/** The pack this track bakes into (tools/road/bake.mjs reads it; the default is `base`). */
+export const PACK = 'region-sf';
+
+// The same lanes as keys-m1: 4 m travel lanes, rideable 1.5 m shoulders, 5.5 m to the edge.
+const LANES = [
+  { id: 'L0', dCenterM: -4.75, widthM: 1.5, direction: -1, kind: 'shoulder' },
+  { id: 'L1', dCenterM: -2, widthM: 4, direction: -1, kind: 'drive' },
+  { id: 'R1', dCenterM: 2, widthM: 4, direction: 1, kind: 'drive' },
+  { id: 'R0', dCenterM: 4.75, widthM: 1.5, direction: 1, kind: 'shoulder' },
+] as const;
+
+/** A city speed limit (35 mph). Informational: traffic cruises at its own type's speed. */
+const CITY = 15.6;
+
+/** Row houses as walls along a block, both sides, short of the road's ends. */
+const rowHouses = (s0: number, s1: number) => ({
+  s0,
+  s1,
+  side: 'both' as const,
+  kind: 'wall' as const,
+  heightM: 3,
+});
+
+export const SF_HILLS: TrackSource = {
+  network: {
+    id: 'sf-hills',
+    name: 'San Francisco hills course (hand-authored)',
+    region: 'san-francisco',
+    crs: { kind: 'tmerc', originLatDeg: 37.77, originLonDeg: -122.42, originElevM: 0 },
+    notes:
+      'The hand-made San Francisco course (playtest 1c): waterfront, two steep blocks with crest lips, a switchback street with a stair-alley shortcut, painted row houses, a foggy climb and the bridge approach. One route, the standard length.',
+  },
+  createdAt: '2026-10-01',
+  points: [
+    // The waterfront, north.
+    [0, 0],
+    [0, -420],
+    // Left, up into the grid: the cable-car blocks run straight west.
+    [-60, -490],
+    [-200, -500],
+    [-450, -500],
+    [-700, -500],
+    // Right, north, onto the switchback street. Its bends swing west of the straight line, so the
+    // stair alley runs straight down their east side.
+    [-770, -560],
+    [-770, -700],
+    [-810, -750],
+    [-860, -800],
+    [-820, -860],
+    [-870, -920],
+    [-820, -980],
+    [-775, -1030],
+    [-770, -1120],
+    // Left, west along the painted row houses.
+    [-830, -1190],
+    [-1000, -1200],
+    [-1300, -1200],
+    // Right, north, up into the fog.
+    [-1370, -1270],
+    [-1380, -1500],
+    [-1380, -1780],
+    // A long bend left onto the bridge approach.
+    [-1430, -1940],
+    [-1580, -2080],
+    [-1820, -2180],
+    [-2120, -2230],
+  ],
+  baseElevationM: 3,
+  spacingM: 2,
+  smoothingM: 30,
+  lanes: LANES,
+  roads: [
+    {
+      id: 'sf-pier-row',
+      name: 'Pier Row',
+      lengthM: 520,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'right', tag: 'piers' },
+        { s0: 0, s1: 'end', side: 'right', tag: 'water-open' },
+        { s0: 0, s1: 'end', side: 'left', tag: 'warehouses' },
+      ],
+      features: [
+        {
+          kind: 'roadsideZone',
+          id: 'pier-row-sidewalk',
+          s0: 120,
+          s1: 220,
+          d0: -12.6,
+          d1: -5.6,
+          params: { spawns: 'pedestrians' },
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-pier-row',
+          s0: 160,
+          s1: 200,
+          d0: -16,
+          d1: -7,
+          item: 'sleep-as-a-service',
+        },
+        {
+          kind: 'boostPad',
+          id: 'pad-pier-row',
+          s0: 90,
+          s1: 96,
+          d0: 0.5,
+          d1: 3,
+          params: { boostMps: 8, holdS: 1.5 },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      // Two steep blocks, each with a lip at the crest where the cross street flattens out.
+      id: 'sf-cable-line-grade',
+      name: 'Cable Line Grade',
+      lengthM: 760,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [
+        { centreM: 190, lengthM: 240, heightM: 13 },
+        { centreM: 450, lengthM: 240, heightM: 15 },
+      ],
+      ramps: [
+        { id: 'crest-first-block', s0: 182, lengthM: 10, heightM: 0.6, backM: 4 },
+        { id: 'crest-second-block', s0: 442, lengthM: 10, heightM: 0.6, backM: 4 },
+      ],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'cable-line' },
+      ],
+      features: [
+        {
+          kind: 'billboard',
+          id: 'sign-cable-grade',
+          s0: 60,
+          s1: 70,
+          d0: 6.5,
+          d1: 9,
+          item: 'yield-cable-cars',
+        },
+      ],
+      barriers: [rowHouses(80, 300), rowHouses(340, 560)],
+    },
+    {
+      id: 'c-switchback-split-main',
+      name: 'Switchback split',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'row-houses' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'sf-switchback-street',
+      name: 'Switchback Street',
+      lengthM: 520,
+      speedLimitMps: CITY,
+      surface: 'brick',
+      humps: [{ centreM: 260, lengthM: 420, heightM: 6 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'gardens' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
+      ],
+      features: [
+        {
+          kind: 'roadsideZone',
+          id: 'switchback-tourists',
+          s0: 200,
+          s1: 300,
+          d0: -12.6,
+          d1: -5.6,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      id: 'c-switchback-merge-main',
+      name: 'Switchback merge',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'row-houses' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'sf-painted-row',
+      name: 'Painted Row',
+      lengthM: 620,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'painted-houses' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
+      ],
+      features: [
+        {
+          kind: 'billboard',
+          id: 'sign-painted-row',
+          s0: 190,
+          s1: 200,
+          d0: 6.5,
+          d1: 9,
+          item: 'street-cleaning',
+        },
+        {
+          kind: 'roadsideZone',
+          id: 'painted-row-stoops',
+          s0: 420,
+          s1: 520,
+          d0: 5.6,
+          d1: 12.6,
+          params: { spawns: 'pedestrians' },
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-painted-row-parking',
+          s0: 560,
+          s1: 570,
+          d0: -9,
+          d1: -6.5,
+          item: 'zero-spaces',
+        },
+        // A car carrier double-parked on the right, its deck down as a ramp.
+        {
+          kind: 'rampTruck',
+          id: 'carrier-painted-row',
+          s0: 250,
+          s1: 272,
+          d0: 3.4,
+          d1: 5.4,
+          params: { rampLengthM: 11.5, lipHeightM: 2.8 },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      id: 'sf-fogline-climb',
+      name: 'Fogline Climb',
+      lengthM: 620,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [{ centreM: 330, lengthM: 380, heightM: 22 }],
+      ramps: [{ id: 'crest-fogline', s0: 322, lengthM: 10, heightM: 0.6, backM: 4 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
+        { s0: 200, s1: 'end', side: 'both', tag: 'fog' },
+      ],
+      features: [
+        { kind: 'billboard', id: 'sign-fogline-grade', s0: 15, s1: 25, d0: 6.5, d1: 9, item: 'steeper-one' },
+        { kind: 'billboard', id: 'bb-fogline', s0: 80, s1: 120, d0: 7, d1: 16, item: 'reinvent-the-bus' },
+      ],
+      barriers: [],
+    },
+    {
+      id: 'sf-bridge-approach',
+      name: 'Bridge Approach',
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [{ centreM: 480, lengthM: 800, heightM: 14 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'fog' },
+        { s0: 250, s1: 'end', side: 'both', tag: 'bridge' },
+        { s0: 250, s1: 'end', side: 'both', tag: 'water-open' },
+      ],
+      features: [
+        {
+          kind: 'billboard',
+          id: 'sign-bridge-toll',
+          s0: 200,
+          s1: 210,
+          d0: 6.5,
+          d1: 9,
+          item: 'toll-view',
+        },
+        // A boost for the sprint up onto the bridge, on the open approach.
+        {
+          kind: 'boostPad',
+          id: 'pad-bridge-approach',
+          s0: 300,
+          s1: 306,
+          d0: 0.5,
+          d1: 3,
+          params: { boostMps: 8, holdS: 1.5 },
+        },
+      ],
+      barriers: [{ s0: 250, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
+    },
+  ],
+  branches: [
+    {
+      // The stair alley: a narrow lane straight down the east side of the switchback street, with a
+      // lip where the stairs start. Hug the right edge before the split to take it.
+      leave: {
+        road: 'sf-cable-line-grade',
+        offsetM: 4,
+        lane: 'R1',
+        zone: { lengthM: 40, d0: 3, d1: 5.5 },
+      },
+      join: { road: 'sf-painted-row', offsetM: 3, lane: 'R1' },
+      turnsM: [50, 50],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      roads: [
+        {
+          id: 'c-stair-alley-in',
+          name: 'Alley gate',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: CITY,
+          surface: 'asphalt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'row-houses' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'sf-stair-alley',
+          name: 'Stair Alley',
+          speedLimitMps: CITY,
+          surface: 'concrete',
+          humps: [],
+          ramps: [{ id: 'stair-lip', s0: 150, lengthM: 12, heightM: 1.2, backM: 5 }],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'row-houses' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'c-stair-alley-out',
+          name: 'Alley exit',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: CITY,
+          surface: 'asphalt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'painted-houses' }],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
+  ],
+  routes: [
+    {
+      id: 'sf-standard-run',
+      start: { road: 'sf-pier-row', s: 40, dir: 1 },
+      finish: { road: 'sf-bridge-approach', s: -40 },
+      // On roads both paths share, so a stair-alley rider passes them too.
+      checkpoints: [
+        { road: 'sf-cable-line-grade', s: 400 },
+        { road: 'sf-painted-row', s: 300 },
+        { road: 'sf-fogline-climb', s: 300 },
+      ],
+      startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+    },
+  ],
+};
