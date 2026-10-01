@@ -181,6 +181,9 @@ export const SETTINGS: readonly SettingDef[] = [
     options: [
       { value: 'classic', label: 'Classic' },
       { value: 'kodak', label: 'Ink + 60s film' },
+      // Playtest 1c item 5.
+      { value: 'wasteland', label: 'Sun-bleached wasteland' },
+      { value: 'brush', label: 'Kodachrome brush' },
     ],
   },
   { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },

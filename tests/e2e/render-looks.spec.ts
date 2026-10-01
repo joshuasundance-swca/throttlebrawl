@@ -8,6 +8,12 @@ import { grainShare, NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 //   shading has none, and the switch works live in the middle of a race;
 // - the look is render only: the same seeded bot race records the same replay hashes in both;
 // - the kodak look's offscreen target comes back after a forced WebGL context loss.
+// Playtest 1c item 5 adds "Sun-bleached wasteland" (`wasteland`) and "Kodachrome brush" (`brush`) on
+// the same ink pipeline: each draws, switches live, paints its own sky, and keeps the replay hashes.
+
+/** Every look, in the settings row's order (render/looks LOOK_IDS). */
+const LOOKS = ['classic', 'kodak', 'wasteland', 'brush'] as const;
+type Look = (typeof LOOKS)[number];
 
 interface Handle {
   snapshot(): { tick: number } | null;
@@ -60,14 +66,45 @@ async function frame(page: Page, name: string) {
     .screenshot({ path: `test-results/screenshots/looks-${name}.png` });
   const stats = await pixelStats(page, png);
   const grain = await grainShare(page, png);
+  const sky = await skyColour(page, png);
   console.log(
-    `${name}: luminance mean ${stats.mean.toFixed(1)}, variance ${stats.variance.toFixed(0)}, grain ${grain.toFixed(3)}`,
+    `${name}: luminance mean ${stats.mean.toFixed(1)}, variance ${stats.variance.toFixed(0)}, grain ${grain.toFixed(3)}, sky rgb ${sky.map((v) => v.toFixed(0)).join(',')}`,
   );
-  return { ...stats, grain };
+  return { ...stats, grain, sky };
+}
+
+/** The mean colour of a strip of open sky: the top of the frame, above the bark bubbles and clear of the HUD corners. */
+async function skyColour(page: Page, png: Buffer): Promise<[number, number, number]> {
+  return page.evaluate(async (b64: string) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(img, 0, 0);
+    const x0 = Math.floor(img.width * 0.3);
+    const w = Math.floor(img.width * 0.4);
+    const y0 = Math.floor(img.height * 0.02);
+    const h = Math.floor(img.height * 0.08);
+    const { data } = ctx.getImageData(x0, y0, w, h);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i] ?? 0;
+      g += data[i + 1] ?? 0;
+      b += data[i + 2] ?? 0;
+    }
+    const n = data.length / 4;
+    return [r / n, g / n, b / n] as [number, number, number];
+  }, png.toString('base64'));
 }
 
 /** Pause, Settings > Display > Look, back, resume: the path a player takes mid-race. */
-async function pickLook(page: Page, look: 'classic' | 'kodak') {
+async function pickLook(page: Page, look: Look) {
   await page.keyboard.press('Escape');
   await page.locator('#pause-controls').click();
   await page.locator('#settings-tab-display').click();
@@ -80,7 +117,7 @@ async function pickLook(page: Page, look: 'classic' | 'kodak') {
   await page.locator('#pause-resume').click();
 }
 
-test('both looks draw a real scene; the ink + film look has film grain and switches live mid-race', async ({
+test('every look draws a real scene; the ink looks have film grain and switch live mid-race', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -98,6 +135,32 @@ test('both looks draw a real scene; the ink + film look has film grain and switc
   expect(classic.grain, 'classic has no film grain').toBeLessThan(0.15);
   expect(kodak.grain, 'kodak has film grain').toBeGreaterThan(0.4);
 
+  // Playtest 1c item 5: the two newer looks, picked the same way, mid-race.
+  const skies = { classic: classic.sky, kodak: kodak.sky } as Record<Look, [number, number, number]>;
+  for (const look of ['wasteland', 'brush'] as const) {
+    await pickLook(page, look);
+    await waitTick(page, (await tick(page)) + 30);
+    const f = await frame(page, look);
+    expect(f.variance, `${look} is not blank`).toBeGreaterThan(NOT_BLANK_VARIANCE);
+    expect(f.grain, `${look} draws through the ink pass (grain)`).toBeGreaterThan(0.15);
+    skies[look] = f.sky;
+  }
+  // Wasteland's flat sky is a burnt orange (red over green over blue, and darker than classic's);
+  // brush's is a cream (blue well up).
+  const [wr, wg, wb] = skies.wasteland;
+  expect(wr > wg && wg > wb, 'wasteland sky is orange').toBe(true);
+  expect(wg, 'burnt, not pale').toBeLessThan(skies.classic[1]);
+  expect(skies.brush[2], 'brush sky is a cream').toBeGreaterThan(wb + 30);
+  // Each new look paints its own sky, unlike every other look's. (Classic and kodak share a warm
+  // golden-hour sky at the top of the frame; grain tells those two apart.)
+  for (const a of ['wasteland', 'brush'] as const) {
+    for (const b of LOOKS) {
+      if (a === b) continue;
+      const d = Math.hypot(...skies[a].map((v, i) => v - (skies[b][i] ?? 0)));
+      expect(d, `${a} and ${b} skies differ`).toBeGreaterThan(25);
+    }
+  }
+
   await pickLook(page, 'classic');
   await waitTick(page, (await tick(page)) + 30);
   const back = await frame(page, 'classic-again');
@@ -106,11 +169,11 @@ test('both looks draw a real scene; the ink + film look has film grain and switc
   expect(problems).toEqual([]);
 });
 
-test('the look is render only: the same seeded bot race records the same replay hashes in both looks', async ({
+test('the look is render only: the same seeded bot race records the same replay hashes in every look', async ({
   browser,
 }) => {
-  test.setTimeout(240_000);
-  const hashesOf = async (look: 'classic' | 'kodak') => {
+  test.setTimeout(420_000);
+  const hashesOf = async (look: Look) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await race(page, look);
@@ -120,12 +183,15 @@ test('the look is render only: the same seeded bot race records the same replay 
     const m = /"hashes":(\[[^\]]*\])/.exec(text);
     return JSON.parse(m?.[1] ?? '[]') as { tick: number; hash: number }[];
   };
-  const classic = await hashesOf('classic');
-  const kodak = await hashesOf('kodak');
   const upTo = (h: { tick: number }[]) => h.filter((x) => x.tick <= 600);
-  console.log(`replay hashes compared: ${upTo(classic).length} checkpoints (ticks 0 to 600), every 60 ticks`);
-  expect(upTo(classic).length).toBe(11);
-  expect(upTo(kodak)).toEqual(upTo(classic));
+  const classic = upTo(await hashesOf('classic'));
+  expect(classic.length).toBe(11);
+  for (const look of LOOKS.slice(1)) {
+    expect(upTo(await hashesOf(look)), `${look} against classic`).toEqual(classic);
+  }
+  console.log(
+    `replay hashes compared: ${classic.length} checkpoints (ticks 0 to 600, every 60) x ${LOOKS.length - 1} looks against classic`,
+  );
 });
 
 test('the ink + film look comes back after a forced WebGL context loss', async ({ page }) => {
