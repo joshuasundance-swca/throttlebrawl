@@ -1,0 +1,86 @@
+{
+  "type": "bark-set",
+  "id": "juniper-core",
+  "name": "Juniper Moss: core lines",
+  "tags": ["rival", "pnw"],
+  "defaults": {
+    "speaker": "juniper-moss",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "juniper-start-to-go",
+      "trigger": "race-start",
+      "text": "For here or to go? Oh, you're going."
+    },
+    {
+      "id": "juniper-start-since-four",
+      "trigger": "race-start",
+      "when": [{ "fact": "timeOfDay", "op": "eq", "value": "dawn" }],
+      "text": "I open at five. I've been mad since four."
+    },
+    {
+      "id": "juniper-pass-line",
+      "trigger": "overtake",
+      "text": "Line's moving. You're not."
+    },
+    {
+      "id": "juniper-pass-pull-forward",
+      "trigger": "overtake",
+      "text": "Pull forward, please. Thank you."
+    },
+    {
+      "id": "juniper-hit-on-the-house",
+      "trigger": "hit-landed",
+      "text": "That one's on the house."
+    },
+    {
+      "id": "juniper-hit-last-call",
+      "trigger": "hit-landed",
+      "when": [{ "fact": "target.healthFrac", "op": "lt", "value": 0.3 }],
+      "text": "Last call."
+    },
+    {
+      "id": "juniper-taken-name-wrong",
+      "trigger": "hit-taken",
+      "text": "I'm spelling your name wrong on purpose now."
+    },
+    {
+      "id": "juniper-overtaken-order",
+      "trigger": "overtaken",
+      "target": "player",
+      "text": "Cool. I'll remember your order."
+    },
+    {
+      "id": "juniper-down-banned",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "You're banned. From the stand."
+    },
+    {
+      "id": "juniper-down-banned-road",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 1 }],
+      "text": "Banned from the stand. And the road. And the ferry."
+    },
+    {
+      "id": "juniper-near-extra-shot",
+      "trigger": "near-miss",
+      "text": "Extra shot. Didn't ask for it."
+    },
+    {
+      "id": "juniper-stolen-tip-jar",
+      "trigger": "weapon-stolen-from-speaker",
+      "text": "That was the tip jar money."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "region-pnw (playtest 1c). juniper-start-to-go is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

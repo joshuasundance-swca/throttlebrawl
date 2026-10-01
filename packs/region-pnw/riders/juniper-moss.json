@@ -1,0 +1,39 @@
+{
+  "type": "rider",
+  "id": "juniper-moss",
+  "name": "Juniper Moss",
+  "role": "rival",
+  "roster": "local",
+  "region": "pacific-northwest",
+  "tags": ["barista", "cafe-racer", "passive-aggressive"],
+  "blurb": "Runs the espresso stand at the ferry line, rides a café racer in a teal rain shell, and treats the road like a queue you cut.",
+  "bike": "base:rustbucket-400",
+  "stats": {
+    "massKg": 64,
+    "healthMax": 90,
+    "skill": 0.65
+  },
+  "personality": {
+    "style": "weaver",
+    "aggression": 0.55,
+    "dirtiness": 0.6,
+    "courage": 0.6,
+    "riskTaking": 0.7,
+    "chatter": 0.85,
+    "weave": 0.7,
+    "targetPreference": ["player", "leader", "nearest"],
+    "preferredSide": "either"
+  },
+  "look": {
+    "procedural": {
+      "preset": "rider-lean",
+      "params": { "helmet": "cafe-racer", "jacket": "rain-shell", "proportion": "exaggerated" }
+    },
+    "palette": ["#13a89e", "#e0457b", "#f4f1e8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Pacific Northwest local (region-pnw, playtest 1c). A weaver: quick, light, swerves across lanes, and kicks more than she punches. The weaver preset falls back to racer until the AI lane registers it. Signature line (agent draft, not yet maintainer-approved): \"For here or to go? Oh, you're going.\"",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

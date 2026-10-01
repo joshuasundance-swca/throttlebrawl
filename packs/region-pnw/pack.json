@@ -1,0 +1,18 @@
+{
+  "type": "pack",
+  "id": "region-pnw",
+  "name": "Region: the Pacific Northwest",
+  "version": "0.1.0",
+  "formatVersion": 1,
+  "gameVersion": ">=0.1.0",
+  "dependencies": { "base": "^0.1.0" },
+  "description": "Region 2, crude first: a twisty forest two-lane from a ferry landing to a sawmill, with its own rivals, traffic, signs and billboards. Everything else (bikes, weapons, the regular rivals) comes from base.",
+  "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
+  "license": "MIT",
+  "assetSources": { "default": "baked", "rules": [] },
+  "defaults": { "tuning": "registry", "hud": "base:classic" },
+  "idAliases": {},
+  "meta": {
+    "notes": "Playtest 1c (2026-09-30) roadmap change [decided]: \"Pnw and sf first then others\", crude first, as content packs reusing everything. Only base's defaults are read; these are here because the manifest schema requires them."
+  }
+}
