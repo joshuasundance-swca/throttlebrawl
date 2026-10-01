@@ -1,0 +1,14 @@
+{
+  "type": "crew",
+  "id": "fir-county-sheriff",
+  "name": "Fir County Sheriff",
+  "kind": "law",
+  "region": "pacific-northwest",
+  "stanceTowardPlayer": "hostile",
+  "rivalCrews": [],
+  "meta": {
+    "status": "live",
+    "notes": "Parody county law for the Pacific Northwest: real agency structure (a county sheriff) under a made-up name; no real agency names, badges or logos. Deputy Lindqvist rides for them.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

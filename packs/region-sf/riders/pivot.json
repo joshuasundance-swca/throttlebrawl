@@ -1,0 +1,36 @@
+{
+  "type": "rider",
+  "id": "pivot",
+  "name": "Pivot",
+  "role": "rival",
+  "roster": "local",
+  "region": "san-francisco",
+  "tags": ["founder", "e-bike"],
+  "blurb": "A pre-revenue founder in a fleece vest on a carbon e-bike, pitching mid-race to nobody.",
+  "bike": "base:rustbucket-400",
+  "stats": {
+    "massKg": 72,
+    "healthMax": 85,
+    "skill": 0.65
+  },
+  "personality": {
+    "style": "racer",
+    "aggression": 0.4,
+    "dirtiness": 0.6,
+    "courage": 0.4,
+    "riskTaking": 0.85,
+    "chatter": 0.9,
+    "weave": 0.6,
+    "targetPreference": ["leader", "player", "nearest"],
+    "preferredSide": "either"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco local (playtest 1c), the tone guide's \"tech-bro rivals on e-bikes\". A showboat at heart; M2 has only the racer and heavy-hitter presets, so he is a racer with a high weave and risk-taking: he takes the stair alley, jumps every crest and hits whoever is winning. He rides the base starter bike until an e-bike lands.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

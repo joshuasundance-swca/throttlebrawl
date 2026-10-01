@@ -1,0 +1,12 @@
+---
+kind: new
+audience: dev
+---
+A second region, San Francisco, as its own content pack (`packs/region-sf`, playtest 1c: "Pnw and sf first then others"). It is crude first and reuses everything: the base bikes, weapons, regular rivals and traffic. It is not pickable in the game yet: the app loads only the base pack until the runtime loads region packs and the region picker lands.
+
+- **The course** (`tools/road/tracks/sf-hills.ts`, baked to the pack's `regions/san-francisco/`): 3.97 km from the waterfront up two steep blocks (grades near 19 %), down a switchback street with 26 m bends, along the painted row houses, up the fog climb (22 m of hill) and onto the foggy bridge approach. Each block's crest has a small lip, so a bike flies off it at any racing speed (from about 12 m/s) and lands clean on straight road. The stair alley is the shortcut: about 100 m shorter than the switchbacks, with its own lip at the stairs. Two boost pads (the waterfront and the bridge approach) and a double-parked car carrier on Painted Row. Row houses stand as walls along the two steep blocks.
+- **The region** (`region.json`): a fog-grey palette with an orange-red accent and row-house colours, keyed by the renderer's material names for the palette hook; foggy dawn and golden hour; a traffic mix with three region vehicles as placeholder shapes (cable cars at 9 m/s as slow traffic, startup shuttles, rideshare hatchbacks), e-scooter commuters and a sea lion; five deadpan signs and two startup-satire billboards, every one in a slot.
+- **People:** two local rivals, Pivot (a founder on an e-bike) and Gripman Gus (a retired cable-car gripman), ten barks each with conditions, and a local cop, Officer Meter of the Municipal Curb Authority. The race, `sf-hill-sprint`, fields both locals, Chad Speedwell, Dial-Up and the cop.
+- **Tone guide:** a San Francisco section with the region's flavour notes, rivals and hard lines.
+- **Tests:** `tools/road/sf-hills.test.ts` (fresh bake, schemas, road lint, course shape, crest flights and landings, the shortcut, slots); `tests/sim/region-sf.test.ts` (the bot rides six seeded races with the full field: five finish, the quickest in 2:40, the other ended in a bust after a traffic crash; every run leaves the ground 3 or 4 times, and all four rivals finish every time). Until the runtime loads region packs, the sim test mounts the pack beside base in one registry.
+- Every name, line and number is a placeholder the maintainer can veto, and the feel numbers are [default]. Done, not phone-verified.

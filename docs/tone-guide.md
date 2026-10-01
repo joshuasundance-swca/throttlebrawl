@@ -210,6 +210,32 @@ Region 1 being the Florida Keys and A1A is decided. [decided] Everything below i
 - **Stale-meme hook:** tabloid "Florida Man" headlines in interludes, written as headlines about rivals, never about real people.
 - **Weird events** (rare race modifiers; see [the product spec](./product-spec.md#weird-events)): a hurricane gust, a gator crossing, cold-night iguana rain, a parade, a funeral procession, a spring-break convoy, an offshore rocket launch, a cult roadblock, a runaway boat on a trailer, a UFO billboard that comes true, a bounty on the player, double-cash zones, a guest "celebrity" rider. The maintainer wants all four kinds, with room to grow. [decided]
 
+### Region 2: the Pacific Northwest (crude first)
+
+The Pacific Northwest comes off the shelf now, with San Francisco, as a content pack that reuses everything: "Pnw and sf first then others" (playtest 1c, 2026-09-30). [decided] Everything below is a planner draft. [default] The pack is `packs/region-pnw`; its region id is `pacific-northwest`.
+
+- **The feel:** wet, quiet, enormous. Two-lane roads under trees older than the state. The humor is the region's own deadpan: people who are polite, damp and never in a hurry, except on this road.
+- **Sights:**
+  - twisty forest two-lanes under tall conifers
+  - coastal fog and drizzle light
+  - a ferry dock with a holding lot
+  - timber trestles over river mouths
+  - a sawmill and its log decks
+  - drive-through espresso stands, one every few hundred feet
+  - Bigfoot kitsch: museums, crossing signs, researchers with plaster-cast kits
+- **Palette:** grey-green and slate (overcast sky, moss, wet asphalt, slate water), with the riders' saturated colours on top (Old Growth's red flannel, Juniper Moss's teal and magenta). Time of day: foggy dawn and overcast noon. [default] Rain stays reserved with weather; the drizzle is in the light for now.
+- **Locals** [default]:
+  - **Old Growth** (rival): a logger the size of a stump, red flannel, caulk boots. A heavy hitter who says about one sentence a mile. Signature line (agent draft, not yet approved): "These trees were here before you. So was I."
+  - **Juniper Moss** (rival): runs the espresso stand at the ferry line and rides a café racer like the road is a queue you cut. A weaver, passive-aggressive, service-industry barbs. Signature line (agent draft, not yet approved): "For here or to go? Oh, you're going."
+  - **Deputy Lindqvist** (cop, Fir County Sheriff): soft-spoken, never raises his voice, never stops writing. `I'm not upset. I'm just writing it all down.`
+- **Law:** a parody county sheriff on real agency structure. No real agency names, badges or logos.
+- **Traffic and hazards:** log trucks, mossy station wagons with roof boxes, camper vans with canoes, ferry walk-ons with coffee, Bigfoot researchers, raccoons, and an elk that crashes you if you hit it.
+- **Wasteland oddity:** a drive-through espresso stand under tow, window still open. Nobody mentions it.
+- **Signs:** ferry waits that are always two hours, log trucks in every direction, rain stated as fact, Bigfoot as a crossing hazard who declines interviews.
+- **Billboards:** the Bigfoot museum (mostly gift shop), view-lot developers selling the forest they cut down.
+- **Do:** understatement, politeness as menace, specific local types (the logger, the barista, the walk-on commuter). **Don't:** lumberjack-pancake parody, flannel puns, quoting famous TV set in the region, or jokes at real groups, towns or companies.
+- **Engine gaps this region shows** (follow-ups for the runtime, road and render lanes): no conifers or ground plane yet (the scenery is the Keys' palms over open water), no rain, and no real climbs, because the road compiler pins every junction to one base height.
+
 ### Shelf regions
 
 The seven shelf regions are decided; the flavor sketches and the "Also possible" row are planner proposals. [default]
@@ -228,6 +254,61 @@ Flavor sketches from the playback page:
 | Also possible | Louisiana bayou, the Vegas Strip at night, Appalachian backroads, Texas oil country |
 
 - Each new region brings about 4 locals, including its own cops, plus its own sign and billboard pack. [decided for the roster shape; default for the packs]
+
+### Region: San Francisco (playtest 1c)
+
+Playtest 1c brought new regions forward: "I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works", in the order "Pnw and sf first then others". [decided] San Francisco ships crude first, as the `region-sf` content pack, and reuses the base game's bikes, weapons and regular rivals. Everything below is a planner draft. [default]
+
+- **Realism:** evocative, not literal, like the Keys. The track's streets have made-up names, and no landmark is branded: the bridge is "a big orange suspension bridge" and is never named.
+- **Sights:**
+  - steep blocks, and the crest of each one where the cross street flattens out
+  - painted row houses, shoulder to shoulder
+  - cable-car tracks down the middle of the road
+  - piers and warehouses on the waterfront
+  - fog banks rolling over the hills
+  - the long, foggy approach to the bridge
+- **Physics:** you catch air at every crest. Air off a hill should feel like the city's own ramp, not a stunt park.
+- **Traffic and hazards:**
+  - cable cars as slow traffic that you pass on the wrong side of the road
+  - unmarked white startup shuttles running private routes
+  - rideshare hatchbacks looking for a pickup
+  - e-scooter commuters at the kerb
+- **Law:** parking enforcement with a pursuit budget, the Municipal Curb Authority (a made-up name). No real agency names, badges or logos.
+- **Wasteland oddity:** a sea lion a long way from the pier, unbothered.
+- **Signs:** parking-ticket deadpan and grade warnings. Tickets that began before the rule, spaces that don't exist, hills that only get steeper.
+- **Billboards:** startup satire. Old things sold back as a service, and funding rounds for things that already exist. Never a real company, product, founder or logo.
+- **Time of day:** foggy dawn (the region's race), and golden hour.
+- **Stale-meme hook:** startup jargon (pivot, ten-x, stealth mode, the deck, burn rate) as one rival's whole vocabulary. It is aimed at a type, never at a person.
+- **Weird events** (ideas only, not built): a fog bank so thick the race goes by sound, a runaway cable car, a launch party across the road, a convoy of identical shuttles.
+- **Hard lines here:** no real tech companies, founders or products, and no jokes about people living on the street or any other real group. That cheap shot about the city is never the joke.
+
+#### Pivot (San Francisco local)
+
+- **Look:** A pre-revenue founder in a fleece vest on a carbon e-bike, pitching mid-race to nobody.
+- **Signature line:** "We're pre-revenue. You're pre-ditch." (an agent draft in the shape of the approved lines; the maintainer approves or vetoes it)
+- **Style:** A showboat at heart. With only the racer and heavy-hitter presets so far, he is a racer with a high weave and risk-taking: he takes the stair alley, jumps every crest and hits whoever is winning.
+- **Rivalries:** Gripman Gus, the old city against the new; Chad Speedwell, two versions of the same pitch.
+- **Sample barks:**
+  - overtaking: `Passing you. You're the legacy system.`
+  - takedown into traffic: `Acquired by a bus. Congrats on the exit.`
+  - crash: `Burn rate's fine. Everything's fine.`
+
+#### Gripman Gus (San Francisco local)
+
+- **Look:** A retired cable-car gripman in a wool cap on a forty-year-old bike. He rings a brass bell before he hits you.
+- **Signature line:** "Hold on to something. Not me." (an agent draft, as above)
+- **Style:** A heavy hitter who holds his line like a cable car and never takes the shortcut on purpose.
+- **Rivalry:** Pivot. His one targeted line, `Disrupt this.`, plays only when the hit lands on Pivot.
+- **Sample barks:**
+  - race start: `Ding ding. That's all the warning you get.`
+  - overtaking: `Forty years on these hills. You're a Tuesday.`
+  - grudge memory: `I remember every face that never paid.`
+
+#### Officer Meter (San Francisco local cop)
+
+- **Look:** A parking officer who has never once let anything go, and writes the ticket during the chase.
+- **Style:** The local cop. He has Sgt. Pruitt's numbers, except that he needs 2 seconds beside you to bust you, because he writes the ticket out in full.
+- **Sample barks** (they wait until the narrative fires the cop triggers): `Your meter expired eleven minutes ago.` and `I already wrote it. Sign here.`
 
 ## The bark system
 

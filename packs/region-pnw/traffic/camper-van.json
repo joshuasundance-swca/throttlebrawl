@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "camper-van",
+  "name": "Camper Van With a Canoe",
+  "category": "rv",
+  "tags": ["tourist"],
+  "lengthM": 6.6,
+  "widthM": 2.2,
+  "cruiseMps": 22.0,
+  "hazard": "big",
+  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": {
+    "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 2.6 } },
+    "paintOptions": ["#e8e2c8", "#9fb6a8", "#d9a441"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Someone's year off, doing 49 in a 50. Placeholder shape: the box-truck preset, shortened.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

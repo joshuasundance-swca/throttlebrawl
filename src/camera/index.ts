@@ -4,25 +4,31 @@
 // kick with speed, a framing bias toward the auto-target, and event shake scaled by
 // camera.shakeScale. M2 (camera-2) adds look-back on the held action, a takedown framing that holds
 // the victim in view through the slow motion, a directional hit jolt, and the reduce-shake setting
-// (setShakeAmount). Far chase, helmet and the replay cams are later modes.
+// (setShakeAmount). M3 (camera-3) adds the far chase and helmet views, picked by the `camera.mode`
+// slider, setView/cycleView, and the view key (bindViewKey). The replay cams are later modes.
 import type { RoadNetwork, SimEvent, TuningParamDecl } from '../sim/api';
 import {
   createChaseRig,
+  VIEW_MODES,
+  viewOf,
   type CameraContext,
   type CameraPose,
   type CameraTarget,
   type ChaseParams,
   type RigMode,
+  type ViewMode,
 } from './chase';
 
-export type { CameraContext, CameraPose, CameraTarget } from './chase';
-export { wideAmount } from './chase';
+export type { CameraContext, CameraPose, CameraTarget, ViewMode } from './chase';
+export { VIEW_MODES, wideAmount } from './chase';
+export { bindViewKey, CAMERA_VIEW_KEY } from './keys';
 export { FALLBACK_IMPULSE } from './jolt';
 export { SHAKE_TRAUMA } from './shake';
 
 /**
  * Camera modes. M1 built the chase cam; M2 (camera-2) adds look-back (the held action) and the
- * takedown framing. The architecture doc lists the rest (farChase, helmet, replayCinematic).
+ * takedown framing; M3 (camera-3) the far chase and helmet views. The architecture doc lists the
+ * rest (replayCinematic).
  */
 export type CameraMode = RigMode;
 
@@ -83,6 +89,19 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('wideAspectFull', 'Phone cam: full at aspect', 2.1, 1.4, 2.8, 0.05, ''),
   decl('wideHeightM', 'Phone cam: extra height', 0.6, 0, 3, 0.1, 'm'),
   decl('wideDistanceM', 'Phone cam: extra distance', 1, 0, 5, 0.25, 'm'),
+  // camera-3 (docs/milestones/M3.md) [default]: the far chase and helmet views. Until ui adds a
+  // settings row, the view is this slider (0 low chase, 1 far chase, 2 helmet) and the view key.
+  decl('mode', 'View: 0 chase, 1 far, 2 helmet', 0, 0, VIEW_MODES.length - 1, 1, ''),
+  decl('farDistanceM', 'Far chase: distance', 11, 6, 25, 0.25, 'm'),
+  decl('farHeightM', 'Far chase: height', 4.2, 2, 10, 0.1, 'm'),
+  decl('farLookAheadM', 'Far chase: look-ahead', 28, 5, 60, 1, 'm'),
+  decl('helmetHeightM', 'Helmet cam: eye height', 1.78, 1.5, 2.1, 0.02, 'm'),
+  decl('helmetForwardM', 'Helmet cam: eye forward', 0.1, -0.2, 0.4, 0.02, 'm'),
+  decl('helmetLookAheadM', 'Helmet cam: look-ahead', 30, 8, 60, 1, 'm'),
+  decl('helmetAimHeightM', 'Helmet cam: aim height', 1.1, 0, 2, 0.1, 'm'),
+  decl('helmetFovDeg', 'Helmet cam: field of view', 70, 50, 95, 1, '°'),
+  decl('helmetRollFraction', 'Helmet cam: roll with lean', 0.5, 0, 1, 0.05, ''),
+  decl('helmetCalm', 'Helmet cam: calm under reduce-shake', 0.3, 0, 1, 0.05, ''),
 ];
 
 export interface FollowCamera {
@@ -107,6 +126,12 @@ export interface FollowCamera {
    * multiplies `camera.shakeScale`; values outside 0..1 are clamped, and NaN means 1.
    */
   setShakeAmount(amount: number): void;
+  /** The chosen base view (`camera.mode`); `mode` says what the last frame showed. */
+  readonly view: ViewMode;
+  /** Picks the base view. A later `camera.mode` tuning change overrides it. */
+  setView(view: ViewMode): void;
+  /** Steps to the next base view (low chase, far chase, helmet, then round) and returns it. */
+  cycleView(): ViewMode;
 }
 
 export interface FollowCameraOptions {
@@ -119,13 +144,30 @@ function defaults(): ChaseParams {
   return p as unknown as ChaseParams;
 }
 
-/** The chase cam with its M2 modes. The name is the skeleton's; the rig is camera-1's and camera-2's. */
+/**
+ * The chase cam with its M2 modes and M3 views. The name is the skeleton's; the rig is camera-1's,
+ * camera-2's and camera-3's.
+ */
 export function createFollowCamera(opts: FollowCameraOptions = {}): FollowCamera {
   const params = defaults();
   const rig = createChaseRig(params, opts.road ?? null);
+  const setView = (view: ViewMode): void => {
+    const i = VIEW_MODES.indexOf(view);
+    if (i >= 0) params.mode = i;
+  };
   return {
     get mode() {
       return rig.mode;
+    },
+    get view() {
+      return viewOf(params.mode);
+    },
+    setView,
+    cycleView() {
+      const next =
+        VIEW_MODES[(VIEW_MODES.indexOf(viewOf(params.mode)) + 1) % VIEW_MODES.length] ?? 'lowChase';
+      setView(next);
+      return next;
     },
     setShakeAmount: (amount) => rig.setShakeAmount(amount),
     update: (t, dt, ctx) => rig.update(t, dt, ctx),

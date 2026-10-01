@@ -1,0 +1,76 @@
+{
+  "type": "bark-set",
+  "id": "pivot-core",
+  "name": "Pivot: core lines",
+  "tags": ["rival", "region-sf"],
+  "defaults": {
+    "speaker": "pivot",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "pivot-start-stealth",
+      "trigger": "race-start",
+      "text": "Coming out of stealth. Avert your eyes."
+    },
+    {
+      "id": "pivot-pass-legacy",
+      "trigger": "overtake",
+      "text": "Passing you. You're the legacy system."
+    },
+    {
+      "id": "pivot-pass-deck",
+      "trigger": "overtake",
+      "text": "That was a ten-x pass. I'll send the deck."
+    },
+    {
+      "id": "pivot-hit-ditch",
+      "trigger": "hit-landed",
+      "text": "We're pre-revenue. You're pre-ditch."
+    },
+    {
+      "id": "pivot-hit-round",
+      "trigger": "hit-landed",
+      "priority": 1,
+      "when": [{ "fact": "race.progress", "op": "gte", "value": 0.75 }],
+      "text": "Closing the round. You're not in it."
+    },
+    {
+      "id": "pivot-traffic-exit",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Acquired by a bus. Congrats on the exit."
+    },
+    {
+      "id": "pivot-down-pavement",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Pivoting. To the pavement."
+    },
+    {
+      "id": "pivot-down-risks",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
+      "text": "Again? You're going on the risks slide."
+    },
+    {
+      "id": "pivot-crash-burn",
+      "trigger": "crash-self",
+      "text": "Burn rate's fine. Everything's fine."
+    },
+    {
+      "id": "pivot-near-episode",
+      "trigger": "near-miss",
+      "text": "Near miss. That's a podcast episode."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

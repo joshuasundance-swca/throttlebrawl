@@ -27,6 +27,7 @@ export type {
   SimController,
   SimDifficulty,
   SimEvent,
+  SimEventCops,
   SimEventDef,
   SimEventType,
   SimInput,

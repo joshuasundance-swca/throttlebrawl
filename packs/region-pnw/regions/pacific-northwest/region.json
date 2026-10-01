@@ -1,0 +1,84 @@
+{
+  "type": "region",
+  "id": "pacific-northwest",
+  "name": "The Pacific Northwest",
+  "chapter": 2,
+  "blurb": "Two lanes, a million trees, and a ferry that left without you.",
+  "networks": ["pnw-c1"],
+  "timeOfDayOptions": [
+    {
+      "id": "dawn",
+      "lighting": "pnw-fog-dawn",
+      "palette": { "sky": "#c4ccc6", "fog": "#cdd3cd", "water": "#56706b" }
+    },
+    {
+      "id": "noon",
+      "lighting": "pnw-overcast-drizzle",
+      "palette": { "sky": "#aab5b1", "fog": "#b7c0bb", "water": "#4c6762" }
+    }
+  ],
+  "palette": {
+    "sky": "#b9c3bf",
+    "fog": "#c3cbc6",
+    "water": "#4f6b66",
+    "road": "#3b3f3e",
+    "shoulder": "#5f6656",
+    "land": "#46553a",
+    "foliage": "#2c4433",
+    "trunk": "#55433a",
+    "rail": "#7d6c57",
+    "deck": "#6e5d4a",
+    "accent": "#e2a33a"
+  },
+  "traffic": {
+    "mix": [
+      { "kind": "mossy-wagon", "weight": 5, "hazard": "normal" },
+      { "kind": "base:pickup", "weight": 3, "hazard": "normal" },
+      { "kind": "base:sedan-rental", "weight": 2, "hazard": "normal" },
+      { "kind": "log-truck", "weight": 1.5, "hazard": "big" },
+      { "kind": "camper-van", "weight": 0.6, "hazard": "big" },
+      { "kind": "espresso-stand-in-tow", "weight": 0.2, "hazard": "big", "tags": ["oddity"] }
+    ],
+    "pedestrians": [
+      { "kind": "ferry-walk-on", "weight": 2 },
+      { "kind": "bigfoot-researcher", "weight": 1 }
+    ],
+    "animals": [
+      { "kind": "raccoon", "weight": 2, "big": false },
+      { "kind": "elk", "weight": 1, "big": true }
+    ]
+  },
+  "signs": [
+    {
+      "id": "ferry-wait",
+      "text": "FERRY WAIT FROM THIS POINT: 2 HRS. FROM ANY OTHER POINT: 2 HRS.",
+      "status": "live"
+    },
+    { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. LOG TRUCKS LEAVING. LOG TRUCKS.", "status": "live" },
+    {
+      "id": "bigfoot-crossing",
+      "text": "BIGFOOT CROSSING NEXT 12 MI. HE IS NOT TAKING QUESTIONS.",
+      "status": "live"
+    },
+    { "id": "last-espresso", "text": "LAST ESPRESSO 400 FT. NEXT ESPRESSO 600 FT.", "status": "live" },
+    { "id": "wet-road", "text": "ROAD MAY BE WET. ROAD IS WET.", "status": "live" }
+  ],
+  "billboards": [
+    {
+      "id": "bigfoot-museum",
+      "text": "THE BIGFOOT MUSEUM. EXHIBITS: 1. GIFT SHOP: EVERYTHING ELSE.",
+      "status": "live"
+    },
+    {
+      "id": "view-lots",
+      "text": "STUMP VIEW ESTATES. LUXURY LIVING WHERE THE FOREST USED TO BE.",
+      "status": "live"
+    }
+  ],
+  "weather": null,
+  "meta": {
+    "status": "live",
+    "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the time-of-day lighting names carry it until weather lands. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
