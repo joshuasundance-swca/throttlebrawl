@@ -170,7 +170,7 @@ export interface AppPresentation {
   /** The gains audio's buses aim for (0..1 after the taper): the voices bus is 0 while voices are off. */
   audio: {
     busTargets: { master: number; music: number; effects: number; voices: number };
-    /** Whether audio speaks barks at all (the Voices on switch, through `setVoices`). */
+    /** Whether audio would speak a bark now (not muted, and the voices bus up: Voices on, slider up). */
     voicesOn: boolean;
   };
 }
@@ -208,11 +208,6 @@ export interface AppHandle {
 }
 
 /**
- * The browser specs' forced slow frames (docs/architecture.md, "Testing seams"): with the test flag
- * set, `window.__slowFrameMs = 60` makes every rendered frame take at least that long (a busy wait),
- * so the look fallback's watch sees real slow frames through the real loop. 0 otherwise.
- */
-/**
  * The look fallback's watch runs in production always; under the test flag only when a spec asks
  * (`window.__lookFallbackWatch = true`). A software-rendered CI runner draws the ink look slowly
  * enough to bring the offer up in any long race, over other specs' checks (PR #232's first CI run).
@@ -222,6 +217,11 @@ function lookWatchOn(): boolean {
   return w.__GAME_TEST__ !== true || w.__lookFallbackWatch === true;
 }
 
+/**
+ * The browser specs' forced slow frames (docs/architecture.md, "Testing seams"): with the test flag
+ * set, `window.__slowFrameMs = 60` makes every rendered frame take at least that long (a busy wait),
+ * so the look fallback's watch sees real slow frames through the real loop. 0 otherwise.
+ */
 function testSlowFrameMs(): number {
   const w = window as Window & { __GAME_TEST__?: boolean; __slowFrameMs?: unknown };
   if (w.__GAME_TEST__ !== true) return 0;
@@ -347,10 +347,6 @@ export function createApp(opts: AppOptions): AppHandle {
   const audio = createAudio();
   // The voices off switch (run W-O) silences the voices bus; the Voices slider keeps its level.
   audio.setVolumes(audioVolumes(settings), settings.mute);
-  // The switch also reaches the spoken barks themselves (audio's setVoices), so with voices off no
-  // clip plays and the music never dips for one. The level stays the voices bus (the Voices slider):
-  // passing the volume here too would apply it twice.
-  audio.setVoices({ on: settings.voicesOn });
   // The radio (M4 radio-1 head start): this device's cut tracks never play, and each race's region
   // picks its stations (the base pack's while a region has none of its own).
   const radioCut = (s: typeof settings) => s.vetoes.map((v) => v.contentRef);
@@ -489,7 +485,6 @@ export function createApp(opts: AppOptions): AppHandle {
         settings = next;
         settingsStore.save(next);
         audio.setVolumes(audioVolumes(next), next.mute);
-        audio.setVoices({ on: next.voicesOn });
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
