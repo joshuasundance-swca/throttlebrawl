@@ -391,6 +391,46 @@ function rampTruckParts(road: RoadNetwork, edge: number, f: FeatureSpan): BoxPar
   return parts;
 }
 
+/**
+ * The ramp truck's deck run on over its cab to the feature's end (render integration item 5): the sim
+ * keeps a flat deck at the lip height from the lip to s1, and the model's own flat deck stops where
+ * its cab begins. A plate in the deck's colour, at the lip height over the road, from there to s1, so
+ * a rider rolling along the deck rides on something drawn the whole way, and the lowered cab sits
+ * under it. Road space, so it follows the road's grade like the sim's deck.
+ */
+export function rampTruckDeckParts(
+  road: RoadNetwork,
+  edge: number,
+  f: FeatureSpan,
+  ramp: NonNullable<SceneryModel['ramp']>,
+): BoxPart[] {
+  const run = Math.max(1, num(f.params?.['rampLengthM'], RAMP_TRUCK_DEFAULTS.rampLengthM));
+  const lip = Math.max(0.3, num(f.params?.['lipHeightM'], RAMP_TRUCK_DEFAULTS.lipHeightM));
+  const sz = run / (ramp.runM || RAMP_TRUCK_DEFAULTS.rampLengthM);
+  const sy = lip / (ramp.lipM || RAMP_TRUCK_DEFAULTS.lipHeightM);
+  const u0 = Math.max(run, ramp.deckEndM * sz - 0.05);
+  const u1 = Math.max(f.s0, f.s1) - f.s0;
+  if (u1 - u0 < 0.1) return [];
+  const width = Math.abs(f.d1 - f.d0);
+  const dMid = (f.d0 + f.d1) / 2;
+  const T = 0.14 * sy;
+  const a = road.toWorld(edge, f.s0 + u0, dMid, lip);
+  const b = road.toWorld(edge, f.s0 + u1, dMid, lip);
+  const pitch = Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z));
+  const um = (u0 + u1) / 2;
+  const fr = road.frameAt(edge, f.s0 + um);
+  const c = road.toWorld(edge, f.s0 + um, dMid, lip - T / 2);
+  return [
+    {
+      size: [width, T, u1 - u0],
+      at: [c.x, c.y, c.z],
+      color: ramp.deckColour,
+      rotX: pitch,
+      rotY: Math.atan2(-fr.tx, -fr.tz),
+    },
+  ];
+}
+
 interface Clip {
   lo: number;
   hi: number;
@@ -1037,8 +1077,10 @@ export function buildRoadScene(
       } else {
         drawn();
         // The Blender truck once it has loaded (playtest 1c item 4), the code-made boxes until then.
-        if (truckModel) truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
-        else truckParts.push(...rampTruckParts(road, e.index, f));
+        if (truckModel) {
+          truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
+          if (truckModel.ramp) truckParts.push(...rampTruckDeckParts(road, e.index, f, truckModel.ramp));
+        } else truckParts.push(...rampTruckParts(road, e.index, f));
         rampTrucks++;
       }
     }
