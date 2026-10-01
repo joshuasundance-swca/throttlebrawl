@@ -21,6 +21,13 @@
 //   or the vehicle is `big` (trucks), which crashes (a `crash` event for the tumble). Both carry
 //   data.cause `traffic`, `hit` and `impactMps`, and target the vehicle. A close, fast pass with no
 //   contact fires `nearMiss`. The full rule is on contacts() below.
+// - Wasteland oddities (M3 traffic-4) are ordinary entries with category `oddity`, picked by the
+//   same region weights (scaled by the `traffic.oddities` slider) and spawned under the same
+//   fairness rule. A rolling one (a mobile home with no truck) is just a slow vehicle. A PARKED one
+//   (cruiseMps 0: a boat left in the fast lane) stands still in the innermost lane, nudged
+//   TRAFFIC.parkOutM toward the shoulder; vehicles behind it change lanes past it where their
+//   direction has a second lane, and otherwise edge inward around it (TRAFFIC.swerve*), so it
+//   never turns into a jam. It is never pushed by the no-overlap pass.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
@@ -77,6 +84,19 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     max: 40,
     step: 1,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // M3 traffic-4 (head start): a scale on every `oddity` type's region weight; 0 turns the
+    // parked boats and runaway mobile homes off. [default]
+    id: 'traffic.oddities',
+    group: 'traffic',
+    label: 'Wasteland oddities',
+    default: 1,
+    min: 0,
+    max: 5,
+    step: 0.1,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -144,6 +164,14 @@ export const TRAFFIC = {
   oncomingEaseFrom: 0.25,
   /** Riders higher than this above the road pass over traffic, m. */
   maxContactH: 1.2,
+  /** A parked oddity sits this far outward (toward the shoulder) of its lane's centre, m. */
+  parkOutM: 1.2,
+  /** Vehicles start to get round a parked oddity this far behind it, m. */
+  swerveLookM: 90,
+  /** Side-to-side room they leave it as they edge round, box to box, m. */
+  swerveClearM: 0.3,
+  /** How fast they edge sideways round it, m/s. */
+  swerveMps: 2.2,
 };
 
 /**
@@ -161,6 +189,24 @@ const CATEGORY: Readonly<Record<string, { weight: number; laneChanges: boolean }
 function weightOf(t: SimTrafficTypeDef | undefined): number {
   const w = t?.weight ?? CATEGORY[t?.category ?? '']?.weight ?? 0;
   return Number.isFinite(w) && w > 0 ? w : 0;
+}
+
+/** The pick weight during a race: oddities scale by the `traffic.oddities` slider. */
+function rollWeight(world: World, t: SimTrafficTypeDef | undefined): number {
+  const w = weightOf(t);
+  if (t?.category !== 'oddity') return w;
+  const k = world.params['traffic.oddities'] ?? 1;
+  return Number.isFinite(k) && k > 0 ? w * k : 0;
+}
+
+/** A parked oddity: an `oddity` with no cruise speed, such as a boat left in the fast lane. */
+export function isParked(t: SimTrafficTypeDef | undefined): boolean {
+  return t?.category === 'oddity' && !(t.cruiseMps > 0);
+}
+
+/** Where a parked oddity stands across the road: its lane's centre, nudged toward the shoulder. */
+function parkedCd(laneCd: number): number {
+  return laneCd + (laneCd < 0 ? -1 : 1) * TRAFFIC.parkOutM;
 }
 
 /** Traffic's plain state. Per-vehicle arrays are indexed by vehicle slot; per-rider by entity id. */
@@ -330,10 +376,10 @@ function targetCount(world: World, st: TrafficState, anchors: readonly number[],
 
 function rollType(world: World, config: SimConfig, st: TrafficState): number {
   let total = 0;
-  for (const i of st.types) total += weightOf(config.trafficTypes[i]);
+  for (const i of st.types) total += rollWeight(world, config.trafficTypes[i]);
   let r = nextFloat(world.rng.traffic) * total;
   for (const i of st.types) {
-    r -= weightOf(config.trafficTypes[i]);
+    r -= rollWeight(world, config.trafficTypes[i]);
     if (r < 0) return i;
   }
   return st.types[st.types.length - 1] ?? 0;
@@ -378,7 +424,8 @@ export function placeVehicle(
   if (!t) throw new Error(`traffic: no traffic type ${spec.type}`);
   const lanes = lanesAt(config.road, st.corridor, spec.u, spec.dir);
   const rank = Math.min(spec.rank ?? 0, Math.max(0, lanes.length - 1));
-  const cd = lanes[rank]?.cd ?? 0;
+  const laneCd = lanes[rank]?.cd ?? 0;
+  const cd = isParked(t) ? parkedCd(laneCd) : laneCd;
   let slot = k;
   if (slot < 0) {
     const mover = addMover(world, 'vehicle', { edge: 0, s: 0, d: 0, dir: 1 });
@@ -453,7 +500,8 @@ function trySpawn(
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
-    const rank = Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
+    // A parked oddity always takes the innermost lane: the fast lane, where there are two.
+    const rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     if (!laneClear(config, st, u, dir, rank, t.lengthM, gap, k)) continue;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
@@ -553,12 +601,64 @@ function populate(world: World, config: SimConfig, st: TrafficState): void {
   }
 }
 
-/** Rare seeded lane changes, where the vehicle's direction has a second lane with room. */
+/** Slots of the parked oddities, so the common case (none) costs one pass. */
+function parkedSlots(config: SimConfig, st: TrafficState): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < st.id.length; k++) if (isParked(config.trafficTypes[st.type[k] ?? -1])) out.push(k);
+  return out;
+}
+
+/**
+ * The nearest parked oddity in lane `rank` that vehicle k is coming up on (from TRAFFIC.swerveLookM
+ * behind it until k's tail is past its nose), or -1.
+ */
+function parkedAhead(
+  config: SimConfig,
+  st: TrafficState,
+  k: number,
+  rank: number,
+  parked: readonly number[],
+): number {
+  const dir = st.dir[k] ?? 1;
+  const lk = typeOf(config, st, k).lengthM;
+  let best = -1;
+  let bestAhead = Infinity;
+  for (const j of parked) {
+    if (j === k || st.dir[j] !== dir || st.rank[j] !== rank) continue;
+    const ahead = dir * ((st.u[j] ?? 0) - (st.u[k] ?? 0));
+    if (ahead > TRAFFIC.swerveLookM || ahead < -(lk + typeOf(config, st, j).lengthM) / 2 - 1) continue;
+    if (ahead < bestAhead) {
+      bestAhead = ahead;
+      best = j;
+    }
+  }
+  return best;
+}
+
+/**
+ * Rare seeded lane changes, where the vehicle's direction has a second lane with room. A vehicle
+ * coming up on a parked oddity in its lane changes out of it (no roll, any category) when the
+ * next lane has room, and a random change never moves into a lane with one just ahead.
+ */
 function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: number): void {
   const chance = TRAFFIC.laneChangePerS * dt;
+  const parked = parkedSlots(config, st);
   for (let k = 0; k < st.id.length; k++) {
     st.laneCooldownS[k] = Math.max(0, (st.laneCooldownS[k] ?? 0) - dt);
     const t = typeOf(config, st, k);
+    if (parked.length > 0 && !isParked(t)) {
+      const dir = st.dir[k] ?? 1;
+      const lanes = lanesAt(config.road, st.corridor, st.u[k] ?? 0, dir);
+      const rank = st.rank[k] ?? 0;
+      if (lanes.length >= 2 && parkedAhead(config, st, k, rank, parked) >= 0) {
+        const to = rank + 1 < lanes.length ? rank + 1 : rank - 1;
+        if (laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) {
+          st.rank[k] = to;
+          st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
+        }
+        continue;
+      }
+    }
     if (!CATEGORY[t.category]?.laneChanges || (st.laneCooldownS[k] ?? 0) > 0) continue;
     const dir = st.dir[k] ?? 1;
     const lanes = lanesAt(config.road, st.corridor, st.u[k] ?? 0, dir);
@@ -574,6 +674,7 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
             ? rank - 1
             : rank + 1;
     if (!laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) continue;
+    if (parked.length > 0 && parkedAhead(config, st, k, to, parked) >= 0) continue;
     st.rank[k] = to;
     st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
   }
@@ -611,6 +712,7 @@ function move(
   const n = st.id.length;
   const c = st.corridor;
   const speeds = st.id.map((id) => world.movers[id]?.speed ?? 0);
+  const parked = parkedSlots(config, st);
   const accel: number[] = [];
   for (let k = 0; k < n; k++) {
     const t = typeOf(config, st, k);
@@ -628,8 +730,10 @@ function move(
     for (let j = 0; j < n; j++) {
       if (j === k || st.dir[j] !== dir) continue;
       const tj = typeOf(config, st, j);
-      const sameLane =
-        st.rank[j] === st.rank[k] || Math.abs((st.cd[j] ?? 0) - cd) < (t.widthM + tj.widthM) / 2;
+      // A parked oddity is in the way only while the boxes overlap side to side: edging round it
+      // in the same lane (a one-lane road) clears it.
+      const sideways = Math.abs((st.cd[j] ?? 0) - cd) < (t.widthM + tj.widthM) / 2;
+      const sameLane = isParked(tj) ? sideways : st.rank[j] === st.rank[k] || sideways;
       const ahead = dir * ((st.u[j] ?? 0) - u);
       if (!sameLane || ahead <= 0) continue;
       consider(ahead - (t.lengthM + tj.lengthM) / 2, speeds[j] ?? 0);
@@ -663,8 +767,15 @@ function move(
     const f = order[i - 1] ?? 0;
     const b = order[i] ?? 0;
     if (st.dir[f] !== st.dir[b] || st.rank[f] !== st.rank[b]) continue;
+    const tf = typeOf(config, st, f);
+    const tb = typeOf(config, st, b);
+    if (isParked(tf) || isParked(tb)) {
+      // Side by side with a parked oddity is passing it, not overlapping; and nothing shoves one.
+      if (Math.abs((st.cd[f] ?? 0) - (st.cd[b] ?? 0)) >= (tf.widthM + tb.widthM) / 2) continue;
+      if (isParked(tb)) continue;
+    }
     const dir = st.dir[b] ?? 1;
-    const room = (typeOf(config, st, f).lengthM + typeOf(config, st, b).lengthM) / 2 + 0.3;
+    const room = (tf.lengthM + tb.lengthM) / 2 + 0.3;
     if (dir * ((st.u[f] ?? 0) - (st.u[b] ?? 0)) < room) {
       st.u[b] = (st.u[f] ?? 0) - dir * room;
       nextV[b] = Math.min(nextV[b] ?? 0, nextV[f] ?? 0);
@@ -679,9 +790,26 @@ function move(
     }
     st.u[k] = u;
     const lanes = lanesAt(config.road, c, u, dir);
-    const target = lanes[Math.min(st.rank[k] ?? 0, lanes.length - 1)]?.cd ?? st.cd[k] ?? 0;
+    const laneCd = lanes[Math.min(st.rank[k] ?? 0, lanes.length - 1)]?.cd ?? st.cd[k] ?? 0;
+    let target = laneCd;
+    let rate = TRAFFIC.laneChangeMps;
+    if (parked.length > 0) {
+      const tk = typeOf(config, st, k);
+      if (isParked(tk)) {
+        target = parkedCd(laneCd);
+      } else if (lanes.length < 2) {
+        // One lane this way: edge inward round the parked oddity, then back once past it.
+        const j = parkedAhead(config, st, k, st.rank[k] ?? 0, parked);
+        const tj = config.trafficTypes[st.type[j] ?? -1];
+        if (j >= 0 && tj) {
+          const out = laneCd < 0 ? -1 : 1;
+          target = (st.cd[j] ?? 0) - out * ((tj.widthM + tk.widthM) / 2 + TRAFFIC.swerveClearM);
+          rate = TRAFFIC.swerveMps;
+        }
+      }
+    }
     const cd = st.cd[k] ?? 0;
-    const step = TRAFFIC.laneChangeMps * dt;
+    const step = rate * dt;
     const nextCd = cd + clamp(target - cd, -step, step);
     st.cd[k] = nextCd;
     const mover = world.movers[st.id[k] ?? -1];

@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "gator",
+  "name": "Gator",
+  "category": "animal",
+  "tags": ["local", "swamp"],
+  "lengthM": 2.4,
+  "widthM": 0.6,
+  "cruiseMps": 0.5,
+  "hazard": "big",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-gator" }, "paintOptions": ["#3f4a2b", "#5a6338", "#2e3324"] },
+  "meta": {
+    "status": "draft",
+    "notes": "The big one. Crosses at its own pace and lunges clear; hit it anyway and you are the one who goes down. How late it lunges is the 'Gators: reaction' slider. M3 traffic-4 head start.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

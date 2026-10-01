@@ -1,0 +1,5 @@
+---
+kind: new
+audience: player
+---
+Test builds only for now: the Keys get their wildlife and their wasteland oddities, crude first (M3 traffic-4, started early). Iguanas, pelicans, a gator, and a gator sitting on a lawn chair join the chickens by the road. All of them dive clear cartoonishly; no gore. The gator is the big one: hit it anyway and you go down, and the "Gators: reaction" slider makes it lunge later if you want it to be a real hazard. Out on the road, a boat sometimes sits parked in the lane with no truck attached, and a mobile home rolls along at 20 mph with nobody towing it. Both show up only beyond reaction range, traffic edges round the boat instead of queueing behind it, and the "Wasteland oddities" slider turns them up, down or off. Animals never stand on the bridge fishing walkways, so the fisherman keeps the rail to himself. Key deer stay out: they are a protected species. For now every new kind draws with the existing placeholder shapes (animals as the pedestrian figure, the boat and mobile home as the truck box); proper shapes come with the render work.
