@@ -8,7 +8,15 @@
 //   ordinary take-off rule) and may land on it. Only riders see the deck: it is not in the road's
 //   surface, so tumble bodies, traffic and render's road mesh are unchanged. Riding into its side
 //   or front higher than a kerb is a barrier contact. It faces riders travelling toward +s.
-import { RAMP_TRUCK_DEFAULTS, rampTruckShape, type BakedFeature } from '../../road';
+// - Set pieces from the race seed (playtest 1c item 2): a pad or truck with `params.slot` is one
+//   candidate for that slot, there only when the race seed picks it (road/setpieces).
+import {
+  chooseSetPieces,
+  RAMP_TRUCK_DEFAULTS,
+  rampTruckShape,
+  setPieceActive,
+  type BakedFeature,
+} from '../../road';
 import type { SimConfig } from '../types';
 
 /** A boostPad's defaults: speed added (m/s) and how long the boost lasts (s). */
@@ -22,6 +30,22 @@ export const RAMP_TRUCK_LIP_M = RAMP_TRUCK_DEFAULTS.lipHeightM;
 /** A step up onto a deck higher than this, in one tick, is riding into the truck, m. */
 export const KERB_M = 0.3;
 
+/** The candidates this race's seed picked, once per config (a race's config never changes). */
+const picked = new WeakMap<SimConfig, ReadonlySet<string>>();
+function pickedFor(config: SimConfig): ReadonlySet<string> {
+  let chosen = picked.get(config);
+  if (!chosen) {
+    chosen = chooseSetPieces(config.road.edges, config.seed);
+    picked.set(config, chosen);
+  }
+  return chosen;
+}
+
+/** Whether a set piece is there this race: no slot, or the seed picked it. */
+function present(config: SimConfig, f: BakedFeature): boolean {
+  return setPieceActive(f, pickedFor(config));
+}
+
 function num(f: BakedFeature, key: string, fallback: number): number {
   const v = f.params?.[key];
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
@@ -32,7 +56,7 @@ export function boostPadAt(config: SimConfig, edge: number, s: number, d: number
   const features = config.road.edges[edge]?.features ?? [];
   for (const f of features) {
     if (f.s0 > s) break; // sorted by s0
-    if (f.kind === 'boostPad' && s <= f.s1 && d >= f.d0 && d <= f.d1) return f;
+    if (f.kind === 'boostPad' && s <= f.s1 && d >= f.d0 && d <= f.d1 && present(config, f)) return f;
   }
   return null;
 }
@@ -55,7 +79,7 @@ export function deckHeight(config: SimConfig, edge: number, s: number, d: number
   let h = 0;
   for (const f of features) {
     if (f.s0 > s) break;
-    if (f.kind !== 'rampTruck' || s > f.s1 || d < f.d0 || d > f.d1) continue;
+    if (f.kind !== 'rampTruck' || s > f.s1 || d < f.d0 || d > f.d1 || !present(config, f)) continue;
     const deck = deckOf(f, s);
     if (deck > h) h = deck;
   }
@@ -67,7 +91,7 @@ export function rampTruckAt(config: SimConfig, edge: number, s: number, d: numbe
   const features = config.road.edges[edge]?.features ?? [];
   for (const f of features) {
     if (f.s0 > s) break;
-    if (f.kind === 'rampTruck' && s <= f.s1 && d >= f.d0 && d <= f.d1) return f;
+    if (f.kind === 'rampTruck' && s <= f.s1 && d >= f.d0 && d <= f.d1 && present(config, f)) return f;
   }
   return null;
 }
