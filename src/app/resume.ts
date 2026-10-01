@@ -8,7 +8,7 @@
 //
 // replay/ reads and writes the recording and offers it on boot (replay-2); app-4 wires the
 // resume card and the Start-tap sequence around this function.
-import { lookup, type ContentRegistry } from '../content';
+import { lookup, packOf, type ContentRegistry } from '../content';
 import {
   configFromHeader,
   createReplayController,
@@ -18,7 +18,8 @@ import {
 } from '../replay';
 import { createSim, type Sim, type SimConfig } from '../sim/api';
 import type { RegionStream } from '../stream';
-import { DEFAULT_EVENT, eventLength } from './config';
+import { DEFAULT_EVENT, eventKey, eventLength, qualifyIn } from './config';
+import type { StreamCache } from './regions';
 
 /** The road and route handles a recording's race ran on (rebuilt, never stored). */
 export type RoadsFor = (header: ReplayHeader) => Pick<SimConfig, 'road' | 'route'>;
@@ -44,14 +45,16 @@ export function resumeFromRecording(rec: Recording, roadsFor: RoadsFor): ResumeR
 
 /**
  * The road handles for a header from this build's content: the route the header names
- * (`event.routeId`), else the route of its event length, on the given region stream.
+ * (`event.routeId`), else the route of its event length, on that route's region stream. `streams`
+ * is one region's stream (the Keys, as before) or a cache that builds any region's (app/regions.ts).
  */
-export function roadsForHeader(reg: ContentRegistry, stream: RegionStream): RoadsFor {
+export function roadsForHeader(reg: ContentRegistry, streams: RegionStream | StreamCache): RoadsFor {
   return (header) => {
     const event = header.config?.event;
+    const key = eventKey(header.eventId || DEFAULT_EVENT);
     const routeId =
-      event?.routeId ??
-      eventLength(lookup(reg.events, header.eventId || DEFAULT_EVENT), event?.lengthId).route;
+      event?.routeId ?? qualifyIn(packOf(key), eventLength(lookup(reg.events, key), event?.lengthId).route);
+    const stream = 'forRoute' in streams ? streams.forRoute(reg, routeId) : streams;
     return { road: stream.road, route: stream.routeFor(lookup(reg.routes, routeId)) };
   };
 }
