@@ -1337,7 +1337,7 @@ Tag: `[decided]` that new regions ship now as content packs (playtest 1c, 2026-0
 | name | The region's `name` |
 | blurb | The region's `blurb` |
 | order | The region's `chapter`, then id |
-| event | The first such event by qualified id (one per region today); its first length |
+| event | The first such event by qualified id (one per region today); its `standard` length, else its first |
 
 **The field and the law.** Rivals are the event's `field.riders`. Cops for `every-race` come from the race's packs: riders with `role: "cop"`, a `law` block, and a `region` that resolves to the event's region (a cop without a `region` rides everywhere), sorted by qualified id.
 
