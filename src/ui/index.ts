@@ -58,8 +58,11 @@ import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type What
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
 import { keyLegend } from '../input';
+import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 
 export { ordinal, resultText, formatSpeed } from './format';
+export { DEFAULT_REGION, sameRegion } from './regions';
+export type { RegionOption } from './regions';
 export type { RaceResult } from './format';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
@@ -91,6 +94,11 @@ export interface UiCallbacks {
   onSettingsChange?: (settings: Settings) => void;
   /** "Save debug file" (dev-3). The button is hidden until this is wired. */
   onSaveDebugFile?: () => Promise<void>;
+  /**
+   * The menu's region picker changed (playtest 1c). app/ starts the next race there; `GameUi.region`
+   * reads the same pick at any time.
+   */
+  onRegionChange?: (regionId: string) => void;
 }
 
 export interface GameUi {
@@ -117,6 +125,13 @@ export interface GameUi {
   readonly settings: Readonly<Settings>;
   readonly tuningPanel: TuningPanel;
   readonly narrative: Narrative;
+  /**
+   * The menu's region picker (playtest 1c): the regions to offer, from app/'s region registry, and
+   * the one to show as picked (the Keys when left out). The picker hides while the list is empty.
+   */
+  setRegions(regions: readonly RegionOption[], picked?: string | null): void;
+  /** The picked region's id, as app/ spelled it, or null while no region is offered. */
+  readonly region: string | null;
 }
 
 export interface UiOptions {
@@ -132,6 +147,10 @@ export interface UiOptions {
    * address previews every setting, wired or not (for agents and layout tests).
    */
   liveSettings?: readonly SettingId[];
+  /** The regions for the menu's picker (app/'s region registry); none hides the picker. */
+  regions?: readonly RegionOption[];
+  /** The region shown as picked at boot; the Keys when left out or not in the list. */
+  region?: string | null;
 }
 
 /** Long-press length for the build id (docs/architecture.md, "The gesture"). */
@@ -173,6 +192,15 @@ const CSS = `
 #ui .card b { color: #f5c542; }
 #ui .footer { position: absolute; bottom: 6px; left: 0; right: 0; font: 500 12px ui-monospace, monospace; opacity: 0.8; }
 #start-screen { pointer-events: auto; cursor: pointer; }
+#region-picker { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: min(560px, 92vw); }
+#region-picker .region-label { font: 800 12px ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
+  text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 8px; transform: rotate(1deg); }
+#region-picker .row { gap: 10px; }
+#region-picker .region { font-size: 15px; }
+#region-picker .region[aria-checked='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a;
+  transform: rotate(-1deg); }
+#region-picker .region-blurb { font: italic 500 13px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
+  text-shadow: 1px 1px 0 #111; max-width: 100%; }
 #start-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
 #hud-speed, #hud-position, #hud-health, #hud-target { position: absolute; padding: 4px 10px; background: #0008;
   border-radius: 4px; white-space: nowrap; }
@@ -339,6 +367,55 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
   start.addEventListener('click', () => cb.onStartTap());
 
+  // ---- The region picker (playtest 1c) -------------------------------------------------------
+  // Above the Race button: one zine-style chip per region app/ offers, the Keys picked by default,
+  // and the picked region's one-line blurb. Race starts the race in the picked region.
+  let regions: RegionOption[] = [];
+  let region: string | null = null;
+  const regionRow = el('div', { className: 'row' });
+  regionRow.setAttribute('role', 'radiogroup');
+  regionRow.setAttribute('aria-label', 'Region');
+  const regionBlurb = el('div', { className: 'region-blurb', hidden: true });
+  const regionPicker = el(
+    'div',
+    { id: 'region-picker', hidden: true },
+    el('div', { className: 'region-label', textContent: 'Ride where' }),
+    regionRow,
+    regionBlurb,
+  );
+  const drawRegions = () => {
+    regionPicker.hidden = regions.length === 0;
+    regionRow.replaceChildren(
+      ...regions.map((o) => {
+        const b = button(`region-${o.id.replace(/[^a-z0-9-]/gi, '-')}`, 'small', o.name, () =>
+          tapRegion(o.id),
+        );
+        b.classList.add('region');
+        b.dataset['region'] = o.id;
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(o.id === region));
+        return b;
+      }),
+    );
+    const picked = regions.find((o) => o.id === region);
+    regionBlurb.textContent = picked?.blurb ?? '';
+    regionBlurb.hidden = !picked?.blurb;
+  };
+  const tapRegion = (id: string) => {
+    if (id === region) return;
+    region = id;
+    drawRegions();
+    cb.onRegionChange?.(id);
+  };
+  const setRegions = (list: readonly RegionOption[], picked?: string | null) => {
+    regions = cleanRegions(list);
+    // Keep the current pick across a refreshed list unless app/ names one.
+    const keep = picked ?? (region && regions.some((o) => sameRegion(o.id, region ?? '')) ? region : null);
+    region = pickRegion(regions, keep);
+    drawRegions();
+  };
+  setRegions(opts.regions ?? [], opts.region ?? null);
+
   // ---- Menu --------------------------------------------------------------------------------
   // The what's-new card sits beside the menu (ui-3), so the Race button stays where it was.
   const whatsNewCard = createWhatsNewCard({
@@ -352,6 +429,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       'div',
       { className: 'menu-main' },
       el('div', { className: 'title', textContent: 'throttlebrawl' }),
+      regionPicker,
       button('menu-race', 'big', 'Race', () => cb.onRace()),
       el(
         'div',
@@ -1032,5 +1110,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     },
     tuningPanel,
     narrative,
+    setRegions,
+    get region() {
+      return region;
+    },
   };
 }
