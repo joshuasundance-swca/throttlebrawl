@@ -62,9 +62,9 @@ async function boot(page: Page, withPad = false) {
   await page.locator('#start-screen').click();
 }
 
-async function race(page: Page, chip?: string) {
+async function race(page: Page, chip?: string, bot = true) {
   if (chip) await page.locator(chip).click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.evaluate((on) => (window as TestWindow).__game?.setBot(on), bot);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible({ timeout: 60_000 });
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
@@ -118,28 +118,38 @@ test('C steps the camera through low chase, far chase and helmet, and the frame 
   test.setTimeout(120_000);
   const problems = watch(page);
   await boot(page);
-  await race(page);
+  // Nobody rides the player's bike: it waits on the grid, so the frame holds still between shots
+  // once the field has left (the control below measures what still moves).
+  await race(page, undefined, false);
   expect((await view(page)).camera.view).toBe('lowChase');
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(4000);
   const canvas = page.locator('canvas#game');
-  const chase = await canvas.screenshot();
-  const shots: Record<string, Buffer> = {};
+  const GAP_MS = 800;
+  // The control: traffic and the field still move, so two frames GAP_MS apart in one view differ a little.
+  const before = await canvas.screenshot();
+  await page.waitForTimeout(GAP_MS);
+  let last = await canvas.screenshot();
+  const baseline = await frameDiff(page, before, last);
+  const steps: { view: string; diff: number }[] = [];
+  let helmetShot: Buffer | null = null;
   for (const want of ['farChase', 'helmet', 'lowChase']) {
     await page.keyboard.press('c');
     await untilView(page, want);
-    await page.waitForTimeout(800);
-    shots[want] = await canvas.screenshot();
+    await page.waitForTimeout(GAP_MS);
+    const shot = await canvas.screenshot();
+    steps.push({ view: want, diff: await frameDiff(page, last, shot) });
+    if (want === 'helmet') helmetShot = shot;
+    last = shot;
   }
-  const far = await frameDiff(page, chase, shots['farChase']!);
-  const helmet = await frameDiff(page, chase, shots['helmet']!);
-  const stats = await pixelStats(page, shots['helmet']!);
+  const stats = await pixelStats(page, helmetShot!);
   console.log(
-    `views: far chase differs from low chase by ${far.toFixed(1)} luminance levels per pixel, ` +
-      `helmet by ${helmet.toFixed(1)}; helmet frame variance ${stats.variance.toFixed(0)}`,
+    `views: same-view control ${baseline.toFixed(1)} luminance levels per pixel; ` +
+      steps.map((s) => `to ${s.view} ${s.diff.toFixed(1)}`).join(', ') +
+      `; helmet frame variance ${stats.variance.toFixed(0)}`,
   );
-  // The bot keeps riding between shots, so frames always differ a little; a view change is more.
-  expect(helmet).toBeGreaterThan(8);
-  expect(far).toBeGreaterThan(4);
+  // Each view change moves the frame clearly more than waiting on in one view does.
+  for (const s of steps) expect(s.diff, s.view).toBeGreaterThan(Math.max(4, baseline * 3));
+  expect(stats.variance).toBeGreaterThan(100);
   expect(problems).toEqual([]);
 });
 
