@@ -1,7 +1,7 @@
 {
   "type": "route",
   "id": "osm-gorge-run",
-  "name": "Historic Columbia River Highway",
+  "name": "Columbia River Highway",
   "network": "osm-pnw-gorge",
   "start": {
     "road": "osm-gorge-crown-point-loops",

@@ -240,7 +240,7 @@
   ],
   "route": {
     "id": "osm-gorge-run",
-    "name": "Historic Columbia River Highway",
+    "name": "Columbia River Highway",
     "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\")."
   },
   "realName": "Historic Columbia River Highway",

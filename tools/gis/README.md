@@ -66,7 +66,7 @@ by name (`routeChoices`; [Region packs at runtime](../../docs/content-packs.md#r
 | Region pack | Config | Route (picker name) | Roads |
 |---|---|---|---|
 | `region-pnw` | `osm-pnw-chuckanut` | `osm-chuckanut-run` (Chuckanut Drive): WA SR 11, southbound from above Larrabee State Park | `osm-chuckanut-larrabee`, `-cliffs`, `-oyster-creek` |
-| `region-pnw` | `osm-pnw-gorge` | `osm-gorge-run` (Historic Columbia River Highway): eastbound from the Women's Forum viewpoint through the Crown Point loops to Shepperd's Dell | `osm-gorge-crown-point-loops`, `-latourell`, `-shepperds-dell` |
+| `region-pnw` | `osm-pnw-gorge` | `osm-gorge-run` (Columbia River Highway): the Historic Columbia River Highway, eastbound from the Women's Forum viewpoint through the Crown Point loops to Shepperd's Dell | `osm-gorge-crown-point-loops`, `-latourell`, `-shepperds-dell` |
 | `region-sf` | `osm-sf-russian-hill` | `osm-sf-hills-run` (Russian Hill): Hyde over Russian Hill and Nob Hill, California down to Kearny, Columbus, Union back over the hill, then Leavenworth | one road per street: `osm-sf-hyde`, `-california`, `-kearny`, `-columbus`, `-union`, `-leavenworth` |
 | `region-sf` | `osm-sf-twin-peaks` | `osm-sf-twin-peaks-run` (Twin Peaks): Upper Market from Sanchez, Portola, then Twin Peaks Boulevard to the summit | `osm-sf-upper-market`, `-portola`, `-twin-peaks-climb` |
 

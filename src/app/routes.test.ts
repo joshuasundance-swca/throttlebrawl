@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadBasePack, registryFromGlob } from '../content';
 import type { ReplayHeader } from '../replay';
 import { buildSimConfig, raceRouteKey, realRoutes, streamForEvent } from './config';
+import { createHeadlessRace } from './headless';
 import { createStreamCache, routeChoices, routeKeyOf } from './regions';
 import { roadsForHeader } from './resume';
 
@@ -80,6 +81,13 @@ describe('app: real-road routes', () => {
     }
     // A bare id in the event's own pack names the same route as its qualified id.
     expect(raceRouteKey(BASE, KEYS, undefined, 'osm-bahia-honda-run')).toBe(BAHIA);
+  });
+
+  it('a headless race (the bot batch, the self-test) runs a chosen real road on its own stream', () => {
+    const race = createHeadlessRace({ seed: 3, eventId: KEYS, route: BAHIA });
+    expect(race.config.event.routeId).toBe(BAHIA);
+    expect(race.config.route.length).toBeGreaterThan(5000);
+    expect(createHeadlessRace({ seed: 3, eventId: KEYS }).config.event.routeId).toBe(KEYS);
   });
 
   it("a replay or a resume rebuilds the chosen real road from the header's route id", () => {

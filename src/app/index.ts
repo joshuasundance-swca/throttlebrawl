@@ -63,6 +63,7 @@ import {
   raceRadio,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
   type RegionChoice,
 } from './regions';
@@ -233,6 +234,12 @@ export function createApp(opts: AppOptions): AppHandle {
   /** The race's content hashes: its own packs only, so the Keys' replay key never moves. */
   const raceHashes = (id: string) => contentHashes(packSubset(registry, packClosure(registry, packOf(id))));
   let eventId = eventKey(DEFAULT_EVENT);
+  /**
+   * The route picked on the menu (the maintainer, 2026-10-01: "Yes, add as routes"): a real road's
+   * qualified route id, or null for the event's own road at the Race length setting. It resets to
+   * null whenever the event (the region) changes, and lands in the replay header with the seed.
+   */
+  let route: string | null = null;
   let stream = streams.forEvent(registry, eventId);
   let event = lookup(registry.events, eventId);
   let hashes = raceHashes(eventId);
@@ -290,7 +297,9 @@ export function createApp(opts: AppOptions): AppHandle {
     if (shownRoad === stream.road) return;
     shownRoad = stream.road;
     const regionKey = regionKeyOf(registry, eventId);
-    const roadPack = packOf(networkKeyOf(registry, routeKeyOf(registry, eventId)));
+    const roadPack = packOf(
+      networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
+    );
     const dressing = Object.fromEntries(
       stream.road.edges.map((e) => [e.id, lookup(registry.roads, qualifyIn(roadPack, e.id))]),
     );
@@ -310,10 +319,25 @@ export function createApp(opts: AppOptions): AppHandle {
   const useEvent = (id: string) => {
     if (id === eventId) return;
     eventId = id;
+    // A route belongs to its region: a new event starts on its own road.
+    route = null;
     stream = streams.forEvent(registry, eventId, settings.raceLength);
     event = lookup(registry.events, eventId);
     hashes = raceHashes(eventId);
     replayKey = appReplayKey(build, hashes.sim);
+    offerRoutes();
+  };
+  /**
+   * The menu's route picker: the event's own road, then the real roads its region carries (once
+   * the region's road data is in), the picked one kept while it is still offered.
+   */
+  const offerRoutes = () => {
+    const choices = routeChoices(registry, eventId);
+    if (route && !choices.some((c) => c.id === route)) route = null;
+    ui.setRoutes(
+      choices.map((c) => ({ id: c.id, name: c.name, blurb: c.blurb })),
+      route,
+    );
   };
   const audio = createAudio();
   // The voices off switch (run W-O) silences the voices bus; the Voices slider keeps its level.
@@ -357,6 +381,9 @@ export function createApp(opts: AppOptions): AppHandle {
       // The settings that feed SimConfig (M2 save-2 and ui-2; wired in the integration round). Each
       // applies at the next race start or restart, never mid-race, and lands in the replay header.
       length: settings.raceLength,
+      // The road picked on the menu: a real road instead of the length's route (the replay header
+      // records it as event.routeId).
+      ...(route ? { route } : {}),
       difficulty: settings.difficulty,
       assists: [settingsAssists(settings)],
       speedMultiplier: settings.speedMultiplier,
@@ -430,6 +457,7 @@ export function createApp(opts: AppOptions): AppHandle {
     barkContent: { barkSets: registry.barkSets, riders: registry.riders, bikes: registry.bikes },
     callbacks: {
       onRegionChange: (id) => pickRegion(id),
+      onRouteChange: (id) => pickRoute(id),
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
       onBackToMenu: () => handle.backToMenu(),
@@ -617,6 +645,9 @@ export function createApp(opts: AppOptions): AppHandle {
     const choice = pickedChoice();
     if (!choice || state === 'race' || !library.hasRoads(choice.packId)) return;
     useEvent(choice.eventId);
+    // Offered again even when the event did not change (back to a region before another's road
+    // data arrived), so the picker never stays empty.
+    offerRoutes();
     showRegion();
     curr = newSim(seeds.next()).snapshot();
     prev = null;
@@ -624,6 +655,8 @@ export function createApp(opts: AppOptions): AppHandle {
   const pickRegion = (id: string) => {
     const choice = regions.find((r) => r.id === id);
     if (!choice) return;
+    // The routes on offer are the new region's, once its road data is in.
+    if (choice.eventId !== eventId) ui.setRoutes([], null);
     if (library.hasRoads(choice.packId)) showPicked();
     else
       void library.loadRoads(choice.packId).then(
@@ -634,6 +667,21 @@ export function createApp(opts: AppOptions): AppHandle {
         () => undefined, // Race tries again and says so if it fails
       );
   };
+  /**
+   * The route picker (the maintainer, 2026-10-01: "Yes, add as routes"): a real road, or null for
+   * the region's own road. The menu backdrop follows the pick; Race races it.
+   */
+  const pickRoute = (id: string | null) => {
+    if (id === route) return;
+    route = id;
+    if (state === 'race') return;
+    stream = streams.forEvent(registry, eventId, settings.raceLength, route);
+    showRegion();
+    curr = newSim(seeds.next()).snapshot();
+    prev = null;
+  };
+  // The boot region's routes (the Keys: the causeway road and the real Bahia Honda stretch).
+  offerRoutes();
 
   const handle: AppHandle = {
     build,
@@ -669,8 +717,8 @@ export function createApp(opts: AppOptions): AppHandle {
       }
       if (choice) useEvent(choice.eventId);
       // The chosen race length's route (the settings' Race length; an id the event lacks means its
-      // standard length).
-      stream = streams.forEvent(registry, eventId, settings.raceLength);
+      // standard length), or the real road picked on the menu.
+      stream = streams.forEvent(registry, eventId, settings.raceLength, route);
       showRegion();
       if (!go('race')) return;
       race = newSim(seeds.next());

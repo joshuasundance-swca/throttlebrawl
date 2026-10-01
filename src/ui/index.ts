@@ -73,10 +73,12 @@ import { createNarrative, type Narrative } from './narrative';
 import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
+import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
 export type { RegionOption } from './regions';
+export type { RouteOption } from './routes';
 export type { RaceResult } from './format';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
@@ -116,6 +118,11 @@ export interface UiCallbacks {
    * reads the same pick at any time.
    */
   onRegionChange?: (regionId: string) => void;
+  /**
+   * The menu's route picker changed (the maintainer, 2026-10-01: "Yes, add as routes"): a
+   * real road's route id, or null for the region's own road. `GameUi.route` reads the same pick.
+   */
+  onRouteChange?: (routeId: string | null) => void;
   /**
    * The radio, for the pause menu's station panel (radio-1's follow-up): app/ passes
    * `{ state: () => audio.inspect().radio, skip: () => audio.skipTrack(), cut: () =>
@@ -157,6 +164,14 @@ export interface GameUi {
   setRegions(regions: readonly RegionOption[], picked?: string | null): void;
   /** The picked region's id, as app/ spelled it, or null while no region is offered. */
   readonly region: string | null;
+  /**
+   * The menu's route picker, under the regions: the picked region's routes (its own road first,
+   * then its real roads by name) and the one to show as picked (its own road when left out). The
+   * picker hides while there is one road or none.
+   */
+  setRoutes(routes: readonly RouteOption[], picked?: string | null): void;
+  /** The picked route's id, or null for the region's own road. */
+  readonly route: string | null;
   /**
    * A view or radio change made outside the settings rows (the C key, the pad's d-pad up, the R
    * key) becomes the saved setting, so the row shows the live choice and picking another one takes
@@ -404,7 +419,7 @@ function healthWidget(id: string, label: string) {
 
 export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const cb = opts.callbacks;
-  const style = el('style', { textContent: CSS });
+  const style = el('style', { textContent: CSS + ROUTE_PICKER_CSS });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
@@ -486,6 +501,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     drawRegions();
   };
   setRegions(opts.regions ?? [], opts.region ?? null);
+  // The route picker (the maintainer, 2026-10-01: "Yes, add as routes"), under the regions. A real
+  // road's blurb takes the region blurb's place, so one line of blurb shows at a time.
+  const routePicker = createRoutePicker(
+    (id, text, onClick) => button(id, 'small', text, onClick),
+    (id) => cb.onRouteChange?.(id),
+    (realRoadShown) => regionPicker.classList.toggle('route-picked', realRoadShown),
+  );
 
   // ---- Menu --------------------------------------------------------------------------------
   // The what's-new card sits beside the menu (ui-3), so the Race button stays where it was.
@@ -501,6 +523,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       { className: 'menu-main' },
       el('div', { className: 'title', textContent: 'throttlebrawl' }),
       regionPicker,
+      routePicker.root,
       button('menu-race', 'big', 'Race', () => cb.onRace()),
       el(
         'div',
@@ -1402,6 +1425,10 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     setRegions,
     get region() {
       return region;
+    },
+    setRoutes: (routes, picked) => routePicker.set(routes, picked),
+    get route() {
+      return routePicker.route;
     },
     syncLive,
   };
