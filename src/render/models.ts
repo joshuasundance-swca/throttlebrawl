@@ -5,6 +5,9 @@
 // becomes a vertex colour, so a whole prop is one draw call per instance batch and every look
 // recolours it the way it recolours the code-made props (one `prop` or `vehicle` material, no
 // textures). Until a model has loaded, or if it fails, the road scene draws a code-made stand-in.
+// The region build-out (W-O, the maintainer, 2026-10-01) adds the Pacific Northwest's conifers,
+// sawmill and trestle bent and San Francisco's row houses, cable car and fog banks. They load only
+// when a race's network needs them (`modelKindsFor`), and a region palette repaints them by role.
 import {
   BufferGeometry,
   Color,
@@ -26,6 +29,12 @@ export const MODEL_ASSETS = {
   powerPole: 'models/scenery/power-pole',
   skiff: 'models/scenery/skiff',
   boat: 'models/props/boat',
+  conifers: 'models/scenery/conifers',
+  rowHouses: 'models/scenery/row-houses',
+  sawmill: 'models/scenery/sawmill',
+  trestleBent: 'models/scenery/trestle-bent',
+  fogBanks: 'models/scenery/fog-banks',
+  cableCar: 'models/props/cable-car',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -39,6 +48,62 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   powerPole: ['power_pole'],
   skiff: ['skiff'],
   boat: ['boat'],
+  conifers: ['conifer_a', 'conifer_b', 'conifer_c', 'conifer_d'],
+  rowHouses: ['row_house_a', 'row_house_b', 'row_house_c', 'row_house_d'],
+  sawmill: ['sawmill'],
+  trestleBent: ['trestle_bent'],
+  fogBanks: ['fog_bank_a', 'fog_bank_b'],
+  cableCar: ['cable_car'],
+};
+
+/** The models every network draws (the ramp truck, poles, shacks and boats). */
+const ALWAYS: readonly ModelKind[] = ['truck', 'powerPole', 'baitShack', 'skiff', 'boat'];
+
+/** What a network's dressing says about the models it needs (see `modelKindsFor`). */
+export interface ModelNeeds {
+  tropical: boolean;
+  /** Every scenery tag on the network's roads. */
+  tags: ReadonlySet<string>;
+  /** The region's palette keys (fog banks follow `fogBank`). */
+  palette: ReadonlySet<string>;
+  /** Traffic content ids (the cable car follows a `cable-car` type). */
+  traffic: readonly string[];
+}
+
+/**
+ * The models a race needs, so a region's models load only when a race there starts (the GLBs are
+ * separate files: a Keys race never fetches San Francisco's houses).
+ */
+export function modelKindsFor(n: ModelNeeds): ModelKind[] {
+  const out = new Set<ModelKind>(ALWAYS);
+  if (n.tropical) {
+    out.add('palms');
+    out.add('mangroves');
+  } else {
+    if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
+    if (n.tags.has('sawmill')) out.add('sawmill');
+    if (n.tags.has('forest') && n.tags.has('bridge')) out.add('trestleBent');
+    if (['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t))) out.add('rowHouses');
+  }
+  if (n.palette.has('fogBank')) out.add('fogBanks');
+  if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');
+  return MODEL_KINDS.filter((k) => out.has(k));
+}
+
+/**
+ * Region palette keys that repaint a model's material roles (docs/content-packs.md, "Region packs
+ * at runtime", Palette): the conifers' greens and bark, the row houses' four paints, the cable
+ * car's body. Only these models are repainted; the Keys' models keep their own colours.
+ */
+export const ROLE_PALETTE: Readonly<Partial<Record<ModelKind, Readonly<Record<string, string>>>>> = {
+  conifers: { foliage: 'foliage', foliage_dark: 'foliageDark', bark: 'trunk' },
+  rowHouses: {
+    paint_pink: 'rowHousePink',
+    paint_mint: 'rowHouseMint',
+    paint_yellow: 'rowHouseYellow',
+    paint_blue: 'rowHouseBlue',
+  },
+  cableCar: { body: 'cableCar' },
 };
 
 /** The truck's ramp, measured on the model (the `ramp_surface` node and its extras). */
@@ -61,6 +126,15 @@ export interface SceneryModel {
   doubleSided: boolean;
   /** The truck's ramp numbers (the truck only). */
   ramp?: RampMeasure;
+  /** Per variant, the vertex runs of each material role, so a palette can repaint a role. */
+  roles?: readonly RoleRun[][];
+}
+
+/** A run of vertices baked from one material role. */
+export interface RoleRun {
+  role: string;
+  start: number;
+  count: number;
 }
 
 export type SceneryModels = Partial<Record<ModelKind, SceneryModel>>;
@@ -68,7 +142,7 @@ export type SceneryModels = Partial<Record<ModelKind, SceneryModel>>;
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** Bakes one variant: every mesh under `root`, in the root's frame, flat colours as vertex colours. */
-function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: boolean } {
+function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: boolean; roles: RoleRun[] } {
   root.updateMatrixWorld(true);
   const toRoot = root.matrixWorld.clone().invert();
   const positions: number[] = [];
@@ -80,6 +154,7 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   const n = new Vector3();
   const c = new Color();
   let doubleSided = false;
+  const roles: RoleRun[] = [];
   root.traverse((o) => {
     const mesh = o as Mesh;
     if (!mesh.isMesh) return;
@@ -94,6 +169,7 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
     const nrm = g.getAttribute('normal');
     const index = g.getIndex();
     const count = index ? index.count : pos.count;
+    roles.push({ role: mat?.name ?? '', start: positions.length / 3, count });
     for (let i = 0; i < count; i++) {
       const k = index ? index.getX(i) : i;
       p.fromBufferAttribute(pos, k).applyMatrix4(m);
@@ -110,22 +186,24 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  return { geometry, doubleSided };
+  return { geometry, doubleSided, roles };
 }
 
 /** Bakes a loaded glTF scene into a scenery model. Throws when a root node is missing. */
 export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   scene.updateMatrixWorld(true);
   const variants: BufferGeometry[] = [];
+  const roles: RoleRun[][] = [];
   let doubleSided = false;
   for (const name of ROOTS[kind]) {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
     const v = bakeVariant(root);
     variants.push(v.geometry);
+    roles.push(v.roles);
     doubleSided ||= v.doubleSided;
   }
-  const out: SceneryModel = { kind, variants, doubleSided };
+  const out: SceneryModel = { kind, variants, doubleSided, roles };
   if (kind === 'truck') {
     const ramp = scene.getObjectByName('ramp_surface') as Mesh | undefined;
     if (!ramp?.isMesh) throw new Error(`${MODEL_ASSETS.truck} has no ramp_surface`);
@@ -142,6 +220,37 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   return out;
 }
 
+/**
+ * The model repainted by a region palette: a copy whose variants carry the palette's colour for
+ * each role `ROLE_PALETTE` maps, or the model itself when the palette repaints nothing. The copy's
+ * geometries are new (the road scene that asked for them disposes them).
+ */
+export function paintModel(
+  model: SceneryModel,
+  palette: Readonly<Record<string, string>> | undefined,
+): SceneryModel {
+  const map = ROLE_PALETTE[model.kind];
+  if (!map || !palette || !model.roles) return model;
+  const colours = new Map<string, Color>();
+  for (const [role, key] of Object.entries(map)) {
+    const hex = palette[key];
+    if (hex) colours.set(role, new Color(hex));
+  }
+  if (!colours.size) return model;
+  const variants = model.variants.map((g, v) => {
+    const copy = g.clone();
+    const col = copy.getAttribute('color');
+    for (const run of model.roles?.[v] ?? []) {
+      const c = colours.get(run.role);
+      if (!c) continue;
+      for (let i = run.start; i < run.start + run.count; i++) col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+    return copy;
+  });
+  return { ...model, variants };
+}
+
 export interface ModelLoadReport {
   loaded: ModelKind[];
   /** Kinds that fell back to the code-made stand-in, with the manifest's reason. */
@@ -154,11 +263,12 @@ export interface ModelLoadReport {
  */
 export async function loadSceneryModels(
   manifest: AssetManifest,
+  kinds: readonly ModelKind[] = MODEL_KINDS,
 ): Promise<{ models: SceneryModels; report: ModelLoadReport }> {
   const models: SceneryModels = {};
   const report: ModelLoadReport = { loaded: [], fellBack: [] };
   await Promise.all(
-    MODEL_KINDS.map(async (kind) => {
+    kinds.map(async (kind) => {
       const res = await manifest.load<SceneryModel | null>(MODEL_ASSETS[kind], () => null, {
         decode: (data) => bakeModel(kind, readGlb(data)),
       });

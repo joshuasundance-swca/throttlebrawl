@@ -50,7 +50,7 @@ COLOURS = {
     "paint_yellow": "#f1d58a",
     "paint_blue": "#9db8d9",
     "trim": "#f4efe4",       # white cornices, frames and floor bands
-    "body_alt": "#55607a",   # the accent: bay frames and the stoop's cheek walls
+    "body_alt": "#55607a",   # the accent: the front door's surround
     "glass": "#2e3a44",
     "roof": "#5d5852",
     "wood": "#6b4a35",       # doors
@@ -63,16 +63,19 @@ def window(mb, f, xc, z0):
     mb.front_quad(f + 2 * PROUD, xc - WIN_W / 2, xc + WIN_W / 2, z0, z0 + WIN_H, "glass")
 
 
-def street_floor(mb, door_x):
+def street_floor(mb, door_x, paint):
     """The garage door, the front door at the top of the stoop, and the stoop itself."""
     w = HALF_W
     gx = -door_x * 0.45
     mb.front_quad(PROUD, gx - 1.3, gx + 1.3, 0.0, 2.3, "trim")
     mb.front_quad(2 * PROUD, gx - 1.15, gx + 1.15, 0.0, 2.2, "wood")
-    # the stoop: a wedge of steps from the sidewalk up to the door's sill, with cheek walls
+    # the stoop: a wedge of steps in the house's paint from the sidewalk up to the door's sill,
+    # with a white handrail up each side
     run = 2.2
-    mb.xprism([(0.0, 0.0), (run, 0.0), (0.0, STREET_Z)], door_x - 0.6, door_x + 0.6, "body_alt")
-    mb.front_quad(PROUD, door_x - 0.65, door_x + 0.65, STREET_Z, STREET_Z + 2.5, "trim")
+    mb.xprism([(0.0, 0.0), (run, 0.0), (0.0, STREET_Z)], door_x - 0.6, door_x + 0.6, paint)
+    for x in (door_x - 0.6, door_x + 0.6):
+        mb.tube([(x, run, 0.9), (x, 0.0, STREET_Z + 0.9)], [0.05, 0.05], "trim", sides=4)
+    mb.front_quad(PROUD, door_x - 0.65, door_x + 0.65, STREET_Z, STREET_Z + 2.5, "body_alt")
     mb.front_quad(2 * PROUD, door_x - 0.5, door_x + 0.5, STREET_Z, STREET_Z + 2.35, "wood")
     # a trim band where the street floor meets the living floors
     mb.box(0.0, 0.12, -w, w, STREET_Z - 0.18, STREET_Z, "trim")
@@ -117,7 +120,7 @@ def build(mb, p):
     # the main volume: a box from the sidewalk back to the back wall
     top = living_top + (1.0 if style in ("italianate", "stick") else 0.4)
     mb.box(-DEPTH, 0.0, -w, w, 0.0, top, paint)
-    street_floor(mb, door_x)
+    street_floor(mb, door_x, paint)
     # the bay over the garage, through both living floors
     xa, xb = bay
     if style in ("italianate", "queen_anne"):
