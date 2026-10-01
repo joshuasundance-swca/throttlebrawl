@@ -1,7 +1,7 @@
 // The content registry (docs/architecture.md, "Content registry"): packs are validated, merged and
 // frozen into read-only tables keyed by qualified id (`base:rustbucket-400`). content/ is the only
 // module that reads pack files. Validation is parse.ts, the same validator packs:check runs.
-import { qualify, type AssetIndexEntry } from '../core';
+import { qualify } from '../core';
 import { formatFinding } from './findings';
 import { computeContentHashes, type ContentHashes } from './hashes';
 import { parsePack, type PackFile } from './parse';
@@ -144,9 +144,4 @@ export function contentHashes(reg: ContentRegistry): ContentHashes {
     tables.set(type as EntryType, reg[name] as Table<unknown>);
   }
   return computeContentHashes({ manifests: reg.packs, tables });
-}
-
-/** The asset manifest rows this registry contributes (none until the first baked asset lands). */
-export function assetIndex(_reg: ContentRegistry): readonly AssetIndexEntry[] {
-  return [];
 }
