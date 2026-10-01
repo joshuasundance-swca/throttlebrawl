@@ -27,6 +27,24 @@
     { "s0": 0, "s1": 520, "side": "left", "tag": "warehouses" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-pier-robotaxi",
+      "s0": 260,
+      "s1": 270,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "robotaxi-cones"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-pier-prompt-whisperer",
+      "s0": 380,
+      "s1": 420,
+      "d0": -16,
+      "d1": -7,
+      "item": "prompt-whisperer"
+    },
     { "kind": "copSpawn", "id": "pier-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
     {
       "kind": "roadsideZone",

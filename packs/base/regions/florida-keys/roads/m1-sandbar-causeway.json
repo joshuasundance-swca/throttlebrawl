@@ -29,6 +29,33 @@
   ],
   "features": [
     {
+      "kind": "billboard",
+      "id": "sign-causeway-uv",
+      "s0": 100,
+      "s1": 110,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "uv-index"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-causeway-iguanas",
+      "s0": 380,
+      "s1": 390,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "iguana-right-of-way"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-causeway-next-county",
+      "s0": 290,
+      "s1": 300,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "next-county"
+    },
+    {
       "kind": "roadsideZone",
       "id": "sandbar-beach",
       "s0": 150,

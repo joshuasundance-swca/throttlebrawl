@@ -100,6 +100,24 @@ export const PNW_C1: TrackSource = {
         { s0: 0, s1: 'end', side: 'left', tag: 'town' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-landing-overflow',
+          s0: 200,
+          s1: 210,
+          d0: -9,
+          d1: -6.5,
+          item: 'ferry-overflow',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-landing-priority',
+          s0: 240,
+          s1: 280,
+          d0: -16,
+          d1: -7,
+          item: 'ferry-priority',
+        },
         { kind: 'copSpawn', id: 'ferry-holding-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
         {
           kind: 'roadsideZone',
@@ -163,6 +181,8 @@ export const PNW_C1: TrackSource = {
       humps: [{ centreM: 420, lengthM: 700, heightM: 14 }],
       tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
       features: [
+        { kind: 'billboard', id: 'sign-grade-slide', s0: 450, s1: 460, d0: 6.5, d1: 9, item: 'slide-area' },
+        { kind: 'billboard', id: 'sign-grade-elk', s0: 620, s1: 630, d0: -9, d1: -6.5, item: 'elk-schedule' },
         {
           kind: 'billboard',
           id: 'sign-grade-log-trucks',
@@ -199,6 +219,34 @@ export const PNW_C1: TrackSource = {
       ],
       tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
       features: [
+        {
+          kind: 'billboard',
+          id: 'bb-hollow-summit-smug',
+          s0: 250,
+          s1: 290,
+          d0: -16,
+          d1: -7,
+          item: 'summit-smug',
+        },
+        { kind: 'billboard', id: 'sign-hollow-dry', s0: 400, s1: 410, d0: 6.5, d1: 9, item: 'dry-pavement' },
+        {
+          kind: 'billboard',
+          id: 'sign-hollow-no-plaster',
+          s0: 560,
+          s1: 570,
+          d0: 6.5,
+          d1: 9,
+          item: 'no-plaster',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-hollow-trailhead',
+          s0: 900,
+          s1: 910,
+          d0: -9,
+          d1: -6.5,
+          item: 'trailhead-full',
+        },
         {
           kind: 'billboard',
           id: 'sign-hollow-bigfoot',
@@ -243,6 +291,7 @@ export const PNW_C1: TrackSource = {
         { s0: 760, s1: 'end', side: 'both', tag: 'forest' },
       ],
       features: [
+        { kind: 'billboard', id: 'bb-trestle-gutter', s0: 780, s1: 820, d0: 7, d1: 16, item: 'gutter-truth' },
         {
           kind: 'roadsideZone',
           id: 'trestle-anglers',
@@ -297,6 +346,25 @@ export const PNW_C1: TrackSource = {
         { s0: 700, s1: 'end', side: 'both', tag: 'forest' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-row-zipper',
+          s0: 100,
+          s1: 110,
+          d0: -9,
+          d1: -6.5,
+          item: 'espresso-zipper',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-row-drizzlewood',
+          s0: 260,
+          s1: 300,
+          d0: -16,
+          d1: -7,
+          item: 'drizzlewood-roast',
+        },
+        { kind: 'billboard', id: 'bb-row-sogproof', s0: 560, s1: 600, d0: 7, d1: 16, item: 'sogproof-shell' },
         {
           kind: 'roadsideZone',
           id: 'espresso-stand-line',

@@ -28,6 +28,33 @@
   "features": [
     {
       "kind": "billboard",
+      "id": "sign-cable-shuttles",
+      "s0": 300,
+      "s1": 310,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "shuttles-only"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-cable-grip",
+      "s0": 560,
+      "s1": 570,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "cable-grip"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-cable-promptloom",
+      "s0": 600,
+      "s1": 640,
+      "d0": -16,
+      "d1": -7,
+      "item": "promptloom"
+    },
+    {
+      "kind": "billboard",
       "id": "sign-cable-grade",
       "s0": 60,
       "s1": 70,

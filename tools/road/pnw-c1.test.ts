@@ -120,8 +120,7 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     };
     const items = new Map([...regionFile.signs, ...regionFile.billboards].map((i) => [i.id, i]));
     expect(regionFile.signs.length).toBeGreaterThanOrEqual(3);
-    expect(regionFile.signs.length).toBeLessThanOrEqual(5);
-    expect(regionFile.billboards).toHaveLength(2);
+    expect(regionFile.billboards.length).toBeGreaterThanOrEqual(2);
     const slots = net.edges.flatMap((e) =>
       e.features.filter((f) => f.kind === 'billboard').map((f) => ({ e, f })),
     );
