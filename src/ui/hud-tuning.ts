@@ -1,7 +1,7 @@
 // The HUD's own feel numbers as tuning sliders (docs/architecture.md, "Tuning"). Every feel number
 // is a slider, [default]. ui reads them straight from the registry app/ hands in, so they need no
-// routing: they are live sliders as soon as app/ collects HUD_TUNING with the other modules'
-// declarations, and until then ui uses the defaults below.
+// routing: app/ collects HUD_TUNING with the other modules' declarations, so they are live
+// sliders in the tuning panel. ui falls back to the defaults below where a registry lacks them.
 import type { TuningParamDecl } from '../sim/api';
 import type { TuningRegistry } from '../tuning';
 

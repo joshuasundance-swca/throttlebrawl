@@ -156,6 +156,14 @@ export interface GameUi {
   setRegions(regions: readonly RegionOption[], picked?: string | null): void;
   /** The picked region's id, as app/ spelled it, or null while no region is offered. */
   readonly region: string | null;
+  /**
+   * A view or radio change made outside the settings rows (the C key, the pad's d-pad up, the R
+   * key) becomes the saved setting, so the row shows the live choice and picking another one takes
+   * effect (the integration skeptic's mustFix 1). `view` is the camera's view index (0 chase, 1 far,
+   * 2 helmet); the radio is read from the radio source. app/ calls it after a view key or pad
+   * press; ui calls it itself when the pause menu or the settings screen opens.
+   */
+  syncLive(live?: { view?: number }): void;
 }
 
 export interface UiOptions {
@@ -529,8 +537,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const change = (c: SettingsChange) => {
     const next = applySettingsChange(settings, c);
     const mirrorChanged = next.mirror !== settings.mirror;
-    const viewChanged = next.view !== settings.view;
-    const radioChanged = next.radio !== settings.radio;
+    // A pick in the View or Radio row always applies, even when it equals the saved value: the
+    // live choice may have moved without the row (mustFix 1). Both are no-ops when already live.
+    const picked = c.kind === 'set' ? c.id : null;
+    const viewChanged = next.view !== settings.view || picked === 'view';
+    const radioChanged = next.radio !== settings.radio || picked === 'radio';
     settings = next;
     if (mirrorChanged) {
       layout = { ...layout, mirror: next.mirror };
@@ -540,6 +551,29 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (radioChanged) applyRadio();
     settingsScreen.sync(settings);
     syncPauseEntries();
+    cb.onSettingsChange?.(next);
+  };
+  /**
+   * Catches the saved view and radio up with the live ones (GameUi.syncLive): the sliders follow
+   * what already plays and shows, so nothing is re-applied, and the new record is saved.
+   */
+  const syncLive = (live: { view?: number } = {}) => {
+    let next = settings;
+    const view = live.view === undefined ? undefined : VIEW_SETTINGS[live.view];
+    if (view && view !== next.view)
+      next = applySettingsChange(next, { kind: 'set', id: 'view', value: view });
+    const choice = radioSource?.state().choice;
+    const radioParam = tuned('radio');
+    if (choice !== undefined && radioParam) {
+      // The slider follows the R key's choice (a station to another station keeps the setting).
+      opts.tuning.set(radioParam, choice);
+      const kind = radioSettingOf(choice);
+      if (kind !== next.radio) next = applySettingsChange(next, { kind: 'set', id: 'radio', value: kind });
+    }
+    if (next === settings) return;
+    settings = next;
+    applyView();
+    settingsScreen.sync(settings);
     cb.onSettingsChange?.(next);
   };
   const preview = (() => {
@@ -735,6 +769,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const controlsButton = entry(
     button('pause-controls', 'small', 'Controls and HUD', () => {
       pauseScreen.hidden = true;
+      syncLive();
       settingsScreen.sync(settings);
       settingsScreen.open('pause', 'controls');
     }),
@@ -845,6 +880,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (current !== 'race' || paused) return;
     paused = true;
     pauseScreen.hidden = false;
+    // The R key may have retuned the radio mid-race: the saved choice follows it.
+    syncLive();
     // The radio's song and station can change while the panel is up (a station loading in).
     if (radioSource) {
       radioPanel.refresh();
@@ -1232,6 +1269,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (paused) closePause();
     stamp.classList.toggle('in-race', screen === 'race');
     if (screen === 'settings') {
+      syncLive();
       settingsScreen.sync(settings);
       settingsScreen.open('menu');
     }
@@ -1329,5 +1367,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     get region() {
       return region;
     },
+    syncLive,
   };
 }

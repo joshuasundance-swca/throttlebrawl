@@ -9,6 +9,7 @@ import { INPUT_TUNING } from '../../src/input/tuning';
 import { RENDER_TUNING } from '../../src/render/tuning';
 import { SIM_TUNING, type TuningParamDecl } from '../../src/sim/api';
 import { FRAME_CAP_TUNING } from '../../src/tuning/frame-cap';
+import { HUD_TUNING } from '../../src/ui/hud-tuning';
 import { BARK_TUNING } from '../../src/ui/narrative/selector';
 
 export const ALL_TUNING: readonly TuningParamDecl[] = [
@@ -18,6 +19,7 @@ export const ALL_TUNING: readonly TuningParamDecl[] = [
   ...INPUT_TUNING,
   ...BARK_TUNING,
   ...RENDER_TUNING,
+  ...HUD_TUNING,
   // tuning/'s own declarations (the registry always includes them).
   ...FRAME_CAP_TUNING,
 ];
