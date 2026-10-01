@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "taser",
+  "name": "Taser",
+  "category": "shock",
+  "behaviour": "taser.stun",
+  "tags": ["cop-issue"],
+  "unarmed": false,
+  "reach": { "sM": 2.4, "dM": 1.6 },
+  "windupS": 0.36,
+  "activeS": 0.08,
+  "recoveryS": 0.5,
+  "cooldownS": 0,
+  "damage": 6,
+  "knockback": { "lateralMps": 1.5, "staggerS": 0.2 },
+  "hitStopMs": 90,
+  "steal": { "allowed": true, "windowStartS": 0.12, "windowEndS": 0.36 },
+  "uses": { "durabilityHits": null, "charges": 6, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 0, "regions": [] },
+  "effects": [{ "kind": "stun", "durationS": 0.9 }],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 cops-3 head start: the cops' taser, as the content-pack doc sketches it (shock, cop-issue, 6 charges, a 0.9 s stun). Six swings and it is spent, whoever holds it; a stolen one keeps the charges it has left. The stun stops the target attacking, shakes the bike and bleeds some speed. Long reach for the darts. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

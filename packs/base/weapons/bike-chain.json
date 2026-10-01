@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "bike-chain",
+  "name": "Bike Chain",
+  "category": "chain",
+  "behaviour": "melee.wrap",
+  "tags": ["roadside"],
+  "unarmed": false,
+  "reach": { "sM": 2.0, "dM": 1.8 },
+  "windupS": 0.4,
+  "activeS": 0.12,
+  "recoveryS": 0.5,
+  "cooldownS": 0,
+  "damage": 18,
+  "knockback": { "lateralMps": 5.0, "staggerS": 0.35 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.14, "windowEndS": 0.4 },
+  "uses": { "durabilityHits": null, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 2, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 weapons-2 head start: the chain (the weapon list is decided). The longest reach and the slowest wind-up of the roadside weapons; a landed hit wraps the target and drags some speed off them (the melee.wrap behaviour and the 'Chain drag' slider). Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

@@ -1,0 +1,5 @@
+---
+kind: new
+audience: dev
+---
+A head start on M4's law and weapons, crude first and mostly behind seams. New draft weapons (staging and dev builds only): a bike chain that drags a rider's speed, a driftwood club, Kevin's briefcase and a campaign sign that break after a few hits, and the cops' baton and taser (6 charges, a short stun). The three roadside weapons are now drawn from the race seed. In the sim: the cop spawn mix (every race, more cops at higher tiers, cops summoned by a hidden chaos meter, at most two chasing at once), fines that grow with the tier (carried in the bust event, since there is no career cash yet), and armed cops who swing at you when alongside, so you can snatch the weapon mid-swing. Sgt. Pruitt's file gives him the baton, and a draft state trooper carries the taser. Each new feel number is a tuning slider. The weapon behaviours, the cops' weapons, the roadside weights and the spawn mix switch on in a race once the race setup passes the new fields through (a follow-up); until then the race keeps one bare-handed cop, and every armed weapon can lie on the road.

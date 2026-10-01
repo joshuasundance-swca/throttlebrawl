@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "campaign-sign",
+  "name": "Campaign Sign",
+  "category": "junk",
+  "behaviour": "melee.swing",
+  "tags": ["roadside", "junk"],
+  "unarmed": false,
+  "reach": { "sM": 2.2, "dM": 1.6 },
+  "windupS": 0.42,
+  "activeS": 0.12,
+  "recoveryS": 0.5,
+  "cooldownS": 0,
+  "damage": 12,
+  "knockback": { "lateralMps": 10.0, "staggerS": 0.3 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.14, "windowEndS": 0.42 },
+  "uses": { "durabilityHits": 3, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 1, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 weapons-2 head start: wasteland junk, the plan's other example (The Mayor swings stolen campaign signs). A yard sign on a stake: long, slow, a wide shove, and it folds after 3 hits. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

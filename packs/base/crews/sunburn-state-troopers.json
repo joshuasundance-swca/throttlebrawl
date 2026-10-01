@@ -1,0 +1,14 @@
+{
+  "type": "crew",
+  "id": "sunburn-state-troopers",
+  "name": "Sunburn State Troopers",
+  "kind": "law",
+  "region": "florida-keys",
+  "stanceTowardPlayer": "hostile",
+  "rivalCrews": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 cops-3 head start: parody state troopers for Region 1, next to the county deputies (real agency structure under a made-up name; no real agency names, badges or logos).",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

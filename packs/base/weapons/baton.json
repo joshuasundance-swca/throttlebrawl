@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "baton",
+  "name": "Baton",
+  "category": "blunt",
+  "behaviour": "melee.swing",
+  "tags": ["cop-issue"],
+  "unarmed": false,
+  "reach": { "sM": 1.5, "dM": 1.4 },
+  "windupS": 0.3,
+  "activeS": 0.1,
+  "recoveryS": 0.4,
+  "cooldownS": 0,
+  "damage": 16,
+  "knockback": { "lateralMps": 6.0, "staggerS": 0.3 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.1, "windowEndS": 0.3 },
+  "uses": { "durabilityHits": null, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 0, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 cops-3 head start: the cops' baton (the weapon list is decided). Never on the road (roadside weight 0): you get one by snatching it off a cop mid-swing, inside ticks 6-18 of its 18-tick wind-up. A little quicker and lighter than the lead pipe. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
