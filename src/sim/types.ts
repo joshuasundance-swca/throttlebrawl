@@ -341,6 +341,11 @@ export interface SimRiderDef {
   healthMax: number;
   /** Present on a cop (role `cop`, faction `law`). */
   law?: SimLawDef | undefined;
+  /**
+   * The weapon this rider starts the race holding (the rider file's `startingWeapon`, qualified,
+   * M4 cops-3: a cop's baton or taser, which can be stolen). Absent means bare-handed, as before.
+   */
+  startingWeapon?: string;
 }
 
 /** A weapon with its timings already converted to ticks (docs/content-packs.md, "Units and axes"). */
@@ -360,6 +365,22 @@ export interface SimWeaponDef {
   /** How long a landed hit staggers the target, in ticks (`knockback.staggerS`; 0 if absent). */
   staggerTicks: number;
   steal: { startTick: number; endTick: number } | null;
+  /**
+   * The registered behaviour id (the weapon file's `behaviour`, M4 weapons-2): `melee.swing`,
+   * `melee.wrap` or `taser.stun`, a closed list in sim/combat. Absent or unknown is `melee.swing`.
+   */
+  behaviour?: string;
+  /** Swings one held weapon gives before it is spent (`uses.charges`); absent or null: unlimited. */
+  charges?: number | null;
+  /** Landed hits before one held weapon breaks (`uses.durabilityHits`); absent or null: unlimited. */
+  durabilityHits?: number | null;
+  /** A landed hit's stun, in ticks (the `stun` entry of `effects`, `durationS`); absent: none. */
+  stunTicks?: number;
+  /**
+   * Weight for the roadside pickups (`spawn.roadsideWeight`); 0 keeps it off the road (the cops'
+   * baton and taser). Absent means 1 for a weapon that is not unarmed.
+   */
+  roadsideWeight?: number;
 }
 
 export interface SimTrafficTypeDef {
@@ -399,6 +420,30 @@ export interface SimEventDef {
    * configs, where absent means every source scores 0; buildSimConfig always writes it.
    */
   style?: SimStyleRewards;
+  /** The event's career tier, 1 for the first (M4). Absent means 1. */
+  tier?: number;
+  /**
+   * The event file's `cops` block (docs/content-packs.md, "Event"; M4 cops-3). Absent keeps the
+   * M2 rule: every fielded cop rolls to come out at the spawn delay.
+   */
+  cops?: SimEventCops;
+}
+
+/**
+ * How the law turns up in a race (M4 cops-3): the decided mix of tier-rising, every-race and
+ * chaos-summoned, with some randomness. buildSimConfig fields enough cops for the most this can
+ * bring out; sim/cops decides which of them leave the lot, and when.
+ */
+export interface SimEventCops {
+  mode: 'none' | 'every-race' | 'tier-rising' | 'chaos-summoned';
+  /** Cops that come out at the start of the chase (`baseCount`; 0 when absent). */
+  baseCount: number;
+  /** Extra cops per tier above the first (`tierScale`; 0 when absent). */
+  tierScale: number;
+  /** Mayhem can summon cops in any mode (`chaosSummon`); `chaos-summoned` implies it. */
+  chaosSummon: boolean;
+  /** 0..1: jitters the counts and the timing (`randomness`; 0 when absent). */
+  randomness: number;
 }
 
 /**
