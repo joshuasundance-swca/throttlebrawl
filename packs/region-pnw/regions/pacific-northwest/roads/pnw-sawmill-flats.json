@@ -42,7 +42,25 @@
       "s1": 646,
       "d0": 0.5,
       "d1": 3,
-      "params": { "boostMps": 8, "holdS": 1.5 }
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "pnw-pad-sprint" }
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-sawmill-gate",
+      "s0": 450,
+      "s1": 456,
+      "d0": 0.5,
+      "d1": 3,
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "pnw-pad-sprint" }
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-sawmill-final",
+      "s0": 800,
+      "s1": 806,
+      "d0": 0.5,
+      "d1": 3,
+      "params": { "boostMps": 8, "holdS": 1.5, "slot": "pnw-pad-sprint" }
     }
   ],
   "barriers": [],

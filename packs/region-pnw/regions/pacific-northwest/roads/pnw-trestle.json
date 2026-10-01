@@ -44,7 +44,25 @@
       "s1": 182,
       "d0": 3.4,
       "d1": 5.4,
-      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8 }
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "pnw-truck" }
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-trestle-mid",
+      "s0": 300,
+      "s1": 322,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "pnw-truck" }
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-trestle-far",
+      "s0": 440,
+      "s1": 462,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "pnw-truck" }
     }
   ],
   "barriers": [{ "s0": 100, "s1": 760, "side": "both", "kind": "rail", "heightM": 1 }],

@@ -43,6 +43,7 @@ function botRace(lengthId: string, seed: number) {
   let problem: string | null = null;
   let offRoute = 0;
   let maxTraffic = 0;
+  let busted = false;
   while (!sim.isOver() && sim.tick < MAX_TICKS) {
     const actions = emptyActions();
     bot.drive(snap, playerId, route, actions);
@@ -53,12 +54,24 @@ function botRace(lengthId: string, seed: number) {
     if (finishTick < 0 && snap.race.finishOrder.includes(playerId)) finishTick = sim.tick;
     if (me && finishTick < 0 && !route.allows(me.road.edge)) offRoute++;
     maxTraffic = Math.max(maxTraffic, snap.entities.length - config.riders.length);
+    for (const e of sim.events())
+      if (e.type === 'bust' && (e.actor === playerId || e.target === playerId)) busted = true;
   }
   // Where the player ended, for a failure message (the dev bot never evades the cop, so a bust
   // shows up here as a race over with the player short of the line).
   const me = snap.entities[playerId];
   const end = `tick ${sim.tick}, player on ${me?.road.edge} s ${me?.road.s.toFixed(0)}, ${me?.distanceToFinish.toFixed(0)} m to go`;
-  return { config, finishTick, ticks: sim.tick, lengthM: route.length, problem, offRoute, maxTraffic, end };
+  return {
+    config,
+    finishTick,
+    ticks: sim.tick,
+    lengthM: route.length,
+    problem,
+    offRoute,
+    maxTraffic,
+    end,
+    busted,
+  };
 }
 
 describe('region-pnw: the bot races the Pacific Northwest headlessly', () => {
@@ -89,10 +102,18 @@ describe('region-pnw: the bot races the Pacific Northwest headlessly', () => {
     const lines: string[] = [];
     let prev = 0;
     for (const lengthId of ['short', 'standard', 'long']) {
-      const res = botRace(lengthId, 1);
+      // Seeds 1 to 3 until the bot finishes. Since the integration round each seed also places the
+      // ramp truck and the pads (playtest 1c item 2), which re-rolls the traffic the bot meets, and the
+      // dev bot rear-ends a slow log truck now and then and is busted (it never evades the cop). A
+      // race it does not finish must still end in a bust, never a stall.
+      let res = botRace(lengthId, 1);
+      for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
+        expect(res.busted, `${lengthId}: a DNF is a bust, not a stall (${res.end})`).toBe(true);
+        res = botRace(lengthId, seed);
+      }
       const s = res.finishTick / 60;
       lines.push(
-        `${lengthId} ${(res.lengthM / 1000).toFixed(2)} km: bot ${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')} ` +
+        `${lengthId} ${(res.lengthM / 1000).toFixed(2)} km, seed ${res.config.seed}: bot ${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')} ` +
           `(${(res.lengthM / s).toFixed(1)} m/s), up to ${res.maxTraffic} traffic and pedestrians`,
       );
       expect(res.problem, lengthId).toBeNull();
@@ -107,6 +128,6 @@ describe('region-pnw: the bot races the Pacific Northwest headlessly', () => {
         expect(s / 60).toBeLessThan(3.25);
       }
     }
-    process.stdout.write(`[region-pnw] bot times, seed 1: ${lines.join('; ')}\n`);
+    process.stdout.write(`[region-pnw] bot times: ${lines.join('; ')}\n`);
   }, 600_000);
 });

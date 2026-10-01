@@ -98,15 +98,18 @@ describe('tools/road: the baked Pacific Northwest track', () => {
       expect(Math.abs(net.kappaAt(id('pnw-logging-spur'), s))).toBeLessThan(1e-4);
   });
 
-  it('places the set-piece slots: a ramp truck on the trestle straight, two boost pads, a cop spawn', () => {
+  it('places the set-piece slots: ramp truck spots on the trestle straight, boost pads, a cop spawn', () => {
     const all = net.edges.flatMap((e) => e.features.map((f) => ({ e, f })));
     const trucks = all.filter(({ f }) => f.kind === 'rampTruck');
-    expect(trucks.map(({ e }) => e.id)).toEqual(['pnw-trestle']);
-    const t = trucks[0]?.f;
-    // Straight from the truck's foot to well past a top-speed landing.
-    for (let s = t?.s0 ?? 0; s <= (t?.s1 ?? 0) + 150; s += 2)
-      expect(Math.abs(net.kappaAt(id('pnw-trestle'), s))).toBeLessThanOrEqual(0.002);
-    expect(all.filter(({ f }) => f.kind === 'boostPad')).toHaveLength(2);
+    // Playtest 1c item 2: three candidate spots, one picked per race by the seed.
+    expect(trucks.map(({ e }) => e.id)).toEqual(['pnw-trestle', 'pnw-trestle', 'pnw-trestle']);
+    for (const { f: t } of trucks) {
+      // Straight from the truck's foot to well past a top-speed landing.
+      for (let s = t.s0; s <= t.s1 + 150; s += 2)
+        expect(Math.abs(net.kappaAt(id('pnw-trestle'), s))).toBeLessThanOrEqual(0.002);
+    }
+    // Two pad slots: two spots at the landing and three on the sawmill flats.
+    expect(all.filter(({ f }) => f.kind === 'boostPad')).toHaveLength(5);
     expect(all.filter(({ f }) => f.kind === 'copSpawn')).toHaveLength(1);
   });
 
