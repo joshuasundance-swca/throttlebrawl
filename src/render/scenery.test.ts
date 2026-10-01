@@ -445,13 +445,24 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
   });
 
   it("draws the flat deck on every live track's truck (Keys, PNW, SF), on their grades and curves", () => {
+    // Each truck is a seeded candidate (#208's slots): build seeds until every candidate is drawn.
     const lines: string[] = [];
+    let candidates = 0;
     for (const id of ['keys-m1', 'pnw-c1', 'sf-hills']) {
       const t = track(id);
-      const built = buildRoadScene(t.road, look, t.dressing, { roadsideDensity: 0, models });
-      const solid = solids(built.group, (n) => n === 'road-rampTrucks');
-      for (const e of t.road.edges) {
-        for (const f of (t.dressing[e.id]?.features ?? []).filter((x) => x.kind === 'rampTruck')) {
+      const all = t.road.edges.flatMap((e) =>
+        (t.dressing[e.id]?.features ?? []).filter((x) => x.kind === 'rampTruck').map((f) => ({ e, f })),
+      );
+      candidates += all.length;
+      const checked = new Set<string>();
+      for (let seed = 1; seed <= 16 && checked.size < all.length; seed++) {
+        const built = buildRoadScene(t.road, look, t.dressing, { roadsideDensity: 0, models, seed });
+        const solid = solids(built.group, (n) => n === 'road-rampTrucks');
+        const drawn = new Set(built.stats.setPieces.map((p) => p.id));
+        for (const { e, f } of all) {
+          const fid = f.id ?? '';
+          if (checked.has(fid) || !drawn.has(fid)) continue;
+          checked.add(fid);
           const lip = Number(f.params?.['lipHeightM'] ?? 2.8);
           const run = Number(f.params?.['rampLengthM'] ?? 11.5);
           const dm = (f.d0 + f.d1) / 2;
@@ -471,14 +482,16 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
               n++;
             }
           }
-          lines.push(`${id} ${f.id}: ${n} points, worst ${worst.toFixed(3)} m off ${lip} m`);
-          expect(worst, `${id} ${f.id ?? ''}`).toBeLessThan(0.1);
+          lines.push(`${id} ${fid} (seed ${seed}): ${n} points, worst ${worst.toFixed(3)} m off ${lip} m`);
+          expect(worst, `${id} ${fid}`).toBeLessThan(0.1);
         }
+        built.dispose();
       }
-      built.dispose();
+      expect(checked.size, `${id}: every truck candidate drawn by some seed`).toBe(all.length);
     }
     console.log(`[examined] live trucks' decks: ${lines.join('; ')}`);
-    expect(lines.length).toBe(3);
+    expect(lines.length).toBe(candidates);
+    expect(candidates).toBeGreaterThanOrEqual(3);
   });
 });
 
