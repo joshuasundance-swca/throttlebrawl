@@ -18,17 +18,7 @@ import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
 import { applyShove, riderContacts } from './contact';
-import {
-  BOOST_ACCEL_MPS2,
-  boostOf,
-  boostPadAt,
-  deckHeight,
-  KERB_M,
-  rampTruckAt,
-  truckBodyAt,
-  truckBodyTop,
-  truckClearMps,
-} from './features';
+import { BOOST_ACCEL_MPS2, boostOf, boostPadAt, deckHeight, KERB_M, rampTruckAt } from './features';
 import {
   emit,
   slotAssists,
@@ -420,15 +410,12 @@ function wallOutcome(
     side: 1 | -1;
     newContact: boolean;
     extra?: Record<string, string>;
-    /** A crash whatever the speed (a rider up on a ramp truck riding into its body). */
-    crash?: boolean;
   },
 ): void {
   const { impact, v, yawBefore, side } = hit;
   const crashAt = world.params['riders.crashImpactMps'] ?? 6;
   const unstable = (st.wobble[m.id] ?? 0) > 0;
-  const crashes =
-    hit.crash === true || impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
+  const crashes = impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
   const data = { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side, ...hit.extra };
   if (crashes) {
     st.wobble[m.id] = 0;
@@ -457,14 +444,7 @@ function truckContact(
 ): void {
   const pos = m.pos;
   const truck = rampTruckAt(config, pos.edge, pos.s, pos.d);
-  // Off the lip fast enough to clear the body, in the tick that crosses into it: a launch, not a
-  // contact (the take-off rule below sends it airborne over the truck).
-  const launch =
-    !!truck &&
-    before.deck > KERB_M &&
-    truckBodyAt(config, pos.edge, pos.s, pos.d) === truck &&
-    m.speed >= truckClearMps(truck, GRAVITY * accelMultiplierOf(config));
-  if (!truck || launch || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
+  if (!truck || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
     st.truckTouch[m.id] = 0;
     return;
   }
@@ -485,10 +465,7 @@ function truckContact(
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
-  // Up on the truck (its ramp or lip platform) and into its body, the parked car: thrown off the
-  // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
-  const crash = before.deck > KERB_M;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash });
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
 }
 
 /** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
@@ -595,10 +572,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   truckContact(world, config, st, m, before, dt);
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
-  // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
-  // rider is kept out of above): h is always the height above the road.
+  // The ground is the road, or a ramp truck's deck: h is always the height above the road.
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
   if (dt > 0 && !fresh && ballistic > ground + TAKEOFF_CLEARANCE_M) {
@@ -686,19 +662,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  // A rider never lands on a ramp truck's body (the car on its top deck, the cab): fast enough off
-  // the lip, it clears the truck; too slow, and below the body's top, it hits it (the integration
-  // skeptic's F2: it used to land on a level deck inside that car).
-  const body = truckBodyAt(config, pos.edge, pos.s, pos.d);
-  if (body && y - surface < truckBodyTop(body) && m.speed < truckClearMps(body, gravity)) {
-    m.h = Math.max(0, y - surface);
-    st.yAbs[m.id] = y;
-    st.wobble[m.id] = 0;
-    const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
-    emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
-    return;
-  }
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
   if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
