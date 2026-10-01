@@ -68,6 +68,13 @@ export interface RaceSetup {
    * `standard` length, else its first.
    */
   length?: string;
+  /**
+   * A real-road route to race instead of the length's (qualified, `region-pnw:osm-chuckanut-run`):
+   * one of the event region's `realRoutes` (the maintainer, 2026-10-01: "Yes, add as routes").
+   * Left out, or not one of them: the length's route. The route lands in `SimConfig.event.routeId`,
+   * so the recording's header carries it with the seed and a replay rebuilds the same road.
+   */
+  route?: string;
   /** Assists per human slot, index = slot; a missing slot gets none. */
   assists?: readonly SimAssists[];
   /** The lower-overall-speed multiplier in (0, 1]; anything else means 1 (default 1). */
@@ -141,15 +148,61 @@ export function resolveDifficulty(
 const validSpeed = (m: number | undefined) =>
   m !== undefined && Number.isFinite(m) && m > 0 && m <= 1 ? m : 1;
 
+/** True when a network was baked from public map data (tools/gis), not drawn by hand. */
+function isRealRoad(network: unknown): boolean {
+  const provenance = (network as { provenance?: { origin?: unknown } } | undefined)?.provenance;
+  return provenance?.origin === 'gis-pipeline';
+}
+
+/**
+ * The event region's real-road routes, by qualified id, in id order (the maintainer, 2026-10-01:
+ * "Yes, add as routes"): every route in the race's packs (the event's pack and its dependencies)
+ * whose network was baked from map data (`provenance.origin` "gis-pipeline") and names the event's
+ * region. A region pack's routes are road data, so they are listed once its roads are fetched.
+ * [default]
+ */
+export function realRoutes(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] {
+  const key = eventKey(eventId);
+  const event = lookup(reg.events, key);
+  const regionKey = qualifyIn(packOf(key), event.region);
+  const packs = new Set(packClosure(reg, packOf(key)));
+  const own = new Set(event.lengths.map((l) => qualifyIn(packOf(key), l.route)));
+  return Object.keys(reg.routes)
+    .filter((id) => {
+      if (!packs.has(packOf(id)) || own.has(id)) return false;
+      const networkKey = qualifyIn(packOf(id), reg.routes[id]?.network ?? '');
+      const network = reg.networks[networkKey];
+      return !!network && isRealRoad(network) && qualifyIn(packOf(networkKey), network.region) === regionKey;
+    })
+    .sort();
+}
+
+/**
+ * The route a race runs, as its registry key: `route` when it is one of the event's real routes
+ * (qualified or bare in the event's pack), else the chosen length's route.
+ */
+export function raceRouteKey(
+  reg: ContentRegistry,
+  eventId = DEFAULT_EVENT,
+  lengthId?: string,
+  route?: string | null,
+): string {
+  const key = eventKey(eventId);
+  if (route) {
+    const wanted = qualifyIn(packOf(key), route);
+    if (realRoutes(reg, key).includes(wanted)) return wanted;
+  }
+  return qualifyIn(packOf(key), eventLength(lookup(reg.events, key), lengthId).route);
+}
+
 /** Activates the region stream for an event's route network (one per network, cached by caller). */
 export function streamForEvent(
   reg: ContentRegistry,
   eventId = DEFAULT_EVENT,
   lengthId?: string,
+  route?: string | null,
 ): RegionStream {
-  const key = eventKey(eventId);
-  const length = eventLength(lookup(reg.events, key), lengthId);
-  return streamForRoute(reg, qualifyIn(packOf(key), length.route));
+  return streamForRoute(reg, raceRouteKey(reg, eventId, lengthId, route));
 }
 
 /** The network a route runs on, as its registry key. */
@@ -367,7 +420,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const race = packSubset(reg, packClosure(reg, eventPack));
   const event = lookup(race.events, eventId);
   const length = eventLength(event, setup.length);
-  const routeId = qualifyIn(eventPack, length.route);
+  // The length's route, or a real-road route of the event's region when one is chosen.
+  const routeId = raceRouteKey(race, eventId, setup.length, setup.route);
   const routeDef = lookup(race.routes, routeId);
   const route = stream.routeFor(routeDef);
   const pace = event.field.paceMps ?? 30;
