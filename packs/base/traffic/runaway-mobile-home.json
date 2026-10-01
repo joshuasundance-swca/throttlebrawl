@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "runaway-mobile-home",
+  "name": "Mobile Home, No Truck",
+  "category": "oddity",
+  "tags": ["oddity", "wasteland"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "cruiseMps": 9.0,
+  "hazard": "big",
+  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": { "procedural": { "preset": "mobile-home" }, "paintOptions": ["#e8e2c8", "#9fc5b8", "#d98c5f"] },
+  "meta": {
+    "status": "draft",
+    "notes": "A mobile home rolling down the highway at 20 mph with no truck in front of it. Where it is going is between it and the road. Sized like the box truck for now: the rivals' avoidance box is the largest vehicle's. M3 traffic-4 head start.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
