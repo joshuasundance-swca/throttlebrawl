@@ -36,6 +36,18 @@ export type FrameRateCap = 'full' | 'half' | 'third';
  */
 export type LookSetting = 'classic' | 'kodak' | 'wasteland' | 'brush';
 export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak', 'wasteland', 'brush'];
+/**
+ * The view (camera-3's base framings, playtest 1c integration): the low chase cam, the far chase
+ * cam, or the helmet cam; camera/'s `camera.mode` 0, 1 and 2. Presentation only.
+ */
+export type ViewSetting = 'chase' | 'far' | 'helmet';
+export const VIEW_SETTINGS: readonly ViewSetting[] = ['chase', 'far', 'helmet'];
+/**
+ * What the race plays (radio-1): the score, a station (the region's first; the pause menu's radio
+ * panel and the R key switch between them) or nothing. Presentation only.
+ */
+export type RadioSetting = 'score' | 'station' | 'off';
+export const RADIO_SETTINGS: readonly RadioSetting[] = ['score', 'station', 'off'];
 
 /** One "cut this" flag from the in-game veto (docs/architecture.md, "In-game veto"). */
 export interface VetoFlag {
@@ -82,6 +94,10 @@ export interface Settings {
    * hides them both, and the results screen still counts the cash. ui-only; never feeds SimConfig.
    */
   stylePopups: boolean;
+  /** The camera view; applies at once. */
+  view: ViewSetting;
+  /** The score, a station or off; applies at once. */
+  radio: RadioSetting;
   /**
    * Gamepad remaps: action id → control tokens (such as `button3`), in input/'s vocabulary. Only
    * remapped actions are listed; an empty object means input/'s default bindings.
@@ -115,6 +131,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   look: 'classic',
   showTuningPanel: false,
   stylePopups: true,
+  view: 'chase',
+  radio: 'score',
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
@@ -261,6 +279,8 @@ export function sanitiseSettings(data: unknown): Settings {
     look: oneOf(d['look'], LOOK_SETTINGS, def.look),
     showTuningPanel: bool(d['showTuningPanel'], def.showTuningPanel),
     stylePopups: bool(d['stylePopups'], def.stylePopups),
+    view: oneOf(d['view'], VIEW_SETTINGS, def.view),
+    radio: oneOf(d['radio'], RADIO_SETTINGS, def.radio),
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),
