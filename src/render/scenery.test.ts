@@ -378,7 +378,8 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
 
   it('is the model, with its ramp foot at s0 and the lip where the sim launches riders', () => {
     expect(scene.stats.rampTruckModels).toBe(1);
-    expect(trucks.length).toBe(1);
+    // The model, and one merged mesh with every truck's deck run on over its cab.
+    expect(trucks.length).toBe(2);
     const lines: string[] = [];
     for (const x of [0.5, 2, 4, 6, 8, 10, 11.3]) {
       const h = down(truck.s0 + x, mid);
@@ -405,40 +406,30 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
   });
 
   it('stays inside the feature box end to end', () => {
-    // The model's front bumper falls inside s1 (21.05 m of a 22 m box).
     expect(down(truck.s1 + 0.3, mid)).toBeNull();
-    expect(down(truck.s1 - 1.5, mid)).not.toBeNull();
+    expect(down(truck.s1 - 0.2, mid)).not.toBeNull();
   });
 
-  it("draws the sim's truck: the lip platform, then the parked car as the solid body (#211)", () => {
-    // Since #211 (riders, skeptic 1c F2) the sim keeps the lip height for a 0.45 m platform past
-    // the lip, then the truck's body is solid to s1, its top 1.16 m above the lip (the top-deck
-    // car's roof): src/sim/riders/features.ts TRUCK_PLATFORM_M and TRUCK_BODY_ABOVE_LIP_M, scaled
-    // with the ramp. So the drawn truck must show a deck on the platform, the car where the body
-    // starts, and nothing standing above the body's top anywhere.
-    const lip = 2.8;
-    const bodyS = 11.5 + 0.45;
-    const bodyTop = lip + 1.16;
-    const lines: string[] = [];
-    let worstPlatform = 0;
-    for (const x of [11.6, 11.7, 11.8])
-      worstPlatform = Math.max(worstPlatform, Math.abs(down(truck.s0 + x, mid)! - lip));
-    lines.push(`platform +11.6 to +11.8 m worst ${worstPlatform.toFixed(3)} m off ${lip} m`);
-    expect(worstPlatform).toBeLessThan(0.1);
-    // The car fills the body's first metres: its roof reaches the body's top.
-    const carRoof = Math.max(
-      ...Array.from({ length: 45 }, (_, i) => down(truck.s0 + 12 + i * 0.1, mid) ?? 0),
+  it("draws the sim's flat deck from the lip to s1, with nothing standing on it (skeptic 1c F2)", () => {
+    // Past the lip the sim keeps a flat deck at 2.8 m to s1. The drawn top surface must be that deck
+    // across the riders' width the whole way: before, the model's top-deck car stood 0.70 to 1.12 m
+    // above it and the deck ended 0.77 to 0.83 m below it over the cab.
+    const off: string[] = [];
+    let checked = 0;
+    let worst = 0;
+    for (let x = 11.7; x <= 21.9; x += 0.4) {
+      for (const d of [mid - 0.9, mid, mid + 0.9]) {
+        const h = down(truck.s0 + x, d);
+        checked++;
+        const miss = h === null ? Infinity : Math.abs(h - 2.8);
+        worst = Math.max(worst, miss);
+        if (miss > 0.06) off.push(`+${x.toFixed(1)} m d ${d.toFixed(1)}: ${h?.toFixed(2) ?? 'nothing'}`);
+      }
+    }
+    console.log(
+      `[examined] ${checked} points on the sim deck (+11.7 to +21.9 m, 3 across): worst ${worst.toFixed(3)} m off 2.8`,
     );
-    lines.push(`car roof ${carRoof.toFixed(2)} m (body top ${bodyTop.toFixed(2)} m)`);
-    expect(Math.abs(carRoof - bodyTop)).toBeLessThan(0.1);
-    expect(down(truck.s0 + bodyS + 0.3, mid)!).toBeGreaterThan(lip + 0.3);
-    // Nothing drawn stands above the body's top, over the whole box.
-    let highest = 0;
-    for (let x = 11.5; x <= truck.s1 - truck.s0; x += 0.25)
-      for (const d of [mid - 1, mid, mid + 1]) highest = Math.max(highest, down(truck.s0 + x, d) ?? 0);
-    lines.push(`highest drawn point ${highest.toFixed(2)} m`);
-    expect(highest).toBeLessThan(bodyTop + 0.05);
-    console.log(`[examined] the truck against the sim's body: ${lines.join('; ')}`);
+    expect(off).toEqual([]);
   });
 
   it('places the same way for a non-default ramp: a 2 m lip over 9 m', () => {
@@ -453,7 +444,7 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
     expect(m.determinant()).toBeGreaterThan(0); // not mirrored: its faces still face out
   });
 
-  it("draws every live truck candidate (Keys, PNW, SF) within the sim's body and on its ramp", () => {
+  it("draws the flat deck on every live track's truck (Keys, PNW, SF), on their grades and curves", () => {
     // Each truck is a seeded candidate (#208's slots): build seeds until every candidate is drawn.
     const lines: string[] = [];
     let candidates = 0;
@@ -474,35 +465,31 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
           checked.add(fid);
           const lip = Number(f.params?.['lipHeightM'] ?? 2.8);
           const run = Number(f.params?.['rampLengthM'] ?? 11.5);
-          const top = lip + (1.16 * lip) / 2.8;
           const dm = (f.d0 + f.d1) / 2;
-          const at = (x: number, d: number) => {
-            const base = t.road.toWorld(e.index, f.s0 + x, d, 0);
-            const hit = new Raycaster(
-              new Vector3(base.x, base.y + 20, base.z),
-              new Vector3(0, -1, 0),
-              0,
-              40,
-            ).intersectObjects(solid, false)[0];
-            return hit ? hit.point.y - base.y : null;
-          };
-          let rampOff = 0;
-          for (const x of [2, 5, 8, 11])
-            rampOff = Math.max(rampOff, Math.abs((at(x, dm) ?? 0) - (lip * x) / run));
-          let highest = 0;
-          for (let x = run; x <= f.s1 - f.s0; x += 0.25)
-            for (const d of [dm - 0.8, dm, dm + 0.8]) highest = Math.max(highest, at(x, d) ?? 0);
-          lines.push(
-            `${id} ${fid} (seed ${seed}): ramp worst ${rampOff.toFixed(3)} m off, highest ${highest.toFixed(2)} m of ${top.toFixed(2)} m`,
-          );
-          expect(rampOff, `${id} ${fid} ramp`).toBeLessThan(0.1);
-          expect(highest, `${id} ${fid} body`).toBeLessThan(top + 0.05);
+          let worst = 0;
+          let n = 0;
+          for (let x = run + 0.2; x <= f.s1 - f.s0 - 0.1; x += 0.5) {
+            for (const d of [dm - 0.6, dm, dm + 0.6]) {
+              const base = t.road.toWorld(e.index, f.s0 + x, d, 0);
+              const hit = new Raycaster(
+                new Vector3(base.x, base.y + 20, base.z),
+                new Vector3(0, -1, 0),
+                0,
+                40,
+              ).intersectObjects(solid, false)[0];
+              const h = hit ? hit.point.y - base.y : -Infinity;
+              worst = Math.max(worst, Math.abs(h - lip));
+              n++;
+            }
+          }
+          lines.push(`${id} ${fid} (seed ${seed}): ${n} points, worst ${worst.toFixed(3)} m off ${lip} m`);
+          expect(worst, `${id} ${fid}`).toBeLessThan(0.1);
         }
         built.dispose();
       }
       expect(checked.size, `${id}: every truck candidate drawn by some seed`).toBe(all.length);
     }
-    console.log(`[examined] live trucks: ${lines.join('; ')}`);
+    console.log(`[examined] live trucks' decks: ${lines.join('; ')}`);
     expect(lines.length).toBe(candidates);
     expect(candidates).toBeGreaterThanOrEqual(3);
   });

@@ -51,7 +51,25 @@ export interface RampMeasure {
   widthM: number;
   /** The whole truck's length from the ramp foot, m. */
   lengthM: number;
+  /** Where the model's own flat deck ends, from the ramp foot, m (the road scene extends it). */
+  deckEndM: number;
+  /** The deck's colour (display sRGB), for that extension. */
+  deckColour: string;
 }
+
+/**
+ * The truck as the sim rides it (playtest 1c skeptic finding F2; render integration item 5): past
+ * the lip the sim keeps a flat deck at the lip height all the way to the feature's end, so nothing of
+ * the model may stand above that deck. The car on the top deck is left off (the truck still carries
+ * the one under its deck), and the cab is lowered to fit under the deck, which the road scene runs on
+ * over it to the front (road-mesh.ts). [default]
+ */
+export const TRUCK_FIT = {
+  /** Nodes left out of the baked truck. */
+  drop: ['car_1'] as readonly string[],
+  /** The cab's new top, m: just under the deck (2.66 to 2.8 m on the model). */
+  cabTopM: 2.6,
+} as const;
 
 export interface SceneryModel {
   kind: ModelKind;
@@ -67,8 +85,21 @@ export type SceneryModels = Partial<Record<ModelKind, SceneryModel>>;
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+/** Per-node changes a bake applies: nodes to leave out, and nodes scaled vertically from the ground. */
+interface BakeFit {
+  drop?: readonly string[];
+  /** Node name to its vertical scale about y = 0. */
+  squash?: Readonly<Record<string, number>>;
+}
+
+/** The named node a mesh sits under (itself included), among `names`, or null. */
+function underNode(o: Object3D, stop: Object3D, names: readonly string[]): string | null {
+  for (let p: Object3D | null = o; p && p !== stop; p = p.parent) if (names.includes(p.name)) return p.name;
+  return null;
+}
+
 /** Bakes one variant: every mesh under `root`, in the root's frame, flat colours as vertex colours. */
-function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: boolean } {
+function bakeVariant(root: Object3D, fit: BakeFit = {}): { geometry: BufferGeometry; doubleSided: boolean } {
   root.updateMatrixWorld(true);
   const toRoot = root.matrixWorld.clone().invert();
   const positions: number[] = [];
@@ -83,11 +114,15 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   root.traverse((o) => {
     const mesh = o as Mesh;
     if (!mesh.isMesh) return;
+    if (fit.drop && underNode(o, root, fit.drop)) return;
+    const squashed = fit.squash ? underNode(o, root, Object.keys(fit.squash)) : null;
+    const sy = squashed ? (fit.squash?.[squashed] ?? 1) : 1;
     const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     const col = (mat as { color?: Color } | undefined)?.color;
     c.copy(col ?? new Color(1, 1, 1));
     if (mat && mat.side !== 0) doubleSided = true;
     m.multiplyMatrices(toRoot, mesh.matrixWorld);
+    if (sy !== 1) m.premultiply(new Matrix4().makeScale(1, sy, 1));
     nm.copy(m).invert().transpose();
     const g = mesh.geometry;
     const pos = g.getAttribute('position');
@@ -118,10 +153,11 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   scene.updateMatrixWorld(true);
   const variants: BufferGeometry[] = [];
   let doubleSided = false;
+  const fit = kind === 'truck' ? truckFit(scene) : {};
   for (const name of ROOTS[kind]) {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
-    const v = bakeVariant(root);
+    const v = bakeVariant(root, fit);
     variants.push(v.geometry);
     doubleSided ||= v.doubleSided;
   }
@@ -132,14 +168,56 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     ramp.geometry.computeBoundingBox();
     const box = ramp.geometry.boundingBox;
     const whole = variants[0]?.boundingBox;
+    const lipM = num(ramp.userData['ramp_lip_height_m']) ?? 2.8;
+    const deck = trailerDeck(scene, lipM);
     out.ramp = {
       runM: num(ramp.userData['ramp_run_m']) ?? 11.5,
-      lipM: num(ramp.userData['ramp_lip_height_m']) ?? 2.8,
+      lipM,
       widthM: box ? box.max.x - box.min.x : 2.5,
       lengthM: whole ? whole.max.z : 21,
+      deckEndM: deck?.endM ?? 16.8,
+      deckColour: deck?.colour ?? '#efe6c8',
     };
   }
   return out;
+}
+
+/** The truck's bake fit: car_1 left off, the cab squashed under the deck. */
+function truckFit(scene: Object3D): BakeFit {
+  const cab = scene.getObjectByName('cab');
+  let top = 0;
+  cab?.updateMatrixWorld(true);
+  cab?.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.computeBoundingBox();
+    const box = mesh.geometry.boundingBox?.clone().applyMatrix4(mesh.matrixWorld);
+    if (box) top = Math.max(top, box.max.y);
+  });
+  return {
+    drop: TRUCK_FIT.drop,
+    squash: top > TRUCK_FIT.cabTopM ? { cab: TRUCK_FIT.cabTopM / top } : {},
+  };
+}
+
+/** The trailer's flat top deck: the part whose top is at the lip height, its far end and colour. */
+function trailerDeck(scene: Object3D, lipM: number): { endM: number; colour: string } | null {
+  const trailer = scene.getObjectByName('trailer');
+  let best: { endM: number; colour: string; width: number } | null = null;
+  trailer?.updateMatrixWorld(true);
+  trailer?.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.computeBoundingBox();
+    const box = mesh.geometry.boundingBox?.clone().applyMatrix4(mesh.matrixWorld);
+    if (!box || Math.abs(box.max.y - lipM) > 0.05) return;
+    const width = box.max.x - box.min.x;
+    if (best && width <= best.width) return;
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const col = (mat as { color?: Color } | undefined)?.color;
+    best = { endM: box.max.z, colour: `#${(col ?? new Color(1, 1, 1)).getHexString()}`, width };
+  });
+  return best;
 }
 
 export interface ModelLoadReport {
