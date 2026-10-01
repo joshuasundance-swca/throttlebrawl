@@ -9,6 +9,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildSimConfig, DEFAULT_EVENT, type ActionState } from '../../src/app';
 import { loadBasePack, lookup } from '../../src/content';
+import { chooseSetPieces } from '../../src/road';
 import { createSim, quantizeInput, type EntitySnapshot, type SimEvent } from '../../src/sim/api';
 import { activateRegion } from '../../src/stream';
 import { BATCH_TIMEOUT_MS, simBatch, type BatchResult } from './batch';
@@ -24,14 +25,23 @@ const blank = (): ActionState => ({
   skipRunBack: false,
 });
 
+/**
+ * The set pieces these rides meet: the Marina Run pad and the truck at s 620 on the bridge. Since the
+ * integration round each is one candidate of a seeded slot (playtest 1c item 2), so the rides use the
+ * first seed that picks both (seed 3 used to, when they were always there).
+ */
+const PICKED = ['pad-marina-run', 'carrier-bridge-flat'];
+
 function soloSetup() {
   const reg = loadBasePack();
   const event = lookup(reg.events, DEFAULT_EVENT);
   const routeFile = lookup(reg.routes, event.lengths[0]?.route ?? '');
   const network = lookup(reg.networks, routeFile.network);
   const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
+  let seed = 1;
+  while (!PICKED.every((id) => chooseSetPieces(stream.road.edges, seed).has(id))) seed++;
   const built = buildSimConfig(reg, stream, {
-    seed: 3,
+    seed,
     tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
   });
   const config = { ...built, riders: built.riders.filter((r) => r.controller.kind === 'player') };

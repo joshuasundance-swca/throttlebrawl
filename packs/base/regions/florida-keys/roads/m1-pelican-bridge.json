@@ -51,7 +51,16 @@
       "s1": 642,
       "d0": 3.4,
       "d1": 5.4,
-      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8 }
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "keys-truck" }
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-bridge-far",
+      "s0": 1090,
+      "s1": 1112,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": { "rampLengthM": 11.5, "lipHeightM": 2.8, "slot": "keys-truck" }
     }
   ],
   "barriers": [{ "s0": 0, "s1": 1250, "side": "both", "kind": "rail", "heightM": 1 }],

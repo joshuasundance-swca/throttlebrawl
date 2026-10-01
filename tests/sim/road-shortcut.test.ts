@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSimConfig, DEFAULT_EVENT, type ActionState } from '../../src/app';
 import { loadBasePack, lookup } from '../../src/content';
 import { createSim, quantizeInput, type EntitySnapshot, type RouteProgress } from '../../src/sim/api';
+import { chooseSetPieces } from '../../src/road';
 import { activateRegion } from '../../src/stream';
 
 // M1 road-2 acceptance, on the real baked track with the real riding model (riders-2 airtime):
@@ -170,8 +171,14 @@ function soloSetup(steerAssist: 'off' | 'light' | 'strong' = 'off') {
   const routeFile = lookup(reg.routes, event.lengths[0]?.route ?? '');
   const network = lookup(reg.networks, routeFile.network);
   const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
+  // The skeptic's seed 7, or the next seed that puts the Marina Run's pad at its split-side spot
+  // (s 230): since the integration round the pad's spot comes from the seed (playtest 1c item 2), and
+  // its other spot, mid-lane at s 150, would boost these riders before the trigger, so the "a guide
+  // costs no speed" checks would read the boost wearing off.
+  let seed = 7;
+  while (!chooseSetPieces(stream.road.edges, seed).has('pad-marina-run')) seed++;
   const built = buildSimConfig(reg, stream, {
-    seed: 7,
+    seed,
     tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
   });
   const config = {

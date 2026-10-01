@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import type { SimEvent, SimInput } from '../../src/sim/types.ts';
@@ -16,7 +16,7 @@ import { grainShare } from './pixels';
 
 interface Handle {
   state(): string;
-  snapshot(): { tick: number } | null;
+  snapshot(): { tick: number; entities: { speed: number }[] } | null;
   setBot(on: boolean): void;
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
@@ -29,6 +29,8 @@ type TestWindow = Window & {
   __buzzes?: unknown[];
   /** ui's style pop-up feed (ui-style-popups.spec.ts). */
   __uiStyleFeed?: (pops: { kind: string; points?: number }[]) => void;
+  /** The length of every audio buffer started, recorded by the stub below. */
+  __plucks?: number[];
 };
 
 function watchErrors(page: Page): string[] {
@@ -124,6 +126,19 @@ test.beforeEach(async ({ page }) => {
         return true;
       },
     });
+    // Record the length of every buffer the page plays, so the radio setting's effect can be heard
+    // (audio-radio.spec.ts: a station's plucked strings are 0.6, 0.8, 0.9 or 1.1 s buffers; the
+    // score plays only 1 s noise).
+    const proto = AudioBufferSourceNode.prototype;
+    const start = Object.getOwnPropertyDescriptor(proto, 'start')?.value as (
+      this: AudioBufferSourceNode,
+      ...args: number[]
+    ) => void;
+    proto.start = function (this: AudioBufferSourceNode, ...args: number[]) {
+      if (this.buffer)
+        ((window as TestWindow).__plucks ??= []).push(Math.round(this.buffer.duration * 100) / 100);
+      start.apply(this, args);
+    };
   });
 });
 
@@ -229,6 +244,38 @@ async function raceAlone(page: Page) {
   });
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
+}
+/**
+ * The mean luminance change between two canvas screenshots over the rider's own box in the chase
+ * framing (47% to 53% of the width, 56% to 78% of the height: the rider's back and the bike, on a
+ * 915x412 phone screen), decoded in the page.
+ */
+function regionDiff(page: Page, a: Buffer, b: Buffer): Promise<number> {
+  return page.evaluate(
+    async ([a64, b64]) => {
+      const read = async (b: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.drawImage(img, 0, 0);
+        const x = Math.round(img.width * 0.47);
+        const y = Math.round(img.height * 0.56);
+        return ctx.getImageData(x, y, Math.round(img.width * 0.06), Math.round(img.height * 0.22)).data;
+      };
+      const [pa, pb] = [await read(a64 ?? ''), await read(b64 ?? '')];
+      const lum = (d: Uint8ClampedArray, i: number) =>
+        0.299 * (d[i] ?? 0) + 0.587 * (d[i + 1] ?? 0) + 0.114 * (d[i + 2] ?? 0);
+      let sum = 0;
+      for (let i = 0; i < pa.length; i += 4) sum += Math.abs(lum(pa, i) - lum(pb, i));
+      return sum / (pa.length / 4);
+    },
+    [a.toString('base64'), b.toString('base64')],
+  );
 }
 async function quitRace(page: Page) {
   await page.keyboard.press('Escape');
@@ -466,6 +513,89 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     persisted: async (page) => {
       await page.locator('#settings-tab-display').click();
       await expect(page.locator('#settings-stylePopups')).not.toBeChecked();
+    },
+  },
+  view: {
+    // The helmet cam: the camera rides at the rider's head, so the rider's own bike and back, at
+    // the bottom middle of the chase framing, are gone. Seen in the drawn pixels against the chase
+    // view, with the rider standing still on the grid; two helmet frames are the control.
+    set: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-view [data-value="helmet"]').click();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      // Hold the brake until the rider stands still (an earlier probe may have left auto-throttle
+      // on), so the scene stops moving and only the camera differs between the shots.
+      await page.keyboard.down('KeyS');
+      await page.waitForFunction(() => {
+        const g = (window as TestWindow).__game;
+        const me = g?.snapshot()?.entities[g.playerId()];
+        return !!me && me.speed < 0.3;
+      });
+      await page.waitForTimeout(500);
+      const helmet = await page.locator('canvas#game').screenshot();
+      await page.waitForTimeout(300);
+      const helmetAgain = await page.locator('canvas#game').screenshot();
+      await page.keyboard.press('Escape');
+      await page.locator('#pause-controls').click();
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-view [data-value="chase"]').click();
+      await page.locator('#settings-back').click();
+      await page.locator('#pause-resume').click();
+      await page.waitForTimeout(600); // the springs settle on the chase framing
+      const chase = await page.locator('canvas#game').screenshot();
+      mkdirSync('test-results/screenshots', { recursive: true });
+      writeFileSync('test-results/screenshots/settings-view-helmet.png', helmetAgain);
+      writeFileSync('test-results/screenshots/settings-view-chase.png', chase);
+      const control = await regionDiff(page, helmet, helmetAgain);
+      const changed = await regionDiff(page, helmetAgain, chase);
+      console.log(
+        `view helmet: rider-area change ${changed.toFixed(1)} levels (helmet to helmet ${control.toFixed(1)})`,
+      );
+      expect(changed).toBeGreaterThan(18);
+      expect(changed).toBeGreaterThan(control * 2);
+      await page.keyboard.up('KeyS');
+      // Back to the helmet, so the reload below finds it kept.
+      await page.keyboard.press('Escape');
+      await page.locator('#pause-controls').click();
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-view [data-value="helmet"]').click();
+      await page.locator('#settings-back').click();
+      await page.locator('#pause-quit').click();
+      await expect(page.locator('#menu')).toBeVisible();
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await expect(page.locator('#settings-view [data-value="helmet"]')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    },
+  },
+  radio: {
+    // A station: the race plays a band's plucked strings, which the score never does.
+    set: async (page) => {
+      await page.locator('#settings-tab-sound').click();
+      await page.locator('#settings-radio [data-value="station"]').click();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      await page.waitForTimeout(500); // the stations load on first use
+      await page.evaluate(() => ((window as TestWindow).__plucks = []));
+      await page.waitForTimeout(2000);
+      const d = await page.evaluate(() => (window as TestWindow).__plucks ?? []);
+      const strings = d.filter((v) => v === 0.6 || v === 0.8 || v === 0.9 || v === 1.1).length;
+      console.log(`radio station: ${strings} plucked strings in 2 s (${d.length} buffers in all)`);
+      expect(strings).toBeGreaterThan(0);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-sound').click();
+      await expect(page.locator('#settings-radio [data-value="station"]')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
     },
   },
   showTuningPanel: {
