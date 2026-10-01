@@ -10,7 +10,8 @@
 // menu (resume, restart, quit, controls and HUD, the tuning panel when enabled, copy debug report)
 // and the resume card after a reload (ui draws it and reports the tap; app/ does the rest).
 // ui-3: the "what's new since you last played" card beside the menu, the changelog page (both from
-// dist/changelog.json), the results screen's takedowns and style tally, and the style pop-ups.
+// dist/changelog.json), the results screen's takedowns and style tally, and the style pop-ups
+// (moved out of the middle of the screen, smaller and merged, by playtest 1c).
 // ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
 // changes leaves through the callbacks app/ injects.
 import {
@@ -45,7 +46,14 @@ import {
 } from './settings';
 import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
 import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './changelog-screen';
-import { createRaceTally } from './race-feed';
+import {
+  createPopStack,
+  createRaceTally,
+  popCash,
+  popLabel,
+  type PopEntry,
+  type StylePop,
+} from './race-feed';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
@@ -132,6 +140,17 @@ export const LONG_PRESS_MS = 500;
 const STICK_RING_PX = 60;
 /** Touches this close to the edge belong to the phone's back gesture (input/ ignores them too). */
 const EDGE_PX = 24;
+/**
+ * The style pop-ups (playtest 1c, 2026-09-30 [decided]: "get in the way of seeing what's ahead").
+ * At most this many chips, each up this long, a fade included; a repeat of a kind already up
+ * restarts its time. [default]
+ */
+const POP_MAX = 3;
+const POP_DWELL_MS = 1100;
+/** The stack starts this far below the position badge's top edge: the badge's height plus a gap. */
+const POP_BELOW_BADGE_PX = 44;
+/** Space kept under the bark bubble, its speech tail included, when the stack must move below it. */
+const POP_BUBBLE_GAP_PX = 15;
 
 const CSS = `
 #ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff;
@@ -180,13 +199,21 @@ const CSS = `
   border-radius: 50%; background: #fffa; }
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
-#style-popups { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); display: flex;
-  flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
-.style-pop { font: 900 22px ui-monospace, 'Courier New', monospace; letter-spacing: 0.04em; color: #111;
-  background: #f5c542; padding: 2px 10px; box-shadow: 3px 3px 0 #111; white-space: nowrap;
-  animation: tb-pop 1.4s ease-out forwards; }
-@keyframes tb-pop { 0% { transform: scale(0.6); opacity: 0; } 12% { transform: scale(1.08); opacity: 1; }
-  75% { opacity: 1; } 100% { transform: translateY(-14px); opacity: 0; } }
+#style-popups { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  pointer-events: none; transition: top 0.12s ease-out; }
+#style-popups.mirrored { align-items: flex-end; }
+.style-pop { display: flex; flex-direction: column; align-items: flex-start; padding: 2px 5px 3px 4px;
+  background: rgb(10 5 20 / 55%); border-left: 3px solid #f5c542; border-radius: 3px; max-width: 100%;
+  box-sizing: border-box; animation: tb-pop ${POP_DWELL_MS}ms ease-out forwards; }
+#style-popups.mirrored .style-pop { align-items: flex-end; text-align: right; border-left: 0;
+  border-right: 3px solid #f5c542; padding: 2px 4px 3px 5px; animation-name: tb-pop-mirrored; }
+.pop-label { font: 800 10px/1.2 ui-monospace, 'Courier New', monospace; color: #f2ead8; }
+.pop-cash { font: 900 15px/1.15 ui-monospace, 'Courier New', monospace; color: #f5c542; white-space: nowrap; }
+.pop-cash:empty { display: none; }
+@keyframes tb-pop { 0% { opacity: 0; transform: translateX(-6px); } 10% { opacity: 1; transform: none; }
+  75% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes tb-pop-mirrored { 0% { opacity: 0; transform: translateX(6px); } 10% { opacity: 1; transform: none; }
+  75% { opacity: 1; } 100% { opacity: 0; } }
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
@@ -229,6 +256,27 @@ ${CHANGELOG_CSS}
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 #build-stamp.in-race { display: none; }
 `;
+
+/** A style event as the browser specs feed it: the kind and its cash. */
+interface StyleFeedPop {
+  kind: string;
+  points?: number;
+}
+type StyleFeedWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiStyleFeed?: (pops: readonly StyleFeedPop[]) => void;
+};
+
+/**
+ * The browser specs' style feed (docs/architecture.md, "Testing seams"), only when the test flag
+ * is set before the page loads: `window.__uiStyleFeed([{kind: 'nearMiss', points: 25}])` raises
+ * the player's style pop-ups through the same tally the sim's events go through, so the pop-up
+ * layout can be checked without waiting for a near miss. It writes no sim state.
+ */
+function installStyleFeed(feed: (pops: readonly StyleFeedPop[]) => void): void {
+  const w = window as StyleFeedWindow;
+  if (w.__GAME_TEST__ === true) w.__uiStyleFeed = feed;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -407,6 +455,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
+    placePopups(unit);
     for (const b of touchButtons.splice(0)) b.remove();
     if (!coarse) return;
     for (const e of layout.elements) {
@@ -711,14 +760,110 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
 
   const tally = createRaceTally();
   let tallyPlayer = -1;
+  installStyleFeed((pops) =>
+    tally.onEvents(
+      pops.map((p) => ({ tick: 0, type: 'style', actor: tallyPlayer, data: { ...p } })),
+      tallyPlayer,
+    ),
+  );
+  // The style pop-ups (playtest 1c, 2026-09-30 [decided]: "get in the way of seeing what's ahead.
+  // Maybe they could be less intrusive and/or less centered"). A small stack of chips under the
+  // position badge, on its side of the screen (so it follows the left-handed mirror), well outside
+  // the middle of the road where traffic comes from. Each chip is a small word over its cash, on a
+  // see-through ground, up about a second; a repeat of a kind adds to its chip ("NEAR MISS ×3").
+  // Where the bark bubble reaches the stack (a narrow screen, a long line), the stack moves below
+  // it, and goes home once its chips are gone.
   const popups = el('div', { id: 'style-popups' });
   hud.append(popups);
-  const MAX_POPUPS = 3;
-  const popUp = (text: string) => {
-    const pop = el('div', { className: 'style-pop', textContent: text });
-    popups.append(pop);
-    while (popups.childElementCount > MAX_POPUPS) popups.firstElementChild?.remove();
-    setTimeout(() => pop.remove(), 1400);
+  const popStack = createPopStack(POP_MAX);
+  interface PopView {
+    root: HTMLElement;
+    label: HTMLElement;
+    cash: HTMLElement;
+    timer: ReturnType<typeof setTimeout> | null;
+  }
+  const popViews = new Map<PopEntry, PopView>();
+  let popHomeTop = 0;
+  let popTop = 0;
+  let bubbleEl: HTMLElement | null = null;
+  let bubbleKey = '';
+  const setPopTop = (top: number) => {
+    if (top === popTop) return;
+    popTop = top;
+    popups.style.top = `${top}px`;
+  };
+  function placePopups(unit: number) {
+    const badge = elementOf('position');
+    const across = badge?.anchor.split('-')[1] ?? 'left';
+    const right = (across === 'right') !== layout.mirror;
+    const ox = Math.round((badge?.offset[0] ?? 0.03) * unit);
+    const oy = badge?.anchor.startsWith('top') ? badge.offset[1] : 0.03;
+    const edge = `max(${ox}px, env(safe-area-inset-${right ? 'right' : 'left'}))`;
+    popups.classList.toggle('mirrored', right);
+    popups.style.left = right ? '' : edge;
+    popups.style.right = right ? edge : '';
+    // Never past the outer quarter of the width, whatever the words: on a narrow screen a long
+    // label wraps instead of reaching into the middle of the road.
+    popups.style.maxWidth = `calc(25vw - ${edge})`;
+    popHomeTop = Math.round(oy * unit + POP_BELOW_BADGE_PX);
+    bubbleKey = '';
+    setPopTop(popHomeTop);
+  }
+  const dropPop = (entry: PopEntry) => {
+    const view = popViews.get(entry);
+    if (view?.timer) clearTimeout(view.timer);
+    view?.root.remove();
+    popViews.delete(entry);
+    popStack.remove(entry);
+  };
+  const clearPops = () => {
+    for (const entry of [...popViews.keys()]) dropPop(entry);
+    popStack.clear();
+    bubbleKey = '';
+    setPopTop(popHomeTop);
+  };
+  const popUp = (pop: StylePop) => {
+    const { entry, merged, dropped } = popStack.add(pop);
+    for (const d of dropped) dropPop(d);
+    let view = popViews.get(entry);
+    if (!view) {
+      const label = el('span', { className: 'pop-label' });
+      const cash = el('span', { className: 'pop-cash' });
+      view = { root: el('div', { className: 'style-pop' }, label, cash), label, cash, timer: null };
+      popups.append(view.root);
+      popViews.set(entry, view);
+    } else if (merged) {
+      // Restart the fade, so a run of near misses keeps its chip up.
+      view.root.style.animation = 'none';
+      void view.root.offsetWidth;
+      view.root.style.animation = '';
+    }
+    view.label.textContent = popLabel(entry);
+    view.cash.textContent = popCash(entry);
+    if (view.timer) clearTimeout(view.timer);
+    view.timer = setTimeout(() => dropPop(entry), POP_DWELL_MS);
+  };
+  /**
+   * Keeps the stack off the bark bubble. Measured only when the chips or the bubble's line change
+   * (reading its text needs no layout); with no chips up the stack goes home.
+   */
+  const keepPopsOffBubble = () => {
+    if (popViews.size === 0) {
+      bubbleKey = '';
+      setPopTop(popHomeTop);
+      return;
+    }
+    bubbleEl ??= document.getElementById('bark-bubble');
+    const up = !!bubbleEl && !bubbleEl.hidden;
+    const key = up && bubbleEl ? `${popViews.size}|${bubbleEl.textContent ?? ''}` : '';
+    if (key === bubbleKey) return;
+    bubbleKey = key;
+    if (!up || !bubbleEl) return; // the bubble went: stay put until the chips are gone
+    const b = bubbleEl.getBoundingClientRect();
+    const s = popups.getBoundingClientRect();
+    const across = s.left < b.right && b.left < s.right;
+    const down = popHomeTop < b.bottom + POP_BUBBLE_GAP_PX && b.top < popHomeTop + s.height;
+    setPopTop(across && down ? Math.ceil(b.bottom + POP_BUBBLE_GAP_PX) : Math.max(popTop, popHomeTop));
   };
 
   root.append(
@@ -801,7 +946,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       targetShown = false;
       tally.reset();
       tallyPlayer = -1;
-      popups.replaceChildren();
+      clearPops();
       placeAll();
     }
     if (screen === 'menu') {
@@ -834,7 +979,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       updateHud(player, riderCount(snapshot), units);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
-      for (const text of tally.takePopups()) popUp(text);
+      for (const pop of tally.takePopups()) popUp(pop);
+      keepPopsOffBubble();
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {
