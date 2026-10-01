@@ -377,6 +377,8 @@ export function createApp(opts: AppOptions): AppHandle {
   audio.setRadioCut(radioCut(settings));
   let radio = raceRadio(registry, regionKeyOf(registry, eventId));
   let radioRegion: string | null = null;
+  /** Set once ui exists: re-tunes the saved station when a new region offers it (run W-P). */
+  let retuneSavedRadio: (() => void) | null = null;
   const tuneRadio = () => {
     const regionKey = regionKeyOf(registry, eventId);
     if (regionKey === radioRegion) return;
@@ -384,6 +386,7 @@ export function createApp(opts: AppOptions): AppHandle {
     radio = raceRadio(registry, regionKey);
     audio.setStations(radio.stations);
     audio.setRegion(radio.region);
+    retuneSavedRadio?.();
   };
   tuneRadio();
   /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
@@ -521,6 +524,7 @@ export function createApp(opts: AppOptions): AppHandle {
       },
     },
   });
+  retuneSavedRadio = () => ui.applySavedRadio();
   if (settingsStore.notice) ui.notice(settingsStore.notice);
   // Touch, keyboard, the gamepad and (when chosen) tilt; haptics answer the player's events (input-2).
   const input = createInput({
