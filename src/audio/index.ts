@@ -10,6 +10,12 @@
 // slow-motion treatment (slowmo.ts: effects pitched down and low-passed, music ducked) and the
 // fuller sixteen-bar score. Every feel number is a presentation tuning slider below.
 //
+// radio-1 (M4.md, a head start): surf and rockabilly stations from the pack's `stations/`, with
+// code-made tracks (radio-compose.ts writes them, radio-synth.ts plays them, radio.ts runs the
+// station). For now the station is picked with the R key (Shift+R skips a track) or the
+// `audio.radio` tuning slider; the pause menu's station panel is ui-4's. The music ducks under
+// crashes (and under barks, when the bark's owner calls `duck()`).
+//
 // Wiring (app/): `frame(snapshot, playerId)` once per rendered frame drives everything placed in
 // the world; `onEvents(events)` after each sim step plays the cues. The skeleton's
 // `update(player)` still works and drives the player's engine and the music alone.
@@ -25,6 +31,15 @@ import {
   type EngineVoice,
 } from './engine-patch';
 import { createMusic, type MusicLoop } from './music';
+import {
+  createRadioPlayer,
+  cutFlag,
+  stationsForRegion,
+  type NowPlaying,
+  type RadioPlayer,
+  type RadioStation,
+  type RadioVetoFlag,
+} from './radio';
 import { distance, distanceGain, dopplerFactor, moving } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
@@ -35,6 +50,16 @@ export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
 export { SLOWMO_DEFAULTS } from './slowmo';
 export type { CueId } from './cues';
+export { RADIO_PRESETS } from './radio-compose';
+export { stationsForRegion, stationsFromTable, stationTrackRef } from './radio';
+export type { NowPlaying, RadioStation, RadioTrack, RadioVetoFlag } from './radio';
+
+/** `audio.radio` values below the stations: 0 = off, 1 = the original score, 2+ = the stations. */
+export const RADIO_OFF = 0;
+export const RADIO_SCORE = 1;
+/** The music ducks under these cues (the crash family), [default]. */
+const DUCK_CUES: ReadonlySet<CueId> = new Set(['crash', 'takedown', 'railClang', 'splash']);
+export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
 
 /** Presentation-only tuning (applies at once, never recorded; docs/architecture.md, "Tuning"). */
 export const AUDIO_TUNING: readonly TuningParamDecl[] = [
@@ -148,6 +173,62 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: '',
     affectsSim: false,
   },
+  // radio-1: the station, the song length and the duck. Each is a slider, [default].
+  {
+    id: 'audio.radio',
+    group: 'audio',
+    label: 'Radio (0 off, 1 score, 2+ stations; R key)',
+    default: RADIO_SCORE,
+    min: 0,
+    max: 6,
+    step: 1,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.radioLoops',
+    group: 'audio',
+    label: 'Radio: loops per song',
+    default: 3,
+    min: 1,
+    max: 8,
+    step: 1,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.radioFx',
+    group: 'audio',
+    label: 'Radio: spring reverb and slapback',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.1,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.duckLevel',
+    group: 'audio',
+    label: 'Music under crashes and barks (1 = no duck)',
+    default: DUCK_DEFAULTS.level,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.duckHoldS',
+    group: 'audio',
+    label: 'Music duck: hold',
+    default: DUCK_DEFAULTS.holdS,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: 's',
+    affectsSim: false,
+  },
   // Playtest 1 item 10 (speed cues): the wind rises with your speed (wind.ts).
   {
     id: 'audio.windGain',
@@ -224,6 +305,18 @@ export interface AudioInspect {
   slowmo: { active: boolean; lowpassHz: number; musicLevel: number; pitch: number };
   /** The level the wind aims for (0 = silent). */
   windLevel: number;
+  /** The radio: the `audio.radio` choice, the station list in switch order, and what plays. */
+  radio: {
+    choice: number;
+    /** 'off', 'score', 'pending' (stations loading), or the station's id. */
+    tunedTo: string;
+    stations: string[];
+    nowPlaying: NowPlaying | null;
+    /** Track references started this session, oldest first. */
+    history: string[];
+  };
+  /** The level the music duck aims for (1 = not ducked). */
+  duckLevel: number;
 }
 
 export interface AudioSystem {
@@ -246,6 +339,23 @@ export interface AudioSystem {
   readonly state: () => 'none' | AudioContextState;
   /** What the mixer is doing, for tests and the debug report. */
   inspect(): AudioInspect;
+  /** The stations to choose from (the registry's, via `stationsFromTable`); else the base pack's. */
+  setStations(stations: readonly RadioStation[]): void;
+  /** The race's region: its stations are the regional ones plus the genre ones. null = all. */
+  setRegion(regionId: string | null): void;
+  /** Radio tracks cut on this device (the settings record's veto refs): never played. */
+  setRadioCut(refs: readonly string[]): void;
+  /**
+   * "Cut this" on the playing radio track: skips it now and returns the flag for the settings
+   * record (`{contentRef, raceId, tick}`), or null when no station track is playing.
+   */
+  cutPlayingTrack(raceId: string, tick: number): RadioVetoFlag | null;
+  /** The next radio choice (score, each station, off, then round again), as the R key does. */
+  nextRadio(): void;
+  /** The next track on the station playing now. */
+  skipTrack(): void;
+  /** Ducks the music for a moment, as for a bark (crashes duck it themselves). */
+  duck(): void;
 }
 
 export interface AudioOptions {
@@ -256,6 +366,12 @@ export interface AudioOptions {
    * rendering is suspended, and never call its `resume()` from `resume()`.
    */
   offline?: boolean;
+  /** Where the radio keys are listened for; the window by default, null for none (tests). */
+  radioKeys?: EventTarget | null;
+  /** Seeds the stations' track order; random per session when left out. */
+  radioSeed?: number;
+  /** Stations up front; otherwise the base pack's are loaded the first time a station is picked. */
+  stations?: readonly RadioStation[];
 }
 
 interface Graph {
@@ -264,7 +380,10 @@ interface Graph {
   buses: { music: GainNode; effects: GainNode; voices: GainNode };
   /** Every effects source feeds `slowmo.fxIn`; the music feeds `slowmo.musicIn`. */
   slowmo: SlowmoTreatment;
+  /** Both the score and the radio feed this duck, which feeds `slowmo.musicIn`. */
+  duck: GainNode;
   music: MusicLoop;
+  radio: RadioPlayer;
 }
 
 interface Held<T> {
@@ -297,7 +416,19 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     windGain: WIND_DEFAULTS.gain as number,
     windFromMps: WIND_DEFAULTS.fromMps as number,
     windFullMps: WIND_DEFAULTS.fullMps as number,
+    radio: RADIO_SCORE as number,
+    radioLoops: 3,
+    radioFx: 1,
+    duckLevel: DUCK_DEFAULTS.level as number,
+    duckHoldS: DUCK_DEFAULTS.holdS as number,
   };
+  // The radio: stations (null until loaded), the race's region, and this device's cuts.
+  let allStations: RadioStation[] | null = opts.stations ? [...opts.stations] : null;
+  let loadingStations = false;
+  let regionId: string | null = null;
+  let radioCut: string[] = [];
+  const radioSeed = opts.radioSeed ?? Math.floor(Math.random() * 0xffffffff);
+  let duckTarget = 1;
   const windParams = () => ({
     gain: params.windGain,
     fromMps: params.windFromMps,
@@ -356,8 +487,93 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     };
     const buses = { music: bus(start.music), effects: bus(start.effects), voices: bus(start.voices) };
     const slowmo = createSlowmoTreatment(ctx, buses.effects, buses.music, slowmoParams());
-    return { ctx, master, buses, slowmo, music: createMusic(ctx, slowmo.musicIn) };
+    const duck = ctx.createGain();
+    duck.gain.value = 1;
+    duck.connect(slowmo.musicIn);
+    const radio = createRadioPlayer(ctx, duck, {
+      seed: radioSeed,
+      loopsPerTrack: () => params.radioLoops,
+    });
+    return { ctx, master, buses, slowmo, duck, music: createMusic(ctx, duck), radio };
   };
+
+  // --- The radio ----------------------------------------------------------------------------
+
+  /** The stations of the race's region, in switch order (empty until loaded). */
+  const regionStations = (): RadioStation[] => stationsForRegion(allStations ?? [], regionId);
+
+  /** What `audio.radio` tunes to now: 'off', 'score', a station, or 'pending' (stations loading). */
+  const tuned = (): 'off' | 'score' | 'pending' | RadioStation => {
+    const c = Math.round(params.radio);
+    if (c === RADIO_SCORE) return 'score';
+    if (c < RADIO_SCORE) return 'off';
+    if (!allStations) return 'pending';
+    // Past the last station is off.
+    return regionStations()[c - 2] ?? 'off';
+  };
+
+  /** Points the radio player at the tuned station (the score and off need no player). */
+  const retune = () => {
+    const t = tuned();
+    if (t === 'pending') ensureStations();
+    const want = typeof t === 'object' ? t : null;
+    const g = graph;
+    if (!g) return;
+    const cur = g.radio.station();
+    if (want?.id !== cur?.id || want?.packId !== cur?.packId) g.radio.select(want);
+  };
+
+  /** Loads the base pack's stations once (only when a station is first picked). */
+  function ensureStations() {
+    if (allStations || loadingStations) return;
+    loadingStations = true;
+    import('./radio-base')
+      .then((m) => {
+        allStations ??= m.baseStations();
+      })
+      .catch(() => {
+        allStations ??= [];
+      })
+      .finally(() => {
+        loadingStations = false;
+        retune();
+      });
+  }
+
+  /** The score or the radio, by the tuned choice; both stay silent when not racing. */
+  const pumpMusic = (g: Graph, now: number, racing: boolean, intensity: number) => {
+    const t = tuned();
+    g.music.pump(now, racing && t === 'score', intensity);
+    g.radio.pump(now, racing && typeof t === 'object');
+  };
+
+  const duckNow = (g: Graph) => {
+    const now = g.ctx.currentTime;
+    const level = Math.min(1, Math.max(0, params.duckLevel));
+    duckTarget = level;
+    g.duck.gain.cancelScheduledValues(now);
+    g.duck.gain.setTargetAtTime(level, now, 0.03);
+    g.duck.gain.setTargetAtTime(1, now + Math.max(0, params.duckHoldS), 0.35);
+  };
+
+  const nextRadio = () => {
+    const n = (allStations ? regionStations().length : 2) + 2;
+    const c = Math.round(params.radio);
+    // Score, each station, off, and round again.
+    params.radio = c === RADIO_OFF ? RADIO_SCORE : c + 1 >= n ? RADIO_OFF : c + 1;
+    retune();
+  };
+
+  const keys =
+    opts.radioKeys === undefined ? (typeof window === 'undefined' ? null : window) : opts.radioKeys;
+  keys?.addEventListener('keydown', (ev) => {
+    const e = ev as KeyboardEvent;
+    if (e.code !== 'KeyR' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as { tagName?: string } | null;
+    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
+    if (e.shiftKey) graph?.radio.skip();
+    else nextRadio();
+  });
 
   const live = (): Graph | null => (graph && (opts.offline || graph.ctx.state === 'running') ? graph : null);
 
@@ -432,7 +648,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     wind?.set(0, windParams());
     for (const id of [...others.keys()]) dropOther(id);
     dropSiren();
-    g.music.pump(g.ctx.currentTime, false, 0);
+    pumpMusic(g, g.ctx.currentTime, false, 0);
   };
 
   /** Cues that mark the slow motion's edges play at their own pitch. */
@@ -538,13 +754,18 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       }
     }
 
-    // Music: the lead comes in with speed.
-    g.music.pump(now, true, 0.35 + 0.65 * Math.min(1, Math.max(0, me.speed / 35)));
+    // Music: the score's lead comes in with speed (the radio just plays).
+    pumpMusic(g, now, true, 0.35 + 0.65 * Math.min(1, Math.max(0, me.speed / 35)));
   };
 
   return {
     async resume() {
-      graph ??= build();
+      if (!graph) {
+        graph = build();
+        graph.radio.setCut(radioCut);
+        graph.radio.setFx(params.radioFx);
+        retune();
+      }
       applyVolumes();
       if (!opts.offline && graph.ctx.state !== 'running') await graph.ctx.resume();
     },
@@ -561,7 +782,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         return;
       }
       drivePlayer(g, { ...player, contentId: playerEngine?.contentId ?? 'player' }, false);
-      g.music.pump(g.ctx.currentTime, true, 0.35 + 0.65 * Math.min(1, Math.max(0, player.speed / 35)));
+      pumpMusic(g, g.ctx.currentTime, true, 0.35 + 0.65 * Math.min(1, Math.max(0, player.speed / 35)));
     },
     frame(snapshot, playerId) {
       lastSnap = snapshot;
@@ -595,6 +816,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         }
         const impact = Math.min(1, choice.impact * params.crashImpactScale);
         playCue(g, choice.cue, choice.priority, gain, impact);
+        // The music ducks under a crash you are in or can clearly hear.
+        if (DUCK_CUES.has(choice.cue) && (choice.playerInvolved || gain >= 0.5)) duckNow(g);
       }
     },
     setParam(id, value) {
@@ -643,6 +866,23 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         case 'audio.windFullMps':
           params.windFullMps = value;
           break;
+        case 'audio.radio':
+          params.radio = Math.round(value);
+          retune();
+          break;
+        case 'audio.radioLoops':
+          params.radioLoops = Math.max(1, Math.round(value));
+          break;
+        case 'audio.radioFx':
+          params.radioFx = value;
+          graph?.radio.setFx(value);
+          break;
+        case 'audio.duckLevel':
+          params.duckLevel = value;
+          break;
+        case 'audio.duckHoldS':
+          params.duckHoldS = value;
+          break;
       }
     },
     setEngineSounds(byRider) {
@@ -672,6 +912,41 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         pitch: graph?.slowmo.pitch() ?? 1,
       },
       windLevel: wind?.level() ?? 0,
+      radio: {
+        choice: Math.round(params.radio),
+        tunedTo: ((t) => (typeof t === 'object' ? t.id : t))(tuned()),
+        stations: regionStations().map((st) => st.id),
+        nowPlaying: graph?.radio.nowPlaying() ?? null,
+        history: [...(graph?.radio.history() ?? [])],
+      },
+      duckLevel: duckTarget,
     }),
+    setStations(stations) {
+      allStations = [...stations];
+      retune();
+    },
+    setRegion(id) {
+      regionId = id;
+      retune();
+    },
+    setRadioCut(refs) {
+      radioCut = [...refs];
+      graph?.radio.setCut(radioCut);
+    },
+    cutPlayingTrack(raceId, tick) {
+      const playing = graph?.radio.nowPlaying();
+      if (!playing) return null;
+      radioCut = [...radioCut, playing.ref];
+      graph?.radio.setCut(radioCut);
+      return cutFlag(playing.ref, raceId, tick);
+    },
+    nextRadio,
+    skipTrack() {
+      graph?.radio.skip();
+    },
+    duck() {
+      const g = live();
+      if (g) duckNow(g);
+    },
   };
 }

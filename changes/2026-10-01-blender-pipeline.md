@@ -1,0 +1,5 @@
+---
+kind: new
+audience: dev
+---
+The Blender model pipeline is in (playtest 1c, item 4): `tools/blender/` builds each model from a Python script in headless Blender, checks that two builds are byte-identical, scores the result, and commits it to `packs/base/assets/models/`. CI has no Blender, so `tools/blender/models.test.ts` gates the committed GLBs instead: budgets, names, flat materials, ramp and waterline geometry, sway weights and text-surface UVs, plus a load through three's GLTFLoader. It covers eight models. Three are the maintainer's trial picks: the ramp truck, now with pale headlights and no slot in its ramp; the palms, with visible brown coconuts; and the boat, its rods now short and stubby in holders, so the boat is no wider than its hull. The other five are a first scenery pack: mangrove clumps, a bait shack, a power pole with wire attach points, a small offshore skiff and two road-sign blanks that the game writes on. Every model is logged in THIRD_PARTY_ASSETS.md as AI-made. None is drawn in the game yet; that is the render lane's next step.

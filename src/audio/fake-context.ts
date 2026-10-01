@@ -52,6 +52,7 @@ export class FakeNode {
   attack = new FakeParam(0.003);
   release = new FakeParam(0.25);
   playbackRate = new FakeParam(1);
+  delayTime = new FakeParam(0);
   type = '';
   curve: Float32Array | null = null;
   buffer: unknown = null;
@@ -106,6 +107,9 @@ export class FakeAudioContext {
   }
   createDynamicsCompressor() {
     return this.make('compressor');
+  }
+  createDelay(_max = 1) {
+    return this.make('delay');
   }
   createWaveShaper() {
     return this.make('shaper');

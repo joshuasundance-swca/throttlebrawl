@@ -16,9 +16,38 @@ cd tools/gis
 uv sync
 uv run tbgis probe                                  # the Keys data probe -> probe/keys-us1.md
 uv run tbgis bake configs/osm-keys-bahia-honda.json  # -> packs/base/regions/florida-keys/*/osm-*.json
+uv run tbgis bake configs/osm-pnw-gorge.json         # a staging bake -> tools/gis/staging/...
 cd ../.. && npm run format                           # match the repo's Prettier style
 uv run --directory tools/gis pytest                  # the pipeline tests (plus ruff and mypy)
 ```
+
+Every bake also writes `reports/<id>.fun.json`: corners, the tightest radius, grades, launch
+crests, junctions, bridges, tunnels and how far the smoothed line drifts from the real one
+(`src/tbgis/fun.py`).
+
+## Beyond the Keys: street routes and high country
+
+The new regions (Pacific Northwest and San Francisco) needed a few config switches, each off by
+default so the Keys bake is unchanged. Their staged bakes and fun report are in
+[staging/README.md](staging/README.md).
+
+- `osmQuery`: the config's own Overpass query (default: the Keys US 1 query). A cached extract is
+  reused only for the exact query that fetched it, and the 3DEP cache records a hash of its points,
+  so an edited config never bakes from a stale extract.
+- `routeTags`: regexes the path's ways must match (for example a street-name list); every way in the
+  extract still counts toward the junctions report.
+- `via`: waypoints, so a street route takes named turns. A waypoint that would force a U-turn is
+  refused (the road format has none).
+- `respectOneway: false`: a race closes the streets, so one-way streets can be ridden either way.
+- `splitAt` and `splitOnNameChange` (with `minRoadM`): named sections on a long road, or one road
+  per street; `realNameFromOsm` takes each road's `realName` from OSM.
+- `elevation.bridgeDeck: "span"`: a deck runs straight between its banks, for creek and ravine
+  bridges in hill country (the default `"sea"` deck sits above the water, as on the Keys). The deck
+  replaces the valley before the low-pass, so land and deck meet smoothly.
+- `outRoot`: where the files go (default: the region's pack folder), for staging bakes.
+- `realName`, `waysLabel` and `networkNotes`: the words the Keys bake had built in.
+- USGS `getSamples` answers at most 1,000 points per request and silently drops the rest, so longer
+  stretches go in batches.
 
 ## Fetch once, bake offline
 
