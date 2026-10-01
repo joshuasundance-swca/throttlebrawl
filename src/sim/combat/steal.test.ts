@@ -286,13 +286,51 @@ describe('combat-2: the steal', () => {
     expect(owners).toEqual([steal[0]?.actor]);
   });
 
-  it('a rider already holding a weapon cannot steal a second one; the press swings instead', () => {
+  it('a rider already holding a weapon still steals: he drops his own where he is and takes the swung one', () => {
     const h = makeHarness(
       [
         { s: 100, d: 0, role: 'rival' },
         { s: 100, d: 1.2, role: 'player' },
       ],
       scriptOf({ 0: once(SWING, F.attack), 1: once(SWING + 10, F.attack) }),
+      {},
+      [PIPE],
+    );
+    const swung = arm(h, 0);
+    const own = arm(h, 1);
+    h.run(SWING + 40);
+    const steal = grabs(h.events, 'steal');
+    expect(steal).toHaveLength(1);
+    expect(steal[0]).toMatchObject({ actor: 1, target: 0 });
+    expect(steal[0]?.data).toMatchObject({
+      weapon: PIPE_ID,
+      source: 'steal',
+      windupTick: 10,
+      dropped: PIPE_ID,
+    });
+    // The press stole: it started no swing of his own.
+    expect(ofType(h.events, 'attackStart').filter((e) => e.actor === 1)).toHaveLength(0);
+    // He holds the swung pipe. His own went down on the road beside him, where the robbed rival,
+    // bare-handed now and inside pickup reach, rides over it and takes it (the ordinary road
+    // pickup; a cop never picks up, see weapons.test.ts).
+    const st = combatState(h.world);
+    expect(st.heldPickup[1]).toBe(swung);
+    const back = grabs(h.events, 'road').filter((e) => e.tick > SWING);
+    expect(back).toHaveLength(1);
+    expect(back[0]).toMatchObject({ actor: 0, target: own, tick: steal[0]?.tick });
+    expect(st.heldPickup[0]).toBe(own);
+    // Each pipe is in exactly one place.
+    expect(pipeCount(h, swung)).toBe(1);
+    expect(pipeCount(h, own)).toBe(1);
+  });
+
+  it('the same press one tick before the window still swings the held pipe (no steal)', () => {
+    const h = makeHarness(
+      [
+        { s: 100, d: 0, role: 'rival' },
+        { s: 100, d: 1.2, role: 'player' },
+      ],
+      scriptOf({ 0: once(SWING, F.attack), 1: once(SWING + 6, F.attack) }),
       {},
       [PIPE],
     );

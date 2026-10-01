@@ -64,17 +64,31 @@ interface StealRun {
   windups: number;
   steals: number;
   firstStealS: number | null;
+  /** Steals made with a road weapon in hand (the thief dropped it: `data.dropped`). */
+  fullHandSteals: number;
   busted: boolean;
   finished: boolean;
 }
 
-function tryToSteal(event: string, seed: number): StealRun {
+/**
+ * `armed`: the player keeps trying with a road weapon in hand (the W-O polish run: a steal works
+ * with full hands, dropping what you hold), until his first steal off the cop.
+ */
+function tryToSteal(event: string, seed: number, armed = false): StealRun {
   const config = raceConfig(event, seed);
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const copIds = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
   const bot = createBot();
-  const run: StealRun = { seed, windups: 0, steals: 0, firstStealS: null, busted: false, finished: false };
+  const run: StealRun = {
+    seed,
+    windups: 0,
+    steals: 0,
+    firstStealS: null,
+    fullHandSteals: 0,
+    busted: false,
+    finished: false,
+  };
   let snap: SimSnapshot = sim.snapshot();
   let pressAt = -1;
   const winding = new Set<number>();
@@ -82,7 +96,7 @@ function tryToSteal(event: string, seed: number): StealRun {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     const me = snap.entities[playerId];
-    if (me && !me.heldWeapon) {
+    if (me && (!me.heldWeapon || (armed && run.steals === 0))) {
       for (const id of copIds) {
         const cop = snap.entities[id];
         if (!cop || cop.mode !== 'Road' || !cop.heldWeapon) continue;
@@ -122,6 +136,7 @@ function tryToSteal(event: string, seed: number): StealRun {
       if (e.type === 'weaponGrab' && e.actor === playerId && e.data['source'] === 'steal' && offCop) {
         run.steals++;
         run.firstStealS ??= sim.tick / 60;
+        if (e.data['dropped']) run.fullHandSteals++;
       }
       if (e.type === 'bust' && e.target === playerId) run.busted = true;
     }
@@ -164,4 +179,28 @@ describe("the law's weapons in a real race (release content, every region)", () 
       expect(stole.length).toBeGreaterThanOrEqual(Math.ceil(runs.length * MIN_STEAL_SHARE));
     });
   }
+
+  it('with a road weapon in hand, a player who tries still steals the cop’s weapon (he drops his own)', () => {
+    const lines: string[] = [];
+    let fullHands = 0;
+    for (const r of REGIONS) {
+      const runs = SEEDS.map((seed) => tryToSteal(r.event, seed, true));
+      const stole = runs.filter((x) => x.steals > 0);
+      const full = runs.reduce((n, x) => n + x.fullHandSteals, 0);
+      fullHands += full;
+      lines.push(
+        `${r.name}: stole in ${stole.length} of ${runs.length} races, ${full} of them with a road weapon in hand ` +
+          `(seeds ${
+            runs
+              .filter((x) => x.fullHandSteals > 0)
+              .map((x) => x.seed)
+              .join(', ') || 'none'
+          })`,
+      );
+      expect(stole.length, r.name).toBeGreaterThanOrEqual(Math.ceil(runs.length * MIN_STEAL_SHARE));
+    }
+    for (const line of lines) process.stdout.write(`[cops-steal armed] ${line}\n`);
+    // Seeded, so the same races every run: full-handed steals happen in a normal race.
+    expect(fullHands).toBeGreaterThan(0);
+  });
 }, 900_000);

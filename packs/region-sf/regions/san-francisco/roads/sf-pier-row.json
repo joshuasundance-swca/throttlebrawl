@@ -27,6 +27,7 @@
     { "s0": 0, "s1": 520, "side": "left", "tag": "warehouses" }
   ],
   "features": [
+    { "kind": "copSpawn", "id": "pier-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
     {
       "kind": "roadsideZone",
       "id": "pier-row-sidewalk",
