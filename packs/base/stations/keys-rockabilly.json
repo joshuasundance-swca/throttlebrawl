@@ -1,0 +1,55 @@
+{
+  "type": "station",
+  "id": "keys-rockabilly",
+  "name": "Grease Trap 1340 AM",
+  "genre": "rockabilly",
+  "regions": ["florida-keys"],
+  "tracks": [
+    {
+      "id": "bait-shack-bop",
+      "title": "Bait Shack Bop",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 184, "key": "E", "form": "twelve", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "pastel-motel-shuffle",
+      "title": "Pastel Motel Shuffle",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 168, "key": "A", "form": "quick", "band": "boogie" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "key-lime-slapback",
+      "title": "Key Lime Slapback",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 196, "key": "G", "form": "eight", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "last-chance-gas",
+      "title": "Last Chance Gas",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 176, "key": "D", "form": "twelve", "band": "boogie" }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "Code-made rockabilly tracks (src/audio/radio-compose.ts, preset rockabilly-trio). Melodies are generated from each track's seed, so they are original. AI-made tracks join with assets-2. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "type": "route",
+  "id": "osm-chuckanut-run",
+  "name": "Chuckanut Run",
+  "network": "osm-pnw-chuckanut",
+  "start": {
+    "road": "osm-chuckanut-larrabee",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-chuckanut-oyster-creek",
+    "s": 2590.0582
+  },
+  "mainPath": ["osm-chuckanut-larrabee", "osm-chuckanut-cliffs", "osm-chuckanut-oyster-creek"],
+  "allowedRoads": ["osm-chuckanut-larrabee", "osm-chuckanut-cliffs", "osm-chuckanut-oyster-creek"],
+  "checkpoints": [
+    {
+      "road": "osm-chuckanut-cliffs",
+      "s": 1248.0276
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-01",
+      "tool": {
+        "name": "tools/gis/src/tbgis/cli.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/configs/osm-pnw-chuckanut.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](48.600,-122.520,48.720,-122.440);\nout tags geom;",
+          "retrievedAt": "2026-10-01T01:54:42Z",
+          "sha256": "984f0acb74bba3168b0c0741e1c04ea2ec6721f921b11954ddda9fc5279bd0b0"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 794 points in 1 request(s) (lon, lat WGS84, sha256 f3bde18132286375), bilinear",
+          "retrievedAt": "2026-10-01T02:14:46Z",
+          "sha256": "e00f30ddb31f0d8bbc263b101f2f8623049cfcb2ada927e776437db99baf0fac"
+        }
+      ]
+    }
+  }
+}

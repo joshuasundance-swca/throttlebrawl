@@ -12,13 +12,14 @@ construction, which is what the road lint checks.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import NDArray
 
 from tbgis.config import BakeConfig
-from tbgis.graph import Graph
+from tbgis.graph import Graph, path_via
 from tbgis.osm import Way
 from tbgis.tmerc import Frame
 
@@ -26,6 +27,7 @@ type F64 = NDArray[np.float64]
 type Bool = NDArray[np.bool_]
 
 MPH = 0.44704
+ABUTMENT_M = 15.0
 
 
 @dataclass
@@ -41,6 +43,7 @@ class RealPath:
     seg_speed: F64  # m/s, nan when untagged
     seg_way: NDArray[np.int64]
     names: dict[int, str] = field(default_factory=dict)
+    seg_tunnel: Bool | None = None
 
 
 def parse_speed(tag: str | None) -> float:
@@ -54,8 +57,16 @@ def parse_speed(tag: str | None) -> float:
     return value * MPH if len(parts) > 1 and parts[1] == "mph" else value / 3.6
 
 
+def route_ways(cfg: BakeConfig, ways: list[Way]) -> list[Way]:
+    """The ways allowed to carry the path: every ``routeTags`` regex must match its tag."""
+    rules = [(k, re.compile(v)) for k, v in cfg.routeTags.items()]
+    return [w for w in ways if all(rx.search(w.tags.get(k, "")) for k, rx in rules)]
+
+
 def real_path(cfg: BakeConfig, ways: list[Way]) -> RealPath:
-    steps = Graph(ways).path(cfg.pathFrom.tup(), cfg.pathTo.tup())
+    graph = Graph(route_ways(cfg, ways), respect_oneway=cfg.respectOneway)
+    points = [cfg.pathFrom.tup(), *(v.tup() for v in cfg.via), cfg.pathTo.tup()]
+    steps = path_via(graph, points)
     frame = Frame(cfg.crs.originLatDeg, cfg.crs.originLonDeg)
     verts = [steps[0].a, *(s.b for s in steps)]
     xz = np.array([frame.to_world(lat, lon) for lat, lon in verts], dtype=np.float64)
@@ -70,6 +81,7 @@ def real_path(cfg: BakeConfig, ways: list[Way]) -> RealPath:
         seg_speed=np.array([parse_speed(s.way.tags.get("maxspeed")) for s in steps]),
         seg_way=np.array([s.way.id for s in steps], dtype=np.int64),
         names={s.way.id: s.way.tags.get("name", "") for s in steps},
+        seg_tunnel=np.array([s.way.tags.get("tunnel", "no") not in ("no", "") for s in steps]),
     )
 
 
@@ -120,6 +132,8 @@ class Profile:
     speed: F64
     real_length: float
     compressed: list[tuple[float, float, float]]  # (real s0, real s1, kept fraction)
+    way: NDArray[np.int64] | None = None  # the OSM way under each grid point
+    names: dict[int, str] = field(default_factory=dict)  # way id -> its OSM name tag
 
 
 def straight_runs(kappa: F64, allowed: Bool, kmax: float, min_len: float, h: float) -> list[tuple[int, int]]:
@@ -180,6 +194,8 @@ def build_profile(cfg: BakeConfig, rp: RealPath, land_y: F64 | None, land_s: F64
     s_real_g = np.interp(s, s_game, s_real)
     bridge_g = bridge[np.clip(np.searchsorted(s_game, s, side="right") - 1, 0, len(bridge) - 1)]
     speed_g = speed[np.clip(np.searchsorted(s_game, s, side="right") - 1, 0, len(speed) - 1)]
+    way_real = rp.seg_way[seg]
+    way_g = way_real[np.clip(np.searchsorted(s_game, s, side="right") - 1, 0, len(way_real) - 1)]
     mid = (heading_g[:-1] + heading_g[1:]) / 2
     x0, z0 = np.interp(s0, rp.cum, rp.x), np.interp(s0, rp.cum, rp.z)
     x = x0 + np.concatenate([[0.0], np.cumsum(np.sin(mid) * hg)])
@@ -201,6 +217,8 @@ def build_profile(cfg: BakeConfig, rp: RealPath, land_y: F64 | None, land_s: F64
         speed=speed_g,
         real_length=s1 - s0,
         compressed=compressed,
+        way=way_g,
+        names=dict(rp.names),
     )
 
 
@@ -237,17 +255,32 @@ def elevation(
     """Land from the elevation samples (by real arc length); bridge decks and humps synthesized."""
     e = cfg.elevation
     if land_y is None or land_s is None:
-        land = np.full_like(s, e.minLandM)
+        raw = np.full_like(s, e.minLandM)
     else:
-        land = np.interp(s_real, land_s, land_y)
-        land = np.maximum(gaussian(land, e.lowPassSigmaM / h) * e.landExaggeration, e.minLandM)
+        raw = np.interp(s_real, land_s, land_y)
+    if e.bridgeDeck == "span":
+        # Each deck runs straight between its abutments, taken as the highest unsmoothed land
+        # within ABUTMENT_M outside each end (OSM bridge ends are approximate). The decks replace
+        # the valley in the raw profile *before* the low-pass, so land and deck meet smoothly.
+        raw = raw.copy()
+        k = max(1, round(ABUTMENT_M / h))
+        for a, b in runs_of(bridge):
+            ya = float(raw[max(0, a - k) : a + 1].max())
+            yb = float(raw[min(len(s) - 1, b - 1) : min(len(s), b + k)].max())
+            raw[a:b] = ya + (yb - ya) * (s[a:b] - s[a]) / max(s[b - 1] - s[a], 1e-9)
+    if land_y is None or land_s is None:
+        land = raw
+    else:
+        land = np.maximum(gaussian(raw, e.lowPassSigmaM / h) * e.landExaggeration, e.minLandM)
     y = land.copy()
     for a, b in runs_of(bridge):
         length = (b - a) * h
-        ramp = min(e.deckRampM, length / 2)
-        u = s - s[a]
-        rise = smoothstep(u / ramp) * smoothstep((s[b - 1] - s) / ramp)
-        y = np.where((np.arange(len(s)) >= a) & (np.arange(len(s)) < b), y + (e.deckM - y) * rise, y)
+        on = (np.arange(len(s)) >= a) & (np.arange(len(s)) < b)
+        if e.bridgeDeck == "sea":
+            ramp = min(e.deckRampM, length / 2)
+            u = s - s[a]
+            rise = smoothstep(u / ramp) * smoothstep((s[b - 1] - s) / ramp)
+            y = np.where(on, y + (e.deckM - y) * rise, y)
         if length >= e.humpMinBridgeM and e.humpHeightM > 0:
             centre = (s[a] + s[b - 1]) / 2
             v = (s - (centre - e.humpLengthM / 2)) / e.humpLengthM

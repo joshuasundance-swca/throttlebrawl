@@ -18,6 +18,7 @@ from tbgis.config import BakeConfig
 from tbgis.elevation import fill_gaps, parse_samples, sample_points
 from tbgis.emit import bake
 from tbgis.fetch import overpass, usgs_samples
+from tbgis.fun import fun_report
 from tbgis.lint import lint_bake
 from tbgis.osm import load_ways
 from tbgis.probe import report
@@ -46,11 +47,19 @@ def cmd_probe(_: argparse.Namespace) -> int:
     return 0
 
 
+def out_root(cfg: BakeConfig, repo: Path = REPO) -> Path:
+    """Where a bake writes: the region's pack folder, or the config's staging root."""
+    if cfg.outRoot is not None:
+        return repo / cfg.outRoot
+    return repo / "packs" / "base" / "regions" / cfg.region
+
+
 def cmd_bake(args: argparse.Namespace) -> int:
     cfg = BakeConfig.load(Path(args.config))
     osm_raw = GIS / cfg.osmExtract
-    osm = overpass(KEYS_US1_QUERY, osm_raw)
-    rp = real_path(cfg, load_ways(osm_raw))
+    osm = overpass(cfg.osmQuery or KEYS_US1_QUERY, osm_raw)
+    ways = load_ways(osm_raw)
+    rp = real_path(cfg, ways)
     es, pts = sample_points(cfg, rp)
     usgs = usgs_samples(pts, GIS / cfg.elevationExtract)
     land = parse_samples(GIS / cfg.elevationExtract, len(pts))
@@ -62,7 +71,7 @@ def cmd_bake(args: argparse.Namespace) -> int:
         for e in errs:
             print(f"lint: {e}", file=sys.stderr)
         return 1
-    region = REPO / "packs" / "base" / "regions" / cfg.region
+    region = out_root(cfg)
     files = [("networks", network), *(("roads", r) for r in roads), ("routes", route)]
     for folder, doc in files:
         path = region / folder / f"{doc['id']}.json"
@@ -78,6 +87,12 @@ def cmd_bake(args: argparse.Namespace) -> int:
     )
     for a, b in runs_of(p.bridge):
         print(f"  bridge at {p.s[a]:.0f}..{p.s[b - 1]:.0f} m ({(b - a) * p.h:.0f} m)")
+    fun = fun_report(cfg, rp, p, ways)
+    fun_path = GIS / "reports" / f"{cfg.id}.fun.json"  # never inside a pack folder
+    fun_path.parent.mkdir(parents=True, exist_ok=True)
+    fun_path.write_text(json.dumps(fun.as_dict(), indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"fun: {json.dumps(fun.as_dict())}")
+    print(f"wrote {fun_path.relative_to(REPO).as_posix()}")
     print("lint: 0 errors; now run `npm run format` at the repo root")
     return 0
 
