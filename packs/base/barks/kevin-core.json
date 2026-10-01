@@ -12,53 +12,71 @@
     {
       "id": "kevin-start-sync",
       "trigger": "race-start",
-      "text": "Quick sync before we start: you lose."
+      "text": "Quick sync before we start: you lose.",
+      "audioAsset": "audio/barks/kevin-core/kevin-start-sync",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-pass-email",
       "trigger": "overtake",
-      "text": "Per my last email: move."
+      "text": "Per my last email: move.",
+      "audioAsset": "audio/barks/kevin-core/kevin-pass-email",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-pass-pin",
       "trigger": "overtake",
-      "text": "Let's put a pin in you."
+      "text": "Let's put a pin in you.",
+      "audioAsset": "audio/barks/kevin-core/kevin-pass-pin",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-denied",
       "trigger": "hit-landed",
-      "text": "Your claim has been denied."
+      "text": "Your claim has been denied.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-denied",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-warning",
       "trigger": "hit-landed",
-      "text": "Consider this your written warning."
+      "text": "Consider this your written warning.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-warning",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-traffic-losses",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Filed under: acceptable losses."
+      "text": "Filed under: acceptable losses.",
+      "audioAsset": "audio/barks/kevin-core/kevin-traffic-losses",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-traffic-delegated",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Delegated. To a pickup truck."
+      "text": "Delegated. To a pickup truck.",
+      "audioAsset": "audio/barks/kevin-core/kevin-traffic-delegated",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-down-escalating",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "I'm escalating this to management."
+      "text": "I'm escalating this to management.",
+      "audioAsset": "audio/barks/kevin-core/kevin-down-escalating",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-down-filed",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Noted. Timestamped. Filed."
+      "text": "Noted. Timestamped. Filed.",
+      "audioAsset": "audio/barks/kevin-core/kevin-down-filed",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-down-again",
@@ -72,27 +90,37 @@
           "value": 2
         }
       ],
-      "text": "Repeat offender. Opening a spreadsheet."
+      "text": "Repeat offender. Opening a spreadsheet.",
+      "audioAsset": "audio/barks/kevin-core/kevin-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-crash-minutes",
       "trigger": "crash-self",
-      "text": "Strike that from the minutes."
+      "text": "Strike that from the minutes.",
+      "audioAsset": "audio/barks/kevin-core/kevin-crash-minutes",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-crash-ooo",
       "trigger": "crash-self",
-      "text": "Out of office. Effective immediately."
+      "text": "Out of office. Effective immediately.",
+      "audioAsset": "audio/barks/kevin-core/kevin-crash-ooo",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-near-budget",
       "trigger": "near-miss",
-      "text": "Close call. Still under budget."
+      "text": "Close call. Still under budget.",
+      "audioAsset": "audio/barks/kevin-core/kevin-near-budget",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-near-rounding",
       "trigger": "near-miss",
-      "text": "Missed it by a rounding error."
+      "text": "Missed it by a rounding error.",
+      "audioAsset": "audio/barks/kevin-core/kevin-near-rounding",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-lead-forecast",
@@ -104,7 +132,9 @@
           "value": 1
         }
       ],
-      "text": "Leading. As forecast in Q3."
+      "text": "Leading. As forecast in Q3.",
+      "audioAsset": "audio/barks/kevin-core/kevin-lead-forecast",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-late-quarter",
@@ -116,14 +146,18 @@
           "value": 0.8
         }
       ],
-      "text": "End of quarter. Targets met."
+      "text": "End of quarter. Targets met.",
+      "audioAsset": "audio/barks/kevin-core/kevin-late-quarter",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-mayor",
       "trigger": "hit-landed",
       "target": "the-mayor",
       "priority": 1,
-      "text": "Invoice 0042. Paid in full, Mayor."
+      "text": "Invoice 0042. Paid in full, Mayor.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-mayor",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-renewed",
@@ -135,7 +169,9 @@
           "value": 0.3
         }
       ],
-      "text": "Your contract is not being renewed."
+      "text": "Your contract is not being renewed.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-renewed",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-incident-two",
@@ -147,7 +183,9 @@
           "value": 2
         }
       ],
-      "text": "Incident two. Spreadsheet attached."
+      "text": "Incident two. Spreadsheet attached.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-incident-two",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-hit-incident-three",
@@ -159,7 +197,9 @@
           "value": 3
         }
       ],
-      "text": "Three incidents. Pivot table time."
+      "text": "Three incidents. Pivot table time.",
+      "audioAsset": "audio/barks/kevin-core/kevin-hit-incident-three",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-near-hr",
@@ -171,7 +211,9 @@
           "value": 0.4
         }
       ],
-      "text": "Flagging that near miss for HR."
+      "text": "Flagging that near miss for HR.",
+      "audioAsset": "audio/barks/kevin-core/kevin-near-hr",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-start-late",
@@ -183,7 +225,9 @@
           "value": "night"
         }
       ],
-      "text": "Working late again. On you."
+      "text": "Working late again. On you.",
+      "audioAsset": "audio/barks/kevin-core/kevin-start-late",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-crash-blame",
@@ -195,14 +239,18 @@
           "value": 5
         }
       ],
-      "text": "Reassigning blame. To the road."
+      "text": "Reassigning blame. To the road.",
+      "audioAsset": "audio/barks/kevin-core/kevin-crash-blame",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-down-mayor",
       "trigger": "knocked-down-by-target",
       "target": "the-mayor",
       "priority": 1,
-      "text": "Mayor. This goes on your file."
+      "text": "Mayor. This goes on your file.",
+      "audioAsset": "audio/barks/kevin-core/kevin-down-mayor",
+      "audioStatus": "live"
     },
     {
       "id": "kevin-traffic-settled",
@@ -214,7 +262,9 @@
           "value": 1
         }
       ],
-      "text": "Account settled. Interest included."
+      "text": "Account settled. Interest included.",
+      "audioAsset": "audio/barks/kevin-core/kevin-traffic-settled",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -224,6 +274,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-09-29"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_eric, speed 0.9, pitch +0 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

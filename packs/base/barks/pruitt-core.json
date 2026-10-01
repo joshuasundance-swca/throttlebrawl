@@ -12,71 +12,97 @@
     {
       "id": "pruitt-siren-teeth",
       "trigger": "cop-siren",
-      "text": "License, registration, and your front teeth."
+      "text": "License, registration, and your front teeth.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-teeth",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-siren-years",
       "trigger": "cop-siren",
-      "text": "Twenty-two years of this."
+      "text": "Twenty-two years of this.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-years",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-siren-pay",
       "trigger": "cop-siren",
-      "text": "Pull over. Or don't. Same pay."
+      "text": "Pull over. Or don't. Same pay.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-pay",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-bust-ground",
       "trigger": "busted",
-      "text": "Right to remain on the ground."
+      "text": "Right to remain on the ground.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-ground",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-bust-paperwork",
       "trigger": "busted",
-      "text": "Stay down. Paperwork's long."
+      "text": "Stay down. Paperwork's long.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-paperwork",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-hit-resisting",
       "trigger": "hit-landed",
-      "text": "That's resisting. Probably."
+      "text": "That's resisting. Probably.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-hit-resisting",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-hit-baton",
       "trigger": "hit-landed",
-      "text": "Baton says hello."
+      "text": "Baton says hello.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-hit-baton",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-taken-tuesday",
       "trigger": "hit-taken",
-      "text": "Assaulting an officer. On a Tuesday."
+      "text": "Assaulting an officer. On a Tuesday.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-taken-tuesday",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-taken-later",
       "trigger": "hit-taken",
-      "text": "I'm writing that down. Later."
+      "text": "I'm writing that down. Later.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-taken-later",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-down-walk",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Fine. I'll walk it off."
+      "text": "Fine. I'll walk it off.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-down-walk",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-down-hassle",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "That's a felony and a hassle."
+      "text": "That's a felony and a hassle.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-down-hassle",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-crash-weather",
       "trigger": "crash-self",
-      "text": "Write it up as weather."
+      "text": "Write it up as weather.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-crash-weather",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-crash-county",
       "trigger": "crash-self",
-      "text": "County bike. Not my problem."
+      "text": "County bike. Not my problem.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-crash-county",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-siren-backup",
@@ -88,7 +114,9 @@
           "value": 0.7
         }
       ],
-      "text": "Backup's coming. Eventually."
+      "text": "Backup's coming. Eventually.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-backup",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-siren-overtime",
@@ -100,7 +128,9 @@
           "value": "night"
         }
       ],
-      "text": "Overtime. You owe me overtime."
+      "text": "Overtime. You owe me overtime.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-overtime",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-bust-again",
@@ -114,7 +144,9 @@
           "value": 2
         }
       ],
-      "text": "Oh, it's you again. Good taser."
+      "text": "Oh, it's you again. Good taser.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-again",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-bust-hurt",
@@ -126,7 +158,9 @@
           "value": 0.3
         }
       ],
-      "text": "Stay down. I'm on my break."
+      "text": "Stay down. I'm on my break.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-hurt",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-hit-weak",
@@ -138,7 +172,9 @@
           "value": 0.3
         }
       ],
-      "text": "Lie still. It's less paperwork."
+      "text": "Lie still. It's less paperwork.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-hit-weak",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-taken-grudge",
@@ -150,7 +186,9 @@
           "value": 1
         }
       ],
-      "text": "That's two counts now. Wonderful."
+      "text": "That's two counts now. Wonderful.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-taken-grudge",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-down-again",
@@ -164,7 +202,9 @@
           "value": 2
         }
       ],
-      "text": "Again. I'm too old for again."
+      "text": "Again. I'm too old for again.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-crash-late",
@@ -176,7 +216,9 @@
           "value": 0.8
         }
       ],
-      "text": "Close enough to the station. Done."
+      "text": "Close enough to the station. Done.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-crash-late",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-siren-dawn",
@@ -188,7 +230,9 @@
           "value": "dawn"
         }
       ],
-      "text": "Haven't had my coffee. Run."
+      "text": "Haven't had my coffee. Run.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-dawn",
+      "audioStatus": "live"
     },
     {
       "id": "pruitt-bust-heat",
@@ -200,7 +244,9 @@
           "value": 0.7
         }
       ],
-      "text": "Whole county saw that. Down."
+      "text": "Whole county saw that. Down.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-heat",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -210,6 +256,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_echo, speed 0.85, pitch -0.5 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

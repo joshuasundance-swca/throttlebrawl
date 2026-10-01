@@ -12,65 +12,109 @@
     {
       "id": "pivot-start-stealth",
       "trigger": "race-start",
-      "text": "Coming out of stealth. Avert your eyes."
+      "text": "Coming out of stealth. Avert your eyes.",
+      "audioAsset": "audio/barks/pivot-core/pivot-start-stealth",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-pass-legacy",
       "trigger": "overtake",
-      "text": "Passing you. You're the legacy system."
+      "text": "Passing you. You're the legacy system.",
+      "audioAsset": "audio/barks/pivot-core/pivot-pass-legacy",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-pass-deck",
       "trigger": "overtake",
-      "text": "That was a ten-x pass. I'll send the deck."
+      "text": "That was a ten-x pass. I'll send the deck.",
+      "audioAsset": "audio/barks/pivot-core/pivot-pass-deck",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-hit-ditch",
       "trigger": "hit-landed",
-      "text": "We're pre-revenue. You're pre-ditch."
+      "text": "We're pre-revenue. You're pre-ditch.",
+      "audioAsset": "audio/barks/pivot-core/pivot-hit-ditch",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-hit-round",
       "trigger": "hit-landed",
       "priority": 1,
-      "when": [{ "fact": "race.progress", "op": "gte", "value": 0.75 }],
-      "text": "Closing the round. You're not in it."
+      "when": [
+        {
+          "fact": "race.progress",
+          "op": "gte",
+          "value": 0.75
+        }
+      ],
+      "text": "Closing the round. You're not in it.",
+      "audioAsset": "audio/barks/pivot-core/pivot-hit-round",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-traffic-exit",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Acquired by a bus. Congrats on the exit."
+      "text": "Acquired by a bus. Congrats on the exit.",
+      "audioAsset": "audio/barks/pivot-core/pivot-traffic-exit",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-down-pavement",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Pivoting. To the pavement."
+      "text": "Pivoting. To the pavement.",
+      "audioAsset": "audio/barks/pivot-core/pivot-down-pavement",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-down-risks",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
-      "text": "Again? You're going on the risks slide."
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Again? You're going on the risks slide.",
+      "audioAsset": "audio/barks/pivot-core/pivot-down-risks",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-crash-burn",
       "trigger": "crash-self",
-      "text": "Burn rate's fine. Everything's fine."
+      "text": "Burn rate's fine. Everything's fine.",
+      "audioAsset": "audio/barks/pivot-core/pivot-crash-burn",
+      "audioStatus": "live"
     },
     {
       "id": "pivot-near-episode",
       "trigger": "near-miss",
-      "text": "Near miss. That's a podcast episode."
+      "text": "Near miss. That's a podcast episode.",
+      "audioAsset": "audio/barks/pivot-core/pivot-near-episode",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
     "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_adam, speed 1.1, pitch +1 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
+    }
   }
 }

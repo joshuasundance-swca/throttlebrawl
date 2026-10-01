@@ -18,8 +18,10 @@
 //
 // Spoken barks (the maintainer, 2026-10-01: "Voices go in"; bark-voices.ts): when a bark's
 // subtitle shows (the bubble's `throttlebrawl:bark` event on the window), its clip plays on the
-// voices bus and the music ducks a little under it. The Voices switch and level (`setVoices`) and
-// this device's cuts (`setRadioCut`, which carries every veto) apply at once.
+// voices bus and the music ducks a little under it. The Voices slider is the voices bus and the
+// Voices switch silences it (the settings record's `volumes.voices` and `voicesOn`, handed in through
+// `setVolumes`); with the bus silent or the sound muted no clip is fetched or played. This device's
+// cuts (`setRadioCut`, which carries every veto) apply at once.
 //
 // Wiring (app/): `frame(snapshot, playerId)` once per rendered frame drives everything placed in
 // the world; `onEvents(events)` after each sim step plays the cues. The skeleton's
@@ -76,10 +78,13 @@ export const RADIO_SCORE = 1;
 const DUCK_CUES: ReadonlySet<CueId> = new Set(['crash', 'takedown', 'railClang', 'splash']);
 export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
 /**
- * Spoken barks [default]: the music dips a little under a voice (not as far as under a crash),
- * and the Voices settings' defaults (voicesOn true, voiceVolume 0.8) play a clip at its own level.
+ * Spoken barks [default]. The music dips a little under a voice (not as far as under a crash), the
+ * effects (engine, wind, hits) dip a touch, and a clip plays at twice the level it was made, under
+ * the voices bus (the Voices slider). Measured offline (tests/e2e/audio-voices.spec.ts): at these
+ * values a line sits above a flat-out engine at the default settings; at gain 1 with no effects dip
+ * it sat about 4 dB under it.
  */
-export const VOICE_DEFAULTS = { duck: 0.7, gain: 1, on: true, volume: 0.8 } as const;
+export const VOICE_DEFAULTS = { duck: 0.7, fxDuck: 0.75, gain: 2 } as const;
 
 /** Presentation-only tuning (applies at once, never recorded; docs/architecture.md, "Tuning"). */
 export const AUDIO_TUNING: readonly TuningParamDecl[] = [
@@ -272,6 +277,17 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: '',
     affectsSim: false,
   },
+  {
+    id: 'audio.voiceFxDuck',
+    group: 'audio',
+    label: 'Engine and effects under a bark voice (1 = no dip)',
+    default: VOICE_DEFAULTS.fxDuck,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: false,
+  },
   // Playtest 1 item 10 (speed cues): the wind rises with your speed (wind.ts).
   {
     id: 'audio.windGain',
@@ -360,14 +376,8 @@ export interface AudioInspect {
   };
   /** The level the music duck aims for (1 = not ducked). */
   duckLevel: number;
-  /** Spoken barks: what speaks now and what spoke, the Voices switch, and the clip level. */
-  voice: BarkVoiceState & { on: boolean; level: number };
-}
-
-/** The Voices settings (the settings record's `voicesOn` and `voiceVolume`, 0..1). */
-export interface VoiceSettings {
-  on?: boolean;
-  volume?: number;
+  /** Spoken barks: what speaks now and what spoke, whether voices can be heard, the clip level. */
+  voice: BarkVoiceState & { on: boolean; level: number; fxLevel: number };
 }
 
 export interface AudioSystem {
@@ -412,8 +422,6 @@ export interface AudioSystem {
    * `throttlebrawl:bark` event calls this; resolves true when the clip started.
    */
   say(contentRef: string): Promise<boolean>;
-  /** The Voices switch and level; a missing field keeps its current value (defaults: on, 0.8). */
-  setVoices(v: VoiceSettings): void;
 }
 
 export interface AudioOptions {
@@ -448,7 +456,7 @@ interface Graph {
   duck: GainNode;
   music: MusicLoop;
   radio: RadioPlayer;
-  /** Spoken barks, through `voiceLevel` (the Voices switch and level) into the voices bus. */
+  /** Spoken barks, through `voiceLevel` (the `audio.voiceGain` slider) into the voices bus. */
   barks: BarkVoices;
   voiceLevel: GainNode;
 }
@@ -490,16 +498,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     duckHoldS: DUCK_DEFAULTS.holdS as number,
     voiceGain: VOICE_DEFAULTS.gain as number,
     voiceDuck: VOICE_DEFAULTS.duck as number,
+    voiceFxDuck: VOICE_DEFAULTS.fxDuck as number,
   };
-  // Spoken barks: the Voices settings (safe defaults until the settings record carries them).
-  const voices = { on: VOICE_DEFAULTS.on as boolean, volume: VOICE_DEFAULTS.volume as number };
-  /** The clip level: off, or the Voices level relative to its default (0.8 plays clips as made). */
-  const voiceLevel = () => {
-    const v = Number.isFinite(voices.volume)
-      ? Math.min(1, Math.max(0, voices.volume))
-      : VOICE_DEFAULTS.volume;
-    return voices.on ? (v / VOICE_DEFAULTS.volume) * Math.max(0, params.voiceGain) : 0;
-  };
+  /** The clip level under the voices bus (the `audio.voiceGain` slider). */
+  const voiceLevel = () => Math.max(0, params.voiceGain);
+  /** Voices can be heard: not muted, the voices bus (Voices on, its slider up) and the clip level. */
+  const voicesAudible = () => !muted && busTargets(volumes, muted).voices > 0 && voiceLevel() > 0;
   /** Every veto reference on this device (radio tracks and bark lines alike). */
   let cutRefs: string[] = [];
   // The radio: stations (null until loaded), the race's region, and this device's cuts.
@@ -509,6 +513,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let radioCut: string[] = [];
   const radioSeed = opts.radioSeed ?? Math.floor(Math.random() * 0xffffffff);
   let duckTarget = 1;
+  /** The effects level the last voice dipped to (1 = never dipped). */
+  let voiceFxTarget = 1;
   const windParams = () => ({
     gain: params.windGain,
     fromMps: params.windFromMps,
@@ -541,6 +547,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     graph.buses.music.gain.setTargetAtTime(g.music, t, 0.02);
     graph.buses.effects.gain.setTargetAtTime(g.effects, t, 0.02);
     graph.buses.voices.gain.setTargetAtTime(g.voices, t, 0.02);
+    // Voices switched off (or muted) mid-line: the line stops.
+    if (!voicesAudible()) graph.barks.stop();
   };
 
   const build = (): Graph => {
@@ -566,7 +574,11 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       return g;
     };
     const buses = { music: bus(start.music), effects: bus(start.effects), voices: bus(start.voices) };
-    const slowmo = createSlowmoTreatment(ctx, buses.effects, buses.music, slowmoParams());
+    // The effects dip a little under a spoken bark (fxDuck), so the line carries over the engine.
+    const fxDuck = ctx.createGain();
+    fxDuck.gain.value = 1;
+    fxDuck.connect(buses.effects);
+    const slowmo = createSlowmoTreatment(ctx, fxDuck, buses.music, slowmoParams());
     const duck = ctx.createGain();
     duck.gain.value = 1;
     duck.connect(slowmo.musicIn);
@@ -581,7 +593,15 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       ...(opts.barkClipUrl ? { clipUrl: opts.barkClipUrl } : {}),
       ...(opts.barkFetch ? { fetchBytes: opts.barkFetch } : {}),
       onStart: (durationS, contentRef) => {
-        if (graph) duckTo(graph, params.voiceDuck, durationS + 0.15, true);
+        if (graph) {
+          duckTo(graph, params.voiceDuck, durationS + 0.15, true);
+          const t = ctx.currentTime;
+          const fx = Math.min(1, Math.max(0, params.voiceFxDuck));
+          fxDuck.gain.cancelScheduledValues(t);
+          fxDuck.gain.setTargetAtTime(fx, t, 0.03);
+          fxDuck.gain.setTargetAtTime(1, t + durationS, 0.2);
+          voiceFxTarget = fx;
+        }
         // The subtitle stays up while its voice speaks (bubble.ts listens).
         if (typeof CustomEvent !== 'undefined') {
           barkEvents?.dispatchEvent(new CustomEvent(BARK_VOICE_EVENT, { detail: { contentRef, durationS } }));
@@ -696,7 +716,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   /** Speaks a bark line when its subtitle shows: only while the sound runs and Voices are on. */
   const say = (contentRef: string): Promise<boolean> => {
     const g = live();
-    if (!g || voiceLevel() <= 0) return Promise.resolve(false);
+    if (!g || !voicesAudible()) return Promise.resolve(false);
     return g.barks.say(contentRef);
   };
   const barkEvents =
@@ -709,7 +729,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     if (!graph) return;
     const level = voiceLevel();
     graph.voiceLevel.gain.setTargetAtTime(level, graph.ctx.currentTime, 0.02);
-    if (level <= 0) graph.barks.stop();
+    if (!voicesAudible()) graph.barks.stop();
   };
 
   /** Registers a long-lived voice in the pool; if it is ever stolen, `onLost` forgets it. */
@@ -1024,6 +1044,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           params.voiceGain = value;
           applyVoiceLevel();
           break;
+        case 'audio.voiceFxDuck':
+          params.voiceFxDuck = value;
+          break;
         case 'audio.voiceDuck':
           params.voiceDuck = value;
           break;
@@ -1066,8 +1089,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       duckLevel: duckTarget,
       voice: {
         ...(graph?.barks.state() ?? { playing: null, played: [], silent: [] }),
-        on: voices.on,
+        on: voicesAudible(),
         level: voiceLevel(),
+        fxLevel: voiceFxTarget,
       },
     }),
     setStations(stations) {
@@ -1102,10 +1126,5 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       if (g) duckNow(g);
     },
     say,
-    setVoices(v) {
-      if (typeof v.on === 'boolean') voices.on = v.on;
-      if (typeof v.volume === 'number' && Number.isFinite(v.volume)) voices.volume = v.volume;
-      applyVoiceLevel();
-    },
   };
 }

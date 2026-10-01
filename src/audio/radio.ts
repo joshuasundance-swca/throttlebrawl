@@ -101,8 +101,10 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
 
 /**
  * A region's stations, derived from each station's `regions` (docs/content-packs.md, "Region":
- * nothing in a region lists its stations): the regional ones plus every genre station. `null`
- * (region not known yet) = every station.
+ * nothing in a region lists its stations): the regional ones first, then every genre station, then
+ * (outside the base pack's own regions) the base pack's stations as fallbacks further down the dial,
+ * so a new region keeps the music the maintainer likes (2026-10-01: "I actually like the music").
+ * `null` (region not known yet) = every station.
  */
 export function stationsForRegion(
   stations: readonly RadioStation[],
@@ -110,7 +112,12 @@ export function stationsForRegion(
 ): RadioStation[] {
   if (regionId === null) return [...stations];
   const want = bare(regionId);
-  return stations.filter((s) => s.regions.length === 0 || s.regions.includes(want));
+  const own = stations.filter((s) => s.regions.includes(want));
+  const genre = stations.filter((s) => s.regions.length === 0);
+  const fallback = own.length
+    ? stations.filter((s) => s.packId === 'base' && !own.includes(s) && !genre.includes(s))
+    : [];
+  return [...own, ...genre, ...fallback];
 }
 
 /** True when this build can play the track (code-made, not vetoed, not cut on this device). */

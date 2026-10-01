@@ -1,0 +1,55 @@
+{
+  "type": "station",
+  "id": "sf-fog-bank",
+  "name": "Fog Bank 1550 AM",
+  "genre": "rockabilly",
+  "regions": ["san-francisco"],
+  "tracks": [
+    {
+      "id": "exact-change-boogie",
+      "title": "Exact Change Boogie",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 172, "key": "C", "form": "quick", "band": "boogie" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "crest-and-drop",
+      "title": "Crest and Drop",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 202, "key": "E", "form": "eight", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "gripmans-shuffle",
+      "title": "Gripman's Shuffle",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 158, "key": "Bb", "form": "twelve", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "pre-revenue-bop",
+      "title": "Pre-Revenue Bop",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 188, "key": "F", "form": "quick", "band": "boogie" }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco's own station (the maintainer, 2026-10-01: \"I actually like the music\"; keep the code-made radio's direction). Rockabilly for steep blocks and crests, in keys the Keys station doesn't use (C, B flat, F) and up to 202 bpm for the hill jumps (src/audio/radio-compose.ts, preset rockabilly-trio). Melodies are generated from each track's seed, so they are original. The base stations follow it on the dial. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

@@ -63,6 +63,8 @@ describe('spoken barks', () => {
     // Under a voice the music dips to the voice duck, lighter than a crash's.
     expect(audio.inspect().duckLevel).toBe(VOICE_DEFAULTS.duck);
     expect(VOICE_DEFAULTS.duck).toBeGreaterThan(DUCK_DEFAULTS.level);
+    // The engine and effects dip a touch too, so the line carries over a flat-out engine.
+    expect(audio.inspect().voice.fxLevel).toBe(VOICE_DEFAULTS.fxDuck);
   });
 
   it('never speak a line cut on this device, and stop one cut while it speaks', async () => {
@@ -94,29 +96,53 @@ describe('spoken barks', () => {
     expect(clips(ctx)).toHaveLength(0);
   });
 
-  it('follow the Voices switch and level', async () => {
+  it('follow the Voices switch and slider (the voices bus) and mute', async () => {
     const { ctx, audio, fetched } = await setup();
-    audio.setVoices({ on: false });
+    const on = { master: 0.8, music: 0.6, effects: 0.9, voices: 0.8 };
+    // Voices off: the settings record hands audio a silent voices bus (save's audioVolumes).
+    audio.setVolumes({ ...on, voices: 0 }, false);
+    expect(await audio.say(KEVIN)).toBe(false);
+    audio.setVolumes(on, true);
     expect(await audio.say(KEVIN)).toBe(false);
     expect(fetched).toEqual([]);
-    expect(audio.inspect().voice).toMatchObject({ on: false, level: 0 });
-    audio.setVoices({ on: true, volume: 0.4 });
-    expect(audio.inspect().voice.level).toBeCloseTo(0.4 / VOICE_DEFAULTS.volume);
+    expect(audio.inspect().voice.on).toBe(false);
+    audio.setVolumes(on, false);
+    expect(audio.inspect().voice.on).toBe(true);
+    expect(audio.inspect().busTargets.voices).toBeCloseTo(0.64);
     expect(await audio.say(KEVIN)).toBe(true);
     // Switching Voices off mid-line silences it at once.
-    audio.setVoices({ on: false });
+    audio.setVolumes({ ...on, voices: 0 }, false);
     expect(clips(ctx)[0]?.stoppedAt).not.toBeNull();
-    // A missing field keeps its value; garbage is ignored.
-    audio.setVoices({ volume: Number.NaN });
-    audio.setVoices({ on: true });
-    expect(audio.inspect().voice.level).toBeCloseTo(0.4 / VOICE_DEFAULTS.volume);
+    expect(audio.inspect().voice.playing).toBeNull();
   });
 
-  it('defaults to on at the clip level made, with the bark voice slider on top', async () => {
+  it('a clip still loading when the race is left never starts', async () => {
+    const { ctx, create } = fakeContextFactory();
+    let release: (b: ArrayBuffer) => void = () => {};
+    const audio = createAudio({
+      createContext: create,
+      radioKeys: null,
+      barkEvents: null,
+      barkClipUrl: (ref) => `clip:${ref}`,
+      barkFetch: () => new Promise<ArrayBuffer>((r) => (release = r)),
+    });
+    await audio.resume();
+    const said = audio.say(KEVIN);
+    // The fetch is under way (its URL resolved) when the race is left.
+    await new Promise((r) => setTimeout(r, 0));
+    audio.frame(null, 0);
+    release(new ArrayBuffer(1000));
+    expect(await said).toBe(false);
+    expect(clips(ctx)).toHaveLength(0);
+  });
+
+  it('play clips at the bark voice slider level, under the voices bus', async () => {
     const { audio } = await setup();
-    expect(audio.inspect().voice).toMatchObject({ on: true, level: 1 });
+    expect(audio.inspect().voice).toMatchObject({ on: true, level: VOICE_DEFAULTS.gain });
     audio.setParam('audio.voiceGain', 1.5);
     expect(audio.inspect().voice.level).toBeCloseTo(1.5);
+    audio.setParam('audio.voiceGain', 0);
+    expect(await audio.say(KEVIN)).toBe(false);
   });
 
   it('speak one voice at a time: a new bark fades out the one before', async () => {

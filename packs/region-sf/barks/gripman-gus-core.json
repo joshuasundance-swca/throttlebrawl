@@ -12,65 +12,103 @@
     {
       "id": "gus-start-bell",
       "trigger": "race-start",
-      "text": "Ding ding. That's all the warning you get."
+      "text": "Ding ding. That's all the warning you get.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-start-bell",
+      "audioStatus": "live"
     },
     {
       "id": "gus-pass-tuesday",
       "trigger": "overtake",
-      "text": "Forty years on these hills. You're a Tuesday."
+      "text": "Forty years on these hills. You're a Tuesday.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-pass-tuesday",
+      "audioStatus": "live"
     },
     {
       "id": "gus-pass-fare",
       "trigger": "overtake",
-      "text": "Fare's due at the top. Exact change."
+      "text": "Fare's due at the top. Exact change.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-pass-fare",
+      "audioStatus": "live"
     },
     {
       "id": "gus-hit-hold",
       "trigger": "hit-landed",
-      "text": "Hold on to something. Not me."
+      "text": "Hold on to something. Not me.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-hit-hold",
+      "audioStatus": "live"
     },
     {
       "id": "gus-hit-disrupt",
       "trigger": "hit-landed",
       "target": "pivot",
       "priority": 1,
-      "text": "Disrupt this."
+      "text": "Disrupt this.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-hit-disrupt",
+      "audioStatus": "live"
     },
     {
       "id": "gus-traffic-line",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Should've stood behind the yellow line."
+      "text": "Should've stood behind the yellow line.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-traffic-line",
+      "audioStatus": "live"
     },
     {
       "id": "gus-down-tourist",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Hit by a tourist. Again."
+      "text": "Hit by a tourist. Again.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-down-tourist",
+      "audioStatus": "live"
     },
     {
       "id": "gus-down-fares",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
-      "text": "I remember every face that never paid."
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "I remember every face that never paid.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-down-fares",
+      "audioStatus": "live"
     },
     {
       "id": "gus-crash-hill",
       "trigger": "crash-self",
-      "text": "The hill wins. The hill always wins."
+      "text": "The hill wins. The hill always wins.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-crash-hill",
+      "audioStatus": "live"
     },
     {
       "id": "gus-near-inches",
       "trigger": "near-miss",
-      "text": "Inches. I've lived my whole life in inches."
+      "text": "Inches. I've lived my whole life in inches.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-near-inches",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
     "notes": "San Francisco local (playtest 1c). gus-hit-hold is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. gus-hit-disrupt fires only when the hit lands on Pivot: the old city against the new.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_santa, speed 0.95, pitch +0 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
+    }
   }
 }
