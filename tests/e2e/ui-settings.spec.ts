@@ -21,6 +21,8 @@ interface Handle {
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
   playerId(): number;
+  /** The debug file's text: its replay line carries the race's SimConfig header. */
+  debugFileText(): string;
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
@@ -31,6 +33,8 @@ type TestWindow = Window & {
   __uiStyleFeed?: (pops: { kind: string; points?: number }[]) => void;
   /** The length of every audio buffer started, recorded by the stub below. */
   __plucks?: number[];
+  /** app's presentation view, under the test flag (camera shake, the frame divisor). */
+  __app?: { presentation(): { camera: { shake: number }; display: { frameDivisor: number } } };
 };
 
 function watchErrors(page: Page): string[] {
@@ -218,6 +222,29 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
 // on screen without a probe fails the test, so a new one cannot ship without its non-default test
 // (M2's cross-lane rules). The M1 volumes, mute and mirror have theirs in ui-pause and ui-screens.
 type Probe = (page: Page) => Promise<void>;
+
+/**
+ * The settings that feed SimConfig (the integration round): a race started after the change
+ * carries the value in its recording's header (the debug file's replay line), which is what the
+ * sim raced with. `region` races in that region first (the Keys have only the standard length).
+ */
+async function raceHeaderHas(page: Page, needle: string, region?: string) {
+  await page.locator('#settings-back').click();
+  if (region) await page.locator(region).click();
+  await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
+  await page.locator('#menu-race').click();
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60, undefined, {
+    timeout: 60_000,
+  });
+  const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
+  expect(text, `the race's header carries ${needle}`).toContain(needle);
+  await quitRace(page);
+}
+const raceProbe = (tab: string, id: string, value: string, needle: string, region?: string) => ({
+  set: (page: Page) => choose(page, tab, id, value),
+  effect: (page: Page) => raceHeaderHas(page, needle, region),
+  persisted: (page: Page) => chosen(page, tab, id, value),
+});
 
 const choose = async (page: Page, tab: string, id: string, value: string) => {
   await page.locator(`#settings-tab-${tab}`).click();
@@ -514,6 +541,57 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       await page.locator('#settings-tab-display').click();
       await expect(page.locator('#settings-stylePopups')).not.toBeChecked();
     },
+  },
+  // The race settings (the integration round): each reaches the next race's SimConfig.
+  difficulty: raceProbe('race', 'difficulty', 'hard', '"presetId":"hard"'),
+  // The Keys have one length, so the probe races the Pacific Northwest's long run.
+  raceLength: raceProbe(
+    'race',
+    'raceLength',
+    'long',
+    '"lengthId":"long"',
+    '#region-region-pnw-pacific-northwest',
+  ),
+  speedMultiplier: raceProbe('race', 'speedMultiplier', '0.8', '"speedMultiplier":0.8'),
+  'assists.steer': raceProbe('race', 'assists-steer', 'light', '"steer":"light"'),
+  slowMo: {
+    set: async (page) => {
+      await page.locator('#settings-tab-race').click();
+      await page.locator('#settings-slowMo').uncheck();
+    },
+    effect: (page) => raceHeaderHas(page, '"slowMo":false'),
+    persisted: async (page) => {
+      await page.locator('#settings-tab-race').click();
+      await expect(page.locator('#settings-slowMo')).not.toBeChecked();
+    },
+  },
+  reduceShake: {
+    // The camera is handed no shake at all (camera-2's setShakeAmount 0 has its own unit test).
+    set: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-reduceShake').check();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      expect(await page.evaluate(() => (window as TestWindow).__app?.presentation().camera.shake)).toBe(0);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await expect(page.locator('#settings-reduceShake')).toBeChecked();
+    },
+  },
+  frameRateCap: {
+    // A third: the loop draws one frame in three.
+    set: (page) => choose(page, 'display', 'frameRateCap', 'third'),
+    effect: async (page) => {
+      await raceAlone(page);
+      expect(
+        await page.evaluate(() => (window as TestWindow).__app?.presentation().display.frameDivisor),
+      ).toBe(3);
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'display', 'frameRateCap', 'third'),
   },
   view: {
     // The helmet cam: the camera rides at the rider's head, so the rider's own bike and back, at
