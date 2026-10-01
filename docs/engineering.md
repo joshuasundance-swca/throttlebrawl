@@ -199,7 +199,7 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 - `npx vitest run <file>...` for the test being written.
 - `npm run e2e:one -- tests/e2e/<spec>.spec.ts` for the browser specs of a render, input, UI or perf-relevant change; a whole browser tier when the change is broad.
 - On a dev machine shared by parallel lanes, cap Vitest's workers (`VITEST_MAX_WORKERS=2`) so the lanes do not starve each other.
-- The pre-push hook still runs (typecheck and the unit tests), and is never skipped.
+- The pre-push hook still runs and is never skipped: the typecheck, plus the unit tests related to what changed since `origin/main`. Vitest's `--changed` alone selects nothing for a config-only change, so the hook runs the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig differs from `origin/main`. CI runs every test on the PR anyway.
 - `npm run check` with no `--tier` is for the rare change that needs the whole gate before CI, such as a skeptic's review.
 
 ## Pre-commit hooks and leak scan
@@ -212,7 +212,7 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 |---|---|---|
 | `pre-commit` | lint-staged (ESLint fix and Prettier on staged files), `leakscan` on staged files, `sizecheck` on staged files, `packs:check` when pack files are staged | a few seconds |
 | `commit-msg` | leak scan of the commit message | instant |
-| `pre-push` | `typecheck` and `test` | under a minute |
+| `pre-push` | `typecheck`, and the unit tests related to changes since `origin/main` (`vitest --changed`); the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig changed | under a minute |
 
 The browser tiers (e2e, perf) run in CI and in `npm run check`, not in hooks. Hooks are never skipped (`--no-verify` is banned in [AGENTS.md](../AGENTS.md)); if a hook is wrong, fix the hook.
 
