@@ -27,7 +27,15 @@ import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimTrafficTypeDef } fr
 import { addMover, createWorld, orderSystems, stepWorld, type SimSystem, type World } from '../world';
 import { buildCorridor, pickLink, toCorridor, trafficMayEnter } from './corridor';
 import { idmAccel } from './idm';
-import { placeVehicle, spawnAllowed, TRAFFIC, trafficState, trafficSystem, vehicleInfo } from './index';
+import {
+  oncomingEase,
+  placeVehicle,
+  spawnAllowed,
+  TRAFFIC,
+  trafficState,
+  trafficSystem,
+  vehicleInfo,
+} from './index';
 
 // ---- fixtures ----------------------------------------------------------------------------
 
@@ -716,7 +724,10 @@ describe('traffic-3 (M2): near misses, oncoming ease-in, the region mix', () => 
       while (world.tick < 60 * 90) {
         stepWorld(world, config, ALL, [scripted(world.tick)]);
         if (world.tick === 60 * 10) at['10s'] = oncoming(world);
-        if (world.tick === 60 * 90) at['90s'] = oncoming(world);
+        if (world.tick === 60 * 90) {
+          at['90s'] = oncoming(world);
+          at['ease90'] = oncomingEase(world, trafficState(world).clockS);
+        }
       }
       lines.push(
         `ease-in ${easeS} s: oncoming ${at['start']} at the start, ${at['10s']} at 10 s, ${at['90s']} at 90 s (same way ${at['sameStart']} at the start)`,
@@ -728,8 +739,12 @@ describe('traffic-3 (M2): near misses, oncoming ease-in, the region mix', () => 
     console.log(`oncoming ease-in (from ${TRAFFIC.oncomingEaseFrom} of full density): ${lines.join('; ')}`);
     expect(on['start'] ?? 99).toBeLessThan(off['start'] ?? 0);
     expect(on['10s'] ?? 99).toBeLessThan(off['10s'] ?? 0);
-    // Once the ease-in is over, both have the full count; your-way traffic never eases.
-    expect(Math.abs((on['90s'] ?? 0) - (off['90s'] ?? 99))).toBeLessThanOrEqual(1);
+    // Once the ease-in is over, oncoming traffic is at its full density; your-way traffic never
+    // eases. (The vehicle count at one instant is not compared: on one seed it is luck. With the
+    // playtest 1c launch it was 4 off against 9 on at 90 s, and with the old launch seed 4 gave 9
+    // against 5, while the density factor was full in both.)
+    expect(on['ease90']).toBe(1);
+    expect(off['ease90']).toBe(1);
     expect(on['sameStart']).toBe(off['sameStart']);
   }, 120_000);
 
