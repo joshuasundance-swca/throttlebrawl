@@ -16,7 +16,7 @@ import { grainShare } from './pixels';
 
 interface Handle {
   state(): string;
-  snapshot(): { tick: number } | null;
+  snapshot(): { tick: number; entities: { speed: number }[] } | null;
   setBot(on: boolean): void;
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
@@ -525,6 +525,15 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     effect: async (page) => {
       await raceAlone(page);
+      // Hold the brake until the rider stands still (an earlier probe may have left auto-throttle
+      // on), so the scene stops moving and only the camera differs between the shots.
+      await page.keyboard.down('KeyS');
+      await page.waitForFunction(() => {
+        const g = (window as TestWindow).__game;
+        const me = g?.snapshot()?.entities[g.playerId()];
+        return !!me && me.speed < 0.3;
+      });
+      await page.waitForTimeout(500);
       const helmet = await page.locator('canvas#game').screenshot();
       await page.waitForTimeout(300);
       const helmetAgain = await page.locator('canvas#game').screenshot();
@@ -544,9 +553,9 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       console.log(
         `view helmet: rider-area change ${changed.toFixed(1)} levels (helmet to helmet ${control.toFixed(1)})`,
       );
-      // Measured on the dev machine (SwiftShader, 915x412): about 29 levels against about 9.
       expect(changed).toBeGreaterThan(18);
       expect(changed).toBeGreaterThan(control * 2);
+      await page.keyboard.up('KeyS');
       // Back to the helmet, so the reload below finds it kept.
       await page.keyboard.press('Escape');
       await page.locator('#pause-controls').click();
