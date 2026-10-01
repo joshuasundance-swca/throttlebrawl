@@ -1,0 +1,36 @@
+{
+  "type": "rider",
+  "id": "gripman-gus",
+  "name": "Gripman Gus",
+  "role": "rival",
+  "roster": "local",
+  "region": "san-francisco",
+  "tags": ["old-timer", "cable-car"],
+  "blurb": "A retired cable-car gripman in a wool cap on a forty-year-old bike. Rings a brass bell before he hits you.",
+  "bike": "base:rustbucket-400",
+  "stats": {
+    "massKg": 92,
+    "healthMax": 115,
+    "skill": 0.6
+  },
+  "personality": {
+    "style": "heavy-hitter",
+    "aggression": 0.8,
+    "dirtiness": 0.3,
+    "courage": 0.95,
+    "riskTaking": 0.25,
+    "chatter": 0.6,
+    "weave": 0.05,
+    "targetPreference": ["player", "nearest"],
+    "preferredSide": "right"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco local (playtest 1c): the old city against the new one, so Pivot is his natural target. A heavy hitter who holds his line like a cable car and never takes the shortcut on purpose.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

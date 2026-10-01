@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "cable-car",
+  "name": "Cable Car",
+  "category": "truck",
+  "tags": ["region-sf", "slow"],
+  "lengthM": 8.5,
+  "widthM": 2.6,
+  "cruiseMps": 9.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "box-truck"
+    },
+    "paintOptions": ["#8c2f2f", "#d9b45a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The region's slow traffic: it holds its lane at a walking-pace-plus 6 m/s and never changes lanes, so you pass it on the wrong side of the road. Big: hitting one crashes you. Placeholder shape: the box-truck preset until a cable-car model lands.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

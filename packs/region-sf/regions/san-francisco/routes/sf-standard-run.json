@@ -1,0 +1,36 @@
+{
+  "type": "route",
+  "id": "sf-standard-run",
+  "network": "sf-hills",
+  "start": { "road": "sf-pier-row", "s": 40, "dir": 1 },
+  "finish": { "road": "sf-bridge-approach", "s": 907.5 },
+  "mainPath": [
+    "sf-pier-row",
+    "sf-cable-line-grade",
+    "sf-switchback-street",
+    "sf-painted-row",
+    "sf-fogline-climb",
+    "sf-bridge-approach"
+  ],
+  "allowedRoads": [
+    "sf-pier-row",
+    "sf-cable-line-grade",
+    "c-switchback-split-main",
+    "sf-switchback-street",
+    "c-switchback-merge-main",
+    "sf-painted-row",
+    "sf-fogline-climb",
+    "sf-bridge-approach",
+    "c-stair-alley-in",
+    "sf-stair-alley",
+    "c-stair-alley-out"
+  ],
+  "checkpoints": [
+    { "road": "sf-cable-line-grade", "s": 400 },
+    { "road": "sf-painted-row", "s": 300 },
+    { "road": "sf-fogline-climb", "s": 300 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}
