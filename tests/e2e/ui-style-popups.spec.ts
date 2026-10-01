@@ -224,15 +224,30 @@ test('phone landscape: pop-ups sit clear of the road ahead, merge repeats and fa
   expectCompact(m, 'phone landscape');
   await shot(page, 'phone');
 
-  // Another near miss while the chip is up adds to it rather than stacking a fourth pop-up.
-  const again = await feedAndMeasure(page, [{ kind: 'nearMiss', points: 25 }]);
-  expect(again.pops.length).toBe(3);
-  expect(again.pops.map((p) => p.text)).toContain('NEAR MISS ×13 +$325');
-
-  // A quick fade: gone well inside two seconds.
+  // A quick fade: gone well inside two seconds of the screenshot.
   const before = Date.now();
   await expect(page.locator('.style-pop')).toHaveCount(0, { timeout: 2_000 });
-  console.log(`pop-ups gone after ${Date.now() - before} ms`);
+  console.log(`pop-ups gone ${Date.now() - before} ms after the screenshot`);
+
+  // A near miss in a later step, while the first one's chip is up, adds to that chip rather than
+  // stacking a second one. Both feeds run inside the page, so a slow round trip to the test runner
+  // (a loaded machine) cannot let the first chip time out in between.
+  const merged = await page.evaluate(async () => {
+    const feed = (window as TestWindow).__uiStyleFeed;
+    const frames = async () => {
+      for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(r));
+    };
+    feed?.([{ kind: 'nearMiss', points: 25 }]);
+    await frames();
+    await new Promise((r) => setTimeout(r, 150));
+    feed?.([{ kind: 'nearMiss', points: 25 }]);
+    await frames();
+    return [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) =>
+      e.innerText.replace(/\s+/g, ' ').trim(),
+    );
+  });
+  console.log(`merged across steps: ${JSON.stringify(merged)}`);
+  expect(merged).toEqual(['NEAR MISS ×2 +$50']);
   expect(problems).toEqual([]);
 });
 
