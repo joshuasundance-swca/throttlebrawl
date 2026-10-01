@@ -107,7 +107,10 @@
 // - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
 //   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
 // - A rider's startingWeapon (a cop's baton or taser) is in hand at the start, as a stowed
-//   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up.
+//   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up, and
+//   a cop keeps his weapon through a wreck (holstered; the cops polish round, 2026-10-01): before,
+//   his first crash dropped it for good, so in San Francisco, where he crashed about three times a
+//   race, he hardly ever swung and you hardly ever had a steal chance. [default]
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { barrierLimits, riderState } from '../riders';
@@ -1181,6 +1184,8 @@ function stealCue(world: World, config: SimConfig, st: CombatState, a: Mover): v
 function pickupPass(world: World, config: SimConfig, st: CombatState): void {
   const health = riderState(world).health;
   for (const m of world.movers) {
+    // A cop keeps his weapon through a wreck (holstered): you get it only by snatching it mid-swing.
+    if (m.kind === 'rider' && isLaw(config, m)) continue;
     if (m.kind === 'rider' && st.held[m.id] && (!isRiding(m) || (health[m.id] ?? 0) <= 0)) {
       dropWeapon(world, config, st, m);
     }

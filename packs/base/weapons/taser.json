@@ -19,8 +19,8 @@
   "spawn": { "roadsideWeight": 0, "regions": [] },
   "effects": [{ "kind": "stun", "durationS": 0.9 }],
   "meta": {
-    "status": "draft",
-    "notes": "M4 cops-3 head start: the cops' taser, as the content-pack doc sketches it (shock, cop-issue, 6 charges, a 0.9 s stun). Six swings and it is spent, whoever holds it; a stolen one keeps the charges it has left. The stun stops the target attacking, shakes the bike and bleeds some speed. Long reach for the darts. Crude starting numbers, [default].",
+    "status": "live",
+    "notes": "M4 cops-3 head start: the cops' taser, as the content-pack doc sketches it (shock, cop-issue, 6 charges, a 0.9 s stun). Six swings and it is spent, whoever holds it; a stolen one keeps the charges it has left. The stun stops the target attacking, shakes the bike and bleeds some speed. Long reach for the darts. Crude starting numbers, [default]. Promoted to live in the cops polish round (2026-10-01) so the release game has a taser to steal: Deputy Lindqvist (region-pnw) carries it. Trooper Dalrymple stays a draft.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

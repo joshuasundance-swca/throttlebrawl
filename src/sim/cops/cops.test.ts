@@ -518,6 +518,59 @@ describe('cops: the chase', () => {
     expect(w.busts()).toHaveLength(0);
   });
 
+  // The integration skeptic's F2 (2026-10-01): steal chances off the cop were rare, because moving in
+  // alongside he dropped back about a stopping distance whenever the player touched the brakes (he
+  // kept braking room for 80 % of his own brakes, so at 25 m/s he settled about 6 m back, out of his
+  // baton's 1.5 m reach), and an armed cop swings only inside it. Riding in traffic, a player dabs
+  // the brakes all the time. Moving in, he now keeps braking room for his full brakes: beside a
+  // player who dabs them he stays in reach, so his swing, and the chance to steal it, comes.
+  it('moving in alongside a player who dabs the brakes, he gets inside his reach', () => {
+    const w = copWorld({ 'cops.followGapM': 40 });
+    w.place(0, 20); // the rival sits out of the way at the back
+    w.place(PLAYER_ID, 160);
+    w.place(COP_ID, 100);
+    for (const id of [PLAYER_ID, COP_ID]) {
+      const m = w.world.movers[id];
+      if (m) m.speed = 25;
+    }
+    const inputs = w.world.inputs;
+    const route = w.config.route;
+    const ahead: number[] = [];
+    const across: number[] = [];
+    for (let t = 0; t < 60 * 30; t++) {
+      const me = w.world.movers[PLAYER_ID];
+      const cop = w.world.movers[COP_ID];
+      if (!me || !cop) throw new Error('missing movers');
+      const steer = Math.max(-1, Math.min(1, (1.7 - me.pos.d) * 0.3 - me.yaw * 2));
+      // Cruising, with a light dab of the brakes for 0.2 s in every second (traffic ahead).
+      const dab = t % 60 < 12;
+      inputs[PLAYER_ID] = quantizeInput({
+        throttle: dab ? 0.3 : 0.6,
+        brake: dab ? 0.15 : 0,
+        steer,
+        flags: 0,
+      });
+      inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+      w.step(1, true);
+      ahead.push(route.progressAt(me.pos.edge, me.pos.s) - route.progressAt(cop.pos.edge, cop.pos.s));
+      across.push(me.pos.d - cop.pos.d);
+    }
+    const onStation = ahead.findIndex((g) => g < 50);
+    // From his move-in (after HANG_BACK_TICKS on station), over the next 15 s.
+    const from = onStation + HANG_BACK_TICKS;
+    const spell = ahead.slice(from, from + 60 * 15);
+    const inReach = spell.filter(
+      (g, i) => Math.abs(g) <= 1.5 && Math.abs(across[from + i] ?? 99) <= 1.4,
+    ).length;
+    console.log(
+      `[cops] moving in beside a brake-dabbing player: in the baton's reach ${(inReach / 60).toFixed(1)} s of ` +
+        `${spell.length / 60} s, ${Math.min(...spell).toFixed(1)} to ${Math.max(...spell).toFixed(1)} m ahead of him`,
+    );
+    expect(inReach).toBeGreaterThanOrEqual(60 * 3); // 3 s: time for his swing, and your steal
+    expect(Math.min(...spell)).toBeGreaterThan(-3); // never carried past him by a dab
+    expect(w.busts()).toHaveLength(0);
+  });
+
   // The integration skeptic and the road lane's launch report (playtest 1c): with the punchy launch
   // the player reaches top speed with the cop hanging back on station, and a hard stop from there
   // left him unable to stop in time: he sailed past and crawled on along the shoulder. Hanging back

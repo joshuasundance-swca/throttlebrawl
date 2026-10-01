@@ -242,6 +242,39 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
     expect(damageOn('rival')).toBe(16);
   });
 
+  // The cops polish round (the integration skeptic's F2): in San Francisco the cop crashed about
+  // three times a race on the hills, dropped his baton on the first, and never swung again (cops
+  // never pick up), so a player hardly ever saw a steal chance. A cop now keeps his weapon through a
+  // wreck (holstered); you get it only by snatching it mid-swing. Anyone else still drops theirs.
+  it('a cop keeps his weapon through a wreck and swings it again once back up; a rival still drops his', () => {
+    const h = makeHarness(
+      [
+        { s: 100, d: 0, role: 'cop', startingWeapon: BATON.contentId },
+        { s: 100, d: 1.2, role: 'player' },
+        { s: 300, d: 0, role: 'rival', startingWeapon: BATON.contentId },
+      ],
+      // After the wreck: the cop swings on 30, and the player snatches it on 30 + 10.
+      scriptOf({ 0: once(30, F.attack), 1: once(40, F.attack) }),
+      {},
+      [BATON],
+    );
+    const cop = h.world.movers[0];
+    const rival = h.world.movers[2];
+    if (!cop || !rival) throw new Error('movers');
+    cop.mode = 'Tumble';
+    rival.mode = 'Tumble';
+    h.run(1);
+    expect(combatView(h.world, 0).heldWeapon).toBe(BATON.contentId); // holstered, not on the road
+    expect(combatView(h.world, 2).heldWeapon).toBeNull(); // the rival's lies on the road
+    cop.mode = 'Road';
+    rival.mode = 'Road';
+    h.run(50);
+    expect(ofType(h.events, 'attackStart').find((e) => e.actor === 0)?.data['weapon']).toBe(BATON.contentId);
+    const steal = ofType(h.events, 'weaponGrab').find((e) => e.data['source'] === 'steal');
+    expect([steal?.actor, steal?.target]).toEqual([1, 0]);
+    expect(combatView(h.world, 1).heldWeapon).toBe(BATON.contentId);
+  });
+
   it('a stolen taser keeps the charges it has left: one swing spent by the cop, one left for you', () => {
     const h = makeHarness(
       [

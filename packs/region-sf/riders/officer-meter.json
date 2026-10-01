@@ -8,6 +8,7 @@
   "tags": ["parking-enforcement"],
   "blurb": "A parking officer who has never once let anything go. Writes the ticket during the chase.",
   "bike": "base:rustbucket-400",
+  "startingWeapon": "base:baton",
   "stats": {
     "massKg": 88,
     "healthMax": 100,
@@ -25,7 +26,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The region's local cop (playtest 1c), so a San Francisco race fields its own law as the Keys race fields Sgt. Pruitt. The law block copies Pruitt's numbers except two: the fine is a little higher, because it is San Francisco, and he needs 2 s beside you to bust you (Pruitt needs 1 s), because he writes the ticket out in full. The city course gives more crashes than the causeway, and with a 1 s dwell half the bot's seeded races ended in a bust right after a traffic crash. [default]",
+    "notes": "The region's local cop (playtest 1c), so a San Francisco race fields its own law as the Keys race fields Sgt. Pruitt. The law block copies Pruitt's numbers except two: the fine is a little higher, because it is San Francisco, and he needs 2 s beside you to bust you (Pruitt needs 1 s), because he writes the ticket out in full. He carries the baton (the cops polish round, 2026-10-01: each region's cop is armed, per M4 cops-3), so you can snatch it off him mid-swing; the baton, not the taser, because the city course already busts the dev bot most often. The city course gives more crashes than the causeway, and with a 1 s dwell half the bot's seeded races ended in a bust right after a traffic crash. [default]",
     "provenance": {
       "origin": "agent",
       "author": "agent",
