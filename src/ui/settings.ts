@@ -34,6 +34,7 @@ export type SettingId =
   | 'reduceShake'
   | 'frameRateCap'
   | 'look'
+  | 'stylePopups'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
 export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
@@ -186,6 +187,8 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'brush', label: 'Kodachrome brush' },
     ],
   },
+  // Playtest 1c: the style cash chips and the live meter, on by default. ui's own effect.
+  { id: 'stylePopups', tab: 'display', label: 'Style pop-ups', kind: 'toggle' },
   { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },
 ];
 
@@ -197,8 +200,11 @@ export function settingDef(id: SettingId): SettingDef {
   return def;
 }
 
-/** Settings live without app/ declaring them: units (wired in M1) and the tuning entry (ui's own). */
-export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel'];
+/**
+ * Settings live without app/ declaring them: units (wired in M1), and the tuning entry and the style
+ * pop-ups (ui's own effects).
+ */
+export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel', 'stylePopups'];
 
 /** The raw value at a setting's path. */
 function read(s: unknown, id: SettingId): unknown {

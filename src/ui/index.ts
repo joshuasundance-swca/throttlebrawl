@@ -49,11 +49,15 @@ import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './chan
 import {
   createPopStack,
   createRaceTally,
+  createStyleMeter,
+  meterCash,
+  meterLabel,
   popCash,
   popLabel,
   type PopEntry,
   type StylePop,
 } from './race-feed';
+import { HUD_TUNING, hudParam } from './hud-tuning';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
@@ -69,6 +73,8 @@ export { applySettingsChange, SETTINGS, settingValue } from './settings';
 export type { SettingId, SettingsChange, SettingValue } from './settings';
 // The barks' tuning declarations (narrative-1), for app/'s collected list.
 export { BARK_TUNING } from './narrative';
+// The HUD's own sliders (the live style meter), for app/'s collected list; ui reads them itself.
+export { HUD_TUNING };
 
 export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results' | 'changelog';
 
@@ -242,6 +248,19 @@ ${CHANGELOG_CSS}
   75% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes tb-pop-mirrored { 0% { opacity: 0; transform: translateX(6px); } 10% { opacity: 1; transform: none; }
   75% { opacity: 1; } 100% { opacity: 0; } }
+/* The live style meter (playtest 1c): a chip that stays up while the run lasts, its numbers ticking.
+   Dimmer until the run has lasted long enough to pay; on landing it becomes that run's chip. */
+#ui .style-pop.style-meter { animation: tb-meter-in 0.11s ease-out; border-left-style: dashed; }
+#ui #style-popups.mirrored .style-pop.style-meter { border-left-style: none; border-right-style: dashed; }
+.style-meter .pop-label, .style-meter .pop-cash { font-variant-numeric: tabular-nums; }
+.style-meter.pending { opacity: 0.7; }
+.style-meter.pending .pop-cash { color: #f2ead8; }
+.style-meter.fading { opacity: 0; transition: opacity 0.2s ease-out; }
+#ui .style-pop.landed { animation: tb-pop-land var(--land-ms, 1600ms) ease-out forwards; transform-origin: left center; }
+#ui #style-popups.mirrored .style-pop.landed { transform-origin: right center; }
+@keyframes tb-meter-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes tb-pop-land { 0% { opacity: 1; transform: scale(1.12); } 12% { transform: none; } 75% { opacity: 1; }
+  100% { opacity: 0; } }
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
@@ -894,46 +913,142 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     popViews.delete(entry);
     popStack.remove(entry);
   };
+  // The live style meter (playtest 1c, [decided] 2026-09-30, the maintainer: "I'd like to also watch
+  // oncoming go up and up as you ride"). While an oncoming stretch or a jump lasts, a chip at the
+  // foot of the stack ticks up ("ONCOMING 4.2s +$212"); the sim computes the cash exactly as the
+  // award (#192), so when the run pays, the chip lands on that cash and becomes the run's own
+  // pop-up, merging into one of its kind already up. A run that never paid fades out. The meter
+  // counts toward the stack's cap, and the style pop-ups setting hides it with the chips.
+  const meter = createStyleMeter();
+  const newMeterView = () => {
+    const label = el('span', { className: 'pop-label' });
+    const cash = el('span', { className: 'pop-cash' });
+    return { root: el('div', { className: 'style-pop style-meter' }, label, cash), label, cash };
+  };
+  let meterView = newMeterView();
+  let meterUp = false;
+  const hideMeter = (fade: boolean) => {
+    if (!meterUp) return;
+    meterUp = false;
+    const gone = meterView;
+    meterView = newMeterView();
+    if (!fade) {
+      gone.root.remove();
+      return;
+    }
+    gone.root.classList.add('fading');
+    setTimeout(() => gone.root.remove(), 220);
+  };
+  /** The chips and the meter together never pass the cap: the oldest chip makes room. */
+  const capPops = () => {
+    while (popViews.size + (meterUp ? 1 : 0) > POP_MAX) {
+      const oldest = popStack.entries()[0];
+      if (!oldest) break;
+      dropPop(oldest);
+    }
+  };
   const clearPops = () => {
     for (const entry of [...popViews.keys()]) dropPop(entry);
     popStack.clear();
+    meter.reset();
+    hideMeter(false);
     bubbleKey = '';
     setPopTop(popHomeTop);
   };
-  const popUp = (pop: StylePop) => {
+  /**
+   * Raises a pop-up. `landing` is the meter's chip for a run that just paid: it becomes the pop-up
+   * (in its place at the foot of the stack) instead of a new chip appearing beside it.
+   */
+  const popUp = (pop: StylePop, landing: typeof meterView | null = null) => {
     const { entry, merged, dropped } = popStack.add(pop);
     for (const d of dropped) dropPop(d);
     let view = popViews.get(entry);
+    const restart = (root: HTMLElement) => {
+      root.style.animation = 'none';
+      void root.offsetWidth;
+      root.style.animation = '';
+    };
     if (!view) {
-      const label = el('span', { className: 'pop-label' });
-      const cash = el('span', { className: 'pop-cash' });
-      view = { root: el('div', { className: 'style-pop' }, label, cash), label, cash, timer: null };
-      popups.append(view.root);
+      if (landing) {
+        landing.root.classList.remove('style-meter', 'pending');
+        landing.root.classList.add('landed');
+        view = { ...landing, timer: null };
+      } else {
+        const label = el('span', { className: 'pop-label' });
+        const cash = el('span', { className: 'pop-cash' });
+        view = { root: el('div', { className: 'style-pop' }, label, cash), label, cash, timer: null };
+        // New chips go above the meter, so the meter stays at the foot where its chip will land.
+        if (meterUp && meterView.root.parentElement === popups)
+          popups.insertBefore(view.root, meterView.root);
+        else popups.append(view.root);
+      }
       popViews.set(entry, view);
     } else if (merged) {
-      // Restart the fade, so a run of near misses keeps its chip up.
-      view.root.style.animation = 'none';
-      void view.root.offsetWidth;
-      view.root.style.animation = '';
+      // Restart the fade, so a run of near misses keeps its chip up; a landing merges into it.
+      if (landing) {
+        landing.root.remove();
+        view.root.classList.add('landed');
+      }
+      restart(view.root);
     }
     view.label.textContent = popLabel(entry);
     view.cash.textContent = popCash(entry);
     if (view.timer) clearTimeout(view.timer);
-    view.timer = setTimeout(() => dropPop(entry), POP_DWELL_MS);
+    const landed = view.root.classList.contains('landed');
+    const ms = landed ? Math.round(hudParam(opts.tuning, 'hud.meterLandS') * 1000) : POP_DWELL_MS;
+    if (landed) view.root.style.setProperty('--land-ms', `${ms}ms`);
+    view.timer = setTimeout(() => dropPop(entry), ms);
+    capPops();
+  };
+  /** One frame of the meter, from the player's run in progress and this frame's pop-ups. */
+  const stepMeter = (run: EntitySnapshot['styleRun'], pops: readonly StylePop[]) => {
+    // The style pop-ups setting off: no chips and no meter (the tally still counts the cash).
+    if (!settings.stylePopups) {
+      if (meterUp || popViews.size > 0) clearPops();
+      return;
+    }
+    const step = meter.update(run, hudParam(opts.tuning, 'hud.meterShowAfterS'));
+    let landing: typeof meterView | null = null;
+    if (step.ended && meterUp) {
+      // The run stopped: if it paid, its pop-up is in this frame's feed (the sim emits the award on
+      // the stretch's last tick, the same step whose snapshot first shows no run).
+      const paid = step.ended.qualifies && pops.some((p) => p.kind === step.ended?.kind);
+      if (paid) {
+        landing = meterView;
+        meterUp = false;
+        meterView = newMeterView();
+      } else hideMeter(true);
+    }
+    for (const pop of pops) {
+      const adopt = landing && pop.kind === step.ended?.kind ? landing : null;
+      if (adopt) landing = null;
+      popUp(pop, adopt);
+    }
+    if (step.shown) {
+      if (!meterUp) {
+        meterUp = true;
+        popups.append(meterView.root);
+        capPops();
+      }
+      meterView.root.classList.toggle('pending', !step.shown.qualifies);
+      setText(meterView.label, meterLabel(step.shown));
+      setText(meterView.cash, meterCash(step.shown));
+    }
   };
   /**
    * Keeps the stack off the bark bubble. Measured only when the chips or the bubble's line change
    * (reading its text needs no layout); with no chips up the stack goes home.
    */
   const keepPopsOffBubble = () => {
-    if (popViews.size === 0) {
+    const count = popViews.size + (meterUp ? 1 : 0);
+    if (count === 0) {
       bubbleKey = '';
       setPopTop(popHomeTop);
       return;
     }
     bubbleEl ??= document.getElementById('bark-bubble');
     const up = !!bubbleEl && !bubbleEl.hidden;
-    const key = up && bubbleEl ? `${popViews.size}|${bubbleEl.textContent ?? ''}` : '';
+    const key = up && bubbleEl ? `${count}|${bubbleEl.textContent ?? ''}` : '';
     if (key === bubbleKey) return;
     bubbleKey = key;
     if (!up || !bubbleEl) return; // the bubble went: stay put until the chips are gone
@@ -1057,7 +1172,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       updateHud(player, riderCount(snapshot), units);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
-      for (const pop of tally.takePopups()) popUp(pop);
+      stepMeter(player?.styleRun, tally.takePopups());
       keepPopsOffBubble();
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');

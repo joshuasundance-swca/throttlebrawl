@@ -27,6 +27,8 @@ type TestWindow = Window & {
   __game?: Handle;
   /** navigator.vibrate's calls, recorded by the stub below. */
   __buzzes?: unknown[];
+  /** ui's style pop-up feed (ui-style-popups.spec.ts). */
+  __uiStyleFeed?: (pops: { kind: string; points?: number }[]) => void;
 };
 
 function watchErrors(page: Page): string[] {
@@ -442,6 +444,28 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         'aria-pressed',
         'true',
       );
+    },
+  },
+  stylePopups: {
+    // Playtest 1c: off, a style pop-up raised mid-race draws no chip (ui-style-meter.spec.ts has the
+    // control: on, the same feed draws one).
+    set: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-stylePopups').uncheck();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      const chips = await page.evaluate(async () => {
+        (window as TestWindow).__uiStyleFeed?.([{ kind: 'nearMiss', points: 25 }]);
+        for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+        return document.querySelectorAll('#style-popups .style-pop').length;
+      });
+      expect(chips).toBe(0);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await expect(page.locator('#settings-stylePopups')).not.toBeChecked();
     },
   },
   showTuningPanel: {

@@ -78,6 +78,11 @@ export interface Settings {
   /** Shows the tuning panel entry in the pause menu. */
   showTuningPanel: boolean;
   /**
+   * The style cash pop-ups and the live style meter in the race (playtest 1c). On by default; off
+   * hides them both, and the results screen still counts the cash. ui-only; never feeds SimConfig.
+   */
+  stylePopups: boolean;
+  /**
    * Gamepad remaps: action id → control tokens (such as `button3`), in input/'s vocabulary. Only
    * remapped actions are listed; an empty object means input/'s default bindings.
    */
@@ -109,6 +114,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   frameRateCap: 'full',
   look: 'classic',
   showTuningPanel: false,
+  stylePopups: true,
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
@@ -254,6 +260,7 @@ export function sanitiseSettings(data: unknown): Settings {
     frameRateCap: oneOf(d['frameRateCap'], ['full', 'half', 'third'], def.frameRateCap),
     look: oneOf(d['look'], LOOK_SETTINGS, def.look),
     showTuningPanel: bool(d['showTuningPanel'], def.showTuningPanel),
+    stylePopups: bool(d['stylePopups'], def.stylePopups),
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),
