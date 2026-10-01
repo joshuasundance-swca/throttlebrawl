@@ -1,61 +1,53 @@
 // render/looks: the playable looks, switchable at any time (playtest 1b item 6: "Styles as settings"
-// is [decided]). `classic` is the M1 flat low-poly look, unchanged and the default. `kodak` is the
-// maintainer's favourite from scratch/styles2, "Ink + 1960s film grade": ink outlines, world-space
-// hatched shadows, inked waves on the sea, a warm Kodachrome grade, film grain and a vignette.
+// is [decided]). `classic` is the M1 flat low-poly look, unchanged and the default. The ink looks
+// share one pipeline with dials (recipes.ts):
+// - `kodak`, "Ink + 1960s film" (playtest 1b item 6, the maintainer's favourite from scratch/styles2):
+//   ink outlines, world-space hatched shadows, inked waves, a warm Kodachrome grade, grain, vignette;
+// - `wasteland`, "Sun-bleached wasteland" (playtest 1c item 5, the curator's top pick in
+//   scratch/styles4): a flat burnt-orange sky, deep teal sea, charcoal road, heavier ink and hatching,
+//   a sun-bleach grade instead of film;
+// - `brush`, "Kodachrome brush" (playtest 1c item 5): thick brush outlines, flat colour with solid
+//   black shadows, under the Kodachrome grade.
 //
 // The look set wraps the classic look and hands out the SAME material objects in every look, so a
 // switch needs nothing from the views: it recolours the palette materials, turns the ink shader
-// patch on or off (a recompile of the lit materials, once, at the switch), restyles the sky and fog,
-// and says whether the renderer runs the final film pass. The look is render-only: nothing here
-// reaches the sim, its config or a replay.
+// patch on or off (a recompile of the lit materials, once, at the switch), sets the shared ink
+// uniforms, restyles the sky and fog, and says whether (and how) the renderer runs the final pass.
+// The look is render-only: nothing here reaches the sim, its config or a replay.
 import { Color, MeshLambertMaterial, type Fog, type Material, type Scene } from 'three';
 import type { LookEnv, LookStyle, MaterialKind, MaterialParams } from '../look';
 import { inkModeOf, patchInkShader, type InkMode, type InkUniforms } from './ink';
 import type { PostSettings } from './post';
+import { BRUSH, KODAK, skyOf, WASTELAND, type InkRecipe } from './recipes';
 
-export { kodachromeGrade, buildGradeLut, LUT_SIZE } from './grade';
+export { kodachromeGrade, bleachGrade, neutralGrade, buildGradeLut, GRADES, LUT_SIZE } from './grade';
+export type { GradeId } from './grade';
 export { patchInkShader, VERTEX_ANCHORS, FRAGMENT_ANCHORS } from './ink';
 export type { InkUniforms, ShaderParts } from './ink';
 export { LookPost } from './post';
 export type { PostSettings } from './post';
+export { KODAK, WASTELAND, BRUSH } from './recipes';
+export type { InkRecipe, ShadowStyle, SkyColours } from './recipes';
 
-/** The playable looks, in the order the settings row lists them. */
-export const LOOK_IDS = ['classic', 'kodak'] as const;
+/** The playable looks, in the order the settings row lists them. Ids are saved: never rename one. */
+export const LOOK_IDS = ['classic', 'kodak', 'wasteland', 'brush'] as const;
 export type LookId = (typeof LOOK_IDS)[number];
 export const DEFAULT_LOOK: LookId = 'classic';
+
+/** Each ink look's recipe; `classic` has none (it is the M1 look, untouched). */
+export const INK_RECIPES: Readonly<Record<Exclude<LookId, 'classic'>, InkRecipe>> = {
+  kodak: KODAK,
+  wasteland: WASTELAND,
+  brush: BRUSH,
+};
 
 export function isLookId(v: unknown): v is LookId {
   return typeof v === 'string' && (LOOK_IDS as readonly string[]).includes(v);
 }
 
-/**
- * The Kodachrome palette (display sRGB), picked from the reference frames: peach-cream sky, deep
- * teal sea, warm brown-grey asphalt, sand shoulders, wooden rails. Kinds not listed keep the
- * classic colour; vertex-coloured bodies (riders, bikes, cars, palms) keep their own colours and
- * get the grade. [default]
- */
-export const KODAK_PALETTE: Partial<Record<MaterialKind, string>> = {
-  road: '#4d443d',
-  shoulder: '#cfa86a',
-  shortcut: '#c08e55',
-  marking: '#f3e6c8',
-  markingCenter: '#e8ae36',
-  post: '#efe0bf',
-  rail: '#b8864f',
-  deck: '#b9a283',
-  land: '#d7b273',
-  water: '#1e8e98',
-};
+/** The Kodachrome palette (display sRGB) of the `kodak` look; kept as a name for older callers. */
+export const KODAK_PALETTE = KODAK.palette;
 
-/** The sky: cream at the horizon (also the haze colour) to peach overhead. By time of day. */
-const KODAK_SKY: Record<string, { top: string; horizon: string; exposure: number }> = {
-  dawn: { top: '#e9b49a', horizon: '#f4dcc0', exposure: 0.95 },
-  noon: { top: '#9fc9cf', horizon: '#efe3c6', exposure: 1.05 },
-  'golden-hour': { top: '#eda57f', horizon: '#f7e6c9', exposure: 1 },
-  dusk: { top: '#b9687a', horizon: '#e8b48f', exposure: 0.8 },
-  night: { top: '#141a33', horizon: '#2a2f4a', exposure: 0.45 },
-};
-const INK = '#1b140f';
 /** Toward the sun, world space: low from the left-front, so the far sides of things hatch. */
 const SUN: [number, number, number] = [-0.75, 0.9, 0.35];
 
@@ -77,7 +69,7 @@ export interface LookSet extends LookStyle {
   select(id: string): boolean;
   /** Per frame: the time for the grain and the drifting waves, and the sliders. */
   frame(timeS: number, p: LookPostParams): void;
-  /** The film pass's settings this frame, or null when the look draws straight to the screen. */
+  /** The final pass's settings this frame, or null when the look draws straight to the screen. */
   post(p: LookPostParams): PostSettings | null;
 }
 
@@ -103,35 +95,47 @@ export function createLookSet(base: LookStyle): LookSet {
     uInkSun: { value: [SUN[0] / n, SUN[1] / n, SUN[2] / n] },
     uInkHatch: { value: 5 },
     uInkExposure: { value: 1 },
-    uInkColor: { value: linear(INK) },
+    uInkColor: { value: linear(KODAK.ink) },
     uInkTime: { value: 0 },
     uInkWaves: { value: 1 },
+    uInkSolid: { value: 0 },
+    uInkLitHatch: { value: 0 },
   };
   let scene: Scene | null = null;
   let env: LookEnv | null = null;
   let classicSky: { background: Color | null; fog: Color | null } = { background: null, fog: null };
 
-  const kodakSky = () => KODAK_SKY[env?.timeOfDay ?? ''] ?? KODAK_SKY['golden-hour']!;
+  const recipe = (): InkRecipe | null => (current === 'classic' ? null : INK_RECIPES[current]);
+  const inked = () => current !== 'classic';
 
-  const applyMaterial = (t: Tracked) => {
+  const applyMaterial = (t: Tracked, recompile = true) => {
     const m = t.material as Material & { color?: Color };
     if (t.classic && m.color) {
-      const hex = current === 'kodak' ? KODAK_PALETTE[t.kind] : undefined;
+      const hex = recipe()?.palette[t.kind];
       if (hex) m.color.set(hex);
       else m.color.copy(t.classic);
     }
     // The ink patch changes the lit program: recompile once, now.
-    if (t.mode) m.needsUpdate = true;
+    if (t.mode && recompile) m.needsUpdate = true;
+  };
+
+  const applyUniforms = () => {
+    const r = recipe();
+    if (!r) return;
+    uniforms.uInkColor.value = linear(r.ink);
+    uniforms.uInkSolid.value = r.shadow === 'solid' ? 1 : 0;
+    uniforms.uInkLitHatch.value = r.litHatch;
+    uniforms.uInkExposure.value = skyOf(r, env?.timeOfDay).exposure;
   };
 
   const applyScene = () => {
     if (!scene) return;
     const fog = scene.fog as Fog | null;
-    if (current === 'kodak') {
-      const sky = kodakSky();
+    const r = recipe();
+    if (r) {
+      const sky = skyOf(r, env?.timeOfDay);
       scene.background = new Color(sky.horizon);
       if (fog) fog.color.set(sky.horizon);
-      uniforms.uInkExposure.value = sky.exposure;
     } else {
       scene.background = classicSky.background ? classicSky.background.clone() : null;
       if (fog && classicSky.fog) fog.color.copy(classicSky.fog);
@@ -152,9 +156,10 @@ export function createLookSet(base: LookStyle): LookSet {
     if (t.mode) {
       const mode = t.mode;
       m.onBeforeCompile = (shader) => {
-        if (current === 'kodak') patchInkShader(shader, mode, uniforms);
+        if (inked()) patchInkShader(shader, mode, uniforms);
       };
-      m.customProgramCacheKey = () => (current === 'kodak' ? `ink-${mode}` : 'classic');
+      // Every ink look shares one program per mode: their differences are uniforms and colours.
+      m.customProgramCacheKey = () => (inked() ? `ink-${mode}` : 'classic');
     }
     tracked.set(m, t);
     if (current !== DEFAULT_LOOK) applyMaterial(t);
@@ -177,33 +182,42 @@ export function createLookSet(base: LookStyle): LookSet {
         background: s.background instanceof Color ? s.background.clone() : null,
         fog: fog ? fog.color.clone() : null,
       };
+      applyUniforms();
       applyScene();
     },
     select(id) {
       if (!isLookId(id) || id === current) return false;
+      const wasInked = inked();
       current = id;
-      for (const t of tracked.values()) applyMaterial(t);
+      // Between two ink looks the program is the same: only colours and uniforms change.
+      const recompile = wasInked !== inked();
+      for (const t of tracked.values()) applyMaterial(t, recompile);
+      applyUniforms();
       applyScene();
       return true;
     },
     frame(timeS, p) {
+      const r = recipe();
       uniforms.uInkTime.value = timeS;
-      uniforms.uInkHatch.value = p.hatchPerM;
-      uniforms.uInkWaves.value = p.seaInk;
+      uniforms.uInkHatch.value = p.hatchPerM * (r?.hatchScale ?? 1);
+      uniforms.uInkWaves.value = p.seaInk * (r?.seaInk ?? 1);
     },
     post(p) {
-      if (current !== 'kodak') return null;
-      const sky = kodakSky();
+      const r = recipe();
+      if (!r) return null;
+      const sky = skyOf(r, env?.timeOfDay);
       return {
         ink: p.inkLines,
-        inkWidthPx: p.inkWidthPx,
+        inkWidthPx: p.inkWidthPx * r.lineWeight,
         inkFarM: 350,
         inkColor: uniforms.uInkColor.value,
         skyTop: linear(sky.top),
         skyHorizon: linear(sky.horizon),
-        grade: p.filmGrade,
-        vignette: p.vignette,
-        grain: p.filmGrain,
+        grade: Math.min(1, p.filmGrade * r.gradeAmount),
+        lut: r.grade,
+        brush: r.brush,
+        vignette: p.vignette * r.vignette,
+        grain: p.filmGrain * r.grain,
       };
     },
   };

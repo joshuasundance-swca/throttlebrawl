@@ -1,10 +1,17 @@
-import { Color, Fog, MeshBasicMaterial, MeshLambertMaterial, Scene, ShaderLib } from 'three';
+import { Color, Fog, MeshBasicMaterial, MeshLambertMaterial, Scene, ShaderLib, SRGBColorSpace } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createFlatLook, type MaterialKind } from '../look';
 import { defaultRenderParams } from '../tuning';
 import {
+  bleachGrade,
+  BRUSH,
   buildGradeLut,
   createLookSet,
+  GRADES,
+  INK_RECIPES,
+  KODAK,
+  neutralGrade,
+  WASTELAND,
   DEFAULT_LOOK,
   FRAGMENT_ANCHORS,
   isLookId,
@@ -70,7 +77,7 @@ const params = () => defaultRenderParams();
 
 describe('the look set', () => {
   it('lists the playable looks, classic first and the default', () => {
-    expect(LOOK_IDS).toEqual(['classic', 'kodak']);
+    expect(LOOK_IDS).toEqual(['classic', 'kodak', 'wasteland', 'brush']);
     expect(DEFAULT_LOOK).toBe('classic');
     expect(isLookId('kodak')).toBe(true);
     expect(isLookId('sepia')).toBe(false);
@@ -173,6 +180,139 @@ describe('the look set', () => {
   });
 });
 
+// Playtest 1c item 5: two more looks on the same ink pipeline, as recipes with dials (palette,
+// grade, line weight, shadow style): Sun-bleached wasteland and Kodachrome brush.
+describe('the newer ink looks (playtest 1c item 5)', () => {
+  const INK_LOOKS = ['kodak', 'wasteland', 'brush'] as const;
+
+  it('recolours each look to its own palette, and back to classic', () => {
+    const set = createLookSet(createFlatLook());
+    const kinds = ['road', 'shoulder', 'markingCenter', 'rail', 'water'] as const;
+    const mats = kinds.map((k) => set.material(k) as MeshLambertMaterial);
+    const classic = mats.map((m) => m.color.getHexString());
+    for (const id of INK_LOOKS) {
+      expect(set.select(id), id).toBe(true);
+      kinds.forEach((k, i) => {
+        expect(`#${mats[i]!.color.getHexString()}`, `${id} ${k}`).toBe(INK_RECIPES[id].palette[k]);
+      });
+    }
+    set.select('classic');
+    expect(mats.map((m) => m.color.getHexString())).toEqual(classic);
+    console.log(
+      `[examined] ${INK_LOOKS.length} ink looks x ${kinds.length} palette kinds, and the classic restore`,
+    );
+  });
+
+  it('the wasteland palette: flat burnt-orange sky, deep teal sea, charcoal road', () => {
+    const hsl = (hex: string) => new Color(hex).getHSL({ h: 0, s: 0, l: 0 }, SRGBColorSpace);
+    const sky = WASTELAND.sky['golden-hour']!;
+    const top = hsl(sky.top);
+    const hor = hsl(sky.horizon);
+    expect(top.h * 360).toBeGreaterThan(15); // orange, not red
+    expect(top.h * 360).toBeLessThan(35);
+    expect(Math.abs(top.l - hor.l), 'flat: top and horizon nearly the same').toBeLessThan(0.06);
+    const sea = hsl(WASTELAND.palette.water!);
+    expect(sea.h * 360).toBeGreaterThan(170); // teal
+    expect(sea.h * 360).toBeLessThan(200);
+    expect(sea.l, 'deep').toBeLessThan(0.35);
+    const road = hsl(WASTELAND.palette.road!);
+    expect(road.s, 'charcoal is grey').toBeLessThan(0.1);
+    expect(road.l).toBeLessThan(0.3);
+    expect(Object.keys(WASTELAND.sky).sort()).toEqual(Object.keys(KODAK.sky).sort());
+  });
+
+  it('every ink look keeps the road dark, so the white HUD labels never share its value', () => {
+    for (const id of INK_LOOKS) {
+      const c = new Color(INK_RECIPES[id].palette.road);
+      const l = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; // linear luminance
+      expect(l, id).toBeLessThan(0.1);
+    }
+  });
+
+  it('hands the final pass each recipe: its table, line weight, brush and shadow style', () => {
+    const set = createLookSet(createFlatLook());
+    const scene = new Scene();
+    set.setupScene(scene, { timeOfDay: 'golden-hour' });
+    const p = params();
+    const solidOf = (id: string) => {
+      set.select(id);
+      const road = set.material('road') as MeshLambertMaterial;
+      return (compiled(road).uniforms as unknown as InkUniforms).uInkSolid.value;
+    };
+    expect(solidOf('kodak')).toBe(0);
+    expect(set.post(p)).toMatchObject({ lut: 'kodachrome', brush: 0, inkWidthPx: p.inkWidthPx });
+    expect(solidOf('wasteland')).toBe(0);
+    expect(set.post(p)).toMatchObject({
+      lut: 'bleach',
+      brush: 0,
+      inkWidthPx: p.inkWidthPx * WASTELAND.lineWeight,
+    });
+    expect(set.post(p)!.grain).toBeCloseTo(p.filmGrain * WASTELAND.grain);
+    expect((scene.fog as Fog).color.getHexString()).toBe(
+      new Color(WASTELAND.sky['golden-hour']!.horizon).getHexString(),
+    );
+    expect(solidOf('brush')).toBe(1);
+    expect(set.post(p)).toMatchObject({
+      lut: 'kodachrome',
+      brush: 1,
+      inkWidthPx: p.inkWidthPx * BRUSH.lineWeight,
+    });
+    expect(BRUSH.lineWeight, 'brush lines are thicker than kodak').toBeGreaterThan(KODAK.lineWeight);
+    expect(WASTELAND.lineWeight, 'wasteland ink is heavier than kodak').toBeGreaterThan(KODAK.lineWeight);
+    set.select('classic');
+    expect(set.post(p)).toBeNull();
+  });
+
+  it('switching between two ink looks recolours without a recompile; to or from classic recompiles', () => {
+    const set = createLookSet(createFlatLook());
+    const road = set.material('road') as MeshLambertMaterial;
+    set.select('kodak');
+    const key = road.customProgramCacheKey();
+    const v = road.version;
+    set.select('wasteland');
+    set.select('brush');
+    expect(road.version, 'same program').toBe(v);
+    expect(road.customProgramCacheKey()).toBe(key);
+    set.select('classic');
+    expect(road.version).toBeGreaterThan(v);
+  });
+
+  it('the solid shadow style fills the deep band with ink in the shader, behind one uniform', () => {
+    const s = lambertShader();
+    patchInkShader(s, 'solid', uniformsForPatch());
+    expect(s.fragmentShader).toContain('uniform float uInkSolid');
+    expect(s.fragmentShader).toContain('mix(hatch * 0.85, deep * 0.88, uInkSolid)');
+  });
+
+  it('adds no ageing textures: the ink patch samples no texture at all (no cracks, rust or grime)', () => {
+    const taps = (src: string) => (src.match(/texture2?D?\(/g) ?? []).length;
+    for (const mode of ['solid', 'water'] as const) {
+      const s = lambertShader();
+      patchInkShader(s, mode, uniformsForPatch());
+      expect(taps(s.fragmentShader), mode).toBe(taps(ShaderLib.lambert.fragmentShader));
+      expect((s.fragmentShader.match(/sampler2D/g) ?? []).length, mode).toBe(
+        (ShaderLib.lambert.fragmentShader.match(/sampler2D/g) ?? []).length,
+      );
+    }
+    for (const r of Object.values(INK_RECIPES)) {
+      expect(Object.keys(r).join(' ')).not.toMatch(/crack|rust|grime|ageing|aging/i);
+    }
+  });
+});
+
+function uniformsForPatch(): InkUniforms {
+  return {
+    uInkSun: { value: [0, 1, 0] },
+    uInkHatch: { value: 5 },
+    uInkExposure: { value: 1 },
+    uInkColor: { value: [0, 0, 0] },
+    uInkTime: { value: 0 },
+    uInkWaves: { value: 1 },
+    uInkSolid: { value: 0 },
+    uInkLitHatch: { value: 0 },
+  };
+}
+
 describe('the ink shader patch', () => {
   const uniforms = (): InkUniforms => ({
     uInkSun: { value: [0, 1, 0] },
@@ -181,6 +321,8 @@ describe('the ink shader patch', () => {
     uInkColor: { value: [0, 0, 0] },
     uInkTime: { value: 0 },
     uInkWaves: { value: 1 },
+    uInkSolid: { value: 0 },
+    uInkLitHatch: { value: 0 },
   });
 
   it("finds each anchor exactly once in three's Lambert shader (a three upgrade that moves one fails here)", () => {
@@ -206,6 +348,38 @@ describe('the ink shader patch', () => {
     const s = lambertShader();
     s.fragmentShader = s.fragmentShader.replace('#include <opaque_fragment>', '');
     expect(() => patchInkShader(s, 'solid', uniforms())).toThrow(/opaque_fragment/);
+  });
+});
+
+describe('the sun-bleach and neutral grades (playtest 1c item 5)', () => {
+  const luma = ([r, g, b]: number[]) => 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0);
+
+  it('keeps the tone order of greys in every table', () => {
+    for (const [id, grade] of Object.entries(GRADES)) {
+      let last = -1;
+      for (let i = 0; i <= 20; i++) {
+        const l = luma(grade(i / 20, i / 20, i / 20));
+        expect(l, `${id} at ${i / 20}`).toBeGreaterThan(last);
+        last = l;
+      }
+    }
+  });
+
+  it('bleach: paler than film (less saturated), blacks lift to a near-neutral charcoal, not brown', () => {
+    const spread = (c: readonly number[]) => Math.max(...c) - Math.min(...c);
+    const teal = [0.1, 0.45, 0.5] as const;
+    expect(spread(bleachGrade(...teal))).toBeLessThan(spread(kodachromeGrade(...teal)));
+    expect(spread(bleachGrade(...teal))).toBeLessThan(spread(teal));
+    const black = bleachGrade(0, 0, 0);
+    expect(black[0]).toBeGreaterThan(0.04);
+    expect(black[0] - black[2], 'charcoal').toBeLessThan(0.01);
+    const filmBlack = kodachromeGrade(0, 0, 0);
+    expect(filmBlack[0] - filmBlack[2], 'film is browner').toBeGreaterThan(black[0] - black[2]);
+  });
+
+  it('neutral is the identity', () => {
+    expect(neutralGrade(0.2, 0.5, 0.9)).toEqual([0.2, 0.5, 0.9]);
+    expect(buildGradeLut(LUT_SIZE, neutralGrade)[(LUT_SIZE - 1) * 4]).toBe(255);
   });
 });
 
