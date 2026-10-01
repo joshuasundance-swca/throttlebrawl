@@ -1,0 +1,7 @@
+# Python tooling state and the voice pipeline's working files (raw takes, the call ledger)
+.venv/
+.cache/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

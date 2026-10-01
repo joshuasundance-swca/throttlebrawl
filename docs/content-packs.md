@@ -1075,7 +1075,8 @@ A bark file holds many short lines, usually one file per speaker or per AI batch
 | `priority` | 0–3; a higher-priority bark may interrupt a lower one in the same bubble. |
 | `oncePerCareer` | Say it once, ever. The save file remembers it. |
 | `text` | The subtitle and bubble text. The linter warns above 80 characters, because bubbles must be readable at speed on a phone. Subtitles for voices are a decided accessibility item, so every line has text even when it has audio. |
-| `audioAsset` | An optional voiced version. Absent in M1. |
+| `audioAsset` | The voiced version's asset id. `[default]` (the maintainer, 2026-10-01: "Voices go in") It follows the line's content reference: `<pack>:bark-set/<set>#<line>` is spoken by `assets/audio/barks/<set>/<line>.ogg` in the same pack, asset id `audio/barks/<set>/<line>`, and the game plays clips by that rule, so the field records the clip and a unit test keeps field and file in step. Absent or null: the line is a silent subtitle. |
+| `audioStatus` | `[default]` The voice's own vetoable status, separate from the line's: `live`, `vetoed` (the maintainer cut the voice but kept the words; the clip file is removed, the field and an optional `audioNote` stay as the taste log, and the generator never voices the line again) or `draft`. A line cut with "cut this" (its `status`) loses its voice too. |
 | `replyTo` | Reserved: a line id this line answers, for two-rider exchanges later. |
 
 The **fact vocabulary** for `when` is a registry in code; the linter rejects unknown facts. The v1 list:
@@ -1128,7 +1129,7 @@ All numbers in steps 1–3 are tuning parameters under `barks.*`, so the tuning 
 - A batch can be switched off in one edit, by setting the set's `meta.status` to `vetoed`. Single lines are vetoed by setting their own `status` to `vetoed`, which is also what the in-game "cut this" flow ends in.
 - Vetoed lines stay in their file as the **taste log**, and the generator reads them as negative examples for the next batch.
 - The linter flags near-duplicate text across all sets (normalised text equality, plus a simple similarity threshold), so a batch cannot flood the pool with rephrasings. This check arrives with the first AI batch, not in M1.
-- Voiced audio generated offline sits next to the text as `audioAsset`. It is streamed from the dataset repo through `assetSources` when the files get large.
+- Voiced audio generated offline sits next to the text as `audioAsset`, with its `audioStatus`. It is streamed from the dataset repo through `assetSources` when the files get large. `[default]` (run W-O) The first batch is baked: 247 Opus clips at 24 kbps, about 1.9 MB in all, each fetched only the first time its line is said. `tools/voices` makes them (one consistent voice per rival, from a synthetic reference), and a set's `meta.voice` records the batch, the models, the reference voice and the cast file (`tools/voices/cast.json`).
 
 ### HUD layout presets
 

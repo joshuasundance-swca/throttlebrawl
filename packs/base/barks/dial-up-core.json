@@ -12,53 +12,71 @@
     {
       "id": "dial-up-start-dialing",
       "trigger": "race-start",
-      "text": "Dialing in. Nobody pick up the phone."
+      "text": "Dialing in. Nobody pick up the phone.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-start-dialing",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-pass-lost",
       "trigger": "overtake",
-      "text": "Connection lost. Yours."
+      "text": "Connection lost. Yours.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-pass-lost",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-pass-hold",
       "trigger": "overtake",
-      "text": "Your call is important to nobody."
+      "text": "Your call is important to nobody.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-pass-hold",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-hit-mail",
       "trigger": "hit-landed",
-      "text": "You've got mail. It's my boot."
+      "text": "You've got mail. It's my boot.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-hit-mail",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-hit-buffering",
       "trigger": "hit-landed",
-      "text": "Buffering… buffering… hit."
+      "text": "Buffering… buffering… hit.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-hit-buffering",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-traffic-packet",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Packet loss. You were the packet."
+      "text": "Packet loss. You were the packet.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-traffic-packet",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-traffic-forward",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Forwarded you to a truck. No reply."
+      "text": "Forwarded you to a truck. No reply.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-traffic-forward",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-down-reset",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Connection reset by peer. You, peer."
+      "text": "Connection reset by peer. You, peer.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-down-reset",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-down-reboot",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Rebooting. Do not unplug me."
+      "text": "Rebooting. Do not unplug me.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-down-reboot",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-down-again",
@@ -72,27 +90,37 @@
           "value": 2
         }
       ],
-      "text": "Disconnected again. Logging your IP."
+      "text": "Disconnected again. Logging your IP.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-crash-fatal",
       "trigger": "crash-self",
-      "text": "Fatal exception. Press any key."
+      "text": "Fatal exception. Press any key.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-crash-fatal",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-crash-blue",
       "trigger": "crash-self",
-      "text": "Blue screen. Blue sky. Same thing."
+      "text": "Blue screen. Blue sky. Same thing.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-crash-blue",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-near-ping",
       "trigger": "near-miss",
-      "text": "Ping three. Too close. Loved it."
+      "text": "Ping three. Too close. Loved it.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-near-ping",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-near-lag",
       "trigger": "near-miss",
-      "text": "Lag saved me. Lag always saves me."
+      "text": "Lag saved me. Lag always saves me.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-near-lag",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-lead-56k",
@@ -104,7 +132,9 @@
           "value": 1
         }
       ],
-      "text": "56k and still in first. Do the math."
+      "text": "56k and still in first. Do the math.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-lead-56k",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-late-download",
@@ -116,14 +146,18 @@
           "value": 0.8
         }
       ],
-      "text": "Download almost complete. You're not."
+      "text": "Download almost complete. You're not.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-late-download",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-hit-chad",
       "trigger": "hit-landed",
       "target": "chad-speedwell",
       "priority": 1,
-      "text": "Unsubscribed. Permanently."
+      "text": "Unsubscribed. Permanently.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-hit-chad",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-hit-timeout",
@@ -135,7 +169,9 @@
           "value": 0.3
         }
       ],
-      "text": "Your session has timed out."
+      "text": "Your session has timed out.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-hit-timeout",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-hit-offline",
@@ -147,7 +183,9 @@
           "value": 1
         }
       ],
-      "text": "You knocked me offline. Remember?"
+      "text": "You knocked me offline. Remember?",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-hit-offline",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-near-onebar",
@@ -159,7 +197,9 @@
           "value": 0.4
         }
       ],
-      "text": "One bar left. Still connecting."
+      "text": "One bar left. Still connecting.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-near-onebar",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-start-night",
@@ -171,7 +211,9 @@
           "value": "night"
         }
       ],
-      "text": "Night rates. Long distance is free."
+      "text": "Night rates. Long distance is free.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-start-night",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-crash-dignity",
@@ -183,14 +225,18 @@
           "value": 0.4
         }
       ],
-      "text": "Error 404. Dignity not found."
+      "text": "Error 404. Dignity not found.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-crash-dignity",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-down-chad",
       "trigger": "knocked-down-by-target",
       "target": "chad-speedwell",
       "priority": 1,
-      "text": "Beaten by fiber optics. Unfair."
+      "text": "Beaten by fiber optics. Unfair.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-down-chad",
+      "audioStatus": "live"
     },
     {
       "id": "dial-up-traffic-undo",
@@ -202,7 +248,9 @@
           "value": 1
         }
       ],
-      "text": "That's for last time. Ctrl-Z that."
+      "text": "That's for last time. Ctrl-Z that.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-traffic-undo",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -212,6 +260,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-09-29"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_puck, speed 1.15, pitch +1.5 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }
