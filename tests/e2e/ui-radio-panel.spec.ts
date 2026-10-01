@@ -22,9 +22,11 @@ const STATIONS: Station[] = readdirSync('packs/base/stations')
   .map((f) => JSON.parse(readFileSync(`packs/base/stations/${f}`, 'utf8')) as Station)
   .map((s) => ({ id: s.id, name: s.name, tracks: s.tracks.map((t) => ({ id: t.id, title: t.title })) }));
 
+// The callback: `radio: { state: ..., skip: ..., cut: ... }` or `radio: <something>RadioSource`.
+// app/'s own read-only `radio: { region, stations, tunedTo }` (AppHandle.presentation) is not it.
 const appWired = readdirSync('src/app')
   .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-  .some((f) => /\bradio:\s*\{/.test(readFileSync(`src/app/${f}`, 'utf8')));
+  .some((f) => /\bradio:\s*(\{[^}]*\bstate\b|\w*RadioSource\b)/.test(readFileSync(`src/app/${f}`, 'utf8')));
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
