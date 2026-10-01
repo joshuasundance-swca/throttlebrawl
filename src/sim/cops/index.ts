@@ -46,7 +46,10 @@
 //   amount travels in the event (and so in the debug report) for career-1 to charge.
 // - A cop holding a weapon (his startingWeapon: Pruitt's baton, a trooper's taser) swings it at
 //   the man he chases when he is within its reach, at most every `cops.swingEveryS`, so the M1
-//   steal can take it off him mid-swing. An unarmed cop never attacks, as before.
+//   steal can take it off him mid-swing. An unarmed cop never attacks, as before. He keeps his
+//   weapon through a wreck (sim/combat), and moving in alongside he stays level with a target who
+//   dabs the brakes (ALONGSIDE_BRAKE_SHARE), so his swings, and your steal chances, come in a
+//   normal race (the cops polish round, 2026-10-01).
 //
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
@@ -234,6 +237,15 @@ const PULL_UP_GAP_M = 6;
  */
 const STOP_BEHIND_M = 8;
 const STOP_BRAKE_SHARE = 0.8;
+/**
+ * Moving in alongside, he keeps braking room for his full brakes, so beside a target who dabs the
+ * brakes (riding in traffic) he stays level, inside his weapon's reach, where his swing (and your
+ * steal) can happen. At STOP_BRAKE_SHARE he dropped about a stopping distance back at every dab
+ * (some 6 m at 25 m/s, out of the baton's 1.5 m reach), so an armed cop hardly ever swung: the
+ * integration skeptic's F2, "steal chances are rare". Carried past a hard stop, he still ends the
+ * move-in and waits on the shoulder (below). [default] (the cops polish round, 2026-10-01)
+ */
+const ALONGSIDE_BRAKE_SHARE = 1;
 /** Hanging back: no further back than the follow gap plus this counts as on station. */
 const STATION_M = 10;
 /** Scaled ticks on station before he moves in (8 s), and how long he then stays alongside (6 s). */
@@ -492,7 +504,8 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
       const ownBrake = bike.brakeMps2 * m2;
       const short = closing ? -ALONGSIDE_S_M : STOP_BEHIND_M;
       const stopRoom = gap - short + (target.speed * target.speed) / (2 * targetBrake);
-      const vSafe = stopRoom > 0 ? Math.sqrt(2 * ownBrake * STOP_BRAKE_SHARE * stopRoom) : 0;
+      const share = closing ? ALONGSIDE_BRAKE_SHARE : STOP_BRAKE_SHARE;
+      const vSafe = stopRoom > 0 ? Math.sqrt(2 * ownBrake * share * stopRoom) : 0;
       if (vWant > vSafe) {
         vWant = vSafe;
         if (v > vSafe) feedBrake = (v * v) / (2 * Math.max(stopRoom, 0.5) * ownBrake);
