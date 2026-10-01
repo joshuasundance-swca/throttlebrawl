@@ -4,6 +4,7 @@
 // - hatching in the shadow bands, drawn in WORLD space (triplanar: the plane the face mostly lies
 //   in), so it stays put on the surface as the camera moves instead of swimming over the screen,
 //   and fades to its average tone where the lines would get finer than a pixel;
+// - or, for the brush look's solid shadow style, flat bands with the deep side filled with ink;
 // - the sea gets inked wave crests and a few cream glints, also in world space, drifting slowly.
 // The outlines, the grade, grain and vignette are the final pass (post.ts). Numbers are [default].
 import type { MaterialKind } from '../look';
@@ -26,6 +27,13 @@ export interface InkUniforms {
   uInkTime: { value: number };
   /** Strength of the inked waves on the sea, 0 = plain water. */
   uInkWaves: { value: number };
+  /**
+   * The shadow style (playtest 1c item 5): 0 = hatched bands (kodak, wasteland), 1 = flat bands with
+   * the deep side filled solid ink (the brush look). In between blends the two.
+   */
+  uInkSolid: { value: number };
+  /** Sparse pen strokes on lit faces too, 0 = none (the wasteland look's drawn texture). */
+  uInkLitHatch: { value: number };
 }
 
 export type InkMode = 'solid' | 'water';
@@ -55,6 +63,8 @@ uniform float uInkExposure;
 uniform vec3 uInkColor;
 uniform float uInkTime;
 uniform float uInkWaves;
+uniform float uInkSolid;
+uniform float uInkLitHatch;
 // Coverage of parallel lines at integer t, width w (a share of the spacing), antialiased; where the
 // lines get finer than about two pixels it fades to their average coverage (no moire, no shimmer).
 float inkLine(float t, float w) {
@@ -83,8 +93,17 @@ const FRAGMENT_SOLID = /* glsl */ `
   band = mix(band, 0.56, deep);
   float hatch = max(mid * inkLine((hp.x + hp.y) * uInkHatch, 0.32),
                     deep * inkLine((hp.x - hp.y) * uInkHatch, 0.32));
+  // Solid style: one flat step for the mid band, the deep side filled with ink, no hatching.
+  float cover = mix(hatch * 0.85, deep * 0.88, uInkSolid);
+  // Lit faces: sparse strokes along the first world axis of the face's plane (along the road on
+  // the deck, upright on walls), at about a third of the shadow hatch's density.
+  if (uInkLitHatch > 0.0) {
+    float lit = (1.0 - mid) * inkLine((hp.x + 0.2 * hp.y) * uInkHatch * 0.35, 0.1);
+    cover = max(cover, lit * uInkLitHatch);
+  }
+  band = mix(band, mix(1.0, 0.74, mid), uInkSolid);
   vec3 inked = diffuseColor.rgb * band * uInkExposure;
-  inked = mix(inked, uInkColor, hatch * 0.85);
+  inked = mix(inked, uInkColor, cover);
   outgoingLight = inked + totalEmissiveRadiance;
 }`;
 
