@@ -157,3 +157,51 @@ describe('the ramp truck', () => {
     expect(Math.max(...r.trace.map((p) => p.h))).toBeLessThan(1);
   });
 });
+
+// Playtest 1c item 2 ([decided] 2026-09-30: "ramp truck in the same place"): candidates in a slot
+// (`params.slot`) are there only when the race seed picks them (road/setpieces).
+describe('set pieces from the race seed', () => {
+  const slotted = (f: BakedFeature, slot: string, id: string, s0: number): BakedFeature => ({
+    ...f,
+    id,
+    s0,
+    s1: s0 + (f.s1 - f.s0),
+    params: { ...f.params, slot },
+  });
+  const PADS = [slotted(PAD, 'pads', 'pad-early', 300), slotted(PAD, 'pads', 'pad-late', 900)];
+  const TRUCKS = [slotted(TRUCK, 'truck', 'truck-early', 600), slotted(TRUCK, 'truck', 'truck-late', 1400)];
+
+  it('only the pad the seed picks boosts, and the same seed picks the same one', () => {
+    const picked = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const config = { ...withFeatures(PADS), seed };
+      const run = () =>
+        ride(config, { s: 200, d: 1.7, speed: 30 }, 60 * 30)
+          .events.filter((e) => e.type === 'boost')
+          .map((e) => String(e.data['feature']));
+      const boosts = run();
+      expect(boosts, `seed ${seed}`).toHaveLength(1);
+      expect(run()).toEqual(boosts);
+      picked.add(boosts[0] ?? '');
+    }
+    expect([...picked].sort()).toEqual(['pad-early', 'pad-late']);
+  });
+
+  it('only the truck the seed picks is there: one jump, at it; the other spot is open road', () => {
+    const picked = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const config = { ...withFeatures(TRUCKS), seed };
+      const r = ride(config, { s: 450, d: 3.4, speed: 40 }, 60 * 30);
+      const jumps = r.trace.filter(
+        (p, i) => i > 0 && p.mode === 'Airborne' && r.trace[i - 1]?.mode === 'Road',
+      );
+      expect(jumps, `seed ${seed}`).toHaveLength(1);
+      const at = (jumps[0]?.s ?? 0) < 1000 ? 'truck-early' : 'truck-late';
+      picked.add(at);
+      const other = at === 'truck-early' ? 1400 + 15 : 600 + 15;
+      expect(deckHeight(config, 0, other, 3.4)).toBe(0);
+      expect(r.events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toHaveLength(0);
+    }
+    expect([...picked].sort()).toEqual(['truck-early', 'truck-late']);
+  });
+});

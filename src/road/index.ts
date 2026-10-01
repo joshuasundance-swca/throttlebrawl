@@ -13,6 +13,13 @@ export type {
   SplitZoneInfo,
   WorldPoint,
 } from './network';
+export {
+  chooseSetPieces,
+  SEEDED_SET_PIECE_KINDS,
+  setPieceActive,
+  setPieceSlot,
+  setPieceSlots,
+} from './setpieces';
 export { createRouteProgress } from './route';
 export type { RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export { FIXTURE_LANES, fixtureBranchNetwork, fixtureBranchTrack, fixtureNetwork } from './fixture';
