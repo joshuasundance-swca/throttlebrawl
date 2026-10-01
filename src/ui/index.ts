@@ -189,10 +189,31 @@ ${CHANGELOG_CSS}
   75% { opacity: 1; } 100% { transform: translateY(-14px); opacity: 0; } }
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
+/* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
+   The menu (#pause-main) and the two cards (#pause-cards: the legend and the recently-seen list) are
+   blocks that never shrink; a tall screen stacks them and scrolls when it must, and a short
+   landscape phone puts the cards in their own scrolling column beside the menu. [default] */
+#ui #pause-screen { justify-content: safe center; overflow-y: auto; }
+#pause-screen > * { flex-shrink: 0; }
+#pause-main, #pause-cards { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#pause-cards { width: min(560px, 100%); }
+#ui #pause-cards > * { width: 100%; max-width: 100%; max-height: none; box-sizing: border-box; flex-shrink: 0; }
 #pause-keys { padding: 4px 12px; }
 #pause-keys summary { cursor: pointer; font-weight: 800; }
 #pause-keys .keys-grid { display: grid; grid-template-rows: repeat(4, auto); grid-auto-flow: column; gap: 2px 18px;
   margin-top: 4px; }
+@media (max-width: 560px) {
+  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  #ui #pause-screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; justify-items: center;
+    overflow: hidden; }
+  #pause-main { grid-column: 1; grid-row: 1; gap: 8px; }
+  #pause-build { grid-column: 1; grid-row: 2; }
+  #pause-cards { grid-column: 2; grid-row: 1 / 3; max-height: 100%; overflow-y: auto; gap: 8px; }
+  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row; }
+}
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
 #busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
@@ -510,38 +531,45 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const syncPauseEntries = () => {
     tuningButton.hidden = settingValue(settings, 'showTuningPanel') !== true;
   };
+  // The legend and the "recently seen" list (mounted below, once the narrative exists) share a
+  // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8).
+  const pauseCards = el('div', { id: 'pause-cards' }, pauseKeys);
   const pauseScreen = el(
     'div',
     { id: 'pause-screen', className: 'screen', hidden: true },
-    el('div', { className: 'title', textContent: 'Paused' }),
-    entry(
-      button('pause-resume', 'big', 'Resume', () => resume()),
-      'resume',
-    ),
     el(
       'div',
-      { className: 'row' },
-      restartButton,
+      { id: 'pause-main' },
+      el('div', { className: 'title', textContent: 'Paused' }),
       entry(
-        button('pause-quit', 'small', 'Quit to menu', () => {
-          closePause();
-          (cb.onQuit ?? cb.onBackToMenu)();
-        }),
-        'quit',
+        button('pause-resume', 'big', 'Resume', () => resume()),
+        'resume',
       ),
-      controlsButton,
-      tuningButton,
-    ),
-    el(
-      'div',
-      { className: 'row' },
-      entry(
-        button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
-        'report',
+      el(
+        'div',
+        { className: 'row' },
+        restartButton,
+        entry(
+          button('pause-quit', 'small', 'Quit to menu', () => {
+            closePause();
+            (cb.onQuit ?? cb.onBackToMenu)();
+          }),
+          'quit',
+        ),
+        controlsButton,
+        tuningButton,
       ),
-      saveFileButton,
+      el(
+        'div',
+        { className: 'row' },
+        entry(
+          button('pause-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+          'report',
+        ),
+        saveFileButton,
+      ),
     ),
-    pauseKeys,
+    pauseCards,
     pauseBuild,
   );
   syncPauseEntries();
@@ -740,7 +768,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       barks.onEvents(events, context);
     },
   };
-  pauseScreen.insertBefore(narrative.mountRecentlySeen(pauseScreen).element, pauseBuild);
+  narrative.mountRecentlySeen(pauseCards);
 
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;
