@@ -64,6 +64,20 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Playtest 1c ("It also feels like the bikes accelerate slowly"): the engine's push at a
+    // standstill, as a multiple of the bike's acceleration, fading to 1× at LAUNCH_FADE_SHARE of
+    // top speed. 1 is the M1/M2 model. [default] 3: the starter does 0-60 mph in about 2.9 s, not 6.3 s.
+    id: 'riders.launchGain',
+    group: 'speed',
+    label: 'Launch punch',
+    default: 3,
+    min: 1,
+    max: 4,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
     id: 'riders.crashImpactMps',
     group: 'crashes',
     label: 'Barrier crash speed',
@@ -124,6 +138,18 @@ export interface RiderState {
   truckTouch: number[];
 }
 
+/**
+ * The launch punch (riders.launchGain) fades out linearly by this share of top speed [default], so
+ * cruising (the shoulder's and a wobble's slower top speeds, gentle hills) is exactly as before.
+ */
+export const LAUNCH_FADE_SHARE = 0.75;
+/**
+ * The punch comes in as the throttle opens from this to full [default]. Below it the model is
+ * exactly the M1/M2 one, so the AI's and the cops' feed-forward throttle (which hold a speed with a
+ * partial throttle) are unchanged; a player on full throttle, and any rider accelerating flat out,
+ * gets the whole punch.
+ */
+export const LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
 const GRAVITY = 9.81;
@@ -449,13 +475,23 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.lastTick[m.id] = world.tick;
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
-  // top speed for a while and pushes the bike toward it.
+  // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
+  // the engine's push at a standstill, fading linearly to 1× at LAUNCH_FADE_SHARE of the bike's own
+  // top speed, so top speed, the drag (engine braking when you let go) and cruising are as before.
+  // It comes in only as the throttle opens fully (LAUNCH_THROTTLE), and it is the racers' (the
+  // player's and the rivals'): the cop rides as before (playtest 1 item 7 keeps cop difficulty).
+  // With the punch his catch-up from the lot left him following at about 40 m at top speed, too
+  // close to stop behind a player braking hard, so he overshot (a follow-up for the cops lane).
   const v = m.speed;
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const top = topSpeedOf(world, config, bike.topSpeedMps) + boostTop;
+  const ownTop = topSpeedOf(world, config, bike.topSpeedMps);
+  const top = ownTop + boostTop;
   const a = bike.accelMps2 * accelScale * m2;
-  let accel = throttle * a - (a * v * v) / (top * top);
+  const fade = clamp(1 - v / (ownTop * LAUNCH_FADE_SHARE), 0, 1);
+  const open = clamp((throttle - LAUNCH_THROTTLE) / (1 - LAUNCH_THROTTLE), 0, 1);
+  const launch = def.faction === 'law' ? 1 : 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open;
+  let accel = throttle * a * launch - (a * v * v) / (top * top);
   accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
   if (boostLeft > 0) {
     // The push stops at the raised top speed; it never carries the bike past it.
