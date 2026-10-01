@@ -19,7 +19,7 @@ import {
   type BufferGeometry,
   type Material,
 } from 'three';
-import type { Edge, RoadNetwork } from '../road';
+import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
 import { ChunkedStrips, mergeBoxes, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
@@ -120,12 +120,35 @@ export interface RoadSceneStats {
   rampTrucks: number;
   /** Ramp trucks drawn from the Blender model (the rest are the code-made stand-in). */
   rampTruckModels: number;
+  /**
+   * The set pieces drawn for this seed (playtest 1c item 2): a slotted candidate only when the race
+   * seed picked it, exactly as the sim's riders meet it (road/setpieces.ts).
+   */
+  setPieces: readonly DrawnSetPiece[];
   /** Metres of road side with tagged land beside it (playtest 1c: scenery stands on land only). */
   sceneryLandM: number;
   /** Scenery placed, by kind (playtest 1c). */
   scenery: Readonly<Record<SceneryKind, number>>;
   /** Scenery kinds drawn from the Blender models (the rest are code-made stand-ins). */
   sceneryModels: readonly SceneryKind[];
+}
+
+/** One drawn boost pad or ramp truck (structurally core's DrawnSetPiece). */
+export interface DrawnSetPiece {
+  id: string;
+  kind: string;
+  /** Its seeded slot, or null when it is always there. */
+  slot: string | null;
+  /** World position of the feature box's centre. */
+  x: number;
+  z: number;
+}
+
+/** A dressing feature's set-piece slot, as road/setpieces.ts reads a baked feature's. */
+function slotOf(f: FeatureSpan): string | null {
+  if (!SEEDED_SET_PIECE_KINDS.includes(f.kind)) return null;
+  const v = f.params?.['slot'];
+  return typeof v === 'string' && v !== '' ? v : null;
 }
 
 export interface RoadScene {
@@ -513,6 +536,11 @@ export function buildRoadScene(
   const truckModel = opts.models?.truck;
   let boostPads = 0;
   let rampTrucks = 0;
+  // The race seed picks one candidate per set-piece slot from the network's own features, the
+  // same call the sim makes (sim/riders/features.ts), so the pad or truck drawn is the one that
+  // boosts or launches.
+  const picked = chooseSetPieces(road.edges, opts.seed ?? 1);
+  const setPieces: DrawnSetPiece[] = [];
   let sceneryLandM = 0;
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
@@ -937,12 +965,20 @@ export function buildRoadScene(
     // Quick wins (playtest 1b): boost pads glow on the road with chevrons pointing along +s, and
     // ramp trucks are placeholder boxes (their parts are merged into one mesh below).
     for (const f of dress.features ?? []) {
+      if (f.kind !== 'boostPad' && f.kind !== 'rampTruck') continue;
+      const slot = slotOf(f);
+      if (slot !== null && !picked.has(f.id ?? '')) continue;
+      const drawn = () => {
+        const centre = w(e.index, (f.s0 + f.s1) / 2, (f.d0 + f.d1) / 2, 0);
+        setPieces.push({ id: f.id ?? '', kind: f.kind, slot, x: centre.x, z: centre.z });
+      };
       if (f.kind === 'boostPad') {
         const s0 = Math.max(0, Math.min(f.s0, f.s1));
         const s1 = Math.min(e.length, Math.max(f.s0, f.s1));
         const lo = Math.min(f.d0, f.d1);
         const hi = Math.max(f.d0, f.d1);
         if (s1 <= s0) continue;
+        drawn();
         const pad = strip('boostPad');
         pad.breakStrip();
         for (let s = s0; ; s = Math.min(s1, s + 1)) {
@@ -974,7 +1010,8 @@ export function buildRoadScene(
           }
         }
         boostPads++;
-      } else if (f.kind === 'rampTruck') {
+      } else {
+        drawn();
         // The Blender truck once it has loaded (playtest 1c item 4), the code-made boxes until then.
         if (truckModel) truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
         else truckParts.push(...rampTruckParts(road, e.index, f));
@@ -1162,6 +1199,7 @@ export function buildRoadScene(
       boostPads,
       rampTrucks,
       rampTruckModels: truckGeo ? truckMatrices.length : 0,
+      setPieces,
       sceneryLandM,
       scenery: counts,
       sceneryModels: fromModels,
