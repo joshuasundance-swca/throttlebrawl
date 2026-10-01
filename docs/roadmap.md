@@ -29,6 +29,7 @@ This doc owns *when* things are built. *What* they are lives in the [product spe
 - [M3 · Look](#m3--look)
 - [M4 · Career and cast](#m4--career-and-cast)
 - [M5 · Launch polish](#m5--launch-polish)
+- [Regions, alongside the milestones](#regions-alongside-the-milestones)
 - [Side quests](#side-quests)
 - [Where each v1 item lands](#where-each-v1-item-lands)
 - [Decisions and when they matter](#decisions-and-when-they-matter)
@@ -298,7 +299,7 @@ The detailed task plan is [milestones/M4.md](./milestones/M4.md).
 - The **Classic and Hardcore options**, which follow the Road Trip default once the loop is in.
 - The **real-name pick**.
 - **Bike prices and career pacing**.
-- Later, **Region 2**, which is chosen after v1. [decided]
+- **More regions**, after the Pacific Northwest and San Francisco, which no longer wait for v1 ([Regions, alongside the milestones](#regions-alongside-the-milestones)). [decided]
 
 ## M5 · Launch polish
 
@@ -340,6 +341,18 @@ The blueprint lists "the public Space" in M5. The repo and the Spaces are public
 
 - The **public launch**, which is the maintainer's outward step.
 - Then the [After v1](#after-v1) work.
+
+## Regions, alongside the milestones
+
+Tag: `[decided]` (playtest 1c, 2026-09-30) for regions now, their order and new race types waiting; `[default]` for the mechanics.
+
+Regions no longer wait for v1. The maintainer, after the third phone playtest: "I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works".
+
+- **The order:** "Pnw and sf first then others". The Pacific Northwest and San Francisco come first. [decided]
+- **The shape:** each region is crude first, a content pack that reuses everything the game already has: its own road, local rivals, a local cop, traffic, signs and billboards. Both started in M2 as `region-pnw` (#161) and `region-sf` (#165). The menu's region picker starts a race in either one ([content packs](./content-packs.md#region-packs-at-runtime)). [decided] for crude-first packs that reuse everything; [default] for one pack per region.
+- **Alongside, not a milestone:** regions run in parallel with M2 to M5. The engine gaps a region shows are handed to the lane that owns that code, such as region palettes, scenery beyond palms, real climbs and fog. They do not make a region milestone. [default]
+- **New race types wait:** "These can wait until later". The regions reuse the existing race; no new race type is built for them yet. [decided]
+- **What comes next:** the next region is the maintainer's pick once these two play well. The candidates are the shelf regions in [the product spec](./product-spec.md#world-frame). [decided] for "then others"; [default] that the maintainer picks which one, as a taste call.
 
 ## Side quests
 
@@ -429,12 +442,12 @@ Taste calls that come up later are not open questions yet, because the options d
 - **The real name**: agents shortlist during M4, and the maintainer picks before M5. [decided for "before M5"]
 - **The streaming outfit's name**: before the launch.
 - **Going public with the launch**: after M5.
-- **Region 2**: after v1. [decided]
+- **The region after the Pacific Northwest and San Francisco**: "Pnw and sf first then others"; the maintainer picks the next one once those two play well (playtest 1c, 2026-09-30). [decided] for the order; [default] for when the pick comes
 
 ## After v1
 
 - Ideas on [the idea shelf](./product-spec.md#idea-shelf) earn their way in through playtests. [default]
-- Region 2 is chosen after v1 and can ship as its own content pack. [decided for the timing; default for the pack]
+- Regions are not here any more: they run alongside the milestones ([Regions, alongside the milestones](#regions-alongside-the-milestones); playtest 1c, 2026-09-30). [decided]
 - These come later [decided: later; default: not in v1]:
   - light persistence (cop heat carried between sessions, and grudges outside a career; the career save keeps grudges from M4, [decided], cockpit answer, 2026-09-29);
   - cop radio chatter;

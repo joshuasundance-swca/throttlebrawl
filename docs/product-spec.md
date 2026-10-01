@@ -360,8 +360,8 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 - A sleazy streaming outfit follows the tour and escalates with each tier. The frame blends an underground circuit with near-future satire: the world is ours, a little off, with the wasteland creeping in at the edges. [decided]
 - Lore lives in road signs, rival barbs, billboards and short interludes, never in long cutscenes. [default]
 - **Region 1, for v1: the Florida Keys and A1A.** Track 1 is a coastal highway. [decided]
-- Region 2 is chosen after v1. [decided]
-- Shelf regions: the Pacific Northwest, the Desert Southwest, San Francisco, San Antonio, Washington DC, Iowa and West Virginia, plus more to brainstorm. [decided] Flavor notes are in [the tone guide](./tone-guide.md#region-flavor).
+- **More regions now, not after v1.** The maintainer: "I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works". The Pacific Northwest and San Francisco come first ("Pnw and sf first then others"), crude first, as content packs that reuse everything, and the menu's region picker starts a race in either. New race types wait ("These can wait until later"). [decided] (playtest 1c, 2026-09-30) When each lands is in [the roadmap](./roadmap.md#regions-alongside-the-milestones).
+- Shelf regions: the Desert Southwest, San Antonio, Washington DC, Iowa and West Virginia, plus more to brainstorm. [decided] The Pacific Northwest and San Francisco left the shelf in playtest 1c. Flavor notes are in [the tone guide](./tone-guide.md#region-flavor).
 - **Road network.** One connected network: roads join at junctions, you can free-roam on them among traffic, bikers and cops, and races are routes through that network. [decided]
 - The network is designed to load in chunks, so a large real region can fit later. [decided]
 - **Free roam.** The network supports riding freely from milestone 1. A playable free-roam mode and world race markers come after v1; milestone 1 starts events from menus only. [default]
@@ -436,6 +436,7 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 ### What v1 is
 
 - One great track, the Keys coastal highway, with the full loop: ride, fight, crash, get busted, earn, buy, advance, and beat the boss. [decided]
+- More regions ride alongside it, crude first: the Pacific Northwest and San Francisco ("Pnw and sf first then others"; playtest 1c, 2026-09-30). [decided] They keep the game fun and prove the engine works beyond the Keys; the launch bar below is still measured on the Keys. [default]
 - The eight rivals with personalities, grudges and barks; cops and busts; the career of about 10 events in 4 event types; cash; 3 bikes plus slow bikes; paint; interludes. [decided]
 - Takedowns with toggleable slow motion; jumps and one ramp shortcut; traffic, pedestrians, animals and oddities. [decided]
 - Touch and keyboard controls, with gamepad support around milestone 2. [decided]
@@ -480,7 +481,7 @@ v1 will not have any of these. Several are on the [idea shelf](#idea-shelf), and
 | Deep crews, factions and reputation | [decided: later; default: not in v1] |
 | Bike parts and customization beyond paint | [decided] |
 | Weather | [decided: later; default: not in v1] |
-| Region 2 and beyond | [decided] |
+| New race types, beyond the classic race and the career's event types ("These can wait until later", playtest 1c, 2026-09-30) | [decided: later] |
 | Dynamic music; radio DJ lines | [decided: later; default: not in v1] |
 | Cruise mode; the cruise-control button (both on the shelf, cockpit answer, 2026-09-29) | [decided] |
 | Player mods beyond the content-pack format | [decided] |
