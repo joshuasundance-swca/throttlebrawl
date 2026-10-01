@@ -168,7 +168,8 @@ export function createApp(opts: AppOptions): AppHandle {
   const event = lookup(registry.events, DEFAULT_EVENT);
   const hudId = registry.packs[0]?.defaults.hud ?? 'classic';
   const hud = lookup(registry.hudLayouts, hudId);
-  createAssetManifest(() => assetIndex(registry));
+  // The asset manifest: the renderer loads the Blender models through it (playtest 1c item 4).
+  const assets = createAssetManifest(() => assetIndex(registry));
 
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
@@ -199,7 +200,7 @@ export function createApp(opts: AppOptions): AppHandle {
   const frameGate = createFrameGate(() => tuning.get(FRAME_DIVISOR_ID));
 
   // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
-  const renderer = createRenderer(opts.canvas);
+  const renderer = createRenderer(opts.canvas, { assets });
   // The look (playtest 1b item 6): render only, applied at once and never part of SimConfig.
   renderer.setLook(settings.look);
   /** The canvas's width over its height, as the renderer's camera uses it. */
@@ -235,6 +236,8 @@ export function createApp(opts: AppOptions): AppHandle {
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
     renderer.setTrafficTypes(config.trafficTypes);
+    // The roadside scenery scatters from the race's seed (playtest 1c item 2).
+    renderer.setSceneSeed(seed);
     audio.setEngineSounds(engineSounds(config));
     return createSim(config);
   };
