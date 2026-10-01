@@ -378,7 +378,8 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
 
   it('is the model, with its ramp foot at s0 and the lip where the sim launches riders', () => {
     expect(scene.stats.rampTruckModels).toBe(1);
-    expect(trucks.length).toBe(1);
+    // The model, and one merged mesh with every truck's deck run on over its cab.
+    expect(trucks.length).toBe(2);
     const lines: string[] = [];
     for (const x of [0.5, 2, 4, 6, 8, 10, 11.3]) {
       const h = down(truck.s0 + x, mid);
@@ -404,17 +405,31 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
       expect(down(truck.s0 + 6, d), `d ${d}`).toBeNull();
   });
 
-  it('stays inside the feature box end to end, and reports what stands above the sim deck', () => {
-    // The model's front bumper falls inside s1 (21.05 m of a 22 m box).
+  it('stays inside the feature box end to end', () => {
     expect(down(truck.s1 + 0.3, mid)).toBeNull();
-    expect(down(truck.s1 - 1.5, mid)).not.toBeNull();
-    // Past the lip the sim keeps a flat deck at 2.8 m to s1; the model carries a car on its top deck
-    // and its cab rises above that. A rider at speed leaves the lip airborne and clears them; this
-    // prints how far each stands above the sim's deck, for the riders lane (a report, not a gate).
-    const above: string[] = [];
-    for (const x of [12.5, 14, 16, 18, 20])
-      above.push(`+${x} m ${(down(truck.s0 + x, mid)! - 2.8).toFixed(2)}`);
-    console.log(`[examined] model above the sim's flat deck: ${above.join('; ')}`);
+    expect(down(truck.s1 - 0.2, mid)).not.toBeNull();
+  });
+
+  it("draws the sim's flat deck from the lip to s1, with nothing standing on it (skeptic 1c F2)", () => {
+    // Past the lip the sim keeps a flat deck at 2.8 m to s1. The drawn top surface must be that deck
+    // across the riders' width the whole way: before, the model's top-deck car stood 0.70 to 1.12 m
+    // above it and the deck ended 0.77 to 0.83 m below it over the cab.
+    const off: string[] = [];
+    let checked = 0;
+    let worst = 0;
+    for (let x = 11.7; x <= 21.9; x += 0.4) {
+      for (const d of [mid - 0.9, mid, mid + 0.9]) {
+        const h = down(truck.s0 + x, d);
+        checked++;
+        const miss = h === null ? Infinity : Math.abs(h - 2.8);
+        worst = Math.max(worst, miss);
+        if (miss > 0.06) off.push(`+${x.toFixed(1)} m d ${d.toFixed(1)}: ${h?.toFixed(2) ?? 'nothing'}`);
+      }
+    }
+    console.log(
+      `[examined] ${checked} points on the sim deck (+11.7 to +21.9 m, 3 across): worst ${worst.toFixed(3)} m off 2.8`,
+    );
+    expect(off).toEqual([]);
   });
 
   it('places the same way for a non-default ramp: a 2 m lip over 9 m', () => {
@@ -427,6 +442,43 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
     const wantFoot = road.toWorld(0, f.s0, mid, 0);
     expect(foot.distanceTo(new Vector3(wantFoot.x, wantFoot.y, wantFoot.z))).toBeLessThan(0.01);
     expect(m.determinant()).toBeGreaterThan(0); // not mirrored: its faces still face out
+  });
+
+  it("draws the flat deck on every live track's truck (Keys, PNW, SF), on their grades and curves", () => {
+    const lines: string[] = [];
+    for (const id of ['keys-m1', 'pnw-c1', 'sf-hills']) {
+      const t = track(id);
+      const built = buildRoadScene(t.road, look, t.dressing, { roadsideDensity: 0, models });
+      const solid = solids(built.group, (n) => n === 'road-rampTrucks');
+      for (const e of t.road.edges) {
+        for (const f of (t.dressing[e.id]?.features ?? []).filter((x) => x.kind === 'rampTruck')) {
+          const lip = Number(f.params?.['lipHeightM'] ?? 2.8);
+          const run = Number(f.params?.['rampLengthM'] ?? 11.5);
+          const dm = (f.d0 + f.d1) / 2;
+          let worst = 0;
+          let n = 0;
+          for (let x = run + 0.2; x <= f.s1 - f.s0 - 0.1; x += 0.5) {
+            for (const d of [dm - 0.6, dm, dm + 0.6]) {
+              const base = t.road.toWorld(e.index, f.s0 + x, d, 0);
+              const hit = new Raycaster(
+                new Vector3(base.x, base.y + 20, base.z),
+                new Vector3(0, -1, 0),
+                0,
+                40,
+              ).intersectObjects(solid, false)[0];
+              const h = hit ? hit.point.y - base.y : -Infinity;
+              worst = Math.max(worst, Math.abs(h - lip));
+              n++;
+            }
+          }
+          lines.push(`${id} ${f.id}: ${n} points, worst ${worst.toFixed(3)} m off ${lip} m`);
+          expect(worst, `${id} ${f.id ?? ''}`).toBeLessThan(0.1);
+        }
+      }
+      built.dispose();
+    }
+    console.log(`[examined] live trucks' decks: ${lines.join('; ')}`);
+    expect(lines.length).toBe(3);
   });
 });
 
