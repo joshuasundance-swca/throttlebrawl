@@ -92,10 +92,13 @@ const ATTACK_SEEDS = [2, 3, 4, 5, 6, 7];
 const ATTACK_MIN_CONNECTS = 3;
 /**
  * Extra seeds for "the bot lands a takedown", run headless in the page up to the bot's first
- * takedown. On 2026-10-01 each of them, and the browser race's seed 1, had one (seeds 2, 3, 8 and
- * 10 by tick 3600). [default]
+ * takedown. On 2026-10-01 each of the first four, and the browser race's seed 1, had one (by tick
+ * 3600). Once the set pieces moved per race (#208), none of those five did in the release build
+ * (main went red), so 12, 13 and 16 joined: over seeds 1 to 20 on main at ce7ee66, headless, the
+ * release content lands a takedown on 12, 13, 14 and 16, and the staging content (drafts) on 3, 12,
+ * 13, 16 and 20. [default]
  */
-const TAKEDOWN_SEEDS = [2, 3, 8, 10];
+const TAKEDOWN_SEEDS = [2, 3, 8, 10, 12, 13, 16];
 /**
  * Extra seeds for "the bot took the shortcut", run headless in the page up to the bot's first tick
  * on the cut. With the playtest 1c launch, seeds 2 to 5 took it and seeds 1 and 7 were boxed in by a
