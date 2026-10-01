@@ -1,0 +1,76 @@
+{
+  "type": "bark-set",
+  "id": "gripman-gus-core",
+  "name": "Gripman Gus: core lines",
+  "tags": ["rival", "region-sf"],
+  "defaults": {
+    "speaker": "gripman-gus",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "gus-start-bell",
+      "trigger": "race-start",
+      "text": "Ding ding. That's all the warning you get."
+    },
+    {
+      "id": "gus-pass-tuesday",
+      "trigger": "overtake",
+      "text": "Forty years on these hills. You're a Tuesday."
+    },
+    {
+      "id": "gus-pass-fare",
+      "trigger": "overtake",
+      "text": "Fare's due at the top. Exact change."
+    },
+    {
+      "id": "gus-hit-hold",
+      "trigger": "hit-landed",
+      "text": "Hold on to something. Not me."
+    },
+    {
+      "id": "gus-hit-disrupt",
+      "trigger": "hit-landed",
+      "target": "pivot",
+      "priority": 1,
+      "text": "Disrupt this."
+    },
+    {
+      "id": "gus-traffic-line",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Should've stood behind the yellow line."
+    },
+    {
+      "id": "gus-down-tourist",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Hit by a tourist. Again."
+    },
+    {
+      "id": "gus-down-fares",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
+      "text": "I remember every face that never paid."
+    },
+    {
+      "id": "gus-crash-hill",
+      "trigger": "crash-self",
+      "text": "The hill wins. The hill always wins."
+    },
+    {
+      "id": "gus-near-inches",
+      "trigger": "near-miss",
+      "text": "Inches. I've lived my whole life in inches."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco local (playtest 1c). gus-hit-hold is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. gus-hit-disrupt fires only when the hit lands on Pivot: the old city against the new.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "type": "road",
+  "id": "c-stair-alley-out",
+  "name": "Alley exit",
+  "realName": null,
+  "network": "sf-hills",
+  "from": "j-sf-hills-3",
+  "to": "j-sf-hills-3",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "painted-houses" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -771.5983, -771.4619, -771.2985, -771.1075, -770.8889, -770.6434, -770.3725, -770.0783, -769.7631,
+        -769.4301, -769.0825, -768.7237, -768.3569, -767.9852, -767.611, -767.2361
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -1040.0586, -1042.0539, -1044.0472, -1046.0381, -1048.0261, -1050.0109, -1051.9925, -1053.9707,
+        -1055.9457, -1057.9178, -1059.8874, -1061.8549, -1063.821, -1065.7861, -1067.7508, -1069.7154
+      ],
+      "kappa": [
+        0.006423682, 0.006770856, 0.00694788, 0.006947899, 0.006770911, 0.006423766, 0.005920166, 0.005280667,
+        0.004532673, 0.003710445, 0.002855092, 0.002014579, 0.001243719, 0.0006041811, 0.0001644842, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-hills.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

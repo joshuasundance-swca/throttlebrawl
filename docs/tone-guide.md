@@ -255,6 +255,61 @@ Flavor sketches from the playback page:
 
 - Each new region brings about 4 locals, including its own cops, plus its own sign and billboard pack. [decided for the roster shape; default for the packs]
 
+### Region: San Francisco (playtest 1c)
+
+Playtest 1c brought new regions forward: "I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works", in the order "Pnw and sf first then others". [decided] San Francisco ships crude first, as the `region-sf` content pack, and reuses the base game's bikes, weapons and regular rivals. Everything below is a planner draft. [default]
+
+- **Realism:** evocative, not literal, like the Keys. The track's streets have made-up names, and no landmark is branded: the bridge is "a big orange suspension bridge" and is never named.
+- **Sights:**
+  - steep blocks, and the crest of each one where the cross street flattens out
+  - painted row houses, shoulder to shoulder
+  - cable-car tracks down the middle of the road
+  - piers and warehouses on the waterfront
+  - fog banks rolling over the hills
+  - the long, foggy approach to the bridge
+- **Physics:** you catch air at every crest. Air off a hill should feel like the city's own ramp, not a stunt park.
+- **Traffic and hazards:**
+  - cable cars as slow traffic that you pass on the wrong side of the road
+  - unmarked white startup shuttles running private routes
+  - rideshare hatchbacks looking for a pickup
+  - e-scooter commuters at the kerb
+- **Law:** parking enforcement with a pursuit budget, the Municipal Curb Authority (a made-up name). No real agency names, badges or logos.
+- **Wasteland oddity:** a sea lion a long way from the pier, unbothered.
+- **Signs:** parking-ticket deadpan and grade warnings. Tickets that began before the rule, spaces that don't exist, hills that only get steeper.
+- **Billboards:** startup satire. Old things sold back as a service, and funding rounds for things that already exist. Never a real company, product, founder or logo.
+- **Time of day:** foggy dawn (the region's race), and golden hour.
+- **Stale-meme hook:** startup jargon (pivot, ten-x, stealth mode, the deck, burn rate) as one rival's whole vocabulary. It is aimed at a type, never at a person.
+- **Weird events** (ideas only, not built): a fog bank so thick the race goes by sound, a runaway cable car, a launch party across the road, a convoy of identical shuttles.
+- **Hard lines here:** no real tech companies, founders or products, and no jokes about people living on the street or any other real group. That cheap shot about the city is never the joke.
+
+#### Pivot (San Francisco local)
+
+- **Look:** A pre-revenue founder in a fleece vest on a carbon e-bike, pitching mid-race to nobody.
+- **Signature line:** "We're pre-revenue. You're pre-ditch." (an agent draft in the shape of the approved lines; the maintainer approves or vetoes it)
+- **Style:** A showboat at heart. With only the racer and heavy-hitter presets so far, he is a racer with a high weave and risk-taking: he takes the stair alley, jumps every crest and hits whoever is winning.
+- **Rivalries:** Gripman Gus, the old city against the new; Chad Speedwell, two versions of the same pitch.
+- **Sample barks:**
+  - overtaking: `Passing you. You're the legacy system.`
+  - takedown into traffic: `Acquired by a bus. Congrats on the exit.`
+  - crash: `Burn rate's fine. Everything's fine.`
+
+#### Gripman Gus (San Francisco local)
+
+- **Look:** A retired cable-car gripman in a wool cap on a forty-year-old bike. He rings a brass bell before he hits you.
+- **Signature line:** "Hold on to something. Not me." (an agent draft, as above)
+- **Style:** A heavy hitter who holds his line like a cable car and never takes the shortcut on purpose.
+- **Rivalry:** Pivot. His one targeted line, `Disrupt this.`, plays only when the hit lands on Pivot.
+- **Sample barks:**
+  - race start: `Ding ding. That's all the warning you get.`
+  - overtaking: `Forty years on these hills. You're a Tuesday.`
+  - grudge memory: `I remember every face that never paid.`
+
+#### Officer Meter (San Francisco local cop)
+
+- **Look:** A parking officer who has never once let anything go, and writes the ticket during the chase.
+- **Style:** The local cop. He has Sgt. Pruitt's numbers, except that he needs 2 seconds beside you to bust you, because he writes the ticket out in full.
+- **Sample barks** (they wait until the narrative fires the cop triggers): `Your meter expired eleven minutes ago.` and `I already wrote it. Sign here.`
+
 ## The bark system
 
 A bark is a short rival line shown as a text bubble in milestone 1 and voiced later. [decided] The maintainer asked for barks that are **contextual and non-repetitive**, built from **tagged lines plus memory** (grudge-history references), with an AI tie-in later. [decided]
