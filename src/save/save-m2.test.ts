@@ -59,6 +59,7 @@ const m2Custom: Settings = {
   slowMo: false,
   reduceShake: true,
   frameRateCap: 'half',
+  look: 'kodak',
   showTuningPanel: true,
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
@@ -78,6 +79,7 @@ const M2_FIELDS = [
   'slowMo',
   'reduceShake',
   'frameRateCap',
+  'look',
   'showTuningPanel',
   'gamepadBindings',
   'lastSeenBuild',
@@ -108,6 +110,7 @@ describe('the M2 settings record', () => {
       slowMo: true,
       reduceShake: false,
       frameRateCap: 'full',
+      look: 'classic',
       showTuningPanel: false,
       gamepadBindings: {},
       lastSeenBuild: null,
@@ -204,6 +207,7 @@ describe('the M2 settings record', () => {
       slowMo: null,
       reduceShake: 'on',
       frameRateCap: 'quarter',
+      look: 'sepia',
       showTuningPanel: 1,
       gamepadBindings: ['button3'],
       lastSeenBuild: 42,
@@ -220,6 +224,9 @@ describe('the M2 settings record', () => {
     expect(sanitiseSettings({ assists: { steer: 'light' } }).assists).toEqual({ steer: 'light' });
     expect(sanitiseSettings({ lastSeenBuild: '' }).lastSeenBuild).toBeNull();
     expect(sanitiseSettings({ lastSeenBuild: 'abc1234' }).lastSeenBuild).toBe('abc1234');
+    // The look (playtest 1b item 6): the two playable looks, anything else is the classic default.
+    expect(sanitiseSettings({ look: 'kodak' }).look).toBe('kodak');
+    expect(sanitiseSettings({ look: 'KODAK' }).look).toBe('classic');
   });
 
   it('keeps each well-formed binding and veto, dropping only the broken ones', () => {
