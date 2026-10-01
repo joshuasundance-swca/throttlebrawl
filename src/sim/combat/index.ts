@@ -77,12 +77,16 @@
 // - A held weapon replaces the punch: an attack press swings it (its own wind-up, active moment
 //   and recovery from data). The kick stays a kick, and a kick flag during any wind-up but the
 //   kick's own still turns the attack into a kick.
-// - The steal: an attack press by a rider who holds nothing, while an opponent's held weapon is in
+// - The steal: an attack press by a rider (not a cop), while an opponent's held weapon is in
 //   its wind-up at an age inside the weapon's steal window (ticks 7–20 of the pipe's 20, both ends
 //   included, counted in scaled time) and the thief is inside that weapon's reach box, takes the
 //   weapon instead of starting an attack. The swing is cancelled, and one `weaponGrab` event
 //   (`data.source` 'steal', target = the robbed rider, the swing's causeId) records the move. The
 //   steal pass runs before any attack advances, so the outcome does not depend on entity order.
+//   A thief with full hands drops his own weapon where he is (it lies on the road as a pickup
+//   again; `data.dropped` names it) and takes the swung one: the W-O polish run, after the skeptic
+//   saw 4 of 11 cop steal windows come while the player held a road weapon, so the steal cue asked
+//   for a press that only swung the pipe. [default]
 // - The telegraph: when a held weapon's wind-up reaches its steal window, a `stealWindow` event
 //   (render's glint, audio's cue).
 // - A rider who wrecks (leaves Road/Airborne, or reaches zero health) drops the weapon where it
@@ -1110,6 +1114,14 @@ function canTake(world: World, config: SimConfig, st: CombatState, m: Mover): bo
   return isRiding(m) && (riderState(world).health[m.id] ?? 0) > 0 && !st.held[m.id] && !isLaw(config, m);
 }
 
+/**
+ * Whether a rider may steal now: riding, conscious and not a cop. Full hands are fine: the thief
+ * drops what he holds and takes the swung weapon (the W-O polish run, [default]).
+ */
+function canSteal(world: World, config: SimConfig, m: Mover): boolean {
+  return isRiding(m) && (riderState(world).health[m.id] ?? 0) > 0 && !isLaw(config, m);
+}
+
 /** Whether `holder` is winding up its held weapon (not a kick it switched to). */
 function swingingHeld(st: CombatState, holder: Mover): boolean {
   const id = holder.id;
@@ -1126,7 +1138,7 @@ function stealPass(world: World, config: SimConfig, st: CombatState, pressed: bo
   for (const thief of world.movers) {
     if (thief.kind !== 'rider' || !pressed[thief.id]) continue;
     if (st.phase[thief.id] !== 'idle' || (st.stagger[thief.id] ?? 0) > EPS) continue;
-    if (!canTake(world, config, st, thief)) continue;
+    if (!canSteal(world, config, thief)) continue;
     let best: { holder: Mover; mine: boolean; dist2: number } | null = null;
     for (const holder of world.movers) {
       if (holder.id === thief.id || holder.kind !== 'rider' || !isRiding(holder)) continue;
@@ -1153,16 +1165,19 @@ function stealPass(world: World, config: SimConfig, st: CombatState, pressed: bo
     st.held[hid] = '';
     st.heldPickup[hid] = -1;
     endAttack(st, hid);
+    // Full hands: the thief lets go of his own weapon where he is (it lies on the road again).
+    const dropped = st.held[thief.id] ?? '';
+    if (dropped) dropWeapon(world, config, st, thief);
     if (pickup) takePickup(st, thief, pickup);
     else st.held[thief.id] = weapon;
     pressed[thief.id] = false;
-    emit(
-      world,
-      'weaponGrab',
-      thief.id,
-      { weapon, source: 'steal', windupTick: Math.round(age * 1000) / 1000 },
-      { target: hid, causeId: cause },
-    );
+    const data: Record<string, string | number> = {
+      weapon,
+      source: 'steal',
+      windupTick: Math.round(age * 1000) / 1000,
+    };
+    if (dropped) data['dropped'] = dropped;
+    emit(world, 'weaponGrab', thief.id, data, { target: hid, causeId: cause });
   }
 }
 
