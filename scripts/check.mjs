@@ -1,24 +1,30 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static, unit, sim, browser and perf as
-//                                    parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static and unit in one job, and the sim and
+//                                    browser slices as parallel jobs)
 //   npm run check -- --tier sim --shard 1/2
-//                                    one slice of a tier: the sim batch (Vitest's --shard) or the
-//                                    browser tests (Playwright's --shard). Every test file lands in
-//                                    exactly one slice; CI runs the slices as parallel jobs. A step
-//                                    marked everySlice (the build) runs whole in every slice.
+//                                    one slice of a tier: the sim batch or the browser tests. The
+//                                    test runner lists the tier's files and scripts/shard-plan.mjs
+//                                    splits them by their measured CI seconds; every file lands in
+//                                    exactly one slice. A step marked everySlice (the build) runs
+//                                    whole in every slice.
+//   npm run check -- --tier browser,perf --shard 4/4
+//                                    several tiers in one go, sharing one build: CI's last browser
+//                                    slice runs its e2e files, then perf (lastSliceOnly) on the same
+//                                    build.
 //
 // Every step must print what it examined, and an active step that examined nothing fails: a
 // check that looked at nothing reads exactly like a pass. A step whose subject does not exist
 // yet (no packs/, no seeded-race batch) is listed as NOT ACTIVE with the reason, never as a pass;
 // it switches itself on when the lane that owns it adds its files.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
 import { dependabotOnlyCommits } from './notes.mjs';
+import { planTier } from './shard-plan.mjs';
 
 const stripAnsi = (s) => stripVTControlCharacters(s);
 const lastExamined = (out) => [...out.matchAll(/^\[examined\] (.*)$/gm)].pop()?.[1] ?? '';
@@ -45,6 +51,10 @@ function fromPlaywright(out) {
     text: `${passed ?? 0} browser tests passed${bad ? `, ${bad}` : ''}${renderer ? `; ${renderer.trim()}` : ''}`,
   };
 }
+/** How many test files Vitest ran (passed, failed or skipped): the total in "Test Files ... (N)". */
+const vitestFiles = (out) => Number(/Test Files\s+[^\n]*\((\d+)\)/.exec(out)?.[1] ?? -1);
+/** How many tests Playwright started: "Running N tests using W workers". */
+const playwrightRunning = (out) => Number(/Running (\d+) tests? using/.exec(out)?.[1] ?? -1);
 function fromDist() {
   const dist = path.join(repoRoot, 'dist');
   if (!existsSync(dist)) return { n: 0, text: 'no dist/' };
@@ -98,19 +108,52 @@ const STEPS = [
     tier: 'sim',
     name: 'sim batch',
     script: 'test:sim',
-    shardable: true,
+    shardable: 'sim',
     count: fromVitest,
     active: () =>
       hasFiles('tests/sim/', /\.test\.ts$/) ||
       'no seeded-race batch yet (dev-1 adds tests/sim/batch.ts and its tests)',
   },
-  // The build belongs to both browser tiers: CI runs e2e slices and perf as separate jobs, and
-  // each job tests its own build. A plain `npm run check` still builds once.
+  // The build belongs to both browser tiers. A job that runs both (`--tier browser,perf`, CI's last
+  // browser slice) or the whole gate builds once; a job with one of them builds its own.
   { tier: ['browser', 'perf'], name: 'build', script: 'build', count: fromDist, everySlice: true },
-  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: true },
-  // perf never shards: its probes time frames one at a time on an otherwise idle runner.
-  { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined },
+  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: 'e2e' },
+  // perf never shards: its probes time frames one at a time on an otherwise idle runner. In a
+  // sharded run it may only ride in the last slice, after that slice's e2e files, as in ci.yml; the
+  // slice plan leaves that slice room for it.
+  { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined, lastSliceOnly: true },
 ];
+
+/**
+ * The test files of a shardable step, as its runner lists them (so a slice plan covers exactly
+ * what the unsharded run would run), with each file's test count where the runner prints it.
+ */
+function runnerFiles(kind) {
+  const cmd =
+    kind === 'sim'
+      ? ['vitest', 'list', '--project', 'sim', '--filesOnly']
+      : ['playwright', 'test', '--list', '--project=e2e'];
+  const res = spawnSync('npx', ['--no-install', ...cmd], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    maxBuffer: 1 << 26,
+    shell: process.platform === 'win32',
+  });
+  const out = stripAnsi(`${res.stdout ?? ''}`);
+  if (res.status !== 0) {
+    console.error(
+      `check: could not list the ${kind} files (npx ${cmd.join(' ')}):\n${out}${res.stderr ?? ''}`,
+    );
+    process.exit(1);
+  }
+  const re = kind === 'sim' ? /^\[sim\] (\S+)\s*$/gm : /\[e2e\] › (\S+?):\d+:\d+ › /g;
+  const tests = new Map();
+  for (const m of out.matchAll(re)) {
+    const f = m[1].replaceAll('\\', '/');
+    tests.set(f, (tests.get(f) ?? 0) + 1);
+  }
+  return { files: [...tests.keys()].sort(), tests };
+}
 
 function run(script, args = []) {
   return new Promise((resolve) => {
@@ -127,29 +170,81 @@ function run(script, args = []) {
   });
 }
 
+const TIER_NAMES = ['static', 'unit', 'sim', 'browser', 'perf'];
 const tierArg = process.argv.indexOf('--tier');
-const tier = tierArg > -1 ? process.argv[tierArg + 1] : null;
-const steps = STEPS.filter((s) => !tier || [s.tier].flat().includes(tier));
-if (steps.length === 0) {
-  console.error(`check: unknown tier ${tier} (static, unit, sim, browser, perf)`);
+const tier = tierArg > -1 ? (process.argv[tierArg + 1] ?? '') : null;
+const tiers = tier === null ? null : tier.split(',');
+const unknown = tiers?.filter((t) => !TIER_NAMES.includes(t)) ?? [];
+const steps = STEPS.filter((s) => !tiers || [s.tier].flat().some((t) => tiers.includes(t)));
+if (unknown.length || steps.length === 0) {
+  console.error(`check: unknown tier ${unknown.join(',') || tier} (${TIER_NAMES.join(', ')})`);
   process.exit(1);
 }
-// --shard i/n runs one slice of the shardable steps, through the test runner's own --shard
-// (Vitest, Playwright), which puts each test file in exactly one slice. Every other step in the
-// tier must be marked everySlice (it runs whole in each slice), so a slice can never quietly drop
-// a step.
+// --shard i/n runs one slice of the shardable steps: their runner lists the tier's files, and
+// scripts/shard-plan.mjs splits them by measured CI seconds into n slices, each file in exactly
+// one. Every other step must run whole in each slice (everySlice: the build) or be perf in the
+// last slice (lastSliceOnly), so a slice can never quietly drop a step.
 const shardArg = process.argv.indexOf('--shard');
 const shard = shardArg > -1 ? (process.argv[shardArg + 1] ?? '') : null;
+let slice = null;
 if (shard !== null) {
   const m = /^(\d+)\/(\d+)$/.exec(shard);
   if (!m || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) {
     console.error(`check: --shard wants i/n with 1 <= i <= n, got "${shard}"`);
     process.exit(1);
   }
-  if (!tier || !steps.some((s) => s.shardable) || steps.some((s) => !s.shardable && !s.everySlice)) {
+  slice = { i: Number(m[1]), n: Number(m[2]) };
+  if (
+    !tiers ||
+    !steps.some((s) => s.shardable) ||
+    steps.some((s) => !s.shardable && !s.everySlice && !s.lastSliceOnly)
+  ) {
     console.error('check: --shard needs a --tier whose steps all shard (sim, browser)');
     process.exit(1);
   }
+  if (slice.i !== slice.n && steps.some((s) => s.lastSliceOnly)) {
+    console.error(
+      `check: perf rides only in the last slice (${slice.n}/${slice.n}), which the slice plan leaves room for`,
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * The files of this slice for a shardable step, printed with the plan's numbers. With --plan,
+ * every slice's files are printed instead (which slice runs my test?), and nothing runs.
+ */
+const planOnly = process.argv.includes('--plan');
+function sliceOf(step) {
+  const { files, tests } = runnerFiles(step.shardable);
+  const plan = planTier(step.shardable, files, slice.n);
+  const mine = plan[slice.i - 1];
+  const total = [...tests.values()].reduce((a, b) => a + b, 0);
+  const testsIn = (list) => list.reduce((a, f) => a + (tests.get(f) ?? 0), 0);
+  console.log(
+    `\n${step.name}: slice ${slice.i}/${slice.n} runs ${mine.files.length} of ${files.length} files` +
+      (step.shardable === 'e2e' ? `, ${testsIn(mine.files)} of ${total} tests` : '') +
+      `; planned CI seconds per slice: ${plan.map((p) => p.predicted).join(' / ')} (scripts/shard-plan.mjs)`,
+  );
+  for (const [k, s] of (planOnly ? plan : [mine]).entries()) {
+    if (planOnly)
+      console.log(`[slice ${k + 1}/${slice.n}] ${s.files.length} files, about ${s.predicted} s on CI`);
+    for (const f of s.files) console.log(`  ${f}`);
+  }
+  if (mine.files.length === 0) {
+    console.error(`check: slice ${slice.i}/${slice.n} of ${step.name} got no files; use fewer slices`);
+    process.exit(1);
+  }
+  return { files: mine.files, tests: step.shardable === 'e2e' ? testsIn(mine.files) : null };
+}
+
+if (planOnly) {
+  if (!slice) {
+    console.error('check: --plan prints a slice plan, so it needs --shard i/n');
+    process.exit(1);
+  }
+  for (const step of steps) if (step.shardable) sliceOf(step);
+  process.exit(0);
 }
 
 const rows = [];
@@ -160,20 +255,34 @@ for (const step of steps) {
     rows.push([step.name, 'NOT ACTIVE', active]);
     continue;
   }
-  const args = shard && step.shardable ? [`--shard=${shard}`] : [];
-  const label = args.length ? `${step.name} (shard ${shard})` : step.name;
-  console.log(`\n=== ${label}: npm run ${step.script}${args.length ? ` -- ${args.join(' ')}` : ''} ===`);
+  const planned = slice && step.shardable ? sliceOf(step) : null;
+  const args = planned ? planned.files : [];
+  const label = planned
+    ? `${step.name} (slice ${slice.i}/${slice.n}, ${planned.files.length} files)`
+    : step.name;
+  console.log(`\n=== ${label}: npm run ${step.script}${args.length ? ` -- <${args.length} files>` : ''} ===`);
   const started = Date.now();
   const { code, out } = await run(step.script, args);
   const { n, text } = step.count(out);
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   let result = code === 0 ? 'pass' : 'FAIL';
   if (code === 0 && n === 0) result = 'FAIL (examined nothing)';
+  // The runner must have run exactly the slice: every planned file (Vitest), every listed test of
+  // them (Playwright), so a filter that matched more or fewer files cannot pass unnoticed.
+  if (planned && code === 0) {
+    const ran = step.shardable === 'sim' ? vitestFiles(out) : playwrightRunning(out);
+    const want = step.shardable === 'sim' ? planned.files.length : planned.tests;
+    if (ran !== want)
+      result = `FAIL (ran ${ran}, the slice planned ${want} ${step.shardable === 'sim' ? 'files' : 'tests'})`;
+  }
   if (result !== 'pass') failed = true;
   rows.push([label, result, `${text} (${secs}s)`]);
 }
 
-console.log(`\n=== gate summary${tier ? ` (${tier} tier${shard ? `, shard ${shard}` : ''})` : ''} ===`);
+const scope = tiers
+  ? ` (${tiers.join(' and ')} tier${tiers.length > 1 ? 's' : ''}${shard ? `, slice ${shard}` : ''})`
+  : '';
+console.log(`\n=== gate summary${scope} ===`);
 const w = Math.max(...rows.map((r) => r[0].length));
 const w2 = Math.max(...rows.map((r) => r[1].length));
 for (const [name, result, text] of rows) console.log(`${name.padEnd(w)}  ${result.padEnd(w2)}  ${text}`);

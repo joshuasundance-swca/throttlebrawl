@@ -2,6 +2,7 @@
 // the test is quick: a malformed slice, or a slice of a tier with a step that does not shard,
 // must fail loudly instead of quietly running less of the gate.
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -46,5 +47,50 @@ describe('check --shard', () => {
     const r = check('--tier', 'nope');
     expect(r.code).toBe(1);
     expect(r.err).toContain('static, unit, sim, browser, perf');
+  });
+
+  it('refuses a tier list with an unknown tier in it, even beside known ones', () => {
+    const r = check('--tier', 'static,nope');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('unknown tier nope');
+  });
+
+  it('lets perf ride only in the last browser slice, which the slice plan leaves room for', () => {
+    const r = check('--tier', 'browser,perf', '--shard', '1/4');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('perf rides only in the last slice (4/4)');
+  });
+
+  // End to end, through the runners' own file lists: the slices of each tier, as check prints them
+  // with --plan, cover every test file on disk exactly once.
+  it.each([
+    ['sim', '2', 'tests/sim', /\.test\.ts$/],
+    ['browser', '4', 'tests/e2e', /\.(spec|test)\.ts$/],
+  ] as const)(
+    'plans %s slices (n = %s) that hold every test file on disk exactly once',
+    (tier, n, dir, re) => {
+      const res = spawnSync(process.execPath, [script, '--tier', tier, '--shard', `1/${n}`, '--plan'], {
+        encoding: 'utf8',
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const slices = res.stdout.split(/^\[slice \d+\/\d+\].*$/m).slice(1);
+      expect(slices).toHaveLength(Number(n));
+      const planned = slices.flatMap((s) => [...s.matchAll(/^ {2}(\S+)$/gm)].map((m) => m[1]));
+      for (const s of slices) expect(s.trim(), 'no empty slice').not.toBe('');
+      const onDisk = readdirSync(path.resolve(import.meta.dirname, '..', dir), { recursive: true })
+        .map((f) => `${dir}/${String(f).replaceAll('\\', '/')}`)
+        .filter((f) => re.test(f))
+        .sort();
+      expect(onDisk.length).toBeGreaterThan(10);
+      expect(new Set(planned).size, 'no file in two slices').toBe(planned.length);
+      expect([...planned].sort()).toEqual(onDisk);
+    },
+    60_000,
+  );
+
+  it('still refuses perf alone in a slice, even the last one', () => {
+    const r = check('--tier', 'perf', '--shard', '2/2');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('--shard needs a --tier whose steps all shard');
   });
 });
