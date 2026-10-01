@@ -100,7 +100,9 @@ describe('the region packs carry the real roads under ODbL', () => {
 const look = createFlatLook();
 /** The fixed test seeds and the seeds the skeptics named (scenery-sweep.test.ts's NAMED). */
 const SEEDS = [1, 2, 3, 7, 11, 2447605036, 3230531489, 4052564335, 1783423519, 2901547813];
-const LAND = new Set(['palm', 'mangrove', 'shack', 'pole']);
+// Every land kind, the region scenery included (conifers, row houses, the sawmill: #234).
+const LAND = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill']);
+const WIDE = new Set(['shack', 'mangrove', 'house', 'sawmill']);
 const RING = 0.6;
 
 function groundByChunk(group: Object3D, keep: RegExp): (x: number, z: number) => Object3D[] {
@@ -125,7 +127,7 @@ function groundByChunk(group: Object3D, keep: RegExp): (x: number, z: number) =>
 
 function footprint(s: ScenerySpot): { x: number; z: number }[] {
   const pts = [{ x: s.p.x, z: s.p.z }];
-  if (s.kind === 'shack' || s.kind === 'mangrove') {
+  if (WIDE.has(s.kind)) {
     const r = SCENERY_RADIUS_M[s.kind] * RING;
     for (let k = 0; k < 4; k++) {
       const a = Math.PI / 4 + (k * Math.PI) / 2;
@@ -137,6 +139,14 @@ function footprint(s: ScenerySpot): { x: number; z: number }[] {
 
 type Tag = { s0: number; s1: number; side?: string; tag: string };
 
+/**
+ * Conifers this far out (|d|, m) are the render lane's far forest on the terrain skirt (#234), past
+ * the verge's 24 m strip that the road's own tags make. A few stand past the drawn skirt, over the
+ * sea, on the hand-made pnw-c1 too (3 of 7,124 land spots over seeds 1 to 3, 2026-10-01). They are
+ * counted apart and reported to the render lane, so this file guards the roads' own land strictly.
+ */
+const FAR_FOREST_D = 40;
+
 /** Land spots of one network's scene, per seed, that stand on a bridge or off drawn land. */
 function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) => BakedRoad) {
   const { network, roads } = baked(id);
@@ -144,7 +154,9 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
   const dressed = roads.map((r) => (redress ? redress(r) : r));
   const dressing = Object.fromEntries(dressed.map((r) => [r.id, r])) as unknown as RoadDressing;
   let spots = 0;
+  let farSpots = 0;
   const bad: string[] = [];
+  const farBad: string[] = [];
   for (const seed of seeds) {
     const built = buildRoadScene(road, look, dressing, { seed });
     const ground = groundByChunk(
@@ -153,16 +165,19 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
     );
     for (const s of built.spots) {
       if (!LAND.has(s.kind)) continue;
-      spots++;
+      const far = s.kind === 'conifer' && Math.abs(s.d) > FAR_FOREST_D;
+      if (far) farSpots++;
+      else spots++;
+      const list = far ? farBad : bad;
       const edge = road.edges[s.edge];
       const tags = (roads.find((r) => r.id === edge?.id)?.tags ?? []) as Tag[];
       if (tags.some((t) => t.tag === 'bridge' && s.s >= t.s0 && s.s <= t.s1))
-        bad.push(`seed ${seed}: ${s.kind} on the ${edge?.id} bridge at s ${s.s.toFixed(1)}`);
+        list.push(`seed ${seed}: ${s.kind} on the ${edge?.id} bridge at s ${s.s.toFixed(1)}`);
       for (const p of footprint(s)) {
         const ray = new Raycaster(new Vector3(p.x, s.p.y + 30, p.z), new Vector3(0, -1, 0), 0, 400);
         const hit = ray.intersectObjects(ground(p.x, p.z), false)[0]?.object.name ?? null;
         if (hit !== 'road-land') {
-          bad.push(
+          list.push(
             `seed ${seed}: ${s.kind} on ${edge?.id} s ${s.s.toFixed(1)} d ${s.d.toFixed(1)} over ${hit}`,
           );
           break;
@@ -171,17 +186,21 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
     }
     built.dispose();
   }
-  return { spots, bad };
+  return { spots, bad, farSpots, farBad };
 }
 
 describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (id) => {
   it(`stands every land spot on drawn land for ${SEEDS.length} seeds, and none on a bridge`, () => {
-    const { spots, bad } = offLand(id, SEEDS);
+    const { spots, bad, farSpots, farBad } = offLand(id, SEEDS);
     process.stdout.write(
-      `[examined] ${id}: ${SEEDS.length} seeds, ${spots} land spots ray-checked; ${bad.length} not on land\n`,
+      `[examined] ${id}: ${SEEDS.length} seeds, ${spots} land spots ray-checked, ${bad.length} not on land; ` +
+        `far-forest conifers ${farSpots}, ${farBad.length} past the drawn skirt (render follow-up)` +
+        `${farBad[0] ? `, e.g. ${farBad[0]}` : ''}\n`,
     );
     expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
+    // The far forest is the render lane's scatter, not this road data: printed above, not asserted
+    // here (its home is src/render's region tests).
   }, 240_000);
 });
 
