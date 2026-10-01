@@ -1,7 +1,7 @@
 {
   "type": "road-network",
   "id": "osm-pnw-chuckanut",
-  "name": "Chuckanut Drive (OSM bake, staging)",
+  "name": "Chuckanut Drive (OSM bake)",
   "region": "pacific-northwest",
   "crs": {
     "kind": "tmerc",
@@ -95,8 +95,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](48.600,-122.520,48.720,-122.440);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:54:42Z",
-        "sha256": "984f0acb74bba3168b0c0741e1c04ea2ec6721f921b11954ddda9fc5279bd0b0"
+        "retrievedAt": "2026-10-01T19:34:59Z",
+        "sha256": "b13029e4ea0f1439ea2abbca64e48a85887c3bf277f24c3daa20f48ddf86de74"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -104,7 +104,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 794 points in 1 request(s) (lon, lat WGS84, sha256 f3bde18132286375), bilinear",
-        "retrievedAt": "2026-10-01T02:14:46Z",
+        "retrievedAt": "2026-10-01T19:35:01Z",
         "sha256": "e00f30ddb31f0d8bbc263b101f2f8623049cfcb2ada927e776437db99baf0fac"
       }
     ],
@@ -113,6 +113,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Staging bake for the Pacific Northwest region (head-start run). Not in the pack yet: its region pack lands first."
+    "notes": "Real-road routes for the Pacific Northwest (region-pnw): Chuckanut Drive (WA SR 11), southbound from above Larrabee State Park. Roads joined end to end by pass-through junctions. Its own frame origin: it never shares a scene with pnw-c1, about 120 km north of it."
   }
 }

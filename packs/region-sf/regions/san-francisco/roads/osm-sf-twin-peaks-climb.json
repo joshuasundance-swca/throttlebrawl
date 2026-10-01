@@ -16,28 +16,28 @@
       "lanes": [
         {
           "id": "L0",
-          "dCenterM": -4.15,
+          "dCenterM": -4.75,
           "widthM": 1.5,
           "direction": -1,
           "kind": "shoulder"
         },
         {
           "id": "L1",
-          "dCenterM": -1.7,
-          "widthM": 3.4,
+          "dCenterM": -2.0,
+          "widthM": 4.0,
           "direction": -1,
           "kind": "drive"
         },
         {
           "id": "R1",
-          "dCenterM": 1.7,
-          "widthM": 3.4,
+          "dCenterM": 2.0,
+          "widthM": 4.0,
           "direction": 1,
           "kind": "drive"
         },
         {
           "id": "R0",
-          "dCenterM": 4.15,
+          "dCenterM": 4.75,
           "widthM": 1.5,
           "direction": 1,
           "kind": "shoulder"
@@ -45,8 +45,51 @@
       ]
     }
   ],
-  "tags": [],
-  "features": [],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 2011.0905,
+      "side": "both",
+      "tag": "forest"
+    },
+    {
+      "s0": 0.0,
+      "s1": 2011.0905,
+      "side": "both",
+      "tag": "fog"
+    }
+  ],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "bb-twin-peaks",
+      "s0": 300.0,
+      "s1": 340.0,
+      "d0": -16.0,
+      "d1": -7.0,
+      "pool": "billboards"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-twin-peaks",
+      "s0": 600.0,
+      "s1": 610.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "pool": "signs"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "summit-lookout",
+      "s0": 1700.0,
+      "s1": 1780.0,
+      "d0": 5.6,
+      "d1": 12.6,
+      "params": {
+        "spawns": "pedestrians"
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",
@@ -692,8 +735,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:55:27Z",
-        "sha256": "291c8a6e53ab2a21040a14c3301bcb16e187a79e011229d789da2ab5ec29fd1d"
+        "retrievedAt": "2026-10-01T19:36:10Z",
+        "sha256": "45da10fd3e2d2b166b8a755fea1dc5696017839eba15e6b50f79d4b8ee14ec6c"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -701,7 +744,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 568 points in 1 request(s) (lon, lat WGS84, sha256 79a8656046abe6f6), bilinear",
-        "retrievedAt": "2026-10-01T02:23:36Z",
+        "retrievedAt": "2026-10-01T19:36:28Z",
         "sha256": "90acb29aeaebb0e2279f358c0f94c47dc6f1676fd50558c07caaac5efa00db77"
       }
     ],

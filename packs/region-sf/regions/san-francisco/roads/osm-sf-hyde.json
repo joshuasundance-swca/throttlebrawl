@@ -16,28 +16,28 @@
       "lanes": [
         {
           "id": "L0",
-          "dCenterM": -4.15,
+          "dCenterM": -4.75,
           "widthM": 1.5,
           "direction": -1,
           "kind": "shoulder"
         },
         {
           "id": "L1",
-          "dCenterM": -1.7,
-          "widthM": 3.4,
+          "dCenterM": -2.0,
+          "widthM": 4.0,
           "direction": -1,
           "kind": "drive"
         },
         {
           "id": "R1",
-          "dCenterM": 1.7,
-          "widthM": 3.4,
+          "dCenterM": 2.0,
+          "widthM": 4.0,
           "direction": 1,
           "kind": "drive"
         },
         {
           "id": "R0",
-          "dCenterM": 4.15,
+          "dCenterM": 4.75,
           "widthM": 1.5,
           "direction": 1,
           "kind": "shoulder"
@@ -53,19 +53,87 @@
       "tag": "bridge"
     },
     {
-      "s0": 1155.0877,
-      "s1": 1175.0892,
+      "s0": 0.0,
+      "s1": 1155.0877,
       "side": "both",
-      "tag": "water-open"
+      "tag": "row-houses"
     },
     {
-      "s0": 0,
+      "s0": 1175.0892,
       "s1": 1762.1337,
       "side": "both",
-      "tag": "town"
+      "tag": "row-houses"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1155.0877,
+      "side": "both",
+      "tag": "painted-houses"
+    },
+    {
+      "s0": 1175.0892,
+      "s1": 1762.1337,
+      "side": "both",
+      "tag": "painted-houses"
+    },
+    {
+      "s0": 0.0,
+      "s1": 1155.0877,
+      "side": "both",
+      "tag": "cable-line"
+    },
+    {
+      "s0": 1175.0892,
+      "s1": 1762.1337,
+      "side": "both",
+      "tag": "cable-line"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "copSpawn",
+      "id": "cop-lot",
+      "s0": 4.0,
+      "s1": 20.0,
+      "d0": 6.1,
+      "d1": 9.6
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-hyde",
+      "s0": 100.0,
+      "s1": 110.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "pool": "signs"
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-hyde",
+      "s0": 200.0,
+      "s1": 206.0,
+      "d0": 0.5,
+      "d1": 3.0,
+      "params": {
+        "boostMps": 8.0,
+        "holdS": 1.5,
+        "slot": "hills-pad-early"
+      }
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-hyde-crest",
+      "s0": 600.0,
+      "s1": 606.0,
+      "d0": 0.5,
+      "d1": 3.0,
+      "params": {
+        "boostMps": 8.0,
+        "holdS": 1.5,
+        "slot": "hills-pad-early"
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 1155.0877,
@@ -626,8 +694,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:54:57Z",
-        "sha256": "a4e62f274a5d4beea97c56225517701e81c921379f7b538f46ec2ba985955d6a"
+        "retrievedAt": "2026-10-01T19:35:46Z",
+        "sha256": "d6471b361bffe694e77d176d573793878b5539f095078137d9a9d154b1800358"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -635,7 +703,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear",
-        "retrievedAt": "2026-10-01T02:20:56Z",
+        "retrievedAt": "2026-10-01T19:35:47Z",
         "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
       }
     ],

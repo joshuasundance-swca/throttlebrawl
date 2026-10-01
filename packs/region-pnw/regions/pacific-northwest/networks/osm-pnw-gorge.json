@@ -1,7 +1,7 @@
 {
   "type": "road-network",
   "id": "osm-pnw-gorge",
-  "name": "Historic Columbia River Highway (OSM bake, staging)",
+  "name": "Historic Columbia River Highway (OSM bake)",
   "region": "pacific-northwest",
   "crs": {
     "kind": "tmerc",
@@ -95,8 +95,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:54:54Z",
-        "sha256": "305140faeb76cc48955cbac784626a5ac2d86b0873aa024d1f00b3137ed73393"
+        "retrievedAt": "2026-10-01T19:35:10Z",
+        "sha256": "a9957462321e51d8abc329e6b3f8959b45a75357812c56676948b93b295b313b"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -104,7 +104,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
-        "retrievedAt": "2026-10-01T02:15:10Z",
+        "retrievedAt": "2026-10-01T19:35:13Z",
         "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
       }
     ],
@@ -113,6 +113,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Staging bake for the Pacific Northwest region (head-start run). Not in the pack yet: its region pack lands first."
+    "notes": "Real-road routes for the Pacific Northwest (region-pnw): the Historic Columbia River Highway, eastbound from the Women's Forum viewpoint through the Crown Point loops to Shepperd's Dell. Roads joined end to end by pass-through junctions. Its own frame origin: it never shares a scene with pnw-c1."
   }
 }

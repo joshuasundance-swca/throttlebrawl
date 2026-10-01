@@ -1,7 +1,7 @@
 {
   "type": "route",
   "id": "osm-gorge-run",
-  "name": "Gorge Run",
+  "name": "Historic Columbia River Highway",
   "network": "osm-pnw-gorge",
   "start": {
     "road": "osm-gorge-crown-point-loops",
@@ -28,7 +28,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+    "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\").",
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
@@ -45,8 +45,8 @@
           "attribution": "© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
-          "retrievedAt": "2026-10-01T01:54:54Z",
-          "sha256": "305140faeb76cc48955cbac784626a5ac2d86b0873aa024d1f00b3137ed73393"
+          "retrievedAt": "2026-10-01T19:35:10Z",
+          "sha256": "a9957462321e51d8abc329e6b3f8959b45a75357812c56676948b93b295b313b"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -54,7 +54,7 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
-          "retrievedAt": "2026-10-01T02:15:10Z",
+          "retrievedAt": "2026-10-01T19:35:13Z",
           "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
         }
       ]

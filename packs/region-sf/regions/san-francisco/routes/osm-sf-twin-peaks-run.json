@@ -1,7 +1,7 @@
 {
   "type": "route",
   "id": "osm-sf-twin-peaks-run",
-  "name": "Twin Peaks Run",
+  "name": "Twin Peaks",
   "network": "osm-sf-twin-peaks",
   "start": {
     "road": "osm-sf-upper-market",
@@ -10,7 +10,7 @@
   },
   "finish": {
     "road": "osm-sf-twin-peaks-climb",
-    "s": 1971.0905
+    "s": 1931.0905
   },
   "mainPath": ["osm-sf-upper-market", "osm-sf-portola", "osm-sf-twin-peaks-climb"],
   "allowedRoads": ["osm-sf-upper-market", "osm-sf-portola", "osm-sf-twin-peaks-climb"],
@@ -28,7 +28,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+    "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\").",
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
@@ -45,8 +45,8 @@
           "attribution": "© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
-          "retrievedAt": "2026-10-01T01:55:27Z",
-          "sha256": "291c8a6e53ab2a21040a14c3301bcb16e187a79e011229d789da2ab5ec29fd1d"
+          "retrievedAt": "2026-10-01T19:36:10Z",
+          "sha256": "45da10fd3e2d2b166b8a755fea1dc5696017839eba15e6b50f79d4b8ee14ec6c"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -54,7 +54,7 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 568 points in 1 request(s) (lon, lat WGS84, sha256 79a8656046abe6f6), bilinear",
-          "retrievedAt": "2026-10-01T02:23:36Z",
+          "retrievedAt": "2026-10-01T19:36:28Z",
           "sha256": "90acb29aeaebb0e2279f358c0f94c47dc6f1676fd50558c07caaac5efa00db77"
         }
       ]

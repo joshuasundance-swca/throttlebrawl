@@ -16,28 +16,28 @@
       "lanes": [
         {
           "id": "L0",
-          "dCenterM": -4.15,
+          "dCenterM": -4.75,
           "widthM": 1.5,
           "direction": -1,
           "kind": "shoulder"
         },
         {
           "id": "L1",
-          "dCenterM": -1.7,
-          "widthM": 3.4,
+          "dCenterM": -2.0,
+          "widthM": 4.0,
           "direction": -1,
           "kind": "drive"
         },
         {
           "id": "R1",
-          "dCenterM": 1.7,
-          "widthM": 3.4,
+          "dCenterM": 2.0,
+          "widthM": 4.0,
           "direction": 1,
           "kind": "drive"
         },
         {
           "id": "R0",
-          "dCenterM": 4.15,
+          "dCenterM": 4.75,
           "widthM": 1.5,
           "direction": 1,
           "kind": "shoulder"
@@ -53,13 +53,88 @@
       "tag": "bridge"
     },
     {
-      "s0": 1048.0345,
-      "s1": 1124.037,
+      "s0": 0.0,
+      "s1": 1048.0345,
       "side": "both",
-      "tag": "water-open"
+      "tag": "forest"
+    },
+    {
+      "s0": 1124.037,
+      "s1": 2493.0821,
+      "side": "both",
+      "tag": "forest"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-latourell",
+      "s0": 120.0,
+      "s1": 130.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "pool": "signs"
+    },
+    {
+      "kind": "boostPad",
+      "id": "pad-latourell",
+      "s0": 250.0,
+      "s1": 256.0,
+      "d0": 0.5,
+      "d1": 3.0,
+      "params": {
+        "boostMps": 8.0,
+        "holdS": 1.5,
+        "slot": "gorge-pad-early"
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-latourell",
+      "s0": 700.0,
+      "s1": 740.0,
+      "d0": -16.0,
+      "d1": -7.0,
+      "pool": "billboards"
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-latourell",
+      "s0": 1260.0,
+      "s1": 1282.0,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": {
+        "rampLengthM": 11.5,
+        "lipHeightM": 2.8,
+        "slot": "gorge-truck"
+      }
+    },
+    {
+      "kind": "rampTruck",
+      "id": "carrier-latourell-far",
+      "s0": 1420.0,
+      "s1": 1442.0,
+      "d0": 3.4,
+      "d1": 5.4,
+      "params": {
+        "rampLengthM": 11.5,
+        "lipHeightM": 2.8,
+        "slot": "gorge-truck"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "latourell-falls",
+      "s0": 1800.0,
+      "s1": 1880.0,
+      "d0": 5.6,
+      "d1": 12.6,
+      "params": {
+        "spawns": "pedestrians"
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 1048.0345,
@@ -848,8 +923,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:54:54Z",
-        "sha256": "305140faeb76cc48955cbac784626a5ac2d86b0873aa024d1f00b3137ed73393"
+        "retrievedAt": "2026-10-01T19:35:10Z",
+        "sha256": "a9957462321e51d8abc329e6b3f8959b45a75357812c56676948b93b295b313b"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -857,7 +932,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
-        "retrievedAt": "2026-10-01T02:15:10Z",
+        "retrievedAt": "2026-10-01T19:35:13Z",
         "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
       }
     ],

@@ -1,7 +1,7 @@
 {
   "type": "road-network",
   "id": "osm-sf-russian-hill",
-  "name": "Russian Hill and Nob Hill streets (OSM bake, staging)",
+  "name": "Russian Hill and Nob Hill streets (OSM bake)",
   "region": "san-francisco",
   "crs": {
     "kind": "tmerc",
@@ -156,8 +156,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
-        "retrievedAt": "2026-10-01T01:54:57Z",
-        "sha256": "a4e62f274a5d4beea97c56225517701e81c921379f7b538f46ec2ba985955d6a"
+        "retrievedAt": "2026-10-01T19:35:46Z",
+        "sha256": "d6471b361bffe694e77d176d573793878b5539f095078137d9a9d154b1800358"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -165,7 +165,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear",
-        "retrievedAt": "2026-10-01T02:20:56Z",
+        "retrievedAt": "2026-10-01T19:35:47Z",
         "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
       }
     ],
@@ -174,6 +174,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first."
+    "notes": "Real-road routes for San Francisco (region-sf): Hyde over Russian Hill and Nob Hill, California down to Kearny, Columbus, Union back over the hill, then Leavenworth. One road per street, joined end to end by pass-through junctions; cross streets are pass-through only."
   }
 }
