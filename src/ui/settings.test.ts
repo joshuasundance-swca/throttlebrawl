@@ -6,6 +6,7 @@ import {
   lastSeenPersists,
   nonDefaultValue,
   SETTINGS,
+  settingDef,
   settingDefault,
   settingPersists,
   settingValue,
@@ -40,6 +41,25 @@ describe('the M2 settings table', () => {
       expect(ids).toContain(id);
     }
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('offers the voices on/off switch on the Sound tab, on by default, kept by the record', () => {
+    // Run W-O (maintainer, 2026-10-01): a Voices volume (the Voices slider) and an off switch.
+    const def = SETTINGS.find((d) => d.id === 'voicesOn');
+    expect(def?.tab).toBe('sound');
+    expect(def?.kind).toBe('toggle');
+    expect(def?.nextRace).toBeUndefined();
+    expect(settingValue(DEFAULT_SETTINGS, 'voicesOn')).toBe(true);
+    expect(nonDefaultValue(settingDef('voicesOn'))).toBe(false);
+    expect(settingPersists('voicesOn', sanitiseSettings)).toBe(true);
+    expect(
+      applySettingsChange(DEFAULT_SETTINGS, { kind: 'set', id: 'voicesOn', value: false }).voicesOn,
+    ).toBe(false);
+    // Shown once app/ wires it, like any other setting.
+    const shown = (live: SettingId[]) =>
+      visibleSettings({ live, persists: () => true, preview: false }).includes('voicesOn');
+    expect(shown([])).toBe(false);
+    expect(shown(['voicesOn'])).toBe(true);
   });
 
   it('offers the look on the Display tab: Classic by default, or Ink + 60s film, applied at once', () => {
