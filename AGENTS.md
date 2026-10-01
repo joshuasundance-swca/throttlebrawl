@@ -36,7 +36,7 @@ Locally, the pre-push hook (typecheck and tests) must pass. Run `npm run check`,
 - Arm auto-merge when you open the PR (`gh pr merge --auto --squash`). Main changes only through green checks. `[decided]`
 - Confirm a merge by querying the PR's state (`gh pr view --json state,mergedAt`), not by trusting an exit code.
 - Keep PRs small, and open one as soon as something is playable.
-- Stay inside your lane's folders, plus your own tests and `changes/` note. Shared files (`package.json`, lock file, configs, `.github/`, this file) go through the infra lane, or through a tiny separate PR.
+- Stay inside your lane's folders, plus your own tests and `changes/` note. A small edit to a shared config or script (a `package.json` script, a config option, a test setup file) may ride in your own PR when only your change needs it; say so in the PR note. Dependency changes, the lock file, `.github/` and this file still go through the infra lane or a tiny separate PR. `[default]` (the maintainer, 2026-10-01: less waiting on extra PRs)
 - Never hand-merge `package-lock.json`. Rebase, then run `npm install`.
 - Contract changes (data-pack schemas, cross-module interfaces) land first, as their own small PR.
 - Parallel agents on one machine each use their own `git worktree`.

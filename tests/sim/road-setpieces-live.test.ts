@@ -5,7 +5,9 @@
 // the same place"), and the integration skeptic's mustFix 1: #190 added the seeded slots, but no live
 // track had any, so the truck and the pads sat in the same place every race. Every boost pad and ramp
 // truck on keys-m1, pnw-c1 and sf-hills is now one of 2 or 3 candidates for its slot, and each race's
-// seed picks one per slot (road/setpieces.ts). This file checks the live data the game loads: the
+// seed picks one per slot (road/setpieces.ts). The real roads raced as routes (the maintainer,
+// 2026-10-01: "Yes, add as routes") carry their own slots, checked the same way, the route picked
+// with RaceSetup.route. This file checks the live data the game loads: the
 // slots, that every candidate is a safe placement (a solo rider hits each one and lands clean, and
 // no boosted approach feeds a truck), and the skeptic's repro (two seeds, two placements; one seed,
 // one placement and one replay).
@@ -26,13 +28,59 @@ const REG = registryFromGlob(
 );
 const STREAMS = createStreamCache();
 
-/** Each region's event and its race lengths (the Keys event has one length). */
-const REGIONS = [
-  { name: 'keys-m1', event: 'base:m1-skeleton-sprint', lengths: ['standard'] },
-  { name: 'pnw-c1', event: 'region-pnw:pnw-fogline-run', lengths: ['short', 'standard', 'long'] },
-  { name: 'sf-hills', event: 'region-sf:sf-hill-sprint', lengths: ['standard'] },
-] as const;
-type Region = (typeof REGIONS)[number];
+interface Region {
+  name: string;
+  event: string;
+  lengths: readonly [string, ...string[]];
+  /** A real-road route raced instead of the lengths' (RaceSetup.route), with its own set pieces. */
+  route?: string;
+  /** The set-piece kinds the track has (a real road without a long straight has no truck). */
+  kinds: readonly string[];
+}
+
+/**
+ * Each region's event and its race lengths (the Keys event has one length), and the real roads
+ * raced as routes (the maintainer, 2026-10-01: "Yes, add as routes"), each with its own slots.
+ */
+const BOTH = ['boostPad', 'rampTruck'] as const;
+const REGIONS: readonly [Region, ...Region[]] = [
+  { name: 'keys-m1', event: 'base:m1-skeleton-sprint', lengths: ['standard'], kinds: BOTH },
+  {
+    name: 'pnw-c1',
+    event: 'region-pnw:pnw-fogline-run',
+    lengths: ['short', 'standard', 'long'],
+    kinds: BOTH,
+  },
+  { name: 'sf-hills', event: 'region-sf:sf-hill-sprint', lengths: ['standard'], kinds: BOTH },
+  {
+    name: 'osm-pnw-chuckanut',
+    event: 'region-pnw:pnw-fogline-run',
+    lengths: ['standard'],
+    route: 'region-pnw:osm-chuckanut-run',
+    kinds: BOTH,
+  },
+  {
+    name: 'osm-pnw-gorge',
+    event: 'region-pnw:pnw-fogline-run',
+    lengths: ['standard'],
+    route: 'region-pnw:osm-gorge-run',
+    kinds: BOTH,
+  },
+  {
+    name: 'osm-sf-russian-hill',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:osm-sf-hills-run',
+    kinds: BOTH,
+  },
+  {
+    name: 'osm-sf-twin-peaks',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:osm-sf-twin-peaks-run',
+    kinds: ['boostPad'],
+  },
+];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
 const SKEPTIC_SEEDS = [1783423519, 2901547813] as const;
@@ -40,19 +88,21 @@ const SKEPTIC_SEEDS = [1783423519, 2901547813] as const;
 const FEED_CLEAR_M = 400;
 
 function raceConfig(r: Region, length: string, seed: number): SimConfig {
-  return buildSimConfig(REG, STREAMS.forEvent(REG, r.event, length), {
+  return buildSimConfig(REG, STREAMS.forEvent(REG, r.event, length, r.route), {
     seed,
     eventId: r.event,
     length,
+    ...(r.route ? { route: r.route } : {}),
   });
 }
 
 /** The player alone (no rivals, cop or traffic), so a ride meets only the road and its set pieces. */
 function soloConfig(r: Region, length: string, seed: number): SimConfig {
-  const built = buildSimConfig(REG, STREAMS.forEvent(REG, r.event, length), {
+  const built = buildSimConfig(REG, STREAMS.forEvent(REG, r.event, length, r.route), {
     seed,
     eventId: r.event,
     length,
+    ...(r.route ? { route: r.route } : {}),
     tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
   });
   return { ...built, riders: built.riders.filter((d) => d.controller.kind === 'player') };
@@ -100,7 +150,9 @@ function ride(config: SimConfig, edgeId: string, from: number, to: number, line:
   const events: { ev: SimEvent; edge: string; s: number }[] = [];
   let reached = false;
   let past = 0;
-  for (let t = 0; t < 60 * 240; t++) {
+  // Up to 7 minutes: the real roads are 5 to 7.6 km, and a pad near the end of the Gorge sits
+  // more than 6 km in (4 minutes at this ride's careful pace through the loops).
+  for (let t = 0; t < 60 * 420; t++) {
     const me = sim.snapshot().entities[0] as EntitySnapshot;
     const { edge, s, d, dir, yaw } = me.road;
     if (edge === target && s >= to) reached = true;
@@ -157,7 +209,7 @@ describe('playtest 1c item 2: the live tracks place their set pieces from the ra
         expect(ids.length, slot).toBeLessThanOrEqual(3);
         expect(kinds.size, slot).toBe(1);
       }
-      expect([...new Set(all.map((c) => c.f.kind))].sort()).toEqual(['boostPad', 'rampTruck']);
+      expect([...new Set(all.map((c) => c.f.kind))].sort()).toEqual([...r.kinds]);
       process.stdout.write(`[set pieces] ${r.name}: ${rows.join('; ')}\n`);
     });
 

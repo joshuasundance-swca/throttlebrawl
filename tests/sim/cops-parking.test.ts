@@ -6,12 +6,13 @@
 // Francisco's route had no `copSpawn` lot, so Officer Meter waited on the grid slot behind the
 // field in the drive lane, and a startup shuttle hit him there at 19.8 m/s on seed 1).
 //
-// Every live event at every length, loaded the way the game loads it (every carried pack, release
-// content only, the app's own buildSimConfig): from the first tick until he pulls out, each cop
-// sits clear of every drive lane. A new route with no lot fails here; give it a `copSpawn`
+// Every live event at every length, and on each of its region's real-road routes (RaceSetup.route,
+// the maintainer 2026-10-01: "Yes, add as routes"), loaded the way the game loads it (every carried
+// pack, release content only, the app's own buildSimConfig): from the first tick until he pulls
+// out, each cop sits clear of every drive lane. A new route with no lot fails here; give it a `copSpawn`
 // beside the road near the start (keys-m1's bait-shop lot, pnw-c1's ferry lot, sf-hills' pier lot).
 import { describe, expect, it } from 'vitest';
-import { buildSimConfig, createStreamCache } from '../../src/app';
+import { buildSimConfig, createStreamCache, realRoutes } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { createSim, quantizeInput } from '../../src/sim/api';
 
@@ -20,20 +21,27 @@ const REG = registryFromGlob(
 );
 const STREAMS = createStreamCache();
 
-/** Every live event and length: [event id, length id]. */
-const RACES = Object.entries(REG.events).flatMap(([id, e]) => e.lengths.map((l) => [id, l.id] as const));
+/** Every live event at each length, then on each real-road route: [event id, length id, route]. */
+const RACES = Object.entries(REG.events).flatMap(([id, e]) => [
+  ...e.lengths.map((l) => [id, l.id, ''] as const),
+  ...realRoutes(REG, id).map((r) => [id, 'standard', r] as const),
+]);
 
 describe('cops: no region parks its cop in a travel lane', () => {
   it('covers every region', () => {
     const regions = new Set(Object.values(REG.events).map((e) => e.region));
-    console.log(`[examined] ${RACES.length} event lengths in ${regions.size} regions: ${RACES.join('; ')}`);
+    console.log(
+      `[examined] ${RACES.length} races in ${regions.size} regions: ${RACES.map((r) => r.filter(Boolean).join(' ')).join('; ')}`,
+    );
     expect([...regions].sort()).toEqual(['florida-keys', 'pacific-northwest', 'san-francisco']);
   });
 
   it.each(RACES)(
-    '%s (%s): each cop waits clear of every drive lane until he pulls out',
-    (eventId, length) => {
-      const config = buildSimConfig(REG, STREAMS.forEvent(REG, eventId), { seed: 1, eventId, length });
+    '%s (%s) %s: each cop waits clear of every drive lane until he pulls out',
+    (eventId, length, route) => {
+      const stream = STREAMS.forEvent(REG, eventId, length, route || null);
+      const config = buildSimConfig(REG, stream, { seed: 1, eventId, length, ...(route ? { route } : {}) });
+      if (route) expect(config.event.routeId, 'the race runs the real-road route').toBe(route);
       const cops = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
       expect(cops.length, 'the event fields a cop').toBeGreaterThan(0);
       const sim = createSim(config);

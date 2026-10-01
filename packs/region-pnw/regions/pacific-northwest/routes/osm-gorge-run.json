@@ -1,0 +1,63 @@
+{
+  "type": "route",
+  "id": "osm-gorge-run",
+  "name": "Columbia River Highway",
+  "network": "osm-pnw-gorge",
+  "start": {
+    "road": "osm-gorge-crown-point-loops",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-gorge-shepperds-dell",
+    "s": 2126.0714
+  },
+  "mainPath": ["osm-gorge-crown-point-loops", "osm-gorge-latourell", "osm-gorge-shepperds-dell"],
+  "allowedRoads": ["osm-gorge-crown-point-loops", "osm-gorge-latourell", "osm-gorge-shepperds-dell"],
+  "checkpoints": [
+    {
+      "road": "osm-gorge-latourell",
+      "s": 1246.5411
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\").",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-01",
+      "tool": {
+        "name": "tools/gis/src/tbgis/cli.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/configs/osm-pnw-gorge.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
+          "retrievedAt": "2026-10-01T19:35:10Z",
+          "sha256": "a9957462321e51d8abc329e6b3f8959b45a75357812c56676948b93b295b313b"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
+          "retrievedAt": "2026-10-01T19:35:13Z",
+          "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
+        }
+      ]
+    }
+  }
+}

@@ -181,6 +181,9 @@ function realNames(reg: ContentRegistry, routeKey: string): string[] {
 
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
 
+/** A street's name without its kind, for a list that fits one line ("Hyde Street" -> "Hyde"). */
+const shortStreet = (name: string) => name.replace(/ (Street|Avenue|Boulevard|Drive|Road|Way)$/, '');
+
 /**
  * The race-setup route picker's list for a region's event (the maintainer, 2026-10-01: "Yes, add
  * as routes"): the event's own hand-made road first (the default, raced at the Race length
@@ -201,7 +204,9 @@ export function routeChoices(reg: ContentRegistry, eventId: string): RouteChoice
     const names = realNames(reg, id);
     const lengthM = routeLengthM(reg, id);
     const what =
-      names.length > 1 ? `Real streets: ${names.join(', ')}` : `Real road: ${names[0] ?? 'map data'}`;
+      names.length > 1
+        ? `Real streets: ${names.map(shortStreet).join(', ')}`
+        : `Real road: ${names[0] ?? 'map data'}`;
     return {
       id,
       name: typeof route.name === 'string' && route.name ? route.name : route.id,

@@ -1,4 +1,5 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
+import TimedSequencer from './tests/sequencer.ts';
 import viteConfig from './vite.config.ts';
 
 // `npm test` runs the unit project (tests beside the code); `npm run test:sim` runs the seeded
@@ -7,6 +8,9 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
+      // The sim files start longest first, by their measured CI seconds (tests/timings.json), so a
+      // long file never starts last; the unit project keeps Vitest's own order. [default]
+      sequence: { sequencer: TimedSequencer },
       projects: [
         {
           extends: true,

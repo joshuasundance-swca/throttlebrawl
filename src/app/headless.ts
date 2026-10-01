@@ -30,7 +30,8 @@ export interface HeadlessOptions {
 
 export function createHeadlessRace(setup: Partial<RaceSetup> = {}, opts: HeadlessOptions = {}): HeadlessRace {
   const reg = opts.registry ?? loadBasePack({ includeDrafts: opts.includeDrafts ?? false });
-  const stream = streams.forEvent(reg, setup.eventId ?? DEFAULT_EVENT, setup.length);
+  // A real-road route (`setup.route`) races on its own network's stream.
+  const stream = streams.forEvent(reg, setup.eventId ?? DEFAULT_EVENT, setup.length, setup.route);
   const config = buildSimConfig(reg, stream, { seed: setup.seed ?? 1, ...setup });
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');

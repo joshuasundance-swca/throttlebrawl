@@ -1,7 +1,7 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit, sim (two slices) and browser
-# (two slices, the second also running perf) run in parallel, each running its tier of
-# `npm run check`; `gate` is the single required status check, and it fails unless every one of
-# them succeeded.
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static and unit (one job), sim (three
+# slices) and browser (four slices, the last also running perf) run in parallel, each running its
+# tiers of `npm run check`; `gate` is the single required status check, and it fails unless every
+# one of them succeeded.
 # On a push to main, a green gate deploys to the game Space and writes the release notes.
 # No `paths:` filter: a required check behind one never reports on some PRs.
 name: ci
@@ -31,10 +31,12 @@ env:
   NOTES_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
 
 jobs:
-  static:
-    name: static
+  # The static checks, then the unit tests, in one job: together they finish well inside the
+  # browser slices' time, and one job sets up one runner instead of two. [default]
+  static-unit:
+    name: static and unit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,37 +47,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit signatures
-      - name: Types, lint, format, packs, leak scan, size, notes
-        run: npm run check -- --tier static
+      - name: Types, lint, format, packs, leak scan, size, notes, then the unit tests
+        run: npm run check -- --tier static,unit
 
-  unit:
-    name: unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Unit tests
-        run: npm run check -- --tier unit
-
-  # The seeded sim batch, split by test file into parallel slices (Vitest's --shard puts every
-  # file in exactly one slice; the slices' test counts add up to the unsharded run's). It grew
-  # past 290 s on one runner; the slowest single file (ai-feel, about 100 to 190 s) is now the
-  # floor. fail-fast is off so a red slice never hides the other's result. [default]
+  # The seeded sim batch in parallel slices. The test runner lists the files and
+  # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
+  # lands in exactly one slice, so the slices' test counts add up to the unsharded run's, and the
+  # files that read the shared seeded batch share one slice, so it is computed once. fail-fast is
+  # off so a red slice never hides the other's result. [default]
   sim:
-    name: sim (${{ matrix.shard }}/2)
+    name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -86,22 +73,21 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Seeded sim batch, one slice
-        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/2
+        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
-  # The browser tests, split by spec file into parallel slices (Playwright's --shard puts every
-  # file in exactly one slice). Each slice builds and tests its own build. The e2e tier was the
-  # gate's critical path at about 390 s of an 8-minute browser job. fail-fast is off so a red slice
-  # never hides the other's result. Slice 2 then runs perf, after its e2e, as the one-job layout
-  # did: perf alone on a fresh runner printed slower ink-look frame times (#166, reverted in #176).
-  # [default]
+  # The browser tests in parallel slices, split the same way by spec file. Each slice builds and
+  # tests its own build. The last slice then runs perf on that same build, after its own e2e files,
+  # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
+  # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
+  # red slice never hides another's result. [default]
   browser:
-    name: browser (${{ matrix.shard }}/2)
+    name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -111,17 +97,54 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # Keyed by the browser builds Playwright pins, so a lock-file change alone keeps the cache.
       - name: Playwright browser cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install --with-deps --only-shell chromium
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+      # Chromium's system packages (fonts, mesa) come from the Ubuntu mirror, which sometimes crawls:
+      # 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run. Their .deb files
+      # are kept between runs and put in apt's own archive folder, so apt installs the same packages
+      # and downloads only what changed. The kept set is saved again (from slice 1) only when it
+      # differs from the one restored.
+      - name: Chromium system packages, restore
+        id: debs
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/playwright-debs
+          key: playwright-debs-${{ runner.os }}-restore
+          restore-keys: playwright-debs-${{ runner.os }}-
+      - name: Install Chromium and its system packages
+        id: install
+        run: |
+          mkdir -p ~/.cache/playwright-debs
+          if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
+            sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
+          fi
+          npx playwright install --with-deps --only-shell chromium
+          rm -rf ~/.cache/playwright-debs && mkdir -p ~/.cache/playwright-debs
+          for f in /var/cache/apt/archives/*.deb; do
+            [ -e "$f" ] || continue
+            p=$(dpkg-deb -f "$f" Package)
+            if [ "$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null)" = "$(dpkg-deb -f "$f" Version)" ]; then
+              cp "$f" ~/.cache/playwright-debs/
+            fi
+          done
+          echo "kept $(ls ~/.cache/playwright-debs | wc -l) .deb files"
+          echo "key=playwright-debs-${RUNNER_OS}-$(ls ~/.cache/playwright-debs | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Chromium system packages, save
+        if: matrix.shard == 1 && steps.install.outputs.key != steps.debs.outputs.cache-matched-key
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/playwright-debs
+          key: ${{ steps.install.outputs.key }}
       - name: Build, browser tests (one slice)
-        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/2
-      - name: Build, perf (slice 2 only, after its browser tests)
-        if: matrix.shard == 2 && !cancelled()
-        run: npm run check -- --tier perf
+        if: matrix.shard != strategy.job-total
+        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Build, browser tests (the last slice), then perf on the same build
+        if: matrix.shard == strategy.job-total
+        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -131,7 +154,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Keep the tested build for the deploy
-        if: matrix.shard == 2 && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.shard == strategy.job-total && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: dist
@@ -141,7 +164,7 @@ jobs:
 
   gate:
     name: gate
-    needs: [static, unit, sim, browser]
+    needs: [static-unit, sim, browser]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
