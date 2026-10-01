@@ -12,58 +12,78 @@
     {
       "id": "deacon-start-ditch",
       "trigger": "race-start",
-      "text": "Pray the ditch is soft, sinner."
+      "text": "Pray the ditch is soft, sinner.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-ditch",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-start-tithe",
       "trigger": "race-start",
-      "text": "Tithe is ten percent. Of your bike."
+      "text": "Tithe is ten percent. Of your bike.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-tithe",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-pass-behind",
       "trigger": "overtake",
-      "text": "Get thee behind me. Stay there."
+      "text": "Get thee behind me. Stay there.",
+      "audioAsset": "audio/barks/deacon-core/deacon-pass-behind",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-pass-meek",
       "trigger": "overtake",
-      "text": "The meek inherit the earth. Not this road."
+      "text": "The meek inherit the earth. Not this road.",
+      "audioAsset": "audio/barks/deacon-core/deacon-pass-meek",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-hit-baptized",
       "trigger": "hit-landed",
-      "text": "Consider yourself baptized."
+      "text": "Consider yourself baptized.",
+      "audioAsset": "audio/barks/deacon-core/deacon-hit-baptized",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-hit-amen",
       "trigger": "hit-landed",
-      "text": "Say amen. Say it from the ditch."
+      "text": "Say amen. Say it from the ditch.",
+      "audioAsset": "audio/barks/deacon-core/deacon-hit-amen",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-traffic-maker",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Go meet your maker. He drives a truck."
+      "text": "Go meet your maker. He drives a truck.",
+      "audioAsset": "audio/barks/deacon-core/deacon-traffic-maker",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-traffic-works",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "The Lord works in oncoming traffic."
+      "text": "The Lord works in oncoming traffic.",
+      "audioAsset": "audio/barks/deacon-core/deacon-traffic-works",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-down-test",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "A test of faith. You failed it."
+      "text": "A test of faith. You failed it.",
+      "audioAsset": "audio/barks/deacon-core/deacon-down-test",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-down-forgive",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Forgive them. Then run them over."
+      "text": "Forgive them. Then run them over.",
+      "audioAsset": "audio/barks/deacon-core/deacon-down-forgive",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-down-again",
@@ -77,27 +97,37 @@
           "value": 2
         }
       ],
-      "text": "Again? I am praying for your brakes."
+      "text": "Again? I am praying for your brakes.",
+      "audioAsset": "audio/barks/deacon-core/deacon-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-crash-soft",
       "trigger": "crash-self",
-      "text": "The ditch was soft. Praise be."
+      "text": "The ditch was soft. Praise be.",
+      "audioAsset": "audio/barks/deacon-core/deacon-crash-soft",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-crash-humbling",
       "trigger": "crash-self",
-      "text": "A humbling. I needed that, apparently."
+      "text": "A humbling. I needed that, apparently.",
+      "audioAsset": "audio/barks/deacon-core/deacon-crash-humbling",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-near-sea",
       "trigger": "near-miss",
-      "text": "Parted it like the Red Sea."
+      "text": "Parted it like the Red Sea.",
+      "audioAsset": "audio/barks/deacon-core/deacon-near-sea",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-near-angel",
       "trigger": "near-miss",
-      "text": "Guardian angel's on overtime."
+      "text": "Guardian angel's on overtime.",
+      "audioAsset": "audio/barks/deacon-core/deacon-near-angel",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-lead-first",
@@ -109,7 +139,9 @@
           "value": 1
         }
       ],
-      "text": "The first shall be first. Ask anyone."
+      "text": "The first shall be first. Ask anyone.",
+      "audioAsset": "audio/barks/deacon-core/deacon-lead-first",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-late-home",
@@ -121,14 +153,18 @@
           "value": 0.8
         }
       ],
-      "text": "Nearly home. Not you, though."
+      "text": "Nearly home. Not you, though.",
+      "audioAsset": "audio/barks/deacon-core/deacon-late-home",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-hit-chad",
       "trigger": "hit-landed",
       "target": "chad-speedwell",
       "priority": 1,
-      "text": "Repent, Chad. Then log off."
+      "text": "Repent, Chad. Then log off.",
+      "audioAsset": "audio/barks/deacon-core/deacon-hit-chad",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-hit-rites",
@@ -140,7 +176,9 @@
           "value": 0.3
         }
       ],
-      "text": "Last rites are short. Like you."
+      "text": "Last rites are short. Like you.",
+      "audioAsset": "audio/barks/deacon-core/deacon-hit-rites",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-hit-forgave",
@@ -152,7 +190,9 @@
           "value": 1
         }
       ],
-      "text": "I forgave you. My fist did not."
+      "text": "I forgave you. My fist did not.",
+      "audioAsset": "audio/barks/deacon-core/deacon-hit-forgave",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-near-notyet",
@@ -164,7 +204,9 @@
           "value": 0.4
         }
       ],
-      "text": "Not yet, Lord. Not on this bike."
+      "text": "Not yet, Lord. Not on this bike.",
+      "audioAsset": "audio/barks/deacon-core/deacon-near-notyet",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-start-evening",
@@ -176,7 +218,9 @@
           "value": "night"
         }
       ],
-      "text": "Evening service. Collection is mandatory."
+      "text": "Evening service. Collection is mandatory.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-evening",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-start-sunrise",
@@ -188,7 +232,9 @@
           "value": "dawn"
         }
       ],
-      "text": "Sunrise service. Bring your own ditch."
+      "text": "Sunrise service. Bring your own ditch.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-sunrise",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-crash-pilgrim",
@@ -200,14 +246,18 @@
           "value": 5
         }
       ],
-      "text": "Last place is a pilgrimage too."
+      "text": "Last place is a pilgrimage too.",
+      "audioAsset": "audio/barks/deacon-core/deacon-crash-pilgrim",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-down-chad",
       "trigger": "knocked-down-by-target",
       "target": "chad-speedwell",
       "priority": 1,
-      "text": "Struck down by a ring light."
+      "text": "Struck down by a ring light.",
+      "audioAsset": "audio/barks/deacon-core/deacon-down-chad",
+      "audioStatus": "live"
     },
     {
       "id": "deacon-traffic-vengeance",
@@ -219,7 +269,9 @@
           "value": 1
         }
       ],
-      "text": "Vengeance is mine. And the truck's."
+      "text": "Vengeance is mine. And the truck's.",
+      "audioAsset": "audio/barks/deacon-core/deacon-traffic-vengeance",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -229,6 +281,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-09-29"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_onyx, speed 0.85, pitch -1 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

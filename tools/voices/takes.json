@@ -1,0 +1,6580 @@
+{
+  "base:chad-core#chad-crash-rebrand": {
+    "speaker": "chad-speedwell",
+    "text": "Last place is a rebrand. Trust me.",
+    "spoken": "Last place is a rebrand. Trust me.",
+    "seed": 923092219,
+    "match": 1.0,
+    "heard": "Last place is a rebrand. Trust me.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 923092219,
+        "heard": "Last place is a rebrand. Trust me.",
+        "match": 1.0,
+        "durationS": 2.56
+      }
+    ],
+    "durationS": 2.56,
+    "bytes": 8597,
+    "lufs": -18.2,
+    "peakDb": -1.86,
+    "f0": 138.7,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-crash-staged": {
+    "speaker": "chad-speedwell",
+    "text": "Totally staged. Totally meant it.",
+    "spoken": "Totally staged. Totally meant it.",
+    "seed": 1077934271,
+    "match": 1.0,
+    "heard": "Totally staged. Totally meant it.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1077934271,
+        "heard": "Totally staged. Totally meant it.",
+        "match": 1.0,
+        "durationS": 2.02
+      }
+    ],
+    "durationS": 2.02,
+    "bytes": 7111,
+    "lufs": -17.9,
+    "peakDb": -1.84,
+    "f0": 127.7,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-crash-stream": {
+    "speaker": "chad-speedwell",
+    "text": "Stream's down. I'm fine. Stream's down.",
+    "spoken": "Stream's down. I'm fine. Stream's down.",
+    "seed": 1116116981,
+    "match": 1.0,
+    "heard": "Streams down. I'm fine. Streams down.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1116116981,
+        "heard": "Streams down. I'm fine. Streams down.",
+        "match": 1.0,
+        "durationS": 1.84
+      }
+    ],
+    "durationS": 1.84,
+    "bytes": 6493,
+    "lufs": -18.6,
+    "peakDb": -1.66,
+    "f0": 98.0,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-down-again": {
+    "speaker": "chad-speedwell",
+    "text": "Again? Okay, this is a series now.",
+    "spoken": "Again? Okay, this is a series now.",
+    "seed": 1471647960,
+    "match": 1.0,
+    "heard": "Again? Okay, this is a series now.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1471647960,
+        "heard": "Again? Okay, this is a series now.",
+        "match": 1.0,
+        "durationS": 2.51
+      }
+    ],
+    "durationS": 2.51,
+    "bytes": 8507,
+    "lufs": -17.4,
+    "peakDb": -1.82,
+    "f0": 158.9,
+    "refF0": 125.7,
+    "exaggeration": 0.75,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-down-content": {
+    "speaker": "chad-speedwell",
+    "text": "This is not the content I planned.",
+    "spoken": "This is not the content I planned.",
+    "seed": 1265722014,
+    "match": 1.0,
+    "heard": "This is not the content I planned.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1265722014,
+        "heard": "This is not the content I planned.",
+        "match": 1.0,
+        "durationS": 1.77
+      }
+    ],
+    "durationS": 1.77,
+    "bytes": 6295,
+    "lufs": -17.1,
+    "peakDb": -1.74,
+    "f0": 152.9,
+    "refF0": 125.7,
+    "exaggeration": 0.75,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-down-dont-clip": {
+    "speaker": "chad-speedwell",
+    "text": "Chat, don't clip that. Do not.",
+    "spoken": "Chat, don't clip that. Do not.",
+    "seed": 1530487854,
+    "match": 1.0,
+    "heard": "Chat, don't clip that. Do not.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1530487854,
+        "heard": "Chat, don't clip that. Do not.",
+        "match": 1.0,
+        "durationS": 1.96
+      }
+    ],
+    "durationS": 1.96,
+    "bytes": 6791,
+    "lufs": -17.8,
+    "peakDb": -1.71,
+    "f0": 128.3,
+    "refF0": 125.7,
+    "exaggeration": 0.75,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-down-modem": {
+    "speaker": "chad-speedwell",
+    "text": "Taken out by a modem. Do not clip.",
+    "spoken": "Taken out by a modem. Do not clip.",
+    "seed": 1023690595,
+    "match": 1.0,
+    "heard": "taken out by a modem. Do not clip.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1023682676,
+        "heard": "taken out by a modem. Do not clip. Do not clip.",
+        "match": 0.842,
+        "durationS": 3.4
+      },
+      {
+        "seed": 1023690595,
+        "heard": "taken out by a modem. Do not clip.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8508,
+    "lufs": -18.1,
+    "peakDb": -1.59,
+    "f0": 114.6,
+    "refF0": 125.7,
+    "exaggeration": 0.75,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-hit-deacon": {
+    "speaker": "chad-speedwell",
+    "text": "Sermon's over, Deacon. Like and pray.",
+    "spoken": "Sermon's over, Deacon. Like and pray.",
+    "seed": 151647950,
+    "match": 1.0,
+    "heard": "Sermons over, Deacon. Like and pray.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 151647950,
+        "heard": "Sermons over, Deacon. Like and pray.",
+        "match": 1.0,
+        "durationS": 2.47
+      }
+    ],
+    "durationS": 2.47,
+    "bytes": 8248,
+    "lufs": -18.0,
+    "peakDb": -1.92,
+    "f0": 161.1,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-hit-dial-up": {
+    "speaker": "chad-speedwell",
+    "text": "Old internet. Meet new internet.",
+    "spoken": "Old internet. Meet new internet.",
+    "seed": 202940189,
+    "match": 1.0,
+    "heard": "Old internet. Meet new internet.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 202940189,
+        "heard": "Old internet. Meet new internet.",
+        "match": 1.0,
+        "durationS": 2.63
+      }
+    ],
+    "durationS": 2.63,
+    "bytes": 8866,
+    "lufs": -17.5,
+    "peakDb": -1.74,
+    "f0": 148.6,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-hit-easy": {
+    "speaker": "chad-speedwell",
+    "text": "Easy content. Almost too easy.",
+    "spoken": "Easy content. Almost too easy.",
+    "seed": 1285682309,
+    "match": 1.0,
+    "heard": "Easy content. Almost too easy.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1285682309,
+        "heard": "Easy content. Almost too easy.",
+        "match": 1.0,
+        "durationS": 2.2
+      }
+    ],
+    "durationS": 2.2,
+    "bytes": 7542,
+    "lufs": -18.2,
+    "peakDb": -1.8,
+    "f0": 136.8,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-hit-lie-still": {
+    "speaker": "chad-speedwell",
+    "text": "Like, comment, and lie still.",
+    "spoken": "Like, comment, and lie still.",
+    "seed": 349739800,
+    "match": 1.0,
+    "heard": "Like, comment and lie still.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 349739800,
+        "heard": "Like, comment and lie still.",
+        "match": 1.0,
+        "durationS": 1.91
+      }
+    ],
+    "durationS": 1.91,
+    "bytes": 6748,
+    "lufs": -18.1,
+    "peakDb": -1.68,
+    "f0": 111.2,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-hit-subscribe": {
+    "speaker": "chad-speedwell",
+    "text": "Smash that subscri\u2014 oh. You're smashed.",
+    "spoken": "Smash that subscribe. Oh. You're smashed.",
+    "seed": 821199328,
+    "match": 0.857,
+    "heard": "Smash that subscr- Oh, you're smashed.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 821199328,
+        "heard": "Smash that subscr- Oh, you're smashed.",
+        "match": 0.857,
+        "durationS": 2.45
+      }
+    ],
+    "durationS": 2.45,
+    "bytes": 8099,
+    "lufs": -19.2,
+    "peakDb": -1.68,
+    "f0": 99.8,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": ["transcript", "cut-off word"]
+  },
+  "base:chad-core#chad-hit-views": {
+    "speaker": "chad-speedwell",
+    "text": "Your clip got four views. All mine.",
+    "spoken": "Your clip got four views. All mine.",
+    "seed": 1448624387,
+    "match": 1.0,
+    "heard": "Your clip got four views, all mine.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1448624387,
+        "heard": "Your clip got four views, all mine.",
+        "match": 1.0,
+        "durationS": 2.25
+      }
+    ],
+    "durationS": 2.25,
+    "bytes": 7725,
+    "lufs": -18.0,
+    "peakDb": -1.75,
+    "f0": 128.8,
+    "refF0": 125.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-late-thumbnail": {
+    "speaker": "chad-speedwell",
+    "text": "Final stretch. Thumbnail face, go.",
+    "spoken": "Final stretch. Thumbnail face, go.",
+    "seed": 1525262166,
+    "match": 1.0,
+    "heard": "Final stretch. Thumbnail face, go.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1525262166,
+        "heard": "Final stretch. Thumbnail face, go.",
+        "match": 1.0,
+        "durationS": 2.33
+      }
+    ],
+    "durationS": 2.33,
+    "bytes": 7927,
+    "lufs": -18.5,
+    "peakDb": -1.72,
+    "f0": 128.3,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-lead-back": {
+    "speaker": "chad-speedwell",
+    "text": "First place. Chat, we are so back.",
+    "spoken": "First place. Chat, we are so back.",
+    "seed": 951950922,
+    "match": 1.0,
+    "heard": "First place. Chat, we are so back.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 951950922,
+        "heard": "First place. Chat, we are so back.",
+        "match": 1.0,
+        "durationS": 2.25
+      }
+    ],
+    "durationS": 2.25,
+    "bytes": 7720,
+    "lufs": -18.6,
+    "peakDb": -1.76,
+    "f0": 116.8,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-near-brand": {
+    "speaker": "chad-speedwell",
+    "text": "Brand deal says I can't die. Checking.",
+    "spoken": "Brand deal says I can't die. Checking.",
+    "seed": 1428797105,
+    "match": 1.0,
+    "heard": "Brand Deal says I can't die. Checking.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1428797105,
+        "heard": "Brand Deal says I can't die. Checking.",
+        "match": 1.0,
+        "durationS": 2.66
+      }
+    ],
+    "durationS": 2.66,
+    "bytes": 9052,
+    "lufs": -17.9,
+    "peakDb": -1.7,
+    "f0": 111.1,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-near-screaming": {
+    "speaker": "chad-speedwell",
+    "text": "Chat's screaming. Good screaming.",
+    "spoken": "Chat's screaming. Good screaming.",
+    "seed": 199617212,
+    "match": 1.0,
+    "heard": "Chats screaming. Good screaming.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 199609293,
+        "heard": "Chat screaming. Good screaming.",
+        "match": 0.75,
+        "durationS": 1.94
+      },
+      {
+        "seed": 199617212,
+        "heard": "Chats screaming. Good screaming.",
+        "match": 1.0,
+        "durationS": 2.02
+      }
+    ],
+    "durationS": 2.02,
+    "bytes": 7050,
+    "lufs": -19.1,
+    "peakDb": -1.75,
+    "f0": 90.2,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-near-selfie": {
+    "speaker": "chad-speedwell",
+    "text": "Mirror selfie with a semi. Iconic.",
+    "spoken": "Mirror selfie with a semi. Iconic.",
+    "seed": 1219833579,
+    "match": 1.0,
+    "heard": "mirror selfie with a semi. Iconic.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1219833579,
+        "heard": "mirror selfie with a semi. Iconic.",
+        "match": 1.0,
+        "durationS": 2.4
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8213,
+    "lufs": -17.5,
+    "peakDb": -1.93,
+    "f0": 147.2,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-pass-chat": {
+    "speaker": "chad-speedwell",
+    "text": "Chat says you're slow. Chat is right.",
+    "spoken": "Chat says you're slow. Chat is right.",
+    "seed": 1577679825,
+    "match": 1.0,
+    "heard": "Chat says you're slow. Chat is right.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1577679825,
+        "heard": "Chat says you're slow. Chat is right.",
+        "match": 1.0,
+        "durationS": 2.42
+      }
+    ],
+    "durationS": 2.42,
+    "bytes": 8009,
+    "lufs": -19.0,
+    "peakDb": -1.75,
+    "f0": 126.7,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-pass-wave": {
+    "speaker": "chad-speedwell",
+    "text": "Wave for the stream. Too late.",
+    "spoken": "Wave for the stream. Too late.",
+    "seed": 1622524254,
+    "match": 1.0,
+    "heard": "WAVE for the stream. Too late.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1622524254,
+        "heard": "WAVE for the stream. Too late.",
+        "match": 1.0,
+        "durationS": 2.04
+      }
+    ],
+    "durationS": 2.04,
+    "bytes": 7090,
+    "lufs": -17.6,
+    "peakDb": -1.8,
+    "f0": 127.0,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-start-golden": {
+    "speaker": "chad-speedwell",
+    "text": "Golden hour. My lighting's perfect.",
+    "spoken": "Golden hour. My lighting's perfect.",
+    "seed": 1325638895,
+    "match": 1.0,
+    "heard": "Golden hour, my lighting's perfect.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1325638895,
+        "heard": "Golden hour, my lighting's perfect.",
+        "match": 1.0,
+        "durationS": 2.11
+      }
+    ],
+    "durationS": 2.11,
+    "bytes": 7352,
+    "lufs": -18.4,
+    "peakDb": -1.75,
+    "f0": 113.7,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-start-sponsored": {
+    "speaker": "chad-speedwell",
+    "text": "This crash is sponsored by nobody. Sorry.",
+    "spoken": "This crash is sponsored by nobody. Sorry.",
+    "seed": 1034061948,
+    "match": 1.0,
+    "heard": "This crash is sponsored by Nobody. Sorry.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1034061948,
+        "heard": "This crash is sponsored by Nobody. Sorry.",
+        "match": 1.0,
+        "durationS": 3.05
+      }
+    ],
+    "durationS": 3.05,
+    "bytes": 10194,
+    "lufs": -18.4,
+    "peakDb": -1.86,
+    "f0": 129.0,
+    "refF0": 125.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-traffic-clip": {
+    "speaker": "chad-speedwell",
+    "text": "Clip that. Clip that right now.",
+    "spoken": "Clip that. Clip that right now.",
+    "seed": 764088261,
+    "match": 1.0,
+    "heard": "Clip that. Clip that right now.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 764088261,
+        "heard": "Clip that. Clip that right now.",
+        "match": 1.0,
+        "durationS": 1.53
+      }
+    ],
+    "durationS": 1.53,
+    "bytes": 5530,
+    "lufs": -18.3,
+    "peakDb": -1.88,
+    "f0": 89.7,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-traffic-collab": {
+    "speaker": "chad-speedwell",
+    "text": "Collab over. Creative differences.",
+    "spoken": "Collab over. Creative differences.",
+    "seed": 1408745942,
+    "match": 1.0,
+    "heard": "Collab over creative differences.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1408745942,
+        "heard": "Collab over creative differences.",
+        "match": 1.0,
+        "durationS": 2.63
+      }
+    ],
+    "durationS": 2.63,
+    "bytes": 8901,
+    "lufs": -18.0,
+    "peakDb": -1.86,
+    "f0": 166.7,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-traffic-sponsor": {
+    "speaker": "chad-speedwell",
+    "text": "That truck just earned a sponsorship.",
+    "spoken": "That truck just earned a sponsorship.",
+    "seed": 623377106,
+    "match": 1.0,
+    "heard": "That truck just earned a sponsorship.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 623377106,
+        "heard": "That truck just earned a sponsorship.",
+        "match": 1.0,
+        "durationS": 2.11
+      }
+    ],
+    "durationS": 2.11,
+    "bytes": 7316,
+    "lufs": -18.1,
+    "peakDb": -1.86,
+    "f0": 117.6,
+    "refF0": 125.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:deacon-core#deacon-crash-humbling": {
+    "speaker": "deacon-vane",
+    "text": "A humbling. I needed that, apparently.",
+    "spoken": "A humbling. I needed that, apparently.",
+    "seed": 226631776,
+    "match": 1.0,
+    "heard": "A humbling. I needed that apparently.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 226631776,
+        "heard": "A humbling. I needed that apparently.",
+        "match": 1.0,
+        "durationS": 2.51
+      }
+    ],
+    "durationS": 2.51,
+    "bytes": 8541,
+    "lufs": -17.4,
+    "peakDb": -1.93,
+    "f0": 125.0,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": ["pitch drift"]
+  },
+  "base:deacon-core#deacon-crash-pilgrim": {
+    "speaker": "deacon-vane",
+    "text": "Last place is a pilgrimage too.",
+    "spoken": "Last place is a pilgrimage too.",
+    "seed": 1214670299,
+    "match": 1.0,
+    "heard": "Last place is a pilgrimage too.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1214670299,
+        "heard": "Last place is a pilgrimage too.",
+        "match": 1.0,
+        "durationS": 2.1
+      }
+    ],
+    "durationS": 2.1,
+    "bytes": 7278,
+    "lufs": -17.2,
+    "peakDb": -1.94,
+    "f0": 125.7,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": ["pitch drift"]
+  },
+  "base:deacon-core#deacon-crash-soft": {
+    "speaker": "deacon-vane",
+    "text": "The ditch was soft. Praise be.",
+    "spoken": "The ditch was soft. Praise be.",
+    "seed": 1915172792,
+    "match": 1.0,
+    "heard": "The ditch was soft. Praise be.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1915172792,
+        "heard": "The ditch was soft. Praise be.",
+        "match": 1.0,
+        "durationS": 2.44
+      }
+    ],
+    "durationS": 2.44,
+    "bytes": 8105,
+    "lufs": -17.2,
+    "peakDb": -1.91,
+    "f0": 112.1,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-down-again": {
+    "speaker": "deacon-vane",
+    "text": "Again? I am praying for your brakes.",
+    "spoken": "Again? I am praying for your brakes.",
+    "seed": 22936525,
+    "match": 0.857,
+    "heard": "Again? I am praying for your breaks.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 22936525,
+        "heard": "Again? I am praying for your breaks.",
+        "match": 0.857,
+        "durationS": 2.71
+      },
+      {
+        "seed": 22944444,
+        "heard": "Again, I am praying for your breaks.",
+        "match": 0.857,
+        "durationS": 3.02
+      },
+      {
+        "seed": 22952363,
+        "heard": "Again, I am praying for your breaks.",
+        "match": 0.857,
+        "durationS": 2.63
+      }
+    ],
+    "durationS": 2.71,
+    "bytes": 9111,
+    "lufs": -18.6,
+    "peakDb": -1.95,
+    "f0": 92.3,
+    "refF0": 81.9,
+    "exaggeration": 0.67,
+    "cfg": 0.4,
+    "review": ["transcript"]
+  },
+  "base:deacon-core#deacon-down-chad": {
+    "speaker": "deacon-vane",
+    "text": "Struck down by a ring light.",
+    "spoken": "Struck down by a ring light.",
+    "seed": 1699344924,
+    "match": 1.0,
+    "heard": "struck down by a ring light.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1699344924,
+        "heard": "struck down by a ring light.",
+        "match": 1.0,
+        "durationS": 1.65
+      }
+    ],
+    "durationS": 1.65,
+    "bytes": 5944,
+    "lufs": -17.8,
+    "peakDb": -1.97,
+    "f0": 90.2,
+    "refF0": 81.9,
+    "exaggeration": 0.67,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-down-forgive": {
+    "speaker": "deacon-vane",
+    "text": "Forgive them. Then run them over.",
+    "spoken": "Forgive them. Then run them over.",
+    "seed": 817116339,
+    "match": 1.0,
+    "heard": "Forgive them, then run them over.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 817116339,
+        "heard": "Forgive them, then run them over.",
+        "match": 1.0,
+        "durationS": 1.98
+      }
+    ],
+    "durationS": 1.98,
+    "bytes": 6972,
+    "lufs": -17.1,
+    "peakDb": -1.99,
+    "f0": 105.3,
+    "refF0": 81.9,
+    "exaggeration": 0.67,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-down-test": {
+    "speaker": "deacon-vane",
+    "text": "A test of faith. You failed it.",
+    "spoken": "A test of faith. You failed it.",
+    "seed": 1737513362,
+    "match": 1.0,
+    "heard": "A test of faith. You failed it.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1737513362,
+        "heard": "A test of faith. You failed it.",
+        "match": 1.0,
+        "durationS": 2.58
+      }
+    ],
+    "durationS": 2.58,
+    "bytes": 8467,
+    "lufs": -17.0,
+    "peakDb": -3.53,
+    "f0": 162.7,
+    "refF0": 81.9,
+    "exaggeration": 0.67,
+    "cfg": 0.4,
+    "review": ["pitch drift"]
+  },
+  "base:deacon-core#deacon-hit-amen": {
+    "speaker": "deacon-vane",
+    "text": "Say amen. Say it from the ditch.",
+    "spoken": "Say amen. Say it from the ditch.",
+    "seed": 1571664227,
+    "match": 1.0,
+    "heard": "Say amen. Say it from the ditch.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1571664227,
+        "heard": "Say amen. Say it from the ditch.",
+        "match": 1.0,
+        "durationS": 2.29
+      }
+    ],
+    "durationS": 2.29,
+    "bytes": 7697,
+    "lufs": -17.2,
+    "peakDb": -1.92,
+    "f0": 117.1,
+    "refF0": 81.9,
+    "exaggeration": 0.57,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-hit-baptized": {
+    "speaker": "deacon-vane",
+    "text": "Consider yourself baptized.",
+    "spoken": "Consider yourself baptized.",
+    "seed": 1890225247,
+    "match": 1.0,
+    "heard": "Consider yourself baptized.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1890225247,
+        "heard": "Consider yourself baptized.",
+        "match": 1.0,
+        "durationS": 2.34
+      }
+    ],
+    "durationS": 2.34,
+    "bytes": 7948,
+    "lufs": -17.4,
+    "peakDb": -1.94,
+    "f0": 100.8,
+    "refF0": 81.9,
+    "exaggeration": 0.57,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-hit-chad": {
+    "speaker": "deacon-vane",
+    "text": "Repent, Chad. Then log off.",
+    "spoken": "Repent, Chad. Then log off.",
+    "seed": 1576074070,
+    "match": 1.0,
+    "heard": "Repent, Chad. Then log off.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1576074070,
+        "heard": "Repent, Chad. Then log off.",
+        "match": 1.0,
+        "durationS": 2.27
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7711,
+    "lufs": -17.3,
+    "peakDb": -1.91,
+    "f0": 111.9,
+    "refF0": 81.9,
+    "exaggeration": 0.57,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-hit-forgave": {
+    "speaker": "deacon-vane",
+    "text": "I forgave you. My fist did not.",
+    "spoken": "I forgave you. My fist did not.",
+    "seed": 721063519,
+    "match": 1.0,
+    "heard": "I forgave you, my fist did not.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 721063519,
+        "heard": "I forgave you, my fist did not.",
+        "match": 1.0,
+        "durationS": 2.34
+      }
+    ],
+    "durationS": 2.34,
+    "bytes": 8169,
+    "lufs": -18.6,
+    "peakDb": -1.93,
+    "f0": 84.4,
+    "refF0": 81.9,
+    "exaggeration": 0.57,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-hit-rites": {
+    "speaker": "deacon-vane",
+    "text": "Last rites are short. Like you.",
+    "spoken": "Last rites are short. Like you.",
+    "seed": 885775096,
+    "match": 0.833,
+    "heard": "Lass rites are short, like you.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 885775096,
+        "heard": "Lass rites are short, like you.",
+        "match": 0.833,
+        "durationS": 2.4
+      },
+      {
+        "seed": 885783015,
+        "heard": "Last rights are short, like you.",
+        "match": 0.833,
+        "durationS": 2.39
+      },
+      {
+        "seed": 885790934,
+        "heard": "Last rights are short, like you.",
+        "match": 0.833,
+        "durationS": 2.23
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8241,
+    "lufs": -18.8,
+    "peakDb": -1.89,
+    "f0": 88.2,
+    "refF0": 81.9,
+    "exaggeration": 0.57,
+    "cfg": 0.4,
+    "review": ["transcript"]
+  },
+  "base:deacon-core#deacon-late-home": {
+    "speaker": "deacon-vane",
+    "text": "Nearly home. Not you, though.",
+    "spoken": "Nearly home. Not you, though.",
+    "seed": 36241131,
+    "match": 1.0,
+    "heard": "Nearly home. Not you, though.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 36241131,
+        "heard": "Nearly home. Not you, though.",
+        "match": 1.0,
+        "durationS": 2.27
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7865,
+    "lufs": -17.8,
+    "peakDb": -1.96,
+    "f0": 88.7,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-lead-first": {
+    "speaker": "deacon-vane",
+    "text": "The first shall be first. Ask anyone.",
+    "spoken": "The first shall be first. Ask anyone.",
+    "seed": 453101526,
+    "match": 1.0,
+    "heard": "The first shall be first. Ask anyone.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 453101526,
+        "heard": "The first shall be first. Ask anyone.",
+        "match": 1.0,
+        "durationS": 2.69
+      }
+    ],
+    "durationS": 2.69,
+    "bytes": 9092,
+    "lufs": -18.4,
+    "peakDb": -1.88,
+    "f0": 117.6,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-near-angel": {
+    "speaker": "deacon-vane",
+    "text": "Guardian angel's on overtime.",
+    "spoken": "Guardian angel's on overtime.",
+    "seed": 1676695191,
+    "match": 1.0,
+    "heard": "Guardian Angels on overtime.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1676695191,
+        "heard": "Guardian Angels on overtime.",
+        "match": 1.0,
+        "durationS": 1.78
+      }
+    ],
+    "durationS": 1.78,
+    "bytes": 6331,
+    "lufs": -17.3,
+    "peakDb": -1.97,
+    "f0": 106.7,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-near-notyet": {
+    "speaker": "deacon-vane",
+    "text": "Not yet, Lord. Not on this bike.",
+    "spoken": "Not yet, Lord. Not on this bike.",
+    "seed": 1504498917,
+    "match": 1.0,
+    "heard": "Not yet, Lord. Not on this bike.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1504498917,
+        "heard": "Not yet, Lord. Not on this bike.",
+        "match": 1.0,
+        "durationS": 2.28
+      }
+    ],
+    "durationS": 2.28,
+    "bytes": 7936,
+    "lufs": -18.7,
+    "peakDb": -1.92,
+    "f0": 86.0,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-near-sea": {
+    "speaker": "deacon-vane",
+    "text": "Parted it like the Red Sea.",
+    "spoken": "Parted it like the Red Sea.",
+    "seed": 822152406,
+    "match": 1.0,
+    "heard": "parted it like the Red Sea",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 822152406,
+        "heard": "parted it like the Red Sea",
+        "match": 1.0,
+        "durationS": 2.06
+      }
+    ],
+    "durationS": 2.06,
+    "bytes": 7285,
+    "lufs": -18.5,
+    "peakDb": -1.96,
+    "f0": 89.2,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-pass-behind": {
+    "speaker": "deacon-vane",
+    "text": "Get thee behind me. Stay there.",
+    "spoken": "Get thee behind me. Stay there.",
+    "seed": 1334687000,
+    "match": 1.0,
+    "heard": "Get thee behind me. Stay there.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1334687000,
+        "heard": "Get thee behind me. Stay there.",
+        "match": 1.0,
+        "durationS": 2.26
+      }
+    ],
+    "durationS": 2.26,
+    "bytes": 7875,
+    "lufs": -18.1,
+    "peakDb": -1.95,
+    "f0": 103.9,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-pass-meek": {
+    "speaker": "deacon-vane",
+    "text": "The meek inherit the earth. Not this road.",
+    "spoken": "The meek inherit the earth. Not this road.",
+    "seed": 215005092,
+    "match": 1.0,
+    "heard": "The meek inherit the earth, not this road.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 215005092,
+        "heard": "The meek inherit the earth, not this road.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8649,
+    "lufs": -18.0,
+    "peakDb": -1.95,
+    "f0": 98.8,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-start-ditch": {
+    "speaker": "deacon-vane",
+    "text": "Pray the ditch is soft, sinner.",
+    "spoken": "Pray the ditch is soft, sinner.",
+    "seed": 1377872830,
+    "match": 1.0,
+    "heard": "Pray the ditch is soft, sinner.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1377872830,
+        "heard": "Pray the ditch is soft, sinner.",
+        "match": 1.0,
+        "durationS": 1.85
+      }
+    ],
+    "durationS": 1.85,
+    "bytes": 6507,
+    "lufs": -19.1,
+    "peakDb": -1.94,
+    "f0": 93.0,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-start-evening": {
+    "speaker": "deacon-vane",
+    "text": "Evening service. Collection is mandatory.",
+    "spoken": "Evening service. Collection is mandatory.",
+    "seed": 729229496,
+    "match": 1.0,
+    "heard": "Evening service collection is mandatory.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 729229496,
+        "heard": "Evening service collection is mandatory.",
+        "match": 1.0,
+        "durationS": 2.45
+      }
+    ],
+    "durationS": 2.45,
+    "bytes": 8498,
+    "lufs": -17.6,
+    "peakDb": -1.98,
+    "f0": 108.8,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-start-sunrise": {
+    "speaker": "deacon-vane",
+    "text": "Sunrise service. Bring your own ditch.",
+    "spoken": "Sunrise service. Bring your own ditch.",
+    "seed": 1592863136,
+    "match": 1.0,
+    "heard": "Sunrise Service. Bring your own ditch.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1592863136,
+        "heard": "Sunrise Service. Bring your own ditch.",
+        "match": 1.0,
+        "durationS": 2.76
+      }
+    ],
+    "durationS": 2.76,
+    "bytes": 9335,
+    "lufs": -17.9,
+    "peakDb": -1.93,
+    "f0": 125.7,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": ["pitch drift"]
+  },
+  "base:deacon-core#deacon-start-tithe": {
+    "speaker": "deacon-vane",
+    "text": "Tithe is ten percent. Of your bike.",
+    "spoken": "Tithe is ten percent. Of your bike.",
+    "seed": 89872185,
+    "match": 0.923,
+    "heard": "Tithe is 10% of your bike.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 89872185,
+        "heard": "Tithe is 10% of your bike.",
+        "match": 0.923,
+        "durationS": 2.93
+      }
+    ],
+    "durationS": 2.93,
+    "bytes": 9753,
+    "lufs": -19.3,
+    "peakDb": -1.95,
+    "f0": 83.9,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-traffic-maker": {
+    "speaker": "deacon-vane",
+    "text": "Go meet your maker. He drives a truck.",
+    "spoken": "Go meet your maker. He drives a truck.",
+    "seed": 1895156717,
+    "match": 1.0,
+    "heard": "Go meet your maker, he drives a truck.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1895156717,
+        "heard": "Go meet your maker, he drives a truck.",
+        "match": 1.0,
+        "durationS": 2.38
+      }
+    ],
+    "durationS": 2.38,
+    "bytes": 8192,
+    "lufs": -17.8,
+    "peakDb": -1.97,
+    "f0": 111.6,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-traffic-vengeance": {
+    "speaker": "deacon-vane",
+    "text": "Vengeance is mine. And the truck's.",
+    "spoken": "Vengeance is mine. And the truck's.",
+    "seed": 765684163,
+    "match": 1.0,
+    "heard": "Vengeance is mine and the trucks.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 765684163,
+        "heard": "Vengeance is mine and the trucks.",
+        "match": 1.0,
+        "durationS": 3.01
+      }
+    ],
+    "durationS": 3.01,
+    "bytes": 9865,
+    "lufs": -18.5,
+    "peakDb": -1.83,
+    "f0": 92.3,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-traffic-works": {
+    "speaker": "deacon-vane",
+    "text": "The Lord works in oncoming traffic.",
+    "spoken": "The Lord works in oncoming traffic.",
+    "seed": 871750093,
+    "match": 1.0,
+    "heard": "The Lord works in oncoming traffic.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 871750093,
+        "heard": "The Lord works in oncoming traffic.",
+        "match": 1.0,
+        "durationS": 2.05
+      }
+    ],
+    "durationS": 2.05,
+    "bytes": 7179,
+    "lufs": -18.6,
+    "peakDb": -1.99,
+    "f0": 85.6,
+    "refF0": 81.9,
+    "exaggeration": 0.62,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-crash-blue": {
+    "speaker": "dial-up",
+    "text": "Blue screen. Blue sky. Same thing.",
+    "spoken": "Blue screen. Blue sky. Same thing.",
+    "seed": 903630889,
+    "match": 1.0,
+    "heard": "Blue screen, blue sky, same thing.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 903630889,
+        "heard": "Blue screen, blue sky, same thing.",
+        "match": 1.0,
+        "durationS": 2.09
+      }
+    ],
+    "durationS": 2.09,
+    "bytes": 7245,
+    "lufs": -17.6,
+    "peakDb": -1.76,
+    "f0": 137.9,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-crash-dignity": {
+    "speaker": "dial-up",
+    "text": "Error 404. Dignity not found.",
+    "spoken": "Error four oh four. Dignity not found.",
+    "seed": 442277689,
+    "match": 1.0,
+    "heard": "Error 404, dignity not found.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 442277689,
+        "heard": "Error 404, dignity not found.",
+        "match": 1.0,
+        "durationS": 2.63
+      }
+    ],
+    "durationS": 2.63,
+    "bytes": 8909,
+    "lufs": -17.2,
+    "peakDb": -1.84,
+    "f0": 139.5,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-crash-fatal": {
+    "speaker": "dial-up",
+    "text": "Fatal exception. Press any key.",
+    "spoken": "Fatal exception. Press any key.",
+    "seed": 1528898786,
+    "match": 1.0,
+    "heard": "Fatal exception, press any key.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1528898786,
+        "heard": "Fatal exception, press any key.",
+        "match": 1.0,
+        "durationS": 2.45
+      }
+    ],
+    "durationS": 2.45,
+    "bytes": 8324,
+    "lufs": -17.7,
+    "peakDb": -1.87,
+    "f0": 132.6,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-down-again": {
+    "speaker": "dial-up",
+    "text": "Disconnected again. Logging your IP.",
+    "spoken": "Disconnected again. Logging your I.P.",
+    "seed": 1049661713,
+    "match": 1.0,
+    "heard": "Disconnected again, logging your IP",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1049661713,
+        "heard": "Disconnected again, logging your IP",
+        "match": 1.0,
+        "durationS": 3.02
+      }
+    ],
+    "durationS": 3.02,
+    "bytes": 10106,
+    "lufs": -17.5,
+    "peakDb": -1.85,
+    "f0": 131.1,
+    "refF0": 120.0,
+    "exaggeration": 0.75,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-down-chad": {
+    "speaker": "dial-up",
+    "text": "Beaten by fiber optics. Unfair.",
+    "spoken": "Beaten by fiber optics. Unfair.",
+    "seed": 989625265,
+    "match": 1.0,
+    "heard": "Beaten by fiber optics. Unfair.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 989625265,
+        "heard": "Beaten by fiber optics. Unfair.",
+        "match": 1.0,
+        "durationS": 2.4
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8055,
+    "lufs": -18.1,
+    "peakDb": -1.81,
+    "f0": 142.0,
+    "refF0": 120.0,
+    "exaggeration": 0.75,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-down-reboot": {
+    "speaker": "dial-up",
+    "text": "Rebooting. Do not unplug me.",
+    "spoken": "Rebooting. Do not unplug me.",
+    "seed": 770355446,
+    "match": 1.0,
+    "heard": "Rebooting, do not unplug me.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 770355446,
+        "heard": "Rebooting, do not unplug me.",
+        "match": 1.0,
+        "durationS": 1.95
+      }
+    ],
+    "durationS": 1.95,
+    "bytes": 6748,
+    "lufs": -17.4,
+    "peakDb": -1.89,
+    "f0": 166.7,
+    "refF0": 120.0,
+    "exaggeration": 0.75,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-down-reset": {
+    "speaker": "dial-up",
+    "text": "Connection reset by peer. You, peer.",
+    "spoken": "Connection reset by peer. You, peer.",
+    "seed": 51972535,
+    "match": 1.0,
+    "heard": "Connection reset by peer. You, peer,",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 51972535,
+        "heard": "Connection reset by peer. You, peer,",
+        "match": 1.0,
+        "durationS": 3.69
+      }
+    ],
+    "durationS": 3.69,
+    "bytes": 11682,
+    "lufs": -17.4,
+    "peakDb": -1.79,
+    "f0": 112.1,
+    "refF0": 120.0,
+    "exaggeration": 0.75,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-hit-buffering": {
+    "speaker": "dial-up",
+    "text": "Buffering\u2026 buffering\u2026 hit.",
+    "spoken": "Buffering... buffering... hit.",
+    "seed": 1186685031,
+    "match": 1.0,
+    "heard": "buffering, buffering, hit.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1186685031,
+        "heard": "buffering, buffering, hit.",
+        "match": 1.0,
+        "durationS": 1.65
+      }
+    ],
+    "durationS": 1.65,
+    "bytes": 5879,
+    "lufs": -18.8,
+    "peakDb": -1.87,
+    "f0": 96.4,
+    "refF0": 120.0,
+    "exaggeration": 0.67,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-hit-chad": {
+    "speaker": "dial-up",
+    "text": "Unsubscribed. Permanently.",
+    "spoken": "Unsubscribed. Permanently.",
+    "seed": 89740324,
+    "match": 1.0,
+    "heard": "unsubscribed permanently.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 89740324,
+        "heard": "unsubscribed permanently.",
+        "match": 1.0,
+        "durationS": 2.14
+      }
+    ],
+    "durationS": 2.14,
+    "bytes": 7099,
+    "lufs": -17.1,
+    "peakDb": -1.89,
+    "f0": 188.4,
+    "refF0": 120.0,
+    "exaggeration": 0.67,
+    "cfg": 0.55,
+    "review": ["pitch drift"]
+  },
+  "base:dial-up-core#dial-up-hit-mail": {
+    "speaker": "dial-up",
+    "text": "You've got mail. It's my boot.",
+    "spoken": "You've got mail. It's my boot.",
+    "seed": 112102163,
+    "match": 1.0,
+    "heard": "You've got mail, it's my boot.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 112102163,
+        "heard": "You've got mail, it's my boot.",
+        "match": 1.0,
+        "durationS": 1.97
+      }
+    ],
+    "durationS": 1.97,
+    "bytes": 6861,
+    "lufs": -18.2,
+    "peakDb": -1.84,
+    "f0": 117.1,
+    "refF0": 120.0,
+    "exaggeration": 0.67,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-hit-offline": {
+    "speaker": "dial-up",
+    "text": "You knocked me offline. Remember?",
+    "spoken": "You knocked me offline. Remember?",
+    "seed": 1702083486,
+    "match": 1.0,
+    "heard": "You knocked me offline, remember?",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1702083486,
+        "heard": "You knocked me offline, remember?",
+        "match": 1.0,
+        "durationS": 2.05
+      }
+    ],
+    "durationS": 2.05,
+    "bytes": 7147,
+    "lufs": -17.3,
+    "peakDb": -1.81,
+    "f0": 120.0,
+    "refF0": 120.0,
+    "exaggeration": 0.67,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-hit-timeout": {
+    "speaker": "dial-up",
+    "text": "Your session has timed out.",
+    "spoken": "Your session has timed out.",
+    "seed": 1052000918,
+    "match": 1.0,
+    "heard": "Your session has timed out.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1052000918,
+        "heard": "Your session has timed out.",
+        "match": 1.0,
+        "durationS": 1.45
+      }
+    ],
+    "durationS": 1.45,
+    "bytes": 5205,
+    "lufs": -17.9,
+    "peakDb": -1.95,
+    "f0": 151.9,
+    "refF0": 120.0,
+    "exaggeration": 0.67,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-late-download": {
+    "speaker": "dial-up",
+    "text": "Download almost complete. You're not.",
+    "spoken": "Download almost complete. You're not.",
+    "seed": 1722237651,
+    "match": 1.0,
+    "heard": "Download almost complete, you're not.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1722237651,
+        "heard": "Download almost complete, you're not.",
+        "match": 1.0,
+        "durationS": 2.11
+      }
+    ],
+    "durationS": 2.11,
+    "bytes": 7369,
+    "lufs": -17.3,
+    "peakDb": -1.89,
+    "f0": 132.2,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-lead-56k": {
+    "speaker": "dial-up",
+    "text": "56k and still in first. Do the math.",
+    "spoken": "Fifty-six K and still in first. Do the math.",
+    "seed": 1975230741,
+    "match": 1.0,
+    "heard": "56K and still in first. Do the math.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1975230741,
+        "heard": "56K and still in first. Do the math.",
+        "match": 1.0,
+        "durationS": 3.39
+      }
+    ],
+    "durationS": 3.39,
+    "bytes": 10964,
+    "lufs": -17.8,
+    "peakDb": -1.48,
+    "f0": 147.2,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-near-lag": {
+    "speaker": "dial-up",
+    "text": "Lag saved me. Lag always saves me.",
+    "spoken": "Lag saved me. Lag always saves me.",
+    "seed": 1335698026,
+    "match": 1.0,
+    "heard": "Lag saved me. Lag always saves me.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1335698026,
+        "heard": "Lag saved me. Lag always saves me.",
+        "match": 1.0,
+        "durationS": 2.2
+      }
+    ],
+    "durationS": 2.2,
+    "bytes": 7570,
+    "lufs": -17.7,
+    "peakDb": -1.92,
+    "f0": 109.6,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-near-onebar": {
+    "speaker": "dial-up",
+    "text": "One bar left. Still connecting.",
+    "spoken": "One bar left. Still connecting.",
+    "seed": 256370724,
+    "match": 1.0,
+    "heard": "One bar left, still connecting.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 256370724,
+        "heard": "One bar left, still connecting.",
+        "match": 1.0,
+        "durationS": 2.56
+      }
+    ],
+    "durationS": 2.56,
+    "bytes": 8566,
+    "lufs": -17.3,
+    "peakDb": -1.86,
+    "f0": 147.2,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-near-ping": {
+    "speaker": "dial-up",
+    "text": "Ping three. Too close. Loved it.",
+    "spoken": "Ping three. Too close. Loved it.",
+    "seed": 985578910,
+    "match": 1.0,
+    "heard": "Ping 3. Too close. Loved it.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 985570991,
+        "heard": "Hing 3, too close, loved it.",
+        "match": 0.833,
+        "durationS": 2.36
+      },
+      {
+        "seed": 985578910,
+        "heard": "Ping 3. Too close. Loved it.",
+        "match": 1.0,
+        "durationS": 2.27
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7743,
+    "lufs": -18.5,
+    "peakDb": -1.78,
+    "f0": 132.2,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-pass-hold": {
+    "speaker": "dial-up",
+    "text": "Your call is important to nobody.",
+    "spoken": "Your call is important to nobody.",
+    "seed": 1494217509,
+    "match": 1.0,
+    "heard": "Your call is important to nobody.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1494217509,
+        "heard": "Your call is important to nobody.",
+        "match": 1.0,
+        "durationS": 1.97
+      }
+    ],
+    "durationS": 1.97,
+    "bytes": 6863,
+    "lufs": -18.3,
+    "peakDb": -1.89,
+    "f0": 118.8,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-pass-lost": {
+    "speaker": "dial-up",
+    "text": "Connection lost. Yours.",
+    "spoken": "Connection lost. Yours.",
+    "seed": 1503210806,
+    "match": 1.0,
+    "heard": "Connection lost. Yours.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1503210806,
+        "heard": "Connection lost. Yours.",
+        "match": 1.0,
+        "durationS": 1.9
+      }
+    ],
+    "durationS": 1.9,
+    "bytes": 6633,
+    "lufs": -17.6,
+    "peakDb": -1.61,
+    "f0": 110.6,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-start-dialing": {
+    "speaker": "dial-up",
+    "text": "Dialing in. Nobody pick up the phone.",
+    "spoken": "Dialing in. Nobody pick up the phone.",
+    "seed": 1742175617,
+    "match": 1.0,
+    "heard": "Dialing in, nobody pick up the phone.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1742175617,
+        "heard": "Dialing in, nobody pick up the phone.",
+        "match": 1.0,
+        "durationS": 1.95
+      }
+    ],
+    "durationS": 1.95,
+    "bytes": 6827,
+    "lufs": -17.9,
+    "peakDb": -1.85,
+    "f0": 109.6,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-start-night": {
+    "speaker": "dial-up",
+    "text": "Night rates. Long distance is free.",
+    "spoken": "Night rates. Long distance is free.",
+    "seed": 823648483,
+    "match": 1.0,
+    "heard": "Night rates. Long distance is free.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 823648483,
+        "heard": "Night rates. Long distance is free.",
+        "match": 1.0,
+        "durationS": 2.34
+      }
+    ],
+    "durationS": 2.34,
+    "bytes": 7811,
+    "lufs": -17.7,
+    "peakDb": -1.87,
+    "f0": 153.8,
+    "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-traffic-forward": {
+    "speaker": "dial-up",
+    "text": "Forwarded you to a truck. No reply.",
+    "spoken": "Forwarded you to a truck. No reply.",
+    "seed": 616044407,
+    "match": 1.0,
+    "heard": "forwarded you to a truck, no reply.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 616044407,
+        "heard": "forwarded you to a truck, no reply.",
+        "match": 1.0,
+        "durationS": 2.4
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8147,
+    "lufs": -17.1,
+    "peakDb": -1.89,
+    "f0": 162.2,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-traffic-packet": {
+    "speaker": "dial-up",
+    "text": "Packet loss. You were the packet.",
+    "spoken": "Packet loss. You were the packet.",
+    "seed": 1077785885,
+    "match": 0.923,
+    "heard": "Oh, packet loss. You were the packet.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1077785885,
+        "heard": "Oh, packet loss. You were the packet.",
+        "match": 0.923,
+        "durationS": 2.5
+      }
+    ],
+    "durationS": 2.5,
+    "bytes": 8398,
+    "lufs": -18.1,
+    "peakDb": -1.8,
+    "f0": 115.9,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-traffic-undo": {
+    "speaker": "dial-up",
+    "text": "That's for last time. Ctrl-Z that.",
+    "spoken": "That's for last time. Ctrl-Z that.",
+    "seed": 1098642629,
+    "match": 1.0,
+    "heard": "That's for last time. Control Z, that.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1098642629,
+        "heard": "That's for last time. Control Z, that.",
+        "match": 1.0,
+        "durationS": 2.83
+      }
+    ],
+    "durationS": 2.83,
+    "bytes": 9420,
+    "lufs": -18.3,
+    "peakDb": -1.67,
+    "f0": 153.4,
+    "refF0": 120.0,
+    "exaggeration": 0.72,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:kevin-core#kevin-crash-blame": {
+    "speaker": "kevin-from-accounting",
+    "text": "Reassigning blame. To the road.",
+    "spoken": "Reassigning blame. To the road.",
+    "seed": 397913296,
+    "match": 1.0,
+    "heard": "reassigning blame to the road",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 397913296,
+        "heard": "reassigning blame to the road",
+        "match": 1.0,
+        "durationS": 2.27
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7575,
+    "lufs": -17.0,
+    "peakDb": -3.03,
+    "f0": 142.0,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-crash-minutes": {
+    "speaker": "kevin-from-accounting",
+    "text": "Strike that from the minutes.",
+    "spoken": "Strike that from the minutes.",
+    "seed": 1742585402,
+    "match": 1.0,
+    "heard": "Strike that from the minutes.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1742585402,
+        "heard": "Strike that from the minutes.",
+        "match": 1.0,
+        "durationS": 1.63
+      }
+    ],
+    "durationS": 1.63,
+    "bytes": 5783,
+    "lufs": -17.1,
+    "peakDb": -1.84,
+    "f0": 143.3,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-crash-ooo": {
+    "speaker": "kevin-from-accounting",
+    "text": "Out of office. Effective immediately.",
+    "spoken": "Out of office. Effective immediately.",
+    "seed": 1137243372,
+    "match": 1.0,
+    "heard": "Out of office. Effective immediately.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1137243372,
+        "heard": "Out of office. Effective immediately.",
+        "match": 1.0,
+        "durationS": 3.04
+      }
+    ],
+    "durationS": 3.04,
+    "bytes": 9895,
+    "lufs": -17.2,
+    "peakDb": -1.94,
+    "f0": 149.1,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-down-again": {
+    "speaker": "kevin-from-accounting",
+    "text": "Repeat offender. Opening a spreadsheet.",
+    "spoken": "Repeat offender. Opening a spreadsheet.",
+    "seed": 1095635833,
+    "match": 1.0,
+    "heard": "Repeat offender Opening a spreadsheet",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1095635833,
+        "heard": "Repeat offender Opening a spreadsheet",
+        "match": 1.0,
+        "durationS": 3.29
+      }
+    ],
+    "durationS": 3.29,
+    "bytes": 10683,
+    "lufs": -17.0,
+    "peakDb": -1.97,
+    "f0": 167.8,
+    "refF0": 161.1,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-down-escalating": {
+    "speaker": "kevin-from-accounting",
+    "text": "I'm escalating this to management.",
+    "spoken": "I'm escalating this to management.",
+    "seed": 737286173,
+    "match": 1.0,
+    "heard": "I'm escalating this to management.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 737286173,
+        "heard": "I'm escalating this to management.",
+        "match": 1.0,
+        "durationS": 1.74
+      }
+    ],
+    "durationS": 1.74,
+    "bytes": 6166,
+    "lufs": -17.0,
+    "peakDb": -1.97,
+    "f0": 132.6,
+    "refF0": 161.1,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-down-filed": {
+    "speaker": "kevin-from-accounting",
+    "text": "Noted. Timestamped. Filed.",
+    "spoken": "Noted. Timestamped. Filed.",
+    "seed": 572819846,
+    "match": 1.0,
+    "heard": "Noted. Timestamped. Filed.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 572819846,
+        "heard": "Noted. Timestamped. Filed.",
+        "match": 1.0,
+        "durationS": 2.51
+      }
+    ],
+    "durationS": 2.51,
+    "bytes": 8413,
+    "lufs": -17.4,
+    "peakDb": -1.98,
+    "f0": 150.0,
+    "refF0": 161.1,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-down-mayor": {
+    "speaker": "kevin-from-accounting",
+    "text": "Mayor. This goes on your file.",
+    "spoken": "Mayor. This goes on your file.",
+    "seed": 616558971,
+    "match": 0.909,
+    "heard": "This goes on your file.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 616558971,
+        "heard": "This goes on your file.",
+        "match": 0.909,
+        "durationS": 2.32
+      }
+    ],
+    "durationS": 2.32,
+    "bytes": 7859,
+    "lufs": -17.0,
+    "peakDb": -2.89,
+    "f0": 150.9,
+    "refF0": 161.1,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-denied": {
+    "speaker": "kevin-from-accounting",
+    "text": "Your claim has been denied.",
+    "spoken": "Your claim has been denied.",
+    "seed": 1804962663,
+    "match": 1.0,
+    "heard": "Your claim has been denied.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1804962663,
+        "heard": "Your claim has been denied.",
+        "match": 1.0,
+        "durationS": 1.61
+      }
+    ],
+    "durationS": 1.61,
+    "bytes": 5713,
+    "lufs": -17.0,
+    "peakDb": -4.29,
+    "f0": 119.4,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-incident-three": {
+    "speaker": "kevin-from-accounting",
+    "text": "Three incidents. Pivot table time.",
+    "spoken": "Three incidents. Pivot table time.",
+    "seed": 1045791762,
+    "match": 1.0,
+    "heard": "Three incidents. Pivot table time.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1045791762,
+        "heard": "Three incidents. Pivot table time.",
+        "match": 1.0,
+        "durationS": 2.29
+      }
+    ],
+    "durationS": 2.29,
+    "bytes": 7789,
+    "lufs": -17.0,
+    "peakDb": -2.99,
+    "f0": 157.9,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-incident-two": {
+    "speaker": "kevin-from-accounting",
+    "text": "Incident two. Spreadsheet attached.",
+    "spoken": "Incident two. Spreadsheet attached.",
+    "seed": 623453151,
+    "match": 1.0,
+    "heard": "Incident 2. Spreadsheet attached.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 623453151,
+        "heard": "Incident 2. Spreadsheet attached.",
+        "match": 1.0,
+        "durationS": 2.28
+      }
+    ],
+    "durationS": 2.28,
+    "bytes": 7773,
+    "lufs": -17.0,
+    "peakDb": -1.95,
+    "f0": 146.8,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-mayor": {
+    "speaker": "kevin-from-accounting",
+    "text": "Invoice 0042. Paid in full, Mayor.",
+    "spoken": "Invoice zero zero four two. Paid in full, Mayor.",
+    "seed": 1907383229,
+    "match": 1.0,
+    "heard": "Invoice 0042. Paid in full, Mayor.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1907383229,
+        "heard": "Invoice 0042. Paid in full, Mayor.",
+        "match": 1.0,
+        "durationS": 3.64
+      }
+    ],
+    "durationS": 3.64,
+    "bytes": 11895,
+    "lufs": -17.0,
+    "peakDb": -2.78,
+    "f0": 134.8,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-renewed": {
+    "speaker": "kevin-from-accounting",
+    "text": "Your contract is not being renewed.",
+    "spoken": "Your contract is not being renewed.",
+    "seed": 1225054977,
+    "match": 1.0,
+    "heard": "Your contract is not being renewed.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1225054977,
+        "heard": "Your contract is not being renewed.",
+        "match": 1.0,
+        "durationS": 2.06
+      }
+    ],
+    "durationS": 2.06,
+    "bytes": 7189,
+    "lufs": -17.0,
+    "peakDb": -2.97,
+    "f0": 142.9,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-hit-warning": {
+    "speaker": "kevin-from-accounting",
+    "text": "Consider this your written warning.",
+    "spoken": "Consider this your written warning.",
+    "seed": 1670673071,
+    "match": 1.0,
+    "heard": "Consider this your written warning.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1670673071,
+        "heard": "Consider this your written warning.",
+        "match": 1.0,
+        "durationS": 2.04
+      }
+    ],
+    "durationS": 2.04,
+    "bytes": 7014,
+    "lufs": -17.0,
+    "peakDb": -4.31,
+    "f0": 147.2,
+    "refF0": 161.1,
+    "exaggeration": 0.35,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-late-quarter": {
+    "speaker": "kevin-from-accounting",
+    "text": "End of quarter. Targets met.",
+    "spoken": "End of quarter. Targets met.",
+    "seed": 1142673239,
+    "match": 1.0,
+    "heard": "End of quarter. Targets met.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1142673239,
+        "heard": "End of quarter. Targets met.",
+        "match": 1.0,
+        "durationS": 2.3
+      }
+    ],
+    "durationS": 2.3,
+    "bytes": 7711,
+    "lufs": -17.1,
+    "peakDb": -1.97,
+    "f0": 149.1,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-lead-forecast": {
+    "speaker": "kevin-from-accounting",
+    "text": "Leading. As forecast in Q3.",
+    "spoken": "Leading. As forecast in Q three.",
+    "seed": 420756328,
+    "match": 1.0,
+    "heard": "leading as forecast in Q3.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 420756328,
+        "heard": "leading as forecast in Q3.",
+        "match": 1.0,
+        "durationS": 2.78
+      }
+    ],
+    "durationS": 2.78,
+    "bytes": 9058,
+    "lufs": -17.0,
+    "peakDb": -2.15,
+    "f0": 152.9,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-near-budget": {
+    "speaker": "kevin-from-accounting",
+    "text": "Close call. Still under budget.",
+    "spoken": "Close call. Still under budget.",
+    "seed": 804955385,
+    "match": 1.0,
+    "heard": "Close call. Still under budget.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 804955385,
+        "heard": "Close call. Still under budget.",
+        "match": 1.0,
+        "durationS": 2.0
+      }
+    ],
+    "durationS": 2.0,
+    "bytes": 6852,
+    "lufs": -17.0,
+    "peakDb": -2.21,
+    "f0": 148.2,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-near-hr": {
+    "speaker": "kevin-from-accounting",
+    "text": "Flagging that near miss for HR.",
+    "spoken": "Flagging that near miss for H.R.",
+    "seed": 1777879473,
+    "match": 1.0,
+    "heard": "flagging that near-miss for HR.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1777879473,
+        "heard": "flagging that near-miss for HR.",
+        "match": 1.0,
+        "durationS": 2.4
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8157,
+    "lufs": -17.0,
+    "peakDb": -2.4,
+    "f0": 142.0,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-near-rounding": {
+    "speaker": "kevin-from-accounting",
+    "text": "Missed it by a rounding error.",
+    "spoken": "Missed it by a rounding error.",
+    "seed": 163118955,
+    "match": 1.0,
+    "heard": "Missed it by a rounding error.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 163118955,
+        "heard": "Missed it by a rounding error.",
+        "match": 1.0,
+        "durationS": 1.73
+      }
+    ],
+    "durationS": 1.73,
+    "bytes": 6141,
+    "lufs": -17.0,
+    "peakDb": -3.33,
+    "f0": 134.1,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-pass-email": {
+    "speaker": "kevin-from-accounting",
+    "text": "Per my last email: move.",
+    "spoken": "Per my last email: move.",
+    "seed": 900282649,
+    "match": 1.0,
+    "heard": "per my last email, move.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 900282649,
+        "heard": "per my last email, move.",
+        "match": 1.0,
+        "durationS": 1.91
+      }
+    ],
+    "durationS": 1.91,
+    "bytes": 6593,
+    "lufs": -17.0,
+    "peakDb": -3.0,
+    "f0": 137.9,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-pass-pin": {
+    "speaker": "kevin-from-accounting",
+    "text": "Let's put a pin in you.",
+    "spoken": "Let's put a pin in you.",
+    "seed": 1211708591,
+    "match": 1.0,
+    "heard": "Let's put a pin in you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1211708591,
+        "heard": "Let's put a pin in you.",
+        "match": 1.0,
+        "durationS": 1.56
+      }
+    ],
+    "durationS": 1.56,
+    "bytes": 5551,
+    "lufs": -17.6,
+    "peakDb": -1.87,
+    "f0": 126.7,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-start-late": {
+    "speaker": "kevin-from-accounting",
+    "text": "Working late again. On you.",
+    "spoken": "Working late again. On you.",
+    "seed": 1207935093,
+    "match": 1.0,
+    "heard": "Working late again. On you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1207935093,
+        "heard": "Working late again. On you.",
+        "match": 1.0,
+        "durationS": 2.43
+      }
+    ],
+    "durationS": 2.43,
+    "bytes": 8082,
+    "lufs": -17.0,
+    "peakDb": -4.62,
+    "f0": 149.1,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-start-sync": {
+    "speaker": "kevin-from-accounting",
+    "text": "Quick sync before we start: you lose.",
+    "spoken": "Quick sync before we start: you lose.",
+    "seed": 1224082806,
+    "match": 1.0,
+    "heard": "Quick sync before we start you lose.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1224082806,
+        "heard": "Quick sync before we start you lose.",
+        "match": 1.0,
+        "durationS": 2.4
+      }
+    ],
+    "durationS": 2.4,
+    "bytes": 8242,
+    "lufs": -17.0,
+    "peakDb": -2.48,
+    "f0": 142.9,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-traffic-delegated": {
+    "speaker": "kevin-from-accounting",
+    "text": "Delegated. To a pickup truck.",
+    "spoken": "Delegated. To a pickup truck.",
+    "seed": 499564138,
+    "match": 1.0,
+    "heard": "Delegated. To a pickup truck.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 499564138,
+        "heard": "Delegated. To a pickup truck.",
+        "match": 1.0,
+        "durationS": 2.3
+      }
+    ],
+    "durationS": 2.3,
+    "bytes": 7784,
+    "lufs": -17.1,
+    "peakDb": -1.95,
+    "f0": 151.9,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-traffic-losses": {
+    "speaker": "kevin-from-accounting",
+    "text": "Filed under: acceptable losses.",
+    "spoken": "Filed under: acceptable losses.",
+    "seed": 1552511706,
+    "match": 1.0,
+    "heard": "filed under acceptable losses.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1552511706,
+        "heard": "filed under acceptable losses.",
+        "match": 1.0,
+        "durationS": 2.57
+      }
+    ],
+    "durationS": 2.57,
+    "bytes": 8651,
+    "lufs": -17.1,
+    "peakDb": -1.92,
+    "f0": 150.0,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-traffic-settled": {
+    "speaker": "kevin-from-accounting",
+    "text": "Account settled. Interest included.",
+    "spoken": "Account settled. Interest included.",
+    "seed": 1272819651,
+    "match": 1.0,
+    "heard": "Account settled. Interest included.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1272819651,
+        "heard": "Account settled. Interest included.",
+        "match": 1.0,
+        "durationS": 2.62
+      }
+    ],
+    "durationS": 2.62,
+    "bytes": 8783,
+    "lufs": -17.0,
+    "peakDb": -2.54,
+    "f0": 156.4,
+    "refF0": 161.1,
+    "exaggeration": 0.4,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:mayor-core#mayor-crash-council": {
+    "speaker": "the-mayor",
+    "text": "Pothole. I blame the council.",
+    "spoken": "Pothole. I blame the council.",
+    "seed": 1838478313,
+    "match": 1.0,
+    "heard": "Pothole. I blame the council.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1838478313,
+        "heard": "Pothole. I blame the council.",
+        "match": 1.0,
+        "durationS": 2.12
+      }
+    ],
+    "durationS": 2.12,
+    "bytes": 7316,
+    "lufs": -19.0,
+    "peakDb": -1.93,
+    "f0": 120.0,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-crash-photo": {
+    "speaker": "the-mayor",
+    "text": "Photo op. Ruined.",
+    "spoken": "Photo op. Ruined.",
+    "seed": 523798107,
+    "match": 1.0,
+    "heard": "Photo op ruined.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 523798107,
+        "heard": "Photo op ruined.",
+        "match": 1.0,
+        "durationS": 1.67
+      }
+    ],
+    "durationS": 1.67,
+    "bytes": 5852,
+    "lufs": -17.7,
+    "peakDb": -1.97,
+    "f0": 144.6,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-crash-tour": {
+    "speaker": "the-mayor",
+    "text": "Call this a listening tour.",
+    "spoken": "Call this a listening tour.",
+    "seed": 1478760597,
+    "match": 1.0,
+    "heard": "Call this a listening tour.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1478760597,
+        "heard": "Call this a listening tour.",
+        "match": 1.0,
+        "durationS": 1.69
+      }
+    ],
+    "durationS": 1.69,
+    "bytes": 5982,
+    "lufs": -17.3,
+    "peakDb": -1.97,
+    "f0": 146.4,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-down-again": {
+    "speaker": "the-mayor",
+    "text": "Again? I'm declaring an emergency.",
+    "spoken": "Again? I'm declaring an emergency.",
+    "seed": 1584274287,
+    "match": 1.0,
+    "heard": "Again, I'm declaring an emergency.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1584274287,
+        "heard": "Again, I'm declaring an emergency.",
+        "match": 1.0,
+        "durationS": 2.64
+      }
+    ],
+    "durationS": 2.64,
+    "bytes": 8922,
+    "lufs": -17.7,
+    "peakDb": -1.83,
+    "f0": 127.3,
+    "refF0": 116.5,
+    "exaggeration": 0.75,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-down-comment": {
+    "speaker": "the-mayor",
+    "text": "No comment. NO COMMENT.",
+    "spoken": "No comment. No comment!",
+    "seed": 1735872477,
+    "match": 1.0,
+    "heard": "No comment. No comment.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1735872477,
+        "heard": "No comment. No comment.",
+        "match": 1.0,
+        "durationS": 1.92
+      }
+    ],
+    "durationS": 1.92,
+    "bytes": 6365,
+    "lufs": -17.4,
+    "peakDb": -1.8,
+    "f0": 134.9,
+    "refF0": 116.5,
+    "exaggeration": 0.75,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-down-kevin": {
+    "speaker": "the-mayor",
+    "text": "Accounting has gone rogue.",
+    "spoken": "Accounting has gone rogue.",
+    "seed": 525137674,
+    "match": 1.0,
+    "heard": "Accounting has gone rogue.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 525137674,
+        "heard": "Accounting has gone rogue.",
+        "match": 1.0,
+        "durationS": 1.64
+      }
+    ],
+    "durationS": 1.64,
+    "bytes": 5888,
+    "lufs": -17.6,
+    "peakDb": -1.91,
+    "f0": 118.8,
+    "refF0": 116.5,
+    "exaggeration": 0.75,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-down-recount": {
+    "speaker": "the-mayor",
+    "text": "I'll be calling for a recount.",
+    "spoken": "I'll be calling for a recount.",
+    "seed": 1697496920,
+    "match": 1.0,
+    "heard": "I'll be calling for a recount.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1697496920,
+        "heard": "I'll be calling for a recount.",
+        "match": 1.0,
+        "durationS": 1.54
+      }
+    ],
+    "durationS": 1.54,
+    "bytes": 5577,
+    "lufs": -18.0,
+    "peakDb": -1.83,
+    "f0": 123.7,
+    "refF0": 116.5,
+    "exaggeration": 0.75,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-hit-ditch": {
+    "speaker": "the-mayor",
+    "text": "My opponent is lying. In a ditch.",
+    "spoken": "My opponent is lying. In a ditch.",
+    "seed": 1080038073,
+    "match": 1.0,
+    "heard": "My opponent is lying in a ditch.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1080038073,
+        "heard": "My opponent is lying in a ditch.",
+        "match": 1.0,
+        "durationS": 2.83
+      }
+    ],
+    "durationS": 2.83,
+    "bytes": 9577,
+    "lufs": -17.3,
+    "peakDb": -1.77,
+    "f0": 115.1,
+    "refF0": 116.5,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-hit-grudge": {
+    "speaker": "the-mayor",
+    "text": "My office has reviewed the incident.",
+    "spoken": "My office has reviewed the incident.",
+    "seed": 1876219478,
+    "match": 1.0,
+    "heard": "My office has reviewed the incident.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1876219478,
+        "heard": "My office has reviewed the incident.",
+        "match": 1.0,
+        "durationS": 1.91
+      }
+    ],
+    "durationS": 1.91,
+    "bytes": 6674,
+    "lufs": -17.7,
+    "peakDb": -1.94,
+    "f0": 127.0,
+    "refF0": 116.5,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-hit-guilty": {
+    "speaker": "the-mayor",
+    "text": "My office has found you guilty.",
+    "spoken": "My office has found you guilty.",
+    "seed": 732881149,
+    "match": 1.0,
+    "heard": "My office has found you guilty.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 732881149,
+        "heard": "My office has found you guilty.",
+        "match": 1.0,
+        "durationS": 1.86
+      }
+    ],
+    "durationS": 1.86,
+    "bytes": 6576,
+    "lufs": -17.4,
+    "peakDb": -1.97,
+    "f0": 114.0,
+    "refF0": 116.5,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-hit-kevin": {
+    "speaker": "the-mayor",
+    "text": "Your invoice is in the mail, Kevin.",
+    "spoken": "Your invoice is in the mail, Kevin.",
+    "seed": 1132580259,
+    "match": 1.0,
+    "heard": "Your invoice is in the mail, Kevin.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1132580259,
+        "heard": "Your invoice is in the mail, Kevin.",
+        "match": 1.0,
+        "durationS": 1.78
+      }
+    ],
+    "durationS": 1.78,
+    "bytes": 6344,
+    "lufs": -17.1,
+    "peakDb": -1.92,
+    "f0": 123.4,
+    "refF0": 116.5,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-hit-veto": {
+    "speaker": "the-mayor",
+    "text": "That's a line-item veto.",
+    "spoken": "That's a line-item veto.",
+    "seed": 1010473638,
+    "match": 1.0,
+    "heard": "That's a line item veto.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1010473638,
+        "heard": "That's a line item veto.",
+        "match": 1.0,
+        "durationS": 1.61
+      }
+    ],
+    "durationS": 1.61,
+    "bytes": 5815,
+    "lufs": -18.2,
+    "peakDb": -1.76,
+    "f0": 111.6,
+    "refF0": 116.5,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-late-term": {
+    "speaker": "the-mayor",
+    "text": "Final stretch. Like my second term.",
+    "spoken": "Final stretch. Like my second term.",
+    "seed": 380309398,
+    "match": 1.0,
+    "heard": "final stretch like my second term",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 380309398,
+        "heard": "final stretch like my second term",
+        "match": 1.0,
+        "durationS": 2.47
+      }
+    ],
+    "durationS": 2.47,
+    "bytes": 8359,
+    "lufs": -18.7,
+    "peakDb": -1.89,
+    "f0": 123.7,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-lead-polls": {
+    "speaker": "the-mayor",
+    "text": "Leading in the polls. And the road.",
+    "spoken": "Leading in the polls. And the road.",
+    "seed": 972831057,
+    "match": 1.0,
+    "heard": "leading in the polls and the road.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 972823138,
+        "heard": "leading in the poles, and the road",
+        "match": 0.857,
+        "durationS": 2.47
+      },
+      {
+        "seed": 972831057,
+        "heard": "leading in the polls and the road.",
+        "match": 1.0,
+        "durationS": 2.03
+      }
+    ],
+    "durationS": 2.03,
+    "bytes": 7172,
+    "lufs": -17.1,
+    "peakDb": -1.99,
+    "f0": 132.6,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-near-race": {
+    "speaker": "the-mayor",
+    "text": "Close race. Like my last one.",
+    "spoken": "Close race. Like my last one.",
+    "seed": 16910212,
+    "match": 1.0,
+    "heard": "close race, like my last one.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 16910212,
+        "heard": "close race, like my last one.",
+        "match": 1.0,
+        "durationS": 2.15
+      }
+    ],
+    "durationS": 2.15,
+    "bytes": 7361,
+    "lufs": -17.4,
+    "peakDb": -1.99,
+    "f0": 132.6,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-near-recess": {
+    "speaker": "the-mayor",
+    "text": "Fleeing? This is a tactical recess.",
+    "spoken": "Fleeing? This is a tactical recess.",
+    "seed": 1374144241,
+    "match": 1.0,
+    "heard": "Fleeing? This is a tactical recess.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1374144241,
+        "heard": "Fleeing? This is a tactical recess.",
+        "match": 1.0,
+        "durationS": 2.54
+      }
+    ],
+    "durationS": 2.54,
+    "bytes": 8565,
+    "lufs": -17.6,
+    "peakDb": -1.87,
+    "f0": 137.1,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-near-subpoena": {
+    "speaker": "the-mayor",
+    "text": "Dodged it like a subpoena.",
+    "spoken": "Dodged it like a subpoena.",
+    "seed": 1568095651,
+    "match": 1.0,
+    "heard": "dodged it like a subpoena",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1568087732,
+        "heard": "Dossed it like a subpoena.",
+        "match": 0.8,
+        "durationS": 1.48
+      },
+      {
+        "seed": 1568095651,
+        "heard": "dodged it like a subpoena",
+        "match": 1.0,
+        "durationS": 1.39
+      }
+    ],
+    "durationS": 1.39,
+    "bytes": 5103,
+    "lufs": -18.8,
+    "peakDb": -1.87,
+    "f0": 121.8,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-pass-motorcade": {
+    "speaker": "the-mayor",
+    "text": "Make way for the motorcade. It's me.",
+    "spoken": "Make way for the motorcade. It's me.",
+    "seed": 1554356722,
+    "match": 1.0,
+    "heard": "Make way for the motorcade. It's me.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1554356722,
+        "heard": "Make way for the motorcade. It's me.",
+        "match": 1.0,
+        "durationS": 2.35
+      }
+    ],
+    "durationS": 2.35,
+    "bytes": 8142,
+    "lufs": -17.6,
+    "peakDb": -1.91,
+    "f0": 127.0,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-pass-pardon": {
+    "speaker": "the-mayor",
+    "text": "Pardon me. Officially.",
+    "spoken": "Pardon me. Officially.",
+    "seed": 827180406,
+    "match": 1.0,
+    "heard": "Pardon me. Officially.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 827180406,
+        "heard": "Pardon me. Officially.",
+        "match": 1.0,
+        "durationS": 1.73
+      }
+    ],
+    "durationS": 1.73,
+    "bytes": 6043,
+    "lufs": -18.8,
+    "peakDb": -1.96,
+    "f0": 125.6,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-start-bridge": {
+    "speaker": "the-mayor",
+    "text": "This bridge was my idea. So is this.",
+    "spoken": "This bridge was my idea. So is this.",
+    "seed": 85334449,
+    "match": 1.0,
+    "heard": "This bridge was my idea. So is this.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 85334449,
+        "heard": "This bridge was my idea. So is this.",
+        "match": 1.0,
+        "durationS": 2.51
+      }
+    ],
+    "durationS": 2.51,
+    "bytes": 8527,
+    "lufs": -17.6,
+    "peakDb": -1.88,
+    "f0": 120.0,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-start-late": {
+    "speaker": "the-mayor",
+    "text": "Late session. Nobody's watching.",
+    "spoken": "Late session. Nobody's watching.",
+    "seed": 1696573547,
+    "match": 1.0,
+    "heard": "Late session. Nobody's watching.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1696573547,
+        "heard": "Late session. Nobody's watching.",
+        "match": 1.0,
+        "durationS": 1.96
+      }
+    ],
+    "durationS": 1.96,
+    "bytes": 6867,
+    "lufs": -18.0,
+    "peakDb": -1.95,
+    "f0": 131.9,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-start-vote": {
+    "speaker": "the-mayor",
+    "text": "Vote early. Crash often.",
+    "spoken": "Vote early. Crash often.",
+    "seed": 1719294711,
+    "match": 1.0,
+    "heard": "Vote early. Crash often.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1719294711,
+        "heard": "Vote early. Crash often.",
+        "match": 1.0,
+        "durationS": 2.72
+      }
+    ],
+    "durationS": 2.72,
+    "bytes": 8856,
+    "lufs": -17.3,
+    "peakDb": -1.92,
+    "f0": 140.4,
+    "refF0": 116.5,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-traffic-addressed": {
+    "speaker": "the-mayor",
+    "text": "Consider your grievance addressed.",
+    "spoken": "Consider your grievance addressed.",
+    "seed": 515293720,
+    "match": 1.0,
+    "heard": "consider your grievance addressed.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 515293720,
+        "heard": "consider your grievance addressed.",
+        "match": 1.0,
+        "durationS": 2.28
+      }
+    ],
+    "durationS": 2.28,
+    "bytes": 7782,
+    "lufs": -17.1,
+    "peakDb": -1.9,
+    "f0": 140.4,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-traffic-calming": {
+    "speaker": "the-mayor",
+    "text": "Traffic calming. Funded by you.",
+    "spoken": "Traffic calming. Funded by you.",
+    "seed": 1464029991,
+    "match": 1.0,
+    "heard": "Traffic calming. Funded by you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1464029991,
+        "heard": "Traffic calming. Funded by you.",
+        "match": 1.0,
+        "durationS": 2.28
+      }
+    ],
+    "durationS": 2.28,
+    "bytes": 7833,
+    "lufs": -18.7,
+    "peakDb": -1.95,
+    "f0": 124.4,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mayor-core#mayor-traffic-ribbon": {
+    "speaker": "the-mayor",
+    "text": "Ribbon cutting. Effective now.",
+    "spoken": "Ribbon cutting. Effective now.",
+    "seed": 533031053,
+    "match": 1.0,
+    "heard": "Ribbon cutting. Effective now.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 533031053,
+        "heard": "Ribbon cutting. Effective now.",
+        "match": 1.0,
+        "durationS": 1.64
+      }
+    ],
+    "durationS": 1.64,
+    "bytes": 5899,
+    "lufs": -18.8,
+    "peakDb": -1.95,
+    "f0": 117.9,
+    "refF0": 116.5,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:mother-rust-core#rust-crash-moody": {
+    "speaker": "mother-rust",
+    "text": "Swamp threw me. Swamp's moody.",
+    "spoken": "Swamp threw me. Swamp's moody.",
+    "seed": 1047020837,
+    "match": 1.0,
+    "heard": "Swamp threw me, swamp's moody.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 1047004999,
+        "heard": "Swamp through me. Swamps moody.",
+        "match": 0.8,
+        "durationS": 3.14
+      },
+      {
+        "seed": 1047012918,
+        "heard": "Swamp through me, swamps moody.",
+        "match": 0.8,
+        "durationS": 2.9
+      },
+      {
+        "seed": 1047020837,
+        "heard": "Swamp threw me, swamp's moody.",
+        "match": 1.0,
+        "durationS": 2.58
+      }
+    ],
+    "durationS": 2.58,
+    "bytes": 8629,
+    "lufs": -17.0,
+    "peakDb": -4.14,
+    "f0": 137.1,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-crash-mud": {
+    "speaker": "mother-rust",
+    "text": "Mud's softer than it looks.",
+    "spoken": "Mud's softer than it looks.",
+    "seed": 205877299,
+    "match": 1.0,
+    "heard": "Mud's softer than it looks.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 205877299,
+        "heard": "Mud's softer than it looks.",
+        "match": 1.0,
+        "durationS": 2.19
+      }
+    ],
+    "durationS": 2.19,
+    "bytes": 7436,
+    "lufs": -17.1,
+    "peakDb": -1.88,
+    "f0": 136.4,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-crash-stragglers": {
+    "speaker": "mother-rust",
+    "text": "Back with the stragglers. Fine.",
+    "spoken": "Back with the stragglers. Fine.",
+    "seed": 1652066658,
+    "match": 1.0,
+    "heard": "Back with the stragglers, fine.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1652066658,
+        "heard": "Back with the stragglers, fine.",
+        "match": 1.0,
+        "durationS": 2.73
+      }
+    ],
+    "durationS": 2.73,
+    "bytes": 8998,
+    "lufs": -17.5,
+    "peakDb": -1.81,
+    "f0": 127.0,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-down-count": {
+    "speaker": "mother-rust",
+    "text": "Twice now. The swamp keeps count.",
+    "spoken": "Twice now. The swamp keeps count.",
+    "seed": 1698404049,
+    "match": 1.0,
+    "heard": "Twice now, the swamp keeps count.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1698404049,
+        "heard": "Twice now, the swamp keeps count.",
+        "match": 1.0,
+        "durationS": 2.84
+      }
+    ],
+    "durationS": 2.84,
+    "bytes": 9383,
+    "lufs": -17.0,
+    "peakDb": -1.99,
+    "f0": 130.1,
+    "refF0": 137.9,
+    "exaggeration": 0.6,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-down-kin": {
+    "speaker": "mother-rust",
+    "text": "Kin will hear about this.",
+    "spoken": "Kin... will hear about this.",
+    "seed": 1521366869,
+    "match": 0.889,
+    "heard": "will hear about this.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 1521358950,
+        "heard": "in, will hear about this.",
+        "match": 0.8,
+        "durationS": 2.15
+      },
+      {
+        "seed": 1521366869,
+        "heard": "will hear about this.",
+        "match": 0.889,
+        "durationS": 2.68
+      },
+      {
+        "seed": 1521374788,
+        "heard": "in, will hear about this.",
+        "match": 0.8,
+        "durationS": 1.89
+      }
+    ],
+    "durationS": 2.68,
+    "bytes": 8761,
+    "lufs": -17.4,
+    "peakDb": -1.98,
+    "f0": 142.9,
+    "refF0": 137.9,
+    "exaggeration": 0.6,
+    "cfg": 0.35,
+    "review": ["transcript"]
+  },
+  "base:mother-rust-core#rust-down-remembers": {
+    "speaker": "mother-rust",
+    "text": "\u2026The swamp remembers.",
+    "spoken": "The swamp remembers.",
+    "seed": 1548581101,
+    "match": 1.0,
+    "heard": "The swamp remembers.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1548573182,
+        "heard": "The swap remembers!",
+        "match": 0.667,
+        "durationS": 2.64
+      },
+      {
+        "seed": 1548581101,
+        "heard": "The swamp remembers.",
+        "match": 1.0,
+        "durationS": 2.44
+      }
+    ],
+    "durationS": 2.44,
+    "bytes": 7204,
+    "lufs": -17.0,
+    "peakDb": -3.72,
+    "f0": 200.0,
+    "refF0": 137.9,
+    "exaggeration": 0.6,
+    "cfg": 0.35,
+    "review": ["pitch drift"]
+  },
+  "base:mother-rust-core#rust-hit-boys": {
+    "speaker": "mother-rust",
+    "text": "My boys still talk about you.",
+    "spoken": "My boys still talk about you.",
+    "seed": 1753954402,
+    "match": 1.0,
+    "heard": "My boys still talk about you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1753954402,
+        "heard": "My boys still talk about you.",
+        "match": 1.0,
+        "durationS": 2.17
+      }
+    ],
+    "durationS": 2.17,
+    "bytes": 7441,
+    "lufs": -17.1,
+    "peakDb": -1.97,
+    "f0": 136.4,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-hit-deacon": {
+    "speaker": "mother-rust",
+    "text": "Preach to the gators, Deacon.",
+    "spoken": "Preach to the gators, Deacon.",
+    "seed": 1771075599,
+    "match": 1.0,
+    "heard": "Preach to the gators, deacon.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1771075599,
+        "heard": "Preach to the gators, deacon.",
+        "match": 1.0,
+        "durationS": 1.98
+      }
+    ],
+    "durationS": 1.98,
+    "bytes": 6778,
+    "lufs": -17.1,
+    "peakDb": -1.98,
+    "f0": 134.5,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-hit-knees": {
+    "speaker": "mother-rust",
+    "text": "Today it wants your knees.",
+    "spoken": "Today it wants your knees.",
+    "seed": 415931515,
+    "match": 1.0,
+    "heard": "Today it wants your knees.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 415931515,
+        "heard": "Today it wants your knees.",
+        "match": 1.0,
+        "durationS": 2.65
+      }
+    ],
+    "durationS": 2.65,
+    "bytes": 8808,
+    "lufs": -17.1,
+    "peakDb": -1.97,
+    "f0": 133.3,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-hit-mayor": {
+    "speaker": "mother-rust",
+    "text": "Your sign's on my land, Mayor.",
+    "spoken": "Your sign's on my land, Mayor.",
+    "seed": 976050703,
+    "match": 1.0,
+    "heard": "Your signs on my land, Mayor.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 976050703,
+        "heard": "Your signs on my land, Mayor.",
+        "match": 1.0,
+        "durationS": 2.29
+      }
+    ],
+    "durationS": 2.29,
+    "bytes": 7680,
+    "lufs": -17.0,
+    "peakDb": -3.9,
+    "f0": 129.7,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-hit-patient": {
+    "speaker": "mother-rust",
+    "text": "Lie down. The swamp is patient.",
+    "spoken": "Lie down. The swamp is patient.",
+    "seed": 259157643,
+    "match": 1.0,
+    "heard": "Lie down, the swamp is patient.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 259157643,
+        "heard": "Lie down, the swamp is patient.",
+        "match": 1.0,
+        "durationS": 3.06
+      }
+    ],
+    "durationS": 3.06,
+    "bytes": 10018,
+    "lufs": -17.0,
+    "peakDb": -1.99,
+    "f0": 126.0,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-hit-takes": {
+    "speaker": "mother-rust",
+    "text": "The swamp takes what it wants.",
+    "spoken": "The swamp takes what it wants.",
+    "seed": 1037308576,
+    "match": 1.0,
+    "heard": "The swamp takes what it wants.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1037308576,
+        "heard": "The swamp takes what it wants.",
+        "match": 1.0,
+        "durationS": 2.25
+      }
+    ],
+    "durationS": 2.25,
+    "bytes": 7635,
+    "lufs": -17.0,
+    "peakDb": -2.75,
+    "f0": 137.9,
+    "refF0": 137.9,
+    "exaggeration": 0.5,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-late-hungry": {
+    "speaker": "mother-rust",
+    "text": "Nearly home. The swamp's hungry.",
+    "spoken": "Nearly home. The swamp's hungry.",
+    "seed": 1629543297,
+    "match": 1.0,
+    "heard": "Nearly home. The swamp's hungry.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1629543297,
+        "heard": "Nearly home. The swamp's hungry.",
+        "match": 1.0,
+        "durationS": 2.97
+      }
+    ],
+    "durationS": 2.97,
+    "bytes": 9807,
+    "lufs": -17.1,
+    "peakDb": -1.94,
+    "f0": 138.7,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-lead-family": {
+    "speaker": "mother-rust",
+    "text": "Front of the family. Always.",
+    "spoken": "Front of the family. Always.",
+    "seed": 915104901,
+    "match": 1.0,
+    "heard": "Front of the family, always.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 915104901,
+        "heard": "Front of the family, always.",
+        "match": 1.0,
+        "durationS": 2.59
+      }
+    ],
+    "durationS": 2.59,
+    "bytes": 8542,
+    "lufs": -17.2,
+    "peakDb": -1.95,
+    "f0": 140.4,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-near-fishfry": {
+    "speaker": "mother-rust",
+    "text": "Dodged worse at a fish fry.",
+    "spoken": "Dodged worse at a fish fry.",
+    "seed": 309318896,
+    "match": 1.0,
+    "heard": "dodged worse at a fish fry.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 309318896,
+        "heard": "dodged worse at a fish fry.",
+        "match": 1.0,
+        "durationS": 2.24
+      }
+    ],
+    "durationS": 2.24,
+    "bytes": 7572,
+    "lufs": -17.4,
+    "peakDb": -1.91,
+    "f0": 125.0,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-near-most": {
+    "speaker": "mother-rust",
+    "text": "Missed me. Most things do.",
+    "spoken": "Missed me. Most things do.",
+    "seed": 1269322826,
+    "match": 1.0,
+    "heard": "Missed me. Most things do.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1269322826,
+        "heard": "Missed me. Most things do.",
+        "match": 1.0,
+        "durationS": 1.93
+      }
+    ],
+    "durationS": 1.93,
+    "bytes": 6627,
+    "lufs": -17.0,
+    "peakDb": -2.24,
+    "f0": 124.0,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-near-ready": {
+    "speaker": "mother-rust",
+    "text": "Not today. The swamp ain't ready.",
+    "spoken": "Not today. The swamp ain't ready.",
+    "seed": 1730996985,
+    "match": 1.0,
+    "heard": "Not today, the swamp ain't ready.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1730996985,
+        "heard": "Not today, the swamp ain't ready.",
+        "match": 1.0,
+        "durationS": 2.92
+      }
+    ],
+    "durationS": 2.92,
+    "bytes": 9649,
+    "lufs": -17.0,
+    "peakDb": -2.16,
+    "f0": 136.8,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-pass-follow": {
+    "speaker": "mother-rust",
+    "text": "Swamp's this way. Follow me in.",
+    "spoken": "Swamp's this way. Follow me in.",
+    "seed": 532905735,
+    "match": 1.0,
+    "heard": "Swamps this way. Follow me in.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 532905735,
+        "heard": "Swamps this way. Follow me in.",
+        "match": 1.0,
+        "durationS": 2.64
+      }
+    ],
+    "durationS": 2.64,
+    "bytes": 8746,
+    "lufs": -17.1,
+    "peakDb": -1.98,
+    "f0": 136.0,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-pass-water": {
+    "speaker": "mother-rust",
+    "text": "Out of my water, city.",
+    "spoken": "Out of my water, city.",
+    "seed": 170069408,
+    "match": 1.0,
+    "heard": "out of my water city.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 170069408,
+        "heard": "out of my water city.",
+        "match": 1.0,
+        "durationS": 2.1
+      }
+    ],
+    "durationS": 2.1,
+    "bytes": 7232,
+    "lufs": -17.2,
+    "peakDb": -1.87,
+    "f0": 123.1,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-start-guest": {
+    "speaker": "mother-rust",
+    "text": "Boys. We have a guest.",
+    "spoken": "Boys. We have a guest.",
+    "seed": 214312160,
+    "match": 1.0,
+    "heard": "Boys, we have a guest.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 214312160,
+        "heard": "Boys, we have a guest.",
+        "match": 1.0,
+        "durationS": 2.42
+      }
+    ],
+    "durationS": 2.42,
+    "bytes": 8022,
+    "lufs": -17.0,
+    "peakDb": -1.99,
+    "f0": 136.4,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-start-night": {
+    "speaker": "mother-rust",
+    "text": "Night's when the swamp eats.",
+    "spoken": "Night's when the swamp eats.",
+    "seed": 248867385,
+    "match": 1.0,
+    "heard": "Nights when the swamp eats.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 248867385,
+        "heard": "Nights when the swamp eats.",
+        "match": 1.0,
+        "durationS": 2.05
+      }
+    ],
+    "durationS": 2.05,
+    "bytes": 7027,
+    "lufs": -17.0,
+    "peakDb": -1.95,
+    "f0": 122.1,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-start-tires": {
+    "speaker": "mother-rust",
+    "text": "I've eaten tires tougher than you.",
+    "spoken": "I've eaten tires tougher than you.",
+    "seed": 16055277,
+    "match": 1.0,
+    "heard": "I've eaten tires tougher than you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 16055277,
+        "heard": "I've eaten tires tougher than you.",
+        "match": 1.0,
+        "durationS": 2.68
+      }
+    ],
+    "durationS": 2.68,
+    "bytes": 9023,
+    "lufs": -17.4,
+    "peakDb": -1.92,
+    "f0": 124.4,
+    "refF0": 137.9,
+    "exaggeration": 0.45,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-traffic-debts": {
+    "speaker": "mother-rust",
+    "text": "Family settles debts. Slowly.",
+    "spoken": "Family settles debts. Slowly.",
+    "seed": 1077049956,
+    "match": 1.0,
+    "heard": "Family settles debts, slowly.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1077049956,
+        "heard": "Family settles debts, slowly.",
+        "match": 1.0,
+        "durationS": 3.25
+      }
+    ],
+    "durationS": 3.25,
+    "bytes": 10634,
+    "lufs": -17.0,
+    "peakDb": -2.37,
+    "f0": 147.2,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-traffic-feed": {
+    "speaker": "mother-rust",
+    "text": "Feed it to the road, boys.",
+    "spoken": "Feed it to the road, boys.",
+    "seed": 1768443515,
+    "match": 1.0,
+    "heard": "Feed it to the road, boys.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1768443515,
+        "heard": "Feed it to the road, boys.",
+        "match": 1.0,
+        "durationS": 1.95
+      }
+    ],
+    "durationS": 1.95,
+    "bytes": 6684,
+    "lufs": -17.0,
+    "peakDb": -3.99,
+    "f0": 159.5,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:mother-rust-core#rust-traffic-gator": {
+    "speaker": "mother-rust",
+    "text": "Gator food. Truck-sized gator.",
+    "spoken": "Gator food. Truck-sized gator.",
+    "seed": 1951865597,
+    "match": 1.0,
+    "heard": "Gator food. Truck-sized gator.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1951865597,
+        "heard": "Gator food. Truck-sized gator.",
+        "match": 1.0,
+        "durationS": 3.16
+      }
+    ],
+    "durationS": 3.16,
+    "bytes": 10339,
+    "lufs": -17.2,
+    "peakDb": -1.84,
+    "f0": 145.5,
+    "refF0": 137.9,
+    "exaggeration": 0.55,
+    "cfg": 0.35,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-bust-again": {
+    "speaker": "sgt-pruitt",
+    "text": "Oh, it's you again. Good taser.",
+    "spoken": "Oh, it's you again. Good taser.",
+    "seed": 1309866073,
+    "match": 1.0,
+    "heard": "Oh it's you again, good taser.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1309866073,
+        "heard": "Oh it's you again, good taser.",
+        "match": 1.0,
+        "durationS": 2.66
+      }
+    ],
+    "durationS": 2.66,
+    "bytes": 9053,
+    "lufs": -17.3,
+    "peakDb": -1.98,
+    "f0": 101.3,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-bust-ground": {
+    "speaker": "sgt-pruitt",
+    "text": "Right to remain on the ground.",
+    "spoken": "Right to remain on the ground.",
+    "seed": 340569543,
+    "match": 1.0,
+    "heard": "right to remain on the ground.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 340569543,
+        "heard": "right to remain on the ground.",
+        "match": 1.0,
+        "durationS": 2.26
+      }
+    ],
+    "durationS": 2.26,
+    "bytes": 7860,
+    "lufs": -17.5,
+    "peakDb": -1.95,
+    "f0": 100.0,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-bust-heat": {
+    "speaker": "sgt-pruitt",
+    "text": "Whole county saw that. Down.",
+    "spoken": "Whole county saw that. Down.",
+    "seed": 239441763,
+    "match": 1.0,
+    "heard": "Whole county saw that. Down.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 239441763,
+        "heard": "Whole county saw that. Down.",
+        "match": 1.0,
+        "durationS": 2.99
+      }
+    ],
+    "durationS": 2.99,
+    "bytes": 9751,
+    "lufs": -17.0,
+    "peakDb": -1.96,
+    "f0": 100.2,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-bust-hurt": {
+    "speaker": "sgt-pruitt",
+    "text": "Stay down. I'm on my break.",
+    "spoken": "Stay down. I'm on my break.",
+    "seed": 239718566,
+    "match": 1.0,
+    "heard": "Stay down. I'm on my break.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 239718566,
+        "heard": "Stay down. I'm on my break.",
+        "match": 1.0,
+        "durationS": 2.1
+      }
+    ],
+    "durationS": 2.1,
+    "bytes": 7224,
+    "lufs": -17.2,
+    "peakDb": -1.97,
+    "f0": 97.6,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-bust-paperwork": {
+    "speaker": "sgt-pruitt",
+    "text": "Stay down. Paperwork's long.",
+    "spoken": "Stay down. Paperwork's long.",
+    "seed": 1599452330,
+    "match": 1.0,
+    "heard": "Stay down. Paperwork's long.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1599452330,
+        "heard": "Stay down. Paperwork's long.",
+        "match": 1.0,
+        "durationS": 2.31
+      }
+    ],
+    "durationS": 2.31,
+    "bytes": 7916,
+    "lufs": -17.3,
+    "peakDb": -1.98,
+    "f0": 99.0,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-crash-county": {
+    "speaker": "sgt-pruitt",
+    "text": "County bike. Not my problem.",
+    "spoken": "County bike. Not my problem.",
+    "seed": 777613493,
+    "match": 1.0,
+    "heard": "County bike. Not my problem.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 777613493,
+        "heard": "County bike. Not my problem.",
+        "match": 1.0,
+        "durationS": 2.36
+      }
+    ],
+    "durationS": 2.36,
+    "bytes": 8098,
+    "lufs": -17.7,
+    "peakDb": -1.9,
+    "f0": 107.6,
+    "refF0": 108.6,
+    "exaggeration": 0.4,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-crash-late": {
+    "speaker": "sgt-pruitt",
+    "text": "Close enough to the station. Done.",
+    "spoken": "Close enough to the station. Done.",
+    "seed": 129938094,
+    "match": 1.0,
+    "heard": "Close enough to the station. Done.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 129938094,
+        "heard": "Close enough to the station. Done.",
+        "match": 1.0,
+        "durationS": 2.09
+      }
+    ],
+    "durationS": 2.09,
+    "bytes": 7164,
+    "lufs": -17.9,
+    "peakDb": -1.89,
+    "f0": 113.7,
+    "refF0": 108.6,
+    "exaggeration": 0.4,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-crash-weather": {
+    "speaker": "sgt-pruitt",
+    "text": "Write it up as weather.",
+    "spoken": "Write it up as weather.",
+    "seed": 458083917,
+    "match": 1.0,
+    "heard": "Write it up as weather.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 458083917,
+        "heard": "Write it up as weather.",
+        "match": 1.0,
+        "durationS": 1.82
+      }
+    ],
+    "durationS": 1.82,
+    "bytes": 6449,
+    "lufs": -18.0,
+    "peakDb": -1.92,
+    "f0": 105.3,
+    "refF0": 108.6,
+    "exaggeration": 0.4,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-down-again": {
+    "speaker": "sgt-pruitt",
+    "text": "Again. I'm too old for again.",
+    "spoken": "Again. I'm too old for again.",
+    "seed": 253676910,
+    "match": 1.0,
+    "heard": "again. I'm too old for again.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 253676910,
+        "heard": "again. I'm too old for again.",
+        "match": 1.0,
+        "durationS": 2.95
+      }
+    ],
+    "durationS": 2.95,
+    "bytes": 9795,
+    "lufs": -17.0,
+    "peakDb": -1.98,
+    "f0": 102.1,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-down-hassle": {
+    "speaker": "sgt-pruitt",
+    "text": "That's a felony and a hassle.",
+    "spoken": "That's a felony and a hassle.",
+    "seed": 1561738548,
+    "match": 1.0,
+    "heard": "That's a felony and a hassle.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1561738548,
+        "heard": "That's a felony and a hassle.",
+        "match": 1.0,
+        "durationS": 2.42
+      }
+    ],
+    "durationS": 2.42,
+    "bytes": 8123,
+    "lufs": -17.1,
+    "peakDb": -1.97,
+    "f0": 119.4,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-down-walk": {
+    "speaker": "sgt-pruitt",
+    "text": "Fine. I'll walk it off.",
+    "spoken": "Fine. I'll walk it off.",
+    "seed": 723048673,
+    "match": 1.0,
+    "heard": "Fine, I'll walk it off.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 723048673,
+        "heard": "Fine, I'll walk it off.",
+        "match": 1.0,
+        "durationS": 1.8
+      }
+    ],
+    "durationS": 1.8,
+    "bytes": 6310,
+    "lufs": -19.2,
+    "peakDb": -1.92,
+    "f0": 103.0,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-hit-baton": {
+    "speaker": "sgt-pruitt",
+    "text": "Baton says hello.",
+    "spoken": "Baton says hello.",
+    "seed": 1134653578,
+    "match": 1.0,
+    "heard": "Baton says hello.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1134653578,
+        "heard": "Baton says hello.",
+        "match": 1.0,
+        "durationS": 1.97
+      }
+    ],
+    "durationS": 1.97,
+    "bytes": 6833,
+    "lufs": -17.5,
+    "peakDb": -1.88,
+    "f0": 101.9,
+    "refF0": 108.6,
+    "exaggeration": 0.35,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-hit-resisting": {
+    "speaker": "sgt-pruitt",
+    "text": "That's resisting. Probably.",
+    "spoken": "That's resisting. Probably.",
+    "seed": 1640934110,
+    "match": 1.0,
+    "heard": "That's resisting. Probably.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1640934110,
+        "heard": "That's resisting. Probably.",
+        "match": 1.0,
+        "durationS": 2.51
+      }
+    ],
+    "durationS": 2.51,
+    "bytes": 8369,
+    "lufs": -19.5,
+    "peakDb": -1.9,
+    "f0": 98.8,
+    "refF0": 108.6,
+    "exaggeration": 0.35,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-hit-weak": {
+    "speaker": "sgt-pruitt",
+    "text": "Lie still. It's less paperwork.",
+    "spoken": "Lie still. It's less paperwork.",
+    "seed": 1826929916,
+    "match": 1.0,
+    "heard": "Lie still. It's less paperwork.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1826929916,
+        "heard": "Lie still. It's less paperwork.",
+        "match": 1.0,
+        "durationS": 3.0
+      }
+    ],
+    "durationS": 3.0,
+    "bytes": 9755,
+    "lufs": -17.8,
+    "peakDb": -1.75,
+    "f0": 103.4,
+    "refF0": 108.6,
+    "exaggeration": 0.35,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-backup": {
+    "speaker": "sgt-pruitt",
+    "text": "Backup's coming. Eventually.",
+    "spoken": "Backup's coming. Eventually.",
+    "seed": 272786774,
+    "match": 1.0,
+    "heard": "Backup's coming. Eventually.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 272786774,
+        "heard": "Backup's coming. Eventually.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8592,
+    "lufs": -17.8,
+    "peakDb": -1.84,
+    "f0": 106.4,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-dawn": {
+    "speaker": "sgt-pruitt",
+    "text": "Haven't had my coffee. Run.",
+    "spoken": "Haven't had my coffee. Run.",
+    "seed": 1599060482,
+    "match": 1.0,
+    "heard": "Haven't had my coffee. Run.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1599060482,
+        "heard": "Haven't had my coffee. Run.",
+        "match": 1.0,
+        "durationS": 2.96
+      }
+    ],
+    "durationS": 2.96,
+    "bytes": 9456,
+    "lufs": -18.3,
+    "peakDb": -1.86,
+    "f0": 101.3,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-overtime": {
+    "speaker": "sgt-pruitt",
+    "text": "Overtime. You owe me overtime.",
+    "spoken": "Overtime. You owe me overtime.",
+    "seed": 724745264,
+    "match": 1.0,
+    "heard": "overtime you owe me overtime",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 724729426,
+        "heard": "over time. You owe me over time.",
+        "match": 0.5,
+        "durationS": 3.05
+      },
+      {
+        "seed": 724737345,
+        "heard": "over time. You owe me overtime.",
+        "match": 0.727,
+        "durationS": 3.05
+      },
+      {
+        "seed": 724745264,
+        "heard": "overtime you owe me overtime",
+        "match": 1.0,
+        "durationS": 3.11
+      }
+    ],
+    "durationS": 3.11,
+    "bytes": 10413,
+    "lufs": -17.3,
+    "peakDb": -1.89,
+    "f0": 109.9,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-pay": {
+    "speaker": "sgt-pruitt",
+    "text": "Pull over. Or don't. Same pay.",
+    "spoken": "Pull over. Or don't. Same pay.",
+    "seed": 88748381,
+    "match": 1.0,
+    "heard": "Pull over. Or don't. Same pay.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 88748381,
+        "heard": "Pull over. Or don't. Same pay.",
+        "match": 1.0,
+        "durationS": 3.02
+      }
+    ],
+    "durationS": 3.02,
+    "bytes": 9872,
+    "lufs": -17.0,
+    "peakDb": -1.98,
+    "f0": 106.2,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-teeth": {
+    "speaker": "sgt-pruitt",
+    "text": "License, registration, and your front teeth.",
+    "spoken": "License, registration, and your front teeth.",
+    "seed": 197604927,
+    "match": 1.0,
+    "heard": "license, registration, and your front teeth.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 197604927,
+        "heard": "license, registration, and your front teeth.",
+        "match": 1.0,
+        "durationS": 3.79
+      }
+    ],
+    "durationS": 3.79,
+    "bytes": 12465,
+    "lufs": -17.3,
+    "peakDb": -1.99,
+    "f0": 111.6,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-years": {
+    "speaker": "sgt-pruitt",
+    "text": "Twenty-two years of this.",
+    "spoken": "Twenty-two years of this.",
+    "seed": 1670035637,
+    "match": 1.0,
+    "heard": "22 years of this.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1670035637,
+        "heard": "22 years of this.",
+        "match": 1.0,
+        "durationS": 2.13
+      }
+    ],
+    "durationS": 2.13,
+    "bytes": 7340,
+    "lufs": -17.5,
+    "peakDb": -1.94,
+    "f0": 103.0,
+    "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-taken-grudge": {
+    "speaker": "sgt-pruitt",
+    "text": "That's two counts now. Wonderful.",
+    "spoken": "That's two counts now. Wonderful.",
+    "seed": 292990020,
+    "match": 1.0,
+    "heard": "That's two counts now. Wonderful.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 292990020,
+        "heard": "That's two counts now. Wonderful.",
+        "match": 1.0,
+        "durationS": 2.3
+      }
+    ],
+    "durationS": 2.3,
+    "bytes": 7984,
+    "lufs": -17.5,
+    "peakDb": -1.98,
+    "f0": 112.1,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-taken-later": {
+    "speaker": "sgt-pruitt",
+    "text": "I'm writing that down. Later.",
+    "spoken": "I'm writing that down. Later.",
+    "seed": 825814578,
+    "match": 1.0,
+    "heard": "I'm writing that down. Later.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 825814578,
+        "heard": "I'm writing that down. Later.",
+        "match": 1.0,
+        "durationS": 2.24
+      }
+    ],
+    "durationS": 2.24,
+    "bytes": 7635,
+    "lufs": -17.8,
+    "peakDb": -1.97,
+    "f0": 101.3,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-taken-tuesday": {
+    "speaker": "sgt-pruitt",
+    "text": "Assaulting an officer. On a Tuesday.",
+    "spoken": "Assaulting an officer. On a Tuesday.",
+    "seed": 312345664,
+    "match": 1.0,
+    "heard": "assaulting an officer on a Tuesday.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 312345664,
+        "heard": "assaulting an officer on a Tuesday.",
+        "match": 1.0,
+        "durationS": 2.7
+      }
+    ],
+    "durationS": 2.7,
+    "bytes": 9059,
+    "lufs": -17.1,
+    "peakDb": -1.99,
+    "f0": 106.2,
+    "refF0": 108.6,
+    "exaggeration": 0.45,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:tammy-core#tammy-crash-decision": {
+    "speaker": "tammy-two-stroke",
+    "text": "Two-stroke engine. One bad decision.",
+    "spoken": "Two-stroke engine. One bad decision.",
+    "seed": 125962538,
+    "match": 1.0,
+    "heard": "Two stroke engine, one bad decision.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 125962538,
+        "heard": "Two stroke engine, one bad decision.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8429,
+    "lufs": -17.4,
+    "peakDb": -1.87,
+    "f0": 186.0,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-crash-gossip": {
+    "speaker": "tammy-two-stroke",
+    "text": "Back of the pack. Best gossip's here.",
+    "spoken": "Back of the pack. Best gossip's here.",
+    "seed": 233862036,
+    "match": 1.0,
+    "heard": "Back of the pack. Best gossips here.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 233862036,
+        "heard": "Back of the pack. Best gossips here.",
+        "match": 1.0,
+        "durationS": 2.22
+      }
+    ],
+    "durationS": 2.22,
+    "bytes": 7757,
+    "lufs": -17.7,
+    "peakDb": -1.73,
+    "f0": 191.2,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-crash-meant": {
+    "speaker": "tammy-two-stroke",
+    "text": "Meant to do that. Mostly.",
+    "spoken": "Meant to do that. Mostly.",
+    "seed": 524620228,
+    "match": 1.0,
+    "heard": "Meant to do that. Mostly.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 524620228,
+        "heard": "Meant to do that. Mostly.",
+        "match": 1.0,
+        "durationS": 1.97
+      }
+    ],
+    "durationS": 1.97,
+    "bytes": 6974,
+    "lufs": -17.8,
+    "peakDb": -1.94,
+    "f0": 198.3,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-down-again": {
+    "speaker": "tammy-two-stroke",
+    "text": "Twice? Now I'm telling your mama.",
+    "spoken": "Twice? Now I'm telling your mama.",
+    "seed": 1133062889,
+    "match": 1.0,
+    "heard": "Twice? Now I'm telling your mama?",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1133062889,
+        "heard": "Twice? Now I'm telling your mama?",
+        "match": 1.0,
+        "durationS": 2.61
+      }
+    ],
+    "durationS": 2.61,
+    "bytes": 8504,
+    "lufs": -17.1,
+    "peakDb": -1.65,
+    "f0": 230.8,
+    "refF0": 179.1,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-down-deacon": {
+    "speaker": "tammy-two-stroke",
+    "text": "Preachin' and hittin'. Typical.",
+    "spoken": "Preachin' and hittin'. Typical.",
+    "seed": 1580603274,
+    "match": 1.0,
+    "heard": "Preaching and hitting. Typical.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1580603274,
+        "heard": "Preaching and hitting. Typical.",
+        "match": 1.0,
+        "durationS": 1.8
+      }
+    ],
+    "durationS": 1.8,
+    "bytes": 6198,
+    "lufs": -17.6,
+    "peakDb": -1.85,
+    "f0": 187.6,
+    "refF0": 179.1,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-down-hurricanes": {
+    "speaker": "tammy-two-stroke",
+    "text": "Baby, I've had hurricanes hit harder.",
+    "spoken": "Baby, I've had hurricanes hit harder.",
+    "seed": 856015577,
+    "match": 1.0,
+    "heard": "Baby, I've had hurricanes hit harder.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 856015577,
+        "heard": "Baby, I've had hurricanes hit harder.",
+        "match": 1.0,
+        "durationS": 2.67
+      }
+    ],
+    "durationS": 2.67,
+    "bytes": 8881,
+    "lufs": -17.3,
+    "peakDb": -1.49,
+    "f0": 192.8,
+    "refF0": 179.1,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-down-newsletter": {
+    "speaker": "tammy-two-stroke",
+    "text": "Well. That's going in the newsletter.",
+    "spoken": "Well. That's going in the newsletter.",
+    "seed": 63110138,
+    "match": 1.0,
+    "heard": "Well, that's going in the newsletter.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 63110138,
+        "heard": "Well, that's going in the newsletter.",
+        "match": 1.0,
+        "durationS": 1.9
+      }
+    ],
+    "durationS": 1.9,
+    "bytes": 6562,
+    "lufs": -17.3,
+    "peakDb": -1.93,
+    "f0": 204.3,
+    "refF0": 179.1,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-hit-bless": {
+    "speaker": "tammy-two-stroke",
+    "text": "Bless your heart. Now hold still.",
+    "spoken": "Bless your heart. Now hold still.",
+    "seed": 768891996,
+    "match": 1.0,
+    "heard": "Bless your heart. Now hold still.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 768891996,
+        "heard": "Bless your heart. Now hold still.",
+        "match": 1.0,
+        "durationS": 2.11
+      }
+    ],
+    "durationS": 2.11,
+    "bytes": 7240,
+    "lufs": -17.0,
+    "peakDb": -1.87,
+    "f0": 179.1,
+    "refF0": 179.1,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-hit-deacon": {
+    "speaker": "tammy-two-stroke",
+    "text": "Heard your sermon, Deacon. Twice.",
+    "spoken": "Heard your sermon, Deacon. Twice.",
+    "seed": 1813062890,
+    "match": 1.0,
+    "heard": "Heard your sermon, Deacon, twice.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1813062890,
+        "heard": "Heard your sermon, Deacon, twice.",
+        "match": 1.0,
+        "durationS": 2.09
+      }
+    ],
+    "durationS": 2.09,
+    "bytes": 7111,
+    "lufs": -17.3,
+    "peakDb": -1.92,
+    "f0": 193.5,
+    "refF0": 179.1,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-hit-mama": {
+    "speaker": "tammy-two-stroke",
+    "text": "Tell your mama I said hey.",
+    "spoken": "Tell your mama I said hey.",
+    "seed": 1526593879,
+    "match": 1.0,
+    "heard": "Tell your mama I said hey.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1526593879,
+        "heard": "Tell your mama I said hey.",
+        "match": 1.0,
+        "durationS": 1.79
+      }
+    ],
+    "durationS": 1.79,
+    "bytes": 6151,
+    "lufs": -17.0,
+    "peakDb": -3.28,
+    "f0": 185.3,
+    "refF0": 179.1,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-hit-told": {
+    "speaker": "tammy-two-stroke",
+    "text": "Oh, it's you. I told everybody.",
+    "spoken": "Oh, it's you. I told everybody.",
+    "seed": 1542570642,
+    "match": 1.0,
+    "heard": "Oh, it's you, I told everybody.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1542570642,
+        "heard": "Oh, it's you, I told everybody.",
+        "match": 1.0,
+        "durationS": 2.56
+      }
+    ],
+    "durationS": 2.56,
+    "bytes": 8660,
+    "lufs": -17.4,
+    "peakDb": -1.84,
+    "f0": 169.6,
+    "refF0": 179.1,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-hit-weak": {
+    "speaker": "tammy-two-stroke",
+    "text": "Lie down, sugar. I'll call your mama.",
+    "spoken": "Lie down, sugar. I'll call your mama.",
+    "seed": 1549141871,
+    "match": 1.0,
+    "heard": "Lie down, sugar. I'll call your mama.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1549141871,
+        "heard": "Lie down, sugar. I'll call your mama.",
+        "match": 1.0,
+        "durationS": 2.29
+      }
+    ],
+    "durationS": 2.29,
+    "bytes": 7778,
+    "lufs": -17.7,
+    "peakDb": -1.82,
+    "f0": 154.3,
+    "refF0": 179.1,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-late-supper": {
+    "speaker": "tammy-two-stroke",
+    "text": "Almost home. Supper's at six.",
+    "spoken": "Almost home. Supper's at six.",
+    "seed": 1508911135,
+    "match": 1.0,
+    "heard": "Almost home. Suppers at 6.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1508911135,
+        "heard": "Almost home. Suppers at 6.",
+        "match": 1.0,
+        "durationS": 2.39
+      }
+    ],
+    "durationS": 2.39,
+    "bytes": 8016,
+    "lufs": -17.1,
+    "peakDb": -1.94,
+    "f0": 180.5,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-lead-belong": {
+    "speaker": "tammy-two-stroke",
+    "text": "Front of the line. Where I belong.",
+    "spoken": "Front of the line. Where I belong.",
+    "seed": 1273337035,
+    "match": 1.0,
+    "heard": "Front of the line, where I belong.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1273337035,
+        "heard": "Front of the line, where I belong.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8357,
+    "lufs": -17.1,
+    "peakDb": -1.99,
+    "f0": 184.6,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-near-lives": {
+    "speaker": "tammy-two-stroke",
+    "text": "Nine lives, sugar. Eight left.",
+    "spoken": "Nine lives, sugar. Eight left.",
+    "seed": 15337620,
+    "match": 1.0,
+    "heard": "Nine lives, sugar, eight left.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 15337620,
+        "heard": "Nine lives, sugar, eight left.",
+        "match": 1.0,
+        "durationS": 2.42
+      }
+    ],
+    "durationS": 2.42,
+    "bytes": 8107,
+    "lufs": -17.2,
+    "peakDb": -1.82,
+    "f0": 187.5,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-near-menthol": {
+    "speaker": "tammy-two-stroke",
+    "text": "Smoked that one like a menthol.",
+    "spoken": "Smoked that one like a menthol.",
+    "seed": 481584832,
+    "match": 1.0,
+    "heard": "Smoked that one like a menthol.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 481584832,
+        "heard": "Smoked that one like a menthol.",
+        "match": 1.0,
+        "durationS": 1.91
+      }
+    ],
+    "durationS": 1.91,
+    "bytes": 6641,
+    "lufs": -17.3,
+    "peakDb": -1.82,
+    "f0": 182.5,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-near-pews": {
+    "speaker": "tammy-two-stroke",
+    "text": "Close as church pews, sugar.",
+    "spoken": "Close as church pews, sugar.",
+    "seed": 283850108,
+    "match": 1.0,
+    "heard": "Close as church pews, sugar.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 283850108,
+        "heard": "Close as church pews, sugar.",
+        "match": 1.0,
+        "durationS": 1.93
+      }
+    ],
+    "durationS": 1.93,
+    "bytes": 6679,
+    "lufs": -17.1,
+    "peakDb": -1.99,
+    "f0": 207.5,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-pass-casserole": {
+    "speaker": "tammy-two-stroke",
+    "text": "Keep up, sugar. I've got a casserole in.",
+    "spoken": "Keep up, sugar. I've got a casserole in.",
+    "seed": 1254677832,
+    "match": 1.0,
+    "heard": "Keep up, sugar. I've got a casserole in.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1254677832,
+        "heard": "Keep up, sugar. I've got a casserole in.",
+        "match": 1.0,
+        "durationS": 2.5
+      }
+    ],
+    "durationS": 2.5,
+    "bytes": 8400,
+    "lufs": -17.6,
+    "peakDb": -1.75,
+    "f0": 154.8,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-pass-darlin": {
+    "speaker": "tammy-two-stroke",
+    "text": "Scoot over, darlin'. Coming through.",
+    "spoken": "Scoot over, darlin'. Coming through.",
+    "seed": 764750829,
+    "match": 1.0,
+    "heard": "Scoot over, darling. Coming through.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 764750829,
+        "heard": "Scoot over, darling. Coming through.",
+        "match": 1.0,
+        "durationS": 2.1
+      }
+    ],
+    "durationS": 2.1,
+    "bytes": 7265,
+    "lufs": -17.0,
+    "peakDb": -1.92,
+    "f0": 192.0,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-start-bingo": {
+    "speaker": "tammy-two-stroke",
+    "text": "Bingo's over. Let's ride.",
+    "spoken": "Bingo's over. Let's ride.",
+    "seed": 215323434,
+    "match": 1.0,
+    "heard": "Bingo's over, let's ride.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 215323434,
+        "heard": "Bingo's over, let's ride.",
+        "match": 1.0,
+        "durationS": 1.97
+      }
+    ],
+    "durationS": 1.97,
+    "bytes": 6683,
+    "lufs": -17.3,
+    "peakDb": -1.84,
+    "f0": 180.5,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-start-hearses": {
+    "speaker": "tammy-two-stroke",
+    "text": "Honey, I've passed hearses faster than you.",
+    "spoken": "Honey, I've passed hearses faster than you.",
+    "seed": 522466584,
+    "match": 1.0,
+    "heard": "Honey, I've passed hearses faster than you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 522466584,
+        "heard": "Honey, I've passed hearses faster than you.",
+        "match": 1.0,
+        "durationS": 2.57
+      }
+    ],
+    "durationS": 2.57,
+    "bytes": 8651,
+    "lufs": -17.7,
+    "peakDb": -1.84,
+    "f0": 179.1,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-start-smokes": {
+    "speaker": "tammy-two-stroke",
+    "text": "Hold my smokes, sugar.",
+    "spoken": "Hold my smokes, sugar.",
+    "seed": 1239005253,
+    "match": 1.0,
+    "heard": "Hold my smokes, sugar.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1239005253,
+        "heard": "Hold my smokes, sugar.",
+        "match": 1.0,
+        "durationS": 1.53
+      }
+    ],
+    "durationS": 1.53,
+    "bytes": 5430,
+    "lufs": -17.0,
+    "peakDb": -1.91,
+    "f0": 154.8,
+    "refF0": 179.1,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-traffic-blinker": {
+    "speaker": "tammy-two-stroke",
+    "text": "Shoulda used your blinker, baby.",
+    "spoken": "Shoulda used your blinker, baby.",
+    "seed": 1231124141,
+    "match": 1.0,
+    "heard": "Shoulda used your blinker, baby.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1231116222,
+        "heard": "Should've used your blinker, baby.",
+        "match": 0.727,
+        "durationS": 1.71
+      },
+      {
+        "seed": 1231124141,
+        "heard": "Shoulda used your blinker, baby.",
+        "match": 1.0,
+        "durationS": 1.51
+      }
+    ],
+    "durationS": 1.51,
+    "bytes": 5446,
+    "lufs": -17.0,
+    "peakDb": -2.65,
+    "f0": 196.7,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-traffic-forget": {
+    "speaker": "tammy-two-stroke",
+    "text": "Told you I don't forget, baby.",
+    "spoken": "Told you I don't forget, baby.",
+    "seed": 1047761167,
+    "match": 1.0,
+    "heard": "Told you I don't forget, baby.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1047761167,
+        "heard": "Told you I don't forget, baby.",
+        "match": 1.0,
+        "durationS": 1.74
+      }
+    ],
+    "durationS": 1.74,
+    "bytes": 6136,
+    "lufs": -17.0,
+    "peakDb": -2.39,
+    "f0": 208.7,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "base:tammy-core#tammy-traffic-mark": {
+    "speaker": "tammy-two-stroke",
+    "text": "That'll leave a mark. On the truck.",
+    "spoken": "That'll leave a mark. On the truck.",
+    "seed": 328010098,
+    "match": 1.0,
+    "heard": "That'll leave a mark on the truck.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 328010098,
+        "heard": "That'll leave a mark on the truck.",
+        "match": 1.0,
+        "durationS": 2.21
+      }
+    ],
+    "durationS": 2.21,
+    "bytes": 7512,
+    "lufs": -17.3,
+    "peakDb": -1.69,
+    "f0": 196.7,
+    "refF0": 179.1,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-down-banned": {
+    "speaker": "juniper-moss",
+    "text": "You're banned. From the stand.",
+    "spoken": "You're banned. From the stand.",
+    "seed": 733145211,
+    "match": 1.0,
+    "heard": "You're banned, from the stand.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 733145211,
+        "heard": "You're banned, from the stand.",
+        "match": 1.0,
+        "durationS": 1.84
+      }
+    ],
+    "durationS": 1.84,
+    "bytes": 6280,
+    "lufs": -17.0,
+    "peakDb": -1.99,
+    "f0": 234.2,
+    "refF0": 196.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-down-banned-road": {
+    "speaker": "juniper-moss",
+    "text": "Banned from the stand. And the road. And the ferry.",
+    "spoken": "Banned from the stand. And the road. And the ferry.",
+    "seed": 1821894769,
+    "match": 1.0,
+    "heard": "Banned from the stand. And the road. And the ferry.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1821894769,
+        "heard": "Banned from the stand. And the road. And the ferry.",
+        "match": 1.0,
+        "durationS": 3.86
+      }
+    ],
+    "durationS": 3.86,
+    "bytes": 12278,
+    "lufs": -17.1,
+    "peakDb": -1.96,
+    "f0": 200.0,
+    "refF0": 196.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-hit-last-call": {
+    "speaker": "juniper-moss",
+    "text": "Last call.",
+    "spoken": "Last call.",
+    "seed": 1542069213,
+    "match": 1.0,
+    "heard": "Last call.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1542069213,
+        "heard": "Last call.",
+        "match": 1.0,
+        "durationS": 1.75
+      }
+    ],
+    "durationS": 1.75,
+    "bytes": 5829,
+    "lufs": -17.5,
+    "peakDb": -1.92,
+    "f0": 191.3,
+    "refF0": 196.7,
+    "exaggeration": 0.5,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-hit-on-the-house": {
+    "speaker": "juniper-moss",
+    "text": "That one's on the house.",
+    "spoken": "That one's on the house.",
+    "seed": 615307600,
+    "match": 1.0,
+    "heard": "That one's on the house.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 615307600,
+        "heard": "That one's on the house.",
+        "match": 1.0,
+        "durationS": 1.31
+      }
+    ],
+    "durationS": 1.31,
+    "bytes": 4764,
+    "lufs": -18.1,
+    "peakDb": -1.94,
+    "f0": 229.7,
+    "refF0": 196.7,
+    "exaggeration": 0.5,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-near-extra-shot": {
+    "speaker": "juniper-moss",
+    "text": "Extra shot. Didn't ask for it.",
+    "spoken": "Extra shot. Didn't ask for it.",
+    "seed": 463923145,
+    "match": 1.0,
+    "heard": "Extra shot. Didn't ask for it.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 463923145,
+        "heard": "Extra shot. Didn't ask for it.",
+        "match": 1.0,
+        "durationS": 2.11
+      }
+    ],
+    "durationS": 2.11,
+    "bytes": 7087,
+    "lufs": -17.6,
+    "peakDb": -1.81,
+    "f0": 179.1,
+    "refF0": 196.7,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-overtaken-order": {
+    "speaker": "juniper-moss",
+    "text": "Cool. I'll remember your order.",
+    "spoken": "Cool. I'll remember your order.",
+    "seed": 652140941,
+    "match": 1.0,
+    "heard": "Cool. I'll remember your order.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 652140941,
+        "heard": "Cool. I'll remember your order.",
+        "match": 1.0,
+        "durationS": 1.75
+      }
+    ],
+    "durationS": 1.75,
+    "bytes": 6108,
+    "lufs": -17.3,
+    "peakDb": -1.92,
+    "f0": 188.2,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-pass-line": {
+    "speaker": "juniper-moss",
+    "text": "Line's moving. You're not.",
+    "spoken": "Line's moving. You're not.",
+    "seed": 1984103948,
+    "match": 1.0,
+    "heard": "Lines moving. You're not.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1984103948,
+        "heard": "Lines moving. You're not.",
+        "match": 1.0,
+        "durationS": 1.65
+      }
+    ],
+    "durationS": 1.65,
+    "bytes": 5726,
+    "lufs": -17.7,
+    "peakDb": -1.88,
+    "f0": 175.8,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-pass-pull-forward": {
+    "speaker": "juniper-moss",
+    "text": "Pull forward, please. Thank you.",
+    "spoken": "Pull forward, please. Thank you.",
+    "seed": 455109473,
+    "match": 1.0,
+    "heard": "Pull forward please. Thank you.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 455109473,
+        "heard": "Pull forward please. Thank you.",
+        "match": 1.0,
+        "durationS": 1.91
+      }
+    ],
+    "durationS": 1.91,
+    "bytes": 6603,
+    "lufs": -19.0,
+    "peakDb": -1.92,
+    "f0": 212.4,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-start-since-four": {
+    "speaker": "juniper-moss",
+    "text": "I open at five. I've been mad since four.",
+    "spoken": "I open at five. I've been mad since four.",
+    "seed": 1322740271,
+    "match": 1.0,
+    "heard": "I open at 5, I've been mad since 4.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1322740271,
+        "heard": "I open at 5, I've been mad since 4.",
+        "match": 1.0,
+        "durationS": 2.93
+      }
+    ],
+    "durationS": 2.93,
+    "bytes": 9627,
+    "lufs": -18.4,
+    "peakDb": -1.79,
+    "f0": 196.7,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-start-to-go": {
+    "speaker": "juniper-moss",
+    "text": "For here or to go? Oh, you're going.",
+    "spoken": "For here or to go? Oh, you're going.",
+    "seed": 988802931,
+    "match": 1.0,
+    "heard": "For here or to go? Oh, you're going.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 988802931,
+        "heard": "For here or to go? Oh, you're going.",
+        "match": 1.0,
+        "durationS": 2.34
+      }
+    ],
+    "durationS": 2.34,
+    "bytes": 7746,
+    "lufs": -17.5,
+    "peakDb": -1.94,
+    "f0": 196.8,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-stolen-tip-jar": {
+    "speaker": "juniper-moss",
+    "text": "That was the tip jar money.",
+    "spoken": "That was the tip jar money.",
+    "seed": 856633070,
+    "match": 1.0,
+    "heard": "That was the tip jar money.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 856633070,
+        "heard": "That was the tip jar money.",
+        "match": 1.0,
+        "durationS": 1.78
+      }
+    ],
+    "durationS": 1.78,
+    "bytes": 6277,
+    "lufs": -18.2,
+    "peakDb": -1.86,
+    "f0": 180.5,
+    "refF0": 196.7,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:juniper-core#juniper-taken-name-wrong": {
+    "speaker": "juniper-moss",
+    "text": "I'm spelling your name wrong on purpose now.",
+    "spoken": "I'm spelling your name wrong on purpose now.",
+    "seed": 97238361,
+    "match": 1.0,
+    "heard": "I'm spelling your name wrong on purpose now.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 97238361,
+        "heard": "I'm spelling your name wrong on purpose now.",
+        "match": 1.0,
+        "durationS": 2.01
+      }
+    ],
+    "durationS": 2.01,
+    "bytes": 7011,
+    "lufs": -17.3,
+    "peakDb": -1.88,
+    "f0": 207.8,
+    "refF0": 196.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:lindqvist-core#lindqvist-busted-ferry": {
+    "speaker": "deputy-lindqvist",
+    "text": "You have the right to a very long ferry wait.",
+    "spoken": "You have the right to a very long ferry wait.",
+    "seed": 1996860745,
+    "match": 1.0,
+    "heard": "you have the right to a very long ferry wait.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1996860745,
+        "heard": "you have the right to a very long ferry wait.",
+        "match": 1.0,
+        "durationS": 3.2
+      }
+    ],
+    "durationS": 3.2,
+    "bytes": 10743,
+    "lufs": -17.6,
+    "peakDb": -1.93,
+    "f0": 91.3,
+    "refF0": 100.4,
+    "exaggeration": 0.25,
+    "cfg": 0.4,
+    "review": []
+  },
+  "region-pnw:lindqvist-core#lindqvist-siren-whenever": {
+    "speaker": "deputy-lindqvist",
+    "text": "Pull over whenever you're ready. I'll wait.",
+    "spoken": "Pull over whenever you're ready. I'll wait.",
+    "seed": 159331211,
+    "match": 1.0,
+    "heard": "Pull over whenever you're ready. I'll wait.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 159331211,
+        "heard": "Pull over whenever you're ready. I'll wait.",
+        "match": 1.0,
+        "durationS": 2.91
+      }
+    ],
+    "durationS": 2.91,
+    "bytes": 9549,
+    "lufs": -17.9,
+    "peakDb": -1.95,
+    "f0": 90.9,
+    "refF0": 100.4,
+    "exaggeration": 0.25,
+    "cfg": 0.4,
+    "review": []
+  },
+  "region-pnw:lindqvist-core#lindqvist-siren-writing": {
+    "speaker": "deputy-lindqvist",
+    "text": "I'm not upset. I'm just writing it all down.",
+    "spoken": "I'm not upset. I'm just writing it all down.",
+    "seed": 850261903,
+    "match": 1.0,
+    "heard": "I'm not upset. I'm just writing it all down.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 850261903,
+        "heard": "I'm not upset. I'm just writing it all down.",
+        "match": 1.0,
+        "durationS": 3.48
+      }
+    ],
+    "durationS": 3.48,
+    "bytes": 11376,
+    "lufs": -17.4,
+    "peakDb": -1.95,
+    "f0": 91.8,
+    "refF0": 100.4,
+    "exaggeration": 0.25,
+    "cfg": 0.4,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-down-rings": {
+    "speaker": "old-growth",
+    "text": "That's twice. I count rings.",
+    "spoken": "That's twice. I count rings.",
+    "seed": 1269960535,
+    "match": 1.0,
+    "heard": "That's twice. I count rings.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1269960535,
+        "heard": "That's twice. I count rings.",
+        "match": 1.0,
+        "durationS": 2.58
+      }
+    ],
+    "durationS": 2.58,
+    "bytes": 8575,
+    "lufs": -19.4,
+    "peakDb": -1.82,
+    "f0": 119.4,
+    "refF0": 111.1,
+    "exaggeration": 0.5,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-down-slow-fall": {
+    "speaker": "old-growth",
+    "text": "Takes a while to fall. Longer to forget.",
+    "spoken": "Takes a while to fall. Longer to forget.",
+    "seed": 526805633,
+    "match": 1.0,
+    "heard": "takes a while to fall, longer to forget,",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 526805633,
+        "heard": "takes a while to fall, longer to forget,",
+        "match": 1.0,
+        "durationS": 3.55
+      }
+    ],
+    "durationS": 3.55,
+    "bytes": 11523,
+    "lufs": -18.0,
+    "peakDb": -1.91,
+    "f0": 108.6,
+    "refF0": 111.1,
+    "exaggeration": 0.5,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-grudge-paint": {
+    "speaker": "old-growth",
+    "text": "You've been marked. Orange paint.",
+    "spoken": "You've been marked. Orange paint.",
+    "seed": 1606623891,
+    "match": 1.0,
+    "heard": "You've been marked orange paint.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1606623891,
+        "heard": "You've been marked orange paint.",
+        "match": 1.0,
+        "durationS": 4.2
+      }
+    ],
+    "durationS": 4.2,
+    "bytes": 13841,
+    "lufs": -17.8,
+    "peakDb": -1.78,
+    "f0": 130.4,
+    "refF0": 111.1,
+    "exaggeration": 0.35,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-grudge-plain": {
+    "speaker": "old-growth",
+    "text": "There you are.",
+    "spoken": "There you are.",
+    "seed": 1631214943,
+    "match": 1.0,
+    "heard": "There you are.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1631214943,
+        "heard": "There you are.",
+        "match": 1.0,
+        "durationS": 1.38
+      }
+    ],
+    "durationS": 1.38,
+    "bytes": 4969,
+    "lufs": -17.2,
+    "peakDb": -1.89,
+    "f0": 113.2,
+    "refF0": 111.1,
+    "exaggeration": 0.35,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-hit-last-swing": {
+    "speaker": "old-growth",
+    "text": "One more swing and you're firewood.",
+    "spoken": "One more swing and you're firewood.",
+    "seed": 1852660506,
+    "match": 1.0,
+    "heard": "One more swing, and you're firewood.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1852660506,
+        "heard": "One more swing, and you're firewood.",
+        "match": 1.0,
+        "durationS": 2.81
+      }
+    ],
+    "durationS": 2.81,
+    "bytes": 9377,
+    "lufs": -17.9,
+    "peakDb": -1.88,
+    "f0": 98.8,
+    "refF0": 111.1,
+    "exaggeration": 0.4,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-hit-timber": {
+    "speaker": "old-growth",
+    "text": "Timber.",
+    "spoken": "Timber.",
+    "seed": 1415540128,
+    "match": 1.0,
+    "heard": "Timber.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1415532209,
+        "heard": "Mmm, timber.",
+        "match": 0.667,
+        "durationS": 1.62
+      },
+      {
+        "seed": 1415540128,
+        "heard": "Timber.",
+        "match": 1.0,
+        "durationS": 1.0
+      }
+    ],
+    "durationS": 1.0,
+    "bytes": 3699,
+    "lufs": -18.3,
+    "peakDb": -1.8,
+    "f0": 98.4,
+    "refF0": 111.1,
+    "exaggeration": 0.4,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-near-seen-worse": {
+    "speaker": "old-growth",
+    "text": "Log truck. Seen worse.",
+    "spoken": "Log truck. Seen worse.",
+    "seed": 1155154678,
+    "match": 1.0,
+    "heard": "Log truck. Seen worse.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1155154678,
+        "heard": "Log truck. Seen worse.",
+        "match": 1.0,
+        "durationS": 2.46
+      }
+    ],
+    "durationS": 2.46,
+    "bytes": 7918,
+    "lufs": -18.0,
+    "peakDb": -1.86,
+    "f0": 121.2,
+    "refF0": 111.1,
+    "exaggeration": 0.45,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-pass-scenery": {
+    "speaker": "old-growth",
+    "text": "Slow down. You're missing the trees.",
+    "spoken": "Slow down. You're missing the trees.",
+    "seed": 8455690,
+    "match": 1.0,
+    "heard": "Slow down. You're missing the trees.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 8455690,
+        "heard": "Slow down. You're missing the trees.",
+        "match": 1.0,
+        "durationS": 3.47
+      }
+    ],
+    "durationS": 3.47,
+    "bytes": 11225,
+    "lufs": -17.5,
+    "peakDb": -1.78,
+    "f0": 102.1,
+    "refF0": 111.1,
+    "exaggeration": 0.35,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-start-dawn-shift": {
+    "speaker": "old-growth",
+    "text": "Shift started at five. You're late.",
+    "spoken": "Shift started at five. You're late.",
+    "seed": 30366755,
+    "match": 1.0,
+    "heard": "Shift started at 5. You're late.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 30366755,
+        "heard": "Shift started at 5. You're late.",
+        "match": 1.0,
+        "durationS": 3.34
+      }
+    ],
+    "durationS": 3.34,
+    "bytes": 10733,
+    "lufs": -17.8,
+    "peakDb": -1.85,
+    "f0": 105.3,
+    "refF0": 111.1,
+    "exaggeration": 0.35,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-start-here-before": {
+    "speaker": "old-growth",
+    "text": "These trees were here before you. So was I.",
+    "spoken": "These trees were here before you. So was I.",
+    "seed": 685283195,
+    "match": 1.0,
+    "heard": "These trees were here before you. So was I.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 685283195,
+        "heard": "These trees were here before you. So was I.",
+        "match": 1.0,
+        "durationS": 4.9
+      }
+    ],
+    "durationS": 4.9,
+    "bytes": 15655,
+    "lufs": -17.6,
+    "peakDb": -1.9,
+    "f0": 113.5,
+    "refF0": 111.1,
+    "exaggeration": 0.35,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-taken-felt": {
+    "speaker": "old-growth",
+    "text": "Felt that. A little.",
+    "spoken": "Felt that. A little.",
+    "seed": 1295658896,
+    "match": 1.0,
+    "heard": "Felt that. A little.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1295658896,
+        "heard": "Felt that. A little.",
+        "match": 1.0,
+        "durationS": 2.31
+      }
+    ],
+    "durationS": 2.31,
+    "bytes": 7679,
+    "lufs": -18.6,
+    "peakDb": -1.86,
+    "f0": 143.7,
+    "refF0": 111.1,
+    "exaggeration": 0.5,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-traffic-truck": {
+    "speaker": "old-growth",
+    "text": "Everybody hears the log truck. Almost everybody.",
+    "spoken": "Everybody hears the log truck. Almost everybody.",
+    "seed": 141043890,
+    "match": 1.0,
+    "heard": "Everybody hears the log truck. Almost everybody.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 141043890,
+        "heard": "Everybody hears the log truck. Almost everybody.",
+        "match": 1.0,
+        "durationS": 4.14
+      }
+    ],
+    "durationS": 4.14,
+    "bytes": 13412,
+    "lufs": -18.1,
+    "peakDb": -1.67,
+    "f0": 115.4,
+    "refF0": 111.1,
+    "exaggeration": 0.45,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-crash-hill": {
+    "speaker": "gripman-gus",
+    "text": "The hill wins. The hill always wins.",
+    "spoken": "The hill wins. The hill always wins.",
+    "seed": 1241013603,
+    "match": 1.0,
+    "heard": "The hill wins. The hill always wins.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1241013603,
+        "heard": "The hill wins. The hill always wins.",
+        "match": 1.0,
+        "durationS": 3.66
+      }
+    ],
+    "durationS": 3.66,
+    "bytes": 11867,
+    "lufs": -17.0,
+    "peakDb": -2.57,
+    "f0": 212.4,
+    "refF0": 164.4,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-down-fares": {
+    "speaker": "gripman-gus",
+    "text": "I remember every face that never paid.",
+    "spoken": "I remember every face that never paid.",
+    "seed": 832910802,
+    "match": 1.0,
+    "heard": "I remember every face that never paid.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 832910802,
+        "heard": "I remember every face that never paid.",
+        "match": 1.0,
+        "durationS": 2.7
+      }
+    ],
+    "durationS": 2.7,
+    "bytes": 9080,
+    "lufs": -17.7,
+    "peakDb": -1.53,
+    "f0": 198.3,
+    "refF0": 164.4,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-down-tourist": {
+    "speaker": "gripman-gus",
+    "text": "Hit by a tourist. Again.",
+    "spoken": "Hit by a tourist. Again.",
+    "seed": 1391228793,
+    "match": 1.0,
+    "heard": "Hit by a tourist. Again.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1391228793,
+        "heard": "Hit by a tourist. Again.",
+        "match": 1.0,
+        "durationS": 2.08
+      }
+    ],
+    "durationS": 2.08,
+    "bytes": 7035,
+    "lufs": -18.2,
+    "peakDb": -1.77,
+    "f0": 158.4,
+    "refF0": 164.4,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-hit-disrupt": {
+    "speaker": "gripman-gus",
+    "text": "Disrupt this.",
+    "spoken": "Disrupt this.",
+    "seed": 675513592,
+    "match": 1.0,
+    "heard": "Disrupt this.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 675497754,
+        "heard": "Shrap this.",
+        "match": 0.5,
+        "durationS": 1.2
+      },
+      {
+        "seed": 675505673,
+        "heard": "Dropped this.",
+        "match": 0.5,
+        "durationS": 1.16
+      },
+      {
+        "seed": 675513592,
+        "heard": "Disrupt this.",
+        "match": 1.0,
+        "durationS": 1.28
+      }
+    ],
+    "durationS": 1.28,
+    "bytes": 4634,
+    "lufs": -18.7,
+    "peakDb": -1.77,
+    "f0": 154.8,
+    "refF0": 164.4,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-hit-hold": {
+    "speaker": "gripman-gus",
+    "text": "Hold on to something. Not me.",
+    "spoken": "Hold on to something. Not me.",
+    "seed": 1530641656,
+    "match": 1.0,
+    "heard": "Hold on to something. Not me.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1530641656,
+        "heard": "Hold on to something. Not me.",
+        "match": 1.0,
+        "durationS": 2.44
+      }
+    ],
+    "durationS": 2.44,
+    "bytes": 8243,
+    "lufs": -18.1,
+    "peakDb": -1.89,
+    "f0": 184.6,
+    "refF0": 164.4,
+    "exaggeration": 0.6,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-near-inches": {
+    "speaker": "gripman-gus",
+    "text": "Inches. I've lived my whole life in inches.",
+    "spoken": "Inches. I've lived my whole life in inches.",
+    "seed": 1212074985,
+    "match": 1.0,
+    "heard": "Inches. I've lived my whole life in inches.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1212074985,
+        "heard": "Inches. I've lived my whole life in inches.",
+        "match": 1.0,
+        "durationS": 3.49
+      }
+    ],
+    "durationS": 3.49,
+    "bytes": 11391,
+    "lufs": -17.9,
+    "peakDb": -1.91,
+    "f0": 158.9,
+    "refF0": 164.4,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-pass-fare": {
+    "speaker": "gripman-gus",
+    "text": "Fare's due at the top. Exact change.",
+    "spoken": "Fare's due at the top. Exact change.",
+    "seed": 759130305,
+    "match": 0.857,
+    "heard": "Fairs due at the top. Exact change.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 759130305,
+        "heard": "Fairs due at the top. Exact change.",
+        "match": 0.857,
+        "durationS": 3.31
+      },
+      {
+        "seed": 759138224,
+        "heard": "Fairs due at the top, exact change,",
+        "match": 0.857,
+        "durationS": 3.14
+      },
+      {
+        "seed": 759146143,
+        "heard": "Fairs due at the top. Exact change.",
+        "match": 0.857,
+        "durationS": 3.52
+      }
+    ],
+    "durationS": 3.31,
+    "bytes": 10592,
+    "lufs": -17.9,
+    "peakDb": -1.86,
+    "f0": 187.5,
+    "refF0": 164.4,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": ["transcript"]
+  },
+  "region-sf:gripman-gus-core#gus-pass-tuesday": {
+    "speaker": "gripman-gus",
+    "text": "Forty years on these hills. You're a Tuesday.",
+    "spoken": "Forty years on these hills. You're a Tuesday.",
+    "seed": 572986210,
+    "match": 1.0,
+    "heard": "40 years on these hills, you're a Tuesday.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 572986210,
+        "heard": "40 years on these hills, you're a Tuesday.",
+        "match": 1.0,
+        "durationS": 3.42
+      }
+    ],
+    "durationS": 3.42,
+    "bytes": 11145,
+    "lufs": -17.3,
+    "peakDb": -1.97,
+    "f0": 171.4,
+    "refF0": 164.4,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-start-bell": {
+    "speaker": "gripman-gus",
+    "text": "Ding ding. That's all the warning you get.",
+    "spoken": "Ding ding. That's all the warning you get.",
+    "seed": 1463494489,
+    "match": 1.0,
+    "heard": "Ding, ding. That's all the warning you get.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1463494489,
+        "heard": "Ding, ding. That's all the warning you get.",
+        "match": 1.0,
+        "durationS": 2.98
+      }
+    ],
+    "durationS": 2.98,
+    "bytes": 9871,
+    "lufs": -17.5,
+    "peakDb": -1.86,
+    "f0": 174.5,
+    "refF0": 164.4,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-traffic-line": {
+    "speaker": "gripman-gus",
+    "text": "Should've stood behind the yellow line.",
+    "spoken": "Should've stood behind the yellow line.",
+    "seed": 329724228,
+    "match": 1.0,
+    "heard": "should have stood behind the yellow line.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 329724228,
+        "heard": "should have stood behind the yellow line.",
+        "match": 1.0,
+        "durationS": 2.33
+      }
+    ],
+    "durationS": 2.33,
+    "bytes": 7955,
+    "lufs": -17.3,
+    "peakDb": -1.94,
+    "f0": 170.2,
+    "refF0": 164.4,
+    "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:officer-meter-core#meter-busted-signed": {
+    "speaker": "officer-meter",
+    "text": "I already wrote it. Sign here.",
+    "spoken": "I already wrote it. Sign here.",
+    "seed": 1489741655,
+    "match": 1.0,
+    "heard": "I already wrote it. Sign here.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1489741655,
+        "heard": "I already wrote it. Sign here.",
+        "match": 1.0,
+        "durationS": 2.39
+      }
+    ],
+    "durationS": 2.39,
+    "bytes": 8078,
+    "lufs": -17.6,
+    "peakDb": -1.94,
+    "f0": 109.8,
+    "refF0": 112.7,
+    "exaggeration": 0.3,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:officer-meter-core#meter-siren-expired": {
+    "speaker": "officer-meter",
+    "text": "Your meter expired eleven minutes ago.",
+    "spoken": "Your meter expired eleven minutes ago.",
+    "seed": 1142448922,
+    "match": 1.0,
+    "heard": "Your meter expired 11 minutes ago.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1142448922,
+        "heard": "Your meter expired 11 minutes ago.",
+        "match": 1.0,
+        "durationS": 2.73
+      }
+    ],
+    "durationS": 2.73,
+    "bytes": 9213,
+    "lufs": -17.4,
+    "peakDb": -1.92,
+    "f0": 113.7,
+    "refF0": 112.7,
+    "exaggeration": 0.3,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-crash-burn": {
+    "speaker": "pivot",
+    "text": "Burn rate's fine. Everything's fine.",
+    "spoken": "Burn rate's fine. Everything's fine.",
+    "seed": 1387866227,
+    "match": 1.0,
+    "heard": "Burn rate's fine, everything's fine.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1387866227,
+        "heard": "Burn rate's fine, everything's fine.",
+        "match": 1.0,
+        "durationS": 2.13
+      }
+    ],
+    "durationS": 2.13,
+    "bytes": 7366,
+    "lufs": -18.6,
+    "peakDb": -1.94,
+    "f0": 142.0,
+    "refF0": 128.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-down-pavement": {
+    "speaker": "pivot",
+    "text": "Pivoting. To the pavement.",
+    "spoken": "Pivoting. To the pavement.",
+    "seed": 567898999,
+    "match": 1.0,
+    "heard": "pivoting to the pavement.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 567898999,
+        "heard": "pivoting to the pavement.",
+        "match": 1.0,
+        "durationS": 1.64
+      }
+    ],
+    "durationS": 1.64,
+    "bytes": 5709,
+    "lufs": -18.4,
+    "peakDb": -1.88,
+    "f0": 131.1,
+    "refF0": 128.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-down-risks": {
+    "speaker": "pivot",
+    "text": "Again? You're going on the risks slide.",
+    "spoken": "Again? You're going on the risks slide.",
+    "seed": 545046957,
+    "match": 0.875,
+    "heard": "Again, you're going on the wrist slide.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 545046957,
+        "heard": "Again, you're going on the wrist slide.",
+        "match": 0.875,
+        "durationS": 2.27
+      },
+      {
+        "seed": 545054876,
+        "heard": "Again, you're going on the wrist slide.",
+        "match": 0.875,
+        "durationS": 2.46
+      },
+      {
+        "seed": 545062795,
+        "heard": "Again, you're going on the risk slide.",
+        "match": 0.875,
+        "durationS": 2.49
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7532,
+    "lufs": -17.6,
+    "peakDb": -1.85,
+    "f0": 166.7,
+    "refF0": 128.7,
+    "exaggeration": 0.7,
+    "cfg": 0.5,
+    "review": ["transcript"]
+  },
+  "region-sf:pivot-core#pivot-hit-ditch": {
+    "speaker": "pivot",
+    "text": "We're pre-revenue. You're pre-ditch.",
+    "spoken": "We're pre-revenue. You're pre-ditch.",
+    "seed": 896446230,
+    "match": 1.0,
+    "heard": "We're pre-revenue. You're pre-ditch.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 896446230,
+        "heard": "We're pre-revenue. You're pre-ditch.",
+        "match": 1.0,
+        "durationS": 2.23
+      }
+    ],
+    "durationS": 2.23,
+    "bytes": 7623,
+    "lufs": -17.7,
+    "peakDb": -1.9,
+    "f0": 138.7,
+    "refF0": 128.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-hit-round": {
+    "speaker": "pivot",
+    "text": "Closing the round. You're not in it.",
+    "spoken": "Closing the round. You're not in it.",
+    "seed": 1032952246,
+    "match": 1.0,
+    "heard": "Closing the round, you're not in it.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1032952246,
+        "heard": "Closing the round, you're not in it.",
+        "match": 1.0,
+        "durationS": 1.83
+      }
+    ],
+    "durationS": 1.83,
+    "bytes": 6392,
+    "lufs": -17.6,
+    "peakDb": -1.91,
+    "f0": 127.7,
+    "refF0": 128.7,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-near-episode": {
+    "speaker": "pivot",
+    "text": "Near miss. That's a podcast episode.",
+    "spoken": "Near miss. That's a podcast episode.",
+    "seed": 147514571,
+    "match": 1.0,
+    "heard": "Near miss. That's a podcast episode.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 147514571,
+        "heard": "Near miss. That's a podcast episode.",
+        "match": 1.0,
+        "durationS": 2.57
+      }
+    ],
+    "durationS": 2.57,
+    "bytes": 8704,
+    "lufs": -18.1,
+    "peakDb": -1.82,
+    "f0": 146.3,
+    "refF0": 128.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-pass-deck": {
+    "speaker": "pivot",
+    "text": "That was a ten-x pass. I'll send the deck.",
+    "spoken": "That was a ten-x pass. I'll send the deck.",
+    "seed": 328442290,
+    "match": 0.857,
+    "heard": "That was a 10x pass. I'll send the deck.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 328442290,
+        "heard": "That was a 10x pass. I'll send the deck.",
+        "match": 0.857,
+        "durationS": 2.52
+      },
+      {
+        "seed": 328450209,
+        "heard": "That was a 10x pass. I'll send the deck.",
+        "match": 0.857,
+        "durationS": 2.73
+      },
+      {
+        "seed": 328458128,
+        "heard": "That was a 10x pass. I'll send the deck.",
+        "match": 0.857,
+        "durationS": 2.37
+      }
+    ],
+    "durationS": 2.52,
+    "bytes": 8462,
+    "lufs": -18.3,
+    "peakDb": -1.8,
+    "f0": 129.0,
+    "refF0": 128.7,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": ["transcript"]
+  },
+  "region-sf:pivot-core#pivot-pass-legacy": {
+    "speaker": "pivot",
+    "text": "Passing you. You're the legacy system.",
+    "spoken": "Passing you. You're the legacy system.",
+    "seed": 1042839890,
+    "match": 1.0,
+    "heard": "passing you. You're the legacy system.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1042839890,
+        "heard": "passing you. You're the legacy system.",
+        "match": 1.0,
+        "durationS": 2.27
+      }
+    ],
+    "durationS": 2.27,
+    "bytes": 7775,
+    "lufs": -18.5,
+    "peakDb": -1.72,
+    "f0": 143.7,
+    "refF0": 128.7,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-start-stealth": {
+    "speaker": "pivot",
+    "text": "Coming out of stealth. Avert your eyes.",
+    "spoken": "Coming out of stealth. Avert your eyes.",
+    "seed": 713744072,
+    "match": 1.0,
+    "heard": "Coming out of stealth, avert your eyes.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 713744072,
+        "heard": "Coming out of stealth, avert your eyes.",
+        "match": 1.0,
+        "durationS": 2.43
+      }
+    ],
+    "durationS": 2.43,
+    "bytes": 8228,
+    "lufs": -18.1,
+    "peakDb": -1.89,
+    "f0": 127.3,
+    "refF0": 128.7,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-traffic-exit": {
+    "speaker": "pivot",
+    "text": "Acquired by a bus. Congrats on the exit.",
+    "spoken": "Acquired by a bus. Congrats on the exit.",
+    "seed": 381525702,
+    "match": 1.0,
+    "heard": "Acquired by a bus. Congrats on the exit.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 381525702,
+        "heard": "Acquired by a bus. Congrats on the exit.",
+        "match": 1.0,
+        "durationS": 2.55
+      }
+    ],
+    "durationS": 2.55,
+    "bytes": 8496,
+    "lufs": -18.0,
+    "peakDb": -1.93,
+    "f0": 125.0,
+    "refF0": 128.7,
+    "exaggeration": 0.65,
+    "cfg": 0.5,
+    "review": []
+  }
+}

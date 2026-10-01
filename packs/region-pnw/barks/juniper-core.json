@@ -12,75 +12,129 @@
     {
       "id": "juniper-start-to-go",
       "trigger": "race-start",
-      "text": "For here or to go? Oh, you're going."
+      "text": "For here or to go? Oh, you're going.",
+      "audioAsset": "audio/barks/juniper-core/juniper-start-to-go",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-start-since-four",
       "trigger": "race-start",
-      "when": [{ "fact": "timeOfDay", "op": "eq", "value": "dawn" }],
-      "text": "I open at five. I've been mad since four."
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "dawn"
+        }
+      ],
+      "text": "I open at five. I've been mad since four.",
+      "audioAsset": "audio/barks/juniper-core/juniper-start-since-four",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-pass-line",
       "trigger": "overtake",
-      "text": "Line's moving. You're not."
+      "text": "Line's moving. You're not.",
+      "audioAsset": "audio/barks/juniper-core/juniper-pass-line",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-pass-pull-forward",
       "trigger": "overtake",
-      "text": "Pull forward, please. Thank you."
+      "text": "Pull forward, please. Thank you.",
+      "audioAsset": "audio/barks/juniper-core/juniper-pass-pull-forward",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-hit-on-the-house",
       "trigger": "hit-landed",
-      "text": "That one's on the house."
+      "text": "That one's on the house.",
+      "audioAsset": "audio/barks/juniper-core/juniper-hit-on-the-house",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-hit-last-call",
       "trigger": "hit-landed",
-      "when": [{ "fact": "target.healthFrac", "op": "lt", "value": 0.3 }],
-      "text": "Last call."
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "Last call.",
+      "audioAsset": "audio/barks/juniper-core/juniper-hit-last-call",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-taken-name-wrong",
       "trigger": "hit-taken",
-      "text": "I'm spelling your name wrong on purpose now."
+      "text": "I'm spelling your name wrong on purpose now.",
+      "audioAsset": "audio/barks/juniper-core/juniper-taken-name-wrong",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-overtaken-order",
       "trigger": "overtaken",
       "target": "player",
-      "text": "Cool. I'll remember your order."
+      "text": "Cool. I'll remember your order.",
+      "audioAsset": "audio/barks/juniper-core/juniper-overtaken-order",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-down-banned",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "You're banned. From the stand."
+      "text": "You're banned. From the stand.",
+      "audioAsset": "audio/barks/juniper-core/juniper-down-banned",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-down-banned-road",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 1 }],
-      "text": "Banned from the stand. And the road. And the ferry."
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Banned from the stand. And the road. And the ferry.",
+      "audioAsset": "audio/barks/juniper-core/juniper-down-banned-road",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-near-extra-shot",
       "trigger": "near-miss",
-      "text": "Extra shot. Didn't ask for it."
+      "text": "Extra shot. Didn't ask for it.",
+      "audioAsset": "audio/barks/juniper-core/juniper-near-extra-shot",
+      "audioStatus": "live"
     },
     {
       "id": "juniper-stolen-tip-jar",
       "trigger": "weapon-stolen-from-speaker",
-      "text": "That was the tip jar money."
+      "text": "That was the tip jar money.",
+      "audioAsset": "audio/barks/juniper-core/juniper-stolen-tip-jar",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
     "notes": "region-pnw (playtest 1c). juniper-start-to-go is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice af_heart, speed 1.05, pitch +0 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
+    }
   }
 }

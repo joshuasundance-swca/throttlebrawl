@@ -12,76 +12,104 @@
     {
       "id": "tammy-start-hearses",
       "trigger": "race-start",
-      "text": "Honey, I've passed hearses faster than you."
+      "text": "Honey, I've passed hearses faster than you.",
+      "audioAsset": "audio/barks/tammy-core/tammy-start-hearses",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-start-smokes",
       "trigger": "race-start",
-      "text": "Hold my smokes, sugar."
+      "text": "Hold my smokes, sugar.",
+      "audioAsset": "audio/barks/tammy-core/tammy-start-smokes",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-pass-casserole",
       "trigger": "overtake",
-      "text": "Keep up, sugar. I've got a casserole in."
+      "text": "Keep up, sugar. I've got a casserole in.",
+      "audioAsset": "audio/barks/tammy-core/tammy-pass-casserole",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-pass-darlin",
       "trigger": "overtake",
-      "text": "Scoot over, darlin'. Coming through."
+      "text": "Scoot over, darlin'. Coming through.",
+      "audioAsset": "audio/barks/tammy-core/tammy-pass-darlin",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-hit-bless",
       "trigger": "hit-landed",
-      "text": "Bless your heart. Now hold still."
+      "text": "Bless your heart. Now hold still.",
+      "audioAsset": "audio/barks/tammy-core/tammy-hit-bless",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-hit-mama",
       "trigger": "hit-landed",
-      "text": "Tell your mama I said hey."
+      "text": "Tell your mama I said hey.",
+      "audioAsset": "audio/barks/tammy-core/tammy-hit-mama",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-traffic-blinker",
       "trigger": "takedown-into-traffic",
-      "text": "Shoulda used your blinker, baby."
+      "text": "Shoulda used your blinker, baby.",
+      "audioAsset": "audio/barks/tammy-core/tammy-traffic-blinker",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-traffic-mark",
       "trigger": "takedown-into-traffic",
-      "text": "That'll leave a mark. On the truck."
+      "text": "That'll leave a mark. On the truck.",
+      "audioAsset": "audio/barks/tammy-core/tammy-traffic-mark",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-down-hurricanes",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Baby, I've had hurricanes hit harder."
+      "text": "Baby, I've had hurricanes hit harder.",
+      "audioAsset": "audio/barks/tammy-core/tammy-down-hurricanes",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-down-newsletter",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Well. That's going in the newsletter."
+      "text": "Well. That's going in the newsletter.",
+      "audioAsset": "audio/barks/tammy-core/tammy-down-newsletter",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-crash-decision",
       "trigger": "crash-self",
-      "text": "Two-stroke engine. One bad decision."
+      "text": "Two-stroke engine. One bad decision.",
+      "audioAsset": "audio/barks/tammy-core/tammy-crash-decision",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-crash-meant",
       "trigger": "crash-self",
-      "text": "Meant to do that. Mostly."
+      "text": "Meant to do that. Mostly.",
+      "audioAsset": "audio/barks/tammy-core/tammy-crash-meant",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-near-menthol",
       "trigger": "near-miss",
-      "text": "Smoked that one like a menthol."
+      "text": "Smoked that one like a menthol.",
+      "audioAsset": "audio/barks/tammy-core/tammy-near-menthol",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-near-pews",
       "trigger": "near-miss",
-      "text": "Close as church pews, sugar."
+      "text": "Close as church pews, sugar.",
+      "audioAsset": "audio/barks/tammy-core/tammy-near-pews",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-lead-belong",
@@ -93,7 +121,9 @@
           "value": 1
         }
       ],
-      "text": "Front of the line. Where I belong."
+      "text": "Front of the line. Where I belong.",
+      "audioAsset": "audio/barks/tammy-core/tammy-lead-belong",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-late-supper",
@@ -105,14 +135,18 @@
           "value": 0.8
         }
       ],
-      "text": "Almost home. Supper's at six."
+      "text": "Almost home. Supper's at six.",
+      "audioAsset": "audio/barks/tammy-core/tammy-late-supper",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-hit-deacon",
       "trigger": "hit-landed",
       "target": "deacon-vane",
       "priority": 1,
-      "text": "Heard your sermon, Deacon. Twice."
+      "text": "Heard your sermon, Deacon. Twice.",
+      "audioAsset": "audio/barks/tammy-core/tammy-hit-deacon",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-hit-told",
@@ -124,7 +158,9 @@
           "value": 1
         }
       ],
-      "text": "Oh, it's you. I told everybody."
+      "text": "Oh, it's you. I told everybody.",
+      "audioAsset": "audio/barks/tammy-core/tammy-hit-told",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-hit-weak",
@@ -136,14 +172,18 @@
           "value": 0.3
         }
       ],
-      "text": "Lie down, sugar. I'll call your mama."
+      "text": "Lie down, sugar. I'll call your mama.",
+      "audioAsset": "audio/barks/tammy-core/tammy-hit-weak",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-down-deacon",
       "trigger": "knocked-down-by-target",
       "target": "deacon-vane",
       "priority": 1,
-      "text": "Preachin' and hittin'. Typical."
+      "text": "Preachin' and hittin'. Typical.",
+      "audioAsset": "audio/barks/tammy-core/tammy-down-deacon",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-down-again",
@@ -157,7 +197,9 @@
           "value": 2
         }
       ],
-      "text": "Twice? Now I'm telling your mama."
+      "text": "Twice? Now I'm telling your mama.",
+      "audioAsset": "audio/barks/tammy-core/tammy-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-near-lives",
@@ -169,7 +211,9 @@
           "value": 0.4
         }
       ],
-      "text": "Nine lives, sugar. Eight left."
+      "text": "Nine lives, sugar. Eight left.",
+      "audioAsset": "audio/barks/tammy-core/tammy-near-lives",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-start-bingo",
@@ -181,7 +225,9 @@
           "value": "night"
         }
       ],
-      "text": "Bingo's over. Let's ride."
+      "text": "Bingo's over. Let's ride.",
+      "audioAsset": "audio/barks/tammy-core/tammy-start-bingo",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-crash-gossip",
@@ -193,7 +239,9 @@
           "value": 5
         }
       ],
-      "text": "Back of the pack. Best gossip's here."
+      "text": "Back of the pack. Best gossip's here.",
+      "audioAsset": "audio/barks/tammy-core/tammy-crash-gossip",
+      "audioStatus": "live"
     },
     {
       "id": "tammy-traffic-forget",
@@ -205,7 +253,9 @@
           "value": 1
         }
       ],
-      "text": "Told you I don't forget, baby."
+      "text": "Told you I don't forget, baby.",
+      "audioAsset": "audio/barks/tammy-core/tammy-traffic-forget",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -215,6 +265,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice af_sarah, speed 1.0, pitch -1.5 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

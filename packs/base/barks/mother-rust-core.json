@@ -12,76 +12,104 @@
     {
       "id": "rust-start-tires",
       "trigger": "race-start",
-      "text": "I've eaten tires tougher than you."
+      "text": "I've eaten tires tougher than you.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-start-tires",
+      "audioStatus": "live"
     },
     {
       "id": "rust-start-guest",
       "trigger": "race-start",
-      "text": "Boys. We have a guest."
+      "text": "Boys. We have a guest.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-start-guest",
+      "audioStatus": "live"
     },
     {
       "id": "rust-pass-follow",
       "trigger": "overtake",
-      "text": "Swamp's this way. Follow me in."
+      "text": "Swamp's this way. Follow me in.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-pass-follow",
+      "audioStatus": "live"
     },
     {
       "id": "rust-pass-water",
       "trigger": "overtake",
-      "text": "Out of my water, city."
+      "text": "Out of my water, city.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-pass-water",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-takes",
       "trigger": "hit-landed",
-      "text": "The swamp takes what it wants."
+      "text": "The swamp takes what it wants.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-takes",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-knees",
       "trigger": "hit-landed",
-      "text": "Today it wants your knees."
+      "text": "Today it wants your knees.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-knees",
+      "audioStatus": "live"
     },
     {
       "id": "rust-traffic-feed",
       "trigger": "takedown-into-traffic",
-      "text": "Feed it to the road, boys."
+      "text": "Feed it to the road, boys.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-traffic-feed",
+      "audioStatus": "live"
     },
     {
       "id": "rust-traffic-gator",
       "trigger": "takedown-into-traffic",
-      "text": "Gator food. Truck-sized gator."
+      "text": "Gator food. Truck-sized gator.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-traffic-gator",
+      "audioStatus": "live"
     },
     {
       "id": "rust-down-remembers",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "…The swamp remembers."
+      "text": "…The swamp remembers.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-down-remembers",
+      "audioStatus": "live"
     },
     {
       "id": "rust-down-kin",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Kin will hear about this."
+      "text": "Kin will hear about this.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-down-kin",
+      "audioStatus": "live"
     },
     {
       "id": "rust-crash-mud",
       "trigger": "crash-self",
-      "text": "Mud's softer than it looks."
+      "text": "Mud's softer than it looks.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-crash-mud",
+      "audioStatus": "live"
     },
     {
       "id": "rust-crash-moody",
       "trigger": "crash-self",
-      "text": "Swamp threw me. Swamp's moody."
+      "text": "Swamp threw me. Swamp's moody.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-crash-moody",
+      "audioStatus": "live"
     },
     {
       "id": "rust-near-most",
       "trigger": "near-miss",
-      "text": "Missed me. Most things do."
+      "text": "Missed me. Most things do.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-near-most",
+      "audioStatus": "live"
     },
     {
       "id": "rust-near-fishfry",
       "trigger": "near-miss",
-      "text": "Dodged worse at a fish fry."
+      "text": "Dodged worse at a fish fry.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-near-fishfry",
+      "audioStatus": "live"
     },
     {
       "id": "rust-lead-family",
@@ -93,7 +121,9 @@
           "value": 1
         }
       ],
-      "text": "Front of the family. Always."
+      "text": "Front of the family. Always.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-lead-family",
+      "audioStatus": "live"
     },
     {
       "id": "rust-late-hungry",
@@ -105,7 +135,9 @@
           "value": 0.8
         }
       ],
-      "text": "Nearly home. The swamp's hungry."
+      "text": "Nearly home. The swamp's hungry.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-late-hungry",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-patient",
@@ -117,7 +149,9 @@
           "value": 0.3
         }
       ],
-      "text": "Lie down. The swamp is patient."
+      "text": "Lie down. The swamp is patient.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-patient",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-boys",
@@ -129,21 +163,27 @@
           "value": 1
         }
       ],
-      "text": "My boys still talk about you."
+      "text": "My boys still talk about you.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-boys",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-mayor",
       "trigger": "hit-landed",
       "target": "the-mayor",
       "priority": 1,
-      "text": "Your sign's on my land, Mayor."
+      "text": "Your sign's on my land, Mayor.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-mayor",
+      "audioStatus": "live"
     },
     {
       "id": "rust-hit-deacon",
       "trigger": "hit-landed",
       "target": "deacon-vane",
       "priority": 1,
-      "text": "Preach to the gators, Deacon."
+      "text": "Preach to the gators, Deacon.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-hit-deacon",
+      "audioStatus": "live"
     },
     {
       "id": "rust-down-count",
@@ -157,7 +197,9 @@
           "value": 2
         }
       ],
-      "text": "Twice now. The swamp keeps count."
+      "text": "Twice now. The swamp keeps count.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-down-count",
+      "audioStatus": "live"
     },
     {
       "id": "rust-near-ready",
@@ -169,7 +211,9 @@
           "value": 0.4
         }
       ],
-      "text": "Not today. The swamp ain't ready."
+      "text": "Not today. The swamp ain't ready.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-near-ready",
+      "audioStatus": "live"
     },
     {
       "id": "rust-start-night",
@@ -181,7 +225,9 @@
           "value": "night"
         }
       ],
-      "text": "Night's when the swamp eats."
+      "text": "Night's when the swamp eats.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-start-night",
+      "audioStatus": "live"
     },
     {
       "id": "rust-crash-stragglers",
@@ -193,7 +239,9 @@
           "value": 5
         }
       ],
-      "text": "Back with the stragglers. Fine."
+      "text": "Back with the stragglers. Fine.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-crash-stragglers",
+      "audioStatus": "live"
     },
     {
       "id": "rust-traffic-debts",
@@ -205,7 +253,9 @@
           "value": 1
         }
       ],
-      "text": "Family settles debts. Slowly."
+      "text": "Family settles debts. Slowly.",
+      "audioAsset": "audio/barks/mother-rust-core/rust-traffic-debts",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -215,6 +265,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice af_kore, speed 0.85, pitch -2 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

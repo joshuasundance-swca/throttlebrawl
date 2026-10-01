@@ -12,76 +12,104 @@
     {
       "id": "mayor-start-vote",
       "trigger": "race-start",
-      "text": "Vote early. Crash often."
+      "text": "Vote early. Crash often.",
+      "audioAsset": "audio/barks/mayor-core/mayor-start-vote",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-start-bridge",
       "trigger": "race-start",
-      "text": "This bridge was my idea. So is this."
+      "text": "This bridge was my idea. So is this.",
+      "audioAsset": "audio/barks/mayor-core/mayor-start-bridge",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-pass-pardon",
       "trigger": "overtake",
-      "text": "Pardon me. Officially."
+      "text": "Pardon me. Officially.",
+      "audioAsset": "audio/barks/mayor-core/mayor-pass-pardon",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-pass-motorcade",
       "trigger": "overtake",
-      "text": "Make way for the motorcade. It's me."
+      "text": "Make way for the motorcade. It's me.",
+      "audioAsset": "audio/barks/mayor-core/mayor-pass-motorcade",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-hit-ditch",
       "trigger": "hit-landed",
-      "text": "My opponent is lying. In a ditch."
+      "text": "My opponent is lying. In a ditch.",
+      "audioAsset": "audio/barks/mayor-core/mayor-hit-ditch",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-hit-veto",
       "trigger": "hit-landed",
-      "text": "That's a line-item veto."
+      "text": "That's a line-item veto.",
+      "audioAsset": "audio/barks/mayor-core/mayor-hit-veto",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-traffic-calming",
       "trigger": "takedown-into-traffic",
-      "text": "Traffic calming. Funded by you."
+      "text": "Traffic calming. Funded by you.",
+      "audioAsset": "audio/barks/mayor-core/mayor-traffic-calming",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-traffic-ribbon",
       "trigger": "takedown-into-traffic",
-      "text": "Ribbon cutting. Effective now."
+      "text": "Ribbon cutting. Effective now.",
+      "audioAsset": "audio/barks/mayor-core/mayor-traffic-ribbon",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-down-comment",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "No comment. NO COMMENT."
+      "text": "No comment. NO COMMENT.",
+      "audioAsset": "audio/barks/mayor-core/mayor-down-comment",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-down-recount",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "I'll be calling for a recount."
+      "text": "I'll be calling for a recount.",
+      "audioAsset": "audio/barks/mayor-core/mayor-down-recount",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-crash-council",
       "trigger": "crash-self",
-      "text": "Pothole. I blame the council."
+      "text": "Pothole. I blame the council.",
+      "audioAsset": "audio/barks/mayor-core/mayor-crash-council",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-crash-photo",
       "trigger": "crash-self",
-      "text": "Photo op. Ruined."
+      "text": "Photo op. Ruined.",
+      "audioAsset": "audio/barks/mayor-core/mayor-crash-photo",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-near-race",
       "trigger": "near-miss",
-      "text": "Close race. Like my last one."
+      "text": "Close race. Like my last one.",
+      "audioAsset": "audio/barks/mayor-core/mayor-near-race",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-near-subpoena",
       "trigger": "near-miss",
-      "text": "Dodged it like a subpoena."
+      "text": "Dodged it like a subpoena.",
+      "audioAsset": "audio/barks/mayor-core/mayor-near-subpoena",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-lead-polls",
@@ -93,7 +121,9 @@
           "value": 1
         }
       ],
-      "text": "Leading in the polls. And the road."
+      "text": "Leading in the polls. And the road.",
+      "audioAsset": "audio/barks/mayor-core/mayor-lead-polls",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-late-term",
@@ -105,14 +135,18 @@
           "value": 0.8
         }
       ],
-      "text": "Final stretch. Like my second term."
+      "text": "Final stretch. Like my second term.",
+      "audioAsset": "audio/barks/mayor-core/mayor-late-term",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-hit-kevin",
       "trigger": "hit-landed",
       "target": "kevin-from-accounting",
       "priority": 1,
-      "text": "Your invoice is in the mail, Kevin."
+      "text": "Your invoice is in the mail, Kevin.",
+      "audioAsset": "audio/barks/mayor-core/mayor-hit-kevin",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-hit-guilty",
@@ -124,7 +158,9 @@
           "value": 0.3
         }
       ],
-      "text": "My office has found you guilty."
+      "text": "My office has found you guilty.",
+      "audioAsset": "audio/barks/mayor-core/mayor-hit-guilty",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-hit-grudge",
@@ -136,14 +172,18 @@
           "value": 1
         }
       ],
-      "text": "My office has reviewed the incident."
+      "text": "My office has reviewed the incident.",
+      "audioAsset": "audio/barks/mayor-core/mayor-hit-grudge",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-down-kevin",
       "trigger": "knocked-down-by-target",
       "target": "kevin-from-accounting",
       "priority": 1,
-      "text": "Accounting has gone rogue."
+      "text": "Accounting has gone rogue.",
+      "audioAsset": "audio/barks/mayor-core/mayor-down-kevin",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-down-again",
@@ -157,7 +197,9 @@
           "value": 2
         }
       ],
-      "text": "Again? I'm declaring an emergency."
+      "text": "Again? I'm declaring an emergency.",
+      "audioAsset": "audio/barks/mayor-core/mayor-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-near-recess",
@@ -169,7 +211,9 @@
           "value": 0.4
         }
       ],
-      "text": "Fleeing? This is a tactical recess."
+      "text": "Fleeing? This is a tactical recess.",
+      "audioAsset": "audio/barks/mayor-core/mayor-near-recess",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-start-late",
@@ -181,7 +225,9 @@
           "value": "night"
         }
       ],
-      "text": "Late session. Nobody's watching."
+      "text": "Late session. Nobody's watching.",
+      "audioAsset": "audio/barks/mayor-core/mayor-start-late",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-crash-tour",
@@ -193,7 +239,9 @@
           "value": 5
         }
       ],
-      "text": "Call this a listening tour."
+      "text": "Call this a listening tour.",
+      "audioAsset": "audio/barks/mayor-core/mayor-crash-tour",
+      "audioStatus": "live"
     },
     {
       "id": "mayor-traffic-addressed",
@@ -205,7 +253,9 @@
           "value": 1
         }
       ],
-      "text": "Consider your grievance addressed."
+      "text": "Consider your grievance addressed.",
+      "audioAsset": "audio/barks/mayor-core/mayor-traffic-addressed",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -215,6 +265,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_michael, speed 1.0, pitch -0.5 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }

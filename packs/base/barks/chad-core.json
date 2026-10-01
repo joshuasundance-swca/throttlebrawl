@@ -12,53 +12,71 @@
     {
       "id": "chad-start-sponsored",
       "trigger": "race-start",
-      "text": "This crash is sponsored by nobody. Sorry."
+      "text": "This crash is sponsored by nobody. Sorry.",
+      "audioAsset": "audio/barks/chad-core/chad-start-sponsored",
+      "audioStatus": "live"
     },
     {
       "id": "chad-pass-chat",
       "trigger": "overtake",
-      "text": "Chat says you're slow. Chat is right."
+      "text": "Chat says you're slow. Chat is right.",
+      "audioAsset": "audio/barks/chad-core/chad-pass-chat",
+      "audioStatus": "live"
     },
     {
       "id": "chad-pass-wave",
       "trigger": "overtake",
-      "text": "Wave for the stream. Too late."
+      "text": "Wave for the stream. Too late.",
+      "audioAsset": "audio/barks/chad-core/chad-pass-wave",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-subscribe",
       "trigger": "hit-landed",
-      "text": "Smash that subscri— oh. You're smashed."
+      "text": "Smash that subscri— oh. You're smashed.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-subscribe",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-lie-still",
       "trigger": "hit-landed",
-      "text": "Like, comment, and lie still."
+      "text": "Like, comment, and lie still.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-lie-still",
+      "audioStatus": "live"
     },
     {
       "id": "chad-traffic-clip",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Clip that. Clip that right now."
+      "text": "Clip that. Clip that right now.",
+      "audioAsset": "audio/barks/chad-core/chad-traffic-clip",
+      "audioStatus": "live"
     },
     {
       "id": "chad-traffic-sponsor",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "That truck just earned a sponsorship."
+      "text": "That truck just earned a sponsorship.",
+      "audioAsset": "audio/barks/chad-core/chad-traffic-sponsor",
+      "audioStatus": "live"
     },
     {
       "id": "chad-down-dont-clip",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Chat, don't clip that. Do not."
+      "text": "Chat, don't clip that. Do not.",
+      "audioAsset": "audio/barks/chad-core/chad-down-dont-clip",
+      "audioStatus": "live"
     },
     {
       "id": "chad-down-content",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "This is not the content I planned."
+      "text": "This is not the content I planned.",
+      "audioAsset": "audio/barks/chad-core/chad-down-content",
+      "audioStatus": "live"
     },
     {
       "id": "chad-down-again",
@@ -72,27 +90,37 @@
           "value": 2
         }
       ],
-      "text": "Again? Okay, this is a series now."
+      "text": "Again? Okay, this is a series now.",
+      "audioAsset": "audio/barks/chad-core/chad-down-again",
+      "audioStatus": "live"
     },
     {
       "id": "chad-crash-staged",
       "trigger": "crash-self",
-      "text": "Totally staged. Totally meant it."
+      "text": "Totally staged. Totally meant it.",
+      "audioAsset": "audio/barks/chad-core/chad-crash-staged",
+      "audioStatus": "live"
     },
     {
       "id": "chad-crash-stream",
       "trigger": "crash-self",
-      "text": "Stream's down. I'm fine. Stream's down."
+      "text": "Stream's down. I'm fine. Stream's down.",
+      "audioAsset": "audio/barks/chad-core/chad-crash-stream",
+      "audioStatus": "live"
     },
     {
       "id": "chad-near-selfie",
       "trigger": "near-miss",
-      "text": "Mirror selfie with a semi. Iconic."
+      "text": "Mirror selfie with a semi. Iconic.",
+      "audioAsset": "audio/barks/chad-core/chad-near-selfie",
+      "audioStatus": "live"
     },
     {
       "id": "chad-near-screaming",
       "trigger": "near-miss",
-      "text": "Chat's screaming. Good screaming."
+      "text": "Chat's screaming. Good screaming.",
+      "audioAsset": "audio/barks/chad-core/chad-near-screaming",
+      "audioStatus": "live"
     },
     {
       "id": "chad-lead-back",
@@ -104,7 +132,9 @@
           "value": 1
         }
       ],
-      "text": "First place. Chat, we are so back."
+      "text": "First place. Chat, we are so back.",
+      "audioAsset": "audio/barks/chad-core/chad-lead-back",
+      "audioStatus": "live"
     },
     {
       "id": "chad-late-thumbnail",
@@ -116,21 +146,27 @@
           "value": 0.8
         }
       ],
-      "text": "Final stretch. Thumbnail face, go."
+      "text": "Final stretch. Thumbnail face, go.",
+      "audioAsset": "audio/barks/chad-core/chad-late-thumbnail",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-dial-up",
       "trigger": "hit-landed",
       "target": "dial-up",
       "priority": 1,
-      "text": "Old internet. Meet new internet."
+      "text": "Old internet. Meet new internet.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-dial-up",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-deacon",
       "trigger": "hit-landed",
       "target": "deacon-vane",
       "priority": 1,
-      "text": "Sermon's over, Deacon. Like and pray."
+      "text": "Sermon's over, Deacon. Like and pray.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-deacon",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-easy",
@@ -142,7 +178,9 @@
           "value": 0.3
         }
       ],
-      "text": "Easy content. Almost too easy."
+      "text": "Easy content. Almost too easy.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-easy",
+      "audioStatus": "live"
     },
     {
       "id": "chad-hit-views",
@@ -154,7 +192,9 @@
           "value": 1
         }
       ],
-      "text": "Your clip got four views. All mine."
+      "text": "Your clip got four views. All mine.",
+      "audioAsset": "audio/barks/chad-core/chad-hit-views",
+      "audioStatus": "live"
     },
     {
       "id": "chad-near-brand",
@@ -166,7 +206,9 @@
           "value": 0.4
         }
       ],
-      "text": "Brand deal says I can't die. Checking."
+      "text": "Brand deal says I can't die. Checking.",
+      "audioAsset": "audio/barks/chad-core/chad-near-brand",
+      "audioStatus": "live"
     },
     {
       "id": "chad-start-golden",
@@ -178,7 +220,9 @@
           "value": "golden-hour"
         }
       ],
-      "text": "Golden hour. My lighting's perfect."
+      "text": "Golden hour. My lighting's perfect.",
+      "audioAsset": "audio/barks/chad-core/chad-start-golden",
+      "audioStatus": "live"
     },
     {
       "id": "chad-crash-rebrand",
@@ -190,14 +234,18 @@
           "value": 5
         }
       ],
-      "text": "Last place is a rebrand. Trust me."
+      "text": "Last place is a rebrand. Trust me.",
+      "audioAsset": "audio/barks/chad-core/chad-crash-rebrand",
+      "audioStatus": "live"
     },
     {
       "id": "chad-down-modem",
       "trigger": "knocked-down-by-target",
       "target": "dial-up",
       "priority": 1,
-      "text": "Taken out by a modem. Do not clip."
+      "text": "Taken out by a modem. Do not clip.",
+      "audioAsset": "audio/barks/chad-core/chad-down-modem",
+      "audioStatus": "live"
     },
     {
       "id": "chad-traffic-collab",
@@ -209,7 +257,9 @@
           "value": 1
         }
       ],
-      "text": "Collab over. Creative differences."
+      "text": "Collab over. Creative differences.",
+      "audioAsset": "audio/barks/chad-core/chad-traffic-collab",
+      "audioStatus": "live"
     }
   ],
   "meta": {
@@ -219,6 +269,14 @@
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-09-29"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_liam, speed 1.1, pitch +0 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
     }
   }
 }
