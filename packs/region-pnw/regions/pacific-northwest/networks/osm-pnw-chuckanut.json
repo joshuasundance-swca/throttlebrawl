@@ -1,0 +1,118 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-chuckanut",
+  "name": "Chuckanut Drive (OSM bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 48.66,
+    "originLonDeg": -122.47,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-chuckanut-larrabee", "osm-chuckanut-cliffs", "osm-chuckanut-oyster-creek"],
+  "junctions": [
+    {
+      "id": "osm-pnw-chuckanut-j0",
+      "x": -1521.1915,
+      "y": 73.272,
+      "z": -454.6836,
+      "ends": [
+        {
+          "road": "osm-chuckanut-larrabee",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-chuckanut-j1",
+      "x": -969.0463,
+      "y": 59.0449,
+      "z": 1766.7363,
+      "ends": [
+        {
+          "road": "osm-chuckanut-larrabee",
+          "end": "to"
+        },
+        {
+          "road": "osm-chuckanut-cliffs",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-chuckanut-j2",
+      "x": 540.2951,
+      "y": 59.5368,
+      "z": 3728.9386,
+      "ends": [
+        {
+          "road": "osm-chuckanut-cliffs",
+          "end": "to"
+        },
+        {
+          "road": "osm-chuckanut-oyster-creek",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-chuckanut-j3",
+      "x": 2251.5599,
+      "y": 25.0727,
+      "z": 4708.3202,
+      "ends": [
+        {
+          "road": "osm-chuckanut-oyster-creek",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-01",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-pnw-chuckanut.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](48.600,-122.520,48.720,-122.440);\nout tags geom;",
+        "retrievedAt": "2026-10-01T19:34:59Z",
+        "sha256": "b13029e4ea0f1439ea2abbca64e48a85887c3bf277f24c3daa20f48ddf86de74"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 794 points in 1 request(s) (lon, lat WGS84, sha256 f3bde18132286375), bilinear",
+        "retrievedAt": "2026-10-01T19:35:01Z",
+        "sha256": "e00f30ddb31f0d8bbc263b101f2f8623049cfcb2ada927e776437db99baf0fac"
+      }
+    ],
+    "modified": true,
+    "modifications": "Chuckanut Drive (SR 11) ways stitched along the travel carriageway, heading Gaussian-smoothed (sigma 15 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 20 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Real-road routes for the Pacific Northwest (region-pnw): Chuckanut Drive (WA SR 11), southbound from above Larrabee State Park. Roads joined end to end by pass-through junctions. Its own frame origin: it never shares a scene with pnw-c1, about 120 km north of it."
+  }
+}

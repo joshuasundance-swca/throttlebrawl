@@ -21,18 +21,9 @@ from tbgis.tmerc import Frame
 
 type Json = dict[str, Any]
 
-# One lane each way plus shoulders: the lane table of the hand-made M1 road, so every mover
-# lane that works there works here. The real road has two lanes each way on some stretches.
-LANES: list[Json] = [
-    {"id": "L0", "dCenterM": -4.15, "widthM": 1.5, "direction": -1, "kind": "shoulder"},
-    {"id": "L1", "dCenterM": -1.7, "widthM": 3.4, "direction": -1, "kind": "drive"},
-    {"id": "R1", "dCenterM": 1.7, "widthM": 3.4, "direction": 1, "kind": "drive"},
-    {"id": "R0", "dCenterM": 4.15, "widthM": 1.5, "direction": 1, "kind": "shoulder"},
-]
-D_MAX = max(abs(ln["dCenterM"]) + ln["widthM"] / 2 for ln in LANES)
-
 OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 USGS_ATTRIBUTION = "Map services and data available from U.S. Geological Survey, National Geospatial Program."
+SHOULDER_M = 1.5
 
 
 def r4(v: float) -> float:
@@ -41,6 +32,37 @@ def r4(v: float) -> float:
 
 def r5(v: float) -> float:
     return float(f"{float(v):.5g}")
+
+
+def lanes(width: float = 3.4) -> list[Json]:
+    """One lane each way plus shoulders: the lane table of the hand-made roads, so every mover lane
+    that works there works here. The real road has two lanes each way on some stretches. At the
+    default 3.4 m this is the M1 table the Keys bake carries; the region bakes use 4.0 m, as the
+    hand-made roads have since playtest 1."""
+    half, edge = r4(width / 2), r4(width + SHOULDER_M / 2)
+    return [
+        {"id": "L0", "dCenterM": -edge, "widthM": SHOULDER_M, "direction": -1, "kind": "shoulder"},
+        {"id": "L1", "dCenterM": -half, "widthM": width, "direction": -1, "kind": "drive"},
+        {"id": "R1", "dCenterM": half, "widthM": width, "direction": 1, "kind": "drive"},
+        {"id": "R0", "dCenterM": edge, "widthM": SHOULDER_M, "direction": 1, "kind": "shoulder"},
+    ]
+
+
+LANES: list[Json] = lanes()
+D_MAX = max(abs(ln["dCenterM"]) + ln["widthM"] / 2 for ln in LANES)
+
+
+def without(s0: float, s1: float, holes: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The range s0..s1 minus the holes (sorted or not), as the pieces at least 1 m long."""
+    out: list[tuple[float, float]] = []
+    at = s0
+    for h0, h1 in sorted(holes):
+        if h0 > at:
+            out.append((at, min(h0, s1)))
+        at = max(at, h1)
+    if at < s1:
+        out.append((at, s1))
+    return [(a, b) for a, b in out if b - a >= 1]
 
 
 def street_name(p: Profile, i: int) -> str:
@@ -173,15 +195,25 @@ def bake(
             "bankRad": [0.0] * (n + 1),
         }
         tags: list[Json] = []
+        decks: list[tuple[float, float]] = []
+        # A sea deck stands over open water (the Keys); a span deck crosses a creek or a ravine in
+        # high country, so it gets no water tag (no boats far below it).
+        water = cfg.elevation.bridgeDeck == "sea"
         for ra, rb in runs_of(p.bridge[a : b + 1]):
             t0, t1 = r4(p.s[a + ra] - s_a), r4(min(p.s[a + rb - 1] - s_a, length))
             if t1 - t0 < 1:
                 continue  # the shared junction sample of a neighbouring bridge road
-            tags += [
-                {"s0": t0, "s1": t1, "side": "both", "tag": "bridge"},
-                {"s0": t0, "s1": t1, "side": "both", "tag": "water-open"},
-            ]
-        tags += [{"s0": 0, "s1": length, "side": "both", "tag": t} for t in rn.tags]
+            decks.append((t0, t1))
+            tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "bridge"})
+            if water:
+                tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "water-open"})
+        # The config's land tags cover the road except its bridges: a land tag on a bridge would
+        # stand scenery on the deck (playtest 1c item 3).
+        tags += [
+            {"s0": r4(t0), "s1": r4(t1), "side": "both", "tag": t}
+            for t in rn.tags
+            for t0, t1 in without(0, length, decks)
+        ]
         barriers = [
             {"s0": tg["s0"], "s1": tg["s1"], "side": "both", "kind": "rail", "heightM": cfg.bridgeRailHeightM}
             for tg in tags
@@ -207,7 +239,7 @@ def bake(
                 "sampleSpacingM": spacing,
                 "speedLimitMps": speed,
                 "surface": "asphalt",
-                "laneSections": [{"s0": 0, "lanes": LANES}],
+                "laneSections": [{"s0": 0, "lanes": lanes(cfg.laneWidthM)}],
                 "tags": tags,
                 "features": features,
                 "barriers": barriers,
@@ -278,7 +310,7 @@ def bake(
         "startGrid": {"rows": 3, "perRow": 2, "rowGapM": 8},
         "meta": {
             "status": "live",
-            "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+            "notes": cfg.route.notes,
             "provenance": {k: prov[k] for k in ("origin", "author", "createdAt", "tool", "sources")},
         },
     }

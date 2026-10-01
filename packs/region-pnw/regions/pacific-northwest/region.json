@@ -4,7 +4,7 @@
   "name": "The Pacific Northwest",
   "chapter": 2,
   "blurb": "Two lanes, a million trees, and a ferry that left without you.",
-  "networks": ["pnw-c1"],
+  "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge"],
   "timeOfDayOptions": [
     {
       "id": "dawn",
