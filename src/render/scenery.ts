@@ -9,10 +9,24 @@
 // tag is land with a theme that picks what grows or stands on it. An edge with no tags at all (a
 // test fixture, an untagged bake) counts as palm land. This module only decides; road-mesh.ts
 // draws the land and instances the models. Presentation only: nothing here reaches the sim.
+//
+// The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") adds the
+// Pacific Northwest's clustered conifers and sawmill and San Francisco's terraces of painted row
+// houses on their own themes, conifers on the far ground of a forest, and fog banks offshore.
 import type { Point3 } from './geometry';
 
 /** What one side of a road is at some s. */
-export type SideTheme = 'none' | 'water' | 'palms' | 'beach' | 'mangrove' | 'commercial' | 'urban' | 'forest';
+export type SideTheme =
+  | 'none'
+  | 'water'
+  | 'palms'
+  | 'beach'
+  | 'mangrove'
+  | 'commercial'
+  | 'urban'
+  | 'industrial'
+  | 'sawmill'
+  | 'forest';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -28,14 +42,23 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   landmark: 'commercial',
   'row-houses': 'urban',
   'painted-houses': 'urban',
-  warehouses: 'urban',
-  piers: 'urban',
+  warehouses: 'industrial',
+  piers: 'industrial',
   gardens: 'urban',
-  sawmill: 'urban',
+  sawmill: 'sawmill',
   forest: 'forest',
 };
 /** When one side carries several land tags, the first theme in this list wins. */
-const THEME_ORDER: readonly LandTheme[] = ['palms', 'mangrove', 'commercial', 'beach', 'urban', 'forest'];
+const THEME_ORDER: readonly LandTheme[] = [
+  'palms',
+  'mangrove',
+  'commercial',
+  'beach',
+  'sawmill',
+  'urban',
+  'industrial',
+  'forest',
+];
 
 export interface SideTag {
   s0: number;
@@ -64,8 +87,20 @@ export function themeAt(tags: readonly SideTag[] | undefined, side: 'left' | 'ri
   return best ?? 'none';
 }
 
-export type SceneryKind = 'palm' | 'mangrove' | 'shack' | 'pole' | 'skiff' | 'boat';
-export const SCENERY_KINDS: readonly SceneryKind[] = ['palm', 'mangrove', 'shack', 'pole', 'skiff', 'boat'];
+export type SceneryKind =
+  'palm' | 'mangrove' | 'shack' | 'pole' | 'skiff' | 'boat' | 'conifer' | 'house' | 'sawmill' | 'fogBank';
+export const SCENERY_KINDS: readonly SceneryKind[] = [
+  'palm',
+  'mangrove',
+  'shack',
+  'pole',
+  'skiff',
+  'boat',
+  'conifer',
+  'house',
+  'sawmill',
+  'fogBank',
+];
 
 export interface ScenerySpot {
   kind: SceneryKind;
@@ -92,6 +127,11 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   pole: 45,
   skiff: 110,
   boat: 110,
+  // a conifer spot is a cluster of one to four trees; a house is one plot of a terrace
+  conifer: 16,
+  house: 7,
+  sawmill: 380,
+  fogBank: 170,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -99,8 +139,10 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   beach: { palm: 0.3 },
   mangrove: { mangrove: 1, palm: 0.12 },
   commercial: { palm: 0.45, shack: 1 },
-  urban: {},
-  forest: {},
+  urban: { house: 0.8 },
+  industrial: {},
+  sawmill: { sawmill: 1, conifer: 0.35 },
+  forest: { conifer: 1 },
 };
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
@@ -110,6 +152,11 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   pole: [1.6, 0],
   skiff: [30, 45],
   boat: [34, 45],
+  conifer: [4.5, 15],
+  // the house's front wall stands back from the verge by a sidewalk and its stoop
+  house: [2.6, 0],
+  sawmill: [6, 0],
+  fogBank: [150, 150],
 };
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
@@ -119,7 +166,15 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   pole: 1.4,
   skiff: 4,
   boat: 5,
+  conifer: 2,
+  house: 3.4,
+  sawmill: 4,
+  fogBank: 40,
 };
+/** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
+const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
+/** Half its width along the road, m (it needs land and clear ground that long). */
+const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = { house: 3.2, sawmill: 16 };
 const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   palm: 3,
   mangrove: 2,
@@ -127,7 +182,13 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   pole: 1,
   skiff: 1,
   boat: 1,
+  conifer: 4,
+  house: 4,
+  sawmill: 1,
+  fogBank: 2,
 };
+/** Each conifer variant's share of a forest: the two firs, the young fir, the cedar. [default] */
+const CONIFER_MIX = [0.3, 0.32, 0.23, 0.15];
 
 /** Tags that mark a network as tropical (the Keys): only there do palms and mangroves grow. */
 const TROPICAL_TAGS = new Set(['palms', 'beach', 'mangrove', 'swamp']);
@@ -176,6 +237,13 @@ export interface ScatterEdge {
   /** Whether a boat may float here: open water, clear of every road and its land. */
   openWater(s: number, d: number): boolean;
   world(s: number, d: number, h: number): Point3;
+  /**
+   * The far ground of the terrain skirt at s on that side (non-tropical networks only): the flat
+   * ground's span, as distances past the verge, and its world height. Null where there is none.
+   */
+  skirt?: ((side: -1 | 1, s: number) => { from: number; to: number; y: number } | null) | undefined;
+  /** Whether fog banks lie offshore (the region's palette names a `fogBank` colour). */
+  fogBanks?: boolean | undefined;
 }
 
 /** The turn that points a model's +Z from a toward b. */
@@ -183,7 +251,9 @@ function turnToward(a: Point3, b: Point3): number {
   return Math.atan2(b.x - a.x, b.z - a.z);
 }
 
-const LAND_KINDS: readonly SceneryKind[] = ['palm', 'mangrove', 'shack'];
+const LAND_KINDS: readonly SceneryKind[] = ['palm', 'mangrove', 'shack', 'conifer', 'house', 'sawmill'];
+/** Kinds that face the road (their +Z turns toward the centre line). */
+const FACES_ROAD = new Set<SceneryKind>(['shack', 'house', 'sawmill']);
 
 /** Places one edge's scenery: land kinds on land by theme, poles along one side, boats on water. */
 export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
@@ -199,24 +269,40 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
     turn: number,
     k: number,
     side: number,
+    variant?: number,
+    size?: number,
   ) => {
     const ki = SCENERY_KINDS.indexOf(kind);
     out.push({
       kind,
-      variant: Math.floor(h(ki, k, side, 5) * VARIANTS[kind]) % VARIANTS[kind],
+      variant: variant ?? Math.floor(h(ki, k, side, 5) * VARIANTS[kind]) % VARIANTS[kind],
       p: e.world(s, d, y),
       turn,
       size:
-        kind === 'palm'
+        size ??
+        (kind === 'palm'
           ? 0.85 + 0.3 * h(ki, k, side, 6)
           : kind === 'mangrove'
             ? 0.8 + 0.45 * h(ki, k, side, 6)
-            : 1,
+            : 1),
       phase: kind === 'skiff' || kind === 'boat' ? h(ki, k, side, 7) * Math.PI * 2 : 0,
       edge: e.edge,
       s,
       d,
     });
+  };
+  /** A conifer's variant by the forest mix, and its size. */
+  const conifer = (u: number, v: number) => {
+    let acc = 0;
+    let variant = CONIFER_MIX.length - 1;
+    for (let i = 0; i < CONIFER_MIX.length; i++) {
+      acc += CONIFER_MIX[i] ?? 0;
+      if (u < acc) {
+        variant = i;
+        break;
+      }
+    }
+    return { variant, size: 0.8 + 0.4 * v };
   };
   // The poles run down one side of the road, chosen by the seed.
   const poleSide: -1 | 1 = h(99, 0, 0, 1) < 0.5 ? -1 : 1;
@@ -226,8 +312,10 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       if (kind === 'pole' && side !== poleSide) continue;
       const ki = SCENERY_KINDS.indexOf(kind);
       const spacing = SCATTER_SPACING_M[kind] / e.density;
+      // Row houses stand shoulder to shoulder in terraces, so their plots keep the spacing exactly.
+      const jitter = kind === 'house' ? 0 : 0.7;
       for (let k = 0; ; k++) {
-        const s = (k + 0.15 + 0.7 * h(ki, k, side, 0)) * spacing;
+        const s = (k + 0.15 + jitter * h(ki, k, side, 0)) * spacing;
         if (s > e.length) break;
         const theme = e.theme(side, s);
         if (theme === 'none' || theme === 'water') continue;
@@ -236,27 +324,87 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         const [near, spread] = ACROSS_M[kind];
         const across = near + spread * h(ki, k, side, 2);
         const radius = SCENERY_RADIUS_M[kind];
+        const depth = DEPTH_M[kind] ?? radius;
+        const along = Math.max(radius, HALF_ALONG_M[kind] ?? 0);
         // On the drawn land, with room for the model across and along (the land ends where a tag
         // or a rail does, and at the road's ends, where the next road's land may not meet it), and
         // clear of everything else.
-        if (s - radius < 0 || s + radius > e.length) continue;
+        if (s - along < 0 || s + along > e.length) continue;
         const reach = Math.min(
           e.landReach(side, s),
-          e.landReach(side, s - radius),
-          e.landReach(side, s + radius),
+          e.landReach(side, s - along),
+          e.landReach(side, s + along),
         );
-        if (across + radius > reach) continue;
+        if (across + depth > reach) continue;
         const d = side * (outer + across);
         if (!e.clear(s, d, radius)) continue;
-        // Shacks face the road; poles carry their wires along it; the rest turn at random.
-        const turn =
-          kind === 'shack'
-            ? turnToward(e.world(s, d, 0), e.world(s, 0, 0))
-            : kind === 'pole'
-              ? turnToward(e.world(s, d, 0), e.world(Math.min(e.length, s + 1), d, 0))
-              : h(ki, k, side, 3) * Math.PI * 2;
-        place(kind, s, d, LAND_TOP_M, turn, k, side);
+        if (DEPTH_M[kind] !== undefined) {
+          // A house or the sawmill reaches back from its front and along the road: all of it clear.
+          const back = side * (outer + across + depth);
+          if (!e.clear(s, back, radius) || !e.clear(s - along, d, radius) || !e.clear(s + along, d, radius))
+            continue;
+        }
+        if (kind === 'conifer') {
+          // A cluster of one to three trees around the spot, each on land and clear on its own.
+          const n = 1 + Math.floor(h(ki, k, side, 3) * 3);
+          for (let t = 0; t < n; t++) {
+            const ts = s + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 9) - 0.5) * 9);
+            const ta = across + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 10) - 0.5) * 8);
+            if (ts - radius < 0 || ts + radius > e.length || ta < near) continue;
+            if (ta + radius > Math.min(e.landReach(side, ts - radius), e.landReach(side, ts + radius)))
+              continue;
+            const td = side * (outer + ta);
+            if (t > 0 && !e.clear(ts, td, radius)) continue;
+            const c = conifer(h(ki, k * 8 + t, side, 11), h(ki, k * 8 + t, side, 12));
+            const turn = h(ki, k * 8 + t, side, 13) * Math.PI * 2;
+            place('conifer', ts, td, LAND_TOP_M, turn, k, side, c.variant, c.size);
+          }
+          continue;
+        }
+        // Shacks, houses and the sawmill face the road; poles carry their wires along it; the
+        // rest turn at random.
+        const turn = FACES_ROAD.has(kind)
+          ? turnToward(e.world(s, d, 0), e.world(s, 0, 0))
+          : kind === 'pole'
+            ? turnToward(e.world(s, d, 0), e.world(Math.min(e.length, s + 1), d, 0))
+            : h(ki, k, side, 3) * Math.PI * 2;
+        // A house on a hill sinks to the lowest of its front corners, so neither corner floats: the
+        // terraces step down the hills.
+        let y = LAND_TOP_M;
+        if (kind === 'house' || kind === 'sawmill') {
+          const here = e.world(s, d, 0).y;
+          const low = Math.min(here, e.world(s + along, d, 0).y, e.world(s - along, d, 0).y);
+          y -= here - low + 0.15;
+        }
+        place(kind, s, d, y, turn, k, side);
       }
+    }
+    // A forest goes on past the verge's strip: conifers on the far ground of the terrain skirt.
+    const ci = SCENERY_KINDS.indexOf('conifer');
+    const farSpacing = FAR_CONIFER_SPACING_M / e.density;
+    for (let k = 0; e.skirt; k++) {
+      const s = (k + h(ci, k, side, 20)) * farSpacing;
+      if (s > e.length) break;
+      const theme = e.theme(side, s);
+      if (theme !== 'forest' && theme !== 'sawmill') continue;
+      const far = e.skirt(side, s);
+      if (!far || far.to - far.from < 4) continue;
+      const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);
+      const d = side * (outer + across);
+      if (!e.clear(s, d, SCENERY_RADIUS_M.conifer)) continue;
+      const c = conifer(h(ci, k, side, 22), h(ci, k, side, 23));
+      const p = e.world(s, d, 0);
+      out.push({
+        kind: 'conifer',
+        variant: c.variant,
+        p: { x: p.x, y: far.y, z: p.z },
+        turn: h(ci, k, side, 24) * Math.PI * 2,
+        size: c.size * 1.15,
+        phase: 0,
+        edge: e.edge,
+        s,
+        d,
+      });
     }
     // Boats offshore: skiffs mostly, now and then the bigger centre-console boat.
     const spacing = SCATTER_SPACING_M.skiff / e.density;
@@ -284,9 +432,39 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         d,
       });
     }
+    // Fog banks far offshore, lying along the shore (a region whose palette names a fog bank).
+    if (!e.fogBanks) continue;
+    const fi = SCENERY_KINDS.indexOf('fogBank');
+    for (let k = 0; ; k++) {
+      const s = (k + 0.15 + 0.7 * h(fi, k, side, 0)) * SCATTER_SPACING_M.fogBank;
+      if (s > e.length) break;
+      if (e.theme(side, s) !== 'water') continue;
+      const [near, spread] = ACROSS_M.fogBank;
+      const d = side * (outer + near + spread * h(fi, k, side, 2));
+      const open = [s - 75, s - 40, s, s + 40, s + 75].every((u) =>
+        e.openWater(Math.max(0, Math.min(e.length, u)), d),
+      );
+      if (!open) continue;
+      const p = e.world(s, d, 0);
+      out.push({
+        kind: 'fogBank',
+        variant: Math.floor(h(fi, k, side, 5) * 2) % 2,
+        p: { x: p.x, y: 0, z: p.z },
+        // the bank's length (its x) lies along the shore
+        turn: turnToward(p, e.world(Math.min(e.length, s + 1), d, 0)) + Math.PI / 2,
+        size: 1.6 + 0.8 * h(fi, k, side, 6),
+        phase: 0,
+        edge: e.edge,
+        s,
+        d,
+      });
+    }
   }
   return out;
 }
+
+/** Metres between conifers on a forest's far ground, at density 1. [default] */
+export const FAR_CONIFER_SPACING_M = 10;
 
 /** Land scenery stands on the land strip, which sits this far under the road (road-mesh.ts). */
 export const LAND_TOP_M = -0.09;

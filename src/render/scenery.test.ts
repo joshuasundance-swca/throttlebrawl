@@ -104,7 +104,7 @@ function under(objs: Object3D[], x: number, z: number, top = 60): string | null 
   return ray.intersectObjects(objs, false)[0]?.object.name ?? null;
 }
 
-const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole']);
+const LAND_KINDS = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill']);
 
 describe('scenery tags to themes (docs/content-packs.md, scenery tags)', () => {
   it('reads water over land, no land on a bridge alone, and palm land when a road has no tags', () => {
@@ -309,6 +309,12 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       powerPole: 1,
       skiff: 1,
       boat: 1,
+      conifers: 4,
+      rowHouses: 4,
+      sawmill: 1,
+      trestleBent: 1,
+      fogBanks: 2,
+      cableCar: 1,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -320,11 +326,13 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         // Each variant sits on its own anchor: the ground (or the waterline) at y = 0, centred in x.
         expect(box.min.y, kind).toBeGreaterThan(-0.7);
         expect(box.min.y, kind).toBeLessThan(0.05);
-        expect(Math.abs((box.min.x + box.max.x) / 2), kind).toBeLessThan(kind === 'palms' ? 3.5 : 1.6);
+        expect(Math.abs((box.min.x + box.max.x) / 2), kind).toBeLessThan(
+          kind === 'palms' || kind === 'sawmill' ? 3.5 : 1.6,
+        );
         const colours = new Set<string>();
         const c = g.getAttribute('color');
         for (let i = 0; i < c.count; i += 3) colours.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
-        expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(1);
+        expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(kind === 'fogBanks' ? 0 : 1);
       }
       lines.push(`${kind} ${m.variants.map((g) => g.getAttribute('position').count / 3).join('/')} tris`);
     }

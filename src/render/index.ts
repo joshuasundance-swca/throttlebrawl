@@ -9,6 +9,9 @@
 // Playtest 1c: the Blender models (models.ts, glb.ts) load through the asset manifest and replace
 // the code-made stand-ins once they arrive; roadside scenery stands on tagged land, scatters by the
 // race's seed (`setSceneSeed`) and is hidden past `render.sceneryDrawM` (scenery.ts, road-mesh.ts).
+// The region build-out (W-O, the maintainer, 2026-10-01) loads a region's models only when a race
+// there starts (`modelKindsFor`), repaints them with its palette, draws the cable car as the region's
+// cable-car traffic, and adds the drizzle (rain.ts) a region's palette asks for.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import type {
@@ -24,8 +27,15 @@ import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
-import type { ModelLoadReport, SceneryModels } from './models';
-import { buildRoadScene, type RoadDressing, type RoadScene, type RoadSceneStats } from './road-mesh';
+import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
+import { Rain, rainColourOf } from './rain';
+import {
+  buildRoadScene,
+  networkTags,
+  type RoadDressing,
+  type RoadScene,
+  type RoadSceneStats,
+} from './road-mesh';
 import { SpeedLines, type SpeedLineCounts } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
@@ -158,6 +168,8 @@ export interface SceneryStatus {
   models: ModelLoadReport | null;
   /** Scenery instances inside the draw distance in the last frame. */
   visible: number;
+  /** Rain streaks drawn in the last frame (0 = a dry race). */
+  rain: number;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -197,7 +209,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const boards = new Boards(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
   const speedLines = new SpeedLines(look, params);
-  camera.add(effects.tint, speedLines.root);
+  // The drizzle rides on the camera too (rain.ts).
+  const rain = new Rain(look, params);
+  camera.add(effects.tint, speedLines.root, rain.root);
   const persistent = new Set<Object3D>([views.root, effects.root, boards.root, camera]);
   for (const o of persistent) scene.add(o);
   let roadScene: RoadScene | null = null;
@@ -210,8 +224,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (regionFog && scene.fog instanceof Fog)
       scene.fog.far = Math.max(scene.fog.near + 10, params.regionFogFarM);
   };
+  /** The models as loaded, and as the race's palette repaints them (what the road scene draws). */
+  const loadedModels: SceneryModels = {};
   let models: SceneryModels = {};
   let modelReport: ModelLoadReport | null = null;
+  let modelsModule: typeof import('./models') | null = null;
+  const requested = new Set<ModelKind>();
+  let palette: Readonly<Record<string, string>> | undefined;
+  let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
   const buildRoad = () => {
@@ -224,20 +244,52 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       roadsideDensity: roadArgs.density,
       seed: sceneSeed,
       models,
+      palette,
     });
     scene.add(roadScene.group);
   };
-  // The Blender models (playtest 1c item 4) load in the background; the road draws stand-ins until
-  // they arrive, then rebuilds once with the models.
-  if (opts.assets) {
+  /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
+  const repaint = () => {
+    const m = modelsModule;
+    if (!m) return;
+    const next: SceneryModels = {};
+    for (const kind of Object.keys(loadedModels) as ModelKind[]) {
+      const base = loadedModels[kind];
+      if (base) next[kind] = m.paintModel(base, palette);
+    }
+    for (const kind of Object.keys(models) as ModelKind[]) {
+      const old = models[kind];
+      if (old && old !== loadedModels[kind] && old !== next[kind]) for (const g of old.variants) g.dispose();
+    }
+    models = next;
+    const car = models.cableCar?.variants[0];
+    if (car) views.setFigureModel('cableCar', car);
+  };
+  // The Blender models (playtest 1c item 4) load in the background, only the ones the race's network
+  // and traffic need (W-O: a region's models load when a race there starts); the road draws
+  // stand-ins until they arrive, then rebuilds once with the models.
+  const requestModels = () => {
     const assets = opts.assets;
+    const args = roadArgs;
+    if (!assets || !args) return;
     void import('./models').then(async (m) => {
-      const { models: loaded, report } = await m.loadSceneryModels(assets);
-      models = loaded;
-      modelReport = report;
+      modelsModule = m;
+      const { tropical, tags } = networkTags(args.road, args.dressing);
+      const kinds = m
+        .modelKindsFor({ tropical, tags, palette: new Set(Object.keys(palette ?? {})), traffic: trafficIds })
+        .filter((k) => !requested.has(k));
+      if (!kinds.length) return;
+      for (const k of kinds) requested.add(k);
+      const { models: loaded, report } = await m.loadSceneryModels(assets, kinds);
+      Object.assign(loadedModels, loaded);
+      modelReport = {
+        loaded: [...(modelReport?.loaded ?? []), ...report.loaded],
+        fellBack: [...(modelReport?.fellBack ?? []), ...report.fellBack],
+      };
+      repaint();
       if (report.loaded.length) buildRoad();
     });
-  }
+  };
   let lost = false;
   let rendererName = '';
   const contextListeners: ((lost: boolean) => void)[] = [];
@@ -279,12 +331,21 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       look.setupScene(scene, env);
       regionFog = env.palette?.['fog'] !== undefined;
       applyRegionFog();
+      rain.set(rainColourOf(env));
+      const nextPalette = env.palette;
+      if (JSON.stringify(nextPalette ?? {}) !== JSON.stringify(palette ?? {})) {
+        palette = nextPalette;
+        repaint();
+      }
       roadArgs = { road, dressing, density: params.roadsideDensity };
       buildRoad();
+      requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },
     setTrafficTypes(defs) {
       views.setTrafficTypes(defs);
+      trafficIds = defs.map((d) => d.contentId);
+      requestModels();
     },
     pushEvents(events) {
       views.pushEvents(events);
@@ -306,6 +367,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
+      rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1));
       renderer.info.reset();
       look.frame(t, params);
       const film = look.post(params);
@@ -380,6 +442,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       road: roadScene?.stats ?? null,
       models: modelReport,
       visible: sceneryVisible,
+      rain: rain.count(),
     }),
   };
 }
