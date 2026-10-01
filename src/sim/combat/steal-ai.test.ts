@@ -76,7 +76,9 @@ function brawlConfig(seed: number): SimConfig {
     route,
     modifiers: [],
     grudges: {},
-    tuning: tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)),
+    // ai-1's brawler without rivals-1's style quirks (on by default since the integration round):
+    // the heavy hitter's slow start would keep him off the pipe this scenario is built around.
+    tuning: { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), 'ai.styleQuirks': 0 },
     difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
     assists: 'off',
     slowMo: false,

@@ -19,8 +19,8 @@
   "spawn": { "roadsideWeight": 0, "regions": [] },
   "effects": [],
   "meta": {
-    "status": "draft",
-    "notes": "M4 cops-3 head start: the cops' baton (the weapon list is decided). Never on the road (roadside weight 0): you get one by snatching it off a cop mid-swing, inside ticks 6-18 of its 18-tick wind-up. A little quicker and lighter than the lead pipe. Crude starting numbers, [default].",
+    "status": "live",
+    "notes": "M4 cops-3 head start: the cops' baton (the weapon list is decided). Never on the road (roadside weight 0): you get one by snatching it off a cop mid-swing, inside ticks 6-18 of its 18-tick wind-up. A little quicker and lighter than the lead pipe. Crude starting numbers, [default]. Promoted to live in the integration round (app lane, 2026-10-01) so Sgt. Pruitt carries it in release builds too and the steal is reachable on the game link.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

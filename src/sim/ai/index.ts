@@ -58,13 +58,13 @@ export const AI_TUNING: readonly TuningParamDecl[] = [
   },
   {
     // rivals-1: 1 gives each style its quirks (weaver swerves, showboat picks safe fights and so on);
-    // 0 keeps the style's numbers but rides M1's two behaviour sets. Off by default [default] until
-    // the maintainer's playtest: with it off, the base race replays exactly as before rivals-1, so
-    // playtest 1's difficulty and the seeded race tests of the lanes running alongside hold.
+    // 0 keeps the style's numbers but rides M1's two behaviour sets. ON by default [default] since
+    // the integration round (2026-10-01): the maintainer wants fun and variety (playtest 1c, "keep
+    // things fun"), and with them on the eight rivals ride visibly differently. 0 rides as before.
     id: 'ai.styleQuirks',
     group: 'rivals',
     label: 'Rival style quirks',
-    default: 0,
+    default: 1,
     min: 0,
     max: 1,
     step: 1,
