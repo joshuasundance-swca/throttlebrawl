@@ -1,0 +1,54 @@
+{
+  "type": "rider",
+  "id": "the-mayor",
+  "name": "The Mayor",
+  "role": "rival",
+  "roster": "local",
+  "region": "florida-keys",
+  "tags": ["politician", "local", "fictional"],
+  "blurb": "The town mayor, swinging stolen campaign signs.",
+  "bike": "rustbucket-400",
+  "stats": {
+    "massKg": 92,
+    "healthMax": 95,
+    "skill": 0.5
+  },
+  "personality": {
+    "style": "crowd-pleaser",
+    "aggression": 0.55,
+    "dirtiness": 0.3,
+    "courage": 0.3,
+    "riskTaking": 0.4,
+    "chatter": 0.85,
+    "weave": 0.15,
+    "targetPreference": ["player", "rival", "nearest"],
+    "preferredSide": "either",
+    "rivals": ["kevin-from-accounting"],
+    "preferredWeapon": "campaign-sign"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 3,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 2,
+    "huntThreshold": 5,
+    "max": 10,
+    "reliefWhenHelped": 3,
+    "shareWithCrew": 0
+  },
+  "look": {
+    "description": "A seersucker suit, a sash that just says MAYOR and a too-big helmet. Rides a cream touring bike with a campaign sign zip-tied to the back like a flag.",
+    "bikeClass": "rat",
+    "palette": ["#f2ead3", "#a3242d", "#2a4d8f", "#f4c430"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Florida local. M4 rivals-1 (built early): a crowd-pleaser. He hunts you while the fight goes his way, then flees once it turns (below about 60 percent health he stops swinging and rides away from the pack). Calling in favours from the locals waits for gang-ups. He is fictional: no real politician, party or policy. Rivalry: Kevin from Accounting, over an unpaid invoice. Prefers a campaign sign (weapons-2 adds it). Not in any event yet. Approved line: \"Vote early. Crash often.\"",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

@@ -13,7 +13,7 @@
     "skill": 0.7
   },
   "personality": {
-    "style": "racer",
+    "style": "weaver",
     "aggression": 0.45,
     "dirtiness": 0.75,
     "courage": 0.35,
@@ -21,11 +21,28 @@
     "chatter": 0.8,
     "weave": 0.8,
     "targetPreference": ["nearest", "player"],
-    "preferredSide": "either"
+    "preferredSide": "either",
+    "rivals": ["chad-speedwell"]
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 3,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 1,
+    "huntThreshold": 5,
+    "max": 10,
+    "reliefWhenHelped": 2,
+    "shareWithCrew": 0
+  },
+  "look": {
+    "description": "A wiry kid in a beige-plastic helmet with a coiled phone cord for a chin strap, goggles taped on. Rides a rattling bike held together with zip ties and a modem on the tail.",
+    "bikeClass": "rat",
+    "palette": ["#d9d2b6", "#2f6f3e", "#1e1e1e", "#e04e2b"]
   },
   "meta": {
     "status": "live",
-    "notes": "M1 box rival (ai-1). The tone guide makes him a weaver; M1 has no weaver preset yet, so he is a racer with a high weave and risk-taking: fast, erratic, swerves across his lane, dodges through the oncoming lane, and kicks more than he punches. Low health.",
+    "notes": "Regular. M4 rivals-1 (built early): a weaver, fast and erratic, swerves across the road rather than inside his lane, dodges through oncoming traffic, kicks more than he punches, low health. He hunts nobody unless he holds a grudge or his rival is near. Rivalry: Chad Speedwell, old internet against new internet. The modem-handshake screech on approach is an audio follow-up. Approved line: \"You've got mail. It's my boot.\"",
     "provenance": {
       "origin": "agent",
       "author": "agent",

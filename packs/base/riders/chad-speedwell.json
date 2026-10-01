@@ -13,19 +13,37 @@
     "skill": 0.55
   },
   "personality": {
-    "style": "racer",
+    "style": "showboat",
     "aggression": 0.5,
     "dirtiness": 0.25,
     "courage": 0.5,
     "riskTaking": 0.5,
     "chatter": 0.9,
     "weave": 0.2,
-    "targetPreference": ["leader", "player", "nearest"],
-    "preferredSide": "either"
+    "targetPreference": ["leader", "player", "rival", "nearest"],
+    "preferredSide": "either",
+    "rivals": ["dial-up", "deacon-vane"],
+    "preferredWeapon": "selfie-stick"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 2,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 2,
+    "huntThreshold": 5,
+    "max": 10,
+    "reliefWhenHelped": 3,
+    "shareWithCrew": 0
+  },
+  "look": {
+    "description": "A tan, too-white grin in a sponsor-patched leather jacket, a phone on a chest mount and a ring light zip-tied to the bars. Rides a glossy sport bike covered in stickers.",
+    "bikeClass": "sport",
+    "palette": ["#ff3d7f", "#f4f4f4", "#1a73e8", "#ffd23f"]
   },
   "meta": {
     "status": "live",
-    "notes": "M1 box rival (ai-1). The tone guide makes him a showboat; in M1 he is a racer who only swings when someone is in reach, and swings at the race leader first, because the leader is where the views are.",
+    "notes": "Regular. M4 rivals-1 (built early): a showboat. He fights only when it will look good: never the race leader (he sides with whoever is winning, which makes him the natural gang-up partner), and never anyone healthier than him. With the style quirks off he keeps M1's habit of swinging at the leader first. Rivalries: Dial-Up and Deacon Vane. Prefers a selfie stick (a weapons-2 idea; nothing yet). Tied to the streaming outfit. Approved line: \"Smash that subscri— oh. You're smashed.\"",
     "provenance": {
       "origin": "agent",
       "author": "agent",
