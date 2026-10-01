@@ -13,7 +13,7 @@ import type { SimConfig } from '../types';
 import { emit, systemState, type SimSystem, type World } from '../world';
 import { closeStyle, scoreStyle, STYLE_TUNING } from './style';
 
-export { STYLE_TUNING } from './style';
+export { STYLE_TUNING, styleRunOf } from './style';
 
 export const RACE_TUNING: readonly TuningParamDecl[] = [
   {

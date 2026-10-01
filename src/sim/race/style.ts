@@ -15,7 +15,7 @@
 // of timeScale / 60 over the ticks, so slow motion stretches nothing and hit-stop adds nothing.
 import type { EntityId, TuningParamDecl } from '../../core';
 import { topSpeedOf } from '../riders';
-import type { SimConfig, SimEvent, SimStyleRewards, StyleKind } from '../types';
+import type { SimConfig, SimEvent, SimStyleRewards, StyleKind, StyleRunSnapshot } from '../types';
 import { addStyle, emit, systemState, type Mover, type World } from '../world';
 
 export const STYLE_TUNING: readonly TuningParamDecl[] = [
@@ -118,6 +118,45 @@ function inOncomingLane(config: SimConfig, m: Mover): boolean {
     if (lane.direction !== dir) return true;
   }
   return false;
+}
+
+/**
+ * A rider's style run in progress, for the snapshot (playtest 1c: the live oncoming meter): its open
+ * oncoming stretch, else its scored flight in the air, else null. The cash is computed exactly as
+ * the scoring does, so the last value shown is the cash awarded. Reads the style state without
+ * creating it, so building a snapshot never changes the sim.
+ */
+export function styleRunOf(world: World, config: SimConfig, id: EntityId): StyleRunSnapshot | null {
+  const st = world.systems['race.style'] as StyleState | undefined;
+  if (!st) return null;
+  const rewards = config.event.style ?? NO_STYLE;
+  const oncoming = st.oncomingS[id] ?? 0;
+  if (oncoming > 0) {
+    const minS = world.params['race.styleOncomingMinS'] ?? 2;
+    return {
+      kind: 'oncoming',
+      seconds: oncoming,
+      cash: cashOf(rewards.perOncomingSecondCash * oncoming),
+      qualifies: oncoming + 1e-9 >= minS,
+    };
+  }
+  const air = st.airS[id] ?? -1;
+  if (air >= 0) {
+    const minS = world.params['race.styleAirtimeMinS'] ?? 0.5;
+    return {
+      kind: 'airtime',
+      seconds: air,
+      cash: cashOf(rewards.perAirtimeCash),
+      qualifies: air + 1e-9 >= minS,
+    };
+  }
+  return null;
+}
+
+/** Style cash as `score` awards it: rounded to whole cash, and 0 when that is not positive. */
+function cashOf(points: number): number {
+  const cash = Math.round(points);
+  return cash > 0 ? cash : 0;
 }
 
 function endOncoming(world: World, st: StyleState, id: EntityId, rewards: SimStyleRewards): void {

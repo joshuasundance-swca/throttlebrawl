@@ -41,6 +41,7 @@ export type {
   SimWeaponDef,
   SlowmoSnapshot,
   StyleKind,
+  StyleRunSnapshot,
   TakedownKind,
   TumbleBodySnapshot,
   TumbleSnapshot,

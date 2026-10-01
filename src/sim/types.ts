@@ -118,6 +118,28 @@ export interface EntitySnapshot {
    * hand-built snapshots; the sim fills it for every entity.
    */
   boostS?: number;
+  /**
+   * This racer's style run in progress (playtest 1c: "I'd like to also watch oncoming go up and up
+   * as you ride"), for a live, ticking counter; null when none is running, and for other kinds.
+   * Optional for hand-built snapshots; the sim fills it for every entity.
+   */
+  styleRun?: StyleRunSnapshot | null;
+}
+
+/**
+ * A style run in progress (EntitySnapshot.styleRun): an oncoming stretch, or a jump in the air.
+ * `cash` is what the run's `style` event will award if it ended now and counted: for an oncoming
+ * stretch it rises every tick, and on the stretch's last tick it equals the coming event's `points`
+ * exactly. For airtime it is the event's fixed cash; the seconds rise.
+ */
+export interface StyleRunSnapshot {
+  kind: 'oncoming' | 'airtime';
+  /** World seconds so far (slow motion stretches nothing). */
+  seconds: number;
+  /** Whole style cash it would score if it ended now and counted. */
+  cash: number;
+  /** Whether it has run long enough to score if it ended now (the event's minimum time). */
+  qualifies: boolean;
 }
 
 /** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
