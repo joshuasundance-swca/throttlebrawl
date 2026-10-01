@@ -323,6 +323,7 @@ A bark is a short rival line shown as a text bubble in milestone 1 and voiced la
 5. **Enough lines per trigger.** By milestone 4, each rival needs at least 5 lines for common triggers (hit landed, hit taken, overtaking) and at least 2 for rare ones, so repetition doesn't show. Milestone 1 needs one line per trigger.
 6. **Memory lines need plain siblings.** Memory lines use conditions like "this rival holds a grudge of 4 or more" or "you took this rival down before". Each one needs a plain sibling line for the same trigger, so a fresh career still gets a bark.
 7. **Subtitled always.** Voiced lines keep their text, for the subtitles setting.
+   - **Write for the voice too** (run W-O, 2026-10-01). Text-to-speech can't say a word broken off mid-way ("subscri—"), reads digits and capitals unpredictably, and swallows a short first word. Keep writing the subtitle the way it should read; `tools/voices/cast.json` says how it is spoken (the whole word, then cut in audio; numbers spelled the way the rival says them; a shout as a second, louder take). `tbvoices plan` lists any line that still needs one.
 8. **Pass the hard lines.** Check every line against [Hard lines](#hard-lines) before committing it.
 
 ### Where the mechanics live

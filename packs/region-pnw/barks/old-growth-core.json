@@ -12,78 +12,138 @@
     {
       "id": "growth-start-here-before",
       "trigger": "race-start",
-      "text": "These trees were here before you. So was I."
+      "text": "These trees were here before you. So was I.",
+      "audioAsset": "audio/barks/old-growth-core/growth-start-here-before",
+      "audioStatus": "live"
     },
     {
       "id": "growth-start-dawn-shift",
       "trigger": "race-start",
-      "when": [{ "fact": "timeOfDay", "op": "eq", "value": "dawn" }],
-      "text": "Shift started at five. You're late."
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "dawn"
+        }
+      ],
+      "text": "Shift started at five. You're late.",
+      "audioAsset": "audio/barks/old-growth-core/growth-start-dawn-shift",
+      "audioStatus": "live"
     },
     {
       "id": "growth-pass-scenery",
       "trigger": "overtake",
-      "text": "Slow down. You're missing the trees."
+      "text": "Slow down. You're missing the trees.",
+      "audioAsset": "audio/barks/old-growth-core/growth-pass-scenery",
+      "audioStatus": "live"
     },
     {
       "id": "growth-hit-timber",
       "trigger": "hit-landed",
-      "text": "Timber."
+      "text": "Timber.",
+      "audioAsset": "audio/barks/old-growth-core/growth-hit-timber",
+      "audioStatus": "live"
     },
     {
       "id": "growth-hit-last-swing",
       "trigger": "hit-landed",
-      "when": [{ "fact": "target.healthFrac", "op": "lt", "value": 0.3 }],
-      "text": "One more swing and you're firewood."
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "One more swing and you're firewood.",
+      "audioAsset": "audio/barks/old-growth-core/growth-hit-last-swing",
+      "audioStatus": "live"
     },
     {
       "id": "growth-taken-felt",
       "trigger": "hit-taken",
-      "text": "Felt that. A little."
+      "text": "Felt that. A little.",
+      "audioAsset": "audio/barks/old-growth-core/growth-taken-felt",
+      "audioStatus": "live"
     },
     {
       "id": "growth-down-slow-fall",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "text": "Takes a while to fall. Longer to forget."
+      "text": "Takes a while to fall. Longer to forget.",
+      "audioAsset": "audio/barks/old-growth-core/growth-down-slow-fall",
+      "audioStatus": "live"
     },
     {
       "id": "growth-down-rings",
       "trigger": "knocked-down-by-target",
       "target": "player",
       "priority": 1,
-      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
-      "text": "That's twice. I count rings."
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "That's twice. I count rings.",
+      "audioAsset": "audio/barks/old-growth-core/growth-down-rings",
+      "audioStatus": "live"
     },
     {
       "id": "growth-traffic-truck",
       "trigger": "takedown-into-traffic",
       "priority": 1,
-      "text": "Everybody hears the log truck. Almost everybody."
+      "text": "Everybody hears the log truck. Almost everybody.",
+      "audioAsset": "audio/barks/old-growth-core/growth-traffic-truck",
+      "audioStatus": "live"
     },
     {
       "id": "growth-grudge-paint",
       "trigger": "grudge-spotted",
       "target": "player",
-      "when": [{ "fact": "grudge.speakerTowardTarget", "op": "gte", "value": 4 }],
-      "text": "You've been marked. Orange paint."
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 4
+        }
+      ],
+      "text": "You've been marked. Orange paint.",
+      "audioAsset": "audio/barks/old-growth-core/growth-grudge-paint",
+      "audioStatus": "live"
     },
     {
       "id": "growth-grudge-plain",
       "trigger": "grudge-spotted",
       "target": "player",
-      "text": "There you are."
+      "text": "There you are.",
+      "audioAsset": "audio/barks/old-growth-core/growth-grudge-plain",
+      "audioStatus": "live"
     },
     {
       "id": "growth-near-seen-worse",
       "trigger": "near-miss",
-      "text": "Log truck. Seen worse."
+      "text": "Log truck. Seen worse.",
+      "audioAsset": "audio/barks/old-growth-core/growth-near-seen-worse",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
     "notes": "region-pnw (playtest 1c). growth-start-here-before is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_fenrir, speed 0.8, pitch -2.5 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
+    }
   }
 }

@@ -125,7 +125,8 @@ export function createBarkVoices(
     return p;
   };
 
-  const stop = () => {
+  /** Silences the line speaking now (a short fade). */
+  const fadeOut = () => {
     const c = current;
     if (!c) return;
     current = null;
@@ -151,7 +152,7 @@ export function createBarkVoices(
         if (ticket === latest) remember(silent, ref);
         return false;
       }
-      stop();
+      fadeOut();
       const src = ctx.createBufferSource();
       src.buffer = buf;
       const gain = ctx.createGain();
@@ -172,9 +173,13 @@ export function createBarkVoices(
     setCut(refs) {
       cut.clear();
       for (const r of refs) if (barkClipPath(r)) cut.add(r);
-      if (current && cut.has(current.ref)) stop();
+      if (current && cut.has(current.ref)) fadeOut();
     },
-    stop,
+    stop() {
+      // A clip still loading must not start afterwards either.
+      latest++;
+      fadeOut();
+    },
     state: () => ({ playing: current?.ref ?? null, played: played.slice(), silent: silent.slice() }),
   };
 }

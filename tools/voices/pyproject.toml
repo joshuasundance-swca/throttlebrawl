@@ -1,0 +1,60 @@
+[project]
+name = "throttlebrawl-voices"
+version = "0.1.0"
+description = "Offline voice pipeline for throttlebrawl: rival barks spoken by open TTS models, trimmed, loudness-normalised and encoded as small Opus clips."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28",
+  "numpy>=2.2",
+  "pydantic>=2.13",
+  "python-dotenv>=1.1",
+  "scipy>=1.15",
+  "soundfile>=0.13",
+  "tenacity>=9.1",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15",
+  "pytest>=8.3",
+  "ruff>=0.11",
+]
+
+[project.scripts]
+tbvoices = "tbvoices.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tbvoices"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH", "N"]
+# Dashes and curly quotes are matched on purpose (subtitle text and transcripts).
+allowed-confusables = ["–", "’"]
+
+[tool.ruff.lint.per-file-ignores]
+# The listening page carries its CSS and script as long string lines.
+"src/tbvoices/page.py" = ["E501"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["soundfile", "scipy", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
