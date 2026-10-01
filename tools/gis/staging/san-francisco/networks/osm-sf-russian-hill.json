@@ -1,0 +1,179 @@
+{
+  "type": "road-network",
+  "id": "osm-sf-russian-hill",
+  "name": "Russian Hill and Nob Hill streets (OSM bake, staging)",
+  "region": "san-francisco",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 37.7749,
+    "originLonDeg": -122.4194,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-sf-hyde",
+    "osm-sf-california",
+    "osm-sf-kearny",
+    "osm-sf-columbus",
+    "osm-sf-union",
+    "osm-sf-leavenworth"
+  ],
+  "junctions": [
+    {
+      "id": "osm-sf-russian-hill-j0",
+      "x": -102.5136,
+      "y": 11.004,
+      "z": -3525.8335,
+      "ends": [
+        {
+          "road": "osm-sf-hyde",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j1",
+      "x": 182.1809,
+      "y": 67.9115,
+      "z": -1788.7713,
+      "ends": [
+        {
+          "road": "osm-sf-hyde",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-california",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j2",
+      "x": 1323.3552,
+      "y": 14.7285,
+      "z": -1974.377,
+      "ends": [
+        {
+          "road": "osm-sf-california",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-kearny",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j3",
+      "x": 1249.7363,
+      "y": 12.2598,
+      "z": -2443.2748,
+      "ends": [
+        {
+          "road": "osm-sf-kearny",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-columbus",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j4",
+      "x": 819.101,
+      "y": 24.9596,
+      "z": -2823.8346,
+      "ends": [
+        {
+          "road": "osm-sf-columbus",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-union",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j5",
+      "x": 179.7444,
+      "y": 84.082,
+      "z": -2732.4747,
+      "ends": [
+        {
+          "road": "osm-sf-union",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-leavenworth",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-russian-hill-j6",
+      "x": 59.53,
+      "y": 10.7798,
+      "z": -3451.5415,
+      "ends": [
+        {
+          "road": "osm-sf-leavenworth",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-01",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-sf-russian-hill.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+        "retrievedAt": "2026-10-01T01:54:57Z",
+        "sha256": "a4e62f274a5d4beea97c56225517701e81c921379f7b538f46ec2ba985955d6a"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear",
+        "retrievedAt": "2026-10-01T02:20:56Z",
+        "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
+      }
+    ],
+    "modified": true,
+    "modifications": "San Francisco street ways stitched along the travel path, one-way streets ridden both ways, heading Gaussian-smoothed (sigma 10 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 12 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first."
+  }
+}

@@ -17,6 +17,7 @@ from tbgis import __version__
 from tbgis.config import BakeConfig
 from tbgis.fetch import FetchMeta
 from tbgis.stretch import Profile, runs_of
+from tbgis.tmerc import Frame
 
 type Json = dict[str, Any]
 
@@ -42,15 +43,47 @@ def r5(v: float) -> float:
     return float(f"{float(v):.5g}")
 
 
+def street_name(p: Profile, i: int) -> str:
+    return p.names.get(int(p.way[i]), "") if p.way is not None else ""
+
+
+def name_cuts(cfg: BakeConfig, p: Profile) -> list[int]:
+    """Grid indices where the OSM street name changes, dropping pieces under ``minRoadM``."""
+    if p.way is None:
+        return []
+    cuts: list[int] = []
+    last = 0
+    for i in range(1, len(p.s)):
+        if street_name(p, i) != street_name(p, i - 1) and (i - last) * p.h >= cfg.minRoadM:
+            cuts.append(i)
+            last = i
+    if cuts and (len(p.s) - 1 - cuts[-1]) * p.h < cfg.minRoadM:
+        cuts.pop()  # a short last piece joins the road before it
+    return cuts
+
+
 def road_splits(cfg: BakeConfig, p: Profile) -> list[tuple[int, int]]:
     """Grid index ranges [a, b] (inclusive ends, shared at junctions) for each road."""
     cuts = [0]
     for a, b in runs_of(p.bridge):
         if (b - a) * p.h >= cfg.splitBridgeMinM:
             cuts += [a, b - 1]
+    if cfg.splitOnNameChange:
+        cuts += name_cuts(cfg, p)
+    frame = Frame(cfg.crs.originLatDeg, cfg.crs.originLonDeg)
+    for pt in cfg.splitAt:
+        x, z = frame.to_world(pt.lat, pt.lon)
+        cuts.append(int(np.argmin(np.hypot(p.x - x, p.z - z))))
     cuts.append(len(p.s) - 1)
     cuts = sorted(set(cuts))
     return list(pairwise(cuts))
+
+
+def longest_name(p: Profile, a: int, b: int) -> str:
+    """The OSM street name covering most of grid range [a, b]."""
+    names = Counter(street_name(p, i) for i in range(a, b + 1))
+    names.pop("", None)
+    return names.most_common(1)[0][0] if names else ""
 
 
 def provenance(cfg: BakeConfig, created_at: str, osm: FetchMeta, usgs: FetchMeta | None, p: Profile) -> Json:
@@ -78,6 +111,14 @@ def provenance(cfg: BakeConfig, created_at: str, osm: FetchMeta, usgs: FetchMeta
             }
         )
     e, c = cfg.elevation, cfg.compression
+    travel = "carriageway" if cfg.respectOneway else "path, one-way streets ridden both ways"
+    if e.bridgeDeck == "span":
+        deck = "a straight deck between the land at each end (not measured)"
+    else:
+        deck = (
+            f"{e.deckM:g} m deck, {e.humpHeightM:g} m x {e.humpLengthM:g} m hump on bridges over "
+            f"{e.humpMinBridgeM:g} m (not measured)"
+        )
     kept = ", ".join(f"{b - a:.0f} m to {100 * f:.0f}%" for a, b, f in p.compressed) or "none"
     return {
         "origin": "gis-pipeline",
@@ -91,14 +132,12 @@ def provenance(cfg: BakeConfig, created_at: str, osm: FetchMeta, usgs: FetchMeta
         "sources": sources,
         "modified": True,
         "modifications": (
-            f"US 1 ways stitched along the travel carriageway, heading Gaussian-smoothed "
+            f"{cfg.waysLabel} ways stitched along the travel {travel}, heading Gaussian-smoothed "
             f"(sigma {cfg.smoothing.headingSigmaM:g} m), positions re-integrated from heading, "
             f"resampled at {cfg.sampleSpacingM:g} m; long straights compressed ({kept}; "
             f"{'bridges kept' if not c.onBridges else 'bridges included'}); land elevation from 3DEP "
             f"low-pass filtered (sigma {e.lowPassSigmaM:g} m), floored at {e.minLandM:g} m; bridge decks "
-            f"synthesized (3DEP is bare earth): {e.deckM:g} m deck, {e.humpHeightM:g} m x "
-            f"{e.humpLengthM:g} m hump on bridges over {e.humpMinBridgeM:g} m (not measured); lanes "
-            f"simplified to one each way plus shoulders"
+            f"synthesized (3DEP is bare earth): {deck}; lanes simplified to one each way plus shoulders"
         ),
     }
 
@@ -108,7 +147,10 @@ def bake(
 ) -> tuple[Json, list[Json], Json]:
     splits = road_splits(cfg, p)
     if len(splits) != len(cfg.roads):
-        spans = ", ".join(f"{p.s[a]:.0f}-{p.s[b]:.0f} m" for a, b in splits)
+        spans = ", ".join(
+            f"{p.s[a]:.0f}-{p.s[b]:.0f} m" + (f" ({longest_name(p, a, b)})" if longest_name(p, a, b) else "")
+            for a, b in splits
+        )
         raise ValueError(
             f"the stretch splits into {len(splits)} roads ({spans}); config names {len(cfg.roads)}"
         )
@@ -157,7 +199,7 @@ def bake(
                 "type": "road",
                 "id": rn.id,
                 "name": rn.name,
-                "realName": "Overseas Highway",
+                "realName": (cfg.realNameFromOsm and longest_name(p, a, b)) or cfg.realName,
                 "network": cfg.id,
                 "from": f"{cfg.id}-j{i}",
                 "to": f"{cfg.id}-j{i + 1}",
@@ -173,8 +215,9 @@ def bake(
                 "provenance": prov,
                 "meta": {
                     "status": "live",
-                    "notes": f"Baked by tools/gis from {cfg.id}.json. Real US 1 geometry, gameplay-fied "
-                    "(see provenance.modifications). Regenerate with the bake; never hand-edit.",
+                    "notes": f"Baked by tools/gis from {cfg.id}.json. Real {cfg.waysLabel} geometry, "
+                    "gameplay-fied (see provenance.modifications). Regenerate with the bake; "
+                    "never hand-edit.",
                 },
             }
         )
@@ -217,8 +260,7 @@ def bake(
         "provenance": prov,
         "meta": {
             "status": "live",
-            "notes": "Real-road alternative to the hand-made network (gis-1 side quest). Roads joined end "
-            "to end by pass-through junctions. The same frame as keys-m1, so the two line up.",
+            "notes": cfg.networkNotes,
         },
     }
     last = roads[-1]

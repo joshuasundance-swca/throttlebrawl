@@ -1,0 +1,118 @@
+{
+  "type": "road-network",
+  "id": "osm-sf-twin-peaks",
+  "name": "Upper Market, Portola and the Twin Peaks climb (OSM bake, staging)",
+  "region": "san-francisco",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 37.7749,
+    "originLonDeg": -122.4194,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-sf-upper-market", "osm-sf-portola", "osm-sf-twin-peaks-climb"],
+  "junctions": [
+    {
+      "id": "osm-sf-twin-peaks-j0",
+      "x": -1024.917,
+      "y": 39.507,
+      "z": 1013.1835,
+      "ends": [
+        {
+          "road": "osm-sf-upper-market",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-twin-peaks-j1",
+      "x": -2111.3789,
+      "y": 167.7647,
+      "z": 2754.3162,
+      "ends": [
+        {
+          "road": "osm-sf-upper-market",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-portola",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-twin-peaks-j2",
+      "x": -2778.4762,
+      "y": 178.9451,
+      "z": 3223.7861,
+      "ends": [
+        {
+          "road": "osm-sf-portola",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-twin-peaks-climb",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-twin-peaks-j3",
+      "x": -2410.152,
+      "y": 260.5356,
+      "z": 2215.9034,
+      "ends": [
+        {
+          "road": "osm-sf-twin-peaks-climb",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-01",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-sf-twin-peaks.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
+        "retrievedAt": "2026-10-01T01:55:27Z",
+        "sha256": "291c8a6e53ab2a21040a14c3301bcb16e187a79e011229d789da2ab5ec29fd1d"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 568 points in 1 request(s) (lon, lat WGS84, sha256 79a8656046abe6f6), bilinear",
+        "retrievedAt": "2026-10-01T02:23:36Z",
+        "sha256": "90acb29aeaebb0e2279f358c0f94c47dc6f1676fd50558c07caaac5efa00db77"
+      }
+    ],
+    "modified": true,
+    "modifications": "San Francisco street ways stitched along the travel path, one-way streets ridden both ways, heading Gaussian-smoothed (sigma 12 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 12 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first. Finishes at the summit: the through road over Twin Peaks is car-free in OSM, so the route does not cross it."
+  }
+}

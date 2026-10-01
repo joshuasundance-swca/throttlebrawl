@@ -46,7 +46,14 @@ describe('the M2 settings table', () => {
     const def = SETTINGS.find((d) => d.id === 'look');
     expect(def?.tab).toBe('display');
     expect(def?.nextRace).toBeUndefined();
-    expect(def?.options?.map((o) => o.value)).toEqual(['classic', 'kodak']);
+    expect(def?.options?.map((o) => o.value)).toEqual(['classic', 'kodak', 'wasteland', 'brush']);
+    // Playtest 1c item 5: the two newer looks, by the names the maintainer was shown.
+    expect(def?.options?.map((o) => o.label)).toEqual([
+      'Classic',
+      'Ink + 60s film',
+      'Sun-bleached wasteland',
+      'Kodachrome brush',
+    ]);
     expect(settingValue(DEFAULT_SETTINGS, 'look')).toBe('classic');
     expect(settingPersists('look', sanitiseSettings)).toBe(true);
   });

@@ -227,6 +227,10 @@ describe('the M2 settings record', () => {
     // The look (playtest 1b item 6): the two playable looks, anything else is the classic default.
     expect(sanitiseSettings({ look: 'kodak' }).look).toBe('kodak');
     expect(sanitiseSettings({ look: 'KODAK' }).look).toBe('classic');
+    // Playtest 1c item 5: the two newer looks round-trip too.
+    expect(sanitiseSettings({ look: 'wasteland' }).look).toBe('wasteland');
+    expect(sanitiseSettings({ look: 'brush' }).look).toBe('brush');
+    expect(sanitiseSettings({ look: 'rust' }).look).toBe('classic');
   });
 
   it('keeps each well-formed binding and veto, dropping only the broken ones', () => {

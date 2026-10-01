@@ -1,0 +1,29 @@
+{
+  "real_length_m": 5661.3,
+  "game_length_m": 5661.3,
+  "corners": 23,
+  "tightest_radius_m": 16.7,
+  "share_tighter_than_m": {
+    "50": 0.0818,
+    "100": 0.2294,
+    "200": 0.3663
+  },
+  "turn_deg_per_km": 363.3,
+  "elev_min_m": 39.5,
+  "elev_max_m": 260.5,
+  "climb_m": 236.9,
+  "descent_m": 15.9,
+  "max_grade_pct": 8.9,
+  "p95_grade_pct": 8.3,
+  "share_steeper_than_pct": {
+    "8": 0.1351,
+    "15": 0.0
+  },
+  "launch_crests": 0,
+  "launch_speed_mps": null,
+  "junctions": 31,
+  "junctions_per_km": 5.48,
+  "bridges_m": 164.3,
+  "tunnels_m": 0.0,
+  "max_deviation_m": 16.2
+}

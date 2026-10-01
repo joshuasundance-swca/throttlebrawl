@@ -1,0 +1,118 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-gorge",
+  "name": "Historic Columbia River Highway (OSM bake, staging)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 45.55,
+    "originLonDeg": -122.2,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-gorge-crown-point-loops", "osm-gorge-latourell", "osm-gorge-shepperds-dell"],
+  "junctions": [
+    {
+      "id": "osm-pnw-gorge-j0",
+      "x": -3643.8288,
+      "y": 236.3353,
+      "z": 1315.2341,
+      "ends": [
+        {
+          "road": "osm-gorge-crown-point-loops",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-gorge-j1",
+      "x": -2433.1691,
+      "y": 101.0457,
+      "z": 1560.2598,
+      "ends": [
+        {
+          "road": "osm-gorge-crown-point-loops",
+          "end": "to"
+        },
+        {
+          "road": "osm-gorge-latourell",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-gorge-j2",
+      "x": -180.1444,
+      "y": 50.0493,
+      "z": 734.3743,
+      "ends": [
+        {
+          "road": "osm-gorge-latourell",
+          "end": "to"
+        },
+        {
+          "road": "osm-gorge-shepperds-dell",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-gorge-j3",
+      "x": 1558.3492,
+      "y": 65.648,
+      "z": -469.1483,
+      "ends": [
+        {
+          "road": "osm-gorge-shepperds-dell",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-01",
+    "tool": {
+      "name": "tools/gis/src/tbgis/cli.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/configs/osm-pnw-gorge.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
+        "retrievedAt": "2026-10-01T01:54:54Z",
+        "sha256": "305140faeb76cc48955cbac784626a5ac2d86b0873aa024d1f00b3137ed73393"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 824 points in 1 request(s) (lon, lat WGS84, sha256 21461fed9fc27ed7), bilinear",
+        "retrievedAt": "2026-10-01T02:15:10Z",
+        "sha256": "7f8cfdb7b51911e54cca1dfb7460e9c44832beb6b12903dd68b3005e6ff3842a"
+      }
+    ],
+    "modified": true,
+    "modifications": "Historic Columbia River Highway ways stitched along the travel carriageway, heading Gaussian-smoothed (sigma 12 m), positions re-integrated from heading, resampled at 2 m; long straights compressed (none; bridges kept); land elevation from 3DEP low-pass filtered (sigma 30 m), floored at 1 m; bridge decks synthesized (3DEP is bare earth): a straight deck between the land at each end (not measured); lanes simplified to one each way plus shoulders"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Staging bake for the Pacific Northwest region (head-start run). Not in the pack yet: its region pack lands first."
+  }
+}

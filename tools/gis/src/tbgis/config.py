@@ -54,6 +54,10 @@ class Elevation(Strict):
     humpHeightM: float = Field(12.0, ge=0)  # noqa: N815 (navigation hump above the deck, exaggerated)
     humpLengthM: float = Field(420.0, gt=0)  # noqa: N815
     humpMinBridgeM: float = Field(800.0, gt=0)  # noqa: N815 (only long bridges get a hump)
+    # "sea": decks sit deckM above the water (y = 0), as on the Keys. "span": a deck runs straight
+    # between the land heights at its two ends, for a bridge over a creek or a ravine in high
+    # country, where 3DEP reads the valley floor under it.
+    bridgeDeck: Literal["sea", "span"] = "sea"  # noqa: N815
 
 
 class Feature(Strict):
@@ -89,8 +93,33 @@ class BakeConfig(Strict):
     crs: Crs
     osmExtract: str  # noqa: N815 (cache path, relative to tools/gis)
     elevationExtract: str  # noqa: N815
+    # The one Overpass query whose response is osmExtract; None means the Keys US 1 query.
+    osmQuery: str | None = None  # noqa: N815
+    # Where the bake writes, relative to the repo root; None means packs/base/regions/<region>.
+    # A staging bake (tools/gis/staging/...) is outside the pack until its region pack exists.
+    outRoot: str | None = None  # noqa: N815
     pathFrom: LatLon  # noqa: N815 (a node on the travel carriageway, upstream of the stretch)
     pathTo: LatLon  # noqa: N815 (a node downstream of the stretch)
+    # Waypoints between pathFrom and pathTo: the path is the shortest drivable path through each in
+    # turn, so a street route can take named turns instead of the overall shortest line.
+    via: list[LatLon] = []
+    # Only ways whose tags match every regex here carry the path (for example {"ref": "^SR 11$"});
+    # every way in the extract still counts toward the junctions report.
+    routeTags: dict[str, str] = {}  # noqa: N815
+    # False lets a street route run against a one-way street (a race closes the streets).
+    respectOneway: bool = True  # noqa: N815
+    # Split a road at the grid point nearest each of these (named sections on a long rural road).
+    splitAt: list[LatLon] = []  # noqa: N815
+    # Split a road wherever the OSM street name changes (pieces under minRoadM join the one before).
+    splitOnNameChange: bool = False  # noqa: N815
+    minRoadM: float = Field(150.0, gt=0)  # noqa: N815
+    realName: str = "Overseas Highway"  # noqa: N815 (each road's realName, unless realNameFromOsm)
+    realNameFromOsm: bool = False  # noqa: N815 (each road's realName is its longest OSM street name)
+    waysLabel: str = "US 1"  # noqa: N815 (what was stitched, for provenance.modifications)
+    networkNotes: str = (  # noqa: N815
+        "Real-road alternative to the hand-made network (gis-1 side quest). Roads joined end "
+        "to end by pass-through junctions. The same frame as keys-m1, so the two line up."
+    )
     start: LatLon
     end: LatLon
     splitBridgeMinM: float = Field(800.0, gt=0)  # noqa: N815 (bridges this long become their own road)
