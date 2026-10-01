@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "espresso-stand-in-tow",
+  "name": "Espresso Stand Under Tow (Still Open)",
+  "category": "oddity",
+  "tags": ["oddity", "local"],
+  "lengthM": 9,
+  "widthM": 2.5,
+  "cruiseMps": 19,
+  "hazard": "big",
+  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": {
+    "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 2.5 } },
+    "paintOptions": ["#e0457b", "#13a89e", "#f2c14e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A wasteland oddity, rare: a drive-through espresso hut on a flatbed, window open, a customer walking alongside to finish the order. Nobody mentions it. Placeholder shape: the box-truck preset.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
