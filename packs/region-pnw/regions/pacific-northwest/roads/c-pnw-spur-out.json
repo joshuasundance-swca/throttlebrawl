@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-pnw-spur-out",
+  "name": "Spur exit",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-2",
+  "to": "j-pnw-c1-2",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 22.4,
+  "surface": "gravel",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "forest" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -109.3329, -109.4606, -109.5747, -109.6756, -109.7637, -109.84, -109.9055, -109.9612, -110.0085,
+        -110.0487, -110.0833, -110.1136, -110.141, -110.1666, -110.1913, -110.2157
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -1093.564, -1095.5599, -1097.5566, -1099.5541, -1101.5521, -1103.5507, -1105.5496, -1107.5488,
+        -1109.5483, -1111.5478, -1113.5475, -1115.5473, -1117.5471, -1119.547, -1121.5468, -1123.5467
+      ],
+      "kappa": [
+        0.003445837, 0.003415279, 0.003324415, 0.003175695, 0.002973202, 0.002722655, 0.002431403,
+        0.002108432, 0.00176436, 0.001411438, 0.001063552, 0.0007362209, 0.0004465971, 0.0002134669,
+        0.00005725008, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}
