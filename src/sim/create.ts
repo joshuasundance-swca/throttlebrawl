@@ -5,7 +5,7 @@ import { aiSystem, AI_TUNING } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING } from './modifiers';
-import { pedsSystem, PEDS_TUNING } from './peds';
+import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
@@ -100,14 +100,17 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       heading: atan2(-fx, -fz),
       speed: m.speed,
       lean: riders.lean[m.id] ?? 0,
-      // A vehicle carries its traffic type, so render can size and shape it; a pickup, its weapon.
+      // A vehicle, a pedestrian or an animal carries its traffic type, so render can size and shape
+      // it (an iguana is not a tourist); a pickup, its weapon.
       contentId:
         def?.contentId ??
         (m.kind === 'vehicle'
           ? (vehicleInfo(world, config, m.id)?.contentId ?? '')
-          : m.kind === 'pickup'
-            ? pickupWeapon(world, m.id)
-            : ''),
+          : m.kind === 'ped'
+            ? (pedInfo(world, config, m.id)?.contentId ?? '')
+            : m.kind === 'pickup'
+              ? pickupWeapon(world, m.id)
+              : ''),
       name: def?.name ?? '',
       faction: def?.faction ?? 'rider',
       slot: def?.controller.kind === 'player' ? def.controller.slot : -1,
