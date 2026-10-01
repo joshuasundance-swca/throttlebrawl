@@ -67,6 +67,13 @@ export interface MaterialParams {
 export interface LookEnv {
   timeOfDay: string;
   weather?: string;
+  /**
+   * The race's region palette (docs/content-packs.md, "Region packs at runtime", Palette): the
+   * region's `palette`, overridden key by key by its time-of-day option's. Keys naming a material
+   * kind recolour that kind; `sky` and `fog` colour the sky and the haze. Region palettes are
+   * written against the classic look: every look applies the same shift (render/looks).
+   */
+  palette?: Readonly<Record<string, string>>;
 }
 
 export interface LookStyle {
@@ -81,7 +88,8 @@ export interface LookStyle {
  */
 export const MIN_THREAT_DRAW_M = 200;
 
-const PALETTE: Record<MaterialKind, string> = {
+/** The classic look's colours by kind (display sRGB): what region palettes are written against. */
+export const CLASSIC_PALETTE: Readonly<Record<MaterialKind, string>> = {
   road: '#44474d',
   shoulder: '#8a8170',
   shortcut: '#b08a5a',
@@ -114,7 +122,8 @@ const PALETTE: Record<MaterialKind, string> = {
 /** Unlit kinds: they must read as light sources (the cop's bar, the steal glint). */
 const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board', 'streak', 'boost']);
 
-const SKY_BY_TIME: Record<string, string> = {
+/** The classic sky (and haze) by time of day. */
+export const SKY_BY_TIME: Readonly<Record<string, string>> = {
   dawn: '#f3c6a5',
   noon: '#8fd3f0',
   'golden-hour': '#f6b26b',
@@ -130,7 +139,7 @@ export function createFlatLook(): LookStyle {
       const vertexColors = params?.vertexColors ?? false;
       // Vertex-coloured geometry carries its own colours, so the base stays white; an overlay's
       // vertex colours only carry its vignette alpha, so it keeps its kind's colour.
-      const color = params?.color ?? (vertexColors && !params?.overlay ? '#ffffff' : PALETTE[kind]);
+      const color = params?.color ?? (vertexColors && !params?.overlay ? '#ffffff' : CLASSIC_PALETTE[kind]);
       const doubleSided = params?.doubleSided ?? false;
       const map = params?.map ?? null;
       const overlay = params?.overlay ?? false;
@@ -175,7 +184,7 @@ export function createFlatLook(): LookStyle {
       return m;
     },
     setupScene(scene, env) {
-      const sky = SKY_BY_TIME[env.timeOfDay] ?? PALETTE.sky;
+      const sky = SKY_BY_TIME[env.timeOfDay] ?? CLASSIC_PALETTE.sky;
       scene.background = new Color(sky);
       // Threats render out to at least 200 m; fog only starts beyond that.
       scene.fog = new Fog(sky, MIN_THREAT_DRAW_M + 20, 700);

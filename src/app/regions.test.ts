@@ -5,6 +5,7 @@ import {
   boardCatalog,
   createStreamCache,
   racePalette,
+  raceRadio,
   regionChoices,
   regionKeyOf,
   routeKeyOf,
@@ -120,5 +121,38 @@ describe('app: regions', () => {
     const a = streams.forEvent(ALL, 'region-sf:sf-hill-sprint');
     expect(streams.forRoute(ALL, 'region-sf:sf-standard-run')).toBe(a);
     expect(streams.forEvent(ALL, 'm1-skeleton-sprint')).not.toBe(a);
+  });
+});
+
+describe('app: the race radio per region (radio-1 head start, the integration round)', () => {
+  it("the Keys play the Keys' own stations, filtered by the region", () => {
+    const r = raceRadio(ALL, 'base:florida-keys');
+    expect(r.region).toBe('base:florida-keys');
+    expect(r.stations.map((s) => `${s.packId}:${s.id}`)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
+  });
+
+  it('a region with no station of its own yet gets the base pack stations, unfiltered', () => {
+    for (const region of ['region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
+      const r = raceRadio(ALL, region);
+      expect(r.region, region).toBeNull();
+      expect(
+        r.stations.map((s) => s.id),
+        region,
+      ).toEqual(['keys-rockabilly', 'keys-surf']);
+    }
+  });
+
+  it("a region's own station takes over once a pack carries one", () => {
+    const keysSurf = ALL.stations['base:keys-surf'];
+    const withPnw = {
+      ...ALL,
+      stations: {
+        ...ALL.stations,
+        'region-pnw:fog-fm': { ...keysSurf, id: 'fog-fm', regions: ['pacific-northwest'] },
+      },
+    } as typeof ALL;
+    const r = raceRadio(withPnw, 'region-pnw:pacific-northwest');
+    expect(r.region).toBe('region-pnw:pacific-northwest');
+    expect(r.stations.map((s) => s.id)).toContain('fog-fm');
   });
 });

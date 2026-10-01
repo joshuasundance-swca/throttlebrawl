@@ -1,6 +1,7 @@
 // The keyboard (docs/product-spec.md, "Keyboard (equal priority)"). Keys are KeyboardEvent.code
 // values, so the map follows key positions on any layout. Esc (pause) and Backquote (the tuning
-// panel) belong to ui/; C (cruise) is reserved and not bound [decided].
+// panel) belong to ui/. C cycles the camera view (camera-3; the integration round): the cruise
+// action stays reserved and unbuilt [decided], and gets its own key if a playtest asks for it.
 import type { ActionState } from '../actions';
 
 export type KeyAction =
@@ -13,7 +14,8 @@ export type KeyAction =
   | 'attackRight'
   | 'kick'
   | 'lookBack'
-  | 'skipRunBack';
+  | 'skipRunBack'
+  | 'cycleCamera';
 
 export type KeyMap = Readonly<Record<KeyAction, readonly string[]>>;
 
@@ -29,6 +31,7 @@ export const DEFAULT_KEY_MAP: KeyMap = {
   kick: ['KeyK'],
   lookBack: ['KeyL'],
   skipRunBack: ['Space'],
+  cycleCamera: ['KeyC'],
 };
 
 /** What each key action does, in player words, for the pause screen's legend (playtest 1). */
@@ -43,6 +46,7 @@ export const KEY_ACTION_NAMES: Readonly<Record<KeyAction, string>> = {
   kick: 'kick',
   lookBack: 'look back',
   skipRunBack: 'skip the run back',
+  cycleCamera: 'change view',
 };
 
 /** The legend's order: riding first, then fighting, then the rest. */
@@ -56,6 +60,7 @@ const LEGEND_ORDER: readonly KeyAction[] = [
   'attackLeft',
   'attackRight',
   'lookBack',
+  'cycleCamera',
   'skipRunBack',
 ];
 
@@ -156,6 +161,7 @@ export class KeyboardState {
     if (this.active('kick')) a.kick = true;
     if (this.active('lookBack')) a.lookBack = true;
     if (this.active('skipRunBack')) a.skipRunBack = true;
+    if (this.pressedNow('cycleCamera')) a.cycleCamera = true;
     this.pressed.clear();
   }
 }

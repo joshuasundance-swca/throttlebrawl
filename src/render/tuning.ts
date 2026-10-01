@@ -35,6 +35,11 @@ export interface RenderParams {
   roadsideDensity: number;
   /** Scenery farther than this from the camera is not drawn (playtest 1c), metres. */
   sceneryDrawM: number;
+  /**
+   * Where the haze is full in a region whose palette names a `fog` colour (the Pacific Northwest,
+   * San Francisco), metres. It always starts past the threat draw distance. Elsewhere it is 700 m.
+   */
+  regionFogFarM: number;
   // Playtest 1b item 6: the "Ink + 1960s film" look (render/looks). They change that look only.
   /** Ink outline strength, 0 = none. */
   inkLines: number;
@@ -91,6 +96,9 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   // Playtest 1c: the Blender scenery. [default] well into the fog (it starts at 220 m), so far
   // scenery fades in rather than pops, and the phone keeps its triangle budget.
   decl('sceneryDrawM', 'Scenery draw distance', 360, 150, 760, 10, 'm'),
+  // Playtest 1c integration: a foggy region's haze closes in. [default] 480 m: past the 200 m threat
+  // draw distance and the 220 m fog start, so traffic still shows; the Keys keep 700 m.
+  decl('regionFogFarM', 'Foggy region: haze full at', 480, 300, 700, 10, 'm'),
   // Playtest 1b item 6 [decided]: the ink + film look. [default] numbers; the classic look ignores them.
   decl('inkLines', 'Ink look: outlines', 1, 0, 1, 0.05, ''),
   decl('inkWidthPx', 'Ink look: outline width', 1.5, 0.5, 3, 0.25, 'px'),

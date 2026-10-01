@@ -9,7 +9,7 @@
 // Playtest 1c: the Blender models (models.ts, glb.ts) load through the asset manifest and replace
 // the code-made stand-ins once they arrive; roadside scenery stands on tagged land, scatters by the
 // race's seed (`setSceneSeed`) and is hidden past `render.sceneryDrawM` (scenery.ts, road-mesh.ts).
-import { PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
+import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import type {
   EntitySnapshot,
@@ -189,6 +189,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
   let sceneSeed = 1;
+  /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
+  let regionFog = false;
+  const applyRegionFog = () => {
+    if (regionFog && scene.fog instanceof Fog)
+      scene.fog.far = Math.max(scene.fog.near + 10, params.regionFogFarM);
+  };
   let models: SceneryModels = {};
   let modelReport: ModelLoadReport | null = null;
   let sceneryVisible = 0;
@@ -254,6 +260,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       roadScene = null;
       for (const child of [...scene.children]) if (!persistent.has(child)) scene.remove(child);
       look.setupScene(scene, env);
+      regionFog = env.palette?.['fog'] !== undefined;
+      applyRegionFog();
       roadArgs = { road, dressing, density: params.roadsideDensity };
       buildRoad();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
@@ -313,6 +321,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     setParam(id, value) {
       applyRenderParam(params, id, value);
+      if (id === 'render.regionFogFarM') applyRegionFog();
       // The scenery is part of the road scene: a new density rebuilds it.
       if (roadArgs && params.roadsideDensity !== roadArgs.density) {
         roadArgs.density = params.roadsideDensity;

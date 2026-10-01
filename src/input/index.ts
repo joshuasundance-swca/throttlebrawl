@@ -284,9 +284,12 @@ export function createInput(opts: InputOptions): InputSystem {
       if (driver) {
         driver(a);
         // The devices' latches still drain, so a press made while the bot drove does not leak.
-        keyboard.sample(emptyActions(), dt);
+        // The camera's view press is presentation only, so it still counts while the bot drives.
+        const drained = emptyActions();
+        keyboard.sample(drained, dt);
         touch.sample(emptyActions());
-        gamepad.sample(emptyActions(), readPads(), thresholds.gamepadDeadZone);
+        gamepad.sample(drained, readPads(), thresholds.gamepadDeadZone);
+        if (drained.cycleCamera) a.cycleCamera = true;
       } else {
         keyboard.sample(a, dt);
         touch.sample(a);

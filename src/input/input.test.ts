@@ -70,7 +70,9 @@ describe('input: keyboard and latching', () => {
     expect(flags & InputFlag.kick).toBeTruthy();
   });
 
-  it('maps look back, skip run-back and leaves the reserved cruise key unbound', () => {
+  // C was the reserved cruise key; since the integration round it cycles the camera view (a
+  // presentation action, never a SimInput flag). The cruise action itself stays reserved.
+  it('maps look back and skip run-back; C changes the view and sets no sim flag', () => {
     const kb = new KeyboardState();
     kb.down('KeyL');
     kb.down('Space');
@@ -79,7 +81,8 @@ describe('input: keyboard and latching', () => {
     kb.sample(a, 1 / 60);
     const input = toSimInput(a);
     expect(input.flags).toBe(InputFlag.lookBack | InputFlag.skipRunBack);
-    expect(Object.values(DEFAULT_KEY_MAP).flat()).not.toContain('KeyC');
+    expect(a.cycleCamera).toBe(true);
+    expect(DEFAULT_KEY_MAP.cycleCamera).toEqual(['KeyC']);
   });
 
   it('keys are remappable', () => {

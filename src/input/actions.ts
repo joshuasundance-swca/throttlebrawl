@@ -17,6 +17,11 @@ export interface ActionState {
   kick: boolean;
   lookBack: boolean;
   skipRunBack: boolean;
+  /**
+   * A press edge for the camera's next view (camera-3's views; the C key, a gamepad button).
+   * Presentation only: it never reaches the SimInput, so a replay does not record it.
+   */
+  cycleCamera?: boolean;
 }
 
 export function emptyActions(): ActionState {
