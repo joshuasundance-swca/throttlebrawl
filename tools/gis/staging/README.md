@@ -3,8 +3,8 @@
 The maintainer moved the next regions forward: "Pnw and sf first then others" (playtest 1c,
 2026-09-30). While another lane builds those region packs, this folder holds four real stretches
 baked from public data in exactly the pack's road format, so each can land as an alternative route
-the day its region pack exists. Nothing here is in the game: the base pack only reads
-`packs/base/`. [default]
+the day its region pack exists. Nothing here is in the game, which loads only the pack folders
+under `packs/`. [default]
 
 `tools/gis/staging.test.ts` (in the unit tier) drops every file here into a copy of the base pack,
 next to a stand-in region file, and runs the real `packs:check` on it: the schema, references,
@@ -79,18 +79,25 @@ How to read it:
 
 ## Landing a stretch (once its region pack exists)
 
-The folder names `pacific-northwest` and `san-francisco` are this lane's guesses at the region ids,
-and each network has its own frame origin near its stretch (the region packs did not exist when
-these were baked). Both are one config edit each.
+The new regions are their own content packs, not part of base: the Pacific Northwest landed as
+`packs/region-pnw/` (region id `pacific-northwest`, which matches the folder here) while these were
+being baked. San Francisco's id is this lane's guess until its pack lands.
 
-1. In the stretch's config, delete `outRoot`, set `region` to the region pack's id (if it differs
-   from the folder name here) and `crs` to the region's origin, set `networkNotes` to say it is in
-   the pack, then run `uv run tbgis bake configs/<id>.json` and `npm run format`. The files land in
-   `packs/base/regions/<region>/{networks,roads,routes}/`, where the existing ODbL licence rule
-   already covers them. Delete the staged copies in the same PR.
-2. Add the network id to the region file's `networks` list (the region lane's file).
-3. Add scenery tags once the region's vocabulary exists: the closed tag list is the Keys' today, so
+1. Give the region pack the licence rule base has: copy base's ODbL `licenseRules` entry (the
+   `osm-*` paths, the attribution, `licenseFile`) into the region pack's `pack.json`, and copy
+   `packs/base/LICENSES/ODbL-1.0.txt` into the region pack, because the pack check wants the
+   licence text inside the pack that uses it. The region-pnw manifest has no `licenseRules` today.
+2. In the stretch's config, set `outRoot` to the pack's region folder (for example
+   `packs/region-pnw/regions/pacific-northwest`), set `networkNotes` to say it is in the pack, then
+   run `uv run tbgis bake configs/<id>.json` and `npm run format`. Delete the staged copies in the
+   same PR.
+3. Keep each network's own frame origin [default]. Every network carries its own `crs`, and these
+   stretches are far from the region's hand-made road (Chuckanut about 120 km north of region-pnw's
+   origin at 47.6, -122.9, the Gorge about 230 km south): re-centring them there would put their
+   coordinates hundreds of kilometres from zero for no gain, since the roads never share a scene.
+4. Add the network id to the region file's `networks` list (the region lane's file).
+5. Add scenery tags once the region's vocabulary exists: the closed tag list is the Keys' today, so
    only `town` is used (on the San Francisco streets).
-4. Point an event length at the route (the riders lane's one-line PR), as road-4 did for the Keys.
-5. Add a row per region to `THIRD_PARTY_ASSETS.md` (the OSM and USGS rows exist for the Keys).
-6. Add the route to a gated bot race, like `tools/gis/osm-route.test.ts` does for the Keys.
+6. Point an event length at the route (the riders lane's one-line PR), as road-4 did for the Keys.
+7. Add a row per region to `THIRD_PARTY_ASSETS.md` (the OSM and USGS rows exist for the Keys).
+8. Add the route to a gated bot race, like `tools/gis/osm-route.test.ts` does for the Keys.
