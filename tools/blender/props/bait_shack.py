@@ -11,6 +11,7 @@ surface the game paints the shop's words onto. Four draws in all.
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _lib  # noqa: E402
 
