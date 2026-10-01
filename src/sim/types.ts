@@ -223,6 +223,12 @@ export type SimEventType =
   | 'jump'
   | 'land'
   | 'pedDive'
+  /**
+   * A pedestrian or animal reacts to a rider going by (W-P, 2026-10-01). Actor = the pedestrian,
+   * target = the rider. `data.kind` is a `PedReactKind` and `data.ticks` how long the reaction
+   * lasts, in ticks at timeScale 1. Presentation only reads it: nobody is hurt.
+   */
+  | 'pedReact'
   | 'cashAward'
   /**
    * Risky riding scored (M2 riders-5; emitted by sim/race). Actor = the rider who scored;
@@ -278,6 +284,13 @@ export type SimEventType =
 /** `data.kind` of a `takedown` event: into traffic, into scenery, or out of health. */
 export const TAKEDOWN_KINDS = ['traffic', 'scenery', 'health'] as const;
 export type TakedownKind = (typeof TAKEDOWN_KINDS)[number];
+
+/**
+ * `data.kind` of a `pedReact` event (W-P): a hop back from the kerb, a shaken fist, a phone held
+ * up to film the rider, or a dog running after the rider along the verge.
+ */
+export const PED_REACT_KINDS = ['jumpBack', 'fist', 'film', 'chase'] as const;
+export type PedReactKind = (typeof PED_REACT_KINDS)[number];
 
 /** `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md). */
 export const STYLE_KINDS = ['nearMiss', 'airtime', 'oncoming', 'takedownCombo', 'weaponSteal'] as const;
@@ -429,6 +442,30 @@ export interface SimTrafficTypeDef {
    * configs, which means the sim's own category default. buildSimConfig always writes it.
    */
   weight?: number;
+  /**
+   * The type's behaviour flags (W-P, 2026-10-01). Optional: absent, and any absent flag, means the
+   * category's default. buildSimConfig copies the flags the content gives.
+   */
+  behaviour?: SimTrafficBehaviour;
+}
+
+/** A traffic type's behaviour flags (docs/content-packs.md, "Traffic type"). */
+export interface SimTrafficBehaviour {
+  /** Rare seeded lane changes. Absent: the category's default (cars change lanes, others do not). */
+  laneChanges?: boolean;
+  /**
+   * Rides at the kerb: the shoulder where there is one, else the outer edge of the outermost lane
+   * (bicycles, e-bikes, scooters, golf carts). Other vehicles pass it in their lane.
+   */
+  kerb?: boolean;
+  /** A seeded side-to-side weave as it rides, metres either way (e-scooters). */
+  weaveM?: number;
+  /** Spawns as a convoy of up to this many of its kind, nose to tail (an RV convoy). */
+  convoy?: number;
+  /** A pedestrian or animal that walks or jogs along the verge rather than crossing the road. */
+  strolls?: boolean;
+  /** An animal that runs after a passing rider a short way along the verge (dogs). */
+  chases?: boolean;
 }
 
 export interface SimEventDef {
