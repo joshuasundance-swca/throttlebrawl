@@ -70,7 +70,7 @@ import {
 } from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
-import { createTuningPanel, type TuningPanel } from './tuning';
+import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 
@@ -147,7 +147,8 @@ export interface GameUi {
   /** A spinner with a line of text over everything (the resume fast-forward), or null to hide it. */
   setBusy(text: string | null): void;
   readonly settings: Readonly<Settings>;
-  readonly tuningPanel: TuningPanel;
+  /** The tuning panel (a lazy chunk: the panel's own element is not exposed). */
+  readonly tuningPanel: Pick<TuningPanel, 'toggle' | 'open' | 'refreshHz'>;
   readonly narrative: Narrative;
   /**
    * The menu's region picker (playtest 1c): the regions to offer, from app/'s region registry, and
@@ -1166,7 +1167,27 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     noticeBox,
   );
   host.append(root, stamp);
-  const tuningPanel = createTuningPanel(root, opts.tuning);
+  // The tuning panel (ui/tuning) is a lazy chunk, fetched as the game boots rather than in the
+  // first-load bundle. A request to open it before the chunk arrives is kept and applied then.
+  let realPanel: TuningPanel | null = null;
+  let pendingOpen: boolean | null = null;
+  void import('./tuning').then((m) => {
+    realPanel = m.createTuningPanel(root, opts.tuning);
+    if (pendingOpen !== null) realPanel.toggle(pendingOpen);
+    pendingOpen = null;
+  });
+  const tuningPanel: GameUi['tuningPanel'] = {
+    toggle(open) {
+      if (realPanel) realPanel.toggle(open);
+      else pendingOpen = open ?? !(pendingOpen ?? false);
+    },
+    get open() {
+      return realPanel?.open ?? false;
+    },
+    get refreshHz() {
+      return realPanel?.refreshHz ?? null;
+    },
+  };
   // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
   // the bubble's long-press ignores presses in the stick and attack zones mid-race.
   const barks = createNarrative({

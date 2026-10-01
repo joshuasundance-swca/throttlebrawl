@@ -7,7 +7,6 @@ import type { AppHandle } from '../app';
 import { installTestHandle, testFlagSet } from './handle';
 import { createPerfProbe, debugRequested, mountDebugOverlay } from './perf';
 import { installErrorCapture } from './report';
-import { selfTestRequested, showSelfTest } from './selftest';
 
 // createStubBot (the skeleton's lane follower) stays exported: lanes' scenario tests import it.
 export { blankActions, botInput, createBot, createStubBot } from './bot';
@@ -23,7 +22,7 @@ export {
 } from './report';
 export { createPerfProbe, debugRequested, formatOverlay, percentiles } from './perf';
 export type { PerfProbe, PerfReport, Percentiles } from './perf';
-export { runSelfTest, selfTestRequested, showSelfTest } from './selftest';
+// The self-test is a lazy chunk (only `?selftest=1` loads it): import it from './selftest'.
 export type { SelfTestResult, SelfTestStatus } from './selftest';
 export { botAttackRun, installTestHandle, moverProblem, MOVER_MODES, testFlagSet } from './handle';
 export type { AttackRun, AttackRunOptions, RaceChecks, TestHandle } from './handle';
@@ -34,5 +33,8 @@ export function installDev(app: AppHandle): void {
   installErrorCapture();
   if (testFlagSet()) installTestHandle(app);
   if (debugRequested(search)) mountDebugOverlay(document, createPerfProbe(app));
-  if (selfTestRequested(search)) void showSelfTest(document, () => app.rendererStats().renderer);
+  if (search.includes('selftest'))
+    void import('./selftest').then((m) => {
+      if (m.selfTestRequested(search)) void m.showSelfTest(document, () => app.rendererStats().renderer);
+    });
 }
