@@ -13,7 +13,8 @@
 //   of an anchor (fastest anchor top speed plus fastest cruise speed, times 2 s: about 125 m at
 //   M1 speeds). Vehicles that leave the window are recycled to its front. Rolls come from
 //   world.rng.traffic only.
-// - Density per direction is a tuning slider, so oncoming traffic can go to zero; oncoming density
+// - Density is a master tuning slider (`traffic.density`, W-P) times one slider per direction, so
+//   the whole road or just oncoming traffic can go to zero; oncoming density
 //   can also ease in over the start of a race (M2 traffic-3, off by default). The region's
 //   `traffic.mix` weights pick the vehicle types (SimTrafficTypeDef.weight).
 // - Contacts (playtest 1): a solid frontal or rear hit crashes the rider inelastically; a side
@@ -41,6 +42,19 @@ export type { Corridor } from './corridor';
 export { IDM, idmAccel } from './idm';
 
 export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
+  {
+    // W-P "fill the world" (maintainer, 2026-10-01b: "more cars both ways"): one slider for the
+    // whole road, multiplying both direction sliders below. 0 empties the road. [default]
+    id: 'traffic.density',
+    group: 'traffic',
+    label: 'Traffic density',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
   {
     id: 'traffic.densitySame',
     group: 'traffic',
@@ -120,12 +134,15 @@ export const TRAFFIC = {
   windowM: 400,
   /** Extra distance past the window before a vehicle is recycled, m. */
   despawnMarginM: 50,
-  /** One vehicle per this many metres of lane at density 1. */
-  baseSpacingM: 120,
+  /**
+   * One vehicle per this many metres of lane at density 1. W-P (maintainer, 2026-10-01b: "the
+   * worlds just feel very empty", "more cars both ways"): 120 → 80, half as many cars again.
+   */
+  baseSpacingM: 80,
   /** The fairness rule: vehicles spawn only beyond closing speed × this. */
   reactionS: 2,
-  /** Cap on live vehicles per direction. */
-  maxPerDirection: 14,
+  /** Cap on live vehicles per direction (W-P: 14 → 20, room for the denser default and the slider). */
+  maxPerDirection: 20,
   /** New vehicles added per direction per population pass. */
   maxAddsPerPass: 2,
   populateEveryTicks: 10,
@@ -369,9 +386,11 @@ export function oncomingEase(world: World, clockS: number): number {
   return from + (1 - from) * clamp(clockS / easeS, 0, 1);
 }
 
+/** A direction's density: the master `traffic.density` slider times that direction's own slider. */
 function densityFor(world: World, st: TrafficState, dir: number): number {
-  if (dir === st.corridor.routeDir) return clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
-  return clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
+  const all = clamp(world.params['traffic.density'] ?? 1, 0, 10);
+  if (dir === st.corridor.routeDir) return all * clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
+  return all * clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
 }
 
 function targetCount(world: World, st: TrafficState, anchors: readonly number[], dir: number): number {

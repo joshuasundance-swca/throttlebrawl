@@ -608,6 +608,38 @@ describe('traffic-1 sim acceptance', () => {
     expect(st.type.some((t) => config.trafficTypes[t]?.category === 'pedestrian')).toBe(false);
   }, 60_000);
 
+  it('the master density slider (W-P): 0 empties the road both ways, 2 carries more than the default', () => {
+    /** The most vehicles live per direction over 30 s of a race at these sliders. */
+    const peak = (tuning: Record<string, number>) => {
+      const config = makeConfig({ tuning });
+      const world = raceWorld(config);
+      const st = trafficState(world);
+      const most = { plus: 0, minus: 0 };
+      while (world.tick < 60 * 30) {
+        stepWorld(world, config, ALL, [scripted(world.tick)]);
+        const live = (dir: number) => st.dir.filter((d, k) => d === dir && st.retired[k] === 0).length;
+        most.plus = Math.max(most.plus, live(1));
+        most.minus = Math.max(most.minus, live(-1));
+      }
+      return most;
+    };
+    const none = peak({ 'traffic.density': 0 });
+    // M1's spacing was 120 m a car; W-P's default is 80 m, so 80/120 of the default is M1's road.
+    const m1 = peak({ 'traffic.density': 80 / 120 });
+    const normal = peak({});
+    const busy = peak({ 'traffic.density': 2 });
+    console.log(
+      `peak vehicles (your way / oncoming): off ${none.plus}/${none.minus}, M1 spacing ${m1.plus}/${m1.minus}, ` +
+        `default ${normal.plus}/${normal.minus}, x2 ${busy.plus}/${busy.minus}`,
+    );
+    expect(none).toEqual({ plus: 0, minus: 0 });
+    expect(normal.plus).toBeGreaterThan(m1.plus);
+    expect(normal.minus).toBeGreaterThan(m1.minus);
+    expect(busy.plus).toBeGreaterThan(normal.plus);
+    expect(busy.minus).toBeGreaterThan(normal.minus);
+    expect(Math.max(busy.plus, busy.minus)).toBeLessThanOrEqual(TRAFFIC.maxPerDirection);
+  }, 120_000);
+
   it('two lanes a direction: rare seeded lane changes, still no overlap in any lane', () => {
     const config = makeConfig({
       lanes: { a: TWO_LANES, b: TWO_LANES, c: TWO_LANES },
