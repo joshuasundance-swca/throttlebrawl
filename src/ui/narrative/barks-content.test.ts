@@ -24,30 +24,61 @@ const files = basePackFiles().filter((f) => f.path.startsWith('barks/'));
 const sets = files.map((f) => f.json as RawSet);
 const allLines = sets.flatMap((s) => s.lines);
 
-const RIVALS = ['deacon-vane', 'dial-up', 'chad-speedwell', 'kevin-from-accounting'];
-// Each rival's approved line (docs/tone-guide.md, "The rivals"), verbatim.
+// The racing rivals: the four regulars, then the three Florida locals (M4 rivals-1's head start).
+const RIVALS = [
+  'deacon-vane',
+  'dial-up',
+  'chad-speedwell',
+  'kevin-from-accounting',
+  'tammy-two-stroke',
+  'the-mayor',
+  'mother-rust',
+];
+// The named cop speaks too, on the cop's own triggers (the siren and the bust), not the racers'.
+const COP = 'sgt-pruitt';
+const SPEAKERS = [...RIVALS, COP];
+// Each speaker's approved line (docs/tone-guide.md, "The rivals"), verbatim.
 const APPROVED: Record<string, string> = {
   'deacon-vane': 'Pray the ditch is soft, sinner.',
   'dial-up': "You've got mail. It's my boot.",
   'chad-speedwell': "Smash that subscri— oh. You're smashed.",
   'kevin-from-accounting': 'Per my last email: move.',
+  'tammy-two-stroke': "Honey, I've passed hearses faster than you.",
+  'the-mayor': 'Vote early. Crash often.',
+  'mother-rust': "I've eaten tires tougher than you.",
+  [COP]: 'License, registration, and your front teeth.',
 };
+const APPROVED_TEXT = new Set(Object.values(APPROVED));
 
 describe('base pack bark sets', () => {
-  it('exist, one file per rival, and load through the registry', () => {
-    expect(files.length).toBe(RIVALS.length);
+  it('exist, one file per speaker, and load through the registry', () => {
+    expect(files.length).toBe(SPEAKERS.length);
+    expect(sets.map((s) => s.defaults?.speaker).sort()).toEqual([...SPEAKERS].sort());
     const reg = loadBasePack();
     expect(Object.keys(reg.barkSets).sort()).toEqual(sets.map((s) => `base:${s.id}`).sort());
     expect(barkLinesFrom(reg.barkSets).length).toBe(allLines.length);
   });
 
-  it('give each of the four rivals race-start, overtake and hit-landed lines, including the approved one', () => {
+  it('give each rival race-start, overtake and hit-landed lines, and every speaker the approved one', () => {
     for (const rival of RIVALS) {
       const mine = sets.filter((s) => s.defaults?.speaker === rival).flatMap((s) => s.lines);
       for (const trigger of M1_TRIGGERS) {
         expect(mine.filter((l) => l.trigger === trigger).length, `${rival} ${trigger}`).toBeGreaterThan(0);
       }
-      expect(mine.map((l) => l.text)).toContain(APPROVED[rival]);
+    }
+    for (const speaker of SPEAKERS) {
+      const mine = sets.filter((s) => s.defaults?.speaker === speaker).flatMap((s) => s.lines);
+      expect(
+        mine.map((l) => l.text),
+        speaker,
+      ).toContain(APPROVED[speaker]);
+    }
+  });
+
+  it("give the cop plain lines for the siren and the bust (the cop's own triggers)", () => {
+    const mine = sets.filter((s) => s.defaults?.speaker === COP).flatMap((s) => s.lines);
+    for (const trigger of ['cop-siren', 'busted']) {
+      expect(mine.filter((l) => l.trigger === trigger && !l.when).length, trigger).toBeGreaterThanOrEqual(2);
     }
   });
 
@@ -91,8 +122,12 @@ describe('base pack bark sets', () => {
       const chars = [...l.text].length;
       expect(chars, l.id).toBeLessThanOrEqual(80);
       // The writing target is 42 characters, a bubble of at most 2.8 s at 15 characters a second.
-      expect(chars, l.id).toBeLessThanOrEqual(42);
-      expect(bubbleDurationS(l.text), l.id).toBeLessThanOrEqual(2.8 + 1e-9);
+      // The tone guide caps lines at 80 and only aims for 42, and an approved line stays verbatim,
+      // so the two approved lines past 42 (Tammy's at 43, Pruitt's at 44) keep their length.
+      if (!APPROVED_TEXT.has(l.text)) {
+        expect(chars, l.id).toBeLessThanOrEqual(42);
+        expect(bubbleDurationS(l.text), l.id).toBeLessThanOrEqual(2.8 + 1e-9);
+      }
       expect((l.text.match(/!/g) ?? []).length, l.id).toBeLessThanOrEqual(1);
       expect(l.text, l.id).not.toMatch(/\p{Extended_Pictographic}/u);
       expect(l.text.trim(), l.id).toBe(l.text);
