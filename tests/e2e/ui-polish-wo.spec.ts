@@ -115,12 +115,18 @@ async function cutNote(page: Page) {
   await page.keyboard.press('Escape');
   await expect(page.locator('#radio-song')).toHaveText('A song to cut');
   await page.locator('#radio-cut').click();
-  await page.locator('#radio-cut-yes').click();
-  await expect(page.locator('#radio-song')).toContainText('Cut');
-  return page.locator('#radio-song').evaluate((el) => {
+  await expect(page.locator('#radio-cut-yes')).toBeVisible();
+  // "Cut it" and the note's style in one turn of the page: the note holds for 3 s of wall-clock
+  // time, and on a loaded software-rendered CI runner a separate poll came later than that (PR
+  // #232's second CI run read the next song).
+  return page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#radio-cut-yes')?.click();
+    const el = document.querySelector<HTMLElement>('#radio-song');
+    if (!el) throw new Error('no #radio-song');
     const s = getComputedStyle(el);
     const r = el.getBoundingClientRect();
     return {
+      text: el.textContent ?? '',
       note: el.classList.contains('note'),
       fontSize: parseFloat(s.fontSize),
       fontStyle: s.fontStyle,
@@ -136,6 +142,7 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
   test.setTimeout(90_000);
   const style = await cutNote(page);
   console.log(`cut note (915x412): ${JSON.stringify(style)}`);
+  expect(style.text).toContain('Cut');
   expect(style.note).toBe(true);
   expect(style.fontSize).toBeGreaterThanOrEqual(15);
   expect(style.fontStyle).toBe('normal');
@@ -143,10 +150,23 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
   expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
   expect(style.inView).toBe(true);
   await shot(page, 'cut-note-landscape');
-  // Still up after 1.5 s (the pause screen refreshes the panel every 500 ms).
-  await page.waitForTimeout(1500);
-  await expect(page.locator('#radio-song')).toContainText('Cut');
-  await expect(page.locator('#radio-song')).toHaveClass(/\bnote\b/);
+  // Still up after 1.5 s, through the pause screen's 500 ms refreshes. Timed on the page's own
+  // clock: asserted when the page got its turn well inside the 3 s hold, logged when it did not.
+  const later = await page.evaluate(async () => {
+    const t0 = performance.now();
+    await new Promise((r) => setTimeout(r, 1500));
+    const el = document.querySelector<HTMLElement>('#radio-song');
+    return {
+      ms: performance.now() - t0,
+      text: el?.textContent ?? '',
+      note: !!el?.classList.contains('note'),
+    };
+  });
+  console.log(`cut note after ${Math.round(later.ms)} ms: ${JSON.stringify(later)}`);
+  if (later.ms < 2500) {
+    expect(later.text).toContain('Cut');
+    expect(later.note).toBe(true);
+  }
 });
 
 // A phone held upright shows the rotate screen once the race starts (platform/), so the portrait
@@ -158,6 +178,7 @@ test.describe('portrait', () => {
     test.setTimeout(90_000);
     const style = await cutNote(page);
     console.log(`cut note (412x915): ${JSON.stringify(style)}`);
+    expect(style.text).toContain('Cut');
     expect(style.note).toBe(true);
     expect(style.fontSize).toBeGreaterThanOrEqual(15);
     expect(style.inView).toBe(true);
