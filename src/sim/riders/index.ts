@@ -109,6 +109,22 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     unit: 'm/s',
     affectsSim: true,
   },
+  {
+    // Crest launch (the W-O polish run): a bike leaves the ground over a crest when following it
+    // would take more downward pull than gravity gives, speed² × the crest's vertical curvature ×
+    // this scale > g (× 1 + CREST_MARGIN). 1 is plain physics; lower needs more speed for the same crest; 0 turns it
+    // off (only ramp lips launch, as before). It stops at 1: above it the launch would outrun the
+    // flight's own gravity, and the bike would hop and land every tick. [default]
+    id: 'riders.crestLaunch',
+    group: 'speed',
+    label: 'Crest launch',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
 ];
 
 /** Per-rider plain state, by entity id. */
@@ -146,6 +162,11 @@ export interface RiderState {
   onPad: number[];
   /** 1 while the rider is held against a ramp truck's side, so one contact emits one event. */
   truckTouch: number[];
+  /**
+   * 1 from a landing until the rider rides clear of a crest that would launch him, so one crest is
+   * one jump: coming down on the same crest's far side never bounces him straight back up.
+   */
+  crestHold: number[];
 }
 
 /**
@@ -192,6 +213,17 @@ const LEAN_RESPONSE = 8;
 const MAX_LEAN = 0.8;
 /** The ballistic height must clear the surface by this much to take off (ignores sample kinks). */
 export const TAKEOFF_CLEARANCE_M = 0.02;
+/**
+ * A crest's vertical curvature is read from the road's grade this far either side of the bike, m:
+ * wide enough to smooth the 2 m road samples, narrow enough for a sharp hilltop. [default]
+ */
+export const CREST_SPAN_M = 4;
+/**
+ * A crest launches once its pull beats gravity by this share. Just over 1 g the bike only gets light:
+ * the road between two 2 m samples is straight, so it would come down on the same chord after a
+ * tick or two (a hop, not air). [default]
+ */
+export const CREST_MARGIN = 0.2;
 /** Heading change steering can make in the air, rad/s at full lock. */
 const AIR_TURN_RATE = 0.6;
 /** A landing wobbles from this fraction of the landing crash sideways speed. */
@@ -234,6 +266,7 @@ export function riderState(world: World): RiderState {
     boost: [],
     boostMps: [],
     onPad: [],
+    crestHold: [],
     truckTouch: [],
   }));
 }
@@ -601,13 +634,38 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
-  if (dt > 0 && !fresh && ballistic > ground + TAKEOFF_CLEARANCE_M) {
+  const lip = ballistic > ground + TAKEOFF_CLEARANCE_M;
+  // Over a crest, the pull needed to follow the road (speed along it² × its downward curvature)
+  // can beat gravity well before one tick's ballistic gap reaches the lip threshold: then the bike
+  // floats off the top. Only on the road itself (a truck deck has its own lip).
+  const crestScale = world.params['riders.crestLaunch'] ?? 1;
+  const overCrest =
+    crestScale > 0 &&
+    deck === 0 &&
+    deckBefore === 0 &&
+    !nearRamp(config, pos.edge, pos.s) &&
+    along * along * -crestCurvature(config, pos.edge, pos.s) * crestScale > gravity * (1 + CREST_MARGIN);
+  if (!overCrest) st.crestHold[m.id] = 0;
+  const crest = !lip && overCrest && (st.crestHold[m.id] ?? 0) === 0;
+  if (dt > 0 && !fresh && (lip || crest)) {
+    // Off a crest the bike leaves the smooth hilltop the samples stand for: along its tangent (the
+    // grade here) and from its height, which over a crest is above the straight chord between two
+    // samples by ½·curvature·a·b (a, b: the distances to them). From the chord itself, on its own
+    // slope, it would come straight back down on that chord: a hop, not air.
+    const vy0 = crest ? road.frameAt(pos.edge, pos.s).grade * pos.dir * along : vyBefore;
+    const y = crest ? ground + crestSag(config, pos.edge, pos.s) : Math.max(ballistic, ground);
     m.mode = 'Airborne';
-    m.h = ballistic - surface;
-    st.yAbs[m.id] = ballistic;
-    st.vy[m.id] = vyBefore - gravity * dt;
+    m.h = y - surface;
+    st.yAbs[m.id] = y;
+    // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
+    st.vy[m.id] = crest ? vy0 : vy0 - gravity * dt;
     st.airTicks[m.id] = 0;
-    emit(world, 'jump', m.id, { speed: m.speed, vyMps: vyBefore });
+    emit(
+      world,
+      'jump',
+      m.id,
+      crest ? { speed: m.speed, vyMps: vy0, crest: 1 } : { speed: m.speed, vyMps: vy0 },
+    );
   } else {
     m.h = deck;
     st.yAbs[m.id] = ground;
@@ -620,6 +678,38 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.throttle[m.id] = throttle;
   st.brake[m.id] = brake;
   gearAndRpm(st, m);
+}
+
+/**
+ * The road's vertical curvature at s, 1/m, from its grade CREST_SPAN_M either side (kept on the
+ * edge): negative over a crest, positive in a dip. The same either way along the road.
+ */
+export function crestCurvature(config: SimConfig, edge: number, s: number): number {
+  const len = config.road.edges[edge]?.length ?? 0;
+  const s0 = Math.max(0, s - CREST_SPAN_M);
+  const s1 = Math.min(len, s + CREST_SPAN_M);
+  if (s1 - s0 < CREST_SPAN_M) return 0;
+  return (config.road.frameAt(edge, s1).grade - config.road.frameAt(edge, s0).grade) / (s1 - s0);
+}
+
+/**
+ * Whether s is on (or within CREST_SPAN_M of) an authored `ramp` feature: a ramp lip is a designed
+ * kink that launches by the lip rule, so the crest rule leaves it alone (else it would launch a
+ * second time off the ramp's back slope).
+ */
+function nearRamp(config: SimConfig, edge: number, s: number): boolean {
+  for (const f of config.road.featuresOf(edge, 'ramp')) {
+    if (s >= Math.min(f.s0, f.s1) - CREST_SPAN_M && s <= Math.max(f.s0, f.s1) + CREST_SPAN_M) return true;
+  }
+  return false;
+}
+
+/** How far a crest's smooth top stands above the sampled road's straight chord at s, m (0 off a crest). */
+function crestSag(config: SimConfig, edge: number, s: number): number {
+  const e = config.road.edges[edge];
+  if (!e || e.spacing <= 0) return 0;
+  const a = s - Math.floor(s / e.spacing) * e.spacing;
+  return 0.5 * Math.max(0, -crestCurvature(config, edge, s)) * a * (e.spacing - a);
 }
 
 /** Smooths the lean toward its target and adds the wobble shake. */
@@ -733,6 +823,7 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   st.yAbs[m.id] = surface + deck;
   st.vy[m.id] = slopeVy;
   st.airTicks[m.id] = 0;
+  st.crestHold[m.id] = 1;
   const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed };
   const cause = emit(world, 'land', m.id, data);
   if (quality === 'crash') {
