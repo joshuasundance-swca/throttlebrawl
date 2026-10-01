@@ -1,8 +1,8 @@
 // content: pack loading, validation, the lint and the frozen registry (docs/architecture.md,
 // "Content registry"; docs/content-packs.md, "Validation"). The content lane owns this folder;
 // schema/ is a contract.
-export { loadBasePack, basePackFiles } from './base-pack';
-export { assetIndex, buildRegistry, ContentError, contentHashes, lookup } from './registry';
+export { assetIndex, loadBasePack, basePackFiles } from './base-pack';
+export { buildRegistry, ContentError, contentHashes, lookup } from './registry';
 export type { ContentRegistry, LoadOptions, PackIndexRow } from './registry';
 export type { ContentHashes } from './hashes';
 export { FORMAT_VERSION, isEntryFile, parsePack } from './parse';
