@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "kevins-briefcase",
+  "name": "Kevin's Briefcase",
+  "category": "junk",
+  "behaviour": "melee.swing",
+  "tags": ["roadside", "junk"],
+  "unarmed": false,
+  "reach": { "sM": 1.3, "dM": 1.4 },
+  "windupS": 0.3,
+  "activeS": 0.1,
+  "recoveryS": 0.38,
+  "cooldownS": 0,
+  "damage": 14,
+  "knockback": { "lateralMps": 9.0, "staggerS": 0.4 },
+  "hitStopMs": 80,
+  "steal": { "allowed": true, "windowStartS": 0.08, "windowEndS": 0.3 },
+  "uses": { "durabilityHits": 5, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 1, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 weapons-2 head start: wasteland junk, the plan's own example (Kevin from Accounting swings a briefcase). Hard-sided and full of receipts: light damage, a big shove, and the latches give out after 5 hits. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

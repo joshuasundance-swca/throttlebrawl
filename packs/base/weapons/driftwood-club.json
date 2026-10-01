@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "driftwood-club",
+  "name": "Driftwood Club",
+  "category": "blunt",
+  "behaviour": "melee.swing",
+  "tags": ["roadside"],
+  "unarmed": false,
+  "reach": { "sM": 1.5, "dM": 1.4 },
+  "windupS": 0.32,
+  "activeS": 0.1,
+  "recoveryS": 0.4,
+  "cooldownS": 0,
+  "damage": 20,
+  "knockback": { "lateralMps": 7.0, "staggerS": 0.35 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.1, "windowEndS": 0.32 },
+  "uses": { "durabilityHits": 10, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 2, "regions": [] },
+  "effects": [],
+  "meta": {
+    "status": "draft",
+    "notes": "M4 weapons-2 head start: the club (the list says 'club or pipe'; the lead pipe is M1's). A sun-bleached branch off the beach: the pipe's cousin, and it splits after 10 landed hits. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

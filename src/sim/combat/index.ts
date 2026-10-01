@@ -88,7 +88,27 @@
 // - A rider who wrecks (leaves Road/Airborne, or reaches zero health) drops the weapon where it
 //   is; it lies on the road as a pickup again. A held pickup entity is stowed below the road
 //   (h = STOWED_H) so presentation shows it only through the holder's `heldWeapon`.
-import { clamp, sin, type EntityId, type TuningParamDecl } from '../../core';
+//
+// Every v1 weapon (docs/milestones/M4.md, weapons-2; a head start, crude first):
+// - Each weapon names a registered behaviour (WEAPON_BEHAVIOURS, a closed list; absent or unknown
+//   is `melee.swing`), so a new weapon that reuses one is data only. Every behaviour is the M1
+//   swing (timing, reach, damage, shove, stagger from data); `melee.wrap` (the chain) also drags
+//   the target's speed by combat.wrapDragMps, and `taser.stun` also stuns: the target cannot
+//   attack and wobbles for the weapon's stunTicks × combat.stunScale, and loses
+//   combat.stunSpeedLoss of its speed. The `hit` event carries `dragMps` or `stunTicks`.
+// - A cop's landed hit on a player is softened by combat.copOnPlayerScale (damage, shove and
+//   stun): an armed cop swings so you can snatch his weapon, not to raise the bust rate.
+// - Uses live on the pickup entity, so a stolen weapon keeps what it has left. `charges` (the
+//   taser) are spent one per swing that reaches its active moment; the swing that spends the last
+//   one finishes, then the weapon is gone. `durabilityHits` (junk, the club) are spent one per
+//   landed hit; the last one breaks it on the blow. A spent weapon's pickup stays stowed for good
+//   (pickupHolder SPENT) and its holder is bare-handed again. The `hit` (or `attackMiss`) of the
+//   swing that uses the last of a weapon carries `spent: true`.
+// - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
+//   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
+// - A rider's startingWeapon (a cop's baton or taser) is in hand at the start, as a stowed
+//   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up.
+import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { barrierLimits, riderState } from '../riders';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
@@ -228,6 +248,50 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    id: 'combat.wrapDragMps',
+    group: 'combat',
+    label: 'Chain drag',
+    default: 4,
+    min: 0,
+    max: 15,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.stunScale',
+    group: 'combat',
+    label: 'Taser stun',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.stunSpeedLoss',
+    group: 'combat',
+    label: 'Taser speed loss',
+    default: 0.2,
+    min: 0,
+    max: 0.8,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.copOnPlayerScale',
+    group: 'combat',
+    label: 'Cop hits on you',
+    default: 0.5,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
     id: 'combat.takedownWindowS',
     group: 'combat',
     label: 'Takedown credit window',
@@ -297,6 +361,18 @@ export const PICKUP_D_M = 1.5;
 const PICKUP_MAX_H = 1.5;
 /** Height of a held pickup entity: below the road, out of sight (the holder shows it). */
 export const STOWED_H = -20;
+/** pickupHolder of a weapon that is used up (charges spent, or broken): gone for the race. */
+export const SPENT = -2;
+
+/** The registered weapon behaviours (weapons-2): a closed list; the file header says what each adds. */
+export const WEAPON_BEHAVIOURS = ['melee.swing', 'melee.wrap', 'taser.stun'] as const;
+export type WeaponBehaviour = (typeof WEAPON_BEHAVIOURS)[number];
+
+/** A weapon's behaviour: its `behaviour` id when registered, else the M1 swing. */
+export function behaviourOf(w: SimWeaponDef): WeaponBehaviour {
+  const id = w.behaviour ?? 'melee.swing';
+  return (WEAPON_BEHAVIOURS as readonly string[]).includes(id) ? (id as WeaponBehaviour) : 'melee.swing';
+}
 
 type ActivePhase = Exclude<AttackPhase, 'cooldown'>;
 
@@ -363,6 +439,9 @@ export interface CombatState {
   /** Per pickup entity: its weapon content id, and who holds it (-1 = lying on the road). */
   pickupWeapon: string[];
   pickupHolder: EntityId[];
+  /** Per pickup entity: charges and durability hits left (absent until first spent: the weapon's own). */
+  pickupCharges: number[];
+  pickupHits: number[];
 }
 
 export function combatState(world: World): CombatState {
@@ -398,6 +477,8 @@ export function combatState(world: World): CombatState {
     pickups: [],
     pickupWeapon: [],
     pickupHolder: [],
+    pickupCharges: [],
+    pickupHits: [],
   }));
 }
 
@@ -565,12 +646,25 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
     st.elapsed[id] = elapsed - dur;
     if (phase === 'windup') {
       st.phase[id] = 'active';
+      // A charged weapon (the taser) spends a charge as the swing goes off.
+      if (st.held[id] === w.contentId && w.charges != null) {
+        spendUse(st.pickupCharges, st.heldPickup[id] ?? -1, w.charges);
+      }
     } else if (phase === 'active') {
       if (!st.landed[id]) {
         const target = st.targetId[id] ?? -1;
         const extra: { target?: EntityId; causeId?: number } = { causeId: st.cause[id] ?? 0 };
         if (target >= 0) extra.target = target;
-        emit(world, 'attackMiss', id, { weapon: w.contentId, side: st.side[id] ?? 1 }, extra);
+        // A taser's last charge, fired into thin air: it goes at the end of this swing.
+        const left = st.pickupCharges[st.heldPickup[id] ?? -1];
+        const spent = st.held[id] === w.contentId && w.charges != null && (left ?? w.charges) <= 0;
+        emit(
+          world,
+          'attackMiss',
+          id,
+          { weapon: w.contentId, side: st.side[id] ?? 1, ...(spent ? { spent } : {}) },
+          extra,
+        );
       }
       st.phase[id] = 'recovery';
     } else {
@@ -579,6 +673,11 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
         st.cooldownWeapon[id] = w.contentId;
       }
       endAttack(st, id);
+      // The swing that spent the last charge is over: the weapon is gone.
+      const pid = st.heldPickup[id] ?? -1;
+      if (st.held[id] === w.contentId && w.charges != null && (st.pickupCharges[pid] ?? w.charges) <= 0) {
+        retire(world, st, a);
+      }
       return;
     }
   }
@@ -617,7 +716,14 @@ function land(
   st.calm[id] = 0;
   st.calm[vid] = 0;
   const kick = w.contentId === KICK_ID;
-  const health = Math.max(0, (riders.health[vid] ?? 0) - w.damage);
+  // A cop's hit on a player lands soft (combat.copOnPlayerScale on its damage, shove and stun):
+  // his swing is there to be snatched, and playtest 1 asked that the cop stay as hard as he was.
+  const copSoft =
+    isLaw(config, a) && isPlayer(config, victim)
+      ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
+      : 1;
+  const damage = Math.round(w.damage * copSoft);
+  const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
   const away = (dd === 0 ? (st.side[id] ?? 1) : dd < 0 ? -1 : 1) * a.pos.dir;
@@ -632,13 +738,28 @@ function land(
   // asked that rivals stay as hard as they were. A punch or the pipe keeps M1's nudge.
   const onPlayer =
     isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
-  const peak = fullPeak * (kick ? onPlayer : 1);
-  const hitImpulse = Math.min(1, (w.damage + fullPeak) / HIT_IMPULSE_FULL);
+  const peak = fullPeak * (kick ? onPlayer : 1) * copSoft;
+  const hitImpulse = Math.min(1, (damage + fullPeak * copSoft) / HIT_IMPULSE_FULL);
+  const effect = behaviourEffect(world, st, victim, w, copSoft);
+  // A breakable held weapon spends one hit (the last one breaks it on this blow); a taser on its
+  // last charge goes at the end of this swing. Either way the hit says `spent`.
+  const heldSwing = st.held[id] === w.contentId;
+  const pid = st.heldPickup[id] ?? -1;
+  const breaks = heldSwing && w.durabilityHits != null && spendUse(st.pickupHits, pid, w.durabilityHits) <= 0;
+  const spent = breaks || (heldSwing && w.charges != null && (st.pickupCharges[pid] ?? w.charges) <= 0);
   emit(
     world,
     'hit',
     id,
-    { weapon: w.contentId, damage: w.damage, kick, health, hitImpulse },
+    {
+      weapon: w.contentId,
+      damage,
+      kick,
+      health,
+      hitImpulse,
+      ...effect,
+      ...(spent ? { spent } : {}),
+    },
     { target: vid, causeId: cause },
   );
   if (kick) emit(world, 'kick', id, { weapon: w.contentId }, { target: vid, causeId: cause });
@@ -659,6 +780,7 @@ function land(
     endAttack(st, vid);
     emit(world, 'crash', vid, { reason: 'knockedOff', by: id }, { target: id, causeId: cause });
   }
+  if (breaks) retire(world, st, a);
 
   if (isPlayer(config, a) || isPlayer(config, victim)) {
     const ticks = Math.round((w.hitStopMs * (world.params['combat.hitStopScale'] ?? 1) * 60) / 1000);
@@ -668,6 +790,55 @@ function land(
       world.timeScale = 0;
     }
   }
+}
+
+/**
+ * What a weapon's behaviour adds to a landed hit (after the shared swing's damage, before its shove
+ * and stagger), returned as extra `hit` event data. The file header lists the behaviours.
+ */
+function behaviourEffect(
+  world: World,
+  st: CombatState,
+  victim: Mover,
+  w: SimWeaponDef,
+  scale = 1,
+): Record<string, number> {
+  const p = world.params;
+  const behaviour = behaviourOf(w);
+  if (behaviour === 'melee.wrap') {
+    const before = victim.speed;
+    victim.speed = Math.max(0, before - Math.max(0, p['combat.wrapDragMps'] ?? 4));
+    return { dragMps: Math.round((before - victim.speed) * 1000) / 1000 };
+  }
+  if (behaviour === 'taser.stun') {
+    const ticks = Math.round((w.stunTicks ?? 0) * Math.max(0, p['combat.stunScale'] ?? 1) * scale);
+    if (ticks <= 0) return {};
+    const riders = riderState(world);
+    st.stagger[victim.id] = Math.max(st.stagger[victim.id] ?? 0, ticks);
+    riders.wobble[victim.id] = Math.max(riders.wobble[victim.id] ?? 0, ticks);
+    victim.speed *= 1 - clamp(p['combat.stunSpeedLoss'] ?? 0.2, 0, 1) * scale;
+    return { stunTicks: ticks };
+  }
+  return {};
+}
+
+/** Spends one use (a charge or a durability hit) of a pickup; returns what is left. */
+function spendUse(left: number[], pid: EntityId, full: number): number {
+  if (pid < 0) return full;
+  const now = Math.max(0, (left[pid] ?? full) - 1);
+  left[pid] = now;
+  return now;
+}
+
+/** A used-up weapon leaves its holder's hand for good; its pickup stays stowed (SPENT). */
+function retire(world: World, st: CombatState, holder: Mover): void {
+  const pid = st.heldPickup[holder.id] ?? -1;
+  st.held[holder.id] = '';
+  st.heldPickup[holder.id] = -1;
+  const pickup = world.movers[pid];
+  if (!pickup) return;
+  st.pickupHolder[pid] = SPENT;
+  pickup.h = STOWED_H;
 }
 
 function hitTest(world: World, config: SimConfig, st: CombatState, a: Mover): void {
@@ -912,6 +1083,12 @@ function takePickup(st: CombatState, rider: Mover, pickup: Mover): void {
 /** Puts a held weapon back on the road where its holder is. */
 function dropWeapon(world: World, config: SimConfig, st: CombatState, holder: Mover): void {
   const pid = st.heldPickup[holder.id] ?? -1;
+  // A taser whose last charge went off in the swing the wreck cut short is spent, not dropped.
+  const w = weaponById(config, st.held[holder.id] ?? '');
+  if (w?.charges != null && (st.pickupCharges[pid] ?? w.charges) <= 0) {
+    retire(world, st, holder);
+    return;
+  }
   const pickup = world.movers[pid];
   st.held[holder.id] = '';
   st.heldPickup[holder.id] = -1;
@@ -1010,7 +1187,7 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
   }
   for (const pid of st.pickups) {
     const pickup = world.movers[pid];
-    if (!pickup || (st.pickupHolder[pid] ?? -1) >= 0) continue;
+    if (!pickup || (st.pickupHolder[pid] ?? -1) !== -1) continue;
     let best: { rider: Mover; dist2: number } | null = null;
     for (const m of world.movers) {
       if (m.kind !== 'rider' || m.h > PICKUP_MAX_H || !canTake(world, config, st, m)) continue;
@@ -1077,12 +1254,26 @@ export const combatSystem: SimSystem = {
       st.heldPickup[m.id] = -1;
       st.stealCued[m.id] = false;
     }
-    // The roadside weapons: every non-unarmed weapon, one per spot in turn.
-    const armed = config.weapons.filter((w) => !w.unarmed);
-    roadsideSpots(config).forEach((spot, i) => {
-      const w = armed[i % Math.max(1, armed.length)];
-      if (w) spawnPickup(world, w.contentId, spot);
-    });
+    // Starting weapons (a cop's baton or taser): in hand from the start, as a stowed pickup.
+    for (const m of world.movers.slice()) {
+      const want = m.kind === 'rider' ? config.riders[m.riderIndex]?.startingWeapon : undefined;
+      const w = want ? weaponById(config, want) : undefined;
+      if (!w || w.unarmed) continue;
+      const pickup = world.movers[spawnPickup(world, w.contentId, { ...m.pos })];
+      if (pickup) takePickup(st, m, pickup);
+    }
+    // The roadside weapons: each spot draws one, weighted by roadsideWeight (absent: 1).
+    const pool = config.weapons
+      .filter((w) => !w.unarmed)
+      .map((w) => ({ w, weight: Math.max(0, w.roadsideWeight ?? 1) }))
+      .filter((p) => p.weight > 0);
+    const total = pool.reduce((sum, p) => sum + p.weight, 0);
+    for (const spot of roadsideSpots(config)) {
+      if (total <= 0) break;
+      let r = nextFloat(world.rng.combat) * total;
+      const pick = pool.find((p) => (r -= p.weight) < 0) ?? pool[pool.length - 1];
+      if (pick) spawnPickup(world, pick.w.contentId, spot);
+    }
   },
   step(world: World, config: SimConfig) {
     const st = combatState(world);
