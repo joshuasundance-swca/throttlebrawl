@@ -223,6 +223,43 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
     expect(hit?.target).toBe(2);
   });
 
+  it('a player holding a road weapon still steals the cop’s baton: his pipe goes down on the road', () => {
+    // The W-O polish run: the skeptic saw 4 of 11 cop steal windows come while the player held a
+    // road pipe, and the press only swung the pipe. Now it steals; the pipe lies where he was.
+    const run = (pressAt: number) => {
+      const h = makeHarness(
+        [
+          { s: 100, d: 0, role: 'cop', startingWeapon: BATON.contentId },
+          { s: 100, d: 1.2, role: 'player', startingWeapon: PIPE.contentId },
+        ],
+        scriptOf({ 0: once(5, F.attack), 1: once(pressAt, F.attack) }),
+        {},
+        [PIPE, BATON],
+      );
+      expect(combatView(h.world, 1).heldWeapon).toBe(PIPE.contentId);
+      const pipe = combatState(h.world).heldPickup[1] ?? -1;
+      h.run(40);
+      return { h, pipe };
+    };
+    // Pressed on wind-up tick 10 (inside 6–18): the steal.
+    const { h, pipe } = run(15);
+    const steal = ofType(h.events, 'weaponGrab').find((e) => e.data['source'] === 'steal');
+    expect(steal).toMatchObject({ actor: 1, target: 0 });
+    expect(steal?.data).toMatchObject({ weapon: BATON.contentId, dropped: PIPE.contentId });
+    expect(combatView(h.world, 1).heldWeapon).toBe(BATON.contentId);
+    // The cop is bare-handed and stays so: cops never pick up, so the pipe stays on the road.
+    expect(combatView(h.world, 0).heldWeapon).toBeNull();
+    expect(combatState(h.world).pickupHolder[pipe]).toBe(-1);
+    expect(h.world.movers[pipe]?.h).toBe(0);
+    expect(ofType(h.events, 'hit').filter((e) => e.actor === 0)).toHaveLength(0); // his swing was cancelled
+    // Pressed a tick before the window (wind-up tick 0): no steal, the press swings the pipe.
+    const early = run(5).h;
+    expect(ofType(early.events, 'weaponGrab').filter((e) => e.data['source'] === 'steal')).toHaveLength(0);
+    expect(ofType(early.events, 'attackStart').find((e) => e.actor === 1)?.data['weapon']).toBe(
+      PIPE.contentId,
+    );
+  });
+
   it('a cop’s hit on a player lands soft (Cop hits on you, 0.5 by default); on a rival it does not', () => {
     const damageOn = (victim: 'player' | 'rival', tuning: Record<string, number> = {}) => {
       const h = makeHarness(
