@@ -31,6 +31,31 @@ export interface BubbleView extends BarkView {
 /** How long a released bubble stays after its own time ran out while held. [default] */
 const RELEASE_GRACE_MS = 1000;
 
+/**
+ * Sent on `window` whenever a bark shows, so its voice plays with its subtitle (the maintainer,
+ * 2026-10-01: "Voices go in"). src/audio/bark-voices.ts listens; a line cut with "cut this" never
+ * shows again, so it is never spoken again either.
+ */
+const BARK_SHOWN_EVENT = 'throttlebrawl:bark';
+/** Sent back by audio when the line's voice starts, with its length: the subtitle stays as long. */
+const BARK_VOICE_EVENT = 'throttlebrawl:bark-voice';
+/** The subtitle outlasts its voice by this much. [default] */
+const VOICE_TAIL_MS = 250;
+/**
+ * A bark that comes while another rival is still speaking waits for that voice to finish, so no
+ * line is cut off mid-word; one that would wait longer than this is dropped (silence beats a late
+ * line). [default]
+ */
+const QUEUE_MAX_MS = 2500;
+
+function announce(bark: ShownBark) {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  const { contentRef, speakerName, text, durationS } = bark;
+  window.dispatchEvent(
+    new CustomEvent(BARK_SHOWN_EVENT, { detail: { contentRef, speakerName, text, durationS } }),
+  );
+}
+
 /** A DOM view. The host is found when the first bark shows (the UI root, else the body). */
 export function createBubbleView(host?: () => HTMLElement | null): BubbleView {
   let bubble: HTMLElement | null = null;
@@ -40,9 +65,30 @@ export function createBubbleView(host?: () => HTMLElement | null): BubbleView {
   let shown: ShownBark | null = null;
   let held = false;
   let expired = false;
+  /** When the bubble's own time runs out (performance.now ms). */
+  let endsAt = 0;
+  /** When the line on screen stops speaking (performance.now ms; 0 = no voice). */
+  let speakingUntil = 0;
+  let queued: ShownBark | null = null;
+  let queuedAt = 0;
+  let queueTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // A voiced line keeps its subtitle up until the voice finishes ("Subtitled always").
+  const onVoice = (ev: Event) => {
+    const d = (ev as CustomEvent<{ contentRef?: unknown; durationS?: unknown }>).detail;
+    if (!shown || d?.contentRef !== shown.contentRef || typeof d.durationS !== 'number') return;
+    speakingUntil = performance.now() + d.durationS * 1000;
+    if (held || expired) return;
+    const until = speakingUntil + VOICE_TAIL_MS;
+    if (until <= endsAt) return;
+    endsAt = until;
+    clear();
+    timer = setTimeout(expire, until - performance.now());
+  };
 
   const mount = () => {
     if (bubble) return bubble;
+    window.addEventListener(BARK_VOICE_EVENT, onVoice);
     const style = document.createElement('style');
     style.textContent = CSS;
     document.head.append(style);
@@ -64,8 +110,15 @@ export function createBubbleView(host?: () => HTMLElement | null): BubbleView {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   };
+  const clearQueue = () => {
+    if (queueTimer !== null) clearTimeout(queueTimer);
+    queueTimer = null;
+    queued = null;
+  };
   const hide = () => {
     clear();
+    clearQueue();
+    speakingUntil = 0;
     held = false;
     expired = false;
     shown = null;
@@ -80,17 +133,40 @@ export function createBubbleView(host?: () => HTMLElement | null): BubbleView {
     else hide();
   };
 
+  const display = (bark: ShownBark) => {
+    const el = mount();
+    if (speaker) speaker.textContent = bark.speakerName;
+    if (text) text.textContent = bark.text;
+    el.dataset.contentRef = bark.contentRef;
+    el.hidden = false;
+    shown = bark;
+    expired = false;
+    speakingUntil = 0;
+    clear();
+    endsAt = performance.now() + bark.durationS * 1000;
+    timer = setTimeout(expire, bark.durationS * 1000);
+    announce(bark);
+  };
+  const flush = () => {
+    queueTimer = null;
+    const next = queued;
+    queued = null;
+    if (next && performance.now() - queuedAt <= QUEUE_MAX_MS) display(next);
+  };
+
   return {
     show(bark: ShownBark) {
-      const el = mount();
-      if (speaker) speaker.textContent = bark.speakerName;
-      if (text) text.textContent = bark.text;
-      el.dataset.contentRef = bark.contentRef;
-      el.hidden = false;
-      shown = bark;
-      expired = false;
-      clear();
-      timer = setTimeout(expire, bark.durationS * 1000);
+      const now = performance.now();
+      if (shown && now < speakingUntil) {
+        // Another rival is mid-line: this one goes up when that voice finishes (the latest wins).
+        if (queueTimer !== null) clearTimeout(queueTimer);
+        queued = bark;
+        queuedAt = now;
+        queueTimer = setTimeout(flush, speakingUntil - now);
+        return;
+      }
+      clearQueue();
+      display(bark);
     },
     hide,
     current: () => shown,

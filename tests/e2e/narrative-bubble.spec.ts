@@ -71,7 +71,19 @@ test('a rival barks at race start in a readable bubble that then goes away', asy
   await page.screenshot({ path: 'test-results/screenshots/narrative-bubble.png' });
 
   const durationS = Math.max(2, [...text].length / 15);
-  await expect(bubble).toBeHidden({ timeout: durationS * 1000 + 2000 });
+  // A voiced line (the maintainer, 2026-10-01: "Voices go in") keeps its bubble up until the voice
+  // finishes, and the next rival's bark may then follow it straight away: the line goes away when
+  // the bubble hides or shows another line.
+  await expect
+    .poll(
+      () =>
+        bubble.evaluate(
+          (el: HTMLElement, first: string) => el.hidden || el.getAttribute('data-content-ref') !== first,
+          ref,
+        ),
+      { timeout: durationS * 1000 + 6000, intervals: [100] },
+    )
+    .toBe(true);
   const shownS = (Date.now() - shownAt) / 1000;
   console.log(`bubble up about ${shownS.toFixed(2)} s (expected ${durationS.toFixed(2)} s)`);
   expect(shownS).toBeGreaterThan(durationS - 1);
