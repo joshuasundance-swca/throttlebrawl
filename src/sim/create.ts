@@ -142,6 +142,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       active: world.facts.slowmo.remainingTicks > 0,
       remainingTicks: world.facts.slowmo.remainingTicks,
     },
+    props: [],
   };
 }
 
