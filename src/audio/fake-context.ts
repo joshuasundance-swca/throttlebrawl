@@ -124,6 +124,17 @@ export class FakeAudioContext {
   createPeriodicWave(real: Float32Array, imag: Float32Array) {
     return { real, imag };
   }
+  /** Bytes decoded so far (spoken barks); a "clip" lasts one second per 1000 bytes. */
+  readonly decoded: number[] = [];
+  decodeAudioData(data: ArrayBuffer) {
+    this.decoded.push(data.byteLength);
+    if (data.byteLength === 0) return Promise.reject(new Error('EncodingError'));
+    return Promise.resolve({
+      duration: data.byteLength / 1000,
+      length: data.byteLength,
+      numberOfChannels: 1,
+    });
+  }
   resume() {
     this.state = 'running';
     return Promise.resolve();
