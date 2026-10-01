@@ -2,4 +2,4 @@
 kind: tuning
 audience: player
 ---
-The roads are busier: about half as many cars again, both ways. A new "Traffic density" slider in the tuning panel turns the whole road up or down at once (0 empties it), next to the old your-way and oncoming sliders.
+A new "Traffic density" slider in the tuning panel turns the whole road up or down at once, both ways (0 empties it, 3 is about three times as busy), next to the old your-way and oncoming sliders. The default road is as busy as before for now: at half as many cars again, the rivals, the cop and the test bot could not cope yet.

@@ -28,6 +28,7 @@ import { addMover, createWorld, orderSystems, stepWorld, type SimSystem, type Wo
 import { buildCorridor, pickLink, toCorridor, trafficMayEnter } from './corridor';
 import { idmAccel } from './idm';
 import {
+  capPerDirection,
   oncomingEase,
   placeVehicle,
   spawnAllowed,
@@ -614,7 +615,7 @@ describe('traffic-1 sim acceptance', () => {
       const config = makeConfig({ tuning });
       const world = raceWorld(config);
       const st = trafficState(world);
-      const most = { plus: 0, minus: 0 };
+      const most = { plus: 0, minus: 0, cap: capPerDirection(world) };
       while (world.tick < 60 * 30) {
         stepWorld(world, config, ALL, [scripted(world.tick)]);
         const live = (dir: number) => st.dir.filter((d, k) => d === dir && st.retired[k] === 0).length;
@@ -624,20 +625,23 @@ describe('traffic-1 sim acceptance', () => {
       return most;
     };
     const none = peak({ 'traffic.density': 0 });
-    // M1's spacing was 120 m a car; W-P's default is 80 m, so 80/120 of the default is M1's road.
-    const m1 = peak({ 'traffic.density': 80 / 120 });
     const normal = peak({});
     const busy = peak({ 'traffic.density': 2 });
+    const packed = peak({ 'traffic.density': 3 });
     console.log(
-      `peak vehicles (your way / oncoming): off ${none.plus}/${none.minus}, M1 spacing ${m1.plus}/${m1.minus}, ` +
-        `default ${normal.plus}/${normal.minus}, x2 ${busy.plus}/${busy.minus}`,
+      `peak vehicles (your way / oncoming, cap): off ${none.plus}/${none.minus}, ` +
+        `default ${normal.plus}/${normal.minus} (${normal.cap}), x2 ${busy.plus}/${busy.minus} (${busy.cap}), ` +
+        `x3 ${packed.plus}/${packed.minus} (${packed.cap})`,
     );
-    expect(none).toEqual({ plus: 0, minus: 0 });
-    expect(normal.plus).toBeGreaterThan(m1.plus);
-    expect(normal.minus).toBeGreaterThan(m1.minus);
+    expect([none.plus, none.minus]).toEqual([0, 0]);
+    // The default is M1's road, cap and all; the slider raises the cap with the density.
+    expect(normal.cap).toBe(TRAFFIC.maxPerDirection);
+    expect(busy.cap).toBe(2 * TRAFFIC.maxPerDirection);
+    expect(packed.cap).toBe(TRAFFIC.maxPerDirectionHard);
     expect(busy.plus).toBeGreaterThan(normal.plus);
     expect(busy.minus).toBeGreaterThan(normal.minus);
-    expect(Math.max(busy.plus, busy.minus)).toBeLessThanOrEqual(TRAFFIC.maxPerDirection);
+    expect(Math.max(normal.plus, normal.minus)).toBeLessThanOrEqual(normal.cap);
+    expect(Math.max(packed.plus, packed.minus)).toBeLessThanOrEqual(TRAFFIC.maxPerDirectionHard);
   }, 120_000);
 
   it('two lanes a direction: rare seeded lane changes, still no overlap in any lane', () => {
