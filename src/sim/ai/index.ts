@@ -58,11 +58,13 @@ export const AI_TUNING: readonly TuningParamDecl[] = [
   },
   {
     // rivals-1: 1 gives each style its quirks (weaver swerves, showboat picks safe fights and so on);
-    // 0 keeps the style's numbers but rides M1's two behaviour sets.
+    // 0 keeps the style's numbers but rides M1's two behaviour sets. Off by default [default] until
+    // the maintainer's playtest: with it off, the base race replays exactly as before rivals-1, so
+    // playtest 1's difficulty and the seeded race tests of the lanes running alongside hold.
     id: 'ai.styleQuirks',
     group: 'rivals',
     label: 'Rival style quirks',
-    default: 1,
+    default: 0,
     min: 0,
     max: 1,
     step: 1,
@@ -189,6 +191,8 @@ const LAUNCH_TICKS = 720;
 const FLEE_AWAY_M = 3;
 const FLEE_NEAR_M = 12;
 const FLEE_PACE = 0.05;
+/** A road weaver swerves only inside its lane while another rider is this close along the road, m. */
+const ROAD_WEAVE_CLEAR_M = 10;
 /** A defending rider counts a rider this far behind it (metres) as closing in on it. */
 const CHASER_BEHIND_M = 8;
 /** How far ahead an unarmed rider looks for its preferred weapon lying on the road, metres. */
@@ -217,7 +221,7 @@ function isAiRider(config: SimConfig, m: Mover): boolean {
 
 function profileOf(world: World, config: SimConfig, m: Mover): AiProfile {
   const c = config.riders[m.riderIndex]?.controller;
-  const quirks = (world.params['ai.styleQuirks'] ?? 1) >= 0.5;
+  const quirks = (world.params['ai.styleQuirks'] ?? 0) >= 0.5;
   return c?.kind === 'ai'
     ? resolveProfile(c.style, c.personality, quirks)
     : resolveProfile('racer', undefined, quirks);
@@ -599,6 +603,11 @@ function driveRider(
       const s = see(road, m, other, SEE_TRAFFIC_M);
       if (s) obstacles.push({ s, size: other.kind === 'vehicle' ? vSize : PED_SIZE });
     }
+  }
+  // A road weaver keeps its swerve inside its lane while other riders are close, so a bunched pack
+  // (the start, a fight) does not turn its swerve into random bumps (rivals-1).
+  if (tr.roadWeave && !finished && riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M)) {
+    dTarget = laneCentre + clamp(swing, -laneHalf, laneHalf);
   }
 
   // Fight: brawlers hunt a target when healthy enough; everyone swings at whoever is in reach.

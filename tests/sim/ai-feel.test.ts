@@ -18,9 +18,9 @@
 //   to them longer, with the grudge. A racer only hunts someone it holds a grudge against; a
 //   heavy-hitter already hunts the player first, so a grudge changes nothing measurable for it.
 //   M4 rivals-1 gave the four regulars their own styles, so "racer-style" now means any style that
-//   does not hunt by itself and does not pick its fights (a weaver, or a plain racer; Dial-Up in
-//   the base race), via `plainHunter` below. A showboat is left out: he will not take on a player
-//   healthier than him, grudge or not.
+//   does not hunt by itself (`plainHunter` below: Dial-Up the weaver and Chad the showboat in the
+//   base race). With `ai.styleQuirks` on, the showboat is left out too: he will not take on a
+//   player healthier than him, grudge or not.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
@@ -38,8 +38,8 @@ const AB_WINDOW_TICKS = 60 * 60;
 const AB_CLOSE_M = 6;
 
 /** A style that hunts only whom it holds a grudge against, and picks no fights by looks (rivals-1). */
-const plainHunter = (style: string): boolean =>
-  !huntsByDefault(style) && !resolveProfile(style, undefined).traits.showboat;
+const plainHunter = (style: string, quirks: boolean): boolean =>
+  !huntsByDefault(style) && !(quirks && resolveProfile(style, undefined).traits.showboat);
 
 /**
  * One A/B run: the base race with the bot, until a racer-style rival first rides within 30 m of the
@@ -48,6 +48,7 @@ const plainHunter = (style: string): boolean =>
  */
 function grudgeRun(seed: number, grudge: boolean) {
   const { config, playerId, route } = createBatchRace(seed);
+  const quirks = (config.tuning['ai.styleQuirks'] ?? 0) >= 0.5;
   const { sim, world } = createSimWithWorld(config);
   const bot = createBot();
   let snap = sim.snapshot();
@@ -60,7 +61,8 @@ function grudgeRun(seed: number, grudge: boolean) {
     if (t0 < 0 && sim.tick >= 60 * 20 && me?.mode === 'Road') {
       for (const e of snap.entities) {
         const c = config.riders[e.id]?.controller;
-        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || !plainHunter(c.style)) continue;
+        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || !plainHunter(c.style, quirks))
+          continue;
         if (Math.abs(e.progress - me.progress) > 30) continue;
         holder = e.id;
         t0 = sim.tick;

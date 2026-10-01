@@ -20,7 +20,7 @@
     "riskTaking": 0.5,
     "chatter": 0.9,
     "weave": 0.2,
-    "targetPreference": ["player", "rival", "nearest"],
+    "targetPreference": ["leader", "player", "rival", "nearest"],
     "preferredSide": "either",
     "rivals": ["dial-up", "deacon-vane"],
     "preferredWeapon": "selfie-stick"
@@ -43,7 +43,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Regular. M4 rivals-1 (built early): a showboat. He fights only when it will look good: never the race leader (he sides with whoever is winning, which makes him the natural gang-up partner), and never anyone healthier than him. Rivalries: Dial-Up and Deacon Vane. Prefers a selfie stick (a weapons-2 idea; nothing yet). Tied to the streaming outfit. Approved line: \"Smash that subscri— oh. You're smashed.\"",
+    "notes": "Regular. M4 rivals-1 (built early): a showboat. He fights only when it will look good: never the race leader (he sides with whoever is winning, which makes him the natural gang-up partner), and never anyone healthier than him. With the style quirks off he keeps M1's habit of swinging at the leader first. Rivalries: Dial-Up and Deacon Vane. Prefers a selfie stick (a weapons-2 idea; nothing yet). Tied to the streaming outfit. Approved line: \"Smash that subscri— oh. You're smashed.\"",
     "provenance": {
       "origin": "agent",
       "author": "agent",
