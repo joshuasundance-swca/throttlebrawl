@@ -16,6 +16,22 @@ export interface RendererStats {
   pixelRatio: number;
   width: number;
   height: number;
+  /**
+   * The set pieces (boost pads, ramp trucks) the road scene draws for the current race seed: each
+   * feature's id, kind, seeded slot (null when it is always there) and world position. Playtest 1c
+   * item 2: a seed picks one candidate per slot, and only the picked one is drawn. Optional, so a
+   * renderer that draws none may leave it out.
+   */
+  setPieces?: readonly DrawnSetPiece[];
+}
+
+/** One drawn set piece (RendererStats.setPieces). */
+export interface DrawnSetPiece {
+  id: string;
+  kind: string;
+  slot: string | null;
+  x: number;
+  z: number;
 }
 
 export type OnCopyReport = () => Promise<void>;

@@ -397,6 +397,8 @@ const FEATURE_CLEAR_M = 3;
 export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
+/** On the inside of a turn, land and its shelf reach at most this share of the turn's radius. */
+const LAND_FOLD = 0.85;
 /** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
 export const SCENERY_CHUNK_M = 256;
 
@@ -782,6 +784,15 @@ export function buildRoadScene(
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    /** The sharpest turn toward a side within SCENERY_LAND_M of s (kappa > 0 turns right, +d). */
+    const insideKappa = (side: -1 | 1, s: number): number => {
+      let k = 0;
+      for (let u = s - SCENERY_LAND_M; u <= s + SCENERY_LAND_M; u += STEP_M) {
+        if (u < 0 || u > e.length) continue;
+        k = Math.max(k, side * road.kappaAt(e.index, u));
+      }
+      return k;
+    };
     for (const side of [-1, 1] as const) {
       const outer = outerOf(side);
       const reach = reachOf[side];
@@ -794,7 +805,13 @@ export function buildRoadScene(
           !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
         let r = 0;
         if (land) {
+          // On the inside of a tight turn a wide strip would fold over the turn's centre, and its
+          // folded triangles face down, so the sea shows through (playtest 1c skeptic, SF's
+          // switchbacks). The strip and its shelf stay inside LAND_FOLD of the turn's radius.
+          const k = insideKappa(side, s);
+          const room = k > 0 ? LAND_FOLD / k - outer - SCENERY_SHELF_M : Infinity;
           for (const width of [SCENERY_LAND_M, 14, 6]) {
+            if (width > room) continue;
             const d = outer + width + SCENERY_SHELF_M;
             if (!otherRoadAt(s, side * d, 1) && !otherRoadAt(s, side * (outer + width / 2), 1)) {
               r = width;
@@ -844,7 +861,13 @@ export function buildRoadScene(
         tropical,
         outer: outerOf,
         theme,
-        landReach: (side, s) => reachOf[side][Math.round(s / step)] ?? 0,
+        // The land between two samples is a strip quad: only as wide as its narrower end, and none
+        // where either end has none (the strip breaks there).
+        landReach: (side, s) => {
+          const i = Math.max(0, Math.min(ss.length - 1, Math.floor(s / step)));
+          const j = Math.min(ss.length - 1, i + 1);
+          return Math.min(reachOf[side][i] ?? 0, reachOf[side][j] ?? 0);
+        },
         clear: (s, d, radius) =>
           !(dress.features ?? []).some(
             (f) =>

@@ -236,8 +236,16 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         const [near, spread] = ACROSS_M[kind];
         const across = near + spread * h(ki, k, side, 2);
         const radius = SCENERY_RADIUS_M[kind];
-        // On the drawn land, with room for the model, and clear of everything else.
-        if (across + radius > e.landReach(side, s)) continue;
+        // On the drawn land, with room for the model across and along (the land ends where a tag
+        // or a rail does, and at the road's ends, where the next road's land may not meet it), and
+        // clear of everything else.
+        if (s - radius < 0 || s + radius > e.length) continue;
+        const reach = Math.min(
+          e.landReach(side, s),
+          e.landReach(side, s - radius),
+          e.landReach(side, s + radius),
+        );
+        if (across + radius > reach) continue;
         const d = side * (outer + across);
         if (!e.clear(s, d, radius)) continue;
         // Shacks face the road; poles carry their wires along it; the rest turn at random.
