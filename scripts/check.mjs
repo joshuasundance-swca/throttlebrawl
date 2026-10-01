@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static, unit, sim, browser and perf as
-//                                    parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static, unit, sim and browser as parallel jobs)
 //   npm run check -- --tier sim --shard 1/2
-//                                    one slice of a tier: the sim batch (Vitest's --shard) or the
-//                                    browser tests (Playwright's --shard). Every test file lands in
-//                                    exactly one slice; CI runs the slices as parallel jobs. A step
-//                                    marked everySlice (the build) runs whole in every slice.
+//                                    one slice of the sim batch (Vitest's --shard: every test file
+//                                    lands in exactly one slice; CI runs the slices as parallel jobs)
 //
 // Every step must print what it examined, and an active step that examined nothing fails: a
 // check that looked at nothing reads exactly like a pass. A step whose subject does not exist
@@ -104,12 +101,9 @@ const STEPS = [
       hasFiles('tests/sim/', /\.test\.ts$/) ||
       'no seeded-race batch yet (dev-1 adds tests/sim/batch.ts and its tests)',
   },
-  // The build belongs to both browser tiers: CI runs e2e slices and perf as separate jobs, and
-  // each job tests its own build. A plain `npm run check` still builds once.
-  { tier: ['browser', 'perf'], name: 'build', script: 'build', count: fromDist, everySlice: true },
-  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: true },
-  // perf never shards: its probes time frames one at a time on an otherwise idle runner.
-  { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined },
+  { tier: 'browser', name: 'build', script: 'build', count: fromDist },
+  { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright },
+  { tier: 'browser', name: 'perf', script: 'perf', count: fromExamined },
 ];
 
 function run(script, args = []) {
@@ -129,15 +123,14 @@ function run(script, args = []) {
 
 const tierArg = process.argv.indexOf('--tier');
 const tier = tierArg > -1 ? process.argv[tierArg + 1] : null;
-const steps = STEPS.filter((s) => !tier || [s.tier].flat().includes(tier));
+const steps = STEPS.filter((s) => !tier || s.tier === tier);
 if (steps.length === 0) {
-  console.error(`check: unknown tier ${tier} (static, unit, sim, browser, perf)`);
+  console.error(`check: unknown tier ${tier} (static, unit, sim, browser)`);
   process.exit(1);
 }
-// --shard i/n runs one slice of the shardable steps, through the test runner's own --shard
-// (Vitest, Playwright), which puts each test file in exactly one slice. Every other step in the
-// tier must be marked everySlice (it runs whole in each slice), so a slice can never quietly drop
-// a step.
+// --shard i/n runs one slice of the shardable steps, through Vitest's own --shard, which puts each
+// test file in exactly one slice. It needs one tier whose steps all shard, so a slice can never
+// quietly drop a step that does not.
 const shardArg = process.argv.indexOf('--shard');
 const shard = shardArg > -1 ? (process.argv[shardArg + 1] ?? '') : null;
 if (shard !== null) {
@@ -146,8 +139,8 @@ if (shard !== null) {
     console.error(`check: --shard wants i/n with 1 <= i <= n, got "${shard}"`);
     process.exit(1);
   }
-  if (!tier || !steps.some((s) => s.shardable) || steps.some((s) => !s.shardable && !s.everySlice)) {
-    console.error('check: --shard needs a --tier whose steps all shard (sim, browser)');
+  if (!tier || steps.some((s) => !s.shardable)) {
+    console.error('check: --shard needs a --tier whose steps all shard (sim)');
     process.exit(1);
   }
 }
