@@ -88,6 +88,11 @@ describe('playtest 1c: a punchy launch', () => {
     expect(launch(riddenBy(starterConfig(), 'cop'), [30, 60])).toEqual(old);
   });
 
+  it('cops.launchShare (a non-default 1) gives the cop the racers’ punch: he launches like a rival', () => {
+    const shared = starterConfig({ tuning: { 'cops.launchShare': 1 } });
+    expect(launch(riddenBy(shared, 'cop'), [30, 60])).toEqual(launch(riddenBy(shared, 'rival'), [30, 60]));
+  });
+
   // The integration skeptic (playtest 1c): the punch used to come in only past 90 % throttle, and the
   // phone's default touch stick is scaled (throttle = the thumb's travel over 60 px), so a thumb
   // held at 85 % still took 7.9 s to 60 mph. The punch now scales smoothly with the throttle.
@@ -124,7 +129,7 @@ describe('playtest 1c: a punchy launch', () => {
 
   it('an AI rival at a partial throttle (0.8) rides exactly as before, so its speed holds are unchanged', () => {
     // The AI holds a speed with a partial feed-forward throttle; its punch still comes in only past
-    // 90 % throttle (AI_LAUNCH_THROTTLE). The cop has no punch at all (above).
+    // 90 % throttle (AI_LAUNCH_THROTTLE). The cop gets cops.launchShare of it, 0 by default (above).
     const old = launch(riddenBy(starterConfig({ tuning: OLD }), 'rival'), [20, 40, 60], 0.8);
     expect(launch(riddenBy(starterConfig(), 'rival'), [20, 40, 60], 0.8)).toEqual(old);
   });

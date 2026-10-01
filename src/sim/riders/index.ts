@@ -548,7 +548,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // For a player it multiplies the throttle's push at any throttle, so it scales smoothly with the
   // thumb; an AI rider gets it only as its throttle opens past AI_LAUNCH_THROTTLE, so the AI's speed
   // holds are unchanged; at full throttle the two are identical. It is the racers' (the player's and
-  // the rivals'): the cop rides as before (playtest 1 item 7 keeps cop difficulty).
+  // the rivals'); the cop gets `cops.launchShare` of it, 0 by default, so he rides as before
+  // (playtest 1 item 7 keeps cop difficulty). His follow keeps a stopping distance (sim/cops), so
+  // with the slider up a player who brakes hard no longer has him sail past.
   const v = m.speed;
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
@@ -560,7 +562,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     def.controller.kind === 'player'
       ? 1
       : clamp((throttle - AI_LAUNCH_THROTTLE) / (1 - AI_LAUNCH_THROTTLE), 0, 1);
-  const launch = def.faction === 'law' ? 1 : 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open;
+  const share = def.faction === 'law' ? (world.params['cops.launchShare'] ?? 0) : 1;
+  const launch = 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open * share;
   let accel = throttle * a * launch - (a * v * v) / (top * top);
   accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
   if (boostLeft > 0) {
