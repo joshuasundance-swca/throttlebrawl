@@ -74,7 +74,16 @@ import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
-export { buildSimConfig, DEFAULT_EVENT, eventKey, qualifyIn, streamForEvent, streamForRoute } from './config';
+export {
+  buildSimConfig,
+  DEFAULT_EVENT,
+  eventKey,
+  qualifyIn,
+  raceRouteKey,
+  realRoutes,
+  streamForEvent,
+  streamForRoute,
+} from './config';
 export {
   boardCatalog,
   createStreamCache,
@@ -82,9 +91,10 @@ export {
   raceRadio,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
 } from './regions';
-export type { RaceRadio, RegionChoice, StreamCache } from './regions';
+export type { RaceRadio, RegionChoice, RouteChoice, StreamCache } from './regions';
 export { resumeFromRecording, roadsForHeader } from './resume';
 export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
@@ -158,7 +168,11 @@ export interface AppPresentation {
   /** The look render draws now (`classic`, `kodak`, ...). */
   look: string;
   /** The gains audio's buses aim for (0..1 after the taper): the voices bus is 0 while voices are off. */
-  audio: { busTargets: { master: number; music: number; effects: number; voices: number } };
+  audio: {
+    busTargets: { master: number; music: number; effects: number; voices: number };
+    /** Whether audio speaks barks at all (the Voices on switch, through `setVoices`). */
+    voicesOn: boolean;
+  };
 }
 
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
@@ -323,6 +337,10 @@ export function createApp(opts: AppOptions): AppHandle {
   const audio = createAudio();
   // The voices off switch (run W-O) silences the voices bus; the Voices slider keeps its level.
   audio.setVolumes(audioVolumes(settings), settings.mute);
+  // The switch also reaches the spoken barks themselves (audio's setVoices), so with voices off no
+  // clip plays and the music never dips for one. The level stays the voices bus (the Voices slider):
+  // passing the volume here too would apply it twice.
+  audio.setVoices({ on: settings.voicesOn });
   // The radio (M4 radio-1 head start): this device's cut tracks never play, and each race's region
   // picks its stations (the base pack's while a region has none of its own).
   const radioCut = (s: typeof settings) => s.vetoes.map((v) => v.contentRef);
@@ -461,6 +479,7 @@ export function createApp(opts: AppOptions): AppHandle {
         settings = next;
         settingsStore.save(next);
         audio.setVolumes(audioVolumes(next), next.mute);
+        audio.setVoices({ on: next.voicesOn });
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
@@ -753,7 +772,7 @@ export function createApp(opts: AppOptions): AppHandle {
         display: { frameDivisor: frameDivisor() },
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
         look: renderer.look,
-        audio: { busTargets: mix.busTargets },
+        audio: { busTargets: mix.busTargets, voicesOn: mix.voice.on },
       };
     },
   };

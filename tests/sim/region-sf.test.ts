@@ -125,8 +125,10 @@ describe('region-sf: the San Francisco race', () => {
     for (const { seed, res } of runs) {
       expect(res.problem, `seed ${seed}`).toBeNull();
       expect(res.offRoute, `seed ${seed}`).toBe(0);
-      // Three crest lips on the main path (two blocks and the fog climb), whichever way it goes.
-      expect(res.jumps.length, `seed ${seed}`).toBeGreaterThanOrEqual(3);
+      // Three crest lips on the main path (two blocks and the fog climb), whichever way it goes. A
+      // run the cop ends early may stop short of them (seed 3 once the cop waits in the pier lot,
+      // W-O polish run: busted on the cable-car grade after 2 jumps), so this counts finishers.
+      if (res.finishTick > 0) expect(res.jumps.length, `seed ${seed}`).toBeGreaterThanOrEqual(3);
       // The AI field can race the course: the rivals cross the line.
       expect(res.rivalsFinished, `seed ${seed}`).toBeGreaterThanOrEqual(3);
       // A race the bot does not finish ends the way a race may end: the cop busted it after a crash
