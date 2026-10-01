@@ -334,6 +334,14 @@ ${RADIO_PANEL_CSS}
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
+/* The bark bubble on a narrow screen (run W-O; ui-popups-1c report): ui/narrative centres it with
+   left: 50%, which caps its shrink-to-fit width at half the screen, so on a 412 px portrait screen a
+   42-character line wrapped to 3 lines in a 206 px box. Sized to its line here instead, up to the
+   screen less a margin, every pack line fits in 2 lines. Set from ui's own sheet so narrative's file
+   stays untouched. [default] */
+@media (max-width: 600px) {
+  #ui #bark-bubble { width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; }
+}
 #build-stamp.in-race { display: none; }
 `;
 
@@ -1266,6 +1274,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   };
   narrative.mountRecentlySeen(pauseCards);
 
+  // The R key retunes the radio inside audio/ (its own window listener, registered before this
+  // one): the saved choice follows at once, not only when pause or settings opens (polish-1
+  // follow-up). Checked after every key, since ui does not own the binding; a no-op unless the
+  // radio's kind (score, station, off) changed.
+  window.addEventListener('keydown', () => {
+    if (radioSource) queueMicrotask(() => syncLive());
+  });
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Escape' || e.repeat) return;
     if (current === 'race') {
