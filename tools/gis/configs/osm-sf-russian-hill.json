@@ -1,0 +1,108 @@
+{
+  "id": "osm-sf-russian-hill",
+  "name": "Russian Hill and Nob Hill streets (OSM bake, staging)",
+  "region": "san-francisco",
+  "crs": {
+    "originLatDeg": 37.7749,
+    "originLonDeg": -122.4194
+  },
+  "osmExtract": ".cache/osm/sf-russian-hill.json",
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+  "elevationExtract": ".cache/usgs/osm-sf-russian-hill.json",
+  "outRoot": "tools/gis/staging/san-francisco",
+  "pathFrom": {
+    "lat": 37.8066664,
+    "lon": -122.4205641
+  },
+  "via": [
+    {
+      "lat": 37.791,
+      "lon": -122.4174109
+    },
+    {
+      "lat": 37.7926558,
+      "lon": -122.4044255
+    },
+    {
+      "lat": 37.796894,
+      "lon": -122.4052824
+    },
+    {
+      "lat": 37.8003261,
+      "lon": -122.4101505
+    },
+    {
+      "lat": 37.7994127,
+      "lon": -122.4174216
+    }
+  ],
+  "pathTo": {
+    "lat": 37.8059219,
+    "lon": -122.4187348
+  },
+  "start": {
+    "lat": 37.8066664,
+    "lon": -122.4205641
+  },
+  "end": {
+    "lat": 37.8059219,
+    "lon": -122.4187348
+  },
+  "routeTags": {
+    "name": "^((Hyde|California|Kearny|Union|Leavenworth) Street|Columbus Avenue)$"
+  },
+  "respectOneway": false,
+  "splitOnNameChange": true,
+  "realNameFromOsm": true,
+  "smoothing": {
+    "headingSigmaM": 10
+  },
+  "compression": {
+    "enabled": false
+  },
+  "elevation": {
+    "sampleEveryM": 10,
+    "lowPassSigmaM": 12,
+    "bridgeDeck": "span",
+    "humpHeightM": 0
+  },
+  "roads": [
+    {
+      "id": "osm-sf-hyde",
+      "name": "Hyde",
+      "tags": ["town"]
+    },
+    {
+      "id": "osm-sf-california",
+      "name": "California",
+      "tags": ["town"]
+    },
+    {
+      "id": "osm-sf-kearny",
+      "name": "Kearny",
+      "tags": ["town"]
+    },
+    {
+      "id": "osm-sf-columbus",
+      "name": "Columbus",
+      "tags": ["town"]
+    },
+    {
+      "id": "osm-sf-union",
+      "name": "Union",
+      "tags": ["town"]
+    },
+    {
+      "id": "osm-sf-leavenworth",
+      "name": "Leavenworth",
+      "tags": ["town"]
+    }
+  ],
+  "route": {
+    "id": "osm-sf-hills-run",
+    "name": "Hills Run"
+  },
+  "realName": "San Francisco streets",
+  "waysLabel": "San Francisco street",
+  "networkNotes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first."
+}

@@ -1,0 +1,75 @@
+{
+  "id": "osm-pnw-chuckanut",
+  "name": "Chuckanut Drive (OSM bake, staging)",
+  "region": "pacific-northwest",
+  "crs": {
+    "originLatDeg": 48.66,
+    "originLonDeg": -122.47
+  },
+  "osmExtract": ".cache/osm/pnw-chuckanut.json",
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](48.600,-122.520,48.720,-122.440);\nout tags geom;",
+  "elevationExtract": ".cache/usgs/osm-pnw-chuckanut.json",
+  "outRoot": "tools/gis/staging/pacific-northwest",
+  "pathFrom": {
+    "lat": 48.6962426,
+    "lon": -122.4963069
+  },
+  "pathTo": {
+    "lat": 48.6177623,
+    "lon": -122.4396695
+  },
+  "start": {
+    "lat": 48.664087,
+    "lon": -122.490651
+  },
+  "splitAt": [
+    {
+      "lat": 48.644118,
+      "lon": -122.483145
+    },
+    {
+      "lat": 48.626465,
+      "lon": -122.46268
+    }
+  ],
+  "end": {
+    "lat": 48.6177623,
+    "lon": -122.4396695
+  },
+  "routeTags": {
+    "name": "^Chuckanut Drive$"
+  },
+  "smoothing": {
+    "headingSigmaM": 15
+  },
+  "compression": {
+    "enabled": false
+  },
+  "elevation": {
+    "sampleEveryM": 10,
+    "lowPassSigmaM": 20,
+    "bridgeDeck": "span",
+    "humpHeightM": 0
+  },
+  "roads": [
+    {
+      "id": "osm-chuckanut-larrabee",
+      "name": "Larrabee Bends"
+    },
+    {
+      "id": "osm-chuckanut-cliffs",
+      "name": "Samish Cliffs"
+    },
+    {
+      "id": "osm-chuckanut-oyster-creek",
+      "name": "Oyster Creek Hairpins"
+    }
+  ],
+  "route": {
+    "id": "osm-chuckanut-run",
+    "name": "Chuckanut Run"
+  },
+  "realName": "Chuckanut Drive",
+  "waysLabel": "Chuckanut Drive (SR 11)",
+  "networkNotes": "Staging bake for the Pacific Northwest region (head-start run). Not in the pack yet: its region pack lands first."
+}
