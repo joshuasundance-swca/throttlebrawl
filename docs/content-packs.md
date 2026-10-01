@@ -918,6 +918,7 @@ What a road carries:
   - For scale, the research measured 27.66 km of real highway at 5 m spacing as 5,532 points and about 86 KiB for four float32 columns. At the 2 m default the same road is 13,831 points: about 216 KiB for four float32 columns, or about 324 KiB for the six columns above (computed).
 - **Lanes** in `laneSections`, each starting at `s0` and running until the next section starts. That handles a road that widens or gains a shoulder. Each lane is `{ id, dCenterM, widthM, direction, kind }` exactly as the architecture doc's `{dCenter, width, direction, kind}`: `dCenterM` is the lane centre's `d`, `direction` is `1` (with increasing `s`) or `-1` (oncoming, moving toward decreasing `s`, which is the decided oncoming lane `[decided]`), and `kind` is `drive`, `shoulder` or `shortcut`. There is no separate reference line: `dCenterM` already says where `d = 0` sits.
 - **Scenery tags** over `s` ranges, per side. The v1 vocabulary is a closed list in the schema, so the renderer can rely on it, and adding a tag is a minor schema change: `water-open`, `water-shallow`, `mangrove`, `beach`, `bridge`, `causeway`, `palms`, `marina`, `strip-mall`, `trailer-park`, `swamp`, `town`, `landmark`.
+  - How the renderer reads them `[default]` (playtest 1c, 2026-09-30: scenery stands "on land or verge only; never on bridges, the road or water"): on each side, a `water-*` tag means sea, where boats float offshore; `bridge` or `causeway` alone means no land; any other tag is land, drawn as a strip beside the road (24 m, then a shelf into the sea), with scenery by theme: palms (`palms`, sparser on `beach`), mangrove clumps (`mangrove`, `swamp`), bait shacks and palms (`marina`, `strip-mall`, `trailer-park`, `town`, `landmark`), and power poles along one side of any land. Palms and mangroves grow only on networks with a tropical tag (`palms`, `beach`, `mangrove`, `swamp`), so the Pacific Northwest and San Francisco packs' own tags (`forest`, `row-houses` and the rest) get land and poles but no palms. A road with no tags at all counts as palm land. The scatter derives from the race's seed (playtest 1c item 2), so each race's scenery differs and a fixed seed repeats it. Presentation only: nothing here reaches the sim.
 - **Features** are ranges in road space, and the vocabulary is exactly the architecture doc's list: `ramp`, `gap`, `hazard`, `roadsideZone` (pedestrian and animal spawns, landmark set dressing), `copSpawn`, `raceMarker` (event start points and, later, world race markers) and `billboard`. A `billboard` feature is a slot (used for signs too): its `item` names one specific billboard or sign id in the region file, or a `pool` (`billboards` or `signs`) lets the game fill the slot from that list. Either way the shown item has a stable content reference, so the in-game veto can name it ([architecture](./architecture.md#in-game-veto-cut-this)). Jumps and ramps are in v1 `[decided]`, including one ramp shortcut. A `ramp` is **baked into the elevation samples by the compiler** (a lip in the profile, from which the sim detects takeoff, as the architecture doc says); the feature record only marks its range, for AI, audio and the lint below. There are no launch-angle or landing fields, so there is one ramp model, not two. The shortcut itself is a separate short road with a `shortcut` lane, entered through a connector with a `splitZone` and rejoining through another junction.
 - **Boost pads and the ramp truck** `[decided]` (playtest 1b quick wins, 2026-09-30), with the field shapes `[default]`:
   - A `boostPad` is a box in road space. A grounded rider who rides into it gets a short speed boost and one `boost` event. `params.boostMps` is the speed added (default 8) and `params.holdS` how long the boost lasts (default 1.5 s). The snapshot shows the seconds left as a rider's `boostS`.
@@ -1309,8 +1310,55 @@ Tag: `[decided]` for data files plus content packs now; `[default]` that base is
 
 - Every piece of content, including punch and kick, the M1 test road and the default tuning, lives in `packs/base`. Game code holds only engines, closed vocabularies (enums such as `element`, `trigger`, fact names and effect kinds) and registries (tuning parameters, style presets, synth patches, procedural presets).
 - **Load order:** `base` first, then other packs in dependency order, with ties broken by id. A pack may **add** entries freely. Changing an entry from another pack is a *patch* (next section), shelved for v1.
-- **Chapters as packs.** Region 2 and later can ship as `region-<name>` packs that depend on `base`. The traveling-circuit lore of "chapters = content drops" `[decided]` then maps directly onto packs. Region 2 is chosen after v1 `[decided]`. Whether later regions stay inside `base` or become separate packs can wait until then `[default]`. The format supports both.
+- **Chapters as packs.** Region 2 and later ship as `region-<name>` packs that depend on `base`. The traveling-circuit lore of "chapters = content drops" `[decided]` maps directly onto packs. Regions are no longer "after v1": the maintainer moved them forward ("I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works"), the Pacific Northwest and San Francisco first ("Pnw and sf first then others"), crude first and reusing everything `[decided]` (playtest 1c, 2026-09-30). They are separate packs, `region-pnw` and `region-sf` `[default]`; the next section is how the game loads them.
 - **Build:** the base pack is bundled into the Vite build at the start `[decided]`, via the generated index `[default]`. Streaming it, or any other pack, from the HF dataset repo later is a change to `assetSources` and the loader, not to the content files.
+
+## Region packs at runtime
+
+Tag: `[decided]` that new regions ship now as content packs (playtest 1c, 2026-09-30, above); `[default]` for everything below. The loader is `src/content/packs.ts`; app/ turns a region pick into a race (`src/app/regions.ts`).
+
+**What the build carries.** Every folder under `packs/` is a pack the build carries.
+
+- `base` is bundled whole into the JavaScript, as before.
+- Another pack's entry files (its manifest, `region.json`, events, riders, crews, bark sets, traffic types) are bundled into the JavaScript too, so the menu can list its region at once. They are small: about 5 KB gzip per region pack today.
+- Its **baked road data** (the `regions/<region>/networks/`, `roads/` and `routes/` files) is not. It ships beside the build as plain JSON files, and the game fetches it the first time a race in that region starts. Road data is most of a region pack's bytes (about 60 KB gzip for the Pacific Northwest, 41 KB for San Francisco), and the JavaScript budget is 500 KB gzip ([engineering](./engineering.md)), so the budget does not grow with every road. A failed fetch can be retried; the race does not start without its road.
+
+**Combining packs.** Each pack is parsed and validated on its own (`parsePack`), then the packs combine into one registry keyed by qualified id: `base` first, then dependency order, ties by id. A pack whose dependency is not carried, or a pack carried twice, is refused. The semver ranges in `dependencies` are advisory at runtime; the version check belongs to `packs:check`.
+
+**References resolve from the pack that holds them**, exactly as the linter resolves them ([IDs and references](#ids-and-references)): a bare id names an entry of the same pack, a qualified id names that pack. That covers an event's `region`, `field.riders` and length `route`s; a rider's `bike` and `law.agency`; a route's `network`; a network's `roads`; and a region's traffic `kind`s. Every content id the race's `SimConfig` carries is qualified by the pack that defines it (`region-pnw:old-growth`, `base:rustbucket-400`, `region-sf:cable-car`).
+
+**A race's packs** are its event's pack and that pack's dependencies. Only their content reaches the race: the traffic types and weapons in `SimConfig`, the cop pool, and the sim content hash in the replay key. So carrying more region packs never changes a Keys race, its replay or its replay key.
+
+**The menu's region picker** offers one option per region that has at least one loaded event whose `region` names it.
+
+| Picker field | From |
+|---|---|
+| id | The region's qualified id, `base:florida-keys` |
+| name | The region's `name` |
+| blurb | The region's `blurb` |
+| order | The region's `chapter`, then id |
+| event | The first such event by qualified id (one per region today); its `standard` length, else its first |
+
+**The field and the law.** Rivals are the event's `field.riders`. Cops for `every-race` come from the race's packs: riders with `role: "cop"`, a `law` block, and a `region` that resolves to the event's region (a cop without a `region` rides everywhere), sorted by qualified id.
+
+**Traffic.** The region's `traffic.mix`, `pedestrians` and `animals` weigh the traffic types. Every other type in the race's packs gets weight 0, so it never spawns.
+
+**Signs and billboards.** app/ builds the renderer's board catalog from the event region's `signs` and `billboards`, leaving out vetoed items (by `status`, or cut on this device). Each item's reference is `<packId>:region/<regionId>#<itemId>` ([In-game veto](#in-game-veto-cut-this)). A road's `billboard` slot names an item of its own region (`item`), or the `signs` or `billboards` pool.
+
+**Palette.** The race's palette is the region's `palette`, overridden key by key by the `palette` of the event's `timeOfDay` option. app/ hands it to the renderer with the time of day (`env.palette`). The keys that name a render material kind are colours for that material: `sky`, `water`, `road`, `shoulder`, `land`, `rail`, `deck`, `markingCenter` and the rest of the list in `src/render/look.ts`. Other keys (`fog`, `accent`, `foliage`, `trunk`, `rowHousePink`) are hints for scenery that does not exist yet. The renderer ignores keys it does not know. Until the render lane reads `env.palette`, every region draws in the look's own palette.
+
+**Rival lines.** Bark sets, like riders, come from the race's packs, so a local rival speaks their own pack's lines. The narrative (ui/) still reads base's bark sets only; reading the combined registry is a ui follow-up.
+
+**Replays and resume.** A recording's header names the qualified event and route, so a replay or a resume rebuilds the road from that region's road data (app/ fetches it first when needed).
+
+**What a region pack needs to be playable**, beyond the [M1 minimum](#what-m1-needs):
+
+- `pack.json` with `dependencies: { "base": ... }`;
+- a `region.json` with `name`, `blurb`, `chapter`, `networks`, `timeOfDayOptions` and `traffic`;
+- a baked network, its roads and at least one route;
+- one live `event` whose `region` is the region, with its lengths, `field` and `cops`.
+
+Local rivals, a local cop with a law crew, bark sets and region traffic types are optional. Without them the race reuses base's riders and traffic by qualified id.
 
 ## Later: loading packs from outside (mods)
 

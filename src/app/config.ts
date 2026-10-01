@@ -4,7 +4,15 @@
 // difficulty preset (from its `difficulty.<preset>.*` tuning values), the per-slot assists, the
 // speed multiplier, the slow-motion toggle and the race length. Settings that feed SimConfig apply
 // at the next race start or restart: a mid-race change would break the replay.
-import { lookup, type ContentRegistry, type RaceEvent, type Rider } from '../content';
+import {
+  lookup,
+  packClosure,
+  packOf,
+  packSubset,
+  type ContentRegistry,
+  type RaceEvent,
+  type Rider,
+} from '../content';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTY_SCALES,
@@ -28,6 +36,17 @@ import {
 import { activateRegion, type RegionStream } from '../stream';
 
 export const DEFAULT_EVENT = 'm1-skeleton-sprint';
+
+/**
+ * A reference qualified by the pack that holds it: a bare id names an entry of that same pack
+ * (docs/content-packs.md, "IDs and references"; "Region packs at runtime").
+ */
+export function qualifyIn(packId: string, ref: string): string {
+  return ref.includes(':') ? ref : `${packId}:${ref}`;
+}
+
+/** An event id as the registry keys it: bare ids are base's (`m1-skeleton-sprint`). */
+export const eventKey = (eventId: string): string => qualifyIn('base', eventId);
 export const PLAYER_PRESET = 'player';
 /** Race-end timeout after the player finishes (M1 starting numbers: 30 s). */
 export const RACE_END_TIMEOUT_S = 30;
@@ -42,7 +61,10 @@ export interface RaceSetup {
   tuning?: Readonly<Record<string, number>>;
   /** Easy, Normal or Hard (default Normal). */
   difficulty?: DifficultyPreset;
-  /** The event length id (`short`, `standard`, `long`); default, or one the event lacks: its first. */
+  /**
+   * The event length id (`short`, `standard`, `long`). Left out, or one the event lacks: its
+   * `standard` length, else its first.
+   */
   length?: string;
   /** Assists per human slot, index = slot; a missing slot gets none. */
   assists?: readonly SimAssists[];
@@ -52,6 +74,8 @@ export interface RaceSetup {
   slowMo?: boolean;
 }
 
+/** The length a race runs when none is chosen (docs/content-packs.md, "Event"). */
+const STANDARD_LENGTH = 'standard';
 const NO_ASSISTS: SimAssists = { steer: 'off', autoThrottle: false };
 const DIFFICULTY_PREFIX = 'difficulty.';
 
@@ -67,9 +91,15 @@ function styleRewards(rewards: RaceEvent['rewards']): SimStyleRewards {
   };
 }
 
-/** The event length a race uses: the chosen one, or the event's first when it lacks that id. */
+/**
+ * The event length a race uses: the chosen one; else its `standard` (a region's main race, such as
+ * the Pacific Northwest's 2 to 3 minute run, not its short sprint); else its first. [default]
+ */
 export function eventLength(event: RaceEvent, lengthId?: string): RaceEvent['lengths'][number] {
-  const length = event.lengths.find((l) => l.id === lengthId) ?? event.lengths[0];
+  const length =
+    event.lengths.find((l) => l.id === lengthId) ??
+    event.lengths.find((l) => l.id === STANDARD_LENGTH) ??
+    event.lengths[0];
   if (!length) throw new Error(`event ${event.id} has no length`);
   return length;
 }
@@ -115,11 +145,25 @@ export function streamForEvent(
   eventId = DEFAULT_EVENT,
   lengthId?: string,
 ): RegionStream {
-  const event = lookup(reg.events, eventId);
-  const length = eventLength(event, lengthId);
-  const route = lookup(reg.routes, length.route);
-  const network = lookup(reg.networks, route.network);
-  return activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
+  const key = eventKey(eventId);
+  const length = eventLength(lookup(reg.events, key), lengthId);
+  return streamForRoute(reg, qualifyIn(packOf(key), length.route));
+}
+
+/** The network a route runs on, as its registry key. */
+export function networkKeyOf(reg: ContentRegistry, routeKey: string): string {
+  return qualifyIn(packOf(routeKey), lookup(reg.routes, routeKey).network);
+}
+
+/** Activates the region stream for a route's network (by the route's qualified id). */
+export function streamForRoute(reg: ContentRegistry, routeKey: string): RegionStream {
+  const networkKey = networkKeyOf(reg, routeKey);
+  const network = lookup(reg.networks, networkKey);
+  const pack = packOf(networkKey);
+  return activateRegion({
+    network,
+    roads: network.roads.map((id) => lookup(reg.roads, qualifyIn(pack, id))),
+  });
 }
 
 const PERSONALITY_NUMBERS = ['aggression', 'dirtiness', 'courage', 'riskTaking', 'chatter', 'weave'] as const;
@@ -148,8 +192,11 @@ function riderDef(
   controller: SimRiderDef['controller'],
   paceMps: number,
 ): SimRiderDef {
+  // `id` is qualified; the rider's own references resolve from the rider's pack.
+  const pack = packOf(id);
   const rider = lookup(reg.riders, id);
-  const bike = lookup(reg.bikes, rider.bike);
+  const bikeKey = qualifyIn(pack, rider.bike);
+  const bike = lookup(reg.bikes, bikeKey);
   const h = bike.handling;
   // Rival pace comes from the event, not the bike: a rival's bike is raised to at least the pace.
   const floor = controller.kind === 'ai' ? paceMps : 0;
@@ -158,7 +205,7 @@ function riderDef(
   const law = controller.kind === 'cop' ? rider.law : undefined;
   const speedScale = law?.pursuitSpeedScale ?? 1;
   return {
-    contentId: `base:${rider.id}`,
+    contentId: id,
     name: rider.name ?? rider.id,
     role:
       rider.role === 'player-preset'
@@ -171,7 +218,7 @@ function riderDef(
     faction: rider.role === 'cop' ? 'law' : 'rider',
     controller,
     bike: {
-      contentId: `base:${bike.id}`,
+      contentId: bikeKey,
       topSpeedMps: Math.max(h.topSpeedMps * speedScale, floor),
       accelMps2: h.accelMps2,
       brakeMps2: h.brakeMps2,
@@ -185,7 +232,7 @@ function riderDef(
     ...(law
       ? {
           law: {
-            agency: law.agency.includes(':') ? law.agency : `base:${law.agency}`,
+            agency: qualifyIn(pack, law.agency),
             bustRadiusM: law.bustRadiusM,
             bustDwellS: law.bustDwellS,
             fineCash: law.fineCash,
@@ -198,21 +245,27 @@ function riderDef(
 
 /**
  * The event's law (docs/content-packs.md, "Event": `cops`). `every-race` fields `baseCount` cops
- * (default 1): the region's cop riders, in id order, at the back of the grid behind the player.
- * `tier-rising` and `chaos-summoned` need the career and the chaos meter (M4), so they field none
- * in M1, like `none`. [default]
+ * (default 1): the region's cop riders, by qualified id, at the back of the grid behind the player.
+ * The pool is the race's packs' cops whose `region` resolves to the event's region (a cop with no
+ * region rides everywhere). `tier-rising` and `chaos-summoned` need the career and the chaos meter
+ * (M4), so they field none in M1, like `none`. [default] Returns qualified rider ids.
  */
 export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] {
-  const event = lookup(reg.events, eventId);
+  const key = eventKey(eventId);
+  const event = lookup(reg.events, key);
   const cops = event.cops as { mode: string; baseCount?: unknown };
   if (cops.mode !== 'every-race') return [];
   const count =
     typeof cops.baseCount === 'number' && Number.isFinite(cops.baseCount)
       ? Math.max(0, Math.floor(cops.baseCount))
       : 1;
-  const pool = Object.values(reg.riders)
-    .filter((r) => r.role === 'cop' && r.law && (!r.region || r.region === event.region))
-    .map((r) => r.id)
+  const regionKey = qualifyIn(packOf(key), event.region);
+  const race = packSubset(reg, packClosure(reg, packOf(key)));
+  const pool = Object.entries(race.riders)
+    .filter(
+      ([id, r]) => r.role === 'cop' && r.law && (!r.region || qualifyIn(packOf(id), r.region) === regionKey),
+    )
+    .map(([id]) => id)
     .sort();
   if (pool.length === 0) return [];
   return Array.from({ length: count }, (_, i) => pool[i % pool.length] ?? '');
@@ -224,35 +277,47 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] 
  * so it is never picked. Null when the event's region is not in the registry, which leaves the
  * sim's own category defaults.
  */
-function regionTrafficWeights(reg: ContentRegistry, event: RaceEvent): Map<string, number> | null {
-  const qualify = (pack: string, id: string) => (id.includes(':') ? id : `${pack}:${id}`);
-  const region = reg.regions[qualify('base', event.region)];
+function regionTrafficWeights(
+  reg: ContentRegistry,
+  event: RaceEvent,
+  eventPack: string,
+): Map<string, number> | null {
+  const regionKey = qualifyIn(eventPack, event.region);
+  const region = reg.regions[regionKey];
   if (!region) return null;
+  const regionPack = packOf(regionKey);
   const out = new Map<string, number>();
   const t = region.traffic;
   for (const k of [...t.mix, ...(t.pedestrians ?? []), ...(t.animals ?? [])]) {
-    const id = qualify('base', k.kind);
+    const id = qualifyIn(regionPack, k.kind);
     out.set(id, (out.get(id) ?? 0) + k.weight);
   }
   return out;
 }
 
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
-  const eventId = setup.eventId ?? DEFAULT_EVENT;
-  const event = lookup(reg.events, eventId);
+  const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
+  const eventPack = packOf(eventId);
+  // Only the race's packs (the event's pack and its dependencies) reach the race: carrying other
+  // region packs never changes this race (docs/content-packs.md, "Region packs at runtime").
+  const race = packSubset(reg, packClosure(reg, eventPack));
+  const event = lookup(race.events, eventId);
   const length = eventLength(event, setup.length);
-  const routeDef = lookup(reg.routes, length.route);
+  const routeId = qualifyIn(eventPack, length.route);
+  const routeDef = lookup(race.routes, routeId);
   const route = stream.routeFor(routeDef);
   const pace = event.field.paceMps ?? 30;
-  const rivals = (event.field.riders ?? []).map((id) =>
-    riderDef(reg, id, aiController(lookup(reg.riders, id).personality), pace),
-  );
+  const rivals = (event.field.riders ?? []).map((ref) => {
+    const id = qualifyIn(eventPack, ref);
+    return riderDef(race, id, aiController(lookup(race.riders, id).personality), pace);
+  });
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
-  const cops = copIds(reg, eventId).map((id) => riderDef(reg, id, { kind: 'cop' }, pace));
-  const riders = [...rivals, riderDef(reg, PLAYER_PRESET, { kind: 'player', slot: 0 }, pace), ...cops];
-  const weapons: SimWeaponDef[] = Object.values(reg.weapons).map((w) => ({
-    contentId: `base:${w.id}`,
+  const cops = copIds(race, eventId).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
+  const player = riderDef(race, qualifyIn('base', PLAYER_PRESET), { kind: 'player', slot: 0 }, pace);
+  const riders = [...rivals, player, ...cops];
+  const weapons: SimWeaponDef[] = Object.entries(race.weapons).map(([contentId, w]) => ({
+    contentId,
     unarmed: w.unarmed,
     reachSM: w.reach.sM,
     reachDM: w.reach.dM,
@@ -268,7 +333,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
   }));
-  const weights = regionTrafficWeights(reg, event);
+  const weights = regionTrafficWeights(race, event, eventPack);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
   for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;
@@ -279,25 +344,25 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   return {
     seed: setup.seed >>> 0,
     event: {
-      contentId: `base:${event.id}`,
+      contentId: eventId,
       kind: event.kind,
       paceMps: pace,
       byPlaceCash: event.rewards.byPlaceCash,
       raceEndTimeoutTicks: secondsToTicks(RACE_END_TIMEOUT_S),
       lengthId: length.id,
-      routeId: `base:${routeDef.id}`,
+      routeId,
       style: styleRewards(event.rewards),
     },
     riders,
     weapons,
-    trafficTypes: Object.values(reg.trafficTypes).map((t) => ({
-      contentId: `base:${t.id}`,
+    trafficTypes: Object.entries(race.trafficTypes).map(([contentId, t]) => ({
+      contentId,
       category: t.category,
       lengthM: t.lengthM,
       widthM: t.widthM,
       cruiseMps: t.cruiseMps,
       hazard: t.hazard,
-      ...(weights ? { weight: weights.get(`base:${t.id}`) ?? 0 } : {}),
+      ...(weights ? { weight: weights.get(contentId) ?? 0 } : {}),
     })),
     road: stream.road,
     route,

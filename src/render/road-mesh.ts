@@ -4,8 +4,11 @@
 // static geometry per chunk), so the draw calls per chunk stay flat however many edges pass through
 // it, and the renderer culls the chunks the camera cannot see: a frame's road cost does not grow
 // with the length of the road.
+// Playtest 1c adds tagged land beside the road with its scenery (scenery.ts), instanced from the
+// Blender models when they have loaded, and the ramp-truck model lined up with the sim's ramp.
 import {
   BoxGeometry,
+  Euler,
   Group,
   InstancedMesh,
   Matrix4,
@@ -21,6 +24,18 @@ import type { LaneInfo } from '../sim/api';
 import { ChunkedStrips, mergeBoxes, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
+import type { SceneryModel, SceneryModels } from './models';
+import {
+  boatBob,
+  isTropical,
+  LAND_TOP_M,
+  SCENERY_KINDS,
+  scatterEdge,
+  themeAt,
+  type SceneryKind,
+  type ScenerySpot,
+  type SideTheme,
+} from './scenery';
 
 /** Surface higher than this above sea level (world y = 0) counts as a bridge deck. */
 export const ELEVATED_M = 2.5;
@@ -103,11 +118,26 @@ export interface RoadSceneStats {
   /** Boost pads and ramp trucks drawn (playtest 1b quick wins). */
   boostPads: number;
   rampTrucks: number;
+  /** Ramp trucks drawn from the Blender model (the rest are the code-made stand-in). */
+  rampTruckModels: number;
+  /** Metres of road side with tagged land beside it (playtest 1c: scenery stands on land only). */
+  sceneryLandM: number;
+  /** Scenery placed, by kind (playtest 1c). */
+  scenery: Readonly<Record<SceneryKind, number>>;
+  /** Scenery kinds drawn from the Blender models (the rest are code-made stand-ins). */
+  sceneryModels: readonly SceneryKind[];
 }
 
 export interface RoadScene {
   group: Group;
   stats: RoadSceneStats;
+  /** Every scenery spot placed (for tests and the debug overlay). */
+  spots: readonly ScenerySpot[];
+  /**
+   * Per frame: hides scenery batches farther than `drawM` from the camera and bobs the boats.
+   * Returns the scenery instances left visible.
+   */
+  update(cameraX: number, cameraZ: number, t: number, drawM: number): number;
   dispose(): void;
 }
 
@@ -348,37 +378,103 @@ interface Clip {
 }
 
 export interface RoadSceneOptions {
-  /** Roadside palms: 1 = one per PALM_SPACING_M a side, 0 = none (`render.roadsideDensity`). */
+  /** Roadside scenery density: 1 = the default spacing, 0 = none (`render.roadsideDensity`). */
   roadsideDensity?: number;
+  /** The race's seed: the scenery scatter derives from it (playtest 1c item 2). Default 1. */
+  seed?: number;
+  /** The Blender models that have loaded; a kind left out draws its code-made stand-in. */
+  models?: SceneryModels;
 }
 
-/** Metres between roadside palms on one side at density 1. [default] */
-const PALM_SPACING_M = 20;
-/** Palms stand this far past the verge, plus up to PALM_SPREAD_M more. [default] */
-const PALM_OFFSET_M = 2.2;
-const PALM_SPREAD_M = 5;
-/** Features a palm never stands in. */
-const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck']);
+/** Features no scenery stands in (with room for the model). */
+const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn']);
+/** At least this much room between a feature and any scenery (a palm's crown spreads past its trunk), m. */
+const FEATURE_CLEAR_M = 3;
+/**
+ * Tagged land (playtest 1c): a strip at the road's height from the verge out to this many metres,
+ * then a shelf down into the sea. Wide enough for a bait shack back from the road. [default]
+ */
+export const SCENERY_LAND_M = 24;
+/** The shelf from the land's edge down to the sea floor, m. */
+const SCENERY_SHELF_M = 4;
+/** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
+export const SCENERY_CHUNK_M = 256;
 
-/** A placeholder palm on its own little sand mound (so it can stand in the shallows). */
-function palmGeometry() {
-  const parts: BoxPart[] = [
-    { size: [2.6, 1.2, 2.6], at: [0, -0.55, 0], color: '#d8c08c' },
-    { size: [0.28, 2.4, 0.28], at: [0.1, 1.2, 0], color: '#8a6a45', rotX: 0.05 },
-    { size: [0.24, 2.4, 0.24], at: [0.35, 3.4, 0.1], color: '#7d5f3d', rotX: -0.12 },
-    { size: [3.2, 0.25, 0.9], at: [0.5, 4.7, 0.1], color: '#3f8f4a', rotY: 0.4 },
-    { size: [0.9, 0.25, 3.2], at: [0.5, 4.75, 0.1], color: '#357d40', rotY: 0.4 },
-  ];
-  return mergeBoxes(parts);
+/** Code-made stand-ins, drawn until a model loads (or if it fails). No mounds: they stand on land. */
+function standIn(kind: SceneryKind): BufferGeometry {
+  const parts: Record<SceneryKind, BoxPart[]> = {
+    palm: [
+      { size: [0.28, 2.4, 0.28], at: [0.1, 1.2, 0], color: '#8a6a45', rotX: 0.05 },
+      { size: [0.24, 2.4, 0.24], at: [0.35, 3.4, 0.1], color: '#7d5f3d', rotX: -0.12 },
+      { size: [3.2, 0.25, 0.9], at: [0.5, 4.7, 0.1], color: '#3f8f4a', rotY: 0.4 },
+      { size: [0.9, 0.25, 3.2], at: [0.5, 4.75, 0.1], color: '#357d40', rotY: 0.4 },
+    ],
+    mangrove: [
+      { size: [2.2, 1.4, 2.2], at: [0, 0.7, 0], color: '#6e5a48' },
+      { size: [3.6, 1.5, 3.2], at: [0, 2.2, 0], color: '#4f8a3c' },
+    ],
+    shack: [
+      { size: [4.6, 2.2, 3], at: [0, 2, -0.5], color: '#86b9b0' },
+      { size: [5.2, 0.2, 4.4], at: [0, 3.2, 0], color: '#b9bdbb' },
+      { size: [4.6, 0.85, 3], at: [0, 0.42, -0.5], color: '#6d6052' },
+    ],
+    pole: [
+      { size: [0.3, 10.5, 0.3], at: [0, 5.25, 0], color: '#6b5a47' },
+      { size: [2.4, 0.2, 0.2], at: [-0.1, 10, 0], color: '#6b5a47' },
+    ],
+    skiff: [{ size: [1.8, 0.6, 5.2], at: [0, 0.15, 0], color: '#e8e2d2' }],
+    boat: [
+      { size: [2.5, 0.9, 7.6], at: [0, 0.3, 0], color: '#e2d9c1' },
+      { size: [1, 1.2, 1.4], at: [0, 1.2, -0.2], color: '#3a4048' },
+    ],
+  };
+  return mergeBoxes(parts[kind]);
 }
 
-/** A small deterministic hash to 0..1 (placement jitter; presentation only). */
-function hash01(a: number, b: number, c: number): number {
-  let h = Math.imul(a + 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.round(b * 16) + 0x27d4eb2f, 0xc2b2ae35);
-  h ^= Math.imul(c + 0x165667b1, 0x27d4eb2f);
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-  h ^= h >>> 12;
-  return (h >>> 0) / 4294967296;
+/** Which model draws each scenery kind. */
+const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
+  palm: 'palms',
+  mangrove: 'mangroves',
+  shack: 'baitShack',
+  pole: 'powerPole',
+  skiff: 'skiff',
+  boat: 'boat',
+};
+
+/**
+ * Where the ramp-truck model goes (playtest 1c item 4): its ramp foot at the feature's s0, its lip
+ * `rampLengthM` along the road at `lipHeightM` above it, and its ramp surface exactly as wide as the
+ * feature, so the ramp a rider sees is the ramp the sim gives riders (sim/riders/features.ts). The
+ * model's +Z runs along +s, +Y is the road's up and +X its left. At the defaults (13.7 degrees,
+ * 11.5 m, 2.8 m) the run and the lip are the model's own; across, its 2.5 m ramp fits the feature.
+ */
+export function rampTruckMatrix(
+  road: RoadNetwork,
+  edge: number,
+  f: FeatureSpan,
+  ramp: SceneryModel['ramp'],
+): Matrix4 {
+  const run = Math.max(1, num(f.params?.['rampLengthM'], RAMP_TRUCK_DEFAULTS.rampLengthM));
+  const lip = Math.max(0.3, num(f.params?.['lipHeightM'], RAMP_TRUCK_DEFAULTS.lipHeightM));
+  const width = Math.abs(f.d1 - f.d0);
+  const dMid = (f.d0 + f.d1) / 2;
+  const at = (s: number, d: number, h: number) => {
+    const p = road.toWorld(edge, s, d, h);
+    return new Vector3(p.x, p.y, p.z);
+  };
+  const foot = at(f.s0, dMid, 0);
+  const fwd = at(f.s0 + run, dMid, 0)
+    .sub(foot)
+    .normalize();
+  const up = at(f.s0, dMid, 1).sub(foot);
+  up.addScaledVector(fwd, -up.dot(fwd)).normalize();
+  const left = new Vector3().crossVectors(up, fwd).normalize();
+  const sx = width / (ramp?.widthM ?? 2.5);
+  const sy = lip / (ramp?.lipM ?? RAMP_TRUCK_DEFAULTS.lipHeightM);
+  const sz = run / (ramp?.runM ?? RAMP_TRUCK_DEFAULTS.rampLengthM);
+  return new Matrix4()
+    .makeBasis(left.multiplyScalar(sx), up.multiplyScalar(sy), fwd.multiplyScalar(sz))
+    .setPosition(foot);
 }
 
 export function buildRoadScene(
@@ -409,11 +505,16 @@ export function buildRoadScene(
   const postSpots: Point3[] = [];
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
-  const palmSpots: { p: Point3; turn: number; size: number }[] = [];
+  const spots: ScenerySpot[] = [];
   const truckParts: BoxPart[] = [];
+  const truckMatrices: Matrix4[] = [];
+  const truckModel = opts.models?.truck;
   let boostPads = 0;
   let rampTrucks = 0;
+  let sceneryLandM = 0;
   const density = Math.max(0, opts.roadsideDensity ?? 1);
+  const seed = opts.seed ?? 1;
+  const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
   let railM = 0;
   let rampStripes = 0;
   let landM = 0;
@@ -661,43 +762,105 @@ export function buildRoadScene(
         if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
       }
     }
-    // Roadside palms (playtest 1 item 10: things close by the road, for a sense of speed). Each
-    // stands a few metres past the verge on its own sand mound, jittered along and across; none on
-    // a deck or beside a rail, and none on or next to another road.
-    if (density > 0) {
-      const spacing = PALM_SPACING_M / density;
-      for (const side of [-1, 1] as const) {
-        const rails = barriersFor(road, e, dress, side < 0 ? 'left' : 'right');
-        const outer = side < 0 ? -outerL : outerR;
-        for (let k = 0; ; k++) {
-          const s = (k + 0.2 + 0.6 * hash01(e.index, k, side)) * spacing;
-          if (s > e.length) break;
-          if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue;
-          if (rails.some((b) => s >= b.s0 - 5 && s <= b.s1 + 5)) continue;
-          const d = side * (outer + PALM_OFFSET_M + PALM_SPREAD_M * hash01(e.index, k, side + 7));
-          // Nor inside a sign, a pad or a ramp truck (with room for the mound and the crown).
-          if (
-            (dress.features ?? []).some(
-              (f) =>
-                KEEP_CLEAR.has(f.kind) &&
-                s >= Math.min(f.s0, f.s1) - 3 &&
-                s <= Math.max(f.s0, f.s1) + 3 &&
-                d >= Math.min(f.d0, f.d1) - 3 &&
-                d <= Math.max(f.d0, f.d1) + 3,
-            )
-          )
-            continue;
-          const p = w(e.index, s, d, LAND_LIFT_M);
-          if (locator.covered(p.x, p.z, e.index, (o) => [o.dMin - VERGE_M - 2, o.dMax + VERGE_M + 2]))
-            continue;
-          palmSpots.push({
-            p,
-            turn: hash01(e.index, k, side + 13) * Math.PI * 2,
-            size: 0.8 + 0.4 * hash01(k, s, side),
-          });
+    // Tagged land and its scenery (playtest 1c items 2 to 4). Where a side's scenery tags say land,
+    // a strip of ground runs from the verge out to SCENERY_LAND_M at the road's height, then
+    // shelves into the sea; it narrows, or stops, where another road would lie under it. Nothing
+    // grows on a bridge, beside a rail or on the water. The scatter then places the models on that
+    // land by theme and by the race's seed, and boats on the water sides.
+    const tags = dress.tags;
+    const untagged = !tags || tags.length === 0;
+    const sideName = (side: -1 | 1) => (side < 0 ? 'left' : 'right');
+    const railsOf = { [-1]: barriersFor(road, e, dress, 'left'), [1]: barriersFor(road, e, dress, 'right') };
+    const theme = (side: -1 | 1, s: number): SideTheme => themeAt(tags, sideName(side), s);
+    const outerOf = (side: -1 | 1) => (side < 0 ? -outerL : outerR);
+    const otherRoadAt = (s: number, d: number, margin: number) => {
+      const p = w(e.index, s, d, 0);
+      return locator.covered(p.x, p.z, e.index, (o) => [
+        o.dMin - VERGE_M - margin,
+        o.dMax + VERGE_M + margin,
+      ]);
+    };
+    const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
+    const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    for (const side of [-1, 1] as const) {
+      const outer = outerOf(side);
+      const reach = reachOf[side];
+      for (const s of ss) {
+        const th = theme(side, s);
+        const land =
+          th !== 'none' &&
+          th !== 'water' &&
+          !railsOf[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
+          !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
+        let r = 0;
+        if (land) {
+          for (const width of [SCENERY_LAND_M, 14, 6]) {
+            const d = outer + width + SCENERY_SHELF_M;
+            if (!otherRoadAt(s, side * d, 1) && !otherRoadAt(s, side * (outer + width / 2), 1)) {
+              r = width;
+              break;
+            }
+          }
         }
+        reach.push(r);
       }
+      const ground = strip('land');
+      ground.breakStrip();
+      ss.forEach((s, i) => {
+        const r = reach[i] ?? 0;
+        if (r <= 0) {
+          ground.breakStrip();
+          return;
+        }
+        if (i > 0) sceneryLandM += step;
+        const near = w(e.index, s, side * outer, LAND_TOP_M);
+        const edge = w(e.index, s, side * (outer + r), LAND_TOP_M);
+        // Pairs in increasing d, so the faces point up.
+        if (side < 0) ground.pair(edge, near);
+        else ground.pair(near, edge);
+      });
+      ground.breakStrip();
+      const shelf = strip('land');
+      shelf.breakStrip();
+      ss.forEach((s, i) => {
+        const r = reach[i] ?? 0;
+        if (r <= 0) {
+          shelf.breakStrip();
+          return;
+        }
+        const edge = w(e.index, s, side * (outer + r), LAND_TOP_M);
+        const low = { ...w(e.index, s, side * (outer + r + SCENERY_SHELF_M), 0), y: -0.4 };
+        if (side < 0) shelf.pair(low, edge);
+        else shelf.pair(edge, low);
+      });
+      shelf.breakStrip();
     }
+    spots.push(
+      ...scatterEdge({
+        seed,
+        edge: e.index,
+        length: e.length,
+        density,
+        tropical,
+        outer: outerOf,
+        theme,
+        landReach: (side, s) => reachOf[side][Math.round(s / step)] ?? 0,
+        clear: (s, d, radius) =>
+          !(dress.features ?? []).some(
+            (f) =>
+              KEEP_CLEAR.has(f.kind) &&
+              s >= Math.min(f.s0, f.s1) - Math.max(radius, FEATURE_CLEAR_M) &&
+              s <= Math.max(f.s0, f.s1) + Math.max(radius, FEATURE_CLEAR_M) &&
+              d >= Math.min(f.d0, f.d1) - Math.max(radius, FEATURE_CLEAR_M) &&
+              d <= Math.max(f.d0, f.d1) + Math.max(radius, FEATURE_CLEAR_M),
+          ) && !otherRoadAt(s, d, radius),
+        openWater: (s, d) => {
+          const p = w(e.index, s, d, 0);
+          return locator.at(p.x, p.z, e.index).length === 0;
+        },
+        world: (s, d, h) => w(e.index, s, d, h),
+      }),
+    );
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
     for (const [side, d] of [
       ['left', outerL + 0.05],
@@ -789,7 +952,9 @@ export function buildRoadScene(
         }
         boostPads++;
       } else if (f.kind === 'rampTruck') {
-        truckParts.push(...rampTruckParts(road, e.index, f));
+        // The Blender truck once it has loaded (playtest 1c item 4), the code-made boxes until then.
+        if (truckModel) truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
+        else truckParts.push(...rampTruckParts(road, e.index, f));
         rampTrucks++;
       }
     }
@@ -883,21 +1048,73 @@ export function buildRoadScene(
     group.add(trucks);
     meshes++;
   }
-  if (palmSpots.length) {
-    const turn = new Quaternion();
-    const up = new Vector3(0, 1, 0);
-    addInstanced(
-      'road-palms',
-      palmGeometry(),
-      look.material('prop', { vertexColors: true }),
-      palmSpots,
-      (s) =>
-        m.compose(
-          new Vector3(s.p.x, s.p.y, s.p.z),
-          turn.setFromAxisAngle(up, s.turn),
-          new Vector3(s.size, s.size, s.size),
+  const shared = new Set<BufferGeometry>();
+  const truckGeo = truckModel?.variants[0];
+  if (truckGeo) {
+    shared.add(truckGeo);
+    for (const tm of truckMatrices) {
+      const truck = new Mesh(truckGeo, look.material('vehicle', { vertexColors: true }));
+      truck.name = 'road-rampTrucks';
+      truck.matrixAutoUpdate = false;
+      truck.matrix.copy(tm);
+      triangles += trisOf(truckGeo);
+      group.add(truck);
+      meshes++;
+    }
+  }
+
+  // Scenery (playtest 1c): one InstancedMesh per model variant per SCENERY_CHUNK_M square, so the
+  // renderer can hide the far squares and the camera's frustum culls the rest.
+  const scenery = new Group();
+  scenery.name = 'road-scenery';
+  group.add(scenery);
+  const batches: SceneryBatch[] = [];
+  const counts = Object.fromEntries(SCENERY_KINDS.map((k) => [k, 0])) as Record<SceneryKind, number>;
+  const fromModels: SceneryKind[] = [];
+  const turn = new Quaternion();
+  const upAxis = new Vector3(0, 1, 0);
+  for (const kind of SCENERY_KINDS) {
+    const mine = spots.filter((s) => s.kind === kind);
+    counts[kind] = mine.length;
+    const model = opts.models?.[MODEL_OF[kind]];
+    if (model) fromModels.push(kind);
+    if (!mine.length) continue;
+    const geos = model ? model.variants : [standIn(kind)];
+    if (model) for (const g of geos) shared.add(g);
+    const material = look.material('prop', { vertexColors: true, doubleSided: model?.doubleSided ?? false });
+    const groups = new Map<string, ScenerySpot[]>();
+    for (const s of mine) {
+      const v = Math.min(geos.length - 1, s.variant);
+      const key = `${v}|${Math.floor(s.p.x / SCENERY_CHUNK_M)},${Math.floor(s.p.z / SCENERY_CHUNK_M)}`;
+      const list = groups.get(key);
+      if (list) list.push(s);
+      else groups.set(key, [s]);
+    }
+    for (const [key, list] of groups) {
+      const geo = geos[Number(key.split('|')[0])] ?? geos[0];
+      if (!geo) continue;
+      const mesh = new InstancedMesh(geo, material, list.length);
+      list.forEach((s, i) =>
+        mesh.setMatrixAt(
+          i,
+          m.compose(
+            new Vector3(s.p.x, s.p.y, s.p.z),
+            turn.setFromAxisAngle(upAxis, s.turn),
+            new Vector3(s.size, s.size, s.size),
+          ),
         ),
-    );
+      );
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      mesh.name = `road-${kind}s`;
+      triangles += trisOf(geo) * list.length;
+      scenery.add(mesh);
+      meshes++;
+      const cx = list.reduce((a, s) => a + s.p.x, 0) / list.length;
+      const cz = list.reduce((a, s) => a + s.p.z, 0) / list.length;
+      const radius = Math.max(...list.map((s) => Math.hypot(s.p.x - cx, s.p.z - cz))) + 10;
+      batches.push({ mesh, spots: list, cx, cz, radius, boats: kind === 'skiff' || kind === 'boat' });
+    }
   }
 
   // The sea, at world y = 0 (sea level in the network frame).
@@ -921,10 +1138,36 @@ export function buildRoadScene(
       landM,
       boostPads,
       rampTrucks,
+      rampTruckModels: truckGeo ? truckMatrices.length : 0,
+      sceneryLandM,
+      scenery: counts,
+      sceneryModels: fromModels,
+    },
+    spots,
+    update(cameraX, cameraZ, t, drawM) {
+      let shown = 0;
+      for (const b of batches) {
+        const visible = Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
+        b.mesh.visible = visible;
+        if (!visible) continue;
+        shown += b.spots.length;
+        if (!b.boats) continue;
+        b.spots.forEach((s, i) => {
+          const bob = boatBob(t, s.phase);
+          bobEuler.set(bob.pitch, s.turn, bob.roll, 'YXZ');
+          b.mesh.setMatrixAt(
+            i,
+            m.compose(bobAt.set(s.p.x, bob.rise, s.p.z), turn.setFromEuler(bobEuler), one),
+          );
+        });
+        b.mesh.instanceMatrix.needsUpdate = true;
+      }
+      return shown;
     },
     dispose() {
-      // Instanced chunks share one geometry per kind: dispose each once.
-      const seen = new Set<BufferGeometry>();
+      // Instanced chunks share one geometry per kind: dispose each once. The models' geometries
+      // belong to the renderer's model cache and outlive this scene.
+      const seen = new Set<BufferGeometry>(shared);
       group.traverse((o) => {
         if (o instanceof Mesh && !seen.has(o.geometry as BufferGeometry)) {
           seen.add(o.geometry as BufferGeometry);
@@ -933,4 +1176,22 @@ export function buildRoadScene(
       });
     },
   };
+}
+
+interface SceneryBatch {
+  mesh: InstancedMesh;
+  spots: readonly ScenerySpot[];
+  /** The batch's centre and radius on the ground, for the draw-distance cut. */
+  cx: number;
+  cz: number;
+  radius: number;
+  boats: boolean;
+}
+
+const bobEuler = new Euler();
+const bobAt = new Vector3();
+
+/** Triangles in a geometry, indexed or not. */
+function trisOf(g: BufferGeometry): number {
+  return (g.index?.count ?? g.getAttribute('position').count) / 3;
 }

@@ -31,8 +31,10 @@ export interface RenderParams {
   /** Speed where the speed lines start, and where they are full, m/s. */
   streakFromMps: number;
   streakFullMps: number;
-  /** Roadside palms per stretch of road (1 = one per 20 m a side), 0 = none. Rebuilds the road. */
+  /** Roadside scenery per stretch of road (1 = the default spacing), 0 = none. Rebuilds the road. */
   roadsideDensity: number;
+  /** Scenery farther than this from the camera is not drawn (playtest 1c), metres. */
+  sceneryDrawM: number;
   // Playtest 1b item 6: the "Ink + 1960s film" look (render/looks). They change that look only.
   /** Ink outline strength, 0 = none. */
   inkLines: number;
@@ -85,7 +87,10 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   decl('streakCount', 'Speed line count', 40, 0, 64, 1, ''),
   decl('streakFromMps', 'Speed lines from', 20, 0, 60, 1, 'm/s'),
   decl('streakFullMps', 'Speed lines full at', 45, 10, 80, 1, 'm/s'),
-  decl('roadsideDensity', 'Roadside palms', 1, 0, 3, 0.25, ''),
+  decl('roadsideDensity', 'Roadside scenery', 1, 0, 3, 0.25, ''),
+  // Playtest 1c: the Blender scenery. [default] well into the fog (it starts at 220 m), so far
+  // scenery fades in rather than pops, and the phone keeps its triangle budget.
+  decl('sceneryDrawM', 'Scenery draw distance', 360, 150, 760, 10, 'm'),
   // Playtest 1b item 6 [decided]: the ink + film look. [default] numbers; the classic look ignores them.
   decl('inkLines', 'Ink look: outlines', 1, 0, 1, 0.05, ''),
   decl('inkWidthPx', 'Ink look: outline width', 1.5, 0.5, 3, 0.25, 'px'),

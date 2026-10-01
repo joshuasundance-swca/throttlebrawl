@@ -65,6 +65,8 @@ export interface TestHandle {
   botAttackRuns(seeds: readonly number[]): AttackRun[];
   /** The same headless runs, each up to the bot's first takedown (M2 exit criterion 9). */
   botTakedownRuns(seeds: readonly number[]): AttackRun[];
+  /** The same headless runs, each up to the bot's first tick on a shortcut, or a minute in. */
+  botShortcutRuns(seeds: readonly number[]): AttackRun[];
 }
 
 declare global {
@@ -184,6 +186,14 @@ export function installTestHandle(app: AppHandle): TestHandle {
     botTakedownRuns: (seeds) =>
       seeds.map((seed) =>
         botAttackRun(seed, { includeDrafts: app.build.channel !== 'prod', until: 'takedown' }),
+      ),
+    botShortcutRuns: (seeds) =>
+      seeds.map((seed) =>
+        botAttackRun(seed, {
+          includeDrafts: app.build.channel !== 'prod',
+          until: 'shortcut',
+          maxTicks: 60 * 60,
+        }),
       ),
   };
   window.__game = handle;
