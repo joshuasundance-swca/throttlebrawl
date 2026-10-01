@@ -2,6 +2,7 @@
 // adding other regions races etc"; "Pnw and sf first then others"). The menu's picker lists every
 // carried region that has an event; a pick starts that event, on that region's road, with its
 // field, cop, traffic, signs and palette (docs/content-packs.md, "Region packs at runtime").
+import { stationsFromTable, type RadioStation } from '../audio';
 import { lookup, packOf, type ContentRegistry, type Region } from '../content';
 import type { BoardCatalog, BoardItem, BoardKind } from '../render';
 import type { RegionStream } from '../stream';
@@ -135,4 +136,24 @@ export function createStreamCache(): StreamCache {
 export function routeKeyOf(reg: ContentRegistry, eventId: string, lengthId?: string): string {
   const key = eventKey(eventId);
   return qualifyIn(packOf(key), eventLength(lookup(reg.events, key), lengthId).route);
+}
+
+/** What the radio plays in a race's region: the stations to offer and the region to filter them by. */
+export interface RaceRadio {
+  stations: RadioStation[];
+  /** The region audio filters by (`setRegion`), or null for every station given. */
+  region: string | null;
+}
+
+/**
+ * The race's radio (M4 radio-1 head start; the integration round): every carried station, filtered
+ * to the region by each station's `regions` (genre stations play everywhere), when the region has
+ * a station of its own. A region with none of its own yet gets the base pack's stations, all of
+ * them, rather than silence. [default] Regions may add their own stations later as pack data.
+ */
+export function raceRadio(reg: ContentRegistry, regionKey: string): RaceRadio {
+  const all = stationsFromTable(reg.stations);
+  const bare = regionKey.slice(regionKey.indexOf(':') + 1);
+  if (all.some((s) => s.regions.includes(bare))) return { stations: all, region: regionKey };
+  return { stations: all.filter((s) => s.packId === 'base'), region: null };
 }

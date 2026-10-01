@@ -107,7 +107,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | J | Attack (auto-target) | [default] |
 | U / O | Attack, forced left / right | [default] |
 | K | Kick | [default] |
-| C | Cruise-control toggle (reserved; the button is on the shelf [decided]) | [default] |
+| C | Change the camera view: low chase, far chase, helmet (camera-3; d-pad up on a gamepad). The cruise-control action stays reserved, on the shelf [decided], and gets a key of its own if a playtest asks for it. | [default] |
 | Esc | Pause | [default] |
 | Space | Skip the run-back while on foot | [default] |
 | L (hold) | Look back | [default] |

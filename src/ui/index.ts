@@ -22,6 +22,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
+import type { ContentRegistry } from '../content';
 import { DEFAULT_SETTINGS, sanitiseSettings, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
@@ -151,6 +152,11 @@ export interface UiOptions {
   regions?: readonly RegionOption[];
   /** The region shown as picked at boot; the Keys when left out or not in the list. */
   region?: string | null;
+  /**
+   * The content the barks read (app/'s registry: every carried pack's bark sets, riders and
+   * bikes), so a region race's locals talk too. The base pack's when left out.
+   */
+  barkContent?: Pick<ContentRegistry, 'barkSets' | 'riders' | 'bikes'>;
 }
 
 /** Long-press length for the build id (docs/architecture.md, "The gesture"). */
@@ -962,6 +968,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
   // the bubble's long-press ignores presses in the stick and attack zones mid-race.
   const barks = createNarrative({
+    ...(opts.barkContent
+      ? {
+          barkSets: opts.barkContent.barkSets,
+          riders: opts.barkContent.riders,
+          bikes: opts.barkContent.bikes,
+        }
+      : {}),
     vetoed: settings.vetoes.map((v) => v.contentRef),
     onVeto: (flag) => {
       settings = withVeto(settings, flag);
