@@ -6,7 +6,7 @@ import { stationsFromTable, type RadioStation } from '../audio';
 import { lookup, packOf, type ContentRegistry, type Region } from '../content';
 import type { BoardCatalog, BoardItem, BoardKind } from '../render';
 import type { RegionStream } from '../stream';
-import { eventKey, eventLength, networkKeyOf, qualifyIn, streamForRoute } from './config';
+import { eventKey, networkKeyOf, qualifyIn, raceRouteKey, realRoutes, streamForRoute } from './config';
 
 /** One region the picker offers, with the event a pick starts. */
 export interface RegionChoice {
@@ -105,8 +105,11 @@ export function racePalette(
 
 /** Region streams, one per network, built on first use. */
 export interface StreamCache {
-  /** The stream for an event's chosen length (default its first). */
-  forEvent(reg: ContentRegistry, eventId: string, lengthId?: string): RegionStream;
+  /**
+   * The stream for an event's chosen length (default its standard), or for the real-road route
+   * chosen instead (`raceRouteKey`).
+   */
+  forEvent(reg: ContentRegistry, eventId: string, lengthId?: string, route?: string | null): RegionStream;
   /** The stream for a route (by qualified id). */
   forRoute(reg: ContentRegistry, routeKey: string): RegionStream;
 }
@@ -124,18 +127,89 @@ export function createStreamCache(): StreamCache {
   };
   return {
     forRoute,
-    forEvent(reg, eventId, lengthId) {
-      const key = eventKey(eventId);
-      const length = eventLength(lookup(reg.events, key), lengthId);
-      return forRoute(reg, qualifyIn(packOf(key), length.route));
+    forEvent(reg, eventId, lengthId, route) {
+      return forRoute(reg, raceRouteKey(reg, eventId, lengthId, route));
     },
   };
 }
 
-/** The route a race in `eventId` runs (its chosen length, default the first), as its registry key. */
-export function routeKeyOf(reg: ContentRegistry, eventId: string, lengthId?: string): string {
+/**
+ * The route a race in `eventId` runs (its chosen length, default the standard, or the real-road
+ * route chosen instead), as its registry key.
+ */
+export function routeKeyOf(
+  reg: ContentRegistry,
+  eventId: string,
+  lengthId?: string,
+  route?: string | null,
+): string {
+  return raceRouteKey(reg, eventId, lengthId, route);
+}
+
+/** One route the race-setup picker offers for a region's event. */
+export interface RouteChoice {
+  /** The route's qualified id, or null for the event's own road (its lengths): the default. */
+  id: string | null;
+  /** The name on the button: the event's name for its own road, else the route's name. */
+  name: string;
+  /** One line under the buttons: the real road or streets it follows, and how long it is. */
+  blurb: string;
+  /** Metres from the start line to the finish, or null for the event's own road (Race length picks). */
+  lengthM: number | null;
+}
+
+/** Metres from a route's start to its finish along its main path. */
+function routeLengthM(reg: ContentRegistry, routeKey: string): number {
+  const route = lookup(reg.routes, routeKey);
+  const pack = packOf(routeKey);
+  const lengths = route.mainPath.map((id) => lookup(reg.roads, qualifyIn(pack, id)).lengthM);
+  const total = lengths.reduce((a, b) => a + b, 0);
+  return total - route.start.s - ((lengths[lengths.length - 1] ?? 0) - route.finish.s);
+}
+
+/** The real names along a route's main path, in order, each once ("Hyde Street", ...). */
+function realNames(reg: ContentRegistry, routeKey: string): string[] {
+  const route = lookup(reg.routes, routeKey);
+  const pack = packOf(routeKey);
+  const names: string[] = [];
+  for (const id of route.mainPath) {
+    const name = (lookup(reg.roads, qualifyIn(pack, id)) as { realName?: unknown }).realName;
+    if (typeof name === 'string' && name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
+
+/**
+ * The race-setup route picker's list for a region's event (the maintainer, 2026-10-01: "Yes, add
+ * as routes"): the event's own hand-made road first (the default, raced at the Race length
+ * setting), then each real-road route (`realRoutes`) by its name, with the real road or streets it
+ * follows. A region pack's real routes are listed once its road data is fetched. [default]
+ */
+export function routeChoices(reg: ContentRegistry, eventId: string): RouteChoice[] {
   const key = eventKey(eventId);
-  return qualifyIn(packOf(key), eventLength(lookup(reg.events, key), lengthId).route);
+  const event = lookup(reg.events, key);
+  const own: RouteChoice = {
+    id: null,
+    name: event.name ?? event.id,
+    blurb: 'The hand-made road, at your Race length.',
+    lengthM: null,
+  };
+  const real = realRoutes(reg, key).map((id): RouteChoice => {
+    const route = lookup(reg.routes, id) as { name?: unknown; id: string };
+    const names = realNames(reg, id);
+    const lengthM = routeLengthM(reg, id);
+    const what =
+      names.length > 1 ? `Real streets: ${names.join(', ')}` : `Real road: ${names[0] ?? 'map data'}`;
+    return {
+      id,
+      name: typeof route.name === 'string' && route.name ? route.name : route.id,
+      blurb: `${what}. ${km(lengthM)}.`,
+      lengthM,
+    };
+  });
+  return [own, ...real];
 }
 
 /** What the radio plays in a race's region: the stations to offer and the region to filter them by. */
