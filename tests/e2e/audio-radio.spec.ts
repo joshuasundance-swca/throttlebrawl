@@ -142,6 +142,25 @@ test('radio: switching stations changes the playing track; each station plays wi
   }
 });
 
+// Run W-O: the Pacific Northwest's and San Francisco's own stations play, unclipped, through the
+// real graph (the dial order is checked in src/app/regions.test.ts and app-wire-seams.spec.ts).
+for (const [pack, id] of [
+  ['region-pnw', 'pnw-drizzle'],
+  ['region-sf', 'sf-fog-bank'],
+] as const) {
+  test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
+    const file = new URL(`../../packs/${pack}/stations/${id}.json`, import.meta.url);
+    const regional = { [`${pack}:${id}`]: JSON.parse(readFileSync(file, 'utf8')) as unknown };
+    const problems = await openHarness(page);
+    const r = await render(page, { choice: 2, switchTo: null, music: 1, dur: 3, table: regional });
+    expect(problems).toEqual([]);
+    expect(r.refAfter).toMatch(new RegExp(`^${pack}:station/${id}#`));
+    console.log(`radio render: ${r.refAfter} rms ${r.first.rms.toFixed(4)} peak ${r.first.peak.toFixed(3)}`);
+    expect(r.first.rms).toBeGreaterThan(0.02);
+    expect(r.first.peak).toBeLessThan(1);
+  });
+}
+
 test('radio: the music bus still follows its slider', async ({ page }) => {
   const problems = await openHarness(page);
   const off = await render(page, { choice: 3, switchTo: null, music: 0, dur: 2, table });
