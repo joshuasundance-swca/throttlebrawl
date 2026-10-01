@@ -23,7 +23,8 @@
 //   contact fires `nearMiss`. The full rule is on contacts() below.
 // - Wasteland oddities (M3 traffic-4) are ordinary entries with category `oddity`, picked by the
 //   same region weights (scaled by the `traffic.oddities` slider) and spawned under the same
-//   fairness rule. A rolling one (a mobile home with no truck) is just a slow vehicle. A PARKED one
+//   fairness rule. A rolling one (a mobile home with no truck) is a slow vehicle that comes only
+//   the other way (see rollWeight). A PARKED one
 //   (cruiseMps 0: a boat left in the fast lane) stands still in the innermost lane, nudged
 //   TRAFFIC.parkOutM toward the shoulder; vehicles behind it change lanes past it where their
 //   direction has a second lane, and otherwise edge inward around it (TRAFFIC.swerve*), so it
@@ -191,10 +192,16 @@ function weightOf(t: SimTrafficTypeDef | undefined): number {
   return Number.isFinite(w) && w > 0 ? w : 0;
 }
 
-/** The pick weight during a race: oddities scale by the `traffic.oddities` slider. */
-function rollWeight(world: World, t: SimTrafficTypeDef | undefined): number {
+/**
+ * The pick weight during a race, for a vehicle heading `dir`: oddities scale by the
+ * `traffic.oddities` slider, and a ROLLING oddity (a mobile home with no truck, slower than any
+ * car) comes only the other way, so nobody is stuck behind it at 20 mph for minutes (the bot and
+ * the rivals do not overtake a slow vehicle). [default]
+ */
+function rollWeight(world: World, t: SimTrafficTypeDef | undefined, dir: number, routeDir: number): number {
   const w = weightOf(t);
   if (t?.category !== 'oddity') return w;
+  if (!isParked(t) && dir === routeDir) return 0;
   const k = world.params['traffic.oddities'] ?? 1;
   return Number.isFinite(k) && k > 0 ? w * k : 0;
 }
@@ -374,12 +381,13 @@ function targetCount(world: World, st: TrafficState, anchors: readonly number[],
   return Math.min(TRAFFIC.maxPerDirection, n);
 }
 
-function rollType(world: World, config: SimConfig, st: TrafficState): number {
+function rollType(world: World, config: SimConfig, st: TrafficState, dir: number): number {
+  const rd = st.corridor.routeDir;
   let total = 0;
-  for (const i of st.types) total += rollWeight(world, config.trafficTypes[i]);
+  for (const i of st.types) total += rollWeight(world, config.trafficTypes[i], dir, rd);
   let r = nextFloat(world.rng.traffic) * total;
   for (const i of st.types) {
-    r -= rollWeight(world, config.trafficTypes[i]);
+    r -= rollWeight(world, config.trafficTypes[i], dir, rd);
     if (r < 0) return i;
   }
   return st.types[st.types.length - 1] ?? 0;
@@ -473,7 +481,7 @@ function trySpawn(
   k: number,
 ): boolean {
   const c = st.corridor;
-  const type = rollType(world, config, st);
+  const type = rollType(world, config, st, dir);
   const t = config.trafficTypes[type];
   if (!t) return false;
   const v0 = t.cruiseMps * (0.9 + 0.2 * nextFloat(world.rng.traffic));

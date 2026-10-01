@@ -4,7 +4,8 @@
 //     nudged toward the shoulder, and is never shoved by other vehicles;
 //   - traffic gets past it: a lane change where the direction has two lanes, an inward edge round
 //     it where it has one, never touching it and never jamming behind it;
-//   - every oddity spawns beyond reaction range of every anchor (the fairness rule);
+//   - every oddity spawns beyond reaction range of every anchor (the fairness rule), and a rolling
+//     one (the mobile home) only comes the other way, so nobody is stuck behind it;
 //   - the `traffic.oddities` slider scales how often they come, 0 turning them off;
 //   - riding into one crashes you (they are `big`).
 import { describe, expect, it } from 'vitest';
@@ -309,7 +310,9 @@ describe('traffic-4: oddities in seeded races', () => {
     let checked = 0;
     let minDist = Infinity;
     let contactsBetween = 0;
+    let rolling = 0;
     const tooClose: string[] = [];
+    const rollingSameWay: string[] = [];
     let reactionM = 0;
     for (const seed of seeds) {
       const config = makeConfig({
@@ -338,6 +341,11 @@ describe('traffic-4: oddities in seeded races', () => {
           const t = config.trafficTypes[st.type[k] ?? -1];
           if (st.spawnTick[k] !== tick || t?.category !== 'oddity') continue;
           spawns++;
+          if (!isParked(t)) {
+            rolling++;
+            if (st.dir[k] === st.corridor.routeDir)
+              rollingSameWay.push(`seed ${seed} tick ${tick} slot ${k}`);
+          }
           const d = Math.min(...anchors.map((a) => Math.abs(a - (st.spawnU[k] ?? 0))));
           minDist = Math.min(minDist, d);
           // Contacts after the spawn can shove an anchor up to ~2 m in the same tick.
@@ -353,7 +361,7 @@ describe('traffic-4: oddities in seeded races', () => {
         check(tick);
       }
     }
-    return { spawns, checked, minDist, tooClose, contactsBetween, reactionM };
+    return { spawns, checked, minDist, tooClose, contactsBetween, reactionM, rolling, rollingSameWay };
   }
 
   it('every oddity spawns beyond reaction range, and no vehicle ever overlaps another', () => {
@@ -362,9 +370,13 @@ describe('traffic-4: oddities in seeded races', () => {
     console.log(
       `[examined] ${seeds.length} seeded 60 s races (oddities weighted 4 in 11): ${r.spawns} oddity spawns, ` +
         `nearest ${r.minDist.toFixed(1)} m from an anchor (rule ${r.reactionM.toFixed(1)} m), ` +
-        `${r.checked} slot-ticks checked, ${r.contactsBetween} vehicle overlaps`,
+        `${r.checked} slot-ticks checked, ${r.contactsBetween} vehicle overlaps; ${r.rolling} rolling ` +
+        `oddities, ${r.rollingSameWay.length} of them heading the riders' way`,
     );
     expect(r.spawns).toBeGreaterThan(10);
+    // A rolling oddity (the mobile home) only ever comes the other way: nobody is stuck behind it.
+    expect(r.rolling).toBeGreaterThan(0);
+    expect(r.rollingSameWay.slice(0, 3)).toEqual([]);
     expect(r.tooClose.slice(0, 3)).toEqual([]);
     expect(r.contactsBetween).toBe(0);
   }, 120_000);
