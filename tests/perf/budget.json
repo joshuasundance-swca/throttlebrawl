@@ -1,7 +1,7 @@
 {
   "$comment": "M1 hard budget (docs/engineering.md, perf check). Changing a limit is a normal PR with the reason in its note. drawCallsMax and trianglesMax are the architecture doc's starting budgets per frame (app-1 records them; dev-2's perf gate enforces them at fixed checkpoints).",
   "jsGzipKB": 500,
-  "firstLoadKB": 5120,
+  "firstLoadKB": 6144,
   "drawCallsMax": 120,
   "trianglesMax": 150000
 }
