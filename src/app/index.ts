@@ -22,7 +22,7 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity, type LookEnv } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
-import { createSettingsStore, type StorageLike } from '../save';
+import { createSettingsStore, settingsAssists, type FrameRateCap, type StorageLike } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import {
   createSim,
@@ -143,7 +143,10 @@ export interface FrameStats {
  * the framing it shows, and the radio's region and stations. Read-only, for tests and dev/.
  */
 export interface AppPresentation {
-  camera: { view: ViewMode; mode: CameraMode };
+  /** `shake` is the reduce-shake amount app handed the camera (1 full, 0 none). */
+  camera: { view: ViewMode; mode: CameraMode; shake: number };
+  /** The loop draws one animation frame in every `frameDivisor`. */
+  display: { frameDivisor: number };
   radio: { region: string | null; stations: string[]; tunedTo: string };
 }
 
@@ -178,6 +181,9 @@ export interface AppHandle {
   /** The camera's view and the radio's region and stations (tests and dev/). */
   presentation(): AppPresentation;
 }
+
+/** The settings' Frame rate as the loop's divisor. */
+const FRAME_CAP_DIVISOR: Readonly<Record<FrameRateCap, number>> = { full: 1, half: 2, third: 3 };
 
 function percentile(sorted: readonly number[], p: number): number {
   if (sorted.length === 0) return 0;
@@ -244,7 +250,9 @@ export function createApp(opts: AppOptions): AppHandle {
     },
   );
   // The frame-rate cap: the loop runs one animation frame in every `display.frameDivisor`.
-  const frameGate = createFrameGate(() => tuning.get(FRAME_DIVISOR_ID));
+  // The settings' Frame rate (full, half, a third) sets a floor under the panel's divisor.
+  const frameDivisor = () => Math.max(tuning.get(FRAME_DIVISOR_ID), FRAME_CAP_DIVISOR[settings.frameRateCap]);
+  const frameGate = createFrameGate(frameDivisor);
 
   // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
   const renderer = createRenderer(opts.canvas, { assets });
@@ -284,7 +292,7 @@ export function createApp(opts: AppOptions): AppHandle {
   const useEvent = (id: string) => {
     if (id === eventId) return;
     eventId = id;
-    stream = streams.forEvent(registry, eventId);
+    stream = streams.forEvent(registry, eventId, settings.raceLength);
     event = lookup(registry.events, eventId);
     hashes = raceHashes(eventId);
     replayKey = appReplayKey(build, hashes.sim);
@@ -327,6 +335,13 @@ export function createApp(opts: AppOptions): AppHandle {
     const config = buildSimConfig(registry, stream, {
       seed,
       eventId,
+      // The settings that feed SimConfig (M2 save-2 and ui-2; wired in the integration round). Each
+      // applies at the next race start or restart, never mid-race, and lands in the replay header.
+      length: settings.raceLength,
+      difficulty: settings.difficulty,
+      assists: [settingsAssists(settings)],
+      speedMultiplier: settings.speedMultiplier,
+      slowMo: settings.slowMo,
       // The sim's values plus the difficulty scales, read once at race start (app-3).
       tuning: { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) },
     });
@@ -375,7 +390,18 @@ export function createApp(opts: AppOptions): AppHandle {
     settings,
     // The control settings input-2 wired (#106); input itself is made after the ui, below, so the
     // vibration check asks input's haptics the same question on a throwaway (no side effects).
-    liveSettings: [...liveControlSettings(browserControlDevice(createHaptics().supported)), 'look'],
+    liveSettings: [
+      ...liveControlSettings(browserControlDevice(createHaptics().supported)),
+      'look',
+      // The race settings that feed SimConfig, and the two display ones (the integration round).
+      'difficulty',
+      'raceLength',
+      'speedMultiplier',
+      'assists.steer',
+      'slowMo',
+      'reduceShake',
+      'frameRateCap',
+    ],
     // The menu's region picker (#160): every carried region with an event, the Keys picked.
     regions: regions.map((r) => ({ id: r.id, name: r.name, ...(r.blurb ? { blurb: r.blurb } : {}) })),
     region: regionKeyOf(registry, eventId),
@@ -389,6 +415,13 @@ export function createApp(opts: AppOptions): AppHandle {
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
       onPause: syncRunning,
+      // The pause menu's radio panel (radio-1's follow-up): what plays, the next song, and "cut
+      // this" on the song (its flag goes into the settings record through ui).
+      radio: {
+        state: () => audio.inspect().radio,
+        skip: () => audio.skipTrack(),
+        cut: () => audio.cutPlayingTrack(race ? `seed-${race.config.seed}` : '', race?.tick ?? 0),
+      },
       onResume: unpause,
       onRestart: () => {
         unpause();
@@ -405,6 +438,7 @@ export function createApp(opts: AppOptions): AppHandle {
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
+        applyShake(next);
         audio.setRadioCut(radioCut(next));
       },
     },
@@ -429,6 +463,13 @@ export function createApp(opts: AppOptions): AppHandle {
     else if (owner === 'barks') ui.narrative.setParam(id, value);
     else if (owner === 'render') renderer.setParam(id, value);
   };
+  // Reduce screen shake [decided]: no shake and no hit jolt (camera-2's setShakeAmount 0). [default]
+  let shakeAmount = 1;
+  function applyShake(s: typeof settings) {
+    shakeAmount = s.reduceShake ? 0 : 1;
+    camera.setShakeAmount(shakeAmount);
+  }
+  applyShake(settings);
   tuning.onChange(applyPresentationParam);
   for (const d of tuning.decls) if (!d.affectsSim) applyPresentationParam(d.id, tuning.get(d.id));
 
@@ -496,6 +537,8 @@ export function createApp(opts: AppOptions): AppHandle {
           const at = curr?.entities[playerId];
           pose = camera.update({ ...me, mode: at?.mode, targetId: at?.targetId, road: at?.road }, dt, {
             entities: curr?.entities,
+            // The held look-back action (camera-1's lookBack: L, or the pad's R1).
+            lookBack: input.lastActions().lookBack,
             // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
             aspect: viewAspect(),
           });
@@ -603,6 +646,9 @@ export function createApp(opts: AppOptions): AppHandle {
         return;
       }
       if (choice) useEvent(choice.eventId);
+      // The chosen race length's route (the settings' Race length; an id the event lacks means its
+      // standard length).
+      stream = streams.forEvent(registry, eventId, settings.raceLength);
       showRegion();
       if (!go('race')) return;
       race = newSim(seeds.next());
@@ -661,7 +707,8 @@ export function createApp(opts: AppOptions): AppHandle {
       // The stations audio itself offers now (its own region filter applied), and what it plays.
       const r = audio.inspect().radio;
       return {
-        camera: { view: camera.view, mode: camera.mode },
+        camera: { view: camera.view, mode: camera.mode, shake: shakeAmount },
+        display: { frameDivisor: frameDivisor() },
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
       };
     },

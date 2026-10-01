@@ -351,8 +351,9 @@ function installStyleFeed(feed: (pops: readonly StyleFeedPop[]) => void): void {
 
 /**
  * The browser specs' stand-in radio (docs/architecture.md, "Testing seams"), only when the test
- * flag is set before the page loads and app/ has wired no radio: `window.__uiRadioSource`, set by
- * the spec's init script, so the pause menu's radio panel can be laid out and driven on its own.
+ * flag is set before the page loads: `window.__uiRadioSource`, set by the spec's init script, so the
+ * pause menu's radio panel can be laid out and driven on its own. When planted it replaces app/'s
+ * radio (wired since the integration round); a spec that plants none gets the real one.
  */
 function testRadioSource(): RadioSource | null {
   const w = window as Window & { __GAME_TEST__?: boolean; __uiRadioSource?: RadioSource };
@@ -499,7 +500,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // ---- Settings ----------------------------------------------------------------------------
   // The view and the radio apply through their presentation sliders (camera.mode, audio.radio),
   // which app/ routes to camera/ and audio/ by the id's prefix. They apply at once and at boot.
-  const radioSource: RadioSource | null = cb.radio ?? testRadioSource();
+  // A spec's planted stand-in wins over app/'s radio, so the layout spec drives a known playlist.
+  const radioSource: RadioSource | null = testRadioSource() ?? cb.radio ?? null;
   const tuned = (id: 'view' | 'radio') => {
     const param = TUNED_SETTINGS[id];
     return param && opts.tuning.decl(param) ? param : null;
