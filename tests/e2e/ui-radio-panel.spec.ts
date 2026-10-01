@@ -169,6 +169,13 @@ test('the pause radio panel names what plays, switches stations and songs, and c
   await page.locator('#radio-cut').click();
   await page.locator('#radio-cut-yes').click();
   await expect(page.locator('#radio-song')).toContainText('Cut');
+  // The note stays up long enough to read, through the pause screen's 500 ms refresh (it was
+  // overwritten within half a second, which also made this check flaky on a loaded CI runner:
+  // main's run 36903807975 read the next song, "Key Lime Slapback", instead of the note). Then
+  // the panel names the next song.
+  await page.waitForTimeout(1200);
+  await expect(page.locator('#radio-song')).toContainText('Cut');
+  await expect(page.locator('#radio-song')).toHaveText(first.tracks[2]?.title ?? '', { timeout: 6000 });
   const saved = await page.evaluate(() => {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) ?? '';

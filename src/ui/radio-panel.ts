@@ -69,6 +69,26 @@ export function radioLines(s: RadioState): { station: string; song: string | nul
   return { station: playing?.stationName ?? s.tunedTo, song: playing?.title ?? null };
 }
 
+/**
+ * How long a note ("Cut. You won't hear it again") stays up before the panel names the song again.
+ * The pause screen refreshes the panel every 500 ms, which used to overwrite the note at once.
+ * [default]
+ */
+export const RADIO_NOTE_HOLD_MS = 3000;
+
+/** A note the panel shows in place of the song: its text, when it went up, and the station then. */
+export interface RadioNote {
+  text: string;
+  at: number;
+  tunedTo: string;
+}
+
+/** The note still to show at `now` on `tunedTo`: null once it has run its time or the station changed. */
+export function heldRadioNote(note: RadioNote | null, now: number, tunedTo: string): string | null {
+  if (!note || note.tunedTo !== tunedTo) return null;
+  return now - note.at < RADIO_NOTE_HOLD_MS ? note.text : null;
+}
+
 export const RADIO_PANEL_CSS = `
 #pause-radio { pointer-events: auto; display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 8px; }
 #pause-radio .radio-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -95,6 +115,8 @@ export interface RadioPanelOptions {
   tune(choice: number): void;
   /** A song was cut: the flag goes into the settings record. */
   onCut(flag: VetoFlag): void;
+  /** The clock for how long a note stays up (ms); `performance.now` by default. */
+  now?: () => number;
 }
 
 function node<K extends keyof HTMLElementTagNameMap>(
@@ -116,6 +138,8 @@ function smallButton(id: string, text: string, onClick: () => void): HTMLButtonE
 
 export function createRadioPanel(opts: RadioPanelOptions): RadioPanel {
   let source: RadioSource | null = null;
+  let note: RadioNote | null = null;
+  const now = opts.now ?? (() => performance.now());
   const station = node('span', { className: 'radio-station', id: 'radio-station' });
   const song = node('div', { className: 'radio-song', id: 'radio-song' });
   const next = smallButton('radio-next', 'Next station', () => {
@@ -125,6 +149,7 @@ export function createRadioPanel(opts: RadioPanelOptions): RadioPanel {
     refresh();
   });
   const skip = smallButton('radio-skip', 'Next song', () => {
+    note = null;
     source?.skip();
     refresh();
   });
@@ -160,12 +185,15 @@ export function createRadioPanel(opts: RadioPanelOptions): RadioPanel {
     confirm,
   );
 
-  function refresh(note: string | null = null) {
+  function refresh(text: string | null = null) {
     if (!source) return;
     const s = source.state();
     const lines = radioLines(s);
+    if (text !== null) note = { text, at: now(), tunedTo: s.tunedTo };
+    const held = heldRadioNote(note, now(), s.tunedTo);
+    if (held === null) note = null;
     station.textContent = lines.station;
-    song.textContent = note ?? lines.song ?? '';
+    song.textContent = held ?? lines.song ?? '';
     const onStation = !!lines.song;
     skip.hidden = !onStation;
     cut.hidden = !onStation;
