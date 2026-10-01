@@ -4,11 +4,11 @@
 // scores more than the first; the oncoming lane on a dir −1 leg is the direction +1 one; and a jump
 // inside slow motion is measured in world time, not ticks.
 import { describe, expect, it } from 'vitest';
-import type { SimConfig, SimEvent, SimStyleRewards } from '../api';
+import type { SimConfig, SimEvent, SimStyleRewards, StyleRunSnapshot } from '../api';
 import { testConfig } from '../riders/testing';
 import type { SimRiderDef } from '../types';
 import { addMover, createWorld, type Mover, type World } from '../world';
-import { gridPosition, raceSystem, RACE_TUNING } from './index';
+import { gridPosition, raceSystem, RACE_TUNING, styleRunOf } from './index';
 
 const REWARDS: SimStyleRewards = {
   perNearMissCash: 25,
@@ -259,5 +259,67 @@ describe('riders-5: style scoring', () => {
     h.player.pos.d = 1.7;
     h.step();
     expect(h.styles).toEqual([]);
+  });
+});
+
+// Playtest 1c ([decided] 2026-09-30: "I'd like to also watch oncoming go up and up as you ride"):
+// the run in progress, as the snapshot shows it, ends on exactly the cash the style event awards.
+describe('playtest 1c: the live style run', () => {
+  it('an oncoming stretch ticks up, and its last shown cash is the award, exactly', () => {
+    const config = styledConfig();
+    const h = harness(config);
+    ride(h.player, -1.7, 30); // the oncoming lane, riding toward +s
+    let last: StyleRunSnapshot | null = null;
+    let rises = 0;
+    for (let t = 0; t < 151; t++) {
+      h.step();
+      const run = styleRunOf(h.world, config, h.player.id);
+      if (last && run && run.seconds > last.seconds && run.cash >= last.cash) rises++;
+      last = run;
+    }
+    expect(last?.kind).toBe('oncoming');
+    expect(last?.qualifies).toBe(true);
+    expect(rises).toBe(150);
+    ride(h.player, 1.7, 30); // back in our own lane: the stretch ends and scores
+    const out = h.step();
+    expect(out).toHaveLength(1);
+    expect(out[0]?.data['kind']).toBe('oncoming');
+    expect(out[0]?.data['points']).toBe(last?.cash);
+    expect(styleRunOf(h.world, config, h.player.id)).toBeNull();
+  });
+
+  it('a stretch too short to count shows qualifies false, and awards nothing', () => {
+    const config = styledConfig();
+    const h = harness(config);
+    ride(h.player, -1.7, 30);
+    for (let t = 0; t < 60; t++) h.step();
+    const run = styleRunOf(h.world, config, h.player.id);
+    expect(run).toMatchObject({ kind: 'oncoming', qualifies: false });
+    ride(h.player, 1.7, 30);
+    expect(h.step()).toHaveLength(0);
+  });
+
+  it('airtime shows the jump’s seconds rising and its fixed cash, which a clean landing awards', () => {
+    const config = styledConfig();
+    const h = harness(config);
+    ride(h.player, 1.7, 30);
+    h.step([ev('jump', h.player.id)]);
+    let run: StyleRunSnapshot | null = null;
+    for (let t = 0; t < 40; t++) {
+      h.step();
+      run = styleRunOf(h.world, config, h.player.id);
+    }
+    expect(run).toMatchObject({ kind: 'airtime', cash: 40, qualifies: true });
+    expect(run?.seconds).toBeCloseTo(40 / 60, 6);
+    const out = h.step([ev('land', h.player.id, { quality: 'clean' })]);
+    expect(out[0]?.data['points']).toBe(run?.cash);
+    expect(styleRunOf(h.world, config, h.player.id)).toBeNull();
+  });
+
+  it('no run, and no style state created, before the race has stepped', () => {
+    const config = styledConfig();
+    const world = createWorld(config);
+    expect(styleRunOf(world, config, 0)).toBeNull();
+    expect('race.style' in world.systems).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat'
 import { copsSystem, COPS_TUNING } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING } from './modifiers';
 import { pedsSystem, PEDS_TUNING } from './peds';
-import { gridPosition, raceState, raceSystem, RACE_TUNING } from './race';
+import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
@@ -127,6 +127,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       styleTally: world.facts.styleTally[m.id] ?? 0,
       grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
       boostS: m.kind === 'rider' ? (riders.boost[m.id] ?? 0) / 60 : 0,
+      styleRun: m.kind === 'rider' ? styleRunOf(world, config, m.id) : null,
     };
   });
   return {
