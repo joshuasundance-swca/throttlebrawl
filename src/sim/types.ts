@@ -305,9 +305,19 @@ export interface SimAiPersonality {
   chatter?: number;
   /** Lane habit: how much the rider drifts across its lane (0 holds a line). */
   weave?: number;
-  /** Whom to fight first: `grudge`, `player`, `leader`, `nearest`, `crew-enemy`. */
+  /** Whom to fight first: `grudge`, `rival`, `player`, `leader`, `nearest`, `crew-enemy`. */
   targetPreference?: readonly string[];
   preferredSide?: 'left' | 'right' | 'either';
+  /**
+   * Authored rivalries (M4 rivals-1): the rider ids (bare, like `chad-speedwell`) this rider picks
+   * a fight with whenever one is in range. Absent or empty: no authored rivals.
+   */
+  rivals?: readonly string[];
+  /**
+   * The weapon this rider goes out of its way to pick up (M4 rivals-1): a weapon id, matched against
+   * the end of a weapon's content id (`chain` matches `base:chain`). Absent: it takes what it rides over.
+   */
+  preferredWeapon?: string;
 }
 
 /**
