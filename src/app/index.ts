@@ -42,6 +42,7 @@ import { buildSimConfig, DEFAULT_EVENT, raceStartValues, streamForEvent } from '
 import { createLoop } from './loop';
 import { appReplayKey } from './replay-key';
 import { createOutcome, raceResult, resultsDue } from './results';
+import { createRaceSeeds, type SeedSource } from './seed';
 import { transition, type AppEvent, type AppState } from './states';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -54,6 +55,8 @@ export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
 export { transition } from './states';
 export type { AppState, AppEvent } from './states';
 export { APP_TUNING } from './tuning';
+export { createRaceSeeds, cryptoSeed } from './seed';
+export type { RaceSeeds, SeedSource } from './seed';
 export type { ActionState } from '../input';
 
 export interface AppBuild {
@@ -88,8 +91,13 @@ export interface AppOptions {
   canvas: HTMLCanvasElement;
   build: AppBuild;
   callbacks: AppCallbacks;
-  /** Race seed; a fixed seed makes a test run repeatable. */
+  /**
+   * A fixed race seed: every race uses it, so a test run repeats (the test flag passes 1). Left
+   * out, each new race draws a fresh seed from `seedSource` (playtest 1c item 2).
+   */
   seed?: number;
+  /** Where a fresh race seed comes from when no seed is fixed (default: crypto random). */
+  seedSource?: SeedSource;
 }
 
 export type TickDriver = (snapshot: SimSnapshot, actions: ActionState) => void;
@@ -148,7 +156,9 @@ function safeStorage(): StorageLike | null {
 export function createApp(opts: AppOptions): AppHandle {
   const { build } = opts;
   let state: AppState = 'boot';
-  let seed = opts.seed ?? 1;
+  // A fresh seed per race unless one is fixed (playtest 1c item 2); the seed goes into SimConfig,
+  // so the recording's header carries it and replay and resume reproduce the race.
+  const seeds = createRaceSeeds(opts.seed, opts.seedSource);
 
   // Content, the region, and the layout record.
   const registry = loadBasePack({ includeDrafts: build.channel !== 'prod' });
@@ -216,7 +226,7 @@ export function createApp(opts: AppOptions): AppHandle {
   let playerId = 0;
   let stepListener: ((s: SimSnapshot, e: readonly SimEvent[]) => void) | null = null;
 
-  const newSim = (): Sim => {
+  const newSim = (seed: number): Sim => {
     const config = buildSimConfig(registry, stream, {
       seed,
       eventId: DEFAULT_EVENT,
@@ -229,7 +239,7 @@ export function createApp(opts: AppOptions): AppHandle {
     return createSim(config);
   };
   // The attract scene: the grid, before anyone moves.
-  curr = newSim().snapshot();
+  curr = newSim(seeds.next()).snapshot();
 
   const go = (e: AppEvent) => {
     const next = transition(state, e);
@@ -419,7 +429,7 @@ export function createApp(opts: AppOptions): AppHandle {
       stepListener = listener;
     },
     setSeed(s) {
-      seed = s >>> 0;
+      seeds.fix(s);
     },
     tap() {
       if (state !== 'tapToStart') return;
@@ -429,7 +439,7 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     startRace() {
       if (!go('race')) return;
-      race = newSim();
+      race = newSim(seeds.next());
       pendingTuning.length = 0;
       // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
       recorder.beginRace(race, replayKey);

@@ -5,12 +5,6 @@
 import { createApp, type AppHandle } from './app';
 import { copyReport, installDev, saveDebugFile, testFlagSet } from './dev';
 
-function randomSeed(): number {
-  const buf = new Uint32Array(1);
-  crypto.getRandomValues(buf);
-  return buf[0] ?? 1;
-}
-
 function boot(): void {
   const canvas = document.createElement('canvas');
   canvas.id = 'game';
@@ -30,7 +24,8 @@ function boot(): void {
         onCopyReport: () => (app ? copyReport(app) : Promise.resolve()),
         onSaveDebugFile: () => (app ? saveDebugFile(app) : Promise.resolve()),
       },
-      seed: testFlagSet() ? 1 : randomSeed(),
+      // Tests pin seed 1; players get a fresh seed every race (playtest 1c item 2, app/seed.ts).
+      ...(testFlagSet() ? { seed: 1 } : {}),
     });
   } catch (err) {
     const note = document.createElement('div');

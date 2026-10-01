@@ -13,13 +13,20 @@
     "mix": [
       { "kind": "sedan-rental", "weight": 5, "hazard": "normal" },
       { "kind": "pickup", "weight": 5, "hazard": "normal" },
-      { "kind": "box-truck", "weight": 2, "hazard": "big" }
+      { "kind": "box-truck", "weight": 2, "hazard": "big" },
+      { "kind": "runaway-mobile-home", "weight": 0.3, "hazard": "big", "tags": ["oddity"] }
     ],
     "pedestrians": [
       { "kind": "tourist-with-cooler", "weight": 1 },
       { "kind": "fisherman", "weight": 1 }
     ],
-    "animals": [{ "kind": "chicken", "weight": 1, "big": false }]
+    "animals": [
+      { "kind": "chicken", "weight": 1, "big": false },
+      { "kind": "iguana", "weight": 1.5, "big": false },
+      { "kind": "pelican", "weight": 1, "big": false },
+      { "kind": "gator", "weight": 0.6, "big": true },
+      { "kind": "gator-on-lawn-chair", "weight": 0.25, "big": true }
+    ]
   },
   "signs": [
     { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES.", "status": "live" },
@@ -37,6 +44,6 @@
   "weather": null,
   "meta": {
     "status": "live",
-    "notes": "M1 stub; the traffic lane owns this file. Since M2 traffic-3 the mix, pedestrian and animal weights reach the race (SimTrafficTypeDef.weight) and pick the kinds; a kind listed nowhere never spawns. The weights still equal M1's per-category defaults (car 5, truck 2, and 1 each for pedestrians and animals, where a `pedestrians` roadside zone gets the odd stray animal). The signs and billboards are the placeholder items from the content-pack doc's region stub (M2 traffic-3), for road-3's `billboard` slots; each id is stable, so the in-game veto can name it."
+    "notes": "M1 stub; the traffic lane owns this file. Since M2 traffic-3 the mix, pedestrian and animal weights reach the race (SimTrafficTypeDef.weight) and pick the kinds; a kind listed nowhere never spawns. The weights started as M1's per-category defaults (car 5, truck 2, and 1 each for pedestrians and animals, where a `pedestrians` roadside zone gets the odd stray animal). M3 traffic-4 (head start, 2026-10-01) adds a wasteland oddity to the mix (a runaway mobile home, 0.3, scaled in-race by the `traffic.oddities` slider) and the Keys animals (iguana, pelican, gator, and a gator on a lawn chair). The `parked-boat` type and its code are in, but it stays out of this mix until the rivals can steer round a stopped vehicle: in CI's 50-race batch, rivals stalled behind parked boats for up to 328 s. All six new types are drafts, so release builds leave them out until they are promoted. Key deer stay out: a protected species (M3.md traffic-4). The signs and billboards are the placeholder items from the content-pack doc's region stub (M2 traffic-3), for road-3's `billboard` slots; each id is stable, so the in-game veto can name it."
   }
 }

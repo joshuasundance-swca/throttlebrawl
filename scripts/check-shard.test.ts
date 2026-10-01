@@ -1,4 +1,4 @@
-// `npm run check -- --shard i/n` (CI's sim slices). These cases all stop before any step runs, so
+// `npm run check -- --shard i/n` (CI's sim and browser slices). These cases all stop before any step runs, so
 // the test is quick: a malformed slice, or a slice of a tier with a step that does not shard,
 // must fail loudly instead of quietly running less of the gate.
 import { spawnSync } from 'node:child_process';
@@ -30,9 +30,21 @@ describe('check --shard', () => {
     expect(r.err).toContain('--shard wants i/n');
   });
 
-  it('names the sim tier among the known tiers', () => {
+  it('refuses a slice of perf, which never shards (its probes time frames one at a time)', () => {
+    const r = check('--tier', 'perf', '--shard', '1/2');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('--shard needs a --tier whose steps all shard');
+  });
+
+  it('checks a browser slice the same way', () => {
+    const r = check('--tier', 'browser', '--shard', '2/1');
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('--shard wants i/n');
+  });
+
+  it('names the sim and perf tiers among the known tiers', () => {
     const r = check('--tier', 'nope');
     expect(r.code).toBe(1);
-    expect(r.err).toContain('static, unit, sim, browser');
+    expect(r.err).toContain('static, unit, sim, browser, perf');
   });
 });
