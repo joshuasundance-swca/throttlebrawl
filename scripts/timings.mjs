@@ -82,7 +82,8 @@ function main(runIds) {
     const { jobs } = JSON.parse(gh(['run', 'view', id, '--json', 'jobs']));
     const run = { sim: {}, e2e: {}, perf: 0 };
     for (const job of jobs) {
-      if (!/^(sim|browser)\b/.test(job.name) || job.conclusion !== 'success') continue;
+      // A red job's other files still timed true; a cancelled or skipped one says nothing.
+      if (!/^(sim|browser)\b/.test(job.name) || !['success', 'failure'].includes(job.conclusion)) continue;
       const got = parseLog(gh(['run', 'view', '--job', String(job.databaseId), '--log']));
       Object.assign(run.sim, got.sim);
       Object.assign(run.e2e, got.e2e);
@@ -107,6 +108,11 @@ function main(runIds) {
     e2e: average(per.map((r) => r.e2e)),
   };
   writeFileSync(path.join(repoRoot, TIMINGS_FILE), `${JSON.stringify(table, null, 2)}\n`);
+  // In the repo's own style, so the format check passes on the refreshed table as written.
+  spawnSync('npx', ['--no-install', 'prettier', '--write', TIMINGS_FILE], {
+    cwd: repoRoot,
+    shell: process.platform === 'win32',
+  });
   console.log(
     `[examined] ${per.length} runs: ${Object.keys(table.sim).length} sim files, ${Object.keys(table.e2e).length} browser specs, perf ${table.perf} s; wrote ${TIMINGS_FILE}`,
   );

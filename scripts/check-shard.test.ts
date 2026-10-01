@@ -64,7 +64,7 @@ describe('check --shard', () => {
   // End to end, through the runners' own file lists: the slices of each tier, as check prints them
   // with --plan, cover every test file on disk exactly once.
   it.each([
-    ['sim', '2', 'tests/sim', /\.test\.ts$/],
+    ['sim', '3', 'tests/sim', /\.test\.ts$/],
     ['browser', '4', 'tests/e2e', /\.(spec|test)\.ts$/],
   ] as const)(
     'plans %s slices (n = %s) that hold every test file on disk exactly once',

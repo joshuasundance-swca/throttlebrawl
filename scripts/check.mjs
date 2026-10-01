@@ -115,8 +115,10 @@ const STEPS = [
       'no seeded-race batch yet (dev-1 adds tests/sim/batch.ts and its tests)',
   },
   // The build belongs to both browser tiers. A job that runs both (`--tier browser,perf`, CI's last
-  // browser slice) or the whole gate builds once; a job with one of them builds its own.
-  { tier: ['browser', 'perf'], name: 'build', script: 'build', count: fromDist, everySlice: true },
+  // browser slice) or the whole gate builds once; a job with one of them builds its own. It is
+  // `build:dist`, the build without `build`'s own typecheck: the static tier's types step checks the
+  // same three configs, and every browser slice repeating it cost each CI slice about 10 s.
+  { tier: ['browser', 'perf'], name: 'build', script: 'build:dist', count: fromDist, everySlice: true },
   { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: 'e2e' },
   // perf never shards: its probes time frames one at a time on an otherwise idle runner. In a
   // sharded run it may only ride in the last slice, after that slice's e2e files, as in ci.yml; the

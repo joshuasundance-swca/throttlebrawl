@@ -1,4 +1,4 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static and unit (one job), sim (two
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static and unit (one job), sim (three
 # slices) and browser (four slices, the last also running perf) run in parallel, each running its
 # tiers of `npm run check`; `gate` is the single required status check, and it fails unless every
 # one of them succeeded.
@@ -62,7 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
