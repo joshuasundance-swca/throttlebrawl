@@ -1,0 +1,51 @@
+{
+  "type": "road",
+  "id": "c-stair-alley-in",
+  "name": "Alley gate",
+  "realName": null,
+  "network": "sf-hills",
+  "from": "j-sf-hills-2",
+  "to": "j-sf-hills-2",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "row-houses" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -771.636, -771.7537, -771.8712, -771.9879, -772.1029, -772.2153, -772.3238, -772.4275, -772.5251,
+        -772.6158, -772.6986, -772.7729, -772.8383, -772.8945, -772.9415, -772.9795
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -587.1673, -589.1638, -591.1603, -593.1569, -595.1536, -597.1505, -599.1475, -601.1448, -603.1424,
+        -605.1404, -607.1387, -609.1373, -611.1362, -613.1354, -615.1349, -617.1345
+      ],
+      "kappa": [
+        0, 0.00005453726, 0.0002003255, 0.0004123742, 0.0006679645, 0.0009466497, 0.001230255, 0.001502877,
+        0.001750886, 0.001962922, 0.002129898, 0.002245, 0.002303683, 0.002303676, 0.002244982, 0.002129871
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-hills.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

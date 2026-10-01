@@ -1,0 +1,78 @@
+{
+  "id": "osm-sf-twin-peaks",
+  "name": "Upper Market, Portola and the Twin Peaks climb (OSM bake, staging)",
+  "region": "san-francisco",
+  "crs": {
+    "originLatDeg": 37.7749,
+    "originLonDeg": -122.4194
+  },
+  "osmExtract": ".cache/osm/sf-twin-peaks.json",
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
+  "elevationExtract": ".cache/usgs/osm-sf-twin-peaks.json",
+  "outRoot": "tools/gis/staging/san-francisco",
+  "pathFrom": {
+    "lat": 37.765771,
+    "lon": -122.4310321
+  },
+  "via": [
+    {
+      "lat": 37.7501357,
+      "lon": -122.4434116
+    },
+    {
+      "lat": 37.7458893,
+      "lon": -122.450821
+    }
+  ],
+  "pathTo": {
+    "lat": 37.7548014,
+    "lon": -122.4466495
+  },
+  "start": {
+    "lat": 37.765771,
+    "lon": -122.4310321
+  },
+  "end": {
+    "lat": 37.7548014,
+    "lon": -122.4466495
+  },
+  "routeTags": {
+    "name": "^(Market Street|Portola Drive|Twin Peaks Boulevard|Christmas Tree Point Road)$"
+  },
+  "respectOneway": false,
+  "splitOnNameChange": true,
+  "realNameFromOsm": true,
+  "smoothing": {
+    "headingSigmaM": 12
+  },
+  "compression": {
+    "enabled": false
+  },
+  "elevation": {
+    "sampleEveryM": 10,
+    "lowPassSigmaM": 12,
+    "bridgeDeck": "span",
+    "humpHeightM": 0
+  },
+  "roads": [
+    {
+      "id": "osm-sf-upper-market",
+      "name": "Upper Market"
+    },
+    {
+      "id": "osm-sf-portola",
+      "name": "Portola"
+    },
+    {
+      "id": "osm-sf-twin-peaks-climb",
+      "name": "Twin Peaks Climb"
+    }
+  ],
+  "route": {
+    "id": "osm-sf-twin-peaks-run",
+    "name": "Twin Peaks Run"
+  },
+  "realName": "San Francisco streets",
+  "waysLabel": "San Francisco street",
+  "networkNotes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first. Finishes at the summit: the through road over Twin Peaks is car-free in OSM, so the route does not cross it."
+}

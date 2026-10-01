@@ -1,0 +1,63 @@
+{
+  "type": "route",
+  "id": "osm-sf-twin-peaks-run",
+  "name": "Twin Peaks Run",
+  "network": "osm-sf-twin-peaks",
+  "start": {
+    "road": "osm-sf-upper-market",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-sf-twin-peaks-climb",
+    "s": 1971.0905
+  },
+  "mainPath": ["osm-sf-upper-market", "osm-sf-portola", "osm-sf-twin-peaks-climb"],
+  "allowedRoads": ["osm-sf-upper-market", "osm-sf-portola", "osm-sf-twin-peaks-climb"],
+  "checkpoints": [
+    {
+      "road": "osm-sf-portola",
+      "s": 472.0213
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An alternative route on the real road; no event points at it yet (road-4 decides).",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-01",
+      "tool": {
+        "name": "tools/gis/src/tbgis/cli.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/configs/osm-sf-twin-peaks.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
+          "retrievedAt": "2026-10-01T01:55:27Z",
+          "sha256": "291c8a6e53ab2a21040a14c3301bcb16e187a79e011229d789da2ab5ec29fd1d"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 568 points in 1 request(s) (lon, lat WGS84, sha256 79a8656046abe6f6), bilinear",
+          "retrievedAt": "2026-10-01T02:23:36Z",
+          "sha256": "90acb29aeaebb0e2279f358c0f94c47dc6f1676fd50558c07caaac5efa00db77"
+        }
+      ]
+    }
+  }
+}

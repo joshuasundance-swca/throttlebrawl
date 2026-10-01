@@ -1,0 +1,55 @@
+{
+  "type": "station",
+  "id": "keys-surf",
+  "name": "Low Tide 91.7",
+  "genre": "surf",
+  "regions": ["florida-keys"],
+  "tracks": [
+    {
+      "id": "causeway-twang",
+      "title": "Causeway Twang",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 164, "key": "E", "progression": "andalusian", "drums": "four", "drop": true }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "seven-mile-drip",
+      "title": "Seven Mile Drip",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 150, "key": "E", "progression": "phrygian", "drums": "toms", "drop": true }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "pelican-on-the-piling",
+      "title": "Pelican on the Piling",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 172, "key": "A", "progression": "stomp", "drums": "drive", "drop": false }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "no-wake-zone-stomp",
+      "title": "No Wake Zone Stomp",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 144, "key": "D", "progression": "minor", "drums": "four", "drop": false }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "Code-made surf tracks (src/audio/radio-compose.ts, preset surf-trio). Melodies are generated from each track's seed, so they are original. AI-made tracks join with assets-2. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

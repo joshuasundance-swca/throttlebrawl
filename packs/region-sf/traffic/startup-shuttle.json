@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "startup-shuttle",
+  "name": "Startup Shuttle",
+  "category": "rv",
+  "tags": ["region-sf", "satire"],
+  "lengthM": 11.0,
+  "widthM": 2.6,
+  "cruiseMps": 18.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "box-truck"
+    },
+    "paintOptions": ["#f4f4f2", "#2b2d33"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An unmarked white commuter coach with tinted windows, running a private route nobody admits to. Placeholder shape: the box-truck preset (the renderer draws rv as a truck).",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

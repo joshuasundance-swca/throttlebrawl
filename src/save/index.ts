@@ -30,10 +30,12 @@ export type ThrottleMode = 'scaled' | 'auto';
 export type FrameRateCap = 'full' | 'half' | 'third';
 /**
  * The look (playtest 1b item 6: styles as settings, [decided]): render/'s look ids. `classic` is the
- * M1 look; `kodak` is "Ink + 1960s film". Render only: it never feeds SimConfig.
+ * M1 look; `kodak` is "Ink + 1960s film"; playtest 1c item 5 adds `wasteland` ("Sun-bleached
+ * wasteland") and `brush` ("Kodachrome brush"). Render only: it never feeds SimConfig. Additive:
+ * the version stays 1, and an id this build doesn't know sanitises to `classic`.
  */
-export type LookSetting = 'classic' | 'kodak';
-export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak'];
+export type LookSetting = 'classic' | 'kodak' | 'wasteland' | 'brush';
+export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak', 'wasteland', 'brush'];
 
 /** One "cut this" flag from the in-game veto (docs/architecture.md, "In-game veto"). */
 export interface VetoFlag {

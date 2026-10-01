@@ -1,0 +1,18 @@
+{
+  "type": "crew",
+  "id": "curb-authority",
+  "name": "Municipal Curb Authority",
+  "kind": "law",
+  "region": "san-francisco",
+  "stanceTowardPlayer": "hostile",
+  "rivalCrews": [],
+  "meta": {
+    "status": "live",
+    "notes": "Parody city law for the San Francisco region: parking enforcement with a pursuit budget. A made-up name; no real agency names, badges or logos.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

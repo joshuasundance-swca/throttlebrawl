@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "e-scooter-commuter",
+  "name": "E-Scooter Commuter",
+  "category": "pedestrian",
+  "tags": ["region-sf"],
+  "lengthM": 0.9,
+  "widthM": 0.6,
+  "cruiseMps": 2.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-tourist"
+    },
+    "paintOptions": ["#3b7d5a", "#d9d9d9", "#2b2b2b"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A commuter on a rental e-scooter at the kerb. Steps off and dives clear, still on a call. Placeholder shape: the tourist preset.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
