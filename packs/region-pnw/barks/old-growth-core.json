@@ -1,0 +1,89 @@
+{
+  "type": "bark-set",
+  "id": "old-growth-core",
+  "name": "Old Growth: core lines",
+  "tags": ["rival", "pnw"],
+  "defaults": {
+    "speaker": "old-growth",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "growth-start-here-before",
+      "trigger": "race-start",
+      "text": "These trees were here before you. So was I."
+    },
+    {
+      "id": "growth-start-dawn-shift",
+      "trigger": "race-start",
+      "when": [{ "fact": "timeOfDay", "op": "eq", "value": "dawn" }],
+      "text": "Shift started at five. You're late."
+    },
+    {
+      "id": "growth-pass-scenery",
+      "trigger": "overtake",
+      "text": "Slow down. You're missing the trees."
+    },
+    {
+      "id": "growth-hit-timber",
+      "trigger": "hit-landed",
+      "text": "Timber."
+    },
+    {
+      "id": "growth-hit-last-swing",
+      "trigger": "hit-landed",
+      "when": [{ "fact": "target.healthFrac", "op": "lt", "value": 0.3 }],
+      "text": "One more swing and you're firewood."
+    },
+    {
+      "id": "growth-taken-felt",
+      "trigger": "hit-taken",
+      "text": "Felt that. A little."
+    },
+    {
+      "id": "growth-down-slow-fall",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Takes a while to fall. Longer to forget."
+    },
+    {
+      "id": "growth-down-rings",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [{ "fact": "history.takedowns.targetOnSpeaker", "op": "gte", "value": 2 }],
+      "text": "That's twice. I count rings."
+    },
+    {
+      "id": "growth-traffic-truck",
+      "trigger": "takedown-into-traffic",
+      "priority": 1,
+      "text": "Everybody hears the log truck. Almost everybody."
+    },
+    {
+      "id": "growth-grudge-paint",
+      "trigger": "grudge-spotted",
+      "target": "player",
+      "when": [{ "fact": "grudge.speakerTowardTarget", "op": "gte", "value": 4 }],
+      "text": "You've been marked. Orange paint."
+    },
+    {
+      "id": "growth-grudge-plain",
+      "trigger": "grudge-spotted",
+      "target": "player",
+      "text": "There you are."
+    },
+    {
+      "id": "growth-near-seen-worse",
+      "trigger": "near-miss",
+      "text": "Log truck. Seen worse."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "region-pnw (playtest 1c). growth-start-here-before is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

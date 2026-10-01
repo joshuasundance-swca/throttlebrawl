@@ -1,0 +1,41 @@
+{
+  "type": "route",
+  "id": "pnw-sawmill-haul",
+  "network": "pnw-c1",
+  "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
+  "finish": { "road": "pnw-sawmill-flats", "s": 963.5 },
+  "mainPath": [
+    "pnw-ferry-landing",
+    "pnw-switchback-grade",
+    "pnw-cedar-hollow",
+    "pnw-trestle",
+    "pnw-espresso-row",
+    "pnw-fogline-ridge",
+    "pnw-sawmill-flats"
+  ],
+  "allowedRoads": [
+    "pnw-ferry-landing",
+    "c-pnw-spur-split",
+    "pnw-switchback-grade",
+    "c-pnw-spur-merge",
+    "pnw-cedar-hollow",
+    "pnw-trestle",
+    "pnw-espresso-row",
+    "pnw-fogline-ridge",
+    "pnw-sawmill-flats",
+    "c-pnw-spur-in",
+    "pnw-logging-spur",
+    "c-pnw-spur-out"
+  ],
+  "checkpoints": [
+    { "road": "pnw-cedar-hollow", "s": 300 },
+    { "road": "pnw-cedar-hollow", "s": 900 },
+    { "road": "pnw-trestle", "s": 400 },
+    { "road": "pnw-espresso-row", "s": 300 },
+    { "road": "pnw-fogline-ridge", "s": 500 },
+    { "road": "pnw-sawmill-flats", "s": 500 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}
