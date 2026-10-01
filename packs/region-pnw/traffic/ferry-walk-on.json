@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "ferry-walk-on",
+  "name": "Ferry Walk-On",
+  "category": "pedestrian",
+  "tags": ["local", "commuter"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.4,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#3f5a6b", "#c7c2b4", "#2b2f2e"] },
+  "meta": {
+    "status": "live",
+    "notes": "A commuter in a rain shell, coffee in one hand. Dives clear without spilling it. Placeholder shape: the tourist pedestrian preset.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

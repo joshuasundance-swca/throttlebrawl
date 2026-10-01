@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "bigfoot-researcher",
+  "name": "Bigfoot Researcher",
+  "category": "pedestrian",
+  "tags": ["local", "kitsch"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.0,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-fisherman" }, "paintOptions": ["#6b5a3a", "#8a8f6a", "#d9a441"] },
+  "meta": {
+    "status": "live",
+    "notes": "Camo, a plaster-cast kit and a camera that has never once been in focus. Dives clear and checks the ditch for prints. Placeholder shape: the fisherman pedestrian preset.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

@@ -1,5 +1,6 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit and browser run in
-# parallel, each running its tier of `npm run check`; `gate` is the single required status check.
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit, sim (two slices) and browser
+# run in parallel, each running its tier of `npm run check`; `gate` is the single required status
+# check, and it fails unless every one of them succeeded.
 # On a push to main, a green gate deploys to the game Space and writes the release notes.
 # No `paths:` filter: a required check behind one never reports on some PRs.
 name: ci
@@ -59,8 +60,32 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Unit tests and the seeded sim batch
+      - name: Unit tests
         run: npm run check -- --tier unit
+
+  # The seeded sim batch, split by test file into parallel slices (Vitest's --shard puts every
+  # file in exactly one slice; the slices' test counts add up to the unsharded run's). It grew
+  # past 290 s on one runner; the slowest single file (ai-feel, about 100 to 190 s) is now the
+  # floor. fail-fast is off so a red slice never hides the other's result. [default]
+  sim:
+    name: sim (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Seeded sim batch, one slice
+        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/2
 
   browser:
     name: browser
@@ -102,7 +127,7 @@ jobs:
 
   gate:
     name: gate
-    needs: [static, unit, browser]
+    needs: [static, unit, sim, browser]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2

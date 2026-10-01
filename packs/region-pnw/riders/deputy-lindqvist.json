@@ -1,0 +1,26 @@
+{
+  "type": "rider",
+  "id": "deputy-lindqvist",
+  "name": "Deputy Lindqvist",
+  "role": "cop",
+  "roster": "local",
+  "region": "pacific-northwest",
+  "tags": ["deputy", "polite", "local-law"],
+  "blurb": "A soft-spoken county deputy who never raises his voice and never stops writing.",
+  "bike": "base:rustbucket-400",
+  "stats": { "massKg": 90, "healthMax": 100, "skill": 0.6 },
+  "personality": { "style": "cop" },
+  "law": {
+    "agency": "fir-county-sheriff",
+    "bustRadiusM": 14,
+    "bustDwellS": 1.0,
+    "fineCash": 400,
+    "pursuitSpeedScale": 1.05,
+    "radioVoice": "polite-deputy"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The region's local cop (region-pnw, playtest 1c), with Sgt. Pruitt's starting numbers. Sample line (agent draft): \"I'm not upset. I'm just writing it all down.\"",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

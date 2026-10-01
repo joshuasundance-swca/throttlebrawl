@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "log-truck",
+  "name": "Log Truck",
+  "category": "truck",
+  "tags": ["commercial", "local"],
+  "lengthM": 16,
+  "widthM": 2.6,
+  "cruiseMps": 23.0,
+  "hazard": "big",
+  "behaviour": { "carFollowing": true, "laneChanges": false, "dives": false },
+  "look": {
+    "procedural": { "preset": "box-truck", "params": { "cargoHeightM": 2.4 } },
+    "paintOptions": ["#7a3b2a", "#3d4a3f", "#c9b48a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The region's big hazard: a long, slow truck stacked with logs. Placeholder shape: the box-truck preset stretched to 16 m, until a log-truck model lands.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

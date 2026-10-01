@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static, unit and browser as parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static, unit, sim and browser as parallel jobs)
+//   npm run check -- --tier sim --shard 1/2
+//                                    one slice of the sim batch (Vitest's --shard: every test file
+//                                    lands in exactly one slice; CI runs the slices as parallel jobs)
 //
 // Every step must print what it examined, and an active step that examined nothing fails: a
 // check that looked at nothing reads exactly like a pass. A step whose subject does not exist
@@ -89,9 +92,10 @@ const STEPS = [
   },
   { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest },
   {
-    tier: 'unit',
+    tier: 'sim',
     name: 'sim batch',
     script: 'test:sim',
+    shardable: true,
     count: fromVitest,
     active: () =>
       hasFiles('tests/sim/', /\.test\.ts$/) ||
@@ -102,9 +106,10 @@ const STEPS = [
   { tier: 'browser', name: 'perf', script: 'perf', count: fromExamined },
 ];
 
-function run(script) {
+function run(script, args = []) {
   return new Promise((resolve) => {
-    const child = spawn('npm', ['run', script], { cwd: repoRoot, shell: process.platform === 'win32' });
+    const npmArgs = ['run', script, ...(args.length ? ['--', ...args] : [])];
+    const child = spawn('npm', npmArgs, { cwd: repoRoot, shell: process.platform === 'win32' });
     let out = '';
     const onData = (stream) => (chunk) => {
       out += chunk.toString();
@@ -120,8 +125,24 @@ const tierArg = process.argv.indexOf('--tier');
 const tier = tierArg > -1 ? process.argv[tierArg + 1] : null;
 const steps = STEPS.filter((s) => !tier || s.tier === tier);
 if (steps.length === 0) {
-  console.error(`check: unknown tier ${tier} (static, unit, browser)`);
+  console.error(`check: unknown tier ${tier} (static, unit, sim, browser)`);
   process.exit(1);
+}
+// --shard i/n runs one slice of the shardable steps, through Vitest's own --shard, which puts each
+// test file in exactly one slice. It needs one tier whose steps all shard, so a slice can never
+// quietly drop a step that does not.
+const shardArg = process.argv.indexOf('--shard');
+const shard = shardArg > -1 ? (process.argv[shardArg + 1] ?? '') : null;
+if (shard !== null) {
+  const m = /^(\d+)\/(\d+)$/.exec(shard);
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > Number(m[2])) {
+    console.error(`check: --shard wants i/n with 1 <= i <= n, got "${shard}"`);
+    process.exit(1);
+  }
+  if (!tier || steps.some((s) => !s.shardable)) {
+    console.error('check: --shard needs a --tier whose steps all shard (sim)');
+    process.exit(1);
+  }
 }
 
 const rows = [];
@@ -132,18 +153,20 @@ for (const step of steps) {
     rows.push([step.name, 'NOT ACTIVE', active]);
     continue;
   }
-  console.log(`\n=== ${step.name}: npm run ${step.script} ===`);
+  const args = shard && step.shardable ? [`--shard=${shard}`] : [];
+  const label = args.length ? `${step.name} (shard ${shard})` : step.name;
+  console.log(`\n=== ${label}: npm run ${step.script}${args.length ? ` -- ${args.join(' ')}` : ''} ===`);
   const started = Date.now();
-  const { code, out } = await run(step.script);
+  const { code, out } = await run(step.script, args);
   const { n, text } = step.count(out);
   const secs = ((Date.now() - started) / 1000).toFixed(1);
   let result = code === 0 ? 'pass' : 'FAIL';
   if (code === 0 && n === 0) result = 'FAIL (examined nothing)';
   if (result !== 'pass') failed = true;
-  rows.push([step.name, result, `${text} (${secs}s)`]);
+  rows.push([label, result, `${text} (${secs}s)`]);
 }
 
-console.log(`\n=== gate summary${tier ? ` (${tier} tier)` : ''} ===`);
+console.log(`\n=== gate summary${tier ? ` (${tier} tier${shard ? `, shard ${shard}` : ''})` : ''} ===`);
 const w = Math.max(...rows.map((r) => r[0].length));
 const w2 = Math.max(...rows.map((r) => r[1].length));
 for (const [name, result, text] of rows) console.log(`${name.padEnd(w)}  ${result.padEnd(w2)}  ${text}`);
