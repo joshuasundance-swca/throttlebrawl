@@ -22,8 +22,9 @@ import type {
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
-import { createLookSet, LookPost } from './looks';
-import { loadSceneryModels, type ModelLoadReport, type SceneryModels } from './models';
+import { createLookSet } from './looks';
+import type { LookPost } from './looks/post';
+import type { ModelLoadReport, SceneryModels } from './models';
 import { buildRoadScene, type RoadDressing, type RoadScene, type RoadSceneStats } from './road-mesh';
 import { SpeedLines, type SpeedLineCounts } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
@@ -171,7 +172,21 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
   // A look with a film pass draws twice a frame: count the whole frame, not only the last draw.
   renderer.info.autoReset = false;
+  // The film pass (looks/post.ts) and the model reader (models.ts, glb.ts) are lazy chunks: the
+  // classic look and the first frame need neither (the JavaScript budget counts the first load).
   let post: LookPost | null = null;
+  let postLoading = false;
+  const loadPost = () => {
+    if (post || postLoading) return;
+    postLoading = true;
+    void import('./looks/post')
+      .then((m) => {
+        post = new m.LookPost();
+      })
+      .catch(() => {
+        postLoading = false; // tried again on the next frame that wants the film pass
+      });
+  };
   const scene = new Scene();
   // The far plane sits just past the fog's end (look.ts: fully fogged at 700 m, so nothing beyond
   // it shows): the road chunks past it are culled, and the depth buffer is finer up close.
@@ -215,7 +230,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // The Blender models (playtest 1c item 4) load in the background; the road draws stand-ins until
   // they arrive, then rebuilds once with the models.
   if (opts.assets) {
-    void loadSceneryModels(opts.assets).then(({ models: loaded, report }) => {
+    const assets = opts.assets;
+    void import('./models').then(async (m) => {
+      const { models: loaded, report } = await m.loadSceneryModels(assets);
       models = loaded;
       modelReport = report;
       if (report.loaded.length) buildRoad();
@@ -292,8 +309,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       renderer.info.reset();
       look.frame(t, params);
       const film = look.post(params);
-      if (film) (post ??= new LookPost()).render(renderer, scene, camera, film, t);
-      else renderer.render(scene, camera);
+      // Until the film pass's chunk arrives, an ink look's first frames draw without it.
+      if (film && post) post.render(renderer, scene, camera, film, t);
+      else {
+        if (film) loadPost();
+        renderer.render(scene, camera);
+      }
     },
     resize,
     stats() {
@@ -343,6 +364,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     setLook(id) {
       look.select(id);
+      if (look.id !== 'classic') loadPost();
     },
     get look() {
       return look.id;

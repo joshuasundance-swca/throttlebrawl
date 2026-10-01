@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+The game's first download is smaller: 479 KB of JavaScript (gzip) instead of 493 KB, against the 500 KB budget, which is unchanged. Five things now load on their own, after the first screen: the ink looks' film pass (when an ink look is first picked), the model reader (as the game boots, as before), the tuning panel (as the game boots), the self-test (only with `?selftest=1`), and the small region road files (when that region is first raced; Vite had been inlining files under 4 KB into the JavaScript as base64). The perf check now counts the first-load JavaScript, the entry and its static imports, which is what engineering.md's budget always described; it lists every lazy chunk's size, and the 3 MB whole-build limit still counts them. A new build test fails if one of those modules slips back into the first load. In `render/looks`, `LookPost` is no longer re-exported (it has to stay out of the first load), and ui's `tuningPanel` no longer exposes its element.

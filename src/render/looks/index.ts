@@ -37,7 +37,7 @@ export { kodachromeGrade, bleachGrade, neutralGrade, buildGradeLut, GRADES, LUT_
 export type { GradeId } from './grade';
 export { patchInkShader, VERTEX_ANCHORS, FRAGMENT_ANCHORS } from './ink';
 export type { InkUniforms, ShaderParts } from './ink';
-export { LookPost } from './post';
+// LookPost is not re-exported: render/index.ts loads post.ts as a lazy chunk (the film pass).
 export type { PostSettings } from './post';
 export { KODAK, WASTELAND, BRUSH } from './recipes';
 export type { InkRecipe, ShadowStyle, SkyColours } from './recipes';
