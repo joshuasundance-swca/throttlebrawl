@@ -12,6 +12,7 @@ import {
   type ContentRegistry,
   type RaceEvent,
   type Rider,
+  type Weapon,
 } from '../content';
 import {
   DEFAULT_DIFFICULTY,
@@ -27,6 +28,7 @@ import {
   type SimConfig,
   type SimController,
   type SimDifficulty,
+  type SimEventCops,
   type SimRiderDef,
   type SimSlotConfig,
   type SimStyleRewards,
@@ -183,6 +185,13 @@ export function aiController(personality: Rider['personality']): SimController {
   if (Array.isArray(prefs) && prefs.every((p) => typeof p === 'string')) own.targetPreference = [...prefs];
   const side = SIDES.find((s) => s === personality?.['preferredSide']);
   if (side) own.preferredSide = side;
+  // rivals-1 (M4, built early): authored rivalries and the weapon this rider goes out of its way
+  // for. Ids stay as the file spells them; sim/ai matches them by bare id.
+  const rivals: unknown = personality?.['rivals'];
+  if (Array.isArray(rivals) && rivals.every((r) => typeof r === 'string') && rivals.length > 0)
+    own.rivals = [...rivals];
+  const preferred: unknown = personality?.['preferredWeapon'];
+  if (typeof preferred === 'string' && preferred) own.preferredWeapon = preferred;
   return { kind: 'ai', style: personality?.style ?? 'racer', personality: own };
 }
 
@@ -229,6 +238,12 @@ function riderDef(
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
+    // The weapon the rider starts holding (M4 cops-3: a cop's baton or taser, which can be stolen),
+    // only when the race carries it: a live rider naming a draft weapon rides bare-handed in a
+    // release build, as before.
+    ...((w) => (w && reg.weapons[w] ? { startingWeapon: w } : {}))(
+      rider.startingWeapon ? qualifyIn(pack, rider.startingWeapon) : undefined,
+    ),
     ...(law
       ? {
           law: {
@@ -243,22 +258,47 @@ function riderDef(
   };
 }
 
+/** The most cops a race fields, whatever the mix asks (cops-3: at most 2 chase at once). [default] */
+export const MAX_FIELDED_COPS = 4;
+/** The event's career tier until career-1 lands: the first. */
+export const DEFAULT_TIER = 1;
+
+const finiteOr = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
 /**
- * The event's law (docs/content-packs.md, "Event": `cops`). `every-race` fields `baseCount` cops
- * (default 1): the region's cop riders, by qualified id, at the back of the grid behind the player.
- * The pool is the race's packs' cops whose `region` resolves to the event's region (a cop with no
- * region rides everywhere). `tier-rising` and `chaos-summoned` need the career and the chaos meter
- * (M4), so they field none in M1, like `none`. [default] Returns qualified rider ids.
+ * The event's `cops` block as the sim reads it (M4 cops-3; docs/content-packs.md, "Event").
+ * `baseCount` defaults to 1 for `every-race` and 0 otherwise; the other fields to 0 or off.
  */
-export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] {
+export function eventCops(event: RaceEvent): SimEventCops {
+  const c = event.cops as Record<string, unknown> & { mode: SimEventCops['mode'] };
+  return {
+    mode: c.mode,
+    baseCount: Math.max(0, finiteOr(c['baseCount'], c.mode === 'every-race' ? 1 : 0)),
+    tierScale: Math.max(0, finiteOr(c['tierScale'], 0)),
+    chaosSummon: c['chaosSummon'] === true,
+    randomness: Math.min(1, Math.max(0, finiteOr(c['randomness'], 0))),
+  };
+}
+
+/**
+ * The event's law (docs/content-packs.md, "Event": `cops`): the region's cop riders, by qualified
+ * id, at the back of the grid behind the player. The pool is the race's packs' cops whose `region`
+ * resolves to the event's region (a cop with no region rides everywhere), cycled. The field holds
+ * enough cops for the most the mix can bring out (M4 cops-3): `baseCount` plus `tierScale` per tier
+ * above the first for `tier-rising`, plus one more whenever chaos can summon, at most
+ * MAX_FIELDED_COPS; `none` fields nobody. sim/cops decides which of them leave the lot, and when.
+ * [default] Returns qualified rider ids.
+ */
+export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT, tier = DEFAULT_TIER): string[] {
   const key = eventKey(eventId);
   const event = lookup(reg.events, key);
-  const cops = event.cops as { mode: string; baseCount?: unknown };
-  if (cops.mode !== 'every-race') return [];
-  const count =
-    typeof cops.baseCount === 'number' && Number.isFinite(cops.baseCount)
-      ? Math.max(0, Math.floor(cops.baseCount))
-      : 1;
+  const cops = eventCops(event);
+  if (cops.mode === 'none') return [];
+  const starting =
+    cops.mode === 'tier-rising' ? cops.baseCount + cops.tierScale * (Math.max(1, tier) - 1) : cops.baseCount;
+  const chaos = cops.chaosSummon || cops.mode === 'chaos-summoned';
+  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + (chaos ? 1 : 0));
   const regionKey = qualifyIn(packOf(key), event.region);
   const race = packSubset(reg, packClosure(reg, packOf(key)));
   const pool = Object.entries(race.riders)
@@ -267,7 +307,7 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] 
     )
     .map(([id]) => id)
     .sort();
-  if (pool.length === 0) return [];
+  if (pool.length === 0 || count <= 0) return [];
   return Array.from({ length: count }, (_, i) => pool[i % pool.length] ?? '');
 }
 
@@ -295,6 +335,30 @@ function regionTrafficWeights(
   return out;
 }
 
+/**
+ * A weapon file's M4 weapons-2 fields as the sim reads them: its behaviour, charges and durability
+ * (`uses`), its stun (the `stun` entry of `effects`) and its roadside weight (`spawn`). The cops
+ * lane's oracle is `simWeapon` in tests/sim/weapons-pack.test.ts.
+ */
+export function weaponBehaviour(w: Weapon): Partial<SimWeaponDef> {
+  const loose = w as unknown as Record<string, unknown>;
+  const rec = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const uses = rec(loose['uses']);
+  const out: Partial<SimWeaponDef> = {
+    behaviour: w.behaviour,
+    charges: num(uses['charges']),
+    durabilityHits: num(uses['durabilityHits']),
+  };
+  const effects = Array.isArray(loose['effects']) ? loose['effects'].map(rec) : [];
+  const stunS = num(effects.find((e) => e['kind'] === 'stun')?.['durationS']);
+  if (stunS) out.stunTicks = secondsToTicks(stunS);
+  const weight = num(rec(loose['spawn'])['roadsideWeight']);
+  if (weight !== null) out.roadsideWeight = weight;
+  return out;
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
   const eventPack = packOf(eventId);
@@ -313,7 +377,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   });
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
-  const cops = copIds(race, eventId).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
+  const tier = DEFAULT_TIER;
+  const cops = copIds(race, eventId, tier).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
   const player = riderDef(race, qualifyIn('base', PLAYER_PRESET), { kind: 'player', slot: 0 }, pace);
   const riders = [...rivals, player, ...cops];
   const weapons: SimWeaponDef[] = Object.entries(race.weapons).map(([contentId, w]) => ({
@@ -332,6 +397,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     steal: w.steal?.allowed
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
+    ...weaponBehaviour(w),
   }));
   const weights = regionTrafficWeights(race, event, eventPack);
   const given = setup.tuning ?? {};
@@ -352,6 +418,9 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       lengthId: length.id,
       routeId,
       style: styleRewards(event.rewards),
+      // M4 cops-3: the tier (1 until career-1) and the law's spawn mix, chaos meter and fines.
+      tier,
+      cops: eventCops(event),
     },
     riders,
     weapons,

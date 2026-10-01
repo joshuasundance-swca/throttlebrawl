@@ -646,7 +646,11 @@ function react(world: World, config: SimConfig, st: PedsState, k: number, threat
     if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
     const rel = relate(near, p, kindThreatRangeM(world, t, r.speed));
     const band = (near.widthM + t.widthM) / 2 + PEDS.lateralM;
-    if (!rel || rel.ahead < -PEDS.threatBehindM || Math.abs(rel.dd) >= band) continue;
+    // A crash can throw a tumbling body backward along the road, against its travel direction (a
+    // head-on wipeout), so a tumble threatens both ways (found in the integration round: seed 23's
+    // rival, thrown back at 20 m/s, landed on a fisherman who read him as already past).
+    const behind = r.mode === 'Tumble' ? -Infinity : -PEDS.threatBehindM;
+    if (!rel || rel.ahead < behind || Math.abs(rel.dd) >= band) continue;
     if (Math.abs(rel.ahead) < closest) {
       closest = Math.abs(rel.ahead);
       threat = r;
