@@ -191,7 +191,7 @@ function soloSetup(steerAssist: 'off' | 'light' | 'strong' = 'off') {
 function ridePastSplit(
   move: Move,
   triggerS: number,
-  opts: { laneD?: number; assist?: 'off' | 'strong' } = {},
+  opts: { laneD?: number; assist?: 'off' | 'light' | 'strong'; steer?: number } = {},
 ) {
   const { sim, config } = soloSetup(opts.assist ?? 'off');
   const E = (id: string) => config.road.edgeIndex(id);
@@ -201,6 +201,8 @@ function ridePastSplit(
   const edges: string[] = [];
   const walls: string[] = [];
   const progress: { edge: string; progress: number }[] = [];
+  let speedAtTrigger = NaN;
+  let minSpeedAfter = Infinity;
   let dAtSplit = NaN;
   let lastRunD = NaN;
   for (let t = 0; t < 60 * 90; t++) {
@@ -220,9 +222,13 @@ function ridePastSplit(
     const keep = (target: number) =>
       Math.max(-1, Math.min(1, 0.35 * (target - d) * dir - 2.5 * yaw + (kappa * v * v) / 22));
     const triggered = edge !== run || s >= triggerS;
+    if (triggered && edge === run) {
+      if (Number.isNaN(speedAtTrigger)) speedAtTrigger = me.speed;
+      minSpeedAfter = Math.min(minSpeedAfter, me.speed);
+    }
     if (!triggered || move === 'laneKeep') a.steer = keep(opts.laneD ?? 2);
     else if (cut.has(edge)) a.steer = keep(0);
-    else if (move === 'holdRight') a.steer = 1;
+    else if (move === 'holdRight') a.steer = opts.steer ?? 1;
     else a.steer = keep(edge === run ? 4 : 6);
     sim.step([quantizeInput({ ...a, flags: 0 })]);
     for (const ev of sim.events()) {
@@ -231,7 +237,15 @@ function ridePastSplit(
       walls.push(`${ev.type}(${String(ev.data['cause'])})@${name(now.road.edge)} s=${now.road.s.toFixed(1)}`);
     }
   }
-  return { edges, walls, dAtSplit, progress, gainM: config.route.shortcuts[0]?.gainM ?? NaN };
+  return {
+    edges,
+    walls,
+    dAtSplit,
+    progress,
+    speedAtTrigger,
+    minSpeedAfter,
+    gainM: config.route.shortcuts[0]?.gainM ?? NaN,
+  };
 }
 
 describe('playtest 1b: no invisible wall at the boat-ramp cut', () => {
@@ -282,5 +296,39 @@ describe('playtest 1b: no invisible wall at the boat-ramp cut', () => {
     );
     expect(jump).toBeGreaterThan(r.gainM - 3);
     expect(jump).toBeLessThan(r.gainM + 3);
+  });
+});
+
+// Playtest 1c ([decided] 2026-09-30, the skeptic's mustFix from playtest 1b): an EARLY hard commit
+// still met a wall. With seed 7, keeping the right lane to marina-run s 250 and then holding right
+// pinned the bike at d 5.00 (the painted split zone's outer edge, which is also the shoulder's) at
+// about s 276, with a barrier wobble and about 3 m/s lost, before the split at s 300. The zone's
+// outer edge now guides a rider along it to the split instead: no wobble, no crash, no scrape.
+describe('playtest 1c: an early commit to the boat-ramp cut meets no wall', () => {
+  const cases: { trigger: number; steer: number; assist: 'off' | 'light' }[] = [];
+  for (const assist of ['off', 'light'] as const) {
+    for (const trigger of [230, 240, 250, 260, 270]) cases.push({ trigger, steer: 1, assist });
+    for (const trigger of [240, 250]) cases.push({ trigger, steer: 0.5, assist });
+    for (const trigger of [240, 250, 260]) cases.push({ trigger, steer: 0.7, assist });
+  }
+  it.each(cases)(
+    'steer $steer from s $trigger (assist $assist) takes the cut with no barrier event and no scrape',
+    ({ trigger, steer, assist }) => {
+      const r = ridePastSplit('holdRight', trigger, { steer, assist });
+      console.log(
+        `steer ${steer} from s ${trigger}, assist ${assist}: ${r.edges.join('>')}; d at split ${r.dAtSplit.toFixed(2)}; ` +
+          `speed ${r.speedAtTrigger.toFixed(1)} at the trigger, lowest after ${r.minSpeedAfter.toFixed(1)}; ${r.walls.join(', ') || 'no walls'}`,
+      );
+      expect(r.walls).toEqual([]);
+      expect(r.edges[r.edges.length - 1]).toBe('m1-boat-ramp-cut');
+      // Full throttle the whole way: a guide costs no speed (the old wall cost about 3 m/s).
+      expect(r.minSpeedAfter).toBeGreaterThan(r.speedAtTrigger - 0.5);
+    },
+  );
+
+  it('guard: outside the split zone, holding right into the road edge still wobbles on the barrier', () => {
+    const r = ridePastSplit('holdRight', 120);
+    console.log(`hold right from s 120: ${r.walls.join(', ') || 'no walls'}`);
+    expect(r.walls.some((w) => w.startsWith('wobble(barrier)@m1-marina-run'))).toBe(true);
   });
 });
