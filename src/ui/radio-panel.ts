@@ -60,6 +60,24 @@ export function radioChoiceOf(setting: 'off' | 'score' | 'station'): number {
   return setting === 'off' ? RADIO_OFF : setting === 'score' ? RADIO_SCORE : RADIO_FIRST_STATION;
 }
 
+/**
+ * The slider value a saved choice tunes (run W-P, W-O's mustFix): the saved station when the race's
+ * region offers it, else the kind's start (a station means the first one).
+ */
+export function radioChoiceFor(
+  setting: 'off' | 'score' | 'station',
+  station: string | null,
+  stations: readonly string[],
+): number {
+  const i = setting === 'station' && station !== null ? stations.indexOf(station) : -1;
+  return i >= 0 ? RADIO_FIRST_STATION + i : radioChoiceOf(setting);
+}
+
+/** The station a radio state plays, or null on the score, off, or while the stations load. */
+export function playingStation(s: RadioState): string | null {
+  return radioSettingOf(s.choice) === 'station' && s.stations.includes(s.tunedTo) ? s.tunedTo : null;
+}
+
 /** The panel's two lines: the station (or "The score", "Radio off") and the song, if any. */
 export function radioLines(s: RadioState): { station: string; song: string | null } {
   if (s.tunedTo === 'off') return { station: 'Radio off', song: null };
