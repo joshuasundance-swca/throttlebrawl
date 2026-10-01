@@ -1,0 +1,55 @@
+{
+  "type": "station",
+  "id": "pnw-drizzle",
+  "name": "Drizzle 89.3 FM",
+  "genre": "surf",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "two-hour-ferry-wait",
+      "title": "Two-Hour Ferry Wait",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 142, "key": "D", "progression": "minor", "drums": "toms", "drop": false }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "moss-on-the-mirror",
+      "title": "Moss on the Mirror",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 146, "key": "G", "progression": "andalusian", "drums": "four", "drop": true }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "log-truck-in-the-fog",
+      "title": "Log Truck in the Fog",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 150, "key": "A", "progression": "phrygian", "drums": "toms", "drop": true }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "holding-lot-stomp",
+      "title": "Holding Lot Stomp",
+      "procedural": {
+        "preset": "surf-trio",
+        "params": { "bpm": 158, "key": "B", "progression": "stomp", "drums": "drive", "drop": false }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's own station (the maintainer, 2026-10-01: \"I actually like the music\"; keep the code-made radio's direction). Slower, darker surf for wet two-lanes: minor and Phrygian keys, rolling toms, 142-158 bpm (src/audio/radio-compose.ts, preset surf-trio). Melodies are generated from each track's seed, so they are original. The base stations follow it on the dial. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
