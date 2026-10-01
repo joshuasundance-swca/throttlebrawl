@@ -35,6 +35,8 @@ export type SettingId =
   | 'frameRateCap'
   | 'look'
   | 'stylePopups'
+  | 'view'
+  | 'radio'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
 export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
@@ -59,6 +61,19 @@ export const SETTINGS_TABS: readonly { tab: SettingsTab; label: string }[] = [
 
 /** Every M2 setting except the M1 volumes, mute and mirror, which the screen draws itself. */
 export const SETTINGS: readonly SettingDef[] = [
+  // Sound: the radio (radio-1), below the volumes. Applies at once; the pause menu's radio panel
+  // and the R key switch stations mid-race.
+  {
+    id: 'radio',
+    tab: 'sound',
+    label: 'Radio',
+    kind: 'choice',
+    options: [
+      { value: 'score', label: 'Score' },
+      { value: 'station', label: 'Station' },
+      { value: 'off', label: 'Off' },
+    ],
+  },
   // Race: everything that feeds SimConfig.
   {
     id: 'difficulty',
@@ -187,6 +202,18 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'brush', label: 'Kodachrome brush' },
     ],
   },
+  {
+    // camera-3's base framings (camera.mode 0, 1, 2). Applies at once, even mid-race.
+    id: 'view',
+    tab: 'display',
+    label: 'View',
+    kind: 'choice',
+    options: [
+      { value: 'chase', label: 'Chase' },
+      { value: 'far', label: 'Far' },
+      { value: 'helmet', label: 'Helmet' },
+    ],
+  },
   // Playtest 1c: the style cash chips and the live meter, on by default. ui's own effect.
   { id: 'stylePopups', tab: 'display', label: 'Style pop-ups', kind: 'toggle' },
   { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },
@@ -205,6 +232,22 @@ export function settingDef(id: SettingId): SettingDef {
  * pop-ups (ui's own effects).
  */
 export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel', 'stylePopups'];
+
+/**
+ * Settings ui applies itself through a presentation tuning slider that app/ routes to its module
+ * (the view to camera/, the radio to audio/). Each is live once the registry declares its slider.
+ */
+export const TUNED_SETTINGS: Readonly<Partial<Record<SettingId, string>>> = {
+  view: 'camera.mode',
+  radio: 'audio.radio',
+};
+
+/** The tuned settings whose slider the registry declares. */
+export function tunedLive(declared: (id: string) => boolean): SettingId[] {
+  return (Object.entries(TUNED_SETTINGS) as [SettingId, string][])
+    .filter(([, param]) => declared(param))
+    .map(([id]) => id);
+}
 
 /** The raw value at a setting's path. */
 function read(s: unknown, id: SettingId): unknown {
