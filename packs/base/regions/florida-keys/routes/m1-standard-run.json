@@ -1,0 +1,41 @@
+{
+  "type": "route",
+  "id": "m1-standard-run",
+  "network": "keys-m1",
+  "start": { "road": "m1-marina-run", "s": 40, "dir": 1 },
+  "finish": { "road": "m1-conch-row", "s": 1260 },
+  "mainPath": [
+    "m1-marina-run",
+    "m1-marina-bends",
+    "m1-pelican-bridge",
+    "m1-sandbar-causeway",
+    "m1-mangrove-cut",
+    "m1-tarpon-flats",
+    "m1-conch-row"
+  ],
+  "allowedRoads": [
+    "m1-marina-run",
+    "c-marina-split-main",
+    "m1-marina-bends",
+    "c-marina-merge-main",
+    "m1-pelican-bridge",
+    "m1-sandbar-causeway",
+    "m1-mangrove-cut",
+    "m1-tarpon-flats",
+    "m1-conch-row",
+    "c-boat-ramp-in",
+    "m1-boat-ramp-cut",
+    "c-boat-ramp-out"
+  ],
+  "checkpoints": [
+    { "road": "m1-pelican-bridge", "s": 300 },
+    { "road": "m1-pelican-bridge", "s": 1000 },
+    { "road": "m1-sandbar-causeway", "s": 500 },
+    { "road": "m1-mangrove-cut", "s": 600 },
+    { "road": "m1-tarpon-flats", "s": 600 },
+    { "road": "m1-conch-row", "s": 600 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}

@@ -12,6 +12,11 @@
     "c-marina-merge-main",
     "m1-pelican-bridge",
     "m1-sandbar-causeway",
+    "m1-mangrove-cut",
+    "m1-tarpon-flats",
+    "m1-conch-row",
+    "m1-long-bridge",
+    "m1-last-resort-causeway",
     "c-boat-ramp-in",
     "m1-boat-ramp-cut",
     "c-boat-ramp-out"
@@ -105,10 +110,70 @@
     },
     {
       "id": "j-keys-m1-4",
-      "x": 1030.8426,
+      "x": 1031.0096,
       "y": 1.5,
-      "z": -2804.2226,
-      "ends": [{ "road": "m1-sandbar-causeway", "end": "to" }],
+      "z": -2804.0298,
+      "ends": [
+        { "road": "m1-sandbar-causeway", "end": "to" },
+        { "road": "m1-mangrove-cut", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-5",
+      "x": 1230.1017,
+      "y": 1.5,
+      "z": -3947.6553,
+      "ends": [
+        { "road": "m1-mangrove-cut", "end": "to" },
+        { "road": "m1-tarpon-flats", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-6",
+      "x": 2349.7322,
+      "y": 1.5,
+      "z": -4321.6334,
+      "ends": [
+        { "road": "m1-tarpon-flats", "end": "to" },
+        { "road": "m1-conch-row", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-7",
+      "x": 3587.5505,
+      "y": 1.5,
+      "z": -4590.4396,
+      "ends": [
+        { "road": "m1-conch-row", "end": "to" },
+        { "road": "m1-long-bridge", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-8",
+      "x": 5866.699,
+      "y": 1.5,
+      "z": -4654.1403,
+      "ends": [
+        { "road": "m1-long-bridge", "end": "to" },
+        { "road": "m1-last-resort-causeway", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-keys-m1-9",
+      "x": 7253.5119,
+      "y": 1.5,
+      "z": -5007.991,
+      "ends": [{ "road": "m1-last-resort-causeway", "end": "to" }],
       "connectors": [],
       "control": "none"
     }
@@ -122,6 +187,6 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The M1 track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through."
+    "notes": "The hand-made Keys track: one main road, and the boat-ramp cut that splits off it at the marina and rejoins at the bridge. The split and merge junctions own connector roads; the other joins pass straight through. Three routes share it, one per race length (road-3)."
   }
 }

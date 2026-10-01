@@ -115,7 +115,10 @@ describe('road-2: the boat-ramp cut on the M1 track', () => {
       `shortcut run: ${cut.edges.join('>')}; finish ${(cut.finishTick / 60).toFixed(1)} s vs main path ${(main.finishTick / 60).toFixed(1)} s; ` +
         `jump ${JSON.stringify(jump)}, land ${JSON.stringify(land)}; other rider events ${cut.events.filter((e) => e.type === 'crash' || e.type === 'wobble').length}`,
     );
-    expect(cut.edges).toEqual([
+    // Through the finish on the Sandbar Causeway. Since road-3 the road carries on past it (the
+    // longer race lengths), so a finished rider may roll on into the Mangrove Cut.
+    const run = cut.edges.slice(0, cut.edges.indexOf('m1-sandbar-causeway') + 1);
+    expect(run).toEqual([
       'm1-marina-run',
       'c-boat-ramp-in',
       'm1-boat-ramp-cut',
@@ -123,6 +126,7 @@ describe('road-2: the boat-ramp cut on the M1 track', () => {
       'm1-pelican-bridge',
       'm1-sandbar-causeway',
     ]);
+    expect(cut.edges.slice(run.length).every((e) => e === 'm1-mangrove-cut')).toBe(true);
     expect(main.edges).not.toContain('m1-boat-ramp-cut');
     expect(jump?.edge).toBe('m1-boat-ramp-cut');
     expect(land?.edge).toBe('m1-boat-ramp-cut');
