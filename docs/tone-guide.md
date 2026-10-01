@@ -210,6 +210,32 @@ Region 1 being the Florida Keys and A1A is decided. [decided] Everything below i
 - **Stale-meme hook:** tabloid "Florida Man" headlines in interludes, written as headlines about rivals, never about real people.
 - **Weird events** (rare race modifiers; see [the product spec](./product-spec.md#weird-events)): a hurricane gust, a gator crossing, cold-night iguana rain, a parade, a funeral procession, a spring-break convoy, an offshore rocket launch, a cult roadblock, a runaway boat on a trailer, a UFO billboard that comes true, a bounty on the player, double-cash zones, a guest "celebrity" rider. The maintainer wants all four kinds, with room to grow. [decided]
 
+### Region 2: the Pacific Northwest (crude first)
+
+The Pacific Northwest comes off the shelf now, with San Francisco, as a content pack that reuses everything: "Pnw and sf first then others" (playtest 1c, 2026-09-30). [decided] Everything below is a planner draft. [default] The pack is `packs/region-pnw`; its region id is `pacific-northwest`.
+
+- **The feel:** wet, quiet, enormous. Two-lane roads under trees older than the state. The humor is the region's own deadpan: people who are polite, damp and never in a hurry, except on this road.
+- **Sights:**
+  - twisty forest two-lanes under tall conifers
+  - coastal fog and drizzle light
+  - a ferry dock with a holding lot
+  - timber trestles over river mouths
+  - a sawmill and its log decks
+  - drive-through espresso stands, one every few hundred feet
+  - Bigfoot kitsch: museums, crossing signs, researchers with plaster-cast kits
+- **Palette:** grey-green and slate (overcast sky, moss, wet asphalt, slate water), with the riders' saturated colours on top (Old Growth's red flannel, Juniper Moss's teal and magenta). Time of day: foggy dawn and overcast noon. [default] Rain stays reserved with weather; the drizzle is in the light for now.
+- **Locals** [default]:
+  - **Old Growth** (rival): a logger the size of a stump, red flannel, caulk boots. A heavy hitter who says about one sentence a mile. Signature line (agent draft, not yet approved): "These trees were here before you. So was I."
+  - **Juniper Moss** (rival): runs the espresso stand at the ferry line and rides a café racer like the road is a queue you cut. A weaver, passive-aggressive, service-industry barbs. Signature line (agent draft, not yet approved): "For here or to go? Oh, you're going."
+  - **Deputy Lindqvist** (cop, Fir County Sheriff): soft-spoken, never raises his voice, never stops writing. `I'm not upset. I'm just writing it all down.`
+- **Law:** a parody county sheriff on real agency structure. No real agency names, badges or logos.
+- **Traffic and hazards:** log trucks, mossy station wagons with roof boxes, camper vans with canoes, ferry walk-ons with coffee, Bigfoot researchers, raccoons, and an elk that crashes you if you hit it.
+- **Wasteland oddity:** a drive-through espresso stand under tow, window still open. Nobody mentions it.
+- **Signs:** ferry waits that are always two hours, log trucks in every direction, rain stated as fact, Bigfoot as a crossing hazard who declines interviews.
+- **Billboards:** the Bigfoot museum (mostly gift shop), view-lot developers selling the forest they cut down.
+- **Do:** understatement, politeness as menace, specific local types (the logger, the barista, the walk-on commuter). **Don't:** lumberjack-pancake parody, flannel puns, quoting famous TV set in the region, or jokes at real groups, towns or companies.
+- **Engine gaps this region shows** (follow-ups for the runtime, road and render lanes): no conifers or ground plane yet (the scenery is the Keys' palms over open water), no rain, and no real climbs, because the road compiler pins every junction to one base height.
+
 ### Shelf regions
 
 The seven shelf regions are decided; the flavor sketches and the "Also possible" row are planner proposals. [default]

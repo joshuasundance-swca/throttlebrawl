@@ -237,13 +237,18 @@ The browser tiers (e2e, perf) run in CI and in `npm run check`, not in hooks. Ho
 ```mermaid
 flowchart LR
   A[static: types, lint, format, packs, leak scan, size, notes] --> G[gate]
-  B[unit: vitest, sim batch with same-run replay, fixtures] --> G
-  C[browser: build, bot playthrough, perf] --> G
+  B[unit: vitest unit tests, fixtures] --> G
+  S[sim 1/2 and 2/2: the seeded sim batch with same-run replay, split by file] --> G
+  C[browser 1/2 and 2/2: build, bot playthrough and the other browser tests, split by file] --> G
+  P[perf: build, size budget, throttled probes; its build is the one deployed] --> G
   G -->|push to main only| D[deploy-prod]
   D --> R[release notes]
 ```
 
-- `static`, `unit` and `browser` run in parallel. `gate` has `needs:` on all three, runs with `if: always()`, and fails unless all three succeeded. **`gate` is the only required status check.** A single aggregate check means adding or renaming a job never strands PRs, and GitHub's own tip applies: "make sure that job names are unique across all workflows" (verified 2026-09-29).
+- `static`, `unit`, `sim`, `browser` and `perf` run in parallel. `gate` has `needs:` on all of them, runs with `if: always()`, and fails unless every one succeeded. **`gate` is the only required status check.** A single aggregate check means adding or renaming a job never strands PRs, and GitHub's own tip applies: "make sure that job names are unique across all workflows" (verified 2026-09-29).
+- `sim` is a two-slice matrix: each slice runs `npm run check -- --tier sim --shard <i>/2`, which passes Vitest's own `--shard` to `test:sim`. Vitest puts every test file in exactly one slice, so nothing is skipped: the two slices' test counts add up to the unsharded run's (265 tests in 29 files when it was split). The batch had grown to 167 to 294 s on one runner, against a 10-minute job timeout; split, the floor is its slowest single file. `fail-fast` is off, so a red slice never cancels the other's result. Locally, `npm run check` with no `--tier` still runs the whole batch in one go. `[default]`
+- `browser` is a two-slice matrix too: each slice runs `npm run check -- --tier browser --shard <i>/2`, which builds and then passes Playwright's own `--shard` to `e2e`. Playwright puts every spec file in exactly one slice (30 + 26 = 56 tests in 18 + 7 = 25 files when it was split), and each slice tests its own build. The e2e step had become the gate's critical path, about 390 s of an 8-minute job. Screenshots upload per slice (`screenshots-1`, `screenshots-2`). `[default]`
+- `perf` runs alone on its own runner (`npm run check -- --tier perf`: build, then the size budget and the throttled probes one at a time), so no e2e slice runs beside it. On a push to main its build is the `dist` artifact `deploy-prod` ships. The build step belongs to both the `browser` and `perf` tiers; a plain `npm run check` still builds once. `[default]`
 - **No `paths:` filter on `ci.yml`.** A required check behind a path filter never reports on a docs-only PR, which leaves that PR unmergeable forever. Docs-only PRs just run the fast path.
 - Checkout uses `fetch-depth: 0` in both workflows, so `notes:check` and `changelog:build` can read history.
 - `notes:check` runs only on `pull_request` events, diffing `origin/main...HEAD`. On `push` to main it is skipped, because there is no branch to diff and the squash commit already carries the note. A Dependabot-only PR is exempt ([Dependabot](#dependabot)).

@@ -1,5 +1,6 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit and browser run in
-# parallel, each running its tier of `npm run check`; `gate` is the single required status check.
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit, sim (two slices), browser
+# (two slices) and perf run in parallel, each running its tier of `npm run check`; `gate` is the
+# single required status check, and it fails unless every one of them succeeded.
 # On a push to main, a green gate deploys to the game Space and writes the release notes.
 # No `paths:` filter: a required check behind one never reports on some PRs.
 name: ci
@@ -59,11 +60,75 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Unit tests and the seeded sim batch
+      - name: Unit tests
         run: npm run check -- --tier unit
 
+  # The seeded sim batch, split by test file into parallel slices (Vitest's --shard puts every
+  # file in exactly one slice; the slices' test counts add up to the unsharded run's). It grew
+  # past 290 s on one runner; the slowest single file (ai-feel, about 100 to 190 s) is now the
+  # floor. fail-fast is off so a red slice never hides the other's result. [default]
+  sim:
+    name: sim (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Seeded sim batch, one slice
+        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/2
+
+  # The browser tests, split by spec file into parallel slices (Playwright's --shard puts every
+  # file in exactly one slice). Each slice builds and tests its own build. The e2e tier was the
+  # gate's critical path at about 390 s of an 8-minute browser job. fail-fast is off so a red slice
+  # never hides the other's result. [default]
   browser:
-    name: browser
+    name: browser (${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Playwright browser cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps --only-shell chromium
+      - name: Build, browser tests (one slice)
+        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/2
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # perf on its own runner: the size budget and the throttled frame-time probes, one at a time,
+  # with no e2e slice beside it. Its build is the one the deploy ships.
+  perf:
+    name: perf
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -81,13 +146,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps --only-shell chromium
-      - name: Build, browser tests, perf
-        run: npm run check -- --tier browser
+      - name: Build, perf
+        run: npm run check -- --tier perf
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: screenshots
+          name: screenshots-perf
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
@@ -102,7 +167,7 @@ jobs:
 
   gate:
     name: gate
-    needs: [static, unit, browser]
+    needs: [static, unit, sim, browser, perf]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2

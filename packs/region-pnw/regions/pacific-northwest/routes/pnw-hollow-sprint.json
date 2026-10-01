@@ -1,0 +1,25 @@
+{
+  "type": "route",
+  "id": "pnw-hollow-sprint",
+  "network": "pnw-c1",
+  "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
+  "finish": { "road": "pnw-cedar-hollow", "s": 1210 },
+  "mainPath": ["pnw-ferry-landing", "pnw-switchback-grade", "pnw-cedar-hollow"],
+  "allowedRoads": [
+    "pnw-ferry-landing",
+    "c-pnw-spur-split",
+    "pnw-switchback-grade",
+    "c-pnw-spur-merge",
+    "pnw-cedar-hollow",
+    "c-pnw-spur-in",
+    "pnw-logging-spur",
+    "c-pnw-spur-out"
+  ],
+  "checkpoints": [
+    { "road": "pnw-cedar-hollow", "s": 300 },
+    { "road": "pnw-cedar-hollow", "s": 900 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}

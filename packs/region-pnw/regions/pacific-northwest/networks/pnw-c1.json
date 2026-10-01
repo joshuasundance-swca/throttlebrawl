@@ -1,0 +1,166 @@
+{
+  "type": "road-network",
+  "id": "pnw-c1",
+  "name": "Pacific Northwest forest two-lane (hand-authored)",
+  "region": "pacific-northwest",
+  "crs": { "kind": "tmerc", "originLatDeg": 47.6, "originLonDeg": -122.9, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "pnw-ferry-landing",
+    "c-pnw-spur-split",
+    "pnw-switchback-grade",
+    "c-pnw-spur-merge",
+    "pnw-cedar-hollow",
+    "pnw-trestle",
+    "pnw-espresso-row",
+    "pnw-fogline-ridge",
+    "pnw-sawmill-flats",
+    "c-pnw-spur-in",
+    "pnw-logging-spur",
+    "c-pnw-spur-out"
+  ],
+  "junctions": [
+    {
+      "id": "j-pnw-c1-0",
+      "x": 0,
+      "y": 3,
+      "z": 0,
+      "ends": [{ "road": "pnw-ferry-landing", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-1",
+      "x": -16.6571,
+      "y": 3,
+      "z": -313.3316,
+      "ends": [
+        { "road": "pnw-ferry-landing", "end": "to" },
+        { "road": "pnw-switchback-grade", "end": "from" },
+        { "road": "pnw-logging-spur", "end": "from" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-spur-split-l1",
+          "road": "c-pnw-spur-split",
+          "from": { "road": "pnw-ferry-landing", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-switchback-grade", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-spur-split-r1",
+          "road": "c-pnw-spur-split",
+          "from": { "road": "pnw-ferry-landing", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-switchback-grade", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-spur-in",
+          "road": "c-pnw-spur-in",
+          "from": { "road": "pnw-ferry-landing", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-logging-spur", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 260, "s1": 300, "d0": 3, "d1": 5.5 }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-2",
+      "x": -112.9719,
+      "y": 3,
+      "z": -1108.5121,
+      "ends": [
+        { "road": "pnw-switchback-grade", "end": "to" },
+        { "road": "pnw-cedar-hollow", "end": "from" },
+        { "road": "pnw-logging-spur", "end": "to" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-spur-merge-l1",
+          "road": "c-pnw-spur-merge",
+          "from": { "road": "pnw-switchback-grade", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-cedar-hollow", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-spur-merge-r1",
+          "road": "c-pnw-spur-merge",
+          "from": { "road": "pnw-switchback-grade", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-cedar-hollow", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-spur-out",
+          "road": "c-pnw-spur-out",
+          "from": { "road": "pnw-logging-spur", "end": "to", "lane": "S1" },
+          "to": { "road": "pnw-cedar-hollow", "end": "from", "lane": "R1" }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-3",
+      "x": 252.775,
+      "y": 3,
+      "z": -2157.8919,
+      "ends": [
+        { "road": "pnw-cedar-hollow", "end": "to" },
+        { "road": "pnw-trestle", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-4",
+      "x": 1047.2064,
+      "y": 3,
+      "z": -2447.0455,
+      "ends": [
+        { "road": "pnw-trestle", "end": "to" },
+        { "road": "pnw-espresso-row", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-5",
+      "x": 1573.1233,
+      "y": 3,
+      "z": -3121.198,
+      "ends": [
+        { "road": "pnw-espresso-row", "end": "to" },
+        { "road": "pnw-fogline-ridge", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-6",
+      "x": 2364.4011,
+      "y": 3,
+      "z": -3586.6075,
+      "ends": [
+        { "road": "pnw-fogline-ridge", "end": "to" },
+        { "road": "pnw-sawmill-flats", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-7",
+      "x": 2645.9703,
+      "y": 3,
+      "z": -4548.9401,
+      "ends": [{ "road": "pnw-sawmill-flats", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The hand-made Pacific Northwest track: one main road from the ferry landing to the sawmill, and the Logging Spur that splits off at the landing and rejoins at Cedar Hollow. Three routes share it, one per race length."
+  }
+}

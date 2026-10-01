@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "raccoon",
+  "name": "Raccoon",
+  "category": "animal",
+  "tags": ["local"],
+  "lengthM": 0.6,
+  "widthM": 0.3,
+  "cruiseMps": 2.4,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-chicken" }, "paintOptions": ["#6f6a63", "#2b2b2b", "#c7c2b4"] },
+  "meta": {
+    "status": "live",
+    "notes": "Crosses with something from the espresso stand's bin and dives clear holding it. Placeholder shape: the chicken preset in grey.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

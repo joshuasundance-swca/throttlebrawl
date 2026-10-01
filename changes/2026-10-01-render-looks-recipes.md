@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+render/looks: the ink looks are now recipes on one pipeline (playtest 1c item 5), and two new ones join `kodak`: `wasteland` ("Sun-bleached wasteland") and `brush` ("Kodachrome brush"). A recipe (`src/render/looks/recipes.ts`) holds a look's palette, sky by time of day, ink colour and its dials: line weight, brush line, shadow style (hatched, or flat with the deep side filled solid ink), hatch density, sparse pen strokes on lit faces, wave ink, which colour table the final pass reads (Kodachrome, a new sun-bleach table, or neutral) and its strength, grain and vignette. The existing `render.*` ink sliders still apply to every ink look, scaled by the recipe. All ink looks share one shader program per material, so switching between them only changes colours and uniforms, with no recompile; the final pass swaps its 16 KB colour table in place. No crack, rust or grime textures: the ink patch samples no textures at all (a unit test checks it). `kodak` draws as before. The settings options follow in the next PR.
