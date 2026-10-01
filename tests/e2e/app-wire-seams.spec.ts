@@ -43,6 +43,19 @@ async function boot(page: Page, withPad = false) {
   await page.addInitScript((pad: boolean) => {
     const w = window as TestWindow;
     w.__GAME_TEST__ = true;
+    // The Classic look, through the saved record: these tests time key and pad presses against
+    // frames, and the default Ink + 60s film look (run W-O) slowed a software-rendered CI runner
+    // past the d-pad test's 10 s wait (PR #232's third CI run).
+    localStorage.setItem(
+      'mbrawl:settings',
+      JSON.stringify({
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-01T00:00:00.000Z',
+        data: { look: 'classic' },
+      }),
+    );
     if (!pad) return;
     w.__pad = {
       connected: true,

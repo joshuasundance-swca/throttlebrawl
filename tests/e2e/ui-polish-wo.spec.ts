@@ -121,6 +121,7 @@ async function cutNote(page: Page) {
   // #232's second CI run read the next song).
   return page.evaluate(() => {
     document.querySelector<HTMLButtonElement>('#radio-cut-yes')?.click();
+    (window as Window & { __cutAt?: number }).__cutAt = performance.now();
     const el = document.querySelector<HTMLElement>('#radio-song');
     if (!el) throw new Error('no #radio-song');
     const s = getComputedStyle(el);
@@ -149,12 +150,12 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
   expect(style.fontWeight).toBeGreaterThanOrEqual(700);
   expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
   expect(style.inView).toBe(true);
-  await shot(page, 'cut-note-landscape');
-  // Still up after 1.5 s, through the pause screen's 500 ms refreshes. Timed on the page's own
-  // clock: asserted when the page got its turn well inside the 3 s hold, logged when it did not.
+  // Still up 1.5 s after the click, through the pause screen's 500 ms refreshes. Timed from the
+  // click on the page's own clock (a screenshot in between took over 3 s on CI, PR #232's third
+  // run): asserted when the check came well inside the 3 s hold, logged when it did not.
   const later = await page.evaluate(async () => {
-    const t0 = performance.now();
-    await new Promise((r) => setTimeout(r, 1500));
+    const t0 = (window as Window & { __cutAt?: number }).__cutAt ?? performance.now();
+    await new Promise((r) => setTimeout(r, Math.max(0, 1500 - (performance.now() - t0))));
     const el = document.querySelector<HTMLElement>('#radio-song');
     return {
       ms: performance.now() - t0,
@@ -167,6 +168,7 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
     expect(later.text).toContain('Cut');
     expect(later.note).toBe(true);
   }
+  await shot(page, 'cut-note-landscape');
 });
 
 // A phone held upright shows the rotate screen once the race starts (platform/), so the portrait
