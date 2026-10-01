@@ -9,8 +9,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // target and adds one full-screen pass; they share one shader per material, so they differ only in
 // uniforms (the brush line adds 4 hash taps of arithmetic per pixel, no texture taps).
 // - Hard gate: draw calls and triangles at the same fixed ticks stay within tests/perf/budget.json.
-// - Soft tier: frame-time p50/p95 within twice the stored baseline (tests/perf/baseline.json, `soft`),
-//   the same limits as the classic look. The numbers are printed with the renderer string.
+// - Soft tier: frame-time p50/p95 within twice the stored ink-look baseline (tests/perf/baseline.json,
+//   `softInk`, falling back to the classic look's `soft`). The ink pass costs SwiftShader about one
+//   more 16.7 ms frame at p95 than classic does, so classic's 66.6 ms baseline left the kodak look's
+//   usual 116.7 to 133.4 ms one frame from failing (main went red on it, 2026-10-01). The numbers are
+//   printed with the renderer string.
 // CI renders in software (SwiftShader), where a full-screen pass costs CPU time a phone GPU does not
 // spend; the phone number (a Mali-G68 at 60 fps) comes from the maintainer's playtest.
 
@@ -44,6 +47,7 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
 };
 const baseline = JSON.parse(readFileSync('tests/perf/baseline.json', 'utf8')) as {
   soft?: { frameMs: { p50: number; p95: number } };
+  softInk?: { frameMs: { p50: number; p95: number } };
 };
 
 const CPU_THROTTLE = 4;
@@ -123,13 +127,16 @@ for (const look of INK_LOOKS) {
       expect(c.triangles, `triangles at tick ${c.tick}`).toBeLessThanOrEqual(budget.trianglesMax);
     }
     expect(report.frameMs.samples, 'frames sampled').toBeGreaterThan(30);
-    const soft = baseline.soft;
+    const soft = baseline.softInk ?? baseline.soft;
     if (!soft) {
       console.log('[assert] soft tier: NOT ACTIVE (tests/perf/baseline.json has no `soft` block yet)');
       return;
     }
     const limits = { frameP50: soft.frameMs.p50 * SOFT_FACTOR, frameP95: soft.frameMs.p95 * SOFT_FACTOR };
-    console.log(`[assert] soft tier (${look} look): ACTIVE, limits ${JSON.stringify(limits)}`);
+    const which = baseline.softInk ? 'softInk' : 'soft';
+    console.log(
+      `[assert] soft tier (${look} look): ACTIVE, limits ${JSON.stringify(limits)} (2x the ${which} baseline)`,
+    );
     expect(report.frameMs.p50, 'frame p50 within 2x the baseline').toBeLessThanOrEqual(limits.frameP50);
     expect(report.frameMs.p95, 'frame p95 within 2x the baseline').toBeLessThanOrEqual(limits.frameP95);
   });
