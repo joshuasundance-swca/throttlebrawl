@@ -153,6 +153,14 @@ jobs:
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
 
+  # Every green push to main uploads the build its own gate tested ([decided]: every green merge
+  # goes live). Main push runs are serialised by the workflow's concurrency group (never cancelled
+  # in progress; a newer push replaces only a run still waiting), so first attempts finish in push
+  # order and each deploy is newer than the last. The check skips only when prod already serves a
+  # newer main commit, as on a re-run of an old run. The old rule, "upload only if still main's
+  # head", starved prod while merges landed faster than one CI run: 39 of 59 green main runs
+  # skipped their upload on 2026-09-30/10-01, and prod sat on one build for up to 145 minutes.
+  # [default]
   deploy-prod:
     name: deploy-prod
     needs: [gate]
@@ -163,32 +171,29 @@ jobs:
       group: prod-deploy
       cancel-in-progress: false
     outputs:
-      deployed: ${{ steps.head.outputs.current }}
+      deployed: ${{ steps.decide.outputs.deploy }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - name: Is this still the head of main?
-        id: head
-        run: |
-          head="$(git ls-remote origin refs/heads/main | cut -f1)"
-          if [ "$head" = "$GITHUB_SHA" ]; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "main moved on to ${head::7}; a newer run deploys it. Skipping the upload."
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Deploy this run's build? (skip only if prod serves a newer main commit)
+        id: decide
+        env:
+          SPACE: ${{ vars.HF_SPACE_PROD }}
+        run: node scripts/prod-deploy-check.mjs --sha "$GITHUB_SHA" --space "$SPACE"
       - uses: actions/download-artifact@v8
-        if: steps.head.outputs.current == 'true'
+        if: steps.decide.outputs.deploy == 'true'
         with:
           name: dist
           path: dist/
       - name: Stage the source mirror plus the build
-        if: steps.head.outputs.current == 'true'
+        if: steps.decide.outputs.deploy == 'true'
         run: node scripts/space-stage.mjs --out .cache/space --readme space/README.prod.md
       - name: Upload to the game Space
-        if: steps.head.outputs.current == 'true'
+        if: steps.decide.outputs.deploy == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SPACE: ${{ vars.HF_SPACE_PROD }}
