@@ -1,0 +1,15 @@
+{
+  "type": "crew",
+  "id": "swamp-kin",
+  "name": "The Swamp Kin",
+  "kind": "gang",
+  "region": "florida-keys",
+  "stanceTowardPlayer": "neutral",
+  "gangUp": { "enabled": true, "maxJoiners": 2, "joinRadiusM": 25, "chance": 0.35 },
+  "rivalCrews": [],
+  "meta": {
+    "status": "live",
+    "notes": "The first fixed crew (M4 rivals-1, built early). The name is a placeholder until the maintainer picks one. Mother Rust runs it; Tammy Two-Stroke rides with it. Membership is declared on each rider. The gang-up numbers are the content-pack doc's example values; nothing reads them until gang-ups are built.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

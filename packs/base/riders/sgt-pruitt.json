@@ -8,6 +8,7 @@
   "tags": ["deputy", "tired", "local-law"],
   "blurb": "A tired county deputy. Slow to start a chase, then relentless.",
   "bike": "rustbucket-400",
+  "startingWeapon": "baton",
   "stats": { "massKg": 95, "healthMax": 100, "skill": 0.6 },
   "personality": { "style": "cop" },
   "law": {
@@ -20,7 +21,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built.",
+    "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built. M4 cops-3 (head start) gave him the baton as his starting weapon, which you can snatch off him mid-swing; the baton is a draft, so release builds leave him bare-handed until it goes live, and the race config carries it once buildSimConfig maps startingWeapon.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
   }
 }

@@ -15,7 +15,11 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 //   headless in the page plus this browser race: at least ATTACK_MIN_CONNECTS of them connect
 //   (the shared batch connects in about 9 races of 10);
 // - the bot took the shortcut: active once the bot's route has a split zone onto a shortcut
-//   (road-2's boat-ramp cut) or its road offers a `shortcut` lane.
+//   (road-2's boat-ramp cut) or its road offers a `shortcut` lane;
+// - the bot lands a takedown (M2 exit criterion 9, on since dev-4 part 2 taught the bot to fight a
+//   rival down): like the attack check, an aggregate over this race plus TAKEDOWN_SEEDS run headless
+//   in the page, each up to the bot's first takedown. The full count is asserted over the shared
+//   seeded batch (tests/sim/dev-presets.test.ts).
 
 interface Checks {
   ticks: number;
@@ -24,6 +28,7 @@ interface Checks {
   firstInvalid: string | null;
   events: Record<string, number>;
   playerHits: number;
+  playerTakedowns?: number;
   bot: {
     attackPresses: number;
     skipTicks: number;
@@ -32,6 +37,8 @@ interface Checks {
     shortcutApproachTicks: number;
     trafficDodges: number;
     engagements: number;
+    kickPresses?: number;
+    dangerKicks?: number;
   };
 }
 interface Stats {
@@ -63,11 +70,14 @@ interface Handle {
     summary: string;
   };
   botAttackRuns(seeds: readonly number[]): AttackRun[];
+  botTakedownRuns(seeds: readonly number[]): AttackRun[];
 }
 interface AttackRun {
   seed: number;
   ticks: number;
   hits: number;
+  takedowns: number;
+  takedownKind: string | null;
   attackPresses: number;
   attackStarts: number;
   over: boolean;
@@ -78,6 +88,12 @@ type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 const ATTACK_SEEDS = [2, 3, 4, 5, 6, 7];
 /** How many of the browser race plus ATTACK_SEEDS must land a hit. */
 const ATTACK_MIN_CONNECTS = 3;
+/**
+ * Extra seeds for "the bot lands a takedown", run headless in the page up to the bot's first
+ * takedown. On 2026-10-01 each of them, and the browser race's seed 1, had one (seeds 2, 3, 8 and
+ * 10 by tick 3600). [default]
+ */
+const TAKEDOWN_SEEDS = [2, 3, 8, 10];
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   drawCallsMax: number;
@@ -184,11 +200,25 @@ test('the bot races to results with a placing at phone landscape', async ({ page
     );
   }
 
-  // M2 dev-4: "the bot lands a takedown" is asserted across the shared seeded batch
-  // (tests/sim/dev-presets.test.ts), where one seed's luck cannot flip it; this race only prints.
+  // M2 exit criterion 9: the bot lands a takedown. One seed's luck flips with any sim change, so
+  // this race and TAKEDOWN_SEEDS are asked together; the batch asserts the full count.
+  const takedownRuns = (await page.evaluate(
+    (seeds) => (window as TestWindow).__game?.botTakedownRuns(seeds) ?? [],
+    TAKEDOWN_SEEDS,
+  )) as AttackRun[];
+  const browserTakedowns = checks.playerTakedowns ?? 0;
+  const landed = takedownRuns.filter((r) => r.takedowns > 0).length + (browserTakedowns > 0 ? 1 : 0);
   console.log(
-    `[print] takedowns in this race: ${checks.events['takedown'] ?? 0} (asserted over the seeded batch, not one seed)`,
+    `[assert] the bot lands a takedown: ACTIVE (${landed} of ${takedownRuns.length + 1} seeded races land one; ` +
+      `this race, seed 1: ${browserTakedowns} bot takedowns of ${checks.events['takedown'] ?? 0}, ` +
+      `${checks.bot.kickPresses ?? 0} kicks pressed; headless: ` +
+      takedownRuns
+        .map((r) => `seed ${r.seed} ${r.takedowns ? `${r.takedownKind} at tick ${r.ticks}` : 'none'}`)
+        .join('; ') +
+      ')',
   );
+  expect(takedownRuns, 'every headless takedown seed ran').toHaveLength(TAKEDOWN_SEEDS.length);
+  expect(landed, 'the bot lands a takedown in a seeded race').toBeGreaterThan(0);
 
   // dev-3: the finished race's debug file replays, from its own header, to every stored hash and
   // to the final hash taken when the race ended.

@@ -84,6 +84,8 @@ export interface Placement {
   /** The bike's `combat` block (combat-3): resistance 0..1 and hit power. */
   knockbackResistance?: number;
   hitPowerScale?: number;
+  /** A weapon content id the rider starts holding (M4 weapons-2: a cop's baton or taser). */
+  startingWeapon?: string;
 }
 
 const BIKE = {
@@ -128,6 +130,7 @@ export function harnessConfig(
     },
     massKg: p.massKg ?? 80,
     healthMax: p.healthMax ?? 100,
+    ...(p.startingWeapon !== undefined ? { startingWeapon: p.startingWeapon } : {}),
   }));
   return {
     seed: 7,

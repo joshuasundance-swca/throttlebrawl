@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionState } from '../../app';
 import type { EntitySnapshot, LaneInfo, RouteQueries, SimSnapshot } from '../../sim/api';
-import { ATTACK_REPEAT_TICKS, createBot } from './index';
+import {
+  ATTACK_REPEAT_TICKS,
+  KICK_LEAD_TICKS,
+  KICK_OFFSET_M,
+  KICK_REPEAT_TICKS,
+  RETREAT_HEALTH,
+  createBot,
+} from './index';
 
 // Unit tests of the bot's decisions on hand-built snapshots. The real-data check is the seeded
 // batch (tests/sim/) and the browser race, which drive the bot against the real sim.
@@ -93,21 +100,31 @@ describe('dev/bot: the BotController', () => {
     expect(a.steer).toBeGreaterThan(0.3); // lane centre is to the right (+d, dir +1)
   });
 
-  it('presses attack (one press edge) with a rival alongside inside its window, then waits', () => {
+  it('kicks (one press edge, aimed at the rival) with a rival alongside in reach, then waits out the kick', () => {
     const bot = createBot();
     const rival = mover(1, { s: 100.3, d: 0.6 });
-    const presses: boolean[] = [];
-    for (let t = 0; t < 40; t++) {
+    const kicks: number[] = [];
+    const presses: number[] = [];
+    let side = 0;
+    for (let t = 0; t < KICK_REPEAT_TICKS + 2; t++) {
       const a = blank();
       bot.drive(snapshot(t, [mover(ME, { d: 1.7 }), rival]), ME, route(), a);
-      presses.push(a.attack);
+      if (a.attack) presses.push(t);
+      if (a.attack && a.kick) {
+        kicks.push(t);
+        side = a.attackSide;
+      }
     }
-    // Pressed on the first tick, released, and pressed again only after the repeat interval.
-    expect(presses[0]).toBe(true);
-    expect(presses[1]).toBe(false);
-    expect(presses.filter(Boolean).length).toBe(2);
-    expect(presses.indexOf(true, 1)).toBe(ATTACK_REPEAT_TICKS);
-    expect(bot.stats().attackPresses).toBe(2);
+    // A kick on the first tick, aimed left (the rival is 1.1 m to its left), and the next kick only
+    // after the kick's whole cycle; in between, one jab once the kick has recovered.
+    expect(kicks).toEqual([0, KICK_REPEAT_TICKS]);
+    expect(side).toBe(-1);
+    expect(presses.length).toBe(3);
+    const jab = presses[1] ?? -1;
+    expect(jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS);
+    expect(KICK_REPEAT_TICKS - jab).toBeGreaterThanOrEqual(ATTACK_REPEAT_TICKS - 4);
+    expect(bot.stats().kickPresses).toBe(2);
+    expect(bot.stats().attackPresses).toBe(3);
   });
 
   it('never attacks the cop, and does not swing at a rival out of reach', () => {
@@ -254,5 +271,116 @@ describe('bot: road-2 ramp shortcut behind a split zone', () => {
     expect(a.throttle).toBe(0);
     expect(a.brake).toBeGreaterThan(0);
     expect(a.steer).toBeGreaterThan(-0.05); // not off to the oncoming lane
+  });
+});
+
+describe('bot: fighting a rival down (dev-4 part 2)', () => {
+  // A wider road: two lanes each way, so the bot has room on both sides of a rival.
+  const WIDE: LaneInfo[] = [
+    { id: 'L1', dCenterM: -5.1, widthM: 3.4, direction: -1, kind: 'drive' },
+    { id: 'L0', dCenterM: -1.7, widthM: 3.4, direction: -1, kind: 'drive' },
+    { id: 'R0', dCenterM: 1.7, widthM: 3.4, direction: 1, kind: 'drive' },
+    { id: 'R1', dCenterM: 5.1, widthM: 3.4, direction: 1, kind: 'drive' },
+  ];
+
+  it('kicks when the rival will be in reach as the wind-up ends, not on where it is now', () => {
+    // Level now, but 4 m/s faster: 0.9 m ahead by the time a kick goes active. Hold the press.
+    const a = blank();
+    const bot = createBot();
+    bot.drive(
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100, d: 0.5, speed: 34 })]),
+      ME,
+      route(),
+      a,
+    );
+    expect(a.kick).toBe(false);
+    // 0.9 m behind and closing at 4 m/s: level as the kick goes active. Kick now.
+    const b = blank();
+    const lead = (4 * KICK_LEAD_TICKS) / 60;
+    createBot().drive(
+      snapshot(5, [mover(ME, { d: 1.7, speed: 30 }), mover(1, { s: 100 - lead, d: 0.5, speed: 34 })]),
+      ME,
+      route(),
+      b,
+    );
+    expect(b.attack && b.kick).toBe(true);
+  });
+
+  it('steers into the rival through the kick wind-up (the momentum kick), and holds the kick flag', () => {
+    const bot = createBot();
+    const rival = mover(1, { s: 100, d: 0.5 });
+    const first = blank();
+    bot.drive(snapshot(10, [mover(ME, { d: 1.7 }), rival]), ME, route(), first);
+    expect(first.attack && first.kick).toBe(true);
+    // Mid wind-up, still 1.2 m to its right: it steers left into the rival, kick flag held.
+    const mid = blank();
+    bot.drive(snapshot(16, [mover(ME, { d: 1.7 }), rival]), ME, route(), mid);
+    expect(mid.attack).toBe(false);
+    expect(mid.kick).toBe(true);
+    expect(mid.steer).toBeLessThan(-0.4);
+    // After the wind-up it lines up at the kick offset again, not on top of the rival.
+    const after = blank();
+    bot.drive(
+      snapshot(10 + KICK_LEAD_TICKS + 10, [mover(ME, { d: 0.5 + KICK_OFFSET_M }), rival]),
+      ME,
+      route(),
+      after,
+    );
+    expect(after.kick).toBe(false);
+    expect(Math.abs(after.steer)).toBeLessThan(0.05);
+  });
+
+  it('lines up on the side that kicks the rival toward a car beside it', () => {
+    // A rival in the middle of the bot's two lanes (d 3.4), a car 20 m ahead in the outer lane:
+    // the bot sits on the inner side, so its kick shoves the rival outward, into the car's lane.
+    const rival = mover(1, { s: 110, d: 3.4 });
+    const car = mover(7, { kind: 'vehicle', s: 130, d: 5.6, speed: 20 });
+    const a = blank();
+    createBot().drive(snapshot(5, [mover(ME, { s: 100, d: 3.4 }), rival, car]), ME, route(WIDE), a);
+    expect(a.steer).toBeLessThan(-0.3); // toward d = 3.4 - offset
+    // The same with a car on the inner side (clear of the bot's own line): the bot goes outside.
+    const inner = mover(7, { kind: 'vehicle', s: 130, d: -0.6, speed: 20 });
+    const b = blank();
+    createBot().drive(snapshot(5, [mover(ME, { s: 100, d: 3.4 }), rival, inner]), ME, route(WIDE), b);
+    expect(b.steer).toBeGreaterThan(0.3);
+  });
+
+  it('counts a kick aimed into danger', () => {
+    const bot = createBot();
+    const rival = mover(1, { s: 100.2, d: 4.6 });
+    const car = mover(7, { kind: 'vehicle', s: 120, d: 6.6, speed: 20 });
+    const a = blank();
+    bot.drive(snapshot(5, [mover(ME, { s: 100, d: 3.4 }), rival, car]), ME, route(WIDE), a);
+    expect(a.attack && a.kick).toBe(true);
+    expect(a.attackSide).toBe(1);
+    expect(bot.stats().dangerKicks).toBe(1);
+  });
+
+  it('goes after the weaker of two rivals, and waits for one just behind it', () => {
+    // A healthy rival 10 m ahead in the left lane, a hurt one 25 m ahead in the right lane.
+    const strong = mover(1, { s: 110, d: -1.7, health: 100 });
+    const weak = mover(2, { s: 125, d: 4.6, health: 20 });
+    const a = blank();
+    createBot().drive(snapshot(5, [mover(ME, { s: 100, d: 1.7 }), strong, weak]), ME, route(WIDE), a);
+    expect(a.steer).toBeGreaterThan(0.3); // to the right, toward the weak one
+    // A rival 20 m behind, as fast as the bot: it eases off to let it come alongside.
+    const b = blank();
+    createBot().drive(
+      snapshot(5, [mover(ME, { s: 100, d: 1.7, speed: 40 }), mover(3, { s: 80, d: 1.7, speed: 40 })]),
+      ME,
+      route(WIDE),
+      b,
+    );
+    expect(b.throttle).toBe(0);
+  });
+
+  it("stops fighting while hurt, and keeps out of a rival's kick reach", () => {
+    const bot = createBot();
+    const rival = mover(1, { s: 100.2, d: 0.6 });
+    const a = blank();
+    bot.drive(snapshot(5, [mover(ME, { d: 1.7, health: RETREAT_HEALTH - 1 }), rival]), ME, route(WIDE), a);
+    expect(a.attack).toBe(false);
+    expect(a.steer).toBeGreaterThan(0.3); // away from the rival on its left
+    expect(bot.stats().engagements).toBe(0);
   });
 });

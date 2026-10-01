@@ -21,7 +21,9 @@ import {
   type SystemName,
   type World,
 } from '../world';
-import { aiState, aiSystem, grudgeTargets, resolveProfile, takedownPush } from './index';
+import { spawnPickup } from '../combat';
+import { riderState } from '../riders';
+import { aiState, aiSystem, AI_STYLE_IDS, grudgeTargets, resolveProfile, takedownPush } from './index';
 import { see, vehicleSize } from './sense';
 
 const noop = (name: SystemName): SimSystem => ({ name, init() {}, step() {} });
@@ -179,9 +181,29 @@ describe('ai: style presets and personality overrides', () => {
     expect(p.targetPreference).toEqual(['leader']);
   });
 
-  it('falls back to the racer preset for a style without its own preset yet', () => {
-    expect(resolveProfile('weaver', undefined).behaviour).toBe('racer');
+  it('falls back to the racer preset for a style id it does not know', () => {
+    expect(resolveProfile('no-such-style', undefined).behaviour).toBe('racer');
+    expect(resolveProfile('no-such-style', undefined).traits).toEqual(
+      resolveProfile('racer', undefined).traits,
+    );
     expect(resolveProfile('racer', undefined).behaviour).toBe('racer');
+  });
+
+  it('registers a preset for every rider style in the content schema except the cop (M4 rivals-1)', () => {
+    expect([...AI_STYLE_IDS].sort()).toEqual(
+      [
+        'heavy-hitter',
+        'weaver',
+        'showboat',
+        'grudge-keeper',
+        'scrapper',
+        'crowd-pleaser',
+        'crew-boss',
+        'racer',
+      ].sort(),
+    );
+    expect(resolveProfile('weaver', undefined).traits.roadWeave).toBe(true);
+    expect(resolveProfile('weaver', undefined, false).traits.roadWeave).toBe(false);
   });
 });
 
@@ -841,5 +863,367 @@ describe('ai-2: difficulty', () => {
     );
     expect(hard).toBeGreaterThan(normal);
     expect(normal).toBeGreaterThan(easy);
+  });
+});
+
+// ---- M4 rivals-1 (built early): the cast's styles, rivalries, career grudges, preferred weapons ----
+
+/** One style's behaviour, measured in six scripted probes (means over the seeds). */
+interface Fingerprint {
+  /** Probe 1, an open road from a standstill with fights off: metres covered in the first 12 s. */
+  launchM: number;
+  /** Probe 1: spread of its lateral position (standard deviation, metres) from 12 s to 30 s. */
+  laneStdM: number;
+  /** Probe 1: mean speed from 15 s to 30 s, m/s. */
+  cruiseMps: number;
+  /** Probe 2, the race leader alongside it: swings at the leader in 10 s. */
+  leaderSwings: number;
+  /** Probe 3, hit once by the player with a decoy rival nearer: ticks hunting the player in the 4 s after the hit... */
+  huntSoon: number;
+  /** ...and from 9 s to 20 s after it. */
+  huntLate: number;
+  /** Probe 4, at 35 % health with the player alongside: ticks spent fleeing, and swings, in 10 s. */
+  fleeTicks: number;
+  hurtSwings: number;
+  /** Probe 5, a rider 4 m behind it and the player 12 m ahead: ticks targeting the rider behind, in 6 s. */
+  chaserTicks: number;
+  /** Probe 6, the player 30 m behind and slower: its lowest speed in 6 s (a hunter waits for them). */
+  waitMinMps: number;
+}
+
+const FP_SEEDS = [11, 12, 13];
+const PRINT_KEYS: readonly (keyof Fingerprint)[] = [
+  'launchM',
+  'laneStdM',
+  'cruiseMps',
+  'leaderSwings',
+  'huntSoon',
+  'huntLate',
+  'fleeTicks',
+  'hurtSwings',
+  'chaserTicks',
+  'waitMinMps',
+];
+
+/** A player input that holds rider `id` `leadM` metres ahead of rider `of` and `offD` metres to its +d side. */
+function shadow(sc: Scene, id: number, of: number, leadM: number, offD: number): SimInput {
+  const me = sc.world.movers[id];
+  const ai = sc.world.movers[of];
+  if (!me || !ai) return { steer: 0, throttle: 0, brake: 0, flags: 0 };
+  const gap = along(ai, me);
+  const want = Math.max(-1, Math.min(1, (leadM - gap) * 0.6 + (ai.speed - me.speed) * 0.4));
+  return {
+    steer: Math.round(
+      Math.max(-1, Math.min(1, (Math.min(4, ai.pos.d + offD) - me.pos.d) * 0.6 - me.yaw * 2)) * 127,
+    ),
+    throttle: want > -0.6 ? Math.round(Math.min(1, Math.max(0, 0.6 + want)) * 255) : 0,
+    brake: want < -0.6 ? Math.round(Math.min(1, -want) * 255) : 0,
+    flags: 0,
+  };
+}
+
+function fingerprintRun(style: string, seed: number, quirks = 1): Fingerprint {
+  const over = { seed, tuning: { 'riders.steerScale': 1, 'ai.styleQuirks': quirks } };
+  // Probe 1: open road, fights off (aggression 0), the player parked far behind.
+  const p1 = scene(
+    [rival(style, { aggression: 0 }, 'me'), PLAYER],
+    [
+      { s: 40, d: 1.7, v: 0 },
+      { s: 5, d: -1.7, v: 0 },
+    ],
+    [],
+    over,
+  );
+  const me1 = p1.riders[0];
+  const start = me1 ? route.progressAt(me1.pos.edge, me1.pos.s) : 0;
+  let launchM = 0;
+  const ds: number[] = [];
+  let speedSum = 0;
+  let speedN = 0;
+  for (let t = 0; t < 60 * 30; t++) {
+    step(p1);
+    if (!me1) break;
+    if (t === 60 * 12 - 1) launchM = route.progressAt(me1.pos.edge, me1.pos.s) - start;
+    if (t >= 60 * 12) ds.push(me1.pos.d);
+    if (t >= 60 * 15) {
+      speedSum += me1.speed;
+      speedN++;
+    }
+  }
+  const mean = ds.reduce((a, b) => a + b, 0) / Math.max(1, ds.length);
+  const laneStdM = Math.sqrt(ds.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, ds.length));
+
+  // Probe 2: the player leads the race, held 1.5 m ahead of it and alongside, every tick.
+  const p2 = scene(
+    [rival(style, undefined, 'me'), PLAYER],
+    [
+      { s: 100, d: 1.2, v: 28 },
+      { s: 101.5, d: 2.6, v: 28 },
+    ],
+    [],
+    over,
+  );
+  for (let t = 0; t < 60 * 10; t++) step(p2, shadow(p2, 1, 0, 0.5, 1.2));
+  const leaderSwings = aiState(p2.world).pressesOnLeader[0] ?? 0;
+
+  // Probe 3: the player lands one hit on it at 1 s; a non-fighting decoy rides nearer than the player.
+  const p3 = scene(
+    [
+      rival(style, { targetPreference: ['nearest'] }, 'me'),
+      rival('racer', { aggression: 0, weave: 0 }, 'decoy'),
+      PLAYER,
+    ],
+    [
+      { s: 100, d: 1.7, v: 28 },
+      { s: 104, d: 1.2, v: 28 },
+      { s: 88, d: 1.7, v: 28 },
+    ],
+    [],
+    over,
+  );
+  const drive3 = cruise(p3, 2);
+  let huntSoon = 0;
+  let huntLate = 0;
+  for (let t = 0; t < 60 * 21; t++) {
+    if (t === 60) {
+      p3.world.lastEvents = [{ tick: t - 1, type: 'hit', actor: 2, target: 0, data: {}, causeId: 1 }];
+    }
+    step(p3, drive3());
+    const onPlayer = aiState(p3.world).targetId[0] === 2;
+    if (onPlayer && t >= 60 && t < 60 * 5) huntSoon++;
+    if (onPlayer && t >= 60 * 10) huntLate++;
+  }
+
+  // Probe 4: hurt (35 % health), with the player alongside.
+  const p4 = scene(
+    [rival(style, undefined, 'me'), PLAYER],
+    [
+      { s: 100, d: 1.2, v: 28 },
+      { s: 100.5, d: 2.6, v: 28 },
+    ],
+    [],
+    over,
+  );
+  riderState(p4.world).health[0] = 35;
+  const drive4 = cruise(p4, 1);
+  for (let t = 0; t < 60 * 10; t++) step(p4, drive4());
+  const st4 = aiState(p4.world);
+
+  // Probe 5: a non-fighting rider 4 m behind it, the player 12 m ahead.
+  const p5 = scene(
+    [rival(style, undefined, 'me'), rival('racer', { aggression: 0, weave: 0 }, 'chaser'), PLAYER],
+    [
+      { s: 200, d: 1.7, v: 28 },
+      { s: 196, d: 1.0, v: 29 },
+      { s: 212, d: 1.7, v: 28 },
+    ],
+    [],
+    over,
+  );
+  const drive5 = cruise(p5, 2);
+  let chaserTicks = 0;
+  for (let t = 0; t < 60 * 6; t++) {
+    step(p5, drive5());
+    if (aiState(p5.world).targetId[0] === 1) chaserTicks++;
+  }
+
+  // Probe 6: the player 30 m behind and slower.
+  const p6 = scene(
+    [rival(style, undefined, 'me'), PLAYER],
+    [
+      { s: 80, d: 1.7, v: 30 },
+      { s: 50, d: 1.7, v: 24 },
+    ],
+    [],
+    over,
+  );
+  const drive6 = cruise(p6, 1);
+  let waitMinMps = Infinity;
+  for (let t = 0; t < 60 * 6; t++) {
+    step(p6, { ...drive6(), throttle: 120 });
+    waitMinMps = Math.min(waitMinMps, p6.riders[0]?.speed ?? 0);
+  }
+
+  return {
+    launchM,
+    laneStdM,
+    cruiseMps: speedSum / Math.max(1, speedN),
+    leaderSwings,
+    huntSoon,
+    huntLate,
+    fleeTicks: st4.fleeTicks[0] ?? 0,
+    hurtSwings: st4.presses[0] ?? 0,
+    chaserTicks,
+    waitMinMps,
+  };
+}
+
+function fingerprint(style: string, quirks = 1): Fingerprint {
+  const runs = FP_SEEDS.map((seed) => fingerprintRun(style, seed, quirks));
+  const out = {} as Fingerprint;
+  for (const k of PRINT_KEYS) out[k] = runs.reduce((a, r) => a + r[k], 0) / runs.length;
+  return out;
+}
+
+describe('ai: the cast’s styles (M4 rivals-1)', () => {
+  const prints = new Map<string, Fingerprint>(AI_STYLE_IDS.map((s) => [s, fingerprint(s)]));
+  const fp = (s: string): Fingerprint => {
+    const p = prints.get(s);
+    if (!p) throw new Error(`no fingerprint for ${s}`);
+    return p;
+  };
+  const others = (s: string) => AI_STYLE_IDS.filter((x) => x !== s).map(fp);
+
+  it('prints every style’s fingerprint over the seeded batch', () => {
+    const rows = AI_STYLE_IDS.map(
+      (s) => `${s.padEnd(14)} ${PRINT_KEYS.map((k) => `${k} ${fp(s)[k].toFixed(2)}`).join('  ')}`,
+    );
+    console.log(`style fingerprints (means over seeds ${FP_SEEDS.join(', ')}):\n${rows.join('\n')}`);
+    expect(prints.size).toBe(AI_STYLE_IDS.length);
+  });
+
+  it('every style rides measurably differently from every other', () => {
+    for (const a of AI_STYLE_IDS) {
+      for (const b of AI_STYLE_IDS) {
+        if (a >= b) continue;
+        const diff = PRINT_KEYS.some((k) => Math.abs(fp(a)[k] - fp(b)[k]) > 0.05 * (Math.abs(fp(a)[k]) + 1));
+        expect(diff, `${a} vs ${b}`).toBe(true);
+      }
+    }
+  });
+
+  it('a weaver swerves widest; a heavy hitter is slowest off the line, a scrapper quickest', () => {
+    for (const o of others('weaver')) expect(fp('weaver').laneStdM).toBeGreaterThan(o.laneStdM);
+    for (const o of others('heavy-hitter')) expect(fp('heavy-hitter').launchM).toBeLessThan(o.launchM);
+    for (const o of others('scrapper')) expect(fp('scrapper').launchM).toBeGreaterThan(o.launchM);
+  });
+
+  it('a showboat never swings at the race leader; a racer does', () => {
+    expect(fp('showboat').leaderSwings).toBe(0);
+    expect(fp('racer').leaderSwings).toBeGreaterThan(0);
+  });
+
+  it('a grudge-keeper hunts whoever hit it for the rest of the race; a scrapper hits back, then lets go', () => {
+    for (const o of others('grudge-keeper')) expect(fp('grudge-keeper').huntLate).toBeGreaterThan(o.huntLate);
+    expect(fp('scrapper').huntSoon).toBeGreaterThan(0);
+    expect(fp('scrapper').huntLate).toBeLessThan(fp('grudge-keeper').huntLate / 4);
+    expect(fp('racer').huntSoon + fp('racer').huntLate).toBe(0);
+  });
+
+  it('a crowd-pleaser flees a fight that has turned; a heavy hitter fights on', () => {
+    expect(fp('crowd-pleaser').fleeTicks).toBeGreaterThan(60 * 5);
+    expect(fp('crowd-pleaser').hurtSwings).toBe(0);
+    expect(fp('heavy-hitter').fleeTicks).toBe(0);
+    expect(fp('heavy-hitter').hurtSwings).toBeGreaterThan(0);
+  });
+
+  it('a crew boss deals with the rider closing from behind first, and waits for nobody', () => {
+    for (const o of others('crew-boss')) expect(fp('crew-boss').chaserTicks).toBeGreaterThan(o.chaserTicks);
+    expect(fp('crew-boss').waitMinMps).toBeGreaterThan(fp('heavy-hitter').waitMinMps + 2);
+  });
+
+  it('with ai.styleQuirks off, the weaver keeps its numbers but loses its road-wide swerve', () => {
+    const off = fingerprint('weaver', 0);
+    console.log(
+      `weaver lateral spread: quirks on ${fp('weaver').laneStdM.toFixed(2)} m, off ${off.laneStdM.toFixed(2)} m`,
+    );
+    expect(off.laneStdM).toBeLessThan(fp('weaver').laneStdM * 0.8);
+  });
+});
+
+describe('ai: career grudges, rivalries and preferred weapons (M4 rivals-1)', () => {
+  /** Ticks each of two racers spends hunting the player over 15 s, with the given grudge table. */
+  function huntWith(grudges: SimConfig['grudges'], huntAt?: number) {
+    const tuning: Record<string, number> = { 'riders.steerScale': 1 };
+    if (huntAt !== undefined) tuning['ai.grudgeHuntAt'] = huntAt;
+    const sc = scene(
+      [rival('racer', {}, 'holder'), rival('racer', {}, 'calm'), PLAYER],
+      [
+        { s: 100, d: 1.2, v: 28 },
+        { s: 100, d: 2.6, v: 28 },
+        { s: 92, d: 1.7, v: 28 },
+      ],
+      [],
+      { grudges, tuning },
+    );
+    const drive = cruise(sc, 2);
+    for (let t = 0; t < 60 * 15; t++) step(sc, drive());
+    const st = aiState(sc.world);
+    return { holder: st.huntTicksOnPlayer[0] ?? 0, calm: st.huntTicksOnPlayer[1] ?? 0 };
+  }
+
+  it('a rival holding a high career grudge targets the player more than one holding none', () => {
+    const got = huntWith({ 'base:holder': { 'base:player': 6 } });
+    console.log(`career grudge 6 vs none: ticks hunting the player in 15 s ${got.holder} vs ${got.calm}`);
+    expect(got.holder).toBeGreaterThan(got.calm + 120);
+    // Bare ids work on both sides of the table, and points under ai.grudgeHuntAt hunt nobody.
+    expect(huntWith({ holder: { player: 6 } }).holder).toBe(got.holder);
+    expect(huntWith({ 'base:holder': { 'base:player': 3 } }).holder).toBe(0);
+    expect(huntWith({ 'base:holder': { 'base:player': 3 } }, 3).holder).toBe(got.holder);
+  });
+
+  it('an authored rivalry makes a racer hunt and swing at its rival, with no grudge', () => {
+    const run = (rivals?: string[]) => {
+      const sc = scene(
+        [
+          rival('racer', rivals ? { rivals } : {}, 'a'),
+          rival('racer', { aggression: 0, weave: 0 }, 'b'),
+          PLAYER,
+        ],
+        [
+          { s: 100, d: 1.7, v: 28 },
+          { s: 110, d: 1.2, v: 28 },
+          { s: 20, d: 1.7, v: 28 },
+        ],
+      );
+      const drive = cruise(sc, 2);
+      let onRival = 0;
+      for (let t = 0; t < 60 * 15; t++) {
+        step(sc, drive());
+        if (aiState(sc.world).targetId[0] === 1) onRival++;
+      }
+      return { onRival, swings: aiState(sc.world).presses[0] ?? 0 };
+    };
+    const feud = run(['b']);
+    const none = run();
+    console.log(
+      `rivalry: ticks hunting its rival ${feud.onRival} (swings ${feud.swings}); without ${none.onRival} (${none.swings})`,
+    );
+    expect(feud.onRival).toBeGreaterThan(60 * 5);
+    expect(none.onRival).toBe(0);
+    expect(feud.swings).toBeGreaterThan(none.swings);
+    // Prefixed ids in the rider file resolve the same way.
+    expect(resolveProfile('racer', { rivals: ['base:b'] }).rivals).toEqual(['b']);
+  });
+
+  it('an unarmed rider steers over its preferred weapon; one without a preference rides past', () => {
+    const run = (preferredWeapon?: string) => {
+      const sc = scene(
+        [rival('racer', { weave: 0, ...(preferredWeapon ? { preferredWeapon } : {}) }), PLAYER],
+        [
+          { s: 100, d: 2.4, v: 28 },
+          { s: 20, d: -1.7, v: 0 },
+        ],
+      );
+      const pickup = spawnPickup(sc.world, 'base:chain', { edge: 0, s: 220, d: 0.4, dir: 1 });
+      const me = sc.riders[0];
+      let missAt = Infinity;
+      for (let t = 0; t < 60 * 8; t++) {
+        step(sc);
+        const p = sc.world.movers[pickup];
+        if (me && p && Math.abs(along(me, p)) < 2) missAt = Math.min(missAt, Math.abs(me.pos.d - p.pos.d));
+      }
+      return { missAt, seek: aiState(sc.world).seekTicks[0] ?? 0 };
+    };
+    const wants = run('chain');
+    const other = run('briefcase');
+    const none = run();
+    console.log(
+      `closest pass to a lying chain: prefers it ${wants.missAt.toFixed(2)} m, prefers a briefcase ${other.missAt.toFixed(2)} m, no preference ${none.missAt.toFixed(2)} m`,
+    );
+    expect(wants.seek).toBeGreaterThan(0);
+    expect(wants.missAt).toBeLessThan(0.6);
+    expect(other.missAt).toBeGreaterThan(1);
+    expect(none.missAt).toBeGreaterThan(1);
   });
 });

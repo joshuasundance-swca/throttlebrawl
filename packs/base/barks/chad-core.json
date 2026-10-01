@@ -2,7 +2,7 @@
   "type": "bark-set",
   "id": "chad-core",
   "name": "Chad Speedwell: core lines",
-  "tags": ["rival", "m1", "m2"],
+  "tags": ["rival", "m1", "m2", "m4"],
   "defaults": {
     "speaker": "chad-speedwell",
     "cooldownS": 90,
@@ -93,11 +93,128 @@
       "id": "chad-near-screaming",
       "trigger": "near-miss",
       "text": "Chat's screaming. Good screaming."
+    },
+    {
+      "id": "chad-lead-back",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "text": "First place. Chat, we are so back."
+    },
+    {
+      "id": "chad-late-thumbnail",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.progress",
+          "op": "gte",
+          "value": 0.8
+        }
+      ],
+      "text": "Final stretch. Thumbnail face, go."
+    },
+    {
+      "id": "chad-hit-dial-up",
+      "trigger": "hit-landed",
+      "target": "dial-up",
+      "priority": 1,
+      "text": "Old internet. Meet new internet."
+    },
+    {
+      "id": "chad-hit-deacon",
+      "trigger": "hit-landed",
+      "target": "deacon-vane",
+      "priority": 1,
+      "text": "Sermon's over, Deacon. Like and pray."
+    },
+    {
+      "id": "chad-hit-easy",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "Easy content. Almost too easy."
+    },
+    {
+      "id": "chad-hit-views",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Your clip got four views. All mine."
+    },
+    {
+      "id": "chad-near-brand",
+      "trigger": "near-miss",
+      "when": [
+        {
+          "fact": "speaker.healthFrac",
+          "op": "lt",
+          "value": 0.4
+        }
+      ],
+      "text": "Brand deal says I can't die. Checking."
+    },
+    {
+      "id": "chad-start-golden",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "golden-hour"
+        }
+      ],
+      "text": "Golden hour. My lighting's perfect."
+    },
+    {
+      "id": "chad-crash-rebrand",
+      "trigger": "crash-self",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "gte",
+          "value": 5
+        }
+      ],
+      "text": "Last place is a rebrand. Trust me."
+    },
+    {
+      "id": "chad-down-modem",
+      "trigger": "knocked-down-by-target",
+      "target": "dial-up",
+      "priority": 1,
+      "text": "Taken out by a modem. Do not clip."
+    },
+    {
+      "id": "chad-traffic-collab",
+      "trigger": "takedown-into-traffic",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Collab over. Creative differences."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "chad-hit-subscribe is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "notes": "chad-hit-subscribe is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

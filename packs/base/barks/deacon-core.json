@@ -2,7 +2,7 @@
   "type": "bark-set",
   "id": "deacon-core",
   "name": "Deacon Vane: core lines",
-  "tags": ["rival", "m1", "m2"],
+  "tags": ["rival", "m1", "m2", "m4"],
   "defaults": {
     "speaker": "deacon-vane",
     "cooldownS": 90,
@@ -98,11 +98,133 @@
       "id": "deacon-near-angel",
       "trigger": "near-miss",
       "text": "Guardian angel's on overtime."
+    },
+    {
+      "id": "deacon-lead-first",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "text": "The first shall be first. Ask anyone."
+    },
+    {
+      "id": "deacon-late-home",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.progress",
+          "op": "gte",
+          "value": 0.8
+        }
+      ],
+      "text": "Nearly home. Not you, though."
+    },
+    {
+      "id": "deacon-hit-chad",
+      "trigger": "hit-landed",
+      "target": "chad-speedwell",
+      "priority": 1,
+      "text": "Repent, Chad. Then log off."
+    },
+    {
+      "id": "deacon-hit-rites",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "Last rites are short. Like you."
+    },
+    {
+      "id": "deacon-hit-forgave",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "I forgave you. My fist did not."
+    },
+    {
+      "id": "deacon-near-notyet",
+      "trigger": "near-miss",
+      "when": [
+        {
+          "fact": "speaker.healthFrac",
+          "op": "lt",
+          "value": 0.4
+        }
+      ],
+      "text": "Not yet, Lord. Not on this bike."
+    },
+    {
+      "id": "deacon-start-evening",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "night"
+        }
+      ],
+      "text": "Evening service. Collection is mandatory."
+    },
+    {
+      "id": "deacon-start-sunrise",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "dawn"
+        }
+      ],
+      "text": "Sunrise service. Bring your own ditch."
+    },
+    {
+      "id": "deacon-crash-pilgrim",
+      "trigger": "crash-self",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "gte",
+          "value": 5
+        }
+      ],
+      "text": "Last place is a pilgrimage too."
+    },
+    {
+      "id": "deacon-down-chad",
+      "trigger": "knocked-down-by-target",
+      "target": "chad-speedwell",
+      "priority": 1,
+      "text": "Struck down by a ring light."
+    },
+    {
+      "id": "deacon-traffic-vengeance",
+      "trigger": "takedown-into-traffic",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Vengeance is mine. And the truck's."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "deacon-start-ditch is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "notes": "deacon-start-ditch is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

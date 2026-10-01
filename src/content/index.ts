@@ -2,6 +2,17 @@
 // "Content registry"; docs/content-packs.md, "Validation"). The content lane owns this folder;
 // schema/ is a contract.
 export { assetIndex, loadBasePack, basePackFiles } from './base-pack';
+export {
+  combineRegistries,
+  createPackLibrary,
+  groupPackFiles,
+  isRoadDataPath,
+  packClosure,
+  packOf,
+  packSubset,
+  registryFromGlob,
+} from './packs';
+export type { PackLibrary, PackSources } from './packs';
 export { buildRegistry, ContentError, contentHashes, lookup } from './registry';
 export type { ContentRegistry, LoadOptions, PackIndexRow } from './registry';
 export type { ContentHashes } from './hashes';

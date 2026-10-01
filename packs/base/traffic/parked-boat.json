@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "parked-boat",
+  "name": "Boat Parked in the Fast Lane",
+  "category": "oddity",
+  "tags": ["oddity", "wasteland"],
+  "lengthM": 7.0,
+  "widthM": 2.4,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": false },
+  "look": { "procedural": { "preset": "boat-parked" }, "paintOptions": ["#f4f1e8", "#19b5b0", "#e8c07d"] },
+  "meta": {
+    "status": "draft",
+    "notes": "The tone guide's wasteland oddity: a boat on its trailer, no truck, left in the innermost lane and nudged toward the shoulder. Traffic edges round it. Nobody mentions it. Not in any region's mix yet: the rivals cannot steer round a stopped vehicle (an ai-lane follow-up). M3 traffic-4 head start.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

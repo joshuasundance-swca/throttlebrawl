@@ -1,0 +1,55 @@
+{
+  "type": "rider",
+  "id": "mother-rust",
+  "name": "Mother Rust",
+  "role": "rival",
+  "roster": "local",
+  "region": "florida-keys",
+  "crew": "swamp-kin",
+  "tags": ["matriarch", "swamp", "crew-boss"],
+  "blurb": "The matriarch of a swamp-town gang.",
+  "bike": "rustbucket-400",
+  "stats": {
+    "massKg": 88,
+    "healthMax": 120,
+    "skill": 0.7
+  },
+  "personality": {
+    "style": "crew-boss",
+    "aggression": 0.75,
+    "dirtiness": 0.55,
+    "courage": 0.9,
+    "riskTaking": 0.45,
+    "chatter": 0.5,
+    "weave": 0.05,
+    "targetPreference": ["chaser", "player", "rival", "nearest"],
+    "preferredSide": "either",
+    "rivals": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting", "the-mayor"],
+    "preferredWeapon": "lead-pipe"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 3,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 1,
+    "huntThreshold": 3,
+    "max": 10,
+    "reliefWhenHelped": 1,
+    "shareWithCrew": 1
+  },
+  "look": {
+    "description": "A broad woman in a patched oilskin coat and waders, grey braid down her back, a gator-tooth necklace. Rides a heavy, rust-orange bagger with airboat-fan styling and a dented fender.",
+    "bikeClass": "chopper",
+    "palette": ["#8b3a1a", "#4b5a2a", "#d8c9a3", "#1f2a1f"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Florida local and boss of the Swamp Kin (a placeholder name), the proposed boss of the region 1 grudge race. M4 rivals-1 (built early): a crew boss. She fights from the front: rides a little above pace, deals with whoever is closing on her from behind first, then you, then anyone who isn't family, and waits for nobody. Her crew riding with her waits for crews in the race config. Rivalry: everyone who isn't family. Prefers the lead pipe. Not in any event yet. Approved line: \"I've eaten tires tougher than you.\"",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
