@@ -13,19 +13,37 @@
     "skill": 0.5
   },
   "personality": {
-    "style": "heavy-hitter",
+    "style": "grudge-keeper",
     "aggression": 0.7,
     "dirtiness": 0.8,
     "courage": 0.75,
     "riskTaking": 0.15,
     "chatter": 0.6,
     "weave": 0,
-    "targetPreference": ["player", "nearest"],
-    "preferredSide": "left"
+    "targetPreference": ["grudge", "player", "rival", "nearest"],
+    "preferredSide": "left",
+    "rivals": ["the-mayor"],
+    "preferredWeapon": "briefcase"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 2,
+    "gainPerTakedownSuffered": 4,
+    "gainPerWeaponStolen": 3,
+    "decayPerRace": 0,
+    "huntThreshold": 2,
+    "max": 10,
+    "reliefWhenHelped": 1,
+    "shareWithCrew": 0
+  },
+  "look": {
+    "description": "A short-sleeved dress shirt, a clip-on tie flapping over his shoulder and a lanyard badge. Rides a beige commuter scooter with a briefcase bungeed to the footboard.",
+    "bikeClass": "scooter",
+    "palette": ["#e9e4d4", "#2c3e66", "#8c8c8c", "#c9a227"]
   },
   "meta": {
     "status": "live",
-    "notes": "M1 box rival (ai-1). The tone guide makes him a grudge-keeper; grudges arrive in M4, so in M1 he is a heavy hitter: brutal up close (kicks a lot), always from your left, never takes a risk in traffic. He rides the starter bike until his scooter exists.",
+    "notes": "Regular. M4 rivals-1 (built early): a grudge-keeper. He hunts you, always from your left, and keeps an exact tally: one hit on him puts you on his list for the rest of the race, and each further hit makes him swing more. His grudges never decay between races. Rivalry: The Mayor, over an unpaid invoice. Prefers the briefcase (weapons-2 adds it). Rides the starter bike until his scooter exists. Approved line: \"Per my last email: move.\"",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -17,10 +17,15 @@
 //   in the other it does not. Over the next 60 s it must swing at the player more, and ride close
 //   to them longer, with the grudge. A racer only hunts someone it holds a grudge against; a
 //   heavy-hitter already hunts the player first, so a grudge changes nothing measurable for it.
+//   M4 rivals-1 gave the four regulars their own styles, so "racer-style" now means any style that
+//   does not hunt by itself and does not pick its fights (a weaver, or a plain racer; Dial-Up in
+//   the base race), via `plainHunter` below. A showboat is left out: he will not take on a player
+//   healthier than him, grudge or not.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent } from '../../src/sim/api';
+import { huntsByDefault, resolveProfile } from '../../src/sim/ai';
 import { createSimWithWorld } from '../../src/sim/create';
 import { noteGrudge } from '../../src/sim/world';
 import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, TRACE_EVERY_TICKS, type BatchResult } from './batch';
@@ -31,6 +36,10 @@ const NEAR_M = 40;
 const AB_SEEDS = [1, 2, 3, 4, 5, 6];
 const AB_WINDOW_TICKS = 60 * 60;
 const AB_CLOSE_M = 6;
+
+/** A style that hunts only whom it holds a grudge against, and picks no fights by looks (rivals-1). */
+const plainHunter = (style: string): boolean =>
+  !huntsByDefault(style) && !resolveProfile(style, undefined).traits.showboat;
 
 /**
  * One A/B run: the base race with the bot, until a racer-style rival first rides within 30 m of the
@@ -51,7 +60,7 @@ function grudgeRun(seed: number, grudge: boolean) {
     if (t0 < 0 && sim.tick >= 60 * 20 && me?.mode === 'Road') {
       for (const e of snap.entities) {
         const c = config.riders[e.id]?.controller;
-        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || c.style !== 'racer') continue;
+        if (e.kind !== 'rider' || e.mode !== 'Road' || c?.kind !== 'ai' || !plainHunter(c.style)) continue;
         if (Math.abs(e.progress - me.progress) > 30) continue;
         holder = e.id;
         t0 = sim.tick;

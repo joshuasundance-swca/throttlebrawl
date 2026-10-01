@@ -2,7 +2,7 @@
   "type": "bark-set",
   "id": "kevin-core",
   "name": "Kevin from Accounting: core lines",
-  "tags": ["rival", "m1", "m2"],
+  "tags": ["rival", "m1", "m2", "m4"],
   "defaults": {
     "speaker": "kevin-from-accounting",
     "cooldownS": 90,
@@ -93,11 +93,133 @@
       "id": "kevin-near-rounding",
       "trigger": "near-miss",
       "text": "Missed it by a rounding error."
+    },
+    {
+      "id": "kevin-lead-forecast",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "text": "Leading. As forecast in Q3."
+    },
+    {
+      "id": "kevin-late-quarter",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.progress",
+          "op": "gte",
+          "value": 0.8
+        }
+      ],
+      "text": "End of quarter. Targets met."
+    },
+    {
+      "id": "kevin-hit-mayor",
+      "trigger": "hit-landed",
+      "target": "the-mayor",
+      "priority": 1,
+      "text": "Invoice 0042. Paid in full, Mayor."
+    },
+    {
+      "id": "kevin-hit-renewed",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "Your contract is not being renewed."
+    },
+    {
+      "id": "kevin-hit-incident-two",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "eq",
+          "value": 2
+        }
+      ],
+      "text": "Incident two. Spreadsheet attached."
+    },
+    {
+      "id": "kevin-hit-incident-three",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 3
+        }
+      ],
+      "text": "Three incidents. Pivot table time."
+    },
+    {
+      "id": "kevin-near-hr",
+      "trigger": "near-miss",
+      "when": [
+        {
+          "fact": "speaker.healthFrac",
+          "op": "lt",
+          "value": 0.4
+        }
+      ],
+      "text": "Flagging that near miss for HR."
+    },
+    {
+      "id": "kevin-start-late",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "night"
+        }
+      ],
+      "text": "Working late again. On you."
+    },
+    {
+      "id": "kevin-crash-blame",
+      "trigger": "crash-self",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "gte",
+          "value": 5
+        }
+      ],
+      "text": "Reassigning blame. To the road."
+    },
+    {
+      "id": "kevin-down-mayor",
+      "trigger": "knocked-down-by-target",
+      "target": "the-mayor",
+      "priority": 1,
+      "text": "Mayor. This goes on your file."
+    },
+    {
+      "id": "kevin-traffic-settled",
+      "trigger": "takedown-into-traffic",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Account settled. Interest included."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "kevin-pass-email is the approved line from the tone guide; every other line is an agent draft that stays until vetoed.",
+    "notes": "kevin-pass-email is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

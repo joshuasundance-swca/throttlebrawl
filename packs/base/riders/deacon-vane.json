@@ -20,12 +20,30 @@
     "riskTaking": 0.3,
     "chatter": 0.7,
     "weave": 0.05,
-    "targetPreference": ["player", "nearest"],
-    "preferredSide": "either"
+    "targetPreference": ["player", "rival", "nearest"],
+    "preferredSide": "either",
+    "rivals": ["chad-speedwell"],
+    "preferredWeapon": "chain"
+  },
+  "grudge": {
+    "startTowardPlayer": 0,
+    "gainPerHitTaken": 1,
+    "gainPerTakedownSuffered": 3,
+    "gainPerWeaponStolen": 2,
+    "decayPerRace": 1,
+    "huntThreshold": 4,
+    "max": 10,
+    "reliefWhenHelped": 2,
+    "shareWithCrew": 0
+  },
+  "look": {
+    "description": "A tall preacher in a long black duster and a flat-brimmed hat, Bible strapped to the tank. Rides a long, low chopper with ape-hanger bars.",
+    "bikeClass": "chopper",
+    "palette": ["#1b1b1f", "#e8e1cf", "#7a1f1f", "#b08d3c"]
   },
   "meta": {
     "status": "live",
-    "notes": "M1 box rival (ai-1). A heavy hitter who hunts you first and anyone near second. Hits hard, rarely kicks, holds his line.",
+    "notes": "Regular. M4 rivals-1 (built early): a heavy hitter, slow off the line, hunts you first, then his rival, then anyone near. Rivalry: Chad Speedwell, a false prophet with better lighting. Prefers the chain (weapons-2 adds it). Rides the starter bike until his chopper exists; the look block is data for render. Approved line: \"Pray the ditch is soft, sinner.\"",
     "provenance": {
       "origin": "agent",
       "author": "agent",
