@@ -1,0 +1,220 @@
+{
+  "type": "bark-set",
+  "id": "tammy-core",
+  "name": "Tammy Two-Stroke: core lines",
+  "tags": ["rival", "m4"],
+  "defaults": {
+    "speaker": "tammy-two-stroke",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "tammy-start-hearses",
+      "trigger": "race-start",
+      "text": "Honey, I've passed hearses faster than you."
+    },
+    {
+      "id": "tammy-start-smokes",
+      "trigger": "race-start",
+      "text": "Hold my smokes, sugar."
+    },
+    {
+      "id": "tammy-pass-casserole",
+      "trigger": "overtake",
+      "text": "Keep up, sugar. I've got a casserole in."
+    },
+    {
+      "id": "tammy-pass-darlin",
+      "trigger": "overtake",
+      "text": "Scoot over, darlin'. Coming through."
+    },
+    {
+      "id": "tammy-hit-bless",
+      "trigger": "hit-landed",
+      "text": "Bless your heart. Now hold still."
+    },
+    {
+      "id": "tammy-hit-mama",
+      "trigger": "hit-landed",
+      "text": "Tell your mama I said hey."
+    },
+    {
+      "id": "tammy-traffic-blinker",
+      "trigger": "takedown-into-traffic",
+      "text": "Shoulda used your blinker, baby."
+    },
+    {
+      "id": "tammy-traffic-mark",
+      "trigger": "takedown-into-traffic",
+      "text": "That'll leave a mark. On the truck."
+    },
+    {
+      "id": "tammy-down-hurricanes",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Baby, I've had hurricanes hit harder."
+    },
+    {
+      "id": "tammy-down-newsletter",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "text": "Well. That's going in the newsletter."
+    },
+    {
+      "id": "tammy-crash-decision",
+      "trigger": "crash-self",
+      "text": "Two-stroke engine. One bad decision."
+    },
+    {
+      "id": "tammy-crash-meant",
+      "trigger": "crash-self",
+      "text": "Meant to do that. Mostly."
+    },
+    {
+      "id": "tammy-near-menthol",
+      "trigger": "near-miss",
+      "text": "Smoked that one like a menthol."
+    },
+    {
+      "id": "tammy-near-pews",
+      "trigger": "near-miss",
+      "text": "Close as church pews, sugar."
+    },
+    {
+      "id": "tammy-lead-belong",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "eq",
+          "value": 1
+        }
+      ],
+      "text": "Front of the line. Where I belong."
+    },
+    {
+      "id": "tammy-late-supper",
+      "trigger": "overtake",
+      "when": [
+        {
+          "fact": "race.progress",
+          "op": "gte",
+          "value": 0.8
+        }
+      ],
+      "text": "Almost home. Supper's at six."
+    },
+    {
+      "id": "tammy-hit-deacon",
+      "trigger": "hit-landed",
+      "target": "deacon-vane",
+      "priority": 1,
+      "text": "Heard your sermon, Deacon. Twice."
+    },
+    {
+      "id": "tammy-hit-told",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Oh, it's you. I told everybody."
+    },
+    {
+      "id": "tammy-hit-weak",
+      "trigger": "hit-landed",
+      "when": [
+        {
+          "fact": "target.healthFrac",
+          "op": "lt",
+          "value": 0.3
+        }
+      ],
+      "text": "Lie down, sugar. I'll call your mama."
+    },
+    {
+      "id": "tammy-down-deacon",
+      "trigger": "knocked-down-by-target",
+      "target": "deacon-vane",
+      "priority": 1,
+      "text": "Preachin' and hittin'. Typical."
+    },
+    {
+      "id": "tammy-down-again",
+      "trigger": "knocked-down-by-target",
+      "target": "player",
+      "priority": 1,
+      "when": [
+        {
+          "fact": "history.takedowns.targetOnSpeaker",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "text": "Twice? Now I'm telling your mama."
+    },
+    {
+      "id": "tammy-near-lives",
+      "trigger": "near-miss",
+      "when": [
+        {
+          "fact": "speaker.healthFrac",
+          "op": "lt",
+          "value": 0.4
+        }
+      ],
+      "text": "Nine lives, sugar. Eight left."
+    },
+    {
+      "id": "tammy-start-bingo",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "night"
+        }
+      ],
+      "text": "Bingo's over. Let's ride."
+    },
+    {
+      "id": "tammy-crash-gossip",
+      "trigger": "crash-self",
+      "when": [
+        {
+          "fact": "race.position.speaker",
+          "op": "gte",
+          "value": 5
+        }
+      ],
+      "text": "Back of the pack. Best gossip's here."
+    },
+    {
+      "id": "tammy-traffic-forget",
+      "trigger": "takedown-into-traffic",
+      "when": [
+        {
+          "fact": "grudge.speakerTowardTarget",
+          "op": "gte",
+          "value": 1
+        }
+      ],
+      "text": "Told you I don't forget, baby."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "tammy-start-hearses is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
