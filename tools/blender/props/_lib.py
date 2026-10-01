@@ -177,6 +177,27 @@ class MB:
         faces = [self.bm.faces.new((verts[a], verts[b], verts[c])) for a, b, c in tris]
         return self.tag(faces, mat)
 
+    def front_quad(self, f, x0, x1, z0, z1, mat):
+        """A single flat panel at f facing the prop's front (glTF +Z): a window, a door."""
+        vs = [self.v(P(x0, f, z0)), self.v(P(x1, f, z0)), self.v(P(x1, f, z1)), self.v(P(x0, f, z1))]
+        return self.tag([self.bm.faces.new(vs)], mat, closed=False)
+
+    def side_quad(self, x, f0, f1, z0, z1, mat, facing):
+        """A single flat panel at x facing +X (`facing` = 1) or -X (-1): a window on a side wall."""
+        fs = (f1, f0) if facing > 0 else (f0, f1)
+        vs = [self.v(P(x, fs[0], z0)), self.v(P(x, fs[1], z0)), self.v(P(x, fs[1], z1)), self.v(P(x, fs[0], z1))]
+        return self.tag([self.bm.faces.new(vs)], mat, closed=False)
+
+    def cone(self, centre, r, z1, sides, mat, phase=0.0, droop=0.0):
+        """A faceted cone: its rim (radius r) at centre's z minus `droop`, its apex at z1, a flat base."""
+        cx, cf, cz = centre
+        rim = [self.v(P(cx + r * math.cos(phase + 2 * math.pi * i / sides),
+                        cf + r * math.sin(phase + 2 * math.pi * i / sides), cz - droop)) for i in range(sides)]
+        apex = self.v(P(cx, cf, z1))
+        faces = [self.bm.faces.new((rim[i], rim[(i + 1) % sides], apex)) for i in range(sides)]
+        faces.append(self.bm.faces.new(list(reversed(rim))))
+        return self.tag(faces, mat)
+
     def build(self, name, mats, parent=None, loc=(0.0, 0.0, 0.0)):
         me = bpy.data.meshes.new(name)
         self.bm.to_mesh(me)

@@ -39,6 +39,13 @@ export const ROLES = [
   'roof',
   'sign_face',
   'sign_board',
+  // added for the region build-out (W-O, maintainer 2026-10-01): San Francisco's painted houses
+  // (one paint role per colour, so a region palette can repaint each) and the fog banks
+  'paint_pink',
+  'paint_mint',
+  'paint_yellow',
+  'paint_blue',
+  'fog',
 ];
 
 /** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */
@@ -202,6 +209,110 @@ export const PROPS = [
       sharedMaterials: false,
     },
     textSurfaces: ['sign_a_face', 'sign_b_face'],
+    views: VARIANT_VIEWS,
+  },
+  // ---- the region build-out (W-O, maintainer 2026-10-01: "better visuals and experience")
+  {
+    name: 'conifers',
+    script: 'props/conifers.py',
+    asset: 'models/scenery/conifers',
+    kind: 'variants',
+    budget: { materials: 3 },
+    variants: {
+      roots: ['conifer_a', 'conifer_b', 'conifer_c', 'conifer_d'],
+      xs: [-9, -3, 3, 9],
+      parts: ['trunk', 'boughs'],
+      // a forest road shows hundreds at once: keep each tree lean
+      perVariant: { tris: 120, draws: 3 },
+      height: [6, 24],
+      sway: false,
+      sharedMaterials: true,
+    },
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'row_houses',
+    script: 'props/row_houses.py',
+    asset: 'models/scenery/row-houses',
+    kind: 'variants',
+    budget: { materials: 9 },
+    variants: {
+      roots: ['row_house_a', 'row_house_b', 'row_house_c', 'row_house_d'],
+      xs: [-10.5, -3.5, 3.5, 10.5],
+      parts: ['body'],
+      perVariant: { tris: 260, draws: 6 },
+      height: [9, 16],
+      sway: false,
+      sharedMaterials: false,
+    },
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'cable_car',
+    script: 'props/cable_car.py',
+    asset: 'models/props/cable-car',
+    kind: 'single',
+    budget: { tris: 900, draws: 8, materials: 8 },
+    single: {
+      root: 'cable_car',
+      nodes: ['cable_car_body'],
+      size: [
+        [2.4, 3.2],
+        [2.8, 3.6],
+        [8, 9.2],
+      ],
+    },
+    views: VIEWS,
+  },
+  {
+    name: 'sawmill',
+    script: 'props/sawmill.py',
+    asset: 'models/scenery/sawmill',
+    kind: 'single',
+    budget: { tris: 2000, draws: 6, materials: 6 },
+    single: {
+      root: 'sawmill',
+      nodes: ['sawmill_body'],
+      size: [
+        [25, 40],
+        [12, 22],
+        [12, 24],
+      ],
+    },
+    views: VIEWS,
+  },
+  {
+    name: 'trestle_bent',
+    script: 'props/trestle_bent.py',
+    asset: 'models/scenery/trestle-bent',
+    kind: 'single',
+    budget: { tris: 300, draws: 2, materials: 2 },
+    single: {
+      root: 'trestle_bent',
+      nodes: ['trestle_bent_body'],
+      size: [
+        [14, 17],
+        [9.5, 10.5],
+        [0.5, 1.2],
+      ],
+    },
+    views: VIEWS,
+  },
+  {
+    name: 'fog_banks',
+    script: 'props/fog_banks.py',
+    asset: 'models/scenery/fog-banks',
+    kind: 'variants',
+    budget: { materials: 1 },
+    variants: {
+      roots: ['fog_bank_a', 'fog_bank_b'],
+      xs: [-40, 40],
+      parts: ['body'],
+      perVariant: { tris: 320, draws: 1 },
+      height: [6, 20],
+      sway: false,
+      sharedMaterials: true,
+    },
     views: VARIANT_VIEWS,
   },
 ];

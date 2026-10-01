@@ -2,7 +2,7 @@
 
 Python scripts build each 3D model in headless Blender, from an empty scene, and export one GLB. The GLBs are committed to the base pack under `packs/base/assets/models/`, because CI has no Blender. CI checks the committed files instead: `tools/blender/models.test.ts` runs in `npm test`.
 
-The pipeline was approved after the 2026-09-30 blind prop trial (playtest 1c, item 4, 2026-09-30: "We can start"). It is that trial's harness, ported. The truck, the palms and the boat are the trial models the maintainer picked; the scenery pack is new.
+The pipeline was approved after the 2026-09-30 blind prop trial (playtest 1c, item 4, 2026-09-30: "We can start"). It is that trial's harness, ported. The truck, the palms and the boat are the trial models the maintainer picked; the scenery pack is new. The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") adds the Pacific Northwest's conifers, sawmill and trestle bents and San Francisco's row houses, cable car and fog banks.
 
 Status `[default]`: every model is "done, not phone-verified". The renders are Blender EEVEE renders, not in-game frames.
 
@@ -50,6 +50,12 @@ The numbers are measured on the committed GLBs (`npm run asset:score`). "Draws" 
 | `models/scenery/power-pole` | `power_pole` root (extra `wire_attach_count`); `power_pole_body`; `wire_attach_1` to `_3` | 116 | 2 (2) | Wires run along the pole's local Z. The attach empties are the insulator tips, left to right in X. |
 | `models/scenery/skiff` | `skiff` root = waterline pivot; `skiff_hull`, `skiff_gear`; the same 4 probes as the boat | 210 | 3 (3) | The small offshore boat: a flats skiff with a poling platform. It is cheaper than the boat, for use in numbers. |
 | `models/scenery/road-signs` | `sign_a` (green highway blank on posts) and `sign_b` (plywood board on stakes) at x = −2.5, +2.5; `sign_a_face`, `sign_b_face` (text surfaces), `sign_a_posts`, `sign_b_stakes` | 36 per variant | 2 per variant | The game draws the sign text. |
+| `models/scenery/conifers` | `conifer_a` to `conifer_d` at x = −9, −3, +3, +9; each has `_trunk` and `_boughs` | 76, 64, 46, 76 | 3 per variant | Pacific Northwest firs (21, 14 and 7.5 m) and a droopier cedar (16.5 m): stacked faceted cones in two greens. No sway. |
+| `models/scenery/row-houses` | `row_house_a` to `row_house_d` at x = −10.5, −3.5, +3.5, +10.5; each has `_body`. The root is the middle of the front wall at the sidewalk | 156, 158, 116, 108 | 6 per variant | San Francisco Victorians: Italianate (pink), Queen Anne with a turret (mint), Stick (yellow), Edwardian (blue). Each paint is its own role (`paint_pink` and so on), so a region palette repaints it. |
+| `models/props/cable-car` | `cable_car` root at the car's middle on the road; `cable_car_body` | 492 | 8 (8) | An open-ended grip car, 8.5 m by 2.6 m: the region's cable-car traffic. |
+| `models/scenery/sawmill` | `sawmill` root at the yard's front edge; `sawmill_body` | 488 | 6 (6) | A mill shed, a teepee burner with a conveyor, a smokestack, logs and lumber. About 32 m by 17 m. |
+| `models/scenery/trestle-bent` | `trestle_bent` root on the ground under the deck's middle; `trestle_bent_body` | 132 | 2 (2) | One timber bent, 10 m tall as authored; the game stretches it to each deck and repeats it along a forest region's bridges. |
+| `models/scenery/fog-banks` | `fog_bank_a`, `fog_bank_b` at x = −40, +40; each has `_body` | 280, 200 | 1 per variant | Low banks of faceted domes in one `fog` role; the game draws them unlit in the region's fog colour, offshore. |
 
 **Phone budget.** The target phone holds 60 fps at about 50 draws and 50k triangles for the whole scene: road, riders, traffic, water and scenery. All six scenery GLBs on screen together cost 28 instanced draws, and 19 if each is merged by material. So a chunk should show a few kinds of scenery at a time, or the renderer should merge static scenery per material. Triangles are cheap by comparison. For example, 40 palms, 12 mangroves, 10 poles, 6 signs, a shack and 3 skiffs come to about 25.7k triangles (scripted from the table above).
 
