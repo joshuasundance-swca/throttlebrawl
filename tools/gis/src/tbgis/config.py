@@ -61,22 +61,44 @@ class Elevation(Strict):
 
 
 class Feature(Strict):
-    """A feature range in road space (metres along this road; d positive to the right)."""
+    """A feature range in road space (metres along this road; d positive to the right).
 
-    kind: Literal["ramp", "gap", "hazard", "roadsideZone", "copSpawn", "raceMarker", "billboard"]
+    The kinds are the road file's (docs/content-packs.md, "Road file"), boost pads and ramp trucks
+    included; a pad or truck with ``params.slot`` is one candidate for that slot, and each race's
+    seed picks one per slot. A ``billboard`` slot names one region ``item`` or a ``pool``.
+    """
+
+    kind: Literal[
+        "ramp",
+        "gap",
+        "hazard",
+        "roadsideZone",
+        "copSpawn",
+        "raceMarker",
+        "billboard",
+        "boostPad",
+        "rampTruck",
+    ]
     id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
     s0: float
     s1: float
     d0: float
     d1: float
-    params: dict[str, str] | None = None
+    item: str | None = None
+    pool: Literal["signs", "billboards"] | None = None
+    params: dict[str, str | float] | None = None
 
 
 class RoadName(Strict):
     id: str = Field(pattern=r"^osm-[a-z0-9]+(-[a-z0-9]+)*$")
     name: str
+    # Scenery tags for both sides of the whole road, except over its bridges (scenery stands on
+    # land only: playtest 1c item 3).
     tags: list[str] = []
     features: list[Feature] = []
+
+
+ROUTE_NOTES = "An alternative route on the real road; no event points at it yet (road-4 decides)."
 
 
 class Route(Strict):
@@ -84,6 +106,7 @@ class Route(Strict):
     name: str
     startS: float = 40.0  # noqa: N815 (on the first road)
     finishBeforeEndM: float = 40.0  # noqa: N815 (on the last road)
+    notes: str = ROUTE_NOTES
 
 
 class BakeConfig(Strict):
@@ -130,6 +153,9 @@ class BakeConfig(Strict):
     elevation: Elevation = Elevation()
     sampleSpacingM: float = Field(2.0, ge=1, le=10)  # noqa: N815
     bridgeRailHeightM: float = Field(1.0, gt=0)  # noqa: N815 (a rail along both sides of every bridge)
+    # Each travel lane's width. 3.4 m is the M1 lane table the Keys bake has; the hand-made roads
+    # went to 4.0 m after playtest 1 ("road too narrow to weave"), and the region bakes match them.
+    laneWidthM: float = Field(3.4, ge=2.5, le=5.0)  # noqa: N815
 
     @staticmethod
     def load(path: Path) -> BakeConfig:

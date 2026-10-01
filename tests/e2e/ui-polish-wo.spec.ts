@@ -116,11 +116,13 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
   expect(style.fontWeight).toBeGreaterThanOrEqual(700);
   expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
   expect(style.inView).toBe(true);
-  await shot(page, 'cut-note-landscape');
-  // Still up after 1.5 s (the pause screen refreshes the panel every 500 ms).
+  // Still up after 1.5 s (the pause screen refreshes the panel every 500 ms). Checked before the
+  // screenshot: on a slow CI runner the software-rendered screenshot alone took long enough that
+  // the 3 s note had run its time by the check (failed twice in CI on #238, passed locally 6 of 6).
   await page.waitForTimeout(1500);
   await expect(page.locator('#radio-song')).toContainText('Cut');
   await expect(page.locator('#radio-song')).toHaveClass(/\bnote\b/);
+  await shot(page, 'cut-note-landscape');
 });
 
 // A phone held upright shows the rotate screen once the race starts (platform/), so the portrait

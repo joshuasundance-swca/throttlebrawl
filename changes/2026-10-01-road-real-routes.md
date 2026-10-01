@@ -1,0 +1,5 @@
+---
+kind: new
+audience: player
+---
+Four real roads are now in the game as routes, beside each region's own road (the maintainer, 2026-10-01: "Yes, add as routes"). In the Pacific Northwest: Chuckanut Drive, the cliffside sweeper above Samish Bay, and the Historic Columbia River Highway, down through the Crown Point loops. In San Francisco: Russian Hill, up Hyde Street and down California, Kearny, Columbus, Union and Leavenworth with grades to 22%, and Twin Peaks, from Upper Market up to the summit. Each one has its region's rivals, cop, traffic, pedestrians, signs and billboards, and boost pads and ramp trucks that move from race to race. They are built from OpenStreetMap (© OpenStreetMap contributors, ODbL) with USGS elevation. The menu's route picker that offers them comes next. For developers: the staged copies under `tools/gis/staging` and their test are removed, because the files now live in the region packs, and the bake gained a lane width, set-piece features and land tags that stay off bridges.

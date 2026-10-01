@@ -1,6 +1,6 @@
 {
   "id": "osm-sf-twin-peaks",
-  "name": "Upper Market, Portola and the Twin Peaks climb (OSM bake, staging)",
+  "name": "Upper Market, Portola and the Twin Peaks climb (OSM bake)",
   "region": "san-francisco",
   "crs": {
     "originLatDeg": 37.7749,
@@ -9,7 +9,7 @@
   "osmExtract": ".cache/osm/sf-twin-peaks.json",
   "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.735,-122.465,37.770,-122.430);\nout tags geom;",
   "elevationExtract": ".cache/usgs/osm-sf-twin-peaks.json",
-  "outRoot": "tools/gis/staging/san-francisco",
+  "outRoot": "packs/region-sf/regions/san-francisco",
   "pathFrom": {
     "lat": 37.765771,
     "lon": -122.4310321
@@ -57,22 +57,172 @@
   "roads": [
     {
       "id": "osm-sf-upper-market",
-      "name": "Upper Market"
+      "name": "Upper Market",
+      "tags": ["row-houses"],
+      "features": [
+        {
+          "kind": "copSpawn",
+          "id": "cop-lot",
+          "s0": 4,
+          "s1": 20,
+          "d0": 6.1,
+          "d1": 9.6
+        },
+        {
+          "kind": "billboard",
+          "id": "sign-upper-market",
+          "s0": 150,
+          "s1": 160,
+          "d0": 6.5,
+          "d1": 9,
+          "pool": "signs"
+        },
+        {
+          "kind": "roadsideZone",
+          "id": "castro",
+          "s0": 500,
+          "s1": 580,
+          "d0": 5.6,
+          "d1": 12.6,
+          "params": {
+            "spawns": "pedestrians"
+          }
+        },
+        {
+          "kind": "boostPad",
+          "id": "pad-upper-market",
+          "s0": 1020,
+          "s1": 1026,
+          "d0": 0.5,
+          "d1": 3,
+          "params": {
+            "boostMps": 8,
+            "holdS": 1.5,
+            "slot": "peaks-pad-early"
+          }
+        },
+        {
+          "kind": "boostPad",
+          "id": "pad-upper-market-late",
+          "s0": 1260,
+          "s1": 1266,
+          "d0": 0.5,
+          "d1": 3,
+          "params": {
+            "boostMps": 8,
+            "holdS": 1.5,
+            "slot": "peaks-pad-early"
+          }
+        },
+        {
+          "kind": "billboard",
+          "id": "bb-upper-market",
+          "s0": 1600,
+          "s1": 1640,
+          "d0": -16,
+          "d1": -7,
+          "pool": "billboards"
+        }
+      ]
     },
     {
       "id": "osm-sf-portola",
-      "name": "Portola"
+      "name": "Portola",
+      "tags": ["row-houses", "gardens"],
+      "features": [
+        {
+          "kind": "billboard",
+          "id": "sign-portola",
+          "s0": 100,
+          "s1": 110,
+          "d0": 6.5,
+          "d1": 9,
+          "pool": "signs"
+        },
+        {
+          "kind": "roadsideZone",
+          "id": "portola-stop",
+          "s0": 250,
+          "s1": 330,
+          "d0": -12.6,
+          "d1": -5.6,
+          "params": {
+            "spawns": "pedestrians"
+          }
+        },
+        {
+          "kind": "boostPad",
+          "id": "pad-portola",
+          "s0": 420,
+          "s1": 426,
+          "d0": 0.5,
+          "d1": 3,
+          "params": {
+            "boostMps": 8,
+            "holdS": 1.5,
+            "slot": "peaks-pad"
+          }
+        },
+        {
+          "kind": "boostPad",
+          "id": "pad-portola-late",
+          "s0": 610,
+          "s1": 616,
+          "d0": 0.5,
+          "d1": 3,
+          "params": {
+            "boostMps": 8,
+            "holdS": 1.5,
+            "slot": "peaks-pad"
+          }
+        }
+      ]
     },
     {
       "id": "osm-sf-twin-peaks-climb",
-      "name": "Twin Peaks Climb"
+      "name": "Twin Peaks Climb",
+      "tags": ["forest", "fog"],
+      "features": [
+        {
+          "kind": "billboard",
+          "id": "bb-twin-peaks",
+          "s0": 300,
+          "s1": 340,
+          "d0": -16,
+          "d1": -7,
+          "pool": "billboards"
+        },
+        {
+          "kind": "billboard",
+          "id": "sign-twin-peaks",
+          "s0": 600,
+          "s1": 610,
+          "d0": 6.5,
+          "d1": 9,
+          "pool": "signs"
+        },
+        {
+          "kind": "roadsideZone",
+          "id": "summit-lookout",
+          "s0": 1700,
+          "s1": 1780,
+          "d0": 5.6,
+          "d1": 12.6,
+          "params": {
+            "spawns": "pedestrians"
+          }
+        }
+      ]
     }
   ],
   "route": {
     "id": "osm-sf-twin-peaks-run",
-    "name": "Twin Peaks Run"
+    "name": "Twin Peaks",
+    "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\").",
+    "finishBeforeEndM": 80.0
   },
   "realName": "San Francisco streets",
   "waysLabel": "San Francisco street",
-  "networkNotes": "Staging bake for the San Francisco region (head-start run). Not in the pack yet: its region pack lands first. Finishes at the summit: the through road over Twin Peaks is car-free in OSM, so the route does not cross it."
+  "networkNotes": "Real-road routes for San Francisco (region-sf): Upper Market from Sanchez, Portola, then Twin Peaks Boulevard to the summit. Finishes at the summit: the through road over Twin Peaks is car-free in OSM, so the route does not cross it.",
+  "laneWidthM": 4.0
 }

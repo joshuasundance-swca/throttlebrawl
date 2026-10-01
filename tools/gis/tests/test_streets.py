@@ -266,3 +266,94 @@ def test_usgs_samples_batches_past_the_service_cap(tmp_path: Path) -> None:
     assert "in 3 request(s)" in meta.query
     values = parse_samples(raw, len(pts))
     assert np.array_equal(values, np.arange(len(pts), dtype=np.float64))  # every point, in order
+
+
+# ---- Landing in the region packs (the 2026-10-01 amendment: "Yes, add as routes") ----------------
+
+BRIDGED = [
+    street(1, line(0, 0, 0, 1200), "A Street"),
+    street(2, line(0, 1200, 0, 1500), "Creek Bridge", bridge="yes"),
+    street(3, line(0, 1500, 0, 2400), "A Street"),
+]
+BRIDGED_OVER: dict[str, Any] = {
+    "via": [],
+    "pathTo": {"lat": ll(0, 2400)[0], "lon": ll(0, 2400)[1]},
+    "end": {"lat": ll(0, 2300)[0], "lon": ll(0, 2300)[1]},
+    "routeTags": {},
+}
+ROAD = "osm-test-streets-run"
+
+
+def bake_bridged(**over: Any) -> tuple[Any, list[Any], Any]:
+    c = cfg(**{**BRIDGED_OVER, **over})
+    s = np.arange(0.0, 2410.0, 10.0)
+    p = build_profile(c, real_path(c, BRIDGED), np.full_like(s, 50.0), s)
+    return bake(c, p, OSM, None, "2026-10-01")
+
+
+def test_lanes_default_to_the_keys_table_and_widen_for_the_regions() -> None:
+    _, keys, _ = bake_bridged()
+    assert [(ln["dCenterM"], ln["widthM"]) for ln in keys[0]["laneSections"][0]["lanes"]] == [
+        (-4.15, 1.5),
+        (-1.7, 3.4),
+        (1.7, 3.4),
+        (4.15, 1.5),
+    ]
+    network, wide, route = bake_bridged(laneWidthM=4.0)
+    # The hand-made roads' table since playtest 1 (pnw-c1, sf-hills, keys-m1).
+    assert [(ln["dCenterM"], ln["widthM"]) for ln in wide[0]["laneSections"][0]["lanes"]] == [
+        (-4.75, 1.5),
+        (-2.0, 4.0),
+        (2.0, 4.0),
+        (4.75, 1.5),
+    ]
+    assert lint_bake(network, wide, route) == []
+
+
+def test_land_tags_skip_bridges_and_a_span_deck_has_no_sea_under_it() -> None:
+    roads_cfg = [{"id": ROAD, "name": "Run", "tags": ["forest"]}]
+    network, roads, route = bake_bridged(roads=roads_cfg)
+    tags = roads[0]["tags"]
+    bridge = next(t for t in tags if t["tag"] == "bridge")
+    forest = [t for t in tags if t["tag"] == "forest"]
+    assert len(forest) == 2  # before and after the bridge, never on it
+    assert forest[0]["s0"] == 0 and forest[0]["s1"] == pytest.approx(bridge["s0"])
+    assert forest[1]["s0"] == pytest.approx(bridge["s1"]) and forest[1]["s1"] == roads[0]["lengthM"]
+    assert any(t["tag"] == "water-open" for t in tags)  # the default sea deck keeps its water
+    assert lint_bake(network, roads, route) == []
+    span = {"sampleEveryM": 10, "lowPassSigmaM": 10, "bridgeDeck": "span"}
+    _, roads, _ = bake_bridged(roads=roads_cfg, elevation=span)
+    assert not any(t["tag"].startswith("water") for t in roads[0]["tags"])
+    assert any(t["tag"] == "bridge" for t in roads[0]["tags"])
+
+
+def test_set_pieces_and_billboard_pools_bake_through() -> None:
+    feats: list[dict[str, Any]] = [
+        {"kind": "copSpawn", "id": "lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6},
+        {"kind": "billboard", "id": "bb-one", "s0": 300, "s1": 340, "d0": 6.5, "d1": 9, "pool": "billboards"},
+        {
+            "kind": "boostPad",
+            "id": "pad-one",
+            "s0": 500,
+            "s1": 506,
+            "d0": 0.5,
+            "d1": 3,
+            "params": {"boostMps": 8, "holdS": 1.5, "slot": "test-pad"},
+        },
+    ]
+    network, roads, route = bake_bridged(roads=[{"id": ROAD, "name": "Run", "features": feats}])
+    out = roads[0]["features"]
+    assert [f["kind"] for f in out] == ["copSpawn", "billboard", "boostPad"]
+    assert out[1]["pool"] == "billboards" and "item" not in out[1]
+    assert out[2]["params"] == {"boostMps": 8, "holdS": 1.5, "slot": "test-pad"}
+    assert lint_bake(network, roads, route) == []
+    off = [{**feats[0], "s1": 9e9}]
+    with pytest.raises(ValueError, match="off the"):
+        bake_bridged(roads=[{"id": ROAD, "name": "Run", "features": off}])
+
+
+def test_route_notes_default_to_the_keys_wording_and_can_be_set() -> None:
+    _, _, route = bake_bridged()
+    assert route["meta"]["notes"].startswith("An alternative route on the real road")
+    _, _, route = bake_bridged(route={"id": "osm-test-streets-route", "name": "Route", "notes": "Pickable."})
+    assert route["meta"]["notes"] == "Pickable."
