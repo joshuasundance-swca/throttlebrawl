@@ -44,7 +44,11 @@ const timing = (b: BatchResult) =>
   b.fromCache ? 'from the cache' : `computed in ${(b.ms / 1000).toFixed(1)} s`;
 
 beforeAll(async () => {
-  [normal, easy, hard] = await Promise.all([simBatch(), presetBatch('easy'), presetBatch('hard')]);
+  // The presets first. Each call computes its batch at once when no other worker holds it, so in
+  // the old order this file could compute Normal, Easy and Hard one after another (about 290 s on
+  // CI) while the other batch readers sat waiting. This way it computes Easy and Hard while another
+  // file computes Normal, and only falls back to computing Normal itself when nobody else has.
+  [easy, hard, normal] = await Promise.all([presetBatch('easy'), presetBatch('hard'), simBatch()]);
   for (const [name, b] of [
     ['normal', normal],
     ['easy', easy],
