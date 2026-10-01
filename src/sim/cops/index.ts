@@ -55,7 +55,7 @@ import type { RoadPos } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt } from '../riders';
 import { InputFlag, type SimConfig, type SimRiderDef } from '../types';
-import { emit, systemState, type Mover, type SimSystem, type World } from '../world';
+import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
   {
@@ -100,6 +100,20 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     max: 150,
     step: 5,
     unit: 'm',
+    affectsSim: true,
+  },
+  {
+    // Playtest 1c: how much of the racers' launch punch (riders.launchGain) the cop gets. 0 keeps
+    // his old launch (playtest 1 item 7: cop difficulty stays as it is); 1 is the racers' punch,
+    // safe since his follow keeps a stopping distance (the integration round). [default] 0.
+    id: 'cops.launchShare',
+    group: 'cops',
+    label: 'Cop launch punch',
+    default: 0,
+    min: 0,
+    max: 1,
+    step: 0.25,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -211,6 +225,15 @@ export const CHAOS_RADIUS_M = 60;
 export const CHAOS_MEMORY_TICKS = 600;
 /** Where he pulls up behind a downed target (well inside the bust radius). */
 const PULL_UP_GAP_M = 6;
+/**
+ * He never rides faster than lets him stop this far behind where his target could stop if it braked
+ * as hard as its bike can, braking at STOP_BRAKE_SHARE of his own bike's brakes [default] (the
+ * integration skeptic and the road lane's launch report, playtest 1c: with the launch punch he caught
+ * up from the lot, and a player who braked hard had him sail past at every brake time from 8 to
+ * 25 s, then crawl on along the shoulder).
+ */
+const STOP_BEHIND_M = 8;
+const STOP_BRAKE_SHARE = 0.8;
 /** Hanging back: no further back than the follow gap plus this counts as on station. */
 const STATION_M = 10;
 /** Scaled ticks on station before he moves in (8 s), and how long he then stays alongside (6 s). */
@@ -439,7 +462,10 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     let spell = st.closingFor[id] ?? 0;
     if (st.closing[id] === 1) {
       if (Math.abs(gap) <= ALONGSIDE_S_M) spell += world.timeScale;
-      if (spell >= MOVE_IN_TICKS) {
+      // Carried past a target who braked hard while he moved in: the move-in is over, and he waits
+      // on the shoulder as he does whenever he is ahead (below). Moving in, he steered back at the
+      // target from there and never stood still, so he crawled on along the shoulder for good.
+      if (spell >= MOVE_IN_TICKS || gap < -ALONGSIDE_S_M) {
         st.closing[id] = 0;
         spell = 0;
       }
@@ -454,6 +480,24 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     const closing = st.closing[id] === 1;
     const room = gap - (closing ? 0 : followGap);
     vWant = room > 0 ? target.speed + Math.sqrt(2 * decel * room) : target.speed + 0.5 * room;
+    // A stopping distance: never faster than he can stop where the target could stop, with that
+    // braking fed forward (as the pull-up above), so he cannot sail past. Hanging back, always, and
+    // STOP_BEHIND_M short of it; moving in alongside, once the target brakes, and no further than
+    // alongside (he rides beside a cruising target, inside a stopping distance by design).
+    const targetBraking = (world.inputs[target.id]?.brake ?? 0) > 0;
+    if (!closing || targetBraking) {
+      const m = speedMultiplierOf(config);
+      const m2 = m * m;
+      const targetBrake = (defOf(config, target)?.bike.brakeMps2 ?? bike.brakeMps2) * m2;
+      const ownBrake = bike.brakeMps2 * m2;
+      const short = closing ? -ALONGSIDE_S_M : STOP_BEHIND_M;
+      const stopRoom = gap - short + (target.speed * target.speed) / (2 * targetBrake);
+      const vSafe = stopRoom > 0 ? Math.sqrt(2 * ownBrake * STOP_BRAKE_SHARE * stopRoom) : 0;
+      if (vWant > vSafe) {
+        vWant = vSafe;
+        if (v > vSafe) feedBrake = (v * v) / (2 * Math.max(stopRoom, 0.5) * ownBrake);
+      }
+    }
     mayStop = Math.abs(gap) <= ALONGSIDE_S_M;
     if (closing) {
       const edge = config.road.edges[pos.edge];

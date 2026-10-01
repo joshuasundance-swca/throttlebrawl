@@ -37,6 +37,7 @@ function botRace(routeId: string, seed: number) {
   let finishTick = -1;
   let problem: string | null = null;
   let offRoute = 0;
+  let busted = false;
   while (!sim.isOver() && sim.tick < MAX_TICKS) {
     const actions = emptyActions();
     bot.drive(snap, playerId, route, actions);
@@ -49,8 +50,9 @@ function botRace(routeId: string, seed: number) {
     // so a finished rider coasts on into the next road (in seed 1's short race, into the Mangrove
     // Cut) until the race is over.
     if (me && finishTick < 0 && !route.allows(me.road.edge)) offRoute++;
+    for (const e of sim.events()) if (e.type === 'bust' && e.target === playerId) busted = true;
   }
-  return { finishTick, ticks: sim.tick, lengthM: route.length, problem, offRoute };
+  return { finishTick, ticks: sim.tick, lengthM: route.length, problem, offRoute, busted, seed };
 }
 
 describe('road-3: the bot rides every race length', () => {
@@ -58,10 +60,18 @@ describe('road-3: the bot rides every race length', () => {
     const lines: string[] = [];
     let prev = 0;
     for (const r of ROUTES) {
-      const res = botRace(r.id, 1);
+      // Seeds 1 to 3 until the bot finishes: each seed also places the set pieces and re-rolls the
+      // traffic and the cop's chase, and the dev bot never evades the cop, so a long race can end in
+      // a bust (integration round: seed 1's long race did once the cop rode the launch punch). A race
+      // it does not finish must still end in a bust, never a stall.
+      let res = botRace(r.id, 1);
+      for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
+        expect(res.busted, `${r.id} seed ${res.seed}: a DNF is a bust, not a stall`).toBe(true);
+        res = botRace(r.id, seed);
+      }
       const s = res.finishTick / 60;
       lines.push(
-        `${r.id} ${(res.lengthM / 1000).toFixed(2)} km: bot ${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')} ` +
+        `${r.id} ${(res.lengthM / 1000).toFixed(2)} km, seed ${res.seed}: bot ${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')} ` +
           `(${(res.lengthM / s).toFixed(1)} m/s), race over at tick ${res.ticks}`,
       );
       expect(res.problem, r.id).toBeNull();
@@ -73,6 +83,6 @@ describe('road-3: the bot rides every race length', () => {
       expect(s / 60, r.id).toBeGreaterThan(r.minutes * 0.5);
       expect(s / 60, r.id).toBeLessThan(r.minutes * 1.5);
     }
-    process.stdout.write(`[road-3] bot times, seed 1: ${lines.join('; ')}\n`);
+    process.stdout.write(`[road-3] bot times: ${lines.join('; ')}\n`);
   }, 600_000);
 });

@@ -13,7 +13,15 @@ import {
 import { KICK, PUNCH } from '../combat/harness.test-util';
 import { ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
-import { COP_DONE, copsState, copsSystem, COPS_TUNING, HANG_BACK_TICKS, MOVE_IN_TICKS } from './index';
+import {
+  COP_DONE,
+  copsState,
+  copsSystem,
+  COPS_TUNING,
+  CRAWL_MPS,
+  HANG_BACK_TICKS,
+  MOVE_IN_TICKS,
+} from './index';
 
 const bike = {
   contentId: 'base:bike',
@@ -150,7 +158,7 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the twelve cop parameters (M4 cops-3 added six) inside their ranges, all sim-affecting', () => {
+  it('declares the thirteen cop parameters (M4 cops-3 added six, playtest 1c the launch share) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustRadiusScale',
@@ -158,6 +166,7 @@ describe('cops: tuning declarations', () => {
       'cops.chaosSummonAt',
       'cops.fineTierScale',
       'cops.followGapM',
+      'cops.launchShare',
       'cops.maxActive',
       'cops.sirenLeadS',
       'cops.spawnChance',
@@ -401,13 +410,13 @@ describe('cops: the chase', () => {
     });
   }
 
-  function runChase() {
-    const sim = createSim(fixtureConfig({ 'cops.spawnDelayS': 1, 'cops.followGapM': 40 }));
+  function runChase(rideTicks = 60 * 12, tuning: Record<string, number> = {}) {
+    const sim = createSim(fixtureConfig({ 'cops.spawnDelayS': 1, 'cops.followGapM': 40, ...tuning }));
     const hashes: number[] = [];
     const events: SimEvent[] = [];
     const gaps: number[] = [];
-    for (let t = 0; t < 60 * 40; t++) {
-      sim.step([scripted(t, 60 * 12)]);
+    for (let t = 0; t < rideTicks + 60 * 28; t++) {
+      sim.step([scripted(t, rideTicks)]);
       hashes.push(sim.hash());
       events.push(...sim.events());
       const snap = sim.snapshot();
@@ -417,6 +426,31 @@ describe('cops: the chase', () => {
     }
     return { sim, hashes, events, gaps };
   }
+
+  // The road lane's launch report (playtest 1c): when the cop got the launch punch he caught up from
+  // the lot, and a player who then braked hard had him sail past "at every brake time from 8 to
+  // 25 s", then crawl on along the shoulder for good. With `cops.launchShare` at 1 (a non-default
+  // value: by default he still rides without it) he gets the racers' punch: hanging back he stops
+  // behind a braking player (below); moving in alongside he can be carried past one who slams on the
+  // brakes, as any rider beside you would be, but then he pulls onto the shoulder and waits.
+  it('with the launch punch, braking hard at any time never leaves him crawling on ahead', () => {
+    const rows: string[] = [];
+    for (const brakeS of [6, 8, 10, 12, 14, 16, 18, 20]) {
+      const { sim, gaps } = runChase(60 * brakeS, { 'cops.launchShare': 1 });
+      const after = gaps.slice(60 * brakeS);
+      const closest = Math.min(...after);
+      // Where he ended, 28 s after the player stopped, against where he was 8 s before that.
+      const end = gaps[gaps.length - 1] ?? 0;
+      const before = gaps[gaps.length - 1 - 60 * 8] ?? 0;
+      rows.push(`${brakeS} s: closest ${closest.toFixed(1)} m, ends ${end.toFixed(1)} m`);
+      expect(closest, `braking at ${brakeS} s: carried past by at most a stopping distance`).toBeGreaterThan(
+        -40,
+      );
+      expect(Math.abs(end - before), `braking at ${brakeS} s: he waits, not crawling on`).toBeLessThan(1);
+      expect(sim.snapshot().entities[COP_ID]?.speed ?? 9, `braking at ${brakeS} s`).toBeLessThan(0.5);
+    }
+    console.log(`[cops] the chase, braking at: ${rows.join('; ')}`);
+  });
 
   it('the cop is a law-faction rider driven by nobody but sim/cops', () => {
     const sim = createSim(fixtureConfig({ 'cops.spawnDelayS': 1 }));
@@ -483,6 +517,58 @@ describe('cops: the chase', () => {
     expect(Math.max(...ahead.slice(inReach + MOVE_IN_TICKS))).toBeGreaterThan(25);
     expect(w.busts()).toHaveLength(0);
   });
+
+  // The integration skeptic and the road lane's launch report (playtest 1c): with the punchy launch
+  // the player reaches top speed with the cop hanging back on station, and a hard stop from there
+  // left him unable to stop in time: he sailed past and crawled on along the shoulder. Hanging back
+  // he now keeps a stopping distance: he can always stop behind where the player can stop. (Moving
+  // in alongside, after HANG_BACK_TICKS on station, is a different goal: he rides beside him.)
+  for (const followGapM of [40, 15]) {
+    it(`hanging back ${followGapM} m at top speed, he stops behind a player who brakes hard, never past him`, () => {
+      const w = copWorld({ 'cops.followGapM': followGapM });
+      w.place(0, 20); // the rival sits out of the way at the back
+      w.place(PLAYER_ID, 300);
+      w.place(COP_ID, 300 - followGapM);
+      for (const id of [PLAYER_ID, COP_ID]) {
+        const m = w.world.movers[id];
+        if (m) m.speed = bike.topSpeedMps;
+      }
+      const inputs = w.world.inputs;
+      const route = w.config.route;
+      const BRAKE_AT = 60 * 3;
+      const gaps: number[] = [];
+      let copStopped = -1;
+      for (let t = 0; t < HANG_BACK_TICKS - 1; t++) {
+        const me = w.world.movers[PLAYER_ID];
+        const cop = w.world.movers[COP_ID];
+        if (!me || !cop) throw new Error('missing movers');
+        const steer = Math.max(-1, Math.min(1, (1.7 - me.pos.d) * 0.3 - me.yaw * 2));
+        // Flat out for 3 s (the cop settles on station), then a full stop.
+        const braking = t >= BRAKE_AT;
+        inputs[PLAYER_ID] = quantizeInput({
+          throttle: braking ? 0 : 1,
+          brake: braking ? 1 : 0,
+          steer,
+          flags: 0,
+        });
+        inputs[0] = quantizeInput({ throttle: 0, brake: 1, steer: 0, flags: 0 });
+        w.step(1, true);
+        gaps.push(route.progressAt(me.pos.edge, me.pos.s) - route.progressAt(cop.pos.edge, cop.pos.s));
+        // Behind a stopped target he rolls on at a crawl toward the shoulder (he never stands in a lane).
+        if (braking && copStopped < 0 && cop.speed <= CRAWL_MPS + 0.5) copStopped = t;
+      }
+      const onStation = gaps[BRAKE_AT - 1] ?? 0;
+      const closest = Math.min(...gaps.slice(BRAKE_AT));
+      console.log(
+        `[cops] hanging back ${followGapM} m at top speed: ${onStation.toFixed(1)} m back when the player braked, ` +
+          `closest ${closest.toFixed(1)} m, down to a crawl ${((copStopped - BRAKE_AT) / 60).toFixed(1)} s after`,
+      );
+      expect(onStation).toBeGreaterThan(followGapM - 5); // he was on station, not hanging far back
+      expect(closest).toBeGreaterThan(2); // never alongside or past him
+      expect(copStopped).toBeGreaterThan(0); // and slowed to a crawl behind him
+      expect(w.busts()).toHaveLength(0);
+    });
+  }
 
   it('can be knocked off like any rider: punches take his health, he tumbles, then rides again', () => {
     const config = {
