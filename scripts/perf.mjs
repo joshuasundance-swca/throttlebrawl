@@ -46,7 +46,10 @@ const probeSpecs = existsSync(path.join(repoRoot, 'tests/perf'))
   : [];
 let probeStatus = 0;
 if (probeSpecs.length) {
-  const res = spawnSync('npx', ['--no-install', 'playwright', 'test', '--project=perf'], {
+  // One probe at a time: each times frames under 4x CPU throttling with software WebGL, so two
+  // probes running side by side (Playwright's default on CI is 2 workers) slow each other down and
+  // the frame times measure the contention, not the game.
+  const res = spawnSync('npx', ['--no-install', 'playwright', 'test', '--project=perf', '--workers=1'], {
     cwd: repoRoot,
     stdio: 'inherit',
     shell: process.platform === 'win32',
