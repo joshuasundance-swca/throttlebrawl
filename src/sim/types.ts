@@ -186,6 +186,59 @@ export interface SimSnapshot {
   race: RaceSnapshot;
   /** The takedown slow motion. Optional for hand-built snapshots; the sim always fills it. */
   slowmo?: SlowmoSnapshot;
+  /**
+   * The road set pieces' props in play (W-P events: roadwork cones, crash-scene flares, parade
+   * floats' decorations, hay bales, the radar on a speed trap, the people who work them), from
+   * sim/modifiers. Presentation only: render draws them, nothing else reads them. Optional for
+   * hand-built snapshots; the sim always fills it (empty when no set piece is live).
+   */
+  props?: readonly PropSnapshot[];
+}
+
+/**
+ * What a set-piece prop is (PropSnapshot.kind), a closed list render draws: traffic cones,
+ * road flares, a sawhorse barricade, a warning sign (its words in `label`), a hay bale, a person
+ * (a flagger, a cop waving traffic by, a marcher: `variant` says who), a radar unit on a tripod,
+ * a giant parade inflatable, a work truck's arrow board, a tow truck's light bar, the hay stacked
+ * on a farm truck, and a parade float's dressing (`variant` names the float).
+ */
+export const PROP_KINDS = [
+  'cone',
+  'flare',
+  'barricade',
+  'sign',
+  'hayBale',
+  'person',
+  'radar',
+  'inflatable',
+  'arrowBoard',
+  'lightbar',
+  'hayLoad',
+  'floatDecor',
+] as const;
+export type PropKind = (typeof PROP_KINDS)[number];
+
+/** One set-piece prop (SimSnapshot.props): a world position and pose, for render. */
+export interface PropSnapshot {
+  /** Stable for the prop's life in a race. */
+  id: number;
+  kind: PropKind;
+  /** Who or which look: `flagger`, `cop`, `marcher-keys`, `float-sf`, ... ('' for none). */
+  variant: string;
+  /** A sign's words ('' for other kinds). */
+  label: string;
+  /** The content id of the event modifier the prop belongs to. */
+  piece: string;
+  /** World position of the prop's foot (x east, y up, z south). */
+  x: number;
+  y: number;
+  z: number;
+  /** World heading about +y, as EntitySnapshot.heading. */
+  heading: number;
+  /** Tip-over angle, radians: 0 upright, about π/2 lying on its side (a scattered cone). */
+  tilt: number;
+  /** A person stepping out of the way, or a prop knocked flying: render may animate it. */
+  moving: boolean;
 }
 
 // ---- Events ------------------------------------------------------------------------------
@@ -496,6 +549,11 @@ export interface SimEventDef {
    * M2 rule: every fielded cop rolls to come out at the spawn delay.
    */
   cops?: SimEventCops;
+  /**
+   * The most event modifiers (set pieces) that may fire in one race: the event file's
+   * `modifiers.maxPerRace` (W-P events). Absent means no cap beyond `SimConfig.modifiers`.
+   */
+  modifiersPerRace?: number;
 }
 
 /**
@@ -527,6 +585,33 @@ export interface SimStyleRewards {
   perTakedownCash: number;
   takedownComboScale: number;
   perStealCash: number;
+}
+
+/**
+ * One effect of an event modifier, as its pack entry gives it (docs/content-packs.md, "Event
+ * modifiers"): `kind` is from the closed list sim/modifiers implements, and the other fields are
+ * that kind's plain parameters (numbers, strings, booleans or lists of strings).
+ */
+export interface SimModifierEffect {
+  readonly kind: string;
+  readonly [param: string]: number | string | boolean | readonly string[] | undefined;
+}
+
+/** An event modifier resolved from its `event-modifier` entry (SimConfig.modifiers). */
+export interface SimModifierDef {
+  /** Qualified content id, such as `region-pnw:hay-spill`. */
+  contentId: string;
+  /** `nature`, `human`, `wasteland` or `league`. */
+  kind: string;
+  /** Chance per race that it fires (the entry's `trigger.chance` × the event's `chanceScale`, ≤ 1). */
+  chance: number;
+  /** The race-progress window (0..1) it may be placed in; [0, 1] when the entry gives none. */
+  atProgress: readonly [number, number];
+  /** How long it lasts once started, in ticks (`durationS`); 0 means until the riders are past. */
+  durationTicks: number;
+  /** Relative pick weight (`rarityWeight`). */
+  weight: number;
+  effects: readonly SimModifierEffect[];
 }
 
 /** Resolved difficulty scales, 1.0 = Normal. The preset id travels for display only. */
@@ -562,8 +647,12 @@ export interface SimConfig {
   /** The road network handle (built from baked data by stream/, the same object render uses). */
   road: RoadNetwork;
   route: RouteProgress;
-  /** Resolved event modifiers: always empty before M4. */
-  modifiers: readonly never[];
+  /**
+   * Resolved event modifiers (docs/architecture.md, "Event modifiers"): the `event-modifier`
+   * entries the event opted into and whose eligibility matched, in id order. sim/modifiers rolls
+   * which of them fire, and where, from the `modifiers` stream. Empty when the event opts out.
+   */
+  modifiers: readonly SimModifierDef[];
   /** Grudge points per rival toward each rider, by content id: empty before M4. */
   grudges: Readonly<Record<string, Readonly<Record<string, number>>>>;
   /** Sim-affecting tuning values at race start, by declaration id. */

@@ -117,6 +117,12 @@ export interface Settings {
   /** The score, a station or off; applies at once. */
   radio: RadioSetting;
   /**
+   * The station last played (run W-P, W-O's mustFix): its id (`keys-surf`), so a reload tunes the
+   * same station when the race's region offers it, not only "a station". Kept while the radio is on
+   * the score or off, so Station returns to it. null before any station played.
+   */
+  radioStation: string | null;
+  /**
    * Gamepad remaps: action id → control tokens (such as `button3`), in input/'s vocabulary. Only
    * remapped actions are listed; an empty object means input/'s default bindings.
    */
@@ -153,6 +159,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   stylePopups: true,
   view: 'chase',
   radio: 'score',
+  radioStation: null,
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
@@ -303,6 +310,7 @@ export function sanitiseSettings(data: unknown): Settings {
     stylePopups: bool(d['stylePopups'], def.stylePopups),
     view: oneOf(d['view'], VIEW_SETTINGS, def.view),
     radio: oneOf(d['radio'], RADIO_SETTINGS, def.radio),
+    radioStation: text(d['radioStation'], 64) ?? def.radioStation,
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),

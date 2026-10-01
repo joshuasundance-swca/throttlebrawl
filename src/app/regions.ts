@@ -103,6 +103,29 @@ export function racePalette(
   return { ...own, ...over };
 }
 
+/** What bark `when` conditions read about the race (ui/narrative's `NarrativeSetting`, structurally). */
+export interface RaceSetting {
+  eventKind: string;
+  /** Bare, as bark lines write it (`pacific-northwest`). */
+  regionId: string;
+  timeOfDay: string;
+}
+
+/**
+ * The race's setting for the barks: its event kind, region and time of day, so lines conditioned on
+ * `event.kind`, `region.id` or `timeOfDay` (docs/content-packs.md, "Line fields") can play. Without
+ * it those facts are unknown and such lines never match.
+ */
+export function narrativeSettingOf(reg: ContentRegistry, eventId: string): RaceSetting {
+  const event = lookup(reg.events, eventKey(eventId));
+  const region = String(event.region);
+  return {
+    eventKind: String(event.kind),
+    regionId: region.slice(region.indexOf(':') + 1),
+    timeOfDay: String(event.timeOfDay),
+  };
+}
+
 /** Region streams, one per network, built on first use. */
 export interface StreamCache {
   /**

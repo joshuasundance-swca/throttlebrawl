@@ -439,6 +439,10 @@ export const eventModifierSchema = entry('event-modifier', {
         'bounty-on-player',
         'guest-rider',
         'show-billboard',
+        // W-P events (the maintainer, 2026-10-01b: "events and set pieces"): a road set piece,
+        // `piece` from sim/modifiers' closed list (roadwork, crash-scene, parade, hay-spill,
+        // speed-trap) with that piece's parameters.
+        'set-piece',
       ]),
     }),
   ),

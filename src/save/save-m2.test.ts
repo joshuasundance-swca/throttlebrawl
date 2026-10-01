@@ -66,6 +66,7 @@ const m2Custom: Settings = {
   stylePopups: false,
   view: 'helmet',
   radio: 'station',
+  radioStation: 'keys-surf',
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
@@ -95,6 +96,8 @@ const M2_FIELDS = [
   // Run W-O (maintainer, 2026-10-01): the voices off switch, and the look fallback's "No thanks".
   'voicesOn',
   'lookFallbackDismissed',
+  // Run W-P (W-O's mustFix): the exact station, not only "a station".
+  'radioStation',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -193,7 +196,7 @@ describe('the M2 settings record', () => {
       version: 1,
       build: 'later01',
       savedAt: '2026-12-01T00:00:00.000Z',
-      data: { ...m2Custom, hudLayout: { preset: 'minimal' }, radioStation: 'base:surf' },
+      data: { ...m2Custom, hudLayout: { preset: 'minimal' }, dashTheme: 'chrome' },
     };
     const { storage, data } = memoryStorage({ 'app:settings': JSON.stringify(later) });
     const store = createSettingsStore(opts(storage));
@@ -202,7 +205,7 @@ describe('the M2 settings record', () => {
     store.save({ ...loaded, units: 'mph' });
     const saved = JSON.parse(data.get('app:settings') ?? 'null') as { data: Record<string, unknown> };
     expect(saved.data['hudLayout']).toEqual({ preset: 'minimal' });
-    expect(saved.data['radioStation']).toBe('base:surf');
+    expect(saved.data['dashTheme']).toBe('chrome');
     expect(saved.data['units']).toBe('mph');
     // A known field is always this build's sanitised value, never the stale stored one.
     expect(saved.data['difficulty']).toBe('hard');
@@ -232,6 +235,7 @@ describe('the M2 settings record', () => {
       vetoes: 'all of them',
       voicesOn: 'off',
       lookFallbackDismissed: 'yes',
+      radioStation: 42,
     });
     for (const f of M2_FIELDS) expect(bad[f], f).toEqual(DEFAULT_SETTINGS[f]);
 
@@ -259,6 +263,10 @@ describe('the M2 settings record', () => {
       expect(sanitiseSettings({ radio: r }).radio).toBe(r);
     expect(sanitiseSettings({ view: 2 }).view).toBe('chase');
     expect(sanitiseSettings({ radio: 'OFF' }).radio).toBe('score');
+    // The exact station (run W-P): a station id round-trips; empty, overlong or not text is null.
+    expect(sanitiseSettings({ radioStation: 'keys-surf' }).radioStation).toBe('keys-surf');
+    for (const bad of ['', 'x'.repeat(65), 7, null, ['keys-surf']])
+      expect(sanitiseSettings({ radioStation: bad }).radioStation).toBeNull();
   });
 
   it('keeps each well-formed binding and veto, dropping only the broken ones', () => {
