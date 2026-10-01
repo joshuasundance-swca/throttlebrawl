@@ -28,6 +28,12 @@ export type SteeringMethod = 'thumb' | 'tilt' | 'both';
 export type ThrottleMode = 'scaled' | 'auto';
 /** Frame-rate cap as a divisor of the measured display refresh: full, half or a third. */
 export type FrameRateCap = 'full' | 'half' | 'third';
+/**
+ * The look (playtest 1b item 6: styles as settings, [decided]): render/'s look ids. `classic` is the
+ * M1 look; `kodak` is "Ink + 1960s film". Render only: it never feeds SimConfig.
+ */
+export type LookSetting = 'classic' | 'kodak';
+export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak'];
 
 /** One "cut this" flag from the in-game veto (docs/architecture.md, "In-game veto"). */
 export interface VetoFlag {
@@ -65,6 +71,8 @@ export interface Settings {
   slowMo: boolean;
   reduceShake: boolean;
   frameRateCap: FrameRateCap;
+  /** The look; applies at once. */
+  look: LookSetting;
   /** Shows the tuning panel entry in the pause menu. */
   showTuningPanel: boolean;
   /**
@@ -97,6 +105,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   slowMo: true,
   reduceShake: false,
   frameRateCap: 'full',
+  look: 'classic',
   showTuningPanel: false,
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
@@ -241,6 +250,7 @@ export function sanitiseSettings(data: unknown): Settings {
     slowMo: bool(d['slowMo'], def.slowMo),
     reduceShake: bool(d['reduceShake'], def.reduceShake),
     frameRateCap: oneOf(d['frameRateCap'], ['full', 'half', 'third'], def.frameRateCap),
+    look: oneOf(d['look'], LOOK_SETTINGS, def.look),
     showTuningPanel: bool(d['showTuningPanel'], def.showTuningPanel),
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,

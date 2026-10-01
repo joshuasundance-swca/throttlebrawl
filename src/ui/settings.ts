@@ -33,6 +33,7 @@ export type SettingId =
   | 'haptics'
   | 'reduceShake'
   | 'frameRateCap'
+  | 'look'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
 export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
@@ -169,6 +170,17 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'full', label: 'Smooth' },
       { value: 'half', label: 'Half' },
       { value: 'third', label: 'Third' },
+    ],
+  },
+  {
+    // Playtest 1b item 6: styles as settings [decided]. Applies at once, even mid-race.
+    id: 'look',
+    tab: 'display',
+    label: 'Look',
+    kind: 'choice',
+    options: [
+      { value: 'classic', label: 'Classic' },
+      { value: 'kodak', label: 'Ink + 60s film' },
     ],
   },
   { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },

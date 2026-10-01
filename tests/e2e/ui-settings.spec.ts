@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import type { SimEvent, SimInput } from '../../src/sim/types.ts';
+import { grainShare } from './pixels';
 
 // ui-2's browser tests (docs/milestones/M2.md, ui-2): the pause menu lists exactly the decided
 // entries, the tuning entry is hidden by default and shown when enabled, "Controls and HUD" opens
@@ -419,6 +420,28 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     persisted: async (page) => {
       await page.locator('#settings-tab-controls').click();
       await expect(page.locator('#settings-haptics')).not.toBeChecked();
+    },
+  },
+  look: {
+    // Playtest 1b item 6: the ink + 60s film look. Its film grain shows in the drawn pixels.
+    set: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await page.locator('#settings-look [data-value="kodak"]').click();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      const png = await page.locator('canvas#game').screenshot();
+      const grain = await grainShare(page, png);
+      console.log(`look kodak: grain share ${grain.toFixed(3)} (classic's flat shading is under 0.15)`);
+      expect(grain).toBeGreaterThan(0.4);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-display').click();
+      await expect(page.locator('#settings-look [data-value="kodak"]')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
     },
   },
   showTuningPanel: {

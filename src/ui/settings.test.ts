@@ -41,6 +41,16 @@ describe('the M2 settings table', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('offers the look on the Display tab: Classic by default, or Ink + 60s film, applied at once', () => {
+    // Playtest 1b item 6: styles as settings [decided]; render only, so never "applies next race".
+    const def = SETTINGS.find((d) => d.id === 'look');
+    expect(def?.tab).toBe('display');
+    expect(def?.nextRace).toBeUndefined();
+    expect(def?.options?.map((o) => o.value)).toEqual(['classic', 'kodak']);
+    expect(settingValue(DEFAULT_SETTINGS, 'look')).toBe('classic');
+    expect(settingPersists('look', sanitiseSettings)).toBe(true);
+  });
+
   it('marks exactly the settings that feed SimConfig as "applies next race"', () => {
     const next = SETTINGS.filter((s) => s.nextRace).map((s) => s.id);
     expect(next.sort()).toEqual(['assists.steer', 'difficulty', 'raceLength', 'slowMo', 'speedMultiplier']);

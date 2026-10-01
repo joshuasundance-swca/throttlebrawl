@@ -190,6 +190,8 @@ export function createApp(opts: AppOptions): AppHandle {
 
   // Presentation. The renderer gets the road files as set dressing (rails, ramp stripes).
   const renderer = createRenderer(opts.canvas);
+  // The look (playtest 1b item 6): render only, applied at once and never part of SimConfig.
+  renderer.setLook(settings.look);
   /** The canvas's width over its height, as the renderer's camera uses it. */
   const viewAspect = () => opts.canvas.clientWidth / Math.max(1, opts.canvas.clientHeight);
   const dressing = Object.fromEntries(stream.road.edges.map((e) => [e.id, lookup(registry.roads, e.id)]));
@@ -263,7 +265,7 @@ export function createApp(opts: AppOptions): AppHandle {
     settings,
     // The control settings input-2 wired (#106); input itself is made after the ui, below, so the
     // vibration check asks input's haptics the same question on a throwaway (no side effects).
-    liveSettings: liveControlSettings(browserControlDevice(createHaptics().supported)),
+    liveSettings: [...liveControlSettings(browserControlDevice(createHaptics().supported)), 'look'],
     callbacks: {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
@@ -286,6 +288,7 @@ export function createApp(opts: AppOptions): AppHandle {
         audio.setVolumes(next.volumes, next.mute);
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
+        renderer.setLook(next.look);
       },
     },
   });
