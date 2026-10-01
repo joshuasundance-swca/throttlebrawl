@@ -26,6 +26,8 @@ export interface RaceChecks {
   events: Record<string, number>;
   /** `hit` events whose actor is the player: attacks that connected. */
   playerHits: number;
+  /** `takedown` events whose actor is the player: rivals it fought down. */
+  playerTakedowns: number;
   /** The bot's own counters (zeros when the bot is off). */
   bot: BotStats;
 }
@@ -61,6 +63,8 @@ export interface TestHandle {
    * browser race's multi-seed "an attack connects" check). Content as this build loads it.
    */
   botAttackRuns(seeds: readonly number[]): AttackRun[];
+  /** The same headless runs, each up to the bot's first takedown (M2 exit criterion 9). */
+  botTakedownRuns(seeds: readonly number[]): AttackRun[];
 }
 
 declare global {
@@ -83,6 +87,7 @@ function freshChecks(bot: BotController | null): RaceChecks {
     firstInvalid: null,
     events: {},
     playerHits: 0,
+    playerTakedowns: 0,
     bot: bot?.stats() ?? {
       attackPresses: 0,
       skipTicks: 0,
@@ -91,6 +96,8 @@ function freshChecks(bot: BotController | null): RaceChecks {
       shortcutApproachTicks: 0,
       trafficDodges: 0,
       engagements: 0,
+      kickPresses: 0,
+      dangerKicks: 0,
     },
   };
 }
@@ -107,6 +114,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
     for (const e of events) {
       checks.events[e.type] = (checks.events[e.type] ?? 0) + 1;
       if (e.type === 'hit' && e.actor === playerId) checks.playerHits++;
+      if (e.type === 'takedown' && e.actor === playerId) checks.playerTakedowns++;
     }
     const route = app.roadQueries();
     for (const m of snap.entities) {
@@ -173,6 +181,10 @@ export function installTestHandle(app: AppHandle): TestHandle {
     },
     botAttackRuns: (seeds) =>
       seeds.map((seed) => botAttackRun(seed, { includeDrafts: app.build.channel !== 'prod' })),
+    botTakedownRuns: (seeds) =>
+      seeds.map((seed) =>
+        botAttackRun(seed, { includeDrafts: app.build.channel !== 'prod', until: 'takedown' }),
+      ),
   };
   window.__game = handle;
   return handle;
