@@ -178,7 +178,7 @@ test('gamepad d-pad up steps the camera view too', async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
-test('the radio follows the region: the Keys stations, then base stations in the Pacific Northwest', async ({
+test("the radio follows the region: the Keys stations, then the Pacific Northwest's own station first", async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -194,12 +194,13 @@ test('the radio follows the region: the Keys stations, then base stations in the
   await page.locator('#pause-quit').click();
   await race(page, '#region-region-pnw-pacific-northwest');
   const pnw = (await view(page)).radio;
-  expect(pnw.region).toBeNull();
-  expect(pnw.stations).toEqual(['keys-rockabilly', 'keys-surf']);
-  // R tunes the first station: the region has a radio, not silence.
+  // Run W-O: the region's own station first, then the base stations further down the dial.
+  expect(pnw.region).toBe('region-pnw:pacific-northwest');
+  expect(pnw.stations).toEqual(['pnw-drizzle', 'keys-rockabilly', 'keys-surf']);
+  // R tunes the first station: the region's own.
   await page.keyboard.press('r');
   await page.waitForFunction(
-    () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'keys-rockabilly',
+    () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'pnw-drizzle',
   );
   console.log(`Pacific Northwest radio after R: ${JSON.stringify((await view(page)).radio)}`);
   expect(problems).toEqual([]);
