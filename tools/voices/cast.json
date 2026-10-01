@@ -202,6 +202,30 @@
     "base:kevin-core#kevin-lead-forecast": { "spoken": "Leading. As forecast in Q three." },
     "base:kevin-core#kevin-hit-mayor": { "spoken": "Invoice zero zero four two. Paid in full, Mayor." },
     "base:kevin-core#kevin-near-hr": { "spoken": "Flagging that near miss for H.R." },
+    "base:deacon-core#deacon-crash-humbling": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.62 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-crash-pilgrim": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.62 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-down-test": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.67 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-start-sunrise": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.52 the voice rose away from Deacon's."
+    },
+    "base:dial-up-core#dial-up-hit-chad": {
+      "exaggeration": 0.5,
+      "note": "Calmer: at 0.67 the voice rose away from Dial-Up's."
+    },
+    "base:mother-rust-core#rust-down-remembers": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.6 the voice rose away from Mother Rust's."
+    },
     "base:mayor-core#mayor-down-comment": {
       "note": "The shout: a second, louder take of the same words.",
       "segments": [

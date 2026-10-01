@@ -667,25 +667,25 @@
     "spoken": "A humbling. I needed that, apparently.",
     "seed": 226631776,
     "match": 1.0,
-    "heard": "A humbling. I needed that apparently.",
+    "heard": "A humbling. I needed that, apparently.",
     "takes": 1,
     "tried": [
       {
         "seed": 226631776,
-        "heard": "A humbling. I needed that apparently.",
+        "heard": "A humbling. I needed that, apparently.",
         "match": 1.0,
-        "durationS": 2.51
+        "durationS": 2.44
       }
     ],
-    "durationS": 2.51,
-    "bytes": 8541,
-    "lufs": -17.4,
-    "peakDb": -1.93,
-    "f0": 125.0,
+    "durationS": 2.44,
+    "bytes": 8344,
+    "lufs": -17.9,
+    "peakDb": -1.94,
+    "f0": 88.7,
     "refF0": 81.9,
-    "exaggeration": 0.62,
+    "exaggeration": 0.4,
     "cfg": 0.4,
-    "review": ["pitch drift"]
+    "review": []
   },
   "base:deacon-core#deacon-crash-pilgrim": {
     "speaker": "deacon-vane",
@@ -700,18 +700,18 @@
         "seed": 1214670299,
         "heard": "Last place is a pilgrimage too.",
         "match": 1.0,
-        "durationS": 2.1
+        "durationS": 2.11
       }
     ],
-    "durationS": 2.1,
-    "bytes": 7278,
-    "lufs": -17.2,
-    "peakDb": -1.94,
-    "f0": 125.7,
+    "durationS": 2.11,
+    "bytes": 7385,
+    "lufs": -18.6,
+    "peakDb": -1.96,
+    "f0": 89.2,
     "refF0": 81.9,
-    "exaggeration": 0.62,
+    "exaggeration": 0.4,
     "cfg": 0.4,
-    "review": ["pitch drift"]
+    "review": []
   },
   "base:deacon-core#deacon-crash-soft": {
     "speaker": "deacon-vane",
@@ -842,16 +842,16 @@
         "seed": 1737513362,
         "heard": "A test of faith. You failed it.",
         "match": 1.0,
-        "durationS": 2.58
+        "durationS": 2.02
       }
     ],
-    "durationS": 2.58,
-    "bytes": 8467,
-    "lufs": -17.0,
-    "peakDb": -3.53,
-    "f0": 162.7,
+    "durationS": 2.02,
+    "bytes": 6990,
+    "lufs": -18.3,
+    "peakDb": -1.94,
+    "f0": 145.5,
     "refF0": 81.9,
-    "exaggeration": 0.67,
+    "exaggeration": 0.4,
     "cfg": 0.4,
     "review": ["pitch drift"]
   },
@@ -1244,18 +1244,18 @@
         "seed": 1592863136,
         "heard": "Sunrise Service. Bring your own ditch.",
         "match": 1.0,
-        "durationS": 2.76
+        "durationS": 2.65
       }
     ],
-    "durationS": 2.76,
-    "bytes": 9335,
-    "lufs": -17.9,
-    "peakDb": -1.93,
-    "f0": 125.7,
+    "durationS": 2.65,
+    "bytes": 8976,
+    "lufs": -18.0,
+    "peakDb": -1.97,
+    "f0": 99.4,
     "refF0": 81.9,
-    "exaggeration": 0.52,
+    "exaggeration": 0.4,
     "cfg": 0.4,
-    "review": ["pitch drift"]
+    "review": []
   },
   "base:deacon-core#deacon-start-tithe": {
     "speaker": "deacon-vane",
@@ -1575,25 +1575,25 @@
     "spoken": "Unsubscribed. Permanently.",
     "seed": 89740324,
     "match": 1.0,
-    "heard": "unsubscribed permanently.",
+    "heard": "unsubscribed permanently",
     "takes": 1,
     "tried": [
       {
         "seed": 89740324,
-        "heard": "unsubscribed permanently.",
+        "heard": "unsubscribed permanently",
         "match": 1.0,
-        "durationS": 2.14
+        "durationS": 2.17
       }
     ],
-    "durationS": 2.14,
-    "bytes": 7099,
-    "lufs": -17.1,
-    "peakDb": -1.89,
-    "f0": 188.4,
+    "durationS": 2.17,
+    "bytes": 7193,
+    "lufs": -18.0,
+    "peakDb": -1.84,
+    "f0": 122.5,
     "refF0": 120.0,
-    "exaggeration": 0.67,
+    "exaggeration": 0.5,
     "cfg": 0.55,
-    "review": ["pitch drift"]
+    "review": []
   },
   "base:dial-up-core#dial-up-hit-mail": {
     "speaker": "dial-up",
@@ -3461,33 +3461,27 @@
     "speaker": "mother-rust",
     "text": "\u2026The swamp remembers.",
     "spoken": "The swamp remembers.",
-    "seed": 1548581101,
+    "seed": 1548573182,
     "match": 1.0,
     "heard": "The swamp remembers.",
-    "takes": 2,
+    "takes": 1,
     "tried": [
       {
         "seed": 1548573182,
-        "heard": "The swap remembers!",
-        "match": 0.667,
-        "durationS": 2.64
-      },
-      {
-        "seed": 1548581101,
         "heard": "The swamp remembers.",
         "match": 1.0,
-        "durationS": 2.44
+        "durationS": 2.37
       }
     ],
-    "durationS": 2.44,
-    "bytes": 7204,
+    "durationS": 2.37,
+    "bytes": 6992,
     "lufs": -17.0,
-    "peakDb": -3.72,
-    "f0": 200.0,
+    "peakDb": -1.99,
+    "f0": 125.7,
     "refF0": 137.9,
-    "exaggeration": 0.6,
+    "exaggeration": 0.4,
     "cfg": 0.35,
-    "review": ["pitch drift"]
+    "review": []
   },
   "base:mother-rust-core#rust-hit-boys": {
     "speaker": "mother-rust",
