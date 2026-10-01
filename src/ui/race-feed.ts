@@ -112,6 +112,72 @@ export function createPopStack(max: number): PopStack {
   };
 }
 
+/**
+ * A style run in progress, as the snapshot carries it (`EntitySnapshot.styleRun`, #192): an
+ * oncoming stretch or a jump, its world seconds so far, the cash it would score if it ended now,
+ * and whether it has lasted long enough to score.
+ */
+export interface MeterRun {
+  kind: 'oncoming' | 'airtime';
+  seconds: number;
+  cash: number;
+  qualifies: boolean;
+}
+
+/** The live meter's words: the kind and its seconds, such as `ONCOMING 4.2s`. */
+export function meterLabel(run: MeterRun): string {
+  return `${STYLE_WORDS[run.kind] ?? run.kind.toUpperCase()} ${run.seconds.toFixed(1)}s`;
+}
+
+/** The live meter's cash, such as `+$212`. */
+export function meterCash(run: MeterRun): string {
+  return `+${cash(run.cash)}`;
+}
+
+/** One frame of the meter: the run to show (null for none), and the run that just ended, if any. */
+export interface MeterStep {
+  shown: MeterRun | null;
+  /** The last value shown of a run that stopped this frame: it lands on its award, or fades. */
+  ended: MeterRun | null;
+}
+
+export interface StyleMeter {
+  /**
+   * Reads the player's run in progress. A run shows once it has lasted `showAfterS` world seconds;
+   * when it stops (no run, another kind, or its seconds fell because a new stretch began), the
+   * last value shown comes back as `ended`.
+   */
+  update(run: MeterRun | null | undefined, showAfterS: number): MeterStep;
+  /** The run on show, or null. */
+  readonly showing: MeterRun | null;
+  reset(): void;
+}
+
+/**
+ * The live style meter (playtest 1c, [decided] 2026-09-30, the maintainer: "I'd like to also watch
+ * oncoming go up and up as you ride"). Pure: index.ts draws it in the pop-up stack.
+ */
+export function createStyleMeter(): StyleMeter {
+  let showing: MeterRun | null = null;
+  const valid = (run: MeterRun | null | undefined): run is MeterRun =>
+    !!run && STYLE_WORDS[run.kind] !== undefined && Number.isFinite(run.seconds) && Number.isFinite(run.cash);
+  return {
+    update(run, showAfterS) {
+      const next = valid(run) ? { ...run } : null;
+      const same = !!showing && !!next && next.kind === showing.kind && next.seconds >= showing.seconds;
+      const ended = showing && !same ? showing : null;
+      showing = next && (same || next.seconds >= showAfterS) ? next : null;
+      return { shown: showing, ended };
+    },
+    get showing() {
+      return showing;
+    },
+    reset() {
+      showing = null;
+    },
+  };
+}
+
 export interface RaceTally {
   /** Feeds one step's events; `playerId` is the player's entity id. */
   onEvents(events: readonly SimEvent[], playerId: number): void;

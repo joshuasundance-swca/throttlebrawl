@@ -155,6 +155,7 @@ describe('which settings the screen shows', () => {
     expect(shown).toContain('difficulty');
     expect(shown).toContain('units'); // wired since M1
     expect(shown).toContain('showTuningPanel'); // ui's own effect
+    expect(shown).toContain('stylePopups'); // ui's own effect (playtest 1c)
     expect(shown).not.toContain('haptics'); // not wired yet
     const unsaved = visibleSettings({
       live: ['difficulty'],
@@ -162,7 +163,7 @@ describe('which settings the screen shows', () => {
       preview: false,
     });
     expect(unsaved).toEqual(['units']);
-    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel']);
+    expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups']);
   });
 
   it('shows everything in preview mode', () => {

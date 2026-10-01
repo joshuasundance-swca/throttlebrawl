@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { SimEvent } from '../sim/api';
-import { createPopStack, createRaceTally, popCash, popLabel, stylePop, styleText } from './race-feed';
+import {
+  createPopStack,
+  createRaceTally,
+  createStyleMeter,
+  meterCash,
+  meterLabel,
+  popCash,
+  popLabel,
+  stylePop,
+  styleText,
+  type MeterRun,
+} from './race-feed';
 import { resultText } from './format';
 
 // ui-3 (docs/milestones/M2.md): short style pop-ups during the race, and the takedowns and style
@@ -146,5 +157,75 @@ describe('the results screen tally', () => {
     });
     expect(bust.tally).toBe('Takedowns: 0. Style: $60.');
     expect(resultText({ place: 1, of: 5, prizeCash: 1, eventName: 'X' }).tally).toBeNull();
+  });
+});
+
+// Playtest 1c (the maintainer: "I'd like to also watch oncoming go up and up as you ride"): a live
+// counter for the style run in progress, read from the snapshot's `styleRun` (#192), that lands on
+// the awarded cash and merges into that kind's chip.
+describe('the live style meter', () => {
+  const run = (
+    seconds: number,
+    cash: number,
+    qualifies = seconds >= 2,
+    kind: 'oncoming' | 'airtime' = 'oncoming',
+  ): MeterRun => ({ kind, seconds, cash, qualifies });
+
+  it('reads a run as a word with its seconds, and its cash', () => {
+    expect(meterLabel(run(4.23, 212))).toBe('ONCOMING 4.2s');
+    expect(meterCash(run(4.23, 212))).toBe('+$212');
+    expect(meterLabel(run(0.71, 40, true, 'airtime'))).toBe('AIRTIME 0.7s');
+    expect(meterCash(run(12.5, 1440))).toBe('+$1,440');
+  });
+
+  it('shows a run only once it has lasted the show-after time, then follows it up', () => {
+    const m = createStyleMeter();
+    expect(m.update(run(0.2, 10, false), 0.5)).toEqual({ shown: null, ended: null });
+    expect(m.update(run(0.6, 30, false), 0.5).shown).toEqual(run(0.6, 30, false));
+    expect(m.update(run(2.1, 105), 0.5).shown).toEqual(run(2.1, 105));
+    expect(m.showing?.kind).toBe('oncoming');
+  });
+
+  it('ends on the last value shown when the run stops, saying whether it qualified', () => {
+    const m = createStyleMeter();
+    m.update(run(3.9, 195), 0.5);
+    m.update(run(4.2, 212), 0.5);
+    expect(m.update(null, 0.5)).toEqual({ shown: null, ended: run(4.2, 212) });
+    expect(m.showing).toBeNull();
+    // Nothing more ends until a new run is shown.
+    expect(m.update(undefined, 0.5)).toEqual({ shown: null, ended: null });
+    m.update(run(1.1, 55, false), 0.5);
+    expect(m.update(null, 0.5).ended).toEqual(run(1.1, 55, false));
+  });
+
+  it('ends the old run and starts the new one when the kind changes', () => {
+    const m = createStyleMeter();
+    m.update(run(3, 150), 0.5);
+    const step = m.update(run(0.6, 40, true, 'airtime'), 0.5);
+    expect(step.ended).toEqual(run(3, 150));
+    expect(step.shown).toEqual(run(0.6, 40, true, 'airtime'));
+  });
+
+  it('ends a run that restarts (its seconds fell), so each stretch lands on its own', () => {
+    const m = createStyleMeter();
+    m.update(run(3, 150), 0.5);
+    const step = m.update(run(0.6, 30, false), 0.5);
+    expect(step.ended).toEqual(run(3, 150));
+    expect(step.shown).toEqual(run(0.6, 30, false));
+  });
+
+  it('ignores a kind it has no word for, and a run that is not a number', () => {
+    const m = createStyleMeter();
+    const odd = { kind: 'moonwalk', seconds: 3, cash: 9, qualifies: true } as unknown as MeterRun;
+    expect(m.update(odd, 0.5)).toEqual({ shown: null, ended: null });
+    expect(m.update(run(Number.NaN, 9), 0.5)).toEqual({ shown: null, ended: null });
+  });
+
+  it('forgets the run on reset (a new race), ending nothing', () => {
+    const m = createStyleMeter();
+    m.update(run(3, 150), 0.5);
+    m.reset();
+    expect(m.showing).toBeNull();
+    expect(m.update(null, 0.5)).toEqual({ shown: null, ended: null });
   });
 });
