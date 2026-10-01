@@ -45,6 +45,19 @@ async function startRace(page: Page, problems: string[]) {
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
+    // The Classic look, through the saved record: this test times touch delivery, and the default
+    // Ink + 60s film look (run W-O) loads a software-rendered CI runner enough to push the swipe's
+    // delivery out of its window (PR #232's first CI run).
+    localStorage.setItem(
+      'mbrawl:settings',
+      JSON.stringify({
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-01T00:00:00.000Z',
+        data: { look: 'classic' },
+      }),
+    );
   });
   await page.goto('./');
   await page.locator('#start-screen').click();

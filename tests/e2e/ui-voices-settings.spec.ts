@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __app?: { presentation(): { audio: { busTargets: { voices: number } } } };
+  __app?: { presentation(): { audio: { busTargets: { voices: number }; voicesOn: boolean } } };
 };
 
 test.beforeEach(async ({ page }) => {
@@ -94,6 +94,8 @@ test('a new save: the Voices slider at 80% and Voices on; off silences the voice
   // Off: the voices bus goes silent and the slider keeps its level.
   await page.locator('#settings-voicesOn').uncheck();
   expect(await voicesBus(page)).toBe(0);
+  // ...and audio speaks no bark at all (no clip, no music dip under a silent one).
+  expect(await page.evaluate(() => (window as TestWindow).__app?.presentation().audio.voicesOn)).toBe(false);
   await expect(page.locator('#settings-volume-voices-value')).toHaveText('80%');
   // The slider moved while off stays silent too.
   await page.locator('#settings-volume-voices').fill('50');
@@ -109,6 +111,7 @@ test('a new save: the Voices slider at 80% and Voices on; off silences the voice
 
   // On again: the bus returns to the slider's level.
   await page.locator('#settings-voicesOn').check();
+  expect(await page.evaluate(() => (window as TestWindow).__app?.presentation().audio.voicesOn)).toBe(true);
   expect(await voicesBus(page)).toBeCloseTo(0.25, 5);
   expect(problems).toEqual([]);
 });

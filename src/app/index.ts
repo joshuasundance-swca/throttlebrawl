@@ -30,6 +30,7 @@ import {
   type StorageLike,
 } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
+import { createLookFallback } from './look-fallback';
 import {
   createSim,
   SIM_DT,
@@ -165,8 +166,14 @@ export interface AppPresentation {
   /** The loop draws one animation frame in every `frameDivisor`. */
   display: { frameDivisor: number };
   radio: { region: string | null; stations: string[]; tunedTo: string };
+  /** The look render draws now (`classic`, `kodak`, ...). */
+  look: string;
   /** The gains audio's buses aim for (0..1 after the taper): the voices bus is 0 while voices are off. */
-  audio: { busTargets: { master: number; music: number; effects: number; voices: number } };
+  audio: {
+    busTargets: { master: number; music: number; effects: number; voices: number };
+    /** Whether audio would speak a bark now (not muted, and the voices bus up: Voices on, slider up). */
+    voicesOn: boolean;
+  };
 }
 
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
@@ -199,6 +206,28 @@ export interface AppHandle {
   replayKey(): string;
   /** The camera's view and the radio's region and stations (tests and dev/). */
   presentation(): AppPresentation;
+}
+
+/**
+ * The look fallback's watch runs in production always; under the test flag only when a spec asks
+ * (`window.__lookFallbackWatch = true`). A software-rendered CI runner draws the ink look slowly
+ * enough to bring the offer up in any long race, over other specs' checks (PR #232's first CI run).
+ */
+function lookWatchOn(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __lookFallbackWatch?: unknown };
+  return w.__GAME_TEST__ !== true || w.__lookFallbackWatch === true;
+}
+
+/**
+ * The browser specs' forced slow frames (docs/architecture.md, "Testing seams"): with the test flag
+ * set, `window.__slowFrameMs = 60` makes every rendered frame take at least that long (a busy wait),
+ * so the look fallback's watch sees real slow frames through the real loop. 0 otherwise.
+ */
+function testSlowFrameMs(): number {
+  const w = window as Window & { __GAME_TEST__?: boolean; __slowFrameMs?: unknown };
+  if (w.__GAME_TEST__ !== true) return 0;
+  const ms = w.__slowFrameMs;
+  return typeof ms === 'number' && ms > 0 ? Math.min(ms, 500) : 0;
 }
 
 /** The settings' Frame rate as the loop's divisor. */
@@ -536,6 +565,7 @@ export function createApp(opts: AppOptions): AppHandle {
     ui.show('results');
   };
 
+  const lookWatch = createLookFallback();
   const stepMs: number[] = [];
   const step = () => {
     if (!race) return;
@@ -599,6 +629,18 @@ export function createApp(opts: AppOptions): AppHandle {
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
         // and your target's.
         if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
+        // The look fallback (run W-O): frames that stay slow on an ink look bring up ui's offer to
+        // switch to Classic, once a race, unless the player said no before.
+        const racing = state === 'race' && !ui.paused && holds.size === 0;
+        const inkLook = settings.look !== 'classic' && !settings.lookFallbackDismissed && lookWatchOn();
+        if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) ui.offerClassicLook();
+        const slowMs = testSlowFrameMs();
+        if (slowMs > 0) {
+          const until = performance.now() + slowMs;
+          while (performance.now() < until) {
+            // the forced slow frame
+          }
+        }
       },
     },
     SIM_DT,
@@ -726,6 +768,7 @@ export function createApp(opts: AppOptions): AppHandle {
       // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
       recorder.beginRace(race, replayKey);
       outcome = createOutcome();
+      lookWatch.reset();
       prev = null;
       curr = race.snapshot();
       recent = [];
@@ -781,7 +824,8 @@ export function createApp(opts: AppOptions): AppHandle {
         camera: { view: camera.view, mode: camera.mode, shake: shakeAmount },
         display: { frameDivisor: frameDivisor() },
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
-        audio: { busTargets: mix.busTargets },
+        look: renderer.look,
+        audio: { busTargets: mix.busTargets, voicesOn: mix.voice.on },
       };
     },
   };

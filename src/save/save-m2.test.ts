@@ -60,7 +60,8 @@ const m2Custom: Settings = {
   slowMo: false,
   reduceShake: true,
   frameRateCap: 'half',
-  look: 'kodak',
+  look: 'brush',
+  lookFallbackDismissed: true,
   showTuningPanel: true,
   stylePopups: false,
   view: 'helmet',
@@ -91,8 +92,9 @@ const M2_FIELDS = [
   'gamepadBindings',
   'lastSeenBuild',
   'vetoes',
-  // Run W-O (maintainer, 2026-10-01): the voices off switch.
+  // Run W-O (maintainer, 2026-10-01): the voices off switch, and the look fallback's "No thanks".
   'voicesOn',
+  'lookFallbackDismissed',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -119,7 +121,8 @@ describe('the M2 settings record', () => {
       slowMo: true,
       reduceShake: false,
       frameRateCap: 'full',
-      look: 'classic',
+      // Run W-O (maintainer, 2026-10-01): "ink+60s but may change later".
+      look: 'kodak',
       showTuningPanel: false,
       stylePopups: true,
       view: 'chase',
@@ -228,6 +231,7 @@ describe('the M2 settings record', () => {
       lastSeenBuild: 42,
       vetoes: 'all of them',
       voicesOn: 'off',
+      lookFallbackDismissed: 'yes',
     });
     for (const f of M2_FIELDS) expect(bad[f], f).toEqual(DEFAULT_SETTINGS[f]);
 
@@ -240,13 +244,15 @@ describe('the M2 settings record', () => {
     expect(sanitiseSettings({ assists: { steer: 'light' } }).assists).toEqual({ steer: 'light' });
     expect(sanitiseSettings({ lastSeenBuild: '' }).lastSeenBuild).toBeNull();
     expect(sanitiseSettings({ lastSeenBuild: 'abc1234' }).lastSeenBuild).toBe('abc1234');
-    // The look (playtest 1b item 6): the two playable looks, anything else is the classic default.
+    // The look (playtest 1b item 6): every playable look round-trips, anything else is the default
+    // (Ink + 60s film since run W-O).
     expect(sanitiseSettings({ look: 'kodak' }).look).toBe('kodak');
-    expect(sanitiseSettings({ look: 'KODAK' }).look).toBe('classic');
+    expect(sanitiseSettings({ look: 'classic' }).look).toBe('classic');
+    expect(sanitiseSettings({ look: 'KODAK' }).look).toBe('kodak');
     // Playtest 1c item 5: the two newer looks round-trip too.
     expect(sanitiseSettings({ look: 'wasteland' }).look).toBe('wasteland');
     expect(sanitiseSettings({ look: 'brush' }).look).toBe('brush');
-    expect(sanitiseSettings({ look: 'rust' }).look).toBe('classic');
+    expect(sanitiseSettings({ look: 'rust' }).look).toBe('kodak');
     // The view and the radio (playtest 1c integration): every offered value round-trips.
     for (const v of ['chase', 'far', 'helmet'] as const) expect(sanitiseSettings({ view: v }).view).toBe(v);
     for (const r of ['score', 'station', 'off'] as const)
