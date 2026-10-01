@@ -1,0 +1,216 @@
+// The Blender prop catalog: one row per model the pipeline builds (tools/blender/README.md).
+// build.mjs, render.mjs and score.mjs read it, and models.test.ts checks every committed GLB
+// against it. Budgets are [default] tuning numbers: the phone holds 60 fps at about 50 draws and
+// 50k triangles for the WHOLE scene (road, riders, traffic, water and scenery), so each prop is
+// lean and instancing-friendly.
+//
+// `asset` is the asset id under packs/base/assets/ (docs/content-packs.md, "Asset references");
+// the GLB lives at packs/base/assets/<asset>.glb. Node names inside a GLB are snake_case.
+
+/** Material roles a prop may use. Flat colours only, one role per slot, so every look applies. */
+export const ROLES = [
+  'body',
+  'body_alt',
+  'trim',
+  'chrome',
+  'glass',
+  'tyre',
+  'rim',
+  'light_head',
+  'light_tail',
+  'deck',
+  'frame',
+  'hull',
+  'hull_bottom',
+  'canvas',
+  'seat',
+  'engine',
+  'bark',
+  'foliage',
+  'foliage_dark',
+  'coconut',
+  'car_red',
+  'car_blue',
+  'car_white',
+  'car_yellow',
+  'car_green',
+  // added for the scenery pack (playtest 1c): buildings, poles and sign blanks
+  'wood',
+  'roof',
+  'sign_face',
+  'sign_board',
+];
+
+/** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */
+export const DOUBLE_SIDED_ROLES = ['foliage', 'foliage_dark'];
+
+const VARIANT_VIEWS = ['front34', 'front', 'rear34'];
+const VIEWS = ['front34', 'side', 'rear34'];
+
+/**
+ * @typedef {[number, number]} Range
+ * @typedef {object} Prop
+ * @property {string} name          snake_case prop name (the script stem)
+ * @property {string} script        Blender script, relative to tools/blender/
+ * @property {string} asset         asset id under packs/base/assets/
+ * @property {'tow_truck' | 'boat' | 'variants' | 'single'} kind  which geometry rules apply
+ * @property {{tris?: number, draws?: number, materials: number}} budget  draws = draws_instanced
+ * @property {string[]} views       render.py camera views
+ * @property {{root: string, hull: string, length: Range, beam: Range, draft: Range,
+ *   freeboard: Range, maxHeight: number, maxOverhangM: number}} [boat]
+ * @property {{roots: string[], xs: number[], parts: string[], perVariant: {tris: number, draws: number},
+ *   height: Range, sway: boolean, sharedMaterials: boolean}} [variants]
+ * @property {{root: string, nodes: string[], size: [Range, Range, Range]}} [single]
+ * @property {string[]} [textSurfaces]  panels the game paints words on (UVs, extras)
+ * @property {{names: string[], minHeight: number}} [attach]  wire attach empties
+ */
+
+/** @type {Prop[]} */
+export const PROPS = [
+  {
+    name: 'tow_truck',
+    script: 'props/tow_truck.py',
+    asset: 'models/props/tow-truck',
+    kind: 'tow_truck',
+    // 9 materials, not the trial's 8: the headlights got their own pale `light_head` lens
+    // (the trial's dark-headlight issue). The draw count stays at 16: the lower-deck sedan's
+    // windows moved to the dark tyre colour to pay for it.
+    budget: { tris: 3000, draws: 16, materials: 9 },
+    views: VIEWS,
+  },
+  {
+    name: 'boat',
+    script: 'props/boat.py',
+    asset: 'models/props/boat',
+    kind: 'boat',
+    budget: { tris: 1500, draws: 8, materials: 6 },
+    boat: {
+      root: 'boat',
+      hull: 'hull',
+      length: [6.5, 8.5],
+      beam: [2.2, 2.9],
+      draft: [0.2, 0.7],
+      freeboard: [0.5, 1.3],
+      maxHeight: 3.2,
+      // the trial's rods made the boat 3.60 m wide on a 2.52 m hull; nothing may stick out
+      // past the hull beam by more than the rub rail
+      maxOverhangM: 0.12,
+    },
+    views: VIEWS,
+  },
+  {
+    name: 'palms',
+    script: 'props/palms.py',
+    asset: 'models/scenery/palms',
+    kind: 'variants',
+    budget: { materials: 4 },
+    variants: {
+      roots: ['palm_a', 'palm_b', 'palm_c'],
+      xs: [-4, 0, 4],
+      parts: ['trunk', 'fronds'],
+      perVariant: { tris: 600, draws: 3 },
+      height: [5, 10],
+      sway: true,
+      sharedMaterials: true,
+    },
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'mangroves',
+    script: 'props/mangroves.py',
+    asset: 'models/scenery/mangroves',
+    kind: 'variants',
+    budget: { materials: 3 },
+    variants: {
+      roots: ['mangrove_a', 'mangrove_b'],
+      xs: [-3, 3],
+      parts: ['roots', 'canopy'],
+      perVariant: { tris: 600, draws: 3 },
+      height: [2.5, 6],
+      sway: true,
+      sharedMaterials: true,
+    },
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'bait_shack',
+    script: 'props/bait_shack.py',
+    asset: 'models/scenery/bait-shack',
+    kind: 'single',
+    budget: { tris: 1000, draws: 4, materials: 4 },
+    single: {
+      root: 'bait_shack',
+      nodes: ['bait_shack_body', 'bait_shack_sign'],
+      size: [
+        [4, 7],
+        [3, 6],
+        [3, 6],
+      ],
+    },
+    textSurfaces: ['bait_shack_sign'],
+    views: VIEWS,
+  },
+  {
+    name: 'power_pole',
+    script: 'props/power_pole.py',
+    asset: 'models/scenery/power-pole',
+    kind: 'single',
+    budget: { tris: 300, draws: 2, materials: 2 },
+    single: {
+      root: 'power_pole',
+      nodes: ['power_pole_body'],
+      size: [
+        [2, 3.2],
+        [9, 12],
+        [0.2, 0.6],
+      ],
+    },
+    attach: { names: ['wire_attach_1', 'wire_attach_2', 'wire_attach_3'], minHeight: 9 },
+    views: VIEWS,
+  },
+  {
+    name: 'skiff',
+    script: 'props/skiff.py',
+    asset: 'models/scenery/skiff',
+    kind: 'boat',
+    budget: { tris: 400, draws: 3, materials: 3 },
+    boat: {
+      root: 'skiff',
+      hull: 'skiff_hull',
+      length: [4.5, 6],
+      beam: [1.5, 2.2],
+      draft: [0.1, 0.4],
+      freeboard: [0.35, 0.8],
+      maxHeight: 2.0,
+      maxOverhangM: 0.12,
+    },
+    views: VIEWS,
+  },
+  {
+    name: 'road_signs',
+    script: 'props/road_signs.py',
+    asset: 'models/scenery/road-signs',
+    kind: 'variants',
+    budget: { materials: 4 },
+    variants: {
+      roots: ['sign_a', 'sign_b'],
+      xs: [-2.5, 2.5],
+      parts: ['face'],
+      perVariant: { tris: 150, draws: 2 },
+      height: [1, 4],
+      sway: false,
+      sharedMaterials: false,
+    },
+    textSurfaces: ['sign_a_face', 'sign_b_face'],
+    views: VARIANT_VIEWS,
+  },
+];
+
+export const ASSET_ROOT = 'packs/base/assets';
+
+/**
+ * Repo-relative path of a prop's committed GLB.
+ * @param {Prop} prop
+ * @returns {string}
+ */
+export const glbPath = (prop) => `${ASSET_ROOT}/${prop.asset}.glb`;

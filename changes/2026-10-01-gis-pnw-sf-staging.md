@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+Four real roads for the new regions are baked and waiting in `tools/gis/staging/`, ready to become alternative routes once the Pacific Northwest and San Francisco region packs exist: Chuckanut Drive and the Historic Columbia River Highway (7.6 km each), and two San Francisco routes, over Russian Hill (5.4 km, grades to 22%) and up Twin Peaks (5.7 km, a 220 m climb). They are not in the game yet. A unit test runs the real pack check on them inside a copy of the base pack; the bot finished a race on all four. The GIS bake gained street-route and hill-country switches (waypoints, street-name filters, per-street roads, decks that span a ravine instead of sitting above the sea), a fun report per stretch, a retry when a public server is busy, and two cache fixes: elevation requests over 1,000 points were silently cut short, and an edited config could bake from a stale extract. The Keys bake is unchanged. The licence notes and the steps to land each stretch are in `tools/gis/staging/README.md`.

@@ -114,6 +114,9 @@ interface Sighting {
   hiddenByRider: boolean;
   /** The car's projected height in CSS pixels on a 576 px tall screen. */
   heightPx: number;
+  /** The mode the camera showed, and how far it sat from the rider, horizontally. */
+  mode: string;
+  back: number;
 }
 
 /**
@@ -142,6 +145,8 @@ function sight(
     inView: car.inView,
     hiddenByRider: overlaps(car.rect, rider.rect),
     heightPx: ((car.rect.y1 - car.rect.y0) / 2) * 576,
+    mode: cam.mode,
+    back: Math.hypot(pose.x - t.x, pose.z - t.z),
   };
 }
 
@@ -192,5 +197,75 @@ describe('playtest 1: an oncoming car at the reaction range is in view', () => {
       const seen = sight(straightRoad(), c.riderD, c.carD, 38, ASPECTS[0] ?? 2, m1);
       expect(seen.hiddenByRider, c.name).toBe(true);
     }
+  });
+});
+
+// camera-3 (docs/milestones/M3.md): the same sight check for the far chase cam and the helmet cam.
+// The far chase cam must pass it exactly as the low chase cam does. The helmet cam sits inside the
+// rider's own helmet, so the rider's silhouette cannot be in front of it; instead the sight line
+// from the camera to every corner of the car must pass above the bike's bars and tank (1.15 m,
+// render/views.ts) at the bars' distance ahead of the rider.
+describe('camera-3: the far chase and helmet cams see the car at 125 m too', () => {
+  const cases = [
+    { name: 'in the oncoming lane', riderD: MY_LANE, carD: ONCOMING_LANE },
+    { name: 'head-on, while you ride the oncoming lane', riderD: ONCOMING_LANE, carD: ONCOMING_LANE },
+    { name: 'head-on in your own lane', riderD: MY_LANE, carD: MY_LANE },
+  ];
+  const BARS = { aheadM: 0.7, heightM: 1.15 };
+
+  it('far chase: in view and clear of the rider, standing and at top speed, on both screen shapes', () => {
+    let examined = 0;
+    for (const c of cases)
+      for (const speed of [0, 38, 45])
+        for (const aspect of ASPECTS)
+          for (const road of [straightRoad(), bend()]) {
+            const seen = sight(road, c.riderD, c.carD, speed, aspect, { 'camera.mode': 1 });
+            const where = `${c.name}, speed ${speed}, aspect ${aspect.toFixed(2)}`;
+            // It is the far view: further back than the low chase cam ever sits (7 m, or 8 on a phone).
+            expect(seen.mode).toBe('farChase');
+            expect(seen.back, where).toBeGreaterThan(9);
+            expect(seen.inView, `car out of view (${where})`).toBe(true);
+            expect(seen.hiddenByRider, `car hidden behind the rider (${where})`).toBe(false);
+            expect(seen.heightPx).toBeGreaterThan(3);
+            examined++;
+          }
+    console.log(`[examined] ${examined} far-chase sightings of a car at ${REACTION_RANGE_M} m`);
+    expect(examined).toBe(cases.length * 3 * ASPECTS.length * 2);
+  });
+
+  it('helmet: in view, and every sight line to the car clears the bars', () => {
+    let examined = 0;
+    for (const c of cases)
+      for (const speed of [0, 38, 45])
+        for (const aspect of ASPECTS)
+          for (const road of [straightRoad(), bend()]) {
+            const cam = createFollowCamera({ road });
+            cam.setParam('camera.mode', 2);
+            const s = 200;
+            const t = riderAt(road, { edge: 0, s, d: c.riderD, dir: 1 }, speed);
+            let pose = cam.snap(t, { aspect });
+            for (let n = 0; n < 240; n++) pose = cam.update(t, DT, { aspect });
+            // It is the helmet view: the camera is at the rider's eyes, not behind the bike.
+            expect(cam.mode).toBe('helmet');
+            expect(Math.hypot(pose.x - t.x, pose.z - t.z)).toBeLessThan(0.5);
+            const view = renderCamera(pose, aspect);
+            const corners = boxOnRoad(road, s + REACTION_RANGE_M, c.carD, CAR);
+            const car = project(corners, view);
+            const where = `${c.name}, speed ${speed}, aspect ${aspect.toFixed(2)}`;
+            expect(car.inView, `car out of view (${where})`).toBe(true);
+            expect(((car.rect.y1 - car.rect.y0) / 2) * 576).toBeGreaterThan(3);
+            // The bars' plane: BARS.aheadM in front of the rider, along the road.
+            const f = road.frameAt(0, s);
+            const camAhead = (pose.x - t.x) * f.tx + (pose.z - t.z) * f.tz;
+            for (const p of corners) {
+              const pAhead = (p.x - t.x) * f.tx + (p.z - t.z) * f.tz;
+              const k = (BARS.aheadM - camAhead) / (pAhead - camAhead);
+              const yAtBars = pose.y + (p.y - pose.y) * k;
+              expect(yAtBars - t.y, `sight line through the bars (${where})`).toBeGreaterThan(BARS.heightM);
+            }
+            examined++;
+          }
+    console.log(`[examined] ${examined} helmet sightings of a car at ${REACTION_RANGE_M} m`);
+    expect(examined).toBe(cases.length * 3 * ASPECTS.length * 2);
   });
 });

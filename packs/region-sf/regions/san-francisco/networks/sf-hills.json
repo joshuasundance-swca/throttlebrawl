@@ -1,0 +1,153 @@
+{
+  "type": "road-network",
+  "id": "sf-hills",
+  "name": "San Francisco hills course (hand-authored)",
+  "region": "san-francisco",
+  "crs": { "kind": "tmerc", "originLatDeg": 37.77, "originLonDeg": -122.42, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "sf-pier-row",
+    "sf-cable-line-grade",
+    "c-switchback-split-main",
+    "sf-switchback-street",
+    "c-switchback-merge-main",
+    "sf-painted-row",
+    "sf-fogline-climb",
+    "sf-bridge-approach",
+    "c-stair-alley-in",
+    "sf-stair-alley",
+    "c-stair-alley-out"
+  ],
+  "junctions": [
+    {
+      "id": "j-sf-hills-0",
+      "x": 0,
+      "y": 3,
+      "z": 0,
+      "ends": [{ "road": "sf-pier-row", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-1",
+      "x": -64.0645,
+      "y": 3,
+      "z": -491.2969,
+      "ends": [
+        { "road": "sf-pier-row", "end": "to" },
+        { "road": "sf-cable-line-grade", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-2",
+      "x": -775.6419,
+      "y": 3,
+      "z": -601.9249,
+      "ends": [
+        { "road": "sf-cable-line-grade", "end": "to" },
+        { "road": "sf-switchback-street", "end": "from" },
+        { "road": "sf-stair-alley", "end": "from" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-switchback-split-main-l1",
+          "road": "c-switchback-split-main",
+          "from": { "road": "sf-cable-line-grade", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-switchback-street", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-switchback-split-main-r1",
+          "road": "c-switchback-split-main",
+          "from": { "road": "sf-cable-line-grade", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-switchback-street", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-stair-alley-in",
+          "road": "c-stair-alley-in",
+          "from": { "road": "sf-cable-line-grade", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-stair-alley", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 720, "s1": 760, "d0": 3, "d1": 5.5 }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-3",
+      "x": -773.8281,
+      "y": 3,
+      "z": -1055.7368,
+      "ends": [
+        { "road": "sf-switchback-street", "end": "to" },
+        { "road": "sf-painted-row", "end": "from" },
+        { "road": "sf-stair-alley", "end": "to" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-switchback-merge-main-l1",
+          "road": "c-switchback-merge-main",
+          "from": { "road": "sf-switchback-street", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-painted-row", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-switchback-merge-main-r1",
+          "road": "c-switchback-merge-main",
+          "from": { "road": "sf-switchback-street", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-painted-row", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-stair-alley-out",
+          "road": "c-stair-alley-out",
+          "from": { "road": "sf-stair-alley", "end": "to", "lane": "S1" },
+          "to": { "road": "sf-painted-row", "end": "from", "lane": "R1" }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-4",
+      "x": -1290.3756,
+      "y": 3,
+      "z": -1212.0626,
+      "ends": [
+        { "road": "sf-painted-row", "end": "to" },
+        { "road": "sf-fogline-climb", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-5",
+      "x": -1382.4138,
+      "y": 3,
+      "z": -1789.5189,
+      "ends": [
+        { "road": "sf-fogline-climb", "end": "to" },
+        { "road": "sf-bridge-approach", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-6",
+      "x": -2123.233,
+      "y": 3,
+      "z": -2246.2698,
+      "ends": [{ "road": "sf-bridge-approach", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The hand-made San Francisco course (playtest 1c): waterfront, two steep blocks with crest lips, a switchback street with a stair-alley shortcut, painted row houses, a foggy climb and the bridge approach. One route, the standard length."
+  }
+}

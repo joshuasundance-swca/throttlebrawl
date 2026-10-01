@@ -1,0 +1,13 @@
+# The Blender scripts run inside Blender's own Python (3.13 in Blender 5.2) and are linted with
+# ruff only (docs/engineering.md, "Repo layout"). Run: ruff check tools/blender
+line-length = 120
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# bpy, bmesh and mathutils exist only inside Blender; the prop scripts import a sibling module
+# after putting their own folder on sys.path, which E402 would flag.
+ignore = ["E402", "E731", "B905"]  # E731, B905: the ported trial code uses small lambdas and pairwise zip(x, x[1:])
+
+[lint.isort]
+known-third-party = ["bpy", "bmesh", "mathutils"]

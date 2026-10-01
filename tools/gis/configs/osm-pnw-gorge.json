@@ -1,0 +1,75 @@
+{
+  "id": "osm-pnw-gorge",
+  "name": "Historic Columbia River Highway (OSM bake, staging)",
+  "region": "pacific-northwest",
+  "crs": {
+    "originLatDeg": 45.55,
+    "originLonDeg": -122.2
+  },
+  "osmExtract": ".cache/osm/pnw-gorge.json",
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](45.520,-122.270,45.590,-122.100);\nout tags geom;",
+  "elevationExtract": ".cache/usgs/osm-pnw-gorge.json",
+  "outRoot": "tools/gis/staging/pacific-northwest",
+  "pathFrom": {
+    "lat": 45.5314311,
+    "lon": -122.2824419
+  },
+  "pathTo": {
+    "lat": 45.5885988,
+    "lon": -122.0785419
+  },
+  "start": {
+    "lat": 45.5381567,
+    "lon": -122.2466528
+  },
+  "end": {
+    "lat": 45.5540255,
+    "lon": -122.1805609
+  },
+  "splitAt": [
+    {
+      "lat": 45.535817,
+      "lon": -122.231153
+    },
+    {
+      "lat": 45.54349,
+      "lon": -122.20248
+    }
+  ],
+  "routeTags": {
+    "name": "^East Historic Columbia River Highway$"
+  },
+  "smoothing": {
+    "headingSigmaM": 12
+  },
+  "compression": {
+    "enabled": false
+  },
+  "elevation": {
+    "sampleEveryM": 10,
+    "lowPassSigmaM": 30,
+    "bridgeDeck": "span",
+    "humpHeightM": 0
+  },
+  "roads": [
+    {
+      "id": "osm-gorge-crown-point-loops",
+      "name": "Crown Point Loops"
+    },
+    {
+      "id": "osm-gorge-latourell",
+      "name": "Latourell Run"
+    },
+    {
+      "id": "osm-gorge-shepperds-dell",
+      "name": "Shepperd's Dell"
+    }
+  ],
+  "route": {
+    "id": "osm-gorge-run",
+    "name": "Gorge Run"
+  },
+  "realName": "Historic Columbia River Highway",
+  "waysLabel": "Historic Columbia River Highway",
+  "networkNotes": "Staging bake for the Pacific Northwest region (head-start run). Not in the pack yet: its region pack lands first."
+}

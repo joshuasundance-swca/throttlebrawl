@@ -1,0 +1,69 @@
+{
+  "type": "region",
+  "id": "san-francisco",
+  "name": "San Francisco",
+  "chapter": 3,
+  "blurb": "Every street is uphill, including the downhill ones. The fog has a residential permit.",
+  "networks": ["sf-hills"],
+  "timeOfDayOptions": [
+    {
+      "id": "dawn",
+      "lighting": "sf-fog-dawn",
+      "palette": { "sky": "#c9ced3", "fog": "#d5d8db", "water": "#5f7f8f" }
+    },
+    {
+      "id": "golden-hour",
+      "lighting": "sf-golden",
+      "palette": { "sky": "#f0b48c", "fog": "#e6c7ae", "water": "#6f8796" }
+    }
+  ],
+  "palette": {
+    "sky": "#c9ced3",
+    "fog": "#d5d8db",
+    "water": "#5f7f8f",
+    "road": "#4a4b50",
+    "shoulder": "#9a968f",
+    "land": "#7f8c6c",
+    "rail": "#c0392b",
+    "accent": "#c0392b",
+    "markingCenter": "#f2c14e",
+    "rowHousePink": "#e7a6b4",
+    "rowHouseMint": "#a9d6c2",
+    "rowHouseYellow": "#f1d58a",
+    "rowHouseBlue": "#9db8d9",
+    "cableCar": "#8c2f2f"
+  },
+  "traffic": {
+    "mix": [
+      { "kind": "rideshare-hatchback", "weight": 5, "hazard": "normal" },
+      { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+      { "kind": "base:pickup", "weight": 2, "hazard": "normal" },
+      { "kind": "cable-car", "weight": 1, "hazard": "big" },
+      { "kind": "startup-shuttle", "weight": 1, "hazard": "big" },
+      { "kind": "base:box-truck", "weight": 1, "hazard": "big" }
+    ],
+    "pedestrians": [{ "kind": "e-scooter-commuter", "weight": 1 }],
+    "animals": [{ "kind": "sea-lion", "weight": 1, "big": false }]
+  },
+  "signs": [
+    { "id": "yield-cable-cars", "text": "YIELD TO CABLE CARS. THEY CANNOT YIELD TO YOU.", "status": "live" },
+    { "id": "steeper-one", "text": "STEEP GRADE NEXT 4 BLOCKS. THEN A STEEPER ONE.", "status": "live" },
+    {
+      "id": "street-cleaning",
+      "text": "STREET CLEANING TUESDAY 6 AM. TICKETING BEGAN MONDAY.",
+      "status": "live"
+    },
+    { "id": "zero-spaces", "text": "2 HR PARKING 7 AM TO 6 PM. 0 SPACES.", "status": "live" },
+    { "id": "toll-view", "text": "BRIDGE TOLL $9. VIEW NOT INCLUDED.", "status": "live" }
+  ],
+  "billboards": [
+    { "id": "sleep-as-a-service", "text": "SLEEP, NOW AS A SERVICE. FIRST 8 HOURS FREE.", "status": "live" },
+    { "id": "reinvent-the-bus", "text": "WE RAISED $40M TO REINVENT THE BUS. IT'S A BUS.", "status": "live" }
+  ],
+  "weather": null,
+  "meta": {
+    "status": "live",
+    "notes": "Region pack region-sf (playtest 1c, 2026-09-30). The palette keys follow the renderer's material names (sky, water, road, shoulder, land, rail, markingCenter) plus fog and the row-house and cable-car colours, for the render lane's palette hook; until the hook lands they are hints. Chapter 3 assumes the Pacific Northwest is chapter 2 (\"Pnw and sf first\"); the order is the maintainer's call. The mix names three region vehicles (placeholder shapes from the base presets) beside base traffic; a kind listed nowhere never spawns. Every sign and billboard is placed by a billboard slot on the sf-hills roads.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

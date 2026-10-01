@@ -506,17 +506,38 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
     return out;
   }
 
-  it('moves the scripted trace for a non-default value of each declaration', () => {
-    const base = script(createFollowCamera({}));
+  // camera-3: the far chase and helmet sliders only act in their own view, and the helmet's calm
+  // share only under reduce-shake, so the script runs once per view; a slider must move at least
+  // one of the three traces.
+  const VARIANTS = [
+    { view: 0, shake: 1 },
+    { view: 1, shake: 1 },
+    { view: 2, shake: 0.5 },
+  ];
+  const make = (v: { view: number; shake: number }): FollowCamera => {
+    const cam = createFollowCamera({});
+    cam.setParam('camera.mode', v.view);
+    cam.setShakeAmount(v.shake);
+    return cam;
+  };
+
+  it('moves the scripted trace for a non-default value of each declaration, in some view', () => {
+    const bases = VARIANTS.map((v) => script(make(v)));
     const dead: string[] = [];
     for (const d of CAMERA_TUNING) {
-      const cam = createFollowCamera({});
       const other = d.default === d.min ? d.max : d.min;
-      cam.setParam(d.id, other);
-      const trace = script(cam);
-      if (trace.every((v, i) => v === base[i])) dead.push(d.id);
+      const moved = VARIANTS.some((v, k) => {
+        const cam = make(v);
+        cam.setParam(d.id, other);
+        const base = bases[k] ?? [];
+        return !script(cam).every((x, i) => x === base[i]);
+      });
+      if (!moved) dead.push(d.id);
     }
-    console.log(`[examined] ${CAMERA_TUNING.length} camera tuning declarations against a scripted run`);
+    console.log(
+      `[examined] ${CAMERA_TUNING.length} camera tuning declarations against a scripted run in ` +
+        `${VARIANTS.length} views`,
+    );
     expect(dead).toEqual([]);
   });
 });

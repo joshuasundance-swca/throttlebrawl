@@ -1,0 +1,17 @@
+{
+  "type": "pack",
+  "id": "region-sf",
+  "name": "San Francisco",
+  "version": "0.1.0",
+  "formatVersion": 1,
+  "gameVersion": ">=0.1.0",
+  "dependencies": { "base": ">=0.1.0" },
+  "description": "A region pack: San Francisco, crude first (playtest 1c). Steep blocks with crest jumps, cable cars as slow traffic, painted row houses, fog, and the approach to a big orange bridge. It reuses the base game's bikes, weapons, regular rivals and traffic.",
+  "authors": ["the maintainer", "agents (see meta.provenance per entry)"],
+  "license": "MIT",
+  "defaults": { "tuning": "registry", "hud": "base:classic" },
+  "idAliases": {},
+  "meta": {
+    "notes": "Playtest 1c, 2026-09-30: \"Pnw and sf first then others\". Every name, line and number here is a placeholder within the tone guide that the maintainer can veto."
+  }
+}
