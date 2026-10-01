@@ -391,6 +391,46 @@ function rampTruckParts(road: RoadNetwork, edge: number, f: FeatureSpan): BoxPar
   return parts;
 }
 
+/**
+ * The ramp truck's deck run on over its cab to the feature's end (render integration item 5): the sim
+ * keeps a flat deck at the lip height from the lip to s1, and the model's own flat deck stops where
+ * its cab begins. A plate in the deck's colour, at the lip height over the road, from there to s1, so
+ * a rider rolling along the deck rides on something drawn the whole way, and the lowered cab sits
+ * under it. Road space, so it follows the road's grade like the sim's deck.
+ */
+export function rampTruckDeckParts(
+  road: RoadNetwork,
+  edge: number,
+  f: FeatureSpan,
+  ramp: NonNullable<SceneryModel['ramp']>,
+): BoxPart[] {
+  const run = Math.max(1, num(f.params?.['rampLengthM'], RAMP_TRUCK_DEFAULTS.rampLengthM));
+  const lip = Math.max(0.3, num(f.params?.['lipHeightM'], RAMP_TRUCK_DEFAULTS.lipHeightM));
+  const sz = run / (ramp.runM || RAMP_TRUCK_DEFAULTS.rampLengthM);
+  const sy = lip / (ramp.lipM || RAMP_TRUCK_DEFAULTS.lipHeightM);
+  const u0 = Math.max(run, ramp.deckEndM * sz - 0.05);
+  const u1 = Math.max(f.s0, f.s1) - f.s0;
+  if (u1 - u0 < 0.1) return [];
+  const width = Math.abs(f.d1 - f.d0);
+  const dMid = (f.d0 + f.d1) / 2;
+  const T = 0.14 * sy;
+  const a = road.toWorld(edge, f.s0 + u0, dMid, lip);
+  const b = road.toWorld(edge, f.s0 + u1, dMid, lip);
+  const pitch = Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z));
+  const um = (u0 + u1) / 2;
+  const fr = road.frameAt(edge, f.s0 + um);
+  const c = road.toWorld(edge, f.s0 + um, dMid, lip - T / 2);
+  return [
+    {
+      size: [width, T, u1 - u0],
+      at: [c.x, c.y, c.z],
+      color: ramp.deckColour,
+      rotX: pitch,
+      rotY: Math.atan2(-fr.tx, -fr.tz),
+    },
+  ];
+}
+
 interface Clip {
   lo: number;
   hi: number;
@@ -420,6 +460,10 @@ const FEATURE_CLEAR_M = 3;
 export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
+/** Land widths tried where another road leaves no room for a shelf, m. [default] */
+const LAND_GAP_WIDTHS = [12, 9, 6, 4, 2.5, 1.5];
+/** How far such land stops short of the other road's verge, m. [default] */
+const LAND_GAP_MARGIN_M = 0.3;
 /** On the inside of a turn, land and its shelf reach at most this share of the turn's radius. */
 const LAND_FOLD = 0.85;
 /** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
@@ -812,6 +856,8 @@ export function buildRoadScene(
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    /** Samples whose land runs up to another road, so no shelf drops into the sea there. */
+    const meetsOf: Record<-1 | 1, boolean[]> = { [-1]: [], [1]: [] };
     /** The sharpest turn toward a side within SCENERY_LAND_M of s (kappa > 0 turns right, +d). */
     const insideKappa = (side: -1 | 1, s: number): number => {
       let k = 0;
@@ -824,6 +870,7 @@ export function buildRoadScene(
     for (const side of [-1, 1] as const) {
       const outer = outerOf(side);
       const reach = reachOf[side];
+      const meets = meetsOf[side];
       for (const s of ss) {
         const th = theme(side, s);
         const land =
@@ -844,6 +891,23 @@ export function buildRoadScene(
             if (!otherRoadAt(s, side * d, 1) && !otherRoadAt(s, side * (outer + width / 2), 1)) {
               r = width;
               break;
+            }
+          }
+          // Between two roads too close for a shelf (a merge, a shortcut beside the main road), the
+          // land runs on to the other road's verge instead of stopping, so the gap between them is
+          // ground, not a sea-coloured wedge (playtest 1c skeptic: "a sea-coloured wedge between the
+          // main road and the merge road"). No shelf: the other road's own embankment meets it.
+          if (r === 0) {
+            for (const width of LAND_GAP_WIDTHS) {
+              if (width > room) continue;
+              if (
+                !otherRoadAt(s, side * (outer + width), LAND_GAP_MARGIN_M) &&
+                !otherRoadAt(s, side * (outer + width / 2), LAND_GAP_MARGIN_M)
+              ) {
+                r = width;
+                meets[reach.length] = true;
+                break;
+              }
             }
           }
         }
@@ -869,7 +933,7 @@ export function buildRoadScene(
       shelf.breakStrip();
       ss.forEach((s, i) => {
         const r = reach[i] ?? 0;
-        if (r <= 0) {
+        if (r <= 0 || meetsOf[side][i]) {
           shelf.breakStrip();
           return;
         }
@@ -1013,8 +1077,10 @@ export function buildRoadScene(
       } else {
         drawn();
         // The Blender truck once it has loaded (playtest 1c item 4), the code-made boxes until then.
-        if (truckModel) truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
-        else truckParts.push(...rampTruckParts(road, e.index, f));
+        if (truckModel) {
+          truckMatrices.push(rampTruckMatrix(road, e.index, f, truckModel.ramp));
+          if (truckModel.ramp) truckParts.push(...rampTruckDeckParts(road, e.index, f, truckModel.ramp));
+        } else truckParts.push(...rampTruckParts(road, e.index, f));
         rampTrucks++;
       }
     }

@@ -52,7 +52,7 @@ describe('a split zone guides a rider along its outer edge to the split', () => 
   });
 
   it('well before the zone the edge is still a barrier: a wobble', () => {
-    const r = holdRight(true, 100);
+    const r = holdRight(true, 160 - SPLIT_GUIDE_LEAD_M - 40);
     expect(r.walls.length).toBeGreaterThan(0);
     expect(r.walls[0]).toMatch(/^wobble/);
   });

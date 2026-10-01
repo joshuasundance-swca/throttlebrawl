@@ -18,7 +18,17 @@ import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
 import { applyShove, riderContacts } from './contact';
-import { BOOST_ACCEL_MPS2, boostOf, boostPadAt, deckHeight, KERB_M, rampTruckAt } from './features';
+import {
+  BOOST_ACCEL_MPS2,
+  boostOf,
+  boostPadAt,
+  deckHeight,
+  KERB_M,
+  rampTruckAt,
+  truckBodyAt,
+  truckBodyTop,
+  truckClearMps,
+} from './features';
 import {
   emit,
   slotAssists,
@@ -153,6 +163,8 @@ export const LAUNCH_FADE_SHARE = 0.75;
 export const AI_LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
+/** How far beside a ramp truck a rider put down inside it steps out, m. */
+const TRUCK_STEP_OUT_M = 0.3;
 const GRAVITY = 9.81;
 /** 1/s: how fast the bike reaches the steered heading. */
 const YAW_RESPONSE = 4;
@@ -326,14 +338,18 @@ function crossToBranch(config: SimConfig, m: Mover): void {
   if (turn !== null) m.yaw += turn;
 }
 
-/** How far before a split zone its outer edge already guides rather than walls, m [default]. */
-export const SPLIT_GUIDE_LEAD_M = 15;
+/**
+ * How far before a split zone its outer edge already guides rather than walls, m [default]. 15 m
+ * left a commit 45 to 80 m before the zone on the wall (the integration skeptic's F1: 8 of 28 early
+ * commits on the Keys and the Pacific Northwest); 90 m covers a full-lock commit from 80 m out.
+ */
+export const SPLIT_GUIDE_LEAD_M = 90;
 
 /**
  * Playtest 1c ([decided] 2026-09-30, the skeptic's mustFix from playtest 1b): a rider who commits
  * early and hard to a branch reaches the painted split zone's outer edge before the split, and that
  * edge is also the road's. There it guides instead of walling: inside a split zone that runs out to
- * the edge on its side (and a short lead-in before it), a rider at the edge slides along it to the
+ * the edge on its side (and a lead-in of SPLIT_GUIDE_LEAD_M before it), a rider at the edge slides along it to the
  * split with no barrier event, no scrape and no speed lost, and its d stays inside the zone, so it
  * takes the branch. Only where the zone leads onto an edge the race allows.
  */
@@ -404,12 +420,15 @@ function wallOutcome(
     side: 1 | -1;
     newContact: boolean;
     extra?: Record<string, string>;
+    /** A crash whatever the speed (a rider up on a ramp truck riding into its body). */
+    crash?: boolean;
   },
 ): void {
   const { impact, v, yawBefore, side } = hit;
   const crashAt = world.params['riders.crashImpactMps'] ?? 6;
   const unstable = (st.wobble[m.id] ?? 0) > 0;
-  const crashes = impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
+  const crashes =
+    hit.crash === true || impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
   const data = { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side, ...hit.extra };
   if (crashes) {
     st.wobble[m.id] = 0;
@@ -438,7 +457,14 @@ function truckContact(
 ): void {
   const pos = m.pos;
   const truck = rampTruckAt(config, pos.edge, pos.s, pos.d);
-  if (!truck || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
+  // Off the lip fast enough to clear the body, in the tick that crosses into it: a launch, not a
+  // contact (the take-off rule below sends it airborne over the truck).
+  const launch =
+    !!truck &&
+    before.deck > KERB_M &&
+    truckBodyAt(config, pos.edge, pos.s, pos.d) === truck &&
+    m.speed >= truckClearMps(truck, GRAVITY * accelMultiplierOf(config));
+  if (!truck || launch || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
     st.truckTouch[m.id] = 0;
     return;
   }
@@ -459,7 +485,10 @@ function truckContact(
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
-  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
+  // Up on the truck (its ramp or lip platform) and into its body, the parked car: thrown off the
+  // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
+  const crash = before.deck > KERB_M;
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash });
 }
 
 /** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
@@ -498,10 +527,17 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (wobble > 0) st.wobble[m.id] = Math.max(0, wobble - world.timeScale);
   // Vertical: where the bike is now (a ramp truck's deck included), and how fast it was rising if it
   // was riding last tick too.
+  const fresh = st.lastTick[m.id] !== world.tick - 1;
+  // Put down inside a ramp truck (a remount where the bike came to rest, by tumble's hand-back):
+  // step out beside it on the road's side, so the rider is never stood on or in the truck.
+  const inside = fresh && m.h === 0 ? rampTruckAt(config, pos.edge, pos.s, pos.d) : null;
+  if (inside && deckHeight(config, pos.edge, pos.s, pos.d) > 0) {
+    const out = Math.sign(inside.d1 - inside.d0) * TRUCK_STEP_OUT_M;
+    pos.d = Math.abs(inside.d0) <= Math.abs(inside.d1) ? inside.d0 - out : inside.d1 + out;
+  }
   const deckBefore = deckHeight(config, pos.edge, pos.s, pos.d);
   const before = { edge: pos.edge, s: pos.s, d: pos.d, deck: deckBefore };
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
-  const fresh = st.lastTick[m.id] !== world.tick - 1;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
 
@@ -559,9 +595,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   truckContact(world, config, st, m, before, dt);
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
-  // The ground is the road, or a ramp truck's deck: h is always the height above the road.
+  // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
+  // rider is kept out of above): h is always the height above the road.
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
   if (dt > 0 && !fresh && ballistic > ground + TAKEOFF_CLEARANCE_M) {
@@ -649,7 +686,19 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d);
+  // A rider never lands on a ramp truck's body (the car on its top deck, the cab): fast enough off
+  // the lip, it clears the truck; too slow, and below the body's top, it hits it (the integration
+  // skeptic's F2: it used to land on a level deck inside that car).
+  const body = truckBodyAt(config, pos.edge, pos.s, pos.d);
+  if (body && y - surface < truckBodyTop(body) && m.speed < truckClearMps(body, gravity)) {
+    m.h = Math.max(0, y - surface);
+    st.yAbs[m.id] = y;
+    st.wobble[m.id] = 0;
+    const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
+    emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
+    return;
+  }
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
   if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
