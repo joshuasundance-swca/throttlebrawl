@@ -1,0 +1,51 @@
+{
+  "type": "road",
+  "id": "c-pnw-spur-in",
+  "name": "Spur gate",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-1",
+  "to": "j-pnw-c1-1",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 22.4,
+  "surface": "gravel",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "forest" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -9.4407, -9.8596, -10.2784, -10.6964, -11.1131, -11.5274, -11.9384, -12.3449, -12.7459, -13.1402,
+        -13.5269, -13.905, -14.2738, -14.6325, -14.9807, -15.3181
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -299.5386, -301.4942, -303.4499, -305.4057, -307.3618, -309.3184, -311.2757, -313.234, -315.1934,
+        -317.1541, -319.1164, -321.0803, -323.046, -325.0136, -326.983, -328.9543
+      ],
+      "kappa": [
+        0, 0.00004598619, 0.0001714675, 0.0003587296, 0.0005913703, 0.0008542994, 0.001133739, 0.001417224,
+        0.0016936, 0.001953027, 0.002186975, 0.002388228, 0.00255088, 0.00267034, 0.002743327, 0.002767873
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

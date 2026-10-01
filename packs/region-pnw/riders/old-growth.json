@@ -1,0 +1,39 @@
+{
+  "type": "rider",
+  "id": "old-growth",
+  "name": "Old Growth",
+  "role": "rival",
+  "roster": "local",
+  "region": "pacific-northwest",
+  "tags": ["logger", "flannel", "quiet"],
+  "blurb": "A logger the size of a stump, in red flannel and caulk boots, on a bike that smells of bar oil. Says about one sentence a mile.",
+  "bike": "base:rustbucket-400",
+  "stats": {
+    "massKg": 112,
+    "healthMax": 125,
+    "skill": 0.55
+  },
+  "personality": {
+    "style": "heavy-hitter",
+    "aggression": 0.7,
+    "dirtiness": 0.3,
+    "courage": 0.95,
+    "riskTaking": 0.25,
+    "chatter": 0.45,
+    "weave": 0.05,
+    "targetPreference": ["player", "nearest"],
+    "preferredSide": "either"
+  },
+  "look": {
+    "procedural": {
+      "preset": "rider-stocky",
+      "params": { "helmet": "open-face", "jacket": "flannel", "proportion": "exaggerated" }
+    },
+    "palette": ["#d63a1f", "#1d2a22", "#f2c14e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Pacific Northwest local (region-pnw, playtest 1c). A heavy hitter: slow, heavy, hard to knock down, holds his line and leans on whoever is nearest. Signature line (agent draft, not yet maintainer-approved): \"These trees were here before you. So was I.\"",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

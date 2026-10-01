@@ -5,8 +5,10 @@
 //   rails) and where brightness jumps sharply (road against sand, markings), fading them out with
 //   distance so the far haze stays soft;
 // - paints the sky as a warm gradient (its horizon colour is the fog colour, so it meets the haze);
-// - converts to display sRGB, applies the Kodachrome grade (one 3D-table tap), a warm vignette and
-//   moving film grain.
+// - converts to display sRGB, applies the look's grade (one 3D-table tap; the table is swapped in
+//   place when the look changes), a warm vignette and moving film grain.
+// Playtest 1c item 5 adds two dials for the newer looks: which table, and a brush line (the outline
+// width swells and thins over the screen, with a harder edge).
 // Cost per pixel: 5 depth taps, 5 colour taps and 1 table tap, one extra full-screen draw.
 import {
   ClampToEdgeWrapping,
@@ -27,7 +29,7 @@ import {
   type PerspectiveCamera,
   type WebGLRenderer,
 } from 'three';
-import { buildGradeLut, LUT_SIZE } from './grade';
+import { buildGradeLut, GRADES, LUT_SIZE, type GradeId } from './grade';
 
 /** What the look hands the final pass each frame. Colours are linear RGB. */
 export interface PostSettings {
@@ -40,8 +42,12 @@ export interface PostSettings {
   inkColor: readonly [number, number, number];
   skyTop: readonly [number, number, number];
   skyHorizon: readonly [number, number, number];
-  /** Grade strength, 0 = ungraded, 1 = the full Kodachrome table. */
+  /** Grade strength, 0 = ungraded, 1 = the full table. */
   grade: number;
+  /** Which colour table (playtest 1c item 5: each look picks one). */
+  lut: GradeId;
+  /** 0 = even pen outlines, 1 = brush outlines that swell and thin (the brush look). */
+  brush: number;
   /** Vignette strength, 0 = none. */
   vignette: number;
   /** Grain amplitude in display values, 0 = none. */
@@ -73,6 +79,7 @@ uniform float uGrade;
 uniform float uVignette;
 uniform float uGrain;
 uniform float uTime;
+uniform float uBrush;
 varying vec2 vUv;
 
 // 1 / distance along the view axis from a perspective depth value: affine on any plane, so its
@@ -88,10 +95,23 @@ float grainHash(vec2 p) {
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
 }
+// Smooth value noise over screen cells, for the brush line's swell and taper.
+float brushNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = grainHash(i);
+  float b = grainHash(i + vec2(1.0, 0.0));
+  float c = grainHash(i + vec2(0.0, 1.0));
+  float d = grainHash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 
 void main() {
-  vec2 ox = vec2(uTexel.x * uInkWidth, 0.0);
-  vec2 oy = vec2(0.0, uTexel.y * uInkWidth);
+  float width = uInkWidth;
+  if (uBrush > 0.0) width *= 1.0 + uBrush * (brushNoise(gl_FragCoord.xy / 22.0) - 0.5) * 1.2;
+  vec2 ox = vec2(uTexel.x * width, 0.0);
+  vec2 oy = vec2(0.0, uTexel.y * width);
   float dc = texture(tDepth, vUv).r;
   vec3 col = texture(tColor, vUv).rgb;
   float ink = 0.0;
@@ -104,7 +124,8 @@ void main() {
     float id = invDist(texture(tDepth, vUv - oy).r);
     float iu = invDist(texture(tDepth, vUv + oy).r);
     float lap = max(abs(il + ir - 2.0 * ic), abs(id + iu - 2.0 * ic)) / ic;
-    float depthInk = smoothstep(0.035, 0.1, lap);
+    // A brush line has a harder edge than a pen line.
+    float depthInk = smoothstep(0.035, mix(0.1, 0.055, uBrush), lap);
     float ll = sqrt(luma(texture(tColor, vUv - ox).rgb));
     float lr = sqrt(luma(texture(tColor, vUv + ox).rgb));
     float ld = sqrt(luma(texture(tColor, vUv - oy).rgb));
@@ -132,6 +153,8 @@ export class LookPost {
   private readonly quadScene = new Scene();
   private readonly quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private readonly size = new Vector2();
+  private lutId: GradeId = 'kodachrome';
+  private readonly lutData = new Map<GradeId, Uint8Array>();
 
   constructor() {
     const depthTexture = new DepthTexture(1, 1);
@@ -141,7 +164,9 @@ export class LookPost {
       depthBuffer: true,
       depthTexture,
     });
-    this.lut = new Data3DTexture(buildGradeLut(), LUT_SIZE, LUT_SIZE, LUT_SIZE);
+    const first = buildGradeLut(LUT_SIZE, GRADES[this.lutId]);
+    this.lutData.set(this.lutId, first);
+    this.lut = new Data3DTexture(first.slice(), LUT_SIZE, LUT_SIZE, LUT_SIZE);
     this.lut.format = RGBAFormat;
     this.lut.type = UnsignedByteType;
     this.lut.minFilter = LinearFilter;
@@ -171,6 +196,7 @@ export class LookPost {
         uVignette: { value: 0 },
         uGrain: { value: 0 },
         uTime: { value: 0 },
+        uBrush: { value: 0 },
       },
     });
     const quad = new Mesh(new PlaneGeometry(2, 2), this.material);
@@ -205,11 +231,25 @@ export class LookPost {
     u['uVignette']!.value = s.vignette;
     u['uGrain']!.value = s.grain;
     u['uTime']!.value = time;
+    u['uBrush']!.value = s.brush;
+    if (s.lut !== this.lutId) this.useLut(s.lut);
     const previous = gl.getRenderTarget();
     gl.setRenderTarget(this.target);
     gl.render(scene, camera);
     gl.setRenderTarget(previous);
     gl.render(this.quadScene, this.quadCamera);
+  }
+
+  /** Swaps the colour table in place (16 KB, once, at a look switch). Each table is baked once. */
+  private useLut(id: GradeId): void {
+    let data = this.lutData.get(id);
+    if (!data) {
+      data = buildGradeLut(LUT_SIZE, GRADES[id]);
+      this.lutData.set(id, data);
+    }
+    (this.lut.image.data as Uint8Array).set(data);
+    this.lut.needsUpdate = true;
+    this.lutId = id;
   }
 
   dispose(): void {

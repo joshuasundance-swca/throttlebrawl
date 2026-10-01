@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "mossy-wagon",
+  "name": "Mossy Station Wagon",
+  "category": "car",
+  "tags": ["local"],
+  "lengthM": 4.8,
+  "widthM": 1.8,
+  "cruiseMps": 24.0,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": true, "laneChanges": true, "dives": false },
+  "look": {
+    "procedural": { "preset": "sedan" },
+    "paintOptions": ["#5d6b4f", "#8a8f86", "#6e4b3a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The common car: a twenty-year-old wagon with a roof box, a kayak rack and moss in the window seals. Placeholder shape: the sedan preset.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}

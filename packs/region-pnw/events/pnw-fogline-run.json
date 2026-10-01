@@ -1,0 +1,34 @@
+{
+  "type": "event",
+  "id": "pnw-fogline-run",
+  "name": "Fogline Run",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    { "id": "short", "route": "pnw-hollow-sprint", "laps": 1 },
+    { "id": "standard", "route": "pnw-espresso-run", "laps": 1 },
+    { "id": "long", "route": "pnw-sawmill-haul", "laps": 1 }
+  ],
+  "field": {
+    "riders": ["base:deacon-vane", "base:chad-speedwell", "old-growth", "juniper-moss"],
+    "paceMps": 36.5
+  },
+  "cops": { "mode": "every-race", "baseCount": 1 },
+  "rules": {},
+  "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's first race (region-pnw, playtest 1c): dawn fog on the forest two-lane, two touring regulars and the two locals, and the local deputy. Short is the landing to the end of Cedar Hollow (about 2.4 km), standard runs over the trestle to the line on Espresso Row (about 3.9 km, 2 to 3 minutes), long goes on over Fogline Ridge to the sawmill (about 6.2 km). The rewards and pace copy the Keys race, so the regions balance alike.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+  }
+}
