@@ -3,8 +3,8 @@ vetoes against), plus the batch's provenance on the set. Run `npm run format` af
 
 - `audioAsset`: the clip's asset id, by the rule the game plays by (lines.py).
 - `audioStatus`: `live` when shipped; `vetoed` when the maintainer cut the voice (the clip file is
-  then removed, the field and an `audioNote` stay as the record); `draft` keeps a clip out of
-  release builds, like a line's own `status`.
+  then removed, the field and an `audioNote` stay as the record). `draft` is accepted but not acted
+  on yet: the game finds clips by file, so a draft clip still plays; veto it to keep it silent.
 - `meta.voice`: how the set's clips were made (models, the reference voice, the cast file).
 """
 
