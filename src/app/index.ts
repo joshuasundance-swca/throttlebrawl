@@ -60,6 +60,7 @@ import { createOutcome, raceResult, resultsDue } from './results';
 import {
   boardCatalog,
   createStreamCache,
+  narrativeSettingOf,
   racePalette,
   raceRadio,
   regionChoices,
@@ -588,7 +589,11 @@ export function createApp(opts: AppOptions): AppHandle {
     const events = race.events();
     if (events.length) {
       recent = recent.concat(events).slice(-300);
-      ui.narrative.onEvents(events, { snapshot: curr, seed: race.config.seed });
+      ui.narrative.onEvents(events, {
+        snapshot: curr,
+        seed: race.config.seed,
+        setting: narrativeSettingOf(registry, eventId),
+      });
       camera.onEvents(events);
       audio.onEvents(events, curr);
       renderer.pushEvents(events);
