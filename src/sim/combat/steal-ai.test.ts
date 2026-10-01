@@ -93,6 +93,8 @@ function race(seed: number, reactToCue: boolean) {
   const events: SimEvent[] = [];
   /** The snapshot's heldWeapon of both sides of each weaponGrab, on its tick. */
   const held: { source: unknown; actor: string | null; target: string | null }[] = [];
+  /** Cues aimed at the player while his hands were empty: the ones a press can answer with a steal. */
+  let openCues = 0;
   let press = false;
   for (let t = 0; t < 60 * 50 && !sim.isOver(); t++) {
     // The player holds its lane (1.7 m right of centre), as a person steers back after a shove;
@@ -112,10 +114,24 @@ function race(seed: number, reactToCue: boolean) {
         target: ents[g.target ?? -1]?.heldWeapon ?? null,
       });
     }
-    press =
-      reactToCue && evs.some((e) => e.type === 'stealWindow' && e.actor === RIVAL && e.target === PLAYER);
+    const cue = evs.some((e) => e.type === 'stealWindow' && e.actor === RIVAL && e.target === PLAYER);
+    if (cue && !sim.snapshot().entities[PLAYER]?.heldWeapon) openCues++;
+    press = reactToCue && cue;
   }
-  return { sim, events, held };
+  return { sim, events, held, openCues };
+}
+
+/**
+ * The first seed whose rival reaches a roadside pipe before the player does. Which rider rolls over
+ * a pipe first depends on both launches (playtest 1c's launch punch moved seed 3's player onto it
+ * first), and a player who holds a pipe cannot steal one, so the steal scenario needs the rival armed.
+ */
+function rivalArmedSeed(): number {
+  for (let seed = 1; seed <= 10; seed++) {
+    const first = of(race(seed, false).events, 'weaponGrab').find((e) => e.data['source'] === 'road');
+    if (first?.actor === RIVAL) return seed;
+  }
+  throw new Error('no seed in 1-10 arms the rival first');
 }
 
 const of = (events: readonly SimEvent[], type: SimEvent['type']) => events.filter((e) => e.type === type);
@@ -141,13 +157,14 @@ describe('combat-2 through the real sim, against ai-1', () => {
   });
 
   it('a player who presses attack on the cue steals the pipe; one who does not, keeps getting hit by it', () => {
-    const passive = race(3, false);
+    const seed = rivalArmedSeed();
+    const passive = race(seed, false);
     const pipeHitsOnPlayer = of(passive.events, 'hit').filter(
       (e) => e.actor === RIVAL && e.target === PLAYER && e.data['weapon'] === PIPE.contentId,
     );
     expect(pipeHitsOnPlayer.length).toBeGreaterThan(0);
 
-    const thief = race(3, true);
+    const thief = race(seed, true);
     const steals = of(thief.events, 'weaponGrab').filter((e) => e.data['source'] === 'steal');
     expect(steals.length).toBeGreaterThan(0);
     expect(steals[0]?.actor).toBe(PLAYER);
@@ -161,20 +178,21 @@ describe('combat-2 through the real sim, against ai-1', () => {
     });
     expect(thief.held.find((h) => h.source === 'road')?.actor).toBe(PIPE.contentId);
     // The same seed replays to the same hash.
-    expect(race(3, true).sim.hash()).toBe(thief.sim.hash());
+    expect(race(seed, true).sim.hash()).toBe(thief.sim.hash());
   });
 
   it('over ten seeds, every cue aimed at the player that it answers ends in a steal', () => {
     const rows: string[] = [];
     let seedsWithSteal = 0;
     for (let seed = 1; seed <= 10; seed++) {
-      const { events } = race(seed, true);
+      const { events, openCues } = race(seed, true);
       const grabs = of(events, 'weaponGrab');
       const steals = grabs.filter((e) => e.data['source'] === 'steal');
       const cuesAtPlayer = of(events, 'stealWindow').filter((e) => e.actor === RIVAL && e.target === PLAYER);
       for (const s of steals) expect(s.data['windupTick']).toBe(8);
-      // Pressing on the tick after the cue is always inside the window (the cue is its tick 7).
-      if (cuesAtPlayer.length > 0) expect(steals.length, `seed ${seed}`).toBeGreaterThan(0);
+      // Pressing on the tick after the cue is always inside the window (the cue is its tick 7). A
+      // player already holding a pipe cannot take another, so only cues met empty-handed count.
+      if (openCues > 0) expect(steals.length, `seed ${seed}`).toBeGreaterThan(0);
       if (steals.length > 0) seedsWithSteal++;
       const pipeHits = of(events, 'hit').filter((e) => e.data['weapon'] === PIPE.contentId);
       const swings = of(events, 'attackStart').filter((e) => e.data['weapon'] === PIPE.contentId);
