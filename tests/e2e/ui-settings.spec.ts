@@ -34,7 +34,13 @@ type TestWindow = Window & {
   /** The length of every audio buffer started, recorded by the stub below. */
   __plucks?: number[];
   /** app's presentation view, under the test flag (camera shake, the frame divisor). */
-  __app?: { presentation(): { camera: { shake: number }; display: { frameDivisor: number } } };
+  __app?: {
+    presentation(): {
+      camera: { shake: number };
+      display: { frameDivisor: number };
+      audio: { busTargets: { voices: number } };
+    };
+  };
 };
 
 function watchErrors(page: Page): string[] {
@@ -228,14 +234,22 @@ type Probe = (page: Page) => Promise<void>;
  * carries the value in its recording's header (the debug file's replay line), which is what the
  * sim raced with. `region` races in that region first (the Keys have only the standard length).
  */
+// Each "into a race" wait checks the app's state too: until the new race starts (a region's road
+// files load first), the snapshot is still the quit race's, past tick 60 already (skeptic-pol F4).
 async function raceHeaderHas(page: Page, needle: string, region?: string) {
   await page.locator('#settings-back').click();
   if (region) await page.locator(region).click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(false));
   await page.locator('#menu-race').click();
-  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60, undefined, {
-    timeout: 60_000,
-  });
+  await page.waitForFunction(
+    () =>
+      (window as TestWindow).__game?.state() === 'race' &&
+      ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60,
+    undefined,
+    {
+      timeout: 60_000,
+    },
+  );
   const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
   expect(text, `the race's header carries ${needle}`).toContain(needle);
   await quitRace(page);
@@ -270,7 +284,11 @@ async function raceAlone(page: Page) {
     window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: 0, gamma: 0 }));
   });
   await page.locator('#menu-race').click();
-  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
+  await page.waitForFunction(
+    () =>
+      (window as TestWindow).__game?.state() === 'race' &&
+      ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60,
+  );
 }
 /**
  * The mean luminance change between two canvas screenshots over the rider's own box in the chase
@@ -384,7 +402,11 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     effect: async (page) => {
       await page.locator('#settings-back').click();
       await page.locator('#menu-race').click();
-      await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
+      await page.waitForFunction(
+        () =>
+          (window as TestWindow).__game?.state() === 'race' &&
+          ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60,
+      );
       await expect(page.locator('#hud-speed')).toHaveText(/^\d+ km\/h$/);
       await page.keyboard.press('Escape');
       await page.locator('#pause-quit').click();
@@ -674,6 +696,23 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         'aria-pressed',
         'true',
       );
+    },
+  },
+  voicesOn: {
+    // Run W-O: voices off silences the voices bus (audio's own bus target), whatever the slider says.
+    set: async (page) => {
+      await page.locator('#settings-tab-sound').click();
+      await page.locator('#settings-voicesOn').uncheck();
+    },
+    effect: async (page) => {
+      await raceAlone(page);
+      const app = () => (window as TestWindow).__app?.presentation().audio.busTargets.voices;
+      expect(await page.evaluate(app)).toBe(0);
+      await quitRace(page);
+    },
+    persisted: async (page) => {
+      await page.locator('#settings-tab-sound').click();
+      await expect(page.locator('#settings-voicesOn')).not.toBeChecked();
     },
   },
   showTuningPanel: {

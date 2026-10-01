@@ -22,7 +22,13 @@ import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
 import { createRenderer, interpolateEntity, type LookEnv } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
-import { createSettingsStore, settingsAssists, type FrameRateCap, type StorageLike } from '../save';
+import {
+  audioVolumes,
+  createSettingsStore,
+  settingsAssists,
+  type FrameRateCap,
+  type StorageLike,
+} from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import {
   createSim,
@@ -67,7 +73,16 @@ import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
-export { buildSimConfig, DEFAULT_EVENT, eventKey, qualifyIn, streamForEvent, streamForRoute } from './config';
+export {
+  buildSimConfig,
+  DEFAULT_EVENT,
+  eventKey,
+  qualifyIn,
+  raceRouteKey,
+  realRoutes,
+  streamForEvent,
+  streamForRoute,
+} from './config';
 export {
   boardCatalog,
   createStreamCache,
@@ -75,9 +90,10 @@ export {
   raceRadio,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
 } from './regions';
-export type { RaceRadio, RegionChoice, StreamCache } from './regions';
+export type { RaceRadio, RegionChoice, RouteChoice, StreamCache } from './regions';
 export { resumeFromRecording, roadsForHeader } from './resume';
 export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
@@ -148,6 +164,8 @@ export interface AppPresentation {
   /** The loop draws one animation frame in every `frameDivisor`. */
   display: { frameDivisor: number };
   radio: { region: string | null; stations: string[]; tunedTo: string };
+  /** The gains audio's buses aim for (0..1 after the taper): the voices bus is 0 while voices are off. */
+  audio: { busTargets: { master: number; music: number; effects: number; voices: number } };
 }
 
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
@@ -298,7 +316,8 @@ export function createApp(opts: AppOptions): AppHandle {
     replayKey = appReplayKey(build, hashes.sim);
   };
   const audio = createAudio();
-  audio.setVolumes(settings.volumes, settings.mute);
+  // The voices off switch (run W-O) silences the voices bus; the Voices slider keeps its level.
+  audio.setVolumes(audioVolumes(settings), settings.mute);
   // The radio (M4 radio-1 head start): this device's cut tracks never play, and each race's region
   // picks its stations (the base pack's while a region has none of its own).
   const radioCut = (s: typeof settings) => s.vetoes.map((v) => v.contentRef);
@@ -401,6 +420,8 @@ export function createApp(opts: AppOptions): AppHandle {
       'slowMo',
       'reduceShake',
       'frameRateCap',
+      // The voices off switch (run W-O): the voices bus volume, above.
+      'voicesOn',
     ],
     // The menu's region picker (#160): every carried region with an event, the Keys picked.
     regions: regions.map((r) => ({ id: r.id, name: r.name, ...(r.blurb ? { blurb: r.blurb } : {}) })),
@@ -434,7 +455,7 @@ export function createApp(opts: AppOptions): AppHandle {
       onSettingsChange: (next) => {
         settings = next;
         settingsStore.save(next);
-        audio.setVolumes(next.volumes, next.mute);
+        audio.setVolumes(audioVolumes(next), next.mute);
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
@@ -706,11 +727,13 @@ export function createApp(opts: AppOptions): AppHandle {
     replayKey: () => replayKey,
     presentation() {
       // The stations audio itself offers now (its own region filter applied), and what it plays.
-      const r = audio.inspect().radio;
+      const mix = audio.inspect();
+      const r = mix.radio;
       return {
         camera: { view: camera.view, mode: camera.mode, shake: shakeAmount },
         display: { frameDivisor: frameDivisor() },
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
+        audio: { busTargets: mix.busTargets },
       };
     },
   };

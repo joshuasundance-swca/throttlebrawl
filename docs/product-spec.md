@@ -124,6 +124,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Setting | Tag |
 |---|---|
 | Four volume sliders (master, music, effects, voices), plus mute | [decided] |
+| A Voices on/off switch beside mute (spoken barks; off keeps the Voices slider's level), on by default with the Voices slider at 80% (maintainer, 2026-10-01: "add a Voices volume and an off switch") | [decided]; the 80% default is [default] |
 | Haptics on/off | [decided] |
 | Takedown slow motion on/off | [decided] |
 | Speed units (mph or km/h) | [decided] |

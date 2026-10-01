@@ -58,9 +58,17 @@ export interface VetoFlag {
 }
 
 export interface Settings {
-  /** Bus volumes, 0..1. */
+  /**
+   * Bus volumes, 0..1. `voices` is the spoken barks' volume (run W-O's "voiceVolume": the audio
+   * lane's contract name, read through `voiceSettings`), default 0.8.
+   */
   volumes: { master: number; music: number; effects: number; voices: number };
   mute: boolean;
+  /**
+   * Spoken barks on or off (run W-O, maintainer 2026-10-01: "add a Voices volume and an off switch").
+   * Off silences the voices bus and keeps the slider's level. Additive: the version stays 1.
+   */
+  voicesOn: boolean;
   /** Left-handed mirror of the touch layout. */
   mirror: boolean;
   /** Tuning preset id; `registry` means the parameter registry's defaults. */
@@ -110,8 +118,9 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
-  volumes: { master: 0.8, music: 0.6, effects: 0.9, voices: 0.9 },
+  volumes: { master: 0.8, music: 0.6, effects: 0.9, voices: 0.8 },
   mute: false,
+  voicesOn: true,
   mirror: false,
   tuningPreset: 'registry',
   units: 'mph',
@@ -255,6 +264,7 @@ export function sanitiseSettings(data: unknown): Settings {
       voices: unit(v['voices'], def.volumes.voices),
     },
     mute: bool(d['mute'], def.mute),
+    voicesOn: bool(d['voicesOn'], def.voicesOn),
     mirror: bool(d['mirror'], def.mirror),
     tuningPreset: typeof preset === 'string' && preset.length > 0 ? preset : def.tuningPreset,
     units: units === 'mph' || units === 'kmh' ? units : def.units,
@@ -295,6 +305,16 @@ export function withVeto(s: Readonly<Settings>, flag: VetoFlag): Settings {
     vetoes.push(clean);
   }
   return { ...s, vetoes };
+}
+
+/** The voices settings under the names the audio lane's contract uses (run W-O). */
+export function voiceSettings(s: Readonly<Settings>): { voiceVolume: number; voicesOn: boolean } {
+  return { voiceVolume: s.volumes.voices, voicesOn: s.voicesOn };
+}
+
+/** The bus volumes audio is handed: the voices bus is silent while voices are off. */
+export function audioVolumes(s: Readonly<Settings>): Settings['volumes'] {
+  return { ...s.volumes, voices: s.voicesOn ? s.volumes.voices : 0 };
 }
 
 /** This device's player assists in the sim's per-slot shape (`SimAssists`), for buildSimConfig. */

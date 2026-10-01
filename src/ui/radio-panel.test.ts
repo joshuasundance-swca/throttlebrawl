@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  heldRadioNote,
   nextRadioChoice,
+  RADIO_NOTE_HOLD_MS,
   radioChoiceOf,
   radioLines,
   radioSettingOf,
@@ -62,5 +64,16 @@ describe('the radio panel', () => {
       station: 'keys-rockabilly',
       song: null,
     });
+  });
+
+  it('holds the "Cut." note through the pause screen 500 ms refresh, then lets the song back', () => {
+    const note = { text: 'Cut.', at: 1000, tunedTo: 'keys-surf' };
+    expect(RADIO_NOTE_HOLD_MS).toBeGreaterThanOrEqual(2000);
+    // Several refreshes later it is still up.
+    for (const t of [1000, 1500, 2000, 2500]) expect(heldRadioNote(note, t, 'keys-surf')).toBe('Cut.');
+    expect(heldRadioNote(note, 1000 + RADIO_NOTE_HOLD_MS, 'keys-surf')).toBeNull();
+    // Another station drops it at once; no note shows nothing.
+    expect(heldRadioNote(note, 1100, 'keys-rockabilly')).toBeNull();
+    expect(heldRadioNote(null, 1100, 'keys-surf')).toBeNull();
   });
 });

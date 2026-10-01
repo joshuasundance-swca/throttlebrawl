@@ -1342,6 +1342,8 @@ Tag: `[decided]` that new regions ship now as content packs (playtest 1c, 2026-0
 | order | The region's `chapter`, then id |
 | event | The first such event by qualified id (one per region today); its `standard` length, else its first |
 
+**Real roads as routes** `[decided]` (the maintainer, 2026-10-01: "Yes, add as routes"), with the rule below `[default]`. A region's real-road routes are the routes in the race's packs whose network was baked from map data (`provenance.origin` is `gis-pipeline`, the `tools/gis` bake) and whose network's `region` is the event's region; the event's own length routes are never among them. app/ lists them with `realRoutes`. A race may run one of them instead of its length's route (`RaceSetup.route`); any other route id falls back to the length's route. The event, its field, cops, traffic, signs and rewards stay the same, so only the road changes. The region's hand-made road stays the default. A region pack's routes are road data, so its real routes are known once its road data is fetched.
+
 **The field and the law.** Rivals are the event's `field.riders`. Cops for `every-race` come from the race's packs: riders with `role: "cop"`, a `law` block, and a `region` that resolves to the event's region (a cop without a `region` rides everywhere), sorted by qualified id.
 
 **Traffic.** The region's `traffic.mix`, `pedestrians` and `animals` weigh the traffic types. Every other type in the race's packs gets weight 0, so it never spawns.
@@ -1352,7 +1354,7 @@ Tag: `[decided]` that new regions ship now as content packs (playtest 1c, 2026-0
 
 **Rival lines.** Bark sets, like riders, come from the race's packs, so a local rival speaks their own pack's lines. The narrative (ui/) still reads base's bark sets only; reading the combined registry is a ui follow-up.
 
-**Replays and resume.** A recording's header names the qualified event and route, so a replay or a resume rebuilds the road from that region's road data (app/ fetches it first when needed).
+**Replays and resume.** A recording's header names the qualified event and route (`event.routeId`, a chosen real-road route included) beside the seed, so a replay or a resume rebuilds the road from that region's road data (app/ fetches it first when needed).
 
 **What a region pack needs to be playable**, beyond the [M1 minimum](#what-m1-needs):
 

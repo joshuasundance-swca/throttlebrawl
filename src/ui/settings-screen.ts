@@ -125,7 +125,10 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
   }
   const mute = node('input', { id: 'settings-mute', type: 'checkbox' });
   mute.addEventListener('change', () => opts.onChange({ kind: 'mute', value: mute.checked }));
-  pane('sound').append(grid, node('div', { className: 'toggles' }, node('label', {}, mute, 'Mute')));
+  // The Sound tab's switches (Mute, and the table's sound toggles such as "Voices on") share one
+  // row of chips under the sliders, so the tab still fits a 412 px-tall phone screen.
+  const soundToggles = node('div', { className: 'toggles' }, node('label', {}, mute, 'Mute'));
+  pane('sound').append(grid, soundToggles);
 
   // ---- Controls: the M1 left-handed mirror first ---------------------------------------------
   const mirror = node('input', { id: 'settings-mirror', type: 'checkbox' });
@@ -152,13 +155,16 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
       nextRaceTags.push(tag);
       label.append(tag);
     }
-    const row = node('div', { className: 'setting-row' }, label);
+    // A Sound toggle is a chip beside Mute (see above); every other row is a full-width row.
+    const chip = def.tab === 'sound' && def.kind === 'toggle';
+    const row = chip ? node('label', {}, label) : node('div', { className: 'setting-row' }, label);
     row.dataset['setting'] = id;
     if (def.kind === 'toggle') {
       const box = node('input', { id: `settings-${id.replace('.', '-')}`, type: 'checkbox' });
       box.setAttribute('aria-label', def.label);
       box.addEventListener('change', () => opts.onChange({ kind: 'set', id, value: box.checked }));
-      row.append(box);
+      if (chip) row.prepend(box);
+      else row.append(box);
       rows.set(id, { row, sync: (s) => (box.checked = settingValue(s, id) === true) });
     } else {
       const group = node('div', {
@@ -184,7 +190,7 @@ export function createSettingsScreen(opts: SettingsScreenOptions): SettingsScree
       });
     }
     order.push(id);
-    pane(def.tab).append(row);
+    (chip ? soundToggles : pane(def.tab)).append(row);
   };
 
   for (const def of SETTINGS) addRow(def.id);
