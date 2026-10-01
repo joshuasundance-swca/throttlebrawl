@@ -99,6 +99,9 @@ export const SF_HILLS: TrackSource = {
         { s0: 0, s1: 'end', side: 'left', tag: 'warehouses' },
       ],
       features: [
+        // Officer Meter waits here, on the shoulder beside the pier lot, not in the drive lane
+        // behind the grid where traffic hit him (W-O polish run; keys-m1 and pnw-c1's lots).
+        { kind: 'copSpawn', id: 'pier-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
         {
           kind: 'roadsideZone',
           id: 'pier-row-sidewalk',

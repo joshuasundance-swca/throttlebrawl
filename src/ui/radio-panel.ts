@@ -97,6 +97,8 @@ export const RADIO_PANEL_CSS = `
 #pause-radio .radio-station { font: 800 14px ui-monospace, 'Courier New', monospace; color: #f5c542; }
 #pause-radio .radio-song { font: italic 600 13px/1.3 system-ui, sans-serif; color: #f2ead8; overflow-wrap: anywhere; }
 #pause-radio .radio-song:empty { display: none; }
+#pause-radio .radio-song.note { font: 800 15px/1.3 ui-monospace, 'Courier New', monospace; font-style: normal;
+  color: #111; background: #f5c542; padding: 3px 8px; align-self: flex-start; }
 #pause-radio .row { justify-content: flex-start; gap: 8px; }
 #pause-radio .small { min-height: 40px; padding: 4px 12px; font-size: 14px; }
 #pause-radio #radio-cut-yes { background: #e0543a; color: #fff; }
@@ -194,6 +196,8 @@ export function createRadioPanel(opts: RadioPanelOptions): RadioPanel {
     if (held === null) note = null;
     station.textContent = lines.station;
     song.textContent = held ?? lines.song ?? '';
+    // A note ("Cut. You won't hear it again") reads at arm's length: big, upright, on its own ground.
+    song.classList.toggle('note', held !== null);
     const onStation = !!lines.song;
     skip.hidden = !onStation;
     cut.hidden = !onStation;

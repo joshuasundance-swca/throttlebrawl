@@ -73,7 +73,16 @@ import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
 export type { HeadlessOptions, HeadlessRace } from './headless';
-export { buildSimConfig, DEFAULT_EVENT, eventKey, qualifyIn, streamForEvent, streamForRoute } from './config';
+export {
+  buildSimConfig,
+  DEFAULT_EVENT,
+  eventKey,
+  qualifyIn,
+  raceRouteKey,
+  realRoutes,
+  streamForEvent,
+  streamForRoute,
+} from './config';
 export {
   boardCatalog,
   createStreamCache,
@@ -81,9 +90,10 @@ export {
   raceRadio,
   regionChoices,
   regionKeyOf,
+  routeChoices,
   routeKeyOf,
 } from './regions';
-export type { RaceRadio, RegionChoice, StreamCache } from './regions';
+export type { RaceRadio, RegionChoice, RouteChoice, StreamCache } from './regions';
 export { resumeFromRecording, roadsForHeader } from './resume';
 export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
