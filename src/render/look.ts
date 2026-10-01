@@ -189,8 +189,14 @@ export function createFlatLook(): LookStyle {
       // Threats render out to at least 200 m; fog only starts beyond that.
       scene.fog = new Fog(sky, MIN_THREAT_DRAW_M + 20, 700);
       const night = env.timeOfDay === 'night';
-      scene.add(new HemisphereLight('#fff4e0', '#3a5a60', night ? 0.7 : 1.6));
-      const sun = new DirectionalLight(night ? '#9fb0ff' : '#ffe2b0', night ? 0.6 : 1.8);
+      // A region's palette may set its light (W-O: the Pacific Northwest's overcast): `skylight`
+      // tints the soft light from above and `sunlight` the sun; a dimmer colour is a dimmer light.
+      const palette = env.palette ?? {};
+      scene.add(new HemisphereLight(palette['skylight'] ?? '#fff4e0', '#3a5a60', night ? 0.7 : 1.6));
+      const sun = new DirectionalLight(
+        palette['sunlight'] ?? (night ? '#9fb0ff' : '#ffe2b0'),
+        night ? 0.6 : 1.8,
+      );
       sun.position.set(-0.6, 1, 0.4);
       scene.add(sun);
     },

@@ -6,6 +6,11 @@
 // with the length of the road.
 // Playtest 1c adds tagged land beside the road with its scenery (scenery.ts), instanced from the
 // Blender models when they have loaded, and the ramp-truck model lined up with the sim's ramp.
+// The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") gives a
+// network that is not tropical (the Pacific Northwest, San Francisco) a terrain skirt: past its land
+// strip the ground slopes down to a wide flat field instead of dropping into the sea, so a road on
+// a hill never floats in the void. Delineator posts and pylons follow that ground, a forest
+// network's bridges stand on timber trestle bents, and a `cable-line` road gets its cable slots.
 import {
   BoxGeometry,
   Euler,
@@ -202,6 +207,15 @@ function dressingOf(edge: Edge, dressing: RoadDressing | undefined): EdgeDressin
   return { barriers: carried.barriers, features: carried.features, tags: carried.tags };
 }
 
+/** A network's scenery tags as one set, and whether they say tropical (scenery.ts `isTropical`). */
+export function networkTags(
+  road: RoadNetwork,
+  dressing: RoadDressing | undefined,
+): { tropical: boolean; tags: Set<string> } {
+  const lists = road.edges.map((e) => dressingOf(e, dressing).tags);
+  return { tropical: isTropical(lists), tags: new Set(lists.flatMap((l) => (l ?? []).map((t) => t.tag))) };
+}
+
 function samplesOf(edge: Edge): number[] {
   const n = Math.max(1, Math.round(edge.length / STEP_M));
   const out: number[] = [];
@@ -294,13 +308,16 @@ function goreLines(road: RoadNetwork): Map<number, number> {
 }
 
 /** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
-type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark';
+type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot';
 const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
   splitZone: 'shortcut',
   splitMark: 'marking',
   boostPad: 'boost',
   boostMark: 'marking',
+  cableSlot: 'marking',
 };
+/** Layers drawn in their own colour rather than their kind's palette colour. */
+const LAYER_COLOR: Partial<Record<Layer, string>> = { cableSlot: '#5b5e63' };
 const kindOf = (layer: Layer): MaterialKind => LAYER_KIND[layer] ?? (layer as MaterialKind);
 
 /** The ramp truck's defaults, as the road lane's contract gives them (docs/content-packs.md). */
@@ -407,6 +424,11 @@ export interface RoadSceneOptions {
   seed?: number;
   /** The Blender models that have loaded; a kind left out draws its code-made stand-in. */
   models?: SceneryModels;
+  /**
+   * The race region's palette (render/look.ts LookEnv): `fogBank` lays fog banks offshore in that
+   * colour. Region models arrive already repainted by it.
+   */
+  palette?: Readonly<Record<string, string>> | undefined;
 }
 
 /** Features no scenery stands in (with room for the model). */
@@ -426,6 +448,25 @@ const LAND_GAP_WIDTHS = [12, 9, 6, 4, 2.5, 1.5];
 const LAND_GAP_MARGIN_M = 0.3;
 /** On the inside of a turn, land and its shelf reach at most this share of the turn's radius. */
 const LAND_FOLD = 0.85;
+/** The terrain skirt's flat ground: its height over the sea, m. [default] */
+export const GROUND_Y = 0.25;
+/** The skirt's slope from the land strip down to the ground: metres out per metre down. [default] */
+const SKIRT_RUN_PER_M = 2.2;
+const SKIRT_RUN_M = [6, 90] as const;
+/** The flat ground past the slope, m (shorter, or none, where another road or water is near). */
+const SKIRT_FLAT_M = [70, 35, 12, 0] as const;
+/** No skirt ground within this many metres of another road's water. [default] */
+const SKIRT_WATER_CLEAR_M = 22;
+/** The skirt keeps one road sample in this many. [default] */
+const SKIRT_EVERY = 3;
+/** A timber trestle's bents stand this far apart, and their feet this far under the sea. [default] */
+const BENT_SPACING_M = 8;
+const BENT_FOOT_Y = -1.5;
+/** The trestle-bent model's authored height and cap width (tools/blender/props/trestle_bent.py). */
+const BENT_MODEL_H = 10;
+const BENT_MODEL_W = 12.8;
+/** A cable car's slot rails: each sits this far either side of its lane's centre, m. */
+const CABLE_RAIL_D = 0.55;
 /** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
 export const SCENERY_CHUNK_M = 256;
 
@@ -456,6 +497,21 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [2.5, 0.9, 7.6], at: [0, 0.3, 0], color: '#e2d9c1' },
       { size: [1, 1.2, 1.4], at: [0, 1.2, -0.2], color: '#3a4048' },
     ],
+    conifer: [
+      { size: [0.4, 4, 0.4], at: [0, 2, 0], color: '#5b4636' },
+      { size: [4.4, 4, 4.4], at: [0, 5, 0], color: '#2f5a3a', rotY: 0.4 },
+      { size: [2.8, 4, 2.8], at: [0, 8.5, 0], color: '#1f3d2b', rotY: 0.9 },
+      { size: [1.2, 3, 1.2], at: [0, 11.5, 0], color: '#2f5a3a' },
+    ],
+    house: [
+      { size: [6.4, 10.5, 11], at: [0, 5.25, -5.5], color: '#d8c3a8' },
+      { size: [6.6, 0.5, 0.6], at: [0, 10.3, 0.1], color: '#f4efe4' },
+    ],
+    sawmill: [
+      { size: [20, 8, 11], at: [-4, 4, -10.5], color: '#8d8473' },
+      { size: [8, 13, 8], at: [13, 6.5, -10], color: '#3d3b39' },
+    ],
+    fogBank: [{ size: [60, 8, 24], at: [0, 4, 0], color: '#ffffff' }],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -468,6 +524,10 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   pole: 'powerPole',
   skiff: 'skiff',
   boat: 'boat',
+  conifer: 'conifers',
+  house: 'rowHouses',
+  sawmill: 'sawmill',
+  fogBank: 'fogBanks',
 };
 
 /**
@@ -549,6 +609,13 @@ export function buildRoadScene(
   const density = Math.max(0, opts.roadsideDensity ?? 1);
   const seed = opts.seed ?? 1;
   const tropical = isTropical(road.edges.map((e) => dressingOf(e, dressing).tags));
+  // A network that is not tropical gets the terrain skirt; one with forest gets timber trestles.
+  const terrain = !tropical;
+  const timber =
+    terrain && road.edges.some((e) => (dressingOf(e, dressing).tags ?? []).some((t) => t.tag === 'forest'));
+  const bentModel = timber ? opts.models?.trestleBent : undefined;
+  const bentMatrices: Matrix4[] = [];
+  const nearWater = terrain ? waterGrid(road, dressing) : () => false;
   let railM = 0;
   let rampStripes = 0;
   let landM = 0;
@@ -753,24 +820,6 @@ export function buildRoadScene(
         if (!railed) landM += b - a;
       }
     }
-    // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
-    for (const [d, out] of [
-      [outerL, -1],
-      [outerR, 1],
-    ] as const) {
-      const deck = strip('deck');
-      deck.breakStrip();
-      for (const s of ss) {
-        const top = w(e.index, s, d, -0.02);
-        const bottom =
-          top.y >= ELEVATED_M
-            ? { x: top.x, y: top.y - 1, z: top.z }
-            : { ...w(e.index, s, d + out * 2, 0), y: -0.4 };
-        if (out < 0) deck.pair(bottom, top);
-        else deck.pair(top, bottom);
-      }
-      deck.breakStrip();
-    }
     // Centre and lane dashes: 3 m on, 9 m off; yellow between opposite directions.
     for (let s = 2; s + 3 < e.length; s += 12) {
       for (const div of laneSpans(road.lanesAt(e.index, s)).dividers) {
@@ -780,20 +829,6 @@ export function buildRoadScene(
           w(e.index, s + 3, div.d - 0.08, 0.03),
           w(e.index, s + 3, div.d + 0.08, 0.03),
         );
-      }
-    }
-    // Delineator posts every 25 m on the verge: a sense of speed. Pylons under the deck every 24 m.
-    for (let s = 0; s < e.length; s += 25) {
-      if (road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M) continue; // the rails do this job on bridges
-      for (const d of [outerL + 0.25, outerR - 0.25]) {
-        // Where two roads overlap, a post on one road's verge can stand in the other's lane.
-        if (!onOtherLanes(e, s, d)) postSpots.push(w(e.index, s, d, 0.55));
-      }
-    }
-    for (let s = 12; s < e.length; s += 24) {
-      for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
-        const p = w(e.index, s, d, 0);
-        if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
       }
     }
     // Tagged land and its scenery (playtest 1c items 2 to 4). Where a side's scenery tags say land,
@@ -816,6 +851,28 @@ export function buildRoadScene(
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
+    const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
+    /** The skirt at s past a strip of width r, or null where none fits (the shelf drops into the sea). */
+    const skirtAt = (side: -1 | 1, s: number, r: number): { run: number; flat: number } | null => {
+      const outer = outerOf(side);
+      const height = w(e.index, s, side * (outer + r), LAND_TOP_M).y - GROUND_Y;
+      const k = insideKappa(side, s);
+      const room = k > 0 ? LAND_FOLD / k - outer - r - SCENERY_SHELF_M : Infinity;
+      const run = Math.min(SKIRT_RUN_M[1], Math.max(SKIRT_RUN_M[0], height * SKIRT_RUN_PER_M));
+      const free = (d: number) => {
+        if (otherRoadAt(s, side * d, 2)) return false;
+        const p = w(e.index, s, side * d, 0);
+        return !nearWater(p.x, p.z, SKIRT_WATER_CLEAR_M);
+      };
+      const foot = outer + r + run;
+      if (run > room || !free(outer + r + run / 2) || !free(foot)) return null;
+      for (const flat of SKIRT_FLAT_M) {
+        if (run + flat > room) continue;
+        if (flat === 0 || (free(foot + flat / 2) && free(foot + flat))) return { run, flat };
+      }
+      return null;
+    };
     /** Samples whose land runs up to another road, so no shelf drops into the sea there. */
     const meetsOf: Record<-1 | 1, boolean[]> = { [-1]: [], [1]: [] };
     /** The sharpest turn toward a side within SCENERY_LAND_M of s (kappa > 0 turns right, +d). */
@@ -889,20 +946,59 @@ export function buildRoadScene(
         else ground.pair(near, edge);
       });
       ground.breakStrip();
-      const shelf = strip('land');
-      shelf.breakStrip();
+      // The terrain skirt (not on the Keys): from the strip's edge a slope down to flat ground just
+      // over the sea, then a short shelf into it. It shortens, or falls back to the shelf alone,
+      // where it would bury another road, cover another road's water or fold on a tight turn.
+      const skirts = skirtOf[side];
       ss.forEach((s, i) => {
         const r = reach[i] ?? 0;
-        if (r <= 0 || meetsOf[side][i]) {
-          shelf.breakStrip();
-          return;
-        }
-        const edge = w(e.index, s, side * (outer + r), LAND_TOP_M);
-        const low = { ...w(e.index, s, side * (outer + r + SCENERY_SHELF_M), 0), y: -0.4 };
-        if (side < 0) shelf.pair(low, edge);
-        else shelf.pair(edge, low);
+        skirts.push(terrain && r > 0 && !meetsOf[side][i] ? skirtAt(side, s, r) : null);
       });
-      shelf.breakStrip();
+      // The skirt is wide and plain, so it keeps every third sample (and every sample where a run
+      // starts or ends): about half the land's triangles.
+      const run = (rows: (readonly [Point3, Point3] | null)[]) => {
+        const g = strip('land');
+        g.breakStrip();
+        for (const [i, row] of rows.entries()) {
+          if (!row) {
+            g.breakStrip();
+            continue;
+          }
+          const inner = i % SKIRT_EVERY !== 0 && i < rows.length - 1 && rows[i - 1] && rows[i + 1];
+          if (inner) continue;
+          // Pairs in increasing d, so the faces point up (and out, on a slope).
+          if (side < 0) g.pair(row[1], row[0]);
+          else g.pair(row[0], row[1]);
+        }
+        g.breakStrip();
+      };
+      const at = (s: number, d: number, y: number) => ({ ...w(e.index, s, side * d, 0), y });
+      const top = (s: number, r: number) => w(e.index, s, side * (outer + r), LAND_TOP_M);
+      run(
+        ss.map((s, i) => {
+          const k = skirts[i];
+          const r = reach[i] ?? 0;
+          return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
+        }),
+      );
+      run(
+        ss.map((s, i) => {
+          const k = skirts[i];
+          const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
+          return k && k.flat > 0 ? [at(s, foot, GROUND_Y), at(s, foot + k.flat, GROUND_Y)] : null;
+        }),
+      );
+      // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one.
+      run(
+        ss.map((s, i) => {
+          const r = reach[i] ?? 0;
+          if (r <= 0 || meetsOf[side][i]) return null;
+          const k = skirts[i];
+          if (!k) return [top(s, r), at(s, outer + r + SCENERY_SHELF_M, -0.4)];
+          const far = outer + r + k.run + k.flat;
+          return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
+        }),
+      );
     }
     spots.push(
       ...scatterEdge({
@@ -934,8 +1030,92 @@ export function buildRoadScene(
           return locator.at(p.x, p.z, e.index).length === 0;
         },
         world: (s, d, h) => w(e.index, s, d, h),
+        skirt: terrain
+          ? (side, s) => {
+              const i = Math.max(0, Math.min(ss.length - 1, Math.round(s / step)));
+              const k = skirtOf[side][i];
+              if (!k || k.flat <= 0) return null;
+              const from = (reachOf[side][i] ?? 0) + k.run;
+              return { from, to: from + k.flat, y: GROUND_Y };
+            }
+          : undefined,
+        fogBanks: opts.palette?.['fogBank'] !== undefined,
       }),
     );
+    // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
+    for (const [d, out] of [
+      [outerL, -1],
+      [outerR, 1],
+    ] as const) {
+      const deck = strip('deck');
+      deck.breakStrip();
+      for (const [i, s] of ss.entries()) {
+        // A terrain network's land strip hides the fascia where it meets the verge: skip it there.
+        if (terrain && (reachOf[out][i] ?? 0) > 0) {
+          deck.breakStrip();
+          continue;
+        }
+        const top = w(e.index, s, d, -0.02);
+        const bottom =
+          top.y >= ELEVATED_M
+            ? { x: top.x, y: top.y - 1, z: top.z }
+            : { ...w(e.index, s, d + out * 2, 0), y: -0.4 };
+        if (out < 0) deck.pair(bottom, top);
+        else deck.pair(top, bottom);
+      }
+      deck.breakStrip();
+    }
+    // Delineator posts every 25 m on the verge: a sense of speed. On a terrain network they stand
+    // wherever there is ground beside the road; elsewhere only off the bridges (the rails do it there).
+    const groundAt = (side: -1 | 1, s: number) =>
+      (reachOf[side][Math.max(0, Math.min(ss.length - 1, Math.round(s / step)))] ?? 0) > 0;
+    for (let s = 0; s < e.length; s += 25) {
+      const high = road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M;
+      for (const [side, d] of [
+        [-1, outerL + 0.25],
+        [1, outerR - 0.25],
+      ] as const) {
+        if (high && !(terrain && groundAt(side, s))) continue;
+        // Where two roads overlap, a post on one road's verge can stand in the other's lane.
+        if (!onOtherLanes(e, s, d)) postSpots.push(w(e.index, s, d, 0.55));
+      }
+    }
+    // Pylons under a deck every 24 m (none where the terrain's ground stands on both sides), or a
+    // forest network's timber trestle bents under its bridges, every few metres.
+    const bridgeAt = (s: number) => (tags ?? []).some((t) => t.tag === 'bridge' && s >= t.s0 && s <= t.s1);
+    if (bentModel) {
+      for (let s = BENT_SPACING_M / 2; s < e.length; s += BENT_SPACING_M) {
+        const deckY = road.toWorld(e.index, s, 0, 0).y;
+        if (!bridgeAt(s) || deckY < 1) continue;
+        bentMatrices.push(bentMatrix(road, e.index, s, outerL, outerR, deckY - 0.95));
+      }
+    }
+    for (let s = 12; s < e.length; s += 24) {
+      if (terrain && groundAt(-1, s) && groundAt(1, s)) continue;
+      if (bentModel && bridgeAt(s)) continue;
+      for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
+        const p = w(e.index, s, d, 0);
+        if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
+      }
+    }
+    // A cable-car line: two slot rails down the middle of each travel lane.
+    for (const t of (tags ?? []).filter((x) => x.tag === 'cable-line')) {
+      const s0 = Math.max(0, t.s0);
+      const s1 = Math.min(e.length, t.s1);
+      const lanes = road.lanesAt(e.index, (s0 + s1) / 2).filter((l) => l.kind === 'drive');
+      for (const l of lanes) {
+        for (const off of [-CABLE_RAIL_D, CABLE_RAIL_D]) {
+          const slot = strip('cableSlot');
+          slot.breakStrip();
+          for (let u = s0; ; u = Math.min(s1, u + STEP_M)) {
+            const d = l.dCenterM + off;
+            slot.pair(w(e.index, u, d - 0.05, 0.028), w(e.index, u, d + 0.05, 0.028));
+            if (u >= s1) break;
+          }
+          slot.breakStrip();
+        }
+      }
+    }
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
     for (const [side, d] of [
       ['left', outerL + 0.05],
@@ -947,7 +1127,8 @@ export function buildRoadScene(
         if (s1 <= s0) continue;
         const h = b.heightM ?? 1;
         const bottom = b.kind === 'wall' ? 0 : h - 0.3;
-        const rail = strip('rail');
+        // On a terrain network a wall is a concrete retaining wall, not the bridge's painted rail.
+        const rail = strip(terrain && b.kind === 'wall' ? 'deck' : 'rail');
         rail.breakStrip();
         for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
           rail.pair(w(e.index, s, d, h), w(e.index, s, d, bottom));
@@ -1073,7 +1254,11 @@ export function buildRoadScene(
     for (const [key, part] of a.chunks) {
       if (part.isEmpty) continue;
       triangles += part.triangleCount;
-      const mesh = new Mesh(part.build(), look.material(kind, { doubleSided: doubleSided.has(kind) }));
+      const color = LAYER_COLOR[layer];
+      const mesh = new Mesh(
+        part.build(),
+        look.material(kind, { doubleSided: doubleSided.has(kind), ...(color ? { color } : {}) }),
+      );
       mesh.name = `road-${layer}`;
       addMesh(key, mesh);
     }
@@ -1133,6 +1318,17 @@ export function buildRoadScene(
     meshes++;
   }
   const shared = new Set<BufferGeometry>();
+  const bentGeo = bentModel?.variants[0];
+  if (bentGeo && bentMatrices.length) {
+    shared.add(bentGeo);
+    addInstanced(
+      'road-trestle',
+      bentGeo,
+      look.material('prop', { vertexColors: true }),
+      bentMatrices.map((mx) => ({ p: { x: mx.elements[12], y: 0, z: mx.elements[14] }, mx })),
+      (b) => b.mx,
+    );
+  }
   const truckGeo = truckModel?.variants[0];
   if (truckGeo) {
     shared.add(truckGeo);
@@ -1165,7 +1361,12 @@ export function buildRoadScene(
     if (!mine.length) continue;
     const geos = model ? model.variants : [standIn(kind)];
     if (model) for (const g of geos) shared.add(g);
-    const material = look.material('prop', { vertexColors: true, doubleSided: model?.doubleSided ?? false });
+    // Fog banks are unlit, in the region's fog-bank colour, so they melt into the haze.
+    const fogHex = opts.palette?.['fogBank'];
+    const material =
+      kind === 'fogBank'
+        ? look.material('splash', { color: fogHex ?? '#e3e6e8' })
+        : look.material('prop', { vertexColors: true, doubleSided: model?.doubleSided ?? false });
     const groups = new Map<string, ScenerySpot[]>();
     for (const s of mine) {
       const v = Math.min(geos.length - 1, s.variant);
@@ -1197,7 +1398,15 @@ export function buildRoadScene(
       const cx = list.reduce((a, s) => a + s.p.x, 0) / list.length;
       const cz = list.reduce((a, s) => a + s.p.z, 0) / list.length;
       const radius = Math.max(...list.map((s) => Math.hypot(s.p.x - cx, s.p.z - cz))) + 10;
-      batches.push({ mesh, spots: list, cx, cz, radius, boats: kind === 'skiff' || kind === 'boat' });
+      batches.push({
+        mesh,
+        spots: list,
+        cx,
+        cz,
+        radius,
+        boats: kind === 'skiff' || kind === 'boat',
+        always: kind === 'fogBank',
+      });
     }
   }
 
@@ -1232,10 +1441,10 @@ export function buildRoadScene(
     update(cameraX, cameraZ, t, drawM) {
       let shown = 0;
       for (const b of batches) {
-        const visible = Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
+        const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
         b.mesh.visible = visible;
         if (!visible) continue;
-        shown += b.spots.length;
+        if (!b.always) shown += b.spots.length;
         if (!b.boats) continue;
         b.spots.forEach((s, i) => {
           const bob = boatBob(t, s.phase);
@@ -1271,6 +1480,8 @@ interface SceneryBatch {
   cz: number;
   radius: number;
   boats: boolean;
+  /** Fog banks: far by nature, so the scenery draw distance never hides them (the fog does). */
+  always: boolean;
 }
 
 const bobEuler = new Euler();
@@ -1279,4 +1490,77 @@ const bobAt = new Vector3();
 /** Triangles in a geometry, indexed or not. */
 function trisOf(g: BufferGeometry): number {
   return (g.index?.count ?? g.getAttribute('position').count) / 3;
+}
+
+/**
+ * Where a trestle bent goes: on the ground under the road's centre at s, across the road, as wide
+ * as the deck and its verges and tall enough that its cap meets the deck's underside.
+ */
+function bentMatrix(
+  road: RoadNetwork,
+  edge: number,
+  s: number,
+  outerL: number,
+  outerR: number,
+  capY: number,
+): Matrix4 {
+  const mid = (outerL + outerR) / 2;
+  const at = (u: number, d: number, h: number) => {
+    const p = road.toWorld(edge, u, d, h);
+    return new Vector3(p.x, p.y, p.z);
+  };
+  const c = at(s, mid, 0);
+  const fwd = at(s + 1, mid, 0)
+    .sub(c)
+    .setY(0)
+    .normalize();
+  const up = new Vector3(0, 1, 0);
+  const left = new Vector3().crossVectors(up, fwd).normalize();
+  const sx = (outerR - outerL) / BENT_MODEL_W;
+  const sy = Math.max(0.2, (capY - BENT_FOOT_Y) / BENT_MODEL_H);
+  return new Matrix4()
+    .makeBasis(left.multiplyScalar(sx), up.multiplyScalar(sy), fwd)
+    .setPosition(c.x, BENT_FOOT_Y, c.z);
+}
+
+/**
+ * Where water lies beside a network: points out on every water-tagged side, on a coarse grid, so the
+ * terrain skirt of one road never covers the water beside another. Returns a test: is there water
+ * within `r` metres of (x, z)?
+ */
+function waterGrid(
+  road: RoadNetwork,
+  dressing: RoadDressing | undefined,
+): (x: number, z: number, r: number) => boolean {
+  const CELL = 40;
+  const grid = new Map<string, Point3[]>();
+  for (const e of road.edges) {
+    const tags = dressingOf(e, dressing).tags;
+    if (!tags?.some((t) => t.tag.startsWith('water'))) continue;
+    for (let s = 0; s <= e.length; s += 10) {
+      for (const side of [-1, 1] as const) {
+        if (themeAt(tags, side < 0 ? 'left' : 'right', s) !== 'water') continue;
+        const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
+        for (const across of [4, 20, 45, 80, 130]) {
+          const p = road.toWorld(e.index, s, side * (outer + across), 0);
+          const key = `${Math.floor(p.x / CELL)},${Math.floor(p.z / CELL)}`;
+          const list = grid.get(key);
+          if (list) list.push(p);
+          else grid.set(key, [p]);
+        }
+      }
+    }
+  }
+  return (x, z, r) => {
+    const span = Math.ceil(r / CELL);
+    const cx = Math.floor(x / CELL);
+    const cz = Math.floor(z / CELL);
+    for (let i = -span; i <= span; i++) {
+      for (let j = -span; j <= span; j++) {
+        for (const p of grid.get(`${cx + i},${cz + j}`) ?? [])
+          if (Math.hypot(p.x - x, p.z - z) < r) return true;
+      }
+    }
+    return false;
+  };
 }

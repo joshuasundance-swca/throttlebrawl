@@ -337,6 +337,8 @@ export class EntityViews {
   /** One instanced mesh per shape or figure: car, truck and ped at once, the figures on first use. */
   private readonly instanced: Record<string, InstancedMesh>;
   private readonly trafficTypes = new Map<string, SimTrafficTypeDef>();
+  /** Figures drawn from a loaded model (setFigureModel), by figure. */
+  private readonly figureModels = new Map<string, BufferGeometry>();
   private readonly prevById = new Map<number, EntitySnapshot>();
   private readonly seen = new Set<number>();
   private readonly wobbles = new Map<number, Timer>();
@@ -563,6 +565,28 @@ export class EntityViews {
     return this.look.material(kind, { vertexColors: true });
   }
 
+  /**
+   * Draws a figure from a model instead of its boxes (W-O: San Francisco's cable car). The model
+   * faces +Z with its origin on the ground at its middle; it is fitted into the figure's unit box
+   * (facing -z), so it scales to each traffic type's size like the boxes do.
+   */
+  setFigureModel(figure: 'cableCar', model: BufferGeometry): void {
+    const unit = model.clone();
+    unit.computeBoundingBox();
+    const box = unit.boundingBox;
+    if (!box) return;
+    unit.rotateY(Math.PI);
+    unit.scale(
+      1 / Math.max(0.01, box.max.x - box.min.x),
+      1 / Math.max(0.01, box.max.y),
+      1 / Math.max(0.01, box.max.z - box.min.z),
+    );
+    this.figureModels.get(figure)?.dispose();
+    this.figureModels.set(figure, unit);
+    const mesh = this.instanced[figure];
+    if (mesh) mesh.geometry = unit;
+  }
+
   private makeInstanced(
     name: string,
     parts: BoxPart[],
@@ -592,8 +616,10 @@ export class EntityViews {
     let mesh = this.instanced[shape];
     if (!mesh) {
       const fig = shape as keyof typeof FIGURE_PARTS;
-      const kind = fig === 'mobileHome' || fig === 'boatTrailer' ? 'vehicle' : 'ped';
+      const kind = fig === 'mobileHome' || fig === 'boatTrailer' || fig === 'cableCar' ? 'vehicle' : 'ped';
       mesh = this.makeInstanced(fig, FIGURE_PARTS[fig], kind, 4);
+      const model = this.figureModels.get(fig);
+      if (model) mesh.geometry = model;
       this.instanced[shape] = mesh;
     }
     if (needed <= mesh.instanceMatrix.count) return mesh;

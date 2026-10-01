@@ -12,22 +12,40 @@
     {
       "id": "lindqvist-siren-writing",
       "trigger": "cop-siren",
-      "text": "I'm not upset. I'm just writing it all down."
+      "text": "I'm not upset. I'm just writing it all down.",
+      "audioAsset": "audio/barks/lindqvist-core/lindqvist-siren-writing",
+      "audioStatus": "live"
     },
     {
       "id": "lindqvist-siren-whenever",
       "trigger": "cop-siren",
-      "text": "Pull over whenever you're ready. I'll wait."
+      "text": "Pull over whenever you're ready. I'll wait.",
+      "audioAsset": "audio/barks/lindqvist-core/lindqvist-siren-whenever",
+      "audioStatus": "live"
     },
     {
       "id": "lindqvist-busted-ferry",
       "trigger": "busted",
-      "text": "You have the right to a very long ferry wait."
+      "text": "You have the right to a very long ferry wait.",
+      "audioAsset": "audio/barks/lindqvist-core/lindqvist-busted-ferry",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
     "notes": "region-pnw (playtest 1c). Agent drafts that stay until vetoed.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    },
+    "voice": {
+      "origin": "ai-batch",
+      "batchId": "voices-wo-1",
+      "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
+      "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_echo, speed 0.85, pitch -2 semitones; synthetic, no real person's voice",
+      "promptRef": "tools/voices/cast.json",
+      "generatedAt": "2026-10-01"
+    }
   }
 }

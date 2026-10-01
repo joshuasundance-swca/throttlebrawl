@@ -1,0 +1,237 @@
+{
+  "batch_id": "voices-wo-1",
+  "loudness_lufs": -17.0,
+  "peak_dbfs": -1.5,
+  "bitrate_kbps": 24,
+  "budget_usd": 4.0,
+  "triggers": {
+    "hit-landed": { "exaggeration": 0.05 },
+    "hit-taken": { "exaggeration": 0.15 },
+    "knocked-down-by-target": { "exaggeration": 0.15 },
+    "crash-self": { "exaggeration": 0.1 },
+    "takedown-into-traffic": { "exaggeration": 0.1 },
+    "near-miss": { "exaggeration": 0.1 }
+  },
+  "speakers": {
+    "deacon-vane": {
+      "bark_set": "base:deacon-core",
+      "name": "Deacon Vane",
+      "note": "Tent-revival preacher: deep, rolling, unhurried; every taunt is a sermon.",
+      "reference": {
+        "voice": "am_onyx",
+        "speed": 0.85,
+        "pitch_semis": -1.0,
+        "text": "Brothers and sisters, gather close. The road is long and the shoulder is narrow, and every one of us will answer for the miles we ride. I have seen the light, and it was a headlight."
+      },
+      "delivery": { "exaggeration": 0.52, "cfg": 0.4 },
+      "tail_s": 0.06
+    },
+    "dial-up": {
+      "bark_set": "base:dial-up-core",
+      "name": "Dial-Up",
+      "note": "Screeching speed freak: high, fast, wired, words tumbling over each other.",
+      "reference": {
+        "voice": "am_puck",
+        "speed": 1.15,
+        "pitch_semis": 1.5,
+        "text": "Okay okay okay, hold on, I'm connecting. Hear that screech? That's me. Fastest thing on the road since nineteen ninety-six, and I never, ever log off. Never."
+      },
+      "delivery": { "exaggeration": 0.62, "cfg": 0.55 },
+      "tail_s": 0.06
+    },
+    "chad-speedwell": {
+      "bark_set": "base:chad-core",
+      "name": "Chad Speedwell",
+      "note": "Livestreaming influencer: bright, upbeat, always performing for the chat.",
+      "reference": {
+        "voice": "am_liam",
+        "speed": 1.1,
+        "text": "What is up, everybody, welcome back to the channel! Today we are racing, we are crashing, and we are absolutely not reading the comments. Let's get into it."
+      },
+      "delivery": { "exaggeration": 0.6, "cfg": 0.5 }
+    },
+    "kevin-from-accounting": {
+      "bark_set": "base:kevin-core",
+      "name": "Kevin from Accounting",
+      "note": "Deadpan office menace: flat, precise, quietly vicious.",
+      "reference": {
+        "voice": "am_eric",
+        "speed": 0.9,
+        "text": "Hi. Just following up on the previous thread. I have reviewed the numbers, and the numbers are not good. I will be blocking out time to address this. With you. Personally."
+      },
+      "delivery": { "exaggeration": 0.3, "cfg": 0.5 }
+    },
+    "tammy-two-stroke": {
+      "bark_set": "base:tammy-core",
+      "name": "Tammy Two-Stroke",
+      "note": "Chain-smoking auntie: warm, low, sugar-sweet with a scrap underneath.",
+      "reference": {
+        "voice": "af_sarah",
+        "speed": 1.0,
+        "pitch_semis": -1.5,
+        "text": "Well, sit down, honey, you look tired. I've been riding this road since before they paved it, and I'll be riding it after they quit. Now, who wants iced tea?"
+      },
+      "delivery": { "exaggeration": 0.55, "cfg": 0.45 }
+    },
+    "the-mayor": {
+      "bark_set": "base:mayor-core",
+      "name": "The Mayor",
+      "note": "Small-town politician: booming podium voice, all spin.",
+      "reference": {
+        "voice": "am_michael",
+        "speed": 1.0,
+        "pitch_semis": -0.5,
+        "text": "My fellow citizens, it is a great honor to stand before you today. This town has given me everything, and I intend to give it right back, with interest, after the election."
+      },
+      "delivery": { "exaggeration": 0.6, "cfg": 0.45 }
+    },
+    "mother-rust": {
+      "bark_set": "base:mother-rust-core",
+      "name": "Mother Rust",
+      "note": "Swamp-town matriarch: low, slow, eerily calm.",
+      "reference": {
+        "voice": "af_kore",
+        "speed": 0.85,
+        "pitch_semis": -2.0,
+        "text": "Come on in out of the heat, child. The water's warm and the gators are fed. Family looks after family down here. Everybody else, well. Everybody else finds out."
+      },
+      "delivery": { "exaggeration": 0.45, "cfg": 0.35 },
+      "tail_s": 0.1
+    },
+    "sgt-pruitt": {
+      "bark_set": "base:pruitt-core",
+      "name": "Sgt. Pruitt",
+      "note": "Tired county deputy: slow, weary, twenty-two years of this.",
+      "reference": {
+        "voice": "am_echo",
+        "speed": 0.85,
+        "pitch_semis": -0.5,
+        "text": "Alright. Alright. Let me just get my notepad. Long day, long road, and somehow it's always the same people. I'm not mad. I'm just tired. Real tired."
+      },
+      "delivery": { "exaggeration": 0.3, "cfg": 0.4 },
+      "tail_s": 0.06
+    },
+    "juniper-moss": {
+      "bark_set": "region-pnw:juniper-core",
+      "name": "Juniper Moss",
+      "note": "Espresso-stand barista: bright customer-service voice, passive-aggressive.",
+      "reference": {
+        "voice": "af_heart",
+        "speed": 1.05,
+        "text": "Hi there, welcome in! What can I get started for you today? Oat milk is extra, the line is long, and yes, I saw you cut it. It's fine. Totally fine."
+      },
+      "delivery": { "exaggeration": 0.45, "cfg": 0.5 }
+    },
+    "old-growth": {
+      "bark_set": "region-pnw:old-growth-core",
+      "name": "Old Growth",
+      "note": "Logger the size of a stump: very deep, very slow, one sentence a mile.",
+      "reference": {
+        "voice": "am_fenrir",
+        "speed": 0.8,
+        "pitch_semis": -2.5,
+        "text": "Morning. Rain's coming. Trees don't mind it, and neither do I. Been working these hills a long time. Don't talk much. Don't need to. Never have."
+      },
+      "delivery": { "exaggeration": 0.35, "cfg": 0.3 },
+      "tail_s": 0.1
+    },
+    "deputy-lindqvist": {
+      "bark_set": "region-pnw:lindqvist-core",
+      "name": "Deputy Lindqvist",
+      "note": "Soft-spoken deputy: gentle, polite, never raises his voice.",
+      "reference": {
+        "voice": "am_echo",
+        "speed": 0.85,
+        "pitch_semis": -2.0,
+        "text": "Good morning. No, no, you're not in trouble. Not yet. I'm just going to write a few things down here, if that's alright with you. Take your time."
+      },
+      "delivery": { "exaggeration": 0.25, "cfg": 0.4 },
+      "tail_s": 0.1
+    },
+    "gripman-gus": {
+      "bark_set": "region-sf:gripman-gus-core",
+      "name": "Gripman Gus",
+      "note": "Retired cable-car gripman: gravelly old-timer, a showman.",
+      "reference": {
+        "voice": "am_santa",
+        "speed": 0.95,
+        "text": "Ding ding, folks, hold on tight. Forty years I worked these hills, rain or fog, and I never once lost a car. Lost a few passengers. Never a car."
+      },
+      "delivery": { "exaggeration": 0.55, "cfg": 0.45 }
+    },
+    "pivot": {
+      "bark_set": "region-sf:pivot-core",
+      "name": "Pivot",
+      "note": "Pre-revenue founder: quick, upbeat pitch voice, never stops selling.",
+      "reference": {
+        "voice": "am_adam",
+        "speed": 1.1,
+        "pitch_semis": 1.0,
+        "text": "So, quick context. We're building the future of getting places. Think rides, but leaner. We're pre-launch, pre-revenue, and frankly, pre-everything. Let me show you the deck."
+      },
+      "delivery": { "exaggeration": 0.55, "cfg": 0.5 }
+    },
+    "officer-meter": {
+      "bark_set": "region-sf:officer-meter-core",
+      "name": "Officer Meter",
+      "note": "Parking officer: nasal, procedural, has never let anything go.",
+      "reference": {
+        "voice": "am_michael",
+        "speed": 0.9,
+        "pitch_semis": -1.5,
+        "text": "Excuse me. This vehicle is parked eleven inches from the curb. The limit is ten. I'm writing it up. You can contest it by mail. Nobody ever wins."
+      },
+      "delivery": { "exaggeration": 0.3, "cfg": 0.45 }
+    }
+  },
+  "lines": {
+    "base:chad-core#chad-hit-subscribe": {
+      "note": "The cut-off word: the whole word is generated, then its end is cut in audio.",
+      "segments": [
+        { "text": "Smash that subscribe.", "cut_tail_s": 0.31 },
+        { "text": "Oh. You're smashed.", "gap_s": 0.12 }
+      ]
+    },
+    "base:mother-rust-core#rust-down-kin": {
+      "spoken": "Kin... will hear about this.",
+      "note": "A beat after \"Kin\": said straight on, the first word was swallowed in every take."
+    },
+    "base:dial-up-core#dial-up-down-again": { "spoken": "Disconnected again. Logging your I.P." },
+    "base:dial-up-core#dial-up-lead-56k": { "spoken": "Fifty-six K and still in first. Do the math." },
+    "base:dial-up-core#dial-up-crash-dignity": { "spoken": "Error four oh four. Dignity not found." },
+    "base:kevin-core#kevin-lead-forecast": { "spoken": "Leading. As forecast in Q three." },
+    "base:kevin-core#kevin-hit-mayor": { "spoken": "Invoice zero zero four two. Paid in full, Mayor." },
+    "base:kevin-core#kevin-near-hr": { "spoken": "Flagging that near miss for H.R." },
+    "base:deacon-core#deacon-crash-humbling": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.62 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-crash-pilgrim": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.62 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-down-test": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.67 the voice rose away from Deacon's."
+    },
+    "base:deacon-core#deacon-start-sunrise": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.52 the voice rose away from Deacon's."
+    },
+    "base:dial-up-core#dial-up-hit-chad": {
+      "exaggeration": 0.5,
+      "note": "Calmer: at 0.67 the voice rose away from Dial-Up's."
+    },
+    "base:mother-rust-core#rust-down-remembers": {
+      "exaggeration": 0.4,
+      "note": "Calmer: at 0.6 the voice rose away from Mother Rust's."
+    },
+    "base:mayor-core#mayor-down-comment": {
+      "note": "The shout: a second, louder take of the same words.",
+      "segments": [
+        { "text": "No comment." },
+        { "text": "No comment!", "gap_s": 0.25, "exaggeration": 0.9, "cfg": 0.3 }
+      ]
+    }
+  }
+}

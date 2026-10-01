@@ -12,7 +12,7 @@ import type { BoxPart } from './geometry';
 /** A pedestrian-or-animal figure: `person` is the old pedestrian figure (drawn at its own size). */
 export type PedFigure = 'person' | 'iguana' | 'pelican' | 'gator' | 'lawnGator' | 'critter';
 /** An oddity vehicle with its own figure (the rest draw as cars or trucks). */
-export type OddityFigure = 'mobileHome' | 'boatTrailer';
+export type OddityFigure = 'mobileHome' | 'boatTrailer' | 'cableCar';
 
 const name = (contentId: string) => contentId.slice(contentId.lastIndexOf(':') + 1);
 
@@ -30,6 +30,8 @@ export function pedFigureFor(def: SimTrafficTypeDef | undefined, contentId: stri
 export function oddityFigureFor(contentId: string): OddityFigure | null {
   const id = name(contentId);
   if (/mobile-home/.test(id)) return 'mobileHome';
+  // W-O (2026-10-01): San Francisco's cable car, the Blender model once it loads (views.ts).
+  if (/cable-car/.test(id)) return 'cableCar';
   if (/boat/.test(id)) return 'boatTrailer';
   return null;
 }
@@ -44,6 +46,7 @@ export const FIGURE_HEIGHT_M: Readonly<
   lawnGator: 1.15,
   mobileHome: 3.2,
   boatTrailer: 2.3,
+  cableCar: 3.2,
 };
 
 /** A plain animal's height from its length: a chicken stays small, an elk stands tall. [default] */
@@ -62,6 +65,7 @@ export const FIGURE_DEFAULT_DIMS: Readonly<
   critter: { widthM: 0.4, lengthM: 0.6 },
   mobileHome: { widthM: 2.4, lengthM: 7.5 },
   boatTrailer: { widthM: 2.4, lengthM: 7 },
+  cableCar: { widthM: 2.6, lengthM: 8.5 },
 };
 
 /** A plain animal's tint by name (the figure's light parts take it). */
@@ -154,6 +158,18 @@ const CRITTER: BoxPart[] = [
 ];
 
 const DARK = '#111111';
+/** The cable car's stand-in until its model loads: maroon below, cream above, a dark roof. */
+const CABLE_CAR: BoxPart[] = [
+  { size: [0.8, 0.12, 0.9], at: [0, 0.12, 0], color: DARK },
+  { size: [1, 0.06, 1], at: [0, 0.22, 0], color: '#7a5a3a' },
+  { size: [1, 0.25, 0.48], at: [0, 0.37, 0], color: '#8c2f2f' },
+  { size: [1, 0.33, 0.48], at: [0, 0.66, 0], color: '#e9dcb0' },
+  { size: [0.3, 0.45, 0.5], at: [0, 0.47, 0], color: '#7a5a3a' },
+  { size: [1, 0.15, 0.03], at: [0, 0.32, -0.485], color: '#8c2f2f' },
+  { size: [1, 0.15, 0.03], at: [0, 0.32, 0.485], color: '#8c2f2f' },
+  { size: [1.06, 0.06, 1.02], at: [0, 0.85, 0], color: '#3f3b37' },
+  { size: [0.55, 0.1, 0.85], at: [0, 0.93, 0], color: '#3f3b37' },
+];
 const MOBILE_HOME: BoxPart[] = [
   { size: [0.98, 0.12, 0.95], at: [0, 0.1, 0], color: '#3a3a3a' },
   { size: [1.02, 0.14, 0.1], at: [0, 0.07, -0.08], color: DARK },
@@ -191,4 +207,5 @@ export const FIGURE_PARTS: Readonly<Record<Exclude<PedFigure, 'person'> | Oddity
   critter: CRITTER,
   mobileHome: MOBILE_HOME,
   boatTrailer: BOAT_TRAILER,
+  cableCar: CABLE_CAR,
 };
