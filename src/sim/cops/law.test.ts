@@ -306,8 +306,7 @@ describe('cops-3: an armed cop swings', () => {
       w.step(1);
       if (((w.world.inputs[2]?.flags ?? 0) & InputFlag.attack) !== 0) presses.push(w.world.tick - 1);
     }
-    expect(presses.length).toBe(3); // ticks 0, 180, 360 at the default 3 s
-    expect((presses[1] ?? 0) - (presses[0] ?? 0)).toBe(180);
+    expect(presses).toEqual([0, 360]); // the default 6 s
   });
 
   it('an unarmed cop never presses attack, and nobody out of reach is swung at', () => {

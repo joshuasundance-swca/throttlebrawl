@@ -183,7 +183,7 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     id: 'cops.swingEveryS',
     group: 'cops',
     label: 'Cop swings at most every',
-    default: 3,
+    default: 6,
     min: 0.5,
     max: 15,
     step: 0.5,
@@ -644,7 +644,7 @@ function copSwing(world: World, config: SimConfig, st: CopsState, cop: Mover): b
   if (!target || !w || target.mode !== 'Road') return false;
   const rel = relative(config.road, cop, target, w.reachSM + 2);
   if (!rel || Math.abs(rel.ds) > w.reachSM || Math.abs(rel.dd) > w.reachDM) return false;
-  st.swingAt[cop.id] = st.clock + Math.max(0.5, world.params['cops.swingEveryS'] ?? 3) * 60;
+  st.swingAt[cop.id] = st.clock + Math.max(0.5, world.params['cops.swingEveryS'] ?? 6) * 60;
   return true;
 }
 

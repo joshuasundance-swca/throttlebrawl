@@ -223,6 +223,25 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
     expect(hit?.target).toBe(2);
   });
 
+  it('a cop’s hit on a player lands soft (Cop hits on you, 0.5 by default); on a rival it does not', () => {
+    const damageOn = (victim: 'player' | 'rival', tuning: Record<string, number> = {}) => {
+      const h = makeHarness(
+        [
+          { s: 100, d: 0, role: 'cop', startingWeapon: BATON.contentId },
+          { s: 100, d: 1.2, role: victim },
+        ],
+        scriptOf({ 0: once(3, F.attack) }),
+        tuning,
+        [BATON],
+      );
+      h.run(40);
+      return ofType(h.events, 'hit')[0]?.data['damage'];
+    };
+    expect(damageOn('player')).toBe(8);
+    expect(damageOn('player', { 'combat.copOnPlayerScale': 1 })).toBe(16);
+    expect(damageOn('rival')).toBe(16);
+  });
+
   it('a stolen taser keeps the charges it has left: one swing spent by the cop, one left for you', () => {
     const h = makeHarness(
       [

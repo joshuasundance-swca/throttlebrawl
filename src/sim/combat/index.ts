@@ -96,6 +96,8 @@
 //   the target's speed by combat.wrapDragMps, and `taser.stun` also stuns: the target cannot
 //   attack and wobbles for the weapon's stunTicks × combat.stunScale, and loses
 //   combat.stunSpeedLoss of its speed. The `hit` event carries `dragMps` or `stunTicks`.
+// - A cop's landed hit on a player is softened by combat.copOnPlayerScale (damage, shove and
+//   stun): an armed cop swings so you can snatch his weapon, not to raise the bust rate.
 // - Uses live on the pickup entity, so a stolen weapon keeps what it has left. `charges` (the
 //   taser) are spent one per swing that reaches its active moment; the swing that spends the last
 //   one finishes, then the weapon is gone. `durabilityHits` (junk, the club) are spent one per
@@ -274,6 +276,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     default: 0.2,
     min: 0,
     max: 0.8,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.copOnPlayerScale',
+    group: 'combat',
+    label: 'Cop hits on you',
+    default: 0.5,
+    min: 0,
+    max: 1,
     step: 0.05,
     unit: '×',
     affectsSim: true,
@@ -703,7 +716,14 @@ function land(
   st.calm[id] = 0;
   st.calm[vid] = 0;
   const kick = w.contentId === KICK_ID;
-  const health = Math.max(0, (riders.health[vid] ?? 0) - w.damage);
+  // A cop's hit on a player lands soft (combat.copOnPlayerScale on its damage, shove and stun):
+  // his swing is there to be snatched, and playtest 1 asked that the cop stay as hard as he was.
+  const copSoft =
+    isLaw(config, a) && isPlayer(config, victim)
+      ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
+      : 1;
+  const damage = Math.round(w.damage * copSoft);
+  const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
   const away = (dd === 0 ? (st.side[id] ?? 1) : dd < 0 ? -1 : 1) * a.pos.dir;
@@ -718,9 +738,9 @@ function land(
   // asked that rivals stay as hard as they were. A punch or the pipe keeps M1's nudge.
   const onPlayer =
     isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
-  const peak = fullPeak * (kick ? onPlayer : 1);
-  const hitImpulse = Math.min(1, (w.damage + fullPeak) / HIT_IMPULSE_FULL);
-  const effect = behaviourEffect(world, st, victim, w);
+  const peak = fullPeak * (kick ? onPlayer : 1) * copSoft;
+  const hitImpulse = Math.min(1, (damage + fullPeak * copSoft) / HIT_IMPULSE_FULL);
+  const effect = behaviourEffect(world, st, victim, w, copSoft);
   // A breakable held weapon spends one hit (the last one breaks it on this blow); a taser on its
   // last charge goes at the end of this swing. Either way the hit says `spent`.
   const heldSwing = st.held[id] === w.contentId;
@@ -733,7 +753,7 @@ function land(
     id,
     {
       weapon: w.contentId,
-      damage: w.damage,
+      damage,
       kick,
       health,
       hitImpulse,
@@ -781,6 +801,7 @@ function behaviourEffect(
   st: CombatState,
   victim: Mover,
   w: SimWeaponDef,
+  scale = 1,
 ): Record<string, number> {
   const p = world.params;
   const behaviour = behaviourOf(w);
@@ -790,12 +811,12 @@ function behaviourEffect(
     return { dragMps: Math.round((before - victim.speed) * 1000) / 1000 };
   }
   if (behaviour === 'taser.stun') {
-    const ticks = Math.round((w.stunTicks ?? 0) * Math.max(0, p['combat.stunScale'] ?? 1));
+    const ticks = Math.round((w.stunTicks ?? 0) * Math.max(0, p['combat.stunScale'] ?? 1) * scale);
     if (ticks <= 0) return {};
     const riders = riderState(world);
     st.stagger[victim.id] = Math.max(st.stagger[victim.id] ?? 0, ticks);
     riders.wobble[victim.id] = Math.max(riders.wobble[victim.id] ?? 0, ticks);
-    victim.speed *= 1 - clamp(p['combat.stunSpeedLoss'] ?? 0.2, 0, 1);
+    victim.speed *= 1 - clamp(p['combat.stunSpeedLoss'] ?? 0.2, 0, 1) * scale;
     return { stunTicks: ticks };
   }
   return {};
