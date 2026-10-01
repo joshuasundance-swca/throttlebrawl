@@ -71,6 +71,7 @@ interface Handle {
   };
   botAttackRuns(seeds: readonly number[]): AttackRun[];
   botTakedownRuns(seeds: readonly number[]): AttackRun[];
+  botShortcutRuns(seeds: readonly number[]): AttackRun[];
 }
 interface AttackRun {
   seed: number;
@@ -80,6 +81,7 @@ interface AttackRun {
   takedownKind: string | null;
   attackPresses: number;
   attackStarts: number;
+  shortcutTicks: number;
   over: boolean;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
@@ -94,6 +96,14 @@ const ATTACK_MIN_CONNECTS = 3;
  * 10 by tick 3600). [default]
  */
 const TAKEDOWN_SEEDS = [2, 3, 8, 10];
+/**
+ * Extra seeds for "the bot took the shortcut", run headless in the page up to the bot's first tick
+ * on the cut. With the playtest 1c launch, seeds 2 to 5 took it and seeds 1 and 7 were boxed in by a
+ * rival (headless, 2026-10-01). [default]
+ */
+const SHORTCUT_SEEDS = [2, 3, 4, 5];
+/** How many of the browser race plus SHORTCUT_SEEDS must take the cut. */
+const SHORTCUT_MIN_TAKEN = 3;
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   drawCallsMax: number;
@@ -190,10 +200,24 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   ).toBeGreaterThan(0);
   expect(connected, 'the bot connects in enough seeded races').toBeGreaterThanOrEqual(ATTACK_MIN_CONNECTS);
   if (checks.bot.shortcutApproachTicks > 0 || checks.bot.shortcutSeenTicks > 0) {
-    console.log(
-      `[assert] the bot took the shortcut: ACTIVE (${checks.bot.shortcutApproachTicks} ticks lining up, ${checks.bot.shortcutTicks} ticks on it)`,
+    // Whether a rival boxes the bot in on the approach is one seed's luck (the playtest 1c launch
+    // punch flipped seed 1), so this race and SHORTCUT_SEEDS are asked together, as for attacks.
+    const shortcutRuns = (await page.evaluate(
+      (seeds) => (window as TestWindow).__game?.botShortcutRuns(seeds) ?? [],
+      SHORTCUT_SEEDS,
+    )) as AttackRun[];
+    const took = [{ seed: 1, shortcutTicks: checks.bot.shortcutTicks }, ...shortcutRuns].filter(
+      (r) => r.shortcutTicks > 0,
     );
-    expect(checks.bot.shortcutTicks, 'the bot took the shortcut').toBeGreaterThan(0);
+    console.log(
+      `[assert] the bot took the shortcut: ACTIVE (browser race: ${checks.bot.shortcutApproachTicks} ticks lining up, ` +
+        `${checks.bot.shortcutTicks} on it); ${took.length} of ${shortcutRuns.length + 1} seeded races took it ` +
+        `(seeds ${took.map((r) => r.seed).join(', ') || 'none'}), need ${SHORTCUT_MIN_TAKEN}`,
+    );
+    expect(shortcutRuns, 'every headless seed ran').toHaveLength(SHORTCUT_SEEDS.length);
+    expect(took.length, 'the bot took the shortcut in enough seeded races').toBeGreaterThanOrEqual(
+      SHORTCUT_MIN_TAKEN,
+    );
   } else {
     console.log(
       '[assert] the bot took the shortcut: NOT ACTIVE (its route has no split zone and its road no shortcut lane)',
