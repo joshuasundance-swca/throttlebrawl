@@ -88,7 +88,8 @@ describe('region-sf: the San Francisco race', () => {
     const event = lookup(REG.events, EVENT);
     expect(event.region).toBe('san-francisco');
     const region = lookup(REG.regions, 'region-sf:san-francisco');
-    expect(region.networks).toEqual(['sf-hills']);
+    // The hand-made hills, then the real streets raced as routes (the maintainer, 2026-10-01).
+    expect(region.networks).toEqual(['sf-hills', 'osm-sf-russian-hill', 'osm-sf-twin-peaks']);
     expect(region.signs?.length).toBeGreaterThanOrEqual(3);
     expect(region.signs?.length).toBeLessThanOrEqual(5);
     expect(region.billboards?.length).toBe(2);
