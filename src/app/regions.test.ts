@@ -5,6 +5,7 @@ import { buildSimConfig, copIds, streamForEvent } from './config';
 import {
   boardCatalog,
   createStreamCache,
+  narrativeSettingOf,
   racePalette,
   raceRadio,
   regionChoices,
@@ -25,6 +26,18 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof config>) =>
   JSON.parse(JSON.stringify(rest)) as unknown;
 
 describe('app: regions', () => {
+  it("hands the barks the race's event kind, bare region id and time of day", () => {
+    // Bark lines name the region bare (`"value": "pacific-northwest"`) and the time of day by its
+    // option id, so `when` conditions on region.id and timeOfDay can match (content-packs.md).
+    expect(narrativeSettingOf(ALL, 'region-pnw:pnw-fogline-run')).toEqual({
+      eventKind: 'classic-race',
+      regionId: 'pacific-northwest',
+      timeOfDay: 'dawn',
+    });
+    expect(narrativeSettingOf(ALL, 'region-sf:sf-hill-sprint').regionId).toBe('san-francisco');
+    expect(narrativeSettingOf(ALL, 'base:m1-skeleton-sprint').regionId).toBe('florida-keys');
+  });
+
   it('offers the Keys, the Pacific Northwest and San Francisco, by chapter, each with its event', () => {
     const choices = regionChoices(ALL);
     expect(choices.map((c) => [c.id, c.eventId, c.packId])).toEqual([
