@@ -32,7 +32,12 @@ export type FrameRateCap = 'full' | 'half' | 'third';
  * The look (playtest 1b item 6: styles as settings, [decided]): render/'s look ids. `classic` is the
  * M1 look; `kodak` is "Ink + 1960s film"; playtest 1c item 5 adds `wasteland` ("Sun-bleached
  * wasteland") and `brush` ("Kodachrome brush"). Render only: it never feeds SimConfig. Additive:
- * the version stays 1, and an id this build doesn't know sanitises to `classic`.
+ * the version stays 1, and an id this build doesn't know sanitises to the default.
+ *
+ * The default is `kodak` from run W-O (maintainer, 2026-10-01: "ink+60s but may change later").
+ * A record that already holds a look keeps it, so no migration: a record without one (a new
+ * device) starts on Ink + 60s film. Every record this build writes holds the look, so a Classic
+ * picked before the change stays Classic.
  */
 export type LookSetting = 'classic' | 'kodak' | 'wasteland' | 'brush';
 export const LOOK_SETTINGS: readonly LookSetting[] = ['classic', 'kodak', 'wasteland', 'brush'];
@@ -95,6 +100,11 @@ export interface Settings {
   frameRateCap: FrameRateCap;
   /** The look; applies at once. */
   look: LookSetting;
+  /**
+   * The player said "No thanks" to the slow-frames offer to switch to the Classic look (run W-O), so
+   * it is never offered again. Not a settings row: ui's own record field.
+   */
+  lookFallbackDismissed: boolean;
   /** Shows the tuning panel entry in the pause menu. */
   showTuningPanel: boolean;
   /**
@@ -137,7 +147,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   slowMo: true,
   reduceShake: false,
   frameRateCap: 'full',
-  look: 'classic',
+  look: 'kodak',
+  lookFallbackDismissed: false,
   showTuningPanel: false,
   stylePopups: true,
   view: 'chase',
@@ -287,6 +298,7 @@ export function sanitiseSettings(data: unknown): Settings {
     reduceShake: bool(d['reduceShake'], def.reduceShake),
     frameRateCap: oneOf(d['frameRateCap'], ['full', 'half', 'third'], def.frameRateCap),
     look: oneOf(d['look'], LOOK_SETTINGS, def.look),
+    lookFallbackDismissed: bool(d['lookFallbackDismissed'], def.lookFallbackDismissed),
     showTuningPanel: bool(d['showTuningPanel'], def.showTuningPanel),
     stylePopups: bool(d['stylePopups'], def.stylePopups),
     view: oneOf(d['view'], VIEW_SETTINGS, def.view),

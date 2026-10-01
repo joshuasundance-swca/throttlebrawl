@@ -521,22 +521,24 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
   },
   look: {
-    // Playtest 1b item 6: the ink + 60s film look. Its film grain shows in the drawn pixels.
+    // Ink + 60s film is the default since run W-O (maintainer, 2026-10-01), so the non-default value
+    // is Classic: its flat shading has no film grain in the drawn pixels (ink + 60s film's grain
+    // share is over 0.4; render-looks.spec.ts checks every look).
     set: async (page) => {
       await page.locator('#settings-tab-display').click();
-      await page.locator('#settings-look [data-value="kodak"]').click();
+      await page.locator('#settings-look [data-value="classic"]').click();
     },
     effect: async (page) => {
       await raceAlone(page);
       const png = await page.locator('canvas#game').screenshot();
       const grain = await grainShare(page, png);
-      console.log(`look kodak: grain share ${grain.toFixed(3)} (classic's flat shading is under 0.15)`);
-      expect(grain).toBeGreaterThan(0.4);
+      console.log(`look classic: grain share ${grain.toFixed(3)} (ink + 60s film's is over 0.4)`);
+      expect(grain).toBeLessThan(0.15);
       await quitRace(page);
     },
     persisted: async (page) => {
       await page.locator('#settings-tab-display').click();
-      await expect(page.locator('#settings-look [data-value="kodak"]')).toHaveAttribute(
+      await expect(page.locator('#settings-look [data-value="classic"]')).toHaveAttribute(
         'aria-pressed',
         'true',
       );

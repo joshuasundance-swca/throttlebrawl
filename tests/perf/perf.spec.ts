@@ -74,6 +74,17 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   test.setTimeout(240_000);
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
+    // This check's budgets and baseline are the Classic look's; Ink + 60s film is the default
+    // since run W-O, so the run picks Classic through the saved record, as a player would
+    // (perf-looks.spec.ts measures the ink looks against their own baseline).
+    const record = {
+      format: 'settings',
+      version: 1,
+      build: 'perf',
+      savedAt: '2026-10-01T00:00:00.000Z',
+      data: { look: 'classic' },
+    };
+    localStorage.setItem('mbrawl:settings', JSON.stringify(record));
   });
   await page.goto('./');
   await page.locator('#start-screen').click();

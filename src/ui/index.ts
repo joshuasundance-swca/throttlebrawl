@@ -140,6 +140,14 @@ export interface GameUi {
   setLayout(layout: TouchLayout): void;
   notice(text: string): void;
   /**
+   * The slow-frames offer (run W-O): app/ calls it when the frames stay slow on an ink look. A
+   * non-blocking note at the top of the race offers a one-tap switch to the Classic look, or "No
+   * thanks", which the record remembers (the offer never comes back). Unanswered, it fades after
+   * `LOOK_OFFER_MS` and the pause menu carries it for the rest of the race. False (and nothing shown)
+   * when the player said no before, or the look is already Classic.
+   */
+  offerClassicLook(): boolean;
+  /**
    * The resume card after a reload mid-race (ui-2): "Resume race" or "Start over". The choice is
    * reported inside the tap, so app/ can run the Start-tap sequence with user activation.
    */
@@ -208,6 +216,8 @@ const POP_DWELL_MS = 1100;
 const POP_BELOW_BADGE_PX = 44;
 /** Space kept under the bark bubble, its speech tail included, when the stack must move below it. */
 const POP_BUBBLE_GAP_PX = 15;
+/** How long the slow-frames offer stays up in the race, unanswered, before it fades (ms). [default] */
+export const LOOK_OFFER_MS = 12_000;
 
 const CSS = `
 #ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff;
@@ -334,6 +344,16 @@ ${RADIO_PANEL_CSS}
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
+/* The slow-frames offer (run W-O): top centre, between the position badge and the pause button,
+   above the bark bubble (which sits under every layer); its buttons take touches only on themselves. */
+#look-offer { position: absolute; top: max(6px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  z-index: 1; width: min(400px, calc(100vw - 150px)); display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none; }
+#ui .look-offer-text { font: 700 14px/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui .look-offer .row { justify-content: flex-start; gap: 8px; }
+#ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
+#ui .look-offer .look-offer-classic { background: #f5c542; }
+@media (max-width: 600px) { #look-offer { width: calc(100vw - 24px); top: 58px; } }
 #build-stamp.in-race { display: none; }
 `;
 
@@ -881,6 +901,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (current !== 'race' || paused) return;
     paused = true;
     pauseScreen.hidden = false;
+    // The slow-frames offer moves into the pause menu's cards (#pause-look-offer) for the rest of
+    // the race, so the toast does not show through the pause screen.
+    hideLookOffer();
     // The R key may have retuned the radio mid-race: the saved choice follows it.
     syncLive();
     // The radio's song and station can change while the panel is up (a station loading in).
@@ -1190,7 +1213,62 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     setPopTop(across && down ? Math.ceil(b.bottom + POP_BUBBLE_GAP_PX) : Math.max(popTop, popHomeTop));
   };
 
+  // ---- The slow-frames offer (run W-O) --------------------------------------------------------
+  // The same card twice: a toast over the race, and a note in the pause menu's cards while the offer
+  // stands. "Switch to Classic" sets the look (the Display tab's Look row follows); "No thanks" is
+  // remembered in the record, so the offer never returns.
+  const lookOfferCard = (id: string) => {
+    const card = el(
+      'div',
+      { id, className: 'card look-offer', hidden: true },
+      el('div', {
+        className: 'look-offer-text',
+        textContent: 'Running slow on this look? The Classic look is lighter.',
+      }),
+      el(
+        'div',
+        { className: 'row' },
+        button(`${id}-classic`, 'small', 'Switch to Classic', () => answerLookOffer('classic')),
+        button(`${id}-dismiss`, 'small', 'No thanks', () => answerLookOffer('dismiss')),
+      ),
+    );
+    card.querySelector(`#${id}-classic`)?.classList.add('look-offer-classic');
+    card.setAttribute('role', 'status');
+    return card;
+  };
+  const lookOffer = lookOfferCard('look-offer');
+  const pauseLookOffer = lookOfferCard('pause-look-offer');
+  pauseCards.prepend(pauseLookOffer);
+  let lookOfferTimer: ReturnType<typeof setTimeout> | null = null;
+  const hideLookOffer = () => {
+    if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);
+    lookOfferTimer = null;
+    lookOffer.hidden = true;
+  };
+  const clearLookOffer = () => {
+    hideLookOffer();
+    pauseLookOffer.hidden = true;
+  };
+  function answerLookOffer(answer: 'classic' | 'dismiss') {
+    clearLookOffer();
+    if (answer === 'classic') change({ kind: 'set', id: 'look', value: 'classic' });
+    else {
+      settings = { ...settings, lookFallbackDismissed: true };
+      cb.onSettingsChange?.(settings);
+    }
+  }
+  const offerClassicLook = (): boolean => {
+    if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
+    pauseLookOffer.hidden = false;
+    // While paused only the pause menu's note shows it.
+    lookOffer.hidden = paused;
+    if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);
+    lookOfferTimer = setTimeout(hideLookOffer, LOOK_OFFER_MS);
+    return true;
+  };
+
   root.append(
+    lookOffer,
     touchSurface,
     hud,
     start,
@@ -1294,6 +1372,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       settingsScreen.sync(settings);
       settingsScreen.open('menu');
     }
+    // A new race (or leaving one) starts the offer over; app/'s watch offers again if it must.
+    clearLookOffer();
     if (screen === 'race') {
       targetShown = false;
       tally.reset();
@@ -1366,6 +1446,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       layout = l;
       placeAll();
     },
+    offerClassicLook,
     notice(text) {
       noticeBox.textContent = text;
       noticeBox.hidden = false;

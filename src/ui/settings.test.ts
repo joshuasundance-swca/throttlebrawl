@@ -62,7 +62,7 @@ describe('the M2 settings table', () => {
     expect(shown(['voicesOn'])).toBe(true);
   });
 
-  it('offers the look on the Display tab: Classic by default, or Ink + 60s film, applied at once', () => {
+  it('offers the look on the Display tab: Ink + 60s film by default, Classic in the switch, applied at once', () => {
     // Playtest 1b item 6: styles as settings [decided]; render only, so never "applies next race".
     const def = SETTINGS.find((d) => d.id === 'look');
     expect(def?.tab).toBe('display');
@@ -75,7 +75,8 @@ describe('the M2 settings table', () => {
       'Sun-bleached wasteland',
       'Kodachrome brush',
     ]);
-    expect(settingValue(DEFAULT_SETTINGS, 'look')).toBe('classic');
+    // Run W-O (maintainer, 2026-10-01: "ink+60s but may change later").
+    expect(settingValue(DEFAULT_SETTINGS, 'look')).toBe('kodak');
     expect(settingPersists('look', sanitiseSettings)).toBe(true);
   });
 

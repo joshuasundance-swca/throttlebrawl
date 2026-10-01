@@ -122,7 +122,7 @@ test('every look draws a real scene; the ink looks have film grain and switch li
 }) => {
   test.setTimeout(180_000);
   const problems = watchErrors(page);
-  await race(page);
+  await race(page, 'classic'); // the default is Ink + 60s film since run W-O
   await waitTick(page, 150);
   const classic = await frame(page, 'classic');
   expect(classic.variance, 'classic is not blank').toBeGreaterThan(NOT_BLANK_VARIANCE);
