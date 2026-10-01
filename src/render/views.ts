@@ -26,6 +26,17 @@ import type {
   TumbleBodySnapshot,
 } from '../sim/api';
 import type { FeelEffects, Point } from './effects';
+import {
+  critterHeightM,
+  critterTint,
+  FIGURE_DEFAULT_DIMS,
+  FIGURE_HEIGHT_M,
+  FIGURE_PARTS,
+  oddityFigureFor,
+  pedFigureFor,
+  type OddityFigure,
+  type PedFigure,
+} from './figures';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
 import { defaultRenderParams, type RenderParams } from './tuning';
@@ -323,7 +334,8 @@ export class EntityViews {
   private readonly pickups = new Map<number, PickupView>();
   private readonly freePickups: PickupView[] = [];
   private readonly geometries = new Map<string, BufferGeometry>();
-  private readonly instanced: Record<Shape | 'ped', InstancedMesh>;
+  /** One instanced mesh per shape or figure: car, truck and ped at once, the figures on first use. */
+  private readonly instanced: Record<string, InstancedMesh>;
   private readonly trafficTypes = new Map<string, SimTrafficTypeDef>();
   private readonly prevById = new Map<number, EntitySnapshot>();
   private readonly seen = new Set<number>();
@@ -427,7 +439,8 @@ export class EntityViews {
     this.prevById.clear();
     if (prev) for (const e of prev.entities) this.prevById.set(e.id, e);
     this.seen.clear();
-    const slots = { car: 0, truck: 0, ped: 0 };
+    const slots: Record<string, number> = {};
+    for (const key of Object.keys(this.instanced)) slots[key] = 0;
     let riders = 0;
     let pickups = 0;
     for (const e of curr.entities) {
@@ -445,11 +458,24 @@ export class EntityViews {
         view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         this.seen.add(e.id);
         pickups++;
+      } else if (e.kind === 'vehicle' && oddityFigureFor(e.contentId)) {
+        // Traffic-4's oddities: the runaway mobile home and the parked boat on its trailer.
+        const fig = oddityFigureFor(e.contentId) as OddityFigure;
+        const dims = this.trafficTypes.get(e.contentId) ?? FIGURE_DEFAULT_DIMS[fig];
+        const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
+        const mesh = this.ensureCapacity(fig, i + 1);
+        this.euler.set(0, p.heading, -p.lean);
+        this.scale.set(dims.widthM, FIGURE_HEIGHT_M[fig], dims.lengthM);
+        mesh.setMatrixAt(
+          i,
+          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
+        );
+        mesh.setColorAt(i, this.color.set('#ffffff'));
       } else if (e.kind === 'vehicle') {
         const def = this.trafficTypes.get(e.contentId);
         const shape = shapeFor(def, e.contentId);
         const dims = def ?? DEFAULT_DIMS[shape];
-        const i = slots[shape]++;
+        const i = (slots[shape] = (slots[shape] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(shape, i + 1);
         this.euler.set(0, p.heading, -p.lean);
         this.scale.set(dims.widthM, SHAPE_HEIGHT[shape], dims.lengthM);
@@ -460,25 +486,33 @@ export class EntityViews {
         const palette = shape === 'car' ? CAR_COLORS : TRUCK_COLORS;
         mesh.setColorAt(i, this.color.setStyle(palette[e.id % palette.length] ?? '#ffffff'));
       } else if (e.kind === 'ped') {
-        const i = slots.ped++;
-        const mesh = this.ensureCapacity('ped', i + 1);
+        // People keep the pedestrian figure at its own size; animals get their own figure, scaled
+        // to their type (traffic-4: the iguana, the pelican, the gator, the gator on a lawn chair).
+        const def = this.trafficTypes.get(e.contentId);
+        const fig: PedFigure = pedFigureFor(def, e.contentId);
+        const key = fig === 'person' ? 'ped' : fig;
+        const i = (slots[key] = (slots[key] ?? 0) + 1) - 1;
+        const mesh = this.ensureCapacity(key, i + 1);
         const dive = this.diveAmount(e, a);
         this.euler.set(0, p.heading, dive.side * 1.35 * dive.amount);
         const lift = Math.sin(Math.PI * dive.amount) * 0.6 * (dive.timed ? 1 : 0);
+        if (fig === 'person') this.scale.set(1, 1, 1);
+        else {
+          const dims = def ?? FIGURE_DEFAULT_DIMS[fig];
+          const h = fig === 'critter' ? critterHeightM(dims.lengthM) : FIGURE_HEIGHT_M[fig];
+          this.scale.set(dims.widthM, h, dims.lengthM);
+          mesh.setColorAt(i, this.color.set(fig === 'critter' ? critterTint(e.contentId) : '#ffffff'));
+        }
         mesh.setMatrixAt(
           i,
-          this.m.compose(
-            this.v.set(p.x, p.y + lift, p.z),
-            this.q.setFromEuler(this.euler),
-            this.scale.set(1, 1, 1),
-          ),
+          this.m.compose(this.v.set(p.x, p.y + lift, p.z), this.q.setFromEuler(this.euler), this.scale),
         );
       }
     }
-    for (const shape of ['car', 'truck', 'ped'] as const) {
-      const mesh = this.instanced[shape];
-      mesh.count = slots[shape];
-      mesh.visible = slots[shape] > 0;
+    for (const [shape, mesh] of Object.entries(this.instanced)) {
+      const n = slots[shape] ?? 0;
+      mesh.count = n;
+      mesh.visible = n > 0;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
@@ -493,10 +527,11 @@ export class EntityViews {
     const slowmo = curr.slowmo?.active === true || (curr.timeScale > 0 && curr.timeScale < 0.999);
     // In a hit-stop the world is frozen, but sparks keep drifting a little so the hit reads.
     this.effects?.update(scale > 0 ? this.dt : dtReal * 0.15, dtReal, slowmo);
+    const sum = (keys: readonly string[]) => keys.reduce((acc, k) => acc + (slots[k] ?? 0), 0);
     this.counts = {
       riders,
-      vehicles: slots.car + slots.truck,
-      peds: slots.ped,
+      vehicles: sum(['car', 'truck', 'mobileHome', 'boatTrailer']),
+      peds: sum(['ped', 'iguana', 'pelican', 'gator', 'lawnGator', 'critter']),
       pickups,
       pooled: this.riders.size + this.freeRiders.length + this.pickups.size + this.freePickups.length,
     };
@@ -549,9 +584,18 @@ export class EntityViews {
     return mesh;
   }
 
-  /** Grows an instanced mesh (doubling) when more entities of a shape are live than it holds. */
-  private ensureCapacity(shape: Shape | 'ped', needed: number): InstancedMesh {
-    const mesh = this.instanced[shape];
+  /**
+   * Grows an instanced mesh (doubling) when more entities of a shape are live than it holds. A
+   * figure's mesh is made on its first use, so a race without animals draws none of them.
+   */
+  private ensureCapacity(shape: string, needed: number): InstancedMesh {
+    let mesh = this.instanced[shape];
+    if (!mesh) {
+      const fig = shape as keyof typeof FIGURE_PARTS;
+      const kind = fig === 'mobileHome' || fig === 'boatTrailer' ? 'vehicle' : 'ped';
+      mesh = this.makeInstanced(fig, FIGURE_PARTS[fig], kind, 4);
+      this.instanced[shape] = mesh;
+    }
     if (needed <= mesh.instanceMatrix.count) return mesh;
     let capacity = mesh.instanceMatrix.count;
     while (capacity < needed) capacity *= 2;
