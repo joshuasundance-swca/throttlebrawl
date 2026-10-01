@@ -14,9 +14,15 @@
 //   pass in the oncoming lane when that is clear far enough ahead, or brake and follow. Only
 //   vehicles count: riders pass through each other in the sim, so a rival (or the cop) in its line
 //   is never a reason to brake;
-// - fights: with a rival rider (never the cop) ahead on the same road, it pulls alongside at
-//   ATTACK_OFFSET_M, matches speed, and presses attack (one press edge) when the rival is inside
-//   its window. It gives up on a rival after ENGAGE_LIMIT_TICKS and rests before the next fight.
+// - fights a rival down (dev-4 part 2, so the batch exercises takedowns): with a rival rider (never
+//   the cop) near it on the same road, the weakest one in reach first, it pulls alongside at
+//   KICK_OFFSET_M on the side that shoves the rival toward danger (a vehicle in the lane next to
+//   it, ahead or oncoming), matches speed, and kicks (attack + kick, one press edge, aimed at the
+//   rival's side) when the rival will be inside the kick's reach as the wind-up ends. Through the
+//   wind-up it steers into the rival, so the momentum kick adds its sideways speed to the shove.
+//   Between kicks it jabs once when the rival is in the punch's window. It gives up on a rival
+//   after ENGAGE_LIMIT_TICKS and rests before the next fight, and it stops fighting while its own
+//   health is under RETREAT_HEALTH, so it still finishes its races.
 import type { ActionState } from '../../app';
 import {
   InputFlag,
@@ -59,17 +65,46 @@ export function blankActions(): ActionState {
   };
 }
 
-/** Lateral offset the bot holds beside a rival to punch it, m (punch reach |Δd| ≤ 1.4 m). */
-export const ATTACK_OFFSET_M = 1.1;
-/** The bot's attack window: |Δs| and |Δd| limits in which it presses attack. */
+/** Lateral offset the bot holds beside a rival to kick it, m (kick reach |Δd| ≤ 1.7 m). */
+export const KICK_OFFSET_M = 1.2;
+/**
+ * The kick's press window, judged where the rival will be when the kick goes active: |Δs| (from
+ * the speed difference over KICK_LEAD_TICKS) and |Δd| limits, inside the kick's 1.0 × 1.7 m reach.
+ */
+export const KICK_WINDOW = { sM: 0.8, dMinM: 0.5, dMaxM: 1.65 } as const;
+/** The kick's wind-up, ticks (packs/base/weapons/kick.json: 0.22 s): the bot leads its press by it. */
+export const KICK_LEAD_TICKS = 13;
+/** Ticks between kick presses: the kick's 13 + 6 + 27 ticks and its 30-tick cooldown, plus 2. */
+export const KICK_REPEAT_TICKS = 78;
+/** The punch window the bot jabs in between kicks: |Δs| and |Δd| limits (punch reach 1.2 × 1.4 m). */
 export const ATTACK_WINDOW = { sM: 0.9, dMinM: 0.5, dMaxM: 1.35 } as const;
-/** Ticks between the bot's attack presses (a punch cycle is 7 + 5 + 15 = 27 ticks). */
+/** Ticks between any two of the bot's attack presses (a punch cycle is 7 + 5 + 15 = 27 ticks). */
 export const ATTACK_REPEAT_TICKS = 32;
-/** How far ahead the bot looks for a rival to fight, m. */
+/** The bot jabs only when its next kick is at least this many ticks off (a jab blocks a kick press). */
+const JAB_CLEAR_TICKS = 28;
+/** How far ahead (and behind) the bot looks for a rival to fight, m. */
 export const ENGAGE_RANGE_M = 70;
+const ENGAGE_BEHIND_M = 40;
+/** A rival's health counts this many metres per point when the bot picks whom to fight. */
+const WEAK_PULL_M_PER_HP = 0.25;
 /** Longest fight with one rival before the bot rides on, and the rest before the next one. */
-export const ENGAGE_LIMIT_TICKS = 8 * 60;
-export const ENGAGE_REST_TICKS = 5 * 60;
+export const ENGAGE_LIMIT_TICKS = 14 * 60;
+export const ENGAGE_REST_TICKS = 4 * 60;
+/** Below this health the bot rides on rather than fight, so it keeps finishing its races. */
+export const RETREAT_HEALTH = 35;
+/** The lateral gap a hurt bot keeps from a rival beside it, m (past the kick's 1.7 m reach). */
+const RETREAT_GAP_M = 3.5;
+/** The bot's steering gain on its lateral error while lining up a kick (0.35 when riding). */
+const FIGHT_STEER_GAIN = 0.6;
+/**
+ * Danger beside a rival, for the kick side: a vehicle from DANGER_BEHIND_M behind to
+ * DANGER_AHEAD_M ahead of the rival (along the bot's travel), between DANGER_NEAR_M and
+ * DANGER_FAR_M to one side of it, is where a kick should send it.
+ */
+const DANGER_AHEAD_M = 45;
+const DANGER_BEHIND_M = 5;
+const DANGER_NEAR_M = 1;
+const DANGER_FAR_M = 6;
 /** Traffic look-ahead in the bot's own line, and the clear distance it wants to pass oncoming. */
 const TRAFFIC_LOOKAHEAD_M = 45;
 const PASS_CLEAR_M = 160;
@@ -113,6 +148,10 @@ export interface BotStats {
   shortcutApproachTicks: number;
   trafficDodges: number;
   engagements: number;
+  /** Kick presses (attack with the kick flag), a subset of attackPresses. */
+  kickPresses: number;
+  /** Kick presses aimed to shove the rival toward a vehicle beside it. */
+  dangerKicks: number;
 }
 
 export interface BotController {
@@ -146,8 +185,13 @@ export function createBot(): BotController {
     shortcutApproachTicks: 0,
     trafficDodges: 0,
     engagements: 0,
+    kickPresses: 0,
+    dangerKicks: 0,
   };
   let lastPressTick = -1e9;
+  let lastKickTick = -1e9;
+  /** The road-frame d direction the current kick shoves the target (+1 or -1). */
+  let kickShove = 0;
   let targetId = -1;
   let engagedSince = 0;
   let restUntil = -1;
@@ -192,21 +236,81 @@ export function createBot(): BotController {
   }
 
   function pickRival(snap: SimSnapshot, me: EntitySnapshot): EntitySnapshot | null {
-    if (snap.tick < restUntil) return null;
+    if (snap.tick < restUntil || me.health < RETREAT_HEALTH) return null;
+    let best: EntitySnapshot | null = null;
+    let bestScore = Infinity;
+    for (const o of snap.entities) {
+      if (o.id === me.id || o.kind !== 'rider' || o.faction !== 'rider' || o.mode !== 'Road') continue;
+      if (o.health <= 0) continue;
+      const rel = relative(me, o);
+      if (!rel || rel.ds < -ENGAGE_BEHIND_M || rel.ds > ENGAGE_RANGE_M) continue;
+      // Keep the current target while it stays in range; otherwise the nearest, weighted toward
+      // the weakest (fewest kicks to finish).
+      const score = o.id === targetId ? -1 : Math.abs(rel.ds) + WEAK_PULL_M_PER_HP * o.health;
+      if (score < bestScore) {
+        bestScore = score;
+        best = o;
+      }
+    }
+    return best;
+  }
+
+  /** The nearest riding rival (not the cop) within reach of a kick soon: |Δs| < 10 m, |Δd| < 3 m. */
+  function nearestRider(snap: SimSnapshot, me: EntitySnapshot): EntitySnapshot | null {
     let best: EntitySnapshot | null = null;
     let bestDs = Infinity;
     for (const o of snap.entities) {
       if (o.id === me.id || o.kind !== 'rider' || o.faction !== 'rider' || o.mode !== 'Road') continue;
       const rel = relative(me, o);
-      if (!rel || rel.ds < -3 || rel.ds > ENGAGE_RANGE_M) continue;
-      // Keep the current target while it stays in range; otherwise the nearest ahead.
-      const score = o.id === targetId ? -1 : Math.abs(rel.ds);
-      if (score < bestDs) {
-        bestDs = score;
+      if (!rel || Math.abs(rel.ds) >= 10 || Math.abs(rel.dd) >= 3) continue;
+      if (Math.abs(rel.ds) < bestDs) {
+        bestDs = Math.abs(rel.ds);
         best = o;
       }
     }
     return best;
+  }
+
+  /**
+   * How close the nearest vehicle beside `rival` is on the side `shove` (road-frame d sign), as a
+   * 0..1 score (0: none in the danger box). The box runs DANGER_BEHIND_M behind to DANGER_AHEAD_M
+   * ahead of the rival along the bot's travel, DANGER_NEAR_M to DANGER_FAR_M to that side.
+   */
+  function danger(snap: SimSnapshot, me: EntitySnapshot, rival: EntitySnapshot, shove: number): number {
+    let best = 0;
+    for (const o of snap.entities) {
+      if (o.kind !== 'vehicle' || o.road.edge !== rival.road.edge) continue;
+      const ahead = (o.road.s - rival.road.s) * me.road.dir;
+      if (ahead < -DANGER_BEHIND_M || ahead > DANGER_AHEAD_M) continue;
+      const side = (o.road.d - rival.road.d) * shove;
+      if (side < DANGER_NEAR_M || side > DANGER_FAR_M) continue;
+      best = Math.max(best, 1 - Math.max(0, ahead) / (DANGER_AHEAD_M + 1));
+    }
+    return best;
+  }
+
+  /**
+   * The road-frame d direction to kick `rival` toward: toward the more dangerous side, else the
+   * side the bot already shoves from, unless the bot's spot for that is off the rideable span.
+   */
+  function shoveSide(
+    snap: SimSnapshot,
+    me: EntitySnapshot,
+    rival: EntitySnapshot,
+    bounds: { lo: number; hi: number },
+  ): { shove: number; danger: boolean } {
+    const plus = danger(snap, me, rival, 1);
+    const minus = danger(snap, me, rival, -1);
+    const current = rival.road.d >= me.road.d ? 1 : -1;
+    const fits = (shove: number) => {
+      const spot = rival.road.d - shove * KICK_OFFSET_M;
+      return spot >= bounds.lo && spot <= bounds.hi;
+    };
+    if (plus !== minus) {
+      const shove = plus > minus ? 1 : -1;
+      if (fits(shove)) return { shove, danger: true };
+    }
+    return { shove: fits(current) ? current : -current, danger: false };
   }
 
   return {
@@ -251,6 +355,7 @@ export function createBot(): BotController {
       // bot keeps its line and speed, and only swings at a rival already inside its window.
       const committed = onShortcut || zone !== undefined;
       const rival = pickRival(snap, me);
+      let fighting = false;
       if (rival) {
         if (rival.id !== targetId) {
           targetId = rival.id;
@@ -262,12 +367,19 @@ export function createBot(): BotController {
           targetId = -1;
         } else {
           const rel = relative(me, rival);
+          const sinceKick = snap.tick - lastKickTick;
+          const windingUp = sinceKick <= KICK_LEAD_TICKS;
           if (rel && !committed) {
-            // Hold the side the bot is already on (its own frame), if the road has room there.
-            const sideFrame = rel.dd > 0 ? -1 : 1;
-            const want = rival.road.d + sideFrame * ATTACK_OFFSET_M * dir;
-            const other = rival.road.d - sideFrame * ATTACK_OFFSET_M * dir;
-            targetD = want >= bounds.lo && want <= bounds.hi ? want : other;
+            fighting = true;
+            if (windingUp && kickShove !== 0) {
+              // The momentum kick: steer into the rival through the wind-up, so the bot's own
+              // sideways speed adds to the shove (combat's momentumKickGain).
+              targetD = rival.road.d - kickShove * 0.2;
+            } else {
+              // Line up on the side that kicks the rival toward danger, or hold the current side.
+              const { shove } = shoveSide(snap, me, rival, bounds);
+              targetD = rival.road.d - shove * KICK_OFFSET_M;
+            }
           }
           if (rel) {
             if (rel.ds < 6 && !committed) {
@@ -276,19 +388,43 @@ export function createBot(): BotController {
               throttle = me.speed < vWant - 0.2 ? 1 : me.speed < vWant + 0.8 ? 0.4 : 0;
               brake = me.speed > vWant + 2 ? 0.6 : 0;
             }
-            const inWindow =
+            // Where the rival will be along the road when a kick pressed now goes active.
+            const dsAtActive = rel.ds + ((rival.speed - me.speed) * KICK_LEAD_TICKS) / 60;
+            const kickable =
+              Math.abs(dsAtActive) <= KICK_WINDOW.sM &&
+              Math.abs(rel.dd) >= KICK_WINDOW.dMinM &&
+              Math.abs(rel.dd) <= KICK_WINDOW.dMaxM;
+            const jabbable =
               Math.abs(rel.ds) <= ATTACK_WINDOW.sM &&
               Math.abs(rel.dd) >= ATTACK_WINDOW.dMinM &&
               Math.abs(rel.dd) <= ATTACK_WINDOW.dMaxM;
-            if (inWindow && snap.tick - lastPressTick >= ATTACK_REPEAT_TICKS) {
+            const pressReady = snap.tick - lastPressTick >= ATTACK_REPEAT_TICKS;
+            if (kickable && pressReady && sinceKick >= KICK_REPEAT_TICKS) {
+              const aim = shoveSide(snap, me, rival, bounds);
               a.attack = true;
+              a.kick = true;
+              a.attackSide = rel.dd > 0 ? 1 : -1;
+              lastPressTick = snap.tick;
+              lastKickTick = snap.tick;
+              kickShove = rival.road.d >= d ? 1 : -1;
+              stats.attackPresses++;
+              stats.kickPresses++;
+              if (aim.danger && aim.shove === kickShove) stats.dangerKicks++;
+            } else if (jabbable && pressReady && KICK_REPEAT_TICKS - sinceKick >= JAB_CLEAR_TICKS) {
+              a.attack = true;
+              a.attackSide = rel.dd > 0 ? 1 : -1;
               lastPressTick = snap.tick;
               stats.attackPresses++;
             }
+            // Hold the kick flag through the wind-up, so the attack stays a kick.
+            if (windingUp && !a.attack) a.kick = true;
           }
         }
       } else {
         targetId = -1;
+        // Hurt: keep clear of a rival beside it, so it is not kicked off while it rides on.
+        const threat = me.health < RETREAT_HEALTH && !committed ? nearestRider(snap, me) : null;
+        if (threat) targetD = threat.road.d - (threat.road.d >= d ? 1 : -1) * RETREAT_GAP_M;
       }
 
       // Traffic in the bot's line: another own-direction lane, a pass in the oncoming lane, or follow.
@@ -321,7 +457,8 @@ export function createBot(): BotController {
       // Steer toward the target line, with the road's curvature fed forward.
       const lateral = (targetD - d) * dir;
       const kappa = route.kappaAt(edge, s) * dir;
-      const steer = 0.35 * lateral - 2.5 * yaw + (kappa * v * v) / 22;
+      const gain = fighting ? FIGHT_STEER_GAIN : 0.35;
+      const steer = gain * lateral - 2.5 * yaw + (kappa * v * v) / 22;
       a.throttle = throttle;
       a.brake = brake;
       a.steer = clamp(steer, -1, 1);

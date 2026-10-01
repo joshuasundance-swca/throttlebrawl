@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+The test bot now fights rivals down instead of punching twice a race, so the seeded race batch actually exercises takedowns. It kicks rather than punches, lines up on the side that shoves the rival toward a car beside it, steers into the rival through the kick's wind-up (the momentum kick), goes after the weakest rival in reach, eases off to let a rival behind it come alongside, and stops fighting while its own health is low. Over the 50 seeded races it landed 28 takedowns (18 into traffic, 10 by health), up from 2, finished 45 races (42 before) and was busted in 5 (8 before). The takedown assertion in `tests/sim/dev-presets.test.ts` is now active: at least one bot takedown, at least one of them into traffic, and the bot still finishes at least 70% of its races. The browser bot race now asserts M2 exit criterion 9 across its own race and four headless seeds, through a new `botTakedownRuns` on the test handle. The perf run's slow-motion checkpoint stays held: the bot's first takedown in seed 1 comes after the perf run's first 20 seconds.
