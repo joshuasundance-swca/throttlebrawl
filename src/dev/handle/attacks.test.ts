@@ -34,4 +34,11 @@ describe('dev/handle: botAttackRun', () => {
       expect(run.over || run.ticks === 4000).toBe(true);
     }
   }, 60_000);
+
+  it('with until shortcut, stops at the bot’s first tick on the boat-ramp cut (seed 2 takes it)', () => {
+    const run = botAttackRun(2, { includeDrafts: true, maxTicks: 3600, until: 'shortcut' });
+    console.log(`[examined] ${JSON.stringify(run)}`);
+    expect(run.shortcutTicks).toBe(1);
+    expect(run.ticks).toBeLessThan(3600);
+  }, 60_000);
 });

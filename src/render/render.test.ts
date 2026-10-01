@@ -361,8 +361,10 @@ describe('the road meshes', () => {
       fixtureNetwork(Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, lengthM: 20, kappa: 0.002 }))),
     );
     const few = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 240, kappa: 0.002 }]));
-    const a = buildRoadScene(few, look).stats;
-    const b = buildRoadScene(many, look).stats;
+    // Scenery off: its batches have their own grid and their own test (scenery.test.ts).
+    const bare = { roadsideDensity: 0 };
+    const a = buildRoadScene(few, look, undefined, bare).stats;
+    const b = buildRoadScene(many, look, undefined, bare).stats;
     expect(b.chunks).toBe(a.chunks);
     expect(b.meshes).toBe(a.meshes);
     // And a longer road adds chunks, not meshes per chunk.
@@ -373,6 +375,8 @@ describe('the road meshes', () => {
         ),
       ),
       look,
+      undefined,
+      bare,
     ).stats;
     expect(nine.chunks).toBeGreaterThan(a.chunks);
     expect((nine.meshes - 1) / nine.chunks).toBeLessThanOrEqual(12);

@@ -6,7 +6,11 @@
 // placeholder signs and billboards with the veto's picking (boards.ts), and RENDER_TUNING.
 // Playtest 1b item 6 adds the playable looks (looks/): `classic` (the default) and `kodak`, the ink +
 // 1960s film look, switched at any time with `setLook`; `kodak` draws through one final film pass.
+// Playtest 1c: the Blender models (models.ts, glb.ts) load through the asset manifest and replace
+// the code-made stand-ins once they arrive; roadside scenery stands on tagged land, scatters by the
+// race's seed (`setSceneSeed`) and is hidden past `render.sceneryDrawM` (scenery.ts, road-mesh.ts).
 import { PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
+import type { AssetManifest } from '../assets';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -19,7 +23,8 @@ import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet, LookPost } from './looks';
-import { buildRoadScene, type RoadDressing, type RoadScene } from './road-mesh';
+import { loadSceneryModels, type ModelLoadReport, type SceneryModels } from './models';
+import { buildRoadScene, type RoadDressing, type RoadScene, type RoadSceneStats } from './road-mesh';
 import { SpeedLines, type SpeedLineCounts } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
@@ -32,6 +37,8 @@ export type { BoardCatalog, BoardItem, BoardKind } from './boards';
 export type { FeelCounts } from './effects';
 export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
+export type { ModelLoadReport } from './models';
+export type { RoadSceneStats } from './road-mesh';
 export { RENDER_TUNING } from './tuning';
 export { DEFAULT_LOOK, isLookId, LOOK_IDS } from './looks';
 export type { LookId } from './looks';
@@ -133,10 +140,29 @@ export interface GameRenderer {
   setLook(id: string): void;
   /** The current look's id. */
   readonly look: string;
+  /**
+   * The race's seed (playtest 1c item 2): the roadside scenery scatter derives from it, so each
+   * race's scenery differs and a fixed seed repeats it. A new seed rebuilds the road scene.
+   */
+  setSceneSeed(seed: number): void;
+  /** The scenery as built and drawn: what was placed, which models loaded, what the last frame showed. */
+  scenery(): SceneryStatus;
+}
+
+export interface SceneryStatus {
+  seed: number;
+  /** The road scene's numbers, or null before setRoad. */
+  road: RoadSceneStats | null;
+  /** Which Blender models loaded and which fell back, or null while they load (or with no manifest). */
+  models: ModelLoadReport | null;
+  /** Scenery instances inside the draw distance in the last frame. */
+  visible: number;
 }
 
 export interface RendererOptions extends EntityViewOptions {
   look?: LookStyle;
+  /** The asset manifest: the Blender models load through it (without one, stand-ins are drawn). */
+  assets?: AssetManifest;
 }
 
 export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions = {}): GameRenderer {
@@ -162,6 +188,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
+  let sceneSeed = 1;
+  let models: SceneryModels = {};
+  let modelReport: ModelLoadReport | null = null;
+  let sceneryVisible = 0;
   let lastFrameAt = -1;
   const buildRoad = () => {
     if (!roadArgs) return;
@@ -169,9 +199,22 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       scene.remove(roadScene.group);
       roadScene.dispose();
     }
-    roadScene = buildRoadScene(roadArgs.road, look, roadArgs.dressing, { roadsideDensity: roadArgs.density });
+    roadScene = buildRoadScene(roadArgs.road, look, roadArgs.dressing, {
+      roadsideDensity: roadArgs.density,
+      seed: sceneSeed,
+      models,
+    });
     scene.add(roadScene.group);
   };
+  // The Blender models (playtest 1c item 4) load in the background; the road draws stand-ins until
+  // they arrive, then rebuilds once with the models.
+  if (opts.assets) {
+    void loadSceneryModels(opts.assets).then(({ models: loaded, report }) => {
+      models = loaded;
+      modelReport = report;
+      if (report.loaded.length) buildRoad();
+    });
+  }
   let lost = false;
   let rendererName = '';
   const contextListeners: ((lost: boolean) => void)[] = [];
@@ -232,6 +275,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();
+      sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
       const me = curr?.entities.find((e) => e.slot === 0);
@@ -268,7 +312,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     setParam(id, value) {
       applyRenderParam(params, id, value);
-      // The palms are part of the merged road scene: a new density rebuilds it.
+      // The scenery is part of the road scene: a new density rebuilds it.
       if (roadArgs && params.roadsideDensity !== roadArgs.density) {
         roadArgs.density = params.roadsideDensity;
         buildRoad();
@@ -293,5 +337,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     get look() {
       return look.id;
     },
+    setSceneSeed(seed) {
+      const next = seed >>> 0;
+      if (next === sceneSeed) return;
+      sceneSeed = next;
+      buildRoad();
+    },
+    scenery: () => ({
+      seed: sceneSeed,
+      road: roadScene?.stats ?? null,
+      models: modelReport,
+      visible: sceneryVisible,
+    }),
   };
 }
