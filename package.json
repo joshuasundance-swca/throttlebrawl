@@ -29,6 +29,10 @@
     "changelog:build": "node scripts/changelog-build.mjs",
     "check": "node scripts/check.mjs",
     "phone": "node scripts/phone.mjs",
+    "asset:build": "node tools/blender/build.mjs",
+    "asset:check": "node tools/blender/build.mjs --check",
+    "asset:render": "node tools/blender/render.mjs",
+    "asset:score": "node tools/blender/score.mjs",
     "hooks:install": "simple-git-hooks",
     "knip": "knip"
   },
