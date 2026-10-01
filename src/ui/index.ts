@@ -22,7 +22,7 @@ import {
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
-import { DEFAULT_SETTINGS, sanitiseSettings, withVeto, type Settings } from '../save';
+import { DEFAULT_SETTINGS, sanitiseSettings, VIEW_SETTINGS, withVeto, type Settings } from '../save';
 import type { TuningRegistry } from '../tuning';
 import {
   buildIdFromStamp,
@@ -40,6 +40,8 @@ import {
   lastSeenPersists,
   settingPersists,
   settingValue,
+  TUNED_SETTINGS,
+  tunedLive,
   visibleSettings,
   type SettingId,
   type SettingsChange,
@@ -58,6 +60,13 @@ import {
   type StylePop,
 } from './race-feed';
 import { HUD_TUNING, hudParam } from './hud-tuning';
+import {
+  createRadioPanel,
+  RADIO_PANEL_CSS,
+  radioChoiceOf,
+  radioSettingOf,
+  type RadioSource,
+} from './radio-panel';
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import { createTuningPanel, type TuningPanel } from './tuning';
@@ -75,6 +84,7 @@ export type { SettingId, SettingsChange, SettingValue } from './settings';
 export { BARK_TUNING } from './narrative';
 // The HUD's own sliders (the live style meter), for app/'s collected list; ui reads them itself.
 export { HUD_TUNING };
+export type { RadioSource, RadioState } from './radio-panel';
 
 export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results' | 'changelog';
 
@@ -105,6 +115,13 @@ export interface UiCallbacks {
    * reads the same pick at any time.
    */
   onRegionChange?: (regionId: string) => void;
+  /**
+   * The radio, for the pause menu's station panel (radio-1's follow-up): app/ passes
+   * `{ state: () => audio.inspect().radio, skip: () => audio.skipTrack(), cut: () =>
+   * audio.cutPlayingTrack(raceId, tick) }`. The panel is hidden until this is wired. ui tunes
+   * through the `audio.radio` slider, and a cut song's flag goes into the settings record.
+   */
+  radio?: RadioSource;
 }
 
 export interface GameUi {
@@ -233,6 +250,7 @@ const CSS = `
   border-radius: 50%; background: #fffa; }
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
+${RADIO_PANEL_CSS}
 #style-popups { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
   pointer-events: none; transition: top 0.12s ease-out; }
 #style-popups.mirrored { align-items: flex-end; }
@@ -323,6 +341,16 @@ type StyleFeedWindow = Window & {
 function installStyleFeed(feed: (pops: readonly StyleFeedPop[]) => void): void {
   const w = window as StyleFeedWindow;
   if (w.__GAME_TEST__ === true) w.__uiStyleFeed = feed;
+}
+
+/**
+ * The browser specs' stand-in radio (docs/architecture.md, "Testing seams"), only when the test
+ * flag is set before the page loads and app/ has wired no radio: `window.__uiRadioSource`, set by
+ * the spec's init script, so the pause menu's radio panel can be laid out and driven on its own.
+ */
+function testRadioSource(): RadioSource | null {
+  const w = window as Window & { __GAME_TEST__?: boolean; __uiRadioSource?: RadioSource };
+  return w.__GAME_TEST__ === true ? (w.__uiRadioSource ?? null) : null;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -463,14 +491,45 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   );
 
   // ---- Settings ----------------------------------------------------------------------------
+  // The view and the radio apply through their presentation sliders (camera.mode, audio.radio),
+  // which app/ routes to camera/ and audio/ by the id's prefix. They apply at once and at boot.
+  const radioSource: RadioSource | null = cb.radio ?? testRadioSource();
+  const tuned = (id: 'view' | 'radio') => {
+    const param = TUNED_SETTINGS[id];
+    return param && opts.tuning.decl(param) ? param : null;
+  };
+  const applyView = () => {
+    const param = tuned('view');
+    if (param) opts.tuning.set(param, Math.max(0, VIEW_SETTINGS.indexOf(settings.view)));
+  };
+  /** Tunes the radio to a slider value, first catching the slider up with the R key's choice. */
+  const tuneRadio = (choice: number) => {
+    const param = tuned('radio');
+    if (!param) return;
+    const actual = radioSource?.state().choice;
+    if (actual !== undefined && opts.tuning.get(param) !== actual) opts.tuning.set(param, actual);
+    opts.tuning.set(param, choice);
+    radioSource?.tune?.(choice);
+  };
+  /** The radio setting: tunes only when the radio is not already on that kind (a station is any). */
+  const applyRadio = () => {
+    const param = tuned('radio');
+    if (!param) return;
+    const actual = radioSource?.state().choice ?? opts.tuning.get(param);
+    if (radioSettingOf(actual) !== settings.radio) tuneRadio(radioChoiceOf(settings.radio));
+  };
   const change = (c: SettingsChange) => {
     const next = applySettingsChange(settings, c);
     const mirrorChanged = next.mirror !== settings.mirror;
+    const viewChanged = next.view !== settings.view;
+    const radioChanged = next.radio !== settings.radio;
     settings = next;
     if (mirrorChanged) {
       layout = { ...layout, mirror: next.mirror };
       placeAll();
     }
+    if (viewChanged) applyView();
+    if (radioChanged) applyRadio();
     settingsScreen.sync(settings);
     syncPauseEntries();
     cb.onSettingsChange?.(next);
@@ -488,12 +547,15 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   });
   settingsScreen.setVisible(
     visibleSettings({
-      live: opts.liveSettings ?? [],
+      live: [...(opts.liveSettings ?? []), ...tunedLive((id) => !!opts.tuning.decl(id))],
       persists: (id) => settingPersists(id, sanitiseSettings),
       preview,
     }),
   );
   settingsScreen.sync(settings);
+  // The saved view and radio, at boot: app/ pushes every presentation value to its module next.
+  applyView();
+  applyRadio();
   /** Back from the settings screen: to the pause menu when it was opened there, else the menu. */
   const closeSettings = () => {
     if (settingsScreen.context === 'pause' && paused) {
@@ -677,9 +739,25 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const syncPauseEntries = () => {
     tuningButton.hidden = settingValue(settings, 'showTuningPanel') !== true;
   };
+  // The radio panel (radio-1's follow-up): what plays, the next station, the next song and "cut
+  // this" on the song. A station picked here becomes the saved radio choice.
+  const radioPanel = createRadioPanel({
+    tune: (choice) => {
+      tuneRadio(choice);
+      const kind = radioSettingOf(choice);
+      if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
+    },
+    onCut: (flag) => {
+      settings = withVeto(settings, flag);
+      cb.onSettingsChange?.(settings);
+    },
+  });
+  radioPanel.setSource(radioSource);
+  let radioTimer: ReturnType<typeof setInterval> | null = null;
   // The legend and the "recently seen" list (mounted below, once the narrative exists) share a
-  // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8).
-  const pauseCards = el('div', { id: 'pause-cards' }, pauseKeys);
+  // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8). The
+  // radio panel heads it: small, and the thing most often wanted mid-race.
+  const pauseCards = el('div', { id: 'pause-cards' }, radioPanel.root, pauseKeys);
   const pauseScreen = el(
     'div',
     { id: 'pause-screen', className: 'screen', hidden: true },
@@ -747,6 +825,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
 
   const closePause = () => {
     paused = false;
+    if (radioTimer !== null) clearInterval(radioTimer);
+    radioTimer = null;
     pauseScreen.hidden = true;
     if (current === 'race') settingsScreen.root.hidden = true;
     pauseTouches.clear();
@@ -757,6 +837,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (current !== 'race' || paused) return;
     paused = true;
     pauseScreen.hidden = false;
+    // The radio's song and station can change while the panel is up (a station loading in).
+    if (radioSource) {
+      radioPanel.refresh();
+      radioTimer ??= setInterval(() => radioPanel.refresh(), 500);
+    }
     touchSurface.hidden = true; // taps on the pause screen never reach input/
     stickPointer = null;
     ring.hidden = true;

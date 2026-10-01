@@ -62,6 +62,8 @@ const m2Custom: Settings = {
   look: 'kodak',
   showTuningPanel: true,
   stylePopups: false,
+  view: 'helmet',
+  radio: 'station',
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
@@ -83,6 +85,8 @@ const M2_FIELDS = [
   'look',
   'showTuningPanel',
   'stylePopups',
+  'view',
+  'radio',
   'gamepadBindings',
   'lastSeenBuild',
   'vetoes',
@@ -115,6 +119,8 @@ describe('the M2 settings record', () => {
       look: 'classic',
       showTuningPanel: false,
       stylePopups: true,
+      view: 'chase',
+      radio: 'score',
       gamepadBindings: {},
       lastSeenBuild: null,
       vetoes: [],
@@ -213,6 +219,8 @@ describe('the M2 settings record', () => {
       look: 'sepia',
       showTuningPanel: 1,
       stylePopups: 'off',
+      view: 'drone',
+      radio: 'keys-surf',
       gamepadBindings: ['button3'],
       lastSeenBuild: 42,
       vetoes: 'all of them',
@@ -235,6 +243,12 @@ describe('the M2 settings record', () => {
     expect(sanitiseSettings({ look: 'wasteland' }).look).toBe('wasteland');
     expect(sanitiseSettings({ look: 'brush' }).look).toBe('brush');
     expect(sanitiseSettings({ look: 'rust' }).look).toBe('classic');
+    // The view and the radio (playtest 1c integration): every offered value round-trips.
+    for (const v of ['chase', 'far', 'helmet'] as const) expect(sanitiseSettings({ view: v }).view).toBe(v);
+    for (const r of ['score', 'station', 'off'] as const)
+      expect(sanitiseSettings({ radio: r }).radio).toBe(r);
+    expect(sanitiseSettings({ view: 2 }).view).toBe('chase');
+    expect(sanitiseSettings({ radio: 'OFF' }).radio).toBe('score');
   });
 
   it('keeps each well-formed binding and veto, dropping only the broken ones', () => {

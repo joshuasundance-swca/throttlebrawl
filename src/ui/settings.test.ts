@@ -9,6 +9,7 @@ import {
   settingDefault,
   settingPersists,
   settingValue,
+  tunedLive,
   visibleSettings,
   type SettingId,
 } from './settings';
@@ -164,6 +165,14 @@ describe('which settings the screen shows', () => {
     });
     expect(unsaved).toEqual(['units']);
     expect(ALWAYS_LIVE).toEqual(['units', 'showTuningPanel', 'stylePopups']);
+  });
+
+  it('shows the view and the radio once the registry declares their sliders (ui applies them)', () => {
+    expect(tunedLive(() => false)).toEqual([]);
+    expect(tunedLive((id) => id === 'camera.mode')).toEqual(['view']);
+    expect(tunedLive((id) => id === 'camera.mode' || id === 'audio.radio').sort()).toEqual(['radio', 'view']);
+    expect(settingPersists('view', sanitiseSettings)).toBe(true);
+    expect(settingPersists('radio', sanitiseSettings)).toBe(true);
   });
 
   it('shows everything in preview mode', () => {
