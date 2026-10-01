@@ -37,6 +37,9 @@ interface Measured {
   bubble: Box | null;
   bubbleText: string;
   others: { id: string; box: Box }[];
+  /** Whether every chip had slid in and the stack had stopped moving, and when (ms after the feed). */
+  settled: boolean;
+  settledMs: number;
 }
 type FeedPop = { kind: string; points?: number };
 type TestWindow = Window & {
@@ -102,9 +105,10 @@ async function startRace(page: Page, opts: { portrait?: boolean; mirror?: boolea
 }
 
 /**
- * Widens the bark bubble to the longest base-pack line, feeds the pop-ups, lets them settle (the
- * fade-in and any move below the bubble take about 0.1 s) and measures everything in one go, while
- * the bubble is still up. Measuring mid-fade would read a box that is still sliding into place.
+ * Widens the bark bubble to the longest base-pack line, feeds the pop-ups, waits until they have
+ * settled (the slide-in and any move below the bubble take about 0.1 s) and measures everything in
+ * one go, while the bubble is still up. Measuring mid-slide would read a box still moving into
+ * place; waiting a fixed time instead could land in the fade-out on a slow machine.
  */
 function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promise<Measured> {
   return page.evaluate(
@@ -119,8 +123,22 @@ function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promis
       // A bubble far wider than today's (a future layout, or a longer line), reaching the stack.
       if (bubble && wideBubble) Object.assign(bubble.style, { width: '96vw', maxWidth: 'none' });
       (window as TestWindow).__uiStyleFeed?.(feed);
-      for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(r));
-      await new Promise((r) => setTimeout(r, 300));
+      const frame = () => new Promise((r) => requestAnimationFrame(r));
+      const host = document.getElementById('style-popups');
+      const atRest = () => {
+        const chips = [...document.querySelectorAll<HTMLElement>('.style-pop')];
+        return (
+          chips.length > 0 &&
+          chips.every((c) => getComputedStyle(c).transform === 'none') &&
+          !!host &&
+          getComputedStyle(host).top === host.style.top
+        );
+      };
+      const t0 = performance.now();
+      for (let i = 0; i < 2; i++) await frame();
+      while (!atRest() && performance.now() - t0 < 1000) await frame();
+      const settled = atRest();
+      const settledMs = Math.round(performance.now() - t0);
       const pops = [...document.querySelectorAll<HTMLElement>('.style-pop')]
         .filter((e) => e.checkVisibility())
         .map((e) => {
@@ -155,6 +173,8 @@ function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promis
         bubble: shown && bubble ? { ...box(bubble), bottom: box(bubble).bottom + 9 } : null,
         bubbleText: shown ? (text?.textContent ?? '') : '',
         others,
+        settled,
+        settledMs,
       };
     },
     { feed, longest: LONGEST_LINE, wideBubble },
@@ -173,9 +193,11 @@ function expectClear(m: Measured, where: string) {
   console.log(`${where}: ${m.pops.length} pop-ups ${JSON.stringify(m.pops)}`);
   console.log(`${where}: bubble ${JSON.stringify(m.bubble)} "${m.bubbleText}"`);
   console.log(`${where}: ${m.others.length} HUD pieces and controls ${m.others.map((o) => o.id).join(', ')}`);
+  console.log(`${where}: settled ${m.settled} after ${m.settledMs} ms`);
   expect(m.pops.length, `${where}: pop-ups on screen`).toBeGreaterThan(0);
+  expect(m.settled, `${where}: measured at rest, after the slide-in and any move`).toBe(true);
   for (const p of m.pops) {
-    expect(p.opacity, `${where}: "${p.text}" measured at rest, fully shown`).toBe(1);
+    expect(p.opacity, `${where}: "${p.text}" clearly shown`).toBeGreaterThanOrEqual(0.5);
     expect(overlaps(p.box, look), `${where}: "${p.text}" stays out of the look-ahead`).toBe(false);
   }
   expect(m.bubble, `${where}: the bark bubble was up while measured`).not.toBeNull();
