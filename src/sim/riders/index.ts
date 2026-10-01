@@ -299,10 +299,34 @@ function crossToBranch(config: SimConfig, m: Mover): void {
   if (turn !== null) m.yaw += turn;
 }
 
+/** How far before a split zone its outer edge already guides rather than walls, m [default]. */
+export const SPLIT_GUIDE_LEAD_M = 15;
+
+/**
+ * Playtest 1c ([decided] 2026-09-30, the skeptic's mustFix from playtest 1b): a rider who commits
+ * early and hard to a branch reaches the painted split zone's outer edge before the split, and that
+ * edge is also the road's. There it guides instead of walling: inside a split zone that runs out to
+ * the edge on its side (and a short lead-in before it), a rider at the edge slides along it to the
+ * split with no barrier event, no scrape and no speed lost, and its d stays inside the zone, so it
+ * takes the branch. Only where the zone leads onto an edge the race allows.
+ */
+function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, limit: number): boolean {
+  for (const z of config.road.splitZones()) {
+    if (z.edge !== edge || (z.d0 + z.d1 >= 0 ? 1 : -1) !== side) continue;
+    const s0 = z.end === 'to' ? z.s0 - SPLIT_GUIDE_LEAD_M : z.s0;
+    const s1 = z.end === 'to' ? z.s1 : z.s1 + SPLIT_GUIDE_LEAD_M;
+    if (s < s0 || s > s1) continue;
+    if (side > 0 ? z.d1 < limit || z.d0 > limit : z.d0 > limit || z.d1 < limit) continue;
+    if (config.route.allows(z.toEdge)) return true;
+  }
+  return false;
+}
+
 /**
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
- * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble.
+ * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble. At a split
+ * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead.
  */
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
   const pos = m.pos;
@@ -312,6 +336,12 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     return;
   }
   const side = pos.d > hi ? 1 : -1; // road-frame side of the wall
+  if (splitGuideAt(config, pos.edge, pos.s, side, side > 0 ? hi : lo)) {
+    pos.d = side > 0 ? hi : lo;
+    m.yaw = 0;
+    st.touching[m.id] = 0;
+    return;
+  }
   const v = m.speed;
   const yawBefore = m.yaw;
   const impact = scrapeAlong(config, m, side, dt);
