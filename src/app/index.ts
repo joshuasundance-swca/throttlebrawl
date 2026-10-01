@@ -212,6 +212,16 @@ export interface AppHandle {
  * set, `window.__slowFrameMs = 60` makes every rendered frame take at least that long (a busy wait),
  * so the look fallback's watch sees real slow frames through the real loop. 0 otherwise.
  */
+/**
+ * The look fallback's watch runs in production always; under the test flag only when a spec asks
+ * (`window.__lookFallbackWatch = true`). A software-rendered CI runner draws the ink look slowly
+ * enough to bring the offer up in any long race, over other specs' checks (PR #232's first CI run).
+ */
+function lookWatchOn(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __lookFallbackWatch?: unknown };
+  return w.__GAME_TEST__ !== true || w.__lookFallbackWatch === true;
+}
+
 function testSlowFrameMs(): number {
   const w = window as Window & { __GAME_TEST__?: boolean; __slowFrameMs?: unknown };
   if (w.__GAME_TEST__ !== true) return 0;
@@ -599,7 +609,7 @@ export function createApp(opts: AppOptions): AppHandle {
         // The look fallback (run W-O): frames that stay slow on an ink look bring up ui's offer to
         // switch to Classic, once a race, unless the player said no before.
         const racing = state === 'race' && !ui.paused && holds.size === 0;
-        const inkLook = settings.look !== 'classic' && !settings.lookFallbackDismissed;
+        const inkLook = settings.look !== 'classic' && !settings.lookFallbackDismissed && lookWatchOn();
         if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) ui.offerClassicLook();
         const slowMs = testSlowFrameMs();
         if (slowMs > 0) {

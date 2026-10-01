@@ -11,6 +11,7 @@ import { mkdirSync } from 'node:fs';
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __slowFrameMs?: number;
+  __lookFallbackWatch?: boolean;
   __game?: { state(): string; snapshot(): { tick: number } | null; setBot(on: boolean): void };
   __app?: { presentation(): { look: string } };
 };
@@ -18,6 +19,8 @@ type TestWindow = Window & {
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
+    // The watch is off under the test flag unless a spec turns it on (app/index.ts, lookWatchOn).
+    (window as TestWindow).__lookFallbackWatch = true;
   });
 });
 
@@ -144,14 +147,45 @@ test('"No thanks" is remembered: slow frames never offer again', async ({ page }
   await expect(page.locator('#pause-look-offer')).toBeHidden();
 });
 
-test('the control: smooth frames on the ink look never offer', async ({ page }) => {
-  test.setTimeout(90_000);
+// The controls use forced slow frames too: a software-rendered runner's own frame rate on the ink
+// look is too slow to serve as "smooth" (PR #232's first CI run offered on it), so smooth-frame
+// behaviour is covered by the watch's unit tests (look-fallback.test.ts).
+test('the controls: forced slow frames never offer on Classic, nor with the watch left off', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'mbrawl:settings',
+      JSON.stringify({
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-01T00:00:00.000Z',
+        data: { look: 'classic' },
+      }),
+    );
+  });
   await page.goto('./');
   await page.locator('#start-screen').click();
+  expect(await look(page)).toBe('classic');
   await race(page);
-  await page.waitForTimeout(14_000);
+  await slowFrames(page, 60);
+  await page.waitForTimeout(15_000);
   await expect(page.locator('#look-offer')).toBeHidden();
+
+  // Under the test flag the watch is off unless a spec turns it on (other specs' long races).
+  await page.addInitScript(() => {
+    (window as TestWindow).__lookFallbackWatch = false;
+    localStorage.removeItem('mbrawl:settings');
+  });
+  await page.reload();
+  await page.locator('#start-screen').click();
   expect(await look(page)).toBe('kodak');
+  await race(page);
+  await slowFrames(page, 60);
+  await page.waitForTimeout(15_000);
+  await expect(page.locator('#look-offer')).toBeHidden();
 });
 
 // A phone held upright shows the rotate screen once the race starts (platform/), so the portrait

@@ -78,16 +78,42 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
 });
 
 /** Pauses a race on a station with a song up, cuts it, and returns the note's painted style. */
+/**
+ * The note's look, on a stand-in radio the spec plants (`window.__uiRadioSource`): one station
+ * playing one song, whose cut always lands. The real radio's cut path is ui-radio-panel.spec.ts's;
+ * on a loaded CI runner the real one intermittently read the song back instead of the note (PR
+ * #232's first CI run, as in main's run 36903807975), which this test is not about.
+ */
 async function cutNote(page: Page) {
+  await page.addInitScript(() => {
+    let cut = false;
+    (window as unknown as { __uiRadioSource: unknown }).__uiRadioSource = {
+      state: () => ({
+        choice: 2,
+        tunedTo: 'test-station',
+        stations: ['test-station'],
+        nowPlaying: {
+          stationId: 'test-station',
+          stationName: 'Test 101.1',
+          title: cut ? 'The next song' : 'A song to cut',
+          ref: `base:station/test-station#${cut ? 'next' : 'cut-me'}`,
+        },
+      }),
+      skip: () => undefined,
+      cut: () => {
+        cut = true;
+        return { contentRef: 'base:station/test-station#cut-me', raceId: 'e2e', tick: 1 };
+      },
+      tune: () => undefined,
+    };
+  });
   await page.goto('./');
   await page.locator('#start-screen').click();
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await page.locator('#menu-race').click();
   await raceStarted(page);
-  await page.keyboard.press('KeyR'); // the first station
-  await page.waitForTimeout(2500); // the station loads and a song starts
   await page.keyboard.press('Escape');
-  await expect(page.locator('#radio-song')).not.toBeEmpty({ timeout: 10_000 });
+  await expect(page.locator('#radio-song')).toHaveText('A song to cut');
   await page.locator('#radio-cut').click();
   await page.locator('#radio-cut-yes').click();
   await expect(page.locator('#radio-song')).toContainText('Cut');
