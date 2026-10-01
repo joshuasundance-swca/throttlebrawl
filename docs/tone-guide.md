@@ -204,8 +204,8 @@ Region 1 being the Florida Keys and A1A is decided. [decided] Everything below i
   - a mobile home rolling along with no truck
   - an iguana falling from a tree
   - a gator on a lawn chair
-- **Signs:** hurricane routes, gator crossings, "last chance" everything.
-- **Billboards:** timeshares, personal-injury lawyers, airboat tours, and the streaming outfit's own ads.
+- **Signs:** hurricane routes, gator crossings, "last chance" everything, the Conch Republic's border (no passport, sunscreen mandatory), a UV index that only says yes, and fishing charters that don't include the fish.
+- **Billboards:** timeshares, personal-injury lawyers, airboat tours, and the streaming outfit's own ads; sunburn remedies, charter boats that promise only sun, and hurricane-season gallows humor (a liquor store open through every storm, mostly).
 - **Time of day:** dawn fog, noon glare, a sunset that burns, and neon nights. [decided that each event sets its time of day]
 - **Stale-meme hook:** tabloid "Florida Man" headlines in interludes, written as headlines about rivals, never about real people.
 - **Weird events** (rare race modifiers; see [the product spec](./product-spec.md#weird-events)): a hurricane gust, a gator crossing, cold-night iguana rain, a parade, a funeral procession, a spring-break convoy, an offshore rocket launch, a cult roadblock, a runaway boat on a trailer, a UFO billboard that comes true, a bounty on the player, double-cash zones, a guest "celebrity" rider. The maintainer wants all four kinds, with room to grow. [decided]
@@ -231,8 +231,8 @@ The Pacific Northwest comes off the shelf now, with San Francisco, as a content 
 - **Law:** a parody county sheriff on real agency structure. No real agency names, badges or logos.
 - **Traffic and hazards:** log trucks, mossy station wagons with roof boxes, camper vans with canoes, ferry walk-ons with coffee, Bigfoot researchers, raccoons, and an elk that crashes you if you hit it.
 - **Wasteland oddity:** a drive-through espresso stand under tow, window still open. Nobody mentions it.
-- **Signs:** ferry waits that are always two hours, log trucks in every direction, rain stated as fact, Bigfoot as a crossing hazard who declines interviews.
-- **Billboards:** the Bigfoot museum (mostly gift shop), view-lot developers selling the forest they cut down.
+- **Signs:** ferry waits that are always two hours, log trucks in every direction, rain stated as fact, Bigfoot as a crossing hazard who declines interviews, espresso lines with their own merge rules, trailheads full since 5 AM, and hills that slide without notice.
+- **Billboards:** the Bigfoot museum (mostly gift shop), view-lot developers selling the forest they cut down, outdoor-gear smugness (a $640 shell that is slightly less damp, gear for the mountain you will mention), roasters whose tasting notes are the weather, and gutter cleaners who have seen things.
 - **Do:** understatement, politeness as menace, specific local types (the logger, the barista, the walk-on commuter). **Don't:** lumberjack-pancake parody, flannel puns, quoting famous TV set in the region, or jokes at real groups, towns or companies.
 - **Engine gaps this region shows** (follow-ups for the runtime, road and render lanes): no conifers or ground plane yet (the scenery is the Keys' palms over open water), no rain, and no real climbs, because the road compiler pins every junction to one base height.
 
@@ -275,8 +275,8 @@ Playtest 1c brought new regions forward: "I do think we should start adding othe
   - e-scooter commuters at the kerb
 - **Law:** parking enforcement with a pursuit budget, the Municipal Curb Authority (a made-up name). No real agency names, badges or logos.
 - **Wasteland oddity:** a sea lion a long way from the pier, unbothered.
-- **Signs:** parking-ticket deadpan and grade warnings. Tickets that began before the rule, spaces that don't exist, hills that only get steeper.
-- **Billboards:** startup satire. Old things sold back as a service, and funding rounds for things that already exist. Never a real company, product, founder or logo.
+- **Signs:** parking-ticket deadpan and grade warnings. Tickets that began before the rule, spaces that don't exist, hills that only get steeper, robotaxi zones, bus stops for private shuttles only, and summer announced by the fog.
+- **Billboards:** startup satire. Old things sold back as a service, and funding rounds for things that already exist. Since run W-P (maintainer, 2026-10-01b: "SF AI stuff"), mostly the AI boom: invented AI startups (an AI that writes prompts for your other AI, toast reasoned step by step), job ads for prompt whisperers with ten years' experience, robotaxis that are always four minutes away, and compute priced like rent. Never a real company, product, founder or logo.
 - **Time of day:** foggy dawn (the region's race), and golden hour.
 - **Stale-meme hook:** startup jargon (pivot, ten-x, stealth mode, the deck, burn rate) as one rival's whole vocabulary. It is aimed at a type, never at a person.
 - **Weird events** (ideas only, not built): a fog bank so thick the race goes by sound, a runaway cable car, a launch party across the road, a convoy of identical shuttles.
@@ -439,3 +439,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: the current register is the baseline; it's open to changes in every direction.
 - Scope: global
 - Action taken: none
+
+### 2026-10-01 · Regional flavor everywhere
+- Item: every region's signs, billboards, barks and radio (run W-P, "fill the world")
+- Surface: region
+- Verdict: tweak
+- Maintainer said: "the worlds just feel very empty" and "I want unique regional flavor everywhere, like NW tree species, SF AI stuff, etc"
+- Lesson: a line that would fit any region is a miss. Name the place's own things: rain, ferries, espresso and gear in the Pacific Northwest; AI startups, robotaxis, shuttles, cable cars and fog in San Francisco; sunburn, the Conch Republic, charters and hurricane season in the Keys. Satire still invents its brands and aims at things, not people.
+- Scope: global
+- Action taken: new signs, billboards, rival lines and radio content per region (run W-P); the region flavor sections above name the new targets.

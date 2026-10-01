@@ -29,7 +29,21 @@
   "signs": [
     { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES.", "status": "live" },
     { "id": "next-regret", "text": "NEXT GAS 40 MI. NEXT REGRET 2 MI.", "status": "live" },
-    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR.", "status": "live" }
+    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR.", "status": "live" },
+    { "id": "hurricane-late", "text": "HURRICANE EVACUATION ROUTE. YOU ARE ALREADY LATE.", "status": "live" },
+    {
+      "id": "conch-republic",
+      "text": "WELCOME TO THE CONCH REPUBLIC. NO PASSPORT. SUNSCREEN MANDATORY.",
+      "status": "live"
+    },
+    { "id": "uv-index", "text": "UV INDEX TODAY: YES.", "status": "live" },
+    { "id": "key-lime-again", "text": "LAST CHANCE KEY LIME PIE. NEXT LAST CHANCE 1 MI.", "status": "live" },
+    {
+      "id": "next-county",
+      "text": "IN CASE OF HURRICANE THIS SIGN WILL BE IN THE NEXT COUNTY.",
+      "status": "live"
+    },
+    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. FISH NOT INCLUDED.", "status": "live" }
   ],
   "billboards": [
     {
@@ -37,7 +51,28 @@
       "text": "OWN A PIECE OF PARADISE. SOME PIECES STILL ABOVE WATER.",
       "status": "live"
     },
-    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH.", "status": "live" }
+    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH.", "status": "live" },
+    {
+      "id": "law-office-nobody",
+      "text": "INJURED ON A BRIDGE? YOU PROBABLY DESERVED IT. THE LAW OFFICE OF NOBODY.",
+      "status": "live"
+    },
+    {
+      "id": "airboat-gary",
+      "text": "GATOR GARY'S AIRBOAT TOURS. SEE A GATOR OR SEE GARY.",
+      "status": "live"
+    },
+    { "id": "lobster-lotion", "text": "LOBSTER LOTION. FOR WHEN THE SUN WON.", "status": "live" },
+    {
+      "id": "landfall-liquors",
+      "text": "LANDFALL LIQUORS. OPEN THROUGH EVERY STORM. MOSTLY.",
+      "status": "live"
+    },
+    {
+      "id": "flat-calm",
+      "text": "FLAT CALM CHARTERS. YOU WILL CATCH SOMETHING. PROBABLY SUN.",
+      "status": "live"
+    }
   ],
   "weather": null,
   "meta": {

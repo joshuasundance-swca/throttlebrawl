@@ -92,13 +92,18 @@ describe('app: regions', () => {
 
   it("builds each region's board catalog with veto references, minus this device's cuts", () => {
     const pnw = boardCatalog(ALL, 'region-pnw:pacific-northwest');
-    expect(Object.keys(pnw.items)).toHaveLength(7);
+    // Content lanes add boards freely, so the counts come from the pools, not a fixed number.
+    const signs = pnw.pools?.signs ?? [];
+    const billboards = pnw.pools?.billboards ?? [];
+    expect(signs.length).toBeGreaterThanOrEqual(5);
+    expect(billboards.length).toBeGreaterThanOrEqual(2);
+    expect(Object.keys(pnw.items)).toHaveLength(signs.length + billboards.length);
     expect(pnw.items['bigfoot-crossing']).toMatchObject({
       ref: 'region-pnw:region/pacific-northwest#bigfoot-crossing',
       kind: 'sign',
     });
-    expect(pnw.pools?.signs).toHaveLength(5);
-    expect(pnw.pools?.billboards).toHaveLength(2);
+    expect(signs.every((s) => s.kind === 'sign')).toBe(true);
+    expect(billboards.every((b) => b.kind === 'billboard')).toBe(true);
     const cut = boardCatalog(
       ALL,
       'region-pnw:pacific-northwest',
