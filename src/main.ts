@@ -36,6 +36,8 @@ function boot(): void {
     return;
   }
   installDev(app);
+  // Under the test flag, the browser specs read the app's presentation view (camera, radio).
+  if (testFlagSet()) (window as unknown as { __app?: AppHandle }).__app = app;
 }
 
 boot();

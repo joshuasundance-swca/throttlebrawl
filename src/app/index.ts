@@ -8,7 +8,7 @@
 // app-2 owns this folder after app-1.
 import { createAssetManifest } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
-import { createFollowCamera, type CameraPose } from '../camera';
+import { createFollowCamera, type CameraMode, type CameraPose, type ViewMode } from '../camera';
 import {
   assetIndex,
   contentHashes,
@@ -54,6 +54,7 @@ import {
   boardCatalog,
   createStreamCache,
   racePalette,
+  raceRadio,
   regionChoices,
   regionKeyOf,
   routeKeyOf,
@@ -71,11 +72,12 @@ export {
   boardCatalog,
   createStreamCache,
   racePalette,
+  raceRadio,
   regionChoices,
   regionKeyOf,
   routeKeyOf,
 } from './regions';
-export type { RegionChoice, StreamCache } from './regions';
+export type { RaceRadio, RegionChoice, StreamCache } from './regions';
 export { resumeFromRecording, roadsForHeader } from './resume';
 export type { ResumeResult, RoadsFor } from './resume';
 export { planFrame, MAX_FRAME_S, MAX_STEPS_PER_FRAME } from './loop';
@@ -136,6 +138,15 @@ export interface FrameStats {
   max: number;
 }
 
+/**
+ * What the presentation modules are doing (the integration round): the camera's chosen view and
+ * the framing it shows, and the radio's region and stations. Read-only, for tests and dev/.
+ */
+export interface AppPresentation {
+  camera: { view: ViewMode; mode: CameraMode };
+  radio: { region: string | null; stations: string[]; tunedTo: string };
+}
+
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
 export interface AppHandle {
   readonly build: AppBuild;
@@ -164,6 +175,8 @@ export interface AppHandle {
   stepTimes(): readonly number[];
   contentHashes(): { sim: string; full: string };
   replayKey(): string;
+  /** The camera's view and the radio's region and stations (tests and dev/). */
+  presentation(): AppPresentation;
 }
 
 function percentile(sorted: readonly number[], p: number): number {
@@ -265,6 +278,7 @@ export function createApp(opts: AppOptions): AppHandle {
     renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
     camera.setRoad(stream.road);
     attractPose = null;
+    tuneRadio();
   };
   /** Makes `id` (a qualified event) the race's event; its pack's road data must be loaded. */
   const useEvent = (id: string) => {
@@ -277,6 +291,21 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   const audio = createAudio();
   audio.setVolumes(settings.volumes, settings.mute);
+  // The radio (M4 radio-1 head start): this device's cut tracks never play, and each race's region
+  // picks its stations (the base pack's while a region has none of its own).
+  const radioCut = (s: typeof settings) => s.vetoes.map((v) => v.contentRef);
+  audio.setRadioCut(radioCut(settings));
+  let radio = raceRadio(registry, regionKeyOf(registry, eventId));
+  let radioRegion: string | null = null;
+  const tuneRadio = () => {
+    const regionKey = regionKeyOf(registry, eventId);
+    if (regionKey === radioRegion) return;
+    radioRegion = regionKey;
+    radio = raceRadio(registry, regionKey);
+    audio.setStations(radio.stations);
+    audio.setRegion(radio.region);
+  };
+  tuneRadio();
   /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
   const engineSounds = (config: SimConfig): Record<string, EngineSoundSpec> => {
     const out: Record<string, EngineSoundSpec> = {};
@@ -350,6 +379,8 @@ export function createApp(opts: AppOptions): AppHandle {
     // The menu's region picker (#160): every carried region with an event, the Keys picked.
     regions: regions.map((r) => ({ id: r.id, name: r.name, ...(r.blurb ? { blurb: r.blurb } : {}) })),
     region: regionKeyOf(registry, eventId),
+    // Every carried pack's bark sets, riders and bikes: a region race's locals talk too.
+    barkContent: { barkSets: registry.barkSets, riders: registry.riders, bikes: registry.bikes },
     callbacks: {
       onRegionChange: (id) => pickRegion(id),
       onStartTap: () => handle.tap(),
@@ -374,6 +405,7 @@ export function createApp(opts: AppOptions): AppHandle {
         input.setLayout({ ...layout, mirror: next.mirror || hud.mirror });
         input.setOptions(controlOptionsOf(next));
         renderer.setLook(next.look);
+        audio.setRadioCut(radioCut(next));
       },
     },
   });
@@ -424,6 +456,8 @@ export function createApp(opts: AppOptions): AppHandle {
     const tick = race.tick;
     const cmd = input.sample(SIM_DT);
     recorder.record(tick, [cmd]);
+    // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input.
+    if (input.lastActions().cycleCamera) camera.cycleView();
     const t0 = performance.now();
     race.step([cmd]);
     stepMs.push(performance.now() - t0);
@@ -623,6 +657,14 @@ export function createApp(opts: AppOptions): AppHandle {
     stepTimes: () => stepMs,
     contentHashes: () => hashes,
     replayKey: () => replayKey,
+    presentation() {
+      // The stations audio itself offers now (its own region filter applied), and what it plays.
+      const r = audio.inspect().radio;
+      return {
+        camera: { view: camera.view, mode: camera.mode },
+        radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
+      };
+    },
   };
 
   go('booted');

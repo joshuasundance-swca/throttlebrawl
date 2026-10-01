@@ -29,7 +29,8 @@ export type PadButtonAction =
   | 'attackRight'
   | 'kick'
   | 'lookBack'
-  | 'skipRunBack';
+  | 'skipRunBack'
+  | 'cycleCamera';
 
 export interface GamepadMap {
   /** The stick axis that steers (-1 left .. 1 right). */
@@ -72,6 +73,8 @@ export const DEFAULT_PAD_MAP: GamepadMap = {
     kick: [PAD.triangle],
     lookBack: [PAD.r1],
     skipRunBack: [PAD.cross],
+    // The camera's next view: d-pad up, free in the default map [default].
+    cycleCamera: [PAD.dpadUp],
   },
 };
 
@@ -118,6 +121,8 @@ export class GamepadState {
   private map: GamepadMap;
   /** Whether each press-edge action was held at the last poll. */
   private wasHeld = new Set<PadButtonAction>();
+  /** Whether the view button was held at the last poll (its press edge). */
+  private viewHeld = false;
 
   constructor(map: GamepadMap = DEFAULT_PAD_MAP) {
     this.map = map;
@@ -131,6 +136,7 @@ export class GamepadState {
   /** Forgets held buttons (the window lost focus), so the next press is a fresh edge. */
   clear(): void {
     this.wasHeld.clear();
+    this.viewHeld = false;
   }
 
   /**
@@ -179,5 +185,8 @@ export class GamepadState {
     if (held('kick')) a.kick = true;
     if (held('lookBack')) a.lookBack = true;
     if (held('skipRunBack')) a.skipRunBack = true;
+    const view = held('cycleCamera');
+    if (view && !this.viewHeld) a.cycleCamera = true;
+    this.viewHeld = view;
   }
 }
