@@ -88,9 +88,50 @@ describe('playtest 1c: a punchy launch', () => {
     expect(launch(riddenBy(starterConfig(), 'cop'), [30, 60])).toEqual(old);
   });
 
-  it('a partial throttle (0.8) behaves exactly as before, so the AI and cop speed holds are unchanged', () => {
-    const old = launch(starterConfig({ tuning: { 'riders.launchGain': 1 } }), [20, 40, 60], 0.8);
-    expect(launch(starterConfig(), [20, 40, 60], 0.8)).toEqual(old);
+  // The integration skeptic (playtest 1c): the punch used to come in only past 90 % throttle, and the
+  // phone's default touch stick is scaled (throttle = the thumb's travel over 60 px), so a thumb
+  // held at 85 % still took 7.9 s to 60 mph. The punch now scales smoothly with the throttle.
+  const OLD = { 'riders.launchGain': 1 };
+  it('a partial thumb gets a punchy launch: 0.85, 0.7 and 0.5 throttle are each much quicker than before', () => {
+    const now85 = launch(starterConfig(), [30, 60], 0.85);
+    const old85 = launch(starterConfig({ tuning: OLD }), [30, 60], 0.85);
+    const now70 = launch(starterConfig(), [30, 60], 0.7);
+    const old70 = launch(starterConfig({ tuning: OLD }), [30, 60], 0.7);
+    const now50 = launch(starterConfig(), [30], 0.5);
+    const old50 = launch(starterConfig({ tuning: OLD }), [30], 0.5);
+    console.log(
+      `[launch] 0.85: ${fmt(now85)} (was ${fmt(old85)}); 0.7: ${fmt(now70)} (was ${fmt(old70)}); 0.5: ${fmt(now50)} (was ${fmt(old50)})`,
+    );
+    expect(old85[60]).toBeGreaterThan(7.5); // the skeptic's 7.87 s
+    expect(now85[60]).toBeLessThan(4.5);
+    expect(old70[60]).toBeGreaterThan(10); // the skeptic's 10.50 s
+    expect(now70[60]).toBeLessThan(6);
+    expect(old50[30]).toBeGreaterThan(6);
+    expect(now50[30]).toBeLessThan(3);
+  });
+
+  it('the launch rises smoothly with the throttle: more throttle is never slower, with no step anywhere', () => {
+    let prev = Infinity;
+    for (let k = 40; k <= 100; k += 5) {
+      const t = launch(starterConfig(), [30], k / 100)[30] ?? Infinity;
+      expect(t).toBeLessThanOrEqual(prev);
+      // No cliff: 5 % more throttle never buys more than a third off the time (the old gate at 90 %
+      // took 0-30 from 3.4 s at 0.9 to 1.1 s at full).
+      if (Number.isFinite(prev)) expect(t).toBeGreaterThan(prev * 0.67);
+      prev = t;
+    }
+  });
+
+  it('an AI rival at a partial throttle (0.8) rides exactly as before, so its speed holds are unchanged', () => {
+    // The AI holds a speed with a partial feed-forward throttle; its punch still comes in only past
+    // 90 % throttle (AI_LAUNCH_THROTTLE). The cop has no punch at all (above).
+    const old = launch(riddenBy(starterConfig({ tuning: OLD }), 'rival'), [20, 40, 60], 0.8);
+    expect(launch(riddenBy(starterConfig(), 'rival'), [20, 40, 60], 0.8)).toEqual(old);
+  });
+
+  it("the auto-throttle option (the slot's assist) gets the whole punch, like full throttle", () => {
+    const auto = { ...starterConfig(), slots: [{ assists: { steer: 'off' as const, autoThrottle: true } }] };
+    expect(launch(auto, [30, 60], 0)).toEqual(launch(starterConfig(), [30, 60], 1));
   });
 
   it('top speed is unchanged: about 100 mph flat out, never past it', () => {

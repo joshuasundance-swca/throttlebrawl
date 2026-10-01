@@ -99,7 +99,14 @@ describe('riders-2: take-off and flight', () => {
       }),
       { s: 100, d: 1.7, speed: 30 },
     );
-    const crawl = riderHarness(testConfig({ edges: RAMP }), { edge: 1, s: 12, d: 1.7, speed: 3 });
+    // The crawl rides without the launch punch (playtest 1c), which now scales with the throttle and
+    // would have the 0.8 throttle up to jump speed before the lip: a crawl is a slow rider at the lip.
+    const crawl = riderHarness(testConfig({ edges: RAMP, tuning: { 'riders.launchGain': 1 } }), {
+      edge: 1,
+      s: 12,
+      d: 1.7,
+      speed: 3,
+    });
     for (const h of [flat, crest, crawl]) {
       const all: SimEvent[] = [];
       for (let t = 0; t < 60 * 12; t++) {

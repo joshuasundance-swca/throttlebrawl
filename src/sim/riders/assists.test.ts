@@ -174,8 +174,11 @@ describe('riders-4: lower overall speed', () => {
       { id: 'ramp', lengthM: 16, kappa: 0, grade: 0.25 },
       { id: 'landing', lengthM: 600, kappa: 0 },
     ];
-    const fly = (m: number) => {
-      const h = riderHarness(withSpeed(m, { edges: RAMP }), { edge: 0, s: 150, d: 1.7, speed: 30 * m });
+    // One flight's peak swings by up to half with where the lip falls inside a tick (the take-off is
+    // a one-tick event), so each figure is the median over eight starts spread across one tick's
+    // travel; the launch punch's extra push (playtest 1c) moved the single start off its lucky phase.
+    const flyFrom = (m: number, s: number) => {
+      const h = riderHarness(withSpeed(m, { edges: RAMP }), { edge: 0, s, d: 1.7, speed: 30 * m });
       let peak = 0;
       let takeoffS = -1;
       let landS = -1;
@@ -194,6 +197,23 @@ describe('riders-4: lower overall speed', () => {
         if (h.rider.mode === 'Airborne') peak = Math.max(peak, h.rider.h);
       }
       return { peak, flight: landS - takeoffS, quality, airTicks };
+    };
+    const fly = (m: number) => {
+      const runs = Array.from({ length: 8 }, (_v, i) => flyFrom(m, 150 + (i * 0.5 * m) / 8));
+      // The median: a start whose lip lands late in a tick takes off a tick late and flies low.
+      const median = (f: (r: (typeof runs)[number]) => number) => {
+        const v = runs.map(f).sort((a, b) => a - b);
+        return ((v[3] ?? 0) + (v[4] ?? 0)) / 2;
+      };
+      const quality = runs.every((r) => r.quality === 'clean')
+        ? 'clean'
+        : runs.map((r) => r.quality).join(',');
+      return {
+        peak: median((r) => r.peak),
+        flight: median((r) => r.flight),
+        quality,
+        airTicks: median((r) => r.airTicks),
+      };
     };
     const full = fly(1);
     const slow = fly(SPEED_MULTIPLIER_MIN);

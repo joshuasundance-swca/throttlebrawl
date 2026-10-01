@@ -301,6 +301,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         pixelRatio: renderer.getPixelRatio(),
         width: canvas.width,
         height: canvas.height,
+        setPieces: roadScene?.stats.setPieces ?? [],
       };
     },
     viewCounts: () => views.viewCounts(),

@@ -144,12 +144,13 @@ export interface RiderState {
  */
 export const LAUNCH_FADE_SHARE = 0.75;
 /**
- * The punch comes in as the throttle opens from this to full [default]. Below it the model is
- * exactly the M1/M2 one, so the AI's and the cops' feed-forward throttle (which hold a speed with a
- * partial throttle) are unchanged; a player on full throttle, and any rider accelerating flat out,
- * gets the whole punch.
+ * An AI rider's punch comes in as its throttle opens from this to full [default]. Below it the AI's
+ * model is exactly the M1/M2 one, so its feed-forward throttle (which holds a speed with a partial
+ * throttle) is unchanged, while an AI accelerating flat out gets the whole punch. A player has no
+ * gate (the integration skeptic, playtest 1c: the phone's scaled stick sits below full, and a 90 %
+ * gate left an 85 % thumb on the old 7.9 s 0-60), so the punch scales smoothly with the thumb.
  */
-export const LAUNCH_THROTTLE = 0.9;
+export const AI_LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
 const GRAVITY = 9.81;
@@ -508,10 +509,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
   // the engine's push at a standstill, fading linearly to 1× at LAUNCH_FADE_SHARE of the bike's own
   // top speed, so top speed, the drag (engine braking when you let go) and cruising are as before.
-  // It comes in only as the throttle opens fully (LAUNCH_THROTTLE), and it is the racers' (the
-  // player's and the rivals'): the cop rides as before (playtest 1 item 7 keeps cop difficulty).
-  // With the punch his catch-up from the lot left him following at about 40 m at top speed, too
-  // close to stop behind a player braking hard, so he overshot (a follow-up for the cops lane).
+  // For a player it multiplies the throttle's push at any throttle, so it scales smoothly with the
+  // thumb; an AI rider gets it only as its throttle opens past AI_LAUNCH_THROTTLE, so the AI's speed
+  // holds are unchanged; at full throttle the two are identical. It is the racers' (the player's and
+  // the rivals'): the cop rides as before (playtest 1 item 7 keeps cop difficulty).
   const v = m.speed;
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
@@ -519,7 +520,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const top = ownTop + boostTop;
   const a = bike.accelMps2 * accelScale * m2;
   const fade = clamp(1 - v / (ownTop * LAUNCH_FADE_SHARE), 0, 1);
-  const open = clamp((throttle - LAUNCH_THROTTLE) / (1 - LAUNCH_THROTTLE), 0, 1);
+  const open =
+    def.controller.kind === 'player'
+      ? 1
+      : clamp((throttle - AI_LAUNCH_THROTTLE) / (1 - AI_LAUNCH_THROTTLE), 0, 1);
   const launch = def.faction === 'law' ? 1 : 1 + ((world.params['riders.launchGain'] ?? 1) - 1) * fade * open;
   let accel = throttle * a * launch - (a * v * v) / (top * top);
   accel -= ((1 - throttle) * COAST_DECEL + brake * bike.brakeMps2) * m2 + gravity * grade;
