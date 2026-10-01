@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stationsForRegion } from '../audio';
 import { loadBasePack, registryFromGlob } from '../content';
 import { buildSimConfig, copIds, streamForEvent } from './config';
 import {
@@ -125,20 +126,39 @@ describe('app: regions', () => {
 });
 
 describe('app: the race radio per region (radio-1 head start, the integration round)', () => {
+  /** What the dial offers in a race: audio's own region filter over what the app hands it. */
+  const dial = (r: ReturnType<typeof raceRadio>) =>
+    stationsForRegion(r.stations, r.region).map((s) => `${s.packId}:${s.id}`);
+
   it("the Keys play the Keys' own stations, filtered by the region", () => {
     const r = raceRadio(ALL, 'base:florida-keys');
     expect(r.region).toBe('base:florida-keys');
-    expect(r.stations.map((s) => `${s.packId}:${s.id}`)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
+    expect(dial(r)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
   });
 
-  it('a region with no station of its own yet gets the base pack stations, unfiltered', () => {
+  it('the Pacific Northwest and San Francisco play their own station first, then the base ones', () => {
+    // The maintainer, 2026-10-01: "I actually like the music" (run W-O: a station per region).
+    expect(dial(raceRadio(ALL, 'region-pnw:pacific-northwest'))).toEqual([
+      'region-pnw:pnw-drizzle',
+      'base:keys-rockabilly',
+      'base:keys-surf',
+    ]);
+    expect(dial(raceRadio(ALL, 'region-sf:san-francisco'))).toEqual([
+      'region-sf:sf-fog-bank',
+      'base:keys-rockabilly',
+      'base:keys-surf',
+    ]);
+  });
+
+  it('a region with no station of its own gets the base pack stations, unfiltered', () => {
+    const baseOnly = {
+      ...ALL,
+      stations: Object.fromEntries(Object.entries(ALL.stations).filter(([k]) => k.startsWith('base:'))),
+    } as typeof ALL;
     for (const region of ['region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
-      const r = raceRadio(ALL, region);
+      const r = raceRadio(baseOnly, region);
       expect(r.region, region).toBeNull();
-      expect(
-        r.stations.map((s) => s.id),
-        region,
-      ).toEqual(['keys-rockabilly', 'keys-surf']);
+      expect(dial(r), region).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
     }
   });
 

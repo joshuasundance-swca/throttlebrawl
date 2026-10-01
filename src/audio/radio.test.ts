@@ -2,7 +2,7 @@
 // radio inside the mixer (switching, the duck, "cut this" as data), on the fake context. The real
 // graph is rendered offline in tests/e2e/audio-radio.spec.ts.
 import { describe, expect, it, vi } from 'vitest';
-import { loadBasePack } from '../content';
+import { loadBasePack, registryFromGlob } from '../content';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
 import { createAudio, RADIO_OFF, RADIO_SCORE } from './index';
 import {
@@ -72,6 +72,29 @@ describe('station data (packs/base/stations)', () => {
       'everywhere',
     ]);
     expect(stationsForRegion(baseStations(), null)).toHaveLength(2);
+  });
+
+  it("puts a region's own stations first, then genre stations, then the base pack's as fallbacks", () => {
+    const pnw: RadioStation = {
+      ...station('keys-surf'),
+      id: 'pnw-x',
+      packId: 'region-pnw',
+      regions: ['pacific-northwest'],
+    };
+    const genre: RadioStation = { ...station('keys-surf'), id: 'everywhere', regions: [] };
+    const all = [...baseStations(), genre, pnw];
+    expect(stationsForRegion(all, 'region-pnw:pacific-northwest').map((s) => s.id)).toEqual([
+      'pnw-x',
+      'everywhere',
+      'keys-rockabilly',
+      'keys-surf',
+    ]);
+    // The Keys never pick up another region's station.
+    expect(stationsForRegion(all, 'florida-keys').map((s) => s.id)).toEqual([
+      'keys-rockabilly',
+      'keys-surf',
+      'everywhere',
+    ]);
   });
 
   it('drops a track whose status is vetoed at load, and keeps it in the file as the taste log', () => {
@@ -422,5 +445,35 @@ describe('the radio in the mixer', () => {
     again.audio.setRadioCut([playing]);
     again.audio.setParam('audio.radio', 3);
     expect(again.audio.inspect().radio.nowPlaying!.ref).not.toBe(playing);
+  });
+});
+
+describe('the regions own stations (run W-O: a Pacific Northwest and a San Francisco station)', () => {
+  const all = stationsFromTable(
+    registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' })).stations,
+  );
+  const want: [string, string, string, string][] = [
+    ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'surf'],
+    ['region-sf', 'sf-fog-bank', 'san-francisco', 'rockabilly'],
+  ];
+  it.each(want)('%s carries %s, four code-made tracks that compose as written', (pack, id, region, genre) => {
+    const s = all.find((x) => x.packId === pack && x.id === id);
+    expect(s).toBeDefined();
+    if (!s) return;
+    expect(s.regions).toEqual([region]);
+    expect(s.genre).toBe(genre);
+    expect(s.tracks).toHaveLength(4);
+    const keysTitles = new Set(baseStations().flatMap((b) => b.tracks.map((t) => t.title)));
+    for (const t of s.tracks) {
+      expect(t.ref).toBe(stationTrackRef(pack, id, t.id));
+      expect(t.origin).toBe('agent');
+      expect(t.status).toBe('live');
+      expect(keysTitles.has(t.title)).toBe(false);
+      expect(t.procedural?.preset).toBe(genre === 'surf' ? 'surf-trio' : 'rockabilly-trio');
+      const c = composeFor(t);
+      expect(c).not.toBeNull();
+      // Every param is inside its preset's range, so the song is the one the file describes.
+      expect(c?.bpm).toBe(t.procedural?.params?.['bpm']);
+    }
   });
 });
