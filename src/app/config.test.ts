@@ -163,9 +163,24 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
       'base:chad-speedwell',
       'base:kevin-from-accounting',
       'base:player',
+      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot (release
+      // content: Pruitt each time).
+      'base:sgt-pruitt',
+      'base:sgt-pruitt',
+      'base:sgt-pruitt',
       'base:sgt-pruitt',
     ]);
-    expect(config.riders.map((r) => r.controller.kind)).toEqual(['ai', 'ai', 'ai', 'ai', 'player', 'cop']);
+    expect(config.riders.map((r) => r.controller.kind)).toEqual([
+      'ai',
+      'ai',
+      'ai',
+      'ai',
+      'player',
+      'cop',
+      'cop',
+      'cop',
+      'cop',
+    ]);
   });
 
   it('resolves Sgt. Pruitt as a cop: the law faction, his bike scaled by his pursuit speed, his law block', () => {
