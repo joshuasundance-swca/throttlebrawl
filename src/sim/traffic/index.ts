@@ -17,6 +17,10 @@
 //   the whole road or just oncoming traffic can go to zero; oncoming density
 //   can also ease in over the start of a race (M2 traffic-3, off by default). The region's
 //   `traffic.mix` weights pick the vehicle types (SimTrafficTypeDef.weight).
+// - Traffic areas (W-R; interview, 2026-10-02: "DISTINCT KEYS"): where a road tag that is a
+//   traffic area (a Keys district such as `key-fishing`) covers a spawn slot, that area's own mix
+//   (SimTrafficTypeDef.areaWeights) picks the type instead, from the same one roll. A vehicle keeps
+//   its type as it drives on; recycled, it is picked again where it reappears.
 // - Contacts (playtest 1): a solid frontal or rear hit crashes the rider inelastically; a side
 //   brush, a graze or a slow nudge wobbles (a `wobble` event), unless the rider is still unstable
 //   or the vehicle is `big` (trucks), which crashes (a `crash` event for the tumble). Both carry
@@ -205,6 +209,12 @@ export const TRAFFIC = {
   lookaheadM: 200,
   /** Minimum bumper gap at spawn, m. */
   spawnGapM: 40,
+  /**
+   * A spawn keeps its box this far clear, end to end, of any rider in its path (W-R): a cop waiting
+   * on the shoulder is no anchor, so the fairness rule never kept a kerb rider from appearing on top
+   * of him and shoving him along the shoulder.
+   */
+  spawnRiderClearM: 15,
   /** Spawns keep this far from the corridor's ends, m. */
   endMarginM: 12,
   /** Candidate spawn slots are this far apart, m. */
@@ -370,13 +380,62 @@ function weightOf(t: SimTrafficTypeDef | undefined): number {
 }
 
 /**
- * The pick weight during a race, for a vehicle heading `dir`: oddities scale by the
- * `traffic.oddities` slider, and a ROLLING oddity (a mobile home with no truck, slower than any
- * car) comes only the other way, so nobody is stuck behind it at 20 mph for minutes (the bot and
- * the rivals do not overtake a slow vehicle). [default]
+ * A type's weight in a traffic area (W-R; interview, 2026-10-02: each key its own traffic): its
+ * `areaWeights` entry for that area tag, 0 when it has none; with no area, its region weight.
  */
-function rollWeight(world: World, t: SimTrafficTypeDef | undefined, dir: number, routeDir: number): number {
-  const w = weightOf(t);
+function areaWeightOf(t: SimTrafficTypeDef | undefined, area: string | null): number {
+  if (area === null) return weightOf(t);
+  const w = t?.areaWeights?.[area] ?? 0;
+  return Number.isFinite(w) && w > 0 ? w : 0;
+}
+
+/** The traffic area tags of a config: every key of any type's `areaWeights` (cached per config). */
+const AREA_TAGS = new WeakMap<SimConfig, ReadonlySet<string>>();
+function areaTags(config: SimConfig): ReadonlySet<string> {
+  let tags = AREA_TAGS.get(config);
+  if (!tags) {
+    const out = new Set<string>();
+    for (const t of config.trafficTypes) for (const k of Object.keys(t.areaWeights ?? {})) out.add(k);
+    tags = out;
+    AREA_TAGS.set(config, tags);
+  }
+  return tags;
+}
+
+/**
+ * The traffic area at corridor u (W-R): the first tag of the road under u, in the road's tag
+ * order, that is an area tag and covers that s on either side; null outside every area, or when
+ * the race has no areas.
+ */
+export function trafficAreaAt(config: SimConfig, c: Corridor, u: number): string | null {
+  const areas = areaTags(config);
+  if (areas.size === 0 || c.edges.length === 0) return null;
+  const i = linkAt(c, u < 0 ? 0 : u > c.length ? c.length : u);
+  const o = c.o[i] ?? 1;
+  const off = c.off[i] ?? 0;
+  const len = c.len[i] ?? 0;
+  const s = o === 1 ? u - off : off + len - u;
+  const edge = config.road.edges[c.edges[i] ?? -1];
+  for (const t of edge?.tags ?? []) {
+    if (areas.has(t.tag) && s >= t.s0 && s <= t.s1) return t.tag;
+  }
+  return null;
+}
+
+/**
+ * The pick weight during a race, for a vehicle heading `dir` in traffic area `area` (null: the
+ * region's mix): oddities scale by the `traffic.oddities` slider, and a ROLLING oddity (a mobile
+ * home with no truck, slower than any car) comes only the other way, so nobody is stuck behind it
+ * at 20 mph for minutes (the bot and the rivals do not overtake a slow vehicle). [default]
+ */
+function rollWeight(
+  world: World,
+  t: SimTrafficTypeDef | undefined,
+  dir: number,
+  routeDir: number,
+  area: string | null = null,
+): number {
+  const w = areaWeightOf(t, area);
   if (t?.category !== 'oddity') return w;
   if (!isParked(t) && dir === routeDir) return 0;
   const k = world.params['traffic.oddities'] ?? 1;
@@ -627,16 +686,31 @@ export function laneEndAhead(
   return laneEndOnMap(st.laneMap, u, dir, rank, range);
 }
 
-function rollType(world: World, config: SimConfig, st: TrafficState, dir: number): number {
+/**
+ * The type a roll `r01` in [0, 1) picks for a vehicle heading `dir` in traffic area `area` (W-R:
+ * the area's own mix; null, or an area whose weights all come to 0 that way, is the region's mix).
+ */
+function pickType(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  dir: number,
+  r01: number,
+  area: string | null,
+): number {
   const rd = st.corridor.routeDir;
   let total = 0;
-  for (const i of st.types) total += rollWeight(world, config.trafficTypes[i], dir, rd);
-  let r = nextFloat(world.rng.traffic) * total;
+  for (const i of st.types) total += rollWeight(world, config.trafficTypes[i], dir, rd, area);
+  if (!(total > 0) && area !== null) return pickType(world, config, st, dir, r01, null);
+  let r = r01 * total;
+  let last = st.types[st.types.length - 1] ?? 0;
   for (const i of st.types) {
-    r -= rollWeight(world, config.trafficTypes[i], dir, rd);
+    const w = rollWeight(world, config.trafficTypes[i], dir, rd, area);
+    r -= w;
     if (r < 0) return i;
+    if (w > 0) last = i;
   }
-  return st.types[st.types.length - 1] ?? 0;
+  return last;
 }
 
 /** Whether a vehicle of `length` fits at u in lane (dir, rank) with `gap` metres of bumper room. */
@@ -656,6 +730,34 @@ function laneClear(
     if (Math.abs((st.u[k] ?? 0) - u) < need) return false;
   }
   return true;
+}
+
+/**
+ * Whether a vehicle of type `t` placed at (u, cd) keeps clear of every rider (W-R): no rider whose
+ * box would overlap it side to side is within TRAFFIC.spawnRiderClearM of its box, end to end.
+ */
+function riderClear(riders: readonly RiderView[], t: SimTrafficTypeDef, u: number, cd: number): boolean {
+  for (const r of riders) {
+    if (Math.abs(r.cd - cd) >= (t.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM) continue;
+    if (Math.abs(r.u - u) < (t.lengthM + TRAFFIC.riderLengthM) / 2 + TRAFFIC.spawnRiderClearM) return false;
+  }
+  return true;
+}
+
+/** Where a vehicle of type `t` stands across the road at u in lane (dir, rank): placeVehicle's rule. */
+function spawnCd(
+  config: SimConfig,
+  c: Corridor,
+  t: SimTrafficTypeDef,
+  u: number,
+  dir: number,
+  laneCd: number,
+): number {
+  if (isKerb(t)) {
+    const kerb = kerbCd(config.road, c, u, dir, t.widthM / 2);
+    if (kerb) return kerb.cd;
+  }
+  return isParked(t) ? parkedCd(laneCd) : laneCd;
 }
 
 /** The fairness rule, as one predicate: a spawn at u is allowed only beyond reaction range. */
@@ -739,10 +841,15 @@ function trySpawn(
   k: number,
 ): boolean {
   const c = st.corridor;
-  const type = rollType(world, config, st, dir);
-  const t = config.trafficTypes[type];
-  if (!t) return false;
-  const v0 = t.cruiseMps * (0.9 + 0.2 * nextFloat(world.rng.traffic));
+  // The rolls come first, in their old order. The type is picked per candidate slot from the one
+  // type roll, by the traffic area at that slot (W-R: each key its own traffic); without areas
+  // every slot picks the same type, as before.
+  const typeRoll = nextFloat(world.rng.traffic);
+  const speedRoll = 0.9 + 0.2 * nextFloat(world.rng.traffic);
+  const regionType = pickType(world, config, st, dir, typeRoll, null);
+  if (!config.trafficTypes[regionType]) return false;
+  const hasAreas = areaTags(config).size > 0;
+  let riders: RiderView[] | null = null;
   const jitter = nextFloat(world.rng.traffic) * TRAFFIC.slotStepM;
   const laneRoll = nextFloat(world.rng.traffic);
   const spacing = TRAFFIC.baseSpacingM / Math.max(0.1, densityFor(world, st, dir));
@@ -766,11 +873,18 @@ function trySpawn(
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
+    const area = hasAreas ? trafficAreaAt(config, c, u) : null;
+    const type = area === null ? regionType : pickType(world, config, st, dir, typeRoll, area);
+    const t = config.trafficTypes[type];
+    if (!t) continue;
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
     let rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     // Never into a lane that ends soon (W-R): the next lane in, until one goes on.
     while (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) rank--;
     if (!laneClear(config, st, u, dir, rank, t.lengthM, gap, k)) continue;
+    riders ??= riderViews(world, st);
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
+    const v0 = t.cruiseMps * speedRoll;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
     if (k >= 0) st.recycles++;
@@ -804,11 +918,14 @@ function addConvoy(
   let room = targetCount(world, st, anchors, dir);
   for (let k = 0; k < st.id.length; k++) if (st.dir[k] === dir && st.retired[k] === 0) room--;
   let u = st.u[lead] ?? 0;
+  const riders = riderViews(world, st);
   for (let i = 0; i < extra && room > 0; i++) {
     u -= dir * step;
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) return;
     if (!spawnAllowed(anchors, u, st.reactionM)) return;
     if (!laneClear(config, st, u, dir, rank, t.lengthM, IDM.minGapM)) return;
+    const laneCd = lanesAt(config.road, c, u, dir)[rank]?.cd ?? 0;
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) return;
     placeVehicle(world, config, { type: st.type[lead] ?? 0, u, dir, rank, v0 });
     st.spawns++;
     room--;
@@ -837,6 +954,7 @@ function park(
   const dir = (st.dir[k] ?? 1) === 1 ? 1 : -1;
   const t = typeOf(config, st, k);
   const clear = TRAFFIC.windowM + TRAFFIC.despawnMarginM + TRAFFIC.slotStepM;
+  let riders: RiderView[] | null = null;
   for (let i = 0; ; i++) {
     const along = TRAFFIC.endMarginM + i * TRAFFIC.slotStepM;
     if (along > c.hi - c.lo - TRAFFIC.endMarginM) return false;
@@ -844,6 +962,9 @@ function park(
     if (nearestAnchor(anchors, u) <= clear) continue;
     if (lanesAt(config.road, c, u, dir).length === 0) continue;
     if (!laneClear(config, st, u, dir, 0, t.lengthM, TRAFFIC.spawnGapM, k)) continue;
+    riders ??= riderViews(world, st);
+    const laneCd = lanesAt(config.road, c, u, dir)[0]?.cd ?? 0;
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) continue;
     const retired = st.retired[k] ?? 0;
     placeVehicle(world, config, { type: st.type[k] ?? 0, u, dir, v0: st.v0[k] ?? t.cruiseMps }, k);
     st.retired[k] = retired;
@@ -1479,7 +1600,11 @@ export const trafficSystem: SimSystem = {
     st.corridor = buildCorridor(config);
     st.laneMap = buildLaneMap(config.road, st.corridor);
     // Road vehicles the region mix gives a weight; a weight of 0 means it never spawns.
-    st.types = config.trafficTypes.flatMap((t, i) => (CATEGORY[t.category] && weightOf(t) > 0 ? [i] : []));
+    // A type in no region mix but in an area's (W-R) spawns too, only in that area.
+    const areas = areaTags(config);
+    const inAnyMix = (t: SimTrafficTypeDef) =>
+      weightOf(t) > 0 || [...areas].some((a) => areaWeightOf(t, a) > 0);
+    st.types = config.trafficTypes.flatMap((t, i) => (CATEGORY[t.category] && inAnyMix(t) ? [i] : []));
     let topSpeed = 0;
     for (const m of world.movers) {
       if (isAnchor(config, m))

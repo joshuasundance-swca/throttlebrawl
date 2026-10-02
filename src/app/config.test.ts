@@ -328,7 +328,43 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:event-tow-truck': 0,
       'base:event-work-truck': 0,
       'base:keys-parade-float': 0,
+      // W-R: each key's own vehicles, in no region mix: they spawn only on their key.
+      'base:cooler-on-wheels': 0,
+      'base:party-van': 0,
+      'base:resort-scooter-rider': 0,
+      'base:salvage-key-shuttle': 0,
+      'base:salvage-wrecker': 0,
+      'base:shrimp-truck': 0,
     });
+  });
+
+  it("writes each type its weight in each of the region's traffic areas (W-R: each key its own traffic)", () => {
+    const reg = buildRegistry(basePackFiles());
+    const c = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    const areas = Object.fromEntries(
+      c.trafficTypes.filter((t) => t.areaWeights).map((t) => [t.contentId, t.areaWeights]),
+    );
+    expect(areas['base:shrimp-truck']).toEqual({ 'key-fishing': 3 });
+    expect(areas['base:pickup-towing-boat']).toEqual({ 'key-fishing': 3 });
+    expect(areas['base:resort-scooter-rider']).toEqual({ 'key-resort': 2.5 });
+    expect(areas['base:golf-cart']).toEqual({ 'key-resort': 3, 'key-party': 1.5 });
+    expect(areas['base:salvage-wrecker']).toEqual({ 'key-junkyard': 3 });
+    expect(areas['base:salvage-key-shuttle']).toEqual({ 'key-junkyard': 1.5 });
+    expect(areas['base:party-van']).toEqual({ 'key-party': 4 });
+    expect(areas['base:cooler-on-wheels']).toEqual({ 'key-party': 2 });
+    expect(areas['base:sedan-rental']).toEqual({
+      'key-fishing': 2,
+      'key-resort': 2,
+      'key-junkyard': 2,
+      'key-party': 2,
+    });
+    // A type no area lists carries no area weights; peds never do.
+    expect(areas['base:runaway-mobile-home']).toBeUndefined();
+    expect(areas['base:fisherman']).toBeUndefined();
+    // Every area tag is a district some keys-m1 road carries.
+    const tags = new Set(c.road.edges.flatMap((e) => e.tags.map((g) => g.tag)));
+    for (const w of Object.values(areas))
+      for (const k of Object.keys(w ?? {})) expect(tags.has(k)).toBe(true);
   });
 });
 

@@ -586,7 +586,7 @@ function startDive(
   // stretch of the dive the pedestrian covers in that window. A side scores the smallest
   // side-to-side clearance, box edge to box edge, over those stretches, so a dive that would cross
   // a rider's line as it arrives scores badly even when the landing spot is clear.
-  const near: { d: number; halfW: number; t0: number; t1: number }[] = [];
+  const near: { d: number; halfW: number; t0: number; t1: number; vehicle: boolean }[] = [];
   for (const r of threats) {
     const rel = relate(r, p, pedThreatRangeM(r.m.speed) + 10);
     if (!rel) continue;
@@ -595,29 +595,38 @@ function startDive(
     if (rel.ahead + pass < 0) continue;
     const t0 = v > 0.1 ? Math.max(0, (rel.ahead - pass) / v) : 0;
     const t1 = v > 0.1 ? (rel.ahead + pass) / v : Infinity;
-    near.push({ d: rel.riderD, halfW: r.widthM / 2, t0, t1 });
+    near.push({ d: rel.riderD, halfW: r.widthM / 2, t0, t1, vehicle: r.vehicle });
   }
   let best = 1;
   let bestScore = -Infinity;
+  let bestClearsRiders = false;
   const from = p.pos.d;
   for (const side of [1, -1] as const) {
     const to = from + side * PEDS.diveDistM;
     const at = (time: number) => from + (to - from) * Math.min(1, time / PEDS.diveS);
     let score = Infinity;
+    let riderScore = Infinity;
     for (const q of near) {
       const a = at(q.t0);
       const b = at(q.t1);
       const gap =
         q.d < Math.min(a, b) ? Math.min(a, b) - q.d : q.d > Math.max(a, b) ? q.d - Math.max(a, b) : 0;
       score = Math.min(score, gap - q.halfW - half);
+      if (!q.vehicle) riderScore = Math.min(riderScore, gap - q.halfW - half);
     }
     if (!Number.isFinite(score)) score = 100;
     if (to - half >= hi || to + half <= lo) score += 0.75;
     // Tie-break: away from the road's centre line.
     if (side === (p.pos.d < 0 ? -1 : 1)) score += 1e-6;
-    if (score > bestScore) {
+    // Riders first (keys traffic, 2026-10-02): a car or a kerb scooter only knocks a pedestrian
+    // over, but a rider must never touch one. So when a pedestrian is squeezed between them, a dive
+    // that keeps clear of every rider beats one that does not, whatever the cars; otherwise the
+    // score decides, as before.
+    const clearsRiders = riderScore > 0;
+    if (clearsRiders !== bestClearsRiders ? clearsRiders : score > bestScore) {
       bestScore = score;
       best = side;
+      bestClearsRiders = clearsRiders;
     }
   }
   st.phase[k] = PED_PHASE.dive;
