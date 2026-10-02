@@ -151,11 +151,21 @@
       "text": "Moss broke my fall. Moss always does.",
       "audioAsset": "audio/barks/old-growth-core/growth-crash-moss",
       "audioStatus": "live"
+    },
+    {
+      "id": "old-growth-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Lie still. Moss grows quicker that way."
+    },
+    {
+      "id": "old-growth-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Seen saplings fall. They got up slower."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "region-pnw (playtest 1c). growth-start-here-before is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
+    "notes": "region-pnw (playtest 1c). growth-start-here-before is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
