@@ -557,6 +557,90 @@
     "cfg": 0.5,
     "review": []
   },
+  "base:chad-core#chad-start-keys-lobster": {
+    "speaker": "chad-speedwell",
+    "text": "Chat says I'm lobster-colored. Fair.",
+    "spoken": "Chat says I'm lobster-colored. Fair.",
+    "seed": 670555247,
+    "match": 1.0,
+    "heard": "Chat says, I'm lobster-colored. Fair.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 670555247,
+        "heard": "Chat says, I'm lobster-colored. Fair.",
+        "match": 1.0,
+        "durationS": 2.63
+      }
+    ],
+    "durationS": 2.63,
+    "bytes": 8757,
+    "lufs": -18.8,
+    "peakDb": -1.8,
+    "f0": 125.7,
+    "refF0": 125.0,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-start-pnw-ring-light": {
+    "speaker": "chad-speedwell",
+    "text": "Chat, it's raining. Ring light's soaked.",
+    "spoken": "Chat, it's raining. Ring light's soaked.",
+    "seed": 1444863177,
+    "match": 1.0,
+    "heard": "Chat, it's raining. Ring lights soaked.",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1444855258,
+        "heard": "Chat, it's raining, ring light soaked.",
+        "match": 0.833,
+        "durationS": 2.44
+      },
+      {
+        "seed": 1444863177,
+        "heard": "Chat, it's raining. Ring lights soaked.",
+        "match": 1.0,
+        "durationS": 2.5
+      }
+    ],
+    "durationS": 2.5,
+    "bytes": 8501,
+    "lufs": -18.2,
+    "peakDb": -1.85,
+    "f0": 118.8,
+    "refF0": 125.0,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:chad-core#chad-start-sf-bots": {
+    "speaker": "chad-speedwell",
+    "text": "Chat's mostly bots now. Hi, bots.",
+    "spoken": "Chat's mostly bots now. Hi, bots.",
+    "seed": 842868437,
+    "match": 1.0,
+    "heard": "Chat's mostly bots now. Hi bots.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 842868437,
+        "heard": "Chat's mostly bots now. Hi bots.",
+        "match": 1.0,
+        "durationS": 2.2
+      }
+    ],
+    "durationS": 2.2,
+    "bytes": 7588,
+    "lufs": -18.6,
+    "peakDb": -1.82,
+    "f0": 108.6,
+    "refF0": 125.0,
+    "exaggeration": 0.6,
+    "cfg": 0.5,
+    "review": []
+  },
   "base:chad-core#chad-start-sponsored": {
     "speaker": "chad-speedwell",
     "text": "This crash is sponsored by nobody. Sorry.",
@@ -1231,6 +1315,58 @@
     "cfg": 0.4,
     "review": []
   },
+  "base:deacon-core#deacon-start-keys-conch": {
+    "speaker": "deacon-vane",
+    "text": "Even the Conch Republic needs saving.",
+    "spoken": "Even the Konk Republic needs saving.",
+    "seed": 1037825091,
+    "match": 1.0,
+    "heard": "Even the Conch Republic needs saving.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1037825091,
+        "heard": "Even the Conch Republic needs saving.",
+        "match": 1.0,
+        "durationS": 2.25
+      }
+    ],
+    "durationS": 2.25,
+    "bytes": 7845,
+    "lufs": -17.7,
+    "peakDb": -1.98,
+    "f0": 89.2,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:deacon-core#deacon-start-pnw-flood": {
+    "speaker": "deacon-vane",
+    "text": "Forty days of rain. I've read this one.",
+    "spoken": "Forty days of rain. I've read this one.",
+    "seed": 154549692,
+    "match": 1.0,
+    "heard": "40 Days of Rain. I've read this one.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 154549692,
+        "heard": "40 Days of Rain. I've read this one.",
+        "match": 1.0,
+        "durationS": 2.75
+      }
+    ],
+    "durationS": 2.75,
+    "bytes": 9393,
+    "lufs": -18.2,
+    "peakDb": -1.94,
+    "f0": 99.4,
+    "refF0": 81.9,
+    "exaggeration": 0.52,
+    "cfg": 0.4,
+    "review": []
+  },
   "base:deacon-core#deacon-start-sunrise": {
     "speaker": "deacon-vane",
     "text": "Sunrise service. Bring your own ditch.",
@@ -1887,6 +2023,32 @@
     "cfg": 0.55,
     "review": []
   },
+  "base:dial-up-core#dial-up-start-keys-storm": {
+    "speaker": "dial-up",
+    "text": "Hurricane took my signal. Not my speed.",
+    "spoken": "Hurricane took my signal. Not my speed.",
+    "seed": 1952512600,
+    "match": 1.0,
+    "heard": "Hurricane took my signal, not my speed.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1952512600,
+        "heard": "Hurricane took my signal, not my speed.",
+        "match": 1.0,
+        "durationS": 2.45
+      }
+    ],
+    "durationS": 2.45,
+    "bytes": 8393,
+    "lufs": -17.8,
+    "peakDb": -1.76,
+    "f0": 113.5,
+    "refF0": 120.9,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
   "base:dial-up-core#dial-up-start-night": {
     "speaker": "dial-up",
     "text": "Night rates. Long distance is free.",
@@ -1909,6 +2071,32 @@
     "peakDb": -1.87,
     "f0": 153.8,
     "refF0": 120.0,
+    "exaggeration": 0.62,
+    "cfg": 0.55,
+    "review": []
+  },
+  "base:dial-up-core#dial-up-start-sf-dotcom": {
+    "speaker": "dial-up",
+    "text": "Last time I was here, I was a dot-com.",
+    "spoken": "Last time I was here, I was a dot-com.",
+    "seed": 163116575,
+    "match": 0.947,
+    "heard": "Last time I was here, I was a.com.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 163116575,
+        "heard": "Last time I was here, I was a.com.",
+        "match": 0.947,
+        "durationS": 2.02
+      }
+    ],
+    "durationS": 2.02,
+    "bytes": 7018,
+    "lufs": -17.2,
+    "peakDb": -1.94,
+    "f0": 150.0,
+    "refF0": 120.9,
     "exaggeration": 0.62,
     "cfg": 0.55,
     "review": []
@@ -2506,6 +2694,32 @@
     "lufs": -17.6,
     "peakDb": -1.87,
     "f0": 126.7,
+    "refF0": 161.1,
+    "exaggeration": 0.3,
+    "cfg": 0.5,
+    "review": []
+  },
+  "base:kevin-core#kevin-start-keys-spf": {
+    "speaker": "kevin-from-accounting",
+    "text": "SPF 50. Expensed.",
+    "spoken": "S.P.F. fifty. Expensed.",
+    "seed": 1368380331,
+    "match": 1.0,
+    "heard": "SPF 50 Expensed",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1368380331,
+        "heard": "SPF 50 Expensed",
+        "match": 1.0,
+        "durationS": 2.32
+      }
+    ],
+    "durationS": 2.32,
+    "bytes": 7773,
+    "lufs": -17.2,
+    "peakDb": -1.91,
+    "f0": 134.5,
     "refF0": 161.1,
     "exaggeration": 0.3,
     "cfg": 0.5,
@@ -4107,6 +4321,32 @@
     "cfg": 0.4,
     "review": []
   },
+  "base:pruitt-core#pruitt-bust-shade": {
+    "speaker": "sgt-pruitt",
+    "text": "Sit in the shade. Cuffs are hot.",
+    "spoken": "Sit in the shade. Cuffs are hot.",
+    "seed": 613112045,
+    "match": 1.0,
+    "heard": "sit in the shade. Cuffs are hot.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 613112045,
+        "heard": "sit in the shade. Cuffs are hot.",
+        "match": 1.0,
+        "durationS": 2.78
+      }
+    ],
+    "durationS": 2.78,
+    "bytes": 9130,
+    "lufs": -17.9,
+    "peakDb": -1.18,
+    "f0": 96.8,
+    "refF0": 108.1,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
   "base:pruitt-core#pruitt-crash-county": {
     "speaker": "sgt-pruitt",
     "text": "County bike. Not my problem.",
@@ -4453,6 +4693,32 @@
     "peakDb": -1.98,
     "f0": 106.2,
     "refF0": 108.6,
+    "exaggeration": 0.3,
+    "cfg": 0.4,
+    "review": []
+  },
+  "base:pruitt-core#pruitt-siren-storm": {
+    "speaker": "sgt-pruitt",
+    "text": "Storm's coming. Still writing tickets.",
+    "spoken": "Storm's coming. Still writing tickets.",
+    "seed": 1936997735,
+    "match": 1.0,
+    "heard": "Storms coming, still writing tickets.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1936997735,
+        "heard": "Storms coming, still writing tickets.",
+        "match": 1.0,
+        "durationS": 2.95
+      }
+    ],
+    "durationS": 2.95,
+    "bytes": 9869,
+    "lufs": -17.5,
+    "peakDb": -1.96,
+    "f0": 106.7,
+    "refF0": 108.1,
     "exaggeration": 0.3,
     "cfg": 0.4,
     "review": []
@@ -5243,6 +5509,32 @@
     "cfg": 0.45,
     "review": []
   },
+  "region-pnw:juniper-core#juniper-crash-remake": {
+    "speaker": "juniper-moss",
+    "text": "It's fine. I'll just remake everything.",
+    "spoken": "It's fine. I'll just remake everything.",
+    "seed": 923579529,
+    "match": 1.0,
+    "heard": "It's fine. I'll just remake everything.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 923579529,
+        "heard": "It's fine. I'll just remake everything.",
+        "match": 1.0,
+        "durationS": 2.22
+      }
+    ],
+    "durationS": 2.22,
+    "bytes": 7660,
+    "lufs": -18.2,
+    "peakDb": -1.88,
+    "f0": 198.3,
+    "refF0": 198.3,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
   "region-pnw:juniper-core#juniper-down-banned": {
     "speaker": "juniper-moss",
     "text": "You're banned. From the stand.",
@@ -5451,6 +5743,44 @@
     "cfg": 0.5,
     "review": []
   },
+  "region-pnw:juniper-core#juniper-start-oat": {
+    "speaker": "juniper-moss",
+    "text": "Oat milk's extra. So is finishing.",
+    "spoken": "Oat milk's extra. So is finishing.",
+    "seed": 459383841,
+    "match": 0.727,
+    "heard": "Oatmilk's extra. So is finishing.",
+    "takes": 3,
+    "tried": [
+      {
+        "seed": 459383841,
+        "heard": "Oatmilk's extra. So is finishing.",
+        "match": 0.727,
+        "durationS": 2.74
+      },
+      {
+        "seed": 459391760,
+        "heard": "Oatmilk's extra. So is finishing.",
+        "match": 0.727,
+        "durationS": 2.58
+      },
+      {
+        "seed": 459399679,
+        "heard": "Oatmilk's extra, so is finishing.",
+        "match": 0.727,
+        "durationS": 2.34
+      }
+    ],
+    "durationS": 2.74,
+    "bytes": 9079,
+    "lufs": -17.8,
+    "peakDb": -1.93,
+    "f0": 187.5,
+    "refF0": 198.3,
+    "exaggeration": 0.45,
+    "cfg": 0.5,
+    "review": ["transcript"]
+  },
   "region-pnw:juniper-core#juniper-start-since-four": {
     "speaker": "juniper-moss",
     "text": "I open at five. I've been mad since four.",
@@ -5555,6 +5885,58 @@
     "cfg": 0.5,
     "review": []
   },
+  "region-pnw:juniper-core#juniper-traffic-order-up": {
+    "speaker": "juniper-moss",
+    "text": "Order up. It's a log truck.",
+    "spoken": "Order up. It's a log truck.",
+    "seed": 31079678,
+    "match": 1.0,
+    "heard": "Order up. It's a log truck.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 31079678,
+        "heard": "Order up. It's a log truck.",
+        "match": 1.0,
+        "durationS": 2.22
+      }
+    ],
+    "durationS": 2.22,
+    "bytes": 7385,
+    "lufs": -17.6,
+    "peakDb": -1.87,
+    "f0": 187.5,
+    "refF0": 198.3,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-pnw:lindqvist-core#lindqvist-busted-dry": {
+    "speaker": "deputy-lindqvist",
+    "text": "Let's get you somewhere dry. Then jail.",
+    "spoken": "Let's get you somewhere dry. Then jail.",
+    "seed": 1181716527,
+    "match": 1.0,
+    "heard": "Let's get you somewhere dry. Then jail.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1181716527,
+        "heard": "Let's get you somewhere dry. Then jail.",
+        "match": 1.0,
+        "durationS": 3.21
+      }
+    ],
+    "durationS": 3.21,
+    "bytes": 10239,
+    "lufs": -17.2,
+    "peakDb": -1.79,
+    "f0": 94.1,
+    "refF0": 100.8,
+    "exaggeration": 0.25,
+    "cfg": 0.4,
+    "review": []
+  },
   "region-pnw:lindqvist-core#lindqvist-busted-ferry": {
     "speaker": "deputy-lindqvist",
     "text": "You have the right to a very long ferry wait.",
@@ -5577,6 +5959,32 @@
     "peakDb": -1.93,
     "f0": 91.3,
     "refF0": 100.4,
+    "exaggeration": 0.25,
+    "cfg": 0.4,
+    "review": []
+  },
+  "region-pnw:lindqvist-core#lindqvist-siren-ferry": {
+    "speaker": "deputy-lindqvist",
+    "text": "No rush. Neither of us makes that ferry.",
+    "spoken": "No rush. Neither of us makes that ferry.",
+    "seed": 1488342191,
+    "match": 1.0,
+    "heard": "No rush. Neither of us makes that ferry.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1488342191,
+        "heard": "No rush. Neither of us makes that ferry.",
+        "match": 1.0,
+        "durationS": 3.11
+      }
+    ],
+    "durationS": 3.11,
+    "bytes": 10328,
+    "lufs": -17.6,
+    "peakDb": -1.87,
+    "f0": 96.6,
+    "refF0": 100.8,
     "exaggeration": 0.25,
     "cfg": 0.4,
     "review": []
@@ -5631,6 +6039,32 @@
     "refF0": 100.4,
     "exaggeration": 0.25,
     "cfg": 0.4,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-crash-moss": {
+    "speaker": "old-growth",
+    "text": "Moss broke my fall. Moss always does.",
+    "spoken": "Moss broke my fall. Moss always does.",
+    "seed": 137492294,
+    "match": 1.0,
+    "heard": "Moss broke my fall. Moss always does.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 137492294,
+        "heard": "Moss broke my fall. Moss always does.",
+        "match": 1.0,
+        "durationS": 3.49
+      }
+    ],
+    "durationS": 3.49,
+    "bytes": 11450,
+    "lufs": -18.0,
+    "peakDb": -1.87,
+    "f0": 102.1,
+    "refF0": 111.6,
+    "exaggeration": 0.45,
+    "cfg": 0.3,
     "review": []
   },
   "region-pnw:old-growth-core#growth-down-rings": {
@@ -5763,6 +6197,32 @@
     "cfg": 0.3,
     "review": []
   },
+  "region-pnw:old-growth-core#growth-hit-limbed": {
+    "speaker": "old-growth",
+    "text": "Limbed and bucked.",
+    "spoken": "Limbed and bucked.",
+    "seed": 779616681,
+    "match": 1.0,
+    "heard": "limbed and bucked.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 779616681,
+        "heard": "limbed and bucked.",
+        "match": 1.0,
+        "durationS": 1.64
+      }
+    ],
+    "durationS": 1.64,
+    "bytes": 5969,
+    "lufs": -19.3,
+    "peakDb": -1.96,
+    "f0": 106.0,
+    "refF0": 111.6,
+    "exaggeration": 0.4,
+    "cfg": 0.3,
+    "review": []
+  },
   "region-pnw:old-growth-core#growth-hit-timber": {
     "speaker": "old-growth",
     "text": "Timber.",
@@ -5818,6 +6278,32 @@
     "f0": 121.2,
     "refF0": 111.1,
     "exaggeration": 0.45,
+    "cfg": 0.3,
+    "review": []
+  },
+  "region-pnw:old-growth-core#growth-pass-ferry": {
+    "speaker": "old-growth",
+    "text": "I'll save you a spot in the ferry line.",
+    "spoken": "I'll save you a spot in the ferry line.",
+    "seed": 340197820,
+    "match": 1.0,
+    "heard": "I'll save you a spot in the ferry line.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 340197820,
+        "heard": "I'll save you a spot in the ferry line.",
+        "match": 1.0,
+        "durationS": 2.47
+      }
+    ],
+    "durationS": 2.47,
+    "bytes": 8286,
+    "lufs": -17.8,
+    "peakDb": -1.9,
+    "f0": 111.6,
+    "refF0": 111.6,
+    "exaggeration": 0.35,
     "cfg": 0.3,
     "review": []
   },
@@ -6157,6 +6643,38 @@
     "cfg": 0.45,
     "review": ["transcript"]
   },
+  "region-sf:gripman-gus-core#gus-pass-robotaxi": {
+    "speaker": "gripman-gus",
+    "text": "Robotaxi's got no driver. Your excuse?",
+    "spoken": "Robotaxi's got no driver. Your excuse?",
+    "seed": 1465484490,
+    "match": 1.0,
+    "heard": "RoboTaxi's got no driver. Your excuse?",
+    "takes": 2,
+    "tried": [
+      {
+        "seed": 1465476571,
+        "heard": "Robo-taxis got no driver. Your excuse?",
+        "match": 0.769,
+        "durationS": 3.37
+      },
+      {
+        "seed": 1465484490,
+        "heard": "RoboTaxi's got no driver. Your excuse?",
+        "match": 1.0,
+        "durationS": 3.47
+      }
+    ],
+    "durationS": 3.47,
+    "bytes": 11330,
+    "lufs": -17.4,
+    "peakDb": -1.92,
+    "f0": 136.4,
+    "refF0": 164.4,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
   "region-sf:gripman-gus-core#gus-pass-tuesday": {
     "speaker": "gripman-gus",
     "text": "Forty years on these hills. You're a Tuesday.",
@@ -6209,6 +6727,58 @@
     "cfg": 0.45,
     "review": []
   },
+  "region-sf:gripman-gus-core#gus-start-fog-bell": {
+    "speaker": "gripman-gus",
+    "text": "Fog's in. I ring twice.",
+    "spoken": "Fog's in. I ring twice.",
+    "seed": 1104761937,
+    "match": 1.0,
+    "heard": "\"'Fog's in, I ring twice.'",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1104761937,
+        "heard": "\"'Fog's in, I ring twice.'",
+        "match": 1.0,
+        "durationS": 2.19
+      }
+    ],
+    "durationS": 2.19,
+    "bytes": 7485,
+    "lufs": -17.3,
+    "peakDb": -1.82,
+    "f0": 155.8,
+    "refF0": 164.4,
+    "exaggeration": 0.55,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:gripman-gus-core#gus-taken-grip": {
+    "speaker": "gripman-gus",
+    "text": "Easy. Forty years of grip.",
+    "spoken": "Easy. Forty years of grip.",
+    "seed": 412995326,
+    "match": 1.0,
+    "heard": "Easy. 40 years of grip.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 412995326,
+        "heard": "Easy. 40 years of grip.",
+        "match": 1.0,
+        "durationS": 2.76
+      }
+    ],
+    "durationS": 2.76,
+    "bytes": 9006,
+    "lufs": -17.7,
+    "peakDb": -1.87,
+    "f0": 167.8,
+    "refF0": 164.4,
+    "exaggeration": 0.7,
+    "cfg": 0.45,
+    "review": []
+  },
   "region-sf:gripman-gus-core#gus-traffic-line": {
     "speaker": "gripman-gus",
     "text": "Should've stood behind the yellow line.",
@@ -6232,6 +6802,32 @@
     "f0": 170.2,
     "refF0": 164.4,
     "exaggeration": 0.65,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:officer-meter-core#meter-busted-mail": {
+    "speaker": "officer-meter",
+    "text": "You may dispute this by mail. Nobody wins.",
+    "spoken": "You may dispute this by mail. Nobody wins.",
+    "seed": 1607811982,
+    "match": 1.0,
+    "heard": "You may dispute this by mail. Nobody wins.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1607811982,
+        "heard": "You may dispute this by mail. Nobody wins.",
+        "match": 1.0,
+        "durationS": 3.97
+      }
+    ],
+    "durationS": 3.97,
+    "bytes": 12835,
+    "lufs": -17.5,
+    "peakDb": -1.84,
+    "f0": 106.4,
+    "refF0": 112.7,
+    "exaggeration": 0.3,
     "cfg": 0.45,
     "review": []
   },
@@ -6282,6 +6878,32 @@
     "lufs": -17.4,
     "peakDb": -1.92,
     "f0": 113.7,
+    "refF0": 112.7,
+    "exaggeration": 0.3,
+    "cfg": 0.45,
+    "review": []
+  },
+  "region-sf:officer-meter-core#meter-siren-robotaxi": {
+    "speaker": "officer-meter",
+    "text": "I ticket the robotaxis too. Pull over.",
+    "spoken": "I ticket the robo taxis too. Pull over.",
+    "seed": 138710171,
+    "match": 1.0,
+    "heard": "I ticket the robo-taxis too. Pull over.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 138710171,
+        "heard": "I ticket the robo-taxis too. Pull over.",
+        "match": 1.0,
+        "durationS": 3.3
+      }
+    ],
+    "durationS": 3.3,
+    "bytes": 10809,
+    "lufs": -17.5,
+    "peakDb": -1.84,
+    "f0": 107.4,
     "refF0": 112.7,
     "exaggeration": 0.3,
     "cfg": 0.45,
@@ -6455,6 +7077,32 @@
     "cfg": 0.5,
     "review": []
   },
+  "region-sf:pivot-core#pivot-pass-agent": {
+    "speaker": "pivot",
+    "text": "My AI agent scheduled this pass.",
+    "spoken": "My A.I. agent scheduled this pass.",
+    "seed": 146970879,
+    "match": 1.0,
+    "heard": "My AI agent scheduled this pass.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 146970879,
+        "heard": "My AI agent scheduled this pass.",
+        "match": 1.0,
+        "durationS": 2.58
+      }
+    ],
+    "durationS": 2.58,
+    "bytes": 8809,
+    "lufs": -18.4,
+    "peakDb": -1.87,
+    "f0": 122.8,
+    "refF0": 128.3,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
   "region-sf:pivot-core#pivot-pass-deck": {
     "speaker": "pivot",
     "text": "That was a ten-x pass. I'll send the deck.",
@@ -6519,6 +7167,32 @@
     "cfg": 0.5,
     "review": []
   },
+  "region-sf:pivot-core#pivot-start-ai-now": {
+    "speaker": "pivot",
+    "text": "We're an AI company now. Since breakfast.",
+    "spoken": "We're an A.I. company now. Since breakfast.",
+    "seed": 1552981269,
+    "match": 1.0,
+    "heard": "We're an AI company now, since breakfast.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 1552981269,
+        "heard": "We're an AI company now, since breakfast.",
+        "match": 1.0,
+        "durationS": 2.53
+      }
+    ],
+    "durationS": 2.53,
+    "bytes": 8565,
+    "lufs": -18.3,
+    "peakDb": -1.78,
+    "f0": 125.0,
+    "refF0": 128.3,
+    "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
   "region-sf:pivot-core#pivot-start-stealth": {
     "speaker": "pivot",
     "text": "Coming out of stealth. Avert your eyes.",
@@ -6542,6 +7216,32 @@
     "f0": 127.3,
     "refF0": 128.7,
     "exaggeration": 0.55,
+    "cfg": 0.5,
+    "review": []
+  },
+  "region-sf:pivot-core#pivot-taken-down-round": {
+    "speaker": "pivot",
+    "text": "That's a down round.",
+    "spoken": "That's a down round.",
+    "seed": 200472762,
+    "match": 1.0,
+    "heard": "That's a down round.",
+    "takes": 1,
+    "tried": [
+      {
+        "seed": 200472762,
+        "heard": "That's a down round.",
+        "match": 1.0,
+        "durationS": 1.09
+      }
+    ],
+    "durationS": 1.09,
+    "bytes": 4131,
+    "lufs": -18.5,
+    "peakDb": -1.81,
+    "f0": 111.4,
+    "refF0": 128.3,
+    "exaggeration": 0.7,
     "cfg": 0.5,
     "review": []
   },

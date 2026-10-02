@@ -9,7 +9,9 @@ import { buildRegistry, type ContentRegistry, type LoadOptions } from './registr
 /**
  * Every base file except its real-road data (run W-P): the `osm-*` networks, roads and routes (the
  * Bahia Honda run) are fetched on demand like a region pack's roads (packs.ts), so the first load
- * carries only the hand-made Keys roads the default race and the menu need.
+ * carries only the hand-made Keys roads the default race and the menu need. Asset data files
+ * (`assets/**`, such as the backdrop's) are not entries: whoever needs one loads it on demand, as
+ * the other packs' are (packs.ts), so none rides in the first load.
  */
 const RAW = import.meta.glob<unknown>(
   [
@@ -17,6 +19,7 @@ const RAW = import.meta.glob<unknown>(
     '!/packs/base/regions/*/networks/osm-*.json',
     '!/packs/base/regions/*/roads/osm-*.json',
     '!/packs/base/regions/*/routes/osm-*.json',
+    '!/packs/base/assets/**',
   ],
   { eager: true, import: 'default' },
 );

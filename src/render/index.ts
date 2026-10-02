@@ -27,6 +27,7 @@ import type {
 } from '../sim/api';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
+import { EventProps } from './event-props';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
@@ -212,13 +213,22 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });
   const boards = new Boards(look);
+  // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
+  const eventProps = new EventProps(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
   const speedLines = new SpeedLines(look, params);
   // The drizzle rides on the camera too (rain.ts).
   const rain = new Rain(look, params);
   camera.add(effects.tint, speedLines.root, rain.root);
   const backdrop = new Backdrop();
-  const persistent = new Set<Object3D>([views.root, effects.root, boards.root, camera, backdrop.root]);
+  const persistent = new Set<Object3D>([
+    views.root,
+    effects.root,
+    boards.root,
+    eventProps.root,
+    camera,
+    backdrop.root,
+  ]);
   for (const o of persistent) scene.add(o);
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
@@ -369,6 +379,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();
       backdrop.update(camera.position, scene, t);
+      eventProps.sync(curr, t);
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
@@ -401,6 +412,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         width: canvas.width,
         height: canvas.height,
         setPieces: roadScene?.stats.setPieces ?? [],
+        eventProps: eventProps.counts(),
       };
     },
     viewCounts: () => views.viewCounts(),

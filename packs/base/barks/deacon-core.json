@@ -272,6 +272,36 @@
       "text": "Vengeance is mine. And the truck's.",
       "audioAsset": "audio/barks/deacon-core/deacon-traffic-vengeance",
       "audioStatus": "live"
+    },
+    {
+      "id": "deacon-start-keys-conch",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "florida-keys"
+        }
+      ],
+      "status": "live",
+      "text": "Even the Conch Republic needs saving.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-keys-conch",
+      "audioStatus": "live"
+    },
+    {
+      "id": "deacon-start-pnw-flood",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "pacific-northwest"
+        }
+      ],
+      "status": "live",
+      "text": "Forty days of rain. I've read this one.",
+      "audioAsset": "audio/barks/deacon-core/deacon-start-pnw-flood",
+      "audioStatus": "live"
     }
   ],
   "meta": {

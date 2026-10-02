@@ -118,6 +118,30 @@
       "text": "That was the tip jar money.",
       "audioAsset": "audio/barks/juniper-core/juniper-stolen-tip-jar",
       "audioStatus": "live"
+    },
+    {
+      "id": "juniper-start-oat",
+      "trigger": "race-start",
+      "status": "live",
+      "text": "Oat milk's extra. So is finishing.",
+      "audioAsset": "audio/barks/juniper-core/juniper-start-oat",
+      "audioStatus": "live"
+    },
+    {
+      "id": "juniper-traffic-order-up",
+      "trigger": "takedown-into-traffic",
+      "status": "live",
+      "text": "Order up. It's a log truck.",
+      "audioAsset": "audio/barks/juniper-core/juniper-traffic-order-up",
+      "audioStatus": "live"
+    },
+    {
+      "id": "juniper-crash-remake",
+      "trigger": "crash-self",
+      "status": "live",
+      "text": "It's fine. I'll just remake everything.",
+      "audioAsset": "audio/barks/juniper-core/juniper-crash-remake",
+      "audioStatus": "live"
     }
   ],
   "meta": {

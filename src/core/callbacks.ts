@@ -23,6 +23,12 @@ export interface RendererStats {
    * renderer that draws none may leave it out.
    */
   setPieces?: readonly DrawnSetPiece[];
+  /**
+   * The road events' props the last frame drew (W-P: cones, flares, signs, people, bales...), from
+   * SimSnapshot.props: how many in all and by kind, and the warning signs' words. Optional, so a
+   * renderer that draws none may leave it out.
+   */
+  eventProps?: { total: number; byKind: Readonly<Record<string, number>>; signs: readonly string[] };
 }
 
 /** One drawn set piece (RendererStats.setPieces). */

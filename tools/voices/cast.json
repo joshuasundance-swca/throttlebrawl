@@ -202,6 +202,17 @@
     "base:kevin-core#kevin-lead-forecast": { "spoken": "Leading. As forecast in Q three." },
     "base:kevin-core#kevin-hit-mayor": { "spoken": "Invoice zero zero four two. Paid in full, Mayor." },
     "base:kevin-core#kevin-near-hr": { "spoken": "Flagging that near miss for H.R." },
+    "base:kevin-core#kevin-start-keys-spf": { "spoken": "S.P.F. fifty. Expensed." },
+    "base:deacon-core#deacon-start-keys-conch": {
+      "spoken": "Even the Konk Republic needs saving.",
+      "note": "Conch is said \"konk\" in the Keys; spelled straight, the checker heard \"Contra\"."
+    },
+    "region-sf:officer-meter-core#meter-siren-robotaxi": {
+      "spoken": "I ticket the robo taxis too. Pull over.",
+      "note": "Run together, the checker heard \"robo-taxes\"."
+    },
+    "region-sf:pivot-core#pivot-start-ai-now": { "spoken": "We're an A.I. company now. Since breakfast." },
+    "region-sf:pivot-core#pivot-pass-agent": { "spoken": "My A.I. agent scheduled this pass." },
     "base:deacon-core#deacon-crash-humbling": {
       "exaggeration": 0.4,
       "note": "Calmer: at 0.62 the voice rose away from Deacon's."
