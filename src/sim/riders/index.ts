@@ -28,6 +28,7 @@ import {
   type AirState,
 } from './air';
 import { applyShove, riderContacts } from './contact';
+import { funnelLimits, FUNNEL_TUNING } from './funnel';
 import {
   BOOST_ACCEL_MPS2,
   boostOf,
@@ -169,6 +170,8 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  // Lane drops (W-R): where the road narrows ahead, the edge funnels in (sim/riders/funnel.ts).
+  ...FUNNEL_TUNING,
   ...AIR_TUNING,
 ];
 
@@ -460,12 +463,33 @@ function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, 
 }
 
 /**
+ * Lane drops (W-R; sim/riders/funnel.ts): where the road narrows within `riders.laneDropTaperM`
+ * ahead, a rider outside the funnelled edge is eased in to it, with no barrier event and no scrape,
+ * and its heading's push toward that edge is dropped. Returns true when it guided the rider (the
+ * barrier rule is then done for this tick). Off everywhere the width does not change.
+ */
+function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover): boolean {
+  const pos = m.pos;
+  const taper = world.params['riders.laneDropTaperM'] ?? 0;
+  const f = funnelLimits(config.road, taper, pos, (edge, s) => barrierLimits(config, edge, s));
+  if (!f || (pos.d >= f.lo && pos.d <= f.hi)) return false;
+  const side = pos.d > f.hi ? 1 : -1;
+  pos.d = side > 0 ? f.hi : f.lo;
+  // dd/dt = dir · v · sin(yaw): a heading that pushes toward this edge is straightened.
+  if (pos.dir * m.yaw * side > 0) m.yaw = 0;
+  st.touching[m.id] = 0;
+  return true;
+}
+
+/**
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
  * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble. At a split
- * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead.
+ * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead. Where the road
+ * narrows ahead (a lane that ends, W-R), the edge funnels in first (laneDropGuide).
  */
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
+  if (laneDropGuide(world, config, st, m)) return;
   const pos = m.pos;
   const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
   if (pos.d >= lo && pos.d <= hi) {
