@@ -144,9 +144,9 @@ describe('multi-lane highways: traffic (interview, 2026-10-02)', () => {
   const TWO_LANE: FixtureEdgeSpec[] = [{ id: 'a', lengthM: 3000, kappa: 0 }];
   const SIX_LANE: FixtureEdgeSpec[] = [{ id: 'a', lengthM: 3000, kappa: 0, lanes: HIGHWAY3 }];
 
-  it('a highway carries as many cars per lane as a two-lane road, in every lane', () => {
-    const count = (edges: FixtureEdgeSpec[]) => {
-      const config = makeConfig(edges);
+  it('a highway carries more cars, in every lane: per extra lane, traffic.extraLaneDensity of a lane', () => {
+    const count = (edges: FixtureEdgeSpec[], tuning: Record<string, number> = {}) => {
+      const config = makeConfig(edges, { tuning });
       const world = raceWorld(config);
       const st = trafficState(world);
       const perDir = { plus: 0, minus: 0 };
@@ -161,14 +161,23 @@ describe('multi-lane highways: traffic (interview, 2026-10-02)', () => {
     };
     const two = count(TWO_LANE);
     const six = count(SIX_LANE);
+    const full = count(SIX_LANE, { 'traffic.extraLaneDensity': 1 });
+    const none = count(SIX_LANE, { 'traffic.extraLaneDensity': 0 });
     console.log(
-      `cars per direction at the start: two-lane ${JSON.stringify(two)}, six-lane ${JSON.stringify(six)}`,
+      `cars per direction at the start: two-lane ${JSON.stringify(two)}, six-lane ${JSON.stringify(six)}, ` +
+        `six-lane at full lane density ${JSON.stringify(full)}, at none ${JSON.stringify(none)}`,
     );
     expect(two.plus).toBeGreaterThan(0);
-    expect(six.plus).toBeGreaterThanOrEqual(2.5 * two.plus);
-    expect(six.minus).toBeGreaterThanOrEqual(2.5 * two.minus);
+    // The default (0.6 of a lane per extra lane): about 2.2 times.
+    expect(six.plus).toBeGreaterThanOrEqual(2 * two.plus);
+    expect(six.minus).toBeGreaterThanOrEqual(2 * two.minus);
     expect(six.ranks).toBe(6);
-    expect(six.plus).toBeLessThanOrEqual(TRAFFIC.maxPerDirectionHard);
+    // Full lane density: as many cars per lane as the two-lane road, about 3 times.
+    expect(full.plus).toBeGreaterThanOrEqual(2.5 * two.plus);
+    expect(full.plus).toBeLessThanOrEqual(TRAFFIC.maxPerDirectionHard);
+    // None: the two-lane road's count, spread over the lanes.
+    expect(none.plus).toBe(two.plus);
+    expect(none.minus).toBe(two.minus);
   });
 
   it('a race on a highway keeps every lane clear of overlaps and is deterministic', () => {

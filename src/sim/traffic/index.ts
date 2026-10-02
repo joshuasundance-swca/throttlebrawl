@@ -45,9 +45,10 @@
 //   in its path edges inward round them, over the centre line if need be, when no oncoming vehicle
 //   is within TRAFFIC.swerveOncomingClearM of the spot; otherwise it stops behind them as before.
 // - Multi-lane roads (W-R; interview, 2026-10-02: "multi-lane highways (4-6 lanes, lane
-//   splitting)"): a direction's traffic scales with its lanes (one car per baseSpacingM of LANE, so
-//   a three-lane highway carries three times a two-lane road's cars, under the hard cap), every lane
-//   gets cars, and where a lane ends (the corridor's lane map) its cars merge inward one lane at a
+//   splitting)"): a direction's traffic scales with its lanes (each lane past the first adds
+//   `traffic.extraLaneDensity` of a lane's cars, 0.6 by default, so a three-lane highway carries
+//   about 2.2 times a two-lane road's cars, under the hard cap), every lane gets cars, and where a
+//   lane ends (the corridor's lane map) its cars merge inward one lane at a
 //   time when the next lane has room, braking for the lane's end until they can; nothing spawns in or
 //   changes into a lane that ends within TRAFFIC.mergeLookM. A road with one lane each way is
 //   exactly as before. A near miss whose rider had another vehicle just as close on the other side
@@ -159,6 +160,21 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     max: 40,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Multi-lane roads (W-R): each lane past the first each way carries this share of a lane's cars.
+    // 1 fills every lane like a two-lane road's; 0.6 keeps the phone's sim step in hand on the
+    // six-lane freeway (about 40 live vehicles at most, not 50). 0 adds no cars for extra lanes.
+    // [default]
+    id: 'traffic.extraLaneDensity',
+    group: 'traffic',
+    label: 'Traffic, extra highway lanes',
+    default: 0.6,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
     affectsSim: true,
   },
 ];
@@ -291,6 +307,26 @@ export function kerbCd(
   // It may weave inward across its lane, never outward past the kerb.
   const inner = outer.cd - out * (outer.width / 2 - halfW);
   return { cd, rank: lanes.length - 1, lo: Math.min(cd, inner), hi: Math.max(cd, inner) };
+}
+
+/**
+ * kerbCd, looking ahead (W-R multi-lane roads): where the outermost lane ends within
+ * TRAFFIC.mergeLookM, the kerb beyond that end, with the rank kept until the lane goes, so a kerb
+ * rider is in at the narrower kerb in good time. Exactly kerbCd where no lane ends ahead.
+ */
+function kerbAhead(
+  config: SimConfig,
+  st: TrafficState,
+  u: number,
+  dir: number,
+  halfW: number,
+): { cd: number; rank: number; lo: number; hi: number } | null {
+  const c = st.corridor;
+  const kerb = kerbCd(config.road, c, u, dir, halfW);
+  if (!kerb) return null;
+  const end = laneEndAhead(st, u, dir, kerb.rank, TRAFFIC.mergeLookM);
+  const beyond = end > 0 && end < Infinity ? kerbCd(config.road, c, u + dir * (end + 1), dir, halfW) : null;
+  return beyond ? { ...beyond, rank: kerb.rank } : kerb;
 }
 
 /** The shoulder lane at u on the `out` side carrying `dir`, in corridor terms, or null. */
@@ -572,8 +608,10 @@ function targetCount(world: World, st: TrafficState, anchors: readonly number[],
   const k = densityFor(world, st, dir);
   if (k <= 0) return 0;
   const length = windowLength(anchors, st.corridor);
-  // One car per baseSpacingM of lane (W-R): the extra lanes of a multi-lane stretch add their metres.
-  const extra = extraLaneLength(st, anchors, dir);
+  // The extra lanes of a multi-lane stretch (W-R) add their metres, each at
+  // `traffic.extraLaneDensity` of a lane's cars (1: as many per lane as a two-lane road).
+  const laneShare = clamp(world.params['traffic.extraLaneDensity'] ?? 0.6, 0, 1);
+  const extra = laneShare > 0 ? extraLaneLength(st, anchors, dir) * laneShare : 0;
   const n = Math.floor(((length + extra) * k) / TRAFFIC.baseSpacingM);
   return Math.min(capPerDirection(world, extra > 0 && length > 0 ? (length + extra) / length : 1), n);
 }
@@ -643,8 +681,9 @@ export function placeVehicle(
   const laneCd = lanes[rank]?.cd ?? 0;
   let cd = isParked(t) ? parkedCd(laneCd) : laneCd;
   if (isKerb(t)) {
-    // A kerb rider keeps the outermost lane's rank and rides at its kerb (W-P).
-    const kerb = kerbCd(config.road, st.corridor, spec.u, spec.dir, t.widthM / 2);
+    // A kerb rider keeps the outermost lane's rank and rides at its kerb (W-P), or at the narrower
+    // kerb beyond where that lane ends soon (W-R).
+    const kerb = kerbAhead(config, st, spec.u, spec.dir, t.widthM / 2);
     if (kerb) {
       rank = kerb.rank;
       cd = kerb.cd;
@@ -1116,15 +1155,7 @@ function move(
     st.u[k] = u;
     const lanes = lanesAt(config.road, c, u, dir);
     const tk = typeOf(config, st, k);
-    let kerb = isKerb(tk) ? kerbCd(config.road, c, u, dir, tk.widthM / 2) : null;
-    // Where its outermost lane ends ahead (W-R), a kerb rider moves in to the kerb beyond it in good
-    // time, keeping its rank until the lane goes.
-    if (kerb) {
-      const end = laneEndAhead(st, u, dir, kerb.rank, TRAFFIC.mergeLookM);
-      const beyond =
-        end > 0 && end < Infinity ? kerbCd(config.road, c, u + dir * (end + 1), dir, tk.widthM / 2) : null;
-      if (beyond) kerb = { ...beyond, rank: kerb.rank };
-    }
+    const kerb = isKerb(tk) ? kerbAhead(config, st, u, dir, tk.widthM / 2) : null;
     // A kerb rider keeps the outermost lane's rank as lanes come and go along the road.
     if (kerb) st.rank[k] = kerb.rank;
     // Past where its lane ended (W-R: a merge it could not make): it is in the lane that goes on.

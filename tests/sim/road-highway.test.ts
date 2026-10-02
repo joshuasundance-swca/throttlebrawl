@@ -44,12 +44,26 @@ function highwayRace(seed: number) {
   let vehicleTicks = 0;
   let nearMisses = 0;
   let splits = 0;
+  let maxVehicles = 0;
+  /** Wall-clock sim step time (this machine, not the phone) with the player on the freeway, and elsewhere. */
+  const stepMs = { freeway: 0, freewayTicks: 0, rest: 0, restTicks: 0 };
   let snap = sim.snapshot();
   while (!sim.isOver() && sim.tick < MAX_TICKS && !snap.race.finishOrder.includes(playerId)) {
     const actions = emptyActions();
     bot.drive(snap, playerId, config.route, actions);
+    const onFreeway = snap.entities[playerId]?.road.edge === freeway;
+    const t0 = performance.now();
     sim.step([toSimInput(actions)]);
+    const dt = performance.now() - t0;
+    if (onFreeway) {
+      stepMs.freeway += dt;
+      stepMs.freewayTicks++;
+    } else {
+      stepMs.rest += dt;
+      stepMs.restTicks++;
+    }
     snap = sim.snapshot();
+    maxVehicles = Math.max(maxVehicles, snap.entities.filter((m) => m.kind === 'vehicle').length);
     for (const e of sim.events()) {
       if (e.type !== 'nearMiss') continue;
       nearMisses++;
@@ -98,6 +112,11 @@ function highwayRace(seed: number) {
     vehicleTicks,
     nearMisses,
     splits,
+    maxVehicles,
+    stepMs: {
+      freeway: stepMs.freeway / Math.max(1, stepMs.freewayTicks),
+      rest: stepMs.rest / Math.max(1, stepMs.restTicks),
+    },
     seconds: sim.tick / 60,
   };
 }
@@ -109,7 +128,9 @@ describe('the first multi-lane highway: San Francisco (W-R; interview, 2026-10-0
       print(
         `[highway] seed ${seed}: bot ${r.finished ? 'finished' : 'did not finish'} in ${r.seconds.toFixed(1)} s; ` +
           `${r.vehicleTicks} vehicle-ticks on the freeway, lanes used ${r.lanesUsed.join(' ')}; ` +
-          `bot near misses ${r.nearMisses}, lane splits ${r.splits}; problems ${r.bad.length}`,
+          `bot near misses ${r.nearMisses}, lane splits ${r.splits}; problems ${r.bad.length}; ` +
+          `vehicles up to ${r.maxVehicles}; sim step mean ${r.stepMs.freeway.toFixed(3)} ms on the freeway, ` +
+          `${r.stepMs.rest.toFixed(3)} ms elsewhere (this machine, not a phone)`,
       );
       expect(r.finished).toBe(true);
       expect(r.vehicleTicks).toBeGreaterThan(0);
