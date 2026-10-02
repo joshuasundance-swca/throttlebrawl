@@ -12,6 +12,7 @@ import {
   type ContentRegistry,
   type RaceEvent,
   type Rider,
+  type TrafficType,
   type Weapon,
 } from '../content';
 import {
@@ -32,6 +33,7 @@ import {
   type SimRiderDef,
   type SimSlotConfig,
   type SimStyleRewards,
+  type SimTrafficBehaviour,
   type SimWeaponDef,
   type TuningParamDecl,
 } from '../sim/api';
@@ -389,6 +391,23 @@ function regionTrafficWeights(
 }
 
 /**
+ * A traffic type's behaviour flags as the sim reads them (W-P, 2026-10-01): only the flags the sim
+ * acts on, and only those the content sets, so an absent flag keeps the category's default. A
+ * type with none of them gets no `behaviour` field at all.
+ */
+export function trafficBehaviour(b: TrafficType['behaviour']): { behaviour?: SimTrafficBehaviour } {
+  if (!b) return {};
+  const out: SimTrafficBehaviour = {};
+  if (b.laneChanges !== undefined) out.laneChanges = b.laneChanges;
+  if (b.kerb !== undefined) out.kerb = b.kerb;
+  if (b.weaveM !== undefined) out.weaveM = b.weaveM;
+  if (b.convoy !== undefined) out.convoy = b.convoy;
+  if (b.strolls !== undefined) out.strolls = b.strolls;
+  if (b.chases !== undefined) out.chases = b.chases;
+  return Object.keys(out).length > 0 ? { behaviour: out } : {};
+}
+
+/**
  * A weapon file's M4 weapons-2 fields as the sim reads them: its behaviour, charges and durability
  * (`uses`), its stun (the `stun` entry of `effects`) and its roadside weight (`spawn`). The cops
  * lane's oracle is `simWeapon` in tests/sim/weapons-pack.test.ts.
@@ -486,6 +505,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       cruiseMps: t.cruiseMps,
       hazard: t.hazard,
       ...(weights ? { weight: weights.get(contentId) ?? 0 } : {}),
+      ...trafficBehaviour(t.behaviour),
     })),
     road: stream.road,
     route,

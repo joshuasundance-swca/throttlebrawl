@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, type ActionState } from '../../src/app';
-import { loadBasePack, lookup, type ContentRegistry } from '../../src/content';
+import { lookup, type ContentRegistry } from '../../src/content';
+import { loadWholeBasePack as loadBasePack } from '../../src/content/base-pack-whole';
 import { createBot } from '../../src/dev';
 import { lintRoadNetwork } from '../../src/road';
 import { createSim, quantizeInput, type SimConfig } from '../../src/sim/api';

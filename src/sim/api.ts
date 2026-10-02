@@ -9,7 +9,7 @@ import { clamp } from '../core';
 import { InputFlag, type SimInput } from './types';
 
 export { createSim, SIM_TUNING } from './create';
-export { InputFlag, SIM_DT, SIM_HZ, STYLE_KINDS, TAKEDOWN_KINDS } from './types';
+export { InputFlag, PED_REACT_KINDS, PROP_KINDS, SIM_DT, SIM_HZ, STYLE_KINDS, TAKEDOWN_KINDS } from './types';
 export type {
   AttackPhase,
   EntityKind,
@@ -17,6 +17,9 @@ export type {
   Faction,
   MoverMode,
   ParkedBikeSnapshot,
+  PedReactKind,
+  PropKind,
+  PropSnapshot,
   RaceSnapshot,
   RoadPosSnapshot,
   Sim,
@@ -32,11 +35,14 @@ export type {
   SimEventType,
   SimInput,
   SimLawDef,
+  SimModifierDef,
+  SimModifierEffect,
   SimRiderDef,
   SimSlotConfig,
   SimSnapshot,
   SimSteerAssist,
   SimStyleRewards,
+  SimTrafficBehaviour,
   SimTrafficTypeDef,
   SimWeaponDef,
   SlowmoSnapshot,

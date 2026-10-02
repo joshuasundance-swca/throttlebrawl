@@ -30,12 +30,22 @@
 //   TRAFFIC.parkOutM toward the shoulder; vehicles behind it change lanes past it where their
 //   direction has a second lane, and otherwise edge inward around it (TRAFFIC.swerve*), so it
 //   never turns into a jam. It is never pushed by the no-overlap pass.
+// - Regional behaviours (W-P, "fill the world", 2026-10-01), from the type's `behaviour` flags:
+//   - `kerb`: a bicycle, e-bike, scooter or golf cart rides at the kerb: the middle of its
+//     direction's shoulder where the shoulder is wide enough, else the outer edge of the outermost
+//     lane (kerbCd). Vehicles behind it follow it only while their boxes would overlap side to
+//     side, and then edge round it (or change lanes) the way they pass a parked oddity, so it
+//     never jams the road. It never changes lanes.
+//   - `weaveM`: a seeded side-to-side weave as it rides (e-scooters), inside the drivable road.
+//   - `convoy`: it spawns as a convoy of 2 to N of its kind, nose to tail at the car-following
+//     gap and the same cruise speed (an RV convoy), each one under the fairness rule.
+//   - `laneChanges` overrides the category's default (a robotaxi never changes lanes).
 // Every number below is a [default] starting value, to be tuned on the phone.
-import { clamp, nextFloat, type TuningParamDecl } from '../../core';
+import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
-import { buildCorridor, fromCorridor, lanesAt, linkOf, toCorridor, type Corridor } from './corridor';
-import { idmAccel } from './idm';
+import { buildCorridor, fromCorridor, lanesAt, linkAt, linkOf, toCorridor, type Corridor } from './corridor';
+import { IDM, idmAccel } from './idm';
 
 export { buildCorridor, pickLink, toCorridor, trafficMayEnter } from './corridor';
 export type { Corridor } from './corridor';
@@ -194,7 +204,77 @@ export const TRAFFIC = {
   swerveClearM: 0.3,
   /** How fast they edge sideways round it, m/s. */
   swerveMps: 2.2,
+  /** A kerb rider keeps this far inside the drivable road's outer edge, m (W-P). */
+  kerbInsetM: 0.25,
+  /** A kerb rider takes the shoulder only when it is at least this much wider than the rider, m. */
+  kerbShoulderSpareM: 0.2,
+  /** One full weave, side to side and back, s (W-P). */
+  weavePeriodS: 3.2,
+  /** A convoy's extra bumper room on top of the car-following gap at its cruise speed, m. */
+  convoyExtraGapM: 2,
 };
+
+/** A road vehicle that rides at the kerb (W-P): a bicycle, e-bike, scooter or golf cart. */
+export function isKerb(t: SimTrafficTypeDef | undefined): boolean {
+  return t?.behaviour?.kerb === true && !isParked(t);
+}
+
+/** Whether a road-vehicle type changes lanes: its own flag, else its category's default. */
+function changesLanes(t: SimTrafficTypeDef): boolean {
+  if (isKerb(t)) return false;
+  return t.behaviour?.laneChanges ?? CATEGORY[t.category]?.laneChanges ?? false;
+}
+
+/**
+ * Where a kerb rider of half width `halfW` rides at u, heading `dir`, in corridor terms: the
+ * middle of its direction's shoulder when that is wide enough, else just inside the outer edge of
+ * the outermost lane. Also returns the outermost lane's rank, the rank it keeps. Null with no lane.
+ */
+export function kerbCd(
+  road: SimConfig['road'],
+  c: Corridor,
+  u: number,
+  dir: number,
+  halfW: number,
+): { cd: number; rank: number; lo: number; hi: number } | null {
+  const lanes = lanesAt(road, c, u, dir);
+  const outer = lanes[lanes.length - 1];
+  if (!outer) return null;
+  const out = outer.cd < 0 ? -1 : 1;
+  const shoulder = shoulderAt(road, c, u, dir, out);
+  if (shoulder && shoulder.width >= 2 * halfW + TRAFFIC.kerbShoulderSpareM) {
+    const room = Math.max(0, shoulder.width / 2 - halfW);
+    return { cd: shoulder.cd, rank: lanes.length - 1, lo: shoulder.cd - room, hi: shoulder.cd + room };
+  }
+  const edge = outer.cd + (out * outer.width) / 2;
+  const cd = edge - out * (halfW + TRAFFIC.kerbInsetM);
+  // It may weave inward across its lane, never outward past the kerb.
+  const inner = outer.cd - out * (outer.width / 2 - halfW);
+  return { cd, rank: lanes.length - 1, lo: Math.min(cd, inner), hi: Math.max(cd, inner) };
+}
+
+/** The shoulder lane at u on the `out` side carrying `dir`, in corridor terms, or null. */
+function shoulderAt(
+  road: SimConfig['road'],
+  c: Corridor,
+  u: number,
+  dir: number,
+  out: number,
+): { cd: number; width: number } | null {
+  const i = linkAt(c, u < 0 ? 0 : u > c.length ? c.length : u);
+  const o = c.o[i] ?? 1;
+  const off = c.off[i] ?? 0;
+  const len = c.len[i] ?? 0;
+  const s = o === 1 ? u - off : off + len - u;
+  let best: { cd: number; width: number } | null = null;
+  for (const l of road.lanesAt(c.edges[i] ?? 0, s)) {
+    if (l.kind !== 'shoulder' || l.direction * o !== dir) continue;
+    const cd = l.dCenterM * o;
+    if (cd * out <= 0) continue;
+    if (!best || Math.abs(cd) > Math.abs(best.cd)) best = { cd, width: l.widthM };
+  }
+  return best;
+}
 
 /**
  * The road-vehicle categories. `weight` is the fallback when a type carries no region weight
@@ -259,6 +339,8 @@ export interface TrafficState {
   /** 1 when the slider dropped the target: the vehicle drives on but is not recycled. */
   retired: number[];
   laneCooldownS: number[];
+  /** A weaver's seeded phase, radians (W-P); 0 for everyone else. */
+  weavePhase: number[];
   /** Vehicle entity id each rider is touching, or -1. */
   contactWith: number[];
   unstableS: number[];
@@ -288,6 +370,7 @@ export function trafficState(world: World): TrafficState {
     spawnU: [],
     retired: [],
     laneCooldownS: [],
+    weavePhase: [],
     contactWith: [],
     unstableS: [],
     lastRel: [],
@@ -460,9 +543,17 @@ export function placeVehicle(
   const t = config.trafficTypes[spec.type];
   if (!t) throw new Error(`traffic: no traffic type ${spec.type}`);
   const lanes = lanesAt(config.road, st.corridor, spec.u, spec.dir);
-  const rank = Math.min(spec.rank ?? 0, Math.max(0, lanes.length - 1));
+  let rank = Math.min(spec.rank ?? 0, Math.max(0, lanes.length - 1));
   const laneCd = lanes[rank]?.cd ?? 0;
-  const cd = isParked(t) ? parkedCd(laneCd) : laneCd;
+  let cd = isParked(t) ? parkedCd(laneCd) : laneCd;
+  if (isKerb(t)) {
+    // A kerb rider keeps the outermost lane's rank and rides at its kerb (W-P).
+    const kerb = kerbCd(config.road, st.corridor, spec.u, spec.dir, t.widthM / 2);
+    if (kerb) {
+      rank = kerb.rank;
+      cd = kerb.cd;
+    }
+  }
   let slot = k;
   if (slot < 0) {
     const mover = addMover(world, 'vehicle', { edge: 0, s: 0, d: 0, dir: 1 });
@@ -483,6 +574,9 @@ export function placeVehicle(
   st.spawnU[slot] = spec.u;
   st.retired[slot] = 0;
   st.laneCooldownS[slot] = TRAFFIC.laneChangeCooldownS;
+  // A weaver starts its weave at a seeded point (W-P); nobody else rolls, so plain traffic keeps
+  // its rolls.
+  st.weavePhase[slot] = (t.behaviour?.weaveM ?? 0) > 0 ? nextFloat(world.rng.traffic) * TAU : 0;
   const mover = world.movers[st.id[slot] ?? -1];
   if (mover) {
     mover.mode = 'Road';
@@ -543,9 +637,45 @@ function trySpawn(
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
     if (k >= 0) st.recycles++;
+    if ((t.behaviour?.convoy ?? 1) > 1) addConvoy(world, config, st, anchors, slot);
     return slot >= 0;
   }
   return false;
+}
+
+/**
+ * The rest of a convoy (W-P): 1 to `convoy` - 1 more of the leader's kind (seeded), nose to tail
+ * behind it in its lane at the car-following gap for its cruise speed, all at the leader's cruise
+ * speed. Each one must pass the fairness rule and the lane-room check, and the direction's slider
+ * target caps the convoy, so a convoy never crowds the road past its density.
+ */
+function addConvoy(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  anchors: readonly number[],
+  lead: number,
+): void {
+  const t = typeOf(config, st, lead);
+  const n = Math.max(1, Math.min(4, Math.floor(t.behaviour?.convoy ?? 1)));
+  const extra = 1 + Math.floor(nextFloat(world.rng.traffic) * (n - 1));
+  const dir = (st.dir[lead] ?? 1) === 1 ? 1 : -1;
+  const v0 = st.v0[lead] ?? t.cruiseMps;
+  const rank = st.rank[lead] ?? 0;
+  const step = t.lengthM + IDM.minGapM + v0 * IDM.timeGapS + TRAFFIC.convoyExtraGapM;
+  const c = st.corridor;
+  let room = targetCount(world, st, anchors, dir);
+  for (let k = 0; k < st.id.length; k++) if (st.dir[k] === dir && st.retired[k] === 0) room--;
+  let u = st.u[lead] ?? 0;
+  for (let i = 0; i < extra && room > 0; i++) {
+    u -= dir * step;
+    if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) return;
+    if (!spawnAllowed(anchors, u, st.reactionM)) return;
+    if (!laneClear(config, st, u, dir, rank, t.lengthM, IDM.minGapM)) return;
+    placeVehicle(world, config, { type: st.type[lead] ?? 0, u, dir, rank, v0 });
+    st.spawns++;
+    room--;
+  }
 }
 
 function atCorridorEnd(st: TrafficState, k: number): boolean {
@@ -638,16 +768,23 @@ function populate(world: World, config: SimConfig, st: TrafficState): void {
   }
 }
 
-/** Slots of the parked oddities, so the common case (none) costs one pass. */
+/**
+ * Slots of the vehicles others edge round rather than queue behind: the parked oddities and (W-P)
+ * the kerb riders. The common case (none) costs one pass.
+ */
 function parkedSlots(config: SimConfig, st: TrafficState): number[] {
   const out: number[] = [];
-  for (let k = 0; k < st.id.length; k++) if (isParked(config.trafficTypes[st.type[k] ?? -1])) out.push(k);
+  for (let k = 0; k < st.id.length; k++) {
+    const t = config.trafficTypes[st.type[k] ?? -1];
+    if (isParked(t) || isKerb(t)) out.push(k);
+  }
   return out;
 }
 
 /**
- * The nearest parked oddity in lane `rank` that vehicle k is coming up on (from TRAFFIC.swerveLookM
- * behind it until k's tail is past its nose), or -1.
+ * The nearest parked oddity (or kerb rider) in lane `rank` that vehicle k is coming up on (from
+ * TRAFFIC.swerveLookM behind it until k's tail is past its nose), or -1. A kerb rider counts only
+ * for a vehicle that is not one itself, and only while k at `kCd` would not clear it side to side.
  */
 function parkedAhead(
   config: SimConfig,
@@ -655,13 +792,20 @@ function parkedAhead(
   k: number,
   rank: number,
   parked: readonly number[],
+  kCd: number = st.cd[k] ?? 0,
 ): number {
   const dir = st.dir[k] ?? 1;
-  const lk = typeOf(config, st, k).lengthM;
+  const tk = typeOf(config, st, k);
+  const lk = tk.lengthM;
   let best = -1;
   let bestAhead = Infinity;
   for (const j of parked) {
     if (j === k || st.dir[j] !== dir || st.rank[j] !== rank) continue;
+    const tj = typeOf(config, st, j);
+    if (isKerb(tj)) {
+      if (isKerb(tk)) continue;
+      if (Math.abs((st.cd[j] ?? 0) - kCd) >= (tk.widthM + tj.widthM) / 2 + TRAFFIC.swerveClearM) continue;
+    }
     const ahead = dir * ((st.u[j] ?? 0) - (st.u[k] ?? 0));
     if (ahead > TRAFFIC.swerveLookM || ahead < -(lk + typeOf(config, st, j).lengthM) / 2 - 1) continue;
     if (ahead < bestAhead) {
@@ -683,11 +827,12 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
   for (let k = 0; k < st.id.length; k++) {
     st.laneCooldownS[k] = Math.max(0, (st.laneCooldownS[k] ?? 0) - dt);
     const t = typeOf(config, st, k);
-    if (parked.length > 0 && !isParked(t)) {
+    if (parked.length > 0 && !isParked(t) && !isKerb(t)) {
       const dir = st.dir[k] ?? 1;
       const lanes = lanesAt(config.road, st.corridor, st.u[k] ?? 0, dir);
       const rank = st.rank[k] ?? 0;
-      if (lanes.length >= 2 && parkedAhead(config, st, k, rank, parked) >= 0) {
+      const laneCd = lanes[Math.min(rank, lanes.length - 1)]?.cd ?? st.cd[k] ?? 0;
+      if (lanes.length >= 2 && parkedAhead(config, st, k, rank, parked, laneCd) >= 0) {
         const to = rank + 1 < lanes.length ? rank + 1 : rank - 1;
         if (laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) {
           st.rank[k] = to;
@@ -696,7 +841,7 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
         continue;
       }
     }
-    if (!CATEGORY[t.category]?.laneChanges || (st.laneCooldownS[k] ?? 0) > 0) continue;
+    if (!changesLanes(t) || (st.laneCooldownS[k] ?? 0) > 0) continue;
     const dir = st.dir[k] ?? 1;
     const lanes = lanesAt(config.road, st.corridor, st.u[k] ?? 0, dir);
     if (lanes.length < 2) continue;
@@ -711,7 +856,8 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
             ? rank - 1
             : rank + 1;
     if (!laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) continue;
-    if (parked.length > 0 && parkedAhead(config, st, k, to, parked) >= 0) continue;
+    const toCd = lanes[to]?.cd ?? st.cd[k] ?? 0;
+    if (parked.length > 0 && parkedAhead(config, st, k, to, parked, toCd) >= 0) continue;
     st.rank[k] = to;
     st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
   }
@@ -768,9 +914,11 @@ function move(
       if (j === k || st.dir[j] !== dir) continue;
       const tj = typeOf(config, st, j);
       // A parked oddity is in the way only while the boxes overlap side to side: edging round it
-      // in the same lane (a one-lane road) clears it.
+      // in the same lane (a one-lane road) clears it. So is a kerb rider (W-P), and for a kerb
+      // rider so is everyone else: it filters past a queue at the kerb.
       const sideways = Math.abs((st.cd[j] ?? 0) - cd) < (t.widthM + tj.widthM) / 2;
-      const sameLane = isParked(tj) ? sideways : st.rank[j] === st.rank[k] || sideways;
+      const loose = isParked(tj) || isKerb(tj) || isKerb(t);
+      const sameLane = loose ? sideways : st.rank[j] === st.rank[k] || sideways;
       const ahead = dir * ((st.u[j] ?? 0) - u);
       if (!sameLane || ahead <= 0) continue;
       consider(ahead - (t.lengthM + tj.lengthM) / 2, speeds[j] ?? 0);
@@ -791,19 +939,21 @@ function move(
     nextV.push(v);
     st.u[k] = (st.u[k] ?? 0) + (st.dir[k] ?? 1) * v * dt;
   }
-  // No two vehicles ever overlap in a lane: walk each lane front to back.
+  // No two vehicles ever overlap in a lane: walk each lane front to back. Kerb riders (W-P) form a
+  // file of their own at the kerb, beside their lane's cars (car-following keeps those apart).
+  const lane = st.id.map((_id, k) => (st.rank[k] ?? 0) + (isKerb(typeOf(config, st, k)) ? 0.5 : 0));
   const order = st.id.map((_id, k) => k);
   order.sort(
     (a, b) =>
       (st.dir[a] ?? 0) - (st.dir[b] ?? 0) ||
-      (st.rank[a] ?? 0) - (st.rank[b] ?? 0) ||
+      (lane[a] ?? 0) - (lane[b] ?? 0) ||
       (st.dir[a] ?? 1) * ((st.u[b] ?? 0) - (st.u[a] ?? 0)) ||
       a - b,
   );
   for (let i = 1; i < order.length; i++) {
     const f = order[i - 1] ?? 0;
     const b = order[i] ?? 0;
-    if (st.dir[f] !== st.dir[b] || st.rank[f] !== st.rank[b]) continue;
+    if (st.dir[f] !== st.dir[b] || lane[f] !== lane[b]) continue;
     const tf = typeOf(config, st, f);
     const tb = typeOf(config, st, b);
     if (isParked(tf) || isParked(tb)) {
@@ -827,18 +977,32 @@ function move(
     }
     st.u[k] = u;
     const lanes = lanesAt(config.road, c, u, dir);
-    const laneCd = lanes[Math.min(st.rank[k] ?? 0, lanes.length - 1)]?.cd ?? st.cd[k] ?? 0;
-    let target = laneCd;
+    const tk = typeOf(config, st, k);
+    const kerb = isKerb(tk) ? kerbCd(config.road, c, u, dir, tk.widthM / 2) : null;
+    // A kerb rider keeps the outermost lane's rank as lanes come and go along the road.
+    if (kerb) st.rank[k] = kerb.rank;
+    const ownLane = lanes[Math.min(st.rank[k] ?? 0, lanes.length - 1)];
+    const laneCd = ownLane?.cd ?? st.cd[k] ?? 0;
+    let target = kerb ? kerb.cd : laneCd;
     let rate = TRAFFIC.laneChangeMps;
+    const weaveM = tk.behaviour?.weaveM ?? 0;
+    if (weaveM > 0 && !isParked(tk)) {
+      // The weave (W-P): a seeded sine on the world clock, kept inside the kerb span or the lane.
+      const swing = weaveM * sin((st.weavePhase[k] ?? 0) + (st.clockS * TAU) / TRAFFIC.weavePeriodS);
+      const half = Math.max(0, (ownLane?.width ?? tk.widthM) / 2 - tk.widthM / 2);
+      target = kerb
+        ? clamp(target + swing, kerb.lo, kerb.hi)
+        : clamp(target + swing, laneCd - half, laneCd + half);
+    }
     if (parked.length > 0) {
-      const tk = typeOf(config, st, k);
       if (isParked(tk)) {
         target = parkedCd(laneCd);
-      } else if (lanes.length < 2) {
-        // One lane this way: edge inward round the parked oddity, then back once past it.
-        const j = parkedAhead(config, st, k, st.rank[k] ?? 0, parked);
+      } else {
+        // Edge inward round a parked oddity (one lane this way) or a kerb rider (W-P, any lane
+        // count: a lane change may be blocked), then back once past it.
+        const j = parkedAhead(config, st, k, st.rank[k] ?? 0, parked, target);
         const tj = config.trafficTypes[st.type[j] ?? -1];
-        if (j >= 0 && tj) {
+        if (j >= 0 && tj && (lanes.length < 2 || isKerb(tj) || isKerb(tk))) {
           const out = laneCd < 0 ? -1 : 1;
           target = (st.cd[j] ?? 0) - out * ((tj.widthM + tk.widthM) / 2 + TRAFFIC.swerveClearM);
           rate = TRAFFIC.swerveMps;

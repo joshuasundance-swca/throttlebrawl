@@ -305,12 +305,30 @@ export const crewSchema = entry('crew', {
   rivalCrews: z.array(refSchema).optional(),
 });
 
+/**
+ * A traffic type's behaviour flags (docs/content-packs.md, "Traffic type"). Sim-facing, so they
+ * are in the sim content hash. The M1 flags plus W-P's (2026-10-01): `kerb`, `weaveM` and
+ * `convoy` for road vehicles, `strolls` and `chases` for pedestrians and animals. Every flag is
+ * optional; an absent one means the category's default.
+ */
+const trafficBehaviourSchema = z.looseObject({
+  carFollowing: z.boolean().optional(),
+  laneChanges: z.boolean().optional(),
+  dives: z.boolean().optional(),
+  kerb: z.boolean().optional(),
+  weaveM: z.number().min(0).max(1.5).optional(),
+  convoy: z.number().int().min(1).max(4).optional(),
+  strolls: z.boolean().optional(),
+  chases: z.boolean().optional(),
+});
+
 export const trafficTypeSchema = entry('traffic-type', {
   category: z.enum(['car', 'truck', 'rv', 'oddity', 'pedestrian', 'animal']),
   lengthM: z.number().positive(),
   widthM: z.number().positive(),
   cruiseMps: nonNegative,
   hazard: z.enum(['normal', 'big']),
+  behaviour: trafficBehaviourSchema.optional(),
 });
 
 /**
@@ -421,6 +439,10 @@ export const eventModifierSchema = entry('event-modifier', {
         'bounty-on-player',
         'guest-rider',
         'show-billboard',
+        // W-P events (the maintainer, 2026-10-01b: "events and set pieces"): a road set piece,
+        // `piece` from sim/modifiers' closed list (roadwork, crash-scene, parade, hay-spill,
+        // speed-trap) with that piece's parameters.
+        'set-piece',
       ]),
     }),
   ),

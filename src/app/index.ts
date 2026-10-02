@@ -17,6 +17,7 @@ import {
   packClosure,
   packOf,
   packSubset,
+  type ContentRegistry,
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
@@ -60,6 +61,7 @@ import { createOutcome, raceResult, resultsDue } from './results';
 import {
   boardCatalog,
   createStreamCache,
+  narrativeSettingOf,
   racePalette,
   raceRadio,
   regionChoices,
@@ -377,6 +379,8 @@ export function createApp(opts: AppOptions): AppHandle {
   audio.setRadioCut(radioCut(settings));
   let radio = raceRadio(registry, regionKeyOf(registry, eventId));
   let radioRegion: string | null = null;
+  /** Set once ui exists: re-tunes the saved station when a new region offers it (run W-P). */
+  let retuneSavedRadio: (() => void) | null = null;
   const tuneRadio = () => {
     const regionKey = regionKeyOf(registry, eventId);
     if (regionKey === radioRegion) return;
@@ -384,6 +388,7 @@ export function createApp(opts: AppOptions): AppHandle {
     radio = raceRadio(registry, regionKey);
     audio.setStations(radio.stations);
     audio.setRegion(radio.region);
+    retuneSavedRadio?.();
   };
   tuneRadio();
   /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
@@ -521,6 +526,7 @@ export function createApp(opts: AppOptions): AppHandle {
       },
     },
   });
+  retuneSavedRadio = () => ui.applySavedRadio();
   if (settingsStore.notice) ui.notice(settingsStore.notice);
   // Touch, keyboard, the gamepad and (when chosen) tilt; haptics answer the player's events (input-2).
   const input = createInput({
@@ -588,7 +594,11 @@ export function createApp(opts: AppOptions): AppHandle {
     const events = race.events();
     if (events.length) {
       recent = recent.concat(events).slice(-300);
-      ui.narrative.onEvents(events, { snapshot: curr, seed: race.config.seed });
+      ui.narrative.onEvents(events, {
+        snapshot: curr,
+        seed: race.config.seed,
+        setting: narrativeSettingOf(registry, eventId),
+      });
       camera.onEvents(events);
       audio.onEvents(events, curr);
       renderer.pushEvents(events);
@@ -666,12 +676,33 @@ export function createApp(opts: AppOptions): AppHandle {
     const picked = ui.region;
     return picked ? regions.find((r) => r.id === picked) : undefined;
   };
-  /** Fetches a region pack's road data, with a busy line; false (and a notice) when it fails. */
+  /**
+   * Road data arrived (a region's, or the Keys' real roads, run W-P): the registry now holds it, so
+   * the race's content hashes and replay key are recomputed (a pack's hash covers its road data) and
+   * the route picker offers the real roads that came in.
+   */
+  const roadsArrived = (reg: ContentRegistry) => {
+    registry = reg;
+    // A race keeps the key it started under (its packs' roads were all in before it started).
+    if (state === 'race') return;
+    hashes = raceHashes(eventId);
+    replayKey = appReplayKey(build, hashes.sim);
+    offerRoutes();
+  };
+  /** The packs a race in this region reads (its pack and base) whose road data is not in yet. */
+  const roadsMissing = (choice: RegionChoice): string[] =>
+    packClosure(registry, choice.packId).filter((id) => !library.hasRoads(id));
+  /**
+   * Fetches the road data a race in a region needs (its pack's, and the Keys' real roads, which
+   * every region's content hash covers through base), with a busy line; false (and a notice) when
+   * it fails.
+   */
   const loadRegion = async (choice: RegionChoice): Promise<boolean> => {
     loadingRoads = true;
     ui.setBusy(`Loading ${choice.name}`);
     try {
-      registry = await library.loadRoads(choice.packId);
+      await Promise.all(roadsMissing(choice).map((id) => library.loadRoads(id)));
+      roadsArrived(library.registry());
       return true;
     } catch (err) {
       console.warn('region road data did not load', err);
@@ -703,7 +734,7 @@ export function createApp(opts: AppOptions): AppHandle {
     else
       void library.loadRoads(choice.packId).then(
         (reg) => {
-          registry = reg;
+          roadsArrived(reg);
           showPicked();
         },
         () => undefined, // Race tries again and says so if it fails
@@ -722,8 +753,15 @@ export function createApp(opts: AppOptions): AppHandle {
     curr = newSim(seeds.next()).snapshot();
     prev = null;
   };
-  // The boot region's routes (the Keys: the causeway road and the real Bahia Honda stretch).
+  // The boot region's routes (the Keys: the causeway road, then the real Bahia Honda stretch once
+  // its road data is in). The Keys' real roads are not in the first-load bundle (run W-P): they are
+  // fetched now, in the background, so the picker offers them and a race starts without a wait.
   offerRoutes();
+  if (!library.hasRoads('base'))
+    void library.loadRoads('base').then(roadsArrived, (err: unknown) => {
+      // Race fetches them again, with a busy line and a notice if that fails too.
+      console.warn('the Keys real-road data did not load', err);
+    });
 
   const handle: AppHandle = {
     build,
@@ -750,8 +788,11 @@ export function createApp(opts: AppOptions): AppHandle {
       if (transition(state, 'race') === null || loadingRoads) return;
       // The race runs in the region picked on the menu. A region pack's road data is fetched the
       // first time (docs/content-packs.md, "Region packs at runtime"); the race starts after.
-      const choice = pickedChoice();
-      if (choice && !library.hasRoads(choice.packId)) {
+      // The Keys' real roads too (run W-P): fetched at boot and almost always in by now. Every
+      // race's content hash covers them (through base), so a race waits for them rather than start
+      // under a replay key that moves when they arrive.
+      const choice = pickedChoice() ?? regions.find((r) => r.eventId === eventId);
+      if (choice && roadsMissing(choice).length > 0) {
         void loadRegion(choice).then((ok) => {
           if (ok) handle.startRace();
         });

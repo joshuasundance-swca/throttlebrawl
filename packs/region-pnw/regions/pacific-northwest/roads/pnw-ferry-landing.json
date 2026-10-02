@@ -26,6 +26,24 @@
     { "s0": 0, "s1": 300, "side": "left", "tag": "town" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-landing-overflow",
+      "s0": 200,
+      "s1": 210,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "ferry-overflow"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-landing-priority",
+      "s0": 240,
+      "s1": 280,
+      "d0": -16,
+      "d1": -7,
+      "item": "ferry-priority"
+    },
     { "kind": "copSpawn", "id": "ferry-holding-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
     {
       "kind": "roadsideZone",

@@ -28,6 +28,24 @@
   "features": [
     {
       "kind": "billboard",
+      "id": "sign-fogline-summer",
+      "s0": 220,
+      "s1": 230,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "summer-fog"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-fogline-gpu",
+      "s0": 450,
+      "s1": 490,
+      "d0": -16,
+      "d1": -7,
+      "item": "gpu-hour"
+    },
+    {
+      "kind": "billboard",
       "id": "sign-fogline-grade",
       "s0": 15,
       "s1": 25,

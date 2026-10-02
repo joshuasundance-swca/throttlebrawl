@@ -55,6 +55,16 @@ describe('content schema: types and field lists', () => {
     expect(ENTRY_SCHEMAS['event-modifier'].safeParse(bad).success).toBe(false);
   });
 
+  it('accepts a road set piece as a modifier effect (W-P events)', () => {
+    const roadwork = {
+      ...(EXAMPLES['event-modifier'] as object),
+      id: 'roadwork',
+      kind: 'human',
+      effects: [{ kind: 'set-piece', piece: 'roadwork', signText: 'ROAD WORK AHEAD' }],
+    };
+    expect(ENTRY_SCHEMAS['event-modifier'].safeParse(roadwork).success).toBe(true);
+  });
+
   it('checks vetoable item status values', () => {
     const region = {
       type: 'region',
