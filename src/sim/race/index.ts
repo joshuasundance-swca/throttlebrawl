@@ -11,6 +11,7 @@ import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
 import type { SimConfig } from '../types';
 import { emit, systemState, type SimSystem, type World } from '../world';
+import { stampShortcuts } from './shortcuts';
 import { closeStyle, scoreStyle, STYLE_TUNING } from './style';
 
 export { STYLE_TUNING, styleRunOf } from './style';
@@ -149,6 +150,17 @@ export function rubberBandBounds(config: SimConfig, world: Pick<World, 'params'>
 /** The pace factor the AI reads for a rider (1 when there is no pull, or for anyone not an AI). */
 export function rubberBandFactor(world: World, id: EntityId): number {
   return raceState(world).rubberBand[id] ?? 1;
+}
+
+/** A player still racing (the 'found it' stamp's riders). */
+function isPlayerRacer(config: SimConfig, world: World, st: RaceState, id: EntityId): boolean {
+  const m = world.movers[id];
+  return (
+    !!m &&
+    config.riders[m.riderIndex]?.controller.kind === 'player' &&
+    isRacer(config, world, id) &&
+    st.status[id] === 'racing'
+  );
 }
 
 function isRacer(config: SimConfig, world: World, id: EntityId): boolean {
@@ -290,6 +302,8 @@ export const raceSystem: SimSystem = {
 
     scoreStyle(world, config, (id) => isRacer(config, world, id) && st.status[id] === 'racing');
     passCheckpoints(config, world, st);
+    // W-Q: the 'found it' stamp, for players still racing.
+    stampShortcuts(world, config, (id) => isPlayerRacer(config, world, st, id));
     for (const m of world.movers) {
       if (!isRacer(config, world, m.id) || st.status[m.id] !== 'racing') continue;
       if ((st.distanceToFinish[m.id] ?? Infinity) <= 0) finish(world, st, m.id, false);

@@ -11,7 +11,9 @@
   "stats": {
     "massKg": 92,
     "healthMax": 95,
-    "skill": 0.5
+    "skill": 0.5,
+    "toughness": 0.95,
+    "power": 1.05
   },
   "personality": {
     "style": "crowd-pleaser",
