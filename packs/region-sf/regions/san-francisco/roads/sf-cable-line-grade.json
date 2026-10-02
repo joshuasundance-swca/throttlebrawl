@@ -46,12 +46,12 @@
     },
     {
       "kind": "billboard",
-      "id": "bb-cable-promptloom",
+      "id": "bb-cable-delegatron",
       "s0": 600,
       "s1": 640,
       "d0": -16,
       "d1": -7,
-      "item": "promptloom"
+      "item": "delegatron"
     },
     {
       "kind": "billboard",
