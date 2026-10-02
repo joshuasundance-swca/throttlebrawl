@@ -25,6 +25,7 @@
     "e2e": "playwright test --project=e2e",
     "e2e:one": "npm run build && playwright test --project=e2e",
     "perf": "node scripts/perf.mjs",
+    "perf:budget": "node scripts/perf.mjs --budget-only",
     "leakscan": "node scripts/leak-scan.mjs --staged",
     "leakscan:all": "node scripts/leak-scan.mjs --all",
     "sizecheck": "node scripts/size-check.mjs",

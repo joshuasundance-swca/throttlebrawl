@@ -49,14 +49,21 @@ jobs:
       - run: npm run leakscan:all
       - run: npm run sizecheck
       - run: npm run build
+      # Keyed by the browser builds Playwright pins, as in suite.yml.
       - name: Playwright browser cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
       - run: npx playwright install --with-deps --only-shell chromium
+      # The boot spec only (about 11 s on CI): the page loads, WebGL2 exists, no console errors, the
+      # canvas is not blank. It used to run every e2e spec (45 files, 2564 s of measured test time
+      # in tests/timings.json), so a newer push cancelled nearly every run before it deployed: 160
+      # of the 161 runs between 01:25Z and 18:19Z on 2026-10-02 were cancelled (the other failed),
+      # and staging last deployed at 2026-10-01 20:21Z. The full browser tier runs in the gate.
+      # [default]
       - name: Boot smoke test
-        run: npm run e2e
+        run: npx playwright test --project=e2e tests/e2e/boot.spec.ts
       - name: Stage the source mirror plus the build
         run: node scripts/space-stage.mjs --out .cache/space --readme space/README.staging.md
       - name: Upload to the staging Space

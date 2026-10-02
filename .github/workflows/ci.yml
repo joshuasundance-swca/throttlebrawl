@@ -1,9 +1,20 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static and unit (one job), sim (three
-# slices) and browser (four slices, the last also running perf) run in parallel, each running its
-# tiers of `npm run check`; `gate` is the single required status check, and it fails unless every
-# one of them succeeded.
-# On a push to main, a green gate deploys to the game Space and writes the release notes.
-# No `paths:` filter: a required check behind one never reports on some PRs.
+# The gate (docs/engineering.md, "CI on GitHub Actions" and "The bundle train").
+#
+# On a pull request, `route` (scripts/train.mjs) picks the PR's path:
+# - train: the quick check (static and unit, plus the build and its size budget). Its aggregate
+#   job is named `quick`, never `gate`, so auto-merge waits for the train (train.yml), which runs
+#   the full suite once on a bundle of ready PRs and posts `gate` as a commit status on each head.
+# - docs: the same quick check, and it is the PR's `gate` (no sim or browser tier needed).
+# - full: the full suite on this PR, and it is the PR's `gate`: forks, Dependabot, the
+#   "[full-gate]" escape hatch, PRs that change .github/ (a train runs main's workflows, not the
+#   PR's), and every PR while the train is off (.github/train.json).
+# One source of `gate` per head commit: this workflow's aggregate job, or the train's status.
+#
+# On a push to main: the full suite, then (green) deploy to the game Space and the release notes,
+# unchanged by the train: the backstop after every landing.
+# The suite itself lives in suite.yml, shared with the train so the two never drift.
+# No `paths:` filter: a required check behind one never reports on some PRs. Path awareness is the
+# route job's.
 name: ci
 
 on:
@@ -19,162 +30,61 @@ concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  BUILD_ID: ${{ github.event.pull_request.head.sha || github.sha }}
-  BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
-  BUILD_CHANNEL: ${{ github.event_name == 'push' && 'prod' || 'dev' }}
-  # Author and committer of the PR's own commits (never HEAD, the synthetic merge commit), or on
-  # a push to main the squash commit GitHub just made.
-  LEAKSCAN_IDENTITY_RANGE: ${{ github.event_name == 'pull_request' && format('origin/main..{0}', github.event.pull_request.head.sha) || 'HEAD~1..HEAD' }}
-  # Who opened the PR, from the event (a branch cannot set it). notes:check exempts a PR only
-  # when this is dependabot[bot] and every commit on it is Dependabot's (scripts/notes.mjs).
-  NOTES_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-
 jobs:
-  # The static checks, then the unit tests, in one job: together they finish well inside the
-  # browser slices' time, and one job sets up one runner instead of two. [default]
-  static-unit:
-    name: static and unit
+  route:
+    name: route
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 3
+    outputs:
+      path: ${{ steps.route.outputs.path }}
     steps:
+      # The PR's merge commit and its first parent (main), to list what the PR changes.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm audit signatures
-      - name: Types, lint, format, packs, leak scan, size, notes, then the unit tests
-        run: npm run check -- --tier static,unit
+          fetch-depth: 2
+      - name: Which path this PR takes (train, docs or full)
+        id: route
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node scripts/train.mjs route
 
-  # The seeded sim batch in parallel slices. The test runner lists the files and
-  # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
-  # lands in exactly one slice, so the slices' test counts add up to the unsharded run's, and the
-  # files that read the shared seeded batch share one slice, so it is computed once. fail-fast is
-  # off so a red slice never hides the other's result. [default]
-  sim:
-    name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Seeded sim batch, one slice
-        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+  suite:
+    needs: route
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.route.result == 'success') }}
+    uses: ./.github/workflows/suite.yml
+    with:
+      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}
+      save-caches: true
+      upload-dist: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      build-id: ${{ github.event.pull_request.head.sha || github.sha }}
+      build-branch: ${{ github.head_ref || github.ref_name }}
+      build-channel: ${{ github.event_name == 'push' && 'prod' || 'dev' }}
+      # Author and committer of the PR's own commits (never HEAD, the synthetic merge commit), or
+      # on a push to main the squash commit GitHub just made.
+      identity-range: ${{ github.event_name == 'pull_request' && format('origin/main..{0}', github.event.pull_request.head.sha) || 'HEAD~1..HEAD' }}
+      notes-pr-author: ${{ github.event.pull_request.user.login }}
 
-  # The browser tests in parallel slices, split the same way by spec file. Each slice builds and
-  # tests its own build. The last slice then runs perf on that same build, after its own e2e files,
-  # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
-  # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
-  # red slice never hides another's result. [default]
-  browser:
-    name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      # Keyed by the browser builds Playwright pins, so a lock-file change alone keeps the cache.
-      - name: Playwright browser cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
-      # Chromium's system packages (fonts, mesa) come from the Ubuntu mirror, which sometimes crawls:
-      # 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run. Their .deb files
-      # are kept between runs and put in apt's own archive folder, so apt installs the same packages
-      # and downloads only what changed. The kept set is saved again (from slice 1) only when it
-      # differs from the one restored.
-      - name: Chromium system packages, restore
-        id: debs
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.cache/playwright-debs
-          key: playwright-debs-${{ runner.os }}-restore
-          restore-keys: playwright-debs-${{ runner.os }}-
-      - name: Install Chromium and its system packages
-        id: install
-        run: |
-          mkdir -p ~/.cache/playwright-debs
-          if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
-            sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
-          fi
-          npx playwright install --with-deps --only-shell chromium
-          rm -rf ~/.cache/playwright-debs && mkdir -p ~/.cache/playwright-debs
-          for f in /var/cache/apt/archives/*.deb; do
-            [ -e "$f" ] || continue
-            p=$(dpkg-deb -f "$f" Package)
-            if [ "$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null)" = "$(dpkg-deb -f "$f" Version)" ]; then
-              cp "$f" ~/.cache/playwright-debs/
-            fi
-          done
-          echo "kept $(ls ~/.cache/playwright-debs | wc -l) .deb files"
-          echo "key=playwright-debs-${RUNNER_OS}-$(ls ~/.cache/playwright-debs | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      - name: Chromium system packages, save
-        if: matrix.shard == 1 && steps.install.outputs.key != steps.debs.outputs.cache-matched-key
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.cache/playwright-debs
-          key: ${{ steps.install.outputs.key }}
-      - name: Build, browser tests (one slice)
-        if: matrix.shard != strategy.job-total
-        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-      - name: Build, browser tests (the last slice), then perf on the same build
-        if: matrix.shard == strategy.job-total
-        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-      - name: Screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: screenshots-${{ matrix.shard }}
-          path: test-results/
-          retention-days: 7
-          if-no-files-found: ignore
-      - name: Keep the tested build for the deploy
-        if: matrix.shard == strategy.job-total && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-          retention-days: 1
-          if-no-files-found: error
-
-  gate:
-    name: gate
-    needs: [static-unit, sim, browser]
+  # `gate` (the one required check) for the docs and full paths and on main; `quick` for a PR that
+  # waits for the train. The job id is not `gate`, so no placeholder name can ever read as one.
+  aggregate:
+    name: ${{ needs.route.outputs.path == 'train' && 'quick' || 'gate' }}
+    needs: [route, suite]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Every gate job succeeded
+      - name: Every job succeeded
         env:
           RESULTS: ${{ toJSON(needs) }}
+          ROUTE: ${{ needs.route.outputs.path }}
         run: |
+          echo "path: ${ROUTE:-main push}"
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+          echo "$RESULTS" | jq -e '.suite.result == "success" and (.route.result == "success" or .route.result == "skipped")' > /dev/null
 
   # Every green push to main uploads the build its own gate tested ([decided]: every green merge
   # goes live). Main push runs are serialised by the workflow's concurrency group (never cancelled
@@ -186,8 +96,8 @@ jobs:
   # [default]
   deploy-prod:
     name: deploy-prod
-    needs: [gate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.gate.result == 'success'
+    needs: [aggregate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.aggregate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

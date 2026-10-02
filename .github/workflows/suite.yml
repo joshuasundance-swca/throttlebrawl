@@ -1,0 +1,287 @@
+# The test suite (docs/engineering.md, "CI on GitHub Actions"), one copy shared by every caller so
+# they can never drift: ci.yml runs it on a pull request and on a push to main, and train.yml runs
+# it on a train's bundle. static and unit (one job), sim (three slices) and browser (four slices,
+# the last also running perf) run in parallel, each running its tiers of `npm run check`.
+#
+# - full: true runs every tier: the full gate. full: false is the quick check: static and unit,
+#   plus the build and its size budget, in that one job.
+# - A train passes `base` (main when it departed) and `heads` (the PR head commits, in order):
+#   every job checks out base and runs scripts/train.mjs assemble, which rebuilds exactly the tree
+#   the train planned (merged with a fixed identity and date, so every job gets the same commit)
+#   and checks it is the planned `tree`. The assembly script runs from base, which is main.
+# - Caches: pull request and main runs save them, as before. A train runs PR code in main's cache
+#   scope, so it only restores (save-caches: false), and nothing a bundle does can reach main's
+#   caches.
+name: suite
+
+on:
+  workflow_call:
+    inputs:
+      full:
+        description: every tier (true), or the quick check (static, unit, build, size budget)
+        type: boolean
+        required: true
+      base:
+        description: the commit to check out ('' is the calling event's own)
+        type: string
+        default: ''
+      heads:
+        description: a train's PR head commits, merged onto base in this order
+        type: string
+        default: ''
+      tree:
+        description: the tree the train planned; the assembly must match it
+        type: string
+        default: ''
+      save-caches:
+        type: boolean
+        default: false
+      upload-dist:
+        description: keep the last browser slice's build for the deploy (main pushes)
+        type: boolean
+        default: false
+      build-id:
+        type: string
+        required: true
+      build-branch:
+        type: string
+        required: true
+      build-channel:
+        type: string
+        default: dev
+      identity-range:
+        description: the commits whose author and committer the leak scan checks
+        type: string
+        required: true
+      notes-base:
+        type: string
+        default: origin/main
+      notes-pr-author:
+        type: string
+        default: ''
+      artifact-prefix:
+        description: before each artifact name, so two suites in one run never share one
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  BUILD_ID: ${{ inputs.build-id }}
+  BUILD_BRANCH: ${{ inputs.build-branch }}
+  BUILD_CHANNEL: ${{ inputs.build-channel }}
+  LEAKSCAN_IDENTITY_RANGE: ${{ inputs.identity-range }}
+  NOTES_BASE: ${{ inputs.notes-base }}
+  # Who opened the PR, from the event (a branch cannot set it). notes:check exempts a PR only
+  # when this is dependabot[bot] and every commit on it is Dependabot's (scripts/notes.mjs).
+  NOTES_PR_AUTHOR: ${{ inputs.notes-pr-author }}
+
+jobs:
+  # The static checks, then the unit tests, in one job: together they finish well inside the
+  # browser slices' time, and one job sets up one runner instead of two. In the quick check the
+  # same job then builds (about 7 s) and checks the size budget (seconds). [default]
+  static-unit:
+    name: static and unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 0
+      - name: Assemble the train's tree
+        if: inputs.heads != ''
+        env:
+          BASE: ${{ inputs.base }}
+          HEADS: ${{ inputs.heads }}
+          TREE: ${{ inputs.tree }}
+        run: node scripts/train.mjs assemble --base "$BASE" --heads "$HEADS" --tree "$TREE"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: npm cache
+        if: inputs.save-caches
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: npm cache, restore only
+        if: ${{ !inputs.save-caches }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - run: npm ci
+      - run: npm audit signatures
+      - name: Types, lint, format, packs, leak scan, size, notes, then the unit tests
+        if: inputs.full
+        run: npm run check -- --tier static,unit
+      - name: The quick check (types, lint, format, packs, leak scan, size, notes, unit tests, build, size budget)
+        if: ${{ !inputs.full }}
+        run: npm run check -- --tier static,unit,budget
+
+  # The seeded sim batch in parallel slices. The test runner lists the files and
+  # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
+  # lands in exactly one slice, so the slices' test counts add up to the unsharded run's, and the
+  # files that read the shared seeded batch share one slice, so it is computed once. fail-fast is
+  # off so a red slice never hides the other's result. [default]
+  sim:
+    name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 0
+      - name: Assemble the train's tree
+        if: inputs.heads != ''
+        env:
+          BASE: ${{ inputs.base }}
+          HEADS: ${{ inputs.heads }}
+          TREE: ${{ inputs.tree }}
+        run: node scripts/train.mjs assemble --base "$BASE" --heads "$HEADS" --tree "$TREE"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: npm cache
+        if: inputs.save-caches
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: npm cache, restore only
+        if: ${{ !inputs.save-caches }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - run: npm ci
+      - name: Seeded sim batch, one slice
+        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # The browser tests in parallel slices, split the same way by spec file. Each slice builds and
+  # tests its own build (about 7 s). The last slice then runs perf on that same build, after its own
+  # e2e files, as perf always has (on a fresh runner, perf printed slower ink-look frame times:
+  # #166, reverted in #176); the slice plan gives that slice fewer e2e seconds to make room.
+  # fail-fast is off so a red slice never hides another's result. [default]
+  browser:
+    name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
+    if: inputs.full
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 0
+      - name: Assemble the train's tree
+        if: inputs.heads != ''
+        env:
+          BASE: ${{ inputs.base }}
+          HEADS: ${{ inputs.heads }}
+          TREE: ${{ inputs.tree }}
+        run: node scripts/train.mjs assemble --base "$BASE" --heads "$HEADS" --tree "$TREE"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: npm cache
+        if: inputs.save-caches
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: npm cache, restore only
+        if: ${{ !inputs.save-caches }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - run: npm ci
+      # Keyed by the browser builds Playwright pins, so a lock-file change alone keeps the cache.
+      - name: Playwright browser cache
+        if: inputs.save-caches
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+      - name: Playwright browser cache, restore only
+        if: ${{ !inputs.save-caches }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+      # Chromium's system packages (fonts, mesa) come from the Ubuntu mirror, which sometimes crawls:
+      # 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run. Their .deb files
+      # are kept between runs and put in apt's own archive folder, so apt installs the same packages
+      # and downloads only what changed. The kept set is saved again (from slice 1, never by a
+      # train) only when it differs from the one restored.
+      - name: Chromium system packages, restore
+        id: debs
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/playwright-debs
+          key: playwright-debs-${{ runner.os }}-restore
+          restore-keys: playwright-debs-${{ runner.os }}-
+      - name: Install Chromium and its system packages
+        id: install
+        run: |
+          mkdir -p ~/.cache/playwright-debs
+          if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
+            sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
+          fi
+          npx playwright install --with-deps --only-shell chromium
+          rm -rf ~/.cache/playwright-debs && mkdir -p ~/.cache/playwright-debs
+          for f in /var/cache/apt/archives/*.deb; do
+            [ -e "$f" ] || continue
+            p=$(dpkg-deb -f "$f" Package)
+            if [ "$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null)" = "$(dpkg-deb -f "$f" Version)" ]; then
+              cp "$f" ~/.cache/playwright-debs/
+            fi
+          done
+          echo "kept $(ls ~/.cache/playwright-debs | wc -l) .deb files"
+          echo "key=playwright-debs-${RUNNER_OS}-$(ls ~/.cache/playwright-debs | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Chromium system packages, save
+        if: inputs.save-caches && matrix.shard == 1 && steps.install.outputs.key != steps.debs.outputs.cache-matched-key
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/playwright-debs
+          key: ${{ steps.install.outputs.key }}
+      - name: Build, browser tests (one slice)
+        if: matrix.shard != strategy.job-total
+        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Build, browser tests (the last slice), then perf on the same build
+        if: matrix.shard == strategy.job-total
+        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-prefix }}screenshots-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Keep the tested build for the deploy
+        if: inputs.upload-dist && matrix.shard == strategy.job-total
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error

@@ -13,6 +13,9 @@
 //                                    several tiers in one go, sharing one build: CI's last browser
 //                                    slice runs its e2e files, then perf (lastSliceOnly) on the same
 //                                    build.
+//   npm run check -- --tier static,unit,budget
+//                                    the quick check a PR gets before the bundle train: the static
+//                                    and unit tiers, then the build and its size budget.
 //
 // Every step must print what it examined, and an active step that examined nothing fails: a
 // check that looked at nothing reads exactly like a pass. A step whose subject does not exist
@@ -118,12 +121,30 @@ const STEPS = [
   // browser slice) or the whole gate builds once; a job with one of them builds its own. It is
   // `build:dist`, the build without `build`'s own typecheck: the static tier's types step checks the
   // same three configs, and every browser slice repeating it cost each CI slice about 10 s.
-  { tier: ['browser', 'perf'], name: 'build', script: 'build:dist', count: fromDist, everySlice: true },
+  // The budget tier (the quick check's last step, docs/engineering.md "The bundle train") builds
+  // too, then checks the size budget alone.
+  {
+    tier: ['browser', 'perf', 'budget'],
+    name: 'build',
+    script: 'build:dist',
+    count: fromDist,
+    everySlice: true,
+  },
   { tier: 'browser', name: 'e2e', script: 'e2e', count: fromPlaywright, shardable: 'e2e' },
   // perf never shards: its probes time frames one at a time on an otherwise idle runner. In a
   // sharded run it may only ride in the last slice, after that slice's e2e files, as in ci.yml; the
   // slice plan leaves that slice room for it.
   { tier: 'perf', name: 'perf', script: 'perf', count: fromExamined, lastSliceOnly: true },
+  // The size budget alone (first-load JavaScript, first load, per-region models): seconds, so the
+  // quick check catches a PR that crosses it. perf checks the same budget, so in a run with perf
+  // this step stands down.
+  {
+    tier: 'budget',
+    name: 'size budget',
+    script: 'perf:budget',
+    count: fromExamined,
+    active: () => (tiers && !tiers.includes('perf')) || 'perf checks the same size budget in this run',
+  },
 ];
 
 /**
@@ -172,7 +193,7 @@ function run(script, args = []) {
   });
 }
 
-const TIER_NAMES = ['static', 'unit', 'sim', 'browser', 'perf'];
+const TIER_NAMES = ['static', 'unit', 'sim', 'browser', 'perf', 'budget'];
 const tierArg = process.argv.indexOf('--tier');
 const tier = tierArg > -1 ? (process.argv[tierArg + 1] ?? '') : null;
 const tiers = tier === null ? null : tier.split(',');
