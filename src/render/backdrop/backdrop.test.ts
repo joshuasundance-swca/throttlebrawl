@@ -7,7 +7,14 @@
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../../road';
 import { CAMERA_FAR_M } from '../index';
-import { BACKDROP_FAR_M, buildSoup, roadPointsOf, squeezedDepth, triangulate } from './builder';
+import {
+  BACKDROP_FAR_M,
+  buildSoup,
+  floorDrawnDepth,
+  roadPointsOf,
+  squeezedDepth,
+  triangulate,
+} from './builder';
 import { backdropProblems, type BackdropNetworkFile, type BackdropRegionFile, type PieceKind } from './data';
 import { geoFrame } from './geo';
 import { backdropFilesFor } from './index';
@@ -182,6 +189,31 @@ describe('the squeezed depth', () => {
         if (d <= fogFar) expect(r).toBe(d);
         last = r;
       }
+    }
+  });
+
+  it('draws a floor never nearer than it is up to the fog end, inside the far plane, exact across a flat triangle', () => {
+    // verify-skyline mustFix 1: a per-vertex squeeze bent a floor kilometres across into a sheet
+    // above the near sea. Floors keep their true positions and draw at floorDrawnDepth instead.
+    for (const fogFar of [300, 480, 700]) {
+      let last = 0;
+      for (const z of [0.5, 5, 50, 200, fogFar, 760, 2000, 10_000, 100_000, 1e6]) {
+        const r = floorDrawnDepth(z, fogFar);
+        expect(r).toBeGreaterThan(last);
+        expect(r).toBeLessThan(BACKDROP_FAR_M + 1e-9);
+        if (z <= fogFar) expect(r).toBeGreaterThanOrEqual(z - 1e-9);
+        last = r;
+      }
+      expect(floorDrawnDepth(Math.min(fogFar, BACKDROP_FAR_M - 40), fogFar)).toBeCloseTo(
+        Math.min(fogFar, BACKDROP_FAR_M - 40),
+        9,
+      );
+      // 1 / drawn is affine in 1 / z, which is what a flat triangle interpolates exactly on screen.
+      const u = (z: number) => 1 / z;
+      const g = (z: number) => 1 / floorDrawnDepth(z, fogFar);
+      const [a, b, m] = [30, 9000, 1 / (0.5 / 30 + 0.5 / 9000)];
+      expect(g(m)).toBeCloseTo((g(a) + g(b)) / 2, 12);
+      expect(u(m)).toBeCloseTo((u(a) + u(b)) / 2, 12);
     }
   });
 });

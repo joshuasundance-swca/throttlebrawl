@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "motorhome",
+  "name": "Motorhome",
+  "category": "rv",
+  "tags": ["tourist", "slow"],
+  "lengthM": 9.5,
+  "widthM": 2.5,
+  "cruiseMps": 20.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "convoy": 4
+  },
+  "look": {
+    "procedural": {
+      "preset": "rv"
+    },
+    "paintOptions": ["#f2efe6", "#5d6b4f", "#8a6440"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "They come in convoys of up to four, one club, matching awnings. They will pull over at the next turnout, which is in eleven miles.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
