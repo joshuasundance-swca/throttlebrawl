@@ -29,6 +29,11 @@ interface Handle {
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 type ChainEvent = { tick: number; type: string; causeId: number | undefined; data: SimEvent['data'] };
 
+/** The player's attack phase in the sim's latest snapshot ('idle' once a swing and its cooldown end). */
+type PhaseWindow = Window & {
+  __game?: { snapshot(): { entities: { attackPhase: string }[] } | null; playerId(): number };
+};
+
 type Point = { x: number; y: number; id: number };
 const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', points: Point[], at: number) =>
   cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points, timestamp: at });
@@ -110,8 +115,22 @@ async function swipe(
     );
   }
   await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
-  // The kick's wind-up, active moment, recovery and cooldown all play out.
+  // The kick's wind-up, active moment, recovery and cooldown all play out: at least 1.5 s, then
+  // until the sim shows the player's attack idle again. A kick asked for while the last one cools
+  // down is a punch by design (sim/combat), and a loaded runner steps fewer sim ticks per real
+  // second (the loop takes at most 4 per frame), so 1.5 s alone was not always the kick's 13 + 6 +
+  // 27 ticks and 30-tick cooldown: in main's CI run 36965896101 the next swipe reached the sim 69
+  // ticks after the kick began, and punched.
   await page.waitForTimeout(1500);
+  await page.waitForFunction(
+    () => {
+      const g = (window as PhaseWindow).__game;
+      const me = g?.snapshot()?.entities[g.playerId()];
+      return me?.attackPhase === 'idle';
+    },
+    null,
+    { timeout: 30_000 },
+  );
 
   const inputs = await page.evaluate((f) => (window as TestWindow).__game!.inputs(f), from);
   const press = inputs.findIndex((s) => (s.flags & InputFlag.attack) !== 0);

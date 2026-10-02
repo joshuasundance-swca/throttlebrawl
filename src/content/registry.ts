@@ -14,6 +14,7 @@ import {
   type EventModifier,
   type HudLayout,
   type PackManifest,
+  type Career,
   type RaceEvent,
   type Region,
   type Rider,
@@ -44,6 +45,8 @@ export interface ContentRegistry {
   readonly crews: Table<Crew>;
   readonly weapons: Table<Weapon>;
   readonly events: Table<RaceEvent>;
+  /** Career maps, one per region (W-Q contracts). */
+  readonly careers: Table<Career>;
   readonly regions: Table<Region>;
   readonly networks: Table<RoadNetworkFile>;
   readonly roads: Table<RoadFile>;
@@ -66,6 +69,7 @@ const TABLE_OF: Record<LoadedType, keyof ContentRegistry> = {
   crew: 'crews',
   weapon: 'weapons',
   event: 'events',
+  career: 'careers',
   region: 'regions',
   'road-network': 'networks',
   road: 'roads',

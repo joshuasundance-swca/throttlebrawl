@@ -74,6 +74,7 @@ export type {
   DifficultyPreset,
   DifficultyScale,
   GetReplayAndSettings,
+  GroundSurface,
   LaneInfo,
   LayoutElement,
   OnCopyReport,
@@ -84,6 +85,7 @@ export type {
   ReplayAndSettings,
   ResumeAudio,
   RoadQueriesFn,
+  RouteBranchKind,
   RouteQueries,
   TouchLayout,
   TuningParamDecl,
@@ -101,7 +103,7 @@ export {
   secondsToTicks,
   tuningDefaults,
 } from '../core';
-export type { RoadFrame, RoadNetwork, RouteProgress, WorldPoint } from '../road';
+export type { RoadFrame, RoadNetwork, RouteBranch, RouteProgress, WorldPoint } from '../road';
 
 /** Analog controls (steer −1..1, throttle and brake 0..1) plus flag bits, quantized for the sim. */
 export interface AnalogInput {

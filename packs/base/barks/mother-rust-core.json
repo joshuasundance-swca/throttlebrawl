@@ -256,11 +256,21 @@
       "text": "Family settles debts. Slowly.",
       "audioAsset": "audio/barks/mother-rust-core/rust-traffic-debts",
       "audioStatus": "live"
+    },
+    {
+      "id": "mother-rust-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Ground's soft here. Stay a while."
+    },
+    {
+      "id": "mother-rust-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Gators eat at dusk, city."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "rust-start-tires is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals.",
+    "notes": "rust-start-tires is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
