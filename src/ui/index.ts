@@ -76,7 +76,7 @@ import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
-import { createHeatBadge, HEAT_BADGE_CSS } from './heat-badge';
+import type { HeatBadge } from './heat-badge';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
@@ -299,7 +299,6 @@ const CSS = `
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
 ${RADIO_PANEL_CSS}
-${HEAT_BADGE_CSS}
 #style-popups { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
   pointer-events: none; transition: top 0.12s ease-out; }
 #style-popups.mirrored { align-items: flex-end; }
@@ -682,8 +681,23 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const position = el('div', { id: 'hud-position' });
   const selfHealth = healthWidget('hud-health', 'YOU');
   const targetHealth = healthWidget('hud-target', '');
-  // Playtest 2's heat meter (interview, 2026-10-02): a badge at the top centre, only while hot.
-  const heatBadge = createHeatBadge();
+  // Playtest 2's heat meter (interview, 2026-10-02): a badge at the top centre, only while hot. It
+  // loads the first time a race gets hot (a lazy chunk, off the first-load JavaScript budget).
+  let heatBadge: HeatBadge | null = null;
+  let heatBadgeLoading = false;
+  const updateHeat = (law: SimSnapshot['law']) => {
+    if (heatBadge) heatBadge.update(law);
+    else if (!heatBadgeLoading && law && (law.heat > 0 || law.tier > 0)) {
+      heatBadgeLoading = true;
+      void import('./heat-badge').then((m) => {
+        const style = document.createElement('style');
+        style.textContent = m.HEAT_BADGE_CSS;
+        document.head.append(style);
+        heatBadge = m.createHeatBadge();
+        hud.insertBefore(heatBadge.root, pauseButton);
+      });
+    }
+  };
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
   pauseButton.addEventListener('click', () => pause());
@@ -694,7 +708,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     position,
     selfHealth.root,
     targetHealth.root,
-    heatBadge.root,
     pauseButton,
   );
   const hudPieces: Record<string, HTMLElement> = {
@@ -1448,7 +1461,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       tally.reset();
       tallyPlayer = -1;
       clearPops();
-      heatBadge.reset();
+      heatBadge?.reset();
       placeAll();
     }
     if (screen === 'menu') {
@@ -1479,7 +1492,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     updateRace(snapshot, playerId, units) {
       const player = snapshot.entities[playerId] ?? null;
       updateHud(player, riderCount(snapshot), units);
-      heatBadge.update(snapshot.law);
+      updateHeat(snapshot.law);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
       stepMeter(player?.styleRun, tally.takePopups());
