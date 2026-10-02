@@ -242,6 +242,11 @@ export interface ScatterEdge {
    * ground's span, as distances past the verge, and its world height. Null where there is none.
    */
   skirt?: ((side: -1 | 1, s: number) => { from: number; to: number; y: number } | null) | undefined;
+  /**
+   * Whether a far conifer may stand at (s, d) on that side: on the skirt's flat ground exactly as
+   * drawn, round its trunk, and clear of every road, this one's other stretches included.
+   */
+  onFarGround?: ((side: -1 | 1, s: number, d: number) => boolean) | undefined;
   /** Whether fog banks lie offshore (the region's palette names a `fogBank` colour). */
   fogBanks?: boolean | undefined;
 }
@@ -392,6 +397,9 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);
       const d = side * (outer + across);
       if (!e.clear(s, d, SCENERY_RADIUS_M.conifer)) continue;
+      // On the flat ground as drawn and clear of every road (run W-O's skeptic: 71, 124 and 46
+      // trees over the water on three real roads).
+      if (e.onFarGround && !e.onFarGround(side, s, d)) continue;
       const c = conifer(h(ci, k, side, 22), h(ci, k, side, 23));
       const p = e.world(s, d, 0);
       out.push({

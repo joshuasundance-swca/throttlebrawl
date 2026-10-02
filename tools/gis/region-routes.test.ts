@@ -141,9 +141,10 @@ type Tag = { s0: number; s1: number; side?: string; tag: string };
 
 /**
  * Conifers this far out (|d|, m) are the render lane's far forest on the terrain skirt (#234), past
- * the verge's 24 m strip that the road's own tags make. A few stand past the drawn skirt, over the
- * sea, on the hand-made pnw-c1 too (3 of 7,124 land spots over seeds 1 to 3, 2026-10-01). They are
- * counted apart and reported to the render lane, so this file guards the roads' own land strictly.
+ * the verge's 24 m strip that the road's own tags make. Run W-O's skeptic found 71, 124 and 46 of
+ * them over the water on Chuckanut, the Gorge and Twin Peaks over these seeds, printed here and
+ * never asserted. Since run W-P each stands on the skirt's flat ground exactly as drawn, and the
+ * count over water is asserted to be 0 (Russian Hill has no forest, so it is skipped there).
  */
 const FAR_FOREST_D = 40;
 
@@ -194,13 +195,14 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     const { spots, bad, farSpots, farBad } = offLand(id, SEEDS);
     process.stdout.write(
       `[examined] ${id}: ${SEEDS.length} seeds, ${spots} land spots ray-checked, ${bad.length} not on land; ` +
-        `far-forest conifers ${farSpots}, ${farBad.length} past the drawn skirt (render follow-up)` +
+        `far-forest conifers ${farSpots} ray-checked, ${farBad.length} past the drawn skirt` +
         `${farBad[0] ? `, e.g. ${farBad[0]}` : ''}\n`,
     );
     expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
-    // The far forest is the render lane's scatter, not this road data: printed above, not asserted
-    // here (its home is src/render's region tests).
+    // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3).
+    if (id !== 'osm-sf-russian-hill') expect(farSpots).toBeGreaterThan(1000);
+    expect(farBad.slice(0, 12)).toEqual([]);
   }, 240_000);
 });
 

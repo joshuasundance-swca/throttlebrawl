@@ -165,6 +165,31 @@ describe.each(['pnw-c1', 'sf-hills'])('the terrain skirt on %s', (id) => {
   });
 });
 
+describe.each(['pnw-c1', 'sf-hills'])('the far forest on %s', (id) => {
+  it('stands every far conifer on drawn ground, never over the water or under a road (run W-O skeptic)', () => {
+    const { road, dressing } = track(id);
+    let far = 0;
+    const wet: string[] = [];
+    for (const seed of [1, 2, 3, 7]) {
+      const scene = buildRoadScene(road, look, dressing, { seed });
+      const ground = solids(scene.group, GROUND);
+      for (const t of scene.spots) {
+        if (t.kind !== 'conifer' || Math.abs(t.d) <= 40) continue;
+        far++;
+        const hit = under(ground, t.p.x, t.p.z, t.p.y + 30);
+        if (hit?.name !== 'road-land')
+          wet.push(
+            `seed ${seed}: ${road.edges[t.edge]?.id} s ${t.s.toFixed(0)} d ${t.d.toFixed(0)} over ${hit?.name}`,
+          );
+      }
+      scene.dispose();
+    }
+    console.log(`[examined] ${id}: ${far} far-forest conifers over 4 seeds, ${wet.length} off drawn ground`);
+    if (id === 'pnw-c1') expect(far).toBeGreaterThan(500);
+    expect(wet.slice(0, 8)).toEqual([]);
+  });
+});
+
 describe('the Keys keep their look', () => {
   it('draws no terrain skirt, no trestle bents and none of the new scenery on a tropical network', () => {
     const { road, dressing } = track('keys-m1');
