@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadBasePack, registryFromGlob } from '../content';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { createAudio, RADIO_OFF, RADIO_SCORE } from './index';
+import { createAudio, RADIO_FIRST_STATION, RADIO_OFF, RADIO_SCORE } from './index';
 import {
   composeTrack,
   hashString,
@@ -340,6 +340,9 @@ describe('the radio in the mixer', () => {
 
   it('the R key cycles score, each station, off; switching changes the playing track', async () => {
     const { keys, audio, tick } = await racing(baseStations());
+    // A race starts on the region's first station (playtest 2); this test starts from the score.
+    expect(audio.inspect().radio.choice).toBe(RADIO_FIRST_STATION);
+    audio.setParam('audio.radio', RADIO_SCORE);
     tick(0.1);
     expect(audio.inspect().radio.tunedTo).toBe('score');
     expect(audio.inspect().musicPlaying).toBe(true);
@@ -434,6 +437,7 @@ describe('the radio in the mixer', () => {
 
   it('"cut this" on the playing track returns the settings flag and skips the track', async () => {
     const { audio } = await racing(baseStations());
+    audio.setParam('audio.radio', RADIO_SCORE);
     expect(audio.cutPlayingTrack('r', 1)).toBeNull();
     audio.setParam('audio.radio', 3);
     const playing = audio.inspect().radio.nowPlaying!.ref;

@@ -46,6 +46,7 @@ async function render(page: Page, scenario: Scenario) {
     type Audio = {
       resume(): Promise<void>;
       setVolumes(v: Record<string, number>, mute: boolean): void;
+      setParam(id: string, v: number): void;
       frame(s: Snap | null, playerId: number): void;
       onEvents(e: unknown[], s?: Snap | null): void;
       inspect(): { slowmo: { active: boolean; lowpassHz: number } };
@@ -69,6 +70,9 @@ async function render(page: Page, scenario: Scenario) {
     // As the app does: the settings apply before the start tap builds the graph.
     audio.setVolumes(vols, false);
     await audio.resume();
+    // The score: it plays at once (a race starts on a station since playtest 2, and the stations
+    // load on first use, which a 0.8 s render would miss).
+    audio.setParam('audio.radio', 1);
 
     const rider = (id: number, over: Record<string, unknown> = {}) => ({
       id,
