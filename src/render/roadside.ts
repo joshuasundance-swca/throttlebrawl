@@ -185,6 +185,15 @@ export const KEYS_KIT: RoadsideKit = {
   ],
 };
 
+/**
+ * The kit a race draws: the one its network's own needs name (models.ts `modelKindsFor`), once its
+ * model has loaded, and never another region's. Models stay loaded across regions, and the menu's
+ * Keys road loads the Keys kit before any race (run W-P: a PNW race once drew the Keys kit).
+ */
+export function kitFor(needed: readonly string[], loaded: Readonly<Record<string, unknown>>): string | null {
+  return needed.find((k) => k in KITS && !!loaded[k]) ?? null;
+}
+
 /** The kit a region's loaded model draws, by the model's kind. */
 export const KITS: Readonly<Record<string, RoadsideKit>> = {
   pnwRoadside: PNW_KIT,
