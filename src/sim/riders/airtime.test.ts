@@ -16,18 +16,26 @@ const RAMP = [
 const LIP_EDGE = 2; // the lip is where 'ramp' (edge 1) ends and 'landing' (edge 2) begins
 
 /** Rides the ramp from the run-up at a speed, holding a steer from `steerFrom` s on the landing. */
-function jump(speed: number, opts: { yawInAir?: number; tuning?: Record<string, number>; d?: number } = {}) {
+function jump(
+  speed: number,
+  opts: { yawInAir?: number; yawLate?: number; tuning?: Record<string, number>; d?: number } = {},
+) {
   const config = testConfig({ edges: RAMP, ...(opts.tuning ? { tuning: opts.tuning } : {}) });
   const h = riderHarness(config, { edge: 0, s: 150, d: opts.d ?? 1.7, speed });
   const events: SimEvent[] = [];
   const heights: number[] = [];
   let takeoff: { edge: number; s: number; tick: number } | null = null;
   let airborneTicks = 0;
+  let late = false;
+  let landedAt = -1;
   for (let t = 0; t < 60 * 8; t++) {
+    // A crooked landing's case stops half a second after it, before the drift reaches a barrier.
+    if (opts.yawLate !== undefined && landedAt >= 0 && t > landedAt + 30) break;
     const wasAir = h.rider.mode === 'Airborne';
     // Hold the speed on the run-up so each case jumps at the speed it names.
     const ev = h.step(input(h.rider.mode === 'Road' && h.rider.speed < speed ? 1 : 0.4));
     events.push(...ev);
+    if (landedAt < 0 && ev.some((e) => e.type === 'land')) landedAt = t;
     if (!wasAir && h.rider.mode === 'Airborne') {
       takeoff = { edge: h.rider.pos.edge, s: h.rider.pos.s, tick: t };
       if (opts.yawInAir !== undefined) h.rider.yaw = opts.yawInAir; // a crooked flight, as if knocked
@@ -35,6 +43,11 @@ function jump(speed: number, opts: { yawInAir?: number; tuning?: Record<string, 
     if (h.rider.mode === 'Airborne') {
       airborneTicks++;
       heights.push(h.rider.h);
+      // A crooked touch-down: knocked sideways just before the wheels meet the ground.
+      if (opts.yawLate !== undefined && !late && h.rider.h < 0.4 && airborneTicks > 20) {
+        h.rider.yaw = opts.yawLate;
+        late = true;
+      }
     }
   }
   return { h, events, heights, takeoff, airborneTicks, config };
@@ -142,33 +155,85 @@ describe('riders-2: landing quality', () => {
     expect(types(r.events)).not.toContain('crash');
   });
 
-  it('wobbles with some sideways speed, and crashes with a lot', () => {
-    // Crooked flights start in the far lane so the drift across does not reach the barrier.
-    const wobbly = jump(30, { yawInAir: 0.1, d: -1.7 }); // about 2.7 m/s sideways
-    expect(wobbly.events.find((e) => e.type === 'land')?.data['quality']).toBe('wobble');
+  // Forgiving landings (playtest 2, 2026-10-02): the landing rule on its own, with the air's
+  // line-up off (riders.airAlign 0) so the touch-down heading is exactly the one set. At 30 m/s the
+  // crash line (11 m/s sideways) is about 0.37 rad off the road.
+  const RULE = { 'riders.airAlign': 0 };
+  const land = (r: ReturnType<typeof jump>) => r.events.find((e) => e.type === 'land');
+
+  it('wobbles a little crooked, slides straight badly crooked, and crashes only really crooked', () => {
+    const wobbly = jump(30, { yawLate: 0.15, tuning: RULE }); // about 4.5 m/s sideways
+    expect(land(wobbly)?.data['quality']).toBe('wobble');
+    expect(land(wobbly)?.data['slide']).toBe(false);
     expect(types(wobbly.events)).toContain('wobble');
     expect(types(wobbly.events)).not.toContain('crash');
+    // Pulled toward the road's line: 60 % of the heading kept.
+    expect(Math.abs(wobbly.h.rider.yaw)).toBeLessThan(0.15);
 
-    const crooked = jump(30, { yawInAir: 0.17, d: -3.5 }); // about 4.6 m/s sideways
-    const land = crooked.events.find((e) => e.type === 'land');
+    const slid = jump(30, { yawLate: 0.3, tuning: RULE }); // about 8.9 m/s sideways
+    const sl = land(slid);
+    expect(sl?.data['quality']).toBe('wobble');
+    expect(sl?.data['slide']).toBe(true);
+    expect(types(slid.events)).not.toContain('crash');
+    // The slide costs speed: the sideways part and a tenth of the rest.
+    expect(Number(sl?.data['speed'])).toBeLessThan(0.9 * 30 * Math.cos(0.3) + 0.5);
+
+    const crooked = jump(30, { yawLate: 0.45, tuning: RULE }); // about 13 m/s sideways
+    const l = land(crooked);
     const crash = crooked.events.find((e) => e.type === 'crash');
-    expect(land?.data['quality']).toBe('crash');
+    expect(l?.data['quality']).toBe('crash');
     expect(crash?.data['cause']).toBe('landing');
-    expect(crash?.causeId).toBe(land?.causeId);
+    expect(crash?.causeId).toBe(l?.causeId);
     expect(crash?.actor).toBe(crooked.h.rider.id);
-    for (const r of [wobbly, crooked]) {
-      // No barrier contact muddied the landing: every wobble or crash is the landing's.
-      for (const e of r.events.filter((x) => x.type === 'wobble' || x.type === 'crash'))
+    for (const r of [wobbly, slid, crooked]) {
+      // No barrier contact muddied the landing: every wobble or crash up to it is the landing's.
+      const at = land(r)?.tick ?? -1;
+      for (const e of r.events.filter((x) => (x.type === 'wobble' || x.type === 'crash') && x.tick <= at))
         expect(e.data['cause']).toBe('landing');
     }
   });
 
   it('moves the crash line with the tuning panel (non-default value)', () => {
-    const tough = jump(30, { yawInAir: 0.17, d: -3.5, tuning: { 'riders.landingCrashMps': 10 } });
-    expect(tough.events.find((e) => e.type === 'land')?.data['quality']).toBe('wobble');
-    const touchy = jump(30, { yawInAir: 0.1, d: -1.7, tuning: { 'riders.landingCrashMps': 1.5 } });
-    expect(touchy.events.find((e) => e.type === 'land')?.data['quality']).toBe('crash');
+    const tough = jump(30, { yawLate: 0.45, tuning: { ...RULE, 'riders.landingCrashMps': 20 } });
+    expect(land(tough)?.data['quality']).toBe('wobble');
+    const touchy = jump(30, { yawLate: 0.2, tuning: { ...RULE, 'riders.landingCrashMps': 4 } });
+    expect(land(touchy)?.data['quality']).toBe('crash');
     expect(RIDERS_TUNING.map((d) => d.id)).toContain('riders.landingCrashMps');
+  });
+
+  it('lines the bike up with the road in the air, so a jab of steering lands straight', () => {
+    // A crooked flight from take-off (as if knocked): with the line-up it settles; with it off
+    // (M1, a non-default 0) it comes down as crooked as it left.
+    const settled = jump(30, { yawInAir: 0.12, d: -3.5 });
+    const m1 = jump(30, { yawInAir: 0.12, d: -3.5, tuning: { 'riders.airAlign': 0 } });
+    expect(Number(land(settled)?.data['lateralMps'])).toBeLessThan(1);
+    expect(Number(land(m1)?.data['lateralMps'])).toBeGreaterThan(3);
+  });
+
+  it('follows the bend in the air, so a jump on a curve comes down on the road (riders.airCarve)', () => {
+    const BEND = [
+      { id: 'runup', lengthM: 200, kappa: 0 },
+      { id: 'ramp', lengthM: 16, kappa: 0, grade: 0.25 },
+      { id: 'landing', lengthM: 600, kappa: 0.0125 },
+    ];
+    const fly = (tuning: Record<string, number>) => {
+      const h = riderHarness(testConfig({ edges: BEND, tuning }), { edge: 0, s: 150, d: 0, speed: 30 });
+      const events: SimEvent[] = [];
+      let maxD = 0;
+      for (let t = 0; t < 300 && !events.some((e) => e.type === 'land' || e.type === 'crash'); t++) {
+        events.push(...h.step(input(h.rider.mode === 'Road' && h.rider.speed < 30 ? 1 : 0.6)));
+        if (h.rider.mode === 'Airborne') maxD = Math.max(maxD, Math.abs(h.rider.pos.d));
+      }
+      return { events, maxD };
+    };
+    const carved = fly({});
+    expect(carved.maxD).toBeLessThan(1.5);
+    expect(carved.events.find((e) => e.type === 'land')?.data['quality']).toBe('clean');
+    // M1's straight flight (a non-default 0) crossed the road into the barrier before it came down.
+    const straight = fly({ 'riders.airCarve': 0 });
+    expect(straight.maxD).toBeGreaterThan(4);
+    const hits = straight.events.filter((e) => e.type === 'wobble' || e.type === 'crash');
+    expect(hits.map((e) => e.data['cause'])).toContain('barrier');
   });
 });
 
