@@ -11,7 +11,7 @@
     "massKg": 68,
     "healthMax": 80,
     "skill": 0.7,
-    "toughness": 0.95,
+    "toughness": 1,
     "power": 0.9
   },
   "personality": {
