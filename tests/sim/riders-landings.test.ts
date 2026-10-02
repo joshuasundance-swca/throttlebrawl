@@ -15,6 +15,7 @@ import { lookup, registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim, type SimEvent } from '../../src/sim/api';
+import { NO_ROAD_EVENTS } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -72,6 +73,9 @@ function race(c: Case, seed: number, thumb: boolean) {
     eventId: c.event,
     ...(length ? { length } : {}),
     ...(route ? { route } : {}),
+    // W-P road events off: this counts landings, and an event reshuffles every seeded race (seed 1 or
+    // 2 with them on had the bot hit by traffic 1 s after a clean landing).
+    tuning: NO_ROAD_EVENTS,
   });
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
