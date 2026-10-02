@@ -238,6 +238,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 
 - A big impact throws you and your bike. The rider tumbles, then **runs back to the bike**. You can skip the run. [decided] The skip input is in [Controls](#controls). [default]
 - While running back, you can steer the runner to dodge traffic. Skipping puts you back on the bike after a short time penalty of about 3 seconds. [default]
+- Trim only the waiting (interview, 2026-10-02) [decided]: the tumble hands back once nearly stopped, after at most about 3.5 seconds; Skip is never slower than running to the bike; you remount rolling (about 8 m/s). The run itself is unchanged. The numbers are sliders. [default]
 - The simulation tracks riders by distance along the road and offset across it. [decided] Real physics is used only for crash tumbles. [default] Details are in [the architecture doc](./architecture.md#crash-tumble).
 - Crashes are part of the comedy. The physics should be absurd and readable, never gory. [decided]
 - Crashes are big and funny, and recovery is quick: ragdoll tumbles, the bike cartwheels, riders sometimes go over the rail, and the run-back starts fast. [decided]
