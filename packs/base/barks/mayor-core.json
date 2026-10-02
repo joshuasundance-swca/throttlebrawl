@@ -256,11 +256,21 @@
       "text": "Consider your grievance addressed.",
       "audioAsset": "audio/barks/mayor-core/mayor-traffic-addressed",
       "audioStatus": "live"
+    },
+    {
+      "id": "mayor-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Photo op. Smile from down there."
+    },
+    {
+      "id": "mayor-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "I'd help, but it's not my district."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "mayor-start-vote is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals.",
+    "notes": "mayor-start-vote is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

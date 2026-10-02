@@ -33,6 +33,8 @@ export {
   BIKE_CLASSES,
   EVENT_KINDS,
   MODIFIER_KINDS,
+  OBJECTIVE_KINDS,
+  SECRET_KINDS,
   SIGNATURE_MOVES,
   TIMES_OF_DAY,
 } from './schema';
@@ -40,6 +42,7 @@ export type { BarkFactDecl, BarkOp, BarkTrigger } from './schema';
 export type {
   BarkSet,
   Bike,
+  Career,
   Crew,
   EntryType,
   EventModifier,

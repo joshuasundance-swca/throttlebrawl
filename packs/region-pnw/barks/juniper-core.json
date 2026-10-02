@@ -142,11 +142,21 @@
       "text": "It's fine. I'll just remake everything.",
       "audioAsset": "audio/barks/juniper-core/juniper-crash-remake",
       "audioStatus": "live"
+    },
+    {
+      "id": "juniper-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Your order's ready. You're not."
+    },
+    {
+      "id": "juniper-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Next customer, please."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "region-pnw (playtest 1c). juniper-start-to-go is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed.",
+    "notes": "region-pnw (playtest 1c). juniper-start-to-go is the signature line, an agent draft in the approved-line style, not yet maintainer-approved. Every line is an agent draft that stays until vetoed. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

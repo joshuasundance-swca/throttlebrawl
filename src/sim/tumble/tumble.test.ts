@@ -304,6 +304,26 @@ describe('tumble: a scripted crash', () => {
     expect(h.player.pos.dir).toBe(-1);
   });
 
+  it('hands a route-forward rider back facing the route, even when the slide ends where the road has turned', () => {
+    // At a hairpin the body can come to rest where the road's tangent points back the way the
+    // rider came, so the crash's world travel direction reads as the wrong way there. On a real
+    // road (Twin Peaks, seed 2) that handed the bot back facing backward, and with no U-turn it rode
+    // the whole route back to the start. Stand-in: reverse the record's travel direction mid-slide.
+    const h = harness([{ tick: 5, rider: 1 }]);
+    h.player.pos = { edge: 0, s: 200, d: 1.7, dir: 1 };
+    h.player.speed = 25;
+    for (let t = 0; t < 6; t++) h.step(neutral());
+    expect(h.player.mode).toBe('Tumble');
+    const r = tumbleRecord(h.world, 1);
+    if (!r) throw new Error('no tumble record');
+    r.travelX = -r.travelX;
+    r.travelZ = -r.travelZ;
+    until(h, () => h.player.mode !== 'Tumble', neutral);
+    expect(parkedBike(h.world, 1)?.dir).toBe(1);
+    until(h, () => h.player.mode === 'Road', neutral);
+    expect(h.player.pos.dir).toBe(1);
+  });
+
   it('crosses an edge boundary: a crash just before a junction slides onto the next road', () => {
     const h = harness([{ tick: 3, rider: 1 }]);
     h.player.pos = { edge: 0, s: 390, d: 1.7, dir: 1 };
