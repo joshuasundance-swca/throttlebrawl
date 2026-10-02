@@ -35,6 +35,15 @@
     { "road": "m1-tarpon-flats", "s": 600 },
     { "road": "m1-conch-row", "s": 600 }
   ],
+  "branches": [
+    {
+      "id": "m1-boat-ramp-cut",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "BOAT RAMP: KEEP RIGHT. Trailers only. Nobody checks.",
+      "roads": ["c-boat-ramp-in", "m1-boat-ramp-cut", "c-boat-ramp-out"]
+    }
+  ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
   "meta": { "status": "live" }

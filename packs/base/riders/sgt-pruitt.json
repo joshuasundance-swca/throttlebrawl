@@ -19,6 +19,10 @@
     "pursuitSpeedScale": 1.05,
     "radioVoice": "tired-deputy"
   },
+  "look": {
+    "description": "A Keys motor sergeant in khaki, a white open-face helmet, mirrored aviators and a mustache, a ticket book on his belt.",
+    "bikeModel": "cop-moto"
+  },
   "meta": {
     "status": "live",
     "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built. M4 cops-3 (head start) gave him the baton as his starting weapon, which you can snatch off him mid-swing; the baton went live in the integration round, and buildSimConfig maps startingWeapon, so every build's race hands it to him.",

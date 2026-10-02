@@ -19,6 +19,10 @@
     "pursuitSpeedScale": 1.05,
     "radioVoice": "polite-deputy"
   },
+  "look": {
+    "description": "A county deputy in a green rain jacket with the hood out, a white helmet and a flashlight on her belt.",
+    "bikeModel": "cop-moto"
+  },
   "meta": {
     "status": "live",
     "notes": "The region's local cop (region-pnw, playtest 1c), with Sgt. Pruitt's starting numbers. Sample line (agent draft): \"I'm not upset. I'm just writing it all down.\" He carries the taser (the cops polish round, 2026-10-01: each region's cop is armed, per M4 cops-3; the quiet weapon for the quiet deputy), so you can snatch it off him mid-swing. [default]",

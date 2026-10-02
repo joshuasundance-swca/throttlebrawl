@@ -79,6 +79,11 @@
     ]
   },
   "signs": [
+    {
+      "id": "ramp-keep-right",
+      "text": "BOAT RAMP: KEEP RIGHT. Trailers only. Nobody checks.",
+      "status": "live"
+    },
     { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees.", "status": "live" },
     { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi.", "status": "live" },
     { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear.", "status": "live" },

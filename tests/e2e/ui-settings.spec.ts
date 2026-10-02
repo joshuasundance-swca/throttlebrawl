@@ -655,7 +655,10 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       console.log(
         `view helmet: rider-area change ${changed.toFixed(1)} levels (helmet to helmet ${control.toFixed(1)})`,
       );
-      expect(changed).toBeGreaterThan(18);
+      // 12, not 18 (run W-R): the real rider model is slimmer than the box rider it replaced, so it
+      // covers less of the measured box. CI measured 21.8 to 21.9 levels with the box rider and 17.9
+      // to 18.1 with the model, the helmet-to-helmet control 0.0 both times.
+      expect(changed).toBeGreaterThan(12);
       expect(changed).toBeGreaterThan(control * 2);
       await page.keyboard.up('KeyS');
       // Back to the helmet, so the reload below finds it kept.

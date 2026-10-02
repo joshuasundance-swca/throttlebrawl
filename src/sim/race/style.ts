@@ -1,7 +1,8 @@
 // sim/race style scoring (M2 riders-5; docs/milestones/M2.md, "riders-5 · Style, race lengths and
 // difficulty"). Style cash for risky riding, read from events the earlier phases emitted this tick
 // and from where each racer rides:
-// - nearMiss: every `nearMiss` (traffic-3 already requires a fast, close, untouched pass);
+// - nearMiss: every `nearMiss` (traffic-3 already requires a fast, close, untouched pass); a lane
+//   split (W-R: data.split, threading between two vehicles) scores `race.styleSplitScale` times;
 // - airtime: a `jump` to its `land` of at least `race.styleAirtimeMinS` of world time, unless the
 //   landing crashed;
 // - oncoming: a stretch of at least `race.styleOncomingMinS` of world time in a drive lane whose
@@ -66,6 +67,20 @@ export const STYLE_TUNING: readonly TuningParamDecl[] = [
     max: 15,
     step: 0.5,
     unit: 's',
+    affectsSim: true,
+  },
+  {
+    // Lane splitting (W-R; interview, 2026-10-02: "multi-lane highways (4-6 lanes, lane
+    // splitting)"): a near miss that threads between two vehicles (traffic's data.split) scores
+    // this many times the near-miss cash. Each vehicle of the pair is its own near miss. [default]
+    id: 'race.styleSplitScale',
+    group: 'race',
+    label: 'Style: lane split × near miss',
+    default: 2,
+    min: 1,
+    max: 5,
+    step: 0.25,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -224,7 +239,10 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
       case 'nearMiss': {
         const m = world.movers[id];
         if (m && ridingBack(config, m)) break;
-        score(world, id, 'nearMiss', rewards.perNearMissCash, {}, e.causeId);
+        // A lane split (threading between two vehicles, W-R) pays race.styleSplitScale times.
+        const split = e.data['split'] === true;
+        const scale = split ? (world.params['race.styleSplitScale'] ?? 2) : 1;
+        score(world, id, 'nearMiss', rewards.perNearMissCash * scale, split ? { split } : {}, e.causeId);
         break;
       }
       case 'jump':

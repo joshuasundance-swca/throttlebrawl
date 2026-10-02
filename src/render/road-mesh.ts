@@ -232,6 +232,37 @@ function sideHas(side: string | undefined, want: 'left' | 'right'): boolean {
   return side === undefined || side === 'both' || side === want;
 }
 
+/**
+ * The parts of a span that are a bridge or a drop: where a bridge tag covers it or the road stands
+ * clear of the ground. Drawn rails belong only there (interview, 2026-10-02, "rails only on bridges
+ * and drops"); a rail span on level ground is not drawn.
+ */
+function railedParts(
+  road: RoadNetwork,
+  edge: Edge,
+  side: 'left' | 'right',
+  b: BarrierSpan,
+  tags: readonly TagSpan[],
+): BarrierSpan[] {
+  const bridges = tags.filter((t) => t.tag === 'bridge' && sideHas(t.side, side));
+  const onBridge = (s: number) => bridges.some((t) => s >= t.s0 && s <= t.s1);
+  const onDrop = (s: number) => road.toWorld(edge.index, s, 0, 0).y >= ELEVATED_M;
+  const out: BarrierSpan[] = [];
+  let start = -1;
+  const last = Math.min(edge.length, b.s1);
+  for (let s = Math.max(0, b.s0); ; s = Math.min(last, s + 2)) {
+    const yes = onBridge(s) || onDrop(s);
+    if (yes && start < 0) start = s;
+    if (!yes && start >= 0) {
+      out.push({ ...b, s0: start, s1: s });
+      start = -1;
+    }
+    if (s >= last) break;
+  }
+  if (start >= 0) out.push({ ...b, s0: start, s1: last });
+  return out;
+}
+
 /** Barrier spans for one side: explicit barriers, else bridge tags, else the elevation rule. */
 function barriersFor(
   road: RoadNetwork,
@@ -239,7 +270,11 @@ function barriersFor(
   dress: EdgeDressing,
   side: 'left' | 'right',
 ): BarrierSpan[] {
-  if (dress.barriers) return dress.barriers.filter((b) => sideHas(b.side, side));
+  if (dress.barriers) {
+    return dress.barriers
+      .filter((b) => sideHas(b.side, side))
+      .flatMap((b) => (b.kind === 'rail' ? railedParts(road, edge, side, b, dress.tags ?? []) : [b]));
+  }
   const bridges = (dress.tags ?? []).filter((t) => t.tag === 'bridge' && sideHas(t.side, side));
   if (bridges.length) return bridges.map((t) => ({ s0: t.s0, s1: t.s1, side, kind: 'rail', heightM: 1 }));
   // No data: rail the stretches that stand clear of the water.
@@ -434,6 +469,21 @@ export interface RoadSceneOptions {
    * colour. Region models arrive already repainted by it.
    */
   palette?: Readonly<Record<string, string>> | undefined;
+  /**
+   * Which roads get delineator posts (interview, 2026-10-02: "posts only on highways"). Default
+   * `isHighway`. A test that needs posts on a real two-lane network passes `() => true`.
+   */
+  postRoads?: ((edge: Edge) => boolean) | undefined;
+}
+
+/** A road with this many drive lanes (both ways) or more is a highway: the 4-6 lane kind. [default] */
+export const HIGHWAY_DRIVE_LANES = 4;
+
+/** Whether a road is a highway: some stretch of it has at least HIGHWAY_DRIVE_LANES drive lanes. */
+export function isHighway(edge: Edge): boolean {
+  return edge.sections.some(
+    (sec) => sec.lanes.filter((l) => l.kind === 'drive').length >= HIGHWAY_DRIVE_LANES,
+  );
 }
 
 /** Features no scenery stands in (with room for the model). */
@@ -1257,11 +1307,13 @@ export function buildRoadScene(
       }
       deck.breakStrip();
     }
-    // Delineator posts every 25 m on the verge: a sense of speed. On a terrain network they stand
+    // Delineator posts every 25 m on a highway's verge (only highways: the maintainer, interview,
+    // 2026-10-02, "posts only on highways"), a sense of speed. On a terrain network they stand
     // wherever there is ground beside the road; elsewhere only off the bridges (the rails do it there).
     const groundAt = (side: -1 | 1, s: number) =>
       (reachOf[side][Math.max(0, Math.min(ss.length - 1, Math.round(s / step)))] ?? 0) > 0;
-    for (let s = 0; s < e.length; s += 25) {
+    const postsHere = (opts.postRoads ?? isHighway)(e);
+    for (let s = 0; postsHere && s < e.length; s += 25) {
       const high = road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M;
       for (const [side, d] of [
         [-1, outerL + 0.25],

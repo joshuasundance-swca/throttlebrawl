@@ -177,7 +177,10 @@ describe('roadside palms (playtest 1, item 10: parallax)', () => {
     for (const p of onClimb) expect(p.y).toBeLessThan(ELEVATED_M);
     const flat = createRoadNetwork(fixtureNetwork([{ id: 'flat', lengthM: 400, kappa: 0 }]));
     const railed = buildRoadScene(flat, look, {
-      flat: { barriers: [{ s0: 0, s1: 400, side: 'both', kind: 'rail' }] },
+      flat: {
+        barriers: [{ s0: 0, s1: 400, side: 'both', kind: 'rail' }],
+        tags: [{ s0: 0, s1: 400, side: 'both', tag: 'bridge' }],
+      },
     }).group.getObjectByName('road-palms');
     expect(railed).toBeUndefined();
   });
