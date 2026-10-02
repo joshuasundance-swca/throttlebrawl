@@ -259,7 +259,7 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:pickup-towing-boat': 1.5,
       'base:rental-convertible': 2,
       'base:sedan-rental': 5,
-      'base:snowbird-rv': 0.8,
+      'base:snowbird-rv': 0.5,
       'base:sunburnt-jogger': 1,
       'base:tourist-with-cooler': 1,
     });

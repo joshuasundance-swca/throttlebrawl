@@ -16,8 +16,8 @@
       { "kind": "rental-convertible", "weight": 2, "hazard": "normal" },
       { "kind": "golf-cart", "weight": 1.5, "hazard": "normal" },
       { "kind": "beach-cruiser", "weight": 1.5, "hazard": "normal" },
-      { "kind": "pickup-towing-boat", "weight": 1.5, "hazard": "big" },
-      { "kind": "snowbird-rv", "weight": 0.8, "hazard": "big" }
+      { "kind": "pickup-towing-boat", "weight": 1.5, "hazard": "normal" },
+      { "kind": "snowbird-rv", "weight": 0.5, "hazard": "big" }
     ],
     "pedestrians": [
       { "kind": "tourist-with-cooler", "weight": 1 },

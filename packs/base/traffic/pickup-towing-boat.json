@@ -7,7 +7,7 @@
   "lengthM": 7.5,
   "widthM": 2.2,
   "cruiseMps": 21.0,
-  "hazard": "big",
+  "hazard": "normal",
   "behaviour": {
     "carFollowing": true,
     "laneChanges": false,
@@ -21,7 +21,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A pickup with a centre-console boat on a trailer behind it, both longer than the parking space they are headed for. Hitting the trailer crashes you.",
+    "notes": "A pickup with a centre-console boat on a trailer behind it, both longer than the parking space they are headed for. A side brush is a wobble; riding into the back of the boat at speed is a wipeout, like any car.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

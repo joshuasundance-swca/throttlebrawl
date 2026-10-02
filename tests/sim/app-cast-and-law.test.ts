@@ -71,7 +71,11 @@ function lawRace(seed: number): LawRun {
         releaseNext = true;
         pressNext = true;
       }
-      if (e.type === 'weaponGrab' && e.actor === playerId && e.data['source'] === 'steal') run.steal = e;
+      // A steal off the cop: the bot's attack presses can also snatch a rival's weapon (W-P found
+      // seed 2 taking a rival's lead pipe), which is not this check's steal.
+      const offCop = e.target !== undefined && copIds.includes(e.target);
+      if (e.type === 'weaponGrab' && e.actor === playerId && e.data['source'] === 'steal' && offCop)
+        run.steal = e;
       if (e.type === 'bust' && e.target === playerId) run.bust = e;
     }
   }
