@@ -1,0 +1,5 @@
+---
+kind: new
+audience: player
+---
+The career is in. On a new device the first tap drops you straight into The Shakedown in the Keys, with a short prompt as each control comes up. After that, Career on the menu opens the map: the Keys, the Pacific Northwest and San Francisco, ten events each (classic races, takedown hunts, cop escapes and grudge matches), in tiers that open as you win, with a boss at the end of each. Wins claim their roads, which glow on the map, and open the next ones; each map hides a shortcut, a pirate station and a stash. Every race pays its place, its takedowns, near misses, airtime and tricks, plus bonuses, and a bust's fine never takes you below $0. The garage sells the Streetfighter 750 and the Superbike 1000, a novelty ride per region and each region's paints (the race draws paint once the new bike models land); beat a boss for a joke ride. The bike you ride follows you into free play. A backup code in the garage carries your career to another device. The Race button is free play, as before.
