@@ -8,6 +8,13 @@
 //   far plane (760 m), farther pieces deeper. A point on the same line of sight projects to the same
 //   pixel, so the picture is exact; only the depth is squeezed, and it keeps the far-to-near order.
 //   Anything nearer than the fog's end stays where it is.
+// - Floors (far land and water) are big flat triangles, kilometres across, and a squeeze per
+//   vertex bends them: a triangle with one corner pulled in toward the camera is drawn as a tilted
+//   sheet that stands above the near sea and hills, and covers them (W-P, verify-skyline mustFix 1:
+//   San Francisco's far ground painted the bay beside the road in the haze colour). So a floor's
+//   fragment finds its own true point (where its pixel's ray meets the floor's level), squeezes
+//   that, and writes that depth and that haze. Then the near sea and ground cover a floor wherever
+//   they are nearer, exactly as the floor lying a hair under the sea means.
 // - Colours are flat and unlit (each facet is shaded once by the classic sun when built), then
 //   mixed toward the scene's own haze colour by true distance (aerial perspective), with a little
 //   more haze at each piece's foot, so ridges fade into the fog and every look's haze colour,
@@ -15,7 +22,15 @@
 //   meet the near fogged ground instead of standing out of it.
 // - Ships, ferries and fog banks drift by a per-vertex swing, so nothing is touched per frame but
 //   five uniforms.
-import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial } from 'three';
+import {
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  Float32BufferAttribute,
+  Matrix4,
+  Mesh,
+  ShaderMaterial,
+} from 'three';
 import {
   backdropProblems,
   type BackdropNetworkFile,
@@ -59,47 +74,86 @@ export function squeezedDepth(d: number, fogFar: number): number {
   return d <= r0 ? d : r0 + ((BACKDROP_FAR_M - r0) * (d - r0)) / (d - r0 + BACKDROP_SQUEEZE_M);
 }
 
-const VERTEX = /* glsl */ `
+/** Shared by both stages: the squeezed depth and the haze, from a true distance `d`. */
+const COMMON = /* glsl */ `
 uniform vec3 uCam;
-uniform float uTime;
 uniform float uRMin;
 uniform float uRMax;
 uniform float uSqueeze;
 uniform float uHazeM;
 uniform float uHazeMax;
 uniform float uFogFar;
+float squeezed(float d, float bias) {
+  float r = d <= uRMin ? d : uRMin + (uRMax - uRMin) * (d - uRMin) / (d - uRMin + uSqueeze);
+  // A decal's or a floor's depth bias applies past the fog's end only (nearer, everything is exact).
+  return max(r - bias * step(uRMin, d), 0.5);
+}
+float hazeAt(float d, float foot, float isFloor) {
+  float aerial = min(1.0 - exp(-d / uHazeM), uHazeMax);
+  float h = 1.0 - (1.0 - aerial) * (1.0 - foot);
+  // Floors (far land and water) come out of the fog's end gradually, and only part way: the haze
+  // lies along the ground, so a camera high on a hill sees more of the ground below than one at sea level.
+  float floorMin = mix(0.82, 0.3, smoothstep(15.0, 220.0, uCam.y));
+  h = max(h, isFloor * mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d)));
+  return clamp(h, 0.0, 1.0);
+}`;
+
+const VERTEX = /* glsl */ `
+${COMMON}
+uniform float uTime;
 attribute vec3 aColor;
 attribute vec4 aInfo;
 attribute vec4 aMotion;
 varying vec3 vColor;
 varying float vHaze;
+varying vec3 vW;
+varying float vFloor;
+varying float vFloorY;
+varying float vBias;
+varying float vFoot;
 void main() {
   vec3 p = position;
   p.xz += aMotion.xy * sin(uTime * aMotion.z + aMotion.w);
   p.xz += uCam.xz * aInfo.w;
   vec3 v = p - uCam;
   float d = max(length(v), 0.5);
-  float r = d <= uRMin ? d : uRMin + (uRMax - uRMin) * (d - uRMin) / (d - uRMin + uSqueeze);
-  // A decal's or a floor's depth bias applies past the fog's end only (nearer, everything is exact).
-  r = max(r - aInfo.z * step(uRMin, d), 0.5);
-  vec3 w = uCam + v * (r / d);
-  float aerial = min(1.0 - exp(-d / uHazeM), uHazeMax);
-  float h = 1.0 - (1.0 - aerial) * (1.0 - aInfo.x);
-  // Floors (far land and water) come out of the fog's end gradually, and only part way: the haze
-  // lies along the ground, so a camera high on a hill sees more of the ground below than one at sea level.
-  float floorMin = mix(0.82, 0.3, smoothstep(15.0, 220.0, uCam.y));
-  h = max(h, aInfo.y * mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d)));
-  vHaze = clamp(h, 0.0, 1.0);
+  vec3 w = uCam + v * (squeezed(d, aInfo.z) / d);
+  vHaze = hazeAt(d, aInfo.x, aInfo.y);
   vColor = aColor;
+  vW = w;
+  vFloor = aInfo.y;
+  vFloorY = p.y;
+  vBias = aInfo.z;
+  vFoot = aInfo.x;
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
 }`;
 
 const FRAGMENT = /* glsl */ `
+${COMMON}
 uniform vec3 uHaze;
+uniform mat4 uProj;
 varying vec3 vColor;
 varying float vHaze;
+varying vec3 vW;
+varying float vFloor;
+varying float vFloorY;
+varying float vBias;
+varying float vFoot;
 void main() {
-  gl_FragColor = vec4(mix(vColor, uHaze, vHaze), 1.0);
+  float h = vHaze;
+  float depth = gl_FragCoord.z;
+  if (vFloor > 0.5) {
+    // This pixel's ray (every point drawn here lies on it) meets the floor's level at its true point.
+    vec3 ray = vW - uCam;
+    if (ray.y > -1e-6 || uCam.y <= vFloorY) discard;
+    float d = length(ray) * (vFloorY - uCam.y) / ray.y;
+    vec3 w = uCam + normalize(ray) * squeezed(d, vBias);
+    vec4 clip = uProj * viewMatrix * vec4(w, 1.0);
+    depth = clamp(0.5 * clip.z / clip.w + 0.5, 0.0, 1.0);
+    h = hazeAt(d, vFoot, 1.0);
+  }
+  gl_FragDepth = depth;
+  gl_FragColor = vec4(mix(vColor, uHaze, h), 1.0);
   #include <colorspace_fragment>
 }`;
 
@@ -334,6 +388,7 @@ export function buildBackdrop(
     uHazeMax: { value: region.hazeMax ?? 0.8 },
     uFogFar: { value: 700 },
     uHaze: { value: new Color('#ffffff') },
+    uProj: { value: new Matrix4() },
   };
   // Facets face every way (curtains, ribbons, sails): draw both sides.
   const material = new ShaderMaterial({
@@ -347,6 +402,10 @@ export function buildBackdrop(
   mesh.name = 'backdrop';
   // The vertex shader moves everything: the CPU's bounding sphere would cull it wrongly.
   mesh.frustumCulled = false;
+  // A floor's fragment works out its own depth, with the camera that draws it.
+  mesh.onBeforeRender = (_renderer, _scene, camera) => {
+    uniforms.uProj.value.copy(camera.projectionMatrix);
+  };
   return {
     mesh,
     stats,
