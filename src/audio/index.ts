@@ -76,6 +76,11 @@ export type { NowPlaying, RadioStation, RadioTrack, RadioVetoFlag } from './radi
 /** `audio.radio` values below the stations: 0 = off, 1 = the original score, 2+ = the stations. */
 export const RADIO_OFF = 0;
 export const RADIO_SCORE = 1;
+/**
+ * The region's first station: what a race plays by default (playtest 2, 2026-10-02: "There should
+ * be different stations and music in different regions"), as the settings record's Radio default.
+ */
+export const RADIO_FIRST_STATION = 2;
 /** The music ducks under these cues (the crash family), [default]. */
 const DUCK_CUES: ReadonlySet<CueId> = new Set(['crash', 'takedown', 'railClang', 'splash']);
 export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
@@ -237,7 +242,7 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     id: 'audio.radio',
     group: 'audio',
     label: 'Radio (0 off, 1 score, 2+ stations; R key)',
-    default: RADIO_SCORE,
+    default: RADIO_FIRST_STATION,
     min: 0,
     max: 6,
     step: 1,
@@ -528,7 +533,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     windGain: WIND_DEFAULTS.gain as number,
     windFromMps: WIND_DEFAULTS.fromMps as number,
     windFullMps: WIND_DEFAULTS.fullMps as number,
-    radio: RADIO_SCORE as number,
+    radio: RADIO_FIRST_STATION as number,
     radioLoops: 3,
     radioFx: 1,
     duckLevel: DUCK_DEFAULTS.level as number,
