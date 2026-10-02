@@ -4,7 +4,7 @@
 // and says which one still needs a decision. M2 (audio-2) adds the takedown stinger, the slow-motion
 // whooshes, the rail clang, the splash, the respawn blip, the style-cash chime, the steal glint, the
 // wobble and the near-miss whoosh, and scales crashes by how hard they hit.
-import type { SimEvent } from '../sim/api';
+import type { SimEvent, SimSnapshot } from '../sim/api';
 
 export const CUE_IDS = [
   'punch',
@@ -175,4 +175,23 @@ export function cueForEvent(
     playerInvolved,
     impact,
   };
+}
+
+/** The cues that land on a body: they sound meatier as the target weakens (cue-patches.ts, MEATY). */
+export const MELEE_CUES: ReadonlySet<CueId> = new Set<CueId>(['punch', 'kick', 'hit']);
+
+/**
+ * How beaten a rival is, 0 (full health) to 1 (nearly down), read from the snapshot (playtest 2,
+ * 2026-10-02 audio: "hits sound lower and meatier as a rival weakens"). 0 for anyone who is not an
+ * AI rider: the player's own hits-taken, traffic and an unknown target stay as they were. The
+ * snapshot may be a tick behind the hit, which is a fraction of a hit's damage and not audible.
+ */
+export function weaknessOf(snapshot: SimSnapshot | null | undefined, targetId: number | undefined): number {
+  if (!snapshot || targetId === undefined) return 0;
+  const t =
+    snapshot.entities[targetId]?.id === targetId
+      ? snapshot.entities[targetId]
+      : snapshot.entities.find((x) => x.id === targetId);
+  if (!t || t.kind !== 'rider' || t.slot >= 0 || !(t.healthMax > 0)) return 0;
+  return clamp01(1 - t.health / t.healthMax);
 }
