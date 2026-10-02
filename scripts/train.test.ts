@@ -144,6 +144,7 @@ function node(o: {
   repo?: string;
   title?: string;
   oid?: string;
+  totalCount?: number;
 }) {
   const checks = (o.quick ?? []).map((q) => ({
     __typename: 'CheckRun',
@@ -204,7 +205,14 @@ function node(o: {
     headRepository: { nameWithOwner: o.repo ?? REPO },
     autoMergeRequest: o.auto === false ? null : { mergeMethod: 'SQUASH' },
     commits: {
-      nodes: [{ commit: { oid: o.oid ?? o.head, statusCheckRollup: { contexts: { nodes: contexts } } } }],
+      nodes: [
+        {
+          commit: {
+            oid: o.oid ?? o.head,
+            statusCheckRollup: { contexts: { totalCount: o.totalCount ?? contexts.length, nodes: contexts } },
+          },
+        },
+      ],
     },
   };
 }
@@ -260,6 +268,12 @@ describe('eligibility', () => {
     expect(elig(node({ number: 1, head: sha('a'), quick: rerun })).ok).toBe(true);
     // A rollup for another commit than the head (a race in the API) counts as nothing.
     expect(elig(node({ number: 1, head: sha('a'), quick: [ok], oid: sha('b') })).ok).toBe(false);
+  });
+
+  it('never rides when the checks list was cut short (it could hide a gate failure)', () => {
+    const cut = elig(node({ number: 1, head: sha('a'), quick: [ok], totalCount: 140 }));
+    expect(cut.ok).toBe(false);
+    expect(cut.reason).toContain('over 100');
   });
 
   it('leaves out heads that passed (landing) or failed a train', () => {

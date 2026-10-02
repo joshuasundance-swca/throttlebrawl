@@ -183,7 +183,12 @@ export function prList(/** @type {number[]} */ numbers, max = 60) {
  */
 export function normalizePr(node) {
   const commit = node.commits?.nodes?.[0]?.commit;
-  const contexts = commit?.oid === node.headRefOid ? (commit?.statusCheckRollup?.contexts?.nodes ?? []) : [];
+  const rollup = commit?.oid === node.headRefOid ? commit?.statusCheckRollup?.contexts : null;
+  /** @type {any[]} */
+  const contexts = rollup?.nodes ?? [];
+  // A list cut short could hide a `gate` failure, so a PR whose list is longer than one page
+  // never rides (eligibility says why).
+  const truncated = Number(rollup?.totalCount ?? contexts.length) > contexts.length;
   const runs = contexts.filter(
     (/** @type {any} */ c) => c.__typename === 'CheckRun' && c.checkSuite?.app?.slug === 'github-actions',
   );
@@ -212,6 +217,7 @@ export function normalizePr(node) {
         : 'pending'
       : 'none',
     gateCheck: Boolean(latest(CONTEXT)),
+    truncated,
     gateStatus: status
       ? { state: String(status.state).toLowerCase(), description: String(status.description ?? '') }
       : null,
@@ -232,6 +238,7 @@ export function eligibility(pr, { repo, cap }) {
   if (pr.draft) return no('a draft');
   if (!pr.autoMerge) return no('auto-merge is not armed');
   if (hasMarker(pr.title, pr.body)) return no('asks for the full gate ([full-gate])');
+  if (pr.truncated) return no('its head commit has over 100 checks and statuses, too many to read safely');
   if (pr.gateCheck) return no('its head commit already has a gate check (the full or docs path)');
   if (pr.quick !== 'success') return no(`its quick check is ${pr.quick}`);
   const s = stateOf(pr.gateStatus, cap);
@@ -598,7 +605,7 @@ export const PRS_QUERY = `query ($owner: String!, $name: String!, $after: String
         headRefOid
         headRepository { nameWithOwner }
         autoMergeRequest { mergeMethod }
-        commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes {
+        commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { totalCount nodes {
           __typename
           ... on CheckRun { name status conclusion startedAt checkSuite { app { slug } } }
           ... on StatusContext { context state description }
