@@ -1,0 +1,152 @@
+{
+  "type": "bark-set",
+  "id": "road-events-pnw",
+  "name": "Road events: the Pacific Northwest",
+  "tags": ["road-events", "pnw"],
+  "defaults": {
+    "speaker": "old-growth",
+    "cooldownS": 45,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "pnw-ev-roadwork-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-roadwork"
+        }
+      ],
+      "text": "Flagger's got the only dry job out here."
+    },
+    {
+      "id": "pnw-ev-roadwork-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-roadwork"
+        }
+      ],
+      "text": "They've fixed this road since the trees."
+    },
+    {
+      "id": "pnw-ev-crash-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-crash-scene"
+        }
+      ],
+      "text": "The ditch always wins."
+    },
+    {
+      "id": "pnw-ev-crash-chad",
+      "trigger": "modifier-start",
+      "speaker": "base:chad-speedwell",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-crash-scene"
+        }
+      ],
+      "text": "Nobody hurt. Just a mirror."
+    },
+    {
+      "id": "pnw-ev-parade-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-logging-parade"
+        }
+      ],
+      "text": "Logger Days. The bear is carved locally."
+    },
+    {
+      "id": "pnw-ev-parade-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-logging-parade"
+        }
+      ],
+      "text": "That log's older than both of us."
+    },
+    {
+      "id": "pnw-ev-hay-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-hay-spill"
+        }
+      ],
+      "text": "Hay on the road. Ride it like moss."
+    },
+    {
+      "id": "pnw-ev-hay-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-hay-spill"
+        }
+      ],
+      "text": "Free bales. Mind the twine."
+    },
+    {
+      "id": "pnw-ev-trap-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-speed-trap"
+        }
+      ],
+      "text": "Radar in the ferns. Classic."
+    },
+    {
+      "id": "pnw-ev-trap-deacon",
+      "trigger": "modifier-start",
+      "speaker": "base:deacon-vane",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-speed-trap"
+        }
+      ],
+      "text": "He's been out there since dawn."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
