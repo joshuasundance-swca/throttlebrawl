@@ -117,6 +117,22 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_mailbox',
     'keys_bait',
     'keys_pie',
+    // run W-Q: each key's own props (roadside.ts KEYS_KIT, by district)
+    'keys_shrimp_boat',
+    'keys_fish_house',
+    'keys_buoy_line',
+    'keys_hotel_a',
+    'keys_hotel_b',
+    'keys_pool',
+    'keys_tiki',
+    'keys_scooters',
+    'keys_boat_stack',
+    'keys_bus_stack',
+    'keys_junk_art',
+    'keys_bunting',
+    'keys_coolers',
+    'keys_closed_bar',
+    'keys_flamingo',
   ],
 };
 

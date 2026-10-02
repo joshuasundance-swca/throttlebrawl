@@ -23,11 +23,57 @@
   ],
   "tags": [
     { "s0": 0, "s1": 1180, "side": "both", "tag": "causeway" },
-    { "s0": 0, "s1": 400, "side": "right", "tag": "beach" },
+    { "s0": 0, "s1": 900, "side": "right", "tag": "beach" },
     { "s0": 0, "s1": 1180, "side": "left", "tag": "water-shallow" },
-    { "s0": 700, "s1": 1180, "side": "right", "tag": "mangrove" }
+    { "s0": 900, "s1": 1180, "side": "right", "tag": "mangrove" },
+    { "s0": 0, "s1": 1180, "side": "both", "tag": "key-resort" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-causeway-lime-wedge",
+      "s0": 20,
+      "s1": 30,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "lime-wedge-key"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-causeway-scooters",
+      "s0": 470,
+      "s1": 480,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "scooter-rentals"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-causeway-pastel-palms",
+      "s0": 540,
+      "s1": 580,
+      "d0": 7,
+      "d1": 16,
+      "item": "pastel-palms"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-causeway-pool-hours",
+      "s0": 640,
+      "s1": 650,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "pool-hours"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-causeway-tiki-tims",
+      "s0": 720,
+      "s1": 760,
+      "d0": 7,
+      "d1": 16,
+      "item": "tiki-tims"
+    },
     {
       "kind": "billboard",
       "id": "sign-causeway-uv",

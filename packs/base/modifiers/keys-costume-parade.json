@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "parade",
-      "signText": "PARADE ROUTE COSTUMES REQUIRED",
+      "signText": "PARADE AHEAD. Costumes required.",
       "floats": ["keys-parade-float", "keys-parade-float"],
       "person": "marcher-keys",
       "theme": "keys",

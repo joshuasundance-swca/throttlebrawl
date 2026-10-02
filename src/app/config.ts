@@ -85,6 +85,16 @@ export interface RaceSetup {
   speedMultiplier?: number;
   /** The takedown slow motion (default on [decided]). */
   slowMo?: boolean;
+  /**
+   * The career's bike for the player (run W-R: the garage), qualified (`base:superbike-1000`). Left
+   * out, or a bike the registry lacks: the player preset's own bike.
+   */
+  playerBike?: string;
+  /**
+   * The career's grudge table (rival content id to rider content id to points), saved with the
+   * profile [decided] (cockpit answer, 2026-09-29). Left out: none, as before M4.
+   */
+  grudges?: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
 /** The length a race runs when none is chosen (docs/content-packs.md, "Event"). */
@@ -271,11 +281,12 @@ function riderDef(
   id: string,
   controller: SimRiderDef['controller'],
   paceMps: number,
+  bikeOverride?: string,
 ): SimRiderDef {
   // `id` is qualified; the rider's own references resolve from the rider's pack.
   const pack = packOf(id);
   const rider = lookup(reg.riders, id);
-  const bikeKey = qualifyIn(pack, rider.bike);
+  const bikeKey = bikeOverride && reg.bikes[bikeOverride] ? bikeOverride : qualifyIn(pack, rider.bike);
   const bike = lookup(reg.bikes, bikeKey);
   const h = bike.handling;
   // Rival pace comes from the event, not the bike: a rival's bike is raised to at least the pace.
@@ -454,6 +465,24 @@ export function weaponBehaviour(w: Weapon): Partial<SimWeaponDef> {
   return out;
 }
 
+/**
+ * The career's grudge table as SimConfig carries it: finite points only, rows in id order (the
+ * replay header writes it as given), empty rows dropped.
+ */
+export function cleanGrudges(g: RaceSetup['grudges']): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const rival of Object.keys(g ?? {}).sort()) {
+    const row: Record<string, number> = {};
+    const given = g?.[rival] ?? {};
+    for (const rider of Object.keys(given).sort()) {
+      const v = given[rider];
+      if (typeof v === 'number' && Number.isFinite(v) && v !== 0) row[rider] = v;
+    }
+    if (Object.keys(row).length > 0) out[rival] = row;
+  }
+  return out;
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
   const eventPack = packOf(eventId);
@@ -473,9 +502,16 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   });
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
-  const tier = DEFAULT_TIER;
+  // The event's career tier (run W-R): 1 for an event without one (the free-play races).
+  const tier = event.tier ?? DEFAULT_TIER;
   const cops = copIds(race, eventId, tier).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
-  const player = riderDef(race, qualifyIn('base', PLAYER_PRESET), { kind: 'player', slot: 0 }, pace);
+  const player = riderDef(
+    race,
+    qualifyIn('base', PLAYER_PRESET),
+    { kind: 'player', slot: 0 },
+    pace,
+    setup.playerBike,
+  );
   const riders = [...rivals, player, ...cops];
   const weapons: SimWeaponDef[] = Object.entries(race.weapons).map(([contentId, w]) => ({
     contentId,
@@ -536,7 +572,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     road: stream.road,
     route,
     modifiers: mods.modifiers,
-    grudges: {},
+    grudges: cleanGrudges(setup.grudges),
     tuning,
     difficulty: resolveDifficulty(setup.difficulty ?? DEFAULT_DIFFICULTY, given),
     assists: 'off',

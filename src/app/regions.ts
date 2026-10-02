@@ -31,11 +31,14 @@ export interface RegionChoice {
 
 /**
  * Every region with at least one event, ordered by chapter then id. A region's event is its first
- * by qualified id (one per region today). [default]
+ * free-play event by qualified id: one with no career `tier` (run W-R: the career's events are
+ * raced from its map), else its first event. [default]
  */
 export function regionChoices(reg: ContentRegistry): RegionChoice[] {
   const out = new Map<string, RegionChoice>();
-  for (const id of Object.keys(reg.events).sort()) {
+  const ids = Object.keys(reg.events).sort();
+  const career = (id: string) => reg.events[id]?.tier !== undefined;
+  for (const id of [...ids.filter((i) => !career(i)), ...ids.filter(career)]) {
     const event = reg.events[id];
     if (!event) continue;
     const regionId = qualifyIn(packOf(id), event.region);

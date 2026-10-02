@@ -23,11 +23,58 @@
   ],
   "tags": [
     { "s0": 0, "s1": 1527, "side": "both", "tag": "causeway" },
-    { "s0": 0, "s1": 500, "side": "left", "tag": "beach" },
+    { "s0": 0, "s1": 1527, "side": "left", "tag": "beach" },
     { "s0": 0, "s1": 600, "side": "right", "tag": "water-shallow" },
-    { "s0": 600, "s1": 1527, "side": "right", "tag": "mangrove" }
+    { "s0": 600, "s1": 1527, "side": "right", "tag": "mangrove" },
+    { "s0": 0, "s1": 1527, "side": "both", "tag": "key-party" }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-resort-last-resort-key",
+      "s0": 30,
+      "s1": 40,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "last-resort-key"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-resort-hair-of-the-dog",
+      "s0": 300,
+      "s1": 340,
+      "d0": -16,
+      "d1": -7,
+      "item": "hair-of-the-dog"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-resort-bar-closed",
+      "s0": 600,
+      "s1": 610,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "bar-closed"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-resort-flamingo",
+      "s0": 900,
+      "s1": 910,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "flamingo-found"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-resort-sunset-fest",
+      "s0": 1100,
+      "s1": 1140,
+      "d0": -16,
+      "d1": -7,
+      "item": "sunset-fest"
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

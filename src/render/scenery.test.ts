@@ -319,7 +319,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       keysIslets: 4,
       pnwRoadside: 12,
       sfRoadside: 13,
-      keysRoadside: 11,
+      // run W-Q adds each key's own props (fishing village, resort strip, junkyard key, party key)
+      keysRoadside: 26,
       sfDowntown: 12,
     };
     const lines: string[] = [];

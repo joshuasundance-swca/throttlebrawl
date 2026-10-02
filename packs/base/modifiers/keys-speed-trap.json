@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "speed-trap",
-      "signText": "SPEED CHECKED BY RADAR THE RADAR IS BORED",
+      "signText": "RADAR AHEAD. The radar is bored.",
       "limitMps": 29,
       "theme": "keys"
     }
