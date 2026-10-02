@@ -6,7 +6,20 @@ import type { AssetIndexEntry } from '../core';
 import type { PackFile } from './parse';
 import { buildRegistry, type ContentRegistry, type LoadOptions } from './registry';
 
-const RAW = import.meta.glob<unknown>('/packs/base/**/*.json', { eager: true, import: 'default' });
+/**
+ * Every base file except its real-road data (run W-P): the `osm-*` networks, roads and routes (the
+ * Bahia Honda run) are fetched on demand like a region pack's roads (packs.ts), so the first load
+ * carries only the hand-made Keys roads the default race and the menu need.
+ */
+const RAW = import.meta.glob<unknown>(
+  [
+    '/packs/base/**/*.json',
+    '!/packs/base/regions/*/networks/osm-*.json',
+    '!/packs/base/regions/*/roads/osm-*.json',
+    '!/packs/base/regions/*/routes/osm-*.json',
+  ],
+  { eager: true, import: 'default' },
+);
 /**
  * The base pack's baked models (playtest 1c item 4): the bundler emits each GLB into the build and
  * gives its URL, so the files ship with the game and load through the asset manifest by id.
@@ -42,7 +55,10 @@ export function assetIndex(reg: ContentRegistry): readonly AssetIndexEntry[] {
     });
 }
 
-/** The base pack's files as parsed JSON, with pack-relative paths, in path order. */
+/**
+ * The base pack's bundled files as parsed JSON, with pack-relative paths, in path order: all but
+ * its real-road data (`isRealRoadPath`), which the pack library fetches on demand.
+ */
 export function basePackFiles(): PackFile[] {
   return Object.keys(RAW)
     .sort()
@@ -52,7 +68,10 @@ export function basePackFiles(): PackFile[] {
 let cached: ContentRegistry | null = null;
 let cachedDrafts: boolean | null = null;
 
-/** Loads, validates and freezes the base pack (once per option set). */
+/**
+ * Loads, validates and freezes the bundled base pack (once per option set): without its real-road
+ * data. A caller that needs the Bahia Honda run uses the pack library or `registryFromGlob`.
+ */
 export function loadBasePack(options: LoadOptions = {}): ContentRegistry {
   const drafts = options.includeDrafts ?? false;
   if (!cached || cachedDrafts !== drafts) {

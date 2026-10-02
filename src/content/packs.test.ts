@@ -4,6 +4,7 @@ import {
   combineRegistries,
   createPackLibrary,
   groupPackFiles,
+  isRealRoadPath,
   isRoadDataPath,
   packClosure,
   packOf,
@@ -20,8 +21,12 @@ function sources(): PackSources & { fetched: string[] } {
   const entries: Record<string, unknown> = {};
   const roadUrls: Record<string, string> = {};
   for (const [key, json] of Object.entries(ALL)) {
-    if (key.startsWith('/packs/base/')) continue;
     const path = key.replace(/^\/packs\/[^/]+\//, '');
+    // Base: bundled whole but for its real-road data (run W-P), which is fetched like a region's.
+    if (key.startsWith('/packs/base/')) {
+      if (isRealRoadPath(path)) roadUrls[key] = `mem:${key}`;
+      continue;
+    }
     if (isRoadDataPath(path)) roadUrls[key] = `mem:${key}`;
     else entries[key] = json;
   }
@@ -62,6 +67,12 @@ describe('content: region packs at runtime', () => {
     expect(isRoadDataPath('riders/old-growth.json')).toBe(false);
     expect(packOf('region-sf:pivot')).toBe('region-sf');
     expect(packOf('pivot')).toBe('base');
+    // Real-road data (run W-P): tools/gis's osm-* files, in any of the three road data folders.
+    expect(isRealRoadPath('regions/florida-keys/roads/osm-bahia-honda-bridge.json')).toBe(true);
+    expect(isRealRoadPath('regions/florida-keys/networks/osm-keys-bahia-honda.json')).toBe(true);
+    expect(isRealRoadPath('regions/florida-keys/routes/osm-bahia-honda-run.json')).toBe(true);
+    expect(isRealRoadPath('regions/florida-keys/roads/m1-long-bridge.json')).toBe(false);
+    expect(isRealRoadPath('riders/osm-rider.json')).toBe(false);
   });
 
   it('groups glob keys by pack, in path order', () => {
@@ -89,7 +100,9 @@ describe('content: region packs at runtime', () => {
 
   it('a subset of base alone is exactly the base pack, so the Keys content hash never moves', () => {
     const reg = registryFromGlob(ALL);
-    const base = loadBasePack();
+    const base = registryFromGlob(
+      Object.fromEntries(Object.entries(ALL).filter(([k]) => k.startsWith('/packs/base/'))),
+    );
     expect(contentHashes(packSubset(reg, ['base']))).toEqual(contentHashes(base));
     expect(Object.keys(packSubset(reg, ['base']).trafficTypes)).toEqual(Object.keys(base.trafficTypes));
     // A region race's subset holds base plus that region, and not the other region.
@@ -120,7 +133,6 @@ describe('content: region packs at runtime', () => {
     // Entries now (the picker lists the region and its event); roads not yet.
     expect(lib.registry().regions['region-sf:san-francisco']?.name).toBe('San Francisco');
     expect(lib.registry().events['region-sf:sf-hill-sprint']).toBeDefined();
-    expect(lib.hasRoads('base')).toBe(true);
     expect(lib.hasRoads('region-sf')).toBe(false);
     expect(lib.registry().roads['region-sf:sf-pier-row']).toBeUndefined();
     const [a, b] = await Promise.all([lib.loadRoads('region-sf'), lib.loadRoads('region-sf')]);
@@ -135,7 +147,36 @@ describe('content: region packs at runtime', () => {
     // The other region is untouched, and the combined registry equals loading every file whole.
     expect(lib.hasRoads('region-pnw')).toBe(false);
     await lib.loadRoads('region-pnw');
+    await lib.loadRoads('base');
     expect(contentHashes(lib.registry())).toEqual(contentHashes(registryFromGlob(ALL)));
+  });
+
+  it('bundles the Keys hand-made roads and fetches its real roads on demand, the hash as before (run W-P)', async () => {
+    const src = sources();
+    const lib = createPackLibrary({ sources: src });
+    const whole = registryFromGlob(ALL);
+    // At boot: the hand-made Keys roads (the default race and the menu) but no real road.
+    expect(lib.hasRoads('base')).toBe(false);
+    expect(lib.registry().routes['base:m1-standard-run']).toBeDefined();
+    expect(lib.registry().roads['base:m1-long-bridge']).toBeDefined();
+    expect(lib.registry().routes['base:osm-bahia-honda-run']).toBeUndefined();
+    expect(Object.keys(lib.registry().roads).some((k) => k.startsWith('base:osm-'))).toBe(false);
+    const baseOsm = Object.keys(ALL).filter(
+      (k) => k.startsWith('/packs/base/') && isRealRoadPath(k.replace(/^\/packs\/base\//, '')),
+    );
+    expect(baseOsm.length).toBeGreaterThanOrEqual(3);
+    // The bundled base pack (loadBasePack) is exactly the base files less the real-road data.
+    expect(Object.keys(loadBasePack().routes).some((k) => k.includes('osm-'))).toBe(false);
+    // Fetched once: the Keys' content hash is then the whole base pack's, as before the split.
+    const reg = await lib.loadRoads('base');
+    expect(lib.hasRoads('base')).toBe(true);
+    expect(src.fetched.filter((u) => u.startsWith('mem:/packs/base/')).sort()).toEqual(
+      baseOsm.map((k) => `mem:${k}`).sort(),
+    );
+    expect(reg.routes['base:osm-bahia-honda-run']).toBeDefined();
+    expect(contentHashes(packSubset(reg, ['base']))).toEqual(contentHashes(packSubset(whole, ['base'])));
+    // The region packs' roads are untouched by it.
+    expect(lib.hasRoads('region-pnw')).toBe(false);
   });
 
   it('a failed road fetch can be tried again', async () => {

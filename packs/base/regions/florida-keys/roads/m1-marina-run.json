@@ -26,6 +26,24 @@
     { "s0": 0, "s1": 300, "side": "left", "tag": "strip-mall" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-marina-charters",
+      "s0": 60,
+      "s1": 70,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "charters-daily"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-marina-next-regret",
+      "s0": 240,
+      "s1": 250,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "next-regret"
+    },
     { "kind": "copSpawn", "id": "bait-shop-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
     {
       "kind": "billboard",
