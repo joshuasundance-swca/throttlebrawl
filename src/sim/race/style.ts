@@ -135,6 +135,15 @@ function score(
   addStyle(world, id, cash);
 }
 
+/**
+ * Whether a rider rides back the way the race came, after a U-turn (its heading sign on the route is
+ * -1). Riding back pays no near-miss or oncoming cash, so turning round is never a way to farm it
+ * (interview, 2026-10-02: U-turns). [default]
+ */
+function ridingBack(config: SimConfig, m: Mover): boolean {
+  return m.pos.dir * config.route.orientation(m.pos.edge) === -1;
+}
+
 /** Whether a rider rides in a drive lane that runs against its own travel direction. */
 function inOncomingLane(config: SimConfig, m: Mover): boolean {
   const { edge, s, d, dir } = m.pos;
@@ -212,9 +221,12 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
     const id = e.actor;
     if (id < 0 || !scoring(id)) continue;
     switch (e.type) {
-      case 'nearMiss':
+      case 'nearMiss': {
+        const m = world.movers[id];
+        if (m && ridingBack(config, m)) break;
         score(world, id, 'nearMiss', rewards.perNearMissCash, {}, e.causeId);
         break;
+      }
       case 'jump':
         st.airS[id] = 0;
         break;
@@ -268,7 +280,8 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
     const def = config.riders[m.riderIndex];
     const riding = m.mode === 'Road' || m.mode === 'Airborne';
     const fast = def !== undefined && m.speed >= share * topSpeedOf(world, config, def.bike.topSpeedMps);
-    if (riding && fast && inOncomingLane(config, m)) st.oncomingS[m.id] = (st.oncomingS[m.id] ?? 0) + dtS;
+    if (riding && fast && !ridingBack(config, m) && inOncomingLane(config, m))
+      st.oncomingS[m.id] = (st.oncomingS[m.id] ?? 0) + dtS;
     else if ((st.oncomingS[m.id] ?? 0) > 0) endOncoming(world, st, m.id, rewards);
   }
 }
