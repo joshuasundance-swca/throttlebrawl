@@ -1,0 +1,103 @@
+{
+  "type": "station",
+  "id": "pnw-salal",
+  "name": "Salal 102.7",
+  "genre": "folk",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "gore-tex-lullaby",
+      "title": "Gore-Tex Lullaby",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 96,
+          "key": "G",
+          "progression": "rain"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "chanterelle-season",
+      "title": "Chanterelle Season",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 116,
+          "key": "D",
+          "progression": "campfire"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "fleece-over-flannel",
+      "title": "Fleece Over Flannel",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 108,
+          "key": "A",
+          "progression": "lift"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "the-ferry-is-also-late",
+      "title": "The Ferry Is Also Late",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 124,
+          "key": "C",
+          "progression": "campfire"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "moss-on-the-north-side",
+      "title": "Moss on the North Side of Everything",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 100,
+          "key": "F",
+          "progression": "hymn"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "microbrew-hymnal",
+      "title": "Microbrew Hymnal",
+      "procedural": {
+        "preset": "folk-band",
+        "params": {
+          "bpm": 112,
+          "key": "G",
+          "progression": "hymn"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's quiet station: indie folk (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Foot stomps, claps and a tambourine, a strummed acoustic, banjo rolls and a glockenspiel tune, in major keys at 96-124 bpm (src/audio/radio-compose-regional.ts, preset folk-band). Melodies are generated from each track's seed, so they are original. No DJ lines yet (djBarkSet null). Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
