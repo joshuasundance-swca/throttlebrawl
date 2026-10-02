@@ -38,6 +38,18 @@ import {
   type PedFigure,
 } from './figures';
 import { mergeBoxes, type BoxPart } from './geometry';
+import {
+  DOG_HEIGHT_M,
+  isTrafficFigure,
+  PEOPLE_FIGURES,
+  peopleFigureFor,
+  TRAFFIC_FIGURE_DIMS,
+  TRAFFIC_FIGURE_HEIGHT_M,
+  TRAFFIC_FIGURE_PARTS,
+  TRAFFIC_FIGURES,
+  trafficFigureFor,
+  trafficFigureTint,
+} from './traffic-figures';
 import type { LookStyle } from './look';
 import { defaultRenderParams, type RenderParams } from './tuning';
 
@@ -343,6 +355,8 @@ export class EntityViews {
   private readonly seen = new Set<number>();
   private readonly wobbles = new Map<number, Timer>();
   private readonly dives = new Map<number, Timer>();
+  /** W-P: a person's fist or phone held up at a rider (`pedReact`), until a wall-clock time. */
+  private readonly gestures = new Map<number, { until: number; kind: 'fist' | 'film' }>();
   private readonly kicks = new Set<number>();
   private readonly flashes = new Map<number, number>();
   private readonly getUps = new Map<number, number>();
@@ -424,7 +438,16 @@ export class EntityViews {
         else this.kicks.delete(ev.actor);
       }
       if (ev.type === 'kick') this.kicks.add(ev.actor);
-      if (ev.type === 'pedDive') this.dives.set(ev.actor, { until: this.now + DIVE_S, side });
+      if (ev.type === 'pedDive') {
+        this.dives.set(ev.actor, { until: this.now + DIVE_S, side });
+        this.gestures.delete(ev.actor);
+      }
+      if (ev.type === 'pedReact') {
+        const kind = ev.data['kind'];
+        const ticks = typeof ev.data['ticks'] === 'number' ? ev.data['ticks'] : 120;
+        if (kind === 'fist' || kind === 'film')
+          this.gestures.set(ev.actor, { until: this.now + ticks / 60, kind });
+      }
     }
   }
 
@@ -460,6 +483,19 @@ export class EntityViews {
         view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         this.seen.add(e.id);
         pickups++;
+      } else if (e.kind === 'vehicle' && trafficFigureFor(e.contentId)) {
+        // W-P: each region's own traffic as itself (traffic-figures.ts).
+        const fig = trafficFigureFor(e.contentId) as keyof typeof TRAFFIC_FIGURE_HEIGHT_M;
+        const dims = this.trafficTypes.get(e.contentId) ?? TRAFFIC_FIGURE_DIMS[fig];
+        const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
+        const mesh = this.ensureCapacity(fig, i + 1);
+        this.euler.set(0, p.heading, -p.lean);
+        this.scale.set(dims.widthM, TRAFFIC_FIGURE_HEIGHT_M[fig], dims.lengthM);
+        mesh.setMatrixAt(
+          i,
+          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
+        );
+        mesh.setColorAt(i, this.color.setStyle(trafficFigureTint(fig, e.contentId, e.id)));
       } else if (e.kind === 'vehicle' && oddityFigureFor(e.contentId)) {
         // Traffic-4's oddities: the runaway mobile home and the parked boat on its trailer.
         const fig = oddityFigureFor(e.contentId) as OddityFigure;
@@ -490,15 +526,27 @@ export class EntityViews {
       } else if (e.kind === 'ped') {
         // People keep the pedestrian figure at its own size; animals get their own figure, scaled
         // to their type (traffic-4: the iguana, the pelican, the gator, the gator on a lawn chair).
+        // W-P: joggers, hikers, dog walkers and dogs as themselves, and a person showing a
+        // `pedReact` fist or phone in that pose (traffic-figures.ts).
         const def = this.trafficTypes.get(e.contentId);
+        const held = this.gestures.get(e.id);
+        const gesture = held && held.until >= timeS ? held.kind : null;
+        const regional = peopleFigureFor(def, e.contentId, gesture);
         const fig: PedFigure = pedFigureFor(def, e.contentId);
-        const key = fig === 'person' ? 'ped' : fig;
+        const key = regional ?? (fig === 'person' ? 'ped' : fig);
         const i = (slots[key] = (slots[key] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(key, i + 1);
         const dive = this.diveAmount(e, a);
         this.euler.set(0, p.heading, dive.side * 1.35 * dive.amount);
         const lift = Math.sin(Math.PI * dive.amount) * 0.6 * (dive.timed ? 1 : 0);
-        if (fig === 'person') this.scale.set(1, 1, 1);
+        if (regional === 'dog') {
+          const dims = def ?? TRAFFIC_FIGURE_DIMS.dog;
+          this.scale.set(dims.widthM, DOG_HEIGHT_M, dims.lengthM);
+          mesh.setColorAt(i, this.color.setStyle(trafficFigureTint('dog', e.contentId, e.id)));
+        } else if (regional) {
+          this.scale.set(1, 1, 1);
+          mesh.setColorAt(i, this.color.setStyle(trafficFigureTint(regional, e.contentId, e.id)));
+        } else if (fig === 'person') this.scale.set(1, 1, 1);
         else {
           const dims = def ?? FIGURE_DEFAULT_DIMS[fig];
           const h = fig === 'critter' ? critterHeightM(dims.lengthM) : FIGURE_HEIGHT_M[fig];
@@ -522,6 +570,7 @@ export class EntityViews {
     for (const [id, view] of this.pickups) if (!this.seen.has(id)) this.releasePickup(id, view);
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
     for (const [id, d] of this.dives) if (d.until < timeS) this.dives.delete(id);
+    for (const [id, g] of this.gestures) if (g.until < timeS) this.gestures.delete(id);
     for (const [id, f] of this.flashes) if (f < timeS) this.flashes.delete(id);
     for (const [id, g] of this.getUps) if (g < timeS) this.getUps.delete(id);
     for (const [id, f] of this.fists) if (f.until < timeS) this.fists.delete(id);
@@ -532,8 +581,8 @@ export class EntityViews {
     const sum = (keys: readonly string[]) => keys.reduce((acc, k) => acc + (slots[k] ?? 0), 0);
     this.counts = {
       riders,
-      vehicles: sum(['car', 'truck', 'mobileHome', 'boatTrailer']),
-      peds: sum(['ped', 'iguana', 'pelican', 'gator', 'lawnGator', 'critter']),
+      vehicles: sum(['car', 'truck', 'mobileHome', 'boatTrailer', 'cableCar', ...TRAFFIC_FIGURES]),
+      peds: sum(['ped', 'iguana', 'pelican', 'gator', 'lawnGator', 'critter', ...PEOPLE_FIGURES]),
       pickups,
       pooled: this.riders.size + this.freeRiders.length + this.pickups.size + this.freePickups.length,
     };
@@ -616,8 +665,12 @@ export class EntityViews {
     let mesh = this.instanced[shape];
     if (!mesh) {
       const fig = shape as keyof typeof FIGURE_PARTS;
-      const kind = fig === 'mobileHome' || fig === 'boatTrailer' || fig === 'cableCar' ? 'vehicle' : 'ped';
-      mesh = this.makeInstanced(fig, FIGURE_PARTS[fig], kind, 4);
+      const regional = TRAFFIC_FIGURE_PARTS[shape as keyof typeof TRAFFIC_FIGURE_PARTS];
+      const kind =
+        fig === 'mobileHome' || fig === 'boatTrailer' || fig === 'cableCar' || isTrafficFigure(shape)
+          ? 'vehicle'
+          : 'ped';
+      mesh = this.makeInstanced(shape, regional ?? FIGURE_PARTS[fig], kind, 4);
       const model = this.figureModels.get(fig);
       if (model) mesh.geometry = model;
       this.instanced[shape] = mesh;
