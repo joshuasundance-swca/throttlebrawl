@@ -76,12 +76,22 @@ import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
+import type { CareerCallbacks, CareerScreens } from './career-screen';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
 export type { RegionOption } from './regions';
 export type { RouteOption } from './routes';
 export type { RaceResult } from './format';
+export type {
+  CareerCallbacks,
+  CareerResultView,
+  CareerScreens,
+  GarageBikeRow,
+  GaragePaintRow,
+  GarageView,
+  TeaserView,
+} from './career-screen';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
 export type { SettingId, SettingsChange, SettingValue } from './settings';
@@ -91,7 +101,17 @@ export { BARK_TUNING } from './narrative';
 export { HUD_TUNING };
 export type { RadioSource, RadioState } from './radio-panel';
 
-export type Screen = 'start' | 'menu' | 'settings' | 'race' | 'results' | 'changelog';
+export type Screen =
+  | 'start'
+  | 'menu'
+  | 'settings'
+  | 'race'
+  | 'results'
+  | 'changelog'
+  // The career (run W-R): its map and garage, its results, the next region's teaser.
+  | 'career'
+  | 'careerResults'
+  | 'teaser';
 
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
@@ -132,6 +152,10 @@ export interface UiCallbacks {
    * through the `audio.radio` slider, and a cut song's flag goes into the settings record.
    */
   radio?: RadioSource;
+  /** The menu's Career button (run W-R). The button is hidden until this is wired. */
+  onCareer?: () => void;
+  /** The career screens' taps (run W-R); app/ builds their views and acts on them. */
+  career?: CareerCallbacks;
 }
 
 export interface GameUi {
@@ -195,7 +219,15 @@ export interface GameUi {
    * the new region offers it. app/ calls it after handing audio the region's stations.
    */
   applySavedRadio(): void;
+  /**
+   * The career's screens and race overlays (run W-R): app/ fills them; `show` switches to them. A
+   * lazy chunk, like the tuning panel: calls made before it arrives are applied when it does.
+   */
+  readonly career: CareerUi;
 }
+
+/** The career screens' methods (their elements stay inside ui). */
+export type CareerUi = Omit<CareerScreens, 'map' | 'results' | 'teaser' | 'overlays'>;
 
 export interface UiOptions {
   stampText: string;
@@ -551,7 +583,12 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       el('div', { className: 'title', textContent: 'throttlebrawl' }),
       regionPicker,
       routePicker.root,
-      button('menu-race', 'big', 'Race', () => cb.onRace()),
+      el(
+        'div',
+        { className: 'row' },
+        ...(cb.onCareer ? [button('menu-career', 'big', 'Career', () => cb.onCareer?.())] : []),
+        button('menu-race', 'big', 'Race', () => cb.onRace()),
+      ),
       el(
         'div',
         { className: 'row' },
@@ -1424,6 +1461,61 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     race: [hud, touchSurface],
     results: [results],
     changelog: [changelogScreen.root],
+    // Filled when the career's lazy chunk arrives (below).
+    career: [],
+    careerResults: [],
+    teaser: [],
+  };
+
+  // The career (run W-R): a lazy chunk (the first-load JavaScript budget), fetched as the game
+  // boots. Its screens go beside the others, its prompt and objective on the HUD; calls made before
+  // it arrives wait for it.
+  let realCareer: CareerScreens | null = null;
+  const careerCalls: ((c: CareerScreens) => void)[] = [];
+  const withCareer = (f: (c: CareerScreens) => void) => {
+    if (realCareer) f(realCareer);
+    else careerCalls.push(f);
+  };
+  const noop = () => undefined;
+  void import('./career-screen').then((m) => {
+    style.textContent += m.CAREER_CSS;
+    const c = m.createCareerScreens(
+      cb.career ?? {
+        onRegion: noop,
+        onRide: noop,
+        onBack: () => show('menu'),
+        onBuyBike: noop,
+        onRideBike: noop,
+        onBuyPaint: noop,
+        onPaint: noop,
+        onExport: () => Promise.resolve(''),
+        onImport: () => Promise.resolve(''),
+        onRetry: noop,
+        onMap: noop,
+        onNext: noop,
+        onNextRegion: noop,
+      },
+      (id, cls, text, onClick) => button(id, cls, text, onClick),
+    );
+    hud.append(c.overlays);
+    // Under the pause screen, the busy line and the notices, like the other screens.
+    settingsScreen.root.before(c.map, c.results, c.teaser);
+    screens.career.push(c.map);
+    screens.careerResults.push(c.results);
+    screens.teaser.push(c.teaser);
+    c.map.hidden = current !== 'career';
+    c.results.hidden = current !== 'careerResults';
+    c.teaser.hidden = current !== 'teaser';
+    realCareer = c;
+    for (const f of careerCalls.splice(0)) f(c);
+  });
+  const career: CareerUi = {
+    showMap: (v, g, t) => withCareer((c) => c.showMap(v, g, t)),
+    showResults: (r) => withCareer((c) => c.showResults(r)),
+    showTeaser: (t) => withCareer((c) => c.showTeaser(t)),
+    prompt: (t) => withCareer((c) => c.prompt(t)),
+    setObjective: (t) => withCareer((c) => c.setObjective(t)),
+    message: (t) => withCareer((c) => c.message(t)),
   };
 
   function show(screen: Screen) {
@@ -1539,5 +1631,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     },
     syncLive,
     applySavedRadio: applyRadio,
+    career,
   };
 }

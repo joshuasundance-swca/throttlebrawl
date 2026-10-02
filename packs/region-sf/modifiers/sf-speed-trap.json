@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "speed-trap",
-      "signText": "SPEED MONITORED BY A HUMAN FOR NOW",
+      "signText": "SPEED MONITORED. By a human, for now.",
       "limitMps": 29,
       "theme": "sf"
     }

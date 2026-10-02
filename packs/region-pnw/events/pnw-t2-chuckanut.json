@@ -1,0 +1,58 @@
+{
+  "type": "event",
+  "id": "pnw-t2-chuckanut",
+  "name": "Chuckanut Drive",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-chuckanut-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss", "old-growth", "base:deacon-vane", "base:chad-speedwell"],
+    "paceMps": 39
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
+    "perTakedownCash": 260,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A classic race on the real Chuckanut Drive, the cliff road over the bay.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

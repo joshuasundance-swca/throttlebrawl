@@ -1,0 +1,31 @@
+{
+  "type": "bike",
+  "id": "golf-cart",
+  "name": "Golf Cart",
+  "class": "golf-cart",
+  "tags": ["secret", "joke"],
+  "handling": {
+    "topSpeedMps": 11.2,
+    "accelMps2": 2.2,
+    "brakeMps2": 5.0,
+    "steerRateMps": 3.8,
+    "massKg": 400
+  },
+  "combat": {
+    "knockbackResistance": 0.6
+  },
+  "engineSound": {
+    "preset": "two-stroke-buzz",
+    "idleHz": 50,
+    "redlineHz": 110
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A secret joke ride (the product spec: about 12 to 25 mph, unlocked after the boss in free play): about 25 mph, and very hard to shove. The Keys boss's prize: the resort strip's own transport.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

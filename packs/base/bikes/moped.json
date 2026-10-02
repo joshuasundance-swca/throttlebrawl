@@ -1,0 +1,28 @@
+{
+  "type": "bike",
+  "id": "moped",
+  "name": "Rental Moped",
+  "class": "moped",
+  "tags": ["novelty"],
+  "handling": {
+    "topSpeedMps": 22.4,
+    "accelMps2": 3.2,
+    "brakeMps2": 7.0,
+    "steerRateMps": 6.2,
+    "massKg": 90
+  },
+  "engineSound": {
+    "preset": "two-stroke-buzz",
+    "idleHz": 46,
+    "redlineHz": 230
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A novelty ride (the product spec: scooters and mopeds, about 45 to 70 mph): about 50 mph. Cheap, silly, scenic; sold in the Keys garage, where every resort rents them by the hour.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

@@ -10,7 +10,9 @@
   "stats": {
     "massKg": 82,
     "healthMax": 100,
-    "skill": 0.55
+    "skill": 0.55,
+    "toughness": 0.9,
+    "power": 0.95
   },
   "personality": {
     "style": "showboat",
