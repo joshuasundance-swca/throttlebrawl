@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "wagon-with-kayaks",
+  "name": "Wagon With Two Kayaks",
+  "category": "car",
+  "tags": ["local"],
+  "lengthM": 4.8,
+  "widthM": 1.8,
+  "cruiseMps": 24.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": true,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "wagon-kayaks"
+    },
+    "paintOptions": ["#3d5a6c", "#8a8f86", "#6e4b3a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An all-wheel-drive wagon with two kayaks on the roof that have not touched water this year. The roof rack cost more than the car.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

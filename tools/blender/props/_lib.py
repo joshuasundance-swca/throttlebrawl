@@ -259,6 +259,49 @@ def text_panel(name, mats, mat, parent, width, height, centre, thickness=0.0):
     return ob
 
 
+# A 3 by 5 block font, rows top to bottom, for the words a kit writes on its signs (run W-P). Drawn
+# here, cell by cell: no font file, so nothing to license.
+BLOCK_FONT = {
+    "A": ("010", "101", "111", "101", "101"),
+    "B": ("110", "101", "110", "101", "110"),
+    "C": ("111", "100", "100", "100", "111"),
+    "E": ("111", "100", "110", "100", "111"),
+    "G": ("111", "100", "101", "101", "111"),
+    "I": ("111", "010", "010", "010", "111"),
+    "K": ("101", "101", "110", "101", "101"),
+    "M": ("101", "111", "101", "101", "101"),
+    "P": ("110", "101", "110", "100", "100"),
+    "R": ("110", "101", "110", "101", "101"),
+    "T": ("111", "010", "010", "010", "010"),
+    "U": ("101", "101", "101", "101", "111"),
+}
+
+
+def block_word(mb, text, f, xc, zc, cell, mat):
+    """Block letters facing the front, centred at (xc, zc): one flat panel per run of filled cells."""
+    width = len(text) * 4 - 1
+    # Seen from the front, the prop's left (+X) is on the viewer's right: write from -X up.
+    x0 = xc - width * cell / 2
+    top = zc + 2.5 * cell
+    for i, ch in enumerate(text):
+        if ch == " ":
+            continue
+        for r, row in enumerate(BLOCK_FONT[ch]):
+            c = 0
+            while c < 3:
+                if row[c] != "1":
+                    c += 1
+                    continue
+                run = c
+                while run < 3 and row[run] == "1":
+                    run += 1
+                xa = x0 + (i * 4 + c) * cell
+                xb = x0 + (i * 4 + run) * cell
+                z1 = top - r * cell
+                mb.front_quad(f, xa, xb, z1 - cell, z1, mat)
+                c = run
+
+
 def export(out, texcoords=False, normals=True):
     """The trial's export call; `texcoords` is on only for props with text surfaces.
 

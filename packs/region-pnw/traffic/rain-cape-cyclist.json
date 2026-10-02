@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "rain-cape-cyclist",
+  "name": "Cyclist in a Rain Cape",
+  "category": "car",
+  "tags": ["local", "cyclist"],
+  "lengthM": 1.8,
+  "widthM": 0.6,
+  "cruiseMps": 6.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "cyclist-rain"
+    },
+    "paintOptions": ["#e2a33a", "#2e5e4e", "#c6d14a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Fenders, a rain cape and the calm of someone who has been wet since October. Rides the shoulder; you pass.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

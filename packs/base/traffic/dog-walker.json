@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "dog-walker",
+  "name": "Dog Walker",
+  "category": "pedestrian",
+  "tags": ["local"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.2,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-dog-walker"
+    },
+    "paintOptions": ["#8fd3f0", "#f2c14e", "#e8e2c8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Walks the verge with an empty leash. The dog left an hour ago and is doing fine.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

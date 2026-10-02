@@ -17,6 +17,7 @@ import {
   type Composition,
   type ProceduralSpec,
 } from './radio-compose';
+import { createRegionalRig, REGIONAL_GENRES, type RegionalGenre } from './radio-rigs';
 import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
 
 export interface RadioTrack {
@@ -145,7 +146,10 @@ export function composeFor(track: RadioTrack): Composition | null {
   return composeTrack(track.procedural, trackSeed(track.ref, typeof salt === 'number' ? salt : 0));
 }
 
-const genreOf = (s: RadioStation): RadioGenre => (s.genre === 'rockabilly' ? 'rockabilly' : 'surf');
+const isRegional = (g: string): g is RegionalGenre => (REGIONAL_GENRES as readonly string[]).includes(g);
+/** The band a station plays on: its `genre`, surf when the genre has no band of its own yet. */
+export const genreOf = (s: RadioStation): RadioGenre =>
+  s.genre === 'rockabilly' || isRegional(s.genre) ? s.genre : 'surf';
 
 export interface NowPlaying {
   stationId: string;
@@ -212,7 +216,7 @@ export function createRadioPlayer(
   const rigFor = (g: RadioGenre) => {
     let r = rigs.get(g);
     if (!r) {
-      r = createRadioRig(ctx, out, g);
+      r = isRegional(g) ? createRegionalRig(ctx, out, g) : createRadioRig(ctx, out, g);
       r.setFx(fx);
       rigs.set(g, r);
     }
