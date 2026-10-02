@@ -35,50 +35,50 @@
     ]
   },
   "signs": [
-    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES.", "status": "live" },
-    { "id": "next-regret", "text": "NEXT GAS 40 MI. NEXT REGRET 2 MI.", "status": "live" },
-    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR.", "status": "live" },
-    { "id": "hurricane-late", "text": "HURRICANE EVACUATION ROUTE. YOU ARE ALREADY LATE.", "status": "live" },
+    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees.", "status": "live" },
+    { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi.", "status": "live" },
+    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear.", "status": "live" },
+    { "id": "hurricane-late", "text": "HURRICANE EVACUATION ROUTE. You are already late.", "status": "live" },
     {
       "id": "conch-republic",
-      "text": "WELCOME TO THE CONCH REPUBLIC. NO PASSPORT. SUNSCREEN MANDATORY.",
+      "text": "WELCOME TO THE CONCH REPUBLIC. No passport. Sunscreen mandatory.",
       "status": "live"
     },
-    { "id": "uv-index", "text": "UV INDEX TODAY: YES.", "status": "live" },
-    { "id": "key-lime-again", "text": "LAST CHANCE KEY LIME PIE. NEXT LAST CHANCE 1 MI.", "status": "live" },
+    { "id": "uv-index", "text": "UV INDEX TODAY: YES. No further data.", "status": "live" },
+    { "id": "key-lime-again", "text": "LAST CHANCE KEY LIME PIE. Next last chance 1 mi.", "status": "live" },
     {
       "id": "next-county",
-      "text": "IN CASE OF HURRICANE THIS SIGN WILL BE IN THE NEXT COUNTY.",
+      "text": "THIS SIGN LEAVES FIRST. In a hurricane: the next county.",
       "status": "live"
     },
-    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. FISH NOT INCLUDED.", "status": "live" }
+    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. Fish not included.", "status": "live" }
   ],
   "billboards": [
     {
       "id": "timeshare",
-      "text": "OWN A PIECE OF PARADISE. SOME PIECES STILL ABOVE WATER.",
+      "text": "PARADISE FOR SALE. Some pieces still above water.",
       "status": "live"
     },
-    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH.", "status": "live" },
+    { "id": "stream-outfit", "text": "WATCH US WRECK LIVE. New episodes every crash.", "status": "live" },
     {
       "id": "law-office-nobody",
-      "text": "INJURED ON A BRIDGE? YOU PROBABLY DESERVED IT. THE LAW OFFICE OF NOBODY.",
+      "text": "INJURED ON A BRIDGE? You probably deserved it. The Law Office of Nobody.",
       "status": "live"
     },
     {
       "id": "airboat-gary",
-      "text": "GATOR GARY'S AIRBOAT TOURS. SEE A GATOR OR SEE GARY.",
+      "text": "SEE GATOR, OR GARY. Gator Gary's Airboat Tours.",
       "status": "live"
     },
-    { "id": "lobster-lotion", "text": "LOBSTER LOTION. FOR WHEN THE SUN WON.", "status": "live" },
+    { "id": "lobster-lotion", "text": "THE SUN WON. Lobster Lotion, for the aftermath.", "status": "live" },
     {
       "id": "landfall-liquors",
-      "text": "LANDFALL LIQUORS. OPEN THROUGH EVERY STORM. MOSTLY.",
+      "text": "OPEN THROUGH EVERY STORM. Mostly. Landfall Liquors.",
       "status": "live"
     },
     {
       "id": "flat-calm",
-      "text": "FLAT CALM CHARTERS. YOU WILL CATCH SOMETHING. PROBABLY SUN.",
+      "text": "YOU WILL CATCH SOMETHING. Probably sun. Flat Calm Charters.",
       "status": "live"
     }
   ],

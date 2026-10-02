@@ -22,7 +22,7 @@
 // main road's heading. Its first and last roads are the two junctions' connector roads, and the
 // compiler writes each junction's lane-level table: main-through rows for every drive lane (both
 // directions) and one row into and out of the branch, the first with the split zone.
-import { atan2, cos, sin, type LaneInfo } from '../core';
+import { atan2, cos, sin, type LaneInfo, type RoadSurface } from '../core';
 import type { BakedBarrier, BakedFeature, BakedTag } from './types';
 
 /**
@@ -52,7 +52,7 @@ export interface RoadSource {
   /** Length cut from the main curve. The last road takes whatever is left. */
   lengthM?: number;
   speedLimitMps: number;
-  surface: string;
+  surface: RoadSurface;
   /** A junction's connector road (on the main list: between the two roads it joins). */
   connector?: boolean;
   humps: readonly HumpSource[];

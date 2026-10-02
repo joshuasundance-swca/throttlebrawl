@@ -34,18 +34,52 @@ def r5(v: float) -> float:
     return float(f"{float(v):.5g}")
 
 
-def lanes(width: float = 3.4) -> list[Json]:
-    """One lane each way plus shoulders: the lane table of the hand-made roads, so every mover lane
-    that works there works here. The real road has two lanes each way on some stretches. At the
-    default 3.4 m this is the M1 table the Keys bake carries; the region bakes use 4.0 m, as the
-    hand-made roads have since playtest 1."""
-    half, edge = r4(width / 2), r4(width + SHOULDER_M / 2)
+def lanes(width: float = 3.4, per_direction: int = 1, median: float = 0.0) -> list[Json]:
+    """`per_direction` drive lanes each way (1 to 3, W-Q's 4-6 lane highways) plus shoulders, set
+    apart by a `median` gap. One each way with no median is the lane table of the hand-made roads,
+    so every mover lane that works there works here: at the default 3.4 m the M1 table the Keys bake
+    carries; the region bakes use 4.0 m, as the hand-made roads have since playtest 1. Lane ids
+    count out from the middle (L1, L2, L3 and R1, R2, R3); L0 and R0 are the shoulders."""
+    if not 1 <= per_direction <= 3:
+        raise ValueError(f"lanes per direction {per_direction}: 1 to 3")
+    inner = median / 2
+    edge = r4(inner + per_direction * width + SHOULDER_M / 2)
+    left = [
+        {
+            "id": f"L{k}",
+            "dCenterM": -r4(inner + (k - 0.5) * width),
+            "widthM": width,
+            "direction": -1,
+            "kind": "drive",
+        }
+        for k in range(per_direction, 0, -1)
+    ]
+    right = [
+        {
+            "id": f"R{k}",
+            "dCenterM": r4(inner + (k - 0.5) * width),
+            "widthM": width,
+            "direction": 1,
+            "kind": "drive",
+        }
+        for k in range(1, per_direction + 1)
+    ]
     return [
         {"id": "L0", "dCenterM": -edge, "widthM": SHOULDER_M, "direction": -1, "kind": "shoulder"},
-        {"id": "L1", "dCenterM": -half, "widthM": width, "direction": -1, "kind": "drive"},
-        {"id": "R1", "dCenterM": half, "widthM": width, "direction": 1, "kind": "drive"},
+        *left,
+        *right,
         {"id": "R0", "dCenterM": edge, "widthM": SHOULDER_M, "direction": 1, "kind": "shoulder"},
     ]
+
+
+def lane_section(cfg: BakeConfig) -> Json:
+    """The one lane section every road of a bake carries: lanes, the median and verges when set."""
+    section: Json = {"s0": 0, "lanes": lanes(cfg.laneWidthM, cfg.lanesPerDirection, cfg.medianM)}
+    if cfg.medianM > 0:
+        section["median"] = {"widthM": cfg.medianM, "kind": cfg.medianKind}
+    if cfg.verges is not None:
+        section["verges"] = cfg.verges.model_dump(exclude_none=True)
+    return section
 
 
 LANES: list[Json] = lanes()
@@ -239,7 +273,7 @@ def bake(
                 "sampleSpacingM": spacing,
                 "speedLimitMps": speed,
                 "surface": "asphalt",
-                "laneSections": [{"s0": 0, "lanes": lanes(cfg.laneWidthM)}],
+                "laneSections": [lane_section(cfg)],
                 "tags": tags,
                 "features": features,
                 "barriers": barriers,

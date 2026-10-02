@@ -10,3 +10,4 @@ export * from './tuning';
 export * from './callbacks';
 export * from './ids';
 export * from './difficulty';
+export * from './surfaces';
