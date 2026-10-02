@@ -31,10 +31,11 @@ const REGION_MODELS = [
   'cable-car',
   'pnw-roadside',
   'sf-roadside',
+  'keys-roadside',
 ] as const;
 
 const REGIONS = [
-  { slug: 'keys', chip: '#region-base-florida-keys', wants: [] as string[] },
+  { slug: 'keys', chip: '#region-base-florida-keys', wants: ['keys-roadside'] },
   {
     slug: 'pnw',
     chip: '#region-region-pnw-pacific-northwest',
