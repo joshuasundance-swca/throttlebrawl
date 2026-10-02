@@ -17,6 +17,8 @@
 // Run W-R (interview, 2026-10-02: "SF first = downtown towers") adds San Francisco's downtown
 // (downtown.ts): towers, plazas, cross streets with their traffic, and the cable cars, which run
 // only on its steep cable-car streets.
+// Run W-R (off-road; interview, 2026-10-02: "Anywhere with ground") adds the verge layer (verge.ts):
+// the ridable ground band beside the road and what ends it, with its dust, splashes and fence boards.
 // Run W-R (interview, 2026-10-02: "Real models now") draws each rider as a real model on a real
 // bike (riders/, a lazy chunk): `setRiderLooks` names the race's riders and their models, which load
 // from the asset manifest; until a rider's two models arrive, its box rider draws.
@@ -40,6 +42,7 @@ import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { DowntownCounts, DowntownLayer } from './downtown';
+import type { VergeCounts, VergeLayer } from './verge';
 import { Rain, rainColourOf } from './rain';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
@@ -200,6 +203,8 @@ export interface SceneryStatus {
   backdrop: BackdropStats | null;
   /** San Francisco's downtown (run W-R), or null before its models load or on any other road. */
   downtown: DowntownCounts | null;
+  /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
+  verge: VergeCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -345,6 +350,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(downtown.group);
   };
+  // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
+  // is built once per setRoad (a new seed or the models arriving rebuild the road, not the band), so
+  // a fence smashed in this race stays smashed.
+  let vergeModule: typeof import('./verge') | null = null;
+  let verge: VergeLayer | null = null;
+  const buildVerge = () => {
+    verge?.dispose();
+    verge = null;
+    if (!vergeModule || !roadArgs) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    verge = new vergeModule.VergeLayer(roadArgs.road, look, { tags });
+    scene.add(verge.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -462,6 +480,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       roadArgs = { road, dressing, density: params.roadsideDensity };
       buildRoad();
+      if (vergeModule) buildVerge();
+      else
+        void import('./verge').then((m) => {
+          vergeModule = m;
+          buildVerge();
+        });
       backdrop.setRoad(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
@@ -473,6 +497,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pushEvents(events) {
       views.pushEvents(events);
+      verge?.pushEvents(events);
       rigs?.pushEvents(events);
     },
     render(prev, curr, alpha, pose) {
@@ -502,6 +527,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
       lastFrameAt = t;
+      verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1));
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
@@ -592,6 +618,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
       downtown: downtown?.counts() ?? null,
+      verge: verge?.counts() ?? null,
     }),
   };
 }

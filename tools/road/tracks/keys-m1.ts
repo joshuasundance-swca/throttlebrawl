@@ -131,6 +131,17 @@ export const KEYS_M1: TrackSource = {
           item: 'next-regret',
         },
         { kind: 'copSpawn', id: 'bait-shop-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
+        // The junction choice, signed (W-R; interview, 2026-10-02: "junction choices in races"): the
+        // boat-ramp cut's split is the last 40 m of the run, on the right.
+        {
+          kind: 'billboard',
+          id: 'sign-marina-ramp-ahead',
+          s0: 200,
+          s1: 210,
+          d0: 6.5,
+          d1: 9,
+          item: 'ramp-keep-right',
+        },
         // road-3: a billboard in view from the start grid, across from the strip mall's lot.
         {
           kind: 'billboard',
@@ -728,6 +739,13 @@ export const KEYS_M1: TrackSource = {
       join: { road: 'm1-pelican-bridge', offsetM: 3, lane: 'R1' },
       turnsM: [60, 60],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      // Named for the routes (W-R): the id the race derived before, so nothing keyed on it changes.
+      named: {
+        id: 'm1-boat-ramp-cut',
+        kind: 'shortcut',
+        marked: true,
+        sign: 'BOAT RAMP: KEEP RIGHT. Trailers only. Nobody checks.',
+      },
       roads: [
         {
           id: 'c-boat-ramp-in',

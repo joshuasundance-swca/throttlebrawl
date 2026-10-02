@@ -379,6 +379,7 @@ describe('riders-3: the rubber band', () => {
       'race.styleOncomingMinS',
       'race.styleOncomingSpeedShare',
       'race.styleComboWindowS',
+      'race.styleSplitScale',
       'race.styleTrickScale',
     ]);
     for (const d of RACE_TUNING) {

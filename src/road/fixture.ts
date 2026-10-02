@@ -19,6 +19,35 @@ export interface FixtureEdgeSpec {
   kappa: number;
   /** Constant grade (rise over run). */
   grade?: number;
+  /** The edge's own lanes in place of FIXTURE_LANES (a multi-lane highway, W-R). */
+  lanes?: readonly LaneInfo[];
+}
+
+/**
+ * A highway's lanes (W-R; interview, 2026-10-02: "multi-lane highways (4-6 lanes, lane
+ * splitting)"): `perDirection` drive lanes each way of `widthM`, the innermost each way where
+ * FIXTURE_LANES-style two-lane roads put theirs when `widthM` matches, and a shoulder each side.
+ * Ids run outward: L1, L2, L3 and R1, R2, R3, shoulders L0 and R0.
+ */
+export function highwayLanes(perDirection: number, widthM = 4, shoulderM = 1.5): LaneInfo[] {
+  const right: LaneInfo[] = [];
+  for (let i = 1; i <= perDirection; i++) {
+    right.push({ id: `R${i}`, dCenterM: (i - 0.5) * widthM, widthM, direction: 1, kind: 'drive' });
+  }
+  right.push({
+    id: 'R0',
+    dCenterM: perDirection * widthM + shoulderM / 2,
+    widthM: shoulderM,
+    direction: 1,
+    kind: 'shoulder',
+  });
+  const left = right.map((l): LaneInfo => ({
+    ...l,
+    id: `L${l.id.slice(1)}`,
+    dCenterM: -l.dCenterM,
+    direction: -1,
+  }));
+  return [...left.reverse(), ...right];
 }
 
 /** A network of arcs joined end to end, starting at the origin heading north. */
@@ -56,7 +85,7 @@ export function fixtureNetwork(specs: readonly FixtureEdgeSpec[], id = 'fixture'
       lengthM: spec.lengthM,
       sampleSpacingM: spacing,
       // Copies, so a test that edits one fixture's lanes never leaks into the next fixture.
-      laneSections: [{ s0: 0, lanes: FIXTURE_LANES.map((l) => ({ ...l })) }],
+      laneSections: [{ s0: 0, lanes: (spec.lanes ?? FIXTURE_LANES).map((l) => ({ ...l })) }],
       samples: { encoding: 'json-columns', columns: Object.keys(data), data },
     };
   });

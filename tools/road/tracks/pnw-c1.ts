@@ -137,6 +137,17 @@ export const PNW_C1: TrackSource = {
           d1: 9,
           item: 'ferry-wait',
         },
+        // The junction choice, signed (W-R; interview, 2026-10-02: "junction choices in races"): the
+        // Logging Spur's split is the last 40 m of the landing, on the right.
+        {
+          kind: 'billboard',
+          id: 'sign-landing-spur-ahead',
+          s0: 200,
+          s1: 210,
+          d0: 6.5,
+          d1: 9,
+          item: 'spur-keep-right',
+        },
         // A boost pad on the right of the lane, lining you up for the Logging Spur's split zone.
         {
           kind: 'boostPad',
@@ -482,6 +493,13 @@ export const PNW_C1: TrackSource = {
       join: { road: 'pnw-cedar-hollow', offsetM: 3, lane: 'R1' },
       turnsM: [60, 60],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      // Named for the routes (W-R): the id the race derived before, so nothing keyed on it changes.
+      named: {
+        id: 'pnw-logging-spur',
+        kind: 'shortcut',
+        marked: true,
+        sign: 'LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.',
+      },
       roads: [
         {
           id: 'c-pnw-spur-in',

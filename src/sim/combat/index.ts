@@ -50,7 +50,7 @@
 //   (3.3 m/s) and the pipe (7.5 m/s) keep M1's nudges, 0.66 m and 1.5 m: the stagger is what is
 //   new for them. (A 0.3 m punch kept the bot's fights alongside a rival going, which slowed it
 //   and raised the cop's bust rate from 9 to 13 in 40 bot races; M1's nudge ends a fight as before.)
-//   The shove stops at the drivable edge (riders' barrierLimits). A non-player's kick on a player
+//   The shove stops at the drivable edge (riders' riderLimits: the verge's edge with off-road on). A non-player's kick on a player
 //   shoves by combat.onPlayerScale, and any non-player's hit on a player wobbles by it (default
 //   0.4, so a rival's kick moves you about 1.4 m, near M1's 1.7 m, and a rival's punch keeps M1's
 //   0.66 m): the big shove is the player's new tool, and playtest 1 asked that rivals stay as hard
@@ -163,7 +163,7 @@
 //   race, he hardly ever swung and you hardly ever had a steal chance. [default]
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
-import { barrierLimits, riderState } from '../riders';
+import { riderLimits, riderState } from '../riders';
 import { parkedBike } from '../tumble';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
 import { addMover, emit, setSlowmo, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -1117,7 +1117,9 @@ function slide(world: World, config: SimConfig, st: CombatState, ts: number): vo
     const t0 = st.knockT[m.id] ?? 0;
     const t1 = Math.min(n, t0 + ts);
     const d = m.pos.d + (peak / 60) * (t1 - t0 - (t1 * t1 - t0 * t0) / (2 * n));
-    const { lo, hi } = barrierLimits(config, m.pos.edge, m.pos.s);
+    // The riders' limits: the lanes' edges, or the verge's with off-road on (run W-R), so a kick
+    // can send a rider onto the verge and never snaps one riding there back onto the road.
+    const { lo, hi } = riderLimits(world, config, m.pos.edge, m.pos.s, m.pos.d);
     m.pos.d = clamp(d, lo, hi);
     st.knockT[m.id] = t1;
     if (m.pos.d !== d || t1 >= n - EPS) endShove(st, m.id);
