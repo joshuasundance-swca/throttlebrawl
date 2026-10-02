@@ -189,6 +189,11 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   // ISLET_CLEAR_M (declared below, so the literal here)
   islet: 16,
 };
+/**
+ * What of each kind a rider would hit, as a radius round its anchor, m (off-road, run W-R): a palm's
+ * or a pole's trunk, not its crown, which may overhang the ridable band. [default]
+ */
+export const TRUNK_M: Partial<Record<SceneryKind, number>> = { palm: 0.4, pole: 0.3, conifer: 0.8 };
 /** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
 export const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
 /** Half its width along the road, m (it needs land and clear ground that long). */
@@ -278,6 +283,11 @@ export interface ScatterEdge {
    * `ridableBandPast`): land scenery stands its footprint clear of it. Absent: 0.
    */
   band?: ((side: -1 | 1, s: number) => number) | undefined;
+  /**
+   * Whether two spots fall in the same instanced batch (road-mesh's scenery chunks): scenery moved
+   * out past the band stays in its batch, so the move never adds a draw call. Absent: always.
+   */
+  sameBatch?: ((a: Point3, b: Point3) => boolean) | undefined;
   /** Metres of drawn land past the verge at s on that side (0 = none: a bridge, a rail, the sea). */
   landReach(side: -1 | 1, s: number): number;
   /** Whether a spot of this radius is free of roads, features and roadside zones. */
@@ -377,8 +387,10 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         const [near, spread] = ACROSS_M[kind];
         const radius = SCENERY_RADIUS_M[kind];
         // Off-road (run W-R): its footprint past the ridable band (a house or the sawmill by its front).
-        const clearOf = e.band ? e.band(side, s) + (DEPTH_M[kind] !== undefined ? 0 : radius) : 0;
-        const across = Math.max(near + spread * h(ki, k, side, 2), clearOf);
+        const solid = DEPTH_M[kind] !== undefined ? 0 : (TRUNK_M[kind] ?? radius);
+        const clearOf = e.band ? e.band(side, s) + solid : 0;
+        const wanted = near + spread * h(ki, k, side, 2);
+        const across = Math.max(wanted, clearOf);
         const depth = DEPTH_M[kind] ?? radius;
         const along = Math.max(radius, HALF_ALONG_M[kind] ?? 0);
         // On the drawn land, with room for the model across and along (the land ends where a tag
@@ -396,6 +408,14 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         if (across + depth > reach) continue;
         const d = side * (outer + across);
         if (!e.clear(s, d, radius)) continue;
+        // Moved out past the band, it is still the spot it was: one that was blocked where it wanted
+        // to stand (a sign, a pad, a pedestrian zone) stays out, so the band only moves scenery, and
+        // one the move would carry into the next instanced batch is dropped (no draw call is added).
+        if (across !== wanted) {
+          const was = side * (outer + wanted);
+          if (!e.clear(s, was, radius)) continue;
+          if (e.sameBatch && !e.sameBatch(e.world(s, was, 0), e.world(s, d, 0))) continue;
+        }
         if (DEPTH_M[kind] !== undefined) {
           // A house or the sawmill reaches back from its front and along the road: all of it clear.
           const back = side * (outer + across + depth);

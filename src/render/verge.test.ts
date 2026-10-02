@@ -9,7 +9,7 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import { createFlatLook } from './look';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
-import { SCENERY_RADIUS_M } from './scenery';
+import { SCENERY_RADIUS_M, TRUNK_M } from './scenery';
 import { VERGE_LIFT_M, VergeLayer } from './verge';
 
 const look = createFlatLook();
@@ -137,7 +137,7 @@ describe('nothing solid stands on the ridable ground', () => {
         expect(
           past,
           `${spot.kind} on ${road.edges[spot.edge]?.id} s ${spot.s.toFixed(0)}`,
-        ).toBeGreaterThanOrEqual(SCENERY_RADIUS_M[spot.kind] - 1e-6);
+        ).toBeGreaterThanOrEqual((TRUNK_M[spot.kind] ?? SCENERY_RADIUS_M[spot.kind]) - 1e-6);
       }
       expect(banded).toBeGreaterThan(20);
       console.log(
