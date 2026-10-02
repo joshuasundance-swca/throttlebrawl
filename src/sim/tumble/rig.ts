@@ -250,9 +250,16 @@ export interface ClusterContact {
 /**
  * Advances one cluster by dt (already scaled; the caller never passes 0): gravity, motion, the
  * constraints, then the road (per particle) and the barrier line (per cluster), or free fall to
- * the water once overboard. `mu` is the sliding friction, as a multiple of g.
+ * the water once overboard. `mu` is the sliding friction, as a multiple of g. With `offRoad` (the
+ * race's `ground.offRoad`, run W-R) the barrier line is out at the verge bands' outer edges.
  */
-export function stepCluster(road: RoadNetwork, c: Cluster, dt: number, mu: number): ClusterContact {
+export function stepCluster(
+  road: RoadNetwork,
+  c: Cluster,
+  dt: number,
+  mu: number,
+  offRoad = false,
+): ClusterContact {
   if (c.splashed) return overboardContact(road, c, false, false);
   for (const q of c.p) {
     q.vy -= GRAVITY * dt;
@@ -271,7 +278,7 @@ export function stepCluster(road: RoadNetwork, c: Cluster, dt: number, mu: numbe
   const at = centre(c.p);
   const pc = road.project(at.x, at.z, at.edge);
   const f = road.frameAt(pc.edge, pc.s);
-  const band = wallBand(road, pc.edge);
+  const band = wallBand(road, pc.edge, pc.s, offRoad);
   const len = road.edges[pc.edge]?.length ?? 0;
   const floor = c.p.map((q) => {
     q.edge = pc.edge;
@@ -289,7 +296,7 @@ export function stepCluster(road: RoadNetwork, c: Cluster, dt: number, mu: numbe
   }
   c.p.forEach((q, i) => groundVelocity(q, floor[i] ?? -Infinity, hit[i] ?? false, dt, mu));
   for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
-  if (barrierLine(road, c, pc)) return fallToWater(road, c, true);
+  if (barrierLine(road, c, pc, offRoad)) return fallToWater(road, c, true);
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
   return {
@@ -355,9 +362,9 @@ function groundVelocity(q: Particle, ground: number, hit: boolean, dt: number, m
  * wall, a low crossing, no barrier listed, a dead end) puts it back on the line and reflects the
  * outward velocity. Returns true when it went over.
  */
-function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos): boolean {
+function barrierLine(road: RoadNetwork, c: Cluster, p: RoadPos, offRoad: boolean): boolean {
   const at = centre(c.p);
-  const band = wallBand(road, p.edge);
+  const band = wallBand(road, p.edge, p.s, offRoad);
   const d = clamp(p.d, band.lo, band.hi);
   const w = road.toWorld(p.edge, p.s, d, 0);
   const ox = at.x - w.x;

@@ -14,8 +14,14 @@
 // ride traces the same paths and arcs, 1/m slower. Time constants (steering and lean response, the
 // wobble) and the crash thresholds are not scaled: timers are unaffected, and landings and barrier
 // contacts only get gentler.
-import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
+// The ground beside the road (run W-R; interview, 2026-10-02: "Anywhere with ground", off-road as
+// "a ground band beside most roads ... water, ferns and kerbs are the real edges; some fences
+// smash"): with `ground.offRoad` on, a rider rides past the lanes onto each verge band (sim/ground's
+// `rideLimits`), each surface scales the steering and the top speed (`surfaceFeel`), and the band's
+// outer edge decides what happens there (sim/riders/verge.ts).
+import { atan, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import { sRateFactor } from '../../road';
+import type { RideLimits } from '../ground';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
 import {
   AIR_TUNING,
@@ -42,6 +48,18 @@ import {
 } from './features';
 import { uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
+  behindFence,
+  breakFence,
+  EDGE_DRAG,
+  EDGE_WOBBLE_MPS,
+  FENCE_PLOUGH_DRAG,
+  FENCE_SMASH_LOSS,
+  groundFeel,
+  limitsAt,
+  ploughYard,
+  vergeState,
+} from './verge';
+import {
   emit,
   slotAssists,
   speedMultiplierOf,
@@ -52,6 +70,7 @@ import {
 } from '../world';
 
 export { trickOf } from './air';
+export { LOOSE_GROUND, offRoadOf, vergeState, type BrokenFence } from './verge';
 
 export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   {
@@ -108,6 +127,20 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     default: 6,
     min: 2,
     max: 15,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Off-road (run W-R; interview, 2026-10-02: "some fences can be smashed"): a rider who hits a
+    // fence at the end of a verge band this fast or faster across it smashes through it; slower,
+    // the fence holds it, with a scrape and a wobble but never a crash. [default]
+    id: 'riders.fenceSmashMps',
+    group: 'crashes',
+    label: 'Fence smash speed',
+    default: 3,
+    min: 0.5,
+    max: 12,
     step: 0.5,
     unit: 'm/s',
     affectsSim: true,
@@ -419,6 +452,47 @@ export function barrierLimits(config: SimConfig, edge: number, s: number): { lo:
   return { lo: lo + BIKE_HALF_WIDTH_M, hi: hi - BIKE_HALF_WIDTH_M };
 }
 
+/**
+ * A rider this far past the lanes' edge is out on the verge: a split's guide span leaves it there
+ * (one tick of riding moves a bike across the road by well under this). [default]
+ */
+const ON_VERGE_M = 0.5;
+
+/**
+ * Where a riding rider's centre may go at (edge, s) in this race, and what stops it at each side
+ * (run W-R): the lanes' edges and a wall with `ground.offRoad` off (exactly barrierLimits), each
+ * verge band's outer edge and its kind with it on, a broken fence's yard included. Combat's shove
+ * and the riders' contacts stop here too, so nothing puts a rider on the verge back on the road.
+ * Over a split's guide span (the zone and its lead-in) the zone's side keeps the lanes' edge for a
+ * rider on the road, where the split guide slides one who commits early onto the branch with no
+ * wall (playtest 1b, 1c): riding out onto the verge there would carry it past the zone and miss the
+ * branch. A rider already out on the verge there (`d` past the lanes by ON_VERGE_M) stays out.
+ */
+export function riderLimits(
+  world: World,
+  config: SimConfig,
+  edge: number,
+  s: number,
+  d?: number,
+): RideLimits {
+  const lim = limitsAt(config, world.params, vergeState(world).brokenFences, edge, s, BIKE_HALF_WIDTH_M);
+  if (lim.loEdge === 'hard' && lim.hiEdge === 'hard' && lim.loBandM === 0 && lim.hiBandM === 0) return lim;
+  const lanes = barrierLimits(config, edge, s);
+  const outRight = d !== undefined && d > lanes.hi + ON_VERGE_M;
+  const outLeft = d !== undefined && d < lanes.lo - ON_VERGE_M;
+  if (!outRight && lim.hi > lanes.hi && splitGuideAt(config, edge, s, 1, lanes.hi)) {
+    lim.hi = lanes.hi;
+    lim.hiEdge = 'hard';
+    lim.hiBandM = 0;
+  }
+  if (!outLeft && lim.lo < lanes.lo && splitGuideAt(config, edge, s, -1, lanes.lo)) {
+    lim.lo = lanes.lo;
+    lim.loEdge = 'hard';
+    lim.loBandM = 0;
+  }
+  return lim;
+}
+
 function onShoulder(config: SimConfig, m: Mover): boolean {
   for (const lane of config.road.lanesAt(m.pos.edge, m.pos.s)) {
     if (lane.kind !== 'shoulder') continue;
@@ -498,45 +572,131 @@ function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
   if (laneDropGuide(world, config, st, m)) return;
   const pos = m.pos;
-  const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
+  // Out in a broken fence's yard (off-road): the gap follows the rider along the fence line, and
+  // ploughing through it is slow going.
+  if (vergeState(world).brokenFences.length > 0 && yardAt(world, config, m)) {
+    m.speed = Math.max(0, m.speed - FENCE_PLOUGH_DRAG * accelMultiplierOf(config) * dt);
+  }
+  const lim = riderLimits(world, config, pos.edge, pos.s, pos.d);
+  const { lo, hi } = lim;
   if (pos.d >= lo && pos.d <= hi) {
     st.touching[m.id] = 0;
     return;
   }
-  const side = pos.d > hi ? 1 : -1; // road-frame side of the wall
-  if (splitGuideAt(config, pos.edge, pos.s, side, side > 0 ? hi : lo)) {
-    pos.d = side > 0 ? hi : lo;
+  const side: 1 | -1 = pos.d > hi ? 1 : -1; // road-frame side of the wall
+  const limit = side > 0 ? hi : lo;
+  if (splitGuideAt(config, pos.edge, pos.s, side, limit)) {
+    pos.d = limit;
     m.yaw = 0;
     st.touching[m.id] = 0;
     return;
   }
   if (uturnTurning(st, m.id)) {
     // Mid U-turn (sim/riders/uturn.ts) the kerb holds the bike in and scrapes speed off while it
-    // pivots on round; it never crashes it, and the heading is left to the turn.
-    pos.d = side > 0 ? hi : lo;
+    // pivots on round; it never crashes it, and the heading is left to the turn. Off-road, the edge
+    // that holds it is the verge's (run W-R): a fence or the ferns hold it the same way.
+    pos.d = limit;
     m.speed = Math.max(0, m.speed - SCRAPE_DRAG * accelMultiplierOf(config) * dt);
     st.touching[m.id] = 1;
     return;
   }
+  const kind = side > 0 ? lim.hiEdge : lim.loEdge;
   const v = m.speed;
   const yawBefore = m.yaw;
-  const impact = scrapeAlong(config, m, side, dt);
-  pos.d = side > 0 ? hi : lo;
   const newContact = st.touching[m.id] !== 1;
+  if (kind === 'fence' && smashFence(world, st, m, { side, limit, v, yawBefore, newContact })) return;
+  const impact = scrapeAlong(config, m, side, dt, EDGE_DRAG[kind]);
+  pos.d = limit;
   st.touching[m.id] = 1;
-  wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact });
+  const hit = { impact, v, yawBefore, side, newContact };
+  if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
+  else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
+  else groundEdge(world, st, m, kind, hit);
+}
+
+/** Whether a rider is out past a fence line in a broken fence's yard (and keeps the gap open). */
+function yardAt(world: World, config: SimConfig, m: Mover): boolean {
+  const pos = m.pos;
+  const raw = limitsAt(config, world.params, [], pos.edge, pos.s, BIKE_HALF_WIDTH_M);
+  if (raw.loEdge !== 'fence' && raw.hiEdge !== 'fence') return false;
+  const lo = raw.loEdge === 'fence' ? raw.lo : null;
+  const hi = raw.hiEdge === 'fence' ? raw.hi : null;
+  return ploughYard(vergeState(world).brokenFences, pos.edge, pos.s, pos.d, lo, hi);
+}
+
+/**
+ * A rider at a fence (off-road, interview 2026-10-02: "some fences can be smashed"). A new contact
+ * at `riders.fenceSmashMps` or more across it smashes a stretch open: the rider bursts through into
+ * the yard behind, loses FENCE_SMASH_LOSS of its speed and wobbles, with one `wobble` event (`cause`
+ * and `object` `fence`, `smashed: true`, the side and the broken stretch's s0 and s1, for render's
+ * flying boards). A rider already well past the line came at it from behind (a yard carried over a
+ * junction): it breaks quietly where it is. Returns false when the fence holds.
+ */
+function smashFence(
+  world: World,
+  st: RiderState,
+  m: Mover,
+  at: { side: 1 | -1; limit: number; v: number; yawBefore: number; newContact: boolean },
+): boolean {
+  const pos = m.pos;
+  const impact = Math.max(0, pos.dir * at.v * sin(m.yaw) * at.side);
+  const fromBehind = behindFence((pos.d - at.limit) * at.side);
+  const smash = at.newContact && impact >= (world.params['riders.fenceSmashMps'] ?? 3);
+  if (!fromBehind && !smash) return false;
+  const gap = breakFence(vergeState(world).brokenFences, pos.edge, at.side, pos.s);
+  st.touching[m.id] = 0;
+  if (!smash) return true;
+  m.speed = at.v * (1 - FENCE_SMASH_LOSS);
+  st.wobble[m.id] = WOBBLE_TICKS;
+  emit(world, 'wobble', m.id, {
+    cause: 'fence',
+    object: 'fence',
+    smashed: true,
+    speed: at.v,
+    impactMps: impact,
+    yaw: at.yawBefore,
+    side: at.side,
+    s0: gap.s0,
+    s1: gap.s1,
+  });
+  return true;
+}
+
+/**
+ * A rider held at a band's soft, brush or water edge (off-road): no crash, ever. The ground running
+ * out is silent; a new contact with the ferns or the water at EDGE_WOBBLE_MPS or more wobbles, with
+ * one `wobble` event whose `cause` is the edge (`brush`, `water`: render's leaves and splash).
+ */
+function groundEdge(
+  world: World,
+  st: RiderState,
+  m: Mover,
+  kind: VergeEdge,
+  hit: { impact: number; v: number; yawBefore: number; side: 1 | -1; newContact: boolean },
+): void {
+  const at = EDGE_WOBBLE_MPS[kind];
+  if (at === undefined || !hit.newContact || hit.impact < at) return;
+  st.wobble[m.id] = WOBBLE_TICKS;
+  emit(world, 'wobble', m.id, {
+    cause: kind,
+    speed: hit.v,
+    impactMps: hit.impact,
+    yaw: hit.yawBefore,
+    side: hit.side,
+  });
 }
 
 /**
  * A rider meeting a wall on its `side` (road frame): the wall takes the speed across the road and
  * turns the bike along it, so the rider scrapes along. Returns the speed it hit the wall with.
+ * `drag` is the scrape's, m/s² (the M1 wall's by default; off-road edges have their own).
  */
-function scrapeAlong(config: SimConfig, m: Mover, side: 1 | -1, dt: number): number {
+function scrapeAlong(config: SimConfig, m: Mover, side: 1 | -1, dt: number, drag = SCRAPE_DRAG): number {
   const v = m.speed;
   // Speed across the road toward the wall (the rider's right is -d when riding toward -s).
   const vAcross = m.pos.dir * v * sin(m.yaw);
   const m2 = accelMultiplierOf(config);
-  m.speed = Math.max(0, v * cos(m.yaw) - SCRAPE_DRAG * m2 * dt);
+  m.speed = Math.max(0, v * cos(m.yaw) - drag * m2 * dt);
   m.yaw = 0;
   return vAcross * side > 0 ? vAcross * side : 0;
 }
@@ -555,13 +715,16 @@ function wallOutcome(
     extra?: Record<string, string>;
     /** A crash whatever the speed (a rider up on a ramp truck riding into its body). */
     crash?: boolean;
+    /** Never a crash, only a wobble (a fence that held: off-road, run W-R). */
+    noCrash?: boolean;
   },
 ): void {
   const { impact, v, yawBefore, side } = hit;
   const crashAt = world.params['riders.crashImpactMps'] ?? 6;
   const unstable = (st.wobble[m.id] ?? 0) > 0;
   const crashes =
-    hit.crash === true || impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION);
+    hit.noCrash !== true &&
+    (hit.crash === true || impact >= crashAt || (unstable && impact >= crashAt * UNSTABLE_CRASH_FRACTION));
   const data = { cause: 'barrier', speed: v, impactMps: impact, yaw: yawBefore, side, ...hit.extra };
   if (crashes) {
     st.wobble[m.id] = 0;
@@ -690,9 +853,12 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const v = m.speed;
   const boostLeft = st.boost[m.id] ?? 0;
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const ownTop = topSpeedOf(world, config, bike.topSpeedMps);
+  // The ground under the wheels (off-road, run W-R): its speed scales the top speed and the push,
+  // its grip the steering; 1 and 1 on the road, and with the off-road switch off.
+  const feel = groundFeel(config, world.params, m);
+  const ownTop = topSpeedOf(world, config, bike.topSpeedMps) * feel.speed;
   const top = ownTop + boostTop;
-  const a = bike.accelMps2 * accelScale * m2;
+  const a = bike.accelMps2 * accelScale * m2 * feel.speed;
   const fade = clamp(1 - v / (ownTop * LAUNCH_FADE_SHARE), 0, 1);
   const open =
     def.controller.kind === 'player'
@@ -714,7 +880,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   m.speed = Math.max(0, v + accel * dt);
 
   // Lateral: steering asks for a heading offset; the road turning under the bike pulls it.
-  const authority = wobble > 0 ? WOBBLE_STEER : 1;
+  const authority = (wobble > 0 ? WOBBLE_STEER : 1) * feel.grip;
   const maxYaw = maxYawAt(bike.steerRateMps, m.speed, steerScale);
   const assist = assistYaw(config, m, slotAssists(config, slotOf(def)).steer, maxYaw);
   const asked = steer * authority * maxYaw;
@@ -986,8 +1152,6 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   }
 }
 
-const CONTACT_RULES = { wobbleTicks: WOBBLE_TICKS, limits: barrierLimits };
-
 export const ridersSystem: SimSystem = {
   name: 'riders',
   init(world: World, config: SimConfig) {
@@ -1024,6 +1188,10 @@ export const ridersSystem: SimSystem = {
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
       else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
     }
-    riderContacts(world, config, st, CONTACT_RULES);
+    // Bumps stop where riding does (the verge's edge with off-road on), never back on the road.
+    riderContacts(world, config, st, {
+      wobbleTicks: WOBBLE_TICKS,
+      limits: (c, edge, s, d) => riderLimits(world, c, edge, s, d),
+    });
   },
 };
