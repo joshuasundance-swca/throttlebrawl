@@ -45,6 +45,7 @@ import {
   type EngineSoundSpec,
   type EngineVoice,
 } from './engine-patch';
+import { createEngineFeel, ENGINE_FEEL_DEFAULTS, type FeelOutput } from './engine-feel';
 import { createMusic, type MusicLoop } from './music';
 import {
   createRadioPlayer,
@@ -61,6 +62,7 @@ import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
 
 export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
+export { ENGINE_FEEL_DEFAULTS } from './engine-feel';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
 export { SLOWMO_DEFAULTS } from './slowmo';
@@ -85,6 +87,15 @@ export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
  * it sat about 4 dB under it.
  */
 export const VOICE_DEFAULTS = { duck: 0.7, fxDuck: 0.75, gain: 2 } as const;
+/**
+ * Engine levels on the effects bus, before the `audio.engineGain` slider [default]. Playtest 2
+ * (2026-10-02: "Engine monotonous and maybe too loud", then "Richer and quieter"): measured offline
+ * at the default volumes (tests/e2e/audio-mix.spec.ts), the player's engine flat out sat about
+ * 15 dB over the music at 0.5; at 0.15 it sits about 4.5 dB over it, and a cruising engine about
+ * level with it. Other riders' engines are a little louder than yours up close, so a rival passing
+ * is heard.
+ */
+export const ENGINE_LEVELS = { player: 0.15, other: 0.16, pops: 1 } as const;
 
 /** Presentation-only tuning (applies at once, never recorded; docs/architecture.md, "Tuning"). */
 export const AUDIO_TUNING: readonly TuningParamDecl[] = [
@@ -94,9 +105,32 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     label: 'Engine level',
     default: 1,
     min: 0,
-    max: 2,
+    max: 4, // 3.3 is the level before playtest 2
     step: 0.05,
     unit: '',
+    affectsSim: false,
+  },
+  // Playtest 2 ("Richer and quieter"): the decel pops and the gear-shift feel (engine-feel.ts).
+  {
+    id: 'audio.enginePops',
+    group: 'audio',
+    label: 'Engine: decel pops (0 = off)',
+    default: ENGINE_LEVELS.pops,
+    min: 0,
+    max: 2,
+    step: 0.1,
+    unit: '',
+    affectsSim: false,
+  },
+  {
+    id: 'audio.shiftFloorRpm',
+    group: 'audio',
+    label: 'Engine: heard rpm after an upshift',
+    default: ENGINE_FEEL_DEFAULTS.shiftFloorRpm,
+    min: 1200,
+    max: 9000,
+    step: 100,
+    unit: 'rpm',
     affectsSim: false,
   },
   {
@@ -356,6 +390,8 @@ export interface AudioInspect {
   lastCues: { cue: CueId; at: number }[];
   playerEngineHz: number;
   playerEngineLevel: number;
+  /** The engine's feel on the last frame (engine-feel.ts) and its counts this session. */
+  engineFeel: { rpm: number; load: number; level: number; shifts: number; revs: number; pops: number };
   /** Entity ids of the other riders whose engines are playing. */
   otherEngines: number[];
   sirenLevel: number;
@@ -479,6 +515,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let muted = false;
   const params = {
     engineGain: 1,
+    enginePops: ENGINE_LEVELS.pops as number,
     cueGain: 1,
     maxVoices: 32,
     dopplerScale: 1,
@@ -532,6 +569,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let engineSounds: Readonly<Record<string, EngineSoundSpec>> = {};
   const pool = new VoicePool(params.maxVoices);
   let playerEngine: Held<EngineVoice> | null = null;
+  const feel = createEngineFeel();
+  let lastFeel: FeelOutput | null = null;
+  const feelCounts = { shifts: 0, revs: 0, pops: 0 };
   const others = new Map<number, Held<EngineVoice>>();
   let siren: Held<SirenVoice> | null = null;
   const lastHonk = new Map<number, number>();
@@ -785,15 +825,33 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
 
   const drivePlayer = (
     g: Graph,
-    me: Pick<EntitySnapshot, 'rpm' | 'throttle'> & Partial<Pick<EntitySnapshot, 'mode' | 'contentId'>>,
+    me: Pick<EntitySnapshot, 'rpm' | 'throttle'> &
+      Partial<Pick<EntitySnapshot, 'mode' | 'contentId' | 'gear'>>,
     hitStop: boolean,
   ) => {
     const held = engineFor(g, me.contentId ?? 'player');
     if (!held) return;
     const down = me.mode === 'Tumble' || me.mode === 'OnFoot';
-    held.voice.set(down ? { rpm: 0, throttle: 0 } : { rpm: me.rpm, throttle: me.throttle });
-    held.voice.setLevel(0.5 * params.engineGain * (down ? 0.3 : 1) * (hitStop ? 0.3 : 1));
+    const now = g.ctx.currentTime;
+    // Gears, revs and pops (engine-feel.ts); a hit-stop holds the engine where it is.
+    const f =
+      hitStop && lastFeel
+        ? { ...lastFeel, pops: [] }
+        : feel.step({ t: now, rpm: me.rpm, gear: me.gear ?? 0, throttle: me.throttle, down });
+    lastFeel = f;
+    if (f.shift) feelCounts.shifts++;
+    if (f.rev) feelCounts.revs++;
+    held.voice.set({ rpm: f.rpm, throttle: f.load });
+    held.voice.setLevel(
+      ENGINE_LEVELS.player * params.engineGain * f.level * (down ? 0.3 : 1) * (hitStop ? 0.3 : 1),
+    );
     held.voice.setDoppler(g.slowmo.pitch());
+    if (params.enginePops > 0) {
+      for (const pop of f.pops) {
+        held.voice.pop(now + pop.delayS, pop.size * params.enginePops);
+        feelCounts.pops++;
+      }
+    }
   };
 
   const silenceScene = (g: Graph) => {
@@ -875,7 +933,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         others.set(id, (held = h));
       }
       held.voice.set({ rpm: e.rpm, throttle: e.throttle });
-      held.voice.setLevel(0.35 * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
+      held.voice.setLevel(ENGINE_LEVELS.other * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
       held.voice.setDoppler(pitch * dopplerFactor(listener, moving(e), params.dopplerScale));
     }
 
@@ -986,6 +1044,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         case 'audio.cueGain':
           params.cueGain = value;
           break;
+        case 'audio.enginePops':
+          params.enginePops = Math.max(0, value);
+          break;
+        case 'audio.shiftFloorRpm':
+          feel.setParams({ shiftFloorRpm: value });
+          break;
         case 'audio.maxVoices':
           params.maxVoices = value;
           pool.setMax(value);
@@ -1069,6 +1133,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       lastCues: lastCues.slice(),
       playerEngineHz: playerEngine?.voice.hz() ?? 0,
       playerEngineLevel: playerEngine?.voice.level() ?? 0,
+      engineFeel: {
+        rpm: lastFeel?.rpm ?? 0,
+        load: lastFeel?.load ?? 0,
+        level: lastFeel?.level ?? 1,
+        ...feelCounts,
+      },
       otherEngines: [...others.keys()].sort((a, b) => a - b),
       sirenLevel: siren?.voice.level() ?? 0,
       musicPlaying: graph?.music.playing() ?? false,

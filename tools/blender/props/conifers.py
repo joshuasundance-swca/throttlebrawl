@@ -90,7 +90,8 @@ def main():
         mb = _lib.MB(["foliage", "foliage_dark"])
         build_boughs(mb, p, rng)
         mb.build(f"{p['name']}_boughs", mats, root)
-    _lib.export(out)
+    # Faceted: the game rebuilds each face's normal from its corners (models.ts), so none ship.
+    _lib.export(out, normals=False)
 
 
 main()

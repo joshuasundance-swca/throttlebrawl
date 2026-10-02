@@ -13,6 +13,7 @@ export type KeyAction =
   | 'attackLeft'
   | 'attackRight'
   | 'kick'
+  | 'kickStraight'
   | 'lookBack'
   | 'skipRunBack'
   | 'cycleCamera';
@@ -29,6 +30,8 @@ export const DEFAULT_KEY_MAP: KeyMap = {
   attackLeft: ['KeyU'],
   attackRight: ['KeyO'],
   kick: ['KeyK'],
+  // Playtest 2's straight kick at the rider ahead: I, between U and O. [default]
+  kickStraight: ['KeyI'],
   lookBack: ['KeyL'],
   skipRunBack: ['Space'],
   cycleCamera: ['KeyC'],
@@ -43,7 +46,8 @@ export const KEY_ACTION_NAMES: Readonly<Record<KeyAction, string>> = {
   attack: 'punch',
   attackLeft: 'punch left',
   attackRight: 'punch right',
-  kick: 'kick',
+  kick: 'kick (hold U or O: to that side)',
+  kickStraight: 'straight kick, at the rider ahead',
   lookBack: 'look back',
   skipRunBack: 'skip the run back',
   cycleCamera: 'change view',
@@ -56,6 +60,7 @@ const LEGEND_ORDER: readonly KeyAction[] = [
   'steerLeft',
   'steerRight',
   'kick',
+  'kickStraight',
   'attack',
   'attackLeft',
   'attackRight',
@@ -153,12 +158,14 @@ export class KeyboardState {
       this.pressedNow('attack') ||
       this.pressedNow('attackLeft') ||
       this.pressedNow('attackRight') ||
-      this.pressedNow('kick')
+      this.pressedNow('kick') ||
+      this.pressedNow('kickStraight')
     )
       a.attack = true;
     if (this.active('attackLeft')) a.attackSide = -1;
     if (this.active('attackRight')) a.attackSide = 1;
     if (this.active('kick')) a.kick = true;
+    if (this.active('kickStraight')) a.kickStraight = true;
     if (this.active('lookBack')) a.lookBack = true;
     if (this.active('skipRunBack')) a.skipRunBack = true;
     if (this.pressedNow('cycleCamera')) a.cycleCamera = true;
