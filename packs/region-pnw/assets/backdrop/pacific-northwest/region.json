@@ -1,0 +1,300 @@
+{
+  "formatVersion": 1,
+  "region": "pacific-northwest",
+  "hazeM": 34000,
+  "hazeMax": 0.72,
+  "floorColour": "#3e5446",
+  "pieces": [
+    {
+      "id": "cascades",
+      "kind": "ridge",
+      "path": [
+        [49.0, -121.3, 2300],
+        [48.75, -121.25, 2500],
+        [48.45, -121.15, 2400],
+        [48.1, -121.15, 2200],
+        [47.75, -121.25, 2000],
+        [47.4, -121.35, 1900],
+        [47.05, -121.45, 1900],
+        [46.65, -121.5, 2100],
+        [46.25, -121.65, 1900],
+        [45.85, -121.75, 1700],
+        [45.45, -121.85, 1600]
+      ],
+      "heightM": [1200, 2300],
+      "profile": "peaks",
+      "colour": "#4f5f68",
+      "snowM": 1700,
+      "exaggerate": 1.4,
+      "maxDistM": 220000
+    },
+    {
+      "id": "olympics",
+      "kind": "ridge",
+      "path": [
+        [48.02, -124.1, 1500],
+        [47.92, -123.75, 2100],
+        [47.83, -123.5, 2300],
+        [47.76, -123.3, 2200],
+        [47.68, -123.16, 2000],
+        [47.57, -123.18, 1900],
+        [47.47, -123.3, 1700],
+        [47.38, -123.5, 1400]
+      ],
+      "heightM": [900, 2300],
+      "profile": "peaks",
+      "colour": "#4a5961",
+      "snowM": 1500,
+      "exaggerate": 1.6
+    },
+    {
+      "id": "rainier",
+      "kind": "peak",
+      "at": [46.8529, -121.7604],
+      "heightM": 4392,
+      "radiusM": 13000,
+      "shape": "cone",
+      "craterShare": 0.07,
+      "colour": "#5b6670",
+      "snowAbove": 0.38,
+      "exaggerate": 2.0
+    },
+    {
+      "id": "baker",
+      "kind": "peak",
+      "at": [48.7768, -121.8144],
+      "heightM": 3286,
+      "radiusM": 10000,
+      "shape": "cone",
+      "colour": "#5b6670",
+      "snowAbove": 0.42,
+      "exaggerate": 1.5
+    },
+    {
+      "id": "hood",
+      "kind": "peak",
+      "at": [45.3736, -121.696],
+      "heightM": 3429,
+      "radiusM": 9000,
+      "shape": "cone",
+      "craterShare": 0.03,
+      "colour": "#5b6670",
+      "snowAbove": 0.45,
+      "exaggerate": 1.6
+    },
+    {
+      "id": "st-helens",
+      "kind": "peak",
+      "at": [46.1914, -122.1956],
+      "heightM": 2549,
+      "radiusM": 9000,
+      "shape": "cone",
+      "craterShare": 0.22,
+      "colour": "#66707a",
+      "snowAbove": 0.6,
+      "exaggerate": 1.5
+    },
+    {
+      "id": "adams",
+      "kind": "peak",
+      "at": [46.2024, -121.4909],
+      "heightM": 3743,
+      "radiusM": 12000,
+      "shape": "dome",
+      "colour": "#5b6670",
+      "snowAbove": 0.45,
+      "exaggerate": 1.5
+    },
+    {
+      "id": "gorge-north-wall",
+      "kind": "ridge",
+      "networks": ["osm-pnw-gorge"],
+      "path": [
+        [45.572, -122.36, 280],
+        [45.583, -122.3, 330],
+        [45.594, -122.24, 420],
+        [45.603, -122.18, 520],
+        [45.616, -122.12, 600],
+        [45.628, -122.06, 700],
+        [45.642, -121.99, 760],
+        [45.655, -121.93, 800]
+      ],
+      "heightM": [200, 800],
+      "profile": "mesa",
+      "colour": "#3f4f45",
+      "falls": 2,
+      "clearcuts": 0.08,
+      "clearcutColour": "#7d7a52",
+      "keepOutM": 900
+    },
+    {
+      "id": "gorge-south-wall",
+      "kind": "ridge",
+      "networks": ["osm-pnw-gorge"],
+      "path": [
+        [45.562, -122.16, 330],
+        [45.571, -122.12, 380],
+        [45.579, -122.08, 420],
+        [45.59, -122.04, 460],
+        [45.602, -121.99, 500],
+        [45.614, -121.95, 520]
+      ],
+      "heightM": [250, 520],
+      "profile": "mesa",
+      "colour": "#435446",
+      "falls": 4,
+      "keepOutM": 900
+    },
+    {
+      "id": "larch-mountain",
+      "kind": "peak",
+      "networks": ["osm-pnw-gorge"],
+      "at": [45.5293, -122.087],
+      "heightM": 1230,
+      "radiusM": 5000,
+      "shape": "dome",
+      "colour": "#3d4d42"
+    },
+    {
+      "id": "beacon-rock",
+      "kind": "peak",
+      "networks": ["osm-pnw-gorge"],
+      "at": [45.6285, -122.0217],
+      "heightM": 260,
+      "radiusM": 260,
+      "shape": "rock",
+      "colour": "#4a514a",
+      "exaggerate": 1.3
+    },
+    {
+      "id": "columbia-river",
+      "kind": "floor",
+      "surface": "water",
+      "networks": ["osm-pnw-gorge"],
+      "area": [
+        [45.56, -122.42],
+        [45.572, -122.3],
+        [45.574, -122.22],
+        [45.583, -122.15],
+        [45.598, -122.08],
+        [45.618, -122.0],
+        [45.636, -121.92],
+        [45.646, -121.92],
+        [45.628, -122.0],
+        [45.606, -122.08],
+        [45.592, -122.15],
+        [45.585, -122.22],
+        [45.583, -122.3],
+        [45.575, -122.42]
+      ],
+      "colour": "#5a7570"
+    },
+    {
+      "id": "river-tug",
+      "kind": "vessels",
+      "style": "tug",
+      "networks": ["osm-pnw-gorge"],
+      "path": [
+        [45.579, -122.26],
+        [45.6, -122.06]
+      ],
+      "periodS": 2400,
+      "exaggerate": 2,
+      "colour": "#7a2f2a"
+    },
+    {
+      "id": "lummi-island",
+      "kind": "ridge",
+      "networks": ["osm-pnw-chuckanut"],
+      "path": [
+        [48.735, -122.705, 450],
+        [48.7, -122.68, 520],
+        [48.665, -122.665, 430],
+        [48.64, -122.655, 250]
+      ],
+      "heightM": [200, 520],
+      "profile": "rolling",
+      "colour": "#3c5145",
+      "clearcuts": 0.12
+    },
+    {
+      "id": "san-juans",
+      "kind": "ridge",
+      "networks": ["osm-pnw-chuckanut"],
+      "path": [
+        [48.7, -122.95, 350],
+        [48.6, -122.9, 300],
+        [48.52, -122.85, 280]
+      ],
+      "heightM": [150, 350],
+      "profile": "rolling",
+      "colour": "#52665c"
+    },
+    {
+      "id": "orcas-summit",
+      "kind": "peak",
+      "networks": ["osm-pnw-chuckanut"],
+      "at": [48.6795, -122.832],
+      "heightM": 734,
+      "radiusM": 3500,
+      "shape": "dome",
+      "colour": "#455a50"
+    },
+    {
+      "id": "chuckanut-foothills",
+      "kind": "ridge",
+      "networks": ["osm-pnw-chuckanut"],
+      "path": [
+        [48.58, -122.4, 600],
+        [48.62, -122.36, 700],
+        [48.67, -122.33, 800],
+        [48.72, -122.32, 900],
+        [48.76, -122.3, 800]
+      ],
+      "heightM": [400, 900],
+      "profile": "rolling",
+      "colour": "#334a3a",
+      "clearcuts": 0.3,
+      "clearcutColour": "#8a8457",
+      "keepOutM": 900
+    },
+    {
+      "id": "bellingham-bay",
+      "kind": "floor",
+      "surface": "water",
+      "networks": ["osm-pnw-chuckanut"],
+      "area": [
+        [48.6, -122.7],
+        [48.75, -122.7],
+        [48.76, -122.52],
+        [48.72, -122.5],
+        [48.66, -122.495],
+        [48.6, -122.5]
+      ],
+      "colour": "#587068"
+    },
+    {
+      "id": "outbound-ferry",
+      "kind": "vessels",
+      "style": "ferry",
+      "networks": ["osm-pnw-chuckanut"],
+      "path": [
+        [48.718, -122.53],
+        [48.655, -122.63]
+      ],
+      "periodS": 1500,
+      "exaggerate": 2.2
+    },
+    {
+      "id": "low-cloud",
+      "kind": "clouds",
+      "style": "bank",
+      "count": 5,
+      "distanceM": [6000, 22000],
+      "baseM": 350,
+      "topM": [700, 1100],
+      "colour": "#d2d8d4",
+      "shadeColour": "#a9b2ae"
+    }
+  ]
+}

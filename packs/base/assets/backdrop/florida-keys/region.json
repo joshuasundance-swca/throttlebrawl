@@ -1,0 +1,115 @@
+{
+  "formatVersion": 1,
+  "region": "florida-keys",
+  "hazeM": 38000,
+  "hazeMax": 0.75,
+  "floorColour": "#2aa7a4",
+  "pieces": [
+    {
+      "id": "seven-mile-bridge",
+      "kind": "bridge",
+      "style": "girder",
+      "from": [24.7065, -81.15],
+      "to": [24.6585, -81.247],
+      "deckM": 24,
+      "humpAt": 0.43,
+      "humpM": 22,
+      "pierEveryM": 150,
+      "colour": "#9c968a",
+      "exaggerate": 2.0,
+      "keepOutM": 600
+    },
+    {
+      "id": "old-seven-mile-bridge",
+      "kind": "bridge",
+      "style": "girder",
+      "from": [24.709, -81.1478],
+      "to": [24.661, -81.2455],
+      "deckM": 14,
+      "pierEveryM": 110,
+      "gaps": [[0.41, 0.46]],
+      "colour": "#8f8778",
+      "exaggerate": 1.8,
+      "keepOutM": 600
+    },
+    {
+      "id": "reef-light-east",
+      "kind": "lighthouse",
+      "at": [24.6276, -81.1105],
+      "heightM": 43,
+      "exaggerate": 3.5,
+      "colour": "#4f453c",
+      "lanternColour": "#f3efe2"
+    },
+    {
+      "id": "reef-light-west",
+      "kind": "lighthouse",
+      "at": [24.525, -81.5194],
+      "heightM": 33,
+      "exaggerate": 3.5,
+      "colour": "#4f453c",
+      "lanternColour": "#f3efe2"
+    },
+    {
+      "id": "mangrove-islands",
+      "kind": "islands",
+      "count": 14,
+      "distanceM": [900, 4500],
+      "widthM": [160, 800],
+      "heightM": [12, 20],
+      "exaggerate": 2.2,
+      "colour": "#2d5a3c",
+      "keepOutM": 700
+    },
+    {
+      "id": "far-keys",
+      "kind": "islands",
+      "count": 8,
+      "distanceM": [9000, 20000],
+      "widthM": [600, 2500],
+      "heightM": [8, 12],
+      "exaggerate": 2.5,
+      "colour": "#3c6a4c"
+    },
+    {
+      "id": "sailboats",
+      "kind": "vessels",
+      "style": "sailboat",
+      "count": 9,
+      "distanceM": [900, 4000],
+      "exaggerate": 3,
+      "colour": "#f2f0ea"
+    },
+    {
+      "id": "hawk-channel-freighters",
+      "kind": "vessels",
+      "style": "container",
+      "count": 2,
+      "distanceM": [14000, 26000],
+      "exaggerate": 2,
+      "colours": ["#9b4a3c", "#3f6c8a", "#c9a24a", "#5e7d5a", "#b8b3a8"]
+    },
+    {
+      "id": "thunderheads",
+      "kind": "clouds",
+      "style": "thunderhead",
+      "count": 4,
+      "distanceM": [24000, 42000],
+      "baseM": 700,
+      "topM": [6500, 10000],
+      "colour": "#fffaf2",
+      "shadeColour": "#8d97a8"
+    },
+    {
+      "id": "fair-weather-banks",
+      "kind": "clouds",
+      "style": "bank",
+      "count": 6,
+      "distanceM": [12000, 30000],
+      "baseM": 600,
+      "topM": [1400, 2200],
+      "colour": "#fbf7ef",
+      "shadeColour": "#b9c0c8"
+    }
+  ]
+}
