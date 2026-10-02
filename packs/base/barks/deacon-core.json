@@ -302,11 +302,21 @@
       "text": "Forty days of rain. I've read this one.",
       "audioAsset": "audio/barks/deacon-core/deacon-start-pnw-flood",
       "audioStatus": "live"
+    },
+    {
+      "id": "deacon-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Rest here, sinner. The road won't."
+    },
+    {
+      "id": "deacon-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Pray on it. From the gravel."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "deacon-start-ditch is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
+    "notes": "deacon-start-ditch is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -167,8 +167,9 @@ const pieceOf = (e: SimEvent) => String(e.data['piece']);
 
 describe('road set pieces (W-P events)', () => {
   it('every piece goes live, does its job and ends as the bot rides the race', () => {
-    // The lot cop waits (a long spawn delay), so it is the speed trap that brings him out.
-    const run = ride(config(3, ALL, { 'cops.spawnDelayS': 600 }));
+    // The lot cop waits (a long spawn delay) and nobody patrols (playtest 2's patrol off), so it is
+    // the speed trap that brings him out.
+    const run = ride(config(3, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }));
     const started = run.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
     const ended = run.events.filter((e) => e.type === 'modifierEnd').map(pieceOf);
     console.log(
@@ -205,7 +206,8 @@ describe('road set pieces (W-P events)', () => {
     let trapSeed = tripped(run) ? 3 : -1;
     for (const seed of [1, 2, 5, 9, 10]) {
       if (trapSeed >= 0) break;
-      if (tripped(ride(config(seed, ALL, { 'cops.spawnDelayS': 600 })))) trapSeed = seed;
+      if (tripped(ride(config(seed, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }))))
+        trapSeed = seed;
     }
     console.log(`[print] the speed trap summoned its cop on seed ${trapSeed}`);
     expect(trapSeed, 'the speed trap summons its cop').toBeGreaterThan(0);

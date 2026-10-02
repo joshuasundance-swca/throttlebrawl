@@ -185,6 +185,16 @@ describe('riders-5: style scoring', () => {
     expect(second[0]?.data['combo']).toBe(2);
   });
 
+  it('a domino takedown (W-Q) scores in the combo and passes its chain length on', () => {
+    const h = harness(styledConfig());
+    ride(h.player, 1.7, 30);
+    h.step([ev('takedown', h.player.id, { kind: 'traffic' }, { target: h.rival.id })]);
+    const domino = h.step([
+      ev('takedown', h.player.id, { kind: 'traffic', domino: 2 }, { target: h.rival.id }),
+    ]);
+    expect(domino[0]?.data).toMatchObject({ kind: 'takedownCombo', combo: 2, domino: 2, points: 200 });
+  });
+
   it('takedowns more than 5 s of world time apart start a new combo', () => {
     const h = harness(styledConfig());
     ride(h.player, 1.7, 30);

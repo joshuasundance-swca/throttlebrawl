@@ -86,7 +86,11 @@ describe('app: regions', () => {
       [...types.keys()].some((k) => k.startsWith('region-sf:')),
       'no other region',
     ).toBe(false);
-    expect(copIds(ALL, 'region-pnw:pnw-fogline-run')).toEqual(['region-pnw:deputy-lindqvist']);
+    // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, from the region's pool.
+    expect(new Set(copIds(ALL, 'region-pnw:pnw-fogline-run'))).toEqual(
+      new Set(['region-pnw:deputy-lindqvist']),
+    );
+    expect(copIds(ALL, 'region-pnw:pnw-fogline-run')).toHaveLength(4);
   });
 
   it('a San Francisco race: its route, locals, Officer Meter and cable cars', () => {
