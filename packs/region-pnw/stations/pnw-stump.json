@@ -1,0 +1,102 @@
+{
+  "type": "station",
+  "id": "pnw-stump",
+  "name": "Stump Radio 1240 AM",
+  "genre": "stoner",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "old-growth-riff",
+      "title": "Old Growth Riff",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 74,
+          "key": "D",
+          "progression": "doom"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "nurse-log",
+      "title": "Nurse Log",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 66,
+          "key": "C",
+          "progression": "desert"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "clearcut-sunrise",
+      "title": "Clearcut Sunrise",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 82,
+          "key": "E",
+          "progression": "haze"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "logging-road-sabbath",
+      "title": "Logging Road Sabbath",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 70,
+          "key": "F#",
+          "progression": "tritone"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "hemlock-haze",
+      "title": "Hemlock Haze",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 78,
+          "key": "G",
+          "progression": "haze"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "sasquatch-has-notes",
+      "title": "Sasquatch Has Notes",
+      "procedural": {
+        "preset": "stoner-band",
+        "params": {
+          "bpm": 86,
+          "key": "D",
+          "progression": "doom"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Code-made stoner rock (src/audio/radio-compose-more.ts, preset stoner-band): a two-bar fuzz riff, a doubled bass, half-time drums and a wah solo. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

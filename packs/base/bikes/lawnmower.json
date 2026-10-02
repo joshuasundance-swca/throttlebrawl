@@ -1,0 +1,26 @@
+{
+  "type": "bike",
+  "id": "lawnmower",
+  "name": "Riding Lawnmower",
+  "class": "lawnmower",
+  "tags": ["secret", "joke"],
+  "handling": {
+    "topSpeedMps": 8.0,
+    "accelMps2": 1.8,
+    "brakeMps2": 5.0,
+    "steerRateMps": 4.0,
+    "massKg": 220
+  },
+  "engineSound": {
+    "preset": "mower-putt"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A secret joke ride: about 18 mph. The Pacific Northwest boss's prize, from a logger who mows his own clear-cut.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

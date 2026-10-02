@@ -24,7 +24,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import type { SimEvent } from '../../src/sim/api';
+import type { SimConfig, SimEvent } from '../../src/sim/api';
 import { huntsByDefault, resolveProfile } from '../../src/sim/ai';
 import { createSimWithWorld } from '../../src/sim/create';
 import { noteGrudge } from '../../src/sim/world';
@@ -40,6 +40,8 @@ const NEAR_M = 40;
  */
 const AB_SEED_POOL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const AB_RACES = 6;
+/** Roadside weapon spacing for the A/B (see grudgeRun), m. */
+const SPARSE_PICKUPS_M = 2000;
 const AB_WINDOW_TICKS = 60 * 60;
 const AB_CLOSE_M = 6;
 
@@ -53,7 +55,15 @@ const plainHunter = (style: string, quirks: boolean): boolean =>
  * swings at the player and the seconds it rode within AB_CLOSE_M of them over the next 60 s.
  */
 function grudgeRun(seed: number, grudge: boolean) {
-  const { config, playerId, route } = createBatchRace(seed);
+  const race = createBatchRace(seed);
+  const { playerId, route } = race;
+  // This measures the grudge, not the roadside weapons: W-Q laid one every 500 m (it was three a
+  // race), and rivals holding them reshuffled this 6-race A/B (10 swings without, 9 with). One per
+  // 2 km keeps about the old three on the batch's roads.
+  const config: SimConfig = {
+    ...race.config,
+    tuning: { ...race.config.tuning, 'combat.pickupSpacingM': SPARSE_PICKUPS_M },
+  };
   const quirks = (config.tuning['ai.styleQuirks'] ?? 0) >= 0.5;
   const { sim, world } = createSimWithWorld(config);
   const bot = createBot();

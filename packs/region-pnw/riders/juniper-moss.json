@@ -12,8 +12,8 @@
     "massKg": 64,
     "healthMax": 90,
     "skill": 0.65,
-    "toughness": 0.9,
-    "power": 0.95
+    "toughness": 0.95,
+    "power": 0.9
   },
   "personality": {
     "style": "weaver",

@@ -72,6 +72,20 @@ export function stylePop(e: SimEvent): StylePop | null {
   return { kind, word, points: typeof points === 'number' && Number.isFinite(points) ? points : null };
 }
 
+/**
+ * The 'found it' stamp (W-Q): a player's first time off a shortcut this race, with the seconds it
+ * saved (`shortcutFound`'s data.savedS), as its own chip: `FOUND IT -2.4 S`. Null for anything else.
+ */
+export function foundPop(e: SimEvent): StylePop | null {
+  if (e.type !== 'shortcutFound') return null;
+  const saved = e.data['savedS'];
+  const word =
+    typeof saved === 'number' && Number.isFinite(saved) && saved > 0
+      ? `FOUND IT -${saved.toFixed(1)} S`
+      : 'FOUND IT';
+  return { kind: 'found', word, points: null };
+}
+
 /** A style event's pop-up in one line, such as `NEAR MISS +$50`, or null for anything else. */
 export function styleText(e: SimEvent): string | null {
   const pop = stylePop(e);
@@ -238,6 +252,9 @@ export function createRaceTally(): RaceTally {
           const points = e.data['points'];
           if (typeof points === 'number' && Number.isFinite(points)) summed += points;
           const pop = stylePop(e);
+          if (pop) popups.push(pop);
+        } else if (e.type === 'shortcutFound') {
+          const pop = foundPop(e);
           if (pop) popups.push(pop);
         }
       }

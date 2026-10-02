@@ -15,9 +15,21 @@
   ],
   "tags": [
     { "s0": 0, "s1": 785.61722838258, "side": "both", "tag": "marina" },
-    { "s0": 300, "s1": 785.61722838258, "side": "right", "tag": "water-shallow" }
+    { "s0": 300, "s1": 785.61722838258, "side": "right", "tag": "water-shallow" },
+    { "s0": 0, "s1": 785.61722838258, "side": "both", "tag": "key-fishing" }
   ],
-  "features": [{ "kind": "ramp", "id": "boat-ramp", "s0": 400.7974, "s1": 420.7974, "d0": -2.5, "d1": 2.5 }],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "bb-cut-trap-line",
+      "s0": 150,
+      "s1": 190,
+      "d0": 7,
+      "d1": 16,
+      "item": "trap-line"
+    },
+    { "kind": "ramp", "id": "boat-ramp", "s0": 400.7974, "s1": 420.7974, "d0": -2.5, "d1": 2.5 }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

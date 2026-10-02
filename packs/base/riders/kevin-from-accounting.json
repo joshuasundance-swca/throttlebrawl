@@ -11,8 +11,8 @@
     "massKg": 78,
     "healthMax": 105,
     "skill": 0.5,
-    "toughness": 1.05,
-    "power": 1.0
+    "toughness": 0.95,
+    "power": 1.15
   },
   "personality": {
     "style": "grudge-keeper",

@@ -61,17 +61,14 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
   await page.locator('#menu-race').click();
   await raceStarted(page);
   expect(await savedRadio(page)).not.toBe('score');
-  // The race starts on the Keys' first station (playtest 2, 2026-10-02). R three times (the second
-  // station, off, the score): the score is saved at once, without the pause menu or settings.
-  await page.keyboard.press('KeyR');
-  await page.keyboard.press('KeyR');
-  await page.keyboard.press('KeyR');
+  // The race starts on the Keys' first station (playtest 2, 2026-10-02). R four times (the second
+  // and third stations, off, the score): the score is saved at once, without the pause menu or
+  // settings.
+  for (let i = 0; i < 4; i++) await page.keyboard.press('KeyR');
   await expect.poll(() => savedRadio(page), { timeout: 3000 }).toBe('score');
   await expect(page.locator('#pause-screen')).toBeHidden();
-  // R three more times (the first station, the second, then off): off is saved too.
-  await page.keyboard.press('KeyR');
-  await page.keyboard.press('KeyR');
-  await page.keyboard.press('KeyR');
+  // R four more times (the three stations, then off): off is saved too.
+  for (let i = 0; i < 4; i++) await page.keyboard.press('KeyR');
   await expect.poll(() => savedRadio(page), { timeout: 3000 }).toBe('off');
   // Kept across a reload, and the Radio row shows it.
   await page.reload();

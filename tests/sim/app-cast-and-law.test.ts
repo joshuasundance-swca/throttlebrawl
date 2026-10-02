@@ -167,10 +167,14 @@ function castRun(seed: number, quirks: number | null, ticks: number) {
   const { sim, route, playerId, config } = createHeadlessRace({
     seed,
     // Playtest 2's patrol off too: cops waiting on the shoulder count as riders nearby, and this
-    // measures how the rivals ride, not the law.
+    // measures how the rivals ride, not the law. The roadside weapons about as sparse as before W-Q
+    // (one per 2 km, not per 500 m): this measures the styles' riding, and a rider steering over its
+    // preferred weapon sways too (with one every 500 m, Dial-Up's clear-road sway fell under another
+    // rider's, 0.66 against 0.69 m/s).
     tuning: {
       ...NO_ROAD_EVENTS,
       'cops.patrolScale': 0,
+      'combat.pickupSpacingM': 2000,
       ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }),
     },
   });
