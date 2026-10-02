@@ -11,6 +11,14 @@
 //     went down, about the rider credited (one fall is one bark, however many events describe it);
 //   crash with nobody to blame -> `crash-self`, spoken by the rider who crashed;
 //   nearMiss -> `near-miss`, spoken by the rider who scraped past.
+// W-Q (the pitch deck's item 11, "fill the dead air after a crash: rivals riding past heckle you"):
+//   overtake of a rider who is down (in the tumble or on foot) -> `knocked-down-target`, the
+//     heckle, spoken by the rival riding past, about the rider down; with no line to say, the
+//     plain `overtake` as before. [default]
+// W-P road events [default]:
+//   modifierStart -> `modifier-start`, spoken by one of the rivals, to the player, as a road event
+//     (a set piece: roadwork, a parade, a speed trap...) comes up; lines pick their event with a
+//     `modifier.id` (or `modifier.kind`) condition, which the race memory holds from the event.
 // Memory facts for `when` conditions come from the current race (memory.ts). It holds no DOM: the
 // view is injected, so it is unit-tested.
 import { SIM_HZ, type EntitySnapshot, type SimEvent, type SimSnapshot } from '../../sim/api';
@@ -80,8 +88,8 @@ export function createBarkDirector(
     speakers: readonly EntitySnapshot[],
     target: EntitySnapshot | null,
     tick: number,
-  ) => {
-    if (!speakers.length) return;
+  ): boolean => {
+    if (!speakers.length) return false;
     const bark = selector.request({
       trigger,
       speakers: speakers.map((s) => s.contentId),
@@ -100,7 +108,7 @@ export function createBarkDirector(
         });
       },
     });
-    if (!bark) return;
+    if (!bark) return false;
     const who = speakers.find((s) => s.contentId === bark.speaker);
     const shown: ShownBark = {
       contentRef: bark.line.ref,
@@ -113,6 +121,7 @@ export function createBarkDirector(
     };
     view.show(shown);
     options.onShown?.(shown);
+    return true;
   };
 
   return {
@@ -154,6 +163,13 @@ export function createBarkDirector(
             const speaker = byId(e.actor);
             if (!isRival(speaker)) break;
             const target = byId(e.target);
+            const down = isRider(target) && (target.mode === 'Tumble' || target.mode === 'OnFoot');
+            if (
+              e.type === 'overtake' &&
+              down &&
+              say(context, 'knocked-down-target', [speaker], target, e.tick)
+            )
+              break;
             say(
               context,
               e.type === 'hit' ? 'hit-landed' : 'overtake',
@@ -185,6 +201,11 @@ export function createBarkDirector(
           case 'nearMiss': {
             const rider = byId(e.actor);
             if (isRival(rider)) say(context, 'near-miss', [rider], null, e.tick);
+            break;
+          }
+          case 'modifierStart': {
+            const player = entities.find((x) => x.kind === 'rider' && x.slot >= 0);
+            say(context, 'modifier-start', entities.filter(isRival), player ?? null, e.tick);
             break;
           }
           case 'raceEnd':

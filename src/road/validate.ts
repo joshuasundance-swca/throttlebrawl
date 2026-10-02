@@ -5,6 +5,7 @@
 //
 // road-2 adds junctions with connector roads (continuity per connector row, split zones, the
 // traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
+import { lanesPerDirection, MAX_LANES_PER_DIRECTION } from './cross-section';
 import {
   rampTruckShape,
   readConnector,
@@ -25,6 +26,7 @@ export type RoadLintRule =
   | 'features'
   | 'junction-ends'
   | 'lanes'
+  | 'cross-section'
   | 'network'
   | 'connectors'
   | 'jump'
@@ -110,6 +112,78 @@ function smooth(v: readonly number[], i: number, lo: number, hi: number): number
   return sum / n;
 }
 
+/**
+ * The cross-section rules (W-Q; interview, 2026-10-02: 4-6 lane highways, rails only on bridges and
+ * drops): 1 to 3 drive lanes per direction on a two-way section, a median only between two
+ * directions and no wider than the gap their lanes leave, and an explicit `rail` verge edge only
+ * where a rail barrier stands on that side within the section.
+ */
+function lintCrossSection(
+  road: BakedRoad,
+  si: number,
+  add: (rule: RoadLintRule, pointer: string, message: string) => void,
+): void {
+  const sec = road.laneSections[si];
+  if (!sec) return;
+  const at = `/laneSections/${si}`;
+  const { forward, oncoming } = lanesPerDirection(sec.lanes);
+  if (forward > MAX_LANES_PER_DIRECTION || oncoming > MAX_LANES_PER_DIRECTION) {
+    add(
+      'cross-section',
+      `${at}/lanes`,
+      `${forward} drive lanes forward and ${oncoming} oncoming: at most ${MAX_LANES_PER_DIRECTION} each way`,
+    );
+  }
+  if (sec.median) {
+    if (forward === 0 || oncoming === 0) {
+      add('cross-section', `${at}/median`, 'a median needs drive lanes in both directions');
+    } else {
+      // The gap between the innermost lanes of the two directions (lane dCenterM decides it).
+      let fwdLo = Infinity;
+      let fwdHi = -Infinity;
+      let oncLo = Infinity;
+      let oncHi = -Infinity;
+      for (const lane of sec.lanes) {
+        if (lane.kind !== 'drive') continue;
+        const a = lane.dCenterM - lane.widthM / 2;
+        const b = lane.dCenterM + lane.widthM / 2;
+        if (lane.direction === 1) {
+          fwdLo = Math.min(fwdLo, a);
+          fwdHi = Math.max(fwdHi, b);
+        } else {
+          oncLo = Math.min(oncLo, a);
+          oncHi = Math.max(oncHi, b);
+        }
+      }
+      const gap = fwdLo >= oncHi ? fwdLo - oncHi : oncLo - fwdHi;
+      if (gap < sec.median.widthM - 0.05) {
+        add(
+          'cross-section',
+          `${at}/median/widthM`,
+          `median ${sec.median.widthM} m is wider than the ${Math.max(0, gap).toFixed(2)} m gap the lanes leave`,
+        );
+      }
+    }
+  }
+  const next = road.laneSections[si + 1];
+  const s0 = sec.s0;
+  const s1 = next ? next.s0 : road.lengthM;
+  for (const side of ['left', 'right'] as const) {
+    const v = sec.verges?.[side];
+    if (!v || v.edge !== 'rail') continue;
+    const railed = (road.barriers ?? []).some(
+      (b) => b.kind === 'rail' && (b.side === side || b.side === 'both') && b.s0 < s1 && b.s1 > s0,
+    );
+    if (!railed) {
+      add(
+        'cross-section',
+        `${at}/verges/${side}/edge`,
+        `a rail edge needs a rail barrier on the ${side} within ${s0}..${s1} (rails only on bridges and drops)`,
+      );
+    }
+  }
+}
+
 /** Lints one road on its own: samples, curvature, grade, width, lanes, features. */
 export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): RoadLintIssue[] {
   const out: RoadLintIssue[] = [];
@@ -134,6 +208,7 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
       if (!(lane.widthM > 0))
         add('lanes', `/laneSections/${si}/lanes/${li}/widthM`, `width ${lane.widthM} must be > 0`);
     });
+    lintCrossSection(road, si, add);
   });
 
   // Samples: count == n + 1, spacing · n == length, columns present and equal length.
@@ -663,6 +738,22 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
     if (route.mainPath[route.mainPath.length - 1] !== route.finish.road) {
       add('/finish/road', 'the finish is not on the last main-path road');
     }
+    // W-Q: a named branch's roads are allowed roads off the main path, each in one branch only.
+    const branchIds = new Set<string>();
+    const branchOfRoad = new Map<string, string>();
+    (route.branches ?? []).forEach((b, i) => {
+      if (branchIds.has(b.id)) add(`/branches/${i}/id`, `branch ${b.id} is named twice`);
+      branchIds.add(b.id);
+      b.roads.forEach((r, k) => {
+        const ptr = `/branches/${i}/roads/${k}`;
+        if (!byId.has(r)) add(ptr, `unknown road ${r}`);
+        else if (!route.allowedRoads.includes(r)) add(ptr, `branch road ${r} is not in allowedRoads`);
+        if (route.mainPath.includes(r)) add(ptr, `branch road ${r} is on the main path`);
+        const other = branchOfRoad.get(r);
+        if (other !== undefined && other !== b.id) add(ptr, `road ${r} is in branches ${other} and ${b.id}`);
+        branchOfRoad.set(r, b.id);
+      });
+    });
   }
   return out;
 }

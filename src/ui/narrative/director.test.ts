@@ -127,6 +127,57 @@ describe('bark director', () => {
   });
 });
 
+describe('bark director: W-Q heckles (rivals riding past you while you are down)', () => {
+  const withHeckle = () =>
+    barkLinesFrom({
+      'base:deacon-core': {
+        type: 'bark-set',
+        id: 'deacon-core',
+        defaults: { speaker: 'deacon-vane', cooldownS: 90 },
+        lines: [
+          { id: 'deacon-pass', trigger: 'overtake', text: 'Get thee behind me. Stay there.' },
+          {
+            id: 'deacon-heckle',
+            trigger: 'knocked-down-target',
+            text: 'Kneel if you like. I will not wait.',
+          },
+        ],
+      },
+    });
+  const downSnap = (mode: string) =>
+    ({
+      tick: 0,
+      entities: ENTITIES.map((e) => (e.id === 2 ? ({ ...e, mode } as EntitySnapshot) : e)),
+    }) as unknown as SimSnapshot;
+
+  it('an overtake of a player who is down is a heckle; riding, the plain overtake line', () => {
+    for (const [mode, line] of [
+      ['Tumble', '#deacon-heckle'],
+      ['OnFoot', '#deacon-heckle'],
+      ['Road', '#deacon-pass'],
+    ] as const) {
+      const { view, shown } = fakeView();
+      createBarkDirector(createBarkSelector(withHeckle()), view).onEvents([ev(600, 'overtake', 0, 2)], {
+        snapshot: downSnap(mode),
+        seed: 1,
+      });
+      expect(
+        shown.map((b) => b.contentRef.slice(b.contentRef.indexOf('#'))),
+        mode,
+      ).toEqual([line]);
+    }
+  });
+
+  it('with no heckle to say, the overtake line as before', () => {
+    const { view, shown } = fakeView();
+    createBarkDirector(createBarkSelector(pool()), view).onEvents([ev(600, 'overtake', 0, 2)], {
+      snapshot: downSnap('Tumble'),
+      seed: 1,
+    });
+    expect(shown.map((b) => b.contentRef)).toEqual(['base:bark-set/deacon-core#deacon-pass']);
+  });
+});
+
 describe('bark director: M2 triggers', () => {
   const evd = (
     tick: number,
@@ -251,5 +302,57 @@ describe('bark director: M2 triggers', () => {
     });
     d.onEvents([evd(600, 'nearMiss', 0, 9, {})], { snapshot: SNAP, seed: 1 });
     expect(seen).toEqual(['base:bark-set/deacon-core#deacon-near']);
+  });
+});
+
+describe('bark director: road events (W-P)', () => {
+  const roadPool = () =>
+    barkLinesFrom({
+      'base:road-events-keys': {
+        type: 'bark-set',
+        id: 'road-events-keys',
+        defaults: { speaker: 'kevin-from-accounting', cooldownS: 45 },
+        lines: [
+          {
+            id: 'kevin-roadwork',
+            trigger: 'modifier-start',
+            when: [{ fact: 'modifier.id', op: 'eq', value: 'base:keys-roadwork' }],
+            text: 'That sign was up when I got hired.',
+          },
+          {
+            id: 'deacon-trap',
+            trigger: 'modifier-start',
+            speaker: 'deacon-vane',
+            when: [{ fact: 'modifier.id', op: 'eq', value: 'base:keys-speed-trap' }],
+            text: 'Radar. Smile.',
+          },
+        ],
+      },
+    });
+  const start = (tick: number, id: string, piece: string): SimEvent => ({
+    tick,
+    type: 'modifierStart',
+    actor: -1,
+    data: { id, kind: 'human', piece },
+  });
+
+  it('a rival speaks the line for the event that just came up, and only that one', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(roadPool()), view);
+    d.onEvents([start(600, 'base:keys-speed-trap', 'speed-trap')], { snapshot: SNAP, seed: 1 });
+    expect(shown.map((b) => b.contentRef)).toEqual(['base:bark-set/road-events-keys#deacon-trap']);
+    expect(shown[0]?.speakerName).toBe('Deacon Vane');
+    d.onEvents([start(3000, 'base:keys-roadwork', 'roadwork')], { snapshot: SNAP, seed: 1 });
+    expect(shown.map((b) => b.contentRef)).toEqual([
+      'base:bark-set/road-events-keys#deacon-trap',
+      'base:bark-set/road-events-keys#kevin-roadwork',
+    ]);
+  });
+
+  it('stays quiet for an event with no line of its own', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(roadPool()), view);
+    d.onEvents([start(600, 'base:keys-costume-parade', 'parade')], { snapshot: SNAP, seed: 1 });
+    expect(shown).toEqual([]);
   });
 });

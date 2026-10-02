@@ -477,3 +477,6 @@ export function createSettingsStore(opts: SettingsStoreOptions): SettingsStore {
     record: () => last,
   };
 }
+
+// The career profile record (W-Q contracts): src/save/profile.ts.
+export * from './profile';

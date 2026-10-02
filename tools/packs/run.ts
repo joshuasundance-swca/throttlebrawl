@@ -19,7 +19,7 @@ import { ALL_TUNING } from './tuning';
  * Modules that contribute lint rules, as repo-root paths; each exports `packRules: PackRule[]`.
  * A missing module is skipped, so a lane's hook switches on when its file lands.
  */
-export const HOOK_MODULES: readonly string[] = ['/tools/road/pack-rules.ts'];
+export const HOOK_MODULES: readonly string[] = ['/tools/road/pack-rules.ts', '/tools/career/pack-rules.ts'];
 
 export interface CheckOptions {
   /** The repo root. */

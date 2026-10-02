@@ -3,8 +3,12 @@
 // `remote` or `procedural` source. Baked files load relative to the build's base URL with
 // per-asset progress and a SHA-256 check; any failure (missing file, bad hash, bad decode, no
 // network) falls back to the caller's procedural stand-in instead of breaking the race. The
-// `remote` source is a seam until the first remote asset ships.
+// `remote` source is a seam until the first remote asset ships. `dataset` files (run W-Q: big
+// models pinned in assets.lock.json, ./dataset.ts) are baked into the build, so they load exactly
+// like `baked` ones, hash-checked against the lock.
 import type { AssetIndexEntry, PackIndexFn } from '../core';
+
+export { datasetIndex, datasetRegions } from './dataset';
 
 export type AssetSourceKind = AssetIndexEntry['source'];
 

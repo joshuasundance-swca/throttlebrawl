@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from tbgis.config import BakeConfig
-from tbgis.emit import bake
+from tbgis.emit import bake, lanes
 from tbgis.fetch import FetchMeta
 from tbgis.graph import Graph
 from tbgis.lint import lint_bake
@@ -223,3 +223,44 @@ def test_committed_bake_passes_the_lint() -> None:
     assert 5000 <= total <= 8000  # the 5-8 km stretch
     bridges = [t["s1"] - t["s0"] for r in roads for t in r["tags"] if t["tag"] == "bridge"]
     assert max(bridges) >= 1500  # includes a long bridge
+
+
+def test_default_lane_table_is_the_m1_one() -> None:
+    # One lane each way, no median, no verges: every committed bake's table, byte for byte.
+    assert lanes(3.4) == [
+        {"id": "L0", "dCenterM": -4.15, "widthM": 1.5, "direction": -1, "kind": "shoulder"},
+        {"id": "L1", "dCenterM": -1.7, "widthM": 3.4, "direction": -1, "kind": "drive"},
+        {"id": "R1", "dCenterM": 1.7, "widthM": 3.4, "direction": 1, "kind": "drive"},
+        {"id": "R0", "dCenterM": 4.15, "widthM": 1.5, "direction": 1, "kind": "shoulder"},
+    ]
+    _, roads, _ = baked()
+    assert all(set(r["laneSections"][0]) == {"s0", "lanes"} for r in roads)
+
+
+def test_six_lane_highway_with_a_median_and_verges() -> None:
+    # W-Q cross-section (interview, 2026-10-02: 4-6 lane highways): three lanes each way, a 2 m
+    # kerbed median between them, and grass verges ending in a fence on the right.
+    c = cfg(
+        laneWidthM=4.0,
+        lanesPerDirection=3,
+        medianM=2.0,
+        medianKind="kerb",
+        verges={"right": {"widthM": 6, "surface": "grass", "edge": "fence"}},
+    )
+    network, roads, route = baked(c)
+    section = roads[0]["laneSections"][0]
+    ids = [ln["id"] for ln in section["lanes"]]
+    assert ids == ["L0", "L3", "L2", "L1", "R1", "R2", "R3", "R0"]
+    d = {ln["id"]: ln["dCenterM"] for ln in section["lanes"]}
+    assert (d["L1"], d["R1"], d["R3"], d["R0"]) == (-3.0, 3.0, 11.0, 13.75)
+    assert d["R1"] - 2.0 - (d["L1"] + 2.0) == pytest.approx(2.0)  # the median's gap
+    assert section["median"] == {"widthM": 2.0, "kind": "kerb"}
+    assert section["verges"] == {"right": {"widthM": 6.0, "surface": "grass", "edge": "fence"}}
+    assert lint_bake(network, roads, route) == []
+
+
+def test_lanes_refuses_a_fourth_lane_each_way() -> None:
+    with pytest.raises(ValueError, match="1 to 3"):
+        lanes(4.0, 4)
+    with pytest.raises(ValueError):
+        cfg(lanesPerDirection=4)
