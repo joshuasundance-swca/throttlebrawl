@@ -676,25 +676,31 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
   },
   radio: {
-    // A station: the race plays a band's plucked strings, which the score never does.
+    // The score (a station is the default since playtest 2, 2026-10-02): the race plays the score's
+    // drums from the 1 s noise buffer and none of a band's plucked strings (radio-synth.ts: 0.45,
+    // 0.6, 0.8, 0.9, 1.1, 1.2 and 1.3 s), which the default station plays.
     set: async (page) => {
       await page.locator('#settings-tab-sound').click();
-      await page.locator('#settings-radio [data-value="station"]').click();
+      await page.locator('#settings-radio [data-value="score"]').click();
     },
     effect: async (page) => {
       await raceAlone(page);
-      await page.waitForTimeout(500); // the stations load on first use
+      await page.waitForTimeout(500);
       await page.evaluate(() => ((window as TestWindow).__plucks = []));
       await page.waitForTimeout(2000);
       const d = await page.evaluate(() => (window as TestWindow).__plucks ?? []);
-      const strings = d.filter((v) => v === 0.6 || v === 0.8 || v === 0.9 || v === 1.1).length;
-      console.log(`radio station: ${strings} plucked strings in 2 s (${d.length} buffers in all)`);
-      expect(strings).toBeGreaterThan(0);
+      const strings = d.filter((v) => [0.45, 0.6, 0.8, 0.9, 1.1, 1.2, 1.3].includes(v)).length;
+      const noise = d.filter((v) => v === 1).length;
+      console.log(
+        `radio score: ${strings} plucked strings, ${noise} noise hits in 2 s (${d.length} buffers in all)`,
+      );
+      expect(strings).toBe(0);
+      expect(noise).toBeGreaterThan(0);
       await quitRace(page);
     },
     persisted: async (page) => {
       await page.locator('#settings-tab-sound').click();
-      await expect(page.locator('#settings-radio [data-value="station"]')).toHaveAttribute(
+      await expect(page.locator('#settings-radio [data-value="score"]')).toHaveAttribute(
         'aria-pressed',
         'true',
       );

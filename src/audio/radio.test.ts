@@ -448,16 +448,26 @@ describe('the radio in the mixer', () => {
   });
 });
 
-describe('the regions own stations (run W-O: a Pacific Northwest and a San Francisco station)', () => {
+describe('the regions own stations (playtest 2, 2026-10-02: "different stations and music in different regions")', () => {
   const all = stationsFromTable(
     registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' })).stations,
   );
+  const PRESET: Record<string, string> = {
+    surf: 'surf-trio',
+    rockabilly: 'rockabilly-trio',
+    grunge: 'grunge-band',
+    folk: 'folk-band',
+    synth: 'synth-band',
+    psych: 'psych-band',
+  };
   const want: [string, string, string, string][] = [
-    ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'surf'],
-    ['region-sf', 'sf-fog-bank', 'san-francisco', 'rockabilly'],
+    ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'grunge'],
+    ['region-pnw', 'pnw-salal', 'pacific-northwest', 'folk'],
+    ['region-sf', 'sf-burn-rate', 'san-francisco', 'synth'],
+    ['region-sf', 'sf-fog-bank', 'san-francisco', 'psych'],
   ];
   it.each(want)(
-    '%s carries %s, four or more code-made tracks that compose as written',
+    '%s carries %s, four or more code-made tracks of its own band that compose as written',
     (pack, id, region, genre) => {
       const s = all.find((x) => x.packId === pack && x.id === id);
       expect(s).toBeDefined();
@@ -471,12 +481,39 @@ describe('the regions own stations (run W-O: a Pacific Northwest and a San Franc
         expect(t.origin).toBe('agent');
         expect(t.status).toBe('live');
         expect(keysTitles.has(t.title)).toBe(false);
-        expect(t.procedural?.preset).toBe(genre === 'surf' ? 'surf-trio' : 'rockabilly-trio');
+        expect(t.procedural?.preset).toBe(PRESET[genre]);
         const c = composeFor(t);
         expect(c).not.toBeNull();
         // Every param is inside its preset's range, so the song is the one the file describes.
         expect(c?.bpm).toBe(t.procedural?.params?.['bpm']);
+        expect(c?.form).toBe(t.procedural?.params?.['progression']);
       }
     },
   );
+
+  it('gives every region at least two stations, none sharing a genre with another region', () => {
+    const regions = ['florida-keys', 'pacific-northwest', 'san-francisco'];
+    const genres = regions.map((r) => new Set(stationsForRegion(all, r).map((s) => s.genre)));
+    for (const [i, g] of genres.entries()) {
+      expect(stationsForRegion(all, regions[i]!).length, regions[i]).toBeGreaterThanOrEqual(2);
+      expect(g.size, regions[i]).toBeGreaterThanOrEqual(2);
+      for (const [j, other] of genres.entries())
+        if (i !== j) for (const x of g) expect(other.has(x)).toBe(false);
+    }
+  });
+
+  it("a region with two stations of its own keeps its dial to itself; with one, the base pack's follow", () => {
+    const keys = stationsForRegion(all, 'base:florida-keys').map((s) => s.id);
+    const pnw = stationsForRegion(all, 'region-pnw:pacific-northwest').map((s) => s.id);
+    const sf = stationsForRegion(all, 'region-sf:san-francisco').map((s) => s.id);
+    expect(keys).toEqual(['keys-rockabilly', 'keys-surf']);
+    expect(pnw).toEqual(['pnw-drizzle', 'pnw-salal']);
+    expect(sf).toEqual(['sf-burn-rate', 'sf-fog-bank']);
+    const one = all.filter((s) => s.id !== 'pnw-salal');
+    expect(stationsForRegion(one, 'region-pnw:pacific-northwest').map((s) => s.id)).toEqual([
+      'pnw-drizzle',
+      'keys-rockabilly',
+      'keys-surf',
+    ]);
+  });
 });
