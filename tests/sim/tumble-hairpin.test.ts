@@ -8,10 +8,13 @@
 // outside wall of the bend. The bend turns past 90 degrees within that slide, so the old hand-back,
 // which read the direction from the world direction at the crash against the road's tangent where
 // the body stopped, put the rider back on the road facing downhill (dir -1). The bot then rode the
-// route backward and the race ran to the tick cap with no bust: a stall. The hand-back now takes
-// the route's own direction (toward the finish) on every route edge.
+// route backward and the race ran to the tick cap with no bust: a stall. On a route edge the
+// hand-back now keeps the rider's sense against the route (with the race stays with the race).
 //
-// Harness: the race loads the way the game loads it, as tests/sim/region-sf.test.ts does.
+// Harness: the race loads the way the game loads it, as tests/sim/region-sf.test.ts does, with
+// the event's road events (speed traps, roadwork, parades) switched off. They roll from the seed, and
+// with them on, seed 2 is busted at tick 8626, before it reaches the hairpin. The test checks that
+// the player really goes down at the foot of the climb, so it notices if it stops reaching the bend.
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
@@ -29,11 +32,15 @@ const MAX_TICKS = 60 * 60 * 10;
 
 describe('tumble: the hand-back on a hairpin', () => {
   it('Twin Peaks seed 2: every hand-back faces the finish, and the bot finishes', () => {
-    const config = buildSimConfig(REG, createStreamCache().forEvent(REG, EVENT, undefined, ROUTE), {
-      seed: 2,
-      eventId: EVENT,
-      route: ROUTE,
-    });
+    const config = {
+      ...buildSimConfig(REG, createStreamCache().forEvent(REG, EVENT, undefined, ROUTE), {
+        seed: 2,
+        eventId: EVENT,
+        route: ROUTE,
+      }),
+      modifiers: [],
+    };
+    const climb = config.road.edges.findIndex((e) => e.id === 'osm-sf-twin-peaks-climb');
     const route = config.route;
     const sim = createSim(config);
     const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
@@ -49,6 +56,8 @@ describe('tumble: the hand-back on a hairpin', () => {
     const handBacks: string[] = [];
     const wrongWay: string[] = [];
     let finishTick = -1;
+    /** Where the player went down at the foot of the climb's hairpin, if it did. */
+    let hairpinCrash = '';
     while (!sim.isOver() && sim.tick < MAX_TICKS) {
       const actions = emptyActions();
       bot.drive(snap, playerId, route, actions);
@@ -59,6 +68,8 @@ describe('tumble: the hand-back on a hairpin', () => {
         if (e.kind !== 'rider') continue;
         const was = lastMode[e.id];
         lastMode[e.id] = e.mode;
+        const down = e.id === playerId && was !== 'Tumble' && e.mode === 'Tumble';
+        if (down && e.road.edge === climb && e.road.s < 10) hairpinCrash ||= `tick ${sim.tick}`;
         // The hand-back (Tumble to OnFoot) and the remount (OnFoot to Road), every rider in the field.
         const handBack = was === 'Tumble' && e.mode === 'OnFoot';
         const remount = was === 'OnFoot' && e.mode === 'Road';
@@ -70,9 +81,10 @@ describe('tumble: the hand-back on a hairpin', () => {
       }
     }
     process.stdout.write(
-      `[tumble-hairpin] ${handBacks.length} hand-backs and remounts; finish tick ${finishTick}\n`,
+      `[tumble-hairpin] ${handBacks.length} hand-backs and remounts; hairpin crash ${hairpinCrash || 'none'}; finish tick ${finishTick}\n`,
     );
-    expect(handBacks.length, 'the seed still crashes the field').toBeGreaterThan(0);
+    expect(climb, 'the climb is on the route').toBeGreaterThanOrEqual(0);
+    expect(hairpinCrash, 'the player goes down at the foot of the hairpin').not.toBe('');
     expect(wrongWay, 'hand-backs or remounts facing away from the finish').toEqual([]);
     expect(finishTick, 'the bot finishes instead of stalling to the cap').toBeGreaterThan(0);
   }, 120_000);
