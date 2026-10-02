@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "dawdle-robotaxi",
+  "name": "Dawdle Robotaxi",
+  "category": "car",
+  "tags": ["region-sf", "satire"],
+  "lengthM": 4.8,
+  "widthM": 1.9,
+  "cruiseMps": 20.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "convoy": 2
+  },
+  "look": {
+    "procedural": {
+      "preset": "robotaxi"
+    },
+    "paintOptions": ["#f4f4f4", "#d9d9d9"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Dawdle (a made-up company): driverless, a spinning sensor on the roof, exactly the limit, never a lane change, and they travel in pairs for reasons the company calls proprietary. Stops for nothing but a cone.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

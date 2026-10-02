@@ -248,11 +248,19 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
 
   it('matches the base pack region today', () => {
     expect(withRegion(() => undefined)).toEqual({
+      'base:beach-cruiser': 1.5,
       'base:box-truck': 2,
       'base:chicken': 1,
+      'base:dive-bar-dog': 0.8,
+      'base:dog-walker': 1,
       'base:fisherman': 1,
+      'base:golf-cart': 1.5,
       'base:pickup': 5,
+      'base:pickup-towing-boat': 1.5,
+      'base:rental-convertible': 2,
       'base:sedan-rental': 5,
+      'base:snowbird-rv': 0.8,
+      'base:sunburnt-jogger': 1,
       'base:tourist-with-cooler': 1,
     });
   });
