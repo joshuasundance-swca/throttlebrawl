@@ -23,7 +23,7 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   trianglesMax: number;
 };
 
-/** Each region's W-P vehicles (and a few of its older locals), by content id. */
+/** Each region's W-P vehicles, by content id: at least one must turn up on the road. */
 const REGIONS = [
   {
     slug: 'keys',
@@ -44,20 +44,12 @@ const REGIONS = [
       'region-pnw:muddy-pickup',
       'region-pnw:rain-cape-cyclist',
       'region-pnw:motorhome',
-      'region-pnw:log-truck',
-      'region-pnw:mossy-wagon',
     ],
   },
   {
     slug: 'sf',
     chip: '#region-region-sf-san-francisco',
-    vehicles: [
-      'region-sf:dawdle-robotaxi',
-      'region-sf:delivery-e-bike',
-      'region-sf:e-scooter-rider',
-      'region-sf:rideshare-hatchback',
-      'region-sf:startup-shuttle',
-    ],
+    vehicles: ['region-sf:dawdle-robotaxi', 'region-sf:delivery-e-bike', 'region-sf:e-scooter-rider'],
   },
 ];
 
