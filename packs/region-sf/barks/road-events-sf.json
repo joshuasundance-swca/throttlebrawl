@@ -1,0 +1,126 @@
+{
+  "type": "bark-set",
+  "id": "road-events-sf",
+  "name": "Road events: San Francisco",
+  "tags": ["road-events", "sf"],
+  "defaults": {
+    "speaker": "pivot",
+    "cooldownS": 45,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "sf-ev-roadwork-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-roadwork"
+        }
+      ],
+      "text": "Road's in beta. Ship it anyway."
+    },
+    {
+      "id": "sf-ev-roadwork-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-roadwork"
+        }
+      ],
+      "text": "They dig this hill up every spring."
+    },
+    {
+      "id": "sf-ev-crash-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-crash-scene"
+        }
+      ],
+      "text": "Robotaxi saw a cone. Still thinking."
+    },
+    {
+      "id": "sf-ev-crash-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-crash-scene"
+        }
+      ],
+      "text": "That's not a crash. That's a pivot."
+    },
+    {
+      "id": "sf-ev-parade-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-launch-parade"
+        }
+      ],
+      "text": "A launch parade. Bold, for no revenue."
+    },
+    {
+      "id": "sf-ev-parade-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-launch-parade"
+        }
+      ],
+      "text": "Giant balloon. Smaller valuation."
+    },
+    {
+      "id": "sf-ev-trap-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-speed-trap"
+        }
+      ],
+      "text": "Radar up top. Ride like a tourist."
+    },
+    {
+      "id": "sf-ev-trap-dialup",
+      "trigger": "modifier-start",
+      "speaker": "base:dial-up",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-speed-trap"
+        }
+      ],
+      "text": "Monitored by a human. For now."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
