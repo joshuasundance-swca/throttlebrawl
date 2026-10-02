@@ -5,43 +5,22 @@
   "kind": "grudge-match",
   "region": "san-francisco",
   "timeOfDay": "golden-hour",
-  "lengths": [
-    {
-      "id": "standard",
-      "route": "osm-sf-twin-peaks-run",
-      "laps": 1
-    }
-  ],
-  "field": {
-    "riders": ["pivot", "gripman-gus", "base:chad-speedwell", "base:dial-up"],
-    "paceMps": 44
-  },
-  "cops": {
-    "mode": "every-race",
-    "baseCount": 1,
-    "chaosSummon": true
-  },
-  "rules": {
-    "rival": "pivot",
-    "winBy": "finish-ahead",
-    "grudgeStakes": 3
-  },
+  "lengths": [{ "id": "standard", "route": "sf-downtown-run", "laps": 1 }],
+  "field": { "riders": ["pivot", "gripman-gus", "base:chad-speedwell", "base:dial-up"], "paceMps": 44 },
+  "cops": { "mode": "every-race", "baseCount": 1, "chaosSummon": true },
+  "rules": { "rival": "pivot", "winBy": "finish-ahead", "grudgeStakes": 3 },
   "objectives": [
     {
       "id": "beat-rival",
       "kind": "beat-rival",
       "required": true,
       "rewardCash": 0,
-      "params": {
-        "orKnockdowns": 3
-      }
+      "params": { "orKnockdowns": 3 }
     },
     {
       "id": "podium",
       "kind": "finish-place",
-      "params": {
-        "maxPlace": 3
-      },
+      "params": { "maxPlace": 3 },
       "required": false,
       "rewardCash": 1000
     }
@@ -57,18 +36,10 @@
     "takedownComboScale": 0.5,
     "perStealCash": 60
   },
-  "modifiers": {
-    "pool": "region-default",
-    "maxPerRace": 1,
-    "chanceScale": 1
-  },
+  "modifiers": { "pool": "region-default", "maxPerRace": 1, "chanceScale": 1 },
   "meta": {
     "status": "live",
-    "notes": "San Francisco's finale: Pivot up Twin Peaks, pitching the whole way. Beat him to the line, or knock him down three times. Winning plays the teaser, grants the mobility scooter, and free play continues.",
-    "provenance": {
-      "origin": "agent",
-      "author": "agent",
-      "createdAt": "2026-10-02"
-    }
+    "notes": "San Francisco's finale: Pivot down the downtown avenue to the deadpan headquarters at the finish, pitching the whole way (run W-R moved it from Twin Peaks to the downtown, so the finale ends at INEVITABLE; interview, 2026-10-02: \"a set-piece finale per region\"). Beat him to the line, or knock him down three times. Winning plays the teaser, grants the mobility scooter, and free play continues.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
   }
 }
