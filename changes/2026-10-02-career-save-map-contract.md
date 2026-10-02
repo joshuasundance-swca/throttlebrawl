@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+Contract for the career (interview, 2026-10-02: "Network map, tiered", and "The map": claim roads, find secrets and shortcuts, a finale per region). The save gains the profile record beside the settings (`src/save/profile.ts`): cash, owned bikes and paint, per-region map progress (tier, nodes won, roads opened and claimed, shortcuts and secrets found, the finale), the grudges rivals keep across races, the race history and the failure mode, with the migration runner, a backup before any migration, a newer record refused and kept, and the version 1 golden fixture in `tests/fixtures/save/`. A device with only settings starts a fresh profile and keeps its settings. Events gain `tier`, `finale`, a closed list of objective kinds, and rules checked by kind (takedown hunt, cop escape, grudge match). A new `career` file per region is the map: event nodes on the region's roads, tier gates, opened and claimed roads, secrets, and a boss finale, checked by the new `careers` pack-check rule against the region's real networks. No career file ships yet: the career lane writes them.
