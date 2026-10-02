@@ -287,3 +287,133 @@ test('a pile-up at full volume does not clip', async ({ page }) => {
   expect(pile.rms).toBeGreaterThan(0.01);
   expect(pile.peak).toBeLessThanOrEqual(1);
 });
+
+// Playtest 2 (2026-10-02): "Engine monotonous and maybe too loud", then ENGINE: "Richer and
+// quieter". At the settings record's default volumes, the engine flat out now sits a few dB over a
+// station's music instead of about 15 dB over it, and a ride with shifts, throttle snaps and decel
+// pops at full volume does not clip. Each case renders 5 s offline through the real graph.
+test('the engine sits a few dB over the music at the default volumes, and a busy ride does not clip', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const stationsDir = new URL('../../packs/base/stations/', import.meta.url);
+  const table: Record<string, unknown> = {};
+  for (const f of readdirSync(stationsDir).sort())
+    if (f.endsWith('.json'))
+      table[`base:${f.replace(/\.json$/, '')}`] = JSON.parse(readFileSync(new URL(f, stationsDir), 'utf8'));
+  const problems = await openHarness(page);
+  type Case = {
+    radio: number;
+    music: number;
+    effects: number;
+    master: number;
+    engineGain: number;
+    ride: boolean;
+  };
+  const level = (c: Case) =>
+    page.evaluate(
+      async ({ c, table }) => {
+        type Audio = {
+          resume(): Promise<void>;
+          setVolumes(v: Record<string, number>, mute: boolean): void;
+          setParam(id: string, v: number): void;
+          frame(s: Record<string, unknown> | null, playerId: number): void;
+          inspect(): { engineFeel: { shifts: number; revs: number; pops: number } };
+        };
+        const url = '/__audio-mix/index.js';
+        const m = (await import(url)) as {
+          createAudio(o: Record<string, unknown>): Audio;
+          stationsFromTable(t: Record<string, unknown>): unknown[];
+        };
+        const rate = 44100;
+        const dur = 5;
+        const ctx = new OfflineAudioContext(1, dur * rate, rate);
+        const audio = m.createAudio({
+          createContext: () => ctx,
+          offline: true,
+          radioKeys: null,
+          barkEvents: null,
+          radioSeed: 7,
+          stations: m.stationsFromTable(table),
+        });
+        audio.setVolumes({ master: c.master, music: c.music, effects: c.effects, voices: 0.9 }, false);
+        await audio.resume();
+        audio.setParam('audio.radio', c.radio);
+        audio.setParam('audio.engineGain', c.engineGain);
+        // The level cases hear the engine alone; the ride keeps the wind.
+        if (!c.ride) audio.setParam('audio.windGain', 0);
+        // Flat out in top gear, or a ride: shifts up through the gears, snaps the throttle, shuts it.
+        const me = (t: number) => {
+          if (!c.ride) return { rpm: 9000, gear: 4, throttle: 1 };
+          const phase = t % 2.5;
+          const gear = 1 + Math.min(3, Math.floor(phase / 0.5));
+          const rpm = 1200 + 8800 * ((phase % 0.5) / 0.5);
+          return { rpm, gear, throttle: phase > 2.1 ? 0 : 1 };
+        };
+        const drive = (t: number) =>
+          audio.frame(
+            {
+              tick: Math.round(t * 60),
+              timeScale: 1,
+              entities: [
+                {
+                  id: 0,
+                  kind: 'rider',
+                  mode: 'Riding',
+                  x: 0,
+                  y: 0,
+                  z: -t * 40,
+                  heading: 0,
+                  speed: 40,
+                  contentId: 'player',
+                  ...me(t),
+                },
+              ],
+            },
+            0,
+          );
+        drive(0);
+        const pending: Promise<void>[] = [];
+        for (let t = 1 / 60; t < dur - 0.05; t += 1 / 60) {
+          const at = t;
+          pending.push(
+            ctx.suspend(at).then(() => {
+              drive(at);
+              return ctx.resume();
+            }),
+          );
+        }
+        const buf = await ctx.startRendering();
+        await Promise.all(pending);
+        const x = buf.getChannelData(0);
+        let peak = 0;
+        let sq = 0;
+        const i0 = Math.round(0.5 * rate);
+        for (let i = i0; i < x.length; i++) {
+          const v = x[i] ?? 0;
+          peak = Math.max(peak, Math.abs(v));
+          sq += v * v;
+        }
+        return { db: 10 * Math.log10(sq / (x.length - i0)), peak, feel: audio.inspect().engineFeel };
+      },
+      { c, table },
+    );
+  const defaults = { master: 0.8, music: 0.6, effects: 0.9, engineGain: 1, ride: false };
+  const engine = await level({ ...defaults, radio: 0 });
+  const before = await level({ ...defaults, radio: 0, engineGain: 0.5 / 0.15 });
+  const music = await level({ ...defaults, radio: 2, effects: 0 });
+  const ride = await level({ master: 1, music: 1, effects: 1, engineGain: 1, radio: 2, ride: true });
+  console.log(
+    `engine flat out ${engine.db.toFixed(1)} dBFS (at the level before playtest 2: ${before.db.toFixed(1)}), ` +
+      `station music ${music.db.toFixed(1)} dBFS: the engine sits ${(engine.db - music.db).toFixed(1)} dB over ` +
+      `the music (was ${(before.db - music.db).toFixed(1)}); a full-volume ride peaks at ${ride.peak.toFixed(3)} ` +
+      `with ${ride.feel.shifts} shifts, ${ride.feel.revs} revs, ${ride.feel.pops} pops`,
+  );
+  expect(problems).toEqual([]);
+  expect(before.db - engine.db).toBeGreaterThan(9);
+  expect(engine.db - music.db).toBeGreaterThan(1);
+  expect(engine.db - music.db).toBeLessThan(8);
+  expect(ride.feel.shifts).toBeGreaterThanOrEqual(4);
+  expect(ride.feel.pops).toBeGreaterThan(0);
+  expect(ride.peak).toBeLessThan(1);
+});

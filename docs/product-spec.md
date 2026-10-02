@@ -84,6 +84,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Right thumb, fight | One large **attack** button. It auto-targets the nearest rival in reach. | [decided] |
 | Side choice | Drag off the attack button left or right to pick the side. | [decided] |
 | Kick | Swipe **down** on the attack button. | [decided] |
+| Kick direction | Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you ride up behind someone (directional swipe)". A kick swipe leaning down-left or down-right kicks to that side; a swipe **up** is the straight kick at the rider directly ahead, with a longer forward reach. Keyboard: hold U or O with K for a side kick, I for the straight kick. Gamepad: Triangle with Square or Circle, L1 for the straight kick. | [default] |
 | Held weapon | Swings with the same attack button; the button's icon changes. | [default] |
 | Weapon steal | The same attack button, timed. See [Combat](#combat). | [decided] |
 | Tilt steering | An option, with a sensitivity slider and recalibration at race start. | [decided for the option; default for the slider and recalibration] |
@@ -91,7 +92,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Button layout | Buttons are movable, resizable and configurable. | [decided] |
 | Haptics | On, with a toggle. [decided] Where the browser has no vibration support (for example iOS Safari *(unverified)*), the toggle is hidden. [default] | [decided for the toggle; default for the hiding] |
 
-- **How the attack gesture resolves.** Pressing attack starts the punch wind-up at once, on the auto-picked side, so there is no added latency on the core moment. During the wind-up, a drag more than about 24 px sideways flips the side, and a downward swipe of about 24 px (or at least 45 degrees below horizontal) turns it into a kick wind-up. After the wind-up ends, the gesture is locked. A press during a rival's steal window is a grab. The thresholds are tuning values. [default]
+- **How the attack gesture resolves.** Pressing attack starts the punch wind-up at once, on the auto-picked side, so there is no added latency on the core moment. During the wind-up, a drag more than about 24 px sideways flips the side, and a downward swipe of about 24 px (within 60 degrees of straight down, playtest 2) turns it into a kick wind-up, to the side it leans when it leans more than 20 degrees, and a swipe up turns it into the straight kick. After the wind-up ends, the gesture is locked. A press during a rival's steal window is a grab. The thresholds are tuning values. [default]
 - **Auto-target priority.** When a cop and a rival are both in reach, the auto-target prefers the non-cop, unless the side override points at the cop, so that chaos near a cop is never accidental. [default]
 - **Extra touch bindings.** Skip the run-back with a tap on the attack button while on foot. Look-back is a small hold button near the top right. [default]
 - Start sequence: one "tap to start" that enters fullscreen, locks landscape, unlocks audio and asks for tilt permission if the browser needs it. If the lock fails, a "rotate your phone" screen shows. [default]
