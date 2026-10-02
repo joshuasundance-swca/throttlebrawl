@@ -37,7 +37,7 @@ import {
 } from './bark-voices';
 import { CUE_PATCHES, createSirenVoice, type SirenVoice } from './cue-patches';
 import { createCeiling } from './ceiling';
-import { cueForEvent, type CueId } from './cues';
+import { cueForEvent, MELEE_CUES, weaknessOf, type CueId } from './cues';
 import { createSlowmoTreatment, SLOWMO_DEFAULTS, type SlowmoTreatment } from './slowmo';
 import {
   createEngineVoice,
@@ -387,7 +387,7 @@ export interface AudioInspect {
   busTargets: Volumes;
   activeVoices: number;
   /** The most recent cues played (up to 32), with their start times on the audio clock. */
-  lastCues: { cue: CueId; at: number }[];
+  lastCues: { cue: CueId; at: number; weight?: number }[];
   playerEngineHz: number;
   playerEngineLevel: number;
   /** The engine's feel on the last frame (engine-feel.ts) and its counts this session. */
@@ -575,7 +575,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const others = new Map<number, Held<EngineVoice>>();
   let siren: Held<SirenVoice> | null = null;
   const lastHonk = new Map<number, number>();
-  const lastCues: { cue: CueId; at: number }[] = [];
+  const lastCues: { cue: CueId; at: number; weight?: number }[] = [];
   let lastSnap: SimSnapshot | null = null;
   let lastPlayerId = 0;
 
@@ -869,16 +869,16 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   /** Cues that mark the slow motion's edges play at their own pitch. */
   const UNPITCHED: ReadonlySet<CueId> = new Set(['slowIn', 'slowOut']);
 
-  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1) => {
+  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1, weight = 0) => {
     const level = gain * params.cueGain;
     if (level <= 0.001) return;
     const at = g.ctx.currentTime;
     const pitch = UNPITCHED.has(cue) ? 1 : g.slowmo.pitch();
-    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch });
+    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch, weight });
     const entry = pool.add(priority, playing);
     if (!entry) return;
     playing.onEnded(() => pool.release(entry));
-    lastCues.push({ cue, at });
+    lastCues.push(weight > 0 ? { cue, at, weight } : { cue, at });
     if (lastCues.length > 32) lastCues.shift();
   };
 
@@ -1030,7 +1030,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           gain = src ? distanceGain(distance(me, src), 8, 180) : 0.6;
         }
         const impact = Math.min(1, choice.impact * params.crashImpactScale);
-        playCue(g, choice.cue, choice.priority, gain, impact);
+        const weight = MELEE_CUES.has(choice.cue) ? weaknessOf(snap, e.target) : 0;
+        playCue(g, choice.cue, choice.priority, gain, impact, weight);
         // The music ducks under a crash you are in or can clearly hear.
         if (DUCK_CUES.has(choice.cue) && (choice.playerInvolved || gain >= 0.5)) duckNow(g);
       }
