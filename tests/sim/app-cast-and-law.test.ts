@@ -170,11 +170,14 @@ function castRun(seed: number, quirks: number | null, ticks: number) {
     // measures how the rivals ride, not the law. The roadside weapons about as sparse as before W-Q
     // (one per 2 km, not per 500 m): this measures the styles' riding, and a rider steering over its
     // preferred weapon sways too (with one every 500 m, Dial-Up's clear-road sway fell under another
-    // rider's, 0.66 against 0.69 m/s).
+    // rider's, 0.66 against 0.69 m/s). No traffic either (run W-R): dodging traffic sways every
+    // style, and each traffic content change reshuffles it. With each key's own traffic (#353) the
+    // weaver's ten-race ratio read 1.149 against the 1.15 floor, his quirk-on sway unchanged (0.63).
     tuning: {
       ...NO_ROAD_EVENTS,
       'cops.patrolScale': 0,
       'combat.pickupSpacingM': 2000,
+      'traffic.density': 0,
       ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }),
     },
   });

@@ -172,6 +172,12 @@ export const TRAFFIC = {
   lookaheadM: 200,
   /** Minimum bumper gap at spawn, m. */
   spawnGapM: 40,
+  /**
+   * A spawn keeps its box this far clear, end to end, of any rider in its path (W-R): a cop waiting
+   * on the shoulder is no anchor, so the fairness rule never kept a kerb rider from appearing on top
+   * of him and shoving him along the shoulder.
+   */
+  spawnRiderClearM: 15,
   /** Spawns keep this far from the corridor's ends, m. */
   endMarginM: 12,
   /** Candidate spawn slots are this far apart, m. */
@@ -602,6 +608,34 @@ function laneClear(
   return true;
 }
 
+/**
+ * Whether a vehicle of type `t` placed at (u, cd) keeps clear of every rider (W-R): no rider whose
+ * box would overlap it side to side is within TRAFFIC.spawnRiderClearM of its box, end to end.
+ */
+function riderClear(riders: readonly RiderView[], t: SimTrafficTypeDef, u: number, cd: number): boolean {
+  for (const r of riders) {
+    if (Math.abs(r.cd - cd) >= (t.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM) continue;
+    if (Math.abs(r.u - u) < (t.lengthM + TRAFFIC.riderLengthM) / 2 + TRAFFIC.spawnRiderClearM) return false;
+  }
+  return true;
+}
+
+/** Where a vehicle of type `t` stands across the road at u in lane (dir, rank): placeVehicle's rule. */
+function spawnCd(
+  config: SimConfig,
+  c: Corridor,
+  t: SimTrafficTypeDef,
+  u: number,
+  dir: number,
+  laneCd: number,
+): number {
+  if (isKerb(t)) {
+    const kerb = kerbCd(config.road, c, u, dir, t.widthM / 2);
+    if (kerb) return kerb.cd;
+  }
+  return isParked(t) ? parkedCd(laneCd) : laneCd;
+}
+
 /** The fairness rule, as one predicate: a spawn at u is allowed only beyond reaction range. */
 export function spawnAllowed(anchors: readonly number[], u: number, reactionM: number): boolean {
   return nearestAnchor(anchors, u) >= reactionM;
@@ -690,6 +724,7 @@ function trySpawn(
   const regionType = pickType(world, config, st, dir, typeRoll, null);
   if (!config.trafficTypes[regionType]) return false;
   const hasAreas = areaTags(config).size > 0;
+  let riders: RiderView[] | null = null;
   const jitter = nextFloat(world.rng.traffic) * TRAFFIC.slotStepM;
   const laneRoll = nextFloat(world.rng.traffic);
   const spacing = TRAFFIC.baseSpacingM / Math.max(0.1, densityFor(world, st, dir));
@@ -720,6 +755,8 @@ function trySpawn(
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
     const rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     if (!laneClear(config, st, u, dir, rank, t.lengthM, gap, k)) continue;
+    riders ??= riderViews(world, st);
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
     const v0 = t.cruiseMps * speedRoll;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
@@ -754,11 +791,14 @@ function addConvoy(
   let room = targetCount(world, st, anchors, dir);
   for (let k = 0; k < st.id.length; k++) if (st.dir[k] === dir && st.retired[k] === 0) room--;
   let u = st.u[lead] ?? 0;
+  const riders = riderViews(world, st);
   for (let i = 0; i < extra && room > 0; i++) {
     u -= dir * step;
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) return;
     if (!spawnAllowed(anchors, u, st.reactionM)) return;
     if (!laneClear(config, st, u, dir, rank, t.lengthM, IDM.minGapM)) return;
+    const laneCd = lanesAt(config.road, c, u, dir)[rank]?.cd ?? 0;
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) return;
     placeVehicle(world, config, { type: st.type[lead] ?? 0, u, dir, rank, v0 });
     st.spawns++;
     room--;
@@ -787,6 +827,7 @@ function park(
   const dir = (st.dir[k] ?? 1) === 1 ? 1 : -1;
   const t = typeOf(config, st, k);
   const clear = TRAFFIC.windowM + TRAFFIC.despawnMarginM + TRAFFIC.slotStepM;
+  let riders: RiderView[] | null = null;
   for (let i = 0; ; i++) {
     const along = TRAFFIC.endMarginM + i * TRAFFIC.slotStepM;
     if (along > c.hi - c.lo - TRAFFIC.endMarginM) return false;
@@ -794,6 +835,9 @@ function park(
     if (nearestAnchor(anchors, u) <= clear) continue;
     if (lanesAt(config.road, c, u, dir).length === 0) continue;
     if (!laneClear(config, st, u, dir, 0, t.lengthM, TRAFFIC.spawnGapM, k)) continue;
+    riders ??= riderViews(world, st);
+    const laneCd = lanesAt(config.road, c, u, dir)[0]?.cd ?? 0;
+    if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) continue;
     const retired = st.retired[k] ?? 0;
     placeVehicle(world, config, { type: st.type[k] ?? 0, u, dir, v0: st.v0[k] ?? t.cruiseMps }, k);
     st.retired[k] = retired;
