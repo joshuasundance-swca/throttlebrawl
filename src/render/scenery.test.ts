@@ -27,7 +27,7 @@ import {
   type SceneryModels,
 } from './models';
 import { buildRoadScene, rampTruckMatrix, type FeatureSpan, type RoadDressing } from './road-mesh';
-import { SCENERY_KINDS, themeAt } from './scenery';
+import { ISLET_SINK_M, SCENERY_KINDS, themeAt } from './scenery';
 
 const look = createFlatLook();
 
@@ -176,7 +176,8 @@ describe.each(['keys-m1', 'osm-keys-bahia-honda', 'pnw-c1', 'sf-hills'])('scener
     for (const b of boats) {
       const e = road.edges[b.edge]!;
       expect(themeAt(dressing[e.id]?.tags, b.d < 0 ? 'left' : 'right', b.s)).toBe('water');
-      expect(b.p.y).toBe(0);
+      // an islet (run W-Q) sinks its sand and pilings below the waterline
+      expect(b.p.y).toBe(b.kind === 'islet' ? -ISLET_SINK_M : 0);
       expect(under(ground, b.p.x, b.p.z), `${b.kind} at ${b.p.x.toFixed(0)}, ${b.p.z.toFixed(0)}`).toBe(
         'road-water',
       );
@@ -318,6 +319,7 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       pnwRoadside: 12,
       sfRoadside: 13,
       keysRoadside: 11,
+      keysIslets: 4,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {

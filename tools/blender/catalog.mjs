@@ -466,6 +466,26 @@ export const PROPS = [
     },
     views: VARIANT_VIEWS,
   },
+  // ---- run W-Q, distinct keys (interview, 2026-10-02; playtest 2: "Maybe islands in the Keys"):
+  // little islands on the open water off every Keys bridge, instanced like the boats.
+  {
+    name: 'keys_islets',
+    script: 'props/keys_islets.py',
+    asset: 'models/scenery/keys-islets',
+    kind: 'variants',
+    budget: { materials: 15 },
+    variants: {
+      roots: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
+      xs: [-60, -20, 20, 60],
+      parts: ['body'],
+      perVariant: { tris: 320, draws: 9 },
+      // the lowest point is 0.8 m under the waterline (the game sinks each islet that far)
+      height: [5, 10.5],
+      sway: false,
+      sharedMaterials: false,
+    },
+    views: VARIANT_VIEWS,
+  },
 ];
 
 export const ASSET_ROOT = 'packs/base/assets';
