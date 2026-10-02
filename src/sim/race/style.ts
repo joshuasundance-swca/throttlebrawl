@@ -9,6 +9,7 @@
 //   speed, scored once, by the second, when the stretch ends;
 // - takedownCombo: every `takedown` its credited rider lands; the k-th inside one combo (each within
 //   `race.styleComboWindowS` of world time of the last) scores perTakedownCash × comboScale × k;
+//   a domino takedown (combat's data.domino, W-Q) passes its chain length on as data.domino;
 // - weaponSteal: a `weaponGrab` whose source is a steal;
 // - trick (playtest 2, 2026-10-02: "I love the idea of doing flips"): a `land` that holds (not a
 //   crash) with a `data.trick`, worth perAirtimeCash × `race.styleTrickScale` × its weight: a flip's
@@ -247,7 +248,7 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
           id,
           'takedownCombo',
           rewards.perTakedownCash * rewards.takedownComboScale * k,
-          { combo: k },
+          typeof e.data['domino'] === 'number' ? { combo: k, domino: e.data['domino'] } : { combo: k },
           e.causeId,
         );
         break;

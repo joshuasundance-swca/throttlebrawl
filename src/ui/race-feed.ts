@@ -46,9 +46,23 @@ export interface StylePop {
   points: number | null;
 }
 
+/** A domino takedown's word (W-Q): the first rider a launched body takes out, then the next. */
+function dominoWord(chain: number): string {
+  return chain >= 3 ? 'STRIKE' : 'DOUBLE';
+}
+
 /** A style event's pop-up, or null for anything else. */
 export function stylePop(e: SimEvent): StylePop | null {
   if (e.type !== 'style') return null;
+  const domino = e.data['domino'];
+  if (e.data['kind'] === 'takedownCombo' && typeof domino === 'number' && domino >= 2) {
+    const points = e.data['points'];
+    return {
+      kind: 'domino',
+      word: dominoWord(domino),
+      points: typeof points === 'number' && Number.isFinite(points) ? points : null,
+    };
+  }
   const raw = e.data['kind'];
   // Each trick pops (and merges repeats) as its own kind: two backflips are "BACKFLIP ×2".
   const word = raw === 'trick' ? trickWord(e) : typeof raw === 'string' ? STYLE_WORDS[raw] : undefined;

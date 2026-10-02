@@ -33,6 +33,14 @@ describe('style pop-ups', () => {
     expect(styleText(ev('style', 0, { kind: 'weaponSteal', points: 40 }))).toBe('STOLEN +$40');
   });
 
+  it('names a domino takedown DOUBLE, and one further down the line STRIKE (W-Q)', () => {
+    const domino = (n: number) => ev('style', 0, { kind: 'takedownCombo', points: 200, combo: 2, domino: n });
+    expect(styleText(domino(2))).toBe('DOUBLE +$200');
+    expect(styleText(domino(3))).toBe('STRIKE +$200');
+    expect(styleText(domino(5))).toBe('STRIKE +$200');
+    expect(stylePop(domino(2))?.kind).toBe('domino'); // its own chip, not merged into COMBO
+  });
+
   it('says nothing for a kind it does not know, and leaves out a missing amount', () => {
     expect(styleText(ev('style', 0, { kind: 'moonwalk', points: 5 }))).toBeNull();
     expect(styleText(ev('style', 0, { kind: 'airtime' }))).toBe('AIRTIME');
