@@ -13,6 +13,7 @@
     "c-switchback-merge-main",
     "sf-painted-row",
     "sf-fogline-climb",
+    "sf-bridge-onramp",
     "sf-bridge-approach",
     "c-stair-alley-in",
     "sf-stair-alley",
@@ -124,13 +125,25 @@
       "z": -1789.5189,
       "ends": [
         { "road": "sf-fogline-climb", "end": "to" },
-        { "road": "sf-bridge-approach", "end": "from" }
+        { "road": "sf-bridge-onramp", "end": "from" }
       ],
       "connectors": [],
       "control": "none"
     },
     {
       "id": "j-sf-hills-6",
+      "x": -1394.6797,
+      "y": 3,
+      "z": -1858.4113,
+      "ends": [
+        { "road": "sf-bridge-onramp", "end": "to" },
+        { "road": "sf-bridge-approach", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-hills-7",
       "x": -2123.233,
       "y": 3,
       "z": -2246.2698,

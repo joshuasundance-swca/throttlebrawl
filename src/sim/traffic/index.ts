@@ -44,15 +44,36 @@
 //   traffic swerves around you"): a vehicle coming up on a rider who is down (tumbling or on foot)
 //   in its path edges inward round them, over the centre line if need be, when no oncoming vehicle
 //   is within TRAFFIC.swerveOncomingClearM of the spot; otherwise it stops behind them as before.
+// - Multi-lane roads (W-R; interview, 2026-10-02: "multi-lane highways (4-6 lanes, lane
+//   splitting)"): a direction's traffic scales with its lanes (one car per baseSpacingM of LANE, so
+//   a three-lane highway carries three times a two-lane road's cars, under the hard cap), every lane
+//   gets cars, and where a lane ends (the corridor's lane map) its cars merge inward one lane at a
+//   time when the next lane has room, braking for the lane's end until they can; nothing spawns in or
+//   changes into a lane that ends within TRAFFIC.mergeLookM. A road with one lane each way is
+//   exactly as before. A near miss whose rider had another vehicle just as close on the other side
+//   (threading between two cars, or between a car and an oncoming one) carries `split`.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
-import { buildCorridor, fromCorridor, lanesAt, linkAt, linkOf, toCorridor, type Corridor } from './corridor';
+import {
+  buildCorridor,
+  buildLaneMap,
+  extraLaneMetres,
+  fromCorridor,
+  laneCountOnMap,
+  laneEndOnMap,
+  lanesAt,
+  linkAt,
+  linkOf,
+  toCorridor,
+  type Corridor,
+  type LaneMap,
+} from './corridor';
 import { IDM, idmAccel } from './idm';
 
-export { buildCorridor, pickLink, toCorridor, trafficMayEnter } from './corridor';
-export type { Corridor } from './corridor';
+export { buildCorridor, buildLaneMap, pickLink, toCorridor, trafficMayEnter } from './corridor';
+export type { Corridor, LaneMap } from './corridor';
 export { IDM, idmAccel } from './idm';
 
 export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
@@ -220,6 +241,17 @@ export const TRAFFIC = {
   weavePeriodS: 3.2,
   /** A convoy's extra bumper room on top of the car-following gap at its cruise speed, m. */
   convoyExtraGapM: 2,
+  /** A car starts merging out of a lane that ends this far ahead, m (W-R). */
+  mergeLookM: 250,
+  /** Bumper room a merge needs in the lane it moves into, m (W-R). */
+  mergeClearM: 8,
+  /** A merging car is in its new lane once its centre is this close to the lane's, m (W-R). */
+  mergeDoneM: 0.3,
+  /**
+   * A near miss is a lane split when another vehicle is within nearMissM on the rider's other side
+   * and alongside it: its box within this much of the rider's along the road, m (W-R).
+   */
+  splitAlongM: 1.5,
 };
 
 /** A road vehicle that rides at the kerb (W-P): a bicycle, e-bike, scooter or golf cart. */
@@ -328,6 +360,8 @@ function parkedCd(laneCd: number): number {
 /** Traffic's plain state. Per-vehicle arrays are indexed by vehicle slot; per-rider by entity id. */
 export interface TrafficState {
   corridor: Corridor;
+  /** Where the corridor's lane count each way changes (W-R multi-lane roads). */
+  laneMap: LaneMap;
   /** Indices into config.trafficTypes of the road vehicles traffic spawns. */
   types: number[];
   /** Reaction range, m. */
@@ -365,6 +399,7 @@ export interface TrafficState {
 export function trafficState(world: World): TrafficState {
   return systemState<TrafficState>(world, 'traffic', () => ({
     corridor: { edges: [], o: [], off: [], len: [], length: 0, routeDir: 1, lo: 0, hi: 0 },
+    laneMap: { u0: [], plus: [], minus: [] },
     types: [],
     reactionM: 0,
     id: [],
@@ -490,17 +525,68 @@ function densityFor(world: World, st: TrafficState, dir: number): number {
   return all * clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
 }
 
-/** The live-vehicle cap per direction: the base cap, scaled up (never down) by the master slider. */
-export function capPerDirection(world: World): number {
+/**
+ * The live-vehicle cap per direction: the base cap, scaled up (never down) by the master slider and
+ * by `laneFactor`, the windows' average lanes that way (1 on a road with one lane each way; W-R), and
+ * never past the hard cap.
+ */
+export function capPerDirection(world: World, laneFactor = 1): number {
   const all = clamp(world.params['traffic.density'] ?? 1, 0, 10);
-  return Math.min(TRAFFIC.maxPerDirectionHard, Math.round(TRAFFIC.maxPerDirection * Math.max(1, all)));
+  return Math.min(
+    TRAFFIC.maxPerDirectionHard,
+    Math.round(TRAFFIC.maxPerDirection * Math.max(1, all) * laneFactor),
+  );
+}
+
+/**
+ * Lane-metres past one lane that way inside the anchor windows (W-R): the union of the windows, as
+ * windowLength takes it, against the lane map. 0 on a road with one lane each way.
+ */
+function extraLaneLength(st: TrafficState, anchors: readonly number[], dir: number): number {
+  const m = st.laneMap;
+  if (!(dir === 1 ? m.plus : m.minus).some((n) => n > 1)) return 0;
+  const c = st.corridor;
+  const lo = c.lo + TRAFFIC.endMarginM;
+  const hi = c.hi - TRAFFIC.endMarginM;
+  const spans = anchors
+    .map((a) => [Math.max(lo, a - TRAFFIC.windowM), Math.min(hi, a + TRAFFIC.windowM)] as const)
+    .filter(([a, b]) => b > a)
+    .sort((p, q) => p[0] - q[0]);
+  let extra = 0;
+  let curA = -Infinity;
+  let curB = -Infinity;
+  for (const [a, b] of spans) {
+    if (a > curB) {
+      if (curB > curA) extra += extraLaneMetres(m, curA, curB, dir);
+      curA = a;
+      curB = b;
+    } else if (b > curB) {
+      curB = b;
+    }
+  }
+  if (curB > curA) extra += extraLaneMetres(m, curA, curB, dir);
+  return extra;
 }
 
 function targetCount(world: World, st: TrafficState, anchors: readonly number[], dir: number): number {
   const k = densityFor(world, st, dir);
   if (k <= 0) return 0;
-  const n = Math.floor((windowLength(anchors, st.corridor) * k) / TRAFFIC.baseSpacingM);
-  return Math.min(capPerDirection(world), n);
+  const length = windowLength(anchors, st.corridor);
+  // One car per baseSpacingM of lane (W-R): the extra lanes of a multi-lane stretch add their metres.
+  const extra = extraLaneLength(st, anchors, dir);
+  const n = Math.floor(((length + extra) * k) / TRAFFIC.baseSpacingM);
+  return Math.min(capPerDirection(world, extra > 0 && length > 0 ? (length + extra) / length : 1), n);
+}
+
+/** How far ahead vehicle-lane `rank` heading `dir` ends from u, within `range` (W-R); see laneEndOnMap. */
+export function laneEndAhead(
+  st: Pick<TrafficState, 'laneMap'>,
+  u: number,
+  dir: number,
+  rank: number,
+  range: number,
+): number {
+  return laneEndOnMap(st.laneMap, u, dir, rank, range);
 }
 
 function rollType(world: World, config: SimConfig, st: TrafficState, dir: number): number {
@@ -642,7 +728,9 @@ function trySpawn(
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
-    const rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
+    let rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
+    // Never into a lane that ends soon (W-R): the next lane in, until one goes on.
+    while (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) rank--;
     if (!laneClear(config, st, u, dir, rank, t.lengthM, gap, k)) continue;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
@@ -837,6 +925,20 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
   for (let k = 0; k < st.id.length; k++) {
     st.laneCooldownS[k] = Math.max(0, (st.laneCooldownS[k] ?? 0) - dt);
     const t = typeOf(config, st, k);
+    // A lane that ends ahead (W-R): merge inward, one lane at a time, as soon as the next lane has
+    // room; no roll, no cooldown, any category. Until then it brakes for the lane's end (move()).
+    if (!isParked(t) && !isKerb(t)) {
+      const rank = st.rank[k] ?? 0;
+      const u = st.u[k] ?? 0;
+      const dir = st.dir[k] ?? 1;
+      if (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) {
+        if (laneClear(config, st, u, dir, rank - 1, t.lengthM, TRAFFIC.mergeClearM, k)) {
+          st.rank[k] = rank - 1;
+          st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
+        }
+        continue;
+      }
+    }
     if (parked.length > 0 && !isParked(t) && !isKerb(t)) {
       const dir = st.dir[k] ?? 1;
       const lanes = lanesAt(config.road, st.corridor, st.u[k] ?? 0, dir);
@@ -866,6 +968,8 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
             ? rank - 1
             : rank + 1;
     if (!laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) continue;
+    // Never into a lane that ends soon (W-R).
+    if (laneEndAhead(st, st.u[k] ?? 0, dir, to, TRAFFIC.mergeLookM) < Infinity) continue;
     const toCd = lanes[to]?.cd ?? st.cd[k] ?? 0;
     if (parked.length > 0 && parkedAhead(config, st, k, to, parked, toCd) >= 0) continue;
     st.rank[k] = to;
@@ -951,6 +1055,20 @@ function move(
       if (along < -1) continue; // riding head-on at it: the car does not dodge, the rider must.
       consider(ahead - (t.lengthM + TRAFFIC.riderLengthM) / 2, Math.max(0, along));
     }
+    // The end of its lane (W-R), until it has merged out of it: a stopped obstacle. A merge takes a
+    // moment to slide across, so until the car is in its new lane the end of the one it is leaving
+    // (one further out) counts too.
+    if (!isParked(t) && !isKerb(t)) {
+      const rank = st.rank[k] ?? 0;
+      let end = laneEndAhead(st, u, dir, rank, TRAFFIC.lookaheadM);
+      if (laneCountOnMap(st.laneMap, u, dir) > rank + 1) {
+        const own = lanesAt(config.road, c, u, dir)[rank];
+        if (own && Math.abs(cd - own.cd) > TRAFFIC.mergeDoneM) {
+          end = Math.min(end, laneEndAhead(st, u, dir, rank + 1, TRAFFIC.lookaheadM));
+        }
+      }
+      if (end < Infinity) consider(end - t.lengthM / 2, 0);
+    }
     accel.push(idmAccel(speeds[k] ?? 0, st.v0[k] ?? 0, gap, vLead));
   }
   const nextV: number[] = [];
@@ -998,9 +1116,19 @@ function move(
     st.u[k] = u;
     const lanes = lanesAt(config.road, c, u, dir);
     const tk = typeOf(config, st, k);
-    const kerb = isKerb(tk) ? kerbCd(config.road, c, u, dir, tk.widthM / 2) : null;
+    let kerb = isKerb(tk) ? kerbCd(config.road, c, u, dir, tk.widthM / 2) : null;
+    // Where its outermost lane ends ahead (W-R), a kerb rider moves in to the kerb beyond it in good
+    // time, keeping its rank until the lane goes.
+    if (kerb) {
+      const end = laneEndAhead(st, u, dir, kerb.rank, TRAFFIC.mergeLookM);
+      const beyond =
+        end > 0 && end < Infinity ? kerbCd(config.road, c, u + dir * (end + 1), dir, tk.widthM / 2) : null;
+      if (beyond) kerb = { ...beyond, rank: kerb.rank };
+    }
     // A kerb rider keeps the outermost lane's rank as lanes come and go along the road.
     if (kerb) st.rank[k] = kerb.rank;
+    // Past where its lane ended (W-R: a merge it could not make): it is in the lane that goes on.
+    else if (lanes.length > 0 && (st.rank[k] ?? 0) > lanes.length - 1) st.rank[k] = lanes.length - 1;
     const ownLane = lanes[Math.min(st.rank[k] ?? 0, lanes.length - 1)];
     const laneCd = ownLane?.cd ?? st.cd[k] ?? 0;
     let target = kerb ? kerb.cd : laneCd;
@@ -1144,6 +1272,28 @@ function oncomingClear(st: TrafficState, k: number, r: RiderView): boolean {
   return true;
 }
 
+/**
+ * Lane splitting (W-R; interview, 2026-10-02: "lane splitting"): the slot of a vehicle other than k
+ * on the rider's other side from k, within nearMissM of it box to box and alongside it (its box
+ * within TRAFFIC.splitAlongM of the rider's along the road), either way it is heading; else -1.
+ */
+function splitPartner(config: SimConfig, st: TrafficState, r: RiderView, k: number): number {
+  const T = TRAFFIC;
+  const side = (st.cd[k] ?? 0) - r.cd > 0 ? 1 : -1;
+  for (let j = 0; j < st.id.length; j++) {
+    if (j === k) continue;
+    const dcd = (st.cd[j] ?? 0) - r.cd;
+    if (dcd * side >= 0) continue;
+    const tj = typeOf(config, st, j);
+    const gap = (dcd < 0 ? -dcd : dcd) - (tj.widthM + T.riderWidthM) / 2;
+    if (gap <= 0 || gap > T.nearMissM) continue;
+    const du = (st.u[j] ?? 0) - r.u;
+    if ((du < 0 ? -du : du) > (tj.lengthM + T.riderLengthM) / 2 + T.splitAlongM) continue;
+    return j;
+  }
+  return -1;
+}
+
 /** Writes a rider's corridor position back to its road position, inside the drivable width. */
 function putRider(world: World, config: SimConfig, st: TrafficState, r: RiderView): boolean {
   const m = world.movers[r.id];
@@ -1270,6 +1420,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         const vSpeed = world.movers[vid]?.speed ?? 0;
         const closing = m.speed - ((st.dir[k] ?? 1) === r.dir ? vSpeed : -vSpeed);
         if (clearance > 0 && clearance <= T.nearMissM && closing >= closingMin) {
+          // Threading between this vehicle and another just as close on the other side (W-R).
+          const split = splitPartner(config, st, r, k) >= 0;
           emit(
             world,
             'nearMiss',
@@ -1279,6 +1431,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
               oncoming: (st.dir[k] ?? 1) !== r.dir,
               vehicle: t.contentId,
               closingMps: closing,
+              ...(split ? { split: true } : {}),
             },
             { target: vid },
           );
@@ -1293,6 +1446,7 @@ export const trafficSystem: SimSystem = {
   init(world: World, config: SimConfig) {
     const st = trafficState(world);
     st.corridor = buildCorridor(config);
+    st.laneMap = buildLaneMap(config.road, st.corridor);
     // Road vehicles the region mix gives a weight; a weight of 0 means it never spawns.
     st.types = config.trafficTypes.flatMap((t, i) => (CATEGORY[t.category] && weightOf(t) > 0 ? [i] : []));
     let topSpeed = 0;

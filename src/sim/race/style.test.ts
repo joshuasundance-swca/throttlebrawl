@@ -66,6 +66,20 @@ const ev = (
   ...extra,
 });
 
+describe('lane splitting pays more (W-R; interview, 2026-10-02: "lane splitting")', () => {
+  it('a near miss that threads between two vehicles scores race.styleSplitScale times the cash', () => {
+    const h = harness(styledConfig());
+    ride(h.player, 3.4, 30);
+    h.step();
+    const one = h.step([ev('nearMiss', h.player.id, { clearanceM: 0.5, closingMps: 20 })]);
+    const split = h.step([ev('nearMiss', h.player.id, { clearanceM: 0.4, closingMps: 20, split: true })]);
+    expect(one[0]?.data['points']).toBe(25);
+    expect(one[0]?.data['split']).toBeUndefined();
+    expect(split[0]?.data).toMatchObject({ kind: 'nearMiss', points: 50, split: true });
+    expect(RACE_TUNING.find((d) => d.id === 'race.styleSplitScale')?.default).toBe(2);
+  });
+});
+
 describe('riders-5: style scoring', () => {
   it('a near miss scores one nearMiss style event, linked to it, and adds to the tally', () => {
     const h = harness(styledConfig());

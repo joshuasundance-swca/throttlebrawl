@@ -3,7 +3,8 @@
 // real street names and no landmark branding. From the waterfront it turns uphill into a grid of
 // steep blocks with crest lips you catch air over, snakes down a switchback street (or drops
 // straight down the stair alley shortcut), runs along a row of painted houses, climbs into the fog
-// and finishes on the approach to a big orange suspension bridge. Every name and number is a
+// and finishes on the approach to a big orange suspension bridge, a freeway that widens to three
+// lanes each way (W-R: the first multi-lane highway, for lane splitting). Every name and number is a
 // placeholder the maintainer may veto. Bake with `node tools/road/bake.mjs`.
 //
 // Limits of the road format this track works inside (follow-ups in the region-sf report):
@@ -27,6 +28,39 @@ const LANES = [
 
 /** A city speed limit (35 mph). Informational: traffic cruises at its own type's speed. */
 const CITY = 15.6;
+
+/**
+ * The bridge approach's freeway lanes (W-R; interview, 2026-10-02: "multi-lane highways (4-6
+ * lanes, lane splitting)"; "Surprised no 4 lane highway"): `perSide` 4 m drive lanes each way, the
+ * innermost exactly the course's own L1 and R1, so riders and cars carry straight on, plus a 1.5 m
+ * shoulder each side.
+ */
+function freewayLanes(perSide: number) {
+  const right = Array.from({ length: perSide }, (_v, i) => ({
+    id: `R${i + 1}`,
+    dCenterM: 2 + 4 * i,
+    widthM: 4,
+    direction: 1 as const,
+    kind: 'drive' as const,
+  }));
+  const shoulder = {
+    id: 'R0',
+    dCenterM: 4 * perSide + 0.75,
+    widthM: 1.5,
+    direction: 1 as const,
+    kind: 'shoulder' as const,
+  };
+  const mirror = (l: (typeof right)[number] | typeof shoulder) => ({
+    ...l,
+    id: `L${l.id.slice(1)}`,
+    dCenterM: -l.dCenterM,
+    direction: -1 as const,
+  });
+  return [mirror(shoulder), ...[...right].reverse().map(mirror), ...right, shoulder];
+}
+
+/** A freeway speed limit (55 mph). Informational, like CITY. */
+const FREEWAY = 24.6;
 
 /** Row houses as walls along a block, both sides, short of the road's ends. */
 const rowHouses = (s0: number, s1: number) => ({
@@ -399,15 +433,35 @@ export const SF_HILLS: TrackSource = {
       barriers: [],
     },
     {
+      // The two-lane on-ramp out of the fog (W-R): it keeps the freeway's width clear of the last
+      // row houses at the top of the climb (render draws a road's shoulders at its widest lanes).
+      id: 'sf-bridge-onramp',
+      name: 'Bridge On-ramp',
+      lengthM: 70,
+      speedLimitMps: FREEWAY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'fog' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      // The freeway onto the bridge (W-R): two lanes each way, a third from 70 m, so the finish
+      // sprint is six lanes of shuttles and robotaxis to thread between. Everything below sits where
+      // it stood before the on-ramp took the first 70 m.
       id: 'sf-bridge-approach',
       name: 'Bridge Approach',
-      speedLimitMps: CITY,
+      speedLimitMps: FREEWAY,
       surface: 'asphalt',
-      humps: [{ centreM: 480, lengthM: 800, heightM: 14 }],
+      laneSections: [
+        { s0: 0, lanes: freewayLanes(2) },
+        { s0: 70, lanes: freewayLanes(3) },
+      ],
+      humps: [{ centreM: 410, lengthM: 800, heightM: 14 }],
       tags: [
         { s0: 0, s1: 'end', side: 'both', tag: 'fog' },
-        { s0: 250, s1: 'end', side: 'both', tag: 'bridge' },
-        { s0: 250, s1: 'end', side: 'both', tag: 'water-open' },
+        { s0: 180, s1: 'end', side: 'both', tag: 'bridge' },
+        { s0: 180, s1: 'end', side: 'both', tag: 'water-open' },
       ],
       // No signs or billboards here: neither side has land (fog, then the bridge over the bay), so
       // a board would stand in the water (run W-P's verifier). Its coldcase-ai billboard and toll
@@ -417,8 +471,8 @@ export const SF_HILLS: TrackSource = {
         {
           kind: 'boostPad',
           id: 'pad-bridge-approach',
-          s0: 300,
-          s1: 306,
+          s0: 230,
+          s1: 236,
           d0: 0.5,
           d1: 3,
           params: { boostMps: 8, holdS: 1.5, slot: 'sf-pad-bridge' },
@@ -427,14 +481,14 @@ export const SF_HILLS: TrackSource = {
         {
           kind: 'boostPad',
           id: 'pad-bridge-approach-late',
-          s0: 620,
-          s1: 626,
+          s0: 550,
+          s1: 556,
           d0: 0.5,
           d1: 3,
           params: { boostMps: 8, holdS: 1.5, slot: 'sf-pad-bridge' },
         },
       ],
-      barriers: [{ s0: 250, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
+      barriers: [{ s0: 180, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
     },
   ],
   branches: [
