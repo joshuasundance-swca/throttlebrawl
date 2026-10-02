@@ -21,7 +21,8 @@
 //
 // What it found (run W-P, measured before the fix): the default chase camera already sees past
 // every crest top (Russian Hill: 1807 of 1807 crest frames show road 30 m past the top, 566 of
-// them in the air; Twin Peaks: 2453 of 2453), so it needed no crest pitch. The frames without the
+// them in the air; Twin Peaks: 2453 of 2453, though those were ridden backward, see ROUTES), so it
+// needed no crest pitch. The frames without the
 // road ahead (159 on Russian Hill, 225 on Twin Peaks, phone shape) were all within a second of a
 // remount, the framing swinging round from the walk back to the bike; a remount now cuts
 // (src/camera/chase.ts, REMOUNT_CUT_RAD). With a low camera aimed high (height 0.8 m, aim 2 m: a
@@ -57,8 +58,13 @@ const SEEDS = [1, 3, 4, 6];
 
 /**
  * `drop`: the crest threshold, metres of fall in the 12 m past the top. Russian Hill's tops fall
- * 2.2 to 2.7 m in 12 m where the bot rides them; Twin Peaks' climb tops out gentler (0.9 to 1.1 m),
- * so its crests are counted from 0.8 m. `flies`: the crest launch takes off there at 1.5x speed.
+ * 2.2 to 2.7 m in 12 m where the bot rides them. Twin Peaks' tops are gentler: ridden the way the
+ * race goes, the steepest falls 0.76 m in 12 m, so its crests are counted from 0.6 m (1158 crest
+ * frames over the four seeds, phone shape). The 0.9 to 1.1 m first measured here came from the bot
+ * riding the route BACKWARD: a crash on the twin-peaks-climb hairpin handed it back facing downhill
+ * (11 803 wrong-way frames, and every one of the 1099 crest frames then counted), fixed in
+ * src/sim/tumble (tests/sim/tumble-hairpin.test.ts). `flies`: the crest launch takes off there at
+ * 1.5x speed.
  */
 const ROUTES = [
   {
@@ -72,7 +78,7 @@ const ROUTES = [
     event: 'region-sf:sf-hill-sprint',
     route: 'region-sf:osm-sf-twin-peaks-run',
     name: 'Twin Peaks',
-    drop: 0.8,
+    drop: 0.6,
     flies: false,
   },
 ] as const;
