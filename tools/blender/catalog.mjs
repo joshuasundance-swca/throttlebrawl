@@ -52,6 +52,17 @@ export const ROLES = [
   'stone',
   'leaf_light',
   'bark_pale',
+  // Bike paints: recolour the tank, fairings and contrasting panels by rider palette.
+  'paint_primary',
+  'paint_secondary',
+  'paint_accent',
+  // Police light lenses are flat colour; the renderer supplies any flashing effect.
+  'light_red',
+  'light_blue',
+  // Sticker patches are geometry without logos or textures.
+  'decal_a',
+  'decal_b',
+  'decal_c',
 ];
 
 /** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */
@@ -81,6 +92,319 @@ const VIEWS = ['front34', 'side', 'rear34'];
 
 /** @type {Prop[]} */
 export const PROPS = [
+  {
+    name: 'rustbucket_400',
+    script: 'props/rustbucket_400.py',
+    asset: 'models/bikes/rustbucket-400',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.44, seat_height_m=0.77, class='rat'.
+    views: VIEWS,
+  },
+  {
+    name: 'streetfighter_750',
+    script: 'props/streetfighter_750.py',
+    asset: 'models/bikes/streetfighter-750',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.46, seat_height_m=0.81, class='sport'.
+    views: VIEWS,
+  },
+  {
+    name: 'superbike_1000',
+    script: 'props/superbike_1000.py',
+    asset: 'models/bikes/superbike-1000',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.43, seat_height_m=0.84, class='super'.
+    views: VIEWS,
+  },
+  {
+    name: 'chopper',
+    script: 'props/chopper.py',
+    asset: 'models/bikes/chopper',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.9, seat_height_m=0.67, class='chopper'.
+    views: VIEWS,
+  },
+  {
+    name: 'sport_stickered',
+    script: 'props/sport_stickered.py',
+    asset: 'models/bikes/sport-stickered',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.44, seat_height_m=0.82, class='sport'.
+    views: VIEWS,
+  },
+  {
+    name: 'dirt_bike',
+    script: 'props/dirt_bike.py',
+    asset: 'models/bikes/dirt-bike',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.48, seat_height_m=0.9, class='dirt'.
+    views: VIEWS,
+  },
+  {
+    name: 'step_through',
+    script: 'props/step_through.py',
+    asset: 'models/bikes/step-through',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.28, seat_height_m=0.74, class='scooter'.
+    views: VIEWS,
+  },
+  {
+    name: 'bagger',
+    script: 'props/bagger.py',
+    asset: 'models/bikes/bagger',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.65, seat_height_m=0.7, class='chopper'.
+    views: VIEWS,
+  },
+  {
+    name: 'cop_moto',
+    script: 'props/cop_moto.py',
+    asset: 'models/bikes/cop-moto',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.59, seat_height_m=0.78, class='rat'.
+    views: VIEWS,
+  },
+  {
+    name: 'parking_trike',
+    script: 'props/parking_trike.py',
+    asset: 'models/bikes/parking-trike',
+    kind: 'single',
+    budget: { tris: 1500, draws: 7, materials: 7 },
+    single: {
+      root: 'bike',
+      nodes: [
+        'bike_body',
+        'wheel_front',
+        'wheel_rear',
+        'fork',
+        'seat_anchor',
+        'bar_l',
+        'bar_r',
+        'peg_l',
+        'peg_r',
+        'light_head',
+        'light_tail',
+        'wheel_rear_l',
+        'wheel_rear_r',
+      ],
+      size: [
+        [0.5, 1.4],
+        [0.8, 1.8],
+        [1.7, 2.7],
+      ],
+    },
+    // Axle origins spin about X; fork origin is the steering head; grips and front wheel follow it.
+    // Root extras: wheelbase_m=1.36, seat_height_m=0.73, class='scooter'.
+    views: VIEWS,
+  },
+
   {
     name: 'tow_truck',
     script: 'props/tow_truck.py',

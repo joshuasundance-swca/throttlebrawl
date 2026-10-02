@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Box3, Vector3 } from 'three';
 import type { Mesh, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it } from 'vitest';
@@ -44,7 +45,7 @@ describe('the Blender model catalog', () => {
     const ids = PROPS.map((p) => p.asset);
     expect(new Set(ids).size).toBe(ids.length);
     for (const p of PROPS) {
-      expect(p.asset).toMatch(/^models\/(props|scenery)\/[a-z0-9]+(-[a-z0-9]+)*$/);
+      expect(p.asset).toMatch(/^models\/(props|scenery|bikes)\/[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(existsSync(path.join(repoRoot, 'tools/blender', p.script)), p.script).toBe(true);
     }
   });
@@ -112,6 +113,53 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
         }
     }
   });
+
+  if (prop.asset.startsWith('models/bikes/')) {
+    it('has grounded axle pivots, rider targets and a connected steering assembly', async () => {
+      const scene = await loadInThree(read(file));
+      scene.updateMatrixWorld(true);
+      const bike = scene.getObjectByName('bike')!;
+      const fork = scene.getObjectByName('fork')!;
+      const front = scene.getObjectByName('wheel_front')!;
+      const rear = scene.getObjectByName('wheel_rear')!;
+      const position = (o: Object3D) => o.getWorldPosition(new Vector3());
+      const fp = position(front);
+      const rp = position(rear);
+      expect(position(bike).length()).toBeLessThan(0.0001);
+      expect(fp.z).toBeGreaterThan(0);
+      expect(rp.z).toBeLessThan(0);
+      expect(fp.z + rp.z).toBeCloseTo(0, 5);
+      expect(fp.z - rp.z).toBeCloseTo(bike.userData['wheelbase_m'] as number, 5);
+      expect(position(scene.getObjectByName('seat_anchor')!).y).toBeCloseTo(
+        bike.userData['seat_height_m'] as number,
+        5,
+      );
+      expect(['rat', 'sport', 'super', 'chopper', 'dirt', 'scooter']).toContain(bike.userData['class']);
+      expect(front.parent).toBe(fork);
+      for (const side of ['l', 'r']) {
+        expect(scene.getObjectByName(`bar_${side}`)!.parent).toBe(fork);
+        expect(position(scene.getObjectByName(`peg_${side}`)!).y).toBeGreaterThan(0.2);
+      }
+      expect(position(scene.getObjectByName('bar_l')!).x).toBeGreaterThan(0);
+      expect(position(scene.getObjectByName('bar_r')!).x).toBeLessThan(0);
+      const wheels = ['wheel_front', 'wheel_rear_l', 'wheel_rear_r'];
+      if (!scene.getObjectByName('wheel_rear_l')) wheels.push('wheel_rear');
+      for (const name of wheels) {
+        const wheel = scene.getObjectByName(name);
+        if (!wheel) continue;
+        const box = new Box3().setFromObject(wheel);
+        const p = position(wheel);
+        expect(box.min.y).toBeCloseTo(0, 4);
+        expect((box.min.y + box.max.y) / 2).toBeCloseTo(p.y, 4);
+        expect((box.min.z + box.max.z) / 2).toBeCloseTo(p.z, 4);
+        expect(wheel.scale.toArray()).toEqual([1, 1, 1]);
+        expect(wheel.quaternion.x).toBeCloseTo(0, 5);
+        expect(wheel.quaternion.y).toBeCloseTo(0, 5);
+        expect(wheel.quaternion.z).toBeCloseTo(0, 5);
+      }
+      expect(scoreGlb(read(file), prop).counts.triangles).toBeGreaterThanOrEqual(600);
+    });
+  }
 });
 
 describe('the score guards fire', () => {
