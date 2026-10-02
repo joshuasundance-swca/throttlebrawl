@@ -44,6 +44,7 @@
   "look": {
     "description": "A broad woman in a patched oilskin coat and waders, grey braid down her back, a gator-tooth necklace. Rides a heavy, rust-orange bagger with airboat-fan styling and a dented fender.",
     "bikeClass": "chopper",
+    "bikeModel": "bagger",
     "palette": ["#8b3a1a", "#4b5a2a", "#d8c9a3", "#1f2a1f"]
   },
   "meta": {

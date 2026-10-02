@@ -61,6 +61,11 @@
   },
   "signs": [
     {
+      "id": "spur-keep-right",
+      "text": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
+      "status": "live"
+    },
+    {
       "id": "ferry-wait",
       "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.",
       "status": "live"

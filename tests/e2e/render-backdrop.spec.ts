@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
@@ -50,12 +50,21 @@ const CASES = [
 
 const LOOKS = ['kodak', 'classic'] as const;
 
+/**
+ * True when the browser got the file: a 200, or a 304 (Not Modified). Each case races twice on one
+ * page (one look, then the next), and `vite preview` serves chunks as `no-cache` with an ETag, so
+ * the second load may revalidate the chunk it already holds and Playwright reports that response
+ * as a 304, whose `ok()` is false. Counting only `ok()` dropped the fetch at random on the second
+ * look (the Classic run of pnw-gorge, pnw and sf, always at the fetch poll below).
+ */
+const arrived = (res: Response): boolean => res.ok() || res.status() === 304;
+
 async function race(page: Page, c: (typeof CASES)[number], look: string): Promise<Set<string>> {
   const fetched = new Set<string>();
   page.on('response', (res) => {
     const file = new URL(res.url()).pathname.split('/').pop() ?? '';
     for (const id of Object.values(NETWORK_CHUNKS).flat())
-      if (file.startsWith(`${id}-`) && file.endsWith('.js') && res.ok()) fetched.add(id);
+      if (file.startsWith(`${id}-`) && file.endsWith('.js') && arrived(res)) fetched.add(id);
   });
   await page.addInitScript((lk) => {
     (window as TestWindow).__GAME_TEST__ = true;

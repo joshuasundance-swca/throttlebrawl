@@ -6,6 +6,12 @@ import { InputFlag, type SimInput } from '../../src/sim/types.ts';
 // before the page loads with one standard-mapping pad whose state the test sets through
 // window.__pad; the game polls it on every sim tick. The bot is off; the test handle's inputs()
 // reads the player slot's recorded command per tick.
+//
+// Presses are held and released by sim ticks, never by wall-clock time. The pad is polled only
+// when a tick steps, and a software-rendered CI runner draws about 10 frames a second with longer
+// stalls, so a 300 ms press could start and end between two polls (main's run 36981877768 recorded
+// no Cross press at all). Each press waits until the recorded inputs show it, is held for a count of
+// ticks, and each release waits until a recorded input shows it.
 
 interface Handle {
   inputs(from?: number): SimInput[];
@@ -44,8 +50,6 @@ interface Want {
   steer?: number;
   brake?: number;
   flags?: number;
-  /** At least one of these flag bits is set. */
-  anyFlags?: number;
 }
 
 /** Waits until the last recorded input matches `want`, then returns it. */
@@ -55,9 +59,7 @@ async function untilLast(page: Page, want: Want, label: string) {
       const all = (window as TestWindow).__game?.inputs() ?? [];
       const last = all[all.length - 1] as unknown as Record<string, number> | undefined;
       if (!last) return false;
-      const { anyFlags, ...exact } = w;
-      if (anyFlags !== undefined && ((last['flags'] ?? 0) & anyFlags) === 0) return false;
-      return Object.entries(exact).every(([k, v]) => last[k] === v);
+      return Object.entries(w).every(([k, v]) => last[k] === v);
     },
     want,
     { timeout: 10_000 },
@@ -69,6 +71,35 @@ async function untilLast(page: Page, want: Want, label: string) {
   console.log(`${label}: ${JSON.stringify(last)}`);
   return last;
 }
+
+/** The number of ticks recorded this race: one SimInput, and one pad poll, per stepped tick. */
+const ticks = (page: Page) => page.evaluate(() => (window as TestWindow).__game!.inputs().length);
+
+/** Waits until a recorded input from tick `from` on has `flag` set, and returns that tick. */
+async function untilSeen(page: Page, from: number, flag: number, label: string) {
+  const at = await page.waitForFunction(
+    ([f, bit]) => {
+      const i = ((window as TestWindow).__game?.inputs(f) ?? []).findIndex((s) => (s.flags & bit) !== 0);
+      return i < 0 ? false : f + i;
+    },
+    [from, flag] as const,
+    { timeout: 10_000 },
+  );
+  const tick = (await at.jsonValue()) as number;
+  console.log(`${label}: polled at tick ${tick} (${tick - from} after the press was set)`);
+  return tick;
+}
+
+/** Waits until the sim has recorded `tick` ticks, so the pad has been polled up to there. */
+async function untilTick(page: Page, tick: number) {
+  await page.waitForFunction((t) => ((window as TestWindow).__game?.inputs().length ?? 0) >= t, tick, {
+    timeout: 10_000,
+  });
+}
+
+// The original holds, in ticks at 60 Hz: 300 ms for Cross, 100 ms for Triangle.
+const CROSS_HOLD_TICKS = 18;
+const TRIANGLE_HOLD_TICKS = 6;
 
 test('gamepad: a mocked standard pad steers, throttles, brakes, attacks and kicks', async ({ page }) => {
   test.setTimeout(120_000);
@@ -115,21 +146,25 @@ test('gamepad: a mocked standard pad steers, throttles, brakes, attacks and kick
   await setPad(page, { buttons: { [L2]: 0 } });
   await untilLast(page, { brake: 0 }, 'L2 released');
 
-  // Cross: one attack press, however long it is held.
-  let from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
+  // Cross: one attack press, however long it is held. Cross also asks to skip the run-back, a
+  // held flag, so the last input reads flags 0 only once a poll has seen the release.
+  let from = await ticks(page);
   await setPad(page, { buttons: { [CROSS]: 1 } });
-  await page.waitForTimeout(300);
+  const crossAt = await untilSeen(page, from, InputFlag.attack, 'Cross pressed');
+  await untilTick(page, crossAt + 1 + CROSS_HOLD_TICKS);
   await setPad(page, { buttons: { [CROSS]: 0 } });
   await untilLast(page, { flags: 0 }, 'Cross released');
   let seen = await page.evaluate((f) => (window as TestWindow).__game!.inputs(f), from);
+  // The hold really spanned the ticks: more than CROSS_HOLD_TICKS polls read Cross down.
+  expect(seen.filter((s) => has(s, 'skipRunBack')).length).toBeGreaterThan(CROSS_HOLD_TICKS);
   expect(seen.filter((s) => has(s, 'attack'))).toHaveLength(1);
   expect(seen.some((s) => has(s, 'kick'))).toBe(false);
 
   // Triangle: an attack press with the kick flag.
-  from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
+  from = await ticks(page);
   await setPad(page, { buttons: { [TRIANGLE]: 1 } });
-  await untilLast(page, { anyFlags: InputFlag.kick }, 'Triangle held');
-  await page.waitForTimeout(100);
+  const triangleAt = await untilSeen(page, from, InputFlag.kick, 'Triangle pressed');
+  await untilTick(page, triangleAt + 1 + TRIANGLE_HOLD_TICKS);
   await setPad(page, { buttons: { [TRIANGLE]: 0 } });
   await untilLast(page, { flags: 0 }, 'Triangle released');
   seen = await page.evaluate((f) => (window as TestWindow).__game!.inputs(f), from);

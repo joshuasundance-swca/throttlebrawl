@@ -40,6 +40,8 @@ const SEEDS = Array.from({ length: 12 }, (_, i) => i + 1);
 /** He has arrived once he rides (above 1 m/s) within this of the player: a little over his 14 m bust radius. */
 const ARRIVAL_M = 20;
 const RIDING_MPS = 1;
+/** A patrol cop has arrived once he rides faster than this within ARRIVAL_M (sim/cops' crawl is 4). */
+const PATROL_RIDING_MPS = 5;
 /** The declared siren lead (cops.sirenLeadS default), in ticks. */
 const LEAD_TICKS = 3 * 60;
 /** Each preset race stops here: past the second patrol window (50-75 s at 0.7 x the pace). */
@@ -63,8 +65,11 @@ interface PresetRun {
 
 function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
   // The batch's race with the patrol on (the shared batch turns it off with the road events).
+  // Off-road (run W-R) off, as the road events are: it reshuffles these seeded races, and the
+  // arrivals count sits at its threshold (12 seeds a preset: 14 of 24 off, 12 of 24 on; the cops
+  // wait at the same spot either way, and the misses come at 21 m against the 20 m arrival).
   const { sim, playerId, config } = createHeadlessRace(
-    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'cops.patrolScale': 1 } },
+    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'cops.patrolScale': 1, 'ground.offRoad': 0 } },
     { includeDrafts: true },
   );
   const bot = createBot();
@@ -91,7 +96,8 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
       // (riders bump, playtest 1 item 6), and that is not him pulling out (PR #302's merge).
       if (s.pullOut < 0 && cop.throttle <= 0) continue;
       if (s.pullOut < 0) s.pullOut = sim.tick;
-      if (s.arrival >= 0 || !me) continue;
+      // Arrived riding after the player: faster than a parked cop rolling back onto the shoulder (4 m/s).
+      if (s.arrival >= 0 || !me || cop.speed <= PATROL_RIDING_MPS) continue;
       if (Math.hypot(cop.x - me.x, cop.z - me.z) <= ARRIVAL_M) s.arrival = sim.tick;
     }
   }

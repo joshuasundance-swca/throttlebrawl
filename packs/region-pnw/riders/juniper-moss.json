@@ -32,7 +32,9 @@
       "preset": "rider-lean",
       "params": { "helmet": "cafe-racer", "jacket": "rain-shell", "proportion": "exaggerated" }
     },
-    "palette": ["#13a89e", "#e0457b", "#f4f1e8"]
+    "palette": ["#13a89e", "#e0457b", "#f4f1e8"],
+    "description": "A barista in a teal rain shell with the hood flapping, a cafe-racer helmet with goggles and a travel tumbler on her belt. Rides an angular naked bike.",
+    "bikeModel": "streetfighter-750"
   },
   "meta": {
     "status": "live",

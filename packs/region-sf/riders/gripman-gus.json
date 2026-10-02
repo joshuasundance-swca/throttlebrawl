@@ -27,6 +27,11 @@
     "targetPreference": ["player", "nearest"],
     "preferredSide": "right"
   },
+  "look": {
+    "description": "A cable-car gripman in a navy waistcoat with brass trim, a red neckerchief, a mustache and his cap, a brass bell on a strap round his neck. Rides a moped like it owes him a fare.",
+    "bikeModel": "moped",
+    "palette": ["#1f2f5a", "#f4f1e8", "#c0392b", "#d4a933"]
+  },
   "meta": {
     "status": "live",
     "notes": "San Francisco local (playtest 1c): the old city against the new one, so Pivot is his natural target. A heavy hitter who holds his line like a cable car and never takes the shortcut on purpose.",

@@ -50,6 +50,7 @@ import { createMusic, type MusicLoop } from './music';
 import {
   createRadioPlayer,
   cutFlag,
+  pirateStationFor,
   stationsForRegion,
   type NowPlaying,
   type RadioPlayer,
@@ -60,6 +61,7 @@ import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
+import { inPirateSpot } from './pirate';
 import {
   CABLE_BELL_RANGE_M,
   createDirector,
@@ -449,6 +451,8 @@ export interface AudioInspect {
     nowPlaying: NowPlaying | null;
     /** Track references started this session, oldest first. */
     history: string[];
+    /** The hidden pirate station (pirate.ts): whether it has the radio now, and its id. */
+    pirate: { on: boolean; station: string | null };
   };
   /** The level the music duck aims for (1 = not ducked). */
   duckLevel: number;
@@ -594,6 +598,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let loadingStations = false;
   let regionId: string | null = null;
   let radioCut: string[] = [];
+  /** The rider is near the hidden pirate station's spot: it has the radio (pirate.ts). */
+  let pirateOn = false;
   const radioSeed = opts.radioSeed ?? Math.floor(Math.random() * 0xffffffff);
   let duckTarget = 1;
   /** The effects level the last voice dipped to (1 = never dipped). */
@@ -723,8 +729,13 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   /** What `audio.radio` tunes to now: 'off', 'score', a station, or 'pending' (stations loading). */
   const tuned = (): 'off' | 'score' | 'pending' | RadioStation => {
     const c = Math.round(params.radio);
-    if (c === RADIO_SCORE) return 'score';
     if (c < RADIO_SCORE) return 'off';
+    // Near the pirate's spot the radio (the score too) is the pirate; never when the radio is off.
+    if (pirateOn && allStations) {
+      const pirate = pirateStationFor(allStations, regionId);
+      if (pirate) return pirate;
+    }
+    if (c === RADIO_SCORE) return 'score';
     if (!allStations) return 'pending';
     // Past the last station is off.
     return regionStations()[c - 2] ?? 'off';
@@ -915,6 +926,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     wind?.set(0, windParams());
     scape?.setRain(0);
     director.reset();
+    if (pirateOn) {
+      pirateOn = false;
+      retune();
+    }
     for (const id of [...others.keys()]) dropOther(id);
     dropSiren();
     // Out of the race (the menus), nobody is talking.
@@ -990,6 +1005,20 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     }
   };
 
+  /**
+   * The hidden pirate station (pirate.ts): near its spot on the route it takes the radio over behind a
+   * burst of tuning static, and gives it back past the spot. A radio that is off stays off.
+   */
+  const pirate = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
+    const spot = allStations ? (pirateStationFor(allStations, regionId)?.pirate ?? null) : null;
+    const radioOn = Math.round(params.radio) >= RADIO_SCORE;
+    const on = spot !== null && radioOn && inPirateSpot(spot, me.progress, snap.race.routeLength, pirateOn);
+    if (on === pirateOn) return;
+    pirateOn = on;
+    if (radioOn) playCue(g, 'tune', 56, 0.7);
+    retune();
+  };
+
   const scene = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
     const now = g.ctx.currentTime;
     const hitStop = snap.timeScale === 0;
@@ -1004,6 +1033,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     wind.set(me.speed, windParams(), down ? 0 : hitStop ? 0.3 : 1);
     const listener = moving(me);
     soundscape(g, snap, me, down, hitStop);
+    pirate(g, snap, me);
 
     // Other riders' engines: the nearest few, cheaper patch, distance and Doppler.
     const near = snap.entities
@@ -1276,6 +1306,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         stations: regionStations().map((st) => st.id),
         nowPlaying: graph?.radio.nowPlaying() ?? null,
         history: [...(graph?.radio.history() ?? [])],
+        pirate: {
+          on: pirateOn,
+          station: (allStations ? pirateStationFor(allStations, regionId)?.id : null) ?? null,
+        },
       },
       duckLevel: duckTarget,
       voice: {

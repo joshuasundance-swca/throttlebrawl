@@ -59,10 +59,12 @@ function grudgeRun(seed: number, grudge: boolean) {
   const { playerId, route } = race;
   // This measures the grudge, not the roadside weapons: W-Q laid one every 500 m (it was three a
   // race), and rivals holding them reshuffled this 6-race A/B (10 swings without, 9 with). One per
-  // 2 km keeps about the old three on the batch's roads.
+  // 2 km keeps about the old three on the batch's roads. Off-road (run W-R) off for the same reason:
+  // it reshuffled these races too (2 swings without the grudge, 2 with; 6.3 s close without, 21.4 s
+  // with), and with it off the riding model is exactly main's.
   const config: SimConfig = {
     ...race.config,
-    tuning: { ...race.config.tuning, 'combat.pickupSpacingM': SPARSE_PICKUPS_M },
+    tuning: { ...race.config.tuning, 'combat.pickupSpacingM': SPARSE_PICKUPS_M, 'ground.offRoad': 0 },
   };
   const quirks = (config.tuning['ai.styleQuirks'] ?? 0) >= 0.5;
   const { sim, world } = createSimWithWorld(config);

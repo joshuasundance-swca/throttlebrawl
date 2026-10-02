@@ -29,6 +29,15 @@
     { "road": "pnw-trestle", "s": 400 },
     { "road": "pnw-espresso-row", "s": 300 }
   ],
+  "branches": [
+    {
+      "id": "pnw-logging-spur",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
+      "roads": ["c-pnw-spur-in", "pnw-logging-spur", "c-pnw-spur-out"]
+    }
+  ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
   "meta": { "status": "live" }

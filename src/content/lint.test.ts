@@ -160,6 +160,20 @@ describe('content lint: references', () => {
     ).toEqual([expect.stringMatching(/\/law\/agency: .*kind "law"/)]);
   });
 
+  it('checks a region traffic area: its mix names road vehicles that exist (run W-R)', () => {
+    const region = 'regions/florida-keys/region.json';
+    const withArea = (mix: Json[]) =>
+      pack({}, { [region]: (j) => ((j['traffic'] as Json)['areas'] = [{ tag: 'key-fishing', mix }]) });
+    expect(errors(withArea([{ kind: 'pickup', weight: 2 }]))).toEqual([]);
+    expect(errors(withArea([{ kind: 'no-such-truck', weight: 2 }]), 'refs')).toEqual([
+      expect.stringMatching(/\/traffic\/areas\/0\/mix\/0\/kind: .*no traffic-type "no-such-truck"/),
+    ]);
+    expect(errors(withArea([{ kind: 'fisherman', weight: 2 }]), 'refs')).toEqual([
+      expect.stringMatching(/\/traffic\/areas\/0\/mix\/0\/kind: .*does not belong in traffic\.areas mix/),
+    ]);
+    expect(errors(withArea([]), 'schema')).toHaveLength(1);
+  });
+
   it('fails a pack default that names a missing HUD layout or tuning preset', () => {
     const files = pack({}, { 'pack.json': (j) => (j['defaults'] = { tuning: 'nope', hud: 'gone' }) });
     expect(errors(files, 'refs')).toHaveLength(2);

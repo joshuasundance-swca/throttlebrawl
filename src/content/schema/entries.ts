@@ -405,6 +405,14 @@ export const regionSchema = entry('region', {
     mix: z.array(trafficKindSchema),
     pedestrians: z.array(trafficKindSchema).optional(),
     animals: z.array(trafficKindSchema).optional(),
+    /**
+     * Per-area traffic (run W-R; interview, 2026-10-02: distinct keys): where a road tag named
+     * `tag` covers the spot a vehicle spawns at (a district tag such as `key-fishing`), its own
+     * `mix` replaces the region's `mix`. Optional; absent everywhere means the region's mix.
+     */
+    areas: z
+      .array(z.looseObject({ tag: z.string().min(1), mix: z.array(trafficKindSchema).min(1) }))
+      .optional(),
   }),
   signs: z.array(signSchema).optional(),
   billboards: z.array(signSchema).optional(),

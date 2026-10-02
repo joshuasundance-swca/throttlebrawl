@@ -43,6 +43,7 @@
   "look": {
     "description": "A seersucker suit, a sash that just says MAYOR and a too-big helmet. Rides a cream touring bike with a campaign sign zip-tied to the back like a flag.",
     "bikeClass": "rat",
+    "bikeModel": "touring-flagship",
     "palette": ["#f2ead3", "#a3242d", "#2a4d8f", "#f4c430"]
   },
   "meta": {

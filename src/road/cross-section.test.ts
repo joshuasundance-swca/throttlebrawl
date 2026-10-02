@@ -30,8 +30,8 @@ const SIX_LANES: BakedLaneSection = {
 };
 
 describe('derived verges (no band in the road file)', () => {
-  it('a road with no tags is palm land: an 8 m sand band that runs on', () => {
-    expect(deriveVerge({}, 'left', 10)).toEqual({ widthM: 8, surface: 'sand', edge: 'soft' });
+  it('a road with no tags is palm land: a 4 m sand band that runs on', () => {
+    expect(deriveVerge({}, 'left', 10)).toEqual({ widthM: 4, surface: 'sand', edge: 'soft' });
   });
 
   it('land tags pick their band, in the scenery theme order (palms beat forest)', () => {
@@ -40,7 +40,7 @@ describe('derived verges (no band in the road file)', () => {
       { s0: 200, s1: 300, side: 'right' as const, tag: 'palms' },
     ];
     expect(deriveVerge({ tags }, 'left', 250)).toEqual({ widthM: 6, surface: 'dirt', edge: 'brush' });
-    expect(deriveVerge({ tags }, 'right', 250)).toEqual({ widthM: 8, surface: 'sand', edge: 'soft' });
+    expect(deriveVerge({ tags }, 'right', 250)).toEqual({ widthM: 4, surface: 'sand', edge: 'soft' });
     expect(deriveVerge({ tags: [{ s0: 0, s1: 9, side: 'both', tag: 'row-houses' }] }, 'right', 5)).toEqual({
       widthM: 2.5,
       surface: 'kerb',
@@ -116,8 +116,8 @@ describe('network queries', () => {
     expect(net.groundAt(0, 50, 1)).toBe('dirt');
     expect(net.groundAt(0, 50, -4.5)).toBe('shoulder');
     expect(net.groundAt(0, 50, 8)).toBe('sand');
-    expect(net.groundAt(0, 50, -14.8)).toBe('sand');
-    expect(net.groundAt(0, 50, 15)).toBeNull();
+    expect(net.groundAt(0, 50, -10.8)).toBe('sand'); // a 6 m beach (run W-R)
+    expect(net.groundAt(0, 50, 11.5)).toBeNull();
   });
 
   it('a road file without a surface is asphalt', () => {

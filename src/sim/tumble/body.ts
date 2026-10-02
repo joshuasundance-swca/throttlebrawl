@@ -18,11 +18,27 @@ export interface TumbleBody {
 /** A cluster's centre stays this far inside the barrier line (a crude body radius, metres). */
 export const BODY_RADIUS_M = 0.35;
 
-/** The walls of an edge: its widest drivable offsets (lanes and shoulders), less the body radius. */
-export function wallBand(road: RoadNetwork, edge: number): { lo: number; hi: number } {
+/**
+ * The walls of an edge: its widest drivable offsets (lanes and shoulders), less the body radius.
+ * With off-road on (run W-R, `ground.offRoad`) and an s, each side reaches out to its verge band's
+ * outer edge there too, so a rider who crashes on the verge tumbles on it instead of being thrown
+ * back onto the road; a side with no band (a rail, the water's edge) keeps the lanes' wall.
+ */
+export function wallBand(
+  road: RoadNetwork,
+  edge: number,
+  s?: number,
+  offRoad = false,
+): { lo: number; hi: number } {
   const e = road.edges[edge];
   if (!e) return { lo: 0, hi: 0 };
-  return { lo: e.dMin + BODY_RADIUS_M, hi: e.dMax - BODY_RADIUS_M };
+  if (!offRoad || s === undefined) return { lo: e.dMin + BODY_RADIUS_M, hi: e.dMax - BODY_RADIUS_M };
+  const left = road.vergeAt(edge, s, 'left').dOuter;
+  const right = road.vergeAt(edge, s, 'right').dOuter;
+  return {
+    lo: (left < e.dMin ? left : e.dMin) + BODY_RADIUS_M,
+    hi: (right > e.dMax ? right : e.dMax) - BODY_RADIUS_M,
+  };
 }
 
 function drivable(lane: LaneInfo): boolean {

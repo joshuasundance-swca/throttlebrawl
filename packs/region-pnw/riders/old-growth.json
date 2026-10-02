@@ -32,7 +32,9 @@
       "preset": "rider-stocky",
       "params": { "helmet": "open-face", "jacket": "flannel", "proportion": "exaggerated" }
     },
-    "palette": ["#d63a1f", "#1d2a22", "#f2c14e"]
+    "palette": ["#d63a1f", "#1d2a22", "#f2c14e"],
+    "description": "A huge logger in red flannel, suspenders, a full beard and a yellow open-face helmet, a thermos strapped behind him. Rides a superbike he has no business fitting on.",
+    "bikeModel": "superbike-1000"
   },
   "meta": {
     "status": "live",

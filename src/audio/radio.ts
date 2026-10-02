@@ -18,6 +18,7 @@ import {
   type ProceduralSpec,
 } from './radio-compose';
 import { createRegionalRig, REGIONAL_GENRES, type RegionalGenre } from './radio-rigs';
+import { pirateSpotFrom, type PirateSpot } from './pirate';
 import { createMoreRig, MORE_GENRES, type MoreGenre } from './radio-rigs-more';
 import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
 
@@ -40,6 +41,11 @@ export interface RadioStation {
   /** Region ids (unqualified); empty = a genre station heard everywhere. */
   regions: readonly string[];
   tracks: readonly RadioTrack[];
+  /**
+   * A hidden pirate station (run W-Q): never on the dial, heard only near this spot on the route
+   * (pirate.ts). null for every ordinary station.
+   */
+  pirate?: PirateSpot | null;
 }
 
 /** One "cut this" flag, the settings record's shape (docs/architecture.md, "In-game veto"). */
@@ -96,6 +102,7 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
       genre: typeof e['genre'] === 'string' ? e['genre'] : '',
       regions: Array.isArray(e['regions']) ? e['regions'].filter((r) => typeof r === 'string').map(bare) : [],
       tracks,
+      pirate: pirateSpotFrom(e['pirate']),
     });
   }
   return out;
@@ -110,10 +117,9 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
  * gets the base pack's stations further down the dial, so it still has a choice (2026-10-01: "I
  * actually like the music"). `null` (region not known yet) = every station.
  */
-export function stationsForRegion(
-  stations: readonly RadioStation[],
-  regionId: string | null,
-): RadioStation[] {
+export function stationsForRegion(all: readonly RadioStation[], regionId: string | null): RadioStation[] {
+  // A pirate station is never on the dial (pirateStationFor finds it).
+  const stations = all.filter((s) => !s.pirate);
   if (regionId === null) return [...stations];
   const want = bare(regionId);
   const own = stations.filter((s) => s.regions.includes(want));
@@ -123,6 +129,16 @@ export function stationsForRegion(
       ? stations.filter((s) => s.packId === 'base' && !own.includes(s) && !genre.includes(s))
       : [];
   return [...own, ...genre, ...fallback];
+}
+
+/** A region's hidden pirate station, or null (a region id, qualified or not). */
+export function pirateStationFor(
+  stations: readonly RadioStation[],
+  regionId: string | null,
+): RadioStation | null {
+  if (regionId === null) return null;
+  const want = bare(regionId);
+  return stations.find((s) => s.pirate && s.regions.includes(want)) ?? null;
 }
 
 /** True when this build can play the track (code-made, not vetoed, not cut on this device). */

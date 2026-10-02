@@ -105,7 +105,13 @@ for (const region of REGIONS) {
     console.log(
       `[print] ${region.name}: riders ${riders.join(', ')}; ${roadFetches.length} road files fetched`,
     );
-    expect(riders).toEqual(expect.arrayContaining(region.locals));
+    // W-Q: a free-play race draws its four rivals from the region's whole cast (its locals plus the
+    // travelling four), so the local law always rides and every rival is from that cast.
+    const pack = region.event.split(':')[0] ?? '';
+    const law = region.locals.filter((id) => /lindqvist|meter|pruitt/.test(id));
+    expect(riders).toEqual(expect.arrayContaining(law));
+    const travelling = /^base:(deacon-vane|dial-up|chad-speedwell|kevin-from-accounting|player)$/;
+    for (const id of riders) expect(id.startsWith(`${pack}:`) || travelling.test(id), id).toBe(true);
     expect(roadFetches.length, 'the region road data was fetched').toBeGreaterThan(0);
 
     // A real frame, inside the draw budget.

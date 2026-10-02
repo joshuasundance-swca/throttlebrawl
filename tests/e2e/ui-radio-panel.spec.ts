@@ -19,7 +19,9 @@ interface Station {
 const STATIONS: Station[] = readdirSync('packs/base/stations')
   .filter((f) => f.endsWith('.json'))
   .sort()
-  .map((f) => JSON.parse(readFileSync(`packs/base/stations/${f}`, 'utf8')) as Station)
+  .map((f) => JSON.parse(readFileSync(`packs/base/stations/${f}`, 'utf8')) as Station & { pirate?: unknown })
+  // A hidden pirate (run W-Q) is never on the dial.
+  .filter((s) => !s.pirate)
   .map((s) => ({ id: s.id, name: s.name, tracks: s.tracks.map((t) => ({ id: t.id, title: t.title })) }));
 
 // The callback: `radio: { state: ..., skip: ..., cut: ... }` or `radio: <something>RadioSource`.
