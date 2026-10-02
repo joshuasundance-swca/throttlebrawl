@@ -52,8 +52,11 @@ const APPROVED_TEXT = new Set(Object.values(APPROVED));
 
 describe('base pack bark sets', () => {
   it('exist, one file per speaker, and load through the registry', () => {
-    expect(files.length).toBe(SPEAKERS.length);
-    expect(sets.map((s) => s.defaults?.speaker).sort()).toEqual([...SPEAKERS].sort());
+    // Run W-P: the radio stations' DJ sets (speaker `tag:dj-<station>`) sit beside the riders' and
+    // never match a rider; every other set is one rider's.
+    const riderSets = sets.filter((s) => !s.defaults?.speaker?.startsWith('tag:dj-'));
+    expect(riderSets.length).toBe(SPEAKERS.length);
+    expect(riderSets.map((s) => s.defaults?.speaker).sort()).toEqual([...SPEAKERS].sort());
     const reg = loadBasePack();
     expect(Object.keys(reg.barkSets).sort()).toEqual(sets.map((s) => `base:${s.id}`).sort());
     expect(barkLinesFrom(reg.barkSets).length).toBe(allLines.length);

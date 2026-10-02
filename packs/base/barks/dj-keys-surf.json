@@ -1,0 +1,52 @@
+{
+  "type": "bark-set",
+  "id": "dj-keys-surf",
+  "name": "Low Tide 91.7: DJ lines",
+  "tags": ["dj", "radio"],
+  "defaults": {
+    "speaker": "tag:dj-keys-surf",
+    "cooldownS": 300,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "dj-surf-lifestyle",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Low Tide 91.7. Sunscreen is a lifestyle."
+    },
+    {
+      "id": "dj-surf-watch",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Hurricane watch. We'll keep playing."
+    },
+    {
+      "id": "dj-surf-uv",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "UV index is yes. Here's more surf."
+    },
+    {
+      "id": "dj-surf-charter",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Charter report: fish not biting. Sun is."
+    },
+    {
+      "id": "dj-surf-sway",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "If the bridge sways, that's the bass."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The DJ's chatter for Low Tide 91.7 (run W-P, maintainer 2026-10-01b: unique regional flavor everywhere), named by the station's djBarkSet. Nothing plays DJ lines yet: the radio needs a between-tracks slot that reads this set, an audio-lane follow-up. Until then the `tag:` speaker never matches a rider, so these lines never reach a race bubble. Unvoiced on purpose: a DJ voice is a new casting for tools/voices/cast.json, made when the radio can play it.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
