@@ -58,12 +58,17 @@ beforeAll(async () => {
 }, BATCH_TIMEOUT_MS);
 
 describe('cops: Sgt. Pruitt in the race field', () => {
+  // Playtest 2: the base event (baseCount 1, patrolMax 2) fields four cops: the lot's starter, up
+  // to two on patrol and one more in the lot. The Keys pool, sorted, cycles Pruitt and (in dev
+  // builds) Dalrymple.
   it('rides in every batch race, resolved the way the cops lane resolves him, behind the player', () => {
     const { config, playerId } = createBatchRace(1);
     const cops = config.riders.filter((r) => r.controller.kind === 'cop');
-    expect(cops).toEqual([pruitt()]);
+    expect(cops).toHaveLength(4);
+    expect(cops[0]).toEqual(pruitt());
+    expect(cops[2]).toEqual(pruitt());
     expect(config.riders.findIndex((r) => r.controller.kind === 'cop')).toBeGreaterThan(playerId);
-    for (const race of batch.races) expect(race.field.cops, `seed ${race.seed}`).toBe(1);
+    for (const race of batch.races) expect(race.field.cops, `seed ${race.seed}`).toBe(4);
   });
 });
 
@@ -77,10 +82,10 @@ describe('cops: the player-bust rate over the 50 seeded races', () => {
     process.stdout.write(
       `cops batch: ${races.length} seeded races with the cop: player busted ${busted.length} ` +
         `(${(rate * 100).toFixed(1)}%${busted.length ? `: seeds ${busted.map((r) => r.seed).join(', ')}` : ''}), ` +
-        `the cop gave chase in ${chased.length}\n`,
+        `a cop gave chase in ${chased.length}\n`,
     );
     expect(races).toHaveLength(50);
-    expect(chased).toHaveLength(races.length); // he always spawns and gives chase
+    expect(chased).toHaveLength(races.length); // a cop lights up in every race
     expect(rate).toBeLessThanOrEqual(MAX_BUST_RATE);
   });
 });

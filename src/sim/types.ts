@@ -571,6 +571,14 @@ export interface SimEventCops {
   chaosSummon: boolean;
   /** 0..1: jitters the counts and the timing (`randomness`; 0 when absent). */
   randomness: number;
+  /**
+   * Playtest 2 (2026-10-02, "I think I've only ever encountered cops once"): the cops who come out
+   * at the start PATROL instead of leaving the lot behind the grid. Each waits on the shoulder at a
+   * point ahead that the field reaches early in the race, lights up as a player comes near, and falls
+   * in behind. The race rolls how many, from `baseCount` up to `patrolMax` (`patrolMax`; absent or 0:
+   * no patrol, the lot rule).
+   */
+  patrolMax?: number;
 }
 
 /**

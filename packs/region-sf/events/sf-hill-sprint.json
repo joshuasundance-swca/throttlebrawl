@@ -10,7 +10,7 @@
     "riders": ["pivot", "gripman-gus", "base:chad-speedwell", "base:dial-up"],
     "paceMps": 34
   },
-  "cops": { "mode": "every-race", "baseCount": 1 },
+  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2 },
   "rules": {},
   "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
   "rewards": {
