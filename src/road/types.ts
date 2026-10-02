@@ -1,11 +1,35 @@
 // The baked road format as road/ reads it (docs/content-packs.md, "Road networks, roads and
 // routes"). These are structural input types: content/'s parsed files satisfy them, so road/
 // never imports content/. Optional fields carry `| undefined` for exactOptionalPropertyTypes.
-import type { LaneInfo } from '../core';
+import type { LaneInfo, MedianKind, RoadSurface, VergeEdge, VergeSurface } from '../core';
+
+/**
+ * A verge band beside the road (W-Q cross-section; interview, 2026-10-02: "Anywhere with ground"):
+ * `widthM` of `surface` past the outermost lane (its shoulder included), ending at an `edge`. A width
+ * of 0 means the road's own edge is the edge (a bridge rail, a wall, the sea).
+ */
+export interface BakedVerge {
+  widthM: number;
+  surface: VergeSurface;
+  edge: VergeEdge;
+}
+
+/** What divides the two directions (descriptive: the lanes' dCenterM already leave its gap). */
+export interface BakedMedian {
+  widthM: number;
+  kind: MedianKind;
+}
 
 export interface BakedLaneSection {
   s0: number;
   lanes: readonly LaneInfo[];
+  /** Optional median between the two directions. */
+  median?: BakedMedian | undefined;
+  /**
+   * Optional verge bands per side. A side left out is derived from the road's tags and barriers at
+   * each s (road/cross-section.ts, `deriveVerge`), so every existing road has ground beside it.
+   */
+  verges?: { left?: BakedVerge | undefined; right?: BakedVerge | undefined } | undefined;
 }
 
 /** Feature kinds, exactly the architecture doc's list. */
@@ -75,6 +99,8 @@ export interface BakedRoad {
   to: string;
   lengthM: number;
   sampleSpacingM: number;
+  /** What the lanes are made of; asphalt when absent. A dirt shortcut is a road with `dirt`. */
+  surface?: RoadSurface | undefined;
   laneSections: readonly BakedLaneSection[];
   tags?: readonly BakedTag[] | undefined;
   features?: readonly BakedFeature[] | undefined;
