@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "speed-trap",
-      "signText": "RADAR AHEAD PLEASE ENJOY THE TREES",
+      "signText": "RADAR AHEAD. Please enjoy the trees.",
       "limitMps": 29,
       "theme": "pnw"
     }

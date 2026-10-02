@@ -173,8 +173,11 @@ describe('riders-5: style scoring', () => {
   });
 
   it('on a leg ridden at dir −1 the oncoming lane is the direction +1 one, not its own', () => {
-    const run = (d: number) => {
-      const h = harness(styledConfig());
+    // A leg the route itself runs toward −s (its orientation is −1 there), so dir −1 is racing.
+    const base = styledConfig();
+    const legBack: SimConfig = { ...base, route: { ...base.route, orientation: () => -1 } };
+    const run = (d: number, config: SimConfig = legBack) => {
+      const h = harness(config);
       ride(h.player, d, 30, -1);
       for (let t = 0; t < 150; t++) h.step();
       h.player.pos.d = -d;
@@ -183,6 +186,8 @@ describe('riders-5: style scoring', () => {
     };
     expect(run(1.7)).toEqual(['oncoming']); // lane R1, direction +1
     expect(run(-1.7)).toEqual([]); // lane L1, direction −1: its own
+    // Riding −s on a leg the route runs +s is riding back after a U-turn: no cash for it.
+    expect(run(1.7, base)).toEqual([]);
   });
 
   it('two takedowns 3 s apart each score once, and the second more than the first', () => {

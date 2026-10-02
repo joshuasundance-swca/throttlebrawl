@@ -85,6 +85,16 @@ export interface RaceSetup {
   speedMultiplier?: number;
   /** The takedown slow motion (default on [decided]). */
   slowMo?: boolean;
+  /**
+   * The career's bike for the player (run W-R: the garage), qualified (`base:superbike-1000`). Left
+   * out, or a bike the registry lacks: the player preset's own bike.
+   */
+  playerBike?: string;
+  /**
+   * The career's grudge table (rival content id to rider content id to points), saved with the
+   * profile [decided] (cockpit answer, 2026-09-29). Left out: none, as before M4.
+   */
+  grudges?: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
 /** The length a race runs when none is chosen (docs/content-packs.md, "Event"). */
@@ -260,11 +270,12 @@ function riderDef(
   id: string,
   controller: SimRiderDef['controller'],
   paceMps: number,
+  bikeOverride?: string,
 ): SimRiderDef {
   // `id` is qualified; the rider's own references resolve from the rider's pack.
   const pack = packOf(id);
   const rider = lookup(reg.riders, id);
-  const bikeKey = qualifyIn(pack, rider.bike);
+  const bikeKey = bikeOverride && reg.bikes[bikeOverride] ? bikeOverride : qualifyIn(pack, rider.bike);
   const bike = lookup(reg.bikes, bikeKey);
   const h = bike.handling;
   // Rival pace comes from the event, not the bike: a rival's bike is raised to at least the pace.
@@ -340,6 +351,8 @@ export function eventCops(event: RaceEvent): SimEventCops {
     tierScale: Math.max(0, finiteOr(c['tierScale'], 0)),
     chaosSummon: c['chaosSummon'] === true,
     randomness: Math.min(1, Math.max(0, finiteOr(c['randomness'], 0))),
+    // Playtest 2: the starting cops patrol ahead (sim/cops), from baseCount up to patrolMax.
+    ...((p) => (p > 0 ? { patrolMax: p } : {}))(Math.floor(finiteOr(c['patrolMax'], 0))),
   };
 }
 
@@ -348,7 +361,8 @@ export function eventCops(event: RaceEvent): SimEventCops {
  * id, at the back of the grid behind the player. The pool is the race's packs' cops whose `region`
  * resolves to the event's region (a cop with no region rides everywhere), cycled. The field holds
  * enough cops for the most the mix can bring out (M4 cops-3): `baseCount` plus `tierScale` per tier
- * above the first for `tier-rising`, plus one more whenever chaos can summon, at most
+ * above the first for `tier-rising`, plus `patrolMax` for playtest 2's patrol, plus one more
+ * whenever chaos can summon or a patrol rides (a speed trap's cop), at most
  * MAX_FIELDED_COPS; `none` fields nobody. sim/cops decides which of them leave the lot, and when.
  * [default] Returns qualified rider ids.
  */
@@ -360,7 +374,9 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT, tier = DEF
   const starting =
     cops.mode === 'tier-rising' ? cops.baseCount + cops.tierScale * (Math.max(1, tier) - 1) : cops.baseCount;
   const chaos = cops.chaosSummon || cops.mode === 'chaos-summoned';
-  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + (chaos ? 1 : 0));
+  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap or chaos.
+  const patrol = cops.patrolMax ?? 0;
+  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + patrol + (chaos || patrol > 0 ? 1 : 0));
   const regionKey = qualifyIn(packOf(key), event.region);
   const race = packSubset(reg, packClosure(reg, packOf(key)));
   const pool = Object.entries(race.riders)
@@ -438,6 +454,24 @@ export function weaponBehaviour(w: Weapon): Partial<SimWeaponDef> {
   return out;
 }
 
+/**
+ * The career's grudge table as SimConfig carries it: finite points only, rows in id order (the
+ * replay header writes it as given), empty rows dropped.
+ */
+export function cleanGrudges(g: RaceSetup['grudges']): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const rival of Object.keys(g ?? {}).sort()) {
+    const row: Record<string, number> = {};
+    const given = g?.[rival] ?? {};
+    for (const rider of Object.keys(given).sort()) {
+      const v = given[rider];
+      if (typeof v === 'number' && Number.isFinite(v) && v !== 0) row[rider] = v;
+    }
+    if (Object.keys(row).length > 0) out[rival] = row;
+  }
+  return out;
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
   const eventPack = packOf(eventId);
@@ -457,9 +491,16 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   });
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
-  const tier = DEFAULT_TIER;
+  // The event's career tier (run W-R): 1 for an event without one (the free-play races).
+  const tier = event.tier ?? DEFAULT_TIER;
   const cops = copIds(race, eventId, tier).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
-  const player = riderDef(race, qualifyIn('base', PLAYER_PRESET), { kind: 'player', slot: 0 }, pace);
+  const player = riderDef(
+    race,
+    qualifyIn('base', PLAYER_PRESET),
+    { kind: 'player', slot: 0 },
+    pace,
+    setup.playerBike,
+  );
   const riders = [...rivals, player, ...cops];
   const weapons: SimWeaponDef[] = Object.entries(race.weapons).map(([contentId, w]) => ({
     contentId,
@@ -520,7 +561,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     road: stream.road,
     route,
     modifiers: mods.modifiers,
-    grudges: {},
+    grudges: cleanGrudges(setup.grudges),
     tuning,
     difficulty: resolveDifficulty(setup.difficulty ?? DEFAULT_DIFFICULTY, given),
     assists: 'off',

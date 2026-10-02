@@ -95,7 +95,18 @@ describe('region-sf: the San Francisco race', () => {
     expect(region.billboards?.length).toBeGreaterThanOrEqual(2);
     const { config } = sfRace(1);
     const ids = config.riders.map((r) => r.name);
-    expect(ids).toEqual(['Pivot', 'Gripman Gus', 'Chad Speedwell', 'Dial-Up', 'You', 'Officer Meter']);
+    // Playtest 2: the lot's starter, up to two cops on patrol and one more in the lot.
+    expect(ids).toEqual([
+      'Pivot',
+      'Gripman Gus',
+      'Chad Speedwell',
+      'Dial-Up',
+      'You',
+      'Officer Meter',
+      'Officer Meter',
+      'Officer Meter',
+      'Officer Meter',
+    ]);
     // The region's mix picks the kinds: the region vehicles weigh in, a Keys-only kind never spawns.
     const weight = (id: string) => config.trafficTypes.find((t) => t.contentId === id)?.weight;
     expect(weight('region-sf:cable-car')).toBe(1);

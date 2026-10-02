@@ -1,0 +1,274 @@
+{
+  "type": "career",
+  "id": "pnw-circuit",
+  "name": "The Fir County Circuit",
+  "region": "pacific-northwest",
+  "startingCash": 500,
+  "startingBike": "base:rustbucket-400",
+  "tutorialEvent": "pnw-t1-ferry-line",
+  "firstRun": "race-first",
+  "tiers": [
+    {
+      "id": "t1",
+      "name": "Light Drizzle",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t2",
+      "name": "Steady Rain",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t3",
+      "name": "Atmospheric River",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t4",
+      "name": "The Big Cut",
+      "advance": {
+        "requiredWins": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ferry-line",
+      "event": "pnw-t1-ferry-line",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "pnw-ferry-landing",
+        "s": 40
+      },
+      "opens": ["pnw-cedar-hollow", "pnw-espresso-row"],
+      "claims": ["pnw-ferry-landing", "pnw-switchback-grade"]
+    },
+    {
+      "id": "espresso-hunt",
+      "event": "pnw-t1-espresso-hunt",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "pnw-espresso-row",
+        "s": 300
+      },
+      "requires": ["ferry-line"],
+      "opens": ["pnw-trestle"],
+      "claims": ["pnw-espresso-row"]
+    },
+    {
+      "id": "juniper-grudge",
+      "event": "pnw-t1-juniper-grudge",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "pnw-cedar-hollow",
+        "s": 500
+      },
+      "requires": ["ferry-line"],
+      "claims": ["pnw-cedar-hollow"]
+    },
+    {
+      "id": "lindqvist",
+      "event": "pnw-t2-lindqvist",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "pnw-trestle",
+        "s": 400
+      },
+      "opens": ["osm-chuckanut-larrabee"],
+      "claims": ["pnw-trestle"]
+    },
+    {
+      "id": "chuckanut",
+      "event": "pnw-t2-chuckanut",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "osm-chuckanut-larrabee",
+        "s": 300
+      },
+      "opens": ["osm-chuckanut-oyster-creek"],
+      "claims": ["osm-chuckanut-larrabee", "osm-chuckanut-cliffs"]
+    },
+    {
+      "id": "logging-spur",
+      "event": "pnw-t2-logging-spur",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "pnw-logging-spur",
+        "s": 300
+      },
+      "opens": ["pnw-sawmill-flats"],
+      "claims": ["pnw-logging-spur", "pnw-fogline-ridge"]
+    },
+    {
+      "id": "gorge",
+      "event": "pnw-t3-gorge",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "osm-gorge-crown-point-loops",
+        "s": 300
+      },
+      "opens": ["osm-gorge-shepperds-dell"],
+      "claims": ["osm-gorge-crown-point-loops", "osm-gorge-latourell"]
+    },
+    {
+      "id": "sawmill-pursuit",
+      "event": "pnw-t3-sawmill-pursuit",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "pnw-sawmill-flats",
+        "s": 400
+      },
+      "claims": ["pnw-sawmill-flats"]
+    },
+    {
+      "id": "deacon-grudge",
+      "event": "pnw-t3-deacon-grudge",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "osm-chuckanut-oyster-creek",
+        "s": 400
+      },
+      "claims": ["osm-chuckanut-oyster-creek"]
+    },
+    {
+      "id": "big-cut",
+      "event": "pnw-boss-old-growth",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "osm-gorge-shepperds-dell",
+        "s": 300
+      },
+      "claims": ["osm-gorge-shepperds-dell"]
+    }
+  ],
+  "boss": "big-cut",
+  "secrets": [
+    {
+      "id": "logging-spur-cut",
+      "kind": "shortcut",
+      "name": "The logging spur",
+      "at": {
+        "road": "pnw-logging-spur",
+        "s": 400
+      },
+      "ref": "pnw-sawmill-haul#pnw-logging-spur"
+    },
+    {
+      "id": "static-cedar",
+      "kind": "station",
+      "name": "Static Cedar, pirate radio",
+      "at": {
+        "road": "pnw-fogline-ridge",
+        "s": 500
+      },
+      "ref": "pnw-bootleg",
+      "atFraction": 0.42
+    },
+    {
+      "id": "tip-jar",
+      "kind": "stash",
+      "name": "A Bigfoot researcher's tip jar",
+      "at": {
+        "road": "pnw-cedar-hollow",
+        "s": 1000
+      },
+      "cash": 350
+    }
+  ],
+  "ending": {
+    "teaser": "next-region",
+    "freePlayAfter": true,
+    "lines": [
+      "OLD GROWTH SITS DOWN ON A STUMP. HE SAYS NOTHING. HE NEVER DID.",
+      "NEXT: SAN FRANCISCO. THE HILLS ARE STEEP. THE RENT IS STEEPER.",
+      "FREE PLAY IS OPEN. THE FOG IS YOURS."
+    ],
+    "next": "region-sf:san-francisco"
+  },
+  "shop": [
+    {
+      "bike": "base:rustbucket-400",
+      "priceCash": 0,
+      "unlockTier": "t1"
+    },
+    {
+      "bike": "base:dirt-bike",
+      "priceCash": 2500,
+      "unlockTier": "t1"
+    },
+    {
+      "bike": "base:streetfighter-750",
+      "priceCash": 6000,
+      "unlockTier": "t2"
+    },
+    {
+      "bike": "base:superbike-1000",
+      "priceCash": 16000,
+      "unlockTier": "t3"
+    }
+  ],
+  "paints": [
+    {
+      "id": "fern-green",
+      "name": "Sword Fern Green",
+      "hex": "#3f7d4a",
+      "priceCash": 300,
+      "unlockTier": "t1"
+    },
+    {
+      "id": "overcast",
+      "name": "Overcast",
+      "hex": "#8a929a",
+      "priceCash": 300,
+      "unlockTier": "t1"
+    },
+    {
+      "id": "flannel-red",
+      "name": "Flannel Red",
+      "hex": "#b03a2e",
+      "priceCash": 500,
+      "unlockTier": "t2"
+    },
+    {
+      "id": "dark-roast",
+      "name": "Dark Roast",
+      "hex": "#5a3a28",
+      "priceCash": 500,
+      "unlockTier": "t3"
+    }
+  ],
+  "unlocks": [
+    {
+      "grant": "base:lawnmower",
+      "when": {
+        "kind": "boss-beaten",
+        "ref": "big-cut"
+      }
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

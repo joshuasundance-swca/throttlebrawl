@@ -1,0 +1,62 @@
+{
+  "type": "event",
+  "id": "pnw-t2-lindqvist",
+  "name": "He's Writing It All Down",
+  "kind": "cop-escape",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-espresso-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["old-growth", "base:dial-up"],
+    "paceMps": 39
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2
+  },
+  "rules": {
+    "escapeBy": "survive",
+    "surviveS": 50,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 1500
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
+    "perTakedownCash": 260,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape: Deputy Lindqvist and a second car. Once one is on you, survive 50 s, lose them or reach the line.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

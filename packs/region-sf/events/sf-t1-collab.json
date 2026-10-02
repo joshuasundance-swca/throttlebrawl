@@ -1,0 +1,69 @@
+{
+  "type": "event",
+  "id": "sf-t1-collab",
+  "name": "Collab Gone Wrong",
+  "kind": "grudge-match",
+  "region": "san-francisco",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-hills-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:chad-speedwell"],
+    "paceMps": 32
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "rival": "base:chad-speedwell",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 800
+    },
+    {
+      "id": "style",
+      "kind": "style-cash",
+      "params": {
+        "cash": 300
+      },
+      "required": false,
+      "rewardCash": 200
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [2000, 300],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A grudge match: one on one with Chad Speedwell on the real Russian Hill streets. He wants a collab. Beat him to the line.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

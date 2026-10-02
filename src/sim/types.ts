@@ -283,6 +283,21 @@ export interface SimSnapshot {
    * hand-built snapshots; the sim always fills it (empty when no set piece is live).
    */
   props?: readonly PropSnapshot[];
+  /**
+   * The law (playtest 2, 2026-10-02: the heat meter), for the player in slot 0, from sim/cops. The
+   * HUD's heat badge reads it. Optional for hand-built snapshots; the sim always fills it.
+   */
+  law?: LawSnapshot;
+}
+
+/** The heat meter as presentation sees it (SimSnapshot.law). */
+export interface LawSnapshot {
+  /** How hot the player is, 0 (clean) to 1 (the top of the meter). */
+  heat: number;
+  /** The heat tier: 0 none, 1 one more cop, 2 the pursuit pair, 3 the roadblock. */
+  tier: number;
+  /** True once a chase has been shaken off this race and the heat has not risen since ("Lost 'em"). */
+  lost: boolean;
 }
 
 /**
@@ -372,6 +387,12 @@ export type SimEventType =
   | 'bust'
   /** The cop's siren cue for audio: `data.on` is true when a chase starts, false when it ends. */
   | 'siren'
+  /**
+   * The heat tier changed (playtest 2, sim/cops). Actor = the player; `data.tier` is the new tier
+   * (0 to 3), `data.from` the old one and `data.heat` the meter, 0..1. A drop to tier 0 from a chase
+   * carries `data.lost: true` (the chasing cops give up).
+   */
+  | 'heat'
   | 'jump'
   | 'land'
   | 'pedDive'
@@ -706,6 +727,19 @@ export interface SimEventCops {
   chaosSummon: boolean;
   /** 0..1: jitters the counts and the timing (`randomness`; 0 when absent). */
   randomness: number;
+  /**
+   * Playtest 2 (2026-10-02, "I think I've only ever encountered cops once"): the cops who come out
+   * at the start PATROL instead of leaving the lot behind the grid. Each waits on the shoulder at a
+   * point ahead that the field reaches early in the race, lights up as a player comes near, and falls
+   * in behind. The race rolls how many, from `baseCount` up to `patrolMax` (`patrolMax`; absent or 0:
+   * no patrol, the lot rule).
+   */
+  patrolMax?: number;
+  /**
+   * Playtest 2's heat meter (`heat`; absent or false: off): chaos raises the player's heat, the
+   * tiers bring one more cop, then a pursuit pair, then a roadblock, and riding clean cools it.
+   */
+  heat?: boolean;
 }
 
 /**

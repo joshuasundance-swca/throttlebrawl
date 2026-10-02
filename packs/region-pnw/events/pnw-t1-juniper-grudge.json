@@ -1,0 +1,69 @@
+{
+  "type": "event",
+  "id": "pnw-t1-juniper-grudge",
+  "name": "For Here or To Go",
+  "kind": "grudge-match",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-hollow-sprint",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss"],
+    "paceMps": 34
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "rival": "juniper-moss",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 800
+    },
+    {
+      "id": "style",
+      "kind": "style-cash",
+      "params": {
+        "cash": 300
+      },
+      "required": false,
+      "rewardCash": 200
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [2000, 300],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A grudge match: one on one with Juniper Moss, who runs the espresso stand at the ferry line. Beat her to the line.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
