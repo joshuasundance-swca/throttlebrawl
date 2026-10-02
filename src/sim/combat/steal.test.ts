@@ -160,6 +160,7 @@ describe('combat-2: the held-weapon swing', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]?.tick).toBe(22);
     expect(hits[0]?.data['weapon']).toBe(PIPE_ID);
+    // A rival's swing at a rival: the data damage (playtest 2's knockdown scales are the player's).
     expect(hits[0]?.data['damage']).toBe(PIPE.damage);
     expect(phases[27]).toBe('recovery');
     expect(phases[52]).toBe('idle');

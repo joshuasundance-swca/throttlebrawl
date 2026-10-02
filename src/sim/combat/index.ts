@@ -56,8 +56,18 @@
 //   0.66 m): the big shove is the player's new tool, and playtest 1 asked that rivals stay as hard
 //   as they were. At 1.0 an 8-race bot batch saw hits on the player rise from 27 to 51 and
 //   knock-offs from 0 to 7. Each `hit` event
-//   carries `hitImpulse`, a 0..1 strength for the camera jolt and haptics: (damage + peak shove
-//   m/s) / 40, capped at 1.
+//   carries `hitImpulse`, a 0..1 strength for the camera jolt and haptics: (the weapon's data
+//   damage + peak shove m/s) / 40, capped at 1.
+// - Knockdowns (playtest 2, 2026-10-02: "surprising how long it takes to knock people down"): a
+//   hit's damage is the weapon's data damage × combat.unarmedDamageScale (2) for the punch and the
+//   kick, or × combat.weaponDamageScale (2.5) for a held weapon, so a fresh 100-point rival goes
+//   down in 3 kicks (36), 5 punches (20) or 2 pipe swings (55), never one. The scales apply to a
+//   PLAYER's hits; a non-player's hit on a player takes combat.onPlayerDamageScale (1), and rivals'
+//   and cops' hits on each other keep the data damage, as before. [default]
+//   (Scaling every hit cut a San Francisco player's cop-weapon steals from 8 races in 10 to 4 in
+//   tests/sim/cops-steal-chance; scaling the player's alone keeps it at 6.) The dev bot fights
+//   little, so the 12-race seeded batch moves only a little: the bot's knock-offs 3 -> 4, its hits
+//   per knock-off 3 -> 2, busts 2 -> 2.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -74,6 +84,13 @@
 //   so the takedown comes one tick after the crash and carries its causeId. A crash with
 //   data.contact `tumble` (a body already down touching a car) never counts; one fall is one
 //   takedown at most.
+// - Domino credit (W-Q, the pitch deck's item 4: "A rider you launch who knocks another off counts
+//   as your takedown ('DOUBLE', then 'STRIKE')"). A fall with no hit credit of its own whose crash
+//   says a flying body knocked it off (sim/tumble: data.cause `tumble`, target = the body's rider)
+//   is a takedown for whoever was credited with that body's fall, kind `traffic`, with
+//   data.domino = the chain's length: 2 for the first rider the body takes out (a DOUBLE), 3 and up
+//   for the next one down the line (a STRIKE). A rider's own fall carries no credit to itself.
+//   [default]
 // - A traffic or scenery takedown with a player on either side, with SimConfig.slowMo on, starts
 //   the slow motion on the takedown's tick: timeScale combat.slowmoScale (0.3) for
 //   combat.slowmoS (0.8 s, 48 raw ticks), `slowmoStart` then `slowmoEnd`, none within
@@ -120,6 +137,11 @@
 //   swing that uses the last of a weapon carries `spent: true`.
 // - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
 //   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
+// - A weapon by the bike (W-Q, the pitch deck's item 11, "fill the dead air after a crash"): when
+//   a player who holds no weapon gets up after a crash (tumble's `getUp`), with chance
+//   `combat.crashWeaponChance` (0.3) a roadside weapon, drawn by roadsideWeight from the `combat`
+//   stream, lies CRASH_WEAPON_AHEAD_M up the road from the parked bike, on its line, so riding off
+//   picks it up. The roll is drawn for every player get-up, so the stream stays aligned. [default]
 // - A rider's startingWeapon (a cop's baton or taser) is in hand at the start, as a stowed
 //   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up, and
 //   a cop keeps his weapon through a wreck (holstered; the cops polish round, 2026-10-01): before,
@@ -128,6 +150,7 @@
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { barrierLimits, riderState } from '../riders';
+import { parkedBike } from '../tumble';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
 import { addMover, emit, setSlowmo, systemState, type Mover, type SimSystem, type World } from '../world';
 
@@ -183,6 +206,41 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     default: 1,
     min: 0,
     max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  // Knockdowns (playtest 2, 2026-10-02: "surprising how long it takes to knock people down"; the
+  // maintainer: "it should take a few hits even if they are kicks. Weapons should do more").
+  {
+    id: 'combat.unarmedDamageScale',
+    group: 'combat',
+    label: 'Punch and kick damage',
+    default: 2,
+    min: 0.5,
+    max: 4,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.weaponDamageScale',
+    group: 'combat',
+    label: 'Weapon damage',
+    default: 2.5,
+    min: 0.5,
+    max: 4,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.onPlayerDamageScale',
+    group: 'combat',
+    label: 'Rival damage on you',
+    default: 1,
+    min: 0,
+    max: 4,
     step: 0.05,
     unit: '×',
     affectsSim: true,
@@ -273,6 +331,18 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     max: 20,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // W-Q: how often a weapon lies by your bike when you get up from a crash. [default]
+    id: 'combat.crashWeaponChance',
+    group: 'combat',
+    label: 'Weapon by the bike after a crash',
+    default: 0.3,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
     affectsSim: true,
   },
   {
@@ -377,7 +447,7 @@ export const STRAIGHT_KICK_D_M = 1;
 /** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
 const MASS_RATIO_MIN = 0.5;
 const MASS_RATIO_MAX = 2;
-/** hitImpulse = (damage + peak shove m/s) / this, capped at 1. */
+/** hitImpulse = (data damage + peak shove m/s) / this, capped at 1. */
 const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
@@ -442,6 +512,9 @@ export interface CombatState {
   hitTick: number[];
   /** Whether this rider's current fall has been looked at for a takedown (reset while riding). */
   downSeen: boolean[];
+  /** Who was credited with this rider's current fall (-1: nobody), and the chain length (1: direct). */
+  fallBy: EntityId[];
+  fallChain: number[];
   /** Takedowns credited to each rider this race. */
   takedowns: number[];
   /** The takedown slow motion in progress (its raw ticks left are world.facts.slowmo). */
@@ -498,6 +571,8 @@ export function combatState(world: World): CombatState {
     lastAttackerId: [],
     hitTick: [],
     downSeen: [],
+    fallBy: [],
+    fallChain: [],
     takedowns: [],
     slowmo: { actor: -1, target: -1, cause: 0, resume: 1, startTick: -1 },
     prevFlags: [],
@@ -786,7 +861,7 @@ function land(
     isLaw(config, a) && isPlayer(config, victim)
       ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
       : 1;
-  const damage = Math.round(w.damage * copSoft);
+  const damage = Math.round(w.damage * damageScale(world, config, a, victim, w) * copSoft);
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
@@ -803,7 +878,9 @@ function land(
   const onPlayer =
     isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
   const peak = fullPeak * (kick ? onPlayer : 1) * copSoft;
-  const hitImpulse = Math.min(1, (damage + fullPeak * copSoft) / HIT_IMPULSE_FULL);
+  // The jolt reads the weapon's data damage, not the knockdown-scaled one, so the feel of each blow
+  // stays as it was while rivals go down sooner.
+  const hitImpulse = Math.min(1, (w.damage * copSoft + fullPeak * copSoft) / HIT_IMPULSE_FULL);
   const effect = behaviourEffect(world, st, victim, w, copSoft);
   // A breakable held weapon spends one hit (the last one breaks it on this blow); a taser on its
   // last charge goes at the end of this swing. Either way the hit says `spent`.
@@ -855,6 +932,25 @@ function land(
       world.timeScale = 0;
     }
   }
+}
+
+/**
+ * The knockdown scale on a hit's data damage (playtest 2): on a hit a PLAYER lands,
+ * combat.unarmedDamageScale for the punch and the kick, combat.weaponDamageScale for a held weapon.
+ * A non-player's hit on a player takes combat.onPlayerDamageScale (default 1, the data damage as
+ * before: playtest 1 item 7 asked that rivals stay as hard as they were, and the complaint was
+ * about knocking THEM down). Rivals' and cops' hits on each other keep their data damage: scaled,
+ * the quicker rival-on-rival knock-offs cut a San Francisco player's cop-weapon steals from 8 races
+ * in 10 to 4 (tests/sim/cops-steal-chance, minimum 5), and the maintainer's ask was the player's.
+ */
+function damageScale(world: World, config: SimConfig, a: Mover, victim: Mover, w: SimWeaponDef): number {
+  const p = world.params;
+  if (!isPlayer(config, a))
+    return isPlayer(config, victim) ? Math.max(0, p['combat.onPlayerDamageScale'] ?? 1) : 1;
+  return Math.max(
+    0,
+    w.unarmed ? (p['combat.unarmedDamageScale'] ?? 2) : (p['combat.weaponDamageScale'] ?? 2.5),
+  );
 }
 
 /**
@@ -1050,21 +1146,35 @@ export function takedownCount(world: World, id: EntityId): number {
  * never counts. The takedown carries the crash's causeId, one tick after the crash.
  */
 function creditTakedowns(world: World, config: SimConfig, st: CombatState): void {
-  for (const m of world.movers) if (m.kind === 'rider' && isRiding(m)) st.downSeen[m.id] = false;
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || !isRiding(m)) continue;
+    st.downSeen[m.id] = false;
+    st.fallBy[m.id] = -1;
+    st.fallChain[m.id] = 0;
+  }
   const window = Math.round((world.params['combat.takedownWindowS'] ?? 2) * 60);
   for (const e of world.lastEvents) {
     if (e.type !== 'crash' || e.data['contact'] === 'tumble') continue;
     const victim = world.movers[e.actor];
     if (!victim || victim.kind !== 'rider' || isRiding(victim) || st.downSeen[victim.id]) continue;
     st.downSeen[victim.id] = true;
-    const by = st.lastAttackerId[victim.id] ?? -1;
+    let by = st.lastAttackerId[victim.id] ?? -1;
     const hitAt = st.hitTick[victim.id] ?? -1;
-    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) continue;
-    const kind = takedownKind(e.data);
+    let chain = 1;
+    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) {
+      // Domino credit: knocked off by a flying body whose own fall someone was credited with.
+      const body = e.data['cause'] === 'tumble' ? (e.target ?? -1) : -1;
+      by = body >= 0 ? (st.fallBy[body] ?? -1) : -1;
+      if (by < 0 || by === victim.id) continue;
+      chain = (st.fallChain[body] ?? 1) + 1;
+    }
+    st.fallBy[victim.id] = by;
+    st.fallChain[victim.id] = chain;
+    const kind = chain > 1 ? 'traffic' : takedownKind(e.data);
     st.takedowns[by] = (st.takedowns[by] ?? 0) + 1;
     const extra: { target: EntityId; causeId?: number } = { target: victim.id };
     if (e.causeId !== undefined) extra.causeId = e.causeId;
-    const cause = emit(world, 'takedown', by, { kind }, extra);
+    const cause = emit(world, 'takedown', by, chain > 1 ? { kind, domino: chain } : { kind }, extra);
     const attacker = world.movers[by];
     const playerInvolved = isPlayer(config, victim) || (attacker !== undefined && isPlayer(config, attacker));
     if (kind !== 'health' && playerInvolved && config.slowMo) startSlowmo(world, st, by, victim.id, cause);
@@ -1137,6 +1247,39 @@ export function roadsideSpots(config: SimConfig): Spot[] {
     }
   }
   return out;
+}
+
+/** How far up the road from the parked bike the crash weapon lies, m: met just after the remount. */
+export const CRASH_WEAPON_AHEAD_M = 6;
+
+/** A roadside weapon by roadsideWeight from the `combat` stream (one draw), or null when none. */
+function drawRoadside(world: World, config: SimConfig): SimWeaponDef | null {
+  const pool = config.weapons.filter((w) => !w.unarmed && Math.max(0, w.roadsideWeight ?? 1) > 0);
+  const total = pool.reduce((sum, w) => sum + Math.max(0, w.roadsideWeight ?? 1), 0);
+  let r = nextFloat(world.rng.combat) * total;
+  if (total <= 0) return null;
+  return pool.find((w) => (r -= Math.max(0, w.roadsideWeight ?? 1)) < 0) ?? pool[pool.length - 1] ?? null;
+}
+
+/**
+ * Last tick's player get-ups (tumble runs after this phase): with combat.crashWeaponChance, and only
+ * for a player with empty hands, a roadside weapon by the parked bike. Two draws per player get-up,
+ * always (the chance, then the weapon), so the stream stays aligned whatever the outcome.
+ */
+function crashWeapons(world: World, config: SimConfig, st: CombatState): void {
+  const chance = clamp(world.params['combat.crashWeaponChance'] ?? 0.3, 0, 1);
+  for (const e of world.lastEvents) {
+    if (e.type !== 'getUp') continue;
+    const m = world.movers[e.actor];
+    if (!m || m.kind !== 'rider' || !isPlayer(config, m)) continue;
+    const roll = nextFloat(world.rng.combat);
+    const w = drawRoadside(world, config);
+    const bike = parkedBike(world, m.id);
+    if (!w || !bike || roll >= chance || st.held[m.id]) continue;
+    const spot = { ...bike };
+    config.road.advance(Object.assign(spot, { s: spot.s + CRASH_WEAPON_AHEAD_M * spot.dir }));
+    spawnPickup(world, w.contentId, spot);
+  }
 }
 
 /** Puts a weapon on the road as a new pickup entity (the race start and tests use it). */
@@ -1340,6 +1483,8 @@ export const combatSystem: SimSystem = {
       st.lastAttackerId[m.id] = -1;
       st.hitTick[m.id] = -1;
       st.downSeen[m.id] = false;
+      st.fallBy[m.id] = -1;
+      st.fallChain[m.id] = 0;
       st.takedowns[m.id] = 0;
       st.prevFlags[m.id] = 0;
       st.pending[m.id] = false;
@@ -1374,6 +1519,7 @@ export const combatSystem: SimSystem = {
     const ts = world.timeScale;
     // Last tick's falls first: a takedown (and its slow motion, from the phases after this one).
     creditTakedowns(world, config, st);
+    crashWeapons(world, config, st);
     slide(world, config, st, ts);
     const health = riderState(world).health;
 
