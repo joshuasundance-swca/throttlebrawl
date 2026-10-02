@@ -40,7 +40,7 @@
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
 import { createJolt } from './jolt';
 import { createShake } from './shake';
-import { spring, stepAngleSpring, stepSpring } from './spring';
+import { spring, stepAngleSpring, stepSpring, wrapAngle } from './spring';
 import { createTakedownTracker } from './takedown';
 
 /** What the rig reads about the rider it follows: the interpolated snapshot fields. */
@@ -195,6 +195,12 @@ const BIAS_LATERAL_MAX_M = 4;
 const BIAS_CAMERA_SHARE = 0.4;
 /** Targets further than this are not framed. */
 const BIAS_RANGE_M = 25;
+/**
+ * A remount (run W-P) cuts to the chase framing when it faces further than this from it: on foot
+ * the framing follows the walk back to the bike, and a 180-degree swing through the rider hid the
+ * road ahead for up to a second on real roads.
+ */
+const REMOUNT_CUT_RAD = Math.PI / 3;
 /** Heading must agree with the road this clearly (|cos|) before the rig trusts it for direction. */
 const DIR_CONFIDENCE = 0.25;
 /** A look-ahead point closer than this (a dead end just ahead) is replaced by the fallback. */
@@ -267,6 +273,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   /** The takedown victim's last known offset from the rider (it may leave the snapshot). */
   let victimOffset: { x: number; y: number; z: number } | null = null;
   let victimSeen = -1;
+  /** Whether the followed rider was on the bike last frame (a remount may cut, REMOUNT_CUT_RAD). */
+  let wasOnBike = true;
 
   const s = {
     yaw: spring(0),
@@ -571,6 +579,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     lookingBack = ctx?.lookBack === true;
     if (!targetValid(t)) return last ?? fallbackPose();
     shown = viewFor(t);
+    wasOnBike = onBike(t.mode);
     settle(goalFor(t, ctx, shown));
     last = finish(lookingBack ? lookBackPlacement(t) : basePlacement(t, shown), 0, 0, 0);
     return last;
@@ -622,6 +631,10 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       // Into or out of the helmet is a hard cut: a blend would fly the camera through the rider.
       // Between the two chase cams, the springs blend.
       if (view !== shown && (view === 'helmet' || shown === 'helmet')) settle(g);
+      // Back on the bike facing well away from the framing (it followed the walk back): a cut.
+      const riding = onBike(t.mode);
+      if (riding && !wasOnBike && Math.abs(wrapAngle(g.yaw - s.yaw.x)) > REMOUNT_CUT_RAD) settle(g);
+      wasOnBike = riding;
       shown = view;
       const w = params.springRate;
       stepAngleSpring(s.yaw, g.yaw, w, dt);
