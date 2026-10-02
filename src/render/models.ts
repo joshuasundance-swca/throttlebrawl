@@ -88,6 +88,7 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_bins',
     'sf_lamp',
   ],
+  keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -101,7 +102,6 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_bait',
     'keys_pie',
   ],
-  keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
 };
 
 /** The models every network draws (the ramp truck, poles, shacks and boats). */
