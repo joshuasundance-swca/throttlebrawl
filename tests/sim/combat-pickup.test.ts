@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { SimEvent } from '../../src/sim/api';
+import { pickupCount } from '../../src/sim/combat';
 import { BATCH_SEEDS, BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
 
 // combat-2 over the real base pack and the shared 50-race batch (docs/milestones/M1.md,
@@ -26,10 +27,9 @@ describe('combat-2 on the base pack', () => {
     expect([pipe?.reachSM, pipe?.reachDM]).toEqual([1.6, 1.4]);
   });
 
-  // M4 weapons-2 (head start): each spot now draws its weapon from the seed, weighted by the
-  // weapon's roadsideWeight. Until buildSimConfig maps that weight (an app-lane follow-up), every
-  // armed weapon in the config weighs 1.
-  it('lays three armed weapons on the route at race start, drawn from the seed', () => {
+  // M4 weapons-2 (head start): each spot draws its weapon from the seed, weighted by the weapon's
+  // roadsideWeight. W-Q: one spot per 500 m of route (combat.pickupSpacingM), not three fixed ones.
+  it('lays an armed weapon about every 500 m of the route at race start, drawn from the seed', () => {
     const lay = (seed: number) => {
       const { sim, config } = createBatchRace(seed);
       const armed = new Set(
@@ -37,7 +37,7 @@ describe('combat-2 on the base pack', () => {
       );
       // On the road, that is: a held weapon's pickup is stowed below it.
       const pickups = sim.snapshot().entities.filter((e) => e.kind === 'pickup' && e.road.h > -1);
-      expect(pickups).toHaveLength(3);
+      expect(pickups).toHaveLength(pickupCount(config.route.length, 500));
       for (const p of pickups) {
         expect(p.mode).toBe('Road');
         expect(armed.has(p.contentId), p.contentId).toBe(true);
@@ -51,10 +51,22 @@ describe('combat-2 on the base pack', () => {
   });
 });
 
-/** Replays a race's weapon events and returns what they add up to, or the first inconsistency. */
-function audit(events: readonly SimEvent[]) {
+/**
+ * Replays a race's weapon events and returns what they add up to, or the first inconsistency.
+ * `armedAtStart`: riders who start holding a weapon (the cop's baton: no grab event), and
+ * `keepsOnWreck`: riders who keep theirs through a crash (the law holsters it, sim/combat).
+ */
+function audit(
+  events: readonly SimEvent[],
+  armedAtStart: readonly number[],
+  keepsOnWreck: readonly number[],
+) {
   const holderOf = new Map<number, number>(); // pickup id -> rider id (absent = on the road)
   const holding = new Map<number, number>(); // rider id -> pickup id
+  for (const id of armedAtStart) {
+    holding.set(id, -100 - id); // a stand-in pickup id for the starting weapon
+    holderOf.set(-100 - id, id);
+  }
   const out = { road: 0, steal: 0, cues: 0, pipeHits: 0, problem: '' };
   for (const e of events) {
     if (e.type === 'stealWindow') out.cues++;
@@ -68,7 +80,7 @@ function audit(events: readonly SimEvent[]) {
       holding.delete(e.actor);
     }
     // A rider who crashes or is knocked off drops the pipe (drops have no event of their own).
-    if (e.type === 'crash') {
+    if (e.type === 'crash' && !keepsOnWreck.includes(e.actor)) {
       const pid = holding.get(e.actor);
       if (pid !== undefined) holderOf.delete(pid);
       holding.delete(e.actor);
@@ -108,7 +120,13 @@ describe('combat-2 over the shared seeded-race batch', () => {
     let racesWithGrab = 0;
     const problems: string[] = [];
     for (const race of batch.races) {
-      const a = audit(race.events);
+      const { config } = createBatchRace(race.seed);
+      const ids = (pick: (i: number) => boolean) => config.riders.flatMap((_r, i) => (pick(i) ? [i] : []));
+      const a = audit(
+        race.events,
+        ids((i) => config.riders[i]?.startingWeapon !== undefined),
+        ids((i) => config.riders[i]?.faction === 'law'),
+      );
       road += a.road;
       steal += a.steal;
       cues += a.cues;

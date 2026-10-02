@@ -119,7 +119,11 @@
 //   (pickupHolder SPENT) and its holder is bare-handed again. The `hit` (or `attackMiss`) of the
 //   swing that uses the last of a weapon carries `spent: true`.
 // - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
-//   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
+//   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road). The spots
+//   (W-Q, playtest 2's "Weapons should do more"; the pitch deck's "pickups turn up about every
+//   500 m instead of three fixed spots"): one per `combat.pickupSpacingM` of route (at least one),
+//   each somewhere in the middle half of its own stretch, drawn from the `combat` stream first, so
+//   every seed lays them differently and a replay lays them the same. [default]
 // - A rider's startingWeapon (a cop's baton or taser) is in hand at the start, as a stowed
 //   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up, and
 //   a cop keeps his weapon through a wreck (holstered; the cops polish round, 2026-10-01): before,
@@ -276,6 +280,18 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // W-Q: about one roadside weapon every 500 m of route (it was three fixed spots). [default]
+    id: 'combat.pickupSpacingM',
+    group: 'combat',
+    label: 'A roadside weapon every',
+    default: 500,
+    min: 100,
+    max: 3000,
+    step: 50,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
     id: 'combat.wrapDragMps',
     group: 'combat',
     label: 'Chain drag',
@@ -382,8 +398,6 @@ const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
 
-/** Where the roadside weapons lie: fractions of the route length. [default] */
-export const PICKUP_ROUTE_FRACTIONS: readonly number[] = [0.2, 0.45, 0.7];
 /** A rider picks up a weapon within this box: |Δs| ≤ 1 m (a tick at top speed is 0.63 m), |Δd| ≤ 1.5 m. */
 export const PICKUP_S_M = 1;
 export const PICKUP_D_M = 1.5;
@@ -1113,15 +1127,22 @@ function stepSlowmo(world: World, st: CombatState, frozenAtStart: boolean): void
 
 type Spot = { edge: number; s: number; d: number; dir: 1 | -1 };
 
+/** How many roadside weapons a route of this length gets: one per spacing, at least one. */
+export function pickupCount(routeLengthM: number, spacingM: number): number {
+  return Math.max(1, Math.round(routeLengthM / Math.max(1, spacingM)));
+}
+
 /**
- * Road positions for the roadside weapons: at each PICKUP_ROUTE_FRACTIONS point of the route, in
- * the middle of the travel lane. A fraction the main path cannot place is skipped.
+ * Road positions for the roadside weapons, in the middle of the travel lane: the route cut into
+ * pickupCount equal stretches, one spot in each, at `jitter()` (0..1) across the middle half of its
+ * stretch (0.5 is the stretch's centre). A point the main path cannot place is skipped.
  */
-export function roadsideSpots(config: SimConfig): Spot[] {
+export function roadsideSpots(config: SimConfig, spacingM = 500, jitter: () => number = () => 0.5): Spot[] {
   const { route, road } = config;
   const out: Spot[] = [];
-  for (const f of PICKUP_ROUTE_FRACTIONS) {
-    const x = f * route.length;
+  const count = pickupCount(route.length, spacingM);
+  for (let k = 0; k < count; k++) {
+    const x = ((k + 0.25 + 0.5 * clamp(jitter(), 0, 1)) / count) * route.length;
     for (const e of route.mainEdges) {
       const len = road.edges[e]?.length ?? 0;
       const p0 = route.progressAt(e, 0);
@@ -1361,7 +1382,9 @@ export const combatSystem: SimSystem = {
       .map((w) => ({ w, weight: Math.max(0, w.roadsideWeight ?? 1) }))
       .filter((p) => p.weight > 0);
     const total = pool.reduce((sum, p) => sum + p.weight, 0);
-    for (const spot of roadsideSpots(config)) {
+    const spacing = world.params['combat.pickupSpacingM'] ?? 500;
+    const spots = roadsideSpots(config, spacing, () => nextFloat(world.rng.combat));
+    for (const spot of spots) {
       if (total <= 0) break;
       let r = nextFloat(world.rng.combat) * total;
       const pick = pool.find((p) => (r -= p.weight) < 0) ?? pool[pool.length - 1];

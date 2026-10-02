@@ -357,17 +357,17 @@ describe('weapons-2: roadside spawns', () => {
     const counts: Record<string, number> = {};
     for (let seed = 1; seed <= 200; seed++) {
       const spots = layout(seed, weapons);
-      expect(spots).toHaveLength(3);
+      expect(spots).toHaveLength(2); // W-Q: one per 500 m of the 960 m route
       for (const w of spots) counts[w] = (counts[w] ?? 0) + 1;
     }
-    console.log(`[weapons-2] roadside picks over 200 seeds x 3 spots: ${JSON.stringify(counts)}`);
+    console.log(`[weapons-2] roadside picks over 200 seeds x 2 spots: ${JSON.stringify(counts)}`);
     expect(counts[BATON.contentId]).toBeUndefined();
     expect(counts[TASER.contentId]).toBeUndefined();
-    // Weights 1 : 2 : 1 over 600 picks: the chain near half, the others near a quarter each.
-    expect(counts[CHAIN.contentId] ?? 0).toBeGreaterThan(240);
-    expect(counts[CHAIN.contentId] ?? 0).toBeLessThan(360);
-    expect(counts[PIPE.contentId] ?? 0).toBeGreaterThan(100);
-    expect(counts[JUNK.contentId] ?? 0).toBeGreaterThan(100);
+    // Weights 1 : 2 : 1 over 400 picks: the chain near half, the others near a quarter each.
+    expect(counts[CHAIN.contentId] ?? 0).toBeGreaterThan(160);
+    expect(counts[CHAIN.contentId] ?? 0).toBeLessThan(240);
+    expect(counts[PIPE.contentId] ?? 0).toBeGreaterThan(65);
+    expect(counts[JUNK.contentId] ?? 0).toBeGreaterThan(65);
   });
 
   it('with only weight-0 weapons the road stays empty', () => {
