@@ -32,6 +32,8 @@ import { bareId, resolveProfile, type AiProfile } from './styles';
 export { AI_PRESETS, AI_STYLE_IDS, bareId, huntsByDefault, NEUTRAL_TRAITS, resolveProfile } from './styles';
 export type { AiBehaviour, AiProfile, AiStyleId, AiTraits } from './styles';
 export { relativeS } from './sense';
+export { signatureState, signatureView } from './signature';
+export type { SignatureState } from './signature';
 
 export const AI_TUNING: readonly TuningParamDecl[] = [
   {

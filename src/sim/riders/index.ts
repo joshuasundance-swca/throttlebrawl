@@ -99,14 +99,46 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Forgiving landings (playtest 2, 2026-10-02: "It's too easy to crash after a jump"; the
+    // maintainer picked "Forgiving landings"): a landing crashes only from this sideways speed. Below
+    // it a crooked landing wobbles, and past LANDING_SLIDE_FRACTION of it the bike slides straight,
+    // losing speed. Was 4 m/s (M1). [default]
     id: 'riders.landingCrashMps',
     group: 'crashes',
     label: 'Landing crash sideways speed',
-    default: 4,
+    default: 11,
     min: 1.5,
-    max: 10,
+    max: 20,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Forgiving landings (playtest 2): the share of the road's bend the bike follows in the air. 0
+    // is M1's straight flight, which off a jump on a bend flew the bike across the road into the
+    // barrier before it came down; 1 bends the flight exactly with the road. [default]
+    id: 'riders.airCarve',
+    group: 'crashes',
+    label: 'Air: follow the bend',
+    default: 0.85,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    // Forgiving landings (playtest 2): how fast the bike's heading settles back along the road in
+    // the air, 1/s, so a jab of steering mid-air does not land it sideways. 0 is M1 (it keeps
+    // whatever heading it has). [default]
+    id: 'riders.airAlign',
+    group: 'crashes',
+    label: 'Air: line up with the road',
+    default: 2,
+    min: 0,
+    max: 6,
+    step: 0.25,
+    unit: '/s',
     affectsSim: true,
   },
   {
@@ -226,8 +258,18 @@ export const CREST_SPAN_M = 4;
 export const CREST_MARGIN = 0.2;
 /** Heading change steering can make in the air, rad/s at full lock. */
 const AIR_TURN_RATE = 0.6;
-/** A landing wobbles from this fraction of the landing crash sideways speed. */
-const LANDING_WOBBLE_FRACTION = 0.4;
+/** A landing wobbles from this fraction of the landing crash sideways speed. [default] */
+const LANDING_WOBBLE_FRACTION = 0.3;
+/**
+ * From this fraction of the landing crash sideways speed the bike slides straight instead (playtest
+ * 2): the rider wrestles it in line, its heading kept LANDING_SLIDE_YAW of what it was, and it loses
+ * the speed it carried sideways plus LANDING_SLIDE_LOSS of the rest. [default]
+ */
+const LANDING_SLIDE_FRACTION = 0.6;
+const LANDING_SLIDE_YAW = 0.3;
+const LANDING_SLIDE_LOSS = 0.1;
+/** A wobbly landing (but no slide) keeps this share of its heading off the road. [default] */
+const LANDING_WOBBLE_YAW = 0.6;
 /** Coming down harder than this into the surface wobbles, and much harder crashes, m/s. */
 const LANDING_WOBBLE_VERTICAL = 14;
 const LANDING_CRASH_VERTICAL = 22;
@@ -764,7 +806,12 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const kappa = road.kappaAt(pos.edge, pos.s);
   const ownTurn = steer * AIR_TURN_RATE;
   const along = m.speed * cos(m.yaw) * sRateFactor(kappa, pos.d);
-  m.yaw = clamp(m.yaw + (ownTurn - pos.dir * kappa * along) * dt, -1.2, 1.2);
+  // Forgiving landings (playtest 2): the flight follows riders.airCarve of the road's bend, and the
+  // heading settles back along the road at riders.airAlign, so the bike comes down lined up.
+  const carve = world.params['riders.airCarve'] ?? 0;
+  const align = world.params['riders.airAlign'] ?? 0;
+  const roadTurn = (1 - carve) * pos.dir * kappa * along;
+  m.yaw = clamp(m.yaw + (ownTurn - roadTurn - align * m.yaw) * dt, -1.2, 1.2);
   pos.s += pos.dir * along * dt;
   pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
   const vy = st.vy[m.id] ?? 0;
@@ -803,7 +850,10 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
 
 /**
  * Landing quality: sideways speed decides it (a straight landing is clean), with a very hard drop
- * into the surface as a second way to wobble or crash. Emits `land`, plus `wobble` or `crash`.
+ * into the surface as a second way to wobble or crash. Forgiving (playtest 2, 2026-10-02): a crooked
+ * landing wobbles and is pulled toward the road's line, a badly crooked one slides straight and loses
+ * speed (`data.slide`), and only a really bad one crashes. A landing while still wobbling is judged
+ * like any other. Emits `land`, plus `wobble` or `crash`.
  */
 function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface: number, deck = 0): void {
   const pos = m.pos;
@@ -812,11 +862,17 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   const vertical = Math.max(0, slopeVy - (st.vy[m.id] ?? 0));
   const lateral = Math.abs(m.speed * sin(m.yaw));
   const crashAt = world.params['riders.landingCrashMps'] ?? 4;
-  const unstable = (st.wobble[m.id] ?? 0) > 0;
-  const crashes =
-    lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL || (unstable && lateral >= crashAt * 0.5);
+  const crashes = lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL;
   const wobbles = lateral >= crashAt * LANDING_WOBBLE_FRACTION || vertical >= LANDING_WOBBLE_VERTICAL;
   const quality = crashes ? 'crash' : wobbles ? 'wobble' : 'clean';
+  const slide = !crashes && lateral >= crashAt * LANDING_SLIDE_FRACTION;
+  const landYaw = m.yaw;
+  if (slide) {
+    m.speed = Math.max(0, m.speed * cos(m.yaw) * (1 - LANDING_SLIDE_LOSS));
+    m.yaw *= LANDING_SLIDE_YAW;
+  } else if (quality === 'wobble') {
+    m.yaw *= LANDING_WOBBLE_YAW;
+  }
   const airTicks = st.airTicks[m.id] ?? 0;
   m.mode = 'Road';
   m.h = deck; // on a ramp truck's deck, or 0 on the road
@@ -824,11 +880,11 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   st.vy[m.id] = slopeVy;
   st.airTicks[m.id] = 0;
   st.crestHold[m.id] = 1;
-  const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed };
+  const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed, slide };
   const cause = emit(world, 'land', m.id, data);
   if (quality === 'crash') {
     st.wobble[m.id] = 0;
-    emit(world, 'crash', m.id, { ...data, cause: 'landing', yaw: m.yaw }, { causeId: cause });
+    emit(world, 'crash', m.id, { ...data, cause: 'landing', yaw: landYaw }, { causeId: cause });
   } else if (quality === 'wobble') {
     st.wobble[m.id] = WOBBLE_TICKS;
     emit(world, 'wobble', m.id, { ...data, cause: 'landing' }, { causeId: cause });
