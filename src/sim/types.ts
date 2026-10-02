@@ -1,7 +1,7 @@
 // The sim contract's types (docs/architecture.md, "Sim contract"). Re-exported by src/sim/api.ts,
 // which is the only file outside src/sim may import. Field lists are the architecture doc's
 // minimum plus what the M1 lanes need; the contract owner may add fields in a contract PR.
-import type { EntityId, TuningValues } from '../core';
+import type { EntityId, GroundSurface, TuningValues } from '../core';
 import type { RoadNetwork, RouteProgress } from '../road';
 
 export const SIM_HZ = 60;
@@ -145,6 +145,25 @@ export interface EntitySnapshot {
    * the sim fills it for every entity.
    */
   signature?: SignatureSnapshot | null;
+  /**
+   * What a rider's wheels are on (W-Q; interview, 2026-10-02: "Anywhere with ground"): the road's
+   * surface on its lanes, `shoulder` on a paved shoulder, a verge band's surface off the road, null
+   * in the air and for other kinds. Optional for hand-built snapshots; the sim fills it for every
+   * entity.
+   */
+  ground?: GroundSurface | null;
+  /**
+   * The heading sign on the route (W-Q U-turns): 1 travelling toward the finish, -1 after a U-turn
+   * (and for traffic coming the other way); 1 off the route. It is `road.dir` times the route's
+   * orientation of the edge. Optional for hand-built snapshots; the sim fills it for every entity.
+   */
+  routeDir?: 1 | -1;
+  /**
+   * The id of the route branch a rider is on (W-Q junction choices and marked shortcuts:
+   * `RouteBranch.id`), or null on the main path and for other kinds. Optional for hand-built
+   * snapshots; the sim fills it for every entity.
+   */
+  branch?: string | null;
 }
 
 /**
@@ -320,6 +339,15 @@ export type SimEventType =
   | 'finish'
   | 'overtake'
   | 'lapOrCheckpoint'
+  /**
+   * A player came off a shortcut for the first time this race (W-Q, the pitch deck's item 9: "your
+   * first time down a shortcut stamps the seconds it really saved"). Actor = the player;
+   * `data.toEdge` the shortcut's first edge (its split zone's link), `data.gainM` the metres of
+   * route it cut, `data.savedS` the seconds that saved at the rider's average speed along it
+   * (gainM / that speed, 0.1 s steps), `data.shortcutS` the seconds spent on it. Presentation only
+   * reads it (the 'found it' stamp).
+   */
+  | 'shortcutFound'
   | 'attackStart'
   | 'attackMiss'
   | 'hit'
