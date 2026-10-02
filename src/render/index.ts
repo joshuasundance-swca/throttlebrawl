@@ -261,8 +261,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     roadside = null;
     const m = roadsideModule;
     const rs = roadScene;
-    if (!m || !rs || !roadArgs) return;
-    const kind = (Object.keys(models) as ModelKind[]).find((k) => k in m.KITS);
+    const mm = modelsModule;
+    if (!m || !rs || !roadArgs || !mm) return;
+    // This race's own region's kit: models stay loaded across regions (the menu loads the Keys kit).
+    const { tropical, tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    const needed = mm.modelKindsFor({
+      tropical,
+      tags,
+      palette: new Set(Object.keys(palette ?? {})),
+      traffic: trafficIds,
+    });
+    const kind = m.kitFor(needed, models) as ModelKind | null;
     const model = kind && models[kind];
     const kit = kind && m.KITS[kind];
     if (!model || !kit) return;
