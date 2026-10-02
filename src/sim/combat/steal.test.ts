@@ -3,14 +3,7 @@
 // wreck. Hand-placed riders on the combat harness; the pipe is the M1 starting numbers.
 import { describe, expect, it } from 'vitest';
 import type { SimEvent } from '../types';
-import {
-  combatState,
-  combatView,
-  PICKUP_ROUTE_FRACTIONS,
-  roadsideSpots,
-  spawnPickup,
-  STOWED_H,
-} from './index';
+import { combatState, combatView, pickupCount, roadsideSpots, spawnPickup, STOWED_H } from './index';
 import {
   F,
   flags,
@@ -86,15 +79,14 @@ describe('combat-2: the pipe resolves to the M1 starting numbers', () => {
 describe('combat-2: picking up the pipe', () => {
   it('lays one pipe per spot along the route at race start, in the travel lane', () => {
     const config = harnessConfig([{ s: 100, d: 0 }], {}, [PIPE]);
+    // The harness route runs from s 20 to s 980 (960 m) on one edge: two 480 m stretches at the
+    // default 500 m spacing, a spot at each stretch's centre with no jitter.
+    expect(pickupCount(960, 500)).toBe(2);
     const spots = roadsideSpots(config);
-    expect(spots).toHaveLength(PICKUP_ROUTE_FRACTIONS.length);
-    // The harness route runs from s 20 to s 980 (960 m) on one edge.
-    expect(spots.map((p) => Math.round(p.s))).toEqual(
-      PICKUP_ROUTE_FRACTIONS.map((f) => Math.round(20 + f * 960)),
-    );
+    expect(spots.map((p) => Math.round(p.s))).toEqual([20 + 240, 20 + 720]);
     const h = makeHarness([{ s: 100, d: 0 }], () => undefined, {}, [PIPE]);
     const st = combatState(h.world);
-    expect(st.pickups).toHaveLength(PICKUP_ROUTE_FRACTIONS.length);
+    expect(st.pickups).toHaveLength(2);
     for (const id of st.pickups) {
       expect(h.world.movers[id]?.kind).toBe('pickup');
       expect(st.pickupWeapon[id]).toBe(PIPE_ID);
@@ -453,5 +445,36 @@ describe('combat-2: dropping the weapon on a wreck', () => {
     ]);
     expect(combatView(h.world, 1).heldWeapon).toBe(PIPE_ID);
     expect(pipeCount(h, pid)).toBe(1);
+  });
+});
+
+describe('W-Q: a roadside weapon about every 500 m, laid by the seed', () => {
+  const spotsOf = (tuning: Record<string, number> = {}, seed?: number) => {
+    const h = makeHarness([{ s: 100, d: 0 }], () => undefined, tuning, [PIPE]);
+    if (seed !== undefined) h.config.seed = seed; // (the world's streams were seeded at creation)
+    const st = combatState(h.world);
+    return st.pickups.map((id) => Math.round((h.world.movers[id]?.pos.s ?? 0) * 100) / 100);
+  };
+
+  it('one per spacing of route (at least one), each in the middle half of its stretch', () => {
+    expect([pickupCount(7300, 500), pickupCount(2300, 500), pickupCount(120, 500)]).toEqual([15, 5, 1]);
+    const spots = spotsOf();
+    expect(spots).toHaveLength(2); // the harness route is 960 m
+    spots.forEach((s, k) => {
+      const lo = 20 + ((k + 0.25) / 2) * 960;
+      const hi = 20 + ((k + 0.75) / 2) * 960;
+      expect(s).toBeGreaterThanOrEqual(lo - 1e-6);
+      expect(s).toBeLessThanOrEqual(hi + 1e-6);
+    });
+  });
+
+  it('the spacing is a slider: 250 m lays four on the same route', () => {
+    expect(spotsOf({ 'combat.pickupSpacingM': 250 })).toHaveLength(4);
+  });
+
+  it('the same seed lays them in the same places, and the spots are not the stretch centres', () => {
+    const a = spotsOf();
+    expect(spotsOf()).toEqual(a);
+    expect(a).not.toEqual([260, 740]);
   });
 });
