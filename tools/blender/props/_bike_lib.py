@@ -8,6 +8,7 @@ Paint and structural colours intentionally share slots to cap instanced draws at
 import math
 
 import _lib as L
+import bmesh
 import bpy
 
 WHEEL_SIDES = 16
@@ -98,6 +99,20 @@ def fender(mb, f, r, width, role, high=0):
     mb.loft(rings, role)
 
 
+def export_bike(out):
+    """Triangulate warped ribbons/tubes so exported face normals follow winding."""
+    for me in bpy.data.meshes:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=list(bm.faces))
+        for face in bm.faces:
+            face.smooth = False
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+    L.export(out, normals=False)
+
+
 def build(c):
     L.reset_scene()
     colours = {PAINT: c["paint"], TYRE: "#20232c", METAL: "#b5bfcb"}
@@ -111,9 +126,9 @@ def build(c):
     chopper = style == "chopper"
     sport = style in ("sport", "stickered")
     scooter = style in ("scooter", "trike")
-    touring = style in ("bagger", "cop")
+    touring = style in ("bagger", "cop", "flagship")
     dirt = style == "dirt"
-    head = (0, front - (0.52 if chopper else 0.22), 0.96 if dirt else 0.88)
+    head = (0, front - (0.52 if chopper else 0.22), 1.16 if dirt else 0.82 if style == "fighter" else 0.88)
     fork = L.empty("fork", root, L.P(*head))
     fr = 0.29 if chopper else r
     wf = wheel(mats, fork, "wheel_front", 0, front, fr, 0.11 if chopper else 0.14, dirt)
@@ -136,8 +151,8 @@ def build(c):
     # Fork geometry is one silver slot including grips to avoid another draw.
     mb = L.MB([METAL])
     grip_f = head[1] - (0.2 if sport else 0.12)
-    grip_z = 1.36 if chopper else (0.88 if sport else 1.13 if dirt or style == "fighter" else 1.04)
-    grip_x = 0.43 if chopper or touring else 0.36
+    grip_z = 1.36 if chopper else (0.88 if sport else 1.31 if dirt else 0.99 if style == "fighter" else 1.04)
+    grip_x = 0.48 if dirt else 0.43 if chopper or touring else 0.36
     for s in (-1, 1):
         mb.tube([(s * 0.1, front, fr), (s * 0.1, head[1], head[2])], [0.035, 0.026], METAL, sides=6)
         mb.tube(
@@ -150,9 +165,18 @@ def build(c):
             [(s * (grip_x - 0.06), grip_f, grip_z), (s * (grip_x + 0.06), grip_f, grip_z)], [0.026] * 2, METAL, sides=6
         )
     mb.tube([(-0.12, front - 0.08, fr + 0.16), (0.12, front - 0.08, fr + 0.16)], [0.025] * 2, METAL)
-    fender(mb, front, fr, 0.09, METAL, 0.18 if dirt else 0)
-    lamp_f, lamp_z = (0.76 if sport else head[1] + 0.16), (0.88 if sport else 0.93)
-    if not sport and not touring and not scooter:
+    if dirt:
+        shaped(mb, [(front - 0.31, 0.085, 1.05, 1.08), (front + 0.32, 0.07, 1.02, 1.05)], METAL)
+        mb.box(head[1] + 0.08, head[1] + 0.11, -0.14, 0.14, 1.10, 1.33, METAL)
+    else:
+        fender(mb, front, fr, 0.09, METAL)
+    lamp_f, lamp_z = (
+        (0.76 if sport else head[1] + 0.16),
+        (1.20 if dirt else 0.88 if sport else 0.90 if style == "fighter" else 0.93),
+    )
+    if style == "fighter":
+        mb.fprism([(-0.10, 0.94), (0.10, 0.94), (0.055, 0.83), (-0.055, 0.83)], lamp_f, lamp_f + 0.05, METAL)
+    elif not dirt and not sport and not touring and not scooter:
         mb.cyl((0, lamp_f, lamp_z), "f", 0.085, 0.04, 12, METAL)
     if style == "stickered":
         mb.tube([(0, head[1], head[2] + 0.04), (0, grip_f, 0.91)], [0.015] * 2, METAL, sides=4)
@@ -189,36 +213,57 @@ def build(c):
         for f in (-0.18, 0.12) if chopper or touring else (0.06,):
             for z in (0.52, 0.56, 0.60, 0.64):
                 mb.box(f - 0.085, f + 0.085, -0.15, 0.15, z, z + 0.018, metal)
-        tw = 0.15 if chopper else 0.22
-        shaped(
-            mb,
-            [
+        if dirt:
+            tank = [(-0.12, 0.10, sh - 0.17, sh - 0.02), (0.30, 0.10, sh - 0.16, sh + 0.015)]
+        elif style == "fighter":
+            tank = [
+                (-0.23, 0.10, sh - 0.08, sh + 0.06),
+                (0.10, 0.27, sh - 0.12, sh + 0.25),
+                (0.35, 0.15, sh - 0.10, sh + 0.13),
+            ]
+        elif style == "standard":
+            tank = [(-0.15, 0.14, sh - 0.09, sh + 0.09), (0.23, 0.16, sh - 0.09, sh + 0.11)]
+        else:
+            tw = 0.15 if chopper else 0.22
+            tank = [
                 (-0.24, 0.07, sh - 0.10, sh + 0.06),
                 (0.05, tw, sh - 0.10, sh + 0.19),
                 (0.28, tw * 0.7, sh - 0.09, sh + 0.10),
                 (0.34, 0.055, sh - 0.06, sh + 0.02),
-            ],
-            secondary,
-        )
+            ]
+        shaped(mb, tank, PAINT if dirt or style in ("standard", "fighter") else secondary)
     seat_f = -0.28 if not scooter else -0.35
-    shaped(
-        mb,
-        [
-            (-0.55 if style == "fighter" else -0.68, 0.12, sh - 0.08, sh),
-            (-0.3, 0.18, sh - 0.07, sh),
-            (-0.04, 0.12, sh - 0.05, sh),
-        ],
-        dark,
-    )
-    fender(mb, rear, 0.34 if chopper else r, 0.19 if chopper else 0.11, PAINT)
-    # Exhausts with a bent header and a tapered silencer, below the rider's leg.
-    for x in (-0.24, -0.36) if style == "fighter" else (-0.24,):
+    if dirt:
+        shaped(mb, [(-0.82, 0.095, sh - 0.05, sh), (0.29, 0.10, sh - 0.05, sh)], dark)
+        # Exposed long rear monoshock and high, tucked silencer.
+        mb.tube([(0, -0.42, 0.43), (0, -0.10, sh - 0.10)], [0.033, 0.033], metal, sides=6)
+        for i in range(7):
+            f = -0.40 + i * 0.04
+            z = 0.47 + i * 0.055
+            mb.cyl((0, f, z), "z", 0.047, 0.013, 6, secondary)
         mb.tube(
-            [(x, 0.12, 0.52), (x, 0.29, 0.31), (x, -0.34, 0.29), (x, -0.76, 0.37)],
-            [0.025, 0.025, 0.055, 0.047],
-            metal,
-            sides=6,
+            [(-0.17, 0.12, 0.55), (-0.20, -0.08, 0.74), (-0.20, -0.74, 0.83)], [0.025, 0.045, 0.055], metal, sides=6
         )
+        for side in (-1, 1):
+            mb.box(-0.63, -0.32, side * 0.12 - 0.015, side * 0.12 + 0.015, 0.73, 0.87, secondary)
+    else:
+        end = -0.49 if style == "fighter" else -0.68
+        width = 0.14 if style == "fighter" else 0.18
+        shaped(mb, [(end, width, sh - 0.08, sh), (-0.3, width, sh - 0.07, sh), (-0.04, 0.12, sh - 0.05, sh)], dark)
+        fender(mb, rear, 0.34 if chopper else r, 0.19 if chopper else 0.11, PAINT)
+        for x in (-0.19, 0.19) if style == "fighter" else (-0.24,):
+            pts = (
+                [(x, 0.12, 0.52), (x, -0.22, 0.54), (x, -0.51, sh - 0.06)]
+                if style == "fighter"
+                else [(x, 0.12, 0.52), (x, 0.29, 0.31), (x, -0.34, 0.29), (x, -0.76, 0.37)]
+            )
+            mb.tube(pts, [0.025, 0.025, 0.058] if style == "fighter" else [0.025, 0.025, 0.055, 0.047], metal, sides=6)
+    if style == "standard":
+        for side in (-1, 1):
+            mb.box(-0.40, -0.14, side * 0.16 - 0.015, side * 0.16 + 0.015, 0.52, 0.67, secondary)
+            mb.tube([(side * 0.16, -0.42, 0.71), (side * 0.16, -0.89, 0.79)], [0.018] * 2, metal)
+        for f in (-0.88, -0.77, -0.66, -0.55):
+            mb.tube([(-0.16, f, 0.79), (0.16, f, 0.79)], [0.015] * 2, metal)
     if sport:
         for s in (-1, 1):
             # Lean belly pan and swept angular upper fairing, not a box.
@@ -240,9 +285,6 @@ def build(c):
         for s in (-1, 1):
             for f, z, role in ((0.26, 0.64, "decal_a"), (0.06, 0.75, "decal_b"), (0.41, 0.78, "decal_a")):
                 mb.side_quad(s * 0.267, f - 0.07, f + 0.08, z - 0.035, z + 0.04, role, s)
-    if dirt:
-        shaped(mb, [(-0.8, 0.11, sh - 0.05, sh), (0.2, 0.12, sh - 0.03, sh + 0.035)], PAINT)
-        mb.box(front - 0.19, front - 0.16, -0.15, 0.15, 0.83, 1.09, secondary)
     if chopper:
         for s in (-1, 1):
             mb.tube([(s * 0.15, -0.67, sh), (s * 0.15, -0.82, 1.15), (0, -0.84, 1.25)], [0.018] * 3, PAINT, sides=4)
@@ -283,10 +325,14 @@ def build(c):
             0.58,
             PAINT,
         )
-    if style in ("scooter", "cop", "trike"):
+    if style in ("scooter", "cop", "trike", "flagship"):
         glass = "glass" if "glass" in body_roles else dark
-        top, wide = (1.62, 0.34) if style == "trike" else (1.33, 0.19)
+        top, wide = (1.62, 0.34) if style in ("trike", "flagship") else (1.33, 0.19)
         mb.fprism([(-wide, 1.0), (-wide * 0.85, top), (wide * 0.85, top), (wide, 1.0)], 0.52, 0.535, glass)
+    if style == "flagship":
+        for side in (-1, 1):
+            mb.tube([(side * 0.40, -0.66, 0.70), (side * 0.40, -0.70, 1.47)], [0.012] * 2, metal)
+            mb.box(-0.91, -0.70, side * 0.40 - 0.008, side * 0.40 + 0.008, 1.29, 1.46, secondary)
     if style == "cop":
         mb.box(0.37, 0.46, -0.31, 0.31, 1.15, 1.18, dark)
         mb.box(0.37, 0.46, -0.31, -0.08, 1.18, 1.24, "light_blue")
@@ -318,5 +364,4 @@ def build(c):
     lamp_pos = L.P(0, lamp_f + 0.04, lamp_z)
     L.empty("light_head", lamp_parent, lamp_pos - fork.location if lamp_parent == fork else lamp_pos)
     L.empty("light_tail", root, L.P(0, rear - 0.16, sh))
-    # Preserve authored faceted normals: curved ribbon quads need their Blender normals.
-    L.export(L.out_path())
+    export_bike(L.out_path())

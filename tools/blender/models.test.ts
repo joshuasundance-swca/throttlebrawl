@@ -115,6 +115,29 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
   });
 
   if (prop.asset.startsWith('models/bikes/')) {
+    it('ships faceted geometry without normals and rebuilds finite face normals', async () => {
+      const scene = await loadInThree(read(file));
+      let examined = 0;
+      scene.traverse((o) => {
+        if (!(o as Mesh).isMesh) return;
+        const mesh = o as Mesh;
+        expect(mesh.geometry.getAttribute('normal'), o.name).toBeUndefined();
+        const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        geometry.computeVertexNormals();
+        const normals = geometry.getAttribute('normal');
+        expect(normals.count).toBeGreaterThan(0);
+        for (let i = 0; i < normals.count; i += 3) {
+          const normal = new Vector3().fromBufferAttribute(normals, i);
+          expect(normal.length(), `${o.name} triangle ${i / 3}`).toBeCloseTo(1, 5);
+          for (const j of [i + 1, i + 2])
+            expect(new Vector3().fromBufferAttribute(normals, j).distanceTo(normal)).toBeLessThan(1e-6);
+        }
+        geometry.dispose();
+        examined++;
+      });
+      expect(examined).toBeGreaterThan(0);
+    });
+
     it('has grounded axle pivots, rider targets and a connected steering assembly', async () => {
       const scene = await loadInThree(read(file));
       scene.updateMatrixWorld(true);
@@ -142,11 +165,32 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
       }
       expect(position(scene.getObjectByName('bar_l')!).x).toBeGreaterThan(0);
       expect(position(scene.getObjectByName('bar_r')!).x).toBeLessThan(0);
-      const wheels = ['wheel_front', 'wheel_rear_l', 'wheel_rear_r'];
-      if (!scene.getObjectByName('wheel_rear_l')) wheels.push('wheel_rear');
+      const fourWheels = !!scene.getObjectByName('wheel_front_l');
+      const splitRear = !!scene.getObjectByName('wheel_rear_l');
+      const wheels = [
+        ...(fourWheels ? ['wheel_front_l', 'wheel_front_r'] : ['wheel_front']),
+        ...(splitRear ? ['wheel_rear_l', 'wheel_rear_r'] : ['wheel_rear']),
+      ];
+      if (fourWheels) {
+        expect(new Box3().setFromObject(front).isEmpty()).toBe(true);
+        expect(new Box3().setFromObject(rear).isEmpty()).toBe(true);
+      }
+      for (const axle of ['front', 'rear']) {
+        if (axle === 'front' ? !fourWheels : !splitRear) continue;
+        const l = scene.getObjectByName(`wheel_${axle}_l`)!;
+        const r = scene.getObjectByName(`wheel_${axle}_r`)!;
+        expect(l.parent).toBe(axle === 'front' ? fork : bike);
+        expect(r.parent).toBe(l.parent);
+        expect(position(l).x).toBeGreaterThan(0);
+        expect(position(r).x).toBeLessThan(0);
+        expect(position(l).x + position(r).x).toBeCloseTo(0, 5);
+        expect(position(l).z).toBeCloseTo(position(axle === 'front' ? front : rear).z, 5);
+        expect(position(r).z).toBeCloseTo(position(l).z, 5);
+      }
       for (const name of wheels) {
         const wheel = scene.getObjectByName(name);
-        if (!wheel) continue;
+        expect(wheel, name).toBeDefined();
+        if (!wheel) throw new Error(`Missing wheel ${name}`);
         const box = new Box3().setFromObject(wheel);
         const p = position(wheel);
         expect(box.min.y).toBeCloseTo(0, 4);

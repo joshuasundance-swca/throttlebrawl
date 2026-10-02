@@ -10,6 +10,13 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bike_lib
 
-CONFIG = {"style": "standard", "class": "rat", "wheelbase": 1.44, "seat_height": 0.77, "paint": "#e94448"}
+CONFIG = {
+    "style": "standard",
+    "class": "rat",
+    "wheelbase": 1.44,
+    "seat_height": 0.77,
+    "paint": "#b74b43",
+    "colours": {"paint_secondary": "#789d92"},
+}
 
 _bike_lib.build(CONFIG)
