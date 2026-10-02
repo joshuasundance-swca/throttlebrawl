@@ -605,7 +605,7 @@ A modifier is a small entry under `packs/base/modifiers/`:
 | `eligibility` | Region ids, event kinds and times of day it may appear in. An empty list means "any". |
 | `trigger.atProgress` | Optional race-progress window (0..1) in which it may start. |
 | `durationS` | How long it lasts; converted to ticks at load like every timing field. |
-| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`. A new effect kind is a code change; a new modifier built from existing kinds is data only. |
+| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`, and `set-piece` (built, W-P: see below). A new effect kind is a code change; a new modifier built from existing kinds is data only. |
 | `announce` | An optional bark trigger (`modifier-start`, added to the reserved trigger list) and an optional sign id, so the world can react in words. |
 
 **The maintainer's wanted examples**, all placeholders within the [tone guide](./tone-guide.md#hard-lines) (the funeral procession and rocket launch in particular must follow its hard lines):
@@ -621,7 +621,7 @@ Rules:
 
 - An event opts in with `modifiers: { "pool": [ids] | "region-default", "maxPerRace": n, "chanceScale": x }`. `region-default` means every live modifier whose `eligibility` matches; regions do not keep a second list.
 - Modifiers change the sim (traffic, hazards, cash), so the roll must be deterministic: it uses its own seeded `modifiers` stream, and the resolved modifiers are part of `SimConfig` and the replay header ([architecture](./architecture.md#event-modifiers)). The `modifierStart` and `modifierEnd` sim events are what the `modifier-start` bark trigger listens to.
-- No modifier content before M4 (`[default]`). Until then events simply omit `modifiers`, and the sim carries only an empty list.
+- `[default]` (W-P, the maintainer, 2026-10-01b: "events and set pieces") The road set pieces come first, ahead of M4: each region's race opts in with `"modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 }`, and each region pack carries its own `modifiers/` entries with a `set-piece` effect. Its fields: `piece` (`roadwork`, `crash-scene`, `parade`, `hay-spill` or `speed-trap`), `signText` (the warning sign's words), `theme` (`keys`, `pnw` or `sf`: the float dressing and the people's look), `person` (`flagger`, `cop-waving`, `marcher-keys`, `marcher-pnw`, `marcher-sf`), and per piece `vehicle` and `vehicle2` (traffic-type ids, bare ids meaning the modifier's own pack), `floats` (a list of traffic-type ids), `marchers` (a count), `inflatable` (a boolean) and `limitMps` (the speed trap's limit). The vehicles they name are ordinary `traffic-type` entries that no region lists in its mix, so traffic never rolls them; parked ones are `oddity` with `cruiseMps` 0. Other effect kinds still wait for M4 or the shelf.
 
 ### Career
 
@@ -740,7 +740,7 @@ See [Region 1 stub: the Florida Keys](#region-1-stub-the-florida-keys) for a ful
 | `timeOfDayOptions` | Allowed values for an event's `timeOfDay`, each with a lighting preset name: `dawn`, `noon`, `golden-hour`, `dusk`, `night`. An option may carry its own optional `palette` that overrides the region's, because the maintainer wants palettes compared and set per time of day (tentative, "idk" `[default]`). |
 | `traffic.mix` | Weighted vehicle kinds. Each `kind` is the id of a [traffic type](#traffic-type); the `hazard` class (`normal` or `big`, where hitting a big one crashes you) comes from the type and can be overridden here. Oddities are ordinary entries tagged `oddity`. |
 | `traffic.pedestrians`, `traffic.animals` | Weighted kinds (ids of `traffic-type` entries with category `pedestrian` or `animal`) that dive away cartoonishly `[decided]`; `big: true` means hitting one crashes you and overrides the type. |
-| `signs`, `billboards` | Objects with an `id`, `text`, optional `tags`, an optional image asset (billboards), and an optional `status` (`live`, `vetoed`, `draft`) so the in-game veto can cut one ([In-game veto](#in-game-veto-cut-this)). Roads place them with `billboard` features, which name an `item` or a `pool` to fill the slot. |
+| `signs`, `billboards` | Objects with an `id`, `text`, optional `tags`, an optional image asset (billboards), and an optional `status` (`live`, `vetoed`, `draft`) so the in-game veto can cut one ([In-game veto](#in-game-veto-cut-this)). Roads place them with `billboard` features, which name an `item` or a `pool` to fill the slot. `[decided]` (playtest 2, 2026-10-02, "pass too fast to read") A board's `text` is a headline plus a kicker: the first sentence is the headline (3-4 words for a billboard, 2-5 for a sign, drawn big enough to read at 100 mph) and the rest is the kicker (drawn small). Write the headline in capitals and keep the joke in the kicker. |
 | `palette` | Colour hints for the renderer and UI, so each region has a visual identity. |
 | `weather` | Reserved, optional, later `[decided]`. |
 
@@ -1249,13 +1249,13 @@ File: `packs/base/regions/florida-keys/region.json`
     ]
   },
   "signs": [
-    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES." },
-    { "id": "next-regret", "text": "NEXT GAS 40 MI. NEXT REGRET 2 MI." },
-    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR." }
+    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees." },
+    { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi." },
+    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear." }
   ],
   "billboards": [
-    { "id": "timeshare", "text": "OWN A PIECE OF PARADISE. SOME PIECES STILL ABOVE WATER." },
-    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH." }
+    { "id": "timeshare", "text": "PARADISE FOR SALE. Some pieces still above water." },
+    { "id": "stream-outfit", "text": "WATCH US WRECK LIVE. New episodes every crash." }
   ],
   "weather": null,
   "meta": {

@@ -1,0 +1,103 @@
+{
+  "type": "station",
+  "id": "sf-burn-rate",
+  "name": "Burn Rate 104.5",
+  "genre": "synth",
+  "regions": ["san-francisco"],
+  "tracks": [
+    {
+      "id": "runway-eighteen-months",
+      "title": "Runway (18 Months)",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 112,
+          "key": "A",
+          "progression": "night"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "hockey-stick",
+      "title": "Hockey Stick",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 124,
+          "key": "E",
+          "progression": "drive"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "stealth-mode",
+      "title": "Stealth Mode",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 100,
+          "key": "F#",
+          "progression": "neon"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "kombucha-on-tap",
+      "title": "Kombucha on Tap",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 118,
+          "key": "C#",
+          "progression": "pulse"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "seed-round-at-golden-hour",
+      "title": "Seed Round at Golden Hour",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 106,
+          "key": "D",
+          "progression": "night"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "ship-it-friday",
+      "title": "Ship It Friday",
+      "procedural": {
+        "preset": "synth-band",
+        "params": {
+          "bpm": 126,
+          "key": "B",
+          "progression": "drive"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco's startup station: synth (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"; the AI-boom satire the tone guide allows, maintainer 2026-10-01b). A drum machine, a pumping saw bass, pads, a sixteenth arpeggio and a gliding lead into a dotted-eighth echo, in minor keys at 100-126 bpm (src/audio/radio-compose-regional.ts, preset synth-band). Melodies are generated from each track's seed, so they are original. No DJ lines yet (djBarkSet null). Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

@@ -103,7 +103,13 @@ function soloConfig(r: Region, length: string, seed: number): SimConfig {
     eventId: r.event,
     length,
     ...(r.route ? { route: r.route } : {}),
-    tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+    // An empty road: no traffic and no road events (W-P set pieces bring their own vehicles).
+    tuning: {
+      'ai.aggressionScale': 0,
+      'traffic.densitySame': 0,
+      'traffic.densityOncoming': 0,
+      'modifiers.setPieceChance': 0,
+    },
   });
   return { ...built, riders: built.riders.filter((d) => d.controller.kind === 'player') };
 }

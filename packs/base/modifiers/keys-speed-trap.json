@@ -1,0 +1,40 @@
+{
+  "type": "event-modifier",
+  "id": "keys-speed-trap",
+  "name": "Keys Speed Trap",
+  "kind": "human",
+  "tags": ["set-piece", "speed-trap"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.25, 0.85],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "speed-trap",
+      "signText": "SPEED CHECKED BY RADAR THE RADAR IS BORED",
+      "limitMps": 29,
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: the deputy waits on the shoulder with a radar on a tripod. Pass him over about 65 mph and he comes after you.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

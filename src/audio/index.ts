@@ -37,7 +37,7 @@ import {
 } from './bark-voices';
 import { CUE_PATCHES, createSirenVoice, type SirenVoice } from './cue-patches';
 import { createCeiling } from './ceiling';
-import { cueForEvent, type CueId } from './cues';
+import { cueForEvent, MELEE_CUES, weaknessOf, type CueId } from './cues';
 import { createSlowmoTreatment, SLOWMO_DEFAULTS, type SlowmoTreatment } from './slowmo';
 import {
   createEngineVoice,
@@ -56,12 +56,12 @@ import {
   type RadioStation,
   type RadioVetoFlag,
 } from './radio';
-import { distance, distanceGain, dopplerFactor, moving } from './spatial';
+import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
 
-export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
+export { ENGINE_BY_CLASS, ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export { ENGINE_FEEL_DEFAULTS } from './engine-feel';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
@@ -76,6 +76,11 @@ export type { NowPlaying, RadioStation, RadioTrack, RadioVetoFlag } from './radi
 /** `audio.radio` values below the stations: 0 = off, 1 = the original score, 2+ = the stations. */
 export const RADIO_OFF = 0;
 export const RADIO_SCORE = 1;
+/**
+ * The region's first station: what a race plays by default (playtest 2, 2026-10-02: "There should
+ * be different stations and music in different regions"), as the settings record's Radio default.
+ */
+export const RADIO_FIRST_STATION = 2;
 /** The music ducks under these cues (the crash family), [default]. */
 const DUCK_CUES: ReadonlySet<CueId> = new Set(['crash', 'takedown', 'railClang', 'splash']);
 export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
@@ -237,7 +242,7 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     id: 'audio.radio',
     group: 'audio',
     label: 'Radio (0 off, 1 score, 2+ stations; R key)',
-    default: RADIO_SCORE,
+    default: RADIO_FIRST_STATION,
     min: 0,
     max: 6,
     step: 1,
@@ -387,13 +392,15 @@ export interface AudioInspect {
   busTargets: Volumes;
   activeVoices: number;
   /** The most recent cues played (up to 32), with their start times on the audio clock. */
-  lastCues: { cue: CueId; at: number }[];
+  lastCues: { cue: CueId; at: number; weight?: number }[];
   playerEngineHz: number;
   playerEngineLevel: number;
   /** The engine's feel on the last frame (engine-feel.ts) and its counts this session. */
   engineFeel: { rpm: number; load: number; level: number; shifts: number; revs: number; pops: number };
   /** Entity ids of the other riders whose engines are playing. */
   otherEngines: number[];
+  /** Each of those engines' voice (its preset) and where it sits, left (-1) to right (1). */
+  otherEngineVoices: { id: number; preset: string; pan: number }[];
   sirenLevel: number;
   musicPlaying: boolean;
   /** The slow-motion treatment: whether it is on, and what the bus filter and music duck aim for. */
@@ -528,7 +535,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     windGain: WIND_DEFAULTS.gain as number,
     windFromMps: WIND_DEFAULTS.fromMps as number,
     windFullMps: WIND_DEFAULTS.fullMps as number,
-    radio: RADIO_SCORE as number,
+    radio: RADIO_FIRST_STATION as number,
     radioLoops: 3,
     radioFx: 1,
     duckLevel: DUCK_DEFAULTS.level as number,
@@ -573,9 +580,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let lastFeel: FeelOutput | null = null;
   const feelCounts = { shifts: 0, revs: 0, pops: 0 };
   const others = new Map<number, Held<EngineVoice>>();
+  const otherPan = new Map<number, number>();
   let siren: Held<SirenVoice> | null = null;
   const lastHonk = new Map<number, number>();
-  const lastCues: { cue: CueId; at: number }[] = [];
+  const lastCues: { cue: CueId; at: number; weight?: number }[] = [];
   let lastSnap: SimSnapshot | null = null;
   let lastPlayerId = 0;
 
@@ -797,6 +805,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     pool.release(h.entry);
     h.voice.stop();
     others.delete(id);
+    otherPan.delete(id);
   };
   const dropSiren = () => {
     if (!siren) return;
@@ -869,16 +878,16 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   /** Cues that mark the slow motion's edges play at their own pitch. */
   const UNPITCHED: ReadonlySet<CueId> = new Set(['slowIn', 'slowOut']);
 
-  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1) => {
+  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1, weight = 0) => {
     const level = gain * params.cueGain;
     if (level <= 0.001) return;
     const at = g.ctx.currentTime;
     const pitch = UNPITCHED.has(cue) ? 1 : g.slowmo.pitch();
-    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch });
+    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch, weight });
     const entry = pool.add(priority, playing);
     if (!entry) return;
     playing.onEnded(() => pool.release(entry));
-    lastCues.push({ cue, at });
+    lastCues.push(weight > 0 ? { cue, at, weight } : { cue, at });
     if (lastCues.length > 32) lastCues.shift();
   };
 
@@ -935,6 +944,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       held.voice.set({ rpm: e.rpm, throttle: e.throttle });
       held.voice.setLevel(ENGINE_LEVELS.other * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
       held.voice.setDoppler(pitch * dopplerFactor(listener, moving(e), params.dopplerScale));
+      // Passing riders sit left or right of you (0.8 at most, so neither ear goes silent).
+      const pan = 0.8 * panFor(me, e);
+      held.voice.setPan(pan);
+      otherPan.set(e.id, pan);
     }
 
     // The siren while the cop is near.
@@ -1030,7 +1043,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           gain = src ? distanceGain(distance(me, src), 8, 180) : 0.6;
         }
         const impact = Math.min(1, choice.impact * params.crashImpactScale);
-        playCue(g, choice.cue, choice.priority, gain, impact);
+        const weight = MELEE_CUES.has(choice.cue) ? weaknessOf(snap, e.target) : 0;
+        playCue(g, choice.cue, choice.priority, gain, impact, weight);
         // The music ducks under a crash you are in or can clearly hear.
         if (DUCK_CUES.has(choice.cue) && (choice.playerInvolved || gain >= 0.5)) duckNow(g);
       }
@@ -1140,6 +1154,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         ...feelCounts,
       },
       otherEngines: [...others.keys()].sort((a, b) => a - b),
+      otherEngineVoices: [...others.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([id, h]) => ({ id, preset: h.voice.profile.preset, pan: otherPan.get(id) ?? 0 })),
       sirenLevel: siren?.voice.level() ?? 0,
       musicPlaying: graph?.music.playing() ?? false,
       slowmo: {
