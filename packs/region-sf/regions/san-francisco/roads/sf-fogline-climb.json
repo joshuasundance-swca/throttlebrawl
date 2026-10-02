@@ -62,6 +62,24 @@
       "d1": 16,
       "item": "reinvent-the-bus"
     },
+    {
+      "kind": "billboard",
+      "id": "bb-fogline-coldcase",
+      "s0": 200,
+      "s1": 240,
+      "d0": -16,
+      "d1": -7,
+      "item": "coldcase-ai"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-fogline-toll",
+      "s0": 580,
+      "s1": 590,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "toll-view"
+    },
     { "kind": "ramp", "id": "crest-fogline", "s0": 322, "s1": 336, "d0": -5.5, "d1": 5.5 }
   ],
   "barriers": [],
