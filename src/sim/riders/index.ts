@@ -28,7 +28,7 @@ import {
   type AirState,
 } from './air';
 import { applyShove, riderContacts } from './contact';
-import { funnelLimits, FUNNEL_TUNING } from './funnel';
+import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
 import {
   BOOST_ACCEL_MPS2,
   boostOf,
@@ -477,7 +477,8 @@ function splitGuideAt(config: SimConfig, edge: number, s: number, side: 1 | -1, 
 function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover): boolean {
   const pos = m.pos;
   const taper = world.params['riders.laneDropTaperM'] ?? 0;
-  const f = funnelLimits(config.road, taper, pos, (edge, s) => barrierLimits(config, edge, s));
+  const limits = ridingLimitsAt(config.road, world.params, BIKE_HALF_WIDTH_M);
+  const f = funnelLimits(config.road, taper, pos, limits);
   if (!f || (pos.d >= f.lo && pos.d <= f.hi)) return false;
   const side = pos.d > f.hi ? 1 : -1;
   pos.d = side > 0 ? f.hi : f.lo;

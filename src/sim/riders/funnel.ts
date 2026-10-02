@@ -6,8 +6,9 @@
 // inside it. On roads whose width does not change near the rider nothing is computed and riding is
 // exactly as before. Deterministic: road queries and + - * / only; the per-network table of edges
 // with a width change on or beside them is derived once from the road data and never changes.
-import type { TuningParamDecl } from '../../core';
+import type { TuningParamDecl, TuningValues } from '../../core';
 import type { EdgeLink, RoadNetwork, RoadPos } from '../../road';
+import { rideLimits } from '../ground';
 
 export const FUNNEL_TUNING: readonly TuningParamDecl[] = [
   {
@@ -22,6 +23,23 @@ export const FUNNEL_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
 ];
+
+/**
+ * The limits the funnel eases a rider toward: the same riding limits the barrier rule holds it in
+ * (sim/ground's `rideLimits`: the lanes' edges with `ground.offRoad` off, exactly the riders'
+ * barrierLimits, and each verge band's outer edge with it on), so a rider out on the verge beside a
+ * lane drop is never pulled back onto the road.
+ */
+export function ridingLimitsAt(
+  road: RoadNetwork,
+  params: TuningValues,
+  halfWidthM: number,
+): (edge: number, s: number) => { lo: number; hi: number } {
+  return (edge, s) => {
+    const l = rideLimits(road, params, edge, s, halfWidthM);
+    return { lo: l.lo, hi: l.hi };
+  };
+}
 
 /** How far apart the funnel samples the road ahead, m. */
 const STEP_M = 5;

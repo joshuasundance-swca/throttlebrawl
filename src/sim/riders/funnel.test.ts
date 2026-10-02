@@ -4,6 +4,7 @@
 // sideways jump and no crash. On a road whose width does not change, riding is exactly as before.
 import { describe, expect, it } from 'vitest';
 import { highwayLanes, type FixtureEdgeSpec } from '../../road';
+import { funnelLimits, ridingLimitsAt } from './funnel';
 import { input, riderHarness, testConfig } from './testing';
 
 const HIGHWAY3 = highwayLanes(3, 3.4);
@@ -52,6 +53,22 @@ describe('lane drops: the edge funnels in (W-R)', () => {
     expect(events.filter((e) => e === 'wobble' || e === 'crash')).toEqual([]);
     expect(Math.abs(h.rider.pos.d)).toBeLessThanOrEqual(4.4 + 1e-9);
     expect(maxJump).toBeLessThan(0.35);
+  });
+
+  it('eases toward the riding limits: with off-road on, the verge edge, not the lanes', () => {
+    const edges: FixtureEdgeSpec[] = [
+      { id: 'a', lengthM: 600, kappa: 0, lanes: HIGHWAY3 },
+      { id: 'b', lengthM: 1400, kappa: 0 },
+    ];
+    const road = testConfig({ edges }).road;
+    // 10 m before the drop: off, the edge is nearly in to the two-lane road's lanes (4.4 m less half a
+    // bike: 4.9 - 0.5); on, untagged roads have a sand band past the lanes (cross-section defaults),
+    // so the edge eases toward that band's outer edge instead and a rider at d 9 is left alone.
+    const at = { edge: 0, s: 590, d: 9, dir: 1 as const };
+    const off = funnelLimits(road, 90, at, ridingLimitsAt(road, { 'ground.offRoad': 0 }, 0.5));
+    const on = funnelLimits(road, 90, at, ridingLimitsAt(road, { 'ground.offRoad': 1 }, 0.5));
+    expect(off?.hi).toBeLessThan(5.5);
+    expect(on === null || on.hi > 9).toBe(true);
   });
 
   it('on a road whose width never changes, riding into the wall is exactly as with the funnel off', () => {
