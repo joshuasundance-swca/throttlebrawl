@@ -196,12 +196,13 @@ describe.each(['keys-m1', 'pnw-c1', 'sf-hills'])('the land on %s', (id) => {
     const { road, dressing } = track(id);
     const scene = buildRoadScene(road, look, dressing, { seed: 7 });
     const ground = new GroundTris(scene.group);
-    const { probes, drops, open } = openLandEnds(road, ground);
+    const { probes, drops, open, joins } = openLandEnds(road, ground);
     console.log(
-      `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked, ${drops} drops looked under, ${open.length} open`,
+      `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked, ${joins} junction steps, ${drops} drops looked under, ${open.length} open`,
     );
     scene.dispose();
     expect(probes).toBeGreaterThan(1000);
+    expect(joins).toBeGreaterThan(0);
     expect(open.slice(0, 8)).toEqual([]);
   });
 });

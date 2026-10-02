@@ -30,6 +30,7 @@
     "tests/sim/replay-resume.test.ts": 3.2,
     "tests/sim/riders-assists.test.ts": 7.2,
     "tests/sim/riders-difficulty.test.ts": 112.4,
+    "tests/sim/riders-landings-held.test.ts": 92,
     "tests/sim/riders-landings.test.ts": 184.2,
     "tests/sim/riders-launch.test.ts": 0.8,
     "tests/sim/riders-race.test.ts": 0,

@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "crash-scene",
-      "signText": "INCIDENT AHEAD SLOW DOWN FOR MOSS",
+      "signText": "INCIDENT AHEAD. Slow down for moss.",
       "vehicle": "base:event-tow-truck",
       "vehicle2": "base:event-stalled-car",
       "person": "cop-waving",

@@ -51,7 +51,16 @@ import {
   trafficFigureTint,
 } from './traffic-figures';
 import type { LookStyle } from './look';
+import {
+  BlobShadows,
+  DEFAULT_VEHICLE_SHADOW,
+  groundYOf,
+  ON_FOOT_SHADOW,
+  RIDER_SHADOW,
+  type ShadowSize,
+} from './shadows';
 import { defaultRenderParams, type RenderParams } from './tuning';
+import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
 /** Body proportions from rider data (a later look test compares exaggerated against realistic). */
 export interface RiderProportions {
@@ -218,7 +227,6 @@ const PED_PARTS: BoxPart[] = [
   { size: [0.24, 0.26, 0.24], at: [0, 1.55, 0], color: '#d9a27a' },
   { size: [0.4, 0.06, 0.4], at: [0, 1.7, 0], color: '#f2e6c8' },
 ];
-const PIPE_PARTS: BoxPart[] = [{ size: [0.07, 0.07, 0.9], at: [0, 0, 0], color: '#9aa3ab' }];
 const GLINT_PARTS: BoxPart[] = [
   { size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#fffbe0', rotY: Math.PI / 4 },
 ];
@@ -246,6 +254,8 @@ interface RiderView {
   kickLeg: Group;
   kickMesh: Mesh;
   weapon: Mesh;
+  /** Which shape `weapon` is drawn as (weapons.ts). */
+  weaponShape: WeaponShape;
   glint: Mesh;
   lightBar: Mesh;
   /** The boost flame out of the back of the bike (a child of the body). */
@@ -322,6 +332,9 @@ const PENDING_CAP = 64;
 interface PickupView {
   root: Group;
   glint: Mesh;
+  /** The weapon lying on the road, and which shape it is drawn as (weapons.ts). */
+  mesh: Mesh;
+  shape: WeaponShape;
 }
 
 interface Timer {
@@ -344,6 +357,8 @@ export interface EntityViewCounts {
 
 export class EntityViews {
   readonly root = new Group();
+  /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
+  private readonly shadows = new BlobShadows();
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -389,6 +404,7 @@ export class EntityViews {
     this.effects = opts.effects ?? null;
     this.params = opts.params ?? defaultRenderParams();
     this.root.name = 'entities';
+    this.root.add(this.shadows.root);
     this.instanced = {
       car: this.makeInstanced('car', CAR_PARTS, 'vehicle', 32),
       truck: this.makeInstanced('truck', TRUCK_PARTS, 'vehicle', 8),
@@ -485,6 +501,11 @@ export class EntityViews {
         view.root.visible = true;
         view.root.position.set(p.x, p.y + 0.35, p.z);
         view.root.rotation.y = timeS * 1.5;
+        const shape = weaponShapeOf(e.contentId);
+        if (shape !== view.shape) {
+          view.mesh.geometry = this.weaponGeometry(shape);
+          view.shape = shape;
+        }
         view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         this.seen.add(e.id);
         pickups++;
@@ -571,6 +592,7 @@ export class EntityViews {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    this.castShadows(curr);
     for (const [id, view] of this.riders) if (!this.seen.has(id)) this.releaseRider(id, view);
     for (const [id, view] of this.pickups) if (!this.seen.has(id)) this.releasePickup(id, view);
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
@@ -606,6 +628,47 @@ export class EntityViews {
 
   // ---- internals ----
 
+  /** Blob shadows for the riders, their parked or tumbling bikes, and the vehicles (shadows.ts). */
+  private castShadows(curr: SimSnapshot): void {
+    const sh = this.shadows;
+    sh.begin();
+    for (const e of curr.entities) {
+      if (e.kind !== 'rider' && e.kind !== 'vehicle') continue;
+      const p = lerpPose(this.prevById.get(e.id) ?? e, e, this.alpha, this.pose);
+      const ground = groundYOf(e);
+      if (e.kind === 'vehicle') {
+        const def = this.trafficTypes.get(e.contentId);
+        const fig = trafficFigureFor(e.contentId);
+        const odd = oddityFigureFor(e.contentId);
+        const dims = def ??
+          (fig ? TRAFFIC_FIGURE_DIMS[fig as keyof typeof TRAFFIC_FIGURE_DIMS] : undefined) ??
+          (odd ? FIGURE_DEFAULT_DIMS[odd] : undefined) ?? { widthM: 0, lengthM: 0 };
+        const size: ShadowSize =
+          dims.widthM > 0
+            ? { widthM: dims.widthM * 1.1, lengthM: dims.lengthM * 1.05 }
+            : DEFAULT_VEHICLE_SHADOW;
+        sh.add(p.x, ground, p.z, p.heading, size, 0);
+        continue;
+      }
+      const tumble = e.tumble;
+      if (tumble) {
+        // Down: the rider and the bike each throw their own, fainter the higher they fly.
+        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
+        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        continue;
+      }
+      if (e.parkedBike) {
+        // Running back to the bike: the rider on foot, the bike standing apart.
+        const b = e.parkedBike;
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
+        continue;
+      }
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+    }
+    sh.end();
+  }
+
   private geometry(key: string, build: () => BoxPart[]): BufferGeometry {
     let g = this.geometries.get(key);
     if (!g) {
@@ -613,6 +676,10 @@ export class EntityViews {
       this.geometries.set(key, g);
     }
     return g;
+  }
+
+  private weaponGeometry(shape: WeaponShape): BufferGeometry {
+    return this.geometry(`weapon-${shape}`, () => [...WEAPON_PARTS[shape]]);
   }
 
   private material(kind: 'rider' | 'vehicle' | 'ped' | 'weapon'): Material {
@@ -736,10 +803,7 @@ export class EntityViews {
     );
     kickLeg.add(kickMesh);
     kickLeg.visible = false;
-    const weapon = new Mesh(
-      this.geometry('pipe', () => PIPE_PARTS),
-      this.material('weapon'),
-    );
+    const weapon = new Mesh(this.weaponGeometry('pipe'), this.material('weapon'));
     weapon.position.set(0, -ARM_LEN - 0.04, -0.3);
     const glint = new Mesh(
       this.geometry('glint', () => GLINT_PARTS),
@@ -785,6 +849,7 @@ export class EntityViews {
       kickLeg,
       kickMesh,
       weapon,
+      weaponShape: 'pipe',
       glint,
       lightBar,
       flame,
@@ -816,18 +881,17 @@ export class EntityViews {
       view = this.freePickups.pop();
       if (!view) {
         const root = new Group();
-        const pipe = new Mesh(
-          this.geometry('pipe', () => PIPE_PARTS),
-          this.material('weapon'),
-        );
+        const pipe = new Mesh(this.weaponGeometry('pipe'), this.material('weapon'));
         pipe.rotation.x = 0.3;
+        pipe.scale.setScalar(1.3);
+        pipe.name = 'views-pickup-weapon';
         const glint = new Mesh(
           this.geometry('glint', () => GLINT_PARTS),
           this.look.material('glint', { vertexColors: true }),
         );
         glint.position.set(0, 0.2, -0.45);
         root.add(pipe, glint);
-        view = { root, glint };
+        view = { root, glint, mesh: pipe, shape: 'pipe' };
       }
       this.pickups.set(id, view);
       this.root.add(view.root);
@@ -954,6 +1018,13 @@ export class EntityViews {
     // A held weapon rides in the attack-side fist; it glints through the wind-up (the steal cue).
     const held = e.heldWeapon !== null && !tumbling;
     if (held && view.weapon.parent !== attackArm) attackArm.add(view.weapon);
+    if (held) {
+      const shape = weaponShapeOf(e.heldWeapon);
+      if (shape !== view.weaponShape) {
+        view.weapon.geometry = this.weaponGeometry(shape);
+        view.weaponShape = shape;
+      }
+    }
     view.weapon.visible = held;
     view.glint.visible = held && e.attackPhase === 'windup';
     if (view.glint.visible) {

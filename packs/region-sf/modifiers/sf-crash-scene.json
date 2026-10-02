@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "crash-scene",
-      "signText": "VEHICLE RECALCULATING USE OTHER LANE",
+      "signText": "VEHICLE RECALCULATING. Use other lane.",
       "vehicle": "base:event-tow-truck",
       "vehicle2": "sf-stalled-robotaxi",
       "person": "cop-waving",
