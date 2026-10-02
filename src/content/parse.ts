@@ -40,6 +40,7 @@ const FOLDER_TYPE: Readonly<Record<string, EntryType>> = {
   crews: 'crew',
   weapons: 'weapon',
   events: 'event',
+  careers: 'career',
   traffic: 'traffic-type',
   modifiers: 'event-modifier',
   stations: 'station',

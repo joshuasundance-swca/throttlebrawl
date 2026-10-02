@@ -5,7 +5,15 @@
 import { z } from 'zod';
 import { MEDIAN_KINDS, ROAD_SURFACES, VERGE_EDGES, VERGE_SURFACES } from '../../core';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
-import { BARK_OPS, BIKE_CLASSES, EVENT_KINDS, MODIFIER_KINDS, TIMES_OF_DAY } from './vocab';
+import {
+  BARK_OPS,
+  BIKE_CLASSES,
+  EVENT_KINDS,
+  MODIFIER_KINDS,
+  OBJECTIVE_KINDS,
+  SECRET_KINDS,
+  TIMES_OF_DAY,
+} from './vocab';
 
 export const packSchema = z.looseObject({
   type: z.literal('pack'),
@@ -155,6 +163,38 @@ export const weaponSchema = entry('weapon', {
 /** A whole-cash amount. */
 const cash = z.number().int().min(0);
 
+/**
+ * The `rules` block by event kind (docs/content-packs.md, "Event"): every field optional here, and
+ * the event's refinement below asks for the ones its `kind` needs.
+ */
+const eventRulesSchema = z.looseObject({
+  // takedown-hunt
+  targetCount: z.number().int().min(1).optional(),
+  timeLimitS: z.number().positive().optional(),
+  targets: z.union([z.literal('any'), z.array(refSchema)]).optional(),
+  endOnCount: z.boolean().optional(),
+  // cop-escape
+  escapeBy: z.enum(['distance', 'survive']).optional(),
+  escapeDistanceM: z.number().positive().optional(),
+  surviveS: z.number().positive().optional(),
+  startHeat: unit01.optional(),
+  copsFromStart: z.number().int().min(0).optional(),
+  // grudge-match
+  rival: refSchema.optional(),
+  winBy: z.enum(['finish-ahead', 'knockdowns']).optional(),
+  knockdownsToWin: z.number().int().min(1).optional(),
+  grudgeStakes: z.number().int().min(0).optional(),
+});
+
+/** The rules fields an event kind needs (W-Q contracts: the career's four event types). */
+const RULES_NEEDED: Readonly<Record<(typeof EVENT_KINDS)[number], (r: Record<string, unknown>) => string[]>> =
+  {
+    'classic-race': () => [],
+    'takedown-hunt': () => ['targetCount'],
+    'cop-escape': (r) => ['escapeBy', r['escapeBy'] === 'survive' ? 'surviveS' : 'escapeDistanceM'],
+    'grudge-match': (r) => ['rival', 'winBy', ...(r['winBy'] === 'knockdowns' ? ['knockdownsToWin'] : [])],
+  };
+
 export const eventSchema = entry('event', {
   kind: z.enum(EVENT_KINDS),
   region: idSchema,
@@ -166,17 +206,21 @@ export const eventSchema = entry('event', {
     paceMps: z.number().positive().optional(),
   }),
   cops: z.looseObject({ mode: z.enum(['none', 'every-race', 'tier-rising', 'chaos-summoned']) }),
-  rules: z.looseObject({}),
+  rules: eventRulesSchema,
   objectives: z
     .array(
       z.looseObject({
         id: idSchema,
-        kind: z.string(),
+        kind: z.enum(OBJECTIVE_KINDS),
         required: z.boolean(),
         rewardCash: z.number().int().optional(),
       }),
     )
     .min(1),
+  // W-Q career (interview, 2026-10-02: a tiered network map per region, a finale per region): the
+  // career tier the event belongs to (1 = the first), and whether it is a region's finale (the boss).
+  tier: z.number().int().min(1).max(9).optional(),
+  finale: z.boolean().optional(),
   // The style fields are optional and default to 0, so adding them is not a format bump
   // (docs/content-packs.md, "Event"; M2 content-2).
   rewards: z.looseObject({
@@ -195,6 +239,16 @@ export const eventSchema = entry('event', {
       chanceScale: nonNegative.optional(),
     })
     .optional(),
+}).superRefine((e, ctx) => {
+  const rules = e.rules as Record<string, unknown>;
+  for (const field of RULES_NEEDED[e.kind](rules)) {
+    if (rules[field] === undefined)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['rules', field],
+        message: `a ${e.kind} event needs rules.${field}`,
+      });
+  }
 });
 
 /**
@@ -501,6 +555,75 @@ export const eventModifierSchema = entry('event-modifier', {
   ),
 });
 
+/** A point on a region's road network: a road of one of the region's networks, and s along it. */
+const mapPointSchema = z.looseObject({ road: idSchema, s: nonNegative });
+
+/**
+ * A region's career (docs/content-packs.md, "Career"; W-Q contracts; interview, 2026-10-02: "Network
+ * map, tiered", and "The map": claim roads, find secrets and shortcuts, a set-piece finale per
+ * region). The map is the region's road network: each node is an event placed on a road; winning
+ * it opens nearby roads and claims some; a tier opens after enough wins in the one before; the
+ * `boss` node is the region's finale. The content lint checks it against the region's networks.
+ */
+export const careerSchema = entry('career', {
+  region: idSchema,
+  startingCash: cash,
+  startingBike: refSchema,
+  tutorialEvent: refSchema.optional(),
+  firstRun: z.enum(['race-first', 'intro-first']).optional(),
+  tiers: z
+    .array(
+      z.looseObject({
+        id: idSchema,
+        name: z.string().optional(),
+        /** Wins in this tier that open the next one. */
+        advance: z.looseObject({ requiredWins: z.number().int().min(0) }),
+      }),
+    )
+    .min(1),
+  nodes: z
+    .array(
+      z.looseObject({
+        id: idSchema,
+        event: refSchema,
+        /** Which of the event's lengths; its first when absent. */
+        length: idSchema.optional(),
+        tier: idSchema,
+        at: mapPointSchema,
+        /** Nodes to win first, besides the tier gate. */
+        requires: z.array(idSchema).optional(),
+        /** Roads a win opens on the map (for the next races and free play). */
+        opens: z.array(idSchema).optional(),
+        /** Roads a win claims: the map shows them as the player's. */
+        claims: z.array(idSchema).optional(),
+      }),
+    )
+    .min(1),
+  /** The region's finale: a node in the last tier whose event has `finale: true`. */
+  boss: idSchema,
+  secrets: z
+    .array(
+      z.looseObject({
+        id: idSchema,
+        kind: z.enum(SECRET_KINDS),
+        at: mapPointSchema,
+        /** What it points at: a route branch (`<route>#<branch>`), a road, a station or a stash id. */
+        ref: z.string().optional(),
+      }),
+    )
+    .optional(),
+  ending: z.looseObject({ teaser: z.string().optional(), freePlayAfter: z.boolean() }).optional(),
+  shop: z.array(z.looseObject({ bike: refSchema, priceCash: cash, unlockTier: idSchema })).optional(),
+  unlocks: z
+    .array(
+      z.looseObject({
+        grant: refSchema,
+        when: z.looseObject({ kind: z.enum(['boss-beaten', 'event-won']), ref: refSchema }),
+      }),
+    )
+    .optional(),
+});
+
 /** A radio station (reserved, later). Tracks are vetoable items. */
 export const stationSchema = entry('station', {
   genre: z.string(),
@@ -530,6 +653,7 @@ export const ENTRY_SCHEMAS = {
   crew: crewSchema,
   weapon: weaponSchema,
   event: eventSchema,
+  career: careerSchema,
   region: regionSchema,
   'road-network': roadNetworkSchema,
   road: roadSchema,
@@ -561,6 +685,8 @@ export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] |
   crew: ['name', 'tags', 'meta'],
   weapon: ['name', 'tags', 'meta', 'look', 'sounds'],
   event: ['name', 'tags', 'meta', 'interludes'],
+  // A career picks which events to play and in what order; each race's sim comes from its event.
+  career: null,
   region: ['name', 'tags', 'meta', 'blurb', 'chapter', 'palette', 'timeOfDayOptions', 'signs', 'billboards'],
   'road-network': ['name', 'meta', 'provenance'],
   road: ['name', 'realName', 'meta', 'provenance'],
@@ -589,6 +715,7 @@ export type Bike = z.infer<typeof bikeSchema>;
 export type Rider = z.infer<typeof riderSchema>;
 export type Weapon = z.infer<typeof weaponSchema>;
 export type RaceEvent = z.infer<typeof eventSchema>;
+export type Career = z.infer<typeof careerSchema>;
 export type Region = z.infer<typeof regionSchema>;
 export type RoadNetworkFile = z.infer<typeof roadNetworkSchema>;
 export type RoadFile = z.infer<typeof roadSchema>;
