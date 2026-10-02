@@ -20,6 +20,12 @@ export interface CueOptions {
   impact?: number;
   /** Pitch factor for every oscillator and filter in the cue (slow motion). Default 1. */
   pitch?: number;
+  /**
+   * 0..1: how beaten the target is (melee cues only; 0 fresh, 1 nearly down). A weakened target
+   * takes hits that sound lower and meatier: the body drops in pitch, a sub thump and a longer
+   * body noise join, and the bright snap eases off. Default 0.
+   */
+  weight?: number;
 }
 
 export type CuePatch = (
@@ -150,41 +156,60 @@ class Builder {
   }
 }
 
+const unit = (x: number | undefined, fallback: number) =>
+  x !== undefined && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : fallback;
+
 const patch =
-  (build: (b: Builder, t: number, impact: number) => void): CuePatch =>
+  (build: (b: Builder, t: number, impact: number, weight: number) => void): CuePatch =>
   (ctx, out, t, gain, opts = {}) => {
     const b = new Builder(ctx, out, gain, t, opts.pitch);
-    const impact = opts.impact ?? 1;
-    build(b, t, Number.isFinite(impact) ? Math.min(1, Math.max(0, impact)) : 1);
+    build(b, t, unit(opts.impact, 1), unit(opts.weight, 0));
     return b.done();
   };
+
+/**
+ * How much lower a melee body drops at full weight (the pitch factor is 1 - this * weight), and the
+ * level of the sub thump a fully weakened target adds. [default]
+ */
+export const MEATY = { pitchDrop: 0.3, sub: 0.55 } as const;
 
 /** Impact at which a crash adds its roar and tumbling thumps, and at which it adds debris. */
 export const CRASH_LAYERS = { roar: 0.35, debris: 0.7 } as const;
 
 export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
-  // A fist on leather: a pitch-dropping thump, a mid "thwack" and a bright smack.
-  punch: patch((b, t) => {
-    b.tone('sine', 160, 55, t, 0.9, 0.16);
-    b.tone('triangle', 260, 120, t, 0.45, 0.1);
-    b.noise('lowpass', 2800, 500, 0.8, t, 0.7, 0.09);
-    b.noise('highpass', 3500, 3500, 0.7, t, 0.3, 0.015);
+  // A fist on leather: a pitch-dropping thump, a mid "thwack" and a bright smack. Against a weakened
+  // target the body drops and a sub thump and a longer body noise join (see MEATY).
+  punch: patch((b, t, _impact, w) => {
+    const lo = 1 - MEATY.pitchDrop * w;
+    b.tone('sine', 160 * lo, 55 * lo, t, 0.9, 0.16 + 0.1 * w);
+    b.tone('triangle', 260 * lo, 120 * lo, t, 0.45, 0.1 + 0.04 * w);
+    b.noise('lowpass', 2800 * lo, 500 * lo, 0.8, t, 0.7, 0.09 + 0.07 * w);
+    b.noise('highpass', 3500, 3500, 0.7, t, 0.3 * (1 - 0.5 * w), 0.015);
+    if (w > 0) b.tone('sine', 78, 36, t, MEATY.sub * w, 0.22 + 0.14 * w);
   }),
   // A boot: heavier and longer, with a crunch.
-  kick: patch((b, t) => {
-    b.tone('sine', 120, 42, t, 1, 0.24);
-    b.tone('square', 190, 85, t, 0.28, 0.12);
-    b.noise('bandpass', 1100, 450, 1.1, t, 0.85, 0.16);
-    b.noise('highpass', 3000, 3000, 0.7, t, 0.3, 0.02);
+  kick: patch((b, t, _impact, w) => {
+    const lo = 1 - MEATY.pitchDrop * w;
+    b.tone('sine', 120 * lo, 42 * lo, t, 1, 0.24 + 0.12 * w);
+    b.tone('square', 190 * lo, 85 * lo, t, 0.28, 0.12 + 0.05 * w);
+    b.noise('bandpass', 1100 * lo, 450 * lo, 1.1, t, 0.85, 0.16 + 0.08 * w);
+    b.noise('highpass', 3000, 3000, 0.7, t, 0.3 * (1 - 0.5 * w), 0.02);
+    if (w > 0) b.tone('sine', 66, 32, t, MEATY.sub * w, 0.3 + 0.16 * w);
   }),
   // A weapon: an inharmonic metal clang over a short thump.
-  hit: patch((b, t) => {
-    b.tone('sine', 130, 60, t, 0.6, 0.12);
-    b.tone('sine', 523, 520, t, 0.35, 0.5);
-    b.tone('sine', 1307, 1300, t, 0.25, 0.35);
-    b.tone('sine', 2091, 2085, t, 0.18, 0.25);
-    b.tone('sine', 2977, 2970, t, 0.12, 0.18);
-    b.noise('highpass', 2000, 2000, 0.7, t, 0.4, 0.025);
+  hit: patch((b, t, _impact, w) => {
+    const lo = 1 - MEATY.pitchDrop * w;
+    b.tone('sine', 130 * lo, 60 * lo, t, 0.6, 0.12 + 0.08 * w);
+    // The metal rings a little lower and shorter on a body that is already hurt.
+    b.tone('sine', 523 * (1 - 0.1 * w), 520 * (1 - 0.1 * w), t, 0.35, 0.5 - 0.15 * w);
+    b.tone('sine', 1307, 1300, t, 0.25 * (1 - 0.4 * w), 0.35);
+    b.tone('sine', 2091, 2085, t, 0.18 * (1 - 0.5 * w), 0.25);
+    b.tone('sine', 2977, 2970, t, 0.12 * (1 - 0.5 * w), 0.18);
+    b.noise('highpass', 2000, 2000, 0.7, t, 0.4 * (1 - 0.4 * w), 0.025);
+    if (w > 0) {
+      b.tone('sine', 74, 34, t, MEATY.sub * w, 0.26 + 0.12 * w);
+      b.noise('lowpass', 1400 * lo, 300 * lo, 0.8, t, 0.4 * w, 0.14);
+    }
   }),
   // A whiff: a quick noise sweep.
   miss: patch((b, t) => {

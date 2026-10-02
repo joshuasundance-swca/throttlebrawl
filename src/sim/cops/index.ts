@@ -25,6 +25,13 @@
 // - Bust: a player who is down (Tumble or OnFoot) within `law.bustRadiusM` × `cops.bustRadiusScale`
 //   of an upright, spawned cop for `law.bustDwellS` × `cops.bustDwellScale` of scaled time is
 //   busted: a `bust` event with the fine, once per player. Race end on a bust is sim/race's.
+//   Only a cop who knocked you off can bust you (interview, 2026-10-02: "it should only be a bust
+//   if the cop knocks you down (not just proximity and timing)"; revisit after a playtest): with
+//   `cops.bustKnockdownOnly` on (the default) a player is eligible only once combat credits a
+//   cop with taking him down (a `takedown` whose actor is that cop: his finishing hit, or his hit
+//   that sent you into traffic or scenery within the takedown window), and only that cop's radius
+//   and dwell count. Crashing on your own beside him is no bust. The collar ends when the player
+//   is riding again. At 0 the M1 proximity rule (any chasing cop, any fall) comes back. [default]
 //
 // The law (docs/milestones/M4.md, cops-3; a head start, crude first):
 // - The spawn mix, from the event's `cops` block (SimEventDef.cops). With none, every fielded cop
@@ -171,6 +178,19 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     max: 4,
     step: 0.05,
     unit: '×',
+    affectsSim: true,
+  },
+  {
+    // Interview, 2026-10-02: a bust only when a cop's hit knocks you off. 0 restores the M1 rule
+    // (down near a chasing cop for the dwell). [default] 1.
+    id: 'cops.bustKnockdownOnly',
+    group: 'cops',
+    label: 'Bust only when a cop knocks you off',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
     affectsSim: true,
   },
   {
@@ -359,6 +379,8 @@ export interface CopsState {
   dwell: number[];
   /** Players busted, in order. */
   busted: EntityId[];
+  /** By player id: the cop who knocked him off this fall (-1: none), for the knockdown-only bust. */
+  collar: EntityId[];
   /** By cop id (cops-3): extra scaled ticks after the base pull-out, for the waves. */
   extraTicks: number[];
   /** By cop id: the clock value a chaos summon came in at (-1: not summoned). */
@@ -389,6 +411,7 @@ export function copsState(world: World): CopsState {
     closingFor: [],
     dwell: [],
     busted: [],
+    collar: [],
     extraTicks: [],
     summonAt: [],
     cause: [],
@@ -789,15 +812,32 @@ function endChase(world: World, st: CopsState, copId: EntityId): void {
   emit(world, 'siren', copId, { on: false });
 }
 
+/**
+ * The knockdown-only bust's collar: this tick's takedowns (combat credits them before this phase)
+ * whose actor is a cop and whose target is a player; riding again frees him.
+ */
+function noteCollars(world: World, config: SimConfig, st: CopsState): void {
+  for (const e of world.events) {
+    if (e.type !== 'takedown' || e.target === undefined || !st.cops.includes(e.actor)) continue;
+    const m = world.movers[e.target];
+    if (m && isPlayer(config, m) && isDown(m)) st.collar[m.id] = e.actor;
+  }
+  for (const m of world.movers) if (!isDown(m) && (st.collar[m.id] ?? -1) >= 0) st.collar[m.id] = -1;
+}
+
 /** Players down near an upright, spawned cop build up dwell; a full dwell is a bust. */
 function checkBusts(world: World, config: SimConfig, st: CopsState): void {
   const radiusScale = world.params['cops.bustRadiusScale'] ?? 1;
   const dwellScale = world.params['cops.bustDwellScale'] ?? 1;
+  const knockdownOnly = (world.params['cops.bustKnockdownOnly'] ?? 1) >= 0.5;
+  noteCollars(world, config, st);
   for (const m of world.movers) {
     if (!isPlayer(config, m) || st.busted.includes(m.id)) continue;
     let by: Mover | undefined;
-    if (isDown(m)) {
+    const collar = st.collar[m.id] ?? -1;
+    if (isDown(m) && (!knockdownOnly || collar >= 0)) {
       for (const id of st.cops) {
+        if (knockdownOnly && id !== collar) continue;
         const cop = world.movers[id];
         const law = defOf(config, cop)?.law;
         if (!cop || !law || cop.mode !== 'Road' || st.phase[id] !== COP_CHASING) continue;

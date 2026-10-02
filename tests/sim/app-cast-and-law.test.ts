@@ -17,8 +17,12 @@ import { resultText } from '../../src/ui/format';
 import { NO_ROAD_EVENTS } from './batch';
 
 const print = (line: string) => process.stdout.write(`[app-cast-and-law] ${line}\n`);
-/** Seeds tried until both a steal off the cop and a bust have happened. */
-const SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
+/**
+ * Seeds tried until both a steal off the cop and a bust have happened (the search stops as soon as
+ * both have). 40, not 16: with forgiving landings (playtest 2, 2026-10-02) the bot crashes less, so
+ * it goes down near the cop less often; the first bust came at seed 27 when that landed.
+ */
+const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
 const MAX_TICKS = 60 * 60 * 5;
 
 interface LawRun {
@@ -27,18 +31,27 @@ interface LawRun {
   copSwings: number;
   steal: SimEvent | null;
   bust: SimEvent | null;
+  /** A takedown of the player credited to a cop (the only way to a bust since 2026-10-02). */
+  copTakedown: SimEvent | null;
   resultDetail: string | null;
 }
+
+/**
+ * The 2026-10-02 interview made a bust need a cop's knock-off (cops.bustKnockdownOnly), which the
+ * bot hardly ever suffers, so the fine's path to the results screen is checked under the M1
+ * proximity rule (the switch at 0); the default rule is checked by the guard below.
+ */
+const PROXIMITY_BUST: Readonly<Record<string, number>> = { ...NO_ROAD_EVENTS, 'cops.bustKnockdownOnly': 0 };
 
 /**
  * The dev bot rides; on top of it, a steal-timer: on the tick after a cop's `stealWindow` cue the
  * player presses attack (a fresh press: the tick before is held released). That is all a player
  * does to steal; whether the press lands inside the reach and window is the sim's call.
  */
-function lawRace(seed: number): LawRun {
+function lawRace(seed: number, tuning: Readonly<Record<string, number>> = NO_ROAD_EVENTS): LawRun {
   // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
   // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
-  const { sim, route, playerId, config } = createHeadlessRace({ seed, tuning: NO_ROAD_EVENTS });
+  const { sim, route, playerId, config } = createHeadlessRace({ seed, tuning });
   const copIds = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
   const bot = createBot();
   const outcome = createOutcome();
@@ -51,9 +64,11 @@ function lawRace(seed: number): LawRun {
     copSwings: 0,
     steal: null,
     bust: null,
+    copTakedown: null,
     resultDetail: null,
   };
-  while (!sim.isOver() && sim.tick < MAX_TICKS && outcome.doneTick === null && !run.steal) {
+  const stopAtSteal = tuning === NO_ROAD_EVENTS;
+  while (!sim.isOver() && sim.tick < MAX_TICKS && outcome.doneTick === null && !(stopAtSteal && run.steal)) {
     const a = emptyActions();
     bot.drive(snap, playerId, route, a);
     if (releaseNext) {
@@ -80,6 +95,7 @@ function lawRace(seed: number): LawRun {
       if (e.type === 'weaponGrab' && e.actor === playerId && e.data['source'] === 'steal' && offCop)
         run.steal = e;
       if (e.type === 'bust' && e.target === playerId) run.bust = e;
+      if (e.type === 'takedown' && e.target === playerId && copIds.includes(e.actor)) run.copTakedown ??= e;
     }
   }
   if (outcome.bust) {
@@ -91,16 +107,24 @@ function lawRace(seed: number): LawRun {
 
 describe('the law in a real race (release content, the app config path)', () => {
   const runs: LawRun[] = [];
-  const need = () => !runs.some((r) => r.steal) || !runs.some((r) => r.bust);
   for (const seed of SEEDS) {
-    if (runs.length > 0 && !need()) break;
+    if (runs.some((r) => r.steal)) break;
     runs.push(lawRace(seed));
+  }
+  const bustRuns: LawRun[] = [];
+  for (const seed of SEEDS) {
+    if (bustRuns.some((r) => r.bust)) break;
+    bustRuns.push(lawRace(seed, PROXIMITY_BUST));
   }
   for (const r of runs)
     print(
       `seed ${r.seed}: cop starts holding ${r.copHeldAtStart ?? 'nothing'}, ${r.copSwings} steal windows, ` +
         `steal ${r.steal ? `at t${r.steal.tick} (${String(r.steal.data['weapon'])})` : 'none'}, ` +
         `bust ${r.bust ? `at t${r.bust.tick} fine ${String(r.bust.data['fineCash'])}` : 'none'}`,
+    );
+  for (const r of bustRuns)
+    print(
+      `seed ${r.seed} (proximity bust): bust ${r.bust ? `at t${r.bust.tick} fine ${String(r.bust.data['fineCash'])}` : 'none'}`,
     );
 
   it('Sgt. Pruitt starts every race with the baton in his hand', () => {
@@ -115,9 +139,13 @@ describe('the law in a real race (release content, the app config path)', () => 
     expect(steal?.data['weapon']).toBe('base:baton');
   });
 
+  it('under the default rule, no bust comes without a cop knocking the player off (interview, 2026-10-02)', () => {
+    for (const r of runs) if (r.bust) expect(r.copTakedown, `seed ${r.seed}`).toBeTruthy();
+  });
+
   it("a bust's fine shows on the results screen and leads the debug report's event line", () => {
-    const busted = runs.find((r) => r.bust);
-    expect(busted, `no bust in seeds ${runs.map((r) => r.seed).join(', ')}`).toBeTruthy();
+    const busted = bustRuns.find((r) => r.bust);
+    expect(busted, `no bust in seeds ${bustRuns.map((r) => r.seed).join(', ')}`).toBeTruthy();
     const bust = busted?.bust;
     // Tier 1: the cop's own fine, unscaled. The report prints an event's first three data fields.
     expect(Object.keys(bust?.data ?? {}).slice(0, 3)).toEqual(['fineCash', 'tier', 'fineBaseCash']);

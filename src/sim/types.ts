@@ -138,6 +138,63 @@ export interface EntitySnapshot {
    * fills it for every entity.
    */
   trick?: TrickId | null;
+  /**
+   * This rival's signature move while it shows (interview, 2026-10-02: "Visible personalities"),
+   * so render can draw it (Chad's phone up, the Mayor's wave, Gus's bell swinging); null while it
+   * is not showing one, and for other kinds. Presentation only. Optional for hand-built snapshots;
+   * the sim fills it for every entity.
+   */
+  signature?: SignatureSnapshot | null;
+}
+
+/**
+ * A rival's signature move (interview, 2026-10-02: "Visible personalities"): one move per rival,
+ * named by the rider file's `personality.signature`, that is both a tell and an opening. sim/ai
+ * drives them; docs/content-packs.md ("Rider") says what each one does.
+ *   - `selfie`: rides no-hands filming himself for about 3 s; he cannot swing (Chad Speedwell);
+ *   - `wave`: waves at traffic and drifts into the oncoming lane (The Mayor);
+ *   - `bell`: a bell swings before every hit he throws (Gripman Gus);
+ *   - `counter`: brakes precisely to drop alongside whoever hit him, then counterattacks (Kevin);
+ *   - `lag`: twitches, freezes on the throttle for a moment, then lurches back (Dial-Up);
+ *   - `ram`: swings wide, then rams her bike into you (Mother Rust);
+ *   - `slow-burn`: will not fight until he has been hit enough, then never stops (Deacon Vane);
+ *   - `sweet-talk`: rides beside you being nice, then shoves (Tammy Two-Stroke);
+ *   - `cut-in`: cuts into the gap in front of you and brake-checks (Juniper Moss);
+ *   - `timber`: puts his head down and charges whoever is ahead in his line (Old Growth);
+ *   - `pivot`: signals, swaps sides with a burst, then his battery sags (Pivot).
+ */
+export const SIGNATURE_IDS = [
+  'selfie',
+  'wave',
+  'bell',
+  'counter',
+  'lag',
+  'ram',
+  'slow-burn',
+  'sweet-talk',
+  'cut-in',
+  'timber',
+  'pivot',
+] as const;
+export type SignatureId = (typeof SIGNATURE_IDS)[number];
+
+/**
+ * Where a signature move is: `tell` (the warning you can read), `act` (the move itself) or `open`
+ * (the window after it, when the rival is easy to punish). Not every move has all three.
+ */
+export const SIGNATURE_PHASES = ['tell', 'act', 'open'] as const;
+export type SignaturePhase = (typeof SIGNATURE_PHASES)[number];
+
+/** A signature move showing now (EntitySnapshot.signature). */
+export interface SignatureSnapshot {
+  move: SignatureId;
+  phase: SignaturePhase;
+  /** World seconds since this phase began. */
+  seconds: number;
+  /** World seconds left in this phase, or -1 when it lasts until something happens. */
+  left: number;
+  /** Whom the move is aimed at, or -1 for nobody in particular. */
+  targetId: EntityId;
 }
 
 /**
@@ -441,6 +498,11 @@ export interface SimAiPersonality {
    * the end of a weapon's content id (`chain` matches `base:chain`). Absent: it takes what it rides over.
    */
   preferredWeapon?: string;
+  /**
+   * This rider's signature move (interview, 2026-10-02: "Visible personalities"), from the rider
+   * file's `personality.signature`. Absent: none.
+   */
+  signature?: SignatureId;
 }
 
 /**
