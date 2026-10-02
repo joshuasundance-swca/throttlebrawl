@@ -26,6 +26,11 @@
     "targetPreference": ["leader", "player", "nearest"],
     "preferredSide": "either"
   },
+  "look": {
+    "description": "A founder in a fleece vest, white earbuds and a headset pushed up on his helmet. Rides a carbon e-bike that costs more than the road.",
+    "bikeModel": "ebike-carbon",
+    "palette": ["#3a3f4a", "#e8e8ea", "#3cc8d8", "#c9c3b5"]
+  },
   "meta": {
     "status": "live",
     "notes": "San Francisco local (playtest 1c), the tone guide's \"tech-bro rivals on e-bikes\". A showboat at heart; M2 has only the racer and heavy-hitter presets, so he is a racer with a high weave and risk-taking: he takes the stair alley, jumps every crest and hits whoever is winning. He rides the base starter bike until an e-bike lands.",
