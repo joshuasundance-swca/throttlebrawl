@@ -40,6 +40,8 @@ function pruitt(): SimRiderDef {
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
+    toughness: rider.stats?.toughness ?? 1,
+    power: rider.stats?.power ?? 1,
     // cops-3: his baton, live since the integration round, so every build hands it to him.
     startingWeapon: `base:${String(rider.startingWeapon)}`,
     law: {

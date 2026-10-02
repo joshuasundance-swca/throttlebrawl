@@ -91,6 +91,11 @@ export const riderSchema = entry('rider', {
       massKg: z.number().positive().optional(),
       healthMax: z.number().positive().optional(),
       skill: unit01.optional(),
+      // Fight stats (playtest 2, "Visible personalities"): moderate multipliers, 1 when absent.
+      // toughness divides the damage and the stagger this rider takes; power multiplies the
+      // damage of every hit it lands. [default]
+      toughness: z.number().min(0.5).max(2).optional(),
+      power: z.number().min(0.5).max(2).optional(),
     })
     .optional(),
   startingWeapon: refSchema.optional(),
