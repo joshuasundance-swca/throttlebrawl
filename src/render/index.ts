@@ -486,7 +486,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
-      verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1));
+      // The camera's aim: fences and ferns behind it are left out (main-green-4).
+      verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);

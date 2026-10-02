@@ -67,6 +67,15 @@ const SOFT_SECONDS = 20;
 const CHECKPOINT_TICKS = [120, 480, 840] as const;
 /** The soft tier fails above this multiple of the baseline. */
 const SOFT_FACTOR = 2;
+/**
+ * Frame times come in whole display frames (16.7 ms steps at 60 Hz) and print a hair either side
+ * of the step (four frames show as 66.6 or 66.7 ms), so a frame limit that lands exactly on a step
+ * (the baseline's 33.3 ms p50 is two frames, so 2x is four) passed or failed on rounding alone.
+ * Half a frame of slack judges "above twice the baseline" as the next step up: four frames pass,
+ * five fail, as the docs say (main-green-4, 2026-10-02: main failed on p50 66.7 ms against a
+ * 66.6 ms limit, and its p95 of 133.3 ms stood on the same edge). Sim step times are not stepped.
+ */
+const FRAME_SLACK_MS = 1000 / 60 / 2;
 
 test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame and sim times', async ({
   page,
@@ -192,11 +201,13 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     return;
   }
   const limits = {
-    frameP50: soft.frameMs.p50 * SOFT_FACTOR,
-    frameP95: soft.frameMs.p95 * SOFT_FACTOR,
+    frameP50: Math.round((soft.frameMs.p50 * SOFT_FACTOR + FRAME_SLACK_MS) * 10) / 10,
+    frameP95: Math.round((soft.frameMs.p95 * SOFT_FACTOR + FRAME_SLACK_MS) * 10) / 10,
     stepP95: soft.stepMs.p95 * SOFT_FACTOR,
   };
-  console.log(`[assert] soft tier: ACTIVE, limits ${JSON.stringify(limits)} (${SOFT_FACTOR}x the baseline)`);
+  console.log(
+    `[assert] soft tier: ACTIVE, limits ${JSON.stringify(limits)} (${SOFT_FACTOR}x the baseline; frames plus half a frame)`,
+  );
   expect(report.frameMs.p50, 'frame p50 within 2x the baseline').toBeLessThanOrEqual(limits.frameP50);
   expect(report.frameMs.p95, 'frame p95 within 2x the baseline').toBeLessThanOrEqual(limits.frameP95);
   expect(report.stepMs.p95, 'sim step p95 within 2x the baseline').toBeLessThanOrEqual(limits.stepP95);

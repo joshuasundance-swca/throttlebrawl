@@ -54,6 +54,12 @@ const CPU_THROTTLE = 4;
 const SOFT_SECONDS = 20;
 const CHECKPOINT_TICKS = [120, 480, 840] as const;
 const SOFT_FACTOR = 2;
+/**
+ * Half a display frame of slack on the frame limits, as perf.spec.ts has it: frame times come in
+ * whole frames and print a hair either side of the step, so a limit landing on a step (softInk's
+ * 50 ms p50 is three frames, so 2x is six: 99.9 or 100.1 ms) passed or failed on rounding alone.
+ */
+const FRAME_SLACK_MS = 1000 / 60 / 2;
 
 const INK_LOOKS = ['kodak', 'wasteland', 'brush'] as const;
 
@@ -132,10 +138,11 @@ for (const look of INK_LOOKS) {
       console.log('[assert] soft tier: NOT ACTIVE (tests/perf/baseline.json has no `soft` block yet)');
       return;
     }
-    const limits = { frameP50: soft.frameMs.p50 * SOFT_FACTOR, frameP95: soft.frameMs.p95 * SOFT_FACTOR };
+    const limit = (ms: number) => Math.round((ms * SOFT_FACTOR + FRAME_SLACK_MS) * 10) / 10;
+    const limits = { frameP50: limit(soft.frameMs.p50), frameP95: limit(soft.frameMs.p95) };
     const which = baseline.softInk ? 'softInk' : 'soft';
     console.log(
-      `[assert] soft tier (${look} look): ACTIVE, limits ${JSON.stringify(limits)} (2x the ${which} baseline)`,
+      `[assert] soft tier (${look} look): ACTIVE, limits ${JSON.stringify(limits)} (2x the ${which} baseline, plus half a frame)`,
     );
     expect(report.frameMs.p50, 'frame p50 within 2x the baseline').toBeLessThanOrEqual(limits.frameP50);
     expect(report.frameMs.p95, 'frame p95 within 2x the baseline').toBeLessThanOrEqual(limits.frameP95);
