@@ -1,0 +1,102 @@
+{
+  "type": "station",
+  "id": "sf-gold-rush",
+  "name": "Gold Rush Groove 94.1",
+  "genre": "funk",
+  "regions": ["san-francisco"],
+  "tracks": [
+    {
+      "id": "muni-never-comes",
+      "title": "Muni Never Comes (Slap Bass)",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 108,
+          "key": "E",
+          "progression": "vamp"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "fog-machine-funk",
+      "title": "Fog Machine Funk",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 112,
+          "key": "A",
+          "progression": "rush"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "hilltop-hustle",
+      "title": "Hilltop Hustle",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 118,
+          "key": "D",
+          "progression": "pocket"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "tourist-trap-groove",
+      "title": "Tourist Trap Groove",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 104,
+          "key": "G",
+          "progression": "mine"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "sourdough-starter-pack",
+      "title": "Sourdough Starter Pack",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 114,
+          "key": "C",
+          "progression": "vamp"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "rent-is-due-funk",
+      "title": "Rent Is Due Funk",
+      "procedural": {
+        "preset": "funk-band",
+        "params": {
+          "bpm": 120,
+          "key": "E",
+          "progression": "rush"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Code-made funk (src/audio/radio-compose-more.ts, preset funk-band): a syncopated kit with ghost notes, a slap-style bass, chicken-scratch guitar and a horn riff. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

@@ -40,11 +40,15 @@ function fingerprint(c: Composition): string {
 }
 
 describe('station data (packs/base/stations)', () => {
-  it('has a surf and a rockabilly station for the Keys, each with at least 3 code-made tracks', () => {
+  it('has a surf, a rockabilly and an island station for the Keys, each with at least 3 code-made tracks', () => {
     const all = baseStations();
-    expect(all.map((s) => `${s.packId}:${s.id}`)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
+    expect(all.map((s) => `${s.packId}:${s.id}`)).toEqual([
+      'base:keys-rockabilly',
+      'base:keys-surf',
+      'base:keys-tradewinds',
+    ]);
     for (const s of all) {
-      expect(['surf', 'rockabilly']).toContain(s.genre);
+      expect(['surf', 'rockabilly', 'island']).toContain(s.genre);
       expect(s.regions).toEqual(['florida-keys']);
       // Run W-P adds regional song names; the content lane may add more.
       expect(s.tracks.length).toBeGreaterThanOrEqual(3);
@@ -54,7 +58,9 @@ describe('station data (packs/base/stations)', () => {
         expect(t.status).toBe('live');
         expect(t.title.length).toBeGreaterThan(0);
         expect(RADIO_PRESETS).toContain(t.procedural?.preset);
-        expect(t.procedural?.preset).toBe(s.genre === 'surf' ? 'surf-trio' : 'rockabilly-trio');
+        expect(t.procedural?.preset).toBe(
+          { surf: 'surf-trio', rockabilly: 'rockabilly-trio', island: 'island-band' }[s.genre],
+        );
         expect(t.ref).toBe(stationTrackRef('base', s.id, t.id));
         expect(t.ref).toMatch(/^base:station\/[a-z0-9-]+#[a-z0-9-]+$/);
         expect(composeFor(t)).not.toBeNull();
@@ -64,14 +70,14 @@ describe('station data (packs/base/stations)', () => {
 
   it('derives a region station list from each station`s regions', () => {
     const keys = stationsForRegion(baseStations(), 'florida-keys').map((s) => s.id);
-    expect(keys).toEqual(['keys-rockabilly', 'keys-surf']);
-    expect(stationsForRegion(baseStations(), 'base:florida-keys')).toHaveLength(2);
+    expect(keys).toEqual(['keys-rockabilly', 'keys-surf', 'keys-tradewinds']);
+    expect(stationsForRegion(baseStations(), 'base:florida-keys')).toHaveLength(3);
     expect(stationsForRegion(baseStations(), 'pacific-northwest')).toEqual([]);
     const genre: RadioStation = { ...station('keys-surf'), id: 'everywhere', regions: [] };
     expect(stationsForRegion([...baseStations(), genre], 'pacific-northwest').map((s) => s.id)).toEqual([
       'everywhere',
     ]);
-    expect(stationsForRegion(baseStations(), null)).toHaveLength(2);
+    expect(stationsForRegion(baseStations(), null)).toHaveLength(3);
   });
 
   it("puts a region's own stations first, then genre stations, then the base pack's as fallbacks", () => {
@@ -88,11 +94,13 @@ describe('station data (packs/base/stations)', () => {
       'everywhere',
       'keys-rockabilly',
       'keys-surf',
+      'keys-tradewinds',
     ]);
     // The Keys never pick up another region's station.
     expect(stationsForRegion(all, 'florida-keys').map((s) => s.id)).toEqual([
       'keys-rockabilly',
       'keys-surf',
+      'keys-tradewinds',
       'everywhere',
     ]);
   });
@@ -356,6 +364,9 @@ describe('the radio in the mixer', () => {
     tick(0.3);
     expect(audio.inspect().radio.nowPlaying?.ref).toMatch(/^base:station\/keys-surf#/);
     press(keys);
+    tick(0.35);
+    expect(audio.inspect().radio.nowPlaying?.ref).toMatch(/^base:station\/keys-tradewinds#/);
+    press(keys);
     tick(0.4);
     expect(audio.inspect().radio.tunedTo).toBe('off');
     expect(audio.inspect().radio.nowPlaying).toBeNull();
@@ -389,7 +400,7 @@ describe('the radio in the mixer', () => {
     const { audio } = await racing();
     audio.setParam('audio.radio', 3);
     await vi.waitFor(() => expect(audio.inspect().radio.tunedTo).toBe('keys-surf'), { timeout: 10_000 });
-    expect(audio.inspect().radio.stations).toEqual(['keys-rockabilly', 'keys-surf']);
+    expect(audio.inspect().radio.stations).toEqual(['keys-rockabilly', 'keys-surf', 'keys-tradewinds']);
   });
 
   it('the radio plays into the music bus (through the duck and the slow-motion duck)', async () => {
@@ -463,12 +474,17 @@ describe('the regions own stations (playtest 2, 2026-10-02: "different stations 
     folk: 'folk-band',
     synth: 'synth-band',
     psych: 'psych-band',
+    island: 'island-band',
+    stoner: 'stoner-band',
+    funk: 'funk-band',
   };
   const want: [string, string, string, string][] = [
     ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'grunge'],
     ['region-pnw', 'pnw-salal', 'pacific-northwest', 'folk'],
     ['region-sf', 'sf-burn-rate', 'san-francisco', 'synth'],
     ['region-sf', 'sf-fog-bank', 'san-francisco', 'psych'],
+    ['region-pnw', 'pnw-stump', 'pacific-northwest', 'stoner'],
+    ['region-sf', 'sf-gold-rush', 'san-francisco', 'funk'],
   ];
   it.each(want)(
     '%s carries %s, four or more code-made tracks of its own band that compose as written',
@@ -506,18 +522,19 @@ describe('the regions own stations (playtest 2, 2026-10-02: "different stations 
     }
   });
 
-  it("a region with two stations of its own keeps its dial to itself; with one, the base pack's follow", () => {
+  it("a region with two or more stations of its own keeps its dial to itself; with one, the base pack's follow", () => {
     const keys = stationsForRegion(all, 'base:florida-keys').map((s) => s.id);
     const pnw = stationsForRegion(all, 'region-pnw:pacific-northwest').map((s) => s.id);
     const sf = stationsForRegion(all, 'region-sf:san-francisco').map((s) => s.id);
-    expect(keys).toEqual(['keys-rockabilly', 'keys-surf']);
-    expect(pnw).toEqual(['pnw-drizzle', 'pnw-salal']);
-    expect(sf).toEqual(['sf-burn-rate', 'sf-fog-bank']);
-    const one = all.filter((s) => s.id !== 'pnw-salal');
+    expect(keys).toEqual(['keys-rockabilly', 'keys-surf', 'keys-tradewinds']);
+    expect(pnw).toEqual(['pnw-drizzle', 'pnw-salal', 'pnw-stump']);
+    expect(sf).toEqual(['sf-burn-rate', 'sf-fog-bank', 'sf-gold-rush']);
+    const one = all.filter((s) => s.id !== 'pnw-salal' && s.id !== 'pnw-stump');
     expect(stationsForRegion(one, 'region-pnw:pacific-northwest').map((s) => s.id)).toEqual([
       'pnw-drizzle',
       'keys-rockabilly',
       'keys-surf',
+      'keys-tradewinds',
     ]);
   });
 });
