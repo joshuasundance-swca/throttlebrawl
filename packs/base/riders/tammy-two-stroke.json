@@ -18,7 +18,6 @@
   },
   "personality": {
     "style": "scrapper",
-    "signature": "sweet-talk",
     "aggression": 0.6,
     "dirtiness": 0.6,
     "courage": 1,

@@ -16,9 +16,6 @@
 // pull-out within 0.1 s in all 24 races (main fix, 2026-10-02).
 // So the arrivals are a sample floor for the lead (a third of the races), and the lead is also
 // checked on every pull-out. Meeting a cop in view in every race is cops-patrol.test.ts's check.
-// A pull-out is the cop riding off under his own throttle: after the rivals' signature moves (#302)
-// reshuffled the races, a rival on the shoulder shoved a parked patrol cop along in two of them, and
-// in one a patrol siren sounded only once the bot was already past (no lead is owed then).
 //
 // The margin is also printed over the shared Normal batch (the bot racing), from its traces.
 /// <reference types="vite/client" />
@@ -55,10 +52,9 @@ interface PresetRun {
   seed: number;
   /**
    * Patrol sirens (cause `patrol`): each one's cop, its tick, the tick he pulled out (first rode
-   * above RIDING_MPS under his own throttle after it), the tick he arrived (-1: never), and whether
-   * the player was already level with him or past him when it sounded (`late`).
+   * above RIDING_MPS after it) and the tick he arrived (-1: never).
    */
-  sirens: { cop: number; tick: number; pullOut: number; arrival: number; late: boolean }[];
+  sirens: { cop: number; tick: number; pullOut: number; arrival: number }[];
   /** Every cop who came out (any cause). */
   cops: number;
 }
@@ -84,17 +80,12 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
     for (const e of sim.events()) {
       if (e.type !== 'siren' || e.data['on'] !== true) continue;
       cops++;
-      if (e.data['cause'] !== 'patrol') continue;
-      const late = (snap.entities[playerId]?.progress ?? 0) >= (snap.entities[e.actor]?.progress ?? Infinity);
-      sirens.push({ cop: e.actor, tick: e.tick, pullOut: -1, arrival: -1, late });
+      if (e.data['cause'] === 'patrol') sirens.push({ cop: e.actor, tick: e.tick, pullOut: -1, arrival: -1 });
     }
     const me = snap.entities[playerId];
     for (const s of sirens) {
       const cop = snap.entities[s.cop];
       if (!cop || cop.speed <= RIDING_MPS) continue;
-      // His pull-out is his own throttle: a rival riding the shoulder can shove a parked cop along
-      // (riders bump, playtest 1 item 6), and that is not him pulling out (PR #302's merge).
-      if (s.pullOut < 0 && cop.throttle <= 0) continue;
       if (s.pullOut < 0) s.pullOut = sim.tick;
       // Arrived riding after the player: faster than a parked cop rolling back onto the shoulder (4 m/s).
       if (s.arrival >= 0 || !me || cop.speed <= PATROL_RIDING_MPS) continue;
@@ -132,23 +123,16 @@ describe('cops-2: the cop follows the difficulty preset', () => {
   it("a patrol cop's siren leads his pull-out and his arrival by at least the full lead", () => {
     const runs = [...easy, ...hard];
     const sirens = runs.flatMap((r) => r.sirens);
-    // A siren that sounds with the player already level or past (a place among cops.maxActive came
-    // free only then) brings him out at once: src/sim/cops/patrol.test.ts pins "a player who arrives
-    // past him still brings him out". No lead is owed there; those are counted and printed.
-    const late = sirens.filter((s) => s.late);
-    const pulled = sirens.filter((s) => s.pullOut >= 0 && !s.late);
-    const arrived = sirens.filter((s) => s.arrival >= 0 && !s.late);
+    const pulled = sirens.filter((s) => s.pullOut >= 0);
+    const arrived = sirens.filter((s) => s.arrival >= 0);
     const range = (ticks: number[]) =>
       `${(Math.min(...ticks) / 60).toFixed(2)}..${(Math.max(...ticks) / 60).toFixed(2)} s`;
     print(
       `cops-2 siren lead (patrol, the bot racing): ${sirens.length} sirens in ${runs.length} races; ` +
         `${pulled.length} pull-outs examined, siren-to-pull-out ${range(pulled.map((s) => s.pullOut - s.tick))}; ` +
         `${arrived.length} arrivals examined (at least ${MIN_ARRIVALS}), ` +
-        `siren-to-arrival ${range(arrived.map((s) => s.arrival - s.tick))}; ` +
-        `${late.length} sirens sounded with the bot already level or past (no lead owed)`,
+        `siren-to-arrival ${range(arrived.map((s) => s.arrival - s.tick))}`,
     );
-    // A late siren is the exception (a freed place), never the rule.
-    expect(late.length, 'late sirens').toBeLessThanOrEqual(Math.floor(sirens.length / 4));
     // Every race's patrol cop pulls out, the full lead after his siren.
     for (const r of runs)
       expect(

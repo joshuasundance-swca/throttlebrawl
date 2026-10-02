@@ -17,7 +17,6 @@
   },
   "personality": {
     "style": "racer",
-    "signature": "pivot",
     "aggression": 0.4,
     "dirtiness": 0.6,
     "courage": 0.4,

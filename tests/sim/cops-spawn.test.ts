@@ -39,23 +39,12 @@ describe('cops: Sgt. Pruitt starts from the copSpawn feature', () => {
 
   it('in every batch race the first cop to sound his siren sits on the shoulder until then, then gives chase', () => {
     const lines: string[] = [];
-    const struck: number[] = [];
     const { config } = createBatchRace(1);
     for (const r of batch.races) {
       const lit = r.events.find((e) => e.type === 'siren' && e.data['on'] === true);
       const siren = lit?.tick ?? Infinity;
       const samples = r.trace.map((t) => ({ tick: t.tick, cop: t.movers.find((m) => m.id === lit?.actor) }));
-      // Traffic does not steer round riders, and a kerb rider (W-P: a golf cart, a bicycle) rides
-      // the shoulder he waits on, so now and then one knocks him off before his siren (seed 40 once
-      // #302's signature moves reshuffled the races). He sits still until that hit; such races are
-      // counted below and must stay rare.
-      const hit = r.events.find(
-        (e) =>
-          e.type === 'crash' && e.actor === lit?.actor && e.data['cause'] === 'traffic' && e.tick < siren,
-      );
-      if (hit) struck.push(r.seed);
-      const still = hit?.tick ?? siren;
-      const before = samples.filter((x) => x.tick < still);
+      const before = samples.filter((x) => x.tick < siren);
       const first = before[0]?.cop;
       expect(before.length, `seed ${r.seed}: samples before the siren`).toBeGreaterThan(0);
       for (const x of before) {
@@ -80,12 +69,6 @@ describe('cops: Sgt. Pruitt starts from the copSpawn feature', () => {
             `for ${before.length} samples; siren t${siren}; ${chasing?.cop?.speed.toFixed(1)} m/s at t${chasing?.tick}`,
         );
     }
-    process.stdout.write(
-      `cops spawn: ${batch.races.length} races checked; ${lines.join('')}; ` +
-        `knocked off by traffic before his siren: ${struck.length} (seeds ${struck.join(', ') || 'none'})\n`,
-    );
-    expect(struck.length, 'knocked off by traffic before the siren').toBeLessThanOrEqual(
-      batch.races.length / 10,
-    );
+    process.stdout.write(`cops spawn: ${batch.races.length} races checked; ${lines.join('')}\n`);
   });
 });

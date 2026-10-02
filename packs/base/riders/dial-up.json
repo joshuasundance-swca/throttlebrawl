@@ -16,7 +16,6 @@
   },
   "personality": {
     "style": "weaver",
-    "signature": "lag",
     "aggression": 0.45,
     "dirtiness": 0.75,
     "courage": 0.35,

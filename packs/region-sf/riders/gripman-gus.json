@@ -17,7 +17,6 @@
   },
   "personality": {
     "style": "heavy-hitter",
-    "signature": "bell",
     "aggression": 0.8,
     "dirtiness": 0.3,
     "courage": 0.95,
