@@ -25,6 +25,7 @@ interface Handle {
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
   playerId(): number;
+  snapshot(): { tick: number } | null;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 type ChainEvent = { tick: number; type: string; causeId: number | undefined; data: SimEvent['data'] };
@@ -214,6 +215,14 @@ test('playtest 2: a swipe up is the straight kick, a swipe down-left kicks left'
   const upStart = up.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
   expect(upStart, 'the swipe up starts a kick').toBeDefined();
   expect(upStart?.data['straight'], 'and it is the straight kick').toBe(true);
+  // A kick asked for while the last one cools down comes out as a punch (sim/combat), and a loaded
+  // runner steps fewer sim ticks per real second, so wait out the kick's 13 + 6 + 27 ticks and its
+  // 30-tick cooldown in sim ticks, not real time (a CI run's down-left swipe landed in it, tick 144).
+  await page.waitForFunction(
+    (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t,
+    (upStart?.tick ?? 0) + 90,
+    { timeout: 60_000 },
+  );
 
   const left = await swipe(page, cdp, 22, 0, 0.15, { x: -0.75, y: 0.66 });
   console.log(`swipe down-left: attack at +${left.press}; ${JSON.stringify(left.chain)}`);
