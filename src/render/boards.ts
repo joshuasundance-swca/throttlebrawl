@@ -63,6 +63,8 @@ export interface BoardView {
   panel: Mesh;
   /** Centre of the panel, world space. */
   centre: Vector3;
+  /** Half the board's width, m: it counts as within a draw distance once its near edge is. */
+  radius: number;
 }
 
 /** Only boards this close count as seen (they are unreadable further out). */
@@ -283,6 +285,22 @@ export class Boards {
     for (const v of this.views) v.group.visible = !this.hidden.has(v.ref);
   }
 
+  /**
+   * Per frame: draws only the boards within `drawM` of the camera (render.sceneryDrawM, the
+   * scenery's own draw distance; past it the houses and trees round a board are hidden too, and
+   * each board costs two draw calls; main fix, 2026-10-02). A vetoed board stays hidden. Returns
+   * the boards drawn.
+   */
+  update(cameraX: number, cameraZ: number, drawM: number): number {
+    let drawn = 0;
+    for (const v of this.views) {
+      const near = Math.hypot(v.centre.x - cameraX, v.centre.z - cameraZ) - v.radius < drawM;
+      v.group.visible = near && !this.hidden.has(v.ref);
+      if (v.group.visible) drawn++;
+    }
+    return drawn;
+  }
+
   /** The content reference of the nearest shown board under a point in normalized device coords. */
   pick(ndcX: number, ndcY: number, camera: Camera): string | null {
     this.ndc.set(ndcX, ndcY);
@@ -364,6 +382,15 @@ export class Boards {
     group.add(frameMesh, panel);
     group.updateMatrixWorld(true);
     const centre = new Vector3(0, size.bottom + size.panelH / 2, 0).applyMatrix4(group.matrixWorld);
-    return { ref: item.ref, slotId: slot.id ?? '', kind: item.kind, text: item.text, group, panel, centre };
+    return {
+      ref: item.ref,
+      slotId: slot.id ?? '',
+      kind: item.kind,
+      text: item.text,
+      group,
+      panel,
+      centre,
+      radius: w / 2,
+    };
   }
 }
