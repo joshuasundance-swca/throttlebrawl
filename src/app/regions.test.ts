@@ -90,7 +90,7 @@ describe('app: regions', () => {
     expect(new Set(copIds(ALL, 'region-pnw:pnw-fogline-run'))).toEqual(
       new Set(['region-pnw:deputy-lindqvist']),
     );
-    expect(copIds(ALL, 'region-pnw:pnw-fogline-run')).toHaveLength(4);
+    expect(copIds(ALL, 'region-pnw:pnw-fogline-run')).toHaveLength(5); // and one for the heat meter
   });
 
   it('a San Francisco race: its route, locals, Officer Meter and cable cars', () => {

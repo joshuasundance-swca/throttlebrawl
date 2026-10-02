@@ -66,11 +66,11 @@ describe('cops: Sgt. Pruitt in the race field', () => {
   it('rides in every batch race, resolved the way the cops lane resolves him, behind the player', () => {
     const { config, playerId } = createBatchRace(1);
     const cops = config.riders.filter((r) => r.controller.kind === 'cop');
-    expect(cops).toHaveLength(4);
+    expect(cops).toHaveLength(5); // and one for the heat meter
     expect(cops[0]).toEqual(pruitt());
     expect(cops[2]).toEqual(pruitt());
     expect(config.riders.findIndex((r) => r.controller.kind === 'cop')).toBeGreaterThan(playerId);
-    for (const race of batch.races) expect(race.field.cops, `seed ${race.seed}`).toBe(4);
+    for (const race of batch.races) expect(race.field.cops, `seed ${race.seed}`).toBe(5);
   });
 });
 

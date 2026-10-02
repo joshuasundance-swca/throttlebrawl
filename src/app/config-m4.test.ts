@@ -78,6 +78,7 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
       chaosSummon: false,
       randomness: 0,
       patrolMax: 2, // playtest 2: one or two cops patrol every race
+      heat: true, // playtest 2: the heat meter
     });
   });
 
@@ -124,6 +125,10 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
     ]);
     expect(eventCops({ cops: { mode: 'every-race', patrolMax: 2 } } as never).patrolMax).toBe(2);
     expect('patrolMax' in eventCops({ cops: { mode: 'every-race' } } as never)).toBe(false);
+    // The heat meter fields one more.
+    expect(ids({ mode: 'every-race', baseCount: 1, patrolMax: 2, heat: true })).toHaveLength(5);
+    expect(eventCops({ cops: { mode: 'every-race', heat: true } } as never).heat).toBe(true);
+    expect('heat' in eventCops({ cops: { mode: 'every-race', heat: 'yes' } } as never)).toBe(false);
   });
 
   it('races a chaos-summoned event with its cop parked, ready for the meter', () => {

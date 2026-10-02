@@ -163,8 +163,9 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
       'base:chad-speedwell',
       'base:kevin-from-accounting',
       'base:player',
-      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot (release
-      // content: Pruitt each time).
+      // Playtest 2: the lot's starter, up to two on patrol, one more in the lot and one for the heat
+      // meter (release content: Pruitt each time).
+      'base:sgt-pruitt',
       'base:sgt-pruitt',
       'base:sgt-pruitt',
       'base:sgt-pruitt',
@@ -176,6 +177,7 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
       'ai',
       'ai',
       'player',
+      'cop',
       'cop',
       'cop',
       'cop',

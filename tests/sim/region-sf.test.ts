@@ -95,13 +95,14 @@ describe('region-sf: the San Francisco race', () => {
     expect(region.billboards?.length).toBeGreaterThanOrEqual(2);
     const { config } = sfRace(1);
     const ids = config.riders.map((r) => r.name);
-    // Playtest 2: the lot's starter, up to two cops on patrol and one more in the lot.
+    // Playtest 2: the lot's starter, up to two cops on patrol, one more in the lot, one for the heat.
     expect(ids).toEqual([
       'Pivot',
       'Gripman Gus',
       'Chad Speedwell',
       'Dial-Up',
       'You',
+      'Officer Meter',
       'Officer Meter',
       'Officer Meter',
       'Officer Meter',

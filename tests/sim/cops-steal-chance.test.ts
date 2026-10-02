@@ -158,7 +158,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
       const cops = config.riders.filter((d) => d.faction === 'law');
       // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, every one the
       // region's cop.
-      expect(cops, r.name).toHaveLength(4);
+      expect(cops, r.name).toHaveLength(5); // and one for the heat meter
       expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(new Set([r.cop]));
       expect(cops[0]?.startingWeapon, r.name).toBe(r.weapon);
       const sim = createSim(config);
