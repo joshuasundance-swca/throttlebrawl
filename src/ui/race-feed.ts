@@ -17,6 +17,24 @@ const STYLE_WORDS: Readonly<Record<string, string>> = {
   weaponSteal: 'STOLEN',
 };
 
+/** A landed trick's word (playtest 2, 2026-10-02: flips), by `data.trick`. */
+const TRICK_WORDS: Readonly<Record<string, string>> = {
+  backflip: 'BACKFLIP',
+  frontflip: 'FRONT FLIP',
+  wheelie: 'WHEELIE',
+  whip: 'WHIP',
+};
+const FLIP_COUNT = ['', '', 'DOUBLE ', 'TRIPLE ', 'QUADRUPLE '];
+
+/** A trick pop-up's word: the trick, with a double or triple flip named so. */
+function trickWord(e: SimEvent): string | undefined {
+  const trick = e.data['trick'];
+  const word = typeof trick === 'string' ? TRICK_WORDS[trick] : undefined;
+  if (!word) return undefined;
+  const flips = Number(e.data['flips'] ?? 0);
+  return `${FLIP_COUNT[Math.min(flips, FLIP_COUNT.length - 1)] ?? ''}${word}`;
+}
+
 function cash(n: number): string {
   return `$${Math.round(n).toLocaleString('en-US')}`;
 }
@@ -45,9 +63,11 @@ export function stylePop(e: SimEvent): StylePop | null {
       points: typeof points === 'number' && Number.isFinite(points) ? points : null,
     };
   }
-  const kind = e.data['kind'];
-  const word = typeof kind === 'string' ? STYLE_WORDS[kind] : undefined;
-  if (typeof kind !== 'string' || !word) return null;
+  const raw = e.data['kind'];
+  // Each trick pops (and merges repeats) as its own kind: two backflips are "BACKFLIP ×2".
+  const word = raw === 'trick' ? trickWord(e) : typeof raw === 'string' ? STYLE_WORDS[raw] : undefined;
+  if (typeof raw !== 'string' || !word) return null;
+  const kind = raw === 'trick' ? `trick:${word}` : raw;
   const points = e.data['points'];
   return { kind, word, points: typeof points === 'number' && Number.isFinite(points) ? points : null };
 }

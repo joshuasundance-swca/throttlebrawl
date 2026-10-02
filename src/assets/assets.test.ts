@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssetIndexEntry } from '../core';
-import { createAssetManifest, type AssetProgress } from './index';
+import { createAssetManifest, datasetIndex, datasetRegions, type AssetProgress } from './index';
 
 // assets-1 acceptance (docs/milestones/M1.md): a missing optional asset falls back to its
 // procedural stand-in. Plus the baked loader, the hash check, per-asset progress and the
@@ -182,5 +182,51 @@ describe('the asset manifest', () => {
     expect(m.resolve('base:b')?.id).toBe('base:b');
     expect(m.resolve('base:c')).toBeNull();
     expect(m.progress()).toMatchObject({ total: 2, done: 0 });
+  });
+
+  it('loads a dataset asset (run W-Q) from the build like a baked one, hash-checked', async () => {
+    const data = bytes('a real rider model');
+    const path = 'assets/ds/florida-keys/deacon-12345678.glb';
+    const f = fakeFetch({ [path]: data });
+    const e = entry({
+      id: 'models/riders/deacon',
+      kind: 'mesh',
+      source: 'dataset',
+      path,
+      bytes: data.length,
+      hash: await sha256(data),
+      region: 'florida-keys',
+    });
+    const m = createAssetManifest(() => [e], { baseUrl: BASE, fetchFn: f.fn });
+    const got = await m.load('models/riders/deacon', () => 'box rider', { decode: decodeText });
+    expect(got).toMatchObject({ source: 'dataset', value: 'a real rider model', fellBack: false });
+    expect(f.asked).toEqual([`https://example.test/game/${path}`]);
+    const otherHash = await sha256(bytes('other'));
+    const bad = createAssetManifest(() => [{ ...e, hash: otherHash }], {
+      baseUrl: BASE,
+      fetchFn: fakeFetch({ [path]: data }).fn,
+    });
+    expect((await bad.load('models/riders/deacon', () => 'box rider', { decode: decodeText })).fellBack).toBe(
+      true,
+    );
+  });
+});
+
+describe('the dataset rows this build carries (assets.lock.json)', () => {
+  it('lists each pinned file as a dataset row, every region or one', () => {
+    const rows = datasetIndex();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.source).toBe('dataset');
+      expect(r.hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(r.bytes).toBeGreaterThan(0);
+      expect(r.id).not.toMatch(/\.[a-z0-9]+$/);
+    }
+    const shared = rows.filter((r) => r.region === undefined);
+    for (const region of ['florida-keys', ...datasetRegions()]) {
+      const mine = datasetIndex(region);
+      expect(mine.filter((r) => r.region === undefined)).toEqual(shared);
+      expect(mine.every((r) => r.region === undefined || r.region === region)).toBe(true);
+    }
   });
 });

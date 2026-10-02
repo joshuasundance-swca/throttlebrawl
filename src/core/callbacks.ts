@@ -49,12 +49,21 @@ export type RendererStatsFn = () => RendererStats;
 export interface AssetIndexEntry {
   id: string;
   kind: 'mesh' | 'texture' | 'audio' | 'music-stem' | 'image' | 'font' | 'data-page' | 'procedural';
-  source: 'baked' | 'remote' | 'procedural';
+  /**
+   * `dataset` (run W-Q): a big file pinned in `assets.lock.json` from the Hugging Face dataset repo
+   * and baked into the build, so it loads from the game's own origin like `baked` (offline works).
+   */
+  source: 'baked' | 'remote' | 'procedural' | 'dataset';
   path: string;
   bytes: number;
   /** SHA-256 hex, or '' until content-1's indexer computes it. */
   hash: string;
   packId: string;
+  /**
+   * The region whose races need it (a region id), when only one region does: such a file loads
+   * when a race there starts. Absent for files every region uses.
+   */
+  region?: string;
 }
 export type PackIndexFn = () => readonly AssetIndexEntry[];
 

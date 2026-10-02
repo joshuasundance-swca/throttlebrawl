@@ -60,6 +60,18 @@ describe('style pop-ups', () => {
     expect(styleText(ev('style', 0, { kind: 'airtime' }))).toBe('AIRTIME');
     expect(styleText(ev('nearMiss', 0, {}))).toBeNull();
   });
+
+  it('names a landed trick, a double flip as such, and keeps each trick its own pop-up (playtest 2)', () => {
+    const trick = (t: string, flips: number, points: number) =>
+      ev('style', 0, { kind: 'trick', trick: t, flips, points });
+    expect(styleText(trick('backflip', 1, 100))).toBe('BACKFLIP +$100');
+    expect(styleText(trick('backflip', 2, 200))).toBe('DOUBLE BACKFLIP +$200');
+    expect(styleText(trick('frontflip', 1, 100))).toBe('FRONT FLIP +$100');
+    expect(styleText(trick('wheelie', 0, 50))).toBe('WHEELIE +$50');
+    expect(styleText(trick('whip', 0, 50))).toBe('WHIP +$50');
+    expect(styleText(trick('moonwalk', 0, 50))).toBeNull();
+    expect(stylePop(trick('backflip', 1, 100))?.kind).not.toBe(stylePop(trick('whip', 0, 50))?.kind);
+  });
 });
 
 // Playtest 1c, 2026-09-30 [decided]: less intrusive pop-ups. Repeats merge instead of stacking.

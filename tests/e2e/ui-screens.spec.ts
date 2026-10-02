@@ -15,6 +15,7 @@ interface Handle {
   } | null;
   playerId(): number;
   setBot(on: boolean): void;
+  setSeed(seed: number): void;
 }
 interface TargetProbe {
   samples: number;
@@ -173,7 +174,14 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  // A seed whose bot race ends quickly (about 85 s of sim headless, drafts in): a fresh random seed
+  // ran to 140 s, and in CI's software renderer that crowded the 200 s wait for the results (since
+  // W-P's road events and roadside density, the race no longer always fit).
+  await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    g?.setSeed(110);
+    g?.setBot(true);
+  });
   await page.locator('#menu-race').click();
 
   // The target bar follows the player's auto-target all race: sampled every 100 ms.

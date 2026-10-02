@@ -57,8 +57,11 @@ const SEEDS = [1, 3, 4, 6];
 
 /**
  * `drop`: the crest threshold, metres of fall in the 12 m past the top. Russian Hill's tops fall
- * 2.2 to 2.7 m in 12 m where the bot rides them; Twin Peaks' climb tops out gentler (0.9 to 1.1 m),
- * so its crests are counted from 0.8 m. `flies`: the crest launch takes off there at 1.5x speed.
+ * 2.2 to 2.7 m in 12 m where the bot rides them; Twin Peaks' climb tops out gentler, 0.76 m at
+ * most riding the route forward, so its crests are counted from 0.7 m. (The 0.9 to 1.1 m once
+ * measured here came from seeds 1 and 4 riding the route backward after a hairpin crash handed the
+ * bot back facing the wrong way, about 12,000 frames each; the tumble hand-back now keeps the
+ * route's way.) `flies`: the crest launch takes off there at 1.5x speed.
  */
 const ROUTES = [
   {
@@ -72,7 +75,7 @@ const ROUTES = [
     event: 'region-sf:sf-hill-sprint',
     route: 'region-sf:osm-sf-twin-peaks-run',
     name: 'Twin Peaks',
-    drop: 0.8,
+    drop: 0.7,
     flies: false,
   },
 ] as const;
