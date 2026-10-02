@@ -54,7 +54,15 @@ import {
   resolvePreset,
 } from '../tuning';
 import { createUi } from '../ui';
-import { buildSimConfig, DEFAULT_EVENT, eventKey, networkKeyOf, qualifyIn, raceStartValues } from './config';
+import {
+  buildSimConfig,
+  DEFAULT_EVENT,
+  eventKey,
+  networkKeyOf,
+  qualifyIn,
+  raceStartValues,
+  raceTimeOfDay,
+} from './config';
 import { createLoop } from './loop';
 import { appReplayKey } from './replay-key';
 import { createOutcome, raceResult, resultsDue } from './results';
@@ -320,13 +328,16 @@ export function createApp(opts: AppOptions): AppHandle {
   let attractPose: CameraPose | null = null;
   /** The network the renderer and camera show, so a race in the same region rebuilds nothing. */
   let shownRoad: unknown = null;
+  /** The time of day shown: the event's on the menu, the race's own in a free-play race (W-Q). */
+  let shownTime = '';
   /**
    * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
    * its signs and billboards (minus this device's cuts), its time of day and palette.
    */
-  const showRegion = () => {
-    if (shownRoad === stream.road) return;
+  const showRegion = (timeOfDay: string = String(event.timeOfDay)) => {
+    if (shownRoad === stream.road && shownTime === timeOfDay) return;
     shownRoad = stream.road;
+    shownTime = timeOfDay;
     const regionKey = regionKeyOf(registry, eventId);
     const roadPack = packOf(
       networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
@@ -338,8 +349,8 @@ export function createApp(opts: AppOptions): AppHandle {
     // `palette` is the region's colours (docs/content-packs.md, "Region packs at runtime",
     // Palette), which the renderer reads over the look's own (#205).
     const env: LookEnv & { palette: Record<string, string> } = {
-      timeOfDay: event.timeOfDay,
-      palette: racePalette(registry, regionKey, event.timeOfDay),
+      timeOfDay,
+      palette: racePalette(registry, regionKey, timeOfDay),
     };
     renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
     camera.setRoad(stream.road);
@@ -430,6 +441,9 @@ export function createApp(opts: AppOptions): AppHandle {
       assists: [settingsAssists(settings)],
       speedMultiplier: settings.speedMultiplier,
       slowMo: settings.slowMo,
+      // W-Q: a free-play race draws its rivals from the region's whole cast and its time of day from
+      // the region's list, by the seed (the career, later, sets its own).
+      freePlay: true,
       // The sim's values plus the difficulty scales, read once at race start (app-3).
       tuning: { ...tuning.simValues(), ...raceStartValues(tuning.decls, (id) => tuning.get(id)) },
     });
@@ -810,9 +824,10 @@ export function createApp(opts: AppOptions): AppHandle {
       // The chosen race length's route (the settings' Race length; an id the event lacks means its
       // standard length), or the real road picked on the menu.
       stream = streams.forEvent(registry, eventId, settings.raceLength, route);
-      showRegion();
       if (!go('race')) return;
-      race = newSim(seeds.next());
+      const seed = seeds.next();
+      showRegion(raceTimeOfDay(registry, eventId, seed, true));
+      race = newSim(seed);
       pendingTuning.length = 0;
       // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
       recorder.beginRace(race, replayKey);
