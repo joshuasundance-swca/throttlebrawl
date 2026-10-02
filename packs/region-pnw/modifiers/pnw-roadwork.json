@@ -1,0 +1,41 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-roadwork",
+  "name": "Pacific Northwest Roadwork",
+  "kind": "human",
+  "tags": ["set-piece", "roadwork"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.15, 0.85],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "roadwork",
+      "signText": "FLAGGER AHEAD HE IS DAMP",
+      "vehicle": "base:event-work-truck",
+      "person": "flagger",
+      "theme": "pnw"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: forest-road roadwork, cones in the drizzle, a flagger in a soaked hi-vis vest.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

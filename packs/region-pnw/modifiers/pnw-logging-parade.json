@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-logging-parade",
+  "name": "Logger Days Parade",
+  "kind": "human",
+  "tags": ["set-piece", "parade"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.8],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "parade",
+      "signText": "LOGGER DAYS PARADE SAWDUST EXPECTED",
+      "floats": ["pnw-logging-float", "pnw-logging-float"],
+      "person": "marcher-pnw",
+      "theme": "pnw",
+      "marchers": 6
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a logging-festival parade, floats with one giant log and a carved bear each, marchers in flannel and rain shells.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

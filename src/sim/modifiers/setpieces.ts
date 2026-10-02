@@ -27,14 +27,16 @@
 //   over the lead float), marchers walking beside them, barricades at its head.
 // - hay-spill: a farm truck heading your way at a crawl, its hay stacked high, dropping bales
 //   off the back as racers close in. Riding into a bale is a wobble; bales scatter.
-// - speed-trap: a cop on the shoulder with a radar on a tripod. A player who passes him faster
-//   than `limitMps` (× the speed multiplier) summons him: a chase (cause `speed-trap`). It takes a
-//   fielded cop who would otherwise wait in the lot, so it needs one; with none it never fires.
+// - speed-trap: an officer on the shoulder with a radar on a tripod. He never leaves it: he calls
+//   it in. A player who passes him faster than `limitMps` (× the speed multiplier) brings the law:
+//   a fielded cop still waiting in the lot is moved to the trap and summoned at once (his siren,
+//   cause `speed-trap`, then he pulls out after the speeder); a cop already out chases the speeder
+//   (as after chaos near him). The lot cop keeps his own timing until then (sim/cops).
 // Every piece puts a warning sign SIGN_LEAD_M ahead of it on its shoulder side.
 // People never get hit: anyone a rider bears down on steps out of the way toward the verge.
 import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
-import type { RoadPos } from '../../road';
-import { COP_PARKED, copsState } from '../cops';
+import type { EdgeLink, RoadPos } from '../../road';
+import { CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState } from '../cops';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
 import type { PropKind, PropSnapshot, SimConfig, SimModifierDef, SimModifierEffect } from '../types';
@@ -55,7 +57,7 @@ export const SET_PIECE = {
   /** Pieces keep at least this far apart along the road, m. */
   spacingM: 220,
   /** Placement tries per piece. */
-  placeTries: 16,
+  placeTries: 40,
   /** Pieces stay inside this share of the route (never on the grid or at the line). */
   minProgress: 0.08,
   maxProgress: 0.94,
@@ -113,7 +115,7 @@ export interface SetPiece {
   /** Hay bales dropped, and the u where the next one drops. */
   dropped: number;
   nextDropU: number;
-  /** The speed trap's cop (entity id, -1 for none) and whether a player has tripped it. */
+  /** The cop the speed trap brought (entity id, -1 for none yet) and whether a player has tripped it. */
   cop: number;
   tripped: number;
 }
@@ -244,11 +246,35 @@ function stretchOk(config: SimConfig, c: Corridor, u: number, len: number): bool
   return true;
 }
 
-/** Fielded cops still in the lot, the ones the race would not bring out first. */
-function trapCop(world: World, taken: readonly number[]): EntityId {
-  const cops = copsState(world);
-  const free = cops.cops.filter((id) => cops.phase[id] === COP_PARKED && !taken.includes(id));
-  return free.find((id) => cops.spawns[id] !== 1) ?? free[0] ?? -1;
+/**
+ * The route-progress spans a shortcut skips: from its split zone to where its connector rejoins the
+ * main path (following each connector's default way on, at most a few roads). A rider on the
+ * shortcut never passes a piece placed there, so none is.
+ */
+export function bypassedSpans(config: SimConfig): [number, number][] {
+  const { road, route } = config;
+  const main = new Set(route.mainEdges);
+  const out: [number, number][] = [];
+  for (const z of route.shortcuts) {
+    const a = Math.min(route.progressAt(z.edge, z.s0), route.progressAt(z.edge, z.s1));
+    let edge = z.toEdge;
+    let end: 'from' | 'to' = 'to';
+    let b = Number.NaN;
+    for (let hop = 0; hop < 8; hop++) {
+      const link: EdgeLink | undefined = road.nextEdges(edge, end)[0];
+      if (!link) break;
+      if (main.has(link.edge)) {
+        const len = road.edges[link.edge]?.length ?? 0;
+        b = route.progressAt(link.edge, link.entersAt === 'from' ? 0 : len);
+        break;
+      }
+      edge = link.edge;
+      end = link.entersAt === 'from' ? 'to' : 'from';
+    }
+    // A rejoin that cannot be found: assume the rest of the route is bypassed.
+    out.push([Number.isFinite(a) ? a : 0, Number.isFinite(b) && b > a ? b : Infinity]);
+  }
+  return out;
 }
 
 /** Rolls and places the race's set pieces (the modifiers phase's init). */
@@ -262,6 +288,7 @@ export function initSetPieces(world: World, config: SimConfig): void {
   if (!start) return;
   st.u0 = start.u;
   st.routeLen = Math.max(0, c.routeDir === 1 ? c.hi - start.u : start.u - c.lo);
+  const bypassed = bypassedSpans(config);
   const scale = Math.max(0, world.params['modifiers.setPieceChance'] ?? 1);
   // Every modifier rolls, always drawing, so the stream advances the same whatever fires.
   const fired: number[] = [];
@@ -282,17 +309,11 @@ export function initSetPieces(world: World, config: SimConfig): void {
     pool.splice(k, 1);
   }
   chosen.sort((a, b) => a - b);
-  const cops: number[] = [];
   for (const mi of chosen) {
     const m = config.modifiers[mi] as SimModifierDef;
     m.effects.forEach((e, ei) => {
       if (!isSetPiece(e)) return;
       const piece = String(e['piece']);
-      let cop = -1;
-      if (piece === 'speed-trap') {
-        cop = trapCop(world, cops);
-        if (cop < 0) return;
-      }
       const len = pieceLength(piece, list(e, 'floats').length);
       const lo = Math.max(SET_PIECE.minProgress, m.atProgress[0]);
       const hi = Math.min(SET_PIECE.maxProgress, m.atProgress[1]);
@@ -300,6 +321,10 @@ export function initSetPieces(world: World, config: SimConfig): void {
         const p = lo + (Math.max(lo, hi) - lo) * nextFloat(rng);
         const u = st.u0 + c.routeDir * p * st.routeLen;
         if (st.pieces.some((q) => Math.abs(q.u - u) < SET_PIECE.spacingM + q.len)) continue;
+        // Never on a stretch a shortcut bypasses: every racer must ride past it.
+        const from = Math.abs(u - st.u0) - SET_PIECE.signLeadM - 10;
+        const to = Math.abs(u - st.u0) + len + 10;
+        if (bypassed.some(([a, b]) => from < b && to > a)) continue;
         if (!stretchOk(config, c, u, len)) continue;
         const lane = lanesAt(config.road, c, u, c.routeDir)[0];
         if (!lane) continue;
@@ -319,30 +344,13 @@ export function initSetPieces(world: World, config: SimConfig): void {
           vehicleCd: [],
           dropped: 0,
           nextDropU: 0,
-          cop,
+          cop: -1,
           tripped: 0,
         });
-        if (cop >= 0) {
-          cops.push(cop);
-          parkTrapCop(world, config, c, st.pieces[st.pieces.length - 1] as SetPiece);
-        }
         return;
       }
     });
   }
-}
-
-/** Moves the speed trap's cop from the lot to the trap's shoulder, where he waits for a speeder. */
-function parkTrapCop(world: World, config: SimConfig, c: Corridor, p: SetPiece): void {
-  const cop = world.movers[p.cop];
-  if (!cop) return;
-  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
-  fromCorridor(c, p.u, shoulderCd(config, c, p, p.u, 0.2), c.routeDir, pos);
-  cop.pos = pos;
-  cop.speed = 0;
-  cop.yaw = 0;
-  cop.h = 0;
-  copsState(world).spawns[p.cop] = 0;
 }
 
 /**
@@ -468,7 +476,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
   // The warning sign, on the shoulder side, ahead of everything.
   addProp(st, index, {
     kind: 'sign',
-    variant: theme || p.piece,
+    variant: p.piece,
     label: str(e, 'signText', ''),
     u: at(-SET_PIECE.signLeadM),
     cd: shoulderCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2),
@@ -610,14 +618,13 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
         u: at(2.5),
         cd: shoulderCd(config, c, p, at(2.5), 1.0),
       });
-      // No cop to bring out (a hand-built config): the radar stands alone, a person holding it.
-      if (p.cop < 0)
-        addProp(st, index, {
-          kind: 'person',
-          variant: 'cop-radar',
-          u: at(0),
-          cd: shoulderCd(config, c, p, at(0), 0.6),
-        });
+      // The radar officer: he stays with the radar and calls it in.
+      addProp(st, index, {
+        kind: 'person',
+        variant: 'cop-radar',
+        u: at(0),
+        cd: shoulderCd(config, c, p, at(0), 0.6),
+      });
       break;
     }
     default:
@@ -685,7 +692,12 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
   const riders = ridersOn(world, config, c);
   const racers = riders.filter((r) => r.racer);
   st.pieces.forEach((p, i) => {
-    if (p.phase === 2) return;
+    // Its parked vehicles stay on the verge for as long as traffic keeps them (a stopped one left
+    // to drift back into a lane would wall it for whoever comes later: the cop, a straggler).
+    if (p.phase === 2) {
+      pinVehicles(world, p);
+      return;
+    }
     // Route-forward position of each racer relative to the piece's start.
     const rel = racers.map((r) => dir * (r.u - p.u));
     if (p.phase === 0) {
@@ -745,10 +757,9 @@ function stepHay(
 }
 
 function stepTrap(world: World, config: SimConfig, p: SetPiece, riders: readonly RiderAt[]): void {
-  if (p.tripped || p.cop < 0) return;
-  const cops = copsState(world);
-  if (cops.phase[p.cop] !== COP_PARKED) return;
-  const dir = trafficState(world).corridor.routeDir;
+  if (p.tripped) return;
+  const c = trafficState(world).corridor;
+  const dir = c.routeDir;
   const limit =
     num(effectOf(config, p) ?? { kind: '' }, 'limitMps', SET_PIECE.trapLimitMps) * speedMultiplierOf(config);
   for (const r of riders) {
@@ -757,24 +768,60 @@ function stepTrap(world: World, config: SimConfig, p: SetPiece, riders: readonly
     // Crossing his position this tick (within one tick's travel), going faster than the limit.
     if (past < 0 || past > r.m.speed * (world.timeScale / 60) + 0.5 || r.m.speed <= limit) continue;
     p.tripped = 1;
-    cops.spawns[p.cop] = 1;
-    cops.summonAt[p.cop] = cops.clock;
-    cops.cause[p.cop] = 'speed-trap';
+    callItIn(world, config, c, p, r.m.id);
     return;
   }
+}
+
+/**
+ * The radar officer calls it in: a cop still in the lot (his siren not yet going) is moved to the
+ * trap's shoulder, behind the speeder, and summoned at once; otherwise every cop already out
+ * chases the speeder for the next CHAOS_MEMORY_TICKS, as after chaos near him.
+ */
+function callItIn(world: World, config: SimConfig, c: Corridor, p: SetPiece, speeder: EntityId): void {
+  const cops = copsState(world);
+  const lot = cops.cops.find((id) => cops.phase[id] === COP_PARKED && cops.sirenOn[id] !== 1);
+  const cop = lot === undefined ? undefined : world.movers[lot];
+  if (lot !== undefined && cop && cop.mode === 'Road') {
+    const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+    fromCorridor(c, p.u - c.routeDir * 4, trapCopCd(config, c, p), c.routeDir, pos);
+    cop.pos = pos;
+    cop.speed = 0;
+    cop.yaw = 0;
+    cop.h = 0;
+    cops.spawns[lot] = 1;
+    cops.summonAt[lot] = cops.clock;
+    cops.cause[lot] = 'speed-trap';
+    p.cop = lot;
+    return;
+  }
+  for (const id of cops.cops) {
+    if (cops.phase[id] !== COP_CHASING) continue;
+    cops.target[id] = speeder;
+    cops.chaosUntil[id] = cops.clock + CHAOS_MEMORY_TICKS;
+    if (p.cop < 0) p.cop = id;
+  }
+}
+
+/** Where the summoned cop waits to pull out: on the shoulder, clear of every drive lane. */
+function trapCopCd(config: SimConfig, c: Corridor, p: SetPiece): number {
+  const edge = bandEdge(config, c, p, p.u);
+  const outer = Math.abs(p.laneCd) + p.laneW / 2;
+  return p.side * Math.max(outer + 0.6, Math.min(edge - 0.6, outer + 1.2));
 }
 
 /** A prop's half extents along and across the road, for contacts (0: not touchable). */
 function extent(kind: PropKind): [number, number] {
   switch (kind) {
+    // Matched to render's read-at-speed sizes (render/event-props.ts, READ_SCALE).
     case 'cone':
-      return [0.25, 0.25];
+      return [0.36, 0.36];
     case 'flare':
-      return [0.12, 0.12];
+      return [0.25, 0.25];
     case 'barricade':
-      return [0.3, 0.9];
+      return [0.4, 1.2];
     case 'hayBale':
-      return [0.55, 0.45];
+      return [0.7, 0.55];
     default:
       return [0, 0];
   }
