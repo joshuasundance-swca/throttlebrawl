@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "network": "keys-m1",
+  "originLatDeg": 24.7,
+  "originLonDeg": -81.1,
+  "pieces": [
+    {
+      "id": "channel-bridge",
+      "kind": "bridge",
+      "style": "girder",
+      "frame": "local",
+      "from": [-2300, -900],
+      "to": [-2700, -6800],
+      "deckM": 14,
+      "humpAt": 0.55,
+      "humpM": 16,
+      "pierEveryM": 120,
+      "colour": "#9c968a",
+      "exaggerate": 1.8,
+      "keepOutM": 600
+    }
+  ]
+}
