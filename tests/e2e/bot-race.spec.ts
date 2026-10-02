@@ -114,11 +114,7 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
 };
 
 test('the bot races to results with a placing at phone landscape', async ({ page }, testInfo) => {
-  // The race itself takes most of this, and its length is one seed's luck: on CI (SwiftShader) main
-  // ran this test in 5.3 and then 5.8 of the old 6 minutes. When a sim change made the bot miss the
-  // boat-ramp shortcut (keys traffic, 2026-10-02: 8712 ticks instead of 8006), the race alone took
-  // 5.6 minutes and the takedown runs timed out. 8 minutes leaves room for the long way round.
-  test.setTimeout(480_000);
+  test.setTimeout(360_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
