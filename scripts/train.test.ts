@@ -363,6 +363,30 @@ describe('assembly, on a real git repo', () => {
   const heads: Record<string, string> = {};
   let base = '';
 
+  // The config of the repo this file lives in (in a hook, the repo being pushed), read before any
+  // git command here runs and again by the last test, which fails if it changed. branch.* entries
+  // are left out: parallel lanes add them (git push -u, git checkout -b) while this runs.
+  const realConfig = () => {
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env))
+      if (!k.startsWith('GIT_') && v !== undefined) env[k] = v;
+    const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: import.meta.dirname,
+      encoding: 'utf8',
+      env,
+    });
+    if (common.status !== 0) return null; // not in a git checkout, so there is nothing to touch
+    const file = path.join(common.stdout.trim(), 'config');
+    const list = spawnSync('git', ['config', '--file', file, '--list'], { encoding: 'utf8', env });
+    if (list.status !== 0) throw new Error(`cannot read ${file}: ${list.stderr}`);
+    return list.stdout
+      .split('\n')
+      .filter((l) => l && !l.startsWith('branch.'))
+      .sort()
+      .join('\n');
+  };
+  const realBefore = realConfig();
+
   beforeAll(() => {
     dir = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'train-')));
     ok('init', '-q', '-b', 'main');
@@ -421,6 +445,11 @@ describe('assembly, on a real git repo', () => {
     const m = assemble(git, heads.p5!, [heads.p6!, heads.p2!]);
     expect(m.conflicts).toEqual([{ head: heads.p6, with: 'main' }]);
     expect(m.merged).toEqual([heads.p2]);
+  });
+
+  // Last in this block, so it runs after every git command above.
+  it("leaves the real repo's config exactly as it found it", () => {
+    expect(realConfig()).toBe(realBefore);
   });
 });
 
