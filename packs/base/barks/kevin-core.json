@@ -265,6 +265,21 @@
       "text": "Account settled. Interest included.",
       "audioAsset": "audio/barks/kevin-core/kevin-traffic-settled",
       "audioStatus": "live"
+    },
+    {
+      "id": "kevin-start-keys-spf",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "florida-keys"
+        }
+      ],
+      "status": "live",
+      "text": "SPF 50. Expensed.",
+      "audioAsset": "audio/barks/kevin-core/kevin-start-keys-spf",
+      "audioStatus": "live"
     }
   ],
   "meta": {

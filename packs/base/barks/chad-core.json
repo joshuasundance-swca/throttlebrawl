@@ -260,6 +260,51 @@
       "text": "Collab over. Creative differences.",
       "audioAsset": "audio/barks/chad-core/chad-traffic-collab",
       "audioStatus": "live"
+    },
+    {
+      "id": "chad-start-keys-lobster",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "florida-keys"
+        }
+      ],
+      "status": "live",
+      "text": "Chat says I'm lobster-colored. Fair.",
+      "audioAsset": "audio/barks/chad-core/chad-start-keys-lobster",
+      "audioStatus": "live"
+    },
+    {
+      "id": "chad-start-pnw-ring-light",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "pacific-northwest"
+        }
+      ],
+      "status": "live",
+      "text": "Chat, it's raining. Ring light's soaked.",
+      "audioAsset": "audio/barks/chad-core/chad-start-pnw-ring-light",
+      "audioStatus": "live"
+    },
+    {
+      "id": "chad-start-sf-bots",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "san-francisco"
+        }
+      ],
+      "status": "live",
+      "text": "Chat's mostly bots now. Hi, bots.",
+      "audioAsset": "audio/barks/chad-core/chad-start-sf-bots",
+      "audioStatus": "live"
     }
   ],
   "meta": {

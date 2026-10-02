@@ -251,6 +251,36 @@
       "text": "That's for last time. Ctrl-Z that.",
       "audioAsset": "audio/barks/dial-up-core/dial-up-traffic-undo",
       "audioStatus": "live"
+    },
+    {
+      "id": "dial-up-start-keys-storm",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "florida-keys"
+        }
+      ],
+      "status": "live",
+      "text": "Hurricane took my signal. Not my speed.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-start-keys-storm",
+      "audioStatus": "live"
+    },
+    {
+      "id": "dial-up-start-sf-dotcom",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "region.id",
+          "op": "eq",
+          "value": "san-francisco"
+        }
+      ],
+      "status": "live",
+      "text": "Last time I was here, I was a dot-com.",
+      "audioAsset": "audio/barks/dial-up-core/dial-up-start-sf-dotcom",
+      "audioStatus": "live"
     }
   ],
   "meta": {

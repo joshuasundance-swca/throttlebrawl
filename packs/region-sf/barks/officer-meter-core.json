@@ -22,6 +22,22 @@
       "text": "I already wrote it. Sign here.",
       "audioAsset": "audio/barks/officer-meter-core/meter-busted-signed",
       "audioStatus": "live"
+    },
+    {
+      "id": "meter-siren-robotaxi",
+      "trigger": "cop-siren",
+      "status": "live",
+      "text": "I ticket the robotaxis too. Pull over.",
+      "audioAsset": "audio/barks/officer-meter-core/meter-siren-robotaxi",
+      "audioStatus": "live"
+    },
+    {
+      "id": "meter-busted-mail",
+      "trigger": "busted",
+      "status": "live",
+      "text": "You may dispute this by mail. Nobody wins.",
+      "audioAsset": "audio/barks/officer-meter-core/meter-busted-mail",
+      "audioStatus": "live"
     }
   ],
   "meta": {

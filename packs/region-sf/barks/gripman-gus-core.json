@@ -92,6 +92,37 @@
       "text": "Inches. I've lived my whole life in inches.",
       "audioAsset": "audio/barks/gripman-gus-core/gus-near-inches",
       "audioStatus": "live"
+    },
+    {
+      "id": "gus-start-fog-bell",
+      "trigger": "race-start",
+      "when": [
+        {
+          "fact": "timeOfDay",
+          "op": "eq",
+          "value": "dawn"
+        }
+      ],
+      "status": "live",
+      "text": "Fog's in. I ring twice.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-start-fog-bell",
+      "audioStatus": "live"
+    },
+    {
+      "id": "gus-pass-robotaxi",
+      "trigger": "overtake",
+      "status": "live",
+      "text": "Robotaxi's got no driver. Your excuse?",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-pass-robotaxi",
+      "audioStatus": "live"
+    },
+    {
+      "id": "gus-taken-grip",
+      "trigger": "hit-taken",
+      "status": "live",
+      "text": "Easy. Forty years of grip.",
+      "audioAsset": "audio/barks/gripman-gus-core/gus-taken-grip",
+      "audioStatus": "live"
     }
   ],
   "meta": {
