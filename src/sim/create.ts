@@ -1,7 +1,7 @@
 // createSim: builds the world, puts the riders on the grid, wires the systems in tick order,
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
-import { aiSystem, AI_TUNING } from './ai';
+import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
@@ -131,6 +131,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
       boostS: m.kind === 'rider' ? (riders.boost[m.id] ?? 0) / 60 : 0,
       styleRun: m.kind === 'rider' ? styleRunOf(world, config, m.id) : null,
+      signature: m.kind === 'rider' ? signatureView(world, m.id) : null,
     };
   });
   return {

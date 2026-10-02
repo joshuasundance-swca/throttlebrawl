@@ -19,6 +19,7 @@ import {
   DEFAULT_DIFFICULTY,
   DIFFICULTY_SCALES,
   DIFFICULTY_TUNING,
+  SIGNATURE_IDS,
   SIM_TUNING,
   difficultyTuningId,
   secondsToTicks,
@@ -248,6 +249,9 @@ export function aiController(personality: Rider['personality']): SimController {
     own.rivals = [...rivals];
   const preferred: unknown = personality?.['preferredWeapon'];
   if (typeof preferred === 'string' && preferred) own.preferredWeapon = preferred;
+  // Playtest 2 ("Visible personalities", interview 2026-10-02): the rival's one signature move.
+  const signature = SIGNATURE_IDS.find((m) => m === personality?.['signature']);
+  if (signature) own.signature = signature;
   return { kind: 'ai', style: personality?.style ?? 'racer', personality: own };
 }
 
