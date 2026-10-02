@@ -34,6 +34,7 @@ import {
   boatBob,
   isTropical,
   LAND_TOP_M,
+  ridableBandPast,
   SCENERY_KINDS,
   scatterEdge,
   themeAt,
@@ -1243,6 +1244,10 @@ export function buildRoadScene(
         tropical,
         outer: outerOf,
         theme,
+        band: (side, s) => ridableBandPast(road, e.index, side, s, outerOf(side)),
+        sameBatch: (a, b) =>
+          Math.floor(a.x / SCENERY_CHUNK_M) === Math.floor(b.x / SCENERY_CHUNK_M) &&
+          Math.floor(a.z / SCENERY_CHUNK_M) === Math.floor(b.z / SCENERY_CHUNK_M),
         // The land between two samples is a strip quad: only as wide as its narrower end, and none
         // where either end has none (the strip breaks there).
         landReach: (side, s) => {

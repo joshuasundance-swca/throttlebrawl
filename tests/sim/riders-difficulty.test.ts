@@ -31,8 +31,11 @@ interface PresetRace {
 function runRace(seed: number, difficulty: DifficultyPreset): PresetRace {
   // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
   // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
+  // Off-road (run W-R) off for the same reason: riders leave the lanes under 1 % of the time here,
+  // but the change reshuffles these 16 races, and the presets' gap in rival hits is small next to
+  // the seed noise (off-road on: seeds 1-16 Easy 82, Hard 73; seeds 1-32 Easy 131, Hard 137).
   const { sim, config, route, playerId } = createHeadlessRace(
-    { seed, difficulty, tuning: NO_ROAD_EVENTS },
+    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'ground.offRoad': 0 } },
     { includeDrafts: true },
   );
   const rivals = new Set(

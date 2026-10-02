@@ -36,7 +36,7 @@
 // People never get hit: anyone a rider bears down on steps out of the way toward the verge.
 import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
 import type { EdgeLink, RoadPos } from '../../road';
-import { CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState } from '../cops';
+import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
 import type { PropKind, PropSnapshot, SimConfig, SimModifierDef, SimModifierEffect } from '../types';
@@ -780,7 +780,11 @@ function stepTrap(world: World, config: SimConfig, p: SetPiece, riders: readonly
  */
 function callItIn(world: World, config: SimConfig, c: Corridor, p: SetPiece, speeder: EntityId): void {
   const cops = copsState(world);
-  const lot = cops.cops.find((id) => cops.phase[id] === COP_PARKED && cops.sirenOn[id] !== 1);
+  // Playtest 2 (sim/cops): the speeder's heat rises, and a cop from the lot answers before one
+  // waiting up the road on patrol.
+  addHeat(world, config, speeder, HEAT.speedTrap);
+  const waiting = (id: number) => cops.phase[id] === COP_PARKED && cops.sirenOn[id] !== 1;
+  const lot = cops.cops.find((id) => waiting(id) && (cops.patrolAt[id] ?? -1) < 0) ?? cops.cops.find(waiting);
   const cop = lot === undefined ? undefined : world.movers[lot];
   if (lot !== undefined && cop && cop.mode === 'Road') {
     const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
