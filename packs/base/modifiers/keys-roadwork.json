@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "roadwork",
-      "signText": "ROAD WORK AHEAD SINCE 1987",
+      "signText": "ROAD WORK AHEAD. Since 1987.",
       "vehicle": "event-work-truck",
       "person": "flagger",
       "theme": "keys"

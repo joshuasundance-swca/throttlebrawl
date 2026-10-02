@@ -21,7 +21,10 @@
       ]
     }
   ],
-  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "marina" }],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "both", "tag": "marina" },
+    { "s0": 0, "s1": 30, "side": "both", "tag": "key-fishing" }
+  ],
   "features": [],
   "barriers": [],
   "samples": {

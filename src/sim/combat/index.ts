@@ -68,6 +68,16 @@
 //   tests/sim/cops-steal-chance; scaling the player's alone keeps it at 6.) The dev bot fights
 //   little, so the 12-race seeded batch moves only a little: the bot's knock-offs 3 -> 4, its hits
 //   per knock-off 3 -> 2, busts 2 -> 2.
+// - Fight stats (playtest 2, interview round 3: "Visible personalities", moderate differences shown
+//   through how rivals ride and fight), in the player's own fights, like the knockdown scales: a
+//   rider's stats.toughness divides the damage and the stagger the player's hits do to it, and a
+//   rival's stats.power multiplies its hits on the player by combat.powerOnPlayer (default 0, so
+//   rivals hit you as hard as before: playtest 1 item 7). Both are 1 when absent, 0.5-2; each
+//   rival's numbers are in its pack file. Fights among rivals and cops keep their data numbers until
+//   the AI-personality run. [default] The 50-race batch's bot busts (cap 15) swing with any sim
+//   change: on one main, the knockdown retune alone gave 6, stats in every fight 15, stats in the
+//   player's fights 11; after main moved, the last gave 1. So this rule rests on playtest 1 item 7
+//   and on matching the knockdown scales, not on the batch.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -136,7 +146,11 @@
 //   (pickupHolder SPENT) and its holder is bare-handed again. The `hit` (or `attackMiss`) of the
 //   swing that uses the last of a weapon carries `spent: true`.
 // - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
-//   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
+//   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road). The spots
+//   (W-Q, playtest 2's "Weapons should do more"; the pitch deck's "pickups turn up about every
+//   500 m instead of three fixed spots"): one per `combat.pickupSpacingM` of route (at least one),
+//   each somewhere in the middle half of its own stretch, drawn from the `combat` stream first, so
+//   every seed lays them differently and a replay lays them the same. [default]
 // - A weapon by the bike (W-Q, the pitch deck's item 11, "fill the dead air after a crash"): when
 //   a player who holds no weapon gets up after a crash (tumble's `getUp`), with chance
 //   `combat.crashWeaponChance` (0.3) a roadside weapon, drawn by roadsideWeight from the `combat`
@@ -246,6 +260,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    id: 'combat.powerOnPlayer',
+    group: 'combat',
+    label: 'Rival power on you',
+    default: 0,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
     id: 'combat.kickConvertMs',
     group: 'combat',
     label: 'Kick swipe grace',
@@ -331,6 +356,18 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     max: 20,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // W-Q: about one roadside weapon every 500 m of route (it was three fixed spots). [default]
+    id: 'combat.pickupSpacingM',
+    group: 'combat',
+    label: 'A roadside weapon every',
+    default: 500,
+    min: 100,
+    max: 3000,
+    step: 50,
+    unit: 'm',
     affectsSim: true,
   },
   {
@@ -452,11 +489,11 @@ const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
 
-/** Where the roadside weapons lie: fractions of the route length. [default] */
-export const PICKUP_ROUTE_FRACTIONS: readonly number[] = [0.2, 0.45, 0.7];
 /** A rider picks up a weapon within this box: |Δs| ≤ 1 m (a tick at top speed is 0.63 m), |Δd| ≤ 1.5 m. */
 export const PICKUP_S_M = 1;
 export const PICKUP_D_M = 1.5;
+/** Squared ground distance past which a rider is surely outside a pickup's box (6 m, m²). */
+const PICKUP_NEAR_M2 = 36;
 /** Riders higher than this above the road (mid-jump) fly over a pickup. */
 const PICKUP_MAX_H = 1.5;
 /** Height of a held pickup entity: below the road, out of sight (the holder shows it). */
@@ -861,7 +898,19 @@ function land(
     isLaw(config, a) && isPlayer(config, victim)
       ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
       : 1;
-  const damage = Math.round(w.damage * damageScale(world, config, a, victim, w) * copSoft);
+  // Fight stats (playtest 2, "Visible personalities"): the attacker's power, the target's toughness.
+  // Only in the player's fights; a rival's power reaches the player by combat.powerOnPlayer.
+  const byPlayer = isPlayer(config, a);
+  const hitOnPlayer = isPlayer(config, victim) && !byPlayer;
+  const power = byPlayer
+    ? statOf(config, a, 'power')
+    : hitOnPlayer
+      ? 1 + (statOf(config, a, 'power') - 1) * clamp(world.params['combat.powerOnPlayer'] ?? 0, 0, 1)
+      : 1;
+  const toughness = byPlayer || hitOnPlayer ? statOf(config, victim, 'toughness') : 1;
+  const damage = Math.round(
+    (w.damage * damageScale(world, config, a, victim, w) * copSoft * power) / toughness,
+  );
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
@@ -910,7 +959,7 @@ function land(
   st.knockT[vid] = 0;
   st.knockTicks[vid] = Math.max(1, Math.round((world.params['combat.knockbackDecayS'] ?? 0.4) * 60));
   // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
-  const stagger = Math.round(w.staggerTicks * (world.params['combat.staggerScale'] ?? 1));
+  const stagger = Math.round((w.staggerTicks * (world.params['combat.staggerScale'] ?? 1)) / toughness);
   st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
   const wobble = Math.round(stagger * onPlayer);
   if (wobble > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, wobble);
@@ -932,6 +981,11 @@ function land(
       world.timeScale = 0;
     }
   }
+}
+
+/** A rider's fight stat (stats.toughness or stats.power), 1 when absent, kept to the schema's 0.5–2. */
+function statOf(config: SimConfig, m: Mover, stat: 'toughness' | 'power'): number {
+  return clamp(config.riders[m.riderIndex]?.[stat] ?? 1, 0.5, 2);
 }
 
 /**
@@ -1223,15 +1277,22 @@ function stepSlowmo(world: World, st: CombatState, frozenAtStart: boolean): void
 
 type Spot = { edge: number; s: number; d: number; dir: 1 | -1 };
 
+/** How many roadside weapons a route of this length gets: one per spacing, at least one. */
+export function pickupCount(routeLengthM: number, spacingM: number): number {
+  return Math.max(1, Math.round(routeLengthM / Math.max(1, spacingM)));
+}
+
 /**
- * Road positions for the roadside weapons: at each PICKUP_ROUTE_FRACTIONS point of the route, in
- * the middle of the travel lane. A fraction the main path cannot place is skipped.
+ * Road positions for the roadside weapons, in the middle of the travel lane: the route cut into
+ * pickupCount equal stretches, one spot in each, at `jitter()` (0..1) across the middle half of its
+ * stretch (0.5 is the stretch's centre). A point the main path cannot place is skipped.
  */
-export function roadsideSpots(config: SimConfig): Spot[] {
+export function roadsideSpots(config: SimConfig, spacingM = 500, jitter: () => number = () => 0.5): Spot[] {
   const { route, road } = config;
   const out: Spot[] = [];
-  for (const f of PICKUP_ROUTE_FRACTIONS) {
-    const x = f * route.length;
+  const count = pickupCount(route.length, spacingM);
+  for (let k = 0; k < count; k++) {
+    const x = ((k + 0.25 + 0.5 * clamp(jitter(), 0, 1)) / count) * route.length;
     for (const e of route.mainEdges) {
       const len = road.edges[e]?.length ?? 0;
       const p0 = route.progressAt(e, 0);
@@ -1418,12 +1479,23 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
       dropWeapon(world, config, st, m);
     }
   }
+  // Who could take one this tick, with their ground points: a cheap world-distance check skips the
+  // road-frame test (relative(), which walks junction neighbours) for every pickup far away. W-Q laid
+  // one every 500 m, and without this the batch's race step ran about 25 % slower.
+  const takers: { m: Mover; x: number; z: number }[] = [];
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || m.h > PICKUP_MAX_H || !canTake(world, config, st, m)) continue;
+    const w = config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, 0);
+    takers.push({ m, x: w.x, z: w.z });
+  }
+  if (takers.length === 0) return;
   for (const pid of st.pickups) {
     const pickup = world.movers[pid];
     if (!pickup || (st.pickupHolder[pid] ?? -1) !== -1) continue;
+    const at = config.road.toWorld(pickup.pos.edge, pickup.pos.s, pickup.pos.d, 0);
     let best: { rider: Mover; dist2: number } | null = null;
-    for (const m of world.movers) {
-      if (m.kind !== 'rider' || m.h > PICKUP_MAX_H || !canTake(world, config, st, m)) continue;
+    for (const { m, x, z } of takers) {
+      if ((x - at.x) * (x - at.x) + (z - at.z) * (z - at.z) > PICKUP_NEAR_M2) continue;
       const rel = relative(config.road, m, pickup, PICKUP_S_M + 2);
       if (!rel || Math.abs(rel.ds) > PICKUP_S_M || Math.abs(rel.dd) > PICKUP_D_M) continue;
       const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
@@ -1506,7 +1578,9 @@ export const combatSystem: SimSystem = {
       .map((w) => ({ w, weight: Math.max(0, w.roadsideWeight ?? 1) }))
       .filter((p) => p.weight > 0);
     const total = pool.reduce((sum, p) => sum + p.weight, 0);
-    for (const spot of roadsideSpots(config)) {
+    const spacing = world.params['combat.pickupSpacingM'] ?? 500;
+    const spots = roadsideSpots(config, spacing, () => nextFloat(world.rng.combat));
+    for (const spot of spots) {
       if (total <= 0) break;
       let r = nextFloat(world.rng.combat) * total;
       const pick = pool.find((p) => (r -= p.weight) < 0) ?? pool[pool.length - 1];

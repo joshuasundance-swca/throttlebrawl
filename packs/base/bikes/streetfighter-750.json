@@ -1,0 +1,26 @@
+{
+  "type": "bike",
+  "id": "streetfighter-750",
+  "name": "Streetfighter 750",
+  "class": "sport",
+  "tags": ["step-up"],
+  "handling": {
+    "topSpeedMps": 55.9,
+    "accelMps2": 6.1,
+    "brakeMps2": 10.0,
+    "steerRateMps": 5.8,
+    "massKg": 190
+  },
+  "engineSound": {
+    "preset": "inline-four"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The career's middle bike (run W-R; the product spec's Bikes: three bikes, each a clear step up). About 125 mph (55.9 m/s), a quarter faster than the Rustbucket's 100, so the rivals' tier-two pace (41 m/s) is comfortable and tier three's (46) is a fight. Its model arrives with the bike-models PR (#300), id for id.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

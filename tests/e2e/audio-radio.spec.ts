@@ -149,6 +149,10 @@ for (const [pack, id] of [
   ['region-pnw', 'pnw-salal'],
   ['region-sf', 'sf-burn-rate'],
   ['region-sf', 'sf-fog-bank'],
+  // Run W-Q: the third station of each region.
+  ['base', 'keys-tradewinds'],
+  ['region-pnw', 'pnw-stump'],
+  ['region-sf', 'sf-gold-rush'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
     const file = new URL(`../../packs/${pack}/stations/${id}.json`, import.meta.url);
@@ -167,7 +171,7 @@ for (const [pack, id] of [
 // Keys' and the regional ones, plays unclipped and at about the same loudness, so switching
 // stations or regions never jumps the level. One synthetic station per band, two songs each.
 test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
   const bands = [
     ['surf', 'surf-trio'],
     ['rockabilly', 'rockabilly-trio'],
@@ -175,6 +179,13 @@ test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ 
     ['folk', 'folk-band'],
     ['synth', 'synth-band'],
     ['psych', 'psych-band'],
+    // Run W-Q: the six newer bands (a third station and a hidden pirate per region).
+    ['island', 'island-band'],
+    ['dub', 'dub-band'],
+    ['stoner', 'stoner-band'],
+    ['ambient', 'ambient-band'],
+    ['funk', 'funk-band'],
+    ['chip', 'chip-band'],
   ] as const;
   const problems = await openHarness(page);
   const levels: Record<string, number> = {};
@@ -237,7 +248,7 @@ type ProbeWindow = Window & {
 test.describe('in the game', () => {
   test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 720 } });
 
-  test('radio: a Keys race starts on rockabilly; R tunes surf, then off, then the score', async ({
+  test('radio: a Keys race starts on rockabilly; R tunes surf, island, then off, then the score', async ({
     page,
   }) => {
     const problems: string[] = [];
@@ -275,6 +286,9 @@ test.describe('in the game', () => {
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
+    // The Keys' third station (run W-Q) is Salt Air, the island band, before the radio goes off.
+    await page.keyboard.press('r');
+    await page.waitForTimeout(400);
     await page.keyboard.press('r');
     await page.waitForTimeout(400);
     const off = await heard(1000);

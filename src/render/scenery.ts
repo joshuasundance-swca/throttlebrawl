@@ -88,7 +88,17 @@ export function themeAt(tags: readonly SideTag[] | undefined, side: 'left' | 'ri
 }
 
 export type SceneryKind =
-  'palm' | 'mangrove' | 'shack' | 'pole' | 'skiff' | 'boat' | 'conifer' | 'house' | 'sawmill' | 'fogBank';
+  | 'palm'
+  | 'mangrove'
+  | 'shack'
+  | 'pole'
+  | 'skiff'
+  | 'boat'
+  | 'conifer'
+  | 'house'
+  | 'sawmill'
+  | 'fogBank'
+  | 'islet';
 export const SCENERY_KINDS: readonly SceneryKind[] = [
   'palm',
   'mangrove',
@@ -100,6 +110,7 @@ export const SCENERY_KINDS: readonly SceneryKind[] = [
   'house',
   'sawmill',
   'fogBank',
+  'islet',
 ];
 
 export interface ScenerySpot {
@@ -132,6 +143,8 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   house: 7,
   sawmill: 380,
   fogBank: 170,
+  // run W-Q: a candidate islet every so often on each open-water side of a tropical road
+  islet: 200,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -157,6 +170,8 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   house: [2.6, 0],
   sawmill: [6, 0],
   fogBank: [150, 150],
+  // out past the boats, near enough to see from the road
+  islet: [32, 50],
 };
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
@@ -170,6 +185,8 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   house: 3.4,
   sawmill: 4,
   fogBank: 40,
+  // ISLET_CLEAR_M (declared below, so the literal here)
+  islet: 16,
 };
 /** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
 export const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
@@ -188,6 +205,7 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   house: 4,
   sawmill: 1,
   fogBank: 2,
+  islet: 4,
 };
 /** Each conifer variant's share of a forest: the two firs, the young fir, the cedar. [default] */
 const CONIFER_MIX = [0.3, 0.32, 0.23, 0.15];
@@ -445,6 +463,54 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         d,
       });
     }
+    // Islets (run W-Q, distinct keys; playtest 2: "Maybe islands in the Keys"): little islands among
+    // the boats on a tropical road's open water, so the water off every bridge is never empty. Each
+    // needs open water all round it (no other road near) and water on its own road's side along
+    // its length; a boat already floating where it stands moves off (is dropped).
+    if (e.tropical) {
+      const ii = SCENERY_KINDS.indexOf('islet');
+      const isletSpacing = SCATTER_SPACING_M.islet / e.density;
+      const r = ISLET_CLEAR_M;
+      for (let k = 0; ; k++) {
+        const s = (k + 0.15 + 0.7 * h(ii, k, side, 0)) * isletSpacing;
+        if (s > e.length) break;
+        if (h(ii, k, side, 1) >= ISLET_RATE) continue;
+        if (![s - r, s, s + r].every((u) => e.theme(side, Math.max(0, Math.min(e.length, u))) === 'water'))
+          continue;
+        const [near, spread] = ACROSS_M.islet;
+        const across = near + spread * h(ii, k, side, 2);
+        const d = side * (outer + across);
+        const ring: readonly (readonly [number, number])[] = [
+          [0, 0],
+          [-r, 0],
+          [r, 0],
+          [0, -r],
+          [0, r],
+        ];
+        if (!ring.every(([ds, dd]) => e.openWater(Math.max(0, Math.min(e.length, s + ds)), d + dd))) continue;
+        const p = e.world(s, d, 0);
+        for (let j = out.length - 1; j >= 0; j--) {
+          const o = out[j];
+          if (o && (o.kind === 'skiff' || o.kind === 'boat') && Math.hypot(o.p.x - p.x, o.p.z - p.z) < r + 6)
+            out.splice(j, 1);
+        }
+        // One kind of islet per square of the scenery's batching grid (road-mesh.ts
+        // SCENERY_CHUNK_M), so the islets in sight cost a draw per square, not per kind and square.
+        const gx = Math.floor(p.x / ISLET_GROUP_M);
+        const gz = Math.floor(p.z / ISLET_GROUP_M);
+        out.push({
+          kind: 'islet',
+          variant: Math.floor(scatterHash(e.seed, ii * 7919 + gx, gz, 11) * VARIANTS.islet) % VARIANTS.islet,
+          p: { x: p.x, y: -ISLET_SINK_M, z: p.z },
+          turn: h(ii, k, side, 3) * Math.PI * 2,
+          size: 1 + 0.4 * h(ii, k, side, 6),
+          phase: 0,
+          edge: e.edge,
+          s,
+          d,
+        });
+      }
+    }
     // Fog banks far offshore, lying along the shore (a region whose palette names a fog bank).
     if (!e.fogBanks) continue;
     const fi = SCENERY_KINDS.indexOf('fogBank');
@@ -475,6 +541,15 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
   }
   return out;
 }
+
+/** An islet's open water all round its centre, m (the biggest islet's sand reaches about 15 m). [default] */
+export const ISLET_CLEAR_M = 16;
+/** Share of an open-water side's islet candidates that get one. [default] */
+const ISLET_RATE = 0.85;
+/** The scenery's batching square (road-mesh.ts SCENERY_CHUNK_M): one islet kind per square. */
+const ISLET_GROUP_M = 256;
+/** Each islet's lowest point is this far under the waterline (tools/blender/props/keys_islets.py SINK_M). */
+export const ISLET_SINK_M = 0.8;
 
 /** Metres between conifers on a forest's far ground, at density 1. [default] */
 export const FAR_CONIFER_SPACING_M = 10;

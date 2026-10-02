@@ -23,9 +23,19 @@
   ],
   "tags": [
     { "s0": 0, "s1": 300, "side": "right", "tag": "marina" },
-    { "s0": 0, "s1": 300, "side": "left", "tag": "strip-mall" }
+    { "s0": 0, "s1": 300, "side": "left", "tag": "strip-mall" },
+    { "s0": 0, "s1": 300, "side": "both", "tag": "key-fishing" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-marina-chum-key",
+      "s0": 100,
+      "s1": 110,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "chum-key"
+    },
     {
       "kind": "billboard",
       "id": "sign-marina-charters",

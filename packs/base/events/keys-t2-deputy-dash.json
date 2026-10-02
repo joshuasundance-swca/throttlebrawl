@@ -1,0 +1,62 @@
+{
+  "type": "event",
+  "id": "keys-t2-deputy-dash",
+  "name": "Twenty-Two Years",
+  "kind": "cop-escape",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-standard-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["chad-speedwell", "the-mayor"],
+    "paceMps": 39
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2
+  },
+  "rules": {
+    "escapeBy": "survive",
+    "surviveS": 45,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 1500
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
+    "perTakedownCash": 260,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape: two cops come out and chaos brings more.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

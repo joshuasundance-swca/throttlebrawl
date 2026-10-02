@@ -24,6 +24,7 @@ import {
 } from 'three';
 import type { PropSnapshot, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
+import { paintCopy } from './boards';
 import type { LookStyle } from './look';
 
 type Parts = BoxPart[];
@@ -375,38 +376,19 @@ function signFace(variant: string): { bg: string; fg: string } {
 function signTexture(label: string, variant: string): Texture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 384;
+  canvas.height = 384;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const face = signFace(variant);
   ctx.fillStyle = face.bg;
-  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillRect(0, 0, 384, 384);
   ctx.strokeStyle = face.fg;
-  ctx.lineWidth = 10;
-  ctx.strokeRect(10, 10, 236, 236);
+  ctx.lineWidth = 14;
+  ctx.strokeRect(14, 14, 356, 356);
   ctx.fillStyle = face.fg;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const words = label.split(/\s+/).filter(Boolean);
-  let size = 52;
-  let lines: string[] = [];
-  for (; size >= 18; size -= 4) {
-    ctx.font = `bold ${size}px sans-serif`;
-    lines = [];
-    let line = '';
-    for (const w of words) {
-      const next = line ? `${line} ${w}` : w;
-      if (ctx.measureText(next).width > 220 && line) {
-        lines.push(line);
-        line = w;
-      } else line = next;
-    }
-    if (line) lines.push(line);
-    if (lines.length * size * 1.1 <= 220) break;
-  }
-  const top = 128 - ((lines.length - 1) * size * 1.1) / 2;
-  lines.forEach((l, i) => ctx.fillText(l, 128, top + i * size * 1.1));
+  // A short headline that comes true a moment later, and a small kicker (boards.ts, `paintCopy`).
+  paintCopy(ctx, 384, 384, label, face.fg);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;
@@ -557,7 +539,7 @@ export class EventProps {
       if (sign) this.root.remove(sign.mesh);
       const g = new Group();
       const post = new InstancedMesh(
-        mergeBoxes([box([0.14, 3.6, 0.14], [0, 1.8, 0.05], '#9aa0a6')]),
+        mergeBoxes([box([0.14, 3.6, 0.14], [0, 1.8, -0.12], '#9aa0a6')]),
         this.material(false),
         1,
       );
@@ -572,7 +554,7 @@ export class EventProps {
       if (tex) {
         // The face looks back along the road at the riders coming (the plane's +z, the model's back).
         const panel = new Mesh(new PlaneGeometry(SIGN_M, SIGN_M), this.look.material('board', { map: tex }));
-        panel.position.set(0, 2.2 + SIGN_M / 2, 0.1);
+        panel.position.set(0, 2.2 + SIGN_M / 2, 0);
         g.add(panel);
       }
       g.name = `event-sign-${p.id}`;
