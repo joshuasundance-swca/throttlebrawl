@@ -316,6 +316,7 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       fogBanks: 2,
       cableCar: 1,
       pnwRoadside: 12,
+      sfRoadside: 13,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
