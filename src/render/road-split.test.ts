@@ -73,9 +73,7 @@ describe('the shortcut split (playtest 1b)', () => {
     let examined = 0;
     let stacked = 0;
     for (const e of shortcutEdges) {
-      // From just past the seam: exactly at s 0 a ray can graze the ribbon's first edge and see the
-      // zone paint beneath (run W-R's left-side sandbar split showed it; 0.25 m on, the ribbon is on top).
-      for (let s = 0.25; s <= Math.min(e.length, 80); s += 3) {
+      for (let s = 0; s <= Math.min(e.length, 80); s += 3) {
         for (let d = e.dMin - 0.5; d <= e.dMax + 0.5; d += 0.5) {
           const p = road.toWorld(e.index, s, d, 0);
           // Two edges meeting end to end share their seam in one material: that cannot flicker.

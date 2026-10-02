@@ -55,7 +55,6 @@
     ]
   },
   "signs": [
-    { "id": "park-cut", "text": "PARK CUT. Flatter. Muddier. Unfunded.", "status": "live" },
     {
       "id": "alley-keep-right",
       "text": "STAIR ALLEY: KEEP RIGHT. No vehicles. Especially yours.",

@@ -20,30 +20,19 @@
     "sf-switchback-street",
     "c-switchback-merge-main",
     "sf-painted-row",
-    "c-sf-park-split-main",
     "sf-fogline-climb",
-    "c-sf-park-merge-main",
     "sf-bridge-onramp",
     "sf-bridge-approach",
-    "c-sf-park-in",
-    "sf-park-cut",
-    "c-sf-park-out",
     "c-stair-alley-in",
     "sf-stair-alley",
     "c-stair-alley-out"
   ],
   "checkpoints": [
     { "road": "sf-cable-line-grade", "s": 400 },
-    { "road": "sf-painted-row", "s": 300 }
+    { "road": "sf-painted-row", "s": 300 },
+    { "road": "sf-fogline-climb", "s": 300 }
   ],
   "branches": [
-    {
-      "id": "sf-park-cut",
-      "kind": "shortcut",
-      "marked": true,
-      "sign": "PARK CUT. Flatter. Muddier. Unfunded.",
-      "roads": ["c-sf-park-in", "sf-park-cut", "c-sf-park-out"]
-    },
     {
       "id": "sf-stair-alley",
       "kind": "shortcut",
