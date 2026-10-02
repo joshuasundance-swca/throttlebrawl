@@ -304,6 +304,24 @@ describe('tumble: a scripted crash', () => {
     expect(h.player.pos.dir).toBe(-1);
   });
 
+  it('remounts facing the way it was racing, even where its line at the crash points back along the road', () => {
+    // A crash at a sharp bend or a junction: the world direction of travel at the crash, compared
+    // at the resting spot, points backwards along the road. Before, the bike was parked that way and
+    // the rider rode off backwards (a stalled race on the twin-peaks real road, playtest 2).
+    for (const dir of [1, -1] as const) {
+      const h = harness([{ tick: 5, rider: 1 }]);
+      h.player.pos = { edge: 1, s: 250, d: dir * 1.7, dir };
+      h.player.speed = 25;
+      for (let t = 0; t < 6; t++) h.step(neutral());
+      const r = tumbleRecord(h.world, 1);
+      if (!r) throw new Error('no tumble');
+      r.travelX = -r.travelX;
+      r.travelZ = -r.travelZ;
+      until(h, () => h.player.mode === 'Road', neutral);
+      expect(h.player.pos.dir, `riding ${dir > 0 ? 'toward the finish' : 'the wrong way'}`).toBe(dir);
+    }
+  });
+
   it('crosses an edge boundary: a crash just before a junction slides onto the next road', () => {
     const h = harness([{ tick: 3, rider: 1 }]);
     h.player.pos = { edge: 0, s: 390, d: 1.7, dir: 1 };
