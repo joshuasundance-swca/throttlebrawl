@@ -16,6 +16,12 @@
 // - keeps their hands free near him (no punches or kicks within 12 m);
 // - presses attack REACTION_TICKS after his wind-up shows (his arm and the glint go up as it
 //   starts), a plain human reaction.
+// He keeps trying with a road weapon in hand, until his first steal off the cop (the main-green
+// fix, 2026-10-02). Before, he gave up as soon as he held one. That stood in for an empty-handed
+// thief while a full-handed press only swung the pipe, but since the W-O polish run a steal works
+// with full hands (he drops his own), and since W-Q a weapon lies on your line by the bike after
+// 3 in 10 crashes (#313), so he picked one up in most San Francisco races and stopped trying:
+// steals fell from 6 races in 10 to 2 while the same player who keeps trying stole in 8.
 // The races load the way the game loads them: every carried pack, release content only (no
 // drafts), built with the app's own buildSimConfig and stream cache.
 import { describe, expect, it } from 'vitest';
@@ -54,16 +60,17 @@ const MAX_TICKS = 60 * 60 * 6;
 /** The share of a region's seeded races in which a player who tries steals the cop's weapon. */
 const MIN_STEAL_SHARE = 0.5;
 
-function raceConfig(event: string, seed: number, pickupSpacingM = 2000): SimConfig {
+function raceConfig(event: string, seed: number): SimConfig {
   // Without the W-P road events: they reshuffle each seed's race (over seeds 11 to 40 the steal rate
   // was 23 of 30 without them and 20 of 30 with them), and this measures the steal, not the road.
+  // The roadside weapons lie at the game's own density (W-Q: one per 500 m). A player who stopped
+  // trying with a road weapon in hand stole in only 4 of 10 Pacific Northwest and San Francisco
+  // races at that density; the player who keeps trying (above) stole in 9, 10 and 9 of 10 (#303's
+  // run, before the patrol and the weapon by the bike merged).
   return buildSimConfig(REG, STREAMS.forEvent(REG, event), {
     seed,
     eventId: event,
-    // And with the roadside weapons about as sparse as before W-Q (one per 2 km, not per 500 m): a
-    // player who tries stops while a road weapon is in hand, so the denser roadside cut the tries
-    // (Pacific Northwest and San Francisco 4 of 10). The full-hand test races the game's density.
-    tuning: { 'modifiers.setPieceChance': 0, 'combat.pickupSpacingM': pickupSpacingM },
+    tuning: { 'modifiers.setPieceChance': 0 },
   });
 }
 
@@ -80,11 +87,12 @@ interface StealRun {
 }
 
 /**
- * `armed`: the player keeps trying with a road weapon in hand (the W-O polish run: a steal works
- * with full hands, dropping what you hold), until his first steal off the cop.
+ * One seeded race of the player who tries (the file header). He tries while his hands are empty,
+ * and with a road weapon in hand until his first steal off the cop (the W-O polish run: a steal
+ * works with full hands, dropping what you hold).
  */
-function tryToSteal(event: string, seed: number, armed = false): StealRun {
-  const config = raceConfig(event, seed, armed ? 500 : 2000);
+function tryToSteal(event: string, seed: number): StealRun {
+  const config = raceConfig(event, seed);
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const copIds = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
@@ -105,7 +113,7 @@ function tryToSteal(event: string, seed: number, armed = false): StealRun {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     const me = snap.entities[playerId];
-    if (me && (!me.heldWeapon || (armed && run.steals === 0))) {
+    if (me && (!me.heldWeapon || run.steals === 0)) {
       for (const id of copIds) {
         const cop = snap.entities[id];
         if (!cop || cop.mode !== 'Road' || !cop.heldWeapon) continue;
@@ -154,15 +162,26 @@ function tryToSteal(event: string, seed: number, armed = false): StealRun {
   return run;
 }
 
+const RUNS = new Map<string, StealRun[]>();
+/** The seeded races of one event, run once and shared by the checks below. */
+function runsFor(event: string): StealRun[] {
+  let runs = RUNS.get(event);
+  if (!runs) {
+    runs = SEEDS.map((seed) => tryToSteal(event, seed));
+    RUNS.set(event, runs);
+  }
+  return runs;
+}
+
 describe("the law's weapons in a real race (release content, every region)", () => {
   it('each region has a cop who starts the race holding his weapon, the taser included', () => {
     for (const r of REGIONS) {
       const config = raceConfig(r.event, 1);
       const cops = config.riders.filter((d) => d.faction === 'law');
-      expect(
-        cops.map((d) => d.contentId),
-        r.name,
-      ).toEqual([r.cop]);
+      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, every one the
+      // region's cop.
+      expect(cops, r.name).toHaveLength(4);
+      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(new Set([r.cop]));
       expect(cops[0]?.startingWeapon, r.name).toBe(r.weapon);
       const sim = createSim(config);
       sim.step([toSimInput(emptyActions())]);
@@ -177,7 +196,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
 
   for (const r of REGIONS) {
     it(`${r.name}: a player who tries steals the cop's ${r.weapon.replace('base:', '')} in most races`, () => {
-      const runs = SEEDS.map((seed) => tryToSteal(r.event, seed));
+      const runs = runsFor(r.event);
       const stole = runs.filter((x) => x.steals > 0);
       process.stdout.write(
         `[cops-steal] ${r.name}: a player who tries stole the ${r.weapon} in ${stole.length} of ${runs.length} races ` +
@@ -189,11 +208,12 @@ describe("the law's weapons in a real race (release content, every region)", () 
     });
   }
 
+  // The same races as the regional checks above (one run per seed and region, shared).
   it('with a road weapon in hand, a player who tries still steals the cop’s weapon (he drops his own)', () => {
     const lines: string[] = [];
     let fullHands = 0;
     for (const r of REGIONS) {
-      const runs = SEEDS.map((seed) => tryToSteal(r.event, seed, true));
+      const runs = runsFor(r.event);
       const stole = runs.filter((x) => x.steals > 0);
       const full = runs.reduce((n, x) => n + x.fullHandSteals, 0);
       fullHands += full;

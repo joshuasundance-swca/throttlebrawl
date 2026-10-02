@@ -53,7 +53,8 @@ describe('combat-2 on the base pack', () => {
 
 /**
  * Replays a race's weapon events and returns what they add up to, or the first inconsistency.
- * `armedAtStart`: riders who start holding a weapon (the cop's baton: no grab event), and
+ * `armedAtStart`: riders who start the race holding a weapon (the cops' batons and tasers: no
+ * weaponGrab puts it in their hands), so a first steal off one of them is consistent too, and
  * `keepsOnWreck`: riders who keep theirs through a crash (the law holsters it, sim/combat).
  */
 function audit(
@@ -99,7 +100,7 @@ function audit(
     } else if (src === 'steal') {
       out.steal++;
       const from = e.target ?? -1;
-      const pid = holding.get(from);
+      const pid = holding.get(from); // a starting weapon is held from the start (armedAtStart)
       if (pid === undefined) out.problem ||= `tick ${e.tick}: stole from rider ${from}, who held nothing`;
       else {
         holding.delete(from);
@@ -119,14 +120,14 @@ describe('combat-2 over the shared seeded-race batch', () => {
     let pipeHits = 0;
     let racesWithGrab = 0;
     const problems: string[] = [];
+    // Every batch race fields the same riders (the batch turns the patrol off): those with a
+    // starting weapon (the cops), who are also the law and keep it through a crash.
+    const { config } = createBatchRace(1);
+    const ids = (pick: (i: number) => boolean) => config.riders.flatMap((_r, i) => (pick(i) ? [i] : []));
+    const armedAtStart = ids((i) => config.riders[i]?.startingWeapon !== undefined);
+    const keepsOnWreck = ids((i) => config.riders[i]?.faction === 'law');
     for (const race of batch.races) {
-      const { config } = createBatchRace(race.seed);
-      const ids = (pick: (i: number) => boolean) => config.riders.flatMap((_r, i) => (pick(i) ? [i] : []));
-      const a = audit(
-        race.events,
-        ids((i) => config.riders[i]?.startingWeapon !== undefined),
-        ids((i) => config.riders[i]?.faction === 'law'),
-      );
+      const a = audit(race.events, armedAtStart, keepsOnWreck);
       road += a.road;
       steal += a.steal;
       cues += a.cues;

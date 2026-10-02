@@ -1,7 +1,7 @@
 // The baked road format as road/ reads it (docs/content-packs.md, "Road networks, roads and
 // routes"). These are structural input types: content/'s parsed files satisfy them, so road/
 // never imports content/. Optional fields carry `| undefined` for exactOptionalPropertyTypes.
-import type { LaneInfo, MedianKind, RoadSurface, VergeEdge, VergeSurface } from '../core';
+import type { LaneInfo, MedianKind, RoadSurface, RouteBranchKind, VergeEdge, VergeSurface } from '../core';
 
 /**
  * A verge band beside the road (W-Q cross-section; interview, 2026-10-02: "Anywhere with ground"):
@@ -194,6 +194,29 @@ export interface BakedRoute {
   checkpoints?: readonly { road: string; s: number }[] | undefined;
   closed: boolean;
   startGrid?: { rows: number; perRow: number; rowGapM: number } | undefined;
+  /**
+   * Named branches off the main path (W-Q; interview, 2026-10-02: "junction choices in races").
+   * Optional: a split zone onto allowed roads that no entry names is still a branch, derived by
+   * `createRouteProgress` (route.ts). An entry names one, gives it a stable id, and says what it is.
+   */
+  branches?: readonly BakedRouteBranch[] | undefined;
+}
+
+/**
+ * One branch off a route's main path, as a route file names it. A rider picks it by position at
+ * its split zone (no button), as every split in the network does.
+ */
+export interface BakedRouteBranch {
+  /** Stable id within the route: the career records found shortcuts and secrets by it. */
+  id: string;
+  /** The branch's own roads, connectors included: every one in allowedRoads, none on the main path. */
+  roads: readonly string[];
+  /** Derived from what taking it saves when absent (`ROUTE_BRANCH_ALTERNATE_M`). */
+  kind?: RouteBranchKind | undefined;
+  /** Signed and drawn at the split (the default), or false for a secret found by riding it. */
+  marked?: boolean | undefined;
+  /** The deadpan sign at the split ("SANDBAR: NOT ADVISED."), when it has one. */
+  sign?: string | undefined;
 }
 
 /** Everything the road module needs to build one network. */

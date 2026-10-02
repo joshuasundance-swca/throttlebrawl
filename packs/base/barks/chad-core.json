@@ -305,11 +305,21 @@
       "text": "Chat's mostly bots now. Hi, bots.",
       "audioAsset": "audio/barks/chad-core/chad-start-sf-bots",
       "audioStatus": "live"
+    },
+    {
+      "id": "chad-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Chat, look. A floor angle."
+    },
+    {
+      "id": "chad-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Stay down. It's a better thumbnail."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "chad-hit-subscribe is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
+    "notes": "chad-hit-subscribe is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -6,8 +6,9 @@
 // region offers races well with its region's full race around it. The bot rides each one with the
 // event's field (regulars and locals), the local cop, the region's traffic and pedestrians, and
 // the set pieces its seed places, and finishes (a race it does not finish must end in a bust, the
-// dev bot never evades the cop, never a stall). The grid stands on the start road, the cop waits
-// at the route's lot, and a seed replays to identical state hashes.
+// dev bot never evades the cop, never a stall). The grid stands on the start road, the lot cop
+// waits at the route's lot, the patrol (playtest 2) waits on the shoulder up the road, and a seed
+// replays to identical state hashes.
 //
 // The race loads the way the game loads it: every carried pack combined into one registry, the
 // route picked with RaceSetup.route (app/config.ts).
@@ -120,15 +121,34 @@ describe('real roads as routes: each one races well inside its region race', () 
       expect(riders).toHaveLength(config.riders.length);
       const cops = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
       expect(cops.length, 'the local cop rides').toBeGreaterThan(0);
+      const patrol = cops.filter(
+        (i) => config.route.progressAt(riders[i]?.road.edge ?? -1, riders[i]?.road.s ?? 0) > 100,
+      );
       for (const [i, e] of riders.entries()) {
         expect(moverProblem(e, config.route), `rider ${i}`).toBeNull();
+        if (patrol.includes(i)) continue;
         expect(e.road.edge, `rider ${i} starts on the start road`).toBe(startEdge);
         expect(e.road.s, `rider ${i} starts behind the line`).toBeLessThanOrEqual(start.s + 1);
         expect(Math.abs(e.road.d), `rider ${i} starts on the road or its lot`).toBeLessThan(10);
       }
-      // The cop waits on the shoulder at the route's lot (its first copSpawn, s 4 to 20), off the
+      // Playtest 2: up to two cops patrol (none here: these races turn the patrol off with the road
+      // events), each on the shoulder up the road, inside the route's 8 % to 80 % (sim/cops PATROL),
+      // off the travel lanes. tests/sim/cops-patrol.test.ts races the patrol on every route.
+      expect(patrol.length, 'the patrol').toBeLessThanOrEqual(2);
+      for (const i of patrol) {
+        const cop = riders[i]?.road;
+        const at = config.route.progressAt(cop?.edge ?? -1, cop?.s ?? 0);
+        expect(at, 'the patrol waits up the road').toBeGreaterThanOrEqual(0.08 * config.route.length - 1);
+        expect(at, 'the patrol waits up the road').toBeLessThanOrEqual(0.8 * config.route.length + 1);
+        const off = config.road
+          .lanesAt(cop?.edge ?? -1, cop?.s ?? 0)
+          .filter((l) => l.kind === 'drive')
+          .every((l) => Math.abs((cop?.d ?? 0) - l.dCenterM) >= l.widthM / 2);
+        expect(off, 'the patrol waits off the travel lanes').toBe(true);
+      }
+      // The rest wait on the shoulder at the route's lot (its first copSpawn, s 4 to 20), off the
       // travel lanes, behind the grid (sim/cops copSpawnPos).
-      for (const i of cops) {
+      for (const i of cops.filter((k) => !patrol.includes(k))) {
         const cop = riders[i]?.road;
         expect(cop?.s ?? -1, 'the cop waits at the lot').toBeGreaterThanOrEqual(4);
         expect(cop?.s ?? 99, 'the cop waits at the lot').toBeLessThanOrEqual(20);
