@@ -70,7 +70,7 @@ const TYPES: SimTrafficTypeDef[] = [
   road('region-pnw:wagon-with-kayaks', 'car', 4.8, 1.8),
   road('region-pnw:motorhome', 'rv', 9.5, 2.5),
   road('region-pnw:rain-cape-cyclist', 'car', 1.8, 0.6),
-  road('region-sf:dawdle-robotaxi', 'car', 4.8, 1.9),
+  road('region-sf:hesitron-robotaxi', 'car', 4.8, 1.9),
   road('region-sf:startup-shuttle', 'rv', 11, 2.6),
   road('region-sf:delivery-e-bike', 'car', 1.8, 0.7),
   road('region-sf:e-scooter-rider', 'car', 1.1, 0.55),
@@ -99,7 +99,7 @@ describe('which regional figure draws each type', () => {
     expect(trafficFigureFor('region-pnw:log-truck')).toBe('logTruck');
     expect(trafficFigureFor('region-pnw:wagon-with-kayaks')).toBe('wagon');
     expect(trafficFigureFor('region-pnw:mossy-wagon')).toBe('wagon');
-    expect(trafficFigureFor('region-sf:dawdle-robotaxi')).toBe('robotaxi');
+    expect(trafficFigureFor('region-sf:hesitron-robotaxi')).toBe('robotaxi');
     expect(trafficFigureFor('region-sf:startup-shuttle')).toBe('shuttle');
     expect(trafficFigureFor('region-sf:delivery-e-bike')).toBe('eBike');
     expect(trafficFigureFor('region-sf:e-scooter-rider')).toBe('scooterRider');
@@ -129,7 +129,7 @@ describe('which regional figure draws each type', () => {
     expect(new Set(parts).size).toBe(parts.length);
     for (const [k, x] of Object.entries(TRAFFIC_FIGURE_PARTS)) expect(x.length, k).toBeGreaterThanOrEqual(6);
     // Only a dog is tinted (a tint multiplies every part, skin and kayaks too).
-    expect(trafficFigureTint('robotaxi', 'region-sf:dawdle-robotaxi', 3)).toBe('#ffffff');
+    expect(trafficFigureTint('robotaxi', 'region-sf:hesitron-robotaxi', 3)).toBe('#ffffff');
     expect(trafficFigureTint('dog', 'region-pnw:wet-dog', 9)).toBe('#5a4636');
     expect(trafficFigureTint('personFist', 'base:sunburnt-jogger', 2)).toBe('#ffffff');
   });

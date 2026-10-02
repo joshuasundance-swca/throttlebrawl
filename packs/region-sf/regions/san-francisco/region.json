@@ -42,7 +42,7 @@
       { "kind": "cable-car", "weight": 1, "hazard": "big" },
       { "kind": "startup-shuttle", "weight": 1, "hazard": "big" },
       { "kind": "base:box-truck", "weight": 1, "hazard": "big" },
-      { "kind": "dawdle-robotaxi", "weight": 2.5, "hazard": "normal" },
+      { "kind": "hesitron-robotaxi", "weight": 2.5, "hazard": "normal" },
       { "kind": "delivery-e-bike", "weight": 1.5, "hazard": "normal" },
       { "kind": "e-scooter-rider", "weight": 1.5, "hazard": "normal" }
     ],

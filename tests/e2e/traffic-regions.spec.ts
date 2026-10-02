@@ -49,7 +49,7 @@ const REGIONS = [
   {
     slug: 'sf',
     chip: '#region-region-sf-san-francisco',
-    vehicles: ['region-sf:dawdle-robotaxi', 'region-sf:delivery-e-bike', 'region-sf:e-scooter-rider'],
+    vehicles: ['region-sf:hesitron-robotaxi', 'region-sf:delivery-e-bike', 'region-sf:e-scooter-rider'],
   },
 ];
 

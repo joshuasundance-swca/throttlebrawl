@@ -1,7 +1,7 @@
 {
   "type": "traffic-type",
-  "id": "dawdle-robotaxi",
-  "name": "Dawdle Robotaxi",
+  "id": "hesitron-robotaxi",
+  "name": "Hesitron Robotaxi",
   "category": "car",
   "tags": ["region-sf", "satire"],
   "lengthM": 4.8,
@@ -22,7 +22,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Dawdle (a made-up company): driverless, a spinning sensor on the roof, exactly the limit, never a lane change, and they travel in pairs for reasons the company calls proprietary. Stops for nothing but a cone.",
+    "notes": "Hesitron (a made-up company): driverless, a spinning sensor on the roof, exactly the limit, never a lane change, and they travel in pairs for reasons the company calls proprietary. Stops for nothing but a cone.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
