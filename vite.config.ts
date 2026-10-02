@@ -6,6 +6,7 @@ import { defineConfig, runnerImport, type Plugin } from 'vite';
 import { SIM_CODE_HASH_PLACEHOLDER, simChunkGroup, simCodeHashPlugin } from './scripts/sim-chunk.mjs';
 import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 import { datasetAssetsPlugin } from './scripts/dataset-assets.mjs';
+import { stripPackNotesPlugin } from './scripts/pack-notes.mjs';
 
 // Build stamp (docs/engineering.md, "Vite settings"). CI sets BUILD_ID, BUILD_CHANNEL and
 // BUILD_BRANCH; a local build falls back to git and the `dev` channel.
@@ -58,7 +59,14 @@ export default defineConfig({
   // The sim chunk's code hash, the code part of the replay key (scripts/sim-chunk.mjs).
   // The road data shipped as JSON files is written on one line (scripts/json-assets.mjs, run W-P).
   // The big files pinned in assets.lock.json are baked in under assets/ds/ (run W-Q).
-  plugins: [selfTestHash(), simCodeHashPlugin(), minifyJsonAssetsPlugin(), datasetAssetsPlugin({ root })],
+  // The packs' `meta.notes` stay out of the bundled pack JSON (scripts/pack-notes.mjs, run W-R).
+  plugins: [
+    stripPackNotesPlugin(),
+    selfTestHash(),
+    simCodeHashPlugin(),
+    minifyJsonAssetsPlugin(),
+    datasetAssetsPlugin({ root }),
+  ],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',
   define: {

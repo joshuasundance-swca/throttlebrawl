@@ -63,6 +63,10 @@ const MIN_STEAL_SHARE = 0.5;
 function raceConfig(event: string, seed: number): SimConfig {
   // Without the W-P road events: they reshuffle each seed's race (over seeds 11 to 40 the steal rate
   // was 23 of 30 without them and 20 of 30 with them), and this measures the steal, not the road.
+  // The roadside weapons lie at the game's own density (W-Q: one per 500 m). A player who stopped
+  // trying with a road weapon in hand stole in only 4 of 10 Pacific Northwest and San Francisco
+  // races at that density; the player who keeps trying (above) stole in 9, 10 and 9 of 10 (#303's
+  // run, before the patrol and the weapon by the bike merged).
   return buildSimConfig(REG, STREAMS.forEvent(REG, event), {
     seed,
     eventId: event,

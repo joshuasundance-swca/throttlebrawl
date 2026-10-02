@@ -36,12 +36,12 @@ export const REGIONAL_PRESETS = ['grunge-band', 'folk-band', 'synth-band', 'psyc
 export type RegionalPreset = (typeof REGIONAL_PRESETS)[number];
 
 /** A chord: its root in semitones from the key, and whether it is minor. */
-type Chord = { root: number; minor: boolean };
-const maj = (root: number): Chord => ({ root, minor: false });
-const min = (root: number): Chord => ({ root, minor: true });
+export type Chord = { root: number; minor: boolean };
+export const maj = (root: number): Chord => ({ root, minor: false });
+export const min = (root: number): Chord => ({ root, minor: true });
 
-const S = 16; // sixteenths per bar, every regional band
-const BARS = 8;
+export const S = 16; // sixteenths per bar, every regional band
+export const BARS = 8;
 
 const AEOLIAN = [0, 2, 3, 5, 7, 8, 10];
 const DORIAN = [0, 2, 3, 5, 7, 9, 10];
@@ -88,9 +88,9 @@ const PSYCH_SCALES: Readonly<Record<string, readonly number[]>> = {
   descent: AEOLIAN,
 };
 
-const chordPcs = (c: Chord, extra: readonly number[] = []) =>
+export const chordPcs = (c: Chord, extra: readonly number[] = []) =>
   [0, c.minor ? 3 : 4, 7, ...extra].map((iv) => (((c.root + iv) % 12) + 12) % 12);
-const third = (c: Chord) => (c.minor ? 3 : 4);
+export const third = (c: Chord) => (c.minor ? 3 : 4);
 
 /** Composes a regional preset; null for a name this file does not know. */
 export function composeRegional(
@@ -105,7 +105,7 @@ export function composeRegional(
   return null;
 }
 
-interface Common {
+export interface Common {
   r: Rand;
   bpm: number;
   key: number;
@@ -113,7 +113,7 @@ interface Common {
   prog: readonly Chord[];
 }
 
-function common(
+export function common(
   params: Readonly<Record<string, unknown>>,
   seed: number,
   bpm: [number, number],
@@ -130,7 +130,7 @@ function common(
   return { r, bpm: tempo, key, form, prog };
 }
 
-const drum = (step: number, layer: RadioNote['layer'], vel: number, midi = 0, len = 1): RadioNote => ({
+export const drum = (step: number, layer: RadioNote['layer'], vel: number, midi = 0, len = 1): RadioNote => ({
   step,
   layer,
   midi,
@@ -139,7 +139,7 @@ const drum = (step: number, layer: RadioNote['layer'], vel: number, midi = 0, le
 });
 
 /** A walking melody for a bar: chord tones on strong steps, scale steps between. */
-function melodyBar(
+export function melodyBar(
   r: Rand,
   at: number,
   rhythm: readonly number[],

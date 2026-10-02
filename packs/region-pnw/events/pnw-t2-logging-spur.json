@@ -1,0 +1,78 @@
+{
+  "type": "event",
+  "id": "pnw-t2-logging-spur",
+  "name": "Logging Spur",
+  "kind": "takedown-hunt",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-sawmill-haul",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "old-growth",
+      "juniper-moss",
+      "base:deacon-vane",
+      "base:kevin-from-accounting",
+      "base:dial-up"
+    ],
+    "paceMps": 39
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "targetCount": 3,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 3
+      },
+      "required": true,
+      "rewardCash": 1500
+    },
+    {
+      "id": "shortcut",
+      "kind": "ride-branch",
+      "params": {
+        "branch": "pnw-logging-spur"
+      },
+      "required": false,
+      "rewardCash": 400
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
+    "perTakedownCash": 260,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt: three takedowns on the sawmill haul; the logging spur pays a bonus.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

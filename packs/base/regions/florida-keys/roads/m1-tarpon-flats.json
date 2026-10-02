@@ -23,10 +23,47 @@
   ],
   "tags": [
     { "s0": 0, "s1": 1250, "side": "left", "tag": "water-shallow" },
-    { "s0": 0, "s1": 700, "side": "right", "tag": "beach" },
-    { "s0": 700, "s1": 1250, "side": "right", "tag": "palms" }
+    { "s0": 0, "s1": 250, "side": "right", "tag": "beach" },
+    { "s0": 250, "s1": 1250, "side": "right", "tag": "trailer-park" },
+    { "s0": 0, "s1": 1250, "side": "both", "tag": "key-junkyard" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-flats-salvage-key",
+      "s0": 20,
+      "s1": 30,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "salvage-key"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-flats-sculpture",
+      "s0": 520,
+      "s1": 530,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "sculpture-garden"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-flats-boats",
+      "s0": 800,
+      "s1": 810,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "boats-for-sale"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-flats-big-rays",
+      "s0": 1000,
+      "s1": 1040,
+      "d0": 7,
+      "d1": 16,
+      "item": "big-rays"
+    },
     {
       "kind": "roadsideZone",
       "id": "flats-anglers",

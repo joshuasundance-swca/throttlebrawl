@@ -411,7 +411,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     render(prev, curr, alpha, pose) {
       if (lost) return;
-      if (curr) views.sync(prev, curr, alpha, now());
+      if (curr) views.sync(prev, curr, alpha, now(), pose);
       camera.fov = pose.fov;
       camera.updateProjectionMatrix();
       camera.position.set(pose.x, pose.y, pose.z);
@@ -424,6 +424,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       eventProps.sync(curr, t);
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
+      boards.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
       const me = curr?.entities.find((e) => e.slot === 0);

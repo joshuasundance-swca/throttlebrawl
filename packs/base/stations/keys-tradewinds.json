@@ -1,0 +1,102 @@
+{
+  "type": "station",
+  "id": "keys-tradewinds",
+  "name": "Salt Air 98.3",
+  "genre": "island",
+  "regions": ["florida-keys"],
+  "tracks": [
+    {
+      "id": "conch-fritter-sunset",
+      "title": "Conch Fritter Sunset",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 112,
+          "key": "C",
+          "progression": "breeze"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "mile-marker-mambo",
+      "title": "Mile Marker Mambo",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 120,
+          "key": "G",
+          "progression": "carnival"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "flip-flop-tan-line",
+      "title": "Flip-Flop Tan Line",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 104,
+          "key": "F",
+          "progression": "sunset"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "rum-punch-lawsuit",
+      "title": "Rum Punch Lawsuit",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 118,
+          "key": "D",
+          "progression": "tide"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "key-lime-hurricane",
+      "title": "Key Lime Hurricane",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 122,
+          "key": "A",
+          "progression": "carnival"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "lighthouse-wont-dim",
+      "title": "Lighthouse Won't Dim",
+      "procedural": {
+        "preset": "island-band",
+        "params": {
+          "bpm": 108,
+          "key": "C",
+          "progression": "sunset"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Code-made calypso (src/audio/radio-compose-more.ts, preset island-band): a steel pan, congas, a shaker and offbeat nylon-guitar chops. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

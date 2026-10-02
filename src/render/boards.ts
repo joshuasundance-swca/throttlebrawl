@@ -63,6 +63,8 @@ export interface BoardView {
   panel: Mesh;
   /** Centre of the panel, world space. */
   centre: Vector3;
+  /** Half the board's width, m: it counts as within a draw distance once its near edge is. */
+  radius: number;
 }
 
 /** Only boards this close count as seen (they are unreadable further out). */
@@ -150,6 +152,42 @@ function fit(
 }
 
 /**
+ * Paints copy as a big headline over a small kicker, centred on a `width` x `height` canvas
+ * (boards and the road events' warning signs share it). The caller has filled the background.
+ */
+export function paintCopy(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  text: string,
+  fg: string,
+): void {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const { headline, kicker } = splitCopy(text);
+  const pad = Math.round(height * 0.07);
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const kickerH = kicker ? innerH * 0.3 : 0;
+  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(height * 0.62), 24);
+  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
+  const headBlock = head.lines.length * head.size * 1.08;
+  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
+  const gap = sub ? pad * 0.5 : 0;
+  let y = (height - (headBlock + gap + subBlock)) / 2;
+  ctx.fillStyle = fg;
+  ctx.font = `bold ${head.size}px sans-serif`;
+  head.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * head.size * 1.08));
+  y += headBlock + gap;
+  if (sub) {
+    ctx.globalAlpha = 0.82;
+    ctx.font = `bold ${sub.size}px sans-serif`;
+    sub.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * sub.size * 1.08));
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
  * The printed face: a big headline over a small kicker, in the panel's own proportions (the canvas
  * aspect matches the panel, so the letters are not stretched). Null where there is no DOM canvas.
  */
@@ -163,29 +201,7 @@ function faceTexture(item: BoardItem, aspect: number): Texture | null {
   const face = FACE[item.kind];
   ctx.fillStyle = face.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const { headline, kicker } = splitCopy(item.text);
-  const pad = Math.round(canvas.height * 0.07);
-  const innerW = canvas.width - pad * 2;
-  const innerH = canvas.height - pad * 2;
-  const kickerH = kicker ? innerH * 0.3 : 0;
-  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(canvas.height * 0.62), 24);
-  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
-  const headBlock = head.lines.length * head.size * 1.08;
-  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
-  const gap = sub ? pad * 0.5 : 0;
-  let y = (canvas.height - (headBlock + gap + subBlock)) / 2;
-  ctx.fillStyle = face.fg;
-  ctx.font = `bold ${head.size}px sans-serif`;
-  head.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * head.size * 1.08));
-  y += headBlock + gap;
-  if (sub) {
-    ctx.globalAlpha = 0.82;
-    ctx.font = `bold ${sub.size}px sans-serif`;
-    sub.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * sub.size * 1.08));
-    ctx.globalAlpha = 1;
-  }
+  paintCopy(ctx, canvas.width, canvas.height, item.text, face.fg);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;
@@ -269,6 +285,22 @@ export class Boards {
     for (const v of this.views) v.group.visible = !this.hidden.has(v.ref);
   }
 
+  /**
+   * Per frame: draws only the boards within `drawM` of the camera (render.sceneryDrawM, the
+   * scenery's own draw distance; past it the houses and trees round a board are hidden too, and
+   * each board costs two draw calls; main fix, 2026-10-02). A vetoed board stays hidden. Returns
+   * the boards drawn.
+   */
+  update(cameraX: number, cameraZ: number, drawM: number): number {
+    let drawn = 0;
+    for (const v of this.views) {
+      const near = Math.hypot(v.centre.x - cameraX, v.centre.z - cameraZ) - v.radius < drawM;
+      v.group.visible = near && !this.hidden.has(v.ref);
+      if (v.group.visible) drawn++;
+    }
+    return drawn;
+  }
+
   /** The content reference of the nearest shown board under a point in normalized device coords. */
   pick(ndcX: number, ndcY: number, camera: Camera): string | null {
     this.ndc.set(ndcX, ndcY);
@@ -350,6 +382,15 @@ export class Boards {
     group.add(frameMesh, panel);
     group.updateMatrixWorld(true);
     const centre = new Vector3(0, size.bottom + size.panelH / 2, 0).applyMatrix4(group.matrixWorld);
-    return { ref: item.ref, slotId: slot.id ?? '', kind: item.kind, text: item.text, group, panel, centre };
+    return {
+      ref: item.ref,
+      slotId: slot.id ?? '',
+      kind: item.kind,
+      text: item.text,
+      group,
+      panel,
+      centre,
+      radius: w / 2,
+    };
   }
 }

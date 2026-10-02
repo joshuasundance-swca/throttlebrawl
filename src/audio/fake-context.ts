@@ -34,6 +34,9 @@ export class FakeParam {
   exponentialRampToValueAtTime(v: number, t: number) {
     return this.rec('exponentialRampToValueAtTime', v, t);
   }
+  setValueCurveAtTime(values: ArrayLike<number>, t: number, _duration: number) {
+    return this.rec('setValueCurveAtTime', values[values.length - 1] ?? 0, t);
+  }
   cancelScheduledValues(t: number) {
     return this.rec('cancelScheduledValues', Number.NaN, t);
   }
