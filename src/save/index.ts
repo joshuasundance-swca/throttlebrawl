@@ -49,7 +49,9 @@ export type ViewSetting = 'chase' | 'far' | 'helmet';
 export const VIEW_SETTINGS: readonly ViewSetting[] = ['chase', 'far', 'helmet'];
 /**
  * What the race plays (radio-1): the score, a station (the region's first; the pause menu's radio
- * panel and the R key switch between them) or nothing. Presentation only.
+ * panel and the R key switch between them) or nothing. Presentation only. A station by default
+ * (playtest 2, 2026-10-02: "There should be different stations and music in different regions"),
+ * so each region's race starts on that region's own sound; the score sounds the same everywhere.
  */
 export type RadioSetting = 'score' | 'station' | 'off';
 export const RADIO_SETTINGS: readonly RadioSetting[] = ['score', 'station', 'off'];
@@ -123,6 +125,11 @@ export interface Settings {
    */
   radioStation: string | null;
   /**
+   * The radio default this record was written under (playtest 2): 'station' from this build on.
+   * Its absence marks a record from before, which `migrateRadio` moves off the old default.
+   */
+  radioDefault: RadioSetting;
+  /**
    * Gamepad remaps: action id → control tokens (such as `button3`), in input/'s vocabulary. Only
    * remapped actions are listed; an empty object means input/'s default bindings.
    */
@@ -158,8 +165,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   showTuningPanel: false,
   stylePopups: true,
   view: 'chase',
-  radio: 'score',
+  radio: 'station',
   radioStation: null,
+  radioDefault: 'station',
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
@@ -264,6 +272,19 @@ function sanitiseVetoes(v: unknown): VetoFlag[] {
 }
 
 /** Keeps each well-formed field and defaults the rest, so a bad value never reaches audio or input. */
+/**
+ * Pre-playtest-2 records (playtest 2, 2026-10-02: "There should be different stations and music in
+ * different regions"): the score was the default then, and every record kept it, so a record on the
+ * score that never played a station was never really chosen. Loading one moves it to today's
+ * default, the region's station. A record that played a station and then went back to the score
+ * keeps the score, and a record this build wrote (it carries `radioDefault`) is never touched, so
+ * picking the score always sticks.
+ */
+function migrateRadio(s: Settings, raw: unknown): Settings {
+  const old = obj(raw)['radioDefault'] === undefined;
+  return old && s.radio === 'score' && s.radioStation === null ? { ...s, radio: DEFAULT_SETTINGS.radio } : s;
+}
+
 export function sanitiseSettings(data: unknown): Settings {
   const d = obj(data);
   const v = obj(d['volumes']);
@@ -310,6 +331,7 @@ export function sanitiseSettings(data: unknown): Settings {
     stylePopups: bool(d['stylePopups'], def.stylePopups),
     view: oneOf(d['view'], VIEW_SETTINGS, def.view),
     radio: oneOf(d['radio'], RADIO_SETTINGS, def.radio),
+    radioDefault: oneOf(d['radioDefault'], RADIO_SETTINGS, def.radioDefault),
     radioStation: text(d['radioStation'], 64) ?? def.radioStation,
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
@@ -427,7 +449,7 @@ export function createSettingsStore(opts: SettingsStoreOptions): SettingsStore {
       }
       if (header.kind !== 'ok') return sanitiseSettings({});
       const rec = raw as VersionedRecord<'settings', unknown>;
-      const settings = sanitiseSettings(rec.data);
+      const settings = migrateRadio(sanitiseSettings(rec.data), rec.data);
       extras = unknownFields(rec.data);
       last = { ...rec, format: SETTINGS_FORMAT, data: settings };
       return settings;

@@ -35,87 +35,87 @@
     ]
   },
   "signs": [
-    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES.", "status": "live" },
-    { "id": "next-regret", "text": "NEXT GAS 40 MI. NEXT REGRET 2 MI.", "status": "live" },
-    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR.", "status": "live" },
-    { "id": "hurricane-late", "text": "HURRICANE EVACUATION ROUTE. YOU ARE ALREADY LATE.", "status": "live" },
+    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees.", "status": "live" },
+    { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi.", "status": "live" },
+    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear.", "status": "live" },
+    { "id": "hurricane-late", "text": "HURRICANE EVACUATION ROUTE. You are already late.", "status": "live" },
     {
       "id": "conch-republic",
-      "text": "WELCOME TO THE CONCH REPUBLIC. NO PASSPORT. SUNSCREEN MANDATORY.",
+      "text": "WELCOME TO THE CONCH REPUBLIC. No passport. Sunscreen mandatory.",
       "status": "live"
     },
-    { "id": "uv-index", "text": "UV INDEX TODAY: YES.", "status": "live" },
-    { "id": "key-lime-again", "text": "LAST CHANCE KEY LIME PIE. NEXT LAST CHANCE 1 MI.", "status": "live" },
+    { "id": "uv-index", "text": "UV INDEX TODAY: YES. No further data.", "status": "live" },
+    { "id": "key-lime-again", "text": "LAST CHANCE KEY LIME PIE. Next last chance 1 mi.", "status": "live" },
     {
       "id": "next-county",
-      "text": "IN CASE OF HURRICANE THIS SIGN WILL BE IN THE NEXT COUNTY.",
+      "text": "THIS SIGN LEAVES FIRST. In a hurricane: the next county.",
       "status": "live"
     },
-    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. FISH NOT INCLUDED.", "status": "live" },
+    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. Fish not included.", "status": "live" },
     {
       "id": "chum-key",
-      "text": "CHUM KEY. POP. 212. PELICANS NOT COUNTED.",
+      "text": "CHUM KEY. Pop. 212. Pelicans not counted.",
       "tags": ["key-fishing"],
       "status": "live"
     },
     {
       "id": "live-bait",
-      "text": "LIVE BAIT. DEAD BAIT. SAME PRICE.",
+      "text": "LIVE BAIT. Dead bait. Same price.",
       "tags": ["key-fishing"],
       "status": "live"
     },
     {
       "id": "shrimp-boats",
-      "text": "SHRIMP BOATS HAVE RIGHT OF WAY. ALWAYS HAVE.",
+      "text": "SHRIMP BOATS YIELD TO NOBODY. Always have.",
       "tags": ["key-fishing"],
       "status": "live"
     },
     {
       "id": "lime-wedge-key",
-      "text": "LIME WEDGE KEY. RESORT CASUAL REQUIRED.",
+      "text": "LIME WEDGE KEY. Resort casual required.",
       "tags": ["key-resort"],
       "status": "live"
     },
     {
       "id": "scooter-rentals",
-      "text": "SCOOTER RENTALS. HELMETS SOLD SEPARATELY.",
+      "text": "SCOOTER RENTALS. Helmets sold separately.",
       "tags": ["key-resort"],
       "status": "live"
     },
-    { "id": "pool-hours", "text": "POOL HOURS: SUNUP TO SUNBURN.", "tags": ["key-resort"], "status": "live" },
+    { "id": "pool-hours", "text": "POOL HOURS. Sunup to sunburn.", "tags": ["key-resort"], "status": "live" },
     {
       "id": "salvage-key",
-      "text": "SALVAGE KEY. EVERYTHING HERE WAS ONCE SOMEWHERE ELSE.",
+      "text": "SALVAGE KEY. Everything here was once somewhere else.",
       "tags": ["key-junkyard"],
       "status": "live"
     },
     {
       "id": "sculpture-garden",
-      "text": "SCULPTURE GARDEN. DO NOT TOUCH. DO NOT BUY.",
+      "text": "SCULPTURE GARDEN. Do not touch. Do not buy.",
       "tags": ["key-junkyard"],
       "status": "live"
     },
     {
       "id": "boats-for-sale",
-      "text": "BOATS FOR SALE. SOME FLOAT.",
+      "text": "BOATS FOR SALE. Some float.",
       "tags": ["key-junkyard"],
       "status": "live"
     },
     {
       "id": "last-resort-key",
-      "text": "LAST RESORT KEY. THE PARTY WAS YESTERDAY.",
+      "text": "LAST RESORT KEY. The party was yesterday.",
       "tags": ["key-party"],
       "status": "live"
     },
     {
       "id": "bar-closed",
-      "text": "BAR CLOSED. BARTENDER ALSO CLOSED.",
+      "text": "BAR CLOSED. Bartender also closed.",
       "tags": ["key-party"],
       "status": "live"
     },
     {
       "id": "flamingo-found",
-      "text": "FOUND: ONE FLAMINGO FLOAT. HAS SEEN THINGS.",
+      "text": "FOUND: ONE FLAMINGO. Has seen things.",
       "tags": ["key-party"],
       "status": "live"
     }
@@ -123,64 +123,64 @@
   "billboards": [
     {
       "id": "timeshare",
-      "text": "OWN A PIECE OF PARADISE. SOME PIECES STILL ABOVE WATER.",
+      "text": "PARADISE FOR SALE. Some pieces still above water.",
       "status": "live"
     },
-    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH.", "status": "live" },
+    { "id": "stream-outfit", "text": "WATCH US WRECK LIVE. New episodes every crash.", "status": "live" },
     {
       "id": "law-office-nobody",
-      "text": "INJURED ON A BRIDGE? YOU PROBABLY DESERVED IT. THE LAW OFFICE OF NOBODY.",
+      "text": "INJURED ON A BRIDGE? You probably deserved it. The Law Office of Nobody.",
       "status": "live"
     },
     {
       "id": "airboat-gary",
-      "text": "GATOR GARY'S AIRBOAT TOURS. SEE A GATOR OR SEE GARY.",
+      "text": "SEE GATOR, OR GARY. Gator Gary's Airboat Tours.",
       "status": "live"
     },
-    { "id": "lobster-lotion", "text": "LOBSTER LOTION. FOR WHEN THE SUN WON.", "status": "live" },
+    { "id": "lobster-lotion", "text": "THE SUN WON. Lobster Lotion, for the aftermath.", "status": "live" },
     {
       "id": "landfall-liquors",
-      "text": "LANDFALL LIQUORS. OPEN THROUGH EVERY STORM. MOSTLY.",
+      "text": "OPEN THROUGH EVERY STORM. Mostly. Landfall Liquors.",
       "status": "live"
     },
     {
       "id": "flat-calm",
-      "text": "FLAT CALM CHARTERS. YOU WILL CATCH SOMETHING. PROBABLY SUN.",
+      "text": "YOU WILL CATCH SOMETHING. Probably sun. Flat Calm Charters.",
       "status": "live"
     },
     {
       "id": "trap-line",
-      "text": "TRAP LINE LOBSTER CO. CAUGHT FRESH. CAUGHT ANGRY.",
+      "text": "CAUGHT FRESH, CAUGHT ANGRY. Trap Line Lobster Co.",
       "tags": ["key-fishing"],
       "status": "live"
     },
     {
       "id": "pastel-palms",
-      "text": "THE PASTEL PALMS. EVERY ROOM HAS A VIEW OF ANOTHER ROOM.",
+      "text": "EVERY ROOM, A VIEW. Of another room. The Pastel Palms.",
       "tags": ["key-resort"],
       "status": "live"
     },
     {
       "id": "tiki-tims",
-      "text": "TIKI TIM'S. THE UMBRELLAS ARE DECORATIVE.",
+      "text": "TIKI TIM'S UMBRELLA DRINKS. The umbrellas are decorative.",
       "tags": ["key-resort"],
       "status": "live"
     },
     {
       "id": "big-rays",
-      "text": "BIG RAY'S MARINE SALVAGE. IF IT SANK, RAY HAS IT.",
+      "text": "RAY HAS IT. If it sank. Big Ray's Marine Salvage.",
       "tags": ["key-junkyard"],
       "status": "live"
     },
     {
       "id": "hair-of-the-dog",
-      "text": "HAIR OF THE DOG DINER. OPENS WHEN WE DO.",
+      "text": "HAIR OF THE DOG. Diner opens when we do.",
       "tags": ["key-party"],
       "status": "live"
     },
     {
       "id": "sunset-fest",
-      "text": "SUNSET FEST WAS A SUCCESS. NOBODY REMEMBERS WHY.",
+      "text": "SUNSET FEST: SUCCESS. Nobody remembers why.",
       "tags": ["key-party"],
       "status": "live"
     }

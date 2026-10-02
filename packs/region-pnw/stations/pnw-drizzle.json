@@ -2,15 +2,19 @@
   "type": "station",
   "id": "pnw-drizzle",
   "name": "Drizzle 89.3 FM",
-  "genre": "surf",
+  "genre": "grunge",
   "regions": ["pacific-northwest"],
   "tracks": [
     {
       "id": "two-hour-ferry-wait",
       "title": "Two-Hour Ferry Wait",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 142, "key": "D", "progression": "minor", "drums": "toms", "drop": false }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 98,
+          "key": "D",
+          "progression": "drop"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -19,8 +23,12 @@
       "id": "moss-on-the-mirror",
       "title": "Moss on the Mirror",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 146, "key": "G", "progression": "andalusian", "drums": "four", "drop": true }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 112,
+          "key": "C#",
+          "progression": "heave"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -29,8 +37,12 @@
       "id": "log-truck-in-the-fog",
       "title": "Log Truck in the Fog",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 150, "key": "A", "progression": "phrygian", "drums": "toms", "drop": true }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 104,
+          "key": "D",
+          "progression": "sludge"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -39,8 +51,12 @@
       "id": "holding-lot-stomp",
       "title": "Holding Lot Stomp",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 158, "key": "B", "progression": "stomp", "drums": "drive", "drop": false }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 126,
+          "key": "E",
+          "progression": "grind"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -49,8 +65,12 @@
       "id": "traction-tires-advised",
       "title": "Traction Tires Advised",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 144, "key": "E", "progression": "minor", "drums": "toms", "drop": true }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 118,
+          "key": "B",
+          "progression": "drop"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -59,8 +79,12 @@
       "id": "sword-fern-stomp",
       "title": "Sword Fern Stomp",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 154, "key": "C", "progression": "stomp", "drums": "drive", "drop": false }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 130,
+          "key": "A",
+          "progression": "heave"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -69,8 +93,12 @@
       "id": "last-sailing-nine-forty",
       "title": "Last Sailing 9:40",
       "procedural": {
-        "preset": "surf-trio",
-        "params": { "bpm": 140, "key": "F", "progression": "phrygian", "drums": "four", "drop": true }
+        "preset": "grunge-band",
+        "params": {
+          "bpm": 94,
+          "key": "G",
+          "progression": "sludge"
+        }
       },
       "origin": "agent",
       "status": "live"
@@ -79,7 +107,11 @@
   "djBarkSet": "dj-pnw-drizzle",
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's own station (the maintainer, 2026-10-01: \"I actually like the music\"; keep the code-made radio's direction). Slower, darker surf for wet two-lanes: minor and Phrygian keys, rolling toms, 142-158 bpm (src/audio/radio-compose.ts, preset surf-trio). Melodies are generated from each track's seed, so they are original. The base stations follow it on the dial. Cut a track by setting its status to vetoed.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "notes": "The Pacific Northwest's loud station: grunge (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Quiet verses of clean arpeggios into loud, distorted power-chord choruses, drop-tuned keys, 94-130 bpm (src/audio/radio-compose-regional.ts, preset grunge-band). It played slow surf before playtest 2; the song names stayed. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
   }
 }

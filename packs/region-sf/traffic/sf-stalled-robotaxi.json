@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "sf-stalled-robotaxi",
+  "name": "Robotaxi, Reconsidering",
+  "category": "oddity",
+  "tags": ["event", "crash-scene", "sf"],
+  "lengthM": 4.8,
+  "widthM": 1.9,
+  "cruiseMps": 0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The San Francisco crash scene's stalled car: a driverless cab that stopped for a cone and is still thinking about it. No brand. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
