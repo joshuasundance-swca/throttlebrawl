@@ -17,10 +17,23 @@
 // grudge, with no grudge needed), the career's saved grudge table (`SimConfig.grudges`: points at or
 // above `ai.grudgeHuntAt` make the holder hunt that rider from the start), and a preferred weapon
 // (an unarmed rider steers over a lying pickup of it).
+// W-Q (the pitch deck's item 9, "Rivals use the shortcuts"): each rival decides at the start, per
+// shortcut on the route, whether it takes it (chance `ai.shortcutChance`, rolled from a stream of
+// its own seeded by the race seed and the rider, so the `ai` stream and everything after it are
+// untouched), and in the last SHORTCUT_APPROACH_M before a zone it takes, it rides into the zone
+// (the dev bot's line, just inside its inner edge). Traffic still has the last word on the line.
 // Law riders (cops) are not driven here: cops-1 writes their inputs from the cops phase.
 // All state is plain data in systemState(world, 'ai'); randomness comes only from the `ai` stream.
-import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadNetwork } from '../../road';
+import {
+  clamp,
+  createRng,
+  nextFloat,
+  sin,
+  streamSeed,
+  type EntityId,
+  type TuningParamDecl,
+} from '../../core';
+import type { RoadNetwork, RouteShortcut } from '../../road';
 import { combatView, pickupWeapon, STOWED_H } from '../combat';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
@@ -36,6 +49,18 @@ export { signatureState, signatureView } from './signature';
 export type { SignatureState } from './signature';
 
 export const AI_TUNING: readonly TuningParamDecl[] = [
+  {
+    // W-Q: how likely a rival takes each shortcut on its route (decided per rival at the start).
+    id: 'ai.shortcutChance',
+    group: 'rivals',
+    label: 'Rivals take a shortcut',
+    default: 0.35,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
+    affectsSim: true,
+  },
   {
     id: 'ai.paceScale',
     group: 'rivals',
@@ -131,6 +156,8 @@ export interface AiState {
   pressesOnLeader: number[];
   fleeTicks: number[];
   seekTicks: number[];
+  /** W-Q: per rider, bit k set when it takes the route's k-th shortcut (route.shortcuts order). */
+  shortcuts: number[];
 }
 
 export function aiState(world: World): AiState {
@@ -160,6 +187,7 @@ export function aiState(world: World): AiState {
     pressesOnLeader: [],
     fleeTicks: [],
     seekTicks: [],
+    shortcuts: [],
   }));
 }
 
@@ -173,6 +201,12 @@ const ACQUIRE_D = 3;
 const FIGHT_OFFSET_D = 1.1;
 /** How much faster than its pace a hunter rides after a player who got away ahead. */
 const HUNT_PACE = 0.08;
+/** How far before a shortcut's split zone a rival that takes it starts moving into it, m (the bot's). */
+export const SHORTCUT_APPROACH_M = 150;
+/** Its line in the zone: this far in from the zone's inner edge, m (the bot's). */
+const SHORTCUT_LINE_IN_M = 0.9;
+/** Shortcut bits kept per rider (a route has a handful). */
+const MAX_SHORTCUTS = 30;
 /** A rider's half width plus a margin, for avoidance. */
 const RIDER_CLEAR = 0.9;
 /** How far out traffic is seen, and how many seconds of closing make a car a blocker. */
@@ -215,6 +249,34 @@ const SIDE_SWITCH_S = 2.5;
 const SWITCH_BACK_M = 4;
 /** How long a brawler sticks to a push direction once it picks one, so passing cars and a rail don't flip it. */
 const PUSH_COMMIT_TICKS = 180;
+
+/**
+ * The shortcut zone this rival is approaching or inside, in its travel direction, and whether it
+ * takes it; null when there is none.
+ */
+function shortcutAhead(config: SimConfig, st: AiState, m: Mover): { z: RouteShortcut; take: boolean } | null {
+  const mask = st.shortcuts[m.id] ?? 0;
+  const { edge, s, dir } = m.pos;
+  const list = config.route.shortcuts;
+  for (let k = 0; k < list.length; k++) {
+    const z = list[k];
+    if (!z || z.edge !== edge) continue;
+    const near =
+      dir > 0 ? s >= z.s0 - SHORTCUT_APPROACH_M && s <= z.s1 : s <= z.s1 + SHORTCUT_APPROACH_M && s >= z.s0;
+    if (near) return { z, take: k < MAX_SHORTCUTS && (mask & (1 << k)) !== 0 };
+  }
+  return null;
+}
+
+/** A line kept this far outside a zone's inner edge by a rival that does not take it, m. */
+const SHORTCUT_CLEAR_M = 0.9;
+
+/** The line through a zone: just inside its inner edge (the edge nearer the centre line). */
+function zoneLine(z: RouteShortcut): number {
+  const inner = Math.abs(z.d0) <= Math.abs(z.d1) ? z.d0 : z.d1;
+  const outer = inner === z.d0 ? z.d1 : z.d0;
+  return inner + Math.sign(outer - inner) * Math.min(SHORTCUT_LINE_IN_M, Math.abs(outer - inner) / 2);
+}
 
 function isAiRider(config: SimConfig, m: Mover): boolean {
   const def = config.riders[m.riderIndex];
@@ -727,6 +789,20 @@ function driveRider(
     speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
 
+  // W-Q: lining up for a shortcut it takes, it rides into the zone (a fight waits); one it does not
+  // take, it keeps its line out of (its weave or a fight would otherwise drift it in by chance).
+  const cut = !finished ? shortcutAhead(config, st, m) : null;
+  if (cut && cut.take && racing && !unsticking && !fleeing) {
+    dTarget = clamp(zoneLine(cut.z), dLo, dHi);
+    lateralMax = Math.max(lateralMax, 3);
+  } else if (cut && !cut.take) {
+    const { d0, d1 } = cut.z;
+    const inner = Math.abs(d0) <= Math.abs(d1) ? d0 : d1;
+    const side = Math.sign((inner === d0 ? d1 : d0) - inner);
+    const limit = inner - side * SHORTCUT_CLEAR_M;
+    if ((dTarget - limit) * side > 0) dTarget = clamp(limit, dLo, dHi);
+  }
+
   // A fight or weave line into the path of traffic is not worth it: back to its own spot in its
   // own lane when that is clear and the chosen line is not.
   if (!pathClear(obstacles, v, pos.d, dTarget, LINE_CHECK_M)) {
@@ -1002,6 +1078,14 @@ export const aiSystem: SimSystem = {
       st.pressesOnLeader[m.id] = 0;
       st.fleeTicks[m.id] = 0;
       st.seekTicks[m.id] = 0;
+      // W-Q: which shortcuts it takes, from its own stream (the `ai` stream is not drawn).
+      const pick = createRng(streamSeed(config.seed, 'ai.shortcuts', m.id));
+      const chance = clamp(world.params['ai.shortcutChance'] ?? 0.35, 0, 1);
+      let mask = 0;
+      config.route.shortcuts.forEach((_z, k) => {
+        if (k < MAX_SHORTCUTS && nextFloat(pick) < chance) mask |= 1 << k;
+      });
+      st.shortcuts[m.id] = mask;
     }
   },
   step(world: World, config: SimConfig) {
