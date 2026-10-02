@@ -20,6 +20,16 @@ export {
   setPieceSlot,
   setPieceSlots,
 } from './setpieces';
+export {
+  deriveVerge,
+  laneEdges,
+  lanesPerDirection,
+  MAX_LANES_PER_DIRECTION,
+  resolveCrossSection,
+  resolveVerge,
+  VERGE_BY_TAG,
+} from './cross-section';
+export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
 export { createRouteProgress } from './route';
 export type { RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export { FIXTURE_LANES, fixtureBranchNetwork, fixtureBranchTrack, fixtureNetwork } from './fixture';
@@ -45,6 +55,7 @@ export type {
   BakedJunction,
   BakedJunctionEnd,
   BakedLaneSection,
+  BakedMedian,
   BakedNetwork,
   BakedNetworkBundle,
   BakedRoad,
@@ -52,5 +63,6 @@ export type {
   BakedSamples,
   BakedSplitZone,
   BakedTag,
+  BakedVerge,
   FeatureKind,
 } from './types';

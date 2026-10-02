@@ -49,6 +49,11 @@ default so the Keys bake is unchanged. Their bakes are in the region packs as re
 - `realName`, `waysLabel`, `networkNotes` and `route.notes`: the words the Keys bake had built in.
 - `laneWidthM`: each travel lane's width (default 3.4 m, the M1 table the Keys bake carries). The
   region bakes use 4.0 m, as the hand-made roads have since playtest 1 ("road too narrow to weave").
+- The cross-section (W-Q): `lanesPerDirection` (1 to 3 drive lanes each way, default 1),
+  `medianM` and `medianKind` (a gap between the directions, default none), and `verges` (`left`
+  and `right` bands of `widthM`, `surface` and `edge`, written into every road's lane section). Left
+  out, the game derives each verge from the road's tags and barriers. The defaults bake exactly the
+  M1 lane table, so the committed bakes are unchanged.
 - Per road, `tags` (scenery tags for both sides) cover the whole road except its bridges, so the
   renderer never stands scenery on a deck. A `"span"` deck gets the `bridge` tag only: it crosses a
   creek or a ravine, not open water, so no boats float below it. `features` take every road-file
