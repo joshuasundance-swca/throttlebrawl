@@ -3,7 +3,7 @@
 // to 4.9, onto `c-in`, `cut` and `c-out`), four rivals racing, the player idle on the grid.
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, createRouteProgress, fixtureBranchNetwork } from '../../road';
-import { createSim, type SimConfig, type SimRiderDef } from '../api';
+import { createSim, quantizeInput, type SimConfig, type SimRiderDef } from '../api';
 import { aiState } from './index';
 import { createSimWithWorld } from '../create';
 
@@ -119,6 +119,36 @@ describe('W-Q: rivals sometimes take the shortcut', () => {
     expect(meant).toBeLessThan(30);
     expect(meantRode / meant).toBeGreaterThanOrEqual(0.75);
     expect(othersRode / others).toBeLessThanOrEqual(0.15);
+  });
+
+  it('a rival lining up for it does not shove a rider alongside into it: it drops in behind and crosses after', () => {
+    // The bundle merge with #325's stamp test: side by side from the grid, the rival (zone line 3.3)
+    // barged the player (holding 1.7, between them) into the zone and rode the main road itself.
+    const shortcutEdges = new Set(['c-in', 'cut', 'c-out'].map((id) => road.edgeIndex(id)));
+    const a = road.edgeIndex('a');
+    const cut = road.edgeIndex('cut');
+    const rows: string[] = [];
+    for (const seed of [4, 5, 6]) {
+      const cfg: SimConfig = { ...config(seed, 1), riders: [rival(0), PLAYER] };
+      const sim = createSim(cfg);
+      let rivalRode = false;
+      let playerOff = false;
+      for (let t = 0; t < 60 * 25 && !sim.isOver(); t++) {
+        const snap = sim.snapshot();
+        const me = snap.entities[1];
+        if (!me) break;
+        const want = me.road.edge === a ? 1.7 : 0;
+        const steer = Math.max(-1, Math.min(1, (want - me.road.d) * 0.3 - me.road.yaw * 2));
+        sim.step([quantizeInput({ throttle: 1, brake: 0, steer: steer * me.road.dir, flags: 0 })]);
+        const after = sim.snapshot().entities;
+        if (after[0]?.road.edge === cut) rivalRode = true;
+        if (shortcutEdges.has(after[1]?.road.edge ?? -1)) playerOff = true;
+      }
+      rows.push(`seed ${seed}: rival rode it ${rivalRode}, player carried in ${playerOff}`);
+      expect(playerOff).toBe(false);
+      expect(rivalRode).toBe(true);
+    }
+    console.log(`[examined] ${rows.join('; ')}`);
   });
 
   it('is deterministic: the same seed races the same', () => {

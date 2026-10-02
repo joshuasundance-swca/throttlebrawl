@@ -268,6 +268,13 @@ function shortcutAhead(config: SimConfig, st: AiState, m: Mover): { z: RouteShor
   return null;
 }
 
+/** A rider within this far along the road is alongside: a rival lining up for a shortcut does not cross it, m. */
+const SHORTCUT_YIELD_M = 3;
+/** Extra room it keeps from that rider's line, m. */
+const SHORTCUT_YIELD_GAP_M = 0.3;
+/** How much slower than that rider it rides to drop in behind it, m/s. */
+const SHORTCUT_YIELD_MPS = 2;
+
 /** A line kept this far outside a zone's inner edge by a rival that does not take it, m. */
 const SHORTCUT_CLEAR_M = 0.9;
 
@@ -793,8 +800,26 @@ function driveRider(
   // take, it keeps its line out of (its weave or a fight would otherwise drift it in by chance).
   const cut = !finished ? shortcutAhead(config, st, m) : null;
   if (cut && cut.take && racing && !unsticking && !fleeing) {
-    dTarget = clamp(zoneLine(cut.z), dLo, dHi);
-    lateralMax = Math.max(lateralMax, 3);
+    const line = clamp(zoneLine(cut.z), dLo, dHi);
+    const toward = Math.sign(line - pos.d);
+    // A rider alongside, between it and the zone line, is not shoved across (into the zone, or out
+    // of the rival's way): it holds clear of them and, unless it is already ahead, drops in behind
+    // them to cross after. (Riders are not obstacles below, so without this the rival barged a
+    // rider beside it into the shortcut and rode the main road itself.)
+    const inWay = riders.find(
+      (r) =>
+        Math.abs(r.ahead) < SHORTCUT_YIELD_M &&
+        r.dd * toward > 0 &&
+        Math.abs(r.dd) < Math.abs(line - pos.d) + RIDER_CLEAR,
+    );
+    if (!inWay) {
+      dTarget = line;
+      lateralMax = Math.max(lateralMax, 3);
+    } else {
+      const limit = inWay.mover.pos.d - toward * (RIDER_CLEAR + SHORTCUT_YIELD_GAP_M);
+      if ((dTarget - limit) * toward > 0) dTarget = limit;
+      if (inWay.ahead > -1) speedTarget = Math.min(speedTarget, inWay.vAlong - SHORTCUT_YIELD_MPS);
+    }
   } else if (cut && !cut.take) {
     const { d0, d1 } = cut.z;
     const inner = Math.abs(d0) <= Math.abs(d1) ? d0 : d1;
