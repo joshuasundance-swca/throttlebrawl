@@ -1,0 +1,52 @@
+{
+  "type": "bark-set",
+  "id": "dj-sf-fog-bank",
+  "name": "Fog Bank 1550 AM: DJ lines",
+  "tags": ["dj", "radio"],
+  "defaults": {
+    "speaker": "tag:dj-sf-fog-bank",
+    "cooldownS": 300,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "dj-fog-rent",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Fog Bank 1550. Visibility low, rent high."
+    },
+    {
+      "id": "dj-fog-sponsor",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "This hour sponsored by an AI. Probably."
+    },
+    {
+      "id": "dj-fog-robotaxi",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Robotaxi traffic: four cars, no drivers."
+    },
+    {
+      "id": "dj-fog-cable-car",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Cable car report: still uphill."
+    },
+    {
+      "id": "dj-fog-shuttles",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Shuttle traffic: private. Very private."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The DJ's chatter for Fog Bank 1550 AM (run W-P, maintainer 2026-10-01b: unique regional flavor everywhere), named by the station's djBarkSet. Nothing plays DJ lines yet: the radio needs a between-tracks slot that reads this set, an audio-lane follow-up. Until then the `tag:` speaker never matches a rider, so these lines never reach a race bubble. Unvoiced on purpose: a DJ voice is a new casting for tools/voices/cast.json, made when the radio can play it.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

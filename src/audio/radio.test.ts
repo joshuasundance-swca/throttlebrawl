@@ -40,14 +40,14 @@ function fingerprint(c: Composition): string {
 }
 
 describe('station data (packs/base/stations)', () => {
-  it('has a surf and a rockabilly station for the Keys, each with 3 or 4 code-made tracks', () => {
+  it('has a surf and a rockabilly station for the Keys, each with at least 3 code-made tracks', () => {
     const all = baseStations();
     expect(all.map((s) => `${s.packId}:${s.id}`)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
     for (const s of all) {
       expect(['surf', 'rockabilly']).toContain(s.genre);
       expect(s.regions).toEqual(['florida-keys']);
+      // Run W-P adds regional song names; the content lane may add more.
       expect(s.tracks.length).toBeGreaterThanOrEqual(3);
-      expect(s.tracks.length).toBeLessThanOrEqual(4);
       expect(new Set(s.tracks.map((t) => t.id)).size).toBe(s.tracks.length);
       for (const t of s.tracks) {
         expect(t.origin).toBe('agent');
@@ -456,24 +456,27 @@ describe('the regions own stations (run W-O: a Pacific Northwest and a San Franc
     ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'surf'],
     ['region-sf', 'sf-fog-bank', 'san-francisco', 'rockabilly'],
   ];
-  it.each(want)('%s carries %s, four code-made tracks that compose as written', (pack, id, region, genre) => {
-    const s = all.find((x) => x.packId === pack && x.id === id);
-    expect(s).toBeDefined();
-    if (!s) return;
-    expect(s.regions).toEqual([region]);
-    expect(s.genre).toBe(genre);
-    expect(s.tracks).toHaveLength(4);
-    const keysTitles = new Set(baseStations().flatMap((b) => b.tracks.map((t) => t.title)));
-    for (const t of s.tracks) {
-      expect(t.ref).toBe(stationTrackRef(pack, id, t.id));
-      expect(t.origin).toBe('agent');
-      expect(t.status).toBe('live');
-      expect(keysTitles.has(t.title)).toBe(false);
-      expect(t.procedural?.preset).toBe(genre === 'surf' ? 'surf-trio' : 'rockabilly-trio');
-      const c = composeFor(t);
-      expect(c).not.toBeNull();
-      // Every param is inside its preset's range, so the song is the one the file describes.
-      expect(c?.bpm).toBe(t.procedural?.params?.['bpm']);
-    }
-  });
+  it.each(want)(
+    '%s carries %s, four or more code-made tracks that compose as written',
+    (pack, id, region, genre) => {
+      const s = all.find((x) => x.packId === pack && x.id === id);
+      expect(s).toBeDefined();
+      if (!s) return;
+      expect(s.regions).toEqual([region]);
+      expect(s.genre).toBe(genre);
+      expect(s.tracks.length).toBeGreaterThanOrEqual(4);
+      const keysTitles = new Set(baseStations().flatMap((b) => b.tracks.map((t) => t.title)));
+      for (const t of s.tracks) {
+        expect(t.ref).toBe(stationTrackRef(pack, id, t.id));
+        expect(t.origin).toBe('agent');
+        expect(t.status).toBe('live');
+        expect(keysTitles.has(t.title)).toBe(false);
+        expect(t.procedural?.preset).toBe(genre === 'surf' ? 'surf-trio' : 'rockabilly-trio');
+        const c = composeFor(t);
+        expect(c).not.toBeNull();
+        // Every param is inside its preset's range, so the song is the one the file describes.
+        expect(c?.bpm).toBe(t.procedural?.params?.['bpm']);
+      }
+    },
+  );
 });

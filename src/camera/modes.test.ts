@@ -541,3 +541,47 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
     expect(dead).toEqual([]);
   });
 });
+
+// Run W-P: on real roads the only frames without the road ahead were the first ~0.2-1 s after a
+// remount (tests/sim/camera-crests.test.ts): on foot, the rider walks back to the bike, so the chase
+// framing turns to follow the walk; back on the bike, it swung 180 degrees through the rider while
+// the road ahead sat out of view. A remount now cuts to the framing behind the bike, as look-back
+// and the helmet do: a cut is the quickest read.
+describe('run W-P: a remount cuts to the chase framing behind the bike', () => {
+  const walkBack = (cam: FollowCamera, road: RoadNetwork): CameraTarget => {
+    const back = riderOn(road, 300, 1.5).heading + Math.PI;
+    let t = riderOn(road, 300, 1.5, 0);
+    for (let n = 0; n < 120; n++) {
+      t = { ...riderOn(road, 300 - n * 0.025, 1.5, 1.5), heading: back, mode: 'OnFoot' };
+      cam.update(t, DT);
+    }
+    return t;
+  };
+
+  it('faces the road ahead on the first frame back on the bike, with the camera behind it', () => {
+    const road = straightRoad();
+    const cam = createFollowCamera({ road });
+    cam.snap(riderOn(road, 300, 1.5));
+    const walker = walkBack(cam, road);
+    // On foot, the framing followed the walk (it looks back down the road).
+    const walking = cam.update(walker, DT);
+    expect(behind(walking, riderOn(road, 297, 1.5))).toBeLessThan(0);
+    const mounted: CameraTarget = { ...riderOn(road, 297, 1.5, 0), mode: 'Road' };
+    const pose = cam.update(mounted, DT);
+    expect(behind(pose, mounted)).toBeGreaterThan(DEFAULT('camera.chaseDistanceM') * 0.9);
+    expect(inView(pose, road.toWorld(0, 297 + 20, 1.5, 0))).toBe(true);
+    // And it follows from there with its springs (no cut while it stays on the bike).
+    const next = cam.update({ ...mounted, x: mounted.x + 0.01 }, DT);
+    expect(offset(next, pose)).toBeLessThan(0.1);
+  });
+
+  it('does not cut when the framing is already behind the bike (a tumble that kept its direction)', () => {
+    const road = straightRoad();
+    const cam = createFollowCamera({ road });
+    const t = riderOn(road, 300, 1.5, 10);
+    const before = cam.snap(t);
+    cam.update({ ...t, mode: 'Tumble' }, DT);
+    const after = cam.update({ ...t, mode: 'Road' }, DT);
+    expect(offset(after, before)).toBeLessThan(0.5);
+  });
+});

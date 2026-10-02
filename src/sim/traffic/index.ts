@@ -13,7 +13,8 @@
 //   of an anchor (fastest anchor top speed plus fastest cruise speed, times 2 s: about 125 m at
 //   M1 speeds). Vehicles that leave the window are recycled to its front. Rolls come from
 //   world.rng.traffic only.
-// - Density per direction is a tuning slider, so oncoming traffic can go to zero; oncoming density
+// - Density is a master tuning slider (`traffic.density`, W-P) times one slider per direction, so
+//   the whole road or just oncoming traffic can go to zero; oncoming density
 //   can also ease in over the start of a race (M2 traffic-3, off by default). The region's
 //   `traffic.mix` weights pick the vehicle types (SimTrafficTypeDef.weight).
 // - Contacts (playtest 1): a solid frontal or rear hit crashes the rider inelastically; a side
@@ -51,6 +52,19 @@ export type { Corridor } from './corridor';
 export { IDM, idmAccel } from './idm';
 
 export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
+  {
+    // W-P "fill the world" (maintainer, 2026-10-01b: "more cars both ways"): one slider for the
+    // whole road, multiplying both direction sliders below. 0 empties the road. [default]
+    id: 'traffic.density',
+    group: 'traffic',
+    label: 'Traffic density',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
   {
     id: 'traffic.densitySame',
     group: 'traffic',
@@ -130,12 +144,19 @@ export const TRAFFIC = {
   windowM: 400,
   /** Extra distance past the window before a vehicle is recycled, m. */
   despawnMarginM: 50,
-  /** One vehicle per this many metres of lane at density 1. */
+  /**
+   * One vehicle per this many metres of lane at density 1. W-P tried 80 (half as many cars again,
+   * the maintainer's "more cars both ways", 2026-10-01b) and CI's balance checks failed: the
+   * rivals, the cop and the test bot do not cope with it yet (the cop busted nobody in 16 seeds,
+   * the bot stalled on a real road). So the default stays and `traffic.density` turns it up.
+   */
   baseSpacingM: 120,
   /** The fairness rule: vehicles spawn only beyond closing speed × this. */
   reactionS: 2,
-  /** Cap on live vehicles per direction. */
+  /** Cap on live vehicles per direction at `traffic.density` 1; the slider scales it (W-P). */
   maxPerDirection: 14,
+  /** The cap never goes past this, whatever the slider, for the phone's sake (W-P). */
+  maxPerDirectionHard: 32,
   /** New vehicles added per direction per population pass. */
   maxAddsPerPass: 2,
   populateEveryTicks: 10,
@@ -454,16 +475,24 @@ export function oncomingEase(world: World, clockS: number): number {
   return from + (1 - from) * clamp(clockS / easeS, 0, 1);
 }
 
+/** A direction's density: the master `traffic.density` slider times that direction's own slider. */
 function densityFor(world: World, st: TrafficState, dir: number): number {
-  if (dir === st.corridor.routeDir) return clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
-  return clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
+  const all = clamp(world.params['traffic.density'] ?? 1, 0, 10);
+  if (dir === st.corridor.routeDir) return all * clamp(world.params['traffic.densitySame'] ?? 1, 0, 10);
+  return all * clamp(world.params['traffic.densityOncoming'] ?? 1, 0, 10) * oncomingEase(world, st.clockS);
+}
+
+/** The live-vehicle cap per direction: the base cap, scaled up (never down) by the master slider. */
+export function capPerDirection(world: World): number {
+  const all = clamp(world.params['traffic.density'] ?? 1, 0, 10);
+  return Math.min(TRAFFIC.maxPerDirectionHard, Math.round(TRAFFIC.maxPerDirection * Math.max(1, all)));
 }
 
 function targetCount(world: World, st: TrafficState, anchors: readonly number[], dir: number): number {
   const k = densityFor(world, st, dir);
   if (k <= 0) return 0;
   const n = Math.floor((windowLength(anchors, st.corridor) * k) / TRAFFIC.baseSpacingM);
-  return Math.min(TRAFFIC.maxPerDirection, n);
+  return Math.min(capPerDirection(world), n);
 }
 
 function rollType(world: World, config: SimConfig, st: TrafficState, dir: number): number {
@@ -1163,7 +1192,8 @@ export const trafficSystem: SimSystem = {
       st.lastRel[m.id] = [];
     }
     // The first fill: every direction up to its target, from the front of the windows back.
-    for (let pass = 0; pass < TRAFFIC.maxPerDirection; pass++) populate(world, config, st);
+    const cap = capPerDirection(world);
+    for (let pass = 0; pass < cap; pass++) populate(world, config, st);
   },
   step(world: World, config: SimConfig) {
     const st = trafficState(world);
