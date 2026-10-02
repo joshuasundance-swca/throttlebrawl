@@ -365,11 +365,13 @@ export function vehicleInfo(
   world: World,
   config: SimConfig,
   entityId: number,
-): { contentId: string; lengthM: number; widthM: number; hazard: 'normal' | 'big' } | null {
+): { contentId: string; lengthM: number; widthM: number; hazard: 'normal' | 'big'; kerb: boolean } | null {
   const st = trafficState(world);
   const k = st.id.indexOf(entityId);
   const t = k < 0 ? undefined : config.trafficTypes[st.type[k] ?? -1];
-  return t ? { contentId: t.contentId, lengthM: t.lengthM, widthM: t.widthM, hazard: t.hazard } : null;
+  return t
+    ? { contentId: t.contentId, lengthM: t.lengthM, widthM: t.widthM, hazard: t.hazard, kerb: isKerb(t) }
+    : null;
 }
 
 // ---- helpers -----------------------------------------------------------------------------
