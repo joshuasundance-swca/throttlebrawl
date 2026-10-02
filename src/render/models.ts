@@ -35,6 +35,8 @@ export const MODEL_ASSETS = {
   trestleBent: 'models/scenery/trestle-bent',
   fogBanks: 'models/scenery/fog-banks',
   cableCar: 'models/props/cable-car',
+  pnwRoadside: 'models/scenery/pnw-roadside',
+  sfRoadside: 'models/scenery/sf-roadside',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -54,6 +56,35 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   trestleBent: ['trestle_bent'],
   fogBanks: ['fog_bank_a', 'fog_bank_b'],
   cableCar: ['cable_car'],
+  pnwRoadside: [
+    'pnw_fern',
+    'pnw_salal',
+    'pnw_stump',
+    'pnw_rock',
+    'pnw_mailbox',
+    'pnw_firewood',
+    'pnw_split_rail',
+    'pnw_log_fence',
+    'pnw_sign',
+    'pnw_espresso',
+    'pnw_maple',
+    'pnw_alder',
+  ],
+  sfRoadside: [
+    'sf_sedan',
+    'sf_hatch',
+    'sf_robotaxi',
+    'sf_tree',
+    'sf_hydrant',
+    'sf_scooter',
+    'sf_board_ai',
+    'sf_board_agi',
+    'sf_board_gpu',
+    'sf_store',
+    'sf_meter',
+    'sf_bins',
+    'sf_lamp',
+  ],
 };
 
 /** The models every network draws (the ramp truck, poles, shacks and boats). */
@@ -83,7 +114,14 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
     if (n.tags.has('forest') && n.tags.has('bridge')) out.add('trestleBent');
-    if (['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t))) out.add('rowHouses');
+    const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
+    if (urban) {
+      out.add('rowHouses');
+      out.add('sfRoadside');
+    }
+    // Run W-P: each region's roadside kit (roadside.ts). San Francisco's forest (Twin Peaks)
+    // keeps the city's kit; a forest road with no city on it is the Pacific Northwest's.
+    else if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('pnwRoadside');
   }
   if (n.palette.has('fogBank')) out.add('fogBanks');
   if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');
@@ -169,7 +207,8 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
     const nrm = g.getAttribute('normal');
     const index = g.getIndex();
     const count = index ? index.count : pos.count;
-    roles.push({ role: mat?.name ?? '', start: positions.length / 3, count });
+    const start = positions.length / 3;
+    roles.push({ role: mat?.name ?? '', start, count });
     for (let i = 0; i < count; i++) {
       const k = index ? index.getX(i) : i;
       p.fromBufferAttribute(pos, k).applyMatrix4(m);
@@ -179,6 +218,9 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
       normals.push(n.x, n.y, n.z);
       colors.push(c.r, c.g, c.b);
     }
+    // A GLB shipped without normals (the roadside kits, run W-P, to halve their bytes) is faceted:
+    // each triangle's normal is its face's.
+    if (!nrm) faceNormals(positions, normals, start, count);
   });
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
@@ -187,6 +229,20 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   return { geometry, doubleSided, roles };
+}
+
+/** Sets the normals of `count` triangle-list vertices from `start` to their faces' normals. */
+function faceNormals(positions: number[], normals: number[], start: number, count: number): void {
+  const a = new Vector3();
+  const b = new Vector3();
+  const c = new Vector3();
+  for (let v = start; v + 2 < start + count; v += 3) {
+    a.fromArray(positions, v * 3);
+    b.fromArray(positions, v * 3 + 3).sub(a);
+    c.fromArray(positions, v * 3 + 6).sub(a);
+    b.cross(c).normalize();
+    for (let k = 0; k < 3; k++) b.toArray(normals, (v + k) * 3);
+  }
 }
 
 /** Bakes a loaded glTF scene into a scenery model. Throws when a root node is missing. */

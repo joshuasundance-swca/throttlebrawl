@@ -29,6 +29,8 @@ const REGION_MODELS = [
   'row-houses',
   'fog-banks',
   'cable-car',
+  'pnw-roadside',
+  'sf-roadside',
 ] as const;
 
 const REGIONS = [
@@ -36,9 +38,13 @@ const REGIONS = [
   {
     slug: 'pnw',
     chip: '#region-region-pnw-pacific-northwest',
-    wants: ['conifers', 'sawmill', 'trestle-bent'],
+    wants: ['conifers', 'sawmill', 'trestle-bent', 'pnw-roadside'],
   },
-  { slug: 'sf', chip: '#region-region-sf-san-francisco', wants: ['row-houses', 'fog-banks', 'cable-car'] },
+  {
+    slug: 'sf',
+    chip: '#region-region-sf-san-francisco',
+    wants: ['row-houses', 'fog-banks', 'cable-car', 'sf-roadside'],
+  },
 ];
 
 for (const region of REGIONS) {
