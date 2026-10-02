@@ -1,7 +1,8 @@
 // Playtest 2 (2026-10-02), interview round 3: "Visible personalities" (moderate stat differences
 // shown through how rivals ride and fight), after "different racers different stats might make
-// sense". A rider's stats.toughness divides the damage and the stagger it takes; stats.power
-// multiplies the damage of every hit it lands. Both default to 1.
+// sense". In the player's fights: a rider's stats.toughness divides the damage and the stagger the
+// player's hits do; a rival's stats.power multiplies its hits on the player by combat.powerOnPlayer
+// (0 by default). Both default to 1. Fights among rivals keep their data numbers.
 import { describe, expect, it } from 'vitest';
 import { combatState } from './index';
 import { F, flags, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
@@ -40,10 +41,26 @@ describe('playtest 2: rider fight stats', () => {
     expect(fragile.stagger).toBeGreaterThan(plain.stagger);
   });
 
-  it('a strong rider hits harder, on the player too', () => {
+  it('a strong rider hits harder; on the player only by combat.powerOnPlayer (0 by default)', () => {
     expect(kick({ power: 1.25 }, {}).damage).toBe(45); // 36 × 1.25
-    // A rival's kick on the player: the data damage (combat.onPlayerDamageScale 1) × his power.
-    expect(kick({ role: 'rival', power: 1.5 }, { role: 'player' }).damage).toBe(27); // 18 × 1.5
+    // Among rivals the stats sit out: 18, the data damage.
+    expect(kick({ role: 'rival', power: 1.5 }, { role: 'rival', toughness: 0.5 }).damage).toBe(18);
+    // A rival's kick on the player: the data damage (combat.onPlayerDamageScale 1), his power off.
+    expect(kick({ role: 'rival', power: 1.5 }, { role: 'player' }).damage).toBe(18);
+    const h = (tuning: Record<string, number>) => {
+      const run = makeHarness(
+        [
+          { s: 100, d: 0, role: 'rival', power: 1.5 },
+          { s: 100, d: 1.2, role: 'player' },
+        ],
+        scriptOf({ 0: (t) => (t === 1 ? flags(F.attack | F.kick) : undefined) }),
+        tuning,
+      );
+      run.run(40);
+      return ofType(run.events, 'hit')[0]?.data['damage'];
+    };
+    expect(h({ 'combat.powerOnPlayer': 1 })).toBe(27);
+    expect(h({ 'combat.powerOnPlayer': 0.5 })).toBe(23); // 18 × 1.25 = 22.5, rounded
   });
 
   it('so a 100-point rider with toughness 1.2 takes 4 of the player’s kicks, not 3', () => {

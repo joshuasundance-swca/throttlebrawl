@@ -69,9 +69,13 @@
 //   little, so the 12-race seeded batch moves only a little: the bot's knock-offs 3 -> 4, its hits
 //   per knock-off 3 -> 2, busts 2 -> 2.
 // - Fight stats (playtest 2, interview round 3: "Visible personalities", moderate differences shown
-//   through how rivals ride and fight): the rider file's stats.power multiplies the damage of every
-//   hit the rider lands, and stats.toughness divides the damage and the stagger it takes (both 1
-//   when absent, 0.5-2). Each rival's numbers are in its pack file. [default]
+//   through how rivals ride and fight), in the player's own fights, like the knockdown scales: a
+//   rider's stats.toughness divides the damage and the stagger the player's hits do to it, and a
+//   rival's stats.power multiplies its hits on the player by combat.powerOnPlayer (default 0, so
+//   rivals hit you as hard as before: playtest 1 item 7). Both are 1 when absent, 0.5-2; each
+//   rival's numbers are in its pack file. Fights among rivals and cops keep their data numbers until
+//   the AI-personality run. Measured on the 50-race batch (busts of the bot, cap 30%): knockdown
+//   retune alone 6; stats in every fight 15; stats in the player's fights 11. [default]
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -232,6 +236,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     default: 1,
     min: 0,
     max: 4,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.powerOnPlayer',
+    group: 'combat',
+    label: 'Rival power on you',
+    default: 0,
+    min: 0,
+    max: 1,
     step: 0.05,
     unit: '×',
     affectsSim: true,
@@ -836,8 +851,15 @@ function land(
       ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
       : 1;
   // Fight stats (playtest 2, "Visible personalities"): the attacker's power, the target's toughness.
-  const power = statOf(config, a, 'power');
-  const toughness = statOf(config, victim, 'toughness');
+  // Only in the player's fights; a rival's power reaches the player by combat.powerOnPlayer.
+  const byPlayer = isPlayer(config, a);
+  const hitOnPlayer = isPlayer(config, victim) && !byPlayer;
+  const power = byPlayer
+    ? statOf(config, a, 'power')
+    : hitOnPlayer
+      ? 1 + (statOf(config, a, 'power') - 1) * clamp(world.params['combat.powerOnPlayer'] ?? 0, 0, 1)
+      : 1;
+  const toughness = byPlayer || hitOnPlayer ? statOf(config, victim, 'toughness') : 1;
   const damage = Math.round(
     (w.damage * damageScale(world, config, a, victim, w) * copSoft * power) / toughness,
   );
