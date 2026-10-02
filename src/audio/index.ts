@@ -60,6 +60,19 @@ import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
+import {
+  CABLE_BELL_RANGE_M,
+  createDirector,
+  LOG_TRUCK_RANGE_M,
+  scapeRegionOf,
+  tagsAt,
+  type Director,
+  type ScapeEvent,
+  type ScapeNear,
+  type ScapeRegion,
+  type ScapeRoad,
+} from './soundscape';
+import { createScapeVoices, type ScapeVoices } from './soundscape-voices';
 
 export { ENGINE_BY_CLASS, ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export { ENGINE_FEEL_DEFAULTS } from './engine-feel';
@@ -339,6 +352,19 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: '',
     affectsSim: false,
   },
+  // Run W-Q: each region's own sounds under the engine (soundscape.ts): Keys bridge joints and gulls,
+  // PNW rain on the helmet and log-truck engine brakes, SF foghorn and cable-car bells.
+  {
+    id: 'audio.soundscape',
+    group: 'audio',
+    label: 'Regional sounds (0 = off)',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.05,
+    unit: '',
+    affectsSim: false,
+  },
   {
     id: 'audio.windFromMps',
     group: 'audio',
@@ -407,6 +433,13 @@ export interface AudioInspect {
   slowmo: { active: boolean; lowpassHz: number; musicLevel: number; pitch: number };
   /** The level the wind aims for (0 = silent). */
   windLevel: number;
+  /** The regional soundscape: its region, the rain's level, events alive, and the latest events. */
+  soundscape: {
+    region: ScapeRegion | null;
+    rain: number;
+    active: number;
+    played: { kind: ScapeEvent['kind']; at: number; level: number }[];
+  };
   /** The radio: the `audio.radio` choice, the station list in switch order, and what plays. */
   radio: {
     choice: number;
@@ -447,6 +480,11 @@ export interface AudioSystem {
   setStations(stations: readonly RadioStation[]): void;
   /** The race's region: its stations are the regional ones plus the genre ones. null = all. */
   setRegion(regionId: string | null): void;
+  /**
+   * The race's road, for the regional soundscape: its scenery tags say where the bridges, the water,
+   * the marinas, the cable lines and the forest are (null = none, so no regional sounds).
+   */
+  setRoad(road: ScapeRoad | null): void;
   /** Radio tracks cut on this device (the settings record's veto refs): never played. */
   setRadioCut(refs: readonly string[]): void;
   /**
@@ -532,6 +570,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     slowmoPitchSemis: SLOWMO_DEFAULTS.pitchSemis,
     slowmoMusicDuck: SLOWMO_DEFAULTS.musicDuck,
     crashImpactScale: 1,
+    soundscape: 1,
     windGain: WIND_DEFAULTS.gain as number,
     windFromMps: WIND_DEFAULTS.fromMps as number,
     windFullMps: WIND_DEFAULTS.fullMps as number,
@@ -566,6 +605,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   });
   /** The wind's voice, made on the first racing frame (outside the voice pool, like the music). */
   let wind: WindVoice | null = null;
+  /** The regional soundscape (run W-Q): its voices, made on the first racing frame, and its director. */
+  let scape: ScapeVoices | null = null;
+  const director: Director = createDirector(opts.radioSeed ?? 0x5ca9e);
+  let scapeRoad: ScapeRoad | null = null;
+  let scapeRegion: ScapeRegion | null = null;
+  const scapePlayed: { kind: ScapeEvent['kind']; at: number; level: number }[] = [];
   const slowmoParams = () => ({
     lowpassHz: params.slowmoLowpassHz,
     pitchSemis: params.slowmoPitchSemis,
@@ -868,6 +913,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     g.slowmo.set(false);
     playerEngine?.voice.setLevel(0);
     wind?.set(0, windParams());
+    scape?.setRain(0);
+    director.reset();
     for (const id of [...others.keys()]) dropOther(id);
     dropSiren();
     // Out of the race (the menus), nobody is talking.
@@ -896,6 +943,53 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     return e && e.id === id ? e : (snap.entities.find((x) => x.id === id) ?? null);
   };
 
+  /**
+   * The region's own sounds (soundscape.ts decides, soundscape-voices.ts makes them): what is under
+   * the rider (bridge, water, marina, cable line, forest, fog) and which log trucks and cable cars
+   * are near. Quiet in a hit-stop; off with the `audio.soundscape` slider.
+   */
+  const soundscape = (g: Graph, snap: SimSnapshot, me: EntitySnapshot, down: boolean, hitStop: boolean) => {
+    const region = params.soundscape > 0 ? scapeRegionOf(regionId) : null;
+    if (region) scape ??= createScapeVoices(g.ctx, g.slowmo.fxIn);
+    if (!scape) return;
+    const near: ScapeNear[] = [];
+    if (region === 'pnw' || region === 'sf') {
+      const range = region === 'pnw' ? LOG_TRUCK_RANGE_M : CABLE_BELL_RANGE_M;
+      const kind = region === 'pnw' ? 'log-truck' : 'cable-car';
+      for (const e of snap.entities) {
+        if (e.kind !== 'vehicle' || !e.contentId.includes(kind)) continue;
+        const d = distance(me, e);
+        if (d > range) continue;
+        near.push({
+          id: e.id,
+          contentId: e.contentId,
+          distanceM: d,
+          tags: tagsAt(scapeRoad, e.road.edge, e.road.s),
+        });
+      }
+      near.sort((a, b) => a.distanceM - b.distanceM);
+    }
+    const now = g.ctx.currentTime;
+    const frame = director.step({
+      t: now,
+      region,
+      speedMps: me.speed,
+      edge: me.road.edge,
+      s: me.road.s,
+      grounded: !down && me.mode !== 'Airborne',
+      tags: tagsAt(scapeRoad, me.road.edge, me.road.s),
+      near,
+    });
+    const level = Math.max(0, params.soundscape) * (hitStop ? 0.3 : 1);
+    scape.setRain(frame.rain * level);
+    scapeRegion = region;
+    for (const e of frame.events) {
+      if (!scape.play(e, now, level)) continue;
+      scapePlayed.push({ kind: e.kind, at: now, level: e.level });
+      if (scapePlayed.length > 32) scapePlayed.shift();
+    }
+  };
+
   const scene = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
     const now = g.ctx.currentTime;
     const hitStop = snap.timeScale === 0;
@@ -909,6 +1003,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     const down = me.mode === 'Tumble' || me.mode === 'OnFoot';
     wind.set(me.speed, windParams(), down ? 0 : hitStop ? 0.3 : 1);
     const listener = moving(me);
+    soundscape(g, snap, me, down, hitStop);
 
     // Other riders' engines: the nearest few, cheaper patch, distance and Doppler.
     const near = snap.entities
@@ -1092,6 +1187,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         case 'audio.crashImpactScale':
           params.crashImpactScale = value;
           break;
+        case 'audio.soundscape':
+          params.soundscape = Math.max(0, value);
+          break;
         case 'audio.windGain':
           params.windGain = value;
           break;
@@ -1166,6 +1264,12 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         pitch: graph?.slowmo.pitch() ?? 1,
       },
       windLevel: wind?.level() ?? 0,
+      soundscape: {
+        region: scapeRegion,
+        rain: scape?.rainLevel() ?? 0,
+        active: scape?.active() ?? 0,
+        played: scapePlayed.slice(),
+      },
       radio: {
         choice: Math.round(params.radio),
         tunedTo: ((t) => (typeof t === 'object' ? t.id : t))(tuned()),
@@ -1188,6 +1292,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     setRegion(id) {
       regionId = id;
       retune();
+    },
+    setRoad(road) {
+      scapeRoad = road;
+      director.reset();
     },
     setRadioCut(refs) {
       // Every veto on this device arrives here: radio tracks and bark lines alike. A cut line's
