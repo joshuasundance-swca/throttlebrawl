@@ -439,11 +439,11 @@ describe('tumble-2: over the rail', () => {
     expect(respawn.data['reason']).toBe('splash');
     expect(respawn.tick - first.tick).toBeGreaterThanOrEqual(PENALTY);
     expect(respawn.tick - first.tick).toBeLessThanOrEqual(PENALTY + 60);
-    // Back on the bridge, on the bike, at rest, inside the drivable width, above the water.
+    // Back on the bridge, on the bike, rolling (2026-10-02), inside the drivable width, above the water.
     expect(h.player.pos.edge).toBe(0);
     expect(inside(h, h.player.pos)).toBe(true);
     expect(h.config.road.surfaceHeight(0, h.player.pos.s, h.player.pos.d)).toBeGreaterThan(0);
-    expect(h.player.speed).toBe(0);
+    expect(h.player.speed).toBe(8);
     expect(tumbleRecord(h.world, 1)).toBeNull();
     expect(riderState(h.world).health[1]).toBe(100);
     // The respawn is near where the body went over (not back at the start).

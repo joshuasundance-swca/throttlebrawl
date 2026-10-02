@@ -28,9 +28,23 @@ export interface StylePop {
   points: number | null;
 }
 
+/** A domino takedown's word (W-Q): the first rider a launched body takes out, then the next. */
+function dominoWord(chain: number): string {
+  return chain >= 3 ? 'STRIKE' : 'DOUBLE';
+}
+
 /** A style event's pop-up, or null for anything else. */
 export function stylePop(e: SimEvent): StylePop | null {
   if (e.type !== 'style') return null;
+  const domino = e.data['domino'];
+  if (e.data['kind'] === 'takedownCombo' && typeof domino === 'number' && domino >= 2) {
+    const points = e.data['points'];
+    return {
+      kind: 'domino',
+      word: dominoWord(domino),
+      points: typeof points === 'number' && Number.isFinite(points) ? points : null,
+    };
+  }
   const kind = e.data['kind'];
   const word = typeof kind === 'string' ? STYLE_WORDS[kind] : undefined;
   if (typeof kind !== 'string' || !word) return null;
