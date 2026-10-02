@@ -985,6 +985,19 @@ This matches [the architecture doc's races-as-routes model](./architecture.md#ra
 - **Distance to finish, as built** `[default]` (M1 road-2): the main path's roads and the connector roads between them measure the distance along the main path. Every other allowed road (a shortcut and its connectors) measures the true distance forward along itself to where it rejoins, plus the rejoined road's distance there. So distance to finish falls steadily along either path and never rises: a rider who takes the shortcut gains its saving the moment it enters the shortcut's connector (its race position can jump then), and a rider who stays on the main path sees no jump. Progress is the route length minus the distance to finish.
 - A route with `closed: true` loops; **lint: `laps > 1` in an event length requires a `closed` route.** Selectable length is a shorter or longer route, or a closed loop with a lap count, as the architecture doc says.
 - A route is the only thing an event needs from the network, which keeps races as "routes through one network" `[decided]`.
+- **Branches** (run W-Q; `[decided]` that races get junction choices and marked dirt shortcuts, interview, 2026-10-02: "junction choices in races", and round 5's "marked dirt shortcuts (sandbars, fire roads, clear-cuts)"; `[default]` for the shape). Every split zone on the main path that leads onto allowed roads is a **branch**, picked by the rider's position in the zone (no button), and its roads are the allowed, off-main-path roads reachable from it, connectors included. A route may name its branches, optionally:
+
+  ```json
+  "branches": [
+    { "id": "sandbar", "roads": ["c-sandbar-in", "sandbar", "c-sandbar-out"], "kind": "shortcut", "marked": true, "sign": "SANDBAR: NOT ADVISED." }
+  ]
+  ```
+
+  - `id` is stable within the route; the career records found shortcuts and secrets by it. `kind` is `shortcut` (shorter to the finish), `detour` (longer, for something on it) or `alternate` (about the same length); left out, it is derived from what the branch saves (more than 15 m either way, `ROUTE_BRANCH_ALTERNATE_M`). `marked: false` makes it a secret, found by riding it; `sign` is the deadpan sign at the split.
+  - A **marked dirt shortcut** is a branch whose roads have `"surface": "dirt"` (or `sand`, `gravel`, `grass`): the branch's surface is its longest road's.
+  - A branch the route does not name is still a branch, derived with the id of its first non-connector road, `marked`, and the derived kind. No route names one yet: the hand-made networks' three splits (the Keys boat-ramp cut, the PNW logging spur, the SF stair alley) are derived branches on their 7 routes, and the 5 map-data routes have none (`tools/road/branches-live.test.ts`).
+  - Lint (`route`): every branch road exists, is in `allowedRoads`, is not on the main path, and is in one branch only; ids are unique.
+  - At runtime `RouteProgress.branches`, `branchAt(edge)` and `orientation(edge)` (the direction along an edge toward the finish: a rider's `road.dir` times it is 1 racing and -1 after a U-turn) carry them to the sim, which puts each rider's `branch` and `routeDir` in its snapshot.
 
 #### Provenance and licence of road data
 

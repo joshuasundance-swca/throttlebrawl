@@ -11,3 +11,4 @@ export * from './callbacks';
 export * from './ids';
 export * from './difficulty';
 export * from './surfaces';
+export * from './routes';
