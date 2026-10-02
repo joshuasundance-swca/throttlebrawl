@@ -13,6 +13,7 @@ import {
   SYNTH_FORMS,
 } from './radio-compose-regional';
 import { createRadioPlayer, genreOf, type RadioStation } from './radio';
+import { RADIO_BAND } from './radio-band';
 import { RIG_TRIM } from './radio-rigs';
 
 const layers = (c: Composition) => new Set(c.notes.map((n) => n.layer));
@@ -198,6 +199,7 @@ describe('the regional rigs', () => {
     const out = ctx.createGain();
     const player = createRadioPlayer(ctx as unknown as BaseAudioContext, out as unknown as AudioNode, {
       seed: 3,
+      band: RADIO_BAND,
     });
     player.select(station(genre, preset));
     const before = ctx.nodes.length;

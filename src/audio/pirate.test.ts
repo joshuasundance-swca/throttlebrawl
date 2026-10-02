@@ -12,6 +12,7 @@ import {
   PIRATE_MIN_RADIUS_M,
 } from './pirate';
 import { pirateStationFor, stationsForRegion, stationsFromTable, type RadioStation } from './radio';
+import { RADIO_BAND } from './radio-band';
 
 const spot = { atFraction: 0.5, radiusM: 300 };
 
@@ -219,7 +220,13 @@ describe('the mixer tunes the pirate in near the spot and out again', () => {
   });
   async function started(radio: number) {
     const { ctx, create } = fakeContextFactory();
-    const audio = createAudio({ createContext: create, radioKeys: null, barkEvents: null, radioSeed: 5 });
+    const audio = createAudio({
+      createContext: create,
+      radioKeys: null,
+      barkEvents: null,
+      radioSeed: 5,
+      radioBand: RADIO_BAND,
+    });
     audio.setStations([mk('plain', 'surf', null), mk('pirate', 'dub', { atFraction: 0.5, radiusM: 300 })]);
     audio.setRegion('test:florida-keys');
     await audio.resume();

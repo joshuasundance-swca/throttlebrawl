@@ -53,6 +53,7 @@ import {
   pirateStationFor,
   stationsForRegion,
   type NowPlaying,
+  type RadioBand,
   type RadioPlayer,
   type RadioStation,
   type RadioVetoFlag,
@@ -84,9 +85,8 @@ export { SLOWMO_DEFAULTS } from './slowmo';
 export type { CueId } from './cues';
 export { BARK_SHOWN_EVENT, BARK_VOICE_EVENT, barkClipPath } from './bark-voices';
 export type { BarkVoiceState } from './bark-voices';
-export { RADIO_PRESETS } from './radio-compose';
 export { stationsForRegion, stationsFromTable, stationTrackRef } from './radio';
-export type { NowPlaying, RadioStation, RadioTrack, RadioVetoFlag } from './radio';
+export type { NowPlaying, RadioBand, RadioStation, RadioTrack, RadioVetoFlag } from './radio';
 
 /** `audio.radio` values below the stations: 0 = off, 1 = the original score, 2+ = the stations. */
 export const RADIO_OFF = 0;
@@ -523,6 +523,11 @@ export interface AudioOptions {
   radioSeed?: number;
   /** Stations up front; otherwise the base pack's are loaded the first time a station is picked. */
   stations?: readonly RadioStation[];
+  /**
+   * The radio's band up front (radio-band.ts's RADIO_BAND: offline harnesses that render at once);
+   * otherwise its lazy chunk is fetched when the graph is built, and the radio waits for it.
+   */
+  radioBand?: RadioBand;
   /** Where the bark subtitle's event is listened for; the window by default, null for none. */
   barkEvents?: EventTarget | null;
   /** A bark line's clip URL (tests and harnesses); the build's bundled clips by default. */
@@ -684,6 +689,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     const radio = createRadioPlayer(ctx, duck, {
       seed: radioSeed,
       loopsPerTrack: () => params.radioLoops,
+      // The band is a lazy chunk (main-green-4: off the first-load budget), fetched at the start
+      // tap so it is in long before a race's first station plays.
+      band: opts.radioBand ?? import('./radio-band').then((m) => m.RADIO_BAND),
     });
     const level = ctx.createGain();
     level.gain.value = voiceLevel();

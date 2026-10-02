@@ -14,10 +14,10 @@
 // sources and a gain, scheduled ahead like the Keys' bands, so the cost on a phone stays small.
 import { noiseBuffer } from './engine-patch';
 import type { RadioNote } from './radio-compose';
-import { pluckBuffer, type RadioGenre, type RadioRig, type Timbre } from './radio-synth';
+import type { RegionalGenre } from './radio-genres';
+import { pluckBuffer, type RadioRig, type Timbre } from './radio-synth';
 
-export type RegionalGenre = Extract<RadioGenre, 'grunge' | 'folk' | 'synth' | 'psych'>;
-export const REGIONAL_GENRES: readonly RegionalGenre[] = ['grunge', 'folk', 'synth', 'psych'];
+export { REGIONAL_GENRES, type RegionalGenre } from './radio-genres';
 
 /**
  * Each rig's output trim, [default], set so every band plays at about the Keys' loudness (measured
