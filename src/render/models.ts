@@ -37,6 +37,7 @@ export const MODEL_ASSETS = {
   cableCar: 'models/props/cable-car',
   pnwRoadside: 'models/scenery/pnw-roadside',
   sfRoadside: 'models/scenery/sf-roadside',
+  keysRoadside: 'models/scenery/keys-roadside',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -85,6 +86,19 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_bins',
     'sf_lamp',
   ],
+  keysRoadside: [
+    'keys_seagrape',
+    'keys_seagrape_tree',
+    'keys_traps',
+    'keys_pelican',
+    'keys_trailer',
+    'keys_cottage_a',
+    'keys_cottage_b',
+    'keys_picket',
+    'keys_mailbox',
+    'keys_bait',
+    'keys_pie',
+  ],
 };
 
 /** The models every network draws (the ramp truck, poles, shacks and boats). */
@@ -110,6 +124,7 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
   if (n.tropical) {
     out.add('palms');
     out.add('mangroves');
+    out.add('keysRoadside');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');

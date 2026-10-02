@@ -58,43 +58,7 @@ VARIANTS = ["sedan", "hatch", "robotaxi", "tree", "hydrant", "scooter", "board_a
             "store", "meter", "bins", "lamp"]
 XS = [-36.0, -30.0, -24.0, -18.0, -14.0, -11.0, -8.0, -5.0, -2.0, 8.0, 15.0, 18.0, 21.0]
 
-# A 3 by 5 block font, rows top to bottom, for the words the kit writes.
-FONT = {
-    "A": ("010", "101", "111", "101", "101"),
-    "E": ("111", "100", "110", "100", "111"),
-    "G": ("111", "100", "101", "101", "111"),
-    "I": ("111", "010", "010", "010", "111"),
-    "K": ("101", "101", "110", "101", "101"),
-    "M": ("101", "111", "101", "101", "101"),
-    "P": ("110", "101", "110", "100", "100"),
-    "R": ("110", "101", "110", "101", "101"),
-    "T": ("111", "010", "010", "010", "010"),
-    "U": ("101", "101", "101", "101", "111"),
-}
-
-
-def word(mb, text, f, xc, zc, cell, mat):
-    """Block letters facing the front, centred at (xc, zc): one panel per run of filled cells."""
-    width = len(text) * 4 - 1
-    # Seen from the front, the prop's left (+X) is on the viewer's right: write from -X up.
-    x0 = xc - width * cell / 2
-    top = zc + 2.5 * cell
-    for i, ch in enumerate(text):
-        rows = FONT[ch]
-        for r, row in enumerate(rows):
-            c = 0
-            while c < 3:
-                if row[c] != "1":
-                    c += 1
-                    continue
-                run = c
-                while run < 3 and row[run] == "1":
-                    run += 1
-                xa = x0 + (i * 4 + c) * cell
-                xb = x0 + (i * 4 + run) * cell
-                z1 = top - r * cell
-                mb.front_quad(f, xa, xb, z1 - cell, z1, mat)
-                c = run
+word = _lib.block_word
 
 
 def car(mb, paint, cabin_glass=True):
