@@ -23,13 +23,18 @@ def player(r):
     r.collar("cloth_a", high=True)
     r.belt("dark", buckle="metal")
     r.tail("trim", length=0.34)
-    # A messenger bag across the back: it flies off when you are hurt.
-    r.prop_on_chest(
+    # A red stripe down the yellow back, so the player reads from the chase camera.
+    for z in range(4):
+        zz = (1.12 + 0.08 * z) * r.h
+        p, n = r.torso_point(-math.pi / 2, zz, lift=0.008)
+        r.quad("chest", p, L.P(0.035, 0, 0) - L.P(0, 0, 0), L.P(0, 0, 0.04) - L.P(0, 0, 0), n, "trim", detail=False)
+    # A hip bag on the left hip (the back stays yellow): it flies off when you are hurt.
+    r.prop_on_hips(
         lambda c: (
-            r.box("prop", (c[0] - 0.02, c[1], c[2]), (0.3, 0.09, 0.22), "prop_a"),
-            r.box("prop", (c[0] - 0.02, c[1] + 0.047, c[2] + 0.06), (0.31, 0.01, 0.1), "prop_b"),
+            r.box("prop", c, (0.08, 0.2, 0.15), "prop_a"),
+            r.box("prop", (c[0] + 0.041, c[1], c[2] + 0.03), (0.01, 0.18, 0.06), "prop_b"),
         ),
-        at=(0.0, -0.17, 1.22),
+        at=(0.19, -0.02, 0.98),
     )
 
 
@@ -391,8 +396,8 @@ CAST = {
             "skin": SKIN_A,
             "hair": "#3b2a1e",
             "cloth_a": "#f2c14e",
-            "cloth_b": "#2a3550",
-            "cloth_c": "#2a3550",
+            "cloth_b": "#4a6fa5",
+            "cloth_c": "#4a6fa5",
             "trim": "#b8322a",
             "boot": "#1e1e22",
             "glove": "#2a2a2e",

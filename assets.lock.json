@@ -3,7 +3,7 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "22232d70b68a4435f21565976ef47973c0e76f98",
+  "revision": "50680511f9c5dd1b98c967099bd3c8dc2ffd88d8",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
@@ -43,8 +43,8 @@
     },
     {
       "path": "base/models/riders/player.glb",
-      "bytes": 25852,
-      "sha256": "ddd421ba2cbdc207f4094341431413607db83d5d8e625014e91bcbddfd72b3d2",
+      "bytes": 26524,
+      "sha256": "b60f9774c524a3e01cd29714c4bc9e249eb8697695173b3e493b702f4cb99093",
       "note": "Rider model: player, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
     },
     {

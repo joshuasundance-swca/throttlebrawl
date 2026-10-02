@@ -31,13 +31,13 @@ CI has no Blender. `riders.test.ts` (in `npm test`) downloads the pinned GLBs at
 - **Meshes.** Every mesh is a child of exactly one bone and moves rigidly with it (the game skins each vertex to that bone with weight 1, so a rider and its bike are one draw call). Meshes with the `detail` extra (faces, prints, letters, badges) come last and are dropped far from the camera.
 - **Root extras.** `prop_mount` is what the prop rides on: `head`, `chest`, `hips` or `seat` (a seat prop's bone sits at `seat_m` above the ground, the seat under the hips, and the game puts it on the bike's `seat_anchor`). `seat_m`, `height_m`, `rider_id` and `triangles` are informational.
 - **Flat colours by role** (`skin`, `hair`, `cloth_a` to `cloth_c`, `trim`, `boot`, `glove`, `helmet`, `visor`, `metal`, `print`, `prop_a`, `prop_b`, `dark`), faceted, triangulated, exported **without normals**. Clean, loud paint; no rust, grime or wear (the maintainer's veto). Every brand is invented. Deterministic: rebuilds are byte-identical.
-- **Budget.** At most 1,800 triangles each (the cast is 828 to 1,332).
+- **Budget.** At most 1,800 triangles each (the cast is 834 to 1,332).
 
 ## The cast
 
 | Rider | Costume | Prop (shed when hurt) | Bike (`look`) |
 | --- | --- | --- | --- |
-| player | Yellow riding jacket, cream full-face helmet with a red stripe, bandana tail | Messenger bag | Rustbucket 400 |
+| player | Yellow riding jacket with a red stripe down the back (it reads from the chase camera), blue jeans, cream full-face helmet, bandana tail | Hip bag | Rustbucket 400 (the garage bike), painted red and yellow |
 | Deacon Vane | Long black duster, flat-brimmed hat, goatee, bolo tie | The hat | Chopper |
 | Chad Speedwell | Sponsor-patched white jacket, pink helmet, a grin | Phone gimbal (up in his hand for the selfie) | Stickered sport bike |
 | Tammy Two-Stroke | Frosted beehive, teal sun visor, big sunglasses, leopard-print top, cigarette | Cooler on the seat | Dirt bike |
