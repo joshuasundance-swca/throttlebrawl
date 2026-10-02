@@ -1,7 +1,7 @@
 // tumble-1's acceptance (docs/milestones/M1.md, "tumble-1 · Crash and run-back"):
 //   - in 50 seeded races, every crash hands back within the timeout plus the run;
 //   - after hand-back, the rider and the bike sit inside the drivable width;
-//   - a skip remounts after exactly 180 ticks;
+//   - a skip remounts after 180 ticks, or sooner when running there would be quicker (2026-10-02);
 //   - no NaN during a tumble, and a scripted crash gives the same hash every run.
 // Crash sources (riders-1, combat-1, traffic-1) are other lanes' work, so these tests stand in a
 // scripted crash injector for the combat phase, which runs before tumble in the tick order.
@@ -179,7 +179,7 @@ function insideDrivable(config: SimConfig, pos: { edge: number; s: number; d: nu
   return pos.d >= band.lo && pos.d <= band.hi;
 }
 
-const TIMEOUT = 300;
+const TIMEOUT = 210; // 3.5 s (interview, 2026-10-02: trim only the waiting)
 const REST = 30;
 const SKIP = 180;
 const RUN_MPS = 7;
@@ -187,10 +187,12 @@ const RUN_MPS = 7;
 // ---- Tests -------------------------------------------------------------------------------------
 
 describe('tumble: tuning declarations', () => {
-  it('declares the starting numbers, which convert to 30, 300 and 180 ticks', () => {
+  it('declares the starting numbers, which convert to 30, 210 and 180 ticks', () => {
     const byId = Object.fromEntries(TUMBLE_TUNING.map((d) => [d.id, d]));
     expect(byId['tumble.restS']?.default).toBe(0.5);
-    expect(byId['tumble.timeoutS']?.default).toBe(5);
+    expect(byId['tumble.timeoutS']?.default).toBe(3.5);
+    expect(byId['tumble.restMps']?.default).toBe(1.5);
+    expect(byId['tumble.remountMps']?.default).toBe(8);
     expect(byId['tumble.skipDelayS']?.default).toBe(3);
     expect(byId['tumble.runSpeedMps']?.default).toBe(RUN_MPS);
     for (const d of TUMBLE_TUNING) {
@@ -279,7 +281,7 @@ describe('tumble: a scripted crash', () => {
     expect(h.player.mode).toBe('Road');
     expect(h.world.tick - handback).toBeLessThanOrEqual(runTicks);
     expect(h.player.pos).toEqual(bikeCopy);
-    expect(h.player.speed).toBe(0);
+    expect(h.player.speed).toBe(8); // remounts rolling (interview, 2026-10-02)
     expect(riderState(h.world).health[1]).toBe(100);
     expect(isDown(h.world, 1)).toBe(false);
     expect(tumbleRecord(h.world, 1)).toBeNull();
@@ -379,7 +381,7 @@ describe('tumble: a scripted crash', () => {
     h.world.timeScale = 0;
     for (let t = 0; t < 400; t++) h.step();
     const r1 = tumbleRecord(h.world, 1);
-    expect(h.player.mode).toBe('Tumble'); // 400 raw ticks did not reach the 300-tick timeout
+    expect(h.player.mode).toBe('Tumble'); // 400 raw ticks did not reach the 210-tick timeout
     expect(JSON.stringify({ ...r1, lastTick: 0 })).toBe(JSON.stringify({ ...JSON.parse(snap), lastTick: 0 }));
     h.world.timeScale = 1;
     h.step();
@@ -428,11 +430,14 @@ describe('tumble: dodging on foot', () => {
 });
 
 describe('tumble: skipping the run-back', () => {
-  it('remounts exactly 180 ticks after the skip, at the bike', () => {
+  it('remounts 180 ticks after the skip on a far bike, at the bike', () => {
     const h = harness([{ tick: 400, rider: 1 }]);
     for (let t = 0; t <= 400; t++) h.step();
     until(h, () => h.player.mode === 'OnFoot');
-    const bike = { ...(parkedBike(h.world, 1) ?? { edge: -1, s: 0, d: 0, dir: 1 }) };
+    const r = tumbleRecord(h.world, 1);
+    if (!r) throw new Error('no record');
+    r.parked = { edge: h.player.pos.edge, s: h.player.pos.s + 40, d: h.player.pos.d, dir: 1 }; // 39 m of run
+    const bike = { ...r.parked };
     const pressTick = h.world.tick;
     h.step(full(h.player, InputFlag.skipRunBack));
     expect(h.player.pos).toEqual(bike); // teleported to the bike
@@ -454,9 +459,33 @@ describe('tumble: skipping the run-back', () => {
     until(h, () => h.player.mode !== 'Tumble');
     const handback = h.world.tick - 1;
     const bike = parkedBike(h.world, 1);
+    const waits = tumbleRecord(h.world, 1)?.skipTicks ?? -1;
+    expect(waits).toBeGreaterThanOrEqual(0);
+    expect(waits).toBeLessThanOrEqual(SKIP);
     expect(h.player.pos).toEqual(bike);
     until(h, () => h.player.mode === 'Road');
-    expect(h.world.tick - 1 - handback).toBe(SKIP);
+    expect(h.world.tick - 1 - handback).toBe(Math.max(1, waits));
+  });
+
+  it('is never slower than running: a skip 7 m from the bike remounts when the run would have', () => {
+    const h = harness([{ tick: 5, rider: 1 }]);
+    h.player.pos = { edge: 0, s: 200, d: 1.7, dir: 1 };
+    h.player.speed = 12;
+    for (let t = 0; t < 6; t++) h.step(neutral());
+    until(h, () => h.player.mode === 'OnFoot', neutral);
+    const r = tumbleRecord(h.world, 1);
+    if (!r) throw new Error('no record');
+    r.parked = { edge: 0, s: h.player.pos.s + 7, d: h.player.pos.d, dir: 1 };
+    const runTicks = Math.ceil((6 / RUN_MPS) * 60); // 7 m less the 1 m remount reach: 52 ticks
+    const pressTick = h.world.tick;
+    h.step({ ...neutral(), flags: InputFlag.skipRunBack });
+    until(h, () => h.player.mode === 'Road', neutral, SKIP);
+    const took = h.world.tick - 1 - pressTick;
+    console.log(
+      `[examined] skip 7 m from the bike: back on in ${took} ticks (run ${runTicks}, old skip ${SKIP})`,
+    );
+    expect(took).toBeLessThanOrEqual(runTicks);
+    expect(took).toBeLessThan(SKIP);
   });
 
   it('never lets an AI rider skip (its inputs have no skip flag)', () => {
@@ -472,6 +501,43 @@ describe('tumble: skipping the run-back', () => {
     h.step(full(h.player, InputFlag.skipRunBack));
     // Still running, or already remounted (tumble-2's bike may stop right beside the rider).
     expect(tumbleRecord(h.world, 0)?.skip ?? -1).toBe(-1);
+  });
+});
+
+describe('tumble: trim only the waiting (interview, 2026-10-02)', () => {
+  /** Ticks from a top-speed crash to the hand-back, and the remount speed, under these tuning keys. */
+  function crashAndRemount(tuning: Record<string, number>) {
+    const config = fixtureConfig();
+    config.tuning = { ...config.tuning, ...tuning };
+    const h = harness([{ tick: 400, rider: 1 }], 1234, config);
+    for (let t = 0; t <= 400; t++) h.step();
+    until(h, () => h.player.mode === 'OnFoot');
+    const handback = h.world.tick - 1 - 400;
+    until(h, () => h.player.mode === 'Road', neutral, 3000);
+    return { handback, speed: h.player.speed };
+  }
+
+  it('hands back sooner once nearly stopped, and remounts rolling; both are sliders', () => {
+    const now = crashAndRemount({});
+    const old = crashAndRemount({ 'tumble.restMps': 0.5, 'tumble.timeoutS': 5, 'tumble.remountMps': 0 });
+    console.log(
+      `[examined] top-speed crash: hand-back ${now.handback} ticks (old rule ${old.handback}), remount ${now.speed} m/s (old ${old.speed})`,
+    );
+    expect(now.handback).toBeLessThanOrEqual(TIMEOUT);
+    expect(now.handback).toBeLessThanOrEqual(old.handback);
+    expect(now.speed).toBe(8);
+    expect(old.speed).toBe(0);
+    expect(crashAndRemount({ 'tumble.remountMps': 12 }).speed).toBe(12);
+  });
+
+  it('never remounts faster than the bike can go', () => {
+    const config = fixtureConfig();
+    config.tuning = { ...config.tuning, 'tumble.remountMps': 20 };
+    config.riders = config.riders.map((d) => ({ ...d, bike: { ...d.bike, topSpeedMps: 6 } }));
+    const h = harness([{ tick: 200, rider: 1 }], 1234, config);
+    for (let t = 0; t <= 200; t++) h.step();
+    until(h, () => h.player.mode === 'Road', neutral, 3000);
+    expect(h.player.speed).toBe(6);
   });
 });
 
@@ -552,9 +618,10 @@ describe('tumble: 50 seeded races with scripted crashes', () => {
             phase[id] = 'none';
             remounts++;
             if (id === 1 && skipPress >= 0) {
-              // A skip remounts exactly 180 ticks after the press (or at once, if already at the bike).
+              // A skip remounts at most 180 ticks after the press, sooner when the run is shorter.
               skips++;
-              expect(tick === skipPress || tick - skipPress === SKIP).toBe(true);
+              expect(tick - skipPress).toBeGreaterThanOrEqual(0);
+              expect(tick - skipPress).toBeLessThanOrEqual(SKIP);
               skipPress = -1;
             } else {
               expect(tick - (handTick[id] ?? 0), `seed ${seed} rider ${id}`).toBeLessThanOrEqual(
