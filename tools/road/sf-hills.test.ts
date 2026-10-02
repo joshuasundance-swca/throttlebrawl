@@ -61,7 +61,9 @@ describe('tools/road: the baked San Francisco track', () => {
       'sf-switchback-street',
       'c-switchback-merge-main',
       'sf-painted-row',
+      'c-sf-park-split-main',
       'sf-fogline-climb',
+      'c-sf-park-merge-main',
       'sf-bridge-onramp',
       'sf-bridge-approach',
     ]);
@@ -139,7 +141,22 @@ describe('tools/road: the baked San Francisco track', () => {
       len('c-switchback-split-main') + len('sf-switchback-street') + len('c-switchback-merge-main');
     const alley = len('c-stair-alley-in') + len('sf-stair-alley') + len('c-stair-alley-out');
     expect(alley).toBeLessThan(main - 50);
-    expect(net.splitZones().length).toBe(1);
+    // Two splits: the stair alley and (run W-R) the park cut.
+    expect(net.splitZones().length).toBe(2);
+  });
+
+  it('run W-R: the park cut is a marked dirt shortcut past the Fogline Climb, flat where the climb rises', () => {
+    const len = (id: string) => roads.find((r) => r.id === id)?.lengthM ?? 0;
+    const main = len('c-sf-park-split-main') + len('sf-fogline-climb') + len('c-sf-park-merge-main');
+    const cut = len('c-sf-park-in') + len('sf-park-cut') + len('c-sf-park-out');
+    expect(cut).toBeLessThan(main);
+    const park = roads.find((r) => r.id === 'sf-park-cut');
+    expect(park?.surface).toBe('dirt');
+    const ys = park?.samples.data['y'] ?? [];
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1);
+    const branch = progress.branches.find((b) => b.id === 'sf-park-cut');
+    expect(branch).toMatchObject({ kind: 'shortcut', marked: true, declared: true });
+    expect(branch?.sign).toMatch(/^PARK CUT/);
   });
 
   it('places every sign and billboard in a slot, off the road, and has boost pads and a ramp truck', () => {
