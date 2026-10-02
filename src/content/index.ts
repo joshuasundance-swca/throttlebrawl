@@ -6,6 +6,7 @@ export {
   combineRegistries,
   createPackLibrary,
   groupPackFiles,
+  isRealRoadPath,
   isRoadDataPath,
   packClosure,
   packOf,
