@@ -30,6 +30,7 @@ export const CUE_IDS = [
   'wobble',
   'passBy',
   'boost',
+  'tune',
 ] as const;
 export type CueId = (typeof CUE_IDS)[number];
 
@@ -114,6 +115,7 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   wobble: 48,
   passBy: 46,
   boost: 58,
+  tune: 56,
 };
 
 /** Added to a cue's priority when the player is the actor or the target. */

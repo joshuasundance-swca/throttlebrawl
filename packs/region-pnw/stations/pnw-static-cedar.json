@@ -1,0 +1,92 @@
+{
+  "type": "station",
+  "id": "pnw-static-cedar",
+  "name": "Static Cedar 1.7 FM",
+  "genre": "ambient",
+  "regions": ["pacific-northwest"],
+  "pirate": {
+    "atFraction": 0.42,
+    "radiusM": 320
+  },
+  "tracks": [
+    {
+      "id": "fog-lifts-around-noon",
+      "title": "Fog Lifts Around Noon (It Doesn't)",
+      "procedural": {
+        "preset": "ambient-band",
+        "params": {
+          "bpm": 60,
+          "key": "D",
+          "progression": "fog"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "ferry-horn-far-shore",
+      "title": "Ferry Horn, Far Shore",
+      "procedural": {
+        "preset": "ambient-band",
+        "params": {
+          "bpm": 56,
+          "key": "F",
+          "progression": "ferry"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "moss-remembers",
+      "title": "Moss Remembers",
+      "procedural": {
+        "preset": "ambient-band",
+        "params": {
+          "bpm": 64,
+          "key": "A",
+          "progression": "moss"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "slow-water-over-basalt",
+      "title": "Slow Water Over Basalt",
+      "procedural": {
+        "preset": "ambient-band",
+        "params": {
+          "bpm": 58,
+          "key": "G",
+          "progression": "tide"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "nobody-left-at-the-trailhead",
+      "title": "Nobody Left at the Trailhead",
+      "procedural": {
+        "preset": "ambient-band",
+        "params": {
+          "bpm": 62,
+          "key": "E",
+          "progression": "fog"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's hidden PIRATE station: heard only near one spot on the road (about 42 percent of the way along the route, within 320 m), never on the dial. Code-made ambient (src/audio/radio-compose-more.ts, preset ambient-band): slow pads, a drone, struck bells and a breathy line, no drums. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
