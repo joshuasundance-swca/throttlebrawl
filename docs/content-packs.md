@@ -564,6 +564,9 @@ An event has a common part and a `rules` block whose shape depends on `kind`:
 
 - `field.paceMps` is optional: the event's rival race pace in metres per second. Its default is the event tier's rival pace. Rival pace comes from the event, not from the bike, so a slow scooter still keeps up with the pack `[default]` ([the product spec](./product-spec.md#rivals)); the AI reads it, and `buildSimConfig` raises a rival's bike `topSpeedMps` and `accelMps2` to at least this pace. It is a sim input, so it is in `SimConfig` and the sim content hash.
 - The `rewards` style fields are optional and default to 0: `perNearMissCash`, `perAirtimeCash`, `perOncomingSecondCash`, `takedownComboScale` (a multiplier on `perTakedownCash` for each further takedown in a combo) and `perStealCash`. They implement the decided style-cash sources (near-miss traffic, airtime, oncoming-lane riding, takedown combos and weapon steals, plus "maybe other stuff"), which the sim reports as `style` events ([architecture](./architecture.md#sim-contract-srcsimapits)). Scored in M2, banked in M4 `[default]`.
+- `objectives[].kind` is one of `finish-place` (`params.maxPlace`), `takedowns` (`params.count`), `escape`, `beat-rival`, `style-cash` (`params.cash`) and `ride-branch` (`params.branch`, a route branch id) (run W-Q; a closed list, extended by a contract PR).
+- `rules` is checked by `kind` (run W-Q): a `takedown-hunt` needs `targetCount`; a `cop-escape` needs `escapeBy` and then `escapeDistanceM` or `surviveS`; a `grudge-match` needs `rival` (a rider) and `winBy`, and `knockdownsToWin` when it wins by knockdowns.
+- `tier` (1 = a career's first) and `finale` (the region's boss event) are optional career fields (run W-Q). A career map places events in tiers ([Career](#career)); the lint warns when an event's `tier` disagrees with its node's.
 - `objectives` implement the decided "objectives mix". `required: true` objectives gate advancing; optional ones pay bonuses. "Top 3 to advance" is only a `[default]` example here, never a hard-coded rule, because the maintainer did not pick it.
 - `timeOfDay` is one of the region's `timeOfDayOptions`. A `weather` field is reserved for later; the schema accepts it as optional so adding weather is not a format bump.
 - `lengths` gives the selectable race length `[decided]`: each option names a route and a lap count. Lap counts above 1 require a `closed` route (a lint rule), so a long option is either a longer point-to-point route or a closed loop with laps. The example's `long` option uses the loop `overseas-loop`.
@@ -625,7 +628,7 @@ Rules:
 
 ### Career
 
-Tag: `[decided]` for about 10 events in 3 tiers with a boss grudge race, 3 bikes, learn-by-riding in event 1, and an ending that plays a next-region teaser and then lets free play continue; `[default]` that this is its own small file, and that the first run is race-first (the maintainer answered "all of the above… maybe race first", and the intro gets iterated on).
+Tag: `[decided]` for about 10 events in 3 tiers with a boss grudge race, 3 bikes, learn-by-riding in event 1, and an ending that plays a next-region teaser and then lets free play continue; `[decided]` (interview, 2026-10-02, round 4: "Network map, tiered"; round 6: "The map") that each region's road network is its career map: events sit on its roads across all routes and all four event types, winning opens nearby roads and the next tier, then the boss, and the career's personality is the map (claiming roads, finding secrets and shortcuts, a set-piece finale per region); `[default]` that this is its own small file per region (`careers/<id>.json`), its shape below (run W-Q), and that the first run is race-first (the maintainer answered "all of the above… maybe race first", and the intro gets iterated on).
 
 ```json
 {
@@ -636,13 +639,22 @@ Tag: `[decided]` for about 10 events in 3 tiers with a boss grudge race, 3 bikes
   "startingCash": 500,
   "startingBike": "rustbucket-400",
   "tutorialEvent": "keys-t1-shakedown",
-  "tiers": [
-    { "id": "t1", "name": "Tourist Season", "events": ["keys-t1-shakedown", "keys-t1-sunburn-sprint", "keys-t1-chicken-run"], "advance": { "requiredEvents": 2 } },
-    { "id": "t2", "name": "Hurricane Season", "events": ["keys-t2-bridge-brawl", "keys-t2-deputy-dash", "keys-t2-mangrove-hunt"], "advance": { "requiredEvents": 2 } },
-    { "id": "t3", "name": "Off Season", "events": ["keys-t3-overseas-run", "keys-t3-tammy-grudge", "keys-t3-night-market"], "advance": { "requiredEvents": 2 } }
-  ],
-  "boss": "keys-boss-mother-rust-grudge",
   "firstRun": "race-first",
+  "tiers": [
+    { "id": "t1", "name": "Tourist Season", "advance": { "requiredWins": 2 } },
+    { "id": "t2", "name": "Hurricane Season", "advance": { "requiredWins": 2 } },
+    { "id": "t3", "name": "Off Season", "advance": { "requiredWins": 2 } }
+  ],
+  "nodes": [
+    { "id": "shakedown", "event": "keys-t1-shakedown", "tier": "t1", "at": { "road": "m1-marina-run", "s": 40 }, "opens": ["m1-pelican-bridge"], "claims": ["m1-marina-run"] },
+    { "id": "sunburn-sprint", "event": "keys-t1-sunburn-sprint", "length": "standard", "tier": "t1", "at": { "road": "m1-pelican-bridge", "s": 120 } },
+    { "id": "drawbridge", "event": "keys-boss-mother-rust-grudge", "tier": "t3", "at": { "road": "m1-long-bridge", "s": 10 }, "requires": ["sunburn-sprint"] }
+  ],
+  "boss": "drawbridge",
+  "secrets": [
+    { "id": "boat-ramp", "kind": "shortcut", "at": { "road": "m1-boat-ramp-cut", "s": 5 }, "ref": "m1-standard-run#m1-boat-ramp-cut" },
+    { "id": "pirate-radio", "kind": "station", "at": { "road": "m1-conch-row", "s": 300 } }
+  ],
   "ending": { "teaser": "stills/interludes/next-region-teaser", "freePlayAfter": true },
   "shop": [
     { "bike": "rustbucket-400", "priceCash": 0, "unlockTier": "t1" },
@@ -650,16 +662,19 @@ Tag: `[decided]` for about 10 events in 3 tiers with a boss grudge race, 3 bikes
     { "bike": "hurricane-1100", "priceCash": 18000, "unlockTier": "t3" }
   ],
   "unlocks": [
-    { "grant": "riding-lawnmower", "when": { "kind": "boss-beaten", "ref": "keys-boss-mother-rust-grudge" } }
+    { "grant": "riding-lawnmower", "when": { "kind": "boss-beaten", "ref": "drawbridge" } }
   ],
-  "meta": { "status": "live", "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" } }
+  "meta": { "status": "draft", "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" } }
 }
 ```
 
+- **The map.** Each `node` is an event placed on the region's network: `at` is a road of one of the region's networks and an `s` along it, `length` picks one of the event's lengths (its first when absent), and `tier` is one of `tiers`. A win `opens` roads on the map (the next races and free play draw from them) and `claims` roads (the map shows them as the player's). `requires` lists nodes to win first, besides the tier gate; a tier opens after `advance.requiredWins` wins in the tier before it.
+- **The finale.** `boss` is a node in the last tier, and its event carries `"finale": true` (the region's set piece); no other node's event may.
+- **Secrets** are what the map hides: a `shortcut` (a route branch, `ref` `<route>#<branch>`, see [Route file](#route-file-regionsregionroutesidjson)), a hidden `road`, a pirate `station` (interview, round 6), or a `stash`, each at a map point. The profile records the ones found ([architecture](./architecture.md#save-format)).
 - `firstRun: "race-first"` puts the player straight into `tutorialEvent` on first launch, with the intro kept short and iterated on `[default]`.
 - `ending.teaser` plays after the boss is beaten, and `freePlayAfter: true` keeps the game playable afterwards `[decided]`.
-
-- `unlocks` is optional (M4, not a format bump): a list of `{ grant, when }`, where `grant` is a bike or rider id and `when` has a closed `kind` (`boss-beaten` or `event-won`) plus a `ref` to the boss or event id. Anything tagged `secret` is absent from the shop and menus until its `when` is met. In the example the secret riding lawnmower joke ride unlocks after the boss, in free play `[default]`.
+- `unlocks` is optional (M4, not a format bump): a list of `{ grant, when }`, where `grant` is a bike or rider id and `when` has a closed `kind` (`boss-beaten` or `event-won`) plus a `ref` to the boss node or an event id. Anything tagged `secret` is absent from the shop and menus until its `when` is met. In the example the secret riding lawnmower joke ride unlocks after the boss, in free play `[default]`.
+- **Lint** (`careers`, `tools/career/pack-rules.ts`, a packs:check hook): every node and secret sits on a road of the region's networks, within its length; opened and claimed roads are the region's; each node's event is the region's and has the length it names; tier and node ids are unique, every node's tier exists, a requirement is never in a later tier, a tier has nodes and asks no more wins than it has; the boss is a node in the last tier whose event is the region's only finale. The refs rule checks the region, the bikes and the events. A career file is outside the sim content hash: it picks races, and each race's sim comes from its event.
 
 The names are placeholders within the tone guide. Whether the slow starter or the first shop bike is the default ride is a feel question for playtests, not a format question.
 
