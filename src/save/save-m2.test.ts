@@ -65,8 +65,10 @@ const m2Custom: Settings = {
   showTuningPanel: true,
   stylePopups: false,
   view: 'helmet',
-  radio: 'station',
+  radio: 'off',
   radioStation: 'keys-surf',
+  // A record written under the old default (the field itself is new in playtest 2).
+  radioDefault: 'score',
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
@@ -98,6 +100,8 @@ const M2_FIELDS = [
   'lookFallbackDismissed',
   // Run W-P (W-O's mustFix): the exact station, not only "a station".
   'radioStation',
+  // Playtest 2 (2026-10-02): which radio default the record was written under.
+  'radioDefault',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -129,7 +133,10 @@ describe('the M2 settings record', () => {
       showTuningPanel: false,
       stylePopups: true,
       view: 'chase',
-      radio: 'score',
+      // Playtest 2, 2026-10-02: "There should be different stations and music in different
+      // regions": a race starts on its region's own station.
+      radio: 'station',
+      radioDefault: 'station',
       gamepadBindings: {},
       lastSeenBuild: null,
       vetoes: [],
@@ -262,7 +269,7 @@ describe('the M2 settings record', () => {
     for (const r of ['score', 'station', 'off'] as const)
       expect(sanitiseSettings({ radio: r }).radio).toBe(r);
     expect(sanitiseSettings({ view: 2 }).view).toBe('chase');
-    expect(sanitiseSettings({ radio: 'OFF' }).radio).toBe('score');
+    expect(sanitiseSettings({ radio: 'OFF' }).radio).toBe('station');
     // The exact station (run W-P): a station id round-trips; empty, overlong or not text is null.
     expect(sanitiseSettings({ radioStation: 'keys-surf' }).radioStation).toBe('keys-surf');
     for (const bad of ['', 'x'.repeat(65), 7, null, ['keys-surf']])
@@ -316,6 +323,36 @@ describe('the M2 settings record', () => {
     const twice = withVeto(once, { ...flag, raceId: 'race-3', tick: 5 });
     expect(twice.vetoes).toEqual([flag]);
     expect(withVeto(once, { ...flag, contentRef: '' }).vetoes).toEqual([flag]);
+  });
+
+  it('moves a pre-playtest-2 record off the old score default, and never a choice made since', () => {
+    // Playtest 2, 2026-10-02: "There should be different stations and music in different regions".
+    const record = (data: Record<string, unknown>) => ({
+      format: SETTINGS_FORMAT,
+      version: SETTINGS_VERSION,
+      build: 'old',
+      savedAt: '2026-10-01T00:00:00.000Z',
+      data,
+    });
+    const loadOf = (data: Record<string, unknown>) =>
+      createSettingsStore(
+        opts(memoryStorage({ 'app:settings': JSON.stringify(record(data)) }).storage),
+      ).load();
+    // An old record on the score that never played a station: the score was only the old default.
+    expect(loadOf({ radio: 'score', radioStation: null }).radio).toBe('station');
+    expect(loadOf({ radio: 'score' }).radio).toBe('station');
+    // An old record that played a station and went back to the score chose it: kept.
+    expect(loadOf({ radio: 'score', radioStation: 'keys-surf' }).radio).toBe('score');
+    // Off and Station are choices too.
+    expect(loadOf({ radio: 'off' }).radio).toBe('off');
+    expect(loadOf({ radio: 'station', radioStation: 'pnw-salal' }).radio).toBe('station');
+    // A record this build wrote keeps the score even before any station played: a pick sticks.
+    const { storage } = memoryStorage();
+    const store = createSettingsStore(opts(storage));
+    store.save({ ...DEFAULT_SETTINGS, radio: 'score' });
+    expect(createSettingsStore(opts(storage)).load().radio).toBe('score');
+    // The marker is plain data: sanitising alone never migrates (the settings screen's probe).
+    expect(sanitiseSettings({ radio: 'score' }).radio).toBe('score');
   });
 
   it('maps the assists and throttle settings to the sim slot assists shape', () => {

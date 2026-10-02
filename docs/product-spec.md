@@ -197,7 +197,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 
 ## Cops
 
-- Classic chase and bust. If you go down near a cop, whether you crash or get knocked off, you're **busted**. The race ends for you, and you pay a fine. [decided]
+- Classic chase and bust. If a cop knocks you off, you're **busted** (interview, 2026-10-02; it was any fall near a cop before, and it is revisited after a playtest). The race ends for you, and you pay a fine. [decided]
 - You can fight cops like any other rider. [decided]
 - Cops carry batons and tasers, which you can steal. The Saturn manual tip says the easiest way to get a weapon is to take one from a cop. [default]
 - Cops show up through a mix of three triggers, with some randomness: more cops at higher tiers, some cops in every race, and cops summoned by chaos. [decided]
@@ -238,12 +238,13 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 
 - A big impact throws you and your bike. The rider tumbles, then **runs back to the bike**. You can skip the run. [decided] The skip input is in [Controls](#controls). [default]
 - While running back, you can steer the runner to dodge traffic. Skipping puts you back on the bike after a short time penalty of about 3 seconds. [default]
+- Trim only the waiting (interview, 2026-10-02) [decided]: the tumble hands back once nearly stopped, after at most about 3.5 seconds; Skip is never slower than running to the bike; you remount rolling (about 8 m/s). The run itself is unchanged. The numbers are sliders. [default]
 - The simulation tracks riders by distance along the road and offset across it. [decided] Real physics is used only for crash tumbles. [default] Details are in [the architecture doc](./architecture.md#crash-tumble).
 - Crashes are part of the comedy. The physics should be absurd and readable, never gory. [decided]
 - Crashes are big and funny, and recovery is quick: ragdoll tumbles, the bike cartwheels, riders sometimes go over the rail, and the run-back starts fast. [decided]
 - Going over a bridge rail ends in a funny splash (a gator or a fisherman reacts), a time penalty and a respawn on the bridge. There is no swimming. [decided]
 - Knocked-off rivals tumble, get up and shake a fist, and a grudge is noted. It is never gory or lingering. [decided]
-- Going down near a cop means you're busted. [decided]
+- A cop knocking you off means you're busted; crashing on your own near him does not (interview, 2026-10-02). [decided]
 
 ## Career
 
