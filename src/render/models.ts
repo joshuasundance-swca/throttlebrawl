@@ -188,7 +188,8 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
     const nrm = g.getAttribute('normal');
     const index = g.getIndex();
     const count = index ? index.count : pos.count;
-    roles.push({ role: mat?.name ?? '', start: positions.length / 3, count });
+    const start = positions.length / 3;
+    roles.push({ role: mat?.name ?? '', start, count });
     for (let i = 0; i < count; i++) {
       const k = index ? index.getX(i) : i;
       p.fromBufferAttribute(pos, k).applyMatrix4(m);
@@ -198,6 +199,9 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
       normals.push(n.x, n.y, n.z);
       colors.push(c.r, c.g, c.b);
     }
+    // A GLB shipped without normals (the roadside kits, run W-P, to halve their bytes) is faceted:
+    // each triangle's normal is its face's.
+    if (!nrm) faceNormals(positions, normals, start, count);
   });
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
@@ -206,6 +210,20 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   return { geometry, doubleSided, roles };
+}
+
+/** Sets the normals of `count` triangle-list vertices from `start` to their faces' normals. */
+function faceNormals(positions: number[], normals: number[], start: number, count: number): void {
+  const a = new Vector3();
+  const b = new Vector3();
+  const c = new Vector3();
+  for (let v = start; v + 2 < start + count; v += 3) {
+    a.fromArray(positions, v * 3);
+    b.fromArray(positions, v * 3 + 3).sub(a);
+    c.fromArray(positions, v * 3 + 6).sub(a);
+    b.cross(c).normalize();
+    for (let k = 0; k < 3; k++) b.toArray(normals, (v + k) * 3);
+  }
 }
 
 /** Bakes a loaded glTF scene into a scenery model. Throws when a root node is missing. */

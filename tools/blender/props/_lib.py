@@ -259,12 +259,16 @@ def text_panel(name, mats, mat, parent, width, height, centre, thickness=0.0):
     return ob
 
 
-def export(out, texcoords=False):
-    """The trial's export call; `texcoords` is on only for props with text surfaces."""
+def export(out, texcoords=False, normals=True):
+    """The trial's export call; `texcoords` is on only for props with text surfaces.
+
+    `normals=False` leaves the normals out: every prop is faceted, so the game rebuilds each face's
+    normal from its corners (models.ts), and a kit of many small props ships in about half the bytes.
+    """
     bpy.ops.export_scene.gltf(
         filepath=out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_extras=True, export_attributes=True,
-        export_vertex_color="NONE", export_texcoords=texcoords, export_normals=True,
+        export_vertex_color="NONE", export_texcoords=texcoords, export_normals=normals,
         export_materials="EXPORT", export_cameras=False, export_lights=False,
         export_animations=False,
     )

@@ -333,7 +333,17 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         const colours = new Set<string>();
         const c = g.getAttribute('color');
         for (let i = 0; i < c.count; i += 3) colours.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
-        expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(kind === 'fogBanks' ? 0 : 1);
+        // A roadside kit's fern or fence section is one flat colour; the kit as a whole has many.
+        const single = kind === 'fogBanks' || kind.endsWith('Roadside');
+        expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(single ? 0 : 1);
+      }
+      if (kind.endsWith('Roadside')) {
+        const all = new Set<string>();
+        for (const g of m.variants) {
+          const c = g.getAttribute('color');
+          for (let i = 0; i < c.count; i += 3) all.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
+        }
+        expect(all.size, `${kind}: colours across the kit`).toBeGreaterThan(9);
       }
       lines.push(`${kind} ${m.variants.map((g) => g.getAttribute('position').count / 3).join('/')} tris`);
     }

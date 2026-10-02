@@ -57,6 +57,19 @@ VARIANTS = ["fern", "salal", "stump", "rock", "mailbox", "firewood", "split_rail
 XS = [-40.0, -34.0, -28.0, -22.0, -16.0, -10.0, -2.0, 8.0, 16.0, 24.0, 34.0, 46.0]
 
 
+def gem(mb, centre, radii, mat, rng, jitter=0.12):
+    """A jittered octahedron (8 triangles): the cheapest round bush or rock."""
+    cx, cf, cz = centre
+    rx, rf, rz = radii
+    pts = [(rx, 0, 0), (-rx, 0, 0), (0, rf, 0), (0, -rf, 0), (0, 0, rz), (0, 0, -rz)]
+    vs = []
+    for x, f, z in pts:
+        k = 1.0 + rng.uniform(-jitter, jitter)
+        vs.append(mb.v(P(cx + x * k, cf + f * k, cz + z * k)))
+    tris = [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)]
+    mb.tag([mb.bm.faces.new((vs[a], vs[b], vs[c])) for a, b, c in tris], mat)
+
+
 def open_faces(mb, quads, mat):
     """Faces that are thin sheets (leaves): no closed-normal recalculation."""
     faces = [mb.bm.faces.new([mb.v(P(*q)) for q in quad]) for quad in quads]
@@ -86,19 +99,19 @@ def fern(mb, rng):
 
 def salal(mb, rng):
     for cx, cf, r, h in ((0.0, 0.0, 0.75, 0.55), (0.45, 0.25, 0.55, 0.45), (-0.4, -0.2, 0.5, 0.4)):
-        mb.blob((cx, cf, h * 0.9), (r, r * 0.9, h), "foliage_dark", jitter=0.15, rng=rng)
+        gem(mb, (cx, cf, h), (r, r * 0.9, h), "foliage_dark", rng, 0.15)
 
 
 def stump(mb, rng):
-    mb.cyl((0.0, 0.0, 0.35), "z", 0.42, 0.35, 7, "bark", r_top=0.36)
+    mb.cyl((0.0, 0.0, 0.35), "z", 0.42, 0.35, 6, "bark", r_top=0.36)
     # a moss cap over the cut and a patch down one side
-    mb.cyl((0.0, 0.0, 0.73), "z", 0.38, 0.04, 7, "moss")
-    mb.blob((0.0, -0.33, 0.25), (0.22, 0.12, 0.2), "moss", jitter=0.1, rng=rng)
+    mb.cone((0.0, 0.0, 0.7), 0.4, 0.8, 6, "moss")
+    gem(mb, (0.0, -0.36, 0.25), (0.22, 0.12, 0.2), "moss", rng, 0.1)
 
 
 def rock(mb, rng):
-    mb.blob((0.0, 0.0, 0.42), (0.75, 0.6, 0.45), "stone", jitter=0.18, rng=rng)
-    mb.blob((0.1, 0.05, 0.78), (0.5, 0.42, 0.14), "moss", jitter=0.12, rng=rng)
+    gem(mb, (0.0, 0.0, 0.42), (0.75, 0.6, 0.45), "stone", rng, 0.18)
+    gem(mb, (0.1, 0.05, 0.8), (0.5, 0.42, 0.12), "moss", rng, 0.12)
 
 
 def mailbox(mb, rng):
@@ -180,20 +193,21 @@ def espresso(mb, rng):
 
 def maple(mb, rng):
     """A bigleaf maple: a stout leaning trunk, mossy below, two limbs and a broad round crown."""
-    mb.tube([(0.0, 0.0, 0.0), (0.25, 0.1, 3.0), (0.2, 0.0, 5.5)], [0.42, 0.34, 0.26], "bark", sides=6)
-    mb.tube([(0.0, 0.0, 0.0), (0.12, 0.05, 1.8)], [0.47, 0.4], "moss", sides=6)
-    mb.tube([(0.2, 0.0, 4.5), (-1.8, 0.4, 7.2)], [0.2, 0.12], "bark", sides=4)
-    mb.tube([(0.2, 0.0, 4.8), (2.0, -0.5, 7.6)], [0.2, 0.12], "bark", sides=4)
-    for cx, cf, cz, rx, rz in ((0.0, 0.0, 9.2, 3.6, 2.6), (-2.3, 0.6, 7.9, 2.5, 2.0), (2.4, -0.5, 8.3, 2.6, 2.1),
-                               (0.3, 0.2, 11.0, 2.4, 1.8)):
-        mb.blob((cx, cf, cz), (rx, rx * 0.9, rz), "leaf_light", jitter=0.12, rng=rng)
+    mb.tube([(0.0, 0.0, 0.0), (0.25, 0.1, 3.0), (0.2, 0.0, 5.5)], [0.42, 0.34, 0.26], "bark", sides=5)
+    mb.tube([(0.0, 0.0, 0.0), (0.12, 0.05, 1.8)], [0.47, 0.4], "moss", sides=5)
+    mb.tube([(0.2, 0.0, 4.5), (-1.8, 0.4, 7.2)], [0.2, 0.12], "bark", sides=3)
+    mb.tube([(0.2, 0.0, 4.8), (2.0, -0.5, 7.6)], [0.2, 0.12], "bark", sides=3)
+    mb.blob((0.0, 0.0, 9.4), (3.6, 3.2, 2.6), "leaf_light", jitter=0.12, rng=rng)
+    for cx, cf, cz, rx, rz in ((-2.4, 0.6, 7.9, 2.5, 2.0), (2.5, -0.5, 8.3, 2.6, 2.1)):
+        gem(mb, (cx, cf, cz), (rx, rx * 0.9, rz), "leaf_light", rng, 0.12)
 
 
 def alder(mb, rng):
     """A red alder: a straight pale trunk and a narrow, open crown."""
-    mb.tube([(0.0, 0.0, 0.0), (0.1, 0.0, 4.0), (0.0, 0.05, 8.0)], [0.24, 0.19, 0.12], "bark_pale", sides=5)
-    for cx, cf, cz, rx, rz in ((0.0, 0.0, 8.6, 1.9, 2.4), (0.6, 0.3, 6.6, 1.6, 1.6), (-0.5, -0.3, 10.4, 1.3, 1.5)):
-        mb.blob((cx, cf, cz), (rx, rx, rz), "foliage", jitter=0.12, rng=rng)
+    mb.tube([(0.0, 0.0, 0.0), (0.1, 0.0, 4.0), (0.0, 0.05, 8.0)], [0.24, 0.19, 0.12], "bark_pale", sides=4)
+    mb.blob((0.0, 0.0, 8.6), (1.9, 1.9, 2.4), "foliage", jitter=0.12, rng=rng)
+    for cx, cf, cz, rx, rz in ((0.6, 0.3, 6.6, 1.6, 1.6), (-0.5, -0.3, 10.6, 1.3, 1.5)):
+        gem(mb, (cx, cf, cz), (rx, rx, rz), "foliage", rng, 0.12)
 
 
 BUILDERS = {"fern": fern, "salal": salal, "stump": stump, "rock": rock, "mailbox": mailbox,
@@ -221,7 +235,7 @@ def main():
             f.material_index = keep.index(mb.mats[f.material_index])
         mb.mats = keep
         mb.build(f"pnw_{name}_body", mats, root)
-    _lib.export(out)
+    _lib.export(out, normals=False)
 
 
 main()

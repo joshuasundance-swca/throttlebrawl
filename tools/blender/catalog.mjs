@@ -351,7 +351,7 @@ export const PROPS = [
       perVariant: { tris: 240, draws: 10 },
       // fern, salal, stump, rock, mailbox, firewood, split rail, log fence, sign, espresso hut,
       // bigleaf maple, red alder
-      tris: [24, 60, 70, 40, 90, 80, 60, 60, 44, 200, 160, 90],
+      tris: [24, 24, 40, 16, 90, 80, 60, 60, 44, 200, 100, 60],
       height: [0.5, 15],
       heights: [
         [0.6, 1.1],
