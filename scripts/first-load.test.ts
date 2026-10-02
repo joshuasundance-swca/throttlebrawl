@@ -5,7 +5,9 @@
 // that pulls one back in fails here, not only as a bigger number in the perf check.
 import { describe, expect, it } from 'vitest';
 import { build, type Rolldown } from 'vite';
+import { distFileName, readLock, sha256 } from './dataset-assets.mjs';
 import { firstLoadScripts, staticImports } from './first-load.mjs';
+import { repoRoot } from './lib.mjs';
 
 describe('staticImports', () => {
   it('finds minified static imports and re-exports, never a dynamic import()', () => {
@@ -93,5 +95,18 @@ describe('the production build', { timeout: 120_000 }, () => {
     }
     // A pack's road data ships as files, never as data URLs inside the JavaScript.
     for (const c of firstChunks) expect(c.code.includes('data:application/json')).toBe(false);
+
+    // Run W-Q: every file assets.lock.json pins is baked in under assets/ds/ with its pinned bytes
+    // (offline keeps working), and the first load's manifest rows name it.
+    const { lock } = readLock(repoRoot);
+    expect(lock?.files.length).toBeGreaterThan(0);
+    const firstCode = firstChunks.map((c) => c.code).join('\n');
+    for (const f of lock?.files ?? []) {
+      const emitted = items.find((a) => a.fileName === distFileName(f));
+      expect(emitted?.type, `${f.path} is not in the build`).toBe('asset');
+      if (emitted?.type === 'asset') expect(sha256(Buffer.from(emitted.source))).toBe(f.sha256);
+      expect(firstCode.includes(distFileName(f)), `${f.path}'s row is not in the first load`).toBe(true);
+    }
+    console.log(`[examined] ${lock?.files.length ?? 0} dataset files baked into the build`);
   });
 });

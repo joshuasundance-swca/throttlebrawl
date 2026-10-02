@@ -127,6 +127,57 @@ describe('bark director', () => {
   });
 });
 
+describe('bark director: W-Q heckles (rivals riding past you while you are down)', () => {
+  const withHeckle = () =>
+    barkLinesFrom({
+      'base:deacon-core': {
+        type: 'bark-set',
+        id: 'deacon-core',
+        defaults: { speaker: 'deacon-vane', cooldownS: 90 },
+        lines: [
+          { id: 'deacon-pass', trigger: 'overtake', text: 'Get thee behind me. Stay there.' },
+          {
+            id: 'deacon-heckle',
+            trigger: 'knocked-down-target',
+            text: 'Kneel if you like. I will not wait.',
+          },
+        ],
+      },
+    });
+  const downSnap = (mode: string) =>
+    ({
+      tick: 0,
+      entities: ENTITIES.map((e) => (e.id === 2 ? ({ ...e, mode } as EntitySnapshot) : e)),
+    }) as unknown as SimSnapshot;
+
+  it('an overtake of a player who is down is a heckle; riding, the plain overtake line', () => {
+    for (const [mode, line] of [
+      ['Tumble', '#deacon-heckle'],
+      ['OnFoot', '#deacon-heckle'],
+      ['Road', '#deacon-pass'],
+    ] as const) {
+      const { view, shown } = fakeView();
+      createBarkDirector(createBarkSelector(withHeckle()), view).onEvents([ev(600, 'overtake', 0, 2)], {
+        snapshot: downSnap(mode),
+        seed: 1,
+      });
+      expect(
+        shown.map((b) => b.contentRef.slice(b.contentRef.indexOf('#'))),
+        mode,
+      ).toEqual([line]);
+    }
+  });
+
+  it('with no heckle to say, the overtake line as before', () => {
+    const { view, shown } = fakeView();
+    createBarkDirector(createBarkSelector(pool()), view).onEvents([ev(600, 'overtake', 0, 2)], {
+      snapshot: downSnap('Tumble'),
+      seed: 1,
+    });
+    expect(shown.map((b) => b.contentRef)).toEqual(['base:bark-set/deacon-core#deacon-pass']);
+  });
+});
+
 describe('bark director: M2 triggers', () => {
   const evd = (
     tick: number,
