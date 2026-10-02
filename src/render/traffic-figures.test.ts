@@ -94,8 +94,8 @@ describe('which regional figure draws each type', () => {
     expect(trafficFigureFor('base:snowbird-rv')).toBe('rv');
     expect(trafficFigureFor('region-pnw:motorhome')).toBe('rv');
     expect(trafficFigureFor('region-pnw:camper-van')).toBe('rv');
-    expect(trafficFigureFor('base:beach-cruiser')).toBe('cyclist');
-    expect(trafficFigureFor('region-pnw:rain-cape-cyclist')).toBe('cyclist');
+    expect(trafficFigureFor('base:beach-cruiser')).toBe('cruiser');
+    expect(trafficFigureFor('region-pnw:rain-cape-cyclist')).toBe('rainCyclist');
     expect(trafficFigureFor('region-pnw:log-truck')).toBe('logTruck');
     expect(trafficFigureFor('region-pnw:wagon-with-kayaks')).toBe('wagon');
     expect(trafficFigureFor('region-pnw:mossy-wagon')).toBe('wagon');
@@ -124,13 +124,14 @@ describe('which regional figure draws each type', () => {
     expect(peopleFigureFor(road('base:chicken', 'animal', 0.4, 0.3), 'base:chicken', null)).toBeNull();
   });
 
-  it('gives every figure its own shape, and the paint comes from the figure', () => {
+  it('gives every figure its own shape, and only dogs take a tint', () => {
     const parts = Object.values(TRAFFIC_FIGURE_PARTS).map((x) => JSON.stringify(x));
     expect(new Set(parts).size).toBe(parts.length);
     for (const [k, x] of Object.entries(TRAFFIC_FIGURE_PARTS)) expect(x.length, k).toBeGreaterThanOrEqual(6);
-    expect(trafficFigureTint('robotaxi', 'region-sf:dawdle-robotaxi', 3)).toBe('#f4f4f4');
+    // Only a dog is tinted (a tint multiplies every part, skin and kayaks too).
+    expect(trafficFigureTint('robotaxi', 'region-sf:dawdle-robotaxi', 3)).toBe('#ffffff');
     expect(trafficFigureTint('dog', 'region-pnw:wet-dog', 9)).toBe('#5a4636');
-    expect(trafficFigureTint('personFist', 'base:sunburnt-jogger', 2)).toBe('#ff6b6b');
+    expect(trafficFigureTint('personFist', 'base:sunburnt-jogger', 2)).toBe('#ffffff');
   });
 });
 
@@ -169,7 +170,8 @@ describe('the entity views draw the regional traffic and people as themselves', 
     for (const fig of TRAFFIC_FIGURES) expect(d[`views-${fig}`], fig).toBeGreaterThan(0);
     expect(d).toMatchObject({
       'views-rv': 2,
-      'views-cyclist': 2,
+      'views-cruiser': 1,
+      'views-rainCyclist': 1,
       'views-jogger': 2,
       'views-hiker': 1,
       'views-dogWalker': 1,
@@ -184,7 +186,7 @@ describe('the entity views draw the regional traffic and people as themselves', 
 
   it('sizes each to its type: a 16 m log truck, a narrow cyclist, a robotaxi taller than a convertible', () => {
     const log = sizeOf('views-logTruck');
-    const cyclist = sizeOf('views-cyclist');
+    const cyclist = sizeOf('views-cruiser');
     const taxi = sizeOf('views-robotaxi');
     const convertible = sizeOf('views-convertible');
     const dog = sizeOf('views-dog');
