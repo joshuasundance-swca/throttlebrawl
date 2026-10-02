@@ -23,6 +23,16 @@
 //   during a long pipe wind-up) the kick's wind-up starts from zero, as in M1. A punch that has
 //   already landed stands: the jab, then the kick. The input lane's gesture-timing invariant checks
 //   its swipe window against this window.
+// - The directional kick (playtest 2, 2026-10-02: "Kick timing requires the ability to choose kick
+//   direction as you ride up behind someone (directional swipe)"). A kick with ONE side flag kicks
+//   to that side whatever side the rider ahead is on at the press, so a player riding up behind
+//   someone commits to the side they will pass on (the side flags already worked this way for
+//   every attack). A kick with BOTH side flags is the straight kick: it aims at the rider directly
+//   ahead (|Δd| ≤ STRAIGHT_KICK_D_M) and reaches combat.straightKickReachM (2 m) forward, past the
+//   side kick's 1 m, and shoves him away from the kicker's line like any kick. Both flags without
+//   the kick stay an auto-sided attack, as before. The straight choice is made at the press, or by
+//   the flags during the wind-up (and so by a kick conversion), like the side; `attackStart` and
+//   `hit` carry `straight: true`. [default]
 // - The hit test runs only while active, against that weapon's reach box on the chosen side. One
 //   hit per attack; no hit by the end of the active moment is an `attackMiss`.
 // - A landed hit: damage to health, a stagger (the target cannot start an attack, its own wind-up
@@ -233,6 +243,17 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    id: 'combat.straightKickReachM',
+    group: 'combat',
+    label: 'Straight kick reach',
+    default: 2,
+    min: 0.5,
+    max: 4,
+    step: 0.1,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
     id: 'combat.momentumKickGain',
     group: 'combat',
     label: 'Momentum kick',
@@ -351,6 +372,8 @@ export const KICK_ID = 'base:kick';
 /** Auto-target acquisition box (M1 starting numbers): |Δs| ≤ 4 m, |Δd| ≤ 3 m. */
 export const ACQUIRE_S_M = 4;
 export const ACQUIRE_D_M = 3;
+/** The straight kick's lateral half-width: it boots the rider directly ahead. [default] */
+export const STRAIGHT_KICK_D_M = 1;
 /** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
 const MASS_RATIO_MIN = 0.5;
 const MASS_RATIO_MAX = 2;
@@ -394,6 +417,8 @@ export interface CombatState {
   age: number[];
   /** Attack side in the attacker's frame: +1 right, -1 left. */
   side: number[];
+  /** Whether the current attack is the straight kick (both side flags with the kick). */
+  straight: boolean[];
   targetId: EntityId[];
   landed: boolean[];
   /** Cause id shared by every event of the current attack. */
@@ -458,6 +483,7 @@ export function combatState(world: World): CombatState {
     elapsed: [],
     age: [],
     side: [],
+    straight: [],
     targetId: [],
     landed: [],
     cause: [],
@@ -558,8 +584,8 @@ interface Candidate {
 }
 
 /**
- * Valid riders inside a box (|Δs| ≤ sM, |Δd| ≤ dM) around `a`, on `side` if it is nonzero.
- * Sorted by preference: non-cops first, then nearest, then lowest id.
+ * Valid riders inside a box (-sM ≤ Δs ≤ aheadM, |Δd| ≤ dM; aheadM defaults to sM) around `a`, on
+ * `side` if it is nonzero. Sorted by preference: non-cops first, then nearest, then lowest id.
  */
 function candidates(
   world: World,
@@ -568,13 +594,14 @@ function candidates(
   sM: number,
   dM: number,
   side: number,
+  aheadM = sM,
 ): Candidate[] {
   const health = riderState(world).health;
   const out: Candidate[] = [];
   for (const b of world.movers) {
     if (b.id === a.id || !isRiding(b) || (health[b.id] ?? 0) <= 0) continue;
-    const rel = relative(config.road, a, b, sM + 2);
-    if (!rel || Math.abs(rel.ds) > sM || Math.abs(rel.dd) > dM) continue;
+    const rel = relative(config.road, a, b, Math.max(sM, aheadM) + 2);
+    if (!rel || rel.ds < -sM || rel.ds > aheadM || Math.abs(rel.dd) > dM) continue;
     if (side !== 0 && side * rel.dd < 0) continue;
     out.push({ id: b.id, dd: rel.dd, dist2: rel.ds * rel.ds + rel.dd * rel.dd, law: isLaw(config, b) });
   }
@@ -587,17 +614,39 @@ function sideFlag(flags: number): number {
   return left === right ? 0 : left ? -1 : 1;
 }
 
-/** Picks the auto-target and side for an attacker; `override` is a side flag (0 = none). */
+/** Both side flags with the kick: the straight kick (playtest 2's directional kick). */
+function straightFlag(flags: number): boolean {
+  const both = InputFlag.attackSideLeft | InputFlag.attackSideRight;
+  return (flags & InputFlag.kick) !== 0 && (flags & both) === both;
+}
+
+/**
+ * Picks the auto-target and side for an attacker; `override` is a side flag (0 = none). The
+ * straight kick aims at the nearest rider ahead inside the narrow straight box, and its side (the
+ * way the shove goes) is the side he is on.
+ */
 function aim(
   world: World,
   config: SimConfig,
   a: Mover,
   override: number,
+  straight = false,
 ): { target: EntityId; side: number } {
-  const best = candidates(world, config, a, ACQUIRE_S_M, ACQUIRE_D_M, override)[0];
+  const best = straight
+    ? candidates(world, config, a, 0, STRAIGHT_KICK_D_M, 0, ACQUIRE_S_M)[0]
+    : candidates(world, config, a, ACQUIRE_S_M, ACQUIRE_D_M, override)[0];
   if (override !== 0) return { target: best?.id ?? -1, side: override };
   if (!best) return { target: -1, side: 1 };
   return { target: best.id, side: best.dd < 0 ? -1 : 1 };
+}
+
+/** Aims an attack from this tick's flags: the straight kick, a forced side, or the auto side. */
+function setAim(world: World, config: SimConfig, st: CombatState, a: Mover, flags: number): void {
+  const straight = straightFlag(flags);
+  const aimed = aim(world, config, a, straight ? 0 : sideFlag(flags), straight);
+  st.straight[a.id] = straight;
+  st.targetId[a.id] = aimed.target;
+  st.side[a.id] = aimed.side;
 }
 
 function durationOf(w: SimWeaponDef, phase: ActivePhase): number {
@@ -627,11 +676,19 @@ function startAttack(
   const extra: { target?: EntityId; causeId?: number } = {};
   if (target >= 0) extra.target = target;
   if (cause !== undefined) extra.causeId = cause;
-  st.cause[id] = emit(world, 'attackStart', id, { weapon: w.contentId, side: st.side[id] ?? 1 }, extra);
+  const straight = w.contentId === KICK_ID && st.straight[id] === true;
+  st.cause[id] = emit(
+    world,
+    'attackStart',
+    id,
+    { weapon: w.contentId, side: st.side[id] ?? 1, ...(straight ? { straight } : {}) },
+    extra,
+  );
 }
 
 function endAttack(st: CombatState, id: EntityId): void {
   st.phase[id] = 'idle';
+  st.straight[id] = false;
   st.weapon[id] = '';
   st.elapsed[id] = 0;
   st.targetId[id] = -1;
@@ -762,6 +819,7 @@ function land(
       weapon: w.contentId,
       damage,
       kick,
+      ...(kick && st.straight[id] ? { straight: true } : {}),
       health,
       hitImpulse,
       ...effect,
@@ -852,7 +910,19 @@ function hitTest(world: World, config: SimConfig, st: CombatState, a: Mover): vo
   const id = a.id;
   const w = weaponById(config, st.weapon[id] ?? '');
   if (!w || st.phase[id] !== 'active' || st.landed[id]) return;
-  const inReach = candidates(world, config, a, w.reachSM, w.reachDM, st.side[id] ?? 1);
+  // The straight kick reaches forward (combat.straightKickReachM) in its narrow box, either side.
+  const inReach =
+    w.contentId === KICK_ID && st.straight[id]
+      ? candidates(
+          world,
+          config,
+          a,
+          w.reachSM,
+          STRAIGHT_KICK_D_M,
+          0,
+          world.params['combat.straightKickReachM'] ?? 2,
+        )
+      : candidates(world, config, a, w.reachSM, w.reachDM, st.side[id] ?? 1);
   const pick = inReach.find((c) => c.id === st.targetId[id]) ?? inReach[0];
   const victim = pick ? world.movers[pick.id] : undefined;
   if (pick && victim) land(world, config, st, a, victim, w, pick.dd);
@@ -1227,7 +1297,7 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
  * The kick flag on an attack that is not a kick: converts it while it is in its wind-up, or while
  * it is inside the kick-conversion window (keeping its age); the file header has the rule.
  */
-function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover): void {
+function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover, flags: number): void {
   const id = a.id;
   const age = st.age[id] ?? 0;
   const window = Math.round(((world.params['combat.kickConvertMs'] ?? 250) * 60) / 1000);
@@ -1236,6 +1306,8 @@ function convertToKick(world: World, config: SimConfig, st: CombatState, a: Move
   const kick = resolveWeapon(config, st, id, true);
   if (!kick || kick.contentId !== KICK_ID) return;
   const carried = early ? Math.min(age, Math.max(0, kick.windupTicks - 1)) : 0;
+  // A swipe that asks for the straight kick re-aims the converted kick at the rider ahead.
+  if (straightFlag(flags)) setAim(world, config, st, a, flags);
   startAttack(world, st, a, kick, st.cause[id], carried);
 }
 
@@ -1253,6 +1325,7 @@ export const combatSystem: SimSystem = {
       st.elapsed[m.id] = 0;
       st.age[m.id] = 0;
       st.side[m.id] = 1;
+      st.straight[m.id] = false;
       st.targetId[m.id] = -1;
       st.landed[m.id] = false;
       st.cause[m.id] = 0;
@@ -1340,22 +1413,27 @@ export const combatSystem: SimSystem = {
           st.pending[id] = false;
           const w = resolveWeapon(config, st, id, wantKick);
           if (w) {
-            const aimed = aim(world, config, a, override);
-            st.targetId[id] = aimed.target;
-            st.side[id] = aimed.side;
+            setAim(world, config, st, a, w.contentId === KICK_ID ? flags : flags & ~InputFlag.kick);
             startAttack(world, st, a, w, undefined);
           }
         }
       } else if (st.phase[id] === 'windup') {
-        // The side and kick flags may still change the attack until the active moment starts.
-        if (override !== 0 && override !== st.side[id]) {
-          const aimed = aim(world, config, a, override);
-          st.targetId[id] = aimed.target;
-          st.side[id] = aimed.side;
+        // The side and kick flags may still change the attack until the active moment starts: a
+        // new forced side, or the straight kick asked for on a kick's wind-up.
+        const straightNow = st.weapon[id] === KICK_ID && straightFlag(flags);
+        if (straightNow && !st.straight[id]) setAim(world, config, st, a, flags);
+        else if (override !== 0 && (override !== st.side[id] || st.straight[id])) {
+          setAim(
+            world,
+            config,
+            st,
+            a,
+            flags & ~(override < 0 ? InputFlag.attackSideRight : InputFlag.attackSideLeft),
+          );
         }
       }
       if (st.phase[id] !== 'idle' && wantKick && st.weapon[id] !== KICK_ID)
-        convertToKick(world, config, st, a);
+        convertToKick(world, config, st, a, flags);
       hitTest(world, config, st, a);
     }
     pickupPass(world, config, st);

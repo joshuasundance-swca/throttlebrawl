@@ -12,6 +12,16 @@ export interface InputThresholds {
   kickSwipePx: number;
   /** The kick swipe must cross kickSwipePx within this long after the press, ms. */
   kickSwipeMs: number;
+  /**
+   * Playtest 2's directional kick: a kick swipe within this many degrees of straight down is the
+   * auto-sided kick; further over (up to kickConeDeg) it kicks to the side it leans to.
+   */
+  kickSideDeg: number;
+  /**
+   * How far from straight down, degrees, a swipe still counts as a kick (M1: 45). Flatter fast
+   * drags pick a punch's side. A swipe within 45 degrees of straight UP is the straight kick.
+   */
+  kickConeDeg: number;
   /** Stick travel for full throttle or full steer, CSS px. */
   stickRangePx: number;
   /** Stick steering dead zone, as a fraction of full deflection. */
@@ -62,6 +72,10 @@ export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('attackDragMs', 'Attack side drag window', 80, 30, 80, 5, 'ms'),
   decl('kickSwipePx', 'Kick swipe distance', 24, 8, 80, 1, 'px'),
   decl('kickSwipeMs', 'Kick swipe window', 200, 30, 230, 5, 'ms'),
+  // Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you
+  // ride up behind someone (directional swipe)". [default]
+  decl('kickSideDeg', 'Kick swipe side lean', 20, 5, 40, 1, 'deg'),
+  decl('kickConeDeg', 'Kick swipe cone', 60, 45, 75, 1, 'deg'),
   decl('stickRangePx', 'Stick range', 60, 30, 140, 5, 'px'),
   decl('stickDeadZone', 'Stick steer dead zone', 0.08, 0, 0.3, 0.01, ''),
   // Playtest 1 (2026-09-30, "on the phone it was more difficult to get through traffic"): a

@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_KEY_MAP, KEY_ACTION_NAMES, keyLabel, keyLegend, type KeyAction } from './index';
 
 describe('input: the keyboard legend for the pause screen', () => {
-  it('names K kick, J punch, and U and O punch to a side', () => {
+  it('names K kick, I the straight kick, J punch, and U and O punch (or, with K, kick) to a side', () => {
     const rows = keyLegend();
     const find = (action: string) => rows.find((r) => r.action === action)?.keys;
-    expect(find('kick')).toBe('K');
+    expect(find(KEY_ACTION_NAMES.kick)).toBe('K');
+    expect(KEY_ACTION_NAMES.kick).toContain('U or O');
+    expect(find('straight kick, at the rider ahead')).toBe('I');
     expect(find('punch')).toBe('J');
     expect(find('punch left')).toBe('U');
     expect(find('punch right')).toBe('O');
@@ -28,7 +30,7 @@ describe('input: the keyboard legend for the pause screen', () => {
 
   it('follows a remap and leaves out an unbound action', () => {
     const rows = keyLegend({ ...DEFAULT_KEY_MAP, kick: ['KeyF', 'Digit2'], lookBack: [] });
-    expect(rows.find((r) => r.action === 'kick')?.keys).toBe('F / 2');
+    expect(rows.find((r) => r.action === KEY_ACTION_NAMES.kick)?.keys).toBe('F / 2');
     expect(rows.some((r) => r.action === 'look back')).toBe(false);
   });
 
