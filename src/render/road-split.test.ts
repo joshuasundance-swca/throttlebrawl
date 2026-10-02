@@ -55,7 +55,7 @@ const top = (group: Group, p: { x: number; z: number }): string => hitsAt(group,
 describe('the shortcut split (playtest 1b)', () => {
   const road = shortcutNetwork();
   const look = createFlatLook();
-  const { group } = buildRoadScene(road, look);
+  const { group } = buildRoadScene(road, look, undefined, { postRoads: () => true });
   group.updateMatrixWorld(true);
   const zone = road.splitZones()[0];
   if (!zone) throw new Error('no split zone');
