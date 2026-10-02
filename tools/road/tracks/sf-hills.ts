@@ -99,6 +99,24 @@ export const SF_HILLS: TrackSource = {
         { s0: 0, s1: 'end', side: 'left', tag: 'warehouses' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-pier-robotaxi',
+          s0: 260,
+          s1: 270,
+          d0: -9,
+          d1: -6.5,
+          item: 'robotaxi-cones',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-pier-prompt-whisperer',
+          s0: 380,
+          s1: 420,
+          d0: -16,
+          d1: -7,
+          item: 'prompt-whisperer',
+        },
         // Officer Meter waits here, on the shoulder beside the pier lot, not in the drive lane
         // behind the grid where traffic hit him (W-O polish run; keys-m1 and pnw-c1's lots).
         { kind: 'copSpawn', id: 'pier-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
@@ -164,6 +182,25 @@ export const SF_HILLS: TrackSource = {
       features: [
         {
           kind: 'billboard',
+          id: 'sign-cable-shuttles',
+          s0: 300,
+          s1: 310,
+          d0: -9,
+          d1: -6.5,
+          item: 'shuttles-only',
+        },
+        { kind: 'billboard', id: 'sign-cable-grip', s0: 560, s1: 570, d0: 6.5, d1: 9, item: 'cable-grip' },
+        {
+          kind: 'billboard',
+          id: 'bb-cable-promptloom',
+          s0: 600,
+          s1: 640,
+          d0: -16,
+          d1: -7,
+          item: 'promptloom',
+        },
+        {
+          kind: 'billboard',
           id: 'sign-cable-grade',
           s0: 60,
           s1: 70,
@@ -198,6 +235,24 @@ export const SF_HILLS: TrackSource = {
         { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-switchback-curb',
+          s0: 100,
+          s1: 110,
+          d0: 6.5,
+          d1: 9,
+          item: 'curb-wheels',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-switchback-toastwise',
+          s0: 380,
+          s1: 420,
+          d0: 7,
+          d1: 16,
+          item: 'toastwise',
+        },
         {
           kind: 'roadsideZone',
           id: 'switchback-tourists',
@@ -234,6 +289,24 @@ export const SF_HILLS: TrackSource = {
         { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-painted-row-no-reason',
+          s0: 90,
+          s1: 100,
+          d0: -9,
+          d1: -6.5,
+          item: 'no-reason',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-painted-row-emptyseat',
+          s0: 300,
+          s1: 340,
+          d0: -16,
+          d1: -7,
+          item: 'emptyseat',
+        },
         {
           kind: 'billboard',
           id: 'sign-painted-row',
@@ -298,6 +371,16 @@ export const SF_HILLS: TrackSource = {
         { s0: 200, s1: 'end', side: 'both', tag: 'fog' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'sign-fogline-summer',
+          s0: 220,
+          s1: 230,
+          d0: 6.5,
+          d1: 9,
+          item: 'summer-fog',
+        },
+        { kind: 'billboard', id: 'bb-fogline-gpu', s0: 450, s1: 490, d0: -16, d1: -7, item: 'gpu-hour' },
         { kind: 'billboard', id: 'sign-fogline-grade', s0: 15, s1: 25, d0: 6.5, d1: 9, item: 'steeper-one' },
         { kind: 'billboard', id: 'bb-fogline', s0: 80, s1: 120, d0: 7, d1: 16, item: 'reinvent-the-bus' },
       ],
@@ -315,6 +398,15 @@ export const SF_HILLS: TrackSource = {
         { s0: 250, s1: 'end', side: 'both', tag: 'water-open' },
       ],
       features: [
+        {
+          kind: 'billboard',
+          id: 'bb-approach-coldcase',
+          s0: 100,
+          s1: 140,
+          d0: -16,
+          d1: -7,
+          item: 'coldcase-ai',
+        },
         {
           kind: 'billboard',
           id: 'sign-bridge-toll',
