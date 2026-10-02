@@ -152,16 +152,37 @@ test('the bot races to results with a placing at phone landscape', async ({ page
 
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
   await shoot('start');
-  await page.waitForFunction(
-    () => {
+  const startedAt = Date.now();
+  // Where the race stands (bundle 1: twice the bot was not halfway at 200 s, while each part alone
+  // got there in 111 to 140 s and a headless race of the same seed is halfway by tick 3500): the
+  // sim's tick and its rate per wall second tell a slow page from a slow race.
+  const where = async () => {
+    const s = await page.evaluate<{ tick: number; progress: number; length: number }>(() => {
       const g = (window as TestWindow).__game;
-      const s = g?.snapshot();
-      const me = g && s ? s.entities[g.playerId()] : undefined;
-      return !!s && !!me && me.progress > s.race.routeLength / 2;
-    },
-    null,
-    { timeout: 200_000, polling: 250 },
-  );
+      const snap = g?.snapshot();
+      const me = g && snap ? snap.entities[g.playerId()] : undefined;
+      return { tick: snap?.tick ?? 0, progress: me?.progress ?? 0, length: snap?.race.routeLength ?? 0 };
+    });
+    const wallS = (Date.now() - startedAt) / 1000;
+    const frames = await page.evaluate(() => (window as TestWindow).__game?.frameStats() ?? null);
+    return `tick ${s.tick} at ${wallS.toFixed(0)} s after the start shot (taken past tick 60), progress ${s.progress.toFixed(0)} of ${s.length.toFixed(0)} m, frames ${JSON.stringify(frames)}`;
+  };
+  try {
+    await page.waitForFunction(
+      () => {
+        const g = (window as TestWindow).__game;
+        const s = g?.snapshot();
+        const me = g && s ? s.entities[g.playerId()] : undefined;
+        return !!s && !!me && me.progress > s.race.routeLength / 2;
+      },
+      null,
+      { timeout: 200_000, polling: 250 },
+    );
+  } catch (e) {
+    console.log(`not halfway: ${await where()}`);
+    throw e;
+  }
+  console.log(`halfway: ${await where()}`);
   await shoot('midway');
   await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
   await shoot('finish');
