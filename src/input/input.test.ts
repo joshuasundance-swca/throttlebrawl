@@ -85,6 +85,37 @@ describe('input: keyboard and latching', () => {
     expect(DEFAULT_KEY_MAP.cycleCamera).toEqual(['KeyC']);
   });
 
+  it('playtest 2: K with U or O held kicks to that side, either order; I is the straight kick', () => {
+    const sided = (first: string, second: string) => {
+      const kb = new KeyboardState();
+      kb.down(first);
+      kb.sample(emptyActions(), 1 / 60);
+      kb.down(second);
+      const a = emptyActions();
+      kb.sample(a, 1 / 60);
+      return toSimInput(a).flags;
+    };
+    const both = InputFlag.attackSideLeft | InputFlag.attackSideRight;
+    for (const f of [sided('KeyU', 'KeyK'), sided('KeyK', 'KeyU')]) {
+      expect(f & InputFlag.kick).toBeTruthy();
+      expect(f & both).toBe(InputFlag.attackSideLeft);
+    }
+    expect(sided('KeyK', 'KeyO') & both).toBe(InputFlag.attackSideRight);
+
+    const kb = new KeyboardState();
+    kb.down('KeyI');
+    const a = emptyActions();
+    kb.sample(a, 1 / 60);
+    expect(toSimInput(a).flags).toBe(InputFlag.attack | InputFlag.kick | both);
+    const held = emptyActions();
+    kb.sample(held, 1 / 60);
+    expect(toSimInput(held).flags).toBe(InputFlag.kick | both); // level-held, one press
+    kb.up('KeyI');
+    const after = emptyActions();
+    kb.sample(after, 1 / 60);
+    expect(toSimInput(after).flags).toBe(0);
+  });
+
   it('keys are remappable', () => {
     const kb = new KeyboardState({ ...DEFAULT_KEY_MAP, attack: ['KeyF'] });
     kb.down('KeyJ');
