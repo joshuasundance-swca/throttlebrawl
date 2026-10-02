@@ -46,6 +46,15 @@
     },
     {
       "kind": "billboard",
+      "id": "sign-cable-alley-ahead",
+      "s0": 660,
+      "s1": 670,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "alley-keep-right"
+    },
+    {
+      "kind": "billboard",
       "id": "bb-cable-delegatron",
       "s0": 600,
       "s1": 640,

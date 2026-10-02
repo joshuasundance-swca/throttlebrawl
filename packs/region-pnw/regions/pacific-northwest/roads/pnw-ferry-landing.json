@@ -64,6 +64,15 @@
       "item": "ferry-wait"
     },
     {
+      "kind": "billboard",
+      "id": "sign-landing-spur-ahead",
+      "s0": 200,
+      "s1": 210,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "spur-keep-right"
+    },
+    {
       "kind": "boostPad",
       "id": "pad-ferry-landing",
       "s0": 230,

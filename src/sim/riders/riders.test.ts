@@ -341,6 +341,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.airCarve',
       'riders.airAlign',
       'riders.crestLaunch',
+      'riders.laneDropTaperM',
       'riders.airControl',
       'riders.uturnMps',
       'riders.uturnRate',

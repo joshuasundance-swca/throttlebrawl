@@ -153,6 +153,107 @@ export function fromCorridor(c: Corridor, u: number, cd: number, dir: number, po
 }
 
 /**
+ * How many drive lanes each way the corridor has along its length (W-R multi-lane roads): segment
+ * starts in u (ascending) and the lane counts toward +u (`plus`) and -u (`minus`) on each segment,
+ * neighbours with equal counts merged. Built exactly from the lane sections, so a road with one lane
+ * each way all along is one segment.
+ */
+export interface LaneMap {
+  u0: number[];
+  plus: number[];
+  minus: number[];
+}
+
+export function buildLaneMap(road: RoadNetwork, c: Corridor): LaneMap {
+  const segs: { u0: number; plus: number; minus: number }[] = [];
+  c.edges.forEach((edge, i) => {
+    const e = road.edges[edge];
+    if (!e) return;
+    const o = c.o[i] ?? 1;
+    const off = c.off[i] ?? 0;
+    const len = c.len[i] ?? 0;
+    e.sections.forEach((sec, j) => {
+      const clampS = (s: number) => (s < 0 ? 0 : s > len ? len : s);
+      const s0 = j === 0 ? 0 : clampS(sec.s0);
+      const next = e.sections[j + 1];
+      const s1 = next ? clampS(next.s0) : len;
+      if (s1 <= s0) return;
+      let plus = 0;
+      let minus = 0;
+      for (const l of sec.lanes) {
+        if (l.kind !== 'drive') continue;
+        if (l.direction * o === 1) plus++;
+        else minus++;
+      }
+      segs.push({ u0: o === 1 ? off + s0 : off + len - s1, plus, minus });
+    });
+  });
+  segs.sort((a, b) => a.u0 - b.u0);
+  const out: LaneMap = { u0: [], plus: [], minus: [] };
+  for (const s of segs) {
+    const n = out.u0.length;
+    if (n > 0 && out.plus[n - 1] === s.plus && out.minus[n - 1] === s.minus) continue;
+    out.u0.push(s.u0);
+    out.plus.push(s.plus);
+    out.minus.push(s.minus);
+  }
+  return out;
+}
+
+/**
+ * How far ahead (in corridor direction `dir`) the lane of `rank` ends, within `range` metres: 0 when
+ * it has already ended at u, Infinity when it goes on past the range (W-R multi-lane roads).
+ */
+export function laneEndOnMap(m: LaneMap, u: number, dir: number, rank: number, range: number): number {
+  const n = m.u0.length;
+  if (n === 0) return Infinity;
+  const count = dir === 1 ? m.plus : m.minus;
+  let i = 0;
+  while (i + 1 < n && (m.u0[i + 1] ?? Infinity) <= u) i++;
+  if ((count[i] ?? 0) <= rank) return 0;
+  if (dir === 1) {
+    for (let j = i + 1; j < n; j++) {
+      const at = (m.u0[j] ?? 0) - u;
+      if (at > range) return Infinity;
+      if ((count[j] ?? 0) <= rank) return at;
+    }
+  } else {
+    for (let j = i - 1; j >= 0; j--) {
+      const at = u - (m.u0[j + 1] ?? 0);
+      if (at > range) return Infinity;
+      if ((count[j] ?? 0) <= rank) return at;
+    }
+  }
+  return Infinity;
+}
+
+/** How many drive lanes carry corridor direction `dir` at u, from the lane map (W-R). */
+export function laneCountOnMap(m: LaneMap, u: number, dir: number): number {
+  const n = m.u0.length;
+  if (n === 0) return 0;
+  let i = 0;
+  while (i + 1 < n && (m.u0[i + 1] ?? Infinity) <= u) i++;
+  return (dir === 1 ? m.plus[i] : m.minus[i]) ?? 0;
+}
+
+/**
+ * Lane-metres past one lane per direction between a and b (W-R): what a stretch with more lanes adds
+ * to a direction's traffic. 0 on a road with one lane each way.
+ */
+export function extraLaneMetres(m: LaneMap, a: number, b: number, dir: number): number {
+  const count = dir === 1 ? m.plus : m.minus;
+  let extra = 0;
+  for (let j = 0; j < m.u0.length; j++) {
+    const lanes = count[j] ?? 0;
+    if (lanes <= 1) continue;
+    const lo = Math.max(a, m.u0[j] ?? 0);
+    const hi = Math.min(b, m.u0[j + 1] ?? Infinity);
+    if (hi > lo) extra += (hi - lo) * (lanes - 1);
+  }
+  return extra;
+}
+
+/**
  * Drive lanes at u carrying corridor direction `dir`, innermost (nearest the centre line) first.
  * Rank 0 is the innermost lane; a lane change moves one rank.
  */
