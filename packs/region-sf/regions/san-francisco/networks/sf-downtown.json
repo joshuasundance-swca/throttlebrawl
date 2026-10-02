@@ -1,0 +1,94 @@
+{
+  "type": "road-network",
+  "id": "sf-downtown",
+  "name": "San Francisco downtown (hand-authored)",
+  "region": "san-francisco",
+  "crs": { "kind": "tmerc", "originLatDeg": 37.7948, "originLonDeg": -122.3945, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "sf-dt-founders-plaza",
+    "sf-dt-inference-ave",
+    "sf-dt-cable-crossing",
+    "sf-dt-burn-rate-row",
+    "sf-dt-campus-way"
+  ],
+  "junctions": [
+    {
+      "id": "j-sf-downtown-0",
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "ends": [{ "road": "sf-dt-founders-plaza", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-1",
+      "x": -272.4191,
+      "y": 1,
+      "z": 264.6512,
+      "ends": [
+        { "road": "sf-dt-founders-plaza", "end": "to" },
+        { "road": "sf-dt-inference-ave", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-2",
+      "x": -861.5377,
+      "y": 1,
+      "z": 831.3823,
+      "ends": [
+        { "road": "sf-dt-inference-ave", "end": "to" },
+        { "road": "sf-dt-cable-crossing", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-3",
+      "x": -1312.7249,
+      "y": 1,
+      "z": 1362.2755,
+      "ends": [
+        { "road": "sf-dt-cable-crossing", "end": "to" },
+        { "road": "sf-dt-burn-rate-row", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-4",
+      "x": -1889.2827,
+      "y": 1,
+      "z": 1945.2812,
+      "ends": [
+        { "road": "sf-dt-burn-rate-row", "end": "to" },
+        { "road": "sf-dt-campus-way", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-5",
+      "x": -2637.2454,
+      "y": 1,
+      "z": 2594.7904,
+      "ends": [{ "road": "sf-dt-campus-way", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-02",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The downtown avenue (run W-R; interview, 2026-10-02: \"SF first = downtown towers\"): two lanes each way from a waterfront plaza between invented AI-startup towers, a cross street every block with its own traffic, two steep cable-car cross streets, the tower screens of Burn Rate Row, and a deadpan headquarters at the finish. One route."
+  }
+}

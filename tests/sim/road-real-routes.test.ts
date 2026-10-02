@@ -37,6 +37,8 @@ const ROUTES = [
   { event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-gorge-run', setPieces: true },
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run', setPieces: true },
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run', setPieces: true },
+  // Run W-R: San Francisco's downtown, hand-made on its own network, offered beside the real roads.
+  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run', setPieces: true },
 ] as const;
 type Case = (typeof ROUTES)[number];
 

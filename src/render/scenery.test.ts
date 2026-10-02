@@ -321,6 +321,7 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       sfRoadside: 13,
       // run W-Q adds each key's own props (fishing village, resort strip, junkyard key, party key)
       keysRoadside: 26,
+      sfDowntown: 12,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -332,8 +333,9 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         // Each variant sits on its own anchor: the ground (or the waterline) at y = 0, centred in x.
         expect(box.min.y, kind).toBeGreaterThan(-0.7);
         expect(box.min.y, kind).toBeLessThan(0.05);
+        // (The downtown signal's mast arm reaches 9 m out over the lanes from its pole, run W-R.)
         expect(Math.abs((box.min.x + box.max.x) / 2), kind).toBeLessThan(
-          kind === 'palms' || kind === 'sawmill' ? 3.5 : 1.6,
+          kind === 'palms' || kind === 'sawmill' ? 3.5 : kind === 'sfDowntown' ? 4.5 : 1.6,
         );
         const colours = new Set<string>();
         const c = g.getAttribute('color');
