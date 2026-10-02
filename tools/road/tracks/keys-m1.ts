@@ -305,8 +305,7 @@ export const KEYS_M1: TrackSource = {
     {
       id: 'm1-pelican-bridge',
       name: 'Pelican Channel Bridge',
-      // Run W-R: 30 m shorter at its end, for the sandbar's split (a connector carries on the deck).
-      lengthM: 1220,
+      lengthM: 1250,
       speedLimitMps: 24.6,
       surface: 'asphalt',
       humps: [
@@ -363,28 +362,7 @@ export const KEYS_M1: TrackSource = {
           params: { rampLengthM: 11.5, lipHeightM: 2.8, slot: 'keys-truck' },
         },
       ],
-      // Run W-R: the left rail stops short of the sandbar's split zone (the last 40 m, on the left),
-      // where the deck is down at the causeway's height.
-      barriers: [
-        { s0: 0, s1: 'end', side: 'right', kind: 'rail', heightM: 1 },
-        { s0: 0, s1: 1150, side: 'left', kind: 'rail', heightM: 1 },
-      ],
-    },
-    {
-      // Run W-R: the sandbar's split, the bridge's last 30 m (its right rail carries on).
-      id: 'c-sandbar-flats-split-main',
-      name: 'Sandbar split',
-      connector: true,
-      lengthM: 30,
-      speedLimitMps: 24.6,
-      surface: 'asphalt',
-      humps: [],
-      tags: [
-        { s0: 0, s1: 'end', side: 'both', tag: 'bridge' },
-        { s0: 0, s1: 'end', side: 'both', tag: 'water-open' },
-      ],
-      features: [],
-      barriers: [{ s0: 0, s1: 'end', side: 'right', kind: 'rail', heightM: 1 }],
+      barriers: [{ s0: 0, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
     },
     {
       id: 'm1-sandbar-causeway',
@@ -540,7 +518,105 @@ export const KEYS_M1: TrackSource = {
     },
     // road-3: the standard and long race lengths carry on from here.
     {
-      // Run W-R: the sandbar's merge, the Mangrove Cut's first 30 m.
+      id: 'm1-mangrove-cut',
+      name: 'Mangrove Cut',
+      lengthM: 1250,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 900, lengthM: 200, heightM: 2 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
+        { s0: 0, s1: 600, side: 'left', tag: 'swamp' },
+        { s0: 900, s1: 'end', side: 'right', tag: 'water-shallow' },
+      ],
+      features: [],
+      barriers: [],
+    },
+    {
+      // Run W-R: the sandbar's split, Tarpon Flats' first 30 m.
+      id: 'c-sandbar-flats-split-main',
+      name: 'Sandbar split',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'left', tag: 'water-shallow' },
+        { s0: 0, s1: 'end', side: 'right', tag: 'beach' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'key-junkyard' },
+      ],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'm1-tarpon-flats',
+      name: 'Tarpon Flats',
+      // Run W-R: 60 m shorter (the sandbar's split and merge, 30 m each end); every s is 30 m less.
+      lengthM: 1190,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      // W-Q: past the mangroves is Salvage Key, the junkyard key (`key-junkyard`: boats racked
+      // three high, retired buses stacked, a junk-art garden) on a lot that starts at s 250.
+      tags: [
+        { s0: 0, s1: 'end', side: 'left', tag: 'water-shallow' },
+        { s0: 0, s1: 220, side: 'right', tag: 'beach' },
+        { s0: 220, s1: 'end', side: 'right', tag: 'trailer-park' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'key-junkyard' },
+      ],
+      features: [
+        {
+          kind: 'billboard',
+          id: 'sign-flats-salvage-key',
+          // Run W-R: at the flats' new start (its old spot, s 20, is in the sandbar's split now).
+          s0: 0,
+          s1: 10,
+          d0: 6.5,
+          d1: 9,
+          item: 'salvage-key',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-flats-sculpture',
+          s0: 490,
+          s1: 500,
+          d0: 6.5,
+          d1: 9,
+          item: 'sculpture-garden',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-flats-boats',
+          s0: 770,
+          s1: 780,
+          d0: 6.5,
+          d1: 9,
+          item: 'boats-for-sale',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-flats-big-rays',
+          s0: 970,
+          s1: 1010,
+          d0: 7,
+          d1: 16,
+          item: 'big-rays',
+        },
+        {
+          kind: 'roadsideZone',
+          id: 'flats-anglers',
+          s0: 270,
+          s1: 370,
+          d0: 5.6,
+          d1: 12.6,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [],
+    },
+    {
+      // Run W-R: the sandbar's merge, Tarpon Flats' last 30 m.
       id: 'c-sandbar-flats-merge-main',
       name: 'Sandbar merge',
       connector: true,
@@ -549,90 +625,11 @@ export const KEYS_M1: TrackSource = {
       surface: 'asphalt',
       humps: [],
       tags: [
-        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
-        { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
-      ],
-      features: [],
-      barriers: [],
-    },
-    {
-      id: 'm1-mangrove-cut',
-      name: 'Mangrove Cut',
-      // Run W-R: 30 m shorter at its start (the sandbar's merge); every s below is 30 m less.
-      lengthM: 1220,
-      speedLimitMps: 24.6,
-      surface: 'asphalt',
-      humps: [{ centreM: 870, lengthM: 200, heightM: 2 }],
-      tags: [
-        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
-        { s0: 0, s1: 570, side: 'left', tag: 'swamp' },
-        { s0: 870, s1: 'end', side: 'right', tag: 'water-shallow' },
-      ],
-      features: [],
-      barriers: [],
-    },
-    {
-      id: 'm1-tarpon-flats',
-      name: 'Tarpon Flats',
-      lengthM: 1250,
-      speedLimitMps: 24.6,
-      surface: 'asphalt',
-      humps: [],
-      // W-Q: past the mangroves is Salvage Key, the junkyard key (`key-junkyard`: boats racked
-      // three high, retired buses stacked, a junk-art garden) on a lot that starts at s 250.
-      tags: [
         { s0: 0, s1: 'end', side: 'left', tag: 'water-shallow' },
-        { s0: 0, s1: 250, side: 'right', tag: 'beach' },
-        { s0: 250, s1: 'end', side: 'right', tag: 'trailer-park' },
+        { s0: 0, s1: 'end', side: 'right', tag: 'trailer-park' },
         { s0: 0, s1: 'end', side: 'both', tag: 'key-junkyard' },
       ],
-      features: [
-        {
-          kind: 'billboard',
-          id: 'sign-flats-salvage-key',
-          s0: 20,
-          s1: 30,
-          d0: 6.5,
-          d1: 9,
-          item: 'salvage-key',
-        },
-        {
-          kind: 'billboard',
-          id: 'sign-flats-sculpture',
-          s0: 520,
-          s1: 530,
-          d0: 6.5,
-          d1: 9,
-          item: 'sculpture-garden',
-        },
-        {
-          kind: 'billboard',
-          id: 'sign-flats-boats',
-          s0: 800,
-          s1: 810,
-          d0: 6.5,
-          d1: 9,
-          item: 'boats-for-sale',
-        },
-        {
-          kind: 'billboard',
-          id: 'bb-flats-big-rays',
-          s0: 1000,
-          s1: 1040,
-          d0: 7,
-          d1: 16,
-          item: 'big-rays',
-        },
-        {
-          kind: 'roadsideZone',
-          id: 'flats-anglers',
-          s0: 300,
-          s1: 400,
-          d0: 5.6,
-          d1: 12.6,
-          params: { spawns: 'pedestrians' },
-        },
-      ],
+      features: [],
       barriers: [],
     },
     {
@@ -757,17 +754,18 @@ export const KEYS_M1: TrackSource = {
   branches: [
     {
       // Run W-R (interview, 2026-10-02: marked dirt shortcuts, "sandbars"): the Sandbar Flats, a sand
-      // track across the shallows off the low end of the Pelican Bridge, on the inside of the bend,
-      // back at the Mangrove Cut. It skips the Sandbar Causeway: shorter, loose, over a hummock.
-      // Keep left at the end of the bridge to take it.
+      // track across the shallows north of Tarpon Flats, off the left at the end of the Mangrove Cut
+      // and back at the foot of Conch Row: shorter, loose, over a hummock, with the junkyard key on
+      // the other side of the water. Every route that reaches its split takes it too (the short
+      // sprint ends before it). Keep left at the end of the mangroves to take it.
       leave: {
-        road: 'm1-pelican-bridge',
+        road: 'm1-mangrove-cut',
         offsetM: -4,
         lane: 'L1',
         zone: { lengthM: 40, d0: -5.5, d1: -3 },
       },
-      join: { road: 'm1-mangrove-cut', offsetM: -3, lane: 'L1' },
-      turnsM: [120, 120],
+      join: { road: 'm1-conch-row', offsetM: -3, lane: 'L1' },
+      turnsM: [600, 150],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       roads: [
         {
@@ -788,7 +786,7 @@ export const KEYS_M1: TrackSource = {
           speedLimitMps: 24.6,
           surface: 'sand',
           humps: [],
-          ramps: [{ id: 'hummock', s0: 380, lengthM: 15, heightM: 1.5, backM: 5 }],
+          ramps: [{ id: 'hummock', s0: 400, lengthM: 15, heightM: 1.5, backM: 5 }],
           tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
           features: [
             // The deadpan sign at the top of the sandbar, past the sand band, on the beach.
@@ -905,12 +903,12 @@ export const KEYS_M1: TrackSource = {
       id: 'm1-standard-run',
       start: { road: 'm1-marina-run', s: 40, dir: 1 },
       finish: { road: 'm1-conch-row', s: -40 },
-      // On roads both paths share: the sandbar skips the Sandbar Causeway (run W-R).
       checkpoints: [
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
-        { road: 'm1-mangrove-cut', s: 570 },
-        { road: 'm1-tarpon-flats', s: 600 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+        { road: 'm1-mangrove-cut', s: 600 },
+        // Run W-R: none on Tarpon Flats, which the sandbar skips.
         { road: 'm1-conch-row', s: 600 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
@@ -932,8 +930,9 @@ export const KEYS_M1: TrackSource = {
       checkpoints: [
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
-        { road: 'm1-mangrove-cut', s: 570 },
-        { road: 'm1-tarpon-flats', s: 600 },
+        { road: 'm1-sandbar-causeway', s: 500 },
+        { road: 'm1-mangrove-cut', s: 600 },
+        // Run W-R: none on Tarpon Flats, which the sandbar skips.
         { road: 'm1-conch-row', s: 600 },
         { road: 'm1-long-bridge', s: 1150 },
         { road: 'm1-last-resort-causeway', s: 500 },

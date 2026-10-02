@@ -3,7 +3,7 @@
   "id": "pnw-espresso-run",
   "network": "pnw-c1",
   "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
-  "finish": { "road": "pnw-espresso-row", "s": 670 },
+  "finish": { "road": "pnw-espresso-row", "s": 700 },
   "mainPath": [
     "pnw-ferry-landing",
     "pnw-switchback-grade",
@@ -18,7 +18,6 @@
     "c-pnw-spur-merge",
     "pnw-cedar-hollow",
     "pnw-trestle",
-    "c-pnw-fire-split-main",
     "pnw-espresso-row",
     "c-pnw-spur-in",
     "pnw-logging-spur",
@@ -28,7 +27,7 @@
     { "road": "pnw-cedar-hollow", "s": 300 },
     { "road": "pnw-cedar-hollow", "s": 900 },
     { "road": "pnw-trestle", "s": 400 },
-    { "road": "pnw-espresso-row", "s": 270 }
+    { "road": "pnw-espresso-row", "s": 300 }
   ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },

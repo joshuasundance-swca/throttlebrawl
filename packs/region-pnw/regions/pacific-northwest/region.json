@@ -60,7 +60,6 @@
     ]
   },
   "signs": [
-    { "id": "fire-road", "text": "FIRE ROAD 9. Not a road. Not on fire.", "status": "live" },
     {
       "id": "ferry-wait",
       "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.",

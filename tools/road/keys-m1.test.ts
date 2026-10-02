@@ -55,7 +55,7 @@ describe('tools/road: the baked M1 track', () => {
     );
     // road-2: four main roads and two connector roads on the main path, and the shortcut's three;
     // road-3: five more main roads past the Sandbar Causeway; run W-R: the sandbar's two connectors
-    // on the main path and its three roads.
+    // on the main path past the short route's finish, and its three roads.
     expect(net.edges.length).toBe(19);
     expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
       'm1-marina-run',
@@ -63,7 +63,6 @@ describe('tools/road: the baked M1 track', () => {
       'm1-marina-bends',
       'c-marina-merge-main',
       'm1-pelican-bridge',
-      'c-sandbar-flats-split-main',
       'm1-sandbar-causeway',
     ]);
     expect(progress.length).toBeGreaterThan(3300);
@@ -214,11 +213,6 @@ describe('tools/road: the baked M1 track', () => {
       const bridge = id(name);
       for (let s = 0; s <= (net.edges[bridge]?.length ?? 0); s += 25) {
         for (const side of ['left', 'right'] as const) {
-          // Run W-R: the Pelican Bridge's left rail stops short of the sandbar's split zone.
-          if (name === 'm1-pelican-bridge' && side === 'left' && s > 1150) {
-            expect(net.barrierAt(bridge, s, side), `${name} ${s} ${side}`).toBeNull();
-            continue;
-          }
           expect(net.barrierAt(bridge, s, side), `${name} ${s} ${side}`).toEqual({
             kind: 'rail',
             heightM: 1,

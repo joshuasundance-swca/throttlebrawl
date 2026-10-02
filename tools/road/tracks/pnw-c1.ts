@@ -292,16 +292,6 @@ export const PNW_C1: TrackSource = {
       ],
       features: [
         { kind: 'billboard', id: 'bb-trestle-gutter', s0: 780, s1: 820, d0: 7, d1: 16, item: 'gutter-truth' },
-        // Run W-R: the fire road's sign, where the split begins (past the dirt band, on the land).
-        {
-          kind: 'billboard',
-          id: 'sign-trestle-fire-road',
-          s0: 765,
-          s1: 775,
-          d0: -14.5,
-          d1: -12,
-          item: 'fire-road',
-        },
         {
           kind: 'roadsideZone',
           id: 'trestle-anglers',
@@ -345,36 +335,22 @@ export const PNW_C1: TrackSource = {
       barriers: [{ s0: 100, s1: 760, side: 'both', kind: 'rail', heightM: 1 }],
     },
     {
-      // Run W-R: the fire road's split, cut from the start of Espresso Row (its features keep their
-      // places: every s on the row below is 30 m less than before).
-      id: 'c-pnw-fire-split-main',
-      name: 'Fire road split',
-      connector: true,
-      lengthM: 30,
-      speedLimitMps: FOREST_MPS,
-      surface: 'asphalt',
-      humps: [],
-      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-      features: [],
-      barriers: [],
-    },
-    {
       id: 'pnw-espresso-row',
       name: 'Espresso Row',
-      lengthM: 940,
+      lengthM: 1000,
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
-      humps: [{ centreM: 570, lengthM: 260, heightM: 4 }],
+      humps: [{ centreM: 600, lengthM: 260, heightM: 4 }],
       tags: [
-        { s0: 0, s1: 670, side: 'both', tag: 'town' },
-        { s0: 670, s1: 'end', side: 'both', tag: 'forest' },
+        { s0: 0, s1: 700, side: 'both', tag: 'town' },
+        { s0: 700, s1: 'end', side: 'both', tag: 'forest' },
       ],
       features: [
         {
           kind: 'billboard',
           id: 'sign-row-zipper',
-          s0: 70,
-          s1: 80,
+          s0: 100,
+          s1: 110,
           d0: -9,
           d1: -6.5,
           item: 'espresso-zipper',
@@ -382,18 +358,18 @@ export const PNW_C1: TrackSource = {
         {
           kind: 'billboard',
           id: 'bb-row-drizzlewood',
-          s0: 230,
-          s1: 270,
+          s0: 260,
+          s1: 300,
           d0: -16,
           d1: -7,
           item: 'drizzlewood-roast',
         },
-        { kind: 'billboard', id: 'bb-row-sogproof', s0: 530, s1: 570, d0: 7, d1: 16, item: 'sogproof-shell' },
+        { kind: 'billboard', id: 'bb-row-sogproof', s0: 560, s1: 600, d0: 7, d1: 16, item: 'sogproof-shell' },
         {
           kind: 'roadsideZone',
           id: 'espresso-stand-line',
-          s0: 90,
-          s1: 190,
+          s0: 120,
+          s1: 220,
           d0: 5.6,
           d1: 12.6,
           params: { spawns: 'pedestrians' },
@@ -401,8 +377,8 @@ export const PNW_C1: TrackSource = {
         {
           kind: 'billboard',
           id: 'sign-row-last-espresso',
-          s0: 30,
-          s1: 40,
+          s0: 60,
+          s1: 70,
           d0: 6.5,
           d1: 9,
           item: 'last-espresso',
@@ -410,26 +386,13 @@ export const PNW_C1: TrackSource = {
         {
           kind: 'billboard',
           id: 'bb-row-view-lots',
-          s0: 390,
-          s1: 430,
+          s0: 420,
+          s1: 460,
           d0: -16,
           d1: -7,
           item: 'view-lots',
         },
       ],
-      barriers: [],
-    },
-    {
-      // Run W-R: the fire road's merge, cut from the end of Espresso Row.
-      id: 'c-pnw-fire-merge-main',
-      name: 'Fire road merge',
-      connector: true,
-      lengthM: 30,
-      speedLimitMps: FOREST_MPS,
-      surface: 'asphalt',
-      humps: [],
-      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-      features: [],
       barriers: [],
     },
     {
@@ -508,59 +471,6 @@ export const PNW_C1: TrackSource = {
   ],
   branches: [
     {
-      // Run W-R (interview, 2026-10-02: marked dirt shortcuts, "fire roads and clear-cuts"): Fire Road
-      // 9, a dirt track through the trees behind town, off the end of the trestle and back at the foot
-      // of Fogline Ridge. It skips Espresso Row and its line: shorter, loose, over a water bar and a
-      // rise of its own. Hug the right edge off the trestle to take it. Its first turn is long, so it
-      // holds the trestle's line while the row bends away north.
-      leave: {
-        road: 'pnw-trestle',
-        offsetM: 4,
-        lane: 'R1',
-        zone: { lengthM: 40, d0: 3, d1: 5.5 },
-      },
-      join: { road: 'pnw-fogline-ridge', offsetM: 3, lane: 'R1' },
-      turnsM: [220, 80],
-      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
-      roads: [
-        {
-          id: 'c-pnw-fire-in',
-          name: 'Fire road gate',
-          connector: true,
-          lengthM: 30,
-          speedLimitMps: FOREST_MPS,
-          surface: 'dirt',
-          humps: [],
-          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-          features: [],
-          barriers: [],
-        },
-        {
-          id: 'pnw-fire-road',
-          name: 'Fire Road 9',
-          speedLimitMps: FOREST_MPS,
-          surface: 'dirt',
-          humps: [{ centreM: 520, lengthM: 260, heightM: 6 }],
-          ramps: [{ id: 'water-bar', s0: 320, lengthM: 15, heightM: 1.5, backM: 5 }],
-          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-          features: [],
-          barriers: [],
-        },
-        {
-          id: 'c-pnw-fire-out',
-          name: 'Fire road exit',
-          connector: true,
-          lengthM: 30,
-          speedLimitMps: FOREST_MPS,
-          surface: 'dirt',
-          humps: [],
-          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-          features: [],
-          barriers: [],
-        },
-      ],
-    },
-    {
       // The Logging Spur: a gravel haul road straight up the east side of the Switchback Grade,
       // over a log-deck ramp. Hug the right edge before the split to take it.
       leave: {
@@ -628,12 +538,12 @@ export const PNW_C1: TrackSource = {
       // espresso stands on Espresso Row.
       id: 'pnw-espresso-run',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
-      finish: { road: 'pnw-espresso-row', s: 670 },
+      finish: { road: 'pnw-espresso-row', s: 700 },
       checkpoints: [
         { road: 'pnw-cedar-hollow', s: 300 },
         { road: 'pnw-cedar-hollow', s: 900 },
         { road: 'pnw-trestle', s: 400 },
-        { road: 'pnw-espresso-row', s: 270 },
+        { road: 'pnw-espresso-row', s: 300 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
     },
@@ -642,24 +552,15 @@ export const PNW_C1: TrackSource = {
       id: 'pnw-sawmill-haul',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
       finish: { road: 'pnw-sawmill-flats', s: -40 },
-      // On roads both paths share: the fire road skips Espresso Row (run W-R).
       checkpoints: [
         { road: 'pnw-cedar-hollow', s: 300 },
         { road: 'pnw-cedar-hollow', s: 900 },
         { road: 'pnw-trestle', s: 400 },
+        { road: 'pnw-espresso-row', s: 300 },
         { road: 'pnw-fogline-ridge', s: 500 },
         { road: 'pnw-sawmill-flats', s: 500 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
-      branches: [
-        {
-          id: 'fire-road',
-          roads: ['c-pnw-fire-in', 'pnw-fire-road', 'c-pnw-fire-out'],
-          kind: 'shortcut',
-          marked: true,
-          sign: 'FIRE ROAD 9. Not a road. Not on fire.',
-        },
-      ],
     },
   ],
 };

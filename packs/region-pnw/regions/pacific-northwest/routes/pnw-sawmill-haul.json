@@ -20,14 +20,9 @@
     "c-pnw-spur-merge",
     "pnw-cedar-hollow",
     "pnw-trestle",
-    "c-pnw-fire-split-main",
     "pnw-espresso-row",
-    "c-pnw-fire-merge-main",
     "pnw-fogline-ridge",
     "pnw-sawmill-flats",
-    "c-pnw-fire-in",
-    "pnw-fire-road",
-    "c-pnw-fire-out",
     "c-pnw-spur-in",
     "pnw-logging-spur",
     "c-pnw-spur-out"
@@ -36,19 +31,11 @@
     { "road": "pnw-cedar-hollow", "s": 300 },
     { "road": "pnw-cedar-hollow", "s": 900 },
     { "road": "pnw-trestle", "s": 400 },
+    { "road": "pnw-espresso-row", "s": 300 },
     { "road": "pnw-fogline-ridge", "s": 500 },
     { "road": "pnw-sawmill-flats", "s": 500 }
   ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
-  "branches": [
-    {
-      "id": "fire-road",
-      "roads": ["c-pnw-fire-in", "pnw-fire-road", "c-pnw-fire-out"],
-      "kind": "shortcut",
-      "marked": true,
-      "sign": "FIRE ROAD 9. Not a road. Not on fire."
-    }
-  ],
   "meta": { "status": "live" }
 }

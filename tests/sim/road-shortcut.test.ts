@@ -125,13 +125,9 @@ describe('road-2: the boat-ramp cut on the M1 track', () => {
       'm1-boat-ramp-cut',
       'c-boat-ramp-out',
       'm1-pelican-bridge',
-      // Run W-R: the bridge's last 30 m is the sandbar's split connector (the short route has no sandbar).
-      'c-sandbar-flats-split-main',
       'm1-sandbar-causeway',
     ]);
-    expect(
-      cut.edges.slice(run.length).every((e) => e.includes('mangrove') || e.includes('sandbar-flats-merge')),
-    ).toBe(true);
+    expect(cut.edges.slice(run.length).every((e) => e === 'm1-mangrove-cut')).toBe(true);
     expect(main.edges).not.toContain('m1-boat-ramp-cut');
     expect(jump?.edge).toBe('m1-boat-ramp-cut');
     expect(land?.edge).toBe('m1-boat-ramp-cut');
