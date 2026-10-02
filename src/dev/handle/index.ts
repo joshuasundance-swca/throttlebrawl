@@ -17,7 +17,7 @@ export type { AttackRun, AttackRunOptions } from './attacks';
 
 export interface RaceChecks {
   ticks: number;
-  /** Player edges in the order first entered (repeats collapsed). */
+  /** Player edges ridden (not while down), in the order first entered (repeats collapsed). */
   playerEdges: number[];
   /** Ticks where some mover had a non-finite field, an unknown mode or an invalid road position. */
   invalidTicks: number;
@@ -128,7 +128,10 @@ export function installTestHandle(app: AppHandle): TestHandle {
       }
     }
     const me = snap.entities[playerId];
-    if (me && checks.playerEdges[checks.playerEdges.length - 1] !== me.road.edge)
+    // Only while he rides: a crash tumble at a junction can slide him back across the edge
+    // boundary and out again (seed 1 after #302's merge: 13, 4, 13, 4), which is not his route.
+    const down = me?.mode === 'Tumble' || me?.mode === 'OnFoot';
+    if (me && !down && checks.playerEdges[checks.playerEdges.length - 1] !== me.road.edge)
       checks.playerEdges.push(me.road.edge);
     if (bot) checks.bot = bot.stats();
   });
