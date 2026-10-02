@@ -8,7 +8,7 @@ import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
-import { riderState, ridersSystem, RIDERS_TUNING } from './riders';
+import { riderState, ridersSystem, RIDERS_TUNING, trickOf } from './riders';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
 import type {
@@ -133,6 +133,10 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       grudgeNotedBy: [...(world.facts.grudgeNotedBy[m.id] ?? [])],
       boostS: m.kind === 'rider' ? (riders.boost[m.id] ?? 0) / 60 : 0,
       styleRun: m.kind === 'rider' ? styleRunOf(world, config, m.id) : null,
+      // Air control and flips (playtest 2): the bike's pitch while riding, and the trick in the air.
+      pitch:
+        m.kind === 'rider' && (m.mode === 'Road' || m.mode === 'Airborne') ? (riders.pitch[m.id] ?? 0) : 0,
+      trick: m.kind === 'rider' && m.mode === 'Airborne' ? trickOf(riders.trick[m.id]) : null,
       signature: m.kind === 'rider' ? signatureView(world, m.id) : null,
       // W-Q contracts: the ground under a rider, its heading sign on the route, and its branch.
       ground: m.kind === 'rider' ? groundUnder(road, m.pos.edge, m.pos.s, m.pos.d, m.h) : null,
