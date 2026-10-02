@@ -1,5 +1,5 @@
 {
-  "$comment": "Tests outside src/, the scripts' tests, tools and the TypeScript config files; they run in Node or drive a browser from Node. allowJs lets tests import the .mjs scripts (not type-checked themselves).",
+  "$comment": "Tests outside src/, the scripts' tests, tools and the TypeScript config files; they run in Node or drive a browser from Node. allowJs lets tests import the .mjs scripts (not type-checked themselves). src/assets/virtual.d.ts types the dataset rows' virtual module for tests that reach src/assets.",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -8,6 +8,6 @@
     "checkJs": false,
     "allowImportingTsExtensions": true
   },
-  "include": ["tests/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts", "*.config.ts"],
+  "include": ["tests/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts", "*.config.ts", "src/assets/virtual.d.ts"],
   "exclude": ["tests/typecheck/**"]
 }
