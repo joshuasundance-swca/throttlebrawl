@@ -610,6 +610,7 @@ export function createApp(opts: AppOptions): AppHandle {
           return `Loaded: $${r.profile.cash}, ${r.profile.history.length} races. Your settings stay this device's.`;
         },
         onRetry: () => {
+          if (teaserFirst()) return;
           const def = C?.careerOf(defs, careerRegion);
           const last = profile.history.at(-1);
           const node = def && last?.node ? C?.nodeOf(def, last.node) : null;
@@ -617,16 +618,10 @@ export function createApp(opts: AppOptions): AppHandle {
           else openCareer();
         },
         onMap: () => {
-          if (pendingTeaser) {
-            ui.career.showTeaser(pendingTeaser);
-            pendingTeaser = null;
-            if (state === 'results') go('back');
-            ui.show('teaser');
-            return;
-          }
-          openCareer();
+          if (!teaserFirst()) openCareer();
         },
         onNext: () => {
+          if (teaserFirst()) return;
           const def = C?.careerOf(defs, careerRegion);
           const node = def ? C?.nextNodeOf(def, profile) : null;
           if (def && node) startCareerRace(def, node);
@@ -1071,6 +1066,20 @@ export function createApp(opts: AppOptions): AppHandle {
     race = null;
     settleCareerRace(true);
     openCareer();
+  }
+
+  /**
+   * After a boss, any way off the results screen plays the next region's teaser first (once).
+   * True when it did.
+   */
+  function teaserFirst(): boolean {
+    const t = pendingTeaser;
+    if (!t) return false;
+    pendingTeaser = null;
+    if (state === 'results') go('back');
+    ui.career.showTeaser(t);
+    ui.show('teaser');
+    return true;
   }
 
   /** Draws the career screen for the region it shows. */
