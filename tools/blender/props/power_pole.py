@@ -69,7 +69,8 @@ def main():
     mb.build("power_pole_body", mats, root)
     for k, (x, f, z) in enumerate(sorted(tips), start=1):
         _lib.empty(f"wire_attach_{k}", parent=root, loc=_lib.P(x, f, z))
-    _lib.export(out)
+    # Faceted: the game rebuilds each face's normal from its corners (models.ts), so none ship.
+    _lib.export(out, normals=False)
 
 
 main()
