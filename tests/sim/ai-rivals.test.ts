@@ -158,9 +158,11 @@ function runRace(seed: number): RaceResult {
 
 describe('ai-1: four box rivals over 50 seeded races', () => {
   let results: RaceResult[] = [];
+  // The 50 races took 156 to 333 s on CI runners on 2026-10-02 (225 s on the last green main run),
+  // so the old 300 s limit timed the hook out on slower runners; 600 s, like the other batch files.
   beforeAll(() => {
     results = SEEDS.map(runRace);
-  }, 300_000);
+  }, 600_000);
 
   it('races all four rivals', () => {
     for (const r of results) expect(r.rivals.length).toBe(4);

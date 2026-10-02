@@ -114,6 +114,8 @@ function perTickRace(seed: number): TickCheck {
   let scaledTicks = 0;
   const lastDive = new Map<number, number>();
   const touching = new Set<string>();
+  /** Riders whose crash went over a rail: falling to the water, not sliding along the deck. */
+  const overboard = new Set<number>();
   const out: TickCheck = {
     ticks: 0,
     pairs: 0,
@@ -128,6 +130,8 @@ function perTickRace(seed: number): TickCheck {
       out.ticks++;
       scaledTicks += snap.timeScale;
       for (const e of events) if (e.type === 'pedDive') lastDive.set(e.actor, scaledTicks);
+      for (const e of events) if (e.type === 'railOver') overboard.add(e.actor);
+      for (const e of snap.entities) if (e.kind === 'rider' && e.mode !== 'Tumble') overboard.delete(e.id);
       const peds = snap.entities.filter((e) => e.kind === 'ped');
       for (const r of snap.entities) {
         if (r.kind !== 'rider' || !(r.mode === 'Road' || r.mode === 'Airborne' || r.mode === 'Tumble'))
@@ -151,6 +155,10 @@ function perTickRace(seed: number): TickCheck {
           // the sim sees it one tick behind the snapshot.
           const slack = r.speed / 60 + 0.1;
           if (!rel || r.speed < PEDS.threatMinMps + 0.5) continue;
+          // Over the rail and falling (its speed is the fall, its road spot the deck it left): no
+          // threat to anyone on the road. Seed 1 met one once the 2026-10-02 run-back trim
+          // reshuffled the race.
+          if (overboard.has(r.id)) continue;
           if (r.road.h - p.road.h >= PEDS.maxContactH - 0.1) continue;
           if (rel.along < -PEDS.threatBehindM + slack || rel.along > pedThreatRangeM(r.speed) - slack)
             continue;
