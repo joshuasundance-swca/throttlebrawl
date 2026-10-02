@@ -52,6 +52,7 @@ export class FakeNode {
   attack = new FakeParam(0.003);
   release = new FakeParam(0.25);
   playbackRate = new FakeParam(1);
+  pan = new FakeParam(0);
   delayTime = new FakeParam(0);
   type = '';
   curve: Float32Array | null = null;
@@ -113,6 +114,9 @@ export class FakeAudioContext {
   }
   createWaveShaper() {
     return this.make('shaper');
+  }
+  createStereoPanner() {
+    return this.make('panner');
   }
   createBufferSource() {
     return this.make('bufferSource');

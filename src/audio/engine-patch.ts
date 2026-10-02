@@ -87,18 +87,71 @@ export const ENGINE_PRESETS: Readonly<Record<string, EngineProfile>> = {
     intakeHz: 2200,
     exhaustHz: 3200,
   },
+  // Playtest 2 (2026-10-02, ENGINE: "a voice per bike"): a dirt bike's high-revving single, its odd
+  // harmonics and intake noise up front (the rasp), and a lawn mower's slow, lumpy putter.
+  'dirt-rasp': {
+    ...base,
+    preset: 'dirt-rasp',
+    cylinders: 1,
+    idleHz: 30,
+    redlineHz: 210,
+    harmonics: [0.3, 0.35, 1, 0.4, 0.95, 0.4, 0.85, 0.35, 0.7, 0.3, 0.6],
+    tilt: 0.45,
+    noise: 0.5,
+    roughness: 0.5,
+    intakeHz: 2400,
+    exhaustHz: 2800,
+  },
+  'mower-putt': {
+    ...base,
+    preset: 'mower-putt',
+    cylinders: 1,
+    idleHz: 20,
+    redlineHz: 62,
+    harmonics: [0.4, 0.8, 1, 0.7, 0.9, 0.5, 0.6, 0.4],
+    tilt: 0.6,
+    noise: 0.4,
+    roughness: 0.85,
+    intakeHz: 1300,
+    exhaustHz: 1700,
+  },
 };
 
 export const DEFAULT_ENGINE_PRESET = 'single-thump';
 
-/** The pack's `engineSound` block: a preset name plus optional numbers. */
+/**
+ * The engine voice for each bike class (content's BIKE_CLASSES), playtest 2 (2026-10-02, ENGINE:
+ * "a voice per bike": chopper thump, scooter buzz, sport scream, dirt-bike rasp). The rider's
+ * drawn bike (`look.bikeClass` in its pack file) picks the voice, so a rival on a chopper sounds
+ * like one even while every rider's sim bike is the starter; a rider with no drawn class keeps its
+ * bike's own `engineSound`. Each entry is the same shape a bike's `engineSound` is.
+ */
+export const ENGINE_BY_CLASS: Readonly<Record<string, EngineSoundSpec>> = {
+  chopper: { preset: 'v-twin' },
+  scooter: { preset: 'two-stroke-buzz' },
+  moped: { preset: 'two-stroke-buzz', idleHz: 46, redlineHz: 230 },
+  'mobility-scooter': { preset: 'two-stroke-buzz', idleHz: 55, redlineHz: 120, roughness: 0.2 },
+  'golf-cart': { preset: 'two-stroke-buzz', idleHz: 50, redlineHz: 110, roughness: 0.15, noise: 0.1 },
+  dirt: { preset: 'dirt-rasp' },
+  rat: { preset: 'single-thump' },
+  sport: { preset: 'inline-four' },
+  super: { preset: 'inline-four', idleHz: 55, redlineHz: 420 },
+  lawnmower: { preset: 'mower-putt' },
+};
+
+/**
+ * The pack's `engineSound` block: a preset name plus optional numbers. app/ may add the rider's
+ * drawn `bikeClass`, whose voice (ENGINE_BY_CLASS) then wins over the bike's own.
+ */
 export type EngineSoundSpec = Readonly<Record<string, unknown>> & { readonly preset?: unknown };
 
 const num = (v: unknown, lo: number, hi: number): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined;
 
 /** The preset named by the pack entry, shaped by its numbers; bad or unknown values fall back. */
-export function resolveEngineProfile(spec: EngineSoundSpec | undefined): EngineProfile {
+export function resolveEngineProfile(given: EngineSoundSpec | undefined): EngineProfile {
+  const cls = given?.['bikeClass'];
+  const spec = (typeof cls === 'string' ? ENGINE_BY_CLASS[cls] : undefined) ?? given;
   const name = typeof spec?.preset === 'string' ? spec.preset : DEFAULT_ENGINE_PRESET;
   const p: EngineProfile = ENGINE_PRESETS[name] ?? SINGLE_THUMP;
   if (!spec) return p;
@@ -173,6 +226,8 @@ export interface EngineVoice {
   setLevel(level: number, at?: number): void;
   /** Pitch factor from Doppler, 1 = none. */
   setDoppler(factor: number, at?: number): void;
+  /** Left (-1) to right (1); the cheaper patch for other riders only (the player's is centred). */
+  setPan(pan: number, at?: number): void;
   /**
    * An exhaust pop or crackle at `at` (playtest 2: "a pop on decel"), size 0..1, under the voice's
    * own level. The full patch only; the cheaper one for other riders ignores it.
@@ -314,6 +369,12 @@ export function createEngineVoice(
     );
   }
 
+  // Other riders sit left or right of you as they pass (a stereo panner where the browser has one).
+  const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+  if (panner) {
+    level.disconnect();
+    level.connect(panner).connect(out);
+  }
   osc.connect(body).connect(exhaust).connect(level);
   let hz = profile.idleHz;
   let lvl = 0;
@@ -331,6 +392,7 @@ export function createEngineVoice(
     () => lvl,
     (v) => (lvl = v),
     () => {},
+    (p, at = ctx.currentTime) => panner?.pan.setTargetAtTime(Math.min(1, Math.max(-1, p)), at, 0.05),
   );
 
   function voice(
@@ -339,11 +401,13 @@ export function createEngineVoice(
     lvl: () => number,
     setLvl: (v: number) => void,
     pop: EngineVoice['pop'],
+    setPan: EngineVoice['setPan'] = () => {},
   ): EngineVoice {
     return {
       profile,
       set: setState,
       pop,
+      setPan,
       setLevel(v, at = ctx.currentTime) {
         setLvl(v);
         level.gain.setTargetAtTime(v, at, 0.04);

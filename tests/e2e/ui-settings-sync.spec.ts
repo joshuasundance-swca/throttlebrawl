@@ -145,16 +145,21 @@ test('after R, the Radio row shows Station, and picking Score brings the score b
   test.setTimeout(120_000);
   const problems = watch(page);
   await boot(page);
-  expect((await presentation(page)).radio.tunedTo).toBe('score');
-  await page.keyboard.press('r');
+  // Playtest 2 (2026-10-02): a race starts on its region's own station, the Keys' first.
   await page.waitForFunction(
     () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'keys-rockabilly',
     undefined,
     { timeout: 10_000 },
   );
+  await page.keyboard.press('r');
+  await page.waitForFunction(
+    () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'keys-surf',
+    undefined,
+    { timeout: 10_000 },
+  );
   await openTab(page, 'sound');
   const shown = await rowShows(page, 'radio');
-  console.log(`after R: radio keys-rockabilly, Radio row shows ${shown}`);
+  console.log(`after R: radio keys-surf, Radio row shows ${shown}`);
   expect(shown).toBe('station');
   await pickAndResume(page, 'radio', 'score');
   await page.waitForFunction(

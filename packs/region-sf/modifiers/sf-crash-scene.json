@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "sf-crash-scene",
+  "name": "Robotaxi Incident",
+  "kind": "human",
+  "tags": ["set-piece", "crash-scene"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.85],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "crash-scene",
+      "signText": "VEHICLE RECALCULATING USE OTHER LANE",
+      "vehicle": "base:event-tow-truck",
+      "vehicle2": "sf-stalled-robotaxi",
+      "person": "cop-waving",
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a driverless cab that stopped for one cone and will not be talked round, a tow truck, flares, an officer waving traffic by. No brand.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

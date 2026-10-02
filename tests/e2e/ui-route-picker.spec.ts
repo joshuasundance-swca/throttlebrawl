@@ -131,8 +131,8 @@ test('a picked real road is raced to the finish by the bot, and the recording na
   // turns into a bust, pick another seed that finishes, as the bot race's seed lists do). W-P's
   // regional traffic moved seed 2 to a stall: a crash at a hairpin junction hands the bot back
   // facing the wrong way and it rides the route backward (a tumble follow-up in the W-P traffic
-  // report); headless, seeds 1 and 3 to 8 finish.
-  const SEED = 3;
+  // report). With W-P's road events on top as well, headless (drafts in) seeds 4 to 8 finish.
+  const SEED = 8;
   await page.evaluate((s) => {
     const g = (window as TestWindow).__game;
     g?.setSeed(s);
