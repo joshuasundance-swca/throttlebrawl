@@ -697,6 +697,8 @@ describe('cops: the chase', () => {
         'cops.followGapM': 40,
         'riders.crashImpactMps': 3,
         'cops.bustKnockdownOnly': 0,
+        // The M1 roadside wall is this test's crash; off-road (run W-R) would ride onto the sand.
+        'ground.offRoad': 0,
       }),
     );
     const events: SimEvent[] = [];
@@ -918,6 +920,8 @@ describe('cops-2: a knocked-down cop cannot bust anyone until he is back up (ful
         'cops.followGapM': 40,
         'riders.crashImpactMps': 3,
         'combat.unarmedDamageScale': 1,
+        // The M1 roadside wall is this test's crash; off-road (run W-R) would ride onto the sand.
+        'ground.offRoad': 0,
       }),
       weapons: [PUNCH, KICK],
     };
@@ -1045,7 +1049,13 @@ describe('cops: a bust only when a cop knocks you off (interview, 2026-10-02)', 
 
   it('end to end: crash into the barrier with him alongside, and he does NOT bust you', () => {
     const sim = createSim(
-      fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+      // The M1 roadside wall is this test's crash; off-road (run W-R) would ride onto the sand.
+      fixtureConfig({
+        'cops.spawnDelayS': 0,
+        'cops.followGapM': 40,
+        'riders.crashImpactMps': 3,
+        'ground.offRoad': 0,
+      }),
     );
     const events: SimEvent[] = [];
     let swerve = false;

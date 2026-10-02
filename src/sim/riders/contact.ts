@@ -48,8 +48,8 @@ export interface ContactState {
 
 export interface ContactRules {
   wobbleTicks: number;
-  /** The drivable limits for a rider's centre (the barrier rule's). */
-  limits(config: SimConfig, edge: number, s: number): { lo: number; hi: number };
+  /** The drivable limits for a rider's centre at its d (the barrier rule's, the verge's off-road). */
+  limits(config: SimConfig, edge: number, s: number, d: number): { lo: number; hi: number };
 }
 
 function massOf(config: SimConfig, m: Mover): number {
@@ -58,7 +58,7 @@ function massOf(config: SimConfig, m: Mover): number {
 }
 
 function moveD(config: SimConfig, rules: ContactRules, m: Mover, by: number): number {
-  const { lo, hi } = rules.limits(config, m.pos.edge, m.pos.s);
+  const { lo, hi } = rules.limits(config, m.pos.edge, m.pos.s, m.pos.d);
   const before = m.pos.d;
   m.pos.d = clamp(before + by, lo, hi);
   return m.pos.d - before;
