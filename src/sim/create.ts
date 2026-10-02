@@ -4,6 +4,7 @@ import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../cor
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING } from './cops';
+import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
@@ -38,6 +39,7 @@ export const SIM_TUNING: readonly TuningParamDecl[] = [
   ...RACE_TUNING,
   ...AI_TUNING,
   ...MODIFIERS_TUNING,
+  ...GROUND_TUNING,
   ...DIFFICULTY_TUNING,
 ];
 
@@ -132,6 +134,10 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       boostS: m.kind === 'rider' ? (riders.boost[m.id] ?? 0) / 60 : 0,
       styleRun: m.kind === 'rider' ? styleRunOf(world, config, m.id) : null,
       signature: m.kind === 'rider' ? signatureView(world, m.id) : null,
+      // W-Q contracts: the ground under a rider, its heading sign on the route, and its branch.
+      ground: m.kind === 'rider' ? groundUnder(road, m.pos.edge, m.pos.s, m.pos.d, m.h) : null,
+      routeDir: m.pos.dir * config.route.orientation(m.pos.edge) === -1 ? -1 : 1,
+      branch: m.kind === 'rider' ? (config.route.branchAt(m.pos.edge)?.id ?? null) : null,
     };
   });
   return {

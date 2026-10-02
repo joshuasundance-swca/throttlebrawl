@@ -31,7 +31,7 @@ export {
 } from './cross-section';
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
 export { createRouteProgress } from './route';
-export type { RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
+export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export { FIXTURE_LANES, fixtureBranchNetwork, fixtureBranchTrack, fixtureNetwork } from './fixture';
 export type { BranchFixtureOptions, FixtureEdgeSpec } from './fixture';
 export { lintRoad, lintRoadNetwork, ROAD_LINT } from './validate';
@@ -60,6 +60,7 @@ export type {
   BakedNetworkBundle,
   BakedRoad,
   BakedRoute,
+  BakedRouteBranch,
   BakedSamples,
   BakedSplitZone,
   BakedTag,

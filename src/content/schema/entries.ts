@@ -3,7 +3,7 @@
 // The reserved types (event-modifier, station, patch) are claimed here so nothing else takes the
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
-import { MEDIAN_KINDS, ROAD_SURFACES, VERGE_EDGES, VERGE_SURFACES } from '../../core';
+import { MEDIAN_KINDS, ROAD_SURFACES, ROUTE_BRANCH_KINDS, VERGE_EDGES, VERGE_SURFACES } from '../../core';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
 import { BARK_OPS, BIKE_CLASSES, EVENT_KINDS, MODIFIER_KINDS, TIMES_OF_DAY } from './vocab';
 
@@ -325,6 +325,19 @@ export const routeSchema = entry('route', {
       perRow: z.number().int().min(1),
       rowGapM: z.number().positive(),
     })
+    .optional(),
+  // W-Q (interview, 2026-10-02: "junction choices in races", marked dirt shortcuts): named branches
+  // off the main path; the road lint checks their roads (docs/content-packs.md, "Route file").
+  branches: z
+    .array(
+      z.looseObject({
+        id: idSchema,
+        roads: z.array(idSchema).min(1),
+        kind: z.enum(ROUTE_BRANCH_KINDS).optional(),
+        marked: z.boolean().optional(),
+        sign: z.string().min(1).max(80).optional(),
+      }),
+    )
     .optional(),
 });
 
