@@ -1,0 +1,63 @@
+{
+  "type": "event",
+  "id": "pnw-t1-espresso-hunt",
+  "name": "Last Call at the Espresso Hut",
+  "kind": "takedown-hunt",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-espresso-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss", "base:chad-speedwell", "base:kevin-from-accounting", "base:dial-up"],
+    "paceMps": 34
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "targetCount": 2,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 2
+      },
+      "required": true,
+      "rewardCash": 800
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt: two takedowns on the run to Espresso Row, where the line for the drive-through never moves.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

@@ -155,18 +155,20 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
   it("the Keys play the Keys' own stations, filtered by the region", () => {
     const r = raceRadio(ALL, 'base:florida-keys');
     expect(r.region).toBe('base:florida-keys');
-    expect(dial(r)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
+    expect(dial(r)).toEqual(['base:keys-rockabilly', 'base:keys-surf', 'base:keys-tradewinds']);
   });
 
-  it('the Pacific Northwest and San Francisco play their own two stations, and only those', () => {
+  it('the Pacific Northwest and San Francisco play their own three stations, and only those', () => {
     // Playtest 2, 2026-10-02: "There should be different stations and music in different regions".
     expect(dial(raceRadio(ALL, 'region-pnw:pacific-northwest'))).toEqual([
       'region-pnw:pnw-drizzle',
       'region-pnw:pnw-salal',
+      'region-pnw:pnw-stump',
     ]);
     expect(dial(raceRadio(ALL, 'region-sf:san-francisco'))).toEqual([
       'region-sf:sf-burn-rate',
       'region-sf:sf-fog-bank',
+      'region-sf:sf-gold-rush',
     ]);
   });
 
@@ -178,7 +180,7 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     for (const region of ['region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
       const r = raceRadio(baseOnly, region);
       expect(r.region, region).toBeNull();
-      expect(dial(r), region).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
+      expect(dial(r), region).toEqual(['base:keys-rockabilly', 'base:keys-surf', 'base:keys-tradewinds']);
     }
   });
 

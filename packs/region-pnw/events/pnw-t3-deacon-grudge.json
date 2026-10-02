@@ -1,0 +1,61 @@
+{
+  "type": "event",
+  "id": "pnw-t3-deacon-grudge",
+  "name": "A Sermon in the Rain",
+  "kind": "grudge-match",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-chuckanut-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:deacon-vane"],
+    "paceMps": 44
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "rival": "base:deacon-vane",
+    "winBy": "knockdowns",
+    "grudgeStakes": 2,
+    "knockdownsToWin": 2
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 2500
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [4500, 600],
+    "perTakedownCash": 320,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A grudge match by knockdowns: put Deacon Vane down twice on Chuckanut Drive.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

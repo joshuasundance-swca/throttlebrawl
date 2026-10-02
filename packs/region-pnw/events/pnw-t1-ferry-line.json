@@ -1,0 +1,67 @@
+{
+  "type": "event",
+  "id": "pnw-t1-ferry-line",
+  "name": "Ferry Line Sprint",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-hollow-sprint",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss", "base:dial-up", "base:kevin-from-accounting", "base:chad-speedwell"],
+    "paceMps": 34
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "finish",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 5
+      },
+      "required": true
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 300
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's first race: from the ferry landing up the switchbacks to Cedar Hollow, at dawn.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

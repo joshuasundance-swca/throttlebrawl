@@ -1,0 +1,27 @@
+{
+  "type": "bike",
+  "id": "dirt-bike",
+  "name": "Mudflap 250",
+  "class": "dirt",
+  "tags": ["novelty"],
+  "handling": {
+    "topSpeedMps": 31.3,
+    "accelMps2": 5.6,
+    "brakeMps2": 8.5,
+    "steerRateMps": 7.0,
+    "massKg": 115,
+    "grip": 0.8
+  },
+  "engineSound": {
+    "preset": "dirt-rasp"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A novelty ride: a light dirt bike, about 70 mph, quick off the line and nimble. Sold in the Pacific Northwest garage, for the fire roads and the logging spur.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

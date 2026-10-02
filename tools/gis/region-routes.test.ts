@@ -249,13 +249,15 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
   it('never ends in mid-air: every raised edge of it is closed down to the ground', () => {
     const { road, built } = landScene(id);
     const ground = new GroundTris(built.group);
-    const { probes, drops, open } = openLandEnds(road, ground);
+    const { probes, drops, open, joins } = openLandEnds(road, ground);
     process.stdout.write(
       `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked beside the road, ` +
-        `${drops} drops of over 2 m looked under, ${open.length} open\n`,
+        `${joins} steps across junctions, ${drops} drops of over 2 m looked under, ${open.length} open\n`,
     );
     built.dispose();
     expect(drops).toBeGreaterThan(0);
+    // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
+    expect(joins).toBeGreaterThan(0);
     expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
   }, 240_000);
 });

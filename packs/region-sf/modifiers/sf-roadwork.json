@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "roadwork",
-      "signText": "ROAD WORK SEE APP FOR ETA",
+      "signText": "ROAD WORK AHEAD. See app for ETA.",
       "vehicle": "base:event-work-truck",
       "person": "flagger",
       "theme": "sf"

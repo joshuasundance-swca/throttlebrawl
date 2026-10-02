@@ -38,6 +38,8 @@ export const MODEL_ASSETS = {
   pnwRoadside: 'models/scenery/pnw-roadside',
   sfRoadside: 'models/scenery/sf-roadside',
   keysRoadside: 'models/scenery/keys-roadside',
+  // run W-Q: the little islands off every Keys bridge (scenery.ts, the islet kind)
+  keysIslets: 'models/scenery/keys-islets',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -86,6 +88,7 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_bins',
     'sf_lamp',
   ],
+  keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -98,6 +101,22 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_mailbox',
     'keys_bait',
     'keys_pie',
+    // run W-Q: each key's own props (roadside.ts KEYS_KIT, by district)
+    'keys_shrimp_boat',
+    'keys_fish_house',
+    'keys_buoy_line',
+    'keys_hotel_a',
+    'keys_hotel_b',
+    'keys_pool',
+    'keys_tiki',
+    'keys_scooters',
+    'keys_boat_stack',
+    'keys_bus_stack',
+    'keys_junk_art',
+    'keys_bunting',
+    'keys_coolers',
+    'keys_closed_bar',
+    'keys_flamingo',
   ],
 };
 
@@ -125,6 +144,7 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     out.add('palms');
     out.add('mangroves');
     out.add('keysRoadside');
+    out.add('keysIslets');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
