@@ -7,6 +7,15 @@
 // checkReplay() let dev/ carry and verify the recording without importing replay/.
 // app-2 owns this folder after app-1.
 import { createAssetManifest, datasetIndex } from '../assets';
+import type {
+  CareerDef,
+  CareerNode,
+  EventPlan,
+  GarageResult,
+  Onboarding,
+  RaceLog,
+  RaceStatus,
+} from '../career';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
 import {
@@ -25,9 +34,12 @@ import { createRenderer, interpolateEntity, type LookEnv } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import {
   audioVolumes,
+  createProfileStore,
   createSettingsStore,
+  PROFILE_VERSION,
   settingsAssists,
   type FrameRateCap,
+  type Profile,
   type StorageLike,
 } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
@@ -57,7 +69,8 @@ import { createUi } from '../ui';
 import { buildSimConfig, DEFAULT_EVENT, eventKey, networkKeyOf, qualifyIn, raceStartValues } from './config';
 import { createLoop } from './loop';
 import { appReplayKey } from './replay-key';
-import { createOutcome, raceResult, resultsDue } from './results';
+import type { CareerFlow } from './career-flow';
+import { createOutcome, raceResult, RESULTS_BEAT_TICKS, resultsDue } from './results';
 import {
   boardCatalog,
   createStreamCache,
@@ -194,6 +207,16 @@ export interface AppHandle {
   tap(): void;
   startRace(): void;
   backToMenu(): void;
+  /** The career (run W-R): the profile, the career race in progress and its rules' status. */
+  career(): {
+    profile: Profile;
+    racing: { region: string; node: string } | null;
+    status: RaceStatus | null;
+  };
+  /** Starts a career race at a map node (tests and dev/); false when there is no such node. */
+  rideCareer(region: string, node: string): boolean;
+  /** Opens the career screen on a region (tests and dev/). */
+  openCareer(region?: string): void;
   rendererStats: RendererStatsFn;
   roadQueries: RoadQueriesFn;
   getReplayAndSettings: GetReplayAndSettings;
@@ -230,6 +253,16 @@ function testSlowFrameMs(): number {
   if (w.__GAME_TEST__ !== true) return 0;
   const ms = w.__slowFrameMs;
   return typeof ms === 'number' && ms > 0 ? Math.min(ms, 500) : 0;
+}
+
+/**
+ * The race-first start (docs/content-packs.md, "Career": `firstRun`): a device whose career has not
+ * started goes from the start tap straight into the career's first race. Under the test flag only
+ * when a spec asks (`window.__raceFirst = true`), so the specs that expect the menu still get it.
+ */
+function raceFirstOn(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __raceFirst?: unknown };
+  return w.__GAME_TEST__ !== true || w.__raceFirst === true;
 }
 
 /** The settings' Frame rate as the loop's divisor. */
@@ -284,6 +317,38 @@ export function createApp(opts: AppOptions): AppHandle {
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
   let settings = settingsStore.load();
+  // The career (run W-R): the profile record beside the settings, and every region's career map.
+  const profileStore = createProfileStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
+  let profile: Profile = profileStore.load();
+  const saveProfile = (next: Profile) => {
+    profile = next;
+    profileStore.save(next);
+  };
+  /** A career has started once it owns a bike or has played a race (as src/career/ says). */
+  const careerStarted = (p: Profile) => p.bikes.owned.length > 0 || p.history.length > 0;
+  /**
+   * The career's code and screens are a lazy chunk (the first-load JavaScript budget): fetched as
+   * the game boots, like the tuning panel, and in long before a tap needs them. Until it is in,
+   * `C` is null and the career waits for it.
+   */
+  let C: CareerFlow | null = null;
+  let defs: CareerDef[] = [];
+  /** A career race in progress: its map node, its rules' log and its prompts; null in free play. */
+  let careerRace: {
+    def: CareerDef;
+    node: CareerNode;
+    plan: EventPlan;
+    length: string | null;
+    log: RaceLog | null;
+    onboarding: Onboarding;
+    /** The tick its rules decided the event early (a hunt at its count, an escape), or null. */
+    doneTick: number | null;
+    headline: string;
+  } | null = null;
+  /** The region the career screen shows (bare id). */
+  let careerRegion = '';
+  /** A boss's teaser waiting for the results screen to be left. */
+  let pendingTeaser: ReturnType<CareerFlow['teaserView']> = null;
   const layout: TouchLayout = { id: hud.id, mirror: settings.mirror || hud.mirror, elements: hud.elements };
   const recorder = createInputRecorder();
   const pendingTuning: { id: string; value: number }[] = [];
@@ -423,7 +488,12 @@ export function createApp(opts: AppOptions): AppHandle {
       eventId,
       // The settings that feed SimConfig (M2 save-2 and ui-2; wired in the integration round). Each
       // applies at the next race start or restart, never mid-race, and lands in the replay header.
-      length: settings.raceLength,
+      // A career race runs its map node's length; free play the Race length setting.
+      length: careerRace?.length ?? settings.raceLength,
+      // The career's bike rides every race (the garage, run W-R); its grudges ride career races
+      // only (grudges outside a career are "light persistence, later" [decided]).
+      ...(profile.bikes.current ? { playerBike: profile.bikes.current } : {}),
+      ...(careerRace ? { grudges: profile.grudges } : {}),
       // The road picked on the menu: a real road instead of the length's route (the replay header
       // records it as event.routeId).
       ...(route ? { route } : {}),
@@ -503,6 +573,67 @@ export function createApp(opts: AppOptions): AppHandle {
       onRouteChange: (id) => pickRoute(id),
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
+      onCareer: () => void careerReady.then(() => openCareer()),
+      career: {
+        onRegion: (id) => openCareer(id),
+        onRide: (nodeId) => {
+          const def = C?.careerOf(defs, careerRegion);
+          const node = def ? C?.nodeOf(def, nodeId) : null;
+          if (def && node) startCareerRace(def, node);
+        },
+        onBack: () => ui.show('menu'),
+        onBuyBike: (key) => C && garageAct(C.buyBike(registry, defs, profile, key)),
+        onRideBike: (key) => C && garageAct(C.rideBike(profile, key)),
+        onBuyPaint: (id) => C && garageAct(C.buyPaint(defs, profile, id)),
+        onPaint: (id) => C && garageAct(C.paintBike(profile, profile.bikes.current, id)),
+        onExport: async () => {
+          const m = await careerReady;
+          if (!m) return '';
+          if (!profileStore.record()) profileStore.save(profile);
+          const rec = profileStore.record() ?? {
+            format: 'profile' as const,
+            version: PROFILE_VERSION,
+            build: build.id,
+            savedAt: new Date().toISOString(),
+            data: profile,
+          };
+          return m.encodeExportCode({ profile: rec, settings: settingsStore.record() });
+        },
+        onImport: async (code) => {
+          const m = await careerReady;
+          if (!m) return 'The career did not load. Reload the page and try again.';
+          const r = await m.decodeExportCode(code);
+          if (r.kind === 'newer') return 'That code comes from a newer build. Nothing changed.';
+          if (r.kind !== 'ok') return `That code did not load: ${r.reason}.`;
+          saveProfile(m.startCareer(defs, r.profile));
+          openCareer(careerRegion, 'garage');
+          return `Loaded: $${r.profile.cash}, ${r.profile.history.length} races. Your settings stay this device's.`;
+        },
+        onRetry: () => {
+          const def = C?.careerOf(defs, careerRegion);
+          const last = profile.history.at(-1);
+          const node = def && last?.node ? C?.nodeOf(def, last.node) : null;
+          if (def && node) startCareerRace(def, node);
+          else openCareer();
+        },
+        onMap: () => {
+          if (pendingTeaser) {
+            ui.career.showTeaser(pendingTeaser);
+            pendingTeaser = null;
+            if (state === 'results') go('back');
+            ui.show('teaser');
+            return;
+          }
+          openCareer();
+        },
+        onNext: () => {
+          const def = C?.careerOf(defs, careerRegion);
+          const node = def ? C?.nextNodeOf(def, profile) : null;
+          if (def && node) startCareerRace(def, node);
+          else openCareer();
+        },
+        onNextRegion: (id) => openCareer(id),
+      },
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
@@ -517,11 +648,18 @@ export function createApp(opts: AppOptions): AppHandle {
       onResume: unpause,
       onRestart: () => {
         unpause();
+        // A career race restarts its own map node (the abandoned try pays nothing and records nothing).
+        const c = careerRace;
+        if (c && state === 'race') {
+          startCareerRace(c.def, c.node);
+          return;
+        }
         if (go('back')) handle.startRace();
       },
       onQuit: () => {
         unpause();
-        handle.backToMenu();
+        if (careerRace && state === 'race') quitCareerRace();
+        else handle.backToMenu();
       },
       onSettingsChange: (next) => {
         settings = next;
@@ -570,6 +708,10 @@ export function createApp(opts: AppOptions): AppHandle {
   let outcome = createOutcome();
   const finishRace = () => {
     if (!race || !curr || !go('finished')) return;
+    if (careerRace) {
+      settleCareerRace(false);
+      return;
+    }
     ui.showResults(
       raceResult(curr, playerId, outcome, {
         id: event.id,
@@ -615,8 +757,13 @@ export function createApp(opts: AppOptions): AppHandle {
     }
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     outcome.note(events, playerId, tick);
+    noteCareer(events, tick);
     stepListener?.(curr, events);
-    if (resultsDue(outcome, tick, race.isOver())) {
+    const careerDone = careerRace?.doneTick ?? null;
+    if (
+      resultsDue(outcome, tick, race.isOver()) ||
+      (careerDone !== null && tick >= careerDone + RESULTS_BEAT_TICKS)
+    ) {
       recorder.finish(tick, race.hash());
       finishRace();
     }
@@ -772,6 +919,205 @@ export function createApp(opts: AppOptions): AppHandle {
       console.warn('the Keys real-road data did not load', err);
     });
 
+  // ---- The career flow (run W-R) ----------------------------------------------------------------
+  const careerReady: Promise<CareerFlow | null> = import('./career-flow').then(
+    (m) => {
+      C = m;
+      defs = m.careerDefs(registry);
+      careerRegion ||= defs[0]?.regionId ?? '';
+      return m;
+    },
+    (err: unknown) => {
+      console.warn('the career did not load', err);
+      return null;
+    },
+  );
+
+  /** Starts a race and its recording at the current event and route, at `lengthId`. */
+  function launchRace(lengthId: string): boolean {
+    stream = streams.forEvent(registry, eventId, lengthId, route);
+    showRegion();
+    if (!go('race')) return false;
+    race = newSim(seeds.next());
+    pendingTuning.length = 0;
+    // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
+    recorder.beginRace(race, replayKey);
+    outcome = createOutcome();
+    lookWatch.reset();
+    prev = null;
+    curr = race.snapshot();
+    recent = [];
+    const me = curr.entities[playerId];
+    if (me) camera.snap(me, { aspect: viewAspect() });
+    input.calibrateTilt(); // the phone's angle now is straight ahead
+    ui.show('race');
+    return true;
+  }
+
+  /**
+   * Starts (or restarts) a career race at a map node: its region's road data first (with a busy
+   * line), then the race with the node's length, the career's bike and grudges, and the race log
+   * that watches the event's rules.
+   */
+  function startCareerRace(def: CareerDef, node: CareerNode): void {
+    const m = C;
+    if (loadingRoads || !m) return;
+    if (state === 'race' || state === 'results') go('back');
+    if (transition(state, 'race') === null) return;
+    const missing = packClosure(registry, packOf(node.event)).filter((id) => !library.hasRoads(id));
+    if (missing.length > 0) {
+      loadingRoads = true;
+      ui.setBusy(`Loading ${def.regionName}`);
+      void Promise.all(missing.map((id) => library.loadRoads(id)))
+        .then(
+          () => {
+            roadsArrived(library.registry());
+            return true;
+          },
+          (err: unknown) => {
+            console.warn('career road data did not load', err);
+            ui.notice(`${def.regionName} did not load. Check the connection and try again.`);
+            return false;
+          },
+        )
+        .then((ok) => {
+          loadingRoads = false;
+          ui.setBusy(null);
+          if (ok) startCareerRace(def, node);
+        });
+      return;
+    }
+    careerRegion = def.regionId;
+    const plan = m.eventPlan(registry, node.event);
+    const length = m.nodeLength(plan, node);
+    careerRace = {
+      def,
+      node,
+      plan,
+      length: length?.id ?? null,
+      log: null,
+      onboarding: m.createOnboarding(profile.oncePerCareer),
+      doneTick: null,
+      headline: '',
+    };
+    useEvent(node.event);
+    route = null;
+    if (!launchRace(length?.id ?? settings.raceLength) || !race) {
+      careerRace = null;
+      return;
+    }
+    careerRace.log = m.createRaceLog({
+      playerId,
+      rules: plan.rules,
+      objectives: plan.objectives,
+      routeId: m.bare(length?.route ?? ''),
+      roadIds: race.config.road.edges.map((e) => e.id),
+      secrets: def.secrets,
+    });
+    careerRace.headline = careerRace.log.status().headline;
+    ui.career.setObjective(careerRace.headline);
+  }
+
+  /** One step of a career race: its rules, its prompts, the objective line, an early end. */
+  function noteCareer(events: readonly SimEvent[], tick: number): void {
+    const c = careerRace;
+    if (!c?.log || !curr) return;
+    c.log.note(events, curr);
+    const prompt = c.onboarding.note(events, curr, playerId);
+    if (prompt) ui.career.prompt(prompt.text);
+    const s = c.log.status();
+    if (s.headline !== c.headline) {
+      c.headline = s.headline;
+      ui.career.setObjective(s.headline);
+    }
+    if (s.endNow && c.doneTick === null) c.doneTick = tick;
+  }
+
+  /** Settles the career race into the profile (and saves it); the results screen unless it was a quit. */
+  function settleCareerRace(quit: boolean): void {
+    const c = careerRace;
+    const m = C;
+    careerRace = null;
+    ui.career.setObjective(null);
+    if (!c?.log || !m) return;
+    const status = c.log.status();
+    const tally = c.log.tally();
+    const settled = m.settleRace(profile, {
+      reg: registry,
+      def: c.def,
+      node: c.node,
+      plan: c.plan,
+      status,
+      tally,
+      quit,
+      build: build.id,
+      at: new Date().toISOString(),
+    });
+    saveProfile({
+      ...settled.profile,
+      oncePerCareer: m.withPromptsSeen(settled.profile.oncePerCareer, c.onboarding.shown()),
+    });
+    if (quit) return;
+    pendingTeaser = m.teaserView(defs, settled.report);
+    ui.career.showResults(
+      m.resultView(registry, c.def, c.plan, status, settled.report, tally.place, tally.racers, profile),
+    );
+    ui.show('careerResults');
+  }
+
+  /** The pause menu's Quit in a career race: it counts as a quit (no cash), then the map. */
+  function quitCareerRace(): void {
+    if (!go('back')) return;
+    race = null;
+    settleCareerRace(true);
+    openCareer();
+  }
+
+  /** Draws the career screen for the region it shows. */
+  function drawCareer(tab?: 'map' | 'garage'): void {
+    if (!C) return;
+    ui.career.showMap(
+      C.mapView(registry, defs, profile, careerRegion),
+      C.garageView(registry, defs, profile, settings.units),
+      tab,
+    );
+  }
+
+  /**
+   * The career screen (the menu's Career button, the results' Map, the teaser): a career that has
+   * not started starts here. The map draws from the region's road data, fetched when it is not in.
+   */
+  function openCareer(region?: string, tab?: 'map' | 'garage'): void {
+    const m = C;
+    if (state === 'race' || !m) return;
+    if (state === 'results') go('back');
+    if (!careerStarted(profile)) saveProfile(m.startCareer(defs, profile));
+    const def = m.careerOf(defs, region ?? careerRegion) ?? defs[0];
+    if (!def) return;
+    careerRegion = def.regionId;
+    drawCareer(tab);
+    ui.show('career');
+    const missing = packClosure(registry, def.pack).filter((id) => !library.hasRoads(id));
+    if (missing.length > 0)
+      void Promise.all(missing.map((id) => library.loadRoads(id))).then(
+        () => {
+          roadsArrived(library.registry());
+          if (careerRegion === def.regionId && state !== 'race') drawCareer();
+        },
+        () => undefined, // the list still works; Ride fetches again and says so if it fails
+      );
+  }
+
+  /** A garage action's result: saved and redrawn, or its reason shown. */
+  function garageAct(r: GarageResult): void {
+    if (!r.ok) {
+      ui.career.message(r.reason);
+      return;
+    }
+    saveProfile(r.profile);
+    drawCareer();
+  }
+
   const handle: AppHandle = {
     build,
     state: () => state,
@@ -792,9 +1138,29 @@ export function createApp(opts: AppOptions): AppHandle {
       void runStartTap(() => audio.resume());
       go('tapped');
       ui.show('menu');
+      // Race-first (docs/content-packs.md, "Career"): a career that has not started begins with its
+      // first race, the prompts teaching as they become relevant; the menu is only behind it.
+      if (careerStarted(profile) || !raceFirstOn()) return;
+      const raceFirst = () => {
+        const first = C?.firstRace(defs);
+        if (!C || !first || careerStarted(profile) || state !== 'menu') return;
+        saveProfile(C.startCareer(defs, profile));
+        startCareerRace(first.def, first.node);
+      };
+      if (C) raceFirst();
+      else {
+        ui.setBusy('Loading');
+        void careerReady.then(() => {
+          ui.setBusy(null);
+          raceFirst();
+        });
+      }
     },
     startRace() {
       if (transition(state, 'race') === null || loadingRoads) return;
+      // The menu's Race is free play.
+      careerRace = null;
+      ui.career.setObjective(null);
       // The race runs in the region picked on the menu. A region pack's road data is fetched the
       // first time (docs/content-packs.md, "Region packs at runtime"); the race starts after.
       // The Keys' real roads too (run W-P): fetched at boot and almost always in by now. Every
@@ -810,28 +1176,31 @@ export function createApp(opts: AppOptions): AppHandle {
       if (choice) useEvent(choice.eventId);
       // The chosen race length's route (the settings' Race length; an id the event lacks means its
       // standard length), or the real road picked on the menu.
-      stream = streams.forEvent(registry, eventId, settings.raceLength, route);
-      showRegion();
-      if (!go('race')) return;
-      race = newSim(seeds.next());
-      pendingTuning.length = 0;
-      // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
-      recorder.beginRace(race, replayKey);
-      outcome = createOutcome();
-      lookWatch.reset();
-      prev = null;
-      curr = race.snapshot();
-      recent = [];
-      const me = curr.entities[playerId];
-      if (me) camera.snap(me, { aspect: viewAspect() });
-      input.calibrateTilt(); // the phone's angle now is straight ahead
-      ui.show('race');
+      launchRace(settings.raceLength);
     },
     backToMenu() {
       if (!go('back')) return;
       race = null;
+      // A career race left this way is abandoned: it records nothing.
+      careerRace = null;
+      ui.career.setObjective(null);
       ui.show('menu');
     },
+    career: () => ({
+      profile,
+      racing: careerRace ? { region: careerRace.def.regionId, node: careerRace.node.id } : null,
+      status: careerRace?.log?.status() ?? null,
+    }),
+    rideCareer(region, node) {
+      const m = C;
+      const def = m?.careerOf(defs, region);
+      const n = def ? m?.nodeOf(def, node) : null;
+      if (!m || !def || !n) return false;
+      if (!careerStarted(profile)) saveProfile(m.startCareer(defs, profile));
+      startCareerRace(def, n);
+      return true;
+    },
+    openCareer: (region) => openCareer(region),
     rendererStats: () => renderer.stats(),
     roadQueries: () => race?.config.route ?? null,
     getReplayAndSettings: () => ({
