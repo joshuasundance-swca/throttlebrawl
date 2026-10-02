@@ -99,7 +99,8 @@ def main():
     mb = _lib.MB(list(COLOURS))
     build(mb)
     mb.build("cable_car_body", mats, root)
-    _lib.export(out)
+    # Faceted: the game rebuilds each face's normal from its corners (models.ts), so none ship.
+    _lib.export(out, normals=False)
 
 
 main()
