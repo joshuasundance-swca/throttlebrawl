@@ -871,13 +871,14 @@ function trySpawn(
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) continue;
     if (nearestAnchor(anchors, u) > TRAFFIC.windowM) continue;
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
-    if (riderAt(world, st, u, t.lengthM)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
     const area = hasAreas ? trafficAreaAt(config, c, u) : null;
     const type = area === null ? regionType : pickType(world, config, st, dir, typeRoll, area);
     const t = config.trafficTypes[type];
     if (!t) continue;
+    // Never on top of a rider (#322), by this slot's own type (bundle 1: #353 picks it per slot).
+    if (riderAt(world, st, u, t.lengthM)) continue;
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
     let rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     // Never into a lane that ends soon (W-R): the next lane in, until one goes on.
