@@ -223,6 +223,115 @@ test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ 
   expect(problems).toEqual([]);
 });
 
+// Run W-Q: the Keys' hidden pirate station (never on the dial) takes the radio near its spot on the
+// route, through the real graph, and gives it back; the render is audible and unclipped throughout.
+test('radio: the hidden pirate takes over near its spot and hands the radio back', async ({ page }) => {
+  const problems = await openHarness(page);
+  const r = await page.evaluate(async (t) => {
+    type Audio = {
+      resume(): Promise<void>;
+      setVolumes(v: Record<string, number>, mute: boolean): void;
+      setParam(id: string, v: number): void;
+      setRegion(id: string | null): void;
+      frame(s: Record<string, unknown> | null, playerId: number): void;
+      inspect(): { radio: { tunedTo: string; stations: string[] } };
+    };
+    const url = '/__audio-radio/index.js';
+    const m = (await import(url)) as {
+      createAudio(o: Record<string, unknown>): Audio;
+      stationsFromTable(t: Record<string, unknown>): unknown[];
+    };
+    const rate = 44100;
+    const dur = 6;
+    const ctx = new OfflineAudioContext(1, dur * rate, rate);
+    const audio = m.createAudio({
+      createContext: () => ctx,
+      offline: true,
+      radioKeys: null,
+      radioSeed: 7,
+      stations: m.stationsFromTable(t),
+    });
+    audio.setVolumes({ master: 1, music: 1, effects: 0, voices: 0 }, false);
+    audio.setRegion('base:florida-keys');
+    await audio.resume();
+    audio.setParam('audio.radio', 2);
+    const me = (progress: number) => ({
+      tick: 1,
+      timeScale: 1,
+      race: { over: false, routeLength: 4000, finishOrder: [] },
+      entities: [
+        {
+          id: 0,
+          kind: 'rider',
+          mode: 'Road',
+          road: { edge: 0, s: 0, d: 0, h: 0, dir: 1, yaw: 0 },
+          x: 0,
+          y: 0,
+          z: 0,
+          heading: 0,
+          speed: 30,
+          lean: 0,
+          contentId: 'player',
+          slot: 0,
+          throttle: 1,
+          rpm: 5000,
+          gear: 3,
+          faction: 'rider',
+          targetId: -1,
+          health: 100,
+          healthMax: 100,
+          progress,
+        },
+      ],
+    });
+    const seen: { t: number; tunedTo: string }[] = [];
+    const pending: Promise<void>[] = [];
+    // 0-2 s before the spot (about 55% of 4000 m = 2200 m), 2-4 s inside it, 4-6 s past it.
+    for (let i = 1; i < dur * 30 - 1; i++) {
+      const at = i / 30;
+      const progress = at < 2 ? 800 : at < 4 ? 2200 : 3600;
+      pending.push(
+        ctx.suspend(at).then(() => {
+          audio.frame(me(progress), 0);
+          seen.push({ t: at, tunedTo: audio.inspect().radio.tunedTo });
+          return ctx.resume();
+        }),
+      );
+    }
+    const buf = await ctx.startRendering();
+    await Promise.all(pending);
+    const x = buf.getChannelData(0);
+    const stats = (from: number, to: number) => {
+      let peak = 0;
+      let sq = 0;
+      for (let i = Math.round(from * rate); i < Math.round(to * rate); i++) {
+        peak = Math.max(peak, Math.abs(x[i] ?? 0));
+        sq += (x[i] ?? 0) ** 2;
+      }
+      return { peak, rms: Math.sqrt(sq / ((to - from) * rate)) };
+    };
+    return {
+      dial: audio.inspect().radio.stations,
+      before: seen.find((s) => s.t > 1)?.tunedTo,
+      inside: seen.find((s) => s.t > 3)?.tunedTo,
+      after: seen.find((s) => s.t > 5)?.tunedTo,
+      outsideStats: stats(0.5, 1.9),
+      insideStats: stats(2.5, 3.9),
+    };
+  }, table);
+  console.log(`pirate: ${JSON.stringify(r)}`);
+  expect(problems).toEqual([]);
+  expect(r.dial).not.toContain('keys-bootleg');
+  expect(r.before).toBe('keys-rockabilly');
+  expect(r.inside).toBe('keys-bootleg');
+  expect(r.after).toBe('keys-rockabilly');
+  // The pirate's first bars are sparse (a one-drop with no bass yet), so it is quieter at the start.
+  expect(r.outsideStats.rms).toBeGreaterThan(0.02);
+  expect(r.insideStats.rms).toBeGreaterThan(0.005);
+  expect(r.outsideStats.peak).toBeLessThan(1);
+  expect(r.insideStats.peak).toBeLessThan(1);
+});
+
 test('radio: the music bus still follows its slider', async ({ page }) => {
   const problems = await openHarness(page);
   const off = await render(page, { choice: 3, switchTo: null, music: 0, dur: 2, table });

@@ -1,0 +1,92 @@
+{
+  "type": "station",
+  "id": "sf-zero-day",
+  "name": "Zero Day 0.0 FM",
+  "genre": "chip",
+  "regions": ["san-francisco"],
+  "pirate": {
+    "atFraction": 0.6,
+    "radiusM": 320
+  },
+  "tracks": [
+    {
+      "id": "unauthorized-hotfix",
+      "title": "Unauthorized Hotfix",
+      "procedural": {
+        "preset": "chip-band",
+        "params": {
+          "bpm": 150,
+          "key": "C",
+          "progression": "level"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "series-z-never-closed",
+      "title": "Series Z Never Closed",
+      "procedural": {
+        "preset": "chip-band",
+        "params": {
+          "bpm": 142,
+          "key": "E",
+          "progression": "castle"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "pivot-to-hardware",
+      "title": "Pivot to Hardware",
+      "procedural": {
+        "preset": "chip-band",
+        "params": {
+          "bpm": 158,
+          "key": "A",
+          "progression": "boss"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "the-demo-will-work-this-time",
+      "title": "The Demo Will Work This Time",
+      "procedural": {
+        "preset": "chip-band",
+        "params": {
+          "bpm": 146,
+          "key": "D",
+          "progression": "title"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "stealth-mode-loud",
+      "title": "Stealth Mode (Loud)",
+      "procedural": {
+        "preset": "chip-band",
+        "params": {
+          "bpm": 162,
+          "key": "G",
+          "progression": "level"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco's hidden PIRATE station: heard only near one spot on the road (about 60 percent of the way along the route, within 320 m), never on the dial. Code-made chiptune (src/audio/radio-compose-more.ts, preset chip-band): pulse waves, a triangle bass and a noise kit through a three-bit crusher. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
