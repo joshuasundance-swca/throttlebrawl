@@ -158,7 +158,7 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the thirteen cop parameters (M4 cops-3 added six, playtest 1c the launch share) inside their ranges, all sim-affecting', () => {
+  it('declares the fourteen cop parameters (M4 cops-3 added six, playtest 1c the launch share, playtest 2 the patrol scale) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustRadiusScale',
@@ -168,6 +168,7 @@ describe('cops: tuning declarations', () => {
       'cops.followGapM',
       'cops.launchShare',
       'cops.maxActive',
+      'cops.patrolScale',
       'cops.sirenLeadS',
       'cops.spawnChance',
       'cops.spawnDelayS',

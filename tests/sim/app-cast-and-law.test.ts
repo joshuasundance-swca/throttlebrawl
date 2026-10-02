@@ -138,7 +138,13 @@ const CLEAR_M = 10;
 function castRun(seed: number, quirks: number | null, ticks: number) {
   const { sim, route, playerId, config } = createHeadlessRace({
     seed,
-    tuning: { ...NO_ROAD_EVENTS, ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }) },
+    // Playtest 2's patrol off too: cops waiting on the shoulder count as riders nearby, and this
+    // measures how the rivals ride, not the law.
+    tuning: {
+      ...NO_ROAD_EVENTS,
+      'cops.patrolScale': 0,
+      ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }),
+    },
   });
   const bot = createBot();
   const ds = new Map<number, number[]>();

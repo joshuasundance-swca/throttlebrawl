@@ -50,7 +50,7 @@ const PACE = 30;
 /** Rival 0, player 1, cops 2-4 on a 2.4 km straight fixture road (start s 60 on `a`). */
 function config(
   cops: SimEventCops | undefined,
-  opts: { seed?: number; copFrequency?: number } = {},
+  opts: { seed?: number; copFrequency?: number; tuning?: Record<string, number> } = {},
 ): SimConfig {
   const road = createRoadNetwork(
     fixtureNetwork([
@@ -85,7 +85,7 @@ function config(
     route,
     modifiers: [],
     grudges: {},
-    tuning: tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)),
+    tuning: { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), ...opts.tuning },
     difficulty: {
       presetId: 'normal',
       riderAggression: 1,
@@ -290,6 +290,19 @@ describe('playtest 2: the patrol', () => {
     expect(patrolCops(off.world)).toEqual([]);
   });
 
+  it('cops.patrolScale 0 sends nobody on patrol; 2 doubles the most (patrolMax 1 brings up to 2)', () => {
+    const none = lawWorld(config(patrol(), { seed: 3, tuning: { 'cops.patrolScale': 0 } }));
+    expect(patrolCops(none.world)).toEqual([]);
+    const most = lawWorld(
+      config(patrol({ baseCount: 0, patrolMax: 1 }), {
+        seed: 3,
+        copFrequency: 100,
+        tuning: { 'cops.patrolScale': 2 },
+      }),
+    );
+    expect(patrolCops(most.world)).toHaveLength(2);
+  });
+
   it('without patrolMax the lot rule alone holds: the starting cop pulls out at the spawn delay', () => {
     const lot: SimEventCops = {
       mode: 'every-race',
@@ -300,7 +313,7 @@ describe('playtest 2: the patrol', () => {
     };
     const w = lawWorld(config(lot));
     expect(patrolCops(w.world)).toEqual([]);
-    w.step(60 * 25);
+    w.step(60 * 35); // past the 30 s spawn delay
     expect(w.sirens().map((e) => e.data['cause'])).toEqual(['every-race']);
   });
 });

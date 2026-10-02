@@ -79,14 +79,29 @@ import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type 
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
   {
+    // Playtest 2: 30 s, from 20. The patrol now brings the first cop early in every race; at 20 s
+    // the lot's cop on top of it busted the dev bot in 24 to 32 % of the shared batch's races (12 to
+    // 16 of 50 as small changes nudged the races), at 30 s in 18 %, as before the patrol. [default]
     id: 'cops.spawnDelayS',
     group: 'cops',
     label: 'Cop spawn delay',
-    default: 20,
+    default: 30,
     min: 0,
     max: 120,
     step: 1,
     unit: 's',
+    affectsSim: true,
+  },
+  {
+    // Playtest 2: scales how many patrol cops an event's `patrolMax` brings (0: no patrol). [default] 1.
+    id: 'cops.patrolScale',
+    group: 'cops',
+    label: 'Patrol cops (× the event)',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.5,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -263,7 +278,9 @@ export const PATROL = {
    * shadow a whole race. Long enough for a move-in or two alongside, where his swing (and your
    * steal) happens.
    */
-  chaseS: 60,
+  chaseS: 40,
+  /** His first seconds out he holds his line (no swerve into the player who just went by). */
+  holdLineS: 3,
   /** Looking for a clear spot: step forward this far, at most this many times. */
   stepM: 20,
   tries: 30,
@@ -593,6 +610,10 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     dWant = shoulder.dCenterM;
   }
   vWant = clamp(vWant, 0, bike.topSpeedMps);
+  // A patrol cop holds his line for his first seconds out, so he never swerves into the player
+  // who has just gone by him (he falls in behind once the player is clear).
+  const until = st.patrolUntil[cop.id] ?? 0;
+  if (until > 0 && st.clock < until - (PATROL.chaseS - PATROL.holdLineS) * 60) dWant = pos.d;
   // Never stand still in a travel lane: below the crawl, head for the shoulder and keep rolling
   // until he is clear of the lane (traffic never passes a stopped rider in its lane).
   if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {
@@ -874,11 +895,12 @@ function startPatrol(
   starting: number,
   lot: RoadPos | null,
 ): void {
-  const hi = Math.max(1, Math.floor(config.event.cops?.patrolMax ?? 1));
+  const scale = Math.max(0, world.params['cops.patrolScale'] ?? 1);
+  const hi = Math.max(1, Math.round((config.event.cops?.patrolMax ?? 1) * Math.max(scale, 0.5)));
   const roll = nextFloat(world.rng.cops); // always drawn, so the stream stays aligned
   const freq = config.difficulty.copFrequency;
   const u = Math.min(1 - 1e-9, roll * freq);
-  const want = freq > 0 ? 1 + Math.min(hi - 1, Math.floor(u * hi)) : 0;
+  const want = freq > 0 && scale > 0 ? 1 + Math.min(hi - 1, Math.floor(u * hi)) : 0;
   const free = st.cops.filter((_id, k) => k >= starting);
   const spots = patrolSpots(world, config, Math.min(want, free.length));
   let inLot = 0;
