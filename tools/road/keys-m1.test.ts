@@ -159,8 +159,8 @@ describe('tools/road: the baked M1 track', () => {
 
   it('road-3: a sign or billboard slot for every region item, each live, off the road, on every length', () => {
     const regionFile = JSON.parse(readFileSync(path.join(region, 'region.json'), 'utf8')) as {
-      signs?: { id: string; status?: string }[];
-      billboards?: { id: string; status?: string }[];
+      signs?: { id: string; status?: string; tags?: string[] }[];
+      billboards?: { id: string; status?: string; tags?: string[] }[];
     };
     const items = new Map(
       [...(regionFile.signs ?? []), ...(regionFile.billboards ?? [])].map((i) => [i.id, i]),
@@ -190,9 +190,14 @@ describe('tools/road: the baked M1 track', () => {
         const overlap = g.s0 < f.s1 && f.s0 < g.s1 && g.d0 < f.d1 && f.d0 < g.d1;
         expect(overlap, `${f.id} overlaps ${g.id ?? g.kind}`).toBe(false);
       }
-      // On the short route, so every race length passes it.
-      for (const r of routes)
+      // On the short route, so every race length passes it; a key's own sign (run W-Q, distinct
+      // keys: tagged `key-*`) stands on its key, so it is on every length that reaches that key,
+      // and the longest always does.
+      const ownKey = items.get(f.item ?? '')?.tags?.some((t) => t.startsWith('key-'));
+      for (const r of routes) {
+        if (ownKey && r.id !== 'm1-long-haul') continue;
         expect(createRouteProgress(net, r).allows(e.index), `${f.id} ${r.id}`).toBe(true);
+      }
     }
   });
 

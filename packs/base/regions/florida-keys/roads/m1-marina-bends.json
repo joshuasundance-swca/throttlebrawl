@@ -22,11 +22,30 @@
     }
   ],
   "tags": [
-    { "s0": 0, "s1": 190, "side": "left", "tag": "marina" },
+    { "s0": 0, "s1": 840, "side": "left", "tag": "marina" },
     { "s0": 0, "s1": 190, "side": "right", "tag": "strip-mall" },
-    { "s0": 190, "s1": 840, "side": "both", "tag": "palms" }
+    { "s0": 190, "s1": 840, "side": "right", "tag": "palms" },
+    { "s0": 0, "s1": 840, "side": "both", "tag": "key-fishing" }
   ],
   "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-bends-live-bait",
+      "s0": 120,
+      "s1": 130,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "live-bait"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-bends-shrimp-boats",
+      "s0": 520,
+      "s1": 530,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "shrimp-boats"
+    },
     {
       "kind": "billboard",
       "id": "sign-bends-conch-republic",

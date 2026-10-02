@@ -51,6 +51,14 @@ import {
   trafficFigureTint,
 } from './traffic-figures';
 import type { LookStyle } from './look';
+import {
+  BlobShadows,
+  DEFAULT_VEHICLE_SHADOW,
+  groundYOf,
+  ON_FOOT_SHADOW,
+  RIDER_SHADOW,
+  type ShadowSize,
+} from './shadows';
 import { defaultRenderParams, type RenderParams } from './tuning';
 import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
@@ -349,6 +357,8 @@ export interface EntityViewCounts {
 
 export class EntityViews {
   readonly root = new Group();
+  /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
+  private readonly shadows = new BlobShadows();
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -394,6 +404,7 @@ export class EntityViews {
     this.effects = opts.effects ?? null;
     this.params = opts.params ?? defaultRenderParams();
     this.root.name = 'entities';
+    this.root.add(this.shadows.root);
     this.instanced = {
       car: this.makeInstanced('car', CAR_PARTS, 'vehicle', 32),
       truck: this.makeInstanced('truck', TRUCK_PARTS, 'vehicle', 8),
@@ -581,6 +592,7 @@ export class EntityViews {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    this.castShadows(curr);
     for (const [id, view] of this.riders) if (!this.seen.has(id)) this.releaseRider(id, view);
     for (const [id, view] of this.pickups) if (!this.seen.has(id)) this.releasePickup(id, view);
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
@@ -615,6 +627,47 @@ export class EntityViews {
   }
 
   // ---- internals ----
+
+  /** Blob shadows for the riders, their parked or tumbling bikes, and the vehicles (shadows.ts). */
+  private castShadows(curr: SimSnapshot): void {
+    const sh = this.shadows;
+    sh.begin();
+    for (const e of curr.entities) {
+      if (e.kind !== 'rider' && e.kind !== 'vehicle') continue;
+      const p = lerpPose(this.prevById.get(e.id) ?? e, e, this.alpha, this.pose);
+      const ground = groundYOf(e);
+      if (e.kind === 'vehicle') {
+        const def = this.trafficTypes.get(e.contentId);
+        const fig = trafficFigureFor(e.contentId);
+        const odd = oddityFigureFor(e.contentId);
+        const dims = def ??
+          (fig ? TRAFFIC_FIGURE_DIMS[fig as keyof typeof TRAFFIC_FIGURE_DIMS] : undefined) ??
+          (odd ? FIGURE_DEFAULT_DIMS[odd] : undefined) ?? { widthM: 0, lengthM: 0 };
+        const size: ShadowSize =
+          dims.widthM > 0
+            ? { widthM: dims.widthM * 1.1, lengthM: dims.lengthM * 1.05 }
+            : DEFAULT_VEHICLE_SHADOW;
+        sh.add(p.x, ground, p.z, p.heading, size, 0);
+        continue;
+      }
+      const tumble = e.tumble;
+      if (tumble) {
+        // Down: the rider and the bike each throw their own, fainter the higher they fly.
+        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
+        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        continue;
+      }
+      if (e.parkedBike) {
+        // Running back to the bike: the rider on foot, the bike standing apart.
+        const b = e.parkedBike;
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
+        continue;
+      }
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+    }
+    sh.end();
+  }
 
   private geometry(key: string, build: () => BoxPart[]): BufferGeometry {
     let g = this.geometries.get(key);

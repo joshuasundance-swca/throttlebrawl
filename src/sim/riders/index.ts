@@ -45,6 +45,7 @@ import {
   truckBodyTop,
   truckClearMps,
 } from './features';
+import { uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
   breakFence,
@@ -203,10 +204,14 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   ...AIR_TUNING,
+  ...UTURN_TUNING,
 ];
 
-/** Per-rider plain state, by entity id (the air's attitude and tricks: sim/riders/air.ts). */
-export interface RiderState extends AirState {
+/**
+ * Per-rider plain state, by entity id (the air's attitude and tricks: sim/riders/air.ts; U-turns:
+ * sim/riders/uturn.ts).
+ */
+export interface RiderState extends AirState, UturnState {
   throttle: number[];
   brake: number[];
   rpm: number[];
@@ -362,6 +367,7 @@ export function riderState(world: World): RiderState {
     noseUpTicks: [],
     whipTicks: [],
     trick: [],
+    uturn: [],
   }));
 }
 
@@ -558,6 +564,15 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
     pos.d = limit;
     m.yaw = 0;
     st.touching[m.id] = 0;
+    return;
+  }
+  if (uturnTurning(st, m.id)) {
+    // Mid U-turn (sim/riders/uturn.ts) the kerb holds the bike in and scrapes speed off while it
+    // pivots on round; it never crashes it, and the heading is left to the turn. Off-road, the edge
+    // that holds it is the verge's (run W-R): a fence or the ferns hold it the same way.
+    pos.d = limit;
+    m.speed = Math.max(0, m.speed - SCRAPE_DRAG * accelMultiplierOf(config) * dt);
+    st.touching[m.id] = 1;
     return;
   }
   const kind = side > 0 ? lim.hiEdge : lim.loEdge;
@@ -796,6 +811,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
+  // A U-turn (interview, 2026-10-02): a slow player holding the brake and full lock pivots round
+  // (sim/riders/uturn.ts); null while riding normally.
+  const uturn = uturnStep(world, st, def, m, steer, brake, fresh);
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
   // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
@@ -832,6 +850,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   }
   if (onShoulder(config, m)) accel -= SHOULDER_DRAG * m2;
   if (wobble > 0) accel -= WOBBLE_DRAG * m2;
+  // Gassing round a U-turn never takes the bike past the turn's speed.
+  if (uturn && dt > 0 && v + accel * dt > uturn.capMps) accel = Math.min(accel, (uturn.capMps - v) / dt);
   m.speed = Math.max(0, v + accel * dt);
 
   // Lateral: steering asks for a heading offset; the road turning under the bike pulls it.
@@ -841,11 +861,15 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const asked = steer * authority * maxYaw;
   // Without a nudge the heading asked for is untouched (no clamp, no +0), exactly as before M2.
   const yawTarget = assist === 0 ? asked : clamp(asked + assist, -maxYaw, maxYaw);
-  const ownTurn = (yawTarget - m.yaw) * YAW_RESPONSE;
+  // In a U-turn the bike turns at the turn's own rate, past the usual limit; a turn given up midway
+  // comes back from wherever it got to (with no U-turn, |yaw| is never past 1.2 here).
+  const ownTurn = uturn ? uturn.rate : (yawTarget - m.yaw) * YAW_RESPONSE;
   const along = m.speed * cos(m.yaw) * sRateFactor(frameKappa, pos.d);
-  m.yaw = clamp(m.yaw + (ownTurn - pos.dir * frameKappa * along) * dt, -1.2, 1.2);
+  const yawLimit = uturn ? Infinity : Math.max(1.2, Math.abs(m.yaw));
+  m.yaw = clamp(m.yaw + (ownTurn - pos.dir * frameKappa * along) * dt, -yawLimit, yawLimit);
   pos.s += pos.dir * along * dt;
   pos.d += pos.dir * m.speed * sin(m.yaw) * dt;
+  if (uturn) uturnSettle(st, m);
   m.h = 0;
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
@@ -1128,6 +1152,7 @@ export const ridersSystem: SimSystem = {
       st.boostMps[m.id] = 0;
       st.onPad[m.id] = 0;
       st.truckTouch[m.id] = 0;
+      st.uturn[m.id] = 0;
       startFlight(st, m, undefined, slopeAt(config, m));
     }
   },

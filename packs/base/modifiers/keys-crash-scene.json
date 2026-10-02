@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "crash-scene",
-      "signText": "MINOR INCIDENT EVERYONE IS FINE KEEP MOVING",
+      "signText": "MINOR INCIDENT AHEAD. Everyone is fine. Keep moving.",
       "vehicle": "event-tow-truck",
       "vehicle2": "event-stalled-car",
       "person": "cop-waving",

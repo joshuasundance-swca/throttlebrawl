@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Box3, Vector3 } from 'three';
 import type { Mesh, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it } from 'vitest';
@@ -44,7 +45,7 @@ describe('the Blender model catalog', () => {
     const ids = PROPS.map((p) => p.asset);
     expect(new Set(ids).size).toBe(ids.length);
     for (const p of PROPS) {
-      expect(p.asset).toMatch(/^models\/(props|scenery)\/[a-z0-9]+(-[a-z0-9]+)*$/);
+      expect(p.asset).toMatch(/^models\/(props|scenery|bikes)\/[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(existsSync(path.join(repoRoot, 'tools/blender', p.script)), p.script).toBe(true);
     }
   });
@@ -112,6 +113,97 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
         }
     }
   });
+
+  if (prop.asset.startsWith('models/bikes/')) {
+    it('ships faceted geometry without normals and rebuilds finite face normals', async () => {
+      const scene = await loadInThree(read(file));
+      let examined = 0;
+      scene.traverse((o) => {
+        if (!(o as Mesh).isMesh) return;
+        const mesh = o as Mesh;
+        expect(mesh.geometry.getAttribute('normal'), o.name).toBeUndefined();
+        const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        geometry.computeVertexNormals();
+        const normals = geometry.getAttribute('normal');
+        expect(normals.count).toBeGreaterThan(0);
+        for (let i = 0; i < normals.count; i += 3) {
+          const normal = new Vector3().fromBufferAttribute(normals, i);
+          expect(normal.length(), `${o.name} triangle ${i / 3}`).toBeCloseTo(1, 5);
+          for (const j of [i + 1, i + 2])
+            expect(new Vector3().fromBufferAttribute(normals, j).distanceTo(normal)).toBeLessThan(1e-6);
+        }
+        geometry.dispose();
+        examined++;
+      });
+      expect(examined).toBeGreaterThan(0);
+    });
+
+    it('has grounded axle pivots, rider targets and a connected steering assembly', async () => {
+      const scene = await loadInThree(read(file));
+      scene.updateMatrixWorld(true);
+      const bike = scene.getObjectByName('bike')!;
+      const fork = scene.getObjectByName('fork')!;
+      const front = scene.getObjectByName('wheel_front')!;
+      const rear = scene.getObjectByName('wheel_rear')!;
+      const position = (o: Object3D) => o.getWorldPosition(new Vector3());
+      const fp = position(front);
+      const rp = position(rear);
+      expect(position(bike).length()).toBeLessThan(0.0001);
+      expect(fp.z).toBeGreaterThan(0);
+      expect(rp.z).toBeLessThan(0);
+      expect(fp.z + rp.z).toBeCloseTo(0, 5);
+      expect(fp.z - rp.z).toBeCloseTo(bike.userData['wheelbase_m'] as number, 5);
+      expect(position(scene.getObjectByName('seat_anchor')!).y).toBeCloseTo(
+        bike.userData['seat_height_m'] as number,
+        5,
+      );
+      expect(['rat', 'sport', 'super', 'chopper', 'dirt', 'scooter']).toContain(bike.userData['class']);
+      expect(front.parent).toBe(fork);
+      for (const side of ['l', 'r']) {
+        expect(scene.getObjectByName(`bar_${side}`)!.parent).toBe(fork);
+        expect(position(scene.getObjectByName(`peg_${side}`)!).y).toBeGreaterThan(0.2);
+      }
+      expect(position(scene.getObjectByName('bar_l')!).x).toBeGreaterThan(0);
+      expect(position(scene.getObjectByName('bar_r')!).x).toBeLessThan(0);
+      const fourWheels = !!scene.getObjectByName('wheel_front_l');
+      const splitRear = !!scene.getObjectByName('wheel_rear_l');
+      const wheels = [
+        ...(fourWheels ? ['wheel_front_l', 'wheel_front_r'] : ['wheel_front']),
+        ...(splitRear ? ['wheel_rear_l', 'wheel_rear_r'] : ['wheel_rear']),
+      ];
+      if (fourWheels) {
+        expect(new Box3().setFromObject(front).isEmpty()).toBe(true);
+        expect(new Box3().setFromObject(rear).isEmpty()).toBe(true);
+      }
+      for (const axle of ['front', 'rear']) {
+        if (axle === 'front' ? !fourWheels : !splitRear) continue;
+        const l = scene.getObjectByName(`wheel_${axle}_l`)!;
+        const r = scene.getObjectByName(`wheel_${axle}_r`)!;
+        expect(l.parent).toBe(axle === 'front' ? fork : bike);
+        expect(r.parent).toBe(l.parent);
+        expect(position(l).x).toBeGreaterThan(0);
+        expect(position(r).x).toBeLessThan(0);
+        expect(position(l).x + position(r).x).toBeCloseTo(0, 5);
+        expect(position(l).z).toBeCloseTo(position(axle === 'front' ? front : rear).z, 5);
+        expect(position(r).z).toBeCloseTo(position(l).z, 5);
+      }
+      for (const name of wheels) {
+        const wheel = scene.getObjectByName(name);
+        expect(wheel, name).toBeDefined();
+        if (!wheel) throw new Error(`Missing wheel ${name}`);
+        const box = new Box3().setFromObject(wheel);
+        const p = position(wheel);
+        expect(box.min.y).toBeCloseTo(0, 4);
+        expect((box.min.y + box.max.y) / 2).toBeCloseTo(p.y, 4);
+        expect((box.min.z + box.max.z) / 2).toBeCloseTo(p.z, 4);
+        expect(wheel.scale.toArray()).toEqual([1, 1, 1]);
+        expect(wheel.quaternion.x).toBeCloseTo(0, 5);
+        expect(wheel.quaternion.y).toBeCloseTo(0, 5);
+        expect(wheel.quaternion.z).toBeCloseTo(0, 5);
+      }
+      expect(scoreGlb(read(file), prop).counts.triangles).toBeGreaterThanOrEqual(600);
+    });
+  }
 });
 
 describe('the score guards fire', () => {

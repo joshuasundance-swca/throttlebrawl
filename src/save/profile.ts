@@ -70,6 +70,17 @@ export interface Profile {
   history: EventResult[];
   /** The failure-state policy (product spec): Road Trip by default [decided]. */
   failureMode: FailureMode;
+  /**
+   * Paint ids bought in the garage (run W-R career; product spec, Bikes: "Paint colors are the only
+   * customization"). Additive: a record without it owns none, and the version stays 1.
+   */
+  paintsOwned: string[];
+  /**
+   * Once-per-career flags (docs/milestones/M4.md, career-1: "once-per-career flags"): the onboarding
+   * prompts already shown (`prompt:<id>`) and the teasers already played (`teaser:<region>`).
+   * Additive, like `paintsOwned`.
+   */
+  oncePerCareer: string[];
 }
 
 export const MAX_HISTORY = 200;
@@ -83,6 +94,8 @@ export const DEFAULT_PROFILE: Readonly<Profile> = {
   grudges: {},
   history: [],
   failureMode: 'road-trip',
+  paintsOwned: [],
+  oncePerCareer: [],
 };
 
 export function emptyRegion(): RegionProgress {
@@ -194,6 +207,8 @@ export function sanitiseProfile(data: unknown): Profile {
     grudges: grudges(d['grudges']),
     history,
     failureMode: oneOf(d['failureMode'], FAILURE_MODES, 'road-trip'),
+    paintsOwned: ids(d['paintsOwned']),
+    oncePerCareer: ids(d['oncePerCareer']),
   };
 }
 

@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "hay-spill",
-      "signText": "LOOSE HAY NEXT 2 MILES",
+      "signText": "LOOSE HAY AHEAD. Next 2 miles.",
       "vehicle": "pnw-hay-truck",
       "theme": "pnw"
     }
