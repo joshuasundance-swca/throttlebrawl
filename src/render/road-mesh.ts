@@ -166,6 +166,11 @@ export interface RoadScene {
    * Returns the scenery instances left visible.
    */
   update(cameraX: number, cameraZ: number, t: number, drawM: number): number;
+  /**
+   * Metres of drawn land past the verge at s on a side of an edge (0 = none), as this scene drew
+   * it: the roadside layer (roadside.ts, run W-P) stands its clutter on it.
+   */
+  landReach(edge: number, side: -1 | 1, s: number): number;
   dispose(): void;
 }
 
@@ -479,6 +484,8 @@ const BENT_MODEL_H = 10;
 const BENT_MODEL_W = 12.8;
 /** A cable car's slot rails: each sits this far either side of its lane's centre, m. */
 const CABLE_RAIL_D = 0.55;
+/** The slot's cover plates between the rails come this often, m. [default] */
+const CABLE_COVER_EVERY_M = 12;
 /** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
 export const SCENERY_CHUNK_M = 256;
 
@@ -607,6 +614,8 @@ export function buildRoadScene(
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
   const spots: ScenerySpot[] = [];
+  /** Each edge's land reach per sample and side, and its sample step (RoadScene.landReach). */
+  const landOf: { step: number; reach: Record<-1 | 1, number[]> }[] = [];
   const truckParts: BoxPart[] = [];
   const truckMatrices: Matrix4[] = [];
   const truckModel = opts.models?.truck;
@@ -863,6 +872,7 @@ export function buildRoadScene(
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    landOf[e.index] = { step, reach: reachOf };
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
     /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
@@ -1244,6 +1254,16 @@ export function buildRoadScene(
           }
           slot.breakStrip();
         }
+        // Run W-P: the slot's cover plates between the rails, a beat of them under the wheels.
+        for (let u = s0 + 6; u + 0.7 < s1; u += CABLE_COVER_EVERY_M) {
+          const d = l.dCenterM;
+          strip('cableSlot').quad(
+            w(e.index, u, d - 0.38, 0.029),
+            w(e.index, u, d + 0.38, 0.029),
+            w(e.index, u + 0.7, d - 0.38, 0.029),
+            w(e.index, u + 0.7, d + 0.38, 0.029),
+          );
+        }
       }
     }
     // Rails (a band on posts) and walls, from the dressing or the elevation rule.
@@ -1568,6 +1588,13 @@ export function buildRoadScene(
       sceneryModels: fromModels,
     },
     spots,
+    landReach(edge, side, s) {
+      const l = landOf[edge];
+      if (!l) return 0;
+      const n = l.reach[side].length;
+      const i = Math.max(0, Math.min(n - 1, Math.floor(s / l.step)));
+      return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
+    },
     update(cameraX, cameraZ, t, drawM) {
       let shown = 0;
       for (const b of batches) {

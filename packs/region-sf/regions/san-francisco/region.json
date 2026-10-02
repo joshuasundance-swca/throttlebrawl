@@ -72,8 +72,8 @@
       "status": "live"
     },
     {
-      "id": "promptloom",
-      "text": "PROMPTLOOM. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI.",
+      "id": "delegatron",
+      "text": "DELEGATRON. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI.",
       "status": "live"
     },
     { "id": "toastwise", "text": "TOASTWISE. YOUR TOAST, REASONED STEP BY STEP.", "status": "live" },

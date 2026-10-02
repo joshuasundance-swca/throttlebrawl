@@ -29,16 +29,28 @@ const REGION_MODELS = [
   'row-houses',
   'fog-banks',
   'cable-car',
+  'pnw-roadside',
+  'sf-roadside',
 ] as const;
+/**
+ * The Keys' roadside kit (run W-P) is a base-pack model like the palms: the menu's attract scene is
+ * the Keys road, so every session fetches it before a region is picked. It is checked apart: a Keys
+ * race must fetch it, and no other region's own models.
+ */
+const KEYS_KIT = 'keys-roadside';
 
 const REGIONS = [
   { slug: 'keys', chip: '#region-base-florida-keys', wants: [] as string[] },
   {
     slug: 'pnw',
     chip: '#region-region-pnw-pacific-northwest',
-    wants: ['conifers', 'sawmill', 'trestle-bent'],
+    wants: ['conifers', 'sawmill', 'trestle-bent', 'pnw-roadside'],
   },
-  { slug: 'sf', chip: '#region-region-sf-san-francisco', wants: ['row-houses', 'fog-banks', 'cable-car'] },
+  {
+    slug: 'sf',
+    chip: '#region-region-sf-san-francisco',
+    wants: ['row-houses', 'fog-banks', 'cable-car', 'sf-roadside'],
+  },
 ];
 
 for (const region of REGIONS) {
@@ -52,10 +64,12 @@ for (const region of REGIONS) {
     });
     page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
     const fetched = new Set<string>();
+    let keysKit = false;
     page.on('response', (res) => {
       const file = new URL(res.url()).pathname.split('/').pop() ?? '';
       const model = REGION_MODELS.find((m) => file.startsWith(`${m}-`) || file === `${m}.glb`);
       if (model && file.endsWith('.glb') && res.ok()) fetched.add(model);
+      if (file.startsWith(`${KEYS_KIT}-`) && file.endsWith('.glb') && res.ok()) keysKit = true;
     });
     await page.addInitScript(() => {
       (window as TestWindow).__GAME_TEST__ = true;
@@ -73,6 +87,7 @@ for (const region of REGIONS) {
     await expect.poll(() => region.wants.filter((m) => !fetched.has(m)), { timeout: 30_000 }).toEqual([]);
     console.log(`[print] ${region.slug}: region models fetched: ${[...fetched].sort().join(', ') || 'none'}`);
     expect([...fetched].sort()).toEqual([...region.wants].sort());
+    if (region.slug === 'keys') await expect.poll(() => keysKit, { timeout: 30_000 }).toBe(true);
 
     mkdirSync('test-results/screenshots', { recursive: true });
     const png = await page
