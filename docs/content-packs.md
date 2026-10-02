@@ -739,7 +739,7 @@ See [Region 1 stub: the Florida Keys](#region-1-stub-the-florida-keys) for a ful
 | `timeOfDayOptions` | Allowed values for an event's `timeOfDay`, each with a lighting preset name: `dawn`, `noon`, `golden-hour`, `dusk`, `night`. An option may carry its own optional `palette` that overrides the region's, because the maintainer wants palettes compared and set per time of day (tentative, "idk" `[default]`). |
 | `traffic.mix` | Weighted vehicle kinds. Each `kind` is the id of a [traffic type](#traffic-type); the `hazard` class (`normal` or `big`, where hitting a big one crashes you) comes from the type and can be overridden here. Oddities are ordinary entries tagged `oddity`. |
 | `traffic.pedestrians`, `traffic.animals` | Weighted kinds (ids of `traffic-type` entries with category `pedestrian` or `animal`) that dive away cartoonishly `[decided]`; `big: true` means hitting one crashes you and overrides the type. |
-| `signs`, `billboards` | Objects with an `id`, `text`, optional `tags`, an optional image asset (billboards), and an optional `status` (`live`, `vetoed`, `draft`) so the in-game veto can cut one ([In-game veto](#in-game-veto-cut-this)). Roads place them with `billboard` features, which name an `item` or a `pool` to fill the slot. |
+| `signs`, `billboards` | Objects with an `id`, `text`, optional `tags`, an optional image asset (billboards), and an optional `status` (`live`, `vetoed`, `draft`) so the in-game veto can cut one ([In-game veto](#in-game-veto-cut-this)). Roads place them with `billboard` features, which name an `item` or a `pool` to fill the slot. `[decided]` (playtest 2, 2026-10-02, "pass too fast to read") A board's `text` is a headline plus a kicker: the first sentence is the headline (3-4 words for a billboard, 2-5 for a sign, drawn big enough to read at 100 mph) and the rest is the kicker (drawn small). Write the headline in capitals and keep the joke in the kicker. |
 | `palette` | Colour hints for the renderer and UI, so each region has a visual identity. |
 | `weather` | Reserved, optional, later `[decided]`. |
 
@@ -1248,13 +1248,13 @@ File: `packs/base/regions/florida-keys/region.json`
     ]
   },
   "signs": [
-    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. IT IS 91 DEGREES." },
-    { "id": "next-regret", "text": "NEXT GAS 40 MI. NEXT REGRET 2 MI." },
-    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. LEGALLY UNCLEAR." }
+    { "id": "ices-before-road", "text": "BRIDGE ICES BEFORE ROAD. It is 91 degrees." },
+    { "id": "next-regret", "text": "NEXT GAS 40 MI. Next regret 2 mi." },
+    { "id": "iguana-right-of-way", "text": "IGUANAS HAVE RIGHT OF WAY. Legally unclear." }
   ],
   "billboards": [
-    { "id": "timeshare", "text": "OWN A PIECE OF PARADISE. SOME PIECES STILL ABOVE WATER." },
-    { "id": "stream-outfit", "text": "WRECKED LIVE. NEW EPISODES EVERY CRASH." }
+    { "id": "timeshare", "text": "PARADISE FOR SALE. Some pieces still above water." },
+    { "id": "stream-outfit", "text": "WATCH US WRECK LIVE. New episodes every crash." }
   ],
   "weather": null,
   "meta": {
