@@ -1,0 +1,8 @@
+---
+kind: dev
+audience: dev
+---
+Main fix-forward for two seeded sim tests that went red when several merges composed. Neither is a game regression; both tests' sampling went stale, and what each checks is unchanged.
+
+- **The cop's weapon steal** (tests/sim/cops-steal-chance.test.ts; San Francisco fell to 2 races in 10, against a minimum of 5). A bisect of seeds 1 to 10 found three steps: 9 races in 10 before, 8 after traffic swerves round a downed rider (#329), 6 after quicker knockdowns (#273), and 2 after a weapon by your bike after a crash (#313). The "player who tries" gave up as soon as he held any weapon. That gate is older than full-handed steals (W-O polish), and since #313 he picked up a lead pipe in most San Francisco races and stopped trying. He now keeps trying with a road weapon in hand until his first steal, as the full-handed check already did. The two checks share one set of races per region, so the file runs half the races it did. The minimum stays half of the races. Results: the Keys 9 of 10, the Pacific Northwest 10 of 10, San Francisco 8 of 10, 11 of the 27 steals with a road weapon in hand.
+- **Dial-Up's swerve** (tests/sim/app-cast-and-law.test.ts; his quirk-on sway was 1.12 times the quirk-off sway, and the check needs 1.15). This check now averages 10 seeded races, not 3. Over those 10 races his quirk-on sway is unchanged (0.67 to 0.68 m/s). The quirk-off control rose with #273 and his quirk-on sway fell slightly with #329. One race reads anywhere from 0.4 to 0.9 m/s, so a 3-race mean moved more than the 15 % margin. Over 10 races the ratio read 1.21, 1.16 and 1.25 before, between and after those merges. Now it reads 0.68 against 0.54 m/s, and he still sways the most of the cast.

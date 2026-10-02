@@ -351,6 +351,8 @@ export function eventCops(event: RaceEvent): SimEventCops {
     tierScale: Math.max(0, finiteOr(c['tierScale'], 0)),
     chaosSummon: c['chaosSummon'] === true,
     randomness: Math.min(1, Math.max(0, finiteOr(c['randomness'], 0))),
+    // Playtest 2: the starting cops patrol ahead (sim/cops), from baseCount up to patrolMax.
+    ...((p) => (p > 0 ? { patrolMax: p } : {}))(Math.floor(finiteOr(c['patrolMax'], 0))),
   };
 }
 
@@ -359,7 +361,8 @@ export function eventCops(event: RaceEvent): SimEventCops {
  * id, at the back of the grid behind the player. The pool is the race's packs' cops whose `region`
  * resolves to the event's region (a cop with no region rides everywhere), cycled. The field holds
  * enough cops for the most the mix can bring out (M4 cops-3): `baseCount` plus `tierScale` per tier
- * above the first for `tier-rising`, plus one more whenever chaos can summon, at most
+ * above the first for `tier-rising`, plus `patrolMax` for playtest 2's patrol, plus one more
+ * whenever chaos can summon or a patrol rides (a speed trap's cop), at most
  * MAX_FIELDED_COPS; `none` fields nobody. sim/cops decides which of them leave the lot, and when.
  * [default] Returns qualified rider ids.
  */
@@ -371,7 +374,9 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT, tier = DEF
   const starting =
     cops.mode === 'tier-rising' ? cops.baseCount + cops.tierScale * (Math.max(1, tier) - 1) : cops.baseCount;
   const chaos = cops.chaosSummon || cops.mode === 'chaos-summoned';
-  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + (chaos ? 1 : 0));
+  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap or chaos.
+  const patrol = cops.patrolMax ?? 0;
+  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + patrol + (chaos || patrol > 0 ? 1 : 0));
   const regionKey = qualifyIn(packOf(key), event.region);
   const race = packSubset(reg, packClosure(reg, packOf(key)));
   const pool = Object.entries(race.riders)

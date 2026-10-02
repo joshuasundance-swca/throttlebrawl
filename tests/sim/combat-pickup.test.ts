@@ -51,8 +51,13 @@ describe('combat-2 on the base pack', () => {
   });
 });
 
-/** Replays a race's weapon events and returns what they add up to, or the first inconsistency. */
-function audit(events: readonly SimEvent[]) {
+/**
+ * Replays a race's weapon events and returns what they add up to, or the first inconsistency.
+ * `armed` are the riders who start the race holding a weapon (the cops' batons and tasers: no
+ * weaponGrab puts it in their hands), so a first steal off one of them is consistent too.
+ */
+function audit(events: readonly SimEvent[], armed: ReadonlySet<number> = new Set()) {
+  const startedArmed = new Set(armed);
   const holderOf = new Map<number, number>(); // pickup id -> rider id (absent = on the road)
   const holding = new Map<number, number>(); // rider id -> pickup id
   const out = { road: 0, steal: 0, cues: 0, pipeHits: 0, problem: '' };
@@ -87,7 +92,8 @@ function audit(events: readonly SimEvent[]) {
     } else if (src === 'steal') {
       out.steal++;
       const from = e.target ?? -1;
-      const pid = holding.get(from);
+      let pid = holding.get(from);
+      if (pid === undefined && startedArmed.delete(from)) pid = -1000 - from; // his starting weapon
       if (pid === undefined) out.problem ||= `tick ${e.tick}: stole from rider ${from}, who held nothing`;
       else {
         holding.delete(from);
@@ -107,8 +113,11 @@ describe('combat-2 over the shared seeded-race batch', () => {
     let pipeHits = 0;
     let racesWithGrab = 0;
     const problems: string[] = [];
+    // Every batch race fields the same riders: those with a starting weapon (the cops).
+    const { config } = createBatchRace(1);
+    const armed = new Set(config.riders.flatMap((r, i) => (r.startingWeapon ? [i] : [])));
     for (const race of batch.races) {
-      const a = audit(race.events);
+      const a = audit(race.events, armed);
       road += a.road;
       steal += a.steal;
       cues += a.cues;
