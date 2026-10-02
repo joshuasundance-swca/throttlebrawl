@@ -1,0 +1,33 @@
+{
+  "type": "traffic-type",
+  "id": "resort-scooter-rider",
+  "name": "Resort Scooter Rider",
+  "category": "car",
+  "tags": ["tourist", "key-resort"],
+  "lengthM": 1.1,
+  "widthM": 0.55,
+  "cruiseMps": 6.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true,
+    "weaveM": 0.35
+  },
+  "look": {
+    "procedural": {
+      "preset": "scooter-rider"
+    },
+    "paintOptions": ["#f2a7c3", "#7fd1c7", "#f4f1e8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A rental scooter from the Lime Wedge Key resort desk, ridden in a hotel robe with the wristband still on. Keeps to the kerb and weaves a little, admiring the view. Resort strip traffic (run W-R).",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

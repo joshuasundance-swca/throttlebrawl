@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "salvage-key-shuttle",
+  "name": "Salvage Key Shuttle Bus",
+  "category": "truck",
+  "tags": ["local", "key-junkyard"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "cruiseMps": 17.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "short-bus"
+    },
+    "paintOptions": ["#f2c14e", "#7fd1c7", "#f4f1e8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A retired short bus with a new route painted over the old one: SALVAGE KEY LOOP, EVERY HOUR OR SO. Stops for anyone who waves, and for a few who don't. Junkyard key traffic (run W-R); big.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

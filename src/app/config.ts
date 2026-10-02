@@ -413,6 +413,41 @@ function regionTrafficWeights(
   return out;
 }
 
+/** A type's `areaWeights` field for SimTrafficTypeDef: present only when an area lists it. */
+function areaWeightsOf(
+  areas: ReadonlyMap<string, Record<string, number>>,
+  contentId: string,
+): { areaWeights?: Record<string, number> } {
+  const w = areas.get(contentId);
+  return w ? { areaWeights: w } : {};
+}
+
+/**
+ * The event region's per-area road-vehicle weights (run W-R; interview, 2026-10-02: each key its
+ * own traffic), by qualified traffic-type id, then by area tag: each `traffic.areas` entry's mix.
+ * Empty when the region has no areas (or is not in the registry).
+ */
+function regionTrafficAreas(
+  reg: ContentRegistry,
+  event: RaceEvent,
+  eventPack: string,
+): Map<string, Record<string, number>> {
+  const out = new Map<string, Record<string, number>>();
+  const regionKey = qualifyIn(eventPack, event.region);
+  const region = reg.regions[regionKey];
+  if (!region) return out;
+  const regionPack = packOf(regionKey);
+  for (const area of region.traffic.areas ?? []) {
+    for (const k of area.mix) {
+      const id = qualifyIn(regionPack, k.kind);
+      const row = out.get(id) ?? {};
+      row[area.tag] = (row[area.tag] ?? 0) + k.weight;
+      out.set(id, row);
+    }
+  }
+  return out;
+}
+
 /**
  * A traffic type's behaviour flags as the sim reads them (W-P, 2026-10-01): only the flags the sim
  * acts on, and only those the content sets, so an absent flag keeps the category's default. A
@@ -521,6 +556,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     ...weaponBehaviour(w),
   }));
   const weights = regionTrafficWeights(race, event, eventPack);
+  const areaWeights = regionTrafficAreas(race, event, eventPack);
   // W-P: the road set pieces the event opts into (the sim rolls which fire, and where).
   const mods = eventModifiers(race, event, eventId);
   const given = setup.tuning ?? {};
@@ -556,6 +592,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       cruiseMps: t.cruiseMps,
       hazard: t.hazard,
       ...(weights ? { weight: weights.get(contentId) ?? 0 } : {}),
+      ...areaWeightsOf(areaWeights, contentId),
       ...trafficBehaviour(t.behaviour),
     })),
     road: stream.road,
