@@ -9,7 +9,11 @@
 //   speed, scored once, by the second, when the stretch ends;
 // - takedownCombo: every `takedown` its credited rider lands; the k-th inside one combo (each within
 //   `race.styleComboWindowS` of world time of the last) scores perTakedownCash × comboScale × k;
-// - weaponSteal: a `weaponGrab` whose source is a steal.
+// - weaponSteal: a `weaponGrab` whose source is a steal;
+// - trick (playtest 2, 2026-10-02: "I love the idea of doing flips"): a `land` that holds (not a
+//   crash) with a `data.trick`, worth perAirtimeCash × `race.styleTrickScale` × its weight: a flip's
+//   full turns (a double backflip is 2), a wheelie landing or a whip ½. It needs no minimum airtime
+//   (a flip needs the air anyway), and it adds to the landing's airtime cash.
 // Each scores a `style` event (data.kind, data.points) beside `addStyle`, for racers still racing;
 // the law never scores, and a source worth 0 cash emits nothing. Durations are world time, the sum
 // of timeScale / 60 over the ticks, so slow motion stretches nothing and hit-stop adds nothing.
@@ -63,7 +67,27 @@ export const STYLE_TUNING: readonly TuningParamDecl[] = [
     unit: 's',
     affectsSim: true,
   },
+  {
+    // A trick's style cash per weight, as a multiple of the airtime cash (playtest 2): a backflip
+    // is 2× the airtime cash, a double 4×, a wheelie landing or a whip 1×. [default]
+    id: 'race.styleTrickScale',
+    group: 'race',
+    label: 'Style: trick cash × airtime',
+    default: 2,
+    min: 0,
+    max: 6,
+    step: 0.25,
+    unit: '×',
+    affectsSim: true,
+  },
 ];
+
+/** A trick's weight in style cash (× airtime cash × race.styleTrickScale): a flip counts its turns. */
+function trickWeight(trick: string, flips: number): number {
+  if (trick === 'backflip' || trick === 'frontflip') return Math.max(1, flips);
+  if (trick === 'wheelie' || trick === 'whip') return 0.5;
+  return 0;
+}
 
 interface StyleState {
   /** World seconds since the race began. */
@@ -199,6 +223,13 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
         const minS = world.params['race.styleAirtimeMinS'] ?? 0.5;
         if (air >= 0 && e.data['quality'] !== 'crash' && air + 1e-9 >= minS) {
           score(world, id, 'airtime', rewards.perAirtimeCash, { seconds: air }, e.causeId);
+        }
+        const trick = e.data['trick'];
+        if (typeof trick === 'string' && trick !== '' && e.data['quality'] !== 'crash') {
+          const flips = Number(e.data['flips'] ?? 0);
+          const scale = world.params['race.styleTrickScale'] ?? 2;
+          const points = rewards.perAirtimeCash * scale * trickWeight(trick, flips);
+          score(world, id, 'trick', points, { trick, flips }, e.causeId);
         }
         break;
       }

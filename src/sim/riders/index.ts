@@ -17,6 +17,7 @@
 import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
+import { AIR_TUNING, groundPitch, slopeAt, startFlight, stepAttitude, touchdown, type AirState } from './air';
 import { applyShove, riderContacts } from './contact';
 import {
   BOOST_ACCEL_MPS2,
@@ -38,6 +39,8 @@ import {
   type SimSystem,
   type World,
 } from '../world';
+
+export { trickOf } from './air';
 
 export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   {
@@ -157,10 +160,11 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  ...AIR_TUNING,
 ];
 
-/** Per-rider plain state, by entity id. */
-export interface RiderState {
+/** Per-rider plain state, by entity id (the air's attitude and tricks: sim/riders/air.ts). */
+export interface RiderState extends AirState {
   throttle: number[];
   brake: number[];
   rpm: number[];
@@ -310,6 +314,12 @@ export function riderState(world: World): RiderState {
     onPad: [],
     crestHold: [],
     truckTouch: [],
+    pitch: [],
+    pitchRate: [],
+    airBlock: [],
+    noseUpTicks: [],
+    whipTicks: [],
+    trick: [],
   }));
 }
 
@@ -702,6 +712,8 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
     st.vy[m.id] = crest ? vy0 : vy0 - gravity * dt;
     st.airTicks[m.id] = 0;
+    // The flight starts at the slope the bike rode off (last tick's ground pitch).
+    startFlight(st, m, input, st.pitch[m.id] ?? slopeAt(config, m));
     emit(
       world,
       'jump',
@@ -713,6 +725,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     st.yAbs[m.id] = ground;
     if (dt > 0) st.vy[m.id] = (ground - yBefore) / dt;
     touchPads(world, config, st, m);
+    groundPitch(st, m, slopeAt(config, m));
   }
 
   // Lean from sideways acceleration (the heading's world turn rate is the rider's own turn rate).
@@ -835,13 +848,15 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
     return;
   }
+  // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for.
+  const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt);
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
   if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
     st.yAbs[m.id] = y;
   }
-  settle(world, st, m, 0, dt);
+  settle(world, st, m, m.mode === 'Airborne' ? leanTarget : 0, dt);
   st.throttle[m.id] = throttle;
   st.brake[m.id] = 0;
   gearAndRpm(st, m);
@@ -862,10 +877,16 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   const vertical = Math.max(0, slopeVy - (st.vy[m.id] ?? 0));
   const lateral = Math.abs(m.speed * sin(m.yaw));
   const crashAt = world.params['riders.landingCrashMps'] ?? 4;
-  const crashes = lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL;
-  const wobbles = lateral >= crashAt * LANDING_WOBBLE_FRACTION || vertical >= LANDING_WOBBLE_VERTICAL;
+  // The bike's attitude (sim/riders/air.ts): a trick landed, or nose first or looped out.
+  const slope = slopeAt(config, m);
+  const td = touchdown(st, m, slope);
+  const crashes = lateral >= crashAt || vertical >= LANDING_CRASH_VERTICAL || td.crashes;
+  const wobbles =
+    lateral >= crashAt * LANDING_WOBBLE_FRACTION || vertical >= LANDING_WOBBLE_VERTICAL || td.wobbles;
   const quality = crashes ? 'crash' : wobbles ? 'wobble' : 'clean';
   const slide = !crashes && lateral >= crashAt * LANDING_SLIDE_FRACTION;
+  const trick = crashes ? '' : td.trick;
+  const flips = trick === 'backflip' || trick === 'frontflip' ? Math.abs(td.flips) : 0;
   const landYaw = m.yaw;
   if (slide) {
     m.speed = Math.max(0, m.speed * cos(m.yaw) * (1 - LANDING_SLIDE_LOSS));
@@ -880,11 +901,24 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
   st.vy[m.id] = slopeVy;
   st.airTicks[m.id] = 0;
   st.crestHold[m.id] = 1;
-  const data = { quality, airTicks, lateralMps: lateral, verticalMps: vertical, speed: m.speed, slide };
+  groundPitch(st, m, slope);
+  const data = {
+    quality,
+    airTicks,
+    lateralMps: lateral,
+    verticalMps: vertical,
+    speed: m.speed,
+    slide,
+    trick,
+    flips,
+    pitchOff: td.pitchOff,
+  };
   const cause = emit(world, 'land', m.id, data);
   if (quality === 'crash') {
     st.wobble[m.id] = 0;
-    emit(world, 'crash', m.id, { ...data, cause: 'landing', yaw: landYaw }, { causeId: cause });
+    // A trick gone wrong is a big, funny wipeout: the rider thrown high (tumble reads upMps and sideMps).
+    const botched = td.throw ? { botched: true, attempt: td.attempt, ...td.throw } : {};
+    emit(world, 'crash', m.id, { ...data, cause: 'landing', yaw: landYaw, ...botched }, { causeId: cause });
   } else if (quality === 'wobble') {
     st.wobble[m.id] = WOBBLE_TICKS;
     emit(world, 'wobble', m.id, { ...data, cause: 'landing' }, { causeId: cause });
@@ -918,6 +952,7 @@ export const ridersSystem: SimSystem = {
       st.boostMps[m.id] = 0;
       st.onPad[m.id] = 0;
       st.truckTouch[m.id] = 0;
+      startFlight(st, m, undefined, slopeAt(config, m));
     }
   },
   step(world: World, config: SimConfig) {
