@@ -322,6 +322,42 @@ describe('W-P kerb riders: bicycles, e-bikes, scooters and golf carts', () => {
   });
 });
 
+describe('W-P: a rider stopped at the side of the lane', () => {
+  /** A rider stopped at d (on edge a, s 500) and an RV coming up behind it from u 300. */
+  const pass = (d: number) => {
+    const config = makeConfig({ riders: SOLO, types: [CAR, RV], tuning: NO_TRAFFIC });
+    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 500, d, dir: 1 }, speed: 0 }]);
+    const rv = placeVehicle(world, config, { type: 1, u: 300, dir: 1 });
+    const st = trafficState(world);
+    let touched = 0;
+    const events: string[] = [];
+    for (let t = 0; t < 60 * 30; t++) {
+      for (const e of stepWorld(world, config, SCENARIO, [hold(0)])) events.push(e.type);
+      const m = world.movers[0];
+      const ru = m ? (toCorridor(st.corridor, m.pos)?.u ?? 0) : 0;
+      const rcd = m ? (toCorridor(st.corridor, m.pos)?.cd ?? 0) : 0;
+      const du = Math.abs((st.u[rv] ?? 0) - ru);
+      const dd = Math.abs((st.cd[rv] ?? 0) - rcd);
+      if (du < (RV.lengthM + TRAFFIC.riderLengthM) / 2 && dd < (RV.widthM + TRAFFIC.riderWidthM) / 2)
+        touched++;
+    }
+    return { passed: (st.u[rv] ?? 0) > 520, touched, events };
+  };
+
+  it('traffic edges round a rider stopped mostly outside the lane (a cop on the shoulder)', () => {
+    // The fixture lane is centred at d 1.7, 3.4 m wide; a rider at d 3.3 is mostly past its edge.
+    const side = pass(3.3);
+    console.log(`stopped rider at d 3.3: RV passed ${side.passed}, touches ${side.touched}`);
+    expect(side.passed).toBe(true);
+    expect(side.touched).toBe(0);
+    expect(side.events.filter((e) => e === 'crash' || e === 'wobble')).toEqual([]);
+    // In the middle of the lane (a crash), traffic still stops behind the rider.
+    const middle = pass(1.7);
+    expect(middle.passed).toBe(false);
+    expect(middle.touched).toBe(0);
+  });
+});
+
 describe('W-P convoys and lane-change flags', () => {
   it('an RV convoy spawns nose to tail, and no vehicle ever spawns inside reaction range', () => {
     const step = RV.lengthM + 3 + RV.cruiseMps * 1.2;

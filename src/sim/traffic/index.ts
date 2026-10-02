@@ -208,6 +208,8 @@ export const TRAFFIC = {
   kerbInsetM: 0.25,
   /** A kerb rider takes the shoulder only when it is at least this much wider than the rider, m. */
   kerbShoulderSpareM: 0.2,
+  /** A rider slower than this at the side of the lane is edged round, not queued behind, m/s. */
+  sideRiderMps: 2,
   /** One full weave, side to side and back, s (W-P). */
   weavePeriodS: 3.2,
   /** A convoy's extra bumper room on top of the car-following gap at its cruise speed, m. */
@@ -1011,6 +1013,19 @@ function move(
         }
       }
     }
+    // A rider stopped at the outer side of the lane (a cop waiting on the shoulder by a speed trap,
+    // a rider pulled over): edge inward round them instead of queuing behind them for good (W-P:
+    // a camper van waited 40 s behind a speed-trap cop and walled the road). A rider stopped in the
+    // middle of the lane (a crash) still stops the traffic behind it (M1 traffic-1).
+    if (!isParked(tk)) {
+      const r = sideRiderAhead(st, k, riders, tk, target, laneCd, ownLane?.width ?? 2 * TRAFFIC.riderWidthM);
+      if (r) {
+        const out = laneCd < 0 ? -1 : 1;
+        const round = r.cd - out * ((tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM);
+        target = out > 0 ? Math.min(target, round) : Math.max(target, round);
+        rate = TRAFFIC.swerveMps;
+      }
+    }
     const cd = st.cd[k] ?? 0;
     const step = rate * dt;
     const nextCd = cd + clamp(target - cd, -step, step);
@@ -1024,6 +1039,41 @@ function move(
     mover.yaw = dt > 0 ? clamp((((nextCd - cd) / dt) * dir) / Math.max(v, 3), -0.3, 0.3) : 0;
     fromCorridor(c, u, nextCd, dir, mover.pos);
   }
+}
+
+/**
+ * The nearest rider stopped (under TRAFFIC.sideRiderMps) that vehicle k is coming up on (from
+ * TRAFFIC.swerveLookM behind it until k's tail is past it), mostly outside k's lane on the outer
+ * side, that k would still touch at `kCd`; null when there is none.
+ */
+function sideRiderAhead(
+  st: TrafficState,
+  k: number,
+  riders: readonly RiderView[],
+  tk: SimTrafficTypeDef,
+  kCd: number,
+  laneCd: number,
+  laneWidth: number,
+): RiderView | null {
+  const dir = st.dir[k] ?? 1;
+  const u = st.u[k] ?? 0;
+  const out = laneCd < 0 ? -1 : 1;
+  let best: RiderView | null = null;
+  let bestAhead = Infinity;
+  for (const r of riders) {
+    if (r.speed >= TRAFFIC.sideRiderMps) continue;
+    // From swerveLookM behind it until k's tail is past it.
+    const ahead = dir * (r.u - u);
+    if (ahead > TRAFFIC.swerveLookM || ahead < -(tk.lengthM + TRAFFIC.riderLengthM) / 2 - 1) continue;
+    // Mostly outside the lane: its middle past the lane's edge less half a rider.
+    if (out * (r.cd - laneCd) <= laneWidth / 2 - TRAFFIC.riderWidthM / 2) continue;
+    if (Math.abs(r.cd - kCd) >= (tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM) continue;
+    if (ahead < bestAhead) {
+      bestAhead = ahead;
+      best = r;
+    }
+  }
+  return best;
 }
 
 /** Writes a rider's corridor position back to its road position, inside the drivable width. */

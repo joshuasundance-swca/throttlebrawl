@@ -383,6 +383,18 @@ export const SF_HILLS: TrackSource = {
         { kind: 'billboard', id: 'bb-fogline-gpu', s0: 450, s1: 490, d0: -16, d1: -7, item: 'gpu-hour' },
         { kind: 'billboard', id: 'sign-fogline-grade', s0: 15, s1: 25, d0: 6.5, d1: 9, item: 'steeper-one' },
         { kind: 'billboard', id: 'bb-fogline', s0: 80, s1: 120, d0: 7, d1: 16, item: 'reinvent-the-bus' },
+        // Moved off the bridge approach, which has no land beside it (run W-P's verifier: the
+        // billboard's posts stood in the bay). Row-house land on both sides here.
+        {
+          kind: 'billboard',
+          id: 'bb-fogline-coldcase',
+          s0: 200,
+          s1: 240,
+          d0: -16,
+          d1: -7,
+          item: 'coldcase-ai',
+        },
+        { kind: 'billboard', id: 'sign-fogline-toll', s0: 580, s1: 590, d0: 6.5, d1: 9, item: 'toll-view' },
       ],
       barriers: [],
     },
@@ -397,25 +409,10 @@ export const SF_HILLS: TrackSource = {
         { s0: 250, s1: 'end', side: 'both', tag: 'bridge' },
         { s0: 250, s1: 'end', side: 'both', tag: 'water-open' },
       ],
+      // No signs or billboards here: neither side has land (fog, then the bridge over the bay), so
+      // a board would stand in the water (run W-P's verifier). Its coldcase-ai billboard and toll
+      // sign stand on the fogline climb's row-house land instead.
       features: [
-        {
-          kind: 'billboard',
-          id: 'bb-approach-coldcase',
-          s0: 100,
-          s1: 140,
-          d0: -16,
-          d1: -7,
-          item: 'coldcase-ai',
-        },
-        {
-          kind: 'billboard',
-          id: 'sign-bridge-toll',
-          s0: 200,
-          s1: 210,
-          d0: 6.5,
-          d1: 9,
-          item: 'toll-view',
-        },
         // A boost for the sprint up onto the bridge, on the open approach.
         {
           kind: 'boostPad',
