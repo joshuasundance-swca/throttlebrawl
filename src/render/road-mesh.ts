@@ -616,6 +616,15 @@ export function buildRoadScene(
   const spots: ScenerySpot[] = [];
   /** Each edge's land reach per sample and side, and its sample step (RoadScene.landReach). */
   const landOf: { step: number; reach: Record<-1 | 1, number[]> }[] = [];
+  /** Each edge's land at its two end rows, per side: [level, reach] (see the end caps). */
+  const landEnds: Record<-1 | 1, Record<'from' | 'to', readonly [number, number]>>[] = [];
+  /** End caps where an edge joins another road, drawn once every edge's land is known. */
+  const joinCaps: {
+    edge: Edge;
+    side: -1 | 1;
+    end: 'from' | 'to';
+    cap: (level: number, reach: number) => void;
+  }[] = [];
   const truckParts: BoxPart[] = [];
   const truckMatrices: Matrix4[] = [];
   const truckModel = opts.models?.truck;
@@ -1087,28 +1096,42 @@ export function buildRoadScene(
           caps.breakStrip();
         }
       };
-      for (let i = 0; i < ss.length; i++) {
+      /** Closes row i's land past what the neighbouring land (level lj, reach rj) covers. */
+      const capAt = (i: number, lj: number, rj: number) => {
         const li = level(i);
-        if (li === 0) continue;
         const r = reach[i] ?? 0;
+        if (li === 0 || (lj >= li && rj >= r - LAND_CAP_NARROW_M)) return;
+        const s = ss[i] ?? 0;
+        const k = skirts[i];
+        const profile: Point3[] =
+          lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), top(s, 0)] : rj < r ? [top(s, rj)] : [];
+        profile.push(top(s, r));
+        if (k) {
+          profile.push(at(s, outer + r + k.run, GROUND_Y));
+          if (k.flat > 0) profile.push(at(s, outer + r + k.run + k.flat, GROUND_Y));
+          profile.push(at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
+        } else if (li === 2) profile.push(at(s, outer + r + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
+        curtain(profile);
+      };
+      const last = ss.length - 1;
+      landEnds[e.index] ??= { [-1]: { from: [0, 0], to: [0, 0] }, [1]: { from: [0, 0], to: [0, 0] } };
+      landEnds[e.index]![side] = {
+        from: [level(0), level(0) === 0 ? 0 : (reach[0] ?? 0)],
+        to: [level(last), level(last) === 0 ? 0 : (reach[last] ?? 0)],
+      };
+      for (let i = 0; i < ss.length; i++) {
         for (const j of [i - 1, i + 1]) {
           const atEnd = j < 0 || j >= ss.length;
-          // An edge's end that joins another road: that road's land goes on from here.
-          if (atEnd && (j < 0 ? e.prevLinks : e.nextLinks).length > 0) continue;
+          // An edge's end that joins another road is closed against that road's land at the join,
+          // once every road's land is known (run W-P's roadside verifier: where Twin Peaks' Upper
+          // Market joins Portola, Portola's land reached 10 m further out than Upper Market's, and
+          // the sky showed under its ledge).
+          if (atEnd && (j < 0 ? e.prevLinks : e.nextLinks).length > 0) {
+            joinCaps.push({ edge: e, side, end: j < 0 ? 'from' : 'to', cap: (lj, rj) => capAt(i, lj, rj) });
+            continue;
+          }
           const lj = atEnd ? 0 : level(j);
-          const rj = lj === 0 ? 0 : (reach[j] ?? 0);
-          if (lj >= li && rj >= r - LAND_CAP_NARROW_M) continue;
-          const s = ss[i] ?? 0;
-          const k = skirts[i];
-          const profile: Point3[] =
-            lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), top(s, 0)] : rj < r ? [top(s, rj)] : [];
-          profile.push(top(s, r));
-          if (k) {
-            profile.push(at(s, outer + r + k.run, GROUND_Y));
-            if (k.flat > 0) profile.push(at(s, outer + r + k.run + k.flat, GROUND_Y));
-            profile.push(at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
-          } else if (li === 2) profile.push(at(s, outer + r + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
-          curtain(profile);
+          capAt(i, lj, lj === 0 ? 0 : (reach[j] ?? 0));
         }
       }
       // A strip that runs on to another road's verge has no shelf (the other road's own bank meets
@@ -1379,6 +1402,17 @@ export function buildRoadScene(
       minZ = Math.min(minZ, e.z[i] ?? 0);
       maxZ = Math.max(maxZ, e.z[i] ?? 0);
     }
+  }
+  // An edge's land at a junction is closed against the joined road's land on the same side there
+  // (a join that flips direction swaps the sides): where some joined road's land goes on as far
+  // out, nothing is needed; elsewhere the part past it gets a curtain, as at any narrowing.
+  for (const { edge, side, end, cap } of joinCaps) {
+    let best: readonly [number, number] = [0, 0];
+    for (const l of end === 'to' ? edge.nextLinks : edge.prevLinks) {
+      const their = landEnds[l.edge]?.[(end === l.entersAt ? -side : side) as -1 | 1][l.entersAt];
+      if (their && (their[1] > best[1] || (their[1] === best[1] && their[0] > best[0]))) best = their;
+    }
+    cap(best[0], best[1]);
   }
 
   const group = new Group();

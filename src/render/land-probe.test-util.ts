@@ -117,65 +117,113 @@ const LOOK_PAST_M = 6;
 /** cos 35 degrees: ground at least this level counts as a plate a walk looks under. */
 const PLATE_UP = 0.82;
 
+/** One point of a walk: where it stands, the ground's height there, how flat it is, and if it is land. */
+interface WalkPt {
+  s: number;
+  p: Vector3;
+  g: number;
+  up: number;
+  land: boolean;
+}
+
 /**
  * Land that ends in mid-air. Walks each side of every road at a few distances past the verge, 2 m
  * at a time, reading the ground's height straight down. Where it drops more than 2 m in one step,
  * a ray from the low step, 1 m under the high ground, looks back under it to 6 m past the high
  * step. Closed ground (a slope, a bank, a cap) stops that ray; a plate that ends in mid-air lets it
  * through: that is the sky the camera saw under the houses.
+ *
+ * The walk also steps across every junction, from one road's last point to the joined road's first
+ * on the same side (run W-P's roadside verifier: a ledge where Twin Peaks' Upper Market joins
+ * Portola had sky under it, and a walk that stopped at each road's end never looked there).
  */
 export function openLandEnds(
   road: RoadNetwork,
   ground: GroundTris,
-): { probes: number; drops: number; open: OpenLandEnd[] } {
+): { probes: number; drops: number; open: OpenLandEnd[]; joins: number } {
   let probes = 0;
   let drops = 0;
+  let joins = 0;
   const open: OpenLandEnd[] = [];
+  const walks = new Map<string, WalkPt[]>();
+  const key = (edge: number, side: -1 | 1, across: number) => `${edge}|${side}|${across}`;
+  const look = (edge: string, hi: WalkPt, lo: WalkPt, side: -1 | 1, across: number) => {
+    // A plate of land: ground flatter than about 35 degrees (the strip, a skirt, the flat). A
+    // shelf's cliff face is not a plate, and where it twists it reads as one only by accident;
+    // a bridge's deck and a railed road's catwalk stand over the water by design.
+    if (!hi.land || hi.up < PLATE_UP || hi.g - lo.g <= DROP_M) return;
+    drops++;
+    const y = hi.g - 1;
+    const from = new Vector3(lo.p.x, y, lo.p.z);
+    const to = new Vector3(hi.p.x, y, hi.p.z);
+    const dir = to.clone().sub(from);
+    // Where the land narrows, its shelf twists between two rows and the cap stands a row or
+    // two on, so the look goes 6 m past the high step: an open plate shows far more.
+    const far = dir.length() + LOOK_PAST_M;
+    if (ground.firstHit(from, dir, far) === null)
+      open.push({ edge, s: hi.s, side, across, drop: hi.g - lo.g });
+  };
+  /** The ground straight down at (s, d) of an edge. Over open sea it is the sea itself, at y = 0. */
+  const at = (edge: number, s: number, d: number): WalkPt => {
+    const w = road.toWorld(edge, s, d, 0);
+    const h = ground.heightAt(w.x, w.z, w.y + 60);
+    return {
+      s,
+      p: new Vector3(w.x, w.y, w.z),
+      g: h?.y ?? 0,
+      up: h?.up ?? 0,
+      land: !!h?.name.startsWith('road-land'),
+    };
+  };
   for (const e of road.edges) {
     const n = Math.max(1, Math.round(e.length / STEP_M));
     for (const side of [-1, 1] as const) {
       const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
       for (const across of WALK_ACROSS_M) {
         const d = side * (outer + across);
-        const pts: { s: number; p: Vector3; g: number; up: number; land: boolean }[] = [];
+        const pts: WalkPt[] = [];
         // Half a step off the land's own rows, so no ray lands on a seam between two quads.
         for (let i = 0; i < n; i++) {
           const s = (e.length * (i + 0.5)) / n;
-          const w = road.toWorld(e.index, s, d, 0);
-          const h = ground.heightAt(w.x, w.z, w.y + 60);
+          pts.push(at(e.index, s, d));
           probes++;
-          // Over open sea the ground is the sea itself, at y = 0.
-          pts.push({
-            s,
-            p: new Vector3(w.x, w.y, w.z),
-            g: h?.y ?? 0,
-            up: h?.up ?? 0,
-            land: !!h?.name.startsWith('road-land'),
-          });
         }
-        for (let i = 0; i < pts.length; i++) {
-          const hi = pts[i]!;
-          // A plate of land: ground flatter than about 35 degrees (the strip, a skirt, the flat). A
-          // shelf's cliff face is not a plate, and where it twists it reads as one only by accident;
-          // a bridge's deck and a railed road's catwalk stand over the water by design.
-          if (!hi.land || hi.up < PLATE_UP) continue;
+        walks.set(key(e.index, side, across), pts);
+        for (let i = 0; i < pts.length; i++)
           for (const j of [i - 1, i + 1]) {
             const lo = pts[j];
-            if (!lo || hi.g - lo.g <= DROP_M) continue;
-            drops++;
-            const y = hi.g - 1;
-            const from = new Vector3(lo.p.x, y, lo.p.z);
-            const to = new Vector3(hi.p.x, y, hi.p.z);
-            const dir = to.clone().sub(from);
-            // Where the land narrows, its shelf twists between two rows and the cap stands a row or
-            // two on, so the look goes 6 m past the high step: an open plate shows far more.
-            const far = dir.length() + LOOK_PAST_M;
-            if (ground.firstHit(from, dir, far) === null)
-              open.push({ edge: e.id, s: hi.s, side, across, drop: hi.g - lo.g });
+            if (lo) look(e.id, pts[i]!, lo, side, across);
           }
-        }
       }
     }
   }
-  return { probes, drops, open };
+  // Across each junction: this road's last point against the joined road's first one, at the same
+  // place across (a join that flips the road's direction swaps the sides; a connector's start can
+  // sit off the centreline by its dShift). Each road's own end looks at the joined road's end.
+  for (const e of road.edges) {
+    for (const [end, links] of [
+      ['to', e.nextLinks],
+      ['from', e.prevLinks],
+    ] as const)
+      for (const l of links) {
+        const o = road.edges[l.edge];
+        if (!o || o.index === e.index) continue;
+        const flip = end === l.entersAt ? -1 : 1;
+        const oHalf = o.length / Math.max(1, Math.round(o.length / STEP_M)) / 2;
+        const os = l.entersAt === 'from' ? oHalf : o.length - oHalf;
+        for (const side of [-1, 1] as const)
+          for (const across of WALK_ACROSS_M) {
+            const mine = walks.get(key(e.index, side, across));
+            if (!mine?.length) continue;
+            const a = end === 'to' ? mine[mine.length - 1]! : mine[0]!;
+            const od = flip * side * ((side < 0 ? -e.dMin : e.dMax) + VERGE_M + across) + (l.dShift ?? 0);
+            const b = at(o.index, os, od);
+            probes++;
+            joins++;
+            look(e.id, a, b, side, across);
+            look(o.id, b, a, od < 0 ? -1 : 1, across);
+          }
+      }
+  }
+  return { probes, drops, open, joins };
 }
