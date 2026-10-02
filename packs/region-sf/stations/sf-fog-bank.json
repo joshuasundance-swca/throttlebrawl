@@ -44,9 +44,39 @@
       },
       "origin": "agent",
       "status": "live"
+    },
+    {
+      "id": "robotaxi-rumble",
+      "title": "Robotaxi Rumble",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 196, "key": "G", "form": "eight", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "microclimate-shuffle",
+      "title": "Microclimate Shuffle",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 164, "key": "D", "form": "twelve", "band": "boogie" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "series-a-slapback",
+      "title": "Series A Slapback",
+      "procedural": {
+        "preset": "rockabilly-trio",
+        "params": { "bpm": 180, "key": "A", "form": "quick", "band": "slap" }
+      },
+      "origin": "agent",
+      "status": "live"
     }
   ],
-  "djBarkSet": null,
+  "djBarkSet": "dj-sf-fog-bank",
   "meta": {
     "status": "live",
     "notes": "San Francisco's own station (the maintainer, 2026-10-01: \"I actually like the music\"; keep the code-made radio's direction). Rockabilly for steep blocks and crests, in keys the Keys station doesn't use (C, B flat, F) and up to 202 bpm for the hill jumps (src/audio/radio-compose.ts, preset rockabilly-trio). Melodies are generated from each track's seed, so they are original. The base stations follow it on the dial. Cut a track by setting its status to vetoed.",

@@ -467,6 +467,10 @@ const FAR_ROOTS: readonly (readonly [number, number])[] = [
   [0, 1.2],
   [0, -1.2],
 ];
+/** Where a land end cap's curtain stops: under the sea, with the shelves' foot. */
+const LAND_CAP_FOOT_Y = -0.4;
+/** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
+const LAND_CAP_NARROW_M = 2;
 /** A timber trestle's bents stand this far apart, and their feet this far under the sea. [default] */
 const BENT_SPACING_M = 8;
 const BENT_FOOT_Y = -1.5;
@@ -991,9 +995,9 @@ export function buildRoadScene(
       });
       // The skirt is wide and plain, so it keeps every third sample (and every sample where a run
       // starts or ends): about half the land's triangles.
-      const run = (rows: (readonly [Point3, Point3] | null)[]) => {
+      const run = (rows: (readonly [Point3, Point3] | null)[], thin = true) => {
         const g = strip('land');
-        const kept = keptRows(rows);
+        const kept = keptRows(rows, thin);
         g.breakStrip();
         for (const [i, row] of rows.entries()) {
           if (!row) {
@@ -1023,17 +1027,100 @@ export function buildRoadScene(
       });
       flatOf[side] = { rows: flatRows, kept: keptRows(flatRows) };
       run(flatRows);
-      // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one.
-      run(
-        ss.map((s, i) => {
-          const r = reach[i] ?? 0;
-          if (r <= 0 || meetsOf[side][i]) return null;
+      // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one. The
+      // two are separate runs: joined, a row with a skirt and the next without one made a sliver
+      // from the skirt's far edge back to the strip's (run W-P; the caps below close the step).
+      /** A row whose shelf hangs at the strip's edge (land, no skirt, not running to another road). */
+      const edgeShelf = (i: number) => (reach[i] ?? 0) > 0 && !meetsOf[side][i] && !skirts[i];
+      for (const skirted of [false, true]) {
+        run(
+          ss.map((s, i) => {
+            const r = reach[i] ?? 0;
+            const k = skirts[i];
+            if (r <= 0 || meetsOf[side][i]) return null;
+            // The edge shelf reaches one row into a skirted neighbour (hidden there under the
+            // slope), so where the skirt comes and goes no gap opens under the strip's edge.
+            const nextToEdge = edgeShelf(i - 1) || edgeShelf(i + 1);
+            if (skirted ? !k : !(edgeShelf(i) || nextToEdge)) return null;
+            if (!skirted) return [top(s, r), at(s, outer + r + SCENERY_SHELF_M, -0.4)];
+            if (!k) return null;
+            const far = outer + r + k.run + k.flat;
+            return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
+          }),
+          // The shelf at the strip's edge hangs from that edge, drawn every row: thinned, its chords
+          // left slivers of sky under the strip on the hairpins.
+          skirted,
+        );
+      }
+      // End caps (run W-O's skeptic: "row houses stand on flat land plates that float, with sky and
+      // bay under them, at the bridge ends"). Where the land stops partway along the road (a bridge,
+      // a rail, a theme or another road) or at a dead end, its cross-section was open, so from the
+      // bridge you saw under the plate and its slope to the sky. A curtain now hangs from that row's
+      // profile, the road's half above it included, down under the sea. Where the strip narrows
+      // sharply, or only the slope or the shelf stops, the part past the narrower land is closed the
+      // same way.
+      const level = (i: number) => {
+        if ((reach[i] ?? 0) <= 0) return 0;
+        if (meetsOf[side][i]) return 1;
+        return skirts[i] ? 3 : 2;
+      };
+      const caps = strip('land');
+      /** A curtain from each point down under the sea, both faces (it is seen from either side). */
+      const curtain = (pts: readonly Point3[]) => {
+        for (const flip of [false, true]) {
+          caps.breakStrip();
+          for (const p of pts) {
+            const foot = { ...p, y: LAND_CAP_FOOT_Y };
+            if (flip) caps.pair(foot, p);
+            else caps.pair(p, foot);
+          }
+          caps.breakStrip();
+        }
+      };
+      for (let i = 0; i < ss.length; i++) {
+        const li = level(i);
+        if (li === 0) continue;
+        const r = reach[i] ?? 0;
+        for (const j of [i - 1, i + 1]) {
+          const atEnd = j < 0 || j >= ss.length;
+          // An edge's end that joins another road: that road's land goes on from here.
+          if (atEnd && (j < 0 ? e.prevLinks : e.nextLinks).length > 0) continue;
+          const lj = atEnd ? 0 : level(j);
+          const rj = lj === 0 ? 0 : (reach[j] ?? 0);
+          if (lj >= li && rj >= r - LAND_CAP_NARROW_M) continue;
+          const s = ss[i] ?? 0;
           const k = skirts[i];
-          if (!k) return [top(s, r), at(s, outer + r + SCENERY_SHELF_M, -0.4)];
-          const far = outer + r + k.run + k.flat;
-          return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
-        }),
-      );
+          const profile: Point3[] =
+            lj === 0 ? [w(e.index, s, 0, LAND_TOP_M), top(s, 0)] : rj < r ? [top(s, rj)] : [];
+          profile.push(top(s, r));
+          if (k) {
+            profile.push(at(s, outer + r + k.run, GROUND_Y));
+            if (k.flat > 0) profile.push(at(s, outer + r + k.run + k.flat, GROUND_Y));
+            profile.push(at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
+          } else if (li === 2) profile.push(at(s, outer + r + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
+          curtain(profile);
+        }
+      }
+      // A strip that runs on to another road's verge has no shelf (the other road's own bank meets
+      // it). On a hill the two can stand metres apart in height (the Gorge's stacked loops), so a
+      // curtain drops from the strip's edge instead, and nothing shows under it.
+      const meetsAt = (i: number) => (reach[i] ?? 0) > 0 && !!meetsOf[side][i];
+      for (const flip of terrain ? [false, true] : []) {
+        caps.breakStrip();
+        ss.forEach((s, i) => {
+          const r = reach[i] ?? 0;
+          // One row past each end too, so it meets the shelf or slope beside it with no gap.
+          if (r <= 0 || !(meetsAt(i) || meetsAt(i - 1) || meetsAt(i + 1))) {
+            caps.breakStrip();
+            return;
+          }
+          const p = top(s, r);
+          const foot = { ...p, y: LAND_CAP_FOOT_Y };
+          if (flip) caps.pair(foot, p);
+          else caps.pair(p, foot);
+        });
+        caps.breakStrip();
+      }
     }
     spots.push(
       ...scatterEdge({
@@ -1531,9 +1618,10 @@ const bobEuler = new Euler();
 const bobAt = new Vector3();
 
 /** The rows a thinned skirt strip keeps: every third, and every row where a run starts or ends. */
-function keptRows(rows: readonly (readonly [Point3, Point3] | null)[]): boolean[] {
+function keptRows(rows: readonly (readonly [Point3, Point3] | null)[], thin = true): boolean[] {
   return rows.map(
-    (row, i) => !!row && !(i % SKIRT_EVERY !== 0 && i < rows.length - 1 && !!rows[i - 1] && !!rows[i + 1]),
+    (row, i) =>
+      !!row && !(thin && i % SKIRT_EVERY !== 0 && i < rows.length - 1 && !!rows[i - 1] && !!rows[i + 1]),
   );
 }
 
