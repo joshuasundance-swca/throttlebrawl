@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-crash-scene",
+  "name": "Pacific Northwest Fender-Bender",
+  "kind": "human",
+  "tags": ["set-piece", "crash-scene"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.85],
+    "chance": 0.35
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "crash-scene",
+      "signText": "INCIDENT AHEAD SLOW DOWN FOR MOSS",
+      "vehicle": "base:event-tow-truck",
+      "vehicle2": "base:event-stalled-car",
+      "person": "cop-waving",
+      "theme": "pnw"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a car that met a ditch politely, a tow truck, flares hissing in the wet, a deputy waving you through.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
