@@ -365,7 +365,9 @@ describe('assembly, on a real git repo', () => {
 
   // The config of the repo this file lives in (in a hook, the repo being pushed), read before any
   // git command here runs and again by the last test, which fails if it changed. branch.* entries
-  // are left out: parallel lanes add them (git push -u, git checkout -b) while this runs.
+  // are left out: parallel lanes add them (git push -u, git checkout -b) while this runs. http.*
+  // entries are left out too: on CI they hold the checkout's auth header, and a failing assertion
+  // prints both snapshots.
   const realConfig = () => {
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env))
@@ -381,7 +383,7 @@ describe('assembly, on a real git repo', () => {
     if (list.status !== 0) throw new Error(`cannot read ${file}: ${list.stderr}`);
     return list.stdout
       .split('\n')
-      .filter((l) => l && !l.startsWith('branch.'))
+      .filter((l) => l && !l.startsWith('branch.') && !l.startsWith('http.'))
       .sort()
       .join('\n');
   };
