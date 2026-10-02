@@ -81,7 +81,7 @@ import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../cor
 import type { RoadPos } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt } from '../riders';
-import { InputFlag, type SimConfig, type SimRiderDef } from '../types';
+import { InputFlag, type LawSnapshot, type SimConfig, type SimRiderDef } from '../types';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
@@ -395,6 +395,11 @@ export interface CopsState {
   /** The hidden chaos meter, and the (jittered) level that summons the next cop. */
   chaos: number;
   chaosAt: number;
+  /** By player id (playtest 2's heat meter): heat, 0..HEAT.max, and its tier, 0..3. */
+  heat: number[];
+  heatTier: number[];
+  /** By player id: 1 once a chase was shaken off and the heat has not risen since. */
+  heatLost: number[];
 }
 
 export function copsState(world: World): CopsState {
@@ -419,7 +424,24 @@ export function copsState(world: World): CopsState {
     patrolUntil: [],
     chaos: 0,
     chaosAt: 0,
+    heat: [],
+    heatTier: [],
+    heatLost: [],
   }));
+}
+
+/** Playtest 2's heat meter [default]: the top of the meter (SimSnapshot.law.heat is heat / max). */
+export const HEAT_MAX = 100;
+
+/** The heat meter for the player in slot 0 (SimSnapshot.law). */
+export function lawSnapshot(world: World, config: SimConfig): LawSnapshot {
+  const st = copsState(world);
+  const player = config.riders.findIndex((r) => r.controller.kind === 'player' && r.controller.slot === 0);
+  return {
+    heat: clamp((st.heat[player] ?? 0) / HEAT_MAX, 0, 1),
+    tier: st.heatTier[player] ?? 0,
+    lost: (st.heatLost[player] ?? 0) === 1,
+  };
 }
 
 /** The event's tier (1 for the first; absent is 1). */

@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "roadwork",
-      "signText": "FLAGGER AHEAD HE IS DAMP",
+      "signText": "FLAGGER AHEAD. He is damp.",
       "vehicle": "base:event-work-truck",
       "person": "flagger",
       "theme": "pnw"

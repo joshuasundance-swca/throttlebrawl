@@ -1,0 +1,30 @@
+{
+  "type": "bike",
+  "id": "chopper",
+  "name": "Hardtail Chopper",
+  "class": "chopper",
+  "tags": ["novelty"],
+  "handling": {
+    "topSpeedMps": 44.7,
+    "accelMps2": 3.6,
+    "brakeMps2": 7.5,
+    "steerRateMps": 4.6,
+    "massKg": 290
+  },
+  "combat": {
+    "hitPowerScale": 1.3,
+    "knockbackResistance": 0.4
+  },
+  "engineSound": {
+    "preset": "v-twin"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A novelty ride (M4's starting numbers: the old chopper, about 100 mph, slow to accelerate and heavy-hitting): it hits a third harder and shrugs off two fifths of a shove. Sold in the San Francisco garage, found in a Russian Hill garage behind three other cars.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

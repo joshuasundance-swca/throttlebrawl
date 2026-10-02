@@ -12,7 +12,19 @@
 import { noiseBuffer } from './engine-patch';
 import { seededRandom, type RadioNote } from './radio-compose';
 
-export type RadioGenre = 'surf' | 'rockabilly' | 'grunge' | 'folk' | 'synth' | 'psych';
+export type RadioGenre =
+  | 'surf'
+  | 'rockabilly'
+  | 'grunge'
+  | 'folk'
+  | 'synth'
+  | 'psych'
+  | 'island'
+  | 'dub'
+  | 'stoner'
+  | 'ambient'
+  | 'funk'
+  | 'chip';
 /**
  * String timbres. Each has its own buffer length, so a probe that counts buffer lengths can tell the
  * bands apart (tests/e2e/audio-radio.spec.ts): 1.1 twang, 0.8 clean, 0.9 bass, 0.6 upright, and the

@@ -150,6 +150,42 @@ function fit(
 }
 
 /**
+ * Paints copy as a big headline over a small kicker, centred on a `width` x `height` canvas
+ * (boards and the road events' warning signs share it). The caller has filled the background.
+ */
+export function paintCopy(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  text: string,
+  fg: string,
+): void {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const { headline, kicker } = splitCopy(text);
+  const pad = Math.round(height * 0.07);
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const kickerH = kicker ? innerH * 0.3 : 0;
+  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(height * 0.62), 24);
+  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
+  const headBlock = head.lines.length * head.size * 1.08;
+  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
+  const gap = sub ? pad * 0.5 : 0;
+  let y = (height - (headBlock + gap + subBlock)) / 2;
+  ctx.fillStyle = fg;
+  ctx.font = `bold ${head.size}px sans-serif`;
+  head.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * head.size * 1.08));
+  y += headBlock + gap;
+  if (sub) {
+    ctx.globalAlpha = 0.82;
+    ctx.font = `bold ${sub.size}px sans-serif`;
+    sub.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * sub.size * 1.08));
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
  * The printed face: a big headline over a small kicker, in the panel's own proportions (the canvas
  * aspect matches the panel, so the letters are not stretched). Null where there is no DOM canvas.
  */
@@ -163,29 +199,7 @@ function faceTexture(item: BoardItem, aspect: number): Texture | null {
   const face = FACE[item.kind];
   ctx.fillStyle = face.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const { headline, kicker } = splitCopy(item.text);
-  const pad = Math.round(canvas.height * 0.07);
-  const innerW = canvas.width - pad * 2;
-  const innerH = canvas.height - pad * 2;
-  const kickerH = kicker ? innerH * 0.3 : 0;
-  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(canvas.height * 0.62), 24);
-  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
-  const headBlock = head.lines.length * head.size * 1.08;
-  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
-  const gap = sub ? pad * 0.5 : 0;
-  let y = (canvas.height - (headBlock + gap + subBlock)) / 2;
-  ctx.fillStyle = face.fg;
-  ctx.font = `bold ${head.size}px sans-serif`;
-  head.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * head.size * 1.08));
-  y += headBlock + gap;
-  if (sub) {
-    ctx.globalAlpha = 0.82;
-    ctx.font = `bold ${sub.size}px sans-serif`;
-    sub.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * sub.size * 1.08));
-    ctx.globalAlpha = 1;
-  }
+  paintCopy(ctx, canvas.width, canvas.height, item.text, face.fg);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;

@@ -234,7 +234,8 @@ describe('a rider rig in EntityViews', () => {
   it('draws the rider and bike as one skinned mesh instead of the boxes', () => {
     const w = world([deacon]);
     for (let i = 0; i < 5; i++) w.step([entity(0, deacon.contentId, { speed: 20 })]);
-    const shown = visibleMeshes(w.views.root);
+    // The blob shadows (shadows.ts) are their own layer, drawn for every rider either way.
+    const shown = visibleMeshes(w.views.root).filter((m) => m.name !== 'blob-shadows');
     expect(
       shown.every((m) => under(m, w.rigs.root)),
       'no box rider shows',

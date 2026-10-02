@@ -1,0 +1,74 @@
+{
+  "type": "event",
+  "id": "keys-boss-mother-rust",
+  "name": "Mother Rust's Drawbridge",
+  "kind": "grudge-match",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-long-haul",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["mother-rust", "tammy-two-stroke", "deacon-vane", "dial-up"],
+    "paceMps": 46
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "chaosSummon": true
+  },
+  "rules": {
+    "rival": "mother-rust",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 3
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 0,
+      "params": {
+        "orKnockdowns": 3
+      }
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 1000
+    }
+  ],
+  "tier": 4,
+  "finale": true,
+  "rewards": {
+    "byPlaceCash": [8000, 3000, 1500, 600, 300],
+    "perTakedownCash": 400,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Keys' finale: Mother Rust and her Swamp Kin (Tammy rides with her) all the way to the drawbridge. Beat her to the line, or knock her down three times. Winning plays the next region's teaser, grants the golf cart, and free play continues.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
