@@ -65,7 +65,22 @@
       "status": "live"
     },
     { "id": "last-espresso", "text": "LAST ESPRESSO 400 FT. NEXT ESPRESSO 600 FT.", "status": "live" },
-    { "id": "wet-road", "text": "ROAD MAY BE WET. ROAD IS WET.", "status": "live" }
+    { "id": "wet-road", "text": "ROAD MAY BE WET. ROAD IS WET.", "status": "live" },
+    { "id": "dry-pavement", "text": "DRY PAVEMENT NEXT 0 MI.", "status": "live" },
+    {
+      "id": "espresso-zipper",
+      "text": "ESPRESSO LINE MERGE. ZIPPER METHOD. NO EXCEPTIONS.",
+      "status": "live"
+    },
+    {
+      "id": "no-plaster",
+      "text": "BIGFOOT SIGHTING AREA. NO PLASTER CASTING FROM VEHICLE.",
+      "status": "live"
+    },
+    { "id": "slide-area", "text": "SLIDE AREA. HILL MAY ARRIVE WITHOUT NOTICE.", "status": "live" },
+    { "id": "trailhead-full", "text": "TRAILHEAD PARKING FULL. IT WAS FULL AT 5 AM.", "status": "live" },
+    { "id": "ferry-overflow", "text": "FERRY OVERFLOW LOT. OVERFLOW LOT OVERFLOW 3 MI.", "status": "live" },
+    { "id": "elk-schedule", "text": "ELK CROSSING NEXT 3 MI. ELK SETS THE SCHEDULE.", "status": "live" }
   ],
   "billboards": [
     {
@@ -77,7 +92,20 @@
       "id": "view-lots",
       "text": "STUMP VIEW ESTATES. LUXURY LIVING WHERE THE FOREST USED TO BE.",
       "status": "live"
-    }
+    },
+    {
+      "id": "summit-smug",
+      "text": "SUMMIT SMUG OUTFITTERS. GEAR FOR THE MOUNTAIN YOU WILL MENTION.",
+      "status": "live"
+    },
+    { "id": "sogproof-shell", "text": "THE SOGPROOF SHELL. NOW SLIGHTLY LESS DAMP. $640.", "status": "live" },
+    {
+      "id": "drizzlewood-roast",
+      "text": "DRIZZLEWOOD ROAST. TASTING NOTES: CEDAR, DRIZZLE, A LONG WAIT.",
+      "status": "live"
+    },
+    { "id": "gutter-truth", "text": "GUTTER TRUTH NW. WE HAVE SEEN WHAT IS UP THERE.", "status": "live" },
+    { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. STILL 2 HOURS. BUT FIRST.", "status": "live" }
   ],
   "weather": null,
   "meta": {

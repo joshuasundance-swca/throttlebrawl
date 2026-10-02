@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   heldRadioNote,
   nextRadioChoice,
+  playingStation,
   RADIO_NOTE_HOLD_MS,
+  radioChoiceFor,
   radioChoiceOf,
   radioLines,
   radioSettingOf,
@@ -33,6 +35,27 @@ describe('the radio panel', () => {
     // Before the stations load it counts two, as the audio system does.
     expect(nextRadioChoice(3, 0)).toBe(RADIO_OFF);
     expect(nextRadioChoice(2, 0)).toBe(3);
+  });
+
+  it('tunes the saved station when the region offers it, else the kind (run W-P)', () => {
+    const keys = ['keys-rockabilly', 'keys-surf'];
+    expect(radioChoiceFor('station', 'keys-surf', keys)).toBe(RADIO_FIRST_STATION + 1);
+    expect(radioChoiceFor('station', 'keys-rockabilly', keys)).toBe(RADIO_FIRST_STATION);
+    // Another region's station, none saved, or none loaded yet: the first station.
+    expect(radioChoiceFor('station', 'pnw-drizzle', keys)).toBe(RADIO_FIRST_STATION);
+    expect(radioChoiceFor('station', null, keys)).toBe(RADIO_FIRST_STATION);
+    expect(radioChoiceFor('station', 'keys-surf', [])).toBe(RADIO_FIRST_STATION);
+    // The score and off ignore the saved station.
+    expect(radioChoiceFor('score', 'keys-surf', keys)).toBe(RADIO_SCORE);
+    expect(radioChoiceFor('off', 'keys-surf', keys)).toBe(RADIO_OFF);
+  });
+
+  it('names the station that plays, and none on the score, off or while loading', () => {
+    const stations = ['keys-rockabilly', 'keys-surf'];
+    expect(playingStation(state({ choice: 3, tunedTo: 'keys-surf', stations }))).toBe('keys-surf');
+    expect(playingStation(state({ choice: 2, tunedTo: 'pending', stations: [] }))).toBeNull();
+    expect(playingStation(state({ choice: RADIO_SCORE, tunedTo: 'score', stations }))).toBeNull();
+    expect(playingStation(state({ choice: RADIO_OFF, tunedTo: 'off', stations }))).toBeNull();
   });
 
   it('maps the slider to the saved choice and back (a station starts on the first)', () => {
