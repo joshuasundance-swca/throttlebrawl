@@ -12,8 +12,13 @@
 import { noiseBuffer } from './engine-patch';
 import { seededRandom, type RadioNote } from './radio-compose';
 
-export type RadioGenre = 'surf' | 'rockabilly';
-type Timbre = 'twang' | 'clean' | 'bass' | 'upright';
+export type RadioGenre = 'surf' | 'rockabilly' | 'grunge' | 'folk' | 'synth' | 'psych';
+/**
+ * String timbres. Each has its own buffer length, so a probe that counts buffer lengths can tell the
+ * bands apart (tests/e2e/audio-radio.spec.ts): 1.1 twang, 0.8 clean, 0.9 bass, 0.6 upright, and the
+ * regional bands' 1.2 drive (grunge and psych guitars), 1.3 acoustic and 0.45 banjo (folk).
+ */
+export type Timbre = 'twang' | 'clean' | 'bass' | 'upright' | 'drive' | 'acoustic' | 'banjo';
 
 /** Karplus-Strong settings: excitation brightness, loop damping (0.5 = classic), loop gain, length. */
 const TIMBRES: Readonly<Record<Timbre, { bright: number; damp: number; decay: number; dur: number }>> = {
@@ -21,6 +26,9 @@ const TIMBRES: Readonly<Record<Timbre, { bright: number; damp: number; decay: nu
   clean: { bright: 0.6, damp: 0.45, decay: 0.996, dur: 0.8 },
   bass: { bright: 0.45, damp: 0.5, decay: 0.995, dur: 0.9 },
   upright: { bright: 0.25, damp: 0.5, decay: 0.989, dur: 0.6 },
+  drive: { bright: 0.95, damp: 0.25, decay: 0.998, dur: 1.2 },
+  acoustic: { bright: 0.75, damp: 0.42, decay: 0.997, dur: 1.3 },
+  banjo: { bright: 1, damp: 0.12, decay: 0.992, dur: 0.45 },
 };
 
 const midiHz = (m: number) => 440 * 2 ** ((m - 69) / 12);

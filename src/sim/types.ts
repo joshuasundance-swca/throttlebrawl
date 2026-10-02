@@ -437,6 +437,16 @@ export interface SimRiderDef {
   bike: SimBikeDef;
   massKg: number;
   healthMax: number;
+  /**
+   * The rider file's `stats.toughness` (playtest 2, "Visible personalities"): divides the damage
+   * and the stagger this rider takes. Absent means 1; buildSimConfig always writes it.
+   */
+  toughness?: number;
+  /**
+   * The rider file's `stats.power`: multiplies the damage of every hit this rider lands. Absent
+   * means 1; buildSimConfig always writes it.
+   */
+  power?: number;
   /** Present on a cop (role `cop`, faction `law`). */
   law?: SimLawDef | undefined;
   /**

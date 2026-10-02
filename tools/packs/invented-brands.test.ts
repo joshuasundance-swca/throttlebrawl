@@ -15,6 +15,12 @@ const FOUND_REAL: readonly { name: RegExp; found: string }[] = [
     name: /prompt[\s_-]*loom/i,
     found: 'run W-P verifier, 2026-10-01',
   },
+  {
+    // Run W-P's traffic lane: the SF robotaxi brand first shipped as Dawdle, and a search found
+    // apps and businesses under that name (an AI app, a route planner, a games marketplace).
+    name: /\bdawdle\b/i,
+    found: 'run W-P traffic lane, 2026-10-02',
+  },
 ];
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');

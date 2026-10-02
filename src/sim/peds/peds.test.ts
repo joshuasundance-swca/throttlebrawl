@@ -553,6 +553,6 @@ describe('peds: determinism', () => {
   });
 
   it('exposes the phase names the state uses', () => {
-    expect(PED_PHASE).toEqual({ loiter: 0, walk: 1, dive: 2, down: 3 });
+    expect(PED_PHASE).toEqual({ loiter: 0, walk: 1, dive: 2, down: 3, react: 4, hop: 5, along: 6 });
   });
 });
