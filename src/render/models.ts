@@ -35,6 +35,7 @@ export const MODEL_ASSETS = {
   trestleBent: 'models/scenery/trestle-bent',
   fogBanks: 'models/scenery/fog-banks',
   cableCar: 'models/props/cable-car',
+  pnwRoadside: 'models/scenery/pnw-roadside',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -54,6 +55,20 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   trestleBent: ['trestle_bent'],
   fogBanks: ['fog_bank_a', 'fog_bank_b'],
   cableCar: ['cable_car'],
+  pnwRoadside: [
+    'pnw_fern',
+    'pnw_salal',
+    'pnw_stump',
+    'pnw_rock',
+    'pnw_mailbox',
+    'pnw_firewood',
+    'pnw_split_rail',
+    'pnw_log_fence',
+    'pnw_sign',
+    'pnw_espresso',
+    'pnw_maple',
+    'pnw_alder',
+  ],
 };
 
 /** The models every network draws (the ramp truck, poles, shacks and boats). */
@@ -83,7 +98,11 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
     if (n.tags.has('forest') && n.tags.has('bridge')) out.add('trestleBent');
-    if (['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t))) out.add('rowHouses');
+    const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
+    if (urban) out.add('rowHouses');
+    // Run W-P: each region's roadside kit (roadside.ts). San Francisco's forest (Twin Peaks)
+    // keeps the city's kit; a forest road with no city on it is the Pacific Northwest's.
+    else if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('pnwRoadside');
   }
   if (n.palette.has('fogBank')) out.add('fogBanks');
   if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');

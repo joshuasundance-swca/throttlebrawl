@@ -538,9 +538,12 @@ export function scoreGlb(buf, prop) {
         byName.has(v) && missing.length === 0,
         missing.length ? `missing ${missing.join(',')}` : parts.join(','),
       );
-      check(`${v}_tris_budget`, vt > 0 && vt <= V.perVariant.tris, `${vt} / ${V.perVariant.tris}`);
+      // A kit (many props in one GLB) gives each root its own triangle budget and height range.
+      const vtMax = V.tris?.[k] ?? V.perVariant.tris;
+      const vh = V.heights?.[k] ?? V.height;
+      check(`${v}_tris_budget`, vt > 0 && vt <= vtMax, `${vt} / ${vtMax}`);
       check(`${v}_draws_budget`, vd <= V.perVariant.draws, `${vd} / ${V.perVariant.draws}`);
-      check(`${v}_height`, bb && inRange(bb.max[1], V.height), `height ${bb?.max[1]}, range ${V.height}`);
+      check(`${v}_height`, bb && inRange(bb.max[1], vh), `height ${bb?.max[1]}, range ${vh}`);
       check(
         `${v}_base_on_ground`,
         bb && rootPos && Math.abs(rootPos[1]) <= 1e-3 && Math.abs(bb.min[1]) <= 0.05,
