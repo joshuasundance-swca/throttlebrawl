@@ -6,7 +6,16 @@
 // a player coming up the road): 12 seeds per preset, each race stopped at 100 s, past the second
 // patrol cop's window. The difficulty's cop frequency scales the lot cop's chance and timing as before
 // and how many patrol (Easy brings one, Hard two more often), so Hard brings more cops in all. A
-// patrol cop's siren sounds at least the siren lead before he pulls out.
+// patrol cop's siren sounds at least the siren lead before he pulls out (checked in every race),
+// and before he arrives (checked in the races where he rides up to the bot).
+//
+// How many races he arrives in (rides within ARRIVAL_M of the bot within 100 s) follows how often the
+// bot is knocked down or slowed near him, so it moves whenever a merge reshuffles the seeded races:
+// 14 of 24 at the green main after #328, then 13 after rivals' own toughness (#331) and 12 after the
+// roadside weapons (#303), with no cop behaviour changed, every siren at the same second and every
+// pull-out within 0.1 s in all 24 races (main fix, 2026-10-02).
+// So the arrivals are a sample floor for the lead (a third of the races), and the lead is also
+// checked on every pull-out. Meeting a cop in view in every race is cops-patrol.test.ts's check.
 //
 // The margin is also printed over the shared Normal batch (the bot racing), from its traces.
 /// <reference types="vite/client" />
@@ -32,13 +41,18 @@ const RIDING_MPS = 1;
 const LEAD_TICKS = 3 * 60;
 /** Each preset race stops here: past the second patrol window (50-75 s at 0.7 x the pace). */
 const RUN_TICKS = 100 * 60;
+/** The arrivals the lead is checked on, at least: a third of the preset races (the file header). */
+const MIN_ARRIVALS = Math.ceil((2 * SEEDS.length) / 3);
 
 const print = (line: string) => process.stdout.write(line + '\n');
 
 interface PresetRun {
   seed: number;
-  /** Patrol sirens (cause `patrol`): each one's cop, its tick, and the tick he arrived (-1: never). */
-  sirens: { cop: number; tick: number; arrival: number }[];
+  /**
+   * Patrol sirens (cause `patrol`): each one's cop, its tick, the tick he pulled out (first rode
+   * above RIDING_MPS after it) and the tick he arrived (-1: never).
+   */
+  sirens: { cop: number; tick: number; pullOut: number; arrival: number }[];
   /** Every cop who came out (any cause). */
   cops: number;
 }
@@ -64,12 +78,14 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
     for (const e of sim.events()) {
       if (e.type !== 'siren' || e.data['on'] !== true) continue;
       cops++;
-      if (e.data['cause'] === 'patrol') sirens.push({ cop: e.actor, tick: e.tick, arrival: -1 });
+      if (e.data['cause'] === 'patrol') sirens.push({ cop: e.actor, tick: e.tick, pullOut: -1, arrival: -1 });
     }
     const me = snap.entities[playerId];
     for (const s of sirens) {
       const cop = snap.entities[s.cop];
-      if (s.arrival >= 0 || !me || !cop || cop.speed <= RIDING_MPS) continue;
+      if (!cop || cop.speed <= RIDING_MPS) continue;
+      if (s.pullOut < 0) s.pullOut = sim.tick;
+      if (s.arrival >= 0 || !me) continue;
       if (Math.hypot(cop.x - me.x, cop.z - me.z) <= ARRIVAL_M) s.arrival = sim.tick;
     }
   }
@@ -101,15 +117,29 @@ describe('cops-2: the cop follows the difficulty preset', () => {
     for (const r of [...easy, ...hard]) expect(r.sirens.length, `seed ${r.seed}`).toBeGreaterThanOrEqual(1);
   });
 
-  it("a patrol cop's siren leads his arrival by at least the full lead", () => {
-    const arrived = [...easy, ...hard].flatMap((r) => r.sirens).filter((s) => s.arrival >= 0);
-    const margins = arrived.map((s) => s.arrival - s.tick);
+  it("a patrol cop's siren leads his pull-out and his arrival by at least the full lead", () => {
+    const runs = [...easy, ...hard];
+    const sirens = runs.flatMap((r) => r.sirens);
+    const pulled = sirens.filter((s) => s.pullOut >= 0);
+    const arrived = sirens.filter((s) => s.arrival >= 0);
+    const range = (ticks: number[]) =>
+      `${(Math.min(...ticks) / 60).toFixed(2)}..${(Math.max(...ticks) / 60).toFixed(2)} s`;
     print(
-      `cops-2 siren lead (patrol, the bot racing): ${arrived.length} arrivals examined; ` +
-        `siren-to-arrival ${(Math.min(...margins) / 60).toFixed(2)}..${(Math.max(...margins) / 60).toFixed(2)} s`,
+      `cops-2 siren lead (patrol, the bot racing): ${sirens.length} sirens in ${runs.length} races; ` +
+        `${pulled.length} pull-outs examined, siren-to-pull-out ${range(pulled.map((s) => s.pullOut - s.tick))}; ` +
+        `${arrived.length} arrivals examined (at least ${MIN_ARRIVALS}), ` +
+        `siren-to-arrival ${range(arrived.map((s) => s.arrival - s.tick))}`,
     );
-    expect(arrived.length).toBeGreaterThan(SEEDS.length);
-    for (const m of margins) expect(m).toBeGreaterThanOrEqual(LEAD_TICKS);
+    // Every race's patrol cop pulls out, the full lead after his siren.
+    for (const r of runs)
+      expect(
+        r.sirens.filter((s) => s.pullOut >= 0).length,
+        `seed ${r.seed}: a patrol cop pulled out`,
+      ).toBeGreaterThanOrEqual(1);
+    for (const s of pulled) expect(s.pullOut - s.tick).toBeGreaterThanOrEqual(LEAD_TICKS);
+    // And where he rides up to the bot, the siren led that too.
+    expect(arrived.length).toBeGreaterThanOrEqual(MIN_ARRIVALS);
+    for (const s of arrived) expect(s.arrival - s.tick).toBeGreaterThanOrEqual(LEAD_TICKS);
   });
 
   it('in the shared Normal batch (the bot racing), the siren leads his arrival too (printed)', () => {
