@@ -47,11 +47,18 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 });
 
 /**
- * The derived verge per land tag [default]. The order is render's theme order (palms, mangrove,
- * commercial, beach, sawmill, urban, industrial, forest): when one side carries several land tags,
+ * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
+ * downtown, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side carries several land tags,
  * the first listed here wins, as the scenery does. Widths stay well inside render's 24 m land strip.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
+  // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
+  // it); a plaza is wide open paving; the towers stand behind a sidewalk.
+  ['cross-street', band(20, 'shoulder', 'soft')],
+  ['cable-crossing', band(20, 'shoulder', 'soft')],
+  ['plaza', band(18, 'kerb', 'soft')],
+  ['towers', band(4, 'kerb', 'hard')],
   ['palms', band(8, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

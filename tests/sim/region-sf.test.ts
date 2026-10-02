@@ -109,7 +109,9 @@ describe('region-sf: the San Francisco race', () => {
     ]);
     // The region's mix picks the kinds: the region vehicles weigh in, a Keys-only kind never spawns.
     const weight = (id: string) => config.trafficTypes.find((t) => t.contentId === id)?.weight;
-    expect(weight('region-sf:cable-car')).toBe(1);
+    // Playtest 2 ("including in forests"), run W-R: cable cars run only on downtown's cable-car
+    // streets (render), never as traffic on a race road.
+    expect(weight('region-sf:cable-car') ?? 0).toBe(0);
     expect(weight('region-sf:startup-shuttle')).toBe(1);
     expect(weight('region-sf:rideshare-hatchback')).toBe(5);
     expect(weight('base:fisherman')).toBe(0);
@@ -162,7 +164,12 @@ describe('region-sf: the San Francisco race', () => {
     // now finish (4 before), and seed 3 took 4:03.7, 92 s of it stuck behind cable cars on the 19 %
     // grade. The bound guards a stall, not the pace; the fastest finish above is the pace check.
     for (const r of finished) expect(r.res.finishTick / 3600, `seed ${r.seed}`).toBeLessThan(4.5);
-    // The region's own slow traffic is on the road.
-    expect(runs.some((r) => r.res.kinds.has('region-sf:cable-car'))).toBe(true);
+    // The region's own traffic is on the road, and no cable car is (run W-R).
+    expect(
+      runs.some(
+        (r) => r.res.kinds.has('region-sf:startup-shuttle') || r.res.kinds.has('region-sf:hesitron-robotaxi'),
+      ),
+    ).toBe(true);
+    expect(runs.some((r) => r.res.kinds.has('region-sf:cable-car'))).toBe(false);
   }, 600_000);
 });

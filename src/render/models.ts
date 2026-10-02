@@ -40,6 +40,8 @@ export const MODEL_ASSETS = {
   keysRoadside: 'models/scenery/keys-roadside',
   // run W-Q: the little islands off every Keys bridge (scenery.ts, the islet kind)
   keysIslets: 'models/scenery/keys-islets',
+  // run W-R: San Francisco's downtown towers, screens, headquarters, lamps and signals (downtown.ts)
+  sfDowntown: 'models/scenery/sf-downtown',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -89,6 +91,20 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_lamp',
   ],
   keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
+  sfDowntown: [
+    'dt_tower_glass',
+    'dt_tower_stone',
+    'dt_tower_screen_agi',
+    'dt_tower_screen_series',
+    'dt_tower_crown',
+    'dt_hq',
+    'dt_midrise',
+    'dt_lamp',
+    'dt_signal',
+    'dt_planter',
+    'dt_bench',
+    'dt_orb',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -141,6 +157,13 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     // Run W-P: each region's roadside kit (roadside.ts). San Francisco's forest (Twin Peaks)
     // keeps the city's kit; a forest road with no city on it is the Pacific Northwest's.
     else if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('pnwRoadside');
+    // Run W-R: San Francisco's downtown (downtown.ts): its own kit, the city kit's cars for the
+    // cross traffic and its sidewalk clutter, and the cable car on a cable-car street.
+    if (['towers', 'plaza', 'cross-street', 'cable-crossing'].some((t) => n.tags.has(t))) {
+      out.add('sfDowntown');
+      out.add('sfRoadside');
+    }
+    if (n.tags.has('cable-crossing')) out.add('cableCar');
   }
   if (n.palette.has('fogBank')) out.add('fogBanks');
   if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');

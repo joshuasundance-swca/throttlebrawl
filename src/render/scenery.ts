@@ -26,7 +26,11 @@ export type SideTheme =
   | 'urban'
   | 'industrial'
   | 'sawmill'
-  | 'forest';
+  | 'forest'
+  // run W-R, San Francisco's downtown (render/downtown.ts draws what stands there)
+  | 'crossing'
+  | 'plaza'
+  | 'downtown';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -47,9 +51,19 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   gardens: 'urban',
   sawmill: 'sawmill',
   forest: 'forest',
+  // Run W-R (interview, 2026-10-02: "SF first = downtown towers"): a cross street's mouth, a plaza
+  // and the towers' sidewalk. Nothing of the scatter's stands there (no houses, no poles); the
+  // downtown layer (downtown.ts) draws the towers, the cross streets and the plaza furniture.
+  'cross-street': 'crossing',
+  'cable-crossing': 'crossing',
+  plaza: 'plaza',
+  towers: 'downtown',
 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
+  'crossing',
+  'plaza',
+  'downtown',
   'palms',
   'mangrove',
   'commercial',
@@ -156,7 +170,12 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   industrial: {},
   sawmill: { sawmill: 1, conifer: 0.35 },
   forest: { conifer: 1 },
+  crossing: {},
+  plaza: {},
+  downtown: {},
 };
+/** Themes with no power poles: a downtown's wires are underground. */
+const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown']);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],
@@ -344,6 +363,7 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         if (s > e.length) break;
         const theme = e.theme(side, s);
         if (theme === 'none' || theme === 'water') continue;
+        if (kind === 'pole' && NO_POLES.has(theme)) continue;
         if (!e.tropical && (kind === 'palm' || kind === 'mangrove')) continue;
         if (kind !== 'pole' && h(ki, k, side, 1) >= (RATE[theme][kind] ?? 0)) continue;
         const [near, spread] = ACROSS_M[kind];

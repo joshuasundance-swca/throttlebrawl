@@ -53,8 +53,9 @@ describe('board copy', () => {
         signs++;
       }
     }
-    expect(billboards).toBe(22);
-    expect(signs).toBe(32);
+    // Run W-R: San Francisco's downtown adds 3 billboards and 7 signs.
+    expect(billboards).toBe(25);
+    expect(signs).toBe(39);
   });
 });
 

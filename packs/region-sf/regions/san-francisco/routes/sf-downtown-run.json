@@ -1,0 +1,30 @@
+{
+  "type": "route",
+  "id": "sf-downtown-run",
+  "name": "Downtown",
+  "network": "sf-downtown",
+  "start": { "road": "sf-dt-founders-plaza", "s": 40, "dir": 1 },
+  "finish": { "road": "sf-dt-campus-way", "s": 954 },
+  "mainPath": [
+    "sf-dt-founders-plaza",
+    "sf-dt-inference-ave",
+    "sf-dt-cable-crossing",
+    "sf-dt-burn-rate-row",
+    "sf-dt-campus-way"
+  ],
+  "allowedRoads": [
+    "sf-dt-founders-plaza",
+    "sf-dt-inference-ave",
+    "sf-dt-cable-crossing",
+    "sf-dt-burn-rate-row",
+    "sf-dt-campus-way"
+  ],
+  "checkpoints": [
+    { "road": "sf-dt-inference-ave", "s": 400 },
+    { "road": "sf-dt-cable-crossing", "s": 300 },
+    { "road": "sf-dt-burn-rate-row", "s": 650 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}

@@ -6,7 +6,15 @@ import { stationsFromTable, type RadioStation } from '../audio';
 import { lookup, packOf, type ContentRegistry, type Region } from '../content';
 import type { BoardCatalog, BoardItem, BoardKind } from '../render';
 import type { RegionStream } from '../stream';
-import { eventKey, networkKeyOf, qualifyIn, raceRouteKey, realRoutes, streamForRoute } from './config';
+import {
+  eventKey,
+  isRealRoute,
+  networkKeyOf,
+  qualifyIn,
+  raceRouteKey,
+  realRoutes,
+  streamForRoute,
+} from './config';
 
 /** One region the picker offers, with the event a pick starts. */
 export interface RegionChoice {
@@ -226,8 +234,10 @@ export function routeChoices(reg: ContentRegistry, eventId: string): RouteChoice
     const route = lookup(reg.routes, id) as { name?: unknown; id: string };
     const names = realNames(reg, id);
     const lengthM = routeLengthM(reg, id);
-    const what =
-      names.length > 1
+    // Run W-R: a hand-made route on another of the region's networks (San Francisco's downtown).
+    const what = !isRealRoute(reg, id)
+      ? 'Hand-made'
+      : names.length > 1
         ? `Real streets: ${names.map(shortStreet).join(', ')}`
         : `Real road: ${names[0] ?? 'map data'}`;
     return {

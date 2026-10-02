@@ -14,6 +14,9 @@
 // cable-car traffic, and adds the drizzle (rain.ts) a region's palette asks for.
 // W-P "fill the world" (the maintainer, 2026-10-01b) adds the backdrop (backdrop/): each region's
 // mountains, skylines, bridges, ships and clouds past the fog, one lazy-loaded draw call.
+// Run W-R (interview, 2026-10-02: "SF first = downtown towers") adds San Francisco's downtown
+// (downtown.ts): towers, plazas, cross streets with their traffic, and the cable cars, which run
+// only on its steep cable-car streets.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, type BackdropStats } from './backdrop';
@@ -33,6 +36,7 @@ import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
+import type { DowntownCounts, DowntownLayer } from './downtown';
 import { Rain, rainColourOf } from './rain';
 import {
   buildRoadScene,
@@ -179,6 +183,8 @@ export interface SceneryStatus {
   roadside: RoadsideCounts | null;
   /** The far backdrop as built (null while it loads, or for a road without one). */
   backdrop: BackdropStats | null;
+  /** San Francisco's downtown (run W-R), or null before its models load or on any other road. */
+  downtown: DowntownCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -286,6 +292,27 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(roadside.group);
   };
+  // Run W-R: San Francisco's downtown (downtown.ts), a lazy chunk that arrives with its models.
+  let downtownModule: typeof import('./downtown') | null = null;
+  let downtown: DowntownLayer | null = null;
+  /** The sim tick the downtown's cross traffic last moved on, and how long it has stood still, s. */
+  let downtownTick = -1;
+  let downtownStill = 0;
+  const buildDowntown = () => {
+    downtown?.dispose();
+    downtown = null;
+    const m = downtownModule;
+    const kit = models.sfDowntown;
+    if (!m || !roadArgs || !kit) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    if (!m.hasDowntown(tags)) return;
+    downtown = new m.DowntownLayer(kit, models.sfRoadside, models.cableCar, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+    });
+    scene.add(downtown.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -300,6 +327,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(roadScene.group);
     buildRoadside();
+    buildDowntown();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -345,6 +373,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         void import('./roadside').then((r) => {
           roadsideModule = r;
           buildRoadside();
+        });
+      if (report.loaded.includes('sfDowntown') && !downtownModule)
+        void import('./downtown').then((d) => {
+          downtownModule = d;
+          buildDowntown();
         });
     });
   };
@@ -425,6 +458,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
+      if (downtown) {
+        // The cross traffic moves with the race: it stands still while the race does (paused).
+        const tick = curr?.tick ?? -1;
+        downtownStill = tick === downtownTick ? downtownStill + dt : 0;
+        downtownTick = tick;
+        const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
+        sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
+      }
       lastFrameAt = t;
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
@@ -509,6 +550,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       rain: rain.count(),
       roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
+      downtown: downtown?.counts() ?? null,
     }),
   };
 }

@@ -78,7 +78,9 @@ describe('route branches and ride limits on every live network', () => {
           expect(route.orientation(e), `${r.id} ${road.edges[e]?.id}`).toBe(1);
           expect(route.branchAt(e)).toBeNull();
         }
-        if (!r.id.startsWith('osm-')) handMade.push(r.id);
+        // A hand-made route with a shortcut (run W-R's downtown has none yet: its freedom is a
+        // follow-up for the junction-choice lanes).
+        if (!r.id.startsWith('osm-') && road.splitZones().length > 0) handMade.push(r.id);
         else expect(route.branches, r.id).toEqual([]);
         lines.push(
           `${r.id}: ${route.branches.map((b) => `${b.id} ${b.kind} ${b.gainM.toFixed(0)} m`).join(', ') || 'none'}`,

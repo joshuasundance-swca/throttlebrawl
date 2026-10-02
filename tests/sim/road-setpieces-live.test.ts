@@ -80,6 +80,14 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-sf:osm-sf-twin-peaks-run',
     kinds: ['boostPad'],
   },
+  // Run W-R: San Francisco's downtown (hand-made), its truck on Burn Rate Row's straight.
+  {
+    name: 'sf-downtown',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:sf-downtown-run',
+    kinds: BOTH,
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
