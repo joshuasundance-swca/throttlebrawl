@@ -3,7 +3,7 @@
 // and "remove the invisible wall where ground is drawn"). The checks build the layer on every real
 // network with its real road files and look at what was built: rays down onto the band at the
 // sim's own band (vergeAt), none past it, each region's edges and fence, the smash, and the feel.
-import { InstancedMesh, Matrix4, Raycaster, Vector3, type Mesh, type Object3D } from 'three';
+import { Raycaster, Vector3, type Mesh, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
@@ -97,7 +97,12 @@ describe('the ground band is drawn where the sim lets a rider ride', () => {
             expect(hit, `${id} ${e.id} s ${s} ${side}`).toBeDefined();
             expect(Math.abs((hit?.point.y ?? 0) - mid.y)).toBeLessThan(0.15);
             on++;
-            // Past the band's outer edge, and clear of any other road's band, nothing of this layer.
+            // Past the band's outer edge, and clear of any other road's band, nothing of this layer
+            // (past a water edge the shallows are drawn, in the same mesh: not counted).
+            if (v.edge === 'water') {
+              off++;
+              continue;
+            }
             const past = road.toWorld(e.index, s, v.dOuter + (side === 'left' ? -1.2 : 1.2), VERGE_LIFT_M);
             ray.set(new Vector3(past.x, past.y + 5, past.z), down);
             const beyond = ray.intersectObjects(bands, false)[0];
@@ -170,24 +175,26 @@ describe("each region's ground and edges", () => {
     console.log(`[examined] sf-hills: ${JSON.stringify(c)}`);
   });
 
-  it('stays cheap: at most four meshes per chunk (band, shallows, fences, ferns)', () => {
+  it('stays cheap: one band mesh per chunk, plus one each for the fences, the ferns, the dust and the boards', () => {
     for (const id of NETWORKS) {
-      const { verge } = layer(id);
-      let chunks = 0;
-      let meshes = 0;
+      const { road, verge } = layer(id);
+      const bands = named(verge.group, 'verge-band');
+      const others = verge.group.children.filter((o) => o.name !== 'verge-band').map((o) => o.name);
+      expect(others.sort()).toEqual(['verge-boards', 'verge-brush', 'verge-dust', 'verge-fence']);
       let tris = 0;
-      for (const ch of verge.group.children) {
-        if (!ch.name.startsWith('verge-chunk-')) continue;
-        chunks++;
-        expect(ch.children.length, `${id} ${ch.name}`).toBeLessThanOrEqual(4);
-        meshes += ch.children.length;
-        for (const m of ch.children as Mesh[]) {
-          const idx = m.geometry.getIndex();
-          const n = idx ? idx.count / 3 : 0;
-          tris += m instanceof InstancedMesh ? n * m.count : n;
-        }
+      for (const m of bands) tris += (m.geometry.getIndex()?.count ?? 0) / 3;
+      // Along the road, the fences and ferns drawn stay inside their caps.
+      let most = 0;
+      const e = road.edges[0];
+      for (let s = 0; e && s < e.length; s += 100) {
+        const p = road.toWorld(e.index, s, 0, 0);
+        verge.update(p.x, p.z, snapOf([]), 1 / 60);
+        const c = verge.counts();
+        most = Math.max(most, c.nearPanels + c.nearClumps);
       }
-      console.log(`[examined] ${id}: ${chunks} chunks, ${meshes} meshes, ${tris} triangles in all`);
+      console.log(
+        `[examined] ${id}: ${bands.length} band meshes (${tris} triangles in all), 4 more; at most ${most} fence panels and fern clumps drawn at once`,
+      );
     }
   });
 });
@@ -196,13 +203,15 @@ describe('the edges act', () => {
   it('a smash hides the fence panels it covers and throws boards; a second smash there breaks nothing', () => {
     const { road, verge } = layer('keys-m1');
     const found = firstFence(road);
-    const fences = named(verge.group, 'verge-fence') as unknown as InstancedMesh[];
-    const zeroBefore = countZero(fences);
+    const at = road.toWorld(found.edge, found.s, 0, 0);
+    verge.update(at.x, at.z, snapOf([]), 1 / 60);
+    const before = verge.counts().nearPanels;
+    expect(before).toBeGreaterThan(8);
     const n = verge.smash(found.edge, found.side, found.s - 4, found.s + 4);
     expect(n).toBeGreaterThanOrEqual(4);
-    expect(countZero(fences) - zeroBefore).toBe(n);
     expect(verge.smash(found.edge, found.side, found.s - 4, found.s + 4)).toBe(0);
-    verge.update(0, 0, snapOf([]), 1 / 60);
+    verge.update(at.x, at.z, snapOf([]), 1 / 60);
+    expect(verge.counts().nearPanels).toBe(before - n);
     expect(verge.counts().boards).toBe(n * 4);
     expect(verge.counts().brokenPanels).toBe(n);
   });
@@ -264,16 +273,4 @@ function firstFence(road: RoadNetwork): { edge: number; s: number; side: -1 | 1 
     }
   }
   throw new Error('no fence on the network');
-}
-
-function countZero(meshes: readonly InstancedMesh[]): number {
-  const m = new Matrix4();
-  let n = 0;
-  for (const mesh of meshes) {
-    for (let i = 0; i < mesh.count; i++) {
-      mesh.getMatrixAt(i, m);
-      if (m.elements[0] === 0 && m.elements[5] === 0 && m.elements[10] === 0) n++;
-    }
-  }
-  return n;
 }

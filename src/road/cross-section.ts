@@ -52,7 +52,10 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * the first listed here wins, as the scenery does. Widths stay well inside render's 24 m land strip.
  * Run W-R (off-road) narrowed the palm land (8 to 4 m), the beach (10 to 6 m) and the sawmill yard
  * (10 to 6 m): solid scenery now stands clear of the ridable band, and playtest 1's parallax wants
- * the palms within 8 m of the road's edge, and the sawmill fits its land behind the yard.
+ * the palms within 8 m of the road's edge, and the sawmill fits its land behind the yard. It also
+ * gave the town, strip-mall, warehouse and pier pavements a `soft` edge: nothing solid is drawn at
+ * their edge (the shacks stand further back, the warehouses and piers are land with poles), so a
+ * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
   ['palms', band(4, 'sand', 'soft')],
@@ -60,16 +63,16 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['swamp', band(3, 'grass', 'water')],
   ['marina', band(6, 'gravel', 'fence')],
   ['trailer-park', band(6, 'gravel', 'fence')],
-  ['strip-mall', band(5, 'kerb', 'hard')],
-  ['town', band(4, 'kerb', 'hard')],
+  ['strip-mall', band(5, 'kerb', 'soft')],
+  ['town', band(4, 'kerb', 'soft')],
   ['landmark', band(5, 'grass', 'soft')],
   ['beach', band(6, 'sand', 'soft')],
   ['sawmill', band(6, 'gravel', 'soft')],
   ['row-houses', band(2.5, 'kerb', 'hard')],
   ['painted-houses', band(2.5, 'kerb', 'hard')],
   ['gardens', band(3, 'grass', 'fence')],
-  ['warehouses', band(4, 'kerb', 'hard')],
-  ['piers', band(4, 'kerb', 'hard')],
+  ['warehouses', band(4, 'kerb', 'soft')],
+  ['piers', band(4, 'kerb', 'soft')],
   ['forest', band(6, 'dirt', 'brush')],
 ];
 

@@ -36,8 +36,8 @@ type Side = -1 | 1;
 export const VERGE_STEP_M = 2;
 /** The band sits under the road's own verge strip (-0.02) and over the land (-0.06 to -0.09), m. */
 export const VERGE_LIFT_M = -0.045;
-/** Square chunks the layer is merged and culled in, m. [default] */
-export const VERGE_CHUNK_M = 128;
+/** Square chunks the band is merged and culled in, m: the road's own chunk size. [default] */
+export const VERGE_CHUNK_M = 512;
 /** One fence panel's length along the road: what one smash breaks at the least, m. [default] */
 export const FENCE_SEG_M = 2;
 /** Metres between fern clumps along a `brush` edge. [default] */
@@ -184,25 +184,23 @@ export function chunkOf(x: number, z: number): string {
   return `${Math.floor(x / VERGE_CHUNK_M)},${Math.floor(z / VERGE_CHUNK_M)}`;
 }
 
-/** One fence panel as drawn: where it stands on the road, and its slot in its chunk's instances. */
+/** One fence panel as built: where it stands on the road, its pose, and whether a rider broke it. */
 interface FencePanel {
   edge: number;
   side: Side;
   s0: number;
   s1: number;
-  mesh: InstancedMesh;
-  index: number;
-  /** World midpoint, for the boards. */
+  /** World midpoint: for the boards, and for the draw distance. */
   at: Point3;
+  m: Matrix4;
   broken: boolean;
 }
 
-interface Chunk {
-  group: Group;
+/** A fern clump as built. */
+interface Clump {
   x: number;
   z: number;
-  /** Fences and ferns: hidden past VERGE_DRAW_M. */
-  near: InstancedMesh[];
+  m: Matrix4;
 }
 
 export interface VergeCounts {
@@ -213,6 +211,9 @@ export interface VergeCounts {
   fencePanels: number;
   brokenPanels: number;
   brushClumps: number;
+  /** Fence panels and fern clumps drawn in the last refill (inside the draw distance). */
+  nearPanels: number;
+  nearClumps: number;
   /** Particles alive in the last frame: dust and spray, and flying boards. */
   particles: number;
   boards: number;
@@ -221,7 +222,11 @@ export interface VergeCounts {
   fenceStyle: FenceStyle;
 }
 
-const ZERO = new Matrix4().makeScale(0, 0, 0);
+/** The most fence panels and fern clumps drawn at once (inside VERGE_DRAW_M), each one draw call. */
+const NEAR_PANELS = 480;
+const NEAR_CLUMPS = 420;
+/** The near sets refill when the camera has moved this far, m. */
+const REFILL_M = 12;
 
 /** A pool of short-lived coloured particles in one instanced mesh; boards also tumble. */
 class Pool {
@@ -331,12 +336,20 @@ export interface VergeOptions {
   tags: ReadonlySet<string>;
 }
 
-/** The ground band, its edges and their effects for one road network. */
+/**
+ * The ground band, its edges and their effects for one road network. Draw calls stay flat: the band
+ * (with the shallows) is one vertex-coloured mesh per VERGE_CHUNK_M square, culled with the camera,
+ * and the fences and the ferns are one instanced mesh each, holding only the ones inside
+ * VERGE_DRAW_M, refilled as the camera moves.
+ */
 export class VergeLayer {
   readonly group = new Group();
   readonly fenceStyle: FenceStyle;
-  private readonly chunks = new Map<string, Chunk>();
-  private readonly panels = new Map<number, FencePanel[]>();
+  private readonly panels: FencePanel[] = [];
+  private readonly panelsByEdge = new Map<number, FencePanel[]>();
+  private readonly clumps: Clump[] = [];
+  private readonly fenceMesh: InstancedMesh;
+  private readonly brushMesh: InstancedMesh;
   private readonly bandM: Record<Surface, number> = {
     shoulder: 0,
     dirt: 0,
@@ -346,9 +359,7 @@ export class VergeLayer {
     kerb: 0,
   };
   private shallowsM = 0;
-  private fencePanels = 0;
   private brokenPanels = 0;
-  private brushClumps = 0;
   private readonly dust: Pool;
   private readonly boards: Pool;
   private readonly pending: SimEvent[] = [];
@@ -357,6 +368,10 @@ export class VergeLayer {
   private readonly tmp = new Color();
   private readonly fenceColour: Color;
   private readonly geometries: BufferGeometry[] = [];
+  /** Where the near sets were last filled (NaN: never), and whether a smash wants a refill. */
+  private filledX = NaN;
+  private filledZ = NaN;
+  private dirty = true;
 
   constructor(
     private readonly road: RoadNetwork,
@@ -378,52 +393,59 @@ export class VergeLayer {
     this.geometries.push(fenceGeo, brushGeo, bitGeo, boardGeo);
     this.dust = new Pool('verge-dust', bitGeo, propMat, 240, 9.81);
     this.boards = new Pool('verge-boards', boardGeo, propMat, 48, 9.81);
-    this.group.add(this.dust.mesh, this.boards.mesh);
+    this.fenceMesh = new InstancedMesh(fenceGeo, propMat, NEAR_PANELS);
+    this.fenceMesh.name = 'verge-fence';
+    this.brushMesh = new InstancedMesh(brushGeo, propMat, NEAR_CLUMPS);
+    this.brushMesh.name = 'verge-brush';
+    for (const m of [this.fenceMesh, this.brushMesh]) {
+      m.count = 0;
+      m.visible = false;
+      // Only what is near the camera is in them, so they are never culled whole.
+      m.frustumCulled = false;
+    }
+    this.group.add(this.dust.mesh, this.boards.mesh, this.fenceMesh, this.brushMesh);
 
+    // The band and the shallows share one strip set (one mesh per chunk).
     const strips = new ColourStrips();
-    const shallows = new ColourStrips();
-    const fences = new Map<string, { m: Matrix4; panel: Omit<FencePanel, 'mesh' | 'index'> }[]>();
-    const brush = new Map<string, Matrix4[]>();
     const c = new Color();
     const q = new Quaternion();
     const up = new Vector3(0, 1, 0);
-    const one = new Vector3(1, 1, 1);
-    const p = new Vector3();
     for (const e of road.edges) {
       for (const side of [-1, 1] as const) {
         const name = side < 0 ? 'left' : 'right';
-        // The band and the shallows: strips at VERGE_STEP_M.
         const n = Math.max(1, Math.ceil(e.length / VERGE_STEP_M));
-        for (let i = 0; i <= n; i++) {
-          const s = Math.min(e.length, i * VERGE_STEP_M);
-          const v = road.vergeAt(e.index, s, name);
-          if (v.widthM < MIN_BAND_M) {
-            strips.breakStrip();
-            shallows.breakStrip();
-            continue;
+        // The band, then (a second pass, its own strip) the shallows past a water edge.
+        for (const pass of ['band', 'shallows'] as const) {
+          for (let i = 0; i <= n; i++) {
+            const s = Math.min(e.length, i * VERGE_STEP_M);
+            const v = road.vergeAt(e.index, s, name);
+            if (v.widthM < MIN_BAND_M || (pass === 'shallows' && v.edge !== 'water')) {
+              strips.breakStrip();
+              continue;
+            }
+            const lift = pass === 'band' ? VERGE_LIFT_M : VERGE_LIFT_M - 0.01;
+            const near = road.toWorld(e.index, s, pass === 'band' ? v.dInner : v.dOuter, lift);
+            const far = road.toWorld(
+              e.index,
+              s,
+              pass === 'band' ? v.dOuter : v.dOuter + side * SHALLOWS_M,
+              lift,
+            );
+            c.set(pass === 'band' ? SURFACE_COLOUR[v.surface] : SHALLOWS_COLOUR);
+            if (side < 0) strips.pair(far, near, c);
+            else strips.pair(near, far, c);
+            if (i > 0) {
+              if (pass === 'band') this.bandM[v.surface] += VERGE_STEP_M;
+              else this.shallowsM += VERGE_STEP_M;
+            }
           }
-          const inner = road.toWorld(e.index, s, v.dInner, VERGE_LIFT_M);
-          const outer = road.toWorld(e.index, s, v.dOuter, VERGE_LIFT_M);
-          c.set(SURFACE_COLOUR[v.surface]);
-          if (side < 0) strips.pair(outer, inner, c);
-          else strips.pair(inner, outer, c);
-          if (i > 0) this.bandM[v.surface] += VERGE_STEP_M;
-          if (v.edge === 'water') {
-            const far = road.toWorld(e.index, s, v.dOuter + side * SHALLOWS_M, VERGE_LIFT_M - 0.01);
-            const near = road.toWorld(e.index, s, v.dOuter, VERGE_LIFT_M - 0.01);
-            c.set(SHALLOWS_COLOUR);
-            if (side < 0) shallows.pair(far, near, c);
-            else shallows.pair(near, far, c);
-            if (i > 0) this.shallowsM += VERGE_STEP_M;
-          } else shallows.breakStrip();
+          strips.breakStrip();
         }
-        strips.breakStrip();
-        shallows.breakStrip();
         // The edge: fence panels and fern clumps along the band's outer edge.
-        const list: FencePanel[] = this.panels.get(e.index) ?? [];
+        const list = this.panelsByEdge.get(e.index) ?? [];
+        this.panelsByEdge.set(e.index, list);
         for (let s0 = 0; s0 + FENCE_SEG_M <= e.length; s0 += FENCE_SEG_M) {
-          const mid = s0 + FENCE_SEG_M / 2;
-          const v = road.vergeAt(e.index, mid, name);
+          const v = road.vergeAt(e.index, s0 + FENCE_SEG_M / 2, name);
           if (v.widthM < MIN_BAND_M || v.edge !== 'fence') continue;
           const a = road.toWorld(e.index, s0, road.vergeAt(e.index, s0, name).dOuter, 0);
           const b = road.toWorld(
@@ -435,13 +457,11 @@ export class VergeLayer {
           const at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 0.05, z: (a.z + b.z) / 2 };
           q.setFromAxisAngle(up, Math.atan2(-(b.z - a.z), b.x - a.x));
           const len = Math.hypot(b.x - a.x, b.z - a.z) / FENCE_SEG_M;
-          const m = new Matrix4().compose(p.set(at.x, at.y, at.z), q, new Vector3(len, 1, 1));
-          const key = chunkOf(at.x, at.z);
-          const bucket = fences.get(key) ?? [];
-          bucket.push({ m, panel: { edge: e.index, side, s0, s1: s0 + FENCE_SEG_M, at, broken: false } });
-          fences.set(key, bucket);
+          const m = new Matrix4().compose(new Vector3(at.x, at.y, at.z), q, new Vector3(len, 1, 1));
+          const panel: FencePanel = { edge: e.index, side, s0, s1: s0 + FENCE_SEG_M, at, m, broken: false };
+          this.panels.push(panel);
+          list.push(panel);
         }
-        this.panels.set(e.index, list);
         for (let s = BRUSH_STEP_M / 2; s < e.length; s += BRUSH_STEP_M) {
           const v = road.vergeAt(e.index, s, name);
           if (v.widthM < MIN_BAND_M || v.edge !== 'brush') continue;
@@ -449,66 +469,18 @@ export class VergeLayer {
           const at = road.toWorld(e.index, s + (k - 0.5) * 1.2, v.dOuter + side * (0.25 + k * 0.5), -0.05);
           q.setFromAxisAngle(up, k * Math.PI * 2);
           const size = 0.75 + hash(e.index, s, side * 3) * 0.6;
-          const m = new Matrix4().compose(p.set(at.x, at.y, at.z), q, one.clone().multiplyScalar(size));
-          const key = chunkOf(at.x, at.z);
-          const bucket = brush.get(key) ?? [];
-          bucket.push(m);
-          brush.set(key, bucket);
-          this.brushClumps++;
+          const m = new Matrix4().compose(new Vector3(at.x, at.y, at.z), q, new Vector3(size, size, size));
+          this.clumps.push({ x: at.x, z: at.z, m });
         }
       }
     }
-    this.addStrips(strips, groundMat, 'verge-band');
-    this.addStrips(shallows, groundMat, 'verge-shallows');
-    for (const [key, bucket] of fences) {
-      const mesh = new InstancedMesh(fenceGeo, propMat, bucket.length);
-      mesh.name = 'verge-fence';
-      bucket.forEach((f, i) => {
-        mesh.setMatrixAt(i, f.m);
-        const panel: FencePanel = { ...f.panel, mesh, index: i };
-        this.panels.get(panel.edge)?.push(panel);
-      });
-      mesh.computeBoundingSphere();
-      this.chunk(key).near.push(mesh);
-      this.chunk(key).group.add(mesh);
-      this.fencePanels += bucket.length;
-    }
-    for (const [key, bucket] of brush) {
-      const mesh = new InstancedMesh(brushGeo, propMat, bucket.length);
-      mesh.name = 'verge-brush';
-      bucket.forEach((m, i) => mesh.setMatrixAt(i, m));
-      mesh.computeBoundingSphere();
-      this.chunk(key).near.push(mesh);
-      this.chunk(key).group.add(mesh);
-    }
-  }
-
-  private chunk(key: string): Chunk {
-    let ch = this.chunks.get(key);
-    if (!ch) {
-      const [cx, cz] = key.split(',').map(Number);
-      const group = new Group();
-      group.name = `verge-chunk-${key}`;
-      ch = {
-        group,
-        x: ((cx ?? 0) + 0.5) * VERGE_CHUNK_M,
-        z: ((cz ?? 0) + 0.5) * VERGE_CHUNK_M,
-        near: [],
-      };
-      this.chunks.set(key, ch);
-      this.group.add(group);
-    }
-    return ch;
-  }
-
-  private addStrips(strips: ColourStrips, material: Mesh['material'], name: string): void {
     for (const key of strips.chunks.keys()) {
       const g = strips.build(key);
       if (!g) continue;
       this.geometries.push(g);
-      const mesh = new Mesh(g, material);
-      mesh.name = name;
-      this.chunk(key).group.add(mesh);
+      const mesh = new Mesh(g, groundMat);
+      mesh.name = 'verge-band';
+      this.group.add(mesh);
     }
   }
 
@@ -527,11 +499,9 @@ export class VergeLayer {
    */
   smash(edge: number, side: Side, s0: number, s1: number): number {
     let n = 0;
-    for (const panel of this.panels.get(edge) ?? []) {
+    for (const panel of this.panelsByEdge.get(edge) ?? []) {
       if (panel.broken || panel.side !== side || panel.s1 < s0 || panel.s0 > s1) continue;
       panel.broken = true;
-      panel.mesh.setMatrixAt(panel.index, ZERO);
-      panel.mesh.instanceMatrix.needsUpdate = true;
       this.brokenPanels++;
       n++;
       for (let i = 0; i < 4; i++) {
@@ -544,24 +514,55 @@ export class VergeLayer {
         );
       }
     }
-    if (n > 0) this.bursts.boards++;
+    if (n > 0) {
+      this.bursts.boards++;
+      this.dirty = true;
+    }
     return n;
   }
 
+  /** Refills the near fence panels and fern clumps around the camera. */
+  private refill(cameraX: number, cameraZ: number): void {
+    const r2 = VERGE_DRAW_M * VERGE_DRAW_M;
+    let n = 0;
+    for (const p of this.panels) {
+      if (n >= NEAR_PANELS) break;
+      if (p.broken) continue;
+      const dx = p.at.x - cameraX;
+      const dz = p.at.z - cameraZ;
+      if (dx * dx + dz * dz > r2) continue;
+      this.fenceMesh.setMatrixAt(n++, p.m);
+    }
+    this.fenceMesh.count = n;
+    this.fenceMesh.visible = n > 0;
+    this.fenceMesh.instanceMatrix.needsUpdate = true;
+    let k = 0;
+    for (const c of this.clumps) {
+      if (k >= NEAR_CLUMPS) break;
+      const dx = c.x - cameraX;
+      const dz = c.z - cameraZ;
+      if (dx * dx + dz * dz > r2) continue;
+      this.brushMesh.setMatrixAt(k++, c.m);
+    }
+    this.brushMesh.count = k;
+    this.brushMesh.visible = k > 0;
+    this.brushMesh.instanceMatrix.needsUpdate = true;
+    this.filledX = cameraX;
+    this.filledZ = cameraZ;
+    this.dirty = false;
+  }
+
   /**
-   * Per frame: fences and ferns past VERGE_DRAW_M hide, the riders on loose ground kick up their
-   * surface, the queued events burst, and a rider out past a fence line breaks it as it goes.
+   * Per frame: the near fences and ferns refill as the camera moves, the riders on loose ground kick
+   * up their surface, the queued events burst, and a rider out past a fence line breaks it as it goes.
    */
   update(cameraX: number, cameraZ: number, snap: SimSnapshot | null, dt: number): void {
-    const reach = VERGE_DRAW_M + VERGE_CHUNK_M * 0.71;
-    for (const ch of this.chunks.values()) {
-      const near = Math.hypot(ch.x - cameraX, ch.z - cameraZ) <= reach;
-      for (const m of ch.near) m.visible = near;
-    }
     if (snap) {
       for (const ev of this.pending.splice(0)) this.burst(ev, snap);
       for (const e of snap.entities) if (e.kind === 'rider') this.rideFeel(e, dt);
     } else this.pending.length = 0;
+    const moved = Math.hypot(cameraX - this.filledX, cameraZ - this.filledZ);
+    if (this.dirty || !(moved < REFILL_M)) this.refill(cameraX, cameraZ);
     this.dust.update(dt);
     this.boards.update(dt);
   }
@@ -635,9 +636,11 @@ export class VergeLayer {
     return {
       bandM: { ...this.bandM },
       shallowsM: this.shallowsM,
-      fencePanels: this.fencePanels,
+      fencePanels: this.panels.length,
       brokenPanels: this.brokenPanels,
-      brushClumps: this.brushClumps,
+      brushClumps: this.clumps.length,
+      nearPanels: this.fenceMesh.count,
+      nearClumps: this.brushMesh.count,
       particles: this.dust.count,
       boards: this.boards.count,
       bursts: { ...this.bursts },
@@ -648,9 +651,7 @@ export class VergeLayer {
   dispose(): void {
     this.group.removeFromParent();
     for (const g of this.geometries) g.dispose();
-    for (const ch of this.chunks.values()) for (const m of ch.near) m.dispose();
-    this.dust.mesh.dispose();
-    this.boards.mesh.dispose();
+    for (const m of [this.dust.mesh, this.boards.mesh, this.fenceMesh, this.brushMesh]) m.dispose();
   }
 }
 

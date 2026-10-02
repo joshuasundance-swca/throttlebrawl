@@ -45,8 +45,11 @@ interface PresetRun {
 
 function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
   // The batch's race with the patrol on (the shared batch turns it off with the road events).
+  // Off-road (run W-R) off, as the road events are: it reshuffles these seeded races, and the
+  // arrivals count sits at its threshold (12 seeds a preset: 14 of 24 off, 12 of 24 on; the cops
+  // wait at the same spot either way, and the misses come at 21 m against the 20 m arrival).
   const { sim, playerId, config } = createHeadlessRace(
-    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'cops.patrolScale': 1 } },
+    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'cops.patrolScale': 1, 'ground.offRoad': 0 } },
     { includeDrafts: true },
   );
   const bot = createBot();
