@@ -254,6 +254,11 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:pickup': 5,
       'base:sedan-rental': 5,
       'base:tourist-with-cooler': 1,
+      // W-P road events' vehicles: placed by a set piece, never rolled by traffic.
+      'base:event-stalled-car': 0,
+      'base:event-tow-truck': 0,
+      'base:event-work-truck': 0,
+      'base:keys-parade-float': 0,
     });
   });
 });

@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "pnw-hay-truck",
+  "name": "Hay Truck, Optimistically Loaded",
+  "category": "truck",
+  "tags": ["event", "hay-spill", "pnw"],
+  "lengthM": 8.0,
+  "widthM": 2.5,
+  "cruiseMps": 12.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The hay spill's farm truck: it crawls along in your lane and loses a bale every few seconds once racers close in. Never in the region mix: the event places it.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

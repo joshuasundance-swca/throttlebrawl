@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "event-work-truck",
+  "name": "Road Crew Truck",
+  "category": "oddity",
+  "tags": ["event", "roadwork"],
+  "lengthM": 7.0,
+  "widthM": 2.4,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The roadwork set piece's truck, an arrow board on its tail. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

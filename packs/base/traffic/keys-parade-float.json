@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "keys-parade-float",
+  "name": "Costume Parade Float",
+  "category": "oddity",
+  "tags": ["event", "parade", "keys"],
+  "lengthM": 9.0,
+  "widthM": 2.6,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A Keys costume parade float; render dresses it with a giant flamingo or a conch shell. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

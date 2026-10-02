@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "pnw-logging-float",
+  "name": "Logger Days Float",
+  "category": "oddity",
+  "tags": ["event", "parade", "pnw"],
+  "lengthM": 9.0,
+  "widthM": 2.6,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A logging-festival float: one enormous log and a chainsaw-carved bear. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

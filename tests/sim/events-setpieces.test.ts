@@ -107,8 +107,11 @@ function config(
     eventId: EVENT,
     length: 'standard',
   });
+  // The shipped event caps its pieces per race; these tests force every one in.
+  const { modifiersPerRace: _cap, ...event } = base.event;
   return {
     ...base,
+    event,
     trafficTypes: [...base.trafficTypes, ...VEHICLES],
     modifiers,
     tuning: { ...base.tuning, ...tuning },
@@ -164,7 +167,8 @@ const pieceOf = (e: SimEvent) => String(e.data['piece']);
 
 describe('road set pieces (W-P events)', () => {
   it('every piece goes live, does its job and ends as the bot rides the race', () => {
-    const run = ride(config(3));
+    // The lot cop waits (a long spawn delay), so it is the speed trap that brings him out.
+    const run = ride(config(3, ALL, { 'cops.spawnDelayS': 600 }));
     const started = run.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
     const ended = run.events.filter((e) => e.type === 'modifierEnd').map(pieceOf);
     console.log(
@@ -194,7 +198,7 @@ describe('road set pieces (W-P events)', () => {
       expect(run.kinds, k).toContain(k);
     // The hay truck drops bales as racers close in (they come down moving).
     expect(run.moved).toContain('hayBale');
-    // The speed trap: the bot blows past the cop, who pulls out with his siren on.
+    // The speed trap: the bot blows past the radar; the lot cop is brought to the trap, siren on.
     const siren = run.events.find((e) => e.type === 'siren' && e.data['cause'] === 'speed-trap');
     expect(siren, 'the speed trap summons its cop').toBeDefined();
   });

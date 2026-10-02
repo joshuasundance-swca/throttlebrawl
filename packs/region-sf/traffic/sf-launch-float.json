@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "sf-launch-float",
+  "name": "Launch Parade Float",
+  "category": "oddity",
+  "tags": ["event", "parade", "sf"],
+  "lengthM": 9.0,
+  "widthM": 2.6,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An invented startup's product-launch float: a stage, a giant laptop and a loading ring that never finishes. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

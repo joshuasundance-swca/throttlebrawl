@@ -601,7 +601,7 @@ A modifier is a small entry under `packs/base/modifiers/`:
 | `eligibility` | Region ids, event kinds and times of day it may appear in. An empty list means "any". |
 | `trigger.atProgress` | Optional race-progress window (0..1) in which it may start. |
 | `durationS` | How long it lasts; converted to ticks at load like every timing field. |
-| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`. A new effect kind is a code change; a new modifier built from existing kinds is data only. |
+| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`, and `set-piece` (built, W-P: see below). A new effect kind is a code change; a new modifier built from existing kinds is data only. |
 | `announce` | An optional bark trigger (`modifier-start`, added to the reserved trigger list) and an optional sign id, so the world can react in words. |
 
 **The maintainer's wanted examples**, all placeholders within the [tone guide](./tone-guide.md#hard-lines) (the funeral procession and rocket launch in particular must follow its hard lines):
@@ -617,7 +617,7 @@ Rules:
 
 - An event opts in with `modifiers: { "pool": [ids] | "region-default", "maxPerRace": n, "chanceScale": x }`. `region-default` means every live modifier whose `eligibility` matches; regions do not keep a second list.
 - Modifiers change the sim (traffic, hazards, cash), so the roll must be deterministic: it uses its own seeded `modifiers` stream, and the resolved modifiers are part of `SimConfig` and the replay header ([architecture](./architecture.md#event-modifiers)). The `modifierStart` and `modifierEnd` sim events are what the `modifier-start` bark trigger listens to.
-- No modifier content before M4 (`[default]`). Until then events simply omit `modifiers`, and the sim carries only an empty list.
+- `[default]` (W-P, the maintainer, 2026-10-01b: "events and set pieces") The road set pieces come first, ahead of M4: each region's race opts in with `"modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 }`, and each region pack carries its own `modifiers/` entries with a `set-piece` effect. Its fields: `piece` (`roadwork`, `crash-scene`, `parade`, `hay-spill` or `speed-trap`), `signText` (the warning sign's words), `theme` (`keys`, `pnw` or `sf`: the float dressing and the people's look), `person` (`flagger`, `cop-waving`, `marcher-keys`, `marcher-pnw`, `marcher-sf`), and per piece `vehicle` and `vehicle2` (traffic-type ids, bare ids meaning the modifier's own pack), `floats` (a list of traffic-type ids), `marchers` (a count), `inflatable` (a boolean) and `limitMps` (the speed trap's limit). The vehicles they name are ordinary `traffic-type` entries that no region lists in its mix, so traffic never rolls them; parked ones are `oddity` with `cruiseMps` 0. Other effect kinds still wait for M4 or the shelf.
 
 ### Career
 

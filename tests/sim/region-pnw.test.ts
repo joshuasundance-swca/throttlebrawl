@@ -107,7 +107,8 @@ describe('region-pnw: the bot races the Pacific Northwest headlessly', () => {
       // dev bot rear-ends a slow log truck now and then and is busted (it never evades the cop). A
       // race it does not finish must still end in a bust, never a stall.
       let res = botRace(lengthId, 1);
-      for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
+      // W-P road events (a hay truck in the lane, a speed trap) reshuffle each seed too: up to six seeds.
+      for (let seed = 2; seed <= 6 && res.finishTick < 0; seed++) {
         expect(res.busted, `${lengthId}: a DNF is a bust, not a stall (${res.end})`).toBe(true);
         res = botRace(lengthId, seed);
       }
