@@ -20,6 +20,7 @@ External facts marked "verified 2026-09-29" were fetched from the vendor's own d
 - [The gate: definition of done](#the-gate-definition-of-done)
 - [Pre-commit hooks and leak scan](#pre-commit-hooks-and-leak-scan)
 - [CI on GitHub Actions](#ci-on-github-actions)
+- [The bundle train](#the-bundle-train)
 - [Branch protection and auto-merge](#branch-protection-and-auto-merge)
 - [Deploy: game Space and staging Space](#deploy-game-space-and-staging-space)
 - [Big and generated assets](#big-and-generated-assets)
@@ -85,7 +86,8 @@ External facts marked "verified 2026-09-29" were fetched from the vendor's own d
 ├─ tools/                 offline pipelines, never shipped: packs/, road/, gis/, blender/, audio/, ai/
 ├─ scripts/               Node helper scripts used by npm scripts and CI
 ├─ space/                 Hugging Face Space README templates (prod and staging)
-└─ .github/workflows/     ci.yml, staging.yml
+└─ .github/               train.json (the bundle train's switch and numbers), dependabot.yml, deploy/
+   └─ workflows/          ci.yml, suite.yml, train.yml, train-kick.yml, staging.yml, dependabot-auto-merge.yml
 ```
 
 - Unit tests sit next to the code as `*.test.ts`. `[default]`
@@ -147,12 +149,13 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 | `e2e` | Playwright: one bot race at the phone-landscape viewport, plus two short device-path tests (keyboard, and pointer events on the touch overlay), with screenshots |
 | `e2e:one` | build, then the browser specs named after `--` (for example `npm run e2e:one -- tests/e2e/ui-pause.spec.ts`); the fast local loop, not a gate step |
 | `perf` | Playwright perf run on the throttled phone-like profile, compared with `tests/perf/budget.json` and `tests/perf/baseline.json` |
+| `perf:budget` | the size budget alone from `tests/perf/budget.json` (first-load JavaScript, whole first load, per-region models), without the throttled probes; needs a build; the quick check's last step |
 | `leakscan` / `leakscan:all` | staged files, or the whole tree (see [leak scan](#pre-commit-hooks-and-leak-scan)) |
 | `sizecheck` | fails on any committed file over 1 MB that is not allowlisted |
 | `notes:check` | fails if the branch adds no file under `changes/` |
 | `changelog:build` | turns `changes/` into `dist/changelog.json` |
 | `assets:fetch` / `assets:verify` / `assets:add` / `assets:upload` | the dataset files `assets.lock.json` pins (run W-Q): download them into `.cache/assets/` and check each sha256 (an already-cached good file is not downloaded again); check the lock against the repo and every cached file; pin a new or changed file (`-- <file> --as <packId>/<path> [--region <id>]`); upload the pinned files the revision lacks with the signed-in `hf` CLI and pin the commit it made |
-| `check` | runs the whole gate in CI order and prints what each step examined |
+| `check` | runs the whole gate in CI order and prints what each step examined; `-- --tier <tiers>` runs some tiers (`static`, `unit`, `sim`, `browser`, `perf`, and `budget`: the build plus `perf:budget`), and `-- --tier static,unit,budget` is the quick check |
 | `phone` | helper for `adb reverse` (see [Phone testing](#phone-testing)) |
 | `hooks:install` | installs the git hooks |
 | `knip` | dead-code report, advisory |
@@ -174,6 +177,8 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 | Perf | `perf` | see below | `[decided]` |
 | Notes | `notes:check` | on a pull request, at least one new `changes/` file; skipped on push to main | plain changelog `[decided]`, the per-PR file `[default]` |
 
+**Where it runs.** `[decided]` (the maintainer, 2026-10-02, "Yes, build it"): the full gate goes green on every **bundle**, not on every PR ([The bundle train](#the-bundle-train)). Each PR gets the quick check: Types, Lint and format, Packs, Leak scan, Size, Notes, Unit, and Build with the size budget. The whole table (Sim, Bot playthrough and Perf too) runs once on each bundle of ready PRs, then again on main after every landing. A PR from a fork, a Dependabot PR, a PR that asks with "[full-gate]", a PR that changes `.github/`, and every PR while the train is off still run the whole table on their own. The table itself is unchanged. `[default]` for how each PR's path is chosen.
+
 `[default]` The details:
 
 - **One command.** `npm run check` runs every step locally in the same order as CI. CI calls the same npm scripts, never its own copies. Each step prints what it examined (files linted, tests run, races simulated, screenshots taken, frames sampled), because a check that looked at nothing reads exactly like a pass.
@@ -189,17 +194,21 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
   - **Soft tier, throttled.** Chromium with 4x CPU throttling (the DevTools protocol's `Emulation.setCPUThrottlingRate`) and a phone-like landscape viewport (about 900×400 CSS pixels, touch, mobile). It records p50 and p95 frame time and sim step time p95 (from `dev/perf`) over 20 seconds of bot racing. It fails only on a catastrophic regression, above twice the stored baseline in `tests/perf/baseline.json`, and always prints the numbers and the renderer string. The baseline is measured on CI runners and updated by a PR whose note gives the reason.
   - **Truth.** The benchmark phone (Galaxy A16 5G) is the real test `[decided]`. The in-game debug overlay (`?debug=1`) shows fps, frame time and the renderer string. Any performance claim names the device, the renderer and the scene.
 - **Recordings.** `tests/replays/` holds bug-repro input recordings, not gate fixtures. architecture.md says a replay plays only on a build with the same replay key (the hash of the sim code plus the sim content hash), so a committed recording would go stale on every content or tuning PR. A recording whose replay key no longer matches is skipped with a printed notice.
-- **Main red after a merge.** Checks are not required to run against the very latest main (see [Branch protection](#branch-protection-and-auto-merge)), so two green PRs can rarely combine into a red main. CI runs again on every push to main. If main goes red, prod deploy does not run, so the public game stays on the last green build, and the next agent session's first job is a fix-forward or revert PR. A revert is a new commit, never a history rewrite.
+- **Main red after a merge.** Checks are not required to run against the very latest main (see [Branch protection](#branch-protection-and-auto-merge)), so PRs that each passed alone can combine into a red main. On 2026-10-02 that happened three times in one day (stale wall-clock e2e timings, seeded tests that sampled 3 races, and a first-load JavaScript budget that the sum of several PRs crossed: 500.4 KB against 500), and each red blocked 20 or more PRs for hours. `[decided]` (the maintainer, 2026-10-02) The bundle train is the fix: it tests each bundle on top of the main it will land on, so PRs on the train path compose before they land, not after. `[default]` The rest:
+  - PRs on the docs and full paths still land without a train, and GitHub can land part of a passed bundle (see the train's known limits), so main can still go red. CI runs again on every push to main, as the backstop.
+  - If main goes red, prod deploy does not run, so the public game stays on the last green build.
+  - The train stops. It re-runs main's failed jobs once, in case of a flake, and waits for main to be green again.
+  - One main-green fixer lands a fix-forward or revert PR with "[full-gate]" in its title or body, so it takes the full path and does not wait for the train. A revert is a new commit, never a history rewrite.
 
 ### Local loop for lanes
 
-`[default]` (maintainer, 2026-10-01: "I like thorough testing, but it seems like we're doing a lot of waiting on this pc instead of making more rapid, visible progress"). Measured on 2026-10-01 across 141 past lane runs (about 157 lane-hours), lanes spent 61% of their time waiting on tests: 32% on local suites, 22% watching CI and 7% in the pre-push hook, because the same suites ran locally, in the hook, then in CI. The gate above is unchanged, and CI runs all of it on every PR. Locally, a lane runs what its change touches, then pushes:
+`[default]` (maintainer, 2026-10-01: "I like thorough testing, but it seems like we're doing a lot of waiting on this pc instead of making more rapid, visible progress"). Measured on 2026-10-01 across 141 past lane runs (about 157 lane-hours), lanes spent 61% of their time waiting on tests: 32% on local suites, 22% watching CI and 7% in the pre-push hook, because the same suites ran locally, in the hook, then in CI. The gate above is unchanged, and CI runs all of it on every PR's bundle (the quick part on the PR itself; see [The bundle train](#the-bundle-train)). Locally, a lane runs what its change touches, then pushes:
 
 - `npm run test:changed`: the unit and sim tests that import a file changed since `origin/main`, committed or not. Vitest follows the import graph, so a change under `src/sim/` pulls in most of the sim batch, and a change to docs alone runs nothing.
 - `npx vitest run <file>...` for the test being written.
 - `npm run e2e:one -- tests/e2e/<spec>.spec.ts` for the browser specs of a render, input, UI or perf-relevant change; a whole browser tier when the change is broad.
 - On a dev machine shared by parallel lanes, cap Vitest's workers (`VITEST_MAX_WORKERS=2`) so the lanes do not starve each other.
-- The pre-push hook still runs and is never skipped: the typecheck, plus the unit tests related to what changed since `origin/main`. Vitest's `--changed` alone selects nothing for a config-only change, so the hook runs the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig differs from `origin/main`. CI runs every test on the PR anyway.
+- The pre-push hook still runs and is never skipped: the typecheck, plus the unit tests related to what changed since `origin/main`. Vitest's `--changed` alone selects nothing for a config-only change, so the hook runs the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig differs from `origin/main`. CI runs every test on the PR's bundle anyway.
 - `npm run check` with no `--tier` is for the rare change that needs the whole gate before CI, such as a skeptic's review.
 
 ## Pre-commit hooks and leak scan
@@ -245,39 +254,48 @@ The browser tiers (e2e, perf) run in CI and in `npm run check`, not in hooks. Ho
 
 `[decided]` The repo is public from day one, and changes reach main by auto-merge on green checks. Actions minutes are free for this case: "GitHub Actions usage is **free** for **self-hosted runners** and for **public repositories** that use standard GitHub-hosted runners" (GitHub docs, verified 2026-09-29).
 
-`[default]` Two workflows:
+`[default]` The workflows:
 
-**`ci.yml`**, triggered on `pull_request` to main and on `push` to main:
+- **`suite.yml`**: the test suite, called by the others (`workflow_call`), so a PR, a train and main always run the same jobs. `full: true` runs every tier; `full: false` is the quick check.
+- **`ci.yml`**: on `pull_request` to main and on `push` to main. It routes each PR (below), calls the suite, and on main deploys.
+- **`train.yml`** and **`train-kick.yml`**: the bundle train ([The bundle train](#the-bundle-train)).
+- **`staging.yml`**: every branch push to the staging Space (below).
+- **`dependabot-auto-merge.yml`**: [Dependabot](#dependabot).
+
+**`ci.yml`**:
 
 ```mermaid
 flowchart LR
-  A[static and unit: types, lint, format, packs, leak scan, size, notes, then the unit tests and fixtures] --> G[gate]
-  S[sim 1/3 to 3/3: the seeded sim batch with same-run replay, split by measured file times] --> G
-  C[browser 1/4 to 4/4: build, bot playthrough and the other browser tests, split by measured file times; 4/4 then runs perf] --> G
-  G -->|push to main only| D[deploy-prod]
+  P[route: train, docs or full] --> A
+  A[static and unit: types, lint, format, packs, leak scan, size, notes, then the unit tests; on the quick check also the build and its size budget] --> G
+  S[sim 1/3 to 3/3: the seeded sim batch with same-run replay, split by measured file times; full only] --> G
+  C[browser 1/4 to 4/4: build, bot playthrough and the other browser tests, split by measured file times; 4/4 then runs perf; full only] --> G
+  G[aggregate: named gate, or quick on the train path] -->|push to main only| D[deploy-prod]
   D --> R[release notes]
 ```
 
-- `static and unit` (one job, `npm run check -- --tier static,unit`), `sim` and `browser` run in parallel. `gate` has `needs:` on all of them, runs with `if: always()`, and fails unless every one succeeded. **`gate` is the only required status check.** A single aggregate check means adding or renaming a job never strands PRs, and GitHub's own tip applies: "make sure that job names are unique across all workflows" (verified 2026-09-29). static and unit share a job because together they take about 3 minutes, inside the browser slices' time, and one job sets up one runner instead of two. `[default]`
+- On a pull request, `route` (`node scripts/train.mjs route`) reads what the PR changes (its merge commit against main) and who opened it, and picks its path: **train** (the quick check; the train posts `gate`), **docs** (the quick check is its `gate`) or **full** (every tier on the PR, which is its `gate`). See the table in [The bundle train](#the-bundle-train). A push to main always runs every tier.
+- `static and unit` (one job), `sim` and `browser` run in parallel. The aggregate job has `needs:` on all of them, runs with `if: always()`, and fails unless every one succeeded. It is named **`gate`** on the docs and full paths and on main, and **`quick`** on the train path, so a train-path PR never gets a `gate` from its own run: one source of `gate` per head commit. Its job id is `aggregate`, so no placeholder name can read as `gate`. **`gate` is the only required status check.** A single aggregate check means adding or renaming a job never strands PRs, and GitHub's own tip applies: "make sure that job names are unique across all workflows" (verified 2026-09-29). static and unit share a job because together they take about 4 minutes (measured 2026-10-02: the unit tests 170 s, lint 35 s, types 19 s, format 12 s), inside the browser slices' time, and one job sets up one runner instead of two. `[default]`
 - **Slices.** `sim` (3 slices) and `browser` (4 slices) are matrices. Each slice runs `npm run check -- --tier <tier> --shard <i>/<n>`: the test runner lists the tier's files (`vitest list`, `playwright test --list`), and `scripts/shard-plan.mjs` splits them by their measured CI seconds in `tests/timings.json`. Every file lands in exactly one slice, so nothing is skipped and the slices' test counts add up to the unsharded run's; each slice also fails if its runner ran a different number of files (Vitest) or tests (Playwright) than the plan gave it. `npm run check -- --tier browser --shard 1/4 --plan` prints every slice's files without running anything. `fail-fast` is off, so a red slice never cancels another's result. Locally, `npm run check` with no `--tier` still runs each tier whole. `[default]`
   - **Why measured times.** The runners' own `--shard` splits by file count, not time. On 2026-10-01 the two sim slices took about 290 s and 120 s, and browser slice 2 (its e2e, then perf) was the gate's critical path in 27 of the last 30 PR runs, at a median gate of 7.7 minutes. The plan simulates each runner (Vitest's 3 workers on CI's 4 vCPUs, starting the longest file first through `tests/sequencer.ts`; Playwright's 2 workers, by file path), and gives a file with no measured time the median time, so a new test file lands somewhere sensible. Stale times can only make the slices uneven, never drop a file. The times are what each file took on CI in this layout, so they include the slowdown of sharing a runner: three CPU-bound sim files at once ran about twice as slow as one alone. Refresh the table with `node scripts/timings.mjs <run-id>...` (green main runs; a red job's other files count too) when slices drift apart by more than about a minute.
   - **The shared seeded batch** (`simBatch()`, `presetBatch()`, see `tests/sim/batch.ts`) is computed once per runner and every file that reads it waits for it, so those files share one sim slice. In it, `dev-presets.test.ts` computes the Easy and Hard batches while another file computes the Normal one.
   - **Browser slices** each build and test their own build (`build:dist`: the static tier already ran the typecheck that `build` would repeat in every slice); screenshots upload per slice (`screenshots-1` to `screenshots-4`). The e2e step was the critical path at about 390 s of an 8-minute job before it was first split.
 - The last browser slice then runs perf on the same build, after its own e2e files (`--tier browser,perf`: one build, then e2e, then the size budget and the throttled probes one at a time), as the one-job layout did; the slice plan gives that slice fewer e2e seconds to make room. On a push to main, that build is the `dist` artifact `deploy-prod` ships. perf does not get a runner of its own: tried in #166, the ink look's frame p95 on a fresh runner printed 116.6 to 149.9 ms in 8 of 9 runs, against 50 to 100.1 ms after e2e in 22 of 23, and it failed main (reverted in #176). The build step belongs to both the `browser` and `perf` tiers; a run of both, or a plain `npm run check`, builds once. `[default]`
-- **No `paths:` filter on `ci.yml`.** A required check behind a path filter never reports on a docs-only PR, which leaves that PR unmergeable forever. Docs-only PRs just run the fast path.
-- Checkout uses `fetch-depth: 0` in both workflows, so `notes:check` and `changelog:build` can read history.
+- **No `paths:` filter on `ci.yml`.** A required check behind a path filter never reports on a docs-only PR, which leaves that PR unmergeable forever. Path awareness lives inside the workflow instead: the `route` job, and job-level conditions on `sim` and `browser`.
+- Checkout uses `fetch-depth: 0` in the suite and deploy jobs, so `notes:check` and `changelog:build` can read history.
 - `notes:check` runs only on `pull_request` events, diffing `origin/main...HEAD`. On `push` to main it is skipped, because there is no branch to diff and the squash commit already carries the note. A Dependabot-only PR is exempt ([Dependabot](#dependabot)).
 - **Every green main run deploys the build its own gate tested.** `[default]` Main push runs share the workflow's concurrency group (`ci-push-refs/heads/main`, never cancelled in progress), so they run one at a time, in push order. GitHub keeps only the newest waiting run: a merge that lands while another is waiting goes live bundled into the next build, and its own run shows as cancelled before it starts. `deploy-prod` and the release job also run under `concurrency: { group: prod-deploy, cancel-in-progress: false }`, so nothing cancels an upload part-way. Before uploading, `scripts/prod-deploy-check.mjs` reads the prod Space's newest `deploy <sha>` commit through the Hub API and skips only if prod already serves a newer main commit, which is what a re-run of an old run would otherwise overwrite. When what prod serves is unknown (the API fails, or the id does not resolve), it deploys.
   - **Why not "deploy only main's head"?** That was the first rule, and it starved prod: while merges landed faster than one main CI run (a median 10.5 minutes over the last 19 green ones), every run found main had moved and skipped its upload. On 2026-09-30 and 10-01, 39 of 59 green main runs skipped, and prod stayed on one build for up to 145 minutes across 6 green runs. Deploying main's head from an older run is not an option either: that build never passed the gate.
   - **The trade-off.** While merges keep landing, prod is up to one CI run behind main, rather than stuck; it catches up within one run of the last merge. There are more uploads: one per green run (59 instead of 20 over those 12.4 hours, about 5 an hour), each about 10 s and 3 or 4 commits on the Space, and one release per deploy that has player notes. A red last run leaves prod on the previous green build, which is now minutes old rather than hours.
-- Caches: npm cache, Playwright browsers (keyed by the browser builds Playwright pins, not the whole lock file), and Chromium's system packages. `playwright install --with-deps` installs about 14 Ubuntu packages (fonts, mesa) from the Ubuntu mirror, which sometimes crawls: 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run, against 13 to 45 s normally. The browser jobs keep those `.deb` files between runs and put them in apt's own archive folder first, so apt installs the same packages and downloads only what changed; slice 1 saves the set again only when it differs. `[default]`
-- `permissions:` are set per job to the minimum. Only the deploy and release jobs get `id-token: write` or `contents: write`.
+- Caches: npm's download cache (`~/.npm`, keyed by the lock file), Playwright browsers (keyed by the browser builds Playwright pins, not the whole lock file), and Chromium's system packages. `playwright install --with-deps` installs about 14 Ubuntu packages (fonts, mesa) from the Ubuntu mirror, which sometimes crawls: 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run, against 13 to 45 s normally. The browser jobs keep those `.deb` files between runs and put them in apt's own archive folder first, so apt installs the same packages and downloads only what changed; slice 1 saves the set again only when it differs. Pull request and main runs save caches; a train only restores them, because it runs PR code in main's cache scope (`save-caches: false`). `[default]`
+- **Setup is cheap; the tests are the cost.** Measured over the 220 ci runs from 01:25Z to 18:19Z on 2026-10-02 (medians per job): set-up, checkout, setup-node and `npm ci` take about 10 s together, and installing Chromium about 13 s more, against 3.7 minutes of static and unit tests, 3.6 minutes per sim slice and 5.7 minutes per browser slice (each slice's build is about 7 s of that). Sharing one build across slices or caching `node_modules` would save well under a minute of each 48 job-minute run, so neither is done; the bundle train is the throughput lever. `[default]`
+- `permissions:` are set per job to the minimum. Only the deploy and release jobs get `id-token: write` or `contents: write`; the train's writers are listed in [The bundle train](#the-bundle-train).
 - Actions from `actions/*` are pinned to major versions; any third-party action is pinned to a full commit SHA.
 - Fork PRs get no secrets and no OIDC token, which is GitHub's default for `pull_request` from forks. Deploy jobs never run for them.
 
 **`staging.yml`**, triggered on `push` to any branch except main, plus a manual `workflow_dispatch` with a branch input:
 
-- It runs `leakscan:all` and `sizecheck` (seconds; both are existing gate steps, so this adds no new check), then `build` plus a boot smoke test (the page loads, the canvas renders, no errors), then deploys to the staging Space as the same source mirror plus `dist/` that prod gets ([Deploy](#deploy-game-space-and-staging-space)).
+- It runs `leakscan:all` and `sizecheck` (seconds; both are existing gate steps, so this adds no new check), then `build` plus a boot smoke test (`tests/e2e/boot.spec.ts` alone, about 11 s: the page loads, the canvas renders, no errors), then deploys to the staging Space as the same source mirror plus `dist/` that prod gets ([Deploy](#deploy-game-space-and-staging-space)). `[default]` Until 2026-10-02 the smoke step ran every e2e spec (45 files, 2564 s of measured test time), so a newer push cancelled nearly every run before it deployed: 160 of the 161 runs from 01:25Z to 18:19Z that day were cancelled, they still used 421 job-minutes, and staging last deployed at 2026-10-01 20:21Z.
 - `concurrency: { group: staging-space, cancel-in-progress: true }`, so the newest push wins. That is what "staging shows the newest feature branch" means in practice.
 - The manual trigger lets the maintainer, or the lead agent on request, pin a specific lane's branch to staging.
 - Staging does not wait for the full gate. It is for playing work in progress, and the build stamp shows which branch and commit it is.
@@ -296,6 +314,95 @@ The maintainer asked for "dependabot for everything it supports" (2026-09-30), u
   - `.npmrc` keeps `ignore-scripts=true`.
 - **Expected side effect *(unverified until the first Dependabot merge)*:** auto-merge armed with the workflow's own `GITHUB_TOKEN` merges as that token, and GitHub's docs say "events triggered by the `GITHUB_TOKEN` will not create a new workflow run". So a Dependabot merge probably does not start `ci.yml` on main, which means no prod deploy and no release for it. The bump reaches the game with the next merge from anyone else. Fixing that would need a personal token or an app, which is a new credential, so it is left as is.
 
+## The bundle train
+
+`[decided]` (the maintainer, 2026-10-02, answering a question that described this design: "Yes, build it"):
+
+- Each PR gets a quick check (types, lint, unit tests, build).
+- Ready PRs are combined, and the full suite (the sim races plus the browser tier) runs once on the combination.
+- Green: they all land. Red: the bundle splits to find the culprit, and the rest still land.
+- Main keeps running the full suite after every landing, as a backstop.
+- "The full gate green on every PR" becomes "the full gate green on every bundle".
+
+Why: on 2026-10-02 main went red three times when PRs that each passed CI alone composed into a red main (see "Main red after a merge" in [the gate](#the-gate-definition-of-done)), and CI was the bottleneck. Over the 220 ci runs from 01:25Z to 18:19Z that day, each of the 60 merged PRs cost about 150 job-minutes (2.7 full PR runs per merged PR, plus main's runs), a PR run's slowest job waited a median 14 minutes (90th percentile 37) for one of the repo's 20 runners, and a PR took a median 36 minutes from its last push to its merge. A merge queue would do this job, but GitHub's needs an organization-owned repo ("Pull request merge queues are available in any public repository owned by an organization", verified 2026-09-29), so the train is built from GitHub Actions: `.github/workflows/train.yml`, `train-kick.yml`, `suite.yml`, and `scripts/train.mjs` (unit-tested in `scripts/train.test.ts`). Everything below is `[default]`.
+
+**The switch.** `"live"` in `.github/train.json`. Off: every PR runs the full gate itself, exactly as before the train, and the train runs only as a dry run. Turning it on or off is a PR that changes that file, so it takes the full path itself. The file also holds `cap` (8, the most PRs a train carries), `landingMinutes` (10) and `mainWaitMinutes` (15). After turning it off, a PR still waiting for a train needs its CI run again (a new push, or re-running its ci run) to get a `gate` from the full path.
+
+**Each PR's path** (ci.yml's `route` job, from what the PR changes against main and who opened it):
+
+| Path | Which PRs | What runs on the PR | Where its `gate` comes from |
+|---|---|---|---|
+| train | every other PR | the quick check: `npm run check -- --tier static,unit,budget` (static and unit, then the build and `perf:budget`, about 4.5 minutes in one job) | a train: a commit status on the PR's head commit |
+| docs | only `docs/**`, `changes/**` and `*.md` files (THIRD_PARTY_ASSETS.md included) | the quick check | the quick check (its aggregate job is named `gate`) |
+| full | a PR from a fork; a Dependabot PR; "[full-gate]" in the title or body; any change under `.github/`; no changed files found; every PR while the train is off | the full suite, as before the train | its own run |
+
+- A change under `.github/` takes the full path because a train runs main's workflow files, not the PR's.
+- The escape hatch is read when the PR's CI runs: put "[full-gate]" in the title or body when opening the PR, or push again after adding it. The main-green fixer uses it.
+
+**When it runs.** When any `ci` run finishes (a PR's quick check, a full run, a main push); when `train-kick` runs (auto-merge armed, or a draft marked ready, with no new ci run); and when a finished train sends the next one (`workflow_dispatch`, the one event GitHub's own token may start a run with). One train at a time: the concurrency group `train` never cancels a running train. GitHub keeps one waiting run per group and replaces it with a newer one, which loses nothing, because every run plans from scratch.
+
+**Who rides** (`scripts/train.mjs plan`): an open PR from this repo, not a draft, auto-merge armed, a green `quick` check on its head commit, no "[full-gate]", no `gate` check run on that commit, and its `gate` status absent or pending. The train departs with whatever is eligible, lowest PR number (oldest) first, up to 8. It never waits to fill.
+
+**The tree.** base = main's commit when the train departs. Each PR's head commit merges onto it in that order (`git merge-tree --write-tree`, the same merge machinery as `git merge`), and each step is recorded as a merge commit with a fixed identity (GitHub Actions' no-reply address) and date. So every job rebuilds the same commits from (base, heads) and checks that the tree is the one the plan made. No train branches are pushed; branches are never deleted here, so they would pile up. A PR that conflicts with main gets `gate` = failure ("conflicts with main; merge origin/main and push") and a comment. One that conflicts only with an earlier PR of the bundle waits for the next train: once that PR lands, it conflicts with main and is told so.
+
+**The suite.** Exactly what a push to main runs: static and unit, sim in 3 slices, browser in 4 slices with perf in the last, from the same `suite.yml` ci.yml calls, so the two cannot drift.
+
+**The landing invariant.** A set of PRs gets `gate` = success only if:
+
+- exactly (main at departure + that set, in that order) passed the full suite;
+- main has not moved since departure (checked again at report time);
+- every PR of the set still has the tested head commit, and is open, not a draft and armed.
+
+Then success goes on each head commit, linked to the train's run and naming the train and its PRs, and auto-merge squashes them. Otherwise nothing passes, and a new train departs:
+
+- main moved (a fork, Dependabot, docs or [full-gate] PR landed);
+- a PR changed. A PR pushed after departure has a new head commit with no status, so it simply waits for a later train.
+
+The report then waits up to 10 minutes for the passed PRs to merge. One that has not merged by then gets its success taken back (pending again), so it can never land later on a main it was not tested on. The report also says whether main's new tree is exactly the tested tree.
+
+**Red.** A red bundle of n PRs drops each of them to cap ceil(n/2). The next train takes the smallest cap first, oldest first, so the older half rides alone on the then-current main and lands if green; the rest ride next, on top of what landed. A PR alone (cap 1) that fails on main gets `gate` = failure, with the failing test names, the run link and a PR comment. A second suite (`control`) then runs on the PR's own branch, after the first:
+
+- if that passes too, the comment calls it a composition failure with what landed on main since the branch, and lists those PRs;
+- if it fails, the failure is the PR's own.
+
+A PR is never blamed while main itself is red: the report reads main's own ci run on that commit, waiting up to 15 minutes if it is still running. The bounds:
+
+- Each red lowers a head commit's cap (8, 4, 2, 1), so a commit rides at most 4 red trains before it lands or fails.
+- The train runs one full suite at a time, and main's backstop one at a time, so at most 2 full suites (18 jobs of the 20) run at once.
+- A flake costs a split, not a failure: the halves pass and land.
+
+**Main red.** While main's own CI on its newest commit is red, the train does not depart: a red bundle would say nothing about its PRs. On a first red attempt, the train re-runs main's failed jobs once (a flake), waits for that, and sends the next train. A second red stops the train until a fix lands, which comes from the main-green fixer with "[full-gate]".
+
+**State.** It lives only in the `gate` status on each head commit; nothing else is stored:
+
+- none: new;
+- pending: riding or waiting. The description ends with "[cap N]", the biggest bundle it may ride in next: "riding train 12: main abc1234 + #340 #342 [cap 8]", "train 12 was red with 4 PRs; splits [cap 2]", "train 12: main moved; waits for the next train [cap 8]";
+- success: "passed train 12: main abc1234 + #340 #342" (landing);
+- failure: "train 12: fails alone on main abc1234; see the PR comment", or a conflict. A new push rides again.
+
+**Rights.** No job that runs PR code can write anything:
+
+- The suite and control jobs get `contents: read` only, and restore caches without saving them, so a bundle cannot reach main's caches.
+- The plan job is read-only too. It fetches PR head commits as git objects and merges them without a working tree.
+- Only three jobs can write, and they run main's own scripts only: no PR checkout, no npm. `announce`: statuses and PR comments. `report`: statuses, PR comments and starting the next train. `rerun-main`: re-running main's failed jobs.
+- PR titles, bodies and branch names reach scripts through the API or `env`, never through `${{ }}` in a `run:` line. Nothing uses `pull_request_target`, and forks never ride.
+
+**Dry run.** `gh workflow run train.yml --ref main -f dry_run=true` plans, assembles and runs the suite, then prints what it would post. It posts no status, writes no comment and sends no train. Add `-f prs="341 342"` to bundle exactly those PRs, in that order, eligible or not. A dry run has its own concurrency group (`train-dry`), so it never waits behind a live train or replaces one.
+
+**Measured and projected.** Replaying the same 58 merged PRs (with their real push times) through a model of the train gives these figures; the model assumes every bundle is green, so it leaves out the extra trains a red one costs:
+
+- about 54 to 59 job-minutes per merged PR instead of 150: the quick check about 12, trains about 22 to 24, main's backstop about 21 to 23;
+- a median 23 to 28 minutes from last push to landing, instead of 36;
+- bundles of 2.1 to 2.3 PRs on average (most trains carry 1 or 2; bursts carry up to 8);
+- an average of about 3.1 to 3.4 busy runners instead of 8.9 (9.3 with staging's cancelled runs, now fixed), so the 20-runner queue should mostly empty: a quick check waits only while two full suites (18 jobs) run.
+
+**Known limits.**
+
+- GitHub lands a passed bundle one PR at a time, in its own order. For clean merges the result is the same tree, and the report prints whether it was. If GitHub merges only part of a passed bundle, main holds a subset nobody tested until the next train. Main's backstop CI checks every landing.
+- Main's backstop runs one at a time and GitHub keeps only the newest waiting run, so a bundle of several PRs usually gets 2 main runs: its first landing and its last.
+- A train's checks show on main's newest commit (that is the commit a `workflow_run` or `workflow_dispatch` run belongs to). A red `suite` check there is a bundle's result, not main's; main's own result is its `ci` run.
+- *(unverified until the first live train)* A passed PR is squash-merged as whoever armed its auto-merge (the maintainer's account for lanes), so its push to main starts ci.yml as a lane's merge does today. Whether a run re-run with GitHub's token fires `workflow_run` is also unverified; `rerun-main` sends the next train itself, so the train does not depend on it.
+
 ## Branch protection and auto-merge
 
 `[decided]` Merge on green, with no human gate. Protection on a free plan requires a public repo: "Protected branches are available in public repositories with GitHub Free and GitHub Free for organizations" (GitHub docs, verified 2026-09-29).
@@ -308,12 +415,12 @@ The maintainer asked for "dependabot for everything it supports" (2026-09-30), u
 
 - Require a pull request before merging, with **0** required approvals. There is one human, and agents act with the maintainer's credentials, so an approval rule would either block everything or approve nothing.
 - Require the status check `gate`.
-- **Do not** require branches to be up to date before merging. Merge queues would handle that safely, but "Pull request merge queues are available in any public repository owned by an organization" (verified 2026-09-29), which a personal-account repo is not. Strict mode without a queue forces every parallel lane to rebase and re-run after each merge, which serializes the whole fleet. Post-merge CI on main covers the rare semantic conflict. The repo owner is the maintainer's personal account `[decided]`. If conflicts between lanes turn out to be common, moving the repo to a free organization (which unlocks merge queues) is a later call for the maintainer, and GitHub can transfer a repo; see [Open questions](#open-questions).
+- **Do not** require branches to be up to date before merging. Merge queues would handle that safely, but "Pull request merge queues are available in any public repository owned by an organization" (verified 2026-09-29), which a personal-account repo is not. Strict mode without a queue forces every parallel lane to rebase and re-run after each merge, which serializes the whole fleet. The repo owner is the maintainer's personal account `[decided]`. Conflicts between lanes did turn out to be common (three red mains on 2026-10-02), and the answer was the [bundle train](#the-bundle-train) `[decided]`: it tests each bundle on top of the main it lands on, with no setting changed. The required `gate` check accepts any source (a check run or a commit status), which is what lets the train post it.
 - Keep the defaults that block force pushes and branch deletion on main: "By default, each branch protection rule disables force pushes to the matching branches and prevents the matching branches from being deleted" (verified 2026-09-29).
 - Turn on **"Do not allow bypassing the above settings"**. Agents push with the maintainer's own credentials, and "By default, the restrictions of a branch protection rule don't apply to people with admin permissions" (verified 2026-09-29). Without this setting, an agent could push straight to main.
 - Repo settings: **Allow auto-merge** on; squash merging only; **Automatically delete head branches off**, because agents never delete (branches can be tidied later by the maintainer).
 
-**How an agent merges.** Open the PR and arm auto-merge in the same step: `gh pr merge --auto --squash`. Do not wait for checks and then merge, since that races GitHub's mergeability computation. Confirm the merge by asking GitHub for the PR's state (`gh pr view --json state,mergedAt`), never by trusting a command's exit code.
+**How an agent merges.** Open the PR and arm auto-merge in the same step: `gh pr merge --auto --squash`. Do not wait for checks and then merge, since that races GitHub's mergeability computation. A green `quick` check with auto-merge armed means the PR is queued for the train; `gate` then arrives from the train, and auto-merge lands it (see [The bundle train](#the-bundle-train)). Confirm the merge by asking GitHub for the PR's state (`gh pr view --json state,mergedAt`), never by trusting a command's exit code.
 
 ## Deploy: game Space and staging Space
 
@@ -425,7 +532,7 @@ For a quick look without a dev machine, open the staging Space's `*.hf.space` UR
 - **Shared contracts change first.** A change to a data-pack schema or a cross-module interface lands as its own small PR, merged before the lanes that use it. That keeps lanes from coding against a moving target.
 - **Local isolation:** parallel agents on one machine each use their own `git worktree`, never the same checkout.
 - **Lanes emit status.** `[decided]` Each lane writes a small machine-readable status record (lane id, task id, state, PR link, last gate result) to the orchestrator's journal outside the repo, for a maintainer-private progress view. Big orchestrated runs resume from their journals after usage limits `[decided]`. The field list is `[default]`.
-- **Small PRs, merged often.** A lane opens a PR as soon as something is playable, and arms auto-merge immediately.
+- **Small PRs, merged often.** A lane opens a PR as soon as something is playable, and arms auto-merge immediately. Once its quick check is green, the PR is queued for the [bundle train](#the-bundle-train), and the lane can move on.
 - **Main always playable.** Main is only ever changed by green merges, prod deploys only from green main, and a red main is fixed forward first (see [the gate](#the-gate-definition-of-done)).
 - **Session end.** Each lane leaves its branch pushed, and either merged or as a draft PR with a line saying what's missing. Nothing lives only on one machine.
 - **Resume card** (composed by the lead agent from `gh pr list`, recent notes and the Space links):
@@ -477,7 +584,7 @@ None are open. Both of this page's questions were answered in the maintainer's c
 
 The same round ratified the plan with the note "Mirror repo to hf" (carried out in [Deploy](#deploy-game-space-and-staging-space)), approved creating the repo and both Spaces now, and approved launching the M1 run right after the repo exists `[decided]`.
 
-Not open: the repo owner is the maintainer's personal account `[decided]`. Moving to a free organization for merge queues would only be raised if lane conflicts turn out to be common; it blocks nothing.
+Not open: the repo owner is the maintainer's personal account `[decided]`. Lane conflicts did turn out to be common (2026-10-02), and the maintainer chose the [bundle train](#the-bundle-train) over a move to an organization for GitHub's merge queue `[decided]`.
 
 ## Verified external facts
 

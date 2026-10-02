@@ -1,0 +1,19 @@
+# Starts the bundle train (train.yml, through its workflow_run trigger) when a PR becomes ready
+# without a new ci run: auto-merge armed after the quick check finished, or a draft marked ready.
+# It runs no code and has no rights.
+name: train-kick
+
+on:
+  pull_request:
+    branches: [main]
+    types: [auto_merge_enabled, ready_for_review]
+
+permissions: {}
+
+jobs:
+  kick:
+    name: kick the train
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "A PR may be ready for the train; train.yml plans when this run finishes."

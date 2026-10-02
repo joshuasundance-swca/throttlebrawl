@@ -17,7 +17,7 @@ Tags in docs: `[decided]` is the maintainer's call, so don't change it without a
 
 ## Definition of done
 
-`[decided]` The bar is tests, lint and types, a bot playthrough, a perf check and a plain changelog; the leak scan is `[decided]` too. The other checks are `[default]` additions. A change is done when CI's `gate` check is green on your PR (auto-merge then merges it). `npm run check` is the same list run locally:
+`[decided]` The bar is tests, lint and types, a bot playthrough, a perf check and a plain changelog; the leak scan is `[decided]` too. The other checks are `[default]` additions. A change is done when the `gate` check is green on your PR (auto-merge then merges it). `[decided]` (the maintainer, 2026-10-02) The full gate runs on every **bundle**, not every PR ([the bundle train](docs/engineering.md#the-bundle-train)): your PR gets a quick check (`quick`: types, lint, unit tests, build and size budget), then rides a train that runs the whole list below once on main plus a bundle of ready PRs, and posts `gate` on your PR. A docs-only PR gets `gate` from its quick check. A PR from a fork or Dependabot, one with "[full-gate]" in its title or body, or one that changes `.github/` runs the whole list on its own, and so does every PR while the train is switched off (`"live": false` in `.github/train.json`). `npm run check` is the same list run locally:
 
 - types, lint and format are clean;
 - pack validation, unit tests, sim tests (seeded races that replay to identical hashes) and, once they exist, fixture migrations pass (save fixtures from M4; pack-migration fixtures from the first outside pack) `[default]`;
@@ -34,6 +34,8 @@ Locally, the pre-push hook (typecheck and tests) must pass. Run `npm run check`,
 - One exception, before any of this applies: the repo's very first commit (the planning docs, made by the lead agent at repo creation, before branch protection exists) goes straight to `main` ([engineering](docs/engineering.md#branch-protection-and-auto-merge)). Every later change is a PR.
 - You may push your branches and open PRs without asking. `[decided]`
 - Arm auto-merge when you open the PR (`gh pr merge --auto --squash`). Main changes only through green checks. `[decided]`
+- A green `quick` check with auto-merge armed means your PR is queued for the train; you can move on. Its fate shows in the `gate` status on your head commit: pending ("riding train N", "waits", "splits"), success (landing), or failure (it failed alone on main, or conflicts with main), with a PR comment naming the failing tests. A new push rides a later train by itself; to retry a flake, push again. `[default]`
+- Fixing a red main? Put "[full-gate]" in the PR's title or body when you open it, so it takes the full gate on its own instead of waiting for the train (which waits for main to be green). `[default]`
 - Confirm a merge by querying the PR's state (`gh pr view --json state,mergedAt`), not by trusting an exit code.
 - Keep PRs small, and open one as soon as something is playable.
 - Stay inside your lane's folders, plus your own tests and `changes/` note. A small edit to a shared config or script (a `package.json` script, a config option, a test setup file) may ride in your own PR when only your change needs it; say so in the PR note. Dependency changes, the lock file, `.github/` and this file still go through the infra lane or a tiny separate PR. `[default]` (the maintainer, 2026-10-01: less waiting on extra PRs)

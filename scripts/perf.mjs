@@ -7,6 +7,8 @@
 //     Models are counted per region too (run W-Q): the dataset models under assets/ds/<region>/
 //     load only when a race in that region starts, so each region's stay under its own limit.
 //  2. The Playwright perf probe (project `perf`), once dev-2 adds tests/perf/*.spec.ts.
+// --budget-only stops after 1: the quick check's size budget (`npm run perf:budget`), seconds
+// long, while the probes run in the full suite.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -73,6 +75,10 @@ examined(
     `budget ${budget.regionModelsKB} KB per region)`,
 );
 for (const p of problems) console.error(`perf: ${p}`);
+if (process.argv.includes('--budget-only')) {
+  console.log('perf: the size budget only (--budget-only); the throttled probes run in the full suite');
+  process.exit(problems.length ? 1 : 0);
+}
 
 const probeSpecs = existsSync(path.join(repoRoot, 'tests/perf'))
   ? readdirSync(path.join(repoRoot, 'tests/perf')).filter((f) => f.endsWith('.spec.ts'))
