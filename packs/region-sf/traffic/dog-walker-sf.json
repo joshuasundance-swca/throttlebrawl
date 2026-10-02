@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "dog-walker-sf",
+  "name": "Professional Dog Walker",
+  "category": "pedestrian",
+  "tags": ["region-sf"],
+  "lengthM": 0.5,
+  "widthM": 0.7,
+  "cruiseMps": 1.2,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-dog-walker"
+    },
+    "paintOptions": ["#2b2b2b", "#e2a33a", "#8fd3f0"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Six leashes, one coffee, a podcast about leadership. Walks the verge and films you for the group chat.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

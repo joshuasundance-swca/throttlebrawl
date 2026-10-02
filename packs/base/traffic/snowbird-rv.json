@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "snowbird-rv",
+  "name": "Snowbird RV",
+  "category": "rv",
+  "tags": ["tourist", "slow"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "cruiseMps": 19.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "convoy": 3
+  },
+  "look": {
+    "procedural": {
+      "preset": "rv"
+    },
+    "paintOptions": ["#f2efe6", "#c9b48a", "#7a9e9f"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "They travel in convoys of two or three, nose to tail, at exactly the speed nobody else wants. A rear ladder and a bicycle nobody has ridden since 2009.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

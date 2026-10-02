@@ -12,18 +12,26 @@
       { "kind": "sedan-rental", "weight": 5, "hazard": "normal" },
       { "kind": "pickup", "weight": 5, "hazard": "normal" },
       { "kind": "box-truck", "weight": 2, "hazard": "big" },
-      { "kind": "runaway-mobile-home", "weight": 0.3, "hazard": "big", "tags": ["oddity"] }
+      { "kind": "runaway-mobile-home", "weight": 0.3, "hazard": "big", "tags": ["oddity"] },
+      { "kind": "rental-convertible", "weight": 2, "hazard": "normal" },
+      { "kind": "golf-cart", "weight": 1.5, "hazard": "normal" },
+      { "kind": "beach-cruiser", "weight": 1.5, "hazard": "normal" },
+      { "kind": "pickup-towing-boat", "weight": 1.5, "hazard": "big" },
+      { "kind": "snowbird-rv", "weight": 0.8, "hazard": "big" }
     ],
     "pedestrians": [
       { "kind": "tourist-with-cooler", "weight": 1 },
-      { "kind": "fisherman", "weight": 1 }
+      { "kind": "fisherman", "weight": 1 },
+      { "kind": "sunburnt-jogger", "weight": 1 },
+      { "kind": "dog-walker", "weight": 1 }
     ],
     "animals": [
       { "kind": "chicken", "weight": 1, "big": false },
       { "kind": "iguana", "weight": 1.5, "big": false },
       { "kind": "pelican", "weight": 1, "big": false },
       { "kind": "gator", "weight": 0.6, "big": true },
-      { "kind": "gator-on-lawn-chair", "weight": 0.25, "big": true }
+      { "kind": "gator-on-lawn-chair", "weight": 0.25, "big": true },
+      { "kind": "dive-bar-dog", "weight": 0.8, "big": false }
     ]
   },
   "signs": [

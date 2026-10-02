@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "sunburnt-jogger",
+  "name": "Sunburnt Jogger",
+  "category": "pedestrian",
+  "tags": ["tourist"],
+  "lengthM": 0.5,
+  "widthM": 0.5,
+  "cruiseMps": 2.8,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-jogger"
+    },
+    "paintOptions": ["#ff6b6b", "#f4f1e8", "#3a6ea5"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Jogs the verge at noon by choice. Hops back from the kerb, then films you, still jogging in place.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
