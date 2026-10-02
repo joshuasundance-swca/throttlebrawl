@@ -39,7 +39,11 @@
   "modifiers": { "pool": "region-default", "maxPerRace": 1, "chanceScale": 1 },
   "meta": {
     "status": "live",
-    "notes": "San Francisco's finale: Pivot down the downtown avenue to the deadpan headquarters at the finish, pitching the whole way (run W-R moved it from Twin Peaks to the downtown, so the finale ends at INEVITABLE; interview, 2026-10-02: \"a set-piece finale per region\"). Beat him to the line, or knock him down three times. Winning plays the teaser, grants the mobility scooter, and free play continues.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
+    "notes": "San Francisco's finale: Pivot down the downtown avenue to the headquarters, pitching the whole way.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
   }
 }
