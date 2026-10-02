@@ -46,6 +46,12 @@ export const ROLES = [
   'paint_yellow',
   'paint_blue',
   'fog',
+  // added for the roadside kits (run W-P, maintainer 2026-10-01b: "unique regional flavor
+  // everywhere, like NW tree species"): moss, stone, a lighter leaf green and pale alder bark
+  'moss',
+  'stone',
+  'leaf_light',
+  'bark_pale',
 ];
 
 /** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */
@@ -66,7 +72,8 @@ const VIEWS = ['front34', 'side', 'rear34'];
  * @property {{root: string, hull: string, length: Range, beam: Range, draft: Range,
  *   freeboard: Range, maxHeight: number, maxOverhangM: number}} [boat]
  * @property {{roots: string[], xs: number[], parts: string[], perVariant: {tris: number, draws: number},
- *   height: Range, sway: boolean, sharedMaterials: boolean}} [variants]
+ *   height: Range, heights?: Range[], tris?: number[], sway: boolean, sharedMaterials: boolean}} [variants]
+ *   `heights` and `tris`, when given, are per root (a kit of small and large props in one GLB).
  * @property {{root: string, nodes: string[], size: [Range, Range, Range]}} [single]
  * @property {string[]} [textSurfaces]  panels the game paints words on (UVs, extras)
  * @property {{names: string[], minHeight: number}} [attach]  wire attach empties
@@ -312,6 +319,56 @@ export const PROPS = [
       height: [6, 20],
       sway: false,
       sharedMaterials: true,
+    },
+    views: VARIANT_VIEWS,
+  },
+  // ---- the roadside kits (run W-P, "fill the world": roadside density close to the road, so
+  // speed is felt, with unique regional flavor). Many small props per GLB, one body each; the game
+  // merges them per stretch of road, so their draws do not add up per prop.
+  {
+    name: 'pnw_roadside',
+    script: 'props/pnw_roadside.py',
+    asset: 'models/scenery/pnw-roadside',
+    kind: 'variants',
+    budget: { materials: 17 },
+    variants: {
+      roots: [
+        'pnw_fern',
+        'pnw_salal',
+        'pnw_stump',
+        'pnw_rock',
+        'pnw_mailbox',
+        'pnw_firewood',
+        'pnw_split_rail',
+        'pnw_log_fence',
+        'pnw_sign',
+        'pnw_espresso',
+        'pnw_maple',
+        'pnw_alder',
+      ],
+      xs: [-40, -34, -28, -22, -16, -10, -2, 8, 16, 24, 34, 46],
+      parts: ['body'],
+      perVariant: { tris: 240, draws: 10 },
+      // fern, salal, stump, rock, mailbox, firewood, split rail, log fence, sign, espresso hut,
+      // bigleaf maple, red alder
+      tris: [24, 24, 40, 16, 90, 80, 60, 60, 44, 200, 100, 60],
+      height: [0.5, 15],
+      heights: [
+        [0.6, 1.1],
+        [0.6, 1.4],
+        [0.6, 1.0],
+        [0.6, 1.3],
+        [1.2, 1.6],
+        [1.3, 1.8],
+        [1.1, 1.5],
+        [0.9, 1.3],
+        [2.1, 2.6],
+        [3.6, 4.6],
+        [11, 15],
+        [9.5, 13],
+      ],
+      sway: false,
+      sharedMaterials: false,
     },
     views: VARIANT_VIEWS,
   },
