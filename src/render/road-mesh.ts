@@ -464,6 +464,14 @@ const SKIRT_FLAT_M = [70, 35, 12, 0] as const;
 const SKIRT_WATER_CLEAR_M = 22;
 /** The skirt keeps one road sample in this many. [default] */
 const SKIRT_EVERY = 3;
+/** A far conifer's trunk and the drawn ground it needs round it, as (s, d-outward) offsets, m. */
+const FAR_ROOTS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [1.2, 0],
+  [-1.2, 0],
+  [0, 1.2],
+  [0, -1.2],
+];
 /** Where a land end cap's curtain stops: under the sea, with the shelves' foot. */
 const LAND_CAP_FOOT_Y = -0.4;
 /** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
@@ -865,6 +873,33 @@ export function buildRoadScene(
     landOf[e.index] = { step, reach: reachOf };
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
+    /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
+    const flatOf: Record<-1 | 1, { rows: (readonly [Point3, Point3] | null)[]; kept: boolean[] }> = {
+      [-1]: { rows: [], kept: [] },
+      [1]: { rows: [], kept: [] },
+    };
+    /**
+     * Whether (s, d) stands on the flat ground exactly as drawn (run W-O's skeptic: far conifers
+     * stood over the water, where the kept rows' quads, not the per-row widths, end).
+     */
+    const onFlat = (side: -1 | 1, s: number, d: number): boolean => {
+      const { rows, kept } = flatOf[side];
+      let a = Math.max(0, Math.min(rows.length - 2, Math.floor(s / step)));
+      let b = a + 1;
+      while (a > 0 && rows[a] && !kept[a]) a--;
+      while (b < rows.length - 1 && rows[b] && !kept[b]) b++;
+      const ra = rows[a];
+      const rb = rows[b];
+      if (!ra || !rb) return false;
+      for (let i = a + 1; i < b; i++) if (!rows[i]) return false;
+      const p = w(e.index, s, d, 0);
+      const [fa, xa] = ra;
+      const [fb, xb] = rb;
+      // The strip's two triangles per quad, as ChunkedStrips cuts them (pairs in increasing d).
+      return side > 0
+        ? inTriangle(p, fa, xa, fb) || inTriangle(p, xa, xb, fb)
+        : inTriangle(p, xa, fa, xb) || inTriangle(p, fa, fb, xb);
+    };
     /** The skirt at s past a strip of width r, or null where none fits (the shelf drops into the sea). */
     const skirtAt = (side: -1 | 1, s: number, r: number): { run: number; flat: number } | null => {
       const outer = outerOf(side);
@@ -970,14 +1005,14 @@ export function buildRoadScene(
       // starts or ends): about half the land's triangles.
       const run = (rows: (readonly [Point3, Point3] | null)[], thin = true) => {
         const g = strip('land');
+        const kept = keptRows(rows, thin);
         g.breakStrip();
         for (const [i, row] of rows.entries()) {
           if (!row) {
             g.breakStrip();
             continue;
           }
-          const inner = thin && i % SKIRT_EVERY !== 0 && i < rows.length - 1 && rows[i - 1] && rows[i + 1];
-          if (inner) continue;
+          if (!kept[i]) continue;
           // Pairs in increasing d, so the faces point up (and out, on a slope).
           if (side < 0) g.pair(row[1], row[0]);
           else g.pair(row[0], row[1]);
@@ -993,13 +1028,13 @@ export function buildRoadScene(
           return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
         }),
       );
-      run(
-        ss.map((s, i) => {
-          const k = skirts[i];
-          const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
-          return k && k.flat > 0 ? [at(s, foot, GROUND_Y), at(s, foot + k.flat, GROUND_Y)] : null;
-        }),
-      );
+      const flatRows = ss.map((s, i): readonly [Point3, Point3] | null => {
+        const k = skirts[i];
+        const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
+        return k && k.flat > 0 ? [at(s, foot, GROUND_Y), at(s, foot + k.flat, GROUND_Y)] : null;
+      });
+      flatOf[side] = { rows: flatRows, kept: keptRows(flatRows) };
+      run(flatRows);
       // The shelf into the sea: at the far edge of the skirt, or at the strip's edge without one. The
       // two are separate runs: joined, a row with a skirt and the next without one made a sliver
       // from the skirt's far edge back to the strip's (run W-P; the caps below close the step).
@@ -1132,6 +1167,14 @@ export function buildRoadScene(
               if (!k || k.flat <= 0) return null;
               const from = (reachOf[side][i] ?? 0) + k.run;
               return { from, to: from + k.flat, y: GROUND_Y };
+            }
+          : undefined,
+        onFarGround: terrain
+          ? (side, s, d) => {
+              if (!FAR_ROOTS.every(([ds, dd]) => onFlat(side, s + ds, d + side * dd))) return false;
+              // Another stretch of this same road (a hairpin) can pass over the far ground too.
+              const p = w(e.index, s, d, 0);
+              return !locator.covered(p.x, p.z, -1, (o) => [o.dMin - VERGE_M - 2, o.dMax + VERGE_M + 2]);
             }
           : undefined,
         fogBanks: opts.palette?.['fogBank'] !== undefined,
@@ -1588,6 +1631,23 @@ interface SceneryBatch {
 
 const bobEuler = new Euler();
 const bobAt = new Vector3();
+
+/** The rows a thinned skirt strip keeps: every third, and every row where a run starts or ends. */
+function keptRows(rows: readonly (readonly [Point3, Point3] | null)[], thin = true): boolean[] {
+  return rows.map(
+    (row, i) =>
+      !!row && !(thin && i % SKIRT_EVERY !== 0 && i < rows.length - 1 && !!rows[i - 1] && !!rows[i + 1]),
+  );
+}
+
+/** Whether p lies in the triangle abc, seen from above (x and z). */
+function inTriangle(p: Point3, a: Point3, b: Point3, c: Point3): boolean {
+  const cross = (u: Point3, v: Point3) => (v.x - u.x) * (p.z - u.z) - (v.z - u.z) * (p.x - u.x);
+  const d1 = cross(a, b);
+  const d2 = cross(b, c);
+  const d3 = cross(c, a);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
 
 /** Triangles in a geometry, indexed or not. */
 function trisOf(g: BufferGeometry): number {
