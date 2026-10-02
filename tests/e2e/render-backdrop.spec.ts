@@ -103,8 +103,10 @@ for (const c of CASES) {
       const fetched = await race(page, c, look);
       await expect.poll(() => fetched.has(c.network), { timeout: 30_000 }).toBe(true);
       const region = c.slug.split('-')[0] as keyof typeof NETWORK_CHUNKS;
+      // The menu shows the Keys road behind it, so the Keys backdrop may load before a pick; the
+      // other regions' must not.
       const others = Object.entries(NETWORK_CHUNKS)
-        .filter(([k]) => k !== region)
+        .filter(([k]) => k !== region && k !== 'keys')
         .flatMap(([, ids]) => ids);
       expect(
         others.filter((id) => fetched.has(id)),

@@ -15,16 +15,7 @@
 //   meet the near fogged ground instead of standing out of it.
 // - Ships, ferries and fog banks drift by a per-vertex swing, so nothing is touched per frame but
 //   five uniforms.
-import {
-  BufferGeometry,
-  Color,
-  DoubleSide,
-  Float32BufferAttribute,
-  Mesh,
-  ShaderMaterial,
-  ShapeUtils,
-  Vector2,
-} from 'three';
+import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial } from 'three';
 import {
   backdropProblems,
   type BackdropNetworkFile,
@@ -152,11 +143,50 @@ export function roadIndex(points: readonly (readonly [number, number])[], cell =
   };
 }
 
-function triangulate(pts: [number, number][]): number[][] {
-  return ShapeUtils.triangulateShape(
-    pts.map(([x, z]) => new Vector2(x, z)),
-    [],
-  );
+/**
+ * A simple polygon (no holes, either winding) as triangles of its point indices, by ear clipping.
+ * Floors have a few dozen points at most. (Not three's ShapeUtils: three is one module, so using it
+ * here would pull its triangulator into the first-load bundle.)
+ */
+export function triangulate(pts: readonly (readonly [number, number])[]): number[][] {
+  const n = pts.length;
+  if (n < 3) return [];
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const [x0, z0] = pts[i]!;
+    const [x1, z1] = pts[(i + 1) % n]!;
+    area += x0 * z1 - x1 * z0;
+  }
+  const ccw = area > 0;
+  const cross = (a: number, b: number, c: number) => {
+    const [ax, az] = pts[a]!;
+    const [bx, bz] = pts[b]!;
+    const [cx, cz] = pts[c]!;
+    const v = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+    return ccw ? v : -v;
+  };
+  const inside = (p: number, a: number, b: number, c: number) =>
+    cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
+  const left = Array.from({ length: n }, (_, i) => i);
+  const out: number[][] = [];
+  let guard = n * n;
+  while (left.length > 3 && guard-- > 0) {
+    let clipped = false;
+    for (let i = 0; i < left.length; i++) {
+      const a = left[(i + left.length - 1) % left.length]!;
+      const b = left[i]!;
+      const c = left[(i + 1) % left.length]!;
+      if (cross(a, b, c) <= 0) continue;
+      if (left.some((p) => p !== a && p !== b && p !== c && inside(p, a, b, c))) continue;
+      out.push([a, b, c]);
+      left.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;
+  }
+  if (left.length === 3) out.push([left[0]!, left[1]!, left[2]!]);
+  return out;
 }
 
 /**

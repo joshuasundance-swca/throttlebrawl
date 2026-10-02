@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../../road';
 import { CAMERA_FAR_M } from '../index';
-import { BACKDROP_FAR_M, buildSoup, roadPointsOf, squeezedDepth } from './builder';
+import { BACKDROP_FAR_M, buildSoup, roadPointsOf, squeezedDepth, triangulate } from './builder';
 import { backdropProblems, type BackdropNetworkFile, type BackdropRegionFile, type PieceKind } from './data';
 import { geoFrame } from './geo';
 import { backdropFilesFor } from './index';
@@ -183,5 +183,44 @@ describe('the squeezed depth', () => {
         last = r;
       }
     }
+  });
+});
+
+describe('the floor triangulation', () => {
+  const area = (p: readonly (readonly [number, number])[]) =>
+    Math.abs(
+      p.reduce((s, [x0, z0], i) => s + x0 * p[(i + 1) % p.length]![1] - p[(i + 1) % p.length]![0] * z0, 0),
+    ) / 2;
+  const triArea = (p: readonly (readonly [number, number])[], t: number[][]) =>
+    t.reduce((s, [a, b, c]) => s + area([p[a!]!, p[b!]!, p[c!]!]), 0);
+
+  it('covers a concave polygon exactly, in either winding', () => {
+    // An L shape: 3 x 1 plus 1 x 2.
+    const l: [number, number][] = [
+      [0, 0],
+      [3, 0],
+      [3, 1],
+      [1, 1],
+      [1, 3],
+      [0, 3],
+    ];
+    for (const p of [l, [...l].reverse()]) {
+      const t = triangulate(p);
+      expect(t.length).toBe(4);
+      expect(triArea(p, t)).toBeCloseTo(5, 9);
+    }
+  });
+
+  it('covers every floor in the packs exactly', () => {
+    let checked = 0;
+    for (const region of Object.values(backdropRegions))
+      for (const p of region.pieces)
+        if (p.kind === 'floor') {
+          const t = triangulate(p.area);
+          expect(t.length, p.id).toBe(p.area.length - 2);
+          expect(triArea(p.area, t) / area(p.area), p.id).toBeCloseTo(1, 6);
+          checked++;
+        }
+    expect(checked).toBeGreaterThanOrEqual(5);
   });
 });
