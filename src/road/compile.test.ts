@@ -93,6 +93,29 @@ describe('road/compile: several routes on one track (road-3)', () => {
     expect(lint).toEqual([]);
   });
 
+  it('names a branch for every route that allows it, with its roads and its sign (W-R junction choices)', () => {
+    const src = track();
+    const branch = src.branches?.[0];
+    if (!branch) throw new Error('the fixture has a branch');
+    src.branches = [{ ...branch, named: { id: 'the-cut', kind: 'shortcut', sign: 'THE CUT. Shorter.' } }];
+    const baked = compileTrack(src);
+    const routes = baked.routes as unknown as BakedRoute[];
+    const full = routes.find((r) => r.id === 'r');
+    const short = routes.find((r) => r.id === 'short');
+    expect(full?.branches).toEqual([
+      { id: 'the-cut', kind: 'shortcut', sign: 'THE CUT. Shorter.', roads: ['c-in', 'cut', 'c-out'] },
+    ]);
+    // The short route ends before the branch rejoins, so it names none.
+    expect(short?.branches).toBeUndefined();
+    const network = baked.network as unknown as BakedNetwork;
+    const roads = baked.roads as unknown as BakedRoad[];
+    expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
+    const p = createRouteProgress(createRoadNetwork({ network, roads }), full as BakedRoute);
+    expect(p.branches.map((b) => [b.id, b.kind, b.sign, b.declared])).toEqual([
+      ['the-cut', 'shortcut', 'THE CUT. Shorter.', true],
+    ]);
+  });
+
   it('refuses a route whose finish road comes before its start road', () => {
     const bad = track();
     const r = bad.routes[0] as RouteSource;

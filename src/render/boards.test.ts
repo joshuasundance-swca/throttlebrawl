@@ -54,7 +54,8 @@ describe('board copy', () => {
       }
     }
     expect(billboards).toBe(22);
-    expect(signs).toBe(32);
+    // W-R: two junction signs, PNW's logging spur and SF's stair alley.
+    expect(signs).toBe(34);
   });
 });
 

@@ -9,9 +9,10 @@ import { barrierLimits, BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
 import type { SimConfig } from '../../src/sim/types';
 
 // The W-Q sim and route contracts over every live network (interview, 2026-10-02: "junction
-// choices in races", "U-turns", "Anywhere with ground"). No route file names a branch yet, so every
-// branch is derived from the network's split zones: each hand-made network's shortcuts and spurs
-// become branches, the map-data roads (no splits) have none. Every main-path edge points toward the
+// choices in races", "U-turns", "Anywhere with ground"). Every split zone is a branch: each
+// hand-made network's shortcuts and spurs, named and signed in the route files where the track
+// names them (W-R: the PNW spur and the SF stair alley), derived otherwise; the map-data roads (no
+// splits) have none. Every main-path edge points toward the
 // finish. And with the off-road switch at its default (off), a rider's limits are exactly the M1
 // barrier limits on every road, so nothing about an existing race changes.
 
@@ -58,6 +59,7 @@ describe('route branches and ride limits on every live network', () => {
   it('derive a branch per split zone, orient the main path to the finish, and keep M1 limits', () => {
     let routes = 0;
     let branches = 0;
+    let named = 0;
     let stations = 0;
     const handMade: string[] = [];
     const lines: string[] = [];
@@ -69,7 +71,13 @@ describe('route branches and ride limits on every live network', () => {
         branches += route.branches.length;
         expect(route.branches.length, r.id).toBe(new Set(route.shortcuts.map((z) => z.toEdge)).size);
         for (const b of route.branches) {
-          expect(b.declared).toBe(false);
+          // A named branch (W-R) is signed at its split and keeps the id it would derive.
+          if (b.declared) {
+            named++;
+            expect(b.sign ?? '', b.id).not.toBe('');
+            const first = b.edges.map((e) => road.edges[e]).find((e) => e && !e.isConnector);
+            expect(b.id).toBe(first?.id);
+          } else expect(b.sign).toBeNull();
           expect(b.marked).toBe(true);
           expect(b.edges.length).toBeGreaterThan(0);
           for (const e of b.edges) expect(route.branchAt(e)?.id).toBe(b.id);
@@ -94,11 +102,13 @@ describe('route branches and ride limits on every live network', () => {
       }
     }
     console.log(
-      `[examined] ${nets.length} networks, ${routes} routes, ${branches} derived branches, ${stations} stations of ride limits\n  ${lines.join('\n  ')}`,
+      `[examined] ${nets.length} networks, ${routes} routes, ${branches} branches (${named} named), ${stations} stations of ride limits\n  ${lines.join('\n  ')}`,
     );
     expect(routes).toBeGreaterThanOrEqual(12);
     expect(handMade.length).toBeGreaterThanOrEqual(7);
     expect(branches).toBeGreaterThanOrEqual(handMade.length);
+    // PNW's three routes and SF's one name their shortcut (W-R junction choices, signed).
+    expect(named).toBeGreaterThanOrEqual(4);
     expect(stations).toBeGreaterThan(1000);
   });
 });

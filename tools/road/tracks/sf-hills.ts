@@ -224,6 +224,17 @@ export const SF_HILLS: TrackSource = {
           item: 'shuttles-only',
         },
         { kind: 'billboard', id: 'sign-cable-grip', s0: 560, s1: 570, d0: 6.5, d1: 9, item: 'cable-grip' },
+        // The junction choice, signed (W-R; interview, 2026-10-02: "junction choices in races"): the
+        // stair alley's split starts 40 m before the block's end, on the right.
+        {
+          kind: 'billboard',
+          id: 'sign-cable-alley-ahead',
+          s0: 660,
+          s1: 670,
+          d0: 6.5,
+          d1: 9,
+          item: 'alley-keep-right',
+        },
         {
           kind: 'billboard',
           id: 'bb-cable-delegatron',
@@ -504,6 +515,13 @@ export const SF_HILLS: TrackSource = {
       join: { road: 'sf-painted-row', offsetM: 3, lane: 'R1' },
       turnsM: [50, 50],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      // Named for the routes (W-R): the id the race derived before, so nothing keyed on it changes.
+      named: {
+        id: 'sf-stair-alley',
+        kind: 'shortcut',
+        marked: true,
+        sign: 'STAIR ALLEY: KEEP RIGHT. No vehicles. Especially yours.',
+      },
       roads: [
         {
           id: 'c-stair-alley-in',

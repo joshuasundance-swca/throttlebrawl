@@ -32,6 +32,15 @@
     { "road": "sf-painted-row", "s": 300 },
     { "road": "sf-fogline-climb", "s": 300 }
   ],
+  "branches": [
+    {
+      "id": "sf-stair-alley",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "STAIR ALLEY: KEEP RIGHT. No vehicles. Especially yours.",
+      "roads": ["c-stair-alley-in", "sf-stair-alley", "c-stair-alley-out"]
+    }
+  ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
   "meta": { "status": "live" }

@@ -22,7 +22,7 @@
 // main road's heading. Its first and last roads are the two junctions' connector roads, and the
 // compiler writes each junction's lane-level table: main-through rows for every drive lane (both
 // directions) and one row into and out of the branch, the first with the split zone.
-import { atan2, cos, sin, type LaneInfo, type RoadSurface } from '../core';
+import { atan2, cos, sin, type LaneInfo, type RoadSurface, type RouteBranchKind } from '../core';
 import type { BakedBarrier, BakedFeature, BakedTag } from './types';
 
 /**
@@ -135,6 +135,11 @@ export interface BranchSource {
    * roads. Every road but the last needs `lengthM`; the last takes what is left.
    */
   roads: readonly RoadSource[];
+  /**
+   * The branch as the routes name it (W-R; interview, 2026-10-02: "junction choices in races"):
+   * every route that allows it lists it in `branches` with these, and its roads.
+   */
+  named?: { id: string; kind?: RouteBranchKind; marked?: boolean; sign?: string };
 }
 
 const FINE_STEP = 0.5; // metres between fine heading samples
@@ -568,7 +573,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
   // Branches: the curve, its roads, and their rows in the two junctions' tables.
   const branchCuts: Cut[] = [];
   /** Each branch's roads, with the main-road indices it leaves after and rejoins at. */
-  const branchSpans: { leave: number; join: number; ids: string[] }[] = [];
+  const branchSpans: { leave: number; join: number; ids: string[]; named?: BranchSource['named'] }[] = [];
   const offsetPoint = (s: number, offset: number): [number, number, number] => {
     const h = sampleAt(line.heading, line.step, s);
     // The right of heading h (0 = north, + toward east) is (cos h, sin h) in (x, z).
@@ -637,7 +642,12 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       to: { road: b.road.id, end: 'from', lane: br.join.lane },
     });
     branchCuts.push(...cuts);
-    branchSpans.push({ leave: ai, join: bi, ids: cuts.map((c) => c.road.id) });
+    branchSpans.push({
+      leave: ai,
+      join: bi,
+      ids: cuts.map((c) => c.road.id),
+      ...(br.named ? { named: br.named } : {}),
+    });
   }
 
   const roads = [...main, ...branchCuts].map((cut) => {
@@ -727,6 +737,10 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     }
     const finishCut = main[last] as Cut;
     const finishS = r.finish.s < 0 ? finishCut.length + r.finish.s : r.finish.s;
+    // The named branches this route allows (W-R junction choices), in branch order.
+    const branches = branchSpans
+      .filter((b) => b.named && b.leave >= first && b.join <= last)
+      .map((b) => ({ ...b.named, roads: b.ids }));
     return {
       type: 'route',
       id: r.id,
@@ -737,6 +751,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       // In the network's road order, so the full route lists every road as before.
       allowedRoads: roads.map((x) => x.id).filter((id) => allowed.has(id)),
       checkpoints: r.checkpoints,
+      ...(branches.length > 0 ? { branches } : {}),
       closed: false,
       startGrid: r.startGrid,
       meta: { status: 'live' },
