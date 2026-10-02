@@ -213,6 +213,37 @@ describe('app/config: a bike’s combat block reaches the sim (the combat-3 cont
   });
 });
 
+describe('app/config: a rider’s fight stats reach the sim (playtest 2: "Visible personalities")', () => {
+  const withStats = (stats: Record<string, unknown>) => {
+    const reg = buildRegistry(
+      basePackFiles().map((f) => {
+        const json = f.json as { type?: string; id?: string; stats?: Record<string, unknown> };
+        if (json.type !== 'rider' || json.id !== 'deacon-vane') return f;
+        return { ...f, json: { ...json, stats: { massKg: 95, healthMax: 110, ...stats } } };
+      }),
+    );
+    const c = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    return c.riders.find((r) => r.contentId === 'base:deacon-vane');
+  };
+
+  it('carries stats.toughness and stats.power into SimRiderDef', () => {
+    const deacon = withStats({ toughness: 1.3, power: 0.8 });
+    expect(deacon?.toughness).toBe(1.3);
+    expect(deacon?.power).toBe(0.8);
+  });
+
+  it('defaults both to 1 when the rider file leaves them out', () => {
+    const deacon = withStats({});
+    expect(deacon?.toughness).toBe(1);
+    expect(deacon?.power).toBe(1);
+  });
+
+  it('the schema keeps them moderate: 0.5 to 2', () => {
+    expect(() => withStats({ toughness: 3 })).toThrow();
+    expect(() => withStats({ power: 0.2 })).toThrow();
+  });
+});
+
 describe('app/config: the region traffic mix reaches the sim (the traffic-3 contract wire)', () => {
   const withRegion = (edit: (traffic: Record<string, unknown>) => void) => {
     const reg = buildRegistry(
