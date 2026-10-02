@@ -1,0 +1,126 @@
+{
+  "type": "bark-set",
+  "id": "road-events-keys",
+  "name": "Road events: the Keys",
+  "tags": ["road-events", "keys"],
+  "defaults": {
+    "speaker": "kevin-from-accounting",
+    "cooldownS": 45,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "keys-ev-roadwork-kevin",
+      "trigger": "modifier-start",
+      "speaker": "kevin-from-accounting",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-roadwork"
+        }
+      ],
+      "text": "That sign was up when I got hired."
+    },
+    {
+      "id": "keys-ev-roadwork-deacon",
+      "trigger": "modifier-start",
+      "speaker": "deacon-vane",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-roadwork"
+        }
+      ],
+      "text": "Cones. My natural predator."
+    },
+    {
+      "id": "keys-ev-crash-chad",
+      "trigger": "modifier-start",
+      "speaker": "chad-speedwell",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-crash-scene"
+        }
+      ],
+      "text": "Rubberneck on your own time."
+    },
+    {
+      "id": "keys-ev-crash-dialup",
+      "trigger": "modifier-start",
+      "speaker": "dial-up",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-crash-scene"
+        }
+      ],
+      "text": "Everyone's fine. Let's keep it that way."
+    },
+    {
+      "id": "keys-ev-parade-kevin",
+      "trigger": "modifier-start",
+      "speaker": "kevin-from-accounting",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-costume-parade"
+        }
+      ],
+      "text": "Is this a parade or just Tuesday?"
+    },
+    {
+      "id": "keys-ev-parade-chad",
+      "trigger": "modifier-start",
+      "speaker": "chad-speedwell",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-costume-parade"
+        }
+      ],
+      "text": "Wave at the flamingo. It's polite."
+    },
+    {
+      "id": "keys-ev-trap-deacon",
+      "trigger": "modifier-start",
+      "speaker": "deacon-vane",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-speed-trap"
+        }
+      ],
+      "text": "Radar. Smile for once."
+    },
+    {
+      "id": "keys-ev-trap-dialup",
+      "trigger": "modifier-start",
+      "speaker": "dial-up",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-speed-trap"
+        }
+      ],
+      "text": "Slow down. Or don't. I'm not your mother."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
