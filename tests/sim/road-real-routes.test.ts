@@ -18,6 +18,7 @@ import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { chooseSetPieces } from '../../src/road';
 import { createSim, type SimConfig } from '../../src/sim/api';
+import { NO_ROAD_EVENTS } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -39,10 +40,13 @@ const ROUTES = [
 type Case = (typeof ROUTES)[number];
 
 function raceConfig(c: Case, seed: number): SimConfig {
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
   return buildSimConfig(REG, STREAMS.forEvent(REG, c.event, undefined, c.route), {
     seed,
     eventId: c.event,
     route: c.route,
+    tuning: NO_ROAD_EVENTS,
   });
 }
 
@@ -140,9 +144,7 @@ describe('real roads as routes: each one races well inside its region race', () 
 
     it(`${c.route}: the bot finishes the race (a DNF is a bust, never a stall), every mover valid`, () => {
       let res = botRace(c, 1);
-      // The bot is busted on most San Francisco hill runs; up to six seeds (W-P road events reshuffle
-      // every race, so the first three seeds no longer reach a finish there).
-      for (let seed = 2; seed <= 6 && res.finishTick < 0; seed++) {
+      for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
         expect(res.busted, `a DNF is a bust, not a stall (${res.end})`).toBe(true);
         res = botRace(c, seed);
       }

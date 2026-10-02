@@ -90,11 +90,11 @@ function mod(
 }
 
 const ALL: SimModifierDef[] = [
-  mod('roadwork', 'roadwork', [0.1, 0.3], { vehicle: 'test:work-truck' }),
-  mod('crash', 'crash-scene', [0.3, 0.5], { vehicle: 'test:tow-truck', vehicle2: 'test:stalled-car' }),
-  mod('parade', 'parade', [0.5, 0.7], { floats: ['test:float', 'test:float'], inflatable: true }),
-  mod('hay', 'hay-spill', [0.15, 0.9], { vehicle: 'test:farm-truck' }),
-  mod('trap', 'speed-trap', [0.15, 0.9], { limitMps: 20 }),
+  mod('roadwork', 'roadwork', [0.3, 0.94], { vehicle: 'test:work-truck' }),
+  mod('crash', 'crash-scene', [0.3, 0.94], { vehicle: 'test:tow-truck', vehicle2: 'test:stalled-car' }),
+  mod('parade', 'parade', [0.3, 0.94], { floats: ['test:float', 'test:float'], inflatable: true }),
+  mod('hay', 'hay-spill', [0.3, 0.94], { vehicle: 'test:farm-truck' }),
+  mod('trap', 'speed-trap', [0.3, 0.94], { limitMps: 20 }),
 ];
 
 function config(
@@ -212,8 +212,9 @@ describe('road set pieces (W-P events)', () => {
     const signs = (seed: number) => {
       const sim = createSim(config(seed));
       const out: string[] = [];
-      for (let t = 0; t < 60 * 30 && out.length === 0; t++) sim.step([]);
-      // Signs appear only once a piece is live, so read the placement from the first live props instead.
+      // Signs appear only once a piece is live: step until the first one does.
+      for (let t = 0; t < 60 * 120 && !(sim.snapshot().props ?? []).some((p) => p.kind === 'sign'); t++)
+        sim.step([]);
       for (const p of sim.snapshot().props ?? [])
         if (p.kind === 'sign') out.push(`${p.piece}@${p.x.toFixed(0)},${p.z.toFixed(0)}`);
       return out.sort().join(';');

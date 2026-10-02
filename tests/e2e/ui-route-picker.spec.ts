@@ -129,7 +129,8 @@ test('a picked real road is raced to the finish by the bot, and the recording na
   await expect(peaks).toHaveAttribute('aria-checked', 'true');
   // A seed the bot finishes on (the race's outcome shifts whenever the sim changes: if this one
   // turns into a bust, pick another seed that finishes, as the bot race's seed lists do).
-  const SEED = 2;
+  // W-P road events reshuffled it again: seed 2 is a bust now; 5 to 8 finish (headless, drafts in).
+  const SEED = 8;
   await page.evaluate((s) => {
     const g = (window as TestWindow).__game;
     g?.setSeed(s);

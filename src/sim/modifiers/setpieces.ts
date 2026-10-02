@@ -35,7 +35,7 @@
 // Every piece puts a warning sign SIGN_LEAD_M ahead of it on its shoulder side.
 // People never get hit: anyone a rider bears down on steps out of the way toward the verge.
 import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
-import type { RoadPos } from '../../road';
+import type { EdgeLink, RoadPos } from '../../road';
 import { CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState } from '../cops';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
@@ -57,7 +57,7 @@ export const SET_PIECE = {
   /** Pieces keep at least this far apart along the road, m. */
   spacingM: 220,
   /** Placement tries per piece. */
-  placeTries: 16,
+  placeTries: 40,
   /** Pieces stay inside this share of the route (never on the grid or at the line). */
   minProgress: 0.08,
   maxProgress: 0.94,
@@ -246,6 +246,37 @@ function stretchOk(config: SimConfig, c: Corridor, u: number, len: number): bool
   return true;
 }
 
+/**
+ * The route-progress spans a shortcut skips: from its split zone to where its connector rejoins the
+ * main path (following each connector's default way on, at most a few roads). A rider on the
+ * shortcut never passes a piece placed there, so none is.
+ */
+export function bypassedSpans(config: SimConfig): [number, number][] {
+  const { road, route } = config;
+  const main = new Set(route.mainEdges);
+  const out: [number, number][] = [];
+  for (const z of route.shortcuts) {
+    const a = Math.min(route.progressAt(z.edge, z.s0), route.progressAt(z.edge, z.s1));
+    let edge = z.toEdge;
+    let end: 'from' | 'to' = 'to';
+    let b = Number.NaN;
+    for (let hop = 0; hop < 8; hop++) {
+      const link: EdgeLink | undefined = road.nextEdges(edge, end)[0];
+      if (!link) break;
+      if (main.has(link.edge)) {
+        const len = road.edges[link.edge]?.length ?? 0;
+        b = route.progressAt(link.edge, link.entersAt === 'from' ? 0 : len);
+        break;
+      }
+      edge = link.edge;
+      end = link.entersAt === 'from' ? 'to' : 'from';
+    }
+    // A rejoin that cannot be found: assume the rest of the route is bypassed.
+    out.push([Number.isFinite(a) ? a : 0, Number.isFinite(b) && b > a ? b : Infinity]);
+  }
+  return out;
+}
+
 /** Rolls and places the race's set pieces (the modifiers phase's init). */
 export function initSetPieces(world: World, config: SimConfig): void {
   const st = setPieceState(world);
@@ -257,6 +288,7 @@ export function initSetPieces(world: World, config: SimConfig): void {
   if (!start) return;
   st.u0 = start.u;
   st.routeLen = Math.max(0, c.routeDir === 1 ? c.hi - start.u : start.u - c.lo);
+  const bypassed = bypassedSpans(config);
   const scale = Math.max(0, world.params['modifiers.setPieceChance'] ?? 1);
   // Every modifier rolls, always drawing, so the stream advances the same whatever fires.
   const fired: number[] = [];
@@ -289,6 +321,10 @@ export function initSetPieces(world: World, config: SimConfig): void {
         const p = lo + (Math.max(lo, hi) - lo) * nextFloat(rng);
         const u = st.u0 + c.routeDir * p * st.routeLen;
         if (st.pieces.some((q) => Math.abs(q.u - u) < SET_PIECE.spacingM + q.len)) continue;
+        // Never on a stretch a shortcut bypasses: every racer must ride past it.
+        const from = Math.abs(u - st.u0) - SET_PIECE.signLeadM - 10;
+        const to = Math.abs(u - st.u0) + len + 10;
+        if (bypassed.some(([a, b]) => from < b && to > a)) continue;
         if (!stretchOk(config, c, u, len)) continue;
         const lane = lanesAt(config.road, c, u, c.routeDir)[0];
         if (!lane) continue;
@@ -777,14 +813,15 @@ function trapCopCd(config: SimConfig, c: Corridor, p: SetPiece): number {
 /** A prop's half extents along and across the road, for contacts (0: not touchable). */
 function extent(kind: PropKind): [number, number] {
   switch (kind) {
+    // Matched to render's read-at-speed sizes (render/event-props.ts, READ_SCALE).
     case 'cone':
-      return [0.25, 0.25];
+      return [0.36, 0.36];
     case 'flare':
-      return [0.12, 0.12];
+      return [0.25, 0.25];
     case 'barricade':
-      return [0.3, 0.9];
+      return [0.4, 1.2];
     case 'hayBale':
-      return [0.55, 0.45];
+      return [0.7, 0.55];
     default:
       return [0, 0];
   }
