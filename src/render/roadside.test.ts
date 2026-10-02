@@ -14,6 +14,7 @@ import { bakeModel, MODEL_ASSETS, modelKindsFor, type ModelKind, type SceneryMod
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import {
   KEYS_KIT,
+  kitFor,
   PNW_KIT,
   ROADSIDE_DRAW_M,
   RoadsideLayer,
@@ -303,6 +304,27 @@ describe('the roadside kits', () => {
       expect(needs(id), id).not.toContain('sfRoadside');
     }
     for (const id of ['pnw-c1', 'sf-hills']) expect(needs(id), id).not.toContain('keysRoadside');
+  });
+
+  it("draws a race's own region's kit, even when another region's kit loaded first", () => {
+    // The menu's attract scene is the Keys road, so the Keys kit loads before any race, and models
+    // stay loaded across regions. Live W-P bug (found by the run's close-ups): the renderer drew the
+    // first kit loaded, so a PNW or SF race after the menu drew the Keys kit, or none of its own.
+    const loaded = { keysRoadside: true, sfRoadside: true, pnwRoadside: true, truck: true };
+    const cases: [string, string][] = [
+      ['keys-m1', 'keysRoadside'],
+      ['osm-keys-bahia-honda', 'keysRoadside'],
+      ['pnw-c1', 'pnwRoadside'],
+      ['osm-pnw-gorge', 'pnwRoadside'],
+      ['sf-hills', 'sfRoadside'],
+      ['osm-sf-twin-peaks', 'sfRoadside'],
+    ];
+    for (const [id, want] of cases) {
+      expect(kitFor(needs(id), loaded), id).toBe(want);
+      // Its own kit not loaded yet: none, never another region's.
+      const others = Object.fromEntries(Object.entries(loaded).filter(([k]) => k !== want));
+      expect(kitFor(needs(id), others), `${id} before its kit loads`).toBeNull();
+    }
   });
 
   it('draws the far stretches with their big props only, and nothing past the draw distance', () => {
