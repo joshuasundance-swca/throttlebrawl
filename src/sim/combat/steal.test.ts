@@ -160,7 +160,8 @@ describe('combat-2: the held-weapon swing', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]?.tick).toBe(22);
     expect(hits[0]?.data['weapon']).toBe(PIPE_ID);
-    expect(hits[0]?.data['damage']).toBe(PIPE.damage);
+    // × combat.weaponDamageScale (2.5, playtest 2: "Weapons should do more").
+    expect(hits[0]?.data['damage']).toBe(Math.round(PIPE.damage * 2.5));
     expect(phases[27]).toBe('recovery');
     expect(phases[52]).toBe('idle');
     expect(combatView(h.world, 0).heldWeapon).toBe(PIPE_ID); // unlimited uses in M1

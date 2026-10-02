@@ -219,7 +219,7 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
     h.run(60);
     const hit = ofType(h.events, 'hit').find((e) => e.actor === 1);
     expect(hit?.data['weapon']).toBe(BATON.contentId);
-    expect(hit?.data['damage']).toBe(16);
+    expect(hit?.data['damage']).toBe(40); // 16 × combat.weaponDamageScale (2.5)
     expect(hit?.target).toBe(2);
   });
 
@@ -274,9 +274,10 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
       h.run(40);
       return ofType(h.events, 'hit')[0]?.data['damage'];
     };
+    // On a player the knockdown scale is combat.onPlayerDamageScale (1): the baton's 16 as before.
     expect(damageOn('player')).toBe(8);
     expect(damageOn('player', { 'combat.copOnPlayerScale': 1 })).toBe(16);
-    expect(damageOn('rival')).toBe(16);
+    expect(damageOn('rival')).toBe(40); // 16 × combat.weaponDamageScale (2.5, playtest 2)
   });
 
   // The cops polish round (the integration skeptic's F2): in San Francisco the cop crashed about

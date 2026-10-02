@@ -46,8 +46,15 @@
 //   0.66 m): the big shove is the player's new tool, and playtest 1 asked that rivals stay as hard
 //   as they were. At 1.0 an 8-race bot batch saw hits on the player rise from 27 to 51 and
 //   knock-offs from 0 to 7. Each `hit` event
-//   carries `hitImpulse`, a 0..1 strength for the camera jolt and haptics: (damage + peak shove
-//   m/s) / 40, capped at 1.
+//   carries `hitImpulse`, a 0..1 strength for the camera jolt and haptics: (the weapon's data
+//   damage + peak shove m/s) / 40, capped at 1.
+// - Knockdowns (playtest 2, 2026-10-02: "surprising how long it takes to knock people down"): a
+//   hit's damage is the weapon's data damage × combat.unarmedDamageScale (2) for the punch and the
+//   kick, or × combat.weaponDamageScale (2.5) for a held weapon, so a fresh 100-point rival goes
+//   down in 3 kicks (36), 5 punches (20) or 2 pipe swings (55), never one. A non-player's hit on a
+//   player takes combat.onPlayerDamageScale (1) instead: the data damage, as before. [default]
+//   On 12 seeded bot races (seeds 1-12) knock-offs went from 3 to 20 and the mean hits per
+//   knock-off from 6.0 to 3.9, with the bot never knocked off either way.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -173,6 +180,41 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     default: 1,
     min: 0,
     max: 3,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  // Knockdowns (playtest 2, 2026-10-02: "surprising how long it takes to knock people down"; the
+  // maintainer: "it should take a few hits even if they are kicks. Weapons should do more").
+  {
+    id: 'combat.unarmedDamageScale',
+    group: 'combat',
+    label: 'Punch and kick damage',
+    default: 2,
+    min: 0.5,
+    max: 4,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.weaponDamageScale',
+    group: 'combat',
+    label: 'Weapon damage',
+    default: 2.5,
+    min: 0.5,
+    max: 4,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.onPlayerDamageScale',
+    group: 'combat',
+    label: 'Rival damage on you',
+    default: 1,
+    min: 0,
+    max: 4,
     step: 0.05,
     unit: '×',
     affectsSim: true,
@@ -354,7 +396,7 @@ export const ACQUIRE_D_M = 3;
 /** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
 const MASS_RATIO_MIN = 0.5;
 const MASS_RATIO_MAX = 2;
-/** hitImpulse = (damage + peak shove m/s) / this, capped at 1. */
+/** hitImpulse = (data damage + peak shove m/s) / this, capped at 1. */
 const HIT_IMPULSE_FULL = 40;
 /** Tolerance for comparing scaled-time sums against whole-tick durations. */
 const EPS = 1e-9;
@@ -729,7 +771,7 @@ function land(
     isLaw(config, a) && isPlayer(config, victim)
       ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
       : 1;
-  const damage = Math.round(w.damage * copSoft);
+  const damage = Math.round(w.damage * damageScale(world, config, a, victim, w) * copSoft);
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
@@ -746,7 +788,9 @@ function land(
   const onPlayer =
     isPlayer(config, victim) && !isPlayer(config, a) ? (world.params['combat.onPlayerScale'] ?? 1) : 1;
   const peak = fullPeak * (kick ? onPlayer : 1) * copSoft;
-  const hitImpulse = Math.min(1, (damage + fullPeak * copSoft) / HIT_IMPULSE_FULL);
+  // The jolt reads the weapon's data damage, not the knockdown-scaled one, so the feel of each blow
+  // stays as it was while rivals go down sooner.
+  const hitImpulse = Math.min(1, (w.damage * copSoft + fullPeak * copSoft) / HIT_IMPULSE_FULL);
   const effect = behaviourEffect(world, st, victim, w, copSoft);
   // A breakable held weapon spends one hit (the last one breaks it on this blow); a taser on its
   // last charge goes at the end of this swing. Either way the hit says `spent`.
@@ -797,6 +841,22 @@ function land(
       world.timeScale = 0;
     }
   }
+}
+
+/**
+ * The knockdown scale on a hit's data damage (playtest 2): combat.unarmedDamageScale for the punch
+ * and the kick, combat.weaponDamageScale for a held weapon. A non-player's hit on a player takes
+ * combat.onPlayerDamageScale instead (default 1, the data damage as before: playtest 1 item 7 asked
+ * that rivals stay as hard as they were, and the complaint was about knocking THEM down).
+ */
+function damageScale(world: World, config: SimConfig, a: Mover, victim: Mover, w: SimWeaponDef): number {
+  const p = world.params;
+  if (isPlayer(config, victim) && !isPlayer(config, a))
+    return Math.max(0, p['combat.onPlayerDamageScale'] ?? 1);
+  return Math.max(
+    0,
+    w.unarmed ? (p['combat.unarmedDamageScale'] ?? 2) : (p['combat.weaponDamageScale'] ?? 2.5),
+  );
 }
 
 /**
