@@ -157,7 +157,7 @@ describe('tools/road: the baked M1 track', () => {
     console.log(`race lengths: ${lines.join('; ')}`);
   });
 
-  it('road-3: two or three sign and billboard slots, each naming a live region item, off the road, on every length', () => {
+  it('road-3: a sign or billboard slot for every region item, each live, off the road, on every length', () => {
     const regionFile = JSON.parse(readFileSync(path.join(region, 'region.json'), 'utf8')) as {
       signs?: { id: string; status?: string }[];
       billboards?: { id: string; status?: string }[];
@@ -172,7 +172,9 @@ describe('tools/road: the baked M1 track', () => {
       `board slots: ${slots.map(({ e, f }) => `${f.id} -> ${f.item} on ${e.id} s ${f.s0}-${f.s1} d ${f.d0}..${f.d1}`).join('; ')}`,
     );
     expect(slots.length).toBeGreaterThanOrEqual(2);
-    expect(slots.length).toBeLessThanOrEqual(3);
+    // Run W-P (maintainer, 2026-10-01b: "the worlds just feel very empty"): every item has a slot,
+    // so each one can be seen and vetoed in a race, and a new item needs a slot here too.
+    expect(new Set(slots.map(({ f }) => f.item))).toEqual(new Set(items.keys()));
     expect(new Set(slots.map(({ f }) => f.id)).size).toBe(slots.length);
     for (const { e, f } of slots) {
       // A named item (a stable content reference for the veto), live in the region file.

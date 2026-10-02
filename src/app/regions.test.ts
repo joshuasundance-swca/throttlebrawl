@@ -5,6 +5,7 @@ import { buildSimConfig, copIds, streamForEvent } from './config';
 import {
   boardCatalog,
   createStreamCache,
+  narrativeSettingOf,
   racePalette,
   raceRadio,
   regionChoices,
@@ -25,6 +26,18 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof config>) =>
   JSON.parse(JSON.stringify(rest)) as unknown;
 
 describe('app: regions', () => {
+  it("hands the barks the race's event kind, bare region id and time of day", () => {
+    // Bark lines name the region bare (`"value": "pacific-northwest"`) and the time of day by its
+    // option id, so `when` conditions on region.id and timeOfDay can match (content-packs.md).
+    expect(narrativeSettingOf(ALL, 'region-pnw:pnw-fogline-run')).toEqual({
+      eventKind: 'classic-race',
+      regionId: 'pacific-northwest',
+      timeOfDay: 'dawn',
+    });
+    expect(narrativeSettingOf(ALL, 'region-sf:sf-hill-sprint').regionId).toBe('san-francisco');
+    expect(narrativeSettingOf(ALL, 'base:m1-skeleton-sprint').regionId).toBe('florida-keys');
+  });
+
   it('offers the Keys, the Pacific Northwest and San Francisco, by chapter, each with its event', () => {
     const choices = regionChoices(ALL);
     expect(choices.map((c) => [c.id, c.eventId, c.packId])).toEqual([
@@ -92,13 +105,18 @@ describe('app: regions', () => {
 
   it("builds each region's board catalog with veto references, minus this device's cuts", () => {
     const pnw = boardCatalog(ALL, 'region-pnw:pacific-northwest');
-    expect(Object.keys(pnw.items)).toHaveLength(7);
+    // Content lanes add boards freely, so the counts come from the pools, not a fixed number.
+    const signs = pnw.pools?.signs ?? [];
+    const billboards = pnw.pools?.billboards ?? [];
+    expect(signs.length).toBeGreaterThanOrEqual(5);
+    expect(billboards.length).toBeGreaterThanOrEqual(2);
+    expect(Object.keys(pnw.items)).toHaveLength(signs.length + billboards.length);
     expect(pnw.items['bigfoot-crossing']).toMatchObject({
       ref: 'region-pnw:region/pacific-northwest#bigfoot-crossing',
       kind: 'sign',
     });
-    expect(pnw.pools?.signs).toHaveLength(5);
-    expect(pnw.pools?.billboards).toHaveLength(2);
+    expect(signs.every((s) => s.kind === 'sign')).toBe(true);
+    expect(billboards.every((b) => b.kind === 'billboard')).toBe(true);
     const cut = boardCatalog(
       ALL,
       'region-pnw:pacific-northwest',

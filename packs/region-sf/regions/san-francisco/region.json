@@ -55,11 +55,31 @@
       "status": "live"
     },
     { "id": "zero-spaces", "text": "2 HR PARKING 7 AM TO 6 PM. 0 SPACES.", "status": "live" },
-    { "id": "toll-view", "text": "BRIDGE TOLL $9. VIEW NOT INCLUDED.", "status": "live" }
+    { "id": "toll-view", "text": "BRIDGE TOLL $9. VIEW NOT INCLUDED.", "status": "live" },
+    { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. DO NOT PLACE CONES ON HOODS.", "status": "live" },
+    { "id": "shuttles-only", "text": "BUS STOP. SHUTTLES ONLY. BUSES BY APPOINTMENT.", "status": "live" },
+    { "id": "summer-fog", "text": "VISIBILITY 200 FT. SUMMER HAS BEGUN.", "status": "live" },
+    { "id": "curb-wheels", "text": "CURB YOUR WHEELS. YOUR CAR WANTS TO LEAVE.", "status": "live" },
+    { "id": "no-reason", "text": "NO PARKING. NO STOPPING. NO REASON GIVEN.", "status": "live" },
+    { "id": "cable-grip", "text": "CABLE CAR TRACKS. GRIP IS FOR THE CAR, NOT YOU.", "status": "live" }
   ],
   "billboards": [
     { "id": "sleep-as-a-service", "text": "SLEEP, NOW AS A SERVICE. FIRST 8 HOURS FREE.", "status": "live" },
-    { "id": "reinvent-the-bus", "text": "WE RAISED $40M TO REINVENT THE BUS. IT'S A BUS.", "status": "live" }
+    { "id": "reinvent-the-bus", "text": "WE RAISED $40M TO REINVENT THE BUS. IT'S A BUS.", "status": "live" },
+    {
+      "id": "prompt-whisperer",
+      "text": "NOW HIRING: SENIOR PROMPT WHISPERER. 10 YEARS EXPERIENCE REQUIRED.",
+      "status": "live"
+    },
+    {
+      "id": "promptloom",
+      "text": "PROMPTLOOM. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI.",
+      "status": "live"
+    },
+    { "id": "toastwise", "text": "TOASTWISE. YOUR TOAST, REASONED STEP BY STEP.", "status": "live" },
+    { "id": "emptyseat", "text": "EMPTYSEAT ROBOTAXI. ARRIVING IN 4 MIN. SINCE 9 AM.", "status": "live" },
+    { "id": "gpu-hour", "text": "RENT A GPU HOUR. NOW JUST THE PRICE OF A STUDIO.", "status": "live" },
+    { "id": "coldcase-ai", "text": "COLDCASE. YOUR FRIDGE, NOW WITH A CHATBOT. SERIES B.", "status": "live" }
   ],
   "weather": null,
   "meta": {
