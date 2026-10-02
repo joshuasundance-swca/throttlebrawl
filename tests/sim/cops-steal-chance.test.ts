@@ -54,13 +54,16 @@ const MAX_TICKS = 60 * 60 * 6;
 /** The share of a region's seeded races in which a player who tries steals the cop's weapon. */
 const MIN_STEAL_SHARE = 0.5;
 
-function raceConfig(event: string, seed: number): SimConfig {
+function raceConfig(event: string, seed: number, pickupSpacingM = 2000): SimConfig {
   // Without the W-P road events: they reshuffle each seed's race (over seeds 11 to 40 the steal rate
   // was 23 of 30 without them and 20 of 30 with them), and this measures the steal, not the road.
   return buildSimConfig(REG, STREAMS.forEvent(REG, event), {
     seed,
     eventId: event,
-    tuning: { 'modifiers.setPieceChance': 0 },
+    // And with the roadside weapons about as sparse as before W-Q (one per 2 km, not per 500 m): a
+    // player who tries stops while a road weapon is in hand, so the denser roadside cut the tries
+    // (Pacific Northwest and San Francisco 4 of 10). The full-hand test races the game's density.
+    tuning: { 'modifiers.setPieceChance': 0, 'combat.pickupSpacingM': pickupSpacingM },
   });
 }
 
@@ -81,7 +84,7 @@ interface StealRun {
  * with full hands, dropping what you hold), until his first steal off the cop.
  */
 function tryToSteal(event: string, seed: number, armed = false): StealRun {
-  const config = raceConfig(event, seed);
+  const config = raceConfig(event, seed, armed ? 500 : 2000);
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const copIds = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
