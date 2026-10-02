@@ -11,10 +11,13 @@
   "stats": {
     "massKg": 92,
     "healthMax": 95,
-    "skill": 0.5
+    "skill": 0.5,
+    "toughness": 0.95,
+    "power": 1.0
   },
   "personality": {
     "style": "crowd-pleaser",
+    "signature": "wave",
     "aggression": 0.55,
     "dirtiness": 0.3,
     "courage": 0.3,

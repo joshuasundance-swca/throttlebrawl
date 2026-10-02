@@ -12,10 +12,13 @@
   "stats": {
     "massKg": 72,
     "healthMax": 100,
-    "skill": 0.7
+    "skill": 0.7,
+    "toughness": 1.0,
+    "power": 1.1
   },
   "personality": {
     "style": "scrapper",
+    "signature": "sweet-talk",
     "aggression": 0.6,
     "dirtiness": 0.6,
     "courage": 1,

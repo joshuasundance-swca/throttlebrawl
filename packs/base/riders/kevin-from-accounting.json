@@ -10,10 +10,13 @@
   "stats": {
     "massKg": 78,
     "healthMax": 105,
-    "skill": 0.5
+    "skill": 0.5,
+    "toughness": 1.05,
+    "power": 1.0
   },
   "personality": {
     "style": "grudge-keeper",
+    "signature": "counter",
     "aggression": 0.7,
     "dirtiness": 0.8,
     "courage": 0.75,

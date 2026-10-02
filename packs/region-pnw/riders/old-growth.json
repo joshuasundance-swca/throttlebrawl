@@ -11,10 +11,13 @@
   "stats": {
     "massKg": 112,
     "healthMax": 125,
-    "skill": 0.55
+    "skill": 0.55,
+    "toughness": 1.15,
+    "power": 1.15
   },
   "personality": {
     "style": "heavy-hitter",
+    "signature": "timber",
     "aggression": 0.7,
     "dirtiness": 0.3,
     "courage": 0.95,

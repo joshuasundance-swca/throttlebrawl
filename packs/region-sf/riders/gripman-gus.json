@@ -11,10 +11,13 @@
   "stats": {
     "massKg": 92,
     "healthMax": 115,
-    "skill": 0.6
+    "skill": 0.6,
+    "toughness": 1.05,
+    "power": 1.15
   },
   "personality": {
     "style": "heavy-hitter",
+    "signature": "bell",
     "aggression": 0.8,
     "dirtiness": 0.3,
     "courage": 0.95,

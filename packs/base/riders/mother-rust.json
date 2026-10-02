@@ -12,10 +12,13 @@
   "stats": {
     "massKg": 88,
     "healthMax": 120,
-    "skill": 0.7
+    "skill": 0.7,
+    "toughness": 1.15,
+    "power": 1.1
   },
   "personality": {
     "style": "crew-boss",
+    "signature": "ram",
     "aggression": 0.75,
     "dirtiness": 0.55,
     "courage": 0.9,

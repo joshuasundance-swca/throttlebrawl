@@ -11,10 +11,13 @@
   "stats": {
     "massKg": 64,
     "healthMax": 90,
-    "skill": 0.65
+    "skill": 0.65,
+    "toughness": 0.9,
+    "power": 0.95
   },
   "personality": {
     "style": "weaver",
+    "signature": "cut-in",
     "aggression": 0.55,
     "dirtiness": 0.6,
     "courage": 0.6,

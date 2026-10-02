@@ -11,10 +11,13 @@
   "stats": {
     "massKg": 72,
     "healthMax": 85,
-    "skill": 0.65
+    "skill": 0.65,
+    "toughness": 0.85,
+    "power": 0.95
   },
   "personality": {
     "style": "racer",
+    "signature": "pivot",
     "aggression": 0.4,
     "dirtiness": 0.6,
     "courage": 0.4,
