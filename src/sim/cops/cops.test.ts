@@ -159,7 +159,7 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the fifteen cop parameters (M4 cops-3 added six, playtest 1c the launch share, the 2026-10-02 interview the knockdown-only bust, playtest 2 the patrol scale) inside their ranges, all sim-affecting', () => {
+  it('declares the seventeen cop parameters (M4 cops-3 added six, playtest 1c the launch share, the 2026-10-02 interview the knockdown-only bust, playtest 2 the patrol scale and two for the heat meter) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustKnockdownOnly',
@@ -168,6 +168,8 @@ describe('cops: tuning declarations', () => {
       'cops.chaosSummonAt',
       'cops.fineTierScale',
       'cops.followGapM',
+      'cops.heatDecayPerS',
+      'cops.heatScale',
       'cops.launchShare',
       'cops.maxActive',
       'cops.patrolScale',
@@ -453,7 +455,9 @@ describe('cops: the chase', () => {
       expect(sim.snapshot().entities[COP_ID]?.speed ?? 9, `braking at ${brakeS} s`).toBeLessThan(0.5);
     }
     console.log(`[cops] the chase, braking at: ${rows.join('; ')}`);
-  });
+    // Eight whole chases: about 5 s on a CI runner, but 22 to 27 s in the pre-push hook while
+    // parallel lanes build on the dev machine (2026-10-02), past the unit project's 20 s.
+  }, 60_000);
 
   it('the cop is a law-faction rider driven by nobody but sim/cops', () => {
     const sim = createSim(fixtureConfig({ 'cops.spawnDelayS': 1 }));

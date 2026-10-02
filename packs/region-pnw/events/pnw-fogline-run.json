@@ -14,7 +14,7 @@
     "riders": ["base:deacon-vane", "base:chad-speedwell", "old-growth", "juniper-moss"],
     "paceMps": 36.5
   },
-  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2 },
+  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2, "heat": true },
   "rules": {},
   "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
   "rewards": {

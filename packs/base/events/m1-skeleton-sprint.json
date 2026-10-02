@@ -13,7 +13,7 @@
     "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"],
     "paceMps": 36.5
   },
-  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2 },
+  "cops": { "mode": "every-race", "baseCount": 1, "patrolMax": 2, "heat": true },
   "rules": {},
   "objectives": [{ "id": "finish", "kind": "finish-place", "params": { "maxPlace": 99 }, "required": true }],
   "rewards": {
