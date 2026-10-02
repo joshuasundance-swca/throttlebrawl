@@ -5,7 +5,10 @@
   "kind": "classic-race",
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
-  "lengths": [{ "id": "standard", "route": "m1-skeleton-sprint", "laps": 1 }],
+  "lengths": [
+    { "id": "standard", "route": "m1-skeleton-sprint", "laps": 1 },
+    { "id": "long", "route": "m1-long-haul", "laps": 1 }
+  ],
   "field": {
     "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"],
     "paceMps": 36.5
@@ -25,6 +28,6 @@
   "modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 },
   "meta": {
     "status": "live",
-    "notes": "The M1 classic race: you, the four regular rivals and one cop; one length, one required objective (finish), prize by place. riders-3 (M1) owns it; app-2 landed the full field (riders-3's draft #42). M2 riders-5 added the style cash (the content-pack doc's example values), and raised the rival pace from 31 to 36.5 m/s with the starter bike's 85 → 100 mph (playtest 1), so the race keeps its balance."
+    "notes": "The M1 classic race: you, the four regular rivals and one cop; one length, one required objective (finish), prize by place. riders-3 (M1) owns it; app-2 landed the full field (riders-3's draft #42). M2 riders-5 added the style cash (the content-pack doc's example values), and raised the rival pace from 31 to 36.5 m/s with the starter bike's 85 → 100 mph (playtest 1), so the race keeps its balance. Run W-Q (distinct keys, interview 2026-10-02) adds the `long` length: the long haul over all four keys (the fishing village, the resort strip, the junkyard key) to the party key at the end of the Last Resort Causeway, about 11 km. `standard` stays the 3.5 km sprint; `short` falls back to it."
   }
 }
