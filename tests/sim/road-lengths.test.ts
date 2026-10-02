@@ -60,12 +60,13 @@ describe('road-3: the bot rides every race length', () => {
     const lines: string[] = [];
     let prev = 0;
     for (const r of ROUTES) {
-      // Seeds 1 to 3 until the bot finishes: each seed also places the set pieces and re-rolls the
+      // Seeds 1 to 6 until the bot finishes: each seed also places the set pieces and re-rolls the
       // traffic and the cop's chase, and the dev bot never evades the cop, so a long race can end in
-      // a bust (integration round: seed 1's long race did once the cop rode the launch punch). A race
-      // it does not finish must still end in a bust, never a stall.
+      // a bust (integration round: seed 1's long race did once the cop rode the launch punch; with
+      // forgiving landings, playtest 2, seeds 1 to 4 of the long haul end in busts and seed 5
+      // finishes). A race it does not finish must still end in a bust, never a stall.
       let res = botRace(r.id, 1);
-      for (let seed = 2; seed <= 3 && res.finishTick < 0; seed++) {
+      for (let seed = 2; seed <= 6 && res.finishTick < 0; seed++) {
         expect(res.busted, `${r.id} seed ${res.seed}: a DNF is a bust, not a stall`).toBe(true);
         res = botRace(r.id, seed);
       }

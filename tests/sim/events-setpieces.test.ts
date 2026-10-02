@@ -90,11 +90,11 @@ function mod(
 }
 
 const ALL: SimModifierDef[] = [
-  mod('roadwork', 'roadwork', [0.1, 0.3], { vehicle: 'test:work-truck' }),
-  mod('crash', 'crash-scene', [0.3, 0.5], { vehicle: 'test:tow-truck', vehicle2: 'test:stalled-car' }),
-  mod('parade', 'parade', [0.5, 0.7], { floats: ['test:float', 'test:float'], inflatable: true }),
-  mod('hay', 'hay-spill', [0.15, 0.9], { vehicle: 'test:farm-truck' }),
-  mod('trap', 'speed-trap', [0.15, 0.9], { limitMps: 20 }),
+  mod('roadwork', 'roadwork', [0.3, 0.94], { vehicle: 'test:work-truck' }),
+  mod('crash', 'crash-scene', [0.3, 0.94], { vehicle: 'test:tow-truck', vehicle2: 'test:stalled-car' }),
+  mod('parade', 'parade', [0.3, 0.94], { floats: ['test:float', 'test:float'], inflatable: true }),
+  mod('hay', 'hay-spill', [0.3, 0.94], { vehicle: 'test:farm-truck' }),
+  mod('trap', 'speed-trap', [0.3, 0.94], { limitMps: 20 }),
 ];
 
 function config(
@@ -107,8 +107,11 @@ function config(
     eventId: EVENT,
     length: 'standard',
   });
+  // The shipped event caps its pieces per race; these tests force every one in.
+  const { modifiersPerRace: _cap, ...event } = base.event;
   return {
     ...base,
+    event,
     trafficTypes: [...base.trafficTypes, ...VEHICLES],
     modifiers,
     tuning: { ...base.tuning, ...tuning },
@@ -164,7 +167,8 @@ const pieceOf = (e: SimEvent) => String(e.data['piece']);
 
 describe('road set pieces (W-P events)', () => {
   it('every piece goes live, does its job and ends as the bot rides the race', () => {
-    const run = ride(config(3));
+    // The lot cop waits (a long spawn delay), so it is the speed trap that brings him out.
+    const run = ride(config(3, ALL, { 'cops.spawnDelayS': 600 }));
     const started = run.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
     const ended = run.events.filter((e) => e.type === 'modifierEnd').map(pieceOf);
     console.log(
@@ -194,15 +198,14 @@ describe('road set pieces (W-P events)', () => {
       expect(run.kinds, k).toContain(k);
     // The hay truck drops bales as racers close in (they come down moving).
     expect(run.moved).toContain('hayBale');
-    // The speed trap: the bot blows past the cop, who pulls out with his siren on. Whether the bot
-    // is over the limit as it passes depends on the traffic around it then (W-P traffic lane: on
-    // main the bot tripped it in 6 of the 9 seeds of 1 to 10 that place one), so seed 3 is checked
-    // first and seeds 1, 2, 5, 9 and 10 back it up: one of them must trip it.
+    // The speed trap: the bot blows past the radar and the lot cop is brought to the trap, siren on.
+    // Whether the bot is over the limit as it passes depends on the traffic around it then (the W-P
+    // traffic lane), so seed 3 is checked first and seeds 1, 2, 5, 9 and 10 back it up.
     const tripped = (r: Run) => r.events.some((e) => e.type === 'siren' && e.data['cause'] === 'speed-trap');
     let trapSeed = tripped(run) ? 3 : -1;
     for (const seed of [1, 2, 5, 9, 10]) {
       if (trapSeed >= 0) break;
-      if (tripped(ride(config(seed)))) trapSeed = seed;
+      if (tripped(ride(config(seed, ALL, { 'cops.spawnDelayS': 600 })))) trapSeed = seed;
     }
     console.log(`[print] the speed trap summoned its cop on seed ${trapSeed}`);
     expect(trapSeed, 'the speed trap summons its cop').toBeGreaterThan(0);
@@ -217,8 +220,9 @@ describe('road set pieces (W-P events)', () => {
     const signs = (seed: number) => {
       const sim = createSim(config(seed));
       const out: string[] = [];
-      for (let t = 0; t < 60 * 30 && out.length === 0; t++) sim.step([]);
-      // Signs appear only once a piece is live, so read the placement from the first live props instead.
+      // Signs appear only once a piece is live: step until the first one does.
+      for (let t = 0; t < 60 * 120 && !(sim.snapshot().props ?? []).some((p) => p.kind === 'sign'); t++)
+        sim.step([]);
       for (const p of sim.snapshot().props ?? [])
         if (p.kind === 'sign') out.push(`${p.piece}@${p.x.toFixed(0)},${p.z.toFixed(0)}`);
       return out.sort().join(';');

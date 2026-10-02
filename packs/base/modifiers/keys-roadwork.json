@@ -1,0 +1,41 @@
+{
+  "type": "event-modifier",
+  "id": "keys-roadwork",
+  "name": "Keys Roadwork",
+  "kind": "human",
+  "tags": ["set-piece", "roadwork"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.15, 0.85],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "roadwork",
+      "signText": "ROAD WORK AHEAD SINCE 1987",
+      "vehicle": "event-work-truck",
+      "person": "flagger",
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a cone taper narrowing your lane, a sawhorse, a crew truck on the verge and a flagger. The sign has been up a while.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

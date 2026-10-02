@@ -344,6 +344,8 @@ export function createApp(opts: AppOptions): AppHandle {
     };
     renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
     camera.setRoad(stream.road);
+    // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
+    audio.setRoad(stream.road);
     attractPose = null;
     tuneRadio();
   };
@@ -392,12 +394,18 @@ export function createApp(opts: AppOptions): AppHandle {
     retuneSavedRadio?.();
   };
   tuneRadio();
-  /** Each rider's engine patch, from its bike file (audio keys them by rider content id). */
+  /**
+   * Each rider's engine patch, from its bike file (audio keys them by rider content id), plus the
+   * bike class the rider is drawn on (`look.bikeClass`), whose voice audio prefers (playtest 2:
+   * "a voice per bike").
+   */
   const engineSounds = (config: SimConfig): Record<string, EngineSoundSpec> => {
     const out: Record<string, EngineSoundSpec> = {};
     for (const r of config.riders) {
       const bike = registry.bikes[r.bike.contentId];
-      if (bike) out[r.contentId] = bike.engineSound;
+      const look = (registry.riders[r.contentId] as { look?: { bikeClass?: unknown } } | undefined)?.look;
+      const bikeClass = typeof look?.bikeClass === 'string' ? look.bikeClass : undefined;
+      if (bike) out[r.contentId] = bikeClass ? { ...bike.engineSound, bikeClass } : bike.engineSound;
     }
     return out;
   };

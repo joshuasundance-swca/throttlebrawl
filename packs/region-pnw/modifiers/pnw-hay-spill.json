@@ -1,0 +1,40 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-hay-spill",
+  "name": "Hay Truck",
+  "kind": "human",
+  "tags": ["set-piece", "hay-spill"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.15, 0.8],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "hay-spill",
+      "signText": "LOOSE HAY NEXT 2 MILES",
+      "vehicle": "pnw-hay-truck",
+      "theme": "pnw"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a farm truck crawling along in your lane, its hay stacked a bale too high, shedding bales as you close in. A bale is a wobble.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

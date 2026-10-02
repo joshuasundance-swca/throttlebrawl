@@ -266,7 +266,9 @@ describe('cops-3: the spawn mix', () => {
 
 describe('cops-3: fines', () => {
   const bust = (tier: number | undefined, tuning: Record<string, number> = {}) => {
-    const w = lawWorld(config(undefined, { ...(tier !== undefined ? { tier } : {}), tuning }));
+    // The fine, not the bust rule, is under test: the M1 proximity bust (cops.bustKnockdownOnly 0).
+    const t = { 'cops.bustKnockdownOnly': 0, ...tuning };
+    const w = lawWorld(config(undefined, { ...(tier !== undefined ? { tier } : {}), tuning: t }));
     w.step(1); // he pulls out
     const player = w.world.movers[PLAYER_ID];
     const c = w.world.movers[2];

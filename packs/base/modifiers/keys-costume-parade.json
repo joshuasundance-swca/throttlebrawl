@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "keys-costume-parade",
+  "name": "Keys Costume Parade",
+  "kind": "human",
+  "tags": ["set-piece", "parade"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.8],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "parade",
+      "signText": "PARADE ROUTE COSTUMES REQUIRED",
+      "floats": ["keys-parade-float", "keys-parade-float"],
+      "person": "marcher-keys",
+      "theme": "keys",
+      "marchers": 6
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: a costume parade on the shoulder, a flamingo float and a conch float, marchers in feather boas and straw hats who step aside for you.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
