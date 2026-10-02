@@ -32,6 +32,7 @@ import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
+import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import { Rain, rainColourOf } from './rain';
 import {
   buildRoadScene,
@@ -174,6 +175,8 @@ export interface SceneryStatus {
   visible: number;
   /** Rain streaks drawn in the last frame (0 = a dry race). */
   rain: number;
+  /** The region's roadside props (run W-P), or null before its kit has loaded or with none. */
+  roadside: RoadsideCounts | null;
   /** The far backdrop as built (null while it loads, or for a road without one). */
   backdrop: BackdropStats | null;
 }
@@ -250,6 +253,30 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
+  // Run W-P: the region's roadside props (roadside.ts), a lazy chunk that arrives with the kit.
+  let roadsideModule: typeof import('./roadside') | null = null;
+  let roadside: RoadsideLayer | null = null;
+  const buildRoadside = () => {
+    roadside?.dispose();
+    roadside = null;
+    const m = roadsideModule;
+    const rs = roadScene;
+    if (!m || !rs || !roadArgs) return;
+    const kind = (Object.keys(models) as ModelKind[]).find((k) => k in m.KITS);
+    const model = kind && models[kind];
+    const kit = kind && m.KITS[kind];
+    if (!model || !kit) return;
+    roadside = new m.RoadsideLayer(model, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+      density: roadArgs.density,
+      kit,
+      landReach: (e, side, s) => rs.landReach(e, side, s),
+      spots: rs.spots,
+    });
+    scene.add(roadside.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -263,6 +290,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       palette,
     });
     scene.add(roadScene.group);
+    buildRoadside();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -304,6 +332,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       };
       repaint();
       if (report.loaded.length) buildRoad();
+      if (report.loaded.some((k) => k.endsWith('Roadside')) && !roadsideModule)
+        void import('./roadside').then((r) => {
+          roadsideModule = r;
+          buildRoadside();
+        });
     });
   };
   let lost = false;
@@ -381,6 +414,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop.update(camera.position, scene, t);
       eventProps.sync(curr, t);
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
+      if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
       const me = curr?.entities.find((e) => e.slot === 0);
@@ -464,6 +498,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       models: modelReport,
       visible: sceneryVisible,
       rain: rain.count(),
+      roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
     }),
   };

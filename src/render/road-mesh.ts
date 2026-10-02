@@ -166,6 +166,11 @@ export interface RoadScene {
    * Returns the scenery instances left visible.
    */
   update(cameraX: number, cameraZ: number, t: number, drawM: number): number;
+  /**
+   * Metres of drawn land past the verge at s on a side of an edge (0 = none), as this scene drew
+   * it: the roadside layer (roadside.ts, run W-P) stands its clutter on it.
+   */
+  landReach(edge: number, side: -1 | 1, s: number): number;
   dispose(): void;
 }
 
@@ -607,6 +612,8 @@ export function buildRoadScene(
   const railPostSpots: { p: Point3; h: number }[] = [];
   const pylonSpots: { p: Point3; h: number }[] = [];
   const spots: ScenerySpot[] = [];
+  /** Each edge's land reach per sample and side, and its sample step (RoadScene.landReach). */
+  const landOf: { step: number; reach: Record<-1 | 1, number[]> }[] = [];
   const truckParts: BoxPart[] = [];
   const truckMatrices: Matrix4[] = [];
   const truckModel = opts.models?.truck;
@@ -863,6 +870,7 @@ export function buildRoadScene(
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
+    landOf[e.index] = { step, reach: reachOf };
     /** The terrain skirt per sample: its slope's run and its flat ground's width past the strip, m. */
     const skirtOf: Record<-1 | 1, ({ run: number; flat: number } | null)[]> = { [-1]: [], [1]: [] };
     /** The skirt's flat ground as drawn, per side: each row's foot and far edge, and the rows kept. */
@@ -1568,6 +1576,13 @@ export function buildRoadScene(
       sceneryModels: fromModels,
     },
     spots,
+    landReach(edge, side, s) {
+      const l = landOf[edge];
+      if (!l) return 0;
+      const n = l.reach[side].length;
+      const i = Math.max(0, Math.min(n - 1, Math.floor(s / l.step)));
+      return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
+    },
     update(cameraX, cameraZ, t, drawM) {
       let shown = 0;
       for (const b of batches) {
