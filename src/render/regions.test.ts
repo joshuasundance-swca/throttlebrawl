@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { oddityFigureFor } from './figures';
 import { readGlb } from './glb';
+import { GroundTris, openLandEnds } from './land-probe.test-util';
 import { createFlatLook } from './look';
 import {
   bakeModel,
@@ -162,6 +163,21 @@ describe.each(['pnw-c1', 'sf-hills'])('the terrain skirt on %s', (id) => {
     }
     console.log(`[examined] ${id}: ${flat} points 100 m out on the flat ground at y ${GROUND_Y}`);
     expect(flat).toBeGreaterThan(3);
+  });
+});
+
+describe.each(['keys-m1', 'pnw-c1', 'sf-hills'])('the land on %s', (id) => {
+  it('never ends in mid-air: every raised edge of it is closed down to the ground (run W-O skeptic)', () => {
+    const { road, dressing } = track(id);
+    const scene = buildRoadScene(road, look, dressing, { seed: 7 });
+    const ground = new GroundTris(scene.group);
+    const { probes, drops, open } = openLandEnds(road, ground);
+    console.log(
+      `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked, ${drops} drops looked under, ${open.length} open`,
+    );
+    scene.dispose();
+    expect(probes).toBeGreaterThan(1000);
+    expect(open.slice(0, 8)).toEqual([]);
   });
 });
 
