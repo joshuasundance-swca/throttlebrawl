@@ -56,39 +56,47 @@
     ]
   },
   "signs": [
-    { "id": "yield-cable-cars", "text": "YIELD TO CABLE CARS. THEY CANNOT YIELD TO YOU.", "status": "live" },
-    { "id": "steeper-one", "text": "STEEP GRADE NEXT 4 BLOCKS. THEN A STEEPER ONE.", "status": "live" },
+    { "id": "yield-cable-cars", "text": "YIELD TO CABLE CARS. They cannot yield to you.", "status": "live" },
+    { "id": "steeper-one", "text": "STEEP GRADE: 4 BLOCKS. Then a steeper one.", "status": "live" },
     {
       "id": "street-cleaning",
-      "text": "STREET CLEANING TUESDAY 6 AM. TICKETING BEGAN MONDAY.",
+      "text": "STREET CLEANING TUESDAY 6 AM. Ticketing began Monday.",
       "status": "live"
     },
-    { "id": "zero-spaces", "text": "2 HR PARKING 7 AM TO 6 PM. 0 SPACES.", "status": "live" },
-    { "id": "toll-view", "text": "BRIDGE TOLL $9. VIEW NOT INCLUDED.", "status": "live" },
-    { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. DO NOT PLACE CONES ON HOODS.", "status": "live" },
-    { "id": "shuttles-only", "text": "BUS STOP. SHUTTLES ONLY. BUSES BY APPOINTMENT.", "status": "live" },
-    { "id": "summer-fog", "text": "VISIBILITY 200 FT. SUMMER HAS BEGUN.", "status": "live" },
-    { "id": "curb-wheels", "text": "CURB YOUR WHEELS. YOUR CAR WANTS TO LEAVE.", "status": "live" },
-    { "id": "no-reason", "text": "NO PARKING. NO STOPPING. NO REASON GIVEN.", "status": "live" },
-    { "id": "cable-grip", "text": "CABLE CAR TRACKS. GRIP IS FOR THE CAR, NOT YOU.", "status": "live" }
+    { "id": "zero-spaces", "text": "2 HR PARKING. 0 SPACES. 7 am to 6 pm.", "status": "live" },
+    { "id": "toll-view", "text": "BRIDGE TOLL $9. View not included.", "status": "live" },
+    { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. Do not place cones on hoods.", "status": "live" },
+    { "id": "shuttles-only", "text": "BUS STOP: SHUTTLES ONLY. Buses by appointment.", "status": "live" },
+    { "id": "summer-fog", "text": "VISIBILITY 200 FT. Summer has begun.", "status": "live" },
+    { "id": "curb-wheels", "text": "CURB YOUR WHEELS. Your car wants to leave.", "status": "live" },
+    { "id": "no-reason", "text": "NO PARKING, NO STOPPING. No reason given.", "status": "live" },
+    { "id": "cable-grip", "text": "CABLE CAR TRACKS. Grip is for the car, not you.", "status": "live" }
   ],
   "billboards": [
-    { "id": "sleep-as-a-service", "text": "SLEEP, NOW AS A SERVICE. FIRST 8 HOURS FREE.", "status": "live" },
-    { "id": "reinvent-the-bus", "text": "WE RAISED $40M TO REINVENT THE BUS. IT'S A BUS.", "status": "live" },
+    { "id": "sleep-as-a-service", "text": "SLEEP AS A SERVICE. First 8 hours free.", "status": "live" },
+    { "id": "reinvent-the-bus", "text": "WE REINVENTED THE BUS. $40M raised. It's a bus.", "status": "live" },
     {
       "id": "prompt-whisperer",
-      "text": "NOW HIRING: SENIOR PROMPT WHISPERER. 10 YEARS EXPERIENCE REQUIRED.",
+      "text": "NOW HIRING: PROMPT WHISPERER. Senior role. 10 years' experience required.",
       "status": "live"
     },
     {
       "id": "delegatron",
-      "text": "DELEGATRON. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI.",
+      "text": "AI FOR YOUR AI. Delegatron writes the prompts for your other AI.",
       "status": "live"
     },
-    { "id": "toastwise", "text": "TOASTWISE. YOUR TOAST, REASONED STEP BY STEP.", "status": "live" },
-    { "id": "emptyseat", "text": "EMPTYSEAT ROBOTAXI. ARRIVING IN 4 MIN. SINCE 9 AM.", "status": "live" },
-    { "id": "gpu-hour", "text": "RENT A GPU HOUR. NOW JUST THE PRICE OF A STUDIO.", "status": "live" },
-    { "id": "coldcase-ai", "text": "COLDCASE. YOUR FRIDGE, NOW WITH A CHATBOT. SERIES B.", "status": "live" }
+    {
+      "id": "toastwise",
+      "text": "TOAST, THOUGHT THROUGH. Toastwise reasons it step by step.",
+      "status": "live"
+    },
+    { "id": "emptyseat", "text": "ROBOTAXI ARRIVING: 4 MIN. Since 9 am. Emptyseat.", "status": "live" },
+    { "id": "gpu-hour", "text": "RENT A GPU HOUR. Now just the price of a studio.", "status": "live" },
+    {
+      "id": "coldcase-ai",
+      "text": "YOUR FRIDGE HAS OPINIONS. Coldcase, now with a chatbot. Series B.",
+      "status": "live"
+    }
   ],
   "weather": null,
   "meta": {
