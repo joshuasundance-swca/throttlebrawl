@@ -866,6 +866,20 @@ export function routePosAt(config: SimConfig, progress: number): RoadPos | null 
  * travel lanes. Null when the spot is not clear (a branch, a ramp, pad, ramp truck or lot nearby, a
  * split zone, a sharp bend, or nowhere off the lanes).
  */
+/** The route progress spans of the route's allowed roads off its main path (its shortcuts). */
+function branchSpans(config: SimConfig): [number, number][] {
+  const { road, route } = config;
+  const main = new Set(route.mainEdges);
+  const out: [number, number][] = [];
+  for (let e = 0; e < road.edges.length; e++) {
+    if (main.has(e) || !route.allows(e)) continue;
+    const a = route.progressAt(e, 0);
+    const b = route.progressAt(e, road.edges[e]?.length ?? 0);
+    if (Number.isFinite(a) && Number.isFinite(b)) out.push([Math.min(a, b), Math.max(a, b)]);
+  }
+  return out;
+}
+
 function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos | null {
   const { road, route } = config;
   if (!road.edges[pos.edge] || !route.allows(pos.edge) || road.branchSideAt(pos.edge, pos.s) !== 0)
@@ -878,6 +892,9 @@ function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos |
   for (const z of route.shortcuts) {
     if (z.edge === pos.edge && pos.s >= z.s0 - 60 && pos.s <= z.s1 + 20) return null;
   }
+  // Not beside a shortcut: a player who takes it would ride past him out of sight.
+  const at = route.progressAt(pos.edge, pos.s);
+  for (const [a, b] of branchSpans(config)) if (at >= a - 40 && at <= b + 40) return null;
   const { drive: lane, shoulder } = sideLanes(config, pos);
   if (shoulder) return { ...pos, d: shoulder.dCenterM };
   if (!edgeOk || !lane) return null;

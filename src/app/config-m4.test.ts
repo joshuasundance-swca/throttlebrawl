@@ -125,8 +125,9 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
     ]);
     expect(eventCops({ cops: { mode: 'every-race', patrolMax: 2 } } as never).patrolMax).toBe(2);
     expect('patrolMax' in eventCops({ cops: { mode: 'every-race' } } as never)).toBe(false);
-    // The heat meter fields one more.
-    expect(ids({ mode: 'every-race', baseCount: 1, patrolMax: 2, heat: true })).toHaveLength(5);
+    // The heat meter shares the lot's one (and reuses cops whose chase ended); on its own it fields one.
+    expect(ids({ mode: 'every-race', baseCount: 1, patrolMax: 2, heat: true })).toHaveLength(4);
+    expect(ids({ mode: 'every-race', baseCount: 1, heat: true })).toHaveLength(2);
     expect(eventCops({ cops: { mode: 'every-race', heat: true } } as never).heat).toBe(true);
     expect('heat' in eventCops({ cops: { mode: 'every-race', heat: 'yes' } } as never)).toBe(false);
   });

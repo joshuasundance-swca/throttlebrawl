@@ -28,6 +28,8 @@ const SEEDS = Array.from({ length: 12 }, (_, i) => i + 1);
 /** He has arrived once he rides (above 1 m/s) within this of the player: a little over his 14 m bust radius. */
 const ARRIVAL_M = 20;
 const RIDING_MPS = 1;
+/** A patrol cop has arrived once he rides faster than this within ARRIVAL_M (sim/cops' crawl is 4). */
+const PATROL_RIDING_MPS = 5;
 /** The declared siren lead (cops.sirenLeadS default), in ticks. */
 const LEAD_TICKS = 3 * 60;
 /** Each preset race stops here: past the second patrol window (50-75 s at 0.7 x the pace). */
@@ -66,7 +68,8 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
     const me = snap.entities[playerId];
     for (const s of sirens) {
       const cop = snap.entities[s.cop];
-      if (s.arrival >= 0 || !me || !cop || cop.speed <= RIDING_MPS) continue;
+      // Riding after the player: faster than a parked cop rolling back onto the shoulder (4 m/s).
+      if (s.arrival >= 0 || !me || !cop || cop.speed <= PATROL_RIDING_MPS) continue;
       if (Math.hypot(cop.x - me.x, cop.z - me.z) <= ARRIVAL_M) s.arrival = sim.tick;
     }
   }

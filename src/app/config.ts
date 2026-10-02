@@ -355,7 +355,7 @@ export function eventCops(event: RaceEvent): SimEventCops {
  * resolves to the event's region (a cop with no region rides everywhere), cycled. The field holds
  * enough cops for the most the mix can bring out (M4 cops-3): `baseCount` plus `tierScale` per tier
  * above the first for `tier-rising`, plus `patrolMax` for playtest 2's patrol, plus one more
- * whenever chaos can summon or a patrol rides (a speed trap's cop), and one more for the heat meter, at most
+ * whenever chaos can summon, a patrol rides or the heat meter runs (a speed trap's or the heat's cop), at most
  * MAX_FIELDED_COPS; `none` fields nobody. sim/cops decides which of them leave the lot, and when.
  * [default] Returns qualified rider ids.
  */
@@ -367,10 +367,10 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT, tier = DEF
   const starting =
     cops.mode === 'tier-rising' ? cops.baseCount + cops.tierScale * (Math.max(1, tier) - 1) : cops.baseCount;
   const chaos = cops.chaosSummon || cops.mode === 'chaos-summoned';
-  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap or chaos;
-  // the heat meter one more (its first tier's cop; the pair also reuses cops whose chase ended).
+  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap, chaos or
+  // the heat meter (whose cops also reuse any cop whose chase ended: more would crowd the lot).
   const patrol = cops.patrolMax ?? 0;
-  const lot = (chaos || patrol > 0 ? 1 : 0) + (cops.heat ? 1 : 0);
+  const lot = chaos || patrol > 0 || cops.heat ? 1 : 0;
   const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + patrol + lot);
   const regionKey = qualifyIn(packOf(key), event.region);
   const race = packSubset(reg, packClosure(reg, packOf(key)));
