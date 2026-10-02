@@ -6,8 +6,9 @@
 //   rider's across-position run past the lanes into the verge;
 // - `rideLimits`: where a rider's centre may go across the road at s, and what stops it there;
 // - `groundUnder` and `surfaceFeel`: the surface under the wheels and its grip and speed.
-// The switch is off by default, so every race, and every recording made before it, runs exactly as
-// before until the off-road lane turns it on and wires the limits and the feel into the riders.
+// The off-road lane (run W-R) wired the limits, the edges and the feel into sim/riders and turned the
+// switch on by default; a race whose tuning leaves it out (every recording made before) runs with it
+// off, exactly as before.
 import {
   GROUND_SURFACES,
   type GroundSurface,
@@ -56,7 +57,10 @@ export const GROUND_TUNING: readonly TuningParamDecl[] = [
     id: OFF_ROAD_PARAM,
     group: 'ground',
     label: 'Ride off the road onto the verge (0 off, 1 on)',
-    default: 0,
+    // On (run W-R, interview 2026-10-02: "remove the invisible wall where ground is drawn"). A race
+    // whose tuning leaves it out (a recording made before, a hand-built test config) rides with it
+    // off, exactly as before.
+    default: 1,
     min: 0,
     max: 1,
     step: 1,

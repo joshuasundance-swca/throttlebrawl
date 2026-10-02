@@ -41,7 +41,8 @@ function fingerprint(c: Composition): string {
 
 describe('station data (packs/base/stations)', () => {
   it('has a surf, a rockabilly and an island station for the Keys, each with at least 3 code-made tracks', () => {
-    const all = baseStations();
+    // The hidden pirate (Contraband Cay, run W-Q) is not on the dial: pirate.test.ts has it.
+    const all = baseStations().filter((s) => !s.pirate);
     expect(all.map((s) => `${s.packId}:${s.id}`)).toEqual([
       'base:keys-rockabilly',
       'base:keys-surf',

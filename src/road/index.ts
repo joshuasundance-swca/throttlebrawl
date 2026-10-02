@@ -32,7 +32,13 @@ export {
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
-export { FIXTURE_LANES, fixtureBranchNetwork, fixtureBranchTrack, fixtureNetwork } from './fixture';
+export {
+  FIXTURE_LANES,
+  fixtureBranchNetwork,
+  fixtureBranchTrack,
+  fixtureNetwork,
+  highwayLanes,
+} from './fixture';
 export type { BranchFixtureOptions, FixtureEdgeSpec } from './fixture';
 export { lintRoad, lintRoadNetwork, ROAD_LINT } from './validate';
 export type { RoadFileLabel, RoadLintInput, RoadLintIssue, RoadLintRule } from './validate';

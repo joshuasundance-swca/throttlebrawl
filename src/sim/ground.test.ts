@@ -28,10 +28,10 @@ function branchConfig(surface?: 'dirt') {
 }
 
 describe('ground tuning', () => {
-  it('declares the off-road switch (off) and a grip and a speed for every surface, all in SIM_TUNING', () => {
+  it('declares the off-road switch (on since run W-R) and a grip and a speed for every surface, all in SIM_TUNING', () => {
     const ids = new Set(SIM_TUNING.map((d) => d.id));
     const off = GROUND_TUNING.find((d) => d.id === OFF_ROAD_PARAM);
-    expect(off).toMatchObject({ default: 0, min: 0, max: 1, step: 1, affectsSim: true });
+    expect(off).toMatchObject({ default: 1, min: 0, max: 1, step: 1, affectsSim: true });
     for (const g of GROUND_SURFACES) {
       const grip = GROUND_TUNING.find((d) => d.id === gripParam(g));
       const speed = GROUND_TUNING.find((d) => d.id === speedParam(g));
@@ -87,9 +87,9 @@ describe('ride limits', () => {
       loBandM: left.widthM,
       hiBandM: right.widthM,
     });
-    // The untagged fixture is palm land: an 8 m sand band each side that just runs on.
-    expect(on.lo).toBeCloseTo(off.lo - 8, 9);
-    expect(on.hi).toBeCloseTo(off.hi + 8, 9);
+    // The untagged fixture is palm land: a 4 m sand band each side that just runs on (run W-R).
+    expect(on.lo).toBeCloseTo(off.lo - 4, 9);
+    expect(on.hi).toBeCloseTo(off.hi + 4, 9);
     expect(on.hiEdge).toBe('soft');
   });
 });

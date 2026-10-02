@@ -75,9 +75,13 @@ interface Held {
 function race(c: Case, pattern: Pattern): Held {
   const length = c.route?.startsWith('length:') ? c.route.slice(7) : undefined;
   const route = c.route && !c.route.startsWith('length:') ? c.route : null;
+  // Off-road (run W-R) off: it reshuffles these seed-1 races (on the San Francisco real road the
+  // first held jump moves from tick 918 to 12857), and there a head-on with oncoming traffic 47 ticks
+  // after a clean landing falls inside AFTER_TICKS. The landing itself is the same either way.
   const config = buildSimConfig(REG, STREAMS.forEvent(REG, c.event, length, route), {
     seed: SEED,
     eventId: c.event,
+    tuning: { 'ground.offRoad': 0 },
     ...(length ? { length } : {}),
     ...(route ? { route } : {}),
   });

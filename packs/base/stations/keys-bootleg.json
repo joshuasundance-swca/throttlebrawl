@@ -1,0 +1,92 @@
+{
+  "type": "station",
+  "id": "keys-bootleg",
+  "name": "Contraband Cay 87.9",
+  "genre": "dub",
+  "regions": ["florida-keys"],
+  "pirate": {
+    "atFraction": 0.55,
+    "radiusM": 320
+  },
+  "tracks": [
+    {
+      "id": "seized-cargo-riddim",
+      "title": "Seized Cargo Riddim",
+      "procedural": {
+        "preset": "dub-band",
+        "params": {
+          "bpm": 72,
+          "key": "A",
+          "progression": "steady"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "two-knots-over-no-wake",
+      "title": "Two Knots Over No Wake",
+      "procedural": {
+        "preset": "dub-band",
+        "params": {
+          "bpm": 68,
+          "key": "D",
+          "progression": "roots"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "customs-dont-dance",
+      "title": "Customs Don't Dance",
+      "procedural": {
+        "preset": "dub-band",
+        "params": {
+          "bpm": 76,
+          "key": "E",
+          "progression": "dread"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "lobster-season-dub",
+      "title": "Lobster Season Dub",
+      "procedural": {
+        "preset": "dub-band",
+        "params": {
+          "bpm": 70,
+          "key": "G",
+          "progression": "lion"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "anchor-out-of-reach",
+      "title": "Anchor Out of Reach",
+      "procedural": {
+        "preset": "dub-band",
+        "params": {
+          "bpm": 80,
+          "key": "C",
+          "progression": "steady"
+        }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The Keys' hidden PIRATE station: heard only near one spot on the road (about 55 percent of the way along the route, within 320 m), never on the dial. Code-made dub (src/audio/radio-compose-more.ts, preset dub-band): a one-drop kit, a sub bass, offbeat skanks and a melodica in a tape echo. Cut a track by setting its status to vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
