@@ -3,7 +3,7 @@
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
-import { copsSystem, COPS_TUNING } from './cops';
+import { copsSystem, COPS_TUNING, lawSnapshot } from './cops';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
@@ -144,6 +144,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       remainingTicks: world.facts.slowmo.remainingTicks,
     },
     props: propSnapshots(world, config),
+    law: lawSnapshot(world, config),
   };
 }
 
