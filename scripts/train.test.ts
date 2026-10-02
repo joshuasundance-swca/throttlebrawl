@@ -4,7 +4,7 @@
 // shape and the failing-test lines are copied from this repo's own API answers and CI logs
 // (2026-10-02).
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -319,8 +319,34 @@ describe('the bundle', () => {
 
 describe('assembly, on a real git repo', () => {
   let dir = '';
+  // Git exports GIT_DIR, GIT_INDEX_FILE and friends to its hooks, and the pre-push hook runs this
+  // file: with them inherited, these commands would act on the repo being pushed, not the temporary
+  // one (on 2026-10-02 they rewrote the shared repo's user.email). So every GIT_* variable is
+  // dropped, git may not walk up past the temporary folder, identity comes per command, nothing
+  // writes git config, and no hooks run.
+  const cleanEnv = () => {
+    const e: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('GIT_') && v !== undefined) e[k] = v;
+    e.GIT_CEILING_DIRECTORIES = path.dirname(dir);
+    e.GIT_CONFIG_NOSYSTEM = '1';
+    return e;
+  };
+  const SAFE = [
+    '-c',
+    'core.hooksPath=.no-hooks',
+    '-c',
+    'commit.gpgsign=false',
+    '-c',
+    'user.name=train test',
+    '-c',
+    'user.email=train-test@users.noreply.github.com',
+  ];
   const git = (args: string[], env: Record<string, string> = {}) => {
-    const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } });
+    const r = spawnSync('git', [...SAFE, ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...cleanEnv(), ...env },
+    });
     return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
   };
   const ok = (...args: string[]) => {
@@ -331,17 +357,19 @@ describe('assembly, on a real git repo', () => {
   const commitFile = (file: string, text: string, msg: string) => {
     writeFileSync(path.join(dir, file), text);
     ok('add', file);
-    ok('-c', 'commit.gpgsign=false', 'commit', '-q', '-m', msg);
+    ok('commit', '-q', '-m', msg);
     return ok('rev-parse', 'HEAD');
   };
   const heads: Record<string, string> = {};
   let base = '';
 
   beforeAll(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'train-'));
+    dir = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'train-')));
     ok('init', '-q', '-b', 'main');
-    ok('config', 'user.name', 'test');
-    ok('config', 'user.email', 'test@users.noreply.github.com');
+    // Refuse to go on unless git really is in the temporary repo.
+    const gitDir = path.resolve(ok('rev-parse', '--absolute-git-dir')).toLowerCase();
+    if (gitDir !== path.join(dir, '.git').toLowerCase())
+      throw new Error(`git points at ${gitDir}, not ${dir}`);
     commitFile('a.txt', 'one\ntwo\nthree\n', 'base');
     base = ok('rev-parse', 'HEAD');
     for (const [name, file, text] of [
