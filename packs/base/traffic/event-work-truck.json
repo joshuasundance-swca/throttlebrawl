@@ -15,7 +15,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The roadwork set piece's truck, an arrow board on its tail. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "notes": "The roadwork set piece's truck, an arrow board on its tail. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

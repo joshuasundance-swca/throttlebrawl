@@ -44,6 +44,30 @@ function config(event: string, seed: number, route?: string) {
 }
 
 describe('road events in the shipped packs', () => {
+  it("event vehicles are never larger than each race's other vehicles (the rival AI sizes every vehicle by the largest)", () => {
+    for (const r of REGIONS) {
+      const cfg = config(r.event, 1);
+      const isEvent = (id: string) =>
+        cfg.modifiers.some((m) =>
+          m.effects.some((e) =>
+            [
+              e['vehicle'],
+              e['vehicle2'],
+              ...(Array.isArray(e['floats']) ? (e['floats'] as readonly unknown[]) : []),
+            ].includes(id),
+          ),
+        );
+      const road = cfg.trafficTypes.filter((t) => t.category !== 'pedestrian' && t.category !== 'animal');
+      const own = road.filter((t) => !isEvent(t.contentId));
+      const maxL = Math.max(...own.map((t) => t.lengthM));
+      const maxW = Math.max(...own.map((t) => t.widthM));
+      for (const t of road.filter((x) => isEvent(x.contentId))) {
+        expect(t.lengthM, `${r.event} ${t.contentId}`).toBeLessThanOrEqual(maxL);
+        expect(t.widthM, `${r.event} ${t.contentId}`).toBeLessThanOrEqual(maxW);
+      }
+    }
+  });
+
   for (const r of REGIONS) {
     it(`${r.event}: resolves its own region's set pieces, their vehicles in the catalog and out of the mix`, () => {
       const cfg = config(r.event, 1);

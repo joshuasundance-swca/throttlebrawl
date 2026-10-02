@@ -15,7 +15,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "An invented startup's product-launch float: a stage, a giant laptop and a loading ring that never finishes. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "notes": "An invented startup's product-launch float: a stage, a giant laptop and a loading ring that never finishes. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

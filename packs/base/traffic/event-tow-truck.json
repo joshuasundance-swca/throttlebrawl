@@ -4,8 +4,8 @@
   "name": "Tow Truck",
   "category": "oddity",
   "tags": ["event", "crash-scene"],
-  "lengthM": 8.0,
-  "widthM": 2.5,
+  "lengthM": 7.5,
+  "widthM": 2.4,
   "cruiseMps": 0,
   "hazard": "big",
   "behaviour": {
@@ -15,7 +15,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The crash scene's tow truck, its light bar going. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "notes": "The crash scene's tow truck, its light bar going. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

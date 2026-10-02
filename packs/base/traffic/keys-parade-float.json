@@ -4,8 +4,8 @@
   "name": "Costume Parade Float",
   "category": "oddity",
   "tags": ["event", "parade", "keys"],
-  "lengthM": 9.0,
-  "widthM": 2.6,
+  "lengthM": 7.5,
+  "widthM": 2.4,
   "cruiseMps": 0,
   "hazard": "big",
   "behaviour": {
@@ -15,7 +15,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A Keys costume parade float; render dresses it with a giant flamingo or a conch shell. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece.",
+    "notes": "A Keys costume parade float; render dresses it with a giant flamingo or a conch shell. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

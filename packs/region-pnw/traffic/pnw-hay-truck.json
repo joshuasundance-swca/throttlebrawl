@@ -15,7 +15,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The hay spill's farm truck: it crawls along in your lane and loses a bale every few seconds once racers close in. Never in the region mix: the event places it.",
+    "notes": "The hay spill's farm truck: it crawls along in your lane and loses a bale every few seconds once racers close in. Never in the region mix: the event places it. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
