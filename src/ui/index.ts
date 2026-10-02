@@ -64,7 +64,9 @@ import { HUD_TUNING, hudParam } from './hud-tuning';
 import {
   createRadioPanel,
   RADIO_PANEL_CSS,
-  radioChoiceOf,
+  playingStation,
+  RADIO_FIRST_STATION,
+  radioChoiceFor,
   radioSettingOf,
   type RadioSource,
 } from './radio-panel';
@@ -188,6 +190,11 @@ export interface GameUi {
    * press; ui calls it itself when the pause menu or the settings screen opens.
    */
   syncLive(live?: { view?: number }): void;
+  /**
+   * The race's region changed the radio's stations (run W-P): tunes the saved station again when
+   * the new region offers it. app/ calls it after handing audio the region's stations.
+   */
+  applySavedRadio(): void;
 }
 
 export interface UiOptions {
@@ -579,12 +586,19 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     opts.tuning.set(param, choice);
     radioSource?.tune?.(choice);
   };
-  /** The radio setting: tunes only when the radio is not already on that kind (a station is any). */
+  /**
+   * The radio setting: tunes when the radio is not on that kind, or (run W-P, W-O's mustFix) when it
+   * plays another station than the saved one and the race's region offers the saved one.
+   */
   const applyRadio = () => {
     const param = tuned('radio');
     if (!param) return;
-    const actual = radioSource?.state().choice ?? opts.tuning.get(param);
-    if (radioSettingOf(actual) !== settings.radio) tuneRadio(radioChoiceOf(settings.radio));
+    const live = radioSource?.state();
+    const actual = live?.choice ?? opts.tuning.get(param);
+    const want = radioChoiceFor(settings.radio, settings.radioStation, live?.stations ?? []);
+    const offered = settings.radioStation !== null && (live?.stations ?? []).includes(settings.radioStation);
+    const otherStation = settings.radio === 'station' && offered && Math.round(actual) !== want;
+    if (radioSettingOf(actual) !== settings.radio || otherStation) tuneRadio(want);
   };
   const change = (c: SettingsChange) => {
     const next = applySettingsChange(settings, c);
@@ -621,6 +635,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       opts.tuning.set(radioParam, choice);
       const kind = radioSettingOf(choice);
       if (kind !== next.radio) next = applySettingsChange(next, { kind: 'set', id: 'radio', value: kind });
+      // The exact station too (run W-P), kept while the score or off plays.
+      const station = radioSource ? playingStation(radioSource.state()) : null;
+      if (station !== null && station !== next.radioStation) next = { ...next, radioStation: station };
     }
     if (next === settings) return;
     settings = next;
@@ -839,8 +856,17 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const radioPanel = createRadioPanel({
     tune: (choice) => {
       tuneRadio(choice);
+      // The exact station is saved first (run W-P), so the kind's apply below keeps it.
+      const stations = radioSource?.state().stations ?? [];
+      const station =
+        radioSettingOf(choice) === 'station'
+          ? (stations[Math.round(choice) - RADIO_FIRST_STATION] ?? null)
+          : null;
+      const stationChanged = station !== null && station !== settings.radioStation;
+      if (stationChanged) settings = { ...settings, radioStation: station };
       const kind = radioSettingOf(choice);
       if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
+      else if (stationChanged) cb.onSettingsChange?.(settings);
     },
     onCut: (flag) => {
       settings = withVeto(settings, flag);
@@ -1512,5 +1538,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       return routePicker.route;
     },
     syncLive,
+    applySavedRadio: applyRadio,
   };
 }
