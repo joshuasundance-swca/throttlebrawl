@@ -213,7 +213,7 @@ describe('combat-3: a player’s health recovers out of combat', () => {
   it('rivals do not recover: they keep M1’s durability', () => {
     const h = makeHarness(pair(), scriptOf({ 0: once(0, KICK_PRESS) }));
     h.run(60 * 20);
-    expect(riderState(h.world).health[1]).toBe(82);
+    expect(riderState(h.world).health[1]).toBe(64); // one kick: 18 × 2 (playtest 2's knockdown scale)
   });
 
   it('the attacker is in combat too: its own swings hold off its recovery', () => {
