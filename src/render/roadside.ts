@@ -53,10 +53,12 @@ export interface RoadsideRule {
   understory?: boolean;
   /** A tree: its ground counts as canopy, so the understory may grow under it. */
   canopy?: boolean;
+  /** Stands on the row houses' plots, exactly (no jitter): in the gaps a terrace leaves. */
+  align?: boolean;
 }
 
 export interface RoadsideKit {
-  id: 'pnw';
+  id: 'pnw' | 'sf';
   rules: readonly RoadsideRule[];
 }
 
@@ -115,8 +117,42 @@ export const PNW_KIT: RoadsideKit = {
   ],
 };
 
+const CITY: readonly LandTheme[] = ['urban'];
+const CITY_AND_DOCKS: readonly LandTheme[] = ['urban', 'industrial'];
+
+/**
+ * San Francisco (the maintainer: "SF AI stuff"; the amendment's list): cars parked nose to the kerb
+ * in the gaps a terrace leaves, one of them a driverless taxi with a cone on its bonnet, street
+ * trees in their sidewalk cut-outs, hydrants, rental scooters dropped on the pavement, A-frame
+ * boards selling AI, AGI and GPUs, a corner store now and then, parking meters on the house plots,
+ * the blue, green and black bins out on collection day, and street lamps. The kit's variants: 0
+ * sedan, 1 hatch, 2 robotaxi, 3 street tree, 4 hydrant, 5 scooter, 6 to 8 the boards, 9 corner
+ * store, 10 parking meter, 11 bins, 12 street lamp. The
+ * row houses' plots are 7 m apart (scenery.ts), so the plot-bound props use the same spacing.
+ */
+export const SF_KIT: RoadsideKit = {
+  id: 'sf',
+  rules: [
+    rule('store', [9], CITY, 7, 0.12, [2.6, 0], 3.2, { ...BIG, back: 10, along: 3.4, align: true }),
+    rule('parked', [0, 0, 1, 1, 2], CITY_AND_DOCKS, 7, 0.5, [2.6, 0.3], 2.1, {
+      ...BIG,
+      back: 2.2,
+      along: 0.9,
+      align: true,
+    }),
+    rule('street-tree', [3], CITY, 13, 0.75, [0.55, 0.2], 0.45, { tier: 0, canopy: true }),
+    rule('board', [6, 7, 8], CITY, 110, 0.65, [0.6, 0.5], 0.7, { face: true }),
+    rule('lamp', [12], CITY_AND_DOCKS, 32, 0.85, [0.25, 0], 0.4, BIG),
+    // A meter on most house plots: the kerb's beat at speed.
+    rule('meter', [10], CITY, 7, 0.6, [0.3, 0], 0.25, { face: true, align: true }),
+    rule('bins', [11], CITY, 40, 0.5, [0.7, 0.3], 1.0, { face: true }),
+    rule('hydrant', [4], CITY_AND_DOCKS, 55, 0.7, [0.35, 0.2], 0.35),
+    rule('scooter', [5], CITY_AND_DOCKS, 30, 0.55, [0.4, 0.8], 0.75, { tier: 2 }),
+  ],
+};
+
 /** The kit a region's loaded model draws, by the model's kind. */
-export const KITS: Readonly<Record<string, RoadsideKit>> = { pnwRoadside: PNW_KIT };
+export const KITS: Readonly<Record<string, RoadsideKit>> = { pnwRoadside: PNW_KIT, sfRoadside: SF_KIT };
 
 /** One placed prop. */
 export interface RoadsideItem {
@@ -158,15 +194,21 @@ const HIGHER_LAND_M = 40;
 const LAND_STRIP_M = 24;
 const SKIRT_RUN_PER_M = 2.2;
 const VERGE_M = 0.6;
-/** The scenery's own footprints: houses and the sawmill reach back from their front. */
-const SPOT_REACH: Partial<Record<ScenerySpot['kind'], { r: number; back: number }>> = {
-  house: { r: 6.2, back: 5.8 },
-  sawmill: { r: 16, back: 8.5 },
-  shack: { r: 3.8, back: 0 },
-  conifer: { r: 1.2, back: 0 },
-  palm: { r: 1, back: 0 },
-  mangrove: { r: 2.5, back: 0 },
-  pole: { r: 0.8, back: 0 },
+/**
+ * The scenery's own footprints, as discs back from each anchor: a row house is two (front and back
+ * of its 6.4 m by 11.5 m body), so a prop fits in a terrace's gap but never in a house.
+ */
+const SPOT_REACH: Partial<Record<ScenerySpot['kind'], readonly { r: number; back: number }[]>> = {
+  house: [
+    { r: 3.3, back: 2.8 },
+    { r: 3.3, back: 8.4 },
+  ],
+  sawmill: [{ r: 16, back: 8.5 }],
+  shack: [{ r: 3.8, back: 0 }],
+  conifer: [{ r: 1.2, back: 0 }],
+  palm: [{ r: 1, back: 0 }],
+  mangrove: [{ r: 2.5, back: 0 }],
+  pole: [{ r: 0.8, back: 0 }],
 };
 
 export interface RoadsideInput {
@@ -327,13 +369,13 @@ export class RoadsideScatter {
     this.roads = new RoadGrid(road);
     // The scenery that stands already: trees count as canopy (ferns may grow under them).
     for (const sp of input.spots) {
-      const reach = SPOT_REACH[sp.kind];
-      if (!reach) continue;
       const e = road.edges[sp.edge];
       if (!e) continue;
-      const c = reach.back > 0 ? road.toWorld(e.index, sp.s, sp.d + Math.sign(sp.d) * reach.back, 0) : sp.p;
       const tree = sp.kind === 'conifer' || sp.kind === 'palm' || sp.kind === 'mangrove';
-      this.taken.add(c.x, c.z, reach.r * sp.size, tree);
+      for (const disc of SPOT_REACH[sp.kind] ?? []) {
+        const c = disc.back > 0 ? road.toWorld(e.index, sp.s, sp.d + Math.sign(sp.d) * disc.back, 0) : sp.p;
+        this.taken.add(c.x, c.z, disc.r * sp.size, tree);
+      }
     }
     if (this.density <= 0) this.edge = road.edges.length;
   }
@@ -393,7 +435,7 @@ export class RoadsideScatter {
     const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
     const spacing = rule.every / this.density;
     for (let k = 0; ; k++) {
-      const s0 = (k + 0.15 + 0.7 * h(k, side, 0)) * spacing;
+      const s0 = (k + 0.15 + (rule.align ? 0 : 0.7 * h(k, side, 0))) * spacing;
       if (s0 > e.length) break;
       if (h(k, side, 1) >= rule.rate) continue;
       const [near, spread] = rule.across;

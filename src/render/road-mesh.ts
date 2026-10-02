@@ -484,6 +484,8 @@ const BENT_MODEL_H = 10;
 const BENT_MODEL_W = 12.8;
 /** A cable car's slot rails: each sits this far either side of its lane's centre, m. */
 const CABLE_RAIL_D = 0.55;
+/** The slot's cover plates between the rails come this often, m. [default] */
+const CABLE_COVER_EVERY_M = 12;
 /** Scenery batches are grouped in squares this size, so far ones can be hidden. [default] */
 export const SCENERY_CHUNK_M = 256;
 
@@ -1251,6 +1253,16 @@ export function buildRoadScene(
             if (u >= s1) break;
           }
           slot.breakStrip();
+        }
+        // Run W-P: the slot's cover plates between the rails, a beat of them under the wheels.
+        for (let u = s0 + 6; u + 0.7 < s1; u += CABLE_COVER_EVERY_M) {
+          const d = l.dCenterM;
+          strip('cableSlot').quad(
+            w(e.index, u, d - 0.38, 0.029),
+            w(e.index, u, d + 0.38, 0.029),
+            w(e.index, u + 0.7, d - 0.38, 0.029),
+            w(e.index, u + 0.7, d + 0.38, 0.029),
+          );
         }
       }
     }
