@@ -21,7 +21,9 @@
 //           (`railOver`), falls to the water plane (world y = 0: `splash`), and after the splash
 //           penalty the rider respawns at rest on the bike, on the bridge where it went over
 //           (`respawn`, reason `splash`). No hand-back while a body is overboard; no swimming.
-//   hand-back when every particle stays under 0.5 m/s for 0.5 s, or after 5 s: the bike is parked
+//   hand-back when every particle stays under `tumble.restMps` (1.5 m/s, nearly stopped) for 0.5 s,
+//           or after `tumble.timeoutS` (3.5 s) (interview, 2026-10-02: "Trim only the waiting"; it
+//           was 0.5 m/s and 5 s, so a slow last slide held the player for seconds): the bike is parked
 //           at the nearest standing spot inside the drivable width, and the rider stands up
 //           OnFoot (`getUp`). A rival someone knocked off (the crash's rider target, else whoever
 //           landed a hit on them in the last 2 s) shakes a fist at them (`fistShake`), notes the
@@ -29,8 +31,12 @@
 //           runs at once.
 //   OnFoot  the rider runs to the bike in (s, d); the player steers sideways to dodge. Touching the
 //           bike remounts. `skipRunBack` (player slots only) teleports to the bike and remounts
-//           3 s after the press; pressed during the tumble, it starts at the hand-back.
-//   Road    remounted on the parked bike, at rest, with health restored to full.
+//           `tumble.skipDelayS` (3 s) after the press, or sooner: never later than running there
+//           would have taken from where he stood (interview, 2026-10-02: "Skip is never slower than
+//           running"); pressed during the tumble, it starts at the hand-back. The run is unchanged.
+//   Road    remounted on the parked bike, rolling at `tumble.remountMps` (8 m/s, capped at the
+//           bike's top speed; interview, 2026-10-02: "remount rolling"), with health restored to
+//           full. The splash respawn on the bridge rolls the same way.
 import {
   cos,
   nextFloat,
@@ -74,10 +80,23 @@ export const TUMBLE_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Interview, 2026-10-02: the tumble hands back once nearly stopped. Was a fixed 0.5 m/s.
+    id: 'tumble.restMps',
+    group: 'crash',
+    label: 'Tumble counts as stopped under',
+    default: 1.5,
+    min: 0.25,
+    max: 4,
+    step: 0.25,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Interview, 2026-10-02: at most about 3.5 s of tumble (was 5).
     id: 'tumble.timeoutS',
     group: 'crash',
     label: 'Tumble timeout',
-    default: 5,
+    default: 3.5,
     min: 1,
     max: 10,
     step: 0.5,
@@ -102,6 +121,18 @@ export const TUMBLE_TUNING: readonly TuningParamDecl[] = [
     default: 7,
     min: 3,
     max: 12,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Interview, 2026-10-02: "remount rolling". Was 0 (a standing start, about 9 s to speed).
+    id: 'tumble.remountMps',
+    group: 'crash',
+    label: 'Remount rolling speed',
+    default: 8,
+    min: 0,
+    max: 20,
     step: 0.5,
     unit: 'm/s',
     affectsSim: true,
@@ -141,8 +172,6 @@ export const TUMBLE_TUNING: readonly TuningParamDecl[] = [
   },
 ];
 
-/** Every particle under this speed counts as at rest (m/s). */
-const REST_MPS = 0.5;
 /**
  * Sliding friction, as a multiple of g, and the share of the riding speed each body is thrown
  * with. High friction and a rider thrown mostly upward keep a top-speed crash short (about 3 s to
@@ -192,10 +221,18 @@ export interface TumbleRecord {
   /** Unit world direction the rider was travelling at the crash; decides dir after projection. */
   travelX: number;
   travelZ: number;
+  /**
+   * The rider's way along the route at the crash: 1 with it, -1 against it, 0 off the route. The
+   * hand-back faces the same way along the route wherever the body comes to rest (playtest 2's
+   * real-road hairpins could reverse the world-direction test). Absent in records from before it.
+   */
+  routeWay?: 1 | -1 | 0;
   /** Where the bike is parked after the hand-back, else null. */
   parked: RoadPos | null;
   /** Scaled ticks since a skip began, or -1. */
   skip: number;
+  /** Scaled ticks the skip waits: the skip delay, or the run from where he stood if shorter. */
+  skipTicks: number;
   /** A skip pressed during the tumble, to start at the hand-back. */
   skipQueued: boolean;
   /** Who knocked this rider off, or -1. */
@@ -258,6 +295,32 @@ function num(data: Readonly<Record<string, unknown>>, key: string): number {
 function dirAlong(config: SimConfig, edge: number, s: number, x: number, z: number): 1 | -1 {
   const f = config.road.frameAt(edge, s);
   return f.tx * x + f.tz * z >= 0 ? 1 : -1;
+}
+
+/** The route's way along an edge's s (1 or -1), or 0 when the route does not run along it. */
+function routeOrient(config: SimConfig, edge: number): 1 | -1 | 0 {
+  const len = config.road.edges[edge]?.length ?? 0;
+  const p0 = config.route.progressAt(edge, 0);
+  const p1 = config.route.progressAt(edge, len);
+  if (!Number.isFinite(p0) || !Number.isFinite(p1) || p0 === p1) return 0;
+  return p1 > p0 ? 1 : -1;
+}
+
+/** Whether travelling `dir` along `edge` goes with the route (1), against it (-1), or neither (0). */
+function routeWay(config: SimConfig, edge: number, dir: 1 | -1): 1 | -1 | 0 {
+  const o = routeOrient(config, edge);
+  return o === 0 ? 0 : o === dir ? 1 : -1;
+}
+
+/**
+ * The direction a rider is handed back facing on `edge`: the same way along the route as at the
+ * crash when both edges are on the route, else the crash's world travel direction there.
+ */
+function handBackDir(config: SimConfig, r: TumbleRecord, edge: number, s: number): 1 | -1 {
+  const o = routeOrient(config, edge);
+  const way = r.routeWay ?? 0;
+  if (o !== 0 && way !== 0) return way === 1 ? o : o === 1 ? -1 : 1;
+  return dirAlong(config, edge, s, r.travelX, r.travelZ);
 }
 
 /** Who knocked a rider off: the crash's rider target, else a hit in the last 2 s, else -1. */
@@ -345,8 +408,10 @@ function startCrash(
     spin,
     travelX: tx,
     travelZ: tz,
+    routeWay: routeWay(config, pos.edge, pos.dir),
     parked: null,
     skip: -1,
+    skipTicks: 0,
     skipQueued: false,
     blame,
     // The entity that caused the crash is not "hit" again by the bodies it throws off.
@@ -512,7 +577,8 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
       respawn(world, config, m, r);
     return;
   }
-  const atRest = maxParticleSpeed(r.riderRig) < REST_MPS && maxParticleSpeed(r.bikeRig) < REST_MPS;
+  const restMps = param(world, 'tumble.restMps');
+  const atRest = maxParticleSpeed(r.riderRig) < restMps && maxParticleSpeed(r.bikeRig) < restMps;
   r.rest = atRest ? r.rest + ts : 0;
   const restTicks = secondsToTicks(param(world, 'tumble.restS'));
   const timeoutTicks = secondsToTicks(param(world, 'tumble.timeoutS'));
@@ -524,7 +590,7 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
   const road = config.road;
   const place = (b: TumbleBody, ownSide: boolean): RoadPos => {
     const p = road.project(b.x, b.z, b.edge);
-    const dir = dirAlong(config, p.edge, p.s, r.travelX, r.travelZ);
+    const dir = handBackDir(config, r, p.edge, p.s);
     const band = ownSide ? ownSideBand(road, p.edge, p.s, dir) : standingBand(road, p.edge, p.s);
     const d = p.d < band.lo ? band.lo : p.d > band.hi ? band.hi : p.d;
     return { edge: p.edge, s: p.s, d, dir };
@@ -543,12 +609,21 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
     r.getUpTotal = secondsToTicks(param(world, 'tumble.getUpS'));
     r.getUp = r.getUpTotal;
   }
-  if (r.skipQueued) {
-    m.pos = { ...bike };
-    r.skip = 0;
-  } else {
-    m.pos = place(r.rider, false);
-  }
+  m.pos = place(r.rider, false);
+  if (r.skipQueued) startSkip(world, config, m, r, bike);
+}
+
+/**
+ * A skip: to the bike at once, and back on it after the skip delay, or after the time the run from
+ * here would have taken if that is shorter (Skip is never slower than running).
+ */
+function startSkip(world: World, config: SimConfig, m: Mover, r: TumbleRecord, bike: RoadPos): void {
+  const runM = Math.max(0, runDistance(config.road, m.pos, bike) - REMOUNT_M);
+  const runTicks = Math.ceil((runM / Math.max(0.1, param(world, 'tumble.runSpeedMps'))) * 60);
+  r.skipTicks = Math.min(secondsToTicks(param(world, 'tumble.skipDelayS')), runTicks);
+  m.pos = { ...bike };
+  m.speed = 0;
+  r.skip = 0;
 }
 
 /** The get-up pause of a rival someone knocked off: stand, shake a fist, note the grudge. */
@@ -573,7 +648,7 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   if (r.skip >= 0) {
     r.skip += world.timeScale;
     m.speed = 0;
-    if (r.skip >= secondsToTicks(param(world, 'tumble.skipDelayS'))) remount(world, config, m, bike);
+    if (r.skip >= r.skipTicks) remount(world, config, m, bike);
     return;
   }
   if (runDistance(config.road, m.pos, bike) <= REMOUNT_M) {
@@ -581,9 +656,8 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
     return;
   }
   if (wantsSkip(world, config, m)) {
-    m.pos = { ...bike };
-    m.speed = 0;
-    r.skip = 0;
+    startSkip(world, config, m, r, bike);
+    if (r.skipTicks <= 0) remount(world, config, m, bike);
     return;
   }
   const steer = isPlayer(config, m) ? (world.inputs[m.id]?.steer ?? 0) / 127 : 0;
@@ -595,7 +669,7 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
 /** After the splash penalty: back on the bike, at rest, on the bridge where the body went over. */
 function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
   const at = r.railAt ?? m.pos;
-  const dir = dirAlong(config, at.edge, at.s, r.travelX, r.travelZ);
+  const dir = handBackDir(config, r, at.edge, at.s);
   const band = ownSideBand(config.road, at.edge, at.s, dir);
   const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
   const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
@@ -609,14 +683,14 @@ function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): vo
   remount(world, config, m, pos);
 }
 
-/** Back on the bike, at rest, with health restored to full. */
+/** Back on the bike, rolling at tumble.remountMps (capped at its top speed), with full health. */
 function remount(world: World, config: SimConfig, m: Mover, bike: RoadPos): void {
+  const def = config.riders[m.riderIndex];
   m.mode = 'Road';
   m.pos = { ...bike };
   m.h = 0;
-  m.speed = 0;
+  m.speed = Math.max(0, Math.min(param(world, 'tumble.remountMps'), def?.bike.topSpeedMps ?? 0));
   m.yaw = 0;
-  const def = config.riders[m.riderIndex];
   if (def) riderState(world).health[m.id] = def.healthMax;
   tumbleState(world).records[m.id] = null;
 }

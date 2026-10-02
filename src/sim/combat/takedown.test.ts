@@ -337,3 +337,73 @@ describe('combat-4: the momentum kick (playtest 1 item 9)', () => {
     expect(shove(0.6, { 'combat.momentumKickGain': 3 }) - shove(0)).toBeCloseTo(8 * 0.2, 6);
   });
 });
+
+describe('W-Q: domino credit (a rider you launch who knocks another off is your takedown)', () => {
+  /**
+   * Tumble's hand-off plus its body contacts, crudely: a rider down for a tick knocks the next
+   * rider in `line` off (sim/tumble's crash shape: cause `tumble`, target = the body's rider).
+   */
+  const dominoTumble = (line: readonly number[]): SimSystem => ({
+    name: 'tumble',
+    init() {},
+    step(w) {
+      for (const e of w.events) {
+        const m = w.movers[e.actor];
+        if (e.type === 'crash' && m && riding(w, m.id)) m.mode = 'Tumble';
+      }
+      for (let i = 0; i + 1 < line.length; i++) {
+        const body = w.movers[line[i] ?? -1];
+        const next = w.movers[line[i + 1] ?? -1];
+        if (!body || !next || riding(w, body.id) || !riding(w, next.id)) continue;
+        const data = { cause: 'tumble', body: 'rider', by: body.id, impactMps: 14 };
+        emit(w, 'crash', next.id, data, { target: body.id });
+        next.mode = 'Tumble';
+        break; // one contact a tick
+      }
+    },
+  });
+  const run = (
+    line: readonly number[],
+    placements: Placement[],
+    script = scriptOf({ 0: once(0, KICK_PRESS) }),
+  ) => {
+    const h = makeHarness(placements, script, {}, [], {
+      systems: { traffic, tumble: dominoTumble(line) },
+      slowMo: false,
+    });
+    h.run(200);
+    return h;
+  };
+  /** Out of the car's lane and out of reach: only a flying body takes this rider down. */
+  const far = (s: number): Placement => ({ s, d: -5 });
+
+  it('the kicked rider knocks a third off: a DOUBLE takedown for the kicker', () => {
+    const h = run([1, 2], [...pair(), far(130)]);
+    const td = ofType(h.events, 'takedown');
+    expect(td.map((e) => [e.actor, e.target, e.data['domino'] ?? 1])).toEqual([
+      [0, 1, 1],
+      [0, 2, 2],
+    ]);
+    expect(td[1]?.data['kind']).toBe('traffic');
+    expect(takedownCount(h.world, 0)).toBe(2);
+  });
+
+  it('and down the line: the third knocks a fourth off, a STRIKE (chain 3)', () => {
+    const h = run([1, 2, 3], [...pair(), far(130), far(160)]);
+    const td = ofType(h.events, 'takedown');
+    expect(td.map((e) => [e.target, e.data['domino'] ?? 1])).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+    ]);
+    expect(td.every((e) => e.actor === 0)).toBe(true);
+    expect(takedownCount(h.world, 0)).toBe(3);
+  });
+
+  it('a body nobody was credited with credits nobody', () => {
+    // Rider 1 rides into the car lane on its own (no hit): its body taking rider 2 out is no one's.
+    const h = run([1, 2], [{ s: 100, d: -3, role: 'player' }, { s: 100, d: 2 }, far(130)], () => undefined);
+    expect(ofType(h.events, 'crash').length).toBeGreaterThanOrEqual(2);
+    expect(ofType(h.events, 'takedown')).toEqual([]);
+  });
+});

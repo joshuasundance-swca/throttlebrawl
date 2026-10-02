@@ -47,6 +47,22 @@ export const BIKE_CLASSES = [
   'golf-cart',
 ] as const;
 export const EVENT_KINDS = ['classic-race', 'takedown-hunt', 'cop-escape', 'grudge-match'] as const;
+/**
+ * What an event objective asks (W-Q contracts; docs/content-packs.md, "Event"): finish at or above a
+ * place (`params.maxPlace`), knock riders down (`params.count`), get away from the cops, finish ahead
+ * of or knock down the grudge rival, score style cash (`params.cash`), or ride a route branch
+ * (`params.branch`, a `RouteBranch` id).
+ */
+export const OBJECTIVE_KINDS = [
+  'finish-place',
+  'takedowns',
+  'escape',
+  'beat-rival',
+  'style-cash',
+  'ride-branch',
+] as const;
+/** What a career map secret is (W-Q: "find secrets and shortcuts"). */
+export const SECRET_KINDS = ['shortcut', 'road', 'station', 'stash'] as const;
 export const TIMES_OF_DAY = ['dawn', 'noon', 'golden-hour', 'dusk', 'night'] as const;
 export const MODIFIER_KINDS = ['nature', 'human', 'wasteland', 'league'] as const;
 

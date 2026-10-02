@@ -738,6 +738,22 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
     if (route.mainPath[route.mainPath.length - 1] !== route.finish.road) {
       add('/finish/road', 'the finish is not on the last main-path road');
     }
+    // W-Q: a named branch's roads are allowed roads off the main path, each in one branch only.
+    const branchIds = new Set<string>();
+    const branchOfRoad = new Map<string, string>();
+    (route.branches ?? []).forEach((b, i) => {
+      if (branchIds.has(b.id)) add(`/branches/${i}/id`, `branch ${b.id} is named twice`);
+      branchIds.add(b.id);
+      b.roads.forEach((r, k) => {
+        const ptr = `/branches/${i}/roads/${k}`;
+        if (!byId.has(r)) add(ptr, `unknown road ${r}`);
+        else if (!route.allowedRoads.includes(r)) add(ptr, `branch road ${r} is not in allowedRoads`);
+        if (route.mainPath.includes(r)) add(ptr, `branch road ${r} is on the main path`);
+        const other = branchOfRoad.get(r);
+        if (other !== undefined && other !== b.id) add(ptr, `road ${r} is in branches ${other} and ${b.id}`);
+        branchOfRoad.set(r, b.id);
+      });
+    });
   }
   return out;
 }
