@@ -95,6 +95,72 @@ export interface RaceSetup {
    * profile [decided] (cockpit answer, 2026-09-29). Left out: none, as before M4.
    */
   grudges?: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /**
+   * A free-play race (W-Q, the pitch deck's item 8, "A different field and light each race"): the
+   * rivals are drawn from the region's whole cast, and the time of day from the region's list, both
+   * by the seed (`raceField`, `raceTimeOfDay`). Left out or false: the event's own field and time
+   * (the career sets its own field per event; tests and the shared batch race the event's).
+   */
+  freePlay?: boolean;
+}
+
+/**
+ * A small seeded generator for the free-play draws (mulberry32): app-side, outside the sim and its
+ * streams, a pure function of the seed and the salt, so a replay's seed draws the same again.
+ */
+function seededDraw(seed: number, salt: number): () => number {
+  let a = (seed ^ salt) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const FIELD_SALT = 0x6669656c; // 'fiel'
+const LIGHT_SALT = 0x6c696768; // 'ligh'
+
+/**
+ * The rival ids a race fields (qualified): the event's own field, or for a free-play race as many
+ * drawn from the region's whole cast (every live rival with no region, or this event's region, in
+ * the race's packs), shuffled by the seed (seededDraw, never the sim's streams).
+ */
+export function raceField(race: ContentRegistry, eventId: string, seed: number, freePlay = false): string[] {
+  const id = eventKey(eventId);
+  const event = lookup(race.events, id);
+  const eventPack = packOf(id);
+  const own = (event.field.riders ?? []).map((ref) => qualifyIn(eventPack, ref));
+  if (!freePlay || own.length === 0) return own;
+  const region = qualifyIn(eventPack, event.region);
+  const cast = Object.keys(race.riders)
+    .filter((rid) => {
+      const r = race.riders[rid];
+      return !!r && r.role === 'rival' && (!r.region || qualifyIn(packOf(rid), r.region) === region);
+    })
+    .sort();
+  const next = seededDraw(seed, FIELD_SALT);
+  for (let i = cast.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [cast[i], cast[j]] = [cast[j] as string, cast[i] as string];
+  }
+  return cast.length >= own.length ? cast.slice(0, own.length) : own;
+}
+
+/**
+ * A race's time of day: the event's own, or for a free-play race one of its region's
+ * `timeOfDayOptions` drawn by the seed (seededDraw). It feeds the road events' eligibility and
+ * the light; presentation reads it again from the seed, as the recording carries the seed.
+ */
+export function raceTimeOfDay(reg: ContentRegistry, eventId: string, seed: number, freePlay = false): string {
+  const id = eventKey(eventId);
+  const event = lookup(reg.events, id);
+  const own = String(event.timeOfDay);
+  if (!freePlay) return own;
+  const region = reg.regions[qualifyIn(packOf(id), event.region)];
+  const options = (region?.timeOfDayOptions ?? []).map((o) => o.id).sort();
+  if (options.length === 0) return own;
+  return options[Math.floor(seededDraw(seed, LIGHT_SALT)() * options.length)] ?? own;
 }
 
 /** The length a race runs when none is chosen (docs/content-packs.md, "Event"). */
@@ -331,8 +397,11 @@ function riderDef(
   };
 }
 
-/** The most cops a race fields, whatever the mix asks (cops-3: at most 2 chase at once). [default] */
-export const MAX_FIELDED_COPS = 4;
+/**
+ * The most cops a race fields, whatever the mix asks (cops-3: at most 2 chase at once, plus playtest
+ * 2's patrol and heat cops). [default]
+ */
+export const MAX_FIELDED_COPS = 5;
 /** The event's career tier until career-1 lands: the first. */
 export const DEFAULT_TIER = 1;
 
@@ -351,8 +420,9 @@ export function eventCops(event: RaceEvent): SimEventCops {
     tierScale: Math.max(0, finiteOr(c['tierScale'], 0)),
     chaosSummon: c['chaosSummon'] === true,
     randomness: Math.min(1, Math.max(0, finiteOr(c['randomness'], 0))),
-    // Playtest 2: the starting cops patrol ahead (sim/cops), from baseCount up to patrolMax.
+    // Playtest 2: a patrol up the road (sim/cops), 1 to patrolMax cops, and the heat meter.
     ...((p) => (p > 0 ? { patrolMax: p } : {}))(Math.floor(finiteOr(c['patrolMax'], 0))),
+    ...(c['heat'] === true ? { heat: true } : {}),
   };
 }
 
@@ -362,7 +432,7 @@ export function eventCops(event: RaceEvent): SimEventCops {
  * resolves to the event's region (a cop with no region rides everywhere), cycled. The field holds
  * enough cops for the most the mix can bring out (M4 cops-3): `baseCount` plus `tierScale` per tier
  * above the first for `tier-rising`, plus `patrolMax` for playtest 2's patrol, plus one more
- * whenever chaos can summon or a patrol rides (a speed trap's cop), at most
+ * whenever chaos can summon, a patrol rides or the heat meter runs (a speed trap's or the heat's cop), at most
  * MAX_FIELDED_COPS; `none` fields nobody. sim/cops decides which of them leave the lot, and when.
  * [default] Returns qualified rider ids.
  */
@@ -374,9 +444,11 @@ export function copIds(reg: ContentRegistry, eventId = DEFAULT_EVENT, tier = DEF
   const starting =
     cops.mode === 'tier-rising' ? cops.baseCount + cops.tierScale * (Math.max(1, tier) - 1) : cops.baseCount;
   const chaos = cops.chaosSummon || cops.mode === 'chaos-summoned';
-  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap or chaos.
+  // Playtest 2: a patrol adds its most (patrolMax), plus one in the lot for a speed trap, chaos or
+  // the heat meter (whose cops also reuse any cop whose chase ended: more would crowd the lot).
   const patrol = cops.patrolMax ?? 0;
-  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + patrol + (chaos || patrol > 0 ? 1 : 0));
+  const lot = chaos || patrol > 0 || cops.heat ? 1 : 0;
+  const count = Math.min(MAX_FIELDED_COPS, Math.floor(starting) + patrol + lot);
   const regionKey = qualifyIn(packOf(key), event.region);
   const race = packSubset(reg, packClosure(reg, packOf(key)));
   const pool = Object.entries(race.riders)
@@ -485,10 +557,9 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const routeDef = lookup(race.routes, routeId);
   const route = stream.routeFor(routeDef);
   const pace = event.field.paceMps ?? 30;
-  const rivals = (event.field.riders ?? []).map((ref) => {
-    const id = qualifyIn(eventPack, ref);
-    return riderDef(race, id, aiController(lookup(race.riders, id).personality), pace);
-  });
+  const rivals = raceField(race, eventId, setup.seed, setup.freePlay).map((id) =>
+    riderDef(race, id, aiController(lookup(race.riders, id).personality), pace),
+  );
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
   // The event's career tier (run W-R): 1 for an event without one (the free-play races).
@@ -522,7 +593,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   }));
   const weights = regionTrafficWeights(race, event, eventPack);
   // W-P: the road set pieces the event opts into (the sim rolls which fire, and where).
-  const mods = eventModifiers(race, event, eventId);
+  const timeOfDay = raceTimeOfDay(race, eventId, setup.seed, setup.freePlay);
+  const mods = eventModifiers(race, { ...event, timeOfDay: timeOfDay as RaceEvent['timeOfDay'] }, eventId);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
   for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;

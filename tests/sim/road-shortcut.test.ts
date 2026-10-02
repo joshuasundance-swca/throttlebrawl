@@ -333,9 +333,13 @@ describe('playtest 1c: an early commit to the boat-ramp cut meets no wall', () =
     },
   );
 
-  it('guard: outside the split zone, holding right into the road edge still wobbles on the barrier', () => {
+  it('guard: outside the split zone, holding right rides out onto the verge, not along the zone', () => {
+    // Off-road (run W-R): before the guide's lead-in the road's edge is the verge's (the lanes end at
+    // d 5.5), so holding right leaves the lanes for the ground beside them and is not guided onto the cut.
     const r = ridePastSplit('holdRight', 120);
-    console.log(`hold right from s 120: ${r.walls.join(', ') || 'no walls'}`);
-    expect(r.walls.some((w) => w.startsWith('wobble(barrier)@m1-marina-run'))).toBe(true);
+    console.log(
+      `hold right from s 120: d at split ${r.dAtSplit.toFixed(2)}; ${r.walls.join(', ') || 'no walls'}`,
+    );
+    expect(r.dAtSplit).toBeGreaterThan(6);
   });
 });

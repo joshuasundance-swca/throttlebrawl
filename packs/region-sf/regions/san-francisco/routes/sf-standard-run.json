@@ -3,13 +3,14 @@
   "id": "sf-standard-run",
   "network": "sf-hills",
   "start": { "road": "sf-pier-row", "s": 40, "dir": 1 },
-  "finish": { "road": "sf-bridge-approach", "s": 907.5 },
+  "finish": { "road": "sf-bridge-approach", "s": 837.5 },
   "mainPath": [
     "sf-pier-row",
     "sf-cable-line-grade",
     "sf-switchback-street",
     "sf-painted-row",
     "sf-fogline-climb",
+    "sf-bridge-onramp",
     "sf-bridge-approach"
   ],
   "allowedRoads": [
@@ -22,6 +23,7 @@
     "c-sf-park-split-main",
     "sf-fogline-climb",
     "c-sf-park-merge-main",
+    "sf-bridge-onramp",
     "sf-bridge-approach",
     "c-sf-park-in",
     "sf-park-cut",
@@ -34,16 +36,23 @@
     { "road": "sf-cable-line-grade", "s": 400 },
     { "road": "sf-painted-row", "s": 300 }
   ],
-  "closed": false,
-  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
   "branches": [
     {
-      "id": "park-cut",
-      "roads": ["c-sf-park-in", "sf-park-cut", "c-sf-park-out"],
+      "id": "sf-park-cut",
       "kind": "shortcut",
       "marked": true,
-      "sign": "PARK CUT. Flatter. Muddier. Unfunded."
+      "sign": "PARK CUT. Flatter. Muddier. Unfunded.",
+      "roads": ["c-sf-park-in", "sf-park-cut", "c-sf-park-out"]
+    },
+    {
+      "id": "sf-stair-alley",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "STAIR ALLEY: KEEP RIGHT. No vehicles. Especially yours.",
+      "roads": ["c-stair-alley-in", "sf-stair-alley", "c-stair-alley-out"]
     }
   ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
   "meta": { "status": "live" }
 }

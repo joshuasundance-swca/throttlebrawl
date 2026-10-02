@@ -26,7 +26,7 @@ interface FakePad {
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __game?: { setBot(on: boolean): void; state(): string };
+  __game?: { setBot(on: boolean): void; state(): string; snapshot(): { tick: number } | null };
   __app?: { presentation(): Presentation };
   __pad?: FakePad;
 };
@@ -166,26 +166,40 @@ test('C steps the camera through low chase, far chase and helmet, and the frame 
   expect(problems).toEqual([]);
 });
 
+/** Waits until the sim's own tick reaches `tick`. */
+async function untilTick(page: Page, tick: number) {
+  await page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) >= t, tick, {
+    timeout: 10_000,
+  });
+}
+
 test('gamepad d-pad up steps the camera view too', async ({ page }) => {
   test.setTimeout(120_000);
   const problems = watch(page);
   await boot(page, true);
   await race(page);
+  // Sets the d-pad and returns the sim's tick at that moment. The pad is polled at the start of
+  // each sim step, so every tick after this one has seen the new state. The hold and the release
+  // are counted in ticks, not wall-clock time: CI draws about 10 frames a second, with longer
+  // stalls, and a 200 ms release once fell between two polls, so the re-press was no new edge
+  // (the first attempts of #335's and #303's CI runs).
   const press = (v: number) =>
     page.evaluate(
       ([i, value]) => {
-        const pad = (window as TestWindow).__pad!;
-        pad.buttons[i] = { pressed: value >= 0.5, touched: value > 0, value };
-        pad.timestamp = performance.now();
+        const w = window as TestWindow;
+        w.__pad!.buttons[i] = { pressed: value >= 0.5, touched: value > 0, value };
+        w.__pad!.timestamp = performance.now();
+        return w.__game!.snapshot()!.tick;
       },
       [DPAD_UP, v] as const,
     );
-  await press(1);
+  const down = await press(1);
   await untilView(page, 'farChase');
-  await page.waitForTimeout(300); // held: one press, one step
+  // Held for 18 more polls (300 ms at 60 Hz): one press, one step.
+  await untilTick(page, down + 1 + 18);
   expect((await view(page)).camera.view).toBe('farChase');
-  await press(0);
-  await page.waitForTimeout(200);
+  const up = await press(0);
+  await untilTick(page, up + 1); // a poll has seen the release
   await press(1);
   await untilView(page, 'helmet');
   expect(problems).toEqual([]);

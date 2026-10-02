@@ -57,10 +57,13 @@ function earlyCommit(r: Region, lead: number, steer: number, assist: 'off' | 'li
   const walls: string[] = [];
   const trigger = zone.s0 - lead;
   let committed = false;
+  /** The farthest the rider got from the centre line on the zone's road, m. */
+  let farthest = 0;
   for (let t = 0; t < 60 * 120; t++) {
     const me = sim.snapshot().entities[0] as EntitySnapshot;
     const { edge, s, d, dir, yaw } = me.road;
     if (edge === zone.edge && s >= trigger) committed = true;
+    if (edge === zone.edge) farthest = Math.max(farthest, Math.abs(d));
     // Done once past the zone's edge (onto the branch or on along the main road).
     if (committed && edge !== zone.edge) break;
     const a: ActionState = {
@@ -87,7 +90,7 @@ function earlyCommit(r: Region, lead: number, steer: number, assist: 'off' | 'li
       );
     }
   }
-  return { walls, zone, committed };
+  return { walls, zone, committed, farthest };
 }
 
 describe(`an early commit up to ${SPLIT_GUIDE_LEAD_M} m before a split zone meets no wall (skeptic F1)`, () => {
@@ -111,8 +114,13 @@ describe(`an early commit up to ${SPLIT_GUIDE_LEAD_M} m before a split zone meet
     }, 300_000);
   }
 
-  it('guard: full lock well before the lead-in still wobbles on the barrier (Keys, 130 m before)', () => {
+  it('guard: full lock well before the lead-in is not guided: it rides out onto the verge (Keys, 130 m before)', () => {
+    // Off-road (run W-R): before the guide's lead-in the road's edge is the verge's, so a hard right
+    // leaves the lanes (they end at d 5.5) for the ground beside them instead of sliding along the zone.
     const res = earlyCommit(REGIONS[0], 130, 1, 'off');
-    expect(res.walls.some((w) => w.startsWith('wobble(barrier)'))).toBe(true);
+    process.stdout.write(
+      `[split early] guard: farthest out ${res.farthest.toFixed(2)} m; ${res.walls.join(', ')}\n`,
+    );
+    expect(res.farthest).toBeGreaterThan(6);
   }, 120_000);
 });

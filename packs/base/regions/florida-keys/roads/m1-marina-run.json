@@ -57,6 +57,15 @@
     { "kind": "copSpawn", "id": "bait-shop-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.6 },
     {
       "kind": "billboard",
+      "id": "sign-marina-ramp-ahead",
+      "s0": 200,
+      "s1": 210,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "ramp-keep-right"
+    },
+    {
+      "kind": "billboard",
       "id": "bb-marina-timeshare",
       "s0": 150,
       "s1": 190,

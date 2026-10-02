@@ -64,6 +64,7 @@ describe('tools/road: the baked San Francisco track', () => {
       'c-sf-park-split-main',
       'sf-fogline-climb',
       'c-sf-park-merge-main',
+      'sf-bridge-onramp',
       'sf-bridge-approach',
     ]);
     // Switchbacks: tighter than a 40 m radius. Steep blocks: grades of 15 % or more.
@@ -74,6 +75,26 @@ describe('tools/road: the baked San Francisco track', () => {
       .flatMap((r) => r.samples.data['grade'] ?? [])
       .map(Math.abs);
     expect(Math.max(...grades)).toBeGreaterThan(0.15);
+  });
+
+  it('finishes on a freeway: two lanes each way, then three, the inner ones the course own (W-R)', () => {
+    const e = net.edgeIndex('sf-bridge-approach');
+    const drive = (s: number, dir: 1 | -1) =>
+      net
+        .lanesAt(e, s)
+        .filter((l) => l.kind === 'drive' && l.direction === dir)
+        .map((l) => l.dCenterM);
+    expect(drive(10, 1)).toEqual([2, 6]);
+    expect(drive(10, -1)).toEqual([-6, -2]);
+    expect(drive(100, 1)).toEqual([2, 6, 10]);
+    expect(drive(100, -1)).toEqual([-10, -6, -2]);
+    // The finish line is on the six-lane stretch, and the on-ramp is the course's two-lane road.
+    expect(progress.finish.edge).toBe(e);
+    expect(drive(progress.finish.s, 1)).toHaveLength(3);
+    const ramp = net.edgeIndex('sf-bridge-onramp');
+    expect(net.lanesAt(ramp, 30).filter((l) => l.kind === 'drive')).toHaveLength(2);
+    // Lane splitting room: 4 m lanes leave 2.2 m between two 1.8 m cars, for a 0.8 m bike.
+    expect(net.lanesAt(e, 100).every((l) => l.kind !== 'drive' || l.widthM === 4)).toBe(true);
   });
 
   it('crest lips: a bike leaving one at 20 to 45 m/s flies, and lands softly on straight road', () => {
@@ -133,7 +154,7 @@ describe('tools/road: the baked San Francisco track', () => {
     expect(park?.surface).toBe('dirt');
     const ys = park?.samples.data['y'] ?? [];
     expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1);
-    const branch = progress.branches.find((b) => b.id === 'park-cut');
+    const branch = progress.branches.find((b) => b.id === 'sf-park-cut');
     expect(branch).toMatchObject({ kind: 'shortcut', marked: true, declared: true });
     expect(branch?.sign).toMatch(/^PARK CUT/);
   });

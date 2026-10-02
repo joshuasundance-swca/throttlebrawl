@@ -211,6 +211,14 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
       b.noise('lowpass', 1400 * lo, 300 * lo, 0.8, t, 0.4 * w, 0.14);
     }
   }),
+  // Tuning in or out (the hidden pirate station, run W-Q): a swept burst of radio static, a
+  // whistle that falls as the dial slides, and a small blip when the signal locks.
+  tune: patch((b, t) => {
+    b.noise('bandpass', 500, 3400, 1.2, t, 0.45, 0.3, 0.02);
+    b.noise('highpass', 3200, 3200, 0.7, t + 0.1, 0.2, 0.16);
+    b.tone('sine', 1900, 700, t, 0.12, 0.26);
+    b.tone('sine', 880, 880, t + 0.3, 0.1, 0.09);
+  }),
   // A whiff: a quick noise sweep.
   miss: patch((b, t) => {
     b.noise('bandpass', 700, 2600, 2, t, 0.35, 0.16, 0.035);

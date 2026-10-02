@@ -47,6 +47,7 @@ import {
   type TuningParamDecl,
 } from '../../core';
 import type { RoadPos } from '../../road';
+import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
 import { InputFlag, type SimConfig } from '../types';
 import { emit, noteGrudge, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -535,15 +536,16 @@ function stepTumble(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   const ts = world.timeScale;
   if (wantsSkip(world, config, m)) r.skipQueued = true;
   if (dt > 0) {
-    const on = stepCluster(road, r.riderRig, dt, RIDER_MU);
-    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU);
+    const offRoad = offRoadOn(world.params);
+    const on = stepCluster(road, r.riderRig, dt, RIDER_MU, offRoad);
+    const bikeAt = stepCluster(road, r.bikeRig, dt, BIKE_MU, offRoad);
     contacts(world, config, m, r, r.riderRig, on);
     contacts(world, config, m, r, r.bikeRig, bikeAt);
     railEvents(world, m, r, r.riderRig, on);
     railEvents(world, m, r, r.bikeRig, bikeAt);
     r.rider = { ...centre(r.riderRig.p), edge: on.edge };
     r.bike = { ...centre(r.bikeRig.p), edge: bikeAt.edge };
-    const band = wallBand(road, on.edge);
+    const band = wallBand(road, on.edge, on.s, offRoad);
     m.pos.edge = on.edge;
     m.pos.s = on.s;
     m.pos.d = on.d < band.lo ? band.lo : on.d > band.hi ? band.hi : on.d;

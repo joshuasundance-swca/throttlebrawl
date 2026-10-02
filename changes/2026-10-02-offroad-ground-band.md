@@ -1,0 +1,5 @@
+---
+kind: new
+audience: player
+---
+You can ride off the road. Most roads now have a band of ground beside them: sand and gravel in the Keys, dirt under the trees in the Pacific Northwest, the kerb and pavement in San Francisco. Each slows you and loosens the steering in its own way, and kicks up its own dust or spray behind you. The invisible wall at the road's edge is gone wherever ground is drawn; what stops you now is what you can see. Ferns and bushes slow you hard, the water's edge splashes and drags, buildings and cliffs are walls as before, and the fences at the marinas and trailer parks smash if you hit them hard enough: you lose some speed, the boards fly and the gap stays open for the rest of the race. Kicks and bumps can push a rival off the road too, and a crash out there tumbles out there. Near a branch's split the edge still slides you onto the branch, so an early commit to a shortcut works as before. Trees, palms, poles, shacks and mailboxes now stand at the edge of the loose ground rather than on it, so nothing you could ride through stands where you can ride; the Keys' sand verge is 4 m (6 m on a beach) so the palms still whip past close.

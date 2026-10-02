@@ -389,6 +389,8 @@ describe('the road meshes', () => {
     const dressed = buildRoadScene(road, look, {
       flat: {
         barriers: [{ s0: 50, s1: 150, side: 'both', kind: 'rail', heightM: 1 }],
+        // Rails are drawn only on bridges and drops (interview, 2026-10-02).
+        tags: [{ s0: 50, s1: 150, side: 'both', tag: 'bridge' }],
         features: [{ kind: 'ramp', s0: 200, s1: 210, d0: 0, d1: 3.4 }],
       },
     }).stats;
@@ -405,7 +407,11 @@ describe('the road meshes', () => {
     expect(open.stats.landM).toBe(2 * 66);
     expect(open.group.getObjectByName('road-land')).toBeDefined();
     const railed = buildRoadScene(road, look, {
-      flat: { features: [zone], barriers: [{ s0: 0, s1: 300, side: 'both', kind: 'rail' }] },
+      flat: {
+        features: [zone],
+        barriers: [{ s0: 0, s1: 300, side: 'both', kind: 'rail' }],
+        tags: [{ s0: 0, s1: 300, side: 'both', tag: 'bridge' }],
+      },
     });
     expect(railed.stats.landM).toBe(0);
     expect(railed.group.getObjectByName('road-land')).toBeUndefined();

@@ -187,13 +187,15 @@ export function createBatchRace(seed: number, difficulty: DifficultyPreset = 'no
 
 /**
  * The tuning that turns the W-P road events off (their chance slider at 0), and playtest 2's cop
- * patrol with them (`cops.patrolScale` 0): both reshuffle every seeded race. The shared batch and
- * the bot-race tests that measure other systems use it, so their seeded races stay what they were.
- * The patrol has its own races: tests/sim/cops-patrol.test.ts and the cops lane's other files.
+ * patrol and heat meter with them (`cops.patrolScale` and `cops.heatScale` 0): all of them reshuffle
+ * every seeded race. The shared batch and the bot-race tests that measure other systems use it, so
+ * their seeded races stay what they were. The patrol and the heat have their own races:
+ * tests/sim/cops-patrol.test.ts, tests/sim/cops-heat.test.ts and the cops lane's other files.
  */
 export const NO_ROAD_EVENTS: Readonly<Record<string, number>> = {
   'modifiers.setPieceChance': 0,
   'cops.patrolScale': 0,
+  'cops.heatScale': 0,
 };
 
 /** Runs one seeded race with the bot in the player slot, then replays it from its inputs. */

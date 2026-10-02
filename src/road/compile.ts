@@ -55,6 +55,18 @@ export interface RoadSource {
   surface: RoadSurface;
   /** A junction's connector road (on the main list: between the two roads it joins). */
   connector?: boolean;
+  /**
+   * This road's own lanes, in place of the track's (or the branch's): a multi-lane highway stretch
+   * (W-R; interview, 2026-10-02: "multi-lane highways (4-6 lanes, lane splitting)"). Lanes carry over
+   * a pass-through join by id, so a highway keeps the track's inner lanes where it meets a two-lane
+   * road; traffic merges out of the lanes that end there (sim/traffic).
+   */
+  lanes?: readonly LaneInfo[];
+  /**
+   * Where this road's lanes change along it (a highway gaining a lane each way at a time, W-R): lane
+   * sections in s order, the first at s 0. In place of `lanes` and the track's lanes.
+   */
+  laneSections?: readonly { s0: number; lanes: readonly LaneInfo[] }[];
   humps: readonly HumpSource[];
   ramps?: readonly RampSource[];
   /** Tag ranges; an s1 of 'end' means the road's end. */
@@ -70,17 +82,6 @@ export interface RouteSource {
   finish: { road: string; s: number };
   checkpoints: readonly { road: string; s: number }[];
   startGrid: { rows: number; perRow: number; rowGapM: number };
-  /**
-   * The route's named branches (W-Q; docs/content-packs.md, "Branches"), written to the route file
-   * as given: a stable id, its roads, its kind, marked or secret, and the deadpan sign at its split.
-   */
-  branches?: readonly {
-    id: string;
-    roads: readonly string[];
-    kind?: RouteBranchKind;
-    marked?: boolean;
-    sign?: string;
-  }[];
 }
 
 export interface TrackSource {
@@ -134,6 +135,11 @@ export interface BranchSource {
    * roads. Every road but the last needs `lengthM`; the last takes what is left.
    */
   roads: readonly RoadSource[];
+  /**
+   * The branch as the routes name it (W-R; interview, 2026-10-02: "junction choices in races"):
+   * every route that allows it lists it in `branches` with these, and its roads.
+   */
+  named?: { id: string; kind?: RouteBranchKind; marked?: boolean; sign?: string };
 }
 
 const FINE_STEP = 0.5; // metres between fine heading samples
@@ -485,7 +491,8 @@ function cutCurve(line: Centreline, roads: readonly RoadSource[], lanes: readonl
     if (!(length > 0) || at + length > line.length + 1e-9) {
       throw new Error(`road ${road.id}: length ${length} does not fit the ${line.length} m curve`);
     }
-    cuts.push({ road, line, start: at, length, lanes, from: '', to: '' });
+    const own = road.laneSections?.[0]?.lanes ?? road.lanes ?? lanes;
+    cuts.push({ road, line, start: at, length, lanes: own, from: '', to: '' });
     at += length;
   });
   return cuts;
@@ -566,7 +573,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
   // Branches: the curve, its roads, and their rows in the two junctions' tables.
   const branchCuts: Cut[] = [];
   /** Each branch's roads, with the main-road indices it leaves after and rejoins at. */
-  const branchSpans: { leave: number; join: number; ids: string[] }[] = [];
+  const branchSpans: { leave: number; join: number; ids: string[]; named?: BranchSource['named'] }[] = [];
   const offsetPoint = (s: number, offset: number): [number, number, number] => {
     const h = sampleAt(line.heading, line.step, s);
     // The right of heading h (0 = north, + toward east) is (cos h, sin h) in (x, z).
@@ -635,7 +642,12 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       to: { road: b.road.id, end: 'from', lane: br.join.lane },
     });
     branchCuts.push(...cuts);
-    branchSpans.push({ leave: ai, join: bi, ids: cuts.map((c) => c.road.id) });
+    branchSpans.push({
+      leave: ai,
+      join: bi,
+      ids: cuts.map((c) => c.road.id),
+      ...(br.named ? { named: br.named } : {}),
+    });
   }
 
   const roads = [...main, ...branchCuts].map((cut) => {
@@ -681,7 +693,9 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       sampleSpacingM: spacing,
       speedLimitMps: road.speedLimitMps,
       surface: road.surface,
-      laneSections: [{ s0: 0, lanes: cut.lanes.map((l) => ({ ...l })) }],
+      laneSections: road.laneSections
+        ? road.laneSections.map((sec) => ({ s0: sec.s0, lanes: sec.lanes.map((l) => ({ ...l })) }))
+        : [{ s0: 0, lanes: cut.lanes.map((l) => ({ ...l })) }],
       tags: road.tags.map((t) => ({ ...t, s1: end(t.s1) })),
       features,
       barriers: road.barriers.map((b) => ({ ...b, s1: end(b.s1) })),
@@ -723,6 +737,10 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     }
     const finishCut = main[last] as Cut;
     const finishS = r.finish.s < 0 ? finishCut.length + r.finish.s : r.finish.s;
+    // The named branches this route allows (W-R junction choices), in branch order.
+    const branches = branchSpans
+      .filter((b) => b.named && b.leave >= first && b.join <= last)
+      .map((b) => ({ ...b.named, roads: b.ids }));
     return {
       type: 'route',
       id: r.id,
@@ -733,9 +751,9 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       // In the network's road order, so the full route lists every road as before.
       allowedRoads: roads.map((x) => x.id).filter((id) => allowed.has(id)),
       checkpoints: r.checkpoints,
+      ...(branches.length > 0 ? { branches } : {}),
       closed: false,
       startGrid: r.startGrid,
-      ...(r.branches ? { branches: r.branches.map((b) => ({ ...b, roads: [...b.roads] })) } : {}),
       meta: { status: 'live' },
     };
   });
