@@ -19,8 +19,8 @@
   "spawn": { "roadsideWeight": 2, "regions": [] },
   "effects": [],
   "meta": {
-    "status": "draft",
-    "notes": "M4 weapons-2 head start: the chain (the weapon list is decided). The longest reach and the slowest wind-up of the roadside weapons; a landed hit wraps the target and drags some speed off them (the melee.wrap behaviour and the 'Chain drag' slider). Crude starting numbers, [default].",
+    "status": "live",
+    "notes": "M4 weapons-2 head start: the chain (the weapon list is decided). The longest reach and the slowest wind-up of the roadside weapons; a landed hit wraps the target and drags some speed off them (the melee.wrap behaviour and the 'Chain drag' slider). Crude starting numbers, [default]. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\").",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

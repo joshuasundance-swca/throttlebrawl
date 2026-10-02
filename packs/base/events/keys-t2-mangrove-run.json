@@ -1,0 +1,67 @@
+{
+  "type": "event",
+  "id": "keys-t2-mangrove-run",
+  "name": "Mangrove Run",
+  "kind": "classic-race",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-standard-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["deacon-vane", "dial-up", "chad-speedwell", "tammy-two-stroke", "the-mayor"],
+    "paceMps": 39
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    },
+    {
+      "id": "shortcut",
+      "kind": "ride-branch",
+      "params": {
+        "branch": "m1-boat-ramp-cut"
+      },
+      "required": false,
+      "rewardCash": 400
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
+    "perTakedownCash": 260,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A classic race, longer: the standard run through the mangroves to Conch Row. Top three wins it; the boat ramp cut pays a bonus.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

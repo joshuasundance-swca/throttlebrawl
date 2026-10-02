@@ -51,6 +51,14 @@ import {
   trafficFigureTint,
 } from './traffic-figures';
 import type { LookStyle } from './look';
+import {
+  BlobShadows,
+  DEFAULT_VEHICLE_SHADOW,
+  groundYOf,
+  ON_FOOT_SHADOW,
+  RIDER_SHADOW,
+  type ShadowSize,
+} from './shadows';
 import { defaultRenderParams, type RenderParams } from './tuning';
 import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
@@ -320,6 +328,13 @@ const BIKE_CENTRE_M = 0.45;
 const BIKE_SIDE_M = 0.22;
 /** Pending effect events kept between frames (menus stop the render while the sim may run). */
 const PENDING_CAP = 64;
+/**
+ * A roadside weapon farther than this from the camera is not drawn, m. The pipe is about 2 px tall
+ * there on a phone in landscape, and each pickup costs two draw calls; with one every 500 m (run
+ * W-R) the far ones pushed road-event frames over the 120 draw-call budget (main fix, 2026-10-02).
+ * [default]
+ */
+export const PICKUP_DRAW_M = 200;
 
 interface PickupView {
   root: Group;
@@ -349,6 +364,8 @@ export interface EntityViewCounts {
 
 export class EntityViews {
   readonly root = new Group();
+  /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
+  private readonly shadows = new BlobShadows();
   private readonly look: LookStyle;
   private readonly proportions: (contentId: string) => RiderProportions;
   private readonly riders = new Map<number, RiderView>();
@@ -386,6 +403,8 @@ export class EntityViews {
   private readonly scale = new Vector3();
   private readonly color = new Color();
   private now = 0;
+  /** The camera's ground position this frame (sync's `eye`), or null when not given. */
+  private eye: { readonly x: number; readonly z: number } | null = null;
   private counts: EntityViewCounts = { riders: 0, vehicles: 0, peds: 0, pickups: 0, pooled: 0 };
 
   constructor(look: LookStyle, opts: EntityViewOptions = {}) {
@@ -394,6 +413,7 @@ export class EntityViews {
     this.effects = opts.effects ?? null;
     this.params = opts.params ?? defaultRenderParams();
     this.root.name = 'entities';
+    this.root.add(this.shadows.root);
     this.instanced = {
       car: this.makeInstanced('car', CAR_PARTS, 'vehicle', 32),
       truck: this.makeInstanced('truck', TRUCK_PARTS, 'vehicle', 8),
@@ -461,14 +481,25 @@ export class EntityViews {
     }
   }
 
-  /** Updates every view from the snapshots. `timeS` is wall-clock seconds, for visual cues only. */
-  sync(prev: SimSnapshot | null, curr: SimSnapshot, alpha: number, timeS: number): void {
+  /**
+   * Updates every view from the snapshots. `timeS` is wall-clock seconds, for visual cues only.
+   * `eye` is the camera's ground position: weapons (on the road or in a rider's fist) farther than
+   * PICKUP_DRAW_M from it are not drawn (without it, every one is).
+   */
+  sync(
+    prev: SimSnapshot | null,
+    curr: SimSnapshot,
+    alpha: number,
+    timeS: number,
+    eye?: { readonly x: number; readonly z: number },
+  ): void {
     // Real seconds since the last frame, and the world's share of them (0 in a hit-stop, 0.3 in
     // slow motion): spins and effects crawl with the world.
     const dtReal = Math.min(0.1, Math.max(0, timeS - this.now));
     const scale = Math.min(1, Math.max(0, curr.timeScale));
     this.dt = dtReal * scale;
     this.now = timeS;
+    this.eye = eye ?? null;
     const t = Math.min(1, Math.max(0, alpha));
     this.alpha = t;
     this.prevById.clear();
@@ -487,15 +518,18 @@ export class EntityViews {
         riders++;
       } else if (e.kind === 'pickup') {
         const view = this.pickupView(e.id);
-        view.root.visible = true;
-        view.root.position.set(p.x, p.y + 0.35, p.z);
-        view.root.rotation.y = timeS * 1.5;
-        const shape = weaponShapeOf(e.contentId);
-        if (shape !== view.shape) {
-          view.mesh.geometry = this.weaponGeometry(shape);
-          view.shape = shape;
+        // A far pickup keeps its (pooled) view but is not drawn.
+        view.root.visible = this.weaponInView(p);
+        if (view.root.visible) {
+          view.root.position.set(p.x, p.y + 0.35, p.z);
+          view.root.rotation.y = timeS * 1.5;
+          const shape = weaponShapeOf(e.contentId);
+          if (shape !== view.shape) {
+            view.mesh.geometry = this.weaponGeometry(shape);
+            view.shape = shape;
+          }
+          view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         }
-        view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         this.seen.add(e.id);
         pickups++;
       } else if (e.kind === 'vehicle' && trafficFigureFor(e.contentId)) {
@@ -581,6 +615,7 @@ export class EntityViews {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    this.castShadows(curr);
     for (const [id, view] of this.riders) if (!this.seen.has(id)) this.releaseRider(id, view);
     for (const [id, view] of this.pickups) if (!this.seen.has(id)) this.releasePickup(id, view);
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
@@ -615,6 +650,47 @@ export class EntityViews {
   }
 
   // ---- internals ----
+
+  /** Blob shadows for the riders, their parked or tumbling bikes, and the vehicles (shadows.ts). */
+  private castShadows(curr: SimSnapshot): void {
+    const sh = this.shadows;
+    sh.begin();
+    for (const e of curr.entities) {
+      if (e.kind !== 'rider' && e.kind !== 'vehicle') continue;
+      const p = lerpPose(this.prevById.get(e.id) ?? e, e, this.alpha, this.pose);
+      const ground = groundYOf(e);
+      if (e.kind === 'vehicle') {
+        const def = this.trafficTypes.get(e.contentId);
+        const fig = trafficFigureFor(e.contentId);
+        const odd = oddityFigureFor(e.contentId);
+        const dims = def ??
+          (fig ? TRAFFIC_FIGURE_DIMS[fig as keyof typeof TRAFFIC_FIGURE_DIMS] : undefined) ??
+          (odd ? FIGURE_DEFAULT_DIMS[odd] : undefined) ?? { widthM: 0, lengthM: 0 };
+        const size: ShadowSize =
+          dims.widthM > 0
+            ? { widthM: dims.widthM * 1.1, lengthM: dims.lengthM * 1.05 }
+            : DEFAULT_VEHICLE_SHADOW;
+        sh.add(p.x, ground, p.z, p.heading, size, 0);
+        continue;
+      }
+      const tumble = e.tumble;
+      if (tumble) {
+        // Down: the rider and the bike each throw their own, fainter the higher they fly.
+        sh.add(tumble.rider.x, ground, tumble.rider.z, p.heading, ON_FOOT_SHADOW, tumble.rider.y - ground);
+        sh.add(tumble.bike.x, ground, tumble.bike.z, p.heading, RIDER_SHADOW, tumble.bike.y - ground);
+        continue;
+      }
+      if (e.parkedBike) {
+        // Running back to the bike: the rider on foot, the bike standing apart.
+        const b = e.parkedBike;
+        sh.add(p.x, ground, p.z, p.heading, ON_FOOT_SHADOW, e.road.h);
+        sh.add(b.x, b.y, b.z, b.heading, RIDER_SHADOW, 0);
+        continue;
+      }
+      sh.add(p.x, ground, p.z, p.heading, RIDER_SHADOW, e.road.h);
+    }
+    sh.end();
+  }
 
   private geometry(key: string, build: () => BoxPart[]): BufferGeometry {
     let g = this.geometries.get(key);
@@ -822,6 +898,12 @@ export class EntityViews {
     this.fists.delete(id);
   }
 
+  /** Whether a weapon at `p` is near enough to the camera to draw (PICKUP_DRAW_M). */
+  private weaponInView(p: { readonly x: number; readonly z: number }): boolean {
+    const eye = this.eye;
+    return !eye || Math.hypot(p.x - eye.x, p.z - eye.z) <= PICKUP_DRAW_M;
+  }
+
   private pickupView(id: number): PickupView {
     let view = this.pickups.get(id);
     if (!view) {
@@ -972,8 +1054,8 @@ export class EntityViews {
         view.weaponShape = shape;
       }
     }
-    view.weapon.visible = held;
-    view.glint.visible = held && e.attackPhase === 'windup';
+    view.weapon.visible = held && this.weaponInView(p);
+    view.glint.visible = view.weapon.visible && e.attackPhase === 'windup';
     if (view.glint.visible) {
       view.glint.scale.setScalar(0.8 + 0.7 * Math.abs(Math.sin(time * 18)));
       view.glint.rotation.z = time * 6;
