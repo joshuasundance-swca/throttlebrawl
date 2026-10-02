@@ -358,6 +358,58 @@ describe('W-P: a rider stopped at the side of the lane', () => {
   });
 });
 
+describe('W-Q: traffic swerves round a rider down in the lane', () => {
+  /**
+   * A rider down (on foot, as after a crash) at d on edge a, s 500, an RV coming up behind it from
+   * u 300, and optionally an oncoming car at u `oncomingU`.
+   */
+  const pass = (d: number, mode: 'OnFoot' | 'Tumble' | 'Road', oncomingU?: number) => {
+    const config = makeConfig({ riders: SOLO, types: [CAR, RV], tuning: NO_TRAFFIC });
+    const world = scenarioWorld(config, [{ pos: { edge: 0, s: 500, d, dir: 1 }, speed: 0 }]);
+    const down = world.movers[0];
+    if (down) down.mode = mode;
+    const rv = placeVehicle(world, config, { type: 1, u: 300, dir: 1 });
+    const car =
+      oncomingU === undefined ? -1 : placeVehicle(world, config, { type: 0, u: oncomingU, dir: -1 });
+    const st = trafficState(world);
+    let touched = 0;
+    /** Ticks the RV's box was over the centre line with the oncoming car still ahead of it. */
+    let crossedFacingCar = 0;
+    for (let t = 0; t < 60 * 30; t++) {
+      stepWorld(world, config, SCENARIO, [hold(0)]);
+      const m = world.movers[0];
+      const p = m ? toCorridor(st.corridor, m.pos) : null;
+      const du = Math.abs((st.u[rv] ?? 0) - (p?.u ?? 0));
+      const dd = Math.abs((st.cd[rv] ?? 0) - (p?.cd ?? 0));
+      if (du < (RV.lengthM + TRAFFIC.riderLengthM) / 2 && dd < (RV.widthM + TRAFFIC.riderWidthM) / 2)
+        touched++;
+      const carAhead = car >= 0 && (st.u[car] ?? 0) > (st.u[rv] ?? 0) - 5;
+      if (carAhead && (st.cd[rv] ?? 0) - RV.widthM / 2 < 0) crossedFacingCar++;
+    }
+    return { passed: (st.u[rv] ?? 0) > 520, touched, crossedFacingCar };
+  };
+
+  it('rounds a rider down in the middle of its lane, on foot or tumbling, without touching them', () => {
+    for (const mode of ['OnFoot', 'Tumble'] as const) {
+      const r = pass(1.7, mode);
+      console.log(`[examined] rider ${mode} at d 1.7: RV passed ${r.passed}, touches ${r.touched}`);
+      expect(r.passed, mode).toBe(true);
+      expect(r.touched, mode).toBe(0);
+    }
+  });
+
+  it('a rider stopped upright in the lane still stops it (as before); it never crosses into an oncoming car', () => {
+    expect(pass(1.7, 'Road').passed).toBe(false);
+    // An oncoming car on its way: the RV keeps to its side until the car is past, then rounds.
+    for (const u of [520, 600, 700]) {
+      const r = pass(1.7, 'OnFoot', u);
+      expect(r.crossedFacingCar, `car at ${u}`).toBe(0);
+      expect(r.touched, `car at ${u}`).toBe(0);
+      expect(r.passed, `car at ${u}`).toBe(true);
+    }
+  });
+});
+
 describe('W-P convoys and lane-change flags', () => {
   it('an RV convoy spawns nose to tail, and no vehicle ever spawns inside reaction range', () => {
     const step = RV.lengthM + 3 + RV.cruiseMps * 1.2;

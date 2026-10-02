@@ -33,10 +33,30 @@ describe('style pop-ups', () => {
     expect(styleText(ev('style', 0, { kind: 'weaponSteal', points: 40 }))).toBe('STOLEN +$40');
   });
 
+  it('names a domino takedown DOUBLE, and one further down the line STRIKE (W-Q)', () => {
+    const domino = (n: number) => ev('style', 0, { kind: 'takedownCombo', points: 200, combo: 2, domino: n });
+    expect(styleText(domino(2))).toBe('DOUBLE +$200');
+    expect(styleText(domino(3))).toBe('STRIKE +$200');
+    expect(styleText(domino(5))).toBe('STRIKE +$200');
+    expect(stylePop(domino(2))?.kind).toBe('domino'); // its own chip, not merged into COMBO
+  });
+
   it('says nothing for a kind it does not know, and leaves out a missing amount', () => {
     expect(styleText(ev('style', 0, { kind: 'moonwalk', points: 5 }))).toBeNull();
     expect(styleText(ev('style', 0, { kind: 'airtime' }))).toBe('AIRTIME');
     expect(styleText(ev('nearMiss', 0, {}))).toBeNull();
+  });
+
+  it('names a landed trick, a double flip as such, and keeps each trick its own pop-up (playtest 2)', () => {
+    const trick = (t: string, flips: number, points: number) =>
+      ev('style', 0, { kind: 'trick', trick: t, flips, points });
+    expect(styleText(trick('backflip', 1, 100))).toBe('BACKFLIP +$100');
+    expect(styleText(trick('backflip', 2, 200))).toBe('DOUBLE BACKFLIP +$200');
+    expect(styleText(trick('frontflip', 1, 100))).toBe('FRONT FLIP +$100');
+    expect(styleText(trick('wheelie', 0, 50))).toBe('WHEELIE +$50');
+    expect(styleText(trick('whip', 0, 50))).toBe('WHIP +$50');
+    expect(styleText(trick('moonwalk', 0, 50))).toBeNull();
+    expect(stylePop(trick('backflip', 1, 100))?.kind).not.toBe(stylePop(trick('whip', 0, 50))?.kind);
   });
 });
 

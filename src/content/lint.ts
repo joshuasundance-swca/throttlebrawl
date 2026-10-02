@@ -135,6 +135,19 @@ function referencesOf(e: ParsedEntry): Ref[] {
       each(['lengths'], 'route', 'route');
       each(['field', 'riders'], 'rider');
       if (Array.isArray(at(d, ['modifiers', 'pool']))) each(['modifiers', 'pool'], 'event-modifier');
+      one(['rules', 'rival'], 'rider');
+      if (Array.isArray(at(d, ['rules', 'targets']))) each(['rules', 'targets'], 'rider');
+      break;
+    case 'career':
+      one(['region'], 'region');
+      one(['startingBike'], 'bike');
+      one(['tutorialEvent'], 'event');
+      each(['nodes'], 'event', 'event');
+      each(['shop'], 'bike', 'bike');
+      arr(d['unlocks']).forEach((u, i) => {
+        if (isObj(u) && isObj(u['when']) && u['when']['kind'] === 'event-won')
+          one(['unlocks', i, 'when', 'ref'], 'event');
+      });
       break;
     case 'region':
       each(['networks'], 'road-network');
