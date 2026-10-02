@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "rental-convertible",
+  "name": "Rental Convertible",
+  "category": "car",
+  "tags": ["tourist"],
+  "lengthM": 4.6,
+  "widthM": 1.8,
+  "cruiseMps": 25.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": true,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "convertible"
+    },
+    "paintOptions": ["#e84a5f", "#ffffff", "#5bc0eb"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Top down, sunburn up. The driver brakes for every sunset, including the ones that are only a billboard.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

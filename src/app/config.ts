@@ -294,6 +294,8 @@ function riderDef(
     },
     massKg: rider.stats?.massKg ?? 80,
     healthMax: rider.stats?.healthMax ?? 100,
+    toughness: rider.stats?.toughness ?? 1,
+    power: rider.stats?.power ?? 1,
     // The weapon the rider starts holding (M4 cops-3: a cop's baton or taser, which can be stolen),
     // only when the race carries it: a live rider naming a draft weapon rides bare-handed in a
     // release build, as before.

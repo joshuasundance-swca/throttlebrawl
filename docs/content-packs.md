@@ -364,7 +364,9 @@ Tag: `[decided]` for personality styles, grudges, local rivals and cops, rivals 
   "stats": {
     "massKg": 72,
     "healthMax": 100,
-    "skill": 0.7
+    "skill": 0.7,
+    "toughness": 1.1,
+    "power": 1.0
   },
   "startingWeapon": "tire-iron",
   "personality": {
@@ -406,6 +408,7 @@ Tag: `[decided]` for personality styles, grudges, local rivals and cops, rivals 
 | `role` | `rival`, `cop`, `player-preset` or `extra` (a background biker). One schema serves all four, so a cop can be hit like any rider `[decided]` and a player preset is just a rider with `role: "player-preset"`. |
 | `roster` | `regular` (tours with the circuit) or `local` (belongs to a region). About 4 regulars plus 4 locals per region "sounds right" to the maintainer `[decided]`; which rider goes where is a proposal `[default]`. Either way it is data, not a rule in code. |
 | `region` | Required for `local`, absent for `regular`. |
+| `stats.toughness`, `stats.power` | Fight stats (playtest 2, 2026-10-02: "Visible personalities", moderate differences shown through how rivals ride and fight) `[default]`. Multipliers from 0.5 to 2, 1 when absent. `toughness` divides the damage and the stagger the rider takes from a hit; `power` multiplies the damage of every hit the rider lands. `healthMax` stays the rider's endurance. Aggression is `personality.aggression`. |
 | `personality.style` | A named preset registered in `sim/ai/` (weights, thresholds and a behaviour set; [architecture](./architecture.md#controllers-every-rider-is-driven-the-same-way)). The ids are `heavy-hitter`, `weaver`, `showboat`, `grudge-keeper`, `scrapper`, `crowd-pleaser`, `crew-boss`, `cop` and `racer`; personality styles exist `[decided]`, but the list is `[default]`: the first four are the styles named in [the product spec](./product-spec.md#rivals), and the rest, including `racer` (a pure racer who avoids fights), are additions. The other personality fields override the preset's values, so a new rival can be one line (`"style": "heavy-hitter"`) or fully bespoke. All numeric fields are 0..1. M1 registers two presets, `heavy-hitter` (a brawler who hunts a target and rides alongside it) and `racer` (holds its line and swings only at whoever drifts into reach); any other id falls back to `racer` until its own preset lands `[default]` (M1 ai-1). |
 | `personality.weave` | Lane habit, 0..1: how far the rider drifts across its lane (0 holds a line; about 0.8 swerves like a weaver). Added by M1 ai-1 `[default]`, alongside `aggression` (how often it swings and how far it hunts), `dirtiness` (how often a swing is a kick), `courage` (how hurt it can be and still pick a fight), `riskTaking` (how readily it dodges traffic through the oncoming lane) and `chatter` (for barks). |
 | `targetPreference` | An ordered list the AI uses to choose whom to fight: `grudge`, `player`, `leader`, `nearest`, `crew-enemy`. |

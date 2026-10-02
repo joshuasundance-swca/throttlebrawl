@@ -41,15 +41,22 @@
       { "kind": "base:sedan-rental", "weight": 2, "hazard": "normal" },
       { "kind": "log-truck", "weight": 1.5, "hazard": "big" },
       { "kind": "camper-van", "weight": 0.6, "hazard": "big" },
-      { "kind": "espresso-stand-in-tow", "weight": 0.2, "hazard": "big", "tags": ["oddity"] }
+      { "kind": "espresso-stand-in-tow", "weight": 0.2, "hazard": "big", "tags": ["oddity"] },
+      { "kind": "wagon-with-kayaks", "weight": 3, "hazard": "normal" },
+      { "kind": "muddy-pickup", "weight": 2.5, "hazard": "normal" },
+      { "kind": "rain-cape-cyclist", "weight": 1.2, "hazard": "normal" },
+      { "kind": "motorhome", "weight": 0.6, "hazard": "big" }
     ],
     "pedestrians": [
       { "kind": "ferry-walk-on", "weight": 2 },
-      { "kind": "bigfoot-researcher", "weight": 1 }
+      { "kind": "bigfoot-researcher", "weight": 1 },
+      { "kind": "rain-shell-hiker", "weight": 2 },
+      { "kind": "trail-runner", "weight": 1 }
     ],
     "animals": [
       { "kind": "raccoon", "weight": 2, "big": false },
-      { "kind": "elk", "weight": 1, "big": true }
+      { "kind": "elk", "weight": 1, "big": true },
+      { "kind": "wet-dog", "weight": 1, "big": false }
     ]
   },
   "signs": [
