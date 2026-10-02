@@ -121,9 +121,18 @@ function count(events: readonly SimEvent[], playerId: number, player: LandingTal
       }
       const l = lastLand.get(e.actor);
       if (l && e.data['cause'] !== 'landing' && e.tick - l.tick <= AFTER_TICKS && l.quality !== 'crash') {
-        t.crashAfter++;
-        const k = `after:${String(e.data['cause'])}${e.data['object'] ? `:${String(e.data['object'])}` : ''}`;
-        t.causes[k] = (t.causes[k] ?? 0) + 1;
+        const what = `${String(e.data['cause'])}${e.data['object'] ? `:${String(e.data['object'])}` : ''}`;
+        if (l.quality === 'wobble') {
+          // The landing's own consequence: the wobble's shaky bike went down within the second.
+          t.crashAfter++;
+          t.causes[`after:${what}`] = (t.causes[`after:${what}`] ?? 0) + 1;
+        } else {
+          // A clean landing, then something else (a car ahead, a rival's hit): not the landing's
+          // fault, so it is reported but not counted against it. Before this split, any traffic
+          // change could flip the batch (main, 2026-10-02: one bot ride into a car after a clean
+          // landing, "after:traffic").
+          t.causes[`afterClean:${what}`] = (t.causes[`afterClean:${what}`] ?? 0) + 1;
+        }
       }
       if (e.data['cause'] === 'landing') {
         const why =
