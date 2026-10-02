@@ -207,6 +207,42 @@ describe.each(['keys-m1', 'pnw-c1', 'sf-hills'])('the land on %s', (id) => {
   });
 });
 
+describe.each(['keys-m1', 'pnw-c1', 'sf-hills'])('the roads on %s', (id) => {
+  // Bundle 1: SF's Park Cut ran in the valley below the Fogline Climb, and the climb's land strip and
+  // skirt, looked for other roads at only two points across, lay over the cut, up to 12 m above its
+  // road. Land 1.5 m or more over a road buries it (road-mesh.ts BURIED_M). Shallower overlaps where
+  // a shortcut meets a sloping road (the stair alley and the logging spur, about 1.4 m) are counted.
+  it("are never buried under another road's land", () => {
+    const { road, dressing } = track(id);
+    const scene = buildRoadScene(road, look, dressing, { seed: 7 });
+    const ground = new GroundTris(scene.group);
+    let checked = 0;
+    let shallow = 0;
+    const buried: string[] = [];
+    for (const e of road.edges) {
+      for (let s = 2; s < e.length - 2; s += 5) {
+        for (const d of [e.dMin + 0.5, 0, e.dMax - 0.5]) {
+          const q = road.toWorld(e.index, s, d, 0);
+          const hit = ground.heightAt(q.x, q.z, q.y + 60);
+          checked++;
+          if (!hit?.name.startsWith('road-land') || hit.y <= q.y + 0.5) continue;
+          if (hit.y < q.y + 1.5) shallow++;
+          else
+            buried.push(
+              `${e.id} s ${s} d ${d.toFixed(1)}: land at ${hit.y.toFixed(1)} over ${q.y.toFixed(1)}`,
+            );
+        }
+      }
+    }
+    scene.dispose();
+    console.log(
+      `[examined] ${id}: ${checked} road points looked down on, ${buried.length} buried, ${shallow} under 0.5 to 1.5 m of land`,
+    );
+    expect(checked).toBeGreaterThan(1000);
+    expect(buried.slice(0, 8)).toEqual([]);
+  });
+});
+
 describe('the Keys keep their look', () => {
   it('draws no terrain skirt, no trestle bents and none of the new scenery on a tropical network', () => {
     const { road, dressing } = track('keys-m1');
