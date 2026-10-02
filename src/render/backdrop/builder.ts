@@ -8,6 +8,14 @@
 //   far plane (760 m), farther pieces deeper. A point on the same line of sight projects to the same
 //   pixel, so the picture is exact; only the depth is squeezed, and it keeps the far-to-near order.
 //   Anything nearer than the fog's end stays where it is.
+// - Floors (far land and water) are flat triangles kilometres across, and a squeeze per vertex
+//   bends them: a triangle whose corners are pulled in by different amounts becomes a tilted sheet
+//   above the near sea and hills, and covers them (W-P, verify-skyline mustFix 1: San Francisco's
+//   far ground painted the bay beside the road in the haze colour). So floors keep their true
+//   positions and only their depth follows another law (floorDrawnDepth): 1 / depth stays affine in
+//   1 / true depth, so the depth is exact across a flat triangle, no floor is ever drawn nearer than
+//   it truly is up to the fog's end (the near sea and ground cover it), and none goes past the far
+//   plane. It is one more row of the vertex shader, nothing per pixel.
 // - Colours are flat and unlit (each facet is shaded once by the classic sun when built), then
 //   mixed toward the scene's own haze colour by true distance (aerial perspective), with a little
 //   more haze at each piece's foot, so ridges fade into the fog and every look's haze colour,
@@ -59,6 +67,18 @@ export function squeezedDepth(d: number, fogFar: number): number {
   return d <= r0 ? d : r0 + ((BACKDROP_FAR_M - r0) * (d - r0)) / (d - r0 + BACKDROP_SQUEEZE_M);
 }
 
+/**
+ * The depth (m along the view axis) a floor point `z` metres deep is drawn at:
+ * 1 / drawn = 1 / BACKDROP_FAR_M + c / z, with c set so the fog's end maps to itself. Affine in
+ * 1 / z, so a flat triangle's depth interpolates exactly; at or beyond the true depth up to the
+ * fog's end; always inside the far end. The vertex shader below does the same (plus a tiny bias
+ * so water lies over land, and land over the far ring).
+ */
+export function floorDrawnDepth(z: number, fogFar: number): number {
+  const c = 1 - squeezeStart(fogFar) / BACKDROP_FAR_M;
+  return 1 / (1 / BACKDROP_FAR_M + c / z);
+}
+
 const VERTEX = /* glsl */ `
 uniform vec3 uCam;
 uniform float uTime;
@@ -91,7 +111,22 @@ void main() {
   h = max(h, aInfo.y * mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d)));
   vHaze = clamp(h, 0.0, 1.0);
   vColor = aColor;
-  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+  if (aInfo.y > 0.5) {
+    // A floor: its true position, and a depth that is affine in its true depth (floorDrawnDepth).
+    // With view depth Z, NDC depth is -P22 + P32 / Z; here 1 / Z becomes 1 / uRMax + c / Z + a bias,
+    // so clip z = (-P22 + P32 * (1 / uRMax + bias)) * Z + P32 * c, a plain linear row like any
+    // projection's: clipping and interpolation stay exact.
+    vec4 view = viewMatrix * vec4(p, 1.0);
+    vec4 clip = projectionMatrix * view;
+    float p22 = projectionMatrix[2][2];
+    float p32 = projectionMatrix[3][2];
+    float c = 1.0 - uRMin / uRMax;
+    float bias = aInfo.z / (uRMax * uRMax);
+    clip.z = (-p22 + p32 * (1.0 / uRMax + bias)) * (-view.z) + p32 * c;
+    gl_Position = clip;
+  } else {
+    gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+  }
 }`;
 
 const FRAGMENT = /* glsl */ `
