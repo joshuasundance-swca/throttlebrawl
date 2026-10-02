@@ -86,13 +86,10 @@ import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type 
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
   {
-    // Playtest 2: 30 s, from 20. The patrol now brings the first cop early in every race; at 20 s
-    // the lot's cop on top of it busted the dev bot in 24 to 32 % of the shared batch's races (12 to
-    // 16 of 50 as small changes nudged the races), at 30 s in 18 %, as before the patrol. [default]
     id: 'cops.spawnDelayS',
     group: 'cops',
     label: 'Cop spawn delay',
-    default: 30,
+    default: 20,
     min: 0,
     max: 120,
     step: 1,

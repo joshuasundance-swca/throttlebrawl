@@ -313,7 +313,7 @@ describe('playtest 2: the patrol', () => {
     };
     const w = lawWorld(config(lot));
     expect(patrolCops(w.world)).toEqual([]);
-    w.step(60 * 35); // past the 30 s spawn delay
+    w.step(60 * 25); // past the 20 s spawn delay
     expect(w.sirens().map((e) => e.data['cause'])).toEqual(['every-race']);
   });
 });
