@@ -38,6 +38,7 @@ import {
   type TuningParamDecl,
 } from '../sim/api';
 import { activateRegion, type RegionStream } from '../stream';
+import { eventModifiers } from './modifiers';
 
 export const DEFAULT_EVENT = 'm1-skeleton-sprint';
 
@@ -475,6 +476,8 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     ...weaponBehaviour(w),
   }));
   const weights = regionTrafficWeights(race, event, eventPack);
+  // W-P: the road set pieces the event opts into (the sim rolls which fire, and where).
+  const mods = eventModifiers(race, event, eventId);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
   for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;
@@ -496,6 +499,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       // M4 cops-3: the tier (1 until career-1) and the law's spawn mix, chaos meter and fines.
       tier,
       cops: eventCops(event),
+      ...(mods.perRace !== undefined ? { modifiersPerRace: mods.perRace } : {}),
     },
     riders,
     weapons,
@@ -511,7 +515,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     })),
     road: stream.road,
     route,
-    modifiers: [],
+    modifiers: mods.modifiers,
     grudges: {},
     tuning,
     difficulty: resolveDifficulty(setup.difficulty ?? DEFAULT_DIFFICULTY, given),

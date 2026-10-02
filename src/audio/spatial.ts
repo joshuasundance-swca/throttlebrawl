@@ -35,6 +35,22 @@ export function distanceGain(d: number, refM = 6, maxM = 180): number {
 }
 
 /**
+ * Where a source sits left (-1) or right (1) of a listener facing `heading` (0 faces -z), from its
+ * sideways offset: fully to one side at `fullM` metres. Sources ahead or behind sit in the middle.
+ */
+export function panFor(
+  listener: { x: number; z: number; heading: number },
+  source: { x: number; z: number },
+  fullM = 10,
+): number {
+  // The listener's right: +x when facing -z.
+  const rx = Math.cos(listener.heading);
+  const rz = -Math.sin(listener.heading);
+  const side = (source.x - listener.x) * rx + (source.z - listener.z) * rz;
+  return Math.min(1, Math.max(-1, side / fullM));
+}
+
+/**
  * Pitch factor heard by `listener` from `source`: above 1 while they close, below 1 while they
  * part. `scale` 0 turns it off; the result is clamped to half and double.
  */

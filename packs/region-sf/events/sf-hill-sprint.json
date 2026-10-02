@@ -22,6 +22,7 @@
     "takedownComboScale": 0.5,
     "perStealCash": 60
   },
+  "modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 },
   "meta": {
     "status": "live",
     "notes": "The San Francisco classic race (playtest 1c): the two local rivals, two regulars (Chad and Dial-Up, new internet and old) and the local cop, on the sf-hills course from the waterfront to the bridge approach at foggy dawn. One length, standard, about 4.2 km. The rewards copy the Keys race. The rival pace is a little under the Keys race's 36.5 m/s because the course is slower: tight corners and steep blocks. [default]",
