@@ -56,7 +56,7 @@ import {
   type RadioStation,
   type RadioVetoFlag,
 } from './radio';
-import { distance, distanceGain, dopplerFactor, moving } from './spatial';
+import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
@@ -74,7 +74,7 @@ import {
 } from './soundscape';
 import { createScapeVoices, type ScapeVoices } from './soundscape-voices';
 
-export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
+export { ENGINE_BY_CLASS, ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export { ENGINE_FEEL_DEFAULTS } from './engine-feel';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
@@ -425,6 +425,8 @@ export interface AudioInspect {
   engineFeel: { rpm: number; load: number; level: number; shifts: number; revs: number; pops: number };
   /** Entity ids of the other riders whose engines are playing. */
   otherEngines: number[];
+  /** Each of those engines' voice (its preset) and where it sits, left (-1) to right (1). */
+  otherEngineVoices: { id: number; preset: string; pan: number }[];
   sirenLevel: number;
   musicPlaying: boolean;
   /** The slow-motion treatment: whether it is on, and what the bus filter and music duck aim for. */
@@ -623,6 +625,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let lastFeel: FeelOutput | null = null;
   const feelCounts = { shifts: 0, revs: 0, pops: 0 };
   const others = new Map<number, Held<EngineVoice>>();
+  const otherPan = new Map<number, number>();
   let siren: Held<SirenVoice> | null = null;
   const lastHonk = new Map<number, number>();
   const lastCues: { cue: CueId; at: number }[] = [];
@@ -847,6 +850,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     pool.release(h.entry);
     h.voice.stop();
     others.delete(id);
+    otherPan.delete(id);
   };
   const dropSiren = () => {
     if (!siren) return;
@@ -1035,6 +1039,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       held.voice.set({ rpm: e.rpm, throttle: e.throttle });
       held.voice.setLevel(ENGINE_LEVELS.other * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
       held.voice.setDoppler(pitch * dopplerFactor(listener, moving(e), params.dopplerScale));
+      // Passing riders sit left or right of you (0.8 at most, so neither ear goes silent).
+      const pan = 0.8 * panFor(me, e);
+      held.voice.setPan(pan);
+      otherPan.set(e.id, pan);
     }
 
     // The siren while the cop is near.
@@ -1243,6 +1251,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         ...feelCounts,
       },
       otherEngines: [...others.keys()].sort((a, b) => a - b),
+      otherEngineVoices: [...others.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([id, h]) => ({ id, preset: h.voice.profile.preset, pan: otherPan.get(id) ?? 0 })),
       sirenLevel: siren?.voice.level() ?? 0,
       musicPlaying: graph?.music.playing() ?? false,
       slowmo: {

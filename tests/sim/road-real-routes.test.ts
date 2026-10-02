@@ -18,6 +18,7 @@ import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { chooseSetPieces } from '../../src/road';
 import { createSim, type SimConfig } from '../../src/sim/api';
+import { NO_ROAD_EVENTS } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -39,10 +40,13 @@ const ROUTES = [
 type Case = (typeof ROUTES)[number];
 
 function raceConfig(c: Case, seed: number): SimConfig {
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
   return buildSimConfig(REG, STREAMS.forEvent(REG, c.event, undefined, c.route), {
     seed,
     eventId: c.event,
     route: c.route,
+    tuning: NO_ROAD_EVENTS,
   });
 }
 

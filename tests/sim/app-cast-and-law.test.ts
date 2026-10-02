@@ -14,6 +14,7 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent, SimSnapshot } from '../../src/sim/api';
 import { resultText } from '../../src/ui/format';
+import { NO_ROAD_EVENTS } from './batch';
 
 const print = (line: string) => process.stdout.write(`[app-cast-and-law] ${line}\n`);
 /** Seeds tried until both a steal off the cop and a bust have happened. */
@@ -35,7 +36,9 @@ interface LawRun {
  * does to steal; whether the press lands inside the reach and window is the sim's call.
  */
 function lawRace(seed: number): LawRun {
-  const { sim, route, playerId, config } = createHeadlessRace({ seed });
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
+  const { sim, route, playerId, config } = createHeadlessRace({ seed, tuning: NO_ROAD_EVENTS });
   const copIds = config.riders.flatMap((r, i) => (r.faction === 'law' ? [i] : []));
   const bot = createBot();
   const outcome = createOutcome();
@@ -135,7 +138,7 @@ const CLEAR_M = 10;
 function castRun(seed: number, quirks: number | null, ticks: number) {
   const { sim, route, playerId, config } = createHeadlessRace({
     seed,
-    ...(quirks === null ? {} : { tuning: { 'ai.styleQuirks': quirks } }),
+    tuning: { ...NO_ROAD_EVENTS, ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }) },
   });
   const bot = createBot();
   const ds = new Map<number, number[]>();
