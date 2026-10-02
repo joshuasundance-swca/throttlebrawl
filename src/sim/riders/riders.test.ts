@@ -338,6 +338,8 @@ describe('riders-1: robustness and determinism', () => {
       'riders.launchGain',
       'riders.crashImpactMps',
       'riders.landingCrashMps',
+      'riders.airCarve',
+      'riders.airAlign',
       'riders.crestLaunch',
     ]);
     for (const d of RIDERS_TUNING) {

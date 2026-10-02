@@ -17,8 +17,12 @@ import { resultText } from '../../src/ui/format';
 import { NO_ROAD_EVENTS } from './batch';
 
 const print = (line: string) => process.stdout.write(`[app-cast-and-law] ${line}\n`);
-/** Seeds tried until both a steal off the cop and a bust have happened. */
-const SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
+/**
+ * Seeds tried until both a steal off the cop and a bust have happened (the search stops as soon as
+ * both have). 40, not 16: with forgiving landings (playtest 2, 2026-10-02) the bot crashes less, so
+ * it goes down near the cop less often; the first bust came at seed 27 when that landed.
+ */
+const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
 const MAX_TICKS = 60 * 60 * 5;
 
 interface LawRun {
