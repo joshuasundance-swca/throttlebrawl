@@ -98,6 +98,30 @@
       "text": "Near miss. That's a podcast episode.",
       "audioAsset": "audio/barks/pivot-core/pivot-near-episode",
       "audioStatus": "live"
+    },
+    {
+      "id": "pivot-start-ai-now",
+      "trigger": "race-start",
+      "status": "live",
+      "text": "We're an AI company now. Since breakfast.",
+      "audioAsset": "audio/barks/pivot-core/pivot-start-ai-now",
+      "audioStatus": "live"
+    },
+    {
+      "id": "pivot-pass-agent",
+      "trigger": "overtake",
+      "status": "live",
+      "text": "My AI agent scheduled this pass.",
+      "audioAsset": "audio/barks/pivot-core/pivot-pass-agent",
+      "audioStatus": "live"
+    },
+    {
+      "id": "pivot-taken-down-round",
+      "trigger": "hit-taken",
+      "status": "live",
+      "text": "That's a down round.",
+      "audioAsset": "audio/barks/pivot-core/pivot-taken-down-round",
+      "audioStatus": "live"
     }
   ],
   "meta": {

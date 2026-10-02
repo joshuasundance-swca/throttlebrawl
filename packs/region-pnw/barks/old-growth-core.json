@@ -127,6 +127,30 @@
       "text": "Log truck. Seen worse.",
       "audioAsset": "audio/barks/old-growth-core/growth-near-seen-worse",
       "audioStatus": "live"
+    },
+    {
+      "id": "growth-pass-ferry",
+      "trigger": "overtake",
+      "status": "live",
+      "text": "I'll save you a spot in the ferry line.",
+      "audioAsset": "audio/barks/old-growth-core/growth-pass-ferry",
+      "audioStatus": "live"
+    },
+    {
+      "id": "growth-hit-limbed",
+      "trigger": "hit-landed",
+      "status": "live",
+      "text": "Limbed and bucked.",
+      "audioAsset": "audio/barks/old-growth-core/growth-hit-limbed",
+      "audioStatus": "live"
+    },
+    {
+      "id": "growth-crash-moss",
+      "trigger": "crash-self",
+      "status": "live",
+      "text": "Moss broke my fall. Moss always does.",
+      "audioAsset": "audio/barks/old-growth-core/growth-crash-moss",
+      "audioStatus": "live"
     }
   ],
   "meta": {
