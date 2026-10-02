@@ -28,24 +28,6 @@
   ],
   "features": [
     {
-      "kind": "billboard",
-      "id": "bb-approach-coldcase",
-      "s0": 100,
-      "s1": 140,
-      "d0": -16,
-      "d1": -7,
-      "item": "coldcase-ai"
-    },
-    {
-      "kind": "billboard",
-      "id": "sign-bridge-toll",
-      "s0": 200,
-      "s1": 210,
-      "d0": 6.5,
-      "d1": 9,
-      "item": "toll-view"
-    },
-    {
       "kind": "boostPad",
       "id": "pad-bridge-approach",
       "s0": 300,
