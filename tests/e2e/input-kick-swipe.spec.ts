@@ -83,6 +83,21 @@ async function swipe(
 ) {
   const view = page.viewportSize() ?? { width: 915, height: 412 };
   const attack = attackCenter(view.width, view.height);
+  // A kick asked for while the last one cools down comes out as a punch (sim/combat), and a loaded
+  // runner steps fewer sim ticks per real second than the 1.5 s wait below assumes, so wait out the
+  // player's last attack in sim ticks: a kick's 13 + 6 + 27 ticks and its 30-tick cooldown, plus
+  // a margin. CI runs sent a swipe inside the cooldown twice (runs 36960240213, 36967696254).
+  const lastStart = await page.evaluate(() => {
+    const g = (window as TestWindow).__game!;
+    const me = g.playerId();
+    const starts = g.events().filter((e) => e.type === 'attackStart' && e.actor === me);
+    return starts.length ? starts[starts.length - 1]!.tick : -1000;
+  });
+  await page.waitForFunction(
+    (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t,
+    lastStart + 90,
+    { timeout: 60_000 },
+  );
   const from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
   const after = await page.evaluate(() => {
     const ev = (window as TestWindow).__game!.events();
@@ -215,14 +230,6 @@ test('playtest 2: a swipe up is the straight kick, a swipe down-left kicks left'
   const upStart = up.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
   expect(upStart, 'the swipe up starts a kick').toBeDefined();
   expect(upStart?.data['straight'], 'and it is the straight kick').toBe(true);
-  // A kick asked for while the last one cools down comes out as a punch (sim/combat), and a loaded
-  // runner steps fewer sim ticks per real second, so wait out the kick's 13 + 6 + 27 ticks and its
-  // 30-tick cooldown in sim ticks, not real time (a CI run's down-left swipe landed in it, tick 144).
-  await page.waitForFunction(
-    (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t,
-    (upStart?.tick ?? 0) + 90,
-    { timeout: 60_000 },
-  );
 
   const left = await swipe(page, cdp, 22, 0, 0.15, { x: -0.75, y: 0.66 });
   console.log(`swipe down-left: attack at +${left.press}; ${JSON.stringify(left.chain)}`);
