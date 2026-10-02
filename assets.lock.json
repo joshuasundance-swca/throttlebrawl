@@ -1,0 +1,15 @@
+{
+  "$comment": "Pins the big files the build bakes in from the Hugging Face dataset repo below (docs/engineering.md, Big and generated assets). revision is an exact commit, never a branch. A file's path is <packId>/<path under the pack's assets/>; region is a region id, or absent for files every region uses. Change it with npm run assets:add and assets:upload (scripts/assets.mjs).",
+  "formatVersion": 1,
+  "repo": "joshuasundance/throttlebrawl-assets",
+  "repoType": "dataset",
+  "revision": "820f5a165131089da8c7fa28fa9ee1686e579e2e",
+  "files": [
+    {
+      "path": "base/models/placeholder/marker-cube.glb",
+      "bytes": 1572,
+      "sha256": "27be260e78101a6e4dc3a601aee843b1d9d6a7d12efeee0dc33d970b9d24464e",
+      "note": "Round-trip placeholder: a 0.5 m flat orange cube, code-made by an AI agent (THIRD_PARTY_ASSETS.md)"
+    }
+  ]
+}
