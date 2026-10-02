@@ -9,9 +9,36 @@
 // So distance to finish falls steadily along either path and never rises: a rider who takes the
 // shortcut gains its saving the moment it enters the shortcut's connector, and a rider who stays
 // on the main path sees no jump at all. Progress is route length minus distance to finish.
-import type { RouteQueries } from '../core';
+//
+// Branches (W-Q contracts; interview, 2026-10-02: "junction choices in races", marked dirt
+// shortcuts): every split zone on the main path that leads onto allowed roads is a branch, picked
+// by the rider's position in the zone. The off-main-path allowed edges reachable from the zone make
+// up the branch. A route file's `branches` entry names it (a stable id, its kind, marked or secret,
+// a sign); one it does not name is derived, with the id of its first non-connector road.
+import { ROUTE_BRANCH_ALTERNATE_M, type RoadSurface, type RouteBranchKind, type RouteQueries } from '../core';
 import type { EdgeLink, RoadNetwork } from './network';
 import type { BakedRoute } from './types';
+
+/** A branch off the route's main path, as the race and the career see it. */
+export interface RouteBranch {
+  /** The route file's id for it, or (derived) the id of its first non-connector road. */
+  id: string;
+  kind: RouteBranchKind;
+  /** Signed and drawn at the split; false for a secret, found by riding it. */
+  marked: boolean;
+  /** The sign at the split, or null. */
+  sign: string | null;
+  /** What it is made of: the surface of its longest road (`dirt` for a marked dirt shortcut). */
+  surface: RoadSurface;
+  /** Its edges (connectors included), in the order reached from the split. */
+  edges: readonly number[];
+  /** Where a rider picks it by position: the split zone on the main path, or null if none leads in. */
+  choice: RouteShortcut | null;
+  /** Distance to finish saved by taking it, metres (negative for a longer way); 0 without a choice. */
+  gainM: number;
+  /** True when the route file names it. */
+  declared: boolean;
+}
 
 /** A checkpoint on the route, with its progress (distance from the start). */
 export interface RouteCheckpoint {
@@ -48,10 +75,19 @@ export interface RouteProgress extends RouteQueries {
   readonly mainEdges: readonly number[];
   /** Split zones leading onto shortcuts, in route order. */
   readonly shortcuts: readonly RouteShortcut[];
+  /** Branches off the main path (W-Q), in route order of their split; named ones not reached last. */
+  readonly branches: readonly RouteBranch[];
   /** Distance from the start along the route (0 at the start line), or -Infinity off the route. */
   progressAt(edge: number, s: number): number;
   /** Whether the edge is in the route's allowed set. */
   allows(edge: number): boolean;
+  /**
+   * The direction along the edge's s that leads toward the finish: 1 or -1, or 0 off the route. A
+   * mover's road `dir` times this is its heading sign on the route: 1 racing, -1 after a U-turn.
+   */
+  orientation(edge: number): 1 | -1 | 0;
+  /** The branch an edge belongs to, or null on the main path and off the route. */
+  branchAt(edge: number): RouteBranch | null;
 }
 
 /** One edge's row in the table: travel orientation along s and the distance to finish at its exit end. */
@@ -168,6 +204,9 @@ export function createRouteProgress(net: RoadNetwork, route: BakedRoute): RouteP
     });
   }
   shortcuts.sort((a, b) => progressAt(a.edge, a.s0) - progressAt(b.edge, b.s0));
+  const branches = routeBranches(net, route, new Set(mainEdges), allowed, shortcuts);
+  const branchOf = new Map<number, RouteBranch>();
+  for (const b of branches) for (const e of b.edges) if (!branchOf.has(e)) branchOf.set(e, b);
 
   const checkpoints = (route.checkpoints ?? [])
     .map((c) => {
@@ -185,11 +224,103 @@ export function createRouteProgress(net: RoadNetwork, route: BakedRoute): RouteP
     startGrid: grid ? { rows: grid.rows, perRow: grid.perRow, rowGapM: grid.rowGapM } : null,
     mainEdges,
     shortcuts,
+    branches,
     progressAt,
     allows: (edge) => allowed.has(edge),
+    orientation: (edge) => rows.get(edge)?.o ?? 0,
+    branchAt: (edge) => branchOf.get(edge) ?? null,
     distanceToFinish,
     lanesAt: (edge, s) => net.lanesAt(edge, s),
     edgeLength: (edge) => net.edges[edge]?.length ?? NaN,
     kappaAt: (edge, s) => net.kappaAt(edge, s),
   };
+}
+
+/**
+ * The route's branches: one per split zone on the main path (its edges are the allowed,
+ * off-main-path edges reachable from the zone's connector), named by the route file's entry whose
+ * roads it reaches, then any named branch no zone reaches (no choice, gain 0).
+ */
+function routeBranches(
+  net: RoadNetwork,
+  route: BakedRoute,
+  main: ReadonlySet<number>,
+  allowed: ReadonlySet<number>,
+  shortcuts: readonly RouteShortcut[],
+): RouteBranch[] {
+  // A road the network lacks is the route lint's finding; here it is just left out.
+  const index = (id: string): number => {
+    try {
+      return net.edgeIndex(id);
+    } catch {
+      return -1;
+    }
+  };
+  const named = (route.branches ?? []).map((b) => ({
+    b,
+    edges: new Set(b.roads.map(index).filter((e) => e >= 0 && allowed.has(e))),
+  }));
+  const used = new Set<number>();
+  const out: RouteBranch[] = [];
+  const surfaceOf = (edges: readonly number[]): RoadSurface => {
+    let best: { len: number; surface: RoadSurface } | null = null;
+    for (const e of edges) {
+      const edge = net.edges[e];
+      if (edge && (!best || edge.length > best.len)) best = { len: edge.length, surface: edge.surface };
+    }
+    return best?.surface ?? 'asphalt';
+  };
+  const kindOf = (gain: number): RouteBranchKind =>
+    gain > ROUTE_BRANCH_ALTERNATE_M ? 'shortcut' : gain < -ROUTE_BRANCH_ALTERNATE_M ? 'detour' : 'alternate';
+  const claimed = new Set<number>();
+  for (const zone of shortcuts) {
+    if (claimed.has(zone.toEdge)) continue;
+    // The branch: every allowed edge off the main path reachable from the zone's connector.
+    const edges: number[] = [];
+    const queue = [zone.toEdge];
+    const seen = new Set(queue);
+    while (queue.length > 0) {
+      const e = queue.shift() as number;
+      edges.push(e);
+      for (const end of ['to', 'from'] as const) {
+        for (const l of net.nextEdges(e, end)) {
+          if (seen.has(l.edge) || main.has(l.edge) || !allowed.has(l.edge)) continue;
+          seen.add(l.edge);
+          queue.push(l.edge);
+        }
+      }
+    }
+    for (const e of edges) claimed.add(e);
+    const i = named.findIndex((n, k) => !used.has(k) && edges.some((e) => n.edges.has(e)));
+    const n = i >= 0 ? named[i] : undefined;
+    if (n) used.add(i);
+    const firstRoad = edges.find((e) => net.edges[e]?.isConnector === false) ?? zone.toEdge;
+    out.push({
+      id: n?.b.id ?? net.edges[firstRoad]?.id ?? String(firstRoad),
+      kind: n?.b.kind ?? kindOf(zone.gainM),
+      marked: n?.b.marked ?? true,
+      sign: n?.b.sign ?? null,
+      surface: surfaceOf(edges),
+      edges,
+      choice: zone,
+      gainM: zone.gainM,
+      declared: n !== undefined,
+    });
+  }
+  named.forEach((n, i) => {
+    if (used.has(i)) return;
+    const edges = [...n.edges];
+    out.push({
+      id: n.b.id,
+      kind: n.b.kind ?? 'alternate',
+      marked: n.b.marked ?? true,
+      sign: n.b.sign ?? null,
+      surface: surfaceOf(edges),
+      edges,
+      choice: null,
+      gainM: 0,
+      declared: true,
+    });
+  });
+  return out;
 }

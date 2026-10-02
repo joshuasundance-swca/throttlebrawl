@@ -29,7 +29,16 @@ function botRace(routeId: string, seed: number) {
   const stream = activateRegion({ network, roads: network.roads.map((id) => lookup(reg.roads, id)) });
   const built = buildSimConfig(reg, stream, { seed, eventId: DEFAULT_EVENT });
   const route = stream.routeFor(routeFile);
-  const config: SimConfig = { ...built, event: { ...built.event, routeId: `base:${routeId}` }, route };
+  // No cop: this test times the routes, and the dev bot never evades the law. On main at a455530,
+  // with M1's fist damage, the long route ended in a bust on 4 of seeds 1-5, so the test rode on
+  // one seed and any sim change could tip it over (playtest 2's knockdown retune did). The bust
+  // rate is tests/sim/cops-bust-rate's job.
+  const config: SimConfig = {
+    ...built,
+    riders: built.riders.filter((r) => r.faction !== 'law'),
+    event: { ...built.event, routeId: `base:${routeId}` },
+    route,
+  };
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
   const bot = createBot();
