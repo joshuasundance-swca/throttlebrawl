@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "event-stalled-car",
+  "name": "Stalled Car",
+  "category": "oddity",
+  "tags": ["event", "crash-scene"],
+  "lengthM": 4.6,
+  "widthM": 1.9,
+  "cruiseMps": 0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The crash scene's fender-bender: a car with its hazards on, nobody in it, nobody hurt. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, W-P) places it, parked on the verge beside its set piece. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

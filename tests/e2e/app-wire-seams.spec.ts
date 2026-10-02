@@ -207,13 +207,17 @@ test("the radio follows the region: the Keys stations, then the Pacific Northwes
   await page.locator('#pause-quit').click();
   await race(page, '#region-region-pnw-pacific-northwest');
   const pnw = (await view(page)).radio;
-  // Run W-O: the region's own station first, then the base stations further down the dial.
+  // Playtest 2 (2026-10-02, "different stations and music in different regions"): the region's
+  // own two stations, and the race starts on the first of them.
   expect(pnw.region).toBe('region-pnw:pacific-northwest');
-  expect(pnw.stations).toEqual(['pnw-drizzle', 'keys-rockabilly', 'keys-surf']);
-  // R tunes the first station: the region's own.
-  await page.keyboard.press('r');
+  expect(pnw.stations).toEqual(['pnw-drizzle', 'pnw-salal']);
   await page.waitForFunction(
     () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'pnw-drizzle',
+  );
+  // R tunes the region's second station.
+  await page.keyboard.press('r');
+  await page.waitForFunction(
+    () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'pnw-salal',
   );
   console.log(`Pacific Northwest radio after R: ${JSON.stringify((await view(page)).radio)}`);
   expect(problems).toEqual([]);

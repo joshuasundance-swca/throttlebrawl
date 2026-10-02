@@ -73,6 +73,18 @@ test('the pause radio panel names what plays, switches stations and songs, and c
     const w = window as TestWindow;
     w.__GAME_TEST__ = true;
     w.__radioLog = [];
+    // The player picked the score (playtest 2 made a station the default: a race starts on its
+    // region's own station), written by this build, so the panel starts from the score.
+    localStorage.setItem(
+      'mbrawl:settings',
+      JSON.stringify({
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-02T00:00:00.000Z',
+        data: { radio: 'score', radioDefault: 'station' },
+      }),
+    );
     let choice = 1;
     let track = 0;
     const station = () => (choice >= 2 ? stations[choice - 2] : undefined);
@@ -225,6 +237,18 @@ test('the real radio: Next station in the pause panel tunes the race to a band',
     const w = window as TestWindow;
     w.__GAME_TEST__ = true;
     w.__plucks = [];
+    // The player picked the score (playtest 2 made a station the default: a race starts on its
+    // region's own station), written by this build, so the panel starts from the score.
+    localStorage.setItem(
+      'mbrawl:settings',
+      JSON.stringify({
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-02T00:00:00.000Z',
+        data: { radio: 'score', radioDefault: 'station' },
+      }),
+    );
     const proto = AudioBufferSourceNode.prototype;
     const start = Object.getOwnPropertyDescriptor(proto, 'start')?.value as (
       this: AudioBufferSourceNode,

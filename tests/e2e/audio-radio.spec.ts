@@ -146,6 +146,8 @@ test('radio: switching stations changes the playing track; each station plays wi
 // real graph (the dial order is checked in src/app/regions.test.ts and app-wire-seams.spec.ts).
 for (const [pack, id] of [
   ['region-pnw', 'pnw-drizzle'],
+  ['region-pnw', 'pnw-salal'],
+  ['region-sf', 'sf-burn-rate'],
   ['region-sf', 'sf-fog-bank'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
@@ -235,7 +237,9 @@ type ProbeWindow = Window & {
 test.describe('in the game', () => {
   test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 720 } });
 
-  test('radio: R tunes from the score to rockabilly, then surf, then off', async ({ page }) => {
+  test('radio: a Keys race starts on rockabilly; R tunes surf, then off, then the score', async ({
+    page,
+  }) => {
     const problems: string[] = [];
     page.on('pageerror', (err) => problems.push(err.message));
     await page.addInitScript(() => {
@@ -266,14 +270,16 @@ test.describe('in the game', () => {
       return { noise: count(1), upright: count(0.6), twang: count(1.1), clean: count(0.8), bass: count(0.9) };
     };
 
-    const score = await heard(1500);
-    await page.keyboard.press('r');
+    // Playtest 2 (2026-10-02): the race starts on the region's own station, the Keys' first.
+    await page.waitForTimeout(800); // the stations load on first use
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
     await page.keyboard.press('r');
     await page.waitForTimeout(400);
     const off = await heard(1000);
+    await page.keyboard.press('r');
+    const score = await heard(1500);
     console.log(
       `plucks heard: score ${JSON.stringify(score)}, rockabilly ${JSON.stringify(rockabilly)}, ` +
         `surf ${JSON.stringify(surf)}, off ${JSON.stringify(off)}`,

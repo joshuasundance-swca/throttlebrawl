@@ -1,0 +1,40 @@
+{
+  "type": "event-modifier",
+  "id": "sf-speed-trap",
+  "name": "San Francisco Speed Trap",
+  "kind": "human",
+  "tags": ["set-piece", "speed-trap"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.25, 0.85],
+    "chance": 0.35
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "speed-trap",
+      "signText": "SPEED MONITORED BY A HUMAN FOR NOW",
+      "limitMps": 29,
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: an officer and a radar on a tripod at the top of a hill. Pass over the limit and the chase is on.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
