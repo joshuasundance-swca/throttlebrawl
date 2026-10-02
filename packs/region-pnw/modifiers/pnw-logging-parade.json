@@ -19,7 +19,7 @@
     {
       "kind": "set-piece",
       "piece": "parade",
-      "signText": "LOGGER DAYS PARADE SAWDUST EXPECTED",
+      "signText": "LOGGER DAYS PARADE. Sawdust expected.",
       "floats": ["pnw-logging-float", "pnw-logging-float"],
       "person": "marcher-pnw",
       "theme": "pnw",
