@@ -320,6 +320,15 @@ export type SimEventType =
   | 'finish'
   | 'overtake'
   | 'lapOrCheckpoint'
+  /**
+   * A player came off a shortcut for the first time this race (W-Q, the pitch deck's item 9: "your
+   * first time down a shortcut stamps the seconds it really saved"). Actor = the player;
+   * `data.toEdge` the shortcut's first edge (its split zone's link), `data.gainM` the metres of
+   * route it cut, `data.savedS` the seconds that saved at the rider's average speed along it
+   * (gainM / that speed, 0.1 s steps), `data.shortcutS` the seconds spent on it. Presentation only
+   * reads it (the 'found it' stamp).
+   */
+  | 'shortcutFound'
   | 'attackStart'
   | 'attackMiss'
   | 'hit'
