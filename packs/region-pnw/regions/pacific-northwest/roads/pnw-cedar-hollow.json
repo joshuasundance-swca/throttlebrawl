@@ -25,6 +25,42 @@
   "features": [
     {
       "kind": "billboard",
+      "id": "bb-hollow-summit-smug",
+      "s0": 250,
+      "s1": 290,
+      "d0": -16,
+      "d1": -7,
+      "item": "summit-smug"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-hollow-dry",
+      "s0": 400,
+      "s1": 410,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "dry-pavement"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-hollow-no-plaster",
+      "s0": 560,
+      "s1": 570,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "no-plaster"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-hollow-trailhead",
+      "s0": 900,
+      "s1": 910,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "trailhead-full"
+    },
+    {
+      "kind": "billboard",
       "id": "sign-hollow-bigfoot",
       "s0": 160,
       "s1": 170,

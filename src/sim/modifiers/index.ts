@@ -1,12 +1,40 @@
-// sim/modifiers: weird-event modifiers (M4 or the shelf; docs/architecture.md, "Event
-// modifiers"). M1 ships only the empty `config.modifiers` list and the `modifiers` RNG stream.
+// sim/modifiers: event modifiers (docs/architecture.md, "Event modifiers"). SimConfig.modifiers
+// holds the resolved `event-modifier` entries an event opted into; their effects are a closed list
+// in code. W-P (the maintainer, 2026-10-01b) builds the first effect, `set-piece`: roadwork, crash
+// scenes, parades, a hay truck and speed traps on the road (./setpieces.ts). The rest of the
+// reserved list (gusts, convoys, bounties, guest riders) is still the shelf. Everything rolls on the
+// `modifiers` stream only, and the phase runs last in the tick, so it reads every system's state as
+// this tick left it.
 import type { TuningParamDecl } from '../../core';
-import type { SimSystem } from '../world';
+import type { SimConfig } from '../types';
+import type { SimSystem, World } from '../world';
+import { initSetPieces, stepSetPieces } from './setpieces';
+import { raceState } from '../race';
 
-export const MODIFIERS_TUNING: readonly TuningParamDecl[] = [];
+export { propSnapshots, SET_PIECE, SET_PIECES, setPieceState } from './setpieces';
+export type { SetPiece, SetPieceName, SetPieceState, SetProp } from './setpieces';
+
+export const MODIFIERS_TUNING: readonly TuningParamDecl[] = [
+  {
+    // W-P: how often the road set pieces turn up, as a scale on each one's chance. 0 is none. [default]
+    id: 'modifiers.setPieceChance',
+    group: 'traffic',
+    label: 'Road events',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
+];
 
 export const modifiersSystem: SimSystem = {
   name: 'modifiers',
-  init() {},
-  step() {},
+  init(world: World, config: SimConfig) {
+    initSetPieces(world, config);
+  },
+  step(world: World, config: SimConfig) {
+    stepSetPieces(world, config, raceState(world).over);
+  },
 };
