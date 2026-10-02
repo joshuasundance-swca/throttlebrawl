@@ -161,6 +161,55 @@ for (const [pack, id] of [
   });
 }
 
+// Playtest 2 (2026-10-02, "different stations and music in different regions"): every band, the
+// Keys' and the regional ones, plays unclipped and at about the same loudness, so switching
+// stations or regions never jumps the level. One synthetic station per band, two songs each.
+test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ page }) => {
+  test.setTimeout(120_000);
+  const bands = [
+    ['surf', 'surf-trio'],
+    ['rockabilly', 'rockabilly-trio'],
+    ['grunge', 'grunge-band'],
+    ['folk', 'folk-band'],
+    ['synth', 'synth-band'],
+    ['psych', 'psych-band'],
+  ] as const;
+  const problems = await openHarness(page);
+  const levels: Record<string, number> = {};
+  for (const [genre, preset] of bands) {
+    const station = {
+      id: `band-${genre}`,
+      name: genre,
+      genre,
+      regions: [],
+      tracks: ['a', 'b'].map((id) => ({
+        id,
+        title: id,
+        procedural: { preset },
+        origin: 'agent',
+        status: 'live',
+      })),
+    };
+    const r = await render(page, {
+      choice: 2,
+      switchTo: null,
+      music: 1,
+      dur: 8,
+      table: { [`base:band-${genre}`]: station },
+    });
+    const rms = (r.first.rms + r.second.rms) / 2;
+    const peak = Math.max(r.first.peak, r.second.peak);
+    levels[genre] = 20 * Math.log10(rms);
+    console.log(`band ${genre}: ${levels[genre].toFixed(1)} dBFS rms, peak ${peak.toFixed(3)}`);
+    expect(r.refAfter).toMatch(new RegExp(`^base:station/band-${genre}#`));
+    expect(rms).toBeGreaterThan(0.02);
+    expect(peak).toBeLessThan(1);
+  }
+  const all = Object.values(levels);
+  expect(Math.max(...all) - Math.min(...all)).toBeLessThan(3.5);
+  expect(problems).toEqual([]);
+});
+
 test('radio: the music bus still follows its slider', async ({ page }) => {
   const problems = await openHarness(page);
   const off = await render(page, { choice: 3, switchTo: null, music: 0, dur: 2, table });

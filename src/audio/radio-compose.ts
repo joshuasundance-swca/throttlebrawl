@@ -14,10 +14,29 @@
 //   and a twangy lead that plays licks in the call bars, bends the minor third up to the major,
 //   doubles in sixths, and plays the classic chromatic turnaround. The synth adds a slapback echo.
 //
+// Four more, one sound per region (playtest 2, 2026-10-02: "There should be different stations and
+// music in different regions"), are in radio-compose-regional.ts: `grunge-band` and `folk-band` for
+// the Pacific Northwest, `synth-band` and `psych-band` for San Francisco.
+//
 // Every melody here is generated from the seed (random walks on the scale over chord tones), so
 // the songs are original by construction; no existing tune is transcribed.
+import { composeRegional, REGIONAL_PRESETS } from './radio-compose-regional';
+import {
+  finish,
+  hashString,
+  humanize,
+  keyRoot,
+  nearestOf,
+  num,
+  oneOf,
+  pick,
+  scaleStep,
+  seededRandom,
+} from './radio-util';
 
-export const RADIO_PRESETS = ['surf-trio', 'rockabilly-trio'] as const;
+export { hashString, keyRoot, seededRandom } from './radio-util';
+
+export const RADIO_PRESETS = ['surf-trio', 'rockabilly-trio', ...REGIONAL_PRESETS] as const;
 export type RadioPreset = (typeof RADIO_PRESETS)[number];
 
 export type RadioLayer =
@@ -32,7 +51,15 @@ export type RadioLayer =
   | 'slap'
   | 'rhythm'
   | 'lead'
-  | 'gliss';
+  | 'gliss'
+  // The regional bands' parts (radio-compose-regional.ts); each rig voices them its own way.
+  | 'clap'
+  | 'tamb'
+  | 'openhat'
+  | 'pad'
+  | 'arp'
+  | 'organ'
+  | 'glock';
 
 export interface RadioNote {
   /** Grid step in the loop (sixteenths for surf, triplet eighths for rockabilly). */
@@ -76,28 +103,6 @@ export interface ProceduralSpec {
   params?: Readonly<Record<string, unknown>>;
 }
 
-/** FNV-1a, 32-bit: a string to a seed. */
-export function hashString(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
-
-/** mulberry32: a small seeded stream in [0, 1). Presentation only; never the sim's streams. */
-export function seededRandom(seed: number): () => number {
-  let a = (seed ^ 0x3c6ef372) >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
  * A track's composition seed: its content reference (stable, unique) mixed with the optional
  * `params.seed`, so renaming nothing and editing nothing keeps the song, and a new `seed` value
@@ -107,85 +112,12 @@ export function trackSeed(ref: string, salt = 0): number {
   return (hashString(ref) ^ Math.imul(salt >>> 0, 0x9e3779b1)) >>> 0;
 }
 
-const NOTE_PC: Readonly<Record<string, number>> = {
-  C: 0,
-  'C#': 1,
-  Db: 1,
-  D: 2,
-  'D#': 3,
-  Eb: 3,
-  E: 4,
-  F: 5,
-  'F#': 6,
-  Gb: 6,
-  G: 7,
-  'G#': 8,
-  Ab: 8,
-  A: 9,
-  'A#': 10,
-  Bb: 10,
-  B: 11,
-};
-
-/** A key name's root in the bass register (D2..C#3), so phones still hear the bass's harmonics. */
-export function keyRoot(name: string): number | null {
-  const pc = NOTE_PC[name];
-  if (pc === undefined) return null;
-  const root = 36 + pc;
-  return root < 38 ? root + 12 : root;
-}
-
-type Rand = () => number;
-const pick = <T>(r: Rand, xs: readonly T[]): T => xs[Math.floor(r() * xs.length) % xs.length] as T;
-const num = (v: unknown, lo: number, hi: number): number | null =>
-  typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : null;
-const oneOf = <T extends string>(v: unknown, xs: readonly T[]): T | null =>
-  typeof v === 'string' && (xs as readonly string[]).includes(v) ? (v as T) : null;
-const humanize = (r: Rand, vel: number) => Math.min(1, Math.max(0.05, vel * (0.92 + 0.16 * r())));
-
 /** Composes a track. Unknown presets return null (the station skips the track). */
 export function composeTrack(spec: ProceduralSpec, seed: number): Composition | null {
   const params = spec.params ?? {};
   if (spec.preset === 'surf-trio') return composeSurf(params, seed >>> 0);
   if (spec.preset === 'rockabilly-trio') return composeRockabilly(params, seed >>> 0);
-  return null;
-}
-
-function finish(base: Omit<Composition, 'notes' | 'steps' | 'stepS'>, notes: RadioNote[]): Composition {
-  const steps = base.stepsPerBar * base.bars;
-  const stepS = 60 / base.bpm / base.stepsPerBeat;
-  const kept = notes.filter((n) => n.step >= 0 && n.step < steps);
-  kept.sort((a, b) => a.step - b.step);
-  return { ...base, steps, stepS, notes: kept };
-}
-
-/** Nearest pitch to `near` among `pcs` (pitch classes relative to `root`) inside [lo, hi]. */
-function nearestOf(pcs: readonly number[], root: number, near: number, lo: number, hi: number): number {
-  let best = near;
-  let bestD = Infinity;
-  for (let m = lo; m <= hi; m++) {
-    const pc = (((m - root) % 12) + 12) % 12;
-    if (!pcs.includes(pc)) continue;
-    const d = Math.abs(m - near);
-    if (d < bestD) {
-      bestD = d;
-      best = m;
-    }
-  }
-  return best;
-}
-
-/** `n` scale steps from `from` along the scale `pcs` (relative to `root`). */
-function scaleStep(pcs: readonly number[], root: number, from: number, n: number): number {
-  let m = from;
-  const dir = Math.sign(n);
-  let left = Math.abs(n);
-  while (left > 0) {
-    m += dir;
-    const pc = (((m - root) % 12) + 12) % 12;
-    if (pcs.includes(pc)) left--;
-  }
-  return m;
+  return composeRegional(spec.preset, params, seed >>> 0);
 }
 
 // ---------------------------------------------------------------------------------------------
