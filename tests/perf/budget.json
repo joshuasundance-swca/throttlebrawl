@@ -1,7 +1,8 @@
 {
-  "$comment": "M1 hard budget (docs/engineering.md, perf check). Changing a limit is a normal PR with the reason in its note. drawCallsMax and trianglesMax are the architecture doc's starting budgets per frame (app-1 records them; dev-2's perf gate enforces them at fixed checkpoints).",
+  "$comment": "M1 hard budget (docs/engineering.md, perf check). Changing a limit is a normal PR with the reason in its note. drawCallsMax and trianglesMax are the architecture doc's starting budgets per frame (app-1 records them; dev-2's perf gate enforces them at fixed checkpoints). firstLoadKB counts every dist file; run W-Q raised it from 6144 to 15360 (the architecture's 15 MB first-play ceiling) for real rider and bike models, which load per region only when a race there starts: the build measured 5494 KB before them, and regionModelsKB gives each of the 3 regions up to 3 MB of its own models.",
   "jsGzipKB": 500,
-  "firstLoadKB": 6144,
+  "firstLoadKB": 15360,
+  "regionModelsKB": 3072,
   "drawCallsMax": 120,
   "trianglesMax": 150000
 }

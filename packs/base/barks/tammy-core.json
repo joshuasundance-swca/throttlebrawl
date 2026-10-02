@@ -256,11 +256,21 @@
       "text": "Told you I don't forget, baby.",
       "audioAsset": "audio/barks/tammy-core/tammy-traffic-forget",
       "audioStatus": "live"
+    },
+    {
+      "id": "tammy-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Bless your heart, sugar. All of it."
+    },
+    {
+      "id": "tammy-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "I'll bring a casserole by. Later."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "tammy-start-hearses is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals.",
+    "notes": "tammy-start-hearses is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -217,8 +217,11 @@ test('backquote opens the see-through panel with one control per declaration; th
 test('a mid-race steering change through the panel reaches the seeded race, compared with two control runs', async ({
   browser,
 }) => {
-  test.setTimeout(180_000);
-  const END = 420;
+  test.setTimeout(300_000);
+  // Long enough that a slow runner still shares enough sampled ticks between runs: at 420 ticks,
+  // CI runs at peak load shared as few as 18 ticks between the controls and 6 after the change
+  // (PR runs on 2026-10-02 failed "ticks sampled after the change", 6 < 10).
+  const END = 1200;
   const run = async (change: boolean) => {
     const page = await browser.newPage();
     const problems = await boot(page);

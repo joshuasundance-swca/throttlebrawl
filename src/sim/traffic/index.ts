@@ -40,6 +40,10 @@
 //   - `convoy`: it spawns as a convoy of 2 to N of its kind, nose to tail at the car-following
 //     gap and the same cruise speed (an RV convoy), each one under the fairness rule.
 //   - `laneChanges` overrides the category's default (a robotaxi never changes lanes).
+// - A rider down in the lane (W-Q, the pitch deck's item 11, "fill the dead air after a crash:
+//   traffic swerves around you"): a vehicle coming up on a rider who is down (tumbling or on foot)
+//   in its path edges inward round them, over the centre line if need be, when no oncoming vehicle
+//   is within TRAFFIC.swerveOncomingClearM of the spot; otherwise it stops behind them as before.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
@@ -208,6 +212,8 @@ export const TRAFFIC = {
   kerbInsetM: 0.25,
   /** A kerb rider takes the shoulder only when it is at least this much wider than the rider, m. */
   kerbShoulderSpareM: 0.2,
+  /** A swerve round a downed rider waits while an oncoming vehicle is this close to the spot, m (W-Q). */
+  swerveOncomingClearM: 120,
   /** A rider slower than this at the side of the lane is edged round, not queued behind, m/s. */
   sideRiderMps: 2,
   /** One full weave, side to side and back, s (W-P). */
@@ -875,6 +881,8 @@ interface RiderView {
   speed: number;
   /** 1 when it can touch traffic (on the road, not flying). */
   touchable: boolean;
+  /** Down: in the crash tumble or on foot (W-Q: traffic swerves round them). */
+  down: boolean;
 }
 
 function riderViews(world: World, st: TrafficState): RiderView[] {
@@ -883,7 +891,15 @@ function riderViews(world: World, st: TrafficState): RiderView[] {
     if (m.kind !== 'rider' || m.h > TRAFFIC.maxContactH) continue;
     const p = toCorridor(st.corridor, m.pos);
     if (!p) continue;
-    out.push({ id: m.id, u: p.u, cd: p.cd, dir: p.dir, speed: m.speed, touchable: m.mode === 'Road' });
+    out.push({
+      id: m.id,
+      u: p.u,
+      cd: p.cd,
+      dir: p.dir,
+      speed: m.speed,
+      touchable: m.mode === 'Road',
+      down: m.mode === 'Tumble' || m.mode === 'OnFoot',
+    });
   }
   return out;
 }
@@ -1025,6 +1041,14 @@ function move(
         target = out > 0 ? Math.min(target, round) : Math.max(target, round);
         rate = TRAFFIC.swerveMps;
       }
+      // A rider down in its path (W-Q): round them on the inside, when the oncoming side is clear.
+      const down = downRiderAhead(st, k, riders, tk, target);
+      if (down && oncomingClear(st, k, down)) {
+        const out = laneCd < 0 ? -1 : 1;
+        const round = down.cd - out * ((tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM);
+        target = out > 0 ? Math.min(target, round) : Math.max(target, round);
+        rate = TRAFFIC.swerveMps;
+      }
     }
     const cd = st.cd[k] ?? 0;
     const step = rate * dt;
@@ -1074,6 +1098,50 @@ function sideRiderAhead(
     }
   }
   return best;
+}
+
+/**
+ * The nearest rider down (tumbling or on foot, under TRAFFIC.sideRiderMps) that vehicle k is coming
+ * up on (from TRAFFIC.swerveLookM behind it until k's tail is past it) and would touch at `kCd`;
+ * null when there is none (W-Q).
+ */
+function downRiderAhead(
+  st: TrafficState,
+  k: number,
+  riders: readonly RiderView[],
+  tk: SimTrafficTypeDef,
+  kCd: number,
+): RiderView | null {
+  const dir = st.dir[k] ?? 1;
+  const u = st.u[k] ?? 0;
+  let best: RiderView | null = null;
+  let bestAhead = Infinity;
+  for (const r of riders) {
+    if (!r.down || r.speed >= TRAFFIC.sideRiderMps) continue;
+    const ahead = dir * (r.u - u);
+    if (ahead > TRAFFIC.swerveLookM || ahead < -(tk.lengthM + TRAFFIC.riderLengthM) / 2 - 1) continue;
+    if (Math.abs(r.cd - kCd) >= (tk.widthM + TRAFFIC.riderWidthM) / 2 + TRAFFIC.swerveClearM) continue;
+    if (ahead < bestAhead) {
+      bestAhead = ahead;
+      best = r;
+    }
+  }
+  return best;
+}
+
+/**
+ * Whether no oncoming vehicle is between vehicle k and TRAFFIC.swerveOncomingClearM past the downed
+ * rider, so k may round them over the centre line (W-Q).
+ */
+function oncomingClear(st: TrafficState, k: number, r: RiderView): boolean {
+  const dir = st.dir[k] ?? 1;
+  const u = st.u[k] ?? 0;
+  for (let j = 0; j < st.id.length; j++) {
+    if (j === k || st.dir[j] === dir || (st.retired[j] ?? 0) !== 0) continue;
+    const at = dir * ((st.u[j] ?? 0) - u);
+    if (at > -5 && at < dir * (r.u - u) + TRAFFIC.swerveOncomingClearM) return false;
+  }
+  return true;
 }
 
 /** Writes a rider's corridor position back to its road position, inside the drivable width. */

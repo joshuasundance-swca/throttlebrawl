@@ -50,7 +50,9 @@ describe('cops: no region parks its cop in a travel lane', () => {
       const waiting = new Set(cops);
       const where: string[] = [];
       const pulledOut: string[] = [];
-      // He pulls out after cops.spawnDelayS (20 s on Normal); 30 s covers it.
+      // The lot cop pulls out after cops.spawnDelayS (20 s on Normal) when the race brings him; since
+      // playtest 2 the starting cops patrol up the road instead and pull out as the player arrives,
+      // and the lot's cop waits for a speed trap or chaos. 30 s of every cop's wait is examined.
       for (let t = 0; t < 60 * 30 && waiting.size > 0; t++) {
         const snap = sim.snapshot();
         for (const id of [...waiting]) {
@@ -75,9 +77,11 @@ describe('cops: no region parks its cop in a travel lane', () => {
         }
         sim.step([cruise]);
       }
-      console.log(`[examined] ${eventId} (${length}): ${pulledOut.join('; ')}`);
+      console.log(
+        `[examined] ${eventId} (${length}): ${cops.length} cops; ${pulledOut.join('; ') || 'none pulled out'}; ` +
+          `${waiting.size} still waiting at 30 s`,
+      );
       expect(where.slice(0, 3)).toEqual([]);
-      expect(waiting.size, 'every cop pulled out within 30 s').toBe(0);
     },
   );
 });
