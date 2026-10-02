@@ -253,3 +253,55 @@ describe('bark director: M2 triggers', () => {
     expect(seen).toEqual(['base:bark-set/deacon-core#deacon-near']);
   });
 });
+
+describe('bark director: road events (W-P)', () => {
+  const roadPool = () =>
+    barkLinesFrom({
+      'base:road-events-keys': {
+        type: 'bark-set',
+        id: 'road-events-keys',
+        defaults: { speaker: 'kevin-from-accounting', cooldownS: 45 },
+        lines: [
+          {
+            id: 'kevin-roadwork',
+            trigger: 'modifier-start',
+            when: [{ fact: 'modifier.id', op: 'eq', value: 'base:keys-roadwork' }],
+            text: 'That sign was up when I got hired.',
+          },
+          {
+            id: 'deacon-trap',
+            trigger: 'modifier-start',
+            speaker: 'deacon-vane',
+            when: [{ fact: 'modifier.id', op: 'eq', value: 'base:keys-speed-trap' }],
+            text: 'Radar. Smile.',
+          },
+        ],
+      },
+    });
+  const start = (tick: number, id: string, piece: string): SimEvent => ({
+    tick,
+    type: 'modifierStart',
+    actor: -1,
+    data: { id, kind: 'human', piece },
+  });
+
+  it('a rival speaks the line for the event that just came up, and only that one', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(roadPool()), view);
+    d.onEvents([start(600, 'base:keys-speed-trap', 'speed-trap')], { snapshot: SNAP, seed: 1 });
+    expect(shown.map((b) => b.contentRef)).toEqual(['base:bark-set/road-events-keys#deacon-trap']);
+    expect(shown[0]?.speakerName).toBe('Deacon Vane');
+    d.onEvents([start(3000, 'base:keys-roadwork', 'roadwork')], { snapshot: SNAP, seed: 1 });
+    expect(shown.map((b) => b.contentRef)).toEqual([
+      'base:bark-set/road-events-keys#deacon-trap',
+      'base:bark-set/road-events-keys#kevin-roadwork',
+    ]);
+  });
+
+  it('stays quiet for an event with no line of its own', () => {
+    const { view, shown } = fakeView();
+    const d = createBarkDirector(createBarkSelector(roadPool()), view);
+    d.onEvents([start(600, 'base:keys-costume-parade', 'parade')], { snapshot: SNAP, seed: 1 });
+    expect(shown).toEqual([]);
+  });
+});
