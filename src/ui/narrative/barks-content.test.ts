@@ -17,6 +17,7 @@ interface RawLine {
 interface RawSet {
   id: string;
   defaults?: { speaker?: string };
+  tags?: string[];
   lines: RawLine[];
 }
 
@@ -53,8 +54,11 @@ const APPROVED_TEXT = new Set(Object.values(APPROVED));
 describe('base pack bark sets', () => {
   it('exist, one file per speaker, and load through the registry', () => {
     // Run W-P: the radio stations' DJ sets (speaker `tag:dj-<station>`) sit beside the riders' and
-    // never match a rider; every other set is one rider's.
-    const riderSets = sets.filter((s) => !s.defaults?.speaker?.startsWith('tag:dj-'));
+    // never match a rider, and so does the road events' set (one file of every rival's lines for
+    // the region's set pieces, tagged `road-events`); every other set is one rider's.
+    const riderSets = sets.filter(
+      (s) => !s.defaults?.speaker?.startsWith('tag:dj-') && !(s.tags ?? []).includes('road-events'),
+    );
     expect(riderSets.length).toBe(SPEAKERS.length);
     expect(riderSets.map((s) => s.defaults?.speaker).sort()).toEqual([...SPEAKERS].sort());
     const reg = loadBasePack();

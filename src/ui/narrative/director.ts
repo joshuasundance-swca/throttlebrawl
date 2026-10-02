@@ -11,6 +11,10 @@
 //     went down, about the rider credited (one fall is one bark, however many events describe it);
 //   crash with nobody to blame -> `crash-self`, spoken by the rider who crashed;
 //   nearMiss -> `near-miss`, spoken by the rider who scraped past.
+// W-P road events [default]:
+//   modifierStart -> `modifier-start`, spoken by one of the rivals, to the player, as a road event
+//     (a set piece: roadwork, a parade, a speed trap...) comes up; lines pick their event with a
+//     `modifier.id` (or `modifier.kind`) condition, which the race memory holds from the event.
 // Memory facts for `when` conditions come from the current race (memory.ts). It holds no DOM: the
 // view is injected, so it is unit-tested.
 import { SIM_HZ, type EntitySnapshot, type SimEvent, type SimSnapshot } from '../../sim/api';
@@ -185,6 +189,11 @@ export function createBarkDirector(
           case 'nearMiss': {
             const rider = byId(e.actor);
             if (isRival(rider)) say(context, 'near-miss', [rider], null, e.tick);
+            break;
+          }
+          case 'modifierStart': {
+            const player = entities.find((x) => x.kind === 'rider' && x.slot >= 0);
+            say(context, 'modifier-start', entities.filter(isRival), player ?? null, e.tick);
             break;
           }
           case 'raceEnd':
