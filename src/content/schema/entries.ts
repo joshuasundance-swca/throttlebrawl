@@ -3,6 +3,7 @@
 // The reserved types (event-modifier, station, patch) are claimed here so nothing else takes the
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
+import { MEDIAN_KINDS, ROAD_SURFACES, VERGE_EDGES, VERGE_SURFACES } from '../../core';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
 import { BARK_OPS, BIKE_CLASSES, EVENT_KINDS, MODIFIER_KINDS, TIMES_OF_DAY } from './vocab';
 
@@ -79,6 +80,25 @@ export const AI_STYLES = [
   'racer',
 ] as const;
 
+/**
+ * Signature moves (interview, 2026-10-02: "Visible personalities"): the rider file's
+ * `personality.signature`, one per rival. The same list as the sim contract's SIGNATURE_IDS (the app
+ * tests check they agree; content never imports the sim).
+ */
+export const SIGNATURE_MOVES = [
+  'selfie',
+  'wave',
+  'bell',
+  'counter',
+  'lag',
+  'ram',
+  'slow-burn',
+  'sweet-talk',
+  'cut-in',
+  'timber',
+  'pivot',
+] as const;
+
 export const riderSchema = entry('rider', {
   role: z.enum(['rival', 'cop', 'player-preset', 'extra']),
   roster: z.enum(['regular', 'local']).optional(),
@@ -99,7 +119,9 @@ export const riderSchema = entry('rider', {
     })
     .optional(),
   startingWeapon: refSchema.optional(),
-  personality: z.looseObject({ style: z.enum(AI_STYLES) }).optional(),
+  personality: z
+    .looseObject({ style: z.enum(AI_STYLES), signature: z.enum(SIGNATURE_MOVES).optional() })
+    .optional(),
   law: z
     .looseObject({
       agency: refSchema,
@@ -198,6 +220,30 @@ const laneSchema = z.looseObject({
   kind: z.enum(['drive', 'shoulder', 'shortcut']),
 });
 
+/**
+ * A verge band beside the road (W-Q cross-section; interview, 2026-10-02: "Anywhere with ground"):
+ * `widthM` of `surface` past the outermost lane, ending at an `edge`. 0 m means the road's own edge
+ * is the edge. A side a section leaves out is derived from the road's tags and barriers at runtime.
+ */
+export const vergeSchema = z.looseObject({
+  widthM: z.number().min(0).max(40),
+  surface: z.enum(VERGE_SURFACES),
+  edge: z.enum(VERGE_EDGES),
+});
+
+/** What divides the two directions; the lanes' dCenterM leave its gap (the road lint checks it). */
+export const medianSchema = z.looseObject({
+  widthM: z.number().positive().max(30),
+  kind: z.enum(MEDIAN_KINDS),
+});
+
+const laneSectionSchema = z.looseObject({
+  s0: nonNegative,
+  lanes: z.array(laneSchema).min(1),
+  median: medianSchema.optional(),
+  verges: z.looseObject({ left: vergeSchema.optional(), right: vergeSchema.optional() }).optional(),
+});
+
 export const roadNetworkSchema = entry('road-network', {
   region: idSchema,
   crs: z.looseObject({ kind: z.literal('tmerc'), originLatDeg: z.number(), originLonDeg: z.number() }),
@@ -220,7 +266,9 @@ export const roadSchema = entry('road', {
   to: idSchema,
   lengthM: z.number().positive(),
   sampleSpacingM: z.number().min(1).max(10),
-  laneSections: z.array(z.looseObject({ s0: nonNegative, lanes: z.array(laneSchema).min(1) })).min(1),
+  // What the lanes are made of; asphalt when absent (W-Q: a dirt shortcut is a road with `dirt`).
+  surface: z.enum(ROAD_SURFACES).optional(),
+  laneSections: z.array(laneSectionSchema).min(1),
   // Road files carry scenery tags over s ranges, not the envelope's plain strings.
   tags: z
     .array(

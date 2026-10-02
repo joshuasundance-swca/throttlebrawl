@@ -126,7 +126,8 @@ const COP_ID = 2;
  * set their mode by hand (the "down" state belongs to tumble-1, which a test stands in for).
  */
 function copWorld(tuning: Record<string, number> = {}) {
-  const config = fixtureConfig({ 'cops.spawnDelayS': 0, ...tuning });
+  // The M1 proximity bust (cops.bustKnockdownOnly 0) unless a test asks for the 2026-10-02 rule.
+  const config = fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.bustKnockdownOnly': 0, ...tuning });
   const world: World = createWorld(config);
   const at = (s: number, d: number): RoadPos => ({ edge: 0, s, d, dir: 1 });
   addMover(world, 'rider', at(100, 1.7), 0);
@@ -158,9 +159,10 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the thirteen cop parameters (M4 cops-3 added six, playtest 1c the launch share) inside their ranges, all sim-affecting', () => {
+  it('declares the fourteen cop parameters (M4 cops-3 added six, playtest 1c the launch share, the 2026-10-02 interview the knockdown-only bust) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
+      'cops.bustKnockdownOnly',
       'cops.bustRadiusScale',
       'cops.chaosDecayPerS',
       'cops.chaosSummonAt',
@@ -687,10 +689,15 @@ describe('cops: the chase', () => {
     expect(cop?.speed).toBeLessThan(0.5);
   });
 
-  it('end to end: crash into the barrier with him alongside, and he busts you', () => {
+  it('end to end, the M1 rule (cops.bustKnockdownOnly 0): crash into the barrier with him alongside, and he busts you', () => {
     // A touchy barrier (crash from 3 m/s into it), so a swerve at cruising speed is a sure crash.
     const sim = createSim(
-      fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+      fixtureConfig({
+        'cops.spawnDelayS': 0,
+        'cops.followGapM': 40,
+        'riders.crashImpactMps': 3,
+        'cops.bustKnockdownOnly': 0,
+      }),
     );
     const events: SimEvent[] = [];
     let swerve = false;
@@ -962,5 +969,101 @@ describe('cops-2: a knocked-down cop cannot bust anyone until he is back up (ful
     expect(bustsWhileCopDown).toEqual([]);
     expect(copUpAt).toBeGreaterThan(copDownAt); // got up and back on the bike
     expect(events.some((e) => e.type === 'siren' && e.data['on'] === false)).toBe(false); // chase on
+  });
+});
+
+describe('cops: a bust only when a cop knocks you off (interview, 2026-10-02)', () => {
+  const RIVAL_ID = 0;
+  const takedown = (w: ReturnType<typeof copWorld>, by: number): SimEvent => ({
+    tick: w.world.tick,
+    type: 'takedown',
+    actor: by,
+    target: PLAYER_ID,
+    data: { kind: 'health' },
+  });
+  const knockdownWorld = (tuning: Record<string, number> = {}) =>
+    copWorld({ 'cops.bustKnockdownOnly': 1, ...tuning });
+
+  it('is the default', () => {
+    expect(COPS_TUNING.find((d) => d.id === 'cops.bustKnockdownOnly')?.default).toBe(1);
+  });
+
+  it('a fall beside him is no bust, however long you stay down', () => {
+    const w = knockdownWorld();
+    w.place(COP_ID, 195); // 5 m behind the player
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(600);
+    expect(w.busts()).toHaveLength(0);
+  });
+
+  it('his takedown of you collars you: a bust after the dwell, by him', () => {
+    const w = knockdownWorld();
+    w.place(COP_ID, 195);
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(1, false, [takedown(w, COP_ID)]);
+    w.step(58);
+    expect(w.busts()).toHaveLength(0);
+    w.step(1);
+    expect(w.busts()).toHaveLength(1);
+    expect(w.busts()[0]?.actor).toBe(COP_ID);
+    expect(w.busts()[0]?.target).toBe(PLAYER_ID);
+  });
+
+  it('a rival who knocks you off beside the cop is no bust', () => {
+    const w = knockdownWorld();
+    w.place(COP_ID, 195);
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(1, false, [takedown(w, RIVAL_ID)]);
+    w.step(600);
+    expect(w.busts()).toHaveLength(0);
+  });
+
+  it('back on the bike before the dwell, the collar is gone: a later fall of your own is no bust', () => {
+    const w = knockdownWorld();
+    w.place(COP_ID, 195);
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(1, false, [takedown(w, COP_ID)]);
+    w.step(30);
+    w.mode(PLAYER_ID, 'Road');
+    w.step(1);
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(600);
+    expect(w.busts()).toHaveLength(0);
+  });
+
+  it('still needs him close: collared but out of his radius, no bust until he pulls up', () => {
+    const w = knockdownWorld();
+    w.place(COP_ID, 150); // 50 m back
+    w.mode(PLAYER_ID, 'Tumble');
+    w.step(1, false, [takedown(w, COP_ID)]);
+    w.step(120);
+    expect(w.busts()).toHaveLength(0);
+    w.place(COP_ID, 194);
+    w.step(60);
+    expect(w.busts()).toHaveLength(1);
+  });
+
+  it('end to end: crash into the barrier with him alongside, and he does NOT bust you', () => {
+    const sim = createSim(
+      fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+    );
+    const events: SimEvent[] = [];
+    let swerve = false;
+    let crashAt = -1;
+    for (let t = 0; t < 60 * 60 && (crashAt < 0 || t < crashAt + 60 * 8); t++) {
+      const snap = sim.snapshot();
+      const me = snap.entities[PLAYER_ID];
+      const cop = snap.entities[COP_ID];
+      if (!me || !cop) throw new Error('missing entities');
+      if (!swerve && me.speed > 20 && Math.abs(cop.progress - me.progress) <= 3) swerve = true;
+      const keep = Math.max(-1, Math.min(1, (1.7 - me.road.d) * 0.3 - me.road.yaw * 2));
+      sim.step([quantizeInput({ throttle: swerve ? 1 : 0.7, brake: 0, steer: swerve ? 1 : keep, flags: 0 })]);
+      const now = sim.events();
+      events.push(...now);
+      if (crashAt < 0 && now.some((e) => e.type === 'crash' && e.actor === PLAYER_ID)) crashAt = t;
+    }
+    expect(swerve).toBe(true);
+    expect(crashAt).toBeGreaterThan(0);
+    expect(events.filter((e) => e.type === 'bust')).toHaveLength(0);
   });
 });

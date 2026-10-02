@@ -6,11 +6,19 @@
 //   kappa positive when the road turns right (toward positive d);
 //   bank positive when the surface tilts down toward positive d.
 // World frame: x east, y up, z south. The right of a horizontal tangent (tx, tz) is (-tz, tx).
-import { atan, cos, sin, type LaneInfo } from '../core';
+import { atan, cos, sin, type GroundSurface, type LaneInfo, type RoadSurface } from '../core';
+import {
+  resolveCrossSection,
+  resolveVerge,
+  type CrossSection,
+  type ResolvedVerge,
+  type VergeSide,
+} from './cross-section';
 import {
   readConnector,
   type BakedBarrier,
   type BakedFeature,
+  type BakedLaneSection,
   type BakedNetworkBundle,
   type BakedRoad,
   type BakedSplitZone,
@@ -59,8 +67,11 @@ export interface Edge {
   /** Unit horizontal tangent per sample. */
   tx: Float64Array;
   tz: Float64Array;
-  sections: readonly { s0: number; lanes: readonly LaneInfo[] }[];
-  /** Outer drivable edges of the widest section, lanes and shoulders included. */
+  /** Lane sections in s order, with their optional median and verge bands (W-Q cross-section). */
+  sections: readonly BakedLaneSection[];
+  /** What the lanes are made of: the road file's `surface`, asphalt when absent. */
+  surface: RoadSurface;
+  /** Outer drivable edges of the widest section, lanes and shoulders included (verges not included). */
   dMin: number;
   dMax: number;
   /** Features (ramps, roadside zones, cop spawns...), sorted by s0. */
@@ -159,6 +170,22 @@ export interface RoadNetwork {
   neighbours(edge: number, s: number, range: number): readonly RoadNeighbour[];
   /** The edge's features, optionally of one kind, sorted by s0. */
   featuresOf(edge: number, kind?: string): readonly BakedFeature[];
+  /**
+   * The cross-section at s (W-Q): drive lanes per direction, the median, both verge bands (given or
+   * derived from tags and barriers) and the lanes' surface.
+   */
+  crossSectionAt(edge: number, s: number): CrossSection;
+  /**
+   * One side's verge band at s: its surface, its outer edge kind and where it lies across the road
+   * (`dInner` is the outermost lane's outer edge, `dOuter` the band's). A width of 0 means the road's
+   * own edge is the edge.
+   */
+  vergeAt(edge: number, s: number, side: VergeSide): ResolvedVerge;
+  /**
+   * The ground under (s, d): the road's surface on its lanes (a shoulder lane is `shoulder`), the
+   * verge band's surface on a verge, or null past a verge's outer edge.
+   */
+  groundAt(edge: number, s: number, d: number): GroundSurface | null;
   /** The barrier on one side at s (left is negative d), or null. */
   barrierAt(
     edge: number,
@@ -281,6 +308,7 @@ function buildEdge(road: BakedRoad, index: number): Edge {
     tx,
     tz,
     sections,
+    surface: road.surface ?? 'asphalt',
     dMin,
     dMax,
     features: [...(road.features ?? [])].sort((p, q) => p.s0 - q.s0),
@@ -452,11 +480,38 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     return { x: f.x - f.tz * d, y: f.y - d * f.bank + h, z: f.z + f.tx * d };
   };
 
-  const lanesAt = (edge: number, s: number): readonly LaneInfo[] => {
+  const sectionAt = (e: Edge, s: number): BakedLaneSection => {
+    let found = e.sections[0] ?? { s0: 0, lanes: [] };
+    for (const section of e.sections) if (section.s0 <= s) found = section;
+    return found;
+  };
+
+  const lanesAt = (edge: number, s: number): readonly LaneInfo[] => sectionAt(edgeAt(edge), s).lanes;
+
+  const crossSectionAt = (edge: number, s: number): CrossSection => {
     const e = edgeAt(edge);
-    let lanes = e.sections[0]?.lanes ?? [];
-    for (const section of e.sections) if (section.s0 <= s) lanes = section.lanes;
-    return lanes;
+    return resolveCrossSection(e, sectionAt(e, s), s);
+  };
+
+  const vergeAt = (edge: number, s: number, side: VergeSide): ResolvedVerge => {
+    const e = edgeAt(edge);
+    return resolveVerge(e, sectionAt(e, s), side, s);
+  };
+
+  const groundAt = (edge: number, s: number, d: number): GroundSurface | null => {
+    const e = edgeAt(edge);
+    const section = sectionAt(e, s);
+    for (const lane of section.lanes) {
+      const half = lane.widthM / 2;
+      if (d >= lane.dCenterM - half && d <= lane.dCenterM + half) {
+        return lane.kind === 'shoulder' ? 'shoulder' : e.surface;
+      }
+    }
+    const v = resolveVerge(e, section, d < 0 ? 'left' : 'right', s);
+    const inside = d < 0 ? d >= v.dOuter && d <= v.dInner : d <= v.dOuter && d >= v.dInner;
+    // Between lanes (a median's gap) the road's own surface stands in.
+    if (d < 0 ? d > v.dInner : d < v.dInner) return e.surface;
+    return inside && v.widthM > 0 ? v.surface : null;
   };
 
   const kappaAt = (edge: number, s: number): number => {
@@ -826,6 +881,9 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     project,
     neighbours,
     featuresOf,
+    crossSectionAt,
+    vergeAt,
+    groundAt,
     barrierAt,
     handover,
     branchSideAt,
