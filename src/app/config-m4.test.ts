@@ -77,6 +77,7 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
       tierScale: 0,
       chaosSummon: false,
       randomness: 0,
+      patrolMax: 2, // playtest 2: one or two cops patrol every race
     });
   });
 
@@ -114,6 +115,15 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
     );
     // tier-rising with no baseCount fields nobody at tier 1.
     expect(ids({ mode: 'tier-rising', tierScale: 1 })).toEqual([]);
+    // Playtest 2's patrol adds its most (patrolMax), plus one in the lot.
+    expect(ids({ mode: 'every-race', baseCount: 1, patrolMax: 2 })).toEqual([
+      'base:sgt-pruitt',
+      'base:trooper-dalrymple',
+      'base:sgt-pruitt',
+      'base:trooper-dalrymple',
+    ]);
+    expect(eventCops({ cops: { mode: 'every-race', patrolMax: 2 } } as never).patrolMax).toBe(2);
+    expect('patrolMax' in eventCops({ cops: { mode: 'every-race' } } as never)).toBe(false);
   });
 
   it('races a chaos-summoned event with its cop parked, ready for the meter', () => {
