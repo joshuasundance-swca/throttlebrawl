@@ -1,0 +1,63 @@
+{
+  "format": "profile",
+  "version": 1,
+  "build": "f331c1d",
+  "savedAt": "2026-10-02T05:00:00.000Z",
+  "data": {
+    "cash": 4250,
+    "bikes": {
+      "owned": ["base:rustbucket-400", "base:gulfstream-750"],
+      "current": "base:gulfstream-750",
+      "paint": { "base:gulfstream-750": "flamingo-pink" }
+    },
+    "regions": {
+      "florida-keys": {
+        "tier": 2,
+        "won": ["sunburn-sprint", "chicken-run"],
+        "unlockedRoads": ["bridge-hump", "marina-run"],
+        "claimedRoads": ["overseas-main"],
+        "foundShortcuts": ["base:m1-standard-run#m1-boat-ramp-cut"],
+        "secrets": ["pirate-station-keys"],
+        "finaleBeaten": false
+      },
+      "pacific-northwest": {
+        "tier": 1,
+        "won": [],
+        "unlockedRoads": [],
+        "claimedRoads": [],
+        "foundShortcuts": [],
+        "secrets": [],
+        "finaleBeaten": false
+      }
+    },
+    "grudges": {
+      "base:kevin-from-accounting": { "base:player": 3 },
+      "base:tammy-two-stroke": { "base:player": 1, "base:dial-up": 2 }
+    },
+    "history": [
+      {
+        "event": "base:m1-skeleton-sprint",
+        "node": "sunburn-sprint",
+        "region": "florida-keys",
+        "place": 1,
+        "outcome": "won",
+        "cash": 1700,
+        "takedowns": 1,
+        "build": "f331c1d",
+        "at": "2026-10-02T04:40:00.000Z"
+      },
+      {
+        "event": "base:m1-skeleton-sprint",
+        "node": null,
+        "region": "florida-keys",
+        "place": 0,
+        "outcome": "busted",
+        "cash": -250,
+        "takedowns": 0,
+        "build": "f331c1d",
+        "at": "2026-10-02T04:50:00.000Z"
+      }
+    ],
+    "failureMode": "road-trip"
+  }
+}

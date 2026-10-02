@@ -6,7 +6,7 @@
 // may also inject onSaveDebugFile (dev-3's "save debug file"); the AppHandle's replayFile() and
 // checkReplay() let dev/ carry and verify the recording without importing replay/.
 // app-2 owns this folder after app-1.
-import { createAssetManifest } from '../assets';
+import { createAssetManifest, datasetIndex } from '../assets';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
 import {
@@ -285,8 +285,9 @@ export function createApp(opts: AppOptions): AppHandle {
   let replayKey = appReplayKey(build, hashes.sim);
   const hudId = registry.packs[0]?.defaults.hud ?? 'classic';
   const hud = lookup(registry.hudLayouts, hudId);
-  // The asset manifest: the renderer loads the Blender models through it (playtest 1c item 4).
-  const assets = createAssetManifest(() => assetIndex(registry));
+  // The asset manifest: the renderer loads the Blender models through it (playtest 1c item 4), and
+  // the big dataset files the build baked in (assets.lock.json, run W-Q) load through it by id too.
+  const assets = createAssetManifest(() => [...assetIndex(registry), ...datasetIndex()]);
 
   // Settings, tuning and replay.
   const settingsStore = createSettingsStore({ keyPrefix: APP_ID, build: build.id, storage: safeStorage() });
