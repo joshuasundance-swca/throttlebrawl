@@ -1,0 +1,67 @@
+{
+  "type": "event",
+  "id": "keys-t1-shakedown",
+  "name": "The Shakedown",
+  "kind": "classic-race",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-skeleton-sprint",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"],
+    "paceMps": 34
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "finish",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 5
+      },
+      "required": true
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 300
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Event 1, the learn-by-riding race (product spec, Career): finish to win, a podium pays a bonus.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

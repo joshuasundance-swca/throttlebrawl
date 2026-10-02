@@ -101,6 +101,25 @@ describe('the pirate station files', () => {
     const ats = PIRATES.map(([f]) => (read(f) as { pirate: { atFraction: number } }).pirate.atFraction);
     expect(new Set(ats).size).toBe(3);
   });
+
+  // The career's map lists each pirate as a secret (#339). Its ref is the station's id and its
+  // atFraction is the station's spot, so finding the secret and hearing the pirate are one place.
+  const CAREERS = import.meta.glob('/packs/*/careers/*.json', { eager: true, import: 'default' });
+  it.each(PIRATES)(
+    "%s is the career's station secret in its region, at the same spot",
+    (file, _pack, region) => {
+      const id = file.split('/').pop()!.replace('.json', '');
+      const at = (read(file) as { pirate: { atFraction: number } }).pirate.atFraction;
+      const careers = Object.values(CAREERS) as {
+        region: string;
+        secrets: { kind: string; ref: string; atFraction?: number | null }[];
+      }[];
+      const secrets = careers.filter((c) => c.region === region).flatMap((c) => c.secrets);
+      const stations = secrets.filter((s) => s.kind === 'station');
+      expect(stations.map((s) => s.ref)).toEqual([id]);
+      expect(stations[0]!.atFraction).toBe(at);
+    },
+  );
 });
 
 describe('the dial', () => {

@@ -480,3 +480,5 @@ export function createSettingsStore(opts: SettingsStoreOptions): SettingsStore {
 
 // The career profile record (W-Q contracts): src/save/profile.ts.
 export * from './profile';
+// The export code (run W-R): src/save/export-code.ts.
+export * from './export-code';

@@ -1,0 +1,28 @@
+{
+  "type": "bike",
+  "id": "superbike-1000",
+  "name": "Superbike 1000",
+  "class": "super",
+  "tags": ["step-up"],
+  "handling": {
+    "topSpeedMps": 71.5,
+    "accelMps2": 7.6,
+    "brakeMps2": 11.0,
+    "steerRateMps": 6.0,
+    "massKg": 200
+  },
+  "engineSound": {
+    "preset": "inline-four",
+    "idleHz": 55,
+    "redlineHz": 420
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The career's top bike (run W-R): about 160 mph (71.5 m/s), M4's planned top speed, which the fairness rule was sized for (a 96 m/s closing speed on a 55 mph car is seen 192 m out, inside the 200 m threat draw). Tier three and the bosses.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

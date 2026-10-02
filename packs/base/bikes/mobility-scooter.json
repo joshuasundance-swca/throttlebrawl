@@ -1,0 +1,29 @@
+{
+  "type": "bike",
+  "id": "mobility-scooter",
+  "name": "Mobility Scooter",
+  "class": "mobility-scooter",
+  "tags": ["secret", "joke"],
+  "handling": {
+    "topSpeedMps": 6.7,
+    "accelMps2": 1.6,
+    "brakeMps2": 4.0,
+    "steerRateMps": 4.5,
+    "massKg": 120
+  },
+  "engineSound": {
+    "preset": "two-stroke-buzz",
+    "idleHz": 55,
+    "redlineHz": 120,
+    "roughness": 0.2
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A secret joke ride: about 15 mph, on the steepest city there is. The San Francisco boss's prize.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

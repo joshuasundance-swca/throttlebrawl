@@ -1,0 +1,275 @@
+{
+  "type": "career",
+  "id": "keys-circuit",
+  "name": "The Overseas Circuit",
+  "region": "florida-keys",
+  "startingCash": 500,
+  "startingBike": "rustbucket-400",
+  "tutorialEvent": "keys-t1-shakedown",
+  "firstRun": "race-first",
+  "tiers": [
+    {
+      "id": "t1",
+      "name": "Tourist Season",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t2",
+      "name": "Hurricane Season",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t3",
+      "name": "Off Season",
+      "advance": {
+        "requiredWins": 2
+      }
+    },
+    {
+      "id": "t4",
+      "name": "The Drawbridge",
+      "advance": {
+        "requiredWins": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "shakedown",
+      "event": "keys-t1-shakedown",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "m1-marina-run",
+        "s": 40
+      },
+      "opens": ["m1-pelican-bridge", "osm-bahia-honda-key"],
+      "claims": ["m1-marina-run", "m1-marina-bends"]
+    },
+    {
+      "id": "sunburn-hunt",
+      "event": "keys-t1-sunburn-hunt",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "m1-pelican-bridge",
+        "s": 200
+      },
+      "requires": ["shakedown"],
+      "opens": ["m1-sandbar-causeway"],
+      "claims": ["m1-pelican-bridge"]
+    },
+    {
+      "id": "kevin-grudge",
+      "event": "keys-t1-kevin-grudge",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "osm-bahia-honda-key",
+        "s": 300
+      },
+      "requires": ["shakedown"],
+      "opens": ["osm-spanish-harbor-keys"],
+      "claims": ["osm-bahia-honda-key", "osm-bahia-honda-bridge"]
+    },
+    {
+      "id": "deputy-dash",
+      "event": "keys-t2-deputy-dash",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "m1-sandbar-causeway",
+        "s": 300
+      },
+      "opens": ["m1-mangrove-cut"],
+      "claims": ["m1-sandbar-causeway"]
+    },
+    {
+      "id": "mangrove-run",
+      "event": "keys-t2-mangrove-run",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "m1-mangrove-cut",
+        "s": 400
+      },
+      "opens": ["m1-conch-row"],
+      "claims": ["m1-mangrove-cut", "m1-tarpon-flats"]
+    },
+    {
+      "id": "chad-grudge",
+      "event": "keys-t2-chad-grudge",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "m1-marina-bends",
+        "s": 400
+      },
+      "claims": ["m1-marina-bends"]
+    },
+    {
+      "id": "junkyard-hunt",
+      "event": "keys-t3-junkyard-hunt",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "m1-conch-row",
+        "s": 600
+      },
+      "opens": ["m1-long-bridge"],
+      "claims": ["m1-conch-row"]
+    },
+    {
+      "id": "pruitt-overtime",
+      "event": "keys-t3-pruitt-overtime",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "osm-spanish-harbor-keys",
+        "s": 400
+      },
+      "claims": ["osm-spanish-harbor-keys", "osm-spanish-harbor-bridge", "osm-big-pine-bend"]
+    },
+    {
+      "id": "long-haul",
+      "event": "keys-t3-long-haul",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "m1-long-bridge",
+        "s": 1200
+      },
+      "opens": ["m1-last-resort-causeway"],
+      "claims": ["m1-long-bridge"]
+    },
+    {
+      "id": "drawbridge",
+      "event": "keys-boss-mother-rust",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "m1-last-resort-causeway",
+        "s": 200
+      },
+      "claims": ["m1-last-resort-causeway"]
+    }
+  ],
+  "boss": "drawbridge",
+  "secrets": [
+    {
+      "id": "boat-ramp-cut",
+      "kind": "shortcut",
+      "name": "The boat ramp cut",
+      "at": {
+        "road": "m1-boat-ramp-cut",
+        "s": 400
+      },
+      "ref": "m1-standard-run#m1-boat-ramp-cut"
+    },
+    {
+      "id": "contraband-cay",
+      "kind": "station",
+      "name": "Contraband Cay, pirate radio",
+      "at": {
+        "road": "m1-tarpon-flats",
+        "s": 600
+      },
+      "ref": "keys-bootleg",
+      "atFraction": 0.55
+    },
+    {
+      "id": "tip-cooler",
+      "kind": "stash",
+      "name": "A cooler of tips",
+      "at": {
+        "road": "m1-conch-row",
+        "s": 1100
+      },
+      "cash": 400
+    }
+  ],
+  "ending": {
+    "teaser": "next-region",
+    "freePlayAfter": true,
+    "lines": [
+      "THE DRAWBRIDGE GOES UP. MOTHER RUST GOES IN.",
+      "NEXT: THE PACIFIC NORTHWEST. IT IS RAINING. IT WILL KEEP RAINING.",
+      "FREE PLAY IS OPEN. THE KEYS ARE YOURS."
+    ],
+    "next": "region-pnw:pacific-northwest"
+  },
+  "shop": [
+    {
+      "bike": "rustbucket-400",
+      "priceCash": 0,
+      "unlockTier": "t1"
+    },
+    {
+      "bike": "moped",
+      "priceCash": 900,
+      "unlockTier": "t1"
+    },
+    {
+      "bike": "streetfighter-750",
+      "priceCash": 6000,
+      "unlockTier": "t2"
+    },
+    {
+      "bike": "superbike-1000",
+      "priceCash": 16000,
+      "unlockTier": "t3"
+    }
+  ],
+  "paints": [
+    {
+      "id": "flamingo-pink",
+      "name": "Flamingo Pink",
+      "hex": "#f28fb1",
+      "priceCash": 300,
+      "unlockTier": "t1"
+    },
+    {
+      "id": "key-lime",
+      "name": "Key Lime",
+      "hex": "#b8d96b",
+      "priceCash": 300,
+      "unlockTier": "t1"
+    },
+    {
+      "id": "storm-warning",
+      "name": "Storm Warning Orange",
+      "hex": "#ff7a2f",
+      "priceCash": 500,
+      "unlockTier": "t2"
+    },
+    {
+      "id": "motel-teal",
+      "name": "Motel Pool Teal",
+      "hex": "#2ab7a9",
+      "priceCash": 500,
+      "unlockTier": "t3"
+    }
+  ],
+  "unlocks": [
+    {
+      "grant": "golf-cart",
+      "when": {
+        "kind": "boss-beaten",
+        "ref": "drawbridge"
+      }
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The Overseas Circuit: florida-keys's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

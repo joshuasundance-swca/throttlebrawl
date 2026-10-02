@@ -1,0 +1,65 @@
+{
+  "type": "event",
+  "id": "pnw-t3-gorge",
+  "name": "The Gorge",
+  "kind": "classic-race",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-gorge-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "juniper-moss",
+      "old-growth",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:dial-up",
+      "base:kevin-from-accounting"
+    ],
+    "paceMps": 44
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [4000, 2500, 1600, 900, 450, 200, 100],
+    "perTakedownCash": 320,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A classic race, full pack, on the real Historic Columbia River Highway: the loops below the viewpoint.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
