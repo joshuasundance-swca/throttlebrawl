@@ -51,7 +51,74 @@
       "text": "IN CASE OF HURRICANE THIS SIGN WILL BE IN THE NEXT COUNTY.",
       "status": "live"
     },
-    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. FISH NOT INCLUDED.", "status": "live" }
+    { "id": "charters-daily", "text": "FISHING CHARTERS DAILY. FISH NOT INCLUDED.", "status": "live" },
+    {
+      "id": "chum-key",
+      "text": "CHUM KEY. POP. 212. PELICANS NOT COUNTED.",
+      "tags": ["key-fishing"],
+      "status": "live"
+    },
+    {
+      "id": "live-bait",
+      "text": "LIVE BAIT. DEAD BAIT. SAME PRICE.",
+      "tags": ["key-fishing"],
+      "status": "live"
+    },
+    {
+      "id": "shrimp-boats",
+      "text": "SHRIMP BOATS HAVE RIGHT OF WAY. ALWAYS HAVE.",
+      "tags": ["key-fishing"],
+      "status": "live"
+    },
+    {
+      "id": "lime-wedge-key",
+      "text": "LIME WEDGE KEY. RESORT CASUAL REQUIRED.",
+      "tags": ["key-resort"],
+      "status": "live"
+    },
+    {
+      "id": "scooter-rentals",
+      "text": "SCOOTER RENTALS. HELMETS SOLD SEPARATELY.",
+      "tags": ["key-resort"],
+      "status": "live"
+    },
+    { "id": "pool-hours", "text": "POOL HOURS: SUNUP TO SUNBURN.", "tags": ["key-resort"], "status": "live" },
+    {
+      "id": "salvage-key",
+      "text": "SALVAGE KEY. EVERYTHING HERE WAS ONCE SOMEWHERE ELSE.",
+      "tags": ["key-junkyard"],
+      "status": "live"
+    },
+    {
+      "id": "sculpture-garden",
+      "text": "SCULPTURE GARDEN. DO NOT TOUCH. DO NOT BUY.",
+      "tags": ["key-junkyard"],
+      "status": "live"
+    },
+    {
+      "id": "boats-for-sale",
+      "text": "BOATS FOR SALE. SOME FLOAT.",
+      "tags": ["key-junkyard"],
+      "status": "live"
+    },
+    {
+      "id": "last-resort-key",
+      "text": "LAST RESORT KEY. THE PARTY WAS YESTERDAY.",
+      "tags": ["key-party"],
+      "status": "live"
+    },
+    {
+      "id": "bar-closed",
+      "text": "BAR CLOSED. BARTENDER ALSO CLOSED.",
+      "tags": ["key-party"],
+      "status": "live"
+    },
+    {
+      "id": "flamingo-found",
+      "text": "FOUND: ONE FLAMINGO FLOAT. HAS SEEN THINGS.",
+      "tags": ["key-party"],
+      "status": "live"
+    }
   ],
   "billboards": [
     {
@@ -79,6 +146,42 @@
     {
       "id": "flat-calm",
       "text": "FLAT CALM CHARTERS. YOU WILL CATCH SOMETHING. PROBABLY SUN.",
+      "status": "live"
+    },
+    {
+      "id": "trap-line",
+      "text": "TRAP LINE LOBSTER CO. CAUGHT FRESH. CAUGHT ANGRY.",
+      "tags": ["key-fishing"],
+      "status": "live"
+    },
+    {
+      "id": "pastel-palms",
+      "text": "THE PASTEL PALMS. EVERY ROOM HAS A VIEW OF ANOTHER ROOM.",
+      "tags": ["key-resort"],
+      "status": "live"
+    },
+    {
+      "id": "tiki-tims",
+      "text": "TIKI TIM'S. THE UMBRELLAS ARE DECORATIVE.",
+      "tags": ["key-resort"],
+      "status": "live"
+    },
+    {
+      "id": "big-rays",
+      "text": "BIG RAY'S MARINE SALVAGE. IF IT SANK, RAY HAS IT.",
+      "tags": ["key-junkyard"],
+      "status": "live"
+    },
+    {
+      "id": "hair-of-the-dog",
+      "text": "HAIR OF THE DOG DINER. OPENS WHEN WE DO.",
+      "tags": ["key-party"],
+      "status": "live"
+    },
+    {
+      "id": "sunset-fest",
+      "text": "SUNSET FEST WAS A SUCCESS. NOBODY REMEMBERS WHY.",
+      "tags": ["key-party"],
       "status": "live"
     }
   ],

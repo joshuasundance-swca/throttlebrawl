@@ -13,7 +13,10 @@
   "laneSections": [
     { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
   ],
-  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "marina" }],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "both", "tag": "marina" },
+    { "s0": 0, "s1": 30, "side": "both", "tag": "key-fishing" }
+  ],
   "features": [],
   "barriers": [],
   "samples": {

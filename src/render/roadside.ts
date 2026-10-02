@@ -55,6 +55,33 @@ export interface RoadsideRule {
   canopy?: boolean;
   /** Stands on the row houses' plots, exactly (no jitter): in the gaps a terrace leaves. */
   align?: boolean;
+  /**
+   * Stands only where one of these district tags covers that side (run W-Q's distinct keys: a
+   * `key-fishing` stretch is the fishing village), and never where one of `notDistrict` does.
+   */
+  district?: readonly string[];
+  notDistrict?: readonly string[];
+  /**
+   * Its clear-ground disc (radius `r`) sits this far behind the anchor, m: for a big building or a
+   * boat whose body reaches back from its front, the disc covers the body, not the kerb before it.
+   */
+  discBack?: number;
+}
+
+/** Whether one of these tags covers that side of the road at s (a district tag says nothing about the ground). */
+export function inDistrict(
+  tags: readonly SideTag[] | undefined,
+  side: 'left' | 'right',
+  s: number,
+  names: readonly string[],
+): boolean {
+  return (tags ?? []).some(
+    (t) =>
+      names.includes(t.tag) &&
+      s >= t.s0 &&
+      s <= t.s1 &&
+      (t.side === undefined || t.side === 'both' || t.side === side),
+  );
 }
 
 export interface RoadsideKit {
@@ -162,24 +189,143 @@ const KEYS_LAND: readonly LandTheme[] = ['palms', 'beach', 'mangrove', 'commerci
  * BAIT ICE boards and a key lime pie stand. The kit's variants: 0 sea grape, 1 sea grape tree,
  * 2 traps, 3 pelican, 4 trailer, 5 and 6 cottages, 7 picket fence section, 8 mailbox, 9 bait board,
  * 10 pie stand. The Keys' own palms, mangroves, shacks and boats stay as they were.
+ *
+ * Run W-Q, distinct keys (interview, 2026-10-02: "KEYS FIRST = DISTINCT KEYS", a fishing village,
+ * a resort strip, a junkyard key and a party key "each with its own look"). A road's district tag
+ * (`key-fishing`, `key-resort`, `key-junkyard`, `key-party`) picks each key's own props, and the
+ * conch-town props stay out of the keys they do not belong in. Variants: 11 shrimp boat on blocks,
+ * 12 fish house, 13 buoy line; 14 and 15 pastel hotels, 16 pool deck, 17 tiki bar, 18 rental
+ * scooters; 19 boat rack, 20 bus stack, 21 junk-art robot; 22 bunting, 23 coolers, 24 the closed
+ * bar, 25 a deflated pool flamingo.
  */
+const FISHING = ['key-fishing'];
+const RESORT = ['key-resort'];
+const JUNKYARD = ['key-junkyard'];
+const PARTY = ['key-party'];
+/** Keys where mailboxes do not stand (the hotels, the junk, the party). */
+const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY];
+/** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
+const ANY_KEY = [...FISHING, ...NOT_TOWN];
+const TOWN_AND_SHORE: readonly LandTheme[] = [...KEYS_TOWN, ...SHORE];
+
 export const KEYS_KIT: RoadsideKit = {
   id: 'keys',
   rules: [
-    rule('cottage', [5, 6], KEYS_TOWN, 18, 0.55, [6, 3], 3.4, { ...BIG, back: 7.5, along: 3.2 }),
-    rule('pie', [10], [...KEYS_TOWN, ...SHORE], 600, 0.7, [1.2, 1], 1.6, { ...BIG, back: 0.8, along: 1.4 }),
+    // Each key's big pieces first: they claim their ground before the clutter. Their clear-ground
+    // disc covers the body behind the front (`discBack`), and the hotels stand back behind the
+    // power poles with a lot before them.
+    rule('hotel', [14, 15], TOWN_AND_SHORE, 30, 0.85, [5.5, 3], 7.6, {
+      ...BIG,
+      back: 8.4,
+      along: 7.3,
+      discBack: 4,
+      district: RESORT,
+    }),
+    rule('bus-stack', [20], KEYS_LAND, 60, 0.8, [3.5, 4], 6.3, {
+      ...BIG,
+      back: 2.6,
+      along: 6.5,
+      discBack: 1.3,
+      district: JUNKYARD,
+    }),
+    rule('fish-house', [12], TOWN_AND_SHORE, 110, 0.85, [4, 3], 5.6, {
+      ...BIG,
+      back: 5.5,
+      along: 5.3,
+      discBack: 2.4,
+      district: FISHING,
+    }),
+    rule('shrimp-boat', [11], TOWN_AND_SHORE, 90, 0.8, [4, 4], 6, {
+      ...BIG,
+      back: 4.3,
+      along: 6,
+      discBack: 2,
+      district: FISHING,
+    }),
+    rule('closed-bar', [24], KEYS_LAND, 260, 1, [2, 2], 4, {
+      ...BIG,
+      back: 4.5,
+      along: 3.5,
+      discBack: 1.4,
+      district: PARTY,
+    }),
+    rule('pool', [16], TOWN_AND_SHORE, 45, 0.7, [3, 3], 5.2, {
+      ...BIG,
+      back: 5.7,
+      along: 5,
+      discBack: 2.8,
+      district: RESORT,
+    }),
+    rule('tiki', [17], TOWN_AND_SHORE, 150, 0.9, [1.5, 2], 2.8, {
+      ...BIG,
+      back: 3.6,
+      along: 2.2,
+      discBack: 1.4,
+      district: RESORT,
+    }),
+    rule('boat-stack', [19], KEYS_LAND, 30, 0.75, [2.5, 6], 3.4, {
+      ...BIG,
+      back: 2.1,
+      along: 3.3,
+      discBack: 1,
+      district: JUNKYARD,
+    }),
+    rule('junk-art', [21], KEYS_LAND, 90, 0.9, [1.2, 2], 1.4, {
+      ...BIG,
+      back: 1.1,
+      along: 1.3,
+      district: JUNKYARD,
+    }),
+    rule('bunting', [22], KEYS_LAND, 45, 0.75, [0.8, 0.6], 0.4, {
+      along: 3,
+      face: true,
+      tier: 0,
+      run: [2, 4, 6],
+      district: PARTY,
+    }),
+    rule('buoy-line', [13], TOWN_AND_SHORE, 65, 0.6, [0.8, 1.5], 0.8, {
+      along: 2.1,
+      face: true,
+      tier: 0,
+      district: FISHING,
+    }),
+    rule('scooters', [18], TOWN_AND_SHORE, 50, 0.6, [0.6, 0.8], 1.6, {
+      face: true,
+      along: 4.3,
+      district: RESORT,
+    }),
+    rule('coolers', [23], KEYS_LAND, 24, 0.6, [0.8, 4], 1.5, { face: true, district: PARTY }),
+    rule('flamingo', [25], KEYS_LAND, 70, 0.6, [1, 6], 1.6, { district: PARTY }),
+    rule('traps-village', [2], TOWN_AND_SHORE, 26, 0.6, [1.2, 5], 1.1, { face: true, district: FISHING }),
+    // The conch town's and the whole Keys' props (run W-P).
+    rule('cottage', [5, 6], KEYS_TOWN, 18, 0.55, [6, 3], 3.4, {
+      ...BIG,
+      back: 7.5,
+      along: 3.2,
+      notDistrict: ANY_KEY,
+    }),
+    rule('pie', [10], TOWN_AND_SHORE, 600, 0.7, [1.2, 1], 1.6, {
+      ...BIG,
+      back: 0.8,
+      along: 1.4,
+      notDistrict: [...JUNKYARD, ...PARTY],
+    }),
     rule('bait', [9], [...KEYS_TOWN, 'beach'], 160, 0.7, [0.5, 0.5], 1.2, { ...BIG, along: 1.1 }),
     rule('picket', [7], KEYS_TOWN, 60, 0.5, [2.4, 0.4], 0.3, {
       along: 2,
       face: true,
       tier: 0,
       run: [2, 6, 4],
+      notDistrict: ANY_KEY,
     }),
     rule('trailer', [4], KEYS_LAND, 120, 0.45, [3, 4], 2.4, { ...BIG, back: 2.6, along: 0.9 }),
     rule('pelican', [3], [...SHORE, 'mangrove'], 90, 0.5, [10, 10], 0.6, { tier: 0 }),
     rule('seagrape-tree', [1], [...SHORE, ...KEYS_TOWN], 25, 0.6, [3, 8], 1.8, { tier: 0, canopy: true }),
-    rule('traps', [2], [...KEYS_TOWN, ...SHORE], 70, 0.5, [1.5, 4], 1.1, { face: true }),
-    rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true }),
+    rule('traps', [2], TOWN_AND_SHORE, 70, 0.5, [1.5, 4], 1.1, {
+      face: true,
+      notDistrict: [...RESORT, ...PARTY],
+    }),
+    rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true, notDistrict: NOT_TOWN }),
     // The verge: sea grape crowding the road's edge, the near parallax at speed.
     rule('seagrape', [0], KEYS_LAND, 6, 0.7, [0.4, 2.5], 0.9, { ...UNDER, size: [0.8, 1.3] }),
   ],
@@ -497,8 +643,11 @@ export class RoadsideScatter {
       for (let j = 0; j < sections; j++) {
         const s = s0 + j * step;
         if (s - along < 0 || s + along > e.length) break;
-        const theme = themeAt(tags, side < 0 ? 'left' : 'right', s);
+        const sideName = side < 0 ? 'left' : 'right';
+        const theme = themeAt(tags, sideName, s);
         if (!(rule.on as readonly string[]).includes(theme)) break;
+        if (rule.district && !inDistrict(tags, sideName, s, rule.district)) break;
+        if (rule.notDistrict && inDistrict(tags, sideName, s, rule.notDistrict)) break;
         // On the drawn land, all of it: across its depth and along its length.
         const land = Math.min(
           input.landReach(e.index, side, s),
@@ -509,12 +658,15 @@ export class RoadsideScatter {
         const d = side * (outer + across);
         const p = road.toWorld(e.index, s, d, LAND_TOP_M);
         const r = rule.r * (rule.run ? 1 : (rule.size?.[1] ?? 1));
-        if (!featureClear(s, d, r)) break;
-        if (taken.hits(p.x, p.z, r, !!rule.understory)) {
+        // Its clear ground: round the anchor, or round its body behind it (`discBack`).
+        const dc = rule.discBack ? side * (outer + across + rule.discBack) : d;
+        const c = rule.discBack ? road.toWorld(e.index, s, dc, LAND_TOP_M) : p;
+        if (!featureClear(s, dc, r)) break;
+        if (taken.hits(c.x, c.z, r, !!rule.understory)) {
           if (rule.run) break;
           continue;
         }
-        if (otherRoad(s, p.x, p.z, r) || underHigher(p.x, p.z, p.y, s)) break;
+        if (otherRoad(s, c.x, c.z, r) || underHigher(p.x, p.z, p.y, s)) break;
         // A long prop (a fence section, a hut) must be clear of higher ground at its ends too.
         if (
           along > r &&
@@ -540,7 +692,7 @@ export class RoadsideScatter {
         // A section's own disc covers its length; the next one along may touch it.
         if (rule.run) taken.add(p.x, p.z, 0.3);
         else if (rule.canopy) taken.add(p.x, p.z, r, true);
-        else taken.add(p.x, p.z, rule.understory ? r * 0.6 : r);
+        else taken.add(c.x, c.z, rule.understory ? r * 0.6 : r);
         this.items.push({
           rule: rule.id,
           variant,
