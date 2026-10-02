@@ -7,9 +7,12 @@
 //   from the screen edge.
 // - The brake button brakes while held.
 // - The attack button sets `attack` on the press (one tick), with the auto-target side. Within
-//   attackDragMs, a sideways drag beyond attackDragPx picks a side; within kickSwipeMs, a swipe
-//   down beyond kickSwipePx at 45 degrees or steeper below horizontal turns it into a kick. Side
-//   and kick are level-held while the finger stays down. After the windows the gesture is locked.
+//   attackDragMs, a flat sideways drag beyond attackDragPx picks a side; within kickSwipeMs, a
+//   swipe beyond kickSwipePx within kickConeDeg (60) of straight down turns it into a kick. The
+//   directional kick (playtest 2, 2026-10-02): a kick swipe leaning more than kickSideDeg (20)
+//   from straight down kicks to the side it leans to, and a swipe within 45 degrees of straight UP
+//   is the straight kick at the rider ahead. Side and kick are level-held while the finger stays
+//   down. After the windows the gesture is locked.
 //   The press also asks to skip the run-back; the sim acts on it only while on foot.
 // - Touches within EDGE_PX of the left or right edge are ignored: the back gesture owns them.
 // - Every press is latched until a tick samples it, so a tap shorter than a tick is never lost.
@@ -43,6 +46,8 @@ interface AttackGesture {
   t0: number;
   side: -1 | 0 | 1;
   kick: boolean;
+  /** The swipe went up: the straight kick. */
+  straight: boolean;
   /** The press has not been sampled yet. */
   fresh: boolean;
   /** The finger lifted; the gesture is cleared after the next sample. */
@@ -73,7 +78,17 @@ export class TouchState {
   down(id: number, x: number, y: number, time: number, zones: TouchZones): TouchTarget {
     if (x < EDGE_PX || x > zones.width - EDGE_PX) return null;
     if (inside(zones.attack, x, y)) {
-      this.attack = { id, x0: x, y0: y, t0: time, side: 0, kick: false, fresh: true, released: false };
+      this.attack = {
+        id,
+        x0: x,
+        y0: y,
+        t0: time,
+        side: 0,
+        kick: false,
+        straight: false,
+        fresh: true,
+        released: false,
+      };
       return 'attack';
     }
     if (inside(zones.brake, x, y)) {
@@ -101,15 +116,24 @@ export class TouchState {
       const dx = x - g.x0;
       const dy = y - g.y0;
       const elapsed = time - g.t0;
-      // At least 45 degrees below horizontal: down at least as far as sideways.
-      if (!g.kick && elapsed <= this.t.kickSwipeMs && dy >= this.t.kickSwipePx && dy >= Math.abs(dx))
-        g.kick = true;
+      // The swipe's angle from straight down, 0..180 degrees (90 is flat sideways, 180 straight up).
+      const fromDown = (Math.atan2(Math.abs(dx), dy) * 180) / Math.PI;
+      if (!g.kick && elapsed <= this.t.kickSwipeMs && Math.hypot(dx, dy) >= this.t.kickSwipePx) {
+        if (fromDown <= this.t.kickConeDeg) {
+          g.kick = true;
+          if (g.side === 0 && fromDown > this.t.kickSideDeg) g.side = dx > 0 ? 1 : -1;
+        } else if (fromDown >= 135) {
+          g.kick = true;
+          g.straight = true;
+          g.side = 0;
+        }
+      }
       if (
         g.side === 0 &&
         !g.kick &&
         elapsed <= this.t.attackDragMs &&
         Math.abs(dx) >= this.t.attackDragPx &&
-        Math.abs(dx) > dy
+        fromDown > this.t.kickConeDeg
       )
         g.side = dx > 0 ? 1 : -1;
     }
@@ -155,6 +179,7 @@ export class TouchState {
       if (g.fresh) a.attack = true;
       if (g.side !== 0) a.attackSide = g.side;
       if (g.kick) a.kick = true;
+      if (g.straight) a.kickStraight = true;
       a.skipRunBack = true;
       g.fresh = false;
       if (g.released) this.attack = null;
