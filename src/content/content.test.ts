@@ -23,6 +23,10 @@ describe('content: the base pack', () => {
       'base:c-boat-ramp-out',
       'base:c-marina-merge-main',
       'base:c-marina-split-main',
+      'base:c-sandbar-flats-in',
+      'base:c-sandbar-flats-merge-main',
+      'base:c-sandbar-flats-out',
+      'base:c-sandbar-flats-split-main',
       'base:m1-boat-ramp-cut',
       'base:m1-conch-row',
       'base:m1-last-resort-causeway',
@@ -32,6 +36,7 @@ describe('content: the base pack', () => {
       'base:m1-marina-run',
       'base:m1-pelican-bridge',
       'base:m1-sandbar-causeway',
+      'base:m1-sandbar-flats',
       'base:m1-tarpon-flats',
     ]);
     expect(reg.index.length).toBe(basePackFiles().length - 1);

@@ -9,9 +9,9 @@ import { barrierLimits, BIKE_HALF_WIDTH_M } from '../../src/sim/riders';
 import type { SimConfig } from '../../src/sim/types';
 
 // The W-Q sim and route contracts over every live network (interview, 2026-10-02: "junction
-// choices in races", "U-turns", "Anywhere with ground"). No route file names a branch yet, so every
-// branch is derived from the network's split zones: each hand-made network's shortcuts and spurs
-// become branches, the map-data roads (no splits) have none. Every main-path edge points toward the
+// choices in races", "U-turns", "Anywhere with ground"). Every split zone on a route is a branch:
+// each hand-made network's shortcuts and spurs, derived, or named in the route file (run W-R's marked
+// dirt shortcuts: the fire road, the sandbar, the park cut); the map-data roads (no splits) have none. Every main-path edge points toward the
 // finish. And with the off-road switch at its default (off), a rider's limits are exactly the M1
 // barrier limits on every road, so nothing about an existing race changes.
 
@@ -69,7 +69,8 @@ describe('route branches and ride limits on every live network', () => {
         branches += route.branches.length;
         expect(route.branches.length, r.id).toBe(new Set(route.shortcuts.map((z) => z.toEdge)).size);
         for (const b of route.branches) {
-          expect(b.declared).toBe(false);
+          // Named in the route file (run W-R's dirt shortcuts) or derived from the split.
+          expect(b.declared).toBe((r.branches ?? []).some((x) => x.id === b.id));
           expect(b.marked).toBe(true);
           expect(b.edges.length).toBeGreaterThan(0);
           for (const e of b.edges) expect(route.branchAt(e)?.id).toBe(b.id);

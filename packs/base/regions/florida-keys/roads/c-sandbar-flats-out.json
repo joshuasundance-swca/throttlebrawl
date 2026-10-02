@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-sandbar-flats-out",
+  "name": "Sandbar exit",
+  "realName": null,
+  "network": "keys-m1",
+  "from": "j-keys-m1-4",
+  "to": "j-keys-m1-4",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 24.6,
+  "surface": "sand",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "beach" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        1027.6895, 1027.9027, 1028.1074, 1028.3047, 1028.4952, 1028.6799, 1028.8595, 1029.0348, 1029.2066,
+        1029.3757, 1029.5426, 1029.708, 1029.8723, 1030.0361, 1030.1996, 1030.3629
+      ],
+      "y": [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+      "z": [
+        -2804.3035, -2806.2921, -2808.2816, -2810.2718, -2812.2627, -2814.2542, -2816.2461, -2818.2384,
+        -2820.231, -2822.2239, -2824.2169, -2826.21, -2828.2033, -2830.1965, -2832.1899, -2834.1832
+      ],
+      "kappa": [
+        -0.002312363, -0.00210485, -0.001894675, -0.001683844, -0.00147448, -0.001268831, -0.001069265,
+        -0.0008783161, -0.0006986237, -0.0005328904, -0.0003839713, -0.0002548428, -0.0001486023,
+        -0.00006846839, -0.00001778069, -2.731681e-19
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/keys-m1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

@@ -305,7 +305,8 @@ export const KEYS_M1: TrackSource = {
     {
       id: 'm1-pelican-bridge',
       name: 'Pelican Channel Bridge',
-      lengthM: 1250,
+      // Run W-R: 30 m shorter at its end, for the sandbar's split (a connector carries on the deck).
+      lengthM: 1220,
       speedLimitMps: 24.6,
       surface: 'asphalt',
       humps: [
@@ -362,7 +363,28 @@ export const KEYS_M1: TrackSource = {
           params: { rampLengthM: 11.5, lipHeightM: 2.8, slot: 'keys-truck' },
         },
       ],
-      barriers: [{ s0: 0, s1: 'end', side: 'both', kind: 'rail', heightM: 1 }],
+      // Run W-R: the left rail stops short of the sandbar's split zone (the last 40 m, on the left),
+      // where the deck is down at the causeway's height.
+      barriers: [
+        { s0: 0, s1: 'end', side: 'right', kind: 'rail', heightM: 1 },
+        { s0: 0, s1: 1150, side: 'left', kind: 'rail', heightM: 1 },
+      ],
+    },
+    {
+      // Run W-R: the sandbar's split, the bridge's last 30 m (its right rail carries on).
+      id: 'c-sandbar-flats-split-main',
+      name: 'Sandbar split',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'bridge' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'water-open' },
+      ],
+      features: [],
+      barriers: [{ s0: 0, s1: 'end', side: 'right', kind: 'rail', heightM: 1 }],
     },
     {
       id: 'm1-sandbar-causeway',
@@ -518,16 +540,33 @@ export const KEYS_M1: TrackSource = {
     },
     // road-3: the standard and long race lengths carry on from here.
     {
-      id: 'm1-mangrove-cut',
-      name: 'Mangrove Cut',
-      lengthM: 1250,
+      // Run W-R: the sandbar's merge, the Mangrove Cut's first 30 m.
+      id: 'c-sandbar-flats-merge-main',
+      name: 'Sandbar merge',
+      connector: true,
+      lengthM: 30,
       speedLimitMps: 24.6,
       surface: 'asphalt',
-      humps: [{ centreM: 900, lengthM: 200, heightM: 2 }],
+      humps: [],
       tags: [
         { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
-        { s0: 0, s1: 600, side: 'left', tag: 'swamp' },
-        { s0: 900, s1: 'end', side: 'right', tag: 'water-shallow' },
+        { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+      ],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'm1-mangrove-cut',
+      name: 'Mangrove Cut',
+      // Run W-R: 30 m shorter at its start (the sandbar's merge); every s below is 30 m less.
+      lengthM: 1220,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 870, lengthM: 200, heightM: 2 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
+        { s0: 0, s1: 570, side: 'left', tag: 'swamp' },
+        { s0: 870, s1: 'end', side: 'right', tag: 'water-shallow' },
       ],
       features: [],
       barriers: [],
@@ -717,6 +756,69 @@ export const KEYS_M1: TrackSource = {
   ],
   branches: [
     {
+      // Run W-R (interview, 2026-10-02: marked dirt shortcuts, "sandbars"): the Sandbar Flats, a sand
+      // track across the shallows off the low end of the Pelican Bridge, on the inside of the bend,
+      // back at the Mangrove Cut. It skips the Sandbar Causeway: shorter, loose, over a hummock.
+      // Keep left at the end of the bridge to take it.
+      leave: {
+        road: 'm1-pelican-bridge',
+        offsetM: -4,
+        lane: 'L1',
+        zone: { lengthM: 40, d0: -5.5, d1: -3 },
+      },
+      join: { road: 'm1-mangrove-cut', offsetM: -3, lane: 'L1' },
+      turnsM: [120, 120],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      roads: [
+        {
+          id: 'c-sandbar-flats-in',
+          name: 'Sandbar ramp',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-sandbar-flats',
+          name: 'Sandbar Flats',
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          ramps: [{ id: 'hummock', s0: 380, lengthM: 15, heightM: 1.5, backM: 5 }],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [
+            // The deadpan sign at the top of the sandbar, past the sand band, on the beach.
+            {
+              kind: 'billboard',
+              id: 'sign-sandbar-advised',
+              s0: 30,
+              s1: 40,
+              d0: 9.5,
+              d1: 12,
+              item: 'sandbar-not-advised',
+            },
+          ],
+          barriers: [],
+        },
+        {
+          id: 'c-sandbar-flats-out',
+          name: 'Sandbar exit',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
+    {
       // The boat-ramp cut: a gravelly service lane through the boat yard, straight up the east
       // side of the S-bends, over one launch ramp. Hug the right edge before the split to take it.
       leave: {
@@ -803,15 +905,24 @@ export const KEYS_M1: TrackSource = {
       id: 'm1-standard-run',
       start: { road: 'm1-marina-run', s: 40, dir: 1 },
       finish: { road: 'm1-conch-row', s: -40 },
+      // On roads both paths share: the sandbar skips the Sandbar Causeway (run W-R).
       checkpoints: [
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
-        { road: 'm1-sandbar-causeway', s: 500 },
-        { road: 'm1-mangrove-cut', s: 600 },
+        { road: 'm1-mangrove-cut', s: 570 },
         { road: 'm1-tarpon-flats', s: 600 },
         { road: 'm1-conch-row', s: 600 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+      branches: [
+        {
+          id: 'sandbar-flats',
+          roads: ['c-sandbar-flats-in', 'm1-sandbar-flats', 'c-sandbar-flats-out'],
+          kind: 'shortcut',
+          marked: true,
+          sign: 'SANDBAR: NOT ADVISED. Advice not taken.',
+        },
+      ],
     },
     {
       // road-3: the long length, over the long bridge to the Last Resort Causeway.
@@ -821,14 +932,22 @@ export const KEYS_M1: TrackSource = {
       checkpoints: [
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
-        { road: 'm1-sandbar-causeway', s: 500 },
-        { road: 'm1-mangrove-cut', s: 600 },
+        { road: 'm1-mangrove-cut', s: 570 },
         { road: 'm1-tarpon-flats', s: 600 },
         { road: 'm1-conch-row', s: 600 },
         { road: 'm1-long-bridge', s: 1150 },
         { road: 'm1-last-resort-causeway', s: 500 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
+      branches: [
+        {
+          id: 'sandbar-flats',
+          roads: ['c-sandbar-flats-in', 'm1-sandbar-flats', 'c-sandbar-flats-out'],
+          kind: 'shortcut',
+          marked: true,
+          sign: 'SANDBAR: NOT ADVISED. Advice not taken.',
+        },
+      ],
     },
   ],
 };

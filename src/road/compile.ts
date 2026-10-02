@@ -22,7 +22,7 @@
 // main road's heading. Its first and last roads are the two junctions' connector roads, and the
 // compiler writes each junction's lane-level table: main-through rows for every drive lane (both
 // directions) and one row into and out of the branch, the first with the split zone.
-import { atan2, cos, sin, type LaneInfo, type RoadSurface } from '../core';
+import { atan2, cos, sin, type LaneInfo, type RoadSurface, type RouteBranchKind } from '../core';
 import type { BakedBarrier, BakedFeature, BakedTag } from './types';
 
 /**
@@ -70,6 +70,17 @@ export interface RouteSource {
   finish: { road: string; s: number };
   checkpoints: readonly { road: string; s: number }[];
   startGrid: { rows: number; perRow: number; rowGapM: number };
+  /**
+   * The route's named branches (W-Q; docs/content-packs.md, "Branches"), written to the route file
+   * as given: a stable id, its roads, its kind, marked or secret, and the deadpan sign at its split.
+   */
+  branches?: readonly {
+    id: string;
+    roads: readonly string[];
+    kind?: RouteBranchKind;
+    marked?: boolean;
+    sign?: string;
+  }[];
 }
 
 export interface TrackSource {
@@ -724,6 +735,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       checkpoints: r.checkpoints,
       closed: false,
       startGrid: r.startGrid,
+      ...(r.branches ? { branches: r.branches.map((b) => ({ ...b, roads: [...b.roads] })) } : {}),
       meta: { status: 'live' },
     };
   });

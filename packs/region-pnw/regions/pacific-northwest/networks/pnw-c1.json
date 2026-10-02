@@ -12,9 +12,14 @@
     "c-pnw-spur-merge",
     "pnw-cedar-hollow",
     "pnw-trestle",
+    "c-pnw-fire-split-main",
     "pnw-espresso-row",
+    "c-pnw-fire-merge-main",
     "pnw-fogline-ridge",
     "pnw-sawmill-flats",
+    "c-pnw-fire-in",
+    "pnw-fire-road",
+    "c-pnw-fire-out",
     "c-pnw-spur-in",
     "pnw-logging-spur",
     "c-pnw-spur-out"
@@ -108,26 +113,67 @@
     },
     {
       "id": "j-pnw-c1-4",
-      "x": 1047.2064,
+      "x": 1060.0844,
       "y": 3,
-      "z": -2447.0455,
+      "z": -2454.7347,
       "ends": [
         { "road": "pnw-trestle", "end": "to" },
-        { "road": "pnw-espresso-row", "end": "from" }
+        { "road": "pnw-espresso-row", "end": "from" },
+        { "road": "pnw-fire-road", "end": "from" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-fire-split-main-l1",
+          "road": "c-pnw-fire-split-main",
+          "from": { "road": "pnw-trestle", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-espresso-row", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-fire-split-main-r1",
+          "road": "c-pnw-fire-split-main",
+          "from": { "road": "pnw-trestle", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-espresso-row", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-fire-in",
+          "road": "c-pnw-fire-in",
+          "from": { "road": "pnw-trestle", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-fire-road", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 810, "s1": 850, "d0": 3, "d1": 5.5 }
+        }
+      ],
       "control": "none"
     },
     {
       "id": "j-pnw-c1-5",
-      "x": 1573.1233,
+      "x": 1558.6268,
       "y": 3,
-      "z": -3121.198,
+      "z": -3117.3536,
       "ends": [
         { "road": "pnw-espresso-row", "end": "to" },
-        { "road": "pnw-fogline-ridge", "end": "from" }
+        { "road": "pnw-fogline-ridge", "end": "from" },
+        { "road": "pnw-fire-road", "end": "to" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-fire-merge-main-l1",
+          "road": "c-pnw-fire-merge-main",
+          "from": { "road": "pnw-espresso-row", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-fogline-ridge", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-fire-merge-main-r1",
+          "road": "c-pnw-fire-merge-main",
+          "from": { "road": "pnw-espresso-row", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-fogline-ridge", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-fire-out",
+          "road": "c-pnw-fire-out",
+          "from": { "road": "pnw-fire-road", "end": "to", "lane": "S1" },
+          "to": { "road": "pnw-fogline-ridge", "end": "from", "lane": "R1" }
+        }
+      ],
       "control": "none"
     },
     {

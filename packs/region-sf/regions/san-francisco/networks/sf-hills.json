@@ -12,8 +12,13 @@
     "sf-switchback-street",
     "c-switchback-merge-main",
     "sf-painted-row",
+    "c-sf-park-split-main",
     "sf-fogline-climb",
+    "c-sf-park-merge-main",
     "sf-bridge-approach",
+    "c-sf-park-in",
+    "sf-park-cut",
+    "c-sf-park-out",
     "c-stair-alley-in",
     "sf-stair-alley",
     "c-stair-alley-out"
@@ -107,26 +112,67 @@
     },
     {
       "id": "j-sf-hills-4",
-      "x": -1290.3756,
+      "x": -1304.5428,
       "y": 3,
-      "z": -1212.0626,
+      "z": -1216.9657,
       "ends": [
         { "road": "sf-painted-row", "end": "to" },
-        { "road": "sf-fogline-climb", "end": "from" }
+        { "road": "sf-fogline-climb", "end": "from" },
+        { "road": "sf-park-cut", "end": "from" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-sf-park-split-main-l1",
+          "road": "c-sf-park-split-main",
+          "from": { "road": "sf-painted-row", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-fogline-climb", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-sf-park-split-main-r1",
+          "road": "c-sf-park-split-main",
+          "from": { "road": "sf-painted-row", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-fogline-climb", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-sf-park-in",
+          "road": "c-sf-park-in",
+          "from": { "road": "sf-painted-row", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-park-cut", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 580, "s1": 620, "d0": 3, "d1": 5.5 }
+        }
+      ],
       "control": "none"
     },
     {
       "id": "j-sf-hills-5",
-      "x": -1382.4138,
+      "x": -1380.741,
       "y": 3,
-      "z": -1789.5189,
+      "z": -1774.6132,
       "ends": [
         { "road": "sf-fogline-climb", "end": "to" },
-        { "road": "sf-bridge-approach", "end": "from" }
+        { "road": "sf-bridge-approach", "end": "from" },
+        { "road": "sf-park-cut", "end": "to" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-sf-park-merge-main-l1",
+          "road": "c-sf-park-merge-main",
+          "from": { "road": "sf-fogline-climb", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-bridge-approach", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-sf-park-merge-main-r1",
+          "road": "c-sf-park-merge-main",
+          "from": { "road": "sf-fogline-climb", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-bridge-approach", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-sf-park-out",
+          "road": "c-sf-park-out",
+          "from": { "road": "sf-park-cut", "end": "to", "lane": "S1" },
+          "to": { "road": "sf-bridge-approach", "end": "from", "lane": "R1" }
+        }
+      ],
       "control": "none"
     },
     {

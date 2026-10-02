@@ -54,14 +54,16 @@ describe('tools/road: the baked M1 track', () => {
       `M1 track: ${roads.map((r) => `${r.id} ${r.lengthM.toFixed(1)} m`).join(', ')}; route ${progress.length.toFixed(1)} m`,
     );
     // road-2: four main roads and two connector roads on the main path, and the shortcut's three;
-    // road-3: five more main roads past the Sandbar Causeway.
-    expect(net.edges.length).toBe(14);
+    // road-3: five more main roads past the Sandbar Causeway; run W-R: the sandbar's two connectors
+    // on the main path and its three roads.
+    expect(net.edges.length).toBe(19);
     expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
       'm1-marina-run',
       'c-marina-split-main',
       'm1-marina-bends',
       'c-marina-merge-main',
       'm1-pelican-bridge',
+      'c-sandbar-flats-split-main',
       'm1-sandbar-causeway',
     ]);
     expect(progress.length).toBeGreaterThan(3300);
@@ -115,7 +117,7 @@ describe('tools/road: the baked M1 track', () => {
       expect(Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)), e.id).toBeCloseTo(5.5, 9);
       checked++;
     }
-    expect(checked).toBe(11); // the long route's main path: nine roads and two connectors
+    expect(checked).toBe(13); // the long route's main path: nine roads and four connectors (run W-R)
   });
 
   it('road-3: three race lengths, short, standard and long, each longer route carrying on from the last', () => {
@@ -138,8 +140,10 @@ describe('tools/road: the baked M1 track', () => {
       expect(r.startGrid).toEqual(route.startGrid);
       const prev = routes[i - 1];
       if (prev) expect(r.mainPath.slice(0, prev.mainPath.length)).toEqual(prev.mainPath);
-      // The boat-ramp cut is on every length, with the same saving.
-      expect(p.shortcuts.map((c) => c.gainM)).toEqual(progress.shortcuts.map((c) => c.gainM));
+      // The boat-ramp cut is on every length, with the same saving (run W-R: the sandbar is the
+      // standard and long routes' second, past the short route's finish).
+      expect(p.shortcuts[0]?.gainM).toEqual(progress.shortcuts[0]?.gainM);
+      expect(p.shortcuts.length).toBe(i === 0 ? 1 : 2);
       // Checkpoints in order, strictly inside the race.
       let last = 0;
       for (const c of p.checkpoints) {
@@ -194,8 +198,11 @@ describe('tools/road: the baked M1 track', () => {
       // keys: tagged `key-*`) stands on its key, so it is on every length that reaches that key,
       // and the longest always does.
       const ownKey = items.get(f.item ?? '')?.tags?.some((t) => t.startsWith('key-'));
+      // A sign on a branch (run W-R: the sandbar's) stands where the routes that take it pass.
+      const onBranch = routes.every((r) => !r.mainPath.includes(e.id));
       for (const r of routes) {
         if (ownKey && r.id !== 'm1-long-haul') continue;
+        if (onBranch && !r.allowedRoads.includes(e.id)) continue;
         expect(createRouteProgress(net, r).allows(e.index), `${f.id} ${r.id}`).toBe(true);
       }
     }
@@ -207,6 +214,11 @@ describe('tools/road: the baked M1 track', () => {
       const bridge = id(name);
       for (let s = 0; s <= (net.edges[bridge]?.length ?? 0); s += 25) {
         for (const side of ['left', 'right'] as const) {
+          // Run W-R: the Pelican Bridge's left rail stops short of the sandbar's split zone.
+          if (name === 'm1-pelican-bridge' && side === 'left' && s > 1150) {
+            expect(net.barrierAt(bridge, s, side), `${name} ${s} ${side}`).toBeNull();
+            continue;
+          }
           expect(net.barrierAt(bridge, s, side), `${name} ${s} ${side}`).toEqual({
             kind: 'rail',
             heightM: 1,

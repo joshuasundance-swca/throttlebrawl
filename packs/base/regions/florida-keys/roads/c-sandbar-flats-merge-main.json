@@ -1,0 +1,63 @@
+{
+  "type": "road",
+  "id": "c-sandbar-flats-merge-main",
+  "name": "Sandbar merge",
+  "realName": null,
+  "network": "keys-m1",
+  "from": "j-keys-m1-4",
+  "to": "j-keys-m1-4",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        { "id": "L0", "dCenterM": -4.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+      ]
+    }
+  ],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "both", "tag": "mangrove" },
+    { "s0": 0, "s1": 30, "side": "left", "tag": "swamp" }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        1031.0096, 1031.1606, 1031.3123, 1031.4646, 1031.6175, 1031.771, 1031.9253, 1032.0803, 1032.2361,
+        1032.3928, 1032.5503, 1032.7087, 1032.8681, 1033.0286, 1033.1901, 1033.3529
+      ],
+      "y": [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+      "z": [
+        -2804.0298, -2806.0241, -2808.0183, -2810.0125, -2812.0067, -2814.0008, -2815.9948, -2817.9888,
+        -2819.9827, -2821.9766, -2823.9704, -2825.9641, -2827.9577, -2829.9513, -2831.9447, -2833.9381
+      ],
+      "kappa": [
+        0.0001476716, 0.0001504435, 0.0001546541, 0.0001602429, 0.0001671542, 0.000175333, 0.000184724,
+        0.0001952725, 0.000206924, 0.0002196243, 0.0002333193, 0.0002479552, 0.0002634785, 0.0002798358,
+        0.0002969739, 0.0003148398
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/keys-m1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

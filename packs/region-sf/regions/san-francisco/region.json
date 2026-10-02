@@ -56,6 +56,7 @@
     ]
   },
   "signs": [
+    { "id": "park-cut", "text": "PARK CUT. Flatter. Muddier. Unfunded.", "status": "live" },
     { "id": "yield-cable-cars", "text": "YIELD TO CABLE CARS. They cannot yield to you.", "status": "live" },
     { "id": "steeper-one", "text": "STEEP GRADE: 4 BLOCKS. Then a steeper one.", "status": "live" },
     {

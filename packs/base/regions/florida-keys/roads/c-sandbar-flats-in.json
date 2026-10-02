@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-sandbar-flats-in",
+  "name": "Sandbar ramp",
+  "realName": null,
+  "network": "keys-m1",
+  "from": "j-keys-m1-3",
+  "to": "j-keys-m1-3",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 24.6,
+  "surface": "sand",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "beach" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        657.996, 659.9917, 661.9874, 663.983, 665.9785, 667.9736, 669.9683, 671.9622, 673.9551, 675.9467,
+        677.9364, 679.9238, 681.908, 683.8883, 685.8637, 687.8329
+      ],
+      "y": [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+      "z": [
+        -1927.7364, -1927.8671, -1927.9982, -1928.1305, -1928.2655, -1928.405, -1928.5513, -1928.7069,
+        -1928.8749, -1929.0583, -1929.2606, -1929.4851, -1929.7355, -1930.0153, -1930.3281, -1930.6775
+      ],
+      "kappa": [
+        0, -0.00007843018, -0.0003020123, -0.0006554811, -0.001124105, -0.001693688, -0.002350566,
+        -0.003081612, -0.00387423, -0.0047165, -0.005596781, -0.006503893, -0.007427391, -0.008357365,
+        -0.00928444, -0.01019977
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-09-30",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/keys-m1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

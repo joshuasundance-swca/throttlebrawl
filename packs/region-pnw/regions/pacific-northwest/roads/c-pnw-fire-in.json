@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-pnw-fire-in",
+  "name": "Fire road gate",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-4",
+  "to": "j-pnw-c1-4",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 22.4,
+  "surface": "dirt",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 0, "widthM": 5, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "forest" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        1049.1894, 1050.9264, 1052.6632, 1054.4001, 1056.1368, 1057.8734, 1059.6098, 1061.3458, 1063.0813,
+        1064.8162, 1066.5504, 1068.2837, 1070.0159, 1071.7469, 1073.4765, 1075.2044
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -2443.5717, -2444.5632, -2445.5548, -2446.5464, -2447.5383, -2448.5303, -2449.5229, -2450.516,
+        -2451.51, -2452.505, -2453.5012, -2454.4991, -2455.4988, -2456.5006, -2457.505, -2458.5121
+      ],
+      "kappa": [
+        0, -0.000005367488, -0.00002103473, -0.00004642432, -0.00008096963, -0.0001241148, -0.0001753148,
+        -0.0002340353, -0.0002997529, -0.0003719548, -0.0004501392, -0.0005338149, -0.0006225015,
+        -0.0007157295, -0.0008130401, -0.0009139853
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

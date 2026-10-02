@@ -38,6 +38,15 @@
       "item": "gutter-truth"
     },
     {
+      "kind": "billboard",
+      "id": "sign-trestle-fire-road",
+      "s0": 765,
+      "s1": 775,
+      "d0": -14.5,
+      "d1": -12,
+      "item": "fire-road"
+    },
+    {
       "kind": "roadsideZone",
       "id": "trestle-anglers",
       "s0": 560,

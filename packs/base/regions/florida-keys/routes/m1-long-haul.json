@@ -21,12 +21,17 @@
     "m1-marina-bends",
     "c-marina-merge-main",
     "m1-pelican-bridge",
+    "c-sandbar-flats-split-main",
     "m1-sandbar-causeway",
+    "c-sandbar-flats-merge-main",
     "m1-mangrove-cut",
     "m1-tarpon-flats",
     "m1-conch-row",
     "m1-long-bridge",
     "m1-last-resort-causeway",
+    "c-sandbar-flats-in",
+    "m1-sandbar-flats",
+    "c-sandbar-flats-out",
     "c-boat-ramp-in",
     "m1-boat-ramp-cut",
     "c-boat-ramp-out"
@@ -34,8 +39,7 @@
   "checkpoints": [
     { "road": "m1-pelican-bridge", "s": 300 },
     { "road": "m1-pelican-bridge", "s": 1000 },
-    { "road": "m1-sandbar-causeway", "s": 500 },
-    { "road": "m1-mangrove-cut", "s": 600 },
+    { "road": "m1-mangrove-cut", "s": 570 },
     { "road": "m1-tarpon-flats", "s": 600 },
     { "road": "m1-conch-row", "s": 600 },
     { "road": "m1-long-bridge", "s": 1150 },
@@ -43,5 +47,14 @@
   ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "branches": [
+    {
+      "id": "sandbar-flats",
+      "roads": ["c-sandbar-flats-in", "m1-sandbar-flats", "c-sandbar-flats-out"],
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "SANDBAR: NOT ADVISED. Advice not taken."
+    }
+  ],
   "meta": { "status": "live" }
 }

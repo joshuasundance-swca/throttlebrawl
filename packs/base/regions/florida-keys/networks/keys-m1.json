@@ -11,12 +11,17 @@
     "m1-marina-bends",
     "c-marina-merge-main",
     "m1-pelican-bridge",
+    "c-sandbar-flats-split-main",
     "m1-sandbar-causeway",
+    "c-sandbar-flats-merge-main",
     "m1-mangrove-cut",
     "m1-tarpon-flats",
     "m1-conch-row",
     "m1-long-bridge",
     "m1-last-resort-causeway",
+    "c-sandbar-flats-in",
+    "m1-sandbar-flats",
+    "c-sandbar-flats-out",
     "c-boat-ramp-in",
     "m1-boat-ramp-cut",
     "c-boat-ramp-out"
@@ -98,26 +103,67 @@
     },
     {
       "id": "j-keys-m1-3",
-      "x": 688.2277,
+      "x": 673.2353,
       "y": 1.5,
-      "z": -1925.0227,
+      "z": -1924.5519,
       "ends": [
         { "road": "m1-pelican-bridge", "end": "to" },
-        { "road": "m1-sandbar-causeway", "end": "from" }
+        { "road": "m1-sandbar-causeway", "end": "from" },
+        { "road": "m1-sandbar-flats", "end": "from" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-sandbar-flats-split-main-l1",
+          "road": "c-sandbar-flats-split-main",
+          "from": { "road": "m1-pelican-bridge", "end": "to", "lane": "L1" },
+          "to": { "road": "m1-sandbar-causeway", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-sandbar-flats-split-main-r1",
+          "road": "c-sandbar-flats-split-main",
+          "from": { "road": "m1-pelican-bridge", "end": "to", "lane": "R1" },
+          "to": { "road": "m1-sandbar-causeway", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-sandbar-flats-in",
+          "road": "c-sandbar-flats-in",
+          "from": { "road": "m1-pelican-bridge", "end": "to", "lane": "L1" },
+          "to": { "road": "m1-sandbar-flats", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 1180, "s1": 1220, "d0": -5.5, "d1": -3 }
+        }
+      ],
       "control": "none"
     },
     {
       "id": "j-keys-m1-4",
-      "x": 1031.0096,
+      "x": 1032.1581,
       "y": 1.5,
-      "z": -2804.0298,
+      "z": -2818.9858,
       "ends": [
         { "road": "m1-sandbar-causeway", "end": "to" },
-        { "road": "m1-mangrove-cut", "end": "from" }
+        { "road": "m1-mangrove-cut", "end": "from" },
+        { "road": "m1-sandbar-flats", "end": "to" }
       ],
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "cx-c-sandbar-flats-merge-main-l1",
+          "road": "c-sandbar-flats-merge-main",
+          "from": { "road": "m1-sandbar-causeway", "end": "to", "lane": "L1" },
+          "to": { "road": "m1-mangrove-cut", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-sandbar-flats-merge-main-r1",
+          "road": "c-sandbar-flats-merge-main",
+          "from": { "road": "m1-sandbar-causeway", "end": "to", "lane": "R1" },
+          "to": { "road": "m1-mangrove-cut", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-sandbar-flats-out",
+          "road": "c-sandbar-flats-out",
+          "from": { "road": "m1-sandbar-flats", "end": "to", "lane": "S1" },
+          "to": { "road": "m1-mangrove-cut", "end": "from", "lane": "L1" }
+        }
+      ],
       "control": "none"
     },
     {
