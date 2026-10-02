@@ -1144,7 +1144,7 @@ export const aiSystem: SimSystem = {
       st.fleeTicks[m.id] = 0;
       st.seekTicks[m.id] = 0;
       const c = config.riders[m.riderIndex]?.controller;
-      initSignature(world, m.id, c?.kind === 'ai' ? c.personality?.signature : undefined);
+      initSignature(world, config.seed, m.id, c?.kind === 'ai' ? c.personality?.signature : undefined);
     }
   },
   step(world: World, config: SimConfig) {

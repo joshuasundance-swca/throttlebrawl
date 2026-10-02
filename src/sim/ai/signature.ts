@@ -5,13 +5,14 @@
 // may swing, a swing it must throw. Riders, combat and traffic act on the result exactly as on any
 // other AI input, so the moves need nothing from the other systems.
 //
-// All state is plain data in systemState(world, 'ai.signature'); randomness comes only from the
-// `ai` stream, and only riders with a move ever draw from it, so a race without signatures replays
-// exactly as before. The `ai.signatures` tuning switch (on by default) turns every move off.
+// All state is plain data in systemState(world, 'ai.signature'); randomness comes only from each
+// rider's own substream of the race seed (`ai.signature`, by entity id), never the shared `ai`
+// stream, so the moves shift no other roll. The `ai.signatures` tuning switch (on by default) and
+// `ai.styleQuirks` turn every move off.
 //
 // Every number here is a [default] feel number.
 import type { EntityId } from '../../core';
-import { clamp, nextFloat } from '../../core';
+import { clamp, nextFloat, streamSeed } from '../../core';
 import type { RoadNetwork } from '../../road';
 import {
   SIGNATURE_IDS,
@@ -50,6 +51,8 @@ export interface SignatureState {
   aux: number[];
   /** A move's committed line (road d): Chad's no-hands line, Old Growth's charge, Pivot's new side. */
   lineD: number[];
+  /** Each rider's own random stream (mulberry32 state), seeded from the race seed and its id. */
+  rng: number[];
 }
 
 const SIGNATURE_STATE = 'ai.signature';
@@ -69,6 +72,7 @@ export function signatureState(world: World): SignatureState {
     seenHit: [],
     aux: [],
     lineD: [],
+    rng: [],
   }));
 }
 
@@ -237,12 +241,29 @@ function finish(world: World, sg: SignatureState, id: EntityId, move: SignatureI
   const spec = SPEC[move];
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
-  sg.next[id] = world.tick + spec.gap + Math.floor(nextFloat(world.rng.ai) * (spec.spread + 1));
+  sg.next[id] = world.tick + spec.gap + Math.floor(roll(world, id) * (spec.spread + 1));
 }
 
-/** Rolled at race start, in ascending id order, for every AI rider with a move. */
-export function initSignature(world: World, id: EntityId, move: SignatureId | undefined): void {
+/** A float in [0, 1) from rider `id`'s own signature stream (advances it). */
+function roll(world: World, id: EntityId): number {
   const sg = signatureState(world);
+  const st = { s: sg.rng[id] ?? 0 };
+  const f = nextFloat(st);
+  sg.rng[id] = st.s;
+  return f;
+}
+
+/** Set up at race start for every AI rider (a rider with no move gets an inert record). */
+export function initSignature(
+  world: World,
+  raceSeed: number,
+  id: EntityId,
+  move: SignatureId | undefined,
+): void {
+  const sg = signatureState(world);
+  // Its own substream, so a move's rolls never shift the AI's shared stream (the races without a
+  // move, and every other rider's rolls, stay exactly what they were).
+  sg.rng[id] = streamSeed(raceSeed, 'ai.signature', id);
   sg.move[id] = move ? SIGNATURE_IDS.indexOf(move) : -1;
   sg.phase[id] = -1;
   sg.since[id] = 0;
@@ -257,7 +278,7 @@ export function initSignature(world: World, id: EntityId, move: SignatureId | un
   sg.lineD[id] = 0;
   // A move that answers a hit (Kevin's counter) is ready at once; the others wait out the start.
   const spec = move && move !== 'counter' ? SPEC[move] : null;
-  sg.next[id] = spec && spec.spread > 0 ? FIRST_TICK + Math.floor(nextFloat(world.rng.ai) * spec.spread) : 0;
+  sg.next[id] = spec && spec.spread > 0 ? FIRST_TICK + Math.floor(roll(world, id) * spec.spread) : 0;
 }
 
 /** The rider is down, unsticking or out of the race: any move in progress ends (no new roll). */
@@ -543,7 +564,7 @@ function startMove(c: SignatureCtx, move: SignatureId, sg: SignatureState, hitNo
         (o) => o.s.ahead > -2 && o.s.ahead < LAG_CLEAR_M && Math.abs(o.s.dd) < o.size.halfWidth + 1.5,
       );
       if (blocked) return false;
-      sg.lineD[id] = nextFloat(world.rng.ai) < 0.5 ? -1 : 1;
+      sg.lineD[id] = roll(world, id) < 0.5 ? -1 : 1;
       enter(sg, id, tick, 'tell', tell, -1);
       return true;
     }
