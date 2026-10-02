@@ -114,6 +114,8 @@ export const WALK_ACROSS_M = [2, 10, 20, 35, 60] as const;
 const STEP_M = 2;
 const DROP_M = 2;
 const LOOK_PAST_M = 6;
+/** How far inside each road's end a junction's land is read, m (off the end row's own seam). */
+const JOIN_IN_M = 0.25;
 /** cos 35 degrees: ground at least this level counts as a plate a walk looks under. */
 const PLATE_UP = 0.82;
 
@@ -216,12 +218,26 @@ export function openLandEnds(
             const mine = walks.get(key(e.index, side, across));
             if (!mine?.length) continue;
             const a = end === 'to' ? mine[mine.length - 1]! : mine[0]!;
-            const od = flip * side * ((side < 0 ? -e.dMin : e.dMax) + VERGE_M + across) + (l.dShift ?? 0);
+            const d = side * ((side < 0 ? -e.dMin : e.dMax) + VERGE_M + across);
+            const od = flip * d + (l.dShift ?? 0);
             const b = at(o.index, os, od);
             probes++;
             joins++;
             look(e.id, a, b, side, across);
             look(o.id, b, a, od < 0 ? -1 : 1, across);
+            // Where both roads have land here at the same height, the land between their two end
+            // rows is drawn too: on the outside of a turn the rows fan apart, and the wedge between
+            // them showed the sky as a thin line (run W-P, Upper Market into Portola).
+            const a2 = at(e.index, end === 'to' ? e.length - JOIN_IN_M : JOIN_IN_M, d);
+            const b2 = at(o.index, l.entersAt === 'from' ? JOIN_IN_M : o.length - JOIN_IN_M, od);
+            probes += 2;
+            if (!a2.land || !b2.land || Math.abs(a2.g - b2.g) > 1) continue;
+            const mx = (a2.p.x + b2.p.x) / 2;
+            const mz = (a2.p.z + b2.p.z) / 2;
+            const low = Math.min(a2.g, b2.g);
+            const mid = ground.heightAt(mx, mz, Math.max(a2.g, b2.g) + 60);
+            if (!mid || mid.y < low - 1)
+              open.push({ edge: e.id, s: a2.s, side, across, drop: low - (mid?.y ?? 0) });
           }
       }
   }
