@@ -52,6 +52,7 @@ import {
 } from './traffic-figures';
 import type { LookStyle } from './look';
 import { defaultRenderParams, type RenderParams } from './tuning';
+import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
 /** Body proportions from rider data (a later look test compares exaggerated against realistic). */
 export interface RiderProportions {
@@ -218,7 +219,6 @@ const PED_PARTS: BoxPart[] = [
   { size: [0.24, 0.26, 0.24], at: [0, 1.55, 0], color: '#d9a27a' },
   { size: [0.4, 0.06, 0.4], at: [0, 1.7, 0], color: '#f2e6c8' },
 ];
-const PIPE_PARTS: BoxPart[] = [{ size: [0.07, 0.07, 0.9], at: [0, 0, 0], color: '#9aa3ab' }];
 const GLINT_PARTS: BoxPart[] = [
   { size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#fffbe0', rotY: Math.PI / 4 },
 ];
@@ -246,6 +246,8 @@ interface RiderView {
   kickLeg: Group;
   kickMesh: Mesh;
   weapon: Mesh;
+  /** Which shape `weapon` is drawn as (weapons.ts). */
+  weaponShape: WeaponShape;
   glint: Mesh;
   lightBar: Mesh;
   /** The boost flame out of the back of the bike (a child of the body). */
@@ -322,6 +324,9 @@ const PENDING_CAP = 64;
 interface PickupView {
   root: Group;
   glint: Mesh;
+  /** The weapon lying on the road, and which shape it is drawn as (weapons.ts). */
+  mesh: Mesh;
+  shape: WeaponShape;
 }
 
 interface Timer {
@@ -485,6 +490,11 @@ export class EntityViews {
         view.root.visible = true;
         view.root.position.set(p.x, p.y + 0.35, p.z);
         view.root.rotation.y = timeS * 1.5;
+        const shape = weaponShapeOf(e.contentId);
+        if (shape !== view.shape) {
+          view.mesh.geometry = this.weaponGeometry(shape);
+          view.shape = shape;
+        }
         view.glint.scale.setScalar(0.6 + 0.6 * Math.abs(Math.sin(timeS * 6)));
         this.seen.add(e.id);
         pickups++;
@@ -615,6 +625,10 @@ export class EntityViews {
     return g;
   }
 
+  private weaponGeometry(shape: WeaponShape): BufferGeometry {
+    return this.geometry(`weapon-${shape}`, () => [...WEAPON_PARTS[shape]]);
+  }
+
   private material(kind: 'rider' | 'vehicle' | 'ped' | 'weapon'): Material {
     return this.look.material(kind, { vertexColors: true });
   }
@@ -736,10 +750,7 @@ export class EntityViews {
     );
     kickLeg.add(kickMesh);
     kickLeg.visible = false;
-    const weapon = new Mesh(
-      this.geometry('pipe', () => PIPE_PARTS),
-      this.material('weapon'),
-    );
+    const weapon = new Mesh(this.weaponGeometry('pipe'), this.material('weapon'));
     weapon.position.set(0, -ARM_LEN - 0.04, -0.3);
     const glint = new Mesh(
       this.geometry('glint', () => GLINT_PARTS),
@@ -785,6 +796,7 @@ export class EntityViews {
       kickLeg,
       kickMesh,
       weapon,
+      weaponShape: 'pipe',
       glint,
       lightBar,
       flame,
@@ -816,18 +828,17 @@ export class EntityViews {
       view = this.freePickups.pop();
       if (!view) {
         const root = new Group();
-        const pipe = new Mesh(
-          this.geometry('pipe', () => PIPE_PARTS),
-          this.material('weapon'),
-        );
+        const pipe = new Mesh(this.weaponGeometry('pipe'), this.material('weapon'));
         pipe.rotation.x = 0.3;
+        pipe.scale.setScalar(1.3);
+        pipe.name = 'views-pickup-weapon';
         const glint = new Mesh(
           this.geometry('glint', () => GLINT_PARTS),
           this.look.material('glint', { vertexColors: true }),
         );
         glint.position.set(0, 0.2, -0.45);
         root.add(pipe, glint);
-        view = { root, glint };
+        view = { root, glint, mesh: pipe, shape: 'pipe' };
       }
       this.pickups.set(id, view);
       this.root.add(view.root);
@@ -954,6 +965,13 @@ export class EntityViews {
     // A held weapon rides in the attack-side fist; it glints through the wind-up (the steal cue).
     const held = e.heldWeapon !== null && !tumbling;
     if (held && view.weapon.parent !== attackArm) attackArm.add(view.weapon);
+    if (held) {
+      const shape = weaponShapeOf(e.heldWeapon);
+      if (shape !== view.weaponShape) {
+        view.weapon.geometry = this.weaponGeometry(shape);
+        view.weaponShape = shape;
+      }
+    }
     view.weapon.visible = held;
     view.glint.visible = held && e.attackPhase === 'windup';
     if (view.glint.visible) {
