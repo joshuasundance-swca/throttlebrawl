@@ -226,6 +226,8 @@ describe('telegraphs', () => {
 describe('music', () => {
   it('schedules the loop during a race and stops outside it', async () => {
     const { ctx, audio } = await running();
+    // The score (a race starts on a station since playtest 2; this is the score's loop).
+    audio.setParam('audio.radio', 1);
     audio.frame(snapshot([player()]), 0);
     expect(audio.inspect().musicPlaying).toBe(true);
     const scheduled = ctx.nodes.filter((n) => n.startedAt !== null).length;

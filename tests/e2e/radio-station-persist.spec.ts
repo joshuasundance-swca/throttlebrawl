@@ -47,8 +47,9 @@ test('the radio keeps the exact station across a reload, not only "a station"', 
   test.setTimeout(90_000);
   await page.goto('./');
   await race(page);
-  // The default race is the Keys: the score, then R twice is the second station.
-  await page.keyboard.press('KeyR');
+  // The default race is the Keys, on its first station (playtest 2, 2026-10-02: a race starts on
+  // its region's own station); R once is the second station.
+  await expect.poll(() => tunedTo(page), { timeout: 3000 }).toBe('keys-rockabilly');
   await page.keyboard.press('KeyR');
   await expect.poll(() => tunedTo(page), { timeout: 3000 }).toBe('keys-surf');
   await expect.poll(() => saved(page), { timeout: 3000 }).toEqual({ radio: 'station', station: 'keys-surf' });

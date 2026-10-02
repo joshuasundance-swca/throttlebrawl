@@ -12,7 +12,7 @@ import { createHeadlessRace } from '../../src/app';
 import type { DifficultyPreset } from '../../src/core';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { BATCH_TIMEOUT_MS, MAX_TICKS } from './batch';
+import { BATCH_TIMEOUT_MS, MAX_TICKS, NO_ROAD_EVENTS } from './batch';
 
 // 16 seeds per preset (8 until the 100 mph starter, playtest 1 item 10): at the new speeds fights are
 // shorter and rarer, and over 8 seeds one race's swing (seed 4: Easy 15 hits, Hard 7) outweighed
@@ -29,7 +29,12 @@ interface PresetRace {
 }
 
 function runRace(seed: number, difficulty: DifficultyPreset): PresetRace {
-  const { sim, config, route, playerId } = createHeadlessRace({ seed, difficulty }, { includeDrafts: true });
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
+  const { sim, config, route, playerId } = createHeadlessRace(
+    { seed, difficulty, tuning: NO_ROAD_EVENTS },
+    { includeDrafts: true },
+  );
   const rivals = new Set(
     config.riders
       .map((r, i) => (r.controller.kind === 'ai' && r.faction === 'rider' ? i : -1))

@@ -55,7 +55,13 @@ const MAX_TICKS = 60 * 60 * 6;
 const MIN_STEAL_SHARE = 0.5;
 
 function raceConfig(event: string, seed: number): SimConfig {
-  return buildSimConfig(REG, STREAMS.forEvent(REG, event), { seed, eventId: event });
+  // Without the W-P road events: they reshuffle each seed's race (over seeds 11 to 40 the steal rate
+  // was 23 of 30 without them and 20 of 30 with them), and this measures the steal, not the road.
+  return buildSimConfig(REG, STREAMS.forEvent(REG, event), {
+    seed,
+    eventId: event,
+    tuning: { 'modifiers.setPieceChance': 0 },
+  });
 }
 
 interface StealRun {
