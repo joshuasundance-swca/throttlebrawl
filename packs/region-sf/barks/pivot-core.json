@@ -122,11 +122,21 @@
       "text": "That's a down round.",
       "audioAsset": "audio/barks/pivot-core/pivot-taken-down-round",
       "audioStatus": "live"
+    },
+    {
+      "id": "pivot-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Disrupted. That's you, by the way."
+    },
+    {
+      "id": "pivot-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "We call that a learning. Bye."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak.",
+    "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

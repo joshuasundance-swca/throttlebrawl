@@ -219,7 +219,7 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
     h.run(60);
     const hit = ofType(h.events, 'hit').find((e) => e.actor === 1);
     expect(hit?.data['weapon']).toBe(BATON.contentId);
-    expect(hit?.data['damage']).toBe(16);
+    expect(hit?.data['damage']).toBe(40); // 16 × combat.weaponDamageScale (2.5)
     expect(hit?.target).toBe(2);
   });
 
@@ -274,6 +274,7 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
       h.run(40);
       return ofType(h.events, 'hit')[0]?.data['damage'];
     };
+    // A cop's hits keep the baton's data damage: playtest 2's knockdown scales are the player's.
     expect(damageOn('player')).toBe(8);
     expect(damageOn('player', { 'combat.copOnPlayerScale': 1 })).toBe(16);
     expect(damageOn('rival')).toBe(16);

@@ -4,11 +4,14 @@
 //     entry and its static imports, first-load.mjs; lazy `import()` chunks are listed apart, they
 //     load later and on demand), and the whole first load counted as the raw bytes of every file in
 //     dist/, lazy chunks included (a conservative stand-in for transfer).
+//     Models are counted per region too (run W-Q): the dataset models under assets/ds/<region>/
+//     load only when a race in that region starts, so each region's stay under its own limit.
 //  2. The Playwright perf probe (project `perf`), once dev-2 adds tests/perf/*.spec.ts.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { modelsByRegion, SHARED, worstRaceModelBytes } from './dataset-assets.mjs';
 import { firstLoadScripts } from './first-load.mjs';
 import { examined, fmtBytes, repoRoot } from './lib.mjs';
 
@@ -28,11 +31,16 @@ let raw = 0;
 let jsGzip = 0;
 let jsFiles = 0;
 const lazy = [];
+const distFiles = [];
 for (const entry of readdirSync(dist, { recursive: true, withFileTypes: true })) {
   if (!entry.isFile()) continue;
   const buf = readFileSync(path.join(entry.parentPath, entry.name));
   files++;
   raw += buf.length;
+  distFiles.push({
+    rel: toPosix(path.relative(dist, path.join(entry.parentPath, entry.name))),
+    bytes: buf.length,
+  });
   if (/\.m?js$/.test(entry.name)) {
     const gz = gzipSync(buf, { level: 9 }).length;
     const rel = toPosix(path.relative(dist, path.join(entry.parentPath, entry.name)));
@@ -49,12 +57,20 @@ if (jsGzip > budget.jsGzipKB * 1024)
   problems.push(`first-load JavaScript ${fmtBytes(jsGzip)} gzip is over ${budget.jsGzipKB} KB`);
 if (raw > budget.firstLoadKB * 1024)
   problems.push(`first load ${fmtBytes(raw)} is over ${budget.firstLoadKB} KB`);
+const models = modelsByRegion(distFiles);
+for (const [region, m] of [...models].sort(([a], [b]) => (a < b ? -1 : 1))) {
+  console.log(`perf: models ${region}: ${m.files} files, ${fmtBytes(m.bytes)}`);
+  if (region !== SHARED && m.bytes > budget.regionModelsKB * 1024)
+    problems.push(`${region}'s models ${fmtBytes(m.bytes)} are over ${budget.regionModelsKB} KB`);
+}
 for (const c of lazy.sort((a, b) => b.gz - a.gz))
   console.log(`perf: lazy chunk ${c.rel} ${fmtBytes(c.gz)} gzip`);
 examined(
   `${files} dist files: first-load JavaScript ${fmtBytes(jsGzip)} gzip in ${jsFiles} files ` +
     `(budget ${budget.jsGzipKB} KB), lazy JavaScript ${fmtBytes(lazyGzip)} gzip in ${lazy.length} chunks, ` +
-    `first load ${fmtBytes(raw)} (budget ${budget.firstLoadKB} KB)`,
+    `first load ${fmtBytes(raw)} (budget ${budget.firstLoadKB} KB), models in ${models.size} groups ` +
+    `(${fmtBytes(models.get(SHARED)?.bytes ?? 0)} shared; one race's worst ${fmtBytes(worstRaceModelBytes(models))}, ` +
+    `budget ${budget.regionModelsKB} KB per region)`,
 );
 for (const p of problems) console.error(`perf: ${p}`);
 

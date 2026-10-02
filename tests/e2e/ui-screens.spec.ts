@@ -15,6 +15,7 @@ interface Handle {
   } | null;
   playerId(): number;
   setBot(on: boolean): void;
+  setSeed(seed: number): void;
 }
 interface TargetProbe {
   samples: number;
@@ -169,11 +170,18 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
 });
 
 test('a race: HUD, pause screen, tuning long-press, and results with a placing', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  // A seed whose bot race ends quickly (about 85 s of sim headless, drafts in): a fresh random seed
+  // ran to 140 s, and in CI's software renderer that crowded the 200 s wait for the results (since
+  // W-P's road events and roadside density, the race no longer always fit).
+  await page.evaluate(() => {
+    const g = (window as TestWindow).__game;
+    g?.setSeed(110);
+    g?.setBot(true);
+  });
   await page.locator('#menu-race').click();
 
   // The target bar follows the player's auto-target all race: sampled every 100 ms.
@@ -256,8 +264,12 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await page.keyboard.press('Escape');
   await expect(page.locator('#pause-screen')).toBeHidden();
 
-  // Results.
-  await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
+  // Results. The whole race plays in real time, and a software-rendered CI runner draws the default
+  // look at about 100 ms a frame (p50; 200 ms p95), where the loop's 4 steps a frame run the sim at
+  // about 35-40 ticks a second. Seed 1's race became a 7,500-tick finish instead of a 6,300-tick
+  // bust when the road events landed (#268), and that needs about 207 s here (forced 100 ms frames,
+  // locally), past the old 200 s. Sized for a race up to about 9,900 ticks at 30 ticks a second.
+  await expect(page.locator('#results')).toBeVisible({ timeout: 330_000 });
   // A placing and its prize, or Busted and the fine (the batch rule: the seeded race's outcome
   // shifts whenever the sim changes, and both are results screens).
   await expect(page.locator('#results-place')).toHaveText(/^(\d+(st|nd|rd|th) of \d+|Busted)$/);
