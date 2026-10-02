@@ -728,3 +728,30 @@ describe('the draw budget in a slow-motion pile-up (entities not culled, so an u
     expect(load.triangles).toBeLessThanOrEqual(budget.trianglesMax);
   });
 });
+
+describe('the bike in the air takes the sim pitch (playtest 2: flips)', () => {
+  it('turns the rider view by the snapshot pitch about its middle, a flip all the way round', () => {
+    const { views } = rig();
+    const at = (pitch: number | undefined) => {
+      const r = rider(0, {
+        mode: 'Airborne',
+        grounded: false,
+        y: 3,
+        ...(pitch === undefined ? {} : { pitch }),
+      });
+      const s = snap([r]);
+      views.sync(s, s, 1, 0);
+      return riderGroup(views);
+    };
+    const half = at(Math.PI);
+    expect(half.rotation.x).toBeCloseTo(Math.PI, 5);
+    // Turned about its middle (0.9 m up), upside down the root stands 1.8 m above the body's place.
+    expect(half.position.y).toBeCloseTo(3 + 1.8, 3);
+    expect(at(0.4).rotation.x).toBeCloseTo(0.4, 5);
+    // A snapshot without a pitch keeps the old fixed nose-up.
+    expect(at(undefined).rotation.x).toBeCloseTo(0.12, 5);
+    const ground = snap([rider(0, { mode: 'Road', pitch: 0.3 })]);
+    views.sync(ground, ground, 1, 0);
+    expect(riderGroup(views).rotation.x).toBe(0);
+  });
+});

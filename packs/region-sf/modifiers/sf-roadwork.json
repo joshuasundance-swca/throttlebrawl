@@ -1,0 +1,41 @@
+{
+  "type": "event-modifier",
+  "id": "sf-roadwork",
+  "name": "San Francisco Roadwork",
+  "kind": "human",
+  "tags": ["set-piece", "roadwork"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.15, 0.85],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "roadwork",
+      "signText": "ROAD WORK SEE APP FOR ETA",
+      "vehicle": "base:event-work-truck",
+      "person": "flagger",
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: hillside roadwork, a cone taper (the city's robotaxis are said to respect cones above all else), a flagger.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

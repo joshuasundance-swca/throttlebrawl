@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { basePackFiles, buildRegistry, loadBasePack, lookup } from '../content';
+import { basePackFiles, buildRegistry, loadBasePack, lookup, SIGNATURE_MOVES } from '../content';
+import { SIGNATURE_IDS } from '../sim/api';
 import { aiController, buildSimConfig, streamForEvent } from './config';
 
 const shove = {
@@ -122,6 +123,20 @@ describe('app/config: rival personalities reach the sim (the ai-1 contract wire)
     });
     expect(c).toEqual({ kind: 'ai', style: 'racer', personality: {} });
     expect(aiController(undefined)).toEqual({ kind: 'ai', style: 'racer', personality: {} });
+  });
+
+  it('passes a known signature move through and drops an unknown one (interview, 2026-10-02)', () => {
+    expect(aiController({ style: 'showboat', signature: 'selfie' })).toEqual({
+      kind: 'ai',
+      style: 'showboat',
+      personality: { signature: 'selfie' },
+    });
+    const odd = { style: 'racer', signature: 'moonwalk' } as unknown as Parameters<typeof aiController>[0];
+    expect(aiController(odd)).toEqual({ kind: 'ai', style: 'racer', personality: {} });
+  });
+
+  it('keeps the content schema’s signature list in step with the sim contract’s', () => {
+    expect([...SIGNATURE_MOVES]).toEqual([...SIGNATURE_IDS]);
   });
 
   it('builds every rival of the base event with an ai controller carrying its style', () => {
@@ -293,6 +308,11 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:snowbird-rv': 0.5,
       'base:sunburnt-jogger': 1,
       'base:tourist-with-cooler': 1,
+      // W-P road events' vehicles: placed by a set piece, never rolled by traffic.
+      'base:event-stalled-car': 0,
+      'base:event-tow-truck': 0,
+      'base:event-work-truck': 0,
+      'base:keys-parade-float': 0,
     });
   });
 });

@@ -79,6 +79,25 @@ export const AI_STYLES = [
   'racer',
 ] as const;
 
+/**
+ * Signature moves (interview, 2026-10-02: "Visible personalities"): the rider file's
+ * `personality.signature`, one per rival. The same list as the sim contract's SIGNATURE_IDS (the app
+ * tests check they agree; content never imports the sim).
+ */
+export const SIGNATURE_MOVES = [
+  'selfie',
+  'wave',
+  'bell',
+  'counter',
+  'lag',
+  'ram',
+  'slow-burn',
+  'sweet-talk',
+  'cut-in',
+  'timber',
+  'pivot',
+] as const;
+
 export const riderSchema = entry('rider', {
   role: z.enum(['rival', 'cop', 'player-preset', 'extra']),
   roster: z.enum(['regular', 'local']).optional(),
@@ -99,7 +118,9 @@ export const riderSchema = entry('rider', {
     })
     .optional(),
   startingWeapon: refSchema.optional(),
-  personality: z.looseObject({ style: z.enum(AI_STYLES) }).optional(),
+  personality: z
+    .looseObject({ style: z.enum(AI_STYLES), signature: z.enum(SIGNATURE_MOVES).optional() })
+    .optional(),
   law: z
     .looseObject({
       agency: refSchema,
