@@ -19,8 +19,8 @@
   "spawn": { "roadsideWeight": 1, "regions": [] },
   "effects": [],
   "meta": {
-    "status": "draft",
-    "notes": "M4 weapons-2 head start: wasteland junk, the plan's own example (Kevin from Accounting swings a briefcase). Hard-sided and full of receipts: light damage, a big shove, and the latches give out after 5 hits. Crude starting numbers, [default].",
+    "status": "live",
+    "notes": "M4 weapons-2 head start: wasteland junk, the plan's own example (Kevin from Accounting swings a briefcase). Hard-sided and full of receipts: light damage, a big shove, and the latches give out after 5 hits. Crude starting numbers, [default]. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\").",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

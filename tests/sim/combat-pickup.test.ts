@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { SimEvent } from '../../src/sim/api';
+import { pickupCount } from '../../src/sim/combat';
 import { BATCH_SEEDS, BATCH_TIMEOUT_MS, createBatchRace, simBatch, type BatchResult } from './batch';
 
 // combat-2 over the real base pack and the shared 50-race batch (docs/milestones/M1.md,
@@ -26,10 +27,9 @@ describe('combat-2 on the base pack', () => {
     expect([pipe?.reachSM, pipe?.reachDM]).toEqual([1.6, 1.4]);
   });
 
-  // M4 weapons-2 (head start): each spot now draws its weapon from the seed, weighted by the
-  // weapon's roadsideWeight. Until buildSimConfig maps that weight (an app-lane follow-up), every
-  // armed weapon in the config weighs 1.
-  it('lays three armed weapons on the route at race start, drawn from the seed', () => {
+  // M4 weapons-2 (head start): each spot draws its weapon from the seed, weighted by the weapon's
+  // roadsideWeight. W-Q: one spot per 500 m of route (combat.pickupSpacingM), not three fixed ones.
+  it('lays an armed weapon about every 500 m of the route at race start, drawn from the seed', () => {
     const lay = (seed: number) => {
       const { sim, config } = createBatchRace(seed);
       const armed = new Set(
@@ -37,7 +37,7 @@ describe('combat-2 on the base pack', () => {
       );
       // On the road, that is: a held weapon's pickup is stowed below it.
       const pickups = sim.snapshot().entities.filter((e) => e.kind === 'pickup' && e.road.h > -1);
-      expect(pickups).toHaveLength(3);
+      expect(pickups).toHaveLength(pickupCount(config.route.length, 500));
       for (const p of pickups) {
         expect(p.mode).toBe('Road');
         expect(armed.has(p.contentId), p.contentId).toBe(true);
@@ -53,13 +53,21 @@ describe('combat-2 on the base pack', () => {
 
 /**
  * Replays a race's weapon events and returns what they add up to, or the first inconsistency.
- * `armed` are the riders who start the race holding a weapon (the cops' batons and tasers: no
- * weaponGrab puts it in their hands), so a first steal off one of them is consistent too.
+ * `armedAtStart`: riders who start the race holding a weapon (the cops' batons and tasers: no
+ * weaponGrab puts it in their hands), so a first steal off one of them is consistent too, and
+ * `keepsOnWreck`: riders who keep theirs through a crash (the law holsters it, sim/combat).
  */
-function audit(events: readonly SimEvent[], armed: ReadonlySet<number> = new Set()) {
-  const startedArmed = new Set(armed);
+function audit(
+  events: readonly SimEvent[],
+  armedAtStart: readonly number[],
+  keepsOnWreck: readonly number[],
+) {
   const holderOf = new Map<number, number>(); // pickup id -> rider id (absent = on the road)
   const holding = new Map<number, number>(); // rider id -> pickup id
+  for (const id of armedAtStart) {
+    holding.set(id, -100 - id); // a stand-in pickup id for the starting weapon
+    holderOf.set(-100 - id, id);
+  }
   const out = { road: 0, steal: 0, cues: 0, pipeHits: 0, problem: '' };
   for (const e of events) {
     if (e.type === 'stealWindow') out.cues++;
@@ -73,7 +81,7 @@ function audit(events: readonly SimEvent[], armed: ReadonlySet<number> = new Set
       holding.delete(e.actor);
     }
     // A rider who crashes or is knocked off drops the pipe (drops have no event of their own).
-    if (e.type === 'crash') {
+    if (e.type === 'crash' && !keepsOnWreck.includes(e.actor)) {
       const pid = holding.get(e.actor);
       if (pid !== undefined) holderOf.delete(pid);
       holding.delete(e.actor);
@@ -92,8 +100,7 @@ function audit(events: readonly SimEvent[], armed: ReadonlySet<number> = new Set
     } else if (src === 'steal') {
       out.steal++;
       const from = e.target ?? -1;
-      let pid = holding.get(from);
-      if (pid === undefined && startedArmed.delete(from)) pid = -1000 - from; // his starting weapon
+      const pid = holding.get(from); // a starting weapon is held from the start (armedAtStart)
       if (pid === undefined) out.problem ||= `tick ${e.tick}: stole from rider ${from}, who held nothing`;
       else {
         holding.delete(from);
@@ -113,11 +120,14 @@ describe('combat-2 over the shared seeded-race batch', () => {
     let pipeHits = 0;
     let racesWithGrab = 0;
     const problems: string[] = [];
-    // Every batch race fields the same riders: those with a starting weapon (the cops).
+    // Every batch race fields the same riders (the batch turns the patrol off): those with a
+    // starting weapon (the cops), who are also the law and keep it through a crash.
     const { config } = createBatchRace(1);
-    const armed = new Set(config.riders.flatMap((r, i) => (r.startingWeapon ? [i] : [])));
+    const ids = (pick: (i: number) => boolean) => config.riders.flatMap((_r, i) => (pick(i) ? [i] : []));
+    const armedAtStart = ids((i) => config.riders[i]?.startingWeapon !== undefined);
+    const keepsOnWreck = ids((i) => config.riders[i]?.faction === 'law');
     for (const race of batch.races) {
-      const a = audit(race.events, armed);
+      const a = audit(race.events, armedAtStart, keepsOnWreck);
       road += a.road;
       steal += a.steal;
       cues += a.cues;
