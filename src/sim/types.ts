@@ -652,6 +652,14 @@ export interface SimTrafficTypeDef {
    */
   weight?: number;
   /**
+   * Per-area road-vehicle weights (run W-R; interview, 2026-10-02: distinct keys), by area tag: the
+   * weight this type has in each `traffic.areas` entry of the event's region. Where a road tag that
+   * is an area (a key of any type's `areaWeights`) covers a vehicle's spawn spot, that area's
+   * weights replace `weight`, and a type without the key gets 0 there. Absent: no area lists it.
+   * buildSimConfig writes it only when the region has areas.
+   */
+  areaWeights?: Readonly<Record<string, number>>;
+  /**
    * The type's behaviour flags (W-P, 2026-10-01). Optional: absent, and any absent flag, means the
    * category's default. buildSimConfig copies the flags the content gives.
    */

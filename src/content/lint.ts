@@ -152,6 +152,9 @@ function referencesOf(e: ParsedEntry): Ref[] {
     case 'region':
       each(['networks'], 'road-network');
       each(['traffic', 'mix'], 'traffic-type', 'kind', category(VEHICLES, 'traffic.mix'));
+      arr(at(d, ['traffic', 'areas'])).forEach((_, a) =>
+        each(['traffic', 'areas', a, 'mix'], 'traffic-type', 'kind', category(VEHICLES, 'traffic.areas mix')),
+      );
       each(
         ['traffic', 'pedestrians'],
         'traffic-type',
