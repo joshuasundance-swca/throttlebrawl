@@ -8,7 +8,18 @@ import { createRoadNetwork, createRouteProgress, fixtureNetwork } from '../../ro
 import { SIM_TUNING, type SimConfig, type SimEvent, type SimEventCops, type SimRiderDef } from '../api';
 import { riderState, ridersSystem } from '../riders';
 import { addMover, createWorld, type World } from '../world';
-import { addHeat, COP_CHASING, COP_DONE, copsState, copsSystem, HEAT, HEAT_MAX, lawSnapshot } from './index';
+import {
+  addHeat,
+  COP_CHASING,
+  COP_DONE,
+  COP_PARKED,
+  copsState,
+  copsSystem,
+  HEAT,
+  HEAT_MAX,
+  lawSnapshot,
+  roadblockSpots,
+} from './index';
 
 const bike = {
   contentId: 'base:bike',
@@ -45,7 +56,11 @@ const PLAYER = 1;
 const COPS = [2, 3, 4];
 
 /** Rival 0, player 1, cops 2-4 (all left in the lot) on a 2.4 km straight fixture road. */
-function config(over: Partial<SimEventCops> = {}, tuning: Record<string, number> = {}): SimConfig {
+function config(
+  over: Partial<SimEventCops> = {},
+  tuning: Record<string, number> = {},
+  copCount = COPS.length,
+): SimConfig {
   const road = createRoadNetwork(
     fixtureNetwork([
       { id: 'a', lengthM: 800, kappa: 0 },
@@ -81,7 +96,11 @@ function config(over: Partial<SimEventCops> = {}, tuning: Record<string, number>
       raceEndTimeoutTicks: 1800,
       cops,
     },
-    riders: [rider('rival', 'rival'), rider('player', 'player'), cop('c1'), cop('c2'), cop('c3')],
+    riders: [
+      rider('rival', 'rival'),
+      rider('player', 'player'),
+      ...Array.from({ length: copCount }, (_, k) => cop(`c${k + 1}`)),
+    ],
     weapons: [],
     trafficTypes: [],
     road,
@@ -101,7 +120,8 @@ function heatWorld(cfg: SimConfig) {
   const world: World = createWorld(cfg);
   addMover(world, 'rider', { edge: 1, s: 320, d: 1.7, dir: 1 }, RIVAL);
   addMover(world, 'rider', { edge: 1, s: 300, d: 1.7, dir: 1 }, PLAYER);
-  for (const i of COPS) addMover(world, 'rider', { edge: 0, s: 40, d: 4.15, dir: 1 }, i);
+  for (let i = 2; i < cfg.riders.length; i++)
+    addMover(world, 'rider', { edge: 0, s: 40, d: 4.15, dir: 1 }, i);
   ridersSystem.init(world, cfg);
   copsSystem.init(world, cfg);
   const player = world.movers[PLAYER];
@@ -270,5 +290,87 @@ describe('playtest 2: the heat meter', () => {
     w.step(1);
     expect(w.heat()).toBe(0);
     expect(w.events).toEqual([]);
+  });
+
+  it('riding off the road with no cop near cools it 3 times as fast; on the paved road, the plain rate', () => {
+    const w = heatWorld(config());
+    w.cfg.road.groundAt = () => 'dirt';
+    w.step(1, () => [w.hit(PLAYER, RIVAL), w.hit(PLAYER, RIVAL), w.hit(PLAYER, RIVAL)]); // 12 points
+    w.step(HEAT.calmS * 60 - 1 + 60);
+    expect(w.heat()).toBeCloseTo(12 - 2.5 * HEAT.offRoadScale, 0);
+    // On the paved road it is the plain rate.
+    const paved = heatWorld(config());
+    paved.cfg.road.groundAt = () => 'asphalt';
+    paved.step(1, () => [paved.hit(PLAYER, RIVAL), paved.hit(PLAYER, RIVAL), paved.hit(PLAYER, RIVAL)]);
+    paved.step(HEAT.calmS * 60 - 1 + 60);
+    expect(paved.heat()).toBeCloseTo(12 - 2.5, 0);
+  });
+
+  it('tier 3 parks a roadblock across his lanes 300 m up the road, sirens on; past it, they chase', () => {
+    const w = heatWorld(config({}, {}, 5));
+    addHeat(w.world, w.cfg, PLAYER, HEAT.tiers[2] ?? 80);
+    w.step(1);
+    const sirens = w.events.filter((e) => e.type === 'siren' && e.data['on'] === true);
+    expect(sirens.map((e) => [e.actor, e.data['cause'], e.data['tier']])).toEqual([
+      [2, 'heat', 1],
+      [3, 'heat', 2],
+      [4, 'heat', 2],
+      [5, 'roadblock', 3],
+      [6, 'roadblock', 3],
+    ]);
+    const p = w.world.movers[PLAYER];
+    if (!p) throw new Error('no player');
+    const at = w.cfg.route.progressAt(p.pos.edge, p.pos.s);
+    const where = roadblockSpots(w.cfg, at);
+    expect(where?.at).toBeCloseTo(at + HEAT.roadblockAheadM, 6);
+    for (const [k, id] of [5, 6].entries()) {
+      const c = w.world.movers[id];
+      expect(c?.pos).toEqual(where?.spots[k]);
+      expect(w.st.phase[id]).toBe(COP_PARKED);
+      expect(c?.speed).toBe(0);
+      expect(w.world.inputs[id]?.brake).toBe(255);
+    }
+    // One across his lane (the travel lane his way), the other on its shoulder: the one-lane road.
+    expect(w.world.movers[5]?.pos.d).toBe(1.7);
+    expect(Math.abs((w.world.movers[6]?.pos.d ?? 0) - 1.7)).toBeGreaterThan(1.5);
+    // He rides past: they pull out after him as heat cops.
+    p.pos = { ...p.pos, edge: 1, s: (w.world.movers[5]?.pos.s ?? 0) + 5 };
+    w.step(1);
+    expect(w.st.phase[5]).toBe(COP_CHASING);
+    expect(w.st.target[5]).toBe(PLAYER);
+  });
+
+  it('a roadblock lifts after 45 s (non-default: no cooling) and when he loses them', () => {
+    const w = heatWorld(config({}, { 'cops.heatDecayPerS': 0 }, 5));
+    const p = w.world.movers[PLAYER];
+    if (p) p.speed = 0;
+    addHeat(w.world, w.cfg, PLAYER, 85);
+    w.step(1);
+    expect(w.st.phase[5]).toBe(COP_PARKED);
+    w.step(HEAT.roadblockS * 60 - 2);
+    expect(w.st.phase[5]).toBe(COP_PARKED);
+    w.step(2);
+    expect(w.st.phase[5]).toBe(COP_DONE);
+    expect(w.events.some((e) => e.type === 'siren' && e.actor === 5 && e.data['on'] === false)).toBe(true);
+
+    const lost = heatWorld(config({}, {}, 5));
+    const q = lost.world.movers[PLAYER];
+    if (q) q.speed = 0;
+    addHeat(lost.world, lost.cfg, PLAYER, 81);
+    lost.step(1);
+    expect(lost.st.phase[6]).toBe(COP_PARKED);
+    lost.step(60 * (HEAT.calmS + 81 / 2.5) + 60); // the heat cops stand 90 m back: not near
+    expect(lost.heat()).toBe(0);
+    expect(lost.st.phase[6]).toBe(COP_DONE);
+    expect(lawSnapshot(lost.world, lost.cfg).lost).toBe(true);
+  });
+
+  it('no roadblock near the finish, and none when every cop is busy', () => {
+    const cfg = config();
+    expect(roadblockSpots(cfg, cfg.route.length - HEAT.roadblockAheadM)).toBeNull();
+    const w = heatWorld(config());
+    addHeat(w.world, w.cfg, PLAYER, 85);
+    w.step(1);
+    expect(w.events.filter((e) => e.type === 'siren' && e.data['cause'] === 'roadblock')).toEqual([]);
   });
 });

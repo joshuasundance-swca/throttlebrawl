@@ -76,6 +76,7 @@ import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
+import { createHeatBadge, HEAT_BADGE_CSS } from './heat-badge';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
@@ -298,6 +299,7 @@ const CSS = `
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
 ${RADIO_PANEL_CSS}
+${HEAT_BADGE_CSS}
 #style-popups { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
   pointer-events: none; transition: top 0.12s ease-out; }
 #style-popups.mirrored { align-items: flex-end; }
@@ -680,6 +682,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const position = el('div', { id: 'hud-position' });
   const selfHealth = healthWidget('hud-health', 'YOU');
   const targetHealth = healthWidget('hud-target', '');
+  // Playtest 2's heat meter (interview, 2026-10-02): a badge at the top centre, only while hot.
+  const heatBadge = createHeatBadge();
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
   pauseButton.addEventListener('click', () => pause());
@@ -690,6 +694,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     position,
     selfHealth.root,
     targetHealth.root,
+    heatBadge.root,
     pauseButton,
   );
   const hudPieces: Record<string, HTMLElement> = {
@@ -1443,6 +1448,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       tally.reset();
       tallyPlayer = -1;
       clearPops();
+      heatBadge.reset();
       placeAll();
     }
     if (screen === 'menu') {
@@ -1473,6 +1479,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     updateRace(snapshot, playerId, units) {
       const player = snapshot.entities[playerId] ?? null;
       updateHud(player, riderCount(snapshot), units);
+      heatBadge.update(snapshot.law);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
       stepMeter(player?.styleRun, tally.takePopups());

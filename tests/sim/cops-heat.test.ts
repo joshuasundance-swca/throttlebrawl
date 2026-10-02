@@ -19,20 +19,23 @@ interface HeatRun {
   maxHeat: number;
   maxTier: number;
   sent: number;
+  /** Roadblock cops parked (tier 3). */
+  blocks: number;
   lost: number;
   busted: boolean;
   finished: boolean;
   problem: boolean;
 }
 
-function heatRace(eventId: string, seed: number): HeatRun {
-  const { sim, config, playerId } = createHeadlessRace({ seed, eventId }, { registry: REG });
+function heatRace(eventId: string, seed: number, tuning: Record<string, number> = {}): HeatRun {
+  const { sim, config, playerId } = createHeadlessRace({ seed, eventId, tuning }, { registry: REG });
   const bot = createBot();
   const run: HeatRun = {
     seed,
     maxHeat: 0,
     maxTier: 0,
     sent: 0,
+    blocks: 0,
     lost: 0,
     busted: false,
     finished: false,
@@ -50,6 +53,7 @@ function heatRace(eventId: string, seed: number): HeatRun {
     run.maxTier = Math.max(run.maxTier, law?.tier ?? 0);
     for (const e of sim.events()) {
       if (e.type === 'siren' && e.data['cause'] === 'heat' && e.data['on'] === true) run.sent++;
+      if (e.type === 'siren' && e.data['cause'] === 'roadblock' && e.data['on'] === true) run.blocks++;
       if (e.type === 'heat' && e.data['lost'] === true) run.lost++;
       if (e.type === 'bust' && e.target === playerId) run.busted = true;
     }
@@ -67,7 +71,7 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
           runs
             .map(
               (r) =>
-                `seed ${r.seed} max ${(r.maxHeat * 100).toFixed(0)} tier ${r.maxTier} sent ${r.sent} lost ${r.lost}` +
+                `seed ${r.seed} max ${(r.maxHeat * 100).toFixed(0)} tier ${r.maxTier} sent ${r.sent} roadblock ${r.blocks} lost ${r.lost}` +
                 `${r.busted ? ' busted' : ''}${r.finished ? ' finished' : ''}`,
             )
             .join('; ') +
@@ -79,6 +83,26 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
       }
       expect(runs.some((r) => r.maxHeat > 0)).toBe(true);
       expect(runs.some((r) => r.sent > 0)).toBe(true);
+    });
+  }
+
+  // Tier 3 in a real race: a rider three times as hot (cops.heatScale 3, a non-default) meets the
+  // roadblock up the road, gets past it (round it, or into the back of it), and the race still ends.
+  for (const choice of regionChoices(REG)) {
+    it(`${choice.name}: a hot rider meets the roadblock, and the race still ends`, () => {
+      const runs = [1, 2, 3].map((seed) => heatRace(choice.eventId, seed, { 'cops.heatScale': 3 }));
+      process.stdout.write(
+        `cops roadblock: ${choice.id}: ` +
+          runs
+            .map(
+              (r) =>
+                `seed ${r.seed} tier ${r.maxTier} roadblock ${r.blocks}${r.busted ? ' busted' : ''}${r.finished ? ' finished' : ''}`,
+            )
+            .join('; ') +
+          '\n',
+      );
+      for (const r of runs) expect(r.busted || r.finished, `seed ${r.seed}: every race ends`).toBe(true);
+      expect(runs.some((r) => r.blocks > 0)).toBe(true);
     });
   }
 });

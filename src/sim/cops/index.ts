@@ -83,16 +83,25 @@
 //   lane; smashing a set piece's sawhorse or bale; a speed trap he trips (the W-P speed trap calls
 //   `addHeat`).
 // - Riding clean cools it: after HEAT.calmS with no new heat it drains `cops.heatDecayPerS`,
-//   slower (HEAT.nearScale) while a heat cop chasing him is within HEAT.nearM. The off-road seam
-//   (`offRoad`, always false until off-road lands) is where riding off the road will cool it faster.
+//   slower (HEAT.nearScale) while a heat cop chasing him is within HEAT.nearM. Off the road (loose
+//   ground under the wheels: dirt, sand, grass or gravel, from sim/ground) with no heat cop that
+//   near, it cools HEAT.offRoadScale times as fast ("going off-road with no cop watching cools it").
 // - The tiers (HEAT.tiers, falling back HEAT.hysteresis below each): 1 brings one more cop, 2 a
-//   pursuit pair, 3 a roadblock (its own PR). A heat cop comes from the lot, or is a cop whose chase
-//   ended, put on the road HEAT.behindM behind the player (out of the forward view) at his speed,
-//   siren on (cause `heat`), and closes with a pursuit burst (riders' boost) while he is well back.
-//   Heat cops bypass `cops.maxActive`: the tiers bound them.
+//   pursuit pair, 3 a roadblock. A heat cop comes from the lot, or is a cop whose chase ended, put
+//   on the road HEAT.behindM behind the player (out of the forward view) at his speed, siren on
+//   (cause `heat`), and closes with a pursuit burst (riders' boost) while he is well back. Heat cops
+//   bypass `cops.maxActive`: the tiers bound them.
+// - The roadblock: up to HEAT.roadblockCops cops (from the lot, a chase that ended, or a patrol cop
+//   not yet woken, each out of sight, at least HEAT.roadblockHideM from the player) park across the
+//   player's lanes HEAT.roadblockAheadM up the road (a clear stretch, as the patrol's spots), sirens
+//   on (cause `roadblock`), one in each lane his way (a one-lane road: the lane and its shoulder).
+//   The other way's lanes and the verge stay open: go round, or ride into the back of one (rider
+//   contact merges the speeds, so it costs you). Once he is past, they chase him as heat cops; the
+//   block lifts after HEAT.roadblockS anyway (they pull onto the shoulder), so traffic queued
+//   behind it does not stand there all race.
 // - Cooled to nothing with a heat cop on him, the player has lost them: every heat cop gives up
-//   (siren off), a `heat` event says `lost`, and SimSnapshot.law.lost holds until heat rises again.
-//   The lot's cop and the patrol keep their own rules.
+//   (siren off; a roadblock lifts), a `heat` event says `lost`, and SimSnapshot.law.lost holds until
+//   heat rises again. The lot's cop and the patrol keep their own rules.
 // Every change of tier is a `heat` event (data.tier, data.from, data.heat 0..1, data.lost).
 //
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
@@ -102,6 +111,7 @@ import type { RoadPos } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
 import { InputFlag, type LawSnapshot, type SimConfig, type SimRiderDef } from '../types';
+import { groundUnder } from '../ground';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
@@ -450,6 +460,10 @@ export interface CopsState {
   heatSent: number[];
   /** By cop id: 1 while he chases for the heat meter (a heat cop). */
   heatCop: number[];
+  /** By cop id: the route progress of the roadblock he stands in, m, or -1 for none. */
+  blockAt: number[];
+  /** By cop id: the clock value at which his roadblock lifts. */
+  blockUntil: number[];
 }
 
 export function copsState(world: World): CopsState {
@@ -480,6 +494,8 @@ export function copsState(world: World): CopsState {
     heatAt: [],
     heatSent: [],
     heatCop: [],
+    blockAt: [],
+    blockUntil: [],
   }));
 }
 
@@ -516,14 +532,28 @@ export const HEAT = {
   /** A heat cop's pursuit burst while he is more than burstM beyond his follow gap. */
   catchUpMps: 12,
   burstM: 15,
+  /** Off the road with no heat cop within nearM, heat cools this many times as fast. */
+  offRoadScale: 3,
+  /** The roadblock: how many cops, how far up the road, and how long it stands (s). */
+  roadblockCops: 2,
+  roadblockAheadM: 300,
+  roadblockS: 45,
+  /** A cop is moved to the roadblock only from at least this far from the player (out of sight), m. */
+  roadblockHideM: 120,
+  /** The roadblock stands at least this far short of the finish, m. */
+  roadblockFinishM: 80,
 };
 
+/** The loose ground off the road (sim/ground's surfaces): riding on it is riding off-road. */
+const LOOSE_GROUND = new Set(['dirt', 'sand', 'grass', 'gravel']);
+
 /**
- * Off-road seam (playtest 2's OFF-ROAD answer, "Anywhere with ground"): riding off the road will
- * cool heat faster. Nobody is off the road until off-road lands, so this is false. [default]
+ * Whether a rider is off the road (playtest 2's OFF-ROAD answer, "Anywhere with ground"): on the
+ * ground, on loose ground (sim/ground's surface under his wheels). [default]
  */
-function offRoad(_m: Mover): boolean {
-  return false;
+function offRoad(config: SimConfig, m: Mover): boolean {
+  const g = groundUnder(config.road, m.pos.edge, m.pos.s, m.pos.d, m.h);
+  return g !== null && LOOSE_GROUND.has(g);
 }
 
 /** Whether the player's heat meter runs in this race (the event's `cops.heat`). */
@@ -1106,8 +1136,10 @@ function stepHeat(world: World, config: SimConfig, st: CopsState): void {
         const cop = world.movers[c];
         return st.heatCop[c] === 1 && st.target[c] === id && !!cop && distance(config, cop, m) <= HEAT.nearM;
       });
-      const rate = Math.max(0, world.params['cops.heatDecayPerS'] ?? 2.5) * (near ? HEAT.nearScale : 1);
-      heat = Math.max(0, heat - rate * dt * (offRoad(m) ? 2 : 1));
+      const rate =
+        Math.max(0, world.params['cops.heatDecayPerS'] ?? 2.5) *
+        (near ? HEAT.nearScale : offRoad(config, m) ? HEAT.offRoadScale : 1);
+      heat = Math.max(0, heat - rate * dt);
       st.heat[id] = heat;
     }
     const from = st.heatTier[id] ?? 0;
@@ -1122,6 +1154,7 @@ function stepHeat(world: World, config: SimConfig, st: CopsState): void {
       st.heatLost[id] = 1;
       for (const c of st.cops) {
         if (st.heatCop[c] !== 1) continue;
+        if (liftBlock(world, st, c)) continue;
         st.heatCop[c] = 0;
         endChase(world, st, c);
       }
@@ -1130,11 +1163,15 @@ function stepHeat(world: World, config: SimConfig, st: CopsState): void {
       st.heatTier[id] = tier;
       emit(world, 'heat', id, { tier, from, heat: heat / HEAT_MAX, lost });
     }
-    // A new tier sends its cops, once until he loses them: one, then a pair (the roadblock is tier 3's).
+    // A new tier sends its cops, once until he loses them: one, then a pair, then the roadblock.
     const sent = st.heatSent[id] ?? 0;
     if (tier > sent) {
       for (let t = sent + 1; t <= tier; t++) {
-        const want = t === 1 ? 1 : t === 2 ? 2 : 0;
+        if (t >= 3) {
+          sendRoadblock(world, config, st, m);
+          continue;
+        }
+        const want = t === 1 ? 1 : 2;
         for (let k = 0; k < want; k++) sendHeatCop(world, config, st, m, k, t);
       }
       st.heatSent[id] = tier;
@@ -1191,6 +1228,90 @@ function sendHeatCop(
   st.closing[id] = 0;
   st.closingFor[id] = 0;
   emit(world, 'siren', id, { on: true, cause: 'heat', tier });
+}
+
+/**
+ * Lifts a roadblock cop's block (he stands down: siren off, chase over, he pulls onto the shoulder).
+ * False when he is not in a roadblock.
+ */
+function liftBlock(world: World, st: CopsState, id: EntityId): boolean {
+  if ((st.blockAt[id] ?? -1) < 0) return false;
+  st.blockAt[id] = -1;
+  st.heatCop[id] = 0;
+  st.target[id] = -1;
+  if (st.phase[id] === COP_PARKED) {
+    st.phase[id] = COP_DONE;
+    emit(world, 'siren', id, { on: false });
+  } else endChase(world, st, id);
+  return true;
+}
+
+/**
+ * Whether a cop can be moved to a roadblock: any heat reserve, or a patrol cop still waiting dark,
+ * and either way out of the player's sight.
+ */
+function blockReserve(world: World, config: SimConfig, st: CopsState, id: EntityId, player: Mover): boolean {
+  const cop = world.movers[id];
+  if (!cop || cop.mode !== 'Road' || st.heatCop[id] === 1) return false;
+  if (distance(config, cop, player) < HEAT.roadblockHideM) return false;
+  if (heatReserve(world, st, id)) return true;
+  return (
+    st.phase[id] === COP_PARKED &&
+    (st.patrolAt[id] ?? -1) >= 0 &&
+    st.sirenOn[id] !== 1 &&
+    (st.summonAt[id] ?? -1) < 0
+  );
+}
+
+/**
+ * Where the roadblock stands: the first clear stretch from HEAT.roadblockAheadM up the road (the
+ * patrol's test: no branch, split zone, sharp bend, ramp, pad or lot nearby), short of the finish,
+ * and the spots across it: each lane the route's way, or the lane and its shoulder on a one-lane road.
+ */
+export function roadblockSpots(config: SimConfig, playerAt: number): { at: number; spots: RoadPos[] } | null {
+  const end = config.route.length - HEAT.roadblockFinishM;
+  for (let i = 0; i < PATROL.tries; i++) {
+    const at = playerAt + HEAT.roadblockAheadM + i * PATROL.stepM;
+    if (at > end) return null;
+    const pos = routePosAt(config, at);
+    if (!pos || !patrolSpot(config, pos, true)) continue;
+    const lanes = config.road.lanesAt(pos.edge, pos.s);
+    const own = lanes.filter((l) => l.kind === 'drive' && l.direction === pos.dir);
+    if (own.length === 0) continue;
+    const spots = own.map((l) => ({ ...pos, d: l.dCenterM }));
+    const shoulder = lanes.find((l) => l.kind === 'shoulder' && l.direction === pos.dir);
+    if (spots.length === 1 && shoulder) spots.push({ ...pos, d: shoulder.dCenterM });
+    return { at, spots: spots.slice(0, HEAT.roadblockCops) };
+  }
+  return null;
+}
+
+/** Tier 3: the roadblock up the road, from the cops out of the player's sight (none free: nothing). */
+function sendRoadblock(world: World, config: SimConfig, st: CopsState, player: Mover): void {
+  const where = roadblockSpots(config, config.route.progressAt(player.pos.edge, player.pos.s));
+  if (!where) return;
+  for (const spot of where.spots) {
+    const id = st.cops.find((c) => blockReserve(world, config, st, c, player));
+    const cop = id === undefined ? undefined : world.movers[id];
+    if (id === undefined || !cop) return;
+    cop.pos = spot;
+    cop.speed = 0;
+    cop.yaw = 0;
+    cop.h = 0;
+    st.phase[id] = COP_PARKED;
+    st.spawns[id] = 1;
+    st.sirenOn[id] = 1;
+    st.heatCop[id] = 1;
+    st.cause[id] = 'roadblock';
+    st.patrolAt[id] = -1;
+    st.patrolUntil[id] = 0;
+    st.target[id] = player.id;
+    st.closing[id] = 0;
+    st.closingFor[id] = 0;
+    st.blockAt[id] = where.at;
+    st.blockUntil[id] = st.clock + HEAT.roadblockS * 60;
+    emit(world, 'siren', id, { on: true, cause: 'roadblock', tier: 3 });
+  }
 }
 
 /**
@@ -1289,6 +1410,8 @@ export const copsSystem: SimSystem = {
       st.swingAt[m.id] = 0;
       st.patrolAt[m.id] = -1;
       st.patrolUntil[m.id] = 0;
+      st.blockAt[m.id] = -1;
+      st.blockUntil[m.id] = 0;
       world.inputs[m.id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
     }
     if (!mix) return;
@@ -1326,7 +1449,16 @@ export const copsSystem: SimSystem = {
       const def = defOf(config, cop);
       if (!cop || !def) continue;
       const patrolling = (st.patrolAt[id] ?? -1) >= 0 && (st.summonAt[id] ?? -1) < 0;
-      if (st.phase[id] === COP_PARKED && st.spawns[id] === 1 && patrolling) {
+      if (st.phase[id] === COP_PARKED && (st.blockAt[id] ?? -1) >= 0) {
+        // The roadblock: he stands in the lane until his man is past him, then chases him; it
+        // lifts when its time is up (he pulls onto the shoulder).
+        const target = world.movers[st.target[id] ?? -1];
+        if (st.clock >= (st.blockUntil[id] ?? 0) || !chaseable(config, st, target)) liftBlock(world, st, id);
+        else if (gapAlongRoute(config, target, cop) <= 0) {
+          st.phase[id] = COP_CHASING;
+          st.blockAt[id] = -1;
+        }
+      } else if (st.phase[id] === COP_PARKED && st.spawns[id] === 1 && patrolling) {
         // Playtest 2's patrol: he lights up as a player comes near, and pulls out as he arrives.
         // He wakes PATROL.wakeM short, or earlier for a fast rider, so the siren still sounds the
         // full siren lead (and a second more) before he pulls out.
