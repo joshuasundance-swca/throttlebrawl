@@ -59,12 +59,15 @@ test('the radio keeps the exact station across a reload, not only "a station"', 
   expect(await tunedTo(page)).toBe('keys-surf');
 
   // The score and back to Station (the settings row) returns to the same station.
-  await page.keyboard.press('KeyR'); // keys-surf → off
+  await page.keyboard.press('KeyR'); // keys-surf → keys-tradewinds (the third station)
+  await page.keyboard.press('KeyR'); // keys-tradewinds → off
   await page.keyboard.press('KeyR'); // off → the score
-  await expect.poll(() => saved(page), { timeout: 3000 }).toEqual({ radio: 'score', station: 'keys-surf' });
+  await expect
+    .poll(() => saved(page), { timeout: 3000 })
+    .toEqual({ radio: 'score', station: 'keys-tradewinds' });
   await page.locator('#hud-pause').click();
   await page.locator('#pause-controls').click();
   await page.locator('#settings-tab-sound').click();
   await page.locator('#settings-radio [data-value="station"]').click();
-  await expect.poll(() => tunedTo(page), { timeout: 3000 }).toBe('keys-surf');
+  await expect.poll(() => tunedTo(page), { timeout: 3000 }).toBe('keys-tradewinds');
 });

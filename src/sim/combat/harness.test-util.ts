@@ -79,6 +79,9 @@ export interface Placement {
   /** 'player' riders take part in hit-stop; 'cop' is faction law. */
   role?: 'player' | 'rival' | 'cop';
   healthMax?: number;
+  /** The rider's fight stats (playtest 2): damage and stagger taken divided, damage dealt multiplied. */
+  toughness?: number;
+  power?: number;
   /** Rider mass, kg (80 when absent); the bike adds 180. */
   massKg?: number;
   /** The bike's `combat` block (combat-3): resistance 0..1 and hit power. */
@@ -130,6 +133,8 @@ export function harnessConfig(
     },
     massKg: p.massKg ?? 80,
     healthMax: p.healthMax ?? 100,
+    ...(p.toughness !== undefined ? { toughness: p.toughness } : {}),
+    ...(p.power !== undefined ? { power: p.power } : {}),
     ...(p.startingWeapon !== undefined ? { startingWeapon: p.startingWeapon } : {}),
   }));
   return {

@@ -532,6 +532,12 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [8, 13, 8], at: [13, 6.5, -10], color: '#3d3b39' },
     ],
     fogBank: [{ size: [60, 8, 24], at: [0, 4, 0], color: '#ffffff' }],
+    // run W-Q: a sandbar with a palm (its origin 0.8 m under the waterline, as the models')
+    islet: [
+      { size: [16, 1.6, 12], at: [0, 0.8, 0], color: '#e8d6a6' },
+      { size: [0.3, 5, 0.3], at: [-2, 4, 0], color: '#7a5d42' },
+      { size: [3.6, 0.5, 3.6], at: [-2, 6.6, 0], color: '#3f8a43', rotY: 0.4 },
+    ],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -548,6 +554,7 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   house: 'rowHouses',
   sawmill: 'sawmill',
   fogBank: 'fogBanks',
+  islet: 'keysIslets',
 };
 
 /**
