@@ -670,6 +670,8 @@ export function createApp(opts: AppOptions): AppHandle {
   });
   retuneSavedRadio = () => ui.applySavedRadio();
   if (settingsStore.notice) ui.notice(settingsStore.notice);
+  // A career record from a newer build is kept untouched; one that cannot be stored says so.
+  else if (profileStore.notice) ui.notice(profileStore.notice);
   // Touch, keyboard, the gamepad and (when chosen) tilt; haptics answer the player's events (input-2).
   const input = createInput({
     keys: window,
