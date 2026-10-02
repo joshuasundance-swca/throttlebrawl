@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import { createFlatLook } from './look';
-import { networkTags, type RoadDressing } from './road-mesh';
+import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
+import { SCENERY_RADIUS_M } from './scenery';
 import { VERGE_LIFT_M, VergeLayer } from './verge';
 
 const look = createFlatLook();
@@ -108,6 +109,36 @@ describe('the ground band is drawn where the sim lets a rider ride', () => {
       // A station past one road's band can lie on another road's band (close roads, junctions).
       expect(off / on).toBeGreaterThan(0.8);
       console.log(`[examined] ${id}: ${on} band stations hit mid-band, ${off} clear past the edge`);
+    },
+  );
+});
+
+describe('nothing solid stands on the ridable ground', () => {
+  it.each(['keys-m1', 'pnw-c1', 'osm-pnw-chuckanut'])(
+    '%s: every tree, palm, pole, mangrove and shack stands its footprint past a loose band',
+    (id) => {
+      const { road, dressing } = track(id);
+      const scene = buildRoadScene(road, look, dressing, { seed: 7 });
+      const loose = new Set(['dirt', 'gravel', 'sand', 'grass']);
+      let checked = 0;
+      let banded = 0;
+      for (const spot of scene.spots) {
+        if (!['palm', 'pole', 'conifer', 'mangrove', 'shack'].includes(spot.kind)) continue;
+        checked++;
+        const v = road.vergeAt(spot.edge, spot.s, spot.d < 0 ? 'left' : 'right');
+        if (!loose.has(v.surface) || v.widthM <= 0) continue;
+        banded++;
+        const past = Math.abs(spot.d) - Math.abs(v.dOuter);
+        expect(
+          past,
+          `${spot.kind} on ${road.edges[spot.edge]?.id} s ${spot.s.toFixed(0)}`,
+        ).toBeGreaterThanOrEqual(SCENERY_RADIUS_M[spot.kind] - 1e-6);
+      }
+      expect(banded).toBeGreaterThan(20);
+      console.log(
+        `[examined] ${id}: ${checked} solid scenery spots, ${banded} beside a loose band, all clear of it`,
+      );
+      scene.dispose();
     },
   );
 });

@@ -18,7 +18,15 @@ import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
-import { LAND_TOP_M, scatterHash, themeAt, type LandTheme, type ScenerySpot, type SideTag } from './scenery';
+import {
+  LAND_TOP_M,
+  ridableBandPast,
+  scatterHash,
+  themeAt,
+  type LandTheme,
+  type ScenerySpot,
+  type SideTag,
+} from './scenery';
 
 /** A roadside prop's rule: where it stands, how often, how it is laid out. [default] numbers. */
 export interface RoadsideRule {
@@ -486,7 +494,9 @@ export class RoadsideScatter {
       if (s0 > e.length) break;
       if (h(k, side, 1) >= rule.rate) continue;
       const [near, spread] = rule.across;
-      const across = near + spread * h(k, side, 2);
+      // Off-road (run W-R): a solid prop stands clear of the ridable band; the understory may grow on it.
+      const clearOf = rule.understory ? 0 : ridableBandPast(road, e.index, side, s0, outer) + rule.r;
+      const across = Math.max(near + spread * h(k, side, 2), clearOf);
       const along = rule.along ?? rule.r;
       const back = rule.back ?? rule.r;
       const sections = rule.run

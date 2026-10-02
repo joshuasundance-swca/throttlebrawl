@@ -87,9 +87,9 @@ describe('ride limits', () => {
       loBandM: left.widthM,
       hiBandM: right.widthM,
     });
-    // The untagged fixture is palm land: an 8 m sand band each side that just runs on.
-    expect(on.lo).toBeCloseTo(off.lo - 8, 9);
-    expect(on.hi).toBeCloseTo(off.hi + 8, 9);
+    // The untagged fixture is palm land: a 4 m sand band each side that just runs on (run W-R).
+    expect(on.lo).toBeCloseTo(off.lo - 4, 9);
+    expect(on.hi).toBeCloseTo(off.hi + 4, 9);
     expect(on.hiEdge).toBe('soft');
   });
 });

@@ -13,6 +13,7 @@
 // The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") adds the
 // Pacific Northwest's clustered conifers and sawmill and San Francisco's terraces of painted row
 // houses on their own themes, conifers on the far ground of a forest, and fog banks offshore.
+import type { RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 
 /** What one side of a road is at some s. */
@@ -220,6 +221,28 @@ export function scatterHash(seed: number, a: number, b: number, c: number): numb
   return (h >>> 0) / 4294967296;
 }
 
+/** The loose ground a rider rides on beside the road (off-road, run W-R): solid scenery keeps off it. */
+const LOOSE_BAND: ReadonlySet<string> = new Set(['dirt', 'gravel', 'sand', 'grass']);
+
+/**
+ * How far past `outer` (a distance from the centre line, positive) the ridable band of loose ground
+ * reaches at (edge, s) on a side, m, or 0 (no band, or a city kerb and pavement, whose street
+ * furniture stands at the kerb). Off-road (run W-R; interview, 2026-10-02: "Anywhere with ground"):
+ * a tree, a pole, a shack or a mailbox stands at or past it, so nothing solid stands where a rider
+ * rides; ferns and other understory may grow on it.
+ */
+export function ridableBandPast(
+  road: RoadNetwork,
+  edge: number,
+  side: -1 | 1,
+  s: number,
+  outer: number,
+): number {
+  const v = road.vergeAt(edge, s, side < 0 ? 'left' : 'right');
+  if (v.widthM <= 0 || !LOOSE_BAND.has(v.surface)) return 0;
+  return Math.max(0, side * v.dOuter - outer);
+}
+
 /** What the scatter needs from the road builder, for one edge. */
 export interface ScatterEdge {
   seed: number;
@@ -232,6 +255,11 @@ export interface ScatterEdge {
   /** The verge's outer edge, as a distance from the centre line on that side (positive), m. */
   outer(side: -1 | 1): number;
   theme(side: -1 | 1, s: number): SideTheme;
+  /**
+   * How far past the verge the ridable band of loose ground reaches at s on that side, m (run W-R,
+   * `ridableBandPast`): land scenery stands its footprint clear of it. Absent: 0.
+   */
+  band?: ((side: -1 | 1, s: number) => number) | undefined;
   /** Metres of drawn land past the verge at s on that side (0 = none: a bridge, a rail, the sea). */
   landReach(side: -1 | 1, s: number): number;
   /** Whether a spot of this radius is free of roads, features and roadside zones. */
@@ -329,8 +357,10 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         if (!e.tropical && (kind === 'palm' || kind === 'mangrove')) continue;
         if (kind !== 'pole' && h(ki, k, side, 1) >= (RATE[theme][kind] ?? 0)) continue;
         const [near, spread] = ACROSS_M[kind];
-        const across = near + spread * h(ki, k, side, 2);
         const radius = SCENERY_RADIUS_M[kind];
+        // Off-road (run W-R): its footprint past the ridable band (a house or the sawmill by its front).
+        const clearOf = e.band ? e.band(side, s) + (DEPTH_M[kind] !== undefined ? 0 : radius) : 0;
+        const across = Math.max(near + spread * h(ki, k, side, 2), clearOf);
         const depth = DEPTH_M[kind] ?? radius;
         const along = Math.max(radius, HALF_ALONG_M[kind] ?? 0);
         // On the drawn land, with room for the model across and along (the land ends where a tag
@@ -360,7 +390,7 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
           for (let t = 0; t < n; t++) {
             const ts = s + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 9) - 0.5) * 9);
             const ta = across + (t === 0 ? 0 : (h(ki, k * 8 + t, side, 10) - 0.5) * 8);
-            if (ts - radius < 0 || ts + radius > e.length || ta < near) continue;
+            if (ts - radius < 0 || ts + radius > e.length || ta < Math.max(near, clearOf)) continue;
             if (ta + radius > Math.min(e.landReach(side, ts - radius), e.landReach(side, ts + radius)))
               continue;
             const td = side * (outer + ta);
