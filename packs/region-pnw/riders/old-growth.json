@@ -11,7 +11,9 @@
   "stats": {
     "massKg": 112,
     "healthMax": 125,
-    "skill": 0.55
+    "skill": 0.55,
+    "toughness": 1.1,
+    "power": 1.15
   },
   "personality": {
     "style": "heavy-hitter",

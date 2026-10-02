@@ -68,6 +68,10 @@
 //   tests/sim/cops-steal-chance; scaling the player's alone keeps it at 6.) The dev bot fights
 //   little, so the 12-race seeded batch moves only a little: the bot's knock-offs 3 -> 4, its hits
 //   per knock-off 3 -> 2, busts 2 -> 2.
+// - Fight stats (playtest 2, interview round 3: "Visible personalities", moderate differences shown
+//   through how rivals ride and fight): the rider file's stats.power multiplies the damage of every
+//   hit the rider lands, and stats.toughness divides the damage and the stagger it takes (both 1
+//   when absent, 0.5-2). Each rival's numbers are in its pack file. [default]
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -831,7 +835,12 @@ function land(
     isLaw(config, a) && isPlayer(config, victim)
       ? clamp(world.params['combat.copOnPlayerScale'] ?? 0.5, 0, 1)
       : 1;
-  const damage = Math.round(w.damage * damageScale(world, config, a, victim, w) * copSoft);
+  // Fight stats (playtest 2, "Visible personalities"): the attacker's power, the target's toughness.
+  const power = statOf(config, a, 'power');
+  const toughness = statOf(config, victim, 'toughness');
+  const damage = Math.round(
+    (w.damage * damageScale(world, config, a, victim, w) * copSoft * power) / toughness,
+  );
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
@@ -880,7 +889,7 @@ function land(
   st.knockT[vid] = 0;
   st.knockTicks[vid] = Math.max(1, Math.round((world.params['combat.knockbackDecayS'] ?? 0.4) * 60));
   // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
-  const stagger = Math.round(w.staggerTicks * (world.params['combat.staggerScale'] ?? 1));
+  const stagger = Math.round((w.staggerTicks * (world.params['combat.staggerScale'] ?? 1)) / toughness);
   st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
   const wobble = Math.round(stagger * onPlayer);
   if (wobble > 0) riders.wobble[vid] = Math.max(riders.wobble[vid] ?? 0, wobble);
@@ -902,6 +911,11 @@ function land(
       world.timeScale = 0;
     }
   }
+}
+
+/** A rider's fight stat (stats.toughness or stats.power), 1 when absent, kept to the schema's 0.5–2. */
+function statOf(config: SimConfig, m: Mover, stat: 'toughness' | 'power'): number {
+  return clamp(config.riders[m.riderIndex]?.[stat] ?? 1, 0.5, 2);
 }
 
 /**
