@@ -74,8 +74,10 @@
 //   rival's stats.power multiplies its hits on the player by combat.powerOnPlayer (default 0, so
 //   rivals hit you as hard as before: playtest 1 item 7). Both are 1 when absent, 0.5-2; each
 //   rival's numbers are in its pack file. Fights among rivals and cops keep their data numbers until
-//   the AI-personality run. Measured on the 50-race batch (busts of the bot, cap 30%): knockdown
-//   retune alone 6; stats in every fight 15; stats in the player's fights 11. [default]
+//   the AI-personality run. [default] The 50-race batch's bot busts (cap 15) swing with any sim
+//   change: on one main, the knockdown retune alone gave 6, stats in every fight 15, stats in the
+//   player's fights 11; after main moved, the last gave 1. So this rule rests on playtest 1 item 7
+//   and on matching the knockdown scales, not on the batch.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
