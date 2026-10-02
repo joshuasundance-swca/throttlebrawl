@@ -88,6 +88,24 @@ describe('playtest 2: knockdowns come sooner', () => {
     expect(onPlayer({ 'combat.onPlayerDamageScale': 0 })).toBe(0);
   });
 
+  it('rivals’ and cops’ hits on each other keep their data damage; the player’s hit on a cop is scaled', () => {
+    const firstHit = (attacker: 'player' | 'rival' | 'cop', victim: 'player' | 'rival' | 'cop') => {
+      const h = makeHarness(
+        [
+          { s: 100, d: 0, role: attacker },
+          { s: 100, d: 1.2, role: victim },
+        ],
+        scriptOf({ 0: (t) => (t === 1 ? flags(F.attack | F.kick) : undefined) }),
+      );
+      h.run(40);
+      return ofType(h.events, 'hit')[0]?.data['damage'];
+    };
+    expect(firstHit('rival', 'rival')).toBe(18);
+    expect(firstHit('cop', 'rival')).toBe(18);
+    expect(firstHit('rival', 'cop')).toBe(18);
+    expect(firstHit('player', 'cop')).toBe(36);
+  });
+
   it('the hit jolt (hitImpulse) still reads the data damage, so each blow feels as it did', () => {
     const impulse = (tuning: Record<string, number>) => {
       const h = makeHarness(

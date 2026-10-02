@@ -51,10 +51,13 @@
 // - Knockdowns (playtest 2, 2026-10-02: "surprising how long it takes to knock people down"): a
 //   hit's damage is the weapon's data damage × combat.unarmedDamageScale (2) for the punch and the
 //   kick, or × combat.weaponDamageScale (2.5) for a held weapon, so a fresh 100-point rival goes
-//   down in 3 kicks (36), 5 punches (20) or 2 pipe swings (55), never one. A non-player's hit on a
-//   player takes combat.onPlayerDamageScale (1) instead: the data damage, as before. [default]
-//   On 12 seeded bot races (seeds 1-12) knock-offs went from 3 to 20 and the mean hits per
-//   knock-off from 6.0 to 3.9, with the bot never knocked off either way.
+//   down in 3 kicks (36), 5 punches (20) or 2 pipe swings (55), never one. The scales apply to a
+//   PLAYER's hits; a non-player's hit on a player takes combat.onPlayerDamageScale (1), and rivals'
+//   and cops' hits on each other keep the data damage, as before. [default]
+//   (Scaling every hit cut a San Francisco player's cop-weapon steals from 8 races in 10 to 4 in
+//   tests/sim/cops-steal-chance; scaling the player's alone keeps it at 6.) The dev bot fights
+//   little, so the 12-race seeded batch moves only a little: the bot's knock-offs 3 -> 4, its hits
+//   per knock-off 3 -> 2, busts 2 -> 2.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -844,15 +847,18 @@ function land(
 }
 
 /**
- * The knockdown scale on a hit's data damage (playtest 2): combat.unarmedDamageScale for the punch
- * and the kick, combat.weaponDamageScale for a held weapon. A non-player's hit on a player takes
- * combat.onPlayerDamageScale instead (default 1, the data damage as before: playtest 1 item 7 asked
- * that rivals stay as hard as they were, and the complaint was about knocking THEM down).
+ * The knockdown scale on a hit's data damage (playtest 2): on a hit a PLAYER lands,
+ * combat.unarmedDamageScale for the punch and the kick, combat.weaponDamageScale for a held weapon.
+ * A non-player's hit on a player takes combat.onPlayerDamageScale (default 1, the data damage as
+ * before: playtest 1 item 7 asked that rivals stay as hard as they were, and the complaint was
+ * about knocking THEM down). Rivals' and cops' hits on each other keep their data damage: scaled,
+ * the quicker rival-on-rival knock-offs cut a San Francisco player's cop-weapon steals from 8 races
+ * in 10 to 4 (tests/sim/cops-steal-chance, minimum 5), and the maintainer's ask was the player's.
  */
 function damageScale(world: World, config: SimConfig, a: Mover, victim: Mover, w: SimWeaponDef): number {
   const p = world.params;
-  if (isPlayer(config, victim) && !isPlayer(config, a))
-    return Math.max(0, p['combat.onPlayerDamageScale'] ?? 1);
+  if (!isPlayer(config, a))
+    return isPlayer(config, victim) ? Math.max(0, p['combat.onPlayerDamageScale'] ?? 1) : 1;
   return Math.max(
     0,
     w.unarmed ? (p['combat.unarmedDamageScale'] ?? 2) : (p['combat.weaponDamageScale'] ?? 2.5),

@@ -274,10 +274,10 @@ describe('weapons-2: the cops’ weapons, stolen', () => {
       h.run(40);
       return ofType(h.events, 'hit')[0]?.data['damage'];
     };
-    // On a player the knockdown scale is combat.onPlayerDamageScale (1): the baton's 16 as before.
+    // A cop's hits keep the baton's data damage: playtest 2's knockdown scales are the player's.
     expect(damageOn('player')).toBe(8);
     expect(damageOn('player', { 'combat.copOnPlayerScale': 1 })).toBe(16);
-    expect(damageOn('rival')).toBe(40); // 16 × combat.weaponDamageScale (2.5, playtest 2)
+    expect(damageOn('rival')).toBe(16);
   });
 
   // The cops polish round (the integration skeptic's F2): in San Francisco the cop crashed about
