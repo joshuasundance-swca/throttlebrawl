@@ -4,6 +4,7 @@ import {
   createPopStack,
   createRaceTally,
   createStyleMeter,
+  foundPop,
   meterCash,
   meterLabel,
   popCash,
@@ -31,6 +32,19 @@ describe('style pop-ups', () => {
     expect(styleText(ev('style', 0, { kind: 'airtime', points: 75 }))).toBe('AIRTIME +$75');
     expect(styleText(ev('style', 0, { kind: 'takedownCombo', points: 300 }))).toBe('COMBO +$300');
     expect(styleText(ev('style', 0, { kind: 'weaponSteal', points: 40 }))).toBe('STOLEN +$40');
+  });
+
+  it("stamps a shortcut's first ride with the seconds it saved, as its own chip (W-Q)", () => {
+    expect(foundPop(ev('shortcutFound', 0, { savedS: 2.4, gainM: 60 }))).toEqual({
+      kind: 'found',
+      word: 'FOUND IT -2.4 S',
+      points: null,
+    });
+    expect(foundPop(ev('shortcutFound', 0, {}))?.word).toBe('FOUND IT');
+    expect(foundPop(ev('style', 0, { kind: 'nearMiss', points: 5 }))).toBeNull();
+    const tally = createRaceTally();
+    tally.onEvents([ev('shortcutFound', 3, { savedS: 1.5 }), ev('shortcutFound', 4, { savedS: 9 })], 3);
+    expect(tally.takePopups().map((p) => p.word)).toEqual(['FOUND IT -1.5 S']);
   });
 
   it('says nothing for a kind it does not know, and leaves out a missing amount', () => {
