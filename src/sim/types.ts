@@ -124,6 +124,20 @@ export interface EntitySnapshot {
    * Optional for hand-built snapshots; the sim fills it for every entity.
    */
   styleRun?: StyleRunSnapshot | null;
+  /**
+   * The bike's pitch, radians, nose up positive, from the horizontal (playtest 2, 2026-10-02: air
+   * control and flips): the road's slope along the travel direction while grounded, the bike's own
+   * attitude in the air. A flip runs on past ±2π (unwrapped) until the landing; render rotates the
+   * bike about its own lateral axis by it. 0 for other kinds. Optional for hand-built snapshots; the
+   * sim fills it for every entity.
+   */
+  pitch?: number;
+  /**
+   * The trick this rider is doing in the air right now (a `TrickId`), for poses and the HUD; null on
+   * the ground, in plain flight, and for other kinds. Optional for hand-built snapshots; the sim
+   * fills it for every entity.
+   */
+  trick?: TrickId | null;
 }
 
 /**
@@ -345,9 +359,30 @@ export type TakedownKind = (typeof TAKEDOWN_KINDS)[number];
 export const PED_REACT_KINDS = ['jumpBack', 'fist', 'film', 'chase'] as const;
 export type PedReactKind = (typeof PED_REACT_KINDS)[number];
 
-/** `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md). */
-export const STYLE_KINDS = ['nearMiss', 'airtime', 'oncoming', 'takedownCombo', 'weaponSteal'] as const;
+/**
+ * `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md), and `trick`
+ * (playtest 2, 2026-10-02: "I love the idea of doing flips"), a trick landed, with `data.trick` its
+ * `TrickId` and `data.flips` the full turns for a flip.
+ */
+export const STYLE_KINDS = [
+  'nearMiss',
+  'airtime',
+  'oncoming',
+  'takedownCombo',
+  'weaponSteal',
+  'trick',
+] as const;
 export type StyleKind = (typeof STYLE_KINDS)[number];
+
+/**
+ * The tricks a rider can do in the air (playtest 2, 2026-10-02): a backflip or front flip (a full
+ * turn of the bike, nose up or nose down), a wheelie landing (nose held high, down on the back
+ * wheel) and a whip (the bike laid flat sideways in the air, straightened before the landing).
+ * `land` events carry the one landed as `data.trick` ('' for none) and a flip's turns as
+ * `data.flips`; `EntitySnapshot.trick` shows the one in progress.
+ */
+export const TRICK_IDS = ['backflip', 'frontflip', 'wheelie', 'whip'] as const;
+export type TrickId = (typeof TRICK_IDS)[number];
 
 export interface SimEvent {
   tick: number;
@@ -437,6 +472,16 @@ export interface SimRiderDef {
   bike: SimBikeDef;
   massKg: number;
   healthMax: number;
+  /**
+   * The rider file's `stats.toughness` (playtest 2, "Visible personalities"): divides the damage
+   * and the stagger this rider takes. Absent means 1; buildSimConfig always writes it.
+   */
+  toughness?: number;
+  /**
+   * The rider file's `stats.power`: multiplies the damage of every hit this rider lands. Absent
+   * means 1; buildSimConfig always writes it.
+   */
+  power?: number;
   /** Present on a cop (role `cop`, faction `law`). */
   law?: SimLawDef | undefined;
   /**

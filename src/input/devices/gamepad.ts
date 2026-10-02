@@ -5,7 +5,8 @@
 //
 // Default bindings use the W3C `standard` mapping (a PS4-style pad on the `standard` layout):
 // left stick steers, R2 throttles, L2 brakes, Cross attacks with the auto-target side, Square and
-// Circle attack forced left and right, Triangle kicks, R1 looks back. Cross also asks to skip the
+// Circle attack forced left and right, Triangle kicks (with Square or Circle held, to that side),
+// L1 is the straight kick at the rider ahead (playtest 2's directional kick), R1 looks back. Cross also asks to skip the
 // run-back, as the touch attack button does. Every binding is remappable [default]: pass another
 // GamepadMap. Whether a PS4 pad reports `standard` on Android Chrome is (unverified) until the
 // phone check; a pad with another mapping is read with the same indices.
@@ -28,6 +29,7 @@ export type PadButtonAction =
   | 'attackLeft'
   | 'attackRight'
   | 'kick'
+  | 'kickStraight'
   | 'lookBack'
   | 'skipRunBack'
   | 'cycleCamera';
@@ -71,6 +73,7 @@ export const DEFAULT_PAD_MAP: GamepadMap = {
     attackLeft: [PAD.square],
     attackRight: [PAD.circle],
     kick: [PAD.triangle],
+    kickStraight: [PAD.l1],
     lookBack: [PAD.r1],
     skipRunBack: [PAD.cross],
     // The camera's next view: d-pad up, free in the default map [default].
@@ -176,13 +179,14 @@ export class GamepadState {
 
     // Attack is a press edge (any attack button, or the kick); side and kick are level-held.
     const now = new Set<PadButtonAction>();
-    for (const action of ['attack', 'attackLeft', 'attackRight', 'kick'] as const)
+    for (const action of ['attack', 'attackLeft', 'attackRight', 'kick', 'kickStraight'] as const)
       if (held(action)) now.add(action);
     for (const action of now) if (!this.wasHeld.has(action)) a.attack = true;
     this.wasHeld = now;
     if (held('attackLeft')) a.attackSide = -1;
     if (held('attackRight')) a.attackSide = 1;
     if (held('kick')) a.kick = true;
+    if (held('kickStraight')) a.kickStraight = true;
     if (held('lookBack')) a.lookBack = true;
     if (held('skipRunBack')) a.skipRunBack = true;
     const view = held('cycleCamera');
