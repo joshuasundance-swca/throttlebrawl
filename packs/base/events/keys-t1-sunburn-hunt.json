@@ -1,0 +1,63 @@
+{
+  "type": "event",
+  "id": "keys-t1-sunburn-hunt",
+  "name": "Sunburn Hunt",
+  "kind": "takedown-hunt",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-skeleton-sprint",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["the-mayor", "tammy-two-stroke", "kevin-from-accounting", "dial-up"],
+    "paceMps": 34
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1
+  },
+  "rules": {
+    "targetCount": 2,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 2
+      },
+      "required": true,
+      "rewardCash": 800
+    }
+  ],
+  "tier": 1,
+  "rewards": {
+    "byPlaceCash": [1500, 900, 600, 300, 150],
+    "perTakedownCash": 200,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt: two takedowns on anyone before the line ends it. The locals join the regulars on Pelican Channel Bridge.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}
