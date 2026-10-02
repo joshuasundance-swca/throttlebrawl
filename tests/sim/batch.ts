@@ -180,8 +180,16 @@ function sample(m: EntitySnapshot): MoverSample {
  * the batch must cover it. createHeadlessRace's default is live content only, like the prod build.
  */
 export function createBatchRace(seed: number, difficulty: DifficultyPreset = 'normal'): HeadlessRace {
-  return createHeadlessRace({ seed, difficulty }, { includeDrafts: true });
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
+  return createHeadlessRace({ seed, difficulty, tuning: NO_ROAD_EVENTS }, { includeDrafts: true });
 }
+
+/**
+ * The tuning that turns the W-P road events off (their chance slider at 0). The shared batch and
+ * the bot-race tests that measure other systems use it, so their seeded races stay what they were.
+ */
+export const NO_ROAD_EVENTS: Readonly<Record<string, number>> = { 'modifiers.setPieceChance': 0 };
 
 /** Runs one seeded race with the bot in the player slot, then replays it from its inputs. */
 export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult {

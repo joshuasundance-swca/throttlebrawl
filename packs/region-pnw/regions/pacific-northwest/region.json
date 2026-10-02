@@ -62,57 +62,57 @@
   "signs": [
     {
       "id": "ferry-wait",
-      "text": "FERRY WAIT FROM THIS POINT: 2 HRS. FROM ANY OTHER POINT: 2 HRS.",
+      "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.",
       "status": "live"
     },
-    { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. LOG TRUCKS LEAVING. LOG TRUCKS.", "status": "live" },
+    { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
     {
       "id": "bigfoot-crossing",
-      "text": "BIGFOOT CROSSING NEXT 12 MI. HE IS NOT TAKING QUESTIONS.",
+      "text": "BIGFOOT CROSSING, NEXT 12 MI. He is not taking questions.",
       "status": "live"
     },
-    { "id": "last-espresso", "text": "LAST ESPRESSO 400 FT. NEXT ESPRESSO 600 FT.", "status": "live" },
-    { "id": "wet-road", "text": "ROAD MAY BE WET. ROAD IS WET.", "status": "live" },
-    { "id": "dry-pavement", "text": "DRY PAVEMENT NEXT 0 MI.", "status": "live" },
+    { "id": "last-espresso", "text": "LAST ESPRESSO 400 FT. Next espresso 600 ft.", "status": "live" },
+    { "id": "wet-road", "text": "ROAD MAY BE WET. Road is wet.", "status": "live" },
+    { "id": "dry-pavement", "text": "DRY PAVEMENT NEXT 0 MI. Forecast unchanged.", "status": "live" },
     {
       "id": "espresso-zipper",
-      "text": "ESPRESSO LINE MERGE. ZIPPER METHOD. NO EXCEPTIONS.",
+      "text": "ESPRESSO LINE: ZIPPER MERGE. No exceptions.",
       "status": "live"
     },
     {
       "id": "no-plaster",
-      "text": "BIGFOOT SIGHTING AREA. NO PLASTER CASTING FROM VEHICLE.",
+      "text": "BIGFOOT SIGHTING AREA. No plaster casting from vehicle.",
       "status": "live"
     },
-    { "id": "slide-area", "text": "SLIDE AREA. HILL MAY ARRIVE WITHOUT NOTICE.", "status": "live" },
-    { "id": "trailhead-full", "text": "TRAILHEAD PARKING FULL. IT WAS FULL AT 5 AM.", "status": "live" },
-    { "id": "ferry-overflow", "text": "FERRY OVERFLOW LOT. OVERFLOW LOT OVERFLOW 3 MI.", "status": "live" },
-    { "id": "elk-schedule", "text": "ELK CROSSING NEXT 3 MI. ELK SETS THE SCHEDULE.", "status": "live" }
+    { "id": "slide-area", "text": "SLIDE AREA. Hill may arrive without notice.", "status": "live" },
+    { "id": "trailhead-full", "text": "TRAILHEAD PARKING FULL. It was full at 5 am.", "status": "live" },
+    { "id": "ferry-overflow", "text": "FERRY OVERFLOW LOT. Overflow lot overflow 3 mi.", "status": "live" },
+    { "id": "elk-schedule", "text": "ELK CROSSING, NEXT 3 MI. Elk sets the schedule.", "status": "live" }
   ],
   "billboards": [
     {
       "id": "bigfoot-museum",
-      "text": "THE BIGFOOT MUSEUM. EXHIBITS: 1. GIFT SHOP: EVERYTHING ELSE.",
+      "text": "THE BIGFOOT MUSEUM. Exhibits: 1. Gift shop: everything else.",
       "status": "live"
     },
     {
       "id": "view-lots",
-      "text": "STUMP VIEW ESTATES. LUXURY LIVING WHERE THE FOREST USED TO BE.",
+      "text": "STUMP VIEW ESTATES. Luxury living where the forest used to be.",
       "status": "live"
     },
     {
       "id": "summit-smug",
-      "text": "SUMMIT SMUG OUTFITTERS. GEAR FOR THE MOUNTAIN YOU WILL MENTION.",
+      "text": "SUMMIT SMUG OUTFITTERS. Gear for the mountain you will mention.",
       "status": "live"
     },
-    { "id": "sogproof-shell", "text": "THE SOGPROOF SHELL. NOW SLIGHTLY LESS DAMP. $640.", "status": "live" },
+    { "id": "sogproof-shell", "text": "THE SOGPROOF SHELL. Now slightly less damp. $640.", "status": "live" },
     {
       "id": "drizzlewood-roast",
-      "text": "DRIZZLEWOOD ROAST. TASTING NOTES: CEDAR, DRIZZLE, A LONG WAIT.",
+      "text": "TASTES LIKE CEDAR. Drizzlewood Roast. Notes: drizzle, a long wait.",
       "status": "live"
     },
-    { "id": "gutter-truth", "text": "GUTTER TRUTH NW. WE HAVE SEEN WHAT IS UP THERE.", "status": "live" },
-    { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. STILL 2 HOURS. BUT FIRST.", "status": "live" }
+    { "id": "gutter-truth", "text": "GUTTER TRUTH NW. We have seen what is up there.", "status": "live" },
+    { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. Still 2 hours. But first.", "status": "live" }
   ],
   "weather": null,
   "meta": {

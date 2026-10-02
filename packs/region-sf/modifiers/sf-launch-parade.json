@@ -1,0 +1,43 @@
+{
+  "type": "event-modifier",
+  "id": "sf-launch-parade",
+  "name": "Launch Parade",
+  "kind": "human",
+  "tags": ["set-piece", "parade"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.8],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "parade",
+      "signText": "LAUNCH PARADE NOW IN PUBLIC BETA",
+      "floats": ["sf-launch-float", "sf-launch-float"],
+      "person": "marcher-sf",
+      "theme": "sf",
+      "marchers": 6,
+      "inflatable": true
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: an invented startup's launch parade, a giant smiling assistant balloon over the lead float, marchers in hoodies and lanyards with blank placards (the slogan is still in review).",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

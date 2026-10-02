@@ -68,10 +68,16 @@ export interface BoardView {
 /** Only boards this close count as seen (they are unreadable further out). */
 export const VISIBLE_M = 250;
 
+// Sized to be read at up to about 100 mph (44.7 m/s): a billboard's headline letters stand about
+// 1.4 m tall, so they read from roughly 100 m out and the rider has the best part of two seconds.
 const SIZES: Record<BoardKind, { panelH: number; bottom: number; minW: number; maxW: number }> = {
-  sign: { panelH: 1.3, bottom: 1.6, minW: 1.8, maxW: 4 },
-  billboard: { panelH: 3.2, bottom: 3.2, minW: 4, maxW: 12 },
+  sign: { panelH: 1.8, bottom: 1.8, minW: 3.2, maxW: 4.6 },
+  billboard: { panelH: 4.6, bottom: 4, minW: 8.5, maxW: 13 },
 };
+/** How far ahead of a board (along its road) the rider it turns toward is, metres. */
+const AIM_AHEAD_M = 70;
+/** How far behind the printed face the posts stand, metres. */
+const POST_BEHIND_M = 0.22;
 const FACE: Record<BoardKind, { bg: string; fg: string; frame: string }> = {
   sign: { bg: '#1f6b3a', fg: '#ffffff', frame: '#cfd3d6' },
   billboard: { bg: '#f4ecd8', fg: '#2b2b2b', frame: '#6b5a3a' },
@@ -97,40 +103,89 @@ export function resolveSlot(slot: BoardSlot, catalog: BoardCatalog): BoardItem |
   return pool[stableIndex(slot.id ?? `${slot.s0}`, pool.length)] ?? null;
 }
 
-/** The printed face: word-wrapped text on the board colour. Null where there is no DOM canvas. */
-function faceTexture(item: BoardItem): Texture | null {
+/**
+ * A board's copy as a headline and a kicker: the headline is the first sentence (3-4 words, big and
+ * readable at speed), the kicker is the rest (small, for the second look). Text with one sentence
+ * has no kicker.
+ */
+export function splitCopy(text: string): { headline: string; kicker: string } {
+  const t = text.trim().replace(/\s+/g, ' ');
+  const m = /^(.+?)[.!?](?:\s+(.*))?$/.exec(t);
+  if (!m) return { headline: t, kicker: '' };
+  return { headline: (m[1] ?? t).trim(), kicker: (m[2] ?? '').trim() };
+}
+
+/** Wraps `text` into the widest lines that fit `maxW` at the context's current font. */
+function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const w of text.split(' ')) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width > maxW && line) {
+      lines.push(line);
+      line = w;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** The largest bold size (stepping down from `max`) whose wrapped lines fit the box. */
+function fit(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+  boxH: number,
+  max: number,
+  min: number,
+): { size: number; lines: string[] } {
+  let size = max;
+  let lines: string[] = [];
+  for (; size >= min; size -= 4) {
+    ctx.font = `bold ${size}px sans-serif`;
+    lines = wrap(ctx, text, maxW);
+    if (lines.length * size * 1.08 <= boxH) break;
+  }
+  return { size: Math.max(size, min), lines };
+}
+
+/**
+ * The printed face: a big headline over a small kicker, in the panel's own proportions (the canvas
+ * aspect matches the panel, so the letters are not stretched). Null where there is no DOM canvas.
+ */
+function faceTexture(item: BoardItem, aspect: number): Texture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = item.kind === 'sign' ? 160 : 256;
+  canvas.width = item.kind === 'sign' ? 512 : 1024;
+  canvas.height = Math.max(64, Math.round(canvas.width / aspect));
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const face = FACE[item.kind];
   ctx.fillStyle = face.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = face.fg;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const words = item.text.split(/\s+/);
-  let size = item.kind === 'sign' ? 64 : 72;
-  let lines: string[] = [];
-  // Shrink until the wrapped text fits the face.
-  for (; size >= 20; size -= 4) {
-    ctx.font = `bold ${size}px sans-serif`;
-    lines = [];
-    let line = '';
-    for (const w of words) {
-      const next = line ? `${line} ${w}` : w;
-      if (ctx.measureText(next).width > canvas.width - 40 && line) {
-        lines.push(line);
-        line = w;
-      } else line = next;
-    }
-    if (line) lines.push(line);
-    if (lines.length * size * 1.1 <= canvas.height - 24) break;
+  const { headline, kicker } = splitCopy(item.text);
+  const pad = Math.round(canvas.height * 0.07);
+  const innerW = canvas.width - pad * 2;
+  const innerH = canvas.height - pad * 2;
+  const kickerH = kicker ? innerH * 0.3 : 0;
+  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(canvas.height * 0.62), 24);
+  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
+  const headBlock = head.lines.length * head.size * 1.08;
+  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
+  const gap = sub ? pad * 0.5 : 0;
+  let y = (canvas.height - (headBlock + gap + subBlock)) / 2;
+  ctx.fillStyle = face.fg;
+  ctx.font = `bold ${head.size}px sans-serif`;
+  head.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * head.size * 1.08));
+  y += headBlock + gap;
+  if (sub) {
+    ctx.globalAlpha = 0.82;
+    ctx.font = `bold ${sub.size}px sans-serif`;
+    sub.lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, y + (i + 0.5) * sub.size * 1.08));
+    ctx.globalAlpha = 1;
   }
-  const top = canvas.height / 2 - ((lines.length - 1) * size * 1.1) / 2;
-  lines.forEach((l, i) => ctx.fillText(l, canvas.width / 2, top + i * size * 1.1));
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;
@@ -264,22 +319,27 @@ export class Boards {
     const d = (slot.d0 + slot.d1) / 2;
     const w = Math.min(size.maxW, Math.max(size.minW, Math.abs(slot.d1 - slot.d0)));
     const base = road.toWorld(edge, s, d, 0);
-    const f = road.frameAt(edge, s);
     const group = new Group();
     group.name = `board-${slot.id ?? item.ref}`;
     group.position.set(base.x, base.y, base.z);
-    // Face along the road (the panel's normal is the tangent), so riders both ways read it.
-    group.rotation.y = Math.atan2(f.tx, f.tz);
+    // Angle the face toward the rider coming up the road: its normal (local +z) points at the
+    // road's middle AIM_AHEAD_M before the board, so it is seen nearly face-on through the approach
+    // instead of edge-on from a hundred metres out.
+    const aim = road.toWorld(edge, Math.max(0, s - AIM_AHEAD_M), 0, 0);
+    group.rotation.y = Math.atan2(aim.x - base.x, aim.z - base.z);
     const face = FACE[item.kind];
     const postH = size.bottom + size.panelH;
+    // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the
+    // words; the face itself is a thin panel in front of them.
+    const back = -POST_BEHIND_M;
     const frame: BoxPart[] = [
-      { size: [0.16, postH, 0.16], at: [-w * 0.35, postH / 2, 0], color: face.frame },
-      { size: [0.16, postH, 0.16], at: [w * 0.35, postH / 2, 0], color: face.frame },
-      { size: [w + 0.2, 0.12, 0.1], at: [0, size.bottom - 0.06, 0], color: face.frame },
-      { size: [w + 0.2, 0.12, 0.1], at: [0, postH + 0.06, 0], color: face.frame },
+      { size: [0.18, postH, 0.18], at: [-w * 0.34, postH / 2, back], color: face.frame },
+      { size: [0.18, postH, 0.18], at: [w * 0.34, postH / 2, back], color: face.frame },
+      { size: [w + 0.3, 0.16, 0.14], at: [0, size.bottom - 0.08, back * 0.5], color: face.frame },
+      { size: [w + 0.3, 0.16, 0.14], at: [0, postH + 0.08, back * 0.5], color: face.frame },
     ];
     const frameMesh = new Mesh(mergeBoxes(frame), this.look.material('post', { vertexColors: true }));
-    const map = faceTexture(item);
+    const map = faceTexture(item, w / size.panelH);
     const panel = new Mesh(
       panelGeometry(w, size.panelH),
       this.look.material('board', map ? { map } : { color: face.bg }),

@@ -7,6 +7,7 @@ import { registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim } from '../../src/sim/api';
+import { NO_ROAD_EVENTS } from './batch';
 
 // The Pacific Northwest region (playtest 1c, 2026-09-30: "Pnw and sf first then others"): the bot
 // rides the region's own race, Fogline Run, at every length, with the region's field (two touring
@@ -25,10 +26,13 @@ const MAX_TICKS = 60 * 60 * 10;
 
 /** The region race's config, built the way the game builds one (app/config.ts). */
 function raceConfig(lengthId: string, seed: number) {
+  // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
+  // every seeded race (the events have their own tests: tests/sim/events-*.test.ts, e2e road-events).
   return buildSimConfig(REG, STREAMS.forEvent(REG, EVENT, lengthId), {
     seed,
     eventId: EVENT,
     length: lengthId,
+    tuning: NO_ROAD_EVENTS,
   });
 }
 

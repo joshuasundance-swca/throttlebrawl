@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "keys-crash-scene",
+  "name": "Keys Fender-Bender",
+  "kind": "human",
+  "tags": ["set-piece", "crash-scene"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.85],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "crash-scene",
+      "signText": "MINOR INCIDENT EVERYONE IS FINE KEEP MOVING",
+      "vehicle": "event-tow-truck",
+      "vehicle2": "event-stalled-car",
+      "person": "cop-waving",
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-P road event: flares, a stalled rental and the tow truck hooking it, a deputy waving traffic by. Nobody hurt, by rule.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
