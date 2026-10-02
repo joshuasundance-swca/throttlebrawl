@@ -120,6 +120,11 @@
 //   swing that uses the last of a weapon carries `spent: true`.
 // - Roadside spawns: each spot draws its weapon from the `combat` stream, weighted by
 //   roadsideWeight (absent: 1; 0, the cops' baton and taser, never lies on the road).
+// - A weapon by the bike (W-Q, the pitch deck's item 11, "fill the dead air after a crash"): when
+//   a player who holds no weapon gets up after a crash (tumble's `getUp`), with chance
+//   `combat.crashWeaponChance` (0.3) a roadside weapon, drawn by roadsideWeight from the `combat`
+//   stream, lies CRASH_WEAPON_AHEAD_M up the road from the parked bike, on its line, so riding off
+//   picks it up. The roll is drawn for every player get-up, so the stream stays aligned. [default]
 // - A rider's startingWeapon (a cop's baton or taser) is in hand at the start, as a stowed
 //   pickup, so the M1 steal takes it off him like any held weapon. Cops still never pick up, and
 //   a cop keeps his weapon through a wreck (holstered; the cops polish round, 2026-10-01): before,
@@ -128,6 +133,7 @@
 import { clamp, nextFloat, sin, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadNetwork } from '../../road';
 import { barrierLimits, riderState } from '../riders';
+import { parkedBike } from '../tumble';
 import { InputFlag, type AttackPhase, type SimConfig, type SimWeaponDef, type TakedownKind } from '../types';
 import { addMover, emit, setSlowmo, systemState, type Mover, type SimSystem, type World } from '../world';
 
@@ -273,6 +279,18 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     max: 20,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // W-Q: how often a weapon lies by your bike when you get up from a crash. [default]
+    id: 'combat.crashWeaponChance',
+    group: 'combat',
+    label: 'Weapon by the bike after a crash',
+    default: 0.3,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '',
     affectsSim: true,
   },
   {
@@ -1139,6 +1157,39 @@ export function roadsideSpots(config: SimConfig): Spot[] {
   return out;
 }
 
+/** How far up the road from the parked bike the crash weapon lies, m: met just after the remount. */
+export const CRASH_WEAPON_AHEAD_M = 6;
+
+/** A roadside weapon by roadsideWeight from the `combat` stream (one draw), or null when none. */
+function drawRoadside(world: World, config: SimConfig): SimWeaponDef | null {
+  const pool = config.weapons.filter((w) => !w.unarmed && Math.max(0, w.roadsideWeight ?? 1) > 0);
+  const total = pool.reduce((sum, w) => sum + Math.max(0, w.roadsideWeight ?? 1), 0);
+  let r = nextFloat(world.rng.combat) * total;
+  if (total <= 0) return null;
+  return pool.find((w) => (r -= Math.max(0, w.roadsideWeight ?? 1)) < 0) ?? pool[pool.length - 1] ?? null;
+}
+
+/**
+ * Last tick's player get-ups (tumble runs after this phase): with combat.crashWeaponChance, and only
+ * for a player with empty hands, a roadside weapon by the parked bike. Two draws per player get-up,
+ * always (the chance, then the weapon), so the stream stays aligned whatever the outcome.
+ */
+function crashWeapons(world: World, config: SimConfig, st: CombatState): void {
+  const chance = clamp(world.params['combat.crashWeaponChance'] ?? 0.3, 0, 1);
+  for (const e of world.lastEvents) {
+    if (e.type !== 'getUp') continue;
+    const m = world.movers[e.actor];
+    if (!m || m.kind !== 'rider' || !isPlayer(config, m)) continue;
+    const roll = nextFloat(world.rng.combat);
+    const w = drawRoadside(world, config);
+    const bike = parkedBike(world, m.id);
+    if (!w || !bike || roll >= chance || st.held[m.id]) continue;
+    const spot = { ...bike };
+    config.road.advance(Object.assign(spot, { s: spot.s + CRASH_WEAPON_AHEAD_M * spot.dir }));
+    spawnPickup(world, w.contentId, spot);
+  }
+}
+
 /** Puts a weapon on the road as a new pickup entity (the race start and tests use it). */
 export function spawnPickup(world: World, weapon: string, spot: Spot): EntityId {
   const st = combatState(world);
@@ -1374,6 +1425,7 @@ export const combatSystem: SimSystem = {
     const ts = world.timeScale;
     // Last tick's falls first: a takedown (and its slow motion, from the phases after this one).
     creditTakedowns(world, config, st);
+    crashWeapons(world, config, st);
     slide(world, config, st, ts);
     const health = riderState(world).health;
 
