@@ -173,6 +173,11 @@ export interface EngineVoice {
   setLevel(level: number, at?: number): void;
   /** Pitch factor from Doppler, 1 = none. */
   setDoppler(factor: number, at?: number): void;
+  /**
+   * An exhaust pop or crackle at `at` (playtest 2: "a pop on decel"), size 0..1, under the voice's
+   * own level. The full patch only; the cheaper one for other riders ignores it.
+   */
+  pop(at: number, size: number): void;
   stop(at?: number): void;
   /** The last firing frequency and level set, for tests and the debug report. */
   readonly hz: () => number;
@@ -273,12 +278,39 @@ export function createEngineVoice(
       noiseGain.gain.setTargetAtTime(profile.noise * (0.12 + 0.5 * t), at, 0.05);
       intake.frequency.setTargetAtTime(profile.intakeHz * (0.8 + 0.6 * t) + hz * 4, at, 0.05);
     };
+    // Exhaust pops: a short band of noise and a low thump, straight into the level stage.
+    const popPatch = (at: number, size: number) => {
+      const z = Math.min(1, Math.max(0, size));
+      if (z <= 0) return;
+      const n = ctx.createBufferSource();
+      n.buffer = noiseBuffer(ctx);
+      const band = ctx.createBiquadFilter();
+      band.type = 'bandpass';
+      band.frequency.value = 450 + 500 * z;
+      band.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(1.6 * z, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+      n.connect(band).connect(g).connect(level);
+      n.start(at, (at * 13.7) % 0.9);
+      n.stop(at + 0.06);
+      const thump = ctx.createOscillator();
+      thump.frequency.setValueAtTime(90, at);
+      thump.frequency.exponentialRampToValueAtTime(45, at + 0.05);
+      const tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.9 * z, at);
+      tg.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+      thump.connect(tg).connect(level);
+      thump.start(at);
+      thump.stop(at + 0.07);
+    };
     for (const s of sources) s.start();
     return voice(
       setState,
       () => hz,
       () => lvl,
       (v) => (lvl = v),
+      popPatch,
     );
   }
 
@@ -298,6 +330,7 @@ export function createEngineVoice(
     () => hz,
     () => lvl,
     (v) => (lvl = v),
+    () => {},
   );
 
   function voice(
@@ -305,10 +338,12 @@ export function createEngineVoice(
     hz: () => number,
     lvl: () => number,
     setLvl: (v: number) => void,
+    pop: EngineVoice['pop'],
   ): EngineVoice {
     return {
       profile,
       set: setState,
+      pop,
       setLevel(v, at = ctx.currentTime) {
         setLvl(v);
         level.gain.setTargetAtTime(v, at, 0.04);
