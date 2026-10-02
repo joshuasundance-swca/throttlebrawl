@@ -11,11 +11,16 @@
 // A brake or kick already held over the lip counts only once let go: a rider braking into a crest
 // does not flip by accident. Let go mid-rotation, the bike carries on to the nearest upright
 // (judged a moment ahead, so a flip past halfway completes and one short of it rights itself).
+// A held command turns the bike only while it can still come down on its wheels: each tick the sim
+// forecasts the time to the ground and checks that level flight from there lands the bike upright (W-Q0
+// verifier, playtest 2's "Forgiving landings": a brake held from mid-air to the ground used to loop the
+// bike out on 23 of 34 jumps). Held into the ground, the brake gives a wheelie landing, the kick a
+// slightly nose-down one; held long enough over a long jump, a flip that fits completes and is landed.
 // Landing: a flip (a full turn, either way), a wheelie landing (nose held high, down on the back
 // wheel) or a whip (laid flat, straightened before the ground) is a trick the `land` event carries
 // (`data.trick`, `data.flips`) and sim/race scores as style cash. Coming down far off the slope (nose
-// first, or looped onto the back) wipes the rider out, thrown high: a botched flip is a big, funny
-// crash (`data.botched`). AI riders give no air commands: they fly level. All state is plain numbers
+// first, or looped onto the back, now only when the ground comes up sooner than forecast) wipes the
+// rider out, thrown high: a botched flip is a big, funny crash (`data.botched`). AI riders give no air commands: they fly level. All state is plain numbers
 // and strings in the riders state, so it is in the hash and the snapshot. [default] every number.
 import { atan, clamp, PI, TAU, wrapAngle, type TuningParamDecl } from '../../core';
 import {
@@ -79,6 +84,15 @@ export const PITCH_CLEAN_UP = 0.8;
 export const PITCH_CLEAN_DOWN = -0.35;
 export const PITCH_CRASH_UP = 1.3;
 export const PITCH_CRASH_DOWN = -0.9;
+/**
+ * The attitude a held command may leave the bike in at touch-down: nose up to SAFE_UP (a wheelie
+ * landing, clean), nose down to SAFE_DOWN. Inside the clean band, with room for a forecast that is a
+ * little off. [default]
+ */
+export const SAFE_UP = 0.6;
+export const SAFE_DOWN = -0.2;
+/** The touch-down window judged around the forecast, seconds each side. [default] */
+const LANDING_WINDOW_S = 0.1;
 /** How high a botched trick throws the rider, m/s up, and sideways along the lean. */
 const BOTCHED_UP_MPS = 5;
 const BOTCHED_SIDE_MPS = 3;
@@ -143,6 +157,7 @@ export function stepAttitude(
   input: SimInput,
   steer: number,
   dt: number,
+  tGround: number,
 ): number {
   const slope = slopeAt(config, m);
   let block = st.airBlock[m.id] ?? 0;
@@ -152,25 +167,68 @@ export function stepAttitude(
   const gain = def.controller.kind === 'player' ? (world.params['riders.airControl'] ?? 0) : 0;
   const up = gain > 0 && brakeOn(input) && (block & 1) === 0;
   const down = gain > 0 && kickOn(input) && (block & 2) === 0;
-  const command = (up ? 1 : 0) - (down ? 1 : 0);
   const pitch = st.pitch[m.id] ?? slope;
   const rate = st.pitchRate[m.id] ?? 0;
-  let accel: number;
-  if (command !== 0) accel = command * FLIP_ACCEL * gain;
-  else {
-    // Fly level: toward the upright nearest where the spin carries the bike a moment ahead.
-    const ahead = pitch + rate * LEVEL_LOOKAHEAD_S;
-    const target = slope + TAU * Math.round((ahead - slope) / TAU);
-    accel = clamp(LEVEL_K * (target - pitch) - LEVEL_D * rate, -LEVEL_MAX_ACCEL, LEVEL_MAX_ACCEL);
-  }
+  // A held command turns the bike only while it can still come down on its wheels (W-Q0 verifier: a
+  // brake held from mid-air to the ground used to loop the bike out, 23 of 34 jumps down).
+  const wanted = (up ? 1 : 0) - (down ? 1 : 0);
+  const command =
+    wanted !== 0 && landsUpright(pitch, rate, wanted * FLIP_ACCEL * gain, slope, tGround, dt) ? wanted : 0;
+  const accel = command !== 0 ? command * FLIP_ACCEL * gain : levelAccel(pitch, rate, slope);
   const nextRate = clamp(rate + accel * dt, -FLIP_MAX_RATE, FLIP_MAX_RATE);
   st.pitchRate[m.id] = nextRate;
   st.pitch[m.id] = pitch + nextRate * dt;
-  if (up) st.noseUpTicks[m.id] = (st.noseUpTicks[m.id] ?? 0) + world.timeScale;
+  if (command > 0) st.noseUpTicks[m.id] = (st.noseUpTicks[m.id] ?? 0) + world.timeScale;
   if (Math.abs(st.leanBase[m.id] ?? 0) >= WHIP_LEAN)
     st.whipTicks[m.id] = (st.whipTicks[m.id] ?? 0) + world.timeScale;
   st.trick[m.id] = trickInProgress(st, m, slope);
   return steer * AIR_LEAN;
+}
+
+/**
+ * Seconds until a bike `height` m above the ground, closing on it at `-relVy` m/s (its vertical speed
+ * less the ground's own rise under it), meets it under `gravity`: the ground taken as its current slope.
+ */
+export function timeToGround(height: number, relVy: number, gravity: number): number {
+  if (height <= 0 || gravity <= 0) return 0;
+  return (relVy + Math.sqrt(relVy * relVy + 2 * gravity * height)) / gravity;
+}
+
+/** The level-flight pull: toward the upright nearest where the spin carries the bike a moment ahead. */
+function levelAccel(pitch: number, rate: number, slope: number): number {
+  const ahead = pitch + rate * LEVEL_LOOKAHEAD_S;
+  const target = slope + TAU * Math.round((ahead - slope) / TAU);
+  return clamp(LEVEL_K * (target - pitch) - LEVEL_D * rate, -LEVEL_MAX_ACCEL, LEVEL_MAX_ACCEL);
+}
+
+/**
+ * Whether one more tick of a held command still lets the bike come down on its wheels: after it, level
+ * flight must hold the bike within SAFE_UP / SAFE_DOWN of the slope over the whole touch-down window
+ * (LANDING_WINDOW_S each side of the forecast). The same steps as the flight itself, so the forecast
+ * and the flight agree; only the time to the ground is an estimate.
+ */
+function landsUpright(
+  pitch: number,
+  rate: number,
+  accel: number,
+  slope: number,
+  tGround: number,
+  dt: number,
+): boolean {
+  if (dt <= 0) return true;
+  let r = clamp(rate + accel * dt, -FLIP_MAX_RATE, FLIP_MAX_RATE);
+  let p = pitch + r * dt;
+  const last = Math.ceil((tGround + LANDING_WINDOW_S) / dt);
+  const first = Math.floor((tGround - LANDING_WINDOW_S) / dt);
+  for (let k = 1; k <= last; k++) {
+    if (k >= first) {
+      const off = p - slope - TAU * Math.round((p - slope) / TAU);
+      if (off > SAFE_UP || off < SAFE_DOWN) return false;
+    }
+    r = clamp(r + levelAccel(p, r, slope) * dt, -FLIP_MAX_RATE, FLIP_MAX_RATE);
+    p += r * dt;
+  }
+  return true;
 }
 
 /** The trick a rider is visibly doing in the air now, or ''. */

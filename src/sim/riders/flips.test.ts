@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { PI, TAU } from '../../core';
 import { createSim } from '../api';
 import { InputFlag, type SimConfig, type SimEvent, type SimInput } from '../types';
-import { FLIP_ACCEL } from './air';
+import { FLIP_ACCEL, touchdown } from './air';
 import { riderState } from './index';
 import { input, riderHarness, testConfig } from './testing';
 
@@ -132,16 +132,28 @@ describe('flips', () => {
     expect(r.crash).toBeUndefined();
   });
 
-  it('holding the flip into the ground wipes the rider out, thrown high: a botched flip', () => {
-    // Pulled back from the top of the arc on, and never let go: still turning over when it lands.
-    const r = fly({ air: (a) => (a.falling && a.h < 3.2 ? brake() : gas()) });
-    expect(r.land?.data['quality']).toBe('crash');
-    expect(r.crash?.data['cause']).toBe('landing');
-    expect(r.crash?.data['botched']).toBe(true);
-    expect(r.crash?.data['attempt']).toBe('backflip');
-    expect(Number(r.crash?.data['upMps'])).toBeGreaterThan(3);
-    // A crash scores no trick.
-    expect(r.land?.data['trick']).toBe('');
+  it('holding the brake into the ground never loops the bike out: it comes down on its wheels', () => {
+    // Pulled back from the top of the arc on, and never let go (W-Q0 verifier: this used to land
+    // still turning over and wipe the rider out). The bike turns only while it can still right itself.
+    for (const held of [brake, kick]) {
+      const r = fly({ air: (a) => (a.falling && a.h < 3.2 ? held() : gas()) });
+      expect(r.land?.data['quality']).not.toBe('crash');
+      expect(r.crash).toBeUndefined();
+      expect(Number(r.land?.data['pitchOff'])).toBeLessThan(0.8);
+      expect(Number(r.land?.data['pitchOff'])).toBeGreaterThan(-0.35);
+    }
+  });
+
+  it('a bike that does come down mid-flip (the forecast beaten) wipes the rider out, thrown high', () => {
+    // touchdown() judges the attitude alone: half a backflip, upside down on the ground.
+    const r = fly({});
+    const id = r.h.rider.id;
+    r.st.pitch[id] = PI;
+    r.st.trick[id] = 'backflip';
+    const td = touchdown(r.st, r.h.rider, 0);
+    expect(td.crashes).toBe(true);
+    expect(td.attempt).toBe('backflip');
+    expect(td.throw?.upMps).toBeGreaterThan(3);
   });
 
   it('a slower bike turns slower (riders.airControl, non-default), and 0 turns air control off', () => {

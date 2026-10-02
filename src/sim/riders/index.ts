@@ -17,7 +17,16 @@
 import { atan, clamp, cos, sin, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
 import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
-import { AIR_TUNING, groundPitch, slopeAt, startFlight, stepAttitude, touchdown, type AirState } from './air';
+import {
+  AIR_TUNING,
+  groundPitch,
+  slopeAt,
+  startFlight,
+  stepAttitude,
+  timeToGround,
+  touchdown,
+  type AirState,
+} from './air';
 import { applyShove, riderContacts } from './contact';
 import {
   BOOST_ACCEL_MPS2,
@@ -848,9 +857,13 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
     return;
   }
-  // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for.
-  const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt);
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
+  // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for. The
+  // time to the ground is forecast over the ground's current slope, so a held brake or kick never
+  // turns the bike past where it can right itself before touch-down.
+  const groundRate = road.frameAt(pos.edge, pos.s).grade * pos.dir * along;
+  const tGround = timeToGround(y - (surface + deck), (st.vy[m.id] ?? 0) - groundRate, gravity);
+  const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround);
   if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
