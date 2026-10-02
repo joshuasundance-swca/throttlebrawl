@@ -123,11 +123,21 @@
       "text": "Easy. Forty years of grip.",
       "audioAsset": "audio/barks/gripman-gus-core/gus-taken-grip",
       "audioStatus": "live"
+    },
+    {
+      "id": "gus-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "Mind the gap. You're in it."
+    },
+    {
+      "id": "gus-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Hold the strap next time."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "San Francisco local (playtest 1c). gus-hit-hold is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. gus-hit-disrupt fires only when the hit lands on Pivot: the old city against the new.",
+    "notes": "San Francisco local (playtest 1c). gus-hit-hold is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. gus-hit-disrupt fires only when the hit lands on Pivot: the old city against the new. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

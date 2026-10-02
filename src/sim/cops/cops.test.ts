@@ -159,7 +159,7 @@ function copWorld(tuning: Record<string, number> = {}) {
 }
 
 describe('cops: tuning declarations', () => {
-  it('declares the fourteen cop parameters (M4 cops-3 added six, playtest 1c the launch share, the 2026-10-02 interview the knockdown-only bust) inside their ranges, all sim-affecting', () => {
+  it('declares the fifteen cop parameters (M4 cops-3 added six, playtest 1c the launch share, the 2026-10-02 interview the knockdown-only bust, playtest 2 the patrol scale) inside their ranges, all sim-affecting', () => {
     expect(COPS_TUNING.map((d) => d.id).sort()).toEqual([
       'cops.bustDwellScale',
       'cops.bustKnockdownOnly',
@@ -170,6 +170,7 @@ describe('cops: tuning declarations', () => {
       'cops.followGapM',
       'cops.launchShare',
       'cops.maxActive',
+      'cops.patrolScale',
       'cops.sirenLeadS',
       'cops.spawnChance',
       'cops.spawnDelayS',
@@ -909,9 +910,16 @@ describe('cops-2: a knocked-down cop cannot bust anyone until he is back up (ful
   it('knock him off, crash beside him: no bust while he is down, and he rides on after', () => {
     // A touchy barrier (crash from 3 m/s into it), so the player's swerve after the knock-off is a
     // sure crash near the tumbling cop. Everything runs through the real systems: combat knocks
-    // him off, tumble takes him down and hands him back, and sim/cops decides the bust.
+    // him off, tumble takes him down and hands him back, and sim/cops decides the bust. The fight
+    // keeps M1's fist damage (playtest 2 doubled it), so the scripted knock-off and the swerve
+    // land where this scenario was built for.
     const config = {
-      ...fixtureConfig({ 'cops.spawnDelayS': 0, 'cops.followGapM': 40, 'riders.crashImpactMps': 3 }),
+      ...fixtureConfig({
+        'cops.spawnDelayS': 0,
+        'cops.followGapM': 40,
+        'riders.crashImpactMps': 3,
+        'combat.unarmedDamageScale': 1,
+      }),
       weapons: [PUNCH, KICK],
     };
     const sim = createSim(config);

@@ -280,11 +280,21 @@
       "text": "SPF 50. Expensed.",
       "audioAsset": "audio/barks/kevin-core/kevin-start-keys-spf",
       "audioStatus": "live"
+    },
+    {
+      "id": "kevin-heckle-1",
+      "trigger": "knocked-down-target",
+      "text": "I'll circle back. You won't."
+    },
+    {
+      "id": "kevin-heckle-2",
+      "trigger": "knocked-down-target",
+      "text": "Marking you out of office."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "kevin-pass-email is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals.",
+    "notes": "kevin-pass-email is the approved line from the tone guide; every other line is an agent draft that stays until vetoed. M4 rivals-1 (built early) added conditioned lines: race state (leading, the last fifth, a hurt speaker or target, the back of the field), time of day, memory (a grudge held this race), and lines aimed at the rider's authored rivals. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

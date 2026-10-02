@@ -30,8 +30,8 @@ interface Sample {
 }
 interface RideState {
   samples: Sample[];
-  /** The player's oncoming awards, with the stretch they paid. */
-  awards: { points: number; stretch: number }[];
+  /** The player's oncoming awards, with the stretch they paid and its world seconds. */
+  awards: { points: number; stretch: number; seconds: number }[];
   /** The chip the meter became, a few frames after the first award. */
   landed: { text: string; sameElement: boolean } | null;
   /** Every chip seen, for the placement check. */
@@ -106,7 +106,11 @@ function startDriver(page: Page, holdS: number, limitMs: number): Promise<void> 
           if (e.tick <= lastTick) continue;
           newest = Math.max(newest, e.tick);
           if (e.type === 'style' && e.actor === game?.playerId() && e.data['kind'] === 'oncoming') {
-            state.awards.push({ points: Number(e.data['points']), stretch });
+            state.awards.push({
+              points: Number(e.data['points']),
+              stretch,
+              seconds: Number(e.data['seconds']),
+            });
           }
         }
         lastTick = newest;
@@ -200,7 +204,7 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
 
   // The first stretch that paid, and every meter frame of it.
   expect(r.awards.length, 'an oncoming award').toBeGreaterThan(0);
-  const paid = r.awards[0] ?? { points: -1, stretch: -1 };
+  const paid = r.awards[0] ?? { points: -1, stretch: -1, seconds: -1 };
   const shown = r.samples.filter((s) => s.stretch === paid.stretch && s.run);
   const first = shown[0];
   const last = shown[shown.length - 1];
@@ -210,8 +214,19 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
       `award $${paid.points}; landed on "${r.landed?.text}" (same element: ${r.landed?.sameElement})`,
   );
 
-  // It showed and it climbed: within the stretch, seconds and cash only go up.
-  expect(shown.length, 'frames with the meter up in the paid stretch').toBeGreaterThan(30);
+  // It showed and it climbed: within the stretch, seconds and cash only go up. It is judged in the
+  // stretch's own world seconds, because how many frames a stretch draws depends on the runner: on
+  // main's software-rendered CI runner (about 19 frames a second here) a stretch a rival cut short
+  // at 2.1 s drew 30 frames (CI run 36965896101), one short of the old "more than 30" floor. The
+  // loop steps at most 4 ticks a drawn frame, so the meter must be up within one such frame of
+  // 0.5 s (hud.meterShowAfterS) and stay up to within one such frame of the pay; a stretch pays
+  // from 2 s (race.styleOncomingMinS), so that is at least about 1.4 s of meter.
+  const FRAME_S = 4 / 60;
+  expect(shown.length, 'frames with the meter up in the paid stretch').toBeGreaterThan(15);
+  expect(first?.run?.seconds ?? 99, 'the meter is up from 0.5 s').toBeLessThanOrEqual(0.5 + FRAME_S + 1e-9);
+  const unshownS = paid.seconds - (last?.run?.seconds ?? -99);
+  expect(unshownS, 'the last frame shown is no later than the pay').toBeGreaterThanOrEqual(-1e-9);
+  expect(unshownS, 'the meter stays up until the pay').toBeLessThanOrEqual(FRAME_S + 1e-9);
   const secs = shown.map((s) => parseFloat(/(\d+\.\d)s/.exec(s.label)?.[1] ?? 'NaN'));
   const cash = shown.map((s) => Number(s.cash.replace(/[^0-9]/g, '')));
   for (let i = 1; i < shown.length; i++) {
@@ -227,8 +242,13 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
     expect(s.pending).toBe(!s.run?.qualifies);
   }
   expect(shown.some((s) => s.pending) && shown.some((s) => !s.pending), 'dim, then bright').toBe(true);
-  // It landed exactly on the award and became the run's own chip (the same element).
-  expect(cash[cash.length - 1], 'the last value shown is the award').toBe(paid.points);
+  // It landed exactly on the award and became the run's own chip (the same element). The last meter
+  // frame is the sim's run in that frame (checked above), up to a drawn frame before the pay: a
+  // stretch that ends between two drawn frames pays its last ticks' cash on the landing (seen with
+  // forced 40-50 ms frames: the meter's last frame read $33, the award and the chip $34).
+  expect(cash[cash.length - 1] ?? Infinity, 'the meter never shows more than the award').toBeLessThanOrEqual(
+    paid.points,
+  );
   expect(r.landed?.text).toBe(`ONCOMING +$${paid.points.toLocaleString('en-US')}`);
   expect(r.landed?.sameElement, 'the meter became the chip').toBe(true);
 

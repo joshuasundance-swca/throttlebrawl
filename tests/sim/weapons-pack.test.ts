@@ -176,7 +176,8 @@ describe('weapons-2: a new weapon added as data only plays without code changes'
     h.run(60);
     const hit = ofType(h.events, 'hit').find((e) => e.actor === 0);
     expect(hit?.data['weapon']).toBe('base:pool-noodle');
-    expect(hit?.data['damage']).toBe(noodle.damage);
+    // × combat.weaponDamageScale (2.5, playtest 2's knockdown retune).
+    expect(hit?.data['damage']).toBe(Math.round(noodle.damage * 2.5));
     expect(
       scriptedSteal(noodle, Math.round(((noodle.steal?.startTick ?? 0) + (noodle.steal?.endTick ?? 0)) / 2)),
     ).toBe(true);
