@@ -71,8 +71,11 @@ export default defineConfig({
     target: 'es2022',
     // A pack's road data (`?url` JSON, src/content/packs.ts) always ships as its own file. Vite
     // would inline a file under 4 KB into the JavaScript as a base64 data URL, which put the small
-    // region road files in the first-load bundle a third bigger than the file itself.
-    assetsInlineLimit: (file) => (file.endsWith('.json') ? false : undefined),
+    // region road files in the first-load bundle a third bigger than the file itself. A model (GLB)
+    // ships as its own file too: a small one inlined would land in the first-load bundle, and a
+    // region's models must load only when a race there starts (run W-P: the trestle bent and power
+    // pole fell under 4 KB once they shipped without normals).
+    assetsInlineLimit: (file) => (file.endsWith('.json') || file.endsWith('.glb') ? false : undefined),
     // src/sim, src/road and src/core in one chunk, so its content hash names the sim's code
     // (docs/architecture.md, "Replay and input recording").
     rolldownOptions: { output: { codeSplitting: { groups: [simChunkGroup()] } } },

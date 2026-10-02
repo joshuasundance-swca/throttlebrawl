@@ -15,6 +15,12 @@ export interface ActionState {
   attackSide: -1 | 0 | 1;
   /** Level-held while the kick gesture or key holds. */
   kick: boolean;
+  /**
+   * The straight kick at the rider ahead (playtest 2's directional kick: a swipe UP, the I key, L1),
+   * level-held like `kick`. It reaches the sim as the kick flag plus BOTH side flags. Optional, so
+   * hand-built action states stay valid.
+   */
+  kickStraight?: boolean;
   lookBack: boolean;
   skipRunBack: boolean;
   /**
@@ -43,7 +49,8 @@ export function toSimInput(a: ActionState): SimInput {
   if (a.attack) flags |= InputFlag.attack;
   if (a.attackSide < 0) flags |= InputFlag.attackSideLeft;
   if (a.attackSide > 0) flags |= InputFlag.attackSideRight;
-  if (a.kick) flags |= InputFlag.kick;
+  if (a.kick || a.kickStraight) flags |= InputFlag.kick;
+  if (a.kickStraight) flags |= InputFlag.attackSideLeft | InputFlag.attackSideRight;
   if (a.lookBack) flags |= InputFlag.lookBack;
   if (a.skipRunBack) flags |= InputFlag.skipRunBack;
   return quantizeInput({ steer: a.steer, throttle: a.throttle, brake: a.brake, flags });

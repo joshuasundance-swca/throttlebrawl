@@ -76,6 +76,8 @@ export interface Pose {
   z: number;
   heading: number;
   lean: number;
+  /** The bike's pitch (EntitySnapshot.pitch), when the snapshot carries it. */
+  pitch?: number;
 }
 
 export function lerpPose(a: EntitySnapshot, b: EntitySnapshot, t: number, out: Pose): Pose {
@@ -87,6 +89,9 @@ export function lerpPose(a: EntitySnapshot, b: EntitySnapshot, t: number, out: P
   out.z = a.z + (b.z - a.z) * t;
   out.heading = a.heading + dh * t;
   out.lean = a.lean + (b.lean - a.lean) * t;
+  // Playtest 2 flips: the pitch is unwrapped through a flip, so a plain lerp turns the right way.
+  if (b.pitch === undefined) delete out.pitch;
+  else out.pitch = (a.pitch ?? b.pitch) + (b.pitch - (a.pitch ?? b.pitch)) * t;
   return out;
 }
 
@@ -896,8 +901,18 @@ export class EntityViews {
     }
     const wobble = this.wobbles.get(e.id);
     const wob = wobble ? Math.sin(time * 40) * 0.22 * Math.max(0, (wobble.until - time) / WOBBLE_S) : 0;
-    root.rotation.x = e.mode === 'Airborne' ? 0.12 : 0; // nose up
+    // In the air the bike takes the sim's pitch (playtest 2: air control and flips; nose up
+    // positive), turning about its middle, not its wheels, so a flip spins in place; a snapshot
+    // without a pitch keeps the old fixed nose-up. On the ground it stays level, as before.
+    const airborne = e.mode === 'Airborne';
+    root.rotation.x = airborne ? (p.pitch ?? 0.12) : 0;
     root.rotation.z = -p.lean + wob;
+    if (airborne && p.pitch !== undefined) {
+      this.v.set(0, RIDER_CENTRE_M, 0).applyEuler(root.rotation);
+      root.position.x -= this.v.x;
+      root.position.y += RIDER_CENTRE_M - this.v.y;
+      root.position.z -= this.v.z;
+    }
 
     // Arms: the attack side takes the pose, the other holds the bars (or swings when running).
     const side = this.sideOf(e, p, curr);

@@ -364,7 +364,9 @@ Tag: `[decided]` for personality styles, grudges, local rivals and cops, rivals 
   "stats": {
     "massKg": 72,
     "healthMax": 100,
-    "skill": 0.7
+    "skill": 0.7,
+    "toughness": 1.1,
+    "power": 1.0
   },
   "startingWeapon": "tire-iron",
   "personality": {
@@ -406,6 +408,7 @@ Tag: `[decided]` for personality styles, grudges, local rivals and cops, rivals 
 | `role` | `rival`, `cop`, `player-preset` or `extra` (a background biker). One schema serves all four, so a cop can be hit like any rider `[decided]` and a player preset is just a rider with `role: "player-preset"`. |
 | `roster` | `regular` (tours with the circuit) or `local` (belongs to a region). About 4 regulars plus 4 locals per region "sounds right" to the maintainer `[decided]`; which rider goes where is a proposal `[default]`. Either way it is data, not a rule in code. |
 | `region` | Required for `local`, absent for `regular`. |
+| `stats.toughness`, `stats.power` | Fight stats (playtest 2, 2026-10-02: "Visible personalities", moderate differences shown through how rivals ride and fight) `[default]`. Multipliers from 0.5 to 2, 1 when absent. `toughness` divides the damage and the stagger the rider takes from a hit; `power` multiplies the damage of every hit the rider lands. `healthMax` stays the rider's endurance. Aggression is `personality.aggression`. |
 | `personality.style` | A named preset registered in `sim/ai/` (weights, thresholds and a behaviour set; [architecture](./architecture.md#controllers-every-rider-is-driven-the-same-way)). The ids are `heavy-hitter`, `weaver`, `showboat`, `grudge-keeper`, `scrapper`, `crowd-pleaser`, `crew-boss`, `cop` and `racer`; personality styles exist `[decided]`, but the list is `[default]`: the first four are the styles named in [the product spec](./product-spec.md#rivals), and the rest, including `racer` (a pure racer who avoids fights), are additions. The other personality fields override the preset's values, so a new rival can be one line (`"style": "heavy-hitter"`) or fully bespoke. All numeric fields are 0..1. M1 registers two presets, `heavy-hitter` (a brawler who hunts a target and rides alongside it) and `racer` (holds its line and swings only at whoever drifts into reach); any other id falls back to `racer` until its own preset lands `[default]` (M1 ai-1). |
 | `personality.weave` | Lane habit, 0..1: how far the rider drifts across its lane (0 holds a line; about 0.8 swerves like a weaver). Added by M1 ai-1 `[default]`, alongside `aggression` (how often it swings and how far it hunts), `dirtiness` (how often a swing is a kick), `courage` (how hurt it can be and still pick a fight), `riskTaking` (how readily it dodges traffic through the oncoming lane) and `chatter` (for barks). |
 | `targetPreference` | An ordered list the AI uses to choose whom to fight: `grudge`, `player`, `leader`, `nearest`, `crew-enemy`. |
@@ -601,7 +604,7 @@ A modifier is a small entry under `packs/base/modifiers/`:
 | `eligibility` | Region ids, event kinds and times of day it may appear in. An empty list means "any". |
 | `trigger.atProgress` | Optional race-progress window (0..1) in which it may start. |
 | `durationS` | How long it lasts; converted to ticks at load like every timing field. |
-| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`. A new effect kind is a code change; a new modifier built from existing kinds is data only. |
+| `effects` | A **closed list in code**, the same pattern as weapon `effects`, so packs cannot invent behaviour the sim lacks. The reserved list: `lateral-gust`, `spawn-hazard`, `spawn-convoy`, `traffic-override`, `cash-multiplier-zone`, `bounty-on-player`, `guest-rider`, `show-billboard`, and `set-piece` (built, W-P: see below). A new effect kind is a code change; a new modifier built from existing kinds is data only. |
 | `announce` | An optional bark trigger (`modifier-start`, added to the reserved trigger list) and an optional sign id, so the world can react in words. |
 
 **The maintainer's wanted examples**, all placeholders within the [tone guide](./tone-guide.md#hard-lines) (the funeral procession and rocket launch in particular must follow its hard lines):
@@ -617,7 +620,7 @@ Rules:
 
 - An event opts in with `modifiers: { "pool": [ids] | "region-default", "maxPerRace": n, "chanceScale": x }`. `region-default` means every live modifier whose `eligibility` matches; regions do not keep a second list.
 - Modifiers change the sim (traffic, hazards, cash), so the roll must be deterministic: it uses its own seeded `modifiers` stream, and the resolved modifiers are part of `SimConfig` and the replay header ([architecture](./architecture.md#event-modifiers)). The `modifierStart` and `modifierEnd` sim events are what the `modifier-start` bark trigger listens to.
-- No modifier content before M4 (`[default]`). Until then events simply omit `modifiers`, and the sim carries only an empty list.
+- `[default]` (W-P, the maintainer, 2026-10-01b: "events and set pieces") The road set pieces come first, ahead of M4: each region's race opts in with `"modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 }`, and each region pack carries its own `modifiers/` entries with a `set-piece` effect. Its fields: `piece` (`roadwork`, `crash-scene`, `parade`, `hay-spill` or `speed-trap`), `signText` (the warning sign's words), `theme` (`keys`, `pnw` or `sf`: the float dressing and the people's look), `person` (`flagger`, `cop-waving`, `marcher-keys`, `marcher-pnw`, `marcher-sf`), and per piece `vehicle` and `vehicle2` (traffic-type ids, bare ids meaning the modifier's own pack), `floats` (a list of traffic-type ids), `marchers` (a count), `inflatable` (a boolean) and `limitMps` (the speed trap's limit). The vehicles they name are ordinary `traffic-type` entries that no region lists in its mix, so traffic never rolls them; parked ones are `oddity` with `cruiseMps` 0. Other effect kinds still wait for M4 or the shelf.
 
 ### Career
 
@@ -765,6 +768,7 @@ Tag: `[decided]` for radio stations by genre plus regional stations, surf and ro
 - `regions` is a list of region ids; an empty list means the whole circuit (a "genre station"), and a non-empty list makes it a regional station.
 - `tracks` `[default]` for the shape: each track is an object with an `id` (unique within the station), a display `title`, and either an `audioAsset` (see [Asset references](#asset-references)) or a `procedural` preset for a track written as code. `[decided]` (cockpit answer, 2026-09-29) that tracks come from both routes, code-made and AI-generated, and that the maintainer cuts tracks with "cut this" like rival lines. So `origin` (`agent` for code-made, `ai-batch` for AI-generated, with the batch provenance on the station's `meta` as for bark batches) marks every AI track as AI-generated, and `status` (`live`, `vetoed`, `draft`) plus an optional `note` is how a single track is cut and kept as the taste log. Because the format is still reserved, this shape replaces the earlier plain list of asset ids without a format bump.
 - `djBarkSet` is an optional bark-set id for a DJ's lines, filled in later when AI barks arrive.
+- `genre` names the band a station plays on, and each track's `procedural.preset` is that band's composer `[default]` (playtest 2, 2026-10-02, "different stations and music in different regions"): `surf` / `surf-trio` and `rockabilly` / `rockabilly-trio` (the Keys), `grunge` / `grunge-band` and `folk` / `folk-band` (the Pacific Northwest), `synth` / `synth-band` and `psych` / `psych-band` (San Francisco). The regional presets take `bpm`, `key` and `progression` params (the progression ids are in `src/audio/radio-compose-regional.ts`). A region needs two or more stations of its own to keep its dial to itself; with fewer, the base pack's stations follow its own on the dial.
 - The M1 and M2 score is not a station: it is one original score made of ordinary audio assets that the audio system plays ([architecture](./architecture.md#audio)). Stations arrive with the radio feature.
 
 ### Easter eggs
