@@ -448,3 +448,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: a line that would fit any region is a miss. Name the place's own things: rain, ferries, espresso and gear in the Pacific Northwest; AI startups, robotaxis, shuttles, cable cars and fog in San Francisco; sunburn, the Conch Republic, charters and hurricane season in the Keys. Satire still invents its brands and aims at things, not people.
 - Scope: global
 - Action taken: new signs, billboards, rival lines and radio content per region (run W-P); the region flavor sections above name the new targets.
+
+### 2026-10-01 · An invented brand that was real
+- Item: `region-sf:region/san-francisco#promptloom` ("PROMPTLOOM. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI.")
+- Surface: billboard
+- Verdict: tweak
+- Maintainer said: no words on this item; the rule is the maintainer's: satire "invents its brands (no real company names or logos)" (maintainer, 2026-10-01b).
+- Lesson: a plausible startup name is probably already taken; prompt-themed coinages especially. Search a new brand name before shipping it, and prefer an odd, specific coinage over a smooth generic one. Names a review found to be real go in `tools/packs/invented-brands.test.ts`.
+- Scope: global
+- Action taken: rewritten as "DELEGATRON. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI." (id `delegatron`; a web search found no product of that name); run W-P's verifier found the old name in use by a business selling prompting solutions and by several prompt tools.

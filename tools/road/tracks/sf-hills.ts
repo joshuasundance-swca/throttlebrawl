@@ -192,12 +192,12 @@ export const SF_HILLS: TrackSource = {
         { kind: 'billboard', id: 'sign-cable-grip', s0: 560, s1: 570, d0: 6.5, d1: 9, item: 'cable-grip' },
         {
           kind: 'billboard',
-          id: 'bb-cable-promptloom',
+          id: 'bb-cable-delegatron',
           s0: 600,
           s1: 640,
           d0: -16,
           d1: -7,
-          item: 'promptloom',
+          item: 'delegatron',
         },
         {
           kind: 'billboard',
