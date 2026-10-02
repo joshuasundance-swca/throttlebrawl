@@ -74,6 +74,13 @@
 //   so the takedown comes one tick after the crash and carries its causeId. A crash with
 //   data.contact `tumble` (a body already down touching a car) never counts; one fall is one
 //   takedown at most.
+// - Domino credit (W-Q, the pitch deck's item 4: "A rider you launch who knocks another off counts
+//   as your takedown ('DOUBLE', then 'STRIKE')"). A fall with no hit credit of its own whose crash
+//   says a flying body knocked it off (sim/tumble: data.cause `tumble`, target = the body's rider)
+//   is a takedown for whoever was credited with that body's fall, kind `traffic`, with
+//   data.domino = the chain's length: 2 for the first rider the body takes out (a DOUBLE), 3 and up
+//   for the next one down the line (a STRIKE). A rider's own fall carries no credit to itself.
+//   [default]
 // - A traffic or scenery takedown with a player on either side, with SimConfig.slowMo on, starts
 //   the slow motion on the takedown's tick: timeScale combat.slowmoScale (0.3) for
 //   combat.slowmoS (0.8 s, 48 raw ticks), `slowmoStart` then `slowmoEnd`, none within
@@ -458,6 +465,9 @@ export interface CombatState {
   hitTick: number[];
   /** Whether this rider's current fall has been looked at for a takedown (reset while riding). */
   downSeen: boolean[];
+  /** Who was credited with this rider's current fall (-1: nobody), and the chain length (1: direct). */
+  fallBy: EntityId[];
+  fallChain: number[];
   /** Takedowns credited to each rider this race. */
   takedowns: number[];
   /** The takedown slow motion in progress (its raw ticks left are world.facts.slowmo). */
@@ -514,6 +524,8 @@ export function combatState(world: World): CombatState {
     lastAttackerId: [],
     hitTick: [],
     downSeen: [],
+    fallBy: [],
+    fallChain: [],
     takedowns: [],
     slowmo: { actor: -1, target: -1, cause: 0, resume: 1, startTick: -1 },
     prevFlags: [],
@@ -1066,21 +1078,35 @@ export function takedownCount(world: World, id: EntityId): number {
  * never counts. The takedown carries the crash's causeId, one tick after the crash.
  */
 function creditTakedowns(world: World, config: SimConfig, st: CombatState): void {
-  for (const m of world.movers) if (m.kind === 'rider' && isRiding(m)) st.downSeen[m.id] = false;
+  for (const m of world.movers) {
+    if (m.kind !== 'rider' || !isRiding(m)) continue;
+    st.downSeen[m.id] = false;
+    st.fallBy[m.id] = -1;
+    st.fallChain[m.id] = 0;
+  }
   const window = Math.round((world.params['combat.takedownWindowS'] ?? 2) * 60);
   for (const e of world.lastEvents) {
     if (e.type !== 'crash' || e.data['contact'] === 'tumble') continue;
     const victim = world.movers[e.actor];
     if (!victim || victim.kind !== 'rider' || isRiding(victim) || st.downSeen[victim.id]) continue;
     st.downSeen[victim.id] = true;
-    const by = st.lastAttackerId[victim.id] ?? -1;
+    let by = st.lastAttackerId[victim.id] ?? -1;
     const hitAt = st.hitTick[victim.id] ?? -1;
-    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) continue;
-    const kind = takedownKind(e.data);
+    let chain = 1;
+    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) {
+      // Domino credit: knocked off by a flying body whose own fall someone was credited with.
+      const body = e.data['cause'] === 'tumble' ? (e.target ?? -1) : -1;
+      by = body >= 0 ? (st.fallBy[body] ?? -1) : -1;
+      if (by < 0 || by === victim.id) continue;
+      chain = (st.fallChain[body] ?? 1) + 1;
+    }
+    st.fallBy[victim.id] = by;
+    st.fallChain[victim.id] = chain;
+    const kind = chain > 1 ? 'traffic' : takedownKind(e.data);
     st.takedowns[by] = (st.takedowns[by] ?? 0) + 1;
     const extra: { target: EntityId; causeId?: number } = { target: victim.id };
     if (e.causeId !== undefined) extra.causeId = e.causeId;
-    const cause = emit(world, 'takedown', by, { kind }, extra);
+    const cause = emit(world, 'takedown', by, chain > 1 ? { kind, domino: chain } : { kind }, extra);
     const attacker = world.movers[by];
     const playerInvolved = isPlayer(config, victim) || (attacker !== undefined && isPlayer(config, attacker));
     if (kind !== 'health' && playerInvolved && config.slowMo) startSlowmo(world, st, by, victim.id, cause);
@@ -1374,6 +1400,8 @@ export const combatSystem: SimSystem = {
       st.lastAttackerId[m.id] = -1;
       st.hitTick[m.id] = -1;
       st.downSeen[m.id] = false;
+      st.fallBy[m.id] = -1;
+      st.fallChain[m.id] = 0;
       st.takedowns[m.id] = 0;
       st.prevFlags[m.id] = 0;
       st.pending[m.id] = false;
