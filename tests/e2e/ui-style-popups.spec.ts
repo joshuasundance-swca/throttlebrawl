@@ -68,7 +68,24 @@ function watchErrors(page: Page): string[] {
   return problems;
 }
 
-async function startRace(page: Page, opts: { portrait?: boolean; mirror?: boolean } = {}) {
+async function startRace(page: Page, opts: { portrait?: boolean; mirror?: boolean; classic?: boolean } = {}) {
+  if (opts.classic) {
+    // The laptop is the biggest screen here, and software WebGL takes about half a second a frame
+    // there in the default ink look's offscreen pass: the 1.1 s pop-ups could fade before two
+    // frames had passed (W-P's busier roads tipped it over in CI three times running). The pop-up
+    // layout does not depend on the look, so this case races in the Classic look, chosen through
+    // the saved record as a player would (as tests/perf/perf.spec.ts does).
+    await page.addInitScript(() => {
+      const record = {
+        format: 'settings',
+        version: 1,
+        build: 'e2e',
+        savedAt: '2026-10-02T00:00:00.000Z',
+        data: { look: 'classic' },
+      };
+      localStorage.setItem('mbrawl:settings', JSON.stringify(record));
+    });
+  }
   await page.addInitScript((portrait) => {
     (window as TestWindow).__GAME_TEST__ = true;
     // A phone held upright shows platform/'s rotate screen and pauses (its own spec covers that).
@@ -315,7 +332,7 @@ test.describe('laptop', () => {
   test.use({ viewport: { width: 1366, height: 768 }, isMobile: false, hasTouch: false });
   test('pop-ups sit clear of the road ahead', async ({ page }) => {
     const problems = watchErrors(page);
-    await startRace(page);
+    await startRace(page, { classic: true });
     const m = await feedAndMeasure(page, WIDE_FEED);
     expectClear(m, 'laptop');
     expectCompact(m, 'laptop');

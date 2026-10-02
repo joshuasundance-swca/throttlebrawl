@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "delivery-e-bike",
+  "name": "Delivery E-Bike",
+  "category": "car",
+  "tags": ["region-sf"],
+  "lengthM": 1.8,
+  "widthM": 0.7,
+  "cruiseMps": 8.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "cyclist-delivery"
+    },
+    "paintOptions": ["#e86f9a", "#3b7d5a", "#f2c14e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "An insulated box the size of a fridge and a rider on their fourth app of the night. Rides the kerb; the soup is fine.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

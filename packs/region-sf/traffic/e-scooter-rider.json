@@ -1,0 +1,33 @@
+{
+  "type": "traffic-type",
+  "id": "e-scooter-rider",
+  "name": "E-Scooter Rider",
+  "category": "car",
+  "tags": ["region-sf"],
+  "lengthM": 1.1,
+  "widthM": 0.55,
+  "cruiseMps": 6.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true,
+    "weaveM": 0.45
+  },
+  "look": {
+    "procedural": {
+      "preset": "scooter-rider"
+    },
+    "paintOptions": ["#3b7d5a", "#d9d9d9", "#2b2b2b"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A rental scooter, one earbud and a weave nobody can predict, including the rider. Keeps to the kerb, mostly.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

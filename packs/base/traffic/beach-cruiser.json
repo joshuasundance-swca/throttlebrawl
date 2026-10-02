@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "beach-cruiser",
+  "name": "Beach Cruiser",
+  "category": "car",
+  "tags": ["local", "cyclist"],
+  "lengthM": 1.8,
+  "widthM": 0.6,
+  "cruiseMps": 5.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "cyclist-cruiser"
+    },
+    "paintOptions": ["#7fd1c7", "#ff8fab", "#f2c14e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Fat tyres, a wire basket, one gear and no hurry. Rides the shoulder; the basket usually holds a smaller dog.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

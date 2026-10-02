@@ -58,7 +58,7 @@ export interface RoadsideRule {
 }
 
 export interface RoadsideKit {
-  id: 'pnw' | 'sf';
+  id: 'pnw' | 'sf' | 'keys';
   rules: readonly RoadsideRule[];
 }
 
@@ -151,8 +151,46 @@ export const SF_KIT: RoadsideKit = {
   ],
 };
 
+const KEYS_TOWN: readonly LandTheme[] = ['commercial'];
+const SHORE: readonly LandTheme[] = ['palms', 'beach'];
+const KEYS_LAND: readonly LandTheme[] = ['palms', 'beach', 'mangrove', 'commercial'];
+
+/**
+ * The Florida Keys ("likewise local"): sea grape crowding the verge and gone to tree among the
+ * palms, pastel conch cottages up on piers behind white picket fences, mailboxes with a fish on
+ * top, lobster traps stacked with their buoys, skiffs on their trailers, a pelican on a piling,
+ * BAIT ICE boards and a key lime pie stand. The kit's variants: 0 sea grape, 1 sea grape tree,
+ * 2 traps, 3 pelican, 4 trailer, 5 and 6 cottages, 7 picket fence section, 8 mailbox, 9 bait board,
+ * 10 pie stand. The Keys' own palms, mangroves, shacks and boats stay as they were.
+ */
+export const KEYS_KIT: RoadsideKit = {
+  id: 'keys',
+  rules: [
+    rule('cottage', [5, 6], KEYS_TOWN, 18, 0.55, [6, 3], 3.4, { ...BIG, back: 7.5, along: 3.2 }),
+    rule('pie', [10], [...KEYS_TOWN, ...SHORE], 600, 0.7, [1.2, 1], 1.6, { ...BIG, back: 0.8, along: 1.4 }),
+    rule('bait', [9], [...KEYS_TOWN, 'beach'], 160, 0.7, [0.5, 0.5], 1.2, { ...BIG, along: 1.1 }),
+    rule('picket', [7], KEYS_TOWN, 60, 0.5, [2.4, 0.4], 0.3, {
+      along: 2,
+      face: true,
+      tier: 0,
+      run: [2, 6, 4],
+    }),
+    rule('trailer', [4], KEYS_LAND, 120, 0.45, [3, 4], 2.4, { ...BIG, back: 2.6, along: 0.9 }),
+    rule('pelican', [3], [...SHORE, 'mangrove'], 90, 0.5, [10, 10], 0.6, { tier: 0 }),
+    rule('seagrape-tree', [1], [...SHORE, ...KEYS_TOWN], 25, 0.6, [3, 8], 1.8, { tier: 0, canopy: true }),
+    rule('traps', [2], [...KEYS_TOWN, ...SHORE], 70, 0.5, [1.5, 4], 1.1, { face: true }),
+    rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true }),
+    // The verge: sea grape crowding the road's edge, the near parallax at speed.
+    rule('seagrape', [0], KEYS_LAND, 6, 0.7, [0.4, 2.5], 0.9, { ...UNDER, size: [0.8, 1.3] }),
+  ],
+};
+
 /** The kit a region's loaded model draws, by the model's kind. */
-export const KITS: Readonly<Record<string, RoadsideKit>> = { pnwRoadside: PNW_KIT, sfRoadside: SF_KIT };
+export const KITS: Readonly<Record<string, RoadsideKit>> = {
+  pnwRoadside: PNW_KIT,
+  sfRoadside: SF_KIT,
+  keysRoadside: KEYS_KIT,
+};
 
 /** One placed prop. */
 export interface RoadsideItem {

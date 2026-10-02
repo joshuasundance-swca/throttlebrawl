@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "doodle",
+  "name": "Doodle",
+  "category": "animal",
+  "tags": ["region-sf"],
+  "lengthM": 0.9,
+  "widthM": 0.4,
+  "cruiseMps": 6.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "chases": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "animal-dog"
+    },
+    "paintOptions": ["#e8d5b0", "#c9a36b", "#f4f1e8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A designer dog with a designer dog's attention span. Chases you a short way along the verge, then forgets why.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}
