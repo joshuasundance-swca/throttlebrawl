@@ -187,6 +187,23 @@ describe('input-2: gamepad', () => {
     expect(sample().flags).toBe(0);
   });
 
+  it('playtest 2: L1 is the straight kick, and Triangle with Square held kicks left', () => {
+    const p = pad();
+    const { sample } = setup({ pads: [p] });
+    p.press(PAD.l1);
+    let s = sample();
+    expect(has(s, 'attack') && has(s, 'kick')).toBe(true);
+    expect(has(s, 'attackSideLeft') && has(s, 'attackSideRight')).toBe(true);
+    p.release(PAD.l1);
+    sample();
+    p.press(PAD.square);
+    sample();
+    p.press(PAD.triangle);
+    s = sample();
+    expect(has(s, 'attack') && has(s, 'kick') && has(s, 'attackSideLeft')).toBe(true);
+    expect(has(s, 'attackSideRight')).toBe(false);
+  });
+
   it('Cross attacks once per press with the auto side; Square and Circle force the side; R1 looks back', () => {
     const p = pad();
     const { sample } = setup({ pads: [p] });
