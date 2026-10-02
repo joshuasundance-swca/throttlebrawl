@@ -264,6 +264,8 @@ export const CHAOS_HIT_COP = 2;
 export const CHAOS_TAKEDOWN = 3;
 /** How far behind the lot each further cop parks, m (so the lot does not stack them). */
 const PARK_GAP_M = 8;
+/** With a patrol (more cops in the race), the lot's cops park this close, about the middle. */
+const LOT_GAP_M = 4;
 
 /**
  * Playtest 2's patrol [default] (the file header has the rule). `windowsS` are the seconds into the
@@ -923,7 +925,7 @@ function copSwing(world: World, config: SimConfig, st: CopsState, cop: Mover): b
  * Playtest 2's patrol, on top of the cops-3 mix: 1 to `patrolMax` of the cops the mix leaves in
  * the lot (the difficulty's cop frequency scales the roll: Easy brings one, Normal an even spread,
  * Hard the most more often; 0 brings nobody) wait up the road instead. The cops still in the lot
- * then park in their own order from the lot's front.
+ * then park in their own order: the lot's middle, then behind and ahead of it in turn.
  */
 function startPatrol(
   world: World,
@@ -957,7 +959,9 @@ function startPatrol(
     }
     if (lot) {
       const len = config.road.edges[lot.edge]?.length ?? lot.s;
-      m.pos = { ...lot, s: clamp(lot.s - inLot * PARK_GAP_M * lot.dir, 0, len) };
+      // Middle, then behind and ahead of it in turn, LOT_GAP_M apart: five fit the v1 lots (s 4 to 20).
+      const off = inLot === 0 ? 0 : (inLot % 2 === 1 ? -1 : 1) * Math.ceil(inLot / 2) * LOT_GAP_M;
+      m.pos = { ...lot, s: clamp(lot.s + off * lot.dir, 0, len) };
     }
     inLot++;
   }

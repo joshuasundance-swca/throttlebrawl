@@ -131,9 +131,9 @@ describe('real roads as routes: each one races well inside its region race', () 
         expect(e.road.s, `rider ${i} starts behind the line`).toBeLessThanOrEqual(start.s + 1);
         expect(Math.abs(e.road.d), `rider ${i} starts on the road or its lot`).toBeLessThan(10);
       }
-      // Playtest 2: one or two cops patrol, each on the shoulder up the road, inside the route's
-      // 8 % to 80 % (sim/cops PATROL), off the travel lanes.
-      expect(patrol.length, 'the patrol').toBeGreaterThanOrEqual(1);
+      // Playtest 2: up to two cops patrol (none here: these races turn the patrol off with the road
+      // events), each on the shoulder up the road, inside the route's 8 % to 80 % (sim/cops PATROL),
+      // off the travel lanes. tests/sim/cops-patrol.test.ts races the patrol on every route.
       expect(patrol.length, 'the patrol').toBeLessThanOrEqual(2);
       for (const i of patrol) {
         const cop = riders[i]?.road;

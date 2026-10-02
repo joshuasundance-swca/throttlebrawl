@@ -14,7 +14,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { DifficultyPreset } from '../../src/core';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { BATCH_TIMEOUT_MS, createBatchRace, simBatch, TRACE_EVERY_TICKS, type BatchResult } from './batch';
+import { createHeadlessRace } from '../../src/app';
+import {
+  BATCH_TIMEOUT_MS,
+  createBatchRace,
+  NO_ROAD_EVENTS,
+  simBatch,
+  TRACE_EVERY_TICKS,
+  type BatchResult,
+} from './batch';
 
 const SEEDS = Array.from({ length: 12 }, (_, i) => i + 1);
 /** He has arrived once he rides (above 1 m/s) within this of the player: a little over his 14 m bust radius. */
@@ -36,7 +44,11 @@ interface PresetRun {
 }
 
 function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
-  const { sim, playerId, config } = createBatchRace(seed, difficulty);
+  // The batch's race with the patrol on (the shared batch turns it off with the road events).
+  const { sim, playerId, config } = createHeadlessRace(
+    { seed, difficulty, tuning: { ...NO_ROAD_EVENTS, 'cops.patrolScale': 1 } },
+    { includeDrafts: true },
+  );
   const bot = createBot();
   const sirens: PresetRun['sirens'] = [];
   let cops = 0;
@@ -128,7 +140,7 @@ describe('cops-2: the cop follows the difficulty preset', () => {
           ? `${(Math.min(...margins) / 60).toFixed(0)}..${(Math.max(...margins) / 60).toFixed(0)} s`
           : 'n/a'),
     );
-    expect(sirens).toBe(batch.races.length); // a patrol cop lights up every race
+    expect(sirens).toBe(batch.races.length); // the lot cop comes out every race
     for (const m of margins) expect(m).toBeGreaterThanOrEqual(LEAD_TICKS);
   });
 });
