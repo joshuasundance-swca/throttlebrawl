@@ -421,6 +421,51 @@ export const PROPS = [
     },
     views: VARIANT_VIEWS,
   },
+  {
+    name: 'keys_roadside',
+    script: 'props/keys_roadside.py',
+    asset: 'models/scenery/keys-roadside',
+    kind: 'variants',
+    budget: { materials: 18 },
+    variants: {
+      roots: [
+        'keys_seagrape',
+        'keys_seagrape_tree',
+        'keys_traps',
+        'keys_pelican',
+        'keys_trailer',
+        'keys_cottage_a',
+        'keys_cottage_b',
+        'keys_picket',
+        'keys_mailbox',
+        'keys_bait',
+        'keys_pie',
+      ],
+      xs: [-40, -34, -28, -24, -18, -8, 4, 14, 19, 23, 30],
+      parts: ['body'],
+      perVariant: { tris: 180, draws: 10 },
+      // sea grape, sea grape tree, lobster traps, pelican, boat trailer, two cottages, picket
+      // section, mailbox, bait board, key lime pie stand
+      tris: [40, 60, 120, 64, 80, 180, 180, 48, 60, 120, 170],
+      height: [0.5, 7],
+      heights: [
+        [0.8, 1.8],
+        [2.4, 3.8],
+        [1.1, 1.5],
+        [2.8, 3.4],
+        [1.3, 1.8],
+        [5, 6.2],
+        [5, 6.2],
+        [0.9, 1.1],
+        [1.4, 1.7],
+        [1.8, 2.1],
+        [2.2, 2.5],
+      ],
+      sway: false,
+      sharedMaterials: false,
+    },
+    views: VARIANT_VIEWS,
+  },
 ];
 
 export const ASSET_ROOT = 'packs/base/assets';

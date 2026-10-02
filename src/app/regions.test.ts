@@ -158,17 +158,15 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     expect(dial(r)).toEqual(['base:keys-rockabilly', 'base:keys-surf']);
   });
 
-  it('the Pacific Northwest and San Francisco play their own station first, then the base ones', () => {
-    // The maintainer, 2026-10-01: "I actually like the music" (run W-O: a station per region).
+  it('the Pacific Northwest and San Francisco play their own two stations, and only those', () => {
+    // Playtest 2, 2026-10-02: "There should be different stations and music in different regions".
     expect(dial(raceRadio(ALL, 'region-pnw:pacific-northwest'))).toEqual([
       'region-pnw:pnw-drizzle',
-      'base:keys-rockabilly',
-      'base:keys-surf',
+      'region-pnw:pnw-salal',
     ]);
     expect(dial(raceRadio(ALL, 'region-sf:san-francisco'))).toEqual([
+      'region-sf:sf-burn-rate',
       'region-sf:sf-fog-bank',
-      'base:keys-rockabilly',
-      'base:keys-surf',
     ]);
   });
 

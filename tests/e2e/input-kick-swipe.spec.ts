@@ -69,9 +69,17 @@ async function startRace(page: Page, problems: string[]) {
 /**
  * One 26 px swipe down, stamped over `durS` (default 180 ms; 24 px, kickSwipePx, is crossed only at
  * the end). `realMs` is how long to wait, in real time, before sending the end of the swipe (0: all
- * at once).
+ * at once). `dir` is the swipe's unit direction in screen px (default straight down; playtest 2's
+ * directional kick swipes up, or down to a side).
  */
-async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number, durS = 0.18) {
+async function swipe(
+  page: Page,
+  cdp: CDPSession,
+  id: number,
+  realMs: number,
+  durS = 0.18,
+  dir: { x: number; y: number } = { x: 0, y: 1 },
+) {
   const view = page.viewportSize() ?? { width: 915, height: 412 };
   const attack = attackCenter(view.width, view.height);
   const from = await page.evaluate(() => (window as TestWindow).__game!.inputs().length);
@@ -88,13 +96,17 @@ async function swipe(page: Page, cdp: CDPSession, id: number, realMs: number, du
   if (realMs === 0) {
     await Promise.all([
       touch(cdp, 'touchStart', [{ ...attack, id }], t0),
-      ...moves.map(([dy, dt]) => touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + dy, id }], t0 + dt)),
+      ...moves.map(([r, dt]) =>
+        touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt),
+      ),
     ]);
   } else {
     await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
     await page.waitForTimeout(realMs);
     await Promise.all(
-      moves.map(([dy, dt]) => touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + dy, id }], t0 + dt)),
+      moves.map(([r, dt]) =>
+        touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt),
+      ),
     );
   }
   await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
@@ -184,5 +196,30 @@ test('a scripted 150 or 180 ms swipe down on the attack button kicks, not punche
     judged,
     'a real-time swipe reached the sim 7-15 ticks after its press at least once in 4 attempts',
   ).toBe(true);
+  expect(problems).toEqual([]);
+});
+
+// Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you ride up
+// behind someone (directional swipe)". A swipe up is the straight kick at the rider ahead; a swipe
+// down leaning left kicks to the left. End to end: the attack that starts is a kick carrying that
+// choice, whoever happens to be near.
+test('playtest 2: a swipe up is the straight kick, a swipe down-left kicks left', async ({ page }) => {
+  test.setTimeout(120_000);
+  const problems: string[] = [];
+  await startRace(page, problems);
+  const cdp = await page.context().newCDPSession(page);
+
+  const up = await swipe(page, cdp, 21, 0, 0.15, { x: 0, y: -1 });
+  console.log(`swipe up: attack at +${up.press}, kick flag at +${up.kick}; ${JSON.stringify(up.chain)}`);
+  const upStart = up.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
+  expect(upStart, 'the swipe up starts a kick').toBeDefined();
+  expect(upStart?.data['straight'], 'and it is the straight kick').toBe(true);
+
+  const left = await swipe(page, cdp, 22, 0, 0.15, { x: -0.75, y: 0.66 });
+  console.log(`swipe down-left: attack at +${left.press}; ${JSON.stringify(left.chain)}`);
+  const leftStart = left.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
+  expect(leftStart, 'the swipe down-left starts a kick').toBeDefined();
+  expect(leftStart?.data['side'], 'to the left').toBe(-1);
+  expect(leftStart?.data['straight']).toBeUndefined();
   expect(problems).toEqual([]);
 });

@@ -13,6 +13,8 @@ import { createFlatLook } from './look';
 import { bakeModel, MODEL_ASSETS, modelKindsFor, type ModelKind, type SceneryModel } from './models';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import {
+  KEYS_KIT,
+  kitFor,
   PNW_KIT,
   ROADSIDE_DRAW_M,
   RoadsideLayer,
@@ -105,6 +107,16 @@ const REGIONS: RegionCase[] = [
     minNearPer100: 8,
     everywhere: ['street-tree', 'meter', 'lamp', 'hydrant', 'scooter', 'bins'],
     somewhere: ['parked', 'board', 'store'],
+  },
+  {
+    region: 'the Florida Keys',
+    kit: KEYS_KIT,
+    model: await kitModel('keysRoadside'),
+    networks: ['keys-m1', 'osm-keys-bahia-honda'],
+    themes: ['palms', 'beach', 'mangrove', 'commercial'],
+    minNearPer100: 8,
+    everywhere: ['seagrape', 'seagrape-tree', 'traps', 'trailer', 'pelican'],
+    somewhere: ['cottage', 'picket', 'mailbox', 'bait', 'pie'],
   },
 ];
 
@@ -286,8 +298,33 @@ describe('the roadside kits', () => {
       expect(needs(id), id).toContain('sfRoadside');
       expect(needs(id), id).not.toContain('pnwRoadside');
     }
-    expect(needs('keys-m1')).not.toContain('pnwRoadside');
-    expect(needs('keys-m1')).not.toContain('sfRoadside');
+    for (const id of ['keys-m1', 'osm-keys-bahia-honda']) {
+      expect(needs(id), id).toContain('keysRoadside');
+      expect(needs(id), id).not.toContain('pnwRoadside');
+      expect(needs(id), id).not.toContain('sfRoadside');
+    }
+    for (const id of ['pnw-c1', 'sf-hills']) expect(needs(id), id).not.toContain('keysRoadside');
+  });
+
+  it("draws a race's own region's kit, even when another region's kit loaded first", () => {
+    // The menu's attract scene is the Keys road, so the Keys kit loads before any race, and models
+    // stay loaded across regions. Live W-P bug (found by the run's close-ups): the renderer drew the
+    // first kit loaded, so a PNW or SF race after the menu drew the Keys kit, or none of its own.
+    const loaded = { keysRoadside: true, sfRoadside: true, pnwRoadside: true, truck: true };
+    const cases: [string, string][] = [
+      ['keys-m1', 'keysRoadside'],
+      ['osm-keys-bahia-honda', 'keysRoadside'],
+      ['pnw-c1', 'pnwRoadside'],
+      ['osm-pnw-gorge', 'pnwRoadside'],
+      ['sf-hills', 'sfRoadside'],
+      ['osm-sf-twin-peaks', 'sfRoadside'],
+    ];
+    for (const [id, want] of cases) {
+      expect(kitFor(needs(id), loaded), id).toBe(want);
+      // Its own kit not loaded yet: none, never another region's.
+      const others = Object.fromEntries(Object.entries(loaded).filter(([k]) => k !== want));
+      expect(kitFor(needs(id), others), `${id} before its kit loads`).toBeNull();
+    }
   });
 
   it('draws the far stretches with their big props only, and nothing past the draw distance', () => {

@@ -22,6 +22,7 @@
     "takedownComboScale": 0.5,
     "perStealCash": 60
   },
+  "modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 },
   "meta": {
     "status": "live",
     "notes": "The M1 classic race: you, the four regular rivals and one cop; one length, one required objective (finish), prize by place. riders-3 (M1) owns it; app-2 landed the full field (riders-3's draft #42). M2 riders-5 added the style cash (the content-pack doc's example values), and raised the rival pace from 31 to 36.5 m/s with the starter bike's 85 → 100 mph (playtest 1), so the race keeps its balance."

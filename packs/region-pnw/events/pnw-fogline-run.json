@@ -26,6 +26,7 @@
     "takedownComboScale": 0.5,
     "perStealCash": 60
   },
+  "modifiers": { "pool": "region-default", "maxPerRace": 2, "chanceScale": 1 },
   "meta": {
     "status": "live",
     "notes": "The Pacific Northwest's first race (region-pnw, playtest 1c): dawn fog on the forest two-lane, two touring regulars and the two locals, and the local deputy. Short is the landing to the end of Cedar Hollow (about 2.4 km), standard runs over the trestle to the line on Espresso Row (about 3.9 km, 2 to 3 minutes), long goes on over Fogline Ridge to the sawmill (about 6.2 km). The rewards and pace copy the Keys race, so the regions balance alike.",

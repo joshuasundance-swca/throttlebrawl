@@ -17,6 +17,7 @@ import {
   type Composition,
   type ProceduralSpec,
 } from './radio-compose';
+import { createRegionalRig, REGIONAL_GENRES, type RegionalGenre } from './radio-rigs';
 import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
 
 export interface RadioTrack {
@@ -101,10 +102,12 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
 
 /**
  * A region's stations, derived from each station's `regions` (docs/content-packs.md, "Region":
- * nothing in a region lists its stations): the regional ones first, then every genre station, then
- * (outside the base pack's own regions) the base pack's stations as fallbacks further down the dial,
- * so a new region keeps the music the maintainer likes (2026-10-01: "I actually like the music").
- * `null` (region not known yet) = every station.
+ * nothing in a region lists its stations): the regional ones first, then every genre station.
+ * A region with two or more stations of its own keeps its dial to itself (playtest 2, 2026-10-02:
+ * "There should be different stations and music in different regions"), so its race starts on its
+ * own sound and a station saved in another region is not offered there. A region with just one
+ * gets the base pack's stations further down the dial, so it still has a choice (2026-10-01: "I
+ * actually like the music"). `null` (region not known yet) = every station.
  */
 export function stationsForRegion(
   stations: readonly RadioStation[],
@@ -114,9 +117,10 @@ export function stationsForRegion(
   const want = bare(regionId);
   const own = stations.filter((s) => s.regions.includes(want));
   const genre = stations.filter((s) => s.regions.length === 0);
-  const fallback = own.length
-    ? stations.filter((s) => s.packId === 'base' && !own.includes(s) && !genre.includes(s))
-    : [];
+  const fallback =
+    own.length === 1
+      ? stations.filter((s) => s.packId === 'base' && !own.includes(s) && !genre.includes(s))
+      : [];
   return [...own, ...genre, ...fallback];
 }
 
@@ -145,7 +149,10 @@ export function composeFor(track: RadioTrack): Composition | null {
   return composeTrack(track.procedural, trackSeed(track.ref, typeof salt === 'number' ? salt : 0));
 }
 
-const genreOf = (s: RadioStation): RadioGenre => (s.genre === 'rockabilly' ? 'rockabilly' : 'surf');
+const isRegional = (g: string): g is RegionalGenre => (REGIONAL_GENRES as readonly string[]).includes(g);
+/** The band a station plays on: its `genre`, surf when the genre has no band of its own yet. */
+export const genreOf = (s: RadioStation): RadioGenre =>
+  s.genre === 'rockabilly' || isRegional(s.genre) ? s.genre : 'surf';
 
 export interface NowPlaying {
   stationId: string;
@@ -212,7 +219,7 @@ export function createRadioPlayer(
   const rigFor = (g: RadioGenre) => {
     let r = rigs.get(g);
     if (!r) {
-      r = createRadioRig(ctx, out, g);
+      r = isRegional(g) ? createRegionalRig(ctx, out, g) : createRadioRig(ctx, out, g);
       r.setFx(fx);
       rigs.set(g, r);
     }

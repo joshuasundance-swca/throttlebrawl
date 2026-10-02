@@ -342,6 +342,26 @@ function partsFor(key: string): Parts {
   }
 }
 
+/**
+ * Read-at-speed scale per shape (W-P: "readable at speed"; on a phone at 100 mph a life-size cone is
+ * a few pixels). Stylized, not literal: the small props are drawn larger than life. The sim's contact
+ * boxes are sized to match (sim/modifiers, `extent`).
+ */
+const READ_SCALE: Readonly<Record<string, number>> = {
+  cone: 1.7,
+  flare: 1.8,
+  flareGlow: 2.2,
+  barricade: 1.3,
+  hayBale: 1.25,
+  radar: 1.4,
+  person: 1.12,
+  arm: 1.12,
+  arrowBoard: 1.5,
+  lightbar: 1.4,
+};
+/** The warning sign's panel, metres square (stands 2.2 m up). */
+const SIGN_M = 3.0;
+
 /** Shapes drawn unlit (they glow): flares and light bars. */
 const GLOWS = new Set(['flareGlow', 'lightbar']);
 
@@ -517,7 +537,8 @@ export class EventProps {
           this.q2.setFromAxisAngle(this.xAxis, p.tilt);
           this.q.multiply(this.q2);
         }
-        this.s.set(sx, kind === 'flareGlow' ? sx : 1, sx);
+        const k = READ_SCALE[kind ?? ''] ?? 1;
+        this.s.set(sx * k, (kind === 'flareGlow' ? sx : 1) * k, sx * k);
         this.m.compose(this.v, this.q, this.s);
         mesh.setMatrixAt(i, this.m);
         mesh.setColorAt(i, this.white);
@@ -536,7 +557,7 @@ export class EventProps {
       if (sign) this.root.remove(sign.mesh);
       const g = new Group();
       const post = new InstancedMesh(
-        mergeBoxes([box([0.1, 2.2, 0.1], [0, 1.1, 0.05], '#9aa0a6')]),
+        mergeBoxes([box([0.14, 3.6, 0.14], [0, 1.8, 0.05], '#9aa0a6')]),
         this.material(false),
         1,
       );
@@ -550,8 +571,8 @@ export class EventProps {
       }
       if (tex) {
         // The face looks back along the road at the riders coming (the plane's +z, the model's back).
-        const panel = new Mesh(new PlaneGeometry(1.8, 1.8), this.look.material('board', { map: tex }));
-        panel.position.set(0, 2.5, 0.1);
+        const panel = new Mesh(new PlaneGeometry(SIGN_M, SIGN_M), this.look.material('board', { map: tex }));
+        panel.position.set(0, 2.2 + SIGN_M / 2, 0.1);
         g.add(panel);
       }
       g.name = `event-sign-${p.id}`;

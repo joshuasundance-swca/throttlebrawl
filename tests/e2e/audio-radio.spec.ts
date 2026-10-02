@@ -146,6 +146,8 @@ test('radio: switching stations changes the playing track; each station plays wi
 // real graph (the dial order is checked in src/app/regions.test.ts and app-wire-seams.spec.ts).
 for (const [pack, id] of [
   ['region-pnw', 'pnw-drizzle'],
+  ['region-pnw', 'pnw-salal'],
+  ['region-sf', 'sf-burn-rate'],
   ['region-sf', 'sf-fog-bank'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
@@ -160,6 +162,55 @@ for (const [pack, id] of [
     expect(r.first.peak).toBeLessThan(1);
   });
 }
+
+// Playtest 2 (2026-10-02, "different stations and music in different regions"): every band, the
+// Keys' and the regional ones, plays unclipped and at about the same loudness, so switching
+// stations or regions never jumps the level. One synthetic station per band, two songs each.
+test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ page }) => {
+  test.setTimeout(120_000);
+  const bands = [
+    ['surf', 'surf-trio'],
+    ['rockabilly', 'rockabilly-trio'],
+    ['grunge', 'grunge-band'],
+    ['folk', 'folk-band'],
+    ['synth', 'synth-band'],
+    ['psych', 'psych-band'],
+  ] as const;
+  const problems = await openHarness(page);
+  const levels: Record<string, number> = {};
+  for (const [genre, preset] of bands) {
+    const station = {
+      id: `band-${genre}`,
+      name: genre,
+      genre,
+      regions: [],
+      tracks: ['a', 'b'].map((id) => ({
+        id,
+        title: id,
+        procedural: { preset },
+        origin: 'agent',
+        status: 'live',
+      })),
+    };
+    const r = await render(page, {
+      choice: 2,
+      switchTo: null,
+      music: 1,
+      dur: 8,
+      table: { [`base:band-${genre}`]: station },
+    });
+    const rms = (r.first.rms + r.second.rms) / 2;
+    const peak = Math.max(r.first.peak, r.second.peak);
+    levels[genre] = 20 * Math.log10(rms);
+    console.log(`band ${genre}: ${levels[genre].toFixed(1)} dBFS rms, peak ${peak.toFixed(3)}`);
+    expect(r.refAfter).toMatch(new RegExp(`^base:station/band-${genre}#`));
+    expect(rms).toBeGreaterThan(0.02);
+    expect(peak).toBeLessThan(1);
+  }
+  const all = Object.values(levels);
+  expect(Math.max(...all) - Math.min(...all)).toBeLessThan(3.5);
+  expect(problems).toEqual([]);
+});
 
 test('radio: the music bus still follows its slider', async ({ page }) => {
   const problems = await openHarness(page);
@@ -186,7 +237,9 @@ type ProbeWindow = Window & {
 test.describe('in the game', () => {
   test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 720 } });
 
-  test('radio: R tunes from the score to rockabilly, then surf, then off', async ({ page }) => {
+  test('radio: a Keys race starts on rockabilly; R tunes surf, then off, then the score', async ({
+    page,
+  }) => {
     const problems: string[] = [];
     page.on('pageerror', (err) => problems.push(err.message));
     await page.addInitScript(() => {
@@ -217,14 +270,16 @@ test.describe('in the game', () => {
       return { noise: count(1), upright: count(0.6), twang: count(1.1), clean: count(0.8), bass: count(0.9) };
     };
 
-    const score = await heard(1500);
-    await page.keyboard.press('r');
+    // Playtest 2 (2026-10-02): the race starts on the region's own station, the Keys' first.
+    await page.waitForTimeout(800); // the stations load on first use
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
     await page.keyboard.press('r');
     await page.waitForTimeout(400);
     const off = await heard(1000);
+    await page.keyboard.press('r');
+    const score = await heard(1500);
     console.log(
       `plucks heard: score ${JSON.stringify(score)}, rockabilly ${JSON.stringify(rockabilly)}, ` +
         `surf ${JSON.stringify(surf)}, off ${JSON.stringify(off)}`,
