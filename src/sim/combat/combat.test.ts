@@ -204,7 +204,8 @@ describe('combat-1: damage and knock-off', () => {
       scriptOf({ 0: once(0, KICK_PRESS) }),
     );
     h.run(40);
-    expect(ofType(h.events, 'hit')[0]?.data['health']).toBe(82);
+    // The kick's 18 data damage × combat.unarmedDamageScale (2, playtest 2): 100 - 36.
+    expect(ofType(h.events, 'hit')[0]?.data['health']).toBe(64);
     expect(ofType(h.events, 'crash')).toHaveLength(0);
   });
 

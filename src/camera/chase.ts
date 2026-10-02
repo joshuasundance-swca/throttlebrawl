@@ -198,9 +198,12 @@ const BIAS_RANGE_M = 25;
 /**
  * A remount (run W-P) cuts to the chase framing when it faces further than this from it: on foot
  * the framing follows the walk back to the bike, and a 180-degree swing through the rider hid the
- * road ahead for up to a second on real roads.
+ * road ahead for up to a second on real roads. W-Q (interview, 2026-10-02: "remount rolling"): the
+ * bike now pulls away at 8 m/s on the remount tick, and a blend from under 60 degrees still hid the
+ * road ahead for 8 frames on a Russian Hill crest at a 16:9 phone; every remount cuts. A cut to a
+ * framing it nearly holds already is not seen. [default]
  */
-const REMOUNT_CUT_RAD = Math.PI / 3;
+const REMOUNT_CUT_RAD = 0;
 /** Heading must agree with the road this clearly (|cos|) before the rig trusts it for direction. */
 const DIR_CONFIDENCE = 0.25;
 /** A look-ahead point closer than this (a dead end just ahead) is replaced by the fallback. */

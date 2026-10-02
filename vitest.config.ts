@@ -34,7 +34,7 @@ export default mergeConfig(
           // test on main (5.8 s). Raised from 60 s to 90 s for the same machine load as the unit
           // project: with parallel lanes running, sim tests with no timeout of their own took up to
           // 26 s (2026-09-30), and they grow as the sim gains systems. Each race still has its own
-          // tick cap. Tests and hooks that set their own timeout (ai-rivals' 300 s batch hook) are
+          // tick cap. Tests and hooks that set their own timeout (ai-rivals' 600 s batch hook) are
           // unaffected. [default]
           test: {
             name: 'sim',
