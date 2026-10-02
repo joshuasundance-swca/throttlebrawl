@@ -343,6 +343,8 @@ export function createApp(opts: AppOptions): AppHandle {
     };
     renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
     camera.setRoad(stream.road);
+    // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
+    audio.setRoad(stream.road);
     attractPose = null;
     tuneRadio();
   };
