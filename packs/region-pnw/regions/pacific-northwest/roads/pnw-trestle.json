@@ -29,6 +29,15 @@
   ],
   "features": [
     {
+      "kind": "billboard",
+      "id": "bb-trestle-gutter",
+      "s0": 780,
+      "s1": 820,
+      "d0": 7,
+      "d1": 16,
+      "item": "gutter-truth"
+    },
+    {
       "kind": "roadsideZone",
       "id": "trestle-anglers",
       "s0": 560,

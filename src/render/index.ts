@@ -12,8 +12,11 @@
 // The region build-out (W-O, the maintainer, 2026-10-01) loads a region's models only when a race
 // there starts (`modelKindsFor`), repaints them with its palette, draws the cable car as the region's
 // cable-car traffic, and adds the drizzle (rain.ts) a region's palette asks for.
+// W-P "fill the world" (the maintainer, 2026-10-01b) adds the backdrop (backdrop/): each region's
+// mountains, skylines, bridges, ships and clouds past the fog, one lazy-loaded draw call.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
+import { Backdrop, type BackdropStats } from './backdrop';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -24,6 +27,7 @@ import type {
 } from '../sim/api';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
+import { EventProps } from './event-props';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
@@ -170,6 +174,8 @@ export interface SceneryStatus {
   visible: number;
   /** Rain streaks drawn in the last frame (0 = a dry race). */
   rain: number;
+  /** The far backdrop as built (null while it loads, or for a road without one). */
+  backdrop: BackdropStats | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -207,12 +213,22 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });
   const boards = new Boards(look);
+  // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
+  const eventProps = new EventProps(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
   const speedLines = new SpeedLines(look, params);
   // The drizzle rides on the camera too (rain.ts).
   const rain = new Rain(look, params);
   camera.add(effects.tint, speedLines.root, rain.root);
-  const persistent = new Set<Object3D>([views.root, effects.root, boards.root, camera]);
+  const backdrop = new Backdrop();
+  const persistent = new Set<Object3D>([
+    views.root,
+    effects.root,
+    boards.root,
+    eventProps.root,
+    camera,
+    backdrop.root,
+  ]);
   for (const o of persistent) scene.add(o);
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
@@ -339,6 +355,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       roadArgs = { road, dressing, density: params.roadsideDensity };
       buildRoad();
+      backdrop.setRoad(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
     },
@@ -361,6 +378,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();
+      backdrop.update(camera.position, scene, t);
+      eventProps.sync(curr, t);
       sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       lastFrameAt = t;
@@ -393,6 +412,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         width: canvas.width,
         height: canvas.height,
         setPieces: roadScene?.stats.setPieces ?? [],
+        eventProps: eventProps.counts(),
       };
     },
     viewCounts: () => views.viewCounts(),
@@ -436,6 +456,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (next === sceneSeed) return;
       sceneSeed = next;
       buildRoad();
+      backdrop.setSeed(next);
     },
     scenery: () => ({
       seed: sceneSeed,
@@ -443,6 +464,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       models: modelReport,
       visible: sceneryVisible,
       rain: rain.count(),
+      backdrop: backdrop.status().stats,
     }),
   };
 }

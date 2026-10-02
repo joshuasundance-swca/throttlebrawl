@@ -247,6 +247,22 @@
       "text": "Whole county saw that. Down.",
       "audioAsset": "audio/barks/pruitt-core/pruitt-bust-heat",
       "audioStatus": "live"
+    },
+    {
+      "id": "pruitt-siren-storm",
+      "trigger": "cop-siren",
+      "status": "live",
+      "text": "Storm's coming. Still writing tickets.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-siren-storm",
+      "audioStatus": "live"
+    },
+    {
+      "id": "pruitt-bust-shade",
+      "trigger": "busted",
+      "status": "live",
+      "text": "Sit in the shade. Cuffs are hot.",
+      "audioAsset": "audio/barks/pruitt-core/pruitt-bust-shade",
+      "audioStatus": "live"
     }
   ],
   "meta": {

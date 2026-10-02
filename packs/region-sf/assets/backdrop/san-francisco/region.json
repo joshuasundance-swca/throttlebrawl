@@ -1,0 +1,385 @@
+{
+  "formatVersion": 1,
+  "region": "san-francisco",
+  "hazeM": 22000,
+  "hazeMax": 0.72,
+  "floorColour": "#5f7f8f",
+  "pieces": [
+    {
+      "id": "city-ground",
+      "kind": "floor",
+      "surface": "land",
+      "area": [
+        [37.708, -122.505],
+        [37.735, -122.507],
+        [37.775, -122.512],
+        [37.788, -122.505],
+        [37.79, -122.48],
+        [37.808, -122.477],
+        [37.806, -122.45],
+        [37.808, -122.42],
+        [37.805, -122.4],
+        [37.795, -122.392],
+        [37.785, -122.387],
+        [37.77, -122.387],
+        [37.75, -122.383],
+        [37.733, -122.375],
+        [37.715, -122.38],
+        [37.708, -122.39]
+      ],
+      "colour": "#8b9384"
+    },
+    {
+      "id": "marin-ground",
+      "kind": "floor",
+      "surface": "land",
+      "area": [
+        [37.83, -122.48],
+        [37.833, -122.53],
+        [37.86, -122.56],
+        [37.9, -122.6],
+        [37.95, -122.55],
+        [37.92, -122.48],
+        [37.87, -122.46],
+        [37.855, -122.48],
+        [37.84, -122.475]
+      ],
+      "colour": "#8e8a62"
+    },
+    {
+      "id": "east-bay-ground",
+      "kind": "floor",
+      "surface": "land",
+      "area": [
+        [37.7, -122.2],
+        [37.75, -122.22],
+        [37.8, -122.29],
+        [37.83, -122.31],
+        [37.88, -122.31],
+        [37.93, -122.33],
+        [37.95, -122.28],
+        [37.95, -122.15],
+        [37.7, -122.1]
+      ],
+      "colour": "#8a8f7a"
+    },
+    {
+      "id": "golden-gate-bridge",
+      "kind": "bridge",
+      "style": "suspension",
+      "from": [37.8105, -122.4772],
+      "to": [37.8302, -122.479],
+      "deckM": 67,
+      "towersAt": [0.19, 0.81],
+      "towerM": 227,
+      "colour": "#c0452f",
+      "exaggerate": 1.3,
+      "keepOutM": 600
+    },
+    {
+      "id": "bay-bridge-west",
+      "kind": "bridge",
+      "style": "suspension",
+      "from": [37.7885, -122.3878],
+      "to": [37.8085, -122.366],
+      "deckM": 58,
+      "towersAt": [0.13, 0.36, 0.63, 0.86],
+      "anchorsAt": [0.5],
+      "towerM": 160,
+      "colour": "#a4abb0",
+      "exaggerate": 1.2,
+      "keepOutM": 600
+    },
+    {
+      "id": "bay-bridge-east",
+      "kind": "bridge",
+      "style": "girder",
+      "from": [37.8135, -122.357],
+      "to": [37.8215, -122.302],
+      "deckM": 30,
+      "towersAt": [0.06],
+      "towerM": 160,
+      "pierEveryM": 160,
+      "colour": "#b5babd",
+      "exaggerate": 1.2,
+      "keepOutM": 600
+    },
+    {
+      "id": "yerba-buena",
+      "kind": "peak",
+      "at": [37.811, -122.365],
+      "heightM": 105,
+      "radiusM": 600,
+      "shape": "dome",
+      "colour": "#6f7d5f"
+    },
+    {
+      "id": "the-rock",
+      "kind": "peak",
+      "at": [37.8267, -122.423],
+      "heightM": 41,
+      "radiusM": 230,
+      "shape": "rock",
+      "colour": "#7d7c6c",
+      "exaggerate": 1.4
+    },
+    {
+      "id": "angel-island",
+      "kind": "peak",
+      "at": [37.861, -122.432],
+      "heightM": 240,
+      "radiusM": 1400,
+      "shape": "dome",
+      "colour": "#5f7050"
+    },
+    {
+      "id": "twin-peaks",
+      "kind": "peak",
+      "at": [37.7522, -122.4475],
+      "heightM": 282,
+      "radiusM": 900,
+      "shape": "twin",
+      "colour": "#8b8a5c",
+      "keepOutM": 500
+    },
+    {
+      "id": "sutro-hill",
+      "kind": "peak",
+      "at": [37.7585, -122.459],
+      "heightM": 270,
+      "radiusM": 600,
+      "shape": "dome",
+      "colour": "#4e5f45",
+      "keepOutM": 400
+    },
+    {
+      "id": "radio-mast",
+      "kind": "mast",
+      "at": [37.7552, -122.4528],
+      "baseM": 254,
+      "heightM": 298,
+      "colour": "#c8402f",
+      "bandColour": "#f1eee6",
+      "keepOutM": 250,
+      "exaggerate": 1.3
+    },
+    {
+      "id": "davidson-hill",
+      "kind": "peak",
+      "at": [37.7383, -122.4545],
+      "heightM": 283,
+      "radiusM": 700,
+      "shape": "dome",
+      "colour": "#55654a",
+      "keepOutM": 500
+    },
+    {
+      "id": "marin-headlands",
+      "kind": "ridge",
+      "path": [
+        [37.827, -122.53, 250],
+        [37.832, -122.505, 300],
+        [37.834, -122.485, 280],
+        [37.842, -122.475, 250],
+        [37.855, -122.48, 280],
+        [37.87, -122.5, 350]
+      ],
+      "heightM": [150, 350],
+      "profile": "rolling",
+      "colour": "#9b8f5c",
+      "exaggerate": 1.1
+    },
+    {
+      "id": "tamalpais",
+      "kind": "peak",
+      "at": [37.9235, -122.5965],
+      "heightM": 784,
+      "radiusM": 4500,
+      "shape": "dome",
+      "colour": "#6b7552"
+    },
+    {
+      "id": "east-bay-hills",
+      "kind": "ridge",
+      "path": [
+        [37.7, -122.09, 400],
+        [37.76, -122.14, 450],
+        [37.81, -122.19, 500],
+        [37.86, -122.22, 520],
+        [37.9, -122.25, 480],
+        [37.94, -122.29, 420]
+      ],
+      "heightM": [250, 520],
+      "profile": "rolling",
+      "colour": "#7c8565"
+    },
+    {
+      "id": "diablo",
+      "kind": "peak",
+      "at": [37.8816, -121.9142],
+      "heightM": 1173,
+      "radiusM": 8000,
+      "shape": "dome",
+      "colour": "#7b7c5e"
+    },
+    {
+      "id": "downtown",
+      "kind": "skyline",
+      "centre": [37.7915, -122.3985],
+      "radiusM": 750,
+      "count": 28,
+      "heightM": [70, 250],
+      "widthM": [30, 55],
+      "colours": ["#8e9aa3", "#a9a296", "#7c8790", "#b8b2a6", "#6f7a83", "#c9c4ba"],
+      "spires": 1,
+      "orbs": 1,
+      "orbColour": "#fff0c8",
+      "keepOutM": 350
+    },
+    {
+      "id": "campus-row",
+      "kind": "skyline",
+      "centre": [37.776, -122.395],
+      "radiusM": 650,
+      "count": 12,
+      "heightM": [45, 130],
+      "widthM": [40, 80],
+      "colours": ["#9aa5ab", "#b3b9b8", "#7f8b92"],
+      "orbs": 1,
+      "orbColour": "#e8f4ff",
+      "keepOutM": 350
+    },
+    {
+      "id": "city-blocks",
+      "kind": "blocks",
+      "area": [
+        [37.708, -122.505],
+        [37.735, -122.507],
+        [37.775, -122.512],
+        [37.788, -122.505],
+        [37.79, -122.48],
+        [37.808, -122.477],
+        [37.806, -122.45],
+        [37.808, -122.42],
+        [37.805, -122.4],
+        [37.795, -122.392],
+        [37.785, -122.387],
+        [37.77, -122.387],
+        [37.75, -122.383],
+        [37.733, -122.375],
+        [37.715, -122.38],
+        [37.708, -122.39]
+      ],
+      "count": 260,
+      "heightM": [8, 28],
+      "sizeM": [40, 110],
+      "colours": ["#e3d8c6", "#d6dbd4", "#e9d9c0", "#cfd2cb", "#e6cfc4", "#c9d3db"],
+      "keepOutM": 420
+    },
+    {
+      "id": "east-bay-blocks",
+      "kind": "blocks",
+      "area": [
+        [37.7, -122.2],
+        [37.75, -122.22],
+        [37.8, -122.29],
+        [37.83, -122.31],
+        [37.88, -122.31],
+        [37.93, -122.33],
+        [37.95, -122.28],
+        [37.95, -122.15],
+        [37.7, -122.1]
+      ],
+      "count": 140,
+      "heightM": [6, 24],
+      "sizeM": [60, 140],
+      "colours": ["#d8d2c4", "#cfd3cd", "#e0d5c2"]
+    },
+    {
+      "id": "bay-freighters",
+      "kind": "vessels",
+      "style": "container",
+      "centre": [37.8, -122.335],
+      "radiusM": 2500,
+      "count": 3,
+      "exaggerate": 1.4,
+      "colours": ["#9b4a3c", "#3f6c8a", "#c9a24a", "#5e7d5a", "#b8b3a8"]
+    },
+    {
+      "id": "outer-freighters",
+      "kind": "vessels",
+      "style": "container",
+      "centre": [37.79, -122.58],
+      "radiusM": 4000,
+      "count": 2,
+      "exaggerate": 1.6,
+      "colours": ["#9b4a3c", "#3f6c8a", "#c9a24a", "#b8b3a8"]
+    },
+    {
+      "id": "bay-sailboats",
+      "kind": "vessels",
+      "style": "sailboat",
+      "centre": [37.815, -122.44],
+      "radiusM": 1800,
+      "count": 6,
+      "exaggerate": 2
+    },
+    {
+      "id": "bay-ferry",
+      "kind": "vessels",
+      "style": "ferry",
+      "path": [
+        [37.7955, -122.392],
+        [37.804, -122.29]
+      ],
+      "periodS": 1800,
+      "colour": "#e9e6dc",
+      "exaggerate": 1.8
+    },
+    {
+      "id": "fog-bank",
+      "kind": "clouds",
+      "style": "fog",
+      "path": [
+        [37.7, -122.545],
+        [37.76, -122.555],
+        [37.81, -122.565],
+        [37.85, -122.56]
+      ],
+      "baseM": 0,
+      "topM": [140, 240],
+      "colour": "#dde1e4",
+      "shadeColour": "#c7ccd0",
+      "driftM": 1400,
+      "driftBearingDeg": 80,
+      "driftPeriodS": 1200
+    },
+    {
+      "id": "fog-tongue",
+      "kind": "clouds",
+      "style": "fog",
+      "path": [
+        [37.818, -122.53],
+        [37.823, -122.5]
+      ],
+      "baseM": 40,
+      "topM": [120, 170],
+      "colour": "#e2e5e7",
+      "shadeColour": "#cdd1d4",
+      "driftM": 900,
+      "driftBearingDeg": 75,
+      "driftPeriodS": 900
+    },
+    {
+      "id": "high-banks",
+      "kind": "clouds",
+      "style": "bank",
+      "count": 4,
+      "distanceM": [15000, 30000],
+      "baseM": 500,
+      "topM": [900, 1400],
+      "colour": "#f0f1f2",
+      "shadeColour": "#c4c9cd"
+    }
+  ]
+}

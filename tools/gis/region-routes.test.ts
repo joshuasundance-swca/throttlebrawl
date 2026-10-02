@@ -1,6 +1,14 @@
 /// <reference types="vite/client" />
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { Mesh, Raycaster, Vector3, type Object3D } from 'three';
+import {
+  BufferGeometry,
+  DoubleSide,
+  Mesh,
+  MeshBasicMaterial,
+  Raycaster,
+  Vector3,
+  type Object3D,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -8,10 +16,12 @@ import {
   type BakedNetwork,
   type BakedRoad,
   type BakedRoute,
+  type RoadNetwork,
 } from '../../src/road';
+import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
 import { createFlatLook } from '../../src/render/look';
 import { buildRoadScene, ROAD_CHUNK_M, type RoadDressing } from '../../src/render/road-mesh';
-import { SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
+import { DEPTH_M, HALF_ALONG_M, SCENERY_RADIUS_M, type ScenerySpot } from '../../src/render/scenery';
 
 // The real roads landed in the region packs as routes (the maintainer, 2026-10-01: "Yes, add as
 // routes"; the landing steps of the gis head-start run): each region pack carries base's ODbL
@@ -125,9 +135,20 @@ function groundByChunk(group: Object3D, keep: RegExp): (x: number, z: number) =>
   };
 }
 
-function footprint(s: ScenerySpot): { x: number; z: number }[] {
+function footprint(s: ScenerySpot, road: RoadNetwork): { x: number; z: number }[] {
   const pts = [{ x: s.p.x, z: s.p.z }];
-  if (WIDE.has(s.kind)) {
+  const depth = DEPTH_M[s.kind];
+  const along = HALF_ALONG_M[s.kind];
+  if (depth !== undefined && along !== undefined) {
+    // A house or the sawmill: the four corners of its real footprint, back from its front wall, so
+    // the whole building stands on the land, not only the ring around its front (run W-P).
+    const out = Math.sign(s.d);
+    for (const u of [-along + 0.3, along - 0.3])
+      for (const back of [0.3, depth - 0.3]) {
+        const w = road.toWorld(s.edge, s.s + u, s.d + out * back, 0);
+        pts.push({ x: w.x, z: w.z });
+      }
+  } else if (WIDE.has(s.kind)) {
     const r = SCENERY_RADIUS_M[s.kind] * RING;
     for (let k = 0; k < 4; k++) {
       const a = Math.PI / 4 + (k * Math.PI) / 2;
@@ -141,9 +162,10 @@ type Tag = { s0: number; s1: number; side?: string; tag: string };
 
 /**
  * Conifers this far out (|d|, m) are the render lane's far forest on the terrain skirt (#234), past
- * the verge's 24 m strip that the road's own tags make. A few stand past the drawn skirt, over the
- * sea, on the hand-made pnw-c1 too (3 of 7,124 land spots over seeds 1 to 3, 2026-10-01). They are
- * counted apart and reported to the render lane, so this file guards the roads' own land strictly.
+ * the verge's 24 m strip that the road's own tags make. Run W-O's skeptic found 71, 124 and 46 of
+ * them over the water on Chuckanut, the Gorge and Twin Peaks over these seeds, printed here and
+ * never asserted. Since run W-P each stands on the skirt's flat ground exactly as drawn, and the
+ * count over water is asserted to be 0 (Russian Hill has no forest, so it is skipped there).
  */
 const FAR_FOREST_D = 40;
 
@@ -173,7 +195,7 @@ function offLand(id: string, seeds: readonly number[], redress?: (r: BakedRoad) 
       const tags = (roads.find((r) => r.id === edge?.id)?.tags ?? []) as Tag[];
       if (tags.some((t) => t.tag === 'bridge' && s.s >= t.s0 && s.s <= t.s1))
         list.push(`seed ${seed}: ${s.kind} on the ${edge?.id} bridge at s ${s.s.toFixed(1)}`);
-      for (const p of footprint(s)) {
+      for (const p of footprint(s, road)) {
         const ray = new Raycaster(new Vector3(p.x, s.p.y + 30, p.z), new Vector3(0, -1, 0), 0, 400);
         const hit = ray.intersectObjects(ground(p.x, p.z), false)[0]?.object.name ?? null;
         if (hit !== 'road-land') {
@@ -194,15 +216,72 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     const { spots, bad, farSpots, farBad } = offLand(id, SEEDS);
     process.stdout.write(
       `[examined] ${id}: ${SEEDS.length} seeds, ${spots} land spots ray-checked, ${bad.length} not on land; ` +
-        `far-forest conifers ${farSpots}, ${farBad.length} past the drawn skirt (render follow-up)` +
+        `far-forest conifers ${farSpots} ray-checked, ${farBad.length} past the drawn skirt` +
         `${farBad[0] ? `, e.g. ${farBad[0]}` : ''}\n`,
     );
     expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
-    // The far forest is the render lane's scatter, not this road data: printed above, not asserted
-    // here (its home is src/render's region tests).
+    // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3).
+    if (id !== 'osm-sf-russian-hill') expect(farSpots).toBeGreaterThan(1000);
+    expect(farBad.slice(0, 12)).toEqual([]);
   }, 240_000);
 });
+
+// ---- The land never ends in mid-air (run W-O's skeptic) ------------------------------------------
+// "Row houses stand on flat land plates that float, with sky and bay under them, at the bridge ends"
+// (Russian Hill's Hyde Street, s 1140 to 1190; Twin Peaks' Upper Market, s 2640 to 2700). The rays
+// straight down above hit the floating plate, so they passed. This walk looks UNDER the land instead
+// (src/render/land-probe.test-util.ts): wherever the ground drops more than 2 m in one 2 m step, a
+// ray from the low side looks back under the high ground, and closed ground must stop it.
+
+function landScene(id: string) {
+  const { network, roads } = baked(id);
+  const road = createRoadNetwork({ network, roads });
+  const dressing = Object.fromEntries(roads.map((r) => [r.id, r])) as unknown as RoadDressing;
+  // The land is the same for every seed (only the scatter on it is seeded).
+  return { road, built: buildRoadScene(road, look, dressing, { seed: 1 }) };
+}
+
+const fmtEnd = (o: OpenLandEnd) =>
+  `${o.edge} s ${o.s.toFixed(0)} ${o.side < 0 ? 'left' : 'right'} ${o.across} m out, drop ${o.drop.toFixed(1)} m`;
+
+describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', (id) => {
+  it('never ends in mid-air: every raised edge of it is closed down to the ground', () => {
+    const { road, built } = landScene(id);
+    const ground = new GroundTris(built.group);
+    const { probes, drops, open } = openLandEnds(road, ground);
+    process.stdout.write(
+      `[examined] ${id}: ${ground.count} ground triangles, ${probes} points walked beside the road, ` +
+        `${drops} drops of over 2 m looked under, ${open.length} open\n`,
+    );
+    built.dispose();
+    expect(drops).toBeGreaterThan(0);
+    expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
+  }, 240_000);
+});
+
+it('negative control: a plate of land laid beside the Hyde Street bridge, nothing under it, is found open', () => {
+  // The skeptic's defect, rebuilt by hand: a 14 m by 16 m plate at the road's height on the bridge's
+  // left, over the bay. Rays straight down find land on it; the walk must find it open.
+  const { road, built } = landScene('osm-sf-russian-hill');
+  const e = road.edges.find((x) => x.id === 'osm-sf-hyde')!;
+  const at = (s: number, d: number) => road.toWorld(e.index, s, d, -0.09);
+  const outer = -e.dMin + 0.6;
+  const corners = [at(1158, -outer - 3), at(1158, -outer - 17), at(1172, -outer - 3), at(1172, -outer - 17)];
+  const geo = new BufferGeometry().setFromPoints(corners.map((c) => new Vector3(c.x, c.y, c.z)));
+  geo.setIndex([0, 1, 2, 1, 3, 2]);
+  const plate = new Mesh(geo, new MeshBasicMaterial({ side: DoubleSide }));
+  plate.name = 'road-land';
+  built.group.add(plate);
+  const before = openLandEnds(road, new GroundTris(built.group)).open;
+  built.dispose();
+  const hyde = before.filter((o) => o.edge === 'osm-sf-hyde' && o.side < 0 && o.s > 1150 && o.s < 1180);
+  process.stdout.write(
+    `[negative control] a floating plate beside the Hyde Street bridge: ${hyde.length} open ends found there
+`,
+  );
+  expect(hyde.length).toBeGreaterThan(0);
+}, 240_000);
 
 it('negative control: land laid over the Gorge bridges, rails gone, stands scenery on a deck; the check says so', () => {
   // The bake keeps land tags off its bridges and rails both sides of every deck; the renderer

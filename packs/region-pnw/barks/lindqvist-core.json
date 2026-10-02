@@ -29,6 +29,22 @@
       "text": "You have the right to a very long ferry wait.",
       "audioAsset": "audio/barks/lindqvist-core/lindqvist-busted-ferry",
       "audioStatus": "live"
+    },
+    {
+      "id": "lindqvist-siren-ferry",
+      "trigger": "cop-siren",
+      "status": "live",
+      "text": "No rush. Neither of us makes that ferry.",
+      "audioAsset": "audio/barks/lindqvist-core/lindqvist-siren-ferry",
+      "audioStatus": "live"
+    },
+    {
+      "id": "lindqvist-busted-dry",
+      "trigger": "busted",
+      "status": "live",
+      "text": "Let's get you somewhere dry. Then jail.",
+      "audioAsset": "audio/barks/lindqvist-core/lindqvist-busted-dry",
+      "audioStatus": "live"
     }
   ],
   "meta": {

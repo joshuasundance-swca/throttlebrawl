@@ -28,6 +28,78 @@
   ],
   "features": [
     {
+      "kind": "billboard",
+      "id": "sign-bends-conch-republic",
+      "s0": 195,
+      "s1": 205,
+      "d0": -9,
+      "d1": -6.5,
+      "item": "conch-republic"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-bends-hurricane",
+      "s0": 250,
+      "s1": 260,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "hurricane-late"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-bends-landfall",
+      "s0": 290,
+      "s1": 330,
+      "d0": 7,
+      "d1": 16,
+      "item": "landfall-liquors"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-bends-law-office",
+      "s0": 380,
+      "s1": 420,
+      "d0": -16,
+      "d1": -7,
+      "item": "law-office-nobody"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-bends-flat-calm",
+      "s0": 450,
+      "s1": 490,
+      "d0": 7,
+      "d1": 16,
+      "item": "flat-calm"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-bends-key-lime",
+      "s0": 560,
+      "s1": 570,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "key-lime-again"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-bends-lobster",
+      "s0": 620,
+      "s1": 660,
+      "d0": 7,
+      "d1": 16,
+      "item": "lobster-lotion"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-bends-airboat",
+      "s0": 740,
+      "s1": 780,
+      "d0": -16,
+      "d1": -7,
+      "item": "airboat-gary"
+    },
+    {
       "kind": "roadsideZone",
       "id": "marina-boardwalk",
       "s0": 50,

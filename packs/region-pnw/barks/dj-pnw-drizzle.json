@@ -1,0 +1,52 @@
+{
+  "type": "bark-set",
+  "id": "dj-pnw-drizzle",
+  "name": "Drizzle 89.3 FM: DJ lines",
+  "tags": ["dj", "radio"],
+  "defaults": {
+    "speaker": "tag:dj-pnw-drizzle",
+    "cooldownS": 300,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "dj-drizzle-noon",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Drizzle 89.3. It's raining. More at noon."
+    },
+    {
+      "id": "dj-drizzle-ferry",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Ferry update: two hours. Here's a song."
+    },
+    {
+      "id": "dj-drizzle-log-truck",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Traffic: one log truck. Everywhere."
+    },
+    {
+      "id": "dj-drizzle-bigfoot",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Bigfoot called in. He declined to comment."
+    },
+    {
+      "id": "dj-drizzle-espresso",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "Espresso line's out to the highway."
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "The DJ's chatter for Drizzle 89.3 FM (run W-P, maintainer 2026-10-01b: unique regional flavor everywhere), named by the station's djBarkSet. Nothing plays DJ lines yet: the radio needs a between-tracks slot that reads this set, an audio-lane follow-up. Until then the `tag:` speaker never matches a rider, so these lines never reach a race bubble. Unvoiced on purpose: a DJ voice is a new casting for tools/voices/cast.json, made when the radio can play it.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  }
+}

@@ -172,9 +172,11 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   fogBank: 40,
 };
 /** How far back from its anchor (its front) each kind reaches, m (it needs land that deep). */
-const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
+export const DEPTH_M: Partial<Record<SceneryKind, number>> = { house: 11.5, sawmill: 17 };
 /** Half its width along the road, m (it needs land and clear ground that long). */
-const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = { house: 3.2, sawmill: 16 };
+export const HALF_ALONG_M: Partial<Record<SceneryKind, number>> = { house: 3.2, sawmill: 16 };
+/** Land a house or the sawmill keeps past each of its ends, m. [default] */
+const LAND_LIP_M = 3;
 const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   palm: 3,
   mangrove: 2,
@@ -242,6 +244,11 @@ export interface ScatterEdge {
    * ground's span, as distances past the verge, and its world height. Null where there is none.
    */
   skirt?: ((side: -1 | 1, s: number) => { from: number; to: number; y: number } | null) | undefined;
+  /**
+   * Whether a far conifer may stand at (s, d) on that side: on the skirt's flat ground exactly as
+   * drawn, round its trunk, and clear of every road, this one's other stretches included.
+   */
+  onFarGround?: ((side: -1 | 1, s: number, d: number) => boolean) | undefined;
   /** Whether fog banks lie offshore (the region's palette names a `fogBank` colour). */
   fogBanks?: boolean | undefined;
 }
@@ -330,10 +337,13 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
         // or a rail does, and at the road's ends, where the next road's land may not meet it), and
         // clear of everything else.
         if (s - along < 0 || s + along > e.length) continue;
+        // A house or the sawmill keeps a few metres of land past each end of it, so it never stands
+        // on the lip where its land stops (run W-O's skeptic: the houses at SF's bridge ends).
+        const lip = DEPTH_M[kind] !== undefined ? LAND_LIP_M : 0;
         const reach = Math.min(
           e.landReach(side, s),
-          e.landReach(side, s - along),
-          e.landReach(side, s + along),
+          e.landReach(side, s - along - lip),
+          e.landReach(side, s + along + lip),
         );
         if (across + depth > reach) continue;
         const d = side * (outer + across);
@@ -392,6 +402,9 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);
       const d = side * (outer + across);
       if (!e.clear(s, d, SCENERY_RADIUS_M.conifer)) continue;
+      // On the flat ground as drawn and clear of every road (run W-O's skeptic: 71, 124 and 46
+      // trees over the water on three real roads).
+      if (e.onFarGround && !e.onFarGround(side, s, d)) continue;
       const c = conifer(h(ci, k, side, 22), h(ci, k, side, 23));
       const p = e.world(s, d, 0);
       out.push({

@@ -27,6 +27,24 @@
   ],
   "features": [
     {
+      "kind": "billboard",
+      "id": "sign-switchback-curb",
+      "s0": 100,
+      "s1": 110,
+      "d0": 6.5,
+      "d1": 9,
+      "item": "curb-wheels"
+    },
+    {
+      "kind": "billboard",
+      "id": "bb-switchback-toastwise",
+      "s0": 380,
+      "s1": 420,
+      "d0": 7,
+      "d1": 16,
+      "item": "toastwise"
+    },
+    {
       "kind": "roadsideZone",
       "id": "switchback-tourists",
       "s0": 200,

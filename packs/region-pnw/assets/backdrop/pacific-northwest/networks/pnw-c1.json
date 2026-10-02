@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "network": "pnw-c1",
+  "originLatDeg": 47.6,
+  "originLonDeg": -122.9,
+  "pieces": [
+    {
+      "id": "sound-ferry",
+      "kind": "vessels",
+      "style": "ferry",
+      "frame": "local",
+      "path": [
+        [1200, 900],
+        [4300, -900]
+      ],
+      "periodS": 1500,
+      "exaggerate": 2.6
+    },
+    {
+      "id": "sound",
+      "kind": "floor",
+      "surface": "water",
+      "frame": "local",
+      "area": [
+        [1500, 2500],
+        [7000, 2500],
+        [7000, -3000],
+        [3800, -3000],
+        [3000, -1000],
+        [1500, 500]
+      ],
+      "colour": "#4f6b66"
+    },
+    {
+      "id": "north-hills",
+      "kind": "ridge",
+      "frame": "local",
+      "path": [
+        [-2500, -6500, 500],
+        [-1200, -7600, 650],
+        [600, -8000, 700],
+        [2600, -7600, 600],
+        [4400, -6800, 450]
+      ],
+      "heightM": [300, 700],
+      "profile": "rolling",
+      "colour": "#324a3a",
+      "clearcuts": 0.2,
+      "clearcutColour": "#8a8457"
+    },
+    {
+      "id": "west-hills",
+      "kind": "ridge",
+      "frame": "local",
+      "path": [
+        [-3200, -500, 450],
+        [-3400, -2500, 550],
+        [-3000, -4500, 500]
+      ],
+      "heightM": [250, 550],
+      "profile": "rolling",
+      "colour": "#2f4636",
+      "clearcuts": 0.18,
+      "clearcutColour": "#8a8457"
+    }
+  ]
+}
