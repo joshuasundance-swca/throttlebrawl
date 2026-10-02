@@ -109,6 +109,19 @@ class Route(Strict):
     notes: str = ROUTE_NOTES
 
 
+class Verge(Strict):
+    """A verge band past the outermost lane (docs/content-packs.md, "Cross-section")."""
+
+    widthM: float = Field(ge=0, le=40)  # noqa: N815
+    surface: Literal["shoulder", "dirt", "gravel", "sand", "grass", "kerb"]
+    edge: Literal["soft", "brush", "water", "hard", "fence", "rail"]
+
+
+class Verges(Strict):
+    left: Verge | None = None
+    right: Verge | None = None
+
+
 class BakeConfig(Strict):
     id: str = Field(pattern=r"^osm-[a-z0-9]+(-[a-z0-9]+)*$")  # the network id
     name: str
@@ -156,6 +169,15 @@ class BakeConfig(Strict):
     # Each travel lane's width. 3.4 m is the M1 lane table the Keys bake has; the hand-made roads
     # went to 4.0 m after playtest 1 ("road too narrow to weave"), and the region bakes match them.
     laneWidthM: float = Field(3.4, ge=2.5, le=5.0)  # noqa: N815
+    # The cross-section (W-Q; interview, 2026-10-02: 4-6 lane highways). Drive lanes each way: 1 is
+    # the M1 table every bake so far carries; 3 makes a six-lane highway.
+    lanesPerDirection: int = Field(1, ge=1, le=3)  # noqa: N815
+    # A median between the two directions (0: none). The lanes are set apart to leave its gap.
+    medianM: float = Field(0.0, ge=0, le=30)  # noqa: N815
+    medianKind: Literal["paint", "kerb", "grass", "barrier"] = "paint"  # noqa: N815
+    # Verge bands for every road's lane section. None (the default) leaves them out, and the game
+    # derives them from each road's tags and barriers (src/road/cross-section.ts).
+    verges: Verges | None = None
 
     @staticmethod
     def load(path: Path) -> BakeConfig:
