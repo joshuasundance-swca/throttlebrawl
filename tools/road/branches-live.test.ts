@@ -10,8 +10,8 @@ import type { SimConfig } from '../../src/sim/types';
 
 // The W-Q sim and route contracts over every live network (interview, 2026-10-02: "junction
 // choices in races", "U-turns", "Anywhere with ground"). Every split zone is a branch: each
-// hand-made network's shortcuts and spurs, named and signed in the route files where the track
-// names them (W-R: the PNW spur and the SF stair alley), derived otherwise; the map-data roads (no
+// hand-made network's shortcuts and spurs, named and signed in the route files (W-R: the Keys boat
+// ramp, the PNW spur and the SF stair alley; a split no track names would be derived); the map-data roads (no
 // splits) have none. Every main-path edge points toward the
 // finish. And with the off-road switch at its default (off), a rider's limits are exactly the M1
 // barrier limits on every road, so nothing about an existing race changes.
@@ -107,8 +107,10 @@ describe('route branches and ride limits on every live network', () => {
     expect(routes).toBeGreaterThanOrEqual(12);
     expect(handMade.length).toBeGreaterThanOrEqual(7);
     expect(branches).toBeGreaterThanOrEqual(handMade.length);
-    // PNW's three routes and SF's one name their shortcut (W-R junction choices, signed).
-    expect(named).toBeGreaterThanOrEqual(4);
+    // Every hand-made route names its shortcut (W-R junction choices, signed): the Keys' three, the
+    // PNW's three and SF's one.
+    expect(named).toBeGreaterThanOrEqual(7);
+    expect(named).toBe(handMade.length);
     expect(stations).toBeGreaterThan(1000);
   });
 });
