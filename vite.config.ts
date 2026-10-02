@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, runnerImport, type Plugin } from 'vite';
 import { SIM_CODE_HASH_PLACEHOLDER, simChunkGroup, simCodeHashPlugin } from './scripts/sim-chunk.mjs';
+import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
 
 // Build stamp (docs/engineering.md, "Vite settings"). CI sets BUILD_ID, BUILD_CHANNEL and
 // BUILD_BRANCH; a local build falls back to git and the `dev` channel.
@@ -52,7 +53,8 @@ function selfTestHash(): Plugin {
 
 export default defineConfig({
   // The sim chunk's code hash, the code part of the replay key (scripts/sim-chunk.mjs).
-  plugins: [selfTestHash(), simCodeHashPlugin()],
+  // The road data shipped as JSON files is written on one line (scripts/json-assets.mjs, run W-P).
+  plugins: [selfTestHash(), simCodeHashPlugin(), minifyJsonAssetsPlugin()],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',
   define: {
