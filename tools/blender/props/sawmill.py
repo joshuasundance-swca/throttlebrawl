@@ -108,7 +108,8 @@ def main():
     log_pile(mb, -0.5, -1.0, 2)
     lumber(mb, 7.5, -3.5, 1.6)
     mb.build("sawmill_body", mats, root)
-    _lib.export(out)
+    # Faceted: the game rebuilds each face's normal from its corners (models.ts), so none ship.
+    _lib.export(out, normals=False)
 
 
 main()

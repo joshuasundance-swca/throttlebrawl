@@ -172,11 +172,68 @@ describe('input-1: the attack button', () => {
     expect(has(s, 'kick')).toBe(false);
   });
 
-  it('a diagonal steeper than 45 degrees down is a kick, not a side', () => {
+  it('playtest 2: a kick swipe leaning down-right kicks right, down-left kicks left', () => {
+    const swipe = (dx: number, dy: number) => {
+      const { fire, sample } = setup();
+      const [x, y] = center('touch-attack');
+      fire('pointerdown', 1, x, y, 1000);
+      fire('pointermove', 1, x + dx, y + dy, 1120); // a natural 120 ms swipe
+      return sample();
+    };
+    const right = swipe(25, 30); // 40 degrees off straight down
+    expect(has(right, 'kick')).toBe(true);
+    expect(has(right, 'attackSideRight')).toBe(true);
+    expect(has(right, 'attackSideLeft')).toBe(false);
+    const left = swipe(-30, 22); // 54 degrees: still inside the 60-degree kick cone
+    expect(has(left, 'kick')).toBe(true);
+    expect(has(left, 'attackSideLeft')).toBe(true);
+    expect(has(left, 'attackSideRight')).toBe(false);
+  });
+
+  it('playtest 2: a swipe near straight down keeps today’s auto-sided kick', () => {
     const { fire, sample } = setup();
     const [x, y] = center('touch-attack');
     fire('pointerdown', 1, x, y, 1000);
-    fire('pointermove', 1, x + 25, y + 30, 1050);
+    fire('pointermove', 1, x + 8, y + 30, 1100); // 15 degrees: under the 20-degree side lean
+    const s = sample();
+    expect(has(s, 'kick')).toBe(true);
+    expect(has(s, 'attackSideLeft') || has(s, 'attackSideRight')).toBe(false);
+  });
+
+  it('playtest 2: a swipe up is the straight kick (kick plus both side flags); a slow one is not', () => {
+    const { fire, sample } = setup();
+    const [x, y] = center('touch-attack');
+    fire('pointerdown', 1, x, y, 1000);
+    fire('pointermove', 1, x - 6, y - 28, 1110);
+    const s = sample();
+    expect(has(s, 'attack')).toBe(true);
+    expect(has(s, 'kick')).toBe(true);
+    expect(has(s, 'attackSideLeft') && has(s, 'attackSideRight')).toBe(true);
+    expect(has(sample(), 'kick')).toBe(true); // level-held while the finger stays down
+
+    const slow = setup();
+    slow.fire('pointerdown', 1, x, y, 1000);
+    slow.fire('pointermove', 1, x, y - 30, 1300);
+    slow.sample();
+    expect(has(slow.sample(), 'kick')).toBe(false);
+  });
+
+  it('playtest 2: a fast flat drag still picks a punch’s side, not a kick', () => {
+    const { fire, sample } = setup();
+    const [x, y] = center('touch-attack');
+    fire('pointerdown', 1, x, y, 1000);
+    fire('pointermove', 1, x - 30, y + 10, 1050); // 72 degrees off straight down
+    const s = sample();
+    expect(has(s, 'kick')).toBe(false);
+    expect(has(s, 'attackSideLeft')).toBe(true);
+  });
+
+  it('playtest 2: the side lean and the cone are live sliders', () => {
+    const { input, fire, sample } = setup();
+    input.setParam('input.kickSideDeg', 40);
+    const [x, y] = center('touch-attack');
+    fire('pointerdown', 1, x, y, 1000);
+    fire('pointermove', 1, x + 25, y + 30, 1100); // 40 degrees: no longer past the lean
     const s = sample();
     expect(has(s, 'kick')).toBe(true);
     expect(has(s, 'attackSideRight')).toBe(false);
