@@ -192,6 +192,12 @@ export interface TumbleRecord {
   /** Unit world direction the rider was travelling at the crash; decides dir after projection. */
   travelX: number;
   travelZ: number;
+  /**
+   * The rider's way along the route at the crash: 1 with it, -1 against it, 0 off the route. The
+   * hand-back faces the same way along the route wherever the body comes to rest (playtest 2's
+   * real-road hairpins could reverse the world-direction test). Absent in records from before it.
+   */
+  routeWay?: 1 | -1 | 0;
   /** Where the bike is parked after the hand-back, else null. */
   parked: RoadPos | null;
   /** Scaled ticks since a skip began, or -1. */
@@ -258,6 +264,32 @@ function num(data: Readonly<Record<string, unknown>>, key: string): number {
 function dirAlong(config: SimConfig, edge: number, s: number, x: number, z: number): 1 | -1 {
   const f = config.road.frameAt(edge, s);
   return f.tx * x + f.tz * z >= 0 ? 1 : -1;
+}
+
+/** The route's way along an edge's s (1 or -1), or 0 when the route does not run along it. */
+function routeOrient(config: SimConfig, edge: number): 1 | -1 | 0 {
+  const len = config.road.edges[edge]?.length ?? 0;
+  const p0 = config.route.progressAt(edge, 0);
+  const p1 = config.route.progressAt(edge, len);
+  if (!Number.isFinite(p0) || !Number.isFinite(p1) || p0 === p1) return 0;
+  return p1 > p0 ? 1 : -1;
+}
+
+/** Whether travelling `dir` along `edge` goes with the route (1), against it (-1), or neither (0). */
+function routeWay(config: SimConfig, edge: number, dir: 1 | -1): 1 | -1 | 0 {
+  const o = routeOrient(config, edge);
+  return o === 0 ? 0 : o === dir ? 1 : -1;
+}
+
+/**
+ * The direction a rider is handed back facing on `edge`: the same way along the route as at the
+ * crash when both edges are on the route, else the crash's world travel direction there.
+ */
+function handBackDir(config: SimConfig, r: TumbleRecord, edge: number, s: number): 1 | -1 {
+  const o = routeOrient(config, edge);
+  const way = r.routeWay ?? 0;
+  if (o !== 0 && way !== 0) return way === 1 ? o : o === 1 ? -1 : 1;
+  return dirAlong(config, edge, s, r.travelX, r.travelZ);
 }
 
 /** Who knocked a rider off: the crash's rider target, else a hit in the last 2 s, else -1. */
@@ -345,6 +377,7 @@ function startCrash(
     spin,
     travelX: tx,
     travelZ: tz,
+    routeWay: routeWay(config, pos.edge, pos.dir),
     parked: null,
     skip: -1,
     skipQueued: false,
@@ -524,7 +557,7 @@ function handBack(world: World, config: SimConfig, m: Mover, r: TumbleRecord): v
   const road = config.road;
   const place = (b: TumbleBody, ownSide: boolean): RoadPos => {
     const p = road.project(b.x, b.z, b.edge);
-    const dir = dirAlong(config, p.edge, p.s, r.travelX, r.travelZ);
+    const dir = handBackDir(config, r, p.edge, p.s);
     const band = ownSide ? ownSideBand(road, p.edge, p.s, dir) : standingBand(road, p.edge, p.s);
     const d = p.d < band.lo ? band.lo : p.d > band.hi ? band.hi : p.d;
     return { edge: p.edge, s: p.s, d, dir };
@@ -595,7 +628,7 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
 /** After the splash penalty: back on the bike, at rest, on the bridge where the body went over. */
 function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
   const at = r.railAt ?? m.pos;
-  const dir = dirAlong(config, at.edge, at.s, r.travelX, r.travelZ);
+  const dir = handBackDir(config, r, at.edge, at.s);
   const band = ownSideBand(config.road, at.edge, at.s, dir);
   const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
   const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
