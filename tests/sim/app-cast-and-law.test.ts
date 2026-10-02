@@ -217,7 +217,13 @@ function castRun(seed: number, quirks: number | null, ticks: number) {
 
 describe('the cast in a real race: style quirks on by default', () => {
   const TICKS = 90 * 60;
-  const seeds = [1, 2, 3];
+  // Ten seeds, not three (the main-green fix, 2026-10-02). One race's clear-road sway runs from
+  // about 0.4 to 0.9 m/s for Dial-Up whatever the quirks, so a 3-race mean moved by 4 to 5 % when
+  // an unrelated change reshuffled the races: traffic swerving round a downed rider (#329) and the
+  // quicker knockdowns (#273) took the weaver's ratio from 1.23 to 1.12 with his own quirk-on sway
+  // unchanged (0.67 to 0.68 m/s over these ten races). Over ten races it read 1.21, 1.16 and 1.25
+  // before, between and after those two merges.
+  const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const on = seeds.map((s) => castRun(s, null, TICKS));
   const off = seeds.map((s) => castRun(s, 0, TICKS));
   const mean = (runs: typeof on, id: string, k: 'spreadM' | 'clearSwayMps' | 'first12sM') =>

@@ -16,6 +16,12 @@
 // - keeps their hands free near him (no punches or kicks within 12 m);
 // - presses attack REACTION_TICKS after his wind-up shows (his arm and the glint go up as it
 //   starts), a plain human reaction.
+// He keeps trying with a road weapon in hand, until his first steal off the cop (the main-green
+// fix, 2026-10-02). Before, he gave up as soon as he held one. That stood in for an empty-handed
+// thief while a full-handed press only swung the pipe, but since the W-O polish run a steal works
+// with full hands (he drops his own), and since W-Q a weapon lies on your line by the bike after
+// 3 in 10 crashes (#313), so he picked one up in most San Francisco races and stopped trying:
+// steals fell from 6 races in 10 to 2 while the same player who keeps trying stole in 8.
 // The races load the way the game loads them: every carried pack, release content only (no
 // drafts), built with the app's own buildSimConfig and stream cache.
 import { describe, expect, it } from 'vitest';
@@ -77,10 +83,11 @@ interface StealRun {
 }
 
 /**
- * `armed`: the player keeps trying with a road weapon in hand (the W-O polish run: a steal works
- * with full hands, dropping what you hold), until his first steal off the cop.
+ * One seeded race of the player who tries (the file header). He tries while his hands are empty,
+ * and with a road weapon in hand until his first steal off the cop (the W-O polish run: a steal
+ * works with full hands, dropping what you hold).
  */
-function tryToSteal(event: string, seed: number, armed = false): StealRun {
+function tryToSteal(event: string, seed: number): StealRun {
   const config = raceConfig(event, seed);
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
@@ -102,7 +109,7 @@ function tryToSteal(event: string, seed: number, armed = false): StealRun {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     const me = snap.entities[playerId];
-    if (me && (!me.heldWeapon || (armed && run.steals === 0))) {
+    if (me && (!me.heldWeapon || run.steals === 0)) {
       for (const id of copIds) {
         const cop = snap.entities[id];
         if (!cop || cop.mode !== 'Road' || !cop.heldWeapon) continue;
@@ -151,6 +158,17 @@ function tryToSteal(event: string, seed: number, armed = false): StealRun {
   return run;
 }
 
+const RUNS = new Map<string, StealRun[]>();
+/** The seeded races of one event, run once and shared by the checks below. */
+function runsFor(event: string): StealRun[] {
+  let runs = RUNS.get(event);
+  if (!runs) {
+    runs = SEEDS.map((seed) => tryToSteal(event, seed));
+    RUNS.set(event, runs);
+  }
+  return runs;
+}
+
 describe("the law's weapons in a real race (release content, every region)", () => {
   it('each region has a cop who starts the race holding his weapon, the taser included', () => {
     for (const r of REGIONS) {
@@ -174,7 +192,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
 
   for (const r of REGIONS) {
     it(`${r.name}: a player who tries steals the cop's ${r.weapon.replace('base:', '')} in most races`, () => {
-      const runs = SEEDS.map((seed) => tryToSteal(r.event, seed));
+      const runs = runsFor(r.event);
       const stole = runs.filter((x) => x.steals > 0);
       process.stdout.write(
         `[cops-steal] ${r.name}: a player who tries stole the ${r.weapon} in ${stole.length} of ${runs.length} races ` +
@@ -186,11 +204,12 @@ describe("the law's weapons in a real race (release content, every region)", () 
     });
   }
 
+  // The same races as the regional checks above (one run per seed and region, shared).
   it('with a road weapon in hand, a player who tries still steals the cop’s weapon (he drops his own)', () => {
     const lines: string[] = [];
     let fullHands = 0;
     for (const r of REGIONS) {
-      const runs = SEEDS.map((seed) => tryToSteal(r.event, seed, true));
+      const runs = runsFor(r.event);
       const stole = runs.filter((x) => x.steals > 0);
       const full = runs.reduce((n, x) => n + x.fullHandSteals, 0);
       fullHands += full;
