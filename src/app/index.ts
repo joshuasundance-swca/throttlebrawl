@@ -30,7 +30,7 @@ import {
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
-import { createRenderer, interpolateEntity, type LookEnv } from '../render';
+import { createRenderer, interpolateEntity, riderLookOf, type LookEnv, type RiderRigCounts } from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import {
   audioVolumes,
@@ -189,6 +189,9 @@ export interface AppPresentation {
     /** Whether audio would speak a bark now (not muted, and the voices bus up: Voices on, slider up). */
     voicesOn: boolean;
   };
+  /** The real riders (run W-R): rigs built and drawn, triangles, models loaded or failed; null before
+   * their code has loaded. */
+  riders: RiderRigCounts | null;
 }
 
 /** What dev/ and main.ts may use. Read-only views plus the bot's driver hook. */
@@ -475,6 +478,20 @@ export function createApp(opts: AppOptions): AppHandle {
     return out;
   };
 
+  /**
+   * The models each rider draws with (run W-R; interview, 2026-10-02: "Real models now"): its own
+   * rider model, and the bike its pack file's `look` names (render's `riderLookOf`).
+   */
+  const riderLooks = (config: SimConfig) =>
+    config.riders.map((r) =>
+      riderLookOf({
+        contentId: r.contentId,
+        role: r.role,
+        bikeId: r.bike.contentId,
+        look: (registry.riders[r.contentId] as { look?: unknown } | undefined)?.look,
+      }),
+    );
+
   let race: Sim | null = null;
   let prev: SimSnapshot | null = null;
   let curr: SimSnapshot | null = null;
@@ -506,6 +523,7 @@ export function createApp(opts: AppOptions): AppHandle {
     });
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
     renderer.setTrafficTypes(config.trafficTypes);
+    renderer.setRiderLooks(riderLooks(config));
     // The roadside scenery scatters from the race's seed (playtest 1c item 2).
     renderer.setSceneSeed(seed);
     audio.setEngineSounds(engineSounds(config));
@@ -1256,6 +1274,7 @@ export function createApp(opts: AppOptions): AppHandle {
         radio: { region: radio.region, stations: r.stations, tunedTo: r.tunedTo },
         look: renderer.look,
         audio: { busTargets: mix.busTargets, voicesOn: mix.voice.on },
+        riders: renderer.riders(),
       };
     },
   };

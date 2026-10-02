@@ -17,6 +17,9 @@
 // Run W-R (interview, 2026-10-02: "SF first = downtown towers") adds San Francisco's downtown
 // (downtown.ts): towers, plazas, cross streets with their traffic, and the cable cars, which run
 // only on its steep cable-car streets.
+// Run W-R (interview, 2026-10-02: "Real models now") draws each rider as a real model on a real
+// bike (riders/, a lazy chunk): `setRiderLooks` names the race's riders and their models, which load
+// from the asset manifest; until a rider's two models arrive, its box rider draws.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, type BackdropStats } from './backdrop';
@@ -38,6 +41,8 @@ import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { DowntownCounts, DowntownLayer } from './downtown';
 import { Rain, rainColourOf } from './rain';
+import type { RiderLook } from './rider-looks';
+import type { RiderRigCounts, RiderRigs } from './riders';
 import {
   buildRoadScene,
   networkTags,
@@ -58,6 +63,9 @@ export type { FeelCounts } from './effects';
 export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
 export type { ModelLoadReport } from './models';
+export type { RiderLook, RiderLookSource } from './rider-looks';
+export { BIKE_CLASS_MODELS, riderLookOf } from './rider-looks';
+export type { RiderRigCounts } from './riders';
 export type { RoadSceneStats } from './road-mesh';
 export { RENDER_TUNING } from './tuning';
 export { DEFAULT_LOOK, isLookId, LOOK_IDS } from './looks';
@@ -167,6 +175,13 @@ export interface GameRenderer {
   setSceneSeed(seed: number): void;
   /** The scenery as built and drawn: what was placed, which models loaded, what the last frame showed. */
   scenery(): SceneryStatus;
+  /**
+   * The race's riders and the models each draws with (`riderLookOf`), at race start: their rider and
+   * bike models load now, and each rider draws as its models once both are in.
+   */
+  setRiderLooks(looks: readonly RiderLook[]): void;
+  /** The real riders as the last frame drew them, or null before their code has loaded. */
+  riders(): RiderRigCounts | null;
 }
 
 export interface SceneryStatus {
@@ -259,6 +274,23 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
+  // Run W-R: the rider rigs, a lazy chunk that loads with the first race's looks.
+  let rigs: RiderRigs | null = null;
+  let rigsLoading = false;
+  let riderLooks: readonly RiderLook[] = [];
+  const loadRigs = () => {
+    if (rigs || rigsLoading) return;
+    rigsLoading = true;
+    void import('./riders')
+      .then((m) => {
+        rigs = new m.RiderRigs(look, opts.assets ?? null, params);
+        views.setRigs(rigs);
+        rigs.setLooks(riderLooks);
+      })
+      .catch(() => {
+        rigsLoading = false; // tried again at the next race start
+      });
+  };
   // Run W-P: the region's roadside props (roadside.ts), a lazy chunk that arrives with the kit.
   let roadsideModule: typeof import('./roadside') | null = null;
   let roadside: RoadsideLayer | null = null;
@@ -441,9 +473,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pushEvents(events) {
       views.pushEvents(events);
+      rigs?.pushEvents(events);
     },
     render(prev, curr, alpha, pose) {
       if (lost) return;
+      rigs?.setCamera(pose.x, pose.y, pose.z);
       if (curr) views.sync(prev, curr, alpha, now(), pose);
       camera.fov = pose.fov;
       camera.updateProjectionMatrix();
@@ -543,6 +577,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       buildRoad();
       backdrop.setSeed(next);
     },
+    setRiderLooks(looks) {
+      riderLooks = looks;
+      if (rigs) rigs.setLooks(looks);
+      else loadRigs();
+    },
+    riders: () => rigs?.counts() ?? null,
     scenery: () => ({
       seed: sceneSeed,
       road: roadScene?.stats ?? null,

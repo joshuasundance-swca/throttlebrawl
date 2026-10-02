@@ -6,5 +6,9 @@
   "roster": "regular",
   "bike": "rustbucket-400",
   "stats": { "massKg": 80, "healthMax": 100, "skill": 0.5 },
+  "look": {
+    "description": "A yellow riding jacket with a red stripe down the back, blue jeans, a cream full-face helmet with a red bandana tail, and a bag on the hip.",
+    "palette": ["#b8322a", "#fff3c4", "#f2c14e", "#fff3c4"]
+  },
   "meta": { "status": "live", "notes": "The M1 player preset." }
 }
