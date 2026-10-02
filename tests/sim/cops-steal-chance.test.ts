@@ -156,10 +156,10 @@ describe("the law's weapons in a real race (release content, every region)", () 
     for (const r of REGIONS) {
       const config = raceConfig(r.event, 1);
       const cops = config.riders.filter((d) => d.faction === 'law');
-      expect(
-        cops.map((d) => d.contentId),
-        r.name,
-      ).toEqual([r.cop]);
+      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, every one the
+      // region's cop.
+      expect(cops, r.name).toHaveLength(4);
+      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(new Set([r.cop]));
       expect(cops[0]?.startingWeapon, r.name).toBe(r.weapon);
       const sim = createSim(config);
       sim.step([toSimInput(emptyActions())]);
