@@ -58,6 +58,23 @@
 //   dabs the brakes (ALONGSIDE_BRAKE_SHARE), so his swings, and your steal chances, come in a
 //   normal race (the cops polish round, 2026-10-01).
 //
+// The patrol (playtest 2, 2026-10-02: "I think I've only ever encountered cops once even though
+// I've played a lot"; the maintainer's COPS answer: "Mix of 2 and 1 (reliable but rich)"):
+// - Why cops were rare: the lot (`copSpawn`) sits at the start of every route, and the cop pulled
+//   out 20 s after the start at 1.05 x the starter bike's top speed, so a rider who kept going had a
+//   twenty-second head start on a cop barely faster than him, and the cop then held 40 m behind,
+//   out of the forward camera's view. The seeded batch over every region and route, before and
+//   after, is in docs/milestones/M4.md (cops-3, "The patrol").
+// - Now an event with `patrolMax` also sends 1 to `patrolMax` of the cops the mix leaves in the lot
+//   up the road (the difficulty's cop frequency scales the roll); the mix's starters still leave
+//   the lot as before. Each patrol cop waits on the shoulder ahead, at a route progress the field
+//   reaches about PATROL.windowsS into the race (at PATROL.paceShare x the event's pace), clear of
+//   ramps, pads, lots, split zones and sharp bends. A player coming within PATROL.wakeM (further
+//   for a fast one, so the siren leads by the full lead) lights his siren (cause `patrol`); as the
+//   player draws level he pulls out and chases as any cop does. The chase runs out after
+//   PATROL.chaseS unless his man is down beside him. So a cop is met in view, ahead, every race.
+//   The rest wait in the lot for a chaos summon or a speed trap. [default]
+//
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
@@ -77,6 +94,18 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     max: 120,
     step: 1,
     unit: 's',
+    affectsSim: true,
+  },
+  {
+    // Playtest 2: scales how many patrol cops an event's `patrolMax` brings (0: no patrol). [default] 1.
+    id: 'cops.patrolScale',
+    group: 'cops',
+    label: 'Patrol cops (× the event)',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.5,
+    unit: '×',
     affectsSim: true,
   },
   {
@@ -235,6 +264,51 @@ export const CHAOS_HIT_COP = 2;
 export const CHAOS_TAKEDOWN = 3;
 /** How far behind the lot each further cop parks, m (so the lot does not stack them). */
 const PARK_GAP_M = 8;
+/** With a patrol (more cops in the race), the lot's cops park this close, about the middle. */
+const LOT_GAP_M = 4;
+
+/**
+ * Playtest 2's patrol [default] (the file header has the rule). `windowsS` are the seconds into the
+ * race at which the first and the second patrol cop are reached at `paceShare` x the event's pace;
+ * a third or later takes the last window.
+ */
+export const PATROL = {
+  windowsS: [
+    [25, 45],
+    [50, 75],
+  ] as const,
+  paceShare: 0.7,
+  /** Patrol spots stay inside this share of the route. */
+  minProgress: 0.08,
+  maxProgress: 0.8,
+  /** Two patrol cops wait at least this far apart, m. */
+  spacingM: 250,
+  /**
+   * A player this far short of him lights his siren. He pulls out as the player draws level, or
+   * when one slower than `stoppedMps` is within `pullOutM`; a player up to `pullOutM` past him (one
+   * who arrived while every chasing place was taken) still brings him out.
+   */
+  wakeM: 220,
+  pullOutM: 45,
+  stoppedMps: 5,
+  /**
+   * A patrol chase ends this long after he pulls out (he pulls over, siren off), unless the man he
+   * chases is down beside him: patrol cops come every race, on top of the lot's, so they must not
+   * shadow a whole race. Long enough for a move-in or two alongside, where his swing (and your
+   * steal) happens.
+   */
+  chaseS: 40,
+  /** His first seconds out he holds his line (no swerve into the player who just went by). */
+  holdLineS: 3,
+  /** Looking for a clear spot: step forward this far, at most this many times. */
+  stepM: 20,
+  tries: 30,
+  /** No patrol cop within this of a ramp, gap, pad, ramp truck or cop lot, m. */
+  clearM: 30,
+  /** Sharpest bend he waits on, 1/m. */
+  maxKappa: 1 / 50,
+};
+const PATROL_AVOID = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
 
 /** Cop phases, stored as numbers so the state stays plain data. */
 export const COP_PARKED = 0;
@@ -314,6 +388,10 @@ export interface CopsState {
   cause: string[];
   /** By cop id: the clock value from which he may swing again. */
   swingAt: number[];
+  /** By cop id (playtest 2): the route progress where he waits on patrol, m, or -1 for none. */
+  patrolAt: number[];
+  /** By cop id: the clock value at which his patrol chase ends (0 while he has not pulled out). */
+  patrolUntil: number[];
   /** The hidden chaos meter, and the (jittered) level that summons the next cop. */
   chaos: number;
   chaosAt: number;
@@ -342,6 +420,8 @@ export function copsState(world: World): CopsState {
     summonAt: [],
     cause: [],
     swingAt: [],
+    patrolAt: [],
+    patrolUntil: [],
     chaos: 0,
     chaosAt: 0,
     heat: [],
@@ -574,6 +654,10 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     dWant = shoulder.dCenterM;
   }
   vWant = clamp(vWant, 0, bike.topSpeedMps);
+  // A patrol cop holds his line for his first seconds out, so he never swerves into the player
+  // who has just gone by him (he falls in behind once the player is clear).
+  const until = st.patrolUntil[cop.id] ?? 0;
+  if (until > 0 && st.clock < until - (PATROL.chaseS - PATROL.holdLineS) * 60) dWant = pos.d;
   // Never stand still in a travel lane: below the crawl, head for the shoulder and keep rolling
   // until he is clear of the lane (traffic never passes a stopped rider in its lane).
   if (!mayStop && vWant < CRAWL_MPS && !clearOfLanes(config, pos)) {
@@ -635,6 +719,98 @@ export function copSpawnPos(config: SimConfig): RoadPos | null {
     }
   }
   return null;
+}
+
+/** The road position on the route's main path at a route progress (toward the finish), or null. */
+export function routePosAt(config: SimConfig, progress: number): RoadPos | null {
+  const { road, route } = config;
+  for (const edge of route.mainEdges) {
+    const len = road.edges[edge]?.length ?? 0;
+    const a = route.progressAt(edge, 0);
+    if (!Number.isFinite(a) || progress < a || progress > a + len) continue;
+    return { edge, s: progress - a, d: 0, dir: 1 };
+  }
+  return null;
+}
+
+/**
+ * Where a patrol cop can wait at `pos` (on the route's main path): its side's shoulder, or, with
+ * `edgeOk`, the drivable edge on its side when there is no shoulder and that edge is clear of the
+ * travel lanes. Null when the spot is not clear (a branch, a ramp, pad, ramp truck or lot nearby, a
+ * split zone, a sharp bend, or nowhere off the lanes).
+ */
+function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos | null {
+  const { road, route } = config;
+  if (!road.edges[pos.edge] || !route.allows(pos.edge) || road.branchSideAt(pos.edge, pos.s) !== 0)
+    return null;
+  if (Math.abs(road.kappaAt(pos.edge, pos.s)) > PATROL.maxKappa) return null;
+  for (const f of road.featuresOf(pos.edge)) {
+    if (PATROL_AVOID.has(f.kind) && pos.s >= f.s0 - PATROL.clearM && pos.s <= f.s1 + PATROL.clearM)
+      return null;
+  }
+  for (const z of route.shortcuts) {
+    if (z.edge === pos.edge && pos.s >= z.s0 - 60 && pos.s <= z.s1 + 20) return null;
+  }
+  const { drive: lane, shoulder } = sideLanes(config, pos);
+  if (shoulder) return { ...pos, d: shoulder.dCenterM };
+  if (!edgeOk || !lane) return null;
+  const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
+  const spot = { ...pos, d: lane.dCenterM >= 0 ? hi : lo };
+  // Never parked in a travel lane: traffic queues behind a stopped rider (the M1 seed 37 jam).
+  return clearOfLanes(config, spot) ? spot : null;
+}
+
+/**
+ * Playtest 2's patrol spots, one per patrol cop (fewer when the route has no room): each a route
+ * progress PATROL.windowsS into the race at PATROL.paceShare x the event's pace, drawn from the
+ * cops stream (one draw per cop, always), then the first clear spot from there on.
+ */
+export function patrolSpots(world: World, config: SimConfig, count: number): { at: number; pos: RoadPos }[] {
+  const out: { at: number; pos: RoadPos }[] = [];
+  const length = config.route.length;
+  const speed = Math.max(5, config.event.paceMps * PATROL.paceShare * speedMultiplierOf(config));
+  for (let k = 0; k < count; k++) {
+    const w = PATROL.windowsS[Math.min(k, PATROL.windowsS.length - 1)] ?? [30, 60];
+    const t = w[0] + (w[1] - w[0]) * nextFloat(world.rng.cops);
+    let want = clamp(t * speed, PATROL.minProgress * length, PATROL.maxProgress * length);
+    const last = out[out.length - 1];
+    if (last) want = Math.max(want, last.at + PATROL.spacingM);
+    for (let i = 0; i < PATROL.tries; i++) {
+      const at = want + i * PATROL.stepM;
+      if (at > PATROL.maxProgress * length) break;
+      const pos = routePosAt(config, at);
+      const spot = pos && patrolSpot(config, pos, i >= PATROL.tries / 2);
+      if (spot) {
+        out.push({ at, pos: spot });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The nearest player short of a parked patrol cop: how far short along the route (m; negative once
+ * past him, and only down to -PATROL.pullOutM; Infinity when no player is that close) and how fast
+ * he rides.
+ */
+function patrolGap(
+  world: World,
+  config: SimConfig,
+  st: CopsState,
+  cop: Mover,
+): { gap: number; speed: number } {
+  let gap = Infinity;
+  let speed = 0;
+  for (const m of world.movers) {
+    if (!isPlayer(config, m) || !chaseable(config, st, m)) continue;
+    const g = gapAlongRoute(config, m, cop);
+    if (g >= -PATROL.pullOutM && g < gap) {
+      gap = g;
+      speed = m.speed;
+    }
+  }
+  return { gap, speed };
 }
 
 /**
@@ -767,6 +943,52 @@ function copSwing(world: World, config: SimConfig, st: CopsState, cop: Mover): b
   return true;
 }
 
+/**
+ * Playtest 2's patrol, on top of the cops-3 mix: 1 to `patrolMax` of the cops the mix leaves in
+ * the lot (the difficulty's cop frequency scales the roll: Easy brings one, Normal an even spread,
+ * Hard the most more often; 0 brings nobody) wait up the road instead. The cops still in the lot
+ * then park in their own order: the lot's middle, then behind and ahead of it in turn.
+ */
+function startPatrol(
+  world: World,
+  config: SimConfig,
+  st: CopsState,
+  starting: number,
+  lot: RoadPos | null,
+): void {
+  const scale = Math.max(0, world.params['cops.patrolScale'] ?? 1);
+  const hi = Math.max(1, Math.round((config.event.cops?.patrolMax ?? 1) * Math.max(scale, 0.5)));
+  const roll = nextFloat(world.rng.cops); // always drawn, so the stream stays aligned
+  const freq = config.difficulty.copFrequency;
+  const u = Math.min(1 - 1e-9, roll * freq);
+  const want = freq > 0 && scale > 0 ? 1 + Math.min(hi - 1, Math.floor(u * hi)) : 0;
+  const free = st.cops.filter((_id, k) => k >= starting);
+  const spots = patrolSpots(world, config, Math.min(want, free.length));
+  let inLot = 0;
+  for (const id of st.cops) {
+    const m = world.movers[id];
+    if (!m) continue;
+    const k = free.indexOf(id);
+    const spot = k >= 0 ? spots[k] : undefined;
+    if (spot) {
+      m.pos = spot.pos;
+      m.yaw = 0;
+      m.speed = 0;
+      st.spawns[id] = 1;
+      st.patrolAt[id] = spot.at;
+      st.cause[id] = 'patrol';
+      continue;
+    }
+    if (lot) {
+      const len = config.road.edges[lot.edge]?.length ?? lot.s;
+      // Middle, then behind and ahead of it in turn, LOT_GAP_M apart: five fit the v1 lots (s 4 to 20).
+      const off = inLot === 0 ? 0 : (inLot % 2 === 1 ? -1 : 1) * Math.ceil(inLot / 2) * LOT_GAP_M;
+      m.pos = { ...lot, s: clamp(lot.s + off * lot.dir, 0, len) };
+    }
+    inLot++;
+  }
+}
+
 export const copsSystem: SimSystem = {
   name: 'cops',
   init(world: World, config: SimConfig) {
@@ -797,11 +1019,13 @@ export const copsSystem: SimSystem = {
       st.summonAt[m.id] = -1;
       st.cause[m.id] = '';
       st.swingAt[m.id] = 0;
+      st.patrolAt[m.id] = -1;
+      st.patrolUntil[m.id] = 0;
       world.inputs[m.id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
     }
     if (!mix) return;
     // cops-3's spawn mix: the first `count` cops come out (each still on his roll), a wave gap
-    // apart; the rest wait in the lot for a chaos summon.
+    // apart; the rest wait in the lot for a chaos summon (or, below, go on patrol).
     const count = startingCopCount(world, config);
     const gapTicks = Math.max(0, world.params['cops.waveGapS'] ?? 8) * 60;
     st.cops.forEach((id, k) => {
@@ -813,6 +1037,7 @@ export const copsSystem: SimSystem = {
       }
     });
     st.chaosAt = Math.max(1, (world.params['cops.chaosSummonAt'] ?? 10) * jitter(world, mix.randomness));
+    if ((mix.patrolMax ?? 0) > 0 && mix.mode !== 'none') startPatrol(world, config, st, count, spawn);
   },
   step(world: World, config: SimConfig) {
     const st = copsState(world);
@@ -829,7 +1054,25 @@ export const copsSystem: SimSystem = {
       const cop = world.movers[id];
       const def = defOf(config, cop);
       if (!cop || !def) continue;
-      if (st.phase[id] === COP_PARKED && st.spawns[id] === 1) {
+      const patrolling = (st.patrolAt[id] ?? -1) >= 0 && (st.summonAt[id] ?? -1) < 0;
+      if (st.phase[id] === COP_PARKED && st.spawns[id] === 1 && patrolling) {
+        // Playtest 2's patrol: he lights up as a player comes near, and pulls out as he arrives.
+        // He wakes PATROL.wakeM short, or earlier for a fast rider, so the siren still sounds the
+        // full siren lead (and a second more) before he pulls out.
+        const { gap, speed } = patrolGap(world, config, st, cop);
+        const wake = Math.max(PATROL.wakeM, PATROL.pullOutM + speed * (leadTicks / 60 + 1));
+        if (st.sirenOn[id] !== 1 && gap <= wake && active < maxActive) {
+          st.sirenOn[id] = 1;
+          active++;
+          emit(world, 'siren', id, { on: true, cause: 'patrol' });
+        }
+        // He pulls out as the player draws level (then he comes alongside), or when one has stopped
+        // close by.
+        if (st.sirenOn[id] === 1 && (gap <= 0 || (gap <= PATROL.pullOutM && speed < PATROL.stoppedMps))) {
+          st.phase[id] = COP_CHASING;
+          st.patrolUntil[id] = st.clock + PATROL.chaseS * 60;
+        }
+      } else if (st.phase[id] === COP_PARKED && st.spawns[id] === 1) {
         // A summoned cop goes from his summons; the others at the base time plus their wave gap.
         const summoned = st.summonAt[id] ?? -1;
         const out = summoned >= 0 ? summoned + leadTicks : pullOutTicks + (st.extraTicks[id] ?? 0);
@@ -855,6 +1098,10 @@ export const copsSystem: SimSystem = {
           st.closingFor[id] = 0;
         }
         if (st.target[id] === -1) endChase(world, st, id);
+        // A patrol chase runs out (unless his man is down: then he stays for the bust).
+        const until = st.patrolUntil[id] ?? 0;
+        const target = world.movers[st.target[id] ?? -1];
+        if (until > 0 && st.clock >= until && !(target && isDown(target))) endChase(world, st, id);
       }
     }
     checkBusts(world, config, st);
@@ -863,7 +1110,12 @@ export const copsSystem: SimSystem = {
       const cop = world.movers[id];
       const def = defOf(config, cop);
       if (!cop || !def || cop.mode !== 'Road') continue;
-      if (st.phase[id] === COP_PARKED) world.inputs[id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
+      // A parked patrol cop shoved into a lane (riders bump: playtest 1 item 6) rolls back onto the
+      // shoulder, as one with nobody to chase does; a stopped rider in a lane jams the traffic.
+      if (st.phase[id] === COP_PARKED && (st.patrolAt[id] ?? -1) >= 0 && !clearOfLanes(config, cop.pos))
+        drive(world, config, st, cop, def);
+      else if (st.phase[id] === COP_PARKED)
+        world.inputs[id] = { steer: 0, throttle: 0, brake: 255, flags: 0 };
       else {
         drive(world, config, st, cop, def);
         const input = world.inputs[id];
