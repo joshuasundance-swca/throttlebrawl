@@ -51,6 +51,7 @@ import {
   trafficFigureTint,
 } from './traffic-figures';
 import type { LookStyle } from './look';
+import type { RiderRigs } from './riders';
 import { defaultRenderParams, type RenderParams } from './tuning';
 
 /** Body proportions from rider data (a later look test compares exaggerated against realistic). */
@@ -381,6 +382,8 @@ export class EntityViews {
   private readonly scale = new Vector3();
   private readonly color = new Color();
   private now = 0;
+  /** Real riders on real bikes (riders/, a lazy chunk): set once their code has loaded. */
+  private rigs: RiderRigs | null = null;
   private counts: EntityViewCounts = { riders: 0, vehicles: 0, peds: 0, pickups: 0, pooled: 0 };
 
   constructor(look: LookStyle, opts: EntityViewOptions = {}) {
@@ -394,6 +397,15 @@ export class EntityViews {
       truck: this.makeInstanced('truck', TRUCK_PARTS, 'vehicle', 8),
       ped: this.makeInstanced('ped', PED_PARTS, 'ped', 16),
     };
+  }
+
+  /**
+   * The rider rigs (interview, 2026-10-02: "Real models now"). From then on each rider whose two
+   * models have loaded draws as its rig; the others keep their boxes.
+   */
+  setRigs(rigs: RiderRigs): void {
+    this.rigs = rigs;
+    this.root.add(rigs.root);
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
@@ -579,6 +591,7 @@ export class EntityViews {
     for (const [id, f] of this.flashes) if (f < timeS) this.flashes.delete(id);
     for (const [id, g] of this.getUps) if (g < timeS) this.getUps.delete(id);
     for (const [id, f] of this.fists) if (f.until < timeS) this.fists.delete(id);
+    this.rigs?.endFrame(this.dt);
     this.resolveEffects(curr);
     const slowmo = curr.slowmo?.active === true || (curr.timeScale > 0 && curr.timeScale < 0.999);
     // In a hit-stop the world is frozen, but sparks keep drifting a little so the hit reads.
@@ -808,6 +821,7 @@ export class EntityViews {
     this.flashes.delete(id);
     this.getUps.delete(id);
     this.fists.delete(id);
+    this.rigs?.release(id);
   }
 
   private pickupView(id: number): PickupView {
@@ -969,6 +983,24 @@ export class EntityViews {
     if (view.lightBar.visible) {
       const red = Math.floor(time * 8) % 2 === 0;
       view.lightBar.material = this.look.material('lightbar', { color: red ? LIGHT_RED : LIGHT_BLUE });
+    }
+    // Real riders: once this rider's models are in, its rig draws it where the boxes were placed
+    // (riding, tumbling or on foot), and the boxes hide (riders/index.ts).
+    const rigged =
+      this.rigs?.update(e, prev, curr, {
+        root,
+        parked: view.parked,
+        tumbleBike: view.tumbleBike,
+        weapon: view.weapon,
+        glint: view.glint,
+        flashing,
+        time,
+        dt: this.dt,
+      }) ?? false;
+    if (rigged) {
+      root.visible = false;
+      view.parked.visible = false;
+      view.tumbleBike.visible = false;
     }
   }
 

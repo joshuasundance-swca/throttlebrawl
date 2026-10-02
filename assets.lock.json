@@ -3,13 +3,115 @@
   "formatVersion": 1,
   "repo": "joshuasundance/throttlebrawl-assets",
   "repoType": "dataset",
-  "revision": "820f5a165131089da8c7fa28fa9ee1686e579e2e",
+  "revision": "22232d70b68a4435f21565976ef47973c0e76f98",
   "files": [
     {
       "path": "base/models/placeholder/marker-cube.glb",
       "bytes": 1572,
       "sha256": "27be260e78101a6e4dc3a601aee843b1d9d6a7d12efeee0dc33d970b9d24464e",
       "note": "Round-trip placeholder: a 0.5 m flat orange cube, code-made by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/chad-speedwell.glb",
+      "bytes": 28716,
+      "sha256": "f29655248cf057e0b0f90d1c1f5c237904288a7ae352a093846bb9d0b37998fa",
+      "note": "Rider model: chad-speedwell, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/deacon-vane.glb",
+      "bytes": 31444,
+      "sha256": "020a94dda57a141cdc132f79e712c8f63b308a17118d13b9b0e6302be0b58fd7",
+      "note": "Rider model: deacon-vane, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/dial-up.glb",
+      "bytes": 27740,
+      "sha256": "9e25f2fa86fba0db9ecf048ff2ded09db1e09b416cf6ad08a40df93642590292",
+      "note": "Rider model: dial-up, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/kevin-from-accounting.glb",
+      "bytes": 27004,
+      "sha256": "ce2d15658c705bb46e0460ec53dc2cd4f794cf8f45fd9dc8e36ab8609caa4a77",
+      "note": "Rider model: kevin-from-accounting, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/mother-rust.glb",
+      "bytes": 31172,
+      "sha256": "bf6f2b1656b8e2430705b4e77fb1e5e5e25cb3a47ae921d81214239611aedfc8",
+      "note": "Rider model: mother-rust, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/player.glb",
+      "bytes": 25852,
+      "sha256": "ddd421ba2cbdc207f4094341431413607db83d5d8e625014e91bcbddfd72b3d2",
+      "note": "Rider model: player, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/sgt-pruitt.glb",
+      "bytes": 28056,
+      "sha256": "d39580c4b651f5b50bc55a115dc9699e7d0182ae049b91efe9196af558be284f",
+      "note": "Rider model: sgt-pruitt, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/tammy-two-stroke.glb",
+      "bytes": 28788,
+      "sha256": "7ba52277d1aeb178d8f12bb796036792fd61cf333ff48abfb3260e1a163ed328",
+      "note": "Rider model: tammy-two-stroke, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/the-mayor.glb",
+      "bytes": 39960,
+      "sha256": "2e48835056b1d076f6ed78cd6bc4f230095d371682ef19d1a98db45a89e2ece8",
+      "note": "Rider model: the-mayor, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "base/models/riders/trooper-dalrymple.glb",
+      "bytes": 27492,
+      "sha256": "90b2889e05321e6dffa7abaa1c7afd6bb0dd53d9c8242869aa54065660dcc7ca",
+      "note": "Rider model: trooper-dalrymple, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-pnw/models/riders/deputy-lindqvist.glb",
+      "bytes": 28004,
+      "sha256": "3fe5d80dd9a7486aaa0e56c183833ccbd5d2c62acd60f5884304ccc21c045189",
+      "region": "pacific-northwest",
+      "note": "Rider model: deputy-lindqvist, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-pnw/models/riders/juniper-moss.glb",
+      "bytes": 29428,
+      "sha256": "68b3ea0226e93a72185e87970c79463f5a78b68856a0b2ae93564157b85dea3e",
+      "region": "pacific-northwest",
+      "note": "Rider model: juniper-moss, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-pnw/models/riders/old-growth.glb",
+      "bytes": 34368,
+      "sha256": "1cdb920eac94f20a558a7d292ca64db00cd35698c0e07c4f68388ea06e79acad",
+      "region": "pacific-northwest",
+      "note": "Rider model: old-growth, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-sf/models/riders/gripman-gus.glb",
+      "bytes": 27572,
+      "sha256": "6886b854fe9fbb2fe4113bbf4db2a6acd1ad8e22a992be57019bd4b94e57a0f5",
+      "region": "san-francisco",
+      "note": "Rider model: gripman-gus, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-sf/models/riders/officer-meter.glb",
+      "bytes": 29192,
+      "sha256": "321edd6980ab90762c4fb222b60f3bfc88655aff81f2f8bc8b3a6c48911e9980",
+      "region": "san-francisco",
+      "note": "Rider model: officer-meter, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
+    },
+    {
+      "path": "region-sf/models/riders/pivot.glb",
+      "bytes": 27864,
+      "sha256": "f58f2f11b2fb0ce90933df907f87bb8d2ed5d24821e1077e73a83c80eef5f6e4",
+      "region": "san-francisco",
+      "note": "Rider model: pivot, scripted in Blender by an AI agent (THIRD_PARTY_ASSETS.md)"
     }
   ]
 }
