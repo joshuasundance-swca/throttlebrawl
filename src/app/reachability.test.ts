@@ -103,7 +103,7 @@ describe('reachability: every *_TUNING declaration is collected into the tuning 
 
   it('fires on a declaration nobody collects (the scan finds it, the check names its ids)', () => {
     const source = [
-      "import type { TuningParamDecl } from '../core';",
+      "import type { TuningParamDecl } from '../sim/api';",
       'export const ORPHAN_TUNING: readonly TuningParamDecl[] = [];',
       'export const NOT_A_DECL = 1;',
       'const PRIVATE_TUNING = [];',
