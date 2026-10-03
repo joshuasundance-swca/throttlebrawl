@@ -178,7 +178,8 @@
       ],
       "text": "Last rites are short. Like you.",
       "audioAsset": "audio/barks/deacon-core/deacon-hit-rites",
-      "audioStatus": "live"
+      "audioStatus": "live",
+      "audioNote": "Redone 2026-10-02 (run W-S): both Whisper checks misheard the old take (\"Lass rites are short, like you.\"). Now Kokoro-82M, run locally, in Deacon Vane's reference voice (am_onyx, speed 0.85, pitch -1). Veto it, or ask for the old take back from git history."
     },
     {
       "id": "deacon-hit-forgave",
@@ -257,7 +258,8 @@
       "priority": 1,
       "text": "Struck down by a ring light.",
       "audioAsset": "audio/barks/deacon-core/deacon-down-chad",
-      "audioStatus": "live"
+      "audioStatus": "live",
+      "audioNote": "Redone 2026-10-02 (run W-S): the words were right, but the old take sounded least like Deacon Vane's other lines (speaker check). Now Kokoro-82M, run locally, in Deacon Vane's reference voice (am_onyx, speed 0.901, pitch -1). Veto it, or ask for the old take back from git history."
     },
     {
       "id": "deacon-traffic-vengeance",
@@ -328,7 +330,15 @@
       "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
       "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_onyx, speed 0.85, pitch -1 semitones; synthetic, no real person's voice",
       "promptRef": "tools/voices/cast.json",
-      "generatedAt": "2026-10-01"
+      "generatedAt": "2026-10-01",
+      "review": {
+        "at": "2026-10-02",
+        "by": "run W-S, voices lane",
+        "method": "Every clip transcribed on the dev machine's GPU by Whisper large-v3-turbo and large-v3, plus pitch, pace, level and a speaker-similarity check (WavLM) against the rival's other clips (tools/voices/scripts/check_local.py). Garbled (both checks heard other words) or off-voice clips were redone free with Kokoro-82M on the GPU in the rival's reference voice (tools/voices/scripts/redo_local.py); everything else was kept.",
+        "kept": 26,
+        "redone": ["deacon-hit-rites", "deacon-down-chad"],
+        "cut": []
+      }
     }
   }
 }

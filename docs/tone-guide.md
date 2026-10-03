@@ -457,3 +457,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: a plausible startup name is probably already taken; prompt-themed coinages especially. Search a new brand name before shipping it, and prefer an odd, specific coinage over a smooth generic one. Names a review found to be real go in `tools/packs/invented-brands.test.ts`.
 - Scope: global
 - Action taken: rewritten as "DELEGATRON. AN AI THAT WRITES PROMPTS FOR YOUR OTHER AI." (id `delegatron`; a web search found no product of that name); run W-P's verifier found the old name in use by a business selling prompting solutions and by several prompt tools.
+
+### 2026-10-02 · Voice picks: keep the clear takes, redo the garbled
+- Item: all 273 voiced bark clips (`packs/*/assets/audio/barks/**`)
+- Surface: bark
+- Verdict: keep (264), tweak (9 redone), veto (none)
+- Maintainer said: "I didn't pick voices i thought you were going to. Or it can wait." (interview, 2026-10-02)
+- Lesson: the expressive cloned takes are kept wherever both Whisper models hear the scripted words and the clip sounds like the rival's other lines. A take fails when it slurs a word ("Dodged it" heard as "Daws did"), ad-libs ("Mm-mm. Last call."), or drifts away from its rival's voice. Words that run together are fixed in the spoken text with a beat ("the risks... slide"), never in the subtitle. Homophones ("brakes"/"breaks", "Fare's"/"Fair's") and number spellings ("ten-x"/"10x") are not misses.
+- Scope: global (voices)
+- Action taken: 9 clips redone free with Kokoro-82M on the dev machine's GPU in the rival's reference voice; each redone line carries an `audioNote` saying why, and each set's `meta.voice.review` lists its picks. Any of them can still be vetoed with "cut this" or in chat.

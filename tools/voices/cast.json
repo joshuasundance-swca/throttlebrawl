@@ -213,6 +213,10 @@
     },
     "region-sf:pivot-core#pivot-start-ai-now": { "spoken": "We're an A.I. company now. Since breakfast." },
     "region-sf:pivot-core#pivot-pass-agent": { "spoken": "My A.I. agent scheduled this pass." },
+    "region-sf:pivot-core#pivot-down-risks": {
+      "spoken": "Again? You're going on the risks... slide.",
+      "note": "A beat after \"risks\": run together, the S ran into \"slide\" and both checkers heard \"wrist slide\" (Chatterbox) or \"risk slide\" (Kokoro)."
+    },
     "base:deacon-core#deacon-crash-humbling": {
       "exaggeration": 0.4,
       "note": "Calmer: at 0.62 the voice rose away from Deacon's."

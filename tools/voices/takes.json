@@ -865,27 +865,45 @@
     "speaker": "deacon-vane",
     "text": "Struck down by a ring light.",
     "spoken": "Struck down by a ring light.",
-    "seed": 1699344924,
+    "seed": null,
     "match": 1.0,
     "heard": "struck down by a ring light.",
     "takes": 1,
     "tried": [
       {
-        "seed": 1699344924,
+        "speed": 0.901,
         "heard": "struck down by a ring light.",
         "match": 1.0,
-        "durationS": 1.65
+        "durationS": 2.03
       }
     ],
-    "durationS": 1.65,
-    "bytes": 5944,
-    "lufs": -17.8,
-    "peakDb": -1.97,
-    "f0": 90.2,
+    "durationS": 2.03,
+    "bytes": 7137,
+    "lufs": -17.92,
+    "peakDb": -1.85,
+    "f0": null,
     "refF0": 81.9,
-    "exaggeration": 0.67,
-    "cfg": 0.4,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "struck down by a ring light.",
+    "speed": 0.901,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "off-voice",
+      "before": {
+        "turbo": 1.0,
+        "v3": 1.0,
+        "heardTurbo": "struck down by a ring light.",
+        "heardV3": "struck down by a ring light.",
+        "own": 0.9432,
+        "ownZ": -5.58,
+        "f0Ratio": 0.93,
+        "durationS": 1.65,
+        "bytes": 5944
+      }
+    }
   },
   "base:deacon-core#deacon-down-forgive": {
     "speaker": "deacon-vane",
@@ -1047,39 +1065,45 @@
     "speaker": "deacon-vane",
     "text": "Last rites are short. Like you.",
     "spoken": "Last rites are short. Like you.",
-    "seed": 885775096,
+    "seed": null,
     "match": 0.833,
-    "heard": "Lass rites are short, like you.",
-    "takes": 3,
+    "heard": "Last rites are short like you.",
+    "takes": 1,
     "tried": [
       {
-        "seed": 885775096,
-        "heard": "Lass rites are short, like you.",
-        "match": 0.833,
-        "durationS": 2.4
-      },
-      {
-        "seed": 885783015,
-        "heard": "Last rights are short, like you.",
-        "match": 0.833,
-        "durationS": 2.39
-      },
-      {
-        "seed": 885790934,
-        "heard": "Last rights are short, like you.",
-        "match": 0.833,
-        "durationS": 2.23
+        "speed": 0.85,
+        "heard": "Last rites are short like you.",
+        "match": 1.0,
+        "durationS": 2.49
       }
     ],
-    "durationS": 2.4,
-    "bytes": 8241,
-    "lufs": -18.8,
-    "peakDb": -1.89,
-    "f0": 88.2,
+    "durationS": 2.49,
+    "bytes": 8494,
+    "lufs": -18.1,
+    "peakDb": -1.82,
+    "f0": null,
     "refF0": 81.9,
-    "exaggeration": 0.57,
-    "cfg": 0.4,
-    "review": ["transcript"]
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Last rights are short like you.",
+    "speed": 0.85,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "garbled",
+      "before": {
+        "turbo": 0.833,
+        "v3": 0.833,
+        "heardTurbo": "Lass rites are short, like you.",
+        "heardV3": "Last rights are short, like you.",
+        "own": 0.9824,
+        "ownZ": 0.11,
+        "f0Ratio": 0.9,
+        "durationS": 2.4,
+        "bytes": 8241
+      }
+    }
   },
   "base:deacon-core#deacon-late-home": {
     "speaker": "deacon-vane",
@@ -1683,27 +1707,45 @@
     "speaker": "dial-up",
     "text": "Buffering\u2026 buffering\u2026 hit.",
     "spoken": "Buffering... buffering... hit.",
-    "seed": 1186685031,
+    "seed": null,
     "match": 1.0,
-    "heard": "buffering, buffering, hit.",
+    "heard": "Buffering buffering hit.",
     "takes": 1,
     "tried": [
       {
-        "seed": 1186685031,
-        "heard": "buffering, buffering, hit.",
+        "speed": 1.15,
+        "heard": "Buffering buffering hit.",
         "match": 1.0,
-        "durationS": 1.65
+        "durationS": 1.38
       }
     ],
-    "durationS": 1.65,
-    "bytes": 5879,
-    "lufs": -18.8,
-    "peakDb": -1.87,
-    "f0": 96.4,
+    "durationS": 1.38,
+    "bytes": 4980,
+    "lufs": -17.72,
+    "peakDb": -1.99,
+    "f0": null,
     "refF0": 120.0,
-    "exaggeration": 0.67,
-    "cfg": 0.55,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Buffering buffering hit.",
+    "speed": 1.15,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "off-voice",
+      "before": {
+        "turbo": 1.0,
+        "v3": 1.0,
+        "heardTurbo": "buffering, buffering, hit.",
+        "heardV3": "buffering, buffering, hit!",
+        "own": 0.945,
+        "ownZ": -3.11,
+        "f0Ratio": 0.73,
+        "durationS": 1.65,
+        "bytes": 5879
+      }
+    }
   },
   "base:dial-up-core#dial-up-hit-chad": {
     "speaker": "dial-up",
@@ -2677,27 +2719,45 @@
     "speaker": "kevin-from-accounting",
     "text": "Let's put a pin in you.",
     "spoken": "Let's put a pin in you.",
-    "seed": 1211708591,
+    "seed": null,
     "match": 1.0,
     "heard": "Let's put a pin in you.",
     "takes": 1,
     "tried": [
       {
-        "seed": 1211708591,
+        "speed": 0.954,
         "heard": "Let's put a pin in you.",
         "match": 1.0,
-        "durationS": 1.56
+        "durationS": 1.51
       }
     ],
-    "durationS": 1.56,
-    "bytes": 5551,
-    "lufs": -17.6,
-    "peakDb": -1.87,
-    "f0": 126.7,
+    "durationS": 1.51,
+    "bytes": 5435,
+    "lufs": -17.57,
+    "peakDb": -1.82,
+    "f0": null,
     "refF0": 161.1,
-    "exaggeration": 0.3,
-    "cfg": 0.5,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Let's put a pin in you.",
+    "speed": 0.954,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "off-voice",
+      "before": {
+        "turbo": 1.0,
+        "v3": 1.0,
+        "heardTurbo": "Let's put a pin in you.",
+        "heardV3": "Let's put a pin in you.",
+        "own": 0.9115,
+        "ownZ": -6.61,
+        "f0Ratio": 0.86,
+        "durationS": 1.56,
+        "bytes": 5551
+      }
+    }
   },
   "base:kevin-core#kevin-start-keys-spf": {
     "speaker": "kevin-from-accounting",
@@ -3281,33 +3341,45 @@
     "speaker": "the-mayor",
     "text": "Dodged it like a subpoena.",
     "spoken": "Dodged it like a subpoena.",
-    "seed": 1568095651,
+    "seed": null,
     "match": 1.0,
-    "heard": "dodged it like a subpoena",
-    "takes": 2,
+    "heard": "dodged it like a subpoena.",
+    "takes": 1,
     "tried": [
       {
-        "seed": 1568087732,
-        "heard": "Dossed it like a subpoena.",
-        "match": 0.8,
-        "durationS": 1.48
-      },
-      {
-        "seed": 1568095651,
-        "heard": "dodged it like a subpoena",
+        "speed": 0.94,
+        "heard": "dodged it like a subpoena.",
         "match": 1.0,
-        "durationS": 1.39
+        "durationS": 1.74
       }
     ],
-    "durationS": 1.39,
-    "bytes": 5103,
-    "lufs": -18.8,
-    "peakDb": -1.87,
-    "f0": 121.8,
+    "durationS": 1.74,
+    "bytes": 6327,
+    "lufs": -19.13,
+    "peakDb": -1.75,
+    "f0": null,
     "refF0": 116.5,
-    "exaggeration": 0.7,
-    "cfg": 0.45,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "dodged it like a subpoena.",
+    "speed": 0.94,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "garbled",
+      "before": {
+        "turbo": 0.6,
+        "v3": 0.6,
+        "heardTurbo": "Daws did like a subpoena.",
+        "heardV3": "Dawes did like a subpoena.",
+        "own": 0.9225,
+        "ownZ": -3.45,
+        "f0Ratio": 0.96,
+        "durationS": 1.39,
+        "bytes": 5103
+      }
+    }
   },
   "base:mayor-core#mayor-pass-motorcade": {
     "speaker": "the-mayor",
@@ -4481,27 +4553,45 @@
     "speaker": "sgt-pruitt",
     "text": "Fine. I'll walk it off.",
     "spoken": "Fine. I'll walk it off.",
-    "seed": 723048673,
+    "seed": null,
     "match": 1.0,
     "heard": "Fine, I'll walk it off.",
     "takes": 1,
     "tried": [
       {
-        "seed": 723048673,
+        "speed": 0.901,
         "heard": "Fine, I'll walk it off.",
         "match": 1.0,
-        "durationS": 1.8
+        "durationS": 1.92
       }
     ],
-    "durationS": 1.8,
-    "bytes": 6310,
-    "lufs": -19.2,
-    "peakDb": -1.92,
-    "f0": 103.0,
+    "durationS": 1.92,
+    "bytes": 6744,
+    "lufs": -17.72,
+    "peakDb": -1.95,
+    "f0": null,
     "refF0": 108.6,
-    "exaggeration": 0.45,
-    "cfg": 0.4,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Fine, I'll walk it off.",
+    "speed": 0.901,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "off-voice",
+      "before": {
+        "turbo": 1.0,
+        "v3": 1.0,
+        "heardTurbo": "Fine. I'll walk it off.",
+        "heardV3": "Fine, I'll walk it off.",
+        "own": 0.8586,
+        "ownZ": -5.81,
+        "f0Ratio": 1.0,
+        "durationS": 1.8,
+        "bytes": 6310
+      }
+    }
   },
   "base:pruitt-core#pruitt-hit-baton": {
     "speaker": "sgt-pruitt",
@@ -5039,27 +5129,45 @@
     "speaker": "tammy-two-stroke",
     "text": "Bless your heart. Now hold still.",
     "spoken": "Bless your heart. Now hold still.",
-    "seed": 768891996,
+    "seed": null,
     "match": 1.0,
-    "heard": "Bless your heart. Now hold still.",
+    "heard": "Bless your heart, now hold still.",
     "takes": 1,
     "tried": [
       {
-        "seed": 768891996,
-        "heard": "Bless your heart. Now hold still.",
+        "speed": 1.06,
+        "heard": "Bless your heart, now hold still.",
         "match": 1.0,
-        "durationS": 2.11
+        "durationS": 2.04
       }
     ],
-    "durationS": 2.11,
-    "bytes": 7240,
-    "lufs": -17.0,
-    "peakDb": -1.87,
-    "f0": 179.1,
+    "durationS": 2.04,
+    "bytes": 7045,
+    "lufs": -18.02,
+    "peakDb": -1.43,
+    "f0": null,
     "refF0": 179.1,
-    "exaggeration": 0.6,
-    "cfg": 0.45,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Bless your heart, now hold still.",
+    "speed": 1.06,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "off-voice",
+      "before": {
+        "turbo": 1.0,
+        "v3": 1.0,
+        "heardTurbo": "bless your heart now hold still",
+        "heardV3": "Bless your heart. Now hold still.",
+        "own": 0.9079,
+        "ownZ": -9.6,
+        "f0Ratio": 0.95,
+        "durationS": 2.11,
+        "bytes": 7240
+      }
+    }
   },
   "base:tammy-core#tammy-hit-deacon": {
     "speaker": "tammy-two-stroke",
@@ -5591,27 +5699,45 @@
     "speaker": "juniper-moss",
     "text": "Last call.",
     "spoken": "Last call.",
-    "seed": 1542069213,
+    "seed": null,
     "match": 1.0,
     "heard": "Last call.",
     "takes": 1,
     "tried": [
       {
-        "seed": 1542069213,
+        "speed": 0.987,
         "heard": "Last call.",
         "match": 1.0,
-        "durationS": 1.75
+        "durationS": 0.89
       }
     ],
-    "durationS": 1.75,
-    "bytes": 5829,
-    "lufs": -17.5,
-    "peakDb": -1.92,
-    "f0": 191.3,
+    "durationS": 0.89,
+    "bytes": 3485,
+    "lufs": -17.44,
+    "peakDb": -3.39,
+    "f0": null,
     "refF0": 196.7,
-    "exaggeration": 0.5,
-    "cfg": 0.5,
-    "review": []
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Last call.",
+    "speed": 0.987,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "garbled",
+      "before": {
+        "turbo": 0.667,
+        "v3": 0.667,
+        "heardTurbo": "Mm-mm. Last call.",
+        "heardV3": "Mm-mm. Last call.",
+        "own": 0.9043,
+        "ownZ": -4.23,
+        "f0Ratio": 0.98,
+        "durationS": 1.75,
+        "bytes": 5829
+      }
+    }
   },
   "region-pnw:juniper-core#juniper-hit-on-the-house": {
     "speaker": "juniper-moss",
@@ -6964,40 +7090,46 @@
   "region-sf:pivot-core#pivot-down-risks": {
     "speaker": "pivot",
     "text": "Again? You're going on the risks slide.",
-    "spoken": "Again? You're going on the risks slide.",
-    "seed": 545046957,
-    "match": 0.875,
-    "heard": "Again, you're going on the wrist slide.",
-    "takes": 3,
+    "spoken": "Again? You're going on the risks... slide.",
+    "seed": null,
+    "match": 1.0,
+    "heard": "Again, you're going on the risks, slide.",
+    "takes": 1,
     "tried": [
       {
-        "seed": 545046957,
-        "heard": "Again, you're going on the wrist slide.",
-        "match": 0.875,
-        "durationS": 2.27
-      },
-      {
-        "seed": 545054876,
-        "heard": "Again, you're going on the wrist slide.",
-        "match": 0.875,
-        "durationS": 2.46
-      },
-      {
-        "seed": 545062795,
-        "heard": "Again, you're going on the risk slide.",
-        "match": 0.875,
-        "durationS": 2.49
+        "speed": 1.1,
+        "heard": "Again, you're going on the risks, slide.",
+        "match": 1.0,
+        "durationS": 2.07
       }
     ],
-    "durationS": 2.27,
-    "bytes": 7532,
-    "lufs": -17.6,
-    "peakDb": -1.85,
-    "f0": 166.7,
+    "durationS": 2.07,
+    "bytes": 7123,
+    "lufs": -17.45,
+    "peakDb": -1.68,
+    "f0": null,
     "refF0": 128.7,
-    "exaggeration": 0.7,
-    "cfg": 0.5,
-    "review": ["transcript"]
+    "exaggeration": null,
+    "cfg": null,
+    "review": [],
+    "model": "kokoro-local",
+    "heardV3": "Again, you're going on the risks. Slide.",
+    "speed": 1.1,
+    "redo": {
+      "at": "2026-10-02",
+      "why": "garbled",
+      "before": {
+        "turbo": 0.875,
+        "v3": 0.875,
+        "heardTurbo": "Again, you're going on the wrist slide.",
+        "heardV3": "Again, you're going on the wrist slide.",
+        "own": 0.9615,
+        "ownZ": -0.55,
+        "f0Ratio": 1.31,
+        "durationS": 2.27,
+        "bytes": 7532
+      }
+    }
   },
   "region-sf:pivot-core#pivot-hit-ditch": {
     "speaker": "pivot",

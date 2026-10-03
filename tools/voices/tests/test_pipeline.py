@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from tbvoices import dsp
+from tbvoices.apply import apply_packs
 from tbvoices.cast import LineOverride, Segment, load_cast
 from tbvoices.lines import BarkLine, lint_spoken, read_lines, speaker_lines, spoken_segments
 from tbvoices.numbers import digits_to_words, int_words
-from tbvoices.pipeline import match, words
+from tbvoices.pipeline import Paths, match, words
 from tbvoices.providers import BudgetExceededError, Ledger, NoReferenceError, Providers
 
 REPO = Path(__file__).resolve().parents[3]
@@ -80,7 +82,9 @@ def test_the_cast_covers_every_bark_set_and_lints_clean() -> None:
     cast = load_cast(REPO / "tools" / "voices" / "cast.json")
     lines = read_lines(REPO)
     sets = {f"{bl.pack}:{bl.set_id}" for bl in lines}
-    assert sets == {sp.bark_set for sp in cast.speakers.values()}
+    # Every rival's set is cast. Sets without one rival speaker (the DJs, the road events) are
+    # not voiced yet, so they may exist without a cast entry.
+    assert {sp.bark_set for sp in cast.speakers.values()} <= sets
     groups = speaker_lines(cast, lines)
     for sid, ls in groups.items():
         assert ls, sid
@@ -128,6 +132,59 @@ def test_the_ledger_refuses_a_call_over_the_cap(tmp_path: Path) -> None:
         ledger.reserve("chatterbox", 0.005, chars=200)
     assert ledger.spent() == pytest.approx(0.006)
     assert len(ledger.rows()) == 1
+
+
+def test_apply_keeps_the_review_record_and_line_notes(tmp_path: Path) -> None:
+    cast = load_cast(REPO / "tools" / "voices" / "cast.json")
+    barks = tmp_path / "packs" / "base" / "barks"
+    barks.mkdir(parents=True)
+    review = {"at": "2026-10-02", "kept": 1, "redone": ["kevin-pass-pin"], "cut": []}
+    note = "Redone: the old take sounded unlike Kevin."
+    data = {
+        "type": "bark-set",
+        "id": "kevin-core",
+        "lines": [
+            {
+                "id": "kevin-pass-pin",
+                "trigger": "overtake",
+                "text": "Let's put a pin in you.",
+                "audioNote": note,
+            }
+        ],
+        "meta": {"voice": {"generatedAt": "2026-10-01", "review": review}},
+    }
+    (barks / "kevin-core.json").write_text(json.dumps(data), encoding="utf-8")
+    clip = tmp_path / "packs" / "base" / "assets" / "audio" / "barks" / "kevin-core" / "kevin-pass-pin.ogg"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(dsp.encode_opus(tone(1.0), SR, 24))
+    apply_packs(Paths(tmp_path), cast, read_lines(tmp_path))
+    out = json.loads((barks / "kevin-core.json").read_text(encoding="utf-8"))
+    assert out["meta"]["voice"]["review"] == review
+    assert out["meta"]["voice"]["generatedAt"] == "2026-10-01"
+    assert out["lines"][0]["audioNote"] == note
+    assert out["lines"][0]["audioAsset"] == "audio/barks/kevin-core/kevin-pass-pin"
+
+
+def test_the_review_record_names_real_lines_with_notes() -> None:
+    """Each pick (redone or cut) is logged where the maintainer vetoes: the line carries an
+    `audioNote`, a redone line keeps its clip, a cut line is a vetoed voice without one."""
+    seen = 0
+    for path in sorted((REPO / "packs").glob("*/barks/*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        review = ((data.get("meta") or {}).get("voice") or {}).get("review")
+        if not review:
+            continue
+        seen += 1
+        by_id = {ln["id"]: ln for ln in data["lines"]}
+        assert isinstance(review["kept"], int) and review["kept"] >= 0, path.name
+        for lid in review["redone"]:
+            ln = by_id[lid]
+            assert ln.get("audioNote") and ln.get("audioStatus", "live") == "live", lid
+            bl = BarkLine(path.parent.parent.name, data["id"], lid, ln["text"], "", "", "")
+            assert bl.clip_path(REPO).exists(), lid
+        for lid in review["cut"]:
+            assert by_id[lid].get("audioStatus") == "vetoed" and by_id[lid].get("audioNote"), lid
+    assert seen > 0
 
 
 def test_chatterbox_is_never_sent_without_our_reference(tmp_path: Path) -> None:
