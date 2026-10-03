@@ -404,43 +404,74 @@ export const SF_HILLS: TrackSource = {
       barriers: [],
     },
     {
-      id: 'sf-fogline-climb',
-      name: 'Fogline Climb',
-      lengthM: 620,
+      // Run W-R: the park cut's split, the Fogline Climb's first 30 m.
+      id: 'c-sf-park-split-main',
+      name: 'Park cut split',
+      connector: true,
+      lengthM: 30,
       speedLimitMps: CITY,
       surface: 'asphalt',
-      humps: [{ centreM: 330, lengthM: 380, heightM: 22 }],
-      ramps: [{ id: 'crest-fogline', s0: 322, lengthM: 10, heightM: 0.6, backM: 4 }],
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'row-houses' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      id: 'sf-fogline-climb',
+      name: 'Fogline Climb',
+      // Run W-R: 60 m shorter (the park cut's split and merge, 30 m each end); every s is 30 m less.
+      lengthM: 560,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [{ centreM: 300, lengthM: 380, heightM: 22 }],
+      ramps: [{ id: 'crest-fogline', s0: 292, lengthM: 10, heightM: 0.6, backM: 4 }],
       tags: [
         { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
-        { s0: 200, s1: 'end', side: 'both', tag: 'fog' },
+        { s0: 170, s1: 'end', side: 'both', tag: 'fog' },
       ],
       features: [
         {
           kind: 'billboard',
           id: 'sign-fogline-summer',
-          s0: 220,
-          s1: 230,
+          s0: 190,
+          s1: 200,
           d0: 6.5,
           d1: 9,
           item: 'summer-fog',
         },
-        { kind: 'billboard', id: 'bb-fogline-gpu', s0: 450, s1: 490, d0: -16, d1: -7, item: 'gpu-hour' },
-        { kind: 'billboard', id: 'sign-fogline-grade', s0: 15, s1: 25, d0: 6.5, d1: 9, item: 'steeper-one' },
-        { kind: 'billboard', id: 'bb-fogline', s0: 80, s1: 120, d0: 7, d1: 16, item: 'reinvent-the-bus' },
+        { kind: 'billboard', id: 'bb-fogline-gpu', s0: 420, s1: 460, d0: -16, d1: -7, item: 'gpu-hour' },
+        // At the climb's new foot (its old spot, s 15, is in the park cut's split now).
+        { kind: 'billboard', id: 'sign-fogline-grade', s0: 2, s1: 12, d0: 6.5, d1: 9, item: 'steeper-one' },
+        { kind: 'billboard', id: 'bb-fogline', s0: 50, s1: 90, d0: 7, d1: 16, item: 'reinvent-the-bus' },
         // Moved off the bridge approach, which has no land beside it (run W-P's verifier: the
         // billboard's posts stood in the bay). Row-house land on both sides here.
         {
           kind: 'billboard',
           id: 'bb-fogline-coldcase',
-          s0: 200,
-          s1: 240,
+          s0: 170,
+          s1: 210,
           d0: -16,
           d1: -7,
           item: 'coldcase-ai',
         },
-        { kind: 'billboard', id: 'sign-fogline-toll', s0: 580, s1: 590, d0: 6.5, d1: 9, item: 'toll-view' },
+        { kind: 'billboard', id: 'sign-fogline-toll', s0: 540, s1: 550, d0: 6.5, d1: 9, item: 'toll-view' },
       ],
+      barriers: [],
+    },
+    {
+      // Run W-R: the park cut's merge, the Fogline Climb's last 30 m.
+      id: 'c-sf-park-merge-main',
+      name: 'Park cut merge',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'row-houses' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'fog' },
+      ],
+      features: [],
       barriers: [],
     },
     {
@@ -504,6 +535,70 @@ export const SF_HILLS: TrackSource = {
   ],
   branches: [
     {
+      // Run W-R (interview, 2026-10-02: marked dirt shortcuts, "an SF dirt lot or park cut"): the Park
+      // Cut, a dirt path across the park on the inside of the corner, off the end of Painted Row and
+      // out at the foot of the bridge on-ramp. It skips the Fogline Climb's 22 m hill and its crest:
+      // flatter and shorter, but loose, with garden fences along it. Hug the right edge at the end of
+      // Painted Row to take it.
+      leave: {
+        road: 'sf-painted-row',
+        offsetM: 4,
+        lane: 'R1',
+        zone: { lengthM: 40, d0: 3, d1: 5.5 },
+      },
+      // It joins the two-lane on-ramp (W-R's freeway), where the bridge approach began before it.
+      join: { road: 'sf-bridge-onramp', offsetM: 3, lane: 'R1' },
+      // The gate turn is tight and inside the gate connector, so the path is straight where it starts.
+      turnsM: [24, 70],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      // Named for the routes (W-R): the id it would derive, written into every route that allows it.
+      named: {
+        id: 'sf-park-cut',
+        kind: 'shortcut',
+        marked: true,
+        sign: 'PARK CUT. Flatter. Muddier. Unfunded.',
+      },
+      roads: [
+        {
+          id: 'c-sf-park-in',
+          name: 'Park gate',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: CITY,
+          surface: 'dirt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'gardens' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'sf-park-cut',
+          name: 'Park Cut',
+          speedLimitMps: CITY,
+          surface: 'dirt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'gardens' }],
+          features: [
+            // The deadpan sign at the park gate, past the grass and the fence, on the park's land.
+            { kind: 'billboard', id: 'sign-park-cut', s0: 30, s1: 40, d0: 7, d1: 9.5, item: 'park-cut' },
+          ],
+          barriers: [],
+        },
+        {
+          id: 'c-sf-park-out',
+          name: 'Park exit',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: CITY,
+          surface: 'dirt',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'gardens' }],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
+    {
       // The stair alley: a narrow lane straight down the east side of the switchback street, with a
       // lip where the stairs start. Hug the right edge before the split to take it.
       leave: {
@@ -566,11 +661,11 @@ export const SF_HILLS: TrackSource = {
       id: 'sf-standard-run',
       start: { road: 'sf-pier-row', s: 40, dir: 1 },
       finish: { road: 'sf-bridge-approach', s: -40 },
-      // On roads both paths share, so a stair-alley rider passes them too.
+      // On roads both paths share, so a stair-alley or park-cut rider passes them too (the park cut
+      // skips the Fogline Climb, run W-R).
       checkpoints: [
         { road: 'sf-cable-line-grade', s: 400 },
         { road: 'sf-painted-row', s: 300 },
-        { road: 'sf-fogline-climb', s: 300 },
       ],
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
     },

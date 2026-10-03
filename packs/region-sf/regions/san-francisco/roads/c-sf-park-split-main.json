@@ -1,0 +1,59 @@
+{
+  "type": "road",
+  "id": "c-sf-park-split-main",
+  "name": "Park cut split",
+  "realName": null,
+  "network": "sf-hills",
+  "from": "j-sf-hills-4",
+  "to": "j-sf-hills-4",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        { "id": "L0", "dCenterM": -4.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+      ]
+    }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "row-houses" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -1290.3756, -1292.2958, -1294.2074, -1296.1098, -1298.0025, -1299.8849, -1301.7565, -1303.6169,
+        -1305.4657, -1307.3026, -1309.1271, -1310.9388, -1312.7375, -1314.5225, -1316.2936, -1318.0502
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -1212.0626, -1212.6218, -1213.2098, -1213.8268, -1214.4732, -1215.1488, -1215.8538, -1216.5879,
+        -1217.3507, -1218.1418, -1218.9611, -1219.8081, -1220.6826, -1221.5845, -1222.5136, -1223.4697
+      ],
+      "kappa": [
+        0.007353635, 0.007502156, 0.007625283, 0.007719768, 0.007782003, 0.007807899, 0.0077928, 0.007742006,
+        0.007696789, 0.007662927, 0.007640489, 0.007629545, 0.007630168, 0.007642434, 0.007666466, 0.007702415
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-hills.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

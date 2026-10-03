@@ -35,6 +35,7 @@
     ]
   },
   "signs": [
+    { "id": "sandbar-not-advised", "text": "SANDBAR: NOT ADVISED. Advice not taken.", "status": "live" },
     {
       "id": "ramp-keep-right",
       "text": "BOAT RAMP: KEEP RIGHT. Trailers only. Nobody checks.",
