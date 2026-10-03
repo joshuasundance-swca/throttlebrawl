@@ -1,0 +1,411 @@
+{
+  "id": "osm-sf-russian-hill",
+  "name": "Russian Hill and Nob Hill streets (OSM network bake)",
+  "region": "san-francisco",
+  "crs": {
+    "originLatDeg": 37.7749,
+    "originLonDeg": -122.4194
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+  "osmExtract": ".cache/osm/sf-russian-hill.json",
+  "outRoot": "packs/region-sf/regions/san-francisco",
+  "waysLabel": "San Francisco street",
+  "networkNotes": "A real-road network (run W-U; interview, 2026-10-02: map-based networks, junction choices in races): Hyde over Russian Hill and Nob Hill, California down to Kearny, Columbus, Union back up the hill, then Leavenworth down to the finish, exactly the stretch bake's path. The choice: Jones Street, right off Union one block before its crest, down the hill's 29% north face and back along Chestnut onto Leavenworth, about 25 m shorter. The lines are pinned to the real junctions (closure); junction pieces and connector roads are synthesized. Cross streets are pass-through only.",
+  "lines": [
+    {
+      "id": "hills",
+      "pathFrom": {
+        "lat": 37.8066664,
+        "lon": -122.4205641
+      },
+      "via": [
+        {
+          "lat": 37.791,
+          "lon": -122.4174109
+        },
+        {
+          "lat": 37.7926558,
+          "lon": -122.4044255
+        },
+        {
+          "lat": 37.796894,
+          "lon": -122.4052824
+        },
+        {
+          "lat": 37.8003261,
+          "lon": -122.4101505
+        },
+        {
+          "lat": 37.7994127,
+          "lon": -122.4174216
+        }
+      ],
+      "pathTo": {
+        "lat": 37.8059219,
+        "lon": -122.4187348
+      },
+      "start": {
+        "lat": 37.8066664,
+        "lon": -122.4205641
+      },
+      "end": {
+        "lat": 37.8059219,
+        "lon": -122.4187348
+      },
+      "routeTags": {
+        "name": "^((Hyde|California|Kearny|Union|Leavenworth) Street|Columbus Avenue)$"
+      },
+      "respectOneway": false,
+      "splitOnNameChange": true,
+      "realName": "San Francisco streets",
+      "smoothing": {
+        "headingSigmaM": 10
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 12,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "roads": [
+        {
+          "id": "osm-sf-hyde",
+          "name": "Hyde",
+          "tags": ["row-houses", "painted-houses", "cable-line"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 6.1,
+              "d1": 9.6
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-hyde",
+              "s0": 100,
+              "s1": 110,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-hyde",
+              "s0": 200,
+              "s1": 206,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "hills-pad-early"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-hyde-crest",
+              "s0": 600,
+              "s1": 606,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "hills-pad-early"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-california",
+          "name": "California",
+          "tags": ["row-houses", "cable-line"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-california",
+              "s0": 80,
+              "s1": 90,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "nob-hill",
+              "s0": 500,
+              "s1": 580,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-kearny",
+          "name": "Kearny",
+          "tags": ["row-houses"],
+          "features": [
+            {
+              "kind": "rampTruck",
+              "id": "carrier-kearny",
+              "s0": 140,
+              "s1": 162,
+              "d0": 3.4,
+              "d1": 5.4,
+              "params": {
+                "rampLengthM": 11.5,
+                "lipHeightM": 2.8,
+                "slot": "hills-truck"
+              }
+            },
+            {
+              "kind": "rampTruck",
+              "id": "carrier-kearny-far",
+              "s0": 260,
+              "s1": 282,
+              "d0": 3.4,
+              "d1": 5.4,
+              "params": {
+                "rampLengthM": 11.5,
+                "lipHeightM": 2.8,
+                "slot": "hills-truck"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-columbus",
+          "name": "Columbus",
+          "tags": ["row-houses"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "north-beach",
+              "s0": 200,
+              "s1": 280,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-columbus",
+              "s0": 350,
+              "s1": 390,
+              "d0": -16,
+              "d1": -7,
+              "pool": "billboards"
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-union",
+          "name": "Union",
+          "tags": ["row-houses", "painted-houses"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-union",
+              "s0": 60,
+              "s1": 70,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-union",
+              "s0": 100,
+              "s1": 106,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "hills-pad"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "union-stoops",
+              "s0": 300,
+              "s1": 380,
+              "d0": -12.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-jones-keep-right",
+              "s0": 410,
+              "s1": 420,
+              "d0": 6.5,
+              "d1": 9,
+              "item": "jones-keep-right"
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-union-crest",
+          "name": "Union Crest",
+          "tags": ["row-houses", "painted-houses"],
+          "features": []
+        },
+        {
+          "id": "osm-sf-leavenworth",
+          "name": "Leavenworth",
+          "tags": ["row-houses", "painted-houses"],
+          "features": [
+            {
+              "kind": "boostPad",
+              "id": "pad-leavenworth",
+              "s0": 200,
+              "s1": 206,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "hills-pad"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-leavenworth-north",
+          "name": "Leavenworth North",
+          "tags": ["row-houses", "painted-houses"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "bb-leavenworth",
+              "s0": 60,
+              "s1": 100,
+              "d0": -16,
+              "d1": -7,
+              "pool": "billboards"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "jones",
+      "pathFrom": {
+        "lat": 37.7996208,
+        "lon": -122.4157743
+      },
+      "via": [
+        {
+          "lat": 37.8033391,
+          "lon": -122.4165234
+        }
+      ],
+      "pathTo": {
+        "lat": 37.8031282,
+        "lon": -122.4181701
+      },
+      "routeTags": {
+        "name": "^(Jones|Chestnut) Street$"
+      },
+      "respectOneway": false,
+      "splitOnNameChange": true,
+      "realName": "Jones Street",
+      "smoothing": {
+        "headingSigmaM": 10
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 12,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "roads": [
+        {
+          "id": "osm-sf-jones",
+          "name": "Jones",
+          "tags": ["row-houses", "painted-houses"],
+          "features": []
+        },
+        {
+          "id": "osm-sf-chestnut",
+          "name": "Chestnut",
+          "tags": ["row-houses", "painted-houses"],
+          "features": []
+        }
+      ],
+      "minRoadM": 60
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-sf-jones",
+      "line": "jones",
+      "of": "hills",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "JONES STREET: KEEP RIGHT. 29% grade. Not a typo.",
+      "leave": {
+        "at": {
+          "lat": 37.7996208,
+          "lon": -122.4157743
+        },
+        "pieceM": 40,
+        "offsetM": 3.5,
+        "lane": "R1",
+        "zone": {
+          "lengthM": 50,
+          "d0": 3.0,
+          "d1": 6.0
+        },
+        "insetM": 50.0,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [50.0, 10],
+        "shiftM": -10.0
+      },
+      "join": {
+        "at": {
+          "lat": 37.8031282,
+          "lon": -122.4181701
+        },
+        "pieceM": 40,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 45.0,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "turnsM": [10, 45.0],
+        "shiftM": 10.0
+      },
+      "label": "jones"
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-sf-hills-run",
+      "name": "Russian Hill",
+      "line": "hills",
+      "startRoad": "osm-sf-hyde",
+      "finishRoad": "osm-sf-leavenworth-north",
+      "notes": "A real-road route: the race-setup route picker offers it in its region, beside the region's hand-made road (the maintainer, 2026-10-01: \"Yes, add as routes\")."
+    }
+  ]
+}

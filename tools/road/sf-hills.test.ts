@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +31,16 @@ const route = read('routes', 'sf-standard-run') as BakedRoute;
 const net = createRoadNetwork({ network, roads });
 const progress = createRouteProgress(net, route);
 const region = read('', 'region') as { signs: { id: string }[]; billboards: { id: string }[] };
+/** The region items named by board slots on the region's real-road (`osm-*`) roads. */
+const realRoadBoardItems = (): Set<string> =>
+  new Set(
+    readdirSync(path.join(regionDir, 'roads'))
+      .filter((f) => f.startsWith('osm-') && f.endsWith('.json'))
+      .flatMap(
+        (f) => (JSON.parse(readFileSync(path.join(regionDir, 'roads', f), 'utf8')) as BakedRoad).features,
+      )
+      .flatMap((f) => (f?.kind === 'billboard' && f.item ? [f.item] : [])),
+  );
 const G = 9.81;
 
 describe('tools/road: the baked San Francisco track', () => {
@@ -165,11 +175,15 @@ describe('tools/road: the baked San Francisco track', () => {
     // (tools/road/sf-downtown.test.ts checks those), and run W-U's Chinatown and North Beach ones
     // (`cn-`, `nb-`) on theirs (tools/road/sf-chinatown-northbeach.test.ts), as do the mural alleys'
     // (`mi-`, tools/road/sf-mission.test.ts) and the waterfront's (`wf-`,
-    // tools/road/sf-waterfront.test.ts); every other one is placed here.
+    // tools/road/sf-waterfront.test.ts); every other one is placed here. Run W-U: a junction sign
+    // that only makes sense on a real-road network (Russian Hill's Jones Street, as the Keys' and
+    // the Pacific Northwest's tracks allow theirs) stands on that network's roads.
     const items = new Set(slots.map((f) => (f as { item?: string }).item));
+    const real = realRoadBoardItems();
+    expect(real.has('jones-keep-right')).toBe(true);
     const elsewhere = /^(dt|cn|nb|mi|wf)-/;
     for (const s of [...region.signs, ...region.billboards].filter((x) => !elsewhere.test(x.id)))
-      expect(items.has(s.id), s.id).toBe(true);
+      expect(items.has(s.id) || real.has(s.id), s.id).toBe(true);
     for (const f of slots) expect(Math.min(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeGreaterThanOrEqual(5.5);
     const all = roads.flatMap((r) => r.features ?? []);
     expect(all.filter((f) => f.kind === 'boostPad').length).toBeGreaterThanOrEqual(2);

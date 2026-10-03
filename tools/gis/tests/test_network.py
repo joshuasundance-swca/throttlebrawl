@@ -237,6 +237,18 @@ def test_lanes_tags_and_provenance(baked: NetworkBake) -> None:
     assert "closed" in a2["provenance"]["modifications"]
 
 
+def test_the_report_carries_each_lines_fun_numbers(baked: NetworkBake) -> None:
+    # A network replaces stretch bakes (run W-U: Russian Hill), so its report keeps what a
+    # stretch's fun report said, per line: computed from the closed profile, never typed.
+    a, b = baked.report["lines"]["a"]["fun"], baked.report["lines"]["b"]["fun"]
+    assert a["game_length_m"] == pytest.approx(2980, abs=5)
+    assert a["corners"] == 0 and a["tightest_radius_m"] > 1000  # A Road is straight
+    assert b["corners"] >= 2  # B Road swings south and back through its corners
+    # The smoothed corners stray a few metres from the real polyline (the closure pins only the
+    # junctions), well inside the 10 m the routes lane measured on real city blocks.
+    assert 0 < b["max_deviation_m"] < 10
+
+
 def test_a_road_count_that_does_not_match_the_cuts_is_refused() -> None:
     cfg = config()
     bad = cfg.model_copy(

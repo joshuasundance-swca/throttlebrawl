@@ -1,0 +1,129 @@
+{
+  "type": "road",
+  "id": "osm-sf-russian-hill-jones-in",
+  "name": "jones turn-off",
+  "realName": "jones turn-off",
+  "network": "osm-sf-russian-hill",
+  "from": "osm-sf-russian-hill-j5",
+  "to": "osm-sf-russian-hill-j5",
+  "lengthM": 66.804,
+  "sampleSpacingM": 2.0243636363636366,
+  "speedLimitMps": 8.9,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 66.804,
+      "side": "both",
+      "tag": "painted-houses"
+    },
+    {
+      "s0": 0,
+      "s1": 66.804,
+      "side": "both",
+      "tag": "row-houses"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        348.4551, 346.4559, 344.4555, 342.4518, 340.4422, 338.425, 336.4017, 334.3784, 332.3672, 330.3863,
+        328.4599, 326.6164, 324.8855, 323.2951, 321.8681, 320.6197, 319.5559, 318.6725, 317.9563, 317.3867,
+        316.938, 316.5815, 316.2886, 316.0334, 315.7949, 315.5602, 315.3257, 315.0912, 314.8567, 314.6211,
+        314.3741, 314.1013, 313.8025, 313.4912
+      ],
+      "y": [
+        64.6902, 64.6667, 64.5979, 64.4868, 64.3364, 64.1495, 63.9291, 63.6781, 63.3993, 63.0958, 62.7704,
+        62.4261, 62.0657, 61.6922, 61.3085, 60.9175, 60.5221, 60.1252, 59.7299, 59.3388, 58.9551, 58.5816,
+        58.2212, 57.8769, 57.5515, 57.248, 56.9692, 56.7182, 56.4978, 56.3109, 56.1605, 56.0494, 55.9807,
+        55.9571
+      ],
+      "z": [
+        -2752.0068, -2751.6866, -2751.3731, -2751.082, -2750.8361, -2750.6631, -2750.5935, -2750.658,
+        -2750.8855, -2751.3005, -2751.9207, -2752.7552, -2753.8033, -2755.0544, -2756.489, -2758.0818,
+        -2759.8034, -2761.6243, -2763.5175, -2765.4601, -2767.4343, -2769.4272, -2771.4307, -2773.4392,
+        -2775.4499, -2777.461, -2779.4721, -2781.4832, -2783.4944, -2785.5054, -2787.515, -2789.5213,
+        -2791.5238, -2793.5245
+      ],
+      "kappa": [
+        0.0, 0.0016659, 0.0055107, 0.011126, 0.017899, 0.025258, 0.03273, 0.039905, 0.046372, 0.051846,
+        0.056103, 0.058996, 0.06029, 0.060048, 0.058256, 0.054969, 0.050289, 0.044476, 0.037775, 0.030468,
+        0.022972, 0.015737, 0.0092658, 0.0041168, 0.00094388, 2.9891e-5, -1.3779e-14, 1.3779e-14, -0.00024369,
+        -0.0028418, -0.0063082, -0.0064345, -0.0030826, -0.0
+      ],
+      "grade": [
+        -0.011644, -0.022808, -0.044416, -0.064584, -0.083311, -0.1006, -0.11644, -0.13085, -0.14381,
+        -0.15534, -0.16542, -0.17406, -0.18127, -0.18703, -0.19135, -0.19423, -0.19567, -0.19567, -0.19423,
+        -0.19135, -0.18703, -0.18127, -0.17406, -0.16542, -0.15534, -0.14381, -0.13085, -0.11644, -0.1006,
+        -0.083311, -0.064584, -0.044416, -0.022808, -0.011644
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-sf-russian-hill.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+        "retrievedAt": "2026-10-03T16:36:41Z",
+        "sha256": "da84fc1b1394c66ae35c744aaa7ce6c522c4a7eb345c76bc5f545cf1b67f58ca"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear (line hills)",
+        "retrievedAt": "2026-10-03T16:41:12Z",
+        "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 58 points in 1 request(s) (lon, lat WGS84, sha256 7a960cdf229e2612), bilinear (line jones)",
+        "retrievedAt": "2026-10-03T16:41:32Z",
+        "sha256": "b3087b97520aa40310d54e64de738c32ea6d44212bb5c4bce2508cab40a281d1"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real San Francisco street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 8.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-sf-russian-hill.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
