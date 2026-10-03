@@ -24,7 +24,7 @@ import { tumbleSystem } from '../tumble';
 import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimTrafficTypeDef } from '../types';
 import { addMover, createWorld, orderSystems, stepWorld, type SimSystem, type World } from '../world';
 import { toCorridor } from './corridor';
-import { laneEndAhead, placeVehicle, TRAFFIC, trafficState, trafficSystem } from './index';
+import { laneClear, laneEndAhead, placeVehicle, TRAFFIC, trafficState, trafficSystem } from './index';
 
 const CAR: SimTrafficTypeDef = {
   contentId: 'base:car',
@@ -299,6 +299,79 @@ describe('multi-lane highways: traffic (interview, 2026-10-02)', () => {
       }
     }
     expect(looked).toBeGreaterThan(0);
+  });
+});
+
+/** Same-way vehicles whose bodies overlap: along the road and side to side, whatever their ranks. */
+function bodyOverlaps(config: SimConfig, world: World): string[] {
+  const st = trafficState(world);
+  const bad: string[] = [];
+  for (let a = 0; a < st.id.length; a++) {
+    for (let b = a + 1; b < st.id.length; b++) {
+      if (st.dir[a] !== st.dir[b]) continue;
+      const ta = config.trafficTypes[st.type[a] ?? 0];
+      const tb = config.trafficTypes[st.type[b] ?? 0];
+      if (!ta || !tb) continue;
+      const du = Math.abs((st.u[a] ?? 0) - (st.u[b] ?? 0));
+      const dcd = Math.abs((st.cd[a] ?? 0) - (st.cd[b] ?? 0));
+      if (du < (ta.lengthM + tb.lengthM) / 2 && dcd < (ta.widthM + tb.widthM) / 2)
+        bad.push(
+          `tick ${world.tick} slots ${a}/${b}: ${du.toFixed(2)} m apart, ${dcd.toFixed(2)} m side to side`,
+        );
+    }
+  }
+  return bad;
+}
+
+describe('lane room counts a car still leaving the lane (W-S follow-up, the #302 prep)', () => {
+  // On the SF freeway a hatchback was recycled at d 10.00 right beside a shuttle at d 9.81 that had
+  // just started a lane change out of that lane: the shuttle's rank had moved on, its body had not.
+  const EDGES: FixtureEdgeSpec[] = [{ id: 'a', lengthM: 3000, kappa: 0, lanes: HIGHWAY2 }];
+  /** A highway with a stopped player mid-road and no traffic of its own; lanes R1 d 1.7, R2 d 5.1. */
+  function quietHighway() {
+    const config = makeConfig(EDGES, {
+      riders: [rider('player', 0)],
+      types: [STEADY],
+      tuning: { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+    });
+    const world = createWorld(config);
+    addMover(world, 'rider', { edge: 0, s: 1500, d: 1.7, dir: 1 }, 0);
+    for (const s of [ridersSystem, trafficSystem]) s.init(world, config);
+    return { config, world, st: trafficState(world) };
+  }
+
+  it('a car whose change out of a lane has just begun still fills that lane until its body is out', () => {
+    const { config, world, st } = quietHighway();
+    const k = placeVehicle(world, config, { type: 0, u: 700, dir: 1, rank: 0 });
+    const room = (rank: number) => laneClear(config, st, 700, 1, rank, STEADY, TRAFFIC.spawnGapM);
+    expect(room(0)).toBe(false);
+    expect(room(1)).toBe(true);
+    // Its change into R2 begins: the rank moves at once, the body is still in R1.
+    st.rank[k] = 1;
+    expect(room(0)).toBe(false);
+    expect(room(1)).toBe(false);
+    // Halfway across it is in both lanes.
+    st.cd[k] = 3.4;
+    expect(room(0)).toBe(false);
+    expect(room(1)).toBe(false);
+    // Across: R1 is free beside it.
+    st.cd[k] = 5.1;
+    expect(room(0)).toBe(true);
+    expect(room(1)).toBe(false);
+  });
+
+  it('a car recycled to the road end never lands on one just leaving that lane there', () => {
+    const { config, world, st } = quietHighway();
+    // Car A waits at the first entry spot (the road end behind the windows), in R1, and has just
+    // begun a change into R2.
+    const entry = st.corridor.lo + TRAFFIC.endMarginM;
+    const a = placeVehicle(world, config, { type: 0, u: entry, dir: 1, rank: 0, v0: 0, speed: 0 });
+    st.rank[a] = 1;
+    // Car B drives off the far end: it is recycled to the entry spots, in R1.
+    const b = placeVehicle(world, config, { type: 0, u: st.corridor.hi - 0.1, dir: 1, rank: 0, speed: 20 });
+    stepWorld(world, config, [ridersSystem, trafficSystem], [hold(0)]);
+    expect(st.u[b] ?? 0).toBeLessThan(st.corridor.lo + 200);
+    expect(bodyOverlaps(config, world)).toEqual([]);
   });
 });
 

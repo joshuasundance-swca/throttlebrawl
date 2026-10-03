@@ -59,6 +59,70 @@ export function vehicleSize(config: SimConfig): ObstacleSize {
 
 export const PED_SIZE: ObstacleSize = { halfLength: 0.4, halfWidth: 0.4 };
 
+/** Something seen in the road, with the half extents a rider keeps clear of. */
+export interface Obstacle {
+  s: Seen;
+  size: ObstacleSize;
+}
+
+/**
+ * Finds the nearest obstacle blocking the line `d` (closer side to side than its half width plus
+ * `clear`) within `look` metres ahead, or further when it is closing fast (an oncoming car is seen
+ * `aheadS` seconds out, whatever the distance). Shared by sim/ai and sim/cops (W-S).
+ */
+export function blockerAt<O extends Obstacle>(
+  seen: readonly O[],
+  v: number,
+  d: number,
+  look: number,
+  clear: number,
+  aheadS: number,
+): O | null {
+  let best: O | null = null;
+  for (const o of seen) {
+    const front = o.s.ahead - o.size.halfLength;
+    const reach = Math.max(look, (v - o.s.vAlong) * aheadS);
+    if (o.s.ahead + o.size.halfLength < 0 || front > reach) continue;
+    if (Math.abs(o.s.mover.pos.d - d) >= o.size.halfWidth + clear) continue;
+    if (!best || o.s.ahead < best.s.ahead) best = o;
+  }
+  return best;
+}
+
+/** Whether a line d is clear (by `clear` past each half width) within `reach` metres plus 2.5 s of closing. */
+export function lineClear(
+  seen: readonly Obstacle[],
+  v: number,
+  d: number,
+  reach: number,
+  clear: number,
+): boolean {
+  for (const o of seen) {
+    if (Math.abs(o.s.mover.pos.d - d) >= o.size.halfWidth + clear) continue;
+    const closing = Math.max(0, v - o.s.vAlong);
+    const front = o.s.ahead - o.size.halfLength;
+    if (o.s.ahead + o.size.halfLength < -2) continue;
+    if (front < reach + closing * 2.5) return false;
+  }
+  return true;
+}
+
+/** Whether every line from `from` to `to` (every half metre) is clear: getting there is safe too. */
+export function pathClear(
+  seen: readonly Obstacle[],
+  v: number,
+  from: number,
+  to: number,
+  reach: number,
+  clear: number,
+): boolean {
+  const steps = Math.max(1, Math.ceil(Math.abs(to - from) / 0.5));
+  for (let i = 1; i <= steps; i++) {
+    if (!lineClear(seen, v, from + ((to - from) * i) / steps, reach, clear)) return false;
+  }
+  return true;
+}
+
 /** Reach and timing of an attack, from the weapon data, with the M1 starting numbers as fallback. */
 export interface Reach {
   sM: number;
