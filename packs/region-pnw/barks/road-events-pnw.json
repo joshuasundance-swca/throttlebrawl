@@ -138,11 +138,76 @@
         }
       ],
       "text": "He's been out there since dawn."
+    },
+    {
+      "id": "pnw-ev-logs-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-log-spill"
+        }
+      ],
+      "text": "Hop the small ones. Respect the big ones."
+    },
+    {
+      "id": "pnw-ev-logs-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-log-spill"
+        }
+      ],
+      "text": "Your order: one log, extra road."
+    },
+    {
+      "id": "pnw-ev-logs-deacon",
+      "trigger": "modifier-start",
+      "speaker": "base:deacon-vane",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-log-spill"
+        }
+      ],
+      "text": "Logs on the road. The forest has notes."
+    },
+    {
+      "id": "pnw-ev-vote-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-lane-vote"
+        }
+      ],
+      "text": "A vote. I'll need a name for the cup."
+    },
+    {
+      "id": "pnw-ev-vote-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-lane-vote"
+        }
+      ],
+      "text": "Pick a lane. Don't make a fuss about it."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice. Run W-U adds the W-T events (the boat slide, the gator crossing, the log spill, the cable-car runaway and the lane votes), text only like the rest.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

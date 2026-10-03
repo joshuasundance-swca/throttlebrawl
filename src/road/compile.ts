@@ -46,6 +46,21 @@ export interface HumpSource {
   heightM: number;
 }
 
+/**
+ * A raised deck (run W-U, the pitch deck's #12: up the ferry's ramp, across its deck and off the far
+ * ramp): the road rises `heightM` over `upM` from `s0` on a smooth S (zero slope and curvature at
+ * both ends of the rise), stays level for `lengthM`, then comes down over `downM` the same way. No lip,
+ * so nothing launches off it but the crest rule's own physics (a fast bike floats off the top of
+ * the far ramp).
+ */
+export interface DeckSource {
+  s0: number;
+  upM: number;
+  lengthM: number;
+  downM: number;
+  heightM: number;
+}
+
 export interface RoadSource {
   id: string;
   name: string;
@@ -69,6 +84,8 @@ export interface RoadSource {
   laneSections?: readonly { s0: number; lanes: readonly LaneInfo[] }[];
   humps: readonly HumpSource[];
   ramps?: readonly RampSource[];
+  /** Raised decks (a ferry's): a smooth rise, a level deck, a smooth fall. */
+  decks?: readonly DeckSource[];
   /** Tag ranges; an s1 of 'end' means the road's end. */
   tags: readonly (Omit<BakedTag, 's1'> & { s1: number | 'end' })[];
   features: readonly BakedFeature[];
@@ -364,6 +381,28 @@ function rampFeature(r: RampSource, lanes: readonly LaneInfo[]): BakedFeature {
 const easeTurn = (t: number): number => t * t * t * (10 - 15 * t + 6 * t * t);
 /** Its derivative, 30t²(1 − t)², which integrates to 1 over 0..1. */
 const easeRate = (t: number): number => 30 * t * t * (1 - t) * (1 - t);
+
+/** Height of the decks at s, and its slope (docs on DeckSource). */
+export function deckProfile(decks: readonly DeckSource[], s: number): [number, number] {
+  let y = 0;
+  let g = 0;
+  for (const k of decks) {
+    const top = k.s0 + k.upM;
+    const off = top + k.lengthM;
+    if (s <= k.s0 || s >= off + k.downM) continue;
+    if (s < top) {
+      const t = (s - k.s0) / k.upM;
+      y += k.heightM * easeTurn(t);
+      g += (k.heightM * easeRate(t)) / k.upM;
+    } else if (s <= off) y += k.heightM;
+    else {
+      const t = (s - off) / k.downM;
+      y += k.heightM * (1 - easeTurn(t));
+      g -= (k.heightM * easeRate(t)) / k.downM;
+    }
+  }
+  return [y, g];
+}
 
 interface BranchShape {
   h0: number;
@@ -783,11 +822,12 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       const s = start + sLocal;
       const [hy, hg] = humpProfile(road.humps, sLocal);
       const [ry, rg] = rampProfile(ramps, sLocal);
+      const [ky, kg] = deckProfile(road.decks ?? [], sLocal);
       cols.x.push(r4(sampleAt(l.x, l.step, s)));
-      cols.y.push(r4(src.baseElevationM + hy + ry));
+      cols.y.push(r4(src.baseElevationM + hy + ry + ky));
       cols.z.push(r4(sampleAt(l.z, l.step, s)));
       cols.kappa.push(sig7(sampleAt(l.kappa, l.step, s)));
-      cols.grade.push(sig7(hg + rg));
+      cols.grade.push(sig7(hg + rg + kg));
       cols.bankRad.push(0);
     }
     const end = (v: number | 'end'): number => (v === 'end' ? length : v);

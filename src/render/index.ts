@@ -24,6 +24,9 @@
 // from the asset manifest; until a rider's two models arrive, its box rider draws.
 // Run W-T (pitch 6, "the horizon comes alive") adds the staged roadside scenes (scenes/, a lazy
 // chunk with each region's scenes file): a few seeded scenes a race, each one mesh with one dry sign.
+// Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys") adds San Francisco's
+// mural district (mission.ts, a lazy chunk): shopfronts, painted alleys, and the streaming outfit's
+// mascot on two corner walls, painted over by a crew as the race's leader goes round.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, type BackdropStats } from './backdrop';
@@ -49,6 +52,7 @@ import type { ScenesFile } from './scenes/data';
 import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
 import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
+import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import { Rain, rainColourOf } from './rain';
@@ -219,6 +223,8 @@ export interface SceneryStatus {
   downtown: DowntownCounts | null;
   /** San Francisco's Chinatown and North Beach (run W-U), or null while its chunk loads or on any other road. */
   blocks: BlocksCounts | null;
+  /** San Francisco's mural alleys (run W-U), or null while its chunk loads or on any other road. */
+  mission: MissionCounts | null;
   /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
   verge: VergeCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
@@ -443,6 +449,32 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     blocks = new m.BlocksLayer(look, { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed });
     scene.add(blocks.group);
   };
+  // Run W-U: San Francisco's mural alleys (mission.ts), a lazy chunk fetched once a road has them.
+  let missionModule: typeof import('./mission') | null = null;
+  let mission: MissionLayer | null = null;
+  let missionTick = -1;
+  let missionStill = 0;
+  const buildMission = () => {
+    mission?.dispose();
+    mission = null;
+    if (!roadArgs) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    if (!['shopfronts', 'murals', 'mascot-mural'].some((t) => tags.has(t))) return;
+    const m = missionModule;
+    if (!m) {
+      void import('./mission').then((loaded) => {
+        missionModule = loaded;
+        buildMission();
+      });
+      return;
+    }
+    mission = new m.MissionLayer(models.sfRoadside, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+    });
+    scene.add(mission.group);
+  };
   // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
   // is built once per setRoad (a new seed or the models arriving rebuild the road, not the band), so
   // a fence smashed in this race stays smashed.
@@ -486,6 +518,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildRoadside();
     buildDowntown();
     buildBlocks();
+    buildMission();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -653,6 +686,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
       if (blocks) sceneryVisible += blocks.update(pose.x, pose.z);
+      if (mission && missionModule) {
+        // The crew paints with the race: the leader's share of it, and stands still while it is paused.
+        const tick = curr?.tick ?? -1;
+        missionStill = tick === missionTick ? missionStill + dt : 0;
+        missionTick = tick;
+        const moving = missionStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
+        sceneryVisible += mission.update(pose.x, pose.z, moving, missionModule.raceShare(curr));
+      }
       lastFrameAt = t;
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
@@ -758,6 +799,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop: backdrop.status().stats,
       downtown: downtown?.counts() ?? null,
       blocks: blocks?.counts() ?? null,
+      mission: mission?.counts() ?? null,
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
       airboats: airboats?.counts() ?? null,

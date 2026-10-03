@@ -46,8 +46,12 @@ import {
   boostOf,
   boostPadAt,
   deckHeight,
+  hazardObject,
+  hazardTop,
+  HAZARD_REACH_D_M,
   KERB_M,
   rampTruckAt,
+  solidHazardAt,
   truckBodyAt,
   truckBodyTop,
   truckClearMps,
@@ -319,6 +323,8 @@ export interface RiderState extends AirState, UturnState {
   onPad: number[];
   /** 1 while the rider is held against a ramp truck's side, so one contact emits one event. */
   truckTouch: number[];
+  /** 1 while the rider is held against a solid hazard (run W-U), so one contact emits one event. */
+  hazardTouch: number[];
   /**
    * 1 from a landing until the rider rides clear of a crest that would launch him, so one crest is
    * one jump: coming down on the same crest's far side never bounces him straight back up.
@@ -435,6 +441,7 @@ export function riderState(world: World): RiderState {
     onPad: [],
     crestHold: [],
     truckTouch: [],
+    hazardTouch: [],
     pitch: [],
     pitchRate: [],
     airBlock: [],
@@ -862,6 +869,54 @@ function truckContact(
   wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash });
 }
 
+/**
+ * A solid road hazard (run W-U: a parked pickup, a stump, a chainsaw bear; sim/riders/features.ts)
+ * is a wall box. From the side the rider is held beside it and scrapes, like a barrier; head on it
+ * stops where it was and takes its whole speed as the impact, so a fast one crashes and a crawl
+ * only wobbles. Events carry `object` (what it is) and the hazard's `feature` id.
+ */
+function hazardContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number },
+  dt: number,
+): void {
+  const pos = m.pos;
+  const hazard = solidHazardAt(config, pos.edge, pos.s, pos.d);
+  if (!hazard) {
+    st.hazardTouch[m.id] = 0;
+    return;
+  }
+  const v = m.speed;
+  const yawBefore = m.yaw;
+  const newContact = st.hazardTouch[m.id] !== 1;
+  st.hazardTouch[m.id] = 1;
+  const extra = { object: hazardObject(hazard), feature: hazard.id };
+  const d0 = Math.min(hazard.d0, hazard.d1) - HAZARD_REACH_D_M;
+  const d1 = Math.max(hazard.d0, hazard.d1) + HAZARD_REACH_D_M;
+  const wasInside =
+    before.edge === pos.edge && solidHazardAt(config, before.edge, before.s, before.d) === hazard;
+  if (before.edge === pos.edge && !wasInside && (before.d < d0 || before.d > d1)) {
+    const side = before.d < d0 ? 1 : -1; // the hazard is on this side of the rider
+    const impact = scrapeAlong(config, m, side, dt);
+    pos.d = side > 0 ? d0 - 0.01 : d1 + 0.01;
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    return;
+  }
+  if (wasInside) {
+    // Already in it (put down there): step out beside it, toward the nearer side.
+    pos.d = pos.d - d0 < d1 - pos.d ? d0 - 0.01 : d1 + 0.01;
+    return;
+  }
+  pos.edge = before.edge;
+  pos.s = before.s;
+  pos.d = before.d;
+  m.speed = 0;
+  wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
+}
+
 /** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
 function touchPads(world: World, config: SimConfig, st: RiderState, m: Mover): void {
   const pad = boostPadAt(config, m.pos.edge, m.pos.s, m.pos.d);
@@ -976,6 +1031,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt);
+  hazardContact(world, config, st, m, before, dt);
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
   // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
@@ -1144,6 +1200,16 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     st.wobble[m.id] = 0;
     const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
     emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
+    return;
+  }
+  // A solid hazard (run W-U) stands up from the road: flying into it below its top is a crash.
+  const hazard = solidHazardAt(config, pos.edge, pos.s, pos.d);
+  if (hazard && y - surface < hazardTop(hazard)) {
+    m.h = Math.max(0, y - surface);
+    st.yAbs[m.id] = y;
+    st.wobble[m.id] = 0;
+    const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
+    emit(world, 'crash', m.id, { ...data, object: hazardObject(hazard), feature: hazard.id });
     return;
   }
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
@@ -1406,6 +1472,7 @@ export const ridersSystem: SimSystem = {
       st.boostMps[m.id] = 0;
       st.onPad[m.id] = 0;
       st.truckTouch[m.id] = 0;
+      st.hazardTouch[m.id] = 0;
       st.uturn[m.id] = 0;
       startFlight(st, m, undefined, slopeAt(config, m));
     }

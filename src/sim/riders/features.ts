@@ -142,6 +142,52 @@ export function truckClearMps(f: BakedFeature, gravity: number): number {
   return Math.sqrt((gravity * x * x) / (2 * cos2 * (lip + x * tan)));
 }
 
+/**
+ * Solid road hazards (the pitch deck's #12, run W-U: the ferry deck's parked pickups and coffee cart,
+ * the clear-cut's stumps and log piles, the festival's chainsaw bears). A `hazard` feature whose
+ * `params.solid` is true is a box a riding rider cannot pass through: from s0 to s1 and d0 to d1,
+ * `params.heightM` tall (HAZARD_DEFAULT_HEIGHT_M when absent), grown by a bike's half width across
+ * and half length along so the bike, not its centre, meets it. `params.object` names what it is (a
+ * `pickup`, a `stump`...) for the events and for render, which draws it. Hazards belong off the lanes
+ * (the verge bands): traffic, the rival AI and the tumble do not see them, and the road lint refuses
+ * one over a lane. A hazard with no `solid` is what it was before: data nothing in the sim reads.
+ */
+export const HAZARD_DEFAULT_HEIGHT_M = 1.5;
+/** The bike's reach round its centre that meets a hazard: half its width across, half its length along, m. */
+export const HAZARD_REACH_D_M = 0.5;
+export const HAZARD_REACH_S_M = 0.9;
+
+/** Whether a feature is a solid hazard. */
+export function isSolidHazard(f: BakedFeature): boolean {
+  return f.kind === 'hazard' && f.params?.['solid'] === true;
+}
+
+/** A solid hazard's height above the road, m. */
+export function hazardTop(f: BakedFeature): number {
+  return num(f, 'heightM', HAZARD_DEFAULT_HEIGHT_M);
+}
+
+/** What a solid hazard is (its `params.object`), or `hazard`. */
+export function hazardObject(f: BakedFeature): string {
+  const o = f.params?.['object'];
+  return typeof o === 'string' && o ? o : 'hazard';
+}
+
+/** The solid hazard a bike centred at (s, d) on the edge meets, or null. */
+export function solidHazardAt(config: SimConfig, edge: number, s: number, d: number): BakedFeature | null {
+  const features = config.road.edges[edge]?.features ?? [];
+  for (const f of features) {
+    if (f.s0 - HAZARD_REACH_S_M > s) break; // sorted by s0
+    if (!isSolidHazard(f)) continue;
+    const s0 = Math.min(f.s0, f.s1) - HAZARD_REACH_S_M;
+    const s1 = Math.max(f.s0, f.s1) + HAZARD_REACH_S_M;
+    const d0 = Math.min(f.d0, f.d1) - HAZARD_REACH_D_M;
+    const d1 = Math.max(f.d0, f.d1) + HAZARD_REACH_D_M;
+    if (s >= s0 && s <= s1 && d >= d0 && d <= d1) return f;
+  }
+  return null;
+}
+
 /** The rampTruck whose box holds (s, d), or null. */
 export function rampTruckAt(config: SimConfig, edge: number, s: number, d: number): BakedFeature | null {
   const features = config.road.edges[edge]?.features ?? [];

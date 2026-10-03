@@ -20,7 +20,7 @@
       "length": "standard",
       "tier": "t1",
       "at": { "road": "sf-pier-row", "s": 40 },
-      "opens": ["sf-switchback-street", "osm-sf-hyde"],
+      "opens": ["sf-switchback-street", "sf-mi-drop-cloth-alley"],
       "claims": ["sf-pier-row", "sf-cable-line-grade"]
     },
     {
@@ -38,10 +38,17 @@
       "event": "sf-t1-collab",
       "length": "standard",
       "tier": "t1",
-      "at": { "road": "osm-sf-hyde", "s": 300 },
+      "at": { "road": "sf-mi-drop-cloth-alley", "s": 200 },
       "requires": ["pier-pressure"],
       "opens": ["osm-sf-california"],
-      "claims": ["osm-sf-hyde"]
+      "claims": [
+        "sf-mi-eggshell-st",
+        "sf-mi-primer-alley",
+        "sf-mi-satin-st",
+        "sf-mi-drop-cloth-alley",
+        "sf-mi-semigloss-st",
+        "sf-mi-last-coat-alley"
+      ]
     },
     {
       "id": "meter",
@@ -50,7 +57,7 @@
       "tier": "t2",
       "at": { "road": "osm-sf-california", "s": 300 },
       "opens": ["osm-sf-columbus"],
-      "claims": ["osm-sf-california", "osm-sf-kearny"]
+      "claims": ["osm-sf-california", "osm-sf-kearny", "osm-sf-hyde"]
     },
     {
       "id": "russian-hill",

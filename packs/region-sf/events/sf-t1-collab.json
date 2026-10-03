@@ -8,7 +8,7 @@
   "lengths": [
     {
       "id": "standard",
-      "route": "osm-sf-hills-run",
+      "route": "sf-mission-run",
       "laps": 1
     }
   ],
@@ -53,7 +53,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A grudge match by Chad's rule, The Collab, on the real Russian Hill streets: the most style cash when you cross the line wins, not the place. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A grudge match by Chad's rule, The Collab: the most style cash when you cross the line wins, not the place. Run W-U: raced through the mural alleys (the pitch deck after playtest 2, #8), where the mascot of the streaming outfit Chad is tied to is being painted over as the race goes; it was on the real Russian Hill streets, which the Meter and Russian Hill events still race. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

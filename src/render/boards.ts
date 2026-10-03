@@ -22,7 +22,12 @@ import type { RoadNetwork } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
 
-export type BoardKind = 'sign' | 'billboard';
+/**
+ * `cone` (run W-U, the pitch deck's #14: "an 'INCIDENT SITE #3' cone where you were busted"): a
+ * small orange placard on short legs among traffic cones, standing where the thing happened rather
+ * than in a road's billboard slot (app/ adds a slot for it at the spot).
+ */
+export type BoardKind = 'sign' | 'billboard' | 'cone';
 
 /** One vetoable board item, as app/ resolves it from the region file. */
 export interface BoardItem {
@@ -81,6 +86,7 @@ export const BOARD_SIZES: Record<BoardKind, { panelH: number; bottom: number; mi
   {
     sign: { panelH: 1.8, bottom: 1.8, minW: 3.2, maxW: 4.6 },
     billboard: { panelH: 4.6, bottom: 4, minW: 8.5, maxW: 13 },
+    cone: { panelH: 1.4, bottom: 0.5, minW: 2.8, maxW: 2.8 },
   };
 /** How far ahead of a board (along its road) the rider it turns toward is, metres. */
 const AIM_AHEAD_M = 70;
@@ -89,7 +95,30 @@ const POST_BEHIND_M = 0.22;
 const FACE: Record<BoardKind, { bg: string; fg: string; frame: string }> = {
   sign: { bg: '#1f6b3a', fg: '#ffffff', frame: '#cfd3d6' },
   billboard: { bg: '#f4ecd8', fg: '#2b2b2b', frame: '#6b5a3a' },
+  cone: { bg: '#ff6a13', fg: '#151515', frame: '#3a3a3a' },
 };
+/** A traffic cone (event-props.ts's shape), `k` times life size, standing at (x, z). */
+const CONE_ORANGE = '#ff6a13';
+const CONE_WHITE = '#f4f4f0';
+export function conePartsAt(k: number, x: number, z: number): BoxPart[] {
+  const parts: [number, number, number, string][] = [
+    [0.42, 0.04, 0.02, CONE_ORANGE],
+    [0.3, 0.22, 0.15, CONE_ORANGE],
+    [0.24, 0.1, 0.31, CONE_WHITE],
+    [0.18, 0.2, 0.46, CONE_ORANGE],
+    [0.12, 0.1, 0.61, CONE_WHITE],
+    [0.08, 0.12, 0.72, CONE_ORANGE],
+  ];
+  return parts.map(([w, h, y, color]) => ({ size: [w * k, h * k, w * k], at: [x, y * k, z], color }));
+}
+/** The incident site's cones: a big one by the placard's left edge, two smaller ones by its right. */
+function incidentCones(w: number): BoxPart[] {
+  return [
+    ...conePartsAt(2.4, -w / 2 - 0.55, 0.1),
+    ...conePartsAt(1.5, w / 2 + 0.45, 0.25),
+    ...conePartsAt(1.5, w / 2 + 1.05, -0.2),
+  ];
+}
 
 /** A stable index from a string (the slot id), for picking an item out of a pool. */
 function stableIndex(key: string, n: number): number {
@@ -269,7 +298,7 @@ export function paintCopy(
 
 /** A board face's canvas, px: a fixed width per kind, and the panel's own aspect (width / height). */
 export function boardCanvas(kind: BoardKind, aspect: number): { width: number; height: number } {
-  const width = kind === 'sign' ? 512 : 1024;
+  const width = kind === 'billboard' ? 1024 : 512;
   return { width, height: Math.max(64, Math.round(width / aspect)) };
 }
 
@@ -451,12 +480,21 @@ export class Boards {
     // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the
     // words; the face itself is a thin panel in front of them.
     const back = -POST_BEHIND_M;
-    const frame: BoxPart[] = [
-      { size: [0.18, postH, 0.18], at: [-w * 0.34, postH / 2, back], color: face.frame },
-      { size: [0.18, postH, 0.18], at: [w * 0.34, postH / 2, back], color: face.frame },
-      { size: [w + 0.3, 0.16, 0.14], at: [0, size.bottom - 0.08, back * 0.5], color: face.frame },
-      { size: [w + 0.3, 0.16, 0.14], at: [0, postH + 0.08, back * 0.5], color: face.frame },
-    ];
+    const frame: BoxPart[] =
+      item.kind === 'cone'
+        ? [
+            // Two short legs and a foot rail behind the placard, the cones round it.
+            { size: [0.1, postH, 0.1], at: [-w * 0.4, postH / 2, back], color: face.frame },
+            { size: [0.1, postH, 0.1], at: [w * 0.4, postH / 2, back], color: face.frame },
+            { size: [w, 0.1, 0.1], at: [0, size.bottom - 0.05, back * 0.5], color: face.frame },
+            ...incidentCones(w),
+          ]
+        : [
+            { size: [0.18, postH, 0.18], at: [-w * 0.34, postH / 2, back], color: face.frame },
+            { size: [0.18, postH, 0.18], at: [w * 0.34, postH / 2, back], color: face.frame },
+            { size: [w + 0.3, 0.16, 0.14], at: [0, size.bottom - 0.08, back * 0.5], color: face.frame },
+            { size: [w + 0.3, 0.16, 0.14], at: [0, postH + 0.08, back * 0.5], color: face.frame },
+          ];
     const frameMesh = new Mesh(mergeBoxes(frame), this.look.material('post', { vertexColors: true }));
     const map = faceTexture(item, w / size.panelH);
     const panel = new Mesh(
@@ -477,7 +515,7 @@ export class Boards {
       group,
       panel,
       centre,
-      radius: w / 2,
+      radius: item.kind === 'cone' ? w / 2 + 1.3 : w / 2,
     };
   }
 }

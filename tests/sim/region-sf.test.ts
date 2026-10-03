@@ -95,6 +95,7 @@ describe('region-sf: the San Francisco race', () => {
       'osm-sf-twin-peaks',
       'sf-downtown',
       'sf-chinatown-northbeach',
+      'sf-mission',
     ]);
     // At least the first board set; content lanes add more (tools/road/sf-hills.test.ts gives each a slot).
     expect(region.signs?.length).toBeGreaterThanOrEqual(3);

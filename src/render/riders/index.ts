@@ -12,17 +12,21 @@
 //     air, each rival's signature move while it shows; coat tails, ties and braids stream in the wind;
 //   - tumbling: the rider flails where views.ts throws the body and the bike cartwheels on its own;
 //   - on foot: running back, the get-up and the fist shake; the bike stands on its stand;
-//   - hurt (under half health) a rider sheds their prop, and under a third the bike trails smoke.
+//   - hurt (under half health) a rider sheds their prop, and under a third the bike trails smoke;
+//   - Dial-Up in his Bad Connection grudge (run W-U): a see-through, flickering ghost while his
+//     connection is dropped (ghost.ts).
 // views.ts still places each rider in the world (its box rider's root, parked bike and tumbling bike
 // are the inputs here); everything in this folder is presentation and may use wall-clock time.
 import {
   Bone,
   BufferGeometry,
+  Color,
   Float32BufferAttribute,
   Group,
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshLambertMaterial,
   Object3D,
   Quaternion,
   Skeleton,
@@ -39,6 +43,7 @@ import type { LookStyle } from '../look';
 import { FALLBACK_BIKE_MODEL, withPlayerPaint, type RiderLook } from '../rider-looks';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
+import { Ghosts } from './ghost';
 import {
   bikeFrame,
   follow,
@@ -70,6 +75,9 @@ const SQUAT_S = 0.35;
 const SMOKE_CAP = 96;
 const SMOKE_EVERY_S = 0.07;
 const SMOKE_LIFE_S = 1.3;
+/** The ghost's tint (a dead screen's blue) and its faint glow (run W-U, Bad Connection). */
+const GHOST_TINT = '#9fe8ff';
+const GHOST_GLOW = '#1d4fd8';
 
 /** What views.ts hands over for one rider each frame. */
 export interface RigFrame {
@@ -190,7 +198,12 @@ class Rig {
   flinchSide = 1;
   kicking = false;
   private shed: ShedProp | null = null;
-  private flashing = false;
+  /** The material the mesh wears now: its look's own, a hit's flash, or the ghost. */
+  private wearing: 'rider' | 'flash' | 'ghost' = 'rider';
+  /** Dial-Up's ghost material, made the first time he drops (one rig in a race needs it). */
+  private ghostMat: MeshLambertMaterial | null = null;
+  /** This frame's see-through level (1 solid; below 1 the Bad Connection ghost), set by RiderRigs. */
+  ghost = 1;
   private lastSmoke = 0;
   private lastTime = 0;
   private lagSeed = 0;
@@ -348,6 +361,34 @@ class Rig {
     this.weapon.geometry = new BufferGeometry();
     this.flame.geometry.dispose();
     this.lightBar?.geometry.dispose();
+    this.ghostMat?.dispose();
+  }
+
+  /** The material this frame wears: a ghost while dropped, else a hit's flash, else its look's own. */
+  wornMaterial(): 'rider' | 'flash' | 'ghost' {
+    return this.wearing;
+  }
+
+  /**
+   * Bad Connection's ghost (run W-U): the rider's own material made see-through, tinted and faintly
+   * glowing, with no depth written, so the ink look's outline pass (which reads depth) leaves him
+   * unlined: he reads as a signal, not a body. Plain lit colours in every look. [default]
+   */
+  private ghostMaterial(): MeshLambertMaterial {
+    if (this.ghostMat) return this.ghostMat;
+    const m = new MeshLambertMaterial({
+      color: new Color(GHOST_TINT),
+      vertexColors: true,
+      flatShading: true,
+      emissive: new Color(GHOST_GLOW),
+      emissiveIntensity: 0.45,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false,
+    });
+    m.name = 'rider-ghost';
+    this.ghostMat = m;
+    return m;
   }
 
   get triangles(): number {
@@ -495,11 +536,14 @@ class Rig {
       this.glint.scale.copy(f.glint.scale);
       this.glint.rotation.z = f.glint.rotation.z;
     }
-    if (f.flashing !== this.flashing) {
-      const mat: Material = this.lookStyle.material(f.flashing ? 'flash' : 'rider', { vertexColors: true });
+    const wear = this.ghost < 1 ? 'ghost' : f.flashing ? 'flash' : 'rider';
+    if (wear !== this.wearing) {
+      const mat: Material =
+        wear === 'ghost' ? this.ghostMaterial() : this.lookStyle.material(wear, { vertexColors: true });
       this.mesh.material = mat;
-      this.flashing = f.flashing;
+      this.wearing = wear;
     }
+    if (wear === 'ghost' && this.ghostMat) this.ghostMat.opacity = this.ghost;
     const boostS = e.boostS ?? 0;
     this.flame.visible = riding && boostS > 0;
     if (this.flame.visible) this.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(t * 31)));
@@ -1068,6 +1112,8 @@ export class RiderRigs {
   private readonly rigs = new Map<number, Rig>();
   private readonly cam = new Vector3();
   private readonly puffs: Puff[] = [];
+  /** Dial-Up's Bad Connection ghost, by rider (run W-U). */
+  private readonly ghosts = new Ghosts();
   private readonly smokeMesh: InstancedMesh;
   private drawn = new Set<number>();
   private now = 0;
@@ -1137,6 +1183,7 @@ export class RiderRigs {
   }
 
   pushEvents(events: readonly SimEvent[]): void {
+    this.ghosts.push(events, this.now);
     for (const ev of events) {
       const actor = this.rigs.get(ev.actor);
       if (ev.type === 'land' && actor) actor.squatAt = this.now;
@@ -1188,6 +1235,7 @@ export class RiderRigs {
     this.now = f.time;
     const rig = this.rigFor(e);
     if (!rig) return false;
+    rig.ghost = this.ghosts.opacity(e, f.time);
     rig.update(e, prev, curr, f, this.cam, this.root);
     rig.smoke(e, f.time, (at, vel) => {
       if (this.puffs.length >= SMOKE_CAP) this.puffs.shift();
@@ -1308,6 +1356,14 @@ export class RiderRigs {
   bikeBoneOf(entityId: number, name: string): Bone | null {
     const rig = this.rigs.get(entityId);
     return rig?.bikeBones.find((b) => b.name === `rig-${name}`) ?? null;
+  }
+
+  /** The material a rig wears now, and its see-through level (tests: the Bad Connection ghost). */
+  wearOf(entityId: number): { wearing: 'rider' | 'flash' | 'ghost'; opacity: number } | null {
+    const rig = this.rigs.get(entityId);
+    if (!rig) return null;
+    const m = rig.mesh.material as Material;
+    return { wearing: rig.wornMaterial(), opacity: m.transparent ? m.opacity : 1 };
   }
 
   /** A rig's skinned mesh (tests). */

@@ -180,6 +180,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
       out.add('sfRoadside');
     }
     if (n.tags.has('cable-crossing')) out.add('cableCar');
+    // Run W-U: San Francisco's mural alleys (mission.ts) borrow the city kit's lamps and bins.
+    if (['shopfronts', 'murals', 'mascot-mural'].some((t) => n.tags.has(t))) out.add('sfRoadside');
   }
   if (n.palette.has('fogBank')) out.add('fogBanks');
   if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');

@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { BlocksLayer, hasBlocks } from './chinatown-northbeach';
 import { DowntownLayer, hasDowntown } from './downtown';
+import { hasMission, MissionLayer } from './mission';
 import { readGlb } from './glb';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
@@ -157,6 +158,10 @@ describe('the still scene along every route', () => {
           : null;
       // Run W-U: San Francisco's Chinatown and North Beach (a code-made kit, no models).
       const blocks = hasBlocks(tags) ? new BlocksLayer(look, { road, dressing, seed }) : null;
+      // Run W-U: San Francisco's mural alleys, the crew halfway through the race.
+      const mission = hasMission(tags)
+        ? new MissionLayer(models.sfRoadside, look, { road, dressing, seed })
+        : null;
       const cam = new PerspectiveCamera(70, 915 / 412, 0.3, CAMERA_FAR_M);
       let worst: { at: string; total: Load; parts: Map<string, Load> } | null = null;
       let maxDraws = 0;
@@ -188,6 +193,7 @@ describe('the still scene along every route', () => {
           dt?.update(eye.x, eye.z, 0, []);
           // The blocks build one mesh a frame: as many frames as a ride to here would have had.
           if (blocks) for (let i = 0; i < 30; i++) blocks.update(eye.x, eye.z);
+          if (mission) for (let i = 0; i < 8; i++) mission.update(eye.x, eye.z, 0, 0.5);
           const frustum = new Frustum().setFromProjectionMatrix(
             new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
           );
@@ -197,6 +203,7 @@ describe('the still scene along every route', () => {
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
           if (blocks) drawn(blocks.group, frustum, parts);
+          if (mission) drawn(mission.group, frustum, parts);
           const total = [...parts.values()].reduce(
             (t, l) => ({ draws: t.draws + l.draws, tris: t.tris + l.tris }),
             {

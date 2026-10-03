@@ -35,7 +35,9 @@ export type SideTheme =
   // run W-U, San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws them)
   | 'lanterns'
   | 'cafes'
-  | 'park';
+  | 'park'
+  // run W-U, San Francisco's mural alleys (render/mission.ts draws what stands there)
+  | 'mission';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -69,6 +71,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   cafes: 'cafes',
   'side-street': 'crossing',
   'hill-park': 'park',
+  // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys"): shopfronts, an
+  // alley's painted walls and the mascot's corner wall. Nothing of the scatter's stands there; the
+  // mission layer (mission.ts) draws the buildings, the murals and the crew.
+  shopfronts: 'mission',
+  murals: 'mission',
+  'mascot-mural': 'mission',
 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
@@ -78,6 +86,7 @@ const THEME_ORDER: readonly LandTheme[] = [
   'park',
   'lanterns',
   'cafes',
+  'mission',
   'palms',
   'mangrove',
   'commercial',
@@ -190,8 +199,9 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   lanterns: {},
   cafes: {},
   park: {},
+  mission: {},
 };
-/** Themes with no power poles: a downtown's wires are underground. */
+/** Themes with no power poles: a downtown's wires are underground, and the mural district's walls stand at the kerb. */
 const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'crossing',
   'plaza',
@@ -199,6 +209,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'lanterns',
   'cafes',
   'park',
+  'mission',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
