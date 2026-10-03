@@ -1,9 +1,10 @@
 // The backdrop (W-P "fill the world", the maintainer, 2026-10-01b: "distance and skyline: hills,
 // mountains, city skylines, water, bridges on the horizon"; "unique regional flavor everywhere").
 // The checks read the real pack data and the real road networks, build each network's backdrop and
-// look at what was built: every network has one, each region's signature pieces are there, nothing
-// stands on a road, the race's seed varies only what should vary, and the squeezed depth stays
-// inside the camera's far plane.
+// look at what was built: every network has one, each region's signature pieces are there, the
+// race's seed varies only what should vary, and the squeezed depth stays inside the camera's far
+// plane. That nothing stands on a road, and every floor lies under the sea as drawn, is checked on
+// every route's network by the geometry sweep (tests/sim/geometry-backdrop.test.ts).
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad } from '../../road';
 import { CAMERA_FAR_M } from '../index';
@@ -137,7 +138,6 @@ const SIGNATURES: Record<string, PieceKind[]> = {
 
 describe.each(Object.keys(SIGNATURES))('the backdrop of %s', (id) => {
   const { soup, stats } = build(id);
-  const pts = roadPoints(id);
 
   it("shows its region's signature pieces, cheaply", () => {
     for (const k of SIGNATURES[id]!) expect(stats.kinds[k] ?? 0, k).toBeGreaterThan(0);
@@ -149,35 +149,9 @@ describe.each(Object.keys(SIGNATURES))('the backdrop of %s', (id) => {
     );
   });
 
-  it('stands nothing on or beside a road (floors lie under the sea, so they may pass beneath)', () => {
-    let checked = 0;
-    let closest = Infinity;
-    const cell = new Map<string, [number, number][]>();
-    for (const [x, z] of pts) {
-      const k = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
-      (cell.get(k) ?? cell.set(k, []).get(k)!).push([x, z]);
-    }
-    for (let v = 0; v < soup.pos.length / 3; v++) {
-      if (soup.info[v * 4 + 1]! > 0 || soup.info[v * 4 + 3]! > 0) continue; // floors and the far ring
-      // What moves is checked at both ends of its run too (W-T: a train, a seaplane, a pour).
-      const dx = soup.motion[v * 4]!;
-      const dz = soup.motion[v * 4 + 1]!;
-      for (const m of dx || dz ? [-1, 0, 1] : [0]) {
-        const x = soup.pos[v * 3]! + dx * m;
-        const z = soup.pos[v * 3 + 2]! + dz * m;
-        checked++;
-        const cx = Math.floor(x / 200);
-        const cz = Math.floor(z / 200);
-        for (let i = cx - 1; i <= cx + 1; i++)
-          for (let j = cz - 1; j <= cz + 1; j++)
-            for (const [px, pz] of cell.get(`${i},${j}`) ?? [])
-              closest = Math.min(closest, Math.hypot(px - x, pz - z));
-      }
-    }
-    expect(checked).toBeGreaterThan(1000);
-    // The nearest keep-out is the mast's 250 m; a piece's own width may reach a little inside it.
-    expect(closest).toBeGreaterThan(150);
-  });
+  // "Stands nothing on or beside a road" moved to the geometry sweep (tests/sim/geometry-backdrop.test.ts):
+  // it runs on every network a route races on, and checks the floors too (under the sea as the vertex
+  // shader draws them), where this check skipped them ("floors may pass beneath").
 
   it('repeats exactly for a seed, and a new seed moves only what varies between races', () => {
     const again = build(id, 7);
