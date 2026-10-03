@@ -1,15 +1,19 @@
 // The road set pieces' props (W-P events, the maintainer, 2026-10-01b: "events and set pieces:
 // roadwork, crash scenes, parades, a farm truck shedding hay, speed traps"), drawn from
 // SimSnapshot.props. Code-made, flat-coloured boxes (every look recolours them through the `prop`
-// material, no textures, no grime), one instanced mesh per shape, so a live set piece costs a few
-// draw calls and a race without one costs none. The warning signs are the one exception: a small
-// printed panel per sign, its words from the event's pack entry.
+// material, no textures, no grime), batched (run W-T's draw-call headroom, prop-batch.ts): the props
+// standing still are one mesh, the moving ones another and the glowing ones one instanced mesh per
+// shape, so a live set piece costs two or three draw calls and a race without one costs none. The
+// warning signs carry printed panels, their words from the event's pack entry, all drawn as one
+// mesh over a shared atlas.
 // Presentation only: it may use wall-clock time (the waving arm, the flashing light bar, the
 // bobbing inflatable) and Math freely. The vehicles themselves (the work truck, the tow truck, the
 // floats, the farm truck) are traffic entities drawn by views.ts; this draws what rides on them.
 import {
+  BufferGeometry,
   CanvasTexture,
   Color,
+  Float32BufferAttribute,
   Group,
   InstancedMesh,
   Matrix4,
@@ -18,7 +22,6 @@ import {
   Quaternion,
   SRGBColorSpace,
   Vector3,
-  type BufferGeometry,
   type Material,
   type Texture,
 } from 'three';
@@ -26,6 +29,7 @@ import type { PropSnapshot, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { canvasMeasure, fitLine, paintCopy, type CopyFit, type MeasureText } from './boards';
 import type { LookStyle } from './look';
+import { cullByInstances, PropBatch } from './prop-batch';
 
 type Parts = BoxPart[];
 const box = (
@@ -437,27 +441,103 @@ function signFace(variant: string): { bg: string; fg: string } {
 
 /** A warning or serial sign's square canvas, px (the sign audit, sign-fit.test.ts, reads it). */
 export const SIGN_TEXTURE_PX = 384;
+const SIGN_PX = SIGN_TEXTURE_PX;
 
-function signTexture(label: string, variant: string): Texture | null {
-  if (typeof document === 'undefined') return null;
-  const px = SIGN_TEXTURE_PX;
-  const canvas = document.createElement('canvas');
-  canvas.width = px;
-  canvas.height = px;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
+/** Paints a warning sign's face into a `SIGN_PX` square at the context's origin. */
+function paintSign(ctx: CanvasRenderingContext2D, label: string, variant: string): void {
   const face = signFace(variant);
   ctx.fillStyle = face.bg;
-  ctx.fillRect(0, 0, px, px);
+  ctx.fillRect(0, 0, SIGN_PX, SIGN_PX);
   ctx.strokeStyle = face.fg;
   ctx.lineWidth = 14;
-  ctx.strokeRect(14, 14, px - 28, px - 28);
+  ctx.strokeRect(14, 14, SIGN_PX - 28, SIGN_PX - 28);
   ctx.fillStyle = face.fg;
   // A short headline that comes true a moment later, and a small kicker (boards.ts, `paintCopy`).
-  paintCopy(ctx, px, px, label, face.fg);
+  paintCopy(ctx, SIGN_PX, SIGN_PX, label, face.fg);
+}
+
+/** One sign's own texture: only for a sign past the atlas's slots (SignAtlas). */
+function signTexture(label: string, variant: string): Texture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIGN_PX;
+  canvas.height = SIGN_PX;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  paintSign(ctx, label, variant);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;
+}
+
+/** The sign atlas's grid: this many signs at once share one texture (one draw call). */
+const ATLAS_COLS = 4;
+const ATLAS_ROWS = 2;
+/** Texels kept off each cell's edge, so a far (mipmapped) panel never takes its neighbour's colour. */
+const ATLAS_INSET_PX = 2;
+
+/**
+ * The live warning signs' faces, painted into one texture (run W-T's draw-call headroom): every sign
+ * panel then draws as ONE mesh, where each had its own texture and draw call. A slot is kept while
+ * its sign is in the snapshot and freed when it leaves; a sign past the last slot draws on its own.
+ */
+class SignAtlas {
+  readonly texture: CanvasTexture | null;
+  private readonly ctx: CanvasRenderingContext2D | null;
+  private readonly keys: (string | null)[] = new Array<string | null>(ATLAS_COLS * ATLAS_ROWS).fill(null);
+
+  constructor() {
+    const canvas = typeof document === 'undefined' ? null : document.createElement('canvas');
+    if (canvas) {
+      canvas.width = SIGN_PX * ATLAS_COLS;
+      canvas.height = SIGN_PX * ATLAS_ROWS;
+    }
+    this.ctx = canvas?.getContext('2d') ?? null;
+    if (canvas && this.ctx) {
+      this.texture = new CanvasTexture(canvas);
+      this.texture.colorSpace = SRGBColorSpace;
+    } else this.texture = null;
+  }
+
+  /** The slot holding this sign's face, painted on first use; null with no slot free (or no DOM). */
+  slot(key: string, label: string, variant: string): number | null {
+    const have = this.keys.indexOf(key);
+    if (have >= 0) return have;
+    const free = this.keys.indexOf(null);
+    if (free < 0 || !this.ctx || !this.texture) return null;
+    this.keys[free] = key;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate((free % ATLAS_COLS) * SIGN_PX, Math.floor(free / ATLAS_COLS) * SIGN_PX);
+    ctx.beginPath();
+    ctx.rect(0, 0, SIGN_PX, SIGN_PX);
+    ctx.clip();
+    paintSign(ctx, label, variant);
+    ctx.restore();
+    this.texture.needsUpdate = true;
+    return free;
+  }
+
+  /** Frees the slots of signs no longer in the snapshot. */
+  keep(used: ReadonlySet<string>): void {
+    this.keys.forEach((k, i) => {
+      if (k !== null && !used.has(k)) this.keys[i] = null;
+    });
+  }
+
+  /** A slot's texture coordinates (canvas textures are flipped: v = 1 is the canvas's top). */
+  rect(slot: number): { u0: number; v0: number; u1: number; v1: number } {
+    const w = SIGN_PX * ATLAS_COLS;
+    const h = SIGN_PX * ATLAS_ROWS;
+    const x = (slot % ATLAS_COLS) * SIGN_PX;
+    const y = Math.floor(slot / ATLAS_COLS) * SIGN_PX;
+    return {
+      u0: (x + ATLAS_INSET_PX) / w,
+      u1: (x + SIGN_PX - ATLAS_INSET_PX) / w,
+      v0: 1 - (y + SIGN_PX - ATLAS_INSET_PX) / h,
+      v1: 1 - (y + ATLAS_INSET_PX) / h,
+    };
+  }
 }
 
 /** A lane-vote gantry's canvas, px, and the width one side's words may take. */
@@ -531,9 +611,71 @@ interface Sign {
   variant: string;
 }
 
+/** Shapes that move every frame although their prop stands still: the waving arm, the bobbing balloon. */
+const ANIMATED = new Set(['arm', 'inflatable']);
+
+/** The sign panels' quads in one geometry: four corners each, in world space, with atlas UVs. */
+function panelGeometry(
+  quads: readonly {
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+    size: number;
+    up: number;
+    uv: { u0: number; v0: number; u1: number; v1: number };
+  }[],
+): BufferGeometry {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const nrm: number[] = [];
+  for (const q of quads) {
+    const c = Math.cos(q.heading);
+    const s = Math.sin(q.heading);
+    const h = q.size / 2;
+    const base = pos.length / 3;
+    // A plane facing +z in the sign's own frame (as PlaneGeometry), turned by the heading about +y.
+    const corners: [number, number, number, number][] = [
+      [-h, q.up, q.uv.u0, q.uv.v0],
+      [h, q.up, q.uv.u1, q.uv.v0],
+      [h, q.up + q.size, q.uv.u1, q.uv.v1],
+      [-h, q.up + q.size, q.uv.u0, q.uv.v1],
+    ];
+    for (const [lx, ly, u, v] of corners) {
+      pos.push(q.x + lx * c, q.y + ly, q.z - lx * s);
+      nrm.push(s, 0, c);
+      uv.push(u, v);
+    }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/**
+ * The road events' props. Draw calls (run W-T's draw-call headroom): every lit prop standing still
+ * is in ONE batch (`event-props-still`, rewritten only when the set changes), every lit prop on the
+ * move (a person stepping aside, a rolling log, a float's dressing, a waving arm, the balloon) in a
+ * second (`event-props-moving`, rewritten each frame), the glowing flares and light bars stay one
+ * instanced mesh per shape on the unlit material, and every warning sign's panel is one mesh over a
+ * shared atlas (`event-panels`). A roadwork beside a speed trap drew 11 calls; it now draws 3.
+ */
 export class EventProps {
   readonly root = new Group();
   private readonly meshes = new Map<string, InstancedMesh>();
+  private readonly geometries = new Map<string, BufferGeometry>();
+  private readonly still: PropBatch;
+  private readonly moving: PropBatch;
+  private readonly atlas = new SignAtlas();
+  private readonly panels: Mesh;
+  private panelKey = '';
+  /** Signs past the atlas's slots, and every gantry's panel: their own meshes. */
   private readonly signs = new Map<number, Sign>();
   private readonly textures = new Map<string, Texture>();
   private readonly m = new Matrix4();
@@ -550,17 +692,40 @@ export class EventProps {
 
   constructor(private readonly look: LookStyle) {
     this.root.name = 'event-props';
+    this.still = new PropBatch(this.material(false), 'event-props-still');
+    this.moving = new PropBatch(this.material(false), 'event-props-moving');
+    this.panels = new Mesh(
+      new BufferGeometry(),
+      this.atlas.texture
+        ? this.look.material('board', { map: this.atlas.texture })
+        : this.look.material('board'),
+    );
+    this.panels.name = 'event-panels';
+    this.panels.visible = false;
+    this.root.add(this.still.mesh, this.moving.mesh, this.panels);
   }
 
   private material(glow: boolean): Material {
     return this.look.material(glow ? 'lightbar' : 'prop', { vertexColors: true });
   }
 
+  /** A shape's merged boxes, made once and shared by every batch and instance. */
+  private geometry(key: string, parts: () => Parts = () => partsFor(key)): BufferGeometry {
+    let g = this.geometries.get(key);
+    if (!g) {
+      g = mergeBoxes(parts());
+      g.name = key;
+      this.geometries.set(key, g);
+    }
+    return g;
+  }
+
+  /** An instanced mesh per glowing shape (flares' glow, light bars): they flicker every frame. */
   private mesh(key: string, needed: number): InstancedMesh {
     let mesh = this.meshes.get(key);
     if (mesh && mesh.instanceMatrix.count >= needed) return mesh;
     const capacity = Math.max(8, needed * 2, (mesh?.instanceMatrix.count ?? 0) * 2);
-    const geometry: BufferGeometry = mesh?.geometry ?? mergeBoxes(partsFor(key));
+    const geometry = this.geometry(key);
     if (mesh) this.root.remove(mesh);
     const kind = key.split(':')[0] ?? key;
     mesh = new InstancedMesh(geometry, this.material(GLOWS.has(kind)), capacity);
@@ -572,103 +737,152 @@ export class EventProps {
     return mesh;
   }
 
+  /** A prop's pose for one shape: into `this.m`. `t` is wall-clock seconds (waving, bobbing). */
+  private pose(key: string, p: PropSnapshot, t: number): Matrix4 {
+    const kind = key.split(':')[0];
+    this.v.set(p.x, p.y, p.z);
+    this.q.setFromAxisAngle(this.yAxis, p.heading);
+    let sx = 1;
+    if (kind === 'arm') {
+      // The arm at the right shoulder, swinging overhead: waving traffic by, or the crowd.
+      const swing = p.moving ? 0.2 : 2.4 + 0.5 * Math.sin(t * (p.variant === 'cop-waving' ? 5 : 3) + p.id);
+      this.v.add(this.shoulder.set(0.3, 1.4, 0).applyQuaternion(this.q));
+      this.q2.setFromAxisAngle(this.zAxis, -swing);
+      this.q.multiply(this.q2);
+    } else if (kind === 'inflatable') {
+      this.v.y += 0.35 * Math.sin(t * 0.9 + p.id);
+      this.q2.setFromAxisAngle(this.zAxis, 0.06 * Math.sin(t * 0.7 + p.id));
+      this.q.multiply(this.q2);
+    } else if (kind === 'lightbar') {
+      // Flashing: the bar swells and dims twice a second.
+      sx = Math.sin(t * 12 + p.id) > 0 ? 1 : 0.55;
+    } else if (kind === 'flareGlow') {
+      sx = 0.8 + 0.25 * Math.sin(t * 17 + p.id * 3);
+    } else if (kind === 'person' && p.moving) {
+      // Stepping smartly out of the way.
+      this.v.y += 0.12 * Math.abs(Math.sin(t * 10 + p.id));
+    }
+    if (p.tilt !== 0 && kind !== 'signPost' && kind !== 'gantryFrame') {
+      this.q2.setFromAxisAngle(this.xAxis, p.tilt);
+      this.q.multiply(this.q2);
+    }
+    const k = READ_SCALE[kind ?? ''] ?? 1;
+    this.s.set(sx * k, (kind === 'flareGlow' ? sx : 1) * k, sx * k);
+    return this.m.compose(this.v, this.q, this.s);
+  }
+
   /** Draws the snapshot's props. `t` is wall-clock seconds (the waving, flashing and bobbing). */
   sync(snap: SimSnapshot | null, t: number): void {
     const props = snap?.props ?? [];
-    const groups = new Map<string, PropSnapshot[]>();
-    const add = (key: string, p: PropSnapshot) => {
-      const list = groups.get(key);
+    const glows = new Map<string, PropSnapshot[]>();
+    const glow = (key: string, p: PropSnapshot) => {
+      const list = glows.get(key);
       if (list) list.push(p);
-      else groups.set(key, [p]);
+      else glows.set(key, [p]);
     };
     const byKind: Record<string, number> = {};
     const signsSeen = new Set<number>();
     const signWords: string[] = [];
+    // The atlas frees the cells of signs that have left before this frame's signs take theirs.
+    this.atlas.keep(new Set(props.filter((p) => p.kind === 'sign').map((p) => `${p.variant}|${p.label}`)));
+    const quads: Parameters<typeof panelGeometry>[0][number][] = [];
+    const panelKey: string[] = [];
+    this.still.begin();
+    this.moving.begin();
     for (const p of props) {
       byKind[p.kind] = (byKind[p.kind] ?? 0) + 1;
       if (p.kind === 'sign') {
-        signsSeen.add(p.id);
         signWords.push(p.label);
-        this.placeSign(p);
-        // Every sign's post is one instance of a shared mesh: one draw for all the posts.
-        add(`signPost:${p.variant === 'serial' ? 'serial' : 'tall'}`, p);
+        // Every sign's post goes in the still batch; its panel in the atlas's mesh (or its own).
+        const key = `signPost:${p.variant === 'serial' ? 'serial' : 'tall'}`;
+        this.still.add(this.geometry(key), this.pose(key, p, t));
+        const serial = p.variant === 'serial';
+        const face = `${p.variant}|${p.label}`;
+        const slot = this.atlas.slot(face, p.label, p.variant);
+        if (slot === null) {
+          signsSeen.add(p.id);
+          this.placeSign(p);
+          continue;
+        }
+        const size = serial ? SERIAL_M : SIGN_M;
+        quads.push({
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          heading: p.heading,
+          size,
+          up: serial ? SERIAL_UP : 2.2,
+          uv: this.atlas.rect(slot),
+        });
+        panelKey.push(`${slot}:${p.x}:${p.y}:${p.z}:${p.heading}:${size}`);
         continue;
       }
       if (p.kind === 'gantry') {
         signsSeen.add(p.id);
         signWords.push(p.label);
-        this.placeGantry(p);
+        const span = Math.max(4, p.spanM ?? 8);
+        const key = `gantryFrame:${span}`;
+        this.still.add(
+          this.geometry(key, () => gantryFrame(span)),
+          this.pose(key, p, t),
+        );
+        this.placeGantry(p, span);
         continue;
       }
-      add(shapeKey(p), p);
-      if (p.kind === 'flare') add('flareGlow', p);
+      const key = shapeKey(p);
+      if (GLOWS.has(p.kind)) glow(key, p);
+      else {
+        const batch = p.moving || ANIMATED.has(p.kind) ? this.moving : this.still;
+        batch.add(this.geometry(key), this.pose(key, p, t));
+      }
+      if (p.kind === 'flare') glow('flareGlow', p);
       if (
         p.kind === 'person' &&
         (p.variant === 'cop-waving' || p.variant.startsWith('marcher') || p.variant === 'flagger')
-      )
-        add(`arm:${PEOPLE[p.variant]?.arm ?? '#ffb000'}`, p);
+      ) {
+        const arm = `arm:${PEOPLE[p.variant]?.arm ?? '#ffb000'}`;
+        this.moving.add(this.geometry(arm), this.pose(arm, p, t));
+      }
     }
+    this.still.end();
+    this.moving.end();
+    const nextPanels = panelKey.join('|');
+    if (nextPanels !== this.panelKey) {
+      this.panelKey = nextPanels;
+      this.panels.geometry.dispose();
+      this.panels.geometry = quads.length ? panelGeometry(quads) : new BufferGeometry();
+    }
+    this.panels.visible = quads.length > 0;
     for (const [id, sign] of this.signs) {
       if (signsSeen.has(id)) continue;
       this.root.remove(sign.mesh);
       this.signs.delete(id);
     }
     for (const [key, mesh] of this.meshes)
-      if (!groups.has(key)) {
+      if (!glows.has(key)) {
         mesh.count = 0;
         mesh.visible = false;
       }
-    for (const [key, list] of groups) {
+    for (const [key, list] of glows) {
       const mesh = this.mesh(key, list.length);
-      const kind = key.split(':')[0];
       list.forEach((p, i) => {
-        this.v.set(p.x, p.y, p.z);
-        this.q.setFromAxisAngle(this.yAxis, p.heading);
-        let sx = 1;
-        if (kind === 'arm') {
-          // The arm at the right shoulder, swinging overhead: waving traffic by, or the crowd.
-          const swing = p.moving
-            ? 0.2
-            : 2.4 + 0.5 * Math.sin(t * (p.variant === 'cop-waving' ? 5 : 3) + p.id);
-          this.v.add(this.shoulder.set(0.3, 1.4, 0).applyQuaternion(this.q));
-          this.q2.setFromAxisAngle(this.zAxis, -swing);
-          this.q.multiply(this.q2);
-        } else if (kind === 'inflatable') {
-          this.v.y += 0.35 * Math.sin(t * 0.9 + p.id);
-          this.q2.setFromAxisAngle(this.zAxis, 0.06 * Math.sin(t * 0.7 + p.id));
-          this.q.multiply(this.q2);
-        } else if (kind === 'lightbar') {
-          // Flashing: the bar swells and dims twice a second.
-          sx = Math.sin(t * 12 + p.id) > 0 ? 1 : 0.55;
-        } else if (kind === 'flareGlow') {
-          sx = 0.8 + 0.25 * Math.sin(t * 17 + p.id * 3);
-        } else if (kind === 'person' && p.moving) {
-          // Stepping smartly out of the way.
-          this.v.y += 0.12 * Math.abs(Math.sin(t * 10 + p.id));
-        }
-        if (p.tilt !== 0) {
-          this.q2.setFromAxisAngle(this.xAxis, p.tilt);
-          this.q.multiply(this.q2);
-        }
-        const k = READ_SCALE[kind ?? ''] ?? 1;
-        this.s.set(sx * k, (kind === 'flareGlow' ? sx : 1) * k, sx * k);
-        this.m.compose(this.v, this.q, this.s);
-        mesh.setMatrixAt(i, this.m);
+        mesh.setMatrixAt(i, this.pose(key, p, t));
         mesh.setColorAt(i, this.white);
       });
       mesh.count = list.length;
       mesh.visible = true;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      cullByInstances(mesh);
     }
     this.last = { byKind, total: props.length, signs: signWords };
   }
 
+  /** A sign past the atlas's slots: its panel on its own (its post is in the still batch). */
   private placeSign(p: PropSnapshot): void {
     let sign = this.signs.get(p.id);
     if (!sign || sign.label !== p.label) {
       if (sign) this.root.remove(sign.mesh);
-      // The post is drawn with every other sign's (the shared `signPost` mesh); this is the panel.
       const g = new Group();
       const key = `${p.variant}|${p.label}`;
       let tex = this.textures.get(key);
@@ -694,24 +908,14 @@ export class EventProps {
   }
 
   /**
-   * A lane-vote gantry (W-T): its frame, `spanM` wide, and one panel with both choices; redrawn
-   * once when the vote is cast, so the winning side lights. Two draws while it stands.
+   * A lane-vote gantry's panel (W-T), with both choices; redrawn once when the vote is cast, so the
+   * winning side lights. Its frame is in the still batch: the panel is the gantry's one own draw.
    */
-  private placeGantry(p: PropSnapshot): void {
+  private placeGantry(p: PropSnapshot, span: number): void {
     let sign = this.signs.get(p.id);
     if (!sign || sign.label !== p.label || sign.variant !== p.variant) {
-      const span = Math.max(4, p.spanM ?? 8);
-      let frame = sign?.mesh.children.find((o) => o.name === 'gantry-frame');
       if (sign) this.root.remove(sign.mesh);
       const g = new Group();
-      if (!frame) {
-        const mesh = new InstancedMesh(mergeBoxes(gantryFrame(span)), this.material(false), 1);
-        mesh.setMatrixAt(0, new Matrix4());
-        mesh.name = 'gantry-frame';
-        mesh.frustumCulled = false;
-        frame = mesh;
-      }
-      g.add(frame);
       const key = `gantry|${p.variant}|${p.label}`;
       let tex = this.textures.get(key);
       if (!tex) {
@@ -737,5 +941,10 @@ export class EventProps {
 
   counts(): EventPropCounts {
     return this.last;
+  }
+
+  /** The batches (tests and the debug overlay): the props standing still, and the moving ones. */
+  batches(): { still: PropBatch; moving: PropBatch } {
+    return { still: this.still, moving: this.moving };
   }
 }

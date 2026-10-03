@@ -111,6 +111,34 @@ export function chunkKey(x: number, z: number): string {
   return `${Math.floor(x / ROAD_CHUNK_M)},${Math.floor(z / ROAD_CHUNK_M)}`;
 }
 
+/**
+ * The road's fine detail is left out of a chunk wholly farther than this from the camera, metres
+ * [default] (run W-T's draw-call headroom: the busiest live scenes reached 109 of 120 draw calls).
+ * Fine detail is the lane markings and dashes (0.15 m wide) and the thin posts: at 300 m a 0.15 m
+ * line is about a fifth of a pixel on the phone's 412 px-tall view (a third at its 1.5x pixel
+ * ratio), drawn without antialiasing, so it only ever showed as broken, shimmering dots. A far chunk
+ * then draws its surfaces alone: two to five fewer draw calls each, and fewer triangles.
+ */
+export const ROAD_FINE_DRAW_M = 300;
+/** The chunk layers and instanced meshes that are fine detail (see ROAD_FINE_DRAW_M). */
+const FINE_MESHES = new Set([
+  'road-marking',
+  'road-markingCenter',
+  'road-splitMark',
+  'road-boostMark',
+  'road-cableSlot',
+  'road-posts',
+  'road-rail-posts',
+]);
+
+/** Metres from (x, z) to the nearest point of the chunk `key` names (0 inside it). */
+export function chunkDistance(key: string, x: number, z: number): number {
+  const [i = 0, j = 0] = key.split(',').map(Number);
+  const dx = Math.max(i * ROAD_CHUNK_M - x, 0, x - (i + 1) * ROAD_CHUNK_M);
+  const dz = Math.max(j * ROAD_CHUNK_M - z, 0, z - (j + 1) * ROAD_CHUNK_M);
+  return Math.hypot(dx, dz);
+}
+
 export interface RoadSceneStats {
   meshes: number;
   /** Chunks with any static road geometry. */
@@ -165,7 +193,8 @@ export interface RoadScene {
   /**
    * Per frame: hides scenery farther than `drawM` from the camera, draws the merged blocks past
    * `lodM` as their far stand-ins, builds up to `builds` blocks coming into range (default one),
-   * and bobs the boats. Returns the scenery props left visible.
+   * bobs the boats, and leaves the road's fine detail out of chunks past ROAD_FINE_DRAW_M. Returns
+   * the scenery props left visible.
    */
   update(cameraX: number, cameraZ: number, t: number, drawM: number, lodM?: number, builds?: number): number;
   /** The merged still scenery as the last update drew it (run W-S). */
@@ -1600,6 +1629,8 @@ export function buildRoadScene(
   let meshes = 0;
   /** The group of one chunk, made on first use (static road, merged per chunk so it can be culled). */
   const chunkGroups = new Map<string, Group>();
+  /** Each chunk's fine detail, hidden while the chunk is past ROAD_FINE_DRAW_M (update). */
+  const fineByChunk = new Map<string, Mesh[]>();
   const addMesh = (key: string, mesh: Mesh) => {
     let g = chunkGroups.get(key);
     if (!g) {
@@ -1610,6 +1641,11 @@ export function buildRoadScene(
     }
     g.add(mesh);
     meshes++;
+    if (FINE_MESHES.has(mesh.name)) {
+      const fine = fineByChunk.get(key);
+      if (fine) fine.push(mesh);
+      else fineByChunk.set(key, [mesh]);
+    }
   };
   const doubleSided = new Set<MaterialKind>(['rail', 'deck']);
   for (const [layer, a] of Object.entries(acc) as [Layer, ChunkedStrips][]) {
@@ -1829,6 +1865,10 @@ export function buildRoadScene(
       return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
     },
     update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1) {
+      for (const [key, fine] of fineByChunk) {
+        const near = chunkDistance(key, cameraX, cameraZ) < ROAD_FINE_DRAW_M;
+        for (const mesh of fine) mesh.visible = near;
+      }
       let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;

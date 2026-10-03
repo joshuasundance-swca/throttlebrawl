@@ -38,6 +38,7 @@ import {
   type PedFigure,
 } from './figures';
 import { mergeBoxes, type BoxPart } from './geometry';
+import { cullByInstances } from './prop-batch';
 import {
   DOG_HEIGHT_M,
   isTrafficFigure,
@@ -628,6 +629,9 @@ export class EntityViews {
       mesh.visible = n > 0;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // Run W-T's draw-call headroom: a shape whose every instance is out of view (all behind the
+      // camera, say) is not drawn. Its bounds are this frame's instances', so nothing in view is cut.
+      cullByInstances(mesh);
     }
     this.castShadows(curr);
     for (const [id, view] of this.riders) if (!this.seen.has(id)) this.releaseRider(id, view);
@@ -760,7 +764,8 @@ export class EntityViews {
     mesh.name = `views-${name}`;
     mesh.count = 0;
     mesh.visible = false;
-    // Instances move every frame; the geometry's own bounds would cull them wrongly.
+    // Instances move every frame; the geometry's own bounds would cull them wrongly, so each frame
+    // culls by the instances' own bounds instead (cullByInstances, in sync).
     mesh.frustumCulled = false;
     mesh.setColorAt(0, this.color.set('#ffffff'));
     this.root.add(mesh);
