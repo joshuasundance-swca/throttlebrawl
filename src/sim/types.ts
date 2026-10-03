@@ -139,6 +139,13 @@ export interface EntitySnapshot {
    */
   trick?: TrickId | null;
   /**
+   * Where a rider in the air will touch down (the pitch deck's #13, "Air that pays": "a chalk mark
+   * shows where you'll touch down, red if you're crooked"), forecast by sim/riders from its flight;
+   * null on the ground, for riders no player drives, and for other kinds. Presentation only.
+   * Optional for hand-built snapshots; the sim fills it for every entity.
+   */
+  touchdown?: TouchdownSnapshot | null;
+  /**
    * This rival's signature move while it shows (interview, 2026-10-02: "Visible personalities"),
    * so render can draw it (Chad's phone up, the Mayor's wave, Gus's bell swinging); null while it
    * is not showing one, and for other kinds. Presentation only. Optional for hand-built snapshots;
@@ -230,6 +237,22 @@ export interface StyleRunSnapshot {
   cash: number;
   /** Whether it has run long enough to score if it ended now (the event's minimum time). */
   qualifies: boolean;
+}
+
+/**
+ * A forecast touch-down (EntitySnapshot.touchdown): the point on the ground below the flight where
+ * the bike will land if nothing changes, in world coordinates (x east, y up, z south), the bike's
+ * world heading there, the world seconds until it lands, and whether landing as the bike is now
+ * would be crooked (a wobble or worse: sideways, off the slope, leaned over, or still holding the
+ * newspaper).
+ */
+export interface TouchdownSnapshot {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  inS: number;
+  crooked: boolean;
 }
 
 /** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
@@ -394,6 +417,14 @@ export type SimEventType =
    */
   | 'heat'
   | 'jump'
+  /**
+   * A rider came down from the air. Actor = the rider; `data.quality` (`clean`, `wobble`, `crash`),
+   * `data.airTicks`, `data.trick` and `data.flips` (playtest 2). From the pitch deck's #13 ("Air
+   * that pays"): a clean landing after real air carries `data.surge` (true) and `data.surgeS`, the
+   * seconds of the short surge it gives (riders and rivals alike), which ride on the rider's boost
+   * (`EntitySnapshot.boostS`). A player landing within a bike length of another rider also lands a
+   * heavy hit on him: a `hit` event whose `data.weapon` is `landing`, the landing's causeId.
+   */
   | 'land'
   | 'pedDive'
   /**
@@ -485,9 +516,12 @@ export type StyleKind = (typeof STYLE_KINDS)[number];
  * turn of the bike, nose up or nose down), a wheelie landing (nose held high, down on the back
  * wheel) and a whip (the bike laid flat sideways in the air, straightened before the landing).
  * `land` events carry the one landed as `data.trick` ('' for none) and a flip's turns as
- * `data.flips`; `EntitySnapshot.trick` shows the one in progress.
+ * `data.flips`; `EntitySnapshot.trick` shows the one in progress. From the pitch deck's #13 ("Air
+ * that pays"): `newspaper`, on the biggest jumps only, the rider sits back as if in a lawn chair
+ * and reads the paper; let go in time it is a trick, and held into the ground the rider lands
+ * holding the newspaper, a crash whose `data.attempt` is `newspaper`.
  */
-export const TRICK_IDS = ['backflip', 'frontflip', 'wheelie', 'whip'] as const;
+export const TRICK_IDS = ['backflip', 'frontflip', 'wheelie', 'whip', 'newspaper'] as const;
 export type TrickId = (typeof TRICK_IDS)[number];
 
 export interface SimEvent {

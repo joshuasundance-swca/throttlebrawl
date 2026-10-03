@@ -18,7 +18,7 @@ describe('the M2 SimEvent contract', () => {
       'weaponSteal',
       'trick',
     ]);
-    expect([...TRICK_IDS]).toEqual(['backflip', 'frontflip', 'wheelie', 'whip']);
+    expect([...TRICK_IDS]).toEqual(['backflip', 'frontflip', 'wheelie', 'whip', 'newspaper']);
   });
 
   it('accepts every new M2 event type', () => {
