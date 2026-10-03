@@ -8,13 +8,23 @@
 // - nothing over water: every place a pedestrian can stand, walk or dive to in a route's roadside
 //   zones has land or road under it at its height (playtest 1b, "pedestrians stand in the water"),
 //   read from the sim's own rules: anywhere across the zone, off the road, crossing to the far
-//   side unless a rail stops it, and a 3.5 m dive either way.
+//   side unless a rail stops it, and a 3.5 m dive either way;
+// - no land over a road: no road's surface has land BURIED_M (1.5 m) or more over it, as the land
+//   build's own rule says (road-mesh.ts stripClear).
 // Before this, the land walks ran on hand-written lists of networks (regions.test.ts three,
 // region-routes.test.ts six, land-seam.test.ts six) and the pedestrians on one Keys race.
-import { BufferGeometry, Mesh, Vector3, type Object3D } from 'three';
+import {
+  BufferGeometry,
+  DoubleSide,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  Vector3,
+  type Object3D,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { GroundTris, openLandEnds, type OpenLandEnd } from '../../src/render/land-probe.test-util';
-import { buildRoadScene, networkTags, type RoadScene } from '../../src/render/road-mesh';
+import { buildRoadScene, BURIED_M, networkTags, type RoadScene } from '../../src/render/road-mesh';
 import { VergeLayer } from '../../src/render/verge';
 import {
   against,
@@ -176,31 +186,38 @@ export function wetPeds(
   return { zones, points, wet };
 }
 
+// ---- No land over a road (road-mesh.ts: the strip stops where it would bury a lower road) --------
+
 /**
- * Known violations on main (2026-10-03), by key (`<network> <check> <road> s <s>`). The list may
- * only shrink: a fix deletes its entry, and an entry no longer seen fails until it is deleted.
+ * Every road's surface, every 2 m and five times across, read straight up through the land: land
+ * BURIED_M or more over it buries the road. At the Jones Street choice the higher roads' land stood
+ * 2.9 to 4.2 m over the lower ones, and the slots in it were two of the seam walk's gaps.
  */
-const KNOWN: readonly KnownViolation[] = [
-  {
-    key: 'osm-sf-russian-hill seam osm-sf-russian-hill-jones-out s 29 side 1',
-    why:
-      'The Jones Street choice (#408): about 4 m past the verge on the right, a 0.2 to 0.9 m slot ' +
-      'between the connector strip and the higher land beside it shows the sea 40 m below. ' +
-      'The fix is in the junction land in road-mesh.ts, not a data or placement fix.',
-  },
-  {
-    key: 'osm-sf-russian-hill seam osm-sf-russian-hill-jones-in s 31 side 1',
-    why:
-      'The Jones Street choice (#408): about 5.4 to 6.1 m past the verge on the right, a 0.7 m slot ' +
-      'in the higher land beside the connector shows the connector strip 6 m below.',
-  },
-  {
-    key: 'sf-hills seam c-sf-park-in s 25 side 1',
-    why:
-      'The Park Cut turn-off: a 6 cm sliver between the verge band and the land past it shows the ' +
-      'water 3 m below, 2.4 m past the verge on the right.',
-  },
-];
+export function roofs(t: Track, land: DownIndex): { points: number; roofed: string[] } {
+  let points = 0;
+  const roofed = new Map<string, string>();
+  for (const e of t.road.edges) {
+    for (let s = 1; s < e.length; s += 2) {
+      for (let k = 0; k <= 4; k++) {
+        points++;
+        const p = t.road.toWorld(e.index, s, e.dMin + ((e.dMax - e.dMin) * k) / 4, 0);
+        const h = land.at(p.x, p.z, p.y + 40);
+        if (!h || h.y < p.y + BURIED_M) continue;
+        const key = `${t.id} roof ${e.id} s ${Math.floor(s / 20) * 20}`;
+        if (!roofed.has(key)) roofed.set(key, `${key}: land ${(h.y - p.y).toFixed(2)} m over the road`);
+      }
+    }
+  }
+  return { points, roofed: [...roofed.values()] };
+}
+
+/**
+ * Known violations, by key (`<network> <check> <road> s <s>`). The list may only shrink: a fix
+ * deletes its entry, and an entry no longer seen fails until it is deleted. Empty since the land
+ * build closed the last three (two slots at Russian Hill's Jones Street choice, a sliver at the
+ * Park Cut turn-off).
+ */
+const KNOWN: readonly KnownViolation[] = [];
 
 const keyOf = (line: string) => (line.includes(':') ? line.slice(0, line.indexOf(':')) : line);
 const fmtEnd = (id: string, o: OpenLandEnd) =>
@@ -208,7 +225,7 @@ const fmtEnd = (id: string, o: OpenLandEnd) =>
 
 describe("geometry invariants: the land on every route's network", () => {
   it.each(NETWORKS.map((n) => [n.id, n] as const))(
-    '%s: no land ends in mid-air or opens at a junction, no sliver at the strip, no pedestrian over water',
+    '%s: no land ends in mid-air or opens at a junction, no sliver at the strip, no pedestrian over water, no land over a road',
     (_id, net) => {
       const t = track(net);
       const scene = sceneOf(t);
@@ -217,13 +234,15 @@ describe("geometry invariants: the land on every route's network", () => {
       const visible = new DownIndex([scene.group, vergeOf(t)], VISIBLE);
       const seam = seamHoles(t, scene, visible);
       const peds = wetPeds(t, net, visible);
-      const found = [...ends.open.map((o) => fmtEnd(t.id, o)), ...seam.holes, ...peds.wet];
+      const roof = roofs(t, new DownIndex(scene.group, /^road-land/));
+      const found = [...ends.open.map((o) => fmtEnd(t.id, o)), ...seam.holes, ...peds.wet, ...roof.roofed];
       const { fresh, seen, stale } = against(found.map(keyOf), KNOWN);
       print(
         `[examined] ${t.id}: ${ground.count} ground triangles; ${ends.probes} points walked beside the roads, ` +
           `${ends.joins} steps across junctions, ${ends.drops} drops looked under, ${ends.open.length} open; ` +
           `${seam.walks} walks across the strip's edge, ${seam.holes.length} slivers; ` +
-          `${peds.zones} roadside zones, ${peds.points} pedestrian points, ${peds.wet.length} wet; ${seen.length} known` +
+          `${peds.zones} roadside zones, ${peds.points} pedestrian points, ${peds.wet.length} wet; ` +
+          `${roof.points} road points read up, ${roof.roofed.length} under land; ${seen.length} known` +
           `${
             fresh.length
               ? `; new: ${found
@@ -370,13 +389,26 @@ describe('the land probes', () => {
     const wet = wetPeds(moved, keysNet, new DownIndex(sceneOf(keys).group, SURFACES)).wet.filter((l) =>
       l.includes(` ${zoned.id} `),
     );
+    // 4. A 6 m slab of land 3 m over a road, mid-way along it (the Jones Street choice had 2.9 to 4.2 m).
+    const slab = new Mesh(
+      new PlaneGeometry(6, 6).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({ side: DoubleSide }),
+    );
+    slab.name = 'road-land';
+    const q = t.road.toWorld(f.index, f.length / 2, 0, 0);
+    slab.position.set(q.x, q.y + 3, q.z);
+    const roofed = roofs(t, new DownIndex([scene.group, slab], /^road-land/)).roofed.filter((l) =>
+      l.includes(` ${f.id} `),
+    );
     print(
       `[negative control] junction land cut (${cut} triangles) at the end of ${e.id}: ${here.length} open there; ` +
-        `a sliver at the strip edge of ${f.id}: ${holes.length} found; a zone on ${zoned.id} moved to sea: ${wet.length} wet`,
+        `a sliver at the strip edge of ${f.id}: ${holes.length} found; a zone on ${zoned.id} moved to sea: ${wet.length} wet; ` +
+        `a slab 3 m over ${f.id}: ${roofed.length} found`,
     );
     expect(cut).toBeGreaterThan(0);
     expect(here.length).toBeGreaterThan(0);
     expect(holes.length).toBeGreaterThan(0);
     expect(wet.length).toBeGreaterThan(0);
+    expect(roofed.length).toBeGreaterThan(0);
   });
 });
