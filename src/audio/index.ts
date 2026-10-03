@@ -77,7 +77,7 @@ import {
 } from './soundscape';
 import { createScapeVoices, type ScapeVoices } from './soundscape-voices';
 
-export { ENGINE_BY_CLASS, ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
+export { ENGINE_PRESETS, resolveEngineProfile } from './engine-patch';
 export { ENGINE_FEEL_DEFAULTS } from './engine-feel';
 export type { EngineProfile, EngineSoundSpec } from './engine-patch';
 export { CUE_IDS, EVENT_CUES } from './cues';
