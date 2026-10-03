@@ -231,7 +231,9 @@ export function openLandEnds(
             const a2 = at(e.index, end === 'to' ? e.length - JOIN_IN_M : JOIN_IN_M, d);
             const b2 = at(o.index, l.entersAt === 'from' ? JOIN_IN_M : o.length - JOIN_IN_M, od);
             probes += 2;
-            if (!a2.land || !b2.land || Math.abs(a2.g - b2.g) > 1) continue;
+            // A shelf's foot under the sea (y below 0) is not a plate that could show the sky (run W-U:
+            // the Mangrove Boardwalk's split, 35 m out, met two shelf feet across open water).
+            if (!a2.land || !b2.land || a2.g <= 0 || b2.g <= 0 || Math.abs(a2.g - b2.g) > 1) continue;
             const mx = (a2.p.x + b2.p.x) / 2;
             const mz = (a2.p.z + b2.p.z) / 2;
             const low = Math.min(a2.g, b2.g);
