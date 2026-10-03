@@ -1131,11 +1131,15 @@ export function createApp(opts: AppOptions): AppHandle {
     }
   }
 
-  /** The pause screen's network map (interview, 2026-10-02: "Maybe just map on pause"). */
+  /**
+   * The pause screen's network map (interview, 2026-10-02: "Maybe just map on pause"), in a career
+   * race only: in free play its height pushed the keyboard legend and the "cut this" list off a
+   * phone's pause screen (CI on #372).
+   */
   function showPauseMap(): void {
     const me = curr?.entities[playerId];
     const roadId = me ? race?.config.road.edges[me.road.edge]?.id : undefined;
-    if (!C || !race || !me || !roadId || state !== 'race') {
+    if (!C || !careerRace || !race || !me || !roadId || state !== 'race') {
       ui.career.showPauseMap(null);
       return;
     }
