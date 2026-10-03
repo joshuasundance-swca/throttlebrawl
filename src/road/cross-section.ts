@@ -60,6 +60,13 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // The Pacific Northwest's places (run W-U, the pitch deck's #12): a car ferry's deck, whose outer
+  // lanes of parked pickups run to the hull's side; a closed main street on festival day, a sidewalk
+  // to the storefronts and the barricaded side streets; a fresh clear-cut, wide open dirt among the
+  // stumps (the stumps and pickups are solid `hazard` features, sim/riders/features.ts).
+  ['ferry', band(4.5, 'shoulder', 'hard')],
+  ['festival', band(4, 'kerb', 'hard')],
+  ['clearcut', band(16, 'dirt', 'soft')],
   // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
   // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
   // it); a plaza is wide open paving; the towers stand behind a sidewalk.
