@@ -92,7 +92,11 @@ describe('the career map screen', () => {
     expect(v.region.tally).toMatchObject({ won: 1, claimed: 2, secretsFound: 1 });
     expect(v.map.flatMap((p) => p.secrets).find((s) => s.id === 'boat-ramp-cut')?.found).toBe(true);
     const shown = resultView(REG, def, plan, status, r.report, 2, 5, r.profile);
-    expect(shown.title).toBe('WON');
+    // The Shakedown asks only to finish: second clears it, and only first is a win (skeptic, run W-S:
+    // last place read "WON").
+    expect(shown.title).toBe('2ND OF 5. CLEARED.');
+    expect(resultView(REG, def, plan, status, r.report, 5, 5, r.profile).title).toBe('5TH OF 5. CLEARED.');
+    expect(resultView(REG, def, plan, status, r.report, 1, 5, r.profile).title).toBe('WON');
     expect(shown.lines).toEqual([
       { label: '2nd place', cash: 900 },
       { label: 'Takedowns', cash: 100 },

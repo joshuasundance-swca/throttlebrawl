@@ -9,6 +9,7 @@ import { settleRace, type SettleReport } from './settle';
 import {
   askObjective,
   biggestMoment,
+  clearedNotWon,
   currentGig,
   fill,
   gigStatus,
@@ -211,6 +212,36 @@ describe('the paper: a headline built from what happened, styled per region', ()
     expect(lose.headline).toContain('4TH');
     expect(lose.style).toBe('newsletter');
   });
+
+  it('a race to the line cleared below first says cleared, never won (skeptic, run W-S: "won, 5th of 5")', () => {
+    const plan = planOf(KEYS, 'shakedown');
+    const paper = (place: number) =>
+      paperView(REG, showOf(REG, KEYS), {
+        plan,
+        report: report(),
+        tally: tally({ place }),
+        racesRun: 1,
+        timeOfDay: 'golden hour',
+      });
+    // The Shakedown asks only to finish: last place clears it, and the paper says so.
+    const last = paper(5);
+    expect(last.deck).toBe('The Shakedown: cleared, 5th of 5.');
+    expect(last.moment).toBe('lose');
+    expect(last.headline).toContain('5TH');
+    expect(last.headline).not.toMatch(/\bWON\b|\bWINS\b/);
+    expect(clearedNotWon(plan, report(), 5)).toBe(true);
+    expect(clearedNotWon(plan, report(), 2)).toBe(true);
+    // First place is a win.
+    const first = paper(1);
+    expect(first.deck).toBe('The Shakedown: won, 1st of 5.');
+    expect(first.moment).toBe('win');
+    expect(clearedNotWon(plan, report(), 1)).toBe(false);
+    // A grudge, a hunt or an escape won is won, whatever the place; a race not cleared is not.
+    expect(clearedNotWon(planOf(KEYS, 'kevin-grudge'), report(), 4)).toBe(false);
+    expect(clearedNotWon(planOf(KEYS, 'sunburn-hunt'), report(), 4)).toBe(false);
+    expect(clearedNotWon(planOf(KEYS, 'deputy-dash'), report(), 2)).toBe(false);
+    expect(clearedNotWon(plan, report({ outcome: 'placed', won: false }), 5)).toBe(false);
+  });
 });
 
 describe('the quiet frame: a poster before, at most one producer ask during', () => {
@@ -248,6 +279,44 @@ describe('the quiet frame: a poster before, at most one producer ask during', ()
       expect(h?.kind, 'a place ask only in a race to the line').not.toBe('finish-place');
     }
     expect(seen.size).toBe(show.asks.length);
+  });
+
+  it('an ask never repeats a goal the event already sets (skeptic, run W-S: the grudge bonus asked twice)', () => {
+    let examined = 0;
+    for (const d of DEFS) {
+      const show = showOf(REG, d);
+      for (const node of d.nodes) {
+        const plan = eventPlan(REG, node.event);
+        const kinds = plan.objectives.map((o) => o.kind);
+        const places = plan.objectives
+          .filter((o) => o.kind === 'finish-place')
+          .map((o) => (typeof o.params['maxPlace'] === 'number' ? o.params['maxPlace'] : 3));
+        for (let seed = 1; seed <= 40; seed++) {
+          const ask = pickAsk(show, plan, seed);
+          if (!ask) continue;
+          examined++;
+          // A place ask may still tighten the event's own place goal (top 2 in a top-3 race).
+          if (ask.kind === 'finish-place')
+            expect(Math.min(...places), `${plan.key} seed ${seed}`).toBeGreaterThan(ask.n);
+          else expect(kinds, `${plan.key} seed ${seed}`).not.toContain(ask.kind);
+        }
+      }
+    }
+    // Each tier-1 grudge has its own $300-of-style bonus: the producer never asks for it again.
+    for (const [d, node] of [
+      [KEYS, 'kevin-grudge'],
+      [PNW, 'juniper-grudge'],
+      [SF, 'collab'],
+    ] as const) {
+      const plan = planOf(d, node);
+      expect(
+        plan.objectives.map((o) => o.kind),
+        node,
+      ).toContain('style-cash');
+      for (let seed = 1; seed <= 40; seed++)
+        expect(pickAsk(showOf(REG, d), plan, seed)?.kind, `${node} seed ${seed}`).not.toBe('style-cash');
+    }
+    console.log(`[examined] ${examined} asks over every career event, seeds 1-40`);
   });
 
   it('the ask counts only from the moment it is asked, and the ledger pays it', () => {

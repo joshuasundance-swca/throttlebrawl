@@ -279,14 +279,24 @@ export function posterView(
 /** Where in the race the producer asks: this fraction of the route. [default] */
 export const ASK_AT_FRACTION = 0.25;
 
-/** The one ask a race may get (seeded by the race), or null. A takedown ask suits every kind. */
+/**
+ * The one ask a race may get (seeded by the race), or null. An ask never repeats a goal the event
+ * already sets: no style ask when the event pays its own style bonus, no takedown ask in a hunt
+ * (skeptic, run W-S: a tier-1 grudge's "$300 of style" came back as the producer's ask, met once and
+ * failed once on the same results). A place ask is the one exception, since every race to the line
+ * has a place goal: it fits only when it asks for better than every place the event names. [default]
+ */
 export function pickAsk(show: ShowText, plan: EventPlan, seed: number): AskDef | null {
+  const places = plan.objectives
+    .filter((o) => o.kind === 'finish-place')
+    .map((o) => (typeof o.params['maxPlace'] === 'number' ? o.params['maxPlace'] : 3));
   const fits = show.asks.filter((a) => {
-    // A place ask needs a race to the line with a field to beat.
-    if (a.kind === 'finish-place') return plan.kind === 'classic-race' && plan.field.length >= a.n;
+    // A place ask needs a race to the line with a field to beat, and a tighter place than the event's.
+    if (a.kind === 'finish-place')
+      return plan.kind === 'classic-race' && plan.field.length >= a.n && places.every((p) => a.n < p);
     // A takedown hunt already asks for takedowns.
-    if (a.kind === 'takedowns') return plan.kind !== 'takedown-hunt';
-    return true;
+    if (a.kind === 'takedowns' && plan.kind === 'takedown-hunt') return false;
+    return !plan.objectives.some((o) => o.kind === a.kind);
   });
   return pick(fits, `ask:${plan.key}:${seed}`) ?? null;
 }
@@ -398,8 +408,17 @@ export function biggestMoment(reg: ContentRegistry, input: MomentInput): Moment 
   if (air >= 2) return { ...none, kind: 'air', n: air };
   const misses = tally.style['nearMiss']?.count ?? 0;
   if (misses >= 3) return { ...none, kind: 'miss', n: misses };
-  if (report.won) return { ...none, kind: 'win' };
+  if (report.won && !clearedNotWon(plan, report, tally.place)) return { ...none, kind: 'win' };
   return { ...none, kind: 'lose', n: tally.place };
+}
+
+/**
+ * A race to the line cleared below first place: a finish-only or top-three event passed in 2nd to
+ * last. The career counts it as won (the map, the save), but the words say CLEARED, so "won" never
+ * sits beside "5th of 5" (skeptic, run W-S). A grudge, a hunt or an escape won is won at any place.
+ */
+export function clearedNotWon(plan: EventPlan, report: SettleReport, place: number): boolean {
+  return report.outcome === 'won' && plan.kind === 'classic-race' && place !== 1;
 }
 
 export interface PaperView {
@@ -438,7 +457,7 @@ export function paperView(
     report.outcome === 'busted'
       ? `${plan.name}: busted. Fine $${report.fine}.`
       : report.outcome === 'won'
-        ? `${plan.name}: won${tally.finished ? `, ${place} of ${tally.racers}` : ''}.`
+        ? `${plan.name}: ${clearedNotWon(plan, report, tally.place) ? 'cleared' : 'won'}${tally.finished ? `, ${place} of ${tally.racers}` : ''}.`
         : tally.finished
           ? `${plan.name}: ${place} of ${tally.racers}. Not enough.`
           : `${plan.name}: lost.`;

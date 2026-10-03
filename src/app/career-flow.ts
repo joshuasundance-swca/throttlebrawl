@@ -7,6 +7,7 @@
 import {
   careerMap,
   careerView,
+  clearedNotWon,
   currentGig,
   eventPlan,
   garageBikes,
@@ -87,9 +88,13 @@ export function resultView(
   racers: number,
   after: Profile,
 ): CareerResultView {
+  // A race to the line cleared below first is CLEARED, never WON beside "5th of 5" (skeptic, run W-S).
+  const cleared = clearedNotWon(plan, report, place)
+    ? `${place >= 1 ? `${ordinal(place).toUpperCase()} OF ${racers}. ` : ''}CLEARED.`
+    : null;
   const title =
     report.outcome === 'won'
-      ? 'WON'
+      ? (cleared ?? 'WON')
       : report.outcome === 'busted'
         ? 'BUSTED'
         : report.outcome === 'quit'
