@@ -12,27 +12,24 @@ import { InputFlag, type SimEvent, type SimInput } from '../../src/sim/types.ts'
 // - burst: the whole swipe arrives at once, stamped over 180 ms, so input sees the swipe before
 //   the press is sampled and the attack starts as a kick (input's window alone), with no punch
 //   outcome at all;
-// - real time: the swipe's end arrives about 150 ms after the press, so the punch has already
-//   started and its 7-tick wind-up is over when the kick flag reaches the sim; only combat's
-//   kick-conversion window (combat.kickConvertMs, 15 ticks) turns it into a kick, so the attack
-//   ends in a kick (the punch's miss may be reported first when the flag arrives after its
-//   active moment). The events are stamped (the gesture is judged by the stamps), but when they
-//   are *delivered* depends on the runner's load: an attempt whose kick flag reached the sim
-//   outside 7-15 ticks after the press, or whose punch landed before the kick flag arrived,
-//   proves nothing about the conversion and is sent again, up to 4 times.
+// - late: the rest of the swipe is sent only after the sim has sampled the press, so the punch has
+//   already started when the kick flag arrives. The gesture is judged by the events' stamps, so
+//   the kick flag must still reach the sim, on a later tick than the press.
+// Whether a late kick flag converts the punch depends only on how many ticks after the press it
+// arrives (combat.kickConvertMs, 15 ticks). tests/sim/input-kick-convert-window.test.ts checks that
+// at exact ticks, for every lag. This spec used to check it here, with a real-time swipe that
+// reached the sim 7-15 ticks after its press only when the runner's load allowed (up to four
+// attempts), and it waited a fixed 1.5 s between swipes. Every wait below is on the sim's own state.
 
 interface Handle {
   inputs(from?: number): SimInput[];
   events(): readonly SimEvent[];
   playerId(): number;
+  /** The player's attack phase is 'idle' once a swing and its cooldown end ('cooldown' until then). */
+  snapshot(): { entities: { attackPhase: string }[] } | null;
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 type ChainEvent = { tick: number; type: string; causeId: number | undefined; data: SimEvent['data'] };
-
-/** The player's attack phase in the sim's latest snapshot ('idle' once a swing and its cooldown end). */
-type PhaseWindow = Window & {
-  __game?: { snapshot(): { entities: { attackPhase: string }[] } | null; playerId(): number };
-};
 
 type Point = { x: number; y: number; id: number };
 const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', points: Point[], at: number) =>
@@ -50,9 +47,8 @@ async function startRace(page: Page, problems: string[]) {
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
-    // The Classic look, through the saved record: this test times touch delivery, and the default
-    // Ink + 60s film look (run W-O) loads a software-rendered CI runner enough to push the swipe's
-    // delivery out of its window (PR #232's first CI run).
+    // The Classic look, through the saved record: the lighter look keeps a software-rendered CI
+    // runner's frames short (PR #232's first CI run timed the old real-time swipe out in the Ink look).
     localStorage.setItem(
       'mbrawl:settings',
       JSON.stringify({
@@ -73,15 +69,15 @@ async function startRace(page: Page, problems: string[]) {
 
 /**
  * One 26 px swipe down, stamped over `durS` (default 180 ms; 24 px, kickSwipePx, is crossed only at
- * the end). `realMs` is how long to wait, in real time, before sending the end of the swipe (0: all
- * at once). `dir` is the swipe's unit direction in screen px (default straight down; playtest 2's
- * directional kick swipes up, or down to a side).
+ * the end). With `late`, the rest of the swipe is sent only once the sim has sampled the press;
+ * otherwise the whole swipe goes at once. `dir` is the swipe's unit direction in screen px (default
+ * straight down; playtest 2's directional kick swipes up, or down to a side).
  */
 async function swipe(
   page: Page,
   cdp: CDPSession,
   id: number,
-  realMs: number,
+  late: boolean,
   durS = 0.18,
   dir: { x: number; y: number } = { x: 0, y: 1 },
 ) {
@@ -98,40 +94,50 @@ async function swipe(
     [16, (2 * durS) / 3],
     [26, durS],
   ] as const;
-  if (realMs === 0) {
-    await Promise.all([
-      touch(cdp, 'touchStart', [{ ...attack, id }], t0),
-      ...moves.map(([r, dt]) =>
-        touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt),
-      ),
-    ]);
-  } else {
-    await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
-    // eslint-disable-next-line no-restricted-syntax -- a touch gesture's own timing: the kick swipe window is wall-clock ms by design
-    await page.waitForTimeout(realMs);
-    await Promise.all(
+  const sendMoves = () =>
+    Promise.all(
       moves.map(([r, dt]) =>
         touch(cdp, 'touchMove', [{ x: attack.x + r * dir.x, y: attack.y + r * dir.y, id }], t0 + dt),
       ),
     );
+  if (late) {
+    await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
+    // The sim has sampled the press: its attack flag is in the recorded inputs.
+    await page.waitForFunction(
+      ([f, attackFlag]) =>
+        ((window as TestWindow).__game?.inputs(f) ?? []).some((s) => (s.flags & attackFlag) !== 0),
+      [from, InputFlag.attack] as const,
+      { timeout: 30_000 },
+    );
+    await sendMoves();
+  } else {
+    await Promise.all([touch(cdp, 'touchStart', [{ ...attack, id }], t0), sendMoves()]);
   }
   await touch(cdp, 'touchEnd', [], t0 + durS + 0.01);
-  // The kick's wind-up, active moment, recovery and cooldown all play out: at least 1.5 s, then
-  // until the sim shows the player's attack idle again. A kick asked for while the last one cools
-  // down is a punch by design (sim/combat), and a loaded runner steps fewer sim ticks per real
-  // second (the loop takes at most 4 per frame), so 1.5 s alone was not always the kick's 13 + 6 +
-  // 27 ticks and 30-tick cooldown: in main's CI run 36965896101 the next swipe reached the sim 69
-  // ticks after the kick began, and punched.
-  // eslint-disable-next-line no-restricted-syntax -- debt: stands for the kick's cooldown; inventory R8 moves this check to sim ticks
-  await page.waitForTimeout(1500);
+  // The swing plays out: the press reached the sim, the player's attack from it started, and the
+  // attack phase is back to 'idle' (the snapshot says 'cooldown' until the kick's 30-tick cooldown
+  // ends, and a kick asked for while the last one cools down is a punch by design). The start is
+  // latched in the page (an attackStart event, or a phase other than 'idle', after the press), as the
+  // page keeps only its latest events. All of it is sim state, so a slow runner only takes longer;
+  // the timeout is a hang guard.
   await page.waitForFunction(
-    () => {
-      const g = (window as PhaseWindow).__game;
-      const me = g?.snapshot()?.entities[g.playerId()];
-      return me?.attackPhase === 'idle';
+    ([f, attackFlag]) => {
+      const w = window as TestWindow & { __swingFrom?: number };
+      const g = w.__game;
+      if (!g) return false;
+      const ins = g.inputs(f);
+      const press = ins.findIndex((s) => (s.flags & attackFlag) !== 0);
+      if (press < 0 || ins.length <= press + 1) return false;
+      const player = g.playerId();
+      const phase = g.snapshot()?.entities[player]?.attackPhase;
+      const started = g
+        .events()
+        .some((e) => e.actor === player && e.type === 'attackStart' && e.tick >= f + press);
+      if (started || (phase !== undefined && phase !== 'idle')) w.__swingFrom = f;
+      return w.__swingFrom === f && phase === 'idle';
     },
-    null,
-    { timeout: 30_000 },
+    [from, InputFlag.attack] as const,
+    { timeout: 60_000 },
   );
 
   const inputs = await page.evaluate((f) => (window as TestWindow).__game!.inputs(f), from);
@@ -174,7 +180,7 @@ test('a scripted 150 or 180 ms swipe down on the attack button kicks, not punche
   const cdp = await page.context().newCDPSession(page);
 
   // Burst: input recognises the 180 ms swipe before the press is sampled.
-  const burst = await swipe(page, cdp, 1, 0);
+  const burst = await swipe(page, cdp, 1, false);
   console.log(
     `burst swipe: attack at +${burst.press}, kick flag at +${burst.kick}; ${JSON.stringify(burst.chain)}`,
   );
@@ -184,7 +190,7 @@ test('a scripted 150 or 180 ms swipe down on the attack button kicks, not punche
   expect(hasPunchOutcome(burst.chain), 'no punch landed or missed').toBe(false);
 
   // Playtest 1b: a quicker natural swipe, about 150 ms, kicks too.
-  const quick = await swipe(page, cdp, 2, 0, 0.15);
+  const quick = await swipe(page, cdp, 2, false, 0.15);
   console.log(
     `150 ms burst swipe: attack at +${quick.press}, kick flag at +${quick.kick}; ${JSON.stringify(quick.chain)}`,
   );
@@ -193,30 +199,20 @@ test('a scripted 150 or 180 ms swipe down on the attack button kicks, not punche
   expect(isKickChain(quick.chain), 'the 150 ms swipe is a kick').toBe(true);
   expect(hasPunchOutcome(quick.chain), 'no punch landed or missed after the 150 ms swipe').toBe(false);
 
-  // Real time: the kick flag reaches the sim after the punch's wind-up; combat converts it.
-  let judged = false;
-  for (let attempt = 1; attempt <= 4 && !judged; attempt++) {
-    const r = await swipe(page, cdp, 10 + attempt, 150);
-    const lag = r.kick - r.press;
-    console.log(
-      `real-time swipe, attempt ${attempt}: attack at +${r.press}, kick flag at +${r.kick} (${lag} ticks after the press); ${JSON.stringify(r.chain)}`,
-    );
-    // Delivered outside the window under test, or the punch landed first (combat keeps a landed
-    // jab and kicks after it, by design): inconclusive, send it again.
-    const landed = r.chain.some((e) => e.type === 'hit' && e.data['weapon'] === 'base:punch');
-    if (r.press < 0 || r.kick < 0 || lag < 7 || lag > 15 || landed) continue;
-    judged = true;
-    // combat-3's rule: the kick flag converts an attack at most combat.kickConvertMs (15 ticks) old
-    // in any phase. A flag that arrives after the punch's active moment has ended still converts,
-    // after the punch's miss has been reported; the swipe still ends in a kick, never a lone punch.
-    const whiffed = r.chain.some((e) => e.type === 'attackMiss' && e.data['weapon'] === 'base:punch');
-    console.log(`real-time swipe: the punch's miss was reported before the kick: ${whiffed}`);
-    expect(endsInKick(r.chain), 'the swipe ends in a kick that lands or misses').toBe(true);
-  }
-  expect(
-    judged,
-    'a real-time swipe reached the sim 7-15 ticks after its press at least once in 4 attempts',
-  ).toBe(true);
+  // Late: the swipe's end reaches the page after the sim has sampled the press. The stamped gesture
+  // is still a kick swipe, so the kick flag reaches the sim, after the press, and finds the punch
+  // already started. Whether it converts depends only on the lag in ticks: printed here, checked at
+  // exact ticks in tests/sim/input-kick-convert-window.test.ts.
+  const late = await swipe(page, cdp, 11, true);
+  console.log(
+    `late swipe: attack at +${late.press}, kick flag at +${late.kick} (${late.kick - late.press} ticks ` +
+      `after the press; ends in a kick: ${endsInKick(late.chain)}); ${JSON.stringify(late.chain)}`,
+  );
+  expect(late.press, 'the press reached the sim').toBeGreaterThanOrEqual(0);
+  expect(late.kick, 'the late swipe still set the kick flag, after the press').toBeGreaterThan(late.press);
+  expect(late.chain[0]?.data['weapon'], 'the press started a punch before the flag arrived').toBe(
+    'base:punch',
+  );
   expect(problems).toEqual([]);
 });
 
@@ -230,13 +226,13 @@ test('playtest 2: a swipe up is the straight kick, a swipe down-left kicks left'
   await startRace(page, problems);
   const cdp = await page.context().newCDPSession(page);
 
-  const up = await swipe(page, cdp, 21, 0, 0.15, { x: 0, y: -1 });
+  const up = await swipe(page, cdp, 21, false, 0.15, { x: 0, y: -1 });
   console.log(`swipe up: attack at +${up.press}, kick flag at +${up.kick}; ${JSON.stringify(up.chain)}`);
   const upStart = up.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
   expect(upStart, 'the swipe up starts a kick').toBeDefined();
   expect(upStart?.data['straight'], 'and it is the straight kick').toBe(true);
 
-  const left = await swipe(page, cdp, 22, 0, 0.15, { x: -0.75, y: 0.66 });
+  const left = await swipe(page, cdp, 22, false, 0.15, { x: -0.75, y: 0.66 });
   console.log(`swipe down-left: attack at +${left.press}; ${JSON.stringify(left.chain)}`);
   const leftStart = left.chain.find((e) => e.type === 'attackStart' && e.data['weapon'] === 'base:kick');
   expect(leftStart, 'the swipe down-left starts a kick').toBeDefined();

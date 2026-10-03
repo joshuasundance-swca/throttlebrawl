@@ -90,6 +90,7 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     step: 0.1,
     unit: '×',
     affectsSim: true,
+    system: true,
   },
   {
     id: 'traffic.densitySame',

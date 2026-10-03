@@ -66,6 +66,7 @@ export const GROUND_TUNING: readonly TuningParamDecl[] = [
     step: 1,
     unit: '',
     affectsSim: true,
+    system: true,
   },
   ...GROUND_SURFACES.flatMap((g) => [
     scale(gripParam(g), `Grip on ${g}`, SURFACE_FEEL[g].grip),

@@ -7,7 +7,7 @@ sdk: static
 app_file: dist/index.html
 pinned: false
 license: mit
-short_description: The newest work-in-progress branch of throttlebrawl
+short_description: A work-in-progress branch of throttlebrawl, on request
 ---
 
 The Space README is this frontmatter followed by the repo README's body; scripts/space-stage.mjs

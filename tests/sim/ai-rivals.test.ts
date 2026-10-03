@@ -7,178 +7,95 @@
 //     once the pack has a punch, i.e. when combat-1 lands);
 //   - the batch prints the gap from first to last at the finish;
 //   - a scripted race gives the same hash every run.
-// Interim: dev-1 owns the shared batch (tests/sim/batch.ts). Until it lands, this file runs its own
-// 50 races with a lane-keeping, full-throttle player; switch `runRace` to the shared results then.
+// Since the determinism run (2026-10-03, R9) these read dev-1's shared batch (tests/sim/batch.ts:
+// 50 seeded races with the bot in the player slot, computed once per source tree) and the ai-rivals
+// batch hook (tests/sim/hooks/ai-rivals.ts) for the per-tick stall and end state. The file used to
+// race its own 50 races (about 285 s of CI time) with a lane-keeping full-throttle player, under a
+// wall-clock limit that fired whenever content grew. The race length is bounded in ticks (the
+// batch's MAX_TICKS), so the beforeAll limit below is only a hang guard, above the job's own limit.
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildSimConfig, streamForEvent } from '../../src/app/config';
-import { basePackFiles, buildRegistry, type ContentRegistry } from '../../src/content';
-import { createSim, quantizeInput, type EntitySnapshot, type SimConfig } from '../../src/sim/api';
+import { BATCH_RACES, BATCH_TIMEOUT_MS, simBatch, type BatchResult, type RaceResult } from './batch';
+import type { AiRivalsHookResult } from './hooks/ai-rivals';
 
 const RIVALS = ['deacon-vane', 'dial-up', 'chad-speedwell', 'kevin-from-accounting'];
-const SEEDS = Array.from({ length: 50 }, (_, i) => 1000 + i * 7919);
 const STUCK_TICKS = 600; // 10 s
-const MAX_TICKS = 60 * 60 * 6;
 
-/**
- * The base pack with draft content (traffic types are drafts until the traffic lane flips them), as
- * the dev and staging builds and dev-1's shared batch load it, and with the default event's field
- * holding all four rivals (a no-op once riders-3's field lands).
- */
-function registry(): ContentRegistry {
-  const files = basePackFiles().map((f) => {
-    const json = f.json as { type?: string; field?: { riders?: string[] } };
-    if (json.type !== 'event' || !json.field) return f;
-    const riders = [...(json.field.riders ?? [])];
-    for (const id of RIVALS) if (!riders.includes(id)) riders.push(id);
-    return { ...f, json: { ...json, field: { ...json.field, riders } } };
-  });
-  return buildRegistry(files, { includeDrafts: true });
+let batch: BatchResult;
+beforeAll(async () => {
+  batch = await simBatch();
+}, BATCH_TIMEOUT_MS);
+
+function hook(r: RaceResult): AiRivalsHookResult {
+  const h = r.hooks['ai-rivals'] as AiRivalsHookResult | undefined;
+  if (!h) throw new Error(`seed ${r.seed}: the ai-rivals batch hook did not run`);
+  return h;
 }
 
-const REG = registry();
-const STREAM = streamForEvent(REG);
-const configFor = (seed: number): SimConfig => buildSimConfig(REG, STREAM, { seed });
-const COMBAT_LIVE = configFor(1).weapons.some((w) => w.contentId.endsWith(':punch'));
-const VEHICLES_LIVE = configFor(1).trafficTypes.some((t) => t.category !== 'pedestrian');
+type EndState = 'finished' | 'down' | 'busted' | 'running';
 
-/** The player: full throttle, steering to its lane centre (the stub bot's policy). */
-function playerInput(me: EntitySnapshot | undefined, config: SimConfig) {
-  if (!me) return quantizeInput({ throttle: 0, brake: 0, steer: 0, flags: 0 });
-  const { edge, s, d, dir, yaw } = me.road;
-  const lanes = config.route.lanesAt(edge, s);
-  const lane = lanes.find((l) => l.kind === 'drive' && l.direction === dir) ?? lanes[0];
-  const v = Math.max(me.speed, 5);
-  const kappa = config.route.kappaAt(edge, s) * dir;
-  const steer = 0.35 * ((lane?.dCenterM ?? 0) - d) * dir - 2.5 * yaw + (kappa * v * v) / 22;
-  return quantizeInput({ throttle: 1, brake: 0, steer: Math.max(-1, Math.min(1, steer)), flags: 0 });
-}
-
-interface RaceResult {
-  seed: number;
-  ticks: number;
-  rivals: number[];
-  playerId: number;
-  /** Per rival: finished, down, busted, or none of those. */
-  endState: Record<number, 'finished' | 'down' | 'busted' | 'running'>;
-  /** Per rival: longest stretch without 1 m of progress while not down and not finished, ticks. */
-  longestStall: Record<number, number>;
-  hitsOnPlayer: number;
-  /** Rival wobbles and crashes from contact with traffic. */
-  trafficContacts: number;
-  /** Rivals placed by the race-end timeout (riders-3's `classified` finish) rather than the line. */
-  classified: number;
-  finishTicks: Record<number, number>;
-  /** Metres from first to last when the first rider finished. */
-  spreadAtFirstFinish: number;
-  finalHash: number;
-}
-
-function runRace(seed: number): RaceResult {
-  const config = configFor(seed);
-  const sim = createSim(config);
-  const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
-  const rivals = config.riders.flatMap((r, i) => (r.controller.kind === 'ai' ? [i] : []));
-  const best: Record<number, number> = {};
-  const since: Record<number, number> = {};
-  const longestStall: Record<number, number> = {};
-  const busted = new Set<number>();
-  const finishTicks: Record<number, number> = {};
-  let classified = 0;
-  const hitCauses = new Set<number>();
-  let trafficContacts = 0;
-  let spread = -1;
-  for (const id of rivals) {
-    best[id] = Infinity;
-    since[id] = 0;
-    longestStall[id] = 0;
-  }
-  while (!sim.isOver() && sim.tick < MAX_TICKS) {
-    const before = sim.snapshot();
-    sim.step([playerInput(before.entities[playerId], config)]);
-    for (const e of sim.events()) {
-      if (e.type === 'bust' && e.target !== undefined) busted.add(e.target);
-      if (e.type === 'finish') {
-        finishTicks[e.actor] = e.tick;
-        if (e.data['classified'] === true && rivals.includes(e.actor)) classified++;
-      }
-      if ((e.type === 'hit' || e.type === 'kick') && e.target === playerId && rivals.includes(e.actor)) {
-        hitCauses.add(e.causeId ?? -e.tick);
-      }
-      if (
-        (e.type === 'wobble' || e.type === 'crash') &&
-        e.data['cause'] === 'traffic' &&
-        rivals.includes(e.actor)
-      ) {
-        trafficContacts++;
-      }
-    }
-    const snap = sim.snapshot();
-    if (spread < 0 && snap.race.finishOrder.length > 0) {
-      const dists = snap.entities.filter((e) => e.kind === 'rider').map((e) => e.distanceToFinish);
-      spread = Math.max(...dists) - Math.min(...dists);
-    }
-    for (const id of rivals) {
-      const e = snap.entities[id];
-      if (!e) continue;
-      const down = e.mode === 'Tumble' || e.mode === 'OnFoot';
-      if (e.distanceToFinish < (best[id] ?? Infinity) - 1 || down || e.finished || busted.has(id)) {
-        best[id] = Math.min(best[id] ?? Infinity, e.distanceToFinish);
-        since[id] = sim.tick;
-      }
-      longestStall[id] = Math.max(longestStall[id] ?? 0, sim.tick - (since[id] ?? 0));
-    }
-  }
-  const snap = sim.snapshot();
-  const endState: RaceResult['endState'] = {};
-  for (const id of rivals) {
-    const e = snap.entities[id];
-    endState[id] = snap.race.finishOrder.includes(id)
+function endStates(r: RaceResult): { id: number; state: EndState }[] {
+  const h = hook(r);
+  const busted = new Set(
+    r.events.flatMap((e) => (e.type === 'bust' && e.target !== undefined ? [e.target] : [])),
+  );
+  return h.rivals.map((id, k) => {
+    const mode = h.endMode[k];
+    const state: EndState = r.finishOrder.includes(id)
       ? 'finished'
       : busted.has(id)
         ? 'busted'
-        : e && (e.mode === 'Tumble' || e.mode === 'OnFoot')
+        : mode === 'Tumble' || mode === 'OnFoot'
           ? 'down'
           : 'running';
-  }
-  return {
-    seed,
-    ticks: sim.tick,
-    rivals,
-    playerId,
-    endState,
-    longestStall,
-    hitsOnPlayer: hitCauses.size,
-    trafficContacts,
-    classified,
-    finishTicks,
-    spreadAtFirstFinish: spread,
-    finalHash: sim.hash(),
-  };
+    return { id, state };
+  });
 }
 
-describe('ai-1: four box rivals over 50 seeded races', () => {
-  let results: RaceResult[] = [];
-  // The 50 races took 156 to 333 s on CI runners on 2026-10-02 (225 s on the last green main run),
-  // so the old 300 s limit timed the hook out on slower runners; 600 s, like the other batch files.
-  beforeAll(() => {
-    results = SEEDS.map(runRace);
-  }, 600_000);
+const isRival = (r: RaceResult, id: number) => hook(r).rivals.includes(id);
 
+/** Distinct rival attacks that landed on the player (a hit and its kick share a cause). */
+function hitsOnPlayer(r: RaceResult): number {
+  const causes = new Set<number>();
+  for (const e of r.events)
+    if ((e.type === 'hit' || e.type === 'kick') && e.target === r.playerId && isRival(r, e.actor))
+      causes.add(e.causeId ?? -e.tick);
+  return causes.size;
+}
+
+const finishTicks = (r: RaceResult): Record<number, number> => {
+  const out: Record<number, number> = {};
+  for (const e of r.events) if (e.type === 'finish') out[e.actor] = e.tick;
+  return out;
+};
+
+const print = (line: string) => process.stdout.write(line + '\n');
+const median = (xs: number[]) => xs[Math.floor(xs.length / 2)] ?? NaN;
+
+describe('ai-1: four box rivals over 50 seeded races', () => {
   it('races all four rivals', () => {
-    for (const r of results) expect(r.rivals.length).toBe(4);
+    expect(batch.races.length).toBe(BATCH_RACES);
+    for (const r of batch.races) {
+      const ids = hook(r).contentIds.map((c) => c.slice(c.indexOf(':') + 1));
+      expect([...ids].sort(), `seed ${r.seed}`).toEqual([...RIVALS].sort());
+    }
   });
 
   it('every rival finishes, or ends down or busted', () => {
-    const bad = results.flatMap((r) =>
-      Object.entries(r.endState)
-        .filter(([, s]) => s === 'running')
-        .map(([id]) => `seed ${r.seed} rival ${id}`),
-    );
     const counts = { finished: 0, down: 0, busted: 0, running: 0 };
-    for (const r of results) for (const s of Object.values(r.endState)) counts[s]++;
-    console.log(
-      `[examined] ${results.length} races, ${results.length * 4} rival results: ` +
-        `finished ${counts.finished} (of which classified at the timeout ${results.reduce((n, r) => n + r.classified, 0)}), ` +
+    const bad: string[] = [];
+    let classified = 0;
+    for (const r of batch.races) {
+      for (const { id, state } of endStates(r)) {
+        counts[state]++;
+        if (state === 'running') bad.push(`seed ${r.seed} rival ${id}`);
+      }
+      classified += r.events.filter(
+        (e) => e.type === 'finish' && e.data['classified'] === true && isRival(r, e.actor),
+      ).length;
+    }
+    print(
+      `[examined] ${batch.races.length} races, ${counts.finished + counts.down + counts.busted + counts.running} rival results: ` +
+        `finished ${counts.finished} (of which classified at the timeout ${classified}), ` +
         `down ${counts.down}, busted ${counts.busted}, running ${counts.running}`,
     );
     expect(bad).toEqual([]);
@@ -187,73 +104,84 @@ describe('ai-1: four box rivals over 50 seeded races', () => {
   it('no rival is ever stuck for 10 s while not down', () => {
     let worst = 0;
     const bad: string[] = [];
-    for (const r of results) {
-      for (const [id, stall] of Object.entries(r.longestStall)) {
+    for (const r of batch.races) {
+      const h = hook(r);
+      h.longestStall.forEach((stall, k) => {
         worst = Math.max(worst, stall);
-        if (stall >= STUCK_TICKS) bad.push(`seed ${r.seed} rival ${id}: ${(stall / 60).toFixed(1)} s`);
-      }
+        if (stall >= STUCK_TICKS)
+          bad.push(`seed ${r.seed} rival ${h.rivals[k]}: ${(stall / 60).toFixed(1)} s`);
+      });
     }
-    console.log(`longest rival stall without progress: ${(worst / 60).toFixed(2)} s (limit 10 s)`);
+    print(
+      `[examined] ${batch.races.length * 4} rival races; longest rival stall without progress: ${(worst / 60).toFixed(2)} s (limit 10 s)`,
+    );
     expect(bad).toEqual([]);
   });
 
   it('prints the gap from first to last at the finish', () => {
-    const gaps = results.map((r) => {
-      const ticks = Object.values(r.finishTicks);
+    const gaps = batch.races.map((r) => {
+      const ticks = Object.values(finishTicks(r));
       return ticks.length > 1 ? (Math.max(...ticks) - Math.min(...ticks)) / 60 : NaN;
     });
     const ok = gaps.filter(Number.isFinite).sort((a, b) => a - b);
-    const spreads = results.map((r) => r.spreadAtFirstFinish).sort((a, b) => a - b);
-    const median = (xs: number[]) => xs[Math.floor(xs.length / 2)] ?? NaN;
-    console.log(
+    const spreads = batch.races.map((r) => hook(r).spreadAtFirstFinish).sort((a, b) => a - b);
+    print(
       `gap first to last finisher: median ${median(ok).toFixed(1)} s, max ${(ok[ok.length - 1] ?? NaN).toFixed(1)} s ` +
         `over ${ok.length} races; field spread when the winner finished: median ${median(spreads).toFixed(0)} m, ` +
         `max ${(spreads[spreads.length - 1] ?? NaN).toFixed(0)} m`,
     );
     // The margin against the race-end timeout (30 s after the player): the latest rival home.
-    const late = results
+    const late = batch.races
       .map((r) => {
-        const pf = r.finishTicks[r.playerId];
-        const rivals = r.rivals.map((id) => r.finishTicks[id]).filter((x) => x !== undefined);
+        const ft = finishTicks(r);
+        const pf = ft[r.playerId];
+        const rivals = hook(r)
+          .rivals.map((id) => ft[id])
+          .filter((x) => x !== undefined);
         return pf === undefined || rivals.length === 0 ? NaN : (Math.max(...rivals) - pf) / 60;
       })
       .filter(Number.isFinite)
       .sort((a, b) => a - b);
-    console.log(
-      `latest rival home after the player: median ${median(late).toFixed(1)} s, max ${(late[late.length - 1] ?? NaN).toFixed(1)} s ` +
-        `(race-end timeout ${(configFor(1).event.raceEndTimeoutTicks / 60).toFixed(0)} s)`,
+    print(
+      `latest rival home after the player: median ${median(late).toFixed(1)} s, max ${(late[late.length - 1] ?? NaN).toFixed(1)} s`,
     );
-    expect(ok.length).toBe(results.length);
+    expect(ok.length).toBe(batch.races.length);
   });
 
   it('prints how often rivals touch traffic (so they do not all pile into the same car)', () => {
-    const contacts = results.reduce((n, r) => n + r.trafficContacts, 0);
-    const vehicles = VEHICLES_LIVE ? 'traffic present' : 'NO traffic in the pack yet';
-    console.log(
-      `rival traffic contacts (wobble or crash): ${contacts} over ${results.length} races, ` +
-        `${(contacts / (results.length * 4)).toFixed(2)} per rival per race (${vehicles})`,
+    let contacts = 0;
+    let vehicles = 0;
+    for (const r of batch.races) {
+      vehicles = Math.max(vehicles, r.field.vehiclesMax);
+      contacts += r.events.filter(
+        (e) =>
+          (e.type === 'wobble' || e.type === 'crash') && e.data['cause'] === 'traffic' && isRival(r, e.actor),
+      ).length;
+    }
+    const perRivalRace = contacts / (batch.races.length * 4);
+    print(
+      `rival traffic contacts (wobble or crash): ${contacts} over ${batch.races.length} races, ` +
+        `${perRivalRace.toFixed(2)} per rival per race (${vehicles > 0 ? 'traffic present' : 'NO traffic in the batch'})`,
     );
     // A loose guard, not a target: about a quarter per rival per race when this was written.
-    expect(contacts / (results.length * 4)).toBeLessThan(1);
+    expect(perRivalRace).toBeLessThan(1);
   });
 
-  it.skipIf(!COMBAT_LIVE)('rivals land hits on the player (fails at zero)', () => {
-    const total = results.reduce((n, r) => n + r.hitsOnPlayer, 0);
-    const races = results.filter((r) => r.hitsOnPlayer > 0).length;
-    console.log(
-      `rival hits landed on the player: ${total} over ${results.length} races (${races} races with a hit)`,
+  it('rivals land hits on the player (fails at zero)', () => {
+    const total = batch.races.reduce((n, r) => n + hitsOnPlayer(r), 0);
+    const races = batch.races.filter((r) => hitsOnPlayer(r) > 0).length;
+    print(
+      `rival hits landed on the player: ${total} over ${batch.races.length} races (${races} races with a hit)`,
     );
     expect(total).toBeGreaterThan(0);
   });
 
   it('a scripted race gives the same hash every run', () => {
-    const seed = SEEDS[0] ?? 1;
-    expect(runRace(seed).finalHash).toBe(results[0]?.finalHash);
+    // The batch replays every race from its recorded inputs in a fresh sim, and compares the state
+    // hash every HASH_EVERY_TICKS ticks and at the end: all 50 races, not one.
+    for (const r of batch.races) {
+      expect(r.replayHashes.length, `seed ${r.seed}: replayed`).toBe(r.hashes.length);
+      expect(r.firstMismatch, `seed ${r.seed}: first replay mismatch`).toBe(-1);
+    }
   });
 });
-
-if (!COMBAT_LIVE) {
-  console.log(
-    'NOT ACTIVE: rival hits on the player (no punch weapon in the pack yet; combat-1 switches it on)',
-  );
-}

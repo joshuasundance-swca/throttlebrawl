@@ -8,7 +8,7 @@
 import type { AppHandle } from '../../app';
 import { SIM_TUNING, tuningDefaults } from '../../sim/api';
 import { percentiles } from '../perf';
-import { captureErrors, createErrorLog, type ErrorLog, type ErrorSource } from './errors';
+import { pageErrors } from './errors';
 import {
   buildDebugFile,
   buildSummary,
@@ -43,22 +43,8 @@ function resumeInfo(app: AppHandle): ResumeReport | null {
     return null;
   }
 }
-export { captureErrors, createErrorLog, MAX_ERRORS } from './errors';
+export { captureErrors, createErrorLog, installErrorCapture, MAX_ERRORS, pageErrors } from './errors';
 export type { ErrorLog } from './errors';
-
-// One log per page, filled from the moment installDev runs.
-let errorLog: ErrorLog = createErrorLog();
-let capturing = false;
-
-/** Starts collecting the page's errors for the report (once). */
-export function installErrorCapture(source: ErrorSource = window): ErrorLog {
-  if (!capturing) {
-    capturing = true;
-    errorLog = createErrorLog();
-    captureErrors(source, errorLog);
-  }
-  return errorLog;
-}
 
 interface MemoryInfo {
   usedJSHeapSize: number;
@@ -85,7 +71,7 @@ export function gatherReport(app: AppHandle): ReportData {
     frame: app.frameStats(),
     step: percentiles(app.stepTimes()),
     heapMB: memory ? memory.usedJSHeapSize / (1024 * 1024) : null,
-    errors: [...errorLog.list()],
+    errors: [...pageErrors().list()],
     events: [...app.recentEvents()],
     resume: resumeInfo(app),
   };

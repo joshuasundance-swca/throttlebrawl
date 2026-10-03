@@ -1,5 +1,6 @@
 // dev: the test handle, the bot, the perf probe, the self-test and the debug report
-// (docs/architecture.md, "Testing seams"). Only src/main.ts imports this module; it ships in
+// (docs/architecture.md, "Testing seams"). Only src/main.ts imports this module, lazily (a chunk
+// off the first-load budget; ./boot.ts is the small part that loads with the page); it ships in
 // production builds, but the test handle exists only behind the test flag, the perf overlay only
 // with `?debug=1` and the self-test only with `?selftest=1`. dev-1, dev-2 and dev-3 own the
 // sub-folders after app-1.

@@ -137,6 +137,7 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     step: 0.1,
     unit: '×',
     affectsSim: true,
+    system: true,
   },
   {
     // Playtest 2's heat meter: how fast riding clean cools it, once calm for HEAT.calmS. [default] 2.5.
@@ -161,6 +162,7 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     step: 0.5,
     unit: '×',
     affectsSim: true,
+    system: true,
   },
   {
     id: 'cops.spawnChance',
@@ -172,6 +174,7 @@ export const COPS_TUNING: readonly TuningParamDecl[] = [
     step: 0.05,
     unit: '',
     affectsSim: true,
+    system: true,
   },
   {
     id: 'cops.sirenLeadS',

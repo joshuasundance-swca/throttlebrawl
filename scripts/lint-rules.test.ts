@@ -100,6 +100,18 @@ describe('lint rules fire', () => {
       'modules/boundaries',
     ],
     [
+      'main.ts reaching into dev past its two entries (index and boot)',
+      'src/main.ts',
+      "export * from './dev/handle';",
+      'modules/boundaries',
+    ],
+    [
+      "ui importing dev's boot entry (still the composition root rule)",
+      'src/ui/probe.ts',
+      "export * from '../dev/boot';",
+      'modules/boundaries',
+    ],
+    [
       'ui importing app (composition root rule)',
       'src/ui/probe.ts',
       "export * from '../app/index';",
@@ -159,6 +171,11 @@ describe('lint rules stay quiet on allowed code', () => {
     ],
     ['Math.sqrt in the sim', 'src/sim/probe.ts', 'export const a = Math.sqrt(2);'],
     ['main.ts importing app and dev', 'src/main.ts', "export * from './app';\nexport * from './dev/index';"],
+    [
+      "main.ts importing dev's boot entry and loading its index lazily",
+      'src/main.ts',
+      "export * from './dev/boot';\nexport const load = () => import('./dev');",
+    ],
     [
       'dev importing app and the sim contract',
       'src/dev/bot/probe.ts',

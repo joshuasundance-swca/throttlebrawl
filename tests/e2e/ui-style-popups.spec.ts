@@ -122,10 +122,14 @@ async function startRace(page: Page, opts: { portrait?: boolean; mirror?: boolea
 }
 
 /**
- * Widens the bark bubble to the longest base-pack line, feeds the pop-ups, waits until they have
- * settled (the slide-in and any move below the bubble take about 0.1 s) and measures everything in
- * one go, while the bubble is still up. Measuring mid-slide would read a box still moving into
- * place; waiting a fixed time instead could land in the fade-out on a slow machine.
+ * Widens the bark bubble to the longest base-pack line, feeds the pop-ups, and measures everything
+ * on a frozen frame, while the bubble is still up. The feed reaches the screen on the next drawn
+ * frame (ui raises the chips and moves the stack off the bubble in the same race update). In the
+ * first frame that shows them, before any timer can run, every pop-up animation is paused at a set
+ * point of its dwell (a quarter of the way in: past the 10% slide-in, before the 75% fade) and the
+ * stack's move is finished, then everything is measured. So the layout is judged at rest whatever
+ * the renderer's speed: on a software renderer at about half a second a frame, a wait of a few
+ * frames could land in the 1.1 s fade-out, or after ui's timer had removed the chips.
  */
 function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promise<Measured> {
   return page.evaluate(
@@ -139,6 +143,9 @@ function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promis
       if (bubble && !bubble.hidden && text) text.textContent = longest;
       // A bubble far wider than today's (a future layout, or a longer line), reaching the stack.
       if (bubble && wideBubble) Object.assign(bubble.style, { width: '96vw', maxWidth: 'none' });
+      const chipTexts = () =>
+        [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) => e.textContent ?? '').join('|');
+      const before = chipTexts();
       (window as TestWindow).__uiStyleFeed?.(feed);
       const frame = () => new Promise((r) => requestAnimationFrame(r));
       const host = document.getElementById('style-popups');
@@ -151,9 +158,31 @@ function feedAndMeasure(page: Page, feed: FeedPop[], wideBubble = false): Promis
           getComputedStyle(host).top === host.style.top
         );
       };
+      // The frame that shows the feed: the chips changed (an empty feed: the next frame). The game
+      // loop's frame callback was queued before this one, so it has already run in that frame. 600
+      // frames is a hang guard only.
       const t0 = performance.now();
-      for (let i = 0; i < 2; i++) await frame();
-      while (!atRest() && performance.now() - t0 < 1000) await frame();
+      let frames = 0;
+      do {
+        await frame();
+        frames++;
+      } while (feed.length > 0 && chipTexts() === before && frames < 600);
+      // Freeze. Document.getAnimations() brings styles up to date first, so the stack's move (a CSS
+      // transition on `top`) exists by now.
+      for (const a of document.getAnimations()) {
+        const target = a.effect instanceof KeyframeEffect ? a.effect.target : null;
+        if (!host || !(target instanceof HTMLElement)) continue;
+        const timing = a.effect?.getComputedTiming();
+        if (a instanceof CSSTransition) {
+          if (target === host) a.finish(); // the stack's move below the bubble: to where it ends
+        } else if (target.classList.contains('style-pop') && host.contains(target)) {
+          if (timing?.fill === 'forwards') {
+            // A chip's dwell: a quarter of the way in, slid in and fully shown.
+            a.pause();
+            a.currentTime = (typeof timing.duration === 'number' ? timing.duration : 0) * 0.25;
+          } else a.finish(); // the live meter's 0.11 s fade-in
+        }
+      }
       const settled = atRest();
       const settledMs = Math.round(performance.now() - t0);
       const pops = [...document.querySelectorAll<HTMLElement>('.style-pop')]
@@ -270,21 +299,28 @@ test('phone landscape: pop-ups sit clear of the road ahead, merge repeats and fa
 
   // A near miss in a later step, while the first one's chip is up, adds to that chip rather than
   // stacking a second one. Both feeds run inside the page, so a slow round trip to the test runner
-  // (a loaded machine) cannot let the first chip time out in between.
+  // (a loaded machine) cannot let the first chip time out in between. The second feed goes in the
+  // frame that first shows the first chip, so it reaches a later race update one frame later,
+  // whatever the renderer's speed (a fixed 150 ms wait used to sit in between). 600 frames is a
+  // hang guard only.
   const merged = await page.evaluate(async () => {
     const feed = (window as TestWindow).__uiStyleFeed;
-    const frames = async () => {
-      for (let i = 0; i < 2; i++) await new Promise((r) => requestAnimationFrame(r));
+    const texts = () =>
+      [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) =>
+        e.innerText.replace(/\s+/g, ' ').trim(),
+      );
+    const nextChange = async () => {
+      const was = texts().join('|');
+      for (let i = 0; i < 600 && texts().join('|') === was; i++)
+        await new Promise((r) => requestAnimationFrame(r));
     };
+    let change = nextChange();
     feed?.([{ kind: 'nearMiss', points: 25 }]);
-    await frames();
-    // eslint-disable-next-line no-restricted-syntax -- the pop-up chip's merge window is a wall-clock UI timer
-    await new Promise((r) => setTimeout(r, 150));
+    await change;
+    change = nextChange();
     feed?.([{ kind: 'nearMiss', points: 25 }]);
-    await frames();
-    return [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) =>
-      e.innerText.replace(/\s+/g, ' ').trim(),
-    );
+    await change;
+    return texts();
   });
   console.log(`merged across steps: ${JSON.stringify(merged)}`);
   expect(merged).toEqual(['NEAR MISS ×2 +$50']);

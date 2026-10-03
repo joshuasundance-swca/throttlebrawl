@@ -1,13 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { GUARD_FACTOR, guardLimits, judgeSoft, trendLine } from '../../scripts/perf-limits.mjs';
 
 // The perf check (docs/engineering.md, "Perf check"; M1 dev-2), run by `npm run perf` after the
 // download-size budget. One seeded bot race (seed 1, the test flag's seed), CPU-throttled 4x from
 // the race start, phone-landscape viewport at device pixel ratio 1:
 // - Hard gate: draw calls and triangles at fixed sim ticks stay within tests/perf/budget.json.
-// - Soft tier: after 20 s of racing, frame-time p50/p95 and sim-step p95 from dev/perf stay within
-//   twice the stored baseline (tests/perf/baseline.json, `soft`). It fails only on a catastrophic
-//   regression, and always prints the numbers with the renderer string.
+// - Soft tier, a trend: after 20 s of racing, frame-time p50/p95 and sim-step p95 from dev/perf are
+//   printed on every run with their ratio to the stored baseline (tests/perf/baseline.json, `soft`)
+//   and the renderer string, and written to test-results/perf-probe.json; scripts/perf.mjs puts
+//   them in CI's step summary. They fail only above 3x the baseline, a catastrophe guard that
+//   runner noise cannot reach (scripts/perf-limits.mjs; the maintainer, 2026-10-02: "Trend plus
+//   3x guard"). On 2026-10-02 the same code printed p95 100.1 ms, then 150 ms, against a 2x limit.
 // - Slow-motion pile-up checkpoint (M2 dev-4): the first frame the sim's takedown slow motion is
 //   active during the run is a checkpoint too, held to the same draw-call and triangle budget. It
 //   prints NOT ACTIVE while no slow motion happens in the run: combat-4's slow motion needs a
@@ -65,17 +69,6 @@ const baseline = JSON.parse(readFileSync('tests/perf/baseline.json', 'utf8')) as
 const CPU_THROTTLE = 4;
 const SOFT_SECONDS = 20;
 const CHECKPOINT_TICKS = [120, 480, 840] as const;
-/** The soft tier fails above this multiple of the baseline. */
-const SOFT_FACTOR = 2;
-/**
- * Frame times come in whole display frames (16.7 ms steps at 60 Hz) and print a hair either side
- * of the step (four frames show as 66.6 or 66.7 ms), so a frame limit that lands exactly on a step
- * (the first baseline's 33.3 ms p50 was two frames, so 2x was four) passed or failed on rounding alone.
- * Half a frame of slack judges "above twice the baseline" as the next step up: four frames pass,
- * five fail, as the docs say (main-green-4, 2026-10-02: main failed on p50 66.7 ms against a
- * 66.6 ms limit, and its p95 of 133.3 ms stood on the same edge). Sim step times are not stepped.
- */
-const FRAME_SLACK_MS = 1000 / 60 / 2;
 
 test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame and sim times', async ({
   page,
@@ -153,6 +146,14 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
   );
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
+  const soft = baseline.soft;
+  const judged = soft ? judgeSoft(report, soft) : null;
+  // The hard tier's headroom, printed every run so a scene creeping toward its budget shows early.
+  const scenes = slowmo ? [...checkpoints, slowmo] : checkpoints;
+  const headroom = {
+    drawCalls: budget.drawCallsMax - Math.max(...scenes.map((c) => c.drawCalls)),
+    triangles: budget.trianglesMax - Math.max(...scenes.map((c) => c.triangles)),
+  };
   const printed = {
     scene: `bot race, seed 1, base event; checkpoints at ticks ${CHECKPOINT_TICKS.join('/')}`,
     renderer: report.renderer,
@@ -166,9 +167,17 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     stepMs: report.stepMs,
     refreshHz: report.refreshHz,
     heapMB: report.heapMB === null ? null : Math.round(report.heapMB),
+    budget: { drawCallsMax: budget.drawCallsMax, trianglesMax: budget.trianglesMax },
+    headroom,
+    trend: judged?.rows ?? null,
   };
   console.log(`renderer: ${report.renderer}`);
   console.log(`perf probe: ${JSON.stringify(printed)}`);
+  if (judged) console.log(trendLine('classic', judged.rows));
+  console.log(
+    `perf headroom (classic): ${headroom.drawCalls} draw calls under ${budget.drawCallsMax}, ` +
+      `${headroom.triangles} triangles under ${budget.trianglesMax}, at the busiest checkpoint`,
+  );
   mkdirSync('test-results', { recursive: true });
   writeFileSync('test-results/perf-probe.json', `${JSON.stringify(printed, null, 2)}\n`);
 
@@ -192,23 +201,15 @@ test('perf: draw calls and triangles at fixed ticks, and the 4x-throttled frame 
     );
   }
 
-  // Soft tier.
+  // Soft tier: a trend, with a catastrophe guard.
   expect(report.frameMs.samples, 'frames sampled').toBeGreaterThan(30);
   expect(report.stepMs.samples, 'sim steps timed').toBeGreaterThan(30);
-  const soft = baseline.soft;
-  if (!soft) {
+  if (!soft || !judged) {
     console.log('[assert] soft tier: NOT ACTIVE (tests/perf/baseline.json has no `soft` block yet)');
     return;
   }
-  const limits = {
-    frameP50: Math.round((soft.frameMs.p50 * SOFT_FACTOR + FRAME_SLACK_MS) * 10) / 10,
-    frameP95: Math.round((soft.frameMs.p95 * SOFT_FACTOR + FRAME_SLACK_MS) * 10) / 10,
-    stepP95: soft.stepMs.p95 * SOFT_FACTOR,
-  };
   console.log(
-    `[assert] soft tier: ACTIVE, limits ${JSON.stringify(limits)} (${SOFT_FACTOR}x the baseline; frames plus half a frame)`,
+    `[assert] soft tier: a trend plus a ${GUARD_FACTOR}x guard, guards ${JSON.stringify(guardLimits(soft))} (frames plus half a frame)`,
   );
-  expect(report.frameMs.p50, 'frame p50 within 2x the baseline').toBeLessThanOrEqual(limits.frameP50);
-  expect(report.frameMs.p95, 'frame p95 within 2x the baseline').toBeLessThanOrEqual(limits.frameP95);
-  expect(report.stepMs.p95, 'sim step p95 within 2x the baseline').toBeLessThanOrEqual(limits.stepP95);
+  expect(judged.failures, `frame and sim step times within ${GUARD_FACTOR}x the baseline`).toEqual([]);
 });
