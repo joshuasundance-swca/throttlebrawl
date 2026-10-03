@@ -26,6 +26,7 @@ import {
   winsInTier,
   type NodeState,
 } from './map';
+import { AUDIT_MAX_LINE_ITEMS } from './race-log';
 
 export type RoadState = 'claimed' | 'open' | 'locked';
 
@@ -182,12 +183,23 @@ export function objectiveText(reg: ContentRegistry, plan: EventPlan): string {
           ? `Once a cop is on you, ride ${((r.escapeDistanceM ?? 0) / 1000).toFixed(1)} km without being knocked off, or lose him`
           : `Once a cop is on you, last ${r.surviveS ?? 60} s without being knocked off, or lose him`;
       case 'beat-rival': {
+        // Worded by the rival's rule, the way the race log judges it, so the line under the rule
+        // card never contradicts it (live check, 2026-10-03: the Collab read "Beat Chad Speedwell
+        // to the line." under "Most style at the line wins").
         const name = r.rival ? riderName(reg, r.rival) : 'your rival';
-        const or = typeof p['orKnockdowns'] === 'number' ? p['orKnockdowns'] : 0;
-        if (r.winBy === 'knockdowns') return `Knock ${name} down ${words(r.knockdownsToWin ?? 1)} times`;
-        return or > 0
-          ? `Beat ${name} to the line, or knock ${name} down ${words(or)} times`
-          : `Beat ${name} to the line`;
+        const or = num(p['orKnockdowns'], 0);
+        const down = (k: number) =>
+          r.rule === 'timber'
+            ? `knock ${name} into traffic or scenery ${words(k)} times`
+            : `knock ${name} down ${words(k)} times`;
+        if ((p['winBy'] ?? r.winBy) === 'knockdowns') {
+          const line = upper(down(Math.max(1, Math.round(num(p['knockdowns'], r.knockdownsToWin ?? 1)))));
+          return r.rule === 'audit'
+            ? `${line}, plus one per hit you take (up to ${words(AUDIT_MAX_LINE_ITEMS)} more)`
+            : line;
+        }
+        if (r.rule === 'collab') return `Have more style cash than ${name} when you cross the line`;
+        return or > 0 ? `Beat ${name} to the line, or ${down(or)}` : `Beat ${name} to the line`;
       }
       case 'style-cash':
         return `Score $${num(p['cash'], 0)} in style`;
@@ -201,6 +213,7 @@ export function objectiveText(reg: ContentRegistry, plan: EventPlan): string {
 
 const num = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+const upper = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 function bonusTexts(plan: EventPlan): string[] {
   return plan.objectives
