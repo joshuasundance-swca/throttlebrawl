@@ -1,5 +1,5 @@
 ---
-kind: feature
+kind: new
 audience: player
 ---
 Weird events that move (the pitch deck's #9). Road events no longer just stand there:
