@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { fastForwardDone } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // Real roads as routes (the maintainer, 2026-10-01: "Yes, add as routes"). After the region, the
@@ -18,6 +19,10 @@ type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __game?: {
     snapshot(): { tick: number; entities: { kind: string; speed: number }[] } | null;
+    state(): string;
+    fastForward(until: (snap: { tick: number }) => boolean, opts?: { perFrame?: number }): void;
+    fastForwarding(): boolean;
+    lockstep(steps: number | null): void;
     setBot(on: boolean): void;
     setSeed(seed: number): void;
     checks(): Checks;
@@ -115,8 +120,9 @@ test('each region offers its own road first, then its real roads by name, and th
 test('a picked real road is raced to the finish by the bot, and the recording names it with the seed', async ({
   page,
 }) => {
-  // About 4.5 minutes of race: the real roads run 5 to 7.6 km.
-  test.setTimeout(600_000);
+  // A hang guard. The real roads run 5 to 7.6 km, which took about 4.5 minutes of real time on CI;
+  // the ride to the line now fast-forwards (the determinism run's R4).
+  test.setTimeout(360_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
@@ -158,8 +164,12 @@ test('a picked real road is raced to the finish by the bot, and the recording na
   const { variance } = await pixelStats(page, png);
   expect(variance, 'the frame is not blank').toBeGreaterThan(NOT_BLANK_VARIANCE);
 
-  // The bot rides it to the line.
-  await expect(page.locator('#results')).toBeVisible({ timeout: 540_000 });
+  // The bot rides it to the line, fast-forwarded (240 ticks a drawn frame) instead of in real time:
+  // the race is the same tick for tick, only fewer frames are drawn on the way.
+  await page.evaluate(() => (window as TestWindow).__game?.fastForward(() => false));
+  await fastForwardDone(page, 'Twin Peaks to the line');
+  await expect(page.locator('#results')).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(() => (window as TestWindow).__game?.lockstep(null));
   const placing = (await page.locator('#results-place').textContent()) ?? '';
   const checks = (await page.evaluate(() => (window as TestWindow).__game?.checks())) as Checks;
   console.log(
