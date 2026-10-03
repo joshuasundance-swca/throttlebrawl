@@ -33,6 +33,7 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
+import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { EventProps } from './event-props';
@@ -248,6 +249,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });
   const boards = new Boards(look);
+  // Air that pays (the pitch deck's #13): the chalk mark, the newspaper and the landing one-liner.
+  const airPays = new AirPays();
   // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   const eventProps = new EventProps(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
@@ -260,6 +263,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     views.root,
     effects.root,
     boards.root,
+    airPays.root,
     eventProps.root,
     camera,
     backdrop.root,
@@ -497,6 +501,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop.setRoad(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
+      airPays.setLines(catalog?.pools?.landing ?? []);
     },
     setTrafficTypes(defs) {
       views.setTrafficTypes(defs);
@@ -505,6 +510,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pushEvents(events) {
       views.pushEvents(events);
+      airPays.pushEvents(events);
       verge?.pushEvents(events);
       rigs?.pushEvents(events);
     },
@@ -522,6 +528,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const t = now();
       backdrop.update(camera.position, scene, t);
       eventProps.sync(curr, t);
+      airPays.update(prev, curr, alpha, t);
       sceneryVisible = roadScene
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
         : 0;
@@ -591,9 +598,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
       return boards.pick(ndc.x, ndc.y, camera);
     },
-    visibleContentRefs: () => boards.visibleRefs(camera),
+    visibleContentRefs: () => [...boards.visibleRefs(camera), ...airPays.visibleRefs()],
     hideContent(refs) {
-      boards.hide(refs);
+      const list = [...refs];
+      boards.hide(list);
+      airPays.hide(list);
     },
     feelCounts: () => effects.counts(),
     speedLineCounts: () => speedLines.counts(),

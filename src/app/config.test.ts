@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { basePackFiles, buildRegistry, loadBasePack, lookup, SIGNATURE_MOVES } from '../content';
-import { SIGNATURE_IDS } from '../sim/api';
+import { basePackFiles, buildRegistry, LAW_HABITS, loadBasePack, lookup, SIGNATURE_MOVES } from '../content';
+import { LAW_HABIT_IDS, SIGNATURE_IDS } from '../sim/api';
 import { aiController, buildSimConfig, streamForEvent } from './config';
 
 const shove = {
@@ -201,6 +201,36 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
     });
     // No pace floor for the law: his speed comes from his bike and his pursuit scale alone.
     expect(cop?.bike.topSpeedMps).toBeCloseTo(bike.topSpeedMps * 1.05, 9);
+  });
+
+  it("carries a cop's law habit and his agency's END OF JURISDICTION sign into SimConfig (run W-T)", () => {
+    const files = basePackFiles().map((f) => {
+      const json = f.json as { type?: string; id?: string; law?: Record<string, unknown> };
+      if (json.type === 'rider' && json.id === 'sgt-pruitt')
+        return {
+          ...f,
+          json: { ...json, law: { ...json.law, habit: { kind: 'relentless', rampS: 60, maxScale: 1.2 } } },
+        };
+      if (json.type === 'crew' && json.id === 'keys-county-deputies')
+        return { ...f, json: { ...json, jurisdiction: { sign: 'END OF JURISDICTION. Have a nice day.' } } };
+      return f;
+    });
+    const reg2 = buildRegistry(files);
+    const c = buildSimConfig(reg2, streamForEvent(reg2), { seed: 1 });
+    const pruitt = c.riders.find((r) => r.contentId === 'base:sgt-pruitt');
+    expect(pruitt?.law?.habit).toEqual({ kind: 'relentless', params: { rampS: 60, maxScale: 1.2 } });
+    expect(c.event.cops?.jurisdiction).toEqual({
+      label: 'END OF JURISDICTION. Have a nice day.',
+      agency: 'base:keys-county-deputies',
+    });
+    // Without them, nothing new rides along.
+    const plain = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    expect(plain.riders.find((r) => r.role === 'cop')?.law?.habit).toBeUndefined();
+    expect(plain.event.cops?.jurisdiction).toBeUndefined();
+  });
+
+  it('keeps the law habits in step with the sim contract (content never imports the sim)', () => {
+    expect([...LAW_HABITS]).toEqual([...LAW_HABIT_IDS]);
   });
 
   it('fields no cop when the event says none', () => {

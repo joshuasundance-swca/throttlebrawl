@@ -26,6 +26,16 @@ export const BARK_TRIGGERS = [
   'gang-up-join',
   'interlude',
   'modifier-start',
+  // Law with a personality (the pitch deck's #11, run W-T): a cop's habit showing, spoken by him.
+  // Sgt. Pruitt stepping it up the longer he chases; Trooper Dalrymple's radar clocking you on a
+  // bridge; Deputy Lindqvist writing a citation, and billing them at your finish; Officer Meter's
+  // pursuit budget running out; a chasing cop reaching his END OF JURISDICTION sign.
+  'cop-relentless',
+  'cop-radar',
+  'cop-citation',
+  'cop-bill',
+  'cop-budget-out',
+  'cop-jurisdiction',
 ] as const;
 export type BarkTrigger = (typeof BARK_TRIGGERS)[number];
 
