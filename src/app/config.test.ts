@@ -360,6 +360,12 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:dog-walker': 1,
       'base:fisherman': 1,
       'base:golf-cart': 1.5,
+      // traffic-4's animals and oddity, live since 2026-10-03.
+      'base:gator': 0.6,
+      'base:gator-on-lawn-chair': 0.25,
+      'base:iguana': 1.5,
+      'base:pelican': 1,
+      'base:runaway-mobile-home': 0.3,
       'base:pickup': 5,
       'base:pickup-towing-boat': 1.5,
       'base:rental-convertible': 2,

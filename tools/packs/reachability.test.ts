@@ -108,19 +108,13 @@ describe('reachability: every set-piece slot in the packs has 2 or more candidat
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The live references to drafts on main when this check landed (2026-10-03), as `file pointer ->
- * target`. Every one is the Keys' traffic mix naming a traffic-4 animal or oddity that render
- * already draws (src/render/figures.ts) but whose type is still `draft`, so the public game never
- * puts it on the road. This list may only shrink: flip the type to live (or drop the reference)
- * and remove its line here in the same PR. Never add a line.
+ * The live references to drafts on main, as `file pointer -> target`. This list may only shrink:
+ * flip the type to live (or drop the reference) and remove its line here in the same PR. Never add
+ * a line. Empty since 2026-10-03, when the Keys' five traffic-4 animals and oddities (iguana,
+ * pelican, gator, gator on a lawn chair, runaway mobile home) went live; it held all five when this
+ * check landed earlier that day.
  */
-const KNOWN_LIVE_TO_DRAFT: readonly string[] = [
-  'packs/base/regions/florida-keys/region.json /traffic/animals/1/kind -> traffic-type "iguana"',
-  'packs/base/regions/florida-keys/region.json /traffic/animals/2/kind -> traffic-type "pelican"',
-  'packs/base/regions/florida-keys/region.json /traffic/animals/3/kind -> traffic-type "gator"',
-  'packs/base/regions/florida-keys/region.json /traffic/animals/4/kind -> traffic-type "gator-on-lawn-chair"',
-  'packs/base/regions/florida-keys/region.json /traffic/mix/3/kind -> traffic-type "runaway-mobile-home"',
-];
+const KNOWN_LIVE_TO_DRAFT: readonly string[] = [];
 
 /** Every pack folder's files, parsed (as packs:check reads them). */
 function readPacks(): { dir: string; files: PackFile[] }[] {

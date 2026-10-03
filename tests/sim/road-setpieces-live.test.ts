@@ -148,10 +148,8 @@ const FEED_CLEAR_M = 400;
  * move the pad (or the truck) and take its line off in the same PR. Never add a line.
  */
 const KNOWN_FED_TRUCKS: readonly string[] = [
-  // The Mission's mural alleys are 613 m long, with the Semigloss pad 64 m before the first truck
-  // spot. Both trucks still land clean on the solo ride below.
-  'sf-mission standard: pad-mi-semigloss before carrier-mi-semigloss',
-  'sf-mission standard: pad-mi-semigloss before carrier-mi-semigloss-late',
+  // Empty since 2026-10-03: the Mission's first Semigloss pad moved from s 80 (64 m before the early
+  // truck) to s 400, after both truck spots.
 ];
 
 function raceConfig(r: Region, length: string, seed: number): SimConfig {

@@ -228,7 +228,10 @@ export const SF_MISSION: TrackSource = {
         sign('sign-mi-semigloss-scaffold', 'mi-scaffold', 60, 1),
         sign('sign-mi-semigloss-wet-paint', 'mi-wet-paint', 420, 1),
         walkers('mi-semigloss-walkers', 120, 200, 1),
-        pad('pad-mi-semigloss', 80, 'mi-pad-semigloss'),
+        // Both pad spots come after both truck spots: a pad within 400 m before a truck feeds it a
+        // boosted approach that over-throws the jump (tests/sim/road-setpieces-live.test.ts). The
+        // first spot sat at s 80, 64 m before the early truck, until 2026-10-03.
+        pad('pad-mi-semigloss', 400, 'mi-pad-semigloss'),
         pad('pad-mi-semigloss-late', 330, 'mi-pad-semigloss'),
         // A car carrier double-parked in the right lane, its deck down as a ramp (two spots; the
         // race seed picks one), on the straight before the hump.

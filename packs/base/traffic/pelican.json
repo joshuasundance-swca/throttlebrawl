@@ -11,8 +11,8 @@
   "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
   "look": { "procedural": { "preset": "animal-pelican" }, "paintOptions": ["#8c8577", "#e8e2c8", "#d9a441"] },
   "meta": {
-    "status": "draft",
-    "notes": "Waddles across to the other piling. Gets out of the way in one heavy flap, unimpressed. M3 traffic-4 head start.",
+    "status": "live",
+    "notes": "Waddles across to the other piling. Gets out of the way in one heavy flap, unimpressed. M3 traffic-4 head start; live since 2026-10-03.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }
