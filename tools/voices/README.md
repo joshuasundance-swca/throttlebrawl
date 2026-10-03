@@ -93,7 +93,8 @@ uv run scripts/check_local.py --out ../../scratch/voices/redo.json --clips ../..
   homophone such as "brakes"/"breaks" or a number's spelling does not count), and **off-voice** when
   its voice z-score is under -5, or under -3 with a pitch outlier; a deliberate shout (the Mayor's
   "No comment!") is off-voice by design. A redo replaces a clip only when both models hear it right
-  and it sounds no less like the rival. The pick goes in the line's `audioNote` and the set's
+  (homophones aside) and its voice z-score is either inside the rival's normal band (-2 or above) or
+  better than the old take's. The pick goes in the line's `audioNote` and the set's
   `meta.voice.review` (`kept`, `redone`, `cut`), so the maintainer can veto it later.
 
 ## Licences
