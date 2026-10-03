@@ -172,14 +172,16 @@ describe('tools/road: the baked San Francisco track', () => {
   it('places every sign and billboard in a slot, off the road, and has boost pads and a ramp truck', () => {
     const slots = roads.flatMap((r) => (r.features ?? []).filter((f) => f.kind === 'billboard'));
     // Run W-R: the downtown's own signs and billboards (`dt-` ids) stand on its roads instead
-    // (tools/road/sf-downtown.test.ts checks those), as do run W-U's mural alleys' (`mi-`,
-    // tools/road/sf-mission.test.ts); every other one is placed here. Run W-U: a junction sign that
-    // only makes sense on a real-road network (Russian Hill's Jones Street, as the Keys' and the
-    // Pacific Northwest's tracks allow theirs) stands on that network's roads.
+    // (tools/road/sf-downtown.test.ts checks those), and run W-U's Chinatown and North Beach ones
+    // (`cn-`, `nb-`) on theirs (tools/road/sf-chinatown-northbeach.test.ts), as do the mural alleys'
+    // (`mi-`, tools/road/sf-mission.test.ts); every other one is placed here. Run W-U: a junction
+    // sign that only makes sense on a real-road network (Russian Hill's Jones Street, as the Keys'
+    // and the Pacific Northwest's tracks allow theirs) stands on that network's roads.
     const items = new Set(slots.map((f) => (f as { item?: string }).item));
     const real = realRoadBoardItems();
     expect(real.has('jones-keep-right')).toBe(true);
-    for (const s of [...region.signs, ...region.billboards].filter((x) => !/^(dt|mi)-/.test(x.id)))
+    const elsewhere = /^(dt|cn|nb|mi)-/;
+    for (const s of [...region.signs, ...region.billboards].filter((x) => !elsewhere.test(x.id)))
       expect(items.has(s.id) || real.has(s.id), s.id).toBe(true);
     for (const f of slots) expect(Math.min(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeGreaterThanOrEqual(5.5);
     const all = roads.flatMap((r) => r.features ?? []);

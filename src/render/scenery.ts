@@ -32,6 +32,10 @@ export type SideTheme =
   | 'crossing'
   | 'plaza'
   | 'downtown'
+  // run W-U, San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws them)
+  | 'lanterns'
+  | 'cafes'
+  | 'park'
   // run W-U, San Francisco's mural alleys (render/mission.ts draws what stands there)
   | 'mission';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
@@ -61,6 +65,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (pitch deck #8): Chinatown's shopfronts, North Beach's cafes, a block's side street and
+  // the hill's park. Nothing of the scatter's stands there; render/chinatown-northbeach.ts draws it.
+  lanterns: 'lanterns',
+  cafes: 'cafes',
+  'side-street': 'crossing',
+  'hill-park': 'park',
   // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys"): shopfronts, an
   // alley's painted walls and the mascot's corner wall. Nothing of the scatter's stands there; the
   // mission layer (mission.ts) draws the buildings, the murals and the crew.
@@ -73,6 +83,9 @@ const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  'park',
+  'lanterns',
+  'cafes',
   'mission',
   'palms',
   'mangrove',
@@ -183,10 +196,21 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  lanterns: {},
+  cafes: {},
+  park: {},
   mission: {},
 };
 /** Themes with no power poles: a downtown's wires are underground, and the mural district's walls stand at the kerb. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown', 'mission']);
+const NO_POLES: ReadonlySet<LandTheme> = new Set([
+  'crossing',
+  'plaza',
+  'downtown',
+  'lanterns',
+  'cafes',
+  'park',
+  'mission',
+]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],

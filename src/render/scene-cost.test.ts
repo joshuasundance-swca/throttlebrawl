@@ -2,7 +2,7 @@
 // re-baseline found up to 108 of 120 draw calls and 133k of 150k triangles; the off-road ground band
 // took the Keys frame from about 68k to 116k triangles, and the old instanced scenery cost 21 to 41
 // draw calls a view). Each route's real road scene, roadside, ground band and (San Francisco)
-// downtown are built with the real Blender models; a chase camera rides the route's main path every
+// downtown, Chinatown and North Beach are built with the real Blender models; a chase camera rides the route's main path every
 // 25 m, and every mesh the renderer would draw from there (visible, and inside the camera's
 // frustum, as three.js culls) is counted. The still scene must leave the riders, the traffic, the
 // cops and the effects their share of the frame budget (tests/perf/budget.json).
@@ -17,6 +17,7 @@ import {
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import { BlocksLayer, hasBlocks } from './chinatown-northbeach';
 import { DowntownLayer, hasDowntown } from './downtown';
 import { hasMission, MissionLayer } from './mission';
 import { readGlb } from './glb';
@@ -155,6 +156,8 @@ describe('the still scene along every route', () => {
               seed,
             })
           : null;
+      // Run W-U: San Francisco's Chinatown and North Beach (a code-made kit, no models).
+      const blocks = hasBlocks(tags) ? new BlocksLayer(look, { road, dressing, seed }) : null;
       // Run W-U: San Francisco's mural alleys, the crew halfway through the race.
       const mission = hasMission(tags)
         ? new MissionLayer(models.sfRoadside, look, { road, dressing, seed })
@@ -188,6 +191,8 @@ describe('the still scene along every route', () => {
           if (roadside) for (let i = 0; i < 12; i++) roadside.update(eye.x, eye.z, DRAW_M);
           verge.update(eye.x, eye.z, null, 0, aim.x, aim.z);
           dt?.update(eye.x, eye.z, 0, []);
+          // The blocks build one mesh a frame: as many frames as a ride to here would have had.
+          if (blocks) for (let i = 0; i < 30; i++) blocks.update(eye.x, eye.z);
           if (mission) for (let i = 0; i < 8; i++) mission.update(eye.x, eye.z, 0, 0.5);
           const frustum = new Frustum().setFromProjectionMatrix(
             new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
@@ -197,6 +202,7 @@ describe('the still scene along every route', () => {
           if (roadside) drawn(roadside.group, frustum, parts);
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
+          if (blocks) drawn(blocks.group, frustum, parts);
           if (mission) drawn(mission.group, frustum, parts);
           const total = [...parts.values()].reduce(
             (t, l) => ({ draws: t.draws + l.draws, tris: t.tris + l.tris }),

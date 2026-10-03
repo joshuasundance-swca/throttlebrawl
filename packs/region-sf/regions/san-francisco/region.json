@@ -4,7 +4,14 @@
   "name": "San Francisco",
   "chapter": 3,
   "blurb": "Every street is uphill, including the downhill ones. The fog has a residential permit.",
-  "networks": ["sf-hills", "osm-sf-russian-hill", "osm-sf-twin-peaks", "sf-downtown", "sf-mission"],
+  "networks": [
+    "sf-hills",
+    "osm-sf-russian-hill",
+    "osm-sf-twin-peaks",
+    "sf-downtown",
+    "sf-chinatown-northbeach",
+    "sf-mission"
+  ],
   "timeOfDayOptions": [
     {
       "id": "dawn",
@@ -97,6 +104,38 @@
     { "id": "dt-servers", "text": "LOADING ZONE: SERVERS ONLY. Humans unload elsewhere.", "status": "live" },
     { "id": "dt-badge-only", "text": "CAMPUS AHEAD. Badge in to continue.", "status": "live" },
     {
+      "id": "cn-lantern-clearance",
+      "text": "LANTERNS OVERHEAD. Robotaxi sensors, look up.",
+      "status": "live"
+    },
+    {
+      "id": "cn-robotaxi-narrow",
+      "text": "ROBOTAXIS: NARROW STREET. Narrower than your training data.",
+      "status": "live"
+    },
+    {
+      "id": "cn-grade-brakes",
+      "text": "STEEP GRADE AHEAD. Your brakes have been notified.",
+      "status": "live"
+    },
+    {
+      "id": "cn-no-scooter-parking",
+      "text": "NO SCOOTER PARKING. Yes, the rental one too.",
+      "status": "live"
+    },
+    { "id": "cn-bell-zone", "text": "CABLE BELL ZONE. The bell is not a suggestion.", "status": "live" },
+    { "id": "cn-shuttle-turns", "text": "NO SHUTTLE TURNS. The street was here first.", "status": "live" },
+    { "id": "nb-laptops", "text": "NO LAPTOPS ON THE PATIO. The laptops have appealed.", "status": "live" },
+    {
+      "id": "nb-no-pitching",
+      "text": "NO PITCHING AT THE COUNTER. Order first. Disrupt later.",
+      "status": "live"
+    },
+    { "id": "nb-wifi-ends", "text": "PUBLIC WI-FI ENDS. Pitch decks, save locally.", "status": "live" },
+    { "id": "nb-loading-founders", "text": "LOADING ZONE: FOUNDERS. Pitching from 6 am.", "status": "live" },
+    { "id": "nb-elbow-brake", "text": "SHARP RIGHT. Brake now. Pivot later.", "status": "live" },
+    { "id": "nb-overlook-fog", "text": "SCENIC OVERLOOK. View may contain fog.", "status": "live" },
+    {
       "id": "mi-ring-light",
       "text": "RING LIGHT PARKING ONLY. 15 minutes. Golden hour excepted.",
       "status": "live"
@@ -149,7 +188,17 @@
       "text": "NOW RAISING SERIES Z. We ran out of letters, not money.",
       "status": "live"
     },
-    { "id": "dt-inevitable", "text": "WE ARE INEVITABLE. That's the whole ad.", "status": "live" }
+    { "id": "dt-inevitable", "text": "WE ARE INEVITABLE. That's the whole ad.", "status": "live" },
+    {
+      "id": "nb-ai-poet",
+      "text": "OPEN MIC FOR CHATBOTS. Humans read alternate Thursdays.",
+      "status": "live"
+    },
+    {
+      "id": "nb-puckbench",
+      "text": "YOUR ESPRESSO, BENCHMARKED. Puckbench. In private beta.",
+      "status": "live"
+    }
   ],
   "landingLines": [
     { "id": "sea-lion", "text": "TEN OUT OF TEN, SAYS A SEA LION", "status": "live" },
@@ -195,9 +244,18 @@
       "kind": "cafe-table",
       "text": "SEAT YOURSELF",
       "weight": 1.5,
-      "tags": ["plaza", "towers", "row-houses", "painted-houses", "shopfronts"],
+      "tags": ["plaza", "towers", "row-houses", "painted-houses", "cafes", "shopfronts"],
       "status": "live",
       "note": "Run W-T. Pavement cafe tables. Never Chinatown's shops (pitch deck)."
+    },
+    {
+      "id": "table-for-none",
+      "kind": "cafe-table",
+      "text": "TABLE FOR NONE",
+      "weight": 1.5,
+      "tags": ["cafes"],
+      "status": "live",
+      "note": "Run W-U. North Beach's pavement cafe tables (the `cafes` tag). Nothing smashes in Chinatown: no smashable lists its `lanterns` or `side-street` tags (the brief; the pitch deck cut the grocery crates)."
     },
     {
       "id": "content-break",
@@ -211,7 +269,7 @@
   ],
   "meta": {
     "status": "live",
-    "notes": "Region pack region-sf (playtest 1c, 2026-09-30). The palette keys follow the renderer's material names (sky, water, road, shoulder, land, rail, markingCenter) plus fog and the row-house and cable-car colours, which paint the row-house and cable-car models (W-O, 2026-10-01); `fogBank` lays fog banks offshore. Chapter 3 assumes the Pacific Northwest is chapter 2 (\"Pnw and sf first\"); the order is the maintainer's call. The mix names three region vehicles (placeholder shapes from the base presets) beside base traffic; a kind listed nowhere never spawns. Every sign and billboard is placed by a billboard slot on the sf-hills or sf-downtown roads. Run W-R (interview, 2026-10-02: \"SF first = downtown towers\"; playtest 2: the cable cars drove \"including in forests\"): the downtown network joins with its own signs and billboards, and the cable car leaves the traffic mix, so cable cars run only on downtown's steep cable-car cross streets (render/downtown.ts), never on a race road. Run W-U (the pitch deck after playtest 2, #8: \"the Mission's mural alleys\"): the mural network joins with its own signs (`mi-` ids, on its shopfront sidewalks); parking meters and cafe tables also stand on its shopfront sidewalks, beside a ring-light pop-up of its own.",
+    "notes": "Region pack region-sf (playtest 1c, 2026-09-30). The palette keys follow the renderer's material names (sky, water, road, shoulder, land, rail, markingCenter) plus fog and the row-house and cable-car colours, which paint the row-house and cable-car models (W-O, 2026-10-01); `fogBank` lays fog banks offshore. Chapter 3 assumes the Pacific Northwest is chapter 2 (\"Pnw and sf first\"); the order is the maintainer's call. The mix names three region vehicles (placeholder shapes from the base presets) beside base traffic; a kind listed nowhere never spawns. Every sign and billboard is placed by a billboard slot on the sf-hills or sf-downtown roads. Run W-R (interview, 2026-10-02: \"SF first = downtown towers\"; playtest 2: the cable cars drove \"including in forests\"): the downtown network joins with its own signs and billboards, and the cable car leaves the traffic mix, so cable cars run only on downtown's steep cable-car cross streets (render/downtown.ts), never on a race road. Run W-U (pitch deck #8): the Chinatown and North Beach network joins with its own signs (`cn-`, `nb-`) and billboards; its cafe tables smash in North Beach only (the `cafes` tag), and nothing smashes in Chinatown. Run W-U (the pitch deck after playtest 2, #8: \"the Mission's mural alleys\"): the mural network joins with its own signs (`mi-` ids, on its shopfront sidewalks); parking meters and cafe tables also stand on its shopfront sidewalks, beside a ring-light pop-up of its own.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

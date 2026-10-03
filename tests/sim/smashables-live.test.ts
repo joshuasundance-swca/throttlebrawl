@@ -32,6 +32,11 @@ const ROUTES: readonly Route[] = [
   { name: 'osm-pnw-samish', event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-i5-samish-run' },
   { name: 'sf-hills', event: 'region-sf:sf-hill-sprint' },
   { name: 'sf-downtown', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run' },
+  {
+    name: 'sf-chinatown-northbeach',
+    event: 'region-sf:sf-hill-sprint',
+    route: 'region-sf:sf-chinatown-northbeach-run',
+  },
   { name: 'osm-sf-russian-hill', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run' },
   { name: 'osm-sf-twin-peaks', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run' },
 ];
@@ -90,6 +95,38 @@ describe('smashables on the live routes', () => {
       }
     },
   );
+
+  it('Chinatown and North Beach: nothing smashes in Chinatown, only cafe tables in North Beach (run W-U)', () => {
+    const r = ROUTES.find((x) => x.name === 'sf-chinatown-northbeach');
+    if (!r) throw new Error('no route');
+    const chinatown = ['sf-cn-lantern-row', 'sf-cn-bell-grade'];
+    let total = 0;
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 6; seed++) {
+      const cfg = config(r, seed);
+      const { sim, world } = createSimWithWorld(cfg);
+      sim.step([{ steer: 0, throttle: 0, brake: 0, flags: 0 }]);
+      const st = smashState(world);
+      const pos = { edge: 0, s: 0, d: 0, dir: 1 as 1 | -1 };
+      for (const q of st?.props ?? []) {
+        if (!st) break;
+        fromCorridor(st.corridor, q.u, q.cd, 1, pos);
+        const id = cfg.road.edges[pos.edge]?.id ?? '';
+        const kind = cfg.smashables?.[q.def]?.kind ?? '?';
+        kinds.add(kind);
+        total++;
+        expect(chinatown, `a ${kind} in Chinatown at ${id} s ${pos.s.toFixed(0)}`).not.toContain(id);
+        // The bend: its lanterns run to s 180 and the districts' side street to s 197.
+        if (id === 'sf-cn-crossover')
+          expect(pos.s, `a ${kind} on the bend's Chinatown side`).toBeGreaterThan(197);
+        expect(kind).toBe('cafe-table');
+      }
+    }
+    process.stdout.write(
+      `[examined] sf-chinatown-northbeach seeds 1-6: ${total} props, kinds ${[...kinds].join(', ')}\n`,
+    );
+    expect(total).toBeGreaterThan(0);
+  });
 
   it('every region puts some out, of its own kinds', () => {
     process.stdout.write(`[examined] seed 1, ${ROUTES.length} routes: ${lines.join('; ')}\n`);
