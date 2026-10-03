@@ -1,0 +1,5 @@
+---
+kind: dev
+audience: dev
+---
+The two tuning-panel browser tests that compare seeded races (a mid-race steering change, and a stronger knockback) now judge the runs by the race's own recording instead of a trace sampled once per drawn frame. They read the debug file's recording and compare the bot's input on every tick and the state hash at every 60th tick, plus the race's events for the knockback fight. The panel's change must also appear in the recording, at the tick the sim applied it. Before, two runs shared only the ticks they both happened to sample, so the "the controls share ticks" and "ticks sampled after the change" floors failed on slow CI runners (20 failures on 2026-10-02). Now every count is fixed by the code. Each test still checks the same thing, a little more strictly: the control runs match on every tick, the changed run matches until the change, and the bot rides differently after it. The steering runs now ride about 720 ticks, not 1,200, because nothing depends on sampling luck any more.

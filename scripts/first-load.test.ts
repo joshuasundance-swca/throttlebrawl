@@ -57,6 +57,13 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]glb\.ts$/,
   /[\\/]src[\\/]ui[\\/]tuning[\\/]index\.ts$/,
   /[\\/]src[\\/]dev[\\/]selftest[\\/]index\.ts$/,
+  // dev/ beyond dev/boot.ts (the test flag and the error capture): src/main.ts loads it lazily.
+  /[\\/]src[\\/]dev[\\/]index\.ts$/,
+  /[\\/]src[\\/]dev[\\/]handle[\\/]index\.ts$/,
+  /[\\/]src[\\/]dev[\\/]bot[\\/]index\.ts$/,
+  /[\\/]src[\\/]dev[\\/]report[\\/]index\.ts$/,
+  /[\\/]src[\\/]dev[\\/]report[\\/]summary\.ts$/,
+  /[\\/]src[\\/]dev[\\/]perf[\\/]index\.ts$/,
 ];
 
 describe('the production build', { timeout: 120_000 }, () => {

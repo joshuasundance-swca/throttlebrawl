@@ -8,8 +8,9 @@ import type { SimEvent, SimInput, SimSnapshot } from '../../sim/api';
 import { createBot, type BotController, type BotStats } from '../bot';
 import { createPerfProbe, type PerfReport } from '../perf';
 import { debugFileText, parseDebugFile, reportText } from '../report';
+import { createFastForward, type FastForwardOptions } from './lockstep';
 import { botAttackRun, type AttackRun } from './attacks';
-import { moverProblem } from './checks';
+import { createEdgeWatch, moverProblem, type EdgeWatch } from './checks';
 
 export { MOVER_MODES, moverProblem } from './checks';
 export { botAttackRun } from './attacks';
@@ -19,6 +20,12 @@ export interface RaceChecks {
   ticks: number;
   /** Player edges in the order first entered (repeats collapsed). */
   playerEdges: number[];
+  /**
+   * Steps where the player rode from one edge back onto an edge first entered before it (riding on
+   * both ticks; a crash thrown back across a join and the remount do not count): the bot turned back.
+   */
+  playerRideBacks: number;
+  firstRideBack: string | null;
   /** Ticks where some mover had a non-finite field, an unknown mode or an invalid road position. */
   invalidTicks: number;
   firstInvalid: string | null;
@@ -67,24 +74,39 @@ export interface TestHandle {
   botTakedownRuns(seeds: readonly number[]): AttackRun[];
   /** The same headless runs, each up to the bot's first tick on a shortcut, or a minute in. */
   botShortcutRuns(seeds: readonly number[]): AttackRun[];
+  /**
+   * Lockstep (app/loop.ts; inventory R4): n sim ticks every drawn frame whatever the wall time, or
+   * null for real time. The race is the same tick for tick at any n (the sim steps the same way;
+   * only how many ticks lie between drawn frames changes), so a whole-race spec no longer runs at
+   * the speed the runner happens to draw. Loop control, not sim state.
+   */
+  lockstep(steps: number | null): void;
+  /**
+   * Fast-forward (./lockstep.ts): lockstep at `perFrame` ticks a frame (default FAST_FORWARD_TICKS) until
+   * `until(snapshot)` holds after a step, then lockstep at `then` (default SETTLE_TICKS; null for
+   * real time). The run stops inside the frame where the condition first holds, so it overshoots
+   * by fewer than `then` ticks. `fastForwarding()` is true until then. The frames in between are
+   * still drawn, but each one jumps `perFrame` ticks.
+   */
+  fastForward(until: (snap: SimSnapshot) => boolean, opts?: FastForwardOptions): void;
+  fastForwarding(): boolean;
 }
 
 declare global {
   interface Window {
-    /** Set by Playwright's init script before the page loads. */
-    __GAME_TEST__?: boolean;
     __game?: TestHandle;
   }
 }
 
-export function testFlagSet(): boolean {
-  return window.__GAME_TEST__ === true;
-}
+// The flag itself loads with the first screen (../boot.ts); the handle is in dev/'s lazy chunk.
+export { testFlagSet } from '../boot';
 
 function freshChecks(bot: BotController | null): RaceChecks {
   return {
     ticks: 0,
     playerEdges: [],
+    playerRideBacks: 0,
+    firstRideBack: null,
     invalidTicks: 0,
     firstInvalid: null,
     events: {},
@@ -108,7 +130,9 @@ export function installTestHandle(app: AppHandle): TestHandle {
   let botOn = false;
   let bot: BotController | null = null;
   let checks = freshChecks(null);
+  let edgeWatch: EdgeWatch = createEdgeWatch();
   const probe = createPerfProbe(app);
+  const ff = createFastForward((steps) => app.setLockstep(steps));
 
   app.onStep((snap, events) => {
     checks.ticks++;
@@ -130,7 +154,13 @@ export function installTestHandle(app: AppHandle): TestHandle {
     const me = snap.entities[playerId];
     if (me && checks.playerEdges[checks.playerEdges.length - 1] !== me.road.edge)
       checks.playerEdges.push(me.road.edge);
+    const back = me ? edgeWatch.note(snap.tick, me.road.edge, me.mode) : null;
+    if (back) {
+      checks.playerRideBacks++;
+      checks.firstRideBack ??= back;
+    }
     if (bot) checks.bot = bot.stats();
+    ff.step(snap);
   });
 
   const installDriver = () => {
@@ -161,6 +191,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
       // A fresh bot per race, so its counters and memory start clean.
       if (botOn) installDriver();
       checks = freshChecks(bot);
+      edgeWatch = createEdgeWatch();
       app.startRace();
     },
     checks: () => checks,
@@ -187,6 +218,12 @@ export function installTestHandle(app: AppHandle): TestHandle {
       seeds.map((seed) =>
         botAttackRun(seed, { includeDrafts: app.build.channel !== 'prod', until: 'takedown' }),
       ),
+    lockstep(steps) {
+      ff.cancel();
+      app.setLockstep(steps);
+    },
+    fastForward: (until, opts) => ff.start(until, opts),
+    fastForwarding: () => ff.active,
     botShortcutRuns: (seeds) =>
       seeds.map((seed) =>
         botAttackRun(seed, {
