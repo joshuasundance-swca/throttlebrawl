@@ -9,13 +9,15 @@
 // card. A cut hides the item on this device at once and hands `{contentRef, raceId, tick}` to
 // `onVeto`, which the owner of the settings record stores (the debug report lists it from there).
 import { loadBasePack, type ContentRegistry } from '../../content';
-import type { SimEvent } from '../../sim/api';
+import { SIM_HZ, type SimEvent } from '../../sim/api';
 import { createBubbleView, type BubbleView } from './bubble';
-import { createBarkDirector, type BarkView, type NarrativeContext } from './director';
+import { createBarkDirector, type BarkView, type NarrativeContext, type ShownBark } from './director';
 import {
   BARK_TUNING,
   barkLinesFrom,
+  bubbleDurationS,
   createBarkSelector,
+  type BarkLine,
   type BarkParams,
   type BarkSelector,
 } from './selector';
@@ -69,7 +71,12 @@ export interface NarrativeOptions {
   onVeto?: (flag: VetoFlag) => void;
   /** True where a press belongs to steering or attacking; without it, touches mid-race never cut. */
   inControlZone?: (x: number, y: number) => boolean;
+  /** Where a radio station's own line is listened for (`RADIO_BARK_EVENT`); the window by default, null for none. */
+  radioLines?: EventTarget | null;
 }
+
+/** Sent by audio when a rider's station says its line (src/audio/index.ts exports the same name). */
+export const RADIO_BARK_EVENT = 'throttlebrawl:radio-bark';
 
 export function createNarrative(options: NarrativeOptions = {}): Narrative {
   const vetoed = new Set<string>(options.vetoed ?? []);
@@ -97,6 +104,11 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
     menu.offer(item, () => cut(item));
   };
 
+  /** Every live line by content reference, for a radio station's own line (below). */
+  let byRef = new Map<string, BarkLine>();
+  let lineView: BarkView | null = null;
+  let riderNames: (id: string) => string | undefined = () => undefined;
+
   const ensure = () => {
     if (director) return director;
     const reg = options.barkSets && options.riders && options.bikes ? null : loadBasePack();
@@ -104,6 +116,11 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
     const riders = options.riders ?? reg?.riders ?? {};
     const bikes = options.bikes ?? reg?.bikes ?? {};
     const lines = barkLinesFrom(sets, { includeDrafts: options.includeDrafts ?? false });
+    byRef = new Map(lines.map((l) => [l.ref, l]));
+    riderNames = (id) => {
+      const name = (riders[id] as { name?: unknown } | undefined)?.name;
+      return typeof name === 'string' ? name : undefined;
+    };
     selector = createBarkSelector(lines, options.params, 0, { vetoed });
     for (const [id, value] of pending.splice(0)) selector.setParam(id, value);
     let view = options.view;
@@ -132,6 +149,7 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
         ?.class;
       return typeof cls === 'string' ? cls : undefined;
     };
+    lineView = view;
     director = createBarkDirector(selector, view, {
       bikeClassOf,
       onShown: (b) =>
@@ -145,6 +163,38 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
     });
     return director;
   };
+
+  // Run W-U (Pivot FM; src/audio/rider-station.ts, whose `RADIO_BARK_EVENT` this is): a rider's radio
+  // station says one bark line of its own after its dead air. It shows like any bark, named by the
+  // station, so it speaks in the rider's voice and can be cut; only during a race.
+  const showRadioLine = (ev: Event) => {
+    const d = (ev as CustomEvent<{ contentRef?: unknown; speakerName?: unknown }>).detail;
+    if (!racing || typeof d?.contentRef !== 'string' || vetoed.has(d.contentRef)) return;
+    ensure();
+    const line = byRef.get(d.contentRef);
+    if (!line || !lineView) return;
+    const shown: ShownBark = {
+      contentRef: line.ref,
+      speakerName:
+        typeof d.speakerName === 'string' ? d.speakerName : (riderNames(line.speaker) ?? line.speaker),
+      text: line.text,
+      startS: last.tick / SIM_HZ,
+      durationS: bubbleDurationS(line.text, options.params),
+      tick: last.tick,
+      raceId: last.raceId,
+    };
+    lineView.show(shown);
+    seen.note({
+      contentRef: shown.contentRef,
+      kind: 'bark',
+      label: `${shown.speakerName}: ${shown.text}`,
+      raceId: shown.raceId,
+      tick: shown.tick,
+    });
+  };
+  const radioLines =
+    options.radioLines === undefined ? (typeof window === 'undefined' ? null : window) : options.radioLines;
+  radioLines?.addEventListener(RADIO_BARK_EVENT, showRadioLine);
 
   return {
     onEvents(events, context) {

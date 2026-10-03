@@ -51,6 +51,7 @@ import {
   createRadioPlayer,
   cutFlag,
   pirateStationFor,
+  riderStationsFor,
   stationsForRegion,
   type NowPlaying,
   type RadioBand,
@@ -61,6 +62,7 @@ import {
 import { distance, distanceGain, dopplerFactor, moving, panFor } from './spatial';
 import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
+import { createRiderStation, type RiderSight, type RiderStationMachine } from './rider-station';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
 import { inPirateSpot } from './pirate';
 import { seededRandom } from './radio-util';
@@ -85,6 +87,13 @@ export { CUE_IDS, EVENT_CUES } from './cues';
 export { SLOWMO_DEFAULTS } from './slowmo';
 export type { CueId } from './cues';
 export { BARK_SHOWN_EVENT, BARK_VOICE_EVENT, barkClipPath } from './bark-voices';
+export { RIDER_STATION } from './rider-station';
+/**
+ * Sent on the bark target (the window) when a rider's station says its line after the dead air
+ * (Pivot FM): `detail.contentRef` names the bark line. ui/narrative shows it as a subtitle, which
+ * speaks it like any bark (`BARK_SHOWN_EVENT`).
+ */
+export const RADIO_BARK_EVENT = 'throttlebrawl:radio-bark';
 export type { BarkVoiceState } from './bark-voices';
 export { stationsForRegion, stationsFromTable, stationTrackRef } from './radio';
 export type { NowPlaying, RadioBand, RadioStation, RadioTrack, RadioVetoFlag } from './radio';
@@ -457,6 +466,10 @@ export interface AudioInspect {
     history: string[];
     /** The hidden pirate station (pirate.ts): whether it has the radio now, and its id. */
     pirate: { on: boolean; station: string | null };
+    /** A rider's own station (Pivot FM): its id, its phase, and the lines it has sent this session. */
+    rider: { station: string | null; phase: 'off' | 'on' | 'dead'; lines: string[] };
+    /** Whether the radio is sending sound now (false in dead air, off, or between stations loading). */
+    airing: boolean;
   };
   /** The level the music duck aims for (1 = not ducked). */
   duckLevel: number;
@@ -620,6 +633,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   let radioCut: string[] = [];
   /** The rider is near the hidden pirate station's spot: it has the radio (pirate.ts). */
   let pirateOn = false;
+  /** A rider's own station (Pivot FM, rider-station.ts): the one whose rider is in this race, and its state. */
+  let riderStation: RadioStation | null = null;
+  const riderMachine: RiderStationMachine = createRiderStation();
   const radioSeed = opts.radioSeed ?? Math.floor(Math.random() * 0xffffffff);
   let duckTarget = 1;
   /** The effects level the last voice dipped to (1 = never dipped). */
@@ -758,6 +774,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       const pirate = pirateStationFor(allStations, regionId);
       if (pirate) return pirate;
     }
+    // A rider's own station (Pivot FM) while he rides near you, or lies there in its dead air.
+    if (riderStation && riderMachine.phase() !== 'off') return riderStation;
     if (c === RADIO_SCORE) return 'score';
     if (!allStations) return 'pending';
     // Past the last station is off.
@@ -796,7 +814,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const pumpMusic = (g: Graph, now: number, racing: boolean, intensity: number) => {
     const t = tuned();
     g.music.pump(now, racing && t === 'score', intensity);
-    g.radio.pump(now, racing && typeof t === 'object');
+    // Dead air: the rider's station stays tuned, and nothing plays.
+    const dead = typeof t === 'object' && t === riderStation && riderMachine.phase() === 'dead';
+    g.radio.pump(now, racing && typeof t === 'object' && !dead);
   };
 
   /** When the current duck lets go, on the audio clock. */
@@ -951,6 +971,11 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     director.reset();
     if (pirateOn) {
       pirateOn = false;
+      retune();
+    }
+    riderHijacks = 0;
+    if (riderMachine.phase() !== 'off') {
+      riderMachine.reset();
       retune();
     }
     for (const id of [...others.keys()]) dropOther(id);
@@ -1113,6 +1138,70 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     retune();
   };
 
+  /** How many times a rider's station has taken the radio this race (each later one starts a new track). */
+  let riderHijacks = 0;
+  const sameRider = (contentId: string, rider: string) =>
+    contentId === rider ||
+    contentId.slice(contentId.indexOf(':') + 1) === rider.slice(rider.indexOf(':') + 1);
+  /** The rider a station belongs to, as the player hears him: how far, and whether he is down. */
+  const sightOf = (snap: SimSnapshot, me: EntitySnapshot, s: RadioStation): RiderSight | null => {
+    let best: RiderSight | null = null;
+    for (const e of snap.entities) {
+      if (e.kind !== 'rider' || e.id === me.id || !s.rider || !sameRider(e.contentId, s.rider)) continue;
+      const d = distance(me, e);
+      if (!best || d < best.distanceM)
+        best = { distanceM: d, down: e.mode === 'Tumble' || e.mode === 'OnFoot' };
+    }
+    return best;
+  };
+
+  /**
+   * A rider's own station (rider-station.ts, Pivot FM): while he rides near you it has the radio,
+   * behind the pirate's burst of static; knock him down and it goes to dead air, then his line (sent
+   * to the narrative as a `RADIO_BARK_EVENT`, so it shows as a subtitle and speaks in his voice),
+   * then its next track once he rides again. A radio that is off is never taken.
+   */
+  const riderRadio = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
+    const radioOn = Math.round(params.radio) >= RADIO_SCORE;
+    if (!radioOn || !allStations) {
+      if (riderMachine.phase() !== 'off') {
+        riderMachine.reset();
+        retune();
+      }
+      return;
+    }
+    if (riderMachine.phase() === 'off') {
+      // The nearest of this region's rider stations whose rider is in the race.
+      riderStation = null;
+      let best = Infinity;
+      for (const s of riderStationsFor(allStations, regionId)) {
+        const d = sightOf(snap, me, s)?.distanceM ?? Infinity;
+        if (d < best) {
+          best = d;
+          riderStation = s;
+        }
+      }
+    }
+    if (!riderStation) return;
+    const was = riderMachine.phase();
+    const now = g.ctx.currentTime;
+    const r = riderMachine.step(now, sightOf(snap, me, riderStation));
+    if (r.tune) playCue(g, 'tune', 56, 0.7);
+    if (riderMachine.phase() !== was) retune();
+    if (was === 'off' && riderMachine.phase() === 'on' && riderHijacks++ > 0) g.radio.skip();
+    if (r.nextTrack) g.radio.skip();
+    if (r.announce && riderStation.deadAirLine && typeof CustomEvent !== 'undefined') {
+      riderLines.push(riderStation.deadAirLine);
+      barkEvents?.dispatchEvent(
+        new CustomEvent(RADIO_BARK_EVENT, {
+          detail: { contentRef: riderStation.deadAirLine, speakerName: riderStation.name },
+        }),
+      );
+    }
+  };
+  /** The lines rider stations have sent this session (tests and the debug report). */
+  const riderLines: string[] = [];
+
   const scene = (g: Graph, snap: SimSnapshot, me: EntitySnapshot) => {
     const now = g.ctx.currentTime;
     const hitStop = snap.timeScale === 0;
@@ -1128,6 +1217,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     const listener = moving(me);
     soundscape(g, snap, me, down, hitStop);
     pirate(g, snap, me);
+    riderRadio(g, snap, me);
 
     // Other riders' engines: the nearest few, cheaper patch, distance and Doppler.
     const near = snap.entities
@@ -1415,6 +1505,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           on: pirateOn,
           station: (allStations ? pirateStationFor(allStations, regionId)?.id : null) ?? null,
         },
+        rider: { station: riderStation?.id ?? null, phase: riderMachine.phase(), lines: riderLines.slice() },
+        airing: graph?.radio.playing() ?? false,
       },
       duckLevel: duckTarget,
       voice: {

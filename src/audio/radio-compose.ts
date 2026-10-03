@@ -26,6 +26,7 @@
 // the songs are original by construction; no existing tune is transcribed.
 import { composeMore, MORE_PRESETS } from './radio-compose-more';
 import { composeRegional, REGIONAL_PRESETS } from './radio-compose-regional';
+import type { RadioGenre } from './radio-synth';
 import {
   finish,
   humanize,
@@ -104,6 +105,17 @@ export interface Composition {
   stepS: number;
   /** Sorted by step. */
   notes: readonly RadioNote[];
+  /**
+   * A medley (run W-U, Pivot FM): parts played once each, one after another, each on its own band.
+   * The top-level fields then mirror the first part. Absent for an ordinary song.
+   */
+  medley?: readonly MedleyPart[];
+}
+
+/** One part of a medley: a song cut to a few bars, and the band that plays it. */
+export interface MedleyPart {
+  genre: RadioGenre;
+  comp: Composition;
 }
 
 /** A station track's `procedural` field (docs/content-packs.md, "Radio stations"). */
