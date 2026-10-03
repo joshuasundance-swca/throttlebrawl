@@ -31,7 +31,10 @@ export type SideTheme =
   // run W-R, San Francisco's downtown (render/downtown.ts draws what stands there)
   | 'crossing'
   | 'plaza'
-  | 'downtown';
+  | 'downtown'
+  // run W-U, the Pacific Northwest's places (render/pnw-places.ts draws what stands there)
+  | 'festival'
+  | 'clearcut';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -59,9 +62,17 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (the pitch deck's #12): a closed main street on the day of the Stump Social (Fir County's
+  // logging festival), and a fresh clear-cut. The
+  // scatter puts nothing there but the forest's far edge past a clear-cut; pnw-places.ts draws the
+  // shops, the bears, the stumps and the slash. (A `ferry` stretch is no land: the sea, and the ferry.)
+  festival: 'festival',
+  clearcut: 'clearcut',
 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
+  'festival',
+  'clearcut',
   'crossing',
   'plaza',
   'downtown',
@@ -174,9 +185,11 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  festival: {},
+  clearcut: {},
 };
 /** Themes with no power poles: a downtown's wires are underground. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown']);
+const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown', 'festival', 'clearcut']);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],
@@ -484,7 +497,7 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       const s = (k + h(ci, k, side, 20)) * farSpacing;
       if (s > e.length) break;
       const theme = e.theme(side, s);
-      if (theme !== 'forest' && theme !== 'sawmill') continue;
+      if (theme !== 'forest' && theme !== 'sawmill' && theme !== 'clearcut') continue;
       const far = e.skirt(side, s);
       if (!far || far.to - far.from < 4) continue;
       const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);

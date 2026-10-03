@@ -125,8 +125,10 @@ export const KIND_SPEC: Readonly<
   'firewood-stand': { halfAlong: 0.8, halfAcross: 0.6, min: 1, max: 1, pitchM: 0, scrub: 0.85, kick: 0.2 },
 };
 
-const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
-const NO_GROUND_TAGS = new Set(['bridge', 'causeway']);
+// Run W-U: nothing stands among a road's solid hazards (the ferry's pickups, the festival's bears),
+// and a ferry's deck is no ground for a mailbox row.
+const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn', 'hazard']);
+const NO_GROUND_TAGS = new Set(['bridge', 'causeway', 'ferry']);
 
 /** One placed smashable. Plain data (it hashes with the world). */
 export interface Smashable {

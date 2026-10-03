@@ -222,7 +222,8 @@ The Pacific Northwest comes off the shelf now, with San Francisco, as a content 
   - timber trestles over river mouths
   - a sawmill and its log decks
   - drive-through espresso stands, one every few hundred feet
-  - Bigfoot kitsch: museums, crossing signs, researchers with plaster-cast kits
+  - Bigfoot kitsch: museums, crossing signs, researchers with plaster-cast kits (enough of him: the pitch deck after playtest 2 cut "more Bigfoot")
+  - (run W-U, the pitch deck's #12) a car ferry, the M/V Eventually, moored across the slip as the road while the bridge is out; a fresh clear-cut with its replanting billboard; the Stump Social, Fir County's logging festival that closes the main street, a chainsaw-carved bear on every corner. The joke is the institutions (the ferry system, the timber company's PR, the festival committee), never loggers or the town's people
 - **Palette:** grey-green and slate (overcast sky, moss, wet asphalt, slate water), with the riders' saturated colours on top (Old Growth's red flannel, Juniper Moss's teal and magenta). Time of day: foggy dawn and overcast noon. [default] Rain stays reserved with weather; the drizzle is in the light for now.
 - **Locals** [default]:
   - **Old Growth** (rival): a logger the size of a stump, red flannel, caulk boots. A heavy hitter who says about one sentence a mile. Signature line (agent draft, not yet approved): "These trees were here before you. So was I."
