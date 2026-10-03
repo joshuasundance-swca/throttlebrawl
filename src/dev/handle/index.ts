@@ -10,7 +10,7 @@ import { createPerfProbe, type PerfReport } from '../perf';
 import { debugFileText, parseDebugFile, reportText } from '../report';
 import { createFastForward, type FastForwardOptions } from './lockstep';
 import { botAttackRun, type AttackRun } from './attacks';
-import { moverProblem } from './checks';
+import { createEdgeWatch, moverProblem, type EdgeWatch } from './checks';
 
 export { MOVER_MODES, moverProblem } from './checks';
 export { botAttackRun } from './attacks';
@@ -20,6 +20,12 @@ export interface RaceChecks {
   ticks: number;
   /** Player edges in the order first entered (repeats collapsed). */
   playerEdges: number[];
+  /**
+   * Steps where the player rode from one edge back onto an edge first entered before it (riding on
+   * both ticks; a crash thrown back across a join and the remount do not count): the bot turned back.
+   */
+  playerRideBacks: number;
+  firstRideBack: string | null;
   /** Ticks where some mover had a non-finite field, an unknown mode or an invalid road position. */
   invalidTicks: number;
   firstInvalid: string | null;
@@ -102,6 +108,8 @@ function freshChecks(bot: BotController | null): RaceChecks {
   return {
     ticks: 0,
     playerEdges: [],
+    playerRideBacks: 0,
+    firstRideBack: null,
     invalidTicks: 0,
     firstInvalid: null,
     events: {},
@@ -125,6 +133,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
   let botOn = false;
   let bot: BotController | null = null;
   let checks = freshChecks(null);
+  let edgeWatch: EdgeWatch = createEdgeWatch();
   const probe = createPerfProbe(app);
   const ff = createFastForward((steps) => app.setLockstep(steps));
 
@@ -148,6 +157,11 @@ export function installTestHandle(app: AppHandle): TestHandle {
     const me = snap.entities[playerId];
     if (me && checks.playerEdges[checks.playerEdges.length - 1] !== me.road.edge)
       checks.playerEdges.push(me.road.edge);
+    const back = me ? edgeWatch.note(snap.tick, me.road.edge, me.mode) : null;
+    if (back) {
+      checks.playerRideBacks++;
+      checks.firstRideBack ??= back;
+    }
     if (bot) checks.bot = bot.stats();
     ff.step(snap);
   });
@@ -180,6 +194,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
       // A fresh bot per race, so its counters and memory start clean.
       if (botOn) installDriver();
       checks = freshChecks(bot);
+      edgeWatch = createEdgeWatch();
       app.startRace();
     },
     checks: () => checks,
