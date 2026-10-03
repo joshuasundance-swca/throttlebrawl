@@ -28,6 +28,7 @@ import type { BakedVerge, RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
+import { SEAWALL_LAND_M, themeAt } from './scenery';
 
 type Surface = BakedVerge['surface'];
 type Side = -1 | 1;
@@ -470,7 +471,10 @@ export class VergeLayer {
           for (let i = 0; i <= n; i++) {
             const s = Math.min(e.length, i * VERGE_STEP_M);
             const v = road.vergeAt(e.index, s, name);
-            if (v.widthM < MIN_BAND_M || (pass === 'shallows' && v.edge !== 'water')) {
+            // No shallows at a seawall (run W-U, the waterfront's promenade): the bay lies metres below.
+            const sheer = () =>
+              SEAWALL_LAND_M[themeAt(e.tags, name, s) as keyof typeof SEAWALL_LAND_M] !== undefined;
+            if (v.widthM < MIN_BAND_M || (pass === 'shallows' && (v.edge !== 'water' || sheer()))) {
               strips.breakStrip();
               continue;
             }

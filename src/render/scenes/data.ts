@@ -86,6 +86,9 @@ const THEMES = new Set([
   'industrial',
   'sawmill',
   'forest',
+  // run W-U: San Francisco's waterfront (the promenade on the bay side, the blocks on the city side)
+  'promenade',
+  'wharf',
 ]);
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);

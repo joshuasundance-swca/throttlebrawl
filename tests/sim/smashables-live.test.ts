@@ -32,6 +32,7 @@ const ROUTES: readonly Route[] = [
   { name: 'osm-pnw-samish', event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-i5-samish-run' },
   { name: 'sf-hills', event: 'region-sf:sf-hill-sprint' },
   { name: 'sf-downtown', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run' },
+  { name: 'sf-waterfront', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-waterfront-run' },
   { name: 'osm-sf-russian-hill', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run' },
   { name: 'osm-sf-twin-peaks', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run' },
 ];
@@ -62,7 +63,8 @@ describe('smashables on the live routes', () => {
     (_n, r) => {
       const cfg = config(r, 1);
       const pack = r.event.split(':')[0] ?? 'base';
-      expect((cfg.smashables ?? []).map((d) => d.kind).sort()).toEqual(
+      // The kinds, once each (run W-U: the waterfront brings its own pop-up desk and cafe tables).
+      expect([...new Set((cfg.smashables ?? []).map((d) => d.kind))].sort()).toEqual(
         [...(REGION_KINDS[pack] ?? [])].sort(),
       );
       const { sim, world } = createSimWithWorld(cfg);

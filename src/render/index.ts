@@ -24,6 +24,8 @@
 // from the asset manifest; until a rider's two models arrive, its box rider draws.
 // Run W-T (pitch 6, "the horizon comes alive") adds the staged roadside scenes (scenes/, a lazy
 // chunk with each region's scenes file): a few seeded scenes a race, each one mesh with one dry sign.
+// Run W-U (the pitch deck's #8) adds San Francisco's waterfront (waterfront.ts, a lazy chunk): the
+// promenade, the numbered pier sheds, the clock-tower ferry hall, the sea lions and the city blocks.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
 import { Backdrop, backdropFilesFor, type BackdropStats } from './backdrop';
@@ -48,6 +50,7 @@ import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { ScenesFile } from './scenes/data';
 import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
+import type { WaterfrontCounts, WaterfrontLayer } from './waterfront';
 import type { VergeCounts, VergeLayer } from './verge';
 import { Rain, rainColourOf } from './rain';
 import type { RiderLook } from './rider-looks';
@@ -219,6 +222,8 @@ export interface SceneryStatus {
   verge: VergeCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
   scenes: ScenesCounts | null;
+  /** San Francisco's waterfront (run W-U), or null while its chunk loads or on any other road. */
+  waterfront: WaterfrontCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -389,6 +394,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       scenesData = { road, region, ...found };
       buildScenes();
       buildRoadside();
+      buildWaterfront();
     });
   };
   // Run W-R: San Francisco's downtown (downtown.ts), a lazy chunk that arrives with its models.
@@ -411,6 +417,39 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       seed: sceneSeed,
     });
     scene.add(downtown.group);
+  };
+  // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
+  // It is rebuilt with the road (a new seed, the palms arriving) and keeps off the staged scenes.
+  let waterfrontModule: typeof import('./waterfront') | null = null;
+  let waterfrontLoading = false;
+  let waterfront: WaterfrontLayer | null = null;
+  const buildWaterfront = () => {
+    waterfront?.dispose();
+    waterfront = null;
+    if (!roadArgs) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    const m = waterfrontModule;
+    if (!m) {
+      if (waterfrontLoading || !['promenade', 'wharf'].some((t) => tags.has(t))) return;
+      waterfrontLoading = true;
+      void import('./waterfront')
+        .then((w) => {
+          waterfrontModule = w;
+          buildWaterfront();
+        })
+        .catch(() => {
+          waterfrontLoading = false; // tried again at the next road build
+        });
+      return;
+    }
+    if (!m.hasWaterfront(tags)) return;
+    waterfront = new m.WaterfrontLayer(models, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+      reserved: scenes?.reserved() ?? [],
+    });
+    scene.add(waterfront.group);
   };
   // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
   // is built once per setRoad (a new seed or the models arriving rebuild the road, not the band), so
@@ -441,6 +480,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildScenes();
     buildRoadside();
     buildDowntown();
+    buildWaterfront();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -597,6 +637,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
+      if (waterfront) sceneryVisible += waterfront.update(pose.x, pose.z, params.sceneryLodM);
       lastFrameAt = t;
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
@@ -702,6 +743,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       downtown: downtown?.counts() ?? null,
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
+      waterfront: waterfront?.counts() ?? null,
     }),
   };
 }

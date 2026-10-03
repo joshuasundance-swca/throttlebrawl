@@ -202,6 +202,160 @@
         { "box": [0.05, 0.6, 0.05], "at": [0, 0.75, 0.05], "colour": "#c9ccd0" },
         { "box": [0.3, 0.06, 0.18], "at": [0, 1.06, 0.05], "colour": "#2b2b2b" }
       ]
+    },
+    {
+      "id": "investor-meeting",
+      "status": "live",
+      "note": "Run W-U: the waterfront's promenade. A pitch deck on an easel, its audience a bench of gulls.",
+      "on": ["promenade"],
+      "acrossM": [3, 6],
+      "radiusM": 2.6,
+      "sign": {
+        "text": "INVESTOR MEETING IN PROGRESS",
+        "at": [-1.9, 1.2, 1.4],
+        "size": [2.6, 0.7],
+        "bg": "#ffffff",
+        "fg": "#20324a",
+        "posts": 1
+      },
+      "parts": [
+        { "box": [0.06, 1.7, 0.06], "at": [1.5, 0.85, -0.45], "colour": "#6b4f36" },
+        { "box": [0.06, 1.7, 0.06], "at": [1.5, 0.85, 0.45], "colour": "#6b4f36" },
+        { "box": [0.06, 1.6, 0.06], "at": [1.8, 0.8, 0], "rotZ": 0.3, "colour": "#6b4f36" },
+        { "box": [0.05, 0.9, 1.2], "at": [1.5, 1.45, 0], "colour": "#f8f6f0", "far": true },
+        { "box": [0.02, 0.2, 0.2], "at": [1.47, 1.15, -0.35], "colour": "#3e9b5a" },
+        { "box": [0.02, 0.4, 0.2], "at": [1.47, 1.25, 0], "colour": "#3e9b5a" },
+        { "box": [0.02, 0.65, 0.2], "at": [1.47, 1.38, 0.35], "colour": "#3e9b5a" },
+        { "box": [2.2, 0.1, 0.5], "at": [-0.6, 0.45, 0], "colour": "#6b4f36", "far": true },
+        { "box": [0.08, 0.45, 0.45], "at": [-1.6, 0.22, 0], "colour": "#2b3a34" },
+        { "box": [0.08, 0.45, 0.45], "at": [0.4, 0.22, 0], "colour": "#2b3a34" },
+        { "box": [0.34, 0.18, 0.16], "at": [-1.4, 0.6, 0], "colour": "#f4f4f0" },
+        { "box": [0.24, 0.06, 0.18], "at": [-1.43, 0.69, 0], "colour": "#9aa3a8" },
+        { "box": [0.1, 0.1, 0.1], "at": [-1.23, 0.73, 0], "colour": "#f4f4f0" },
+        { "box": [0.08, 0.03, 0.03], "at": [-1.15, 0.72, 0], "colour": "#f0b43a" },
+        { "box": [0.34, 0.18, 0.16], "at": [-0.95, 0.6, 0.05], "colour": "#f4f4f0" },
+        { "box": [0.24, 0.06, 0.18], "at": [-0.98, 0.69, 0.05], "colour": "#9aa3a8" },
+        { "box": [0.1, 0.1, 0.1], "at": [-0.78, 0.73, 0.05], "colour": "#f4f4f0" },
+        { "box": [0.08, 0.03, 0.03], "at": [-0.7, 0.72, 0.05], "colour": "#f0b43a" },
+        { "box": [0.34, 0.18, 0.16], "at": [-0.5, 0.6, -0.05], "colour": "#f4f4f0" },
+        { "box": [0.24, 0.06, 0.18], "at": [-0.53, 0.69, -0.05], "colour": "#9aa3a8" },
+        { "box": [0.1, 0.1, 0.1], "at": [-0.33, 0.73, -0.05], "colour": "#f4f4f0" },
+        { "box": [0.08, 0.03, 0.03], "at": [-0.25, 0.72, -0.05], "colour": "#f0b43a" },
+        { "box": [0.34, 0.18, 0.16], "at": [-0.05, 0.6, 0], "colour": "#f4f4f0" },
+        { "box": [0.24, 0.06, 0.18], "at": [-0.08, 0.69, 0], "colour": "#9aa3a8" },
+        { "box": [0.1, 0.1, 0.1], "at": [0.12, 0.73, 0], "colour": "#f4f4f0" },
+        { "box": [0.08, 0.03, 0.03], "at": [0.2, 0.72, 0], "colour": "#f0b43a" }
+      ]
+    },
+    {
+      "id": "scooter-reef",
+      "status": "live",
+      "note": "Run W-U: the waterfront's promenade, at the seawall. Rental scooters heaped for the bay.",
+      "on": ["promenade"],
+      "acrossM": [6, 8],
+      "radiusM": 2.4,
+      "sign": {
+        "text": "ARTIFICIAL REEF. PHASE ONE.",
+        "at": [0, 1.3, 1.6],
+        "size": [2.4, 0.7],
+        "bg": "#e9f2f5",
+        "fg": "#1c4b5e",
+        "posts": 2
+      },
+      "parts": [
+        { "box": [0.9, 0.06, 0.16], "at": [-0.6, 0.05, 0.2], "rotY": 0.3, "colour": "#2fae6b", "far": true },
+        { "box": [0.05, 0.9, 0.05], "at": [-0.95, 0.45, 0.3], "rotZ": 0.5, "colour": "#1d1d1d" },
+        { "box": [0.9, 0.06, 0.16], "at": [0.1, 0.05, -0.3], "rotY": -0.6, "colour": "#f07a2a", "far": true },
+        { "box": [0.05, 0.9, 0.05], "at": [0.45, 0.42, -0.5], "rotZ": -0.7, "colour": "#1d1d1d" },
+        {
+          "box": [0.9, 0.06, 0.16],
+          "at": [-0.2, 0.16, 0],
+          "rotY": 1.2,
+          "rotZ": 0.2,
+          "colour": "#1d1d1d",
+          "far": true
+        },
+        { "box": [0.05, 0.9, 0.05], "at": [-0.1, 0.55, 0.1], "rotZ": 0.15, "colour": "#2fae6b" },
+        { "box": [0.45, 0.04, 0.04], "at": [-0.05, 0.98, 0.1], "colour": "#1d1d1d" },
+        {
+          "box": [0.9, 0.06, 0.16],
+          "at": [0.5, 0.25, 0.25],
+          "rotY": 2.2,
+          "rotZ": -0.4,
+          "colour": "#2fae6b",
+          "far": true
+        },
+        {
+          "box": [0.9, 0.06, 0.16],
+          "at": [-0.4, 0.3, -0.25],
+          "rotY": -1.9,
+          "rotZ": 0.5,
+          "colour": "#f07a2a"
+        },
+        { "box": [0.05, 0.9, 0.05], "at": [-0.7, 0.62, -0.4], "rotZ": 0.9, "colour": "#f07a2a" },
+        { "box": [0.9, 0.06, 0.16], "at": [0.15, 0.4, 0.05], "rotY": 0.8, "rotZ": 0.3, "colour": "#f07a2a" },
+        { "box": [0.4, 0.4, 0.4], "at": [1.4, 0.2, -0.4], "colour": "#f05a28", "far": true },
+        { "box": [0.06, 0.5, 0.06], "at": [1.4, 0.6, -0.4], "colour": "#f4f4f0" }
+      ]
+    },
+    {
+      "id": "starter-pre-seed",
+      "status": "live",
+      "note": "Run W-U: the waterfront's promenade. A sourdough cart selling its starter, priced like a startup.",
+      "on": ["promenade"],
+      "acrossM": [3, 6],
+      "radiusM": 2.2,
+      "sign": {
+        "text": "STARTER FOR SALE. PRE-SEED.",
+        "at": [-1.5, 1.3, 1.0],
+        "size": [2.4, 0.7],
+        "bg": "#fbf4e2",
+        "fg": "#6b3a1f",
+        "posts": 1
+      },
+      "parts": [
+        { "box": [1.6, 0.8, 0.8], "at": [0.3, 0.7, 0], "colour": "#c9a46a", "far": true },
+        { "box": [1.7, 0.06, 0.9], "at": [0.3, 1.13, 0], "colour": "#7a5a3c" },
+        { "box": [0.06, 0.5, 0.5], "at": [-0.42, 0.25, 0], "colour": "#1d1d1d" },
+        { "box": [0.06, 0.5, 0.5], "at": [1.02, 0.25, 0], "colour": "#1d1d1d" },
+        { "box": [0.05, 1.4, 0.05], "at": [0.3, 1.85, 0], "colour": "#ececec" },
+        { "box": [1.9, 0.12, 1.9], "at": [0.3, 2.5, 0], "colour": "#e8d9b0", "far": true },
+        { "box": [0.28, 0.2, 0.28], "at": [-0.15, 1.26, 0.18], "colour": "#c58a4a" },
+        { "box": [0.28, 0.2, 0.28], "at": [0.2, 1.26, -0.15], "colour": "#c58a4a" },
+        { "box": [0.28, 0.2, 0.28], "at": [0.45, 1.26, 0.18], "colour": "#b57a3c" },
+        { "box": [0.2, 0.32, 0.2], "at": [0.85, 1.32, 0.2], "colour": "#f2ead6" },
+        { "box": [0.22, 0.05, 0.22], "at": [0.85, 1.5, 0.2], "colour": "#7a5a3c" }
+      ]
+    },
+    {
+      "id": "market-price",
+      "status": "live",
+      "note": "Run W-U: the waterfront's promenade. A crab stand whose price comes from a tablet.",
+      "on": ["promenade"],
+      "acrossM": [3, 6],
+      "radiusM": 2.3,
+      "sign": {
+        "text": "MARKET PRICE: ASK THE AI.",
+        "at": [1.6, 1.25, 1.1],
+        "size": [2.3, 0.65],
+        "bg": "#ffffff",
+        "fg": "#a33a2a",
+        "posts": 1
+      },
+      "parts": [
+        { "box": [2.0, 0.9, 0.8], "at": [-0.3, 0.45, 0], "colour": "#e7e2d4", "far": true },
+        { "box": [1.8, 0.08, 0.7], "at": [-0.3, 0.94, 0], "colour": "#dff3f6" },
+        { "box": [0.3, 0.12, 0.22], "at": [-1.0, 1.03, 0], "colour": "#d2452f" },
+        { "box": [0.3, 0.12, 0.22], "at": [-0.55, 1.03, 0.1], "colour": "#d2452f" },
+        { "box": [0.3, 0.12, 0.22], "at": [-0.1, 1.03, -0.1], "colour": "#d2452f" },
+        { "box": [0.3, 0.12, 0.22], "at": [0.35, 1.03, 0], "colour": "#d2452f" },
+        { "box": [2.3, 0.08, 1.2], "at": [-0.3, 2.2, 0.2], "colour": "#2f6b5a", "far": true },
+        { "box": [0.06, 2.2, 0.06], "at": [-1.35, 1.1, 0.55], "colour": "#2b3a34" },
+        { "box": [0.06, 2.2, 0.06], "at": [0.75, 1.1, 0.55], "colour": "#2b3a34" },
+        { "box": [0.04, 0.4, 0.04], "at": [0.55, 1.15, 0.25], "colour": "#5c6268" },
+        { "box": [0.3, 0.22, 0.03], "at": [0.55, 1.45, 0.3], "colour": "#1d1f22" },
+        { "box": [0.26, 0.18, 0.01], "at": [0.55, 1.45, 0.32], "colour": "#59c3ff" }
+      ]
     }
   ]
 }

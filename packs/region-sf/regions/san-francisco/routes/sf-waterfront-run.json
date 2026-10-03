@@ -1,0 +1,30 @@
+{
+  "type": "route",
+  "id": "sf-waterfront-run",
+  "name": "Waterfront",
+  "network": "sf-waterfront",
+  "start": { "road": "sf-wf-bridgefoot", "s": 40, "dir": 1 },
+  "finish": { "road": "sf-wf-sea-lion-landing", "s": 635.5 },
+  "mainPath": [
+    "sf-wf-bridgefoot",
+    "sf-wf-clocktower-reach",
+    "sf-wf-ferry-plaza",
+    "sf-wf-odd-piers",
+    "sf-wf-sea-lion-landing"
+  ],
+  "allowedRoads": [
+    "sf-wf-bridgefoot",
+    "sf-wf-clocktower-reach",
+    "sf-wf-ferry-plaza",
+    "sf-wf-odd-piers",
+    "sf-wf-sea-lion-landing"
+  ],
+  "checkpoints": [
+    { "road": "sf-wf-clocktower-reach", "s": 300 },
+    { "road": "sf-wf-ferry-plaza", "s": 260 },
+    { "road": "sf-wf-odd-piers", "s": 450 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}

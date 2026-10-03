@@ -31,7 +31,10 @@ export type SideTheme =
   // run W-R, San Francisco's downtown (render/downtown.ts draws what stands there)
   | 'crossing'
   | 'plaza'
-  | 'downtown';
+  | 'downtown'
+  // run W-U, San Francisco's waterfront (render/waterfront.ts draws what stands there)
+  | 'promenade'
+  | 'wharf';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -59,12 +62,32 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (the pitch deck's #8): the waterfront. The bay side is the promenade to the seawall (the
+  // pier sheds and the ferry hall stand on its edge); the city side is the waterfront blocks, their
+  // side streets, the ferry plaza and the lot by the bridge. Nothing of the scatter's stands on
+  // either; the waterfront layer (waterfront.ts) draws them.
+  promenade: 'promenade',
+  'pier-shed': 'promenade',
+  'ferry-hall': 'promenade',
+  wharf: 'wharf',
+  'side-street': 'wharf',
+  'ferry-plaza': 'wharf',
+  'wharf-lot': 'wharf',
 };
+/**
+ * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
+ * drops straight into the sea there, with no terrain skirt (road-mesh.ts). The promenade's: its
+ * 12 m verge band (road/cross-section.ts) less the drawn 0.6 m verge, so the drawn edge is the
+ * sim's water edge.
+ */
+export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade: 11.4 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  'promenade',
+  'wharf',
   'palms',
   'mangrove',
   'commercial',
@@ -174,9 +197,11 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  promenade: {},
+  wharf: {},
 };
-/** Themes with no power poles: a downtown's wires are underground. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown']);
+/** Themes with no power poles: a downtown's (and the waterfront's) wires are underground. */
+const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown', 'promenade', 'wharf']);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],
