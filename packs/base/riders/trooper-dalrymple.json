@@ -9,22 +9,38 @@
   "blurb": "A state trooper in mirrored shades. Quick off the mark, and fond of the taser.",
   "bike": "rustbucket-400",
   "startingWeapon": "taser",
-  "stats": { "massKg": 90, "healthMax": 100, "skill": 0.7 },
-  "personality": { "style": "cop" },
+  "stats": {
+    "massKg": 90,
+    "healthMax": 100,
+    "skill": 0.7
+  },
+  "personality": {
+    "style": "cop"
+  },
   "law": {
     "agency": "sunburn-state-troopers",
     "bustRadiusM": 12,
     "bustDwellS": 1.2,
     "fineCash": 600,
-    "pursuitSpeedScale": 1.1
+    "pursuitSpeedScale": 1.1,
+    "habit": {
+      "kind": "radar",
+      "limitMps": 29,
+      "rangeM": 160,
+      "minBridgeM": 300
+    }
   },
   "look": {
     "description": "A state trooper in grey with a campaign hat that has never once blown off, until today.",
     "bikeModel": "cop-moto"
   },
   "meta": {
-    "status": "draft",
-    "notes": "M4 cops-3 head start: a second Keys cop for the spawn mix, from the state-trooper side of the law (the tone guide's 'state troopers on the highway'). A made-up name and agency. His id sorts after sgt-pruitt, so an event that fields one cop still fields Pruitt. Crude starting numbers, [default].",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "status": "live",
+    "notes": "M4 cops-3 head start: a second Keys cop for the spawn mix, from the state-trooper side of the law (the tone guide's 'state troopers on the highway'). A made-up name and agency. His id sorts after sgt-pruitt, so an event that fields one cop still fields Pruitt. Crude starting numbers, [default]. Run W-T (law with a personality): he finally rides (live). His habit is `radar`: on patrol he waits at the route's first long bridge (300 m or more over water) with a radar beside him, reads each player once as he comes within about 160 m, and lights up only for one over 29 m/s (about 65 mph); one under the limit rides by. Clocked, the player takes 20 heat. In a Keys race he is the second cop fielded, so the patrol usually sends him. [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
   }
 }

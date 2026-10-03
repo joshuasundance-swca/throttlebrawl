@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "survive",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: Officer Meter and a second unit.",
+    "notes": "A cop escape: Officer Meter and a second unit. Run W-T (law with a personality): Officer Meter chases on a 30 s pursuit budget each, so outlasting the budgets is the escape ('Pursuit budget exhausted. Fiscal year resets in July.'). The Curb Authority END OF JURISDICTION sign ends it sooner.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

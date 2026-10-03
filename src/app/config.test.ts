@@ -163,12 +163,12 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
       'base:chad-speedwell',
       'base:kevin-from-accounting',
       'base:player',
-      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot (release
-      // content: Pruitt each time).
+      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot. Run W-T:
+      // Trooper Dalrymple rides (live), so the Keys pool cycles Pruitt, Dalrymple.
       'base:sgt-pruitt',
+      'base:trooper-dalrymple',
       'base:sgt-pruitt',
-      'base:sgt-pruitt',
-      'base:sgt-pruitt',
+      'base:trooper-dalrymple',
     ]);
     expect(config.riders.map((r) => r.controller.kind)).toEqual([
       'ai',
@@ -223,8 +223,22 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
       label: 'END OF JURISDICTION. Have a nice day.',
       agency: 'base:keys-county-deputies',
     });
-    // Without them, nothing new rides along.
-    const plain = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
+    // A cop with no habit, and a crew with no sign, carry nothing new.
+    const bare = buildRegistry(
+      files.map((f) => {
+        const json = f.json as { type?: string; id?: string; law?: Record<string, unknown> };
+        if (json.type === 'rider' && json.law) {
+          const { habit: _h, ...law } = json.law;
+          return { ...f, json: { ...json, law } };
+        }
+        if (json.type === 'crew') {
+          const { jurisdiction: _j, ...crew } = json as Record<string, unknown>;
+          return { ...f, json: crew };
+        }
+        return f;
+      }),
+    );
+    const plain = buildSimConfig(bare, streamForEvent(bare), { seed: 1 });
     expect(plain.riders.find((r) => r.role === 'cop')?.law?.habit).toBeUndefined();
     expect(plain.event.cops?.jurisdiction).toBeUndefined();
   });

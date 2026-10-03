@@ -372,6 +372,31 @@ describe('cash: places, takedowns, near misses, style, bonuses, and Road Trip fi
     expect(r.profile.history.at(-1)).toMatchObject({ outcome: 'busted', cash: -120 });
     expect(progressOf(DEF, r.profile.regions).won).toEqual([]);
   });
+  it("citations billed at the finish are charged like a fine, never below $0 (run W-T, Lindqvist's)", () => {
+    const n = DEF.nodes[0] as CareerNode;
+    const settle = (cash: number, citationCash: number) =>
+      settleRace(
+        { ...fresh(), cash },
+        {
+          reg: REG,
+          def: DEF,
+          node: n,
+          plan: plan(n.event),
+          status: status('won'),
+          tally: tally({ citations: 3, citationCash }),
+          build: 'b',
+          at: 't',
+        },
+      );
+    const paid = settle(1000, 225);
+    const earned = paid.report.lines.reduce((s, l) => s + l.cash, 0);
+    expect(paid.report.fine).toBe(225);
+    expect(paid.profile.cash).toBe(1000 + earned - 225);
+    expect(paid.report.outcome).toBe('won');
+    const broke = settle(0, 1e6);
+    expect(broke.profile.cash).toBe(0);
+    expect(broke.report.fine).toBe(earned);
+  });
   it('a quit pays nothing and wins nothing', () => {
     const p = fresh();
     const n = DEF.nodes[0] as CareerNode;

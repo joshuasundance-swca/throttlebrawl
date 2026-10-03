@@ -203,7 +203,10 @@ export function settleRace(profile: Profile, input: SettleInput): { profile: Pro
   for (const s of newSecrets) if (s.cash > 0) lines.push({ label: `Found: ${s.name}`, cash: s.cash });
   const earned = lines.reduce((sum, l) => sum + l.cash, 0);
   const cashBefore = profile.cash;
-  const fine = tally.busted ? Math.min(tally.fineCash, Math.max(0, cashBefore + earned)) : 0;
+  // A bust's fine, plus any citations billed at the finish (run W-T: Deputy Lindqvist), never
+  // taking cash below $0 (Road Trip).
+  const owed = (tally.busted ? tally.fineCash : 0) + Math.max(0, tally.citationCash ?? 0);
+  const fine = Math.min(owed, Math.max(0, cashBefore + earned));
   const cashAfter = Math.min(CASH_MAX, Math.max(0, cashBefore + earned - fine));
   // Grudges.
   const stakes =

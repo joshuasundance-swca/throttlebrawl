@@ -8,11 +8,14 @@
   "rivalCrews": [],
   "meta": {
     "status": "live",
-    "notes": "Parody city law for the San Francisco region: parking enforcement with a pursuit budget. A made-up name; no real agency names, badges or logos.",
+    "notes": "Parody city law for the San Francisco region: parking enforcement with a pursuit budget. A made-up name; no real agency names, badges or logos. Run W-T: its END OF JURISDICTION sign (see the Keys deputies). [default]",
     "provenance": {
       "origin": "agent",
       "author": "agent",
       "createdAt": "2026-10-01"
     }
+  },
+  "jurisdiction": {
+    "sign": "END OF JURISDICTION. Curb Authority enforcement ends. Meters do not."
   }
 }

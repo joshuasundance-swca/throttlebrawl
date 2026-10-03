@@ -9,14 +9,25 @@
   "blurb": "A tired county deputy. Slow to start a chase, then relentless.",
   "bike": "rustbucket-400",
   "startingWeapon": "baton",
-  "stats": { "massKg": 95, "healthMax": 100, "skill": 0.6 },
-  "personality": { "style": "cop" },
+  "stats": {
+    "massKg": 95,
+    "healthMax": 100,
+    "skill": 0.6
+  },
+  "personality": {
+    "style": "cop"
+  },
   "law": {
     "agency": "keys-county-deputies",
     "bustRadiusM": 14,
     "bustDwellS": 1.0,
     "fineCash": 400,
     "pursuitSpeedScale": 1.05,
+    "habit": {
+      "kind": "relentless",
+      "rampS": 75,
+      "maxScale": 1.15
+    },
     "radioVoice": "tired-deputy"
   },
   "look": {
@@ -25,7 +36,11 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built. M4 cops-3 (head start) gave him the baton as his starting weapon, which you can snatch off him mid-swing; the baton went live in the integration round, and buildSimConfig maps startingWeapon, so every build's race hands it to him.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+    "notes": "The M1 cop (cops-1). Approved line: \"License, registration, and your front teeth.\" Bust and fine numbers are the M1 starting values; the tuning panel scales the radius and dwell. He rides the base bike, scaled by pursuitSpeedScale when the race config is built. M4 cops-3 (head start) gave him the baton as his starting weapon, which you can snatch off him mid-swing; the baton went live in the integration round, and buildSimConfig maps startingWeapon, so every build's race hands it to him. Run W-T (law with a personality, the pitch deck's #11): his habit is `relentless`. The longer he chases (all race), the closer he holds, the sooner he moves in alongside, and the harder he rides to catch up: after 75 s of chasing, well back, he rides at up to 1.15 x his own top speed. Twenty-two years of practice. [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-30"
+    }
   }
 }

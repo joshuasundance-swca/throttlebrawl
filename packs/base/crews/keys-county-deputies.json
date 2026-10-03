@@ -8,7 +8,14 @@
   "rivalCrews": [],
   "meta": {
     "status": "live",
-    "notes": "Parody county law for Region 1: real agency structure (county deputies) under a made-up name, no real agency names, badges or logos. Sgt. Pruitt rides for them.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-30" }
+    "notes": "Parody county law for Region 1: real agency structure (county deputies) under a made-up name, no real agency names, badges or logos. Sgt. Pruitt rides for them. Run W-T: its END OF JURISDICTION sign stands part-way along a Keys race when the heat meter runs; crossing it cools your heat and the deputies on you pull over. [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-09-30"
+    }
+  },
+  "jurisdiction": {
+    "sign": "END OF JURISDICTION. Keys County Deputies thank you for leaving."
   }
 }

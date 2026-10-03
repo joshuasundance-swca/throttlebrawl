@@ -38,11 +38,35 @@
       "text": "You may dispute this by mail. Nobody wins.",
       "audioAsset": "audio/barks/officer-meter-core/meter-busted-mail",
       "audioStatus": "live"
+    },
+    {
+      "id": "meter-budget-july",
+      "trigger": "cop-budget-out",
+      "text": "Pursuit budget exhausted. Fiscal year resets in July.",
+      "status": "live"
+    },
+    {
+      "id": "meter-budget-quarter",
+      "trigger": "cop-budget-out",
+      "text": "That was the quarter's overtime.",
+      "status": "live"
+    },
+    {
+      "id": "meter-jurisdiction-curb",
+      "trigger": "cop-jurisdiction",
+      "text": "Curb Authority ends at the curb.",
+      "status": "live"
+    },
+    {
+      "id": "meter-jurisdiction-meter",
+      "trigger": "cop-jurisdiction",
+      "text": "Outside my zone. The meter keeps running.",
+      "status": "live"
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "The San Francisco cop's lines (playtest 1c). The narrative does not fire cop-siren or busted yet, so these wait for that.",
+    "notes": "The San Francisco cop's lines (playtest 1c). The narrative does not fire cop-siren or busted yet, so these wait for that. Run W-T (law with a personality): the cop habit lines are unvoiced agent drafts (subtitles only) that stay until vetoed. meter-budget-july is the pitch deck's line, verbatim (53 characters, over the 42 the guide aims for and under its 80 cap).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

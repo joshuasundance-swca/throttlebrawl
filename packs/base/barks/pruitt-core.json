@@ -264,11 +264,41 @@
       "text": "Sit in the shade. Cuffs are hot.",
       "audioAsset": "audio/barks/pruitt-core/pruitt-bust-shade",
       "audioStatus": "live"
+    },
+    {
+      "id": "pruitt-relentless-allday",
+      "trigger": "cop-relentless",
+      "text": "Twenty-two years. I can do this all day.",
+      "status": "live"
+    },
+    {
+      "id": "pruitt-relentless-overtime",
+      "trigger": "cop-relentless",
+      "text": "That's it. I'm putting in for overtime.",
+      "status": "live"
+    },
+    {
+      "id": "pruitt-relentless-lunch",
+      "trigger": "cop-relentless",
+      "text": "I skipped lunch for this. Pull over.",
+      "status": "live"
+    },
+    {
+      "id": "pruitt-jurisdiction-someone",
+      "trigger": "cop-jurisdiction",
+      "text": "County line. You're someone else's now.",
+      "status": "live"
+    },
+    {
+      "id": "pruitt-jurisdiction-paperwork",
+      "trigger": "cop-jurisdiction",
+      "text": "Not my county. Not my paperwork.",
+      "status": "live"
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "pruitt-siren-teeth is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals.",
+    "notes": "pruitt-siren-teeth is the approved line from the tone guide, verbatim; every other line is an agent draft (M4 rivals-1, built early) that stays until vetoed. Conditioned lines cover leading, the last fifth of the race, a hurt speaker or target, the back of the field, time of day, memory (a grudge held this race, repeat takedowns) and the speaker's authored rivals. Run W-T (law with a personality): the cop habit lines are unvoiced agent drafts (subtitles only) that stay until vetoed.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

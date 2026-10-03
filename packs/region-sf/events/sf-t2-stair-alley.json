@@ -18,7 +18,9 @@
   },
   "cops": {
     "mode": "every-race",
-    "baseCount": 1
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "targetCount": 3,
@@ -62,7 +64,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A takedown hunt: three takedowns on the hill run; the stair alley pays a bonus.",
+    "notes": "A takedown hunt: three takedowns on the hill run; the stair alley pays a bonus. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

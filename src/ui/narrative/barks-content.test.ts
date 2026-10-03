@@ -37,7 +37,9 @@ const RIVALS = [
 ];
 // The named cop speaks too, on the cop's own triggers (the siren and the bust), not the racers'.
 const COP = 'sgt-pruitt';
-const SPEAKERS = [...RIVALS, COP];
+// Run W-T (law with a personality): Trooper Dalrymple rides too, with lines of his own.
+const TROOPER = 'trooper-dalrymple';
+const SPEAKERS = [...RIVALS, COP, TROOPER];
 // Each speaker's approved line (docs/tone-guide.md, "The rivals"), verbatim.
 const APPROVED: Record<string, string> = {
   'deacon-vane': 'Pray the ditch is soft, sinner.',
@@ -73,7 +75,8 @@ describe('base pack bark sets', () => {
         expect(mine.filter((l) => l.trigger === trigger).length, `${rival} ${trigger}`).toBeGreaterThan(0);
       }
     }
-    for (const speaker of SPEAKERS) {
+    // Every speaker with an approved line has it (the trooper has none yet).
+    for (const speaker of SPEAKERS.filter((s) => APPROVED[s] !== undefined)) {
       const mine = sets.filter((s) => s.defaults?.speaker === speaker).flatMap((s) => s.lines);
       expect(
         mine.map((l) => l.text),
@@ -82,11 +85,23 @@ describe('base pack bark sets', () => {
     }
   });
 
-  it("give the cop plain lines for the siren and the bust (the cop's own triggers)", () => {
-    const mine = sets.filter((s) => s.defaults?.speaker === COP).flatMap((s) => s.lines);
-    for (const trigger of ['cop-siren', 'busted']) {
-      expect(mine.filter((l) => l.trigger === trigger && !l.when).length, trigger).toBeGreaterThanOrEqual(2);
+  it("give the cops plain lines for the siren and the bust (the cop's own triggers)", () => {
+    for (const cop of [COP, TROOPER]) {
+      const mine = sets.filter((s) => s.defaults?.speaker === cop).flatMap((s) => s.lines);
+      for (const trigger of ['cop-siren', 'busted']) {
+        expect(
+          mine.filter((l) => l.trigger === trigger && !l.when).length,
+          `${cop} ${trigger}`,
+        ).toBeGreaterThanOrEqual(2);
+      }
     }
+    // Run W-T: each Keys cop has lines for his own habit.
+    const habit = (cop: string, trigger: string) =>
+      sets
+        .filter((s) => s.defaults?.speaker === cop)
+        .flatMap((s) => s.lines.filter((l) => l.trigger === trigger));
+    expect(habit(COP, 'cop-relentless').length).toBeGreaterThanOrEqual(2);
+    expect(habit(TROOPER, 'cop-radar').length).toBeGreaterThanOrEqual(2);
   });
 
   it('give each rival at least two lines for every M2 trigger (docs/milestones/M2.md, narrative-2)', () => {

@@ -79,6 +79,11 @@ describe('buildSimConfig: cops-3 fields reach the race', () => {
       randomness: 0,
       patrolMax: 2, // playtest 2: one or two cops patrol every race
       heat: true, // playtest 2: the heat meter
+      // Run W-T: the Keys deputies' END OF JURISDICTION sign (the first fielded cop's agency).
+      jurisdiction: {
+        label: 'END OF JURISDICTION. Keys County Deputies thank you for leaving.',
+        agency: 'base:keys-county-deputies',
+      },
     });
   });
 

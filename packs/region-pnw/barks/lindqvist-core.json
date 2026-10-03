@@ -45,11 +45,59 @@
       "text": "Let's get you somewhere dry. Then jail.",
       "audioAsset": "audio/barks/lindqvist-core/lindqvist-busted-dry",
       "audioStatus": "live"
+    },
+    {
+      "id": "lindqvist-citation-signal",
+      "trigger": "cop-citation",
+      "text": "Failure to signal. Noted.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-citation-lane",
+      "trigger": "cop-citation",
+      "text": "Unsafe lane change. I'm writing that down.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-citation-revving",
+      "trigger": "cop-citation",
+      "text": "Excessive revving. That's a real one.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-citation-mirror",
+      "trigger": "cop-citation",
+      "text": "Littering. Your mirror counts.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-bill-mail",
+      "trigger": "cop-bill",
+      "text": "Those will come by mail. Rain or shine.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-bill-itemized",
+      "trigger": "cop-bill",
+      "text": "Itemized, as you'd expect.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-jurisdiction-file",
+      "trigger": "cop-jurisdiction",
+      "text": "County line. I'll forward your file.",
+      "status": "live"
+    },
+    {
+      "id": "lindqvist-jurisdiction-safe",
+      "trigger": "cop-jurisdiction",
+      "text": "Not my county. Drive safe anyway.",
+      "status": "live"
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "region-pnw (playtest 1c). Agent drafts that stay until vetoed.",
+    "notes": "region-pnw (playtest 1c). Agent drafts that stay until vetoed. Run W-T (law with a personality): the cop habit lines are unvoiced agent drafts (subtitles only) that stay until vetoed.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

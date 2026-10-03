@@ -179,9 +179,12 @@ describe("the law's weapons in a real race (release content, every region)", () 
       const config = raceConfig(r.event, 1);
       const cops = config.riders.filter((d) => d.faction === 'law');
       // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, every one the
-      // region's cop.
+      // region's law. Run W-T: in the Keys Trooper Dalrymple rides beside Pruitt (live), with his
+      // taser; the starter is still the region's named cop.
       expect(cops, r.name).toHaveLength(4);
-      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(new Set([r.cop]));
+      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(
+        new Set([r.cop, ...(r.cop === 'base:sgt-pruitt' ? ['base:trooper-dalrymple'] : [])]),
+      );
       expect(cops[0]?.startingWeapon, r.name).toBe(r.weapon);
       const sim = createSim(config);
       sim.step([toSimInput(emptyActions())]);
