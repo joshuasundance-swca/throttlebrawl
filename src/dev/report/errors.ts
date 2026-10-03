@@ -39,6 +39,27 @@ export function createErrorLog(now: () => string = () => new Date().toISOString(
   };
 }
 
+// One log per page, filled from the moment the page installs the capture (src/main.ts, through
+// dev/boot.ts, before the game boots). It lives here, not in the report, so the capture loads with
+// the first screen while the report itself is a lazy chunk that reads the same log later.
+let pageLog: ErrorLog = createErrorLog();
+let capturing = false;
+
+/** Starts collecting the page's errors for the report (once). */
+export function installErrorCapture(source: ErrorSource = window): ErrorLog {
+  if (!capturing) {
+    capturing = true;
+    pageLog = createErrorLog();
+    captureErrors(source, pageLog);
+  }
+  return pageLog;
+}
+
+/** The page's error log, as installErrorCapture fills it. */
+export function pageErrors(): ErrorLog {
+  return pageLog;
+}
+
 /** Starts collecting errors from `source` (the page's window) into `log`. */
 export function captureErrors(source: ErrorSource, log: ErrorLog): void {
   source.addEventListener('error', (event) => {
