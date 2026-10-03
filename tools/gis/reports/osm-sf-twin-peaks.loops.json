@@ -1,0 +1,172 @@
+{
+  "config": "configs/osm-sf-twin-peaks.json",
+  "maxStreets": 3,
+  "found": 15,
+  "loops": [
+    {
+      "leaveM": 994.7,
+      "joinM": 1428.4,
+      "mainM": 433.7,
+      "loopM": 432.3,
+      "streets": ["Storrie Street", "18th Street", "(primary_link)"],
+      "leave": [37.7610564, -122.4403041],
+      "join": [37.7597175, -122.4446471],
+      "kind": "alternate",
+      "ratio": 0.997
+    },
+    {
+      "leaveM": 1055.8,
+      "joinM": 1461.5,
+      "mainM": 405.7,
+      "loopM": 437.5,
+      "streets": ["Hattie Street", "18th Street", "(primary_link)"],
+      "leave": [37.7610532, -122.4409976],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.078
+    },
+    {
+      "leaveM": 908.3,
+      "joinM": 1461.5,
+      "mainM": 553.2,
+      "loopM": 603.1,
+      "streets": ["Douglass Street", "18th Street", "(primary_link)"],
+      "leave": [37.7613895, -122.4394271],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.09
+    },
+    {
+      "leaveM": 810.6,
+      "joinM": 1461.5,
+      "mainM": 650.9,
+      "loopM": 721.1,
+      "streets": ["Eureka Street", "18th Street", "(primary_link)"],
+      "leave": [37.7616765, -122.4383818],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.108
+    },
+    {
+      "leaveM": 714.4,
+      "joinM": 1461.5,
+      "mainM": 747.1,
+      "loopM": 829.4,
+      "streets": ["Diamond Street", "18th Street", "(primary_link)"],
+      "leave": [37.7618629, -122.4373162],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.11
+    },
+    {
+      "leaveM": 605.3,
+      "joinM": 1461.5,
+      "mainM": 856.2,
+      "loopM": 953.4,
+      "streets": ["(primary_link)", "Collingwood Street", "18th Street", "(primary_link)"],
+      "leave": [37.7621704, -122.4361475],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.114
+    },
+    {
+      "leaveM": 506.9,
+      "joinM": 1461.5,
+      "mainM": 954.5,
+      "loopM": 1095.0,
+      "streets": ["Castro Street", "18th Street", "(primary_link)"],
+      "leave": [37.7626317, -122.435195],
+      "join": [37.7594544, -122.4448206],
+      "kind": "detour",
+      "ratio": 1.147
+    },
+    {
+      "leaveM": 1297.9,
+      "joinM": 2724.6,
+      "mainM": 1426.7,
+      "loopM": 1690.4,
+      "streets": ["Danvers Street", "Corbett Avenue", "Portola Drive"],
+      "leave": [37.760481, -122.4435244],
+      "join": [37.7500525, -122.4434324],
+      "kind": "detour",
+      "ratio": 1.185
+    },
+    {
+      "leaveM": 1874.6,
+      "joinM": 3109.2,
+      "mainM": 1234.5,
+      "loopM": 1496.3,
+      "streets": ["Grand View Avenue", "Clipper Street"],
+      "leave": [37.7566782, -122.4421069],
+      "join": [37.7470342, -122.4448792],
+      "kind": "detour",
+      "ratio": 1.212
+    },
+    {
+      "leaveM": 1987.6,
+      "joinM": 3109.2,
+      "mainM": 1121.6,
+      "loopM": 1380.1,
+      "streets": ["Romain Street", "Grand View Avenue", "Clipper Street"],
+      "leave": [37.7562295, -122.4410354],
+      "join": [37.7470342, -122.4448792],
+      "kind": "detour",
+      "ratio": 1.23
+    },
+    {
+      "leaveM": 506.9,
+      "joinM": 994.7,
+      "mainM": 487.7,
+      "loopM": 796.9,
+      "streets": ["Castro Street", "18th Street", "Storrie Street"],
+      "leave": [37.7626317, -122.435195],
+      "join": [37.7610564, -122.4403041],
+      "kind": "detour",
+      "ratio": 1.634
+    },
+    {
+      "leaveM": 1461.5,
+      "joinM": 1717.0,
+      "mainM": 255.5,
+      "loopM": 476.6,
+      "streets": ["19th Street", "Yukon Street", "Short Street"],
+      "leave": [37.7594544, -122.4448206],
+      "join": [37.7577969, -122.4431644],
+      "kind": "detour",
+      "ratio": 1.865
+    },
+    {
+      "leaveM": 714.4,
+      "joinM": 994.7,
+      "mainM": 280.3,
+      "loopM": 531.3,
+      "streets": ["Diamond Street", "18th Street", "Storrie Street"],
+      "leave": [37.7618629, -122.4373162],
+      "join": [37.7610564, -122.4403041],
+      "kind": "detour",
+      "ratio": 1.895
+    },
+    {
+      "leaveM": 810.6,
+      "joinM": 994.7,
+      "mainM": 184.1,
+      "loopM": 422.9,
+      "streets": ["Eureka Street", "18th Street", "Storrie Street"],
+      "leave": [37.7616765, -122.4383818],
+      "join": [37.7610564, -122.4403041],
+      "kind": "detour",
+      "ratio": 2.297
+    },
+    {
+      "leaveM": 1874.6,
+      "joinM": 1987.6,
+      "mainM": 113.0,
+      "loopM": 277.1,
+      "streets": ["Grand View Avenue", "Romain Street"],
+      "leave": [37.7566782, -122.4421069],
+      "join": [37.7562295, -122.4410354],
+      "kind": "detour",
+      "ratio": 2.452
+    }
+  ]
+}

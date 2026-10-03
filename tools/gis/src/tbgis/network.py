@@ -63,6 +63,7 @@ from tbgis.emit import (
     without,
 )
 from tbgis.fetch import FetchMeta
+from tbgis.fun import fun_report
 from tbgis.osm import Way
 from tbgis.stretch import F64, Profile, RealPath, build_profile, real_path, runs_of
 from tbgis.tmerc import Frame
@@ -1140,6 +1141,9 @@ def bake_network(
                 "lengthM": round(float(bl.p.s[-1]), 1),
                 "lanesPerDirection": bl.line.crossSection.lanesPerDirection,
                 "driftClosedM": {k: round(v, 2) for k, v in bl.drift.items()},
+                # What a stretch bake's fun report says, for the closed line (run W-U: a network
+                # replaces a stretch, and its README numbers still come from the bake).
+                "fun": fun_report(bl.cfg, bl.rp, bl.p, ways).as_dict(),
             }
             for lid, bl in lines.items()
         },

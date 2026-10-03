@@ -1,0 +1,194 @@
+{
+  "config": "networks/osm-keys-key-west.json",
+  "maxStreets": 3,
+  "found": 17,
+  "loops": [
+    {
+      "leaveM": 6178.8,
+      "joinM": 6663.3,
+      "mainM": 484.4,
+      "loopM": 642.5,
+      "streets": ["George Street", "Patricia Street", "Steven Avenue"],
+      "leave": [24.5516313, -81.7789573],
+      "join": [24.5491672, -81.7829077],
+      "kind": "detour",
+      "ratio": 1.326
+    },
+    {
+      "leaveM": 3372.1,
+      "joinM": 3711.5,
+      "mainM": 339.4,
+      "loopM": 476.6,
+      "streets": ["Stickney Lane", "Nancy Cherry Lane", "Faraldo Circle - Arrivals"],
+      "leave": [24.5523513, -81.7530075],
+      "join": [24.5520644, -81.7562666],
+      "kind": "detour",
+      "ratio": 1.404
+    },
+    {
+      "leaveM": 6302.6,
+      "joinM": 6663.3,
+      "mainM": 360.7,
+      "loopM": 517.4,
+      "streets": ["Ashby Street", "Patricia Street", "Steven Avenue"],
+      "leave": [24.5510015, -81.7799663],
+      "join": [24.5491672, -81.7829077],
+      "kind": "detour",
+      "ratio": 1.434
+    },
+    {
+      "leaveM": 6178.8,
+      "joinM": 6538.2,
+      "mainM": 359.4,
+      "loopM": 517.8,
+      "streets": ["George Street", "Patricia Street", "Leon Street"],
+      "leave": [24.5516313, -81.7789573],
+      "join": [24.5498013, -81.7818863],
+      "kind": "detour",
+      "ratio": 1.441
+    },
+    {
+      "leaveM": 3427.1,
+      "joinM": 3711.5,
+      "mainM": 284.4,
+      "loopM": 421.6,
+      "streets": ["Faraldo Circle", "Nancy Cherry Lane", "Faraldo Circle - Arrivals"],
+      "leave": [24.5521935, -81.7535214],
+      "join": [24.5520644, -81.7562666],
+      "kind": "detour",
+      "ratio": 1.482
+    },
+    {
+      "leaveM": 6178.8,
+      "joinM": 6424.6,
+      "mainM": 245.7,
+      "loopM": 404.9,
+      "streets": ["George Street", "Patricia Street", "Thompson Street"],
+      "leave": [24.5516313, -81.7789573],
+      "join": [24.5503782, -81.7809585],
+      "kind": "detour",
+      "ratio": 1.648
+    },
+    {
+      "leaveM": 6302.6,
+      "joinM": 6538.2,
+      "mainM": 235.6,
+      "loopM": 392.8,
+      "streets": ["Ashby Street", "Patricia Street", "Leon Street"],
+      "leave": [24.5510015, -81.7799663],
+      "join": [24.5498013, -81.7818863],
+      "kind": "detour",
+      "ratio": 1.667
+    },
+    {
+      "leaveM": 6424.6,
+      "joinM": 6663.3,
+      "mainM": 238.7,
+      "loopM": 398.0,
+      "streets": ["Thompson Street", "Patricia Street", "Steven Avenue"],
+      "leave": [24.5503782, -81.7809585],
+      "join": [24.5491672, -81.7829077],
+      "kind": "detour",
+      "ratio": 1.667
+    },
+    {
+      "leaveM": 6538.2,
+      "joinM": 6918.3,
+      "mainM": 380.1,
+      "loopM": 834.3,
+      "streets": ["Leon Street", "Laird Street", "White Street"],
+      "leave": [24.5498013, -81.7818863],
+      "join": [24.5478409, -81.7849649],
+      "kind": "detour",
+      "ratio": 2.195
+    },
+    {
+      "leaveM": 6538.2,
+      "joinM": 6663.3,
+      "mainM": 125.1,
+      "loopM": 284.6,
+      "streets": ["Leon Street", "Patricia Street", "Steven Avenue"],
+      "leave": [24.5498013, -81.7818863],
+      "join": [24.5491672, -81.7829077],
+      "kind": "detour",
+      "ratio": 2.275
+    },
+    {
+      "leaveM": 6178.8,
+      "joinM": 6302.6,
+      "mainM": 123.8,
+      "loopM": 281.9,
+      "streets": ["George Street", "Patricia Street", "Ashby Street"],
+      "leave": [24.5516313, -81.7789573],
+      "join": [24.5510015, -81.7799663],
+      "kind": "detour",
+      "ratio": 2.277
+    },
+    {
+      "leaveM": 6302.6,
+      "joinM": 6424.6,
+      "mainM": 122.0,
+      "loopM": 279.9,
+      "streets": ["Ashby Street", "Patricia Street", "Thompson Street"],
+      "leave": [24.5510015, -81.7799663],
+      "join": [24.5503782, -81.7809585],
+      "kind": "detour",
+      "ratio": 2.294
+    },
+    {
+      "leaveM": 6424.6,
+      "joinM": 6538.2,
+      "mainM": 113.7,
+      "loopM": 273.3,
+      "streets": ["Thompson Street", "Patricia Street", "Leon Street"],
+      "leave": [24.5503782, -81.7809585],
+      "join": [24.5498013, -81.7818863],
+      "kind": "detour",
+      "ratio": 2.404
+    },
+    {
+      "leaveM": 6040.4,
+      "joinM": 6178.8,
+      "mainM": 138.5,
+      "loopM": 379.0,
+      "streets": ["Bertha Street", "Blanche Street", "George Street"],
+      "leave": [24.5523435, -81.7778358],
+      "join": [24.5516313, -81.7789573],
+      "kind": "detour",
+      "ratio": 2.736
+    },
+    {
+      "leaveM": 6663.3,
+      "joinM": 6918.3,
+      "mainM": 255.0,
+      "loopM": 716.0,
+      "streets": ["Steven Avenue", "Laird Street", "White Street"],
+      "leave": [24.5491672, -81.7829077],
+      "join": [24.5478409, -81.7849649],
+      "kind": "detour",
+      "ratio": 2.808
+    },
+    {
+      "leaveM": 1373.8,
+      "joinM": 1566.5,
+      "mainM": 192.7,
+      "loopM": 599.5,
+      "streets": ["Duck Avenue", "20th Street", "Flagler Avenue"],
+      "leave": [24.5675758, -81.7516516],
+      "join": [24.5659423, -81.7509973],
+      "kind": "detour",
+      "ratio": 3.111
+    },
+    {
+      "leaveM": 1465.9,
+      "joinM": 1566.5,
+      "mainM": 100.6,
+      "loopM": 506.2,
+      "streets": ["Eagle Avenue", "20th Street", "Flagler Avenue"],
+      "leave": [24.566794, -81.7513414],
+      "join": [24.5659423, -81.7509973],
+      "kind": "detour",
+      "ratio": 5.032
+    }
+  ]
+}

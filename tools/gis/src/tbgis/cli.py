@@ -1,4 +1,4 @@
-"""``tbgis probe``, ``tbgis bake`` and ``tbgis network``: the offline pipeline's commands.
+"""``tbgis probe``, ``tbgis bake``, ``tbgis network`` and ``tbgis loops``: the offline pipeline's commands.
 
 Run from anywhere; paths resolve against tools/gis. Both fetch at most once and then read the
 cache under tools/gis/.cache (git-ignored). After a bake, format the pack files with
@@ -20,7 +20,8 @@ from tbgis.emit import bake
 from tbgis.fetch import FetchMeta, overpass, usgs_samples
 from tbgis.fun import fun_report
 from tbgis.lint import lint_bake, lint_network
-from tbgis.network import NetworkConfig, bake_network
+from tbgis.loops import find_loops
+from tbgis.network import NetworkConfig, bake_network, stretch_config
 from tbgis.osm import load_ways
 from tbgis.probe import report
 from tbgis.stretch import F64, RealPath, build_profile, real_path, runs_of
@@ -152,6 +153,46 @@ def cmd_network(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_loops(args: argparse.Namespace) -> int:
+    """Where the real map offers a junction choice along a stretch or a network line (run W-U)."""
+    doc = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    if "lines" in doc:
+        net = NetworkConfig.model_validate(doc)
+        if not args.line:
+            print(
+                f"loops: a network config needs --line ({', '.join(ln.id for ln in net.lines)})",
+                file=sys.stderr,
+            )
+            return 2
+        cfg, label, query = stretch_config(net, net.line(args.line)), f"{net.id}-{args.line}", net.osmQuery
+    else:
+        cfg = BakeConfig.model_validate(doc)
+        label, query = cfg.id, cfg.osmQuery or KEYS_US1_QUERY
+    overpass(query, GIS / cfg.osmExtract)  # the bake's own extract, fetched once
+    loops = find_loops(cfg, load_ways(GIS / cfg.osmExtract), args.max_streets)
+    print(f"{label}: {len(loops)} real loops within reason off the route, closest to the stretch first")
+    if query == KEYS_US1_QUERY:
+        print("  (unknown, not none: this extract holds only US 1 ways, so no side road is in it)")
+    for lp in loops[:LOOPS_SHOWN]:
+        print(
+            f"  {lp.kind:9s} {lp.leaveM:6.0f} -> {lp.joinM:6.0f} m: {lp.mainM:5.0f} m of route, "
+            f"the loop {lp.loopM:5.0f} m via {' > '.join(lp.streets)}"
+        )
+    write_json(
+        GIS / "reports" / f"{label}.loops.json",
+        {
+            "config": Path(args.config).resolve().relative_to(GIS).as_posix(),
+            "maxStreets": args.max_streets,
+            "found": len(loops),
+            "loops": [lp.as_dict() for lp in loops[:LOOPS_SHOWN]],
+        },
+    )
+    return 0
+
+
+LOOPS_SHOWN = 20
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tbgis", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -162,8 +203,12 @@ def main(argv: list[str] | None = None) -> int:
     nw = sub.add_parser("network", help="bake one real-road network config into the pack")
     nw.add_argument("config", help="path to a networks/<id>.json file")
     nw.add_argument("--created-at", help="provenance date (default: the OSM retrieval date)")
+    lo = sub.add_parser("loops", help="list where the real map offers a junction choice along a route")
+    lo.add_argument("config", help="path to a configs/<id>.json or networks/<id>.json file")
+    lo.add_argument("--line", help="for a network config: the line to probe")
+    lo.add_argument("--max-streets", type=int, default=None, help="leave out loops over more streets")
     args = ap.parse_args(argv)
-    commands = {"probe": cmd_probe, "bake": cmd_bake, "network": cmd_network}
+    commands = {"probe": cmd_probe, "bake": cmd_bake, "network": cmd_network, "loops": cmd_loops}
     return int(commands[args.cmd](args))
 
 

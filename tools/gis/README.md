@@ -18,13 +18,15 @@ uv run tbgis probe                                  # the Keys data probe -> pro
 uv run tbgis bake configs/osm-keys-bahia-honda.json  # -> packs/base/regions/florida-keys/*/osm-*.json
 uv run tbgis bake configs/osm-pnw-gorge.json         # -> packs/region-pnw/regions/pacific-northwest/*/osm-*.json
 uv run tbgis network networks/osm-pnw-samish.json    # a network: several real roads and their junctions
+uv run tbgis loops configs/osm-sf-twin-peaks.json --max-streets 3  # where the real map offers a choice
 cd ../.. && npm run format                           # match the repo's Prettier style
 uv run --directory tools/gis pytest                  # the pipeline tests (plus ruff and mypy)
 ```
 
 Every bake also writes `reports/<id>.fun.json`: corners, the tightest radius, grades, launch
 crests, junctions, bridges, tunnels and how far the smoothed line drifts from the real one
-(`src/tbgis/fun.py`).
+(`src/tbgis/fun.py`). A network bake writes the same numbers for each of its lines, after the
+closure, in `reports/<id>.network.json` (`lines.<line>.fun`).
 
 ## Beyond the Keys: street routes and high country
 
@@ -73,7 +75,7 @@ by name (`routeChoices`; [Region packs at runtime](../../docs/content-packs.md#r
 |---|---|---|---|
 | `region-pnw` | `osm-pnw-chuckanut` | `osm-chuckanut-run` (Chuckanut Drive): WA SR 11, southbound from above Larrabee State Park | `osm-chuckanut-larrabee`, `-cliffs`, `-oyster-creek` |
 | `region-pnw` | `osm-pnw-gorge` | `osm-gorge-run` (Columbia River Highway): the Historic Columbia River Highway, eastbound from the Women's Forum viewpoint through the Crown Point loops to Shepperd's Dell | `osm-gorge-crown-point-loops`, `-latourell`, `-shepperds-dell` |
-| `region-sf` | `osm-sf-russian-hill` | `osm-sf-hills-run` (Russian Hill): Hyde over Russian Hill and Nob Hill, California down to Kearny, Columbus, Union back over the hill, then Leavenworth | one road per street: `osm-sf-hyde`, `-california`, `-kearny`, `-columbus`, `-union`, `-leavenworth` |
+| `region-sf` | `osm-sf-russian-hill` (a network since run W-U: [Networks](#networks-real-roads-joined-at-real-junctions)) | `osm-sf-hills-run` (Russian Hill): Hyde over Russian Hill and Nob Hill, California down to Kearny, Columbus, Union back over the hill, then Leavenworth | one road per street: `osm-sf-hyde`, `-california`, `-kearny`, `-columbus`, `-union`, `-leavenworth` |
 | `region-sf` | `osm-sf-twin-peaks` | `osm-sf-twin-peaks-run` (Twin Peaks): Upper Market from Sanchez, Portola, then Twin Peaks Boulevard to the summit | `osm-sf-upper-market`, `-portola`, `-twin-peaks-climb` |
 
 Each network keeps its own frame origin, since it never shares a scene with the region's hand-made
@@ -92,7 +94,7 @@ From `reports/<id>.fun.json` (the bake computes every number):
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `osm-pnw-chuckanut` | 7.62 km, 3 roads | 7 | 40 m | 144 | 3.9% | 25..77 m (+86/-134) | 12.3% (p95 5.5%) | 2% | none | 6 (0.8/km) | 0 m | 19 m |
 | `osm-pnw-gorge` | 7.63 km, 3 roads | 30 | 27 m | 392 | 24.1% | 37..236 m (+57/-228) | 12.5% (p95 6.3%) | 2% | none | 4 (0.5/km) | 232 m | 33 m |
-| `osm-sf-russian-hill` | 5.35 km, 6 roads | 5 | 16 m | 82 | 3.4% | 10..95 m (+210/-211) | 22.2% (p95 18.1%) | 45% | 1 (from 34.6 m/s) | 62 (11.6/km) | 21 m | 10 m |
+| `osm-sf-russian-hill` (main line, network bake) | 5.35 km, 8 roads | 5 | 16 m | 83 | 3.4% | 10..95 m (+210/-211) | 22.4% (p95 18.1%) | 45% | 1 (from 34.2 m/s) | 62 (11.6/km) | 21 m | 7 m |
 | `osm-sf-twin-peaks` | 5.66 km, 3 roads | 23 | 17 m | 363 | 22.9% | 40..260 m (+237/-16) | 8.9% (p95 8.3%) | 14% | none | 31 (5.5/km) | 164 m | 16 m |
 
 - **Corners** are runs tighter than a 150 m radius that turn at least 20°. **Turning** is the total
@@ -149,6 +151,7 @@ real junction choice.
 |---|---|---|---|---|
 | `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 7.17 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic to Higgs Beach: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down Truman Avenue and White Street to Atlantic: a shortcut, 170 m shorter | 14.8 and 40.4 m (main), 13.2 m (branch) |
 | `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 250 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
+| `osm-sf-russian-hill` (region-sf) | `osm-sf-hills-run` (Russian Hill), 5.27 km | the stretch bake's path exactly (run W-U): Hyde over Russian Hill and Nob Hill, California, Kearny, Columbus, Union back up the hill, Leavenworth down to the finish; two lanes | Jones Street, right off Union one block before its crest, down the hill's 29% north face and back along Chestnut onto Leavenworth: an alternate, 28 m shorter | 7.9 and 8.4 m (main), 6.5 m (branch) |
 
 Key West's frame origin (24.5675, -81.7475) is the one, of the 11 tried, that draws its busiest view
 (Stock Island looking west at the Triangle, where US 1 runs straight on into North Roosevelt) in
@@ -156,6 +159,45 @@ the fewest 512 m road chunks: 77 of the still scene's 80 draw calls (`src/render
 77 to 85 over the origins tried). East Lake Samish Drive runs within 7 m of I-5's edge for 800 m, at about its height; the land walk
 in `region-routes.test.ts` (every raised land edge closed down to the ground) passes there with
 render's #377, and beside the exit 246 off-ramp with the junction moved by `shiftM`.
+
+Russian Hill (run W-U) was the stretch bake `configs/osm-sf-russian-hill.json`; its network config
+replaces it, so one config owns its files. The main line is the stretch's path with the stretch's
+smoothing, elevation, lanes and features, and it keeps the ids the career and the tests name: the
+network, the route and every road (Hyde, California, Kearny, Columbus, Union, Leavenworth). The
+junctions cut two of them: Union into `osm-sf-union` and `osm-sf-union-crest`, Leavenworth into
+`osm-sf-leavenworth` and `osm-sf-leavenworth-north` (the finish road; its billboard moved onto it).
+The closure moved Hyde at most 4 m and brought the line's largest drift from the real streets
+from 10 m to 7 m. Jones and Chestnut are their own roads, so the corner between them falls on a
+join like the route's other street corners: a 16 m corner in the middle of one road left a sliver in
+render's land-seam walk (`src/render/land-seam.test.ts`). The turn-off and the rejoin start and land
+a little early (`shiftM` -10 and 10, `insetM` 50 and 45, `turnsM` 50 and 45) so they bend at 16.6 and
+15.8 m radius, about as tightly as the route's own corners (the first try, at the default turns,
+bent at 8.6 and 8.1 m). A rider at speed leaves the ground where Union's rise meets Jones's drop,
+the city's own ramp. The junction sign (`jones-keep-right`) stands on Union's right just before the
+split zone, 50 to 60 m before the split.
+
+### Where the real map offers a choice: `tbgis loops`
+
+`uv run tbgis loops <config> [--line <id>] [--max-streets 3]` (run W-U, `src/tbgis/loops.py`) reads
+the extract a stretch or a network line bakes from and lists the real loops off its route: from each
+junction on it, the shortest way through the other public roads (driveways, parking aisles and
+private roads left out) that comes back onto the route further along. It keeps the ones that make a
+race choice, 0.7 to 2 times the stretch they replace (a route that comes back on itself, like Russian
+Hill, has cross streets that would skip nearly all of it), and drops the other carriageway of a
+divided road. It writes `reports/<label>.loops.json`, the closest to the stretch first.
+
+| Route | Real loops (at most 3 streets) | What they are |
+|---|---|---|
+| Russian Hill (`hills` line) | 230 | the grid: equal-length alternates everywhere inside the route's corners; built: Jones and Chestnut (565 m for 565 m in the probe) |
+| Twin Peaks | 15 | off Upper Market: a 430 m alternate under the 18th Street interchange (Storrie and 18th), and detours, among them Corbett Avenue (1,690 m for 1,427 m, behind two hairpins at Danvers) and Grand View Avenue with Clipper Street (1,496 m for 1,234 m) |
+| Columbia River Highway | 1 | a detour through Latourell's streets, 1,319 m for 682 m |
+| Chuckanut Drive | 0 | |
+| Key West (`us1` line) | 17 | all detours, from a third longer (George, Patricia and Steven, 643 m for 484 m) to several times longer, through the side streets off Atlantic and Bertha and the airport loop; the built Boulevard choice runs over more than 3 streets |
+| I-5 by Lake Samish (`i5` line) | 2 | an exit ramp pair, and the built lake road's first loop |
+| Bahia Honda | unknown | its extract holds only US 1, so no side road is in it |
+
+None of the loops off Twin Peaks, the Gorge or Key West is built: each is longer, with nothing on it
+yet, and a longer way with nothing on it is a trap, not a choice.
 
 ## Fetch once, bake offline
 

@@ -1,0 +1,6 @@
+{
+  "config": "configs/osm-pnw-chuckanut.json",
+  "maxStreets": 3,
+  "found": 0,
+  "loops": []
+}

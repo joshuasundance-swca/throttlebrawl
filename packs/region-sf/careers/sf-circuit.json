@@ -65,7 +65,15 @@
       "length": "standard",
       "tier": "t2",
       "at": { "road": "osm-sf-columbus", "s": 200 },
-      "claims": ["osm-sf-columbus", "osm-sf-union", "osm-sf-leavenworth"]
+      "claims": [
+        "osm-sf-columbus",
+        "osm-sf-union",
+        "osm-sf-union-crest",
+        "osm-sf-jones",
+        "osm-sf-chestnut",
+        "osm-sf-leavenworth",
+        "osm-sf-leavenworth-north"
+      ]
     },
     {
       "id": "stair-alley",
