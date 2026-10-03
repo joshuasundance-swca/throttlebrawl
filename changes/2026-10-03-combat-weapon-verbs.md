@@ -1,5 +1,5 @@
 ---
-kind: player
+kind: new
 audience: player
 ---
 Weapons do something now, not just hit. Kevin's briefcase is thrown: it flies up the road at whoever is ahead and bursts into paperwork, and then it's gone. The bike chain yanks: it pulls a rival across your line and out the other side, into the oncoming lane if you're on that side of him. The campaign sign sweeps both sides at once, so a swing between two riders hits both.
