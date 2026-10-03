@@ -357,6 +357,10 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
       'base:event-stalled-car': 0,
       'base:event-tow-truck': 0,
       'base:event-work-truck': 0,
+      // W-T moving road events: the boat slide's pickup and boat, the gator crossing's gators.
+      'base:event-crossing-gator': 0,
+      'base:event-hitch-pickup': 0,
+      'base:event-runaway-boat': 0,
       'base:keys-parade-float': 0,
       // W-R: each key's own vehicles, in no region mix: they spawn only on their key.
       'base:cooler-on-wheels': 0,

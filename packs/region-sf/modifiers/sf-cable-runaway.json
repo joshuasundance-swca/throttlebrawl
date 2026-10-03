@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "sf-cable-runaway",
+  "name": "SF Cable Car Runaway",
+  "kind": "human",
+  "tags": ["set-piece", "cable-runaway"],
+  "rarityWeight": 1.2,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.1, 0.9],
+    "chance": 0.6
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "cable-runaway",
+      "needsTag": "cable-line",
+      "signText": "",
+      "serial": ["21% GRADE", "CABLE CAR ABOVE", "BRAKES", "ON THE ROADMAP"],
+      "vehicle": "event-runaway-cable-car",
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T moving road event (pitch deck #9): on a cable street only, a cable car ahead loses its grip and rolls back down at you, shoving the cars behind it. On any other road it never takes the race's event slot.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

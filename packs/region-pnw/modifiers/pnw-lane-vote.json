@@ -1,0 +1,43 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-lane-vote",
+  "name": "PNW Lane Vote",
+  "kind": "human",
+  "tags": ["set-piece", "lane-vote"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.1, 0.75],
+    "chance": 0.3
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "lane-vote",
+      "signText": "LANE VOTE AHEAD. Turnout expected to be damp.",
+      "leftText": "LOGGING PARADE",
+      "rightText": "LOOSE HAY",
+      "left": "pnw-logging-parade",
+      "right": "pnw-hay-spill",
+      "theme": "pnw"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T lane vote: a gantry splits the logging-days parade (left) from the hay truck (right); the side you ride under picks the event about 400 m on.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

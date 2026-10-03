@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "event-hitch-pickup",
+  "name": "Pickup, Towing",
+  "category": "car",
+  "tags": ["event", "boat-slide"],
+  "lengthM": 5.4,
+  "widthM": 2.0,
+  "cruiseMps": 13.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The boat slide's pickup, crawling along with a boat trailer on its hitch until the hitch stops being involved. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, run W-T) places it. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}
