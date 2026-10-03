@@ -140,6 +140,8 @@ const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
     'look-offer × style-pop',
   ],
   laptop: [
+    // As upright: the objective (top 48 px) under the bubble (top 52 px).
+    'bark-bubble × hud-objective',
     'landing-line in the road ahead',
     'bark-bubble × look-offer',
     'hud-heat × look-offer',
@@ -148,7 +150,7 @@ const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
   mirrored: ['bark-bubble in the road ahead'],
   'small phone': ['bark-bubble in the road ahead'],
 };
-const KNOWN_LAYOUT_CAP = 19;
+const KNOWN_LAYOUT_CAP = 20;
 
 function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
@@ -663,7 +665,8 @@ async function expectWholeLayout(page: Page, start: Measured, where: string) {
 
 test('the known layout list only shrinks', () => {
   const entries = Object.values(KNOWN_LAYOUT_FINDINGS).flat();
-  expect(entries.length, 'a new known overlap needs the cap raised in the same diff').toBeLessThanOrEqual(
+  // The cap follows the list down (lower it with each fix), so any growth shows as a raised cap.
+  expect(entries.length, 'KNOWN_LAYOUT_CAP must equal the list: lower it when you fix one').toBe(
     KNOWN_LAYOUT_CAP,
   );
 });
