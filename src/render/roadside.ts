@@ -425,6 +425,8 @@ export interface RoadsideInput {
   landReach(edge: number, side: -1 | 1, s: number): number;
   /** The scenery already standing (houses, trees, shacks): props keep clear of it. */
   spots: readonly ScenerySpot[];
+  /** Ground already taken by the staged roadside scenes (run W-T): discs, world m. */
+  reserved?: readonly { x: number; z: number; r: number }[];
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
@@ -580,6 +582,8 @@ export class RoadsideScatter {
         this.taken.add(c.x, c.z, disc.r * sp.size, tree);
       }
     }
+    // The staged scenes' ground (run W-T, scenes/): nothing of the kit stands in a scene, ferns included.
+    for (const q of input.reserved ?? []) this.taken.add(q.x, q.z, q.r, false);
     if (this.density <= 0) this.edge = road.edges.length;
   }
 
