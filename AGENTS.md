@@ -17,6 +17,7 @@ Tags: `[decided]` is the maintainer's call; don't change it without asking. `[de
 
 `[decided]` The bar is tests, lint and types, a bot playthrough, a perf check, a plain changelog and the leak scan. A change is done when CI's `gate` check is green on its PR; auto-merge then merges it. The full list is in [the gate](docs/engineering.md#the-gate-definition-of-done). Every PR adds a plain-words note under `changes/` (a Dependabot-only PR is exempt).
 
+- The docs are the spec: derive your tests from your task's **Automated acceptance** list in `docs/milestones/`, and write the failing test first.
 - CI runs the whole gate on every PR. Locally, run only what the next section allows; never `npm run check` or a whole tier.
 - Report what each check examined, not only that it passed. Performance claims name the device, the renderer and the scene.
 - Agents can't test on the benchmark phone: report "done, not phone-verified". The maintainer's playtest phone-verifies; nothing waits for it.
@@ -28,7 +29,8 @@ Tags: `[decided]` is the maintainer's call; don't change it without asking. `[de
 
 Parallel lanes share one dev machine, and on 2026-10-02 they locked it up with software-rendered browsers, builds and tests running at once.
 
-- **No local browsers or dev servers** (Playwright specs, `e2e:one`, perf, `vite preview`, the Playwright MCP tools) unless your brief grants the run's one browser slot. CI runs the browser tiers.
+- **No local browsers or dev servers** (Playwright specs, `e2e:one`, perf, `vite preview`) unless your brief grants the run's one browser slot. CI runs the browser tiers. **Never the Playwright MCP tools**, slot or not; the slot holder drives a headless `playwright-core` Chromium from a script.
+- Run `npm ci` in your worktree before your first commit; the git hooks need its `node_modules`.
 - Unit tests: only the files you touch, with `VITEST_MAX_WORKERS=2`, as often as you need. A seeded sim test you are writing may run alone; never the whole sim batch. Typecheck once before you push.
 - `vite build` only for a build or size change; Blender only in an asset brief. Stop every process you start.
 - Never run a command that can wait for input: `GIT_EDITOR=true`, `git merge --no-edit`, `git commit -m`. Never bare `git stash` (every worktree shares the stash); use `git stash push -u -m <unique>` and apply it by SHA.
@@ -39,7 +41,8 @@ Parallel lanes share one dev machine, and on 2026-10-02 they locked it up with s
 `[default]` A run is several lanes in parallel, plus one keeper and one live check; [.claude/workflows/lane-run.js](.claude/workflows/lane-run.js) is the template. Big parallel runs stay `[decided]` (the maintainer, 2026-10-03: "Keep as is").
 
 - **Branch** `lane/<lane-id>/<topic>` off `origin/main`, never `main`. `<lane-id>` is the module folder in architecture.md's ownership table, or `infra`. Each parallel agent uses its own `git worktree`.
-- **A lane ends at push.** One topic per PR; push only when it is ready (CI runs at most 20 jobs at once, about 9 per push). Open the PR, arm auto-merge (`gh pr merge --auto --squash`), check its checks once, write your report and finish. You may push and open PRs without asking `[decided]`.
+- **A lane ends at push.** One topic per PR; push only when it is ready (CI runs at most 20 jobs at once, about 9 per push). Open the PR, arm auto-merge (`gh pr merge --auto --squash`), check its checks once, write your report and finish. You may push and open PRs without asking `[decided]` (Codex lanes excepted, below).
+- **Codex lanes** build disjoint work (assets such as Blender models first) in their own worktree, with no network. They do not push: the coordinator reviews the work, runs the gates and opens the PR `[default]`.
 - **The keeper** owns main's health and lands every PR of its run. It fixes a PR's own red on its branch; for a PR red only because of main, it runs `gh pr update-branch` once main is green (a re-run reuses the old merge commit); when main is red, it fixes forward or reverts the culprit. If your merge broke main, fixing it is your first job; if you see main red, say so in your report. Each run ends with main green and playable `[decided]`.
 - Merge `origin/main` into your branch only for a real conflict or code you need. Never rebase a pushed branch. Never hand-merge `package-lock.json`: take main's, then run `npm install`.
 - Confirm a merge by the PR's state (`gh pr view --json state,mergedAt`), never by an exit code.
@@ -62,7 +65,7 @@ Everything committed, including commit messages, PR text, branch names, notes an
 - No employer names, no personal details about the maintainer or anyone else, no absolute user paths, usernames, machine names or network details, and no emails except no-reply ones. Say "the maintainer" and "the dev machine".
 - Commit as the maintainer's GitHub no-reply address, set in user-level git config `[decided]`; hooks and CI check it ([commit identity](docs/engineering.md#commit-identity)).
 - Private context stays in agent memory, outside the repo `[decided]`. `scratch/` and `*.local.md` are git-ignored space for notes that are not private; never `git add -f` them. The leak scan is light; you are the first filter.
-- Log every non-original asset in `THIRD_PARTY_ASSETS.md` with its licence, and label AI-made ones. Prefer CC0 or CC-BY; avoid non-commercial and no-derivatives licences; ask if a case is unclear. Don't copy Road Rash's characters, track names, HUD layout or logos.
+- Log every non-original asset in `THIRD_PARTY_ASSETS.md` with its licence, and label AI-made ones. Prefer CC0 or CC-BY; avoid non-commercial and no-derivatives licences and unlicensed code; ask if a case is unclear. Don't copy Road Rash's characters, track names, HUD layout or logos.
 
 ## Velocity and content
 
