@@ -394,6 +394,7 @@ test.describe('in the game', () => {
 
     const heard = async (ms: number) => {
       await page.evaluate(() => ((window as ProbeWindow).__plucks = []));
+      // eslint-disable-next-line no-restricted-syntax -- audio plays on the audio clock, which is wall time
       await page.waitForTimeout(ms);
       const d = await page.evaluate(() => (window as ProbeWindow).__plucks ?? []);
       const count = (x: number) => d.filter((v) => v === x).length;
@@ -401,14 +402,17 @@ test.describe('in the game', () => {
     };
 
     // Playtest 2 (2026-10-02): the race starts on the region's own station, the Keys' first.
+    // eslint-disable-next-line no-restricted-syntax -- the stations load on first use, then audio plays on the audio clock, which is wall time
     await page.waitForTimeout(800); // the stations load on first use
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
     // The Keys' third station (run W-Q) is Salt Air, the island band, before the radio goes off.
     await page.keyboard.press('r');
+    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
     await page.waitForTimeout(400);
     await page.keyboard.press('r');
+    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
     await page.waitForTimeout(400);
     const off = await heard(1000);
     await page.keyboard.press('r');

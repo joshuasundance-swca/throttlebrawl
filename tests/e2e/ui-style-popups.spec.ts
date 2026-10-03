@@ -278,6 +278,7 @@ test('phone landscape: pop-ups sit clear of the road ahead, merge repeats and fa
     };
     feed?.([{ kind: 'nearMiss', points: 25 }]);
     await frames();
+    // eslint-disable-next-line no-restricted-syntax -- the pop-up chip's merge window is a wall-clock UI timer
     await new Promise((r) => setTimeout(r, 150));
     feed?.([{ kind: 'nearMiss', points: 25 }]);
     await frames();

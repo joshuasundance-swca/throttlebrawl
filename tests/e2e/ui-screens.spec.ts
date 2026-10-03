@@ -262,6 +262,7 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   if (build) {
     await page.mouse.move(build.x + build.width / 2, build.y + build.height / 2);
     await page.mouse.down();
+    // eslint-disable-next-line no-restricted-syntax -- a long-press: the build id's threshold is wall time by design
     await page.waitForTimeout(700);
     await page.mouse.up();
   }

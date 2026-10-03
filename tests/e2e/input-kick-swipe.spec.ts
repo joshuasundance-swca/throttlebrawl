@@ -107,6 +107,7 @@ async function swipe(
     ]);
   } else {
     await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
+    // eslint-disable-next-line no-restricted-syntax -- a touch gesture's own timing: the kick swipe window is wall-clock ms by design
     await page.waitForTimeout(realMs);
     await Promise.all(
       moves.map(([r, dt]) =>
@@ -121,6 +122,7 @@ async function swipe(
   // second (the loop takes at most 4 per frame), so 1.5 s alone was not always the kick's 13 + 6 +
   // 27 ticks and 30-tick cooldown: in main's CI run 36965896101 the next swipe reached the sim 69
   // ticks after the kick began, and punched.
+  // eslint-disable-next-line no-restricted-syntax -- debt: stands for the kick's cooldown; inventory R8 moves this check to sim ticks
   await page.waitForTimeout(1500);
   await page.waitForFunction(
     () => {

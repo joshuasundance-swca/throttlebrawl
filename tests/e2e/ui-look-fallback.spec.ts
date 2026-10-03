@@ -142,6 +142,7 @@ test('"No thanks" is remembered: slow frames never offer again', async ({ page }
   await page.locator('#start-screen').click();
   await race(page);
   await slowFrames(page, 60);
+  // eslint-disable-next-line no-restricted-syntax -- the look fallback's watch judges slow frames over wall time by design
   await page.waitForTimeout(15_000);
   await expect(page.locator('#look-offer')).toBeHidden();
   await expect(page.locator('#pause-look-offer')).toBeHidden();
@@ -171,6 +172,7 @@ test('the controls: forced slow frames never offer on Classic, nor with the watc
   expect(await look(page)).toBe('classic');
   await race(page);
   await slowFrames(page, 60);
+  // eslint-disable-next-line no-restricted-syntax -- the look fallback's watch judges slow frames over wall time by design
   await page.waitForTimeout(15_000);
   await expect(page.locator('#look-offer')).toBeHidden();
 
@@ -184,6 +186,7 @@ test('the controls: forced slow frames never offer on Classic, nor with the watc
   expect(await look(page)).toBe('kodak');
   await race(page);
   await slowFrames(page, 60);
+  // eslint-disable-next-line no-restricted-syntax -- the look fallback's watch judges slow frames over wall time by design
   await page.waitForTimeout(15_000);
   await expect(page.locator('#look-offer')).toBeHidden();
 });
