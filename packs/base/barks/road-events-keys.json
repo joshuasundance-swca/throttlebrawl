@@ -112,11 +112,128 @@
         }
       ],
       "text": "Slow down. Or don't. I'm not your mother."
+    },
+    {
+      "id": "keys-ev-boat-kevin",
+      "trigger": "modifier-start",
+      "speaker": "kevin-from-accounting",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-boat-slide"
+        }
+      ],
+      "text": "Unsecured load. I will be writing this up."
+    },
+    {
+      "id": "keys-ev-boat-tammy",
+      "trigger": "modifier-start",
+      "speaker": "tammy-two-stroke",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-boat-slide"
+        }
+      ],
+      "text": "That's Earl's boat. Earl's having a day."
+    },
+    {
+      "id": "keys-ev-boat-dialup",
+      "trigger": "modifier-start",
+      "speaker": "dial-up",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-boat-slide"
+        }
+      ],
+      "text": "Boat.exe has stopped responding."
+    },
+    {
+      "id": "keys-ev-gator-tammy",
+      "trigger": "modifier-start",
+      "speaker": "tammy-two-stroke",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-gator-crossing"
+        }
+      ],
+      "text": "Let him cross, baby. He's got seniority."
+    },
+    {
+      "id": "keys-ev-gator-mayor",
+      "trigger": "modifier-start",
+      "speaker": "the-mayor",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-gator-crossing"
+        }
+      ],
+      "text": "Wave to the gator. He's a swing voter."
+    },
+    {
+      "id": "keys-ev-gator-deacon",
+      "trigger": "modifier-start",
+      "speaker": "deacon-vane",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-gator-crossing"
+        }
+      ],
+      "text": "Blessed are the slow. They cross first."
+    },
+    {
+      "id": "keys-ev-vote-mayor",
+      "trigger": "modifier-start",
+      "speaker": "the-mayor",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-lane-vote"
+        }
+      ],
+      "text": "A vote! Finally, something I'm good at."
+    },
+    {
+      "id": "keys-ev-vote-kevin",
+      "trigger": "modifier-start",
+      "speaker": "kevin-from-accounting",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-lane-vote"
+        }
+      ],
+      "text": "Results are binding. I've read the bylaws."
+    },
+    {
+      "id": "keys-ev-vote-chad",
+      "trigger": "modifier-start",
+      "speaker": "chad-speedwell",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-lane-vote"
+        }
+      ],
+      "text": "Polls are open. Make it content."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice. Run W-U adds the W-T events (the boat slide, the gator crossing, the log spill, the cable-car runaway and the lane votes), text only like the rest.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
