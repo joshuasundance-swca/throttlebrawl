@@ -28,7 +28,7 @@ permissions:
 # A newer request for the same branch cancels that branch's older run. Requests for different
 # branches never cancel each other's work; the deploy job below takes turns on the one Space.
 concurrency:
-  group: staging-${{ inputs.branch || github.ref_name }}
+  group: staging-branch-${{ inputs.branch || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -38,9 +38,11 @@ jobs:
     timeout-minutes: 15
     # One staging Space, so one writer at a time, never cancelled part-way. If a third branch asks
     # while one deploys and one waits, the newest request replaces the waiting one, so the Space
-    # ends on the newest request.
+    # ends on the newest request. The name is new on purpose: a branch made before this change
+    # still starts the old push-triggered staging.yml, whose group `staging-space` cancels in
+    # progress, and sharing that name would let such a push cancel a requested deploy part-way.
     concurrency:
-      group: staging-space
+      group: staging-upload
       cancel-in-progress: false
     env:
       BUILD_CHANNEL: staging
