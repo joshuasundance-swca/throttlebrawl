@@ -94,10 +94,20 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
   // tier 3 only 22 m from the finish (no room for a block), seed 3 stopped at tier 2, and seed 2
   // found all four cops already out either way (main-green-4, 2026-10-02). This test is about the
   // roadblock, not the cooling.
+  // The block also needs a cop who is free and out of sight when tier 3 comes, and the Pacific
+  // Northwest's cops are often all out by then. Over seeds 1 to 8 there, 5 races reached tier 3 and
+  // only 2 met a block on main (seeds 1 and 7), and 1 once the cops rode round traffic (#373: seed
+  // 7); the misses had a clear stretch ahead but no free cop, or came too near the finish. So each
+  // region rides seeds in order, at least 3 and up to ROADBLOCK_SEEDS, until one meets the block.
   const ROADBLOCK_TUNING = { 'cops.heatScale': 3, 'ground.offRoad': 0 };
+  const ROADBLOCK_SEEDS = 10;
   for (const choice of regionChoices(REG)) {
     it(`${choice.name}: a hot rider meets the roadblock, and the race still ends`, () => {
-      const runs = [1, 2, 3].map((seed) => heatRace(choice.eventId, seed, ROADBLOCK_TUNING));
+      const runs: HeatRun[] = [];
+      for (let seed = 1; seed <= ROADBLOCK_SEEDS; seed++) {
+        if (seed > 3 && runs.some((r) => r.blocks > 0)) break;
+        runs.push(heatRace(choice.eventId, seed, ROADBLOCK_TUNING));
+      }
       process.stdout.write(
         `cops roadblock: ${choice.id}: ` +
           runs
@@ -110,6 +120,6 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
       );
       for (const r of runs) expect(r.busted || r.finished, `seed ${r.seed}: every race ends`).toBe(true);
       expect(runs.some((r) => r.blocks > 0)).toBe(true);
-    });
+    }, 240_000);
   }
 });

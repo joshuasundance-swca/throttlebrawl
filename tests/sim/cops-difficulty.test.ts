@@ -16,9 +16,12 @@
 // pull-out within 0.1 s in all 24 races (main fix, 2026-10-02).
 // So the arrivals are a sample floor for the lead (a third of the races), and the lead is also
 // checked on every pull-out. Meeting a cop in view in every race is cops-patrol.test.ts's check.
-// A pull-out is the cop riding off under his own throttle: after the rivals' signature moves (#302)
-// reshuffled the races, a rival on the shoulder shoved a parked patrol cop along in two of them, and
-// in one a patrol siren sounded only once the bot was already past (no lead is owed then).
+// A pull-out is the cop riding off under his own throttle, above the crawl: after the rivals'
+// signature moves (#302) reshuffled the races, a rival on the shoulder shoved a parked patrol cop
+// along in two of them, and in one a patrol siren sounded only once the bot was already past (no
+// lead is owed then). In #373's reshuffled races a parked patrol cop off his shoulder spot rolled
+// back onto it at the crawl under his own throttle (Hard, seed 4: 2.2 s after his siren, the bot
+// 142 m back); sim/cops keeps him parked while he does, so that is not a pull-out either.
 //
 // The margin is also printed over the shared Normal batch (the bot racing), from its traces.
 /// <reference types="vite/client" />
@@ -55,7 +58,7 @@ interface PresetRun {
   seed: number;
   /**
    * Patrol sirens (cause `patrol`): each one's cop, its tick, the tick he pulled out (first rode
-   * above RIDING_MPS under his own throttle after it), the tick he arrived (-1: never), and whether
+   * above PATROL_RIDING_MPS under his own throttle after it), the tick he arrived (-1: never), and whether
    * the player was already level with him or past him when it sounded (`late`).
    */
   sirens: { cop: number; tick: number; pullOut: number; arrival: number; late: boolean }[];
@@ -92,9 +95,10 @@ function runPreset(seed: number, difficulty: DifficultyPreset): PresetRun {
     for (const s of sirens) {
       const cop = snap.entities[s.cop];
       if (!cop || cop.speed <= RIDING_MPS) continue;
-      // His pull-out is his own throttle: a rival riding the shoulder can shove a parked cop along
-      // (riders bump, playtest 1 item 6), and that is not him pulling out (PR #302's merge).
-      if (s.pullOut < 0 && cop.throttle <= 0) continue;
+      // His pull-out is his own throttle, above the crawl: a rival riding the shoulder can shove a
+      // parked cop along (riders bump, playtest 1 item 6), and one shoved into a lane rolls back onto
+      // the shoulder at the crawl (4 m/s); neither is him pulling out (PR #302's merge, PR #373).
+      if (s.pullOut < 0 && (cop.throttle <= 0 || cop.speed <= PATROL_RIDING_MPS)) continue;
       if (s.pullOut < 0) s.pullOut = sim.tick;
       // Arrived riding after the player: faster than a parked cop rolling back onto the shoulder (4 m/s).
       if (s.arrival >= 0 || !me || cop.speed <= PATROL_RIDING_MPS) continue;
