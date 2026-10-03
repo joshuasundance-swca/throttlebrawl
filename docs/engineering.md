@@ -143,14 +143,14 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 | `format` / `format:check` | Prettier |
 | `test` | Vitest: unit tests, sim tests, and, once they exist (save fixtures from M4; pack-migration fixtures from the first outside pack) `[default]`, the save-format and pack-migration fixture tests (`tests/fixtures/save/`, `tests/fixtures/migrations/`) |
 | `test:sim` | headless batch of seeded bot races (default 50, as in architecture.md) asserting that races finish, nothing is NaN, and each recorded race replays **in the same run** to identical state hashes |
-| `test:changed` | the unit and sim tests that import a file changed since `origin/main` (committed or not), through Vitest's `--changed`; not a gate step, and not a lane's local loop: with no `--project` it pulls in the sim tests that import a changed file, so lanes run their touched files by name instead ([Local loop](#local-loop-for-lanes)) |
+| `test:changed` | the unit and sim tests that import a file changed since `origin/main` (committed or not), through Vitest's `--changed`; not a gate step, not the pre-push hook, and not a lane's local loop: it follows the import graph, so it selects much of the suite, and lanes run their touched files by name instead ([Local loop](#local-loop-for-lanes)) |
 | `packs:check` / `packs:migrate` | validate every file under `packs/` (schema, references, licence rules, jump-curvature rule), or (`packs:migrate`) a helper for format-bump PRs that rewrites the repo's own packs to the current format, with no fixtures until outside packs exist; owned by [content-packs.md](./content-packs.md#validation) |
 | `e2e` | Playwright: one bot race at the phone-landscape viewport, plus two short device-path tests (keyboard, and pointer events on the touch overlay), with screenshots |
-| `e2e:one` | build, then the browser specs named after `--` (for example `npm run e2e:one -- tests/e2e/ui-pause.spec.ts`); only for the agent that holds a run's one browser slot ([Local loop](#local-loop-for-lanes)), not a gate step |
+| `e2e:one` | build, then the browser specs named after `--` (for example `npm run e2e:one -- tests/e2e/ui-pause.spec.ts`); not a gate step, and lanes don't run it: CI runs the browser tiers ([Local loop](#local-loop-for-lanes)) |
 | `perf` | Playwright perf run on the throttled phone-like profile, compared with `tests/perf/budget.json` and `tests/perf/baseline.json` |
 | `leakscan` / `leakscan:all` | staged files, or the whole tree (see [leak scan](#pre-commit-hooks-and-leak-scan)) |
 | `sizecheck` | fails on any committed file over 1 MB that is not allowlisted |
-| `notes:check` | fails if the branch adds no file under `changes/` |
+| `notes:check` | fails if the branch adds no valid note under `changes/`; the pre-commit hook runs it when a note is staged |
 | `changelog:build` | turns `changes/` into `dist/changelog.json` |
 | `assets:fetch` / `assets:verify` / `assets:add` / `assets:upload` | the dataset files `assets.lock.json` pins (run W-Q): download them into `.cache/assets/` and check each sha256 (an already-cached good file is not downloaded again); check the lock against the repo and every cached file; pin a new or changed file (`-- <file> --as <packId>/<path> [--region <id>]`); upload the pinned files the revision lacks or holds with other bytes (compared by content) with the signed-in `hf` CLI and pin the commit it made |
 | `check` | runs the whole gate in CI order and prints what each step examined |
@@ -205,25 +205,32 @@ Versions are from the npm registry on 2026-09-29. Exact versions are pinned in `
 The rules are in [AGENTS.md](../AGENTS.md#the-dev-machine-what-runs-locally); this section gives the reasons and the commands. `[default]` The gate above is unchanged, and CI runs all of it on every PR.
 
 - **Why so little runs locally.** The maintainer, 2026-10-01: "I like thorough testing, but it seems like we're doing a lot of waiting on this pc instead of making more rapid, visible progress". Measured that day across 141 past lane runs (about 157 lane-hours), lanes spent 61% of their time waiting on tests: 32% on local suites, 22% watching CI and 7% in the pre-push hook, because the same suites ran locally, in the hook, then in CI. Then, on 2026-10-02, about 15 parallel agents running local Playwright browsers (software-rendered WebGL, which is CPU-heavy), builds and Vitest at once locked up the dev machine; the CPU was the limit, not the memory.
-- **The commands a lane uses.** `VITEST_MAX_WORKERS=2 npx vitest run <file>...` for the files it touches, as often as it needs (two workers, so parallel lanes don't starve each other), and `npm run typecheck` once before pushing. A seeded sim test being written runs alone, by file; never `--project sim` whole, never `npm run test:changed` on a `src/sim/` change (Vitest follows the import graph, so it pulls in most of the sim batch).
-- **The one browser slot.** At most one agent per run drives a browser, and only when its brief grants the slot: for a run's live check, one headless Chromium against the game link; for a lane, `npm run e2e:one -- tests/e2e/<spec>.spec.ts`. Everyone else reads CI's logs, screenshots and artifacts.
+- **The commands a lane uses.** `VITEST_MAX_WORKERS=2 npx vitest run <file>...` for the test files it touches, named one by one, as often as it needs (two workers, so parallel lanes don't starve each other), and `npm run typecheck` once before pushing. A seeded sim test being written runs alone, by file; never `--project sim` whole. Lanes don't use `npm run test:changed` or `vitest related`: Vitest follows the import graph, so one content PR (#414, 36 files) selected 142 of the 261 unit test files and took 4.6 minutes at two workers (2026-10-03), and a `src/sim/` change pulls in most of the sim batch.
+- **No browsers in lanes.** Lanes run no Playwright spec, `e2e:one`, perf run, dev server or `vite preview`; CI runs the browser tiers on every PR, and lanes read CI's logs, screenshots and artifacts. A run has one browser slot, for its live check: one headless `playwright-core` Chromium, driven from a script, against the game link. Never the Playwright MCP tools ([AGENTS.md](../AGENTS.md#the-dev-machine-what-runs-locally)).
 - **Builds.** `vite build` (with `node scripts/perf.mjs --size-only`) runs locally only for a change to the build or the download size; CI's perf step measures the size of every PR anyway.
-- **The pre-push hook** still runs and is never skipped: the typecheck, plus the unit tests related to what changed since `origin/main`. Vitest's `--changed` alone selects nothing for a config-only change, so the hook runs the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig differs from `origin/main`.
+- **The pre-push hook** still runs and is never skipped; it runs the typecheck and the unit tests the push names ([hooks](#pre-commit-hooks-and-leak-scan)).
 - `npm run check` with no `--tier` is what CI runs; nobody runs it on the dev machine.
 
 ## Pre-commit hooks and leak scan
 
 `[decided]` A quick leak scan runs on every commit; machine-specific certificate settings stay in user-level config; `scratch/` is ignored; private context stays out of the repo.
 
-`[default]` The hook tool is **simple-git-hooks + lint-staged**, not the Python pre-commit framework. It keeps one toolchain (npm), works the same for Claude Code, Codex and Copilot, and runs on every OS without extra installs. Install with `npm run hooks:install` after `npm ci`.
+`[default]` The hook tool is **simple-git-hooks + lint-staged**, not the Python pre-commit framework. It keeps one toolchain (npm), works the same for Claude Code, Codex and Copilot, and runs on every OS without extra installs. Install with `npm run hooks:install`; `npm ci` does not, since `.npmrc` turns off install scripts.
 
-| Hook | Runs | Budget |
+- **One hooks folder for every worktree.** Git worktrees share the main checkout's `.git/hooks`, so installing the hooks from any worktree rewrites them for all the others, from that worktree's `package.json`. So the hook commands stay stable pointers (`node scripts/pre-push.mjs`, `npx lint-staged`), and a change to what a hook does goes in the script or `lint-staged.config.mjs`, which each worktree reads from its own checkout, with no reinstall. Lanes never run `npm run hooks:install`; when a hook command itself changes on main, the coordinator runs it once, in the main checkout. The pre-push command falls back to the old typecheck-and-`--changed` hook in a checkout that has no `scripts/pre-push.mjs`, so older branches still push.
+- **What pre-push tests** (`scripts/push-plan.mjs`, pinned by `scripts/push-plan.test.ts`), from the files the branch changes since its merge base with `origin/main`:
+  - a push of `docs/`, `changes/` and Markdown only runs no tests;
+  - a change to `package.json`, the lock file, the Vite or Vitest config, a tsconfig or `tests/setup/` runs the whole unit tier;
+  - anything else runs the unit test files the push names: the test files it changed, and the test named after each source file it changed (`foo.ts` to `foo.test.ts`, a folder's `index.ts` to `<folder>.test.ts`). Import-graph selection (`vitest --changed`, which the hook used until 2026-10-03) picked 142 of the 261 unit test files for one content PR, and CI runs every test on every PR anyway.
+  - The typecheck and the tests run at once, the tests with two workers unless `VITEST_MAX_WORKERS` says otherwise. `node scripts/pre-push.mjs --dry-run` prints the plan without running it.
+
+| Hook | Runs | Measured on the dev machine |
 |---|---|---|
-| `pre-commit` | lint-staged (ESLint fix and Prettier on staged files), `leakscan` on staged files, `sizecheck` on staged files, `packs:check` when pack files are staged | a few seconds |
+| `pre-commit` | lint-staged (ESLint fix and Prettier on staged files; `packs:check` when pack files are staged; `notes:check` when a `changes/` note is staged), then `leakscan` and `sizecheck` on staged files | median 18 s, p90 63 s; `notes:check` adds about 1 s |
 | `commit-msg` | leak scan of the commit message | instant |
-| `pre-push` | `typecheck`, and the unit tests related to changes since `origin/main` (`vitest --changed`); the whole unit tier when `package.json`, the lock file, the Vitest config or a tsconfig changed | under a minute |
+| `pre-push` | `typecheck`, and the unit tests above | typecheck 11 to 14 s; 36 s for a 36-file content PR (10 test files), 10 s for a push that names no test file |
 
-Measured over agent runs on the dev machine up to 2026-10-03 (tool-call wall time): a commit's hooks took a median of 18 s (p90 63 s), and a push's a median of 79 s (p90 182 s), so both run over the budgets above. Slimming pre-push to the typecheck alone, since CI runs every unit test anyway, would remove a check from a hook and is the maintainer's call `[open]`.
+How these were measured: the pre-commit figures, and the pre-push hook before this design (median 79 s, p90 182 s over 262 pushes), are tool-call wall times from agent runs up to 2026-10-03. The new pre-push figures replay past PRs with `PREPUSH_BASE` and `PREPUSH_HEAD` on 2026-10-03, two test workers each. Replaying the same content PR (#414) the old way took about 298 s: a 20 s typecheck, then 142 test files in 278 s. Dropping the hook's tests altogether, leaving the typecheck alone, is still the maintainer's call `[open]`.
 
 The browser tiers (e2e, perf) run in CI and in `npm run check`, not in hooks. Hooks are never skipped (`--no-verify` is banned in [AGENTS.md](../AGENTS.md)); if a hook is wrong, fix the hook.
 
@@ -496,7 +503,7 @@ Everything else, agents decide, record as `[default]` in the docs, and keep movi
 
 ## Open questions
 
-- **Slim the pre-push hook to the typecheck alone?** `[open]` CI runs every unit test on every PR, and the hook's median push is 79 s ([hooks](#pre-commit-hooks-and-leak-scan)). Until answered, the hook stays as it is.
+- **Slim the pre-push hook to the typecheck alone?** `[open]` CI runs every unit test on every PR. Since 2026-10-03 the hook runs only the unit tests a push names, about 36 s for a content PR instead of about 5 minutes ([hooks](#pre-commit-hooks-and-leak-scan)); dropping those tests too would remove a check from a hook, so it waits for the maintainer.
 
 Both of this page's first questions were answered in the maintainer's cockpit on 2026-09-29:
 

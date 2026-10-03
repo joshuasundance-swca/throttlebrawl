@@ -5,4 +5,8 @@ export default {
   '*.{json,yml,yaml,html,css}': ['prettier --write'],
   // Pack validation runs once, only when pack files are staged.
   'packs/**': () => 'npm run packs:check',
+  // The branch's changes/ notes are checked once, only when a note is staged. A bad note otherwise
+  // shows up only in CI, where it also breaks the build in every browser slice (3 of the 20 red PR
+  // runs of 2026-10-03 carried one).
+  'changes/**': () => 'npm run notes:check',
 };
