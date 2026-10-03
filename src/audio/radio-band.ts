@@ -6,6 +6,7 @@
 // in directly.
 import { isMore, isRegional } from './radio-genres';
 import { composeTrack, type Composition } from './radio-compose';
+import { composeMedley, PIVOT_PRESET } from './radio-compose-pivot';
 import { createRegionalRig } from './radio-rigs';
 import { createMoreRig } from './radio-rigs-more';
 import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
@@ -16,7 +17,10 @@ import type { RadioBand, RadioTrack } from './radio';
 export function composeFor(track: RadioTrack): Composition | null {
   if (!track.procedural) return null;
   const salt = track.procedural.params?.['seed'];
-  return composeTrack(track.procedural, trackSeed(track.ref, typeof salt === 'number' ? salt : 0));
+  const seed = trackSeed(track.ref, typeof salt === 'number' ? salt : 0);
+  // Pivot FM's medleys (run W-U) are built from the other composers' songs.
+  if (track.procedural.preset === PIVOT_PRESET) return composeMedley(track.procedural.params ?? {}, seed);
+  return composeTrack(track.procedural, seed);
 }
 
 /** The rig that plays a genre's band. */

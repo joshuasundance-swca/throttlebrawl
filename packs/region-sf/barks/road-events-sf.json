@@ -112,11 +112,63 @@
         }
       ],
       "text": "Monitored by a human. For now."
+    },
+    {
+      "id": "sf-ev-runaway-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-cable-runaway"
+        }
+      ],
+      "text": "Somebody let go of the grip. Amateur."
+    },
+    {
+      "id": "sf-ev-runaway-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-cable-runaway"
+        }
+      ],
+      "text": "We're rolling back. It's a feature."
+    },
+    {
+      "id": "sf-ev-vote-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-lane-vote"
+        }
+      ],
+      "text": "We're A/B testing the road. You're B."
+    },
+    {
+      "id": "sf-ev-vote-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-lane-vote"
+        }
+      ],
+      "text": "Forty years. Nobody ever asked us a thing."
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice.",
+    "notes": "W-P road events: what the rivals say as a set piece comes up (trigger modifier-start, one line per event per rival). Text only for now: the content lane voices them with each rival's own voice. Run W-U adds the W-T events (the boat slide, the gator crossing, the log spill, the cable-car runaway and the lane votes), text only like the rest.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -89,7 +89,13 @@ describe('region-sf: the San Francisco race', () => {
     expect(event.region).toBe('san-francisco');
     const region = lookup(REG.regions, 'region-sf:san-francisco');
     // The hand-made hills, then the real streets raced as routes (the maintainer, 2026-10-01).
-    expect(region.networks).toEqual(['sf-hills', 'osm-sf-russian-hill', 'osm-sf-twin-peaks', 'sf-downtown']);
+    expect(region.networks).toEqual([
+      'sf-hills',
+      'osm-sf-russian-hill',
+      'osm-sf-twin-peaks',
+      'sf-downtown',
+      'sf-mission',
+    ]);
     // At least the first board set; content lanes add more (tools/road/sf-hills.test.ts gives each a slot).
     expect(region.signs?.length).toBeGreaterThanOrEqual(3);
     expect(region.billboards?.length).toBeGreaterThanOrEqual(2);

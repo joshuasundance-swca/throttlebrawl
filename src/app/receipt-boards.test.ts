@@ -6,7 +6,14 @@ import type { RoadNetwork } from '../sim/api';
 const resolveSlot = (slot: FeatureSpan | undefined, c: BoardCatalog) =>
   slot?.item ? (c.items[slot.item] ?? null) : slot?.pool ? 'pool' : null;
 type BoardSlot = FeatureSpan;
-import { boardSpots, spotOn, withReceiptBoards } from './receipt-boards';
+import {
+  boardSpots,
+  INCIDENT_EDGE_M,
+  incidentSpot,
+  spotOn,
+  withIncidentSites,
+  withReceiptBoards,
+} from './receipt-boards';
 
 // The world's receipts on the race's boards (run W-T): the slots the career can rewrite, and the
 // rewrite itself, which the renderer resolves like any board item.
@@ -65,5 +72,67 @@ describe('receipt boards on the race roads', () => {
     expect(catalog.items['receipt-1']).toBeUndefined();
     // No receipts: the very same dressing and catalog.
     expect(withReceiptBoards(dressing, catalog, [])).toEqual({ dressing, catalog });
+  });
+});
+
+describe('incident sites where you were busted (run W-U)', () => {
+  /** The same two roads with two 4 m lanes (d -4..4) and a 1 m shoulder each side (d -5..5). */
+  const laned = {
+    ...road,
+    lanesAt: () => [
+      { id: 'L0', dCenterM: -4.5, widthM: 1, direction: -1, kind: 'shoulder' },
+      { id: 'L1', dCenterM: -2, widthM: 4, direction: -1, kind: 'drive' },
+      { id: 'R1', dCenterM: 2, widthM: 4, direction: 1, kind: 'drive' },
+      { id: 'R0', dCenterM: 4.5, widthM: 1, direction: 1, kind: 'shoulder' },
+    ],
+  } as unknown as RoadNetwork;
+  const site = {
+    road: 'road-a',
+    s: 300,
+    ref: 'base:career/keys-circuit#receipt-incident-site',
+    text: 'INCIDENT SITE #3.',
+  };
+
+  it('stands just off the road at the bust, on its right where that is dry', () => {
+    expect(incidentSpot(laned, dressing, 'road-a', 300)).toEqual({ s: 300, d: 5 + INCIDENT_EDGE_M });
+    expect(incidentSpot(laned, dressing, 'elsewhere', 300)).toBeNull();
+  });
+
+  it('never on a bridge or over water: the left when the right is wet, else slid to dry road', () => {
+    const wetRight: RoadDressing = {
+      'road-a': { tags: [{ s0: 250, s1: 350, side: 'right', tag: 'water-open' }] },
+    };
+    expect(incidentSpot(laned, wetRight, 'road-a', 300)).toEqual({ s: 300, d: -5 - INCIDENT_EDGE_M });
+    const bridge: RoadDressing = {
+      'road-a': {
+        tags: [
+          { s0: 200, s1: 330, tag: 'bridge' },
+          { s0: 0, s1: 800, side: 'both', tag: 'forest' },
+        ],
+      },
+    };
+    // The bridge covers 300; the nearest dry step is 40 m on (340).
+    expect(incidentSpot(laned, bridge, 'road-a', 300)).toEqual({ s: 340, d: 5 + INCIDENT_EDGE_M });
+    const allWet: RoadDressing = {
+      'road-a': { tags: [{ s0: 0, s1: 800, tag: 'bridge' }] },
+    };
+    expect(incidentSpot(laned, allWet, 'road-a', 300)).toBeNull();
+  });
+
+  it('adds a cone slot after the road’s own features, so receipt boards keep their indices', () => {
+    const shown = withIncidentSites(laned, dressing, catalog, [site]);
+    const feats = shown.dressing['road-a']?.features ?? [];
+    expect(feats.slice(0, 2)).toEqual(dressing['road-a']?.features);
+    const slot = feats[2] as BoardSlot;
+    expect(slot).toMatchObject({ kind: 'billboard', s0: 300, s1: 300, d0: 5 + INCIDENT_EDGE_M });
+    expect(resolveSlot(slot, shown.catalog)).toEqual({ ref: site.ref, text: site.text, kind: 'cone' });
+    // The given dressing and catalog are untouched; no sites gives them back as they were.
+    expect(dressing['road-a']?.features).toHaveLength(2);
+    expect(Object.keys(catalog.items)).toEqual(['gator-ad']);
+    expect(withIncidentSites(laned, dressing, catalog, [])).toEqual({ dressing, catalog });
+    // A site off this network is left out.
+    expect(withIncidentSites(laned, dressing, catalog, [{ ...site, road: 'elsewhere' }]).dressing).toEqual(
+      dressing,
+    );
   });
 });

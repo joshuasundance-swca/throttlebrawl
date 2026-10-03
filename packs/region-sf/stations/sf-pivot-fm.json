@@ -1,0 +1,59 @@
+{
+  "type": "station",
+  "id": "sf-pivot-fm",
+  "name": "Pivot FM",
+  "genre": "pivot",
+  "regions": ["san-francisco"],
+  "rider": "pivot",
+  "deadAirLine": "pivot-core#pivot-fm-next-chapter",
+  "tracks": [
+    {
+      "id": "series-a-radio-edit",
+      "title": "Series A (Radio Edit)",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 6 } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "strategic-realignment",
+      "title": "Strategic Realignment",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 8 } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "default-alive",
+      "title": "Default Alive",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 5 } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "still-in-stealth",
+      "title": "Still in Stealth",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 4 } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "ship-it-friday",
+      "title": "Ship It Friday",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 7 } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "slide-forty",
+      "title": "Slide Forty of the Deck",
+      "procedural": { "preset": "pivot-medley", "params": { "parts": 6 } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "Pivot's own station (run W-U, the pitch deck's #5: 'When Pivot rides, Pivot FM appears and changes genre every eight bars; knock him down and it goes to dead air, then We're excited to announce our next chapter.'). A rider station: never on the dial. While Pivot rides within 70 m of you it takes your radio over (back past 130 m); each track is a pivot-medley, a different one of the radio's twelve code-made bands every eight bars. Knock him down and it goes to dead air, then his line (deadAirLine, a bark line in pivot-core, voiced and vetoable like any other). Code-made music only; no DJ.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-03" }
+  }
+}

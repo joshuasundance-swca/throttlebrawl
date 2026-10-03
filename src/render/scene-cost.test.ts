@@ -18,6 +18,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { DowntownLayer, hasDowntown } from './downtown';
+import { hasMission, MissionLayer } from './mission';
 import { readGlb } from './glb';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
@@ -159,6 +160,10 @@ describe('the still scene along every route', () => {
       const places = hasPnwPlaces(tags)
         ? new PnwPlacesLayer(look, { road, seed, landReach: (e, side, s) => rs.landReach(e, side, s) })
         : null;
+      // Run W-U: San Francisco's mural alleys, the crew halfway through the race.
+      const mission = hasMission(tags)
+        ? new MissionLayer(models.sfRoadside, look, { road, dressing, seed })
+        : null;
       const cam = new PerspectiveCamera(70, 915 / 412, 0.3, CAMERA_FAR_M);
       let worst: { at: string; total: Load; parts: Map<string, Load> } | null = null;
       let maxDraws = 0;
@@ -189,6 +194,7 @@ describe('the still scene along every route', () => {
           verge.update(eye.x, eye.z, null, 0, aim.x, aim.z);
           dt?.update(eye.x, eye.z, 0, []);
           places?.update(eye.x, eye.z, DRAW_M, LOD_M, Infinity);
+          if (mission) for (let i = 0; i < 8; i++) mission.update(eye.x, eye.z, 0, 0.5);
           const frustum = new Frustum().setFromProjectionMatrix(
             new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
           );
@@ -198,6 +204,7 @@ describe('the still scene along every route', () => {
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
           if (places) drawn(places.group, frustum, parts);
+          if (mission) drawn(mission.group, frustum, parts);
           const total = [...parts.values()].reduce(
             (t, l) => ({ draws: t.draws + l.draws, tris: t.tris + l.tris }),
             {

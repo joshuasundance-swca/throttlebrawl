@@ -281,6 +281,7 @@ Playtest 1c brought new regions forward: "I do think we should start adding othe
 - **Time of day:** foggy dawn (the region's race), and golden hour.
 - **Stale-meme hook:** startup jargon (pivot, ten-x, stealth mode, the deck, burn rate) as one rival's whole vocabulary. It is aimed at a type, never at a person.
 - **Weird events** (ideas only, not built): a fog bank so thick the race goes by sound, a runaway cable car, a launch party across the road, a convoy of identical shuttles.
+- **The mural alleys** (run W-U, the pitch deck's #8): the murals are art and are played straight; the joke is the streaming outfit, whose mascot (a grinning head in a headset, STAY TUNED) is being painted over while you race, and the crowd that comes to film in front of the walls (ring lights, drones). Never the neighbourhood, its people or its shops. [default]
 - **Hard lines here:** no real tech companies, founders or products, and no jokes about people living on the street or any other real group. That cheap shot about the city is never the joke.
 
 #### Pivot (San Francisco local)

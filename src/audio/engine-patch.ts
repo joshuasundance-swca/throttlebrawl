@@ -212,6 +212,12 @@ export interface EngineVoice {
    * own level. The full patch only; the cheaper one for other riders ignores it.
    */
   pop(at: number, size: number): void;
+  /**
+   * A beaten rival's engine missing (the pitch deck's #5: "his engine sputters"): from `at`, one to
+   * three misfires that cut the engine for a few tens of milliseconds, then a backfire. Size 0..1.
+   * Both patches.
+   */
+  sputter(at: number, size: number): void;
   stop(at?: number): void;
   /** The last firing frequency and level set, for tests and the debug report. */
   readonly hz: () => number;
@@ -239,6 +245,50 @@ export function createEngineVoice(
   const level = ctx.createGain();
   level.gain.value = 0;
   level.connect(out);
+  // The misfire gate (sputter): 1 while the engine fires, dipped for a misfire. Pops bypass it.
+  const cut = ctx.createGain();
+  cut.gain.value = 1;
+  cut.connect(level);
+
+  // Exhaust pops: a short band of noise and a low thump, straight into the level stage.
+  const popPatch = (at: number, size: number) => {
+    const z = Math.min(1, Math.max(0, size));
+    if (z <= 0) return;
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer(ctx);
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 450 + 500 * z;
+    band.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(1.6 * z, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+    n.connect(band).connect(g).connect(level);
+    n.start(at, (at * 13.7) % 0.9);
+    n.stop(at + 0.06);
+    const thump = ctx.createOscillator();
+    thump.frequency.setValueAtTime(90, at);
+    thump.frequency.exponentialRampToValueAtTime(45, at + 0.05);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0.9 * z, at);
+    tg.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+    thump.connect(tg).connect(level);
+    thump.start(at);
+    thump.stop(at + 0.07);
+  };
+  /** Misfires: the gate drops to 0.1 and comes back, one to three times, then a backfire pop. */
+  const sputter = (at: number, size: number) => {
+    const z = Math.min(1, Math.max(0, Number.isFinite(size) ? size : 0));
+    if (z <= 0) return;
+    const misfires = 1 + Math.round(2 * z);
+    let t = at;
+    for (let i = 0; i < misfires; i++) {
+      cut.gain.setValueAtTime(0.1, t);
+      cut.gain.setValueAtTime(1, t + 0.04 + 0.04 * z);
+      t += 0.11 + 0.05 * z;
+    }
+    popPatch(t, 0.35 + 0.5 * z);
+  };
 
   const exhaust = ctx.createBiquadFilter();
   exhaust.type = 'lowpass';
@@ -261,7 +311,7 @@ export function createEngineVoice(
     phone.Q.value = 0.7;
     const clip = ctx.createWaveShaper();
     clip.curve = softClip();
-    body.connect(clip).connect(exhaust).connect(phone).connect(level);
+    body.connect(clip).connect(exhaust).connect(phone).connect(cut);
     osc.connect(body);
 
     // A detuned twin: beating that reads as a rough, mechanical engine.
@@ -312,32 +362,6 @@ export function createEngineVoice(
       noiseGain.gain.setTargetAtTime(profile.noise * (0.12 + 0.5 * t), at, 0.05);
       intake.frequency.setTargetAtTime(profile.intakeHz * (0.8 + 0.6 * t) + hz * 4, at, 0.05);
     };
-    // Exhaust pops: a short band of noise and a low thump, straight into the level stage.
-    const popPatch = (at: number, size: number) => {
-      const z = Math.min(1, Math.max(0, size));
-      if (z <= 0) return;
-      const n = ctx.createBufferSource();
-      n.buffer = noiseBuffer(ctx);
-      const band = ctx.createBiquadFilter();
-      band.type = 'bandpass';
-      band.frequency.value = 450 + 500 * z;
-      band.Q.value = 1.2;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(1.6 * z, at);
-      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
-      n.connect(band).connect(g).connect(level);
-      n.start(at, (at * 13.7) % 0.9);
-      n.stop(at + 0.06);
-      const thump = ctx.createOscillator();
-      thump.frequency.setValueAtTime(90, at);
-      thump.frequency.exponentialRampToValueAtTime(45, at + 0.05);
-      const tg = ctx.createGain();
-      tg.gain.setValueAtTime(0.9 * z, at);
-      tg.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
-      thump.connect(tg).connect(level);
-      thump.start(at);
-      thump.stop(at + 0.07);
-    };
     for (const s of sources) s.start();
     return voice(
       setState,
@@ -354,7 +378,7 @@ export function createEngineVoice(
     level.disconnect();
     level.connect(panner).connect(out);
   }
-  osc.connect(body).connect(exhaust).connect(level);
+  osc.connect(body).connect(exhaust).connect(cut);
   let hz = profile.idleHz;
   let lvl = 0;
   const setState = ({ rpm, throttle }: EngineState, at = ctx.currentTime) => {
@@ -386,6 +410,7 @@ export function createEngineVoice(
       profile,
       set: setState,
       pop,
+      sputter,
       setPan,
       setLevel(v, at = ctx.currentTime) {
         setLvl(v);

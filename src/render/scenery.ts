@@ -32,6 +32,8 @@ export type SideTheme =
   | 'crossing'
   | 'plaza'
   | 'downtown'
+  // run W-U, San Francisco's mural alleys (render/mission.ts draws what stands there)
+  | 'mission'
   // run W-U, the Pacific Northwest's places (render/pnw-places.ts draws what stands there)
   | 'festival'
   | 'clearcut';
@@ -62,6 +64,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys"): shopfronts, an
+  // alley's painted walls and the mascot's corner wall. Nothing of the scatter's stands there; the
+  // mission layer (mission.ts) draws the buildings, the murals and the crew.
+  shopfronts: 'mission',
+  murals: 'mission',
+  'mascot-mural': 'mission',
   // Run W-U (the pitch deck's #12): a closed main street on the day of the Stump Social (Fir County's
   // logging festival), and a fresh clear-cut. The
   // scatter puts nothing there but the forest's far edge past a clear-cut; pnw-places.ts draws the
@@ -76,6 +84,7 @@ const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  'mission',
   'palms',
   'mangrove',
   'commercial',
@@ -185,11 +194,22 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  mission: {},
   festival: {},
   clearcut: {},
 };
-/** Themes with no power poles: a downtown's wires are underground. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown', 'festival', 'clearcut']);
+/**
+ * Themes with no power poles: a downtown's wires are underground, the mural district's walls
+ * stand at the kerb, the festival street's shops stand at the sidewalk, and a clear-cut has none.
+ */
+const NO_POLES: ReadonlySet<LandTheme> = new Set([
+  'crossing',
+  'plaza',
+  'downtown',
+  'mission',
+  'festival',
+  'clearcut',
+]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],
