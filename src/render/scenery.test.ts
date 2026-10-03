@@ -239,35 +239,44 @@ describe('the seed (playtest 1c item 2: "I want randomness")', () => {
 describe('draw distance and the bobbing boats', () => {
   const { road, dressing } = track('keys-m1');
   const scene = buildRoadScene(road, look, dressing);
-  const batches = () => solids(scene.group, (n) => /^road-(palm|mangrove|shack|pole|skiff|boat)s$/.test(n));
+  const boats = () => solids(scene.group, (n) => /^road-(skiff|boat)s$/.test(n));
+  // Run W-S: the still scenery merges per block (scenery-merge.ts), built as the camera comes near.
+  const blocks = () => solids(scene.group, (n) => n === 'road-scenery');
 
-  it('hides far scenery batches and shows near ones', () => {
+  it('hides far scenery and shows near scenery', () => {
     const first = scene.spots[0]!;
-    const near = scene.update(first.p.x, first.p.z, 0, 420);
-    const all = batches().length;
-    const shown = batches().filter((b) => b.visible).length;
+    const near = scene.update(first.p.x, first.p.z, 0, 420, undefined, Infinity);
+    const built = blocks().length;
+    const shown = blocks().filter((b) => b.visible).length + boats().filter((b) => b.visible).length;
+    const all = scene.merged().blocks + boats().length;
     expect(near).toBeGreaterThan(0);
+    expect(near).toBeLessThan(scene.spots.length);
     expect(shown).toBeLessThan(all);
-    expect(scene.update(first.p.x, first.p.z, 0, 100000)).toBe(scene.spots.length);
+    expect(scene.update(first.p.x, first.p.z, 0, 100000, undefined, Infinity)).toBe(scene.spots.length);
     expect(scene.update(1e6, 1e6, 0, 420)).toBe(0);
     console.log(
-      `[examined] ${all} scenery batches; ${shown} within 420 m of the first spot (${near} instances)`,
+      `[examined] ${all} scenery meshes (${scene.merged().blocks} merged blocks, ${boats().length} boat batches); ${shown} within 420 m of the first spot (${near} props, ${built} blocks built)`,
     );
   });
 
   it('bobs the boats over time and leaves the land scenery still', () => {
-    const boat = batches().find((b) => b.name === 'road-skiffs') as InstancedMesh;
-    const palm = batches().find((b) => b.name === 'road-palms') as InstancedMesh;
+    const boat = boats().find((b) => b.name === 'road-skiffs') as InstancedMesh;
     const m = new Matrix4();
     const y = (mesh: InstancedMesh, t: number) => {
-      scene.update(0, 0, t, 1e9);
+      scene.update(0, 0, t, 1e9, undefined, Infinity);
       mesh.getMatrixAt(0, m);
       return new Vector3().setFromMatrixPosition(m).y;
     };
     const ys = [0, 0.7, 1.4, 2.1].map((t) => y(boat, t));
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.05);
     expect(Math.max(...ys.map(Math.abs))).toBeLessThan(0.2);
-    expect(y(palm, 0)).toBe(y(palm, 1.3));
+    // The land scenery's merged vertices do not move with time.
+    const block = blocks()[0] as Mesh<BufferGeometry>;
+    const at = (t: number) => {
+      scene.update(0, 0, t, 1e9, undefined, Infinity);
+      return Array.from(block.geometry.getAttribute('position').array.slice(0, 30));
+    };
+    expect(at(0)).toEqual(at(1.3));
   });
 });
 

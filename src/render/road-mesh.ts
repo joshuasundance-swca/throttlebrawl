@@ -12,7 +12,6 @@
 // a hill never floats in the void. Delineator posts and pylons follow that ground, a forest
 // network's bridges stand on timber trestle bents, and a `cable-line` road gets its cable slots.
 import {
-  BoxGeometry,
   Euler,
   Group,
   InstancedMesh,
@@ -26,10 +25,11 @@ import {
 } from 'three';
 import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
-import { ChunkedStrips, mergeBoxes, type BoxPart, type Point3 } from './geometry';
+import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
 import type { SceneryModel, SceneryModels } from './models';
+import { MergedScenery, SCENERY_LOD_M, type MergedSceneryCounts, type MergeItem } from './scenery-merge';
 import {
   boatBob,
   isTropical,
@@ -163,10 +163,13 @@ export interface RoadScene {
   /** Every scenery spot placed (for tests and the debug overlay). */
   spots: readonly ScenerySpot[];
   /**
-   * Per frame: hides scenery batches farther than `drawM` from the camera and bobs the boats.
-   * Returns the scenery instances left visible.
+   * Per frame: hides scenery farther than `drawM` from the camera, draws the merged blocks past
+   * `lodM` as their far stand-ins, builds up to `builds` blocks coming into range (default one),
+   * and bobs the boats. Returns the scenery props left visible.
    */
-  update(cameraX: number, cameraZ: number, t: number, drawM: number): number;
+  update(cameraX: number, cameraZ: number, t: number, drawM: number, lodM?: number, builds?: number): number;
+  /** The merged still scenery as the last update drew it (run W-S). */
+  merged(): MergedSceneryCounts;
   /**
    * Metres of drawn land past the verge at s on a side of an edge (0 = none), as this scene drew
    * it: the roadside layer (roadside.ts, run W-P) stands its clutter on it.
@@ -603,6 +606,9 @@ function standIn(kind: SceneryKind): BufferGeometry {
   };
   return mergeBoxes(parts[kind]);
 }
+
+/** Scenery kinds kept instanced: the boats bob every frame and the fog banks are unlit (run W-S). */
+const INSTANCED_KINDS: ReadonlySet<SceneryKind> = new Set(['skiff', 'boat', 'fogBank']);
 
 /** Which model draws each scenery kind. */
 const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
@@ -1139,13 +1145,33 @@ export function buildRoadScene(
       };
       const at = (s: number, d: number, y: number) => ({ ...w(e.index, s, side * d, 0), y });
       const top = (s: number, r: number) => w(e.index, s, side * (outer + r), LAND_TOP_M);
-      run(
-        ss.map((s, i) => {
-          const k = skirts[i];
-          const r = reach[i] ?? 0;
-          return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
-        }),
-      );
+      // The slope keeps every third foot but every top: its top edge is the strip's own edge, vertex
+      // for vertex. Thinned there too, its chords cut inside a bend's arc and left a sliver open
+      // between the strip and the slope (the 1 to 2 px light seam on Twin Peaks, run W-S): each
+      // thinned quad is a fan from its two feet to every top between them.
+      const g = strip('land');
+      const slope = ss.map((s, i): readonly [Point3, Point3] | null => {
+        const k = skirts[i];
+        const r = reach[i] ?? 0;
+        return k ? [top(s, r), at(s, outer + r + k.run, GROUND_Y)] : null;
+      });
+      const keptSlope = keptRows(slope);
+      for (let a = 0; a < slope.length; a++) {
+        const ra = slope[a];
+        if (!ra || !keptSlope[a]) continue;
+        let b = a + 1;
+        while (b < slope.length && slope[b] && !keptSlope[b]) b++;
+        const rb = slope[b];
+        if (!rb) continue;
+        const mid = Math.floor((a + b) / 2);
+        // Faces up (and out), as the strips' pairs in increasing d make them.
+        const face = (t0: Point3, t1: Point3, foot: Point3) =>
+          side > 0 ? g.tri(t0, foot, t1) : g.tri(t0, t1, foot);
+        for (let j = a; j < b; j++) face(slope[j]![0], slope[j + 1]![0], j < mid ? ra[1] : rb[1]);
+        const tm = slope[mid]![0];
+        if (side > 0) g.tri(ra[1], rb[1], tm);
+        else g.tri(ra[1], tm, rb[1]);
+      }
       const flatRows = ss.map((s, i): readonly [Point3, Point3] | null => {
         const k = skirts[i];
         const foot = outer + (reach[i] ?? 0) + (k?.run ?? 0);
@@ -1630,22 +1656,24 @@ export function buildRoadScene(
   };
   const boxes = (
     name: string,
-    geo: BoxGeometry,
+    geo: BufferGeometry,
     kind: MaterialKind,
     spots: readonly { p: Point3; h: number }[],
   ) =>
     addInstanced(name, geo, look.material(kind), spots, ({ p, h }) =>
       m.compose(new Vector3(p.x, p.y, p.z), q, one.clone().setY(h)),
     );
+  // Run W-S (the triangle headroom): no face nobody sees. A post's foot stands on the ground or the
+  // deck; a pylon's foot is under the sea and its top under the deck, inside the fascias.
   boxes(
     'road-posts',
-    new BoxGeometry(0.15, 1.1, 0.15),
+    openBox(0.15, 1.1, 0.15, ['ny']),
     'post',
     postSpots.map((p) => ({ p, h: 1 })),
   );
   // Unit-height boxes standing on their base, stretched by the instance scale.
-  boxes('road-rail-posts', new BoxGeometry(0.1, 1, 0.1).translate(0, 0.5, 0), 'rail', railPostSpots);
-  boxes('road-pylons', new BoxGeometry(0.9, 1, 0.9).translate(0, 0.5, 0), 'deck', pylonSpots);
+  boxes('road-rail-posts', openBox(0.1, 1, 0.1, ['ny']).translate(0, 0.5, 0), 'rail', railPostSpots);
+  boxes('road-pylons', openBox(0.9, 1, 0.9, ['ny', 'py']).translate(0, 0.5, 0), 'deck', pylonSpots);
   if (truckParts.length) {
     // Few and small: one mesh for every truck on the network.
     const trucks = new Mesh(mergeBoxes(truckParts), look.material('vehicle', { vertexColors: true }));
@@ -1680,12 +1708,15 @@ export function buildRoadScene(
     }
   }
 
-  // Scenery (playtest 1c): one InstancedMesh per model variant per SCENERY_CHUNK_M square, so the
-  // renderer can hide the far squares and the camera's frustum culls the rest.
+  // Scenery (playtest 1c). The still props merge per block, a square of the world (scenery-merge.ts,
+  // run W-S): one mesh per block, built near the camera, drawn as far stand-ins past the
+  // level-of-detail distance. The boats bob and the fog banks are unlit, so those stay one InstancedMesh per model
+  // variant per SCENERY_CHUNK_M square, which the renderer hides past the draw distance.
   const scenery = new Group();
   scenery.name = 'road-scenery';
   group.add(scenery);
   const batches: SceneryBatch[] = [];
+  const mergeItems: MergeItem[] = [];
   const counts = Object.fromEntries(SCENERY_KINDS.map((k) => [k, 0])) as Record<SceneryKind, number>;
   const fromModels: SceneryKind[] = [];
   const turn = new Quaternion();
@@ -1704,6 +1735,13 @@ export function buildRoadScene(
       kind === 'fogBank'
         ? look.material('splash', { color: fogHex ?? '#e3e6e8' })
         : look.material('prop', { vertexColors: true, doubleSided: model?.doubleSided ?? false });
+    if (!INSTANCED_KINDS.has(kind)) {
+      for (const s of mine) {
+        const geometry = geos[Math.min(geos.length - 1, s.variant)] ?? geos[0];
+        if (geometry) mergeItems.push({ spot: s, geometry, material });
+      }
+      continue;
+    }
     const groups = new Map<string, ScenerySpot[]>();
     for (const s of mine) {
       const v = Math.min(geos.length - 1, s.variant);
@@ -1746,6 +1784,14 @@ export function buildRoadScene(
       });
     }
   }
+  const merged = new MergedScenery(
+    mergeItems,
+    look.material('prop', { vertexColors: true, doubleSided: true }),
+  );
+  scenery.add(merged.group);
+  // Counted at full detail, as the instanced batches were (the meshes are built as the camera comes).
+  triangles += merged.triangles;
+  meshes += merged.count;
 
   // The sea, at world y = 0 (sea level in the network frame).
   const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
@@ -1782,8 +1828,8 @@ export function buildRoadScene(
       const i = Math.max(0, Math.min(n - 1, Math.floor(s / l.step)));
       return Math.min(l.reach[side][i] ?? 0, l.reach[side][Math.min(n - 1, i + 1)] ?? 0);
     },
-    update(cameraX, cameraZ, t, drawM) {
-      let shown = 0;
+    update(cameraX, cameraZ, t, drawM, lodM = SCENERY_LOD_M, builds = 1) {
+      let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
         b.mesh.visible = visible;
@@ -1802,7 +1848,9 @@ export function buildRoadScene(
       }
       return shown;
     },
+    merged: () => merged.counts(),
     dispose() {
+      merged.dispose();
       // Instanced chunks share one geometry per kind: dispose each once. The models' geometries
       // belong to the renderer's model cache and outlive this scene.
       const seen = new Set<BufferGeometry>(shared);

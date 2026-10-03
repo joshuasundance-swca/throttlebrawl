@@ -116,6 +116,8 @@ function perTickRace(seed: number): TickCheck {
   const touching = new Set<string>();
   /** Riders whose crash went over a rail: falling to the water, not sliding along the deck. */
   const overboard = new Set<number>();
+  /** Each rider's height in the last snapshot: what the peds step sees of a tumble this tick. */
+  const prevH = new Map<number, number>();
   const out: TickCheck = {
     ticks: 0,
     pairs: 0,
@@ -159,7 +161,11 @@ function perTickRace(seed: number): TickCheck {
           // threat to anyone on the road. Seed 1 met one once the 2026-10-02 run-back trim
           // reshuffled the race.
           if (overboard.has(r.id)) continue;
-          if (r.road.h - p.road.h >= PEDS.maxContactH - 0.1) continue;
+          // The height lags a tick too: a crash thrown high falls in the tumble phase, after peds, so
+          // the sim judged last tick's height (seed 5 once #353's Keys traffic reshuffled the race:
+          // a rival falling 0.16 m a tick read 1.36 m here and 1.52 m to the sim, over its 1.5).
+          const seenH = r.mode === 'Tumble' ? Math.max(r.road.h, prevH.get(r.id) ?? r.road.h) : r.road.h;
+          if (seenH - p.road.h >= PEDS.maxContactH - 0.1) continue;
           if (rel.along < -PEDS.threatBehindM + slack || rel.along > pedThreatRangeM(r.speed) - slack)
             continue;
           if (Math.abs(rel.side) >= band - 0.1) continue;
@@ -170,6 +176,7 @@ function perTickRace(seed: number): TickCheck {
           }
         }
       }
+      for (const e of snap.entities) if (e.kind === 'rider') prevH.set(e.id, e.road.h);
     },
   });
   return out;

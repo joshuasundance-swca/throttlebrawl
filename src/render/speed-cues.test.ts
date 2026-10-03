@@ -2,7 +2,7 @@
 // cues". Render's cues: speed lines that rush past the edges of the view, and palms along the road
 // for parallax. Both are sliders. The lines are checked where the camera sees them (projected), the
 // palms where they stand (on the built road scene of the real track).
-import { InstancedMesh, Matrix4, PerspectiveCamera, Vector3 } from 'three';
+import { Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -120,23 +120,14 @@ function realNetwork(): RoadNetwork {
 }
 
 function palms(road: RoadNetwork, density?: number): Vector3[] {
-  const { group } = buildRoadScene(
+  const { spots } = buildRoadScene(
     road,
     look,
     undefined,
     density === undefined ? {} : { roadsideDensity: density },
   );
-  // Every chunk's palms (the road is merged per chunk).
-  const m = new Matrix4();
-  const out: Vector3[] = [];
-  group.traverse((mesh) => {
-    if (!(mesh instanceof InstancedMesh) || mesh.name !== 'road-palms') return;
-    for (let i = 0; i < mesh.count; i++) {
-      mesh.getMatrixAt(i, m);
-      out.push(new Vector3().setFromMatrixPosition(m));
-    }
-  });
-  return out;
+  // Every palm as placed: each draws merged into its block, where its spot is (run W-S).
+  return spots.filter((s) => s.kind === 'palm').map((s) => new Vector3(s.p.x, s.p.y, s.p.z));
 }
 
 describe('roadside palms (playtest 1, item 10: parallax)', () => {
@@ -181,7 +172,7 @@ describe('roadside palms (playtest 1, item 10: parallax)', () => {
         barriers: [{ s0: 0, s1: 400, side: 'both', kind: 'rail' }],
         tags: [{ s0: 0, s1: 400, side: 'both', tag: 'bridge' }],
       },
-    }).group.getObjectByName('road-palms');
-    expect(railed).toBeUndefined();
+    }).spots.filter((s) => s.kind === 'palm');
+    expect(railed).toEqual([]);
   });
 });

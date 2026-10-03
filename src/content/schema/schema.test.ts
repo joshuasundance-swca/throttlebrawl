@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ENTRY_SCHEMAS, RESERVED_TYPES, SIM_EXCLUDED_FIELDS, VETOABLE_ITEMS, type EntryType } from './index';
+import {
+  BIKE_CLASSES,
+  ENTRY_SCHEMAS,
+  packSchema,
+  RESERVED_TYPES,
+  SIM_EXCLUDED_FIELDS,
+  VETOABLE_ITEMS,
+  type EntryType,
+} from './index';
 
 // Examples copied from docs/content-packs.md, trimmed to the fields the schema checks.
 const EXAMPLES: Partial<Record<EntryType, unknown>> = {
@@ -200,5 +208,31 @@ describe('content schema: the M2 formats', () => {
     expect(issues('bark-set', barks({ chance: 1.5 }))).toHaveLength(1);
     expect(issues('bark-set', barks({ priority: 4 }))).toHaveLength(1);
     expect(issues('bark-set', barks({}, { chance: -0.1 }))).toHaveLength(1);
+  });
+});
+
+// Playtest 2 (2026-10-02), "a voice per bike": the class-to-voice table is pack data, in the base
+// pack's `defaults.engineSoundByClass`, not code.
+describe('content schema: engine voices by bike class', () => {
+  const manifest = (engineSoundByClass?: unknown) => ({
+    type: 'pack',
+    id: 'base',
+    name: 'Base',
+    version: '0.1.0',
+    formatVersion: 1,
+    license: 'MIT',
+    defaults: { tuning: 'registry', hud: 'classic', ...(engineSoundByClass ? { engineSoundByClass } : {}) },
+  });
+
+  it('takes a patch for some classes, and none at all', () => {
+    expect(packSchema.safeParse(manifest()).success).toBe(true);
+    const some = { chopper: { preset: 'v-twin' }, moped: { preset: 'two-stroke-buzz', idleHz: 46 } };
+    expect(packSchema.safeParse(manifest(some)).success).toBe(true);
+  });
+
+  it('rejects a class outside BIKE_CLASSES and a patch with no preset', () => {
+    expect(BIKE_CLASSES).not.toContain('hovercraft');
+    expect(packSchema.safeParse(manifest({ hovercraft: { preset: 'v-twin' } })).success).toBe(false);
+    expect(packSchema.safeParse(manifest({ chopper: { idleHz: 30 } })).success).toBe(false);
   });
 });

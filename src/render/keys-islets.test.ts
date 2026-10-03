@@ -79,13 +79,15 @@ describe('islets off every Keys bridge', () => {
             const near = Math.min(...mine.map((m) => Math.hypot(m.p.x - c.x, m.p.z - c.z)));
             worst = Math.max(worst, near);
             samples++;
-            // What it costs: the islet batches the scene shows from here (one draw each).
-            scene.update(c.x, c.z, 0, DRAW_M);
-            let shown = 0;
+            // What it costs: the islets merge into the still scenery's blocks (run W-S), so they
+            // add no draw call of their own; the blocks the scene shows from here, islets or not.
+            scene.update(c.x, c.z, 0, DRAW_M, undefined, Infinity);
+            let own = 0;
             scene.group.traverse((o) => {
-              if (o.name === 'road-islets' && o.visible) shown++;
+              if (o.name === 'road-islets') own++;
             });
-            draws = Math.max(draws, shown);
+            expect(own).toBe(0);
+            draws = Math.max(draws, scene.merged().meshes);
           }
         // On open water: clear of every road (this one's other stretches too) by its half width, the
         // land it draws on the islet's side there (its strip plus the 4 m shelf), and the islet's own
@@ -106,11 +108,12 @@ describe('islets off every Keys bridge', () => {
         }
         print(
           `[examined] ${id} seed ${seed}: ${mine.length} islets (${variantsOf(mine)}); ${samples} bridge points, ` +
-            `farthest from an islet ${worst.toFixed(0)} m (draw ${DRAW_M} m), at most ${draws} islet draws; closest islet ${closest.toFixed(1)} m clear of any road's land`,
+            `farthest from an islet ${worst.toFixed(0)} m (draw ${DRAW_M} m), at most ${draws} merged scenery blocks in range (islets ride in them); closest islet ${closest.toFixed(1)} m clear of any road's land`,
         );
         expect(worst).toBeLessThan(DRAW_M);
         expect(closest).toBeGreaterThan(0);
-        expect(draws).toBeLessThanOrEqual(7);
+        // In range, not in view: the camera's frustum culls about half of these again.
+        expect(draws).toBeLessThanOrEqual(12);
         scene.dispose();
       }
     });

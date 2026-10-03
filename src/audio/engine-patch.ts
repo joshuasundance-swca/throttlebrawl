@@ -120,28 +120,9 @@ export const ENGINE_PRESETS: Readonly<Record<string, EngineProfile>> = {
 export const DEFAULT_ENGINE_PRESET = 'single-thump';
 
 /**
- * The engine voice for each bike class (content's BIKE_CLASSES), playtest 2 (2026-10-02, ENGINE:
- * "a voice per bike": chopper thump, scooter buzz, sport scream, dirt-bike rasp). The rider's
- * drawn bike (`look.bikeClass` in its pack file) picks the voice, so a rival on a chopper sounds
- * like one even while every rider's sim bike is the starter; a rider with no drawn class keeps its
- * bike's own `engineSound`. Each entry is the same shape a bike's `engineSound` is.
- */
-export const ENGINE_BY_CLASS: Readonly<Record<string, EngineSoundSpec>> = {
-  chopper: { preset: 'v-twin' },
-  scooter: { preset: 'two-stroke-buzz' },
-  moped: { preset: 'two-stroke-buzz', idleHz: 46, redlineHz: 230 },
-  'mobility-scooter': { preset: 'two-stroke-buzz', idleHz: 55, redlineHz: 120, roughness: 0.2 },
-  'golf-cart': { preset: 'two-stroke-buzz', idleHz: 50, redlineHz: 110, roughness: 0.15, noise: 0.1 },
-  dirt: { preset: 'dirt-rasp' },
-  rat: { preset: 'single-thump' },
-  sport: { preset: 'inline-four' },
-  super: { preset: 'inline-four', idleHz: 55, redlineHz: 420 },
-  lawnmower: { preset: 'mower-putt' },
-};
-
-/**
- * The pack's `engineSound` block: a preset name plus optional numbers. app/ may add the rider's
- * drawn `bikeClass`, whose voice (ENGINE_BY_CLASS) then wins over the bike's own.
+ * A pack's `engineSound` block: a preset name plus optional numbers. It comes from a bike file, or
+ * from the base pack's `defaults.engineSoundByClass` for a rider drawn on a bike class (app/ picks
+ * which; playtest 2, 2026-10-02: "a voice per bike").
  */
 export type EngineSoundSpec = Readonly<Record<string, unknown>> & { readonly preset?: unknown };
 
@@ -149,9 +130,7 @@ const num = (v: unknown, lo: number, hi: number): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined;
 
 /** The preset named by the pack entry, shaped by its numbers; bad or unknown values fall back. */
-export function resolveEngineProfile(given: EngineSoundSpec | undefined): EngineProfile {
-  const cls = given?.['bikeClass'];
-  const spec = (typeof cls === 'string' ? ENGINE_BY_CLASS[cls] : undefined) ?? given;
+export function resolveEngineProfile(spec: EngineSoundSpec | undefined): EngineProfile {
   const name = typeof spec?.preset === 'string' ? spec.preset : DEFAULT_ENGINE_PRESET;
   const p: EngineProfile = ENGINE_PRESETS[name] ?? SINGLE_THUMP;
   if (!spec) return p;

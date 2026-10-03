@@ -36,7 +36,7 @@ import type { EntitySnapshot, SimEvent, SimSnapshot } from '../../sim/api';
 import { mergeBoxes } from '../geometry';
 import { readGlb } from '../glb';
 import type { LookStyle } from '../look';
-import type { RiderLook } from '../rider-looks';
+import { FALLBACK_BIKE_MODEL, withPlayerPaint, type RiderLook } from '../rider-looks';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
 import {
@@ -1044,7 +1044,10 @@ type PartLoad = { part: BakedPart | null; error: string | null };
  */
 export class RiderRigs {
   readonly root = new Group();
+  /** The race's looks as app/ named them, and as drawn (the player's with the career paint). */
+  private readonly baseLooks = new Map<string, RiderLook>();
   private readonly looks = new Map<string, RiderLook>();
+  private playerPaint: string | null = null;
   private readonly parts = new Map<string, PartLoad>();
   private readonly loading = new Set<string>();
   private readonly rigs = new Map<number, Rig>();
@@ -1078,10 +1081,21 @@ export class RiderRigs {
   setLooks(looks: readonly RiderLook[]): void {
     for (const l of looks) {
       // A rig built from an older look is rebuilt on its next update (rigFor compares looks).
-      this.looks.set(l.contentId, l);
+      this.baseLooks.set(l.contentId, l);
+      this.looks.set(l.contentId, withPlayerPaint(l, this.playerPaint));
       this.request(l.riderModel, 'rider');
       this.request(l.bikeModel, 'bike');
     }
+  }
+
+  /**
+   * The career's paint on the player's bike (`#rrggbb`), or null for the look's own colours. The
+   * player's rig is rebuilt with it on its next update.
+   */
+  setPlayerPaint(hex: string | null): void {
+    if (hex === this.playerPaint) return;
+    this.playerPaint = hex;
+    for (const [id, l] of this.baseLooks) if (l.player) this.looks.set(id, withPlayerPaint(l, hex));
   }
 
   private request(id: string, kind: PartKind): void {
@@ -1140,7 +1154,14 @@ export class RiderRigs {
     if (existing) this.release(e.id);
     if (!look) return null;
     const rider = this.parts.get(look.riderModel)?.part;
-    const bike = this.parts.get(look.bikeModel)?.part;
+    // A bike model that is missing or failed (a garage bike with no model yet) falls back to the
+    // starter bike's, so the rider still draws as a real rider.
+    const own = this.parts.get(look.bikeModel);
+    let bike = own?.part;
+    if (own && !own.part && look.bikeModel !== FALLBACK_BIKE_MODEL) {
+      this.request(FALLBACK_BIKE_MODEL, 'bike');
+      bike = this.parts.get(FALLBACK_BIKE_MODEL)?.part;
+    }
     if (!rider || !bike) return null;
     const rig = new Rig(e.id, look, rider, bike, this.look, this.root);
     this.rigs.set(e.id, rig);
