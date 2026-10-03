@@ -35,6 +35,8 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 // compares. Until src/dev/selftest/race.ts exists the module exports null ("not built").
 const SELFTEST_ID = 'virtual:selftest-expected';
 const SELFTEST_RACE = '/src/dev/selftest/race.ts';
+/** The race's Node entry: it gives the base pack its hand-made road data from disk first (run W-S). */
+const SELFTEST_NODE = '/scripts/selftest-race.ts';
 function selfTestHash(): Plugin {
   const resolved = `\0${SELFTEST_ID}`;
   return {
@@ -43,7 +45,7 @@ function selfTestHash(): Plugin {
     async load(id) {
       if (id !== resolved) return null;
       if (!existsSync(path.join(root, SELFTEST_RACE))) return 'export default null;';
-      const { module } = await runnerImport<{ runSelfTestRace(): unknown }>(SELFTEST_RACE, {
+      const { module } = await runnerImport<{ runSelfTestRace(): unknown }>(SELFTEST_NODE, {
         configFile: false,
         root,
         logLevel: 'error',
