@@ -262,6 +262,88 @@
       }
     }
   ],
+  "show": {
+    "paper": {
+      "name": "The Fir County Drip",
+      "style": "newsletter",
+      "tagline": "Photocopied at the library. Slightly damp."
+    },
+    "heads": {
+      "boss": ["{RIVAL} SITS DOWN ON A STUMP; RAIN CONTINUES", "LOCAL LEGEND {RIVAL} BESTED; CEDARS UNMOVED"],
+      "bust": ["RIDER FINED ${n}; DEPUTY 'NOT UPSET, JUST WRITING'"],
+      "secret": ["RIDER TAKES {SECRET}; MOSS GROWS BACK BY TUESDAY"],
+      "down": ["{RIVAL} MEETS SWORD FERN; SWORD FERN WINS", "{RIVAL} FOUND IN THE SALAL, POLITE ABOUT IT"],
+      "air": ["RIDER CLEARS {n} RISES; LOG TRUCK DRIVER WAVES"],
+      "miss": ["{n} NEAR MISSES; FERRY LINE DOES NOT LOOK UP"],
+      "win": ["{EVENT} WON IN LIGHT DRIZZLE", "RIDER WINS {EVENT}, TIPS THE ESPRESSO HUT 40%"],
+      "lose": ["RIDER COMES {PLACE}; POTLUCK STILL ON THURSDAY"]
+    },
+    "asks": [
+      {
+        "id": "roast",
+        "kind": "takedowns",
+        "n": 1,
+        "cash": 250,
+        "text": "The espresso sponsor wants a takedown. Bold, like the roast."
+      },
+      {
+        "id": "drizzle",
+        "kind": "style-cash",
+        "n": 300,
+        "cash": 200,
+        "text": "Chat is dozing off in the rain. $300 of style."
+      },
+      {
+        "id": "ferry",
+        "kind": "finish-place",
+        "n": 2,
+        "cash": 300,
+        "text": "The ferry leaves at the finish. Top 2 or swim."
+      }
+    ],
+    "gigs": [
+      {
+        "id": "chanterelles",
+        "name": "Chanterelle run",
+        "need": "finish",
+        "n": 3,
+        "cash": 250,
+        "text": "A basket of chanterelles for the co-op. Keep them dry."
+      },
+      {
+        "id": "logging-show",
+        "name": "Logging show reel",
+        "need": "airtime",
+        "n": 2,
+        "cash": 200,
+        "text": "The county fair wants jump footage between the axe throws."
+      },
+      {
+        "id": "rain-shell",
+        "name": "Rain shell field test",
+        "need": "nearMiss",
+        "n": 4,
+        "cash": 200,
+        "text": "A jacket maker wants it 'tested in real conditions'."
+      },
+      {
+        "id": "woodstove",
+        "name": "The woodstove guy",
+        "need": "takedowns",
+        "n": 1,
+        "cash": 200,
+        "text": "He says someone owes him a cord of wood. Anyone will do."
+      }
+    ],
+    "texts": {
+      "juniper-moss": {
+        "won": "Beat you to the ferry line. Your oat milk's on me.",
+        "lost": "You made me spill a whole pour-over. That's a feud.",
+        "grudge": "Your name's on my cup board now. Spelled wrong. {g}/10."
+      },
+      "old-growth": { "won": "Hm.", "lost": "Hm. Hm.", "grudge": "{g} rings." }
+    }
+  },
   "meta": {
     "status": "live",
     "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",

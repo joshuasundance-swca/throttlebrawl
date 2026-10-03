@@ -169,6 +169,88 @@
     }
   ],
   "unlocks": [{ "grant": "base:mobility-scooter", "when": { "kind": "boss-beaten", "ref": "down-round" } }],
+  "show": {
+    "paper": { "name": "The Burn Rate Bugle", "style": "blog", "tagline": "Posted from a coworking space" },
+    "heads": {
+      "boss": ["{RIVAL} PIVOTS TO WALKING (EXCLUSIVE)", "{RIVAL}'S RUNWAY ENDS AT THE BOTTOM OF THE HILL"],
+      "bust": ["PARKING OFFICER LEADS ${n} ROUND IN LOCAL RIDER"],
+      "secret": ["RIDER FINDS {SECRET}; ROBOTAXI STILL FOUR MINUTES AWAY"],
+      "down": ["{RIVAL} EXITS. NOT THE GOOD KIND.", "{RIVAL} ANNOUNCES 'STRATEGIC DISMOUNT'"],
+      "air": ["RIDER SHIPS {n} JUMPS, ZERO TESTS"],
+      "miss": ["{n} NEAR MISSES WITH ROBOTAXIS; ROBOTAXIS 'LEARNING'"],
+      "win": ["RIDER WINS {EVENT}, TURNS DOWN TERM SHEET", "{EVENT}: RIDER TEN-XES THE FIELD"],
+      "lose": ["RIDER FINISHES {PLACE}, CALLS IT 'PRE-PODIUM'"]
+    },
+    "asks": [
+      {
+        "id": "engagement",
+        "kind": "takedowns",
+        "n": 1,
+        "cash": 250,
+        "text": "Investors want engagement. One takedown, on camera."
+      },
+      {
+        "id": "growth",
+        "kind": "style-cash",
+        "n": 300,
+        "cash": 200,
+        "text": "Growth is flat. $300 of style, up and to the right."
+      },
+      {
+        "id": "demo-day",
+        "kind": "finish-place",
+        "n": 2,
+        "cash": 300,
+        "text": "Demo day is at the line. Top 2 or we pivot."
+      }
+    ],
+    "gigs": [
+      {
+        "id": "burrito",
+        "name": "Burrito courier",
+        "need": "finish",
+        "n": 3,
+        "cash": 250,
+        "text": "A founder needs a burrito at the line, still warm."
+      },
+      {
+        "id": "hill-footage",
+        "name": "Hill footage",
+        "need": "airtime",
+        "n": 2,
+        "cash": 200,
+        "text": "A drone startup needs hill jumps for its deck."
+      },
+      {
+        "id": "shuttle-brakes",
+        "name": "Shuttle brake test",
+        "need": "nearMiss",
+        "n": 4,
+        "cash": 200,
+        "text": "A tech shuttle wants its brakes 'stress-tested'."
+      },
+      {
+        "id": "scooter-recovery",
+        "name": "Scooter recovery",
+        "need": "weaponSteal",
+        "n": 1,
+        "cash": 200,
+        "text": "Somebody's holding company property. Take it back."
+      }
+    ],
+    "texts": {
+      "gripman-gus": {
+        "won": "Ding ding. That was me, passing you.",
+        "lost": "Forty years on the grip. Never seen worse manners.",
+        "grudge": "I remember every face that never paid. Yours, {g} times."
+      },
+      "pivot": {
+        "won": "Beat you. Raising on it. Want in?",
+        "lost": "Reframing that as a learning. Invoicing you for it.",
+        "grudge": "Pre-revenue, but I've got {g} slides on you."
+      }
+    }
+  },
   "meta": {
     "status": "live",
     "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",

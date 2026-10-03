@@ -10,9 +10,12 @@ import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../si
 import { createFlatLook } from './look';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { SCENERY_RADIUS_M, TRUNK_M } from './scenery';
-import { FENCE_SEG_M, VERGE_BEHIND_M, VERGE_LIFT_M, VergeLayer } from './verge';
+import { FENCE_SEG_M, VERGE_BEHIND_M, VERGE_LIFT_M, VERGE_LOD_M, VergeLayer } from './verge';
 
 const look = createFlatLook();
+/** The examined lines, printed even when the tests pass (console.log is not). */
+const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
+const print = (line: string) => stdout.write(`${line}\n`);
 
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/*.json', {
   eager: true,
@@ -175,12 +178,19 @@ describe("each region's ground and edges", () => {
     console.log(`[examined] sf-hills: ${JSON.stringify(c)}`);
   });
 
-  it('stays cheap: one band mesh per chunk, plus one each for the fences, the ferns, the dust and the boards', () => {
+  it('stays cheap: one band mesh per chunk, plus near and far fences and ferns, the dust and the boards', () => {
     for (const id of NETWORKS) {
       const { road, verge } = layer(id);
       const bands = named(verge.group, 'verge-band');
       const others = verge.group.children.filter((o) => o.name !== 'verge-band').map((o) => o.name);
-      expect(others.sort()).toEqual(['verge-boards', 'verge-brush', 'verge-dust', 'verge-fence']);
+      expect(others.sort()).toEqual([
+        'verge-boards',
+        'verge-brush',
+        'verge-brush-far',
+        'verge-dust',
+        'verge-fence',
+        'verge-fence-far',
+      ]);
       let tris = 0;
       for (const m of bands) tris += (m.geometry.getIndex()?.count ?? 0) / 3;
       // Along the road, the fences and ferns drawn stay inside their caps.
@@ -193,7 +203,7 @@ describe("each region's ground and edges", () => {
         most = Math.max(most, c.nearPanels + c.nearClumps);
       }
       console.log(
-        `[examined] ${id}: ${bands.length} band meshes (${tris} triangles in all), 4 more; at most ${most} fence panels and fern clumps drawn at once`,
+        `[examined] ${id}: ${bands.length} band meshes (${tris} triangles in all), 6 more; at most ${most} fence panels and fern clumps drawn at once`,
       );
     }
   });
@@ -213,16 +223,21 @@ describe('only what the camera can see is drawn', () => {
     const all = verge.counts().nearPanels;
     verge.update(at.x, at.z, snapOf([]), 1 / 60, ahead.x, ahead.z);
     const forward = verge.counts().nearPanels;
-    const fence = named(verge.group, 'verge-fence')[0] as unknown as InstancedMesh;
     const fx = ahead.x - at.x;
     const fz = ahead.z - at.z;
     const len = Math.hypot(fx, fz);
     let worst = Infinity;
-    for (let i = 0; i < forward; i++) {
-      const m = fence.instanceMatrix.array;
-      const along = (((m[i * 16 + 12] ?? 0) - at.x) * fx + ((m[i * 16 + 14] ?? 0) - at.z) * fz) / len;
-      worst = Math.min(worst, along);
+    let read = 0;
+    // The near panels and (past VERGE_LOD_M) the far ones: both sets are what is drawn.
+    for (const name of ['verge-fence', 'verge-fence-far']) {
+      const fence = named(verge.group, name)[0] as unknown as InstancedMesh;
+      for (let i = 0; i < fence.count; i++, read++) {
+        const m = fence.instanceMatrix.array;
+        const along = (((m[i * 16 + 12] ?? 0) - at.x) * fx + ((m[i * 16 + 14] ?? 0) - at.z) * fz) / len;
+        worst = Math.min(worst, along);
+      }
     }
+    expect(read).toBe(forward);
     verge.update(at.x, at.z, snapOf([]), 1 / 60, back.x, back.z);
     const reversed = verge.counts().nearPanels;
     console.log(
@@ -235,6 +250,66 @@ describe('only what the camera can see is drawn', () => {
     expect(forward + reversed).toBeGreaterThanOrEqual(all);
     expect(worst).toBeGreaterThanOrEqual(-VERGE_BEHIND_M - FENCE_SEG_M);
   });
+});
+
+describe('far fences and ferns draw lighter (run W-S, the triangle headroom)', () => {
+  const tris = (o: Object3D | undefined) => ((o as Mesh | undefined)?.geometry.getIndex()?.count ?? 0) / 3;
+  const instanceAt = (m: InstancedMesh, i: number) => {
+    const a = m.instanceMatrix.array;
+    return { x: a[i * 16 + 12] ?? 0, z: a[i * 16 + 14] ?? 0 };
+  };
+
+  // A picket fence (the Keys), split rails and ferns (the Pacific Northwest), ferns on Twin Peaks.
+  for (const id of ['keys-m1', 'pnw-c1', 'osm-sf-twin-peaks']) {
+    it(`${id}: past VERGE_LOD_M the far form, nearer the whole one, and fewer triangles than before`, () => {
+      const { road, verge } = layer(id);
+      const near = named(verge.group, 'verge-fence')[0] as unknown as InstancedMesh;
+      const far = named(verge.group, 'verge-fence-far')[0] as unknown as InstancedMesh;
+      const fern = named(verge.group, 'verge-brush')[0] as unknown as InstancedMesh;
+      const fernFar = named(verge.group, 'verge-brush-far')[0] as unknown as InstancedMesh;
+      // Before run W-S each panel was 3 to 7 whole boxes (12 triangles each), each fern clump 3.
+      const old = { picket: 72, 'split-rail': 36, garden: 84 }[verge.fenceStyle];
+      expect(tris(near)).toBeLessThan(old);
+      // The split rail's far form is its near one (a square post shows its sides), so it has none.
+      if (verge.fenceStyle === 'split-rail') expect(tris(far)).toBe(tris(near));
+      else expect(tris(far)).toBeLessThan(tris(near));
+      expect(tris(fern)).toBeLessThan(36);
+      expect(tris(fernFar)).toBeLessThan(tris(fern));
+      let drawn = 0;
+      let before = 0;
+      let farSeen = 0;
+      for (const e of road.edges)
+        for (let s = 0; s < e.length; s += 150) {
+          const c = road.toWorld(e.index, s, 0, 0);
+          verge.update(c.x, c.z, snapOf([]), 1 / 60);
+          for (let i = 0; i < near.count && verge.fenceStyle !== 'split-rail'; i++) {
+            const p = instanceAt(near, i);
+            expect(Math.hypot(p.x - c.x, p.z - c.z)).toBeLessThanOrEqual(VERGE_LOD_M + 0.01);
+          }
+          for (let i = 0; i < fern.count; i++) {
+            const p = instanceAt(fern, i);
+            expect(Math.hypot(p.x - c.x, p.z - c.z)).toBeLessThanOrEqual(VERGE_LOD_M + 0.01);
+          }
+          for (let i = 0; i < far.count; i++) {
+            const p = instanceAt(far, i);
+            expect(Math.hypot(p.x - c.x, p.z - c.z)).toBeGreaterThan(VERGE_LOD_M);
+          }
+          if (verge.fenceStyle === 'split-rail') expect(far.count).toBe(0);
+          farSeen += far.count + fernFar.count;
+          drawn +=
+            near.count * tris(near) +
+            far.count * tris(far) +
+            fern.count * tris(fern) +
+            fernFar.count * tris(fernFar);
+          before += (near.count + far.count) * old + (fern.count + fernFar.count) * 36;
+        }
+      print(
+        `[examined] ${id} (${verge.fenceStyle}): a panel ${tris(near)} triangles near, ${tris(far)} far (was ${old}); a fern clump ${tris(fern)} and ${tris(fernFar)} (was 36); fences and ferns over the walk ${drawn} triangles, ${before} before`,
+      );
+      expect(farSeen).toBeGreaterThan(0);
+      expect(drawn).toBeLessThan(before * 0.75);
+    });
+  }
 });
 
 describe('the edges act', () => {

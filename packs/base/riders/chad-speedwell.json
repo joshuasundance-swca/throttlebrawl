@@ -16,6 +16,7 @@
   },
   "personality": {
     "style": "showboat",
+    "signature": "selfie",
     "aggression": 0.5,
     "dirtiness": 0.25,
     "courage": 0.5,

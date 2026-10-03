@@ -12,6 +12,7 @@ import { buildSimConfig, createStreamCache, type ActionState } from '../../src/a
 import { registryFromGlob } from '../../src/content';
 import { createSim, quantizeInput, type EntitySnapshot, type SimConfig } from '../../src/sim/api';
 import { SPLIT_GUIDE_LEAD_M } from '../../src/sim/riders';
+import { NO_ROAD_EVENTS } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -29,7 +30,14 @@ function soloConfig(r: Region, assist: 'off' | 'light'): SimConfig {
   const built = buildSimConfig(REG, STREAMS.forEvent(REG, r.event), {
     seed: 7,
     eventId: r.event,
-    tuning: { 'ai.aggressionScale': 0, 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+    // No road events either (W-P set pieces, the patrol): they stand on the road, and run W-R's new
+    // connectors moved the San Francisco one into this commit's path (a set-piece wobble, not a wall).
+    tuning: {
+      'ai.aggressionScale': 0,
+      'traffic.densitySame': 0,
+      'traffic.densityOncoming': 0,
+      ...NO_ROAD_EVENTS,
+    },
   });
   return {
     ...built,

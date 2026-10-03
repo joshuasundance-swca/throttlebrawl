@@ -272,20 +272,11 @@ function landScene(id: string) {
 const fmtEnd = (o: OpenLandEnd) =>
   `${o.edge} s ${o.s.toFixed(0)} ${o.side < 0 ? 'left' : 'right'} ${o.across} m out, drop ${o.drop.toFixed(1)} m`;
 
-/**
- * Open land ends known and owned elsewhere, by network, exactly as fmtEnd prints them. Each is a
- * render follow-up, never a pass: the walk still fails on any other.
- *
- * osm-pnw-samish (run W-S): where East Lake Samish Drive leaves the side of I-5 (it runs within
- * 7 m of the interstate's edge for 800 m, at about the same height), I-5's terrain skirt stops for
- * a row beside the other road and its side 60 m out is left open over the drop to the valley floor
- * (src/render/road-mesh.ts: the skirt shortens beside another road, and no cap closes that row).
- * Moving the junctions so the connectors stand in for the ramps' parallel stretches closed the
- * other one this walk found, beside the exit 246 off-ramp; this one is the renderer's.
- */
-const KNOWN_OPEN: Record<string, readonly string[]> = {
-  'osm-pnw-samish': ['osm-i5-lake-samish s 2865 right 60 m out, drop 47.5 m'],
-};
+// Run W-S's I-5 by Lake Samish is the hardest case yet: East Lake Samish Drive runs within 7 m of
+// the interstate's edge for 800 m at about its height, and the exit 246 off-ramp runs beside it. The
+// walk found two open edges there: the one beside the off-ramp closed when the junction moved so
+// its turn-off stands in for the ramp's parallel stretch (the bake's shiftM), and the one where the
+// lake road leaves I-5's side closed with #377 (no sliver between the land and its slope).
 
 describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', (id) => {
   it('never ends in mid-air: every raised edge of it is closed down to the ground', () => {
@@ -307,7 +298,7 @@ describe.each(PACKS.flatMap((p) => p.networks))('the land of the real road %s', 
     expect(probes).toBeGreaterThan(1000);
     // The walk steps across the junctions too (run W-P's roadside verifier: Upper Market into Portola).
     expect(joins).toBeGreaterThan(0);
-    expect(open.slice(0, 12).map(fmtEnd)).toEqual(KNOWN_OPEN[id] ?? []);
+    expect(open.slice(0, 12).map(fmtEnd)).toEqual([]);
   }, 240_000);
 });
 

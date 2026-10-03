@@ -11,8 +11,9 @@ import type { SimConfig } from '../../src/sim/types';
 // The W-Q sim and route contracts over every live network (interview, 2026-10-02: "junction
 // choices in races", "U-turns", "Anywhere with ground"). Every split zone is a branch: each
 // hand-made network's shortcuts and spurs, named and signed in the route files (W-R: the Keys boat
-// ramp, the PNW spur and the SF stair alley; a split no track names would be derived); the map-data roads (no
-// splits) have none. Every main-path edge points toward the
+// ramp, the PNW spur and the SF stair alley, and run W-R's marked dirt shortcuts, the Keys sandbar
+// and the SF park cut; a split no track names would be derived); the map-data roads (no splits) have
+// none. Every main-path edge points toward the
 // finish. And with the off-road switch at its default (off), a rider's limits are exactly the M1
 // barrier limits on every road, so nothing about an existing race changes.
 
@@ -110,10 +111,36 @@ describe('route branches and ride limits on every live network', () => {
     expect(routes).toBeGreaterThanOrEqual(14);
     expect(withChoice.length).toBeGreaterThanOrEqual(9);
     expect(branches).toBeGreaterThanOrEqual(withChoice.length);
-    // Every route with a junction choice names it (W-R junction choices, signed): the Keys' three
-    // hand-made and Key West's Boulevard, the PNW's three and I-5's Lake Samish, and SF's one.
-    expect(named).toBeGreaterThanOrEqual(9);
-    expect(named).toBe(withChoice.length);
+    // Every route with a junction choice names its branches (W-R junction choices, signed): the boat
+    // ramp on the Keys' three, the spur on the PNW's three and the stair alley on SF's one, run W-R's
+    // dirt shortcuts (the sandbar on the Keys' standard and long routes and the park cut on SF's),
+    // and since run W-S the real-road networks' (Key West's Boulevard and I-5's Lake Samish).
+    expect(named).toBeGreaterThanOrEqual(withChoice.length + 3);
+    expect(named).toBe(branches);
     expect(stations).toBeGreaterThan(1000);
+  });
+
+  // Run W-R: the sim's junctions pick a split by position, and a crashed rider's body lands on the
+  // nearest road, whatever the route allows (a seeded batch race on a branch past the short route's
+  // finish never finished). So a route that passes a split must take the branch too: every split
+  // zone it rides through before its finish leads onto a road it allows.
+  it('every split zone a route passes before its finish leads onto a road the route allows', () => {
+    let examined = 0;
+    for (const n of nets) {
+      const road = createRoadNetwork({ network: n.network, roads: n.roads });
+      for (const r of n.routes) {
+        const route = createRouteProgress(road, r);
+        const main = new Set(route.mainEdges);
+        for (const z of road.splitZones()) {
+          if (!main.has(z.edge)) continue;
+          const at = route.progressAt(z.edge, (z.s0 + z.s1) / 2);
+          if (!Number.isFinite(at) || at >= route.length) continue;
+          examined++;
+          expect(route.allows(z.toEdge), `${r.id}: the split onto ${road.edges[z.toEdge]?.id}`).toBe(true);
+        }
+      }
+    }
+    console.log(`[examined] ${examined} split zones on routes' main paths before their finishes`);
+    expect(examined).toBeGreaterThanOrEqual(10);
   });
 });

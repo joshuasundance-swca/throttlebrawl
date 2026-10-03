@@ -15,6 +15,12 @@ import {
   TIMES_OF_DAY,
 } from './vocab';
 
+/**
+ * A synth engine patch (docs/content-packs.md, "Bike"): a preset name from audio's code-made patches,
+ * shaped by optional numbers that audio clamps. Presentation-only.
+ */
+export const engineSoundSchema = z.looseObject({ preset: z.string() });
+
 export const packSchema = z.looseObject({
   type: z.literal('pack'),
   id: idSchema,
@@ -42,7 +48,17 @@ export const packSchema = z.looseObject({
     })
     .optional(),
   dependencies: z.record(z.string(), z.string()).optional(),
-  defaults: z.looseObject({ tuning: z.string(), hud: z.string(), look: z.string().optional() }),
+  defaults: z.looseObject({
+    tuning: z.string(),
+    hud: z.string(),
+    look: z.string().optional(),
+    /**
+     * The engine voice of each bike class a rider is drawn on (`look.bikeClass`; playtest 2,
+     * 2026-10-02: "a voice per bike"). A drawn class's voice replaces the sim bike's own
+     * `engineSound`; a class with no entry keeps it. Only base's is read, like the rest of `defaults`.
+     */
+    engineSoundByClass: z.partialRecord(z.enum(BIKE_CLASSES), engineSoundSchema).optional(),
+  }),
   idAliases: z.record(z.string(), z.string()).optional(),
 });
 
@@ -73,7 +89,7 @@ export const bikeSchema = entry('bike', {
   combat: z
     .looseObject({ hitPowerScale: z.number().optional(), knockbackResistance: unit01.optional() })
     .optional(),
-  engineSound: z.looseObject({ preset: z.string() }),
+  engineSound: engineSoundSchema,
 });
 
 export const AI_STYLES = [

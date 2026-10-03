@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "shrimp-truck",
+  "name": "Shrimp Truck",
+  "category": "truck",
+  "tags": ["local", "key-fishing"],
+  "lengthM": 7.0,
+  "widthM": 2.3,
+  "cruiseMps": 20.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "shrimp-truck"
+    },
+    "paintOptions": ["#f4f1e8", "#e88a6a", "#7fd1c7"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Chum Key's refrigerated box truck, a hand-painted shrimp in a chef's hat on both sides, waving at its own cargo. FRESH TODAY, PROBABLY. Fishing village traffic (run W-R); big, so hitting it crashes you.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-02"
+    }
+  }
+}

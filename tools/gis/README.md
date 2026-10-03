@@ -150,9 +150,9 @@ real junction choice.
 | `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 6.39 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down 1st and Bertha Streets: a shortcut, 265 m shorter | 14.7 and 41.6 m (main), 20.4 m (branch) |
 | `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 256 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
 
-Known: East Lake Samish Drive runs within 7 m of I-5's edge for 800 m; where it leaves it, the
-renderer's terrain skirt leaves one land edge open beside I-5 (`region-routes.test.ts` names it,
-`KNOWN_OPEN`; a render follow-up).
+East Lake Samish Drive runs within 7 m of I-5's edge for 800 m, at about its height; the land walk
+in `region-routes.test.ts` (every raised land edge closed down to the ground) passes there with
+render's #377, and beside the exit 246 off-ramp with the junction moved by `shiftM`.
 
 ## Fetch once, bake offline
 

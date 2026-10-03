@@ -6,14 +6,17 @@ import {
   datasetAssetsPlugin,
   distFileName,
   ensureCached,
+  gitBlobSha1,
   LOCK_FILE,
   lockProblems,
   manifestRow,
   modelsByRegion,
   readLock,
+  remoteFiles,
   repoProblems,
   resolveUrl,
   sha256,
+  uploadPlan,
   worstRaceModelBytes,
 } from './dataset-assets.mjs';
 import { repoRoot } from './lib.mjs';
@@ -162,6 +165,98 @@ describe('ensureCached', () => {
     writeFileSync(cachePath(root, f.path), 'tampered');
     const net = fakeFetch({ [resolveUrl(lock, f.path)]: body });
     expect((await ensureCached(root, lock, f, net.fn)).downloaded).toBe(true);
+  });
+});
+
+describe('upload compares content, not paths', () => {
+  // The Hub's paths-info shape, as the live dataset answered on 2026-10-02: a plain-git file has
+  // `oid` (its git blob id, which `git hash-object` gave for marker-cube.glb) and no `lfs`; an LFS
+  // file adds `lfs.oid`, its sha256. A path the revision lacks is left out of the answer.
+  const plain = (p: string, body: Buffer) => ({
+    type: 'file',
+    path: p,
+    size: body.length,
+    oid: gitBlobSha1(body),
+  });
+  const lfs = (p: string, body: Buffer) => ({
+    ...plain(p, body),
+    oid: 'f'.repeat(40),
+    lfs: { oid: sha256(body), size: body.length },
+  });
+
+  it('computes the git blob id the Hub reports', () => {
+    expect(gitBlobSha1(Buffer.alloc(0))).toBe('e69de29bb2d1d6434b8b29ae775ad8c2e48c5391');
+    expect(gitBlobSha1(bytesOf('hello\n'))).toBe('ce013625030ba8dba906f756967f9e9ca394464a');
+  });
+
+  it('uploads a changed file at a path the dataset already has, and a new one, and skips the same', () => {
+    const v1 = bytesOf('rider v1');
+    const v2 = bytesOf('rider v2'); // same length as v1: only the content says it changed
+    const kept = bytesOf('kept model');
+    const big = bytesOf('an lfs model');
+    const changed = fileFor('base/models/riders/a.glb', v2);
+    const fresh = fileFor('base/models/riders/new.glb', bytesOf('brand new'));
+    const same = fileFor('base/models/riders/b.glb', kept);
+    const sameLfs = fileFor('base/models/riders/c.glb', big);
+    const lock = lockWith([changed, fresh, same, sameLfs]);
+    const remote = new Map<string, unknown>([
+      [changed.path, plain(changed.path, v1)],
+      [same.path, plain(same.path, kept)],
+      [sameLfs.path, lfs(sameLfs.path, big)],
+    ]);
+    const cache = new Map([
+      [changed.path, v2],
+      [fresh.path, bytesOf('brand new')],
+      [same.path, kept],
+      [sameLfs.path, big],
+    ]);
+    const plan = uploadPlan(lock, remote, (f: { path: string }) => cache.get(f.path) ?? null);
+    expect(plan.problems).toEqual([]);
+    expect(plan.upload.map((u: { file: { path: string }; why: string }) => [u.file.path, u.why])).toEqual([
+      [changed.path, 'changed'],
+      [fresh.path, 'new'],
+    ]);
+    expect(plan.same).toBe(2);
+  });
+
+  it('judges an LFS file by its sha256 without the bytes, and names what it cannot upload', () => {
+    const big = bytesOf('lfs pinned');
+    const pinned = fileFor('base/models/riders/c.glb', big);
+    const lock = lockWith([pinned]);
+    const none = () => null;
+    expect(uploadPlan(lock, new Map([[pinned.path, lfs(pinned.path, big)]]), none).same).toBe(1);
+    const other = uploadPlan(lock, new Map([[pinned.path, lfs(pinned.path, bytesOf('lfs older'))]]), none);
+    expect(other.problems.join()).toMatch(/holds other bytes and it is not cached/);
+    const plainUncached = uploadPlan(lock, new Map([[pinned.path, plain(pinned.path, big)]]), none);
+    expect(plainUncached.problems.join()).toMatch(/not cached, so it cannot be compared/);
+    expect(uploadPlan(lock, new Map(), none).problems.join()).toMatch(/lacks it/);
+  });
+
+  it('asks the Hub for paths-info at one revision, in batches of 50, and keeps only files', async () => {
+    const files = Array.from({ length: 51 }, (_, i) =>
+      fileFor(`base/models/props/p${i}.glb`, bytesOf(`p${i}`)),
+    );
+    const lock = lockWith(files);
+    const bodies: string[] = [];
+    const fn = (url: string, init: { method: string; body: string }) => {
+      expect(url).toBe(`https://huggingface.co/api/datasets/someone/throttlebrawl-assets/paths-info/${REV}`);
+      expect(init.method).toBe('POST');
+      bodies.push(init.body);
+      const { paths } = JSON.parse(init.body) as { paths: string[] };
+      const answer = paths.filter((p) => p !== 'base/models/props/p3.glb').map((p) => plain(p, bytesOf(p)));
+      return Promise.resolve(new Response(JSON.stringify([...answer, { type: 'directory', path: 'base' }])));
+    };
+    const remote = await remoteFiles(
+      lock,
+      REV,
+      files.map((f) => f.path),
+      fn as unknown as typeof fetch,
+    );
+    expect(bodies).toHaveLength(2);
+    expect(remote.size).toBe(50);
+    expect(remote.has('base/models/props/p3.glb')).toBe(false);
+    const down = (() => Promise.resolve(new Response('no', { status: 500 }))) as unknown as typeof fetch;
+    await expect(remoteFiles(lock, REV, ['base/x.glb'], down)).rejects.toThrow(/HTTP 500/);
   });
 });
 
