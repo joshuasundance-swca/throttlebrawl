@@ -159,7 +159,8 @@ test('race-first into the first event, then the career map, the garage and the b
   await page.locator('#career-tab-map').click();
   await page.locator('#career-region-pacific-northwest').click();
   await expect(page.locator('.career-head .title')).toHaveText('The Fir County Circuit');
-  await expect(page.locator('.career-map figcaption').filter({ hasText: 'Chuckanut' })).toBeVisible({
+  // Exactly Chuckanut Drive's panel: the I-5 network (run W-S) is "over the Chuckanut Mountains".
+  await expect(page.locator('.career-map figcaption').filter({ hasText: /^Chuckanut Drive$/ })).toBeVisible({
     timeout: 30_000,
   });
   // The start tap went fullscreen; a window resize needs it left first (platform-phone.spec.ts).

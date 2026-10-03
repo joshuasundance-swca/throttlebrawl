@@ -63,6 +63,15 @@ export const SET_PIECE = {
   maxProgress: 0.94,
   /** Sharpest bend a piece may sit on, 1/m (it must read at speed). */
   maxKappa: 1 / 90,
+  /**
+   * A shortcut whose bypassed span is longer than this, m, is a junction choice between two real
+   * roads (run W-S: Key West's North Roosevelt Blvd, Lake Samish's shore roads), not a short cut:
+   * a piece may stand on the main way, and a racer who takes the other road misses it, as with any
+   * fork. Only `branchEndM` at each end of the span stays clear. The hand-made shortcuts are all
+   * under 1.3 km, so none of their placements move.
+   */
+  longBranchM: 2000,
+  branchEndM: 200,
   /** A rider's box (traffic's). */
   riderLengthM: 2.0,
   riderWidthM: 0.8,
@@ -288,7 +297,15 @@ export function initSetPieces(world: World, config: SimConfig): void {
   if (!start) return;
   st.u0 = start.u;
   st.routeLen = Math.max(0, c.routeDir === 1 ? c.hi - start.u : start.u - c.lo);
-  const bypassed = bypassedSpans(config);
+  // A long bypass is a junction choice (SET_PIECE.longBranchM): only its two ends stay clear.
+  const bypassed = bypassedSpans(config).flatMap(([a, b]): [number, number][] =>
+    Number.isFinite(b) && b - a > SET_PIECE.longBranchM
+      ? [
+          [a, a + SET_PIECE.branchEndM],
+          [b - SET_PIECE.branchEndM, b],
+        ]
+      : [[a, b]],
+  );
   const scale = Math.max(0, world.params['modifiers.setPieceChance'] ?? 1);
   // Every modifier rolls, always drawing, so the stream advances the same whatever fires.
   const fired: number[] = [];

@@ -4,7 +4,7 @@
   "name": "The Pacific Northwest",
   "chapter": 2,
   "blurb": "Two lanes, a million trees, and a ferry that left without you.",
-  "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge"],
+  "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge", "osm-pnw-samish"],
   "timeOfDayOptions": [
     {
       "id": "dawn",
@@ -63,6 +63,11 @@
     {
       "id": "spur-keep-right",
       "text": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
+      "status": "live"
+    },
+    {
+      "id": "lake-samish-keep-right",
+      "text": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
       "status": "live"
     },
     {

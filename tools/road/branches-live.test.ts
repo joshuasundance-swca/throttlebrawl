@@ -62,7 +62,7 @@ describe('route branches and ride limits on every live network', () => {
     let branches = 0;
     let named = 0;
     let stations = 0;
-    const handMade: string[] = [];
+    const withChoice: string[] = [];
     const lines: string[] = [];
     for (const n of nets) {
       const road = createRoadNetwork({ network: n.network, roads: n.roads });
@@ -87,9 +87,10 @@ describe('route branches and ride limits on every live network', () => {
           expect(route.orientation(e), `${r.id} ${road.edges[e]?.id}`).toBe(1);
           expect(route.branchAt(e)).toBeNull();
         }
-        // A hand-made route with a shortcut (run W-R's downtown has none yet: its freedom is a
-        // follow-up for the junction-choice lanes).
-        if (!r.id.startsWith('osm-') && road.splitZones().length > 0) handMade.push(r.id);
+        // A route on a network with a split zone offers its junction choice: the hand-made tracks'
+        // shortcuts, and since run W-S the real-road networks' (tools/gis `tbgis network`). A
+        // network without one (the stretch bakes, run W-R's downtown) offers none.
+        if (road.splitZones().length > 0) withChoice.push(r.id);
         else expect(route.branches, r.id).toEqual([]);
         lines.push(
           `${r.id}: ${route.branches.map((b) => `${b.id} ${b.kind} ${b.gainM.toFixed(0)} m`).join(', ') || 'none'}`,
@@ -107,13 +108,14 @@ describe('route branches and ride limits on every live network', () => {
     console.log(
       `[examined] ${nets.length} networks, ${routes} routes, ${branches} branches (${named} named), ${stations} stations of ride limits\n  ${lines.join('\n  ')}`,
     );
-    expect(routes).toBeGreaterThanOrEqual(12);
-    expect(handMade.length).toBeGreaterThanOrEqual(7);
-    expect(branches).toBeGreaterThanOrEqual(handMade.length);
-    // Every hand-made route names its shortcuts (W-R junction choices, signed): the boat ramp on the
-    // Keys' three, the spur on the PNW's three and the stair alley on SF's one, plus run W-R's dirt
-    // shortcuts, the sandbar on the Keys' standard and long routes and the park cut on SF's.
-    expect(named).toBeGreaterThanOrEqual(handMade.length + 3);
+    expect(routes).toBeGreaterThanOrEqual(14);
+    expect(withChoice.length).toBeGreaterThanOrEqual(9);
+    expect(branches).toBeGreaterThanOrEqual(withChoice.length);
+    // Every route with a junction choice names its branches (W-R junction choices, signed): the boat
+    // ramp on the Keys' three, the spur on the PNW's three and the stair alley on SF's one, run W-R's
+    // dirt shortcuts (the sandbar on the Keys' standard and long routes and the park cut on SF's),
+    // and since run W-S the real-road networks' (Key West's Boulevard and I-5's Lake Samish).
+    expect(named).toBeGreaterThanOrEqual(withChoice.length + 3);
     expect(named).toBe(branches);
     expect(stations).toBeGreaterThan(1000);
   });

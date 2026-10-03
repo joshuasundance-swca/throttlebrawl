@@ -364,6 +364,10 @@ export const PATROL = {
   clearM: 30,
   /** Sharpest bend he waits on, 1/m. */
   maxKappa: 1 / 50,
+  /** A road off the main path longer than this, m, is a junction choice, not a shortcut (branchSpans). */
+  longBranchM: 2000,
+  /** Only this much at each end of such a road stays clear of a patrol, m. */
+  branchEndM: 200,
 };
 const PATROL_AVOID = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
 
@@ -899,7 +903,13 @@ export function routePosAt(config: SimConfig, progress: number): RoadPos | null 
  * travel lanes. Null when the spot is not clear (a branch, a ramp, pad, ramp truck or lot nearby, a
  * split zone, a sharp bend, or nowhere off the lanes).
  */
-/** The route progress spans of the route's allowed roads off its main path (its shortcuts). */
+/**
+ * The route progress spans of the route's allowed roads off its main path (its shortcuts). A road
+ * spanning more than PATROL.longBranchM is the other way at a junction choice (run W-S: Key West's
+ * North Roosevelt Blvd, Lake Samish's shore road), not a shortcut: a patrol may wait on the main
+ * way beside it, as beside any fork, so only PATROL.branchEndM at each of its ends stays clear.
+ * The hand-made shortcuts' roads are all under 1.2 km, so none of their spots move.
+ */
 function branchSpans(config: SimConfig): [number, number][] {
   const { road, route } = config;
   const main = new Set(route.mainEdges);
@@ -910,7 +920,23 @@ function branchSpans(config: SimConfig): [number, number][] {
     const b = route.progressAt(e, road.edges[e]?.length ?? 0);
     if (Number.isFinite(a) && Number.isFinite(b)) out.push([Math.min(a, b), Math.max(a, b)]);
   }
-  return out;
+  // Roads that touch or overlap make one way (a connector, the road, a connector): merged, they
+  // cover exactly what they did one by one, so only the long-way test below sees the difference.
+  out.sort((p, q) => p[0] - q[0]);
+  const merged: [number, number][] = [];
+  for (const [lo, hi] of out) {
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+  }
+  return merged.flatMap(([lo, hi]): [number, number][] =>
+    hi - lo > PATROL.longBranchM
+      ? [
+          [lo, lo + PATROL.branchEndM],
+          [hi - PATROL.branchEndM, hi],
+        ]
+      : [[lo, hi]],
+  );
 }
 
 function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos | null {

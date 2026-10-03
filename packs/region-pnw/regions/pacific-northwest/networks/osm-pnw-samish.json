@@ -1,0 +1,311 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-samish",
+  "name": "I-5 over the Chuckanut Mountains, with Lake Samish (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 48.665,
+    "originLonDeg": -122.39,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-i5-samish-summit",
+    "osm-pnw-samish-lake-samish-leave",
+    "osm-i5-lake-samish",
+    "osm-pnw-samish-lake-samish-join",
+    "osm-i5-nulle-run",
+    "osm-samish-north-shore",
+    "osm-samish-east-shore",
+    "osm-pnw-samish-lake-samish-in",
+    "osm-pnw-samish-lake-samish-out"
+  ],
+  "junctions": [
+    {
+      "id": "osm-pnw-samish-j0",
+      "x": -1607.5419,
+      "y": 157.7716,
+      "z": -2795.3907,
+      "ends": [
+        {
+          "road": "osm-i5-samish-summit",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j1",
+      "x": -548.9637,
+      "y": 155.805,
+      "z": -2474.1924,
+      "ends": [
+        {
+          "road": "osm-i5-samish-summit",
+          "end": "to"
+        },
+        {
+          "road": "osm-i5-lake-samish",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-north-shore",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-leave-l2",
+          "road": "osm-pnw-samish-lake-samish-leave",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-i5-lake-samish",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-leave-l1",
+          "road": "osm-pnw-samish-lake-samish-leave",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-i5-lake-samish",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-leave-r1",
+          "road": "osm-pnw-samish-lake-samish-leave",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-lake-samish",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-leave-r2",
+          "road": "osm-pnw-samish-lake-samish-leave",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-i5-lake-samish",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-in",
+          "road": "osm-pnw-samish-lake-samish-in",
+          "from": {
+            "road": "osm-i5-samish-summit",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-samish-north-shore",
+            "end": "from",
+            "lane": "R1"
+          },
+          "splitZone": {
+            "s0": 1052.0338,
+            "s1": 1102.0338,
+            "d0": 8.0,
+            "d1": 12.5
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j2",
+      "x": 1812.6626,
+      "y": 98.6927,
+      "z": 2043.3113,
+      "ends": [
+        {
+          "road": "osm-i5-lake-samish",
+          "end": "to"
+        },
+        {
+          "road": "osm-i5-nulle-run",
+          "end": "from"
+        },
+        {
+          "road": "osm-samish-east-shore",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-join-l2",
+          "road": "osm-pnw-samish-lake-samish-join",
+          "from": {
+            "road": "osm-i5-lake-samish",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-join-l1",
+          "road": "osm-pnw-samish-lake-samish-join",
+          "from": {
+            "road": "osm-i5-lake-samish",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-join-r1",
+          "road": "osm-pnw-samish-lake-samish-join",
+          "from": {
+            "road": "osm-i5-lake-samish",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-join-r2",
+          "road": "osm-pnw-samish-lake-samish-join",
+          "from": {
+            "road": "osm-i5-lake-samish",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-samish-lake-samish-out",
+          "road": "osm-pnw-samish-lake-samish-out",
+          "from": {
+            "road": "osm-samish-east-shore",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-i5-nulle-run",
+            "end": "from",
+            "lane": "R2"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j3",
+      "x": 2013.9815,
+      "y": 81.431,
+      "z": 2767.8841,
+      "ends": [
+        {
+          "road": "osm-i5-nulle-run",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-samish-j4",
+      "x": -425.674,
+      "y": 102.8695,
+      "z": -1178.1703,
+      "ends": [
+        {
+          "road": "osm-samish-north-shore",
+          "end": "to"
+        },
+        {
+          "road": "osm-samish-east-shore",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-samish.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
+        "retrievedAt": "2026-10-03T03:18:37Z",
+        "sha256": "22f78576cad535d60ca5abafdc52856222c5e981bb0bdd7c7ea244def55fc6be"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
+        "retrievedAt": "2026-10-03T03:37:48Z",
+        "sha256": "97504d8a047c50144ba1f4e2b446cf7f802b15b8bbf13f6b830a5fde6134e918"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
+        "retrievedAt": "2026-10-03T03:37:56Z",
+        "sha256": "4803c76e65c6ebed78d5c848a92c46f2240ea920f1463e71cf00e0554d2e8419"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Interstate 5 and Lake Samish paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 43.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): Interstate 5 southbound over the Chuckanut Mountains, four lanes and a grass median, and Lake Samish's north and east shore roads, which leave it at exit 246 and rejoin it at the Nulle Road on-ramp (exit 242). Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure)."
+  }
+}

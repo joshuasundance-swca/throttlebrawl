@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +23,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const region = path.join(root, 'packs/base/regions/florida-keys');
 const read = (dir: string, id: string): unknown =>
   JSON.parse(readFileSync(path.join(region, dir, `${id}.json`), 'utf8')) as unknown;
+/** The region items named by board slots on the region's real-road (`osm-*`) roads. */
+const realRoadBoardItems = (dir: string): Set<string> =>
+  new Set(
+    readdirSync(path.join(dir, 'roads'))
+      .filter((f) => f.startsWith('osm-') && f.endsWith('.json'))
+      .flatMap((f) => (JSON.parse(readFileSync(path.join(dir, 'roads', f), 'utf8')) as BakedRoad).features)
+      .flatMap((f) => (f?.kind === 'billboard' && f.item ? [f.item] : [])),
+  );
 
 const compiled = compileTrack(KEYS_M1);
 const network = read('networks', 'keys-m1') as BakedNetwork;
@@ -176,8 +184,12 @@ describe('tools/road: the baked M1 track', () => {
     );
     expect(slots.length).toBeGreaterThanOrEqual(2);
     // Run W-P (maintainer, 2026-10-01b: "the worlds just feel very empty"): every item has a slot,
-    // so each one can be seen and vetoed in a race, and a new item needs a slot here too.
-    expect(new Set(slots.map(({ f }) => f.item))).toEqual(new Set(items.keys()));
+    // so each one can be seen and vetoed in a race, and a new item needs a slot here too. Run W-S: a
+    // junction sign that only makes sense on a real-road network (the Key West Boulevard's) may
+    // stand on that network's roads instead; every item still has a slot somewhere in the region.
+    const realItems = realRoadBoardItems(region);
+    for (const item of realItems) expect(items.has(item), item).toBe(true);
+    expect(new Set([...slots.map(({ f }) => f.item), ...realItems])).toEqual(new Set(items.keys()));
     expect(new Set(slots.map(({ f }) => f.id)).size).toBe(slots.length);
     for (const { e, f } of slots) {
       // A named item (a stable content reference for the veto), live in the region file.

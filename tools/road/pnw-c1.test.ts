@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +23,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const region = path.join(root, 'packs', PACK, 'regions/pacific-northwest');
 const read = (dir: string, id: string): unknown =>
   JSON.parse(readFileSync(path.join(region, dir, `${id}.json`), 'utf8')) as unknown;
+/** The region items named by board slots on the region's real-road (`osm-*`) roads. */
+const realRoadBoardItems = (dir: string): Set<string> =>
+  new Set(
+    readdirSync(path.join(dir, 'roads'))
+      .filter((f) => f.startsWith('osm-') && f.endsWith('.json'))
+      .flatMap((f) => (JSON.parse(readFileSync(path.join(dir, 'roads', f), 'utf8')) as BakedRoad).features)
+      .flatMap((f) => (f?.kind === 'billboard' && f.item ? [f.item] : [])),
+  );
 
 const compiled = compileTrack(PNW_C1);
 const network = read('networks', 'pnw-c1') as BakedNetwork;
@@ -124,8 +132,12 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     const slots = net.edges.flatMap((e) =>
       e.features.filter((f) => f.kind === 'billboard').map((f) => ({ e, f })),
     );
-    // Every item has a slot, so each one can be seen and vetoed in a race.
-    expect(new Set(slots.map(({ f }) => f.item))).toEqual(new Set(items.keys()));
+    // Every item has a slot, so each one can be seen and vetoed in a race. Run W-S: a junction sign
+    // that only makes sense on a real-road network (Lake Samish's) may stand on that network's
+    // roads instead; every item still has a slot somewhere in the region.
+    const realItems = realRoadBoardItems(region);
+    for (const item of realItems) expect(items.has(item), item).toBe(true);
+    expect(new Set([...slots.map(({ f }) => f.item), ...realItems])).toEqual(new Set(items.keys()));
     const all = routes.map((r) => createRouteProgress(net, r));
     for (const { e, f } of slots) {
       expect(items.get(f.item ?? '')?.status, f.id).toBe('live');

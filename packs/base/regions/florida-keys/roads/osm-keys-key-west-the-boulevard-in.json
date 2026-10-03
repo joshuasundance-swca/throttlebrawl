@@ -1,0 +1,122 @@
+{
+  "type": "road",
+  "id": "osm-keys-key-west-the-boulevard-in",
+  "name": "the-boulevard turn-off",
+  "realName": "the-boulevard turn-off",
+  "network": "osm-keys-key-west",
+  "from": "osm-keys-key-west-j1",
+  "to": "osm-keys-key-west-j1",
+  "lengthM": 65.0964,
+  "sampleSpacingM": 1.9726181818181818,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 65.0964,
+      "side": "both",
+      "tag": "strip-mall"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -466.5968, -468.4857, -470.3725, -472.2525, -474.119, -475.9637, -477.7774, -479.5506, -481.2755,
+        -482.9467, -484.5632, -486.1289, -487.6524, -489.1455, -490.6212, -492.0904, -493.5588, -495.0272,
+        -496.4957, -497.9676, -499.4681, -501.0425, -502.7343, -504.5607, -506.4951, -508.4629, -510.3581,
+        -512.0749, -513.5406, -514.7354, -515.6913, -516.4752, -517.1651, -517.8246
+      ],
+      "y": [
+        1.3645, 1.3642, 1.3634, 1.362, 1.3602, 1.3579, 1.3553, 1.3522, 1.3489, 1.3452, 1.3413, 1.3371, 1.3327,
+        1.3282, 1.3236, 1.3188, 1.314, 1.3092, 1.3045, 1.2997, 1.2951, 1.2906, 1.2862, 1.282, 1.2781, 1.2744,
+        1.2711, 1.268, 1.2654, 1.2631, 1.2613, 1.2599, 1.2591, 1.2588
+      ],
+      "z": [
+        -309.225, -308.6532, -308.0744, -307.4741, -306.8331, -306.132, -305.3542, -304.4884, -303.5298,
+        -302.4804, -301.3486, -300.1474, -298.8929, -297.6024, -296.2919, -294.9742, -293.6556, -292.337,
+        -291.0184, -289.7037, -288.4219, -287.2328, -286.2193, -285.4784, -285.1062, -285.1744, -285.7074,
+        -286.6718, -287.9882, -289.5561, -291.2813, -293.092, -294.941, -296.8011
+      ],
+      "kappa": [
+        -0.0, -0.0018562, -0.0058208, -0.01101, -0.016432, -0.02125, -0.024875, -0.02689, -0.027091,
+        -0.025422, -0.022088, -0.017463, -0.012115, -0.0068009, -0.0024983, -0.00029833, -2.6664e-7, 1.195e-6,
+        0.001337, 0.011196, 0.030478, 0.054293, 0.07826, 0.098988, 0.11393, 0.12141, 0.12051, 0.11148,
+        0.095234, 0.073638, 0.04934, 0.026086, 0.0083184, 2.4196e-32
+      ],
+      "grade": [
+        -0.0001446, -0.00028323, -0.00055156, -0.00080199, -0.0010345, -0.0012492, -0.001446, -0.0016249,
+        -0.0017859, -0.001929, -0.0020542, -0.0021615, -0.002251, -0.0023225, -0.0023762, -0.0024119,
+        -0.0024298, -0.0024298, -0.0024119, -0.0023762, -0.0023225, -0.002251, -0.0021615, -0.0020542,
+        -0.001929, -0.0017859, -0.0016249, -0.001446, -0.0012492, -0.0010345, -0.00080199, -0.00055156,
+        -0.00028323, -0.0001446
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-key-west.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+        "retrievedAt": "2026-10-03T03:16:48Z",
+        "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-key-west.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

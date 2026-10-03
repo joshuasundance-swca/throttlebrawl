@@ -1,0 +1,374 @@
+{
+  "id": "osm-keys-key-west",
+  "name": "Key West: the Overseas Highway, the Roosevelt Boulevards and Smathers Beach (OSM network bake)",
+  "region": "florida-keys",
+  "crs": {
+    "originLatDeg": 24.5675,
+    "originLonDeg": -81.7475
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+  "osmExtract": ".cache/osm/keys-key-west.json",
+  "outRoot": "packs/base/regions/florida-keys",
+  "waysLabel": "Key West street",
+  "networkNotes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): the Overseas Highway (US 1) four lanes wide over Stock Island and Cow Key Channel into Key West, then South Roosevelt Boulevard along Smathers Beach, Bertha Street and Atlantic Boulevard to Higgs Beach; North Roosevelt Boulevard leaves at the Triangle and comes back down Truman Avenue and White Street, about the same distance. Its own frame origin, since it never shares a scene with keys-m1. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
+  "lines": [
+    {
+      "id": "us1",
+      "pathFrom": {
+        "lat": 24.5760058,
+        "lon": -81.7278389
+      },
+      "via": [
+        {
+          "lat": 24.5505063,
+          "lon": -81.7764536
+        },
+        {
+          "lat": 24.5523435,
+          "lon": -81.7778358
+        }
+      ],
+      "pathTo": {
+        "lat": 24.547,
+        "lon": -81.79
+      },
+      "start": {
+        "lat": 24.5731204,
+        "lon": -81.7422897
+      },
+      "end": {
+        "lat": 24.5474117,
+        "lon": -81.7883692
+      },
+      "routeTags": {
+        "name": "^(Overseas Highway|South Roosevelt Boulevard|Bertha Street|Atlantic Boulevard)$"
+      },
+      "splitOnNameChange": true,
+      "realName": "Overseas Highway",
+      "smoothing": {
+        "headingSigmaM": 30
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 60,
+        "minLandM": 1.0,
+        "bridgeDeck": "sea",
+        "deckM": 4.0,
+        "deckRampM": 50,
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 2
+      },
+      "roadLanes": {
+        "osm-kw-bertha": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 1
+        },
+        "osm-kw-atlantic": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 1
+        },
+        "osm-kw-higgs-beach": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 1
+        }
+      },
+      "sideTags": {
+        "osm-kw-smathers-beach": {
+          "left": ["beach"],
+          "right": ["palms"]
+        },
+        "osm-kw-atlantic": {
+          "left": ["beach"]
+        },
+        "osm-kw-higgs-beach": {
+          "left": ["beach"]
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-kw-stock-island",
+          "name": "Stock Island Straight",
+          "tags": ["town", "palms", "key-fishing"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 8.5,
+              "d1": 12
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-stock-island",
+              "s0": 260,
+              "s1": 300,
+              "d0": -19,
+              "d1": -11,
+              "pool": "billboards"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-stock-island-early",
+              "s0": 300,
+              "s1": 306,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "kw-pad-island"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-stock-island-late",
+              "s0": 560,
+              "s1": 566,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "kw-pad-island"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-boulevard-keep-right",
+              "s0": 850,
+              "s1": 860,
+              "d0": 10.3,
+              "d1": 12.8,
+              "item": "boulevard-keep-right"
+            }
+          ]
+        },
+        {
+          "id": "osm-kw-smathers-beach",
+          "name": "Smathers Beach",
+          "tags": ["key-resort"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-smathers-beach",
+              "s0": 600,
+              "s1": 610,
+              "d0": 10.3,
+              "d1": 12.8,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-beach-early",
+              "s0": 1500,
+              "s1": 1506,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "kw-pad-beach"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "smathers-sunbathers",
+              "s0": 2400,
+              "s1": 2480,
+              "d0": -16.5,
+              "d1": -10,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-smathers-beach",
+              "s0": 2900,
+              "s1": 2940,
+              "d0": 11,
+              "d1": 19,
+              "pool": "billboards"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-beach-late",
+              "s0": 3300,
+              "s1": 3306,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "kw-pad-beach"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-kw-bertha",
+          "name": "Bertha Street",
+          "tags": ["town", "palms"],
+          "features": []
+        },
+        {
+          "id": "osm-kw-atlantic",
+          "name": "Atlantic Boulevard",
+          "tags": ["town", "palms"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-atlantic",
+              "s0": 120,
+              "s1": 130,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            }
+          ]
+        },
+        {
+          "id": "osm-kw-higgs-beach",
+          "name": "Higgs Beach",
+          "tags": ["town", "palms"],
+          "features": []
+        }
+      ]
+    },
+    {
+      "id": "boulevard",
+      "pathFrom": {
+        "lat": 24.5699179,
+        "lon": -81.7525323
+      },
+      "via": [
+        {
+          "lat": 24.558082,
+          "lon": -81.7881388
+        },
+        {
+          "lat": 24.556161,
+          "lon": -81.7911919
+        }
+      ],
+      "pathTo": {
+        "lat": 24.5478409,
+        "lon": -81.7849649
+      },
+      "routeTags": {
+        "name": "^(North Roosevelt Boulevard|Truman Avenue|White Street)$"
+      },
+      "splitOnNameChange": true,
+      "realName": "North Roosevelt Boulevard",
+      "smoothing": {
+        "headingSigmaM": 20
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 60,
+        "minLandM": 1.0,
+        "bridgeDeck": "sea",
+        "deckM": 4.0,
+        "deckRampM": 50,
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "roadLanes": {
+        "osm-kw-north-roosevelt": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 2
+        }
+      },
+      "roads": [
+        {
+          "id": "osm-kw-north-roosevelt",
+          "name": "The Boulevard",
+          "tags": ["strip-mall"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "bb-boulevard",
+              "s0": 1800,
+              "s1": 1840,
+              "d0": 11,
+              "d1": 19,
+              "pool": "billboards"
+            }
+          ]
+        },
+        {
+          "id": "osm-kw-truman",
+          "name": "Truman Avenue",
+          "tags": ["town", "palms"],
+          "features": []
+        },
+        {
+          "id": "osm-kw-white-street",
+          "name": "White Street",
+          "tags": ["town", "palms"],
+          "features": []
+        }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-kw-north-roosevelt",
+      "line": "boulevard",
+      "of": "us1",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "THE BOULEVARD: KEEP RIGHT. A little shorter. Mattress stores the whole way.",
+      "leave": {
+        "at": {
+          "lat": 24.5699179,
+          "lon": -81.7525323
+        },
+        "pieceM": 40,
+        "offsetM": 6,
+        "lane": "R2",
+        "zone": {
+          "lengthM": 50,
+          "d0": 6,
+          "d1": 10
+        },
+        "insetM": 30,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [20, 20],
+        "shiftM": -40
+      },
+      "join": {
+        "at": {
+          "lat": 24.5478409,
+          "lon": -81.7849649
+        },
+        "pieceM": 40,
+        "shiftM": 20,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 40,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "label": "the-boulevard"
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-key-west-run",
+      "name": "Key West",
+      "line": "us1",
+      "startRoad": "osm-kw-stock-island",
+      "finishRoad": "osm-kw-higgs-beach"
+    }
+  ]
+}

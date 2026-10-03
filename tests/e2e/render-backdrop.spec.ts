@@ -26,8 +26,8 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
 
 /** Each region's backdrop network files, by the start of their chunk names in the build. */
 const NETWORK_CHUNKS = {
-  keys: ['keys-m1', 'osm-keys-bahia-honda'],
-  pnw: ['pnw-c1', 'osm-pnw-chuckanut', 'osm-pnw-gorge'],
+  keys: ['keys-m1', 'osm-keys-bahia-honda', 'osm-keys-key-west'],
+  pnw: ['pnw-c1', 'osm-pnw-chuckanut', 'osm-pnw-gorge', 'osm-pnw-samish'],
   sf: ['sf-hills', 'osm-sf-russian-hill', 'osm-sf-twin-peaks'],
 } as const;
 
