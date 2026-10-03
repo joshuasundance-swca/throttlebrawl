@@ -17,6 +17,7 @@
   },
   "personality": {
     "style": "crowd-pleaser",
+    "signature": "wave",
     "aggression": 0.55,
     "dirtiness": 0.3,
     "courage": 0.3,

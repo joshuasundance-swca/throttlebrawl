@@ -16,6 +16,7 @@
   },
   "personality": {
     "style": "heavy-hitter",
+    "signature": "slow-burn",
     "aggression": 0.85,
     "dirtiness": 0.35,
     "courage": 0.9,
