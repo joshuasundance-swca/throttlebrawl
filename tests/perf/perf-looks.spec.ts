@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { GUARD_FACTOR, guardLimits, judgeSoft, trendLine } from '../../scripts/perf-limits.mjs';
 
 // The perf check for the ink looks (render/looks): "Ink + 1960s film" (`kodak`, playtest 1b item 6),
 // and "Sun-bleached wasteland" (`wasteland`) and "Kodachrome brush" (`brush`) from playtest 1c item 5.
@@ -9,11 +10,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // target and adds one full-screen pass; they share one shader per material, so they differ only in
 // uniforms (the brush line adds 4 hash taps of arithmetic per pixel, no texture taps).
 // - Hard gate: draw calls and triangles at the same fixed ticks stay within tests/perf/budget.json.
-// - Soft tier: frame-time p50/p95 within twice the stored ink-look baseline (tests/perf/baseline.json,
-//   `softInk`, falling back to the classic look's `soft`). The ink pass costs SwiftShader about one
-//   more 16.7 ms frame at p95 than classic does, so classic's 66.6 ms baseline left the kodak look's
-//   usual 116.7 to 133.4 ms one frame from failing (main went red on it, 2026-10-01). The numbers are
-//   printed with the renderer string.
+// - Soft tier, a trend: frame-time p50/p95 printed on every run with their ratio to the stored
+//   ink-look baseline (tests/perf/baseline.json, `softInk`, falling back to the classic look's
+//   `soft`) and the renderer string, and written to test-results/perf-probe-<look>.json for CI's
+//   step summary. They fail only above 3x that baseline, the catastrophe guard
+//   (scripts/perf-limits.mjs; the maintainer, 2026-10-02: "Trend plus 3x guard"). The ink pass
+//   costs SwiftShader more than classic (about three 16.7 ms frames at p95 on 2026-10-02).
 // CI renders in software (SwiftShader), where a full-screen pass costs CPU time a phone GPU does not
 // spend; the phone number (a Mali-G68 at 60 fps) comes from the maintainer's playtest.
 
@@ -53,7 +55,6 @@ const baseline = JSON.parse(readFileSync('tests/perf/baseline.json', 'utf8')) as
 const CPU_THROTTLE = 4;
 const SOFT_SECONDS = 20;
 const CHECKPOINT_TICKS = [120, 480, 840] as const;
-const SOFT_FACTOR = 2;
 
 const INK_LOOKS = ['kodak', 'wasteland', 'brush'] as const;
 
@@ -106,6 +107,10 @@ for (const look of INK_LOOKS) {
     const report = (await page.evaluate(() => (window as TestWindow).__game?.perf())) as PerfReport;
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
+    const soft = baseline.softInk ?? baseline.soft;
+    const which = baseline.softInk ? 'softInk' : 'soft';
+    // Frame times only: the ink looks share classic's sim, whose step time perf.spec.ts trends.
+    const judged = soft ? judgeSoft({ frameMs: report.frameMs }, { frameMs: soft.frameMs }) : null;
     const printed = {
       scene: `${look} look, bot race, seed 1, base event; checkpoints at ticks ${CHECKPOINT_TICKS.join('/')}`,
       renderer: report.renderer,
@@ -116,8 +121,10 @@ for (const look of INK_LOOKS) {
       frameMs: report.frameMs,
       fps: Math.round(report.fps * 10) / 10,
       stepMs: report.stepMs,
+      trend: judged?.rows ?? null,
     };
     console.log(`perf probe (${look} look): ${JSON.stringify(printed)}`);
+    if (judged) console.log(trendLine(`${look} look, against ${which}`, judged.rows));
     mkdirSync('test-results', { recursive: true });
     writeFileSync(`test-results/perf-probe-${look}.json`, `${JSON.stringify(printed, null, 2)}\n`);
 
@@ -127,17 +134,13 @@ for (const look of INK_LOOKS) {
       expect(c.triangles, `triangles at tick ${c.tick}`).toBeLessThanOrEqual(budget.trianglesMax);
     }
     expect(report.frameMs.samples, 'frames sampled').toBeGreaterThan(30);
-    const soft = baseline.softInk ?? baseline.soft;
-    if (!soft) {
+    if (!soft || !judged) {
       console.log('[assert] soft tier: NOT ACTIVE (tests/perf/baseline.json has no `soft` block yet)');
       return;
     }
-    const limits = { frameP50: soft.frameMs.p50 * SOFT_FACTOR, frameP95: soft.frameMs.p95 * SOFT_FACTOR };
-    const which = baseline.softInk ? 'softInk' : 'soft';
     console.log(
-      `[assert] soft tier (${look} look): ACTIVE, limits ${JSON.stringify(limits)} (2x the ${which} baseline)`,
+      `[assert] soft tier (${look} look): a trend plus a ${GUARD_FACTOR}x guard, guards ${JSON.stringify(guardLimits({ frameMs: soft.frameMs }))} (the ${which} baseline, plus half a frame)`,
     );
-    expect(report.frameMs.p50, 'frame p50 within 2x the baseline').toBeLessThanOrEqual(limits.frameP50);
-    expect(report.frameMs.p95, 'frame p95 within 2x the baseline').toBeLessThanOrEqual(limits.frameP95);
+    expect(judged.failures, `frame times within ${GUARD_FACTOR}x the ${which} baseline`).toEqual([]);
   });
 }

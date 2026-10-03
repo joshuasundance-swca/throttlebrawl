@@ -135,11 +135,13 @@ test('C steps the camera through low chase, far chase and helmet, and the frame 
   // once the field has left (the control below measures what still moves).
   await race(page, undefined, false);
   expect((await view(page)).camera.view).toBe('lowChase');
-  await page.waitForTimeout(4000);
+  // 4 s of race (it was 4 s of wall time: about 100 to 160 ticks on a software-rendered runner).
+  await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) >= 240);
   const canvas = page.locator('canvas#game');
   const GAP_MS = 800;
   // The control: traffic and the field still move, so two frames GAP_MS apart in one view differ a little.
   const before = await canvas.screenshot();
+  // eslint-disable-next-line no-restricted-syntax -- the camera's springs settle in drawn-frame time (the render's dt is wall time); the same-view control takes the same gap
   await page.waitForTimeout(GAP_MS);
   let last = await canvas.screenshot();
   const baseline = await frameDiff(page, before, last);
@@ -148,6 +150,7 @@ test('C steps the camera through low chase, far chase and helmet, and the frame 
   for (const want of ['farChase', 'helmet', 'lowChase']) {
     await page.keyboard.press('c');
     await untilView(page, want);
+    // eslint-disable-next-line no-restricted-syntax -- the camera's springs settle in drawn-frame time (the render's dt is wall time); the same-view control takes the same gap
     await page.waitForTimeout(GAP_MS);
     const shot = await canvas.screenshot();
     steps.push({ view: want, diff: await frameDiff(page, last, shot) });
@@ -266,6 +269,7 @@ test("a Pacific Northwest race's locals talk, with the region pack's lines", asy
       };
     });
     if (bark && !heard.some((h) => h.text === bark.text)) heard.push(bark);
+    // eslint-disable-next-line no-restricted-syntax -- the poll interval of a bark listener, bounded by its own deadline
     await page.waitForTimeout(250);
   }
   console.log(`barks heard: ${heard.map((h) => `${h.speaker}: "${h.text}"`).join(' | ')}`);

@@ -1036,6 +1036,56 @@ export const PROPS = [
     },
     views: VARIANT_VIEWS,
   },
+  // ---- run W-R, San Francisco's downtown (interview, 2026-10-02: "SF first = downtown towers"):
+  // the towers, screens and headquarters along the avenue, its lamps and signals, and the plaza
+  // furniture. src/render/downtown.ts merges them per stretch of road.
+  {
+    name: 'sf_downtown',
+    script: 'props/sf_downtown.py',
+    asset: 'models/scenery/sf-downtown',
+    kind: 'variants',
+    budget: { materials: 17 },
+    variants: {
+      roots: [
+        'dt_tower_glass',
+        'dt_tower_stone',
+        'dt_tower_screen_agi',
+        'dt_tower_screen_series',
+        'dt_tower_crown',
+        'dt_hq',
+        'dt_midrise',
+        'dt_lamp',
+        'dt_signal',
+        'dt_planter',
+        'dt_bench',
+        'dt_orb',
+      ],
+      xs: [-150, -120, -90, -60, -32, 10, 52, 70, 84, 88, 92, 97],
+      parts: ['body'],
+      perVariant: { tris: 240, draws: 10 },
+      // glass, stone, two screen towers, crown, headquarters, midrise, lamp, signal, planter, bench,
+      // orb (measured with npm run asset:score, then a margin)
+      tris: [110, 150, 210, 190, 160, 240, 80, 60, 80, 70, 60, 50],
+      height: [0.5, 90],
+      heights: [
+        [60, 66],
+        [60, 66],
+        [52, 57],
+        [52, 57],
+        [82, 90],
+        [38, 42],
+        [25, 28],
+        [7.5, 8.5],
+        [6, 7],
+        [3.5, 5],
+        [0.8, 1.1],
+        [4, 5.5],
+      ],
+      sway: false,
+      sharedMaterials: false,
+    },
+    views: VARIANT_VIEWS,
+  },
 ];
 
 export const ASSET_ROOT = 'packs/base/assets';

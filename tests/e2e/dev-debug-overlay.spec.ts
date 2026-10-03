@@ -19,6 +19,7 @@ test('?debug=1 shows fps, frame time, sim step, refresh rate and the renderer', 
       ((window as Window & { __game?: { snapshot(): { tick: number } | null } }).__game?.snapshot()?.tick ??
         0) > 180,
   );
+  // eslint-disable-next-line no-restricted-syntax -- the overlay redraws on its own 250 ms wall-clock timer
   await page.waitForTimeout(600); // the overlay refreshes four times a second
   const text = await overlay.innerText();
   console.log(`debug overlay: ${text.replace(/\n/g, ' | ')}`);

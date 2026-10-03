@@ -2,6 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tuningPresetSchema } from '../../src/content/schema';
+import { parseDebugFile } from '../../src/dev/report/summary';
+import { decodeReplay, HASH_EVERY_TICKS } from '../../src/replay';
+import type { SimEvent } from '../../src/sim/api';
 
 // tuning-1 browser acceptance (docs/milestones/M1.md): the backquote opens the panel; the panel
 // has one control per declaration; a mid-race change reaches the seeded race (compared with two
@@ -9,19 +12,14 @@ import { tuningPresetSchema } from '../../src/content/schema';
 // hit lands); "Copy preset" gives JSON that packs:check accepts as a tuning-preset. Every change
 // goes through the real panel controls, not a test hook.
 
-interface Snap {
-  tick: number;
-  entities: { road: { d: number; s: number }; speed: number }[];
-}
 interface Handle {
-  state(): string;
-  snapshot(): Snap | null;
-  playerId(): number;
+  snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
-  checks(): { events: Record<string, number> };
+  debugFileText(): string;
+  events(): readonly SimEvent[];
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __trace?: Record<number, string> };
+type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
 
 const SEED = 5;
 
@@ -46,45 +44,97 @@ async function paramIds(page: Page): Promise<string[]> {
     .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset['param'] ?? ''));
 }
 
-/**
- * Starts a seeded race and records every mover's state at every race tick the page sees (only in
- * the race state: the menu's attract scene is also tick 0, from another seed). With `bot`, the
- * stub bot rides; without it, whatever keys the test holds down ride.
- */
-async function startTracedRace(page: Page, bot = true): Promise<void> {
-  await page.evaluate(
-    ([seed, withBot]) => {
-      const w = window as TestWindow;
-      w.__game?.setSeed(seed);
-      w.__game?.setBot(withBot);
-      w.__trace = {};
-      const loop = () => {
-        const s = w.__game?.state() === 'race' ? w.__game.snapshot() : null;
-        if (s && w.__trace)
-          w.__trace[s.tick] = s.entities.map((e) => `${e.road.s},${e.road.d},${e.speed}`).join('|');
-        requestAnimationFrame(loop);
-      };
-      requestAnimationFrame(loop);
-    },
-    [SEED, bot] as const,
-  );
+/** Starts a seeded race ridden by the stub bot (one driver call per tick, so a run repeats exactly). */
+async function startSeededRace(page: Page): Promise<void> {
+  await page.evaluate((seed) => {
+    const w = window as TestWindow;
+    w.__game?.setSeed(seed);
+    w.__game?.setBot(true);
+  }, SEED);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 }
 
 const tickOf = (page: Page) => page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
+/** Waits for a race tick. The race runs at the renderer's speed; the timeout is a hang guard. */
 const waitTick = (page: Page, tick: number) =>
   page.waitForFunction((t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) >= t, tick, {
     timeout: 120_000,
   });
-const traceOf = (page: Page) => page.evaluate(() => (window as TestWindow).__trace ?? {});
 
-/** Ticks both traces saw, and the ones where the states differ. */
-function compare(a: Record<number, string>, b: Record<number, string>, from = 0) {
-  const common = Object.keys(a)
-    .map(Number)
-    .filter((t) => t >= from && t in b);
-  return { common: common.length, differ: common.filter((t) => a[t] !== b[t]) };
+/**
+ * The race as the sim stepped it, read after the run: the recording from the debug file that "save
+ * debug file" writes (src/replay: the seed, the tuning at race start, the panel's mid-race changes
+ * {tick, id, value}, the player slot's input on every tick, here the bot's, and the state hash after
+ * every 60th tick), plus the race's events (the page keeps its latest 300). The sim steps the same
+ * ticks whatever the renderer's speed, so all of it is the same on any runner: no sampling, no
+ * count left to luck. The state hash covers the tuning values too (src/sim/world/hash.ts), so a
+ * changed value alone makes later hashes differ; the bot's inputs and the events are the race
+ * itself (the bot drives each tick from what it sees).
+ */
+interface RaceRun {
+  seed: number;
+  tuning: Readonly<Record<string, number>>;
+  params: { tick: number; id: string; value: number }[];
+  hashes: Map<number, number>;
+  /** The player slot's input per tick, as `steer,throttle,brake,flags`. */
+  inputs: string[];
+  /** The page's latest events, each also as `tick type actor>target data`. */
+  events: { tick: number; type: string; text: string }[];
+}
+async function raceRun(page: Page): Promise<RaceRun> {
+  const text = await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? '');
+  const rec = decodeReplay(parseDebugFile(text).replay);
+  const events = await page.evaluate(() =>
+    ((window as TestWindow).__game?.events() ?? []).map((e) => ({
+      tick: e.tick,
+      type: e.type,
+      text: `${e.tick} ${e.type} ${e.actor}>${e.target ?? ''} ${JSON.stringify(e.data)}`,
+    })),
+  );
+  return {
+    seed: rec.header.seed,
+    tuning: rec.header.tuning,
+    params: rec.params,
+    hashes: new Map(rec.hashes.map((h) => [h.tick, h.hash])),
+    inputs: rec.inputs.map((slots) => {
+      const i = slots[0];
+      return i ? `${i.steer},${i.throttle},${i.brake},${i.flags}` : '';
+    }),
+    events,
+  };
+}
+
+/**
+ * Two runs to tick `end`: the checkpoint ticks (0, 60, ... `end`, every one in both recordings),
+ * those whose hashes differ, and the ticks whose bot inputs differ (every tick from 0 to `end`).
+ */
+function compareRuns(a: RaceRun, b: RaceRun, end: number) {
+  const ticks: number[] = [];
+  for (let t = 0; t <= end; t += HASH_EVERY_TICKS) {
+    for (const r of [a, b])
+      if (!r.hashes.has(t)) throw new Error(`a recording has no state hash at tick ${t}`);
+    ticks.push(t);
+  }
+  for (const r of [a, b])
+    if (r.inputs.length <= end) throw new Error(`a recording stops at tick ${r.inputs.length - 1}`);
+  const inputsDiffer: number[] = [];
+  for (let t = 0; t <= end; t++) if (a.inputs[t] !== b.inputs[t]) inputsDiffer.push(t);
+  return { ticks, hashesDiffer: ticks.filter((t) => a.hashes.get(t) !== b.hashes.get(t)), inputsDiffer };
+}
+
+/**
+ * The events both runs still hold, up to tick `end`: from the later of their first ticks (the page
+ * keeps only its latest 300). Returns that first tick and whether the two lists are the same.
+ */
+function compareEvents(a: RaceRun, b: RaceRun, end: number) {
+  // A list that no longer starts at the race start may have lost part of its first tick.
+  const start = (r: RaceRun) => (r.events[0]?.type === 'raceStart' ? 0 : (r.events[0]?.tick ?? 0) + 1);
+  const from = Math.max(start(a), start(b));
+  const pick = (r: RaceRun) => r.events.filter((e) => e.tick >= from && e.tick <= end).map((e) => e.text);
+  const ea = pick(a);
+  const eb = pick(b);
+  return { from, count: ea.length, same: ea.length === eb.length && ea.every((t, i) => t === eb[i]) };
 }
 
 test('backquote opens the see-through panel with one control per declaration; the marked long-press and three-finger tap open it too', async ({
@@ -173,6 +223,7 @@ test('backquote opens the see-through panel with one control per declaration; th
   for (let attempt = 0; attempt < 3 && shortGaps.length === 0; attempt++) {
     await page.evaluate(() => ((window as unknown as { __press: number[] }).__press = []));
     await page.mouse.down();
+    // eslint-disable-next-line no-restricted-syntax -- a short mouse press, under the long-press threshold: wall time by design
     await page.waitForTimeout(200);
     await page.mouse.up();
     const [down = 0, up = 0] = await page.evaluate(
@@ -218,53 +269,75 @@ test('a mid-race steering change through the panel reaches the seeded race, comp
   browser,
 }) => {
   test.setTimeout(300_000);
-  // Long enough that a slow runner still shares enough sampled ticks between runs: at 420 ticks,
-  // CI runs at peak load shared as few as 18 ticks between the controls and 6 after the change
-  // (PR runs on 2026-10-02 failed "ticks sampled after the change", 6 < 10).
-  const END = 1200;
-  const run = async (change: boolean) => {
+  // Judged by the race recording, not by a trace sampled once per drawn frame: two runs used to
+  // share only the ticks they both happened to sample, and the floors on those counts failed on
+  // slow runners (inventory R2, 2026-10-02). Every count below is fixed by the code: each run is
+  // compared on every tick's bot input and every 60th tick's state hash.
+  const STEER = 'riders.steerScale';
+  const run = async (opts: { change: boolean; end: (page: Page) => Promise<number> }) => {
     const page = await browser.newPage();
     const problems = await boot(page);
-    await startTracedRace(page);
-    let changedAt = -1;
-    let before = -1;
-    if (change) {
+    await startSeededRace(page);
+    if (opts.change) {
       await waitTick(page, 90);
       await page.keyboard.press('Backquote');
-      before = await tickOf(page);
-      await page.locator('#tuning-panel input[data-param="riders.steerScale"]').fill('2');
-      changedAt = await tickOf(page);
-      await expect(page.locator('#tuning-panel output[data-param-value="riders.steerScale"]')).toHaveText(
-        '2.00×',
-      );
+      await page.locator(`#tuning-panel input[data-param="${STEER}"]`).fill('2');
+      await expect(page.locator(`#tuning-panel output[data-param-value="${STEER}"]`)).toHaveText('2.00×');
       // The panel stays open over the running race.
-      await waitTick(page, changedAt + 60);
+      await waitTick(page, (await tickOf(page)) + 60);
       await expect(page.locator('#tuning-panel')).toBeVisible();
     }
-    await waitTick(page, END);
-    const trace = await traceOf(page);
+    const end = await opts.end(page);
+    await waitTick(page, end + 1);
+    const race = await raceRun(page);
     await page.close();
     expect(problems).toEqual([]);
-    return { trace, changedAt, before };
+    return { race, end };
   };
-  const a = await run(false);
-  const b = await run(false);
-  const c = await run(true);
-  const controls = compare(a.trace, b.trace);
-  const before = compare(a.trace, c.trace);
-  const after = compare(a.trace, c.trace, c.changedAt + 2);
+  // The changed run first: it sets how far every run is compared, at least 300 ticks past the
+  // change (so 5 or more checkpoints after it), rounded up to a checkpoint.
+  const c = await run({
+    change: true,
+    end: async (page) => Math.max(720, Math.ceil(((await tickOf(page)) + 300) / 60) * 60),
+  });
+  const END = c.end;
+  const a = await run({ change: false, end: () => Promise.resolve(END) });
+  const b = await run({ change: false, end: () => Promise.resolve(END) });
+
+  for (const r of [a, b, c]) expect(r.race.seed, 'the seeded race').toBe(SEED);
+  expect(a.race.params, 'a control run has no mid-race change').toEqual([]);
+  expect(b.race.params, 'a control run has no mid-race change').toEqual([]);
+  // The panel's change is in the recording, at the tick the sim applied it.
+  expect(c.race.params.length, "the panel's change is recorded").toBeGreaterThan(0);
+  for (const p of c.race.params) expect([p.id, p.value]).toEqual([STEER, 2]);
+  const changedAt = Math.min(...c.race.params.map((p) => p.tick));
+
+  const controls = compareRuns(a.race, b.race, END);
+  const changed = compareRuns(a.race, c.race, END);
+  const before = changed.ticks.filter((t) => t < changedAt);
+  const after = changed.ticks.filter((t) => t >= changedAt);
   console.log(
-    `steering change at tick ${c.changedAt}: control vs control ${controls.common} ticks compared, ${controls.differ.length} differ; ` +
-      `control vs changed after the change ${after.common} ticks compared, ${after.differ.length} differ`,
+    `steering change recorded at tick ${changedAt}; ticks 0-${END}, ${controls.ticks.length} checkpoints: ` +
+      `control vs control: ${controls.inputsDiffer.length} inputs and ${controls.hashesDiffer.length} hashes differ; ` +
+      `control vs changed: inputs first differ at ${changed.inputsDiffer[0] ?? 'none'} (${changed.inputsDiffer.length} ticks), ` +
+      `hashes differ at ${JSON.stringify(changed.hashesDiffer)} (${before.length} checkpoints before the change, ${after.length} after)`,
   );
-  // The trace samples one tick per animation frame; a slow software renderer runs several sim
-  // steps per frame, so only a fraction of ticks is sampled. The floors are what the proof needs.
-  expect(controls.common, 'the controls share ticks').toBeGreaterThanOrEqual(30);
-  expect(controls.differ, 'two control runs are identical').toEqual([]);
-  const earlyDiffer = before.differ.filter((t) => t <= c.before);
-  expect(earlyDiffer, 'identical before the change').toEqual([]);
-  expect(after.common, 'ticks sampled after the change').toBeGreaterThanOrEqual(10);
-  expect(after.differ.length, 'the change reached the sim').toBeGreaterThan(0);
+  expect(controls.ticks.length, 'every checkpoint to the end').toBe(END / HASH_EVERY_TICKS + 1);
+  expect(controls.inputsDiffer, 'two control runs ride the same, tick for tick').toEqual([]);
+  expect(controls.hashesDiffer, 'two control runs are identical').toEqual([]);
+  expect(before.length, 'checkpoints before the change (ticks 0 and 60 at least)').toBeGreaterThanOrEqual(2);
+  expect(after.length, 'checkpoints after the change').toBeGreaterThanOrEqual(5);
+  expect(
+    changed.hashesDiffer.filter((t) => t < changedAt),
+    'identical before the change',
+  ).toEqual([]);
+  expect(
+    changed.inputsDiffer.filter((t) => t < changedAt),
+    'the bot rides the same until the change',
+  ).toEqual([]);
+  // The bot steers each tick from where it is: once the steering scale moves it, its inputs change.
+  expect(changed.inputsDiffer.length, 'the change reached the ride').toBeGreaterThan(0);
+  expect(changed.hashesDiffer.length, 'the change reached the sim state').toBeGreaterThan(0);
 });
 
 test('changing knockback changes the outcome of a seeded fight, compared with a control run', async ({
@@ -272,15 +345,17 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
 }) => {
   test.setTimeout(300_000);
   const END = 900;
+  const KNOCKBACK = 'combat.knockbackScale';
   // A seeded fight ridden by the bot (one driver call per tick, so a run repeats exactly).
   // Knockback is set on the panel before the race; the mid-race path is the steering test's. Two
   // control runs prove the fight itself repeats. The hits come from the rivals (ai-1) or an
   // attacking bot; with none, it skips, and tests/sim/tuning-knockback.test.ts still covers it.
+  // Judged by the race recording and its events, as the steering test is: every count is fixed.
   const run = async (knockbackMax: boolean) => {
     const page = await browser.newPage();
     const problems = await boot(page);
     await page.keyboard.press('Backquote');
-    const slider = page.locator('#tuning-panel input[data-param="combat.knockbackScale"]');
+    const slider = page.locator(`#tuning-panel input[data-param="${KNOCKBACK}"]`);
     if ((await slider.count()) === 0) {
       await page.close();
       return null;
@@ -288,38 +363,56 @@ test('changing knockback changes the outcome of a seeded fight, compared with a 
     if (knockbackMax) {
       await slider.fill(await slider.evaluate((el) => (el as HTMLInputElement).max));
     }
-    const value = await page
-      .locator('#tuning-panel output[data-param-value="combat.knockbackScale"]')
-      .textContent();
+    const value = await page.locator(`#tuning-panel output[data-param-value="${KNOCKBACK}"]`).textContent();
     await page.keyboard.press('Backquote');
     await expect(page.locator('#tuning-panel')).toBeHidden();
-    await startTracedRace(page, true);
-    await waitTick(page, END);
-    const trace = await traceOf(page);
-    const events = await page.evaluate(() => (window as TestWindow).__game?.checks().events ?? {});
+    await startSeededRace(page);
+    await waitTick(page, END + 1);
+    const race = await raceRun(page);
     await page.close();
     expect(problems).toEqual([]);
-    return { trace, events, value };
+    // Hits up to END, from the race's events (the page keeps its latest 300; this race has fewer).
+    const hits = race.events.filter((e) => e.tick <= END && e.type === 'hit').length;
+    return { race, hits, value };
   };
   const control = await run(false);
   test.skip(control === null, 'NOT ACTIVE: no module declares combat.knockbackScale');
   if (!control) return;
-  const hits = control.events['hit'] ?? 0;
-  console.log(`knockback fight: control events ${JSON.stringify(control.events)}`);
-  test.skip(hits === 0, 'NOT ACTIVE: no hit landed in the seeded control fight');
+  console.log(
+    `knockback fight: ${control.hits} hits to tick ${END}; events held from tick ${control.race.events[0]?.tick}`,
+  );
+  test.skip(control.hits === 0, 'NOT ACTIVE: no hit landed in the seeded control fight');
   const again = await run(false);
   const strong = await run(true);
   if (!again || !strong) throw new Error('the knockback slider vanished between runs');
-  const repeat = compare(control.trace, again.trace);
-  const diff = compare(control.trace, strong.trace);
+  const repeat = compareRuns(control.race, again.race, END);
+  const diff = compareRuns(control.race, strong.race, END);
+  const repeatEvents = compareEvents(control.race, again.race, END);
+  const diffEvents = compareEvents(control.race, strong.race, END);
   console.log(
-    `knockback ${control.value} vs ${strong.value}: ${hits} hits in the control fight; ` +
-      `control vs control ${repeat.common} ticks compared, ${repeat.differ.length} differ; ` +
-      `control vs strong ${diff.common} ticks compared, ${diff.differ.length} differ`,
+    `knockback ${control.value} vs ${strong.value} (race start ${control.race.tuning[KNOCKBACK]} vs ` +
+      `${strong.race.tuning[KNOCKBACK]}): ${control.hits} hits in the control fight; ticks 0-${END}: ` +
+      `control vs control: ${repeat.inputsDiffer.length} inputs and ${repeat.hashesDiffer.length} hashes differ, ` +
+      `${repeatEvents.count} events from tick ${repeatEvents.from} the same: ${repeatEvents.same}; ` +
+      `control vs strong: inputs first differ at ${diff.inputsDiffer[0] ?? 'none'} (${diff.inputsDiffer.length} ticks), ` +
+      `events from tick ${diffEvents.from} the same: ${diffEvents.same}`,
   );
-  expect(repeat.common, 'the controls share ticks').toBeGreaterThanOrEqual(30);
-  expect(repeat.differ, 'the seeded fight repeats').toEqual([]);
-  expect(diff.differ.length, 'knockback changed the fight').toBeGreaterThan(0);
+  for (const r of [control, again, strong]) expect(r.race.seed, 'the seeded race').toBe(SEED);
+  // The panel's value reached the race: the recording's starting tuning carries it.
+  expect(again.race.tuning[KNOCKBACK]).toBe(control.race.tuning[KNOCKBACK]);
+  expect(strong.race.tuning[KNOCKBACK], 'the strong run starts with the panel value').not.toBe(
+    control.race.tuning[KNOCKBACK],
+  );
+  expect(repeat.ticks.length, 'every checkpoint to the end').toBe(END / HASH_EVERY_TICKS + 1);
+  expect(repeat.inputsDiffer, 'the bot rides the same, tick for tick').toEqual([]);
+  expect(repeat.hashesDiffer, 'the seeded fight repeats').toEqual([]);
+  expect(repeatEvents.same, 'the same events').toBe(true);
+  // The race itself, not just the stored value (the state hash covers the tuning values, so it
+  // differs from tick 0): the bot rode differently, or the race's events differ.
+  expect(
+    diff.inputsDiffer.length > 0 || !diffEvents.same,
+    "knockback changed the fight (the bot's inputs or the race's events)",
+  ).toBe(true);
 });
 
 test('"Copy preset as JSON" gives a tuning-preset that packs:check accepts', async ({ page, context }) => {

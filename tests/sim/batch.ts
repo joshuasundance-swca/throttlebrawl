@@ -198,6 +198,85 @@ export const NO_ROAD_EVENTS: Readonly<Record<string, number>> = {
   'cops.heatScale': 0,
 };
 
+/**
+ * The isolation profile for a seeded test of ONE behaviour (R5 in the determinism run, 2026-10-03):
+ * every optional world system off, each at the value its `system: true` declaration names the most
+ * "off". A test turns back on only what it tests, on top:
+ *
+ *   createHeadlessRace({ seed, tuning: { ...ISOLATED, 'cops.heatScale': 3 } });
+ *
+ * A new system, or a retune of one, then cannot reshuffle that test's races. The riders, the rivals'
+ * AI, combat and the road stay: they are the field. Pedestrians stay too: they have no off switch.
+ * Roadside weapons have no off value either, so they go as sparse as the slider allows.
+ *
+ * The trade-off, stated: statistics measured in isolation stop catching interaction effects
+ * (traffic shoving a wobbling lander, a roadblock taking the patrol's cops). The shared batch keeps
+ * the world on and asserts invariants over it, and a system's own lane writes its interaction test
+ * on purpose. tests/sim/isolation-profile.test.ts fails when a `system: true` declaration is
+ * missing from this profile, so the lane that adds a world system adds its switch here.
+ */
+export const ISOLATED: Readonly<Record<string, number>> = {
+  'traffic.density': 0,
+  'peds.strayAnimalChance': 0,
+  'modifiers.setPieceChance': 0,
+  'cops.spawnChance': 0,
+  'cops.patrolScale': 0,
+  'cops.heatScale': 0,
+  'ground.offRoad': 0,
+  'combat.pickupSpacingM': 3000,
+  'combat.crashWeaponChance': 0,
+};
+
+/** Seeds `from` to `to`, inclusive. */
+export const seedRange = (from: number, to: number): number[] =>
+  Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
+
+/** The most seeds one firstSeed search may try, so a search's CPU cost stays bounded. */
+export const FIRST_SEED_MAX = 64;
+
+/** The outcome of a firstSeed search. */
+export interface SeedSearch<T> {
+  /** The first seed whose result qualifies, or null when none in the range does. */
+  seed: number | null;
+  /** That seed's result, or null. */
+  result: T | null;
+  /** Every seed tried, in order, with its result (the qualifying one last). */
+  tried: { seed: number; result: T }[];
+  /** One plain line saying which seed was used, or that none qualified, for the output and messages. */
+  summary: string;
+}
+
+/**
+ * The first seed whose race contains a test's precondition (R6 in the determinism run): a bust, a
+ * steal, a finish. The seeds are tried in order, so the same build always picks the same seed; when
+ * content reshuffles the races, the search moves on to the next seed that qualifies instead of
+ * failing. The test then asserts its property on the seed found. It fails only when no seed in the
+ * range qualifies, which is a real "this never happens any more" signal. Prints the seed it used.
+ */
+export function firstSeed<T>(
+  label: string,
+  seeds: readonly number[],
+  run: (seed: number) => T,
+  qualifies: (result: T, seed: number) => boolean,
+): SeedSearch<T> {
+  if (seeds.length === 0 || seeds.length > FIRST_SEED_MAX)
+    throw new Error(`firstSeed ${label}: ${seeds.length} seeds; search 1 to ${FIRST_SEED_MAX}`);
+  const tried: { seed: number; result: T }[] = [];
+  const span = (n: number) => (n === 1 ? `seed ${seeds[0]}` : `seeds ${seeds[0]} to ${seeds[n - 1]}`);
+  for (const seed of seeds) {
+    const result = run(seed);
+    tried.push({ seed, result });
+    if (qualifies(result, seed)) {
+      const summary = `${label}: seed ${seed} (tried ${span(tried.length)})`;
+      process.stdout.write(`[firstSeed] ${summary}\n`);
+      return { seed, result, tried, summary };
+    }
+  }
+  const summary = `${label}: none of ${span(seeds.length)} qualifies`;
+  process.stdout.write(`[firstSeed] ${summary}\n`);
+  return { seed: null, result: null, tried, summary };
+}
+
 /** Runs one seeded race with the bot in the player slot, then replays it from its inputs. */
 export function runSeededRace(seed: number, opts: RaceOptions = {}): RaceResult {
   const t0 = performance.now();

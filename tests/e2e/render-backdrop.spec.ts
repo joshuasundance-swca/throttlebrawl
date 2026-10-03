@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // The backdrop (W-P "fill the world", the maintainer, 2026-10-01b: "distance and skyline: hills,
@@ -122,6 +123,7 @@ for (const c of CASES) {
         "another region's backdrop was fetched",
       ).toEqual([]);
       // The backdrop's own chunks arrive, then build in one go: give it a few frames.
+      // eslint-disable-next-line no-restricted-syntax -- debt: the backdrop's chunks fetch and build asynchronously with no ready signal yet; wait on one once render exposes it
       await page.waitForTimeout(1500);
       mkdirSync('test-results/screenshots', { recursive: true });
       const png = await page
@@ -207,7 +209,7 @@ test("San Francisco's far ground leaves the bay beside the road as sea (seed 3, 
   await page.addStyleTag({
     content: 'body *{visibility:hidden!important} canvas#game{visibility:visible!important}',
   });
-  await page.waitForTimeout(500);
+  await frames(page, 2); // the style is painted
   mkdirSync('test-results/screenshots', { recursive: true });
   const png = await page
     .locator('canvas#game')

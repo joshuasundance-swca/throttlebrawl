@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { frames } from './lockstep';
 
 // ui-1's browser tests that need app/'s wiring (docs/milestones/M1.md, ui-1): pause really stops
 // the race and resume starts it again; restart and quit work from the pause screen; a volume
@@ -45,9 +46,9 @@ test('pause stops the race, resume restarts it, and restart and quit work', asyn
   await page.keyboard.press('Escape');
   await expect(page.locator('#pause-screen')).toBeVisible();
   const pausedAt = await tick(page);
-  await page.waitForTimeout(750);
+  await frames(page, 30); // drawn frames, the loop's unit (it was 750 ms of wall time)
   const later = await tick(page);
-  console.log(`paused: tick ${pausedAt} -> ${later} after 750 ms`);
+  console.log(`paused: tick ${pausedAt} -> ${later} after 30 drawn frames`);
   expect(later, 'no sim ticks while paused').toBe(pausedAt);
   expect(await state(page)).toBe('race');
 
@@ -143,6 +144,7 @@ test('the master slider changes the master gain, mute silences it, and settings 
   const during = async (act: () => Promise<void>) => {
     const from = await page.evaluate(() => (window as TestWindow).__gainLog?.entries.length ?? 0);
     await act();
+    // eslint-disable-next-line no-restricted-syntax -- the mix's gain ramps run on the audio clock, which is wall time
     await page.waitForTimeout(150);
     return page.evaluate((f) => {
       const last: Record<number, number> = {};

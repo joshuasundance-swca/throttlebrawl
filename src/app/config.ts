@@ -239,7 +239,9 @@ function isRealRoad(network: unknown): boolean {
  * "Yes, add as routes"): every route in the race's packs (the event's pack and its dependencies)
  * whose network was baked from map data (`provenance.origin` "gis-pipeline") and names the event's
  * region. A region pack's routes are road data, so they are listed once its roads are fetched.
- * [default]
+ * Run W-R (interview, 2026-10-02: "SF first = downtown towers"): a hand-made route on ANOTHER of the
+ * region's networks (San Francisco's downtown) is offered the same way; the hand-made spares on
+ * the event's own network (the Keys' other lengths) still are not. [default]
  */
 export function realRoutes(reg: ContentRegistry, eventId = DEFAULT_EVENT): string[] {
   const key = eventKey(eventId);
@@ -247,14 +249,23 @@ export function realRoutes(reg: ContentRegistry, eventId = DEFAULT_EVENT): strin
   const regionKey = qualifyIn(packOf(key), event.region);
   const packs = new Set(packClosure(reg, packOf(key)));
   const own = new Set(event.lengths.map((l) => qualifyIn(packOf(key), l.route)));
+  const networkOf = (id: string) => qualifyIn(packOf(id), reg.routes[id]?.network ?? '');
+  const ownNetworks = new Set([...own].filter((id) => reg.routes[id]).map(networkOf));
   return Object.keys(reg.routes)
     .filter((id) => {
       if (!packs.has(packOf(id)) || own.has(id)) return false;
-      const networkKey = qualifyIn(packOf(id), reg.routes[id]?.network ?? '');
+      const networkKey = networkOf(id);
       const network = reg.networks[networkKey];
-      return !!network && isRealRoad(network) && qualifyIn(packOf(networkKey), network.region) === regionKey;
+      if (!network || qualifyIn(packOf(networkKey), network.region) !== regionKey) return false;
+      return isRealRoad(network) || (ownNetworks.size > 0 && !ownNetworks.has(networkKey));
     })
     .sort();
+}
+
+/** Whether a route runs on a network baked from map data (the picker says "real road"). */
+export function isRealRoute(reg: ContentRegistry, routeKey: string): boolean {
+  const route = reg.routes[routeKey];
+  return !!route && isRealRoad(reg.networks[qualifyIn(packOf(routeKey), route.network)]);
 }
 
 /**

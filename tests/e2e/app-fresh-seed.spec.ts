@@ -46,6 +46,7 @@ test('each race draws a fresh seed, and the debug report shows it', async ({ pag
   // with no menu between; Restart below restarts that race.
   await page.locator('#start-screen').click();
   await expect(page.locator('#hud-position')).toBeVisible();
+  // eslint-disable-next-line no-restricted-syntax -- this page runs as a player's, without the test flag, so there is no tick to wait on: a moment of race before the pause
   await page.waitForTimeout(1500);
   await page.locator('#hud-pause').click();
   await expect(page.locator('#pause-screen')).toBeVisible();
@@ -53,6 +54,7 @@ test('each race draws a fresh seed, and the debug report shows it', async ({ pag
 
   await page.locator('#pause-restart').click();
   await expect(page.locator('#hud-position')).toBeVisible();
+  // eslint-disable-next-line no-restricted-syntax -- this page runs as a player's, without the test flag, so there is no tick to wait on: a moment of race before the pause
   await page.waitForTimeout(1500);
   await page.locator('#hud-pause').click();
   await expect(page.locator('#pause-screen')).toBeVisible();

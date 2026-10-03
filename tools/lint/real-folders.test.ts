@@ -98,6 +98,8 @@ describe('the lint rules against the real folders', () => {
       }
     }
     expect(edges).toBeGreaterThan(100);
-    expect(importsOf('src/main.ts').map(moduleOf).sort()).toEqual(['app', 'dev']);
+    // main.ts reaches dev/ through both of its entries (boot.ts now, index.ts lazily), so the
+    // modules it imports are compared as a set.
+    expect([...new Set(importsOf('src/main.ts').map(moduleOf))].sort()).toEqual(['app', 'dev']);
   });
 });

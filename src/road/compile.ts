@@ -77,6 +77,8 @@ export interface RoadSource {
 
 export interface RouteSource {
   id: string;
+  /** The route's display name (the race-setup picker shows it); none on the older tracks. */
+  name?: string;
   start: { road: string; s: number; dir: 1 | -1 };
   /** Finish s; a negative value counts back from the road's end. */
   finish: { road: string; s: number };
@@ -744,6 +746,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     return {
       type: 'route',
       id: r.id,
+      ...(r.name ? { name: r.name } : {}),
       network: netId,
       start: r.start,
       finish: { road: r.finish.road, s: r4(finishS) },

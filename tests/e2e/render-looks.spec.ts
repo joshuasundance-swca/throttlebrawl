@@ -207,6 +207,7 @@ test('the ink + film look comes back after a forced WebGL context loss', async (
       gl?.getExtension('WEBGL_lose_context');
     (window as unknown as { __lose?: WEBGL_lose_context | null | undefined }).__lose?.loseContext();
   });
+  // eslint-disable-next-line no-restricted-syntax -- the browser reports a lost WebGL context asynchronously
   await page.waitForTimeout(300);
   const lost = await page.evaluate(
     () =>

@@ -50,6 +50,25 @@ describe('app: real-road routes', () => {
     expect(choices[0]?.lengthM).toBeNull();
   });
 
+  it("offers a hand-made route on another of the region's networks: San Francisco's downtown (run W-R)", () => {
+    const SF = 'region-sf:sf-hill-sprint';
+    const DOWNTOWN = 'region-sf:sf-downtown-run';
+    expect(realRoutes(ALL, SF)).toContain(DOWNTOWN);
+    // Not the event's own hand-made route, and no other region's.
+    expect(realRoutes(ALL, SF)).not.toContain('region-sf:sf-standard-run');
+    expect(realRoutes(ALL, 'region-pnw:pnw-fogline-run')).not.toContain(DOWNTOWN);
+    const choice = routeChoices(ALL, SF).find((c) => c.id === DOWNTOWN);
+    expect(choice?.name).toBe('Downtown');
+    expect(choice?.blurb).toMatch(/^Hand-made\. \d+\.\d km\.$/);
+    const raced = buildSimConfig(ALL, streamForEvent(ALL, SF, undefined, DOWNTOWN), {
+      seed: 1,
+      eventId: SF,
+      route: DOWNTOWN,
+    });
+    expect(raced.event.routeId).toBe(DOWNTOWN);
+    expect(raceRouteKey(ALL, SF, undefined, 'sf-downtown-run')).toBe(DOWNTOWN);
+  });
+
   it('a chosen real route is raced and recorded; the field, law and traffic stay the region race', () => {
     const own = buildSimConfig(BASE, streamForEvent(BASE, KEYS), { seed: 5, eventId: KEYS });
     const real = buildSimConfig(BASE, streamForEvent(BASE, KEYS, undefined, BAHIA), {
