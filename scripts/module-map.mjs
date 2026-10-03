@@ -43,9 +43,11 @@ export const MODULE_MAP = {
 
 /**
  * The files another module may import: the module's index.ts, and for sim its public contract
- * api.ts ("every --> sim edge means imports src/sim/api.ts").
+ * api.ts ("every --> sim edge means imports src/sim/api.ts"). dev has two: index.ts, which
+ * src/main.ts loads lazily (off the first-load JavaScript budget), and boot.ts, the small part
+ * that loads with the first screen (the test flag and the error capture). Only main imports dev.
  */
-const PUBLIC_ENTRIES = { sim: ['api'] };
+const PUBLIC_ENTRIES = { sim: ['api'], dev: ['index', 'boot'] };
 
 /** Which module a repo-relative posix path belongs to, or null if it is outside src/. */
 export function moduleOf(relPath) {
