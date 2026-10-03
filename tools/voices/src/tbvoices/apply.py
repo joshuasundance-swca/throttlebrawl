@@ -5,7 +5,9 @@ vetoes against), plus the batch's provenance on the set. Run `npm run format` af
 - `audioStatus`: `live` when shipped; `vetoed` when the maintainer cut the voice (the clip file is
   then removed, the field and an `audioNote` stay as the record). `draft` is accepted but not acted
   on yet: the game finds clips by file, so a draft clip still plays; veto it to keep it silent.
-- `meta.voice`: how the set's clips were made (models, the reference voice, the cast file).
+- `meta.voice`: how the set's clips were made (models, the reference voice, the cast file), plus
+  `review`, the last listening pass's picks (how many clips were kept, which lines were redone or
+  cut), which this keeps. Each redone or cut line says why in its own `audioNote`.
 """
 
 from __future__ import annotations
@@ -66,6 +68,9 @@ def apply_packs(p: Paths, cast: Cast, lines: list[BarkLine]) -> int:
             meta = dict(data.get("meta") or {})
             prev = meta.get("voice") if isinstance(meta.get("voice"), dict) else {}
             meta["voice"] = {
+                # Keeps what a person or a later pass recorded on the set (the `review` of kept,
+                # redone and cut clips); the batch fields below are rewritten from the cast.
+                **(prev or {}),
                 "origin": "ai-batch",
                 "batchId": cast.batch_id,
                 "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",

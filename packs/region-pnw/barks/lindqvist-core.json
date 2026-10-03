@@ -61,7 +61,15 @@
       "model": "ResembleAI/chatterbox (MIT), via fal on Hugging Face Inference Providers",
       "reference": "hexgrad/Kokoro-82M (Apache-2.0) voice am_echo, speed 0.85, pitch -2 semitones; synthetic, no real person's voice",
       "promptRef": "tools/voices/cast.json",
-      "generatedAt": "2026-10-01"
+      "generatedAt": "2026-10-01",
+      "review": {
+        "at": "2026-10-02",
+        "by": "run W-S, voices lane",
+        "method": "Every clip transcribed on the dev machine's GPU by Whisper large-v3-turbo and large-v3, plus pitch, pace, level and a speaker-similarity check (WavLM) against the rival's other clips (tools/voices/scripts/check_local.py). Garbled (both checks heard other words) or off-voice clips were redone free with Kokoro-82M on the GPU in the rival's reference voice (tools/voices/scripts/redo_local.py); everything else was kept.",
+        "kept": 5,
+        "redone": [],
+        "cut": []
+      }
     }
   }
 }

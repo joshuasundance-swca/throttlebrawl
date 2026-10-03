@@ -71,6 +71,32 @@ uv run pytest && uv run ruff check && uv run mypy
   rival's or the line's settings in `cast.json` and run `gen --line ... --force`. A line cut in the
   game with "cut this" loses its voice with its words.
 
+## Free local check and redo (GPU)
+
+Two standalone scripts run on the dev machine's GPU with no provider, account or bill. Each is a
+uv script with its own dependencies (CUDA PyTorch, so they never touch this project's lock); the
+models download once to the Hugging Face cache.
+
+```sh
+uv run scripts/check_local.py --out ../../scratch/voices/check.json        # every shipped clip
+uv run scripts/redo_local.py --out ../../scratch/voices/redo --line "base:kevin-core#kevin-pass-pin"
+uv run scripts/check_local.py --out ../../scratch/voices/redo.json --clips ../../scratch/voices/redo/t0
+```
+
+- `check_local.py` transcribes each clip with Whisper large-v3-turbo (the pipeline's own checker)
+  and large-v3 (a second, independent ear), and measures pitch, pace, level and voice consistency
+  (a WavLM speaker embedding against the rival's other clips, as a robust z-score).
+- `redo_local.py` speaks a line with Kokoro-82M in the rival's reference voice (the preset, speed
+  and pitch shift every Chatterbox take was cloned from) at a few speeds, cleaned exactly like the
+  shipped clips.
+- Run W-S's rule (2026-10-02): a clip is **garbled** when both Whisper models hear other words (a
+  homophone such as "brakes"/"breaks" or a number's spelling does not count), and **off-voice** when
+  its voice z-score is under -5, or under -3 with a pitch outlier; a deliberate shout (the Mayor's
+  "No comment!") is off-voice by design. A redo replaces a clip only when both models hear it right
+  (homophones aside) and its voice z-score is either inside the rival's normal band (-2 or above) or
+  better than the old take's. The pick goes in the line's `audioNote` and the set's
+  `meta.voice.review` (`kept`, `redone`, `cut`), so the maintainer can veto it later.
+
 ## Licences
 
 Kokoro-82M is Apache-2.0; its model card lists CC BY training data (Koniwa, CC BY 3.0; SIWIS, CC BY
