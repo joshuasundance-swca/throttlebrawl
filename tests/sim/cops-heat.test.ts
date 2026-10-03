@@ -99,8 +99,15 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
   // only 2 met a block on main (seeds 1 and 7), and 1 once the cops rode round traffic (#373: seed
   // 7); the misses had a clear stretch ahead but no free cop, or came too near the finish. So each
   // region rides seeds in order, at least 3 and up to ROADBLOCK_SEEDS, until one meets the block.
-  const ROADBLOCK_TUNING = { 'cops.heatScale': 3, 'ground.offRoad': 0 };
-  const ROADBLOCK_SEEDS = 10;
+  // That was still a floor at the measured rate. The Pacific Northwest fields 4 cops, and when tier 3
+  // comes, tiers 1 and 2 have usually sent 3 of them, so 0 or 1 is free and 120 m out of sight. On
+  // main, seeds 1 to 10 met 1 block (seed 7); with #388's weapon verbs, seeds 1 to 10 met none,
+  // and seeds 1 to 30 met 7 (23%) (run W-T keeper). So the patrol rides at x2 here (more cops parked
+  // dark, the reserve a block draws on): 12 of 30 met it with #388 (40%), 4 of 10 on main, and the
+  // Keys and San Francisco still met it (4 and 7 of 8). And the search runs to 24 seeds, so a retune
+  // that halves the rate still finds one.
+  const ROADBLOCK_TUNING = { 'cops.heatScale': 3, 'ground.offRoad': 0, 'cops.patrolScale': 2 };
+  const ROADBLOCK_SEEDS = 24;
   for (const choice of regionChoices(REG)) {
     it(`${choice.name}: a hot rider meets the roadblock, and the race still ends`, () => {
       const runs: HeatRun[] = [];
