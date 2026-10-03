@@ -28,7 +28,13 @@ import { registryFromGlob, type ContentRegistry } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { Profile } from '../../src/save';
-import { createSim, type EntitySnapshot, type SimConfig, type SimSnapshot } from '../../src/sim/api';
+import {
+  createSim,
+  type EntitySnapshot,
+  type SimConfig,
+  type SimEvent,
+  type SimSnapshot,
+} from '../../src/sim/api';
 
 export const REG: ContentRegistry = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -88,6 +94,8 @@ export function playNode(
   profile: Profile,
   seed: number,
   free = false,
+  /** Sees every step's events and snapshot (run W-U: checks that read the race as it runs). */
+  watch?: (events: readonly SimEvent[], snap: SimSnapshot, config: SimConfig) => void,
 ): CareerRace {
   const plan = eventPlan(REG, node.event);
   const length = nodeLength(plan, node);
@@ -120,6 +128,7 @@ export function playNode(
     sim.step([toSimInput(a)]);
     snap = sim.snapshot();
     const events = sim.events();
+    watch?.(events, snap, config);
     log.note(events, snap);
     const p = onboarding.note(events, snap, me);
     if (p) prompts.push(p.id);

@@ -57,3 +57,77 @@ export function withReceiptBoards(
   });
   return { dressing: roads, catalog: { ...catalog, items } };
 }
+
+/**
+ * Run W-U: how far beyond the road's outer edge an incident site's middle stands, metres. Its
+ * placard and cones span about 5.5 m across, so the nearest cone stands just off the road. [default]
+ */
+export const INCIDENT_EDGE_M = 3.2;
+/** A site on a bridge or over water slides along its road in these steps, this many each way. */
+const INCIDENT_SLIDE_M = 40;
+const INCIDENT_SLIDES = 5;
+const WET = new Set(['water-open', 'water-shallow', 'swamp']);
+
+/**
+ * Where an incident site stands for a bust at (road, s): beside the road's outer edge, on its right
+ * (+d) where that is land, else its left; never on a bridge or over water, so it slides along the
+ * road (40 m steps, up to 200 m each way) to the nearest dry stretch. Null when the road is not on
+ * this network or no dry stretch is near.
+ */
+export function incidentSpot(
+  road: RoadNetwork,
+  dressing: RoadDressing,
+  roadId: string,
+  s: number,
+): { s: number; d: number } | null {
+  const e = road.edges.find((x) => x.id === roadId);
+  if (!e) return null;
+  const tags = dressing[roadId]?.tags ?? [];
+  const tagged = (at: number, ok: (tag: string, side: string) => boolean) =>
+    tags.some((t) => t.s0 <= at && at <= t.s1 && ok(t.tag, t.side ?? 'both'));
+  for (let i = 0; i <= INCIDENT_SLIDES * 2; i++) {
+    const off = Math.ceil(i / 2) * INCIDENT_SLIDE_M * (i % 2 === 1 ? 1 : -1);
+    const at = s + off;
+    if (at < 0 || at > e.length) continue;
+    if (tagged(at, (tag) => tag === 'bridge')) continue;
+    for (const side of [1, -1]) {
+      const name = side > 0 ? 'right' : 'left';
+      if (tagged(at, (tag, sd) => WET.has(tag) && (sd === 'both' || sd === name))) continue;
+      const lanes = road.lanesAt(e.index, at);
+      if (lanes.length === 0) continue;
+      const edge =
+        side > 0
+          ? Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2))
+          : Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2));
+      return { s: at, d: edge + side * INCIDENT_EDGE_M };
+    }
+  }
+  return null;
+}
+
+/**
+ * The dressing and catalog with an incident site (run W-U, the pitch deck's #14: "an 'INCIDENT SITE
+ * #3' cone where you were busted") at each bust's own spot: a new board slot on its road, beside the
+ * road (incidentSpot), naming a `cone` item (render/boards.ts draws traffic cones round a small
+ * placard). Added after the road's own features, so their indices (and receipt boards) hold.
+ */
+export function withIncidentSites(
+  road: RoadNetwork,
+  dressing: RoadDressing,
+  catalog: BoardCatalog,
+  sites: readonly { road: string; s: number; ref: string; text: string }[],
+): { dressing: RoadDressing; catalog: BoardCatalog } {
+  if (sites.length === 0) return { dressing, catalog };
+  const items: Record<string, BoardItem> = { ...catalog.items };
+  const roads: Record<string, EdgeDressing> = { ...dressing };
+  sites.forEach((site, i) => {
+    const spot = incidentSpot(road, roads, site.road, site.s);
+    if (!spot) return;
+    const id = `incident-site-${i + 1}`;
+    items[id] = { ref: site.ref, text: site.text, kind: 'cone' };
+    const own = roads[site.road] ?? {};
+    const slot = { kind: 'billboard', id, s0: spot.s, s1: spot.s, d0: spot.d, d1: spot.d, item: id };
+    roads[site.road] = { ...own, features: [...(own.features ?? []), slot] };
+  });
+  return { dressing: roads, catalog: { ...catalog, items } };
+}
