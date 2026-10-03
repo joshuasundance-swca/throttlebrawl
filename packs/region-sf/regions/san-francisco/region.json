@@ -92,7 +92,7 @@
     { "id": "dt-servers", "text": "LOADING ZONE: SERVERS ONLY. Humans unload elsewhere.", "status": "live" },
     { "id": "dt-badge-only", "text": "CAMPUS AHEAD. Badge in to continue.", "status": "live" },
     { "id": "wf-seawall", "text": "SEAWALL BUILT 1913. Upgrade under review since 1914.", "status": "live" },
-    { "id": "wf-no-pitching", "text": "NO SWIMMING. NO FISHING. NO PITCHING.", "status": "live" },
+    { "id": "wf-no-pitching", "text": "NO SWIMMING. No fishing. No pitching.", "status": "live" },
     { "id": "wf-even-piers", "text": "EVEN PIERS ONLY. Odd piers past the clock.", "status": "live" },
     { "id": "wf-foghorn", "text": "FOGHORN TESTED DAILY. Results pending.", "status": "live" },
     {
@@ -103,7 +103,7 @@
     { "id": "wf-odd-piers", "text": "ODD PIERS AHEAD. Nobody has asked why.", "status": "live" },
     { "id": "wf-tide", "text": "TIDE: HIGH. Rent: higher.", "status": "live" },
     { "id": "wf-sea-lions", "text": "SEA LIONS ON PIER. The pier has been informed.", "status": "live" },
-    { "id": "wf-meal-plan", "text": "DO NOT FEED THE SEA LIONS. They have a meal plan.", "status": "live" }
+    { "id": "wf-meal-plan", "text": "DON'T FEED THE SEA LIONS. They have a meal plan.", "status": "live" }
   ],
   "billboards": [
     { "id": "sleep-as-a-service", "text": "SLEEP AS A SERVICE. First 8 hours free.", "status": "live" },
@@ -139,17 +139,17 @@
     { "id": "dt-inevitable", "text": "WE ARE INEVITABLE. That's the whole ad.", "status": "live" },
     {
       "id": "wf-ferrychain",
-      "text": "WE PUT THE FERRY ON THE BLOCKCHAIN. Ferrychain. It still takes 30 minutes.",
+      "text": "FERRY, NOW ON BLOCKCHAIN. Ferrychain. It still takes 30 minutes.",
       "status": "live"
     },
     {
       "id": "wf-arfscribe",
-      "text": "ARFSCRIBE. AI that translates sea lions. So far it's all 'fish'.",
+      "text": "ARFSCRIBE TRANSLATES SEA LIONS. AI-powered. So far it's all 'fish'.",
       "status": "live"
     },
     {
       "id": "wf-fogcastr",
-      "text": "FOGCASTR. AI fog forecasts. Today: fog. Tomorrow: fog. Series A.",
+      "text": "FOGCASTR: AI FOG FORECASTS. Today: fog. Tomorrow: fog. Series A.",
       "status": "live"
     }
   ],
