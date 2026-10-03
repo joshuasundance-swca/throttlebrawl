@@ -59,6 +59,7 @@
 //   (threading between two cars, or between a car and an oncoming one) carries `split`.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
+import { sRateFactor } from '../../road';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 import {
@@ -71,6 +72,7 @@ import {
   lanesAt,
   linkAt,
   linkOf,
+  riderOnCorridor,
   toCorridor,
   type Corridor,
   type LaneMap,
@@ -866,6 +868,7 @@ function trySpawn(
   if (!config.trafficTypes[regionType]) return false;
   const hasAreas = areaTags(config).size > 0;
   let riders: RiderView[] | null = null;
+  let placed: number[] | null = null;
   const jitter = nextFloat(world.rng.traffic) * TRAFFIC.slotStepM;
   const laneRoll = nextFloat(world.rng.traffic);
   const spacing = TRAFFIC.baseSpacingM / Math.max(0.1, densityFor(world, st, dir));
@@ -893,13 +896,14 @@ function trySpawn(
     const type = area === null ? regionType : pickType(world, config, st, dir, typeRoll, area);
     const t = config.trafficTypes[type];
     if (!t) continue;
-    if (riderAt(world, st, u, t.lengthM)) continue;
+    placed ??= riderUs(world, config, st);
+    if (riderAt(placed, u, t.lengthM)) continue;
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
     let rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     // Never into a lane that ends soon (W-R): the next lane in, until one goes on.
     while (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) rank--;
     if (!laneClear(config, st, u, dir, rank, t, gap, k)) continue;
-    riders ??= riderViews(world, st);
+    riders ??= riderViews(world, config, st);
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
     const v0 = t.cruiseMps * speedRoll;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
@@ -912,16 +916,26 @@ function trySpawn(
 }
 
 /**
+ * Corridor u of every rider on a corridor road, or over one's asphalt from another road (run W-U
+ * fixes' re-check): riderAt's input, read once per spawn attempt.
+ */
+function riderUs(world: World, config: SimConfig, st: TrafficState): number[] {
+  const out: number[] = [];
+  for (const m of world.movers) {
+    if (m.kind !== 'rider') continue;
+    const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
+    if (p) out.push(p.u);
+  }
+  return out;
+}
+
+/**
  * Whether any rider (the fairness rule's anchors are only the racers: a cop parked in his lot is
  * not one) is within half a vehicle plus RIDER_SPAWN_CLEAR_M of u along the corridor. A beach
  * cruiser once spawned on the shoulder right on top of the parked cop (W-Q, batch seed 39).
  */
-function riderAt(world: World, st: TrafficState, u: number, lengthM: number): boolean {
-  for (const m of world.movers) {
-    if (m.kind !== 'rider') continue;
-    const p = toCorridor(st.corridor, m.pos);
-    if (p && Math.abs(p.u - u) < lengthM / 2 + RIDER_SPAWN_CLEAR_M) return true;
-  }
+function riderAt(placed: readonly number[], u: number, lengthM: number): boolean {
+  for (const p of placed) if (Math.abs(p - u) < lengthM / 2 + RIDER_SPAWN_CLEAR_M) return true;
   return false;
 }
 /** Room kept between a spawning vehicle's end and any rider, m. */
@@ -951,7 +965,7 @@ function addConvoy(
   let room = targetCount(world, st, anchors, dir);
   for (let k = 0; k < st.id.length; k++) if (st.dir[k] === dir && st.retired[k] === 0) room--;
   let u = st.u[lead] ?? 0;
-  const riders = riderViews(world, st);
+  const riders = riderViews(world, config, st);
   for (let i = 0; i < extra && room > 0; i++) {
     u -= dir * step;
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) return;
@@ -995,7 +1009,7 @@ function park(
     if (nearestAnchor(anchors, u) <= clear) continue;
     if (lanesAt(config.road, c, u, dir).length === 0) continue;
     if (!laneClear(config, st, u, dir, 0, t, TRAFFIC.spawnGapM, k)) continue;
-    riders ??= riderViews(world, st);
+    riders ??= riderViews(world, config, st);
     const laneCd = lanesAt(config.road, c, u, dir)[0]?.cd ?? 0;
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) continue;
     const retired = st.retired[k] ?? 0;
@@ -1180,13 +1194,23 @@ interface RiderView {
   touchable: boolean;
   /** Down: in the crash tumble or on foot (W-Q: traffic swerves round them). */
   down: boolean;
+  /**
+   * On another road (a branch) whose asphalt here is a corridor road's (run W-U fixes' re-check):
+   * its view is that point's corridor position, and contact moves it on its own road.
+   */
+  over: boolean;
 }
 
-function riderViews(world: World, st: TrafficState): RiderView[] {
+/**
+ * Every rider traffic can meet: on a corridor road, or on another road over a corridor road's
+ * asphalt (a branch's end bent across the main road, a split's or a merge's overlapping
+ * connectors), where it rides among that road's cars and so must touch them.
+ */
+function riderViews(world: World, config: SimConfig, st: TrafficState): RiderView[] {
   const out: RiderView[] = [];
   for (const m of world.movers) {
     if (m.kind !== 'rider' || m.h > TRAFFIC.maxContactH) continue;
-    const p = toCorridor(st.corridor, m.pos);
+    const p = riderOnCorridor(config.road, st.corridor, m.pos, TRAFFIC.maxContactH);
     if (!p) continue;
     out.push({
       id: m.id,
@@ -1196,6 +1220,7 @@ function riderViews(world: World, st: TrafficState): RiderView[] {
       speed: m.speed,
       touchable: m.mode === 'Road',
       down: m.mode === 'Tumble' || m.mode === 'OnFoot',
+      over: p.over,
     });
   }
   return out;
@@ -1483,6 +1508,7 @@ function splitPartner(config: SimConfig, st: TrafficState, r: RiderView, k: numb
 function putRider(world: World, config: SimConfig, st: TrafficState, r: RiderView): boolean {
   const m = world.movers[r.id];
   if (!m) return false;
+  if (r.over) return putRiderOver(config, st, m, r);
   const i = linkOf(st.corridor, m.pos.edge);
   const edge = config.road.edges[m.pos.edge];
   const o = st.corridor.o[i] ?? 1;
@@ -1494,6 +1520,35 @@ function putRider(world: World, config: SimConfig, st: TrafficState, r: RiderVie
   fromCorridor(st.corridor, r.u, cd, r.dir, m.pos);
   r.cd = cd;
   return !pinned;
+}
+
+/**
+ * putRider for a rider on another road over a corridor road (RiderView.over): the move from where
+ * it is to its view's corridor position, as a world offset, made on its own road (s along, d
+ * across), its d kept inside that road's drivable width. Then its view is read again.
+ */
+function putRiderOver(config: SimConfig, st: TrafficState, m: Mover, r: RiderView): boolean {
+  const road = config.road;
+  const pos = m.pos;
+  const to = { edge: 0, s: 0, d: 0, dir: 1 as 1 | -1 };
+  fromCorridor(st.corridor, r.u, r.cd, r.dir, to);
+  const a = road.toWorld(pos.edge, pos.s, pos.d, 0);
+  const b = road.toWorld(to.edge, to.s, to.d, 0);
+  const f = road.frameAt(pos.edge, pos.s);
+  const ox = b.x - a.x;
+  const oz = b.z - a.z;
+  const edge = road.edges[pos.edge];
+  const d = pos.d - ox * f.tz + oz * f.tx;
+  const lo = (edge?.dMin ?? -5) + 0.5;
+  const hi = (edge?.dMax ?? 5) - 0.5;
+  pos.s += (ox * f.tx + oz * f.tz) * sRateFactor(f.kappa, pos.d);
+  pos.d = clamp(d, lo, hi);
+  const p = riderOnCorridor(road, st.corridor, pos, TRAFFIC.maxContactH);
+  if (p) {
+    r.u = p.u;
+    r.cd = p.cd;
+  }
+  return pos.d === d;
 }
 
 /**
@@ -1663,12 +1718,12 @@ export const trafficSystem: SimSystem = {
     st.clockS += dt;
     if (world.tick % TRAFFIC.populateEveryTicks === 0) populate(world, config, st);
     laneChanges(world, config, st, dt);
-    move(world, config, st, riderViews(world, st), dt);
+    move(world, config, st, riderViews(world, config, st), dt);
     for (let k = 0; k < st.id.length; k++) {
       const u = st.u[k] ?? 0;
       if ((st.dir[k] === 1 && u >= st.corridor.hi) || (st.dir[k] === -1 && u <= st.corridor.lo))
         leaveRoad(world, config, st, k);
     }
-    contacts(world, config, st, riderViews(world, st), dt);
+    contacts(world, config, st, riderViews(world, config, st), dt);
   },
 };

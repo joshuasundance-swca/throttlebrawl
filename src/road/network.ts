@@ -208,6 +208,16 @@ export interface RoadNetwork {
    * act. The steering assist reads it so it never pushes a rider away from a branch it is taking.
    */
   branchSideAt(edge: number, s: number): -1 | 0 | 1;
+  /**
+   * Where a mover's ground point lies on the drawn surface (between the outermost lane edges) of
+   * another edge that `accept` takes, within `heightM` of the same height: that edge's position,
+   * with dir the way along it closest to the mover's own heading. Null when it lies on none. Where
+   * several qualify, the one it lies deepest inside wins (then the lowest edge index). Branch roads
+   * cross or overlap other roads' asphalt near their junctions (a split, a merge, a rejoin bent
+   * across the road); this lets a system that lives on some edges (traffic) find a rider who is
+   * on one of them in the world but not by edge (run W-U fixes' re-check). Deterministic (+ - * /).
+   */
+  surfaceUnder(pos: RoadPos, heightM: number, accept: (edge: number) => boolean): RoadPos | null;
 }
 
 /** How far down each branch the handover looks for drawn overlap with its siblings, m [default]. */
@@ -819,6 +829,73 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     return 0;
   };
 
+  // ---- Where a mover lies on another road's surface (run W-U fixes' re-check) ----
+  // A grid of every edge's samples, built on first use, finds the edges near a world point. A point
+  // on an edge's drawn surface is at most its half-width across and half a spacing along from one of
+  // its samples, so a cell that size and its 8 neighbours always hold that sample.
+  let grid: { cell: number; cells: Map<string, number[]> } | null = null;
+  const sampleGrid = () => {
+    let cell = 16;
+    for (const e of edges) {
+      cell = Math.max(cell, Math.max(-e.dMin, e.dMax) + e.spacing);
+    }
+    const cells = new Map<string, number[]>();
+    for (const e of edges) {
+      for (let i = 0; i < e.count; i++) {
+        const key = `${Math.floor((e.x[i] ?? 0) / cell)},${Math.floor((e.z[i] ?? 0) / cell)}`;
+        const list = cells.get(key);
+        if (list) list.push(e.index, i);
+        else cells.set(key, [e.index, i]);
+      }
+    }
+    return { cell, cells };
+  };
+
+  const surfaceUnder = (pos: RoadPos, heightM: number, accept: (edge: number) => boolean): RoadPos | null => {
+    grid ??= sampleGrid();
+    const w = toWorld(pos.edge, pos.s, pos.d, 0);
+    const ix = Math.floor(w.x / grid.cell);
+    const iz = Math.floor(w.z / grid.cell);
+    // The nearest sample of each candidate edge.
+    const nearest = new Map<number, { i: number; d2: number }>();
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const list = grid.cells.get(`${ix + dx},${iz + dz}`);
+        if (!list) continue;
+        for (let j = 0; j < list.length; j += 2) {
+          const e = list[j] ?? -1;
+          const i = list[j + 1] ?? 0;
+          if (e === pos.edge || !accept(e)) continue;
+          const ed = edgeAt(e);
+          const ox = w.x - (ed.x[i] ?? 0);
+          const oz = w.z - (ed.z[i] ?? 0);
+          const d2 = ox * ox + oz * oz;
+          const had = nearest.get(e);
+          if (!had || d2 < had.d2 || (d2 === had.d2 && i < had.i)) nearest.set(e, { i, d2 });
+        }
+      }
+    }
+    let best: RoadPos | null = null;
+    let deepest = -1;
+    for (const e of [...nearest.keys()].sort((p, q) => p - q)) {
+      const ed = edgeAt(e);
+      const i = nearest.get(e)?.i ?? 0;
+      const p = projectNear(ed, w.x, w.z, (i - 1) * ed.spacing, (i + 1) * ed.spacing);
+      if (p.along > 1e-3 || p.along < -1e-3) continue; // past an end of it
+      const b = outerAt(e, p.s);
+      const inside = Math.min(p.d - b.lo, b.hi - p.d);
+      if (inside < 0 || inside <= deepest) continue;
+      const y = toWorld(e, p.s, p.d, 0).y;
+      if (y - w.y > heightM || w.y - y > heightM) continue;
+      const fx = frameAt(pos.edge, pos.s);
+      const fy = frameAt(e, p.s);
+      const dot = fx.tx * fy.tx + fx.tz * fy.tz;
+      deepest = inside;
+      best = { edge: e, s: p.s, d: p.d, dir: dot >= 0 ? pos.dir : pos.dir === 1 ? -1 : 1 };
+    }
+    return best;
+  };
+
   const neighbours = (edge: number, s: number, range: number): readonly RoadNeighbour[] => {
     const e = edgeAt(edge);
     const out: RoadNeighbour[] = [];
@@ -887,5 +964,6 @@ export function createRoadNetwork(bundle: BakedNetworkBundle): RoadNetwork {
     barrierAt,
     handover,
     branchSideAt,
+    surfaceUnder,
   };
 }
