@@ -11,6 +11,9 @@ import { InputFlag, type SimInput } from './types';
 export { createSim, SIM_TUNING } from './create';
 export {
   InputFlag,
+  LAW_EVENT_KINDS,
+  LAW_HABIT_IDS,
+  LAW_PROP_ID_BASE,
   PED_REACT_KINDS,
   PROP_KINDS,
   SIGNATURE_IDS,
@@ -26,6 +29,9 @@ export type {
   EntityKind,
   EntitySnapshot,
   Faction,
+  LawEventKind,
+  LawHabitId,
+  LawSnapshot,
   MoverMode,
   ParkedBikeSnapshot,
   PedReactKind,
@@ -46,6 +52,7 @@ export type {
   SimEventType,
   SimInput,
   SimLawDef,
+  SimLawHabit,
   SimModifierDef,
   SimModifierEffect,
   SimRiderDef,
