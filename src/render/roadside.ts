@@ -570,11 +570,23 @@ export class RoadsideScatter {
   private edge = 0;
   private unit = 0;
   private readonly density: number;
+  /**
+   * The painted split zones (road-mesh.ts), by edge. One may reach past its road's edge onto the
+   * verge (I-5's Lake Samish turn-off paints 1 m of it), and no prop stands in the paint (the
+   * geometry sweep, tests/sim/geometry-scenery.ts, found verge grass standing in it, 12 places
+   * over its 24 seeds).
+   */
+  private readonly zones = new Map<number, { s0: number; s1: number; lo: number; hi: number }[]>();
 
   constructor(private readonly input: RoadsideInput) {
     const { road } = input;
     this.density = Math.max(0, input.density);
     this.roads = new RoadGrid(road);
+    for (const z of road.splitZones()) {
+      const list = this.zones.get(z.edge) ?? [];
+      list.push({ s0: z.s0, s1: z.s1, lo: Math.min(z.d0, z.d1), hi: Math.max(z.d0, z.d1) });
+      this.zones.set(z.edge, list);
+    }
     // The scenery that stands already: trees count as canopy (ferns may grow under them).
     for (const sp of input.spots) {
       const e = road.edges[sp.edge];
@@ -634,6 +646,9 @@ export class RoadsideScatter {
           d <= Math.max(f.d0, f.d1) + m
         );
       });
+    const zones = this.zones.get(e.index) ?? [];
+    const zoneClear = (s: number, d: number, r: number) =>
+      !zones.some((z) => s >= z.s0 - r && s <= z.s1 + r && d >= z.lo - r && d <= z.hi + r);
     const otherRoad = (s: number, x: number, z: number, r: number) =>
       this.roads.roadUnder(e.index, s, x, z, r);
     // A road standing higher close by (a stacked loop, a spur on the hill above) lays its own land
@@ -680,7 +695,7 @@ export class RoadsideScatter {
         // Its clear ground: round the anchor, or round its body behind it (`discBack`).
         const dc = rule.discBack ? side * (outer + across + rule.discBack) : d;
         const c = rule.discBack ? road.toWorld(e.index, s, dc, LAND_TOP_M) : p;
-        if (!featureClear(s, dc, r)) break;
+        if (!featureClear(s, dc, r) || !zoneClear(s, d, r)) break;
         if (taken.hits(c.x, c.z, r, !!rule.understory)) {
           if (rule.run) break;
           continue;
