@@ -48,7 +48,7 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 
 /**
  * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
- * downtown, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * downtown, mission, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
  * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
  * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
  * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
@@ -67,6 +67,13 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['cable-crossing', band(20, 'shoulder', 'soft')],
   ['plaza', band(18, 'kerb', 'soft')],
   ['towers', band(4, 'kerb', 'hard')],
+  // San Francisco's mural alleys (run W-U; the pitch deck after playtest 2, #8: "the Mission's mural
+  // alleys"): an alley's painted walls stand 1.5 m past the shoulder, the mascot's corner wall the
+  // same with its scaffold behind the edge, and the shopfronts behind a 4 m sidewalk. Each edge is
+  // a drawn wall (src/render/mission.ts), so it is a hard one.
+  ['mascot-mural', band(1.5, 'kerb', 'hard')],
+  ['murals', band(1.5, 'kerb', 'hard')],
+  ['shopfronts', band(4, 'kerb', 'hard')],
   ['palms', band(4, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

@@ -77,8 +77,9 @@ test('each region offers its own road first, then its real roads by name, and th
     },
     {
       chip: '#region-region-sf-san-francisco',
-      // Run W-R: the hand-made downtown on its own network, offered after the real roads.
-      routes: ['Fogline Hill Sprint', 'Russian Hill', 'Twin Peaks', 'Downtown'],
+      // Run W-R: the hand-made downtown on its own network, offered after the real roads; run W-U:
+      // the mural alleys on theirs.
+      routes: ['Fogline Hill Sprint', 'Russian Hill', 'Twin Peaks', 'Downtown', 'Mural Alleys'],
     },
   ];
   const view = page.viewportSize()!;
