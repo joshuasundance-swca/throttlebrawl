@@ -4,8 +4,10 @@ scratch/
 local/
 .cache/
 
-# Agent working state and logs
-.claude/
+# Agent working state and logs (local permissions and worktrees stay ignored;
+# only the saved run template in .claude/workflows/ is committed)
+.claude/*
+!.claude/workflows/
 *.log
 
 # Build output and dependencies

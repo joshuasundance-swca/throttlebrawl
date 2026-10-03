@@ -1,6 +1,6 @@
 # throttlebrawl: product spec
 
-> **In plain words.** throttlebrawl (a working codename) is a browser game you can open on a phone or a computer. You ride a motorcycle in illegal road races, and you punch, kick and swing stolen weapons at rival riders at speed, while dodging traffic and cops. The best moment in the game is landing a hit at speed, such as kicking a rival into an oncoming truck. The races belong to a traveling outlaw circuit that tours US regions, starting with the Florida Keys. A small career of about ten events earns you cash for better bikes. The humor is deadpan and a little strange, never corny. The game has to feel good, look distinctive, run smoothly on a budget Android phone, and have real personality before it launches publicly. This document says what the game is. Other docs in this folder say how it is built and in what order.
+> **In plain words.** throttlebrawl (a working codename) is a browser game you can open on a phone or a computer. You ride a motorcycle in illegal road races, and you punch, kick and swing stolen weapons at rival riders at speed, while dodging traffic and cops. The best moment in the game is landing a hit at speed, such as kicking a rival into an oncoming truck. The races belong to a traveling outlaw circuit that tours US regions, starting with the Florida Keys. A career that climbs through each region's road map earns you cash for better bikes. The humor is deadpan and a little strange, never corny. The game has to feel good, look distinctive, run smoothly on a budget Android phone, and have real personality before it launches publicly. This document says what the game is. Other docs in this folder say how it is built and in what order.
 >
 > It is inspired by Road Rash (EA, 1991–2000), and it puts its own spin on things.
 
@@ -85,6 +85,8 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Side choice | Drag off the attack button left or right to pick the side. | [decided] |
 | Kick | Swipe **down** on the attack button. | [decided] |
 | Kick direction | Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you ride up behind someone (directional swipe)". A kick swipe leaning down-left or down-right kicks to that side; a swipe **up** is the straight kick at the rider directly ahead, with a longer forward reach. Keyboard: hold U or O with K for a side kick, I for the straight kick. Gamepad: Triangle with Square or Circle, L1 for the straight kick. | [default] |
+| Wheelie | Double-tap the throttle to pop a wheelie, then balance it by thumb height on the throttle: too high loops out, too low drops the front. A wheelie into a car's hood launches you into a backflip jump (playtest 3, 2026-10-03: "if you wheelie into the hood of a car it should launch you up into a jump doing backflips"). The pop needs at least 0.3 throttle, and the trunk of the car ahead launches too. | [decided] for the double-tap, the balance and the hood launch; [default] for the 0.3 floor and the trunk |
+| Drift | Braking hard into a hairpin at speed drifts, as "a first class experience" (playtest 3, 2026-10-03): a drift meter with style cash that chained corners multiply, an exit boost, smoke, skid marks, knee down and a camera lean, plus drift career events. | [decided] |
 | Held weapon | Swings with the same attack button; the button's icon changes. | [default] |
 | Weapon steal | The same attack button, timed. See [Combat](#combat). | [decided] |
 | Tilt steering | An option, with a sensitivity slider and recalibration at race start. | [decided for the option; default for the slider and recalibration] |
@@ -166,6 +168,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - The maintainer also remembered a "dodge to the side and then come back and grab it" move. It isn't confirmed by the manuals, and it isn't in v1. It stays on the [idea shelf](#idea-shelf). [default]
 - Rivals use weapons and steal them from you the same way. [decided]
 - **Damage is health only.** When your health runs out, you are knocked off. The bike can't be destroyed. [decided]
+- **Knockdowns take a few hits, and brawls are shorter and more frequent** (interview, 2026-10-02: "it should take a few hits even if they are kicks. Weapons should do more"). [decided] About 3 kicks, 5 punches or 2 weapon hits knock a rider down. [default] Playtest 3 (2026-10-03) found that "fights feel right". [decided] Within a region, fights climb gently: about 10% easier to knock down at its first tier and about 20% harder by its last ("Gentle climb", playtest 3). [decided] The numbers are sliders. [default]
 - Health slowly recovers when you're out of combat, the way the originals let you "back off until your energy is restored". [default]
 - **Feel**: hit-stop of about 40–80 ms on clean hits, knockback, camera impulse and a meaty sound. All of these are on the tuning panel. [default] Hit-stop and takedown slow motion fire only on hits and takedowns that involve the player, dealt or received. Rival-vs-rival hits get sound and knockback only, and slow motion has a cooldown (about 8 s) so a pile-up doesn't chain it. [default]
 - **Takedowns**: a rival counts as taken down when your hit causes them to go down within about 2 seconds, whether into traffic, into scenery, or by running out of health. [default] Takedowns pay bonus cash. [decided] Big takedowns (into traffic or scenery) trigger a short slow-motion beat of about 0.6–1.0 s that stays in the flow of play and is not a cutscene. It can be turned off. [decided for the in-flow slow motion and toggle; default for the duration]
@@ -176,6 +179,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - The roster shape is **4 circuit regulars who travel with the tour, plus 4 locals per region**, and always local cops. The maintainer said it "sounds right". [decided]
 - The eight drafted rivals are all liked: Deacon Vane, Dial-Up, Chad Speedwell and Kevin from Accounting as regulars; Tammy Two-Stroke, The Mayor, Mother Rust and Sgt. Pruitt (a local cop) as Florida locals. [decided for the eight; default for who is a regular and who is local]
 - Rivals are data plus content packs, so adding a rival needs no code change. [decided]
+- **Visible personalities** (interview, 2026-10-02, after "Rivals feel samey"): moderate stat differences, shown through how each rival rides and fights, with signature riding and fighting moves. [decided]
 - **Race field.** The player plus 7 named racers in tiers 1 and 2, and up to the player plus 9 in tier 3 and the boss race, crew included. Cops are extra, at most 2 on screen. Sgt. Pruitt is a cop and never races, which is why 7 named racers exist among the "about eight". The performance bar is measured at the largest field. [default]
 - **Pace comes from the event, not the bike.** A rival's race pace comes from the event tier and the rival's style, not from the bike it rides. A rival's bike class is looks, sound and small handling quirks, so Kevin's scooter still keeps up with the pack. Novelty bikes are slow only for the player, in free riding and in events flagged as novelty. [default]
 
@@ -201,7 +205,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - You can fight cops like any other rider. [decided]
 - Cops carry batons and tasers, which you can steal. The Saturn manual tip says the easiest way to get a weapon is to take one from a cop. [default]
 - Cops show up through a mix of three triggers, with some randomness: more cops at higher tiers, some cops in every race, and cops summoned by chaos. [decided]
-- Chaos inside a race (takedowns, wrecks you cause, hits near a cop) fills a hidden meter that makes a cop spawn more likely. [default]
+- **A patrol in every race, plus a heat meter** (interview, 2026-10-02: "Mix of 2 and 1 (reliable but rich)", after playtest 2's "I think I've only ever encountered cops once"). One or two cops patrol every race. Chaos (takedowns, wrecks you cause, hits near a cop) raises heat, which brings more cops and then a roadblock; you lose them by riding clean or going off-road. [decided] The numbers are in [M4.md](./milestones/M4.md#cops-3--the-law). [default]
 - Every region has its own local law. [decided] In the Keys that means county deputies, with state troopers on the highway, maybe marine patrol. [default for who patrols where]
 - The law is a mix of real agency structure under parody names, plus fully parody forces; no real agency names, badges or logos. The maintainer said "maybe a mix of all". [default]
 - Sgt. Pruitt is the named local cop in region 1. [decided]
@@ -219,6 +223,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
   - Fog or draw distance never hides oncoming traffic inside reaction range.
   - A first small contact (a side brush or a graze) wobbles you; you crash only once you're already unstable. A solid head-on or rear hit throws you off, with no bounce. [decided for the solid hit: playtest 1, 2026-09-30]
   - **Reaction range** is closing speed times about 2 seconds (a tuning value). At the top bike's 160 mph against a 55 mph oncoming car, closing speed is about 96 m/s, so the range is about 190 m. Fog and draw distance for the oncoming lane are set from the fastest bike in the event.
+- **Traffic manners** (playtest 3, 2026-10-03: cyclists "should arguably get out of the way off the sidewalk"): cyclists and pedestrians get out of the way instead of causing collisions. [decided] A clipped cyclist topples onto the sidewalk and you only wobble. [default]
 - Florida examples: rental scooters, RVs, boat trailers, golf carts and gators. Wasteland oddities include a boat abandoned in a lane and a mobile home rolling with no truck. More ideas are in [the tone guide](./tone-guide.md#region-flavor). [default]
 - Near-misses pay cash. [decided]
 
@@ -245,11 +250,20 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - Going over a bridge rail ends in a funny splash (a gator or a fisherman reacts), a time penalty and a respawn on the bridge. There is no swimming. [decided]
 - Knocked-off rivals tumble, get up and shake a fist, and a grudge is noted. It is never gory or lingering. [decided]
 - A cop knocking you off means you're busted; crashing on your own near him does not (interview, 2026-10-02). [decided]
+- Landings are forgiving (interview, 2026-10-02: "Forgiving landings", after playtest 2's "It's too easy to crash after a jump"). [decided]
 
 ## Career
 
-- About **10 events across 3 tiers**, ending in a **boss grudge race**. That's roughly 1–2 hours of play. [decided]
-- v1 has four event types, all on the one coastal track. [decided] Their rules:
+- The first career was about **10 events across 3 tiers**, ending in a **boss grudge race**, roughly 1–2 hours of play. [decided] (2026-09-29) Playtest 3 found it too short and too easy, so it grows (below).
+- **The map is the career** (interview, 2026-10-02: "Network map, tiered" and "The map"). Each region's road network is its career map, with events on its roads across all routes and all event types. Wins open nearby roads and the next tier, ending in the region's boss. You claim roads, find secrets and shortcuts, and each region has a set-piece finale. Later free roam uses the same map. [decided]
+- **Progression with struggle** (playtest 3, 2026-10-03: "I won a few easy races and then bought the fastest bike. No struggle, no increasing difficulty"; the answer "All three"). [decided]
+  - Tiers gate the garage: each tier unlocks the next bike class, and its boss must be beaten first.
+  - The field levels up every tier: tier 3 rivals ride bikes as good as your best.
+  - Money is gentle but tighter: each new bike takes about 3–4 races of winnings, with smaller purses, pricier bikes and repairs after crashes.
+- **Longer, then seasons** (playtest 3: "Longer + seasons"): more tiers per region with real struggle; after the career, Season 2 and later bring a harder field and remixed events, with the garage carried over. Season 2 runs on the finished save, and a "New career" button starts over while keeping the old save as a backup code ("Both"). [decided]
+- **Regions in order** (playtest 3: "In order"): the Keys first, the Pacific Northwest after the Keys boss, San Francisco after the Pacific Northwest boss. Places already raced stay open. [decided]
+- **Between races** (interview, 2026-10-02: "all of the above in whatever mixes make sense and actually work well"): stream chat, rival texts and taunts, a local newspaper with the tabloid results, and side gigs. The streaming outfit is a quiet frame: between races, plus at most one producer ask during a race. [decided]
+- The four event types are below; playtest 3 adds drift events (hairpin races and mountain switchbacks, see [Controls](#controls)). [decided] Their rules:
 
 | Event type | Win condition | Tag |
 |---|---|---|
@@ -259,7 +273,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 | Grudge match | One-on-one with a named rival; beat them to the line or knock them down a set number of times | [decided for the type; default for the rule] |
 
 - For race rules, the maintainer picked "Objectives mix" over a single top-3 rule. So each event states its own objective. [decided]
-- A proposed event list [default]:
+- The first proposed event list [default], from before the map career (each region's career file now places its events on the region's roads, see [the career format](./content-packs.md#career)):
 
 | # | Tier | Event | Time of day |
 |---|---|---|---|
@@ -293,7 +307,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 
 ### Bikes
 
-- Three bikes, each a clear step up. [decided]
+- Three bikes, each a clear step up [decided] (2026-09-29), grown to **six bikes for sale** (playtest 3, 2026-10-03: "Six bikes"): a Sport 600, a Grand Tourer 1100 and a Supersport 900 join them, a new bike every second tier, each about 3–4 races of winnings. [decided]
 - Slow bikes too. The maintainer said "kinda all of these but also to enjoy the scenery". That covers a slow starter bike for readable fights; scooters, mopeds and dirt bikes; a lower-overall-speed option; and riding for the scenery. [decided]
 - The proposed lineup [default]:
 
@@ -330,10 +344,10 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 |---|---|---|
 | Place badly | You don't meet the event objective and don't advance. | [decided] |
 | Wreck (health runs out, or you crash) | You're knocked off, then run back to the bike, which you can skip. You lose time, not the race. | [decided] |
-| Busted | You go down near a cop. The race ends for you, and you pay a fine. | [decided] |
+| Busted | A cop knocks you off (interview, 2026-10-02; before, any fall near a cop). The race ends for you, and you pay a fine. | [decided] |
 | Broke | You can't pay a fine. In Road Trip, the default, the fine is capped at the cash you have, so this never ends a career. | [decided] |
 
-The bike can't be destroyed, so there are no repair bills. In the 1994 original, running out of cash for a fine *or* a repair bill meant "you lose and have to start over". Here, fines are the only thing that can drain you.
+The bike can't be destroyed. Playtest 3 (2026-10-03) added repairs after crashes to tighten money [decided]; Road Trip's $0 floor covers them too, so they can't knock you out either [default]. In the 1994 original, running out of cash for a fine *or* a repair bill meant "you lose and have to start over". Here, only fines and repairs can drain you.
 
 ### How other decisions push on this
 
@@ -369,14 +383,19 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 - **Road network.** One connected network: roads join at junctions, you can free-roam on them among traffic, bikers and cops, and races are routes through that network. [decided]
 - The network is designed to load in chunks, so a large real region can fit later. [decided]
 - **Free roam.** The network supports riding freely from milestone 1. A playable free-roam mode and world race markers come after v1; milestone 1 starts events from menus only. [default]
-- Free-roam riding off the roads isn't chosen. The crash physics leaves that door open, and that's all. [default]
+- **Off-road** (interview, 2026-10-02: "Anywhere with ground", then "2 and 1"): a ridable ground band beside most roads (dirt, sand, grass and gravel, each with its own grip and speed; water, ferns and kerbs are the real edges; some fences smash), plus marked dirt shortcuts such as sandbars, fire roads and clear-cuts. Open hillsides, real terrain, open areas and free roam come later. [decided]
+- **Barriers** (interview, 2026-10-02: "Both"): no invisible wall where ground is drawn; rails only on bridges and drops; posts only on highways. [decided]
+- **Roads** (interview, 2026-10-02): branching roads, junction choices in races, map-based networks, U-turns, and 4–6 lane highways with lane splitting. [decided]
+- **Real places** (playtest 3, 2026-10-03: "more variety and real world content in the races"): real landmarks, real road layouts and real local life, starting with Duval Street, downtown Portland and the Golden Gate. Brands and businesses stay invented. [decided] In Portland, the stag sign's spot gets an invented neon leaping salmon reading "STILL RAINING", marked new and vetoable (playtest 3). [decided] The Golden Gate is called the Golden Gate, with no fall or rail jokes, and stays out of the logo. [default]
+- **Region firsts** (interview, 2026-10-02). San Francisco: downtown towers first (a four-lane avenue between invented AI-startup towers, cross traffic, cable cars only on the steep cable-line streets), then the waterfront, Chinatown and North Beach, and the Mission. The Keys: distinct keys first (a fishing village, a resort strip, a junkyard key, a party key), then sandbars, mangrove back roads and a secret island. [decided] Every region's scenery, traffic, people, signs and radio are its own, never a reskin (the maintainer, 2026-10-01b: "I want unique regional flavor everywhere"). [decided]
+- **The Seven Mile Bridge** (playtest 3: "Ramp hops + real gap"): real geometry and length (about 11 km), with the old bridge running beside the new one; ramp trucks on repair platforms hop about 30 m between the bridges, and the real 80 m missing span is the big jump, where a miss is a splash and a respawn on the highway. Rivals and cops stay on the highway. [decided] Ramp trucks may also move, with the static ones leading to shortcuts (playtest 3: "The ramp trucks could be in motion and the static one could be used to get to shortcuts or something"). [default]
 - **Cruise mode** is on the idea shelf. [decided] Asked whether that meant a relaxed, race-free ride or the cruise-control button, the maintainer answered "Both": the two stay together on the shelf, and neither is built before a playtest asks for it. [decided] (cockpit answer, 2026-09-29)
 - The v1 track starts hand-authored and Keys-flavoured (bridges, causeways, invented curves and hills). Real Keys geometry may be mostly straight and flat *(unverified)*, so the fun comes from bridge humps, traffic, junction shortcuts and authored edits. [default]
 - A GIS side-quest lane builds the real Overseas Highway (US 1) from public data in parallel from M1, in the same road format as the hand-built track. If the real road is fun, it replaces the hand-built track in M2. [decided] Whether it is fun is the maintainer's call: they ride both, their pick becomes the career's road, and the other stays in the game as an alternative route. [decided] (cockpit answer, 2026-09-29) How usable the Keys data is has not been probed yet *(unverified)*.
 - Keys realism is evocative, not literal; real names are fine as flavor. [decided]
 - Real roads come from GIS data. They're curated, proved step by step, and credited properly. Tracks should mix "recognisably real" with "tuned for fun"; the maintainer noted this "may take more thought". [decided]
 - More real data later: elevation, land cover, traffic density and landmarks. [decided]
-- Jumps and ramps are in v1, including one ramp shortcut on the track. Tricks come later. [decided]
+- Jumps and ramps are in v1, including one ramp shortcut on the track. [decided] Flips are in (interview, 2026-10-02: "I love the idea of doing flips"), and so is the wheelie's hood-launch backflip (playtest 3, see [Controls](#controls)). [decided] A Tony Hawk-style trick-combo meter stays on the shelf. [default]
 - Every event sets a time of day. Weather comes later. [decided]
 - The maintainer wants "a bit of all these" for story, endings, multiplayer and easter eggs: "creative endeavours are rarely a straight line". [decided] The v1 story runs up to the boss grudge race, then a next-region teaser and free play. [decided]
 
@@ -390,14 +409,17 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 - Don't reproduce Road Rash's HUD, dashboard, characters or track names. Our bikes are fictional. [default]
 - The camera is a low chase cam. [decided] Far chase, helmet cam, cinematic replay cameras and look-back all come too, staged by value and complexity. [decided]
 - Assets start as code-made shapes, Blender scripts and synthesized sound. AI-generated art, voices and music are a labelled side quest. [decided] Running Blender tooling as its own side-quest lane is a proposal. [default]
+- **Real models now** (interview, 2026-10-02, after playtest 2's "The riders and bikes are blocky and uninteresting"): real 3D riders with real proportions, loud costumes, limbs and flapping clothes, and real bike silhouettes per rival. [decided]
+- **Stylized models plus small atlases** (playtest 3, 2026-10-03: "Mix: models + small atlases"): models with richer shapes, plus small baked texture sheets for facades, signs and murals. Codex builds and optimizes both. [decided]
+- No crack, rust or grime textures (playtest 1c, 2026-09-30: "Not big on the cracked, rust, grime"). [decided]
 
 ## Audio
 
 - Everything matters: engine roar and pitch, meaty hits with brief freeze frames, crash carnage, voices and shouting, traffic and the environment. [decided]
-- The engine sound is synthesized in code first. [decided] It's built from rich harmonics, because phone speakers lose low frequencies; test it on the phone speaker itself. [default]
+- The engine sound is synthesized in code first. [decided] It's built from rich harmonics, because phone speakers lose low frequencies; test it on the phone speaker itself. [default] It is "Richer and quieter" (interview, 2026-10-02, after "Engine monotonous and maybe too loud"). [decided]
 - Music: a single original, gritty 90s-style score in milestones 1 and 2. [decided]
 - Then **radio stations by genre, plus regional stations**; for the Keys, surf and rockabilly come first. [decided] Which milestone brings radio is a proposal. [default] A station is data: a genre, region tags and a playlist of manifest tracks. [default]
-- The station tracks come from **both** routes: songs agents write as code (like the engine sound) and AI-generated songs, labelled as AI-generated. The maintainer cuts the tracks they don't like with "cut this", the same way as rival lines. [decided] (cockpit answer, 2026-09-29) If neither route produces tracks good enough to keep, radio moves after v1 and the single score stays. [default]
+- **More code-made music only, for now** (interview, 2026-10-02: "More code-made music only"): more stations, each region with its own, plus a hidden pirate station per region; no DJ and no AI songs. [decided] This replaces, for now, the cockpit answer of 2026-09-29 that took AI-generated songs as a second source. The maintainer cuts tracks they don't like with "cut this", the same way as rival lines. [decided] "The music is impressive", so the composer's direction stays. [decided]
 - Radio DJ lines come later, together with the AI barks. Music that rises with the action comes later too. [decided]
 - Genres that appeal, tentatively (the maintainer said "idk"): grunge, surf and rockabilly, stoner or desert rock, and swamp blues. [default]
 - No licensed music. [default] Research says the 3DO and PS1 versions played their licensed grunge in menus and videos, with an original score during races *(unverified)*.
@@ -412,6 +434,9 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 - **What's new since you last played.** Each device remembers the last build it saw and shows only what changed since then, as a card. [decided]
 - A full changelog page in the menu, with the same notes in the GitHub releases. [decided]
 - The HUD shows speed, position, your health, the nearest rival's health and a minimap. Each piece can be shown, hidden or moved, with Full, Classic and Minimal presets. [decided for configurability; default for the list]
+- **Nothing covers the road ahead or overlaps another HUD piece** (playtest 3, 2026-10-03: "The race objective sits over the heat meter. The black and white text pop-ups block the actual game."). Pop-ups never get bigger. [decided]
+- **One top ticker** (playtest 3: "Top ticker strip"): pop-ups run one line at a time along the top edge and fade fast; takedown names flash briefly and small. [decided] Cash pop-ups merge into it. [default]
+- **The network map is on the pause screen only**, with nothing permanent on the HUD (interview, 2026-10-02: "Maybe just map on pause"). The keyboard controls also show on the pause screen only, never the HUD (playtest 1, 2026-09-30: "don't clutter the in-game HUD with those controls"). [decided]
 - Save on the device, plus an export code. There's an import screen for pasting a code. [decided]
 - A **"copy debug report"** button gathers the build ID, the device and GPU description, the settings, recent errors, veto flags and the recent input recording. Nothing is sent anywhere automatically. [default]
   - The report has two parts: a short text summary (2 KB at most) copied to the clipboard, and the full report (recording, events, veto flags) saved as a `.txt` file through the phone's share sheet, with a plain download as the fallback. The file can then be attached in chat. Clipboard size limits on Android are *(unverified)*. [default]
@@ -441,7 +466,7 @@ The bike can't be destroyed, so there are no repair bills. In the 1994 original,
 
 - One great track, the Keys coastal highway, with the full loop: ride, fight, crash, get busted, earn, buy, advance, and beat the boss. [decided]
 - More regions ride alongside it, crude first: the Pacific Northwest and San Francisco ("Pnw and sf first then others"; playtest 1c, 2026-09-30). [decided] They keep the game fun and prove the engine works beyond the Keys; the launch bar below is still measured on the Keys. [default]
-- The eight rivals with personalities, grudges and barks; cops and busts; the career of about 10 events in 4 event types; cash; 3 bikes plus slow bikes; paint; interludes. [decided]
+- The eight rivals with personalities, grudges and barks; cops and busts; the career in 4 event types, on each region's map (see [Career](#career)); cash; six bikes for sale plus slow bikes; paint; interludes. [decided]
 - Takedowns with toggleable slow motion; jumps and one ramp shortcut; traffic, pedestrians, animals and oddities. [decided]
 - Touch and keyboard controls, with gamepad support around milestone 2. [decided]
 - Settings, accessibility basics, the tuning panel, the what's-new card, the changelog, save and export. [decided]
@@ -478,15 +503,16 @@ v1 will not have any of these. Several are on the [idea shelf](#idea-shelf), and
 | Ads and in-app purchases | [decided] |
 | Live AI (a radio DJ, live commentary, live barks) | [default] |
 | Stats and telemetry | [default] |
-| Riding off the road network | [default] |
-| Tricks and a combo meter | [decided] |
+| Open areas, real terrain and free roam off the road network (the ground band and dirt shortcuts are in, interview, 2026-10-02) | [decided: later] |
+| A trick-combo meter (flips, the wheelie launch and the drift meter are in, interview 2026-10-02 and playtest 3) | [decided] |
 | Heat and grudges that carry across sessions in free roam (a career save does keep grudges, [decided] cockpit answer, 2026-09-29) | [decided: later; default: not in v1] |
 | A playable cop mode | [decided: later; default: not in v1] |
 | Deep crews, factions and reputation | [decided: later; default: not in v1] |
 | Bike parts and customization beyond paint | [decided] |
 | Weather | [decided: later; default: not in v1] |
-| New race types, beyond the classic race and the career's event types ("These can wait until later", playtest 1c, 2026-09-30) | [decided: later] |
-| Dynamic music; radio DJ lines | [decided: later; default: not in v1] |
+| New race types, beyond the classic race, the career's event types and the drift events of playtest 3 ("These can wait until later", playtest 1c, 2026-09-30) | [decided: later] |
+| Dynamic music; radio DJ lines; AI-generated songs ("More code-made music only", interview, 2026-10-02) | [decided: later; default: not in v1] |
+| The Rerun: your last attempt rides in the field as a rival you can punch (interview, 2026-10-02: "Later") | [decided: later] |
 | Cruise mode; the cruise-control button (both on the shelf, cockpit answer, 2026-09-29) | [decided] |
 | Player mods beyond the content-pack format | [decided] |
 | Gore | [decided] |
@@ -502,8 +528,6 @@ Ideas wait here until a playtest earns them a place. Not now doesn't mean never.
 
 - **Game ideas** [decided]:
   - a Tony Hawk-style combo meter
-  - Need for Speed-style heat and pursuit
-  - tricks and flips
   - Mad Max vehicle weapons
   - Hades-style rival memory and meta-progression
   - a gang or faction system
@@ -512,7 +536,7 @@ Ideas wait here until a playtest earns them a place. Not now doesn't mean never.
   - Crazy Taxi and GTA-style side jobs
   - photo mode
   - bike parts
-  - riding off-road
+  - (left the shelf: heat and pursuit, flips and riding off-road, interview, 2026-10-02; the wheelie and drift, playtest 3)
   - cruise mode, together with the cruise-control button (the maintainer's "Both", cockpit answer, 2026-09-29)
 - **AI and online** [decided]:
   - an AI radio DJ that reacts to where you're riding
@@ -548,7 +572,7 @@ The same round also settled items this spec carries: the frame-rate priority (sm
 
 This section lists sources; it makes no design choices.
 
-- Maintainer decisions come from the September 2026 interview and the blueprint playback page, which the maintainer said "mostly looks right".
+- Maintainer decisions come from the September 2026 interview and the blueprint playback page, which the maintainer said "mostly looks right", and from the phone playtests and their interviews, kept word for word in [docs/playtests/](./playtests/README.md).
 - Weapon-steal wording: the Road Rash 3DO manual (1994), archived at `https://archive.org/details/Road_Rash_1994_Electronic_Arts_US`. The quote was checked against that manual's text.
 - Busting, fines and "back off to recover": the 3DO, Sega CD and Saturn manuals, as summarized in the research notes.
 - Touch-control precedents and web-platform facts: lane research. Where quotes weren't fetched first-hand, they are marked *(unverified)* above.
