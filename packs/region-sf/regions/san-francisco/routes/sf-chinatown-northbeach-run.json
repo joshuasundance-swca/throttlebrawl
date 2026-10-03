@@ -1,0 +1,32 @@
+{
+  "type": "route",
+  "id": "sf-chinatown-northbeach-run",
+  "name": "Chinatown & North Beach",
+  "network": "sf-chinatown-northbeach",
+  "start": { "road": "sf-cn-lantern-row", "s": 40, "dir": 1 },
+  "finish": { "road": "sf-nb-overlook-climb", "s": 360 },
+  "mainPath": [
+    "sf-cn-lantern-row",
+    "sf-cn-bell-grade",
+    "sf-cn-crossover",
+    "sf-nb-espresso-row",
+    "sf-nb-the-elbow",
+    "sf-nb-overlook-climb"
+  ],
+  "allowedRoads": [
+    "sf-cn-lantern-row",
+    "sf-cn-bell-grade",
+    "sf-cn-crossover",
+    "sf-nb-espresso-row",
+    "sf-nb-the-elbow",
+    "sf-nb-overlook-climb"
+  ],
+  "checkpoints": [
+    { "road": "sf-cn-bell-grade", "s": 300 },
+    { "road": "sf-cn-crossover", "s": 200 },
+    { "road": "sf-nb-espresso-row", "s": 400 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}
