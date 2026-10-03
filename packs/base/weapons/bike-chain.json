@@ -3,7 +3,7 @@
   "id": "bike-chain",
   "name": "Bike Chain",
   "category": "chain",
-  "behaviour": "melee.wrap",
+  "behaviour": "melee.yank",
   "tags": ["roadside"],
   "unarmed": false,
   "reach": { "sM": 2.0, "dM": 1.8 },
@@ -20,7 +20,7 @@
   "effects": [],
   "meta": {
     "status": "live",
-    "notes": "M4 weapons-2 head start: the chain (the weapon list is decided). The longest reach and the slowest wind-up of the roadside weapons; a landed hit wraps the target and drags some speed off them (the melee.wrap behaviour and the 'Chain drag' slider). Crude starting numbers, [default]. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\").",
+    "notes": "M4 weapons-2 head start: the chain (the weapon list is decided). The longest reach and the slowest wind-up of the roadside weapons; a landed hit wraps the target and drags some speed off them (the melee.wrap behaviour and the 'Chain drag' slider). Crude starting numbers, [default]. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\"). W-T (the pitch deck's #4, 'weapons with verbs'): it YANKS (melee.yank). The hit still wraps and drags, and it pulls the target across your line to the 'Chain yank past you' slider's distance (1.2 m) beyond it, so a rider you yank from his oncoming side comes out in the oncoming lane. knockback.lateralMps now only sets the hit's jolt.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

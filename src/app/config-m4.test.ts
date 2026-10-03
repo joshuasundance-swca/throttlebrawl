@@ -35,10 +35,28 @@ describe('buildSimConfig: weapons-2 fields reach the race', () => {
       stunTicks: 54,
       roadsideWeight: 0,
     });
-    expect(w['base:bike-chain']).toMatchObject({ behaviour: 'melee.wrap', roadsideWeight: 2 });
+    // W-T: the chain yanks (melee.yank, the wrap's drag plus a pull across your line).
+    expect(w['base:bike-chain']).toMatchObject({ behaviour: 'melee.yank', roadsideWeight: 2 });
     expect(w['base:driftwood-club']).toMatchObject({ durabilityHits: 10 });
     // No stun effect: no stunTicks key at all.
     expect('stunTicks' in (w['base:baton'] ?? {})).toBe(false);
+  });
+
+  it('spawn.regions keeps a local weapon off other regions’ roads (W-T), and empty means everywhere', () => {
+    const weightOf = (reg: ReturnType<typeof buildRegistry>, id: string) =>
+      build(reg).weapons.find((d) => d.contentId === id)?.roadsideWeight;
+    // The flamingo names the Keys, the region of the base pack's race: it lies on the road.
+    expect(weightOf(prod, 'base:lawn-flamingo')).toBe(2);
+    // Renamed to another region, it stays in the race (a rival could still carry it) but off the road.
+    const files = basePackFiles().map((f) => {
+      const json = f.json as { type?: string; id?: string; spawn?: Record<string, unknown> };
+      return json.type === 'weapon' && json.id === 'lawn-flamingo'
+        ? { ...f, json: { ...json, spawn: { ...json.spawn, regions: ['somewhere-else'] } } }
+        : f;
+    });
+    expect(weightOf(buildRegistry(files, { includeDrafts: false }), 'base:lawn-flamingo')).toBe(0);
+    // An empty list (the lead pipe's) is every region.
+    expect(weightOf(prod, 'base:lead-pipe')).toBe(3);
   });
 
   it('a release build carries the live baton, kept off the road', () => {
