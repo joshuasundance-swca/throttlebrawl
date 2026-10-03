@@ -88,6 +88,16 @@ export interface BridgePiece extends Base {
   humpM?: number;
   /** Missing spans, as [from, to] shares of the length (an old bridge with a span taken out). */
   gaps?: readonly (readonly [number, number])[];
+  /**
+   * Traffic crawling across (W-T, the horizon comes alive): this many lights each way, headlights
+   * one way and tail lights the other, sliding end to end and fading out at each end (none by
+   * default). A flat deck only: the lights ride at deck height and ignore a hump.
+   */
+  traffic?: number;
+  /** The head and tail lights' colours (default warm white and red). */
+  trafficColours?: readonly [string, string];
+  /** How fast the traffic crawls, m/s (default 15). */
+  trafficSpeedMps?: number;
 }
 
 export interface SkylinePiece extends Base {
@@ -117,7 +127,8 @@ export interface BlocksPiece extends Base {
 
 export interface VesselsPiece extends Base {
   kind: 'vessels';
-  style: 'container' | 'sailboat' | 'ferry' | 'tug';
+  /** `shrimper`: a shrimp boat with its outriggers down, trawling back and forth (W-T). */
+  style: 'container' | 'sailboat' | 'ferry' | 'tug' | 'shrimper';
   /** Either a scatter round a point (centre and radius) or round the network (bearings and
    * distances), `count` of them, placed by the race's seed ... */
   centre?: Pt;
@@ -135,8 +146,13 @@ export interface VesselsPiece extends Base {
 
 export interface CloudsPiece extends Base {
   kind: 'clouds';
-  /** "thunderhead" (a tower with an anvil), "bank" (a low flat cloud), "fog" (a rolling fog bank). */
-  style: 'thunderhead' | 'bank' | 'fog';
+  /**
+   * "thunderhead" (a tower with an anvil), "bank" (a low flat cloud), "fog" (a rolling fog bank),
+   * or "pour" (W-T): fog lying on a crest `path` at `baseM` and pouring down its far side toward
+   * `driftBearingDeg`, `driftM` out and `dropM` down, in tongues that slide down, thin into the
+   * haze and start again at the crest, one round every `driftPeriodS`.
+   */
+  style: 'thunderhead' | 'bank' | 'fog' | 'pour';
   /** A scatter around the network's centre: compass bearings (0 = north, clockwise) and distances. */
   bearingDeg?: readonly [number, number];
   distanceM?: readonly [number, number];
@@ -152,6 +168,50 @@ export interface CloudsPiece extends Base {
   driftM?: number;
   driftBearingDeg?: number;
   driftPeriodS?: number;
+  /** A pour's fall from the crest, m (default `baseM`, down to the sea). */
+  dropM?: number;
+}
+
+/**
+ * A freight train on a straight track (W-T, the horizon comes alive: "a freight train on the far
+ * bank"): it runs from the first end to the second at `speedMps`, thins into the haze near each
+ * end and comes round again. Place the ends where a train may run (along a shore, a gorge's foot).
+ */
+export interface TrainPiece extends Base {
+  kind: 'train';
+  path: readonly [Pt, Pt];
+  /** Freight cars behind the two locomotives. */
+  cars: number;
+  /** The track's height over the sea, m (default 6). */
+  baseM?: number;
+  /** Real speed, m/s (default 14). */
+  speedMps?: number;
+  /** The locomotives' colour, and the cars' (plain, logo-free). */
+  colour: string;
+  colours: readonly string[];
+}
+
+/**
+ * A small plane on a straight line (W-T: "a seaplane in the Keys"), from `altitudeM[0]` down (or
+ * up) to `altitudeM[1]`: with an end at 0 it comes in and lands on the water, thins into the haze
+ * and comes round again. Its line is `path`, or seeded by the race round the network (`bearingDeg`,
+ * `distanceM`, `lengthM`).
+ */
+export interface AircraftPiece extends Base {
+  kind: 'aircraft';
+  style: 'seaplane';
+  path?: readonly [Pt, Pt];
+  bearingDeg?: readonly [number, number];
+  distanceM?: readonly [number, number];
+  /** The seeded line's length, m (default 9000). */
+  lengthM?: number;
+  /** Height at the start and at the end of the line, m (default [220, 0]: a landing). */
+  altitudeM?: readonly [number, number];
+  /** Real speed, m/s (default 45). */
+  speedMps?: number;
+  colour: string;
+  /** The floats, the struts and the tail's stripe (default a dark blue). */
+  trimColour?: string;
 }
 
 export interface IslandsPiece extends Base {
@@ -199,6 +259,8 @@ export type Piece =
   | BlocksPiece
   | VesselsPiece
   | CloudsPiece
+  | TrainPiece
+  | AircraftPiece
   | IslandsPiece
   | LighthousePiece
   | MastPiece
@@ -235,6 +297,8 @@ export const PIECE_KINDS: readonly PieceKind[] = [
   'blocks',
   'vessels',
   'clouds',
+  'train',
+  'aircraft',
   'islands',
   'lighthouse',
   'mast',
@@ -296,6 +360,8 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
       blocks: ['area', 'count', 'heightM', 'sizeM', 'colours'],
       vessels: ['style'],
       clouds: ['style', 'baseM', 'topM', 'colour'],
+      train: ['path', 'cars', 'colour', 'colours'],
+      aircraft: ['style', 'colour'],
       islands: ['distanceM', 'count', 'widthM', 'heightM', 'colour'],
       lighthouse: ['at', 'heightM', 'colour', 'lanternColour'],
       mast: ['at', 'heightM', 'colour', 'bandColour'],
@@ -312,6 +378,19 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
       out.push(`${at}: vessels need a path, or a count with a centre and radiusM or distanceM`);
     if (q['kind'] === 'clouds' && !q['path'] && !(q['distanceM'] && q['count']))
       out.push(`${at}: clouds need a path or distanceM and count`);
+    if (q['kind'] === 'clouds' && q['style'] === 'pour' && !q['path'])
+      out.push(`${at}: a pour needs its crest as a path`);
+    if (q['kind'] === 'train' && (!Array.isArray(q['path']) || (q['path'] as unknown[]).length !== 2))
+      out.push(`${at}: a train's path is its track's two ends`);
+    if (q['kind'] === 'aircraft' && !q['path'] && !q['distanceM'])
+      out.push(`${at}: an aircraft needs a path or distanceM`);
+    if (q['kind'] === 'bridge' && q['traffic'] !== undefined) {
+      const tc = q['trafficColours'];
+      if (!(typeof q['traffic'] === 'number' && q['traffic'] >= 0 && q['traffic'] <= 60))
+        out.push(`${at}: traffic must be 0..60 lights each way`);
+      if (tc !== undefined && (!Array.isArray(tc) || tc.length !== 2 || tc.some((c) => !HEX.test(String(c)))))
+        out.push(`${at}: trafficColours must be two #rrggbb`);
+    }
     if (q['kind'] === 'floor' && Array.isArray(q['area']) && (q['area'] as unknown[]).length < 3)
       out.push(`${at}: a floor area needs at least 3 points`);
   }

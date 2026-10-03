@@ -89,6 +89,11 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('wideAspectFull', 'Phone cam: full at aspect', 2.1, 1.4, 2.8, 0.05, ''),
   decl('wideHeightM', 'Phone cam: extra height', 0.6, 0, 3, 0.1, 'm'),
   decl('wideDistanceM', 'Phone cam: extra distance', 1, 0, 5, 0.25, 'm'),
+  // Air that pays (the pitch deck's #13) [default]: "Over a crest the camera tips forward". In the
+  // air the aim drops and the camera rises, in full from airTipFullM over the road below.
+  decl('airTipM', 'Air: tip forward (aim lower)', 2.5, 0, 8, 0.25, 'm'),
+  decl('airLiftM', 'Air: camera lift', 0.8, 0, 3, 0.1, 'm'),
+  decl('airTipFullM', 'Air: full tip from height', 2, 0.25, 8, 0.25, 'm'),
   // camera-3 (docs/milestones/M3.md) [default]: the far chase and helmet views. Until ui adds a
   // settings row, the view is this slider (0 low chase, 1 far chase, 2 helmet) and the view key.
   decl('mode', 'View: 0 chase, 1 far, 2 helmet', 0, 0, VIEW_MODES.length - 1, 1, ''),

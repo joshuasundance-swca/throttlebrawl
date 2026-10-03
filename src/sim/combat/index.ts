@@ -1219,7 +1219,11 @@ function creditTakedowns(world: World, config: SimConfig, st: CombatState): void
     let by = st.lastAttackerId[victim.id] ?? -1;
     const hitAt = st.hitTick[victim.id] ?? -1;
     let chain = 1;
-    if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) {
+    // A knock-off another system made and named its rider for (the riders' landing hit, the pitch
+    // deck's #13): that rider is credited, as for combat's own finishing hit.
+    const knocker = e.data['reason'] === 'knockedOff' ? (e.target ?? -1) : -1;
+    if (knocker >= 0 && knocker !== victim.id && world.movers[knocker]?.kind === 'rider') by = knocker;
+    else if (by < 0 || by === victim.id || hitAt < 0 || e.tick - hitAt > window) {
       // Domino credit: knocked off by a flying body whose own fall someone was credited with.
       const body = e.data['cause'] === 'tumble' ? (e.target ?? -1) : -1;
       by = body >= 0 ? (st.fallBy[body] ?? -1) : -1;

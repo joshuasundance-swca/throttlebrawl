@@ -35,6 +35,10 @@
 //   reduce-shake setting its roll and FOV kick shrink toward `camera.helmetCalm`. Switching into or
 //   out of it is a hard cut (a blend would fly through the rider), and so is a takedown framing
 //   while in it. Off the bike (tumbling, on foot) it shows the low chase framing.
+// Air that pays (the pitch deck's #13, run W-T): "Over a crest the camera tips forward". In the air
+// the aim drops by `camera.airTipM` and the camera rises by `camera.airLiftM`, in full from
+// `camera.airTipFullM` over the road below, on the same springs, so the ground the bike will land
+// on (and render's chalk mark there) comes into view and the tip eases back on the landing.
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
@@ -161,6 +165,9 @@ export interface ChaseParams {
   wideAspectFull: number;
   wideHeightM: number;
   wideDistanceM: number;
+  airTipM: number;
+  airLiftM: number;
+  airTipFullM: number;
 }
 
 export interface ChaseRig {
@@ -323,6 +330,8 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
 
     let fx = hx;
     let fz = hz;
+    /** The rider's height over the road below, for the air tip (0 without the road handle). */
+    let overRoad = 0;
     let aimX = t.x + hx * lookAheadM;
     let aimY = t.y + lookHeightM;
     let aimZ = t.z + hz * lookAheadM;
@@ -331,6 +340,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       const hint = t.road && t.road.edge >= 0 && t.road.edge < road.edges.length ? t.road.edge : hintEdge;
       const pos = road.project(t.x, t.z, hint);
       hintEdge = pos.edge;
+      if (t.mode === 'Airborne') overRoad = t.y - road.toWorld(pos.edge, pos.s, pos.d, 0).y;
       const frame = road.frameAt(pos.edge, pos.s);
       const along = travelX * frame.tx + travelZ * frame.tz;
       // Tumbling (or sideways to the road), keep the last direction the rider was going.
@@ -382,10 +392,18 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     // The helmet's roll and FOV kick shrink under reduce-shake; its placement is not sprung
     // (helmetPlacement), so its distance and height goals stay the chase cam's, ready for a cut out.
     const share = helmet ? helmetShare() : 1;
+    // Air that pays: in the air the camera tips forward over the landing.
+    const tip =
+      overRoad > 0 && params.airTipFullM > 0
+        ? Math.min(1, overRoad / params.airTipFullM)
+        : overRoad > 0
+          ? 1
+          : 0;
+    aimY -= params.airTipM * tip;
     return {
       yaw: yawOf(fx, fz),
       distance: (far ? params.farDistanceM : params.chaseDistanceM) + wide * params.wideDistanceM,
-      height: (far ? params.farHeightM : params.heightM) + wide * params.wideHeightM,
+      height: (far ? params.farHeightM : params.heightM) + wide * params.wideHeightM + params.airLiftM * tip,
       side,
       aimX: aimX - t.x,
       aimY: aimY - t.y,

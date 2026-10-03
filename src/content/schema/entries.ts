@@ -4,6 +4,7 @@
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
 import {
+  GRUDGE_RULE_IDS,
   MEDIAN_KINDS,
   ROAD_SURFACES,
   ROUTE_BRANCH_KINDS,
@@ -144,6 +145,16 @@ export const SIGNATURE_MOVES = [
   'pivot',
 ] as const;
 
+/**
+ * A cop's pursuit habit (the pitch deck's #11, "Law with a personality", run W-T): the rider file's
+ * `law.habit.kind`. `relentless` closes in harder the longer he chases; `radar` waits at a long
+ * bridge and clocks you; `citations` never rams but writes you up while alongside, billed at the
+ * finish; `budget` chases on a pursuit budget that runs out. Its other fields are numbers the sim
+ * reads by name (docs/content-packs.md, "Rider"). The same list as the sim contract's LAW_HABIT_IDS
+ * (the app tests check they agree; content never imports the sim). [default]
+ */
+export const LAW_HABITS = ['relentless', 'radar', 'citations', 'budget'] as const;
+
 export const riderSchema = entry('rider', {
   role: z.enum(['rival', 'cop', 'player-preset', 'extra']),
   roster: z.enum(['regular', 'local']).optional(),
@@ -174,6 +185,10 @@ export const riderSchema = entry('rider', {
       bustDwellS: z.number().positive(),
       fineCash: z.number().int().min(0),
       pursuitSpeedScale: z.number().positive(),
+      habit: z
+        .looseObject({ kind: z.enum(LAW_HABITS) })
+        .catchall(z.number().nonnegative())
+        .optional(),
     })
     .optional(),
 });
@@ -221,6 +236,9 @@ const eventRulesSchema = z.looseObject({
   winBy: z.enum(['finish-ahead', 'knockdowns']).optional(),
   knockdownsToWin: z.number().int().min(1).optional(),
   grudgeStakes: z.number().int().min(0).optional(),
+  // Run W-T (the pitch deck's #14, "grudges with rules"): the rival's own rule, from core's closed
+  // list (`audit`, `bad-connection`, `collab`, `timber`). Only a grudge match may carry one.
+  rule: z.enum(GRUDGE_RULE_IDS).optional(),
 });
 
 /** The rules fields an event kind needs (W-Q contracts: the career's four event types). */
@@ -286,6 +304,12 @@ export const eventSchema = entry('event', {
         message: `a ${e.kind} event needs rules.${field}`,
       });
   }
+  if (rules['rule'] !== undefined && e.kind !== 'grudge-match')
+    ctx.addIssue({
+      code: 'custom',
+      path: ['rules', 'rule'],
+      message: 'only a grudge-match event plays by a rival rule (rules.rule)',
+    });
 });
 
 /**
@@ -475,6 +499,11 @@ export const crewSchema = entry('crew', {
     })
     .optional(),
   rivalCrews: z.array(refSchema).optional(),
+  // A law crew's END OF JURISDICTION sign (the pitch deck's #11, run W-T): its words, a headline
+  // then a kicker ("END OF JURISDICTION. Keys County wishes you well."). In a race whose heat
+  // meter runs, the region's first fielded cop's agency puts it up beside the road; crossing it
+  // cools the player's heat and the chasing cops pull over. [default]
+  jurisdiction: z.looseObject({ sign: z.string().min(1) }).optional(),
 });
 
 /**
