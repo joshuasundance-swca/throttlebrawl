@@ -47,9 +47,11 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 });
 
 /**
- * The derived verge per land tag [default]. The order is render's theme order (palms, mangrove,
- * commercial, beach, sawmill, urban, industrial, forest): when one side carries several land tags,
- * the first listed here wins, as the scenery does. Widths stay well inside render's 24 m land strip.
+ * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
+ * downtown, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
+ * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
+ * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
  * Run W-R (off-road) narrowed the palm land (8 to 4 m), the beach (10 to 6 m) and the sawmill yard
  * (10 to 6 m): solid scenery now stands clear of the ridable band, and playtest 1's parallax wants
  * the palms within 8 m of the road's edge, and the sawmill fits its land behind the yard. It also
@@ -58,6 +60,13 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
+  // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
+  // it); a plaza is wide open paving; the towers stand behind a sidewalk.
+  ['cross-street', band(20, 'shoulder', 'soft')],
+  ['cable-crossing', band(20, 'shoulder', 'soft')],
+  ['plaza', band(18, 'kerb', 'soft')],
+  ['towers', band(4, 'kerb', 'hard')],
   ['palms', band(4, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

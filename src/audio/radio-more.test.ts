@@ -16,6 +16,7 @@ import {
 } from './radio-compose-more';
 import { REGIONAL_PRESETS } from './radio-compose-regional';
 import { createRadioPlayer, genreOf, type RadioStation } from './radio';
+import { RADIO_BAND } from './radio-band';
 import { createMoreRig, crushCurve, MORE_GENRES, MORE_TRIM, pulseWave } from './radio-rigs-more';
 
 const layers = (c: Composition) => new Set(c.notes.map((n) => n.layer));
@@ -293,6 +294,7 @@ describe('the newer rigs', () => {
     const out = ctx.createGain();
     const player = createRadioPlayer(ctx as unknown as BaseAudioContext, out as unknown as AudioNode, {
       seed: 3,
+      band: RADIO_BAND,
     });
     player.select(station(genre, presetOf[genre]!));
     const before = ctx.nodes.length;

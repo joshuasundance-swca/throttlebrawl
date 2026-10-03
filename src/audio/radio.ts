@@ -10,17 +10,15 @@
 // `vetoed`; a track cut on this device (a `{contentRef, raceId, tick}` flag in the settings record)
 // is skipped too, at once, and `cutFlag` builds that flag for the playing track, so the pause
 // menu's station panel (ui-4) only has to call it and store the result.
-import {
-  composeTrack,
-  trackSeed,
-  seededRandom,
-  type Composition,
-  type ProceduralSpec,
-} from './radio-compose';
-import { createRegionalRig, REGIONAL_GENRES, type RegionalGenre } from './radio-rigs';
+//
+// The band itself (the composers and the rigs, radio-band.ts) is a lazy chunk (main-green-4,
+// 2026-10-02): this file holds only the stations, the playlists and the player's clock, and the
+// player is handed the band, or a promise of it, and stays silent until it arrives.
+import type { Composition, ProceduralSpec } from './radio-compose';
+import { isMore, isRegional } from './radio-genres';
 import { pirateSpotFrom, type PirateSpot } from './pirate';
-import { createMoreRig, MORE_GENRES, type MoreGenre } from './radio-rigs-more';
-import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
+import type { RadioGenre, RadioRig } from './radio-synth';
+import { seededRandom, trackSeed } from './radio-util';
 
 export interface RadioTrack {
   id: string;
@@ -159,15 +157,15 @@ export function playlist(station: RadioStation, seed: number, cut: ReadonlySet<s
   return list;
 }
 
-/** The composition a track plays (null when the preset is unknown). */
-export function composeFor(track: RadioTrack): Composition | null {
-  if (!track.procedural) return null;
-  const salt = track.procedural.params?.['seed'];
-  return composeTrack(track.procedural, trackSeed(track.ref, typeof salt === 'number' ? salt : 0));
+/**
+ * What plays the songs (radio-band.ts's RADIO_BAND, a lazy chunk): a track's composition (null
+ * when its preset is unknown) and the rig for a genre's band.
+ */
+export interface RadioBand {
+  compose(track: RadioTrack): Composition | null;
+  rig(ctx: BaseAudioContext, out: AudioNode, genre: RadioGenre): RadioRig;
 }
 
-const isRegional = (g: string): g is RegionalGenre => (REGIONAL_GENRES as readonly string[]).includes(g);
-const isMore = (g: string): g is MoreGenre => (MORE_GENRES as readonly string[]).includes(g);
 /** The band a station plays on: its `genre`, surf when the genre has no band of its own yet. */
 export const genreOf = (s: RadioStation): RadioGenre =>
   s.genre === 'rockabilly' || isRegional(s.genre) || isMore(s.genre) ? s.genre : 'surf';
@@ -204,6 +202,11 @@ export interface RadioPlayerOptions {
   seed: number;
   /** Loops of a track before the next one, [default] 3; a function follows a tuning slider. */
   loopsPerTrack?: number | (() => number);
+  /**
+   * The band (radio-band.ts's RADIO_BAND), or the promise of its lazy chunk: until it arrives the
+   * player keeps the tuned station but plays nothing, then starts the station's playlist.
+   */
+  band: RadioBand | Promise<RadioBand>;
 }
 
 const LOOKAHEAD_S = 0.25;
@@ -234,14 +237,13 @@ export function createRadioPlayer(
     return Math.max(1, Math.round((typeof l === 'function' ? l() : l) ?? 3));
   };
 
-  const rigFor = (g: RadioGenre) => {
+  /** The band, once its chunk is here (null until then: the tuned station waits, silent). */
+  let band: RadioBand | null = null;
+
+  const rigFor = (b: RadioBand, g: RadioGenre) => {
     let r = rigs.get(g);
     if (!r) {
-      r = isRegional(g)
-        ? createRegionalRig(ctx, out, g)
-        : isMore(g)
-          ? createMoreRig(ctx, out, g)
-          : createRadioRig(ctx, out, g);
+      r = b.rig(ctx, out, g);
       r.setFx(fx);
       rigs.set(g, r);
     }
@@ -252,11 +254,12 @@ export function createRadioPlayer(
   const load = (from: number) => {
     current = null;
     comp = null;
+    if (!band) return;
     for (let k = 0; k < list.length; k++) {
       const i = (from + k) % list.length;
       const track = list[i]!;
       if (!playable(track, cut)) continue;
-      const c = composeFor(track);
+      const c = band.compose(track);
       if (!c) continue;
       index = i;
       comp = c;
@@ -276,11 +279,25 @@ export function createRadioPlayer(
     for (const r of rigs.values()) r.setLevel(r === rig ? level : 0, at);
   };
 
+  /** The band arrived: the station tuned meanwhile starts its playlist from the top. */
+  const arrive = (b: RadioBand) => {
+    band = b;
+    if (!station) return;
+    rig = rigFor(b, genreOf(station));
+    fade(0, ctx.currentTime);
+    load(index);
+  };
+  const given = opts.band;
+  if ('then' in given) {
+    // A chunk that never arrives (offline before it was cached) leaves the radio silent.
+    given.then(arrive, () => undefined);
+  } else band = given;
+
   return {
     select(s) {
       station = s;
       list = s ? playlist(s, opts.seed, cut) : [];
-      rig = s ? rigFor(genreOf(s)) : null;
+      rig = s && band ? rigFor(band, genreOf(s)) : null;
       index = 0;
       on = false;
       fade(0, ctx.currentTime);

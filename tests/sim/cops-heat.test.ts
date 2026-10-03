@@ -88,9 +88,16 @@ describe('playtest 2: the heat meter in every region (the dev bot racing)', () =
 
   // Tier 3 in a real race: a rider three times as hot (cops.heatScale 3, a non-default) meets the
   // roadblock up the road, gets past it (round it, or into the back of it), and the race still ends.
+  // Off-road stays off here (ground.offRoad 0), as the cops' difficulty runner pins it: with it on
+  // (#343), the dev bot's turns on the loose verge cool its heat 3x as designed (HEAT.offRoadScale,
+  // its own unit test in heat-meter.test.ts), so on the Pacific Northwest's 3.96 km road seed 1 hit
+  // tier 3 only 22 m from the finish (no room for a block), seed 3 stopped at tier 2, and seed 2
+  // found all four cops already out either way (main-green-4, 2026-10-02). This test is about the
+  // roadblock, not the cooling.
+  const ROADBLOCK_TUNING = { 'cops.heatScale': 3, 'ground.offRoad': 0 };
   for (const choice of regionChoices(REG)) {
     it(`${choice.name}: a hot rider meets the roadblock, and the race still ends`, () => {
-      const runs = [1, 2, 3].map((seed) => heatRace(choice.eventId, seed, { 'cops.heatScale': 3 }));
+      const runs = [1, 2, 3].map((seed) => heatRace(choice.eventId, seed, ROADBLOCK_TUNING));
       process.stdout.write(
         `cops roadblock: ${choice.id}: ` +
           runs

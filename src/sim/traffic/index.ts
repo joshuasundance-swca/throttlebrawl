@@ -764,6 +764,7 @@ function trySpawn(
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) continue;
     if (nearestAnchor(anchors, u) > TRAFFIC.windowM) continue;
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
+    if (riderAt(world, st, u, t.lengthM)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
     // A parked oddity always takes the innermost lane: the fast lane, where there are two.
@@ -779,6 +780,22 @@ function trySpawn(
   }
   return false;
 }
+
+/**
+ * Whether any rider (the fairness rule's anchors are only the racers: a cop parked in his lot is
+ * not one) is within half a vehicle plus RIDER_SPAWN_CLEAR_M of u along the corridor. A beach
+ * cruiser once spawned on the shoulder right on top of the parked cop (W-Q, batch seed 39).
+ */
+function riderAt(world: World, st: TrafficState, u: number, lengthM: number): boolean {
+  for (const m of world.movers) {
+    if (m.kind !== 'rider') continue;
+    const p = toCorridor(st.corridor, m.pos);
+    if (p && Math.abs(p.u - u) < lengthM / 2 + RIDER_SPAWN_CLEAR_M) return true;
+  }
+  return false;
+}
+/** Room kept between a spawning vehicle's end and any rider, m. */
+const RIDER_SPAWN_CLEAR_M = 6;
 
 /**
  * The rest of a convoy (W-P): 1 to `convoy` - 1 more of the leader's kind (seeded), nose to tail

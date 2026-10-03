@@ -65,6 +65,10 @@ async function render(page: Page, args: Args) {
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
     };
+    // The radio's band is a lazy chunk in the game (radio-band.ts); handed in here, as the stations
+    // are, so the render hears the station from its first note.
+    const bandUrl = '/__audio-radio/radio-band.js';
+    const band = (await import(bandUrl)) as { RADIO_BAND: unknown };
     const rate = 44100;
     const ctx = new OfflineAudioContext(1, Math.round(a.dur * rate), rate);
     const audio = m.createAudio({
@@ -72,6 +76,7 @@ async function render(page: Page, args: Args) {
       offline: true,
       radioKeys: null,
       radioSeed: 7,
+      radioBand: band.RADIO_BAND,
       stations: m.stationsFromTable(a.table),
     });
     audio.setVolumes({ master: 1, music: a.music, effects: 0, voices: 0 }, false);
@@ -241,6 +246,10 @@ test('radio: the hidden pirate takes over near its spot and hands the radio back
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
     };
+    // The radio's band is a lazy chunk in the game (radio-band.ts); handed in here, as the stations
+    // are, so the render hears the station from its first note.
+    const bandUrl = '/__audio-radio/radio-band.js';
+    const band = (await import(bandUrl)) as { RADIO_BAND: unknown };
     const rate = 44100;
     const dur = 6;
     const ctx = new OfflineAudioContext(1, dur * rate, rate);
@@ -249,6 +258,7 @@ test('radio: the hidden pirate takes over near its spot and hands the radio back
       offline: true,
       radioKeys: null,
       radioSeed: 7,
+      radioBand: band.RADIO_BAND,
       stations: m.stationsFromTable(t),
     });
     audio.setVolumes({ master: 1, music: 1, effects: 0, voices: 0 }, false);
