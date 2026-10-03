@@ -1,8 +1,9 @@
 // The roadside smashables (run W-T, the pitch deck's #4 part 2, "the road fights back"), drawn from
 // SimSnapshot.smashables: lobster-trap stacks, mailbox rows, parking meters, a startup's pop-up desk,
 // cafe tables and an honour-system firewood stand. Code-made, flat-coloured boxes (every look
-// recolours them through the `prop` material; no textures, no grime), one instanced mesh per kind
-// standing, so a race costs a draw call per kind in view. A smashed one comes apart: each of its
+// recolours them through the `prop` material; no textures, no grime). Every standing one, of every
+// kind, is in one batched mesh (prop-batch.ts, run W-T's draw-call headroom; it was one instanced
+// mesh per kind), so a race costs one draw call for them all. A smashed one comes apart: each of its
 // boxes flies off as a piece of debris along whatever hit it, tumbles, and lies where it lands (one
 // more instanced mesh for all the debris). The debris runs on the sim's time scale, so it hangs in
 // the air through a takedown's slow motion.
@@ -21,6 +22,7 @@ import {
 import type { SimSnapshot, SmashableKind, SmashableSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
+import { PropBatch } from './prop-batch';
 
 type Parts = BoxPart[];
 const box = (
@@ -156,7 +158,9 @@ export interface SmashableCounts {
 
 export class Smashables {
   readonly root = new Group();
-  private readonly meshes = new Map<string, InstancedMesh>();
+  /** Every standing one, of every kind, in one mesh (run W-T's draw-call headroom). */
+  private readonly standing: PropBatch;
+  private readonly geometries = new Map<string, BufferGeometry>();
   private debrisMesh: InstancedMesh | null = null;
   private readonly pieces: Piece[] = [];
   private readonly broken = new Set<number>();
@@ -173,25 +177,22 @@ export class Smashables {
     private readonly random: () => number = Math.random,
   ) {
     this.root.name = 'smashables';
+    this.standing = new PropBatch(this.material(), 'smashable-standing');
+    this.root.add(this.standing.mesh);
   }
 
   private material(): Material {
     return this.look.material('prop', { vertexColors: true });
   }
 
-  private mesh(kind: string, needed: number): InstancedMesh {
-    let mesh = this.meshes.get(kind);
-    if (mesh && mesh.instanceMatrix.count >= needed) return mesh;
-    const capacity = Math.max(16, needed * 2, (mesh?.instanceMatrix.count ?? 0) * 2);
-    const geometry: BufferGeometry = mesh?.geometry ?? mergeBoxes(smashableParts(kind));
-    if (mesh) this.root.remove(mesh);
-    mesh = new InstancedMesh(geometry, this.material(), capacity);
-    mesh.name = `smashable-${kind}`;
-    mesh.frustumCulled = false;
-    mesh.count = 0;
-    this.meshes.set(kind, mesh);
-    this.root.add(mesh);
-    return mesh;
+  /** A kind's merged boxes, made once. */
+  private geometry(kind: string): BufferGeometry {
+    let g = this.geometries.get(kind);
+    if (!g) {
+      g = mergeBoxes(smashableParts(kind));
+      this.geometries.set(kind, g);
+    }
+    return g;
   }
 
   private debris(): InstancedMesh {
@@ -297,25 +298,19 @@ export class Smashables {
     this.fly(dtWall * (snap?.timeScale ?? 1));
 
     const counts: Record<string, number> = {};
-    for (const [kind, mesh] of this.meshes)
-      if (!standing.has(kind)) {
-        mesh.count = 0;
-        mesh.visible = false;
-      }
+    this.standing.begin();
     for (const [kind, group] of standing) {
       counts[kind] = group.length;
-      const mesh = this.mesh(kind, group.length);
-      group.forEach((p, i) => {
+      const geometry = this.geometry(kind);
+      for (const p of group) {
         this.v.set(p.x, p.y, p.z);
         this.q.setFromAxisAngle(this.yAxis, p.heading);
         this.s.set(1, 1, 1);
-        this.m.compose(this.v, this.q, this.s);
-        mesh.setMatrixAt(i, this.m);
-      });
-      mesh.count = group.length;
-      mesh.visible = true;
-      mesh.instanceMatrix.needsUpdate = true;
+        this.standing.add(geometry, this.m.compose(this.v, this.q, this.s));
+      }
     }
+    // Rewritten only when one is smashed or the snapshot's window moves on.
+    this.standing.end();
     if (this.pieces.length > 0 || this.debrisMesh) {
       const mesh = this.debris();
       this.pieces.forEach((piece, i) => {
