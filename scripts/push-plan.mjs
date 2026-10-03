@@ -36,6 +36,7 @@ export function planPush(changed, exists) {
   if (config.length) {
     return { mode: 'full', tests: [], reason: `config or dependency change: ${config.join(', ')}` };
   }
+  if (!files.length) return { mode: 'skip', tests: [], reason: 'no changed files' };
   if (files.every((f) => DOCS.some((re) => re.test(f)))) {
     return { mode: 'skip', tests: [], reason: `${files.length} file(s), docs, notes and Markdown only` };
   }
