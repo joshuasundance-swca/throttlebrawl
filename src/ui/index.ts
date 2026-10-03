@@ -88,11 +88,13 @@ export type {
   CareerCallbacks,
   CareerResultView,
   CareerScreens,
+  CareerShowView,
   GarageBikeRow,
   GaragePaintRow,
   GarageView,
   TeaserView,
 } from './career-screen';
+export type { GigCard } from './career-show';
 export { HUD_ELEMENTS, hudStyle } from './placement';
 export { applySettingsChange, SETTINGS, settingValue } from './settings';
 export type { SettingId, SettingsChange, SettingValue } from './settings';
@@ -228,7 +230,7 @@ export interface GameUi {
 }
 
 /** The career screens' methods (their elements stay inside ui). */
-export type CareerUi = Omit<CareerScreens, 'map' | 'results' | 'teaser' | 'overlays'>;
+export type CareerUi = Omit<CareerScreens, 'map' | 'results' | 'teaser' | 'overlays' | 'pauseMap'>;
 
 export interface UiOptions {
   stampText: string;
@@ -1516,6 +1518,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       (id, cls, text, onClick) => button(id, cls, text, onClick),
     );
     hud.append(c.overlays);
+    // The pause screen's network map heads its cards (interview, 2026-10-02: "Maybe just map on pause").
+    pauseCards.prepend(c.pauseMap);
     // Under the pause screen, the busy line and the notices, like the other screens.
     settingsScreen.root.before(c.map, c.results, c.teaser);
     screens.career.push(c.map);
@@ -1528,7 +1532,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     for (const f of careerCalls.splice(0)) f(c);
   });
   const career: CareerUi = {
-    showMap: (v, g, t) => withCareer((c) => c.showMap(v, g, t)),
+    showMap: (v, g, t, s) => withCareer((c) => c.showMap(v, g, t, s)),
+    showPauseMap: (v) => withCareer((c) => c.showPauseMap(v)),
     showResults: (r) => withCareer((c) => c.showResults(r)),
     showTeaser: (t) => withCareer((c) => c.showTeaser(t)),
     prompt: (t) => withCareer((c) => c.prompt(t)),

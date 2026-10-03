@@ -5,7 +5,16 @@
 // grudge now), the next-region teaser, and two race overlays: a learn-by-riding prompt and the
 // event's objective under the position badge. app/ builds every view from src/career/ and handles
 // every tap through the callbacks; nothing here changes the career itself.
-import type { CareerView, MapPanel, NodeCard } from '../career';
+import type {
+  CareerView,
+  MapPanel,
+  NodeCard,
+  PauseMapView,
+  PaperView,
+  PosterView,
+  RivalText,
+} from '../career';
+import { gigNode, paperNode, posterNode, SHOW_CSS, textsNode, toDom, type GigCard } from './career-show';
 
 export interface CareerCallbacks {
   onRegion(regionId: string): void;
@@ -70,6 +79,18 @@ export interface CareerResultView {
   news: string[];
   /** The suggested next event's name, or null. */
   nextName: string | null;
+  /** The region's paper, its headline built from the race's biggest moment (run W-S). */
+  paper?: PaperView;
+  /** The rivals' texts after the race (run W-S). */
+  texts?: readonly RivalText[];
+}
+
+/** The career show on the map screen (run W-S): each event's poster, the side gig, the latest texts. */
+export interface CareerShowView {
+  /** By node id. */
+  posters: Readonly<Record<string, PosterView>>;
+  gig: GigCard | null;
+  texts: readonly RivalText[];
 }
 
 export interface TeaserView {
@@ -84,7 +105,11 @@ export interface CareerScreens {
   readonly teaser: HTMLElement;
   /** The race overlays (app/ shows them during a career race only). */
   readonly overlays: HTMLElement;
-  showMap(view: CareerView, garage: GarageView, tab?: 'map' | 'garage'): void;
+  /** The pause screen's network map (ui mounts it in the pause cards; hidden unless filled). */
+  readonly pauseMap: HTMLElement;
+  showMap(view: CareerView, garage: GarageView, tab?: 'map' | 'garage', show?: CareerShowView): void;
+  /** The pause screen's map with the player marked, or null to hide it. */
+  showPauseMap(view: PauseMapView | null): void;
   showResults(view: CareerResultView): void;
   showTeaser(view: TeaserView): void;
   /** A learn-by-riding prompt over the race, for a few seconds. */
@@ -186,7 +211,8 @@ export const CAREER_CSS = `
   #career-prompt { font-size: 13px; }
   #hud-objective { top: 8px; }
 }
-`;
+.career-show { display: flex; flex-direction: column; gap: 8px; }
+${SHOW_CSS}`;
 
 type ButtonFn = (id: string, cls: 'big' | 'small', text: string, onClick: () => void) => HTMLButtonElement;
 
@@ -216,7 +242,7 @@ const safeId = (s: string) => s.replace(/[^a-z0-9-]/gi, '-');
 const STATE_WORD: Readonly<Record<string, string>> = { won: 'WON', open: 'OPEN', locked: 'LOCKED' };
 
 /** One network as an SVG: roads by state, event pins (tap one to open its card), found secrets. */
-function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLElement {
+export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLElement {
   const [x0, z0, x1, z1] = panel.bounds;
   const pad = Math.max(40, 0.06 * Math.max(x1 - x0, z1 - z0));
   const w = Math.max(1, x1 - x0 + 2 * pad);
@@ -281,6 +307,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
   const head = el('div', { className: 'career-head' });
   const maps = el('div', { className: 'career-maps' });
   const detail = el('div', { className: 'career-detail', hidden: true });
+  const showBox = el('div', { className: 'career-show' });
   const tiers = el('div', { className: 'career-col' });
   const garageBox = el('div', { className: 'career-col career-garage', hidden: true });
   const msg = el('div', { className: 'career-msg', role: 'status' });
@@ -293,13 +320,14 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     el('div', { className: 'row' }, mapTab, garageTab),
     wallet,
   );
-  const mapBox = el('div', { className: 'career-col' }, tabs, head, maps, detail, tiers);
+  const mapBox = el('div', { className: 'career-col' }, tabs, head, showBox, maps, detail, tiers);
   const map = el(
     'div',
     { id: 'career', className: 'screen', hidden: true },
     el('div', { className: 'career-col' }, top, msg, mapBox, garageBox),
   );
   let view: CareerView | null = null;
+  let show: CareerShowView | null = null;
   let tab: 'map' | 'garage' = 'map';
   let openCard: string | null = null;
   const setTab = (t: 'map' | 'garage') => {
@@ -324,7 +352,9 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     ]
       .filter(Boolean)
       .join(' · ');
+    const poster = show?.posters[c.id];
     const kids: (Node | string)[] = [
+      ...(poster ? [toDom(posterNode(poster))] : []),
       el('h2', { textContent: c.name }),
       el('div', { className: 'facts', textContent: `${c.kindLabel.toUpperCase()} · ${facts}` }),
       el('div', { className: 'why', textContent: c.objective }),
@@ -492,10 +522,9 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
       el('h3', { textContent: `Bikes (${units})` }),
       ...bikeRows,
       el('h3', { textContent: 'Paint' }),
-      // Honest until render draws it: the paint is saved per bike, the race shows the old colours.
       el('div', {
         className: 'career-news',
-        textContent: 'Your paint is kept with each bike. The race draws it once the new bike models land.',
+        textContent: 'Your paint is kept with each bike, and rides with it.',
       }),
       ...paintRows,
       el('div', { className: 'row' }, plain),
@@ -537,6 +566,8 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
   const promptBox = el('div', { id: 'career-prompt', hidden: true, role: 'status' });
   const objective = el('div', { id: 'hud-objective', hidden: true });
   const overlays = el('div', { id: 'career-overlays' }, promptBox, objective);
+  // ---- The pause screen's map (run W-S; interview, 2026-10-02: "Maybe just map on pause") ------
+  const pauseMap = el('section', { id: 'pause-map', className: 'card', hidden: true });
   let promptTimer: ReturnType<typeof setTimeout> | null = null;
 
   let msgTimer: ReturnType<typeof setTimeout> | null = null;
@@ -551,9 +582,14 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     results,
     teaser,
     overlays,
-    showMap(v, g, t) {
+    pauseMap,
+    showMap(v, g, t, s) {
       view = v;
+      show = s ?? null;
       drawMap(v);
+      const gig = s?.gig ? toDom(gigNode(s.gig)) : null;
+      const texts = s ? textsNode(s.texts) : null;
+      showBox.replaceChildren(...(gig ? [gig] : []), ...(texts ? [toDom(texts)] : []));
       drawGarage(g, g.bikes[0]?.speed.endsWith('mph') ? 'mph' : 'km/h');
       setTab(t ?? tab);
       // Keep an open card open (a purchase, a region's roads arriving), else none.
@@ -594,12 +630,34 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           { className: 'career-col' },
           el('div', { className: 'title', id: 'career-results-title', textContent: r.title }),
           el('div', { className: 'career-tally', textContent: r.eventName }),
+          ...(r.paper ? [toDom(paperNode(r.paper))] : []),
           el('ul', { className: 'career-results-list', id: 'career-results-objectives' }, ...items),
           el('ul', { className: 'career-results-list', id: 'career-results-cash' }, ...ledger),
           ...r.news.map((line) => el('div', { className: 'career-news', textContent: line })),
+          ...[r.texts ? textsNode(r.texts) : null].flatMap((t) => (t ? [toDom(t)] : [])),
           el('div', { className: 'row' }, ...buttons),
         ),
       );
+    },
+    showPauseMap(v) {
+      pauseMap.hidden = v === null;
+      if (!v) {
+        pauseMap.replaceChildren();
+        return;
+      }
+      const fig = mapFigure(v.panel, () => undefined);
+      fig.querySelector('figcaption')?.replaceChildren(v.title);
+      const svgRoot = fig.querySelector('svg');
+      if (svgRoot && v.here) {
+        const [x0, z0, x1, z1] = v.panel.bounds;
+        const r = Math.max(x1 - x0, z1 - z0, 1) * 0.035;
+        const dot = svg('circle', { cx: v.here.x, cy: v.here.z, r, class: 'here' });
+        dot.setAttribute('vector-effect', 'non-scaling-stroke');
+        dot.append(svg('title'));
+        (dot.lastChild as SVGTitleElement).textContent = 'You are here';
+        svgRoot.append(dot);
+      }
+      pauseMap.replaceChildren(fig);
     },
     showTeaser(t) {
       const next = t.next;

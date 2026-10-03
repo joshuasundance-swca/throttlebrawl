@@ -8,9 +8,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Mesh, Vector3, type Object3D } from 'three';
+import { Color, Mesh, Vector3, type BufferAttribute, type Object3D } from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureCached, readLock } from '../../../scripts/dataset-assets.mjs';
+import type { AssetManifest } from '../../../src/assets';
 import { readGlb } from '../../../src/render/glb';
 import { createFlatLook } from '../../../src/render/look';
 import { riderLookOf } from '../../../src/render/rider-looks';
@@ -94,6 +95,7 @@ interface Pair {
   rider: string;
   bike: string;
   role?: 'rival' | 'cop' | 'player';
+  palette?: string[];
 }
 
 /** A renderer's entity views with rigs, given baked parts directly (no manifest, no WebGL). */
@@ -112,8 +114,9 @@ function world(pairs: Pair[]) {
       riderLookOf({
         contentId: p.contentId,
         role: p.role ?? 'rival',
-        bikeId: 'base:rustbucket-400',
-        look: { bikeModel: p.bike },
+        // The sim bike as the career garage sets it (the player's bike follows it).
+        bikeId: `base:${p.bike}`,
+        look: { bikeModel: p.bike, ...(p.palette ? { palette: p.palette } : {}) },
       }),
     ),
   );
@@ -352,5 +355,154 @@ describe('a rider rig in EntityViews', () => {
     const bar = w.rigs.bikePoint(0, 'bar_r') as Vector3;
     expect(phone.distanceTo(hand)).toBeLessThan(0.05);
     expect(hand.distanceTo(bar), 'no hands on the bars').toBeGreaterThan(0.3);
+  });
+});
+
+describe("the player's bike: the garage's model and the career paint (GameRenderer.setPlayerPaint)", () => {
+  const PLAYER_PALETTE = ['#b8322a', '#fff3c4', '#2a3550', '#f2c14e'];
+  const player: Pair = {
+    contentId: 'base:player',
+    rider: 'player',
+    bike: 'superbike-1000',
+    role: 'player',
+    palette: PLAYER_PALETTE,
+  };
+  const rival: Pair = { contentId: 'base:deacon-vane', rider: 'deacon-vane', bike: 'chopper' };
+  /** Vertices of a rig's mesh painted in `hex` (linear, as the bake stores colours). */
+  const painted = (w: ReturnType<typeof world>, id: number, hex: string): number => {
+    const col = w.rigs.meshOf(id)?.geometry.getAttribute('color') as BufferAttribute;
+    const c = new Color(hex);
+    let n = 0;
+    for (let i = 0; i < col.count; i++)
+      if (Math.abs(col.getX(i) - c.r) + Math.abs(col.getY(i) - c.g) + Math.abs(col.getZ(i) - c.b) < 1e-4) n++;
+    return n;
+  };
+  const primaryCount = (bike: string) =>
+    (bikes.get(bike) as BakedPart).roles
+      .filter((r) => r.role === 'paint_primary')
+      .reduce((n, r) => n + r.count, 0);
+  const frame = () => [
+    entity(0, player.contentId, { slot: 0, speed: 20 }),
+    entity(1, rival.contentId, { x: 2, speed: 20 }),
+  ];
+
+  it('the player rides the model of the bike the garage set, and its paint repaints only that bike', () => {
+    const w = world([player, rival]);
+    w.step(frame());
+    const riderVerts = (riders.get('player') as BakedPart).positions.length / 3;
+    const bikeVerts = (bikes.get('superbike-1000') as BakedPart).positions.length / 3;
+    expect(w.rigs.meshOf(0)?.geometry.getAttribute('position').count, 'player + superbike').toBe(
+      riderVerts + bikeVerts,
+    );
+    const green = '#00ff00';
+    const red = PLAYER_PALETTE[0] as string;
+    // The look's first colour is the bike's main paint (and the costume's trim uses it too).
+    const redBefore = painted(w, 0, red);
+    const primary = primaryCount('superbike-1000');
+    expect(primary).toBeGreaterThan(0);
+    expect(redBefore).toBeGreaterThanOrEqual(primary);
+    expect(painted(w, 0, green)).toBe(0);
+    w.rigs.setPlayerPaint(green);
+    w.step(frame());
+    expect(painted(w, 0, green), "every paint_primary vertex of the player's bike").toBe(primary);
+    expect(painted(w, 0, red), 'the costume keeps its own colours').toBe(redBefore - primary);
+    expect(painted(w, 1, green), "the rival's bike is untouched").toBe(0);
+    // The look's other colours keep the second paint.
+    expect(painted(w, 0, PLAYER_PALETTE[2] as string)).toBeGreaterThan(0);
+    w.rigs.setPlayerPaint(null);
+    w.step(frame());
+    expect(painted(w, 0, green), 'null restores the look').toBe(0);
+    expect(painted(w, 0, red)).toBe(redBefore);
+    console.log(
+      `[examined] player on superbike-1000: ${primary} paint_primary vertices repainted and restored`,
+    );
+  });
+
+  it('a paint set before the looks applies to the first race, and a bad colour is ignored', () => {
+    const look = createFlatLook();
+    const params = defaultRenderParams();
+    const views = new EntityViews(look, { params });
+    const rigs = new RiderRigs(look, null, params);
+    views.setRigs(rigs);
+    rigs.addPart('models/riders/player', riders.get('player') as BakedPart);
+    rigs.addPart('models/bikes/moped', bikes.get('moped') as BakedPart);
+    rigs.setPlayerPaint('#0000ff');
+    rigs.setLooks([
+      riderLookOf({
+        contentId: 'base:player',
+        role: 'player',
+        bikeId: 'base:moped',
+        look: { palette: PLAYER_PALETTE },
+      }),
+    ]);
+    views.sync(
+      null,
+      { tick: 0, timeScale: 1, entities: [entity(0, 'base:player', { slot: 0 })] } as unknown as SimSnapshot,
+      1,
+      0,
+    );
+    const col = rigs.meshOf(0)?.geometry.getAttribute('color') as BufferAttribute;
+    let blue = 0;
+    for (let i = 0; i < col.count; i++)
+      if (col.getX(i) === 0 && col.getY(i) === 0 && col.getZ(i) === 1) blue++;
+    expect(blue).toBe(primaryCount('moped'));
+    rigs.setPlayerPaint('not-a-colour');
+    views.sync(
+      null,
+      { tick: 1, timeScale: 1, entities: [entity(0, 'base:player', { slot: 0 })] } as unknown as SimSnapshot,
+      1,
+      0.1,
+    );
+    const after = rigs.meshOf(0)?.geometry.getAttribute('color') as BufferAttribute;
+    let stillBlue = 0;
+    for (let i = 0; i < after.count; i++)
+      if (after.getX(i) === 0 && after.getY(i) === 0 && after.getZ(i) === 1) stillBlue++;
+    expect(stillBlue, 'a bad colour draws the look, not a broken paint').toBe(0);
+  });
+
+  it('a garage bike with no model falls back to the starter bike, not to the boxes', async () => {
+    const look = createFlatLook();
+    const params = defaultRenderParams();
+    const parts: Record<string, BakedPart | undefined> = {
+      'models/riders/player': riders.get('player'),
+      'models/bikes/rustbucket-400': bikes.get('rustbucket-400'),
+    };
+    const asked: string[] = [];
+    const manifest = {
+      load: (id: string, standIn: () => unknown) => {
+        asked.push(id);
+        const value = parts[id];
+        return Promise.resolve(
+          value
+            ? { id, source: 'dataset', value, fellBack: false }
+            : { id, source: 'procedural', value: standIn(), fellBack: true, error: `no asset ${id}` },
+        );
+      },
+    } as unknown as AssetManifest;
+    const views = new EntityViews(look, { params });
+    const rigs = new RiderRigs(look, manifest, params);
+    views.setRigs(rigs);
+    rigs.setLooks([riderLookOf({ contentId: 'base:player', role: 'player', bikeId: 'base:hoverbike-9000' })]);
+    // The manifest resolves at once: settle its promise chains between frames (no clock, no timer).
+    for (let tick = 0; tick < 50 && rigs.counts().drawn !== 1; tick++) {
+      views.sync(
+        null,
+        { tick, timeScale: 1, entities: [entity(0, 'base:player', { slot: 0 })] } as unknown as SimSnapshot,
+        1,
+        tick / 60,
+      );
+      await Promise.resolve();
+    }
+    expect(rigs.counts().drawn).toBe(1);
+    expect(asked).toEqual([
+      'models/riders/player',
+      'models/bikes/hoverbike-9000',
+      'models/bikes/rustbucket-400',
+    ]);
+    expect(rigs.counts().failed.map((f) => f.id)).toEqual(['models/bikes/hoverbike-9000']);
+    const verts = (bikes.get('rustbucket-400') as BakedPart).positions.length / 3;
+    expect(rigs.meshOf(0)?.geometry.getAttribute('position').count).toBe(
+      (riders.get('player') as BakedPart).positions.length / 3 + verts,
+    );
   });
 });

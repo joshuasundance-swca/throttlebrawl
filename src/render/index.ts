@@ -183,6 +183,12 @@ export interface GameRenderer {
    * bike models load now, and each rider draws as its models once both are in.
    */
   setRiderLooks(looks: readonly RiderLook[]): void;
+  /**
+   * The career's paint on the player's bike (`#rrggbb`), or null to restore the bike's own colours
+   * from the player's `look`. Applies at once (the player's rig is rebuilt), before or after
+   * `setRiderLooks`; render only.
+   */
+  setPlayerPaint(hex: string | null): void;
   /** The real riders as the last frame drew them, or null before their code has loaded. */
   riders(): RiderRigCounts | null;
 }
@@ -283,6 +289,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let rigs: RiderRigs | null = null;
   let rigsLoading = false;
   let riderLooks: readonly RiderLook[] = [];
+  let playerPaint: string | null = null;
   const loadRigs = () => {
     if (rigs || rigsLoading) return;
     rigsLoading = true;
@@ -290,6 +297,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       .then((m) => {
         rigs = new m.RiderRigs(look, opts.assets ?? null, params);
         views.setRigs(rigs);
+        rigs.setPlayerPaint(playerPaint);
         rigs.setLooks(riderLooks);
       })
       .catch(() => {
@@ -608,6 +616,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       riderLooks = looks;
       if (rigs) rigs.setLooks(looks);
       else loadRigs();
+    },
+    setPlayerPaint(hex) {
+      playerPaint = hex;
+      rigs?.setPlayerPaint(hex);
     },
     riders: () => rigs?.counts() ?? null,
     scenery: () => ({

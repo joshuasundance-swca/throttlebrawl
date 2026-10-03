@@ -8,13 +8,17 @@
 // app-2 owns this folder after app-1.
 import { createAssetManifest, datasetIndex } from '../assets';
 import type {
+  AskDef,
   CareerDef,
   CareerNode,
   EventPlan,
   GarageResult,
+  GigDef,
+  ObjectiveStatus,
   Onboarding,
   RaceLog,
   RaceStatus,
+  RivalText,
 } from '../career';
 import { createAudio, type EngineSoundSpec } from '../audio';
 import { createFollowCamera, VIEW_MODES, type CameraMode, type CameraPose, type ViewMode } from '../camera';
@@ -366,7 +370,18 @@ export function createApp(opts: AppOptions): AppHandle {
     /** The tick its rules decided the event early (a hunt at its count, an escape), or null. */
     doneTick: number | null;
     headline: string;
+    /**
+     * The stream's quiet frame (run W-S; interview, 2026-10-02: "A quiet frame"): the producer's one
+     * ask, judged by its own log from the moment it is asked, and the region's side gig (judged
+     * silently from the race's tally at the end).
+     */
+    ask: AskDef | null;
+    askLog: RaceLog | null;
+    askMet: boolean;
+    gig: GigDef | null;
   } | null = null;
+  /** The rival texts after the last career race, shown on the map until the next one (run W-S). */
+  let lastTexts: readonly RivalText[] = [];
   /** The region the career screen shows (bare id). */
   let careerRegion = '';
   /** A boss's teaser waiting for the results screen to be left. */
@@ -549,6 +564,8 @@ export function createApp(opts: AppOptions): AppHandle {
     playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
     renderer.setTrafficTypes(config.trafficTypes);
     renderer.setRiderLooks(riderLooks(config));
+    // The garage's paint on the player's bike (run W-R's garage; the seam from the rider-models lane).
+    renderer.setPlayerPaint(C ? C.currentPaintHex(defs, profile) : null);
     // The roadside scenery scatters from the race's seed (playtest 1c item 2).
     renderer.setSceneSeed(seed);
     audio.setEngineSounds(engineSounds(config));
@@ -675,7 +692,10 @@ export function createApp(opts: AppOptions): AppHandle {
       onBackToMenu: () => handle.backToMenu(),
       onCopyReport: opts.callbacks.onCopyReport,
       ...(opts.callbacks.onSaveDebugFile ? { onSaveDebugFile: opts.callbacks.onSaveDebugFile } : {}),
-      onPause: syncRunning,
+      onPause: () => {
+        syncRunning();
+        showPauseMap();
+      },
       // The pause menu's radio panel (radio-1's follow-up): what plays, the next song, and "cut
       // this" on the song (its flag goes into the settings record through ui).
       radio: {
@@ -1041,6 +1061,10 @@ export function createApp(opts: AppOptions): AppHandle {
       onboarding: m.createOnboarding(profile.oncePerCareer),
       doneTick: null,
       headline: '',
+      ask: null,
+      askLog: null,
+      askMet: false,
+      gig: null,
     };
     useEvent(node.event);
     route = null;
@@ -1058,6 +1082,10 @@ export function createApp(opts: AppOptions): AppHandle {
     });
     careerRace.headline = careerRace.log.status().headline;
     ui.career.setObjective(careerRace.headline);
+    // The show: no producer on a career's very first race (its prompts teach the controls).
+    const extra = m.raceShow(registry, def, plan, profile, race.config.seed);
+    careerRace.ask = profile.history.length > 0 ? extra.ask : null;
+    careerRace.gig = extra.gig;
   }
 
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */
@@ -1073,6 +1101,47 @@ export function createApp(opts: AppOptions): AppHandle {
       ui.career.setObjective(s.headline);
     }
     if (s.endNow && c.doneTick === null) c.doneTick = tick;
+    noteAsk(c, events);
+  }
+
+  /**
+   * The producer's one ask in a career race (run W-S): asked once the player is ASK_AT_FRACTION
+   * along the route, then judged from that moment by its own race log; a prompt when it is met.
+   */
+  function noteAsk(c: NonNullable<typeof careerRace>, events: readonly SimEvent[]): void {
+    const m = C;
+    const me = curr?.entities[playerId];
+    if (!m || !c.ask || !curr || !me) return;
+    if (!c.askLog) {
+      const length = curr.race.routeLength;
+      if (curr.race.over || me.finished || length <= 0 || me.progress < m.ASK_AT_FRACTION * length) return;
+      c.askLog = m.createRaceLog({
+        playerId,
+        rules: { kind: 'classic-race' },
+        objectives: [m.askObjective(c.ask)],
+        routeId: '',
+        roadIds: [],
+      });
+      ui.career.prompt(`PRODUCER: ${c.ask.text} +$${c.ask.cash}`);
+    }
+    c.askLog.note(events, curr);
+    if (!c.askMet && c.askLog.status().objectives[0]?.met === true) {
+      c.askMet = true;
+      ui.career.prompt(`PRODUCER: Got it. +$${c.ask.cash}`);
+    }
+  }
+
+  /** The pause screen's network map (interview, 2026-10-02: "Maybe just map on pause"). */
+  function showPauseMap(): void {
+    const me = curr?.entities[playerId];
+    const roadId = me ? race?.config.road.edges[me.road.edge]?.id : undefined;
+    if (!C || !race || !me || !roadId || state !== 'race') {
+      ui.career.showPauseMap(null);
+      return;
+    }
+    ui.career.showPauseMap(
+      C.pauseMapView(registry, defs, profile, regionKeyOf(registry, eventId), roadId, me.road.s),
+    );
   }
 
   /** Settles the career race into the profile (and saves it); the results screen unless it was a quit. */
@@ -1082,8 +1151,14 @@ export function createApp(opts: AppOptions): AppHandle {
     careerRace = null;
     ui.career.setObjective(null);
     if (!c?.log || !m) return;
-    const status = c.log.status();
     const tally = c.log.tally();
+    // The producer's ask and the side gig ride as bonus objectives, so the ledger pays them (run W-S).
+    const extras: ObjectiveStatus[] = [];
+    const asked = c.askLog?.status().objectives[0];
+    if (asked) extras.push({ ...asked, label: m.ASK_LABEL, met: asked.met === true });
+    if (c.gig && !quit) extras.push(m.gigStatus(c.gig, tally));
+    const base = c.log.status();
+    const status: RaceStatus = { ...base, objectives: [...base.objectives, ...extras] };
     const settled = m.settleRace(profile, {
       reg: registry,
       def: c.def,
@@ -1101,9 +1176,32 @@ export function createApp(opts: AppOptions): AppHandle {
     });
     if (quit) return;
     pendingTeaser = m.teaserView(defs, settled.report);
-    ui.career.showResults(
-      m.resultView(registry, c.def, c.plan, status, settled.report, tally.place, tally.racers, profile),
+    // Who beat the player home: the rivals ahead in the finish order (all finishers when not home).
+    const ahead: string[] = [];
+    if (curr) {
+      for (const id of curr.race.finishOrder) {
+        if (id === playerId) break;
+        const e = curr.entities[id];
+        if (e && e.kind === 'rider' && e.faction !== 'law') ahead.push(e.contentId);
+      }
+    }
+    const shown = m.showResult(
+      registry,
+      defs,
+      c.def,
+      c.plan,
+      settled.report,
+      tally,
+      ahead,
+      profile,
+      c.plan.timeOfDay.replace(/-/g, ' '),
     );
+    lastTexts = shown.texts;
+    ui.career.showResults({
+      ...m.resultView(registry, c.def, c.plan, status, settled.report, tally.place, tally.racers, profile),
+      paper: shown.paper,
+      texts: shown.texts,
+    });
     ui.show('careerResults');
   }
 
@@ -1132,10 +1230,12 @@ export function createApp(opts: AppOptions): AppHandle {
   /** Draws the career screen for the region it shows. */
   function drawCareer(tab?: 'map' | 'garage'): void {
     if (!C) return;
+    const view = C.mapView(registry, defs, profile, careerRegion);
     ui.career.showMap(
-      C.mapView(registry, defs, profile, careerRegion),
+      view,
       C.garageView(registry, defs, profile, settings.units),
       tab,
+      C.showMapView(registry, defs, profile, view, lastTexts),
     );
   }
 
