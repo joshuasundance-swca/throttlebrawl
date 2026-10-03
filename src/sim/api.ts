@@ -52,6 +52,7 @@ export type {
   SimModifierEffect,
   SimRiderDef,
   SimSlotConfig,
+  SimSmashableDef,
   SimSnapshot,
   SimSteerAssist,
   SimStyleRewards,
@@ -62,6 +63,7 @@ export type {
   SignaturePhase,
   SignatureSnapshot,
   SlowmoSnapshot,
+  SmashableSnapshot,
   StyleKind,
   StyleRunSnapshot,
   TakedownKind,
@@ -90,6 +92,7 @@ export type {
   RoadQueriesFn,
   RouteBranchKind,
   RouteQueries,
+  SmashableKind,
   TouchLayout,
   TuningParamDecl,
   TuningValues,
@@ -104,6 +107,7 @@ export {
   isDifficultyPreset,
   placeElement,
   secondsToTicks,
+  SMASHABLE_KINDS,
   tuningDefaults,
 } from '../core';
 export type { RoadFrame, RoadNetwork, RouteBranch, RouteProgress, WorldPoint } from '../road';
