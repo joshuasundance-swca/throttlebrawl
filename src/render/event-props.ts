@@ -24,7 +24,7 @@ import {
 } from 'three';
 import type { PropSnapshot, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
-import { paintCopy } from './boards';
+import { canvasMeasure, fitLine, paintCopy, type CopyFit, type MeasureText } from './boards';
 import type { LookStyle } from './look';
 
 type Parts = BoxPart[];
@@ -435,25 +435,38 @@ function signFace(variant: string): { bg: string; fg: string } {
   return { bg: '#ff8a1f', fg: '#111111' };
 }
 
+/** A warning or serial sign's square canvas, px (the sign audit, sign-fit.test.ts, reads it). */
+export const SIGN_TEXTURE_PX = 384;
+
 function signTexture(label: string, variant: string): Texture | null {
   if (typeof document === 'undefined') return null;
+  const px = SIGN_TEXTURE_PX;
   const canvas = document.createElement('canvas');
-  canvas.width = 384;
-  canvas.height = 384;
+  canvas.width = px;
+  canvas.height = px;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const face = signFace(variant);
   ctx.fillStyle = face.bg;
-  ctx.fillRect(0, 0, 384, 384);
+  ctx.fillRect(0, 0, px, px);
   ctx.strokeStyle = face.fg;
   ctx.lineWidth = 14;
-  ctx.strokeRect(14, 14, 356, 356);
+  ctx.strokeRect(14, 14, px - 28, px - 28);
   ctx.fillStyle = face.fg;
   // A short headline that comes true a moment later, and a small kicker (boards.ts, `paintCopy`).
-  paintCopy(ctx, 384, 384, label, face.fg);
+  paintCopy(ctx, px, px, label, face.fg);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
   return tex;
+}
+
+/** A lane-vote gantry's canvas, px, and the width one side's words may take. */
+const GANTRY_PX = { w: 1024, h: 192 };
+const GANTRY_TEXT_W = GANTRY_PX.w / 2 - 60;
+
+/** One side of a lane-vote gantry (`leftText` or `rightText`), fitted to its half of the panel. */
+export function gantryFit(measure: MeasureText, text: string): CopyFit & { maxW: number } {
+  return { ...fitLine(measure, text, GANTRY_TEXT_W, 64, 24), maxW: GANTRY_TEXT_W };
 }
 
 /**
@@ -463,8 +476,7 @@ function signTexture(label: string, variant: string): Texture | null {
  */
 function gantryTexture(label: string, voted: string): Texture | null {
   if (typeof document === 'undefined') return null;
-  const w = 1024;
-  const h = 192;
+  const { w, h } = GANTRY_PX;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -487,12 +499,8 @@ function gantryTexture(label: string, voted: string): Texture | null {
     ctx.fillStyle = lost ? '#55605c' : '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    let size = 64;
+    const { size } = gantryFit(canvasMeasure(ctx), text);
     ctx.font = `bold ${size}px sans-serif`;
-    while (size > 24 && ctx.measureText(text).width > w / 2 - 60) {
-      size -= 4;
-      ctx.font = `bold ${size}px sans-serif`;
-    }
     ctx.fillText(text, x0 + w / 4, h * 0.42);
     // The down arrow to that side's lanes.
     ctx.beginPath();

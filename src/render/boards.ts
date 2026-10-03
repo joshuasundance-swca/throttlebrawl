@@ -77,10 +77,11 @@ export const VISIBLE_M = 250;
 
 // Sized to be read at up to about 100 mph (44.7 m/s): a billboard's headline letters stand about
 // 1.4 m tall, so they read from roughly 100 m out and the rider has the best part of two seconds.
-const SIZES: Record<BoardKind, { panelH: number; bottom: number; minW: number; maxW: number }> = {
-  sign: { panelH: 1.8, bottom: 1.8, minW: 3.2, maxW: 4.6 },
-  billboard: { panelH: 4.6, bottom: 4, minW: 8.5, maxW: 13 },
-};
+export const BOARD_SIZES: Record<BoardKind, { panelH: number; bottom: number; minW: number; maxW: number }> =
+  {
+    sign: { panelH: 1.8, bottom: 1.8, minW: 3.2, maxW: 4.6 },
+    billboard: { panelH: 4.6, bottom: 4, minW: 8.5, maxW: 13 },
+  };
 /** How far ahead of a board (along its road) the rider it turns toward is, metres. */
 const AIM_AHEAD_M = 70;
 /** How far behind the printed face the posts stand, metres. */
@@ -122,13 +123,24 @@ export function splitCopy(text: string): { headline: string; kicker: string } {
   return { headline: (m[1] ?? t).trim(), kicker: (m[2] ?? '').trim() };
 }
 
-/** Wraps `text` into the widest lines that fit `maxW` at the context's current font. */
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+/**
+ * How wide `text` is in bold sans-serif at `size` px. paintCopy measures with the canvas; the sign
+ * audit (sign-fit.test.ts) measures with a font table, so both run the same layout.
+ */
+export type MeasureText = (text: string, size: number) => number;
+
+/** Line height as a share of the font size. */
+const LEADING = 1.08;
+/** How far the size steps down while fitting, px. */
+const FIT_STEP = 4;
+
+/** Wraps `text` into the widest lines that fit `maxW` at `size`. A word wider than `maxW` keeps its own line. */
+function wrap(measure: MeasureText, text: string, size: number, maxW: number): string[] {
   const lines: string[] = [];
   let line = '';
   for (const w of text.split(' ')) {
     const next = line ? `${line} ${w}` : w;
-    if (ctx.measureText(next).width > maxW && line) {
+    if (measure(next, size) > maxW && line) {
       lines.push(line);
       line = w;
     } else line = next;
@@ -137,28 +149,97 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return lines;
 }
 
-/** The largest bold size (stepping down from `max`) whose wrapped lines fit the box. */
-function fit(
-  ctx: CanvasRenderingContext2D,
+/** One block of copy as laid out: its size, its lines, and whether it fitted at `min` or more. */
+export interface CopyFit {
+  size: number;
+  lines: string[];
+  /** False when even `min` was too big, so the block went below its floor to stay whole. */
+  fits: boolean;
+}
+
+/**
+ * The largest bold size (stepping down from `max`) whose wrapped lines fit the box: in HEIGHT, and
+ * in WIDTH too, so a word wider than the box shrinks instead of being cut at both edges (the live
+ * check, 2026-10-03: "END OF JURISDICTION" printed as "RISDICTI", #395; the PNW scenes' "FIREWOOD",
+ * #396). If nothing from `max` down to `min` fits, the block shrinks below `min` rather than clip.
+ */
+export function fitCopy(
+  measure: MeasureText,
   text: string,
   maxW: number,
   boxH: number,
   max: number,
   min: number,
-): { size: number; lines: string[] } {
-  let size = max;
-  let lines: string[] = [];
-  for (; size >= min; size -= 4) {
-    ctx.font = `bold ${size}px sans-serif`;
-    lines = wrap(ctx, text, maxW);
-    if (lines.length * size * 1.08 <= boxH) break;
+): CopyFit {
+  const widest = (lines: readonly string[], size: number) =>
+    lines.reduce((w, l) => Math.max(w, measure(l, size)), 0);
+  for (let size = Math.max(max, min); size >= min; size -= FIT_STEP) {
+    const lines = wrap(measure, text, size, maxW);
+    if (lines.length * size * LEADING <= boxH && widest(lines, size) <= maxW)
+      return { size, lines, fits: true };
   }
-  return { size: Math.max(size, min), lines };
+  // Too long even at the floor: scale down until the widest line and the block fit.
+  const atMin = wrap(measure, text, min, maxW);
+  const w = widest(atMin, min);
+  const scale = Math.min(1, w > 0 ? maxW / w : 1, boxH / Math.max(1, atMin.length * min * LEADING));
+  const size = Math.max(1, Math.floor(min * scale));
+  return { size, lines: wrap(measure, text, size, maxW), fits: false };
+}
+
+/** One line (no wrapping) at the largest size from `max` down whose width fits `maxW`. */
+export function fitLine(measure: MeasureText, text: string, maxW: number, max: number, min: number): CopyFit {
+  for (let size = Math.max(max, min); size >= min; size -= FIT_STEP)
+    if (measure(text, size) <= maxW) return { size, lines: [text], fits: true };
+  const w = measure(text, min);
+  const size = Math.max(1, Math.floor(min * Math.min(1, w > 0 ? maxW / w : 1)));
+  return { size, lines: [text], fits: false };
+}
+
+/** Copy laid out on a `width` x `height` canvas: the padding, the headline and the kicker (or null). */
+export interface CopyLayout {
+  pad: number;
+  /** The box the lines must stay inside, px (the canvas less its padding). */
+  innerW: number;
+  headBoxH: number;
+  subBoxH: number;
+  head: CopyFit;
+  sub: CopyFit | null;
+}
+
+/** The headline floor and the kicker floor, px. */
+export const COPY_MIN = { head: 24, sub: 14 };
+
+/**
+ * Lays copy out as a big headline over a small kicker (see `paintCopy`); pure, so the sign audit
+ * runs exactly what the painter runs.
+ */
+export function layoutCopy(measure: MeasureText, width: number, height: number, text: string): CopyLayout {
+  const { headline, kicker } = splitCopy(text);
+  const pad = Math.round(height * 0.07);
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const kickerH = kicker ? innerH * 0.3 : 0;
+  const headBoxH = innerH - kickerH;
+  const subBoxH = kicker ? kickerH - pad * 0.4 : 0;
+  const head = fitCopy(measure, headline, innerW, headBoxH, Math.round(height * 0.62), COPY_MIN.head);
+  const sub = kicker
+    ? fitCopy(measure, kicker, innerW, subBoxH, Math.round(head.size * 0.42), COPY_MIN.sub)
+    : null;
+  return { pad, innerW, headBoxH, subBoxH, head, sub };
+}
+
+/** The canvas's own measure: bold sans-serif at the asked size. */
+export function canvasMeasure(ctx: CanvasRenderingContext2D): MeasureText {
+  return (text, size) => {
+    ctx.font = `bold ${size}px sans-serif`;
+    return ctx.measureText(text).width;
+  };
 }
 
 /**
  * Paints copy as a big headline over a small kicker, centred on a `width` x `height` canvas
- * (boards and the road events' warning signs share it). The caller has filled the background.
+ * (boards, the road events' warning signs and the scenes' signs share it). The caller has filled
+ * the background.
  */
 export function paintCopy(
   ctx: CanvasRenderingContext2D,
@@ -169,27 +250,27 @@ export function paintCopy(
 ): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const { headline, kicker } = splitCopy(text);
-  const pad = Math.round(height * 0.07);
-  const innerW = width - pad * 2;
-  const innerH = height - pad * 2;
-  const kickerH = kicker ? innerH * 0.3 : 0;
-  const head = fit(ctx, headline, innerW, innerH - kickerH, Math.round(height * 0.62), 24);
-  const sub = kicker ? fit(ctx, kicker, innerW, kickerH - pad * 0.4, Math.round(head.size * 0.42), 14) : null;
-  const headBlock = head.lines.length * head.size * 1.08;
-  const subBlock = sub ? sub.lines.length * sub.size * 1.08 : 0;
+  const { pad, head, sub } = layoutCopy(canvasMeasure(ctx), width, height, text);
+  const headBlock = head.lines.length * head.size * LEADING;
+  const subBlock = sub ? sub.lines.length * sub.size * LEADING : 0;
   const gap = sub ? pad * 0.5 : 0;
   let y = (height - (headBlock + gap + subBlock)) / 2;
   ctx.fillStyle = fg;
   ctx.font = `bold ${head.size}px sans-serif`;
-  head.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * head.size * 1.08));
+  head.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * head.size * LEADING));
   y += headBlock + gap;
   if (sub) {
     ctx.globalAlpha = 0.82;
     ctx.font = `bold ${sub.size}px sans-serif`;
-    sub.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * sub.size * 1.08));
+    sub.lines.forEach((l, i) => ctx.fillText(l, width / 2, y + (i + 0.5) * sub.size * LEADING));
     ctx.globalAlpha = 1;
   }
+}
+
+/** A board face's canvas, px: a fixed width per kind, and the panel's own aspect (width / height). */
+export function boardCanvas(kind: BoardKind, aspect: number): { width: number; height: number } {
+  const width = kind === 'sign' ? 512 : 1024;
+  return { width, height: Math.max(64, Math.round(width / aspect)) };
 }
 
 /**
@@ -199,8 +280,9 @@ export function paintCopy(
 function faceTexture(item: BoardItem, aspect: number): Texture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = item.kind === 'sign' ? 512 : 1024;
-  canvas.height = Math.max(64, Math.round(canvas.width / aspect));
+  const px = boardCanvas(item.kind, aspect);
+  canvas.width = px.width;
+  canvas.height = px.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const face = FACE[item.kind];
@@ -351,7 +433,7 @@ export class Boards {
     slot: BoardSlot,
     item: BoardItem,
   ): BoardView {
-    const size = SIZES[item.kind];
+    const size = BOARD_SIZES[item.kind];
     const s = Math.min(length, Math.max(0, (slot.s0 + slot.s1) / 2));
     const d = (slot.d0 + slot.d1) / 2;
     const w = Math.min(size.maxW, Math.max(size.minW, Math.abs(slot.d1 - slot.d0)));
