@@ -18,7 +18,13 @@ import { buildSimConfig, createStreamCache, realRoutes } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import type { SimConfig, SimEvent, SimModifierDef } from '../../src/sim/api';
+import {
+  LAW_PROP_ID_BASE,
+  type PropSnapshot,
+  type SimConfig,
+  type SimEvent,
+  type SimModifierDef,
+} from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
 import { setPieceState } from '../../src/sim/modifiers';
 import { laneAt } from '../../src/sim/modifiers/setpieces';
@@ -26,6 +32,14 @@ import { pedsState } from '../../src/sim/peds';
 import { trafficState } from '../../src/sim/traffic';
 import { fromCorridor } from '../../src/sim/traffic/corridor';
 import { firstSeed, ISOLATED, seedRange } from './batch';
+
+/**
+ * The road events' props only. Since #395 (law with a personality) the snapshot's props also carry
+ * the cops' own, with ids from LAW_PROP_ID_BASE up: the END OF JURISDICTION sign stands in every
+ * race whose law crew has one, cops on or off, and a radar trooper's radar. They are not road events.
+ */
+const pieceProps = (props: readonly PropSnapshot[] | undefined): PropSnapshot[] =>
+  (props ?? []).filter((p) => p.id < LAW_PROP_ID_BASE);
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -89,7 +103,7 @@ function ride(cfg: SimConfig, maxTicks = 60 * 60 * 5, until?: (r: Run) => boolea
     sim.step([toSimInput(actions)]);
     snap = sim.snapshot();
     run.events.push(...sim.events());
-    const props = snap.props ?? [];
+    const props = pieceProps(snap.props);
     let logs = 0;
     for (const p of props) {
       run.kinds.add(p.kind);
@@ -300,7 +314,7 @@ describe('weird events that move (W-T)', () => {
     expect(pieces).toHaveLength(2);
     expect(pieces[1]?.piece).toBe(piece);
     expect(pieces[1]?.u).toBe(vote.voteU);
-    const gantry = (sim.snapshot().props ?? []).find((p) => p.kind === 'gantry');
+    const gantry = pieceProps(sim.snapshot().props).find((p) => p.kind === 'gantry');
     expect(gantry?.label).toBe('GATOR CROSSING | PARADE');
     expect(gantry?.variant).toBe(side);
     expect(gantry?.spanM).toBeGreaterThan(5);

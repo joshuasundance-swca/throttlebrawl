@@ -9,6 +9,7 @@ import {
   meterLabel,
   popCash,
   popLabel,
+  smashPop,
   stylePop,
   styleText,
   type MeterRun,
@@ -45,6 +46,27 @@ describe('style pop-ups', () => {
     const tally = createRaceTally();
     tally.onEvents([ev('shortcutFound', 3, { savedS: 1.5 }), ev('shortcutFound', 4, { savedS: 9 })], 3);
     expect(tally.takePopups().map((p) => p.word)).toEqual(['FOUND IT -1.5 S']);
+  });
+
+  it('names a takedown into a roadside smashable after the smashable, for the rider who sent him (W-T)', () => {
+    const named = ev('smash', 2, {
+      prop: 7,
+      kind: 'lobster-traps',
+      name: 'CATCH OF THE DAY',
+      takedown: true,
+    });
+    expect(smashPop(named)).toEqual({
+      kind: 'smash:CATCH OF THE DAY',
+      word: 'CATCH OF THE DAY',
+      points: null,
+    });
+    // Ridden through, nobody went down: no pop.
+    expect(
+      smashPop(ev('smash', 2, { prop: 8, kind: 'mailbox', name: 'RETURN TO SENDER', takedown: false })),
+    ).toBeNull();
+    const tally = createRaceTally();
+    tally.onEvents([named, ev('smash', 5, { name: 'METER EXPIRED', takedown: true })], 2);
+    expect(tally.takePopups().map((p) => p.word)).toEqual(['CATCH OF THE DAY']);
   });
 
   it('names a domino takedown DOUBLE, and one further down the line STRIKE (W-Q)', () => {
