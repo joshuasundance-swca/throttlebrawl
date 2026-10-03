@@ -133,11 +133,20 @@
       "id": "pivot-heckle-2",
       "trigger": "knocked-down-target",
       "text": "We call that a learning. Bye."
+    },
+    {
+      "id": "pivot-fm-next-chapter",
+      "trigger": "interlude",
+      "status": "live",
+      "text": "We're excited to announce our next chapter.",
+      "audioNote": "Pivot FM's line after its dead air (run W-U): the radio asks for it (src/audio/rider-station.ts), not the bark director, so its trigger is interlude, which no race event fires. Voiced free with Kokoro-82M on the dev machine's GPU in Pivot's reference voice (redo_local.py take 0); both Whisper checks heard every word, voice z-score -1.34.",
+      "audioAsset": "audio/barks/pivot-core/pivot-fm-next-chapter",
+      "audioStatus": "live"
     }
   ],
   "meta": {
     "status": "live",
-    "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch.",
+    "notes": "San Francisco local (playtest 1c). pivot-hit-ditch is his signature line, in the shape of the other rivals' approved lines; it is an agent draft until the maintainer approves or vetoes it, like every other line here. Startup vocabulary (stealth, ten-x, the deck, rounds, exits, burn rate) keeps him apart from Kevin's office-speak. W-Q (2026-10-02) added two heckles (trigger knocked-down-target: said riding past a rider who is down), text only until the next voice batch. Run W-U adds pivot-fm-next-chapter, the line Pivot FM (stations/sf-pivot-fm.json) says after its dead air when he is knocked down.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
