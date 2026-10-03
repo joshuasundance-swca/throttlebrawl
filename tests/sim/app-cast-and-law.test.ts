@@ -14,15 +14,15 @@ import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import type { SimEvent, SimSnapshot } from '../../src/sim/api';
 import { resultText } from '../../src/ui/format';
-import { NO_ROAD_EVENTS } from './batch';
+import { firstSeed, ISOLATED, NO_ROAD_EVENTS, seedRange } from './batch';
 
 const print = (line: string) => process.stdout.write(`[app-cast-and-law] ${line}\n`);
 /**
- * Seeds tried until both a steal off the cop and a bust have happened (the search stops as soon as
- * both have). 40, not 16: with forgiving landings (playtest 2, 2026-10-02) the bot crashes less, so
- * it goes down near the cop less often; the first bust came at seed 27 when that landed.
+ * The seeds each firstSeed search may try: one search for a steal off the cop, one for a bust (each
+ * stops at its first). 40, not 16: with forgiving landings (playtest 2, 2026-10-02) the bot crashes
+ * less, so it goes down near the cop less often; the first bust came at seed 27 when that landed.
  */
-const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
+const SEEDS = seedRange(1, 40);
 const MAX_TICKS = 60 * 60 * 5;
 
 interface LawRun {
@@ -106,16 +106,22 @@ function lawRace(seed: number, tuning: Readonly<Record<string, number>> = NO_ROA
 }
 
 describe('the law in a real race (release content, the app config path)', () => {
-  const runs: LawRun[] = [];
-  for (const seed of SEEDS) {
-    if (runs.some((r) => r.steal)) break;
-    runs.push(lawRace(seed));
-  }
-  const bustRuns: LawRun[] = [];
-  for (const seed of SEEDS) {
-    if (bustRuns.some((r) => r.bust)) break;
-    bustRuns.push(lawRace(seed, PROXIMITY_BUST));
-  }
+  // Each search stops at the first seed whose race has its precondition (firstSeed, R6): a steal off
+  // the cop, then a bust under the proximity rule. The checks run on the seed it found.
+  const stealSearch = firstSeed(
+    'a steal off the cop',
+    SEEDS,
+    (seed) => lawRace(seed),
+    (r) => r.steal !== null,
+  );
+  const runs: LawRun[] = stealSearch.tried.map((t) => t.result);
+  const bustSearch = firstSeed(
+    'a bust under the proximity rule',
+    SEEDS,
+    (seed) => lawRace(seed, PROXIMITY_BUST),
+    (r) => r.bust !== null,
+  );
+  const bustRuns: LawRun[] = bustSearch.tried.map((t) => t.result);
   for (const r of runs)
     print(
       `seed ${r.seed}: cop starts holding ${r.copHeldAtStart ?? 'nothing'}, ${r.copSwings} steal windows, ` +
@@ -134,8 +140,8 @@ describe('the law in a real race (release content, the app config path)', () => 
 
   it('the cop swings the baton, and a timed press steals it off him', () => {
     expect(runs.reduce((n, r) => n + r.copSwings, 0)).toBeGreaterThan(0);
-    const steal = runs.find((r) => r.steal)?.steal;
-    expect(steal, `no steal off the cop in seeds ${runs.map((r) => r.seed).join(', ')}`).toBeTruthy();
+    const steal = stealSearch.result?.steal;
+    expect(steal, stealSearch.summary).toBeTruthy();
     expect(steal?.data['weapon']).toBe('base:baton');
   });
 
@@ -144,8 +150,8 @@ describe('the law in a real race (release content, the app config path)', () => 
   });
 
   it("a bust's fine shows on the results screen and leads the debug report's event line", () => {
-    const busted = bustRuns.find((r) => r.bust);
-    expect(busted, `no bust in seeds ${bustRuns.map((r) => r.seed).join(', ')}`).toBeTruthy();
+    const busted = bustSearch.result;
+    expect(busted, bustSearch.summary).toBeTruthy();
     const bust = busted?.bust;
     // Tier 1: the cop's own fine, unscaled. The report prints an event's first three data fields.
     expect(Object.keys(bust?.data ?? {}).slice(0, 3)).toEqual(['fineCash', 'tier', 'fineBaseCash']);
@@ -166,20 +172,15 @@ const CLEAR_M = 10;
 function castRun(seed: number, quirks: number | null, ticks: number) {
   const { sim, route, playerId, config } = createHeadlessRace({
     seed,
-    // Playtest 2's patrol off too: cops waiting on the shoulder count as riders nearby, and this
-    // measures how the rivals ride, not the law. The roadside weapons about as sparse as before W-Q
-    // (one per 2 km, not per 500 m): this measures the styles' riding, and a rider steering over its
-    // preferred weapon sways too (with one every 500 m, Dial-Up's clear-road sway fell under another
-    // rider's, 0.66 against 0.69 m/s). No traffic either: dodging traffic sways every style, and
-    // each traffic change reshuffles it (#353's prep: 1.149 against the 1.15 floor; bundle 1, with
-    // #322's "never spawn on a rider", 0.549 against another rider's 0.611).
-    tuning: {
-      ...NO_ROAD_EVENTS,
-      'cops.patrolScale': 0,
-      'combat.pickupSpacingM': 2000,
-      'traffic.density': 0,
-      ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }),
-    },
+    // Isolated (R5, the determinism run, 2026-10-03): this measures how the rivals ride, so every
+    // world system is off (ISOLATED in tests/sim/batch.ts), and only the quirks switch changes
+    // between the two runs. Each pin it replaces was added by hand after a red: cops on the shoulder
+    // count as riders nearby; a rider steering over its preferred roadside weapon sways too (with
+    // one every 500 m, Dial-Up's clear-road sway fell under another rider's, 0.66 against 0.69 m/s);
+    // dodging traffic sways every style, and each traffic change reshuffled it (#353's prep: 1.149
+    // against the 1.15 floor; bundle 1, with #322's "never spawn on a rider", 0.549 against another
+    // rider's 0.611).
+    tuning: { ...ISOLATED, ...(quirks === null ? {} : { 'ai.styleQuirks': quirks }) },
   });
   const bot = createBot();
   const ds = new Map<number, number[]>();
