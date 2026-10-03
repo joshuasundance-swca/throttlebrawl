@@ -421,9 +421,12 @@ const GANTRY_PANEL_UP = 4.25;
 /** Shapes drawn unlit (they glow): flares and light bars. */
 const GLOWS = new Set(['flareGlow', 'lightbar']);
 
-/** Sign panel colours by piece: work-zone orange, a regulatory white for the speed trap. */
+/**
+ * Sign panel colours by piece: work-zone orange, a regulatory white for the speed trap and for the
+ * cops' END OF JURISDICTION sign (run W-T, variant `jurisdiction`, from sim/cops).
+ */
 function signFace(variant: string): { bg: string; fg: string } {
-  if (variant === 'speed-trap') return { bg: '#f4f4f0', fg: '#111111' };
+  if (variant === 'speed-trap' || variant === 'jurisdiction') return { bg: '#f4f4f0', fg: '#111111' };
   if (variant === 'parade') return { bg: '#6a2bd9', fg: '#ffffff' };
   // W-T: serial signs are small red boards with white words, the old roadside serial-ad style.
   if (variant === 'serial') return { bg: '#c8202a', fg: '#ffffff' };

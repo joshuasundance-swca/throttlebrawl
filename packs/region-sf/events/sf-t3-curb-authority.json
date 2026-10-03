@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "distance",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, heavy: once the curb authority is on you, ride 2.5 km of hills without being knocked off, or lose them.",
+    "notes": "A cop escape, heavy: once the curb authority is on you, ride 2.5 km of hills without being knocked off, or lose them. Run W-T (law with a personality): every Meter on a 30 s pursuit budget, the patrol and the heat meter; the Curb Authority END OF JURISDICTION sign ends the chase.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -19,7 +19,9 @@
   "cops": {
     "mode": "every-race",
     "baseCount": 1,
-    "chaosSummon": true
+    "chaosSummon": true,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "rival": "mother-rust",
@@ -64,7 +66,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Keys' finale: Mother Rust and her Swamp Kin (Tammy rides with her) all the way to the drawbridge.",
+    "notes": "The Keys' finale: Mother Rust and her Swamp Kin (Tammy rides with her) all the way to the drawbridge. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

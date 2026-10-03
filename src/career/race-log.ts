@@ -10,8 +10,8 @@
 //   finish (or `timeLimitS`); with `endOnCount` the event ends at the count;
 // - cop escape: get away from the law (interview, 2026-10-02: "survive or lose the heat"). The clock
 //   starts when a cop first chases you: survive `surviveS` (or ride `escapeDistanceM`) from there,
-//   or lose them (no cop on you for LOSE_HEAT_S after MIN_CHASE_S of chase), or reach the finish;
-//   a bust fails it;
+//   or lose them (no cop on you for LOSE_HEAT_S after MIN_CHASE_S of chase, or, run W-T, cross the
+//   END OF JURISDICTION sign with them on you), or reach the finish; a bust fails it;
 // - grudge match: beat `rules.rival` to the line (`finish-ahead`) or knock them down
 //   `knockdownsToWin` times (`knockdowns`).
 // Optional objectives pay their `rewardCash` as bonuses: `style-cash` (score that much style
@@ -96,6 +96,12 @@ export interface RaceTally {
   racers: number;
   busted: boolean;
   fineCash: number;
+  /**
+   * Citations a citations cop billed at the finish (run W-T, law with a personality: Deputy
+   * Lindqvist), and their cash; settled like a fine. Absent means none.
+   */
+  citations?: number;
+  citationCash?: number;
   takedowns: number;
   /** Style cash by kind (`nearMiss`, `takedownCombo`, ...), and how many of each. */
   style: Readonly<Record<string, { count: number; cash: number }>>;
@@ -157,6 +163,8 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
   let racers = 0;
   let busted = false;
   let fineCash = 0;
+  let citations = 0;
+  let citationCash = 0;
   let takedowns = 0;
   let targetTakedowns = 0;
   const style: Record<string, { count: number; cash: number }> = {};
@@ -342,6 +350,15 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
           case 'hit':
             if (e.actor === me && victim && target !== me) rival(victim).hits++;
             break;
+          case 'law':
+            // Run W-T: the citations billed at the finish; and the END OF JURISDICTION sign, crossed
+            // with the law on you, loses them at once.
+            if (target !== me) break;
+            if (e.data['kind'] === 'bill') {
+              citations = Math.max(0, Math.round(n(e.data['count'], 0)));
+              citationCash = Math.max(0, Math.round(n(e.data['totalCash'], 0)));
+            } else if (e.data['kind'] === 'jurisdiction' && chaseStartS >= 0 && !busted) lostHeat = true;
+            break;
           case 'weaponGrab':
             if (e.actor === me && e.data['source'] === 'steal' && victim) rival(victim).steals++;
             break;
@@ -405,6 +422,8 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         racers,
         busted,
         fineCash,
+        citations,
+        citationCash,
         takedowns,
         style: Object.fromEntries(Object.entries(style).map(([k, v]) => [k, { ...v }])),
         styleCash,

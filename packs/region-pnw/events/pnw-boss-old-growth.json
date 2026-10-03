@@ -19,7 +19,9 @@
   "cops": {
     "mode": "every-race",
     "baseCount": 1,
-    "chaosSummon": true
+    "chaosSummon": true,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "rival": "old-growth",
@@ -64,7 +66,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's finale: Old Growth on the Columbia River Highway, all the way to Shepperd's Dell.",
+    "notes": "The Pacific Northwest's finale: Old Growth on the Columbia River Highway, all the way to Shepperd's Dell. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

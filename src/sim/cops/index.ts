@@ -104,13 +104,54 @@
 //   heat rises again. The lot's cop and the patrol keep their own rules.
 // Every change of tier is a `heat` event (data.tier, data.from, data.heat 0..1, data.lost).
 //
+// Law with a personality (the pitch deck's #11, run W-T: "Every region's cops are a different
+// problem, not a different hat"), on top of the patrol and the heat meter. A cop's `law.habit`
+// (SimLawDef.habit; the numbers are HABIT's defaults, overridden by the rider file):
+// - relentless (Sgt. Pruitt): his chasing time, all race, ramps him from 0 to 1 over `rampS`; at r
+//   he holds a follow gap (1 - gapShare r) of the usual, moves in after (1 - hangShare r) of the
+//   usual 8 s on station, and well back he closes with a boost of (maxScale - 1) r of his own top
+//   speed. A `law` event (kind `relentless`) says when he reaches half (level 1) and the top (2).
+// - radar (Trooper Dalrymple): on patrol he waits at the route's first long bridge (water or a rail
+//   both sides for `minBridgeM`, starting inside the patrol's share of the route), on it or at its
+//   foot, with his radar beside him (a prop). He reads each player once, as he comes within
+//   `rangeM` (further for a fast one, as the patrol's wake): over `limitMps` is a `law` event
+//   (`radar`, over), HABIT.radar.heat of heat, his siren (cause `patrol`) and the patrol's pull-out
+//   as the player draws level; under it, the event says so and he lets him ride by, parked.
+// - citations (Deputy Lindqvist): never rams; alongside he rides `sideM` off his man (out of
+//   bumping range), his spells on station and alongside are `hangBackS` and `alongsideS`, and well
+//   back he closes with a catch-up of (maxScale - 1) of his own top speed (never in a hurry,
+//   always there: he must pace you to write you up). Every
+//   `everyS` within `alongsideM` along the road (and 4 m across) of the man he chases, who is
+//   riding, he writes a citation of `cashEach` (a `law` event, `citation`); the player's total is
+//   billed when he finishes (`bill`, once), and SimSnapshot.law carries it meanwhile.
+// - budget (Officer Meter): his chasing time, all race, comes out of `budgetS`; spent, he pulls
+//   over (`budgetOut`) and is never sent again, by the heat or for a roadblock.
+// The END OF JURISDICTION sign: in a race whose heat meter runs and whose first cop's agency has a
+// sign (SimEventCops.jurisdiction), it stands on the first clear stretch from JURISDICTION.share of
+// the route (the patrol's test, on land), a prop with the agency's words. A player crossing it
+// (once a race, riding toward the finish) with heat or a cop on him has his heat set to nothing
+// (the heat meter then loses the heat cops, "LOST 'EM") and every other cop on him pulls over; a
+// `law` event (`jurisdiction`), spoken by the nearest of them.
+// The roadblock also takes a cop who chases from out of sight behind the player (at least
+// HEAT.roadblockHideM back along the route): he is radioed ahead. In the Pacific Northwest the
+// lot's cop trailed 600 m and more behind while every other cop was busy, so tier 3 found nobody
+// free (2 roadblocks in 8 races at three times the heat; run W-T's seeded check).
+//
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
-import { clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
+import { atan2, clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
 import type { RoadPos } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
-import { InputFlag, type LawSnapshot, type SimConfig, type SimRiderDef } from '../types';
+import {
+  InputFlag,
+  LAW_PROP_ID_BASE,
+  type LawSnapshot,
+  type PropSnapshot,
+  type SimConfig,
+  type SimLawHabit,
+  type SimRiderDef,
+} from '../types';
 import { groundUnder } from '../ground';
 import { blockerAt, lineClear, pathClear, see, type Obstacle } from '../ai/sense';
 import { vehicleInfo } from '../traffic';
@@ -473,6 +514,35 @@ export interface CopsState {
   blockAt: number[];
   /** By cop id: the clock value at which his roadblock lifts. */
   blockUntil: number[];
+  // Law with a personality (run W-T).
+  /** By cop id: scaled ticks spent chasing someone, all race (relentless ramps on it, budget spends it). */
+  chasedFor: number[];
+  /** By cop id: the relentless level he has announced (0, 1 at half, 2 at the top). */
+  level: number[];
+  /** By cop id: his radar's route progress (a radar cop on patrol), or -1. */
+  radarAt: number[];
+  /** By cop id: his radar's d across the road. */
+  radarD: number[];
+  /** By cop id: the player his radar has read (-1: none yet), and 1 when that one was over the limit. */
+  radarSeen: EntityId[];
+  radarOver: number[];
+  /** By cop id: scaled ticks alongside toward his next citation, and citations he has written. */
+  citeTicks: number[];
+  cites: number[];
+  /** By player id: citation cash owed and citations, billed at his finish; 1 once billed. */
+  owed: number[];
+  owedCount: number[];
+  billed: number[];
+  /** By cop id: 1 once his pursuit budget is spent. */
+  broke: number[];
+  /** The END OF JURISDICTION sign's route progress (-1: none), and where it stands. */
+  lineAt: number;
+  lineEdge: number;
+  lineS: number;
+  lineD: number;
+  /** By player id: 1 once he crossed the sign; his route progress last tick. */
+  crossed: number[];
+  lastProgress: number[];
 }
 
 export function copsState(world: World): CopsState {
@@ -505,7 +575,91 @@ export function copsState(world: World): CopsState {
     heatCop: [],
     blockAt: [],
     blockUntil: [],
+    chasedFor: [],
+    level: [],
+    radarAt: [],
+    radarD: [],
+    radarSeen: [],
+    radarOver: [],
+    citeTicks: [],
+    cites: [],
+    owed: [],
+    owedCount: [],
+    billed: [],
+    broke: [],
+    lineAt: -1,
+    lineEdge: 0,
+    lineS: 0,
+    lineD: 0,
+    crossed: [],
+    lastProgress: [],
   }));
+}
+
+/**
+ * The habits' default numbers (run W-T, law with a personality; the file header has the rules). A
+ * rider file's `law.habit` overrides any of them by name. [default] starting numbers.
+ */
+export const HABIT = {
+  relentless: {
+    /** Seconds of chasing to reach the top of his ramp. */
+    rampS: 75,
+    /** His catch-up speed at the top, x his own top speed. */
+    maxScale: 1.15,
+    /** At the top: the follow gap shrinks by this share, the spell on station before moving in by this. */
+    gapShare: 0.5,
+    hangShare: 0.6,
+  },
+  radar: {
+    /** About 65 mph. */
+    limitMps: 29,
+    rangeM: 160,
+    minBridgeM: 300,
+    /** Heat for being clocked over the limit. */
+    heat: 20,
+  },
+  citations: {
+    everyS: 3,
+    cashEach: 75,
+    hangBackS: 3,
+    alongsideS: 12,
+    /** Within this along the road (and CITE_ACROSS_M across) counts as alongside, m. */
+    alongsideM: 6,
+    /** How far to the side of his man he rides alongside, m: out of bumping range (0.8 m), in taser reach. */
+    sideM: 1.5,
+    /**
+     * His catch-up when well back, x his own top speed: he must pace a player to write him up (run
+     * W-T's seeded check: at 1.05 x, a patrol Lindqvist was within 6 m for about 0.5 s a race).
+     */
+    maxScale: 1.3,
+  },
+  budget: {
+    budgetS: 30,
+  },
+};
+const CITE_ACROSS_M = 4;
+/** Moving in, a habit's catch-up runs until he is within this of alongside, m. */
+const CATCH_UP_NEAR_M = 4;
+
+/** The END OF JURISDICTION sign [default]: from this share of the route; this far off the lanes, m. */
+export const JURISDICTION = { share: 0.55, outM: 1.2 };
+
+function habitOf(def: SimRiderDef | undefined): SimLawHabit | null {
+  return def?.law?.habit ?? null;
+}
+
+/** A habit's number by name, or its default. */
+function hp(h: SimLawHabit, name: string, fallback: number): number {
+  const v = h.params[name];
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+/** How relentless a relentless cop is now, 0 to 1 (0 for any other cop). */
+export function relentlessness(world: World, config: SimConfig, copId: EntityId): number {
+  const h = habitOf(defOf(config, world.movers[copId]));
+  if (h?.kind !== 'relentless') return 0;
+  const ramp = Math.max(1, hp(h, 'rampS', HABIT.relentless.rampS) * 60);
+  return clamp((copsState(world).chasedFor[copId] ?? 0) / ramp, 0, 1);
 }
 
 /** Playtest 2's heat meter [default]: the top of the meter (SimSnapshot.law.heat is heat / max). */
@@ -595,7 +749,62 @@ export function lawSnapshot(world: World, config: SimConfig): LawSnapshot {
     heat: clamp((st.heat[player] ?? 0) / HEAT_MAX, 0, 1),
     tier: st.heatTier[player] ?? 0,
     lost: (st.heatLost[player] ?? 0) === 1,
+    citations: st.owedCount[player] ?? 0,
+    citationCash: st.owed[player] ?? 0,
   };
+}
+
+/** The world heading of something standing at (edge, s), facing the route's way (as a set piece's). */
+function routeHeading(config: SimConfig, edge: number, s: number): number {
+  const f = config.road.frameAt(edge, s);
+  const dir = config.route.orientation(edge) === -1 ? -1 : 1;
+  return atan2(-f.tx * dir, -f.tz * dir);
+}
+
+/**
+ * sim/cops' own props (run W-T; SimSnapshot.props): the END OF JURISDICTION sign (id
+ * LAW_PROP_ID_BASE) and each radar trooper's radar (LAW_PROP_ID_BASE + 1 + his id).
+ */
+export function lawProps(world: World, config: SimConfig): PropSnapshot[] {
+  const st = copsState(world);
+  const out: PropSnapshot[] = [];
+  const j = config.event.cops?.jurisdiction;
+  if (st.lineAt >= 0 && j) {
+    const w = config.road.toWorld(st.lineEdge, st.lineS, st.lineD, 0);
+    out.push({
+      id: LAW_PROP_ID_BASE,
+      kind: 'sign',
+      variant: 'jurisdiction',
+      label: j.label,
+      piece: j.agency,
+      x: w.x,
+      y: w.y,
+      z: w.z,
+      heading: routeHeading(config, st.lineEdge, st.lineS),
+      tilt: 0,
+      moving: false,
+    });
+  }
+  for (const id of st.cops) {
+    const at = st.radarAt[id] ?? -1;
+    const pos = at >= 0 ? routePosAt(config, at) : null;
+    if (!pos) continue;
+    const w = config.road.toWorld(pos.edge, pos.s, st.radarD[id] ?? 0, 0);
+    out.push({
+      id: LAW_PROP_ID_BASE + 1 + id,
+      kind: 'radar',
+      variant: 'trooper',
+      label: '',
+      piece: defOf(config, world.movers[id])?.law?.agency ?? '',
+      x: w.x,
+      y: w.y,
+      z: w.z,
+      heading: routeHeading(config, pos.edge, pos.s),
+      tilt: 0,
+      moving: false,
+    });
+  }
+  return out;
 }
 
 /** The event's tier (1 for the first; absent is 1). */
@@ -868,6 +1077,17 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   const v = cop.speed;
   const target = st.phase[cop.id] === COP_CHASING ? world.movers[st.target[cop.id] ?? -1] : undefined;
   const { drive: lane, shoulder } = sideLanes(config, pos);
+  // Law with a personality (run W-T): a relentless cop holds closer and moves in sooner as his
+  // chasing time ramps; a citations cop has his own spells and rides alongside out of bumping range.
+  const habit = habitOf(def);
+  const r = relentlessness(world, config, cop.id);
+  const cites = habit?.kind === 'citations' ? habit : null;
+  const followGap = (world.params['cops.followGapM'] ?? 40) * (1 - HABIT.relentless.gapShare * r);
+  const hangTicks = cites
+    ? hp(cites, 'hangBackS', HABIT.citations.hangBackS) * 60
+    : HANG_BACK_TICKS * (1 - HABIT.relentless.hangShare * r);
+  const moveInTicks = cites ? hp(cites, 'alongsideS', HABIT.citations.alongsideS) * 60 : MOVE_IN_TICKS;
+  const sideM = cites ? hp(cites, 'sideM', HABIT.citations.sideM) : ALONGSIDE_D_M;
 
   // Default line: the centre line, the inner edge of his own lane, where traffic in both
   // directions leaves him room to ride through (a cop splitting the lanes).
@@ -894,7 +1114,6 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     // (so he can be hit, and is there if you fall), then drop back. Either way: close to the
     // goal gap, match his speed, and brake early enough not to overshoot.
     const id = cop.id;
-    const followGap = world.params['cops.followGapM'] ?? 40;
     let spell = st.closingFor[id] ?? 0;
     if (st.closing[id] === 1) {
       if (Math.abs(gap) <= ALONGSIDE_S_M) spell += world.timeScale;
@@ -904,13 +1123,13 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
       // Out of reach ahead (the man got away, or the cop was knocked off): the move-in is over too,
       // and he hangs back again. Still moving in from 100 to 300 m back, he rode his man's line (a
       // traffic lane) at his pursuit burst into the car ahead, again and again (W-S, SF seed 7).
-      if (spell >= MOVE_IN_TICKS || gap < -ALONGSIDE_S_M || gap > followGap + STATION_M) {
+      if (spell >= moveInTicks || gap < -ALONGSIDE_S_M || gap > followGap + STATION_M) {
         st.closing[id] = 0;
         spell = 0;
       }
     } else {
       if (gap <= followGap + STATION_M) spell += world.timeScale;
-      if (spell >= HANG_BACK_TICKS) {
+      if (spell >= hangTicks) {
         st.closing[id] = 1;
         spell = 0;
       }
@@ -942,7 +1161,7 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     if (closing) {
       const edge = config.road.edges[pos.edge];
       const centre = edge ? (edge.dMin + edge.dMax) / 2 : 0;
-      dWant = target.pos.d + (target.pos.d > centre ? -ALONGSIDE_D_M : ALONGSIDE_D_M);
+      dWant = target.pos.d + (target.pos.d > centre ? -sideM : sideM);
     } else if (gap < -ALONGSIDE_S_M && shoulder) {
       // Ahead of him: ease onto the shoulder and let him come past, then fall in behind.
       dWant = shoulder.dCenterM;
@@ -955,16 +1174,30 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     // Nothing to chase: pull onto the shoulder and stop there.
     dWant = shoulder.dCenterM;
   }
-  // A heat cop well back closes with a pursuit burst (riders' boost raises his top speed).
+  // A heat cop well back closes with a pursuit burst (riders' boost raises his top speed); a
+  // relentless one with his own catch-up as he ramps, and a citations one with his, always (run
+  // W-T: never in a hurry, always there); the larger of the two.
   let burst = 0;
-  if (target && st.heatCop[cop.id] === 1) {
-    const back = gapAlongRoute(config, cop, target) - (world.params['cops.followGapM'] ?? 40);
-    if (back > HEAT.burstM) {
-      burst = HEAT.catchUpMps;
+  const catchUp =
+    habit?.kind === 'relentless'
+      ? (hp(habit, 'maxScale', HABIT.relentless.maxScale) - 1) * r
+      : cites
+        ? hp(cites, 'maxScale', HABIT.citations.maxScale) - 1
+        : 0;
+  if (target && (st.heatCop[cop.id] === 1 || catchUp > 0)) {
+    const gap = gapAlongRoute(config, cop, target);
+    const heatBurst = st.heatCop[cop.id] === 1 && gap - followGap > HEAT.burstM ? HEAT.catchUpMps : 0;
+    // His own catch-up runs until he is near where he wants to be: the follow gap, or alongside
+    // while he moves in (a player faster than his own top speed is otherwise out of reach).
+    const goal = st.closing[cop.id] === 1 ? ALONGSIDE_S_M : followGap;
+    const far = gap - goal > HEAT.burstM;
+    const own = catchUp > 0 && (far || (st.closing[cop.id] === 1 && gap - goal > CATCH_UP_NEAR_M));
+    burst = Math.max(heatBurst, own ? bike.topSpeedMps * catchUp : 0);
+    if (burst > 0) {
       const rs = riderState(world);
       rs.boost[cop.id] = Math.max(rs.boost[cop.id] ?? 0, 2);
-      rs.boostMps[cop.id] = HEAT.catchUpMps;
-      vWant = Math.max(vWant, bike.topSpeedMps + burst);
+      rs.boostMps[cop.id] = burst;
+      if (heatBurst > 0 || far) vWant = Math.max(vWant, bike.topSpeedMps + burst);
     }
   }
   vWant = clamp(vWant, 0, bike.topSpeedMps + burst);
@@ -1162,6 +1395,55 @@ export function patrolSpots(world: World, config: SimConfig, count: number): { a
   return out;
 }
 
+/** Whether the road at `pos` runs over water or between rails on both sides (a bridge or causeway). */
+function overWater(config: SimConfig, pos: RoadPos): boolean {
+  const wet = (side: 'left' | 'right') => {
+    const e = config.road.vergeAt(pos.edge, pos.s, side).edge;
+    return e === 'water' || e === 'rail';
+  };
+  return wet('left') && wet('right');
+}
+
+/** Route progress step when looking for bridges and sign spots, m. */
+const SCAN_STEP_M = 10;
+
+/**
+ * A radar trooper's spot (run W-T): the route's first stretch over water of at least `minBridgeM`
+ * that starts inside the patrol's share of the route; the first clear patrol spot on it from 40 m
+ * in, or else at its foot, up to 200 m short of it. Null when there is no such bridge or no spot.
+ */
+export function radarSpot(config: SimConfig, minBridgeM: number): { at: number; pos: RoadPos } | null {
+  const length = config.route.length;
+  const lo = PATROL.minProgress * length;
+  const hi = PATROL.maxProgress * length;
+  let start = -1;
+  let tried = false;
+  for (let at = 0; at <= hi; at += SCAN_STEP_M) {
+    const pos = routePosAt(config, at);
+    if (!pos || !overWater(config, pos)) {
+      start = -1;
+      tried = false;
+      continue;
+    }
+    if (start < 0) start = at;
+    // Long enough, and not yet tried: look for his spot on it once.
+    if (tried || at - start < minBridgeM) continue;
+    tried = true;
+    const from = start;
+    const tries = [
+      ...Array.from({ length: 8 }, (_, i) => from + 40 + i * PATROL.stepM),
+      ...Array.from({ length: 10 }, (_, i) => from - 20 - i * PATROL.stepM),
+    ];
+    for (const want of tries) {
+      if (want < lo || want > hi) continue;
+      const p = routePosAt(config, want);
+      const spot = p && patrolSpot(config, p, true);
+      if (spot) return { at: want, pos: spot };
+    }
+  }
+  return null;
+}
+
 /**
  * The nearest player short of a parked patrol cop: how far short along the route (m; negative once
  * past him, and only down to -PATROL.pullOutM; Infinity when no player is that close) and how fast
@@ -1172,18 +1454,20 @@ function patrolGap(
   config: SimConfig,
   st: CopsState,
   cop: Mover,
-): { gap: number; speed: number } {
+): { gap: number; speed: number; id: EntityId } {
   let gap = Infinity;
   let speed = 0;
+  let id: EntityId = -1;
   for (const m of world.movers) {
     if (!isPlayer(config, m) || !chaseable(config, st, m)) continue;
     const g = gapAlongRoute(config, m, cop);
     if (g >= -PATROL.pullOutM && g < gap) {
       gap = g;
       speed = m.speed;
+      id = m.id;
     }
   }
-  return { gap, speed };
+  return { gap, speed, id };
 }
 
 /**
@@ -1381,7 +1665,8 @@ function stepHeat(world: World, config: SimConfig, st: CopsState): void {
 /** Whether a cop can be sent for the heat: waiting in the lot, or done with an earlier chase. */
 function heatReserve(world: World, st: CopsState, id: EntityId): boolean {
   const cop = world.movers[id];
-  if (!cop || cop.mode !== 'Road' || st.heatCop[id] === 1) return false;
+  // A cop whose pursuit budget is spent (run W-T) is never sent again.
+  if (!cop || cop.mode !== 'Road' || st.heatCop[id] === 1 || st.broke[id] === 1) return false;
   if (st.phase[id] === COP_DONE) return true;
   return (
     st.phase[id] === COP_PARKED &&
@@ -1451,8 +1736,16 @@ function liftBlock(world: World, st: CopsState, id: EntityId): boolean {
  */
 function blockReserve(world: World, config: SimConfig, st: CopsState, id: EntityId, player: Mover): boolean {
   const cop = world.movers[id];
-  if (!cop || cop.mode !== 'Road' || st.heatCop[id] === 1) return false;
+  if (!cop || cop.mode !== 'Road' || st.broke[id] === 1 || (st.blockAt[id] ?? -1) >= 0) return false;
   if (distance(config, cop, player) < HEAT.roadblockHideM) return false;
+  // Run W-T: a cop chasing him from out of sight behind is radioed ahead (the file header).
+  if (
+    st.phase[id] === COP_CHASING &&
+    st.target[id] === player.id &&
+    gapAlongRoute(config, cop, player) >= HEAT.roadblockHideM
+  )
+    return true;
+  if (st.heatCop[id] === 1) return false;
   if (heatReserve(world, st, id)) return true;
   return (
     st.phase[id] === COP_PARKED &&
@@ -1552,6 +1845,20 @@ function startPatrol(
   const want = freq > 0 && scale > 0 ? 1 + Math.min(hi - 1, Math.floor(u * hi)) : 0;
   const free = st.cops.filter((_id, k) => k >= starting);
   const spots = patrolSpots(world, config, Math.min(want, free.length));
+  // Run W-T: a radar trooper on patrol waits at the route's first long bridge instead, when there is
+  // one in the patrol's share of the route at least half the patrol's spacing from the others. Only
+  // there does he work the radar; on a route with no such bridge he patrols as any cop.
+  const onBridge = new Set<number>();
+  spots.forEach((_spot, k) => {
+    const h = habitOf(defOf(config, world.movers[free[k] ?? -1]));
+    if (h?.kind !== 'radar') return;
+    const bridge = radarSpot(config, hp(h, 'minBridgeM', HABIT.radar.minBridgeM));
+    if (!bridge) return;
+    const clash = spots.some((o, j) => j !== k && Math.abs(o.at - bridge.at) < PATROL.spacingM / 2);
+    if (clash) return;
+    spots[k] = bridge;
+    onBridge.add(k);
+  });
   let inLot = 0;
   for (const id of st.cops) {
     const m = world.movers[id];
@@ -1565,6 +1872,11 @@ function startPatrol(
       st.spawns[id] = 1;
       st.patrolAt[id] = spot.at;
       st.cause[id] = 'patrol';
+      if (onBridge.has(k)) {
+        // His radar stands beside him, a little further off the lanes (a prop).
+        st.radarAt[id] = spot.at;
+        st.radarD[id] = spot.pos.d + Math.sign(spot.pos.d || 1) * 0.9;
+      }
       continue;
     }
     if (lot) {
@@ -1574,6 +1886,122 @@ function startPatrol(
       m.pos = { ...lot, s: clamp(lot.s + off * lot.dir, 0, len) };
     }
     inLot++;
+  }
+}
+
+/**
+ * Puts up the END OF JURISDICTION sign (run W-T; the file header has the rule): the first clear
+ * spot from JURISDICTION.share of the route, on land, at least HEAT.roadblockFinishM short of the
+ * finish, beside the road on the route's right. None found: no sign.
+ */
+function placeLine(config: SimConfig, st: CopsState): void {
+  const length = config.route.length;
+  for (let at = JURISDICTION.share * length; at <= length - HEAT.roadblockFinishM; at += PATROL.stepM) {
+    const pos = routePosAt(config, at);
+    if (!pos || !patrolSpot(config, pos, true) || overWater(config, pos)) continue;
+    const o = config.route.orientation(pos.edge) === -1 ? -1 : 1;
+    const v = config.road.vergeAt(pos.edge, pos.s, o > 0 ? 'right' : 'left');
+    const out = Math.min(JURISDICTION.outM, Math.max(0, Math.abs(v.dOuter - v.dInner) - 0.2));
+    st.lineAt = at;
+    st.lineEdge = pos.edge;
+    st.lineS = pos.s;
+    st.lineD = v.dInner + o * out;
+    return;
+  }
+}
+
+/**
+ * The END OF JURISDICTION sign, each tick (before the heat meter): a player riding over it toward
+ * the finish for the first time, with heat or a cop on him, has his heat set to nothing and every
+ * cop on him who is not a heat cop pulls over (the heat meter then drops its own: "LOST 'EM").
+ */
+function stepJurisdiction(world: World, config: SimConfig, st: CopsState): void {
+  if (st.lineAt < 0) return;
+  for (const m of world.movers) {
+    if (!isPlayer(config, m)) continue;
+    const id = m.id;
+    const now = config.route.progressAt(m.pos.edge, m.pos.s);
+    const before = st.lastProgress[id] ?? now;
+    st.lastProgress[id] = now;
+    if (st.crossed[id] === 1 || !(before < st.lineAt && now >= st.lineAt) || now - before > 50) continue;
+    st.crossed[id] = 1;
+    const heat = st.heat[id] ?? 0;
+    const on = st.cops.filter((c) => st.phase[c] === COP_CHASING && st.target[c] === id);
+    if (heat <= 0 && on.length === 0) continue;
+    let speaker: EntityId = id;
+    let nearest = Infinity;
+    for (const c of on) {
+      const cop = world.movers[c];
+      const dist = cop ? distance(config, cop, m) : Infinity;
+      if (dist < nearest) {
+        nearest = dist;
+        speaker = c;
+      }
+      if (st.heatCop[c] !== 1) endChase(world, st, c);
+    }
+    st.heat[id] = 0;
+    st.heatAt[id] = st.clock;
+    emit(world, 'law', speaker, { kind: 'jurisdiction', heatBefore: heat / HEAT_MAX }, { target: id });
+  }
+}
+
+/**
+ * The habits, each tick after the phases (run W-T): chasing time for the relentless and the budget
+ * cops (with the relentless levels, and a spent budget pulling him over), the citations cop's book,
+ * and the bill at a player's finish.
+ */
+function stepHabits(world: World, config: SimConfig, st: CopsState): void {
+  for (const id of st.cops) {
+    const cop = world.movers[id];
+    const h = habitOf(defOf(config, cop));
+    if (!cop || !h || st.phase[id] !== COP_CHASING) continue;
+    const target = world.movers[st.target[id] ?? -1];
+    if (!target) continue;
+    const chased = (st.chasedFor[id] ?? 0) + world.timeScale;
+    st.chasedFor[id] = chased;
+    if (h.kind === 'relentless') {
+      const r = relentlessness(world, config, id);
+      const level = r >= 1 ? 2 : r >= 0.5 ? 1 : 0;
+      if (level > (st.level[id] ?? 0)) {
+        st.level[id] = level;
+        emit(world, 'law', id, { kind: 'relentless', level }, { target: target.id });
+      }
+    } else if (h.kind === 'budget') {
+      const budgetS = hp(h, 'budgetS', HABIT.budget.budgetS);
+      if (chased >= budgetS * 60 - 1e-9) {
+        st.broke[id] = 1;
+        emit(world, 'law', id, { kind: 'budgetOut', budgetS }, { target: target.id });
+        if (!liftBlock(world, st, id)) endChase(world, st, id);
+      }
+    } else if (h.kind === 'citations' && target.mode === 'Road' && isPlayer(config, target)) {
+      const rel = relative(config.road, cop, target, CITE_ACROSS_M + 10);
+      const along = hp(h, 'alongsideM', HABIT.citations.alongsideM);
+      if (!rel || Math.abs(rel.ds) > along || Math.abs(rel.dd) > CITE_ACROSS_M) continue;
+      const every = Math.max(0.5, hp(h, 'everyS', HABIT.citations.everyS)) * 60;
+      const ticks = (st.citeTicks[id] ?? 0) + world.timeScale;
+      if (ticks < every - 1e-9) {
+        st.citeTicks[id] = ticks;
+        continue;
+      }
+      st.citeTicks[id] = ticks - every;
+      const cashEach = Math.round(hp(h, 'cashEach', HABIT.citations.cashEach));
+      const count = (st.cites[id] ?? 0) + 1;
+      st.cites[id] = count;
+      const totalCash = (st.owed[target.id] ?? 0) + cashEach;
+      st.owed[target.id] = totalCash;
+      st.owedCount[target.id] = (st.owedCount[target.id] ?? 0) + 1;
+      emit(world, 'law', id, { kind: 'citation', count, cashEach, totalCash }, { target: target.id });
+    }
+  }
+  // The bill: a player who finishes owing citations is billed once, by the cop who wrote the most.
+  for (const m of world.movers) {
+    if (!isPlayer(config, m) || (st.owedCount[m.id] ?? 0) === 0 || st.billed[m.id] === 1) continue;
+    if (!hasFinished(config, m)) continue;
+    st.billed[m.id] = 1;
+    let by: EntityId = st.cops[0] ?? m.id;
+    for (const c of st.cops) if ((st.cites[c] ?? 0) > (st.cites[by] ?? 0)) by = c;
+    const data = { kind: 'bill', count: st.owedCount[m.id] ?? 0, totalCash: st.owed[m.id] ?? 0 };
+    emit(world, 'law', by, data, { target: m.id });
   }
 }
 
@@ -1628,6 +2056,7 @@ export const copsSystem: SimSystem = {
     });
     st.chaosAt = Math.max(1, (world.params['cops.chaosSummonAt'] ?? 10) * jitter(world, mix.randomness));
     if ((mix.patrolMax ?? 0) > 0 && mix.mode !== 'none') startPatrol(world, config, st, count, spawn);
+    if (heatOn(config) && mix.jurisdiction) placeLine(config, st);
   },
   step(world: World, config: SimConfig) {
     const st = copsState(world);
@@ -1635,6 +2064,7 @@ export const copsSystem: SimSystem = {
     const { sirenTicks, pullOutTicks } = copTiming(world, config);
     const leadTicks = pullOutTicks - sirenTicks;
     if (chaosSummons(config)) stepChaos(world, config, st);
+    stepJurisdiction(world, config, st);
     if (heatOn(config)) stepHeat(world, config, st);
     const maxActive = Math.max(1, Math.round(world.params['cops.maxActive'] ?? 2));
     // Chasing, or parked with the siren going: each holds one of the maxActive places.
@@ -1661,9 +2091,26 @@ export const copsSystem: SimSystem = {
         // Playtest 2's patrol: he lights up as a player comes near, and pulls out as he arrives.
         // He wakes PATROL.wakeM short, or earlier for a fast rider, so the siren still sounds the
         // full siren lead (and a second more) before he pulls out.
-        const { gap, speed } = patrolGap(world, config, st, cop);
-        const wake = Math.max(PATROL.wakeM, PATROL.pullOutM + speed * (leadTicks / 60 + 1));
-        if (st.sirenOn[id] !== 1 && gap <= wake && active < maxActive) {
+        const { gap, speed, id: who } = patrolGap(world, config, st, cop);
+        const h = habitOf(def);
+        const radar = h?.kind === 'radar' && (st.radarAt[id] ?? -1) >= 0 ? h : null;
+        const wakeAt = radar ? hp(radar, 'rangeM', HABIT.radar.rangeM) : PATROL.wakeM;
+        const wake = Math.max(wakeAt, PATROL.pullOutM + speed * (leadTicks / 60 + 1));
+        // Run W-T: a radar trooper at his bridge reads each player once as he comes in range, and
+        // wakes only for one over the limit; one under it rides by.
+        let lightsUp = true;
+        if (radar) {
+          if (who >= 0 && gap >= 0 && gap <= wake && st.radarSeen[id] !== who) {
+            const limitMps = hp(radar, 'limitMps', HABIT.radar.limitMps);
+            const over = speed > limitMps;
+            st.radarSeen[id] = who;
+            st.radarOver[id] = over ? 1 : 0;
+            emit(world, 'law', id, { kind: 'radar', mps: speed, limitMps, over }, { target: who });
+            if (over) addHeat(world, config, who, HABIT.radar.heat);
+          }
+          lightsUp = st.radarOver[id] === 1;
+        }
+        if (lightsUp && st.sirenOn[id] !== 1 && gap <= wake && active < maxActive) {
           st.sirenOn[id] = 1;
           active++;
           emit(world, 'siren', id, { on: true, cause: 'patrol' });
@@ -1706,6 +2153,7 @@ export const copsSystem: SimSystem = {
         if (until > 0 && st.clock >= until && !(target && isDown(target))) endChase(world, st, id);
       }
     }
+    stepHabits(world, config, st);
     checkBusts(world, config, st);
     // Commands for the next tick. A cop who is down (knocked off) is left to sim/tumble.
     for (const id of st.cops) {

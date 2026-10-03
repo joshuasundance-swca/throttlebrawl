@@ -11,6 +11,8 @@ import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import {
   createSim,
+  LAW_PROP_ID_BASE,
+  type PropSnapshot,
   type SimConfig,
   type SimEvent,
   type SimModifierDef,
@@ -128,6 +130,14 @@ interface Run {
   problem: string | null;
 }
 
+/**
+ * The set pieces' props only. Since run W-T (law with a personality) the snapshot's props also carry
+ * the cops' own (the END OF JURISDICTION sign and a radar trooper's radar), with ids from
+ * LAW_PROP_ID_BASE up; they are not road events.
+ */
+const pieceProps = (props: readonly PropSnapshot[] | undefined): PropSnapshot[] =>
+  (props ?? []).filter((p) => p.id < LAW_PROP_ID_BASE);
+
 function ride(cfg: SimConfig, maxTicks = MAX_TICKS): Run {
   const sim = createSim(cfg);
   const playerId = cfg.riders.findIndex((r) => r.controller.kind === 'player');
@@ -148,7 +158,7 @@ function ride(cfg: SimConfig, maxTicks = MAX_TICKS): Run {
     sim.step([toSimInput(actions)]);
     snap = sim.snapshot();
     run.events.push(...sim.events());
-    const props = snap.props ?? [];
+    const props = pieceProps(snap.props);
     run.maxProps = Math.max(run.maxProps, props.length);
     for (const p of props) {
       run.kinds.add(p.kind);
@@ -159,7 +169,7 @@ function ride(cfg: SimConfig, maxTicks = MAX_TICKS): Run {
     for (const m of snap.entities) run.problem ??= moverProblem(m, cfg.route);
     if (sim.tick % 600 === 0) run.hashes.push(sim.hash());
   }
-  run.liveAtEnd = (snap.props ?? []).length;
+  run.liveAtEnd = pieceProps(snap.props).length;
   return run;
 }
 
@@ -223,9 +233,9 @@ describe('road set pieces (W-P events)', () => {
       const sim = createSim(config(seed));
       const out: string[] = [];
       // Signs appear only once a piece is live: step until the first one does.
-      for (let t = 0; t < 60 * 120 && !(sim.snapshot().props ?? []).some((p) => p.kind === 'sign'); t++)
+      for (let t = 0; t < 60 * 120 && !pieceProps(sim.snapshot().props).some((p) => p.kind === 'sign'); t++)
         sim.step([]);
-      for (const p of sim.snapshot().props ?? [])
+      for (const p of pieceProps(sim.snapshot().props))
         if (p.kind === 'sign') out.push(`${p.piece}@${p.x.toFixed(0)},${p.z.toFixed(0)}`);
       return out.sort().join(';');
     };
