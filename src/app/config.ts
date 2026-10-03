@@ -33,6 +33,7 @@ import {
   type SimEventCops,
   type SimRiderDef,
   type SimSlotConfig,
+  type SimSmashableDef,
   type SimStyleRewards,
   type SimTrafficBehaviour,
   type SimWeaponDef,
@@ -496,6 +497,26 @@ function regionTrafficWeights(
   return out;
 }
 
+/**
+ * The event region's live roadside smashables (run W-T, "the road fights back"), in file order,
+ * each named by its veto reference (`<packId>:region/<regionId>#<itemId>`). Empty when the region
+ * lists none (or is not in the registry). The loader already dropped vetoed ones.
+ */
+function regionSmashables(reg: ContentRegistry, event: RaceEvent, eventPack: string): SimSmashableDef[] {
+  const regionKey = qualifyIn(eventPack, event.region);
+  const region = reg.regions[regionKey];
+  if (!region) return [];
+  const pack = packOf(regionKey);
+  const bare = regionKey.slice(regionKey.indexOf(':') + 1);
+  return (region.smashables ?? []).map((item) => ({
+    contentId: `${pack}:region/${bare}#${item.id}`,
+    kind: item.kind,
+    name: item.text,
+    weight: item.weight ?? 1,
+    tags: [...(item.tags ?? [])],
+  }));
+}
+
 /** A type's `areaWeights` field for SimTrafficTypeDef: present only when an area lists it. */
 function areaWeightsOf(
   areas: ReadonlyMap<string, Record<string, number>>,
@@ -689,5 +710,6 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     playerSlots,
     slots,
     speedMultiplier: validSpeed(setup.speedMultiplier),
+    smashables: regionSmashables(race, event, eventPack),
   };
 }

@@ -225,6 +225,7 @@ export const ISOLATED: Readonly<Record<string, number>> = {
   'ground.offRoad': 0,
   'combat.pickupSpacingM': 3000,
   'combat.crashWeaponChance': 0,
+  'smash.density': 0,
 };
 
 /** Seeds `from` to `to`, inclusive. */

@@ -126,6 +126,35 @@
     { "id": "dt-inevitable", "text": "WE ARE INEVITABLE. That's the whole ad.", "status": "live" }
   ],
   "weather": null,
+  "smashables": [
+    {
+      "id": "meter-expired",
+      "kind": "parking-meter",
+      "text": "METER EXPIRED",
+      "weight": 3,
+      "tags": ["towers", "row-houses", "painted-houses", "cross-street", "plaza", "warehouses", "piers"],
+      "status": "live",
+      "note": "Run W-T. City parking meters along the kerb."
+    },
+    {
+      "id": "down-round",
+      "kind": "pop-up-desk",
+      "text": "DOWN ROUND",
+      "weight": 1.5,
+      "tags": ["towers", "plaza"],
+      "status": "live",
+      "note": "Run W-T. An invented startup's pop-up desk parked on the pavement. Startups only, never Chinatown's shops (pitch deck)."
+    },
+    {
+      "id": "seat-yourself",
+      "kind": "cafe-table",
+      "text": "SEAT YOURSELF",
+      "weight": 1.5,
+      "tags": ["plaza", "towers", "row-houses", "painted-houses"],
+      "status": "live",
+      "note": "Run W-T. Pavement cafe tables. Never Chinatown's shops (pitch deck)."
+    }
+  ],
   "meta": {
     "status": "live",
     "notes": "Region pack region-sf (playtest 1c, 2026-09-30). The palette keys follow the renderer's material names (sky, water, road, shoulder, land, rail, markingCenter) plus fog and the row-house and cable-car colours, which paint the row-house and cable-car models (W-O, 2026-10-01); `fogBank` lays fog banks offshore. Chapter 3 assumes the Pacific Northwest is chapter 2 (\"Pnw and sf first\"); the order is the maintainer's call. The mix names three region vehicles (placeholder shapes from the base presets) beside base traffic; a kind listed nowhere never spawns. Every sign and billboard is placed by a billboard slot on the sf-hills or sf-downtown roads. Run W-R (interview, 2026-10-02: \"SF first = downtown towers\"; playtest 2: the cable cars drove \"including in forests\"): the downtown network joins with its own signs and billboards, and the cable car leaves the traffic mix, so cable cars run only on downtown's steep cable-car cross streets (render/downtown.ts), never on a race road.",

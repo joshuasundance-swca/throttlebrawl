@@ -125,6 +125,25 @@
     { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. Still 2 hours. But first.", "status": "live" }
   ],
   "weather": null,
+  "smashables": [
+    {
+      "id": "return-to-sender",
+      "kind": "mailbox",
+      "text": "RETURN TO SENDER",
+      "weight": 3,
+      "status": "live",
+      "note": "Run W-T. Rural mailbox rows; any open road with room."
+    },
+    {
+      "id": "honor-system",
+      "kind": "firewood-stand",
+      "text": "HONOR SYSTEM",
+      "weight": 2,
+      "tags": ["forest", "town", "sawmill", "marina"],
+      "status": "live",
+      "note": "Run W-T. An honour-system firewood stand with a cash box."
+    }
+  ],
   "meta": {
     "status": "live",
     "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the palette carries it (W-O, 2026-10-01, render only): `rain` turns on the drizzle, `sunlight` and `skylight` set the overcast light, and `foliage`, `foliageDark` and `trunk` paint the conifers. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto.",
