@@ -50,6 +50,15 @@ function pruitt(): SimRiderDef {
       bustDwellS: law.bustDwellS,
       fineCash: law.fineCash,
       pursuitSpeedScale: law.pursuitSpeedScale,
+      // Run W-T (law with a personality): his habit, `relentless`, with the pack's own numbers.
+      ...(law.habit
+        ? {
+            habit: {
+              kind: law.habit.kind,
+              params: { rampS: Number(law.habit['rampS']), maxScale: Number(law.habit['maxScale']) },
+            },
+          }
+        : {}),
     },
   };
 }
