@@ -1,0 +1,5 @@
+---
+kind: new
+audience: player
+---
+Each of the Keys has its own traffic now. By the fishing village you meet shrimp trucks and pickups towing boats. On the resort strip there are rental scooter riders, convertibles and golf carts. The junkyard key has wreckers and the Salvage Key shuttle bus, and the party key has party vans and coolers on wheels. The bridges, Conch Row and the real roads keep the usual Keys mix. The long haul crosses all four keys; the sprint meets the fishing village and the resort strip, and the standard run the junkyard key too. The new vehicles are drawn with the existing shapes for now: the scooter riders as scooter riders, the shuttle as a shuttle, and the rest as plain cars and trucks. Fixed too: traffic could appear right on top of a cop waiting on the shoulder (a bike or a golf cart at the kerb) and shove him along before his chase began. Vehicles now appear only well clear of any rider. And a pedestrian caught between a scooter at the kerb and a rider now always dives clear of the rider: a scooter or a car only knocks someone over, but a rider never touches anyone.
