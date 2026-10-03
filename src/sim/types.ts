@@ -1,7 +1,7 @@
 // The sim contract's types (docs/architecture.md, "Sim contract"). Re-exported by src/sim/api.ts,
 // which is the only file outside src/sim may import. Field lists are the architecture doc's
 // minimum plus what the M1 lanes need; the contract owner may add fields in a contract PR.
-import type { EntityId, GroundSurface, SmashableKind, TuningValues } from '../core';
+import type { EntityId, GroundSurface, GrudgeRuleId, SmashableKind, TuningValues } from '../core';
 import type { RoadNetwork, RouteProgress } from '../road';
 
 export const SIM_HZ = 60;
@@ -519,6 +519,15 @@ export type SimEventType =
    */
   | 'grudgeNoted'
   /**
+   * Dial-Up's "Bad Connection" (run W-T, the pitch deck's #14; a grudge match whose
+   * `SimEventDef.grudgeRule` is `bad-connection`). Actor = the rival. `data.phase` is `screech` (the
+   * warning: his lag move's tell begins, audio plays the modem screech), `drop` (the connection
+   * drops: he freezes, as `EntitySnapshot.signature` shows) or `reconnect` (he is back, moved
+   * `data.jumpM` metres up the road along his edge; 0 when the road ahead was not clear).
+   * Presentation reads it; the career does not.
+   */
+  | 'badConnection'
+  /**
    * A rider rode onto a `boostPad` (playtest 1b quick wins). Actor = the rider; `data.feature` is
    * the pad's feature id, `data.speed` the rider's speed on entry, m/s, and `data.holdS` how long
    * the boost lasts. One event per pad crossing.
@@ -812,6 +821,13 @@ export interface SimEventDef {
    * `modifiers.maxPerRace` (W-P events). Absent means no cap beyond `SimConfig.modifiers`.
    */
   modifiersPerRace?: number;
+  /**
+   * The grudge match's rival rule (run W-T, the pitch deck's #14: the event file's `rules.rule`)
+   * and its rival's content id, or absent. Only `bad-connection` changes the sim (that rival's lag
+   * move warns, drops and reconnects up the road, with `badConnection` events); the career scores
+   * the others from the public events. Absent, every race runs as before, so no hash moves.
+   */
+  grudgeRule?: { rule: GrudgeRuleId; rival: string };
 }
 
 /**
