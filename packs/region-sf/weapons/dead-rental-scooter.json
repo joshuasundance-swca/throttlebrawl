@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "dead-rental-scooter",
+  "name": "Dead Rental Scooter",
+  "category": "improvised",
+  "behaviour": "melee.swing",
+  "tags": ["roadside", "local"],
+  "unarmed": false,
+  "reach": { "sM": 1.8, "dM": 1.5 },
+  "windupS": 0.5,
+  "activeS": 0.12,
+  "recoveryS": 0.6,
+  "cooldownS": 0,
+  "damage": 30,
+  "knockback": { "lateralMps": 12.0, "staggerS": 0.5 },
+  "hitStopMs": 110,
+  "steal": { "allowed": true, "windowStartS": 0.12, "windowEndS": 0.5 },
+  "uses": { "durabilityHits": 3, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 2, "regions": ["san-francisco"] },
+  "effects": [],
+  "meta": {
+    "status": "live",
+    "notes": "W-T (the pitch deck's #4: one local weapon per region, 'a dead rental scooter swung whole in SF'). A shared e-scooter of no particular brand, battery at 0 %, left on the kerb and swung whole by the stem. The slowest and hardest hit on the road, and its long wind-up makes it the easiest snatch in the game. It comes apart after 3 hits. Lies only on San Francisco roads. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-03" }
+  }
+}

@@ -395,6 +395,31 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     unit: 'm/s',
     affectsSim: true,
   },
+  // W-T, weapons with verbs (the pitch deck's #4): how fast a thrown weapon (Kevin's briefcase)
+  // leaves the hand, on top of the thrower's own speed, and how far past your own line the chain's
+  // yank swings a rival. [default]
+  {
+    id: 'combat.throwSpeedMps',
+    group: 'combat',
+    label: 'Throw speed',
+    default: 16,
+    min: 4,
+    max: 40,
+    step: 1,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.yankPastM',
+    group: 'combat',
+    label: 'Chain yank past you',
+    default: 1.2,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: 'm',
+    affectsSim: true,
+  },
   {
     id: 'combat.stunScale',
     group: 'combat',
@@ -504,7 +529,26 @@ export const STOWED_H = -20;
 export const SPENT = -2;
 
 /** The registered weapon behaviours (weapons-2): a closed list; the file header says what each adds. */
-export const WEAPON_BEHAVIOURS = ['melee.swing', 'melee.wrap', 'taser.stun'] as const;
+export const WEAPON_BEHAVIOURS = [
+  'melee.swing',
+  'melee.wrap',
+  'taser.stun',
+  'throw.burst',
+  'melee.yank',
+  'melee.sweep',
+] as const;
+
+/** pickupHolder of a thrown weapon in the air (W-T): nobody holds it and nobody can pick it up. */
+export const THROWN = -3;
+/** A thrown weapon hits a rider within this box around it: |Δs| ≤ 1.2 m, |Δd| ≤ 0.9 m. [default] */
+export const THROW_HIT_S_M = 1.2;
+export const THROW_HIT_D_M = 0.9;
+/** A thrown weapon can be snatched in its wind-up only from this close, m (its reach is its range). */
+export const THROW_SNATCH_M = 1.6;
+/** A thrown weapon leaves the hand this high, comes down to THROW_END_H and arcs THROW_ARC_M over. */
+const THROW_START_H = 1.2;
+const THROW_END_H = 0.2;
+const THROW_ARC_M = 0.6;
 export type WeaponBehaviour = (typeof WEAPON_BEHAVIOURS)[number];
 
 /** A weapon's behaviour: its `behaviour` id when registered, else the M1 swing. */
@@ -586,6 +630,28 @@ export interface CombatState {
   /** Per pickup entity: charges and durability hits left (absent until first spent: the weapon's own). */
   pickupCharges: number[];
   pickupHits: number[];
+  /** The sweep (W-T): the sides the current swing has landed on (1 right, 2 left), and its first victim. */
+  sweptSides: number[];
+  sweepFirst: EntityId[];
+  /** Thrown weapons in the air (W-T), in launch order. */
+  flights: Flight[];
+}
+
+/** A thrown weapon in the air (W-T, `throw.burst`): plain data, so the state hash covers it. */
+export interface Flight {
+  pickup: EntityId;
+  /** The thrower, and the throw's cause id (its attackStart's). */
+  by: EntityId;
+  cause: number;
+  weapon: string;
+  /** Speed along the road in the thrower's direction, m/s. */
+  speed: number;
+  /** The d it is aimed at, and how far it moves toward it per tick, m. */
+  dTo: number;
+  dStep: number;
+  /** Scaled ticks in the air, and the flight's whole length. */
+  age: number;
+  ticks: number;
 }
 
 export function combatState(world: World): CombatState {
@@ -626,6 +692,9 @@ export function combatState(world: World): CombatState {
     pickupHolder: [],
     pickupCharges: [],
     pickupHits: [],
+    sweptSides: [],
+    sweepFirst: [],
+    flights: [],
   }));
 }
 
@@ -786,6 +855,8 @@ function startAttack(
   st.calm[id] = 0;
   st.landed[id] = false;
   st.stealCued[id] = false;
+  st.sweptSides[id] = 0;
+  st.sweepFirst[id] = -1;
   const target = st.targetId[id] ?? -1;
   const extra: { target?: EntityId; causeId?: number } = {};
   if (target >= 0) extra.target = target;
@@ -827,6 +898,11 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
       // A charged weapon (the taser) spends a charge as the swing goes off.
       if (st.held[id] === w.contentId && w.charges != null) {
         spendUse(st.pickupCharges, st.heldPickup[id] ?? -1, w.charges);
+      }
+      // A thrown weapon (W-T) leaves the hand now; its flight decides the hit or the miss.
+      if (st.held[id] === w.contentId && behaviourOf(w) === 'throw.burst') {
+        launch(world, config, st, a, w);
+        st.landed[id] = true;
       }
     } else if (phase === 'active') {
       if (!st.landed[id]) {
@@ -877,6 +953,16 @@ function resolveWeapon(
   return cooling ? main : (weaponById(config, KICK_ID) ?? main);
 }
 
+/** How a hit lands beyond the swing's defaults (W-T: a thrown weapon's hit, a sweep's second side). */
+interface LandOptions {
+  /** The cause id to carry (a thrown weapon's throw); absent: the attacker's current attack. */
+  cause?: number;
+  /** Extra `hit` event data. */
+  extra?: Record<string, number | string | boolean>;
+  /** Whether this hit spends a use of a held breakable (false: a sweep's second side, a throw). */
+  spend?: boolean;
+}
+
 function land(
   world: World,
   config: SimConfig,
@@ -885,12 +971,15 @@ function land(
   victim: Mover,
   w: SimWeaponDef,
   dd: number,
+  opts: LandOptions = {},
 ): void {
   const riders = riderState(world);
   const id = a.id;
   const vid = victim.id;
-  const cause = st.cause[id] ?? 0;
-  st.landed[id] = true;
+  const thrown = opts.cause !== undefined;
+  const cause = opts.cause ?? st.cause[id] ?? 0;
+  // A thrown weapon's hit belongs to a throw already over, not to whatever its thrower does now.
+  if (!thrown) st.landed[id] = true;
   st.calm[id] = 0;
   st.calm[vid] = 0;
   const kick = w.contentId === KICK_ID;
@@ -935,10 +1024,19 @@ function land(
   const effect = behaviourEffect(world, st, victim, w, copSoft);
   // A breakable held weapon spends one hit (the last one breaks it on this blow); a taser on its
   // last charge goes at the end of this swing. Either way the hit says `spent`.
-  const heldSwing = st.held[id] === w.contentId;
+  const heldSwing = !thrown && opts.spend !== false && st.held[id] === w.contentId;
   const pid = st.heldPickup[id] ?? -1;
   const breaks = heldSwing && w.durabilityHits != null && spendUse(st.pickupHits, pid, w.durabilityHits) <= 0;
-  const spent = breaks || (heldSwing && w.charges != null && (st.pickupCharges[pid] ?? w.charges) <= 0);
+  const spent =
+    thrown || breaks || (heldSwing && w.charges != null && (st.pickupCharges[pid] ?? w.charges) <= 0);
+  const knockTicks = Math.max(1, Math.round((world.params['combat.knockbackDecayS'] ?? 0.4) * 60));
+  // The yank (W-T, the chain): the shove turns round and pulls the target toward the attacker, across
+  // his line, to combat.yankPastM beyond it. A rival on your right comes out on your left: into the
+  // oncoming lane when you ride on that side of him. The shove curve moves peak × ticks / 120 m.
+  const yank = behaviourOf(w) === 'melee.yank';
+  const yankM = yank ? Math.abs(dd) + Math.max(0, world.params['combat.yankPastM'] ?? 1.2) : 0;
+  const resist = clamp(config.riders[victim.riderIndex]?.bike.knockbackResistance ?? 0, 0, 1);
+  const yankPeak = ((yankM * 120) / knockTicks) * (1 - resist) * onPlayer * copSoft;
   emit(
     world,
     'hit',
@@ -951,15 +1049,17 @@ function land(
       health,
       hitImpulse,
       ...effect,
+      ...(yank ? { yank: true, yankM: Math.round((yankPeak * knockTicks * 1000) / 120) / 1000 } : {}),
       ...(spent ? { spent } : {}),
+      ...opts.extra,
     },
     { target: vid, causeId: cause },
   );
   if (kick) emit(world, 'kick', id, { weapon: w.contentId }, { target: vid, causeId: cause });
 
-  st.knockPeak[vid] = away * peak;
+  st.knockPeak[vid] = yank ? -away * yankPeak : away * peak;
   st.knockT[vid] = 0;
-  st.knockTicks[vid] = Math.max(1, Math.round((world.params['combat.knockbackDecayS'] ?? 0.4) * 60));
+  st.knockTicks[vid] = knockTicks;
   // The stagger: no attacks, and the riders phase's wobble (less steering, a shaking bike).
   const stagger = Math.round((w.staggerTicks * (world.params['combat.staggerScale'] ?? 1)) / toughness);
   st.stagger[vid] = Math.max(st.stagger[vid] ?? 0, stagger);
@@ -1022,7 +1122,7 @@ function behaviourEffect(
 ): Record<string, number> {
   const p = world.params;
   const behaviour = behaviourOf(w);
-  if (behaviour === 'melee.wrap') {
+  if (behaviour === 'melee.wrap' || behaviour === 'melee.yank') {
     const before = victim.speed;
     victim.speed = Math.max(0, before - Math.max(0, p['combat.wrapDragMps'] ?? 4));
     return { dragMps: Math.round((before - victim.speed) * 1000) / 1000 };
@@ -1058,9 +1158,37 @@ function retire(world: World, st: CombatState, holder: Mover): void {
   pickup.h = STOWED_H;
 }
 
+/**
+ * The sweep (W-T, the campaign sign): one swing looks for a rider on each side through its whole
+ * active moment, right side first, and lands once on each it finds (never twice on one rider). Each
+ * is shoved away from the attacker; only the first landing spends a use of a breakable.
+ */
+function sweepTest(world: World, config: SimConfig, st: CombatState, a: Mover, w: SimWeaponDef): void {
+  const id = a.id;
+  for (const [side, bit] of [
+    [1, 1],
+    [-1, 2],
+  ] as const) {
+    const swept = st.sweptSides[id] ?? 0;
+    if ((swept & bit) !== 0 || st.weapon[id] !== w.contentId || st.phase[id] !== 'active') continue;
+    const first = st.sweepFirst[id] ?? -1;
+    const inReach = candidates(world, config, a, w.reachSM, w.reachDM, side).filter((c) => c.id !== first);
+    const pick = inReach.find((c) => c.id === st.targetId[id]) ?? inReach[0];
+    const victim = pick ? world.movers[pick.id] : undefined;
+    if (!pick || !victim) continue;
+    st.sweptSides[id] = swept | bit;
+    if (first < 0) st.sweepFirst[id] = pick.id;
+    land(world, config, st, a, victim, w, pick.dd, { extra: { sweep: true }, spend: first < 0 });
+  }
+}
+
 function hitTest(world: World, config: SimConfig, st: CombatState, a: Mover): void {
   const id = a.id;
   const w = weaponById(config, st.weapon[id] ?? '');
+  if (w && st.phase[id] === 'active' && behaviourOf(w) === 'melee.sweep' && !w.unarmed) {
+    sweepTest(world, config, st, a, w);
+    return;
+  }
   if (!w || st.phase[id] !== 'active' || st.landed[id]) return;
   // The straight kick reaches forward (combat.straightKickReachM) in its narrow box, either side.
   const inReach =
@@ -1347,6 +1475,121 @@ function crashWeapons(world: World, config: SimConfig, st: CombatState): void {
   }
 }
 
+// ---- Thrown weapons (W-T, `throw.burst`: Kevin's briefcase) ---------------------------------
+
+/**
+ * The throw: the held weapon leaves the hand as its own pickup entity, at THROW_START_H, moving
+ * along the road at the thrower's speed plus combat.throwSpeedMps. It is aimed at the nearest
+ * rider ahead within the weapon's reach box (reach.sM ahead, reach.dM either side; the current
+ * target first), drifting across to his d by the time it would close the gap; with nobody there
+ * it flies straight. It flies for reach.sM / throw speed and comes down at THROW_END_H.
+ */
+function launch(world: World, config: SimConfig, st: CombatState, a: Mover, w: SimWeaponDef): void {
+  const id = a.id;
+  const pid = st.heldPickup[id] ?? -1;
+  const pickup = world.movers[pid];
+  st.held[id] = '';
+  st.heldPickup[id] = -1;
+  if (!pickup) return;
+  const throwMps = Math.max(1, world.params['combat.throwSpeedMps'] ?? 16);
+  const ahead = candidates(world, config, a, 0, w.reachDM, 0, w.reachSM);
+  const aim = ahead.find((c) => c.id === st.targetId[id]) ?? ahead[0];
+  const victim = aim ? world.movers[aim.id] : undefined;
+  const rel = victim ? relative(config.road, a, victim, w.reachSM + 2) : null;
+  const dTo = rel ? a.pos.d + rel.dd * a.pos.dir : a.pos.d;
+  const reachTicks = rel ? Math.max(1, (Math.max(0, rel.ds) / throwMps) * 60) : 1;
+  pickup.pos.edge = a.pos.edge;
+  pickup.pos.s = a.pos.s;
+  pickup.pos.d = a.pos.d;
+  pickup.pos.dir = a.pos.dir;
+  pickup.h = THROW_START_H;
+  pickup.speed = a.speed + throwMps;
+  st.pickupHolder[pid] = THROWN;
+  st.flights.push({
+    pickup: pid,
+    by: id,
+    cause: st.cause[id] ?? 0,
+    weapon: w.contentId,
+    speed: pickup.speed,
+    dTo,
+    dStep: Math.abs(dTo - a.pos.d) / reachTicks,
+    age: 0,
+    ticks: Math.max(6, Math.round((w.reachSM / throwMps) * 60)),
+  });
+}
+
+/** Where a thrown weapon bursts, in world metres (render's paperwork), rounded to centimetres. */
+function burstAt(config: SimConfig, m: Mover): { burstX: number; burstY: number; burstZ: number } {
+  const p = config.road.toWorld(m.pos.edge, m.pos.s, m.pos.d, Math.max(0, m.h));
+  const cm = (v: number) => Math.round(v * 100) / 100;
+  return { burstX: cm(p.x), burstY: cm(p.y), burstZ: cm(p.z) };
+}
+
+/**
+ * Moves thrown weapons by `ts` scaled ticks (none during a hit-stop). The first riding rider other
+ * than the thrower inside the THROW_HIT box takes the hit (the nearest, then the lowest id), and the
+ * weapon bursts (`hit` with `thrown`, `burst` and the burst point); one that flies its length, or
+ * off the end of the road, bursts where it lands (`attackMiss`, the same data). Either way it is
+ * gone for the race (SPENT), and both events carry the throw's cause id.
+ */
+function flyPass(world: World, config: SimConfig, st: CombatState, ts: number): void {
+  if (ts <= 0 || st.flights.length === 0) return;
+  const health = riderState(world).health;
+  const left: Flight[] = [];
+  for (const f of st.flights) {
+    const pickup = world.movers[f.pickup];
+    const thrower = world.movers[f.by];
+    const w = weaponById(config, f.weapon);
+    if (!pickup || !thrower || !w) continue;
+    f.age += ts;
+    pickup.pos.s += pickup.pos.dir * f.speed * (ts / 60);
+    const end = config.road.advance(pickup.pos);
+    const step = f.dStep * ts;
+    pickup.pos.d += clamp(f.dTo - pickup.pos.d, -step, step);
+    const u = clamp(f.age / f.ticks, 0, 1);
+    pickup.h = THROW_START_H + (THROW_END_H - THROW_START_H) * u + 4 * THROW_ARC_M * u * (1 - u);
+    let best: { m: Mover; dd: number; dist2: number } | null = null;
+    for (const m of world.movers) {
+      if (m.id === f.by || !isRiding(m) || (health[m.id] ?? 0) <= 0) continue;
+      const rel = relative(config.road, pickup, m, THROW_HIT_S_M + 2);
+      if (!rel || Math.abs(rel.ds) > THROW_HIT_S_M || Math.abs(rel.dd) > THROW_HIT_D_M) continue;
+      const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
+      if (!best || dist2 < best.dist2) best = { m, dd: rel.dd, dist2 };
+    }
+    if (best) {
+      // The shove goes away from the thrower's side of the target.
+      const side = relative(config.road, thrower, best.m, w.reachSM + 4);
+      const dd = side && side.dd !== 0 ? side.dd : best.dd;
+      const extra = { thrown: true, burst: true, ...burstAt(config, pickup) };
+      land(world, config, st, thrower, best.m, w, dd, { cause: f.cause, extra });
+      bury(st, pickup);
+      continue;
+    }
+    if (u >= 1 - EPS || end === 'deadEnd') {
+      const data = {
+        weapon: f.weapon,
+        side: 1,
+        thrown: true,
+        burst: true,
+        spent: true,
+        ...burstAt(config, pickup),
+      };
+      emit(world, 'attackMiss', f.by, data, { causeId: f.cause });
+      bury(st, pickup);
+      continue;
+    }
+    left.push(f);
+  }
+  st.flights = left;
+}
+
+/** A burst thrown weapon is gone for the race: stowed out of sight, never picked up again. */
+function bury(st: CombatState, pickup: Mover): void {
+  st.pickupHolder[pickup.id] = SPENT;
+  pickup.h = STOWED_H;
+  pickup.speed = 0;
+}
+
 /** Puts a weapon on the road as a new pickup entity (the race start and tests use it). */
 export function spawnPickup(world: World, weapon: string, spot: Spot): EntityId {
   const st = combatState(world);
@@ -1425,9 +1668,13 @@ function stealPass(world: World, config: SimConfig, st: CombatState, pressed: bo
       if (!w?.steal) continue;
       const age = (st.elapsed[holder.id] ?? 0) + ts;
       if (age + EPS < w.steal.startTick || age - EPS > w.steal.endTick) continue;
-      // The thief must be where the weapon is going: inside the holder's reach box, either side.
-      const rel = relative(config.road, holder, thief, w.reachSM + 2);
-      if (!rel || Math.abs(rel.ds) > w.reachSM || Math.abs(rel.dd) > w.reachDM) continue;
+      // The thief must be where the weapon is going: inside the holder's reach box, either side. A
+      // thrown weapon's reach is its throw range, so its snatch box stays at arm's length (W-T).
+      const thrownW = behaviourOf(w) === 'throw.burst';
+      const boxS = thrownW ? Math.min(w.reachSM, THROW_SNATCH_M) : w.reachSM;
+      const boxD = thrownW ? Math.min(w.reachDM, THROW_SNATCH_M) : w.reachDM;
+      const rel = relative(config.road, holder, thief, boxS + 2);
+      if (!rel || Math.abs(rel.ds) > boxS || Math.abs(rel.dd) > boxD) continue;
       const mine = st.targetId[holder.id] === thief.id;
       const dist2 = rel.ds * rel.ds + rel.dd * rel.dd;
       if (!best || (mine && !best.mine) || (mine === best.mine && dist2 < best.dist2)) {
@@ -1567,6 +1814,8 @@ export const combatSystem: SimSystem = {
       st.held[m.id] = '';
       st.heldPickup[m.id] = -1;
       st.stealCued[m.id] = false;
+      st.sweptSides[m.id] = 0;
+      st.sweepFirst[m.id] = -1;
     }
     // Starting weapons (a cop's baton or taser): in hand from the start, as a stowed pickup.
     for (const m of world.movers.slice()) {
@@ -1660,6 +1909,7 @@ export const combatSystem: SimSystem = {
         convertToKick(world, config, st, a, flags);
       hitTest(world, config, st, a);
     }
+    flyPass(world, config, st, ts);
     pickupPass(world, config, st);
     recover(world, config, st, ts);
 

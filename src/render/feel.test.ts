@@ -155,6 +155,48 @@ const bodies = (rx: number, rz: number, bx: number, bz: number, speed: number): 
 
 // ---- Hits ----------------------------------------------------------------------------------
 
+describe('a thrown briefcase bursts into paperwork (W-T)', () => {
+  const burst = {
+    weapon: 'base:kevins-briefcase',
+    thrown: true,
+    burst: true,
+    burstX: 3,
+    burstY: 1.4,
+    burstZ: -110,
+  };
+
+  it('throws sheets of paper at the burst point on a hit, and they settle and go', () => {
+    const { fx, views } = rig();
+    const s = snap([rider(0, { x: 0 }), rider(1, { x: 1.2 })]);
+    views.sync(null, s, 1, 0);
+    const mesh = fx.root.getObjectByName('feel-paperwork') as InstancedMesh;
+    expect(mesh.visible).toBe(false);
+    views.pushEvents([ev('hit', 0, 1, burst)]);
+    views.sync(s, s, 1, 0.02);
+    expect(fx.counts().paper).toBeGreaterThan(10);
+    expect(mesh.visible).toBe(true);
+    // The sheets start round the burst point, not the target.
+    const m = new Matrix4();
+    mesh.getMatrixAt(0, m);
+    expect(Math.hypot(m.elements[12] - 3, m.elements[14] + 110)).toBeLessThan(1);
+    frames(views, s, 240, 0.02);
+    expect(fx.counts().paper).toBe(0);
+    expect(mesh.visible).toBe(false);
+  });
+
+  it('bursts on a miss too (it lands), and a plain hit makes no paper', () => {
+    const { fx, views } = rig();
+    const s = snap([rider(0, { x: 0 }), rider(1, { x: 1.2 })]);
+    views.sync(null, s, 1, 0);
+    views.pushEvents([ev('hit', 0, 1, { weapon: 'base:lead-pipe' })]);
+    views.sync(s, s, 1, 0.02);
+    expect(fx.counts().paper).toBe(0);
+    views.pushEvents([ev('attackMiss', 0, undefined, burst)]);
+    views.sync(s, s, 1, 0.04);
+    expect(fx.counts().paper).toBeGreaterThan(10);
+  });
+});
+
 describe('the hit flash and spark burst', () => {
   it('flashes the target for hitFlashS and throws sparks where the hit landed', () => {
     const { look, fx, views } = rig();
