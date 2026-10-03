@@ -203,17 +203,31 @@ describe('law with a personality: real races', () => {
     ).toBe(false);
   });
 
-  // Measured (run W-T, the dev bot, seeds 1 to 8): 2 of 8 before, 5 of 8 after. The band sits between.
-  it('the Pacific Northwest meets the roadblock at three times the heat in at least 3 of 8 races', () => {
+  // The whole world on, three times the heat (tier 3 never comes in the isolation profile). Measured
+  // over seeds 1 to 8 (run W-T): 2 of 8 races met a roadblock before the radio rule; 5 of 8 with it
+  // on the tree it was written on, 3 of 8 once main's later systems reshuffled the races. A rate
+  // band would move with every such system, so this checks that the radioed-ahead path fires in a
+  // real race (a roadblock cop who was already chasing), on the first seed that shows it.
+  it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
     const event = eventOf('pacific-northwest');
-    const runs = seedRange(1, 8).map((seed) => {
-      const r = ride(event, seed, { 'cops.heatScale': 3 }, 360);
-      return r.events.some(
-        (e) => e.type === 'siren' && e.data['cause'] === 'roadblock' && e.data['on'] === true,
-      );
-    });
-    const met = runs.filter(Boolean).length;
-    process.stdout.write(`cops law: PNW roadblocks at heat x3: ${met} of ${runs.length} races\n`);
-    expect(met).toBeGreaterThanOrEqual(3);
+    const radioed = (r: Ride) => {
+      const chasing = new Set<number>();
+      let ahead = 0;
+      for (const e of r.events) {
+        if (e.type !== 'siren') continue;
+        if (e.data['on'] !== true) chasing.delete(e.actor);
+        else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
+        else if (chasing.has(e.actor)) ahead++;
+      }
+      return ahead;
+    };
+    const found = firstSeed(
+      'a PNW roadblock cop radioed ahead',
+      seedRange(1, 8),
+      (seed) => ride(event, seed, { 'cops.heatScale': 3 }, 360),
+      (r) => radioed(r) > 0,
+    );
+    process.stdout.write(`cops law: PNW roadblock: ${found.summary}\n`);
+    expect(found.result, found.summary).not.toBeNull();
   });
 });

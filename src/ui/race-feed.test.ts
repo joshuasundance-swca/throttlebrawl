@@ -69,6 +69,7 @@ describe('style pop-ups', () => {
     expect(styleText(trick('frontflip', 1, 100))).toBe('FRONT FLIP +$100');
     expect(styleText(trick('wheelie', 0, 50))).toBe('WHEELIE +$50');
     expect(styleText(trick('whip', 0, 50))).toBe('WHIP +$50');
+    expect(styleText(trick('newspaper', 0, 150))).toBe('THE NEWSPAPER +$150');
     expect(styleText(trick('moonwalk', 0, 50))).toBeNull();
     expect(stylePop(trick('backflip', 1, 100))?.kind).not.toBe(stylePop(trick('whip', 0, 50))?.kind);
   });

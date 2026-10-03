@@ -489,10 +489,15 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
       return { id: VICTIM, x: w.x, y: w.y, z: w.z };
     };
     const t0 = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 };
+    // The road handle, so the air tip (run W-T, the pitch deck's #13) can see the bike's height.
+    cam.setRoad(road);
     cam.snap(t0, { entities: [rival(s)] });
     for (let n = 0; n < 300; n++) {
       s += 30 * DT;
-      const t = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
+      const ridden = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
+      // A jump: 1 m up in the air for half a second.
+      const air = n >= 225 && n < 255;
+      const t = air ? { ...ridden, y: ridden.y + 1, mode: 'Airborne' as const } : ridden;
       if (n === 20)
         cam.onEvents([{ tick: n, type: 'hit', actor: VICTIM, target: ME, data: { hitImpulse: 0.5 } }]);
       if (n === 60) cam.onEvents([{ tick: n, type: 'crash', actor: ME, data: {} }]);
