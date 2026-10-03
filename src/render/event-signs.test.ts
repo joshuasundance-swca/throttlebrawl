@@ -10,7 +10,7 @@ import { createFlatLook } from './look';
 
 interface ModifierFile {
   id: string;
-  effects?: { kind: string; piece?: string; signText?: string }[];
+  effects?: { kind: string; piece?: string; signText?: string; serial?: string[] }[];
 }
 const MODIFIERS = import.meta.glob<ModifierFile>('/packs/*/modifiers/*.json', {
   eager: true,
@@ -21,12 +21,13 @@ const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
 describe('road event warning signs', () => {
   it('reads as a short headline plus a kicker, on every set piece in every region', () => {
+    // A piece whose serial signs stand in for its warning sign (W-T) has an empty signText.
     const signs = Object.values(MODIFIERS).flatMap((m) =>
       (m.effects ?? [])
-        .filter((e) => e.kind === 'set-piece' && e.signText !== undefined)
+        .filter((e) => e.kind === 'set-piece' && e.signText !== undefined && e.signText !== '')
         .map((e) => ({ id: m.id, piece: e.piece ?? '', text: e.signText ?? '' })),
     );
-    expect(signs.length).toBe(13);
+    expect(signs.length).toBe(17);
     for (const s of signs) {
       const { headline, kicker } = splitCopy(s.text);
       expect(words(headline), `${s.id}: "${headline}"`).toBeGreaterThanOrEqual(2);
@@ -40,11 +41,30 @@ describe('road event warning signs', () => {
       'speed-trap': /RADAR|SPEED/,
       parade: /PARADE/,
       'hay-spill': /HAY/,
+      'animal-crossing': /CROSSING/,
+      'lane-vote': /LANE VOTE/,
     };
     for (const s of signs) {
       const rx = announces[s.piece];
       expect(rx, `${s.id}: unknown piece ${s.piece}`).toBeDefined();
       expect(splitCopy(s.text).headline, s.id).toMatch(rx as RegExp);
+    }
+  });
+
+  it('serial signs (W-T): one joke over four small all-caps signs, a few words each', () => {
+    const serials = Object.values(MODIFIERS).flatMap((m) =>
+      (m.effects ?? [])
+        .filter((e) => e.serial !== undefined)
+        .map((e) => ({ id: m.id, lines: e.serial ?? [] })),
+    );
+    expect(serials.length).toBe(3);
+    for (const s of serials) {
+      expect(s.lines, s.id).toHaveLength(4);
+      for (const line of s.lines) {
+        expect(line, s.id).toBe(line.toUpperCase());
+        expect(words(line), `${s.id}: "${line}"`).toBeGreaterThanOrEqual(1);
+        expect(words(line), `${s.id}: "${line}"`).toBeLessThanOrEqual(4);
+      }
     }
   });
 });
@@ -88,7 +108,10 @@ describe('the sign on its post', () => {
     const panel = group?.children.find(
       (o): o is Mesh => o instanceof Mesh && o.geometry instanceof PlaneGeometry,
     );
-    const post = group?.children.find((o): o is InstancedMesh => o instanceof InstancedMesh);
+    // W-T: every sign's post is an instance of one shared mesh, posed like the panel's group.
+    const post = e.root.children.find(
+      (o): o is InstancedMesh => o instanceof InstancedMesh && o.name === 'event-signPost:tall',
+    );
     expect(panel).toBeDefined();
     expect(post).toBeDefined();
     if (!panel || !post) return;

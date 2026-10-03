@@ -45,6 +45,9 @@ function firstMeeting(eventId: string, seed: number, length?: string, route?: st
       // so a patrol cop moved into a roadblock lights up as 'roadblock' instead (bundle 1: San
       // Francisco's seed 3 hit heat tier 3 at 27 s and both patrol cops went to the roadblock).
       if (e.type === 'siren' && (e.data['cause'] === 'patrol' || e.data['cause'] === 'roadblock')) patrol++;
+      // Run W-T: Trooper Dalrymple at his bridge reads your speed on his radar, and lets you ride
+      // by under the limit; his reading is the patrol met, siren or not.
+      if (e.type === 'law' && e.data['kind'] === 'radar') patrol++;
       if (e.type === 'bust' && e.target === playerId) busted = true;
     }
     snap = sim.snapshot();

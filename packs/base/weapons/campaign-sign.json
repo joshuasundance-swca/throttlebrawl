@@ -3,7 +3,7 @@
   "id": "campaign-sign",
   "name": "Campaign Sign",
   "category": "junk",
-  "behaviour": "melee.swing",
+  "behaviour": "melee.sweep",
   "tags": ["roadside", "junk"],
   "unarmed": false,
   "reach": { "sM": 2.2, "dM": 1.6 },
@@ -20,7 +20,7 @@
   "effects": [],
   "meta": {
     "status": "live",
-    "notes": "M4 weapons-2 head start: wasteland junk, the plan's other example (The Mayor swings stolen campaign signs). A yard sign on a stake: long, slow, a wide shove, and it folds after 3 hits. Crude starting numbers, [default]. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\").",
+    "notes": "M4 weapons-2 head start: wasteland junk, the plan's other example (The Mayor swings stolen campaign signs). A yard sign on a stake: long, slow, a wide shove. Live from W-Q (2026-10-02, the pitch deck's \"the four unfinished ones go live\"). W-T (the pitch deck's #4, 'weapons with verbs'): it SWEEPS both sides at once (melee.sweep): one swing lands on a rider on your left and one on your right, each shoved away. It folds after 3 swings that land, however many riders each one meets. Crude starting numbers, [default].",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "distance",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, heavy: once the law is on you, ride 3 km of the real Overseas Highway without being knocked off, or lose them.",
+    "notes": "A cop escape, heavy: once the law is on you, ride 3 km of the real Overseas Highway without being knocked off, or lose them. Run W-T (law with a personality): Trooper Dalrymple radar-guns the Bahia Honda bridge from the patrol (ride over it under 65 mph and he lets you go), Pruitt's overtime makes him relentless, and the Keys County END OF JURISDICTION sign ends the chase if you reach it.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

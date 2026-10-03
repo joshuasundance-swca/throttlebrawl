@@ -16,21 +16,23 @@ const REG = registryFromGlob(
 );
 const STREAMS = createStreamCache();
 
+// Run W-T (the pitch deck's #9) adds the moving pieces: the Keys' boat slide and gator crossing, the
+// PNW's log spill, SF's cable-car runaway (on a cable street only), and a lane vote in each region.
 const REGIONS = [
   {
     event: 'base:m1-skeleton-sprint',
     pack: 'base',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap'],
+    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap', 'boat-slide', 'animal-crossing', 'lane-vote'],
   },
   {
     event: 'region-pnw:pnw-fogline-run',
     pack: 'region-pnw',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'hay-spill', 'speed-trap'],
+    pieces: ['roadwork', 'crash-scene', 'parade', 'hay-spill', 'speed-trap', 'log-spill', 'lane-vote'],
   },
   {
     event: 'region-sf:sf-hill-sprint',
     pack: 'region-sf',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap'],
+    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap', 'cable-runaway', 'lane-vote'],
   },
 ] as const;
 

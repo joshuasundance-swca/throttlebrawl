@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "keys-boat-slide",
+  "name": "Keys Boat Slide",
+  "kind": "human",
+  "tags": ["set-piece", "boat-slide"],
+  "rarityWeight": 1.2,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.85],
+    "chance": 0.4
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "boat-slide",
+      "signText": "",
+      "serial": ["YOUR BOAT", "IS NOT", "IN THE WATER", "CHECK LANE TWO"],
+      "vehicle": "event-hitch-pickup",
+      "vehicle2": "event-runaway-boat",
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T moving road event (pitch deck #9): a pickup towing a skiff loses the trailer as you close in, and the boat slides across into the other lane. Four serial signs tell the joke first, punchline last.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

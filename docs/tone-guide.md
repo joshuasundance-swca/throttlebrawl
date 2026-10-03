@@ -166,7 +166,7 @@ The one approved line per rival is marked.
 
 - **Look:** A tired county deputy. [default for "county deputy"; the approved draft said highway cop]
 - **Approved line:** "License, registration, and your front teeth." [decided]
-- **Style:** The named cop. He's slow to start a chase, then relentless, and carries a baton and a taser. His bust lines play over the fine screen. [default]
+- **Style:** The named cop. He's slow to start a chase, then relentless, and carries a baton and a taser. His bust lines play over the fine screen. [default] From run W-T his habit makes the "relentless" literal: the longer he chases, the closer he holds (`Twenty-two years. I can do this all day.`). [default]
 - **Rivalry:** The whole circuit. [default]
 - **Sample barks** [default]:
   - chase start: `Twenty-two years. Twenty-two years of this.`
@@ -227,7 +227,7 @@ The Pacific Northwest comes off the shelf now, with San Francisco, as a content 
 - **Locals** [default]:
   - **Old Growth** (rival): a logger the size of a stump, red flannel, caulk boots. A heavy hitter who says about one sentence a mile. Signature line (agent draft, not yet approved): "These trees were here before you. So was I."
   - **Juniper Moss** (rival): runs the espresso stand at the ferry line and rides a café racer like the road is a queue you cut. A weaver, passive-aggressive, service-industry barbs. Signature line (agent draft, not yet approved): "For here or to go? Oh, you're going."
-  - **Deputy Lindqvist** (cop, Fir County Sheriff): soft-spoken, never raises his voice, never stops writing. `I'm not upset. I'm just writing it all down.`
+  - **Deputy Lindqvist** (cop, Fir County Sheriff): soft-spoken, never raises his voice, never stops writing. `I'm not upset. I'm just writing it all down.` From run W-T he never rams, and writes you a citation for every 3 s alongside, billed at the finish (`Failure to signal. Noted.`). [default]
 - **Law:** a parody county sheriff on real agency structure. No real agency names, badges or logos.
 - **Traffic and hazards:** log trucks, mossy station wagons with roof boxes, camper vans with canoes, ferry walk-ons with coffee, Bigfoot researchers, raccoons, and an elk that crashes you if you hit it.
 - **Wasteland oddity:** a drive-through espresso stand under tow, window still open. Nobody mentions it.
@@ -308,7 +308,8 @@ Playtest 1c brought new regions forward: "I do think we should start adding othe
 
 - **Look:** A parking officer who has never once let anything go, and writes the ticket during the chase.
 - **Style:** The local cop. He has Sgt. Pruitt's numbers, except that he needs 2 seconds beside you to bust you, because he writes the ticket out in full.
-- **Sample barks** (they wait until the narrative fires the cop triggers): `Your meter expired eleven minutes ago.` and `I already wrote it. Sign here.`
+- **Sample barks:** `Your meter expired eleven minutes ago.` and `I already wrote it. Sign here.` The narrative fires the cop triggers from run W-T.
+- **Habit** (run W-T, law with a personality) [default]: he chases on a pursuit budget that runs out: `Pursuit budget exhausted. Fiscal year resets in July.`
 
 ## The bark system
 

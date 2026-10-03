@@ -1,0 +1,25 @@
+{
+  "type": "traffic-type",
+  "id": "event-runaway-boat",
+  "name": "Boat, Formerly Towed",
+  "category": "oddity",
+  "tags": ["event", "boat-slide"],
+  "lengthM": 6.0,
+  "widthM": 2.3,
+  "cruiseMps": 0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": false
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The boat slide's skiff on its trailer: it comes off the hitch as racers close in, slews across the centre line and stops there. Big: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, run W-T) places it. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

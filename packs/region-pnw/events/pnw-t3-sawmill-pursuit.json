@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "distance",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, heavy: once the deputies are on you, ride 3 km to the sawmill without being knocked off, or lose them.",
+    "notes": "A cop escape, heavy: once the deputies are on you, ride 3 km to the sawmill without being knocked off, or lose them. Run W-T (law with a personality): Lindqvist's citations, the patrol and the heat meter; the Fir County END OF JURISDICTION sign ends the chase.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

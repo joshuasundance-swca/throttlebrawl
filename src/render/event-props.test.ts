@@ -45,17 +45,20 @@ describe('render: road event props', () => {
       floatDecor: 'sf-0',
       sign: 'roadwork',
     };
-    const props = PROP_KINDS.map((k, i) =>
-      prop(i + 1, k, variants[k] ?? '', k === 'sign' ? { label: 'ROAD WORK AHEAD' } : {}),
-    );
+    const labels: Partial<Record<PropKind, Partial<PropSnapshot>>> = {
+      sign: { label: 'ROAD WORK AHEAD' },
+      gantry: { label: 'GATOR CROSSING | PARADE', spanM: 8 },
+    };
+    const props = PROP_KINDS.map((k, i) => prop(i + 1, k, variants[k] ?? '', labels[k] ?? {}));
     e.sync(snap(props), 1);
     const c = e.counts();
     expect(c.total).toBe(PROP_KINDS.length);
     for (const k of PROP_KINDS) expect(c.byKind[k], k).toBe(1);
-    expect(c.signs).toEqual(['ROAD WORK AHEAD']);
-    // Every non-sign prop is an instance in some visible mesh (the flare adds its glow, the flagger an arm).
+    expect(c.signs).toEqual(['ROAD WORK AHEAD', 'GATOR CROSSING | PARADE']);
+    // Every prop but the sign's panel and the gantry is an instance in some shared visible mesh: the
+    // flare adds its glow, the flagger an arm, and the sign its post (W-T: posts are shared).
     const instances = visible(e).reduce((n, m) => n + m.count, 0);
-    expect(instances).toBe(PROP_KINDS.length - 1 + 2);
+    expect(instances).toBe(PROP_KINDS.length - 2 + 3);
     // The sign stands as its own group (a post, plus the printed panel where there is a DOM).
     expect(e.root.children.some((o) => o.name.startsWith('event-sign-'))).toBe(true);
   });
@@ -71,7 +74,8 @@ describe('render: road event props', () => {
   it('hides what left the snapshot, and draws nothing when no piece is live', () => {
     const e = new EventProps(createFlatLook());
     e.sync(snap([prop(1, 'cone'), prop(2, 'hayBale'), prop(3, 'sign', 'parade', { label: 'PARADE' })]), 0);
-    expect(visible(e)).toHaveLength(2);
+    // The cone, the bale, and the shared sign posts.
+    expect(visible(e)).toHaveLength(3);
     e.sync(snap([]), 0.5);
     expect(visible(e)).toHaveLength(0);
     expect(e.root.children.some((o) => o.name.startsWith('event-sign-'))).toBe(false);

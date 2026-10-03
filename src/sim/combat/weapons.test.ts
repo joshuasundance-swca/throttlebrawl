@@ -89,8 +89,16 @@ const at = (ticks: readonly number[], f: number) => (t: number) => (ticks.includ
 const starts = (events: ReturnType<typeof ofType>) => events.map((e) => e.data['weapon']);
 
 describe('weapons-2: registered behaviours', () => {
-  it('lists the three behaviours, and anything else (or nothing) is the M1 swing', () => {
-    expect([...WEAPON_BEHAVIOURS]).toEqual(['melee.swing', 'melee.wrap', 'taser.stun']);
+  it('lists the behaviours, and anything else (or nothing) is the M1 swing', () => {
+    // W-T added the throw, the yank and the sweep (src/sim/combat/verbs.test.ts).
+    expect([...WEAPON_BEHAVIOURS]).toEqual([
+      'melee.swing',
+      'melee.wrap',
+      'taser.stun',
+      'throw.burst',
+      'melee.yank',
+      'melee.sweep',
+    ]);
     expect(behaviourOf(TASER)).toBe('taser.stun');
     expect(behaviourOf(CHAIN)).toBe('melee.wrap');
     expect(behaviourOf(PIPE)).toBe('melee.swing'); // no behaviour field

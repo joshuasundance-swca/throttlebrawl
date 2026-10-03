@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "survive",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: Deputy Lindqvist and a second car.",
+    "notes": "A cop escape: Deputy Lindqvist and a second car. Run W-T (law with a personality): Deputy Lindqvist never rams, but every 3 s alongside is a $75 citation, billed at the finish: escape him, or pay for the company. The Fir County END OF JURISDICTION sign ends the chase.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

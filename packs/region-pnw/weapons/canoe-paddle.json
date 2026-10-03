@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "canoe-paddle",
+  "name": "Canoe Paddle",
+  "category": "improvised",
+  "behaviour": "melee.sweep",
+  "tags": ["roadside", "local"],
+  "unarmed": false,
+  "reach": { "sM": 2.0, "dM": 1.5 },
+  "windupS": 0.36,
+  "activeS": 0.12,
+  "recoveryS": 0.45,
+  "cooldownS": 0,
+  "damage": 16,
+  "knockback": { "lateralMps": 7.0, "staggerS": 0.35 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.12, "windowEndS": 0.36 },
+  "uses": { "durabilityHits": 8, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 2, "regions": ["pacific-northwest"] },
+  "effects": [],
+  "meta": {
+    "status": "live",
+    "notes": "W-T (the pitch deck's #4: one local weapon per region, 'a canoe paddle in the PNW'). A varnished cedar canoe paddle, swung in the sweep stroke as taught at summer camp: one swing lands on a rider on each side (melee.sweep, like the campaign sign, but heavier and slower to fold). Cracks after 8 swings that land. Lies only on Pacific Northwest roads. Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-03" }
+  }
+}

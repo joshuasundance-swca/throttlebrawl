@@ -134,6 +134,38 @@ function arrowBoard(): Parts {
   return parts;
 }
 
+/**
+ * A shed log (W-T): its long axis across the road (model x), sized to the sim's contact box
+ * (sim/modifiers/moving.ts: 3.4 m long, about 0.66 m through), with pale cut ends. It rolls about x.
+ */
+function log(): Parts {
+  return [
+    box([3.4, 0.62, 0.62], [0, 0, 0], '#6b4a2e'),
+    box([3.4, 0.66, 0.44], [0, 0, 0], '#5a3d25'),
+    box([3.4, 0.44, 0.66], [0, 0, 0], '#5a3d25'),
+    box([0.04, 0.5, 0.5], [-1.71, 0, 0], '#d9b07a'),
+    box([0.04, 0.5, 0.5], [1.71, 0, 0], '#d9b07a'),
+  ];
+}
+
+/** A sign post, shared by every event sign (one draw for all of them): tall, or short for a serial sign. */
+function signPost(short: boolean): Parts {
+  return short
+    ? [box([0.12, 2.2, 0.12], [0, 1.1, -0.1], '#9aa0a6')]
+    : [box([0.14, 3.6, 0.14], [0, 1.8, -0.12], '#9aa0a6')];
+}
+
+/** A lane-vote gantry's frame (W-T): a post at each side and a beam over the road, `span` wide. */
+function gantryFrame(span: number): Parts {
+  const half = span / 2 + 0.4;
+  return [
+    box([0.3, 6.4, 0.3], [-half, 3.2, 0], '#8a9096'),
+    box([0.3, 6.4, 0.3], [half, 3.2, 0], '#8a9096'),
+    box([2 * half + 0.3, 0.35, 0.35], [0, 6.25, 0], '#8a9096'),
+    box([2 * half + 0.3, 0.2, 0.2], [0, 6.75, 0], '#8a9096'),
+  ];
+}
+
 function lightbar(): Parts {
   return [
     box([1.5, 0.16, 0.32], [0, 0, 0], '#ffae1a'),
@@ -203,6 +235,19 @@ const PEOPLE: Readonly<
     ],
   },
   marcher: { shirt: '#ffb000', pants: '#3a3a3a', hat: '#ff4d4d', arm: '#ffb000', extra: [] },
+  // W-T: the gator crossing's guard, in a vest and a sun hat, holding up a round STOP paddle.
+  'crossing-guard': {
+    shirt: '#ff7a1a',
+    pants: '#2f3a52',
+    hat: '#f0d38a',
+    arm: '#ff7a1a',
+    extra: [
+      box([0.7, 0.06, 0.7], [0, 1.78, 0], '#f0d38a'),
+      box([0.05, 1.5, 0.05], [0.42, 1.0, -0.1], '#777'),
+      box([0.56, 0.56, 0.05], [0.42, 1.95, -0.1], '#d4202a'),
+      box([0.4, 0.12, 0.06], [0.42, 1.95, -0.13], WHITE),
+    ],
+  },
 };
 
 function person(variant: string): Parts {
@@ -338,6 +383,10 @@ function partsFor(key: string): Parts {
       return floatDecor(variant);
     case 'inflatable':
       return inflatable();
+    case 'log':
+      return log();
+    case 'signPost':
+      return signPost(variant === 'serial');
     default:
       return [box([0.5, 0.5, 0.5], [0, 0.25, 0], '#ff00ff')];
   }
@@ -362,14 +411,27 @@ const READ_SCALE: Readonly<Record<string, number>> = {
 };
 /** The warning sign's panel, metres square (stands 2.2 m up). */
 const SIGN_M = 3.0;
+/** A serial sign's smaller panel (W-T: four small signs, one joke), metres, and how high it stands. */
+const SERIAL_M = 2.2;
+const SERIAL_UP = 1.4;
+/** A gantry's panel height, and its bottom above the road, metres. */
+const GANTRY_PANEL_M = 1.7;
+const GANTRY_PANEL_UP = 4.25;
 
 /** Shapes drawn unlit (they glow): flares and light bars. */
 const GLOWS = new Set(['flareGlow', 'lightbar']);
 
-/** Sign panel colours by piece: work-zone orange, a regulatory white for the speed trap. */
+/**
+ * Sign panel colours by piece: work-zone orange, a regulatory white for the speed trap and for the
+ * cops' END OF JURISDICTION sign (run W-T, variant `jurisdiction`, from sim/cops).
+ */
 function signFace(variant: string): { bg: string; fg: string } {
-  if (variant === 'speed-trap') return { bg: '#f4f4f0', fg: '#111111' };
+  if (variant === 'speed-trap' || variant === 'jurisdiction') return { bg: '#f4f4f0', fg: '#111111' };
   if (variant === 'parade') return { bg: '#6a2bd9', fg: '#ffffff' };
+  // W-T: serial signs are small red boards with white words, the old roadside serial-ad style.
+  if (variant === 'serial') return { bg: '#c8202a', fg: '#ffffff' };
+  // A lane vote's warning is a highway-green guide sign, like the gantry it announces.
+  if (variant === 'lane-vote') return { bg: '#1f6f3a', fg: '#ffffff' };
   return { bg: '#ff8a1f', fg: '#111111' };
 }
 
@@ -394,6 +456,57 @@ function signTexture(label: string, variant: string): Texture | null {
   return tex;
 }
 
+/**
+ * A lane-vote gantry's panel (W-T): the rider's left choice and right choice side by side in
+ * highway green, an arrow down to each side's lanes. Once the vote is cast (`variant` `left` or
+ * `right`) the winning side lights up and the other goes dark.
+ */
+function gantryTexture(label: string, voted: string): Texture | null {
+  if (typeof document === 'undefined') return null;
+  const w = 1024;
+  const h = 192;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const [left = '', right = ''] = label.split(' | ');
+  const halves: [string, 'left' | 'right'][] = [
+    [left, 'left'],
+    [right, 'right'],
+  ];
+  halves.forEach(([text, side], i) => {
+    const x0 = i * (w / 2);
+    const lost = voted !== '' && voted !== side;
+    const won = voted === side;
+    ctx.fillStyle = lost ? '#1d2422' : won ? '#2fae5a' : '#1f6f3a';
+    ctx.fillRect(x0, 0, w / 2, h);
+    ctx.strokeStyle = lost ? '#55605c' : '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(x0 + 8, 8, w / 2 - 16, h - 16);
+    ctx.fillStyle = lost ? '#55605c' : '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let size = 64;
+    ctx.font = `bold ${size}px sans-serif`;
+    while (size > 24 && ctx.measureText(text).width > w / 2 - 60) {
+      size -= 4;
+      ctx.font = `bold ${size}px sans-serif`;
+    }
+    ctx.fillText(text, x0 + w / 4, h * 0.42);
+    // The down arrow to that side's lanes.
+    ctx.beginPath();
+    ctx.moveTo(x0 + w / 4 - 22, h * 0.72);
+    ctx.lineTo(x0 + w / 4 + 22, h * 0.72);
+    ctx.lineTo(x0 + w / 4, h * 0.9);
+    ctx.closePath();
+    ctx.fill();
+  });
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
 /** What the last frame drew, for tests and the debug overlay. */
 export interface EventPropCounts {
   /** Props drawn, by kind. */
@@ -406,6 +519,8 @@ export interface EventPropCounts {
 interface Sign {
   mesh: Group;
   label: string;
+  /** What the panel was drawn for (a gantry redraws once its vote is cast). */
+  variant: string;
 }
 
 export class EventProps {
@@ -467,6 +582,14 @@ export class EventProps {
         signsSeen.add(p.id);
         signWords.push(p.label);
         this.placeSign(p);
+        // Every sign's post is one instance of a shared mesh: one draw for all the posts.
+        add(`signPost:${p.variant === 'serial' ? 'serial' : 'tall'}`, p);
+        continue;
+      }
+      if (p.kind === 'gantry') {
+        signsSeen.add(p.id);
+        signWords.push(p.label);
+        this.placeGantry(p);
         continue;
       }
       add(shapeKey(p), p);
@@ -537,14 +660,8 @@ export class EventProps {
     let sign = this.signs.get(p.id);
     if (!sign || sign.label !== p.label) {
       if (sign) this.root.remove(sign.mesh);
+      // The post is drawn with every other sign's (the shared `signPost` mesh); this is the panel.
       const g = new Group();
-      const post = new InstancedMesh(
-        mergeBoxes([box([0.14, 3.6, 0.14], [0, 1.8, -0.12], '#9aa0a6')]),
-        this.material(false),
-        1,
-      );
-      post.setMatrixAt(0, new Matrix4());
-      g.add(post);
       const key = `${p.variant}|${p.label}`;
       let tex = this.textures.get(key);
       if (!tex) {
@@ -553,12 +670,56 @@ export class EventProps {
       }
       if (tex) {
         // The face looks back along the road at the riders coming (the plane's +z, the model's back).
-        const panel = new Mesh(new PlaneGeometry(SIGN_M, SIGN_M), this.look.material('board', { map: tex }));
-        panel.position.set(0, 2.2 + SIGN_M / 2, 0);
+        const serial = p.variant === 'serial';
+        const m = serial ? SERIAL_M : SIGN_M;
+        const panel = new Mesh(new PlaneGeometry(m, m), this.look.material('board', { map: tex }));
+        panel.position.set(0, (serial ? SERIAL_UP : 2.2) + m / 2, 0);
         g.add(panel);
       }
       g.name = `event-sign-${p.id}`;
-      sign = { mesh: g, label: p.label };
+      sign = { mesh: g, label: p.label, variant: p.variant };
+      this.signs.set(p.id, sign);
+      this.root.add(g);
+    }
+    sign.mesh.position.set(p.x, p.y, p.z);
+    sign.mesh.rotation.set(0, p.heading, 0);
+  }
+
+  /**
+   * A lane-vote gantry (W-T): its frame, `spanM` wide, and one panel with both choices; redrawn
+   * once when the vote is cast, so the winning side lights. Two draws while it stands.
+   */
+  private placeGantry(p: PropSnapshot): void {
+    let sign = this.signs.get(p.id);
+    if (!sign || sign.label !== p.label || sign.variant !== p.variant) {
+      const span = Math.max(4, p.spanM ?? 8);
+      let frame = sign?.mesh.children.find((o) => o.name === 'gantry-frame');
+      if (sign) this.root.remove(sign.mesh);
+      const g = new Group();
+      if (!frame) {
+        const mesh = new InstancedMesh(mergeBoxes(gantryFrame(span)), this.material(false), 1);
+        mesh.setMatrixAt(0, new Matrix4());
+        mesh.name = 'gantry-frame';
+        mesh.frustumCulled = false;
+        frame = mesh;
+      }
+      g.add(frame);
+      const key = `gantry|${p.variant}|${p.label}`;
+      let tex = this.textures.get(key);
+      if (!tex) {
+        tex = gantryTexture(p.label, p.variant) ?? undefined;
+        if (tex) this.textures.set(key, tex);
+      }
+      if (tex) {
+        const panel = new Mesh(
+          new PlaneGeometry(span * 0.94, GANTRY_PANEL_M),
+          this.look.material('board', { map: tex }),
+        );
+        panel.position.set(0, GANTRY_PANEL_UP + GANTRY_PANEL_M / 2, 0.2);
+        g.add(panel);
+      }
+      g.name = `event-gantry-${p.id}`;
+      sign = { mesh: g, label: p.label, variant: p.variant };
       this.signs.set(p.id, sign);
       this.root.add(g);
     }

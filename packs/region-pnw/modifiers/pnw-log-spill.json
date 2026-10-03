@@ -1,0 +1,43 @@
+{
+  "type": "event-modifier",
+  "id": "pnw-log-spill",
+  "name": "PNW Log Spill",
+  "kind": "human",
+  "tags": ["set-piece", "log-spill"],
+  "rarityWeight": 1.2,
+  "eligibility": {
+    "regions": ["pacific-northwest"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.15, 0.85],
+    "chance": 0.45
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "log-spill",
+      "signText": "",
+      "serial": ["CHAINS", "ARE", "OPTIONAL", "PER THE DRIVER"],
+      "vehicle": "event-log-truck",
+      "logs": 6,
+      "minDownGrade": 0.02,
+      "theme": "pnw"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T moving road event (pitch deck #9): a log truck on a downhill sheds six logs that roll to rest across both lanes. Riding over one is a hop. Placed on a downhill where the route has one.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

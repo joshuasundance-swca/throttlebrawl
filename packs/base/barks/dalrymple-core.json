@@ -1,0 +1,70 @@
+{
+  "type": "bark-set",
+  "id": "dalrymple-core",
+  "name": "Trooper Dalrymple: core lines",
+  "tags": ["cop", "region-keys"],
+  "defaults": {
+    "speaker": "trooper-dalrymple",
+    "cooldownS": 90,
+    "weight": 1
+  },
+  "lines": [
+    {
+      "id": "dalrymple-radar-hurry",
+      "trigger": "cop-radar",
+      "text": "Radar says you're in a hurry.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-radar-posted",
+      "trigger": "cop-radar",
+      "text": "Bridge limit's posted. I posted it.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-radar-water",
+      "trigger": "cop-radar",
+      "text": "That's a lot of speed over water.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-siren-over",
+      "trigger": "cop-siren",
+      "text": "Pull over. There is no over. Keep going.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-siren-hat",
+      "trigger": "cop-siren",
+      "text": "The hat stays on. You come off.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-busted-hat",
+      "trigger": "busted",
+      "text": "Hat never moved. Good day.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-busted-bridge",
+      "trigger": "busted",
+      "text": "Sit. The bridge isn't going anywhere.",
+      "status": "live"
+    },
+    {
+      "id": "dalrymple-jurisdiction-state",
+      "trigger": "cop-jurisdiction",
+      "text": "County line. I'll radio it in.",
+      "status": "live"
+    }
+  ],
+  "meta": {
+    "status": "live",
+    "notes": "Trooper Dalrymple's lines (run W-T, law with a personality: he finally rides, radar-gunning the long bridges). Unvoiced agent drafts (subtitles only) that stay until vetoed.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}
