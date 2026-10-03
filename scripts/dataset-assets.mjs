@@ -62,6 +62,66 @@ const PATH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*\/(?:[a-z0-9][a-z0-9._-]*\/)*[a-z0-9][
 /** @param {Uint8Array} bytes @returns {string} */
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+/**
+ * Git's blob id of some bytes. The Hub reports it as `oid` for a file kept in plain git (the small
+ * models are; checked against the live dataset on 2026-10-02: marker-cube.glb's oid is its blob id).
+ * @param {Uint8Array} bytes @returns {string}
+ */
+export const gitBlobSha1 = (bytes) =>
+  createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+
+/**
+ * What the dataset holds at one revision, by path: the Hub's paths-info answer (a path it lacks is
+ * left out). An entry is `{ type, oid, size, path, lfs?: { oid, size } }`; `lfs.oid` is the sha256 of
+ * a file kept in LFS, and `oid` is the git blob id of one kept in plain git.
+ */
+export async function remoteFiles(lock, revision, paths, fetchFn = fetch) {
+  const out = new Map();
+  const url = `https://huggingface.co/api/datasets/${lock.repo}/paths-info/${revision}`;
+  for (let i = 0; i < paths.length; i += 50) {
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: paths.slice(i, i + 50) }),
+    });
+    if (!res.ok) throw new Error(`could not list the dataset at ${revision.slice(0, 7)}: HTTP ${res.status}`);
+    for (const info of await res.json()) if (info?.type === 'file') out.set(info.path, info);
+  }
+  return out;
+}
+
+/**
+ * Which pinned files an upload must send: each one the dataset lacks, or holds with other bytes
+ * (a changed file at an existing path). Compared by content, never by path alone: an LFS file by its
+ * sha256, a plain-git one by the git blob id of the cached bytes. `bytesOf(file)` gives the cached
+ * bytes that match the pin, or null.
+ */
+export function uploadPlan(lock, remote, bytesOf) {
+  const upload = [];
+  const problems = [];
+  let same = 0;
+  for (const file of lock.files) {
+    const info = remote.get(file.path);
+    const bytes = bytesOf(file);
+    let holds;
+    if (!info) holds = false;
+    else if (info.lfs) holds = info.lfs.oid === file.sha256 && info.lfs.size === file.bytes;
+    else if (info.size !== file.bytes) holds = false;
+    else holds = bytes ? info.oid === gitBlobSha1(bytes) : null;
+    if (holds) same++;
+    else if (holds === null)
+      problems.push(
+        `${file.path}: not cached, so it cannot be compared with the dataset (npm run assets:fetch)`,
+      );
+    else if (!bytes)
+      problems.push(
+        `${file.path}: the dataset ${info ? 'holds other bytes' : 'lacks it'} and it is not cached with its pinned sha256`,
+      );
+    else upload.push({ file, why: info ? 'changed' : 'new' });
+  }
+  return { upload, same, problems };
+}
+
 /** Checks a parsed lock file. Returns the problems in plain words (empty when it is valid). */
 export function lockProblems(lock) {
   const problems = [];
