@@ -32,6 +32,19 @@ export const CUE_IDS = [
   'boost',
   'tune',
   'modem',
+  // Run W-U (sound pass): the W-T events' own sounds, and a rival's finish.
+  'ding',
+  'smash',
+  'toss',
+  'paper',
+  'slam',
+  'surge',
+  'logHop',
+  'unhitch',
+  'runaway',
+  'cableBell',
+  'shed',
+  'vote',
 ] as const;
 export type CueId = (typeof CUE_IDS)[number];
 
@@ -76,6 +89,12 @@ export const EVENT_CUES: Readonly<Record<string, CueId | null>> = {
   boost: 'boost',
   // Dial-Up's Bad Connection (run W-T): the modem screech warns of the drop; only `screech` sounds.
   badConnection: 'modem',
+  // Run W-U (sound pass), the W-T events. A roadside smashable breaks, by what it is made of
+  // (`data.kind`; cueForEvent sets the variant). A thrown weapon whirls. A moving set piece's moment
+  // has its own sound (`data.beat`, cueForEvent). A jump is silent, except a hop over a shed log.
+  smash: 'smash',
+  throw: 'toss',
+  setPieceBeat: 'unhitch', // refined by beat in cueForEvent
   // The get-up, fist shake and grudge are seen (render, HUD) and said (barks); a sound would
   // step on the rival's bark.
   getUp: null,
@@ -120,6 +139,26 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   boost: 58,
   tune: 56,
   modem: 66,
+  ding: 60,
+  smash: 66,
+  toss: 50,
+  paper: 69,
+  slam: 74,
+  surge: 56,
+  logHop: 52,
+  unhitch: 64,
+  runaway: 70,
+  cableBell: 58,
+  shed: 64,
+  vote: 60,
+};
+
+/** A moving set piece's moment (`setPieceBeat`'s `data.beat`, run W-T) to its cue. */
+export const BEAT_CUES: Readonly<Record<string, CueId>> = {
+  unhitch: 'unhitch',
+  runaway: 'runaway',
+  shed: 'shed',
+  vote: 'vote',
 };
 
 /** Added to a cue's priority when the player is the actor or the target. */
@@ -131,6 +170,8 @@ export interface CueChoice {
   playerInvolved: boolean;
   /** 0..1: how hard it hit. Crash cues add layers with it; other cues use 1. */
   impact: number;
+  /** Which kind of the cue: a smash's `SmashableKind` (what breaks decides how it sounds). */
+  variant?: string;
 }
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
@@ -164,6 +205,9 @@ export function cueForEvent(
   const type: string = e.type;
   let cue = Object.hasOwn(EVENT_CUES, type) ? (EVENT_CUES[type] ?? null) : null;
   if (!Object.hasOwn(EVENT_CUES, type) && /siren/i.test(type)) cue = 'sirenWhoop';
+  // A hop over a shed log (run W-T's log spill): a wooden thump under the wheels.
+  if (type === 'jump' && e.data['cause'] === 'log') cue = 'logHop';
+  if (type === 'setPieceBeat') cue = BEAT_CUES[String(e.data['beat'])] ?? null;
   if (cue === null) return null;
   if (PLAYER_ONLY_EVENTS.has(type) && e.actor !== playerId) return null;
   // cops-1's siren event carries `on`; only the start of a chase whoops.
@@ -173,20 +217,30 @@ export function cueForEvent(
   if (type === 'hit') {
     const w = e.data['weapon'];
     if (w === 'kick') cue = 'kick';
+    // Run W-T: a landing on a rider ("Air that pays") is a body slam, not a weapon's clang; a thrown
+    // briefcase that bursts lands with its paperwork.
+    else if (w === 'landing') cue = 'slam';
+    else if (e.data['burst'] === true) cue = 'paper';
     else if (typeof w === 'string' && w !== 'punch' && e.data['unarmed'] !== true) cue = 'hit';
   }
+  // A clean landing after real air surges (pitch deck #13): the thump and a rush of air.
+  if (type === 'land' && e.data['surge'] === true) cue = 'surge';
+  // The finish: the boxing bell rings you in (three strikes); a rival's finish is one ding.
+  if (type === 'finish' && e.actor !== playerId) cue = 'ding';
   const impact = cue === 'crash' ? crashImpact(e, riderSpeedMps) : 1;
   const playerInvolved = e.actor === playerId || e.target === playerId;
+  const kind = e.data['kind'];
   return {
     cue,
     priority: PRIORITY[cue] + (playerInvolved ? PLAYER_BONUS : 0),
     playerInvolved,
     impact,
+    ...(cue === 'smash' && typeof kind === 'string' ? { variant: kind } : {}),
   };
 }
 
 /** The cues that land on a body: they sound meatier as the target weakens (cue-patches.ts, MEATY). */
-export const MELEE_CUES: ReadonlySet<CueId> = new Set<CueId>(['punch', 'kick', 'hit']);
+export const MELEE_CUES: ReadonlySet<CueId> = new Set<CueId>(['punch', 'kick', 'hit', 'slam', 'paper']);
 
 /**
  * How beaten a rival is, 0 (full health) to 1 (nearly down), read from the snapshot (playtest 2,

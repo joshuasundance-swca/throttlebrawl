@@ -63,6 +63,7 @@ import { findHonks, findSiren, HORN_DEFAULTS } from './telegraphs';
 import { VoicePool, type PoolEntry } from './voices';
 import { createWindVoice, WIND_DEFAULTS, type WindVoice } from './wind';
 import { inPirateSpot } from './pirate';
+import { seededRandom } from './radio-util';
 import {
   CABLE_BELL_RANGE_M,
   createDirector,
@@ -420,7 +421,7 @@ export interface AudioInspect {
   busTargets: Volumes;
   activeVoices: number;
   /** The most recent cues played (up to 32), with their start times on the audio clock. */
-  lastCues: { cue: CueId; at: number; weight?: number }[];
+  lastCues: { cue: CueId; at: number; weight?: number; variant?: string }[];
   playerEngineHz: number;
   playerEngineLevel: number;
   /** The engine's feel on the last frame (engine-feel.ts) and its counts this session. */
@@ -429,6 +430,9 @@ export interface AudioInspect {
   otherEngines: number[];
   /** Each of those engines' voice (its preset) and where it sits, left (-1) to right (1). */
   otherEngineVoices: { id: number; preset: string; pan: number }[];
+  /** Beaten rivals' engine sputters this session, and the runaway cable car still ringing (its id). */
+  sputters: number;
+  runawayBell: number | null;
   sirenLevel: number;
   musicPlaying: boolean;
   /** The slow-motion treatment: whether it is on, and what the bus filter and music duck aim for. */
@@ -557,6 +561,17 @@ interface Held<T> {
   contentId: string;
 }
 
+/**
+ * The runaway cable car's bell [default]: rung every `everyS` while it rolls back, heard out to
+ * `rangeM`, until it slows under `stopMps` or `maxS` passes.
+ */
+export const RUNAWAY_BELL = { everyS: 0.55, rangeM: 220, stopMps: 0.5, maxS: 70 } as const;
+/**
+ * A beaten rival's engine sputter [default]: it starts at `fromWeakness` (half health gone), a
+ * misfire about every `slowS` seconds there and every `fastS` seconds near the knockdown.
+ */
+export const SPUTTER = { fromWeakness: 0.5, slowS: 2.6, fastS: 0.8 } as const;
+
 /** Priorities in the voice pool (cues are 45..105, see cues.ts). */
 const PRIORITY = { playerEngine: 200, siren: 90, otherEngine: 30 } as const;
 const OTHER_ENGINES_MAX = 5;
@@ -639,7 +654,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const otherPan = new Map<number, number>();
   let siren: Held<SirenVoice> | null = null;
   const lastHonk = new Map<number, number>();
-  const lastCues: { cue: CueId; at: number; weight?: number }[] = [];
+  const lastCues: { cue: CueId; at: number; weight?: number; variant?: string }[] = [];
   let lastSnap: SimSnapshot | null = null;
   let lastPlayerId = 0;
 
@@ -939,6 +954,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       retune();
     }
     for (const id of [...others.keys()]) dropOther(id);
+    nextSputter.clear();
+    runaway = null;
     dropSiren();
     // Out of the race (the menus), nobody is talking.
     g.barks.stop();
@@ -948,17 +965,86 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   /** Cues that mark the slow motion's edges play at their own pitch. */
   const UNPITCHED: ReadonlySet<CueId> = new Set(['slowIn', 'slowOut']);
 
-  const playCue = (g: Graph, cue: CueId, priority: number, gain: number, impact = 1, weight = 0) => {
+  const playCue = (
+    g: Graph,
+    cue: CueId,
+    priority: number,
+    gain: number,
+    impact = 1,
+    weight = 0,
+    variant?: string,
+  ) => {
     const level = gain * params.cueGain;
     if (level <= 0.001) return;
     const at = g.ctx.currentTime;
     const pitch = UNPITCHED.has(cue) ? 1 : g.slowmo.pitch();
-    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, { impact, pitch, weight });
+    const playing = CUE_PATCHES[cue](g.ctx, g.slowmo.fxIn, at, level, {
+      impact,
+      pitch,
+      weight,
+      ...(variant ? { variant } : {}),
+    });
     const entry = pool.add(priority, playing);
     if (!entry) return;
     playing.onEnded(() => pool.release(entry));
-    lastCues.push(weight > 0 ? { cue, at, weight } : { cue, at });
+    lastCues.push({ cue, at, ...(weight > 0 ? { weight } : {}), ...(variant ? { variant } : {}) });
     if (lastCues.length > 32) lastCues.shift();
+  };
+
+  /**
+   * Where an event's sound comes from: a smash from the smashable itself (its actor may be the rider
+   * whose hit sent someone into it), anything else from its actor, or the voter for a lane vote.
+   */
+  const sourceOf = (snap: SimSnapshot, e: SimEvent): { x: number; z: number } | null => {
+    if (e.type === 'smash') {
+      const prop = snap.smashables?.find((p) => p.id === e.data['prop']);
+      if (prop) return prop;
+    }
+    if (e.actor >= 0) return findEntity(snap, e.actor);
+    return e.target !== undefined ? findEntity(snap, e.target) : null;
+  };
+
+  /**
+   * The runaway cable car (run W-T, SF): after its `runaway` beat it rings in a hurry while it rolls
+   * back, until it stops or `RUNAWAY_BELL.maxS` passes.
+   */
+  let runaway: { id: number; from: number; next: number } | null = null;
+  const runawayBells = (g: Graph, snap: SimSnapshot, me: EntitySnapshot, now: number) => {
+    if (!runaway) return;
+    const car = findEntity(snap, runaway.id);
+    const elapsed = now - runaway.from;
+    if (!car || elapsed > RUNAWAY_BELL.maxS || (elapsed > 1 && car.speed < RUNAWAY_BELL.stopMps)) {
+      runaway = null;
+      return;
+    }
+    if (now < runaway.next) return;
+    runaway.next = now + RUNAWAY_BELL.everyS;
+    playCue(g, 'cableBell', 58, distanceGain(distance(me, car), 10, RUNAWAY_BELL.rangeM));
+  };
+
+  /**
+   * A beaten rival's engine sputters (pitch deck #5): from half health down, misfires come more often
+   * the weaker he is. The presentation stream is seeded, never the sim's.
+   */
+  const nextSputter = new Map<number, number>();
+  const sputterRandom = seededRandom((opts.radioSeed ?? 0x5b77e) ^ 0x51e7);
+  let sputters = 0;
+  const sputter = (held: Held<EngineVoice>, e: EntitySnapshot, w: number, now: number) => {
+    if (w < SPUTTER.fromWeakness) {
+      nextSputter.delete(e.id);
+      return;
+    }
+    const k = (w - SPUTTER.fromWeakness) / (1 - SPUTTER.fromWeakness);
+    const gap = () => (SPUTTER.slowS + (SPUTTER.fastS - SPUTTER.slowS) * k) * (0.6 + 0.8 * sputterRandom());
+    const next = nextSputter.get(e.id);
+    if (next === undefined) {
+      nextSputter.set(e.id, now + gap());
+      return;
+    }
+    if (now < next) return;
+    held.voice.sputter(now, 0.35 + 0.65 * k);
+    sputters++;
+    nextSputter.set(e.id, now + gap());
   };
 
   const findEntity = (snap: SimSnapshot, id: number): EntitySnapshot | null => {
@@ -1077,6 +1163,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       held.voice.set({ rpm: e.rpm, throttle: e.throttle });
       held.voice.setLevel(ENGINE_LEVELS.other * params.engineGain * distanceGain(d) * (hitStop ? 0.3 : 1));
       held.voice.setDoppler(pitch * dopplerFactor(listener, moving(e), params.dopplerScale));
+      if (!hitStop) sputter(held, e, weaknessOf(snap, e.id), now);
       // Passing riders sit left or right of you (0.8 at most, so neither ear goes silent).
       const pan = 0.8 * panFor(me, e);
       held.voice.setPan(pan);
@@ -1102,6 +1189,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         siren.voice.setDoppler(pitch * dopplerFactor(listener, moving(cop), params.dopplerScale));
       }
     } else dropSiren();
+
+    runawayBells(g, snap, me, now);
 
     // Oncoming traffic honks once as it closes in your line.
     if (params.hornRangeM > 0) {
@@ -1173,11 +1262,17 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         if (!choice) continue;
         let gain = 1;
         if (!choice.playerInvolved && snap && me) {
-          gain = src ? distanceGain(distance(me, src), 8, 180) : 0.6;
+          const from = sourceOf(snap, e);
+          gain = from ? distanceGain(distance(me, from), 8, 180) : 0.6;
         }
         const impact = Math.min(1, choice.impact * params.crashImpactScale);
         const weight = MELEE_CUES.has(choice.cue) ? weaknessOf(snap, e.target) : 0;
-        playCue(g, choice.cue, choice.priority, gain, impact, weight);
+        playCue(g, choice.cue, choice.priority, gain, impact, weight, choice.variant);
+        // The runaway cable car keeps ringing while it rolls (runawayBells, each frame).
+        if (choice.cue === 'runaway' && e.actor >= 0) {
+          const now = g.ctx.currentTime;
+          runaway = { id: e.actor, from: now, next: now + RUNAWAY_BELL.everyS + 0.3 };
+        }
         // The music ducks under a crash you are in or can clearly hear.
         if (DUCK_CUES.has(choice.cue) && (choice.playerInvolved || gain >= 0.5)) duckNow(g);
       }
@@ -1293,6 +1388,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       otherEngineVoices: [...others.entries()]
         .sort(([a], [b]) => a - b)
         .map(([id, h]) => ({ id, preset: h.voice.profile.preset, pan: otherPan.get(id) ?? 0 })),
+      sputters,
+      runawayBell: runaway?.id ?? null,
       sirenLevel: siren?.voice.level() ?? 0,
       musicPlaying: graph?.music.playing() ?? false,
       slowmo: {
