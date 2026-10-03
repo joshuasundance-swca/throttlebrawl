@@ -1,0 +1,94 @@
+{
+  "type": "road-network",
+  "id": "sf-waterfront",
+  "name": "San Francisco waterfront (hand-authored)",
+  "region": "san-francisco",
+  "crs": { "kind": "tmerc", "originLatDeg": 37.7885, "originLonDeg": -122.3885, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "sf-wf-bridgefoot",
+    "sf-wf-clocktower-reach",
+    "sf-wf-ferry-plaza",
+    "sf-wf-odd-piers",
+    "sf-wf-sea-lion-landing"
+  ],
+  "junctions": [
+    {
+      "id": "j-sf-waterfront-0",
+      "x": 0,
+      "y": 2.4,
+      "z": 0,
+      "ends": [{ "road": "sf-wf-bridgefoot", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-waterfront-1",
+      "x": -29.8291,
+      "y": 2.4,
+      "z": -638.4705,
+      "ends": [
+        { "road": "sf-wf-bridgefoot", "end": "to" },
+        { "road": "sf-wf-clocktower-reach", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-waterfront-2",
+      "x": -143.4852,
+      "y": 2.4,
+      "z": -1329.1151,
+      "ends": [
+        { "road": "sf-wf-clocktower-reach", "end": "to" },
+        { "road": "sf-wf-ferry-plaza", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-waterfront-3",
+      "x": -299.4607,
+      "y": 2.4,
+      "z": -1822.898,
+      "ends": [
+        { "road": "sf-wf-ferry-plaza", "end": "to" },
+        { "road": "sf-wf-odd-piers", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-waterfront-4",
+      "x": -948.8517,
+      "y": 2.4,
+      "z": -2420.0193,
+      "ends": [
+        { "road": "sf-wf-odd-piers", "end": "to" },
+        { "road": "sf-wf-sea-lion-landing", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-waterfront-5",
+      "x": -1320.3293,
+      "y": 2.4,
+      "z": -2880.0072,
+      "ends": [{ "road": "sf-wf-sea-lion-landing", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-03",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The waterfront boulevard (run W-U; the pitch deck's #8, \"Later\": \"the waterfront (palms, piers, sea lions, an invented clock-tower ferry building)\"): two lanes each way along the bay, a promenade and the pier sheds on the right, low waterfront blocks and side streets on the left, the clock-tower ferry hall halfway, and the sea lions' floats at the finish. One route."
+  }
+}

@@ -19,9 +19,15 @@
       "event": "sf-t1-pier-pressure",
       "length": "standard",
       "tier": "t1",
-      "at": { "road": "sf-pier-row", "s": 40 },
+      "at": { "road": "sf-wf-bridgefoot", "s": 40 },
       "opens": ["sf-switchback-street", "sf-mi-drop-cloth-alley"],
-      "claims": ["sf-pier-row", "sf-cable-line-grade"]
+      "claims": [
+        "sf-wf-bridgefoot",
+        "sf-wf-clocktower-reach",
+        "sf-wf-ferry-plaza",
+        "sf-wf-odd-piers",
+        "sf-wf-sea-lion-landing"
+      ]
     },
     {
       "id": "ding-ding",
@@ -31,7 +37,7 @@
       "at": { "road": "sf-cable-line-grade", "s": 300 },
       "requires": ["pier-pressure"],
       "opens": ["sf-painted-row"],
-      "claims": ["sf-switchback-street"]
+      "claims": ["sf-pier-row", "sf-cable-line-grade", "sf-switchback-street"]
     },
     {
       "id": "collab",

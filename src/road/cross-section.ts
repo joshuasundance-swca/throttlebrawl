@@ -48,7 +48,7 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 
 /**
  * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
- * downtown, mission, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * downtown, mission, promenade, wharf, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
  * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
  * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
  * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
@@ -89,6 +89,18 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['mascot-mural', band(1.5, 'kerb', 'hard')],
   ['murals', band(1.5, 'kerb', 'hard')],
   ['shopfronts', band(4, 'kerb', 'hard')],
+  // San Francisco's waterfront (run W-U; the pitch deck's #8): on the bay side 12 m of promenade
+  // paving to the seawall, where a rider splashes (`water`), or to a pier shed's or the ferry hall's
+  // front (`hard`: the building stands there); on the city side a side street's mouth (`wharf-street`, open asphalt,
+  // as downtown's cross streets), the plaza facing the ferry hall, the parking lot by the bridge, and
+  // otherwise a sidewalk to the waterfront blocks' fronts (`hard`).
+  ['ferry-hall', band(12, 'kerb', 'hard')],
+  ['pier-shed', band(12, 'kerb', 'hard')],
+  ['promenade', band(12, 'kerb', 'water')],
+  ['wharf-street', band(20, 'shoulder', 'soft')],
+  ['ferry-plaza', band(18, 'kerb', 'soft')],
+  ['wharf-lot', band(18, 'shoulder', 'soft')],
+  ['wharf', band(4, 'kerb', 'hard')],
   ['palms', band(4, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

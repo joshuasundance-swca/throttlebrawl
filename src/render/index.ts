@@ -24,6 +24,8 @@
 // from the asset manifest; until a rider's two models arrive, its box rider draws.
 // Run W-T (pitch 6, "the horizon comes alive") adds the staged roadside scenes (scenes/, a lazy
 // chunk with each region's scenes file): a few seeded scenes a race, each one mesh with one dry sign.
+// Run W-U (the pitch deck's #8) adds San Francisco's waterfront (waterfront.ts, a lazy chunk): the
+// promenade, the numbered pier sheds, the clock-tower ferry hall, the sea lions and the city blocks.
 // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys") adds San Francisco's
 // mural district (mission.ts, a lazy chunk): shopfronts, painted alleys, and the streaming outfit's
 // mascot on two corner walls, painted over by a crew as the race's leader goes round.
@@ -51,6 +53,7 @@ import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { ScenesFile } from './scenes/data';
 import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
+import type { WaterfrontCounts, WaterfrontLayer } from './waterfront';
 import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
 import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
@@ -230,6 +233,8 @@ export interface SceneryStatus {
   verge: VergeCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
   scenes: ScenesCounts | null;
+  /** San Francisco's waterfront (run W-U), or null while its chunk loads or on any other road. */
+  waterfront: WaterfrontCounts | null;
   /** The airboats beside a road tagged for them (run W-U), or null on a road without any. */
   airboats?: AirboatCounts | null;
   /** The Pacific Northwest's ferry, clear-cut and the Stump Social (run W-U), or null on a road without them. */
@@ -404,6 +409,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       scenesData = { road, region, ...found };
       buildScenes();
       buildRoadside();
+      buildWaterfront();
     });
   };
   // Run W-R: San Francisco's downtown (downtown.ts), a lazy chunk that arrives with its models.
@@ -426,6 +432,39 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       seed: sceneSeed,
     });
     scene.add(downtown.group);
+  };
+  // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
+  // It is rebuilt with the road (a new seed, the palms arriving) and keeps off the staged scenes.
+  let waterfrontModule: typeof import('./waterfront') | null = null;
+  let waterfrontLoading = false;
+  let waterfront: WaterfrontLayer | null = null;
+  const buildWaterfront = () => {
+    waterfront?.dispose();
+    waterfront = null;
+    if (!roadArgs) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    const m = waterfrontModule;
+    if (!m) {
+      if (waterfrontLoading || !['promenade', 'wharf'].some((t) => tags.has(t))) return;
+      waterfrontLoading = true;
+      void import('./waterfront')
+        .then((w) => {
+          waterfrontModule = w;
+          buildWaterfront();
+        })
+        .catch(() => {
+          waterfrontLoading = false; // tried again at the next road build
+        });
+      return;
+    }
+    if (!m.hasWaterfront(tags)) return;
+    waterfront = new m.WaterfrontLayer(models, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+      reserved: scenes?.reserved() ?? [],
+    });
+    scene.add(waterfront.group);
   };
   // Run W-U: San Francisco's Chinatown and North Beach (chinatown-northbeach.ts), a lazy chunk with a
   // code-made kit (no model file), loaded only for a network that carries its tags.
@@ -537,6 +576,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildScenes();
     buildRoadside();
     buildDowntown();
+    buildWaterfront();
     buildPlaces();
     buildBlocks();
     buildMission();
@@ -713,6 +753,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
+      if (waterfront) sceneryVisible += waterfront.update(pose.x, pose.z, params.sceneryLodM);
       if (blocks) sceneryVisible += blocks.update(pose.x, pose.z);
       if (mission && missionModule) {
         // The crew paints with the race: the leader's share of it, and stands still while it is paused.
@@ -830,6 +871,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       mission: mission?.counts() ?? null,
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
+      waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
       places: places?.counts() ?? null,
     }),

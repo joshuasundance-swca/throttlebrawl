@@ -51,6 +51,15 @@ TAGS = {
     "key-resort",
     "key-junkyard",
     "key-party",
+    # San Francisco's waterfront (run W-U; docs/content-packs.md, "San Francisco's waterfront").
+    "promenade",
+    "pier-shed",
+    "ferry-hall",
+    "sea-lions",
+    "wharf",
+    "wharf-street",
+    "ferry-plaza",
+    "wharf-lot",
 }
 
 

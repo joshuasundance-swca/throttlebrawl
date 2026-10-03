@@ -136,6 +136,23 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   ],
 };
 
+/** San Francisco's waterfront tags (run W-U; tools/road/tracks/sf-waterfront.ts). */
+export const WATERFRONT_TAGS: readonly string[] = [
+  'promenade',
+  'pier-shed',
+  'ferry-hall',
+  'sea-lions',
+  'wharf',
+  'wharf-street',
+  'ferry-plaza',
+  'wharf-lot',
+];
+
+/** Whether a network has a waterfront at all (any waterfront tag). */
+export function hasWaterfrontTags(tags: ReadonlySet<string>): boolean {
+  return WATERFRONT_TAGS.some((t) => tags.has(t));
+}
+
 /** The models every network draws (the ramp truck, poles, shacks and boats). */
 const ALWAYS: readonly ModelKind[] = ['truck', 'powerPole', 'baitShack', 'skiff', 'boat'];
 
@@ -180,6 +197,13 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
       out.add('sfRoadside');
     }
     if (n.tags.has('cable-crossing')) out.add('cableCar');
+    // Run W-U: San Francisco's waterfront (waterfront.ts): the Keys' palms along the promenade (the
+    // scatter grows no palm off a tropical network, so only that layer stands them), and the city
+    // kit's cars, hydrants, scooters and lamps.
+    if (hasWaterfrontTags(n.tags)) {
+      out.add('palms');
+      out.add('sfRoadside');
+    }
     // Run W-U: San Francisco's mural alleys (mission.ts) borrow the city kit's lamps and bins.
     if (['shopfronts', 'murals', 'mascot-mural'].some((t) => n.tags.has(t))) out.add('sfRoadside');
   }

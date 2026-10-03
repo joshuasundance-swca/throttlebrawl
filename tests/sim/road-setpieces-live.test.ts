@@ -88,6 +88,14 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-sf:sf-downtown-run',
     kinds: BOTH,
   },
+  // Run W-U: San Francisco's waterfront (hand-made), its truck on Clocktower Reach's straight.
+  {
+    name: 'sf-waterfront',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:sf-waterfront-run',
+    kinds: BOTH,
+  },
   // Run W-S: the real-road networks, their pads on the main road (a solo ride keeps to it, so a
   // pad on a junction choice would never be met).
   {

@@ -38,6 +38,9 @@ export type SideTheme =
   | 'park'
   // run W-U, San Francisco's mural alleys (render/mission.ts draws what stands there)
   | 'mission'
+  // run W-U, San Francisco's waterfront (render/waterfront.ts draws what stands there)
+  | 'promenade'
+  | 'wharf'
   // run W-U, the Pacific Northwest's places (render/pnw-places.ts draws what stands there)
   | 'festival'
   | 'clearcut';
@@ -80,6 +83,17 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   shopfronts: 'mission',
   murals: 'mission',
   'mascot-mural': 'mission',
+  // Run W-U (the pitch deck's #8): the waterfront. The bay side is the promenade to the seawall (the
+  // pier sheds and the ferry hall stand on its edge); the city side is the waterfront blocks, their
+  // side streets (`wharf-street`), the ferry plaza and the lot by the bridge. Nothing of the scatter's stands on
+  // either; the waterfront layer (waterfront.ts) draws them.
+  promenade: 'promenade',
+  'pier-shed': 'promenade',
+  'ferry-hall': 'promenade',
+  wharf: 'wharf',
+  'wharf-street': 'wharf',
+  'ferry-plaza': 'wharf',
+  'wharf-lot': 'wharf',
   // Run W-U (the pitch deck's #12): a closed main street on the day of the Stump Social (Fir County's
   // logging festival), and a fresh clear-cut. The
   // scatter puts nothing there but the forest's far edge past a clear-cut; pnw-places.ts draws the
@@ -87,6 +101,13 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   festival: 'festival',
   clearcut: 'clearcut',
 };
+/**
+ * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
+ * drops straight into the sea there, with no terrain skirt (road-mesh.ts). The promenade's: its
+ * 12 m verge band (road/cross-section.ts) less the drawn 0.6 m verge, so the drawn edge is the
+ * sim's water edge.
+ */
+export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade: 11.4 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
   'festival',
@@ -98,6 +119,8 @@ const THEME_ORDER: readonly LandTheme[] = [
   'lanterns',
   'cafes',
   'mission',
+  'promenade',
+  'wharf',
   'palms',
   'mangrove',
   'commercial',
@@ -211,12 +234,15 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   cafes: {},
   park: {},
   mission: {},
+  promenade: {},
+  wharf: {},
   festival: {},
   clearcut: {},
 };
 /**
- * Themes with no power poles: a downtown's wires are underground, the mural district's walls
- * stand at the kerb, the festival street's shops stand at the sidewalk, and a clear-cut has none.
+ * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
+ * district's walls stand at the kerb, the festival street's shops stand at the sidewalk, and a
+ * clear-cut has none.
  */
 const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'crossing',
@@ -226,6 +252,8 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'cafes',
   'park',
   'mission',
+  'promenade',
+  'wharf',
   'festival',
   'clearcut',
 ]);

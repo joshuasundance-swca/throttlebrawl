@@ -214,7 +214,11 @@ describe('the scenes, region by region', () => {
   it.each([
     ['florida-keys', ['keys-m1', 'osm-keys-bahia-honda', 'osm-keys-key-west'], 'tow-requested'],
     ['pacific-northwest', ['pnw-c1', 'osm-pnw-chuckanut', 'osm-pnw-gorge', 'osm-pnw-samish'], 'view-lot'],
-    ['san-francisco', ['sf-hills', 'osm-sf-russian-hill', 'osm-sf-twin-peaks', 'sf-downtown'], 'series-a'],
+    [
+      'san-francisco',
+      ['sf-hills', 'osm-sf-russian-hill', 'osm-sf-twin-peaks', 'sf-downtown', 'sf-waterfront'],
+      'series-a',
+    ],
   ])(
     '%s: a race meets a few of them, the pitch scene among them, and a new seed changes the line-up',
     (region, ids, signature) => {

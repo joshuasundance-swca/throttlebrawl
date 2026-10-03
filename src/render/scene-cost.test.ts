@@ -2,7 +2,7 @@
 // re-baseline found up to 108 of 120 draw calls and 133k of 150k triangles; the off-road ground band
 // took the Keys frame from about 68k to 116k triangles, and the old instanced scenery cost 21 to 41
 // draw calls a view). Each route's real road scene, roadside, ground band and (San Francisco)
-// downtown, Chinatown and North Beach are built with the real Blender models; a chase camera rides the route's main path every
+// downtown, Chinatown and North Beach and (run W-U) waterfront are built with the real Blender models; a chase camera rides the route's main path every
 // 25 m, and every mesh the renderer would draw from there (visible, and inside the camera's
 // frustum, as three.js culls) is counted. The still scene must leave the riders, the traffic, the
 // cops and the effects their share of the frame budget (tests/perf/budget.json).
@@ -30,6 +30,7 @@ import { KITS, kitFor, RoadsideLayer } from './roadside';
 import { SCENERY_LOD_M } from './scenery-merge';
 import { RENDER_TUNING } from './tuning';
 import { VergeLayer } from './verge';
+import { hasWaterfront, WaterfrontLayer } from './waterfront';
 
 const look = createFlatLook();
 /** The examined lines, printed even when the tests pass (console.log is not). */
@@ -157,6 +158,8 @@ describe('the still scene along every route', () => {
               seed,
             })
           : null;
+      // Run W-U: San Francisco's waterfront.
+      const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
       // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).
       const places = hasPnwPlaces(tags)
         ? new PnwPlacesLayer(look, { road, seed, landReach: (e, side, s) => rs.landReach(e, side, s) })
@@ -196,6 +199,8 @@ describe('the still scene along every route', () => {
           if (roadside) for (let i = 0; i < 12; i++) roadside.update(eye.x, eye.z, DRAW_M);
           verge.update(eye.x, eye.z, null, 0, aim.x, aim.z);
           dt?.update(eye.x, eye.z, 0, []);
+          // Everything near enough is built at once here (the renderer builds one a frame).
+          wf?.update(eye.x, eye.z, LOD_M, undefined, 1000);
           places?.update(eye.x, eye.z, DRAW_M, LOD_M, Infinity);
           // The blocks build one mesh a frame: as many frames as a ride to here would have had.
           if (blocks) for (let i = 0; i < 30; i++) blocks.update(eye.x, eye.z);
@@ -208,6 +213,7 @@ describe('the still scene along every route', () => {
           if (roadside) drawn(roadside.group, frustum, parts);
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
+          if (wf) drawn(wf.group, frustum, parts);
           if (places) drawn(places.group, frustum, parts);
           if (blocks) drawn(blocks.group, frustum, parts);
           if (mission) drawn(mission.group, frustum, parts);

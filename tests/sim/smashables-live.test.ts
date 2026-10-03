@@ -37,6 +37,7 @@ const ROUTES: readonly Route[] = [
     event: 'region-sf:sf-hill-sprint',
     route: 'region-sf:sf-chinatown-northbeach-run',
   },
+  { name: 'sf-waterfront', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-waterfront-run' },
   { name: 'osm-sf-russian-hill', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run' },
   { name: 'osm-sf-twin-peaks', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run' },
 ];

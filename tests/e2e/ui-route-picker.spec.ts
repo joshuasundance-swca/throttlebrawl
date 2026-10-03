@@ -78,7 +78,8 @@ test('each region offers its own road first, then its real roads by name, and th
     {
       chip: '#region-region-sf-san-francisco',
       // Run W-R: the hand-made downtown on its own network, offered after the real roads; run W-U's
-      // Chinatown and North Beach and the mural alleys the same way (the picker lists routes by id).
+      // Chinatown and North Beach, the mural alleys and the waterfront the same way (the picker lists
+      // routes by id).
       routes: [
         'Fogline Hill Sprint',
         'Russian Hill',
@@ -86,6 +87,7 @@ test('each region offers its own road first, then its real roads by name, and th
         'Chinatown & North Beach',
         'Downtown',
         'Mural Alleys',
+        'Waterfront',
       ],
     },
   ];

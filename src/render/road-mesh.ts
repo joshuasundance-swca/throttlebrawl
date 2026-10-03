@@ -36,6 +36,7 @@ import {
   LAND_TOP_M,
   ridableBandPast,
   SCENERY_KINDS,
+  SEAWALL_LAND_M,
   scatterEdge,
   themeAt,
   type SceneryKind,
@@ -537,6 +538,8 @@ const FEATURE_CLEAR_M = 3;
 export const SCENERY_LAND_M = 24;
 /** The shelf from the land's edge down to the sea floor, m. */
 const SCENERY_SHELF_M = 4;
+/** A seawall's drop (run W-U): near sheer, m out from the strip's edge. */
+const SEAWALL_SHELF_M = 0.05;
 /** Land widths tried where another road leaves no room for a shelf, m. [default] */
 const LAND_GAP_WIDTHS = [12, 9, 6, 4, 2.5, 1.5];
 /** How far such land stops short of the other road's verge, m. [default] */
@@ -1104,6 +1107,10 @@ export function buildRoadScene(
     };
     /** Samples whose land runs up to another road, so no shelf drops into the sea there. */
     const meetsOf: Record<-1 | 1, boolean[]> = { [-1]: [], [1]: [] };
+    /** Samples whose land ends at a seawall (run W-U, scenery.ts SEAWALL_LAND_M): no skirt, a sheer drop. */
+    const wallOf: Record<-1 | 1, boolean[]> = { [-1]: [], [1]: [] };
+    /** The shelf's run out from the strip's edge at row i: a seawall drops sheer. */
+    const shelfOf = (side: -1 | 1, i: number) => (wallOf[side][i] ? SEAWALL_SHELF_M : SCENERY_SHELF_M);
     /** The sharpest turn toward a side within SCENERY_LAND_M of s (kappa > 0 turns right, +d). */
     const insideKappa = (side: -1 | 1, s: number): number => {
       let k = 0;
@@ -1125,13 +1132,16 @@ export function buildRoadScene(
           !railsOf[side].some((b) => s >= b.s0 - 5 && s <= b.s1 + 5) &&
           !(untagged && w(e.index, s, 0, 0).y >= ELEVATED_M);
         let r = 0;
+        // Run W-U: a seawall's land (the waterfront's promenade) is only as wide as its verge band.
+        const seawall = land ? SEAWALL_LAND_M[th] : undefined;
+        wallOf[side].push(seawall !== undefined);
         if (land) {
           // On the inside of a tight turn a wide strip would fold over the turn's centre, and its
           // folded triangles face down, so the sea shows through (playtest 1c skeptic, SF's
           // switchbacks). The strip and its shelf stay inside LAND_FOLD of the turn's radius.
           const k = insideKappa(side, s);
           const room = k > 0 ? LAND_FOLD / k - outer - SCENERY_SHELF_M : Infinity;
-          for (const width of [SCENERY_LAND_M, 14, 6]) {
+          for (const width of seawall !== undefined ? [seawall] : [SCENERY_LAND_M, 14, 6]) {
             if (width > room) continue;
             const d = outer + width + SCENERY_SHELF_M;
             if (
@@ -1185,7 +1195,7 @@ export function buildRoadScene(
       const skirts = skirtOf[side];
       ss.forEach((s, i) => {
         const r = reach[i] ?? 0;
-        skirts.push(terrain && r > 0 && !meetsOf[side][i] ? skirtAt(side, s, r) : null);
+        skirts.push(terrain && r > 0 && !meetsOf[side][i] && !wallOf[side][i] ? skirtAt(side, s, r) : null);
       });
       // The skirt is wide and plain, so it keeps every third sample (and every sample where a run
       // starts or ends): about half the land's triangles.
@@ -1256,7 +1266,7 @@ export function buildRoadScene(
             // slope), so where the skirt comes and goes no gap opens under the strip's edge.
             const nextToEdge = edgeShelf(i - 1) || edgeShelf(i + 1);
             if (skirted ? !k : !(edgeShelf(i) || nextToEdge)) return null;
-            if (!skirted) return [top(s, r), at(s, outer + r + SCENERY_SHELF_M, -0.4)];
+            if (!skirted) return [top(s, r), at(s, outer + r + shelfOf(side, i), -0.4)];
             if (!k) return null;
             const far = outer + r + k.run + k.flat;
             return [at(s, far, GROUND_Y), at(s, far + SCENERY_SHELF_M, -0.4)];
@@ -1303,7 +1313,7 @@ export function buildRoadScene(
           profile.push(at(s, outer + r + k.run, GROUND_Y));
           if (k.flat > 0) profile.push(at(s, outer + r + k.run + k.flat, GROUND_Y));
           profile.push(at(s, outer + r + k.run + k.flat + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
-        } else if (li === 2) profile.push(at(s, outer + r + SCENERY_SHELF_M, LAND_CAP_FOOT_Y));
+        } else if (li === 2) profile.push(at(s, outer + r + shelfOf(side, i), LAND_CAP_FOOT_Y));
         return profile;
       };
       /** Closes row i's land past what the neighbouring land (level lj, reach rj) covers. */

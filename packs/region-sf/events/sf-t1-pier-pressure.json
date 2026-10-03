@@ -8,7 +8,7 @@
   "lengths": [
     {
       "id": "standard",
-      "route": "sf-standard-run",
+      "route": "sf-waterfront-run",
       "laps": 1
     }
   ],
@@ -59,7 +59,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "San Francisco's first race: from the piers up the cable line to the bridge approach, at foggy dawn. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "San Francisco's first race: the waterfront at foggy dawn, from the foot of the bridge past the piers and the clock-tower ferry hall to the sea lions. Run W-U: it ran from the piers up the cable line before; the waterfront needed an event, as every route of the region carries one, and the hills keep four. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
     "provenance": {
       "origin": "agent",
       "author": "agent",
