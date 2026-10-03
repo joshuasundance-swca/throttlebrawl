@@ -1,0 +1,7 @@
+---
+kind: fixed
+audience: player
+---
+Bikes no longer drive through cars where a side road runs over the main road. Since the Keys' Mangrove Boardwalk and sandbar were bent across the road to land you in your own lane, their last stretch lies on the main road's asphalt, but a rider still on the planks could not touch the traffic there, so you could ride straight through a towed boat or an oncoming rental sedan. Now a rider anywhere on a road's asphalt meets its cars, whichever road the rider is on: you can hit them, brush them and slip past them for a near miss, and they brake for you. The same holds where any side road's start or end overlaps the main road, in every region (the boat ramp, the logging spur, the park cut and the map-data side streets too).
+
+Under the hood: the road network can now say which other road's surface a point lies on, and traffic uses it to find riders over its roads. A new test checks every side road of every route on every live network: wherever a rider sits on a traffic road's asphalt (918 spots), a car placed there makes contact, and off the asphalt (16,009 spots) nothing does. Seeded races that use those side roads change. The grudge A/B test (a rival who holds a grudge swings at you more) now rides 16 races instead of 6: with only six, this change left it at 3 swings either way, while 16 races read 10 without the grudge and 18 with it. Done, not phone-verified.

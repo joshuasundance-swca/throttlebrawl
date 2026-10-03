@@ -130,6 +130,26 @@ export function toCorridor(c: Corridor, pos: RoadPos): { u: number; cd: number; 
   return { u: off + (o === 1 ? pos.s : len - pos.s), cd: pos.d * o, dir: pos.dir * o };
 }
 
+/**
+ * Corridor coordinates of a rider (run W-U fixes' re-check): its own road position on the corridor,
+ * or else, where its ground point lies on a corridor road's asphalt at the same height (within
+ * `heightM`), the corridor position of that point, with `over` true. #423 bent the Keys boardwalk's
+ * and sandbar's ends across the main road, and a rider still on the branch road there had no
+ * contact with the cars it rode through. Null when the rider is on no corridor road at all.
+ */
+export function riderOnCorridor(
+  road: RoadNetwork,
+  c: Corridor,
+  pos: RoadPos,
+  heightM: number,
+): { u: number; cd: number; dir: number; over: boolean } | null {
+  const own = toCorridor(c, pos);
+  if (own) return { ...own, over: false };
+  const under = road.surfaceUnder(pos, heightM, (edge) => linkOf(c, edge) >= 0);
+  const p = under ? toCorridor(c, under) : null;
+  return p ? { ...p, over: true } : null;
+}
+
 /** The chain index containing u (clamped to the corridor). */
 export function linkAt(c: Corridor, u: number): number {
   let i = 0;

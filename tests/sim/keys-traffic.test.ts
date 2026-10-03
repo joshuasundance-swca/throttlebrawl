@@ -26,7 +26,11 @@ const OWN: Readonly<Record<string, string>> = {
   'base:cooler-on-wheels': 'key-party',
 };
 const KEYS = ['key-fishing', 'key-resort', 'key-junkyard', 'key-party'];
-const SEEDS = [3, 8];
+// Seed 10 joined when branch riders over the main road started touching its traffic (run W-U fixes'
+// re-check): seeds 3 and 8 then met no junkyard shuttle (main: 6 and 2). That is the dice, not the
+// areas: over seeds 1 to 20 the fixed sim met 51 shuttles, every seed but 3, 5 and 8 at least one,
+// against 21 in seeds 1 to 8 before (2.6 a race either way).
+const SEEDS = [3, 8, 10];
 const MAX_TICKS = 60 * 60 * 12;
 
 interface Sighting {
