@@ -13,6 +13,31 @@ export interface BoxPart {
   rotX?: number;
   /** Rotation about y, radians, applied before the move. */
   rotY?: number;
+  /**
+   * Faces left out, in the box's own axes before it turns: ones nobody can see (a post's foot on
+   * the ground, a rail's ends butted against the next panel's), or too thin to show far off.
+   */
+  omit?: readonly BoxFace[];
+}
+
+/** A box's faces, in three's BoxGeometry order (+x, -x, +y, -y, +z, -z). */
+export type BoxFace = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz';
+const BOX_FACES: readonly BoxFace[] = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+
+/** A box with some faces left out (none: the whole box), indexed, its normals per face. */
+export function openBox(w: number, h: number, d: number, omit: readonly BoxFace[] = []): BufferGeometry {
+  const g = new BoxGeometry(w, h, d);
+  if (!omit.length) return g;
+  const index = g.getIndex();
+  if (!index) return g;
+  const keep: number[] = [];
+  for (const grp of g.groups) {
+    if (omit.includes(BOX_FACES[grp.materialIndex ?? 0]!)) continue;
+    for (let i = grp.start; i < grp.start + grp.count; i++) keep.push(index.getX(i));
+  }
+  g.setIndex(keep);
+  g.clearGroups();
+  return g;
 }
 
 /** Merges boxes into one indexed geometry with a per-vertex `color` attribute. */
@@ -23,7 +48,7 @@ export function mergeBoxes(parts: readonly BoxPart[]): BufferGeometry {
   const indices: number[] = [];
   const c = new Color();
   for (const part of parts) {
-    const g = new BoxGeometry(part.size[0], part.size[1], part.size[2]);
+    const g = openBox(part.size[0], part.size[1], part.size[2], part.omit);
     if (part.rotX) g.rotateX(part.rotX);
     if (part.rotY) g.rotateY(part.rotY);
     g.translate(part.at[0], part.at[1], part.at[2]);
@@ -81,6 +106,14 @@ export class StripAccumulator {
     this.pair(a0, b0);
     this.pair(a1, b1);
     this.breakStrip();
+  }
+
+  /** A single triangle (counter-clockwise seen from its front), as its own strip. */
+  tri(a: Point3, b: Point3, c: Point3): void {
+    this.breakStrip();
+    const k = this.positions.length / 3;
+    this.positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    this.indices.push(k, k + 1, k + 2);
   }
 
   get triangleCount(): number {
@@ -149,6 +182,12 @@ export class ChunkedStrips {
     this.breakStrip();
     const key = this.keyOf((a0.x + b0.x + a1.x + b1.x) / 4, (a0.z + b0.z + a1.z + b1.z) / 4);
     this.acc(key).quad(a0, b0, a1, b1);
+  }
+
+  /** A single triangle, in the chunk of its centre. */
+  tri(a: Point3, b: Point3, c: Point3): void {
+    this.breakStrip();
+    this.acc(this.keyOf((a.x + b.x + c.x) / 3, (a.z + b.z + c.z) / 3)).tri(a, b, c);
   }
 
   get triangleCount(): number {

@@ -35,6 +35,8 @@ export interface RenderParams {
   roadsideDensity: number;
   /** Scenery farther than this from the camera is not drawn (playtest 1c), metres. */
   sceneryDrawM: number;
+  /** Past this the still scenery draws its far stand-ins (run W-S), metres. */
+  sceneryLodM: number;
   /**
    * Where the haze is full in a region whose palette names a `fog` colour (the Pacific Northwest,
    * San Francisco), metres. It always starts past the threat draw distance. Elsewhere it is 700 m.
@@ -98,6 +100,10 @@ export const RENDER_TUNING: readonly TuningParamDecl[] = [
   // Playtest 1c: the Blender scenery. [default] well into the fog (it starts at 220 m), so far
   // scenery fades in rather than pops, and the phone keeps its triangle budget.
   decl('sceneryDrawM', 'Scenery draw distance', 360, 150, 760, 10, 'm'),
+  // Run W-S (the draw-call and triangle headroom): past this the still scenery draws as blocks in
+  // its own colours, about a tenth of the triangles. [default] 200 m: inside the 220 m fog start, a
+  // palm there is about 11 px wide on the phone's 412 px landscape height.
+  decl('sceneryLodM', 'Scenery far detail from', 200, 60, 760, 10, 'm'),
   // Playtest 1c integration: a foggy region's haze closes in. [default] 480 m: past the 200 m threat
   // draw distance and the 220 m fog start, so traffic still shows; the Keys keep 700 m.
   decl('regionFogFarM', 'Foggy region: haze full at', 480, 300, 700, 10, 'm'),

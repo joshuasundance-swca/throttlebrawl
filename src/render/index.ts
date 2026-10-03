@@ -514,7 +514,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const t = now();
       backdrop.update(camera.position, scene, t);
       eventProps.sync(curr, t);
-      sceneryVisible = roadScene ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM) : 0;
+      sceneryVisible = roadScene
+        ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
+        : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
