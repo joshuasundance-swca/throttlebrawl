@@ -139,6 +139,13 @@ export interface EntitySnapshot {
    */
   trick?: TrickId | null;
   /**
+   * Where a rider in the air will touch down (the pitch deck's #13, "Air that pays": "a chalk mark
+   * shows where you'll touch down, red if you're crooked"), forecast by sim/riders from its flight;
+   * null on the ground, for riders no player drives, and for other kinds. Presentation only.
+   * Optional for hand-built snapshots; the sim fills it for every entity.
+   */
+  touchdown?: TouchdownSnapshot | null;
+  /**
    * This rival's signature move while it shows (interview, 2026-10-02: "Visible personalities"),
    * so render can draw it (Chad's phone up, the Mayor's wave, Gus's bell swinging); null while it
    * is not showing one, and for other kinds. Presentation only. Optional for hand-built snapshots;
@@ -232,6 +239,22 @@ export interface StyleRunSnapshot {
   qualifies: boolean;
 }
 
+/**
+ * A forecast touch-down (EntitySnapshot.touchdown): the point on the ground below the flight where
+ * the bike will land if nothing changes, in world coordinates (x east, y up, z south), the bike's
+ * world heading there, the world seconds until it lands, and whether landing as the bike is now
+ * would be crooked (a wobble or worse: sideways, off the slope, leaned over, or still holding the
+ * newspaper).
+ */
+export interface TouchdownSnapshot {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  inS: number;
+  crooked: boolean;
+}
+
 /** A takedown's slow motion (M2 combat-4): whether it runs, and its raw ticks left. */
 export interface SlowmoSnapshot {
   active: boolean;
@@ -306,6 +329,12 @@ export interface LawSnapshot {
  * (a flagger, a cop waving traffic by, a marcher: `variant` says who), a radar unit on a tripod,
  * a giant parade inflatable, a work truck's arrow board, a tow truck's light bar, the hay stacked
  * on a farm truck, and a parade float's dressing (`variant` names the float).
+ * Run W-T (the pitch deck's #9, "weird events that move"): a log shed by a log truck, lying across
+ * the road with its long axis across it (`tilt` is how far it has rolled, unbounded; `moving` while
+ * it rolls), and an overhead gantry over the road for a lane vote (`label` is its two panels' words,
+ * the rider's left then right, split by ' | '; `variant` is '' until the vote, then `left` or
+ * `right`, the side that won; `spanM` its width). A serial sign (one joke over four small signs) is
+ * a `sign` whose `variant` is `serial`.
  */
 export const PROP_KINDS = [
   'cone',
@@ -320,8 +349,17 @@ export const PROP_KINDS = [
   'lightbar',
   'hayLoad',
   'floatDecor',
+  'log',
+  'gantry',
 ] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
+
+/**
+ * A moving set piece's moment (run W-T, `setPieceBeat` events' `data.beat`): a boat trailer comes
+ * unhitched, a cable car loses its grip, a log truck starts shedding its load, a lane vote is cast.
+ */
+export const SET_PIECE_BEATS = ['unhitch', 'runaway', 'shed', 'vote'] as const;
+export type SetPieceBeat = (typeof SET_PIECE_BEATS)[number];
 
 /** One set-piece prop (SimSnapshot.props): a world position and pose, for render. */
 export interface PropSnapshot {
@@ -344,6 +382,8 @@ export interface PropSnapshot {
   tilt: number;
   /** A person stepping out of the way, or a prop knocked flying: render may animate it. */
   moving: boolean;
+  /** A gantry's width across the road, m (run W-T). Absent for every other kind. */
+  spanM?: number;
 }
 
 // ---- Events ------------------------------------------------------------------------------
@@ -402,6 +442,14 @@ export type SimEventType =
    */
   | 'heat'
   | 'jump'
+  /**
+   * A rider came down from the air. Actor = the rider; `data.quality` (`clean`, `wobble`, `crash`),
+   * `data.airTicks`, `data.trick` and `data.flips` (playtest 2). From the pitch deck's #13 ("Air
+   * that pays"): a clean landing after real air carries `data.surge` (true) and `data.surgeS`, the
+   * seconds of the short surge it gives (riders and rivals alike), which ride on the rider's boost
+   * (`EntitySnapshot.boostS`). A player landing within a bike length of another rider also lands a
+   * heavy hit on him: a `hit` event whose `data.weapon` is `landing`, the landing's causeId.
+   */
   | 'land'
   | 'pedDive'
   /**
@@ -460,7 +508,16 @@ export type SimEventType =
    */
   | 'boost'
   | 'modifierStart'
-  | 'modifierEnd';
+  | 'modifierEnd'
+  /**
+   * A moving set piece's moment (run W-T, the pitch deck's #9): the skiff comes off its trailer, the
+   * cable car loses its grip, the log truck starts shedding, a lane vote is cast. Actor = -1, or the
+   * vehicle that does it; target = the voter for a vote. `data.beat` is a `SetPieceBeat`,
+   * `data.piece` the piece's name and `data.id` its modifier's content id; a vote adds `data.side`
+   * (`left` or `right`) and `data.pick`, the content id of the event it picked. Presentation only
+   * reads it (a bell, a bark, a camera nudge).
+   */
+  | 'setPieceBeat';
 
 /** `data.kind` of a `takedown` event: into traffic, into scenery, or out of health. */
 export const TAKEDOWN_KINDS = ['traffic', 'scenery', 'health'] as const;
@@ -493,9 +550,12 @@ export type StyleKind = (typeof STYLE_KINDS)[number];
  * turn of the bike, nose up or nose down), a wheelie landing (nose held high, down on the back
  * wheel) and a whip (the bike laid flat sideways in the air, straightened before the landing).
  * `land` events carry the one landed as `data.trick` ('' for none) and a flip's turns as
- * `data.flips`; `EntitySnapshot.trick` shows the one in progress.
+ * `data.flips`; `EntitySnapshot.trick` shows the one in progress. From the pitch deck's #13 ("Air
+ * that pays"): `newspaper`, on the biggest jumps only, the rider sits back as if in a lawn chair
+ * and reads the paper; let go in time it is a trick, and held into the ground the rider lands
+ * holding the newspaper, a crash whose `data.attempt` is `newspaper`.
  */
-export const TRICK_IDS = ['backflip', 'frontflip', 'wheelie', 'whip'] as const;
+export const TRICK_IDS = ['backflip', 'frontflip', 'wheelie', 'whip', 'newspaper'] as const;
 export type TrickId = (typeof TRICK_IDS)[number];
 
 export interface SimEvent {
