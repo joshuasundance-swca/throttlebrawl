@@ -69,6 +69,24 @@ function only(base: SimConfig, chances: Record<string, number>): SimConfig {
   return { ...base, event, modifiers: mods };
 }
 
+/**
+ * A shipped modifier's set-piece effect. The words and counts these tests expect are read from it
+ * (the quality retro's recommendation 5: a copy edit in the pack is not a test failure).
+ */
+function effect(modifier: string): Readonly<Record<string, unknown>> {
+  const e = REG.modifiers[modifier]?.effects[0];
+  if (!e) throw new Error(`no modifier ${modifier} in the packs`);
+  return e;
+}
+
+/** A text field of a shipped modifier's effect, as a list (a serial sign run is one already). */
+function words(modifier: string, field: string): string[] {
+  const v = effect(modifier)[field];
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v !== 'string' || v === '') throw new Error(`${modifier} has no ${field}`);
+  return [v];
+}
+
 interface Run {
   events: SimEvent[];
   hashes: number[];
@@ -152,8 +170,10 @@ describe('weird events that move (W-T)', () => {
     expect(beats(run, 'unhitch')).toHaveLength(1);
     // Serial signs only (no warning sign of its own), in reading order, the punchline nearest.
     const serial = run.signs.filter((s) => s.variant === 'serial');
-    expect(run.signs).toHaveLength(4);
-    expect(serial.map((s) => s.label)).toEqual(['YOUR BOAT', 'IS NOT', 'IN THE WATER', 'CHECK LANE TWO']);
+    const expected = words('base:keys-boat-slide', 'serial');
+    expect(expected.length).toBeGreaterThan(1);
+    expect(run.signs).toHaveLength(expected.length);
+    expect(serial.map((s) => s.label)).toEqual(expected);
     const startU = p?.u ?? 0;
     expect(startU).not.toBe(0);
     // At rest across the centre line from the forward lane where it stopped (its inner side, past
@@ -267,12 +287,7 @@ describe('weird events that move (W-T)', () => {
     expect(run, found.summary).not.toBeNull();
     expect(run?.problem).toBeNull();
     expect(run?.pieces[0]?.rolled ?? 0).toBeGreaterThan(60);
-    expect(run?.signs.map((s) => s.label)).toEqual([
-      '21% GRADE',
-      'CABLE CAR ABOVE',
-      'BRAKES',
-      'ON THE ROADMAP',
-    ]);
+    expect(run?.signs.map((s) => s.label)).toEqual(words('region-sf:sf-cable-runaway', 'serial'));
   });
 
   it.each([
@@ -315,7 +330,10 @@ describe('weird events that move (W-T)', () => {
     expect(pieces[1]?.piece).toBe(piece);
     expect(pieces[1]?.u).toBe(vote.voteU);
     const gantry = pieceProps(sim.snapshot().props).find((p) => p.kind === 'gantry');
-    expect(gantry?.label).toBe('GATOR CROSSING | PARADE');
+    const voteMod = 'base:keys-lane-vote';
+    expect(gantry?.label).toBe(
+      `${words(voteMod, 'leftText').join('')} | ${words(voteMod, 'rightText').join('')}`,
+    );
     expect(gantry?.variant).toBe(side);
     expect(gantry?.spanM).toBeGreaterThan(5);
   });
@@ -329,7 +347,7 @@ describe('weird events that move (W-T)', () => {
       true,
     );
     expect(run.kinds).toContain('person');
-    expect(run.signs.map((s) => s.label)).toEqual(['GATOR CROSSING. Gator has right of way.']);
+    expect(run.signs.map((s) => s.label)).toEqual(words('base:keys-gator-crossing', 'signText'));
     // Re-run to the same tick to count the gators placed (the peds state holds them).
     const { sim, world } = createSimWithWorld(cfg);
     const bot = createBot();
@@ -342,7 +360,7 @@ describe('weird events that move (W-T)', () => {
       snap = sim.snapshot();
     }
     const gators = pedsState(world).type.filter((t) => t === gatorType).length;
-    expect(gators).toBe(4);
+    expect(gators).toBe(effect('base:keys-gator-crossing')['count']);
   });
 
   it('replays to the same hashes with every moving piece in', () => {
