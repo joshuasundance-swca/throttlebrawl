@@ -131,7 +131,27 @@ export interface RaceTally {
   /** The rivals who rode (content ids; the law not), and the player's own content id. */
   field: readonly string[];
   player: string;
+  /**
+   * What the world will remember (run W-T, "a world that keeps receipts"): each rival the player put
+   * into a vehicle, and a bust, with where it happened, in race order, at most MAX_INCIDENTS. Absent
+   * means none (a tally built by hand).
+   */
+  incidents?: readonly RaceIncident[];
 }
+
+/** One thing a race did that the world keeps a receipt for. Only what the events said happened. */
+export interface RaceIncident {
+  kind: 'takedown' | 'bust';
+  /** The road id and how far along it (whole metres): the victim's spot, or the player's at a bust. */
+  road: string;
+  s: number;
+  /** A takedown's rival and the vehicle (traffic content id) they went into; null at a bust. */
+  rival: string | null;
+  vehicle: string | null;
+}
+
+/** The most incidents one race keeps. [default] */
+export const MAX_INCIDENTS = 3;
 
 export interface RaceLogSetup {
   playerId: number;
@@ -198,6 +218,12 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
   // The rules' counts (run W-T): his hits on you (the Audit), his style cash (the Collab).
   let hitsByRival = 0;
   let rivalStyleCash = 0;
+  // Receipts (run W-T): a rider's crash into a vehicle, by cause id (the takedown comes a tick
+  // later with the same cause), and the incidents kept.
+  const crashes = new Map<number, { vehicle: string; road: string; s: number }>();
+  const incidents: RaceIncident[] = [];
+  const spotOf = (e: EntitySnapshot | undefined) =>
+    e ? { road: setup.roadIds[e.road.edge] ?? '', s: Math.round(e.road.s) } : null;
   // The law: when a chase on the player began, the last second a cop was on them, the progress then.
   let chaseStartS = -1;
   let chaseStartProgress = 0;
@@ -369,13 +395,34 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
             if (target === me && !busted && !finished) {
               busted = true;
               fineCash = Math.max(0, Math.round(n(e.data['fineCash'], 0)));
+              const at = spotOf(meNow);
+              if (at?.road && incidents.length < MAX_INCIDENTS)
+                incidents.push({ kind: 'bust', ...at, rival: null, vehicle: null });
             }
             break;
+          case 'crash': {
+            // A rival going down against a vehicle: kept by cause id for the takedown that follows.
+            const into = snap.entities[target];
+            const at = spotOf(snap.entities[e.actor]);
+            if (into?.kind === 'vehicle' && contentOf.has(e.actor) && at?.road && e.causeId !== undefined)
+              crashes.set(e.causeId, { vehicle: into.contentId, ...at });
+            break;
+          }
           case 'takedown':
             if (e.actor === me && target !== me) {
               takedowns++;
               if (counts(victim)) targetTakedowns++;
               if (victim) rival(victim).takedowns++;
+              // Receipts: a rival the player put into a vehicle.
+              const crash = e.causeId !== undefined ? crashes.get(e.causeId) : undefined;
+              if (crash && victim && incidents.length < MAX_INCIDENTS)
+                incidents.push({
+                  kind: 'takedown',
+                  road: crash.road,
+                  s: crash.s,
+                  rival: victim,
+                  vehicle: crash.vehicle,
+                });
               // Timber: only a fall into traffic or scenery fells him.
               const felled = e.data['kind'] === 'traffic' || e.data['kind'] === 'scenery';
               if (target === rivalId && (r.rule !== 'timber' || felled)) rivalKnockdowns++;
@@ -469,6 +516,7 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         secrets: [...secrets].sort(),
         field: [...field],
         player,
+        incidents: incidents.map((i) => ({ ...i })),
       };
     },
   };

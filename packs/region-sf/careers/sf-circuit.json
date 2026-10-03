@@ -170,6 +170,22 @@
   ],
   "unlocks": [{ "grant": "base:mobility-scooter", "when": { "kind": "boss-beaten", "ref": "down-round" } }],
   "show": {
+    "receipts": {
+      "takedown": [
+        {
+          "id": "receipt-scoreboard",
+          "text": "{VEHICLE} 1, {RIVAL} 0. An unplanned collab on {road}. Engagement was strong.",
+          "status": "live"
+        }
+      ],
+      "bust": [
+        {
+          "id": "receipt-incident-site",
+          "text": "INCIDENT SITE #{n}. Now a pop-up. Ask about membership.",
+          "status": "live"
+        }
+      ]
+    },
     "rules": {
       "collab": {
         "name": "THE COLLAB",

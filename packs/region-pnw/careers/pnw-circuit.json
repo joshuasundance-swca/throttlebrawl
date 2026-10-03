@@ -263,6 +263,22 @@
     }
   ],
   "show": {
+    "receipts": {
+      "takedown": [
+        {
+          "id": "receipt-scoreboard",
+          "text": "{VEHICLE} 1, {RIVAL} 0. Recorded on {road}. The {vehicle} is fine. Thank you for asking.",
+          "status": "live"
+        }
+      ],
+      "bust": [
+        {
+          "id": "receipt-incident-site",
+          "text": "INCIDENT SITE #{n}. Moss will cover it. Eventually.",
+          "status": "live"
+        }
+      ]
+    },
     "rules": {
       "timber": {
         "name": "TIMBER",
