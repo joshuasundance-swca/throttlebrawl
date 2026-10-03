@@ -125,6 +125,16 @@
     },
     { "id": "dt-inevitable", "text": "WE ARE INEVITABLE. That's the whole ad.", "status": "live" }
   ],
+  "landingLines": [
+    { "id": "sea-lion", "text": "TEN OUT OF TEN, SAYS A SEA LION", "status": "live" },
+    { "id": "fog", "text": "THE FOG GIVES IT A SEVEN", "status": "live" },
+    { "id": "valuation", "text": "VALUATION UP 40% ON LANDING", "status": "live" },
+    { "id": "cable-car", "text": "A CABLE CAR RANG ONCE. HIGH PRAISE.", "status": "live" },
+    { "id": "robotaxi", "text": "A ROBOTAXI LOGGED IT AS AN INCIDENT", "status": "live" },
+    { "id": "series-a", "text": "SERIES A FOR THAT LANDING", "status": "live" },
+    { "id": "seagull", "text": "A SEAGULL TOOK NOTES", "status": "live" },
+    { "id": "ticket", "text": "PARKING TICKET ISSUED MID-AIR", "status": "live" }
+  ],
   "weather": null,
   "smashables": [
     {

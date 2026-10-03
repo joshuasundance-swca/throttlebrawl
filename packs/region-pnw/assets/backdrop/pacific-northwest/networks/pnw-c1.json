@@ -17,6 +17,21 @@
       "exaggerate": 2.6
     },
     {
+      "id": "far-shore-freight",
+      "kind": "train",
+      "frame": "local",
+      "path": [
+        [7350, 3200],
+        [7600, -4200]
+      ],
+      "cars": 38,
+      "baseM": 6,
+      "speedMps": 14,
+      "exaggerate": 3,
+      "colour": "#e0a43a",
+      "colours": ["#7d3b2c", "#5a6670", "#3f5a48", "#8a7d68", "#2f4a63", "#b9b2a4"]
+    },
+    {
       "id": "sound",
       "kind": "floor",
       "surface": "water",

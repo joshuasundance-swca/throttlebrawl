@@ -31,6 +31,7 @@ import {
   type SimController,
   type SimDifficulty,
   type SimEventCops,
+  type SimLawHabit,
   type SimRiderDef,
   type SimSlotConfig,
   type SimSmashableDef,
@@ -403,10 +404,36 @@ function riderDef(
             bustDwellS: law.bustDwellS,
             fineCash: law.fineCash,
             pursuitSpeedScale: law.pursuitSpeedScale,
+            ...(law.habit ? { habit: lawHabit(law.habit) } : {}),
           },
         }
       : {}),
   };
+}
+
+/**
+ * A cop's `law.habit` as the sim reads it (run W-T, law with a personality): the kind, and every
+ * other field that is a finite number, by name (sim/cops documents each and has its own defaults).
+ */
+function lawHabit(habit: { kind: SimLawHabit['kind'] } & Record<string, unknown>): SimLawHabit {
+  const params: Record<string, number> = {};
+  for (const [k, v] of Object.entries(habit))
+    if (k !== 'kind' && typeof v === 'number' && Number.isFinite(v)) params[k] = v;
+  return { kind: habit.kind, params };
+}
+
+/**
+ * The END OF JURISDICTION sign for a race (run W-T): the `jurisdiction.sign` of the first fielded
+ * cop's agency crew, with that crew's qualified id; undefined when there is no cop or no sign.
+ */
+function jurisdictionOf(
+  reg: ContentRegistry,
+  cops: readonly SimRiderDef[],
+): { label: string; agency: string } | undefined {
+  const agency = cops.find((c) => c.law)?.law?.agency;
+  const crew = agency ? reg.crews[agency] : undefined;
+  const sign = crew?.jurisdiction?.sign;
+  return agency && sign ? { label: sign, agency } : undefined;
 }
 
 /**
@@ -683,7 +710,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       style: styleRewards(event.rewards),
       // M4 cops-3: the tier (1 until career-1) and the law's spawn mix, chaos meter and fines.
       tier,
-      cops: eventCops(event),
+      cops: ((c, j) => (j ? { ...c, jurisdiction: j } : c))(eventCops(event), jurisdictionOf(race, cops)),
       ...(mods.perRace !== undefined ? { modifiersPerRace: mods.perRace } : {}),
     },
     riders,

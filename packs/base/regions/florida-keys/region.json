@@ -240,6 +240,16 @@
       "status": "live"
     }
   ],
+  "landingLines": [
+    { "id": "pelican", "text": "TEN OUT OF TEN, SAYS A PELICAN", "status": "live" },
+    { "id": "gator", "text": "THE GATOR GIVES IT A SEVEN", "status": "live" },
+    { "id": "chickens", "text": "FERAL CHICKENS: UNANIMOUS", "status": "live" },
+    { "id": "iguana", "text": "AN IGUANA SAW THAT. IT TOLD NO ONE.", "status": "live" },
+    { "id": "charter", "text": "BEST THING CAUGHT ON THE CHARTER", "status": "live" },
+    { "id": "sunscreen", "text": "STUCK THE LANDING. NOT THE SUNSCREEN.", "status": "live" },
+    { "id": "conch", "text": "THE CONCH REPUBLIC RECOGNIZES YOU", "status": "live" },
+    { "id": "category", "text": "UPGRADED TO A CATEGORY THREE", "status": "live" }
+  ],
   "weather": null,
   "smashables": [
     {

@@ -124,6 +124,16 @@
     { "id": "gutter-truth", "text": "GUTTER TRUTH NW. We have seen what is up there.", "status": "live" },
     { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. Still 2 hours. But first.", "status": "live" }
   ],
+  "landingLines": [
+    { "id": "raccoon", "text": "TEN OUT OF TEN, SAYS A RACCOON", "status": "live" },
+    { "id": "ferry-line", "text": "THE FERRY LINE APPLAUDS. QUIETLY.", "status": "live" },
+    { "id": "logger", "text": "A LOGGER NODDED. ONCE.", "status": "live" },
+    { "id": "barista", "text": "BARISTA'S VERDICT: EXTRA SHOT", "status": "live" },
+    { "id": "drizzle", "text": "NINE OUT OF TEN. MINUS ONE FOR RAIN.", "status": "live" },
+    { "id": "moss", "text": "THE MOSS HAS SEEN WORSE", "status": "live" },
+    { "id": "elk", "text": "THE ELK WAS NOT IMPRESSED", "status": "live" },
+    { "id": "deputy", "text": "DEPUTY LINDQVIST WROTE IT DOWN", "status": "live" }
+  ],
   "weather": null,
   "smashables": [
     {

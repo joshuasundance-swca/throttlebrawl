@@ -23,6 +23,8 @@ const TRICK_WORDS: Readonly<Record<string, string>> = {
   frontflip: 'FRONT FLIP',
   wheelie: 'WHEELIE',
   whip: 'WHIP',
+  // Air that pays (the pitch deck's #13): read on a big jump, folded before the ground.
+  newspaper: 'THE NEWSPAPER',
 };
 const FLIP_COUNT = ['', '', 'DOUBLE ', 'TRIPLE ', 'QUADRUPLE '];
 
