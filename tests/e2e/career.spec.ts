@@ -182,7 +182,10 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await expect(page.locator('#career-results')).toBeVisible({ timeout: 360_000 });
-  await expect(page.locator('#career-results-title')).toHaveText('WON');
+  // First place is WON; a finish below first clears The Shakedown (it asks only to finish).
+  await expect(page.locator('#career-results-title')).toHaveText(
+    /^(WON|\d+(ST|ND|RD|TH) OF \d+\. CLEARED\.)$/,
+  );
   await expect(page.locator('#career-results-cash')).toContainText('place');
   await expect(page.locator('#career-results')).toContainText('claimed on the map');
   // The Keys rag's front page: a headline built from the race (run W-S).
