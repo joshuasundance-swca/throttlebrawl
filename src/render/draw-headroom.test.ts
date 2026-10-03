@@ -19,13 +19,14 @@ import {
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoadNetwork, fixtureNetwork } from '../road';
-import type { PropKind, PropSnapshot, SimSnapshot, SmashableSnapshot } from '../sim/api';
+import type { EntitySnapshot, PropKind, PropSnapshot, SimSnapshot, SmashableSnapshot } from '../sim/api';
 import { EventProps } from './event-props';
 import { mergeBoxes } from './geometry';
 import { createFlatLook } from './look';
 import { PropBatch } from './prop-batch';
 import { buildRoadScene, chunkDistance, ROAD_FINE_DRAW_M } from './road-mesh';
 import { Smashables } from './smashables';
+import { EntityViews } from './views';
 
 const look = createFlatLook();
 
@@ -174,9 +175,7 @@ describe('the road events draw in a few calls (run W-T, the draw-call headroom)'
     const e = new EventProps(look);
     const signs = ['A', 'B', 'C'].map((label, i) => prop(i + 1, 'sign', { variant: 'roadwork', label }));
     e.sync(snap(signs), 0);
-    const panels = e.root.children.find(
-      (o): o is Mesh => o instanceof Mesh && o.name === 'event-sign-panels',
-    );
+    const panels = e.root.children.find((o): o is Mesh => o instanceof Mesh && o.name === 'event-panels');
     if (!panels) throw new Error('no sign panels');
     const uv = panels.geometry.getAttribute('uv');
     expect(uv.count).toBe(12);
@@ -210,9 +209,7 @@ describe('the road events draw in a few calls (run W-T, the draw-call headroom)'
       heading: 0,
     });
     e.sync(snap([sign]), 0);
-    const panels = e.root.children.find(
-      (o): o is Mesh => o instanceof Mesh && o.name === 'event-sign-panels',
-    );
+    const panels = e.root.children.find((o): o is Mesh => o instanceof Mesh && o.name === 'event-panels');
     const still = e.root.children.find((o): o is Mesh => o instanceof Mesh && o.name === 'event-props-still');
     if (!panels || !still) throw new Error('missing meshes');
     panels.geometry.computeBoundingBox();
@@ -312,6 +309,129 @@ describe('the smashables draw in one call', () => {
     expect(s.counts().standing).toEqual({ mailbox: 2, 'lobster-traps': 1 });
     expect(draws(s.root)).toBe(1);
   });
+
+  it("as the renderer wires them, they share the events' still batch: the busy scene stays 3 calls", () => {
+    const e = new EventProps(look);
+    const s = new Smashables(look, () => 0.5, e.batches().still);
+    const props = roadworkBesideSpeedTrap();
+    const smash = [standing(1, 'mailbox'), standing(2, 'mailbox'), standing(3, 'lobster-traps')];
+    const frame = (t: number, list = smash) => {
+      const sn = snap(props, list);
+      e.sync(sn, t);
+      s.sync(sn, t);
+    };
+    frame(0);
+    expect(draws(e.root) + draws(s.root)).toBe(3);
+    const still = e.batches().still;
+    expect(still.count).toBe(23 + 3);
+    // Both owners standing still: no rewrite, frame after frame.
+    const writes = still.writes;
+    for (let f = 1; f <= 4; f++) frame(f / 60);
+    expect(still.writes).toBe(writes);
+    // A mailbox smashed: one rewrite, and its debris is the smashables' one extra draw.
+    const hit = [{ ...standing(1, 'mailbox'), smashedTick: 9, hitVx: 8 }, ...smash.slice(1)];
+    frame(0.1, hit);
+    expect(still.writes).toBe(writes + 1);
+    expect(still.count).toBe(23 + 2);
+    expect(draws(e.root) + draws(s.root)).toBe(4);
+  });
+});
+
+describe('what moves every frame is not drawn while all of it is out of view', () => {
+  const camera = () => {
+    const cam = new PerspectiveCamera(62, 915 / 412, 0.3, 760);
+    cam.position.set(0, 2.6, 0);
+    cam.lookAt(0, 1, -50);
+    cam.updateMatrixWorld(true);
+    return new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse),
+    );
+  };
+  /** What three.js would draw: visible, with instances, and (when culled) inside the frustum. */
+  const drawn = (m: InstancedMesh, f: Frustum) =>
+    m.visible && m.count > 0 && (!m.frustumCulled || f.intersectsObject(m));
+
+  it("a smashed wreck's debris behind the camera is not drawn; ahead, it is", () => {
+    const f = camera();
+    for (const [z, expected] of [
+      [40, false],
+      [-40, true],
+    ] as const) {
+      const s = new Smashables(look, () => 0.5);
+      const wreck = { ...standingAt(1, z), smashedTick: 1, hitVx: 0 };
+      s.sync(snap([], [wreck]), 0);
+      for (let i = 1; i <= 40; i++) s.sync(snap([], [wreck]), i * 0.05);
+      const debris = s.root.children.find(
+        (o): o is InstancedMesh => o instanceof InstancedMesh && o.name === 'smashable-debris',
+      );
+      if (!debris) throw new Error('no debris');
+      debris.updateMatrixWorld(true);
+      expect(drawn(debris, f), `wreck at z ${z}`).toBe(expected);
+    }
+  });
+
+  it("a flare's glow behind the camera is not drawn; ahead, it is", () => {
+    const f = camera();
+    const e = new EventProps(look);
+    e.sync(snap([prop(1, 'flare', { x: 0, z: 30 })]), 0);
+    const glow = () =>
+      e.root.children.find(
+        (o): o is InstancedMesh => o instanceof InstancedMesh && o.name === 'event-flareGlow',
+      );
+    const g = glow();
+    if (!g) throw new Error('no glow');
+    expect(drawn(g, f)).toBe(false);
+    e.sync(snap([prop(1, 'flare', { x: 0, z: 30 }), prop(2, 'flare', { x: 1, z: -30 })]), 0.1);
+    expect(drawn(g, f)).toBe(true);
+  });
+
+  it('a traffic shape with every car behind the camera is not drawn; one car ahead and it is', () => {
+    const f = camera();
+    const views = new EntityViews(look);
+    const car = (id: number, z: number): EntitySnapshot =>
+      ({
+        id,
+        kind: 'vehicle',
+        mode: 'Road',
+        road: { edge: 0, s: 0, d: 0, h: 0, dir: 1, yaw: 0 },
+        x: 2,
+        y: 0,
+        z,
+        heading: 0,
+        speed: 10,
+        lean: 0,
+        contentId: 'base:rental-convertible',
+        name: `car${id}`,
+        faction: 'traffic',
+        slot: -1,
+      }) as EntitySnapshot;
+    const frame = (cars: EntitySnapshot[], t: number) =>
+      views.sync(null, { ...snap([]), entities: cars }, 1, t);
+    frame([car(1, 30), car(2, 60)], 0);
+    const mesh = views.root.children.find(
+      (o): o is InstancedMesh => o instanceof InstancedMesh && o.visible && o.count > 0,
+    );
+    if (!mesh) throw new Error('no traffic mesh');
+    expect(mesh.count).toBe(2);
+    expect(drawn(mesh, f)).toBe(false);
+    frame([car(1, 30), car(2, 60), car(3, -80)], 0.1);
+    expect(drawn(mesh, f)).toBe(true);
+  });
+
+  function standingAt(id: number, z: number): SmashableSnapshot {
+    return {
+      id,
+      kind: 'mailbox',
+      name: 'RETURN TO SENDER',
+      x: 0,
+      y: 0,
+      z,
+      heading: 0,
+      smashedTick: -1,
+      hitVx: 0,
+      hitVz: 0,
+    };
+  }
 });
 
 describe("the road's fine detail stays near (run W-T, the draw-call headroom)", () => {

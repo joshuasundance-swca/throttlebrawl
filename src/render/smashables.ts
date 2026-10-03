@@ -22,7 +22,7 @@ import {
 import type { SimSnapshot, SmashableKind, SmashableSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import type { LookStyle } from './look';
-import { PropBatch } from './prop-batch';
+import { cullByInstances, PropBatch } from './prop-batch';
 
 type Parts = BoxPart[];
 const box = (
@@ -172,13 +172,18 @@ export class Smashables {
   private lastT = -1;
   private last: SmashableCounts = { standing: {}, smashed: 0, debris: 0 };
 
+  /**
+   * `shared`: a batch on the same `prop` material to draw the standing ones in (the renderer passes
+   * the road events' still batch, so the two draw as one); without it they get a batch of their own.
+   */
   constructor(
     private readonly look: LookStyle,
     private readonly random: () => number = Math.random,
+    shared?: PropBatch,
   ) {
     this.root.name = 'smashables';
-    this.standing = new PropBatch(this.material(), 'smashable-standing');
-    this.root.add(this.standing.mesh);
+    this.standing = shared ?? new PropBatch(this.material(), 'smashable-standing');
+    if (!shared) this.root.add(this.standing.mesh);
   }
 
   private material(): Material {
@@ -298,7 +303,7 @@ export class Smashables {
     this.fly(dtWall * (snap?.timeScale ?? 1));
 
     const counts: Record<string, number> = {};
-    this.standing.begin();
+    this.standing.begin('smashables');
     for (const [kind, group] of standing) {
       counts[kind] = group.length;
       const geometry = this.geometry(kind);
@@ -323,6 +328,8 @@ export class Smashables {
       mesh.visible = this.pieces.length > 0;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // A wreck left behind (it stays in the snapshot for 450 m) is not drawn while out of view.
+      cullByInstances(mesh);
     }
     this.last = { standing: counts, smashed, debris: this.pieces.length };
   }

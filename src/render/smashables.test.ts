@@ -1,8 +1,8 @@
 // Run W-T, "the road fights back": the roadside smashables as render draws them from the snapshot.
-// Standing ones are one instanced mesh per kind; a smashed one comes apart into its boxes, thrown
+// Standing ones are one batched mesh, of every kind (run W-T); a smashed one comes apart into its boxes, thrown
 // along what hit it, which hang during a hit-stop and land on the ground. Driven by hand-built
 // snapshots and explicit frame times, never the wall clock.
-import { Box3, InstancedMesh, Matrix4, Vector3 } from 'three';
+import { Box3, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { SMASHABLE_KINDS, type SimSnapshot, type SmashableSnapshot } from '../sim/api';
 import { createFlatLook } from './look';
@@ -57,13 +57,21 @@ describe('render: roadside smashables', () => {
     }
   });
 
-  it('draws standing ones as one instanced mesh per kind', () => {
+  it('draws every standing one, of every kind, as one mesh (run W-T, the draw-call headroom)', () => {
     const s = new Smashables(createFlatLook(), () => 0.5);
     s.sync(snap([prop(1, 'mailbox'), prop(2, 'mailbox'), prop(3, 'lobster-traps')]), 0);
     expect(s.counts()).toEqual({ standing: { mailbox: 2, 'lobster-traps': 1 }, smashed: 0, debris: 0 });
-    expect(meshOf(s, 'smashable-mailbox')?.count).toBe(2);
-    expect(meshOf(s, 'smashable-lobster-traps')?.count).toBe(1);
+    const standing = s.root.children.find(
+      (c): c is Mesh => c instanceof Mesh && c.name === 'smashable-standing',
+    );
+    expect(standing?.visible).toBe(true);
+    const tris = (kind: SmashableSnapshot['kind']) => mergeBoxes(smashableParts(kind)).index?.count ?? 0;
+    expect(standing?.geometry.drawRange.count).toBe(2 * tris('mailbox') + tris('lobster-traps'));
     expect(meshOf(s, 'smashable-debris')).toBeUndefined();
+    // All of them smashed: nothing stands, and the standing mesh draws nothing.
+    const smashed = [1, 2, 3].map((id) => prop(id, id < 3 ? 'mailbox' : 'lobster-traps', { smashedTick: 5 }));
+    s.sync(snap(smashed), 0.016);
+    expect(standing?.visible).toBe(false);
   });
 
   it('breaks a smashed one into its boxes, thrown along the hit, frozen in a hit-stop, then landed', () => {

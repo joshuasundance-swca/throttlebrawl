@@ -13,6 +13,7 @@ import {
   BufferGeometry,
   DynamicDrawUsage,
   Matrix3,
+  type InstancedMesh,
   Mesh,
   Sphere,
   Vector3,
@@ -22,8 +23,27 @@ import {
 
 const FIELDS = 17;
 
+/**
+ * Culls an instanced mesh whose instances move by their own bounds, recomputed now: a mesh whose
+ * every instance is out of view (behind the camera, say) is not drawn, and nothing in view is cut.
+ * For instances set every frame, where the geometry's own bounds would cull them wrongly.
+ */
+export function cullByInstances(mesh: InstancedMesh): void {
+  if (mesh.count === 0) return;
+  mesh.computeBoundingSphere();
+  mesh.frustumCulled = true;
+}
+
+interface Source {
+  geometries: BufferGeometry[];
+  matrices: number[];
+}
+
 export class PropBatch {
   readonly mesh: Mesh;
+  /** Each owner's items this frame (the event props and the smashables share one batch). */
+  private readonly sources = new Map<string, Source>();
+  private current: Source | null = null;
   private geometries: BufferGeometry[] = [];
   private matrices: number[] = [];
   /** The last written frame's items: geometry id, then the 16 matrix elements, per item. */
@@ -41,21 +61,36 @@ export class PropBatch {
     this.mesh.visible = false;
   }
 
-  /** Starts a frame's list of items. */
-  begin(): void {
-    this.geometries.length = 0;
-    this.matrices.length = 0;
+  /** Starts an owner's list of items for this frame; the other owners' lists stand as they were. */
+  begin(source = ''): void {
+    let s = this.sources.get(source);
+    if (!s) {
+      s = { geometries: [], matrices: [] };
+      this.sources.set(source, s);
+    }
+    s.geometries.length = 0;
+    s.matrices.length = 0;
+    this.current = s;
   }
 
   /** One item: an indexed geometry with `position`, `normal` and `color`, placed by `matrix`. */
   add(geometry: BufferGeometry, matrix: Matrix4): void {
-    this.geometries.push(geometry);
-    this.matrices.push(geometry.id);
-    for (const v of matrix.elements) this.matrices.push(v);
+    const s = this.current;
+    if (!s) throw new Error('PropBatch: add() before begin()');
+    s.geometries.push(geometry);
+    s.matrices.push(geometry.id);
+    for (const v of matrix.elements) s.matrices.push(v);
   }
 
-  /** Ends the frame: rewrites the buffer if the items differ from the last written ones. */
+  /** Ends an owner's list: rewrites the buffer if the items differ from the last written ones. */
   end(): void {
+    this.current = null;
+    this.geometries = [];
+    this.matrices = [];
+    for (const s of this.sources.values()) {
+      for (const g of s.geometries) this.geometries.push(g);
+      for (const v of s.matrices) this.matrices.push(v);
+    }
     const n = this.geometries.length;
     this.mesh.visible = n > 0;
     if (n === 0) {
@@ -67,7 +102,7 @@ export class PropBatch {
     this.written = this.matrices.slice();
   }
 
-  /** Items in the last frame. */
+  /** Items in the last frame, every owner's. */
   get count(): number {
     return this.geometries.length;
   }
@@ -75,6 +110,14 @@ export class PropBatch {
   /** How many times the buffer was rewritten (tests: still props cost nothing per frame). */
   get writes(): number {
     return this.rebuilds;
+  }
+
+  /** Item `i` of the last frame: its geometry and where it stands (tests and the debug overlay). */
+  item(i: number, into: Matrix4): BufferGeometry | null {
+    const g = this.geometries[i];
+    if (!g) return null;
+    into.fromArray(this.matrices, i * FIELDS + 1);
+    return g;
   }
 
   private same(): boolean {

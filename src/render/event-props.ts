@@ -29,7 +29,7 @@ import type { PropSnapshot, SimSnapshot } from '../sim/api';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { paintCopy } from './boards';
 import type { LookStyle } from './look';
-import { PropBatch } from './prop-batch';
+import { cullByInstances, PropBatch } from './prop-batch';
 
 type Parts = BoxPart[];
 const box = (
@@ -659,7 +659,7 @@ function panelGeometry(
  * move (a person stepping aside, a rolling log, a float's dressing, a waving arm, the balloon) in a
  * second (`event-props-moving`, rewritten each frame), the glowing flares and light bars stay one
  * instanced mesh per shape on the unlit material, and every warning sign's panel is one mesh over a
- * shared atlas (`event-sign-panels`). A roadwork beside a speed trap drew 11 calls; it now draws 3.
+ * shared atlas (`event-panels`). A roadwork beside a speed trap drew 11 calls; it now draws 3.
  */
 export class EventProps {
   readonly root = new Group();
@@ -695,7 +695,7 @@ export class EventProps {
         ? this.look.material('board', { map: this.atlas.texture })
         : this.look.material('board'),
     );
-    this.panels.name = 'event-sign-panels';
+    this.panels.name = 'event-panels';
     this.panels.visible = false;
     this.root.add(this.still.mesh, this.moving.mesh, this.panels);
   }
@@ -709,6 +709,7 @@ export class EventProps {
     let g = this.geometries.get(key);
     if (!g) {
       g = mergeBoxes(parts());
+      g.name = key;
       this.geometries.set(key, g);
     }
     return g;
@@ -867,6 +868,7 @@ export class EventProps {
       mesh.visible = true;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      cullByInstances(mesh);
     }
     this.last = { byKind, total: props.length, signs: signWords };
   }
@@ -934,5 +936,10 @@ export class EventProps {
 
   counts(): EventPropCounts {
     return this.last;
+  }
+
+  /** The batches (tests and the debug overlay): the props standing still, and the moving ones. */
+  batches(): { still: PropBatch; moving: PropBatch } {
+    return { still: this.still, moving: this.moving };
   }
 }

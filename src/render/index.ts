@@ -260,8 +260,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const airPays = new AirPays();
   // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   const eventProps = new EventProps(look);
-  // Run W-T: the roadside smashables, standing or in pieces, from the snapshot.
-  const smashables = new Smashables(look);
+  // Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
+  // share the road events' still batch: one draw call for both (the draw-call headroom).
+  const smashables = new Smashables(look, Math.random, eventProps.batches().still);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
   const speedLines = new SpeedLines(look, params);
   // The drizzle rides on the camera too (rain.ts).

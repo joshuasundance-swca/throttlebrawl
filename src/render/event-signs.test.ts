@@ -1,7 +1,7 @@
 // The warning sign a road event plants ahead (playtest 2, 2026-10-02 + interview, 2026-10-02:
 // "signs that come true"): a short headline with a small kicker that says what the rider is about
 // to meet, on a panel whose post stands behind it.
-import { Box3, InstancedMesh, Mesh, PlaneGeometry } from 'three';
+import { Matrix4, Mesh, type Box3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PropSnapshot, SimSnapshot } from '../sim/api';
 import { splitCopy } from './boards';
@@ -74,12 +74,12 @@ describe('the sign on its post', () => {
 
   it('stands its post behind the panel, never through the words', () => {
     // A stand-in canvas: the sign draws its panel only where there is a DOM.
-    const ctx = {
-      measureText: (t: string) => ({ width: t.length * 12 }),
-      fillRect: () => undefined,
-      strokeRect: () => undefined,
-      fillText: () => undefined,
-    };
+    const own: Record<string, unknown> = { measureText: (t: string) => ({ width: t.length * 12 }) };
+    const ctx = new Proxy(own, {
+      get: (target, key): unknown =>
+        typeof key === 'string' && key in target ? target[key] : () => undefined,
+      set: () => true,
+    });
     vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) });
     const e = new EventProps(createFlatLook());
     const prop: PropSnapshot = {
@@ -103,21 +103,18 @@ describe('the sign on its post', () => {
       props: [prop],
     };
     e.sync(snap, 0);
-    const group = e.root.children.find((o) => o.name === 'event-sign-1');
-    expect(group).toBeDefined();
-    const panel = group?.children.find(
-      (o): o is Mesh => o instanceof Mesh && o.geometry instanceof PlaneGeometry,
-    );
-    // W-T: every sign's post is an instance of one shared mesh, posed like the panel's group.
-    const post = e.root.children.find(
-      (o): o is InstancedMesh => o instanceof InstancedMesh && o.name === 'event-signPost:tall',
-    );
-    expect(panel).toBeDefined();
-    expect(post).toBeDefined();
-    if (!panel || !post) return;
-    post.geometry.computeBoundingBox();
-    const postBox = post.geometry.boundingBox as Box3;
-    // The panel's face is at z = panel.position.z (it faces +z); the post's front is behind it.
-    expect(postBox.max.z).toBeLessThan(panel.position.z);
+    // Run W-T (the draw-call headroom): every panel is in one mesh over a shared atlas, every post
+    // in the batch of props standing still, both placed in the world.
+    const panels = e.root.children.find((o): o is Mesh => o instanceof Mesh && o.name === 'event-panels');
+    const still = e.batches().still;
+    expect(panels?.visible).toBe(true);
+    expect(still.item(0, new Matrix4())?.name).toBe('signPost:tall');
+    if (!panels) return;
+    panels.geometry.computeBoundingBox();
+    const face = panels.geometry.boundingBox as Box3;
+    const posts = still.mesh.geometry.boundingBox as Box3;
+    // The panel's face is the plane z = -100 (it faces +z); the post's front is behind it.
+    expect(face.min.z).toBeCloseTo(-100, 5);
+    expect(posts.max.z).toBeLessThan(face.min.z);
   });
 });
