@@ -50,6 +50,11 @@ export interface CareerSecret {
    * pirate stations), or null. Riding past it in a race in the region finds it.
    */
   atFraction: number | null;
+  /**
+   * Roads the map leaves undrawn until the secret is found (a loose field, run W-U): a secret
+   * `road`'s own roads. The map marks the secret with a '?' there until then.
+   */
+  hides?: readonly string[];
 }
 
 export interface CareerShopItem {
@@ -168,6 +173,7 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
       s: s.at.s,
       ref: s.ref ?? '',
       cash: Math.max(0, Math.round(num(raw['cash'], 0))),
+      hides: list(raw['roads']).filter((r): r is string => typeof r === 'string'),
       atFraction:
         typeof raw['atFraction'] === 'number' && raw['atFraction'] >= 0 && raw['atFraction'] <= 1
           ? raw['atFraction']

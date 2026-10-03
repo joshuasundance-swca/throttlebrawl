@@ -93,6 +93,9 @@ export function boardCatalog(
       if (vetoed.has(ref)) continue;
       const item: BoardItem = { ref, text: it.text, kind };
       if (slot) items[it.id] = item;
+      // A sign tagged `site` belongs to one spot (a junction's KEEP LEFT, a secret island's name):
+      // only the slot that names it shows it, never a pooled slot on another road (run W-U).
+      if ((it as { tags?: readonly string[] }).tags?.includes('site')) continue;
       pool.push(item);
     }
   };

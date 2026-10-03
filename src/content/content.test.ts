@@ -19,6 +19,10 @@ describe('content: the base pack', () => {
     // The hand-made roads; the GIS side quest adds osm- prefixed roads beside them.
     const handMade = Object.keys(reg.roads).filter((k) => !k.startsWith('base:osm-'));
     expect(handMade.sort()).toEqual([
+      'base:c-boardwalk-in',
+      'base:c-boardwalk-merge-main',
+      'base:c-boardwalk-out',
+      'base:c-boardwalk-split-main',
       'base:c-boat-ramp-in',
       'base:c-boat-ramp-out',
       'base:c-marina-merge-main',
@@ -27,17 +31,27 @@ describe('content: the base pack', () => {
       'base:c-sandbar-flats-merge-main',
       'base:c-sandbar-flats-out',
       'base:c-sandbar-flats-split-main',
+      'base:c-unlisted-in',
+      'base:c-unlisted-merge-sandbar',
+      'base:c-unlisted-out',
+      'base:c-unlisted-split-sandbar',
       'base:m1-boat-ramp-cut',
       'base:m1-conch-row',
       'base:m1-last-resort-causeway',
       'base:m1-long-bridge',
+      'base:m1-mangrove-bend',
+      'base:m1-mangrove-boardwalk',
       'base:m1-mangrove-cut',
+      'base:m1-mangrove-reach',
       'base:m1-marina-bends',
       'base:m1-marina-run',
       'base:m1-pelican-bridge',
       'base:m1-sandbar-causeway',
       'base:m1-sandbar-flats',
+      'base:m1-sandbar-shoal',
+      'base:m1-sandbar-spit',
       'base:m1-tarpon-flats',
+      'base:m1-unlisted-key',
     ]);
     expect(reg.index.length).toBe(basePackFiles().length - 1);
     expect(Object.isFrozen(lookup(reg.bikes, 'rustbucket-400').handling)).toBe(true);

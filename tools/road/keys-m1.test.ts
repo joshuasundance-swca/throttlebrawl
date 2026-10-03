@@ -63,8 +63,10 @@ describe('tools/road: the baked M1 track', () => {
     );
     // road-2: four main roads and two connector roads on the main path, and the shortcut's three;
     // road-3: five more main roads past the Sandbar Causeway; run W-R: the sandbar's two connectors
-    // on the main path past the short route's finish, and its three roads.
-    expect(net.edges.length).toBe(19);
+    // on the main path past the short route's finish, and its three roads; run W-U: the Mangrove
+    // Cut in five (two more roads and the boardwalk's two connectors), the boardwalk's three roads,
+    // the sandbar in five (two more roads and two connectors inside it) and the secret island's three.
+    expect(net.edges.length).toBe(33);
     expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
       'm1-marina-run',
       'c-marina-split-main',
@@ -124,7 +126,8 @@ describe('tools/road: the baked M1 track', () => {
       expect(Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)), e.id).toBeCloseTo(5.5, 9);
       checked++;
     }
-    expect(checked).toBe(13); // the long route's main path: nine roads and four connectors (run W-R)
+    // The long route's main path: eleven roads and six connectors (run W-R, then W-U's boardwalk).
+    expect(checked).toBe(17);
   });
 
   it('road-3: three race lengths, short, standard and long, each longer route carrying on from the last', () => {
@@ -148,9 +151,10 @@ describe('tools/road: the baked M1 track', () => {
       const prev = routes[i - 1];
       if (prev) expect(r.mainPath.slice(0, prev.mainPath.length)).toEqual(prev.mainPath);
       // The boat-ramp cut is on every length, with the same saving (run W-R: the sandbar is the
-      // standard and long routes' second, past the short route's finish).
+      // standard and long routes' second, past the short route's finish; run W-U: the Mangrove
+      // Boardwalk before it). The secret island's fork is on the sandbar, not the main path.
       expect(p.shortcuts[0]?.gainM).toEqual(progress.shortcuts[0]?.gainM);
-      expect(p.shortcuts.length).toBe(i === 0 ? 1 : 2);
+      expect(p.shortcuts.length).toBe(i === 0 ? 1 : 3);
       // Checkpoints in order, strictly inside the race.
       let last = 0;
       for (const c of p.checkpoints) {
@@ -209,11 +213,13 @@ describe('tools/road: the baked M1 track', () => {
       // keys: tagged `key-*`) stands on its key, so it is on every length that reaches that key,
       // and the longest always does.
       const ownKey = items.get(f.item ?? '')?.tags?.some((t) => t.startsWith('key-'));
+      // A `site` sign (run W-U: a junction's KEEP LEFT) stands at its site: on the routes that go there.
+      const site = items.get(f.item ?? '')?.tags?.includes('site');
       // A sign on a branch (run W-R: the sandbar's) stands where the routes that take it pass.
       const onBranch = routes.every((r) => !r.mainPath.includes(e.id));
       for (const r of routes) {
         if (ownKey && r.id !== 'm1-long-haul') continue;
-        if (onBranch && !r.allowedRoads.includes(e.id)) continue;
+        if ((onBranch || site) && !r.allowedRoads.includes(e.id)) continue;
         expect(createRouteProgress(net, r).allows(e.index), `${f.id} ${r.id}`).toBe(true);
       }
     }

@@ -92,7 +92,19 @@ describe('the career maps', () => {
       });
 
       it('secrets: a shortcut that is a real branch of its route, the pirate station and a stash', () => {
-        expect(def.secrets.map((s) => s.kind).sort()).toEqual(['shortcut', 'stash', 'station']);
+        // Run W-U: the Keys add a secret road, Unlisted Key, off the marked sandbar.
+        expect(
+          def.secrets
+            .map((s) => s.kind)
+            .filter((k) => k !== 'road')
+            .sort(),
+        ).toEqual(['shortcut', 'stash', 'station']);
+        for (const s of def.secrets.filter((x) => x.kind === 'road')) {
+          // Its point and the roads the map hides until it is found are roads of the region's networks.
+          for (const id of [s.road, ...(s.hides ?? [])])
+            expect(REG.roads[`${def.pack}:${id}`], id).toBeDefined();
+          expect(s.hides, s.id).toContain(s.road);
+        }
         for (const s of def.secrets.filter((x) => x.kind === 'shortcut')) {
           const [route, branch] = s.ref.split('#');
           const key = `${def.pack}:${route ?? ''}`;
