@@ -37,9 +37,13 @@ const NEAR_M = 40;
  * Seeds are drawn from this pool, in order, until AB_RACES of them have a racer-style rival within
  * 30 m of the player after 20 s. (A fixed list of six stopped being enough when the playtest 1c
  * launch punch spread the field: seeds 1 and 3 no longer qualify.)
+ *
+ * 16 races, not 6: six held only 3 to 7 swings a side, so any change to the race reshuffled the
+ * verdict. When branch riders started touching traffic (#426), the first six read 3 swings without
+ * the grudge and 3 with it, while 16 read 10 and 18 (main: 9 and 26), and 20 read 10 and 24.
  */
-const AB_SEED_POOL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-const AB_RACES = 6;
+const AB_SEED_POOL = Array.from({ length: 20 }, (_, i) => i + 1);
+const AB_RACES = 16;
 /** Roadside weapon spacing for the A/B (see grudgeRun), m. */
 const SPARSE_PICKUPS_M = 2000;
 const AB_WINDOW_TICKS = 60 * 60;
