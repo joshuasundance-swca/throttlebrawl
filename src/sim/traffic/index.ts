@@ -714,20 +714,35 @@ function pickType(
   return last;
 }
 
-/** Whether a vehicle of `length` fits at u in lane (dir, rank) with `gap` metres of bumper room. */
-function laneClear(
+/**
+ * Whether a vehicle of type `t` fits at u in lane (dir, rank) with `gap` metres of bumper room.
+ * A vehicle is in the lane by its rank, or by its body: one whose lane change has just begun takes
+ * its new rank at once but slides out of the old lane over several ticks, and until its body is
+ * clear of the lane (side to side, with TRAFFIC.swerveClearM to spare) nothing spawns or changes
+ * into the lane beside it. (The #302 prep, W-S: comparing ranks only, a hatchback spawned at d 10.00
+ * on top of a shuttle at d 9.81 that had just started out of that lane, on the SF freeway.)
+ * Exported for tests.
+ */
+export function laneClear(
   config: SimConfig,
   st: TrafficState,
   u: number,
   dir: number,
   rank: number,
-  length: number,
+  t: Pick<SimTrafficTypeDef, 'lengthM' | 'widthM'>,
   gap: number,
   skip = -1,
 ): boolean {
+  const lane = lanesAt(config.road, st.corridor, u, dir)[rank];
   for (let k = 0; k < st.id.length; k++) {
-    if (k === skip || st.dir[k] !== dir || st.rank[k] !== rank) continue;
-    const need = (length + typeOf(config, st, k).lengthM) / 2 + gap;
+    if (k === skip || st.dir[k] !== dir) continue;
+    const tk = typeOf(config, st, k);
+    if (st.rank[k] !== rank) {
+      if (!lane) continue;
+      const side = (t.widthM + tk.widthM) / 2 + TRAFFIC.swerveClearM;
+      if (Math.abs((st.cd[k] ?? 0) - lane.cd) >= side) continue;
+    }
+    const need = (t.lengthM + tk.lengthM) / 2 + gap;
     if (Math.abs((st.u[k] ?? 0) - u) < need) return false;
   }
   return true;
@@ -883,7 +898,7 @@ function trySpawn(
     let rank = isParked(t) ? 0 : Math.min(lanes.length - 1, Math.floor(laneRoll * lanes.length));
     // Never into a lane that ends soon (W-R): the next lane in, until one goes on.
     while (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) rank--;
-    if (!laneClear(config, st, u, dir, rank, t.lengthM, gap, k)) continue;
+    if (!laneClear(config, st, u, dir, rank, t, gap, k)) continue;
     riders ??= riderViews(world, st);
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
     const v0 = t.cruiseMps * speedRoll;
@@ -941,7 +956,7 @@ function addConvoy(
     u -= dir * step;
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) return;
     if (!spawnAllowed(anchors, u, st.reactionM)) return;
-    if (!laneClear(config, st, u, dir, rank, t.lengthM, IDM.minGapM)) return;
+    if (!laneClear(config, st, u, dir, rank, t, IDM.minGapM)) return;
     const laneCd = lanesAt(config.road, c, u, dir)[rank]?.cd ?? 0;
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) return;
     placeVehicle(world, config, { type: st.type[lead] ?? 0, u, dir, rank, v0 });
@@ -979,7 +994,7 @@ function park(
     const u = dir === 1 ? c.lo + along : c.hi - along;
     if (nearestAnchor(anchors, u) <= clear) continue;
     if (lanesAt(config.road, c, u, dir).length === 0) continue;
-    if (!laneClear(config, st, u, dir, 0, t.lengthM, TRAFFIC.spawnGapM, k)) continue;
+    if (!laneClear(config, st, u, dir, 0, t, TRAFFIC.spawnGapM, k)) continue;
     riders ??= riderViews(world, st);
     const laneCd = lanesAt(config.road, c, u, dir)[0]?.cd ?? 0;
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, laneCd))) continue;
@@ -1110,7 +1125,7 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
       const u = st.u[k] ?? 0;
       const dir = st.dir[k] ?? 1;
       if (rank > 0 && laneEndAhead(st, u, dir, rank, TRAFFIC.mergeLookM) < Infinity) {
-        if (laneClear(config, st, u, dir, rank - 1, t.lengthM, TRAFFIC.mergeClearM, k)) {
+        if (laneClear(config, st, u, dir, rank - 1, t, TRAFFIC.mergeClearM, k)) {
           st.rank[k] = rank - 1;
           st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
         }
@@ -1124,7 +1139,7 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
       const laneCd = lanes[Math.min(rank, lanes.length - 1)]?.cd ?? st.cd[k] ?? 0;
       if (lanes.length >= 2 && parkedAhead(config, st, k, rank, parked, laneCd) >= 0) {
         const to = rank + 1 < lanes.length ? rank + 1 : rank - 1;
-        if (laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) {
+        if (laneClear(config, st, st.u[k] ?? 0, dir, to, t, TRAFFIC.laneChangeClearM, k)) {
           st.rank[k] = to;
           st.laneCooldownS[k] = TRAFFIC.laneChangeCooldownS;
         }
@@ -1145,7 +1160,7 @@ function laneChanges(world: World, config: SimConfig, st: TrafficState, dt: numb
           : nextFloat(world.rng.traffic) < 0.5
             ? rank - 1
             : rank + 1;
-    if (!laneClear(config, st, st.u[k] ?? 0, dir, to, t.lengthM, TRAFFIC.laneChangeClearM, k)) continue;
+    if (!laneClear(config, st, st.u[k] ?? 0, dir, to, t, TRAFFIC.laneChangeClearM, k)) continue;
     // Never into a lane that ends soon (W-R).
     if (laneEndAhead(st, st.u[k] ?? 0, dir, to, TRAFFIC.mergeLookM) < Infinity) continue;
     const toCd = lanes[to]?.cd ?? st.cd[k] ?? 0;

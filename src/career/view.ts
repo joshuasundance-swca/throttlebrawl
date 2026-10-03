@@ -361,7 +361,8 @@ function pointAt(reg: ContentRegistry, key: string, s: number): [number, number]
   return [Number(xs[i]), Number(zs[i])];
 }
 
-const NETWORK_SUFFIX = / \((?:OSM bake|hand-authored)\)$/;
+// Run W-S: the network bakes (tools/gis `tbgis network`) end "(OSM network bake)".
+const NETWORK_SUFFIX = / \((?:OSM bake|OSM network bake|hand-authored)\)$/;
 
 /**
  * The region's map, one panel per road network that holds a node or a secret (each network has

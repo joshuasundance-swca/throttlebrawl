@@ -1,0 +1,114 @@
+{
+  "type": "route",
+  "id": "osm-key-west-run",
+  "name": "Key West",
+  "network": "osm-keys-key-west",
+  "start": {
+    "road": "osm-kw-stock-island",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-kw-higgs-beach",
+    "s": 280.0184
+  },
+  "mainPath": [
+    "osm-kw-stock-island",
+    "osm-kw-smathers-beach",
+    "osm-kw-bertha",
+    "osm-kw-atlantic",
+    "osm-kw-higgs-beach"
+  ],
+  "allowedRoads": [
+    "osm-kw-stock-island",
+    "osm-keys-key-west-the-boulevard-leave",
+    "osm-kw-smathers-beach",
+    "osm-kw-bertha",
+    "osm-kw-atlantic",
+    "osm-keys-key-west-the-boulevard-join",
+    "osm-kw-higgs-beach",
+    "osm-kw-north-roosevelt",
+    "osm-kw-truman",
+    "osm-kw-white-street",
+    "osm-keys-key-west-the-boulevard-in",
+    "osm-keys-key-west-the-boulevard-out"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-kw-smathers-beach",
+      "s": 2343.6202
+    },
+    {
+      "road": "osm-kw-bertha",
+      "s": 122.5042
+    },
+    {
+      "road": "osm-kw-atlantic",
+      "s": 437.522
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-kw-north-roosevelt",
+      "kind": "shortcut",
+      "marked": true,
+      "sign": "THE BOULEVARD: KEEP RIGHT. A little shorter. Mattress stores the whole way.",
+      "roads": [
+        "osm-keys-key-west-the-boulevard-in",
+        "osm-kw-north-roosevelt",
+        "osm-kw-truman",
+        "osm-kw-white-street",
+        "osm-keys-key-west-the-boulevard-out"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (run W-S; interview, 2026-10-02: map-based networks): the race-setup picker offers it in its region, and the career's events sit on its roads.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-03",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-keys-key-west.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+          "retrievedAt": "2026-10-03T03:16:48Z",
+          "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+          "retrievedAt": "2026-10-03T04:25:46Z",
+          "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+          "retrievedAt": "2026-10-03T04:25:52Z",
+          "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
+        }
+      ]
+    }
+  }
+}

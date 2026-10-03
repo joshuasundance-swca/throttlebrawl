@@ -107,7 +107,15 @@ describe('gis: the real Overseas Highway stretch', () => {
         .filter((f) => f.startsWith('osm-'))
         .map((f) => `regions/florida-keys/${dir}/${f}`),
     );
-    expect(files.length).toBe(7); // 1 network, 5 roads, 1 route
+    // This stretch's 1 network, 5 roads and 1 route, and since run W-S Key West's network, its roads
+    // and its route (tools/gis `tbgis network`), all under the one rule.
+    const keyWest = JSON.parse(
+      readFileSync('packs/base/regions/florida-keys/networks/osm-keys-key-west.json', 'utf8'),
+    ) as { roads: string[] };
+    expect(
+      files.filter((f) => /osm-(keys-bahia-honda|bahia-honda|spanish-harbor|big-pine)/.test(f)),
+    ).toHaveLength(7);
+    expect(files.length).toBe(7 + 1 + keyWest.roads.length + 1);
     for (const f of files) {
       const rule = odbl.find((r) => r.paths.some((p) => glob(p).test(f)));
       expect(rule, `${f} is under an ODbL rule`).toBeDefined();

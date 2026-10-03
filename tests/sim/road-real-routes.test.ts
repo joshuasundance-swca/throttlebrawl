@@ -39,6 +39,10 @@ const ROUTES = [
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run', setPieces: true },
   // Run W-R: San Francisco's downtown, hand-made on its own network, offered beside the real roads.
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run', setPieces: true },
+  // Run W-S: the real-road networks (tools/gis `tbgis network`), a four-lane highway and a junction
+  // choice each: Key West (the Boulevard) and I-5 by Lake Samish.
+  { event: 'base:m1-skeleton-sprint', route: 'base:osm-key-west-run', setPieces: true },
+  { event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-i5-samish-run', setPieces: true },
 ] as const;
 type Case = (typeof ROUTES)[number];
 
@@ -126,12 +130,19 @@ describe('real roads as routes: each one races well inside its region race', () 
       const patrol = cops.filter(
         (i) => config.route.progressAt(riders[i]?.road.edge ?? -1, riders[i]?.road.s ?? 0) > 100,
       );
+      // The start road's drawn half-width, its shoulders included: under 10 m on a two-lane road, 11.5
+      // m on run W-S's four-lane I-5 (its lot cop parks on the shoulder, 10.75 m out).
+      const half = Math.max(
+        ...config.road.lanesAt(startEdge, start.s).map((l) => Math.abs(l.dCenterM) + l.widthM / 2),
+      );
       for (const [i, e] of riders.entries()) {
         expect(moverProblem(e, config.route), `rider ${i}`).toBeNull();
         if (patrol.includes(i)) continue;
         expect(e.road.edge, `rider ${i} starts on the start road`).toBe(startEdge);
         expect(e.road.s, `rider ${i} starts behind the line`).toBeLessThanOrEqual(start.s + 1);
-        expect(Math.abs(e.road.d), `rider ${i} starts on the road or its lot`).toBeLessThan(10);
+        expect(Math.abs(e.road.d), `rider ${i} starts on the road or its lot`).toBeLessThan(
+          Math.max(10, half),
+        );
       }
       // Playtest 2: up to two cops patrol (none here: these races turn the patrol off with the road
       // events), each on the shoulder up the road, inside the route's 8 % to 80 % (sim/cops PATROL),

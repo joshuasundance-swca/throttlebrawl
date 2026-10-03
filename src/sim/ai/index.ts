@@ -31,6 +31,7 @@ import {
   sin,
   streamSeed,
   type EntityId,
+  type LaneInfo,
   type TuningParamDecl,
 } from '../../core';
 import type { RoadNetwork, RouteShortcut } from '../../road';
@@ -39,7 +40,18 @@ import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
-import { PED_SIZE, see, vehicleSize, weaponReach, type ObstacleSize, type Reach, type Seen } from './sense';
+import {
+  blockerAt as blockerAtClear,
+  lineClear as lineClearAt,
+  pathClear as pathClearAt,
+  PED_SIZE,
+  see,
+  vehicleSize,
+  weaponReach,
+  type ObstacleSize,
+  type Reach,
+  type Seen,
+} from './sense';
 import {
   BELL_TELL_TICKS,
   holdForBell,
@@ -255,6 +267,9 @@ const FLEE_NEAR_M = 12;
 const FLEE_PACE = 0.05;
 /** A road weaver swerves only inside its lane while another rider is this close along the road, m. */
 const ROAD_WEAVE_CLEAR_M = 10;
+/** A road weaver's steering on his swerve: gain (per s) and top lateral speed, m/s (W-S, [default]). */
+const WEAVE_STEER_GAIN = 2.5;
+const WEAVE_LATERAL_MPS = 4.5;
 /** A defending rider counts a rider this far behind it (metres) as closing in on it. */
 const CHASER_BEHIND_M = 8;
 /** How far ahead an unarmed rider looks for its preferred weapon lying on the road, metres. */
@@ -309,6 +324,18 @@ function zoneLine(z: RouteShortcut): number {
   const inner = Math.abs(z.d0) <= Math.abs(z.d1) ? z.d0 : z.d1;
   const outer = inner === z.d0 ? z.d1 : z.d0;
   return inner + Math.sign(outer - inner) * Math.min(SHORTCUT_LINE_IN_M, Math.abs(outer - inner) / 2);
+}
+
+/** The span of road d a rider heading `dir` may call its own side: its drive lanes and shoulder. */
+function ownSide(lanes: readonly LaneInfo[], dir: number): { lo: number; hi: number } | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const l of lanes) {
+    if (l.direction !== dir || (l.kind !== 'drive' && l.kind !== 'shoulder')) continue;
+    lo = Math.min(lo, l.dCenterM - l.widthM / 2);
+    hi = Math.max(hi, l.dCenterM + l.widthM / 2);
+  }
+  return hi > lo ? { lo, hi } : null;
 }
 
 function isAiRider(config: SimConfig, m: Mover): boolean {
@@ -522,45 +549,23 @@ function committedPush(st: AiState, id: EntityId, tick: number, raw: number): nu
   return raw;
 }
 
-/**
- * Finds the nearest mover blocking the line `d` within `look` metres ahead, or further when it is
- * closing fast (an oncoming car is seen BLOCK_AHEAD_S seconds out, whatever the distance).
- */
+/** The AI's traffic checks (sim/ai/sense), at a rider's clearance and BLOCK_AHEAD_S. */
 function blockerAt(
   seen: readonly { s: Seen; size: ObstacleSize }[],
   v: number,
   d: number,
   look: number,
 ): { s: Seen; size: ObstacleSize } | null {
-  let best: { s: Seen; size: ObstacleSize } | null = null;
-  for (const o of seen) {
-    const front = o.s.ahead - o.size.halfLength;
-    const reach = Math.max(look, (v - o.s.vAlong) * BLOCK_AHEAD_S);
-    if (o.s.ahead + o.size.halfLength < 0 || front > reach) continue;
-    if (Math.abs(o.s.mover.pos.d - d) >= o.size.halfWidth + RIDER_CLEAR) continue;
-    if (!best || o.s.ahead < best.s.ahead) best = o;
-  }
-  return best;
+  return blockerAtClear(seen, v, d, look, RIDER_CLEAR, BLOCK_AHEAD_S);
 }
-
-/** Whether a line d is clear of every obstacle within `reach` metres plus 2.5 s of closing. */
 function lineClear(
   seen: readonly { s: Seen; size: ObstacleSize }[],
   v: number,
   d: number,
   reach: number,
 ): boolean {
-  for (const o of seen) {
-    if (Math.abs(o.s.mover.pos.d - d) >= o.size.halfWidth + RIDER_CLEAR) continue;
-    const closing = Math.max(0, v - o.s.vAlong);
-    const front = o.s.ahead - o.size.halfLength;
-    if (o.s.ahead + o.size.halfLength < -2) continue;
-    if (front < reach + closing * 2.5) return false;
-  }
-  return true;
+  return lineClearAt(seen, v, d, reach, RIDER_CLEAR);
 }
-
-/** Whether every line from `from` to `to` (every half metre) is clear: getting there is safe too. */
 function pathClear(
   seen: readonly { s: Seen; size: ObstacleSize }[],
   v: number,
@@ -568,11 +573,7 @@ function pathClear(
   to: number,
   reach: number,
 ): boolean {
-  const steps = Math.max(1, Math.ceil(Math.abs(to - from) / 0.5));
-  for (let i = 1; i <= steps; i++) {
-    if (!lineClear(seen, v, from + ((to - from) * i) / steps, reach)) return false;
-  }
-  return true;
+  return pathClearAt(seen, v, from, to, reach, RIDER_CLEAR);
 }
 
 function steerFor(
@@ -703,9 +704,12 @@ function driveRider(
   }
   // A road weaver keeps its swerve inside its lane while other riders are close, so a bunched pack
   // (the start, a fight) does not turn its swerve into random bumps (rivals-1).
-  if (tr.roadWeave && !finished && riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M)) {
+  const packed = riders.some((r) => Math.abs(r.ahead) < ROAD_WEAVE_CLEAR_M);
+  if (tr.roadWeave && !finished && packed) {
     dTarget = laneCentre + clamp(swing, -laneHalf, laneHalf);
   }
+  // The weave line, as chosen so far: a fight, a flight, a weapon or a shortcut below replaces it.
+  const weaveLine = dTarget;
 
   // Fight: brawlers hunt a target when healthy enough; everyone swings at whoever is in reach.
   let aggr = prof.aggression * (world.params['ai.aggressionScale'] ?? 1) * config.difficulty.riderAggression;
@@ -908,11 +912,36 @@ function driveRider(
 
   // A fight or weave line into the path of traffic is not worth it: back to its own spot in its
   // own lane when that is clear and the chosen line is not.
-  if (!pathClear(obstacles, v, pos.d, dTarget, LINE_CHECK_M)) {
+  // A road weaver's swerve is judged on where it goes: the line must be clear, and so must the way
+  // there, past whatever he is already behind (the blocker rules below deal with that one). Blocked
+  // (an oncoming car within a couple of seconds, nearly always in traffic), it shrinks to the widest
+  // swerve that is clear rather than stopping: across his own side of the road (his lanes and the
+  // shoulder), then inside his lane. (W-S follow-up: in traffic Dial-Up swayed no more with the
+  // quirk than without it, 0.50 against 0.49 m/s; every move was judged against the car ahead in
+  // his own lane, so he mostly held his line.)
+  const weaving = tr.roadWeave && dTarget === weaveLine;
+  const across = weaving
+    ? obstacles.filter((o) => Math.abs(o.s.mover.pos.d - pos.d) >= o.size.halfWidth + RIDER_CLEAR)
+    : obstacles;
+  const reachable = (d: number): boolean =>
+    weaving
+      ? lineClear(obstacles, v, d, LINE_CHECK_M) && pathClear(across, v, pos.d, d, LINE_CHECK_M)
+      : pathClear(obstacles, v, pos.d, d, LINE_CHECK_M);
+  if (!reachable(dTarget)) {
     const home = laneCentre + clamp(st.laneOffset[id] ?? 0, -laneHalf, laneHalf);
-    // Neither is safe to reach: hold the line it is on (the blocker rules below still apply).
-    dTarget = pathClear(obstacles, v, pos.d, home, LINE_CHECK_M) ? home : pos.d;
+    const fallbacks: number[] = [];
+    if (weaving) {
+      const own = ownSide(lanes, pos.dir);
+      if (own)
+        fallbacks.push(clamp(laneCentre + swing, Math.max(dLo, own.lo + 0.6), Math.min(dHi, own.hi - 0.6)));
+      fallbacks.push(laneCentre + clamp(swing, -laneHalf, laneHalf));
+    }
+    fallbacks.push(home);
+    // None is safe to reach: hold the line it is on (the blocker rules below still apply).
+    dTarget = fallbacks.find(reachable) ?? pos.d;
   }
+  // The swerve line he settled on (a fallback is a swerve too); traffic below may still replace it.
+  const swerveLine = weaving && dTarget !== pos.d ? dTarget : NaN;
   // A car coming up from behind faster passes in its lane: give it room, own side of the road first.
   for (const o of obstacles) {
     if (o.s.ahead >= 0 || o.s.vAlong <= v) continue;
@@ -996,6 +1025,14 @@ function driveRider(
     const clearance = o.size.halfWidth + RIDER_CLEAR;
     if (pos.d >= od) dTarget = Math.max(dTarget, Math.min(od + clearance, dHi));
     else dTarget = Math.min(dTarget, Math.max(od - clearance, dLo));
+  }
+
+  // A road weaver rides his swerve hard, so it reads as one (W-S follow-up): at the gentle default
+  // steering a 2.5 s swerve was smoothed to about a third of its width, no wider than the in-lane
+  // weave. Not in a bunched pack, and only on the swerve itself (traffic rules above win).
+  if (dTarget === swerveLine && racing && !packed && !unsticking) {
+    lateralGain = Math.max(lateralGain, WEAVE_STEER_GAIN);
+    lateralMax = Math.max(lateralMax, WEAVE_LATERAL_MPS);
   }
 
   // 4. Swing at whoever is in the reach window (predicted to the end of the wind-up).

@@ -64,15 +64,16 @@ test('each region offers its own road first, then its real roads by name, and th
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await toMenu(page);
   const picker = page.locator('#route-picker');
-  // The Keys: the hand-made causeway road, and the real Overseas Highway at Bahia Honda.
+  // The Keys: the hand-made causeway road, the real Overseas Highway at Bahia Honda, and run W-S's
+  // Key West network.
   await expect(picker).toBeVisible();
-  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run']);
+  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run', 'Key West']);
   await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'true');
 
   const regions = [
     {
       chip: '#region-region-pnw-pacific-northwest',
-      routes: ['Fogline Run', 'Chuckanut Drive', 'Columbia River Highway'],
+      routes: ['Fogline Run', 'Chuckanut Drive', 'Columbia River Highway', 'I-5 by Lake Samish'],
     },
     {
       chip: '#region-region-sf-san-francisco',
@@ -111,7 +112,7 @@ test('each region offers its own road first, then its real roads by name, and th
   }
   // Back to the Keys: its own routes again, its own road picked (a pick belongs to its region).
   await page.locator('#region-base-florida-keys').click();
-  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run']);
+  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run', 'Key West']);
   await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('#region-picker .region-blurb')).toBeVisible();
   expect(problems).toEqual([]);

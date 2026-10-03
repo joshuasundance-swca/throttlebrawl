@@ -112,6 +112,8 @@ import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
 import { InputFlag, type LawSnapshot, type SimConfig, type SimRiderDef } from '../types';
 import { groundUnder } from '../ground';
+import { blockerAt, lineClear, pathClear, see, type Obstacle } from '../ai/sense';
+import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
 
 export const COPS_TUNING: readonly TuningParamDecl[] = [
@@ -364,6 +366,10 @@ export const PATROL = {
   clearM: 30,
   /** Sharpest bend he waits on, 1/m. */
   maxKappa: 1 / 50,
+  /** A road off the main path longer than this, m, is a junction choice, not a shortcut (branchSpans). */
+  longBranchM: 2000,
+  /** Only this much at each end of such a road stays clear of a patrol, m. */
+  branchEndM: 200,
 };
 const PATROL_AVOID = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
 
@@ -710,6 +716,151 @@ function clearOfLanes(config: SimConfig, pos: RoadPos): boolean {
   return true;
 }
 
+// The cop's eyes on traffic (W-S follow-up, [default] starting numbers). In a San Francisco race
+// (seed 7) the cops never looked at the cars and hit them 13 times, one sedan three times.
+/** How far ahead he looks at traffic, m. */
+const TRAFFIC_SEE_M = 250;
+/** Side room he keeps past a vehicle's half width: his own half width plus a margin, m. */
+const TRAFFIC_CLEAR_M = 0.8;
+/** A vehicle closing within this many seconds (or this many metres) is one to go round or follow. */
+const TRAFFIC_BLOCK_S = 3.5;
+const TRAFFIC_BLOCK_M = 12;
+/** Seconds out an oncoming car closing fast is seen. */
+const TRAFFIC_AHEAD_S = 4;
+/** Along-road margin past a vehicle's ends within which it counts as alongside, m. */
+const TRAFFIC_ALONGSIDE_M = 2.5;
+/** Following a vehicle he cannot pass: braking to stop this far behind it, at this rate (m, m/s²). */
+const TRAFFIC_FOLLOW_M = 5;
+const TRAFFIC_FOLLOW_DECEL = 5;
+/** A move across into the oncoming half costs this many metres of extra swerve (a cop takes it). */
+const TRAFFIC_ONCOMING_COST_M = 1;
+/** He crosses in front of a vehicle he is coming up behind only this many seconds or more out. */
+const TRAFFIC_CROSS_S = 1.5;
+/** How far ahead (plus 2.5 s of closing) a move across must be clear of traffic, m. */
+const TRAFFIC_PATH_M = 15;
+
+/**
+ * The vehicles he can see ahead and around, at their real sizes. (Not pedestrians: they keep to the
+ * verge, where a cop pulls over, and he never ran one down.)
+ */
+function trafficSeen(world: World, config: SimConfig, cop: Mover): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (const other of world.movers) {
+    if (other.kind !== 'vehicle' || other.mode !== 'Road') continue;
+    const s = see(config.road, cop, other, TRAFFIC_SEE_M);
+    if (!s) continue;
+    const info = vehicleInfo(world, config, other.id);
+    out.push({ s, size: { halfLength: (info?.lengthM ?? 4.6) / 2, halfWidth: (info?.widthM ?? 1.9) / 2 } });
+  }
+  return out;
+}
+
+/**
+ * Traffic's last word on the cop's line `dWant` and speed `vWant` (W-S follow-up, SF seed 7):
+ * - a move across the path of traffic is not worth it: he holds the line he is on;
+ * - the nearest vehicle ahead in his line (or in the one he is on) that he would reach within
+ *   TRAFFIC_BLOCK_S, he goes round on a side that is clear all the way past it (the cheaper swerve;
+ *   the oncoming half costs a little more; across the front of one he is coming up behind only while
+ *   it is TRAFFIC_CROSS_S out), easing off until he is across;
+ * - with no clear side he follows it, or (an oncoming one) gets out of its way on his own side,
+ *   behind whatever is there;
+ * - last, he never steers into a vehicle alongside.
+ * `dodging` asks for a brisker swerve.
+ */
+function trafficGuard(
+  world: World,
+  config: SimConfig,
+  cop: Mover,
+  dWant: number,
+  vWant: number,
+  dLo: number,
+  dHi: number,
+): { d: number; v: number; brake: number; dodging: boolean } {
+  const pos = cop.pos;
+  const v = cop.speed;
+  let d = dWant;
+  let speed = vWant;
+  let brake = 0;
+  let dodging = false;
+  const seen = trafficSeen(world, config, cop);
+  if (seen.length === 0) return { d, v: speed, brake, dodging };
+  const look = clamp(14 + v * 2.2, 14, 90);
+  if (!pathClear(seen, v, pos.d, d, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M)) d = pos.d;
+  const follow = (o: Obstacle): number => {
+    const room = Math.max(0, o.s.ahead - o.size.halfLength - TRAFFIC_FOLLOW_M);
+    return Math.max(0, o.s.vAlong) + Math.sqrt(2 * TRAFFIC_FOLLOW_DECEL * room);
+  };
+  let slowFor: Obstacle | null = null;
+  const blocker =
+    blockerAt(seen, v, d, look, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S) ??
+    blockerAt(seen, v, pos.d, look * 0.5, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S);
+  if (blocker) {
+    const o = blocker.s;
+    const gap = o.ahead - blocker.size.halfLength;
+    const closing = v - o.vAlong;
+    const ttc = closing > 0.1 ? gap / closing : Infinity;
+    if (ttc < TRAFFIC_BLOCK_S || gap < TRAFFIC_BLOCK_M) {
+      const od = o.mover.pos.d;
+      const w = blocker.size.halfWidth + TRAFFIC_CLEAR_M + 0.4;
+      const others = seen.filter((x) => x !== blocker);
+      let best: number | null = null;
+      let bestCost = Infinity;
+      for (const cand of [od - w, od + w, od - w - 1, od + w + 1]) {
+        if (cand < dLo || cand > dHi) continue;
+        if ((cand - od) * (pos.d - od) < 0 && o.vAlong >= 0 && ttc < TRAFFIC_CROSS_S) continue;
+        if (!lineClear(seen, v, cand, gap + 20, TRAFFIC_CLEAR_M)) continue;
+        if (!pathClear(others, v, pos.d, cand, TRAFFIC_PATH_M, TRAFFIC_CLEAR_M)) continue;
+        const oncoming = cand * pos.dir < 0 ? TRAFFIC_ONCOMING_COST_M : 0;
+        const cost = Math.abs(cand - pos.d) + 0.5 * Math.abs(cand - dWant) + oncoming;
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = cand;
+        }
+      }
+      if (best !== null) {
+        d = best;
+        dodging = true;
+        // Not across yet and close: ease off until the line opens.
+        if (Math.abs(pos.d - best) > w * 0.6 && gap < v * 0.9) {
+          speed = Math.min(speed, Math.max(0, o.vAlong) + 3);
+          slowFor = blocker;
+        }
+      } else if (o.vAlong < 0) {
+        // Boxed in by an oncoming car: out of its band on his own side, behind whatever is there.
+        d = clamp(od + w * pos.dir, dLo, dHi);
+        dodging = true;
+        const same = seen.filter((x) => x.s.vAlong >= 0);
+        const there = blockerAt(same, v, d, look, TRAFFIC_CLEAR_M, TRAFFIC_AHEAD_S);
+        if (there) {
+          speed = Math.min(speed, follow(there));
+          slowFor = there;
+        }
+      } else {
+        // Boxed in: follow it, at a speed that stops TRAFFIC_FOLLOW_M behind it.
+        speed = Math.min(speed, follow(blocker));
+        slowFor = blocker;
+        d = pos.d;
+      }
+    }
+  }
+  if (slowFor && v > speed) {
+    const bike = config.riders[cop.riderIndex]?.bike;
+    const room = Math.max(0.5, slowFor.s.ahead - slowFor.size.halfLength - TRAFFIC_FOLLOW_M);
+    const target = Math.max(0, slowFor.s.vAlong);
+    brake = bike ? (v * v - target * target) / (2 * room * bike.brakeMps2) : 1;
+  }
+  // Never steer into a vehicle alongside: hold at least its clearance from it.
+  for (const o of seen) {
+    const along = o.size.halfLength + TRAFFIC_ALONGSIDE_M;
+    if (o.s.ahead > along || o.s.ahead < -along) continue;
+    const od = o.s.mover.pos.d;
+    const clearance = o.size.halfWidth + TRAFFIC_CLEAR_M;
+    if (pos.d >= od) d = Math.max(d, Math.min(od + clearance, dHi));
+    else d = Math.min(d, Math.max(od - clearance, dLo));
+  }
+  return { d, v: speed, brake, dodging };
+}
+
 /** The cop's command for the next tick: close on the target, hold the gap, or pull up beside him. */
 function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: SimRiderDef): void {
   const bike = def.bike;
@@ -750,7 +901,10 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
       // Carried past a target who braked hard while he moved in: the move-in is over, and he waits
       // on the shoulder as he does whenever he is ahead (below). Moving in, he steered back at the
       // target from there and never stood still, so he crawled on along the shoulder for good.
-      if (spell >= MOVE_IN_TICKS || gap < -ALONGSIDE_S_M) {
+      // Out of reach ahead (the man got away, or the cop was knocked off): the move-in is over too,
+      // and he hangs back again. Still moving in from 100 to 300 m back, he rode his man's line (a
+      // traffic lane) at his pursuit burst into the car ahead, again and again (W-S, SF seed 7).
+      if (spell >= MOVE_IN_TICKS || gap < -ALONGSIDE_S_M || gap > followGap + STATION_M) {
         st.closing[id] = 0;
         spell = 0;
       }
@@ -824,6 +978,24 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
     if (shoulder) dWant = shoulder.dCenterM;
   }
+  // Traffic has the last word (W-S): round the car ahead in his line, or behind it.
+  const edgeNow = config.road.edges[pos.edge];
+  const guard = trafficGuard(
+    world,
+    config,
+    cop,
+    dWant,
+    vWant,
+    (edgeNow?.dMin ?? -5) + 0.8,
+    (edgeNow?.dMax ?? 5) - 0.8,
+  );
+  dWant = guard.d;
+  if (guard.v < vWant) {
+    vWant = guard.v;
+    if (v > vWant) feedBrake = Math.max(feedBrake, guard.brake);
+    // The pursuit burst's push would carry him past his brakes: it waits until the way is clear.
+    if (burst > 0) riderState(world).boost[cop.id] = 0;
+  }
 
   const err = vWant - v;
   let throttle = 0;
@@ -838,8 +1010,10 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   if (edge) dWant = clamp(dWant, edge.dMin + 0.8, edge.dMax - 0.8);
   const steerScale = world.params['riders.steerScale'] ?? 1;
   // Alongside he holds his line firmly, so a knockback does not keep him out of reach for long.
-  const gain = st.closing[cop.id] === 1 ? 1.6 : 0.8;
-  const vLat = clamp((dWant - pos.d) * gain, -3, 3) * pos.dir;
+  // Dodging traffic, he swerves as briskly as a rival does (sim/ai: 5 m/s across).
+  const gain = st.closing[cop.id] === 1 || guard.dodging ? 1.6 : 0.8;
+  const latMax = guard.dodging ? 5 : 3;
+  const vLat = clamp((dWant - pos.d) * gain, -latMax, latMax) * pos.dir;
   const wantYaw = vLat / Math.max(v, 5);
   const turn = pos.dir * config.road.kappaAt(pos.edge, pos.s) * v + 3 * (wantYaw - cop.yaw);
   const yawTarget = cop.yaw + turn / 4;
@@ -899,7 +1073,13 @@ export function routePosAt(config: SimConfig, progress: number): RoadPos | null 
  * travel lanes. Null when the spot is not clear (a branch, a ramp, pad, ramp truck or lot nearby, a
  * split zone, a sharp bend, or nowhere off the lanes).
  */
-/** The route progress spans of the route's allowed roads off its main path (its shortcuts). */
+/**
+ * The route progress spans of the route's allowed roads off its main path (its shortcuts). A road
+ * spanning more than PATROL.longBranchM is the other way at a junction choice (run W-S: Key West's
+ * North Roosevelt Blvd, Lake Samish's shore road), not a shortcut: a patrol may wait on the main
+ * way beside it, as beside any fork, so only PATROL.branchEndM at each of its ends stays clear.
+ * The hand-made shortcuts' roads are all under 1.2 km, so none of their spots move.
+ */
 function branchSpans(config: SimConfig): [number, number][] {
   const { road, route } = config;
   const main = new Set(route.mainEdges);
@@ -910,7 +1090,23 @@ function branchSpans(config: SimConfig): [number, number][] {
     const b = route.progressAt(e, road.edges[e]?.length ?? 0);
     if (Number.isFinite(a) && Number.isFinite(b)) out.push([Math.min(a, b), Math.max(a, b)]);
   }
-  return out;
+  // Roads that touch or overlap make one way (a connector, the road, a connector): merged, they
+  // cover exactly what they did one by one, so only the long-way test below sees the difference.
+  out.sort((p, q) => p[0] - q[0]);
+  const merged: [number, number][] = [];
+  for (const [lo, hi] of out) {
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+  }
+  return merged.flatMap(([lo, hi]): [number, number][] =>
+    hi - lo > PATROL.longBranchM
+      ? [
+          [lo, lo + PATROL.branchEndM],
+          [hi - PATROL.branchEndM, hi],
+        ]
+      : [[lo, hi]],
+  );
 }
 
 function patrolSpot(config: SimConfig, pos: RoadPos, edgeOk: boolean): RoadPos | null {

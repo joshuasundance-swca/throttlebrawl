@@ -106,10 +106,11 @@
       "length": "standard",
       "tier": "t2",
       "at": {
-        "road": "m1-marina-bends",
-        "s": 400
+        "road": "osm-kw-smathers-beach",
+        "s": 300
       },
-      "claims": ["m1-marina-bends"]
+      "opens": ["osm-kw-north-roosevelt"],
+      "claims": ["osm-kw-stock-island", "osm-kw-smathers-beach"]
     },
     {
       "id": "junkyard-hunt",

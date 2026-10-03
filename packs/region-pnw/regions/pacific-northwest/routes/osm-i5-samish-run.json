@@ -1,0 +1,96 @@
+{
+  "type": "route",
+  "id": "osm-i5-samish-run",
+  "name": "I-5 by Lake Samish",
+  "network": "osm-pnw-samish",
+  "start": {
+    "road": "osm-i5-samish-summit",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-i5-nulle-run",
+    "s": 692.0214
+  },
+  "mainPath": ["osm-i5-samish-summit", "osm-i5-lake-samish", "osm-i5-nulle-run"],
+  "allowedRoads": [
+    "osm-i5-samish-summit",
+    "osm-pnw-samish-lake-samish-leave",
+    "osm-i5-lake-samish",
+    "osm-pnw-samish-lake-samish-join",
+    "osm-i5-nulle-run",
+    "osm-samish-north-shore",
+    "osm-samish-east-shore",
+    "osm-pnw-samish-lake-samish-in",
+    "osm-pnw-samish-lake-samish-out"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-i5-lake-samish",
+      "s": 2695.0916
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-samish-north-shore",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
+      "roads": [
+        "osm-pnw-samish-lake-samish-in",
+        "osm-samish-north-shore",
+        "osm-samish-east-shore",
+        "osm-pnw-samish-lake-samish-out"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (run W-S; interview, 2026-10-02: map-based networks): the race-setup picker offers it in its region, and the career's events sit on its roads.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-03",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-pnw-samish.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
+          "retrievedAt": "2026-10-03T03:18:37Z",
+          "sha256": "22f78576cad535d60ca5abafdc52856222c5e981bb0bdd7c7ea244def55fc6be"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
+          "retrievedAt": "2026-10-03T03:37:48Z",
+          "sha256": "97504d8a047c50144ba1f4e2b446cf7f802b15b8bbf13f6b830a5fde6134e918"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
+          "retrievedAt": "2026-10-03T03:37:56Z",
+          "sha256": "4803c76e65c6ebed78d5c848a92c46f2240ea920f1463e71cf00e0554d2e8419"
+        }
+      ]
+    }
+  }
+}

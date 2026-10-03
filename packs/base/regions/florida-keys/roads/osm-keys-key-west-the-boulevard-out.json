@@ -1,0 +1,123 @@
+{
+  "type": "road",
+  "id": "osm-keys-key-west-the-boulevard-out",
+  "name": "the-boulevard rejoin",
+  "realName": "the-boulevard rejoin",
+  "network": "osm-keys-key-west",
+  "from": "osm-keys-key-west-j4",
+  "to": "osm-keys-key-west-j4",
+  "lengthM": 55.2122,
+  "sampleSpacingM": 1.9718642857142858,
+  "speedLimitMps": 6.7,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 55.2122,
+      "side": "both",
+      "tag": "palms"
+    },
+    {
+      "s0": 0,
+      "s1": 55.2122,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -3820.3252, -3819.2084, -3818.127, -3817.1511, -3816.3642, -3815.838, -3815.6084, -3815.6609,
+        -3815.9346, -3816.3424, -3816.801, -3817.2654, -3817.7297, -3818.194, -3818.6583, -3819.1226,
+        -3819.5869, -3820.0513, -3820.5156, -3820.9865, -3821.5156, -3822.1946, -3823.1083, -3824.2978,
+        -3825.7464, -3827.3928, -3829.1613, -3830.989, -3832.8348
+      ],
+      "y": [
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+      ],
+      "z": [
+        2145.3695, 2146.9955, 2148.645, 2150.3585, 2152.1659, 2154.065, 2156.0222, 2157.9926, 2159.9454,
+        2161.8751, 2163.7936, 2165.7107, 2167.6278, 2169.545, 2171.4621, 2173.3792, 2175.2963, 2177.2135,
+        2179.1306, 2181.0461, 2182.9461, 2184.7971, 2186.5431, 2188.1134, 2189.4485, 2190.5318, 2191.4036,
+        2192.1451, 2192.8407
+      ],
+      "kappa": [
+        0.0, 0.010944, 0.031757, 0.054272, 0.071185, 0.077841, 0.072747, 0.057103, 0.035009, 0.013378,
+        0.0015005, 4.2677e-7, 0.0, -2.7476e-14, 2.7476e-14, 0.0, 0.0, 4.9452e-7, 0.0017387, 0.015502,
+        0.040567, 0.066168, 0.084296, 0.090198, 0.082485, 0.062888, 0.036798, 0.012681, 0.0
+      ],
+      "grade": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-key-west.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+        "retrievedAt": "2026-10-03T03:16:48Z",
+        "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-key-west.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
