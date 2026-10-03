@@ -40,12 +40,25 @@ import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import { systemState, type Mover, type SimSystem, type World } from '../world';
 import { PED_SIZE, see, vehicleSize, weaponReach, type ObstacleSize, type Reach, type Seen } from './sense';
+import {
+  BELL_TELL_TICKS,
+  holdForBell,
+  initSignature,
+  interruptSignature,
+  moveOf,
+  releaseBell,
+  RELENTLESS_AGGRESSION,
+  signatureState,
+  slowBurn,
+  stepSignature,
+  type SignatureOut,
+} from './signature';
 import { bareId, resolveProfile, type AiProfile } from './styles';
 
 export { AI_PRESETS, AI_STYLE_IDS, bareId, huntsByDefault, NEUTRAL_TRAITS, resolveProfile } from './styles';
 export type { AiBehaviour, AiProfile, AiStyleId, AiTraits } from './styles';
 export { relativeS } from './sense';
-export { signatureState, signatureView } from './signature';
+export { oncomingSide, signatureState, signatureView } from './signature';
 export type { SignatureState } from './signature';
 
 export const AI_TUNING: readonly TuningParamDecl[] = [
@@ -109,6 +122,19 @@ export const AI_TUNING: readonly TuningParamDecl[] = [
     max: 10,
     step: 1,
     unit: 'pts',
+    affectsSim: true,
+  },
+  {
+    // Interview, 2026-10-02 ("Visible personalities"): 1 lets each rival do its signature move
+    // (signature.ts: Chad's selfie, the Mayor's wave, Gus's bell and so on); 0 turns them all off.
+    id: 'ai.signatures',
+    group: 'rivals',
+    label: 'Rival signature moves',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
     affectsSim: true,
   },
 ];
@@ -682,18 +708,31 @@ function driveRider(
   }
 
   // Fight: brawlers hunt a target when healthy enough; everyone swings at whoever is in reach.
-  const aggr =
-    prof.aggression * (world.params['ai.aggressionScale'] ?? 1) * config.difficulty.riderAggression;
+  let aggr = prof.aggression * (world.params['ai.aggressionScale'] ?? 1) * config.difficulty.riderAggression;
   const healthMax = def?.healthMax ?? 100;
   const health = riderState(world).health[id] ?? healthMax;
   const healthFrac = health / Math.max(1, healthMax);
-  const brave = tr.fearless || healthFrac >= 0.5 * (1 - prof.courage);
+  let brave = tr.fearless || healthFrac >= 0.5 * (1 - prof.courage);
   // A crowd-pleaser whose fight has turned stops fighting and rides away (rivals-1).
   const fleeing = racing && tr.fleeBelow > 0 && healthFrac < tr.fleeBelow;
   // A race-long grudge (ai-2) makes any rider a hunter of the riders it holds the grudge against,
   // and so do the career's saved grudges, the grudge-keeper's tally, the scrapper's score to settle
   // and an authored rivalry (rivals-1); a brawler hunts anyone, grudges first.
   const grudges = huntList(world, st, prof, id, players);
+  // Signature moves (interview, 2026-10-02: "Visible personalities"; signature.ts).
+  const move = moveOf(world, id);
+  // Deacon's slow burn: calm and simmering, he picks no fight and throws nothing; relentless, he
+  // hunts whoever wronged him most, fearless and keener.
+  const burn = move === 'slow-burn' ? slowBurn(world, id, st.wrongs[id], grudgeTargets(world, id)) : null;
+  const calm = burn !== null && burn.mood !== 'relentless';
+  if (burn?.mood === 'relentless') {
+    aggr *= RELENTLESS_AGGRESSION;
+    brave = true;
+    if (burn.huntId >= 0 && burn.huntId !== id && !grudges.includes(burn.huntId)) {
+      if (!raceState(world).finishOrder.includes(burn.huntId)) grudges.push(burn.huntId);
+      grudges.sort((a, b) => a - b);
+    }
+  }
   const prefs = preferences(prof, grudges);
   const brawler = prof.behaviour === 'brawler';
   const isRival = (r: Seen): boolean =>
@@ -705,6 +744,7 @@ function driveRider(
     racing &&
     !unsticking &&
     !fleeing &&
+    !calm &&
     (brawler || grudges.length > 0 || prof.rivals.length > 0) &&
     brave &&
     aggr > 0
@@ -793,11 +833,49 @@ function driveRider(
   ) {
     // A hunter keeps after a player (or anyone it holds a grudge against) who got away ahead, a
     // little above its pace.
-    speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
+    if (!calm) speedTarget *= 1 + HUNT_PACE * Math.min(1, aggr);
   }
+
+  // A timed signature move (signature.ts) may change the line, the pace and the swings. The traffic
+  // rules below still have the last word on the line, so no move rides anyone into a car.
+  let sig: SignatureOut = {};
+  if (move !== null && move !== 'slow-burn' && move !== 'bell') {
+    if (racing && !unsticking) {
+      sig = stepSignature(
+        {
+          world,
+          road,
+          m,
+          riders,
+          obstacles,
+          target,
+          players,
+          free: !fleeing,
+          lastHitTick: st.lastHitTick[id] ?? -1,
+          lastHitBy: st.lastHitBy[id] ?? -1,
+          laneCentre,
+          laneWidth: lane?.widthM ?? 3,
+          dLo,
+          dHi,
+          speedTarget,
+          punch: weaponReach(config, 'punch'),
+          kick: weaponReach(config, 'kick'),
+        },
+        move,
+      );
+    } else {
+      interruptSignature(world, id);
+    }
+  }
+  if (sig.dTarget !== undefined) dTarget = sig.dTarget;
+  if (sig.lateralMax !== undefined) lateralMax = sig.lateralMax;
+  if (sig.lateralGain !== undefined) lateralGain = sig.lateralGain;
+  if (sig.speedTarget !== undefined) speedTarget = sig.speedTarget;
 
   // W-Q: lining up for a shortcut it takes, it rides into the zone (a fight waits); one it does not
   // take, it keeps its line out of (its weave or a fight would otherwise drift it in by chance).
+  // It comes after the signature move, so a move never barges a rider into a zone or drifts its
+  // rider into one it does not take.
   const cut = !finished ? shortcutAhead(config, st, m) : null;
   if (cut && cut.take && racing && !unsticking && !fleeing) {
     const line = clamp(zoneLine(cut.z), dLo, dHi);
@@ -925,14 +1003,51 @@ function driveRider(
   const held =
     (st.pressTick[id] ?? -1) >= 0 && tick - (st.pressTick[id] ?? 0) <= (st.pressHoldTicks[id] ?? 0);
   if (held) flags |= st.pressHold[id] ?? 0;
-  if (racing && !unsticking && !fleeing && aggr > 0 && tick >= (st.nextAttackTick[id] ?? 0)) {
-    flags |= trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges, healthFrac);
+  // Gus's bell is ringing (or his swing is winding up behind it): no second swing meanwhile.
+  const ringing = move === 'bell' && (signatureState(world).phase[id] ?? -1) >= 0;
+  if (
+    racing &&
+    !unsticking &&
+    !fleeing &&
+    !calm &&
+    !sig.noSwing &&
+    !ringing &&
+    aggr > 0 &&
+    tick >= (st.nextAttackTick[id] ?? 0)
+  ) {
+    let swing = trySwing(world, config, m, st, prof, riders, target, aggr, players, grudges, healthFrac);
+    // Gus: the swing waits behind the bell. Nothing is pressed until it has rung out.
+    if (swing !== 0 && move === 'bell' && holdForBell(world, id, swing, st.targetId[id] ?? -1)) {
+      st.pressTick[id] = -1;
+      st.nextAttackTick[id] = (st.nextAttackTick[id] ?? tick) + BELL_TELL_TICKS;
+      swing = 0;
+    }
+    flags |= swing;
   }
+  if (move === 'bell') {
+    if (racing && !unsticking) {
+      const rung = releaseBell(world, id, st.pressHoldTicks[id] ?? 0);
+      if (rung !== 0) {
+        st.pressTick[id] = tick;
+        st.pressHold[id] = rung & ~InputFlag.attack;
+        flags |= rung;
+      }
+    } else {
+      interruptSignature(world, id);
+    }
+  }
+  // A move's own swing (Kevin's counter, Tammy's shove), whatever the swing timer says.
+  if (sig.press && racing && !unsticking) flags |= pressAt(world, config, m, st, sig.press, players);
 
   const drive = throttleFor(config, m, speedTarget);
-  const brake = drive.brake;
+  // Dial-Up's lag: a dead throttle and no brake while he is frozen.
+  const brake = sig.freeze ? 0 : drive.brake;
   // Slow off the line (rivals-1): the throttle is capped for the first seconds.
-  const throttle = launching && tr.launch < 1 ? Math.min(drive.throttle, tr.launch) : drive.throttle;
+  const throttle = sig.freeze
+    ? 0
+    : launching && tr.launch < 1
+      ? Math.min(drive.throttle, tr.launch)
+      : drive.throttle;
   const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax, lateralGain);
   return {
     steer: Math.round(steer * 127),
@@ -1000,6 +1115,34 @@ function trySwing(
   st.presses[id] = (st.presses[id] ?? 0) + 1;
   if (players.includes(victim.mover.id)) st.pressesOnPlayer[id] = (st.pressesOnPlayer[id] ?? 0) + 1;
   if (raceState(world).place[victim.mover.id] === 1)
+    st.pressesOnLeader[id] = (st.pressesOnLeader[id] ?? 0) + 1;
+  return InputFlag.attack | hold;
+}
+
+/**
+ * Throws a signature move's own swing now (Kevin's counter, Tammy's shove): the side toward the
+ * victim, a kick when asked, the swing timer restarted. Counted like any other swing.
+ */
+function pressAt(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  st: AiState,
+  press: { victim: Seen; kick: boolean },
+  players: readonly EntityId[],
+): number {
+  const r = weaponReach(config, press.kick ? 'kick' : 'punch');
+  const side = press.victim.dd * m.pos.dir > 0 ? InputFlag.attackSideRight : InputFlag.attackSideLeft;
+  const hold = side | (press.kick ? InputFlag.kick : 0);
+  const tick = world.tick;
+  const id = m.id;
+  st.pressTick[id] = tick;
+  st.pressHold[id] = hold;
+  st.pressHoldTicks[id] = r.windupTicks;
+  st.nextAttackTick[id] = tick + r.cycleTicks;
+  st.presses[id] = (st.presses[id] ?? 0) + 1;
+  if (players.includes(press.victim.mover.id)) st.pressesOnPlayer[id] = (st.pressesOnPlayer[id] ?? 0) + 1;
+  if (raceState(world).place[press.victim.mover.id] === 1)
     st.pressesOnLeader[id] = (st.pressesOnLeader[id] ?? 0) + 1;
   return InputFlag.attack | hold;
 }
@@ -1111,6 +1254,8 @@ export const aiSystem: SimSystem = {
         if (k < MAX_SHORTCUTS && nextFloat(pick) < chance) mask |= 1 << k;
       });
       st.shortcuts[m.id] = mask;
+      const c = config.riders[m.riderIndex]?.controller;
+      initSignature(world, config.seed, m.id, c?.kind === 'ai' ? c.personality?.signature : undefined);
     }
   },
   step(world: World, config: SimConfig) {
@@ -1128,6 +1273,7 @@ export const aiSystem: SimSystem = {
         // Down (Tumble or OnFoot): ask for the quick remount; tumble-1 decides when it happens.
         world.inputs[m.id] = { steer: 0, throttle: 0, brake: 0, flags: InputFlag.skipRunBack };
         st.bestTick[m.id] = world.tick;
+        interruptSignature(world, m.id);
       }
     }
   },
