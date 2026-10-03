@@ -306,6 +306,12 @@ export interface LawSnapshot {
  * (a flagger, a cop waving traffic by, a marcher: `variant` says who), a radar unit on a tripod,
  * a giant parade inflatable, a work truck's arrow board, a tow truck's light bar, the hay stacked
  * on a farm truck, and a parade float's dressing (`variant` names the float).
+ * Run W-T (the pitch deck's #9, "weird events that move"): a log shed by a log truck, lying across
+ * the road with its long axis across it (`tilt` is how far it has rolled, unbounded; `moving` while
+ * it rolls), and an overhead gantry over the road for a lane vote (`label` is its two panels' words,
+ * the rider's left then right, split by ' | '; `variant` is '' until the vote, then `left` or
+ * `right`, the side that won; `spanM` its width). A serial sign (one joke over four small signs) is
+ * a `sign` whose `variant` is `serial`.
  */
 export const PROP_KINDS = [
   'cone',
@@ -320,8 +326,17 @@ export const PROP_KINDS = [
   'lightbar',
   'hayLoad',
   'floatDecor',
+  'log',
+  'gantry',
 ] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
+
+/**
+ * A moving set piece's moment (run W-T, `setPieceBeat` events' `data.beat`): a boat trailer comes
+ * unhitched, a cable car loses its grip, a log truck starts shedding its load, a lane vote is cast.
+ */
+export const SET_PIECE_BEATS = ['unhitch', 'runaway', 'shed', 'vote'] as const;
+export type SetPieceBeat = (typeof SET_PIECE_BEATS)[number];
 
 /** One set-piece prop (SimSnapshot.props): a world position and pose, for render. */
 export interface PropSnapshot {
@@ -344,6 +359,8 @@ export interface PropSnapshot {
   tilt: number;
   /** A person stepping out of the way, or a prop knocked flying: render may animate it. */
   moving: boolean;
+  /** A gantry's width across the road, m (run W-T). Absent for every other kind. */
+  spanM?: number;
 }
 
 // ---- Events ------------------------------------------------------------------------------
@@ -452,7 +469,16 @@ export type SimEventType =
    */
   | 'boost'
   | 'modifierStart'
-  | 'modifierEnd';
+  | 'modifierEnd'
+  /**
+   * A moving set piece's moment (run W-T, the pitch deck's #9): the skiff comes off its trailer, the
+   * cable car loses its grip, the log truck starts shedding, a lane vote is cast. Actor = -1, or the
+   * vehicle that does it; target = the voter for a vote. `data.beat` is a `SetPieceBeat`,
+   * `data.piece` the piece's name and `data.id` its modifier's content id; a vote adds `data.side`
+   * (`left` or `right`) and `data.pick`, the content id of the event it picked. Presentation only
+   * reads it (a bell, a bark, a camera nudge).
+   */
+  | 'setPieceBeat';
 
 /** `data.kind` of a `takedown` event: into traffic, into scenery, or out of health. */
 export const TAKEDOWN_KINDS = ['traffic', 'scenery', 'health'] as const;
