@@ -51,6 +51,7 @@ import type { RoadsideCounts, RoadsideLayer } from './roadside';
 import type { ScenesFile } from './scenes/data';
 import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
+import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
 import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
 import type { AirboatCounts, AirboatLayer } from './airboats';
@@ -220,6 +221,8 @@ export interface SceneryStatus {
   backdrop: BackdropStats | null;
   /** San Francisco's downtown (run W-R), or null before its models load or on any other road. */
   downtown: DowntownCounts | null;
+  /** San Francisco's Chinatown and North Beach (run W-U), or null while its chunk loads or on any other road. */
+  blocks: BlocksCounts | null;
   /** San Francisco's mural alleys (run W-U), or null while its chunk loads or on any other road. */
   mission: MissionCounts | null;
   /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
@@ -421,6 +424,31 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(downtown.group);
   };
+  // Run W-U: San Francisco's Chinatown and North Beach (chinatown-northbeach.ts), a lazy chunk with a
+  // code-made kit (no model file), loaded only for a network that carries its tags.
+  let blocksModule: typeof import('./chinatown-northbeach') | null = null;
+  let blocksLoading = false;
+  let blocks: BlocksLayer | null = null;
+  const buildBlocks = () => {
+    blocks?.dispose();
+    blocks = null;
+    if (!roadArgs) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    if (!['lanterns', 'cafes', 'side-street', 'hill-park'].some((t) => tags.has(t))) return;
+    const m = blocksModule;
+    if (!m) {
+      if (!blocksLoading) {
+        blocksLoading = true;
+        void import('./chinatown-northbeach').then((b) => {
+          blocksModule = b;
+          buildBlocks();
+        });
+      }
+      return;
+    }
+    blocks = new m.BlocksLayer(look, { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed });
+    scene.add(blocks.group);
+  };
   // Run W-U: San Francisco's mural alleys (mission.ts), a lazy chunk fetched once a road has them.
   let missionModule: typeof import('./mission') | null = null;
   let mission: MissionLayer | null = null;
@@ -489,6 +517,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildScenes();
     buildRoadside();
     buildDowntown();
+    buildBlocks();
     buildMission();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
@@ -656,6 +685,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
         sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
       }
+      if (blocks) sceneryVisible += blocks.update(pose.x, pose.z);
       if (mission && missionModule) {
         // The crew paints with the race: the leader's share of it, and stands still while it is paused.
         const tick = curr?.tick ?? -1;
@@ -768,6 +798,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
       downtown: downtown?.counts() ?? null,
+      blocks: blocks?.counts() ?? null,
       mission: mission?.counts() ?? null,
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,

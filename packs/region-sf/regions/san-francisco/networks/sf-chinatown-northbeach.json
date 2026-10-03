@@ -1,0 +1,107 @@
+{
+  "type": "road-network",
+  "id": "sf-chinatown-northbeach",
+  "name": "San Francisco Chinatown and North Beach (hand-authored)",
+  "region": "san-francisco",
+  "crs": { "kind": "tmerc", "originLatDeg": 37.7955, "originLonDeg": -122.4065, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "sf-cn-lantern-row",
+    "sf-cn-bell-grade",
+    "sf-cn-crossover",
+    "sf-nb-espresso-row",
+    "sf-nb-the-elbow",
+    "sf-nb-overlook-climb"
+  ],
+  "junctions": [
+    {
+      "id": "j-sf-chinatown-northbeach-0",
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "ends": [{ "road": "sf-cn-lantern-row", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-1",
+      "x": 0,
+      "y": 1,
+      "z": -560,
+      "ends": [
+        { "road": "sf-cn-lantern-row", "end": "to" },
+        { "road": "sf-cn-bell-grade", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-2",
+      "x": 3.14,
+      "y": 1,
+      "z": -1119.9195,
+      "ends": [
+        { "road": "sf-cn-bell-grade", "end": "to" },
+        { "road": "sf-cn-crossover", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-3",
+      "x": -212.137,
+      "y": 1,
+      "z": -1418.7558,
+      "ends": [
+        { "road": "sf-cn-crossover", "end": "to" },
+        { "road": "sf-nb-espresso-row", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-4",
+      "x": -681.7502,
+      "y": 1,
+      "z": -1853.5024,
+      "ends": [
+        { "road": "sf-nb-espresso-row", "end": "to" },
+        { "road": "sf-nb-the-elbow", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-5",
+      "x": -538.5806,
+      "y": 1,
+      "z": -2006.8103,
+      "ends": [
+        { "road": "sf-nb-the-elbow", "end": "to" },
+        { "road": "sf-nb-overlook-climb", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-chinatown-northbeach-6",
+      "x": 219.9998,
+      "y": 1,
+      "z": -2214.1952,
+      "ends": [{ "road": "sf-nb-overlook-climb", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-03",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Chinatown and North Beach (run W-U; pitch deck #8; interview, 2026-10-02: all four SF districts): north up a narrow lantern-strung street of steep blocks with a crest lip at each cross street, the bend where the districts meet, a street of cafes, a hard right-hand elbow, and the climb to a finish under the tower on the hill. Nothing smashes in Chinatown; only North Beach cafe tables do. One route."
+  }
+}
