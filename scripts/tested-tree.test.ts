@@ -216,4 +216,36 @@ describe('ci.yml wiring', () => {
     }
     expect(/\n {2}deploy-prod:\n(?: {4}.*\n)*? {4}needs: \[gate\]/.test(ci)).toBe(true);
   });
+
+  // A job skipped by its own `if:` is always upstream of deploy-prod and release now (prod-build on
+  // the suite path, the suite on the skip path). A job `if:` without a status function gets an
+  // implicit success(), which reads every ancestor and skips the job (GitHub docs, `needs`;
+  // actions/runner#2205). So every job that needs another must open its `if:` with one.
+  const jobs = () => {
+    const body = ci.slice(ci.indexOf('\njobs:\n'));
+    return [...body.matchAll(/^ {2}([\w-]+):\n((?:(?: {4}.*)?\n)*)/gm)].map(([, name, block]) => ({
+      name: name ?? '',
+      // Job level only: exactly four spaces, so a step's `if:` (eight) never matches.
+      needs: /^ {4}needs: (.+)$/m.exec(block ?? '')?.[1],
+      cond: /^ {4}if: (.+)$/m.exec(block ?? '')?.[1],
+    }));
+  };
+
+  it('every job that needs another opens its if: with a status function, so a skipped ancestor never skips it', () => {
+    const list = jobs();
+    expect(list.map((j) => j.name)).toEqual(
+      expect.arrayContaining(['plan', ...SUITE, PROD_BUILD, 'gate', 'deploy-prod', 'release']),
+    );
+    for (const job of list.filter((j) => j.needs)) {
+      expect(job.cond, `${job.name} has an if:`).toBeDefined();
+      expect(job.cond, job.name).toMatch(/^(?:\$\{\{ )?(?:!cancelled\(\) && |always\(\)(?: \}\})?$)/);
+    }
+  });
+
+  it('deploy-prod and release check their own upstream result, not only the status function', () => {
+    const byName = new Map(jobs().map((j) => [j.name, j.cond ?? '']));
+    expect(byName.get('deploy-prod')).toContain("needs.gate.result == 'success'");
+    expect(byName.get('release')).toContain("needs.deploy-prod.result == 'success'");
+    expect(byName.get(PROD_BUILD)).toContain("needs.plan.result == 'success'");
+  });
 });

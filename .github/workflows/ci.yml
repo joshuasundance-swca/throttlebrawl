@@ -4,8 +4,8 @@
 # one of them succeeded.
 # On a push to main, a green gate deploys to the game Space and writes the release notes. A push
 # whose tree a green PR run already tested skips that suite: `plan` finds the PR run's record,
-# `prod-build` runs the push-only identity leak scan and builds with the prod stamp, and the gate
-# accepts the skipped suite on that path only (scripts/tested-tree.mjs).
+# `prod-build` runs the push-only identity leak scan, builds with the prod stamp and boots that
+# build, and the gate accepts the skipped suite on that path only (scripts/tested-tree.mjs).
 # No `paths:` filter: a required check behind one never reports on some PRs.
 name: ci
 
@@ -201,14 +201,19 @@ jobs:
   # The skip path's push-only work: what the suite would have done that depends on the push, not
   # the tree. The leak scan checks the squash commit's author and committer
   # (LEAKSCAN_IDENTITY_RANGE above; identity is [decided]) and re-scans the tree, which takes
-  # seconds; the build carries the prod stamp and this commit's changelog dates, so the PR run's
-  # dev build cannot be reused. It uploads the same `dist` artifact `deploy-prod` ships.
+  # seconds. The build is not the PR run's build: it carries the prod stamp and this commit's
+  # changelog dates, and the prod channel loads no draft packs (src/app/index.ts, includeDrafts),
+  # while every PR run tests a dev build with drafts loaded. So this job boots its own build in
+  # Chromium before it can ship (the boot spec: page loads, WebGL2, no console errors or failed
+  # requests, a non-blank canvas, the stamp names this commit). Only the boot is re-run here; the
+  # races, the other specs and perf ran on the PR's dev build (docs/engineering.md, "Main re-runs
+  # the suite only for a tree no green PR run tested"). It uploads the `dist` `deploy-prod` ships.
   prod-build:
     name: prod build (tree already tested)
     needs: [plan]
-    if: needs.plan.outputs.skip == 'true'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.skip == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -222,6 +227,36 @@ jobs:
         run: npm run leakscan:all
       - name: Build with the prod stamp
         run: npm run build:dist
+      # The same two caches as the browser job (restore only; that job saves them).
+      - name: Playwright browser cache, restore
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+      - name: Chromium system packages, restore
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/playwright-debs
+          key: playwright-debs-${{ runner.os }}-restore
+          restore-keys: playwright-debs-${{ runner.os }}-
+      - name: Install Chromium and its system packages
+        run: |
+          if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
+            sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
+          fi
+          npx playwright install --with-deps --only-shell chromium
+      - name: Boot the prod build (drafts off) before it ships
+        run: |
+          export E2E_EXPECT_STAMP="${GITHUB_SHA::7}"
+          npx playwright test --project=e2e tests/e2e/boot.spec.ts
+      - name: Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-prod-build
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Keep the build for the deploy
         uses: actions/upload-artifact@v7
         with:
@@ -274,8 +309,12 @@ jobs:
           retention-days: 7
           overwrite: true
 
-  # Every green push to main uploads the build its own gate tested ([decided]: every green merge
-  # goes live). Main push runs are serialised by the workflow's concurrency group (never cancelled
+  # Every green push to main uploads its build ([decided]: every green merge goes live): on the
+  # suite path the build its own browser tier tested; on the skip path the prod build that
+  # `prod-build` booted. The `if:` must start with a status function: a job skipped by its own
+  # `if:` (prod-build on the suite path, the suite on the skip path) is always upstream of this one,
+  # and without one GitHub adds success(), which reads every ancestor and skips this job
+  # (actions/runner#2205). release below has the same rule (scripts/tested-tree.test.ts checks it). Main push runs are serialised by the workflow's concurrency group (never cancelled
   # in progress; a newer push replaces only a run still waiting), so first attempts finish in push
   # order and each deploy is newer than the last. The check skips only when prod already serves a
   # newer main commit, as on a re-run of an old run. The old rule, "upload only if still main's
@@ -285,7 +324,7 @@ jobs:
   deploy-prod:
     name: deploy-prod
     needs: [gate]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.gate.result == 'success'
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -328,7 +367,7 @@ jobs:
   release:
     name: release
     needs: [deploy-prod]
-    if: needs.deploy-prod.outputs.deployed == 'true'
+    if: ${{ !cancelled() && needs.deploy-prod.result == 'success' && needs.deploy-prod.outputs.deployed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:

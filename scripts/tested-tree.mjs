@@ -149,10 +149,9 @@ async function apiGet(/** @type {string} */ p) {
     if (!res.ok) throw new Error(`GitHub API ${res.status} for ${p}`);
     return res.json();
   }
-  const r = spawnSync('gh', ['api', p.replace(/^\//, '')], {
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
+  // No shell: gh is a real executable on Windows too, and a shell would split the path at `&`.
+  const r = spawnSync('gh', ['api', p.replace(/^\//, '')], { encoding: 'utf8' });
+  if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`gh api ${p}: ${r.stderr.trim()}`);
   return JSON.parse(r.stdout);
 }
