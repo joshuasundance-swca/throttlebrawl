@@ -11,10 +11,8 @@ which proves the whole pipeline from commit to phone.
 ## Play
 
 - The game: <https://joshuasundance-throttlebrawl.static.hf.space>
-- Work in progress, on request: <https://joshuasundance-throttlebrawl-staging.static.hf.space>
 
-Every change that passes the checks goes live on the game page by itself. The staging page shows
-the branch someone last asked for, and its stamp says which branch and commit it is.
+Every change that passes the checks goes live on the game page by itself.
 
 ## Run it locally
 

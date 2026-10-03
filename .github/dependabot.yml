@@ -58,7 +58,7 @@ updates:
       gis-minor-patch:
         update-types: [minor, patch]
 
-  # The hf CLI the deploy steps install (ci.yml deploy-prod, staging.yml). The gate never runs an
+  # The hf CLI the deploy steps install (ci.yml deploy-prod). The gate never runs an
   # upload, so these PRs wait for review; the auto-merge workflow arms only npm and actions.
   - package-ecosystem: pip
     directory: /.github/deploy

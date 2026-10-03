@@ -3,7 +3,7 @@ import { resolvePreviewPort } from './scripts/preview-port.mjs';
 
 // Browser tiers (docs/engineering.md, "The gate"). By default the tests run against the
 // production build served by `vite preview`. E2E_BASE_URL points them at a deployed build
-// instead, such as the staging Space.
+// instead, such as the game Space.
 const externalUrl = process.env.E2E_BASE_URL;
 // Locally each run gets its own free port, so parallel lane worktrees never test each other's
 // build; CI keeps 4173, and PREVIEW_PORT picks one by hand (scripts/preview-port.mjs). The choice
