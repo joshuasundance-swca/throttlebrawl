@@ -1,4 +1,4 @@
-# The Hugging Face CLI (`hf`) that the deploy steps install (ci.yml deploy-prod and staging.yml).
+# The Hugging Face CLI (`hf`) that the deploy steps install (ci.yml deploy-prod).
 # It is pinned here, not inline in the workflows, so Dependabot's pip ecosystem can see it and
 # propose bumps (.github/dependabot.yml; docs/engineering.md, "Dependabot"). The gate never runs an
 # upload, so a bump PR for this file waits for review instead of auto-merging.
