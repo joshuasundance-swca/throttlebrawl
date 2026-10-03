@@ -31,6 +31,7 @@ export const CUE_IDS = [
   'passBy',
   'boost',
   'tune',
+  'modem',
 ] as const;
 export type CueId = (typeof CUE_IDS)[number];
 
@@ -73,6 +74,8 @@ export const EVENT_CUES: Readonly<Record<string, CueId | null>> = {
   respawn: 'respawn',
   // A boost pad (playtest 1b quick wins): a rising whoosh, heard for anyone, quieter with distance.
   boost: 'boost',
+  // Dial-Up's Bad Connection (run W-T): the modem screech warns of the drop; only `screech` sounds.
+  badConnection: 'modem',
   // The get-up, fist shake and grudge are seen (render, HUD) and said (barks); a sound would
   // step on the rival's bark.
   getUp: null,
@@ -116,6 +119,7 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   passBy: 46,
   boost: 58,
   tune: 56,
+  modem: 66,
 };
 
 /** Added to a cue's priority when the player is the actor or the target. */
@@ -164,6 +168,8 @@ export function cueForEvent(
   if (PLAYER_ONLY_EVENTS.has(type) && e.actor !== playerId) return null;
   // cops-1's siren event carries `on`; only the start of a chase whoops.
   if (type === 'siren' && e.data['on'] === false) return null;
+  // Bad Connection: the screech is the warning; the drop and the reconnect are seen, not heard.
+  if (type === 'badConnection' && e.data['phase'] !== 'screech') return null;
   if (type === 'hit') {
     const w = e.data['weapon'];
     if (w === 'kick') cue = 'kick';

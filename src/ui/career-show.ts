@@ -61,6 +61,17 @@ export function posterNode(p: PosterView): ShowNode {
       n('span', { cls: 'show-live', text: '● REC' }),
       n('span', { text: p.live }),
     ),
+    // A grudge match's rule card (run W-T): the rival's own rule, said before the race.
+    ...(p.rule
+      ? [
+          n(
+            'div',
+            { cls: 'show-rule', attrs: { 'data-rule': p.rule.id } },
+            n('b', { text: `RULES: ${p.rule.name}` }),
+            n('span', { text: p.rule.line }),
+          ),
+        ]
+      : []),
     n(
       'div',
       { cls: 'show-faces' },
@@ -156,6 +167,9 @@ export const SHOW_CSS = `
   border-bottom: 3px solid #e0543a; }
 .show-chyron { display: flex; gap: 8px; align-items: center; font: 800 12px ui-monospace, monospace; letter-spacing: 0.06em; }
 .show-live { color: #ff4a3d; }
+.show-rule { display: flex; flex-direction: column; margin-top: 6px; padding: 4px 8px; background: #f2ead8; color: #111;
+  transform: rotate(-1deg); font: 500 12px/1.3 system-ui, sans-serif; overflow-wrap: anywhere; }
+.show-rule b { font: 900 13px ui-monospace, monospace; letter-spacing: 0.04em; }
 .show-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 6px; margin-top: 6px; }
 .show-face { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
 .show-face.hot .show-badge { box-shadow: 0 0 0 2px #e0543a; }

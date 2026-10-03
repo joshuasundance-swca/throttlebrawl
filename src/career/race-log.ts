@@ -16,7 +16,18 @@
 //   `knockdownsToWin` times (`knockdowns`).
 // Optional objectives pay their `rewardCash` as bonuses: `style-cash` (score that much style
 // cash) and `ride-branch` (ride a route branch).
-import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
+//
+// Grudge rules (run W-T, the pitch deck's #14: "each tier closes on a grudge match played by the
+// rival's own rule"; `rules.rule`, [default] content the maintainer can veto). Three change the
+// score here, from the public events alone:
+// - `audit` (Kevin's "The Audit"): every hit the rival lands on you adds a line item, one more
+//   knockdown to the count, up to AUDIT_MAX_LINE_ITEMS;
+// - `collab` (Chad's "The Collab"): the most style cash at your finish wins, not the place: your
+//   style events against the rival's, decided when you cross (a tie is not a win);
+// - `timber` (Old Growth's): only traffic and scenery takedowns of the rival count toward the
+//   knockdowns (his own `orKnockdowns` as a boss too), which teaches the fast way to win a fight.
+// The fourth, `bad-connection` (Dial-Up's), changes how he rides, so it lives in the sim.
+import type { GrudgeRuleId, SimEvent, SimSnapshot, EntitySnapshot } from '../sim/api';
 import type { CareerSecret } from './defs';
 
 export const OBJECTIVE_KINDS = [
@@ -54,7 +65,12 @@ export interface RaceRules {
   winBy?: 'finish-ahead' | 'knockdowns';
   knockdownsToWin?: number;
   grudgeStakes?: number;
+  /** The rival's own rule (run W-T), or absent. */
+  rule?: GrudgeRuleId;
 }
+
+/** The Audit's cap: at most this many knockdowns his hits add to the count. [default] */
+export const AUDIT_MAX_LINE_ITEMS = 2;
 
 /**
  * Losing the heat [default]: after a cop has been on you for MIN_CHASE_S in all, LOSE_HEAT_S with
@@ -179,6 +195,9 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
   let rivalId = -1;
   let rivalFinishedFirst = false;
   let rivalKnockdowns = 0;
+  // The rules' counts (run W-T): his hits on you (the Audit), his style cash (the Collab).
+  let hitsByRival = 0;
+  let rivalStyleCash = 0;
   // The law: when a chase on the player began, the last second a cop was on them, the progress then.
   let chaseStartS = -1;
   let chaseStartProgress = 0;
@@ -236,17 +255,30 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         }
         case 'beat-rival': {
           const byKnockdowns = (p['winBy'] ?? r.winBy) === 'knockdowns';
-          const want = Math.max(1, Math.round(n(p['knockdowns'], r.knockdownsToWin ?? 1)));
+          // The Audit: his hits on you are line items, each one more knockdown to the count.
+          const lineItems = r.rule === 'audit' ? Math.min(AUDIT_MAX_LINE_ITEMS, hitsByRival) : 0;
+          const want = Math.max(1, Math.round(n(p['knockdowns'], r.knockdownsToWin ?? 1))) + lineItems;
           // A boss may be beaten either way: to the line, or knocked down `orKnockdowns` times.
           const or = Math.round(n(p['orKnockdowns'], 0));
-          if (byKnockdowns) {
-            label = `KNOCK DOWN ${Math.min(rivalKnockdowns, want)}/${want}`;
+          const timber = r.rule === 'timber';
+          if (r.rule === 'collab' && !byKnockdowns) {
+            // The Collab: views decide it, counted when you cross.
+            label = `MOST STYLE: YOU $${styleCash} · THEM $${rivalStyleCash}`;
+            if (busted) met = false;
+            else if (finished) met = styleCash > rivalStyleCash;
+            else if (over) met = false;
+          } else if (byKnockdowns) {
+            const have = Math.min(rivalKnockdowns, want);
+            label = timber
+              ? `TIMBER ${have}/${want}: INTO TRAFFIC OR SCENERY`
+              : `KNOCK DOWN ${have}/${want}` +
+                (lineItems > 0 ? ` · ${lineItems} LINE ITEM${lineItems > 1 ? 'S' : ''}` : '');
             if (rivalKnockdowns >= want) met = true;
             else if (over) met = false;
           } else {
             label =
               or > 0
-                ? `BEAT THEM HOME OR DROP THEM ${Math.min(rivalKnockdowns, or)}/${or}`
+                ? `BEAT THEM HOME OR ${timber ? 'FELL' : 'DROP'} THEM ${Math.min(rivalKnockdowns, or)}/${or}`
                 : 'BEAT YOUR RIVAL HOME';
             if (or > 0 && rivalKnockdowns >= or && !busted) met = true;
             else if (rivalFinishedFirst || busted) met = false;
@@ -344,11 +376,14 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
               takedowns++;
               if (counts(victim)) targetTakedowns++;
               if (victim) rival(victim).takedowns++;
-              if (target === rivalId) rivalKnockdowns++;
+              // Timber: only a fall into traffic or scenery fells him.
+              const felled = e.data['kind'] === 'traffic' || e.data['kind'] === 'scenery';
+              if (target === rivalId && (r.rule !== 'timber' || felled)) rivalKnockdowns++;
             }
             break;
           case 'hit':
             if (e.actor === me && victim && target !== me) rival(victim).hits++;
+            else if (e.actor === rivalId && rivalId >= 0 && target === me) hitsByRival++;
             break;
           case 'law':
             // Run W-T: the citations billed at the finish; and the END OF JURISDICTION sign, crossed
@@ -370,6 +405,8 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
               row.count++;
               row.cash += cash;
               styleCash += cash;
+            } else if (e.actor === rivalId && rivalId >= 0) {
+              rivalStyleCash += Math.round(n(e.data['points'], 0));
             }
             break;
         }

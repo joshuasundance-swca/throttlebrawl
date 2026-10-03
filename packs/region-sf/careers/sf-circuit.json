@@ -170,6 +170,12 @@
   ],
   "unlocks": [{ "grant": "base:mobility-scooter", "when": { "kind": "boss-beaten", "ref": "down-round" } }],
   "show": {
+    "rules": {
+      "collab": {
+        "name": "THE COLLAB",
+        "line": "Most style at the line wins. Finishing first is just content."
+      }
+    },
     "paper": { "name": "The Burn Rate Bugle", "style": "blog", "tagline": "Posted from a coworking space" },
     "heads": {
       "boss": ["{RIVAL} PIVOTS TO WALKING (EXCLUSIVE)", "{RIVAL}'S RUNWAY ENDS AT THE BOTTOM OF THE HILL"],

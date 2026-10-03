@@ -263,6 +263,12 @@
     }
   ],
   "show": {
+    "rules": {
+      "timber": {
+        "name": "TIMBER",
+        "line": "Your fists do not count. Log trucks and scenery do."
+      }
+    },
     "paper": {
       "name": "The Fir County Drip",
       "style": "newsletter",

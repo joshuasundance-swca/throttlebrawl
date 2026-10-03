@@ -114,7 +114,7 @@
     },
     {
       "id": "junkyard-hunt",
-      "event": "keys-t3-junkyard-hunt",
+      "event": "keys-t3-dialup-grudge",
       "length": "standard",
       "tier": "t3",
       "at": {
@@ -265,6 +265,16 @@
     }
   ],
   "show": {
+    "rules": {
+      "audit": {
+        "name": "THE AUDIT",
+        "line": "Every hit he lands is a line item. Each one adds a knockdown."
+      },
+      "bad-connection": {
+        "name": "BAD CONNECTION",
+        "line": "Hear the modem? He drops out, then reconnects up the road. Hit him while he buffers."
+      }
+    },
     "paper": { "name": "The Mile Marker Shriek", "style": "rag", "tagline": "Printed between hurricanes" },
     "heads": {
       "boss": [

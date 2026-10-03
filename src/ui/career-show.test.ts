@@ -25,6 +25,7 @@ const poster: PosterView = {
       grudge: 0,
     },
   ],
+  rule: null,
 };
 
 const paper = (style: PaperView['style']): PaperView => ({
@@ -58,6 +59,19 @@ describe('the career show, drawn', () => {
     expect(textOf(faces[0] as never)).toBe('DV Deacon Vane · grudge 7/10 7 sins.');
     expect(textOf(faces[1] as never)).toBe('DI Dial-Up Connected at 56k.');
     expect(findAll(tree, 'show-badge')[0]?.style).toEqual({ background: '#1b1b1f', color: '#f2ead8' });
+    expect(findAll(tree, 'show-rule')).toHaveLength(0);
+  });
+
+  it("the poster states a grudge match's rule (run W-T): its name and its one line", () => {
+    const tree = posterNode({
+      ...poster,
+      rule: { id: 'bad-connection', name: 'BAD CONNECTION', line: 'Hit him while he buffers.' },
+    });
+    const rule = findAll(tree, 'show-rule');
+    expect(rule).toHaveLength(1);
+    expect(rule[0]?.attrs).toEqual({ 'data-rule': 'bad-connection' });
+    expect(textOf(rule[0] as never)).toBe('RULES: BAD CONNECTION Hit him while he buffers.');
+    expect(SHOW_CSS).toContain('.show-rule {');
   });
 
   it('the paper: one id, styled per region, headline, still caption and the result', () => {

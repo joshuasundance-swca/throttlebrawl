@@ -864,6 +864,10 @@ function driveRider(
           speedTarget,
           punch: weaponReach(config, 'punch'),
           kick: weaponReach(config, 'kick'),
+          // Run W-T: the grudge match's rule, when it is Dial-Up's "Bad Connection" and names him.
+          badConnection:
+            config.event.grudgeRule?.rule === 'bad-connection' &&
+            config.riders[m.riderIndex]?.contentId === config.event.grudgeRule.rival,
         },
         move,
       );

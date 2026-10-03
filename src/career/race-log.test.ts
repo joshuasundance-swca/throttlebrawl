@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
-import { createRaceLog, LOSE_HEAT_S, MIN_CHASE_S, type ObjectiveSpec, type RaceRules } from './race-log';
+import {
+  AUDIT_MAX_LINE_ITEMS,
+  createRaceLog,
+  LOSE_HEAT_S,
+  MIN_CHASE_S,
+  type ObjectiveSpec,
+  type RaceRules,
+} from './race-log';
 
 // Each objective type has a pass case and a fail case (docs/milestones/M4.md, events-1 and the M4
 // exit: "Each objective type has unit tests"), on hand-built snapshots and events: the race log
@@ -283,6 +290,99 @@ describe('grudge match: beat one rival', () => {
     r.step([{ type: 'takedown', actor: ME, target: RIVAL, data: { kind: 'traffic' } }]);
     r.step([{ type: 'takedown', actor: ME, target: RIVAL, data: { kind: 'traffic' } }]);
     expect(r.log.status()).toMatchObject({ state: 'won', endNow: true });
+  });
+});
+
+describe("grudge rules: the rival's own rule (run W-T, the pitch deck's #14)", () => {
+  const base: RaceRules = {
+    kind: 'grudge-match',
+    rival: 'base:kevin-from-accounting',
+    winBy: 'finish-ahead',
+  };
+  const hit = (actor: number, target: number) => ({ type: 'hit' as const, actor, target, data: {} });
+  const down = (kind: string) => ({ type: 'takedown' as const, actor: ME, target: RIVAL, data: { kind } });
+
+  it('the audit: each hit the rival lands on you adds a knockdown to the count, up to the cap', () => {
+    const audit: RaceRules = { ...base, winBy: 'knockdowns', knockdownsToWin: 2, rule: 'audit' };
+    const r = race(audit, [obj('beat-rival')]);
+    r.step();
+    expect(r.log.status().objectives[0]?.label).toBe('KNOCK DOWN 0/2');
+    r.step([hit(RIVAL, ME)]);
+    expect(r.log.status().objectives[0]?.label).toBe('KNOCK DOWN 0/3 · 1 LINE ITEM');
+    // A hit he lands on someone else, or one landed on him, is not a line item.
+    r.step([hit(RIVAL, COP), hit(ME, RIVAL), hit(COP, ME)]);
+    expect(r.log.status().objectives[0]?.label).toBe('KNOCK DOWN 0/3 · 1 LINE ITEM');
+    for (let i = 0; i < AUDIT_MAX_LINE_ITEMS + 2; i++) r.step([hit(RIVAL, ME)]);
+    const want = 2 + AUDIT_MAX_LINE_ITEMS;
+    expect(r.log.status().objectives[0]?.label).toBe(
+      `KNOCK DOWN 0/${want} · ${AUDIT_MAX_LINE_ITEMS} LINE ITEMS`,
+    );
+    for (let i = 0; i < want - 1; i++) r.step([down('health')]);
+    expect(r.log.status().state).toBe('running');
+    r.step([down('health')]);
+    expect(r.log.status()).toMatchObject({ state: 'won', endNow: true });
+  });
+
+  it('without the audit, his hits add nothing', () => {
+    const r = race({ ...base, winBy: 'knockdowns', knockdownsToWin: 1 }, [obj('beat-rival')]);
+    r.step([hit(RIVAL, ME)]);
+    r.step([down('health')]);
+    expect(r.log.status().state).toBe('won');
+  });
+
+  it('the collab: the most style cash at your finish wins, not the place', () => {
+    const collab: RaceRules = { ...base, rule: 'collab' };
+    const style = (actor: number, points: number) => ({
+      type: 'style' as const,
+      actor,
+      data: { kind: 'nearMiss', points },
+    });
+    const lost = race(collab, [obj('beat-rival')]);
+    lost.step([style(ME, 200), style(RIVAL, 300)]);
+    expect(lost.log.status().objectives[0]?.label).toBe('MOST STYLE: YOU $200 · THEM $300');
+    lost.finish(ME);
+    expect(lost.log.status().state).toBe('lost');
+
+    const won = race(collab, [obj('beat-rival')]);
+    won.step([style(ME, 500), style(RIVAL, 300)]);
+    // Crossing first decides nothing: he is still behind on views.
+    won.finish(RIVAL);
+    expect(won.log.status().state).toBe('running');
+    won.step([style(RIVAL, 100)]);
+    won.finish(ME);
+    expect(won.log.status().state).toBe('won');
+  });
+
+  it('the collab: a tie is not a win, and a bust loses it', () => {
+    const collab: RaceRules = { ...base, rule: 'collab' };
+    const tie = race(collab, [obj('beat-rival')]);
+    tie.finish(ME);
+    expect(tie.log.status().state).toBe('lost');
+    const bust = race(collab, [obj('beat-rival')]);
+    bust.step([{ type: 'style', actor: ME, data: { kind: 'nearMiss', points: 900 } }]);
+    bust.step([{ type: 'bust', actor: COP, target: ME, data: { fineCash: 100 } }]);
+    expect(bust.log.status().state).toBe('lost');
+  });
+
+  it('timber: only traffic and scenery takedowns of the rival count', () => {
+    const timber: RaceRules = { ...base, winBy: 'knockdowns', knockdownsToWin: 2, rule: 'timber' };
+    const r = race(timber, [obj('beat-rival')]);
+    r.step([down('health')]);
+    expect(r.log.status().objectives[0]?.label).toBe('TIMBER 0/2: INTO TRAFFIC OR SCENERY');
+    r.step([down('traffic')]);
+    r.step([down('health')]);
+    expect(r.log.status().state).toBe('running');
+    r.step([down('scenery')]);
+    expect(r.log.status()).toMatchObject({ state: 'won', endNow: true });
+  });
+
+  it('timber on a boss beaten either way: to the line, or felled enough times', () => {
+    const r = race({ ...base, rule: 'timber' }, [obj('beat-rival', { orKnockdowns: 2 })]);
+    r.step([down('health')]);
+    r.step([down('traffic')]);
+    expect(r.log.status().objectives[0]?.label).toBe('BEAT THEM HOME OR FELL THEM 1/2');
+    r.step([down('scenery')]);
+    expect(r.log.status().state).toBe('won');
   });
 });
 

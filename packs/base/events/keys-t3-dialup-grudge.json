@@ -1,0 +1,66 @@
+{
+  "type": "event",
+  "id": "keys-t3-dialup-grudge",
+  "name": "Please Stand By",
+  "kind": "grudge-match",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "m1-long-haul",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["dial-up"],
+    "paceMps": 42
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "dial-up",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2,
+    "rule": "bad-connection"
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 2000,
+      "params": {
+        "orKnockdowns": 2
+      }
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [4000, 500],
+    "perTakedownCash": 320,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 40,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 60
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A grudge match by Dial-Up's rule, Bad Connection, on the long haul past the junkyard key: a modem screech, then he freezes for a second and reconnects about 15 m up the road. Beat him to the line, or knock him down twice while he buffers. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

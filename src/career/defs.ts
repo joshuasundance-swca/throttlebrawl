@@ -4,6 +4,7 @@
 // pack that holds it, tiers become indexes, and the fields the schema keeps loose (paints, the
 // ending's lines, a secret's name and cash) are read defensively. DOM-free.
 import { packOf, type Career, type ContentRegistry } from '../content';
+import { GRUDGE_RULE_IDS } from '../core';
 import { OBJECTIVE_KINDS, type ObjectiveSpec, type RaceRules } from './race-log';
 
 /** A reference qualified by the pack that holds it (a bare id names an entry of that pack). */
@@ -293,6 +294,9 @@ export function eventPlan(reg: ContentRegistry, key: string): EventPlan {
   if (raw['endOnCount'] === true) rules.endOnCount = true;
   if (raw['escapeBy'] === 'distance' || raw['escapeBy'] === 'survive') rules.escapeBy = raw['escapeBy'];
   if (raw['winBy'] === 'finish-ahead' || raw['winBy'] === 'knockdowns') rules.winBy = raw['winBy'];
+  // The rival's own rule (run W-T): only on a grudge match, from the closed list.
+  const rule = GRUDGE_RULE_IDS.find((g) => g === raw['rule']);
+  if (rule && rules.kind === 'grudge-match') rules.rule = rule;
   if (typeof raw['rival'] === 'string') rules.rival = qualify(pack, raw['rival']);
   if (Array.isArray(raw['targets'])) rules.targets = raw['targets'].map((t) => qualify(pack, str(t)));
   else if (raw['targets'] === 'any') rules.targets = 'any';

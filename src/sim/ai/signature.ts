@@ -22,7 +22,7 @@ import {
   type SignaturePhase,
   type SignatureSnapshot,
 } from '../types';
-import { systemState, type Mover, type World } from '../world';
+import { emit, systemState, type Mover, type World } from '../world';
 import type { ObstacleSize, Reach, Seen } from './sense';
 
 /** Per-rider signature state, by entity id. Indices into SIGNATURE_IDS and SIGNATURE_PHASES; -1 none. */
@@ -157,6 +157,19 @@ const WAVE_SEE_MAX = 250;
 /** A rider this close (|ahead| ≤ s, |dd| ≤ d) means a fight is on: no selfie or wave then. */
 const BUSY_S = 5;
 const BUSY_D = 3;
+/**
+ * Dial-Up's "Bad Connection" (run W-T, the pitch deck's #14: "he drops out for a second and
+ * reconnects 15 m away, with a modem screech as warning"), in a grudge match whose
+ * `SimEventDef.grudgeRule` is `bad-connection` and names him: his lag move gets a longer tell (the
+ * screech, 0.75 s), a full second frozen (the drop), and comes back with him moved
+ * BAD_CONNECTION_JUMP_M up the road along his edge when that spot is clear (the reconnect). It
+ * comes round sooner (every 6 to 10 s). Frozen, he can still be hit: hitting him while he buffers
+ * is the opening. [default]
+ */
+const BAD_CONNECTION: MoveSpec = { tell: 45, act: 60, open: 30, gap: 360, spread: 240 };
+export const BAD_CONNECTION_JUMP_M = 15;
+/** The reconnect lands only where nothing is within this many metres along, and a lane across. */
+const BAD_CONNECTION_CLEAR_S = 6;
 /** Dial-Up's twitch, metres, and his reconnect lurch. */
 const LAG_TWITCH_M = 1;
 const LAG_LURCH = 1.12;
@@ -237,8 +250,7 @@ function enter(
 }
 
 /** Ends the move now and schedules the next one from the move's gap. */
-function finish(world: World, sg: SignatureState, id: EntityId, move: SignatureId): void {
-  const spec = SPEC[move];
+function finish(world: World, sg: SignatureState, id: EntityId, move: SignatureId, spec = SPEC[move]): void {
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
   sg.next[id] = world.tick + spec.gap + Math.floor(roll(world, id) * (spec.spread + 1));
@@ -394,6 +406,8 @@ export interface SignatureCtx {
   speedTarget: number;
   punch: Reach;
   kick: Reach;
+  /** Dial-Up under his grudge rule, "Bad Connection" (run W-T): his lag drops and reconnects. */
+  badConnection?: boolean;
 }
 
 /** What a move changes this tick. Absent fields leave the controller's own choice. */
@@ -474,7 +488,8 @@ export function stepSignature(c: SignatureCtx, move: SignatureId): SignatureOut 
   const sg = signatureState(world);
   const id = m.id;
   const tick = world.tick;
-  const spec = SPEC[move];
+  const bad = move === 'lag' && c.badConnection === true;
+  const spec = bad ? BAD_CONNECTION : SPEC[move];
   const hitNow = c.lastHitTick >= 0 && c.lastHitTick > (sg.seenHit[id] ?? -1);
   if (hitNow) sg.seenHit[id] = c.lastHitTick;
   let phase = phaseOf(sg, id);
@@ -486,8 +501,14 @@ export function stepSignature(c: SignatureCtx, move: SignatureId): SignatureOut 
       // The committed line: Chad's straight no-hands line; Old Growth's charge down his mark's line.
       if (move === 'selfie') sg.lineD[id] = m.pos.d;
       else if (move === 'timber') sg.lineD[id] = find(c, sg.target[id] ?? -1)?.mover.pos.d ?? m.pos.d;
+      else if (bad) emit(world, 'badConnection', id, { phase: 'drop' });
+    } else if (phase === 'act' && bad) {
+      // On time, he reconnects up the road. Late (he went down mid-drop, and the controller sat out
+      // while he was off the bike), he reconnects where he is.
+      reconnect(c, tick - (sg.until[id] ?? tick) <= 1);
+      enter(sg, id, tick, 'open', spec.open);
     } else if (phase === 'act' && spec.open > 0) enter(sg, id, tick, 'open', spec.open);
-    else finish(world, sg, id, move);
+    else finish(world, sg, id, move, spec);
     phase = phaseOf(sg, id);
   }
 
@@ -565,6 +586,12 @@ function startMove(c: SignatureCtx, move: SignatureId, sg: SignatureState, hitNo
       );
       if (blocked) return false;
       sg.lineD[id] = roll(world, id) < 0.5 ? -1 : 1;
+      if (c.badConnection === true) {
+        // Bad Connection: the modem screech is the warning (audio plays it from the event).
+        enter(sg, id, tick, 'tell', BAD_CONNECTION.tell, -1);
+        emit(world, 'badConnection', id, { phase: 'screech' });
+        return true;
+      }
       enter(sg, id, tick, 'tell', tell, -1);
       return true;
     }
@@ -723,13 +750,38 @@ function lag(c: SignatureCtx, sg: SignatureState, phase: SignaturePhase | null):
       (o) => o.s.ahead > -2 && o.s.ahead < LAG_CLEAR_M / 2 && Math.abs(o.s.dd) < o.size.halfWidth + 1.5,
     );
     if (blocked) {
-      enter(sg, id, c.world.tick, 'open', SPEC.lag.open);
+      if (c.badConnection === true) reconnect(c);
+      enter(sg, id, c.world.tick, 'open', c.badConnection === true ? BAD_CONNECTION.open : SPEC.lag.open);
       return { speedTarget: c.speedTarget * LAG_LURCH, noSwing: true };
     }
     // Frozen on the throttle; the bars keep their drift (the line he was on keeps weaving).
     return { noSwing: true, freeze: true };
   }
   return { speedTarget: c.speedTarget * LAG_LURCH, noSwing: true };
+}
+
+/**
+ * Bad Connection's reconnect: Dial-Up is moved BAD_CONNECTION_JUMP_M up the road along his own edge,
+ * on the same line, when the edge runs that far and nothing (a car, a person, a rider) is near the
+ * spot; otherwise he reconnects where he is. Either way a `badConnection` event (phase `reconnect`,
+ * `data.jumpM`) says so. Plain data: no randomness, so no stream moves.
+ */
+function reconnect(c: SignatureCtx, onTime = true): void {
+  const { m, road, world } = c;
+  const jump = BAD_CONNECTION_JUMP_M;
+  const near = (ahead: number, dd: number, half: number) =>
+    Math.abs(ahead - jump) <= BAD_CONNECTION_CLEAR_S && Math.abs(dd) < half + 1.5;
+  const length = road.edges[m.pos.edge]?.length ?? 0;
+  const s = m.pos.s + m.pos.dir * jump;
+  const clear =
+    onTime &&
+    m.mode === 'Road' &&
+    s >= 0 &&
+    s <= length &&
+    !c.obstacles.some((o) => near(o.s.ahead, o.s.dd, o.size.halfWidth)) &&
+    !c.riders.some((r) => near(r.ahead, r.dd, 0.5));
+  if (clear) m.pos = { ...m.pos, s };
+  emit(world, 'badConnection', m.id, { phase: 'reconnect', jumpM: clear ? jump : 0 });
 }
 
 /** Mother Rust: swings wide, then rams her bike across into her target. */
