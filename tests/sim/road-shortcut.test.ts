@@ -127,7 +127,15 @@ describe('road-2: the boat-ramp cut on the M1 track', () => {
       'm1-pelican-bridge',
       'm1-sandbar-causeway',
     ]);
-    expect(cut.edges.slice(run.length).every((e) => e === 'm1-mangrove-cut')).toBe(true);
+    // Run W-U: the Mangrove Cut is now five pieces round the boardwalk's split and merge; a rider
+    // keeping right rolls on along them.
+    const rollOn = [
+      'm1-mangrove-cut',
+      'c-boardwalk-split-main',
+      'm1-mangrove-bend',
+      'c-boardwalk-merge-main',
+    ];
+    expect(cut.edges.slice(run.length).every((e) => rollOn.includes(e))).toBe(true);
     expect(main.edges).not.toContain('m1-boat-ramp-cut');
     expect(jump?.edge).toBe('m1-boat-ramp-cut');
     expect(land?.edge).toBe('m1-boat-ramp-cut');

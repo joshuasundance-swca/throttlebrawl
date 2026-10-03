@@ -34,6 +34,8 @@ export interface MapRoad {
   id: string;
   name: string;
   state: RoadState;
+  /** A secret's road not found yet (run W-U): kept for the player's marker, never drawn. */
+  hidden?: boolean;
   /** Map points (x east, z south), metres in the network's own frame, at most MAP_POINTS. */
   points: readonly (readonly [number, number])[];
 }
@@ -54,6 +56,8 @@ export interface MapSecret {
   x: number;
   z: number;
   found: boolean;
+  /** Drawn as a '?' until found (run W-U: a secret road, such as the Keys' Unlisted Key). */
+  hinted: boolean;
 }
 
 /** One road network of the region, drawn on its own (each network has its own frame). */
@@ -403,6 +407,10 @@ export function careerMap(reg: ContentRegistry, def: CareerDef, profile: Profile
     const nodes = def.nodes.filter((n) => roadIds.has(n.road));
     const secrets = def.secrets.filter((s) => roadIds.has(s.road));
     if (nodes.length === 0 && secrets.length === 0) continue;
+    // Run W-U: a secret road stays off the map (a '?' marks it) until it is found.
+    const hidden = new Set(
+      def.secrets.filter((x) => !progress.secrets.includes(x.id)).flatMap((x) => x.hides ?? []),
+    );
     const roads: MapRoad[] = [];
     let ok = true;
     for (const id of net.roads) {
@@ -416,7 +424,13 @@ export function careerMap(reg: ContentRegistry, def: CareerDef, profile: Profile
         : progress.unlockedRoads.includes(id) || progress.finaleBeaten
           ? 'open'
           : 'locked';
-      roads.push({ id, name: reg.roads[qualify(pack, id)]?.name ?? id, state, points });
+      roads.push({
+        id,
+        name: reg.roads[qualify(pack, id)]?.name ?? id,
+        state,
+        points,
+        ...(hidden.has(id) ? { hidden: true } : {}),
+      });
     }
     if (!ok) continue;
     const pins: MapPin[] = [];
@@ -443,6 +457,7 @@ export function careerMap(reg: ContentRegistry, def: CareerDef, profile: Profile
           x: p[0],
           z: p[1],
           found: progress.secrets.includes(s.id),
+          hinted: s.kind === 'road',
         });
     }
     let [x0, z0, x1, z1] = [Infinity, Infinity, -Infinity, -Infinity];

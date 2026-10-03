@@ -157,6 +157,7 @@ export const CAREER_CSS = `
 .career-map .pin.locked { fill: #6b737b; }
 .career-map .pin.suggested { stroke: #e0543a; stroke-width: 4; }
 .career-map .secret { fill: #7fd1c7; font: 900 14px ui-monospace, monospace; }
+.career-map .secret.hint { fill: #f5c542; }
 .career-loading { font: 600 13px ui-monospace, monospace; color: #f2ead8; opacity: 0.8; }
 .career-tier { background: #0006; border: 1px dashed #fff6; padding: 6px 8px; }
 .career-tier h3 { margin: 0 0 6px; font: 900 14px ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase;
@@ -256,7 +257,7 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
   });
   // Locked roads under open ones, claimed on top.
   for (const state of ['locked', 'open', 'claimed'] as const) {
-    for (const r of panel.roads.filter((x) => x.state === state)) {
+    for (const r of panel.roads.filter((x) => x.state === state && !x.hidden)) {
       const line = svg('polyline', {
         class: `road ${state}`,
         points: r.points.map(([x, z]) => `${x.toFixed(1)},${z.toFixed(1)}`).join(' '),
@@ -294,6 +295,20 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
     mark.textContent = '✦';
     mark.append(svg('title'));
     (mark.lastChild as SVGTitleElement).textContent = s.name;
+    root.append(mark);
+  }
+  // Run W-U: a secret road not found yet is a '?' where it lies (its roads are not drawn).
+  for (const s of panel.secrets.filter((x) => !x.found && x.hinted)) {
+    const mark = svg('text', {
+      x: s.x,
+      y: s.z,
+      class: 'secret hint',
+      'font-size': scale * 0.07,
+      'text-anchor': 'middle',
+    });
+    mark.textContent = '?';
+    mark.append(svg('title'));
+    (mark.lastChild as SVGTitleElement).textContent = 'Something out there';
     root.append(mark);
   }
   return el('figure', { className: 'career-map' }, el('figcaption', { textContent: panel.name }), root);

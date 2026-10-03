@@ -50,6 +50,7 @@ import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
 import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
 import type { VergeCounts, VergeLayer } from './verge';
+import type { AirboatCounts, AirboatLayer } from './airboats';
 import { Rain, rainColourOf } from './rain';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
@@ -222,6 +223,8 @@ export interface SceneryStatus {
   verge: VergeCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
   scenes: ScenesCounts | null;
+  /** The airboats beside a road tagged for them (run W-U), or null on a road without any. */
+  airboats?: AirboatCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -453,6 +456,19 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     verge = new vergeModule.VergeLayer(roadArgs.road, look, { tags });
     scene.add(verge.group);
   };
+  // Run W-U: the airboats beside a road side tagged `airboats` (the Keys' Mangrove Boardwalk), a lazy
+  // chunk loaded only for a road that has the tag. Built once per setRoad, like the verge.
+  let airboatsModule: typeof import('./airboats') | null = null;
+  let airboats: AirboatLayer | null = null;
+  const buildAirboats = () => {
+    airboats?.dispose();
+    airboats = null;
+    if (!airboatsModule || !roadArgs) return;
+    const runs = airboatsModule.airboatRuns(roadArgs.road, roadArgs.dressing);
+    if (runs.length === 0) return;
+    airboats = new airboatsModule.AirboatLayer(roadArgs.road, look, runs);
+    scene.add(airboats.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -578,6 +594,16 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           vergeModule = m;
           buildVerge();
         });
+      airboats?.dispose();
+      airboats = null;
+      if (networkTags(road, dressing).tags.has('airboats')) {
+        if (airboatsModule) buildAirboats();
+        else
+          void import('./airboats').then((m) => {
+            airboatsModule = m;
+            buildAirboats();
+          });
+      }
       backdrop.setRoad(road);
       requestScenes(road);
       requestModels();
@@ -630,6 +656,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       lastFrameAt = t;
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
+      airboats?.update(curr, t, dt * (curr?.timeScale ?? 1));
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
@@ -733,6 +760,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       blocks: blocks?.counts() ?? null,
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
+      airboats: airboats?.counts() ?? null,
     }),
   };
 }

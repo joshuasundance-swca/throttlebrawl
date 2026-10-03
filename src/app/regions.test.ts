@@ -133,6 +133,16 @@ describe('app: regions', () => {
     expect(Object.keys(boardCatalog(ALL, 'base:florida-keys').items)).toEqual(
       expect.arrayContaining(['ices-before-road', 'timeshare']),
     );
+    // Run W-U: a `site` sign shows only in the slot that names it, never in a pooled slot elsewhere.
+    const keys = boardCatalog(ALL, 'base:florida-keys');
+    for (const id of ['boardwalk-keep-left', 'nothing-out-there', 'unlisted-key', 'ramp-keep-right']) {
+      expect(keys.items[id], id).toBeDefined();
+      expect(
+        keys.pools?.signs?.some((s) => s.ref.endsWith(`#${id}`)),
+        id,
+      ).toBe(false);
+    }
+    expect(keys.pools?.signs?.some((s) => s.ref.endsWith('#ices-before-road'))).toBe(true);
   });
 
   it("hands render each region's landing one-liners as their own pool, never as a road slot's item", () => {
