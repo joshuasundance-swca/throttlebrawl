@@ -17,6 +17,15 @@ export interface TuningParamDecl {
   readonly unit: string;
   /** True when the value changes outcomes: it then goes through SimConfig and sim.applyParam. */
   readonly affectsSim: boolean;
+  /**
+   * True on the switch (or scale) of an optional WORLD SYSTEM: something a race brings around the
+   * riders, such as traffic, animals, road events, the patrol, the heat meter, the ground beside the
+   * road or the roadside weapons. A seeded test of one behaviour turns these off, so a new or
+   * retuned system cannot reshuffle its races (tests/sim/batch.ts `ISOLATED`, which must name every
+   * one; a guard test fails when one is missing). Neither the sim nor the panel reads it. Absent
+   * means false. [default] (the determinism run, 2026-10-03)
+   */
+  readonly system?: boolean;
 }
 
 export type TuningValues = Readonly<Record<string, number>>;

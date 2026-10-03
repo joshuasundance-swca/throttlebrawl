@@ -43,4 +43,11 @@ describe('tuning declarations from every module', () => {
     const linted = new Set(ALL.map((d) => d.id));
     expect(TUNING_OWN.map((d) => d.id).filter((id) => !linted.has(id))).toEqual([]);
   });
+
+  it('a world-system switch (system: true) changes the race: it affects the sim', () => {
+    const systems = ALL.filter((d) => d.system === true);
+    console.log(`tuning declarations marked system: ${systems.map((d) => d.id).join(', ')}`);
+    expect(systems.length).toBeGreaterThan(0);
+    expect(systems.filter((d) => !d.affectsSim).map((d) => d.id)).toEqual([]);
+  });
 });
