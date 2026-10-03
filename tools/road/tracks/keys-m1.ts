@@ -22,8 +22,9 @@ const LANES = [
 ] as const;
 
 // Run W-U: the Mangrove Boardwalk's dressing and the secret island's, set from the baked geometry.
-// The boardwalk (about 547 m) is 6 m from the main road's centre where it leaves and 5 m where it
-// rejoins, and 14 m or more (clear of the main road's lanes and verge) from s 30 to s 505.
+// The boardwalk (about 547 m) is 6 m from the main road's centre where it leaves, and 14 m or more
+// (clear of the main road's lanes and verge) from s 30 to s 489. From about s 505 it crosses the
+// main road, to rejoin on the travel side (d 3; run W-U's live check, mustFix 1).
 const BOARDWALK_TAGS: RoadSource['tags'] = [
   // Planks laid on the swamp (render's road mesh draws the boards across the surface). No rails:
   // they stand only on bridges and drops (interview, 2026-10-02); the water's edge holds a rider.
@@ -899,7 +900,10 @@ export const KEYS_M1: TrackSource = {
         lane: 'L1',
         zone: { lengthM: 40, d0: -5.5, d1: -3 },
       },
-      join: { road: 'm1-conch-row', offsetM: -3, lane: 'L1' },
+      // Run W-U's live check: it rejoined at d -3, in the oncoming lane (3 of 7 exits met traffic
+      // within 2 s). Its last stretch now crosses the road and lands in the travel lane, as the boat
+      // ramp does.
+      join: { road: 'm1-conch-row', offsetM: 3, lane: 'R1' },
       turnsM: [600, 150],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       // Named for the routes (W-R): the id it would derive, written into every route that allows it.
@@ -1105,7 +1109,11 @@ export const KEYS_M1: TrackSource = {
         lane: 'L1',
         zone: { lengthM: 40, d0: -5.5, d1: -3 },
       },
-      join: { road: 'm1-mangrove-reach', offsetM: -3, lane: 'L1' },
+      // Run W-U's live check, mustFix 1: it rejoined at d -3, the middle of the ONCOMING lane, and
+      // riders came off the planks head-on into the shuttles (4 traffic crashes in 8 exits). The
+      // planks' last 40 m now swing across the road, and the steps down land in the travel lane (d 3,
+      // as the boat ramp does); traffic never touches a rider on a branch road, so the crossing is clear.
+      join: { road: 'm1-mangrove-reach', offsetM: 3, lane: 'R1' },
       turnsM: [120, 80],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       named: {

@@ -594,6 +594,38 @@ function cutCurve(line: Centreline, roads: readonly RoadSource[], lanes: readonl
   return cuts;
 }
 
+/**
+ * A branch must rejoin in a lane that runs the route's way (run W-U's live check, mustFix 1: the
+ * Keys' Mangrove Boardwalk rejoined in the oncoming lane, d -3, and riders came off it head-on into
+ * traffic). Every chain runs its route along increasing s, so the join's lane must be a drive or
+ * shortcut lane of direction +1 on the road it rejoins, and the middle of the branch's own travel
+ * lanes must land inside it. tools/road/branch-rejoins.test.ts checks the baked landing on every
+ * live network, map-data ones included.
+ */
+function checkRejoin(br: BranchSource, roadId: string, lanes: readonly LaneInfo[]): void {
+  const id = br.roads[0]?.id;
+  const lane = lanes.find((l) => l.id === br.join.lane);
+  const travel = (l: LaneInfo) => l.direction === 1 && (l.kind === 'drive' || l.kind === 'shortcut');
+  if (!lane) throw new Error(`branch ${id}: it rejoins ${roadId} in lane ${br.join.lane}, which it lacks`);
+  if (!travel(lane)) {
+    throw new Error(
+      `branch ${id}: it rejoins ${roadId} in lane ${lane.id}, which is oncoming or not a travel lane`,
+    );
+  }
+  const own = br.lanes.filter(travel);
+  const lo = Math.min(...own.map((l) => l.dCenterM - l.widthM / 2));
+  const hi = Math.max(...own.map((l) => l.dCenterM + l.widthM / 2));
+  const mid = br.join.offsetM + (own.length > 0 ? (lo + hi) / 2 : 0);
+  const inside = (l: LaneInfo) => mid >= l.dCenterM - l.widthM / 2 && mid <= l.dCenterM + l.widthM / 2;
+  if (!inside(lane)) {
+    const oncoming = lanes.find((l) => l.direction === -1 && l.kind === 'drive' && inside(l));
+    throw new Error(
+      `branch ${id}: it rejoins ${roadId} at d ${mid}, outside lane ${lane.id}` +
+        (oncoming ? `, in the oncoming lane ${oncoming.id}` : ''),
+    );
+  }
+}
+
 /** Compiles a track into the three kinds of baked files, as plain JSON-ready objects. */
 export function compileTrack(src: TrackSource): CompiledTrack {
   const line = buildCentreline(src);
@@ -703,6 +735,7 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     if (br.roads.length < 3) throw new Error('a branch needs a connector, a road and a connector');
     if (chain.span && br.named)
       throw new Error(`branch ${br.roads[0]?.id}: a branch off a branch is not named`);
+    checkRejoin(br, b.road.id, b.lanes);
     const [x0, z0, h0] = offsetPoint(a.line, a.start + a.length, br.leave.offsetM);
     const [x1, z1, h1] = offsetPoint(b.line, b.start, br.join.offsetM);
     const via = br.via ?? [];
