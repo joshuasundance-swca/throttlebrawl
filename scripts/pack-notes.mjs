@@ -5,8 +5,10 @@
 // plugin drops each `meta` object's `notes` from the pack JSON modules the bundle imports. The
 // files on disk, the pack check, the tests and the dev server keep them; the road data shipped as
 // separate files (`?url`) is untouched, and no sim-facing field changes, so replay keys hold.
+// The voice picks' taste log goes the same way (run W-S): each bark line's `audioNote` and each
+// set's `meta.voice.review`, which only people and the voice tools read (about 3.8 KB gzip).
 
-/** The pack JSON's text without any `meta.notes`, or null when it does not parse (left alone). */
+/** The pack JSON's text without any `meta.notes`, `audioNote` or `meta.voice.review`, or null when it does not parse (left alone). */
 export function stripPackNotes(text) {
   let data;
   try {
@@ -21,10 +23,21 @@ export function stripPackNotes(text) {
       return;
     }
     if (!v || typeof v !== 'object') return;
+    if ('audioNote' in v) {
+      delete v.audioNote;
+      dropped++;
+    }
     for (const [k, x] of Object.entries(v)) {
-      if (k === 'meta' && x && typeof x === 'object' && !Array.isArray(x) && 'notes' in x) {
-        delete x.notes;
-        dropped++;
+      if (k === 'meta' && x && typeof x === 'object' && !Array.isArray(x)) {
+        if ('notes' in x) {
+          delete x.notes;
+          dropped++;
+        }
+        const voice = x.voice;
+        if (voice && typeof voice === 'object' && !Array.isArray(voice) && 'review' in voice) {
+          delete voice.review;
+          dropped++;
+        }
       }
       walk(x);
     }

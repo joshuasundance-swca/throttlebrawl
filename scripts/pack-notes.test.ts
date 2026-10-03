@@ -20,6 +20,31 @@ describe('pack notes stay out of the build', () => {
     });
   });
 
+  it("drops the voice picks' taste log too: each line's audioNote and the set's meta.voice.review", () => {
+    const set = {
+      type: 'bark-set',
+      id: 'mayor-core',
+      lines: [
+        { id: 'a', text: 'hi', audioStatus: 'live', audioNote: 'redone, and why' },
+        { id: 'b', text: 'yo', audioStatus: 'live' },
+      ],
+      meta: {
+        status: 'live',
+        voice: { model: 'm', reference: 'r', review: { at: '2026-10-02', kept: 1, redone: ['a'], cut: [] } },
+      },
+    };
+    const out = stripPackNotes(JSON.stringify(set, null, 2));
+    expect(JSON.parse(out ?? '')).toEqual({
+      type: 'bark-set',
+      id: 'mayor-core',
+      lines: [
+        { id: 'a', text: 'hi', audioStatus: 'live' },
+        { id: 'b', text: 'yo', audioStatus: 'live' },
+      ],
+      meta: { status: 'live', voice: { model: 'm', reference: 'r' } },
+    });
+  });
+
   it('leaves a file without notes, and one that does not parse, alone', () => {
     expect(stripPackNotes('{"type":"bike","meta":{"status":"live"}}')).toBeNull();
     expect(stripPackNotes('{ not json')).toBeNull();
