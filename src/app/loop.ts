@@ -4,6 +4,8 @@
 
 export const MAX_FRAME_S = 0.25;
 export const MAX_STEPS_PER_FRAME = 4;
+/** The most steps one lockstep frame may run (a minute of sim): a typo'd count cannot freeze the page. */
+export const MAX_LOCKSTEP = 3600;
 
 export interface FramePlan {
   steps: number;
@@ -50,6 +52,24 @@ export interface GameLoop {
   readonly paused: boolean;
   /** Frame intervals of the last ~10 s, in ms, for the perf probe. */
   frameTimes(): readonly number[];
+  /**
+   * Lockstep, a test seam (docs/architecture.md, "Testing seams"; the browser specs only, through
+   * the test handle): with n set, every frame that steps runs exactly n sim steps whatever the wall
+   * time, then renders the last step whole (alpha 1). Sim time then no longer depends on how fast
+   * the runner draws: frame k of a race always shows tick k·n. null goes back to real time. The
+   * count is read again before every step, so a step listener can end a frame's run early (the
+   * test handle's fast-forward stops on its condition that way). Not sim state: the race is the
+   * same tick for tick at any n (the sim is stepped the same way, only the frames between differ).
+   */
+  setLockstep(steps: number | null): void;
+  readonly lockstep: number | null;
+}
+
+/** A lockstep count as the loop takes it: a whole number from 1 to MAX_LOCKSTEP, else null (real time). */
+export function lockstepSteps(steps: number | null): number | null {
+  if (steps === null || !Number.isFinite(steps)) return null;
+  const n = Math.floor(steps);
+  return n >= 1 ? Math.min(n, MAX_LOCKSTEP) : null;
 }
 
 export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
@@ -57,6 +77,7 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
   let last = -1;
   let paused = false;
   let started = false;
+  let lockstep: number | null = null;
   const times: number[] = [];
   const frame = (now: number) => {
     if (hooks.shouldRunFrame && !hooks.shouldRunFrame()) {
@@ -70,7 +91,10 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
       if (times.length > 600) times.shift();
     }
     let alpha = 1;
-    if (!paused && hooks.stepping()) {
+    if (!paused && hooks.stepping() && lockstep !== null) {
+      acc = 0;
+      for (let i = 0; lockstep !== null && i < lockstep && hooks.stepping(); i++) hooks.step();
+    } else if (!paused && hooks.stepping()) {
       const plan = planFrame(acc, elapsed, dt);
       acc = plan.accumulator;
       alpha = plan.alpha;
@@ -98,5 +122,12 @@ export function createLoop(hooks: LoopHooks, dt: number): GameLoop {
       return paused;
     },
     frameTimes: () => times,
+    setLockstep(steps) {
+      lockstep = lockstepSteps(steps);
+      acc = 0; // real time picks up from here, with no catch-up burst
+    },
+    get lockstep() {
+      return lockstep;
+    },
   };
 }
