@@ -223,6 +223,7 @@ test('backquote opens the see-through panel with one control per declaration; th
   for (let attempt = 0; attempt < 3 && shortGaps.length === 0; attempt++) {
     await page.evaluate(() => ((window as unknown as { __press: number[] }).__press = []));
     await page.mouse.down();
+    // eslint-disable-next-line no-restricted-syntax -- a short mouse press, under the long-press threshold: wall time by design
     await page.waitForTimeout(200);
     await page.mouse.up();
     const [down = 0, up = 0] = await page.evaluate(

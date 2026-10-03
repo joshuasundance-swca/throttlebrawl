@@ -198,6 +198,7 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
   let judged = false;
   for (let attempt = 1; attempt <= 3 && !judged; attempt++) {
     await untilLast(page, { brake: 0 });
+    // eslint-disable-next-line no-restricted-syntax -- debt: the flags clear on the next sim tick, so this should wait on a tick (inventory R8's helper cleanup)
     await page.waitForTimeout(200); // the last gesture's flags are sampled and cleared
     from = await tickCount(page);
     await takePointers(page);
@@ -205,6 +206,7 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
     t0 = now();
     await touch(cdp, 'touchStart', [{ ...attack, id }], t0);
     for (let i = 1; i <= 10; i++) {
+      // eslint-disable-next-line no-restricted-syntax -- a touch gesture's own timing: the kick swipe window is wall-clock ms by design
       await page.waitForTimeout(30);
       await touch(cdp, 'touchMove', [{ x: attack.x, y: attack.y + 3 * i, id }], t0 + 0.03 * i);
     }

@@ -124,6 +124,31 @@ describe('lint rules fire', () => {
       'modules/boundaries',
     ],
     ['a module importing main', 'src/app/probe.ts', "export * from '../main';", 'modules/boundaries'],
+    // Browser specs wait on the game, never on the clock (the determinism run, 2026-10-03).
+    [
+      'waitForTimeout in a browser spec',
+      'tests/e2e/probe.spec.ts',
+      'export const w = (p: { waitForTimeout(ms: number): Promise<void> }) => p.waitForTimeout(50);',
+      'no-restricted-syntax',
+    ],
+    [
+      'a sleep over the limit in a browser spec',
+      'tests/e2e/probe.spec.ts',
+      'export const s = new Promise((r) => setTimeout(r, 150));',
+      'no-restricted-syntax',
+    ],
+    [
+      'a sleep with a computed delay in a browser spec',
+      'tests/e2e/probe.ts',
+      'export const s = (ms: number) => new Promise((r) => window.setTimeout(r, ms));',
+      'no-restricted-syntax',
+    ],
+    [
+      'a long setInterval in a browser spec',
+      'tests/e2e/probe.spec.ts',
+      'export const i = setInterval(() => undefined, 1000);',
+      'no-restricted-syntax',
+    ],
   ])('%s', async (_name, file, code, rule) => {
     expect(await lint(file, code)).toContain(rule);
   });
@@ -157,6 +182,26 @@ describe('lint rules stay quiet on allowed code', () => {
       "export * from '../../app';\nexport * from '../../sim/api';",
     ],
     ['a sim unit test using Math.random', 'src/sim/probe.test.ts', 'export const r = Math.random();'],
+    [
+      'a short poll in a browser spec',
+      'tests/e2e/probe.spec.ts',
+      'export const i = setInterval(() => undefined, 5);',
+    ],
+    [
+      'a wait on the game in a browser spec',
+      'tests/e2e/probe.spec.ts',
+      'export const s = new Promise((r) => requestAnimationFrame(r));\nexport const t = setTimeout(() => undefined);',
+    ],
+    [
+      'a wall-time wait allowed with its reason',
+      'tests/e2e/probe.spec.ts',
+      'export const w = (p: { waitForTimeout(ms: number): Promise<void> }) =>\n  // eslint-disable-next-line no-restricted-syntax -- a long-press threshold\n  p.waitForTimeout(700);',
+    ],
+    [
+      'waitForTimeout outside the browser specs (the perf probe measures wall time)',
+      'tests/perf/probe.spec.ts',
+      'export const w = (p: { waitForTimeout(ms: number): Promise<void> }) => p.waitForTimeout(5000);',
+    ],
   ])('%s', async (_name, file, code) => {
     expect(await lint(file, code)).toEqual([]);
   });
