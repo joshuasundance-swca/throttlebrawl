@@ -26,6 +26,7 @@ export const MODIFIERS_TUNING: readonly TuningParamDecl[] = [
     step: 0.1,
     unit: '×',
     affectsSim: true,
+    system: true,
   },
 ];
 
