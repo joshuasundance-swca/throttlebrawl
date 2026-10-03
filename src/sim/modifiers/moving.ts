@@ -15,6 +15,17 @@ export const MOVING = {
   /** Serial signs: metres between them, and how far out they start when a warning sign stays. */
   serialGapM: 45,
   serialExtraM: 45,
+  // ---- placing a moving piece's vehicle (#391: the live check's duds)
+  /**
+   * A moving piece's vehicle goes on the road only once the leading racer is this close to its
+   * spot, m: inside traffic's keep-alive range (its 400 m window plus 50 m), so traffic never
+   * recycles it before the field gets there, and past traffic's 125 m fairness range.
+   */
+  spawnAheadM: 340,
+  /** Never put one on the road nearer than this ahead of the leading racer, m. */
+  spawnMinM: 160,
+  /** How many times a piece puts its vehicle back after traffic took it, before its beat. */
+  respawns: 2,
   // ---- the boat slide
   /** The gap between the tow truck's tail and the boat trailer's nose, m. */
   towGapM: 0.4,
