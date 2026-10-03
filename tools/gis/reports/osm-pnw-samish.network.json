@@ -20,9 +20,9 @@
   "branches": [
     {
       "id": "osm-samish-north-shore",
-      "mainM": 5360.2,
-      "branchM": 5616.0,
-      "savesM": -255.8
+      "mainM": 5430.2,
+      "branchM": 5680.3,
+      "savesM": -250.1
     }
   ],
   "routes": {

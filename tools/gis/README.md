@@ -148,7 +148,7 @@ real junction choice.
 | Network (pack) | Route (picker name) | Main line | Junction choice | Drift closed |
 |---|---|---|---|---|
 | `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 7.17 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic to Higgs Beach: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down Truman Avenue and White Street to Atlantic: a shortcut, 170 m shorter | 14.8 and 40.4 m (main), 13.2 m (branch) |
-| `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 256 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
+| `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 250 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
 
 Key West's frame origin (24.5675, -81.7475) is the one, of the 11 tried, that draws its busiest view
 (Stock Island looking west at the Triangle, where US 1 runs straight on into North Roosevelt) in

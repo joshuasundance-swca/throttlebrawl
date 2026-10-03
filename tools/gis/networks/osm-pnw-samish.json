@@ -305,11 +305,11 @@
           "d0": 8,
           "d1": 12.5
         },
-        "insetM": 200,
+        "insetM": 140,
         "toOffsetM": 2,
         "toLane": "R1",
-        "turnsM": [20, 20],
-        "shiftM": 160
+        "turnsM": [40, 40],
+        "shiftM": 90
       },
       "join": {
         "at": {
