@@ -145,6 +145,8 @@ export interface RoadSceneStats {
   chunks: number;
   triangles: number;
   railM: number;
+  /** Plank seams drawn across boardwalks (run W-U). */
+  boardSeams: number;
   rampStripes: number;
   pylons: number;
   /** Metres of road with a land strip beside it (roadside zones; walkways on railed sides excluded). */
@@ -328,6 +330,11 @@ function barriersFor(
 
 /** The shortcut surface sits this far above the main road, so the two never flicker where they overlap. */
 export const SHORTCUT_LIFT_M = 0.05;
+/** A secret fork's surface sits this much higher again, over the shortcut it leaves (run W-U). */
+export const SECRET_LIFT_M = 0.04;
+/** A boardwalk's plank pitch and the dark seam between two planks, m (run W-U). [default] */
+export const BOARD_M = 1.4;
+const BOARD_SEAM_M = 0.09;
 /** Lift of the painted split zone over the main road (under the lane markings at 0.03). */
 const ZONE_LIFT_M = 0.015;
 /** Width of a painted line, m. */
@@ -701,7 +708,13 @@ export function buildRoadScene(
   const w = (edge: number, s: number, d: number, h: number): Point3 => road.toWorld(edge, s, d, h);
   const locator = new EdgeLocator(road);
   const gores = goreLines(road);
-  const zones = road.splitZones();
+  // Run W-U: a fork onto a road tagged 'secret' (the Keys' Unlisted Key, off the sandbar) is never
+  // painted: no zone, no chevrons. The sim still takes it by position.
+  const secretEdge = (index: number): boolean => {
+    const edge = road.edges[index];
+    return !!edge && (dressingOf(edge, dressing).tags ?? []).some((t) => t.tag === 'secret');
+  };
+  const zones = road.splitZones().filter((z) => !secretEdge(z.toEdge));
   /** Whether a main (non-shortcut) road draws its surface under a point of edge e. */
   const underMain = (e: Edge, s: number, d: number): boolean => {
     const p = w(e.index, s, d, 0);
@@ -761,6 +774,7 @@ export function buildRoadScene(
   const bentMatrices: Matrix4[] = [];
   const nearWater = terrain ? waterGrid(road, dressing) : () => false;
   let railM = 0;
+  let boardSeams = 0;
   let rampStripes = 0;
   let landM = 0;
   let minX = Infinity;
@@ -775,7 +789,9 @@ export function buildRoadScene(
     const outerR = e.dMax + VERGE_M;
     const shortcutEdge = hasShortcut(e);
     const gore = gores.get(e.index);
-    const lift = shortcutEdge ? SHORTCUT_LIFT_M : 0;
+    // A secret fork leaves a shortcut road, and both are shortcut surfaces: it draws just over the
+    // road it leaves, in the same colour, so the two never flicker where they overlap (run W-U).
+    const lift = shortcutEdge ? SHORTCUT_LIFT_M + (secretEdge(e.index) ? SECRET_LIFT_M : 0) : 0;
     for (const kind of ['road', 'shortcut', 'shoulder', 'marking', 'markingCenter', 'deck'] as const) {
       strip(kind).breakStrip();
     }
@@ -852,6 +868,23 @@ export function buildRoadScene(
         a.pair(w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift));
       });
       a.breakStrip();
+    }
+    // Run W-U (the Keys' Mangrove Boardwalk): a road tagged 'boardwalk' is planks, a dark seam
+    // across its lanes every BOARD_M (in the road's own colour, so no draw call is added).
+    if ((dress.tags ?? []).some((t) => t.tag === 'boardwalk')) {
+      const seams = strip('road');
+      for (let s = BOARD_M / 2; s + BOARD_SEAM_M < e.length; s += BOARD_M) {
+        const l = laneSpans(road.lanesAt(e.index, s));
+        const span = l.shortcut ?? l.drive;
+        if (!span) continue;
+        seams.quad(
+          w(e.index, s, span[0], lift + 0.01),
+          w(e.index, s, span[1], lift + 0.01),
+          w(e.index, s + BOARD_SEAM_M, span[0], lift + 0.01),
+          w(e.index, s + BOARD_SEAM_M, span[1], lift + 0.01),
+        );
+        boardSeams++;
+      }
     }
     // The gore line: where the split zone's inner edge bounds the shortcut, a solid white line.
     for (const left of [true, false]) {
@@ -1845,6 +1878,7 @@ export function buildRoadScene(
       chunks: chunkGroups.size,
       triangles,
       railM,
+      boardSeams,
       rampStripes,
       pylons: pylonSpots.length,
       landM,

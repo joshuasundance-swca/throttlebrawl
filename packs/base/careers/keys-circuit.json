@@ -85,7 +85,7 @@
         "road": "m1-sandbar-causeway",
         "s": 300
       },
-      "opens": ["m1-mangrove-cut"],
+      "opens": ["m1-mangrove-cut", "m1-mangrove-bend", "m1-mangrove-boardwalk", "m1-mangrove-reach"],
       "claims": ["m1-sandbar-causeway"]
     },
     {
@@ -95,10 +95,16 @@
       "tier": "t2",
       "at": {
         "road": "m1-mangrove-cut",
-        "s": 400
+        "s": 100
       },
       "opens": ["m1-conch-row"],
-      "claims": ["m1-mangrove-cut", "m1-tarpon-flats"]
+      "claims": [
+        "m1-mangrove-cut",
+        "m1-mangrove-bend",
+        "m1-mangrove-boardwalk",
+        "m1-mangrove-reach",
+        "m1-tarpon-flats"
+      ]
     },
     {
       "id": "chad-grudge",
@@ -181,6 +187,18 @@
       },
       "ref": "keys-bootleg",
       "atFraction": 0.55
+    },
+    {
+      "id": "unlisted-key",
+      "kind": "road",
+      "name": "Unlisted Key",
+      "at": {
+        "road": "m1-unlisted-key",
+        "s": 180
+      },
+      "ref": "m1-unlisted-key",
+      "roads": ["c-unlisted-in", "m1-unlisted-key", "c-unlisted-out"],
+      "cash": 500
     },
     {
       "id": "tip-cooler",

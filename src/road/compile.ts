@@ -119,7 +119,9 @@ export interface BranchSource {
   /**
    * The main road whose `to` end the branch leaves (the next main road must be a connector), the
    * lateral offset on that road where the branch centreline starts, the main lane its row names,
-   * and the split zone: the last `lengthM` of the road, between d0 and d1.
+   * and the split zone: the last `lengthM` of the road, between d0 and d1. Run W-U (the Keys'
+   * secret island, found from a marked shortcut): the road may instead be a road of an EARLIER
+   * branch in the list, whose next road there is a connector (a branch off a branch).
    */
   leave: {
     road: string;
@@ -127,14 +129,26 @@ export interface BranchSource {
     lane: string;
     zone: { lengthM: number; d0: number; d1: number };
   };
-  /** The main road whose `from` end the branch rejoins (the previous main road must be a connector). */
+  /**
+   * The main road whose `from` end the branch rejoins (the previous main road must be a connector),
+   * or, for a branch off a branch, a road of that same earlier branch past its leave.
+   */
   join: { road: string; offsetM: number; lane: string };
   /** Lengths of the smooth turns at the branch's two ends, metres. */
   turnsM: readonly [number, number];
+  /**
+   * Points the branch passes through on its way, in order (run W-U): world x and z, the heading
+   * there in degrees (0 north, 90 east) and the length of the smooth turns either side of it. The
+   * curve is a turn, a straight and a turn between each pair of points, so a branch with a via point
+   * may bow out past the chord of a bend (a loop out to an island). None: one turn, straight, turn.
+   */
+  via?: readonly { x: number; z: number; headingDeg: number; turnM: number }[];
   lanes: readonly LaneInfo[];
   /**
    * Roads cut from the branch curve, in order; the first and last are the junctions' connector
-   * roads. Every road but the last needs `lengthM`; the last takes what is left.
+   * roads. Every road but the last needs `lengthM`; the last takes what is left. A middle road
+   * marked `connector` (run W-U) is a junction where a later branch leaves or rejoins this one:
+   * the roads either side of it meet there, with a through row for each of the branch's lanes.
    */
   roads: readonly RoadSource[];
   /**
@@ -451,6 +465,47 @@ export function buildBranchCurve(
   return { step: du, length, x, z, heading, kappa };
 }
 
+/**
+ * A branch through via points (run W-U): one turn-straight-turn curve between each pair of points,
+ * joined end to end (each via point's heading is both curves' heading there, and every turn eases
+ * to zero curvature at its ends, so the joins are smooth), then resampled at one even step.
+ */
+export function buildBranchPath(
+  points: readonly { x: number; z: number; h: number }[],
+  turns: readonly (readonly [number, number])[],
+): Centreline {
+  const parts: Centreline[] = [];
+  for (let k = 0; k + 1 < points.length; k++) {
+    const a = points[k] as { x: number; z: number; h: number };
+    const b = points[k + 1] as { x: number; z: number; h: number };
+    const t = turns[k] as readonly [number, number];
+    parts.push(buildBranchCurve(a.x, a.z, a.h, b.x, b.z, b.h, t[0], t[1]));
+  }
+  if (parts.length === 1) return parts[0] as Centreline;
+  const length = parts.reduce((sum, p) => sum + p.length, 0);
+  const n = Math.max(8, Math.round(length / FINE_STEP));
+  const du = length / n;
+  const out: Centreline = { step: du, length, x: [], z: [], heading: [], kappa: [] };
+  let k = 0;
+  let before = 0;
+  for (let i = 0; i <= n; i++) {
+    const u = i === n ? length : i * du;
+    while (k < parts.length - 1 && u > before + (parts[k] as Centreline).length) {
+      before += (parts[k] as Centreline).length;
+      k++;
+    }
+    const p = parts[k] as Centreline;
+    const local = Math.min(p.length, Math.max(0, u - before));
+    out.x.push(sampleAt(p.x, p.step, local));
+    out.z.push(sampleAt(p.z, p.step, local));
+    out.heading.push(sampleAt(p.heading, p.step, local));
+    out.kappa.push(sampleAt(p.kappa, p.step, local));
+  }
+  return out;
+}
+
+const DEG = 3.141592653589793 / 180;
+
 const provenance = (createdAt: string) => ({
   origin: 'agent',
   author: 'agent',
@@ -576,33 +631,55 @@ export function compileTrack(src: TrackSource): CompiledTrack {
   const branchCuts: Cut[] = [];
   /** Each branch's roads, with the main-road indices it leaves after and rejoins at. */
   const branchSpans: { leave: number; join: number; ids: string[]; named?: BranchSource['named'] }[] = [];
-  const offsetPoint = (s: number, offset: number): [number, number, number] => {
-    const h = sampleAt(line.heading, line.step, s);
+  const offsetPoint = (l: Centreline, s: number, offset: number): [number, number, number] => {
+    const h = sampleAt(l.heading, l.step, s);
     // The right of heading h (0 = north, + toward east) is (cos h, sin h) in (x, z).
-    return [
-      sampleAt(line.x, line.step, s) + offset * cos(h),
-      sampleAt(line.z, line.step, s) + offset * sin(h),
-      h,
-    ];
+    return [sampleAt(l.x, l.step, s) + offset * cos(h), sampleAt(l.z, l.step, s) + offset * sin(h), h];
   };
+  // Each road's chain (the main road, or a branch's roads), its place there and the chain's
+  // connector junctions by index, so a later branch can leave or rejoin a branch (run W-U).
+  type Chain = {
+    cuts: Cut[];
+    junctions: Map<number, JunctionOut>;
+    span: (typeof branchSpans)[number] | null;
+  };
+  const chainOf = new Map<string, { chain: Chain; i: number }>();
+  const mainChain: Chain = { cuts: main, junctions: junctionOfConnector, span: null };
+  main.forEach((c, i) => chainOf.set(c.road.id, { chain: mainChain, i }));
   for (const br of src.branches ?? []) {
-    const ai = main.findIndex((c) => c.road.id === br.leave.road);
-    const bi = main.findIndex((c) => c.road.id === br.join.road);
-    const a = main[ai];
-    const b = main[bi];
-    const jSplit = junctionOfConnector.get(ai + 1);
-    const jMerge = junctionOfConnector.get(bi - 1);
-    if (!a || !b || !jSplit || !jMerge || bi <= ai) {
+    const at = chainOf.get(br.leave.road);
+    const to = chainOf.get(br.join.road);
+    const chain = at?.chain;
+    const ai = at?.i ?? -1;
+    const bi = to?.i ?? -1;
+    const a = chain?.cuts[ai];
+    const b = chain?.cuts[bi];
+    const jSplit = chain?.junctions.get(ai + 1);
+    const jMerge = chain?.junctions.get(bi - 1);
+    if (!chain || to?.chain !== chain || !a || !b || !jSplit || !jMerge || bi <= ai) {
       throw new Error(
         `branch ${br.roads[0]?.id}: leave and join need a connector piece after and before them`,
       );
     }
     if (br.roads.length < 3) throw new Error('a branch needs a connector, a road and a connector');
-    const sA = a.start + a.length;
-    const sB = b.start;
-    const [x0, z0, h0] = offsetPoint(sA, br.leave.offsetM);
-    const [x1, z1, h1] = offsetPoint(sB, br.join.offsetM);
-    const curve = buildBranchCurve(x0, z0, h0, x1, z1, h1, br.turnsM[0], br.turnsM[1]);
+    if (chain.span && br.named)
+      throw new Error(`branch ${br.roads[0]?.id}: a branch off a branch is not named`);
+    const [x0, z0, h0] = offsetPoint(a.line, a.start + a.length, br.leave.offsetM);
+    const [x1, z1, h1] = offsetPoint(b.line, b.start, br.join.offsetM);
+    const via = br.via ?? [];
+    const curve =
+      via.length === 0
+        ? buildBranchCurve(x0, z0, h0, x1, z1, h1, br.turnsM[0], br.turnsM[1])
+        : buildBranchPath(
+            [
+              { x: x0, z: z0, h: h0 },
+              ...via.map((v) => ({ x: v.x, z: v.z, h: v.headingDeg * DEG })),
+              { x: x1, z: z1, h: h1 },
+            ],
+            via
+              .map((v, k) => [k === 0 ? br.turnsM[0] : (via[k - 1]?.turnM ?? 0), v.turnM] as const)
+              .concat([[via[via.length - 1]?.turnM ?? 0, br.turnsM[1]]]),
+          );
     const cuts = cutCurve(curve, br.roads, br.lanes);
     const kIn = cuts[0] as Cut;
     const kOut = cuts[cuts.length - 1] as Cut;
@@ -615,9 +692,36 @@ export function compileTrack(src: TrackSource): CompiledTrack {
     kOut.from = jMerge.id;
     kOut.to = jMerge.id;
     lastRoad.to = jMerge.id;
+    const own = new Map<number, JunctionOut>();
     for (let i = 1; i < cuts.length - 2; i++) {
       const c = cuts[i] as Cut;
       const n = cuts[i + 1] as Cut;
+      if (c.road.connector) continue;
+      if (n.road.connector) {
+        // A connector piece inside the branch (run W-U): a junction where a later branch leaves or
+        // rejoins this one, with a through row per lane.
+        const m = cuts[i + 2];
+        if (i + 2 > cuts.length - 2 || !m || m.road.connector) {
+          throw new Error(`connector ${n.road.id} must sit between two ordinary roads`);
+        }
+        const j = newJunction(point(curve, n.start + n.length / 2));
+        own.set(i + 1, j);
+        c.to = j.id;
+        n.from = j.id;
+        n.to = j.id;
+        m.from = j.id;
+        j.ends.push({ road: c.road.id, end: 'to' }, { road: m.road.id, end: 'from' });
+        for (const l of n.lanes) {
+          if (l.kind !== 'drive' && l.kind !== 'shortcut') continue;
+          j.connectors.push({
+            id: `cx-${n.road.id}-${l.id.toLowerCase()}`,
+            road: n.road.id,
+            from: { road: c.road.id, end: 'to', lane: l.id },
+            to: { road: m.road.id, end: 'from', lane: l.id },
+          });
+        }
+        continue;
+      }
       const j = newJunction(point(curve, c.start + c.length));
       j.ends.push({ road: c.road.id, end: 'to' }, { road: n.road.id, end: 'from' });
       c.to = j.id;
@@ -644,12 +748,17 @@ export function compileTrack(src: TrackSource): CompiledTrack {
       to: { road: b.road.id, end: 'from', lane: br.join.lane },
     });
     branchCuts.push(...cuts);
-    branchSpans.push({
-      leave: ai,
-      join: bi,
-      ids: cuts.map((c) => c.road.id),
-      ...(br.named ? { named: br.named } : {}),
-    });
+    const ids = cuts.map((c) => c.road.id);
+    let span = chain.span;
+    if (span) {
+      // A branch off a branch is part of it: a route allows it with its parent, under its name.
+      span.ids.push(...ids);
+    } else {
+      span = { leave: ai, join: bi, ids, ...(br.named ? { named: br.named } : {}) };
+      branchSpans.push(span);
+    }
+    const branchChain: Chain = { cuts, junctions: own, span };
+    cuts.forEach((c, i) => chainOf.set(c.road.id, { chain: branchChain, i }));
   }
 
   const roads = [...main, ...branchCuts].map((cut) => {

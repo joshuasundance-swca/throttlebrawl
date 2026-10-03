@@ -10,7 +10,7 @@
 // `node tools/road/bake.mjs`.
 //
 // Frame: metres, x east, z south (north is -z). The start faces north.
-import type { TrackSource } from '../../../src/road/compile';
+import type { RoadSource, TrackSource } from '../../../src/road/compile';
 
 // Travel lanes 4.0 m wide (M1 had 3.4 m): playtest 1 found the road too narrow to weave round
 // traffic. The rideable shoulders stay 1.5 m, so the road's edge is 5.5 m either side of centre.
@@ -20,6 +20,41 @@ const LANES = [
   { id: 'R1', dCenterM: 2, widthM: 4, direction: 1, kind: 'drive' },
   { id: 'R0', dCenterM: 4.75, widthM: 1.5, direction: 1, kind: 'shoulder' },
 ] as const;
+
+// Run W-U: the Mangrove Boardwalk's dressing and the secret island's, set from the baked geometry.
+// The boardwalk (about 547 m) is 6 m from the main road's centre where it leaves and 5 m where it
+// rejoins, and 14 m or more (clear of the main road's lanes and verge) from s 30 to s 505.
+const BOARDWALK_TAGS: RoadSource['tags'] = [
+  // Planks laid on the swamp (render's road mesh draws the boards across the surface). No rails:
+  // they stand only on bridges and drops (interview, 2026-10-02); the water's edge holds a rider.
+  { s0: 0, s1: 'end', side: 'both', tag: 'boardwalk' },
+  // Mangroves crowd its left; its right is the open channel between it and the Mangrove Bend.
+  { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+  { s0: 0, s1: 'end', side: 'right', tag: 'water-shallow' },
+  // The airboats (render/airboats.ts) run up and down the channel, and pace a rider on the planks.
+  { s0: 70, s1: 465, side: 'right', tag: 'airboats' },
+];
+const BOARDWALK_FEATURES: RoadSource['features'] = [
+  {
+    kind: 'billboard',
+    id: 'sign-boardwalk-gators',
+    s0: 60,
+    s1: 70,
+    d0: -12,
+    d1: -9.5,
+    item: 'boardwalk-gators',
+  },
+  { kind: 'billboard', id: 'sign-boardwalk-no-wake', s0: 290, s1: 300, d0: -12, d1: -9.5, item: 'no-wake' },
+];
+// Unlisted Key (about 368 m): a palm island with a tiki bar nobody has found (roadside.ts' secret key).
+const UNLISTED_TAGS: RoadSource['tags'] = [
+  { s0: 0, s1: 'end', side: 'both', tag: 'palms' },
+  { s0: 0, s1: 'end', side: 'both', tag: 'key-secret' },
+];
+const UNLISTED_FEATURES: RoadSource['features'] = [
+  { kind: 'billboard', id: 'sign-unlisted-key', s0: 60, s1: 70, d0: -12, d1: -9.5, item: 'unlisted-key' },
+  { kind: 'billboard', id: 'sign-unlisted-tiki', s0: 200, s1: 210, d0: -12, d1: -9.5, item: 'unlisted-tiki' },
+];
 
 export const KEYS_M1: TrackSource = {
   network: {
@@ -528,17 +563,105 @@ export const KEYS_M1: TrackSource = {
       barriers: [],
     },
     // road-3: the standard and long race lengths carry on from here.
+    // Run W-U (the pitch deck's #7, the Keys' rest: "a mangrove boardwalk with airboats alongside"):
+    // the Mangrove Cut's 1250 m is now five pieces, so the Mangrove Boardwalk can leave it where the
+    // road bows east round the swamp and rejoin it where it swings back: the cut's first 200 m, the
+    // boardwalk's split, the Mangrove Bend (the bow), the boardwalk's merge, and the Mangrove Reach
+    // to the sandbar's split. The curve is the same, so every other road keeps its place.
     {
       id: 'm1-mangrove-cut',
       name: 'Mangrove Cut',
-      lengthM: 1250,
+      lengthM: 200,
       speedLimitMps: 24.6,
       surface: 'asphalt',
-      humps: [{ centreM: 900, lengthM: 200, heightM: 2 }],
+      humps: [],
       tags: [
         { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
-        { s0: 0, s1: 600, side: 'left', tag: 'swamp' },
-        { s0: 900, s1: 'end', side: 'right', tag: 'water-shallow' },
+        { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+      ],
+      features: [
+        // The junction choice, signed on its side (the boardwalk leaves on the left).
+        {
+          kind: 'billboard',
+          id: 'sign-mangrove-boardwalk',
+          s0: 120,
+          s1: 130,
+          d0: -9,
+          d1: -6.5,
+          item: 'boardwalk-keep-left',
+        },
+      ],
+      barriers: [],
+    },
+    {
+      // Run W-U: the boardwalk's split, the Mangrove Cut's old s 200 to 230.
+      id: 'c-boardwalk-split-main',
+      name: 'Boardwalk split',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
+        { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+      ],
+      features: [],
+      barriers: [],
+    },
+    {
+      // Run W-U: the bow round the swamp, the Mangrove Cut's old s 230 to 820. The boardwalk runs
+      // across its chord, so the left side is the open channel between them, where the airboats run.
+      id: 'm1-mangrove-bend',
+      name: 'Mangrove Bend',
+      lengthM: 590,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [
+        { s0: 0, s1: 'end', side: 'right', tag: 'mangrove' },
+        { s0: 0, s1: 60, side: 'left', tag: 'swamp' },
+        { s0: 60, s1: 530, side: 'left', tag: 'water-shallow' },
+        { s0: 530, s1: 'end', side: 'left', tag: 'mangrove' },
+      ],
+      features: [
+        {
+          kind: 'billboard',
+          id: 'bb-bend-prop-wash',
+          s0: 260,
+          s1: 300,
+          d0: 7,
+          d1: 16,
+          item: 'prop-wash',
+        },
+      ],
+      barriers: [],
+    },
+    {
+      // Run W-U: the boardwalk's merge, the Mangrove Cut's old s 820 to 850.
+      id: 'c-boardwalk-merge-main',
+      name: 'Boardwalk merge',
+      connector: true,
+      lengthM: 30,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [],
+      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'mangrove' }],
+      features: [],
+      barriers: [],
+    },
+    {
+      // Run W-U: the Mangrove Cut's old s 850 to 1250, to the sandbar's split. Its hump moved from
+      // the old s 900 (now 50, too near a junction) to 200.
+      id: 'm1-mangrove-reach',
+      name: 'Mangrove Reach',
+      lengthM: 400,
+      speedLimitMps: 24.6,
+      surface: 'asphalt',
+      humps: [{ centreM: 200, lengthM: 200, heightM: 2 }],
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'mangrove' },
+        { s0: 50, s1: 'end', side: 'right', tag: 'water-shallow' },
       ],
       features: [],
       barriers: [],
@@ -769,8 +892,9 @@ export const KEYS_M1: TrackSource = {
       // and back at the foot of Conch Row: shorter, loose, over a hummock, with the junkyard key on
       // the other side of the water. Every route that reaches its split takes it too (the short
       // sprint ends before it). Keep left at the end of the mangroves to take it.
+      // Run W-U: it leaves the Mangrove Reach, the old Mangrove Cut's last piece, at the same spot.
       leave: {
-        road: 'm1-mangrove-cut',
+        road: 'm1-mangrove-reach',
         offsetM: -4,
         lane: 'L1',
         zone: { lengthM: 40, d0: -5.5, d1: -3 },
@@ -801,6 +925,8 @@ export const KEYS_M1: TrackSource = {
         {
           id: 'm1-sandbar-flats',
           name: 'Sandbar Flats',
+          // Run W-U: the sandbar's first 560 m; past it the secret island's turn-off.
+          lengthM: 560,
           speedLimitMps: 24.6,
           surface: 'sand',
           humps: [],
@@ -817,7 +943,64 @@ export const KEYS_M1: TrackSource = {
               d1: 12,
               item: 'sandbar-not-advised',
             },
+            // Run W-U: the only sign the secret island gets, before its unpainted turn-off.
+            {
+              kind: 'billboard',
+              id: 'sign-sandbar-nothing-out-there',
+              s0: 470,
+              s1: 480,
+              d0: 9.5,
+              d1: 12,
+              item: 'nothing-out-there',
+            },
           ],
+          barriers: [],
+        },
+        {
+          // Run W-U: the secret island's turn-off, a junction inside the sandbar.
+          id: 'c-unlisted-split-sandbar',
+          name: 'Sandbar fork',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-sandbar-spit',
+          name: 'Sandbar Spit',
+          lengthM: 290,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          // Run W-U: where the secret island's loop comes back.
+          id: 'c-unlisted-merge-sandbar',
+          name: 'Sandbar rejoin',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-sandbar-shoal',
+          name: 'Sandbar Shoal',
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'beach' }],
+          features: [],
           barriers: [],
         },
         {
@@ -909,6 +1092,133 @@ export const KEYS_M1: TrackSource = {
         },
       ],
     },
+    {
+      // Run W-U (the pitch deck's #7, the Keys' rest: "a mangrove boardwalk with airboats alongside";
+      // interview, 2026-10-02: "mangrove back roads (airboats, gators, shacks)"): the Mangrove
+      // Boardwalk, a plank walk straight through the swamp across the Mangrove Bend's chord,
+      // mangroves on its left and the open channel on its right, where the airboats run beside you.
+      // About 45 m shorter than the bend but on planks (ridden as brick, 5 % slower: the surface list
+      // has no wood), so it is about as quick: an alternate. Keep left at the end of the Mangrove Cut.
+      leave: {
+        road: 'm1-mangrove-cut',
+        offsetM: -4,
+        lane: 'L1',
+        zone: { lengthM: 40, d0: -5.5, d1: -3 },
+      },
+      join: { road: 'm1-mangrove-reach', offsetM: -3, lane: 'L1' },
+      turnsM: [120, 80],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      named: {
+        id: 'm1-mangrove-boardwalk',
+        kind: 'alternate',
+        marked: true,
+        sign: 'BOARDWALK: KEEP LEFT. Planks rated for one tourist.',
+      },
+      roads: [
+        {
+          id: 'c-boardwalk-in',
+          name: 'Boardwalk steps',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'brick',
+          humps: [],
+          // Mangroves on the left; on the right the channel already, where the main road is near.
+          tags: [
+            { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+            { s0: 0, s1: 'end', side: 'right', tag: 'water-shallow' },
+          ],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-mangrove-boardwalk',
+          name: 'Mangrove Boardwalk',
+          speedLimitMps: 24.6,
+          surface: 'brick',
+          humps: [],
+          tags: BOARDWALK_TAGS,
+          features: BOARDWALK_FEATURES,
+          barriers: [],
+        },
+        {
+          id: 'c-boardwalk-out',
+          name: 'Boardwalk steps down',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'brick',
+          humps: [],
+          // Mangroves on the left; on the right the channel already, where the main road is near.
+          tags: [
+            { s0: 0, s1: 'end', side: 'left', tag: 'swamp' },
+            { s0: 0, s1: 'end', side: 'right', tag: 'water-shallow' },
+          ],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
+    {
+      // Run W-U (the pitch deck's #7: "a secret island"; interview, 2026-10-02, round 2: "a secret
+      // island"): Unlisted Key, found from the marked sandbar. Hug the sandbar's left edge (or ride its
+      // beach) past the NOTHING OUT THERE sign, and an unpainted fork loops out across the shallows to
+      // a little island with a tiki bar nobody has found, and back onto the sandbar further on: about
+      // 70 m longer. A branch off a branch: the routes allow it with the sandbar, it carries no name
+      // of its own, and the career map shows it as a '?' until it is found (packs/base/careers).
+      leave: {
+        road: 'm1-sandbar-flats',
+        offsetM: -2,
+        lane: 'S1',
+        zone: { lengthM: 40, d0: -8.5, d1: -2 },
+      },
+      join: { road: 'm1-sandbar-shoal', offsetM: -2, lane: 'S1' },
+      turnsM: [60, 60],
+      via: [{ x: 1920.5, z: -4310, headingDeg: 80, turnM: 70 }],
+      lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
+      roads: [
+        {
+          id: 'c-unlisted-in',
+          name: 'Unlisted fork',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [
+            { s0: 0, s1: 'end', side: 'both', tag: 'beach' },
+            { s0: 0, s1: 'end', side: 'both', tag: 'secret' },
+          ],
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'm1-unlisted-key',
+          name: 'Unlisted Key',
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: UNLISTED_TAGS,
+          features: UNLISTED_FEATURES,
+          barriers: [],
+        },
+        {
+          id: 'c-unlisted-out',
+          name: 'Unlisted rejoin',
+          connector: true,
+          lengthM: 30,
+          speedLimitMps: 24.6,
+          surface: 'sand',
+          humps: [],
+          tags: [
+            { s0: 0, s1: 'end', side: 'both', tag: 'beach' },
+            { s0: 0, s1: 'end', side: 'both', tag: 'secret' },
+          ],
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
   ],
   routes: [
     {
@@ -932,7 +1242,8 @@ export const KEYS_M1: TrackSource = {
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
         { road: 'm1-sandbar-causeway', s: 500 },
-        { road: 'm1-mangrove-cut', s: 600 },
+        // Run W-U: on the Mangrove Reach, which the boardwalk and the bend both reach.
+        { road: 'm1-mangrove-reach', s: 200 },
         // Run W-R: none on Tarpon Flats, which the sandbar skips.
         { road: 'm1-conch-row', s: 600 },
       ],
@@ -947,7 +1258,8 @@ export const KEYS_M1: TrackSource = {
         { road: 'm1-pelican-bridge', s: 300 },
         { road: 'm1-pelican-bridge', s: 1000 },
         { road: 'm1-sandbar-causeway', s: 500 },
-        { road: 'm1-mangrove-cut', s: 600 },
+        // Run W-U: on the Mangrove Reach, which the boardwalk and the bend both reach.
+        { road: 'm1-mangrove-reach', s: 200 },
         // Run W-R: none on Tarpon Flats, which the sandbar skips.
         { road: 'm1-conch-row', s: 600 },
         { road: 'm1-long-bridge', s: 1150 },

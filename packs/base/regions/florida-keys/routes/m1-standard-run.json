@@ -10,6 +10,8 @@
     "m1-pelican-bridge",
     "m1-sandbar-causeway",
     "m1-mangrove-cut",
+    "m1-mangrove-bend",
+    "m1-mangrove-reach",
     "m1-tarpon-flats",
     "m1-conch-row"
   ],
@@ -21,22 +23,36 @@
     "m1-pelican-bridge",
     "m1-sandbar-causeway",
     "m1-mangrove-cut",
+    "c-boardwalk-split-main",
+    "m1-mangrove-bend",
+    "c-boardwalk-merge-main",
+    "m1-mangrove-reach",
     "c-sandbar-flats-split-main",
     "m1-tarpon-flats",
     "c-sandbar-flats-merge-main",
     "m1-conch-row",
     "c-sandbar-flats-in",
     "m1-sandbar-flats",
+    "c-unlisted-split-sandbar",
+    "m1-sandbar-spit",
+    "c-unlisted-merge-sandbar",
+    "m1-sandbar-shoal",
     "c-sandbar-flats-out",
     "c-boat-ramp-in",
     "m1-boat-ramp-cut",
-    "c-boat-ramp-out"
+    "c-boat-ramp-out",
+    "c-boardwalk-in",
+    "m1-mangrove-boardwalk",
+    "c-boardwalk-out",
+    "c-unlisted-in",
+    "m1-unlisted-key",
+    "c-unlisted-out"
   ],
   "checkpoints": [
     { "road": "m1-pelican-bridge", "s": 300 },
     { "road": "m1-pelican-bridge", "s": 1000 },
     { "road": "m1-sandbar-causeway", "s": 500 },
-    { "road": "m1-mangrove-cut", "s": 600 },
+    { "road": "m1-mangrove-reach", "s": 200 },
     { "road": "m1-conch-row", "s": 600 }
   ],
   "branches": [
@@ -45,7 +61,18 @@
       "kind": "shortcut",
       "marked": true,
       "sign": "SANDBAR: NOT ADVISED. Advice not taken.",
-      "roads": ["c-sandbar-flats-in", "m1-sandbar-flats", "c-sandbar-flats-out"]
+      "roads": [
+        "c-sandbar-flats-in",
+        "m1-sandbar-flats",
+        "c-unlisted-split-sandbar",
+        "m1-sandbar-spit",
+        "c-unlisted-merge-sandbar",
+        "m1-sandbar-shoal",
+        "c-sandbar-flats-out",
+        "c-unlisted-in",
+        "m1-unlisted-key",
+        "c-unlisted-out"
+      ]
     },
     {
       "id": "m1-boat-ramp-cut",
@@ -53,6 +80,13 @@
       "marked": true,
       "sign": "BOAT RAMP: KEEP RIGHT. Trailers only. Nobody checks.",
       "roads": ["c-boat-ramp-in", "m1-boat-ramp-cut", "c-boat-ramp-out"]
+    },
+    {
+      "id": "m1-mangrove-boardwalk",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "BOARDWALK: KEEP LEFT. Planks rated for one tourist.",
+      "roads": ["c-boardwalk-in", "m1-mangrove-boardwalk", "c-boardwalk-out"]
     }
   ],
   "closed": false,
