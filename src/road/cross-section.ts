@@ -60,6 +60,14 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // San Francisco's Chinatown and North Beach (run W-U; pitch deck #8): a side street's mouth is
+  // open asphalt (presentation only, like downtown's cross streets); the hill's park is grass; the
+  // Chinatown shopfronts stand behind a 4 m pavement; North Beach's pavement ends at the low rail of
+  // the cafe patios (the patios and the cafes behind them are drawn past the edge).
+  ['side-street', band(14, 'shoulder', 'soft')],
+  ['hill-park', band(9, 'grass', 'soft')],
+  ['lanterns', band(4, 'kerb', 'hard')],
+  ['cafes', band(3.2, 'kerb', 'hard')],
   // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
   // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
   // it); a plaza is wide open paving; the towers stand behind a sidewalk.

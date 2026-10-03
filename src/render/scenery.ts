@@ -31,7 +31,11 @@ export type SideTheme =
   // run W-R, San Francisco's downtown (render/downtown.ts draws what stands there)
   | 'crossing'
   | 'plaza'
-  | 'downtown';
+  | 'downtown'
+  // run W-U, San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws them)
+  | 'lanterns'
+  | 'cafes'
+  | 'park';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -59,12 +63,21 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (pitch deck #8): Chinatown's shopfronts, North Beach's cafes, a block's side street and
+  // the hill's park. Nothing of the scatter's stands there; render/chinatown-northbeach.ts draws it.
+  lanterns: 'lanterns',
+  cafes: 'cafes',
+  'side-street': 'crossing',
+  'hill-park': 'park',
 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  'park',
+  'lanterns',
+  'cafes',
   'palms',
   'mangrove',
   'commercial',
@@ -174,9 +187,19 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  lanterns: {},
+  cafes: {},
+  park: {},
 };
 /** Themes with no power poles: a downtown's wires are underground. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown']);
+const NO_POLES: ReadonlySet<LandTheme> = new Set([
+  'crossing',
+  'plaza',
+  'downtown',
+  'lanterns',
+  'cafes',
+  'park',
+]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],
