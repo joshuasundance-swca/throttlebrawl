@@ -33,7 +33,7 @@ Sibling docs: content file formats live in [content-packs.md](./content-packs.md
 
 ## Module map
 
-`[default]` The source tree is split into modules with disjoint folders. A lane (one agent working on one area) owns one folder at a time and edits only inside it. Other modules are reached only through that module's `index.ts`.
+`[default]` The source tree is split into modules with disjoint folders. A lane (one agent working on one area) owns one folder at a time and edits only inside it. Other modules are reached only through that module's `index.ts`. Two exceptions: the sim through its contract `api.ts`, and dev/, which only `main.ts` imports, through `index.ts` (loaded lazily, off the first-load JavaScript budget) and `boot.ts` (the small part that loads with the first screen: the test flag and the error capture). `[default]` (perf-gate lane, 2026-10-02: first-load headroom)
 
 ```mermaid
 flowchart LR
