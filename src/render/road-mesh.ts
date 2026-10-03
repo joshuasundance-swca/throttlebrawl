@@ -564,7 +564,7 @@ const SKIRT_ROAD_PROBE_M = 8;
 /** Likewise across the land strip (the cut also ran inside the climb's strip, at its edge). [default] */
 const STRIP_ROAD_PROBE_M = 4;
 /** A road this far or more below another's height is one its land would bury, m. [default] */
-const BURIED_M = 1.5;
+export const BURIED_M = 1.5;
 /** The skirt keeps one road sample in this many. [default] */
 const SKIRT_EVERY = 3;
 /** A far conifer's trunk and the drawn ground it needs round it, as (s, d-outward) offsets, m. */
@@ -581,6 +581,17 @@ const LAND_CAP_FOOT_Y = -0.4;
 const JOIN_LAND_DY_M = 0.5;
 /** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
 const LAND_CAP_NARROW_M = 2;
+/**
+ * A strip that runs on to another road runs on to other land this close past its edge, looked
+ * for every SEAM_FILL_STEP_M, and reaches this far into it, m. [default]
+ */
+const SEAM_FILL_M = 6;
+const SEAM_FILL_STEP_M = 0.25;
+const SEAM_FILL_OVERLAP_M = 0.1;
+/** Other land this close past the edge already runs on from it (the seam walk's own step), m. */
+const SEAM_FILL_EDGE_M = 0.02;
+/** Other land this far or more below the strip is a step down, not a slot: not run on to, m. */
+const SEAM_FILL_DY_M = 1;
 /**
  * The ground laid inside a corner where two roads meet (run W-U's live check: open bay water inside
  * a Mission street corner): this far under the skirt's flat ground, so any land drawn there wins
@@ -766,6 +777,13 @@ export function buildRoadScene(
     side: -1 | 1;
     end: 'from' | 'to';
     cap: (level: number, reach: number) => void;
+  }[] = [];
+  /** Each side's rows (s, reach, runs on to another road) where some strip runs on to another road. */
+  const meetsRuns: {
+    edge: Edge;
+    side: -1 | 1;
+    outer: number;
+    rows: readonly (readonly [number, number, boolean])[];
   }[] = [];
   const truckParts: BoxPart[] = [];
   const truckMatrices: Matrix4[] = [];
@@ -1052,10 +1070,14 @@ export function buildRoadScene(
         w(o.index, os, 0, 0).y < top ? [o.dMin - VERGE_M - margin, o.dMax + VERGE_M + margin] : null,
       );
     };
-    /** No lower road under the land strip anywhere from d0 out to d1 (looked for every few metres). */
+    /**
+     * No lower road under the land strip anywhere from d0 out to d1 (looked for every few metres),
+     * the verge itself included: looked for only from 4 m out, a lower road right beside the verge
+     * went unseen, and the land of the higher road stood 3 to 4 m over it (the Jones Street choice
+     * on Russian Hill, where the sea showed through slots in that land; the geometry sweep, #421).
+     */
     const stripClear = (s: number, side: -1 | 1, d0: number, d1: number) => {
-      for (let d = d0 + STRIP_ROAD_PROBE_M; d < d1; d += STRIP_ROAD_PROBE_M)
-        if (lowerRoadAt(s, side * d, 1)) return false;
+      for (let d = d0; d < d1; d += STRIP_ROAD_PROBE_M) if (lowerRoadAt(s, side * d, 1)) return false;
       return true;
     };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
@@ -1168,13 +1190,15 @@ export function buildRoadScene(
           // Between two roads too close for a shelf (a merge, a shortcut beside the main road), the
           // land runs on to the other road's verge instead of stopping, so the gap between them is
           // ground, not a sea-coloured wedge (playtest 1c skeptic: "a sea-coloured wedge between the
-          // main road and the merge road"). No shelf: the other road's own embankment meets it.
+          // main road and the merge road"). No shelf: the other road's own embankment meets it. Nor
+          // does it lie over a lower road, as the wider strips do not.
           if (r === 0) {
             for (const width of LAND_GAP_WIDTHS) {
               if (width > room) continue;
               if (
                 !otherRoadAt(s, side * (outer + width), LAND_GAP_MARGIN_M) &&
-                !otherRoadAt(s, side * (outer + width / 2), LAND_GAP_MARGIN_M)
+                !otherRoadAt(s, side * (outer + width / 2), LAND_GAP_MARGIN_M) &&
+                stripClear(s, side, outer, outer + width)
               ) {
                 r = width;
                 meets[reach.length] = true;
@@ -1185,6 +1209,13 @@ export function buildRoadScene(
         }
         reach.push(r);
       }
+      if (meets.some(Boolean))
+        meetsRuns.push({
+          edge: e,
+          side,
+          outer,
+          rows: ss.map((s, i) => [s, reach[i] ?? 0, !!meets[i]] as const),
+        });
       const ground = strip('land');
       ground.breakStrip();
       ss.forEach((s, i) => {
@@ -1676,6 +1707,90 @@ export function buildRoadScene(
       joinLand.quad(ta, fa, tb, fb);
     }
     cap(best[0], best[1]);
+  }
+  // A strip that runs on to another road stops there, with a curtain at its edge. Beside a junction
+  // another road's land can lie just past that edge, its end cap at an angle to it (the geometry
+  // sweep's seam walk, #421: at the Park Cut turn-off and at Russian Hill's Jones Street choice the
+  // water or the sea showed through the slot between the two). Where other land at about this
+  // strip's height or higher lies within SEAM_FILL_M past the edge, and no road comes first, the
+  // strip runs on to it, under it where it stands higher, with a curtain at the new edge.
+  /** The highest land strip of another edge than `except` over (x, z), or null where none is. */
+  const otherLandAt = (x: number, z: number, except: number): number | null => {
+    let best: number | null = null;
+    for (const h of locator.at(x, z, except)) {
+      const o = road.edges[h.edge];
+      const land = o ? landOf[o.index] : undefined;
+      if (!o || !land) continue;
+      const side = h.d < 0 ? -1 : 1;
+      const outer = side < 0 ? -o.dMin + VERGE_M : o.dMax + VERGE_M;
+      const rows = land.reach[side];
+      // The strip between two rows is only as wide as its narrower end.
+      const i = Math.max(0, Math.min(rows.length - 1, Math.floor(h.s / land.step)));
+      const r = Math.min(rows[i] ?? 0, rows[Math.min(rows.length - 1, i + 1)] ?? 0);
+      const across = Math.abs(h.d);
+      if (r <= 0 || across < outer || across > outer + r) continue;
+      const y = w(o.index, h.s, h.d, LAND_TOP_M).y;
+      if (best === null || y > best) best = y;
+    }
+    return best;
+  };
+  const seamLand = strip('land');
+  for (const { edge: e, side, outer, rows } of meetsRuns) {
+    const top = (i: number, k: number) => {
+      const [s, r] = rows[i]!;
+      return w(e.index, s, side * (outer + r + k), LAND_TOP_M);
+    };
+    const fill = rows.map(([s, r, meets], i) => {
+      if (r <= 0 || !meets) return 0;
+      // An end row that joins another road meets that road's land across the join instead (the
+      // join land above); filled, the two end rows fanned apart past the bridged width.
+      if ((i === 0 && e.prevLinks.length > 0) || (i === rows.length - 1 && e.nextLinks.length > 0)) return 0;
+      const y = top(i, 0).y;
+      const landPast = (k: number) => {
+        const p = w(e.index, s, side * (outer + r + k), 0);
+        const h = otherLandAt(p.x, p.z, e.index);
+        return h !== null && h >= y - SEAM_FILL_DY_M;
+      };
+      // Other land already runs on from the edge: no slot to fill.
+      if (landPast(SEAM_FILL_EDGE_M)) return 0;
+      for (let k = SEAM_FILL_STEP_M; k <= SEAM_FILL_M; k += SEAM_FILL_STEP_M) {
+        const p = w(e.index, s, side * (outer + r + k), 0);
+        // Another road first: the strip already runs on to it, and its own bank meets the strip.
+        if (locator.covered(p.x, p.z, e.index, (o) => [o.dMin - VERGE_M, o.dMax + VERGE_M])) return 0;
+        if (landPast(k)) return k + SEAM_FILL_OVERLAP_M;
+      }
+      return 0;
+    });
+    // A filled row's neighbours with land close the fill as a triangle back to their own edge.
+    const drawn = (i: number) =>
+      (fill[i] ?? 0) > 0 || ((rows[i]?.[1] ?? 0) > 0 && ((fill[i - 1] ?? 0) > 0 || (fill[i + 1] ?? 0) > 0));
+    seamLand.breakStrip();
+    for (let i = 0; i < rows.length; i++) {
+      if (!drawn(i)) {
+        seamLand.breakStrip();
+        continue;
+      }
+      // Pairs in increasing d, so the faces point up.
+      const [near, far] = [top(i, 0), top(i, fill[i] ?? 0)];
+      if (side < 0) seamLand.pair(far, near);
+      else seamLand.pair(near, far);
+    }
+    seamLand.breakStrip();
+    // The curtain at the fill's edge, both faces, as at a strip that runs on to another road.
+    for (const flip of [false, true]) {
+      seamLand.breakStrip();
+      for (let i = 0; i < rows.length; i++) {
+        if (!drawn(i)) {
+          seamLand.breakStrip();
+          continue;
+        }
+        const p = top(i, fill[i] ?? 0);
+        const foot = { ...p, y: LAND_CAP_FOOT_Y };
+        if (flip) seamLand.pair(foot, p);
+        else seamLand.pair(p, foot);
+      }
+      seamLand.breakStrip();
+    }
   }
   // Ground inside each corner (run W-U's live check, mustFix 2: "open bay water, with waves and
   // gulls, inside the Satin St to Drop Cloth Alley corner"). On the inside of a tight turn each
