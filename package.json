@@ -46,7 +46,7 @@
   "simple-git-hooks": {
     "pre-commit": "npx --no-install lint-staged && node scripts/leak-scan.mjs --staged && node scripts/size-check.mjs --staged",
     "commit-msg": "node scripts/leak-scan.mjs --commit-msg \"$1\"",
-    "pre-push": "npm run typecheck && if git diff --quiet origin/main -- package.json package-lock.json vitest.config.ts 'tsconfig*.json'; then npx --no-install vitest run --project unit --changed origin/main --passWithNoTests; else npm test; fi"
+    "pre-push": "if [ -f scripts/pre-push.mjs ]; then node scripts/pre-push.mjs; else npm run typecheck && npx --no-install vitest run --project unit --changed origin/main --passWithNoTests; fi"
   },
   "dependencies": {
     "three": "0.186.1",

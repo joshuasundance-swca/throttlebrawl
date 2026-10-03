@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // typecheck: tsc for the app (DOM), the DOM-free sim/road config, and the Node-side files.
-// Prints how many project files each config checked.
-import { spawnSync } from 'node:child_process';
+// Prints how many project files each config checked. The three configs run at once (each tsc is
+// one thread), which cuts the wall time on the dev machine; the pre-push hook runs this.
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { examined, repoRoot } from './lib.mjs';
 
@@ -13,14 +14,26 @@ const CONFIGS = [
 const tsc = path.join(repoRoot, 'node_modules/typescript/bin/tsc');
 const root = repoRoot.replaceAll('\\', '/').toLowerCase();
 
+/** Runs one tsc and resolves with its exit status and output. */
+function run(config) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [tsc, '-p', config, '--listFiles', '--pretty', 'false'], {
+      cwd: repoRoot,
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (d) => (stdout += d));
+    child.stderr.setEncoding('utf8').on('data', (d) => (stderr += d));
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+const results = await Promise.all(CONFIGS.map(([, config]) => run(config)));
+
 let failed = false;
 const counts = [];
-for (const [name, config] of CONFIGS) {
-  const res = spawnSync(process.execPath, [tsc, '-p', config, '--listFiles', '--pretty', 'false'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 1 << 28,
-  });
+CONFIGS.forEach(([name, config], i) => {
+  const res = results[i];
   const lines = res.stdout.split(/\r?\n/).filter(Boolean);
   const listed = lines.filter((l) => {
     const p = l.replaceAll('\\', '/').toLowerCase();
@@ -41,7 +54,7 @@ for (const [name, config] of CONFIGS) {
     failed = true;
     console.error(`typecheck: ${config} checked zero project files`);
   }
-}
+});
 examined(`project files type-checked: ${counts.join(', ')}`);
 if (failed) process.exit(1);
 console.log('typecheck: 0 errors');
