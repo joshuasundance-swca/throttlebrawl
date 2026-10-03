@@ -3,7 +3,14 @@
 // The reserved types (event-modifier, station, patch) are claimed here so nothing else takes the
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
-import { MEDIAN_KINDS, ROAD_SURFACES, ROUTE_BRANCH_KINDS, VERGE_EDGES, VERGE_SURFACES } from '../../core';
+import {
+  MEDIAN_KINDS,
+  ROAD_SURFACES,
+  ROUTE_BRANCH_KINDS,
+  SMASHABLE_KINDS,
+  VERGE_EDGES,
+  VERGE_SURFACES,
+} from '../../core';
 import { entry, idSchema, nonNegative, refSchema, statusSchema, unit01 } from './common';
 import {
   BARK_OPS,
@@ -74,6 +81,20 @@ const signSchema = z.looseObject({
   ...itemStatus,
 });
 
+/**
+ * A roadside smashable in a region file (docs/content-packs.md, "Region"; run W-T, "the road fights
+ * back"): a kind from the closed list, its takedown name (a short headline in capitals, read in a
+ * blink), how often it is picked, and the road tags it stands on (absent: any open road).
+ */
+const smashableSchema = z.looseObject({
+  id: idSchema,
+  kind: z.enum(SMASHABLE_KINDS),
+  text: z.string().min(1).max(32),
+  weight: z.number().positive().optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  ...itemStatus,
+});
+
 export const bikeSchema = entry('bike', {
   class: z.enum(BIKE_CLASSES),
   handling: z.looseObject({
@@ -123,6 +144,16 @@ export const SIGNATURE_MOVES = [
   'pivot',
 ] as const;
 
+/**
+ * A cop's pursuit habit (the pitch deck's #11, "Law with a personality", run W-T): the rider file's
+ * `law.habit.kind`. `relentless` closes in harder the longer he chases; `radar` waits at a long
+ * bridge and clocks you; `citations` never rams but writes you up while alongside, billed at the
+ * finish; `budget` chases on a pursuit budget that runs out. Its other fields are numbers the sim
+ * reads by name (docs/content-packs.md, "Rider"). The same list as the sim contract's LAW_HABIT_IDS
+ * (the app tests check they agree; content never imports the sim). [default]
+ */
+export const LAW_HABITS = ['relentless', 'radar', 'citations', 'budget'] as const;
+
 export const riderSchema = entry('rider', {
   role: z.enum(['rival', 'cop', 'player-preset', 'extra']),
   roster: z.enum(['regular', 'local']).optional(),
@@ -153,6 +184,10 @@ export const riderSchema = entry('rider', {
       bustDwellS: z.number().positive(),
       fineCash: z.number().int().min(0),
       pursuitSpeedScale: z.number().positive(),
+      habit: z
+        .looseObject({ kind: z.enum(LAW_HABITS) })
+        .catchall(z.number().nonnegative())
+        .optional(),
     })
     .optional(),
 });
@@ -432,6 +467,7 @@ export const regionSchema = entry('region', {
   }),
   signs: z.array(signSchema).optional(),
   billboards: z.array(signSchema).optional(),
+  smashables: z.array(smashableSchema).optional(),
   /**
    * The region's one-liners for a clean landing after real air (the pitch deck's #13, "Air that
    * pays": 'TEN OUT OF TEN, SAYS A PELICAN'), shaped like signs so the in-game veto can cut one.
@@ -453,6 +489,11 @@ export const crewSchema = entry('crew', {
     })
     .optional(),
   rivalCrews: z.array(refSchema).optional(),
+  // A law crew's END OF JURISDICTION sign (the pitch deck's #11, run W-T): its words, a headline
+  // then a kicker ("END OF JURISDICTION. Keys County wishes you well."). In a race whose heat
+  // meter runs, the region's first fielded cop's agency puts it up beside the road; crossing it
+  // cools the player's heat and the chasing cops pull over. [default]
+  jurisdiction: z.looseObject({ sign: z.string().min(1) }).optional(),
 });
 
 /**
@@ -761,7 +802,7 @@ export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] |
  */
 export const VETOABLE_ITEMS: Readonly<Partial<Record<EntryType, readonly string[]>>> = {
   'bark-set': ['lines'],
-  region: ['signs', 'billboards', 'landingLines'],
+  region: ['signs', 'billboards', 'landingLines', 'smashables'],
   station: ['tracks'],
 };
 export type PackManifest = z.infer<typeof packSchema>;

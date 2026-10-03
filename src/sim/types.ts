@@ -1,7 +1,7 @@
 // The sim contract's types (docs/architecture.md, "Sim contract"). Re-exported by src/sim/api.ts,
 // which is the only file outside src/sim may import. Field lists are the architecture doc's
 // minimum plus what the M1 lanes need; the contract owner may add fields in a contract PR.
-import type { EntityId, GroundSurface, TuningValues } from '../core';
+import type { EntityId, GroundSurface, SmashableKind, TuningValues } from '../core';
 import type { RoadNetwork, RouteProgress } from '../road';
 
 export const SIM_HZ = 60;
@@ -303,7 +303,10 @@ export interface SimSnapshot {
    * The road set pieces' props in play (W-P events: roadwork cones, crash-scene flares, parade
    * floats' decorations, hay bales, the radar on a speed trap, the people who work them), from
    * sim/modifiers. Presentation only: render draws them, nothing else reads them. Optional for
-   * hand-built snapshots; the sim always fills it (empty when no set piece is live).
+   * hand-built snapshots; the sim always fills it (empty when no set piece is live). From run W-T
+   * (law with a personality) sim/cops adds its own: the END OF JURISDICTION sign (`sign`, variant
+   * `jurisdiction`, `piece` the agency's crew id) and a radar trooper's radar (`radar`, variant
+   * `trooper`), with ids from LAW_PROP_ID_BASE up so they never collide with a set piece's.
    */
   props?: readonly PropSnapshot[];
   /**
@@ -311,6 +314,31 @@ export interface SimSnapshot {
    * HUD's heat badge reads it. Optional for hand-built snapshots; the sim always fills it.
    */
   law?: LawSnapshot;
+  /**
+   * The roadside smashables near the players (run W-T, "the road fights back": lobster traps,
+   * mailboxes, parking meters and the rest), from sim/smash: intact or smashed, for render. Optional
+   * for hand-built snapshots; the sim always fills it (empty when the race has none).
+   */
+  smashables?: readonly SmashableSnapshot[];
+}
+
+/** One roadside smashable (SimSnapshot.smashables): where it stands, and whether it is smashed. */
+export interface SmashableSnapshot {
+  /** Stable for the race. */
+  id: number;
+  kind: SmashableKind;
+  /** The takedown name its region file gives it ('CATCH OF THE DAY'). */
+  name: string;
+  /** World position of its foot (x east, y up, z south) and its heading about +y, facing the road. */
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  /** The tick it was smashed, or -1 while it stands. */
+  smashedTick: number;
+  /** The world velocity of what hit it (x and z, m/s), 0 while it stands: its debris flies that way. */
+  hitVx: number;
+  hitVz: number;
 }
 
 /** The heat meter as presentation sees it (SimSnapshot.law). */
@@ -321,6 +349,41 @@ export interface LawSnapshot {
   tier: number;
   /** True once a chase has been shaken off this race and the heat has not risen since ("Lost 'em"). */
   lost: boolean;
+  /**
+   * Citations written to the player this race by a `citations` cop (run W-T: Deputy Lindqvist),
+   * and their total cash, billed at the finish (a `law` event, kind `bill`). Optional for hand-built
+   * snapshots; the sim always fills them (0 and 0 with no such cop).
+   */
+  citations?: number;
+  citationCash?: number;
+}
+
+/** Prop ids sim/cops gives its props (the jurisdiction sign, a trooper's radar) start here. */
+export const LAW_PROP_ID_BASE = 1_000_000;
+
+/**
+ * A cop's pursuit habit (the pitch deck's #11, "Law with a personality", run W-T), from the rider
+ * file's `law.habit.kind`; content's LAW_HABITS is the same list (the app tests check). [default]
+ * - `relentless` (Sgt. Pruitt): the longer he chases, the closer he holds, the sooner he moves in
+ *   and the harder he rides to catch up;
+ * - `radar` (Trooper Dalrymple): on patrol he waits at the route's first long bridge with a radar,
+ *   lights up only for a player clocked over the limit, and lets one under it ride by;
+ * - `citations` (Deputy Lindqvist): never rams (he rides alongside out of bumping range) and writes
+ *   a citation for every few seconds alongside, billed at the player's finish;
+ * - `budget` (Officer Meter): his chasing comes out of a pursuit budget; spent, he pulls over for
+ *   good.
+ */
+export const LAW_HABIT_IDS = ['relentless', 'radar', 'citations', 'budget'] as const;
+export type LawHabitId = (typeof LAW_HABIT_IDS)[number];
+
+/** A cop's habit as the sim reads it (SimLawDef.habit). */
+export interface SimLawHabit {
+  kind: LawHabitId;
+  /**
+   * The habit file's numbers by name (`rampS`, `everyS`, `cashEach`, `budgetS`, `limitMps`, ...).
+   * sim/cops documents each and falls back to its own default for one that is absent.
+   */
+  params: Readonly<Record<string, number>>;
 }
 
 /**
@@ -441,6 +504,20 @@ export type SimEventType =
    * carries `data.lost: true` (the chasing cops give up).
    */
   | 'heat'
+  /**
+   * A cop's habit showed (run W-T, law with a personality; sim/cops). Actor = the cop, target = the
+   * player; `data.kind` is a `LawEventKind`:
+   * - `relentless`: he stepped it up (`data.level` 1, then 2 at the top of his ramp);
+   * - `radar`: he clocked a player passing his radar (`data.mps`, `data.limitMps`, `data.over`);
+   * - `citation`: he wrote one (`data.count` so far from him, `data.cashEach`, `data.totalCash` the
+   *   player's whole bill so far from every cop);
+   * - `bill`: the player finished owing citations (`data.count`, `data.totalCash`), once per player
+   *   and race; the career charges it;
+   * - `budgetOut`: his pursuit budget ran out and he pulled over for good (`data.budgetS`);
+   * - `jurisdiction`: the player crossed the END OF JURISDICTION sign (`data.heatBefore` 0..1); the
+   *   actor is the nearest cop who was on him and pulled over, or the player when none was.
+   */
+  | 'law'
   | 'jump'
   /**
    * A rider came down from the air. Actor = the rider; `data.quality` (`clean`, `wobble`, `crash`),
@@ -507,6 +584,15 @@ export type SimEventType =
    * the boost lasts. One event per pad crossing.
    */
   | 'boost'
+  /**
+   * A roadside smashable broke (run W-T, "the road fights back"). `data.prop` is its id (as in
+   * SimSnapshot.smashables), `data.kind` its `SmashableKind`, `data.name` its takedown name, and
+   * `data.takedown` whether a rider knocked into it went down. With `data.takedown` true, actor =
+   * the rider whose hit sent them (the one combat credits) and target = the rider who went down; the
+   * causeId is that crash's, so the `takedown` that follows (kind `scenery`) shares it. Otherwise
+   * actor = the rider who rode (or tumbled) through it, and there is no target.
+   */
+  | 'smash'
   | 'modifierStart'
   | 'modifierEnd'
   /**
@@ -529,6 +615,17 @@ export type TakedownKind = (typeof TAKEDOWN_KINDS)[number];
  */
 export const PED_REACT_KINDS = ['jumpBack', 'fist', 'film', 'chase'] as const;
 export type PedReactKind = (typeof PED_REACT_KINDS)[number];
+
+/** `data.kind` of a `law` event (run W-T, law with a personality): which habit showed. */
+export const LAW_EVENT_KINDS = [
+  'relentless',
+  'radar',
+  'citation',
+  'bill',
+  'budgetOut',
+  'jurisdiction',
+] as const;
+export type LawEventKind = (typeof LAW_EVENT_KINDS)[number];
 
 /**
  * `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md), and `trick`
@@ -640,6 +737,8 @@ export interface SimLawDef {
   fineCash: number;
   /** Informational: the resolver has already scaled the cop's `bike.topSpeedMps` by it. */
   pursuitSpeedScale: number;
+  /** His pursuit habit (run W-T, law with a personality). Absent: the plain cop, as before. */
+  habit?: SimLawHabit | undefined;
 }
 
 export interface SimRiderDef {
@@ -816,6 +915,13 @@ export interface SimEventCops {
    * tiers bring one more cop, then a pursuit pair, then a roadblock, and riding clean cools it.
    */
   heat?: boolean;
+  /**
+   * The END OF JURISDICTION sign (run W-T, law with a personality): its words, from the law crew of
+   * the race's first cop (`jurisdiction.sign`). With the heat meter on, sim/cops puts it up beside
+   * the road part-way along the route; a player crossing it has his heat cooled and the cops on
+   * him pull over. Absent: no sign.
+   */
+  jurisdiction?: { label: string; agency: string };
 }
 
 /**
@@ -923,6 +1029,25 @@ export interface SimConfig {
    * races. Sim code reads it through `speedMultiplierOf(config)` in sim/world.
    */
   speedMultiplier?: number;
+  /**
+   * The event region's roadside smashables (run W-T, "the road fights back"): the region file's
+   * live `smashables`, in file order. sim/smash places them beside the road from its own seeded
+   * stream. Absent or empty: none. buildSimConfig always writes it.
+   */
+  smashables?: readonly SimSmashableDef[];
+}
+
+/** One kind of roadside smashable a region puts out (docs/content-packs.md, "Region"). */
+export interface SimSmashableDef {
+  /** The item's reference, `<packId>:region/<regionId>#<itemId>` (the veto format). */
+  contentId: string;
+  kind: SmashableKind;
+  /** The takedown name ('CATCH OF THE DAY'). */
+  name: string;
+  /** How often it is picked against the region's others (1 when the file leaves it out). */
+  weight: number;
+  /** The road tags it stands on (any one); empty: any open road of the region. */
+  tags: readonly string[];
 }
 
 export interface Sim {
