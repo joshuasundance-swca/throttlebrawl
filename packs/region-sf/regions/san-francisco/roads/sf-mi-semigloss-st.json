@@ -57,8 +57,8 @@
     {
       "kind": "boostPad",
       "id": "pad-mi-semigloss",
-      "s0": 80,
-      "s1": 86,
+      "s0": 400,
+      "s1": 406,
       "d0": 0.5,
       "d1": 3,
       "params": { "boostMps": 8, "holdS": 1.5, "slot": "mi-pad-semigloss" }
