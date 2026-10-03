@@ -71,15 +71,12 @@ export interface TestHandle {
 
 declare global {
   interface Window {
-    /** Set by Playwright's init script before the page loads. */
-    __GAME_TEST__?: boolean;
     __game?: TestHandle;
   }
 }
 
-export function testFlagSet(): boolean {
-  return window.__GAME_TEST__ === true;
-}
+// The flag itself loads with the first screen (../boot.ts); the handle is in dev/'s lazy chunk.
+export { testFlagSet } from '../boot';
 
 function freshChecks(bot: BotController | null): RaceChecks {
   return {

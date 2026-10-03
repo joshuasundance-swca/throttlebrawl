@@ -1,0 +1,11 @@
+---
+kind: dev
+audience: dev
+---
+The first-load JavaScript gets real headroom: dev/ (the test handle, the bot, the debug report and the `?debug=1` overlay) now loads as its own lazy chunk instead of with the first screen. The first load goes from 489.9 KB to 483.5 KB gzip against its 500 KB budget (16.5 KB headroom instead of 10.1 KB); the dev chunk is 7.8 KB gzip. The budget was crossed three times on 2026-10-02, and the dirt shortcuts (#348) were dropped from the last bundle at 502.1 KB. Measured with `npm run build:dist` and `node scripts/perf.mjs --size-only` on the dev machine.
+
+What a player sees does not change. Only `src/dev/boot.ts` (the test flag check and the error capture) loads with the page, and the capture now starts before the game boots rather than just after, so the debug report also keeps errors from the boot itself. A second after the game is up, the page fetches the dev chunk, so "copy debug report" finds it loaded and still copies inside the tap; a tap before then waits for the chunk.
+
+Under the test flag the page boots only once the dev chunk is in, and installs the test handle in the same step, so the handle exists before any screen does, as before. Until then `window.__game` is a stand-in that queues the handle's setters (`setSeed`, `setBot`, `tap`, `startRace`) and replays them in order on the real handle; reads answer undefined, which the specs already poll through. A scan of every browser spec found one call made before any screen wait (`career.spec.ts` sets seed 3 right after the page loads): it is queued and lands before the first tap. A new unit test (`src/dev/boot.test.ts`) shows the replay; it fails if the stand-in stops queueing. `scripts/first-load.test.ts` now also fails if the test handle, the bot, the report or the perf overlay is pulled back into the first load (checked: a static `import './dev'` in main.ts makes it fail).
+
+The page's error log moved from the report to `src/dev/report/errors.ts` (`installErrorCapture`, `pageErrors`), so the capture can load without the report. This builds on the contract PR that gives dev/ its `boot.ts` entry. Not phone-verified; the browser tier runs in CI.
