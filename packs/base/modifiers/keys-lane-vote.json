@@ -1,0 +1,43 @@
+{
+  "type": "event-modifier",
+  "id": "keys-lane-vote",
+  "name": "Keys Lane Vote",
+  "kind": "human",
+  "tags": ["set-piece", "lane-vote"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.1, 0.75],
+    "chance": 0.35
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "lane-vote",
+      "signText": "LANE VOTE AHEAD. Results are binding.",
+      "leftText": "GATOR CROSSING",
+      "rightText": "PARADE",
+      "left": "keys-gator-crossing",
+      "right": "keys-costume-parade",
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T lane vote (pitch deck #9): a gantry splits GATOR CROSSING (left, the oncoming lane on a two-lane road) from PARADE (right); the side you ride under picks the event about 400 m on.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

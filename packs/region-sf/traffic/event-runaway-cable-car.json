@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "event-runaway-cable-car",
+  "name": "Cable Car, Grip Pending",
+  "category": "truck",
+  "tags": ["event", "cable-runaway", "region-sf"],
+  "lengthM": 8.5,
+  "widthM": 2.6,
+  "cruiseMps": 4.5,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "box-truck"
+    },
+    "paintOptions": ["#8c2f2f", "#d9b45a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The cable-car runaway's car: it climbs its cable street ahead of you, then loses its grip and rolls back down at you. Only ever on a road tagged cable-line. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, run W-T) places it. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

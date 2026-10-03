@@ -1,0 +1,42 @@
+{
+  "type": "event-modifier",
+  "id": "keys-gator-crossing",
+  "name": "Keys Gator Crossing",
+  "kind": "human",
+  "tags": ["set-piece", "animal-crossing"],
+  "rarityWeight": 0.8,
+  "eligibility": {
+    "regions": ["florida-keys"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.2, 0.85],
+    "chance": 0.2
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "animal-crossing",
+      "signText": "GATOR CROSSING. Gator has right of way.",
+      "animal": "base:event-crossing-gator",
+      "count": 4,
+      "person": "crossing-guard",
+      "theme": "keys"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T road event: a crossing guard with a stop paddle and four gators taking their time across both lanes. Rare on its own; it is also one side of the Keys lane vote.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

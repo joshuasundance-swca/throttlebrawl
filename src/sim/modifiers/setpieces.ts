@@ -34,16 +34,56 @@
 //   (as after chaos near him). The lot cop keeps his own timing until then (sim/cops).
 // Every piece puts a warning sign SIGN_LEAD_M ahead of it on its shoulder side.
 // People never get hit: anyone a rider bears down on steps out of the way toward the verge.
+//
+// Run W-T (the pitch deck's #9, "weird events that move"; the numbers are in ./moving.ts):
+// - boat-slide: a pickup crawling along with a boat trailer; once a racer closes in, the trailer
+//   lets go and the skiff slews across the centre line and stops there (a big hazard while it slides).
+// - log-spill: a log truck on a downhill sheds its logs as racers close in; they roll to rest across
+//   both lanes, and riding over one is a hop.
+// - cable-runaway: on a cable street only (`needsTag: "cable-line"`), a cable car climbing ahead
+//   loses its grip as racers close in and rolls back down at them, shoving the cars behind it.
+// - lane-vote: a gantry over the road splits two events (`left`, `right`: modifier ids); the side a
+//   player rides under picks the one that turns up `voteAheadM` further on (an AI-only race: the
+//   first racer through). Both candidates' room is reserved at the start.
+// - animal-crossing: a crossing guard and a few animals (`animal`, a traffic-type id) crossing the
+//   road through the pedestrian system (a gator crossing for the Keys' vote).
+// - Any piece may carry `serial`: one joke over four small signs, punchline last.
+// Each moving piece's moment fires `setPieceBeat` (a bell, a bark).
 import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
 import type { EdgeLink, RoadPos } from '../../road';
 import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
+import { placePed } from '../peds';
+import { riderState } from '../riders';
+import { slopeAt, startFlight } from '../riders/air';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
 import type { PropKind, PropSnapshot, SimConfig, SimModifierDef, SimModifierEffect } from '../types';
 import { emit, speedMultiplierOf, systemState, type Mover, type World } from '../world';
+import {
+  gantrySpan,
+  hopVy,
+  logTargetCd,
+  MOVING,
+  rollStep,
+  serialLeads,
+  slideStep,
+  voteSide,
+  type Slide,
+} from './moving';
 
 /** The pieces this file implements (`set-piece` effects' `piece`). */
-export const SET_PIECES = ['roadwork', 'crash-scene', 'parade', 'hay-spill', 'speed-trap'] as const;
+export const SET_PIECES = [
+  'roadwork',
+  'crash-scene',
+  'parade',
+  'hay-spill',
+  'speed-trap',
+  'boat-slide',
+  'log-spill',
+  'cable-runaway',
+  'lane-vote',
+  'animal-crossing',
+] as const;
 export type SetPieceName = (typeof SET_PIECES)[number];
 
 /** [default] starting values, to be tuned on the phone. */
@@ -127,6 +167,30 @@ export interface SetPiece {
   /** The cop the speed trap brought (entity id, -1 for none yet) and whether a player has tripped it. */
   cop: number;
   tripped: number;
+  /** W-T: 1 once the piece's moment has happened (unhitched, lost its grip, shedding, voted). */
+  beat: number;
+  /** The vehicle this piece drives itself (index into `vehicles`, -1 none): the skiff, the cable car. */
+  drive: number;
+  /** The driven vehicle's corridor u and cd, its speed along the route (m/s; negative rolls back), its yaw. */
+  mu: number;
+  mcd: number;
+  mv: number;
+  myaw: number;
+  /** How far the cable car has rolled back, m. */
+  rolled: number;
+  /** The furthest of its signs ahead of it, m (the warning sign, or the first serial sign). */
+  lead: number;
+  /**
+   * Lane vote: where the picked event goes (corridor u), the two candidates (modifier indices, -1
+   * none), the split across the road (cd), the gantry's width, and the side that won (0 not yet,
+   * -1 left, 1 right).
+   */
+  voteU: number;
+  voteLeft: number;
+  voteRight: number;
+  splitCd: number;
+  span: number;
+  voted: number;
 }
 
 /** One prop. Positions are corridor coordinates: u, cd, and h above the road surface. */
@@ -156,6 +220,10 @@ export interface SetProp {
   up: number;
   /** Walking speed along the route, m/s (marchers), 0 standing. */
   walk: number;
+  /** W-T: a gantry's width, m (0 for every other kind). */
+  span: number;
+  /** W-T: the last rider who hopped this log (-1 none), so one log is one hop each. */
+  hit: number;
 }
 
 export interface SetPieceState {
@@ -202,6 +270,68 @@ function isSetPiece(e: SimModifierEffect): boolean {
   return e.kind === 'set-piece' && (SET_PIECES as readonly string[]).includes(String(e['piece']));
 }
 
+/** A piece's serial-sign lines (at most four). */
+function serialOf(e: SimModifierEffect): readonly string[] {
+  return list(e, 'serial').slice(0, 4);
+}
+
+/** Whether a piece keeps its own warning sign: always, unless serial signs stand in for it. */
+function keepsSign(e: SimModifierEffect): boolean {
+  return str(e, 'signText', '') !== '' || serialOf(e).length === 0;
+}
+
+/** The furthest of an effect's signs ahead of its piece, m. */
+function leadOf(e: SimModifierEffect): number {
+  const serial = serialOf(e);
+  return serial.length > 0
+    ? Math.max(...serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)))
+    : SET_PIECE.signLeadM;
+}
+
+/** A piece goes live this far ahead of a racer: further when its signs stand further out. */
+function activateFor(p: SetPiece): number {
+  return Math.max(SET_PIECE.activateM, p.lead + 190);
+}
+
+/** The modifier index a lane vote names (a content id, or a bare id in any pack), or -1. */
+function modByRef(config: SimConfig, ref: string): number {
+  if (ref === '') return -1;
+  return config.modifiers.findIndex((m) => m.contentId === ref || m.contentId.endsWith(`:${ref}`));
+}
+
+/** A modifier's first set-piece effect a vote may pick (not a vote, not tied to a road tag), or -1. */
+function votableEffect(config: SimConfig, mi: number): number {
+  const effects = config.modifiers[mi]?.effects ?? [];
+  return effects.findIndex(
+    (e) => isSetPiece(e) && e['piece'] !== 'lane-vote' && str(e, 'needsTag', '') === '',
+  );
+}
+
+/** Whether any of the route's roads carries the scenery tag (sampled every 20 m of the corridor). */
+function routeHasTag(config: SimConfig, c: Corridor, tag: string): boolean {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  for (let u = c.lo; u <= c.hi; u += 20) {
+    fromCorridor(c, u, 0, c.routeDir, pos);
+    if (!config.route.allows(pos.edge)) continue;
+    const edge = config.road.edges[pos.edge];
+    if (edge?.tags.some((t) => t.tag === tag && pos.s >= t.s0 && pos.s <= t.s1)) return true;
+  }
+  return false;
+}
+
+/** The route's mean grade over [u, u + dir·len], in the route's direction (negative: downhill). */
+function routeGrade(config: SimConfig, c: Corridor, u: number, len: number): number {
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  let sum = 0;
+  let n = 0;
+  for (let a = 0; a <= len; a += 10) {
+    fromCorridor(c, u + c.routeDir * a, 0, c.routeDir, pos);
+    sum += config.road.frameAt(pos.edge, pos.s).grade * pos.dir;
+    n++;
+  }
+  return n > 0 ? sum / n : 0;
+}
+
 /** A traffic type's index by content id, or -1. */
 function typeIndex(config: SimConfig, contentId: string): number {
   return contentId === '' ? -1 : config.trafficTypes.findIndex((t) => t.contentId === contentId);
@@ -219,7 +349,14 @@ function pieceLength(piece: string, floats: number): number {
     case 'parade':
       return 34 + 16 * Math.max(1, floats);
     case 'hay-spill':
+    case 'log-spill':
       return 40;
+    case 'boat-slide':
+      return 60;
+    case 'cable-runaway':
+      return 150;
+    case 'animal-crossing':
+      return 10 + MOVING.animals * MOVING.animalGapM;
     default:
       return 12;
   }
@@ -227,12 +364,22 @@ function pieceLength(piece: string, floats: number): number {
 
 const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
 
-/** Whether a stretch [u, u + dir·len] (plus the sign lead behind it) can hold a piece. */
-function stretchOk(config: SimConfig, c: Corridor, u: number, len: number): boolean {
+/**
+ * Whether a stretch [u, u + dir·len] (plus the sign lead behind it) can hold a piece; with `tag`,
+ * the piece itself (not its signs' run-up) must lie on roads carrying that scenery tag.
+ */
+function stretchOk(
+  config: SimConfig,
+  c: Corridor,
+  u: number,
+  len: number,
+  lead = SET_PIECE.signLeadM,
+  tag = '',
+): boolean {
   const road = config.road;
   const dir = c.routeDir;
   const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
-  for (let a = -SET_PIECE.signLeadM - 10; a <= len + 10; a += 8) {
+  for (let a = -lead - 10; a <= len + 10; a += 8) {
     const uu = u + dir * a;
     if (uu < c.lo + 20 || uu > c.hi - 20) return false;
     fromCorridor(c, uu, 0, dir, pos);
@@ -247,6 +394,7 @@ function stretchOk(config: SimConfig, c: Corridor, u: number, len: number): bool
     const edge = road.edges[pos.edge];
     if (!edge) return false;
     if (edge.tags.some((t) => t.tag === 'bridge' && pos.s >= t.s0 - 10 && pos.s <= t.s1 + 10)) return false;
+    if (tag !== '' && !edge.tags.some((t) => t.tag === tag && pos.s >= t.s0 && pos.s <= t.s1)) return false;
     for (const f of edge.features) {
       if (f.s0 > pos.s + 25) break;
       if (AVOID_FEATURES.has(f.kind) && pos.s >= f.s0 - 25 && pos.s <= f.s1 + 25) return false;
@@ -313,6 +461,17 @@ export function initSetPieces(world: World, config: SimConfig): void {
     const roll = nextFloat(rng);
     if (roll < clamp(m.chance * scale, 0, 1) && m.effects.some(isSetPiece)) fired.push(i);
   });
+  // A piece tied to a road tag (the cable car's cable street) is dropped before the pick on a route
+  // without that tag, so it never takes a slot it cannot fill. The rolls above are already drawn.
+  const tags = new Map<string, boolean>();
+  const fits = (i: number) =>
+    (config.modifiers[i]?.effects ?? []).every((e) => {
+      const tag = isSetPiece(e) ? str(e, 'needsTag', '') : '';
+      if (tag === '') return true;
+      if (!tags.has(tag)) tags.set(tag, routeHasTag(config, c, tag));
+      return tags.get(tag) === true;
+    });
+  for (let k = fired.length - 1; k >= 0; k--) if (!fits(fired[k] ?? -1)) fired.splice(k, 1);
   // Over the event's cap: a weighted pick without replacement.
   const cap = Math.max(0, Math.floor(config.event.modifiersPerRace ?? fired.length));
   const chosen: number[] = [];
@@ -332,42 +491,132 @@ export function initSetPieces(world: World, config: SimConfig): void {
       if (!isSetPiece(e)) return;
       const piece = String(e['piece']);
       const len = pieceLength(piece, list(e, 'floats').length);
+      const lead = leadOf(e);
+      const tag = str(e, 'needsTag', '');
+      // A log spill wants a downhill (`minDownGrade`): the first half of the tries insist on one.
+      const downhill = num(e, 'minDownGrade', 0);
       const lo = Math.max(SET_PIECE.minProgress, m.atProgress[0]);
       const hi = Math.min(SET_PIECE.maxProgress, m.atProgress[1]);
       for (let t = 0; t < SET_PIECE.placeTries; t++) {
         const p = lo + (Math.max(lo, hi) - lo) * nextFloat(rng);
         const u = st.u0 + c.routeDir * p * st.routeLen;
-        if (st.pieces.some((q) => Math.abs(q.u - u) < SET_PIECE.spacingM + q.len)) continue;
-        // Never on a stretch a shortcut bypasses: every racer must ride past it.
-        const from = Math.abs(u - st.u0) - SET_PIECE.signLeadM - 10;
-        const to = Math.abs(u - st.u0) + len + 10;
-        if (bypassed.some(([a, b]) => from < b && to > a)) continue;
-        if (!stretchOk(config, c, u, len)) continue;
-        const lane = lanesAt(config.road, c, u, c.routeDir)[0];
-        if (!lane) continue;
-        st.pieces.push({
-          mod: mi,
-          eff: ei,
-          piece,
-          u,
-          len,
-          laneCd: lane.cd,
-          laneW: lane.width,
-          side: lane.cd < 0 ? -1 : 1,
-          phase: 0,
-          startTick: -1,
-          vehicles: [],
-          vehicleTypes: [],
-          vehicleCd: [],
-          dropped: 0,
-          nextDropU: 0,
-          cop: -1,
-          tripped: 0,
-        });
+        if (!roomFor(st, bypassed, u, len, lead) || !stretchOk(config, c, u, len, lead, tag)) continue;
+        if (downhill > 0 && t < SET_PIECE.placeTries / 2 && routeGrade(config, c, u, len) > -downhill)
+          continue;
+        const placed = newPiece(config, c, mi, ei, piece, u, len, lead);
+        if (!placed) continue;
+        if (piece === 'lane-vote' && !reserveVote(config, c, st, bypassed, placed, e)) continue;
+        st.pieces.push(placed);
         return;
       }
     });
   }
+}
+
+/** Whether a piece at u (len long, its signs `lead` ahead) keeps clear of the others and of every bypass. */
+function roomFor(
+  st: SetPieceState,
+  bypassed: readonly [number, number][],
+  u: number,
+  len: number,
+  lead: number,
+): boolean {
+  const near = (at: number, l: number) => Math.abs(at - u) < SET_PIECE.spacingM + l;
+  if (st.pieces.some((q) => near(q.u, q.len) || (q.voteLeft >= 0 && near(q.voteU, q.len)))) return false;
+  // Never on a stretch a shortcut bypasses: every racer must ride past it.
+  const from = Math.abs(u - st.u0) - lead - 10;
+  const to = Math.abs(u - st.u0) + len + 10;
+  return !bypassed.some(([a, b]) => from < b && to > a);
+}
+
+/** A pending piece at u in the route-forward lane nearest the centre line, or null without a lane. */
+function newPiece(
+  config: SimConfig,
+  c: Corridor,
+  mod: number,
+  eff: number,
+  piece: string,
+  u: number,
+  len: number,
+  lead: number,
+): SetPiece | null {
+  const lane = lanesAt(config.road, c, u, c.routeDir)[0];
+  if (!lane) return null;
+  return {
+    mod,
+    eff,
+    piece,
+    u,
+    len,
+    laneCd: lane.cd,
+    laneW: lane.width,
+    side: lane.cd < 0 ? -1 : 1,
+    phase: 0,
+    startTick: -1,
+    vehicles: [],
+    vehicleTypes: [],
+    vehicleCd: [],
+    dropped: 0,
+    nextDropU: 0,
+    cop: -1,
+    tripped: 0,
+    beat: 0,
+    drive: -1,
+    mu: 0,
+    mcd: 0,
+    mv: 0,
+    myaw: 0,
+    rolled: 0,
+    lead,
+    voteU: 0,
+    voteLeft: -1,
+    voteRight: -1,
+    splitCd: 0,
+    span: 0,
+    voted: 0,
+  };
+}
+
+/**
+ * A lane vote reserves room for whichever event it picks, `voteAheadM` (to `voteSearchM` more)
+ * past the gantry, long enough for the longer of the two; and its gantry's split and width. False
+ * when either candidate is missing from the race or there is no room.
+ */
+function reserveVote(
+  config: SimConfig,
+  c: Corridor,
+  st: SetPieceState,
+  bypassed: readonly [number, number][],
+  p: SetPiece,
+  e: SimModifierEffect,
+): boolean {
+  const left = modByRef(config, str(e, 'left', ''));
+  const right = modByRef(config, str(e, 'right', ''));
+  const le = votableEffect(config, left);
+  const re = votableEffect(config, right);
+  if (left < 0 || right < 0 || le < 0 || re < 0) return false;
+  const effects = [config.modifiers[left]?.effects[le], config.modifiers[right]?.effects[re]];
+  let len = 0;
+  let lead = 0;
+  for (const x of effects) {
+    if (!x) return false;
+    len = Math.max(len, pieceLength(String(x['piece']), list(x, 'floats').length));
+    lead = Math.max(lead, leadOf(x));
+  }
+  for (let a = MOVING.voteAheadM; a <= MOVING.voteAheadM + MOVING.voteSearchM; a += 20) {
+    const u = p.u + c.routeDir * a;
+    // Like any piece, never at the line.
+    if (Math.abs(u - st.u0) + len > SET_PIECE.maxProgress * st.routeLen) break;
+    if (!roomFor(st, bypassed, u, len, lead) || !stretchOk(config, c, u, len, lead)) continue;
+    const g = gantrySpan(lanesAt(config.road, c, p.u, c.routeDir), p.side);
+    p.voteU = u;
+    p.voteLeft = left;
+    p.voteRight = right;
+    p.splitCd = g.splitCd;
+    p.span = g.spanM;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -424,6 +673,8 @@ function addProp(
     along: 0,
     up: 0,
     walk: 0,
+    span: 0,
+    hit: -1,
     ...spec,
   };
   st.props.push(prop);
@@ -490,14 +741,26 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
   const theme = str(e, 'theme', '');
   p.phase = 1;
   p.startTick = world.tick;
-  // The warning sign, on the shoulder side, ahead of everything.
-  addProp(st, index, {
-    kind: 'sign',
-    variant: p.piece,
-    label: str(e, 'signText', ''),
-    u: at(-SET_PIECE.signLeadM),
-    cd: shoulderCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2),
-  });
+  // The warning sign, on the shoulder side, ahead of everything (unless serial signs stand in for it).
+  if (keepsSign(e))
+    addProp(st, index, {
+      kind: 'sign',
+      variant: p.piece,
+      label: str(e, 'signText', ''),
+      u: at(-SET_PIECE.signLeadM),
+      cd: shoulderCd(config, c, p, at(-SET_PIECE.signLeadM), 1.2),
+    });
+  // Serial signs (W-T): one joke over up to four small signs, punchline last.
+  const serial = serialOf(e);
+  serialLeads(serial.length, SET_PIECE.signLeadM, keepsSign(e)).forEach((lead, i) =>
+    addProp(st, index, {
+      kind: 'sign',
+      variant: 'serial',
+      label: serial[i] ?? '',
+      u: at(-lead),
+      cd: shoulderCd(config, c, p, at(-lead), 0.9),
+    }),
+  );
   switch (p.piece) {
     case 'roadwork': {
       // A taper from the shoulder edge to the lane's inner edge over 30 m, then a line to the truck.
@@ -644,10 +907,110 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
       });
       break;
     }
+    case 'boat-slide': {
+      // The pickup crawls along in the lane, the boat trailer on its hitch right behind it.
+      const tow = placeOn(world, config, c, p, str(e, 'vehicle', ''), 40, true);
+      const boatType = typeIndex(config, str(e, 'vehicle2', ''));
+      const towLen = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.lengthM ?? 5.4;
+      const boatLen = config.trafficTypes[boatType]?.lengthM ?? 6;
+      const behind = 40 - (towLen + boatLen) / 2 - MOVING.towGapM;
+      if (tow >= 0 && placeOn(world, config, c, p, str(e, 'vehicle2', ''), behind, true) >= 0) {
+        p.drive = p.vehicles.length - 1;
+        p.mu = at(behind);
+        p.mcd = p.laneCd;
+      }
+      break;
+    }
+    case 'log-spill': {
+      const truck = placeOn(world, config, c, p, str(e, 'vehicle', ''), 20, true);
+      if (truck >= 0) p.nextDropU = at(20);
+      break;
+    }
+    case 'cable-runaway':
+      // Climbing its street ahead, at a cable car's crawl.
+      placeOn(world, config, c, p, str(e, 'vehicle', ''), 120, true);
+      break;
+    case 'lane-vote':
+      addProp(st, index, {
+        kind: 'gantry',
+        variant: '',
+        label: `${str(e, 'leftText', 'LEFT')} | ${str(e, 'rightText', 'RIGHT')}`,
+        u: at(MOVING.gantryAlongM),
+        cd: p.splitCd,
+        span: p.span,
+      });
+      break;
+    case 'animal-crossing': {
+      addProp(st, index, {
+        kind: 'person',
+        variant: str(e, 'person', 'crossing-guard'),
+        u: at(-6),
+        cd: shoulderCd(config, c, p, at(-6), 0.6),
+      });
+      const animal = typeIndex(config, str(e, 'animal', ''));
+      const t = config.trafficTypes[animal];
+      if (animal < 0 || (t?.category !== 'animal' && t?.category !== 'pedestrian')) break;
+      const count = Math.max(0, Math.min(8, Math.round(num(e, 'count', MOVING.animals))));
+      const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+      for (let i = 0; i < count; i++) {
+        // Alternate verges, staggered so they are mid-road at different moments.
+        const from = (i % 2 === 0 ? 1 : -1) * p.side * (bandEdge(config, c, p, at(10)) + 0.4);
+        fromCorridor(c, at(10 + i * MOVING.animalGapM), from, dir, pos);
+        placePed(world, config, {
+          type: animal,
+          edge: pos.edge,
+          s: pos.s,
+          d: pos.d,
+          crosses: true,
+          timer: 0.2 + 0.9 * i,
+        });
+      }
+      break;
+    }
     default:
       break;
   }
   emit(world, 'modifierStart', -1, { id: m.contentId, kind: m.kind, piece: p.piece });
+}
+
+/**
+ * Puts a vehicle the piece drives where the piece says: corridor u and cd, its speed (it is also
+ * the speed traffic would carry it on at, so its own step barely moves it) and its yaw.
+ */
+function drive(world: World, p: SetPiece, k: number, u: number, cd: number, v: number, yaw: number): boolean {
+  const slot = stillOurs(world, p, k);
+  const tr = trafficState(world);
+  const mover = world.movers[p.vehicles[k] ?? -1];
+  if (slot < 0 || !mover) return false;
+  const speed = Math.max(0, v);
+  tr.u[slot] = u;
+  tr.cd[slot] = cd;
+  tr.v0[slot] = speed;
+  mover.speed = speed;
+  fromCorridor(tr.corridor, u, cd, tr.dir[slot] ?? 1, mover.pos);
+  mover.yaw = yaw;
+  return true;
+}
+
+/** A setPieceBeat event (W-T): the piece's moment, for sound, barks and the camera. */
+function beat(
+  world: World,
+  config: SimConfig,
+  p: SetPiece,
+  name: string,
+  actor: number,
+  extra: Record<string, string> = {},
+  target?: number,
+): void {
+  p.beat = 1;
+  const id = config.modifiers[p.mod]?.contentId ?? '';
+  emit(
+    world,
+    'setPieceBeat',
+    actor,
+    { beat: name, piece: p.piece, id, ...extra },
+    target === undefined ? {} : { target },
+  );
 }
 
 function end(world: World, config: SimConfig, st: SetPieceState, index: number): void {
@@ -656,6 +1019,16 @@ function end(world: World, config: SimConfig, st: SetPieceState, index: number):
   if (!p || !m) return;
   p.phase = 2;
   st.props = st.props.filter((q) => q.piece !== index);
+  // W-T: a skiff at rest stays where it stopped (pinned, not moving); a cable car's grip catches and
+  // it climbs on as traffic.
+  if (p.piece === 'boat-slide' && p.drive >= 0 && drive(world, p, p.drive, p.mu, p.mcd, 0, p.myaw))
+    p.vehicleCd[p.drive] = p.mcd === 0 ? 0.01 : p.mcd;
+  if (p.piece === 'cable-runaway' && p.drive >= 0) {
+    const slot = stillOurs(world, p, 0);
+    if (slot >= 0)
+      trafficState(world).v0[slot] = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.cruiseMps ?? 4;
+    p.drive = -1;
+  }
   emit(world, 'modifierEnd', -1, { id: m.contentId, kind: m.kind, piece: p.piece });
 }
 
@@ -718,12 +1091,13 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
     // Route-forward position of each racer relative to the piece's start.
     const rel = racers.map((r) => dir * (r.u - p.u));
     if (p.phase === 0) {
-      if (rel.some((d) => d >= -SET_PIECE.activateM && d <= p.len)) goLive(world, config, st, i);
+      if (rel.some((d) => d >= -activateFor(p) && d <= p.len)) goLive(world, config, st, i);
       else return;
     }
-    // The end of the piece: its own length, or wherever the hay truck has got to.
+    // The end of the piece: its own length, or wherever the hay truck, a log or the skiff has got to.
     let endAlong = p.len;
     for (const q of st.props) if (q.piece === i) endAlong = Math.max(endAlong, dir * (q.u - p.u));
+    if (p.drive >= 0 && p.piece === 'boat-slide') endAlong = Math.max(endAlong, dir * (p.mu - p.u));
     if (over || (rel.length > 0 && rel.every((d) => d > endAlong + SET_PIECE.endPastM))) {
       end(world, config, st, i);
       return;
@@ -731,8 +1105,214 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
     pinVehicles(world, p);
     if (p.piece === 'hay-spill') stepHay(world, config, st, p, i, racers);
     if (p.piece === 'speed-trap') stepTrap(world, config, p, riders);
+    if (p.piece === 'boat-slide') stepBoat(world, config, p, racers, dt);
+    if (p.piece === 'log-spill') stepLogTruck(world, config, st, p, i, racers);
+    if (p.piece === 'cable-runaway') stepCable(world, config, p, racers, dt);
+    if (p.piece === 'lane-vote') stepVote(world, config, st, p, i, racers, dt);
   });
   stepProps(world, config, st, riders, dt);
+}
+
+/**
+ * The route-forward lane nearest the centre line at u (its cd, and its outward sign), or the
+ * piece's own lane where none is found. Lanes move across the corridor along the road, so a piece
+ * that travels reads the lane where it is.
+ */
+export function laneAt(
+  config: SimConfig,
+  c: Corridor,
+  u: number,
+  p: SetPiece,
+): { cd: number; side: number; width: number } {
+  const lane = lanesAt(config.road, c, u, c.routeDir)[0];
+  if (!lane) return { cd: p.laneCd, side: p.side, width: p.laneW };
+  // Outward is away from the oncoming lanes (where there are none, away from cd 0).
+  const oncoming = lanesAt(config.road, c, u, c.routeDir === 1 ? -1 : 1)[0];
+  const away = oncoming ? lane.cd - oncoming.cd : lane.cd;
+  return { cd: lane.cd, side: away < 0 ? -1 : 1, width: lane.width };
+}
+
+/**
+ * The boat slide: the boat rides its hitch until a racer is within `unhitchM` behind it on open
+ * road, then slides free (slideStep) and comes to rest across the centre line.
+ */
+function stepBoat(
+  world: World,
+  config: SimConfig,
+  p: SetPiece,
+  racers: readonly RiderAt[],
+  dt: number,
+): void {
+  if (p.drive < 0) return;
+  const tr = trafficState(world);
+  const c = tr.corridor;
+  const dir = c.routeDir;
+  if (p.beat === 0) {
+    const tow = stillOurs(world, p, 0);
+    if (tow >= 0) {
+      const towLen = config.trafficTypes[tr.type[tow] ?? -1]?.lengthM ?? 5.4;
+      const boatLen = config.trafficTypes[p.vehicleTypes[p.drive] ?? -1]?.lengthM ?? 6;
+      const tu = tr.u[tow] ?? p.mu;
+      // The pickup holds its lane until the hitch goes: traffic would edge it round the boat (a
+      // parked oddity right behind it), and the boat would follow it across the road.
+      const lane = laneAt(config, c, tu, p);
+      p.mv = world.movers[tr.id[tow] ?? -1]?.speed ?? p.mv;
+      drive(world, p, 0, tu, lane.cd, p.mv, 0);
+      p.mu = tu - dir * ((towLen + boatLen) / 2 + MOVING.towGapM);
+      p.mcd = laneAt(config, c, p.mu, p).cd;
+    }
+    if (!drive(world, p, p.drive, p.mu, p.mcd, p.mv, 0)) return;
+    const close = racers.some((r) => {
+      const behind = dir * (p.mu - r.u);
+      return behind > 0 && behind < MOVING.unhitchM;
+    });
+    // It lets go only on open road (no bridge, rail or tight bend under the slide), or when the hitch is gone.
+    if ((close && stretchOk(config, c, p.mu - dir * 10, 40, 0)) || tow < 0)
+      beat(world, config, p, 'unhitch', p.vehicles[p.drive] ?? -1);
+    return;
+  }
+  // The lane where the boat is now (lanes shift across the corridor along the road), not where the
+  // piece was placed.
+  const lane = laneAt(config, c, p.mu, p);
+  const s: Slide = { v: p.mv, cd: p.mcd, yaw: p.myaw };
+  slideStep(s, lane.cd, lane.side, dt);
+  p.mu += dir * s.v * dt;
+  p.mv = s.v;
+  p.mcd = s.cd;
+  p.myaw = s.yaw;
+  drive(world, p, p.drive, p.mu, p.mcd, p.mv, p.myaw);
+}
+
+/** The log truck: once a racer is within `shedRangeM` behind it, a log off the back every `logEveryM`. */
+function stepLogTruck(
+  world: World,
+  config: SimConfig,
+  st: SetPieceState,
+  p: SetPiece,
+  index: number,
+  racers: readonly RiderAt[],
+): void {
+  const tr = trafficState(world);
+  const dir = tr.corridor.routeDir;
+  const slot = stillOurs(world, p, 0);
+  if (slot < 0 || p.dropped >= Math.round(num(effectOf(config, p) ?? { kind: '' }, 'logs', MOVING.logs)))
+    return;
+  const u = tr.u[slot] ?? 0;
+  const close = racers.some((r) => {
+    const behind = dir * (u - r.u);
+    return behind > 0 && behind < MOVING.shedRangeM;
+  });
+  if (!close || dir * (u - p.nextDropU) < 0) return;
+  if (p.beat === 0) beat(world, config, p, 'shed', tr.id[slot] ?? -1);
+  const t = config.trafficTypes[tr.type[slot] ?? -1];
+  const speed = world.movers[tr.id[slot] ?? -1]?.speed ?? 0;
+  const cd = tr.cd[slot] ?? p.laneCd;
+  const back = u - dir * ((t?.lengthM ?? 16) / 2 + 0.8);
+  // Across both lanes where the log lands (lanes shift across the corridor along the road): the
+  // pattern is about the centre line between the forward lane and its oncoming twin.
+  const lane = laneAt(config, tr.corridor, back, p);
+  const centre = lane.cd - (lane.side * lane.width) / 2;
+  const target = centre + logTargetCd(p.dropped, lane.cd - centre, lane.side);
+  addProp(st, index, {
+    kind: 'log',
+    variant: str(effectOf(config, p) ?? { kind: '' }, 'theme', ''),
+    u: back,
+    cd,
+    h: 1.9,
+    vu: dir * speed * MOVING.logShare,
+    vh: 0.5,
+    vcd: (target - cd) * 0.9,
+    dodgeTo: target,
+    moving: true,
+  });
+  p.dropped++;
+  p.nextDropU = u + dir * MOVING.logEveryM;
+}
+
+/**
+ * The cable car: it climbs (traffic drives it) until a racer is within `runawayM` behind it, then
+ * the grip goes and it rolls back down its street (rollStep), facing uphill, for up to `rollMaxM`.
+ * Traffic's no-overlap rule shoves back any car behind it in its lane.
+ */
+function stepCable(
+  world: World,
+  config: SimConfig,
+  p: SetPiece,
+  racers: readonly RiderAt[],
+  dt: number,
+): void {
+  const tr = trafficState(world);
+  const dir = tr.corridor.routeDir;
+  const slot = stillOurs(world, p, 0);
+  if (slot < 0) return;
+  if (p.beat === 0) {
+    const u = tr.u[slot] ?? 0;
+    const close = racers.some((r) => {
+      const behind = dir * (u - r.u);
+      return behind > 0 && behind < MOVING.runawayM;
+    });
+    if (!close) return;
+    p.drive = 0;
+    p.mu = u;
+    p.mcd = tr.cd[slot] ?? p.laneCd;
+    p.mv = world.movers[tr.id[slot] ?? -1]?.speed ?? 0;
+    beat(world, config, p, 'runaway', tr.id[slot] ?? -1);
+  }
+  if (p.rolled < MOVING.rollMaxM) {
+    p.mv = rollStep(p.mv, dt);
+    p.mu += dir * p.mv * dt;
+    if (p.mv < 0) p.rolled -= p.mv * dt;
+  } else p.mv = 0; // the grip catches at last
+  // In its lane wherever it has rolled to; traffic carries it at no speed of its own: the piece moves it.
+  p.mcd = laneAt(config, tr.corridor, p.mu, p).cd;
+  drive(world, p, 0, p.mu, p.mcd, 0, 0);
+}
+
+/**
+ * The lane vote: the first player through under the gantry (an AI-only race: the first racer) picks
+ * the event on the side they ride under; it goes in at the reserved spot and runs like any other.
+ */
+function stepVote(
+  world: World,
+  config: SimConfig,
+  st: SetPieceState,
+  p: SetPiece,
+  index: number,
+  racers: readonly RiderAt[],
+  dt: number,
+): void {
+  if (p.voted !== 0 || p.voteLeft < 0) return;
+  const dir = trafficState(world).corridor.routeDir;
+  const gantryU = p.u + dir * MOVING.gantryAlongM;
+  const players = racers.filter((r) => r.player);
+  const voters = players.length > 0 ? players : racers;
+  const voter = voters.find((r) => {
+    const past = dir * (r.u - gantryU);
+    return r.m.mode === 'Road' && past >= 0 && past <= r.m.speed * dt + 0.5;
+  });
+  if (!voter) return;
+  const side = voteSide(voter.cd, p.splitCd, p.side);
+  p.voted = side === 'right' ? 1 : -1;
+  const mi = side === 'right' ? p.voteRight : p.voteLeft;
+  const ei = votableEffect(config, mi);
+  const e = config.modifiers[mi]?.effects[ei];
+  const gantry = st.props.find((q) => q.piece === index && q.kind === 'gantry');
+  if (gantry) gantry.variant = side;
+  beat(world, config, p, 'vote', -1, { side, pick: config.modifiers[mi]?.contentId ?? '' }, voter.m.id);
+  if (!e) return;
+  const c = trafficState(world).corridor;
+  const piece = String(e['piece']);
+  const picked = newPiece(
+    config,
+    c,
+    mi,
+    ei,
+    piece,
+    p.voteU,
+    pieceLength(piece, list(e, 'floats').length),
+    leadOf(e),
+  );
+  if (picked) st.pieces.push(picked);
 }
 
 function stepHay(
@@ -881,6 +1461,10 @@ function stepProps(
       stepPerson(q, riders, dir, dt);
       continue;
     }
+    if (q.kind === 'log') {
+      stepLog(world, config, q, riders, dir, dt);
+      continue;
+    }
     const [hu, hd] = extent(q.kind);
     if (hu > 0 && !q.moving) {
       // Riders through it: the prop flies, the rider pays a little (a bale or a sawhorse wobbles).
@@ -939,6 +1523,70 @@ function stepProps(
       }
     }
   }
+}
+
+/**
+ * A log (W-T): off the truck it falls, then rolls along the road (its `tilt` is the roll) and
+ * across to where it comes to rest (`dodgeTo`), slowing to a stop. A rider low over it hops it
+ * (once per log); traffic rolls over it and nudges it on.
+ */
+function stepLog(
+  world: World,
+  config: SimConfig,
+  q: SetProp,
+  riders: readonly RiderAt[],
+  dir: number,
+  dt: number,
+): void {
+  for (const r of riders) {
+    if (r.m.mode !== 'Road' || r.m.h > MOVING.hopMaxH || q.hit === r.m.id || q.h > 0.6) continue;
+    if (Math.abs(r.u - q.u) > MOVING.logHalfDepthM + SET_PIECE.riderLengthM / 4) continue;
+    if (Math.abs(r.cd - q.cd) > MOVING.logHalfLenM + SET_PIECE.riderWidthM / 2) continue;
+    q.hit = r.m.id;
+    hop(world, config, r.m);
+    // A rolling log shoves on a little from whoever hops it.
+    q.vu += r.dir * dir * 0.6;
+    q.moving = true;
+  }
+  if (!q.moving) return;
+  const g = SET_PIECE.gravity;
+  if (q.h > 0 || q.vh > 0) {
+    q.vh -= g * dt;
+    q.h = Math.max(0, q.h + q.vh * dt);
+    if (q.h === 0) q.vh = q.vh < -2 ? -q.vh * 0.25 : 0;
+  }
+  q.u += q.vu * dt;
+  q.tilt += (dir * q.vu * dt) / MOVING.logRadiusM;
+  // Across to its resting place, and slowing along the road.
+  const across = q.dodgeTo - q.cd;
+  const step = Math.max(0.8, Math.abs(q.vcd)) * dt;
+  q.cd += clamp(across, -step, step);
+  const speed = Math.abs(q.vu);
+  const slowed = Math.max(0, speed * (1 - MOVING.logRollDrag * dt) - MOVING.logRollFriction * dt);
+  q.vu = speed > 0 ? (q.vu / speed) * slowed : 0;
+  if (q.h === 0 && q.vh === 0 && slowed < 0.25 && Math.abs(across) < 0.05) {
+    q.vu = 0;
+    q.vcd = 0;
+    q.moving = false;
+  }
+}
+
+/**
+ * Riding over a log (W-T: "riding over one is a hop"): the rider leaves the road with a small lift
+ * that grows with speed, as off a lip (sim/riders flies and lands it), and loses a little speed.
+ */
+function hop(world: World, config: SimConfig, m: Mover): void {
+  const rs = riderState(world);
+  const vy = hopVy(m.speed);
+  const surface = config.road.surfaceHeight(m.pos.edge, m.pos.s, m.pos.d);
+  m.mode = 'Airborne';
+  m.h = 0.05;
+  m.speed *= MOVING.hopScrub;
+  rs.yAbs[m.id] = surface + m.h;
+  rs.vy[m.id] = vy;
+  rs.airTicks[m.id] = 0;
+  startFlight(rs, m, world.inputs[m.id], rs.pitch[m.id] ?? slopeAt(config, m));
+  emit(world, 'jump', m.id, { speed: m.speed, vyMps: vy, hop: true, cause: 'log' });
 }
 
 /** Sends a prop flying from something at speed `along` (corridor u velocity) passing on side `side`. */
@@ -1013,6 +1661,7 @@ export function propSnapshots(world: World, config: SimConfig): PropSnapshot[] {
       heading: atan2(-fx, -fz),
       tilt: q.tilt,
       moving: q.moving,
+      ...(q.kind === 'gantry' ? { spanM: q.span } : {}),
     };
   });
 }
