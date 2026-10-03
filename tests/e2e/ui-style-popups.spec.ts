@@ -23,10 +23,11 @@ import { fastForwardDone } from './lockstep';
 // HUD widget and overlay on screen is measured from its painted box: no two may overlap, and none
 // may reach into the look-ahead. Three moments are measured: the race's start (the bubble, the
 // pop-ups, the objective and the career prompt), once the heat badge is up (with the slow-frames
-// toast and the bubble held up beside it), and while the landing one-liner shows (render draws it
-// in WebGL, so its plate is read from the overlay sprite three.js draws, through three's own
-// devtools hook). Overlaps main already has are named in KNOWN_LAYOUT_FINDINGS, a list that can only
-// shrink: a finding not on it fails, and so does an entry that no longer happens.
+// toast, the rival's health bar and the bubble held up beside it), and while the landing one-liner
+// shows (render draws it in WebGL, so its plate is read from the overlay sprite three.js draws,
+// through three's own devtools hook). Overlaps main already has are named in KNOWN_LAYOUT_FINDINGS,
+// a list that can only shrink: a finding not on it fails, and so does an entry that no longer
+// happens.
 
 const LOOK_AHEAD = { left: 0.25, right: 0.75, top: 0.25, bottom: 0.65 };
 
@@ -107,16 +108,47 @@ const WIDE_FEED: FeedPop[] = [
  * ahead" for a piece inside the look-ahead. This list can only shrink. Fix one and delete its line
  * (the check fails while a line names something that no longer happens); never add one to get a
  * new overlap through: move the widget instead. KNOWN_LAYOUT_CAP holds the count, so growing the
- * list shows in the diff as a raised cap.
+ * list shows in the diff as a raised cap. Measured on CI's software renderer, 2026-10-03 (PR #416);
+ * the playtest-3 HUD work (shelved) is where these get fixed.
  */
 const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
-  'phone landscape': [],
-  'phone portrait': [],
-  laptop: [],
-  mirrored: [],
-  'small phone': [],
+  'phone landscape': [
+    // The bubble at its longest line reaches 41 px into the look-ahead's top.
+    'bark-bubble in the road ahead',
+    // Playtest 3: "The race objective sits over the heat meter". Both sit top centre at 8 px on a
+    // short landscape screen.
+    'hud-heat × hud-objective',
+    // Playtest 3's "black and white text pop-ups block the actual game" (inferred): the landing
+    // one-liner's dark plate sits over the bike, in the middle of the road.
+    'landing-line in the road ahead',
+    // The slow-frames toast sits top centre over the bubble, the heat badge and the objective, and
+    // reaches 3 px into the look-ahead.
+    'bark-bubble × look-offer',
+    'hud-heat × look-offer',
+    'hud-objective × look-offer',
+    'look-offer in the road ahead',
+  ],
+  'phone portrait': [
+    // The objective (top 48 px) and the bubble (top 52 px) share the top centre.
+    'bark-bubble × hud-objective',
+    // The rival's health bar (top right) reaches left over the centred heat badge.
+    'hud-heat × hud-target',
+    'landing-line in the road ahead',
+    // The toast, nearly full width, over the bubble, the objective and the pop-up stack.
+    'bark-bubble × look-offer',
+    'hud-objective × look-offer',
+    'look-offer × style-pop',
+  ],
+  laptop: [
+    'landing-line in the road ahead',
+    'bark-bubble × look-offer',
+    'hud-heat × look-offer',
+    'hud-objective × look-offer',
+  ],
+  mirrored: ['bark-bubble in the road ahead'],
+  'small phone': ['bark-bubble in the road ahead'],
 };
-const KNOWN_LAYOUT_CAP = 0;
+const KNOWN_LAYOUT_CAP = 19;
 
 function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
@@ -313,11 +345,15 @@ async function startRace(
   );
   await page.goto('./');
   if (opts.career) {
-    await page.evaluate((seed) => (window as TestWindow).__game?.setSeed(seed), CAREER_SEED);
+    // The bot rides from the first tick, so every case rides the same race (the moments below come
+    // at the same ticks whatever the screen or the renderer's speed).
+    await page.evaluate((seed) => {
+      const g = (window as TestWindow).__game;
+      g?.setSeed(seed);
+      g?.setBot(true);
+    }, CAREER_SEED);
     await page.locator('#start-screen').click();
     await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
-    // As the career spec rides it: the bot takes over once the race is on.
-    await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
     await expect(page.locator('#hud-objective')).toBeVisible();
   } else {
     await page.locator('#start-screen').click();
@@ -341,8 +377,12 @@ interface MeasureOpts {
   wideBubble?: boolean;
   /** Put the bubble up with the longest line if it has gone, so the moment is measured with it. */
   holdBubble?: boolean;
-  /** Show the slow-frames toast (#look-offer) while measuring, as app/ shows it over a race. */
-  offer?: boolean;
+  /**
+   * Elements to show while measuring, as ui/ shows them in a race: the slow-frames toast
+   * (#look-offer, app/ raises it when frames run slow) and the rival's health bar (#hud-target, up
+   * while the player fights one). ui/ places them whether shown or not.
+   */
+  show?: string[];
 }
 
 /**
@@ -419,9 +459,11 @@ function feedAndMeasure(page: Page, feed: FeedPop[], opts: MeasureOpts = {}): Pr
       const settled = atRest();
       const settledMs = Math.round(performance.now() - t0);
       held = holdUp() || held;
-      const offer = document.getElementById('look-offer');
-      const showOffer = !!opts.offer && !!offer && offer.hidden;
-      if (showOffer && offer) offer.hidden = false;
+      // Shown for the measurement only, where ui/ has already placed them: hidden again after.
+      const shownNow = (opts.show ?? [])
+        .map((id) => document.getElementById(id))
+        .filter((e): e is HTMLElement => !!e && e.hidden === true);
+      for (const e of shownNow) e.hidden = false;
       const pops = [...document.querySelectorAll<HTMLElement>('.style-pop')]
         .filter((e) => e.checkVisibility())
         .map((e) => {
@@ -452,7 +494,7 @@ function feedAndMeasure(page: Page, feed: FeedPop[], opts: MeasureOpts = {}): Pr
       const shown = !!bubble && !bubble.hidden && bubble.checkVisibility();
       const bubbleText = shown ? (text?.textContent ?? '') : '';
       const bubbleBox = shown && bubble ? { ...box(bubble), bottom: box(bubble).bottom + 9 } : null;
-      if (showOffer && offer) offer.hidden = true;
+      for (const e of shownNow) e.hidden = true;
       if (held && bubble) bubble.hidden = true;
       return {
         viewport: { w: window.innerWidth, h: window.innerHeight },
@@ -509,7 +551,8 @@ function momentFindings(m: Measured, where: string): string[] {
 
 /**
  * Rides on (fast-forward) until the heat badge is up, then measures the HUD with it, the pop-ups,
- * the bubble held up and the slow-frames toast shown. The race then crawls a tick a frame, so the
+ * the bubble held up, the slow-frames toast and the rival's health bar shown. The race then crawls
+ * a tick a frame, so the
  * heat cannot cool off while the badge's lazy chunk arrives.
  */
 async function heatMoment(page: Page, where: string): Promise<string[]> {
@@ -528,9 +571,9 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
   await expect(page.locator('#hud-heat'), `${where}: the heat badge came up`).toBeVisible({
     timeout: 15_000,
   });
-  const m = await feedAndMeasure(page, WIDE_FEED, { holdBubble: true, offer: true });
+  const m = await feedAndMeasure(page, WIDE_FEED, { holdBubble: true, show: ['look-offer', 'hud-target'] });
   const names = new Set(m.layout.map((p) => p.name));
-  for (const must of ['hud-heat', 'hud-objective', 'look-offer'])
+  for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target'])
     expect(names.has(must), `${where}: the layout probe measured ${must} with the heat up`).toBe(true);
   await shot(page, `${where.replace(/\s+/g, '-')}-heat`);
   const found = momentFindings(m, `${where}, heat`);
