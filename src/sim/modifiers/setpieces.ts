@@ -178,6 +178,11 @@ export interface SetPiece {
   myaw: number;
   /** How far the cable car has rolled back, m. */
   rolled: number;
+  /**
+   * #391: how many times a moving piece has put its vehicle on the road (it waits for the leading
+   * racer, and puts it back if traffic took it before the beat, up to `MOVING.respawns` times).
+   */
+  spawns: number;
   /** The furthest of its signs ahead of it, m (the warning sign, or the first serial sign). */
   lead: number;
   /**
@@ -365,8 +370,16 @@ function pieceLength(piece: string, floats: number): number {
 const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
 
 /**
+ * The pieces that put nothing on the verge (#391): the cable car climbs and rolls in its lane, so it
+ * may stand between walls, as SF's cable streets are built (sf-cable-line-grade is walled for 440
+ * of its 760 m, which left the default route no stretch for it).
+ */
+const WALLS_OK = new Set(['cable-runaway']);
+
+/**
  * Whether a stretch [u, u + dir·len] (plus the sign lead behind it) can hold a piece; with `tag`,
- * the piece itself (not its signs' run-up) must lie on roads carrying that scenery tag.
+ * the piece itself (not its signs' run-up) must lie on roads carrying that scenery tag. With
+ * `walls`, a rail or wall beside it is fine.
  */
 function stretchOk(
   config: SimConfig,
@@ -375,6 +388,7 @@ function stretchOk(
   len: number,
   lead = SET_PIECE.signLeadM,
   tag = '',
+  walls = false,
 ): boolean {
   const road = config.road;
   const dir = c.routeDir;
@@ -387,7 +401,10 @@ function stretchOk(
     if (road.branchSideAt(pos.edge, pos.s) !== 0) return false;
     // The sign's run-up needs only to be on the route; the piece itself needs open road.
     if (a < -10) continue;
-    if (road.barrierAt(pos.edge, pos.s, 'left') !== null || road.barrierAt(pos.edge, pos.s, 'right') !== null)
+    if (
+      !walls &&
+      (road.barrierAt(pos.edge, pos.s, 'left') !== null || road.barrierAt(pos.edge, pos.s, 'right') !== null)
+    )
       return false;
     if (Math.abs(road.kappaAt(pos.edge, pos.s)) > SET_PIECE.maxKappa) return false;
     if (lanesAt(road, c, uu, dir).length === 0) return false;
@@ -497,6 +514,22 @@ export function initSetPieces(world: World, config: SimConfig): void {
       const downhill = num(e, 'minDownGrade', 0);
       const lo = Math.max(SET_PIECE.minProgress, m.atProgress[0]);
       const hi = Math.min(SET_PIECE.maxProgress, m.atProgress[1]);
+      const walls = WALLS_OK.has(piece);
+      if (tag !== '') {
+        // #391: a piece tied to a road tag picks among the spots that fit, every 10 m of its window,
+        // rather than hoping a random try lands on a street that may be a fifth of the route.
+        const fits: number[] = [];
+        const step = 10 / Math.max(1, st.routeLen);
+        for (let p = lo; p <= hi; p += step) {
+          const u = st.u0 + c.routeDir * p * st.routeLen;
+          if (roomFor(st, bypassed, u, len, lead) && stretchOk(config, c, u, len, lead, tag, walls))
+            fits.push(u);
+        }
+        const u = fits[Math.min(fits.length - 1, Math.floor(nextFloat(rng) * fits.length))];
+        const placed = u === undefined ? null : newPiece(config, c, mi, ei, piece, u, len, lead);
+        if (placed) st.pieces.push(placed);
+        return;
+      }
       for (let t = 0; t < SET_PIECE.placeTries; t++) {
         const p = lo + (Math.max(lo, hi) - lo) * nextFloat(rng);
         const u = st.u0 + c.routeDir * p * st.routeLen;
@@ -567,6 +600,7 @@ function newPiece(
     mv: 0,
     myaw: 0,
     rolled: 0,
+    spawns: 0,
     lead,
     voteU: 0,
     voteLeft: -1,
@@ -907,28 +941,11 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
       });
       break;
     }
-    case 'boat-slide': {
-      // The pickup crawls along in the lane, the boat trailer on its hitch right behind it.
-      const tow = placeOn(world, config, c, p, str(e, 'vehicle', ''), 40, true);
-      const boatType = typeIndex(config, str(e, 'vehicle2', ''));
-      const towLen = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.lengthM ?? 5.4;
-      const boatLen = config.trafficTypes[boatType]?.lengthM ?? 6;
-      const behind = 40 - (towLen + boatLen) / 2 - MOVING.towGapM;
-      if (tow >= 0 && placeOn(world, config, c, p, str(e, 'vehicle2', ''), behind, true) >= 0) {
-        p.drive = p.vehicles.length - 1;
-        p.mu = at(behind);
-        p.mcd = p.laneCd;
-      }
-      break;
-    }
-    case 'log-spill': {
-      const truck = placeOn(world, config, c, p, str(e, 'vehicle', ''), 20, true);
-      if (truck >= 0) p.nextDropU = at(20);
-      break;
-    }
+    case 'boat-slide':
+    case 'log-spill':
     case 'cable-runaway':
-      // Climbing its street ahead, at a cable car's crawl.
-      placeOn(world, config, c, p, str(e, 'vehicle', ''), 120, true);
+      // #391: their vehicles go on the road as the leading racer nears (keepVehicle), not now: from
+      // here they would stand past traffic's keep-alive range, and traffic would take them.
       break;
     case 'lane-vote':
       addProp(st, index, {
@@ -1071,6 +1088,112 @@ function stillOurs(world: World, p: SetPiece, k: number): number {
   return slot >= 0 && tr.type[slot] === p.vehicleTypes[k] ? slot : -1;
 }
 
+/**
+ * Where each moving piece's vehicle starts, m route-forward of the piece's start (the boat slide's:
+ * the tow's), and which of its vehicles its beat needs (the skiff is the boat slide's second).
+ */
+const MOVER_ALONG: Readonly<Record<string, number>> = {
+  'boat-slide': 40,
+  'log-spill': 20,
+  'cable-runaway': 120,
+};
+const moverIndex = (p: SetPiece) => (p.piece === 'boat-slide' ? 1 : 0);
+
+/**
+ * #391: a moving piece's vehicle goes on the road relative to the field. It waits until the leading
+ * racer is within `spawnAheadM` of its spot (inside traffic's keep-alive range), and if traffic took
+ * it before its beat, it goes back `spawnAheadM` ahead of the leader (a cable car only on its own
+ * street, so only at its spot), at most `respawns` times. A piece that cannot place it plays on
+ * without it and ends as any piece does.
+ */
+function keepVehicle(
+  world: World,
+  config: SimConfig,
+  st: SetPieceState,
+  p: SetPiece,
+  racers: readonly RiderAt[],
+): void {
+  const spot = MOVER_ALONG[p.piece];
+  if (spot === undefined || p.beat !== 0 || racers.length === 0 || p.spawns > MOVING.respawns) return;
+  const k = moverIndex(p);
+  if (p.vehicles.length > k && stillOurs(world, p, k) >= 0) return;
+  const c = trafficState(world).corridor;
+  const dir = c.routeDir;
+  // The leading racer's place, m route-forward of the piece's start.
+  let lead = -Infinity;
+  for (const r of racers) lead = Math.max(lead, dir * (r.u - p.u));
+  let along = spot;
+  if (along - lead > MOVING.spawnAheadM) return; // the field is still far off
+  if (along - lead < MOVING.spawnMinM) {
+    along = lead + MOVING.spawnAheadM;
+    const u = p.u + dir * along;
+    const onRoute =
+      p.piece !== 'cable-runaway' &&
+      Math.abs(u - st.u0) < SET_PIECE.maxProgress * st.routeLen &&
+      u > c.lo + 20 &&
+      u < c.hi - 20 &&
+      lanesAt(config.road, c, u, dir).length > 0;
+    if (!onRoute) {
+      p.spawns = MOVING.respawns + 1;
+      return;
+    }
+  }
+  p.spawns++;
+  p.vehicles = [];
+  p.vehicleTypes = [];
+  p.vehicleCd = [];
+  p.drive = -1;
+  placeMover(world, config, c, p, along);
+}
+
+/** Puts a moving piece's vehicle(s) on the road `along` metres route-forward of its start. */
+function placeMover(world: World, config: SimConfig, c: Corridor, p: SetPiece, along: number): void {
+  const e = effectOf(config, p);
+  if (!e) return;
+  const at = (a: number) => p.u + c.routeDir * a;
+  switch (p.piece) {
+    case 'boat-slide': {
+      // The pickup crawls along in the lane, the boat trailer on its hitch right behind it.
+      const tow = placeOn(world, config, c, p, str(e, 'vehicle', ''), along, true);
+      const boatType = typeIndex(config, str(e, 'vehicle2', ''));
+      const towLen = config.trafficTypes[p.vehicleTypes[0] ?? -1]?.lengthM ?? 5.4;
+      const boatLen = config.trafficTypes[boatType]?.lengthM ?? 6;
+      const behind = along - (towLen + boatLen) / 2 - MOVING.towGapM;
+      if (tow >= 0 && placeOn(world, config, c, p, str(e, 'vehicle2', ''), behind, true) >= 0) {
+        p.drive = p.vehicles.length - 1;
+        p.mu = at(behind);
+        p.mcd = laneAt(config, c, p.mu, p).cd;
+      }
+      break;
+    }
+    case 'log-spill': {
+      const truck = placeOn(world, config, c, p, str(e, 'vehicle', ''), along, true);
+      if (truck >= 0) p.nextDropU = at(along);
+      break;
+    }
+    case 'cable-runaway':
+      // Climbing its street ahead, at a cable car's crawl.
+      placeOn(world, config, c, p, str(e, 'vehicle', ''), along, true);
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * How far route-forward of its start a moving piece reaches while the field has yet to meet it, m:
+ * its vehicle (the tow, the log truck, the cable car) until its beat, and the log truck until it has
+ * shed every log. 0 for the other pieces.
+ */
+function moverReach(world: World, config: SimConfig, p: SetPiece): number {
+  if (MOVER_ALONG[p.piece] === undefined) return 0;
+  const logs = Math.round(num(effectOf(config, p) ?? { kind: '' }, 'logs', MOVING.logs));
+  if (p.beat !== 0 && !(p.piece === 'log-spill' && p.dropped < logs)) return 0;
+  const slot = stillOurs(world, p, 0);
+  const tr = trafficState(world);
+  return slot < 0 ? 0 : tr.corridor.routeDir * ((tr.u[slot] ?? p.u) - p.u);
+}
+
 /** Steps the set pieces: activation, the props' physics and contacts, the hay, the trap, the end. */
 export function stepSetPieces(world: World, config: SimConfig, over: boolean): void {
   const st = setPieceState(world);
@@ -1098,10 +1221,13 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
     let endAlong = p.len;
     for (const q of st.props) if (q.piece === i) endAlong = Math.max(endAlong, dir * (q.u - p.u));
     if (p.drive >= 0 && p.piece === 'boat-slide') endAlong = Math.max(endAlong, dir * (p.mu - p.u));
+    // #391: a moving piece lasts until the field has met its vehicle, wherever it has got to.
+    endAlong = Math.max(endAlong, moverReach(world, config, p));
     if (over || (rel.length > 0 && rel.every((d) => d > endAlong + SET_PIECE.endPastM))) {
       end(world, config, st, i);
       return;
     }
+    keepVehicle(world, config, st, p, racers);
     pinVehicles(world, p);
     if (p.piece === 'hay-spill') stepHay(world, config, st, p, i, racers);
     if (p.piece === 'speed-trap') stepTrap(world, config, p, riders);
