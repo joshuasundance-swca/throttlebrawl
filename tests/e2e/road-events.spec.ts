@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { fastForwardDone, frames } from './lockstep';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // W-P road events (the maintainer, 2026-10-01b: "events and set pieces: roadwork, crash scenes,
@@ -11,6 +12,12 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // puts the piece's props on the road, render draws them (RendererStats.eventProps, with the warning
 // sign's words), the frame with the piece ahead of the player is not blank, the draw stays inside
 // the budget, and nothing logs an error.
+//
+// The race fast-forwards between those moments (the test handle's fastForward over the loop's
+// lockstep; the determinism run's R4): 240 ticks a drawn frame until the piece's props are live,
+// again until one is within APPROACH_M ahead, then 4 ticks a frame, every frame drawn, until it
+// is 10 to 80 m ahead. Each stop is the exact tick the condition first holds, so the waits are
+// hang guards and the race is the same tick for tick on every runner.
 
 interface Prop {
   kind: string;
@@ -18,12 +25,16 @@ interface Prop {
   x: number;
   z: number;
 }
+interface Snap {
+  tick: number;
+  entities: { slot: number; x: number; z: number; heading: number }[];
+  props?: Prop[];
+}
 interface Handle {
-  snapshot(): {
-    tick: number;
-    entities: { slot: number; x: number; z: number; heading: number }[];
-    props?: Prop[];
-  } | null;
+  snapshot(): Snap | null;
+  fastForward(until: (snap: Snap) => boolean, opts?: { perFrame?: number; then?: number | null }): void;
+  fastForwarding(): boolean;
+  state(): string;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
   rendererStats(): {
@@ -33,6 +44,12 @@ interface Handle {
   };
 }
 type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+
+/**
+ * Where the fast ride stops short of the piece: the last stretch, 4 ticks a drawn frame, gives the
+ * chase camera more than a second of race to catch up before the screenshot. [default]
+ */
+const APPROACH_M = 160;
 
 const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   drawCallsMax: number;
@@ -63,7 +80,7 @@ const RACES = [
 
 for (const race of RACES) {
   test(`${race.slug}: the bot meets the race's road events, and they are drawn`, async ({ page }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(240_000); // a hang guard
     const problems: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
@@ -87,12 +104,15 @@ for (const race of RACES) {
     const wanted = Object.entries(race.pieces);
     for (const [piece, kind] of wanted) {
       // The piece goes live as the leading racer closes in: its props appear in the snapshot...
-      await page.waitForFunction(
+      await page.evaluate(
         ([p, k]) =>
-          ((window as TestWindow).__game?.snapshot()?.props ?? []).some((x) => x.piece === p && x.kind === k),
+          (window as TestWindow).__game?.fastForward((s) =>
+            (s.props ?? []).some((x) => x.piece === p && x.kind === k),
+          ),
         [piece, kind] as const,
-        { timeout: 150_000 },
       );
+      await fastForwardDone(page, `${race.slug} ${piece} live`);
+      await frames(page, 1); // drawn
       // ...and render draws them, the warning sign with its words.
       const drawn = await page.evaluate(
         () => (window as TestWindow).__game?.rendererStats().eventProps ?? null,
@@ -102,25 +122,37 @@ for (const race of RACES) {
         (drawn?.signs ?? []).some((s) => s.length > 0),
         `${piece}: its sign`,
       ).toBe(true);
-      // The player rides up to it: one of its props 10 to 80 m ahead, in front of the camera.
-      await page.waitForFunction(
-        (p) => {
-          const snap = (window as TestWindow).__game?.snapshot();
-          const me = snap?.entities.find((e) => e.slot === 0);
-          if (!me) return false;
-          // A model faces -z and turns by its heading: forward is (-sin, -cos).
-          const fx = -Math.sin(me.heading);
-          const fz = -Math.cos(me.heading);
-          return (snap?.props ?? []).some((x) => {
-            const dx = x.x - me.x;
-            const dz = x.z - me.z;
-            const ahead = dx * fx + dz * fz;
-            return x.piece === p && ahead > 10 && ahead < 80 && Math.abs(dx * fz - dz * fx) < 25;
-          });
-        },
-        piece,
-        { timeout: 150_000 },
-      );
+      // The player rides up to it: one of its props 10 to 80 m ahead, in front of the camera. Fast
+      // to APPROACH_M short of it, then frame by frame (4 ticks each) for the last stretch.
+      for (const [near, far, perFrame] of [
+        [10, APPROACH_M, 240],
+        [10, 80, 4],
+      ] as const) {
+        await page.evaluate(
+          ([p, lo, hi, n]) =>
+            (window as TestWindow).__game?.fastForward(
+              (snap) => {
+                const me = snap.entities.find((e) => e.slot === 0);
+                if (!me) return false;
+                // A model faces -z and turns by its heading: forward is (-sin, -cos).
+                const fx = -Math.sin(me.heading);
+                const fz = -Math.cos(me.heading);
+                return (snap.props ?? []).some((x) => {
+                  const dx = x.x - me.x;
+                  const dz = x.z - me.z;
+                  const ahead = dx * fx + dz * fz;
+                  return x.piece === p && ahead > lo && ahead < hi && Math.abs(dx * fz - dz * fx) < 25;
+                });
+              },
+              { perFrame: n, then: 4 },
+            ),
+          [piece, near, far, perFrame] as const,
+        );
+        await fastForwardDone(page, `${race.slug} ${piece} ${near} to ${far} m ahead`);
+      }
+      const inRace = await page.evaluate(() => (window as TestWindow).__game?.state());
+      expect(inRace, 'the race was still on when the piece came up').toBe('race');
+      await frames(page, 1); // drawn
       const png = await page
         .locator('canvas#game')
         .screenshot({ path: `test-results/screenshots/road-events-${race.slug}-${piece.split(':')[1]}.png` });
