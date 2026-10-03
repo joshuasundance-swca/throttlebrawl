@@ -581,6 +581,18 @@ const LAND_CAP_FOOT_Y = -0.4;
 const JOIN_LAND_DY_M = 0.5;
 /** The land narrowing in one step by more than this gets a cap over the part that stops, m. */
 const LAND_CAP_NARROW_M = 2;
+/**
+ * The ground laid inside a corner where two roads meet (run W-U's live check: open bay water inside
+ * a Mission street corner): this far under the skirt's flat ground, so any land drawn there wins
+ * and never flickers against it. [default]
+ */
+const CORNER_FILL_Y = GROUND_Y - 0.1;
+/** The corner's ground reaches this far along both roads (the first that keeps clear of water), m. [default] */
+const CORNER_FILL_M = [100, 70, 40] as const;
+/** A join turning less than this (the sine of its angle, 30 degrees) is not a corner. */
+const CORNER_TURN = 0.5;
+/** Each road's heading at a corner is read on its straight part, this far back from the join, m. */
+const CORNER_LEG_M = [40, 60] as const;
 /** A timber trestle's bents stand this far apart, and their feet this far under the sea. [default] */
 const BENT_SPACING_M = 8;
 const BENT_FOOT_Y = -1.5;
@@ -1664,6 +1676,76 @@ export function buildRoadScene(
       joinLand.quad(ta, fa, tb, fb);
     }
     cap(best[0], best[1]);
+  }
+  // Ground inside each corner (run W-U's live check, mustFix 2: "open bay water, with waves and
+  // gulls, inside the Satin St to Drop Cloth Alley corner"). On the inside of a tight turn each
+  // road's land narrows so its strip does not fold, and its skirt stops, so the block inside a
+  // corner of the Mission's grid had no ground and the sea showed through. Where two roads join at
+  // a corner with land on both inside sides, a flat plate of ground now lies over the whole corner,
+  // just under the skirt's flat ground (everything else drawn there stays on top). It shrinks, or
+  // is left out, where it would cover water beside any road.
+  const cornerLand = strip('land');
+  const flat = (x: number, z: number): Point3 => ({ x, y: CORNER_FILL_Y, z });
+  /** A triangle facing up, whichever way round its corners come. */
+  const upTri = (a: Point3, b: Point3, c: Point3) => {
+    if ((b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z) > 0) cornerLand.tri(a, b, c);
+    else cornerLand.tri(a, c, b);
+  };
+  const unit = (p: Point3, q: Point3) => {
+    const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    return { x: (q.x - p.x) / l, z: (q.z - p.z) / l };
+  };
+  for (const a of terrain ? road.edges : []) {
+    for (const l of a.nextLinks) {
+      const b = road.edges[l.edge];
+      const [near, far] = CORNER_LEG_M;
+      if (!b || l.entersAt !== 'from' || b.index === a.index || a.length < far || b.length < far) continue;
+      const ha = unit(w(a.index, a.length - far, 0, 0), w(a.index, a.length - near, 0, 0));
+      const hb = unit(w(b.index, near, 0, 0), w(b.index, far, 0, 0));
+      const det = ha.z * hb.x - ha.x * hb.z;
+      if (Math.abs(det) < CORNER_TURN) continue;
+      // The inside of the turn: the side each road's +d points toward the other road.
+      const sideOf = (e: Edge, s: number, toward: { x: number; z: number }): -1 | 1 => {
+        const o = w(e.index, s, 0, 0);
+        const r = w(e.index, s, 1, 0);
+        return (r.x - o.x) * toward.x + (r.z - o.z) * toward.z > 0 ? 1 : -1;
+      };
+      const sideA = sideOf(a, a.length - near, hb);
+      const sideB = sideOf(b, near, { x: -ha.x, z: -ha.z });
+      // Where the two straight centrelines cross.
+      const pa = w(a.index, a.length - near, 0, 0);
+      const pb = w(b.index, near, 0, 0);
+      const t = ((pb.x - pa.x) * -hb.z + (pb.z - pa.z) * hb.x) / det;
+      const cx = pa.x + ha.x * t;
+      const cz = pa.z + ha.z * t;
+      /** Land all along a road's inside side within `reach` of the corner. */
+      const landAlong = (e: Edge, side: -1 | 1, end: 'from' | 'to', reach: number) => {
+        const land = landOf[e.index];
+        if (!land) return false;
+        const rows = land.reach[side];
+        return rows.every((r, i) => {
+          const s = i * land.step;
+          return (end === 'to' ? e.length - s : s) > reach || r > 0;
+        });
+      };
+      for (const size of CORNER_FILL_M) {
+        if (size > a.length || size > b.length) continue;
+        if (!landAlong(a, sideA, 'to', size) || !landAlong(b, sideB, 'from', size)) continue;
+        let dry = true;
+        for (let u = 0; u <= size && dry; u += SKIRT_ROAD_PROBE_M)
+          for (let v = 0; v <= size && dry; v += SKIRT_ROAD_PROBE_M)
+            if (nearWater(cx - ha.x * u + hb.x * v, cz - ha.z * u + hb.z * v, SKIRT_WATER_CLEAR_M))
+              dry = false;
+        if (!dry) continue;
+        const c0 = flat(cx, cz);
+        const c1 = flat(cx - ha.x * size, cz - ha.z * size);
+        const c2 = flat(cx - ha.x * size + hb.x * size, cz - ha.z * size + hb.z * size);
+        const c3 = flat(cx + hb.x * size, cz + hb.z * size);
+        upTri(c0, c1, c2);
+        upTri(c0, c2, c3);
+        break;
+      }
+    }
   }
 
   const group = new Group();
