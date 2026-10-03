@@ -5,7 +5,10 @@
 //   for a clean landing, red when landing now would be crooked;
 // - the one-liner: a clean landing after real air (`land` with `data.surge`) pops one of the region's
 //   `landingLines` ('TEN OUT OF TEN, SAYS A PELICAN') in chalk over the player's bike for a moment.
-//   It is listed among the content in view while it shows, so "cut this" can cut it;
+//   It is listed among the content in view while it shows, so "cut this" can cut it. It draws on a
+//   screen-space overlay AFTER the look's film pass, in CSS pixels on a dark plate, at least
+//   LINE_MIN_FONT_PX tall (the live check, run W-T: drawn in the 3D scene, the film pass painted the
+//   sky over it in the default Ink + 60s look, and in classic its letters were about 6 px tall);
 // - the newspaper: while the player's rider sits back reading it (`trick: 'newspaper'`), the paper is
 //   held up in front of him; landing with it (a crash whose `data.attempt` is `newspaper`), it flies
 //   off down the road.
@@ -18,12 +21,18 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
+  OrthographicCamera,
+  Scene,
   SRGBColorSpace,
   Sprite,
   SpriteMaterial,
+  Vector3,
+  type Camera,
   type Texture,
+  type WebGLRenderer,
 } from 'three';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
 import type { BoardItem } from './boards';
@@ -40,9 +49,21 @@ const LIFT_M = 0.05;
 export const LINE_S = 2;
 const FADE_S = 0.45;
 const RISE_M = 0.35;
-/** It floats this high over the bike, m, this wide. */
+/** Its plate's foot floats this high over the bike, m (projected onto the screen each frame). */
 const LINE_UP_M = 2.9;
-const LINE_W_M = 4.6;
+/**
+ * The one-liner's letters on screen, CSS px: about 6.5% of the screen's short side, never under
+ * LINE_MIN_FONT_PX (a phone at arm's length) nor over LINE_MAX_FONT_PX.
+ */
+export const LINE_MIN_FONT_PX = 18;
+export const LINE_MAX_FONT_PX = 30;
+const LINE_FONT_OF_SHORT_SIDE = 0.065;
+/** It stays this far inside the screen's edges, CSS px. */
+const LINE_MARGIN_PX = 8;
+/** The dark plate behind the chalk (its contrast holds over any sky or sea: see the tests). */
+export const LINE_PLATE = '#141414';
+export const LINE_PLATE_ALPHA = 0.85;
+const LINE_FONT = (px: number) => `bold ${px}px sans-serif`;
 /** The paper is held this high and this far ahead of the rider's road position, m. */
 const PAPER_UP_M = 1.4;
 const PAPER_AHEAD_M = 0.55;
@@ -109,30 +130,104 @@ export function newspaperParts(): BoxPart[] {
   return parts;
 }
 
-/** Paints a chalk one-liner on a transparent canvas: white letters with a dark edge. */
-function lineTexture(text: string): Texture | null {
+/** How wide a text is at a font size, CSS px. */
+export type MeasureText = (text: string, fontPx: number) => number;
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+/** The browser's own measure of the bold sans; without a canvas (tests), 0.7 em a capital. */
+const measureLine: MeasureText = (text, fontPx) => {
+  if (measureCtx === undefined)
+    measureCtx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
+  if (!measureCtx) return text.length * fontPx * 0.7;
+  measureCtx.font = LINE_FONT(fontPx);
+  return measureCtx.measureText(text).width;
+};
+
+/** The one-liner as laid out on screen, CSS px: its rows, letter size and plate. */
+export interface LineLayout {
+  rows: string[];
+  fontPx: number;
+  plateW: number;
+  plateH: number;
+}
+
+/** Splits a line at the space nearest its middle (a lone word stays whole). */
+function twoRows(text: string): string[] {
+  const mid = text.length / 2;
+  let best = -1;
+  for (let i = 0; i < text.length; i++)
+    if (text[i] === ' ' && (best < 0 || Math.abs(i - mid) < Math.abs(best - mid))) best = i;
+  return best < 0 ? [text] : [text.slice(0, best), text.slice(best + 1)];
+}
+
+/**
+ * Lays the one-liner out for a screen `viewW` x `viewH` CSS px: one row at the screen's letter size
+ * when it fits, else two rows, shrinking only as far as LINE_MIN_FONT_PX if even those are too wide.
+ */
+export function landingLineLayout(
+  text: string,
+  viewW: number,
+  viewH: number,
+  measure: MeasureText = measureLine,
+): LineLayout {
+  const room = Math.max(1, viewW - 2 * LINE_MARGIN_PX);
+  const want = Math.round(Math.min(viewW, viewH) * LINE_FONT_OF_SHORT_SIDE);
+  let fontPx = Math.min(LINE_MAX_FONT_PX, Math.max(LINE_MIN_FONT_PX, want));
+  const plateFor = (rows: string[], px: number) => {
+    const pad = Math.round(px * 0.6);
+    const wide = Math.max(...rows.map((r) => measure(r, px)));
+    return { w: Math.ceil(wide + 2 * pad), h: Math.ceil(rows.length * px * 1.2 + px * 0.6) };
+  };
+  let rows = [text];
+  if (plateFor(rows, fontPx).w > room) rows = twoRows(text);
+  while (fontPx > LINE_MIN_FONT_PX && plateFor(rows, fontPx).w > room) fontPx -= 1;
+  const plate = plateFor(rows, fontPx);
+  return { rows, fontPx, plateW: Math.min(plate.w, room), plateH: plate.h };
+}
+
+/** Paints the laid-out one-liner at `pixelRatio`: chalk letters with a dark edge on a dark plate. */
+function lineTexture(layout: LineLayout, pixelRatio: number): Texture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 192;
+  const pr = Math.max(1, pixelRatio);
+  canvas.width = Math.ceil(layout.plateW * pr);
+  canvas.height = Math.ceil(layout.plateH * pr);
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
+  ctx.scale(canvas.width / layout.plateW, canvas.height / layout.plateH);
+  const w = layout.plateW;
+  const h = layout.plateH;
+  const r = Math.min(h / 2, layout.fontPx * 0.45);
+  ctx.globalAlpha = LINE_PLATE_ALPHA;
+  ctx.fillStyle = LINE_PLATE;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.arcTo(w, 0, w, h, r);
+  ctx.arcTo(w, h, 0, h, r);
+  ctx.arcTo(0, h, 0, 0, r);
+  ctx.arcTo(0, 0, w, 0, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.font = LINE_FONT(layout.fontPx);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  let size = 84;
-  ctx.font = `bold ${size}px sans-serif`;
-  while (size > 30 && ctx.measureText(text).width > canvas.width - 48) {
-    size -= 4;
-    ctx.font = `bold ${size}px sans-serif`;
-  }
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.round(size * 0.18);
-  ctx.strokeStyle = 'rgba(20, 20, 20, 0.85)';
-  ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+  ctx.lineWidth = Math.max(2, Math.round(layout.fontPx * 0.16));
+  ctx.strokeStyle = LINE_PLATE;
   ctx.fillStyle = CHALK_CLEAN;
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const rowH = layout.fontPx * 1.2;
+  const top = (h - layout.rows.length * rowH) / 2 + rowH / 2;
+  const fit = w - layout.fontPx; // a font wider than measured still stays on the plate
+  layout.rows.forEach((row, i) => {
+    ctx.strokeText(row, w / 2, top + i * rowH, fit);
+    ctx.fillText(row, w / 2, top + i * rowH, fit);
+  });
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.minFilter = LinearFilter;
+  tex.magFilter = LinearFilter;
   return tex;
 }
 
@@ -166,6 +261,9 @@ interface Flying {
 
 export class AirPays {
   readonly root = new Group();
+  /** The screen-space overlay the one-liner draws on, after the film pass (CSS px, y up). */
+  readonly overlay = new Scene();
+  readonly overlayCamera = new OrthographicCamera(0, 1, 1, 0, -10, 10);
   readonly mark: Mesh;
   readonly paper: Mesh;
   readonly line: Sprite;
@@ -175,7 +273,13 @@ export class AirPays {
   private readonly crookedColor = new Color(CHALK_CROOKED);
   private lines: BoardItem[] = [];
   private lastLine = -1;
-  private shown: { item: BoardItem; until: number; startY: number } | null = null;
+  private shown: { item: BoardItem; until: number } | null = null;
+  /** Where the line's plate stands in the world this frame (over the bike), or null when hidden. */
+  private anchor: Vector3 | null = null;
+  private readonly projected = new Vector3();
+  /** What the line's texture was painted for: the line, the screen and the pixel ratio. */
+  private paintedKey = '';
+  private layout: LineLayout | null = null;
   private pendingSurge: SimEvent[] = [];
   private pendingCrash: SimEvent[] = [];
   private flying: Flying | null = null;
@@ -202,12 +306,20 @@ export class AirPays {
     this.paper = new Mesh(mergeBoxes(newspaperParts()), new MeshBasicMaterial({ vertexColors: true }));
     this.paper.name = 'newspaper';
     this.paper.visible = false;
-    this.lineMat = new SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
+    this.lineMat = new SpriteMaterial({
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    });
     this.line = new Sprite(this.lineMat);
     this.line.name = 'landing-line';
-    this.line.renderOrder = 10;
     this.line.visible = false;
-    this.root.add(this.mark, this.paper, this.line);
+    this.line.frustumCulled = false;
+    this.root.add(this.mark, this.paper);
+    this.overlay.name = 'air-pays-overlay';
+    this.overlay.add(this.line);
   }
 
   /** The region's live one-liners (vetoed ones already left out by app/). */
@@ -330,30 +442,86 @@ export class AirPays {
       const item = this.lines[i];
       if (!item) continue;
       this.lastLine = i;
-      const tex = lineTexture(item.text);
-      this.lineMat.map?.dispose();
-      this.lineMat.map = tex;
-      this.lineMat.needsUpdate = true;
-      this.shown = { item, until: timeS + LINE_S, startY: 0 };
+      this.shown = { item, until: timeS + LINE_S };
+      this.paintedKey = '';
     }
     this.pendingSurge = [];
     const s = this.shown;
     if (!s || timeS >= s.until || !pose) {
       if (s && timeS >= s.until) this.clearLine();
       this.line.visible = false;
+      this.anchor = null;
       return;
     }
     const left = s.until - timeS;
     const age = LINE_S - left;
     this.lineMat.opacity = Math.min(1, left / FADE_S);
-    this.line.position.set(pose.x, pose.y + LINE_UP_M + (RISE_M * age) / LINE_S, pose.z);
-    this.line.scale.set(LINE_W_M, LINE_W_M * (192 / 1024), 1);
-    this.line.visible = this.lineMat.map !== null;
+    this.anchor = (this.anchor ?? new Vector3()).set(
+      pose.x,
+      pose.y + LINE_UP_M + (RISE_M * age) / LINE_S,
+      pose.z,
+    );
     this.counts.line = s.item.text;
+  }
+
+  /**
+   * Lays the one-liner out on a `viewW` x `viewH` CSS px screen for this frame: its plate sits over the
+   * bike as `camera` sees it, kept wholly on screen, at its laid-out size. Repaints the texture only
+   * when the line, the screen or the pixel ratio changes. Returns whether a line is showing.
+   */
+  fitOverlay(camera: Camera, viewW: number, viewH: number, pixelRatio: number): boolean {
+    const s = this.shown;
+    if (!s || !this.anchor) {
+      this.line.visible = false;
+      return false;
+    }
+    const w = Math.max(1, viewW);
+    const h = Math.max(1, viewH);
+    const key = `${s.item.ref}|${w}|${h}|${pixelRatio}`;
+    if (key !== this.paintedKey || !this.layout) {
+      this.paintedKey = key;
+      this.layout = landingLineLayout(s.item.text, w, h);
+      this.lineMat.map?.dispose();
+      this.lineMat.map = lineTexture(this.layout, pixelRatio);
+      this.lineMat.needsUpdate = true;
+    }
+    const l = this.layout;
+    const cam = this.overlayCamera;
+    if (cam.right !== w || cam.top !== h) {
+      cam.right = w;
+      cam.top = h;
+      cam.updateProjectionMatrix();
+    }
+    // The anchor on screen (CSS px from the top); behind the camera it goes to the upper middle.
+    const p = this.projected.copy(this.anchor).project(camera);
+    const inFront = p.z > -1 && p.z < 1;
+    const sx = inFront ? ((p.x + 1) / 2) * w : w / 2;
+    const footY = inFront ? ((1 - p.y) / 2) * h : h * 0.3;
+    const m = LINE_MARGIN_PX;
+    const cx = clamp(sx, l.plateW / 2 + m, w - l.plateW / 2 - m, w / 2);
+    const cyTop = clamp(footY - l.plateH / 2, l.plateH / 2 + m, h - l.plateH / 2 - m, h / 2);
+    this.line.position.set(cx, h - cyTop, 0);
+    this.line.scale.set(l.plateW, l.plateH, 1);
+    // Painted only where there is a canvas (not in node tests): the layout above still holds.
+    this.line.visible = this.lineMat.map !== null;
+    return true;
+  }
+
+  /**
+   * Draws the one-liner over the finished frame, after the film pass, so the look neither inks,
+   * grades nor paints the sky over it. One draw call while it shows, none otherwise.
+   */
+  drawOverlay(gl: WebGLRenderer, camera: Camera, viewW: number, viewH: number): void {
+    if (!this.fitOverlay(camera, viewW, viewH, gl.getPixelRatio()) || !this.line.visible) return;
+    const autoClear = gl.autoClear;
+    gl.autoClear = false;
+    gl.render(this.overlay, this.overlayCamera);
+    gl.autoClear = autoClear;
   }
 
   private clearLine(): void {
     this.shown = null;
+    this.anchor = null;
     this.line.visible = false;
     this.counts.line = null;
   }
@@ -384,6 +552,11 @@ export class AirPays {
     this.lineMat.map?.dispose();
     this.lineMat.dispose();
   }
+}
+
+/** `v` kept within [lo, hi]; when the range is empty (the plate wider than the screen), `mid`. */
+function clamp(v: number, lo: number, hi: number, mid: number): number {
+  return lo > hi ? mid : Math.min(hi, Math.max(lo, v));
 }
 
 interface Pose {

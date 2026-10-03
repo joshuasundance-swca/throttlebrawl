@@ -2,10 +2,20 @@
 // the player will touch down (red when crooked), the newspaper held up while reading it and thrown
 // off on a newspaper crash, and the region's one-liner on a surge landing, listed for "cut this".
 // Driven by hand-built snapshots and events at fixed times (no wall clock, no frames).
-import { Color, MeshBasicMaterial } from 'three';
+import { Color, MeshBasicMaterial, PerspectiveCamera } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimEvent, SimSnapshot, TouchdownSnapshot } from '../sim/api';
-import { AirPays, CHALK_CLEAN, CHALK_CROOKED, chalkMarkGeometry, nextLineIndex } from './air-pays';
+import {
+  AirPays,
+  CHALK_CLEAN,
+  CHALK_CROOKED,
+  chalkMarkGeometry,
+  landingLineLayout,
+  LINE_MIN_FONT_PX,
+  LINE_PLATE,
+  LINE_PLATE_ALPHA,
+  nextLineIndex,
+} from './air-pays';
 import type { BoardItem } from './boards';
 
 const entity = (over: Partial<EntitySnapshot>): EntitySnapshot => ({
@@ -202,5 +212,102 @@ describe('air that pays: the landing one-liner', () => {
     }
     expect(nextLineIndex(0, -1, 5)).toBe(-1);
     expect(nextLineIndex(1, 0, 5)).toBe(0);
+  });
+});
+
+// The live check (run W-T, wt-check mustFix 1): in the default Ink + 60s look the line never painted,
+// because the film pass paints the sky wherever the depth buffer is clear and the line (no depth
+// write) sat over the sky; in classic its letters were about 6 px tall. It now draws on a screen-space
+// overlay after the film pass, in CSS pixels, on a dark plate, at a minimum size.
+describe('air that pays: the landing one-liner reads on a phone in every look', () => {
+  // The worst case the content lint allows (40 characters), measured as bold sans capitals (about
+  // 0.7 em each: wider than the real font, so the fit is conservative).
+  const LONGEST = 'BEST THING CAUGHT ON THE CHARTER, BY FAR';
+  const measure = (t: string, px: number) => t.length * px * 0.7;
+  // Phone landscape and portrait (CSS px), a small phone, and a laptop.
+  const VIEWS: [number, number][] = [
+    [800, 360],
+    [360, 740],
+    [320, 568],
+    [1280, 720],
+  ];
+
+  it('draws on the overlay after the film pass, never in the 3D scene the pass paints over', () => {
+    const a = new AirPays();
+    let inScene = false;
+    a.root.traverse((o) => {
+      if (o === a.line) inScene = true;
+    });
+    expect(inScene).toBe(false);
+    let inOverlay = false;
+    a.overlay.traverse((o) => {
+      if (o === a.line) inOverlay = true;
+    });
+    expect(inOverlay).toBe(true);
+    // Not inked, graded, fogged or tone-mapped: the chalk stays chalk.
+    expect(a.line.material.depthTest).toBe(false);
+    expect(a.line.material.fog).toBe(false);
+    expect(a.line.material.toneMapped).toBe(false);
+  });
+
+  it('is at least LINE_MIN_FONT_PX tall and fits the screen, on a phone either way up', () => {
+    expect(LINE_MIN_FONT_PX).toBeGreaterThanOrEqual(16);
+    for (const [w, h] of VIEWS) {
+      const l = landingLineLayout(LONGEST, w, h, measure);
+      expect(l.fontPx, `${w}x${h}`).toBeGreaterThanOrEqual(LINE_MIN_FONT_PX);
+      expect(l.plateW, `${w}x${h}`).toBeLessThanOrEqual(w - 16);
+      for (const row of l.rows) expect(measure(row, l.fontPx)).toBeLessThanOrEqual(l.plateW);
+      expect(l.rows.join(' ')).toBe(LONGEST);
+      expect(l.plateH).toBeGreaterThanOrEqual(l.rows.length * l.fontPx);
+    }
+    // Wide enough, it is one row; a portrait phone wraps it into two rather than shrinking it.
+    expect(landingLineLayout(LONGEST, 1280, 720, measure).rows).toHaveLength(1);
+    expect(landingLineLayout(LONGEST, 360, 740, measure).rows).toHaveLength(2);
+  });
+
+  it('chalk on a dark plate: at least 7:1 contrast over the brightest sky and the darkest sea', () => {
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const lin = c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * lin[0]! + 0.7152 * lin[1]! + 0.0722 * lin[2]!;
+    };
+    const over = (bg: number) =>
+      '#' +
+      [1, 3, 5]
+        .map((i) => {
+          const p = parseInt(LINE_PLATE.slice(i, i + 2), 16);
+          const v = Math.round(p * LINE_PLATE_ALPHA + bg * (1 - LINE_PLATE_ALPHA));
+          return v.toString(16).padStart(2, '0');
+        })
+        .join('');
+    const text = lum(CHALK_CLEAN);
+    for (const bg of [255, 0]) {
+      const ratio = (text + 0.05) / (lum(over(bg)) + 0.05);
+      expect(ratio, `over ${bg}`).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it('sits over the bike on screen at its laid-out size, kept inside the screen', () => {
+    const a = new AirPays();
+    a.setLines([{ ref: 'base:region/florida-keys#long', text: LONGEST, kind: 'sign' }]);
+    const s = snap([entity({ x: 0, y: 0, z: 0 })]);
+    a.pushEvents([surge(0)]);
+    a.update(s, s, 1, 10);
+    // The chase camera: behind (+z) and above the bike, looking ahead along -z.
+    const cam = new PerspectiveCamera(62, 800 / 360, 0.3, 760);
+    cam.position.set(0, 3.2, 7);
+    cam.lookAt(0, 1.2, -8);
+    cam.updateMatrixWorld();
+    expect(a.fitOverlay(cam, 800, 360, 1.5)).toBe(true);
+    const l = landingLineLayout(LONGEST, 800, 360);
+    expect(a.line.scale.x).toBeCloseTo(l.plateW);
+    expect(a.line.scale.y).toBeCloseTo(l.plateH);
+    // Centred over the bike (x = 400 CSS px), its plate wholly on screen.
+    expect(a.line.position.x).toBeCloseTo(400, 0);
+    expect(a.line.position.y - l.plateH / 2).toBeGreaterThanOrEqual(0);
+    expect(a.line.position.y + l.plateH / 2).toBeLessThanOrEqual(360);
+    // Nothing shown: nothing to draw.
+    a.update(s, s, 1, 13);
+    expect(a.fitOverlay(cam, 800, 360, 1.5)).toBe(false);
   });
 });

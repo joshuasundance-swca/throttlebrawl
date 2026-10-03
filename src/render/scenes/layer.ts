@@ -56,6 +56,11 @@ interface Rect {
   v1: number;
 }
 
+/** A scene sign's cell in the atlas, px: SIGN_W wide, in the sign's own aspect (the sign audit reads it). */
+export function signCell(size: readonly [number, number]): { width: number; height: number } {
+  return { width: SIGN_W, height: Math.max(48, Math.round((SIGN_W * size[1]) / size[0])) };
+}
+
 /** Lays out the signs (by scene id) and paints them, or only lays them out with no DOM canvas. */
 function buildAtlas(scenes: readonly SceneDef[]): {
   texture: Texture | null;
@@ -66,7 +71,7 @@ function buildAtlas(scenes: readonly SceneDef[]): {
   let y = WHITE_PX;
   for (let i = 0; i < scenes.length; i += 2) {
     const row = scenes.slice(i, i + 2);
-    const hs = row.map((sc) => Math.max(48, Math.round((SIGN_W * sc.sign.size[1]) / sc.sign.size[0])));
+    const hs = row.map((sc) => signCell(sc.sign.size).height);
     row.forEach((sc, j) => boxes.push({ id: sc.id, x: j * SIGN_W, y, w: SIGN_W, h: hs[j]! }));
     y += Math.max(...hs);
   }

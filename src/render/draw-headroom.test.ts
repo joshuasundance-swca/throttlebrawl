@@ -388,23 +388,36 @@ describe('what moves every frame is not drawn while all of it is out of view', (
   it('a traffic shape with every car behind the camera is not drawn; one car ahead and it is', () => {
     const f = camera();
     const views = new EntityViews(look);
-    const car = (id: number, z: number): EntitySnapshot =>
-      ({
-        id,
-        kind: 'vehicle',
-        mode: 'Road',
-        road: { edge: 0, s: 0, d: 0, h: 0, dir: 1, yaw: 0 },
-        x: 2,
-        y: 0,
-        z,
-        heading: 0,
-        speed: 10,
-        lean: 0,
-        contentId: 'base:rental-convertible',
-        name: `car${id}`,
-        faction: 'traffic',
-        slot: -1,
-      }) as EntitySnapshot;
+    const car = (id: number, z: number): EntitySnapshot => ({
+      id,
+      kind: 'vehicle',
+      mode: 'Road',
+      road: { edge: 0, s: 0, d: 0, h: 0, dir: 1, yaw: 0 },
+      x: 2,
+      y: 0,
+      z,
+      heading: 0,
+      speed: 10,
+      lean: 0,
+      contentId: 'base:rental-convertible',
+      name: `car${id}`,
+      faction: 'rider',
+      slot: -1,
+      throttle: 0,
+      rpm: 0,
+      gear: 1,
+      grounded: true,
+      health: 100,
+      healthMax: 100,
+      attackPhase: 'idle',
+      heldWeapon: null,
+      targetId: -1,
+      lastAttackerId: -1,
+      progress: 0,
+      distanceToFinish: 1000,
+      place: 1,
+      finished: false,
+    });
     const frame = (cars: EntitySnapshot[], t: number) =>
       views.sync(null, { ...snap([]), entities: cars }, 1, t);
     frame([car(1, 30), car(2, 60)], 0);

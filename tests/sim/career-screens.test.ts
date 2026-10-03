@@ -49,8 +49,11 @@ describe('the career map screen', () => {
     const card = (id: string) => v.tiers.flatMap((t) => t.nodes).find((c) => c.id === id);
     expect(card('shakedown')?.objective).toBe('Finish the race.');
     expect(card('sunburn-hunt')?.objective).toBe('Knock two riders off.');
-    // Run W-T (grudge rules): Kevin's match is fought by his rule, The Audit (knock him down twice).
-    expect(card('kevin-grudge')?.objective).toBe('Knock Kevin from Accounting down two times.');
+    // Run W-T (grudge rules): Kevin's match is fought by his rule, The Audit (knock him down twice,
+    // and each hit he lands adds one); the card's line says so (live check, mustFix 4).
+    expect(card('kevin-grudge')?.objective).toBe(
+      'Knock Kevin from Accounting down two times, plus one per hit you take (up to two more).',
+    );
     expect(card('deputy-dash')?.objective).toBe(
       'Once a cop is on you, last 45 s without being knocked off, or lose him.',
     );
