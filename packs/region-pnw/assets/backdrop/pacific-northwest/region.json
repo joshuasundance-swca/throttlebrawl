@@ -203,6 +203,22 @@
       "colour": "#7a2f2a"
     },
     {
+      "id": "far-bank-freight",
+      "kind": "train",
+      "networks": ["osm-pnw-gorge"],
+      "path": [
+        [45.5865, -122.26],
+        [45.6135, -122.06]
+      ],
+      "cars": 46,
+      "baseM": 8,
+      "speedMps": 14,
+      "exaggerate": 2.4,
+      "colour": "#e0a43a",
+      "colours": ["#7d3b2c", "#5a6670", "#3f5a48", "#8a7d68", "#2f4a63", "#b9b2a4"],
+      "keepOutM": 600
+    },
+    {
       "id": "lummi-island",
       "kind": "ridge",
       "networks": ["osm-pnw-chuckanut"],

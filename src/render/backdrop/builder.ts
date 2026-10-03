@@ -22,7 +22,9 @@
 //   grade and film pass apply. Floors (far land and water) also fade in from the fog's end, so they
 //   meet the near fogged ground instead of standing out of it.
 // - Ships, ferries and fog banks drift by a per-vertex swing, so nothing is touched per frame but
-//   five uniforms.
+//   five uniforms. W-T (the horizon comes alive) adds a one-way glide on the same attributes: a
+//   freight train, a landing seaplane, a bridge's traffic and fog pouring over a crest run end to
+//   end, thin into the haze near each end and come round again, still without a per-frame touch.
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial } from 'three';
 import {
   backdropProblems,
@@ -33,6 +35,7 @@ import {
   type Pt,
 } from './data';
 import { geoFrame } from './geo';
+import { buildAircraft, buildBridgeTraffic, buildPour, buildTrain } from './movers';
 import {
   buildBlocks,
   buildBridge,
@@ -79,7 +82,23 @@ export function floorDrawnDepth(z: number, fogFar: number): number {
   return 1 / (1 / BACKDROP_FAR_M + c / z);
 }
 
+/** A glide is fully seen over the middle of its run; past this share of the half-run it thins out. */
+export const GLIDE_FADE = 0.8;
+
+/**
+ * Where a moving vertex is at time t as a share of its drift, -1..1, and how much the end-of-run
+ * fade hides it (0 for a swing). The backdrop's vertex shader does the same.
+ */
+export function motionAt(t: number, speed: number, phase: number): { m: number; fade: number } {
+  if (speed >= 0) return { m: Math.sin(t * speed + phase), fade: 0 };
+  const f = t * -speed + phase;
+  const m = (f - Math.floor(f)) * 2 - 1;
+  const x = Math.min(1, Math.max(0, (Math.abs(m) - GLIDE_FADE) / (1 - GLIDE_FADE)));
+  return { m, fade: x * x * (3 - 2 * x) };
+}
+
 const VERTEX = /* glsl */ `
+#define GLIDE_FADE ${GLIDE_FADE.toFixed(2)}
 uniform vec3 uCam;
 uniform float uTime;
 uniform float uRMin;
@@ -91,11 +110,17 @@ uniform float uFogFar;
 attribute vec3 aColor;
 attribute vec4 aInfo;
 attribute vec4 aMotion;
+attribute float aLift;
 varying vec3 vColor;
 varying float vHaze;
 void main() {
   vec3 p = position;
-  p.xz += aMotion.xy * sin(uTime * aMotion.z + aMotion.w);
+  // A swing (a ship, a fog bank) or, with a negative speed, a one-way glide that comes round again
+  // (a train, a seaplane, the bridge traffic, a pour; motionAt mirrors this).
+  bool glide = aMotion.z < 0.0;
+  float m = glide ? fract(uTime * -aMotion.z + aMotion.w) * 2.0 - 1.0 : sin(uTime * aMotion.z + aMotion.w);
+  p.xz += aMotion.xy * m;
+  p.y += aLift * m;
   p.xz += uCam.xz * aInfo.w;
   vec3 v = p - uCam;
   float d = max(length(v), 0.5);
@@ -109,6 +134,8 @@ void main() {
   // lies along the ground, so a camera high on a hill sees more of the ground below than one at sea level.
   float floorMin = mix(0.82, 0.3, smoothstep(15.0, 220.0, uCam.y));
   h = max(h, aInfo.y * mix(1.0, floorMin, smoothstep(uFogFar, uFogFar * 4.0, d)));
+  // A glide thins into the haze at each end of its run, so it never pops round.
+  if (glide) h = max(h, smoothstep(GLIDE_FADE, 1.0, abs(m)));
   vHaze = clamp(h, 0.0, 1.0);
   vColor = aColor;
   if (aInfo.y > 0.5) {
@@ -146,6 +173,8 @@ export interface BackdropStats {
   /** Pieces left out: too far, for another network, or too close to a road. */
   skipped: number;
   triangles: number;
+  /** The ids of the pieces that move (ships, fog, the W-T middle distance), in build order. */
+  moving: string[];
 }
 
 export interface BuiltBackdrop {
@@ -256,6 +285,7 @@ export function buildSoup(
     kinds: {},
     skipped: 0,
     triangles: 0,
+    moving: [],
   };
   buildFloorRing(soup, region.floorColour);
   const pieces: Piece[] = [...region.pieces, ...(network.pieces ?? [])];
@@ -275,9 +305,16 @@ export function buildSoup(
       }
     }
     const ctx: ShapeCtx = { soup, toWorld, nearRoad, centre, seed };
+    const from = soup.motion.length;
     const kept = buildPiece(p, ctx);
     if (kept) stats.kinds[p.kind] = (stats.kinds[p.kind] ?? 0) + 1;
     else stats.skipped++;
+    // What moves (W-T): any vertex the piece built with a drift.
+    for (let i = from; i < soup.motion.length; i += 4)
+      if (soup.motion[i] !== 0 || soup.motion[i + 1] !== 0) {
+        stats.moving.push(p.id);
+        break;
+      }
   }
   stats.triangles = soup.triangles;
   return { soup, stats };
@@ -302,6 +339,10 @@ function anchorOf(p: Piece): Pt | null {
       return p.path ? p.path[0] : (p.centre ?? null);
     case 'clouds':
       return p.path ? p.path[0]! : null;
+    case 'train':
+      return p.path[0];
+    case 'aircraft':
+      return p.path ? p.path[0] : null;
     case 'islands':
       return null;
   }
@@ -313,8 +354,11 @@ function buildPiece(p: Piece, ctx: ShapeCtx): number {
       return buildRidge(p, ctx);
     case 'peak':
       return buildPeak(p, ctx);
-    case 'bridge':
-      return buildBridge(p, ctx);
+    case 'bridge': {
+      const built = buildBridge(p, ctx);
+      if (built) buildBridgeTraffic(p, ctx);
+      return built;
+    }
     case 'skyline':
       return buildSkyline(p, ctx);
     case 'blocks':
@@ -322,7 +366,11 @@ function buildPiece(p: Piece, ctx: ShapeCtx): number {
     case 'vessels':
       return buildVessels(p, ctx);
     case 'clouds':
-      return buildClouds(p, ctx);
+      return p.style === 'pour' ? buildPour(p, ctx) : buildClouds(p, ctx);
+    case 'train':
+      return buildTrain(p, ctx);
+    case 'aircraft':
+      return buildAircraft(p, ctx);
     case 'islands':
       return buildIslands(p, ctx);
     case 'lighthouse':
@@ -359,6 +407,7 @@ export function buildBackdrop(
   geometry.setAttribute('aColor', new Float32BufferAttribute(soup.col, 3));
   geometry.setAttribute('aInfo', new Float32BufferAttribute(soup.info, 4));
   geometry.setAttribute('aMotion', new Float32BufferAttribute(soup.motion, 4));
+  geometry.setAttribute('aLift', new Float32BufferAttribute(soup.lift, 1));
   const uniforms = {
     uCam: { value: [0, 0, 0] as [number, number, number] },
     uTime: { value: 0 },

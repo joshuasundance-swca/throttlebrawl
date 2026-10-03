@@ -11,5 +11,6 @@ export * from './callbacks';
 export * from './ids';
 export * from './difficulty';
 export * from './surfaces';
+export * from './grudge-rules';
 export * from './routes';
 export * from './smashables';

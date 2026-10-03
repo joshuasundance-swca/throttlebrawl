@@ -4,6 +4,7 @@
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
 import {
+  GRUDGE_RULE_IDS,
   MEDIAN_KINDS,
   ROAD_SURFACES,
   ROUTE_BRANCH_KINDS,
@@ -235,6 +236,9 @@ const eventRulesSchema = z.looseObject({
   winBy: z.enum(['finish-ahead', 'knockdowns']).optional(),
   knockdownsToWin: z.number().int().min(1).optional(),
   grudgeStakes: z.number().int().min(0).optional(),
+  // Run W-T (the pitch deck's #14, "grudges with rules"): the rival's own rule, from core's closed
+  // list (`audit`, `bad-connection`, `collab`, `timber`). Only a grudge match may carry one.
+  rule: z.enum(GRUDGE_RULE_IDS).optional(),
 });
 
 /** The rules fields an event kind needs (W-Q contracts: the career's four event types). */
@@ -300,6 +304,12 @@ export const eventSchema = entry('event', {
         message: `a ${e.kind} event needs rules.${field}`,
       });
   }
+  if (rules['rule'] !== undefined && e.kind !== 'grudge-match')
+    ctx.addIssue({
+      code: 'custom',
+      path: ['rules', 'rule'],
+      message: 'only a grudge-match event plays by a rival rule (rules.rule)',
+    });
 });
 
 /**

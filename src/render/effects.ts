@@ -26,6 +26,10 @@ import type { RenderParams } from './tuning';
 export const WATER_Y = 0;
 const SPARK_CAP = 128;
 const DROP_CAP = 96;
+/** W-T: sheets of paper from a burst briefcase; they drift down slowly (a light gravity). */
+const PAPER_CAP = 64;
+const PAPER_SHEETS = 28;
+const PAPER_GRAVITY = 1.6;
 const RING_CAP = 3;
 const RING_S = 1.1;
 const TINT_FADE_S = 0.15;
@@ -171,6 +175,11 @@ const ARM_PARTS: BoxPart[] = [{ size: [0.13, 0.6, 0.13], at: [0, -0.3, 0], color
 
 const SPARK_PARTS: BoxPart[] = [{ size: [0.12, 0.12, 0.12], at: [0, 0, 0], color: '#ffc23a' }];
 const DROP_PARTS: BoxPart[] = [{ size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#ffffff' }];
+/** A sheet of letter paper with a ruled line or two (the receipts were inside the briefcase). */
+const PAPER_PARTS: BoxPart[] = [
+  { size: [0.22, 0.012, 0.28], at: [0, 0, 0], color: '#f6f3ea', rotY: 0.4 },
+  { size: [0.16, 0.014, 0.012], at: [0, 0.001, -0.06], color: '#8a96a8', rotY: 0.4 },
+];
 
 /** A flat quad with a vignette: faint in the middle, full at the edges (per-vertex alpha). */
 function vignetteQuad(): BufferGeometry {
@@ -185,6 +194,8 @@ function vignetteQuad(): BufferGeometry {
 export interface FeelCounts {
   sparks: number;
   drops: number;
+  /** Sheets of paper in the air (W-T, a burst briefcase). */
+  paper: number;
   rings: number;
   reactors: number;
   tint: number;
@@ -197,6 +208,7 @@ export class FeelEffects {
   readonly tint: Mesh;
   private readonly sparks: Particles;
   private readonly drops: Particles;
+  private readonly paper: Particles;
   private readonly rings: Ring[] = [];
   private readonly gator: Reactor;
   private readonly fisher: Reactor;
@@ -224,7 +236,16 @@ export class FeelEffects {
       GRAVITY,
       WATER_Y,
     );
-    this.root.add(this.sparks.mesh, this.drops.mesh);
+    // A draw call only while sheets are in the air (Particles hides an empty pool).
+    this.paper = new Particles(
+      'feel-paperwork',
+      mergeBoxes(PAPER_PARTS),
+      look.material('prop', { vertexColors: true }),
+      PAPER_CAP,
+      PAPER_GRAVITY,
+      null,
+    );
+    this.root.add(this.sparks.mesh, this.drops.mesh, this.paper.mesh);
     const ringGeometry = new RingGeometry(0.8, 1.05, 24).rotateX(-Math.PI / 2);
     for (let i = 0; i < RING_CAP; i++) {
       const mesh = new Mesh(ringGeometry, look.material('splash', { doubleSided: true }));
@@ -284,6 +305,24 @@ export class FeelEffects {
   }
 
   /**
+   * Paperwork (W-T): a burst briefcase's sheets thrown up and out from `at`, drifting down over a
+   * second or two.
+   */
+  paperwork(at: Point): void {
+    for (let i = 0; i < PAPER_SHEETS; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const out = 1.2 + 2.8 * Math.random();
+      this.paper.spawn(
+        at,
+        Math.cos(a) * out,
+        1.5 + 2.5 * Math.random(),
+        Math.sin(a) * out,
+        1.2 + 0.8 * Math.random(),
+      );
+    }
+  }
+
+  /**
    * A splash at the water: a column of droplets, a ring, and a reactor (a gator surfacing, or a
    * fisherman in his skiff throwing his arms up) placed a few metres away along `awayX, awayZ`
    * (away from the bridge), facing the splash.
@@ -325,6 +364,7 @@ export class FeelEffects {
     this.now += dtReal;
     this.sparks.update(dt);
     this.drops.update(dt);
+    this.paper.update(dt);
     for (const ring of this.rings) {
       if (ring.t < 0) continue;
       ring.t += dt;
@@ -368,6 +408,7 @@ export class FeelEffects {
     return {
       sparks: this.sparks.count,
       drops: this.drops.count,
+      paper: this.paper.count,
       rings: this.rings.filter((r) => r.t >= 0).length,
       reactors: (this.gator.t >= 0 ? 1 : 0) + (this.fisher.t >= 0 ? 1 : 0),
       tint: this.tint.visible ? this.tintLevel : 0,

@@ -590,7 +590,14 @@ function vessel(
   r: () => number,
 ): void {
   const hull = rgb(
-    p.colour ?? (style === 'ferry' ? '#2f5d46' : style === 'sailboat' ? '#f2f0ea' : '#3b4650'),
+    p.colour ??
+      (style === 'ferry'
+        ? '#2f5d46'
+        : style === 'sailboat'
+          ? '#f2f0ea'
+          : style === 'shrimper'
+            ? '#ece8dc'
+            : '#3b4650'),
   );
   const white = rgb('#f1efe8');
   if (style === 'container') {
@@ -631,6 +638,30 @@ function vessel(
     const bz = z + hz * 62 * e;
     s.frustum(bx, -3, bz, hx, hz, 46 * e, 10 * e, 5 * e + 3, rgb('#5d5148'));
     s.frustum(bx, 5 * e, bz, hx, hz, 40 * e, 8 * e, 5 * e, rgb('#b08d5a'), 30 * e, 4 * e);
+  } else if (style === 'shrimper') {
+    // A shrimp boat trawling (W-T, the horizon comes alive): a white hull, the pilothouse forward,
+    // a mast with its two outrigger booms let down to each side, the nets streaming from their tips.
+    const L = 11 * e;
+    const B = 3.2 * e;
+    const dark = rgb('#2e3a40');
+    const net = rgb('#5d6b66');
+    s.frustum(x, -2, z, hx, hz, L, B, 3 * e + 2, hull, L * 1.06, B * 1.05);
+    s.frustum(x + hx * L * 0.45, 3 * e, z + hz * L * 0.45, hx, hz, L * 0.22, B * 0.8, 3.4 * e, white);
+    const foot: V3 = [x - hx * L * 0.05, 3 * e, z - hz * L * 0.05];
+    s.beam(foot, [foot[0], 16 * e, foot[2]], 0.8 * e, dark);
+    for (const side of [1, -1]) {
+      const vx = -hz * side;
+      const vz = hx * side;
+      const tip: V3 = [foot[0] + vx * 12 * e, 6.5 * e, foot[2] + vz * 12 * e];
+      s.beam([foot[0], 10 * e, foot[2]], tip, 0.6 * e, dark);
+      s.inside = null;
+      s.tri(
+        tip,
+        [tip[0] - hx * 15 * e, 0.4, tip[2] - hz * 15 * e],
+        [tip[0] - hx * 5 * e, 0.4, tip[2] - hz * 5 * e],
+        net,
+      );
+    }
   } else {
     // A sailboat: a hull, a mast and two white sails on one tack.
     const L = 7 * e;
@@ -684,8 +715,12 @@ export function buildVessels(p: VesselsPiece, ctx: ShapeCtx): number {
     const head = r() * Math.PI * 2;
     const hx = Math.cos(head);
     const hz = Math.sin(head);
-    const amp = p.style === 'sailboat' ? lerp(60, 200, r()) : lerp(300, 900, r());
-    const period = p.style === 'sailboat' ? lerp(150, 300, r()) : lerp(900, 1800, r());
+    // Sailboats tack about, shrimp boats trawl slowly up and down their ground, ships cross.
+    const trawl = p.style === 'shrimper';
+    const amp =
+      p.style === 'sailboat' ? lerp(60, 200, r()) : trawl ? lerp(150, 350, r()) : lerp(300, 900, r());
+    const period =
+      p.style === 'sailboat' ? lerp(150, 300, r()) : trawl ? lerp(500, 900, r()) : lerp(900, 1800, r());
     const phase = r() * Math.PI * 2;
     if (ctx.nearRoad(x - hx * amp, z - hz * amp, keep) || ctx.nearRoad(x + hx * amp, z + hz * amp, keep))
       continue;

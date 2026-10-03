@@ -1,7 +1,7 @@
 // The sim contract's types (docs/architecture.md, "Sim contract"). Re-exported by src/sim/api.ts,
 // which is the only file outside src/sim may import. Field lists are the architecture doc's
 // minimum plus what the M1 lanes need; the contract owner may add fields in a contract PR.
-import type { EntityId, GroundSurface, SmashableKind, TuningValues } from '../core';
+import type { EntityId, GroundSurface, GrudgeRuleId, SmashableKind, TuningValues } from '../core';
 import type { RoadNetwork, RouteProgress } from '../road';
 
 export const SIM_HZ = 60;
@@ -472,6 +472,14 @@ export type SimEventType =
   | 'kick'
   | 'weaponGrab'
   /**
+   * A held weapon left the hand, thrown (run W-T, the pitch deck's #4: "Kevin's briefcase is thrown
+   * and bursts into paperwork"). Actor = the thrower, who holds nothing from this tick; target = the
+   * rider it is aimed at, when there is one; `data.weapon`, and `data.pickup`, the pickup entity
+   * that now flies (the snapshot carries it like any pickup). The throw's causeId (its
+   * attackStart's), which the later `hit` or `attackMiss` (`data.thrown`, `data.burst`) shares.
+   */
+  | 'throw'
+  /**
    * The steal cue: a held weapon's wind-up has reached its snatch window (render glints, audio
    * cues). Actor = the holder, target = its current target when it has one; `data.weapon`, and
    * `data.ticks`, the window's length in ticks at timeScale 1. The attack's causeId.
@@ -570,6 +578,15 @@ export type SimEventType =
    * it). Actor = the rival holding the grudge; target = the rider it is against.
    */
   | 'grudgeNoted'
+  /**
+   * Dial-Up's "Bad Connection" (run W-T, the pitch deck's #14; a grudge match whose
+   * `SimEventDef.grudgeRule` is `bad-connection`). Actor = the rival. `data.phase` is `screech` (the
+   * warning: his lag move's tell begins, audio plays the modem screech), `drop` (the connection
+   * drops: he freezes, as `EntitySnapshot.signature` shows) or `reconnect` (he is back, moved
+   * `data.jumpM` metres up the road along his edge; 0 when the road ahead was not clear).
+   * Presentation reads it; the career does not.
+   */
+  | 'badConnection'
   /**
    * A rider rode onto a `boostPad` (playtest 1b quick wins). Actor = the rider; `data.feature` is
    * the pad's feature id, `data.speed` the rider's speed on entry, m/s, and `data.holdS` how long
@@ -780,7 +797,8 @@ export interface SimWeaponDef {
   steal: { startTick: number; endTick: number } | null;
   /**
    * The registered behaviour id (the weapon file's `behaviour`, M4 weapons-2): `melee.swing`,
-   * `melee.wrap` or `taser.stun`, a closed list in sim/combat. Absent or unknown is `melee.swing`.
+   * `melee.wrap` or `taser.stun`, and from W-T `throw.burst`, `melee.yank` and `melee.sweep`; a
+   * closed list in sim/combat (WEAPON_BEHAVIOURS). Absent or unknown is `melee.swing`.
    */
   behaviour?: string;
   /** Swings one held weapon gives before it is spent (`uses.charges`); absent or null: unlimited. */
@@ -877,6 +895,13 @@ export interface SimEventDef {
    * `modifiers.maxPerRace` (W-P events). Absent means no cap beyond `SimConfig.modifiers`.
    */
   modifiersPerRace?: number;
+  /**
+   * The grudge match's rival rule (run W-T, the pitch deck's #14: the event file's `rules.rule`)
+   * and its rival's content id, or absent. Only `bad-connection` changes the sim (that rival's lag
+   * move warns, drops and reconnects up the road, with `badConnection` events); the career scores
+   * the others from the public events. Absent, every race runs as before, so no hash moves.
+   */
+  grudgeRule?: { rule: GrudgeRuleId; rival: string };
 }
 
 /**
