@@ -12,6 +12,7 @@
 // the batch's cache key, so the batch recomputes.
 import type { DifficultyPreset } from '../../../src/core';
 import type { SimConfig, SimEvent, SimSnapshot } from '../../../src/sim/api';
+import { aiRivalsHook } from './ai-rivals';
 import { devHook } from './dev';
 
 export interface BatchRaceInfo {
@@ -33,4 +34,4 @@ export interface BatchHook {
   create(race: BatchRaceInfo): BatchHookRun;
 }
 
-export const BATCH_HOOKS: readonly BatchHook[] = [devHook];
+export const BATCH_HOOKS: readonly BatchHook[] = [devHook, aiRivalsHook];
