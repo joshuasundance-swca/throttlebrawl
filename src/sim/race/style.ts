@@ -102,6 +102,8 @@ export const STYLE_TUNING: readonly TuningParamDecl[] = [
 function trickWeight(trick: string, flips: number): number {
   if (trick === 'backflip' || trick === 'frontflip') return Math.max(1, flips);
   if (trick === 'wheelie' || trick === 'whip') return 0.5;
+  // The newspaper (the pitch deck's #13): only on the biggest jumps, and a crash if held too long.
+  if (trick === 'newspaper') return 1.5;
   return 0;
 }
 

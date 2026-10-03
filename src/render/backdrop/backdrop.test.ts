@@ -11,6 +11,8 @@ import {
   BACKDROP_FAR_M,
   buildSoup,
   floorDrawnDepth,
+  GLIDE_FADE,
+  motionAt,
   roadPointsOf,
   squeezedDepth,
   triangulate,
@@ -42,6 +44,9 @@ const backdropRegions = import.meta.glob<BackdropRegionFile>(
 );
 
 const NETWORKS = Object.values(networkFiles);
+/** The examined lines, printed even when the tests pass. */
+const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
+const print = (line: string) => stdout.write(`[print] ${line}\n`);
 
 function filesFor(id: string): { region: BackdropRegionFile; network: BackdropNetworkFile; folder: string } {
   const key = Object.keys(backdropNetworks).find((k) => k.endsWith(`/networks/${id}.json`));
@@ -154,15 +159,20 @@ describe.each(Object.keys(SIGNATURES))('the backdrop of %s', (id) => {
     }
     for (let v = 0; v < soup.pos.length / 3; v++) {
       if (soup.info[v * 4 + 1]! > 0 || soup.info[v * 4 + 3]! > 0) continue; // floors and the far ring
-      const x = soup.pos[v * 3]!;
-      const z = soup.pos[v * 3 + 2]!;
-      checked++;
-      const cx = Math.floor(x / 200);
-      const cz = Math.floor(z / 200);
-      for (let i = cx - 1; i <= cx + 1; i++)
-        for (let j = cz - 1; j <= cz + 1; j++)
-          for (const [px, pz] of cell.get(`${i},${j}`) ?? [])
-            closest = Math.min(closest, Math.hypot(px - x, pz - z));
+      // What moves is checked at both ends of its run too (W-T: a train, a seaplane, a pour).
+      const dx = soup.motion[v * 4]!;
+      const dz = soup.motion[v * 4 + 1]!;
+      for (const m of dx || dz ? [-1, 0, 1] : [0]) {
+        const x = soup.pos[v * 3]! + dx * m;
+        const z = soup.pos[v * 3 + 2]! + dz * m;
+        checked++;
+        const cx = Math.floor(x / 200);
+        const cz = Math.floor(z / 200);
+        for (let i = cx - 1; i <= cx + 1; i++)
+          for (let j = cz - 1; j <= cz + 1; j++)
+            for (const [px, pz] of cell.get(`${i},${j}`) ?? [])
+              closest = Math.min(closest, Math.hypot(px - x, pz - z));
+      }
     }
     expect(checked).toBeGreaterThan(1000);
     // The nearest keep-out is the mast's 250 m; a piece's own width may reach a little inside it.
@@ -174,6 +184,84 @@ describe.each(Object.keys(SIGNATURES))('the backdrop of %s', (id) => {
     expect(again.soup.pos).toEqual(soup.pos);
     const other = build(id, 8);
     expect(other.soup.pos).not.toEqual(soup.pos);
+  });
+});
+
+// W-T, pitch 6 "the horizon comes alive": "a middle distance that moves: shrimp boats and a seaplane
+// in the Keys; a freight train on the far bank and a ferry crossing in the PNW; fog pouring over the
+// SF hills and headlights crawling along the far bridge".
+const MOVERS: Record<string, string[]> = {
+  'keys-m1': ['shrimp-boats', 'seaplane'],
+  'osm-keys-bahia-honda': ['shrimp-boats', 'seaplane'],
+  'pnw-c1': ['sound-ferry', 'far-shore-freight'],
+  'osm-pnw-chuckanut': ['outbound-ferry'],
+  'osm-pnw-gorge': ['river-tug', 'far-bank-freight'],
+  'sf-hills': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
+  'osm-sf-russian-hill': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
+  'osm-sf-twin-peaks': ['golden-gate-bridge', 'headlands-pour'],
+};
+
+/** The vertex indices of a soup whose motion is a one-way glide (a negative speed). */
+const glides = (soup: { motion: number[] }) =>
+  Array.from({ length: soup.motion.length / 4 }, (_, v) => v).filter((v) => soup.motion[v * 4 + 2]! < 0);
+
+describe('the middle distance moves (W-T)', () => {
+  it('glides one way through a round, thins out at both ends of the run, and leaves a swing as it was', () => {
+    const period = 200;
+    let last = -Infinity;
+    for (let t = 0; t < period; t += 1) {
+      const { m, fade } = motionAt(t, -1 / period, 0);
+      expect(m).toBeGreaterThan(last);
+      expect(m).toBeGreaterThanOrEqual(-1);
+      expect(m).toBeLessThan(1);
+      // Fully seen through the middle of the run; gone at its very ends.
+      if (Math.abs(m) <= GLIDE_FADE) expect(fade).toBe(0);
+      last = m;
+    }
+    expect(motionAt(0, -1 / period, 0).fade).toBe(1);
+    expect(motionAt(period * 0.999, -1 / period, 0).fade).toBeGreaterThan(0.99);
+    // Round again: the next round starts where the first did.
+    expect(motionAt(period, -1 / period, 0).m).toBeCloseTo(-1, 9);
+    expect(motionAt(3, 0.5, 0.2)).toEqual({ m: Math.sin(3 * 0.5 + 0.2), fade: 0 });
+  });
+
+  it.each(Object.keys(MOVERS))('%s: its region moves on the horizon, past every road', (id) => {
+    const { stats } = build(id);
+    for (const piece of MOVERS[id]!) expect(stats.moving, piece).toContain(piece);
+    print(`${id}: moving ${stats.moving.join(', ')}; ${stats.triangles} triangles`);
+  });
+
+  it('runs each glide over a real distance at a believable speed, and the pour falls', () => {
+    const { soup } = build('osm-sf-russian-hill');
+    const gl = glides(soup);
+    expect(gl.length).toBeGreaterThan(500);
+    // Headlights glow through the haze: a negative extra haze.
+    expect(gl.some((v) => soup.info[v * 4]! < 0)).toBe(true);
+    // The pour's puffs come down as they slide out.
+    expect(gl.some((v) => soup.lift[v]! < -50)).toBe(true);
+    for (const v of gl) {
+      const run = 2 * Math.hypot(soup.motion[v * 4]!, soup.motion[v * 4 + 1]!);
+      const periodS = 1 / -soup.motion[v * 4 + 2]!;
+      expect(run).toBeGreaterThan(500);
+      // Traffic at 15 m/s, a pour at a few metres a second: nothing streaks.
+      expect(run / periodS).toBeLessThan(60);
+    }
+  });
+
+  it('brings the seaplane down to the water and the train along its bank', () => {
+    const keys = build('keys-m1').soup;
+    const plane = glides(keys);
+    expect(plane.length).toBeGreaterThan(30);
+    // From about 240 m down to the water: the keels end the run at the sea.
+    const lowest = Math.min(...plane.map((v) => keys.pos[v * 3 + 1]! + keys.lift[v]!));
+    expect(lowest).toBeGreaterThan(-1);
+    expect(lowest).toBeLessThan(5);
+    expect(Math.max(...plane.map((v) => keys.lift[v]!))).toBeLessThan(-100);
+    const gorge = build('osm-pnw-gorge').soup;
+    const train = glides(gorge);
+    expect(train.length).toBeGreaterThan(46 * 20);
+    // The train rides level on its track.
+    expect(train.every((v) => gorge.lift[v] === 0)).toBe(true);
   });
 });
 

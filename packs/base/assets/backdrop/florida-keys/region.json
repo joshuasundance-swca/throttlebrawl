@@ -90,6 +90,28 @@
       "colours": ["#9b4a3c", "#3f6c8a", "#c9a24a", "#5e7d5a", "#b8b3a8"]
     },
     {
+      "id": "shrimp-boats",
+      "kind": "vessels",
+      "style": "shrimper",
+      "count": 4,
+      "distanceM": [1200, 4500],
+      "exaggerate": 3,
+      "keepOutM": 700
+    },
+    {
+      "id": "seaplane",
+      "kind": "aircraft",
+      "style": "seaplane",
+      "distanceM": [2500, 6000],
+      "lengthM": 9000,
+      "altitudeM": [240, 0],
+      "speedMps": 45,
+      "exaggerate": 4,
+      "colour": "#f4f1e8",
+      "trimColour": "#c8442f",
+      "keepOutM": 900
+    },
+    {
       "id": "thunderheads",
       "kind": "clouds",
       "style": "thunderhead",

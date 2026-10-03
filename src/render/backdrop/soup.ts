@@ -44,8 +44,13 @@ export class Soup {
   readonly col: number[] = [];
   /** Per vertex: extra haze, floor flag, depth bias (m toward the eye, past the fog), follows-the-camera flag. */
   readonly info: number[] = [];
-  /** Per vertex: drift amplitude x and z (m), angular speed (rad/s), phase (rad). */
+  /**
+   * Per vertex: drift amplitude x and z (m), then a swing's angular speed (rad/s) and phase (rad),
+   * or for a one-way glide (W-T) minus its rounds per second and its phase in rounds (glide()).
+   */
   readonly motion: number[] = [];
+  /** Per vertex: the rise (m) that goes with the drift (a pour falls, a seaplane comes down). */
+  readonly lift: number[] = [];
 
   // The current piece's state, set before its triangles.
   haze = 0;
@@ -53,6 +58,7 @@ export class Soup {
   bias = 0;
   follow = 0;
   drift: [number, number, number, number] = [0, 0, 0, 0];
+  rise = 0;
   gradient: Gradient | null = null;
   /** Normals are turned to face away from this point (a solid's middle); null: no light shading. */
   inside: V3 | null = null;
@@ -68,6 +74,7 @@ export class Soup {
     this.bias = 0;
     this.follow = 0;
     this.drift = [0, 0, 0, 0];
+    this.rise = 0;
     this.gradient = null;
     this.inside = null;
   }
@@ -110,7 +117,18 @@ export class Soup {
       this.col.push(colour[0] * k, colour[1] * k, colour[2] * k);
       this.info.push(this.hazeAt(p[1]), this.floor, this.bias, this.follow);
       this.motion.push(...this.drift);
+      this.lift.push(this.rise);
     }
+  }
+
+  /**
+   * Sets a one-way glide for what follows (W-T): from `-(dx, rise, dz)` to `+(dx, rise, dz)` about
+   * where it is built, once every `periodS`, starting `phase` (0..1) of the way through, thinning
+   * into the haze at each end (the backdrop's vertex shader; `motionAt` mirrors it).
+   */
+  glide(dx: number, dz: number, rise: number, periodS: number, phase: number): void {
+    this.drift = [dx, dz, -1 / Math.max(1, periodS), phase - Math.floor(phase)];
+    this.rise = rise;
   }
 
   /** A convex polygon as a fan. */
