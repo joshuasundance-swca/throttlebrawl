@@ -128,6 +128,22 @@ describe('road/validate: the road lint', () => {
     expect(rules(b5)).toContain('features');
   });
 
+  it('features: fails a solid hazard over a lane, passes one off the lanes or one that is not solid (run W-U)', () => {
+    const pickup = { kind: 'hazard', id: 'p', s0: 100, s1: 105.4, params: { solid: true, object: 'pickup' } };
+    const on = clean();
+    road(on, 'a').features = [{ ...pickup, d0: 4.0, d1: 6.1 }]; // over the shoulder (out to 4.9)
+    const issues = lintRoadNetwork(on).filter((i) => i.rule === 'features');
+    expect(issues.map((i) => i.message).join()).toMatch(/solid hazard p stands on lane R0/);
+
+    const off = clean();
+    road(off, 'a').features = [{ ...pickup, d0: 6.0, d1: 8.1 }];
+    expect(rules(off)).not.toContain('features');
+
+    const decor = clean();
+    road(decor, 'a').features = [{ ...pickup, d0: 1, d1: 3, params: { object: 'pickup' } }];
+    expect(rules(decor)).not.toContain('features');
+  });
+
   it('junction-ends: fails a road end more than 0.5 m from its junction', () => {
     const b = clean();
     const j = b.network.junctions[1];

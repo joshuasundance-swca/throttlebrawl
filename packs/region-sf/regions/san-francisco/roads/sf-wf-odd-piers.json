@@ -32,9 +32,9 @@
     { "s0": 677, "s1": 723, "side": "right", "tag": "pier-shed" },
     { "s0": 816, "s1": 864, "side": "right", "tag": "pier-shed" },
     { "s0": 0, "s1": 900, "side": "left", "tag": "wharf" },
-    { "s0": 152, "s1": 168, "side": "left", "tag": "side-street" },
-    { "s0": 412, "s1": 428, "side": "left", "tag": "side-street" },
-    { "s0": 682, "s1": 698, "side": "left", "tag": "side-street" }
+    { "s0": 152, "s1": 168, "side": "left", "tag": "wharf-street" },
+    { "s0": 412, "s1": 428, "side": "left", "tag": "wharf-street" },
+    { "s0": 682, "s1": 698, "side": "left", "tag": "wharf-street" }
   ],
   "features": [
     {

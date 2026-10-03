@@ -13,7 +13,7 @@
 //   - bay side (right): `promenade` (12 m of paving to the seawall, a splash past it), `pier-shed`
 //     (a pier's bulkhead shed, its front on the seawall: a hard edge), `ferry-hall` (the clock-tower
 //     ferry hall, likewise), and `sea-lions` (the floats between two piers; render only);
-//   - city side (left): `wharf` (a sidewalk, then low waterfront blocks: a hard edge), `side-street`
+//   - city side (left): `wharf` (a sidewalk, then low waterfront blocks: a hard edge), `wharf-street`
 //     (a short street running inland, open asphalt at its mouth), `ferry-plaza` (the open plaza
 //     facing the ferry hall) and `wharf-lot` (an open parking lot by the bridge).
 // Smashables on these tags are only startup pop-ups and cafe tables (the region file).
@@ -58,7 +58,7 @@ const street = (s: number): Tag => ({
   s0: s - STREET_HALF_M,
   s1: s + STREET_HALF_M,
   side: 'left',
-  tag: 'side-street',
+  tag: 'wharf-street',
 });
 
 /** A sign on the promenade (right) or the sidewalk (left), past the 9.5 m edge and its verge. */

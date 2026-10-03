@@ -32,6 +32,12 @@ export type SideTheme =
   | 'crossing'
   | 'plaza'
   | 'downtown'
+  // run W-U, San Francisco's Chinatown and North Beach (render/chinatown-northbeach.ts draws them)
+  | 'lanterns'
+  | 'cafes'
+  | 'park'
+  // run W-U, San Francisco's mural alleys (render/mission.ts draws what stands there)
+  | 'mission'
   // run W-U, San Francisco's waterfront (render/waterfront.ts draws what stands there)
   | 'promenade'
   | 'wharf';
@@ -62,15 +68,27 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'cable-crossing': 'crossing',
   plaza: 'plaza',
   towers: 'downtown',
+  // Run W-U (pitch deck #8): Chinatown's shopfronts, North Beach's cafes, a block's side street and
+  // the hill's park. Nothing of the scatter's stands there; render/chinatown-northbeach.ts draws it.
+  lanterns: 'lanterns',
+  cafes: 'cafes',
+  'side-street': 'crossing',
+  'hill-park': 'park',
+  // Run W-U (the pitch deck after playtest 2, #8: "the Mission's mural alleys"): shopfronts, an
+  // alley's painted walls and the mascot's corner wall. Nothing of the scatter's stands there; the
+  // mission layer (mission.ts) draws the buildings, the murals and the crew.
+  shopfronts: 'mission',
+  murals: 'mission',
+  'mascot-mural': 'mission',
   // Run W-U (the pitch deck's #8): the waterfront. The bay side is the promenade to the seawall (the
   // pier sheds and the ferry hall stand on its edge); the city side is the waterfront blocks, their
-  // side streets, the ferry plaza and the lot by the bridge. Nothing of the scatter's stands on
+  // side streets (`wharf-street`), the ferry plaza and the lot by the bridge. Nothing of the scatter's stands on
   // either; the waterfront layer (waterfront.ts) draws them.
   promenade: 'promenade',
   'pier-shed': 'promenade',
   'ferry-hall': 'promenade',
   wharf: 'wharf',
-  'side-street': 'wharf',
+  'wharf-street': 'wharf',
   'ferry-plaza': 'wharf',
   'wharf-lot': 'wharf',
 };
@@ -86,6 +104,10 @@ const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  'park',
+  'lanterns',
+  'cafes',
+  'mission',
   'promenade',
   'wharf',
   'palms',
@@ -197,11 +219,28 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   crossing: {},
   plaza: {},
   downtown: {},
+  lanterns: {},
+  cafes: {},
+  park: {},
+  mission: {},
   promenade: {},
   wharf: {},
 };
-/** Themes with no power poles: a downtown's (and the waterfront's) wires are underground. */
-const NO_POLES: ReadonlySet<LandTheme> = new Set(['crossing', 'plaza', 'downtown', 'promenade', 'wharf']);
+/**
+ * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, and the
+ * mural district's walls stand at the kerb.
+ */
+const NO_POLES: ReadonlySet<LandTheme> = new Set([
+  'crossing',
+  'plaza',
+  'downtown',
+  'lanterns',
+  'cafes',
+  'park',
+  'mission',
+  'promenade',
+  'wharf',
+]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   palm: [2.2, 5.5],

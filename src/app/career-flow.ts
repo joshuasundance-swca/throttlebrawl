@@ -239,6 +239,7 @@ export {
   nodeLength,
   nodeOf,
   paintBike,
+  incidentSites,
   receiptBoards,
   rideBike,
   settleRace,

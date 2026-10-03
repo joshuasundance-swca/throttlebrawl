@@ -137,7 +137,7 @@ describe('San Francisco waterfront: what stands along the bay', () => {
         frontage += w;
       }
       // Never across a side street's mouth.
-      for (const t of tagsOf(b.edge).filter((x) => x.tag === 'side-street'))
+      for (const t of tagsOf(b.edge).filter((x) => x.tag === 'wharf-street'))
         expect(
           b.s + w / 2 <= t.s0 + 0.01 || b.s - w / 2 >= t.s1 - 0.01,
           `${b.rule} at ${b.s.toFixed(0)}`,

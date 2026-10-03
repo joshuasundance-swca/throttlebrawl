@@ -362,6 +362,24 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
     if (!(f.d0 <= f.d1)) add('features', `/features/${i}/d0`, `d0 ${f.d0} is past d1 ${f.d1}`);
     if (!FEATURE_KINDS.includes(f.kind as FeatureKind))
       add('features', `/features/${i}/kind`, `unknown feature kind ${f.kind}`);
+    // A solid hazard (run W-U) stands off the lanes: traffic and the rival AI never see one.
+    if (f.kind === 'hazard' && f.params?.['solid'] === true) {
+      for (const sec of sections) {
+        const next = sections[sections.indexOf(sec) + 1];
+        if (sec.s0 > f.s1 || (next && next.s0 <= f.s0)) continue;
+        const lane = sec.lanes.find(
+          (l) => f.d1 > l.dCenterM - l.widthM / 2 && f.d0 < l.dCenterM + l.widthM / 2,
+        );
+        if (lane) {
+          add(
+            'features',
+            `/features/${i}`,
+            `solid hazard ${f.id} stands on lane ${lane.id}; keep it off the lanes`,
+          );
+          break;
+        }
+      }
+    }
   });
   (road.tags ?? []).forEach((t, i) => range(`/tags/${i}`, t.s0, t.s1));
   (road.barriers ?? []).forEach((b, i) => range(`/barriers/${i}`, b.s0, b.s1));

@@ -1,0 +1,32 @@
+{
+  "type": "route",
+  "id": "sf-mission-run",
+  "name": "Mural Alleys",
+  "network": "sf-mission",
+  "start": { "road": "sf-mi-eggshell-st", "s": 40, "dir": 1 },
+  "finish": { "road": "sf-mi-last-coat-alley", "s": 613 },
+  "mainPath": [
+    "sf-mi-eggshell-st",
+    "sf-mi-primer-alley",
+    "sf-mi-satin-st",
+    "sf-mi-drop-cloth-alley",
+    "sf-mi-semigloss-st",
+    "sf-mi-last-coat-alley"
+  ],
+  "allowedRoads": [
+    "sf-mi-eggshell-st",
+    "sf-mi-primer-alley",
+    "sf-mi-satin-st",
+    "sf-mi-drop-cloth-alley",
+    "sf-mi-semigloss-st",
+    "sf-mi-last-coat-alley"
+  ],
+  "checkpoints": [
+    { "road": "sf-mi-primer-alley", "s": 180 },
+    { "road": "sf-mi-drop-cloth-alley", "s": 240 },
+    { "road": "sf-mi-semigloss-st", "s": 280 }
+  ],
+  "closed": false,
+  "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },
+  "meta": { "status": "live" }
+}

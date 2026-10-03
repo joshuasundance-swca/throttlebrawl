@@ -280,7 +280,9 @@ Playtest 1c brought new regions forward: "I do think we should start adding othe
 - **Time of day:** foggy dawn (the region's race), and golden hour.
 - **Stale-meme hook:** startup jargon (pivot, ten-x, stealth mode, the deck, burn rate) as one rival's whole vocabulary. It is aimed at a type, never at a person.
 - **Weird events** (ideas only, not built): a fog bank so thick the race goes by sound, a runaway cable car, a launch party across the road, a convoy of identical shuttles.
+- **The mural alleys** (run W-U, the pitch deck's #8): the murals are art and are played straight; the joke is the streaming outfit, whose mascot (a grinning head in a headset, STAY TUNED) is being painted over while you race, and the crowd that comes to film in front of the walls (ring lights, drones). Never the neighbourhood, its people or its shops. [default]
 - **Hard lines here:** no real tech companies, founders or products, and no jokes about people living on the street or any other real group. That cheap shot about the city is never the joke.
+- **Chinatown and North Beach** (run W-U; the pitch deck's #8) [default]: lantern strings across a narrow street of steep blocks, then a street of cafes and a park on the hill under an unnamed fluted tower. **The satire there aims at institutions and the startup scene, never at the neighbourhoods or their people:** no caricature, no accent jokes, no chase-film clichés (no crates of produce to smash; nothing smashes in Chinatown at all), and no invented shop names or lettering on a real neighbourhood's shops (the blade signs are drawn blank). Its signs play the city's institutions straight (grades, scooter parking, the cable car's bell) and aim the jokes at robotaxis, tech shuttles, laptops on cafe patios, founders pitching at the counter and AI poetry nights. Only North Beach's pavement cafe tables smash.
 
 #### Pivot (San Francisco local)
 

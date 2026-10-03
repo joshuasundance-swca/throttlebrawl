@@ -48,7 +48,7 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 
 /**
  * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
- * downtown, promenade, wharf, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * downtown, mission, promenade, wharf, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
  * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
  * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
  * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
@@ -60,6 +60,21 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // San Francisco's Chinatown and North Beach (run W-U; pitch deck #8): a side street's mouth is
+  // open asphalt (presentation only, like downtown's cross streets); the hill's park is grass; the
+  // Chinatown shopfronts stand behind a 4 m pavement; North Beach's pavement ends at the low rail of
+  // the cafe patios (the patios and the cafes behind them are drawn past the edge).
+  ['side-street', band(14, 'shoulder', 'soft')],
+  ['hill-park', band(9, 'grass', 'soft')],
+  ['lanterns', band(4, 'kerb', 'hard')],
+  ['cafes', band(3.2, 'kerb', 'hard')],
+  // The Pacific Northwest's places (run W-U, the pitch deck's #12): a car ferry's deck, whose outer
+  // lanes of parked pickups run to the hull's side; a closed main street on festival day, a sidewalk
+  // to the storefronts and the barricaded side streets; a fresh clear-cut, wide open dirt among the
+  // stumps (the stumps and pickups are solid `hazard` features, sim/riders/features.ts).
+  ['ferry', band(4.5, 'shoulder', 'hard')],
+  ['festival', band(4, 'kerb', 'hard')],
+  ['clearcut', band(16, 'dirt', 'soft')],
   // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
   // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
   // it); a plaza is wide open paving; the towers stand behind a sidewalk.
@@ -67,15 +82,22 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['cable-crossing', band(20, 'shoulder', 'soft')],
   ['plaza', band(18, 'kerb', 'soft')],
   ['towers', band(4, 'kerb', 'hard')],
+  // San Francisco's mural alleys (run W-U; the pitch deck after playtest 2, #8: "the Mission's mural
+  // alleys"): an alley's painted walls stand 1.5 m past the shoulder, the mascot's corner wall the
+  // same with its scaffold behind the edge, and the shopfronts behind a 4 m sidewalk. Each edge is
+  // a drawn wall (src/render/mission.ts), so it is a hard one.
+  ['mascot-mural', band(1.5, 'kerb', 'hard')],
+  ['murals', band(1.5, 'kerb', 'hard')],
+  ['shopfronts', band(4, 'kerb', 'hard')],
   // San Francisco's waterfront (run W-U; the pitch deck's #8): on the bay side 12 m of promenade
   // paving to the seawall, where a rider splashes (`water`), or to a pier shed's or the ferry hall's
-  // front (`hard`: the building stands there); on the city side a side street's mouth (open asphalt,
+  // front (`hard`: the building stands there); on the city side a side street's mouth (`wharf-street`, open asphalt,
   // as downtown's cross streets), the plaza facing the ferry hall, the parking lot by the bridge, and
   // otherwise a sidewalk to the waterfront blocks' fronts (`hard`).
   ['ferry-hall', band(12, 'kerb', 'hard')],
   ['pier-shed', band(12, 'kerb', 'hard')],
   ['promenade', band(12, 'kerb', 'water')],
-  ['side-street', band(20, 'shoulder', 'soft')],
+  ['wharf-street', band(20, 'shoulder', 'soft')],
   ['ferry-plaza', band(18, 'kerb', 'soft')],
   ['wharf-lot', band(18, 'shoulder', 'soft')],
   ['wharf', band(4, 'kerb', 'hard')],

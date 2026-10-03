@@ -30,7 +30,7 @@
     { "s0": 0, "s1": 110, "side": "left", "tag": "wharf" },
     { "s0": 110, "s1": 310, "side": "left", "tag": "ferry-plaza" },
     { "s0": 310, "s1": 520, "side": "left", "tag": "wharf" },
-    { "s0": 392, "s1": 408, "side": "left", "tag": "side-street" }
+    { "s0": 392, "s1": 408, "side": "left", "tag": "wharf-street" }
   ],
   "features": [
     {

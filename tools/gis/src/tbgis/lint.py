@@ -57,7 +57,7 @@ TAGS = {
     "ferry-hall",
     "sea-lions",
     "wharf",
-    "side-street",
+    "wharf-street",
     "ferry-plaza",
     "wharf-lot",
 }

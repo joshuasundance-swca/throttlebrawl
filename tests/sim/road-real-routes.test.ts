@@ -39,6 +39,10 @@ const ROUTES = [
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run', setPieces: true },
   // Run W-R: San Francisco's downtown, hand-made on its own network, offered beside the real roads.
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run', setPieces: true },
+  // Run W-U: Chinatown and North Beach, hand-made on its own network (steep blocks, a hard elbow).
+  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-chinatown-northbeach-run', setPieces: true },
+  // Run W-U: San Francisco's mural alleys, hand-made on their own network, five tight corners.
+  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-mission-run', setPieces: true },
   // Run W-U: San Francisco's waterfront, likewise.
   { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-waterfront-run', setPieces: true },
   // Run W-S: the real-road networks (tools/gis `tbgis network`), a four-lane highway and a junction

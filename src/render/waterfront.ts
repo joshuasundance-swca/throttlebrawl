@@ -12,7 +12,7 @@
 // - in the water between the piers, moored boats, and the sea lions' floats (`sea-lions`);
 // - on the city side, low waterfront blocks shoulder to shoulder behind the sidewalk (brick lofts, an
 //   arcade, a crab house, a startup in stealth mode, an old hotel, a parking garage), with taller
-//   towers behind them; short side streets running inland (`side-street`) lined with buildings; the
+//   towers behind them; short side streets running inland (`wharf-street`) lined with buildings; the
 //   plaza facing the ferry hall (`ferry-plaza`) with its palms; the lot by the bridge (`wharf-lot`)
 //   with its parked cars; and a city floor out past them, so no sea shows between the blocks.
 //
@@ -47,7 +47,7 @@ import { MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
 
 /** The waterfront's tags (tools/road/tracks/sf-waterfront.ts). */
 const BAY_TAGS = ['promenade', 'pier-shed', 'ferry-hall', 'sea-lions'] as const;
-const CITY_TAGS = ['wharf', 'side-street', 'ferry-plaza', 'wharf-lot'] as const;
+const CITY_TAGS = ['wharf', 'wharf-street', 'ferry-plaza', 'wharf-lot'] as const;
 
 /** Whether a network has a waterfront at all (any waterfront tag). */
 export function hasWaterfront(tags: ReadonlySet<string>): boolean {
@@ -1117,7 +1117,7 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
         if (s + 12 > b) break;
         if (h(k + Math.round(a), -1, 30) < 0.3) continue;
         // Clear of a side street and the blocks lining it.
-        if (tags.some((t) => t.tag === 'side-street' && Math.abs((t.s0 + t.s1) / 2 - s) < 44)) continue;
+        if (tags.some((t) => t.tag === 'wharf-street' && Math.abs((t.s0 + t.s1) / 2 - s) < 44)) continue;
         const d = -(outerL + BACK_ROW_M + 30 * h(k, -1, 31));
         const p = w(s, d, 0);
         place({
@@ -1238,7 +1238,7 @@ export function planWaterfront(input: WaterfrontInput, models: SceneryModels = {
       }
     }
     // Side streets: the roadway and its sidewalks running inland, buildings lining both sides.
-    for (const t of tags.filter((x) => x.tag === 'side-street' && onSide(x, 'left'))) {
+    for (const t of tags.filter((x) => x.tag === 'wharf-street' && onSide(x, 'left'))) {
       const s = (t.s0 + t.s1) / 2;
       streets.push({ edge: e.index, s });
       const centre = w(s, 0, 0);

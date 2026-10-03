@@ -1,10 +1,10 @@
 // Readable boards (playtest 2, 2026-10-02: "billboard legs block the text", "pass too fast to
 // read"): the copy is a 3-4 word headline plus a small kicker, the posts stand behind the printed
 // face, and the face is turned toward the rider coming up the road.
-import { Box3, Vector3 } from 'three';
+import { Box3, Vector3, type Mesh } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, fixtureNetwork } from '../road';
-import { Boards, splitCopy, type BoardCatalog, type BoardSlot } from './boards';
+import { Boards, conePartsAt, splitCopy, type BoardCatalog, type BoardSlot } from './boards';
 import { createFlatLook } from './look';
 
 interface RegionCopy {
@@ -112,5 +112,62 @@ describe('board geometry', () => {
     const size = new Box3().setFromObject((bb as NonNullable<typeof bb>).panel).getSize(new Vector3());
     expect(Math.max(size.x, size.z)).toBeGreaterThanOrEqual(8.5);
     expect(size.y).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('the incident site (run W-U: "an INCIDENT SITE #3 cone where you were busted")', () => {
+  const road = createRoadNetwork(fixtureNetwork([{ id: 'flat', lengthM: 400, kappa: 0 }]));
+  const catalog: BoardCatalog = {
+    items: {
+      site: {
+        ref: 'base:career/keys-circuit#receipt-incident-site',
+        text: 'INCIDENT SITE #3.',
+        kind: 'cone',
+      },
+    },
+  };
+  const slots: BoardSlot[] = [
+    { kind: 'billboard', id: 'incident-site-1', s0: 200, s1: 200, d0: 9, d1: 9, item: 'site' },
+  ];
+  const boards = new Boards(createFlatLook());
+  boards.build(road, () => slots, catalog);
+  const site = boards.all()[0];
+  const frameOf = (v: NonNullable<typeof site>) => v.group.children.find((c) => c !== v.panel) as Mesh;
+
+  it('draws traffic cones round a small orange placard: two meshes, like any board', () => {
+    expect(boards.all()).toHaveLength(1);
+    if (!site) return;
+    expect(site.kind).toBe('cone');
+    expect(site.ref).toBe('base:career/keys-circuit#receipt-incident-site');
+    expect(site.group.children).toHaveLength(2);
+    const panel = new Box3().setFromObject(site.panel).getSize(new Vector3());
+    expect(Math.max(panel.x, panel.z)).toBeCloseTo(2.8, 1);
+    expect(panel.y).toBeCloseTo(1.4, 5);
+    // The placard stands low, at cone height, not up on posts like a sign.
+    expect(site.panel.position.y).toBeCloseTo(0.5, 5);
+    const frame = frameOf(site);
+    frame.geometry.computeBoundingBox();
+    // The big cone stands about 1.9 m tall, so it reads at speed.
+    expect(frame.geometry.boundingBox?.max.y ?? 0).toBeGreaterThan(1.8);
+    // Orange cone vertices are among the frame's colours (#ff6a13, in linear colour).
+    const col = frame.geometry.getAttribute('color');
+    let orange = 0;
+    for (let i = 0; i < col.count; i++)
+      if (col.getX(i) > 0.9 && col.getY(i) < 0.3 && col.getZ(i) < 0.1) orange++;
+    expect(orange).toBeGreaterThan(24);
+  });
+
+  it('keeps every cone beside the placard, never in front of its words', () => {
+    expect(conePartsAt(2.4, -1.95, 0.1)).toHaveLength(6);
+    if (!site) return;
+    const pos = frameOf(site).geometry.getAttribute('position');
+    let front = 0;
+    for (let i = 0; i < pos.count; i++) {
+      // Anything in front of the face plane (local z > 0) is outside the placard's width.
+      if (pos.getZ(i) <= 0.01) continue;
+      front++;
+      expect(Math.abs(pos.getX(i))).toBeGreaterThan(1.4);
+    }
+    expect(front).toBeGreaterThan(0);
   });
 });

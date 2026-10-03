@@ -31,8 +31,8 @@
     { "s0": 534, "s1": 586, "side": "right", "tag": "pier-shed" },
     { "s0": 0, "s1": 220, "side": "left", "tag": "wharf-lot" },
     { "s0": 220, "s1": 640, "side": "left", "tag": "wharf" },
-    { "s0": 322, "s1": 338, "side": "left", "tag": "side-street" },
-    { "s0": 512, "s1": 528, "side": "left", "tag": "side-street" }
+    { "s0": 322, "s1": 338, "side": "left", "tag": "wharf-street" },
+    { "s0": 512, "s1": 528, "side": "left", "tag": "wharf-street" }
   ],
   "features": [
     { "kind": "copSpawn", "id": "wf-promenade-lot", "s0": 4, "s1": 20, "d0": 10.4, "d1": 13.9 },

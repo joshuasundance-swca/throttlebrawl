@@ -96,7 +96,7 @@ describe('tools/road: the baked San Francisco waterfront', () => {
     }
     const sheds = spans('pier-shed');
     const halls = spans('ferry-hall');
-    const streets = spans('side-street');
+    const streets = spans('wharf-street');
     console.log(
       `[examined] ${checked} road stations; ${sheds.length} pier sheds, ${halls.length} ferry hall, ${streets.length} side streets, ${spans('sea-lions').length} sea lion stretch`,
     );

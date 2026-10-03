@@ -20,7 +20,7 @@
       "length": "standard",
       "tier": "t1",
       "at": { "road": "sf-wf-bridgefoot", "s": 40 },
-      "opens": ["sf-switchback-street", "osm-sf-hyde"],
+      "opens": ["sf-switchback-street", "sf-mi-drop-cloth-alley"],
       "claims": [
         "sf-wf-bridgefoot",
         "sf-wf-clocktower-reach",
@@ -44,10 +44,17 @@
       "event": "sf-t1-collab",
       "length": "standard",
       "tier": "t1",
-      "at": { "road": "osm-sf-hyde", "s": 300 },
+      "at": { "road": "sf-mi-drop-cloth-alley", "s": 200 },
       "requires": ["pier-pressure"],
       "opens": ["osm-sf-california"],
-      "claims": ["osm-sf-hyde"]
+      "claims": [
+        "sf-mi-eggshell-st",
+        "sf-mi-primer-alley",
+        "sf-mi-satin-st",
+        "sf-mi-drop-cloth-alley",
+        "sf-mi-semigloss-st",
+        "sf-mi-last-coat-alley"
+      ]
     },
     {
       "id": "meter",
@@ -56,7 +63,7 @@
       "tier": "t2",
       "at": { "road": "osm-sf-california", "s": 300 },
       "opens": ["osm-sf-columbus"],
-      "claims": ["osm-sf-california", "osm-sf-kearny"]
+      "claims": ["osm-sf-california", "osm-sf-kearny", "osm-sf-hyde"]
     },
     {
       "id": "russian-hill",
@@ -89,9 +96,16 @@
       "event": "sf-t3-gus-grudge",
       "length": "standard",
       "tier": "t3",
-      "at": { "road": "sf-fogline-climb", "s": 200 },
+      "at": { "road": "sf-cn-bell-grade", "s": 250 },
       "opens": ["sf-bridge-approach"],
-      "claims": ["sf-fogline-climb"]
+      "claims": [
+        "sf-cn-lantern-row",
+        "sf-cn-bell-grade",
+        "sf-cn-crossover",
+        "sf-nb-espresso-row",
+        "sf-nb-the-elbow",
+        "sf-nb-overlook-climb"
+      ]
     },
     {
       "id": "curb-authority",
@@ -99,7 +113,7 @@
       "length": "standard",
       "tier": "t3",
       "at": { "road": "sf-bridge-approach", "s": 300 },
-      "claims": ["sf-bridge-approach"]
+      "claims": ["sf-fogline-climb", "sf-bridge-approach"]
     },
     {
       "id": "down-round",
@@ -281,7 +295,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones (run W-U: Gripman Gus's grudge moved to Chinatown and North Beach, so every route has an event; the fogline climb is claimed with the bridge approach); secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
   }
 }
