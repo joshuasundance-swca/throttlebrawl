@@ -5,7 +5,7 @@
 // parking meters, pop-up desks and cafe tables, never Chinatown's shops), and every one stands off
 // the lanes on ground with room for it. Placement only (one tick per route): no races run.
 import { describe, expect, it } from 'vitest';
-import { buildSimConfig, createStreamCache } from '../../src/app';
+import { buildSimConfig, createStreamCache, realRoutes, regionChoices } from '../../src/app';
 import { registryFromGlob } from '../../src/content';
 import type { SimConfig } from '../../src/sim/api';
 import { createSimWithWorld } from '../../src/sim/create';
@@ -23,31 +23,24 @@ interface Route {
   route?: string;
 }
 
-const ROUTES: readonly Route[] = [
-  { name: 'keys-m1', event: 'base:m1-skeleton-sprint' },
-  { name: 'osm-keys-key-west', event: 'base:m1-skeleton-sprint', route: 'base:osm-key-west-run' },
-  { name: 'pnw-c1', event: 'region-pnw:pnw-fogline-run' },
-  { name: 'osm-pnw-chuckanut', event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-chuckanut-run' },
-  { name: 'osm-pnw-gorge', event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-gorge-run' },
-  { name: 'osm-pnw-samish', event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-i5-samish-run' },
-  { name: 'sf-hills', event: 'region-sf:sf-hill-sprint' },
-  { name: 'sf-downtown', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run' },
-  {
-    name: 'sf-chinatown-northbeach',
-    event: 'region-sf:sf-hill-sprint',
-    route: 'region-sf:sf-chinatown-northbeach-run',
-  },
-  { name: 'sf-waterfront', event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-waterfront-run' },
-  { name: 'osm-sf-russian-hill', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run' },
-  { name: 'osm-sf-twin-peaks', event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run' },
-];
+/**
+ * Every race the packs ship, from the packs (the quality retro's recommendation 5): each region's
+ * free-play event on its standard length, and every other route raced instead of it (realRoutes),
+ * so a new road is checked the day it lands. (A hand list here missed the Mission's mural alleys.)
+ */
+const ROUTES: readonly Route[] = regionChoices(REG).flatMap((c) => [
+  { name: c.eventId, event: c.eventId },
+  ...realRoutes(REG, c.eventId).map((route) => ({ name: route, event: c.eventId, route })),
+]);
 
-/** The kinds each region may put out (its region file's `smashables`). */
-const REGION_KINDS: Readonly<Record<string, readonly string[]>> = {
-  base: ['lobster-traps', 'mailbox'],
-  'region-pnw': ['mailbox', 'firewood-stand'],
-  'region-sf': ['parking-meter', 'pop-up-desk', 'cafe-table'],
-};
+/** The kinds each region may put out: its region file's live `smashables`, by pack. */
+const REGION_KINDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  regionChoices(REG).map((c) => {
+    const pack = c.eventId.slice(0, c.eventId.indexOf(':'));
+    const region = REG.regions[`${pack}:${REG.events[c.eventId]?.region ?? ''}`];
+    return [pack, [...new Set((region?.smashables ?? []).map((s) => s.kind))]];
+  }),
+);
 
 function config(r: Route, seed: number): SimConfig {
   const length = 'standard';
@@ -98,7 +91,7 @@ describe('smashables on the live routes', () => {
   );
 
   it('Chinatown and North Beach: nothing smashes in Chinatown, only cafe tables in North Beach (run W-U)', () => {
-    const r = ROUTES.find((x) => x.name === 'sf-chinatown-northbeach');
+    const r = ROUTES.find((x) => x.route === 'region-sf:sf-chinatown-northbeach-run');
     if (!r) throw new Error('no route');
     const chinatown = ['sf-cn-lantern-row', 'sf-cn-bell-grade'];
     let total = 0;
@@ -131,7 +124,11 @@ describe('smashables on the live routes', () => {
 
   it('every region puts some out, of its own kinds', () => {
     process.stdout.write(`[examined] seed 1, ${ROUTES.length} routes: ${lines.join('; ')}\n`);
+    // The derived lists are not empty: three regions, each with kinds, and their routes.
+    expect(Object.keys(REGION_KINDS).length).toBeGreaterThanOrEqual(3);
+    expect(ROUTES.length).toBeGreaterThan(Object.keys(REGION_KINDS).length);
     for (const [pack, kinds] of Object.entries(REGION_KINDS)) {
+      expect(kinds.length, `${pack} lists no smashables`).toBeGreaterThan(0);
       const seen = byRegion[pack] ?? new Set();
       expect(seen.size, `${pack} placed none`).toBeGreaterThan(0);
       for (const k of seen) expect(kinds).toContain(k);

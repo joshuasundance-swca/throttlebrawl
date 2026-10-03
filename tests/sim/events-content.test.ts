@@ -16,25 +16,24 @@ const REG = registryFromGlob(
 );
 const STREAMS = createStreamCache();
 
-// Run W-T (the pitch deck's #9) adds the moving pieces: the Keys' boat slide and gator crossing, the
-// PNW's log spill, SF's cable-car runaway (on a cable street only), and a lane vote in each region.
-const REGIONS = [
-  {
-    event: 'base:m1-skeleton-sprint',
-    pack: 'base',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap', 'boat-slide', 'animal-crossing', 'lane-vote'],
-  },
-  {
-    event: 'region-pnw:pnw-fogline-run',
-    pack: 'region-pnw',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'hay-spill', 'speed-trap', 'log-spill', 'lane-vote'],
-  },
-  {
-    event: 'region-sf:sf-hill-sprint',
-    pack: 'region-sf',
-    pieces: ['roadwork', 'crash-scene', 'parade', 'speed-trap', 'cable-runaway', 'lane-vote'],
-  },
-] as const;
+/**
+ * The pieces the packs give an event's region: every loaded modifier whose eligibility names the
+ * region, by its effects' `piece` (the quality retro's recommendation 5: expectations come from
+ * the packs, so a new piece is expected, and must turn up, the day it lands). Run W-T (the pitch
+ * deck's #9) added the moving ones: the Keys' boat slide and gator crossing, the PNW's log spill,
+ * SF's cable-car runaway (on a cable street only), and a lane vote in each region.
+ */
+function packPieces(event: string): string[] {
+  const region = REG.events[event]?.region;
+  if (!region) throw new Error(`no event ${event}`);
+  return Object.values(REG.modifiers)
+    .filter((m) => m.eligibility?.regions?.includes(region))
+    .flatMap((m) => m.effects.map((e) => String(e['piece'])));
+}
+
+const REGIONS = ['base:m1-skeleton-sprint', 'region-pnw:pnw-fogline-run', 'region-sf:sf-hill-sprint'].map(
+  (event) => ({ event, pack: event.slice(0, event.indexOf(':')), pieces: packPieces(event) }),
+);
 
 function config(event: string, seed: number, route?: string) {
   return buildSimConfig(REG, STREAMS.forEvent(REG, event, 'standard', route), {
@@ -75,6 +74,7 @@ describe('road events in the shipped packs', () => {
       const cfg = config(r.event, 1);
       expect(cfg.event.modifiersPerRace).toBe(2);
       const ids = cfg.modifiers.map((m) => m.contentId);
+      expect(r.pieces.length, 'the packs give the region some pieces').toBeGreaterThan(0);
       expect(ids.length).toBe(r.pieces.length);
       for (const id of ids) expect(id.startsWith(`${r.pack}:`), id).toBe(true);
       const pieces = cfg.modifiers.flatMap((m) => m.effects.map((e) => String(e['piece'])));

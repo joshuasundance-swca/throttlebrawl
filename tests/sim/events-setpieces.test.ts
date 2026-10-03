@@ -18,6 +18,7 @@ import {
   type SimModifierDef,
   type SimTrafficTypeDef,
 } from '../../src/sim/api';
+import { firstSeed, seedRange } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -178,20 +179,31 @@ const pieceOf = (e: SimEvent) => String(e.data['piece']);
 describe('road set pieces (W-P events)', () => {
   it('every piece goes live, does its job and ends as the bot rides the race', () => {
     // The lot cop waits (a long spawn delay) and nobody patrols (playtest 2's patrol off), so it is
-    // the speed trap that brings him out. Seed 7 since run W-U's ferry start (#414): the route grew
-    // 400 m and pieces keep clear of the festival's solid hazards, so seed 3 no longer fits all five
-    // pieces in their window (it drops the speed trap; 4 of seeds 1 to 12 fit all five: 1, 2, 7, 11).
-    const run = ride(config(7, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }));
-    const started = run.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
+    // the speed trap that brings him out. Whether a seed fits every piece in its window moves with
+    // the route (run W-U's ferry start, #414, grew it 400 m and moved seed 3 off), so the race is
+    // the first seed that starts them all (firstSeed, R6; the quality retro's recommendation 5),
+    // and the pieces it must start are the ones the test forces in, read from ALL.
+    const tuning = { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 };
+    const every = new Set(ALL.flatMap((m) => m.effects.map((e) => String(e['piece']))));
+    const startedIn = (r: Run) => r.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
+    const found = firstSeed(
+      'every set piece starts',
+      seedRange(1, 16),
+      (seed) => ride(config(seed, ALL, tuning)),
+      (r) => [...every].every((p) => startedIn(r).includes(p)),
+    );
+    const run = found.result;
+    expect(run, found.summary).not.toBeNull();
+    if (!run || found.seed === null) return;
+    const started = startedIn(run);
     const ended = run.events.filter((e) => e.type === 'modifierEnd').map(pieceOf);
     console.log(
-      `[print] started ${started.join(', ')}; ended ${ended.join(', ')}; most props at once ${run.maxProps}; ` +
+      `[print] ${found.summary}: started ${started.join(', ')}; ended ${ended.join(', ')}; most props at once ${run.maxProps}; ` +
         `kinds ${[...run.kinds].sort().join(', ')}; knocked or moving ${[...run.moved].sort().join(', ')}`,
     );
     expect(run.problem).toBeNull();
-    expect(new Set(started)).toEqual(
-      new Set(['roadwork', 'crash-scene', 'parade', 'hay-spill', 'speed-trap']),
-    );
+    expect(every.size).toBe(ALL.length);
+    expect(new Set(started)).toEqual(every);
     // The race ends after everyone has passed them: every piece ended, nothing left on the road.
     expect(new Set(ended)).toEqual(new Set(started));
     expect(run.liveAtEnd).toBe(0);
@@ -213,16 +225,16 @@ describe('road set pieces (W-P events)', () => {
     expect(run.moved).toContain('hayBale');
     // The speed trap: the bot blows past the radar and the lot cop is brought to the trap, siren on.
     // Whether the bot is over the limit as it passes depends on the traffic around it then (the W-P
-    // traffic lane), so seed 7 is checked first and seeds 1, 2, 5, 9 and 10 back it up.
+    // traffic lane), so the race above is checked first and the next seeds back it up (firstSeed).
     const tripped = (r: Run) => r.events.some((e) => e.type === 'siren' && e.data['cause'] === 'speed-trap');
-    let trapSeed = tripped(run) ? 7 : -1;
-    for (const seed of [1, 2, 5, 9, 10]) {
-      if (trapSeed >= 0) break;
-      if (tripped(ride(config(seed, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }))))
-        trapSeed = seed;
-    }
-    console.log(`[print] the speed trap summoned its cop on seed ${trapSeed}`);
-    expect(trapSeed, 'the speed trap summons its cop').toBeGreaterThan(0);
+    const trap = firstSeed(
+      'the speed trap summons its cop',
+      seedRange(found.seed, found.seed + 11),
+      (seed) => (seed === found.seed ? run : ride(config(seed, ALL, tuning))),
+      tripped,
+    );
+    console.log(`[print] ${trap.summary}`);
+    expect(trap.seed, trap.summary).not.toBeNull();
   });
 
   it('replays to the same hashes for one seed, and other seeds place the pieces elsewhere', () => {
