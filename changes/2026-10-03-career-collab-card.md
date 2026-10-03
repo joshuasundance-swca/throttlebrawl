@@ -1,5 +1,5 @@
 ---
-kind: fix
+kind: fixed
 audience: player
 ---
 A grudge match's career card now says what its rule actually judges, so the line under the rule card never contradicts it (the live check after #394):
