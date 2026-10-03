@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BIKE_CLASSES } from '../content';
-import { BIKE_CLASS_MODELS, riderLookOf } from './rider-looks';
+import { BIKE_CLASS_MODELS, riderLookOf, withPlayerPaint } from './rider-looks';
 
 describe('riderLookOf: which models a rider draws with (run W-R)', () => {
   it('the rider model is the rider id, without its pack', () => {
@@ -50,5 +50,37 @@ describe('riderLookOf: which models a rider draws with (run W-R)', () => {
 
   it('every content bike class has a bike model', () => {
     expect(Object.keys(BIKE_CLASS_MODELS).sort()).toEqual([...BIKE_CLASSES].sort());
+  });
+
+  it("the player rides their sim bike's model (the garage's), whatever the look names", () => {
+    const l = riderLookOf({
+      contentId: 'base:player',
+      role: 'player',
+      bikeId: 'base:superbike-1000',
+      look: { bikeModel: 'chopper', bikeClass: 'dirt' },
+    });
+    expect(l).toMatchObject({ bikeModel: 'models/bikes/superbike-1000', player: true, law: false });
+    expect(riderLookOf({ contentId: 'base:x', role: 'rival', bikeId: 'base:moped' }).player).toBe(false);
+  });
+
+  it("withPlayerPaint puts the career paint first on the player's palette, and only there", () => {
+    const player = riderLookOf({
+      contentId: 'base:player',
+      role: 'player',
+      bikeId: 'base:moped',
+      look: { palette: ['#b8322a', '#fff3c4', '#2a3550'] },
+    });
+    expect(withPlayerPaint(player, '#00aa55').paint).toEqual(['#00aa55', '#fff3c4', '#2a3550']);
+    expect(withPlayerPaint(player, null)).toBe(player);
+    expect(withPlayerPaint(player, 'teal')).toBe(player);
+    const bare = riderLookOf({ contentId: 'base:player', role: 'player', bikeId: 'base:moped' });
+    expect(withPlayerPaint(bare, '#00aa55').paint).toEqual(['#00aa55']);
+    const rival = riderLookOf({
+      contentId: 'base:x',
+      role: 'rival',
+      bikeId: 'base:moped',
+      look: { palette: ['#111111'] },
+    });
+    expect(withPlayerPaint(rival, '#00aa55')).toBe(rival);
   });
 });
