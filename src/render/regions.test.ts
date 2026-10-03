@@ -313,9 +313,12 @@ describe('the Pacific Northwest', () => {
           bents.push(m);
         }
     });
-    const trestle = road.edges.find((e) => e.id === 'pnw-trestle')!;
     const bridge = (dressing['pnw-trestle']?.tags ?? []).find((t) => t.tag === 'bridge')!;
     expect(bents.length).toBeGreaterThan(((bridge.s1 - bridge.s0) / 8) * 0.9);
+    // Every bridge stretch of the network: the trestle, and (run W-U) the ferry slip's two spans.
+    const bridges = road.edges.flatMap((e) =>
+      (dressing[e.id]?.tags ?? []).filter((t) => t.tag === 'bridge').map((t) => ({ e, t })),
+    );
     const p = new Vector3();
     const q = new Vector3();
     const top = new Vector3();
@@ -326,15 +329,16 @@ describe('the Pacific Northwest', () => {
       q.set(p.x, 0, p.z);
       let best = Infinity;
       let deck = 0;
-      for (let s = bridge.s0; s <= bridge.s1; s += 2) {
-        const w = road.toWorld(trestle.index, s, 0, 0);
-        const d = Math.hypot(w.x - p.x, w.z - p.z);
-        if (d < best) {
-          best = d;
-          deck = w.y;
+      for (const { e, t } of bridges)
+        for (let s = t.s0; s <= t.s1; s += 1) {
+          const w = road.toWorld(e.index, s, 0, 0);
+          const d = Math.hypot(w.x - p.x, w.z - p.z);
+          if (d < best) {
+            best = d;
+            deck = w.y;
+          }
         }
-      }
-      expect(best, 'a bent stands under the trestle').toBeLessThan(1.5);
+      expect(best, 'a bent stands under a bridge').toBeLessThan(1.5);
       expect(top.y).toBeLessThan(deck);
       expect(top.y).toBeGreaterThan(deck - 1.2);
       expect(p.y).toBeLessThan(0);

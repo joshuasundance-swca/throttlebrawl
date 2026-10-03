@@ -70,6 +70,10 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
  * moving pieces' fix (the cable car may now stand on SF's walled cable street) gave SF seed 4 a
  * cable-car runaway instead, so San Francisco moved to seed 3: the crash scene at 27% of the route,
  * live at tick 1525 in the earlier headless scan on main, and placed at the same spot with this fix.
+ * Run W-U's ferry start (#414, 400 m more road before the old start) moved every Pacific Northwest
+ * piece: headless with the dev bot, seed 32's hay truck goes live at tick 2631 and the roadwork at
+ * 3151; seed 12 now meets the speed trap first (2703), then the parade (4310), so its pieces are
+ * listed in that order (waiting for the parade first let the speed trap go by unseen).
  */
 const RACES = [
   {
@@ -82,7 +86,7 @@ const RACES = [
     slug: 'pnw-b',
     chip: '#region-region-pnw-pacific-northwest',
     seed: 12,
-    pieces: { 'region-pnw:pnw-logging-parade': 'floatDecor', 'region-pnw:pnw-speed-trap': 'radar' },
+    pieces: { 'region-pnw:pnw-speed-trap': 'radar', 'region-pnw:pnw-logging-parade': 'floatDecor' },
   },
   {
     slug: 'sf',

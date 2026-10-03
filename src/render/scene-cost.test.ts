@@ -24,6 +24,7 @@ import { readGlb } from './glb';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
 import { bakeModel, MODEL_ASSETS, modelKindsFor, type ModelKind, type SceneryModels } from './models';
+import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
 import { SCENERY_LOD_M } from './scenery-merge';
@@ -159,6 +160,10 @@ describe('the still scene along every route', () => {
           : null;
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
+      // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).
+      const places = hasPnwPlaces(tags)
+        ? new PnwPlacesLayer(look, { road, seed, landReach: (e, side, s) => rs.landReach(e, side, s) })
+        : null;
       // Run W-U: San Francisco's Chinatown and North Beach (a code-made kit, no models).
       const blocks = hasBlocks(tags) ? new BlocksLayer(look, { road, dressing, seed }) : null;
       // Run W-U: San Francisco's mural alleys, the crew halfway through the race.
@@ -196,6 +201,7 @@ describe('the still scene along every route', () => {
           dt?.update(eye.x, eye.z, 0, []);
           // Everything near enough is built at once here (the renderer builds one a frame).
           wf?.update(eye.x, eye.z, LOD_M, undefined, 1000);
+          places?.update(eye.x, eye.z, DRAW_M, LOD_M, Infinity);
           // The blocks build one mesh a frame: as many frames as a ride to here would have had.
           if (blocks) for (let i = 0; i < 30; i++) blocks.update(eye.x, eye.z);
           if (mission) for (let i = 0; i < 8; i++) mission.update(eye.x, eye.z, 0, 0.5);
@@ -208,6 +214,7 @@ describe('the still scene along every route', () => {
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
           if (wf) drawn(wf.group, frustum, parts);
+          if (places) drawn(places.group, frustum, parts);
           if (blocks) drawn(blocks.group, frustum, parts);
           if (mission) drawn(mission.group, frustum, parts);
           const total = [...parts.values()].reduce(

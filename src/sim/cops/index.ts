@@ -403,6 +403,14 @@ export const PATROL = {
   /** Looking for a clear spot: step forward this far, at most this many times. */
   stepM: 20,
   tries: 30,
+  /**
+   * A patrol cop's own search goes on for this many tries, 1.2 km (`tries` until run W-U; the
+   * roadblock keeps `tries`): the Pacific Northwest's ferry start moved the Logging Spur, a 770 m
+   * shortcut that keeps a patrol off the main way beside it, over the whole 600 m search, so a seed
+   * whose patrol fell short of it had no patrol at all. The first `tries` steps are unchanged, so a
+   * patrol that was found before stands where it stood.
+   */
+  patrolTries: 60,
   /** No patrol cop within this of a ramp, gap, pad, ramp truck or cop lot, m. */
   clearM: 30,
   /** Sharpest bend he waits on, 1/m. */
@@ -1381,7 +1389,7 @@ export function patrolSpots(world: World, config: SimConfig, count: number): { a
     let want = clamp(t * speed, PATROL.minProgress * length, PATROL.maxProgress * length);
     const last = out[out.length - 1];
     if (last) want = Math.max(want, last.at + PATROL.spacingM);
-    for (let i = 0; i < PATROL.tries; i++) {
+    for (let i = 0; i < PATROL.patrolTries; i++) {
       const at = want + i * PATROL.stepM;
       if (at > PATROL.maxProgress * length) break;
       const pos = routePosAt(config, at);

@@ -178,8 +178,10 @@ const pieceOf = (e: SimEvent) => String(e.data['piece']);
 describe('road set pieces (W-P events)', () => {
   it('every piece goes live, does its job and ends as the bot rides the race', () => {
     // The lot cop waits (a long spawn delay) and nobody patrols (playtest 2's patrol off), so it is
-    // the speed trap that brings him out.
-    const run = ride(config(3, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }));
+    // the speed trap that brings him out. Seed 7 since run W-U's ferry start (#414): the route grew
+    // 400 m and pieces keep clear of the festival's solid hazards, so seed 3 no longer fits all five
+    // pieces in their window (it drops the speed trap; 4 of seeds 1 to 12 fit all five: 1, 2, 7, 11).
+    const run = ride(config(7, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }));
     const started = run.events.filter((e) => e.type === 'modifierStart').map(pieceOf);
     const ended = run.events.filter((e) => e.type === 'modifierEnd').map(pieceOf);
     console.log(
@@ -211,9 +213,9 @@ describe('road set pieces (W-P events)', () => {
     expect(run.moved).toContain('hayBale');
     // The speed trap: the bot blows past the radar and the lot cop is brought to the trap, siren on.
     // Whether the bot is over the limit as it passes depends on the traffic around it then (the W-P
-    // traffic lane), so seed 3 is checked first and seeds 1, 2, 5, 9 and 10 back it up.
+    // traffic lane), so seed 7 is checked first and seeds 1, 2, 5, 9 and 10 back it up.
     const tripped = (r: Run) => r.events.some((e) => e.type === 'siren' && e.data['cause'] === 'speed-trap');
-    let trapSeed = tripped(run) ? 3 : -1;
+    let trapSeed = tripped(run) ? 7 : -1;
     for (const seed of [1, 2, 5, 9, 10]) {
       if (trapSeed >= 0) break;
       if (tripped(ride(config(seed, ALL, { 'cops.spawnDelayS': 600, 'cops.patrolScale': 0 }))))

@@ -24,16 +24,16 @@
       "id": "j-pnw-c1-0",
       "x": 0,
       "y": 3,
-      "z": 0,
+      "z": 400,
       "ends": [{ "road": "pnw-ferry-landing", "end": "from" }],
       "connectors": [],
       "control": "none"
     },
     {
       "id": "j-pnw-c1-1",
-      "x": -16.6571,
+      "x": -16.5758,
       "y": 3,
-      "z": -313.3316,
+      "z": -313.3303,
       "ends": [
         { "road": "pnw-ferry-landing", "end": "to" },
         { "road": "pnw-switchback-grade", "end": "from" },
@@ -57,16 +57,16 @@
           "road": "c-pnw-spur-in",
           "from": { "road": "pnw-ferry-landing", "end": "to", "lane": "R1" },
           "to": { "road": "pnw-logging-spur", "end": "from", "lane": "S1" },
-          "splitZone": { "s0": 260, "s1": 300, "d0": 3, "d1": 5.5 }
+          "splitZone": { "s0": 660, "s1": 700, "d0": 3, "d1": 5.5 }
         }
       ],
       "control": "none"
     },
     {
       "id": "j-pnw-c1-2",
-      "x": -112.9719,
+      "x": -112.8912,
       "y": 3,
-      "z": -1108.5121,
+      "z": -1108.5107,
       "ends": [
         { "road": "pnw-switchback-grade", "end": "to" },
         { "road": "pnw-cedar-hollow", "end": "from" },
@@ -96,9 +96,9 @@
     },
     {
       "id": "j-pnw-c1-3",
-      "x": 252.775,
+      "x": 252.8537,
       "y": 3,
-      "z": -2157.8919,
+      "z": -2157.8914,
       "ends": [
         { "road": "pnw-cedar-hollow", "end": "to" },
         { "road": "pnw-trestle", "end": "from" }
@@ -108,7 +108,7 @@
     },
     {
       "id": "j-pnw-c1-4",
-      "x": 1047.2064,
+      "x": 1047.2847,
       "y": 3,
       "z": -2447.0455,
       "ends": [
@@ -120,9 +120,9 @@
     },
     {
       "id": "j-pnw-c1-5",
-      "x": 1573.1233,
+      "x": 1573.2014,
       "y": 3,
-      "z": -3121.198,
+      "z": -3121.1986,
       "ends": [
         { "road": "pnw-espresso-row", "end": "to" },
         { "road": "pnw-fogline-ridge", "end": "from" }
@@ -132,9 +132,9 @@
     },
     {
       "id": "j-pnw-c1-6",
-      "x": 2364.4011,
+      "x": 2364.4806,
       "y": 3,
-      "z": -3586.6075,
+      "z": -3586.6064,
       "ends": [
         { "road": "pnw-fogline-ridge", "end": "to" },
         { "road": "pnw-sawmill-flats", "end": "from" }
@@ -144,9 +144,9 @@
     },
     {
       "id": "j-pnw-c1-7",
-      "x": 2645.9703,
+      "x": 2646.0503,
       "y": 3,
-      "z": -4548.9401,
+      "z": -4548.9388,
       "ends": [{ "road": "pnw-sawmill-flats", "end": "to" }],
       "connectors": [],
       "control": "none"

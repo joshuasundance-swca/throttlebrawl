@@ -40,7 +40,10 @@ export type SideTheme =
   | 'mission'
   // run W-U, San Francisco's waterfront (render/waterfront.ts draws what stands there)
   | 'promenade'
-  | 'wharf';
+  | 'wharf'
+  // run W-U, the Pacific Northwest's places (render/pnw-places.ts draws what stands there)
+  | 'festival'
+  | 'clearcut';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -91,6 +94,12 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   'wharf-street': 'wharf',
   'ferry-plaza': 'wharf',
   'wharf-lot': 'wharf',
+  // Run W-U (the pitch deck's #12): a closed main street on the day of the Stump Social (Fir County's
+  // logging festival), and a fresh clear-cut. The
+  // scatter puts nothing there but the forest's far edge past a clear-cut; pnw-places.ts draws the
+  // shops, the bears, the stumps and the slash. (A `ferry` stretch is no land: the sea, and the ferry.)
+  festival: 'festival',
+  clearcut: 'clearcut',
 };
 /**
  * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
@@ -101,6 +110,8 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
 export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade: 11.4 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
+  'festival',
+  'clearcut',
   'crossing',
   'plaza',
   'downtown',
@@ -225,10 +236,13 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   mission: {},
   promenade: {},
   wharf: {},
+  festival: {},
+  clearcut: {},
 };
 /**
- * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, and the
- * mural district's walls stand at the kerb.
+ * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
+ * district's walls stand at the kerb, the festival street's shops stand at the sidewalk, and a
+ * clear-cut has none.
  */
 const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'crossing',
@@ -240,6 +254,8 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'mission',
   'promenade',
   'wharf',
+  'festival',
+  'clearcut',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
@@ -548,7 +564,7 @@ export function scatterEdge(e: ScatterEdge): ScenerySpot[] {
       const s = (k + h(ci, k, side, 20)) * farSpacing;
       if (s > e.length) break;
       const theme = e.theme(side, s);
-      if (theme !== 'forest' && theme !== 'sawmill') continue;
+      if (theme !== 'forest' && theme !== 'sawmill' && theme !== 'clearcut') continue;
       const far = e.skirt(side, s);
       if (!far || far.to - far.from < 4) continue;
       const across = far.from + 2 + (far.to - far.from - 4) * h(ci, k, side, 21);
