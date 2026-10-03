@@ -22,9 +22,11 @@
 // Run W-R (interview, 2026-10-02: "Real models now") draws each rider as a real model on a real
 // bike (riders/, a lazy chunk): `setRiderLooks` names the race's riders and their models, which load
 // from the asset manifest; until a rider's two models arrive, its box rider draws.
+// Run W-T (pitch 6, "the horizon comes alive") adds the staged roadside scenes (scenes/, a lazy
+// chunk with each region's scenes file): a few seeded scenes a race, each one mesh with one dry sign.
 import { Fog, PerspectiveCamera, Scene, WebGLRenderer, type Object3D } from 'three';
 import type { AssetManifest } from '../assets';
-import { Backdrop, type BackdropStats } from './backdrop';
+import { Backdrop, backdropFilesFor, type BackdropStats } from './backdrop';
 import type {
   EntitySnapshot,
   RendererStats,
@@ -33,6 +35,7 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
+import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { EventProps } from './event-props';
@@ -41,6 +44,8 @@ import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
+import type { ScenesFile } from './scenes/data';
+import type { ScenesCounts, ScenesLayer } from './scenes/layer';
 import type { DowntownCounts, DowntownLayer } from './downtown';
 import type { VergeCounts, VergeLayer } from './verge';
 import { Rain, rainColourOf } from './rain';
@@ -211,6 +216,8 @@ export interface SceneryStatus {
   downtown: DowntownCounts | null;
   /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
   verge: VergeCounts | null;
+  /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
+  scenes: ScenesCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -248,6 +255,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const effects = new FeelEffects(look, params);
   const views = new EntityViews(look, { ...opts, effects, params });
   const boards = new Boards(look);
+  // Air that pays (the pitch deck's #13): the chalk mark, the newspaper and the landing one-liner.
+  const airPays = new AirPays();
   // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   const eventProps = new EventProps(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
@@ -260,6 +269,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     views.root,
     effects.root,
     boards.root,
+    airPays.root,
     eventProps.root,
     camera,
     backdrop.root,
@@ -334,8 +344,47 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       kit,
       landReach: (e, side, s) => rs.landReach(e, side, s),
       spots: rs.spots,
+      reserved: scenes?.reserved() ?? [],
     });
     scene.add(roadside.group);
+  };
+  // Run W-T: the staged roadside scenes (scenes/), a lazy chunk with the region's scenes file. They
+  // are placed on the road scene's land before the roadside props, which keep off their ground.
+  let scenesModule: typeof import('./scenes/layer') | null = null;
+  let scenesData: { road: RoadNetwork; region: string; pack: string; file: ScenesFile } | null = null;
+  let scenes: ScenesLayer | null = null;
+  const hiddenRefs = new Set<string>();
+  const buildScenes = () => {
+    scenes?.dispose();
+    scenes = null;
+    const m = scenesModule;
+    const rs = roadScene;
+    const data = scenesData;
+    if (!m || !rs || !roadArgs || !data || data.road !== roadArgs.road) return;
+    scenes = new m.ScenesLayer(look, {
+      road: roadArgs.road,
+      seed: sceneSeed,
+      pack: data.pack,
+      file: data.file,
+      landReach: (e, side, s) => rs.landReach(e, side, s),
+      spots: rs.spots,
+    });
+    scenes.hide(hiddenRefs);
+    scene.add(scenes.group);
+  };
+  /** Fetches the scenes of the road's region (none for a road without a backdrop region). */
+  const requestScenes = (road: RoadNetwork) => {
+    const files = backdropFilesFor(road.id);
+    const region = files?.region.split('/').at(-2);
+    if (!region) return;
+    void import('./scenes/layer').then(async (m) => {
+      scenesModule = m;
+      const found = await m.loadScenes(region);
+      if (!found || roadArgs?.road !== road) return;
+      scenesData = { road, region, ...found };
+      buildScenes();
+      buildRoadside();
+    });
   };
   // Run W-R: San Francisco's downtown (downtown.ts), a lazy chunk that arrives with its models.
   let downtownModule: typeof import('./downtown') | null = null;
@@ -384,6 +433,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       palette,
     });
     scene.add(roadScene.group);
+    buildScenes();
     buildRoadside();
     buildDowntown();
   };
@@ -495,8 +545,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           buildVerge();
         });
       backdrop.setRoad(road);
+      requestScenes(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
+      airPays.setLines(catalog?.pools?.landing ?? []);
     },
     setTrafficTypes(defs) {
       views.setTrafficTypes(defs);
@@ -505,6 +557,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pushEvents(events) {
       views.pushEvents(events);
+      airPays.pushEvents(events);
       verge?.pushEvents(events);
       rigs?.pushEvents(events);
     },
@@ -522,11 +575,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const t = now();
       backdrop.update(camera.position, scene, t);
       eventProps.sync(curr, t);
+      airPays.update(prev, curr, alpha, t);
       sceneryVisible = roadScene
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
         : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
+      scenes?.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
       if (downtown) {
         // The cross traffic moves with the race: it stands still while the race does (paused).
@@ -591,9 +646,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
       return boards.pick(ndc.x, ndc.y, camera);
     },
-    visibleContentRefs: () => boards.visibleRefs(camera),
+    visibleContentRefs: () => [...boards.visibleRefs(camera), ...airPays.visibleRefs()],
     hideContent(refs) {
-      boards.hide(refs);
+      const list = [...refs];
+      boards.hide(list);
+      airPays.hide(list);
+      for (const r of list) hiddenRefs.add(r);
+      scenes?.hide(list);
     },
     feelCounts: () => effects.counts(),
     speedLineCounts: () => speedLines.counts(),
@@ -634,6 +693,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       backdrop: backdrop.status().stats,
       downtown: downtown?.counts() ?? null,
       verge: verge?.counts() ?? null,
+      scenes: scenes?.counts() ?? null,
     }),
   };
 }

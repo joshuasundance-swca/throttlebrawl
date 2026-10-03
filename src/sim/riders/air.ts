@@ -22,6 +22,15 @@
 // first, or looped onto the back, now only when the ground comes up sooner than forecast) wipes the
 // rider out, thrown high: a botched flip is a big, funny crash (`data.botched`). AI riders give no air commands: they fly level. All state is plain numbers
 // and strings in the riders state, so it is in the hash and the snapshot. [default] every number.
+// The newspaper (the pitch deck's #13, "Air that pays": "On the biggest jumps, a lawn-chair-and-
+// newspaper pose; hold it too long and you land holding the newspaper"): on a flight forecast to
+// last at least `riders.newspaperAirS`, holding the brake and the kick together (they cancel each
+// other, so on a smaller jump the bike just flies level, as before) sits the rider back and opens
+// the paper; the bike flies level and upright. Let go of either and it takes NEWSPAPER_FOLD_S to
+// fold it away: folded before the ground, after at least NEWSPAPER_MIN_S of reading, it is a trick
+// (`newspaper`); still holding it at the ground, the rider lands holding the newspaper, a crash
+// thrown high like a botched flip (`data.attempt: 'newspaper'`). 0 turns the pose off (a recording
+// made before it, whose tuning leaves the key out, rides exactly as before).
 import { atan, clamp, PI, TAU, wrapAngle, type TuningParamDecl } from '../../core';
 import {
   InputFlag,
@@ -47,7 +56,31 @@ export const AIR_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    // The newspaper (the pitch deck's #13): the pose is offered only on a flight forecast to last at
+    // least this long, s (time in the air so far plus the forecast to the ground). 0 turns it off.
+    // [default] 1 s: a ramp truck or a big ramp at speed, not a hump or a crest hop.
+    id: 'riders.newspaperAirS',
+    group: 'crashes',
+    label: 'Air: newspaper from',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: 's',
+    affectsSim: true,
+  },
 ];
+
+/** The newspaper takes this long to fold away once let go, s. [default] */
+export const NEWSPAPER_FOLD_S = 0.25;
+/** Read for at least this long (before folding) for the pose to count as a trick, s. [default] */
+export const NEWSPAPER_MIN_S = 0.3;
+/**
+ * The brake and the kick must be held together this long before the paper comes out, s: a kick
+ * pressed for a tick while braking (a fight in the air) never opens it by accident. [default]
+ */
+export const NEWSPAPER_OPEN_S = 0.15;
 
 /** Pitch acceleration while a player holds an air command, rad/s². */
 export const FLIP_ACCEL = 18;
@@ -110,6 +143,14 @@ export interface AirState {
   whipTicks: number[];
   /** The trick in progress (a TrickId), or ''. */
   trick: string[];
+  /**
+   * The newspaper: ticks the brake and the kick have been held together before it comes out, ticks
+   * read this flight (0 when not out), ticks left folding it, and 1 once read long enough.
+   */
+  paperArm: number[];
+  paper: number[];
+  paperFold: number[];
+  paperRead: number[];
   lean: number[];
   leanBase: number[];
 }
@@ -135,6 +176,10 @@ export function startFlight(st: AirState, m: Mover, input: SimInput | undefined,
   st.noseUpTicks[m.id] = 0;
   st.whipTicks[m.id] = 0;
   st.trick[m.id] = '';
+  st.paperArm[m.id] = 0;
+  st.paper[m.id] = 0;
+  st.paperFold[m.id] = 0;
+  st.paperRead[m.id] = 0;
 }
 
 /** On the ground the bike lies along the slope, upright, doing no trick. */
@@ -142,6 +187,48 @@ export function groundPitch(st: AirState, m: Mover, slope: number): void {
   st.pitch[m.id] = slope;
   st.pitchRate[m.id] = 0;
   st.trick[m.id] = '';
+  st.paperArm[m.id] = 0;
+  st.paper[m.id] = 0;
+  st.paperFold[m.id] = 0;
+}
+
+/** Whether the rider has the newspaper out (reading it, or still folding it). */
+export function holdingPaper(st: AirState, id: number): boolean {
+  return (st.paper[id] ?? 0) > 0;
+}
+
+/**
+ * The newspaper's tick (the pitch deck's #13): returns true while the paper is out, when the bike
+ * flies level whatever else is held. `big` says the flight is long enough to offer the pose; `both`
+ * that the brake and the kick are held together, neither held over the lip.
+ */
+function stepPaper(st: AirState, id: number, big: boolean, both: boolean, ts: number): boolean {
+  const out = st.paper[id] ?? 0;
+  const fold = st.paperFold[id] ?? 0;
+  if (fold > 0) {
+    const left = fold - ts;
+    st.paperFold[id] = left > 0 ? left : 0;
+    if (left <= 0) st.paper[id] = 0;
+    return left > 0;
+  }
+  if (out > 0) {
+    if (both) {
+      st.paper[id] = out + ts;
+      return true;
+    }
+    // Let go: fold it away. It counts once it was read long enough.
+    if (out >= NEWSPAPER_MIN_S * 60) st.paperRead[id] = 1;
+    st.paperFold[id] = NEWSPAPER_FOLD_S * 60;
+    return true;
+  }
+  // Held together long enough on a big flight (and not read already this flight): out it comes.
+  const arm = both && big && (st.paperRead[id] ?? 0) === 0 ? (st.paperArm[id] ?? 0) + ts : 0;
+  st.paperArm[id] = arm;
+  if (arm > 0 && arm >= NEWSPAPER_OPEN_S * 60) {
+    st.paper[id] = arm;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -158,6 +245,7 @@ export function stepAttitude(
   steer: number,
   dt: number,
   tGround: number,
+  airS = 0,
 ): number {
   const slope = slopeAt(config, m);
   let block = st.airBlock[m.id] ?? 0;
@@ -169,9 +257,13 @@ export function stepAttitude(
   const down = gain > 0 && kickOn(input) && (block & 2) === 0;
   const pitch = st.pitch[m.id] ?? slope;
   const rate = st.pitchRate[m.id] ?? 0;
+  // The newspaper (the pitch deck's #13): the brake and the kick held together on a big flight.
+  const paperAirS = def.controller.kind === 'player' ? (world.params['riders.newspaperAirS'] ?? 0) : 0;
+  const big = paperAirS > 0 && airS + tGround >= paperAirS;
+  const reading = stepPaper(st, m.id, big, up && down, world.timeScale);
   // A held command turns the bike only while it can still come down on its wheels (W-Q0 verifier: a
   // brake held from mid-air to the ground used to loop the bike out, 23 of 34 jumps down).
-  const wanted = (up ? 1 : 0) - (down ? 1 : 0);
+  const wanted = reading ? 0 : (up ? 1 : 0) - (down ? 1 : 0);
   const command =
     wanted !== 0 && landsUpright(pitch, rate, wanted * FLIP_ACCEL * gain, slope, tGround, dt) ? wanted : 0;
   const accel = command !== 0 ? command * FLIP_ACCEL * gain : levelAccel(pitch, rate, slope);
@@ -182,7 +274,8 @@ export function stepAttitude(
   if (Math.abs(st.leanBase[m.id] ?? 0) >= WHIP_LEAN)
     st.whipTicks[m.id] = (st.whipTicks[m.id] ?? 0) + world.timeScale;
   st.trick[m.id] = trickInProgress(st, m, slope);
-  return steer * AIR_LEAN;
+  // Reading the paper, the rider sits up: no lean, no whip.
+  return reading ? 0 : steer * AIR_LEAN;
 }
 
 /**
@@ -234,6 +327,7 @@ function landsUpright(
 /** The trick a rider is visibly doing in the air now, or ''. */
 function trickInProgress(st: AirState, m: Mover, slope: number): TrickId | '' {
   const off = (st.pitch[m.id] ?? 0) - slope;
+  if (holdingPaper(st, m.id)) return 'newspaper';
   if (off >= PI / 2) return 'backflip';
   if (off <= -PI / 2) return 'frontflip';
   if (Math.abs(st.leanBase[m.id] ?? 0) >= WHIP_LEAN) return 'whip';
@@ -264,18 +358,28 @@ export function touchdown(st: AirState, m: Mover, slope: number): Touchdown {
   const flips = Math.round(unwrapped / TAU);
   const pitchOff = wrapAngle(unwrapped);
   const lean = st.lean[m.id] ?? 0;
-  const crashes = pitchOff >= PITCH_CRASH_UP || pitchOff <= PITCH_CRASH_DOWN;
+  // Still holding the newspaper at the ground: the rider lands holding it (the pitch deck's #13).
+  const paper = holdingPaper(st, m.id);
+  const crashes = paper || pitchOff >= PITCH_CRASH_UP || pitchOff <= PITCH_CRASH_DOWN;
   const wobbles =
     pitchOff > PITCH_CLEAN_UP || pitchOff < PITCH_CLEAN_DOWN || Math.abs(lean) > LAND_LEAN_WOBBLE;
   let trick: TrickId | '' = '';
-  if (flips > 0) trick = 'backflip';
+  if (paper) trick = '';
+  else if (flips > 0) trick = 'backflip';
   else if (flips < 0) trick = 'frontflip';
+  else if ((st.paperRead[m.id] ?? 0) === 1) trick = 'newspaper';
   else if ((st.noseUpTicks[m.id] ?? 0) >= WHEELIE_TICKS && pitchOff >= WHEELIE_MIN) trick = 'wheelie';
   else if ((st.whipTicks[m.id] ?? 0) >= WHIP_TICKS && Math.abs(lean) < WHIP_LAND_LEAN) trick = 'whip';
   // Mid-trick when it went wrong: a flip under way (a quarter turn or more), or any trick.
   const flipping: TrickId | '' = unwrapped >= PI / 2 ? 'backflip' : unwrapped <= -PI / 2 ? 'frontflip' : '';
   const shown = (st.trick[m.id] ?? '') as TrickId | '';
-  const attempt: TrickId | '' = trick !== '' ? trick : flipping !== '' ? flipping : shown;
+  const attempt: TrickId | '' = paper
+    ? 'newspaper'
+    : trick !== ''
+      ? trick
+      : flipping !== ''
+        ? flipping
+        : shown;
   const side = lean > 0 ? 1 : lean < 0 ? -1 : 0;
   return {
     pitchOff,

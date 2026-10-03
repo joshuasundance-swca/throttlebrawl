@@ -6,6 +6,7 @@ import {
   DEFAULT_PROFILE,
   emptyRegion,
   MAX_HISTORY,
+  MAX_RECEIPTS,
   migrateProfile,
   MIGRATIONS,
   PROFILE_NOTICE_NEWER,
@@ -102,6 +103,39 @@ describe('sanitiseProfile', () => {
     expect(p.history).toHaveLength(MAX_HISTORY);
     expect(p.history[0]?.outcome).toBe('lost');
     expect(p.failureMode).toBe('road-trip');
+  });
+
+  it("keeps the world's receipts (run W-T): well-formed ones, the newest MAX_RECEIPTS, an old record none", () => {
+    expect(sanitiseProfile({ cash: 5 }).receipts).toEqual([]);
+    const good = {
+      kind: 'takedown',
+      region: 'florida-keys',
+      event: 'base:keys-t1-kevin-grudge',
+      road: 'osm-bahia-honda-bridge',
+      s: 412.7,
+      rival: 'base:kevin-from-accounting',
+      vehicle: 'base:rv',
+      n: 1,
+    };
+    const p = sanitiseProfile({
+      receipts: [
+        good,
+        { ...good, kind: 'bust', rival: null, vehicle: 'NOT AN ID', n: 0 },
+        { ...good, kind: 'parade' },
+        { ...good, road: 7 },
+        'junk',
+      ],
+    });
+    expect(p.receipts).toEqual([
+      { ...good, s: 413 },
+      { ...good, kind: 'bust', s: 413, rival: null, vehicle: null, n: 1 },
+    ]);
+    expect(sanitiseProfile(p)).toEqual(p);
+    const many = sanitiseProfile({
+      receipts: Array.from({ length: MAX_RECEIPTS + 3 }, (_v, i) => ({ ...good, n: i + 1 })),
+    });
+    expect(many.receipts).toHaveLength(MAX_RECEIPTS);
+    expect(many.receipts[0]?.n).toBe(4);
   });
 });
 

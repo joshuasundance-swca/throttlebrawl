@@ -54,6 +54,31 @@ export interface EventResult {
   at: string;
 }
 
+/**
+ * What the world remembers (run W-T, the pitch deck's #14: "a world that keeps receipts"): a rival
+ * you put into traffic, or a bust, and where. The career draws them back into the world as a
+ * billboard or a sign near the spot in later races. Only recorded facts: every field is what the
+ * race's events said happened.
+ */
+export const RECEIPT_KINDS = ['takedown', 'bust'] as const;
+export type ReceiptKind = (typeof RECEIPT_KINDS)[number];
+
+export interface Receipt {
+  kind: ReceiptKind;
+  /** The region (bare id, as `regions` keys it) and the event (qualified) it happened in. */
+  region: string;
+  event: string;
+  /** The road it happened on (a road id of the region) and how far along it, whole metres. */
+  road: string;
+  s: number;
+  /** A takedown's rival (qualified rider id), or null. */
+  rival: string | null;
+  /** The traffic type a takedown went into (qualified traffic id, `base:rv`), or null. */
+  vehicle: string | null;
+  /** The career's count of this kind so far, this one included (`INCIDENT SITE #3`). */
+  n: number;
+}
+
 export const FAILURE_MODES = ['road-trip', 'classic', 'hardcore'] as const;
 export type FailureMode = (typeof FAILURE_MODES)[number];
 
@@ -81,11 +106,17 @@ export interface Profile {
    * Additive, like `paintsOwned`.
    */
   oncePerCareer: string[];
+  /**
+   * The world's receipts, oldest first, at most MAX_RECEIPTS (the oldest drop off). Additive, like
+   * `paintsOwned`: a record without it has none, and the version stays 1.
+   */
+  receipts: Receipt[];
 }
 
 export const MAX_HISTORY = 200;
 export const MAX_IDS = 500;
 export const CASH_MAX = 1_000_000_000;
+export const MAX_RECEIPTS = 24;
 
 export const DEFAULT_PROFILE: Readonly<Profile> = {
   cash: 0,
@@ -96,6 +127,7 @@ export const DEFAULT_PROFILE: Readonly<Profile> = {
   failureMode: 'road-trip',
   paintsOwned: [],
   oncePerCareer: [],
+  receipts: [],
 };
 
 export function emptyRegion(): RegionProgress {
@@ -165,6 +197,25 @@ function result(v: unknown): EventResult | null {
   };
 }
 
+function receipt(v: unknown): Receipt | null {
+  const r = obj(v);
+  const regionId = id(r['region']);
+  const event = id(r['event']);
+  const road = id(r['road']);
+  const kind = RECEIPT_KINDS.find((k) => k === r['kind']);
+  if (regionId === null || event === null || road === null || !kind) return null;
+  return {
+    kind,
+    region: regionId,
+    event,
+    road,
+    s: int(r['s'], 0, 1_000_000, 0),
+    rival: id(r['rival']),
+    vehicle: id(r['vehicle']),
+    n: int(r['n'], 1, 9999, 1),
+  };
+}
+
 function grudges(v: unknown): Record<string, Record<string, number>> {
   const out: Record<string, Record<string, number>> = {};
   let n = 0;
@@ -209,6 +260,10 @@ export function sanitiseProfile(data: unknown): Profile {
     failureMode: oneOf(d['failureMode'], FAILURE_MODES, 'road-trip'),
     paintsOwned: ids(d['paintsOwned']),
     oncePerCareer: ids(d['oncePerCareer']),
+    receipts: (Array.isArray(d['receipts']) ? d['receipts'] : [])
+      .map(receipt)
+      .filter((r): r is Receipt => r !== null)
+      .slice(-MAX_RECEIPTS),
   };
 }
 
