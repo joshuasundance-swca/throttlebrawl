@@ -1,0 +1,29 @@
+{
+  "config": "networks/osm-pnw-samish.json",
+  "maxStreets": 3,
+  "found": 2,
+  "loops": [
+    {
+      "leaveM": 6074.1,
+      "joinM": 6656.3,
+      "mainM": 582.2,
+      "loopM": 589.8,
+      "streets": ["(motorway_link)"],
+      "leave": [48.6508124, -122.367072],
+      "join": [48.6457541, -122.3650378],
+      "kind": "alternate",
+      "ratio": 1.013
+    },
+    {
+      "leaveM": 1032.6,
+      "joinM": 1564.5,
+      "mainM": 531.9,
+      "loopM": 675.0,
+      "streets": ["(motorway_link)", "North Lake Samish Drive", "(motorway_link)"],
+      "leave": [48.6876252, -122.3985333],
+      "join": [48.6840213, -122.3943018],
+      "kind": "detour",
+      "ratio": 1.269
+    }
+  ]
+}

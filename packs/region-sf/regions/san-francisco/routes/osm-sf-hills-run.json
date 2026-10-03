@@ -10,7 +10,7 @@
   },
   "finish": {
     "road": "osm-sf-leavenworth-north",
-    "s": 254.0162
+    "s": 244.0162
   },
   "mainPath": [
     "osm-sf-hyde",
@@ -53,15 +53,15 @@
     },
     {
       "road": "osm-sf-union",
-      "s": 240.0119
+      "s": 235.0119
     },
     {
       "road": "osm-sf-union-crest",
-      "s": 63.9996
+      "s": 68.9996
     },
     {
       "road": "osm-sf-leavenworth",
-      "s": 196.0074
+      "s": 201.0074
     }
   ],
   "branches": [

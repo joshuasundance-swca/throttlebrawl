@@ -1,0 +1,24 @@
+{
+  "config": "configs/osm-pnw-gorge.json",
+  "maxStreets": 3,
+  "found": 1,
+  "loops": [
+    {
+      "leaveM": 3630.2,
+      "joinM": 4312.8,
+      "mainM": 682.5,
+      "loopM": 1318.8,
+      "streets": [
+        "Northeast Latourell Road",
+        "Northeast Park Street",
+        "Northeast Latourell Road",
+        "Northeast Falls Street",
+        "Northeast Latourell Road"
+      ],
+      "leave": [45.5381473, -122.2241351],
+      "join": [45.5394905, -122.2157698],
+      "kind": "detour",
+      "ratio": 1.932
+    }
+  ]
+}

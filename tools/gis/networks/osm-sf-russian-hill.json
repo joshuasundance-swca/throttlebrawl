@@ -375,10 +375,11 @@
           "d0": 3.0,
           "d1": 6.0
         },
-        "insetM": 35,
+        "insetM": 50.0,
         "toOffsetM": 2,
         "toLane": "R1",
-        "turnsM": [20, 20]
+        "turnsM": [50.0, 10],
+        "shiftM": -10.0
       },
       "join": {
         "at": {
@@ -388,10 +389,11 @@
         "pieceM": 40,
         "offsetM": 2,
         "lane": "R1",
-        "insetM": 40,
+        "insetM": 45.0,
         "fromOffsetM": 2,
         "fromLane": "R1",
-        "turnsM": [20, 20]
+        "turnsM": [10, 45.0],
+        "shiftM": 10.0
       },
       "label": "jones"
     }

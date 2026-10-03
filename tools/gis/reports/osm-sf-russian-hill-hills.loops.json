@@ -1,0 +1,227 @@
+{
+  "config": "networks/osm-sf-russian-hill.json",
+  "maxStreets": 3,
+  "found": 230,
+  "loops": [
+    {
+      "leaveM": 1458.4,
+      "joinM": 2200.9,
+      "mainM": 742.4,
+      "loopM": 742.4,
+      "streets": ["Washington Street", "Taylor Street"],
+      "leave": [37.793691, -122.4179542],
+      "join": [37.7916306, -122.4124799],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 1047.9,
+      "joinM": 2054.3,
+      "mainM": 1006.4,
+      "loopM": 1006.2,
+      "streets": ["Vallejo Street", "Jones Street"],
+      "leave": [37.7973433, -122.4186878],
+      "join": [37.7914195, -122.4141223],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 2783.0,
+      "joinM": 3122.4,
+      "mainM": 339.4,
+      "loopM": 339.3,
+      "streets": ["Grant Avenue", "Clay Street"],
+      "leave": [37.7924582, -122.4059535],
+      "join": [37.7944619, -122.4047926],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 2348.0,
+      "joinM": 3023.0,
+      "mainM": 675.1,
+      "loopM": 675.3,
+      "streets": ["Mason Street", "Sacramento Street"],
+      "leave": [37.791838, -122.4108302],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 1656.3,
+      "joinM": 1907.6,
+      "mainM": 251.3,
+      "loopM": 251.4,
+      "streets": ["Sacramento Street", "Leavenworth Street"],
+      "leave": [37.7919304, -122.4176003],
+      "join": [37.7912077, -122.4157666],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 4326.2,
+      "joinM": 5037.4,
+      "mainM": 711.2,
+      "loopM": 710.9,
+      "streets": ["Taylor Street", "Chestnut Street"],
+      "leave": [37.7998285, -122.4141306],
+      "join": [37.8031282, -122.4181701],
+      "kind": "alternate",
+      "ratio": 1.0
+    },
+    {
+      "leaveM": 2267.6,
+      "joinM": 3023.0,
+      "mainM": 755.4,
+      "loopM": 755.8,
+      "streets": ["Cushman Street", "Sacramento Street"],
+      "leave": [37.7917247, -122.4117314],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 2783.0,
+      "joinM": 3072.8,
+      "mainM": 289.8,
+      "loopM": 290.0,
+      "streets": ["Grant Avenue", "Commercial Street"],
+      "leave": [37.7924582, -122.4059535],
+      "join": [37.7940203, -122.4047032],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 2783.0,
+      "joinM": 3320.4,
+      "mainM": 537.4,
+      "loopM": 537.8,
+      "streets": ["Grant Avenue", "Jackson Street"],
+      "leave": [37.7924582, -122.4059535],
+      "join": [37.7962229, -122.4051467],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 4472.8,
+      "joinM": 4724.7,
+      "mainM": 251.9,
+      "loopM": 251.7,
+      "streets": ["Jones Street", "Filbert Street"],
+      "leave": [37.7996208, -122.4157743],
+      "join": [37.8003469, -122.417609],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 1258.8,
+      "joinM": 2054.3,
+      "mainM": 795.5,
+      "loopM": 794.8,
+      "streets": ["Pacific Avenue", "Jones Street"],
+      "leave": [37.7954672, -122.4183077],
+      "join": [37.7914195, -122.4141223],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 4472.8,
+      "joinM": 5037.4,
+      "mainM": 564.6,
+      "loopM": 565.2,
+      "streets": ["Jones Street", "Chestnut Street"],
+      "leave": [37.7996208, -122.4157743],
+      "join": [37.8031282, -122.4181701],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 4472.8,
+      "joinM": 4935.1,
+      "mainM": 462.3,
+      "loopM": 461.8,
+      "streets": ["Jones Street", "Lombard Street"],
+      "leave": [37.7996208, -122.4157743],
+      "join": [37.8022186, -122.4179869],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 2348.0,
+      "joinM": 3219.8,
+      "mainM": 871.9,
+      "loopM": 872.9,
+      "streets": ["Mason Street", "Washington Street"],
+      "leave": [37.791838, -122.4108302],
+      "join": [37.7953282, -122.40497],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 1907.6,
+      "joinM": 3023.0,
+      "mainM": 1115.5,
+      "loopM": 1114.2,
+      "streets": ["Leavenworth Street", "Sacramento Street"],
+      "leave": [37.7912077, -122.4157666],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 2783.0,
+      "joinM": 3023.0,
+      "mainM": 240.0,
+      "loopM": 240.3,
+      "streets": ["Grant Avenue", "Sacramento Street"],
+      "leave": [37.7924582, -122.4059535],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 1656.3,
+      "joinM": 2054.3,
+      "mainM": 398.0,
+      "loopM": 397.5,
+      "streets": ["Sacramento Street", "Jones Street"],
+      "leave": [37.7919304, -122.4176003],
+      "join": [37.7914195, -122.4141223],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 4472.8,
+      "joinM": 5144.7,
+      "mainM": 671.9,
+      "loopM": 672.8,
+      "streets": ["Jones Street", "Francisco Street"],
+      "leave": [37.7996208, -122.4157743],
+      "join": [37.8040832, -122.4183625],
+      "kind": "alternate",
+      "ratio": 1.001
+    },
+    {
+      "leaveM": 2054.3,
+      "joinM": 3023.0,
+      "mainM": 968.7,
+      "loopM": 967.4,
+      "streets": ["Jones Street", "Sacramento Street"],
+      "leave": [37.7914195, -122.4141223],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 0.999
+    },
+    {
+      "leaveM": 2200.9,
+      "joinM": 3023.0,
+      "mainM": 822.2,
+      "loopM": 820.9,
+      "streets": ["Taylor Street", "Sacramento Street"],
+      "leave": [37.7916306, -122.4124799],
+      "join": [37.7935779, -122.4046141],
+      "kind": "alternate",
+      "ratio": 0.998
+    }
+  ]
+}
