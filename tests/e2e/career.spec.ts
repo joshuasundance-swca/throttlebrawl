@@ -99,14 +99,20 @@ test('race-first into the first event, then the career map, the garage and the b
   await expect(page.locator('#career-prompt')).toContainText('THUMB UP', { timeout: 10_000 });
   await shot(page, 'race-first');
 
-  // Quit: the career map.
+  // The pause screen's network map marks the player (run W-S; interview, 2026-10-02: "map on pause").
   await page.keyboard.press('Escape');
+  await expect(page.locator('#pause-map')).toBeVisible();
+  await expect(page.locator('#pause-map circle.here')).toHaveCount(1);
+  await shot(page, 'pause-map');
+  // Quit: the career map.
   await page.locator('#pause-quit').click();
   await expect(page.locator('#career')).toBeVisible();
   await expect(page.locator('#hud-objective')).toBeHidden();
   await expect(page.locator('.career-tabs button')).toHaveCount(3);
   await expect(page.locator('.career-node')).toHaveCount(10);
   await expect(page.locator('#career-cash')).toHaveText('$500');
+  // The region's side gig (run W-S).
+  await expect(page.locator('#career-gig')).toContainText('SIDE GIG');
   // The map draws the Keys' roads, with the event pins on them.
   await expect(page.locator('.career-map').first()).toBeVisible();
   const roads = await page.locator('.career-map polyline.road').count();
@@ -123,6 +129,9 @@ test('race-first into the first event, then the career map, the garage and the b
   await expect(page.locator('#career-ride')).toBeDisabled();
   await page.locator('#career-node-shakedown').click();
   await expect(page.locator('.career-detail')).toContainText('Finish the race.');
+  // The stream's poster on the card: the four faces in the field, a beef line each (run W-S).
+  await expect(page.locator('.career-detail .show-face')).toHaveCount(4);
+  await expect(page.locator('.career-detail .show-chyron')).toContainText('GOLDEN HOUR');
   await expect(page.locator('#career-ride')).toBeEnabled();
   await shot(page, 'event-card');
 
@@ -175,6 +184,10 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
   await expect(page.locator('#career-results-title')).toHaveText('WON');
   await expect(page.locator('#career-results-cash')).toContainText('place');
   await expect(page.locator('#career-results')).toContainText('claimed on the map');
+  // The Keys rag's front page: a headline built from the race (run W-S).
+  await expect(page.locator('#career-paper')).toHaveClass(/paper-rag/);
+  await expect(page.locator('#career-paper .paper-headline')).not.toBeEmpty();
+  console.log(`paper: ${await page.locator('#career-paper .paper-headline').textContent()}`);
   await expectNoOverflow(page, '#career-results', 'results, phone landscape');
   await shot(page, 'results');
   await page.locator('#career-results-map').click();

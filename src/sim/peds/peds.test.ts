@@ -504,6 +504,50 @@ describe('peds: traffic cars', () => {
     expect(touched).toBe(false);
     expect(pedsState(world).vehicleContacts).toBe(0);
   });
+
+  it('squeezed between a kerb scooter and a rider, a pedestrian dives toward the scooter, never the rider', () => {
+    // The batch's seed 6 (keys traffic, 2026-10-02): a fisherman crossing in the oncoming lane, a
+    // resort scooter coming up the kerb on his side, a car behind it and a rider at 37 m/s in the
+    // near lane. Both dives met someone; he dove across the rider's line and was hit. A car or a
+    // scooter bump only knocks a pedestrian over; a rider must never touch one.
+    const SCOOTER: SimTrafficTypeDef = {
+      contentId: 'base:scooter',
+      category: 'car',
+      lengthM: 1.1,
+      widthM: 0.55,
+      cruiseMps: 6.2,
+      hazard: 'normal',
+      behaviour: { kerb: true },
+    };
+    const config = makeConfig({
+      features: {},
+      riders: SOLO,
+      types: [CAR, TOURIST, CHICKEN, SCOOTER],
+      tuning: { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+    });
+    const systems: SimSystem[] = [ridersSystem, trafficSystem, pedsSystem];
+    const world = createWorld(config);
+    const r = addMover(world, 'rider', { edge: 0, s: 282.4, d: 1.5, dir: 1 }, 0);
+    r.speed = 36.8;
+    for (const s of systems) s.init(world, config);
+    const scooterSlot = placeVehicle(world, config, { type: 3, u: 307, dir: -1, speed: 6.2 });
+    placeVehicle(world, config, { type: 0, u: 333, dir: -1, speed: 25.3 });
+    const scooterId = world.movers.filter((m) => m.kind === 'vehicle')[scooterSlot]?.id ?? -1;
+    const pedId = placePed(world, config, { type: 1, edge: 0, s: 300, d: -0.9 });
+    let dove: SimEvent | undefined;
+    let touched = false;
+    for (let t = 0; t < 60 * 3; t++) {
+      const events = stepWorld(world, config, systems, [cruise]);
+      dove ??= events.find((e) => e.type === 'pedDive' && e.actor === pedId);
+      touched ||= overlaps(world, config, 0, pedId);
+    }
+    const scooter = world.movers[scooterId];
+    // The scene is the squeeze: the scooter rides the kerb on the pedestrian's side.
+    expect(scooter?.pos.d ?? 0).toBeLessThan(-3);
+    expect(dove?.data['side']).toBe(-1);
+    expect(touched).toBe(false);
+    expect(pedsState(world).contacts).toBe(0);
+  });
 });
 
 describe('peds: contact rules', () => {

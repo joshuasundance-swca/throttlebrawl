@@ -17,6 +17,7 @@
   },
   "personality": {
     "style": "heavy-hitter",
+    "signature": "timber",
     "aggression": 0.7,
     "dirtiness": 0.3,
     "courage": 0.95,

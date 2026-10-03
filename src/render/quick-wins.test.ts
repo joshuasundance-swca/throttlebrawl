@@ -6,7 +6,6 @@
 import {
   Color,
   InstancedMesh,
-  Matrix4,
   Mesh,
   Raycaster,
   Vector3,
@@ -142,16 +141,10 @@ describe('the car-carrier ramp truck (playtest 1b, item 5)', () => {
   it('has no roadside palm growing through it', () => {
     // A truck parked well off the road, where palms would otherwise stand, at a high palm density.
     const far: FeatureSpan = { kind: 'rampTruck', s0: 100, s1: 300, d0: 7, d1: 12.5 };
-    const { group: g } = buildRoadScene(road, look, { r: { features: [far] } }, { roadsideDensity: 3 });
-    const m = new Matrix4();
-    const spots: Vector3[] = [];
-    g.traverse((o) => {
-      if (!(o instanceof InstancedMesh) || o.name !== 'road-palms') return;
-      for (let i = 0; i < o.count; i++) {
-        o.getMatrixAt(i, m);
-        spots.push(new Vector3().setFromMatrixPosition(m));
-      }
-    });
+    // The palms as placed: each draws merged into its block, where its spot is (run W-S).
+    const spots = buildRoadScene(road, look, { r: { features: [far] } }, { roadsideDensity: 3 })
+      .spots.filter((s) => s.kind === 'palm')
+      .map((s) => new Vector3(s.p.x, s.p.y, s.p.z));
     let inside = 0;
     for (const p of spots) {
       for (let s = 100; s <= 300; s += 1) {

@@ -16,6 +16,7 @@
   },
   "personality": {
     "style": "grudge-keeper",
+    "signature": "counter",
     "aggression": 0.7,
     "dirtiness": 0.8,
     "courage": 0.75,

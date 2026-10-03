@@ -26,7 +26,7 @@ import {
 } from 'three';
 import type { BakedVerge, RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
-import { mergeBoxes, type BoxPart, type Point3 } from './geometry';
+import { mergeBoxes, type BoxFace, type BoxPart, type Point3 } from './geometry';
 import type { LookStyle } from './look';
 
 type Surface = BakedVerge['surface'];
@@ -44,6 +44,8 @@ export const FENCE_SEG_M = 2;
 const BRUSH_STEP_M = 3.5;
 /** Fences and ferns are drawn out to this far from the camera (the band always), m. [default] */
 export const VERGE_DRAW_M = 150;
+/** Past this fences and ferns draw without their thinnest faces (run W-S), m. [default] */
+export const VERGE_LOD_M = 40;
 /** The shallows drawn past a `water` edge where the band ends on land, m. */
 const SHALLOWS_M = 2.5;
 /** Below this width a band is not drawn (a road's own edge is its edge), m. */
@@ -71,16 +73,39 @@ const DUST: Readonly<Partial<Record<GroundSurface, { colour: string; rate: numbe
 /** The fence a region builds: its panel's parts (local x along the road, y up, centred). */
 export type FenceStyle = 'picket' | 'split-rail' | 'garden';
 
-function fenceParts(style: FenceStyle): BoxPart[] {
+/**
+ * Faces a fence or a fern leaves out (run W-S, the triangle headroom). Near, only what nobody can
+ * see: a rail's two ends (butted against the next panel's) and its underside, a post's or a
+ * picket's foot on the ground, a frond's two tiny ends. Far (past VERGE_LOD_M), also the faces too
+ * thin to show: a rail's, a post's or a picket's narrow sides (3 to 16 cm, under a pixel at 40 m on
+ * the phone) and a frond's edges (6 cm), so what is left is what a far fence shows: its faces and tops.
+ */
+const RAIL_OMIT: readonly BoxFace[] = ['px', 'nx', 'ny'];
+const POST_OMIT: Readonly<Record<'near' | 'far', readonly BoxFace[]>> = {
+  near: ['ny'],
+  far: ['ny', 'px', 'nx'],
+};
+const FROND_OMIT: Readonly<Record<'near' | 'far', readonly BoxFace[]>> = {
+  near: ['pz', 'nz'],
+  far: ['pz', 'nz', 'px', 'nx'],
+};
+
+function fenceParts(style: FenceStyle, lod: 'near' | 'far' = 'near'): BoxPart[] {
   const half = FENCE_SEG_M / 2;
+  const post = POST_OMIT[lod];
   if (style === 'picket') {
     const white = '#f3efe4';
     const parts: BoxPart[] = [
-      { size: [FENCE_SEG_M, 0.07, 0.04], at: [0, 0.28, 0], color: white },
-      { size: [FENCE_SEG_M, 0.07, 0.04], at: [0, 0.68, 0], color: white },
+      { size: [FENCE_SEG_M, 0.07, 0.04], at: [0, 0.28, 0], color: white, omit: RAIL_OMIT },
+      { size: [FENCE_SEG_M, 0.07, 0.04], at: [0, 0.68, 0], color: white, omit: RAIL_OMIT },
     ];
     for (let i = 0; i < 4; i++) {
-      parts.push({ size: [0.1, 0.95, 0.03], at: [-half + 0.25 + i * 0.5, 0.47, 0.03], color: white });
+      parts.push({
+        size: [0.1, 0.95, 0.03],
+        at: [-half + 0.25 + i * 0.5, 0.47, 0.03],
+        color: white,
+        omit: post,
+      });
     }
     return parts;
   }
@@ -88,24 +113,25 @@ function fenceParts(style: FenceStyle): BoxPart[] {
     const wood = '#7d6248';
     const grey = '#8f8577';
     return [
-      { size: [0.16, 1.1, 0.16], at: [-half + 0.08, 0.55, 0], color: grey },
-      { size: [FENCE_SEG_M, 0.12, 0.1], at: [0, 0.45, 0], color: wood, rotX: 0.2 },
-      { size: [FENCE_SEG_M, 0.12, 0.1], at: [0, 0.85, 0], color: wood, rotX: -0.15 },
+      // A square post shows a side whenever the fence is seen along its line: it keeps its sides.
+      { size: [0.16, 1.1, 0.16], at: [-half + 0.08, 0.55, 0], color: grey, omit: POST_OMIT.near },
+      { size: [FENCE_SEG_M, 0.12, 0.1], at: [0, 0.45, 0], color: wood, rotX: 0.2, omit: RAIL_OMIT },
+      { size: [FENCE_SEG_M, 0.12, 0.1], at: [0, 0.85, 0], color: wood, rotX: -0.15, omit: RAIL_OMIT },
     ];
   }
   const green = '#2f5b46';
   const parts: BoxPart[] = [
-    { size: [FENCE_SEG_M, 0.06, 0.05], at: [0, 0.2, 0], color: green },
-    { size: [FENCE_SEG_M, 0.06, 0.05], at: [0, 1.0, 0], color: green },
+    { size: [FENCE_SEG_M, 0.06, 0.05], at: [0, 0.2, 0], color: green, omit: RAIL_OMIT },
+    { size: [FENCE_SEG_M, 0.06, 0.05], at: [0, 1.0, 0], color: green, omit: RAIL_OMIT },
   ];
   for (let i = 0; i < 5; i++) {
-    parts.push({ size: [0.06, 1.15, 0.06], at: [-half + 0.2 + i * 0.4, 0.58, 0], color: green });
+    parts.push({ size: [0.06, 1.15, 0.06], at: [-half + 0.2 + i * 0.4, 0.58, 0], color: green, omit: post });
   }
   return parts;
 }
 
 /** A clump of ferns: fronds fanned out from the middle (the sim's `brush` edge). */
-function brushParts(colour: string, dark: string): BoxPart[] {
+function brushParts(colour: string, dark: string, lod: 'near' | 'far' = 'near'): BoxPart[] {
   const parts: BoxPart[] = [];
   for (let i = 0; i < 3; i++) {
     const turn = (i / 3) * Math.PI * 2;
@@ -115,6 +141,7 @@ function brushParts(colour: string, dark: string): BoxPart[] {
       color: i === 0 ? dark : colour,
       rotX: 0.7,
       rotY: turn,
+      omit: FROND_OMIT[lod],
     });
   }
   return parts;
@@ -214,6 +241,9 @@ export interface VergeCounts {
   /** Fence panels and fern clumps drawn in the last refill (inside the draw distance). */
   nearPanels: number;
   nearClumps: number;
+  /** Of those, the ones drawn in their lighter far form (past VERGE_LOD_M, run W-S). */
+  farPanels: number;
+  farClumps: number;
   /** Particles alive in the last frame: dust and spray, and flying boards. */
   particles: number;
   boards: number;
@@ -347,8 +377,8 @@ export interface VergeOptions {
 /**
  * The ground band, its edges and their effects for one road network. Draw calls stay flat: the band
  * (with the shallows) is one vertex-coloured mesh per VERGE_CHUNK_M square, culled with the camera,
- * and the fences and the ferns are one instanced mesh each, holding only the ones inside
- * VERGE_DRAW_M, refilled as the camera moves.
+ * and the fences and the ferns are two instanced meshes each (near, and past VERGE_LOD_M a lighter
+ * far form), holding only the ones inside VERGE_DRAW_M, refilled as the camera moves.
  */
 export class VergeLayer {
   readonly group = new Group();
@@ -356,8 +386,11 @@ export class VergeLayer {
   private readonly panels: FencePanel[] = [];
   private readonly panelsByEdge = new Map<number, FencePanel[]>();
   private readonly clumps: Clump[] = [];
+  /** The fences and ferns near the camera, and (past VERGE_LOD_M) their lighter far forms. */
   private readonly fenceMesh: InstancedMesh;
+  private readonly fenceFar: InstancedMesh;
   private readonly brushMesh: InstancedMesh;
+  private readonly brushFar: InstancedMesh;
   private readonly bandM: Record<Surface, number> = {
     shoulder: 0,
     dirt: 0,
@@ -397,24 +430,31 @@ export class VergeLayer {
     );
     const groundMat = look.material('land', { vertexColors: true });
     const propMat = look.material('prop', { vertexColors: true });
+    const [fern, fernDark] = forest ? ['#3f6b3a', '#2a4a2c'] : ['#5c8a3c', '#3f6a2e'];
     const fenceGeo = mergeBoxes(fenceParts(this.fenceStyle));
-    const brushGeo = mergeBoxes(forest ? brushParts('#3f6b3a', '#2a4a2c') : brushParts('#5c8a3c', '#3f6a2e'));
+    const fenceFarGeo = mergeBoxes(fenceParts(this.fenceStyle, 'far'));
+    const brushGeo = mergeBoxes(brushParts(fern, fernDark));
+    const brushFarGeo = mergeBoxes(brushParts(fern, fernDark, 'far'));
     const bitGeo = mergeBoxes([{ size: [0.12, 0.12, 0.12], at: [0, 0, 0], color: '#ffffff' }]);
     const boardGeo = mergeBoxes([{ size: [0.9, 0.1, 0.05], at: [0, 0, 0], color: '#ffffff' }]);
-    this.geometries.push(fenceGeo, brushGeo, bitGeo, boardGeo);
+    this.geometries.push(fenceGeo, fenceFarGeo, brushGeo, brushFarGeo, bitGeo, boardGeo);
     this.dust = new Pool('verge-dust', bitGeo, propMat, 240, 9.81);
     this.boards = new Pool('verge-boards', boardGeo, propMat, 48, 9.81);
     this.fenceMesh = new InstancedMesh(fenceGeo, propMat, NEAR_PANELS);
     this.fenceMesh.name = 'verge-fence';
+    this.fenceFar = new InstancedMesh(fenceFarGeo, propMat, NEAR_PANELS);
+    this.fenceFar.name = 'verge-fence-far';
     this.brushMesh = new InstancedMesh(brushGeo, propMat, NEAR_CLUMPS);
     this.brushMesh.name = 'verge-brush';
-    for (const m of [this.fenceMesh, this.brushMesh]) {
+    this.brushFar = new InstancedMesh(brushFarGeo, propMat, NEAR_CLUMPS);
+    this.brushFar.name = 'verge-brush-far';
+    for (const m of this.instanced()) {
       m.count = 0;
       m.visible = false;
       // Only what is near the camera is in them, so they are never culled whole.
       m.frustumCulled = false;
     }
-    this.group.add(this.dust.mesh, this.boards.mesh, this.fenceMesh, this.brushMesh);
+    this.group.add(this.dust.mesh, this.boards.mesh, ...this.instanced());
 
     // The band and the shallows share one strip set (one mesh per chunk).
     const strips = new ColourStrips();
@@ -538,29 +578,46 @@ export class VergeLayer {
    */
   private refill(cameraX: number, cameraZ: number, fx: number, fz: number): void {
     const r2 = VERGE_DRAW_M * VERGE_DRAW_M;
-    const near = (x: number, z: number) => {
+    const lod2 = VERGE_LOD_M * VERGE_LOD_M;
+    /** 0: not drawn, 1: near, 2: far (past VERGE_LOD_M). */
+    const near = (x: number, z: number): 0 | 1 | 2 => {
       const dx = x - cameraX;
       const dz = z - cameraZ;
-      return dx * dx + dz * dz <= r2 && dx * fx + dz * fz >= -VERGE_BEHIND_M;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > r2 || dx * fx + dz * fz < -VERGE_BEHIND_M) return 0;
+      return d2 > lod2 ? 2 : 1;
     };
-    let n = 0;
-    for (const p of this.panels) {
-      if (n >= NEAR_PANELS) break;
-      if (p.broken || !near(p.at.x, p.at.z)) continue;
-      this.fenceMesh.setMatrixAt(n++, p.m);
-    }
-    this.fenceMesh.count = n;
-    this.fenceMesh.visible = n > 0;
-    this.fenceMesh.instanceMatrix.needsUpdate = true;
-    let k = 0;
-    for (const c of this.clumps) {
-      if (k >= NEAR_CLUMPS) break;
-      if (!near(c.x, c.z)) continue;
-      this.brushMesh.setMatrixAt(k++, c.m);
-    }
-    this.brushMesh.count = k;
-    this.brushMesh.visible = k > 0;
-    this.brushMesh.instanceMatrix.needsUpdate = true;
+    const fill = <T>(
+      list: readonly T[],
+      cap: number,
+      at: (item: T) => { x: number; z: number; m: Matrix4 } | null,
+      meshes: readonly [InstancedMesh, InstancedMesh],
+    ) => {
+      const [nearMesh, farMesh] = meshes;
+      // A far form no lighter than the near one (the split rail's) is not worth its draw call.
+      const lighter = (farMesh.geometry.index?.count ?? 0) < (nearMesh.geometry.index?.count ?? 0);
+      let nNear = 0;
+      let nFar = 0;
+      for (const item of list) {
+        if (nNear + nFar >= cap) break;
+        const p = at(item);
+        const lod = p ? near(p.x, p.z) : 0;
+        if (!p || lod === 0) continue;
+        if (lod === 1 || !lighter) nearMesh.setMatrixAt(nNear++, p.m);
+        else farMesh.setMatrixAt(nFar++, p.m);
+      }
+      nearMesh.count = nNear;
+      farMesh.count = nFar;
+      for (const m of meshes) {
+        m.visible = m.count > 0;
+        m.instanceMatrix.needsUpdate = true;
+      }
+    };
+    fill(this.panels, NEAR_PANELS, (p) => (p.broken ? null : { x: p.at.x, z: p.at.z, m: p.m }), [
+      this.fenceMesh,
+      this.fenceFar,
+    ]);
+    fill(this.clumps, NEAR_CLUMPS, (c) => c, [this.brushMesh, this.brushFar]);
     this.filledX = cameraX;
     this.filledZ = cameraZ;
     this.filledFx = fx;
@@ -678,8 +735,10 @@ export class VergeLayer {
       fencePanels: this.panels.length,
       brokenPanels: this.brokenPanels,
       brushClumps: this.clumps.length,
-      nearPanels: this.fenceMesh.count,
-      nearClumps: this.brushMesh.count,
+      nearPanels: this.fenceMesh.count + this.fenceFar.count,
+      nearClumps: this.brushMesh.count + this.brushFar.count,
+      farPanels: this.fenceFar.count,
+      farClumps: this.brushFar.count,
       particles: this.dust.count,
       boards: this.boards.count,
       bursts: { ...this.bursts },
@@ -687,10 +746,15 @@ export class VergeLayer {
     };
   }
 
+  /** The four instanced sets: near fences, far fences, near ferns, far ferns. */
+  private instanced(): InstancedMesh[] {
+    return [this.fenceMesh, this.fenceFar, this.brushMesh, this.brushFar];
+  }
+
   dispose(): void {
     this.group.removeFromParent();
     for (const g of this.geometries) g.dispose();
-    for (const m of [this.dust.mesh, this.boards.mesh, this.fenceMesh, this.brushMesh]) m.dispose();
+    for (const m of [this.dust.mesh, this.boards.mesh, ...this.instanced()]) m.dispose();
   }
 }
 

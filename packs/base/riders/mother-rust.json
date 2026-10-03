@@ -18,6 +18,7 @@
   },
   "personality": {
     "style": "crew-boss",
+    "signature": "ram",
     "aggression": 0.75,
     "dirtiness": 0.55,
     "courage": 0.9,

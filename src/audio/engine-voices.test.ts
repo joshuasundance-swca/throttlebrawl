@@ -5,22 +5,31 @@
 import { describe, expect, it } from 'vitest';
 import { BIKE_CLASSES, loadBasePack, registryFromGlob } from '../content';
 import type { EntitySnapshot, SimSnapshot } from '../sim/api';
-import { ENGINE_BY_CLASS, ENGINE_PRESETS, engineFrequencyHz, resolveEngineProfile } from './engine-patch';
+import {
+  ENGINE_PRESETS,
+  engineFrequencyHz,
+  resolveEngineProfile,
+  type EngineSoundSpec,
+} from './engine-patch';
 import { fakeContextFactory } from './fake-context';
 import { createAudio } from './index';
 import { panFor } from './spatial';
 
+// The class-to-voice table is pack data (run W-S): the base pack's `defaults.engineSoundByClass`.
+const byClass: Readonly<Record<string, EngineSoundSpec | undefined>> =
+  loadBasePack().packs.find((p) => p.id === 'base')?.defaults.engineSoundByClass ?? {};
+
 describe('a voice per bike', () => {
-  it('every bike class has a voice, and every voice names a real preset', () => {
+  it('every bike class has a voice in the base pack, and every voice names a real preset', () => {
     for (const c of BIKE_CLASSES) {
-      const spec = ENGINE_BY_CLASS[c];
+      const spec = byClass[c];
       expect(spec, c).toBeDefined();
       expect(Object.keys(ENGINE_PRESETS)).toContain(spec?.preset);
     }
   });
 
   it('chopper thump, scooter buzz, sport scream and dirt rasp are four different engines', () => {
-    const p = (c: string) => resolveEngineProfile({ preset: 'single-thump', bikeClass: c });
+    const p = (c: string) => resolveEngineProfile(byClass[c]);
     const [chopper, scooter, sport, dirt] = ['chopper', 'scooter', 'sport', 'dirt'].map(p);
     expect(new Set([chopper, scooter, sport, dirt].map((x) => x!.preset)).size).toBe(4);
     // The chopper is the deepest and the sport bike screams highest.
@@ -35,12 +44,8 @@ describe('a voice per bike', () => {
     expect(dirt!.noise).toBeGreaterThan(ENGINE_PRESETS['single-thump']!.noise);
   });
 
-  it('the drawn class wins over the bike`s own patch; no class, or an unknown one, keeps the bike`s', () => {
-    expect(resolveEngineProfile({ preset: 'single-thump', bikeClass: 'chopper' }).preset).toBe('v-twin');
-    expect(resolveEngineProfile({ preset: 'v-twin' }).preset).toBe('v-twin');
-    expect(resolveEngineProfile({ preset: 'v-twin', bikeClass: 'hovercraft' }).preset).toBe('v-twin');
-    // A class's numbers shape its preset (a superbike revs past a sport bike).
-    const sup = resolveEngineProfile({ preset: 'single-thump', bikeClass: 'super' });
+  it('a class`s numbers shape its preset (a superbike revs past a sport bike)', () => {
+    const sup = resolveEngineProfile(byClass['super']);
     expect(sup.preset).toBe('inline-four');
     expect(sup.redlineHz).toBeGreaterThan(ENGINE_PRESETS['inline-four']!.redlineHz);
   });
@@ -50,8 +55,7 @@ describe('a voice per bike', () => {
     const voices = new Set<string>();
     for (const r of Object.values(reg.riders)) {
       const cls = (r as { look?: { bikeClass?: unknown } }).look?.bikeClass;
-      if (typeof cls === 'string')
-        voices.add(resolveEngineProfile({ preset: 'single-thump', bikeClass: cls }).preset);
+      if (typeof cls === 'string') voices.add(resolveEngineProfile(byClass[cls]).preset);
     }
     expect(voices.size).toBeGreaterThanOrEqual(4);
     // The base pack alone loads too (the class list does not depend on the region packs).
@@ -75,8 +79,8 @@ describe('rivals heard passing', () => {
     await audio.resume();
     audio.setEngineSounds({
       player: { preset: 'single-thump' },
-      'base:mother-rust': { preset: 'single-thump', bikeClass: 'chopper' },
-      'base:dial-up': { preset: 'single-thump', bikeClass: 'scooter' },
+      'base:mother-rust': byClass['chopper']!,
+      'base:dial-up': byClass['scooter']!,
     });
     const rider = (id: number, contentId: string, x: number, z: number): EntitySnapshot =>
       ({
