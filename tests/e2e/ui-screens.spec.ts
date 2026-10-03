@@ -281,12 +281,13 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   // Results. The race used to play in real time to the line, and a software-rendered CI runner ran
   // it at 25 to 40 ticks a second, so each content change walked the results wait (200 s, then
   // 330 s) into its limit. Now it rides in lockstep, RIDE_LOCKSTEP ticks a drawn frame, still drawn.
-  const rideFrom = await page.evaluate((n) => {
-    const g = (window as TestWindow).__game;
-    g?.lockstep(n);
-    return g?.snapshot()?.tick ?? 0;
+  // The start tick and the probe's count are read in the same task as the switch, so no drawn frame
+  // can fall between them (a frame there was counted in the ticks but not in the samples).
+  const { rideFrom, samplesBefore } = await page.evaluate((n) => {
+    const w = window as TestWindow;
+    w.__game?.lockstep(n);
+    return { rideFrom: w.__game?.snapshot()?.tick ?? 0, samplesBefore: w.__targetProbe?.samples ?? 0 };
   }, RIDE_LOCKSTEP);
-  const samplesBefore = (await page.evaluate(() => (window as TestWindow).__targetProbe?.samples)) ?? 0;
   await expect(page.locator('#results')).toBeVisible({ timeout: FAST_FORWARD_GUARD_MS }); // a hang guard
   const rideTo = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
   // A placing and its prize, or Busted and the fine (the batch rule: the seeded race's outcome
@@ -302,9 +303,13 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
 
   // The target bar: shown while there is a target, hidden otherwise (a frame of lag allowed).
   const probe = (await page.evaluate(() => (window as TestWindow).__targetProbe)) as TargetProbe;
-  // Every drawn frame of the ride was examined: one per RIDE_LOCKSTEP ticks (the race may end
-  // inside the last), so the count is the race's, not the runner's.
-  const rideFrames = Math.floor((rideTo - rideFrom) / RIDE_LOCKSTEP);
+  // Every drawn frame of the ride that left the race running was examined. The ride's frames each
+  // step RIDE_LOCKSTEP ticks, the last one fewer if the race ends inside it, so there are
+  // ceil(ticks / RIDE_LOCKSTEP) of them. The last one ends the race, and the probe (which only
+  // samples during a race) may not see it: when the race ended on that frame's final tick, the
+  // old floor() counted it, and seed 110 did exactly that on CI (ticks 215 to 6935, 210 x 32: 209
+  // samples). The count is still the race's, not the runner's.
+  const rideFrames = Math.ceil((rideTo - rideFrom) / RIDE_LOCKSTEP) - 1;
   console.log(
     `target bar probe: ${JSON.stringify(probe)}; the ride: ticks ${rideFrom} to ${rideTo}, ${rideFrames} frames at ${RIDE_LOCKSTEP} ticks`,
   );
