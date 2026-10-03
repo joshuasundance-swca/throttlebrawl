@@ -70,7 +70,7 @@ const SOFT_FACTOR = 2;
 /**
  * Frame times come in whole display frames (16.7 ms steps at 60 Hz) and print a hair either side
  * of the step (four frames show as 66.6 or 66.7 ms), so a frame limit that lands exactly on a step
- * (the baseline's 33.3 ms p50 is two frames, so 2x is four) passed or failed on rounding alone.
+ * (the first baseline's 33.3 ms p50 was two frames, so 2x was four) passed or failed on rounding alone.
  * Half a frame of slack judges "above twice the baseline" as the next step up: four frames pass,
  * five fail, as the docs say (main-green-4, 2026-10-02: main failed on p50 66.7 ms against a
  * 66.6 ms limit, and its p95 of 133.3 ms stood on the same edge). Sim step times are not stepped.

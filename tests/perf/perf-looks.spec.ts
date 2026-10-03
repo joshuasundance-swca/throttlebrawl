@@ -10,10 +10,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 // uniforms (the brush line adds 4 hash taps of arithmetic per pixel, no texture taps).
 // - Hard gate: draw calls and triangles at the same fixed ticks stay within tests/perf/budget.json.
 // - Soft tier: frame-time p50/p95 within twice the stored ink-look baseline (tests/perf/baseline.json,
-//   `softInk`, falling back to the classic look's `soft`). The ink pass costs SwiftShader about one
-//   more 16.7 ms frame at p95 than classic does, so classic's 66.6 ms baseline left the kodak look's
-//   usual 116.7 to 133.4 ms one frame from failing (main went red on it, 2026-10-01). The numbers are
-//   printed with the renderer string.
+//   `softInk`, falling back to the classic look's `soft`). The ink pass costs SwiftShader more than
+//   classic (about one 16.7 ms frame at p95 on 2026-10-01, about three on 2026-10-02), so classic's
+//   66.6 ms baseline left the kodak look one frame from failing (main went red on it, 2026-10-01).
+//   The numbers are printed with the renderer string.
 // CI renders in software (SwiftShader), where a full-screen pass costs CPU time a phone GPU does not
 // spend; the phone number (a Mali-G68 at 60 fps) comes from the maintainer's playtest.
 
@@ -57,7 +57,7 @@ const SOFT_FACTOR = 2;
 /**
  * Half a display frame of slack on the frame limits, as perf.spec.ts has it: frame times come in
  * whole frames and print a hair either side of the step, so a limit landing on a step (softInk's
- * 50 ms p50 is three frames, so 2x is six: 99.9 or 100.1 ms) passed or failed on rounding alone.
+ * first p50 was 50 ms, three frames, so 2x was six: 99.9 or 100.1 ms) passed or failed on rounding alone.
  */
 const FRAME_SLACK_MS = 1000 / 60 / 2;
 
