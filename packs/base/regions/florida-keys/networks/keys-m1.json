@@ -199,7 +199,7 @@
           "id": "cx-c-boardwalk-out",
           "road": "c-boardwalk-out",
           "from": { "road": "m1-mangrove-boardwalk", "end": "to", "lane": "S1" },
-          "to": { "road": "m1-mangrove-reach", "end": "from", "lane": "L1" }
+          "to": { "road": "m1-mangrove-reach", "end": "from", "lane": "R1" }
         }
       ],
       "control": "none"
@@ -264,7 +264,7 @@
           "id": "cx-c-sandbar-flats-out",
           "road": "c-sandbar-flats-out",
           "from": { "road": "m1-sandbar-shoal", "end": "to", "lane": "S1" },
-          "to": { "road": "m1-conch-row", "end": "from", "lane": "L1" }
+          "to": { "road": "m1-conch-row", "end": "from", "lane": "R1" }
         }
       ],
       "control": "none"
@@ -331,9 +331,9 @@
     },
     {
       "id": "j-keys-m1-13",
-      "x": 2097.1116,
+      "x": 2097.1115,
       "y": 1.5,
-      "z": -4229.1257,
+      "z": -4229.1259,
       "ends": [
         { "road": "m1-sandbar-spit", "end": "to" },
         { "road": "m1-sandbar-shoal", "end": "from" },
