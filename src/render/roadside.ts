@@ -10,7 +10,8 @@
 // gone, so the layer costs a draw call per nearby stretch, however many props it holds. Past
 // ROADSIDE_NEAR_M a stretch drops its understory, and past ROADSIDE_MID_M its middling props too
 // (trees, huts and fences stay): each level is a prefix of its vertex buffer, so the far triangles
-// drop without a second mesh. It is a lazy chunk: a race loads it with its region's models, and
+// drop without a second mesh. Past ROADSIDE_MID_M the props that stay draw as their far stand-ins
+// (run W-S, scenery-merge.ts), kept after the near ones in the same buffer. It is a lazy chunk: a race loads it with its region's models, and
 // the first load never pays for it.
 import { BufferGeometry, Float32BufferAttribute, Group, Matrix4, Mesh, Quaternion, Vector3 } from 'three';
 import type { RoadNetwork } from '../road';
@@ -18,6 +19,7 @@ import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
+import { formsOf, type FlatForm } from './scenery-merge';
 import {
   LAND_TOP_M,
   ridableBandPast,
@@ -735,6 +737,8 @@ interface Chunk {
   mesh: Mesh | null;
   /** Vertices up to the end of each tier (the props are sorted by tier, so each is a prefix). */
   ends: [number, number, number];
+  /** The vertex range of the tier-0 props' far stand-ins, drawn instead past ROADSIDE_MID_M (run W-S). */
+  far: [number, number];
 }
 
 export interface RoadsideCounts {
@@ -794,7 +798,7 @@ export class RoadsideLayer {
       const cx = items.reduce((n, i) => n + i.p.x, 0) / items.length;
       const cz = items.reduce((n, i) => n + i.p.z, 0) / items.length;
       const radius = Math.max(...items.map((i) => Math.hypot(i.p.x - cx, i.p.z - cz))) + 15;
-      this.chunks.push({ items, cx, cz, radius, mesh: null, ends: [0, 0, 0] });
+      this.chunks.push({ items, cx, cz, radius, mesh: null, ends: [0, 0, 0], far: [0, 0] });
     }
   }
 
@@ -829,8 +833,11 @@ export class RoadsideLayer {
       if (!mesh) continue;
       const dist = Math.hypot(c.cx - cameraX, c.cz - cameraZ) - c.radius;
       if (dist < draw) {
-        const count = c.ends[dist > ROADSIDE_MID_M ? 0 : dist > ROADSIDE_NEAR_M ? 1 : 2];
-        mesh.geometry.setDrawRange(0, count);
+        // Past ROADSIDE_MID_M only the tier-0 props draw, as their far stand-ins.
+        const farOnly = dist > ROADSIDE_MID_M;
+        const start = farOnly ? c.far[0] : 0;
+        const count = farOnly ? c.far[1] - c.far[0] : c.ends[dist > ROADSIDE_NEAR_M ? 1 : 2];
+        mesh.geometry.setDrawRange(start, count);
         mesh.visible = count > 0;
         if (mesh.visible) {
           meshes++;
@@ -874,8 +881,15 @@ export class RoadsideLayer {
 
   private build(c: Chunk) {
     const geos = this.model.variants;
+    // The near props, tier by tier, then the far stand-ins of the tier-0 props (run W-S): past
+    // ROADSIDE_MID_M only those draw, and as their stand-ins (scenery-merge.ts `formsOf`).
     let total = 0;
-    for (const it of c.items) total += geos[it.variant]?.getAttribute('position').count ?? 0;
+    for (const it of c.items) {
+      const g = geos[it.variant];
+      if (!g) continue;
+      const f = formsOf(g);
+      total += f.near.n + (it.tier === 0 ? f.far.n : 0);
+    }
     const pos = new Float32Array(total * 3);
     const nrm = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
@@ -888,14 +902,11 @@ export class RoadsideLayer {
     const one = new Vector3();
     let o = 0;
     const ends: [number, number, number] = [0, 0, 0];
-    for (const it of c.items) {
-      const g = geos[it.variant];
-      if (!g) continue;
-      const gp = g.getAttribute('position').array;
-      const gn = g.getAttribute('normal').array;
-      const gc = g.getAttribute('color').array;
-      const n = gp.length / 3;
-      col.set(gc, o * 3);
+    const emit = (it: RoadsideItem, form: FlatForm) => {
+      const gp = form.pos;
+      const gn = form.nrm;
+      const n = form.n;
+      for (let i = 0; i < n * 3; i++) col[o * 3 + i] = form.col[i] ?? 1;
       if (it.pitch) {
         // A fence section on a grade: the general transform.
         q.setFromAxisAngle(up, it.turn).multiply(qp.setFromAxisAngle(zAxis, it.pitch));
@@ -926,7 +937,17 @@ export class RoadsideLayer {
           nrm[o * 3 + 2] = nz * cos - nx * sin;
         }
       }
+    };
+    for (const it of c.items) {
+      const g = geos[it.variant];
+      if (!g) continue;
+      emit(it, formsOf(g).near);
       for (let t = it.tier; t < 3; t++) ends[t] = o;
+    }
+    const farFrom = o;
+    for (const it of c.items) {
+      const g = geos[it.variant];
+      if (g && it.tier === 0) emit(it, formsOf(g).far);
     }
     const geo = new BufferGeometry();
     geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -943,5 +964,6 @@ export class RoadsideLayer {
     this.group.add(mesh);
     c.mesh = mesh;
     c.ends = ends;
+    c.far = [farFrom, o];
   }
 }
