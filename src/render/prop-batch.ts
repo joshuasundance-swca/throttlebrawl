@@ -44,16 +44,18 @@ export class PropBatch {
   /** Each owner's items this frame (the event props and the smashables share one batch). */
   private readonly sources = new Map<string, Source>();
   private current: Source | null = null;
-  private geometries: BufferGeometry[] = [];
-  private matrices: number[] = [];
+  private readonly geometries: BufferGeometry[] = [];
+  private readonly matrices: number[] = [];
   /** The last written frame's items: geometry id, then the 16 matrix elements, per item. */
-  private written: number[] = [];
+  private readonly written: number[] = [];
   private vertexCap = 0;
   private indexCap = 0;
   private rebuilds = 0;
   private readonly normalMatrix = new Matrix3();
   private readonly v = new Vector3();
   private readonly box = new Box3();
+  /** One item's matrix while it is written (double precision: world positions are kilometres out). */
+  private readonly e = new Float64Array(16);
 
   constructor(material: Material, name: string) {
     this.mesh = new Mesh(new BufferGeometry(), material);
@@ -85,8 +87,9 @@ export class PropBatch {
   /** Ends an owner's list: rewrites the buffer if the items differ from the last written ones. */
   end(): void {
     this.current = null;
-    this.geometries = [];
-    this.matrices = [];
+    // Reused lists: no allocation per frame.
+    this.geometries.length = 0;
+    this.matrices.length = 0;
     for (const s of this.sources.values()) {
       for (const g of s.geometries) this.geometries.push(g);
       for (const v of s.matrices) this.matrices.push(v);
@@ -99,7 +102,8 @@ export class PropBatch {
     }
     if (this.same()) return;
     this.write();
-    this.written = this.matrices.slice();
+    this.written.length = 0;
+    for (const v of this.matrices) this.written.push(v);
   }
 
   /** Items in the last frame, every owner's. */
@@ -146,7 +150,7 @@ export class PropBatch {
     const C = col.array as Float32Array;
     const I = idx.array as Uint32Array;
     const box = this.box.makeEmpty();
-    const e = new Float32Array(16);
+    const e = this.e;
     let vo = 0;
     let io = 0;
     this.geometries.forEach((g, k) => {
