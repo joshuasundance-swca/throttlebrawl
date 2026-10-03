@@ -114,7 +114,11 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
 };
 
 test('the bot races to results with a placing at phone landscape', async ({ page }, testInfo) => {
-  test.setTimeout(360_000);
+  // The race itself takes most of this, and its length is one seed's luck: on CI (SwiftShader) main
+  // ran this test in 5.3 and then 5.8 of the old 6 minutes, and bundle 1's race (8726 ticks, 9
+  // crashes) finished but ran the test out at 6.1. 8 minutes leaves room for a long race (#353's
+  // prep made the same change). The halfway and results waits keep their own 200 s each.
+  test.setTimeout(480_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
