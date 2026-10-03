@@ -63,6 +63,7 @@ export type {
   StyleKind,
   StyleRunSnapshot,
   TakedownKind,
+  TouchdownSnapshot,
   TrickId,
   TumbleBodySnapshot,
   TumbleSnapshot,
