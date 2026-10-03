@@ -9,9 +9,12 @@ import {
   DELTA_WARN_KB,
   FRAME_SLACK_MS,
   firstLoadReport,
+  floorProblem,
   GUARD_FACTOR,
   guardLimits,
+  isPullRequestRun,
   judgeSoft,
+  PR_FLOOR_KB,
   summaryMarkdown,
   trendLine,
 } from './perf-limits.mjs';
@@ -125,5 +128,45 @@ describe('the first-load JavaScript line', () => {
     expect(firstLoadReport(502.1 * KB, 500, null).line).toBe(
       'first-load JavaScript 502.1 KB gzip of 500 KB (2.1 KB OVER), change against main not measured',
     );
+  });
+});
+
+describe("a pull request's headroom floor (2026-10-03: the budget was crossed 4 times by PRs that each fit)", () => {
+  const KB = 1024;
+  const floor = (head: number, base: number | null, pr: boolean) =>
+    floorProblem(firstLoadReport(head * KB, 500, base === null ? null : base * KB), 500, pr);
+
+  it('is 10 KB, and only pull_request runs are judged by it', () => {
+    expect(PR_FLOOR_KB).toBe(10);
+    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'pull_request' })).toBe(true);
+    expect(isPullRequestRun({ GITHUB_EVENT_NAME: 'push' })).toBe(false);
+    expect(isPullRequestRun({})).toBe(false);
+  });
+
+  it('fails a PR that grows the first load into the last 10 KB, with the headroom it leaves (it fires)', () => {
+    const msg = floor(491.7, 488, true);
+    expect(msg).toMatch(/^this PR leaves 8\.3 KB of headroom; move something off the first load\./);
+    expect(msg).toContain('at least 10 KB of the 500 KB first-load JavaScript budget');
+    expect(msg).toContain('this one grows it by 3.7 KB');
+    // One byte into the floor fails; exactly 10 KB of headroom passes.
+    expect(floor(490 + 1 / KB, 480, true)).not.toBeNull();
+    expect(floor(490, 480, true)).toBeNull();
+    // Its change against main unknown: the floor still holds (the stated rule).
+    expect(floor(495, null, true)).toContain('its change against main was not measured');
+  });
+
+  it("never fires on main's pushes, under the floor's line, over the budget, or on a PR that does not grow it", () => {
+    // Main keeps the 500 KB budget alone.
+    expect(floor(495, 490, false)).toBeNull();
+    // Main today: about 400 KB.
+    expect(floor(398.7, 398.7, true)).toBeNull();
+    expect(floor(420, 398.7, true)).toBeNull();
+    // Over the budget, the budget's own failure speaks.
+    expect(floor(502.1, 495, true)).toBeNull();
+    // Main already inside the floor (two PRs that each fit, merged): a PR that adds nothing, or
+    // moves code off the first load, is not the one that ate the margin, so it never goes red.
+    expect(floor(495, 495, true)).toBeNull();
+    expect(floor(493, 495, true)).toBeNull();
+    expect(floor(495.1, 495, true)).not.toBeNull();
   });
 });

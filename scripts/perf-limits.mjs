@@ -7,8 +7,9 @@
 //   maintainer, 2026-10-02: "Trend plus 3x guard"). On 2026-10-02 the same game code printed a
 //   classic frame p95 of 100.1 ms and then 150 ms on CI's software renderer, so a 2x limit
 //   flipped on noise.
-// - Download size: the first-load JavaScript stays a hard budget; this file only words its
-//   headroom and a pull request's own change against main, and warns on a big change.
+// - Download size: the first-load JavaScript stays a hard budget; this file words its headroom and
+//   a pull request's own change against main, warns on a big change, and holds a pull request that
+//   grows the first load to a floor of PR_FLOOR_KB headroom (main's pushes keep the budget alone).
 import { fmtBytes } from './lib.mjs';
 
 /** The soft tier fails only above this multiple of the baseline. */
@@ -24,6 +25,14 @@ export const FRAME_SLACK_MS = 1000 / 60 / 2;
 
 /** A pull request that grows the first-load JavaScript by at least this much gets a warning. */
 export const DELTA_WARN_KB = 5;
+
+/**
+ * A pull request's floor: a PR that grows the first-load JavaScript must leave at least this much
+ * headroom under the budget, or the perf check fails it. Main's pushes keep the budget alone.
+ * [default] (the coordinator, 2026-10-03: the 500 KB budget was crossed 4 times on 10-02 and 10-03
+ * by PRs that each fit alone, so main went red; the floor turns the PR that eats the margin red.)
+ */
+export const PR_FLOOR_KB = 10;
 
 const round1 = (x) => Math.round(x * 10) / 10;
 
@@ -120,6 +129,43 @@ export function firstLoadReport(headBytes, budgetKB, baseBytes) {
     headroomBytes,
     warn,
   };
+}
+
+/**
+ * Whether this run judges a pull request: GitHub's `pull_request` event (a push to main is `push`).
+ * @param {Record<string, string | undefined>} env
+ */
+export function isPullRequestRun(env) {
+  return env.GITHUB_EVENT_NAME === 'pull_request';
+}
+
+/**
+ * The floor's verdict on a pull request's build: a failure message when it leaves less than
+ * `floorKB` of headroom, or null. Null on a run that is not a pull request (main keeps the budget
+ * alone), and over the budget (the budget's own failure speaks). A PR whose measured change does
+ * not grow the first load never fails it: when main itself has drifted inside the floor (two PRs
+ * that each fit, merged), only the PR that adds to it goes red, never every PR or the one that
+ * shrinks it. A change that was not measured is held to the floor.
+ * @param {{ headroomBytes: number, deltaBytes: number | null }} report firstLoadReport's numbers
+ * @param {number} budgetKB
+ * @param {boolean} pullRequest
+ * @param {number} [floorKB]
+ * @returns {string | null}
+ */
+export function floorProblem(report, budgetKB, pullRequest, floorKB = PR_FLOOR_KB) {
+  const { headroomBytes, deltaBytes } = report;
+  if (!pullRequest || headroomBytes < 0 || headroomBytes >= floorKB * 1024) return null;
+  if (deltaBytes !== null && deltaBytes <= 0) return null;
+  const change =
+    deltaBytes === null
+      ? 'its change against main was not measured'
+      : `this one grows it by ${fmtBytes(deltaBytes)}`;
+  return (
+    `this PR leaves ${fmtBytes(headroomBytes)} of headroom; move something off the first load. ` +
+    `A pull request must leave at least ${floorKB} KB of the ${budgetKB} KB first-load JavaScript budget, ` +
+    `and ${change}: move code the first screen does not need into a lazy import() chunk ` +
+    '(docs/engineering.md, perf check)'
+  );
 }
 
 /**
