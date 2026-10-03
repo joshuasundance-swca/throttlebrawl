@@ -437,6 +437,17 @@ A **cop** adds a `law` block:
 
 `bustRadiusM` and `bustDwellS` (how close, and for how long, the cop must stay next to the rider to bust them) are the only source of those two numbers `[default]`; the tuning panel scales them with `cops.bustRadiusScale` and `cops.bustDwellScale` (default 1.0), never overrides. `radioVoice` is reserved and optional; cop radio chatter comes later `[decided]`. The agency is a small entry under `crews/` with `"kind": "law"`, so each region can have its own local law `[decided]` (sheriffs, troopers and so on) with no code change.
 
+`law.habit` (optional; the pitch deck's #11, "Law with a personality", run W-T) `[default]` gives the cop a way of chasing that is his own: `{ "kind": "relentless" | "radar" | "citations" | "budget", ...numbers }`. Every other field is a non-negative number the sim reads by name, and an absent one takes sim/cops' default:
+
+| `kind` | What it does | Its numbers |
+|---|---|---|
+| `relentless` | The longer he chases (all race), the closer he holds, the sooner he moves in, the more often he swings, and the harder he rides to catch up. | `rampS` (seconds of chasing to reach the top), `maxScale` (his catch-up speed at the top, × his own) |
+| `radar` | On patrol, he waits at the route's first long bridge with a radar; a player passing it over the limit is clocked (heat, his siren, the chase), and one under it rides by. | `limitMps`, `rangeM` (how far up the road the radar reads), `minBridgeM` (the shortest bridge he picks) |
+| `citations` | He never rams: alongside, he rides out of bumping range. Every `everyS` alongside he writes a citation of `cashEach`; the total is billed at the player's finish. | `everyS`, `cashEach`, `hangBackS`, `alongsideS` (his own spells of hanging back and riding alongside) |
+| `budget` | His chasing comes out of a pursuit budget; once it is spent he pulls over for good. | `budgetS` |
+
+A law crew may add `jurisdiction: { "sign": "END OF JURISDICTION. <kicker>" }` (run W-T) `[default]`: in a race whose heat meter runs, the first fielded cop's agency puts that sign up beside the road part-way along the route, and a player who crosses it has his heat cooled and the cops on him pull over. The words are a headline then a kicker, as the road events' warning signs.
+
 ### Crew
 
 Tag: `[decided]` that rivals may side with or against you in gang-ups; the maintainer said "maybe a mix of all these" (dynamic and fixed crews), read as simple gang-ups in v1 and deeper crews later. `[default]` that crews are their own entry type, and for the shape.
@@ -1126,7 +1137,7 @@ A bark file holds many short lines, usually one file per speaker or per AI batch
 | `id` | Unique within the set. The save file and the in-game veto use the content reference `<pack>:bark-set/<set>#<line>` (see [In-game veto](#in-game-veto-cut-this)) to remember what was heard or cut. |
 | `status` | Optional: `live` (default), `vetoed` or `draft`, with an optional `note` for the reason. This is how a single line is vetoed and kept as the taste log. |
 | `speaker` | A rider id, or a selector: `role:cop`, `crew:swamp-kin`, `tag:smoker`, or `any`. `defaults.speaker` fills it in for the whole set. |
-| `trigger` | A closed list in code, checked by the linter. v1 list: `race-start`, `race-end-win`, `race-end-lose`, `overtake`, `overtaken`, `alongside-idle`, `hit-landed`, `hit-taken`, `weapon-stolen-by-speaker`, `weapon-stolen-from-speaker`, `knocked-down-target`, `knocked-down-by-target`, `takedown-into-traffic`, `near-miss`, `crash-self`, `busted`, `cop-siren`, `grudge-spotted`, `gang-up-join`, `interlude`, and the reserved `modifier-start` (see [Event modifiers](#event-modifiers-weird-events)). |
+| `trigger` | A closed list in code, checked by the linter. v1 list: `race-start`, `race-end-win`, `race-end-lose`, `overtake`, `overtaken`, `alongside-idle`, `hit-landed`, `hit-taken`, `weapon-stolen-by-speaker`, `weapon-stolen-from-speaker`, `knocked-down-target`, `knocked-down-by-target`, `takedown-into-traffic`, `near-miss`, `crash-self`, `busted`, `cop-siren`, `grudge-spotted`, `gang-up-join`, `interlude`, and the reserved `modifier-start` (see [Event modifiers](#event-modifiers-weird-events)). Run W-T adds the cop habits, each spoken by the cop whose habit it is: `cop-relentless` (he steps it up), `cop-radar` (he clocks you), `cop-citation` (he writes one), `cop-bill` (your citations, at the finish), `cop-budget-out` (his pursuit budget is spent) and `cop-jurisdiction` (he stops at the END OF JURISDICTION sign). |
 | `target` | Who the line is said *to* or *about*: `player`, `any`, a rider id, or a selector as above. |
 | `when` | Conditions, all of which must hold. Each is `{ fact, op, value }`; `op` is one of `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `has`. **No free-form expressions**: a closed fact list is safe for mods and easy to validate. |
 | `chance` | 0..1, rolled after selection so frequent triggers do not chatter. The default is 1. |
