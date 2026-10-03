@@ -33,7 +33,28 @@
     }
   ],
   "assetSources": { "default": "baked", "rules": [] },
-  "defaults": { "tuning": "registry", "hud": "classic" },
+  "defaults": {
+    "tuning": "registry",
+    "hud": "classic",
+    "engineSoundByClass": {
+      "chopper": { "preset": "v-twin" },
+      "scooter": { "preset": "two-stroke-buzz" },
+      "moped": { "preset": "two-stroke-buzz", "idleHz": 46, "redlineHz": 230 },
+      "mobility-scooter": { "preset": "two-stroke-buzz", "idleHz": 55, "redlineHz": 120, "roughness": 0.2 },
+      "golf-cart": {
+        "preset": "two-stroke-buzz",
+        "idleHz": 50,
+        "redlineHz": 110,
+        "roughness": 0.15,
+        "noise": 0.1
+      },
+      "dirt": { "preset": "dirt-rasp" },
+      "rat": { "preset": "single-thump" },
+      "sport": { "preset": "inline-four" },
+      "super": { "preset": "inline-four", "idleHz": 55, "redlineHz": 420 },
+      "lawnmower": { "preset": "mower-putt" }
+    }
+  },
   "idAliases": {},
   "meta": {
     "notes": "The base game is itself a pack so every content path is exercised from day one."

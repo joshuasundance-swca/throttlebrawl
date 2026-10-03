@@ -47,6 +47,7 @@ import {
   type StorageLike,
 } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
+import { engineSoundsFor } from './engine-sounds';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
@@ -500,20 +501,11 @@ export function createApp(opts: AppOptions): AppHandle {
   };
   tuneRadio();
   /**
-   * Each rider's engine patch, from its bike file (audio keys them by rider content id), plus the
-   * bike class the rider is drawn on (`look.bikeClass`), whose voice audio prefers (playtest 2:
-   * "a voice per bike").
+   * Each rider's engine patch (audio keys them by rider content id): its drawn bike class's voice
+   * from the base pack, else its bike file's own (./engine-sounds.ts; playtest 2: "a voice per bike").
    */
-  const engineSounds = (config: SimConfig): Record<string, EngineSoundSpec> => {
-    const out: Record<string, EngineSoundSpec> = {};
-    for (const r of config.riders) {
-      const bike = registry.bikes[r.bike.contentId];
-      const look = (registry.riders[r.contentId] as { look?: { bikeClass?: unknown } } | undefined)?.look;
-      const bikeClass = typeof look?.bikeClass === 'string' ? look.bikeClass : undefined;
-      if (bike) out[r.contentId] = bikeClass ? { ...bike.engineSound, bikeClass } : bike.engineSound;
-    }
-    return out;
-  };
+  const engineSounds = (config: SimConfig): Record<string, EngineSoundSpec> =>
+    engineSoundsFor(registry, config.riders);
 
   /**
    * The models each rider draws with (run W-R; interview, 2026-10-02: "Real models now"): its own
