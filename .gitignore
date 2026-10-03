@@ -4,8 +4,13 @@ scratch/
 local/
 .cache/
 
-# Agent working state and logs
-.claude/
+# Agent working state and logs (local permissions and worktrees stay ignored;
+# only the generic run template .claude/workflows/lane-run.js is committed; other saved
+# workflow scripts carry local paths and stay ignored)
+.claude/*
+!.claude/workflows/
+.claude/workflows/*
+!.claude/workflows/lane-run.js
 *.log
 
 # Build output and dependencies
