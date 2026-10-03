@@ -42,10 +42,18 @@ export {
 export type { BranchFixtureOptions, FixtureEdgeSpec } from './fixture';
 export { lintRoad, lintRoadNetwork, ROAD_LINT } from './validate';
 export type { RoadFileLabel, RoadLintInput, RoadLintIssue, RoadLintRule } from './validate';
-export { buildBranchCurve, buildCentreline, compileTrack, humpProfile, rampProfile } from './compile';
+export {
+  buildBranchCurve,
+  buildCentreline,
+  compileTrack,
+  deckProfile,
+  humpProfile,
+  rampProfile,
+} from './compile';
 export type {
   BranchSource,
   CompiledTrack,
+  DeckSource,
   HumpSource,
   RampSource,
   RoadSource,

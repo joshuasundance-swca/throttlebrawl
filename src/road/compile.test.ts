@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileTrack, type RoadSource, type RouteSource } from './compile';
+import { compileTrack, deckProfile, type RoadSource, type RouteSource } from './compile';
 import { FIXTURE_LANES, fixtureBranchTrack, highwayLanes } from './fixture';
 import { createRoadNetwork, createRouteProgress, lintRoadNetwork } from './index';
 import type { BakedNetwork, BakedRoad, BakedRoute } from './types';
@@ -215,5 +215,49 @@ describe('road/compile: several routes on one track (road-3)', () => {
       { ...r, id: 'backwards', start: { road: 'd', s: 5, dir: 1 }, finish: { road: 'a', s: 50 } },
     ];
     expect(() => compileTrack(bad)).toThrow(/backwards/);
+  });
+});
+
+describe('road/compile: raised decks (run W-U, the ferry)', () => {
+  const deck = { s0: 40, upM: 20, lengthM: 80, downM: 20, heightM: 1.4 };
+
+  it('rises on a smooth S, stays level, and comes down the same way, with zero slope at every join', () => {
+    expect(deckProfile([deck], 40)).toEqual([0, 0]);
+    expect(deckProfile([deck], 160)).toEqual([0, 0]);
+    const [midUp, slopeUp] = deckProfile([deck], 50);
+    expect(midUp).toBeCloseTo(0.7, 9);
+    expect(slopeUp).toBeCloseTo((1.4 * 1.875) / 20, 9); // the S's steepest, 13 %
+    expect(deckProfile([deck], 60)).toEqual([1.4, 0]);
+    expect(deckProfile([deck], 100)).toEqual([1.4, 0]);
+    expect(deckProfile([deck], 140)).toEqual([1.4, 0]);
+    expect(deckProfile([deck], 150)[1]).toBeCloseTo(-slopeUp, 9);
+    // Its slope is its height's derivative everywhere.
+    for (let s = 30; s < 170; s += 0.7) {
+      const h = 1e-4;
+      const fd = (deckProfile([deck], s + h)[0] - deckProfile([deck], s - h)[0]) / (2 * h);
+      expect(deckProfile([deck], s)[1]).toBeCloseTo(fd, 4);
+    }
+  });
+
+  it('bakes into a road that passes the road lint (grade included), level on the deck', () => {
+    const base = fixtureBranchTrack();
+    const src = {
+      ...base,
+      roads: base.roads.map((r) => (r.id === 'd' ? { ...r, decks: [deck] } : r)),
+    };
+    const out = compileTrack(src);
+    const roads = out.roads as unknown as BakedRoad[];
+    expect(
+      lintRoadNetwork({
+        network: out.network as unknown as BakedNetwork,
+        roads,
+        routes: out.routes as unknown as BakedRoute[],
+      }),
+    ).toEqual([]);
+    const d = roads.find((r) => r.id === 'd');
+    const y = d?.samples.data['y'] ?? [];
+    const sp = d?.sampleSpacingM ?? 2;
+    expect((y[Math.round(100 / sp)] ?? 0) - (y[0] ?? 0)).toBeCloseTo(1.4, 3);
+    expect((y[y.length - 1] ?? 0) - (y[0] ?? 0)).toBeCloseTo(0, 6);
   });
 });
