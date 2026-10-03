@@ -176,3 +176,27 @@ describe('the lint and the schema', () => {
     expect(rules(railed).map((i) => i.pointer)).not.toContain('/laneSections/0/verges/left/edge');
   });
 });
+
+describe('the Pacific Northwest places (run W-U)', () => {
+  const on = (tag: string) => deriveVerge({ tags: [{ s0: 0, s1: 500, side: 'both', tag }] }, 'right', 100);
+
+  it('a ferry deck runs 4.5 m of steel to the hull; a festival street 4 m of sidewalk to the shopfronts', () => {
+    expect(on('ferry')).toEqual({ widthM: 4.5, surface: 'shoulder', edge: 'hard' });
+    expect(on('festival')).toEqual({ widthM: 4, surface: 'kerb', edge: 'hard' });
+  });
+
+  it('a clear-cut is 16 m of open dirt that runs on, and beats the forest beside it', () => {
+    expect(on('clearcut')).toEqual({ widthM: 16, surface: 'dirt', edge: 'soft' });
+    const both = deriveVerge(
+      {
+        tags: [
+          { s0: 0, s1: 500, side: 'both', tag: 'forest' },
+          { s0: 0, s1: 500, side: 'both', tag: 'clearcut' },
+        ],
+      },
+      'left',
+      100,
+    );
+    expect(both.widthM).toBe(16);
+  });
+});

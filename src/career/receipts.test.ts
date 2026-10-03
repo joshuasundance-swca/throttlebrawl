@@ -6,6 +6,8 @@ import { careerDefs, careerOf, eventPlan, startCareer, type CareerDef } from './
 import type { RaceTally } from './race-log';
 import {
   fillReceipt,
+  headlineOf,
+  incidentSites,
   RECEIPT_NEAR_M,
   receiptBoards,
   receiptFacts,
@@ -192,5 +194,50 @@ describe('the boards a receipt rewrites', () => {
     expect(new Set(boards.map((b) => b.index)).size).toBe(RECEIPTS_PER_RACE);
     // Seeded by the receipt, never the clock: the same receipts pick the same words.
     expect(receiptBoards(REG, KEYS, receipts, spots, at)).toEqual(boards);
+  });
+});
+
+describe('the incident site where you were busted (run W-U)', () => {
+  const onRoad = (road: string) => ROADS.includes(road);
+
+  it("a bust leaves an incident site at its own spot, headed by its sign's headline", () => {
+    const sites = incidentSites(REG, KEYS, [rv, bust], onRoad);
+    expect(sites).toHaveLength(1);
+    expect(sites[0]).toMatchObject({ road: 'm1-conch-row', s: 100, text: 'INCIDENT SITE #3.' });
+    // The same template as its sign, so one cut removes both.
+    const sign = receiptBoards(REG, KEYS, [bust], [spot('m1-conch-row', 1, 150)], at)[0];
+    expect(sites[0]?.ref).toBe(sign?.ref);
+    expect(sign?.text.startsWith(sites[0]?.text ?? '?')).toBe(true);
+  });
+
+  it('needs no board slot nearby (a bust on a road with none still shows)', () => {
+    expect(receiptBoards(REG, KEYS, [bust], [], at)).toEqual([]);
+    expect(incidentSites(REG, KEYS, [bust], onRoad)).toHaveLength(1);
+  });
+
+  it("every region's bust templates head with the incident site's number", () => {
+    for (const d of DEFS) {
+      const sites = incidentSites(REG, d, [{ ...bust, region: d.regionId }], onRoad);
+      expect(
+        sites.map((x) => x.text),
+        d.regionId,
+      ).toEqual(['INCIDENT SITE #3.']);
+    }
+  });
+
+  it('none for a takedown, off this race’s roads, another region’s, or a cut template; at most three', () => {
+    expect(incidentSites(REG, KEYS, [rv], onRoad)).toEqual([]);
+    expect(incidentSites(REG, KEYS, [{ ...bust, road: 'osm-kw-bertha' }], onRoad)).toEqual([]);
+    expect(incidentSites(REG, KEYS, [{ ...bust, region: 'pacific-northwest' }], onRoad)).toEqual([]);
+    const cut = new Set(receiptTemplates(REG, KEYS).bust.map((t) => receiptRef(KEYS, t.id)));
+    expect(incidentSites(REG, KEYS, [bust], onRoad, cut)).toEqual([]);
+    const busts = Array.from({ length: 5 }, (_v, i) => ({ ...bust, s: 50 * i, n: i + 1 }));
+    expect(incidentSites(REG, KEYS, busts, onRoad).map((x) => x.text)).toEqual([
+      'INCIDENT SITE #5.',
+      'INCIDENT SITE #4.',
+      'INCIDENT SITE #3.',
+    ]);
+    expect(headlineOf('ONE. Two.')).toBe('ONE.');
+    expect(headlineOf('No stop here')).toBe('No stop here');
   });
 });

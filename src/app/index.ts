@@ -97,7 +97,7 @@ import {
   routeKeyOf,
   type RegionChoice,
 } from './regions';
-import { boardSpots, spotOn, withReceiptBoards } from './receipt-boards';
+import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { transition, type AppEvent, type AppState } from './states';
@@ -477,7 +477,15 @@ export function createApp(opts: AppOptions): AppHandle {
             vetoed,
           )
         : [];
-    const shown = withReceiptBoards(dressing, boardCatalog(registry, regionKey, vetoed), boards);
+    const withBoards = withReceiptBoards(dressing, boardCatalog(registry, regionKey, vetoed), boards);
+    // Run W-U: a bust also leaves an incident site (cones round an "INCIDENT SITE #n" placard) at
+    // the very spot, on any road of the race.
+    const onRace = new Set(stream.road.edges.map((e) => e.id));
+    const sites =
+      careerRace && C
+        ? C.incidentSites(registry, careerRace.def, profile.receipts, (r) => onRace.has(r), vetoed)
+        : [];
+    const shown = withIncidentSites(stream.road, withBoards.dressing, withBoards.catalog, sites);
     renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).

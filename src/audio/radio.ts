@@ -44,6 +44,23 @@ export interface RadioStation {
    * (pirate.ts). null for every ordinary station.
    */
   pirate?: PirateSpot | null;
+  /**
+   * A rider's own station (run W-U, Pivot FM): never on the dial; it takes the radio over while that
+   * rider (a qualified rider id) rides near you (rider-station.ts). null for every other station.
+   */
+  rider?: string | null;
+  /**
+   * The bark line a rider's station says after its dead air (`<set>#<line>` in the file; here the
+   * content reference `<pack>:bark-set/<set>#<line>`), or null.
+   */
+  deadAirLine?: string | null;
+}
+
+/** A station file's `deadAirLine` (`<set>#<line>`, or `<pack>:<set>#<line>`) as a bark content reference. */
+function barkRefFrom(packId: string, v: unknown): string | null {
+  if (typeof v !== 'string' || !/^([a-z0-9-]+:)?[a-z0-9-]+#[a-z0-9-]+$/.test(v)) return null;
+  const colon = v.indexOf(':');
+  return colon < 0 ? `${packId}:bark-set/${v}` : `${v.slice(0, colon)}:bark-set/${v.slice(colon + 1)}`;
 }
 
 /** One "cut this" flag, the settings record's shape (docs/architecture.md, "In-game veto"). */
@@ -101,6 +118,13 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
       regions: Array.isArray(e['regions']) ? e['regions'].filter((r) => typeof r === 'string').map(bare) : [],
       tracks,
       pirate: pirateSpotFrom(e['pirate']),
+      rider:
+        typeof e['rider'] === 'string' && e['rider'].length > 0
+          ? e['rider'].includes(':')
+            ? e['rider']
+            : `${packId}:${e['rider']}`
+          : null,
+      deadAirLine: barkRefFrom(packId, e['deadAirLine']),
     });
   }
   return out;
@@ -116,8 +140,8 @@ export function stationsFromTable(table: Readonly<Record<string, unknown>>): Rad
  * actually like the music"). `null` (region not known yet) = every station.
  */
 export function stationsForRegion(all: readonly RadioStation[], regionId: string | null): RadioStation[] {
-  // A pirate station is never on the dial (pirateStationFor finds it).
-  const stations = all.filter((s) => !s.pirate);
+  // A pirate station is never on the dial (pirateStationFor finds it), nor a rider's (riderStationsFor).
+  const stations = all.filter((s) => !s.pirate && !s.rider);
   if (regionId === null) return [...stations];
   const want = bare(regionId);
   const own = stations.filter((s) => s.regions.includes(want));
@@ -137,6 +161,13 @@ export function pirateStationFor(
   if (regionId === null) return null;
   const want = bare(regionId);
   return stations.find((s) => s.pirate && s.regions.includes(want)) ?? null;
+}
+
+/** A region's riders' own stations (Pivot FM): every station with a `rider`, in that region. */
+export function riderStationsFor(stations: readonly RadioStation[], regionId: string | null): RadioStation[] {
+  if (regionId === null) return [];
+  const want = bare(regionId);
+  return stations.filter((s) => !!s.rider && s.regions.includes(want));
 }
 
 /** True when this build can play the track (code-made, not vetoed, not cut on this device). */
@@ -221,8 +252,15 @@ export function createRadioPlayer(
   let cut = new Set<string>();
   let list: RadioTrack[] = [];
   let index = 0;
-  let current: { track: RadioTrack; comp: Composition; byStep: Map<number, Composition['notes']> } | null =
-    null;
+  /** A song, or one part of a medley: its notes by step, and the band that plays it (null: the station's). */
+  interface Part {
+    comp: Composition;
+    byStep: Map<number, Composition['notes']>;
+    genre: RadioGenre | null;
+  }
+  let current: { track: RadioTrack; parts: Part[] } | null = null;
+  /** The part playing (always 0 for an ordinary song; a medley steps through its parts once). */
+  let part = 0;
   let comp: Composition | null = null;
   let step = 0;
   let loops = 0;
@@ -262,12 +300,15 @@ export function createRadioPlayer(
       const c = band.compose(track);
       if (!c) continue;
       index = i;
-      comp = c;
-      const byStep = new Map<number, Composition['notes']>();
-      for (const n of c.notes) byStep.set(n.step, [...(byStep.get(n.step) ?? []), n]);
-      current = { track, comp: c, byStep };
-      rig?.prepare(c.notes);
-      step = 0;
+      const indexed = (pc: Composition, genre: RadioGenre | null): Part => {
+        const byStep = new Map<number, Composition['notes']>();
+        for (const n of pc.notes) byStep.set(n.step, [...(byStep.get(n.step) ?? []), n]);
+        return { comp: pc, byStep, genre };
+      };
+      const parts = c.medley?.length ? c.medley.map((p) => indexed(p.comp, p.genre)) : [indexed(c, null)];
+      current = { track, parts };
+      for (const p of parts) (p.genre ? rigFor(band, p.genre) : stationRig)?.prepare(p.comp.notes);
+      enter(0, next);
       loops = 0;
       started.push(track.ref);
       if (started.length > 64) started.shift();
@@ -279,11 +320,30 @@ export function createRadioPlayer(
     for (const r of rigs.values()) r.setLevel(r === rig ? level : 0, at);
   };
 
+  /** The station's own band (null before the band arrives). */
+  let stationRig: RadioRig | null = null;
+
+  /**
+   * Starts part `p` of the current song at `at`: a medley's part brings its own band in, cutting the
+   * last one off at the same moment (a pivot is a hard cut).
+   */
+  function enter(p: number, at: number) {
+    part = p;
+    step = 0;
+    const pt = current?.parts[p];
+    comp = pt?.comp ?? null;
+    const want = pt?.genre && band ? rigFor(band, pt.genre) : stationRig;
+    if (want !== rig) {
+      rig = want;
+      if (on) fade(RADIO_LEVEL, Math.max(at, ctx.currentTime));
+    }
+  }
+
   /** The band arrived: the station tuned meanwhile starts its playlist from the top. */
   const arrive = (b: RadioBand) => {
     band = b;
     if (!station) return;
-    rig = rigFor(b, genreOf(station));
+    rig = stationRig = rigFor(b, genreOf(station));
     fade(0, ctx.currentTime);
     load(index);
   };
@@ -297,7 +357,7 @@ export function createRadioPlayer(
     select(s) {
       station = s;
       list = s ? playlist(s, opts.seed, cut) : [];
-      rig = s && band ? rigFor(band, genreOf(s)) : null;
+      rig = stationRig = s && band ? rigFor(band, genreOf(s)) : null;
       index = 0;
       on = false;
       fade(0, ctx.currentTime);
@@ -314,14 +374,24 @@ export function createRadioPlayer(
       if (!on || !current || !rig || !comp) return;
       // After a suspend (the page was hidden), pick up from now instead of catching up.
       if (next < now - 0.1) next = now + 0.05;
-      while (next < now + LOOKAHEAD_S && current) {
-        const c = current.comp;
-        for (const n of current.byStep.get(step) ?? []) rig.play(n, next, c.stepS);
+      while (next < now + LOOKAHEAD_S && current && rig) {
+        const pt = current.parts[part]!;
+        const c = pt.comp;
+        for (const n of pt.byStep.get(step) ?? []) rig.play(n, next, c.stepS);
         next += c.stepS;
         step++;
         if (step >= c.steps) {
-          step = 0;
-          loops++;
+          if (current.parts.length > 1) {
+            // A medley pivots to its next part on the next step; after the last part, the next track.
+            if (part + 1 < current.parts.length) {
+              enter(part + 1, next);
+              continue;
+            }
+            loops = loopsPerTrack();
+          } else {
+            step = 0;
+            loops++;
+          }
           if (loops >= loopsPerTrack()) {
             // A beat of air between songs, then the next track.
             next += c.stepS * c.stepsPerBeat;

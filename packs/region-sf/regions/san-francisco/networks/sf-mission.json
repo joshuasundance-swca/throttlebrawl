@@ -1,0 +1,107 @@
+{
+  "type": "road-network",
+  "id": "sf-mission",
+  "name": "San Francisco mural alleys (hand-authored)",
+  "region": "san-francisco",
+  "crs": { "kind": "tmerc", "originLatDeg": 37.7599, "originLonDeg": -122.4148, "originElevM": 0 },
+  "chunking": { "kind": "none" },
+  "roads": [
+    "sf-mi-eggshell-st",
+    "sf-mi-primer-alley",
+    "sf-mi-satin-st",
+    "sf-mi-drop-cloth-alley",
+    "sf-mi-semigloss-st",
+    "sf-mi-last-coat-alley"
+  ],
+  "junctions": [
+    {
+      "id": "j-sf-mission-0",
+      "x": 0,
+      "y": 1,
+      "z": 0,
+      "ends": [{ "road": "sf-mi-eggshell-st", "end": "from" }],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-1",
+      "x": 9.5275,
+      "y": 1,
+      "z": 591.1187,
+      "ends": [
+        { "road": "sf-mi-eggshell-st", "end": "to" },
+        { "road": "sf-mi-primer-alley", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-2",
+      "x": 371.7622,
+      "y": 1,
+      "z": 610.1758,
+      "ends": [
+        { "road": "sf-mi-primer-alley", "end": "to" },
+        { "road": "sf-mi-satin-st", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-3",
+      "x": 371.2769,
+      "y": 1,
+      "z": 992.4081,
+      "ends": [
+        { "road": "sf-mi-satin-st", "end": "to" },
+        { "road": "sf-mi-drop-cloth-alley", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-4",
+      "x": -90.6033,
+      "y": 1,
+      "z": 1011.113,
+      "ends": [
+        { "road": "sf-mi-drop-cloth-alley", "end": "to" },
+        { "road": "sf-mi-semigloss-st", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-5",
+      "x": -90.3428,
+      "y": 1,
+      "z": 1553.349,
+      "ends": [
+        { "road": "sf-mi-semigloss-st", "end": "to" },
+        { "road": "sf-mi-last-coat-alley", "end": "from" }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-mission-6",
+      "x": 560.3785,
+      "y": 1,
+      "z": 1562.6278,
+      "ends": [{ "road": "sf-mi-last-coat-alley", "end": "to" }],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-03",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The mural alleys (run W-U; the pitch deck after playtest 2, #8: \"the Mission's mural alleys, where a mural of the streaming outfit's mascot is being painted over mid-race\"). One lane each way through a flat grid: shopfront streets and painted alleys, turning twice under the corner wall where a crew paints the outfit's mascot over while the race runs. One route."
+  }
+}

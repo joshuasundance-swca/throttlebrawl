@@ -48,7 +48,7 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
 
 /**
  * The derived verge per land tag [default]. The order is render's theme order (crossing, plaza,
- * downtown, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
+ * downtown, mission, palms, mangrove, commercial, beach, sawmill, urban, industrial, forest): when one side
  * carries several land tags, the first listed here wins, as the scenery does. Widths stay well
  * inside render's 24 m land strip. The downtown's verges are city kerb and asphalt, not loose ground,
  * so its street furniture stands on them as a city pavement's does (`ridableBandPast` is 0 there).
@@ -60,6 +60,13 @@ const band = (widthM: number, surface: BakedVerge['surface'], edge: BakedVerge['
  * `hard` one was an invisible wall; the row and painted houses' fronts are drawn at theirs.
  */
 export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[] = [
+  // The Pacific Northwest's places (run W-U, the pitch deck's #12): a car ferry's deck, whose outer
+  // lanes of parked pickups run to the hull's side; a closed main street on festival day, a sidewalk
+  // to the storefronts and the barricaded side streets; a fresh clear-cut, wide open dirt among the
+  // stumps (the stumps and pickups are solid `hazard` features, sim/riders/features.ts).
+  ['ferry', band(4.5, 'shoulder', 'hard')],
+  ['festival', band(4, 'kerb', 'hard')],
+  ['clearcut', band(16, 'dirt', 'soft')],
   // San Francisco's downtown (run W-R; interview, 2026-10-02: "SF first = downtown towers"): a cross
   // street's mouth is open asphalt you roll into and slow on (presentation only, nobody turns down
   // it); a plaza is wide open paving; the towers stand behind a sidewalk.
@@ -67,6 +74,13 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['cable-crossing', band(20, 'shoulder', 'soft')],
   ['plaza', band(18, 'kerb', 'soft')],
   ['towers', band(4, 'kerb', 'hard')],
+  // San Francisco's mural alleys (run W-U; the pitch deck after playtest 2, #8: "the Mission's mural
+  // alleys"): an alley's painted walls stand 1.5 m past the shoulder, the mascot's corner wall the
+  // same with its scaffold behind the edge, and the shopfronts behind a 4 m sidewalk. Each edge is
+  // a drawn wall (src/render/mission.ts), so it is a hard one.
+  ['mascot-mural', band(1.5, 'kerb', 'hard')],
+  ['murals', band(1.5, 'kerb', 'hard')],
+  ['shopfronts', band(4, 'kerb', 'hard')],
   ['palms', band(4, 'sand', 'soft')],
   ['mangrove', band(3, 'grass', 'water')],
   ['swamp', band(3, 'grass', 'water')],

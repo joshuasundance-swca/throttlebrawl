@@ -62,7 +62,8 @@ describe('smashables on the live routes', () => {
     (_n, r) => {
       const cfg = config(r, 1);
       const pack = r.event.split(':')[0] ?? 'base';
-      expect((cfg.smashables ?? []).map((d) => d.kind).sort()).toEqual(
+      // (A kind may carry more than one name: San Francisco's cafe tables, run W-U.)
+      expect([...new Set((cfg.smashables ?? []).map((d) => d.kind))].sort()).toEqual(
         [...(REGION_KINDS[pack] ?? [])].sort(),
       );
       const { sim, world } = createSimWithWorld(cfg);

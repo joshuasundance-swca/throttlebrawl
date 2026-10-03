@@ -26,6 +26,8 @@ export interface CueOptions {
    * body noise join, and the bright snap eases off. Default 0.
    */
   weight?: number;
+  /** Which kind of the cue (a smash: the `SmashableKind` that broke). Default: the cue's own. */
+  variant?: string;
 }
 
 export type CuePatch = (
@@ -160,12 +162,77 @@ const unit = (x: number | undefined, fallback: number) =>
   x !== undefined && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : fallback;
 
 const patch =
-  (build: (b: Builder, t: number, impact: number, weight: number) => void): CuePatch =>
+  (build: (b: Builder, t: number, impact: number, weight: number, variant: string) => void): CuePatch =>
   (ctx, out, t, gain, opts = {}) => {
     const b = new Builder(ctx, out, gain, t, opts.pitch);
-    build(b, t, unit(opts.impact, 1), unit(opts.weight, 0));
+    build(b, t, unit(opts.impact, 1), unit(opts.weight, 0), opts.variant ?? '');
     return b.done();
   };
+
+/** A struck bell: a fundamental and inharmonic partials that die sooner (a boxing or cable-car bell). */
+function strike(b: Builder, hz: number, t: number, peak: number, ring: number) {
+  b.tone('sine', hz, hz, t, peak, ring);
+  b.tone('sine', hz * 2.76, hz * 2.75, t, peak * 0.45, ring * 0.55);
+  b.tone('sine', hz * 5.4, hz * 5.38, t, peak * 0.22, ring * 0.3);
+  b.noise('highpass', 4000, 4000, 0.7, t, peak * 0.25, 0.012);
+}
+
+/**
+ * What each smashable is made of (run W-T's `SmashableKind`s), so each breaks with its own sound
+ * [default]: wood splinters, wire crunches, sheet metal clangs, coins spill, crockery shatters,
+ * paper flutters. An unknown kind (a kind added later) gets the wood.
+ */
+export const SMASH_MATERIALS: Readonly<Record<string, readonly SmashLayer[]>> = {
+  'lobster-traps': ['wire', 'wood'],
+  mailbox: ['metal', 'paper'],
+  'parking-meter': ['metal', 'coins'],
+  'pop-up-desk': ['plastic', 'paper'],
+  'cafe-table': ['metal', 'crockery'],
+  'firewood-stand': ['wood', 'coins'],
+};
+export type SmashLayer = 'wood' | 'wire' | 'metal' | 'coins' | 'crockery' | 'plastic' | 'paper';
+
+const SMASH_LAYERS: Readonly<Record<SmashLayer, (b: Builder, t: number) => void>> = {
+  // Splintering boards: a hollow knock and a few dry cracks.
+  wood: (b, t) => {
+    b.tone('triangle', 210, 120, t, 0.5, 0.12);
+    [0, 0.05, 0.11, 0.2].forEach((dt, i) => b.noise('bandpass', 1500 - i * 200, 900, 3, t + dt, 0.45, 0.05));
+  },
+  // A stack of wire traps folding: a springy rattle.
+  wire: (b, t) => {
+    b.noise('bandpass', 3200, 2400, 6, t, 0.35, 0.3);
+    [0.03, 0.09, 0.16].forEach((dt) => b.tone('square', 1800 + dt * 3000, 1500, t + dt, 0.06, 0.05));
+  },
+  // Sheet metal: a dented clang.
+  metal: (b, t) => {
+    b.tone('sine', 120, 60, t, 0.6, 0.15);
+    b.tone('sine', 640, 630, t, 0.28, 0.4);
+    b.tone('sine', 1490, 1480, t, 0.16, 0.28);
+    b.noise('bandpass', 2600, 1800, 3, t, 0.3, 0.2);
+  },
+  // The meter's (or the honour box's) change, all over the road.
+  coins: (b, t) => {
+    [0.08, 0.13, 0.19, 0.24, 0.33, 0.41].forEach((dt, i) =>
+      b.tone('sine', 3300 + ((i * 577) % 900), 3300 + ((i * 577) % 900), t + dt, 0.1, 0.09),
+    );
+  },
+  // Cups and saucers.
+  crockery: (b, t) => {
+    b.noise('highpass', 4500, 4500, 1.2, t + 0.02, 0.4, 0.18);
+    [0.05, 0.12, 0.22].forEach((dt, i) => b.tone('sine', 2400 + i * 700, 2380 + i * 700, t + dt, 0.12, 0.12));
+  },
+  // A folding desk and its banner: a plastic crack and a flap.
+  plastic: (b, t) => {
+    b.noise('bandpass', 1200, 700, 2, t, 0.5, 0.08);
+    b.noise('lowpass', 900, 400, 0.8, t + 0.1, 0.3, 0.2, 0.03);
+  },
+  // Papers: flyers, letters, a pitch deck, fluttering away.
+  paper: (b, t) => {
+    [0.06, 0.15, 0.27, 0.4].forEach((dt, i) =>
+      b.noise('bandpass', 2600 + i * 400, 3200, 1.5, t + dt, 0.18, 0.1, 0.02),
+    );
+  },
+};
 
 /**
  * How much lower a melee body drops at full weight (the pitch factor is 1 - this * weight), and the
@@ -268,8 +335,98 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
   go: patch((b, t) => {
     b.held('square', 880, t, 0.25, 0.14, 4000);
   }),
+  // Your finish (run W-U, pitch deck #5: "a boxing-bell 'ding' marks the finish"): the ring's bell,
+  // struck three times as at the end of a round, over the old rising jingle, quieter.
   finish: patch((b, t) => {
-    [523, 659, 784, 1047].forEach((hz, i) => b.held('square', hz, t + i * 0.1, 0.2, 0.09, 4000));
+    [0, 0.3, 0.6].forEach((dt) => strike(b, 1175, t + dt, 0.42, 1.4));
+    [523, 659, 784, 1047].forEach((hz, i) => b.held('square', hz, t + i * 0.1, 0.08, 0.09, 4000));
+  }),
+  // A rival crossing the line: the same bell, struck once.
+  ding: patch((b, t) => {
+    strike(b, 1175, t, 0.4, 1.2);
+  }),
+  // A roadside smashable breaking (run W-T, "the road fights back"): a body thump, then what it is
+  // made of (SMASH_MATERIALS by its kind).
+  smash: patch((b, t, _impact, _w, kind) => {
+    b.tone('sine', 140, 50, t, 0.7, 0.14);
+    b.noise('lowpass', 2400, 400, 0.8, t, 0.5, 0.12);
+    for (const layer of SMASH_MATERIALS[kind] ?? ['wood']) SMASH_LAYERS[layer](b, t);
+  }),
+  // A thrown weapon (run W-T): it whirls through the air, a whoosh pulsing as it turns.
+  toss: patch((b, t) => {
+    [0, 0.09, 0.18, 0.27].forEach((dt, i) =>
+      b.noise('bandpass', 700 + i * 150, 1500, 2.2, t + dt, 0.3, 0.07, 0.03),
+    );
+  }),
+  // Kevin's briefcase bursting on a rider (run W-T): the case's thump and his paperwork everywhere.
+  paper: patch((b, t, _impact, w) => {
+    const lo = 1 - MEATY.pitchDrop * w;
+    b.tone('sine', 150 * lo, 55 * lo, t, 0.85, 0.16 + 0.08 * w);
+    b.noise('lowpass', 2000 * lo, 400, 0.8, t, 0.6, 0.1);
+    b.tone('triangle', 900, 880, t, 0.12, 0.05);
+    SMASH_LAYERS.paper(b, t);
+    SMASH_LAYERS.paper(b, t + 0.22);
+    if (w > 0) b.tone('sine', 74, 34, t, MEATY.sub * w, 0.26 + 0.12 * w);
+  }),
+  // Landing on a rider ("Air that pays"): a whole bike's weight, a deep body slam with no metal.
+  slam: patch((b, t, _impact, w) => {
+    const lo = 1 - MEATY.pitchDrop * w;
+    b.tone('sine', 100 * lo, 34 * lo, t, 1, 0.3 + 0.1 * w);
+    b.tone('square', 160 * lo, 60 * lo, t, 0.25, 0.14);
+    b.noise('lowpass', 1600 * lo, 250, 0.8, t, 0.85, 0.22);
+    b.noise('bandpass', 900, 500, 1.2, t + 0.03, 0.4, 0.14);
+    b.tone('sine', 62, 30, t, 0.4 + MEATY.sub * w, 0.35);
+  }),
+  // A clean landing that surges: the touchdown, then the rush of the surge.
+  surge: patch((b, t) => {
+    b.tone('sine', 110, 48, t, 0.6, 0.14);
+    b.noise('bandpass', 400, 2800, 1.3, t + 0.04, 0.42, 0.4, 0.03);
+    b.tone('sawtooth', 200, 600, t + 0.04, 0.1, 0.3);
+  }),
+  // A wheel over a shed log (the PNW log spill): two wooden thumps, front then rear.
+  logHop: patch((b, t) => {
+    b.tone('sine', 130, 55, t, 0.8, 0.12);
+    b.tone('triangle', 240, 150, t, 0.25, 0.08);
+    b.tone('sine', 120, 50, t + 0.09, 0.6, 0.12);
+    b.noise('lowpass', 1100, 400, 0.8, t + 0.09, 0.3, 0.06);
+  }),
+  // The boat trailer comes unhitched (the Keys' boat slide): the coupler's clank, a chain rattling
+  // after it, and the hull scraping off down the road.
+  unhitch: patch((b, t) => {
+    b.tone('sine', 180, 80, t, 0.6, 0.12);
+    b.tone('sine', 880, 870, t, 0.25, 0.3);
+    b.tone('sine', 2310, 2300, t, 0.12, 0.2);
+    [0.12, 0.19, 0.25, 0.34, 0.42].forEach((dt) => b.noise('bandpass', 3800, 3400, 5, t + dt, 0.18, 0.04));
+    b.noise('bandpass', 700, 420, 1.5, t + 0.25, 0.35, 1.6, 0.25);
+  }),
+  // The cable car loses its grip (SF's runaway): the grip lets go with a clank, the brake shoes
+  // squeal, and the gripman rings for his life. More bells follow while it rolls (cableBell).
+  runaway: patch((b, t) => {
+    b.tone('sine', 150, 60, t, 0.6, 0.15);
+    b.noise('bandpass', 1900, 1900, 9, t + 0.05, 0.28, 0.9, 0.05);
+    b.tone('sawtooth', 1950, 1820, t + 0.05, 0.06, 0.9, 0.05);
+    [0.12, 0.3, 0.48, 0.66].forEach((dt) => strike(b, 1480, t + dt, 0.32, 0.5));
+  }),
+  // A cable-car bell, rung in a hurry: a quick double clang.
+  cableBell: patch((b, t) => {
+    strike(b, 1480, t, 0.3, 0.45);
+    strike(b, 1480, t + 0.14, 0.26, 0.45);
+  }),
+  // The log truck starts shedding (the PNW log spill): the binder chains let go, then logs rumble
+  // off the deck.
+  shed: patch((b, t) => {
+    b.tone('sine', 620, 610, t, 0.22, 0.25);
+    [0.04, 0.1, 0.17].forEach((dt) => b.noise('bandpass', 3600, 3200, 5, t + dt, 0.18, 0.05));
+    [0.25, 0.5, 0.8, 1.05].forEach((dt, i) => b.tone('sine', 95 - i * 6, 40, t + dt, 0.75, 0.3));
+    b.noise('lowpass', 500, 160, 0.7, t + 0.25, 0.6, 1.4, 0.1);
+  }),
+  // A lane vote is cast (the gantry): its panel flips over with a ka-chunk, and a small chime.
+  vote: patch((b, t) => {
+    b.noise('bandpass', 1800, 1400, 3, t, 0.4, 0.03);
+    b.tone('sine', 160, 70, t + 0.08, 0.6, 0.1);
+    b.noise('bandpass', 1300, 900, 3, t + 0.08, 0.35, 0.05);
+    b.tone('triangle', 1319, 1319, t + 0.2, 0.18, 0.25);
+    b.tone('triangle', 1760, 1760, t + 0.28, 0.16, 0.3);
   }),
   // The takedown stinger: a sub-drop boom under a bright struck-metal ding that carries over the
   // crash. It says "you did that".
