@@ -97,6 +97,7 @@ import {
   routeKeyOf,
   type RegionChoice,
 } from './regions';
+import { boardSpots, spotOn, withReceiptBoards } from './receipt-boards';
 import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { transition, type AppEvent, type AppState } from './states';
@@ -436,14 +437,19 @@ export function createApp(opts: AppOptions): AppHandle {
   let shownRoad: unknown = null;
   /** The time of day shown: the event's on the menu, the race's own in a free-play race (W-Q). */
   let shownTime = '';
+  /** The receipts the boards were drawn with ('' outside a career race). */
+  let shownReceipts = '';
   /**
    * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
    * its signs and billboards (minus this device's cuts), its time of day and palette.
    */
   const showRegion = (timeOfDay: string = String(event.timeOfDay)) => {
-    if (shownRoad === stream.road && shownTime === timeOfDay) return;
+    // Run W-T: a career race shows the region's receipts on its boards, so they key the cache too.
+    const receipts = careerRace && C ? JSON.stringify(profile.receipts.at(-1) ?? null) : '';
+    if (shownRoad === stream.road && shownTime === timeOfDay && shownReceipts === receipts) return;
     shownRoad = stream.road;
     shownTime = timeOfDay;
+    shownReceipts = receipts;
     const regionKey = regionKeyOf(registry, eventId);
     const roadPack = packOf(
       networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
@@ -458,7 +464,21 @@ export function createApp(opts: AppOptions): AppHandle {
       timeOfDay,
       palette: racePalette(registry, regionKey, timeOfDay),
     };
-    renderer.setRoad(stream.road, env, dressing, boardCatalog(registry, regionKey, vetoed));
+    // A world that keeps receipts (run W-T): in a career race, the boards nearest where a rival went
+    // into a vehicle, or you were busted, say so.
+    const boards =
+      careerRace && C
+        ? C.receiptBoards(
+            registry,
+            careerRace.def,
+            profile.receipts,
+            boardSpots(stream.road, dressing),
+            spotOn(stream.road),
+            vetoed,
+          )
+        : [];
+    const shown = withReceiptBoards(dressing, boardCatalog(registry, regionKey, vetoed), boards);
+    renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road);

@@ -16,6 +16,8 @@ import {
 const ME = 1;
 const RIVAL = 0;
 const COP = 2;
+/** A vehicle in traffic (run W-T receipts). */
+const RV = 3;
 
 function entity(id: number, over: Partial<EntitySnapshot> = {}): EntitySnapshot {
   return {
@@ -103,7 +105,12 @@ function race(rules: RaceRules, objectives: ObjectiveSpec[], opts: { roads?: str
       const snap: SimSnapshot = {
         tick,
         timeScale: 1,
-        entities: [entity(RIVAL, rival), entity(ME, me), entity(COP, cop)],
+        entities: [
+          entity(RIVAL, rival),
+          entity(ME, me),
+          entity(COP, cop),
+          entity(RV, { kind: 'vehicle', contentId: 'base:snowbird-rv' }),
+        ],
         race: { over: false, routeLength: 2000, finishOrder: order },
       };
       log.note(i === 0 ? events.map((e) => ({ ...e, tick })) : [], snap);
@@ -363,6 +370,63 @@ describe("grudge rules: the rival's own rule (run W-T, the pitch deck's #14)", (
     expect(r.log.status().objectives[0]?.label).toBe('BEAT THEM HOME OR FELL THEM 1/2');
     r.step([down('scenery')]);
     expect(r.log.status().state).toBe('won');
+  });
+});
+
+describe('incidents the world keeps receipts for (run W-T)', () => {
+  const crashInto = (causeId: number) => ({
+    type: 'crash' as const,
+    actor: RIVAL,
+    target: RV,
+    causeId,
+    data: { cause: 'traffic' },
+  });
+  const takedown = (causeId: number, kind = 'traffic') => ({
+    type: 'takedown' as const,
+    actor: ME,
+    target: RIVAL,
+    causeId,
+    data: { kind },
+  });
+
+  it('a rival the player put into a vehicle: the rival, the vehicle, the road and the spot', () => {
+    const r = race({ kind: 'classic-race' }, [obj('finish-place')]);
+    r.setRival({ road: { edge: 1, s: 412.6, d: 0, h: 0, dir: 1, yaw: 0 } });
+    r.step([crashInto(7)]);
+    r.step([takedown(7)]);
+    expect(r.log.tally().incidents).toEqual([
+      {
+        kind: 'takedown',
+        road: 'road-b',
+        s: 413,
+        rival: 'base:kevin-from-accounting',
+        vehicle: 'base:snowbird-rv',
+      },
+    ]);
+  });
+
+  it('not a takedown by fists, nor a crash someone else was credited with', () => {
+    const r = race({ kind: 'classic-race' }, [obj('finish-place')]);
+    r.step([takedown(3, 'health')]);
+    r.step([crashInto(4)]);
+    r.step([{ ...takedown(4), actor: COP }]);
+    expect(r.log.tally().incidents).toEqual([]);
+  });
+
+  it("a bust: the player's spot; at most MAX_INCIDENTS a race", () => {
+    const r = race({ kind: 'classic-race' }, [obj('finish-place')]);
+    r.setMe({ road: { edge: 0, s: 88.2, d: 0, h: 0, dir: 1, yaw: 0 } });
+    for (let i = 1; i <= 4; i++) {
+      r.step([crashInto(i)]);
+      r.step([takedown(i)]);
+    }
+    expect(r.log.tally().incidents).toHaveLength(3);
+    const b = race({ kind: 'classic-race' }, [obj('finish-place')]);
+    b.setMe({ road: { edge: 0, s: 88.2, d: 0, h: 0, dir: 1, yaw: 0 } });
+    b.step([{ type: 'bust', actor: COP, target: ME, data: { fineCash: 100 } }]);
+    expect(b.log.tally().incidents).toEqual([
+      { kind: 'bust', road: 'road-a', s: 88, rival: null, vehicle: null },
+    ]);
   });
 });
 

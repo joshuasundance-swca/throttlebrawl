@@ -265,6 +265,27 @@
     }
   ],
   "show": {
+    "receipts": {
+      "takedown": [
+        {
+          "id": "receipt-scoreboard",
+          "text": "{VEHICLE} 1, {RIVAL} 0. Final score on {road}. No rematch scheduled.",
+          "status": "live"
+        },
+        {
+          "id": "receipt-law-office",
+          "text": "INJURED BY A {VEHICLE}? {rival} was. The Law Office of Nobody. We return calls eventually.",
+          "status": "live"
+        }
+      ],
+      "bust": [
+        {
+          "id": "receipt-incident-site",
+          "text": "INCIDENT SITE #{n}. Please do not reenact.",
+          "status": "live"
+        }
+      ]
+    },
     "rules": {
       "audit": {
         "name": "THE AUDIT",

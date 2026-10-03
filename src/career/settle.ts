@@ -21,6 +21,7 @@ import { CASH_MAX, MAX_HISTORY, type EventOutcome, type EventResult, type Profil
 import type { CareerDef, CareerNode, CareerSecret, EventPlan } from './defs';
 import { applyWin, progressOf, type WinApplied } from './map';
 import type { RaceStatus, RaceTally } from './race-log';
+import { withReceipts } from './receipts';
 
 export interface LedgerLine {
   label: string;
@@ -239,16 +240,25 @@ export function settleRace(profile: Profile, input: SettleInput): { profile: Pro
     build: input.build,
     at: input.at,
   };
+  const history = [...profile.history, result].slice(-MAX_HISTORY);
   const next: Profile = {
     ...profile,
     cash: cashAfter,
     bikes: { ...profile.bikes, owned: [...owned].sort() },
     regions: { ...profile.regions, [def.regionId]: progress },
     grudges: g.grudges,
-    history: [...profile.history, result].slice(-MAX_HISTORY),
+    history,
     oncePerCareer: teaser
       ? [...new Set([...profile.oncePerCareer, teaserFlag])].sort()
       : profile.oncePerCareer,
+    // The world's receipts (run W-T): what this race did and where, kept for the boards.
+    receipts: withReceipts(
+      profile,
+      plan,
+      def.regionId,
+      tally,
+      history.filter((h) => h.outcome === 'busted').length,
+    ),
   };
   return {
     profile: next,
