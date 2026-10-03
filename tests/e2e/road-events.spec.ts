@@ -32,7 +32,11 @@ interface Snap {
 }
 interface Handle {
   snapshot(): Snap | null;
-  fastForward(until: (snap: Snap) => boolean, opts?: { perFrame?: number; then?: number | null }): void;
+  // The condition gets the sim's whole snapshot; each spec casts it to the fields it reads.
+  fastForward(
+    until: (snap: { tick: number }) => boolean,
+    opts?: { perFrame?: number; then?: number | null },
+  ): void;
   fastForwarding(): boolean;
   state(): string;
   setBot(on: boolean): void;
@@ -107,7 +111,7 @@ for (const race of RACES) {
       await page.evaluate(
         ([p, k]) =>
           (window as TestWindow).__game?.fastForward((s) =>
-            (s.props ?? []).some((x) => x.piece === p && x.kind === k),
+            ((s as unknown as Snap).props ?? []).some((x) => x.piece === p && x.kind === k),
           ),
         [piece, kind] as const,
       );
@@ -131,7 +135,8 @@ for (const race of RACES) {
         await page.evaluate(
           ([p, lo, hi, n]) =>
             (window as TestWindow).__game?.fastForward(
-              (snap) => {
+              (s) => {
+                const snap = s as unknown as Snap;
                 const me = snap.entities.find((e) => e.slot === 0);
                 if (!me) return false;
                 // A model faces -z and turns by its heading: forward is (-sin, -cos).
