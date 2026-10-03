@@ -87,6 +87,36 @@ describe('content schema: types and field lists', () => {
     expect(ENTRY_SCHEMAS.region.safeParse(bad).success).toBe(false);
   });
 
+  it('accepts roadside smashables in a region, from the closed kind list, as vetoable sim data (W-T)', () => {
+    const region = {
+      type: 'region',
+      id: 'florida-keys',
+      networks: ['keys-m1'],
+      timeOfDayOptions: [{ id: 'noon', lighting: 'keys-noon' }],
+      traffic: { mix: [] },
+      smashables: [
+        {
+          id: 'catch-of-the-day',
+          kind: 'lobster-traps',
+          text: 'CATCH OF THE DAY',
+          tags: ['marina'],
+          weight: 2,
+        },
+        { id: 'return-to-sender', kind: 'mailbox', text: 'RETURN TO SENDER', status: 'vetoed' },
+      ],
+    };
+    expect(ENTRY_SCHEMAS.region.safeParse(region).success).toBe(true);
+    const kind = { ...region, smashables: [{ id: 'x', kind: 'piano', text: 'MOVED' }] };
+    expect(ENTRY_SCHEMAS.region.safeParse(kind).success).toBe(false);
+    const long = { ...region, smashables: [{ id: 'x', kind: 'mailbox', text: 'A'.repeat(33) }] };
+    expect(ENTRY_SCHEMAS.region.safeParse(long).success).toBe(false);
+    const weight = { ...region, smashables: [{ id: 'x', kind: 'mailbox', text: 'MAIL', weight: 0 }] };
+    expect(ENTRY_SCHEMAS.region.safeParse(weight).success).toBe(false);
+    expect(VETOABLE_ITEMS.region).toContain('smashables');
+    // They enter SimConfig, so they count toward the sim hash.
+    expect(SIM_EXCLUDED_FIELDS.region).not.toContain('smashables');
+  });
+
   it('lists sim-excluded fields for every type and keeps presentation types out of the sim hash', () => {
     expect(Object.keys(SIM_EXCLUDED_FIELDS).sort()).toEqual(Object.keys(ENTRY_SCHEMAS).sort());
     expect(SIM_EXCLUDED_FIELDS['bark-set']).toBeNull();
