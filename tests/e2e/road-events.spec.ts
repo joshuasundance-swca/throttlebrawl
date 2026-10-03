@@ -66,7 +66,10 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
  * regions' pools, which reshuffled every seed's pick, so the seeds were found again with the dev bot
  * headless on #391 merged with main (the keeper, 2026-10-03; the old seeds still give the old pieces
  * on main): Pacific Northwest seed 32, the hay truck at tick 1682 and roadwork at 2388; seed 12, the
- * parade at 1723 and a speed trap at 3503; San Francisco seed 4, the crash scene at 1473.
+ * parade at 1723 and a speed trap at 3503; San Francisco seed 4, the crash scene at 1473. The
+ * moving pieces' fix (the cable car may now stand on SF's walled cable street) gave SF seed 4 a
+ * cable-car runaway instead, so San Francisco moved to seed 3: the crash scene at 27% of the route,
+ * live at tick 1525 in the earlier headless scan on main, and placed at the same spot with this fix.
  */
 const RACES = [
   {
@@ -84,7 +87,7 @@ const RACES = [
   {
     slug: 'sf',
     chip: '#region-region-sf-san-francisco',
-    seed: 4,
+    seed: 3,
     pieces: { 'region-sf:sf-crash-scene': 'flare' },
   },
 ] as const;
