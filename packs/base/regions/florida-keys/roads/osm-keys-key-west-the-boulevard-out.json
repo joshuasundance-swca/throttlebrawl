@@ -4,11 +4,11 @@
   "name": "the-boulevard rejoin",
   "realName": "the-boulevard rejoin",
   "network": "osm-keys-key-west",
-  "from": "osm-keys-key-west-j3",
-  "to": "osm-keys-key-west-j3",
-  "lengthM": 70.7063,
-  "sampleSpacingM": 2.02018,
-  "speedLimitMps": 8.9,
+  "from": "osm-keys-key-west-j4",
+  "to": "osm-keys-key-west-j4",
+  "lengthM": 55.2122,
+  "sampleSpacingM": 1.9718642857142858,
+  "speedLimitMps": 6.7,
   "surface": "asphalt",
   "laneSections": [
     {
@@ -27,13 +27,13 @@
   "tags": [
     {
       "s0": 0,
-      "s1": 70.7063,
+      "s1": 55.2122,
       "side": "both",
       "tag": "palms"
     },
     {
       "s0": 0,
-      "s1": 70.7063,
+      "s1": 55.2122,
       "side": "both",
       "tag": "town"
     }
@@ -45,34 +45,33 @@
     "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
     "data": {
       "x": [
-        -812.7163, -811.5591, -810.4283, -809.3814, -808.4994, -807.8754, -807.5992, -807.7367, -808.3098,
-        -809.289, -810.6027, -812.1591, -813.8709, -815.6688, -817.505, -819.3514, -821.1983, -823.0452,
-        -824.8922, -826.7391, -828.586, -830.4328, -832.2788, -834.1217, -835.9582, -837.7848, -839.5981,
-        -841.3952, -843.1741, -844.934, -846.6756, -848.4009, -850.1134, -851.817, -853.5159, -855.2132
+        -3820.3252, -3819.2084, -3818.127, -3817.1511, -3816.3642, -3815.838, -3815.6084, -3815.6609,
+        -3815.9346, -3816.3424, -3816.801, -3817.2654, -3817.7297, -3818.194, -3818.6583, -3819.1226,
+        -3819.5869, -3820.0513, -3820.5156, -3820.9865, -3821.5156, -3822.1946, -3823.1083, -3824.2978,
+        -3825.7464, -3827.3928, -3829.1613, -3830.989, -3832.8348
       ],
       "y": [
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
       ],
       "z": [
-        824.6353, 826.2921, 827.9669, 829.695, 831.5121, 833.432, 835.4307, 837.443, 839.3766, 841.14,
-        842.6718, 843.9577, 845.03, 845.9521, 846.7959, 847.6175, 848.4378, 849.2582, 850.0785, 850.8989,
-        851.7192, 852.5397, 853.3621, 854.1916, 855.035, 855.8996, 856.7917, 857.7161, 858.675, 859.6683,
-        860.6933, 861.7455, 862.8186, 863.9057, 865.0002, 866.0971
+        2145.3695, 2146.9955, 2148.645, 2150.3585, 2152.1659, 2154.065, 2156.0222, 2157.9926, 2159.9454,
+        2161.8751, 2163.7936, 2165.7107, 2167.6278, 2169.545, 2171.4621, 2173.3792, 2175.2963, 2177.2135,
+        2179.1306, 2181.0461, 2182.9461, 2184.7971, 2186.5431, 2188.1134, 2189.4485, 2190.5318, 2191.4036,
+        2192.1451, 2192.8407
       ],
       "kappa": [
-        0.0, 0.0078009, 0.024379, 0.045911, 0.06814, 0.087589, 0.10172, 0.10888, 0.10829, 0.099986, 0.084839,
-        0.064777, 0.042437, 0.021371, 0.0059867, 0.00031755, -2.55e-14, 1.4069e-14, -1.4069e-14, 2.55e-14,
-        -2.8056e-5, -0.00052895, -0.0018882, -0.0037495, -0.0057233, -0.0074958, -0.0088341, -0.0095676,
-        -0.0096202, -0.008987, -0.0077388, -0.0060204, -0.0040564, -0.002154, -0.00068925, -0.0
+        0.0, 0.010944, 0.031757, 0.054272, 0.071185, 0.077841, 0.072747, 0.057103, 0.035009, 0.013378,
+        0.0015005, 4.2677e-7, 0.0, -2.7476e-14, 2.7476e-14, 0.0, 0.0, 4.9452e-7, 0.0017387, 0.015502,
+        0.040567, 0.066168, 0.084296, 0.090198, 0.082485, 0.062888, 0.036798, 0.012681, 0.0
       ],
       "grade": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
       ],
       "bankRad": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
       ]
     }
   },
@@ -100,22 +99,22 @@
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
-        "retrievedAt": "2026-10-03T03:40:19Z",
-        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
       },
       {
         "name": "USGS 3DEP elevation",
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
-        "retrievedAt": "2026-10-03T03:40:40Z",
-        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
       }
     ],
     "modified": true,
-    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",

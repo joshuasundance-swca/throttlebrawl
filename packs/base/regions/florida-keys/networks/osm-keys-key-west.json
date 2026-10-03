@@ -5,8 +5,8 @@
   "region": "florida-keys",
   "crs": {
     "kind": "tmerc",
-    "originLatDeg": 24.56,
-    "originLonDeg": -81.77,
+    "originLatDeg": 24.5675,
+    "originLonDeg": -81.7475,
     "originElevM": 0
   },
   "chunking": {
@@ -17,20 +17,21 @@
     "osm-keys-key-west-the-boulevard-leave",
     "osm-kw-smathers-beach",
     "osm-kw-bertha",
-    "osm-keys-key-west-the-boulevard-join",
     "osm-kw-atlantic",
+    "osm-keys-key-west-the-boulevard-join",
+    "osm-kw-higgs-beach",
     "osm-kw-north-roosevelt",
-    "osm-kw-1st-street",
-    "osm-kw-bertha-north",
+    "osm-kw-truman",
+    "osm-kw-white-street",
     "osm-keys-key-west-the-boulevard-in",
     "osm-keys-key-west-the-boulevard-out"
   ],
   "junctions": [
     {
       "id": "osm-keys-key-west-j0",
-      "x": 2806.9458,
-      "y": 1.3133,
-      "z": -1453.5802,
+      "x": 527.7839,
+      "y": 1.3083,
+      "z": -622.5597,
       "ends": [
         {
           "road": "osm-kw-stock-island",
@@ -42,9 +43,9 @@
     },
     {
       "id": "osm-keys-key-west-j1",
-      "x": 1795.9221,
-      "y": 1.3951,
-      "z": -1127.0128,
+      "x": -483.4383,
+      "y": 1.3945,
+      "z": -296.1555,
       "ends": [
         {
           "road": "osm-kw-stock-island",
@@ -130,8 +131,8 @@
             "lane": "R1"
           },
           "splitZone": {
-            "s0": 992.9173,
-            "s1": 1042.9173,
+            "s0": 993.0586,
+            "s1": 1043.0586,
             "d0": 6.0,
             "d1": 10.0
           }
@@ -141,9 +142,9 @@
     },
     {
       "id": "osm-keys-key-west-j2",
-      "x": -634.7446,
+      "x": -2911.8591,
       "y": 1.0,
-      "z": 1031.6807,
+      "z": 1879.1906,
       "ends": [
         {
           "road": "osm-kw-smathers-beach",
@@ -159,9 +160,9 @@
     },
     {
       "id": "osm-keys-key-west-j3",
-      "x": -836.9912,
+      "x": -3069.1215,
       "y": 1.0,
-      "z": 857.4746,
+      "z": 1696.8721,
       "ends": [
         {
           "road": "osm-kw-bertha",
@@ -170,9 +171,27 @@
         {
           "road": "osm-kw-atlantic",
           "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-key-west-j4",
+      "x": -3813.7576,
+      "y": 1.0,
+      "z": 2186.8376,
+      "ends": [
+        {
+          "road": "osm-kw-atlantic",
+          "end": "to"
         },
         {
-          "road": "osm-kw-bertha-north",
+          "road": "osm-kw-higgs-beach",
+          "end": "from"
+        },
+        {
+          "road": "osm-kw-white-street",
           "end": "to"
         }
       ],
@@ -181,12 +200,12 @@
           "id": "cx-osm-keys-key-west-the-boulevard-join-l1",
           "road": "osm-keys-key-west-the-boulevard-join",
           "from": {
-            "road": "osm-kw-bertha",
+            "road": "osm-kw-atlantic",
             "end": "to",
             "lane": "L1"
           },
           "to": {
-            "road": "osm-kw-atlantic",
+            "road": "osm-kw-higgs-beach",
             "end": "from",
             "lane": "L1"
           }
@@ -195,12 +214,12 @@
           "id": "cx-osm-keys-key-west-the-boulevard-join-r1",
           "road": "osm-keys-key-west-the-boulevard-join",
           "from": {
-            "road": "osm-kw-bertha",
+            "road": "osm-kw-atlantic",
             "end": "to",
             "lane": "R1"
           },
           "to": {
-            "road": "osm-kw-atlantic",
+            "road": "osm-kw-higgs-beach",
             "end": "from",
             "lane": "R1"
           }
@@ -209,12 +228,12 @@
           "id": "cx-osm-keys-key-west-the-boulevard-out",
           "road": "osm-keys-key-west-the-boulevard-out",
           "from": {
-            "road": "osm-kw-bertha-north",
+            "road": "osm-kw-white-street",
             "end": "to",
             "lane": "R1"
           },
           "to": {
-            "road": "osm-kw-atlantic",
+            "road": "osm-kw-higgs-beach",
             "end": "from",
             "lane": "R1"
           }
@@ -223,32 +242,14 @@
       "control": "none"
     },
     {
-      "id": "osm-keys-key-west-j4",
-      "x": -1178.6853,
-      "y": 1.0,
-      "z": 1089.3224,
-      "ends": [
-        {
-          "road": "osm-kw-atlantic",
-          "end": "to"
-        }
-      ],
-      "connectors": [],
-      "control": "none"
-    },
-    {
       "id": "osm-keys-key-west-j5",
-      "x": -1375.6171,
+      "x": -4144.3003,
       "y": 1.0,
-      "z": 25.3593,
+      "z": 2227.181,
       "ends": [
         {
-          "road": "osm-kw-north-roosevelt",
+          "road": "osm-kw-higgs-beach",
           "end": "to"
-        },
-        {
-          "road": "osm-kw-1st-street",
-          "end": "from"
         }
       ],
       "connectors": [],
@@ -256,16 +257,34 @@
     },
     {
       "id": "osm-keys-key-west-j6",
-      "x": -1012.475,
+      "x": -4115.6293,
       "y": 1.0,
-      "z": 543.026,
+      "z": 1032.6963,
       "ends": [
         {
-          "road": "osm-kw-1st-street",
+          "road": "osm-kw-north-roosevelt",
           "end": "to"
         },
         {
-          "road": "osm-kw-bertha-north",
+          "road": "osm-kw-truman",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-key-west-j7",
+      "x": -4415.642,
+      "y": 1.8045,
+      "z": 1254.1602,
+      "ends": [
+        {
+          "road": "osm-kw-truman",
+          "end": "to"
+        },
+        {
+          "road": "osm-kw-white-street",
           "end": "from"
         }
       ],
@@ -297,25 +316,25 @@
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
-        "retrievedAt": "2026-10-03T03:40:19Z",
-        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
       },
       {
         "name": "USGS 3DEP elevation",
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
-        "retrievedAt": "2026-10-03T03:40:40Z",
-        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
       }
     ],
     "modified": true,
-    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",
-    "notes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): the Overseas Highway (US 1) four lanes wide over Stock Island and Cow Key Channel into Key West, then South Roosevelt Boulevard along Smathers Beach, Bertha Street and Atlantic Boulevard; North Roosevelt Boulevard leaves at the Triangle and comes back down 1st and Bertha Streets, a shortcut. Its own frame origin, since it never shares a scene with keys-m1. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure)."
+    "notes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): the Overseas Highway (US 1) four lanes wide over Stock Island and Cow Key Channel into Key West, then South Roosevelt Boulevard along Smathers Beach, Bertha Street and Atlantic Boulevard to Higgs Beach; North Roosevelt Boulevard leaves at the Triangle and comes back down Truman Avenue and White Street, about the same distance. Its own frame origin, since it never shares a scene with keys-m1. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure)."
   }
 }

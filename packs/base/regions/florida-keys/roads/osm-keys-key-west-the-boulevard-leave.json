@@ -6,8 +6,8 @@
   "network": "osm-keys-key-west",
   "from": "osm-keys-key-west-j1",
   "to": "osm-keys-key-west-j1",
-  "lengthM": 39.9983,
-  "sampleSpacingM": 1.999915,
+  "lengthM": 39.9986,
+  "sampleSpacingM": 1.9999300000000002,
   "speedLimitMps": 13.4,
   "surface": "asphalt",
   "laneSections": [
@@ -62,19 +62,19 @@
   "tags": [
     {
       "s0": 0.0,
-      "s1": 39.9983,
+      "s1": 39.9986,
       "side": "both",
       "tag": "town"
     },
     {
       "s0": 0.0,
-      "s1": 39.9983,
+      "s1": 39.9986,
       "side": "both",
       "tag": "palms"
     },
     {
       "s0": 0.0,
-      "s1": 39.9983,
+      "s1": 39.9986,
       "side": "both",
       "tag": "key-fishing"
     }
@@ -86,28 +86,28 @@
     "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
     "data": {
       "x": [
-        1814.5128, 1812.6015, 1810.698, 1808.8035, 1806.9194, 1805.047, 1803.1879, 1801.3438, 1799.5167,
-        1797.7087, 1795.9221, 1794.1593, 1792.4232, 1790.7164, 1789.0422, 1787.4036, 1785.804, 1784.2469,
-        1782.7357, 1781.2739, 1779.8651
+        -464.8601, -466.7709, -468.6736, -470.5672, -472.4504, -474.3217, -476.1795, -478.0221, -479.8476,
+        -481.6538, -483.4383, -485.1987, -486.9323, -488.6361, -490.3072, -491.9422, -493.5379, -495.0909,
+        -496.5976, -498.0545, -499.4581
       ],
       "y": [
-        1.364, 1.3679, 1.3717, 1.3753, 1.3788, 1.3821, 1.3851, 1.388, 1.3906, 1.393, 1.3951, 1.3971, 1.3987,
-        1.4001, 1.4012, 1.402, 1.4025, 1.4027, 1.4026, 1.4022, 1.4015
+        1.3645, 1.3683, 1.372, 1.3755, 1.3788, 1.382, 1.3849, 1.3877, 1.3902, 1.3925, 1.3945, 1.3963, 1.3978,
+        1.3991, 1.4, 1.4007, 1.4011, 1.4013, 1.4011, 1.4005, 1.3997
       ],
       "z": [
-        -1134.3081, -1133.7194, -1133.1056, -1132.4645, -1131.7938, -1131.091, -1130.3538, -1129.5797,
-        -1128.7664, -1127.9115, -1127.0128, -1126.0681, -1125.0755, -1124.033, -1122.9392, -1121.7927,
-        -1120.5923, -1119.3375, -1118.0277, -1116.6629, -1115.2436
+        -303.4818, -302.8911, -302.2751, -301.6315, -300.958, -300.2522, -299.5118, -298.7342, -297.9172,
+        -297.0584, -296.1555, -295.2065, -294.2092, -293.162, -292.0633, -290.9117, -289.7062, -288.4461,
+        -287.131, -285.761, -284.3365
       ],
       "kappa": [
-        -0.0059727, -0.0065714, -0.0071982, -0.0078518, -0.0085302, -0.0092309, -0.0099511, -0.010687,
-        -0.011436, -0.012193, -0.012953, -0.013711, -0.014462, -0.0152, -0.015919, -0.016613, -0.017276,
-        -0.017902, -0.018485, -0.019017, -0.019494
+        -0.0060312, -0.0066328, -0.0072624, -0.0079186, -0.0085994, -0.0093022, -0.010024, -0.010762,
+        -0.011512, -0.012269, -0.013029, -0.013787, -0.014537, -0.015274, -0.015991, -0.016682, -0.017342,
+        -0.017964, -0.018542, -0.01907, -0.019541
       ],
       "grade": [
-        0.0019774, 0.0019384, 0.0018575, 0.0017709, 0.0016788, 0.0015812, 0.0014782, 0.0013701, 0.0012568,
-        0.0011385, 0.0010154, 0.00088744, 0.00075488, 0.00061814, 0.00047745, 0.00033302, 0.00018508,
-        3.3872e-5, -0.00012036, -0.00027735, -0.00035651
+        0.0019175, 0.0018786, 0.0017978, 0.0017114, 0.0016194, 0.0015219, 0.001419, 0.0013109, 0.0011977,
+        0.0010796, 0.00095641, 0.00082845, 0.00069614, 0.00055969, 0.00041932, 0.00027523, 0.00012767,
+        -2.3136e-5, -0.00017692, -0.00033336, -0.00041219
       ],
       "bankRad": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -139,22 +139,22 @@
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
-        "retrievedAt": "2026-10-03T03:40:19Z",
-        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
       },
       {
         "name": "USGS 3DEP elevation",
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
-        "retrievedAt": "2026-10-03T03:40:40Z",
-        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
       }
     ],
     "modified": true,
-    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",

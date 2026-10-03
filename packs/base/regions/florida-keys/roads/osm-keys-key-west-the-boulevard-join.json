@@ -4,11 +4,11 @@
   "name": "the-boulevard-join junction",
   "realName": "Atlantic Boulevard",
   "network": "osm-keys-key-west",
-  "from": "osm-keys-key-west-j3",
-  "to": "osm-keys-key-west-j3",
-  "lengthM": 39.9996,
-  "sampleSpacingM": 1.99998,
-  "speedLimitMps": 8.9,
+  "from": "osm-keys-key-west-j4",
+  "to": "osm-keys-key-west-j4",
+  "lengthM": 39.9999,
+  "sampleSpacingM": 1.9999949999999997,
+  "speedLimitMps": 6.7,
   "surface": "asphalt",
   "laneSections": [
     {
@@ -48,15 +48,21 @@
   "tags": [
     {
       "s0": 0.0,
-      "s1": 39.9996,
+      "s1": 39.9999,
       "side": "both",
       "tag": "town"
     },
     {
       "s0": 0.0,
-      "s1": 39.9996,
+      "s1": 39.9999,
       "side": "both",
       "tag": "palms"
+    },
+    {
+      "s0": 0.0,
+      "s1": 39.9999,
+      "side": "left",
+      "tag": "beach"
     }
   ],
   "features": [],
@@ -66,23 +72,23 @@
     "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
     "data": {
       "x": [
-        -818.6182, -820.5299, -822.4249, -824.3027, -826.1634, -828.0071, -829.8343, -831.6456, -833.4416,
-        -835.2232, -836.9912, -838.7466, -840.4903, -842.2232, -843.9464, -845.6606, -847.3669, -849.066,
-        -850.7586, -852.4456, -854.1275
+        -3796.1947, -3797.9144, -3799.6418, -3801.377, -3803.1204, -3804.8721, -3806.6321, -3808.4007,
+        -3810.1778, -3811.9635, -3813.7576, -3815.5602, -3817.371, -3819.19, -3821.017, -3822.8517, -3824.694,
+        -3826.5436, -3828.4002, -3830.2635, -3832.1333
       ],
       "y": [
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         1.0
       ],
       "z": [
-        849.6668, 850.254, 850.8935, 851.5817, 852.315, 853.0899, 853.903, 854.751, 855.6309, 856.5397,
-        857.4746, 858.4331, 859.4126, 860.4111, 861.4263, 862.4565, 863.4999, 864.555, 865.6203, 866.6946,
-        867.7768
+        2177.283, 2178.304, 2179.3121, 2180.3065, 2181.2866, 2182.2518, 2183.2016, 2184.1355, 2185.053,
+        2185.9538, 2186.8376, 2187.7041, 2188.5531, 2189.3844, 2190.1982, 2190.9942, 2191.7727, 2192.5337,
+        2193.2773, 2194.0039, 2194.7137
       ],
       "kappa": [
-        -0.014569, -0.013741, -0.012903, -0.012063, -0.011229, -0.010408, -0.009605, -0.0088262, -0.008076,
-        -0.0073585, -0.0066768, -0.0060333, -0.0054296, -0.0048668, -0.0043451, -0.0038645, -0.0034241,
-        -0.0030228, -0.0026592, -0.0023313, -0.0020373
+        0.0035868, 0.0037704, 0.0039457, 0.0041086, 0.004258, 0.0043924, 0.0045107, 0.004612, 0.0046956,
+        0.0047612, 0.0048086, 0.0048378, 0.0048496, 0.0048444, 0.0048227, 0.0047857, 0.0047345, 0.0046705,
+        0.0045949, 0.0045091, 0.0044147
       ],
       "grade": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -118,22 +124,22 @@
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
-        "retrievedAt": "2026-10-03T03:40:19Z",
-        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T04:25:46Z",
+        "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
       },
       {
         "name": "USGS 3DEP elevation",
         "spdx": "LicenseRef-US-Public-Domain",
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
-        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
-        "retrievedAt": "2026-10-03T03:40:40Z",
-        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T04:25:52Z",
+        "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
       }
     ],
     "modified": true,
-    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 40.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
   },
   "meta": {
     "status": "live",

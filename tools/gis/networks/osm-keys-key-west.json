@@ -3,14 +3,14 @@
   "name": "Key West: the Overseas Highway, the Roosevelt Boulevards and Smathers Beach (OSM network bake)",
   "region": "florida-keys",
   "crs": {
-    "originLatDeg": 24.56,
-    "originLonDeg": -81.77
+    "originLatDeg": 24.5675,
+    "originLonDeg": -81.7475
   },
   "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
   "osmExtract": ".cache/osm/keys-key-west.json",
   "outRoot": "packs/base/regions/florida-keys",
   "waysLabel": "Key West street",
-  "networkNotes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): the Overseas Highway (US 1) four lanes wide over Stock Island and Cow Key Channel into Key West, then South Roosevelt Boulevard along Smathers Beach, Bertha Street and Atlantic Boulevard; North Roosevelt Boulevard leaves at the Triangle and comes back down 1st and Bertha Streets, a shortcut. Its own frame origin, since it never shares a scene with keys-m1. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
+  "networkNotes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): the Overseas Highway (US 1) four lanes wide over Stock Island and Cow Key Channel into Key West, then South Roosevelt Boulevard along Smathers Beach, Bertha Street and Atlantic Boulevard to Higgs Beach; North Roosevelt Boulevard leaves at the Triangle and comes back down Truman Avenue and White Street, about the same distance. Its own frame origin, since it never shares a scene with keys-m1. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
   "lines": [
     {
       "id": "us1",
@@ -37,8 +37,8 @@
         "lon": -81.7422897
       },
       "end": {
-        "lat": 24.5500035,
-        "lon": -81.7815611
+        "lat": 24.5474117,
+        "lon": -81.7883692
       },
       "routeTags": {
         "name": "^(Overseas Highway|South Roosevelt Boulevard|Bertha Street|Atlantic Boulevard)$"
@@ -69,6 +69,10 @@
         "osm-kw-atlantic": {
           "laneWidthM": 4.0,
           "lanesPerDirection": 1
+        },
+        "osm-kw-higgs-beach": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 1
         }
       },
       "sideTags": {
@@ -77,6 +81,9 @@
           "right": ["palms"]
         },
         "osm-kw-atlantic": {
+          "left": ["beach"]
+        },
+        "osm-kw-higgs-beach": {
           "left": ["beach"]
         }
       },
@@ -223,6 +230,12 @@
               "pool": "signs"
             }
           ]
+        },
+        {
+          "id": "osm-kw-higgs-beach",
+          "name": "Higgs Beach",
+          "tags": ["town", "palms"],
+          "features": []
         }
       ]
     },
@@ -234,20 +247,20 @@
       },
       "via": [
         {
-          "lat": 24.5597291,
-          "lon": -81.7836759
+          "lat": 24.558082,
+          "lon": -81.7881388
         },
         {
-          "lat": 24.5550965,
-          "lon": -81.7799786
+          "lat": 24.556161,
+          "lon": -81.7911919
         }
       ],
       "pathTo": {
-        "lat": 24.5523435,
-        "lon": -81.7778358
+        "lat": 24.5478409,
+        "lon": -81.7849649
       },
       "routeTags": {
-        "name": "^(North Roosevelt Boulevard|1st Street|Bertha Street)$"
+        "name": "^(North Roosevelt Boulevard|Truman Avenue|White Street)$"
       },
       "splitOnNameChange": true,
       "realName": "North Roosevelt Boulevard",
@@ -291,14 +304,14 @@
           ]
         },
         {
-          "id": "osm-kw-1st-street",
-          "name": "1st Street",
+          "id": "osm-kw-truman",
+          "name": "Truman Avenue",
           "tags": ["town", "palms"],
           "features": []
         },
         {
-          "id": "osm-kw-bertha-north",
-          "name": "Upper Bertha",
+          "id": "osm-kw-white-street",
+          "name": "White Street",
           "tags": ["town", "palms"],
           "features": []
         }
@@ -312,7 +325,7 @@
       "of": "us1",
       "kind": "shortcut",
       "marked": true,
-      "sign": "THE BOULEVARD: KEEP RIGHT. Shorter. Mattress stores the whole way.",
+      "sign": "THE BOULEVARD: KEEP RIGHT. A little shorter. Mattress stores the whole way.",
       "leave": {
         "at": {
           "lat": 24.5699179,
@@ -334,17 +347,17 @@
       },
       "join": {
         "at": {
-          "lat": 24.5523435,
-          "lon": -81.7778358
+          "lat": 24.5478409,
+          "lon": -81.7849649
         },
         "pieceM": 40,
+        "shiftM": 20,
         "offsetM": 2,
         "lane": "R1",
-        "insetM": 30,
+        "insetM": 40,
         "fromOffsetM": 2,
         "fromLane": "R1",
-        "turnsM": [20, 20],
-        "shiftM": 45
+        "turnsM": [20, 20]
       },
       "label": "the-boulevard"
     }
@@ -355,7 +368,7 @@
       "name": "Key West",
       "line": "us1",
       "startRoad": "osm-kw-stock-island",
-      "finishRoad": "osm-kw-atlantic"
+      "finishRoad": "osm-kw-higgs-beach"
     }
   ]
 }
