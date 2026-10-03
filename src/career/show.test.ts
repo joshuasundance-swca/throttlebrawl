@@ -479,4 +479,28 @@ describe("the pause screen's map", () => {
     expect(pauseMap(REG, KEYS, panels, 'not-a-road', 0)?.here).toBeNull();
     expect(pauseMap(REG, KEYS, [], road.id, 0)).toBeNull();
   });
+
+  it("shows the Keys' secret island as a '?' with its roads undrawn until it is found (run W-U)", () => {
+    const island = ['c-unlisted-in', 'm1-unlisted-key', 'c-unlisted-out'];
+    const panel = careerMap(REG, KEYS, fresh()).find((p) => p.roads.some((r) => r.id === 'm1-unlisted-key'));
+    if (!panel) throw new Error('no panel holds the island');
+    expect(panel.roads.filter((r) => r.hidden).map((r) => r.id)).toEqual(island);
+    const mark = panel.secrets.find((s) => s.id === 'unlisted-key');
+    expect(mark).toMatchObject({ found: false, hinted: true });
+    // Paused out on the island before it is found: the map still holds the player's road.
+    expect(pauseMap(REG, KEYS, [panel], 'm1-unlisted-key', 180)?.here).not.toBeNull();
+    // Found: the roads are drawn and the mark is a found secret.
+    const p = fresh();
+    const keys = p.regions['florida-keys'];
+    if (!keys) throw new Error('no Keys progress');
+    const found: Profile = {
+      ...p,
+      regions: { ...p.regions, 'florida-keys': { ...keys, secrets: [...keys.secrets, 'unlisted-key'] } },
+    };
+    const after = careerMap(REG, KEYS, found).find((x) => x.id === panel.id);
+    expect(after?.roads.some((r) => r.hidden)).toBe(false);
+    expect(after?.secrets.find((s) => s.id === 'unlisted-key')?.found).toBe(true);
+    // The other secrets carry no '?'.
+    expect(panel.secrets.filter((s) => s.hinted).map((s) => s.id)).toEqual(['unlisted-key']);
+  });
 });

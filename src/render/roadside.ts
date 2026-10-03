@@ -212,8 +212,11 @@ const FISHING = ['key-fishing'];
 const RESORT = ['key-resort'];
 const JUNKYARD = ['key-junkyard'];
 const PARTY = ['key-party'];
+// Run W-U: Unlisted Key, the secret island off the sandbar: a tiki bar nobody has found, its coolers
+// and a flamingo, and none of the conch town's cottages, pickets, mailboxes or pie.
+const SECRET = ['key-secret'];
 /** Keys where mailboxes do not stand (the hotels, the junk, the party). */
-const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY];
+const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY, ...SECRET];
 /** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
 const ANY_KEY = [...FISHING, ...NOT_TOWN];
 const TOWN_AND_SHORE: readonly LandTheme[] = [...KEYS_TOWN, ...SHORE];
@@ -271,7 +274,7 @@ export const KEYS_KIT: RoadsideKit = {
       back: 3.6,
       along: 2.2,
       discBack: 1.4,
-      district: RESORT,
+      district: [...RESORT, ...SECRET],
     }),
     rule('boat-stack', [19], KEYS_LAND, 30, 0.75, [2.5, 6], 3.4, {
       ...BIG,
@@ -304,8 +307,8 @@ export const KEYS_KIT: RoadsideKit = {
       along: 4.3,
       district: RESORT,
     }),
-    rule('coolers', [23], KEYS_LAND, 24, 0.6, [0.8, 4], 1.5, { face: true, district: PARTY }),
-    rule('flamingo', [25], KEYS_LAND, 70, 0.6, [1, 6], 1.6, { district: PARTY }),
+    rule('coolers', [23], KEYS_LAND, 24, 0.6, [0.8, 4], 1.5, { face: true, district: [...PARTY, ...SECRET] }),
+    rule('flamingo', [25], KEYS_LAND, 70, 0.6, [1, 6], 1.6, { district: [...PARTY, ...SECRET] }),
     rule('traps-village', [2], TOWN_AND_SHORE, 26, 0.6, [1.2, 5], 1.1, { face: true, district: FISHING }),
     // The conch town's and the whole Keys' props (run W-P).
     rule('cottage', [5, 6], KEYS_TOWN, 18, 0.55, [6, 3], 3.4, {
@@ -318,7 +321,7 @@ export const KEYS_KIT: RoadsideKit = {
       ...BIG,
       back: 0.8,
       along: 1.4,
-      notDistrict: [...JUNKYARD, ...PARTY],
+      notDistrict: [...JUNKYARD, ...PARTY, ...SECRET],
     }),
     rule('bait', [9], [...KEYS_TOWN, 'beach'], 160, 0.7, [0.5, 0.5], 1.2, { ...BIG, along: 1.1 }),
     rule('picket', [7], KEYS_TOWN, 60, 0.5, [2.4, 0.4], 0.3, {
