@@ -9,7 +9,9 @@
 //     It prints the first-load JavaScript's headroom and, on CI (or with --base <ref>), the pull
 //     request's own change against main: it builds the merge base with origin/main in a throwaway
 //     worktree under .cache/ (git-ignored) and measures it the same way. A growth of 5 KB or more
-//     prints a warning; only the budget itself fails (scripts/perf-limits.mjs).
+//     prints a warning. The budget fails any build; on a pull request (GitHub's `pull_request`
+//     event), a change that grows the first load and leaves under 10 KB of headroom fails too (the
+//     floor, scripts/perf-limits.mjs). Main's pushes keep the budget alone.
 //  2. The Playwright perf probes (project `perf`): draw calls and triangles are hard limits; frame
 //     and sim step times are a trend with a 3x catastrophe guard (scripts/perf-limits.mjs). Their
 //     numbers and the size line go to CI's step summary (GITHUB_STEP_SUMMARY) when it is set.
@@ -22,7 +24,13 @@ import { gzipSync } from 'node:zlib';
 import { CACHE_DIR, modelsByRegion, SHARED, worstRaceModelBytes } from './dataset-assets.mjs';
 import { firstLoadScripts } from './first-load.mjs';
 import { examined, fmtBytes, git, refExists, repoRoot } from './lib.mjs';
-import { firstLoadReport, summaryMarkdown } from './perf-limits.mjs';
+import {
+  firstLoadReport,
+  floorProblem,
+  isPullRequestRun,
+  PR_FLOOR_KB,
+  summaryMarkdown,
+} from './perf-limits.mjs';
 
 const args = process.argv.slice(2);
 const sizeOnly = args.includes('--size-only');
@@ -141,6 +149,14 @@ if (fl.warn)
     `perf: WARNING: this change grows the first-load JavaScript by ${fmtBytes(fl.deltaBytes ?? 0)}; ` +
       'move code the first screen does not need into a lazy import() chunk (docs/engineering.md, perf check)',
   );
+// The pull request's floor: a PR that grows the first load must leave PR_FLOOR_KB of headroom.
+const pullRequest = isPullRequestRun(process.env);
+const floor = floorProblem(fl, budget.jsGzipKB, pullRequest);
+if (floor) problems.push(floor);
+const floorLine = pullRequest
+  ? `pull-request floor ${PR_FLOOR_KB} KB of first-load headroom: ${floor ? 'FAILED' : 'holds'}`
+  : `pull-request floor ${PR_FLOOR_KB} KB: not applied (not a pull_request run; the ${budget.jsGzipKB} KB budget alone)`;
+console.log(`perf: ${floorLine}`);
 examined(
   `${here.files} dist files: first-load JavaScript ${fmtBytes(here.jsGzip)} gzip in ${here.jsFiles} files ` +
     `(budget ${budget.jsGzipKB} KB, ${fmtBytes(Math.abs(fl.headroomBytes))} ${fl.headroomBytes >= 0 ? 'headroom' : 'over'}), ` +
@@ -196,6 +212,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   const size = [
     sizeLine,
     ...(fl.warn ? ['**Warning:** the first-load JavaScript grew by 5 KB or more.'] : []),
+    floor ? `**Failed:** ${floor}` : floorLine,
   ];
   try {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryMarkdown({ size, probes }));

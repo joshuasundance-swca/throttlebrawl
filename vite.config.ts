@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, runnerImport, type Plugin } from 'vite';
 import { SIM_CODE_HASH_PLACEHOLDER, simChunkGroup, simCodeHashPlugin } from './scripts/sim-chunk.mjs';
 import { minifyJsonAssetsPlugin } from './scripts/json-assets.mjs';
+import { bootPreloadPlugin } from './scripts/boot-preload.mjs';
 import { datasetAssetsPlugin } from './scripts/dataset-assets.mjs';
 import { stripPackNotesPlugin } from './scripts/pack-notes.mjs';
 
@@ -62,12 +63,14 @@ export default defineConfig({
   // The road data shipped as JSON files is written on one line (scripts/json-assets.mjs, run W-P).
   // The big files pinned in assets.lock.json are baked in under assets/ds/ (run W-Q).
   // The packs' `meta.notes` stay out of the bundled pack JSON (scripts/pack-notes.mjs, run W-R).
+  // index.html preloads the Keys' hand-made road data boot fetches (scripts/boot-preload.mjs, run W-S).
   plugins: [
     stripPackNotesPlugin(),
     selfTestHash(),
     simCodeHashPlugin(),
     minifyJsonAssetsPlugin(),
     datasetAssetsPlugin({ root }),
+    bootPreloadPlugin(),
   ],
   // Relative asset paths, so one build works at a Space root or under any sub-path.
   base: './',
