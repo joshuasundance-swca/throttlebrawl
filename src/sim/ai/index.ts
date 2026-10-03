@@ -5,7 +5,8 @@
 //      rubber-band factor (riders-3, `rubberBandFactor` in sim/race);
 //   2. picks a line: its spot in the lane, a weave, or alongside a fight target (brawlers hunt);
 //   3. dodges traffic ahead crudely: around it (into the oncoming lane only as risk allows) or brakes;
-//   4. swings at whoever is in its reach window, the player or another rival, with side and kick flags;
+//   4. swings at whoever is in its reach window, the player or another rival, with side and kick flags,
+//      and holding a thrown weapon (Kevin's briefcase) throws it at a rider in its throw range ahead;
 //   5. unsticks itself if it has made no progress for a while.
 // M2 ai-2 adds: a race-long grudge (a rider who noted a grudge against someone, through tumble-2's
 // noteGrudge, puts them first in its target choice and comes looking for them until the finish),
@@ -35,7 +36,7 @@ import {
   type TuningParamDecl,
 } from '../../core';
 import type { RoadNetwork, RouteShortcut } from '../../road';
-import { combatView, pickupWeapon, STOWED_H } from '../combat';
+import { behaviourOf, combatView, pickupWeapon, STOWED_H } from '../combat';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
@@ -277,6 +278,15 @@ const WEAPON_SEEK_M = 80;
 /** The grudge-keeper's swing chance grows by this much per wrong, for up to TALLY_KEEN_MAX wrongs. */
 const TALLY_KEEN = 0.25;
 const TALLY_KEEN_MAX = 4;
+/**
+ * A rider holding a thrown weapon (W-T `throw.burst`, Kevin's briefcase) throws at a rider who is
+ * only in its throw range (not in fist or boot range) with this share of its swing chance per tick,
+ * so the throw comes a beat after the target is in range rather than on the first tick. The swing
+ * chance carries the rider's aggression and the difficulty's, so the beat keeps both: on average
+ * about 0.3 s (Deacon, relentless aside) to 0.56 s (Pivot) at Normal, 0.26 to 0.67 s from Hard to
+ * Easy, before a hunter's double chance on its target. [default] (#388's follow-up, run W-T.)
+ */
+const THROW_KEEN = 0.5;
 const TAU = 6.283185307179586;
 // ai-2 takedown intent (M2, [default]).
 /** A rail this close to the target's side of the road (metres of d) is worth pushing it toward. */
@@ -1103,6 +1113,31 @@ function inReach(s: Seen, v: number, r: Reach): boolean {
   return Math.abs(ds) <= r.sM && Math.abs(s.dd) <= r.dM;
 }
 
+/** The reach of the thrown weapon (W-T `throw.burst`) this rider holds, or null when it holds none. */
+function throwReach(world: World, config: SimConfig, m: Mover): Reach | null {
+  const held = combatView(world, m.id).heldWeapon;
+  if (held === null) return null;
+  const w = config.weapons.find((x) => x.contentId === held);
+  if (!w || behaviourOf(w) !== 'throw.burst') return null;
+  return {
+    sM: w.reachSM,
+    dM: w.reachDM,
+    windupTicks: w.windupTicks,
+    cycleTicks: w.windupTicks + w.activeTicks + w.recoveryTicks + w.cooldownTicks,
+  };
+}
+
+/**
+ * Whether a throw started now would reach `s` (#388's follow-up): at the end of the wind-up it is
+ * ahead (combat aims a throw only ahead), inside the weapon's reach box, and close enough for the
+ * throw (thrower's speed + `throwMps`, flying reach.sM / throwMps seconds) to catch it.
+ */
+function inThrowRange(s: Seen, v: number, r: Reach, throwMps: number): boolean {
+  const ds = s.ahead + (s.vAlong - v) * (r.windupTicks / 60);
+  const catchM = Math.max(0, v + throwMps - s.vAlong) * (r.sM / throwMps);
+  return ds >= 0 && ds <= Math.min(r.sM, catchM) && Math.abs(s.dd) <= r.dM;
+}
+
 function trySwing(
   world: World,
   config: SimConfig,
@@ -1119,9 +1154,19 @@ function trySwing(
   const punch = weaponReach(config, 'punch');
   const kick = weaponReach(config, 'kick');
   const v = m.speed;
-  const box = riders.filter((r) => Math.abs(r.ahead) <= ACQUIRE_S && Math.abs(r.dd) <= ACQUIRE_D);
+  // Holding a thrown weapon (Kevin's briefcase), a rider also throws at whoever is in its throw
+  // range ahead (#388's follow-up: holders used to throw only at punch range, so they rode a whole
+  // race with it). A press resolves to the held weapon, so a plain attack press is the throw.
+  const thrown = throwReach(world, config, m);
+  const throwMps = Math.max(1, world.params['combat.throwSpeedMps'] ?? 16);
+  const throwable = (r: Seen): boolean => thrown !== null && inThrowRange(r, v, thrown, throwMps);
+  const box = riders.filter(
+    (r) => (Math.abs(r.ahead) <= ACQUIRE_S && Math.abs(r.dd) <= ACQUIRE_D) || throwable(r),
+  );
   const reachable = box.filter(
-    (r) => (inReach(r, v, punch) || inReach(r, v, kick)) && looksGood(world, config, prof, r, healthFrac),
+    (r) =>
+      (inReach(r, v, punch) || inReach(r, v, kick) || throwable(r)) &&
+      looksGood(world, config, prof, r, healthFrac),
   );
   if (reachable.length === 0) return 0;
   const victim =
@@ -1129,20 +1174,25 @@ function trySwing(
     pickByPreference(world, config, reachable, preferences(prof, grudges), grudges, prof.rivals);
   if (!victim) return 0;
   const rng = world.rng.ai;
+  const canKick = inReach(victim, v, kick);
+  const canPunch = inReach(victim, v, punch);
+  // Out of fist and boot range, the victim is reachable only by the throw.
+  const throwOnly = !canKick && !canPunch;
   // The grudge-keeper's tally (rivals-1): each wrong this victim did him makes him keener, up to 4.
   const wrongs = prof.traits.tally > 0 ? (st.wrongs[m.id]?.[victim.mover.id] ?? 0) : 0;
   const keen = 1 + TALLY_KEEN * Math.min(TALLY_KEEN_MAX, wrongs);
-  const chance = Math.min(
-    0.5,
-    (0.02 + 0.1 * aggr) * (target && victim.mover.id === target.mover.id ? 2 : 1) * keen,
-  );
+  const chance =
+    Math.min(0.5, (0.02 + 0.1 * aggr) * (target && victim.mover.id === target.mover.id ? 2 : 1) * keen) *
+    (throwOnly ? THROW_KEEN : 1);
   if (nextFloat(rng) >= chance) return 0;
-  const canKick = inReach(victim, v, kick);
-  const canPunch = inReach(victim, v, punch);
+  // Holding a thrown weapon, any press but the kick is the throw (on the throw's own timing), so a
+  // "punch" at a rider the throw cannot reach (beside and behind) would only waste it: kick or wait.
+  const punchy = canPunch && (thrown === null || throwable(victim));
   // The kick-or-punch mix stays M1's: a kick-when-it-shoves-toward-danger bonus is a feel number,
   // held for combat-3's playtest-tuned kick shove (M2 prep rules).
-  const useKick = canKick && (!canPunch || nextFloat(rng) < 0.25 + 0.6 * prof.dirtiness);
-  const r = useKick ? kick : punch;
+  const useKick = canKick && (!punchy || nextFloat(rng) < 0.25 + 0.6 * prof.dirtiness);
+  if (!useKick && !punchy && !throwOnly) return 0;
+  const r = useKick ? kick : (thrown ?? punch);
   // Side flags are in the rider's frame: its right is +d when riding toward +s.
   const side = victim.dd * m.pos.dir > 0 ? InputFlag.attackSideRight : InputFlag.attackSideLeft;
   const hold = side | (useKick ? InputFlag.kick : 0);
