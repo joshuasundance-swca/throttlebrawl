@@ -14,6 +14,9 @@
 // cable-car traffic, and adds the drizzle (rain.ts) a region's palette asks for.
 // W-P "fill the world" (the maintainer, 2026-10-01b) adds the backdrop (backdrop/): each region's
 // mountains, skylines, bridges, ships and clouds past the fog, one lazy-loaded draw call.
+// Run W-R (interview, 2026-10-02: "SF first = downtown towers") adds San Francisco's downtown
+// (downtown.ts): towers, plazas, cross streets with their traffic, and the cable cars, which run
+// only on its steep cable-car streets.
 // Run W-R (off-road; interview, 2026-10-02: "Anywhere with ground") adds the verge layer (verge.ts):
 // the ridable ground band beside the road and what ends it, with its dust, splashes and fence boards.
 // Run W-R (interview, 2026-10-02: "Real models now") draws each rider as a real model on a real
@@ -38,6 +41,7 @@ import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
 import type { RoadsideCounts, RoadsideLayer } from './roadside';
+import type { DowntownCounts, DowntownLayer } from './downtown';
 import type { VergeCounts, VergeLayer } from './verge';
 import { Rain, rainColourOf } from './rain';
 import type { RiderLook } from './rider-looks';
@@ -197,6 +201,8 @@ export interface SceneryStatus {
   roadside: RoadsideCounts | null;
   /** The far backdrop as built (null while it loads, or for a road without one). */
   backdrop: BackdropStats | null;
+  /** San Francisco's downtown (run W-R), or null before its models load or on any other road. */
+  downtown: DowntownCounts | null;
   /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
   verge: VergeCounts | null;
 }
@@ -323,6 +329,27 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(roadside.group);
   };
+  // Run W-R: San Francisco's downtown (downtown.ts), a lazy chunk that arrives with its models.
+  let downtownModule: typeof import('./downtown') | null = null;
+  let downtown: DowntownLayer | null = null;
+  /** The sim tick the downtown's cross traffic last moved on, and how long it has stood still, s. */
+  let downtownTick = -1;
+  let downtownStill = 0;
+  const buildDowntown = () => {
+    downtown?.dispose();
+    downtown = null;
+    const m = downtownModule;
+    const kit = models.sfDowntown;
+    if (!m || !roadArgs || !kit) return;
+    const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
+    if (!m.hasDowntown(tags)) return;
+    downtown = new m.DowntownLayer(kit, models.sfRoadside, models.cableCar, look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+    });
+    scene.add(downtown.group);
+  };
   // Run W-R: the ground band beside the road (verge.ts), a lazy chunk that arrives with the road. It
   // is built once per setRoad (a new seed or the models arriving rebuild the road, not the band), so
   // a fence smashed in this race stays smashed.
@@ -350,6 +377,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(roadScene.group);
     buildRoadside();
+    buildDowntown();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -395,6 +423,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         void import('./roadside').then((r) => {
           roadsideModule = r;
           buildRoadside();
+        });
+      if (report.loaded.includes('sfDowntown') && !downtownModule)
+        void import('./downtown').then((d) => {
+          downtownModule = d;
+          buildDowntown();
         });
     });
   };
@@ -485,8 +518,17 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
+      if (downtown) {
+        // The cross traffic moves with the race: it stands still while the race does (paused).
+        const tick = curr?.tick ?? -1;
+        downtownStill = tick === downtownTick ? downtownStill + dt : 0;
+        downtownTick = tick;
+        const moving = downtownStill < 0.25 ? dt * (curr?.timeScale ?? 1) : 0;
+        sceneryVisible += downtown.update(pose.x, pose.z, moving, curr?.entities ?? []);
+      }
       lastFrameAt = t;
-      verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1));
+      // The camera's aim: fences and ferns behind it are left out (main-green-4).
+      verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
@@ -576,6 +618,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       rain: rain.count(),
       roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
+      downtown: downtown?.counts() ?? null,
       verge: verge?.counts() ?? null,
     }),
   };

@@ -156,6 +156,7 @@ test('the "Cut." note reads at arm\'s length on a phone landscape screen', async
   // run): asserted when the check came well inside the 3 s hold, logged when it did not.
   const later = await page.evaluate(async () => {
     const t0 = (window as Window & { __cutAt?: number }).__cutAt ?? performance.now();
+    // eslint-disable-next-line no-restricted-syntax -- the radio note's hold is a wall-clock UI timer, timed here on the page's own clock
     await new Promise((r) => setTimeout(r, Math.max(0, 1500 - (performance.now() - t0))));
     const el = document.querySelector<HTMLElement>('#radio-song');
     return {

@@ -102,6 +102,7 @@ test('a first launch shows a short welcome beside the menu, and remembers the bu
   await expect(card).toBeHidden();
   // Seen: a reload of the same build shows nothing.
   await toMenu(page);
+  // eslint-disable-next-line no-restricted-syntax -- a negative check with no event to wait on: the card stays away a moment after the menu draws
   await page.waitForTimeout(500);
   await expect(card).toBeHidden();
   expect(problems).toEqual([]);

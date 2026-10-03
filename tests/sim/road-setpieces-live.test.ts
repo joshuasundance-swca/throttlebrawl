@@ -80,6 +80,14 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-sf:osm-sf-twin-peaks-run',
     kinds: ['boostPad'],
   },
+  // Run W-R: San Francisco's downtown (hand-made), its truck on Burn Rate Row's straight.
+  {
+    name: 'sf-downtown',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:sf-downtown-run',
+    kinds: BOTH,
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
@@ -341,7 +349,9 @@ describe('playtest 1c item 2: every candidate is a safe placement (a solo rider 
         } else {
           const { run } = rampTruckShape(c.f);
           const lip = c.f.s0 + run;
-          const out = ride(config, c.edgeId, c.f.s0 - 200, lip, 4.4);
+          // Up the middle of the deck (4.4 on every one-lane road's truck at d 3.4 to 5.4; run W-R's
+          // downtown parks its truck in the kerb lane of a four-lane avenue, d 7.2 to 9.2).
+          const out = ride(config, c.edgeId, c.f.s0 - 200, lip, (c.f.d0 + c.f.d1) / 2);
           expect(out.reached).toBe(true);
           const jump = out.events.find(
             (e) => e.ev.type === 'jump' && e.edge === c.edgeId && Math.abs(e.s - lip) < 3,

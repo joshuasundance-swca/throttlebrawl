@@ -369,6 +369,7 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     step: 50,
     unit: 'm',
     affectsSim: true,
+    system: true,
   },
   {
     // W-Q: how often a weapon lies by your bike when you get up from a crash. [default]
@@ -381,6 +382,7 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     step: 0.05,
     unit: '',
     affectsSim: true,
+    system: true,
   },
   {
     id: 'combat.wrapDragMps',

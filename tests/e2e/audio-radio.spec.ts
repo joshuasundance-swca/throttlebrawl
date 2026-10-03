@@ -65,6 +65,10 @@ async function render(page: Page, args: Args) {
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
     };
+    // The radio's band is a lazy chunk in the game (radio-band.ts); handed in here, as the stations
+    // are, so the render hears the station from its first note.
+    const bandUrl = '/__audio-radio/radio-band.js';
+    const band = (await import(bandUrl)) as { RADIO_BAND: unknown };
     const rate = 44100;
     const ctx = new OfflineAudioContext(1, Math.round(a.dur * rate), rate);
     const audio = m.createAudio({
@@ -72,6 +76,7 @@ async function render(page: Page, args: Args) {
       offline: true,
       radioKeys: null,
       radioSeed: 7,
+      radioBand: band.RADIO_BAND,
       stations: m.stationsFromTable(a.table),
     });
     audio.setVolumes({ master: 1, music: a.music, effects: 0, voices: 0 }, false);
@@ -241,6 +246,10 @@ test('radio: the hidden pirate takes over near its spot and hands the radio back
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
     };
+    // The radio's band is a lazy chunk in the game (radio-band.ts); handed in here, as the stations
+    // are, so the render hears the station from its first note.
+    const bandUrl = '/__audio-radio/radio-band.js';
+    const band = (await import(bandUrl)) as { RADIO_BAND: unknown };
     const rate = 44100;
     const dur = 6;
     const ctx = new OfflineAudioContext(1, dur * rate, rate);
@@ -249,6 +258,7 @@ test('radio: the hidden pirate takes over near its spot and hands the radio back
       offline: true,
       radioKeys: null,
       radioSeed: 7,
+      radioBand: band.RADIO_BAND,
       stations: m.stationsFromTable(t),
     });
     audio.setVolumes({ master: 1, music: 1, effects: 0, voices: 0 }, false);
@@ -384,6 +394,7 @@ test.describe('in the game', () => {
 
     const heard = async (ms: number) => {
       await page.evaluate(() => ((window as ProbeWindow).__plucks = []));
+      // eslint-disable-next-line no-restricted-syntax -- audio plays on the audio clock, which is wall time
       await page.waitForTimeout(ms);
       const d = await page.evaluate(() => (window as ProbeWindow).__plucks ?? []);
       const count = (x: number) => d.filter((v) => v === x).length;
@@ -391,14 +402,17 @@ test.describe('in the game', () => {
     };
 
     // Playtest 2 (2026-10-02): the race starts on the region's own station, the Keys' first.
+    // eslint-disable-next-line no-restricted-syntax -- the stations load on first use, then audio plays on the audio clock, which is wall time
     await page.waitForTimeout(800); // the stations load on first use
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
     // The Keys' third station (run W-Q) is Salt Air, the island band, before the radio goes off.
     await page.keyboard.press('r');
+    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
     await page.waitForTimeout(400);
     await page.keyboard.press('r');
+    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
     await page.waitForTimeout(400);
     const off = await heard(1000);
     await page.keyboard.press('r');

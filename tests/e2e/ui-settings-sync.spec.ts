@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { frames } from './lockstep';
 
 // The View and Radio rows follow the keys and the pad (the integration skeptic's mustFix 1,
 // 2026-10-01): C, gamepad d-pad up and R change the camera or the radio outside the rows. The row
@@ -110,7 +111,7 @@ test('after C, the View row shows Far, and picking Chase brings the chase camera
   await untilView(page, 'lowChase');
   console.log(`after picking Chase: camera ${JSON.stringify((await presentation(page)).camera)}`);
   // The pick sticks: a few frames later the camera is still on chase.
-  await page.waitForTimeout(500);
+  await frames(page, 10);
   expect((await presentation(page)).camera.view).toBe('lowChase');
   expect(problems).toEqual([]);
 });
@@ -131,6 +132,7 @@ test('after gamepad d-pad up, the View row shows Far, and picking Chase brings i
   await press(1);
   await untilView(page, 'farChase');
   await press(0);
+  // eslint-disable-next-line no-restricted-syntax -- debt: the pad is polled once a sim tick, so this should wait on ticks (as #344 did for the gamepad specs)
   await page.waitForTimeout(200);
   await openTab(page, 'display');
   const shown = await rowShows(page, 'view');

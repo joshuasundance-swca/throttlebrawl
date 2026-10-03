@@ -12,6 +12,16 @@ export function hashString(s: string): number {
   return h >>> 0;
 }
 
+/**
+ * A track's composition seed: its content reference (stable, unique) mixed with the optional
+ * `params.seed`, so renaming nothing and editing nothing keeps the song, and a new `seed` value
+ * rerolls it without a new id. (Here, not in radio-compose.ts, so radio.ts orders a playlist
+ * without pulling the composers into the first load.)
+ */
+export function trackSeed(ref: string, salt = 0): number {
+  return (hashString(ref) ^ Math.imul(salt >>> 0, 0x9e3779b1)) >>> 0;
+}
+
 /** mulberry32: a small seeded stream in [0, 1). Presentation only; never the sim's streams. */
 export function seededRandom(seed: number): () => number {
   let a = (seed ^ 0x3c6ef372) >>> 0;

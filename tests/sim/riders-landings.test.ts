@@ -4,7 +4,8 @@
 //
 // Forgiving landings (playtest 2, 2026-10-02: "It's too easy to crash after a jump"; the maintainer
 // picked "Forgiving landings"). A seeded batch of whole races on every region's routes, raced the way
-// the game races them, counts every landing (the player's and the rivals') and what became of it:
+// the game races them but with the optional world systems off (traffic, cops, road events: see
+// race() below), counts every landing (the player's and the rivals') and what became of it:
 // clean, wobble, a crash on the landing itself, or a crash within a second after it (the wobble's
 // shaky bike into a barrier, a car or the next crest). Two players ride: the dev bot, which flies
 // with the bars straight, and a "thumb" player, the bot with the steer it held at take-off still
@@ -15,7 +16,7 @@ import { lookup, registryFromGlob } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim, type SimEvent } from '../../src/sim/api';
-import { NO_ROAD_EVENTS } from './batch';
+import { ISOLATED } from './batch';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -73,9 +74,13 @@ function race(c: Case, seed: number, thumb: boolean) {
     eventId: c.event,
     ...(length ? { length } : {}),
     ...(route ? { route } : {}),
-    // W-P road events off: this counts landings, and an event reshuffles every seeded race (seed 1 or
-    // 2 with them on had the bot hit by traffic 1 s after a clean landing).
-    tuning: NO_ROAD_EVENTS,
+    // Isolated (R5, the determinism run, 2026-10-03): this counts landings, so every world system is
+    // off (ISOLATED in tests/sim/batch.ts) except the ground beside the road, where a jump can come
+    // down. Before, only road events, the patrol and the heat were off, and any other system that put
+    // a car or a cop after one wobble flipped this zero-tolerance count (road events did, #279 with
+    // #268; seed 1 or 2 had the bot hit by traffic 1 s after a clean landing). Traffic meeting a
+    // wobbling lander is an interaction, not the landing's judgment; the traffic lane owns that.
+    tuning: { ...ISOLATED, 'ground.offRoad': 1 },
   });
   const sim = createSim(config);
   const playerId = config.riders.findIndex((r) => r.controller.kind === 'player');
