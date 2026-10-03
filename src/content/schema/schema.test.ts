@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { GRUDGE_RULE_IDS } from '../../core';
 import {
   BIKE_CLASSES,
   ENTRY_SCHEMAS,
@@ -201,6 +202,20 @@ describe('content schema: the M2 formats', () => {
     expect(issues('event', event({ ...rewards, perAirtimeCash: -40 }))).toHaveLength(1);
     expect(issues('event', event({ ...rewards, perOncomingSecondCash: 2.5 }))).toHaveLength(1);
     expect(issues('event', event({ ...rewards, takedownComboScale: -1 }))).toHaveLength(1);
+  });
+
+  it("takes a grudge match's rival rule from the closed list, and only on a grudge match (run W-T)", () => {
+    const grudge = (rules: Record<string, unknown>) => ({
+      ...event({ byPlaceCash: [100] }),
+      kind: 'grudge-match',
+      rules: { rival: 'kevin-from-accounting', winBy: 'knockdowns', knockdownsToWin: 2, ...rules },
+    });
+    for (const rule of GRUDGE_RULE_IDS) expect(issues('event', grudge({ rule })), rule).toEqual([]);
+    expect(issues('event', grudge({}))).toEqual([]);
+    expect(issues('event', grudge({ rule: 'recount' }))).toHaveLength(1);
+    expect(issues('event', { ...event({ byPlaceCash: [100] }), rules: { rule: 'audit' } })).toEqual([
+      'rules/rule: only a grudge-match event plays by a rival rule (rules.rule)',
+    ]);
   });
 
   const barks = (line: Record<string, unknown>, defaults: Record<string, unknown> = {}) => ({
