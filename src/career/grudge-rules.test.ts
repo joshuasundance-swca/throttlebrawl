@@ -3,7 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { registryFromGlob } from '../content';
 import { DEFAULT_PROFILE } from '../save';
 import { GRUDGE_RULE_IDS } from '../sim/api';
-import { careerDefs, careerOf, eventPlan, startCareer, type CareerDef } from './index';
+import type { GrudgeRuleId } from '../sim/api';
+import {
+  careerDefs,
+  careerOf,
+  eventPlan,
+  objectiveText,
+  startCareer,
+  type CareerDef,
+  type EventPlan,
+} from './index';
 import { posterView, riderTexts, RULE_CARDS, ruleCard } from './show';
 
 // Grudges with rules (run W-T, the pitch deck's #14: "each tier closes on a grudge match played by
@@ -95,5 +104,66 @@ describe('the rule card on the poster', () => {
       line: 'He bills by the hit.',
     });
     expect(ruleCard(fake, keys, 'timber')).toEqual({ id: 'timber', ...RULE_CARDS.timber });
+  });
+});
+
+// The event card's objective line sits right under the rule card, so it must say what the rule
+// judges (live check, 2026-10-03: the Collab's card read "Most style at the line wins. Finishing
+// first is just content." and then "Beat Chad Speedwell to the line."; the race was won from 2nd
+// of 2 on style). What each rule's objective line must say, and must never say.
+const RULE_OBJECTIVE: Readonly<Record<GrudgeRuleId, { must: RegExp[]; mustNot: RegExp[] }>> = {
+  // His hits add knockdowns to the count, so the count is not the whole story.
+  audit: { must: [/knock .+ down/i, /per hit you take/i], mustNot: [/to the line/i] },
+  // He rides differently; the score is the usual grudge score.
+  'bad-connection': { must: [/beat .+ to the line|knock .+ down/i], mustNot: [] },
+  // Style at the line decides it, never the place.
+  collab: { must: [/style/i], mustNot: [/beat .+ to the line/i, /knock .+ down/i] },
+  // Fists do not count: only traffic and scenery fell him.
+  timber: { must: [/traffic or scenery/i], mustNot: [/knock \S.* down/i] },
+};
+
+describe("the card's objective line comes from the rule (live check, mustFix 4)", () => {
+  const ruled = DEFS.flatMap((d) =>
+    d.nodes.map((n) => ({ region: d.regionId, node: n.id, plan: eventPlan(REG, n.event) })),
+  ).filter((x) => x.plan.rules.rule !== undefined);
+
+  it('every grudge-rule event on a career map: no objective line contradicts its rule card', () => {
+    // Every rule is on some map, so none is left unchecked.
+    expect(new Set(ruled.map((x) => x.plan.rules.rule))).toEqual(new Set(GRUDGE_RULE_IDS));
+    for (const { node, plan } of ruled) {
+      const rule = plan.rules.rule as GrudgeRuleId;
+      const text = objectiveText(REG, plan);
+      for (const re of RULE_OBJECTIVE[rule].must) expect(text, `${node} (${rule})`).toMatch(re);
+      for (const re of RULE_OBJECTIVE[rule].mustNot) expect(text, `${node} (${rule})`).not.toMatch(re);
+    }
+  });
+
+  it('the cards read in plain words, rule by rule', () => {
+    const text = (region: string, node: string) => objectiveText(REG, planOf(def(region), node));
+    expect(text('san-francisco', 'collab')).toBe(
+      'Have more style cash than Chad Speedwell when you cross the line.',
+    );
+    expect(text('florida-keys', 'kevin-grudge')).toBe(
+      'Knock Kevin from Accounting down two times, plus one per hit you take (up to two more).',
+    );
+    expect(text('pacific-northwest', 'big-cut')).toBe(
+      'Beat Old Growth to the line, or knock Old Growth into traffic or scenery three times.',
+    );
+    expect(text('florida-keys', 'junkyard-hunt')).toBe(
+      'Beat Dial-Up to the line, or knock Dial-Up down two times.',
+    );
+  });
+
+  it('a rule played by knockdowns reads by the same rule (the race log judges it that way)', () => {
+    const byKnockdowns = (p: EventPlan): EventPlan => ({
+      ...p,
+      rules: { ...p.rules, winBy: 'knockdowns', knockdownsToWin: 2 },
+    });
+    // Timber by knockdowns still counts only traffic and scenery.
+    const timber = objectiveText(REG, byKnockdowns(planOf(def('pacific-northwest'), 'big-cut')));
+    expect(timber).toBe('Knock Old Growth into traffic or scenery two times.');
+    // The Collab by knockdowns is judged on knockdowns (race-log ignores the style rule then).
+    const collab = objectiveText(REG, byKnockdowns(planOf(def('san-francisco'), 'collab')));
+    expect(collab).toBe('Knock Chad Speedwell down two times.');
   });
 });
