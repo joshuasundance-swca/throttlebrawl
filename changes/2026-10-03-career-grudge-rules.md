@@ -1,5 +1,5 @@
 ---
-kind: added
+kind: new
 audience: player
 ---
 Grudge matches now play by the rival's own rule, said on the poster before the race (the pitch deck's #14, all `[default]` and vetoable):
