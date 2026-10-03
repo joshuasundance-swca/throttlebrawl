@@ -48,6 +48,8 @@ const PATTERNS: Record<string, Pattern> = {
     if (t < 21) a.kick = true;
   },
 };
+/** The control: the same take-over with the bars straight, and no air command. */
+const NO_COMMAND: Pattern = () => {};
 
 interface Case {
   event: string;
@@ -138,12 +140,21 @@ describe('forgiving landings: the brake or the kick held in the air on every rou
     it(`${name}: 0 jumps down`, () => {
       let held = 0;
       const down: string[] = [];
+      const road: string[] = [];
       for (const c of cases()) {
         const r = race(c, pattern);
         held += r.held;
-        down.push(...r.down);
+        if (r.down.length === 0) continue;
+        // A down that the control race (the same take-over, no command) also has, at the same tick
+        // for the same cause, is the road's, not the air command's: run W-U's Chinatown route meets
+        // an oncoming rental sedan 16 ticks after a clean landing whether or not anything is held.
+        // Run only when a race has a down, so a green run costs nothing extra.
+        const control = new Set(race(c, NO_COMMAND).down);
+        for (const d of r.down) (control.has(d) ? road : down).push(d);
       }
       print(`[landings-held] ${name}: ${down.length} of ${held} held jumps down, seed ${SEED}`);
+      if (road.length > 0)
+        print(`[landings-held] ${name}: also down without the command: ${road.join('; ')}`);
       // The check examined real held jumps, not races with none.
       expect(held).toBeGreaterThanOrEqual(MIN_HELD);
       expect(down).toEqual([]);
