@@ -1,0 +1,167 @@
+{
+  "type": "road",
+  "id": "osm-sf-union-crest",
+  "name": "Union Crest",
+  "realName": "Union Street",
+  "network": "osm-sf-russian-hill",
+  "from": "osm-sf-russian-hill-j5",
+  "to": "osm-sf-russian-hill-j6",
+  "lengthM": 127.9992,
+  "sampleSpacingM": 1.9999875,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 127.9992,
+      "side": "both",
+      "tag": "row-houses"
+    },
+    {
+      "s0": 0.0,
+      "s1": 127.9992,
+      "side": "both",
+      "tag": "painted-houses"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        299.6321, 297.6574, 295.6828, 293.7082, 291.7336, 289.7591, 287.7846, 285.8102, 283.8358, 281.8615,
+        279.8872, 277.913, 275.9388, 273.9647, 271.9906, 270.0166, 268.0426, 266.0686, 264.0947, 262.1208,
+        260.147, 258.1733, 256.1995, 254.2258, 252.2522, 250.2786, 248.305, 246.3315, 244.358, 242.3846,
+        240.4112, 238.4379, 236.4646, 234.4913, 232.518, 230.5449, 228.5717, 226.5986, 224.6255, 222.6525,
+        220.6795, 218.7065, 216.7335, 214.7606, 212.7877, 210.8147, 208.8417, 206.8686, 204.8951, 202.9212,
+        200.9464, 198.9703, 196.9921, 195.0109, 193.0256, 191.0352, 189.0395, 187.04, 185.0417, 183.0544,
+        181.0948, 179.1869, 177.3608, 175.6493, 174.083
+      ],
+      "y": [
+        68.9173, 69.1298, 69.3532, 69.5864, 69.8283, 70.0776, 70.3331, 70.5935, 70.8578, 71.1251, 71.3946,
+        71.6655, 71.9375, 72.2101, 72.483, 72.7562, 73.0295, 73.303, 73.5768, 73.851, 74.1257, 74.4011,
+        74.6772, 74.9542, 75.232, 75.5106, 75.7901, 76.0702, 76.3509, 76.6319, 76.9131, 77.1943, 77.4752,
+        77.7558, 78.0359, 78.3154, 78.5942, 78.8725, 79.1501, 79.427, 79.7034, 79.979, 80.2539, 80.5277,
+        80.8001, 81.0705, 81.3384, 81.6029, 81.8628, 82.1171, 82.3643, 82.6028, 82.8311, 83.0472, 83.2493,
+        83.4355, 83.6038, 83.7523, 83.8788, 83.9816, 84.0586, 84.108, 84.1281, 84.1171, 84.0737
+      ],
+      "z": [
+        -2740.685, -2740.3672, -2740.049, -2739.7305, -2739.4117, -2739.0927, -2738.7734, -2738.4537,
+        -2738.1338, -2737.8136, -2737.4931, -2737.1723, -2736.8513, -2736.5299, -2736.2083, -2735.8864,
+        -2735.5642, -2735.2417, -2734.919, -2734.5959, -2734.2727, -2733.9491, -2733.6253, -2733.3012,
+        -2732.9768, -2732.6522, -2732.3273, -2732.0022, -2731.6768, -2731.3512, -2731.0253, -2730.6992,
+        -2730.3728, -2730.0462, -2729.7193, -2729.3923, -2729.065, -2728.7374, -2728.4096, -2728.0816,
+        -2727.7535, -2727.4251, -2727.0965, -2726.7678, -2726.4391, -2726.1105, -2725.7823, -2725.4551,
+        -2725.1296, -2724.8071, -2724.4897, -2724.1808, -2723.8853, -2723.6108, -2723.3681, -2723.1718,
+        -2723.0408, -2722.9989, -2723.0735, -2723.2944, -2723.6908, -2724.2872, -2725.0994, -2726.1311,
+        -2727.3722
+      ],
+      "kappa": [
+        -8.3207e-5, -7.7979e-5, -7.4844e-5, -7.3261e-5, -7.2697e-5, -7.2698e-5, -7.2884e-5, -7.3087e-5,
+        -7.3191e-5, -7.3148e-5, -7.2951e-5, -7.2629e-5, -7.2242e-5, -7.1789e-5, -7.1297e-5, -7.0784e-5,
+        -7.0258e-5, -6.9736e-5, -6.9217e-5, -6.8695e-5, -6.8171e-5, -6.7641e-5, -6.71e-5, -6.6541e-5,
+        -6.5964e-5, -6.5365e-5, -6.4747e-5, -6.4112e-5, -6.3467e-5, -6.2815e-5, -6.2162e-5, -6.1514e-5,
+        -6.0871e-5, -6.0237e-5, -5.961e-5, -5.8991e-5, -5.8378e-5, -5.6838e-5, -5.4742e-5, -5.327e-5,
+        -4.9714e-5, -4.387e-5, -3.46e-5, -9.8226e-6, 3.8976e-5, 0.00011103, 0.00023225, 0.0004342, 0.00076533,
+        0.0012978, 0.0021338, 0.0034092, 0.0053043, 0.0080094, 0.011651, 0.016404, 0.022277, 0.029146,
+        0.036698, 0.044433, 0.051697, 0.057769, 0.061974, 0.063808, 0.063038
+      ],
+      "grade": [
+        0.10621, 0.10895, 0.11416, 0.1188, 0.1228, 0.12619, 0.12897, 0.13119, 0.13291, 0.13419, 0.13511,
+        0.13573, 0.13613, 0.13638, 0.13652, 0.13662, 0.13671, 0.13683, 0.137, 0.13723, 0.13752, 0.13787,
+        0.13827, 0.13869, 0.13912, 0.13953, 0.13989, 0.1402, 0.14042, 0.14055, 0.14059, 0.14053, 0.14038,
+        0.14017, 0.1399, 0.13959, 0.13928, 0.13896, 0.13864, 0.13833, 0.138, 0.13763, 0.13716, 0.13655,
+        0.13571, 0.13459, 0.13308, 0.1311, 0.12856, 0.12536, 0.12144, 0.11671, 0.1111, 0.10457, 0.097079,
+        0.088624, 0.079182, 0.068749, 0.057333, 0.044945, 0.031609, 0.017363, 0.0022691, -0.013583, -0.021684
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-sf-russian-hill.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+        "retrievedAt": "2026-10-03T16:36:41Z",
+        "sha256": "da84fc1b1394c66ae35c744aaa7ce6c522c4a7eb345c76bc5f545cf1b67f58ca"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear (line hills)",
+        "retrievedAt": "2026-10-03T16:41:12Z",
+        "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 58 points in 1 request(s) (lon, lat WGS84, sha256 7a960cdf229e2612), bilinear (line jones)",
+        "retrievedAt": "2026-10-03T16:41:32Z",
+        "sha256": "b3087b97520aa40310d54e64de738c32ea6d44212bb5c4bce2508cab40a281d1"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real San Francisco street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 8.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-sf-russian-hill.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

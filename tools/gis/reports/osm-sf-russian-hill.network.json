@@ -1,0 +1,91 @@
+{
+  "network": "osm-sf-russian-hill",
+  "lines": {
+    "hills": {
+      "lengthM": 5345.3,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "jones leave": 7.91,
+        "jones join": 8.4
+      },
+      "fun": {
+        "real_length_m": 5351.4,
+        "game_length_m": 5345.3,
+        "corners": 5,
+        "tightest_radius_m": 15.7,
+        "share_tighter_than_m": {
+          "50": 0.0239,
+          "100": 0.0339,
+          "200": 0.0557
+        },
+        "turn_deg_per_km": 82.9,
+        "elev_min_m": 10.0,
+        "elev_max_m": 94.8,
+        "climb_m": 210.5,
+        "descent_m": 210.7,
+        "max_grade_pct": 22.4,
+        "p95_grade_pct": 18.1,
+        "share_steeper_than_pct": {
+          "8": 0.4463,
+          "15": 0.1031
+        },
+        "launch_crests": 1,
+        "launch_speed_mps": 34.2,
+        "junctions": 62,
+        "junctions_per_km": 11.59,
+        "bridges_m": 20.9,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 6.9
+      }
+    },
+    "jones": {
+      "lengthM": 559.9,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "jones join": 6.52
+      },
+      "fun": {
+        "real_length_m": 564.8,
+        "game_length_m": 559.9,
+        "corners": 1,
+        "tightest_radius_m": 15.6,
+        "share_tighter_than_m": {
+          "50": 0.0535,
+          "100": 0.0677,
+          "200": 0.0802
+        },
+        "turn_deg_per_km": 166.4,
+        "elev_min_m": 25.9,
+        "elev_max_m": 67.0,
+        "climb_m": 18.8,
+        "descent_m": 41.1,
+        "max_grade_pct": 28.6,
+        "p95_grade_pct": 28.2,
+        "share_steeper_than_pct": {
+          "8": 0.5651,
+          "15": 0.2727
+        },
+        "launch_crests": 1,
+        "launch_speed_mps": 34.0,
+        "junctions": 5,
+        "junctions_per_km": 8.85,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 3.2
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-sf-jones",
+      "mainM": 560.0,
+      "branchM": 533.9,
+      "savesM": 26.1
+    }
+  ],
+  "routes": {
+    "osm-sf-hills-run": 5265.2
+  },
+  "roads": 14,
+  "junctions": 10
+}

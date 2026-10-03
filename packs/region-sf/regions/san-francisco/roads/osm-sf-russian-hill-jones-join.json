@@ -1,0 +1,143 @@
+{
+  "type": "road",
+  "id": "osm-sf-russian-hill-jones-join",
+  "name": "jones-join junction",
+  "realName": "Leavenworth Street",
+  "network": "osm-sf-russian-hill",
+  "from": "osm-sf-russian-hill-j7",
+  "to": "osm-sf-russian-hill-j7",
+  "lengthM": 40.0,
+  "sampleSpacingM": 2.0,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -4.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 4.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 40.0,
+      "side": "both",
+      "tag": "row-houses"
+    },
+    {
+      "s0": 0.0,
+      "s1": 40.0,
+      "side": "both",
+      "tag": "painted-houses"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        111.4521, 111.1397, 110.8269, 110.5137, 110.2, 109.8859, 109.5713, 109.2563, 108.9409, 108.6251,
+        108.309, 107.9928, 107.6766, 107.3604, 107.0443, 106.7283, 106.4123, 106.0963, 105.7804, 105.4644,
+        105.1485
+      ],
+      "y": [
+        46.9913, 46.7482, 46.517, 46.2988, 46.0943, 45.9035, 45.7261, 45.5609, 45.4064, 45.2603, 45.12,
+        44.9825, 44.8447, 44.7034, 44.5558, 44.3992, 44.2314, 44.0509, 43.8567, 43.6484, 43.4261
+      ],
+      "z": [
+        -3113.394, -3115.3695, -3117.3449, -3119.3202, -3121.2954, -3123.2706, -3125.2457, -3127.2208,
+        -3129.1957, -3131.1707, -3133.1455, -3135.1204, -3137.0952, -3139.07, -3141.0449, -3143.0198,
+        -3144.9947, -3146.9696, -3148.9444, -3150.9193, -3152.8942
+      ],
+      "kappa": [
+        -0.00010254, -0.00010673, -0.00011018, -0.00011237, -0.00011262, -0.0001108, -0.00010688, -0.00010127,
+        -9.4689e-5, -8.798e-5, -3.5931e-5, 1.2658e-5, 1.5091e-5, 1.5321e-5, 1.3672e-5, 1.0741e-5, 7.2348e-6,
+        3.8204e-6, 1.0046e-6, -9.2032e-7, -1.8742e-6
+      ],
+      "grade": [
+        -0.12155, -0.11857, -0.11234, -0.10568, -0.098821, -0.092045, -0.085645, -0.079921, -0.075156,
+        -0.071601, -0.06945, -0.068827, -0.069767, -0.072222, -0.076064, -0.081093, -0.087058, -0.093672,
+        -0.10064, -0.10766, -0.11116
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-sf-russian-hill.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
+        "retrievedAt": "2026-10-03T16:36:41Z",
+        "sha256": "da84fc1b1394c66ae35c744aaa7ce6c522c4a7eb345c76bc5f545cf1b67f58ca"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear (line hills)",
+        "retrievedAt": "2026-10-03T16:41:12Z",
+        "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 58 points in 1 request(s) (lon, lat WGS84, sha256 7a960cdf229e2612), bilinear (line jones)",
+        "retrievedAt": "2026-10-03T16:41:32Z",
+        "sha256": "b3087b97520aa40310d54e64de738c32ea6d44212bb5c4bce2508cab40a281d1"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real San Francisco street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 8.4 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-sf-russian-hill.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
