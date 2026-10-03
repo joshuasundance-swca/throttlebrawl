@@ -15,10 +15,10 @@
 // The primitives are radio-rig-kit.ts's; each note is one or two sources and a gain.
 import { createKit, midiHz, shaperCurve, type Kit } from './radio-rig-kit';
 import type { RadioNote } from './radio-compose';
-import type { RadioGenre, RadioRig, Timbre } from './radio-synth';
+import type { MoreGenre } from './radio-genres';
+import type { RadioRig, Timbre } from './radio-synth';
 
-export type MoreGenre = Extract<RadioGenre, 'island' | 'dub' | 'stoner' | 'ambient' | 'funk' | 'chip'>;
-export const MORE_GENRES: readonly MoreGenre[] = ['island', 'dub', 'stoner', 'ambient', 'funk', 'chip'];
+export { MORE_GENRES, type MoreGenre } from './radio-genres';
 
 /** Each rig's output trim, [default], set so every band plays at about the others' loudness (measured offline in tests/e2e/audio-radio.spec.ts). */
 export const MORE_TRIM: Readonly<Record<MoreGenre, number>> = {

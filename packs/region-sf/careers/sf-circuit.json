@@ -8,34 +8,10 @@
   "tutorialEvent": "sf-t1-pier-pressure",
   "firstRun": "race-first",
   "tiers": [
-    {
-      "id": "t1",
-      "name": "Seed Round",
-      "advance": {
-        "requiredWins": 2
-      }
-    },
-    {
-      "id": "t2",
-      "name": "Series A",
-      "advance": {
-        "requiredWins": 2
-      }
-    },
-    {
-      "id": "t3",
-      "name": "Series B",
-      "advance": {
-        "requiredWins": 2
-      }
-    },
-    {
-      "id": "t4",
-      "name": "The Down Round",
-      "advance": {
-        "requiredWins": 0
-      }
-    }
+    { "id": "t1", "name": "Seed Round", "advance": { "requiredWins": 2 } },
+    { "id": "t2", "name": "Series A", "advance": { "requiredWins": 2 } },
+    { "id": "t3", "name": "Series B", "advance": { "requiredWins": 2 } },
+    { "id": "t4", "name": "The Down Round", "advance": { "requiredWins": 0 } }
   ],
   "nodes": [
     {
@@ -43,10 +19,7 @@
       "event": "sf-t1-pier-pressure",
       "length": "standard",
       "tier": "t1",
-      "at": {
-        "road": "sf-pier-row",
-        "s": 40
-      },
+      "at": { "road": "sf-pier-row", "s": 40 },
       "opens": ["sf-switchback-street", "osm-sf-hyde"],
       "claims": ["sf-pier-row", "sf-cable-line-grade"]
     },
@@ -55,10 +28,7 @@
       "event": "sf-t1-ding-ding",
       "length": "standard",
       "tier": "t1",
-      "at": {
-        "road": "sf-cable-line-grade",
-        "s": 300
-      },
+      "at": { "road": "sf-cable-line-grade", "s": 300 },
       "requires": ["pier-pressure"],
       "opens": ["sf-painted-row"],
       "claims": ["sf-switchback-street"]
@@ -68,10 +38,7 @@
       "event": "sf-t1-collab",
       "length": "standard",
       "tier": "t1",
-      "at": {
-        "road": "osm-sf-hyde",
-        "s": 300
-      },
+      "at": { "road": "osm-sf-hyde", "s": 300 },
       "requires": ["pier-pressure"],
       "opens": ["osm-sf-california"],
       "claims": ["osm-sf-hyde"]
@@ -81,10 +48,7 @@
       "event": "sf-t2-meter",
       "length": "standard",
       "tier": "t2",
-      "at": {
-        "road": "osm-sf-california",
-        "s": 300
-      },
+      "at": { "road": "osm-sf-california", "s": 300 },
       "opens": ["osm-sf-columbus"],
       "claims": ["osm-sf-california", "osm-sf-kearny"]
     },
@@ -93,10 +57,7 @@
       "event": "sf-t2-russian-hill",
       "length": "standard",
       "tier": "t2",
-      "at": {
-        "road": "osm-sf-columbus",
-        "s": 200
-      },
+      "at": { "road": "osm-sf-columbus", "s": 200 },
       "claims": ["osm-sf-columbus", "osm-sf-union", "osm-sf-leavenworth"]
     },
     {
@@ -104,10 +65,7 @@
       "event": "sf-t2-stair-alley",
       "length": "standard",
       "tier": "t2",
-      "at": {
-        "road": "sf-stair-alley",
-        "s": 200
-      },
+      "at": { "road": "sf-stair-alley", "s": 200 },
       "opens": ["sf-fogline-climb"],
       "claims": ["sf-stair-alley", "sf-painted-row"]
     },
@@ -116,10 +74,7 @@
       "event": "sf-t3-twin-peaks",
       "length": "standard",
       "tier": "t3",
-      "at": {
-        "road": "osm-sf-upper-market",
-        "s": 300
-      },
+      "at": { "road": "osm-sf-upper-market", "s": 300 },
       "opens": ["osm-sf-twin-peaks-climb"],
       "claims": ["osm-sf-upper-market", "osm-sf-portola"]
     },
@@ -128,10 +83,7 @@
       "event": "sf-t3-gus-grudge",
       "length": "standard",
       "tier": "t3",
-      "at": {
-        "road": "sf-fogline-climb",
-        "s": 200
-      },
+      "at": { "road": "sf-fogline-climb", "s": 200 },
       "opens": ["sf-bridge-approach"],
       "claims": ["sf-fogline-climb"]
     },
@@ -140,10 +92,7 @@
       "event": "sf-t3-curb-authority",
       "length": "standard",
       "tier": "t3",
-      "at": {
-        "road": "sf-bridge-approach",
-        "s": 300
-      },
+      "at": { "road": "sf-bridge-approach", "s": 300 },
       "claims": ["sf-bridge-approach"]
     },
     {
@@ -151,11 +100,14 @@
       "event": "sf-boss-pivot",
       "length": "standard",
       "tier": "t4",
-      "at": {
-        "road": "osm-sf-twin-peaks-climb",
-        "s": 400
-      },
-      "claims": ["osm-sf-twin-peaks-climb"]
+      "at": { "road": "sf-dt-burn-rate-row", "s": 400 },
+      "claims": [
+        "sf-dt-founders-plaza",
+        "sf-dt-inference-ave",
+        "sf-dt-cable-crossing",
+        "sf-dt-burn-rate-row",
+        "sf-dt-campus-way"
+      ]
     }
   ],
   "boss": "down-round",
@@ -164,20 +116,14 @@
       "id": "stair-alley-cut",
       "kind": "shortcut",
       "name": "The stair alley",
-      "at": {
-        "road": "sf-stair-alley",
-        "s": 300
-      },
+      "at": { "road": "sf-stair-alley", "s": 300 },
       "ref": "sf-standard-run#sf-stair-alley"
     },
     {
       "id": "zero-day",
       "kind": "station",
       "name": "Zero Day, pirate radio",
-      "at": {
-        "road": "osm-sf-leavenworth",
-        "s": 300
-      },
+      "at": { "road": "osm-sf-leavenworth", "s": 300 },
       "ref": "sf-zero-day",
       "atFraction": 0.6
     },
@@ -185,10 +131,7 @@
       "id": "paper-bag",
       "kind": "stash",
       "name": "A seed round in a paper bag",
-      "at": {
-        "road": "sf-painted-row",
-        "s": 300
-      },
+      "at": { "road": "sf-painted-row", "s": 300 },
       "cash": 500
     }
   ],
@@ -202,35 +145,13 @@
     ]
   },
   "shop": [
-    {
-      "bike": "base:rustbucket-400",
-      "priceCash": 0,
-      "unlockTier": "t1"
-    },
-    {
-      "bike": "base:chopper",
-      "priceCash": 4000,
-      "unlockTier": "t1"
-    },
-    {
-      "bike": "base:streetfighter-750",
-      "priceCash": 6000,
-      "unlockTier": "t2"
-    },
-    {
-      "bike": "base:superbike-1000",
-      "priceCash": 16000,
-      "unlockTier": "t3"
-    }
+    { "bike": "base:rustbucket-400", "priceCash": 0, "unlockTier": "t1" },
+    { "bike": "base:chopper", "priceCash": 4000, "unlockTier": "t1" },
+    { "bike": "base:streetfighter-750", "priceCash": 6000, "unlockTier": "t2" },
+    { "bike": "base:superbike-1000", "priceCash": 16000, "unlockTier": "t3" }
   ],
   "paints": [
-    {
-      "id": "fog-grey",
-      "name": "Karl Grey",
-      "hex": "#b9bec4",
-      "priceCash": 300,
-      "unlockTier": "t1"
-    },
+    { "id": "fog-grey", "name": "Karl Grey", "hex": "#b9bec4", "priceCash": 300, "unlockTier": "t1" },
     {
       "id": "cable-car-maroon",
       "name": "Cable Car Maroon",
@@ -238,13 +159,7 @@
       "priceCash": 300,
       "unlockTier": "t1"
     },
-    {
-      "id": "burn-rate",
-      "name": "Burn Rate Orange",
-      "hex": "#ff6a13",
-      "priceCash": 500,
-      "unlockTier": "t2"
-    },
+    { "id": "burn-rate", "name": "Burn Rate Orange", "hex": "#ff6a13", "priceCash": 500, "unlockTier": "t2" },
     {
       "id": "unicorn",
       "name": "Unicorn Valuation Violet",
@@ -253,22 +168,10 @@
       "unlockTier": "t3"
     }
   ],
-  "unlocks": [
-    {
-      "grant": "base:mobility-scooter",
-      "when": {
-        "kind": "boss-beaten",
-        "ref": "down-round"
-      }
-    }
-  ],
+  "unlocks": [{ "grant": "base:mobility-scooter", "when": { "kind": "boss-beaten", "ref": "down-round" } }],
   "meta": {
     "status": "live",
     "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
-    "provenance": {
-      "origin": "agent",
-      "author": "agent",
-      "createdAt": "2026-10-02"
-    }
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
   }
 }

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { FAST_FORWARD_GUARD_MS, frames } from './lockstep';
 
 // ui-1's browser tests (docs/milestones/M1.md, ui-1): menu, race and results show a placing; the
 // pause screen opens and closes; the HUD elements are present; the settings page works (the mirror
@@ -16,6 +17,7 @@ interface Handle {
   playerId(): number;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
+  lockstep(steps: number | null): void;
 }
 interface TargetProbe {
   samples: number;
@@ -169,7 +171,15 @@ test('start, menu and settings: controls card, build id, sliders, and the mirror
   expect(problems).toEqual([]);
 });
 
+/**
+ * Ticks per drawn frame from the HUD checks to the results (app/loop.ts's lockstep, the determinism
+ * run's R4): the race no longer runs at the speed the runner draws, and the target bar is still
+ * examined on every drawn frame, about 160 of them for this seed. [default]
+ */
+const RIDE_LOCKSTEP = 32;
+
 test('a race: HUD, pause screen, tuning long-press, and results with a placing', async ({ page }) => {
+  // A hang guard: the ride to the results is about (its ticks / RIDE_LOCKSTEP) drawn frames.
   test.setTimeout(420_000);
   const problems = watchErrors(page);
   await page.goto('./');
@@ -184,12 +194,14 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   });
   await page.locator('#menu-race').click();
 
-  // The target bar follows the player's auto-target all race: sampled every 100 ms.
+  // The target bar follows the player's auto-target all race: sampled on every drawn frame (it was
+  // every 100 ms of wall time, which made the sample count the runner's speed).
   await page.evaluate(() => {
     const w = window as TestWindow;
     const probe: TargetProbe = { samples: 0, targeted: 0, shownWhileTargeted: 0, shownWithoutTarget: 0 };
     w.__targetProbe = probe;
-    setInterval(() => {
+    const sample = () => {
+      requestAnimationFrame(sample);
       const g = w.__game;
       const s = g?.snapshot();
       if (!g || !s || g.state() !== 'race') return;
@@ -205,7 +217,8 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
         probe.targeted++;
         if (shown) probe.shownWhileTargeted++;
       } else if (shown) probe.shownWithoutTarget++;
-    }, 100);
+    };
+    requestAnimationFrame(sample);
   });
 
   // The HUD.
@@ -231,7 +244,7 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await expect(page.locator('#pause-copy-report')).toBeVisible();
   await expect(page.locator('#touch-surface')).toBeHidden();
   // Paused, the sim stands still: your health bar must match your health in the snapshot.
-  await page.waitForTimeout(100); // a frame or two for the HUD to catch the last step
+  await frames(page, 2); // the HUD catches the last step on the next drawn frame
   const health = await page.evaluate(() => {
     const g = (window as TestWindow).__game;
     const me = g?.snapshot()?.entities[g.playerId()];
@@ -249,6 +262,7 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   if (build) {
     await page.mouse.move(build.x + build.width / 2, build.y + build.height / 2);
     await page.mouse.down();
+    // eslint-disable-next-line no-restricted-syntax -- a long-press: the build id's threshold is wall time by design
     await page.waitForTimeout(700);
     await page.mouse.up();
   }
@@ -264,12 +278,18 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
   await page.keyboard.press('Escape');
   await expect(page.locator('#pause-screen')).toBeHidden();
 
-  // Results. The whole race plays in real time, and a software-rendered CI runner draws the default
-  // look at about 100 ms a frame (p50; 200 ms p95), where the loop's 4 steps a frame run the sim at
-  // about 35-40 ticks a second. Seed 1's race became a 7,500-tick finish instead of a 6,300-tick
-  // bust when the road events landed (#268), and that needs about 207 s here (forced 100 ms frames,
-  // locally), past the old 200 s. Sized for a race up to about 9,900 ticks at 30 ticks a second.
-  await expect(page.locator('#results')).toBeVisible({ timeout: 330_000 });
+  // Results. The race used to play in real time to the line, and a software-rendered CI runner ran
+  // it at 25 to 40 ticks a second, so each content change walked the results wait (200 s, then
+  // 330 s) into its limit. Now it rides in lockstep, RIDE_LOCKSTEP ticks a drawn frame, still drawn.
+  // The start tick and the probe's count are read in the same task as the switch, so no drawn frame
+  // can fall between them (a frame there was counted in the ticks but not in the samples).
+  const { rideFrom, samplesBefore } = await page.evaluate((n) => {
+    const w = window as TestWindow;
+    w.__game?.lockstep(n);
+    return { rideFrom: w.__game?.snapshot()?.tick ?? 0, samplesBefore: w.__targetProbe?.samples ?? 0 };
+  }, RIDE_LOCKSTEP);
+  await expect(page.locator('#results')).toBeVisible({ timeout: FAST_FORWARD_GUARD_MS }); // a hang guard
+  const rideTo = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
   // A placing and its prize, or Busted and the fine (the batch rule: the seeded race's outcome
   // shifts whenever the sim changes, and both are results screens).
   await expect(page.locator('#results-place')).toHaveText(/^(\d+(st|nd|rd|th) of \d+|Busted)$/);
@@ -283,8 +303,21 @@ test('a race: HUD, pause screen, tuning long-press, and results with a placing',
 
   // The target bar: shown while there is a target, hidden otherwise (a frame of lag allowed).
   const probe = (await page.evaluate(() => (window as TestWindow).__targetProbe)) as TargetProbe;
-  console.log(`target bar probe: ${JSON.stringify(probe)}`);
-  expect(probe.samples).toBeGreaterThan(100);
+  // Every drawn frame of the ride that left the race running was examined. The ride's frames each
+  // step RIDE_LOCKSTEP ticks, the last one fewer if the race ends inside it, so there are
+  // ceil(ticks / RIDE_LOCKSTEP) of them. The last one ends the race, and the probe (which only
+  // samples during a race) may not see it: when the race ended on that frame's final tick, the
+  // old floor() counted it, and seed 110 did exactly that on CI (ticks 215 to 6935, 210 x 32: 209
+  // samples). The count is still the race's, not the runner's.
+  const rideFrames = Math.ceil((rideTo - rideFrom) / RIDE_LOCKSTEP) - 1;
+  console.log(
+    `target bar probe: ${JSON.stringify(probe)}; the ride: ticks ${rideFrom} to ${rideTo}, ${rideFrames} frames at ${RIDE_LOCKSTEP} ticks`,
+  );
+  expect(rideFrames, 'the ride to the results is a real race').toBeGreaterThan(30);
+  expect(
+    probe.samples - samplesBefore,
+    'the bar examined on every drawn frame of the ride',
+  ).toBeGreaterThanOrEqual(rideFrames);
   expect(probe.shownWhileTargeted).toBeGreaterThanOrEqual(Math.floor(probe.targeted * 0.9));
   expect(probe.shownWithoutTarget).toBeLessThanOrEqual(Math.ceil(probe.samples * 0.02));
   if (probe.targeted === 0) console.log('target bar probe: the player never had a target; bar unexamined');

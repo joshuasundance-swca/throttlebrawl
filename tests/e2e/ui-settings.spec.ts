@@ -4,6 +4,7 @@ import { tiltAngleFromEuler } from '../../src/input/devices/tilt.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import type { SimEvent, SimInput } from '../../src/sim/types.ts';
 import { grainShare } from './pixels';
+import { frames } from './lockstep';
 
 // ui-2's browser tests (docs/milestones/M2.md, ui-2): the pause menu lists exactly the decided
 // entries, the tuning entry is hidden by default and shown when enabled, "Controls and HUD" opens
@@ -182,7 +183,7 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
   await expect(page.locator('#settings-mirror')).toBeVisible();
   expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
   const tick = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? -1);
-  await page.waitForTimeout(300);
+  await frames(page, 20); // drawn frames, the loop's unit (it was 300 ms of wall time)
   expect(
     await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? -1),
     'the race stays paused behind the settings',
@@ -387,6 +388,7 @@ async function raceUntilHapticEvent(page: Page) {
         ).length;
     }, from);
   await expect.poll(count, { timeout: 120_000, intervals: [500] }).toBeGreaterThan(0);
+  // eslint-disable-next-line no-restricted-syntax -- debt: the buzz goes out in the event's own step, so this should wait a drawn frame
   await page.waitForTimeout(300);
   return {
     events: await count(),
@@ -447,6 +449,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         Math.round((127 * (a - t.tiltDeadZoneDeg)) / (t.tiltFullLockDeg / sens - t.tiltDeadZoneDeg));
       await tiltTo(page, 0, 0);
       await tiltTo(page, 8, 8);
+      // eslint-disable-next-line no-restricted-syntax -- debt: the tilt filter settles per input sample (sim ticks), so this should wait on ticks
       await page.waitForTimeout(800); // the tilt filter (0.1 s) settles
       const last = await waitLast(page, (s) => s.steer !== 0);
       console.log(
@@ -635,8 +638,10 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         const me = g?.snapshot()?.entities[g.playerId()];
         return !!me && me.speed < 0.3;
       });
+      // eslint-disable-next-line no-restricted-syntax -- the camera's springs settle in drawn-frame time (the render's dt is wall time)
       await page.waitForTimeout(500);
       const helmet = await page.locator('canvas#game').screenshot();
+      // eslint-disable-next-line no-restricted-syntax -- the camera's springs settle in drawn-frame time (the render's dt is wall time); two shots this far apart must match
       await page.waitForTimeout(300);
       const helmetAgain = await page.locator('canvas#game').screenshot();
       await page.keyboard.press('Escape');
@@ -645,6 +650,7 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       await page.locator('#settings-view [data-value="chase"]').click();
       await page.locator('#settings-back').click();
       await page.locator('#pause-resume').click();
+      // eslint-disable-next-line no-restricted-syntax -- the camera's springs settle in drawn-frame time (the render's dt is wall time)
       await page.waitForTimeout(600); // the springs settle on the chase framing
       const chase = await page.locator('canvas#game').screenshot();
       mkdirSync('test-results/screenshots', { recursive: true });
@@ -688,8 +694,10 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
     effect: async (page) => {
       await raceAlone(page);
+      // eslint-disable-next-line no-restricted-syntax -- the radio starts on the audio clock, which is wall time
       await page.waitForTimeout(500);
       await page.evaluate(() => ((window as TestWindow).__plucks = []));
+      // eslint-disable-next-line no-restricted-syntax -- audio plays on the audio clock, which is wall time
       await page.waitForTimeout(2000);
       const d = await page.evaluate(() => (window as TestWindow).__plucks ?? []);
       const strings = d.filter((v) => [0.45, 0.6, 0.8, 0.9, 1.1, 1.2, 1.3].includes(v)).length;

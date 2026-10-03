@@ -513,6 +513,16 @@ const SKIRT_RUN_M = [6, 90] as const;
 const SKIRT_FLAT_M = [70, 35, 12, 0] as const;
 /** No skirt ground within this many metres of another road's water. [default] */
 const SKIRT_WATER_CLEAR_M = 22;
+/**
+ * Another road is looked for under the skirt every this many metres across it, m. (Bundle 1: two
+ * looks, at the slope's middle and foot, missed SF's Park Cut running between them in the valley
+ * below the Fogline Climb, so the climb's slope buried the cut.) [default]
+ */
+const SKIRT_ROAD_PROBE_M = 8;
+/** Likewise across the land strip (the cut also ran inside the climb's strip, at its edge). [default] */
+const STRIP_ROAD_PROBE_M = 4;
+/** A road this far or more below another's height is one its land would bury, m. [default] */
+const BURIED_M = 1.5;
 /** The skirt keeps one road sample in this many. [default] */
 const SKIRT_EVERY = 3;
 /** A far conifer's trunk and the drawn ground it needs round it, as (s, d-outward) offsets, m. */
@@ -948,6 +958,23 @@ export function buildRoadScene(
         o.dMax + VERGE_M + margin,
       ]);
     };
+    /**
+     * Whether another road runs under (s, d) well below this road (BURIED_M or more), where this
+     * road's land would bury it. A road at about this road's height (a merge, a junction) is not.
+     */
+    const lowerRoadAt = (s: number, d: number, margin: number) => {
+      const p = w(e.index, s, d, 0);
+      const top = w(e.index, s, 0, 0).y - BURIED_M;
+      return locator.covered(p.x, p.z, e.index, (o, os) =>
+        w(o.index, os, 0, 0).y < top ? [o.dMin - VERGE_M - margin, o.dMax + VERGE_M + margin] : null,
+      );
+    };
+    /** No lower road under the land strip anywhere from d0 out to d1 (looked for every few metres). */
+    const stripClear = (s: number, side: -1 | 1, d0: number, d1: number) => {
+      for (let d = d0 + STRIP_ROAD_PROBE_M; d < d1; d += STRIP_ROAD_PROBE_M)
+        if (lowerRoadAt(s, side * d, 1)) return false;
+      return true;
+    };
     const step = ss.length > 1 ? e.length / (ss.length - 1) : e.length;
     const reachOf: Record<-1 | 1, number[]> = { [-1]: [], [1]: [] };
     landOf[e.index] = { step, reach: reachOf };
@@ -992,11 +1019,18 @@ export function buildRoadScene(
         const p = w(e.index, s, side * d, 0);
         return !nearWater(p.x, p.z, SKIRT_WATER_CLEAR_M);
       };
+      /** No lower road under the skirt anywhere from d0 out to d1 (water is looked for by `free`). */
+      const noRoad = (d0: number, d1: number) => {
+        for (let d = d0 + SKIRT_ROAD_PROBE_M; d < d1; d += SKIRT_ROAD_PROBE_M)
+          if (lowerRoadAt(s, side * d, 2)) return false;
+        return true;
+      };
       const foot = outer + r + run;
-      if (run > room || !free(outer + r + run / 2) || !free(foot)) return null;
+      if (run > room || !free(outer + r + run / 2) || !free(foot) || !noRoad(outer + r, foot)) return null;
       for (const flat of SKIRT_FLAT_M) {
         if (run + flat > room) continue;
-        if (flat === 0 || (free(foot + flat / 2) && free(foot + flat))) return { run, flat };
+        if (flat === 0 || (free(foot + flat / 2) && free(foot + flat) && noRoad(foot, foot + flat)))
+          return { run, flat };
       }
       return null;
     };
@@ -1032,7 +1066,11 @@ export function buildRoadScene(
           for (const width of [SCENERY_LAND_M, 14, 6]) {
             if (width > room) continue;
             const d = outer + width + SCENERY_SHELF_M;
-            if (!otherRoadAt(s, side * d, 1) && !otherRoadAt(s, side * (outer + width / 2), 1)) {
+            if (
+              !otherRoadAt(s, side * d, 1) &&
+              !otherRoadAt(s, side * (outer + width / 2), 1) &&
+              stripClear(s, side, outer, d)
+            ) {
               r = width;
               break;
             }

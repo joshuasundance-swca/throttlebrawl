@@ -8,6 +8,12 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // a placing, the start, midway and finish screenshots are not blank, every mover is valid at every
 // tick, and the draw-call, triangle and frame-time numbers are printed with the renderer string.
 //
+// This is the one race drawn in full (the determinism run, 2026-10-03): it rides in lockstep at
+// LOCKSTEP ticks a frame (app/loop.ts), every frame drawn, so it no longer runs at the speed the
+// runner happens to draw, and frame k always shows tick k * LOCKSTEP. The other whole-race specs
+// fast-forward through the middle. Its waits are hang guards, not measurements of the race. The
+// race's debug file is saved to test-results/ so a failure can be replayed in Node.
+//
 // Assertions switch on with the feature that makes them possible, and print ACTIVE or NOT ACTIVE
 // with the reason, so a switched-off check never reads as a pass:
 // - an attack connects: on since combat-1. Whether the bot's punch lands in ONE seeded race is luck
@@ -24,6 +30,8 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 interface Checks {
   ticks: number;
   playerEdges: number[];
+  playerRideBacks: number;
+  firstRideBack: string | null;
   invalidTicks: number;
   firstInvalid: string | null;
   events: Record<string, number>;
@@ -62,6 +70,7 @@ interface Handle {
   rendererStats(): Stats;
   frameStats(): { samples: number; p50: number; p95: number; max: number };
   debugFileText(): string;
+  lockstep(steps: number | null): void;
   checkDebugFile(text: string): {
     ticks: number;
     checked: number;
@@ -84,7 +93,14 @@ interface AttackRun {
   shortcutTicks: number;
   over: boolean;
 }
-type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle };
+type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __frameTicks?: number[] };
+
+/**
+ * Ticks per drawn frame for the whole race. A software-rendered CI runner draws 7 to 19 frames a
+ * second, so real time ran 4 ticks a frame (the loop's cap) and an 8,700-tick race needed about
+ * 350 s; at 8 every frame is still drawn and the race needs half the frames. [default]
+ */
+const LOCKSTEP = 8;
 
 /** Extra seeds for the "an attack connects" check, run headless in the page after the race. */
 const ATTACK_SEEDS = [2, 3, 4, 5, 6, 7];
@@ -114,10 +130,8 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
 };
 
 test('the bot races to results with a placing at phone landscape', async ({ page }, testInfo) => {
-  // The race itself takes most of this, and its length is one seed's luck: on CI (SwiftShader) main
-  // ran this test in 5.3 and then 5.8 of the old 6 minutes. When a sim change made the bot miss the
-  // boat-ramp shortcut (keys traffic, 2026-10-02: 8712 ticks instead of 8006), the race alone took
-  // 5.6 minutes and the takedown runs timed out. 8 minutes leaves room for the long way round.
+  // A hang guard. The race costs about (its ticks / LOCKSTEP) drawn frames: about 1,100 frames for
+  // bundle 1's 8,726-tick race, which ran out the old real-time test at 6.1 minutes.
   test.setTimeout(480_000);
   const problems: string[] = [];
   page.on('console', (msg) => {
@@ -146,25 +160,78 @@ test('the bot races to results with a placing at phone landscape', async ({ page
 
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
-  await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
+  await page.evaluate((n) => {
+    const w = window as TestWindow;
+    w.__game?.setBot(true);
+    w.__game?.lockstep(n);
+    // The race's tick at every drawn frame, to prove the lockstep held (one rAF callback per frame,
+    // like the loop's own).
+    const ticks: number[] = [];
+    w.__frameTicks = ticks;
+    const sample = () => {
+      const g = w.__game;
+      if (g?.state() === 'race') ticks.push(g.snapshot()?.tick ?? 0);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, LOCKSTEP);
   await page.locator('#menu-race').click();
   await expect(page.locator('#hud-position')).toBeVisible();
 
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 60);
   await shoot('start');
-  await page.waitForFunction(
-    () => {
+  const startedAt = Date.now();
+  // Where the race stands (bundle 1: twice the bot was not halfway at 200 s, while each part alone
+  // got there in 111 to 140 s and a headless race of the same seed is halfway by tick 3500): the
+  // sim's tick and its rate per wall second tell a slow page from a slow race.
+  const where = async () => {
+    const s = await page.evaluate<{ tick: number; progress: number; length: number }>(() => {
       const g = (window as TestWindow).__game;
-      const s = g?.snapshot();
-      const me = g && s ? s.entities[g.playerId()] : undefined;
-      return !!s && !!me && me.progress > s.race.routeLength / 2;
-    },
-    null,
-    { timeout: 200_000, polling: 250 },
-  );
+      const snap = g?.snapshot();
+      const me = g && snap ? snap.entities[g.playerId()] : undefined;
+      return { tick: snap?.tick ?? 0, progress: me?.progress ?? 0, length: snap?.race.routeLength ?? 0 };
+    });
+    const wallS = (Date.now() - startedAt) / 1000;
+    const frames = await page.evaluate(() => (window as TestWindow).__game?.frameStats() ?? null);
+    return `tick ${s.tick} at ${wallS.toFixed(0)} s after the start shot (taken past tick 60), progress ${s.progress.toFixed(0)} of ${s.length.toFixed(0)} m, frames ${JSON.stringify(frames)}`;
+  };
+  try {
+    await page.waitForFunction(
+      () => {
+        const g = (window as TestWindow).__game;
+        const s = g?.snapshot();
+        const me = g && s ? s.entities[g.playerId()] : undefined;
+        return !!s && !!me && me.progress > s.race.routeLength / 2;
+      },
+      null,
+      { timeout: 300_000, polling: 250 }, // a hang guard: about 550 frames in lockstep
+    );
+  } catch (e) {
+    console.log(`not halfway: ${await where()}`);
+    throw e;
+  }
+  console.log(`halfway: ${await where()}`);
   await shoot('midway');
-  await expect(page.locator('#results')).toBeVisible({ timeout: 200_000 });
+  await expect(page.locator('#results')).toBeVisible({ timeout: 300_000 }); // a hang guard
   await shoot('finish');
+  // The race's debug file, for replaying a failure in Node (the bot is a pure function of the
+  // snapshot, so a headless bot race from this file's header retraces the browser race).
+  writeFileSync(
+    `test-results/bot-race-debug-${testInfo.project.name}.txt`,
+    await page.evaluate(() => (window as TestWindow).__game?.debugFileText() ?? ''),
+  );
+
+  // Every drawn frame of the race stepped exactly LOCKSTEP ticks (the last may stop early, where
+  // the race ended inside it).
+  const frameTicks = await page.evaluate(() => (window as TestWindow).__frameTicks ?? []);
+  const steps = frameTicks.slice(1).map((t, i) => t - (frameTicks[i] ?? 0));
+  const offStep = steps.slice(0, -1).filter((d) => d !== LOCKSTEP);
+  console.log(
+    `[assert] lockstep: ${frameTicks.length} frames drawn while racing, ${steps.length - offStep.length} of ${steps.length} steps of ${LOCKSTEP} ticks; ` +
+      `others ${JSON.stringify(offStep.slice(0, 10))}, last ${steps.at(-1)}`,
+  );
+  expect(frameTicks.length, 'the race was drawn frame by frame').toBeGreaterThan(100);
+  expect(offStep, `every drawn frame stepped ${LOCKSTEP} ticks`).toEqual([]);
 
   const placing = (await page.locator('#results-place').textContent()) ?? '';
   console.log(`results: ${placing} · ${(await page.locator('#results-prize').textContent()) ?? ''}`);
@@ -176,9 +243,17 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   console.log(`race checks: ${JSON.stringify(checks)}`);
   expect(checks.ticks).toBeGreaterThan(600);
   expect(checks.invalidTicks, checks.firstInvalid ?? '').toBe(0);
-  // Crossed at least one junction, and never went back to an edge it had left.
+  // Crossed at least one junction, and never rode back onto an edge it had left. A crash may throw
+  // the bot back across a join, and after the remount it rides that edge again, forward: so the rule
+  // is per step, riding on both ticks (dev/handle's edge watch; the old "no edge twice" check failed
+  // on 0>11>12>13>4>5>4>5 after 9 crashes, inventory R3). A finished race ends on the furthest edge
+  // it reached (ui-route-picker's rule); a bust may stop it anywhere.
   expect(checks.playerEdges.length).toBeGreaterThanOrEqual(2);
-  expect(new Set(checks.playerEdges).size).toBe(checks.playerEdges.length);
+  expect(checks.playerRideBacks, checks.firstRideBack ?? '').toBe(0);
+  if (placing !== 'Busted') {
+    const furthest = [...new Set(checks.playerEdges)].at(-1);
+    expect(checks.playerEdges.at(-1), 'the race ends on the furthest edge reached').toBe(furthest);
+  }
   // The race ended: someone finished, or the bot was busted (a bust ends the race at once).
   expect((checks.events['finish'] ?? 0) + (checks.events['bust'] ?? 0)).toBeGreaterThan(0);
 

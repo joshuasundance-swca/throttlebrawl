@@ -227,6 +227,14 @@ const NEAR_PANELS = 480;
 const NEAR_CLUMPS = 420;
 /** The near sets refill when the camera has moved this far, m. */
 const REFILL_M = 12;
+/**
+ * Given the camera's aim, fences and ferns more than this far behind the camera are left out of
+ * the near sets, m (main-green-4, 2026-10-02: at the perf probe's tick 840, 217 of the 394 fence
+ * panels drawn stood more than 10 m behind the rider). Nothing behind the camera is on screen.
+ */
+export const VERGE_BEHIND_M = 6;
+/** The near sets also refill when the camera has turned this far since they were filled. */
+const REFILL_TURN_COS = Math.cos((15 * Math.PI) / 180);
 
 /** A pool of short-lived coloured particles in one instanced mesh; boards also tumble. */
 class Pool {
@@ -371,6 +379,9 @@ export class VergeLayer {
   /** Where the near sets were last filled (NaN: never), and whether a smash wants a refill. */
   private filledX = NaN;
   private filledZ = NaN;
+  /** The camera's aim (unit, on the ground) when they were filled; 0, 0 = none given. */
+  private filledFx = 0;
+  private filledFz = 0;
   private dirty = true;
 
   constructor(
@@ -521,16 +532,21 @@ export class VergeLayer {
     return n;
   }
 
-  /** Refills the near fence panels and fern clumps around the camera. */
-  private refill(cameraX: number, cameraZ: number): void {
+  /**
+   * Refills the near fence panels and fern clumps around the camera: inside VERGE_DRAW_M and, given
+   * an aim (fx, fz: unit, on the ground), no more than VERGE_BEHIND_M behind the camera.
+   */
+  private refill(cameraX: number, cameraZ: number, fx: number, fz: number): void {
     const r2 = VERGE_DRAW_M * VERGE_DRAW_M;
+    const near = (x: number, z: number) => {
+      const dx = x - cameraX;
+      const dz = z - cameraZ;
+      return dx * dx + dz * dz <= r2 && dx * fx + dz * fz >= -VERGE_BEHIND_M;
+    };
     let n = 0;
     for (const p of this.panels) {
       if (n >= NEAR_PANELS) break;
-      if (p.broken) continue;
-      const dx = p.at.x - cameraX;
-      const dz = p.at.z - cameraZ;
-      if (dx * dx + dz * dz > r2) continue;
+      if (p.broken || !near(p.at.x, p.at.z)) continue;
       this.fenceMesh.setMatrixAt(n++, p.m);
     }
     this.fenceMesh.count = n;
@@ -539,9 +555,7 @@ export class VergeLayer {
     let k = 0;
     for (const c of this.clumps) {
       if (k >= NEAR_CLUMPS) break;
-      const dx = c.x - cameraX;
-      const dz = c.z - cameraZ;
-      if (dx * dx + dz * dz > r2) continue;
+      if (!near(c.x, c.z)) continue;
       this.brushMesh.setMatrixAt(k++, c.m);
     }
     this.brushMesh.count = k;
@@ -549,20 +563,45 @@ export class VergeLayer {
     this.brushMesh.instanceMatrix.needsUpdate = true;
     this.filledX = cameraX;
     this.filledZ = cameraZ;
+    this.filledFx = fx;
+    this.filledFz = fz;
     this.dirty = false;
   }
 
   /**
-   * Per frame: the near fences and ferns refill as the camera moves, the riders on loose ground kick
-   * up their surface, the queued events burst, and a rider out past a fence line breaks it as it goes.
+   * Per frame: the near fences and ferns refill as the camera moves or turns, the riders on loose
+   * ground kick up their surface, the queued events burst, and a rider out past a fence line breaks
+   * it as it goes. `aimX`, `aimZ` is where the camera looks (its look-at point); without it nothing
+   * is left out for standing behind the camera.
    */
-  update(cameraX: number, cameraZ: number, snap: SimSnapshot | null, dt: number): void {
+  update(
+    cameraX: number,
+    cameraZ: number,
+    snap: SimSnapshot | null,
+    dt: number,
+    aimX?: number,
+    aimZ?: number,
+  ): void {
     if (snap) {
       for (const ev of this.pending.splice(0)) this.burst(ev, snap);
       for (const e of snap.entities) if (e.kind === 'rider') this.rideFeel(e, dt);
     } else this.pending.length = 0;
+    let fx = 0;
+    let fz = 0;
+    if (aimX !== undefined && aimZ !== undefined) {
+      const len = Math.hypot(aimX - cameraX, aimZ - cameraZ);
+      if (len > 1e-3) {
+        fx = (aimX - cameraX) / len;
+        fz = (aimZ - cameraZ) / len;
+      }
+    }
     const moved = Math.hypot(cameraX - this.filledX, cameraZ - this.filledZ);
-    if (this.dirty || !(moved < REFILL_M)) this.refill(cameraX, cameraZ);
+    // A turn past REFILL_TURN_COS (or an aim given or dropped) refills too: what was behind may now
+    // be in view.
+    const turned = fx * this.filledFx + fz * this.filledFz < REFILL_TURN_COS;
+    const aimChanged = (fx === 0 && fz === 0) !== (this.filledFx === 0 && this.filledFz === 0);
+    if (this.dirty || !(moved < REFILL_M) || aimChanged || (turned && (fx !== 0 || fz !== 0)))
+      this.refill(cameraX, cameraZ, fx, fz);
     this.dust.update(dt);
     this.boards.update(dt);
   }

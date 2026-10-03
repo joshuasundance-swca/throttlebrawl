@@ -28,7 +28,6 @@ import { composeMore, MORE_PRESETS } from './radio-compose-more';
 import { composeRegional, REGIONAL_PRESETS } from './radio-compose-regional';
 import {
   finish,
-  hashString,
   humanize,
   keyRoot,
   nearestOf,
@@ -39,7 +38,7 @@ import {
   seededRandom,
 } from './radio-util';
 
-export { hashString, keyRoot, seededRandom } from './radio-util';
+export { hashString, keyRoot, seededRandom, trackSeed } from './radio-util';
 
 export const RADIO_PRESETS = ['surf-trio', 'rockabilly-trio', ...REGIONAL_PRESETS, ...MORE_PRESETS] as const;
 export type RadioPreset = (typeof RADIO_PRESETS)[number];
@@ -111,15 +110,6 @@ export interface Composition {
 export interface ProceduralSpec {
   preset: string;
   params?: Readonly<Record<string, unknown>>;
-}
-
-/**
- * A track's composition seed: its content reference (stable, unique) mixed with the optional
- * `params.seed`, so renaming nothing and editing nothing keeps the song, and a new `seed` value
- * rerolls it without a new id.
- */
-export function trackSeed(ref: string, salt = 0): number {
-  return (hashString(ref) ^ Math.imul(salt >>> 0, 0x9e3779b1)) >>> 0;
 }
 
 /** Composes a track. Unknown presets return null (the station skips the track). */

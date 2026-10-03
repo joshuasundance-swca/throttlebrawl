@@ -55,6 +55,7 @@ export const PEDS_TUNING: readonly TuningParamDecl[] = [
     step: 0.05,
     unit: '',
     affectsSim: true,
+    system: true,
   },
   {
     // M3 traffic-4 (head start): a scale on a big animal's reaction range. 1 = it dives as early as

@@ -89,6 +89,7 @@ async function holdTouch(page: Page, x: number, y: number, ms: number) {
       };
       window.dispatchEvent(new PointerEvent('pointerdown', init));
       return new Promise<void>((done) =>
+        // eslint-disable-next-line no-restricted-syntax -- a long-press hold: the veto's threshold is wall time by design
         setTimeout(() => {
           window.dispatchEvent(new PointerEvent('pointerup', init));
           done();
@@ -131,6 +132,7 @@ test('long-pressing a bark bubble cuts the line, and the copied debug report lis
   expect(seen.ref).toMatch(/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/);
   await page.mouse.move(seen.x, seen.y);
   await page.mouse.down();
+  // eslint-disable-next-line no-restricted-syntax -- a long-press hold: the veto's threshold is wall time by design
   await page.waitForTimeout(650);
   await expect(menu).toBeVisible();
   await page.mouse.up();

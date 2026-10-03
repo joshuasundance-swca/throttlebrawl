@@ -14,9 +14,9 @@ import {
   trackSeed,
   type Composition,
 } from './radio-compose';
+import { composeFor, RADIO_BAND } from './radio-band';
 import { pluckBuffer } from './radio-synth';
 import {
-  composeFor,
   createRadioPlayer,
   cutFlag,
   playlist,
@@ -289,6 +289,7 @@ describe('the playlist and the veto', () => {
     const player = createRadioPlayer(ctx as unknown as BaseAudioContext, out as unknown as AudioNode, {
       seed: 9,
       loopsPerTrack: 1,
+      band: RADIO_BAND,
     });
     player.select(s);
     for (let t = 0; t < 150; t += 0.1) {
@@ -309,6 +310,7 @@ describe('the playlist and the veto', () => {
       {
         seed: 3,
         loopsPerTrack: 1,
+        band: RADIO_BAND,
       },
     );
     player.select(s);
@@ -321,6 +323,44 @@ describe('the playlist and the veto', () => {
     }
     expect(player.history().filter((r) => r === first)).toHaveLength(1);
     expect(cutFlag(first, 'race-1', 12.7)).toEqual({ contentRef: first, raceId: 'race-1', tick: 12 });
+  });
+
+  // main-green-4: the band is a lazy chunk. Tuned before it arrives, the player keeps the station
+  // and plays nothing; when it lands, the station starts from the top of its playlist.
+  it('a station tuned before the lazy band arrives waits silent, then plays from the top', async () => {
+    const s = station('keys-surf');
+    const ctx = new FakeAudioContext();
+    let deliver: (b: typeof RADIO_BAND) => void = () => undefined;
+    const band = new Promise<typeof RADIO_BAND>((resolve) => (deliver = resolve));
+    const player = createRadioPlayer(
+      ctx as unknown as BaseAudioContext,
+      ctx.createGain() as unknown as AudioNode,
+      {
+        seed: 3,
+        band,
+      },
+    );
+    player.select(s);
+    const nodes = ctx.nodes.length;
+    for (let t = 0; t < 1; t += 0.1) {
+      ctx.currentTime = t;
+      player.pump(t, true);
+    }
+    expect(player.station()?.id).toBe('keys-surf');
+    expect(player.nowPlaying()).toBeNull();
+    expect(player.playing()).toBe(false);
+    expect(ctx.nodes.length).toBe(nodes);
+    deliver(RADIO_BAND);
+    await band;
+    const top = playlist(s, 3, new Set())[0]!.ref;
+    expect(player.nowPlaying()?.ref).toBe(top);
+    for (let t = 1; t < 2; t += 0.1) {
+      ctx.currentTime = t;
+      player.pump(t, true);
+    }
+    expect(player.playing()).toBe(true);
+    expect(ctx.nodes.length).toBeGreaterThan(nodes);
+    expect(player.history()).toEqual([top]);
   });
 });
 
@@ -337,6 +377,7 @@ describe('the radio in the mixer', () => {
       createContext: create,
       radioKeys: keys,
       radioSeed: 5,
+      radioBand: RADIO_BAND,
       ...(stations ? { stations } : {}),
     });
     await audio.resume();

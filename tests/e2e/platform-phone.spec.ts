@@ -1,4 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { frames } from './lockstep';
+
+/**
+ * How long "the race stands still" is watched: drawn frames, the loop's own unit (it was 500 and
+ * 750 ms of wall time, about 4 to 10 frames on a software-rendered CI runner). A running race
+ * steps at least one tick in every frame or two at 60 Hz, and up to 4 a frame when slow.
+ */
+const STILL_FRAMES = 30;
 
 // platform-1's browser acceptance (docs/milestones/M1.md): a failed orientation lock shows the
 // rotate screen, and hiding the page pauses the race. Both run against the production build.
@@ -74,9 +82,9 @@ test('hiding the page pauses the race, and coming back lands on the pause screen
 
   await setHidden(true);
   const pausedAt = await tick();
-  await page.waitForTimeout(750);
+  await frames(page, STILL_FRAMES);
   const later = await tick();
-  console.log(`hidden: tick ${pausedAt} -> ${later} after 750 ms`);
+  console.log(`hidden: tick ${pausedAt} -> ${later} after ${STILL_FRAMES} drawn frames`);
   expect(later, 'no sim ticks while the page is hidden').toBe(pausedAt);
   expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
 
@@ -84,7 +92,7 @@ test('hiding the page pauses the race, and coming back lands on the pause screen
   // "Fixed timestep and the loop"): the race stays still until the player taps Resume.
   await setHidden(false);
   await expect(page.locator('#pause-screen')).toBeVisible();
-  await page.waitForTimeout(500);
+  await frames(page, STILL_FRAMES);
   const shownAt = await tick();
   console.log(`shown: pause screen up, tick ${shownAt}`);
   expect(shownAt, 'still paused behind the pause menu').toBe(pausedAt);
@@ -116,15 +124,15 @@ test('pagehide pauses the race, and pageshow lands on the pause screen', async (
   // The page stays visible: only pagehide fires, so the pause comes from it alone.
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
   const pausedAt = await tick();
-  await page.waitForTimeout(750);
+  await frames(page, STILL_FRAMES);
   const later = await tick();
-  console.log(`pagehide: tick ${pausedAt} -> ${later} after 750 ms`);
+  console.log(`pagehide: tick ${pausedAt} -> ${later} after ${STILL_FRAMES} drawn frames`);
   expect(later, 'no sim ticks after pagehide').toBe(pausedAt);
   expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('race');
 
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
   await expect(page.locator('#pause-screen')).toBeVisible();
-  await page.waitForTimeout(500);
+  await frames(page, STILL_FRAMES);
   expect(await tick(), 'still paused behind the pause menu').toBe(pausedAt);
 
   await page.locator('#pause-resume').click();

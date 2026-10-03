@@ -187,6 +187,7 @@ test('the pause radio panel names what plays, switches stations and songs, and c
   // overwritten within half a second, which also made this check flaky on a loaded CI runner:
   // main's run 36903807975 read the next song, "Key Lime Slapback", instead of the note). Then
   // the panel names the next song.
+  // eslint-disable-next-line no-restricted-syntax -- the cut note's hold is a wall-clock UI timer
   await page.waitForTimeout(1200);
   await expect(page.locator('#radio-song')).toContainText('Cut');
   await expect(page.locator('#radio-song')).toHaveText(first.tracks[2]?.title ?? '', { timeout: 6000 });
@@ -281,8 +282,10 @@ test('the real radio: Next station in the pause panel tunes the race to a band',
   await expect(page.locator('#radio-station')).toHaveText('The score');
   await page.locator('#radio-next').click();
   await page.locator('#pause-resume').click();
+  // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
   await page.waitForTimeout(800);
   await page.evaluate(() => ((window as TestWindow).__plucks = []));
+  // eslint-disable-next-line no-restricted-syntax -- audio plays on the audio clock, which is wall time
   await page.waitForTimeout(2000);
   const d = await page.evaluate(() => (window as TestWindow).__plucks ?? []);
   const strings = d.filter((v) => v === 0.6 || v === 0.8 || v === 0.9 || v === 1.1).length;

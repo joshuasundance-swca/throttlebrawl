@@ -325,6 +325,10 @@ test('the engine sits a few dB over the music at the default volumes, and a busy
           createAudio(o: Record<string, unknown>): Audio;
           stationsFromTable(t: Record<string, unknown>): unknown[];
         };
+        // The radio's band is a lazy chunk in the game (radio-band.ts); handed in here, as the stations
+        // are, so the render hears the station from its first note.
+        const bandUrl = '/__audio-mix/radio-band.js';
+        const band = (await import(bandUrl)) as { RADIO_BAND: unknown };
         const rate = 44100;
         const dur = 5;
         const ctx = new OfflineAudioContext(1, dur * rate, rate);
@@ -334,6 +338,7 @@ test('the engine sits a few dB over the music at the default volumes, and a busy
           radioKeys: null,
           barkEvents: null,
           radioSeed: 7,
+          radioBand: band.RADIO_BAND,
           stations: m.stationsFromTable(table),
         });
         audio.setVolumes({ master: c.master, music: c.music, effects: c.effects, voices: 0.9 }, false);

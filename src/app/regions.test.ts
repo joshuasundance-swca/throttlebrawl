@@ -93,7 +93,7 @@ describe('app: regions', () => {
     expect(copIds(ALL, 'region-pnw:pnw-fogline-run')).toHaveLength(4);
   });
 
-  it('a San Francisco race: its route, locals, Officer Meter and cable cars', () => {
+  it('a San Francisco race: its route, locals, Officer Meter, and no cable cars in its traffic', () => {
     const c = config('region-sf:sf-hill-sprint');
     expect(c.event.routeId).toBe('region-sf:sf-standard-run');
     const ids = c.riders.map((r) => r.contentId);
@@ -101,7 +101,10 @@ describe('app: regions', () => {
       expect.arrayContaining(['region-sf:pivot', 'region-sf:gripman-gus', 'region-sf:officer-meter']),
     );
     const types = new Map(c.trafficTypes.map((t) => [t.contentId, t.weight ?? -1]));
-    expect(types.get('region-sf:cable-car')).toBeGreaterThan(0);
+    // Playtest 2 ("including in forests"), run W-R: cable cars run only on downtown's cable-car
+    // streets, drawn by render, never as traffic on a race road.
+    expect(types.get('region-sf:cable-car') ?? 0).toBe(0);
+    expect(types.get('region-sf:startup-shuttle')).toBeGreaterThan(0);
     expect([...types.keys()].some((k) => k.startsWith('region-pnw:'))).toBe(false);
     expect(routeKeyOf(ALL, 'region-sf:sf-hill-sprint')).toBe('region-sf:sf-standard-run');
     expect(regionKeyOf(ALL, 'region-sf:sf-hill-sprint')).toBe('region-sf:san-francisco');

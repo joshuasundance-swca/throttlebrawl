@@ -41,7 +41,10 @@ function firstMeeting(eventId: string, seed: number, length?: string, route?: st
     bot.drive(snap, playerId, config.route, a);
     sim.step([toSimInput(a)]);
     for (const e of sim.events()) {
-      if (e.type === 'siren' && e.data['cause'] === 'patrol') patrol++;
+      // Heat's roadblock (#338) takes its cops from the patrol too (sendRoadblock clears patrolAt),
+      // so a patrol cop moved into a roadblock lights up as 'roadblock' instead (bundle 1: San
+      // Francisco's seed 3 hit heat tier 3 at 27 s and both patrol cops went to the roadblock).
+      if (e.type === 'siren' && (e.data['cause'] === 'patrol' || e.data['cause'] === 'roadblock')) patrol++;
       if (e.type === 'bust' && e.target === playerId) busted = true;
     }
     snap = sim.snapshot();

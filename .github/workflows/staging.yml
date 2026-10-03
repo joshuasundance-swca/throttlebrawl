@@ -1,35 +1,49 @@
-# Staging (docs/engineering.md, "CI on GitHub Actions"): every push to a branch other than main
-# runs the leak scan and size check, builds, boot-tests the build and deploys it to the staging
-# Space as the same source mirror plus dist/ that prod gets. The newest push wins. It does not wait
-# for the full gate: staging is for playing work in progress, and its stamp names branch and commit.
-# Dependabot branches never deploy: their runs get no repository secrets (so the upload would fail),
-# and because this workflow's concurrency cancels older runs, a bump would knock a person's build
-# off the staging Space. They are ignored here, before a run exists, not skipped inside the job.
+# Staging (docs/engineering.md, "CI on GitHub Actions"): on request only, a branch runs the leak
+# scan and size check, builds, boot-tests the build and deploys it to the staging Space as the same
+# source mirror plus dist/ that prod gets. It does not wait for the full gate: staging is for
+# playing work in progress, and its stamp names branch and commit.
+#
+# Why on request, not on every push: on 2026-10-02 (UTC), 223 push runs deployed nothing (222
+# cancelled, 1 failed; the last deploy was 2026-10-01 20:21Z) and used about 719 runner-minutes.
+# One cancel-in-progress group was shared by every branch, so another branch's newer push cancelled
+# the older run (209 of 211 checked cancels), and the full e2e suite it ran could not finish inside
+# the 15-minute limit anyway.
+# Prod already deploys every green main. [decided] (the maintainer, 2026-10-03: "Yes, do it now" to
+# the plan that makes per-PR staging on demand.) Start it with
+#   gh workflow run staging.yml -f branch=<branch>
+# Dependabot cannot start a workflow_dispatch, so its runs (which get no secrets) never reach here.
 name: staging
 
 on:
-  push:
-    branches-ignore: [main, 'dependabot/**']
   workflow_dispatch:
     inputs:
       branch:
-        description: Branch to put on the staging Space
-        required: true
+        description: Branch to put on the staging Space (empty means the branch this run started on)
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
+# A newer request for the same branch cancels that branch's older run. Requests for different
+# branches never cancel each other's work; the deploy job below takes turns on the one Space.
 concurrency:
-  group: staging-space
+  group: staging-branch-${{ inputs.branch || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   deploy-staging:
     name: deploy-staging
-    # A second guard, in case a Dependabot push ever lands outside dependabot/**.
-    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # One staging Space, so one writer at a time, never cancelled part-way. If a third branch asks
+    # while one deploys and one waits, the newest request replaces the waiting one, so the Space
+    # ends on the newest request. The name is new on purpose: a branch made before this change
+    # still starts the old push-triggered staging.yml, whose group `staging-space` cancels in
+    # progress, and sharing that name would let such a push cancel a requested deploy part-way.
+    concurrency:
+      group: staging-upload
+      cancel-in-progress: false
     env:
       BUILD_CHANNEL: staging
       BUILD_BRANCH: ${{ inputs.branch || github.ref_name }}
@@ -49,14 +63,22 @@ jobs:
       - run: npm run leakscan:all
       - run: npm run sizecheck
       - run: npm run build
+      # Keyed by the browser builds Playwright pins, as in ci.yml, so a lock-file change alone keeps
+      # the cache.
       - name: Playwright browser cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
       - run: npx playwright install --with-deps --only-shell chromium
+      # The boot spec only (about 11 s on CI): the page loads, WebGL2 exists, no console errors or
+      # failed requests, the canvas is not blank, and the build stamp names this commit. It used to
+      # run every e2e spec (2,564 s of measured test time in tests/timings.json), which could not
+      # finish in this job's 15 minutes. The full browser tier runs in the gate. [default]
       - name: Boot smoke test
-        run: npm run e2e
+        run: |
+          export E2E_EXPECT_STAMP="${BUILD_ID::7}"
+          npx playwright test --project=e2e tests/e2e/boot.spec.ts
       - name: Stage the source mirror plus the build
         run: node scripts/space-stage.mjs --out .cache/space --readme space/README.staging.md
       - name: Upload to the staging Space

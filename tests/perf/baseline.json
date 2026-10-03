@@ -1,5 +1,5 @@
 {
-  "$comment": "Top-level fields: the walking skeleton's first numbers (M1 app-1), printed by tests/e2e/bot-race.spec.ts on the dev machine with no throttling; informational only. `soft` is the perf check's soft-tier baseline (tests/perf/perf.spec.ts fails above 2x it), measured on a CI runner as docs/engineering.md asks. Update it in a PR whose changes note gives the reason.",
+  "$comment": "Top-level fields: the walking skeleton's first numbers (M1 app-1), printed by tests/e2e/bot-race.spec.ts on the dev machine with no throttling; informational only. `soft` (and `softInk` for the ink looks) is the perf check's soft-tier baseline: tests/perf/perf.spec.ts prints frame and sim step times as a trend against it and fails only above 3x it (scripts/perf-limits.mjs; the maintainer, 2026-10-02: \"Trend plus 3x guard\"), measured on a CI runner as docs/engineering.md asks. The `rebaselined` and `softInk` reasons below quote the 2x limits of their day. Update it in a PR whose changes note gives the reason.",
   "measuredAt": "2026-09-29",
   "source": "dev machine, headless Chromium from @playwright/test 1.63.0, viewport 915x412 CSS px, device pixel ratio 1, no CPU throttling",
   "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
@@ -11,27 +11,30 @@
   },
   "frameMs": { "samples": 600, "p50": 16.7, "p95": 16.8, "max": 16.8 },
   "soft": {
-    "measuredAt": "2026-09-30",
-    "source": "GitHub Actions ubuntu runner, CI run 36662486374 (PR 52), headless Chromium shell from @playwright/test 1.63.0, SwiftShader, viewport 915x412 @1, 4x CPU throttling from the race start, 20 s of the seed-1 bot race",
+    "measuredAt": "2026-10-02",
+    "source": "GitHub Actions ubuntu runners, the perf run in CI's last browser slice, on current main code: the 8 CI runs listed below (main 3309a1f, the six rounds of bundle PR 355, main b86069b); headless Chromium shell from @playwright/test 1.63.0, SwiftShader, viewport 915x412 @1, 4x CPU throttling from the race start, 20 s of the seed-1 bot race",
     "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
     "cpuThrottle": 4,
     "seconds": 20,
-    "frameMs": { "p50": 33.3, "p95": 66.6 },
-    "stepMs": { "p95": 3.7 },
-    "stepMsRebaselined": {
-      "measuredAt": "2026-09-30",
-      "reason": "The sim gained M2 features (traffic contacts, rider bumps, combat shove, style scoring) since PR 52's 2.1 ms. Ten CI runs of this check from 2026-09-30 (main and lane branches) printed sim step p95 of 2.9, 3.1, 3.2, 3.4, 3.5, 3.8, 3.9, 3.9, 4.2 and 5.1 ms; the median is 3.65 ms, rounded up to the timer's 0.1 ms step. Two of the ten failed the old 4.2 ms limit on runs whose changes did not touch the sim.",
+    "frameMs": { "p50": 66.7, "p95": 133.3 },
+    "stepMs": { "p95": 4.9 },
+    "rebaselined": {
+      "measuredAt": "2026-10-02",
+      "previous": "frame p50 33.3 and p95 66.6 ms (CI run 36662486374, PR 52, 2026-09-30); sim step p95 3.7 ms (re-measured 2026-09-30, PR 137)",
+      "reason": "The perf scene has grown since 2026-09-30: real rider and bike models (PR 300, PR 346), blob shadows, roadside weapons, the off-road ground band (PR 343), rivals from the region's cast with seeded light (PR 323) and the cop roadblock (PR 338). Triangles at the tick-840 checkpoint went from about 68,000 to about 116,000 on 2026-10-02 alone. These 8 runs on current main code printed frame p95 of 83.4, 100.1, 116.6, 133.3, 133.3, 149.9, 150 and 150 ms (5 to 9 frames), frame p50 of 50 to 66.7 ms and sim step p95 of 4.7 to 6.8 ms; 3 of the 8 failed the old 141.5 ms p95 limit, one of them on main. The medians, rounded to whole frames, are p50 66.7 ms (4 frames), p95 133.3 ms (8 frames) and step p95 4.9 ms, so the limits are 141.7 ms, 274.9 ms and 9.8 ms. The phone number comes from the maintainer's playtest, not from this tier.",
       "runs": [
-        36773709876, 36772904029, 36772688091, 36772010523, 36769788399, 36769077234, 36767150877,
-        36766212810, 36773593901, 36774800533
+        37064258241, 37071060103, 37073226222, 37075535656, 37077274441, 37078949710, 37080432483, 37081228149
       ]
     }
   },
   "softInk": {
-    "measuredAt": "2026-10-01",
-    "source": "GitHub Actions ubuntu runners, the perf job's kodak-look run (tests/perf/perf-looks.spec.ts), same scene and throttling as `soft`",
-    "frameMs": { "p50": 50, "p95": 116.7 },
-    "reason": "The ink looks draw the scene offscreen and add a full-screen pass, which SwiftShader pays for in CPU time. Seven CI runs on 2026-10-01 printed kodak frame p95 of 66.6, 116.6, 116.6, 116.7, 116.7, 133.3 and 133.4 ms (p50 33.3 to 50.1 ms). Against classic's 66.6 ms baseline the limit was 133.2 ms, so 2 of the 7 failed, one of them on main. The median p95 is 116.7 ms and the median p50 50 ms. The phone number comes from the maintainer's playtest, not from this tier.",
-    "runs": [36807875167, 36807866015, 36807850601, 36807803194, 36807700069, 36807674331, 36807131982]
+    "measuredAt": "2026-10-02",
+    "source": "GitHub Actions ubuntu runners, the perf run's three ink looks (kodak, wasteland, brush; tests/perf/perf-looks.spec.ts) in the same 8 CI runs as `soft`, same scene and throttling",
+    "frameMs": { "p50": 83.3, "p95": 183.3 },
+    "previous": "p50 50 and p95 116.7 ms (seven kodak runs on 2026-10-01, PR 177)",
+    "reason": "The ink looks draw the scene offscreen and add a full-screen pass, which SwiftShader pays for in CPU time, and the scene grew as `soft` says. In the same 8 runs the three ink looks (24 results) printed frame p95 of 133.3 to 216.7 ms (median 183.4) and frame p50 of 66.6 to 99.9 ms (median 83.4). None failed yet, but 5 of the 24 printed a p50 of 99.9 ms against the old 108.3 ms limit, one frame from failing. The medians, rounded to whole frames, are p50 83.3 ms (5 frames) and p95 183.3 ms (11 frames), so the limits are 174.9 ms and 374.9 ms.",
+    "runs": [
+      37064258241, 37071060103, 37073226222, 37075535656, 37077274441, 37078949710, 37080432483, 37081228149
+    ]
   }
 }

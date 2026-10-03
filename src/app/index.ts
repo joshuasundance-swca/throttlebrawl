@@ -238,6 +238,12 @@ export interface AppHandle {
   frameStats(): FrameStats;
   /** Wall-clock time of each of the last ~600 sim steps, ms (dev/perf's sim step timer). */
   stepTimes(): readonly number[];
+  /**
+   * The loop's lockstep (app/loop.ts; docs/architecture.md, "Testing seams"): n sim steps every
+   * frame whatever the wall time, or null for real time. Only under the test flag; a no-op otherwise.
+   */
+  setLockstep(steps: number | null): void;
+  lockstep(): number | null;
   contentHashes(): { sim: string; full: string };
   replayKey(): string;
   /** The camera's view and the radio's region and stations (tests and dev/). */
@@ -252,6 +258,11 @@ export interface AppHandle {
 function lookWatchOn(): boolean {
   const w = window as Window & { __GAME_TEST__?: boolean; __lookFallbackWatch?: unknown };
   return w.__GAME_TEST__ !== true || w.__lookFallbackWatch === true;
+}
+
+/** The browser specs' test flag (Playwright's init script sets it before the page loads). */
+function testFlagOn(): boolean {
+  return (window as Window & { __GAME_TEST__?: boolean }).__GAME_TEST__ === true;
 }
 
 /**
@@ -1278,6 +1289,11 @@ export function createApp(opts: AppOptions): AppHandle {
       };
     },
     stepTimes: () => stepMs,
+    setLockstep(steps) {
+      // A test seam: the handle reaches pages only behind the test flag (main.ts, dev/).
+      if (testFlagOn()) loop.setLockstep(steps);
+    },
+    lockstep: () => loop.lockstep,
     contentHashes: () => hashes,
     replayKey: () => replayKey,
     presentation() {

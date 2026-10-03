@@ -3,14 +3,14 @@
 // and "remove the invisible wall where ground is drawn"). The checks build the layer on every real
 // network with its real road files and look at what was built: rays down onto the band at the
 // sim's own band (vergeAt), none past it, each region's edges and fence, the smash, and the feel.
-import { Raycaster, Vector3, type Mesh, type Object3D } from 'three';
+import { Raycaster, Vector3, type InstancedMesh, type Mesh, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
 import { createFlatLook } from './look';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { SCENERY_RADIUS_M, TRUNK_M } from './scenery';
-import { VERGE_LIFT_M, VergeLayer } from './verge';
+import { FENCE_SEG_M, VERGE_BEHIND_M, VERGE_LIFT_M, VergeLayer } from './verge';
 
 const look = createFlatLook();
 
@@ -196,6 +196,44 @@ describe("each region's ground and edges", () => {
         `[examined] ${id}: ${bands.length} band meshes (${tris} triangles in all), 4 more; at most ${most} fence panels and fern clumps drawn at once`,
       );
     }
+  });
+});
+
+describe('only what the camera can see is drawn', () => {
+  // main-green-4 (2026-10-02): at the perf probe's tick 840 the Keys race drew 394 fence panels
+  // (28 k triangles), 217 of them more than 10 m behind the rider. A camera aim leaves out what
+  // stands behind the camera, and turning the camera round refills without moving.
+  it('fences behind the camera are left out, and a camera turned round gets them back', () => {
+    const { road, verge } = layer('keys-m1');
+    const found = firstFence(road);
+    const at = road.toWorld(found.edge, found.s, 0, 0);
+    const ahead = road.toWorld(found.edge, Math.min(found.s + 20, road.edges[found.edge]!.length), 0, 0);
+    const back = { x: 2 * at.x - ahead.x, z: 2 * at.z - ahead.z };
+    verge.update(at.x, at.z, snapOf([]), 1 / 60);
+    const all = verge.counts().nearPanels;
+    verge.update(at.x, at.z, snapOf([]), 1 / 60, ahead.x, ahead.z);
+    const forward = verge.counts().nearPanels;
+    const fence = named(verge.group, 'verge-fence')[0] as unknown as InstancedMesh;
+    const fx = ahead.x - at.x;
+    const fz = ahead.z - at.z;
+    const len = Math.hypot(fx, fz);
+    let worst = Infinity;
+    for (let i = 0; i < forward; i++) {
+      const m = fence.instanceMatrix.array;
+      const along = (((m[i * 16 + 12] ?? 0) - at.x) * fx + ((m[i * 16 + 14] ?? 0) - at.z) * fz) / len;
+      worst = Math.min(worst, along);
+    }
+    verge.update(at.x, at.z, snapOf([]), 1 / 60, back.x, back.z);
+    const reversed = verge.counts().nearPanels;
+    console.log(
+      `[examined] keys-m1 fence at edge ${found.edge} s ${found.s.toFixed(0)}: ${all} panels with no aim, ${forward} aimed ahead (nearest ${worst.toFixed(1)} m along), ${reversed} turned round`,
+    );
+    expect(forward).toBeGreaterThan(0);
+    expect(forward).toBeLessThan(all);
+    expect(reversed).toBeGreaterThan(0);
+    expect(reversed).toBeLessThan(all);
+    expect(forward + reversed).toBeGreaterThanOrEqual(all);
+    expect(worst).toBeGreaterThanOrEqual(-VERGE_BEHIND_M - FENCE_SEG_M);
   });
 });
 
