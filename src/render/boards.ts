@@ -38,7 +38,12 @@ export interface BoardItem {
  */
 export interface BoardCatalog {
   items: Readonly<Record<string, BoardItem>>;
-  pools?: { signs?: readonly BoardItem[]; billboards?: readonly BoardItem[] };
+  pools?: {
+    signs?: readonly BoardItem[];
+    billboards?: readonly BoardItem[];
+    /** The region's `landingLines` (air-pays.ts draws one on a surge landing; no road slot uses them). */
+    landing?: readonly BoardItem[];
+  };
 }
 
 /** A `billboard` feature on a road, structurally (docs/content-packs.md, "Road file"). */

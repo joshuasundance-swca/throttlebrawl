@@ -135,6 +135,24 @@ describe('app: regions', () => {
     );
   });
 
+  it("hands render each region's landing one-liners as their own pool, never as a road slot's item", () => {
+    // Air that pays (the pitch deck's #13): 'TEN OUT OF TEN, SAYS A PELICAN' on a clean landing.
+    for (const key of ['base:florida-keys', 'region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
+      const cat = boardCatalog(ALL, key);
+      const lines = cat.pools?.landing ?? [];
+      expect(lines.length, key).toBeGreaterThanOrEqual(5);
+      for (const l of lines) {
+        expect(l.text.length).toBeLessThanOrEqual(40);
+        expect(l.ref.startsWith(`${key.split(':')[0]}:region/`)).toBe(true);
+        expect(Object.values(cat.items).some((i) => i.ref === l.ref)).toBe(false);
+      }
+    }
+    const keys = boardCatalog(ALL, 'base:florida-keys');
+    expect(keys.pools?.landing?.map((l) => l.text)).toContain('TEN OUT OF TEN, SAYS A PELICAN');
+    const cut = boardCatalog(ALL, 'base:florida-keys', new Set(['base:region/florida-keys#pelican']));
+    expect(cut.pools?.landing?.some((l) => l.ref === 'base:region/florida-keys#pelican')).toBe(false);
+  });
+
   it("merges the region palette with its time of day's", () => {
     const p = racePalette(ALL, 'region-pnw:pacific-northwest', 'dawn');
     expect(p['road']).toBe('#3b3f3e');

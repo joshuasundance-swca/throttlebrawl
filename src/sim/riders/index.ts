@@ -19,13 +19,19 @@
 // smash"): with `ground.offRoad` on, a rider rides past the lanes onto each verge band (sim/ground's
 // `rideLimits`), each surface scales the steering and the top speed (`surfaceFeel`), and the band's
 // outer edge decides what happens there (sim/riders/verge.ts).
-import { atan, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
+// Air that pays (the pitch deck's #13, run W-T): a clean landing after real air gives a short surge,
+// rivals included, on the rider's boost; a player who lands within a bike length of another rider
+// lands a heavy hit on him, which knocks him off only if he is already hurt; and the snapshot gets
+// the forecast touch-down point (`touchdownOf`) for render's chalk mark. Each is off when its tuning
+// key is left out, so every recording made before rides as it did.
+import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import { sRateFactor } from '../../road';
 import type { RideLimits } from '../ground';
-import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist } from '../types';
+import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist, TouchdownSnapshot } from '../types';
 import {
   AIR_TUNING,
   groundPitch,
+  holdingPaper,
   slopeAt,
   startFlight,
   stepAttitude,
@@ -204,6 +210,71 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    // Air that pays (the pitch deck's #13): a clean landing after at least this much air, s, gives
+    // the surge. 0.5 s is the airtime style cash's own minimum ("real air"). [default]
+    id: 'riders.surgeMinAirS',
+    group: 'crashes',
+    label: 'Landing surge: air at least',
+    default: 0.5,
+    min: 0.1,
+    max: 2,
+    step: 0.05,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    // ...how long the surge lasts, s; 0 turns it off. It rides on the boost-pad machinery (a raised
+    // top speed and a push toward it), shorter and gentler than a pad (8 m/s for 1.5 s). [default]
+    id: 'riders.surgeS',
+    group: 'crashes',
+    label: 'Landing surge: time',
+    default: 1,
+    min: 0,
+    max: 3,
+    step: 0.1,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    // ...and how much it raises the top speed by, m/s, before the overall-speed multiplier. [default]
+    id: 'riders.surgeMps',
+    group: 'crashes',
+    label: 'Landing surge: speed',
+    default: 5,
+    min: 0,
+    max: 12,
+    step: 0.5,
+    unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Air that pays (the pitch deck's #13): "Land within a bike length of a rival for a heavy hit;
+    // it only knocks him off if he's already hurt." The hit's damage; 0 turns it off. A kick does
+    // about a third of a fresh rival (3 kicks drop one). [default]
+    id: 'riders.landingHitDamage',
+    group: 'crashes',
+    label: 'Landing hit: damage',
+    default: 35,
+    min: 0,
+    max: 100,
+    step: 5,
+    unit: 'hp',
+    affectsSim: true,
+  },
+  {
+    // ...a rider below this share of his health is "already hurt", and the landing hit knocks him
+    // off; above it, it never takes his last point. [default] 0.8: one landed punch is enough.
+    id: 'riders.landingHitHurtShare',
+    group: 'crashes',
+    label: 'Landing hit: hurt below',
+    default: 0.8,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
   // Lane drops (W-R): where the road narrows ahead, the edge funnels in (sim/riders/funnel.ts).
   ...FUNNEL_TUNING,
   ...AIR_TUNING,
@@ -370,6 +441,10 @@ export function riderState(world: World): RiderState {
     noseUpTicks: [],
     whipTicks: [],
     trick: [],
+    paperArm: [],
+    paper: [],
+    paperFold: [],
+    paperRead: [],
     uturn: [],
   }));
 }
@@ -1077,7 +1152,8 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // turns the bike past where it can right itself before touch-down.
   const groundRate = road.frameAt(pos.edge, pos.s).grade * pos.dir * along;
   const tGround = timeToGround(y - (surface + deck), (st.vy[m.id] ?? 0) - groundRate, gravity);
-  const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround);
+  const airS = (st.airTicks[m.id] ?? 0) / 60;
+  const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround, airS);
   if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
@@ -1140,7 +1216,10 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
     flips,
     pitchOff: td.pitchOff,
   };
-  const cause = emit(world, 'land', m.id, data);
+  // Air that pays: a clean landing after real air spits the bike forward (rivals too).
+  const surge = quality === 'clean' ? landingSurge(world, config, st, m, airTicks) : 0;
+  const cause = emit(world, 'land', m.id, surge > 0 ? { ...data, surge: true, surgeS: surge } : data);
+  if (quality !== 'crash') landingHit(world, config, st, m, cause);
   if (quality === 'crash') {
     st.wobble[m.id] = 0;
     // A trick gone wrong is a big, funny wipeout: the rider thrown high (tumble reads upMps and sideMps).
@@ -1150,6 +1229,156 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
     st.wobble[m.id] = WOBBLE_TICKS;
     emit(world, 'wobble', m.id, { ...data, cause: 'landing' }, { causeId: cause });
   }
+}
+
+/** A bike's length, m: the landing hit's reach from where the bike comes down (the pitch deck's #13). */
+export const LANDING_HIT_REACH_M = 2.2;
+/** The landing hit's sideways shove on a rider it does not knock off, m/s (a bump's is 1.5). */
+const LANDING_HIT_SHOVE_MPS = 4;
+
+/**
+ * The landing surge (the pitch deck's #13): after at least `riders.surgeMinAirS` in the air, a
+ * clean landing raises the rider's top speed by `riders.surgeMps` for `riders.surgeS` and pushes it
+ * there, on the boost a pad gives (a pad's own bigger boost is kept). Returns the surge's seconds,
+ * or 0 for none.
+ */
+function landingSurge(world: World, config: SimConfig, st: RiderState, m: Mover, airTicks: number): number {
+  const secs = world.params['riders.surgeS'] ?? 0;
+  const mps = world.params['riders.surgeMps'] ?? 0;
+  const minAir = world.params['riders.surgeMinAirS'] ?? 0.5;
+  if (secs <= 0 || mps <= 0 || airTicks < minAir * 60) return 0;
+  const left = st.boost[m.id] ?? 0;
+  st.boostMps[m.id] = left > 0 ? Math.max(st.boostMps[m.id] ?? 0, mps) : mps;
+  st.boost[m.id] = Math.max(left, secs * 60);
+  return secs;
+}
+
+/**
+ * The landing hit (the pitch deck's #13): "Land within a bike length of a rival for a heavy hit; it
+ * only knocks him off if he's already hurt." A player's bike that comes down (not crashing) within
+ * LANDING_HIT_REACH_M of another rider on the road hits the nearest one: `riders.landingHitDamage`
+ * off his health, one `hit` event (`weapon: 'landing'`, the landing's causeId). Below
+ * `riders.landingHitHurtShare` of his health before it, he is knocked off (a `crash` with `reason:
+ * 'knockedOff'` and the lander as its target, which combat credits as a takedown); otherwise he keeps
+ * at least one point, wobbles and is shoved aside.
+ */
+function landingHit(world: World, config: SimConfig, st: RiderState, m: Mover, cause: number): void {
+  const def = config.riders[m.riderIndex];
+  const damage = world.params['riders.landingHitDamage'] ?? 0;
+  if (!def || def.controller.kind !== 'player' || damage <= 0) return;
+  let victim: Mover | null = null;
+  let best = LANDING_HIT_REACH_M;
+  for (const o of world.movers) {
+    if (o.id === m.id || o.kind !== 'rider' || o.mode !== 'Road' || o.pos.edge !== m.pos.edge) continue;
+    const ds = o.pos.s - m.pos.s;
+    const dd = o.pos.d - m.pos.d;
+    const gap = Math.sqrt(ds * ds + dd * dd);
+    if (gap <= best) {
+      best = gap;
+      victim = o;
+    }
+  }
+  const vdef = victim ? config.riders[victim.riderIndex] : undefined;
+  if (!victim || !vdef) return;
+  const before = st.health[victim.id] ?? vdef.healthMax;
+  if (before <= 0) return;
+  const hurt = before < vdef.healthMax * (world.params['riders.landingHitHurtShare'] ?? 0.8);
+  const health = hurt ? Math.max(0, before - damage) : Math.max(1, before - damage);
+  st.health[victim.id] = health;
+  const side = victim.pos.d >= m.pos.d ? 1 : -1;
+  emit(
+    world,
+    'hit',
+    m.id,
+    { weapon: 'landing', landing: true, damage: before - health, kick: false, health, hitImpulse: 1, side },
+    { target: victim.id, causeId: cause },
+  );
+  if (hurt) {
+    emit(
+      world,
+      'crash',
+      victim.id,
+      { reason: 'knockedOff', by: m.id, landing: true },
+      {
+        target: m.id,
+        causeId: cause,
+      },
+    );
+    return;
+  }
+  st.wobble[victim.id] = Math.max(st.wobble[victim.id] ?? 0, WOBBLE_TICKS);
+  st.shove[victim.id] = side * LANDING_HIT_SHOVE_MPS;
+}
+
+/** The touch-down forecast marches the flight in steps this long, s, for at most FORECAST_MAX_S. */
+const FORECAST_STEP_S = 1 / 30;
+const FORECAST_MAX_S = 4;
+
+/**
+ * Where a player's rider in the air will touch down (the pitch deck's #13: the chalk mark), for the
+ * snapshot: the flight marched on at its speed and heading under gravity, over the road's real
+ * surface (a ramp's far side, a dip), until it meets the ground; its sideways drift eased as
+ * `riders.airAlign` lines the bike up. `crooked` when landing as the bike is now would wobble or
+ * worse: sideways, off the slope, leaned over, or still holding the newspaper. Null on the ground
+ * and for riders no player drives. Presentation only: it reads the state, it never writes it.
+ */
+export function touchdownOf(world: World, config: SimConfig, m: Mover): TouchdownSnapshot | null {
+  const def = config.riders[m.riderIndex];
+  if (m.kind !== 'rider' || m.mode !== 'Airborne' || !def || def.controller.kind !== 'player') return null;
+  const st = riderState(world);
+  const road = config.road;
+  const pos = m.pos;
+  const gravity = GRAVITY * accelMultiplierOf(config);
+  const align = world.params['riders.airAlign'] ?? 0;
+  const at = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
+  let y = st.yAbs[m.id] ?? road.surfaceHeight(pos.edge, pos.s, pos.d);
+  let vy = st.vy[m.id] ?? 0;
+  let yaw = m.yaw;
+  let v = m.speed;
+  // The air drag the flight itself feels (stepAirborne): the bike slows toward its top speed's drag.
+  const boostTop = (st.boost[m.id] ?? 0) > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
+  const top = topSpeedOf(world, config, def.bike.topSpeedMps) + boostTop;
+  const drag =
+    top > 0
+      ? (def.bike.accelMps2 * (world.params['riders.accelScale'] ?? 1) * accelMultiplierOf(config)) /
+        (top * top)
+      : 0;
+  let t = 0;
+  const dt = FORECAST_STEP_S;
+  for (; t < FORECAST_MAX_S; t += dt) {
+    v = Math.max(0, v - drag * v * v * dt);
+    const along = v * cos(yaw) * sRateFactor(road.kappaAt(at.edge, at.s), at.d);
+    const prev = { edge: at.edge, s: at.s, d: at.d, gap: y - road.surfaceHeight(at.edge, at.s, at.d) };
+    at.s += at.dir * along * dt;
+    at.d += at.dir * v * sin(yaw) * dt;
+    yaw -= align * yaw * dt;
+    y += vy * dt - 0.5 * gravity * dt * dt;
+    vy -= gravity * dt;
+    if (road.advance(at) === 'deadEnd') break;
+    const gap = y - road.surfaceHeight(at.edge, at.s, at.d);
+    if (gap <= 0) {
+      // Back to where the flight crossed the ground, between the two steps.
+      const k = prev.gap > 0 ? prev.gap / (prev.gap - gap) : 1;
+      if (prev.edge === at.edge) {
+        at.s = prev.s + (at.s - prev.s) * k;
+        at.d = prev.d + (at.d - prev.d) * k;
+      }
+      t += dt * k;
+      break;
+    }
+  }
+  const p = road.toWorld(at.edge, at.s, at.d, 0);
+  const f = road.frameAt(at.edge, at.s);
+  const tx = f.tx * at.dir;
+  const tz = f.tz * at.dir;
+  const fx = cos(yaw) * tx - sin(yaw) * tz;
+  const fz = cos(yaw) * tz + sin(yaw) * tx;
+  const lateral = Math.abs(v * sin(yaw));
+  const crashAt = world.params['riders.landingCrashMps'] ?? 4;
+  const td = touchdown(st, m, slopeAt(config, m));
+  const crooked =
+    holdingPaper(st, m.id) || td.crashes || td.wobbles || lateral >= crashAt * LANDING_WOBBLE_FRACTION;
+  return { x: p.x, y: p.y, z: p.z, heading: atan2(-fx, -fz), inS: t, crooked };
 }
 
 export const ridersSystem: SimSystem = {
