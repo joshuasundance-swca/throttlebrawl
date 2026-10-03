@@ -57,6 +57,17 @@
       { "kind": "raccoon", "weight": 2, "big": false },
       { "kind": "elk", "weight": 1, "big": true },
       { "kind": "wet-dog", "weight": 1, "big": false }
+    ],
+    "areas": [
+      {
+        "tag": "logging",
+        "mix": [
+          { "kind": "log-truck", "weight": 4, "hazard": "big" },
+          { "kind": "muddy-pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "mossy-wagon", "weight": 1, "hazard": "normal" }
+        ]
+      },
+      { "tag": "festival", "mix": [{ "kind": "stump-social-marshal", "weight": 1, "hazard": "normal" }] }
     ]
   },
   "signs": [
@@ -70,11 +81,7 @@
       "text": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
       "status": "live"
     },
-    {
-      "id": "ferry-wait",
-      "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.",
-      "status": "live"
-    },
+    { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
     {
       "id": "bigfoot-crossing",
@@ -84,11 +91,7 @@
     { "id": "last-espresso", "text": "LAST ESPRESSO 400 FT. Next espresso 600 ft.", "status": "live" },
     { "id": "wet-road", "text": "ROAD MAY BE WET. Road is wet.", "status": "live" },
     { "id": "dry-pavement", "text": "DRY PAVEMENT NEXT 0 MI. Forecast unchanged.", "status": "live" },
-    {
-      "id": "espresso-zipper",
-      "text": "ESPRESSO LINE: ZIPPER MERGE. No exceptions.",
-      "status": "live"
-    },
+    { "id": "espresso-zipper", "text": "ESPRESSO LINE: ZIPPER MERGE. No exceptions.", "status": "live" },
     {
       "id": "no-plaster",
       "text": "BIGFOOT SIGHTING AREA. No plaster casting from vehicle.",
@@ -97,7 +100,55 @@
     { "id": "slide-area", "text": "SLIDE AREA. Hill may arrive without notice.", "status": "live" },
     { "id": "trailhead-full", "text": "TRAILHEAD PARKING FULL. It was full at 5 am.", "status": "live" },
     { "id": "ferry-overflow", "text": "FERRY OVERFLOW LOT. Overflow lot overflow 3 mi.", "status": "live" },
-    { "id": "elk-schedule", "text": "ELK CROSSING, NEXT 3 MI. Elk sets the schedule.", "status": "live" }
+    { "id": "elk-schedule", "text": "ELK CROSSING, NEXT 3 MI. Elk sets the schedule.", "status": "live" },
+    {
+      "id": "ferry-bridge-out",
+      "text": "BRIDGE OUT: TAKE THE FERRY. The ferry is not going anywhere either.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "ferry-engines-off",
+      "text": "ENGINES OFF ON DECK. Especially you.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "ferry-far-side",
+      "text": "THANKS FOR SAILING THE EVENTUALLY. It is still here.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "stump-social-closed",
+      "text": "CLOSED FOR THE STUMP SOCIAL. Local traffic: you are not local.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "log-rolling",
+      "text": "LOG ROLLING, 2 PM. Dry clothes, 2:05 PM.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "carving-demo",
+      "text": "CARVING DEMO TODAY. Stand behind the bear.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "parade-route",
+      "text": "PARADE ROUTE. You are the parade.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    },
+    {
+      "id": "stump-social-end",
+      "text": "END OF THE STUMP SOCIAL. Normal drizzle resumes.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places)."
+    }
   ],
   "billboards": [
     {
@@ -122,7 +173,13 @@
       "status": "live"
     },
     { "id": "gutter-truth", "text": "GUTTER TRUTH NW. We have seen what is up there.", "status": "live" },
-    { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. Still 2 hours. But first.", "status": "live" }
+    { "id": "ferry-priority", "text": "FERRY PRIORITY PASS. Still 2 hours. But first.", "status": "live" },
+    {
+      "id": "replanting",
+      "text": "REPLANTING IN PROGRESS. Please admire.",
+      "status": "live",
+      "note": "Run W-U (the pitch deck's #12, the PNW places). The clear-cut on the Logging Spur."
+    }
   ],
   "landingLines": [
     { "id": "raccoon", "text": "TEN OUT OF TEN, SAYS A RACCOON", "status": "live" },
@@ -132,7 +189,9 @@
     { "id": "drizzle", "text": "NINE OUT OF TEN. MINUS ONE FOR RAIN.", "status": "live" },
     { "id": "moss", "text": "THE MOSS HAS SEEN WORSE", "status": "live" },
     { "id": "elk", "text": "THE ELK WAS NOT IMPRESSED", "status": "live" },
-    { "id": "deputy", "text": "DEPUTY LINDQVIST WROTE IT DOWN", "status": "live" }
+    { "id": "deputy", "text": "DEPUTY LINDQVIST WROTE IT DOWN", "status": "live" },
+    { "id": "ferry-crew", "text": "THE FERRY CREW DID NOT LOOK UP", "status": "live" },
+    { "id": "carved-bear", "text": "A CARVED BEAR APPROVES. PROBABLY", "status": "live" }
   ],
   "weather": null,
   "smashables": [

@@ -267,13 +267,14 @@ export class MergedScenery {
   /**
    * `items`: the still props. `doubleSided`: the material a block draws with when its props need
    * different ones (the palms' fronds draw both faces): a closed model looks the same either way,
-   * so one block is one draw call whatever it holds.
+   * so one block is one draw call whatever it holds. `blockM`: the blocks' size (a sparse layer, run
+   * W-U's places, merges bigger squares for fewer draw calls).
    */
-  constructor(items: readonly MergeItem[], doubleSided?: Material) {
+  constructor(items: readonly MergeItem[], doubleSided?: Material, blockM = SCENERY_BLOCK_M) {
     this.group.name = 'road-scenery-merged';
     const byKey = new Map<string, MergeItem[]>();
     for (const it of items) {
-      const key = `${Math.floor(it.spot.p.x / SCENERY_BLOCK_M)},${Math.floor(it.spot.p.z / SCENERY_BLOCK_M)}`;
+      const key = `${Math.floor(it.spot.p.x / blockM)},${Math.floor(it.spot.p.z / blockM)}`;
       const list = byKey.get(key);
       if (list) list.push(it);
       else byKey.set(key, [it]);

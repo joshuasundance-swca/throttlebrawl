@@ -13,6 +13,18 @@
 // from sea to ridge. That gap is in the region-pnw lane report.
 //
 // Frame: metres, x east, z south (north is -z). The start faces north.
+//
+// The places (run W-U, the pitch deck's #12, "Ride up the ramp onto a car ferry, weave across the
+// deck, and roll off the far side"): the race now starts 400 m further back, on the ferry dock. The
+// bridge is out, so the car ferry moored across the slip is the road: up the transfer span, across a
+// deck of parked pickups and a coffee cart, off the far ramp. The Logging Spur runs through a fresh
+// clear-cut (stumps, a log deck either side of its jump), and the Switchback Grade beside it is the
+// log trucks' road. Espresso Row is the main street on the day of the Stump Social (Fir County's
+// logging festival): closed, a chainsaw-carved bear on
+// every corner and a crowd that parts. The pickups, the cart, the stumps, the log piles and the
+// bears are solid `hazard` features (sim/riders/features.ts), all on the verge bands; render draws
+// them (src/render/pnw-places.ts). No timed ferry jump, and no Bigfoot.
+import type { BakedFeature } from '../../../src/road';
 import type { TrackSource } from '../../../src/road/compile';
 
 /** The pack this track bakes into (the baker reads this export): packs/region-pnw. */
@@ -29,6 +41,142 @@ const LANES = [
 /** Forest speed limit: 50 mph, below the Keys highway's 55 (nothing reads it yet). */
 const FOREST_MPS = 22.4;
 
+/** A solid hazard (sim/riders/features.ts): a box on the verge band nobody rides through. */
+function solid(
+  id: string,
+  object: string,
+  s0: number,
+  lengthM: number,
+  d: readonly [number, number],
+  heightM: number,
+): BakedFeature {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return {
+    kind: 'hazard',
+    id,
+    s0: r2(s0),
+    s1: r2(s0 + lengthM),
+    d0: r2(d[0]),
+    d1: r2(d[1]),
+    params: { solid: true, object, heightM },
+  };
+}
+/** Mirrors a right-hand (positive d) range to the left. */
+const left = (d: readonly [number, number]): [number, number] => [-d[1], -d[0]];
+
+// ---- The ferry (the landing's s) ----
+/** Where the race's road rises onto the ferry, how long it stays up, and how high; the hull's ends. */
+export const FERRY = { rampUpS: 148, rampM: 20, deckM: 152, heightM: 1.6, hullS0: 164, hullS1: 326 } as const;
+/** The car deck's outer lanes (the `ferry` verge band, 4.5 m past the shoulder's 5.5 m). */
+const DECK_INNER: [number, number] = [5.7, 7.6];
+const DECK_OUTER: [number, number] = [8.0, 9.95];
+const PICKUP_M = 5.3;
+
+/**
+ * The deck's parked pickups and its coffee cart, both sides, staggered between the inner and the
+ * outer row so a rider on the deck's outer lane slaloms them; a stair tower closes each end of each
+ * outer lane (what a rider who stays out there meets, rather than the hull's end).
+ */
+function ferryDeck(): BakedFeature[] {
+  const out: BakedFeature[] = [];
+  const towerD: [number, number] = [5.6, 10];
+  for (const [i, s0] of [FERRY.hullS0, FERRY.hullS1 - 8].entries()) {
+    out.push(solid(`ferry-stairs-r${i}`, 'stair-tower', s0, 8, towerD, 6.4));
+    out.push(solid(`ferry-stairs-l${i}`, 'stair-tower', s0, 8, left(towerD), 6.4));
+  }
+  for (let k = 0; k < 10; k++) {
+    const s0 = 180 + 14 * k;
+    if (k === 4) out.push(solid('ferry-coffee-cart', 'coffee-cart', s0, 2.4, [8.3, 9.9], 2.3));
+    else out.push(solid(`ferry-pickup-r${k}`, 'pickup', s0, PICKUP_M, k % 2 ? DECK_OUTER : DECK_INNER, 1.9));
+    if (k < 9)
+      out.push(
+        solid(`ferry-pickup-l${k}`, 'pickup', s0 + 7, PICKUP_M, left(k % 2 ? DECK_INNER : DECK_OUTER), 1.9),
+      );
+  }
+  return out;
+}
+
+// ---- The clear-cut (the Logging Spur's s) ----
+/** The log deck's jump on the spur (its ramp), and the stumps' stretch. */
+const LOG_DECK = { s0: 400, lengthM: 15, heightM: 1.5, backM: 5 } as const;
+const STUMPS = { everyM: 10, dNear: 3.3, dFar: 16.8, clearS0: 385, clearS1: 480 } as const;
+/**
+ * Where the clear-cut runs on each side of the spur: all along its right (east), and on its left only
+ * where the Switchback Grade is far enough off that the two roads' open dirt never overlaps (the
+ * grade's own clear-cut faces it; two 16 m bands need about 42 m between the roads).
+ */
+export const CLEARCUT = { spurRight: [0, 'end'], spurLeft: [130, 580], gradeRight: [130, 670] } as const;
+const STUMP_RUNS = { right: [24, 700], left: [CLEARCUT.spurLeft[0] + 4, CLEARCUT.spurLeft[1] - 4] } as const;
+
+/**
+ * The clear-cut's stumps on the spur's open dirt, each side it runs: one about every 10 m a side, at
+ * a spread of distances out to the band's edge, from a fixed little generator (the same every bake).
+ * The log deck's stretch is left clear for its log piles and the landing.
+ */
+function clearCut(): BakedFeature[] {
+  const out: BakedFeature[] = [];
+  let h = 0x2545f491;
+  const next = () => {
+    h = (Math.imul(h, 1103515245) + 12345) >>> 0;
+    return h / 4294967296;
+  };
+  for (const side of [1, -1] as const) {
+    const [from, to] = side > 0 ? STUMP_RUNS.right : STUMP_RUNS.left;
+    for (let s = from + (side > 0 ? 0 : STUMPS.everyM / 2); s < to; s += STUMPS.everyM) {
+      const at = s + (next() - 0.5) * 6;
+      const size = 0.9 + next() * 0.5;
+      const d0 = STUMPS.dNear + next() * (STUMPS.dFar - STUMPS.dNear - size);
+      if (at + size > STUMPS.clearS0 && at < STUMPS.clearS1) continue;
+      const d: [number, number] = [d0, d0 + size];
+      out.push(solid(`stump-${out.length}`, 'stump', at, size, side > 0 ? d : left(d), 0.8));
+    }
+  }
+  // The log deck: a stack of logs each side of the jump, the ramp built between them.
+  const pile: [number, number] = [3.0, 6.8];
+  out.push(solid('log-deck-pile-r', 'log-pile', LOG_DECK.s0 - 4, 28, pile, 2.4));
+  out.push(solid('log-deck-pile-l', 'log-pile', LOG_DECK.s0 - 4, 28, left(pile), 2.4));
+  return out;
+}
+
+// ---- the Stump Social (Espresso Row's s) ----
+/** The festival's stretch of Espresso Row, and its side streets (each 12 m wide, both sides). */
+export const FESTIVAL = { s0: 120, s1: 620, sideStreets: [200, 300, 400, 500], streetM: 12 } as const;
+
+/**
+ * A chainsaw-carved bear on every corner of every side street, the barricades pushed aside onto the
+ * sidewalk at each end of the closure, and the crowd: roadside zones along both sidewalks.
+ */
+function stumpSocial(): BakedFeature[] {
+  const out: BakedFeature[] = [];
+  const bear: [number, number] = [8.2, 9.3];
+  for (const c of FESTIVAL.sideStreets) {
+    const half = FESTIVAL.streetM / 2;
+    for (const [k, s0] of [c - half - 1.1, c + half].entries()) {
+      out.push(solid(`bear-${c}-r${k}`, 'bear', s0, 1.1, bear, 2.3));
+      out.push(solid(`bear-${c}-l${k}`, 'bear', s0, 1.1, left(bear), 2.3));
+    }
+  }
+  const barricade: [number, number] = [6.2, 9.4];
+  for (const [k, s0] of [FESTIVAL.s0 + 4, FESTIVAL.s1 - 6].entries()) {
+    out.push(solid(`barricade-r${k}`, 'barricade', s0, 1.2, barricade, 1.2));
+    out.push(solid(`barricade-l${k}`, 'barricade', s0, 1.2, left(barricade), 1.2));
+  }
+  for (let s0 = FESTIVAL.s0 + 10; s0 < FESTIVAL.s1 - 10; s0 += 80) {
+    const s1 = Math.min(s0 + 80, FESTIVAL.s1 - 10);
+    const zone = (id: string, d0: number, d1: number): BakedFeature => ({
+      kind: 'roadsideZone',
+      id,
+      s0,
+      s1,
+      d0,
+      d1,
+      params: { spawns: 'pedestrians' },
+    });
+    out.push(zone(`stump-social-crowd-r${s0}`, 5.8, 8), zone(`stump-social-crowd-l${s0}`, -8, -5.8));
+  }
+  return out;
+}
+
 export const PNW_C1: TrackSource = {
   network: {
     id: 'pnw-c1',
@@ -40,8 +188,9 @@ export const PNW_C1: TrackSource = {
   },
   createdAt: '2026-10-01',
   points: [
-    // Ferry landing, then the Switchback Grade swinging west (left), so the Logging Spur runs
-    // straight up its east side.
+    // The ferry dock and the ferry (run W-U), then the old landing, then the Switchback Grade
+    // swinging west (left), so the Logging Spur runs straight up its east side.
+    [0, 400],
     [0, 0],
     [0, -220],
     [-50, -410],
@@ -91,34 +240,42 @@ export const PNW_C1: TrackSource = {
     {
       id: 'pnw-ferry-landing',
       name: 'Ferry Landing',
-      lengthM: 300,
+      lengthM: 700,
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
       humps: [],
+      // Run W-U: up the transfer span onto the ferry, level across its deck, down the far ramp. No
+      // lip: a fast bike floats off the top of each ramp by the crest rule (a hop, not a timed jump).
+      decks: [
+        {
+          s0: FERRY.rampUpS,
+          upM: FERRY.rampM,
+          lengthM: FERRY.deckM,
+          downM: FERRY.rampM,
+          heightM: FERRY.heightM,
+        },
+      ],
       tags: [
-        { s0: 0, s1: 'end', side: 'right', tag: 'marina' },
-        { s0: 0, s1: 'end', side: 'left', tag: 'town' },
+        { s0: 0, s1: 150, side: 'right', tag: 'marina' },
+        { s0: 0, s1: 150, side: 'left', tag: 'town' },
+        { s0: 150, s1: FERRY.hullS0, side: 'both', tag: 'bridge' },
+        { s0: FERRY.hullS0, s1: FERRY.hullS1, side: 'both', tag: 'ferry' },
+        { s0: FERRY.hullS1, s1: 340, side: 'both', tag: 'bridge' },
+        { s0: 340, s1: 420, side: 'right', tag: 'marina' },
+        { s0: 340, s1: 420, side: 'left', tag: 'town' },
+        { s0: 420, s1: 'end', side: 'both', tag: 'forest' },
       ],
       features: [
+        { kind: 'copSpawn', id: 'ferry-holding-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
         {
           kind: 'billboard',
           id: 'sign-landing-overflow',
-          s0: 200,
-          s1: 210,
+          s0: 60,
+          s1: 70,
           d0: -9,
           d1: -6.5,
           item: 'ferry-overflow',
         },
-        {
-          kind: 'billboard',
-          id: 'bb-landing-priority',
-          s0: 240,
-          s1: 280,
-          d0: -16,
-          d1: -7,
-          item: 'ferry-priority',
-        },
-        { kind: 'copSpawn', id: 'ferry-holding-lot', s0: 4, s1: 20, d0: 6.1, d1: 9.6 },
         {
           kind: 'roadsideZone',
           id: 'ferry-walk-ons',
@@ -131,19 +288,67 @@ export const PNW_C1: TrackSource = {
         {
           kind: 'billboard',
           id: 'sign-landing-ferry-wait',
-          s0: 150,
-          s1: 160,
+          s0: 80,
+          s1: 90,
           d0: 6.5,
           d1: 9,
           item: 'ferry-wait',
+        },
+        // Run W-U: the bridge is out, and the deck has rules.
+        {
+          kind: 'billboard',
+          id: 'sign-landing-bridge-out',
+          s0: 112,
+          s1: 122,
+          d0: 6.5,
+          d1: 9,
+          item: 'ferry-bridge-out',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-landing-engines-off',
+          s0: 130,
+          s1: 140,
+          d0: -9,
+          d1: -6.5,
+          item: 'ferry-engines-off',
+        },
+        ...ferryDeck(),
+        {
+          kind: 'billboard',
+          id: 'sign-landing-far-side',
+          s0: 356,
+          s1: 366,
+          d0: 6.5,
+          d1: 9,
+          item: 'ferry-far-side',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-landing-priority',
+          s0: 372,
+          s1: 412,
+          d0: -16,
+          d1: -7,
+          item: 'ferry-priority',
+        },
+        // Playtest 1c item 2: the landing pad's other spot (the race seed picks one), mid-lane.
+        {
+          kind: 'boostPad',
+          id: 'pad-ferry-landing-early',
+          s0: 480,
+          s1: 486,
+          d0: 0.5,
+          d1: 3,
+          params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-landing' },
         },
         // The junction choice, signed (W-R; interview, 2026-10-02: "junction choices in races"): the
         // Logging Spur's split is the last 40 m of the landing, on the right.
         {
           kind: 'billboard',
           id: 'sign-landing-spur-ahead',
-          s0: 200,
-          s1: 210,
+          s0: 600,
+          s1: 610,
           d0: 6.5,
           d1: 9,
           item: 'spur-keep-right',
@@ -152,24 +357,18 @@ export const PNW_C1: TrackSource = {
         {
           kind: 'boostPad',
           id: 'pad-ferry-landing',
-          s0: 230,
-          s1: 236,
+          s0: 630,
+          s1: 636,
           d0: 2.5,
           d1: 4.5,
           params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-landing' },
         },
-        // Playtest 1c item 2: the landing pad's other spot (the race seed picks one), mid-lane.
-        {
-          kind: 'boostPad',
-          id: 'pad-ferry-landing-early',
-          s0: 150,
-          s1: 156,
-          d0: 0.5,
-          d1: 3,
-          params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-landing' },
-        },
       ],
-      barriers: [],
+      // The transfer spans from the docks to the ferry: railed, over the water.
+      barriers: [
+        { s0: 150, s1: FERRY.hullS0, side: 'both', kind: 'rail', heightM: 1.1 },
+        { s0: FERRY.hullS1, s1: 340, side: 'both', kind: 'rail', heightM: 1.1 },
+      ],
     },
     {
       id: 'c-pnw-spur-split',
@@ -190,7 +389,13 @@ export const PNW_C1: TrackSource = {
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
       humps: [{ centreM: 420, lengthM: 700, heightM: 14 }],
-      tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
+      // Run W-U: the log trucks' road (`logging`, the region's traffic area: mostly log trucks, both
+      // ways), with the clear-cut on its right, between it and the Logging Spur.
+      tags: [
+        { s0: 0, s1: 'end', side: 'both', tag: 'forest' },
+        { s0: 0, s1: 'end', side: 'both', tag: 'logging' },
+        { s0: CLEARCUT.gradeRight[0], s1: CLEARCUT.gradeRight[1], side: 'right', tag: 'clearcut' },
+      ],
       features: [
         { kind: 'billboard', id: 'sign-grade-slide', s0: 450, s1: 460, d0: 6.5, d1: 9, item: 'slide-area' },
         { kind: 'billboard', id: 'sign-grade-elk', s0: 620, s1: 630, d0: -9, d1: -6.5, item: 'elk-schedule' },
@@ -352,35 +557,19 @@ export const PNW_C1: TrackSource = {
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
       humps: [{ centreM: 600, lengthM: 260, heightM: 4 }],
+      // Run W-U: the town's main street is closed for the Stump Social (`festival`) between the barricades.
       tags: [
-        { s0: 0, s1: 700, side: 'both', tag: 'town' },
+        { s0: 0, s1: FESTIVAL.s0, side: 'both', tag: 'town' },
+        { s0: FESTIVAL.s0, s1: FESTIVAL.s1, side: 'both', tag: 'festival' },
+        { s0: FESTIVAL.s1, s1: 700, side: 'both', tag: 'town' },
         { s0: 700, s1: 'end', side: 'both', tag: 'forest' },
       ],
       features: [
         {
-          kind: 'billboard',
-          id: 'sign-row-zipper',
-          s0: 100,
-          s1: 110,
-          d0: -9,
-          d1: -6.5,
-          item: 'espresso-zipper',
-        },
-        {
-          kind: 'billboard',
-          id: 'bb-row-drizzlewood',
-          s0: 260,
-          s1: 300,
-          d0: -16,
-          d1: -7,
-          item: 'drizzlewood-roast',
-        },
-        { kind: 'billboard', id: 'bb-row-sogproof', s0: 560, s1: 600, d0: 7, d1: 16, item: 'sogproof-shell' },
-        {
           kind: 'roadsideZone',
           id: 'espresso-stand-line',
-          s0: 120,
-          s1: 220,
+          s0: 20,
+          s1: 110,
           d0: 5.6,
           d1: 12.6,
           params: { spawns: 'pedestrians' },
@@ -396,9 +585,74 @@ export const PNW_C1: TrackSource = {
         },
         {
           kind: 'billboard',
-          id: 'bb-row-view-lots',
-          s0: 420,
+          id: 'sign-row-zipper',
+          s0: 90,
+          s1: 100,
+          d0: -9,
+          d1: -6.5,
+          item: 'espresso-zipper',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-row-closed',
+          s0: 100,
+          s1: 110,
+          d0: 6.5,
+          d1: 9,
+          item: 'stump-social-closed',
+        },
+        ...stumpSocial(),
+        {
+          kind: 'billboard',
+          id: 'sign-row-log-rolling',
+          s0: 250,
+          s1: 260,
+          d0: -9,
+          d1: -6.5,
+          item: 'log-rolling',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-row-carving',
+          s0: 350,
+          s1: 360,
+          d0: 6.5,
+          d1: 9,
+          item: 'carving-demo',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-row-parade',
+          s0: 450,
           s1: 460,
+          d0: -9,
+          d1: -6.5,
+          item: 'parade-route',
+        },
+        {
+          kind: 'billboard',
+          id: 'sign-row-festival-end',
+          s0: 630,
+          s1: 640,
+          d0: 6.5,
+          d1: 9,
+          item: 'stump-social-end',
+        },
+        {
+          kind: 'billboard',
+          id: 'bb-row-drizzlewood',
+          s0: 645,
+          s1: 685,
+          d0: -16,
+          d1: -7,
+          item: 'drizzlewood-roast',
+        },
+        { kind: 'billboard', id: 'bb-row-sogproof', s0: 720, s1: 760, d0: 7, d1: 16, item: 'sogproof-shell' },
+        {
+          kind: 'billboard',
+          id: 'bb-row-view-lots',
+          s0: 790,
+          s1: 830,
           d0: -16,
           d1: -7,
           item: 'view-lots',
@@ -519,9 +773,25 @@ export const PNW_C1: TrackSource = {
           speedLimitMps: FOREST_MPS,
           surface: 'gravel',
           humps: [],
-          ramps: [{ id: 'log-deck', s0: 400, lengthM: 15, heightM: 1.5, backM: 5 }],
-          tags: [{ s0: 0, s1: 'end', side: 'both', tag: 'forest' }],
-          features: [],
+          ramps: [{ id: 'log-deck', ...LOG_DECK }],
+          // Run W-U: a fresh clear-cut, stumps and all, and the region's billboard for it.
+          tags: [
+            { s0: 0, s1: 'end', side: 'both', tag: 'forest' },
+            { s0: CLEARCUT.spurRight[0], s1: CLEARCUT.spurRight[1], side: 'right', tag: 'clearcut' },
+            { s0: CLEARCUT.spurLeft[0], s1: CLEARCUT.spurLeft[1], side: 'left', tag: 'clearcut' },
+          ],
+          features: [
+            ...clearCut(),
+            {
+              kind: 'billboard',
+              id: 'bb-spur-replanting',
+              s0: 120,
+              s1: 160,
+              d0: 19,
+              d1: 28,
+              item: 'replanting',
+            },
+          ],
           barriers: [],
         },
         {
@@ -541,7 +811,7 @@ export const PNW_C1: TrackSource = {
   ],
   routes: [
     {
-      // Short (about 2.4 km): the landing to the end of Cedar Hollow.
+      // Short (about 2.8 km): the ferry dock, the ferry and the landing to the end of Cedar Hollow.
       id: 'pnw-hollow-sprint',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
       finish: { road: 'pnw-cedar-hollow', s: -40 },
@@ -552,7 +822,7 @@ export const PNW_C1: TrackSource = {
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
     },
     {
-      // Standard (about 3.9 km, 2 to 3 minutes): over the trestle to the line at the end of the
+      // Standard (about 4.4 km, 2 to 3 minutes): over the trestle to the line at the end of the
       // espresso stands on Espresso Row.
       id: 'pnw-espresso-run',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
@@ -566,7 +836,7 @@ export const PNW_C1: TrackSource = {
       startGrid: { rows: 3, perRow: 2, rowGapM: 8 },
     },
     {
-      // Long (about 6.2 km): on over Fogline Ridge to the end of the Sawmill Flats.
+      // Long (about 6.6 km): on over Fogline Ridge to the end of the Sawmill Flats.
       id: 'pnw-sawmill-haul',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
       finish: { road: 'pnw-sawmill-flats', s: -40 },

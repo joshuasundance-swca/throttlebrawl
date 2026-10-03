@@ -12,12 +12,14 @@ import {
   type BakedRoad,
   type BakedRoute,
 } from '../../src/road';
-import { PACK, PNW_C1 } from './tracks/pnw-c1';
+import { FERRY, FESTIVAL, PACK, PNW_C1 } from './tracks/pnw-c1';
 
 // The Pacific Northwest track as baked into its region pack (playtest 1c, 2026-09-30: "Pnw and sf
 // first then others"): the files are fresh, pass the schemas and the road lint, and the track has
-// the region's shape: three race lengths about 2.4, 3.9 and 6.2 km, real forest bends, a railed
-// trestle, the Logging Spur shortcut with its log-deck ramp, a ramp truck and boost pads.
+// the region's shape: three race lengths about 2.8, 4.4 and 6.6 km, real forest bends, a railed
+// trestle, the Logging Spur shortcut with its log-deck ramp, a ramp truck and boost pads. Run W-U
+// (the pitch deck's #12) adds the places: the car ferry the race rides across, the clear-cut round
+// the spur, and the Stump Social on Espresso Row.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const region = path.join(root, 'packs', PACK, 'regions/pacific-northwest');
@@ -55,16 +57,17 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
   });
 
-  it('has three race lengths, about 2.4, 3.9 and 6.2 km, each carrying on from the last', () => {
+  it('has three race lengths, about 2.8, 4.4 and 6.6 km, each carrying on from the last', () => {
     const lengths = routes.map((r) => createRouteProgress(net, r).length);
     console.log(`PNW routes: ${ROUTE_IDS.map((r, i) => `${r} ${lengths[i]?.toFixed(0)} m`).join(', ')}`);
     const [short = 0, standard = 0, long = 0] = lengths;
-    expect(short).toBeGreaterThan(2200);
-    expect(short).toBeLessThan(2600);
-    expect(standard).toBeGreaterThan(3700);
-    expect(standard).toBeLessThan(4100);
-    expect(long).toBeGreaterThan(6000);
-    expect(long).toBeLessThan(6400);
+    // Run W-U: each 400 m longer than before, for the ferry dock and the ferry.
+    expect(short).toBeGreaterThan(2600);
+    expect(short).toBeLessThan(3000);
+    expect(standard).toBeGreaterThan(4100);
+    expect(standard).toBeLessThan(4500);
+    expect(long).toBeGreaterThan(6400);
+    expect(long).toBeLessThan(6800);
   });
 
   it('is twisty: bends tighter than a 200 m radius both ways, and over a quarter of it tighter than 300 m', () => {
@@ -77,16 +80,109 @@ describe('tools/road: the baked Pacific Northwest track', () => {
     expect(bendy).toBeGreaterThan(0.25);
   });
 
-  it('rails the trestle over the water and nothing else; the deck stays above sea level', () => {
+  it('rails the trestle and the ferry slip spans over the water and nothing else; decks stay above sea level', () => {
     const trestle = id('pnw-trestle');
     for (let s = 110; s <= 750; s += 20) {
       for (const side of ['left', 'right'] as const)
         expect(net.barrierAt(trestle, s, side), `trestle ${s} ${side}`).toEqual({ kind: 'rail', heightM: 1 });
       expect(net.surfaceHeight(trestle, s, 0)).toBeGreaterThan(0);
     }
-    for (const name of ['pnw-ferry-landing', 'pnw-cedar-hollow', 'pnw-espresso-row', 'pnw-logging-spur'])
+    // Run W-U: the two transfer spans between the docks and the ferry are railed; the ferry is not.
+    const landing = id('pnw-ferry-landing');
+    const spans = (s: number) => (s >= 150 && s <= FERRY.hullS0) || (s >= FERRY.hullS1 && s <= 340);
+    for (let s = 0; s <= (net.edges[landing]?.length ?? 0); s += 2)
+      for (const side of ['left', 'right'] as const) {
+        const rail = net.barrierAt(landing, s, side);
+        if (spans(s)) expect(rail, `landing ${s} ${side}`).toEqual({ kind: 'rail', heightM: 1.1 });
+        else expect(rail, `landing ${s} ${side}`).toBeNull();
+      }
+    for (const name of ['pnw-cedar-hollow', 'pnw-espresso-row', 'pnw-logging-spur'])
       for (let s = 0; s <= (net.edges[id(name)]?.length ?? 0); s += 50)
         expect(net.barrierAt(id(name), s, 'right'), `${name} ${s}`).toBeNull();
+  });
+
+  it('rides up the ramp onto the ferry, level across its deck, and off the far ramp (run W-U)', () => {
+    const landing = id('pnw-ferry-landing');
+    const y = (s: number) => net.surfaceHeight(landing, s, 0);
+    const base = y(40);
+    const deck = base + FERRY.heightM;
+    expect(y(FERRY.rampUpS - 1)).toBeCloseTo(base, 3);
+    for (let s = FERRY.rampUpS + FERRY.rampM; s <= FERRY.rampUpS + FERRY.rampM + FERRY.deckM; s += 2)
+      expect(y(s), `deck ${s}`).toBeCloseTo(deck, 3);
+    expect(y(FERRY.rampUpS + 2 * FERRY.rampM + FERRY.deckM + 1)).toBeCloseTo(base, 3);
+    // The hull covers the level deck and the top of each ramp.
+    expect(FERRY.hullS0).toBeLessThan(FERRY.rampUpS + FERRY.rampM);
+    expect(FERRY.hullS1).toBeGreaterThan(FERRY.rampUpS + FERRY.rampM + FERRY.deckM);
+    for (const side of ['left', 'right'] as const) {
+      const v = net.vergeAt(landing, 240, side);
+      expect([v.widthM, v.surface, v.edge]).toEqual([4.5, 'shoulder', 'hard']);
+    }
+    // Parked pickups and a coffee cart on the deck's outer lanes, a stair tower at each end of each,
+    // all off the lanes (the road lint checks that) and inside the hull.
+    const deckFeatures = net.featuresOf(landing, 'hazard');
+    const count = (o: string) => deckFeatures.filter((f) => f.params?.['object'] === o).length;
+    expect([count('pickup'), count('coffee-cart'), count('stair-tower')]).toEqual([18, 1, 4]);
+    for (const f of deckFeatures) {
+      expect(f.params?.['solid'], f.id).toBe(true);
+      expect(f.s0, f.id).toBeGreaterThanOrEqual(FERRY.hullS0);
+      expect(f.s1, f.id).toBeLessThanOrEqual(FERRY.hullS1);
+      expect(Math.max(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it('runs the Logging Spur through a fresh clear-cut, stumps all over its dirt and a log deck at its jump', () => {
+    const spur = id('pnw-logging-spur');
+    for (const side of ['left', 'right'] as const) {
+      const v = net.vergeAt(spur, 200, side);
+      expect([v.widthM, v.surface, v.edge]).toEqual([16, 'dirt', 'soft']);
+    }
+    const hazards = net.featuresOf(spur, 'hazard');
+    const stumps = hazards.filter((f) => f.params?.['object'] === 'stump');
+    console.log(`clear-cut: ${stumps.length} stumps on the spur`);
+    expect(stumps.length).toBeGreaterThan(80);
+    expect(stumps.length).toBeLessThan(120);
+    for (const f of stumps) {
+      const near = Math.min(Math.abs(f.d0), Math.abs(f.d1));
+      const far = Math.max(Math.abs(f.d0), Math.abs(f.d1));
+      expect(near, f.id).toBeGreaterThanOrEqual(3.3);
+      expect(far, f.id).toBeLessThanOrEqual(18.5);
+    }
+    const ramp = net.featuresOf(spur, 'ramp')[0];
+    const piles = hazards.filter((f) => f.params?.['object'] === 'log-pile');
+    expect(piles).toHaveLength(2);
+    for (const p of piles) {
+      expect(p.s0).toBeLessThan(ramp?.s0 ?? 0);
+      expect(p.s1).toBeGreaterThan(ramp?.s1 ?? 0);
+    }
+    // Nothing stands where the jump lands, out to 60 m past the ramp.
+    for (const f of stumps)
+      expect(f.s1 < (ramp?.s0 ?? 0) - 10 || f.s0 > (ramp?.s1 ?? 0) + 60, f.id).toBe(true);
+    // The grade beside it is the log trucks' road, the clear-cut on its right.
+    const grade = net.edges[id('pnw-switchback-grade')];
+    expect(grade?.tags.some((t) => t.tag === 'logging' && t.side === 'both')).toBe(true);
+    expect(net.vergeAt(id('pnw-switchback-grade'), 400, 'right').widthM).toBe(16);
+  });
+
+  it('closes Espresso Row for the Stump Social: a bear on every corner, barricades, and a crowd on both sidewalks', () => {
+    const row = id('pnw-espresso-row');
+    for (const side of ['left', 'right'] as const) {
+      const v = net.vergeAt(row, 300, side);
+      expect([v.widthM, v.surface, v.edge]).toEqual([4, 'kerb', 'hard']);
+    }
+    const hazards = net.featuresOf(row, 'hazard');
+    const bears = hazards.filter((f) => f.params?.['object'] === 'bear');
+    expect(bears).toHaveLength(FESTIVAL.sideStreets.length * 4);
+    for (const c of FESTIVAL.sideStreets) {
+      const at = bears.filter((b) => Math.abs((b.s0 + b.s1) / 2 - c) < FESTIVAL.streetM);
+      expect(at.map((b) => Math.sign(b.d0)).sort(), `corner ${c}`).toEqual([-1, -1, 1, 1]);
+    }
+    expect(hazards.filter((f) => f.params?.['object'] === 'barricade')).toHaveLength(4);
+    const crowd = net.featuresOf(row, 'roadsideZone').filter((z) => z.id.startsWith('stump-social-crowd'));
+    expect(crowd.length).toBeGreaterThanOrEqual(10);
+    for (const z of crowd) {
+      expect(z.s0).toBeGreaterThanOrEqual(FESTIVAL.s0);
+      expect(z.s1).toBeLessThanOrEqual(FESTIVAL.s1);
+    }
   });
 
   it('the Logging Spur saves 40–100 m, carries only a shortcut lane, and its log-deck ramp is straight', () => {

@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "stump-social-marshal",
+  "name": "Stump Social Marshal",
+  "category": "car",
+  "tags": ["local", "slow", "festival"],
+  "lengthM": 2.4,
+  "widthM": 1.3,
+  "cruiseMps": 6,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "golf-cart"
+    },
+    "paintOptions": ["#f2c14e", "#e2a33a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Run W-U (the pitch deck's #12): the only traffic on Espresso Row while it is closed for the Stump Social (the region's `festival` traffic area). A hi-vis golf cart at walking pace, keeping to the kerb, with a clipboard.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

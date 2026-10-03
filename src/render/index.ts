@@ -55,6 +55,7 @@ import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
 import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
 import type { AirboatCounts, AirboatLayer } from './airboats';
+import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import { Rain, rainColourOf } from './rain';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
@@ -231,6 +232,8 @@ export interface SceneryStatus {
   scenes: ScenesCounts | null;
   /** The airboats beside a road tagged for them (run W-U), or null on a road without any. */
   airboats?: AirboatCounts | null;
+  /** The Pacific Northwest's ferry, clear-cut and the Stump Social (run W-U), or null on a road without them. */
+  places?: PnwPlacesCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -501,6 +504,23 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     airboats = new airboatsModule.AirboatLayer(roadArgs.road, look, runs);
     scene.add(airboats.group);
   };
+  // Run W-U: the Pacific Northwest's places (pnw-places.ts: the ferry, the clear-cut, the Stump Social), a
+  // lazy chunk loaded only for a road with their tags. Built with the road scene, whose land it stands on.
+  let placesModule: typeof import('./pnw-places') | null = null;
+  let places: PnwPlacesLayer | null = null;
+  const buildPlaces = () => {
+    places?.dispose();
+    places = null;
+    const rs = roadScene;
+    if (!placesModule || !roadArgs || !rs) return;
+    if (!placesModule.hasPnwPlaces(networkTags(roadArgs.road, roadArgs.dressing).tags)) return;
+    places = new placesModule.PnwPlacesLayer(look, {
+      road: roadArgs.road,
+      seed: sceneSeed,
+      landReach: (e, side, s) => rs.landReach(e, side, s),
+    });
+    scene.add(places.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -517,6 +537,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildScenes();
     buildRoadside();
     buildDowntown();
+    buildPlaces();
     buildBlocks();
     buildMission();
   };
@@ -637,6 +658,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
             buildAirboats();
           });
       }
+      const placeTags = networkTags(road, dressing).tags;
+      if (!placesModule && ['ferry', 'clearcut', 'festival'].some((t) => placeTags.has(t)))
+        void import('./pnw-places').then((m) => {
+          placesModule = m;
+          buildPlaces();
+        });
       backdrop.setRoad(road);
       requestScenes(road);
       requestModels();
@@ -674,6 +701,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
         : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
+      if (places) sceneryVisible += places.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
       const dt = lastFrameAt < 0 ? 0 : Math.min(0.1, t - lastFrameAt);
@@ -803,6 +831,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       verge: verge?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
+      places: places?.counts() ?? null,
     }),
   };
 }

@@ -98,7 +98,7 @@ describe('the ground band is drawn where the sim lets a rider ride', () => {
             ray.set(new Vector3(mid.x, mid.y + 5, mid.z), down);
             const hit = ray.intersectObjects(bands, false)[0];
             expect(hit, `${id} ${e.id} s ${s} ${side}`).toBeDefined();
-            expect(Math.abs((hit?.point.y ?? 0) - mid.y)).toBeLessThan(0.15);
+            expect(Math.abs((hit?.point.y ?? 0) - mid.y), `${id} ${e.id} s ${s} ${side}`).toBeLessThan(0.15);
             on++;
             // Past the band's outer edge, and clear of any other road's band, nothing of this layer
             // (past a water edge the shallows are drawn, in the same mesh: not counted).

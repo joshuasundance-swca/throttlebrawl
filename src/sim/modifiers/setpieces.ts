@@ -367,7 +367,10 @@ function pieceLength(piece: string, floats: number): number {
   }
 }
 
-const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn']);
+// Run W-U: a piece's verge vehicles never stand among a road's solid hazards (the ferry's pickups,
+// the festival's bears), and no piece stands on a ferry (NO_PIECE_TAGS).
+const AVOID_FEATURES = new Set(['ramp', 'gap', 'rampTruck', 'boostPad', 'copSpawn', 'hazard']);
+const NO_PIECE_TAGS = new Set(['bridge', 'ferry']);
 
 /**
  * The pieces that put nothing on the verge (#391): the cable car climbs and rolls in its lane, so it
@@ -410,7 +413,8 @@ function stretchOk(
     if (lanesAt(road, c, uu, dir).length === 0) return false;
     const edge = road.edges[pos.edge];
     if (!edge) return false;
-    if (edge.tags.some((t) => t.tag === 'bridge' && pos.s >= t.s0 - 10 && pos.s <= t.s1 + 10)) return false;
+    if (edge.tags.some((t) => NO_PIECE_TAGS.has(t.tag) && pos.s >= t.s0 - 10 && pos.s <= t.s1 + 10))
+      return false;
     if (tag !== '' && !edge.tags.some((t) => t.tag === tag && pos.s >= t.s0 && pos.s <= t.s1)) return false;
     for (const f of edge.features) {
       if (f.s0 > pos.s + 25) break;
