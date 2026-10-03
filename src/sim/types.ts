@@ -369,6 +369,14 @@ export type SimEventType =
   | 'kick'
   | 'weaponGrab'
   /**
+   * A held weapon left the hand, thrown (run W-T, the pitch deck's #4: "Kevin's briefcase is thrown
+   * and bursts into paperwork"). Actor = the thrower, who holds nothing from this tick; target = the
+   * rider it is aimed at, when there is one; `data.weapon`, and `data.pickup`, the pickup entity
+   * that now flies (the snapshot carries it like any pickup). The throw's causeId (its
+   * attackStart's), which the later `hit` or `attackMiss` (`data.thrown`, `data.burst`) shares.
+   */
+  | 'throw'
+  /**
    * The steal cue: a held weapon's wind-up has reached its snatch window (render glints, audio
    * cues). Actor = the holder, target = its current target when it has one; `data.weapon`, and
    * `data.ticks`, the window's length in ticks at timeScale 1. The attack's causeId.
