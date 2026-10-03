@@ -1,0 +1,340 @@
+{
+  "id": "osm-pnw-samish",
+  "name": "I-5 over the Chuckanut Mountains, with Lake Samish (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "originLatDeg": 48.665,
+    "originLonDeg": -122.39
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
+  "osmExtract": ".cache/osm/pnw-samish.json",
+  "outRoot": "packs/region-pnw/regions/pacific-northwest",
+  "waysLabel": "Interstate 5 and Lake Samish",
+  "networkNotes": "A real-road network (run W-S; interview, 2026-10-02: map-based networks, multi-lane highways, junction choices): Interstate 5 southbound over the Chuckanut Mountains, four lanes and a grass median, and Lake Samish's north and east shore roads, which leave it at exit 246 and rejoin it at the Nulle Road on-ramp (exit 242). Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
+  "lines": [
+    {
+      "id": "i5",
+      "pathFrom": {
+        "lat": 48.7111245,
+        "lon": -122.4759927
+      },
+      "pathTo": {
+        "lat": 48.6089258,
+        "lon": -122.3479045
+      },
+      "start": {
+        "lat": 48.6901355,
+        "lon": -122.4118343
+      },
+      "end": {
+        "lat": 48.6401064,
+        "lon": -122.3626723
+      },
+      "routeTags": {
+        "ref": "^I 5$"
+      },
+      "realName": "Interstate 5",
+      "smoothing": {
+        "headingSigmaM": 30
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 40,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 2,
+        "medianM": 4,
+        "medianKind": "grass"
+      },
+      "roads": [
+        {
+          "id": "osm-i5-samish-summit",
+          "name": "Samish Summit",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 10,
+              "d1": 13.5
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-summit-early",
+              "s0": 200,
+              "s1": 206,
+              "d0": 2.5,
+              "d1": 5.5,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "samish-pad-summit"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-samish-summit",
+              "s0": 300,
+              "s1": 340,
+              "d0": -21,
+              "d1": -13,
+              "pool": "billboards"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-summit-late",
+              "s0": 420,
+              "s1": 426,
+              "d0": 2.5,
+              "d1": 5.5,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "samish-pad-summit"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "samish-summit-pullout",
+              "s0": 520,
+              "s1": 600,
+              "d0": 12,
+              "d1": 19,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-lake-samish-keep-right",
+              "s0": 760,
+              "s1": 770,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "lake-samish-keep-right"
+            }
+          ]
+        },
+        {
+          "id": "osm-i5-lake-samish",
+          "name": "Lake Samish Grade",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-lake-samish-grade",
+              "s0": 400,
+              "s1": 410,
+              "d0": 12.5,
+              "d1": 15,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-i5-early",
+              "s0": 1500,
+              "s1": 1506,
+              "d0": 2.5,
+              "d1": 5.5,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "samish-pad-i5"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-lake-samish-grade",
+              "s0": 2200,
+              "s1": 2240,
+              "d0": -21,
+              "d1": -13,
+              "pool": "billboards"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-i5-late",
+              "s0": 3300,
+              "s1": 3306,
+              "d0": 2.5,
+              "d1": 5.5,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "samish-pad-i5"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-nulle-road",
+              "s0": 4600,
+              "s1": 4610,
+              "d0": 12.5,
+              "d1": 15,
+              "pool": "signs"
+            }
+          ]
+        },
+        {
+          "id": "osm-i5-nulle-run",
+          "name": "Nulle Road Run",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "bb-nulle-run",
+              "s0": 200,
+              "s1": 240,
+              "d0": -21,
+              "d1": -13,
+              "pool": "billboards"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "samish",
+      "pathFrom": {
+        "lat": 48.6876252,
+        "lon": -122.3985333
+      },
+      "via": [
+        {
+          "lat": 48.6756,
+          "lon": -122.3958
+        }
+      ],
+      "pathTo": {
+        "lat": 48.6457541,
+        "lon": -122.3650378
+      },
+      "routeTags": {
+        "highway": "^(motorway_link|secondary|tertiary|unclassified|residential)$"
+      },
+      "splitAt": [
+        {
+          "lat": 48.6755956,
+          "lon": -122.3958081
+        }
+      ],
+      "realName": "Lake Samish Drive",
+      "smoothing": {
+        "headingSigmaM": 15
+      },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 40,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "roads": [
+        {
+          "id": "osm-samish-north-shore",
+          "name": "North Shore Drive",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-north-shore",
+              "s0": 300,
+              "s1": 310,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            }
+          ]
+        },
+        {
+          "id": "osm-samish-east-shore",
+          "name": "East Shore Drive",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "lake-samish-swim-dock",
+              "s0": 1400,
+              "s1": 1480,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "bb-east-shore",
+              "s0": 3200,
+              "s1": 3240,
+              "d0": -16,
+              "d1": -7,
+              "pool": "billboards"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-samish-north-shore",
+      "line": "samish",
+      "of": "i5",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
+      "leave": {
+        "at": {
+          "lat": 48.6876252,
+          "lon": -122.3985333
+        },
+        "pieceM": 40,
+        "offsetM": 9.5,
+        "lane": "R2",
+        "zone": {
+          "lengthM": 50,
+          "d0": 8,
+          "d1": 12.5
+        },
+        "insetM": 200,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [20, 20],
+        "shiftM": 160
+      },
+      "join": {
+        "at": {
+          "lat": 48.6457541,
+          "lon": -122.3650378
+        },
+        "pieceM": 40,
+        "offsetM": 8,
+        "lane": "R2",
+        "insetM": 150,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "turnsM": [20, 20],
+        "shiftM": -100
+      },
+      "label": "lake-samish"
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-i5-samish-run",
+      "name": "I-5 by Lake Samish",
+      "line": "i5",
+      "startRoad": "osm-i5-samish-summit",
+      "finishRoad": "osm-i5-nulle-run"
+    }
+  ]
+}

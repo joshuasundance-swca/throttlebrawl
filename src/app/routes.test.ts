@@ -16,6 +16,8 @@ const BASE = registryFromGlob(import.meta.glob('/packs/base/**/*.json', { eager:
 const ALL = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 const KEYS = 'base:m1-skeleton-sprint';
 const BAHIA = 'base:osm-bahia-honda-run';
+/** Run W-S's real-road network in the Keys (tools/gis `tbgis network`). */
+const KEY_WEST = 'base:osm-key-west-run';
 
 /** The config as plain data (the road and route are handles, compared by their ids instead). */
 const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof buildSimConfig>) =>
@@ -23,14 +25,14 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof buildSimConfi
 
 describe('app: real-road routes', () => {
   it("lists the region's real roads only: not the event's own lengths, hand-made spares or other regions", () => {
-    expect(realRoutes(BASE, KEYS)).toEqual([BAHIA]);
+    expect(realRoutes(BASE, KEYS)).toEqual([BAHIA, KEY_WEST]);
     // The Keys' hand-made spare routes (m1-standard-run, m1-long-haul) are not real roads.
     expect(Object.keys(BASE.routes)).toEqual(expect.arrayContaining(['base:m1-long-haul']));
     // With every pack carried, the Keys still list only their own; a region's list never holds
     // another region's routes.
-    expect(realRoutes(ALL, KEYS)).toEqual([BAHIA]);
+    expect(realRoutes(ALL, KEYS)).toEqual([BAHIA, KEY_WEST]);
     for (const event of ['region-pnw:pnw-fogline-run', 'region-sf:sf-hill-sprint'])
-      expect(realRoutes(ALL, event)).not.toContain(BAHIA);
+      for (const keys of [BAHIA, KEY_WEST]) expect(realRoutes(ALL, event)).not.toContain(keys);
   });
 
   it('offers the hand-made road first (the default), then each real road by name, with its length', () => {
@@ -38,7 +40,9 @@ describe('app: real-road routes', () => {
     expect(choices.map((c) => [c.id, c.name])).toEqual([
       [null, 'Causeway Sprint'],
       [BAHIA, 'Bahia Honda Run'],
+      [KEY_WEST, 'Key West'],
     ]);
+    expect(choices[2]?.blurb).toMatch(/^Real streets: Overseas Highway, South Roosevelt, .* \d+\.\d km\.$/);
     const real = choices[1];
     const raced = buildSimConfig(BASE, streamForEvent(BASE, KEYS, undefined, BAHIA), {
       seed: 1,

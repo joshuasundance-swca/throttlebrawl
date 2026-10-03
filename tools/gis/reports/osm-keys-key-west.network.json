@@ -1,0 +1,33 @@
+{
+  "network": "osm-keys-key-west",
+  "lines": {
+    "us1": {
+      "lengthM": 6471.5,
+      "lanesPerDirection": 2,
+      "driftClosedM": {
+        "the-boulevard leave": 14.71,
+        "the-boulevard join": 41.63
+      }
+    },
+    "boulevard": {
+      "lengthM": 4694.4,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "the-boulevard join": 20.39
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-kw-north-roosevelt",
+      "mainM": 4995.6,
+      "branchM": 4730.3,
+      "savesM": 265.3
+    }
+  ],
+  "routes": {
+    "osm-key-west-run": 6391.5
+  },
+  "roads": 11,
+  "junctions": 7
+}

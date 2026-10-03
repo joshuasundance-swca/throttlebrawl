@@ -88,6 +88,22 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-sf:sf-downtown-run',
     kinds: BOTH,
   },
+  // Run W-S: the real-road networks, their pads on the main road (a solo ride keeps to it, so a
+  // pad on a junction choice would never be met).
+  {
+    name: 'osm-keys-key-west',
+    event: 'base:m1-skeleton-sprint',
+    lengths: ['standard'],
+    route: 'base:osm-key-west-run',
+    kinds: ['boostPad'],
+  },
+  {
+    name: 'osm-pnw-samish',
+    event: 'region-pnw:pnw-fogline-run',
+    lengths: ['standard'],
+    route: 'region-pnw:osm-i5-samish-run',
+    kinds: ['boostPad'],
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */

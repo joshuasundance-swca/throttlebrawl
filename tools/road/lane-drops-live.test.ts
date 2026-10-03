@@ -10,8 +10,11 @@ import type { SimConfig } from '../../src/sim/types';
 
 // Lane drops on the live roads (W-R multi-lane highways): the riders' funnel (sim/riders/funnel.ts)
 // exists only where the road's width changes. On every live network it is checked every 10 m, both
-// ways along every road: it appears only on San Francisco's freeway, riding back toward the city
-// (the freeway widens the way the race goes, so a racer never meets a drop).
+// ways along every road: it appears on San Francisco's freeway, riding back toward the city (the
+// freeway widens the way the race goes), and since run W-S in Key West, where four-lane South
+// Roosevelt Boulevard narrows into two-lane Bertha Street the way the race goes (the first drop a
+// racer meets), and at both ends of North Roosevelt Boulevard, the four-lane junction choice, which
+// narrows into 1st Street ahead and into its one-lane turn-off behind.
 // Everywhere else riding is exactly as before.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -41,7 +44,7 @@ function networks(): { network: BakedNetwork; roads: BakedRoad[] }[] {
 }
 
 describe('lane drops on the live roads (W-R)', () => {
-  it('the funnel appears only around the SF freeway, riding back toward the city', () => {
+  it('the funnel appears only where a live road narrows: the SF freeway riding back, and Key West', () => {
     const found = new Map<string, number>();
     let stations = 0;
     for (const n of networks()) {
@@ -61,8 +64,19 @@ describe('lane drops on the live roads (W-R)', () => {
     console.log(`[examined] ${stations} stations; funnels: ${JSON.stringify([...found])}`);
     expect(stations).toBeGreaterThan(5000);
     // Riding back, the freeway narrows twice on its own first 160 m (three lanes to two, then two to
-    // the on-ramp's one): those stations and nothing else.
-    expect([...found.keys()]).toEqual(['sf-bridge-approach dir -1']);
+    // the on-ramp's one). Key West's drops are one each, the funnel's 90 m taper (9 stations).
+    expect([...found.keys()].sort()).toEqual([
+      'osm-kw-north-roosevelt dir -1',
+      'osm-kw-north-roosevelt dir 1',
+      'osm-kw-smathers-beach dir 1',
+      'sf-bridge-approach dir -1',
+    ]);
     expect(found.get('sf-bridge-approach dir -1')).toBeLessThanOrEqual(18);
+    for (const k of [
+      'osm-kw-north-roosevelt dir -1',
+      'osm-kw-north-roosevelt dir 1',
+      'osm-kw-smathers-beach dir 1',
+    ])
+      expect(found.get(k), k).toBeLessThanOrEqual(10);
   });
 });

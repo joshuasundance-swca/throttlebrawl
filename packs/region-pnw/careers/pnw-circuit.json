@@ -61,7 +61,7 @@
       },
       "requires": ["ferry-line"],
       "opens": ["pnw-trestle"],
-      "claims": ["pnw-espresso-row"]
+      "claims": ["pnw-espresso-row", "pnw-trestle"]
     },
     {
       "id": "juniper-grudge",
@@ -81,11 +81,11 @@
       "length": "standard",
       "tier": "t2",
       "at": {
-        "road": "pnw-trestle",
-        "s": 400
+        "road": "osm-i5-samish-summit",
+        "s": 300
       },
       "opens": ["osm-chuckanut-larrabee"],
-      "claims": ["pnw-trestle"]
+      "claims": ["osm-i5-samish-summit", "osm-i5-lake-samish"]
     },
     {
       "id": "chuckanut",

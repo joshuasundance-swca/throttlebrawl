@@ -17,6 +17,7 @@ uv sync
 uv run tbgis probe                                  # the Keys data probe -> probe/keys-us1.md
 uv run tbgis bake configs/osm-keys-bahia-honda.json  # -> packs/base/regions/florida-keys/*/osm-*.json
 uv run tbgis bake configs/osm-pnw-gorge.json         # -> packs/region-pnw/regions/pacific-northwest/*/osm-*.json
+uv run tbgis network networks/osm-pnw-samish.json    # a network: several real roads and their junctions
 cd ../.. && npm run format                           # match the repo's Prettier style
 uv run --directory tools/gis pytest                  # the pipeline tests (plus ruff and mypy)
 ```
@@ -105,6 +106,53 @@ From `reports/<id>.fun.json` (the bake computes every number):
   matters only if scenery is ever placed from real-world coordinates.
 - Twin Peaks finishes at the summit: the through road over the top is car-free in OSM, so the route
   stops there, its finish 80 m short of the road's end, off the summit hairpin.
+
+## Networks: real roads joined at real junctions
+
+Run W-S (interview, 2026-10-02: "map-based networks", "junction choices in races", "multi-lane
+highways"). A stretch bake follows one real road with pass-through junctions only; a network bake
+(`tbgis network networks/<id>.json`, `src/tbgis/network.py`) joins several real roads at their real
+junctions, in the same baked format the hand-made tracks use for their shortcuts, so a race gets a
+real junction choice.
+
+- **Lines.** A network config names `lines`, each one real path through the OSM graph exactly as a
+  stretch config's (`pathFrom`, `via`, `pathTo`, `routeTags`, `respectOneway`, `splitAt`,
+  `splitOnNameChange`), with its own smoothing, elevation and cross-section, and per road its own
+  lanes (`roadLanes`: a four-lane boulevard narrowing into a side street) and tags for one side only
+  (`sideTags`: the beach on one side). Compression is off, so the lines keep their real lengths.
+- **Branches.** A branch line leaves a main line at a real junction (`leave.at`) and rejoins it at
+  another (`join.at`). The bake cuts a junction piece out of the main line (its main-through
+  connector road, one row per drive lane both sides have), starts and ends the branch's own roads
+  `insetM` inside it, and solves a turn-off and a rejoin connector between them (a turn, a straight
+  and a turn, the hand-made compiler's shape) that leave and land with each road's heading. The
+  turn-off's row carries the split zone (`leave.zone`, on the right: keep right to take it). Both
+  connectors carry one `shortcut` lane, so traffic stays on the main road; the branch's own roads
+  keep their real lanes and carry none. `shiftM` moves a junction along the main line off the real
+  gore (at a wide fork the main road already bends there; beside a ramp the connector then stands in
+  for the ramp's first stretch, where the two roads' land would overlap). A branch's `id` must be
+  its first road's (the id the game derives, so a career's `route#id` holds); `label` names the
+  generated junction roads.
+- **The closure.** Positions are integrated from the smoothed heading, so a line drifts off the real
+  map: about 6 m over one city block (run W-O's probe) and 0.4 to 43 m at these networks' junctions.
+  Each line is pinned back at every junction it meets: the error there is spread back along it with
+  a smoothstep between anchors, the line is resampled at uniform arc length, and each road's stored
+  curvature is the turn between its own samples, so positions and curvature agree by construction.
+  `network.json` reports what each junction drifted (`reports/<id>.network.json`).
+- **Routes** run along one line, from a start road to a finish road; each allows the junction pieces
+  in its span and every branch that leaves and rejoins inside it, and names those branches.
+- The bake runs the game's network rules before it writes (`lint_network` in `src/tbgis/lint.py`,
+  after `src/road/validate.ts`: junction radius, connector ends meeting their roads within 0.5 m and
+  3 degrees, split zones at the end they leave from, no drive lane onto a shortcut road), and removes
+  the files an earlier bake of the same config wrote and this one did not.
+
+| Network (pack) | Route (picker name) | Main line | Junction choice | Drift closed |
+|---|---|---|---|---|
+| `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 6.39 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down 1st and Bertha Streets: a shortcut, 265 m shorter | 14.7 and 41.6 m (main), 20.4 m (branch) |
+| `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 256 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
+
+Known: East Lake Samish Drive runs within 7 m of I-5's edge for 800 m; where it leaves it, the
+renderer's terrain skirt leaves one land edge open beside I-5 (`region-routes.test.ts` names it,
+`KNOWN_OPEN`; a render follow-up).
 
 ## Fetch once, bake offline
 

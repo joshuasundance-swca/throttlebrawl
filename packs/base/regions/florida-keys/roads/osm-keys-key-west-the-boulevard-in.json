@@ -1,0 +1,123 @@
+{
+  "type": "road",
+  "id": "osm-keys-key-west-the-boulevard-in",
+  "name": "the-boulevard turn-off",
+  "realName": "the-boulevard turn-off",
+  "network": "osm-keys-key-west",
+  "from": "osm-keys-key-west-j1",
+  "to": "osm-keys-key-west-j1",
+  "lengthM": 65.2293,
+  "sampleSpacingM": 1.9766454545454544,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 65.2293,
+      "side": "both",
+      "tag": "strip-mall"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        1812.7819, 1810.8886, 1808.9973, 1807.1129, 1805.2419, 1803.3927, 1801.5745, 1799.7966, 1798.0669,
+        1796.3906, 1794.7687, 1793.1971, 1791.6674, 1790.1675, 1788.6847, 1787.208, 1785.7321, 1784.2561,
+        1782.7802, 1781.3011, 1779.7945, 1778.2154, 1776.5202, 1774.6907, 1772.753, 1770.781, 1768.8808,
+        1767.1587, 1765.6879, 1764.489, 1763.53, 1762.7437, 1762.052, 1761.3909
+      ],
+      "y": [
+        1.364, 1.3637, 1.3628, 1.3615, 1.3596, 1.3574, 1.3547, 1.3516, 1.3482, 1.3445, 1.3405, 1.3363, 1.3319,
+        1.3274, 1.3227, 1.3179, 1.3131, 1.3083, 1.3035, 1.2987, 1.294, 1.2894, 1.2851, 1.2809, 1.2769, 1.2732,
+        1.2698, 1.2667, 1.264, 1.2618, 1.2599, 1.2586, 1.2577, 1.2574
+      ],
+      "z": [
+        -1140.053, -1139.4819, -1138.9039, -1138.3042, -1137.6638, -1136.9632, -1136.1858, -1135.3204,
+        -1134.3622, -1133.3134, -1132.1822, -1130.982, -1129.7288, -1128.4399, -1127.1314, -1125.816,
+        -1124.4998, -1123.1835, -1121.8673, -1120.5546, -1119.2737, -1118.0841, -1117.0686, -1116.3243,
+        -1115.9482, -1116.0127, -1116.5427, -1117.5058, -1118.8226, -1120.3924, -1122.1205, -1123.9346,
+        -1125.7872, -1127.651
+      ],
+      "kappa": [
+        -0.0, -0.0018528, -0.0058088, -0.010983, -0.016376, -0.021182, -0.024773, -0.026758, -0.026917,
+        -0.02524, -0.021888, -0.01725, -0.01191, -0.0066334, -0.0023903, -0.00026859, -1.3563e-7, 6.1012e-7,
+        0.0012082, 0.010752, 0.029839, 0.053574, 0.077597, 0.09846, 0.11354, 0.12108, 0.12036, 0.11144,
+        0.095285, 0.073664, 0.049405, 0.02613, 0.0083343, 2.4153e-32
+      ],
+      "grade": [
+        -0.00014545, -0.00028491, -0.00055482, -0.00080673, -0.0010407, -0.0012566, -0.0014545, -0.0016345,
+        -0.0017964, -0.0019404, -0.0020663, -0.0021743, -0.0022642, -0.0023362, -0.0023902, -0.0024262,
+        -0.0024442, -0.0024442, -0.0024262, -0.0023902, -0.0023362, -0.0022642, -0.0021743, -0.0020663,
+        -0.0019404, -0.0017964, -0.0016345, -0.0014545, -0.0012566, -0.0010407, -0.00080673, -0.00055482,
+        -0.00028491, -0.00014545
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-key-west.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+        "retrievedAt": "2026-10-03T03:16:48Z",
+        "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T03:40:19Z",
+        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T03:40:40Z",
+        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-key-west.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

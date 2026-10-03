@@ -61,7 +61,7 @@ describe('route branches and ride limits on every live network', () => {
     let branches = 0;
     let named = 0;
     let stations = 0;
-    const handMade: string[] = [];
+    const withChoice: string[] = [];
     const lines: string[] = [];
     for (const n of nets) {
       const road = createRoadNetwork({ network: n.network, roads: n.roads });
@@ -86,9 +86,10 @@ describe('route branches and ride limits on every live network', () => {
           expect(route.orientation(e), `${r.id} ${road.edges[e]?.id}`).toBe(1);
           expect(route.branchAt(e)).toBeNull();
         }
-        // A hand-made route with a shortcut (run W-R's downtown has none yet: its freedom is a
-        // follow-up for the junction-choice lanes).
-        if (!r.id.startsWith('osm-') && road.splitZones().length > 0) handMade.push(r.id);
+        // A route on a network with a split zone offers its junction choice: the hand-made tracks'
+        // shortcuts, and since run W-S the real-road networks' (tools/gis `tbgis network`). A
+        // network without one (the stretch bakes, run W-R's downtown) offers none.
+        if (road.splitZones().length > 0) withChoice.push(r.id);
         else expect(route.branches, r.id).toEqual([]);
         lines.push(
           `${r.id}: ${route.branches.map((b) => `${b.id} ${b.kind} ${b.gainM.toFixed(0)} m`).join(', ') || 'none'}`,
@@ -106,13 +107,13 @@ describe('route branches and ride limits on every live network', () => {
     console.log(
       `[examined] ${nets.length} networks, ${routes} routes, ${branches} branches (${named} named), ${stations} stations of ride limits\n  ${lines.join('\n  ')}`,
     );
-    expect(routes).toBeGreaterThanOrEqual(12);
-    expect(handMade.length).toBeGreaterThanOrEqual(7);
-    expect(branches).toBeGreaterThanOrEqual(handMade.length);
-    // Every hand-made route names its shortcut (W-R junction choices, signed): the Keys' three, the
-    // PNW's three and SF's one.
-    expect(named).toBeGreaterThanOrEqual(7);
-    expect(named).toBe(handMade.length);
+    expect(routes).toBeGreaterThanOrEqual(14);
+    expect(withChoice.length).toBeGreaterThanOrEqual(9);
+    expect(branches).toBeGreaterThanOrEqual(withChoice.length);
+    // Every route with a junction choice names it (W-R junction choices, signed): the Keys' three
+    // hand-made and Key West's Boulevard, the PNW's three and I-5's Lake Samish, and SF's one.
+    expect(named).toBeGreaterThanOrEqual(9);
+    expect(named).toBe(withChoice.length);
     expect(stations).toBeGreaterThan(1000);
   });
 });

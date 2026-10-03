@@ -1,4 +1,4 @@
-"""``tbgis probe`` and ``tbgis bake``: the offline pipeline's two commands.
+"""``tbgis probe``, ``tbgis bake`` and ``tbgis network``: the offline pipeline's commands.
 
 Run from anywhere; paths resolve against tools/gis. Both fetch at most once and then read the
 cache under tools/gis/.cache (git-ignored). After a bake, format the pack files with
@@ -17,12 +17,13 @@ import numpy as np
 from tbgis.config import BakeConfig
 from tbgis.elevation import fill_gaps, parse_samples, sample_points
 from tbgis.emit import bake
-from tbgis.fetch import overpass, usgs_samples
+from tbgis.fetch import FetchMeta, overpass, usgs_samples
 from tbgis.fun import fun_report
-from tbgis.lint import lint_bake
+from tbgis.lint import lint_bake, lint_network
+from tbgis.network import NetworkConfig, bake_network
 from tbgis.osm import load_ways
 from tbgis.probe import report
-from tbgis.stretch import build_profile, real_path, runs_of
+from tbgis.stretch import F64, RealPath, build_profile, real_path, runs_of
 from tbgis.tmerc import Frame
 
 GIS = Path(__file__).resolve().parents[2]
@@ -97,6 +98,60 @@ def cmd_bake(args: argparse.Namespace) -> int:
     return 0
 
 
+def land_from_usgs(sc: BakeConfig, rp: RealPath) -> tuple[F64, F64, FetchMeta]:
+    """One line's land elevation: one 3DEP request (cached), gaps filled."""
+    es, pts = sample_points(sc, rp)
+    meta = usgs_samples(pts, GIS / sc.elevationExtract)
+    land = parse_samples(GIS / sc.elevationExtract, len(pts))
+    return es, fill_gaps(es, land, sc.elevation.minLandM), meta
+
+
+def write_json(path: Path, doc: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    print(f"wrote {path.relative_to(REPO).as_posix()}")
+
+
+def remove_stale(region: Path, config_ref: str, written: set[str]) -> None:
+    """Removes the files an earlier bake of this same network config wrote and this one did not (a
+    road renamed or a junction moved): every osm- file whose provenance names the config."""
+    for folder in ("networks", "roads", "routes"):
+        for path in sorted((region / folder).glob("osm-*.json")):
+            if path.name in written:
+                continue
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            prov = doc.get("provenance") or doc.get("meta", {}).get("provenance") or {}
+            if prov.get("tool", {}).get("configRef") == config_ref:
+                path.unlink()
+                print(f"removed {path.relative_to(REPO).as_posix()} (stale: no longer baked)")
+
+
+def cmd_network(args: argparse.Namespace) -> int:
+    cfg = NetworkConfig.load(Path(args.config))
+    osm = overpass(cfg.osmQuery, GIS / cfg.osmExtract)
+    ways = load_ways(GIS / cfg.osmExtract)
+    out = bake_network(cfg, osm, ways, land_from_usgs, args.created_at or osm.retrievedAt[:10])
+    errs = lint_network(out.network, out.roads, out.routes)
+    if errs:
+        for e in errs:
+            print(f"lint: {e}", file=sys.stderr)
+        return 1
+    region = REPO / cfg.outRoot
+    written = {f"{cfg.id}.json"}
+    write_json(region / "networks" / f"{cfg.id}.json", out.network)
+    for r in out.roads:
+        write_json(region / "roads" / f"{r['id']}.json", r)
+        written.add(f"{r['id']}.json")
+    for rt in out.routes:
+        write_json(region / "routes" / f"{rt['id']}.json", rt)
+        written.add(f"{rt['id']}.json")
+    remove_stale(region, f"tools/gis/networks/{cfg.id}.json", written)
+    write_json(GIS / "reports" / f"{cfg.id}.network.json", out.report)  # never inside a pack folder
+    print(f"network: {json.dumps(out.report)}")
+    print("lint: 0 errors; now run `npm run format` at the repo root")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="tbgis", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -104,8 +159,12 @@ def main(argv: list[str] | None = None) -> int:
     bk = sub.add_parser("bake", help="bake one stretch config into the pack")
     bk.add_argument("config", help="path to a configs/<id>.json file")
     bk.add_argument("--created-at", help="provenance date (default: the OSM retrieval date)")
+    nw = sub.add_parser("network", help="bake one real-road network config into the pack")
+    nw.add_argument("config", help="path to a networks/<id>.json file")
+    nw.add_argument("--created-at", help="provenance date (default: the OSM retrieval date)")
     args = ap.parse_args(argv)
-    return int(cmd_probe(args) if args.cmd == "probe" else cmd_bake(args))
+    commands = {"probe": cmd_probe, "bake": cmd_bake, "network": cmd_network}
+    return int(commands[args.cmd](args))
 
 
 if __name__ == "__main__":

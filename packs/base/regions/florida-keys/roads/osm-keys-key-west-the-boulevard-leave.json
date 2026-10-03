@@ -1,0 +1,163 @@
+{
+  "type": "road",
+  "id": "osm-keys-key-west-the-boulevard-leave",
+  "name": "the-boulevard-leave junction",
+  "realName": "Overseas Highway",
+  "network": "osm-keys-key-west",
+  "from": "osm-keys-key-west-j1",
+  "to": "osm-keys-key-west-j1",
+  "lengthM": 39.9983,
+  "sampleSpacingM": 1.999915,
+  "speedLimitMps": 13.4,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -8.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L2",
+          "dCenterM": -6.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R2",
+          "dCenterM": 6.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 8.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 39.9983,
+      "side": "both",
+      "tag": "town"
+    },
+    {
+      "s0": 0.0,
+      "s1": 39.9983,
+      "side": "both",
+      "tag": "palms"
+    },
+    {
+      "s0": 0.0,
+      "s1": 39.9983,
+      "side": "both",
+      "tag": "key-fishing"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        1814.5128, 1812.6015, 1810.698, 1808.8035, 1806.9194, 1805.047, 1803.1879, 1801.3438, 1799.5167,
+        1797.7087, 1795.9221, 1794.1593, 1792.4232, 1790.7164, 1789.0422, 1787.4036, 1785.804, 1784.2469,
+        1782.7357, 1781.2739, 1779.8651
+      ],
+      "y": [
+        1.364, 1.3679, 1.3717, 1.3753, 1.3788, 1.3821, 1.3851, 1.388, 1.3906, 1.393, 1.3951, 1.3971, 1.3987,
+        1.4001, 1.4012, 1.402, 1.4025, 1.4027, 1.4026, 1.4022, 1.4015
+      ],
+      "z": [
+        -1134.3081, -1133.7194, -1133.1056, -1132.4645, -1131.7938, -1131.091, -1130.3538, -1129.5797,
+        -1128.7664, -1127.9115, -1127.0128, -1126.0681, -1125.0755, -1124.033, -1122.9392, -1121.7927,
+        -1120.5923, -1119.3375, -1118.0277, -1116.6629, -1115.2436
+      ],
+      "kappa": [
+        -0.0059727, -0.0065714, -0.0071982, -0.0078518, -0.0085302, -0.0092309, -0.0099511, -0.010687,
+        -0.011436, -0.012193, -0.012953, -0.013711, -0.014462, -0.0152, -0.015919, -0.016613, -0.017276,
+        -0.017902, -0.018485, -0.019017, -0.019494
+      ],
+      "grade": [
+        0.0019774, 0.0019384, 0.0018575, 0.0017709, 0.0016788, 0.0015812, 0.0014782, 0.0013701, 0.0012568,
+        0.0011385, 0.0010154, 0.00088744, 0.00075488, 0.00061814, 0.00047745, 0.00033302, 0.00018508,
+        3.3872e-5, -0.00012036, -0.00027735, -0.00035651
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-03",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-key-west.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
+        "retrievedAt": "2026-10-03T03:16:48Z",
+        "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 356 points in 1 request(s) (lon, lat WGS84, sha256 20569480e4852776), bilinear (line us1)",
+        "retrievedAt": "2026-10-03T03:40:19Z",
+        "sha256": "4e74eb4bacea7c9e76cc31156828297aa9a6aebc03b0ff06fbe1a124c9f6492a"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 237 points in 1 request(s) (lon, lat WGS84, sha256 392e8d2d2f076f4a), bilinear (line boulevard)",
+        "retrievedAt": "2026-10-03T03:40:40Z",
+        "sha256": "88f7af2004abf4ea6df7527b2868899403550824472e69658491745106b55e96"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 41.6 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-key-west.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

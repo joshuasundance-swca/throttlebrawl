@@ -1,0 +1,33 @@
+{
+  "network": "osm-pnw-samish",
+  "lines": {
+    "i5": {
+      "lengthM": 7304.2,
+      "lanesPerDirection": 2,
+      "driftClosedM": {
+        "lake-samish leave": 0.42,
+        "lake-samish join": 4.18
+      }
+    },
+    "samish": {
+      "lengthM": 5871.1,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "lake-samish join": 43.23
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-samish-north-shore",
+      "mainM": 5360.2,
+      "branchM": 5616.0,
+      "savesM": -255.8
+    }
+  ],
+  "routes": {
+    "osm-i5-samish-run": 7224.2
+  },
+  "roads": 9,
+  "junctions": 5
+}
