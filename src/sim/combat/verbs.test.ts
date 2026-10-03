@@ -95,6 +95,12 @@ describe('verbs: Kevin’s briefcase is thrown and bursts into paperwork', () =>
     const start = ofType(h.events, 'attackStart').find((e) => e.actor === 0);
     expect(hit?.causeId).toBe(start?.causeId);
     expect(ofType(h.events, 'attackMiss').filter((e) => e.actor === 0)).toHaveLength(0);
+    // The release is its own event, on the wind-up's last tick, before the hit: aimed at the rival.
+    const thrown = ofType(h.events, 'throw');
+    expect(thrown).toHaveLength(1);
+    expect(thrown[0]).toMatchObject({ actor: 0, target: 1, causeId: start?.causeId });
+    expect(thrown[0]?.data).toMatchObject({ weapon: BRIEFCASE.contentId, pickup: pid });
+    expect(thrown[0]?.tick ?? 0).toBeLessThan(hit?.tick ?? 0);
   });
 
   it('with nobody ahead it flies its range, lands and bursts anyway (a miss)', () => {

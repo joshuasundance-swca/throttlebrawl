@@ -629,7 +629,8 @@ export interface SimWeaponDef {
   steal: { startTick: number; endTick: number } | null;
   /**
    * The registered behaviour id (the weapon file's `behaviour`, M4 weapons-2): `melee.swing`,
-   * `melee.wrap` or `taser.stun`, a closed list in sim/combat. Absent or unknown is `melee.swing`.
+   * `melee.wrap` or `taser.stun`, and from W-T `throw.burst`, `melee.yank` and `melee.sweep`; a
+   * closed list in sim/combat (WEAPON_BEHAVIOURS). Absent or unknown is `melee.swing`.
    */
   behaviour?: string;
   /** Swings one held weapon gives before it is spent (`uses.charges`); absent or null: unlimited. */

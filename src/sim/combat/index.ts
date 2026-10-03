@@ -137,6 +137,21 @@
 //   the target's speed by combat.wrapDragMps, and `taser.stun` also stuns: the target cannot
 //   attack and wobbles for the weapon's stunTicks × combat.stunScale, and loses
 //   combat.stunSpeedLoss of its speed. The `hit` event carries `dragMps` or `stunTicks`.
+// - Weapons with verbs (run W-T, the pitch deck's #4). [default]
+//   - `throw.burst` (Kevin's briefcase): the swing's wind-up as usual (snatchable in it, from arm's
+//     length only, THROW_SNATCH_M), then at its end the weapon leaves the hand (a `throw` event)
+//     as its own pickup entity flying up the road at the thrower's speed + combat.throwSpeedMps,
+//     aimed at the nearest rider up to reach.sM ahead and reach.dM to either side. The first rider
+//     but the thrower inside the THROW_HIT box takes a normal hit (damage, shove, stagger), and the
+//     weapon bursts: `hit` with `thrown`, `burst`, `spent` and the burst point in world metres
+//     (`burstX/Y/Z`, render's paperwork). One that flies its length bursts where it lands
+//     (`attackMiss`, the same data). One throw, and it is gone for the race.
+//   - `melee.yank` (the chain): the wrap's drag, and the shove turns round: it pulls the target
+//     across the attacker's line to combat.yankPastM beyond it (`hit` carries `yank`, `yankM`). A
+//     rider yanked from his oncoming side comes out in the oncoming lane.
+//   - `melee.sweep` (the campaign sign, the canoe paddle): one swing lands once on a rider on each
+//     side through its active moment, right side first, never twice on one rider; each is shoved
+//     away (`hit` carries `sweep`), and only the first landing spends a use.
 // - A cop's landed hit on a player is softened by combat.copOnPlayerScale (damage, shove and
 //   stun): an armed cop swings so you can snatch his weapon, not to raise the bust rate.
 // - Uses live on the pickup entity, so a stolen weapon keeps what it has left. `charges` (the
@@ -1516,6 +1531,10 @@ function launch(world: World, config: SimConfig, st: CombatState, a: Mover, w: S
     age: 0,
     ticks: Math.max(6, Math.round((w.reachSM / throwMps) * 60)),
   });
+  // The release (the `throw` event): the thrower's hands are empty from this tick.
+  const extra: { target?: EntityId; causeId: number } = { causeId: st.cause[id] ?? 0 };
+  if (victim) extra.target = victim.id;
+  emit(world, 'throw', id, { weapon: w.contentId, pickup: pid }, extra);
 }
 
 /** Where a thrown weapon bursts, in world metres (render's paperwork), rounded to centimetres. */
