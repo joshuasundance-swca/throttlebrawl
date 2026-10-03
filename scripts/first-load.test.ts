@@ -102,6 +102,16 @@ describe('the production build', { timeout: 120_000 }, () => {
     }
     // A pack's road data ships as files, never as data URLs inside the JavaScript.
     for (const c of firstChunks) expect(c.code.includes('data:application/json')).toBe(false);
+    // No pack's road data (networks, roads, routes) is bundled into the first load, the Keys'
+    // hand-made roads included: they are fetched at boot as JSON (run W-S, the first-load budget).
+    // A `?url` import of one (its URL string only) is fine.
+    const roadData =
+      /[\\/]packs[\\/][^\\/]+[\\/]regions[\\/][^\\/]+[\\/](?:networks|roads|routes)[\\/][^\\/]+\.json$/;
+    const bundledRoads = firstChunks.flatMap((c) => c.moduleIds.filter((id) => roadData.test(id)));
+    console.log(
+      `[examined] ${firstChunks.length} first-load chunks for bundled road data: ${bundledRoads.length}`,
+    );
+    expect(bundledRoads).toEqual([]);
 
     // Run W-Q: every file assets.lock.json pins is baked in under assets/ds/ with its pinned bytes
     // (offline keeps working), and the first load's manifest rows name it.
