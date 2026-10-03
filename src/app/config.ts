@@ -31,6 +31,7 @@ import {
   type SimController,
   type SimDifficulty,
   type SimEventCops,
+  type SimEventDef,
   type SimRiderDef,
   type SimSlotConfig,
   type SimStyleRewards,
@@ -590,6 +591,17 @@ export function cleanGrudges(g: RaceSetup['grudges']): Record<string, Record<str
   return out;
 }
 
+/**
+ * A grudge match's rival rule (run W-T, the pitch deck's #14: the event file's `rules.rule`), with
+ * its rival qualified as the riders are, or nothing (so an event without one keeps its hash).
+ */
+export function eventGrudgeRule(event: RaceEvent, eventPack: string): Pick<SimEventDef, 'grudgeRule'> {
+  const rule = event.rules.rule;
+  const rival = event.rules.rival;
+  if (event.kind !== 'grudge-match' || !rule || typeof rival !== 'string') return {};
+  return { grudgeRule: { rule, rival: qualifyIn(eventPack, rival) } };
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
   const eventPack = packOf(eventId);
@@ -664,6 +676,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       tier,
       cops: eventCops(event),
       ...(mods.perRace !== undefined ? { modifiersPerRace: mods.perRace } : {}),
+      ...eventGrudgeRule(event, eventPack),
     },
     riders,
     weapons,

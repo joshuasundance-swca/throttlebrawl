@@ -13,9 +13,10 @@
 //
 // The words live in each career file's loose `show` block (docs/content-packs.md, "Career"); the
 // rules for picking them live here. Picks are seeded by the race or the profile, never by the clock.
+import type { GrudgeRuleId } from '../core';
 import { packOf, type ContentRegistry } from '../content';
 import type { Profile } from '../save';
-import { bare, qualify, type CareerDef, type EventPlan } from './defs';
+import { bare, careerDefs, qualify, type CareerDef, type EventPlan } from './defs';
 import type { ObjectiveSpec, ObjectiveStatus, RaceTally } from './race-log';
 import type { SettleReport } from './settle';
 import type { MapPanel } from './view';
@@ -224,6 +225,43 @@ export interface PosterView {
   /** The chyron: `LIVE · GOLDEN HOUR`. */
   live: string;
   faces: PosterFace[];
+  /** A grudge match's rule card (run W-T), or null: the rival's own rule, said before the race. */
+  rule: RuleCard | null;
+}
+
+/** A grudge rule as the poster states it: a name and one line. */
+export interface RuleCard {
+  id: GrudgeRuleId;
+  name: string;
+  line: string;
+}
+
+/**
+ * The rule cards' words when a career file's `show.rules` has none (run W-T, the pitch deck's #14;
+ * the tone guide's deadpan, short enough to read at a glance). [default]
+ */
+export const RULE_CARDS: Readonly<Record<GrudgeRuleId, { name: string; line: string }>> = {
+  audit: { name: 'THE AUDIT', line: 'Every hit he lands is a line item. Each one adds a knockdown.' },
+  'bad-connection': {
+    name: 'BAD CONNECTION',
+    line: 'Hear the modem? He drops out, then reconnects up the road. Hit him while he buffers.',
+  },
+  collab: { name: 'THE COLLAB', line: 'Most style at the line wins. Finishing first is just content.' },
+  timber: { name: 'TIMBER', line: 'Your fists do not count. Traffic and scenery do.' },
+};
+
+/** A rule's card: the career file's `show.rules[id]` (`name`, `line`) when whole, else the default. */
+export function ruleCard(reg: ContentRegistry, def: CareerDef | null, id: GrudgeRuleId): RuleCard {
+  const own = def ? obj(obj(obj(reg.careers[def.key])['show'])['rules'])[id] : undefined;
+  const o = obj(own);
+  const name = str(o['name']);
+  const line = str(o['line']);
+  return name && line ? { id, name, line } : { id, ...RULE_CARDS[id] };
+}
+
+/** The career whose map holds an event (by qualified event key), or null. */
+function careerHolding(reg: ContentRegistry, eventKey: string): CareerDef | null {
+  return careerDefs(reg).find((d) => d.nodes.some((n) => n.event === eventKey)) ?? null;
 }
 
 /** The most faces a poster shows ("the four faces"). */
@@ -271,7 +309,8 @@ export function posterView(
           : str(rider?.['blurb']) || (t ? fill(t.won, vars) : '');
     return { id, name, initials: initialsOf(name), colours: [bg, inkOn(bg)], beef, grudge: Math.round(g) };
   });
-  return { live: `LIVE · ${timeOfDay.toUpperCase()}`, faces };
+  const rule = plan.rules.rule ? ruleCard(reg, careerHolding(reg, plan.key), plan.rules.rule) : null;
+  return { live: `LIVE · ${timeOfDay.toUpperCase()}`, faces, rule };
 }
 
 // ---- The producer's ask ---------------------------------------------------------------------------
@@ -294,8 +333,9 @@ export function pickAsk(show: ShowText, plan: EventPlan, seed: number): AskDef |
     // A place ask needs a race to the line with a field to beat, and a tighter place than the event's.
     if (a.kind === 'finish-place')
       return plan.kind === 'classic-race' && plan.field.length >= a.n && places.every((p) => a.n < p);
-    // A takedown hunt already asks for takedowns.
+    // A takedown hunt already asks for takedowns; Chad's Collab is a style contest already (run W-T).
     if (a.kind === 'takedowns' && plan.kind === 'takedown-hunt') return false;
+    if (a.kind === 'style-cash' && plan.rules.rule === 'collab') return false;
     return !plan.objectives.some((o) => o.kind === a.kind);
   });
   return pick(fits, `ask:${plan.key}:${seed}`) ?? null;

@@ -302,17 +302,19 @@ describe('the quiet frame: a poster before, at most one producer ask during', ()
         }
       }
     }
-    // Each tier-1 grudge has its own $300-of-style bonus: the producer never asks for it again.
+    // Each tier-1 grudge has its own $300-of-style bonus, or is a style contest by its rule (Chad's
+    // Collab, run W-T): the producer never asks for style again.
     for (const [d, node] of [
       [KEYS, 'kevin-grudge'],
       [PNW, 'juniper-grudge'],
       [SF, 'collab'],
     ] as const) {
       const plan = planOf(d, node);
-      expect(
-        plan.objectives.map((o) => o.kind),
-        node,
-      ).toContain('style-cash');
+      if (plan.rules.rule !== 'collab')
+        expect(
+          plan.objectives.map((o) => o.kind),
+          node,
+        ).toContain('style-cash');
       for (let seed = 1; seed <= 40; seed++)
         expect(pickAsk(showOf(REG, d), plan, seed)?.kind, `${node} seed ${seed}`).not.toBe('style-cash');
     }

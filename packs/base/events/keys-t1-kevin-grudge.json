@@ -22,8 +22,10 @@
   },
   "rules": {
     "rival": "kevin-from-accounting",
-    "winBy": "finish-ahead",
-    "grudgeStakes": 2
+    "winBy": "knockdowns",
+    "knockdownsToWin": 2,
+    "grudgeStakes": 2,
+    "rule": "audit"
   },
   "objectives": [
     {
@@ -59,7 +61,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A grudge match: one on one with Kevin from Accounting on the real Overseas Highway, Bahia Honda.",
+    "notes": "A grudge match by Kevin's rule, The Audit: knock him down twice on the real Overseas Highway, Bahia Honda, and every hit he lands on you adds a line item (one more knockdown, two at most).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -338,6 +338,15 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
     b.noise('bandpass', 400, 3200, 1.2, t, 0.5, 0.45, 0.03);
     b.tone('sawtooth', 180, 720, t, 0.18, 0.35);
   }),
+  // Dial-Up's Bad Connection (run W-T): a 56k handshake in under a second, the warning before he
+  // drops. The answer tone, a falling chirp, the warbling squeal, then the hiss.
+  modem: patch((b, t) => {
+    b.tone('sine', 2100, 2100, t, 0.16, 0.14);
+    b.tone('square', 1800, 1200, t + 0.12, 0.08, 0.12);
+    b.tone('square', 1200, 2400, t + 0.24, 0.07, 0.1);
+    b.tone('sawtooth', 980, 1650, t + 0.32, 0.07, 0.22);
+    b.noise('bandpass', 1700, 2900, 3, t + 0.38, 0.32, 0.32, 0.02);
+  }),
 };
 
 export interface SirenVoice {

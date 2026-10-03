@@ -139,3 +139,13 @@ describe('event cues', () => {
     }
   });
 });
+
+describe("Dial-Up's Bad Connection (run W-T)", () => {
+  it('the screech warns with the modem cue, a synth patch; the drop and the reconnect are silent', () => {
+    const at = (phase: string) => ev('badConnection', 3, undefined, { phase });
+    expect(cueForEvent(at('screech'), 0)?.cue).toBe('modem');
+    expect(CUE_PATCHES.modem).toBeTypeOf('function');
+    expect(cueForEvent(at('drop'), 0)).toBeNull();
+    expect(cueForEvent(at('reconnect'), 0)).toBeNull();
+  });
+});

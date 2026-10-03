@@ -24,7 +24,8 @@
   "rules": {
     "rival": "old-growth",
     "winBy": "finish-ahead",
-    "grudgeStakes": 3
+    "grudgeStakes": 3,
+    "rule": "timber"
   },
   "objectives": [
     {
@@ -64,7 +65,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's finale: Old Growth on the Columbia River Highway, all the way to Shepperd's Dell.",
+    "notes": "The Pacific Northwest's finale, by Old Growth's rule, Timber: beat him to Shepperd's Dell on the Columbia River Highway, or knock him into traffic or scenery three times. Fists alone never fell him.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
