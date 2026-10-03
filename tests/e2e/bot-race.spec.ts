@@ -24,6 +24,8 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 interface Checks {
   ticks: number;
   playerEdges: number[];
+  playerRideBacks: number;
+  firstRideBack: string | null;
   invalidTicks: number;
   firstInvalid: string | null;
   events: Record<string, number>;
@@ -197,9 +199,17 @@ test('the bot races to results with a placing at phone landscape', async ({ page
   console.log(`race checks: ${JSON.stringify(checks)}`);
   expect(checks.ticks).toBeGreaterThan(600);
   expect(checks.invalidTicks, checks.firstInvalid ?? '').toBe(0);
-  // Crossed at least one junction, and never went back to an edge it had left.
+  // Crossed at least one junction, and never rode back onto an edge it had left. A crash may throw
+  // the bot back across a join, and after the remount it rides that edge again, forward: so the rule
+  // is per step, riding on both ticks (dev/handle's edge watch; the old "no edge twice" check failed
+  // on 0>11>12>13>4>5>4>5 after 9 crashes, inventory R3). A finished race ends on the furthest edge
+  // it reached (ui-route-picker's rule); a bust may stop it anywhere.
   expect(checks.playerEdges.length).toBeGreaterThanOrEqual(2);
-  expect(new Set(checks.playerEdges).size).toBe(checks.playerEdges.length);
+  expect(checks.playerRideBacks, checks.firstRideBack ?? '').toBe(0);
+  if (placing !== 'Busted') {
+    const furthest = [...new Set(checks.playerEdges)].at(-1);
+    expect(checks.playerEdges.at(-1), 'the race ends on the furthest edge reached').toBe(furthest);
+  }
   // The race ended: someone finished, or the bot was busted (a bust ends the race at once).
   expect((checks.events['finish'] ?? 0) + (checks.events['bust'] ?? 0)).toBeGreaterThan(0);
 
