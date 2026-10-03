@@ -454,6 +454,12 @@ export const regionSchema = entry('region', {
   signs: z.array(signSchema).optional(),
   billboards: z.array(signSchema).optional(),
   smashables: z.array(smashableSchema).optional(),
+  /**
+   * The region's one-liners for a clean landing after real air (the pitch deck's #13, "Air that
+   * pays": 'TEN OUT OF TEN, SAYS A PELICAN'), shaped like signs so the in-game veto can cut one.
+   * Presentation only; optional.
+   */
+  landingLines: z.array(signSchema).optional(),
 });
 
 export const crewSchema = entry('crew', {
@@ -746,7 +752,18 @@ export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] |
   event: ['name', 'tags', 'meta', 'interludes'],
   // A career picks which events to play and in what order; each race's sim comes from its event.
   career: null,
-  region: ['name', 'tags', 'meta', 'blurb', 'chapter', 'palette', 'timeOfDayOptions', 'signs', 'billboards'],
+  region: [
+    'name',
+    'tags',
+    'meta',
+    'blurb',
+    'chapter',
+    'palette',
+    'timeOfDayOptions',
+    'signs',
+    'billboards',
+    'landingLines',
+  ],
   'road-network': ['name', 'meta', 'provenance'],
   road: ['name', 'realName', 'meta', 'provenance'],
   route: ['name', 'meta'],
@@ -766,7 +783,7 @@ export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] |
  */
 export const VETOABLE_ITEMS: Readonly<Partial<Record<EntryType, readonly string[]>>> = {
   'bark-set': ['lines'],
-  region: ['signs', 'billboards', 'smashables'],
+  region: ['signs', 'billboards', 'landingLines', 'smashables'],
   station: ['tracks'],
 };
 export type PackManifest = z.infer<typeof packSchema>;
