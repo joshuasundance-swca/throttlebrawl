@@ -6,7 +6,8 @@
 //   node scripts/assets.mjs add <file> --as <packId>/<path> [--region <id>] [--note <text>]
 //                                    copy a new or changed file into the cache and pin its hash
 //   node scripts/assets.mjs upload [--message <text>]
-//                                    upload the cached files the pinned revision lacks with the
+//                                    upload the cached files the pinned revision lacks, or holds
+//                                    with other bytes (compared by content, not by path), with the
 //                                    signed-in `hf` CLI, then pin the commit it made
 // Adding a model: `add`, then `upload`, then commit assets.lock.json in a normal PR. Two PRs that
 // both bumped the lock: keep both file lists and the newer revision, then fetch and verify.
@@ -21,9 +22,10 @@ import {
   LOCK_FILE,
   lockProblems,
   readLock,
+  remoteFiles,
   repoProblems,
-  resolveUrl,
   sha256,
+  uploadPlan,
   writeLock,
 } from './dataset-assets.mjs';
 import { examined, fmtBytes, repoRoot } from './lib.mjs';
@@ -109,23 +111,34 @@ function add() {
 
 async function upload() {
   const lock = loadLock();
-  const missing = [];
-  for (const file of lock.files) {
-    const res = await fetch(resolveUrl(lock, file.path), { method: 'HEAD' });
-    if (res.ok) continue;
-    if (!cachedBytes(repoRoot, file)) fail(`${file.path} is neither in the dataset nor cached with its hash`);
-    missing.push(file);
-  }
-  if (!missing.length)
-    return console.log(`assets: all ${lock.files.length} files are at the pinned revision`);
+  const paths = lock.files.map((f) => f.path);
+  const remote = await remoteFiles(lock, lock.revision, paths).catch((err) =>
+    fail(String(err?.message ?? err)),
+  );
+  // A file not cached yet is fetched from the pinned revision first; that download is sha256-checked,
+  // so it proves the dataset holds the pin, and gives the bytes the comparison needs.
+  for (const file of lock.files)
+    if (remote.has(file.path) && !cachedBytes(repoRoot, file))
+      await ensureCached(repoRoot, lock, file).catch(() => undefined);
+  const plan = uploadPlan(lock, remote, (f) => cachedBytes(repoRoot, f));
+  if (plan.problems.length) fail(plan.problems.join('\n  '));
+  if (!plan.upload.length)
+    return examined(
+      `${lock.files.length} pinned files compared by content with ${lock.repo}@${lock.revision.slice(0, 7)}: all already there`,
+    );
   const stage = path.join(repoRoot, '.cache', 'assets-upload');
   rmSync(stage, { recursive: true, force: true });
-  for (const file of missing) {
+  for (const { file } of plan.upload) {
     const dest = path.join(stage, ...file.path.split('/'));
     mkdirSync(path.dirname(dest), { recursive: true });
     copyFileSync(cachePath(repoRoot, file.path), dest);
   }
-  const message = opt('message') ?? `add ${missing.map((f) => f.path).join(', ')}`.slice(0, 200);
+  const message =
+    opt('message') ??
+    plan.upload
+      .map(({ file, why }) => `${why === 'new' ? 'add' : 'update'} ${file.path}`)
+      .join(', ')
+      .slice(0, 200);
   const res = spawnSync(
     'hf',
     ['upload', lock.repo, stage, '.', '--repo-type', 'dataset', '--commit-message', message],
@@ -135,14 +148,21 @@ async function upload() {
   if (res.status !== 0) fail(`hf upload failed (is the hf CLI signed in?):\n${res.stderr}`);
   const commit = /\/commit\/([0-9a-f]{40})/.exec(`${res.stdout}\n${res.stderr}`)?.[1];
   if (!commit) fail(`hf upload printed no commit id:\n${res.stdout}`);
+  // Check the new commit by content too: every pinned file there, with its pinned bytes.
+  const after = await remoteFiles(lock, commit, paths).catch((err) => fail(String(err?.message ?? err)));
+  const check = uploadPlan(lock, after, (f) => cachedBytes(repoRoot, f));
+  const wrong = [
+    ...check.problems,
+    ...check.upload.map(({ file, why }) => `${file.path}: ${why === 'new' ? 'missing' : 'other bytes'}`),
+  ];
+  if (wrong.length)
+    fail(`the new revision ${commit} does not hold the pinned files:\n  ${wrong.join('\n  ')}`);
   lock.revision = commit;
-  for (const file of lock.files) {
-    const head = await fetch(resolveUrl(lock, file.path), { method: 'HEAD' });
-    if (!head.ok) fail(`${file.path} is missing at the new revision ${commit} (HTTP ${head.status})`);
-  }
   writeLock(repoRoot, lock);
+  const changed = plan.upload.filter((u) => u.why === 'changed').length;
   examined(
-    `${missing.length} files uploaded; ${lock.files.length} pinned files present at ${commit.slice(0, 7)}`,
+    `${plan.upload.length} files uploaded (${plan.upload.length - changed} new, ${changed} changed at an existing path); ` +
+      `${lock.files.length} pinned files checked by content at ${commit.slice(0, 7)}`,
   );
 }
 
