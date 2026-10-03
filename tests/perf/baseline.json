@@ -1,5 +1,5 @@
 {
-  "$comment": "Top-level fields: the walking skeleton's first numbers (M1 app-1), printed by tests/e2e/bot-race.spec.ts on the dev machine with no throttling; informational only. `soft` is the perf check's soft-tier baseline (tests/perf/perf.spec.ts fails above 2x it), measured on a CI runner as docs/engineering.md asks. Update it in a PR whose changes note gives the reason.",
+  "$comment": "Top-level fields: the walking skeleton's first numbers (M1 app-1), printed by tests/e2e/bot-race.spec.ts on the dev machine with no throttling; informational only. `soft` (and `softInk` for the ink looks) is the perf check's soft-tier baseline: tests/perf/perf.spec.ts prints frame and sim step times as a trend against it and fails only above 3x it (scripts/perf-limits.mjs; the maintainer, 2026-10-02: \"Trend plus 3x guard\"), measured on a CI runner as docs/engineering.md asks. The `rebaselined` and `softInk` reasons below quote the 2x limits of their day. Update it in a PR whose changes note gives the reason.",
   "measuredAt": "2026-09-29",
   "source": "dev machine, headless Chromium from @playwright/test 1.63.0, viewport 915x412 CSS px, device pixel ratio 1, no CPU throttling",
   "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
