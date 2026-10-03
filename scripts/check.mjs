@@ -24,7 +24,7 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
 import { dependabotOnlyCommits } from './notes.mjs';
-import { planTier } from './shard-plan.mjs';
+import { planTier, TIMINGS_FILE, unmeasured } from './shard-plan.mjs';
 
 const stripAnsi = (s) => stripVTControlCharacters(s);
 const lastExamined = (out) => [...out.matchAll(/^\[examined\] (.*)$/gm)].pop()?.[1] ?? '';
@@ -228,6 +228,16 @@ function sliceOf(step) {
       (step.shardable === 'e2e' ? `, ${testsIn(mine.files)} of ${total} tests` : '') +
       `; planned CI seconds per slice: ${plan.map((p) => p.predicted).join(' / ')} (scripts/shard-plan.mjs)`,
   );
+  // A file the timing table does not know is planned at an estimate; say so, so a new slow test
+  // cannot quietly overload a slice. On CI it is also an annotation on the run's summary.
+  const missing = unmeasured(step.shardable, files);
+  if (missing.files.length > 0) {
+    const text =
+      `${missing.files.length} ${step.name} file(s) have no measured CI time in ${TIMINGS_FILE}, so each is planned ` +
+      `as ${Math.round(missing.seconds)} s (the table's mean): ${missing.files.join(', ')}. Slices may be uneven ` +
+      `until the table is refreshed: node scripts/timings.mjs <green run id>...`;
+    console.log(process.env.GITHUB_ACTIONS ? `::warning title=slice plan::${text}` : `warning: ${text}`);
+  }
   for (const [k, s] of (planOnly ? plan : [mine]).entries()) {
     if (planOnly)
       console.log(`[slice ${k + 1}/${slice.n}] ${s.files.length} files, about ${s.predicted} s on CI`);

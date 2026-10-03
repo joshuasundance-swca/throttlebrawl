@@ -8,7 +8,8 @@
 // signed in), takes each sim file's time from Vitest's per-file line and each browser spec's time as
 // the sum of its tests' times from Playwright's list reporter, averages over the runs, and writes the
 // table. The numbers only steer which runner gets which file; a stale or missing number can make the
-// slices uneven, never drop a test (shard-plan.mjs gives an unmeasured file the median time).
+// slices uneven, never drop a test (shard-plan.mjs plans an unmeasured file as the table's mean
+// time, and `npm run check` warns about it).
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';

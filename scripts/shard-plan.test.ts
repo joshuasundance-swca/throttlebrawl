@@ -2,7 +2,15 @@
 // slices must be a partition of the tier's files whatever the timings say, so a slice can never
 // quietly drop a test file.
 import { describe, expect, it } from 'vitest';
-import { batchUsers, planSlices, planTier, readTimings, TIERS } from './shard-plan.mjs';
+import {
+  batchUsers,
+  estimateSeconds,
+  planSlices,
+  planTier,
+  readTimings,
+  TIERS,
+  unmeasured,
+} from './shard-plan.mjs';
 import { parseLog } from './timings.mjs';
 
 const timings = readTimings() as {
@@ -54,15 +62,19 @@ describe('planSlices', () => {
     expect(plan.map((s) => s.predicted)).toEqual([102, 102]);
   });
 
-  it('counts a file with no measured time as the median file, never as zero', () => {
+  it('counts a file with no measured time as the mean file, never as zero or the median', () => {
+    // Most files are quick and a few are slow, so the median is far below what a new file costs
+    // (the geometry sweeps: median 9.5 s, the new files 32 to 86 s on CI). The mean is not.
     const plan = planSlices({
       files: ['a', 'b', 'c', 'new'],
-      seconds: { a: 10, b: 10, c: 10 },
+      seconds: { a: 2, b: 2, c: 56 },
       n: 2,
       workers: 1,
     });
     expectPartition(['a', 'b', 'c', 'new'], plan);
-    expect(plan.map((s) => s.predicted).sort()).toEqual([20, 20]);
+    expect(plan.map((s) => s.predicted).sort((x, y) => x - y)).toEqual([24, 56]);
+    expect(estimateSeconds([2, 2, 56])).toBe(20);
+    expect(estimateSeconds([])).toBe(1);
   });
 
   it('keeps the batch readers in one slice, the first, ahead of the rest', () => {
@@ -78,12 +90,41 @@ describe('planSlices', () => {
     expectPartition(['r1', 'r2', 'r3', 'x', 'y', 'z'], plan);
   });
 
+  it('charges every batch reader its own measured time, not only the longest one', () => {
+    // A reader's measured time already includes its wait for the batch, and the readers wait side
+    // by side, so the slice is the readers' makespan. Main run 37157149149 (sim 1/4): the plan said
+    // 387 s, the slice took 537 s, because the other 14 readers (about 900 s of work) counted as 0.
+    const plan = planSlices({
+      files: ['r1', 'r2', 'r3', 'r4'],
+      seconds: { r1: 300, r2: 280, r3: 240, r4: 160 },
+      n: 1,
+      workers: 3,
+      order: 'longest-first',
+      together: ['r1', 'r2', 'r3', 'r4'],
+    });
+    expect(plan[0]?.predicted).toBe(400);
+  });
+
   it('leaves the last slice room for perf (lastExtra)', () => {
     const files = ['a', 'b', 'c', 'd', 'e', 'f'];
     const seconds = Object.fromEntries(files.map((f) => [f, 10]));
     const plan = planSlices({ files, seconds, n: 2, workers: 1, lastExtra: 40 });
     expect(plan[1]?.files.length).toBeLessThan(plan[0]?.files.length ?? 0);
     expect(plan[1]?.predicted).toBeGreaterThanOrEqual(40);
+  });
+
+  it('names the files the table has no time for, and what each was planned as', () => {
+    const table = { sim: { 'tests/sim/a.test.ts': 10, 'tests/sim/b.test.ts': 30 } };
+    const files = ['tests/sim/b.test.ts', 'tests/sim/new.test.ts', 'tests/sim/a.test.ts'];
+    expect(unmeasured('sim', files, { timings: table })).toEqual({
+      files: ['tests/sim/new.test.ts'],
+      seconds: 20,
+    });
+    expect(unmeasured('e2e', ['tests/e2e/x.spec.ts'], { timings: table })).toEqual({
+      files: ['tests/e2e/x.spec.ts'],
+      seconds: 1,
+    });
+    expect(unmeasured('sim', ['tests/sim/a.test.ts'], { timings: table }).files).toEqual([]);
   });
 
   it('refuses a slice count that is not a whole number of at least 1', () => {
