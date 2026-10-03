@@ -88,6 +88,18 @@ export function foundPop(e: SimEvent): StylePop | null {
   return { kind: 'found', word, points: null };
 }
 
+/**
+ * A named takedown (run W-T, "the road fights back"): a rider knocked into a roadside smashable
+ * went down, and the smashable names it (`smash`'s data.name, such as `CATCH OF THE DAY`). Null for
+ * anything else, and for a smashable merely ridden through.
+ */
+export function smashPop(e: SimEvent): StylePop | null {
+  if (e.type !== 'smash' || e.data['takedown'] !== true) return null;
+  const name = e.data['name'];
+  if (typeof name !== 'string' || name === '') return null;
+  return { kind: `smash:${name}`, word: name, points: null };
+}
+
 /** A style event's pop-up in one line, such as `NEAR MISS +$50`, or null for anything else. */
 export function styleText(e: SimEvent): string | null {
   const pop = stylePop(e);
@@ -257,6 +269,9 @@ export function createRaceTally(): RaceTally {
           if (pop) popups.push(pop);
         } else if (e.type === 'shortcutFound') {
           const pop = foundPop(e);
+          if (pop) popups.push(pop);
+        } else if (e.type === 'smash') {
+          const pop = smashPop(e);
           if (pop) popups.push(pop);
         }
       }

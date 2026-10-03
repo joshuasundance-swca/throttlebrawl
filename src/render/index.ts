@@ -39,6 +39,7 @@ import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { EventProps } from './event-props';
+import { Smashables } from './smashables';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
@@ -259,6 +260,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const airPays = new AirPays();
   // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
   const eventProps = new EventProps(look);
+  // Run W-T: the roadside smashables, standing or in pieces, from the snapshot.
+  const smashables = new Smashables(look);
   // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
   const speedLines = new SpeedLines(look, params);
   // The drizzle rides on the camera too (rain.ts).
@@ -271,6 +274,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     boards.root,
     airPays.root,
     eventProps.root,
+    smashables.root,
     camera,
     backdrop.root,
   ]);
@@ -575,6 +579,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const t = now();
       backdrop.update(camera.position, scene, t);
       eventProps.sync(curr, t);
+      smashables.sync(curr, t);
       airPays.update(prev, curr, alpha, t);
       sceneryVisible = roadScene
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
