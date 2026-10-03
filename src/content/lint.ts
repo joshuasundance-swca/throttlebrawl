@@ -195,6 +195,10 @@ function referencesOf(e: ParsedEntry): Ref[] {
     case 'event-modifier':
       each(['eligibility', 'regions'], 'region');
       break;
+    case 'weapon':
+      // W-T: a local weapon's regions (an empty list is every region).
+      each(['spawn', 'regions'], 'region');
+      break;
     case 'station':
       each(['regions'], 'region');
       one(['djBarkSet'], 'bark-set');

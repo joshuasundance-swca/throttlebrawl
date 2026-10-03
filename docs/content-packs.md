@@ -505,7 +505,7 @@ Tag: `[decided]` for the weapon list and the snatch-on-wind-up steal; `[default]
 | Field | Notes |
 |---|---|
 | `category` | `unarmed`, `blunt`, `chain`, `junk`, `shock` or `improvised`. |
-| `behaviour` | Required. A registered behaviour id from a closed list in code, such as `melee.swing` or `taser.stun` ([architecture](./architecture.md#content-registry)). `effects` and the timing fields are its parameters. A genuinely new behaviour is a code change plus a registration; a new weapon that reuses one is data only. |
+| `behaviour` | Required. A registered behaviour id from a closed list in code: `melee.swing`, `melee.wrap` (drags), `taser.stun`, and from run W-T `throw.burst` (thrown; `reach` is then the throw's range ahead and width), `melee.yank` (pulls the target across your line) and `melee.sweep` (hits both sides) ([architecture](./architecture.md#content-registry)). `effects` and the timing fields are its parameters. A genuinely new behaviour is a code change plus a registration; a new weapon that reuses one is data only. |
 | `unarmed` | `true` for `punch` and `kick`, which are weapon entries too. Then all combat feel is data, and the tuning panel tunes them the same way. Unarmed attacks cannot be dropped or stolen. |
 | `reach` | The reach box `{ sM, dM }`: a hit lands when the target's distance along the road is within `sM` metres and its lateral offset is within `dM` metres of the attacker, on the attacked side ([architecture](./architecture.md#movers-on-the-network)). |
 | `windupS`, `activeS`, `recoveryS` | The attack's timing in three phases. The wind-up is the telegraph a player reads. Converted once to whole ticks at load (see [Units and axes](#units-and-axes)). |
@@ -515,7 +515,7 @@ Tag: `[decided]` for the weapon list and the snatch-on-wind-up steal; `[default]
 | `knockback` | `lateralMps` is the push across the road; `takedownBonus` (0..1) raises the chance a hit sends the target into traffic. |
 | `uses` | `durabilityHits` for breakables, `charges` for a taser-style item; `null` means unlimited. |
 | `effects` | A list of structured effects such as `{ "kind": "stun", "durationS": 0.8 }`. It is a closed list in code, so packs cannot invent behaviour the sim does not have. |
-| `spawn` | Weight for roadside pickups; an empty `regions` list means every region. |
+| `spawn` | Weight for roadside pickups; an empty `regions` list means every region. A list of region ids (resolved in the weapon's own pack, checked by the linter) lays the weapon only on those regions' roads: in any other race it is carried with roadside weight 0 (run W-T: the Keys' lawn flamingo, the PNW's canoe paddle in `region-pnw`, SF's dead rental scooter in `region-sf`) `[default]`. |
 
 The cop taser would carry `"category": "shock"`, `"tags": ["cop-issue"]`, `"uses": { "durabilityHits": null, "charges": 6, "dropOnWreck": true }` and `"effects": [{ "kind": "stun", "durationS": 0.9 }]`. The research notes that the Saturn manual calls taking a weapon off a cop the easiest way to get one. That is a good reason for the baton and taser to have `steal.allowed: true`.
 

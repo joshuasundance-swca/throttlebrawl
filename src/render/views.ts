@@ -466,7 +466,9 @@ export class EntityViews {
         ev.type === 'crash' ||
         ev.type === 'takedown' ||
         ev.type === 'railOver' ||
-        ev.type === 'splash'
+        ev.type === 'splash' ||
+        // W-T: a thrown weapon that lands on nobody still bursts.
+        (ev.type === 'attackMiss' && ev.data['burst'] === true)
       ) {
         if (this.pending.length >= PENDING_CAP) this.pending.shift();
         this.pending.push(ev);
@@ -1200,6 +1202,18 @@ export class EntityViews {
     for (const ev of this.pending) {
       const actor = entityById(curr, ev.actor);
       const target = ev.target !== undefined ? entityById(curr, ev.target) : undefined;
+      // W-T: a thrown briefcase bursts into paperwork where the sim says it burst (hit or miss).
+      const bx = ev.data['burstX'];
+      const by = ev.data['burstY'];
+      const bz = ev.data['burstZ'];
+      if (
+        ev.data['burst'] === true &&
+        typeof bx === 'number' &&
+        typeof by === 'number' &&
+        typeof bz === 'number'
+      ) {
+        fx.paperwork({ x: bx, y: by + 0.35, z: bz });
+      }
       switch (ev.type) {
         case 'hit':
         case 'kick': {
