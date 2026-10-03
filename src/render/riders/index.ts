@@ -569,6 +569,13 @@ class Rig {
       lean += 0.35;
     }
     if (air && e.trick === 'wheelie') lean -= 0.25;
+    // The newspaper (the pitch deck's #13): sat back as if in a lawn chair, reading (air-pays.ts
+    // holds the paper up in front of him; the arms reach for it below).
+    const reading = air && e.trick === 'newspaper';
+    if (reading) {
+      lean -= 0.55;
+      headPitch += 0.3;
+    }
     lean += 0.25 * squat;
     // The body leans into the turn a little more than the bike.
     roll -= e.lean * 0.25;
@@ -589,6 +596,14 @@ class Rig {
     const wantArm: Record<Side, Vector3 | null> = { l: null, r: null };
     let propToHand = false;
     let bellSwing = 0;
+    if (reading) {
+      wantArm.r = this.shoulder('r', new Vector3())
+        .add(new Vector3(0.1, 0.12, -0.42))
+        .clone();
+      wantArm.l = this.shoulder('l', new Vector3())
+        .add(new Vector3(-0.1, 0.12, -0.42))
+        .clone();
+    }
     if (sig) {
       const ph = sig.phase;
       switch (sig.move) {

@@ -68,7 +68,9 @@ type BoardEntry = NonNullable<Region['signs']>[number];
 
 /**
  * The renderer's board catalog for a region: its live signs and billboards, minus the items cut
- * on this device. References follow the veto format `<packId>:region/<regionId>#<itemId>`.
+ * on this device. References follow the veto format `<packId>:region/<regionId>#<itemId>`. Its
+ * `landing` pool is the region's `landingLines` (the pitch deck's #13: the one-liner a clean landing
+ * pops), which no road slot names.
  */
 export function boardCatalog(
   reg: ContentRegistry,
@@ -78,20 +80,25 @@ export function boardCatalog(
   const region = lookup(reg.regions, regionKey);
   const pack = packOf(regionKey);
   const items: Record<string, BoardItem> = {};
-  const pools: { signs: BoardItem[]; billboards: BoardItem[] } = { signs: [], billboards: [] };
-  const add = (list: readonly BoardEntry[] | undefined, kind: BoardKind, pool: BoardItem[]) => {
+  const pools: { signs: BoardItem[]; billboards: BoardItem[]; landing: BoardItem[] } = {
+    signs: [],
+    billboards: [],
+    landing: [],
+  };
+  const add = (list: readonly BoardEntry[] | undefined, kind: BoardKind, pool: BoardItem[], slot = true) => {
     for (const it of list ?? []) {
       const status = (it as { status?: unknown }).status;
       if (status !== undefined && status !== 'live') continue;
       const ref = `${pack}:region/${region.id}#${it.id}`;
       if (vetoed.has(ref)) continue;
       const item: BoardItem = { ref, text: it.text, kind };
-      items[it.id] = item;
+      if (slot) items[it.id] = item;
       pool.push(item);
     }
   };
   add(region.signs, 'sign', pools.signs);
   add(region.billboards, 'billboard', pools.billboards);
+  add(region.landingLines, 'sign', pools.landing, false);
   return { items, pools };
 }
 
