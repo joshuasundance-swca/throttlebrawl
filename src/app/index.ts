@@ -26,6 +26,7 @@ import {
   assetIndex,
   contentHashes,
   createPackLibrary,
+  loadBaseRoads,
   lookup,
   packClosure,
   packOf,
@@ -307,6 +308,15 @@ function safeStorage(): StorageLike | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * What the first screen needs before `createApp`: the Keys' hand-made road data, which ships as
+ * JSON files beside the build instead of in the first-load JavaScript (run W-S), for the default
+ * race and the menu's backdrop. main.ts awaits it; a failed fetch rejects and can be tried again.
+ */
+export function loadBootContent(): Promise<void> {
+  return loadBaseRoads();
 }
 
 export function createApp(opts: AppOptions): AppHandle {
