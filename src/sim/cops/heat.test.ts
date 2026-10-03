@@ -64,9 +64,9 @@ function config(): SimConfig {
 describe('playtest 2: the law in the snapshot', () => {
   it('carries a clean heat meter for the player at the start, and after a quiet stretch', () => {
     const sim = createSim(config());
-    expect(sim.snapshot().law).toEqual({ heat: 0, tier: 0, lost: false });
+    expect(sim.snapshot().law).toEqual({ heat: 0, tier: 0, lost: false, citations: 0, citationCash: 0 });
     for (let t = 0; t < 120; t++) sim.step([]);
-    expect(sim.snapshot().law).toEqual({ heat: 0, tier: 0, lost: false });
+    expect(sim.snapshot().law).toEqual({ heat: 0, tier: 0, lost: false, citations: 0, citationCash: 0 });
   });
 
   it('measures heat out of HEAT_MAX points', () => {

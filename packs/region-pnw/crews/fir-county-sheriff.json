@@ -8,7 +8,14 @@
   "rivalCrews": [],
   "meta": {
     "status": "live",
-    "notes": "Parody county law for the Pacific Northwest: real agency structure (a county sheriff) under a made-up name; no real agency names, badges or logos. Deputy Lindqvist rides for them.",
-    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
+    "notes": "Parody county law for the Pacific Northwest: real agency structure (a county sheriff) under a made-up name; no real agency names, badges or logos. Deputy Lindqvist rides for them. Run W-T: its END OF JURISDICTION sign (see the Keys deputies). [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-01"
+    }
+  },
+  "jurisdiction": {
+    "sign": "END OF JURISDICTION. Fir County thanks you for your patience."
   }
 }

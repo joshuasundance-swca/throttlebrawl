@@ -472,6 +472,14 @@ export type SimEventType =
   | 'kick'
   | 'weaponGrab'
   /**
+   * A held weapon left the hand, thrown (run W-T, the pitch deck's #4: "Kevin's briefcase is thrown
+   * and bursts into paperwork"). Actor = the thrower, who holds nothing from this tick; target = the
+   * rider it is aimed at, when there is one; `data.weapon`, and `data.pickup`, the pickup entity
+   * that now flies (the snapshot carries it like any pickup). The throw's causeId (its
+   * attackStart's), which the later `hit` or `attackMiss` (`data.thrown`, `data.burst`) shares.
+   */
+  | 'throw'
+  /**
    * The steal cue: a held weapon's wind-up has reached its snatch window (render glints, audio
    * cues). Actor = the holder, target = its current target when it has one; `data.weapon`, and
    * `data.ticks`, the window's length in ticks at timeScale 1. The attack's causeId.
@@ -789,7 +797,8 @@ export interface SimWeaponDef {
   steal: { startTick: number; endTick: number } | null;
   /**
    * The registered behaviour id (the weapon file's `behaviour`, M4 weapons-2): `melee.swing`,
-   * `melee.wrap` or `taser.stun`, a closed list in sim/combat. Absent or unknown is `melee.swing`.
+   * `melee.wrap` or `taser.stun`, and from W-T `throw.burst`, `melee.yank` and `melee.sweep`; a
+   * closed list in sim/combat (WEAPON_BEHAVIOURS). Absent or unknown is `melee.swing`.
    */
   behaviour?: string;
   /** Swings one held weapon gives before it is spent (`uses.charges`); absent or null: unlimited. */

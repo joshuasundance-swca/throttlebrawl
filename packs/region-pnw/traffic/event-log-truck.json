@@ -1,0 +1,34 @@
+{
+  "type": "traffic-type",
+  "id": "event-log-truck",
+  "name": "Log Truck, Load Shifting",
+  "category": "truck",
+  "tags": ["event", "log-spill", "pnw"],
+  "lengthM": 16,
+  "widthM": 2.6,
+  "cruiseMps": 15.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "box-truck",
+      "params": {
+        "cargoHeightM": 2.4
+      }
+    },
+    "paintOptions": ["#7a3b2a", "#3d4a3f"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The log spill's truck, on a downhill, its chains doing their best. It sheds its logs across both lanes as racers close in. Never in a region's traffic mix (weight 0): a road event (sim/modifiers, run W-T) places it. Never larger than the race's own largest vehicle: the rival AI sizes every vehicle by the largest in the race.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

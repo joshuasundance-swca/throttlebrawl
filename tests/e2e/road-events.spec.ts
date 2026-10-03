@@ -6,8 +6,8 @@ import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 // W-P road events (the maintainer, 2026-10-01b: "events and set pieces: roadwork, crash scenes,
 // parades, a farm truck shedding hay, speed traps"). In the real game, the bot races on seeds whose
 // events come up early (found headless), and every piece is met on at least one route: a Pacific
-// Northwest race with the hay truck and a speed trap, another with the Logger Days parade and
-// roadwork, and San Francisco's robotaxi incident. (The Keys hand-made road has events only past
+// Northwest race with the hay truck and roadwork, another with the Logger Days parade and a speed
+// trap, and San Francisco's robotaxi incident. (The Keys hand-made road has events only past
 // 60% of the race, after its long shortcut stretch, too far in for this tier.) For each: the sim
 // puts the piece's props on the road, render draws them (RendererStats.eventProps, with the warning
 // sign's words), the frame with the piece ahead of the player is not blank, the draw stays inside
@@ -60,24 +60,31 @@ const budget = JSON.parse(readFileSync('tests/perf/budget.json', 'utf8')) as {
   trianglesMax: number;
 };
 
-/** Seeds whose events come up early in the region's standard race (found headless). */
+/**
+ * Seeds whose events come up early in the region's standard race (found headless), each race's
+ * pieces in the order the bot meets them. Run W-T's moving events (#391) added pieces to both
+ * regions' pools, which reshuffled every seed's pick, so the seeds were found again with the dev bot
+ * headless on #391 merged with main (the keeper, 2026-10-03; the old seeds still give the old pieces
+ * on main): Pacific Northwest seed 32, the hay truck at tick 1682 and roadwork at 2388; seed 12, the
+ * parade at 1723 and a speed trap at 3503; San Francisco seed 4, the crash scene at 1473.
+ */
 const RACES = [
   {
     slug: 'pnw-a',
     chip: '#region-region-pnw-pacific-northwest',
-    seed: 2,
-    pieces: { 'region-pnw:pnw-hay-spill': 'hayLoad', 'region-pnw:pnw-speed-trap': 'radar' },
+    seed: 32,
+    pieces: { 'region-pnw:pnw-hay-spill': 'hayLoad', 'region-pnw:pnw-roadwork': 'cone' },
   },
   {
     slug: 'pnw-b',
     chip: '#region-region-pnw-pacific-northwest',
-    seed: 1,
-    pieces: { 'region-pnw:pnw-logging-parade': 'floatDecor', 'region-pnw:pnw-roadwork': 'cone' },
+    seed: 12,
+    pieces: { 'region-pnw:pnw-logging-parade': 'floatDecor', 'region-pnw:pnw-speed-trap': 'radar' },
   },
   {
     slug: 'sf',
     chip: '#region-region-sf-san-francisco',
-    seed: 60,
+    seed: 4,
     pieces: { 'region-sf:sf-crash-scene': 'flare' },
   },
 ] as const;

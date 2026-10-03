@@ -1,0 +1,43 @@
+{
+  "type": "event-modifier",
+  "id": "sf-lane-vote",
+  "name": "SF Lane Vote",
+  "kind": "human",
+  "tags": ["set-piece", "lane-vote"],
+  "rarityWeight": 1,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.1, 0.75],
+    "chance": 0.3
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "lane-vote",
+      "signText": "LANE VOTE AHEAD. Your feedback matters to us.",
+      "leftText": "PRODUCT LAUNCH",
+      "rightText": "ROADWORK",
+      "left": "sf-launch-parade",
+      "right": "sf-roadwork",
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "live",
+    "notes": "W-T lane vote: a gantry splits the product launch (left) from roadwork (right); the side you ride under picks the event about 400 m on.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-03"
+    }
+  }
+}

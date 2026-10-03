@@ -87,13 +87,18 @@ describe('weapon shapes', () => {
       'kevins-briefcase': 'briefcase',
       baton: 'baton',
       taser: 'taser',
+      // W-T: one local weapon per region.
+      'lawn-flamingo': 'flamingo',
+      'canoe-paddle': 'paddle',
+      'dead-rental-scooter': 'scooter',
     });
     expect(new Set(shapes.map(([, s]) => s)).size).toBe(shapes.length);
     expect(weaponShapeOf(null)).toBe('pipe');
     expect(weaponShapeOf('some-future-weapon')).toBe('pipe');
   });
 
-  it('draws the seven shapes as seven different silhouettes', () => {
+  it('draws every shape as a different silhouette', () => {
+    expect(WEAPON_SHAPES.length).toBe(10);
     const sigs = WEAPON_SHAPES.map(signature);
     expect(new Set(sigs).size).toBe(WEAPON_SHAPES.length);
   });

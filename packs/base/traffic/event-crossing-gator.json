@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "event-crossing-gator",
+  "name": "Gator, Crossing",
+  "category": "animal",
+  "tags": ["event", "animal-crossing", "swamp"],
+  "lengthM": 2.4,
+  "widthM": 0.6,
+  "cruiseMps": 0.5,
+  "hazard": "big",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "animal-gator" }, "paintOptions": ["#3f4a2b", "#5a6338"] },
+  "meta": {
+    "status": "live",
+    "notes": "The gator crossing's gators (run W-T): they cross both lanes at their own pace while a crossing guard holds up traffic, and lunge clear if you come at them; hit one anyway and you go down. Live, unlike the roadside gator (still a draft), so the crossing has its gators in a release build. Never in a region's mix (weight 0): the road event places them.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-03" }
+  }
+}

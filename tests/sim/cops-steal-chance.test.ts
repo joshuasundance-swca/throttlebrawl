@@ -49,16 +49,28 @@ const REGIONS = [
     event: 'region-sf:sf-hill-sprint',
     cop: 'region-sf:officer-meter',
     weapon: 'base:baton',
+    // Run W-T (law with a personality): Officer Meter's habit is a 30 s pursuit budget, and when it
+    // is spent he pulls over for good, baton and all. So his steal window is the first half minute
+    // of chasing: on #395's first CI run the player who tries stole in 4 of 10 races, each steal 25
+    // to 33 s in, with 0 to 2 wind-ups a race against the Keys' and the Pacific Northwest's 1 to 8;
+    // once main (weapons with verbs) was merged in, 13 of 20. His share is a band of its own over
+    // twice the races, half the other regions' floor (the keeper, run W-T).
+    seeds: 20,
+    minShare: 0.25,
   },
 ] as const;
 
-/** Seeded races per region. */
-const SEEDS = Array.from({ length: 10 }, (_, i) => i + 1);
+/** Seeded races per region, unless the region says otherwise. */
+const SEEDS = 10;
 /** 250 ms from the wind-up showing to the press: a plain human reaction. [default] */
 const REACTION_TICKS = 15;
 const MAX_TICKS = 60 * 60 * 6;
 /** The share of a region's seeded races in which a player who tries steals the cop's weapon. */
 const MIN_STEAL_SHARE = 0.5;
+type Region = (typeof REGIONS)[number];
+const seedsOf = (r: Region): number[] =>
+  Array.from({ length: 'seeds' in r ? r.seeds : SEEDS }, (_, i) => i + 1);
+const minShareOf = (r: Region): number => ('minShare' in r ? r.minShare : MIN_STEAL_SHARE);
 
 function raceConfig(event: string, seed: number): SimConfig {
   // Without the W-P road events: they reshuffle each seed's race (over seeds 11 to 40 the steal rate
@@ -164,11 +176,11 @@ function tryToSteal(event: string, seed: number): StealRun {
 
 const RUNS = new Map<string, StealRun[]>();
 /** The seeded races of one event, run once and shared by the checks below. */
-function runsFor(event: string): StealRun[] {
-  let runs = RUNS.get(event);
+function runsFor(r: Region): StealRun[] {
+  let runs = RUNS.get(r.event);
   if (!runs) {
-    runs = SEEDS.map((seed) => tryToSteal(event, seed));
-    RUNS.set(event, runs);
+    runs = seedsOf(r).map((seed) => tryToSteal(r.event, seed));
+    RUNS.set(r.event, runs);
   }
   return runs;
 }
@@ -179,9 +191,12 @@ describe("the law's weapons in a real race (release content, every region)", () 
       const config = raceConfig(r.event, 1);
       const cops = config.riders.filter((d) => d.faction === 'law');
       // Playtest 2: the lot's starter, up to two on patrol and one more in the lot, every one the
-      // region's cop.
+      // region's law. Run W-T: in the Keys Trooper Dalrymple rides beside Pruitt (live), with his
+      // taser; the starter is still the region's named cop.
       expect(cops, r.name).toHaveLength(4);
-      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(new Set([r.cop]));
+      expect(new Set(cops.map((d) => d.contentId)), r.name).toEqual(
+        new Set([r.cop, ...(r.cop === 'base:sgt-pruitt' ? ['base:trooper-dalrymple'] : [])]),
+      );
       expect(cops[0]?.startingWeapon, r.name).toBe(r.weapon);
       const sim = createSim(config);
       sim.step([toSimInput(emptyActions())]);
@@ -196,7 +211,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
 
   for (const r of REGIONS) {
     it(`${r.name}: a player who tries steals the cop's ${r.weapon.replace('base:', '')} in most races`, () => {
-      const runs = runsFor(r.event);
+      const runs = runsFor(r);
       const stole = runs.filter((x) => x.steals > 0);
       process.stdout.write(
         `[cops-steal] ${r.name}: a player who tries stole the ${r.weapon} in ${stole.length} of ${runs.length} races ` +
@@ -204,7 +219,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
           `busted ${runs.filter((x) => x.busted).length}, finished ${runs.filter((x) => x.finished).length}; ` +
           `per seed ${runs.map((x) => `${x.seed}:${x.windups}/${x.steals}${x.firstStealS === null ? '' : `@${x.firstStealS.toFixed(0)}s`}`).join(' ')}\n`,
       );
-      expect(stole.length).toBeGreaterThanOrEqual(Math.ceil(runs.length * MIN_STEAL_SHARE));
+      expect(stole.length).toBeGreaterThanOrEqual(Math.ceil(runs.length * minShareOf(r)));
     });
   }
 
@@ -213,7 +228,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
     const lines: string[] = [];
     let fullHands = 0;
     for (const r of REGIONS) {
-      const runs = runsFor(r.event);
+      const runs = runsFor(r);
       const stole = runs.filter((x) => x.steals > 0);
       const full = runs.reduce((n, x) => n + x.fullHandSteals, 0);
       fullHands += full;
@@ -226,7 +241,7 @@ describe("the law's weapons in a real race (release content, every region)", () 
               .join(', ') || 'none'
           })`,
       );
-      expect(stole.length, r.name).toBeGreaterThanOrEqual(Math.ceil(runs.length * MIN_STEAL_SHARE));
+      expect(stole.length, r.name).toBeGreaterThanOrEqual(Math.ceil(runs.length * minShareOf(r)));
     }
     for (const line of lines) process.stdout.write(`[cops-steal armed] ${line}\n`);
     // Seeded, so the same races every run: full-handed steals happen in a normal race.

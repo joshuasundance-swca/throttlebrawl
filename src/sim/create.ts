@@ -3,12 +3,13 @@
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
 import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
-import { copsSystem, COPS_TUNING, lawSnapshot } from './cops';
+import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
 import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
 import { riderState, ridersSystem, RIDERS_TUNING, touchdownOf, trickOf } from './riders';
+import { smashSnapshots, SMASH_TUNING, withSmashables } from './smash';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
 import type {
@@ -40,6 +41,7 @@ export const SIM_TUNING: readonly TuningParamDecl[] = [
   ...AI_TUNING,
   ...MODIFIERS_TUNING,
   ...GROUND_TUNING,
+  ...SMASH_TUNING,
   ...DIFFICULTY_TUNING,
 ];
 
@@ -49,7 +51,8 @@ const SYSTEMS = orderSystems([
   combatSystem,
   copsSystem,
   trafficSystem,
-  pedsSystem,
+  // The roadside smashables step at the end of the peds phase (sim/smash, run W-T).
+  withSmashables(pedsSystem),
   tumbleSystem,
   raceSystem,
   modifiersSystem,
@@ -155,8 +158,9 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       active: world.facts.slowmo.remainingTicks > 0,
       remainingTicks: world.facts.slowmo.remainingTicks,
     },
-    props: propSnapshots(world, config),
+    props: [...propSnapshots(world, config), ...lawProps(world, config)],
     law: lawSnapshot(world, config),
+    smashables: smashSnapshots(world, config),
   };
 }
 

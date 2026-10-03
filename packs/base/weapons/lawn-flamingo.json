@@ -1,0 +1,26 @@
+{
+  "type": "weapon",
+  "id": "lawn-flamingo",
+  "name": "Lawn Flamingo",
+  "category": "improvised",
+  "behaviour": "melee.swing",
+  "tags": ["roadside", "local"],
+  "unarmed": false,
+  "reach": { "sM": 1.5, "dM": 1.4 },
+  "windupS": 0.22,
+  "activeS": 0.1,
+  "recoveryS": 0.3,
+  "cooldownS": 0,
+  "damage": 12,
+  "knockback": { "lateralMps": 5.0, "staggerS": 0.55 },
+  "hitStopMs": 70,
+  "steal": { "allowed": true, "windowStartS": 0.06, "windowEndS": 0.22 },
+  "uses": { "durabilityHits": 4, "charges": null, "dropOnWreck": true },
+  "spawn": { "roadsideWeight": 2, "regions": ["florida-keys"] },
+  "effects": [],
+  "meta": {
+    "status": "live",
+    "notes": "W-T (the pitch deck's #4: one local weapon per region, 'a lawn flamingo in the Keys'). A pink plastic lawn flamingo, pulled out of somebody's yard by its wire legs. The quickest weapon on the road and a light hit, but the daze lasts. The legs bend after 4 hits. Lies only on Keys roads (spawn.regions). Crude starting numbers, [default].",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-03" }
+  }
+}

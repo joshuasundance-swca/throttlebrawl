@@ -1,6 +1,7 @@
 // Turns sim events into bark requests (docs/architecture.md, "Barks and narrative": it never reads
 // sim internals; everything arrives as snapshot fields and events). The speaker is always the
-// rider the trigger is about, as in `hit-landed`; only AI riders speak (slot -1), never the cop.
+// rider the trigger is about, as in `hit-landed`; only AI riders speak (slot -1), and a cop only on
+// his own triggers (run W-T, below).
 //   raceStart -> `race-start`, spoken by one of the rivals, to the player;
 //   overtake  -> `overtake`, spoken by the overtaker, about the rider passed;
 //   hit       -> `hit-landed`, spoken by the attacker, about the rider hit.
@@ -19,6 +20,9 @@
 //   modifierStart -> `modifier-start`, spoken by one of the rivals, to the player, as a road event
 //     (a set piece: roadwork, a parade, a speed trap...) comes up; lines pick their event with a
 //     `modifier.id` (or `modifier.kind`) condition, which the race memory holds from the event.
+// Run W-T (law with a personality) [default], each spoken by the cop (faction law), about the player:
+//   siren on -> `cop-siren`; bust -> `busted`; law (data.kind) -> `cop-relentless`, `cop-radar` (only
+//   a reading over the limit), `cop-citation`, `cop-bill`, `cop-budget-out`, `cop-jurisdiction`.
 // Memory facts for `when` conditions come from the current race (memory.ts). It holds no DOM: the
 // view is injected, so it is unit-tested.
 import { SIM_HZ, type EntitySnapshot, type SimEvent, type SimSnapshot } from '../../sim/api';
@@ -67,6 +71,19 @@ const isRival = (e: EntitySnapshot | undefined): e is EntitySnapshot =>
   !!e && e.kind === 'rider' && e.slot < 0 && e.faction !== 'law';
 
 const isRider = (e: EntitySnapshot | undefined): e is EntitySnapshot => !!e && e.kind === 'rider';
+
+const isLaw = (e: EntitySnapshot | undefined): e is EntitySnapshot =>
+  !!e && e.kind === 'rider' && e.slot < 0 && e.faction === 'law';
+
+/** A `law` event's kind (run W-T) to the bark trigger its cop speaks. */
+const LAW_TRIGGERS: Readonly<Record<string, string>> = {
+  relentless: 'cop-relentless',
+  radar: 'cop-radar',
+  citation: 'cop-citation',
+  bill: 'cop-bill',
+  budgetOut: 'cop-budget-out',
+  jurisdiction: 'cop-jurisdiction',
+};
 
 function asTarget(e: EntitySnapshot | null | undefined): BarkTarget | null {
   return e && e.kind === 'rider' ? { contentRef: e.contentId, isPlayer: e.slot >= 0 } : null;
@@ -206,6 +223,28 @@ export function createBarkDirector(
           case 'modifierStart': {
             const player = entities.find((x) => x.kind === 'rider' && x.slot >= 0);
             say(context, 'modifier-start', entities.filter(isRival), player ?? null, e.tick);
+            break;
+          }
+          case 'siren':
+          case 'bust':
+          case 'law': {
+            // Run W-T (law with a personality): the cop speaks for himself, on his siren, his bust
+            // and his habit showing (a radar reading only when it caught you over the limit).
+            const cop = byId(e.actor);
+            if (!isLaw(cop)) break;
+            const trigger =
+              e.type === 'siren'
+                ? e.data['on'] === true
+                  ? 'cop-siren'
+                  : null
+                : e.type === 'bust'
+                  ? 'busted'
+                  : e.data['kind'] === 'radar' && e.data['over'] !== true
+                    ? null
+                    : (LAW_TRIGGERS[String(e.data['kind'])] ?? null);
+            if (!trigger) break;
+            const target = byId(e.target) ?? entities.find((x) => x.kind === 'rider' && x.slot >= 0);
+            say(context, trigger, [cop], isRider(target) ? target : null, e.tick);
             break;
           }
           case 'raceEnd':

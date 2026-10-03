@@ -227,6 +227,26 @@ describe('cop escape: survive or lose the heat', () => {
     expect(r.log.status().objectives[0]?.label).toBe('LOST THE COPS');
     expect(r.log.status().state).toBe('won');
   });
+  it('crossing the END OF JURISDICTION sign with the law on you loses them at once (run W-T)', () => {
+    const r = race({ ...survive, surviveS: 600 }, [obj('escape')]);
+    r.setCop({ targetId: ME });
+    r.step([], 60);
+    expect(r.log.status().state).toBe('running');
+    // Someone else's crossing, or another law event, does nothing.
+    r.step([{ type: 'law', actor: COP, target: RIVAL, data: { kind: 'jurisdiction', heatBefore: 0.4 } }]);
+    r.step([{ type: 'law', actor: COP, target: ME, data: { kind: 'citation', count: 1 } }]);
+    expect(r.log.status().state).toBe('running');
+    r.step([{ type: 'law', actor: COP, target: ME, data: { kind: 'jurisdiction', heatBefore: 0.4 } }]);
+    expect(r.log.status().objectives[0]?.label).toBe('LOST THE COPS');
+    expect(r.log.status()).toMatchObject({ state: 'won', endNow: true });
+  });
+  it("a citations cop's bill at the finish is in the tally (run W-T)", () => {
+    const r = race({ kind: 'classic-race' }, [obj('finish-place', { maxPlace: 3 })]);
+    expect(r.log.tally()).toMatchObject({ citations: 0, citationCash: 0 });
+    r.step([{ type: 'law', actor: COP, target: RIVAL, data: { kind: 'bill', count: 9, totalCash: 900 } }]);
+    r.step([{ type: 'law', actor: COP, target: ME, data: { kind: 'bill', count: 3, totalCash: 225 } }]);
+    expect(r.log.tally()).toMatchObject({ citations: 3, citationCash: 225 });
+  });
   it('by distance: the metres ridden since the chase began', () => {
     const r = race({ kind: 'cop-escape', escapeBy: 'distance', escapeDistanceM: 500 }, [obj('escape')]);
     r.setMe({ progress: 200 });

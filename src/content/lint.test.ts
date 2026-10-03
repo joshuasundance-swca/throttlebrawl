@@ -115,6 +115,15 @@ describe('content lint: references', () => {
     ]);
   });
 
+  it('checks a weapon’s spawn.regions (W-T: a misspelt region would keep a local weapon off every road)', () => {
+    const at = 'weapons/lawn-flamingo.json';
+    const set = (regions: string[]) => (j: Json) => ((j['spawn'] as Json)['regions'] = regions);
+    expect(errors(pack({}, { [at]: set(['florida-keys']) }), 'refs')).toEqual([]);
+    expect(errors(pack({}, { [at]: set(['florida-kees']) }), 'refs')).toEqual([
+      expect.stringMatching(/weapons\/lawn-flamingo\.json \/spawn\/regions\/0: .*no region "florida-kees"/),
+    ]);
+  });
+
   it('fails a reference to an entry of the wrong type', () => {
     const files = pack({}, { 'riders/deacon-vane.json': (j) => (j['bike'] = 'player') });
     expect(errors(files, 'refs')).toHaveLength(1);

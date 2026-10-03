@@ -20,7 +20,9 @@
     "mode": "every-race",
     "baseCount": 2,
     "chaosSummon": true,
-    "randomness": 0.2
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
   },
   "rules": {
     "escapeBy": "survive",
@@ -52,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: two cops come out and chaos brings more.",
+    "notes": "A cop escape: two cops come out and chaos brings more. Run W-T (law with a personality): built from Sgt. Pruitt, who gets more relentless the longer he chases, so the 45 s are hardest at the end; the patrol, the heat meter and the Keys County END OF JURISDICTION sign ride too (crossing the sign with the law on you loses them, which wins the escape).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

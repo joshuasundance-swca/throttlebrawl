@@ -74,8 +74,18 @@ function audit(
     if (e.type === 'hit' && e.data['weapon'] !== 'base:punch' && e.data['weapon'] !== 'base:kick')
       out.pipeHits++;
     // A weapon used up (M4 weapons-2: charges or durability) is gone after the swing whose hit or
-    // miss says `spent`; it never returns to the road.
-    if ((e.type === 'hit' || e.type === 'attackMiss') && e.data['spent'] === true) {
+    // miss says `spent`; it never returns to the road. A thrown weapon (W-T, the briefcase) left the
+    // hand at its `throw`, up to a second before its burst: by then the thrower may hold another.
+    if (e.type === 'throw') {
+      const pid = holding.get(e.actor);
+      if (pid !== undefined) holderOf.delete(pid);
+      holding.delete(e.actor);
+    }
+    if (
+      (e.type === 'hit' || e.type === 'attackMiss') &&
+      e.data['spent'] === true &&
+      e.data['thrown'] !== true
+    ) {
       const pid = holding.get(e.actor);
       if (pid !== undefined) holderOf.delete(pid);
       holding.delete(e.actor);

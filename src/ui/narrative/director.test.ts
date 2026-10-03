@@ -356,3 +356,71 @@ describe('bark director: road events (W-P)', () => {
     expect(shown).toEqual([]);
   });
 });
+
+describe('bark director: the cops speak (run W-T, law with a personality)', () => {
+  const cop = (id: number, contentId: string, name: string): EntitySnapshot =>
+    ({ id, kind: 'rider', contentId, name, slot: -1, faction: 'law' }) as unknown as EntitySnapshot;
+  const LAW_SNAP = {
+    tick: 0,
+    entities: [...ENTITIES, cop(3, 'region-pnw:deputy-lindqvist', 'Deputy Lindqvist')],
+  } as unknown as SimSnapshot;
+  const lines = () =>
+    barkLinesFrom({
+      'region-pnw:lindqvist-core': {
+        type: 'bark-set',
+        id: 'lindqvist-core',
+        defaults: { speaker: 'deputy-lindqvist', cooldownS: 90 },
+        lines: [
+          { id: 'l-siren', trigger: 'cop-siren', text: 'Pull over whenever you are ready.' },
+          { id: 'l-bust', trigger: 'busted', text: 'Somewhere dry. Then jail.' },
+          { id: 'l-cite', trigger: 'cop-citation', text: 'Failure to signal. Noted.' },
+          { id: 'l-bill', trigger: 'cop-bill', text: 'Those will come by mail.' },
+          { id: 'l-line', trigger: 'cop-jurisdiction', text: 'County line.' },
+          { id: 'l-radar', trigger: 'cop-radar', text: 'Radar says hurry.' },
+          { id: 'l-steps', trigger: 'cop-relentless', text: 'Overtime.' },
+          { id: 'l-budget', trigger: 'cop-budget-out', text: 'Budget gone.' },
+        ],
+      },
+    });
+  const law = (kind: string, data: Record<string, unknown> = {}): SimEvent => ({
+    tick: 60,
+    type: 'law',
+    actor: 3,
+    target: 2,
+    data: { kind, ...data },
+  });
+  const shownFor = (events: SimEvent[]) => {
+    const { view, shown } = fakeView();
+    createBarkDirector(createBarkSelector(lines()), view).onEvents(events, { snapshot: LAW_SNAP, seed: 1 });
+    return shown.map((b) => [b.speakerName, b.text]);
+  };
+
+  it('on his siren and his bust', () => {
+    expect(shownFor([{ tick: 60, type: 'siren', actor: 3, data: { on: true } }])).toEqual([
+      ['Deputy Lindqvist', 'Pull over whenever you are ready.'],
+    ]);
+    expect(shownFor([{ tick: 60, type: 'siren', actor: 3, data: { on: false } }])).toEqual([]);
+    expect(shownFor([{ tick: 60, type: 'bust', actor: 3, target: 2, data: { fineCash: 400 } }])).toEqual([
+      ['Deputy Lindqvist', 'Somewhere dry. Then jail.'],
+    ]);
+  });
+
+  it('on his habit showing: each law event kind to its trigger; the radar only when over the limit', () => {
+    expect(shownFor([law('citation', { count: 1 })])).toEqual([
+      ['Deputy Lindqvist', 'Failure to signal. Noted.'],
+    ]);
+    expect(shownFor([law('bill', { count: 3 })])).toEqual([['Deputy Lindqvist', 'Those will come by mail.']]);
+    expect(shownFor([law('jurisdiction')])).toEqual([['Deputy Lindqvist', 'County line.']]);
+    expect(shownFor([law('relentless', { level: 1 })])).toEqual([['Deputy Lindqvist', 'Overtime.']]);
+    expect(shownFor([law('budgetOut')])).toEqual([['Deputy Lindqvist', 'Budget gone.']]);
+    expect(shownFor([law('radar', { over: true })])).toEqual([['Deputy Lindqvist', 'Radar says hurry.']]);
+    expect(shownFor([law('radar', { over: false })])).toEqual([]);
+  });
+
+  it('never has a rival or the player speak a cop line', () => {
+    expect(
+      shownFor([{ tick: 60, type: 'law', actor: 2, target: 2, data: { kind: 'jurisdiction' } }]),
+    ).toEqual([]);
+    expect(shownFor([{ tick: 60, type: 'siren', actor: 0, data: { on: true } }])).toEqual([]);
+  });
+});

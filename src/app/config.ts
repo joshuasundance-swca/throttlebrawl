@@ -35,6 +35,7 @@ import {
   type SimLawHabit,
   type SimRiderDef,
   type SimSlotConfig,
+  type SimSmashableDef,
   type SimStyleRewards,
   type SimTrafficBehaviour,
   type SimWeaponDef,
@@ -524,6 +525,26 @@ function regionTrafficWeights(
   return out;
 }
 
+/**
+ * The event region's live roadside smashables (run W-T, "the road fights back"), in file order,
+ * each named by its veto reference (`<packId>:region/<regionId>#<itemId>`). Empty when the region
+ * lists none (or is not in the registry). The loader already dropped vetoed ones.
+ */
+function regionSmashables(reg: ContentRegistry, event: RaceEvent, eventPack: string): SimSmashableDef[] {
+  const regionKey = qualifyIn(eventPack, event.region);
+  const region = reg.regions[regionKey];
+  if (!region) return [];
+  const pack = packOf(regionKey);
+  const bare = regionKey.slice(regionKey.indexOf(':') + 1);
+  return (region.smashables ?? []).map((item) => ({
+    contentId: `${pack}:region/${bare}#${item.id}`,
+    kind: item.kind,
+    name: item.text,
+    weight: item.weight ?? 1,
+    tags: [...(item.tags ?? [])],
+  }));
+}
+
 /** A type's `areaWeights` field for SimTrafficTypeDef: present only when an area lists it. */
 function areaWeightsOf(
   areas: ReadonlyMap<string, Record<string, number>>,
@@ -580,8 +601,14 @@ export function trafficBehaviour(b: TrafficType['behaviour']): { behaviour?: Sim
  * A weapon file's M4 weapons-2 fields as the sim reads them: its behaviour, charges and durability
  * (`uses`), its stun (the `stun` entry of `effects`) and its roadside weight (`spawn`). The cops
  * lane's oracle is `simWeapon` in tests/sim/weapons-pack.test.ts.
+ *
+ * `spawn.regions` (docs/content-packs.md, "Weapon": "an empty `regions` list means every region"),
+ * read from W-T's local weapons on (the pitch deck's #4: a lawn flamingo in the Keys, a canoe paddle
+ * in the PNW, a dead rental scooter in SF): given the race's region (`regionKey`, qualified) and the
+ * weapon's pack, a weapon whose list names other regions only lies nowhere on this race's road
+ * (roadsideWeight 0). It still exists in the race, so a rider can start with it or steal it.
  */
-export function weaponBehaviour(w: Weapon): Partial<SimWeaponDef> {
+export function weaponBehaviour(w: Weapon, regionKey?: string, weaponPack = 'base'): Partial<SimWeaponDef> {
   const loose = w as unknown as Record<string, unknown>;
   const rec = (v: unknown): Record<string, unknown> =>
     v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
@@ -595,8 +622,15 @@ export function weaponBehaviour(w: Weapon): Partial<SimWeaponDef> {
   const effects = Array.isArray(loose['effects']) ? loose['effects'].map(rec) : [];
   const stunS = num(effects.find((e) => e['kind'] === 'stun')?.['durationS']);
   if (stunS) out.stunTicks = secondsToTicks(stunS);
-  const weight = num(rec(loose['spawn'])['roadsideWeight']);
+  const spawn = rec(loose['spawn']);
+  const weight = num(spawn['roadsideWeight']);
   if (weight !== null) out.roadsideWeight = weight;
+  const regions = Array.isArray(spawn['regions'])
+    ? spawn['regions'].filter((r): r is string => typeof r === 'string' && r !== '')
+    : [];
+  if (regionKey !== undefined && regions.length > 0) {
+    if (!regions.some((r) => qualifyIn(weaponPack, r) === regionKey)) out.roadsideWeight = 0;
+  }
   return out;
 }
 
@@ -674,7 +708,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     steal: w.steal?.allowed
       ? { startTick: Math.round(w.steal.windowStartS * 60), endTick: Math.round(w.steal.windowEndS * 60) }
       : null,
-    ...weaponBehaviour(w),
+    ...weaponBehaviour(w, qualifyIn(eventPack, event.region), packOf(contentId)),
   }));
   const weights = regionTrafficWeights(race, event, eventPack);
   const areaWeights = regionTrafficAreas(race, event, eventPack);
@@ -729,5 +763,6 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     playerSlots,
     slots,
     speedMultiplier: validSpeed(setup.speedMultiplier),
+    smashables: regionSmashables(race, event, eventPack),
   };
 }

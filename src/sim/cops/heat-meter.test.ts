@@ -205,7 +205,13 @@ describe('playtest 2: the heat meter', () => {
     expect(c.speed).toBe(30);
     expect(w.st.phase[2]).toBe(COP_CHASING);
     expect(w.st.target[2]).toBe(PLAYER);
-    expect(lawSnapshot(w.world, w.cfg)).toEqual({ heat: 25 / HEAT_MAX, tier: 1, lost: false });
+    expect(lawSnapshot(w.world, w.cfg)).toEqual({
+      heat: 25 / HEAT_MAX,
+      tier: 1,
+      lost: false,
+      citations: 0,
+      citationCash: 0,
+    });
   });
 
   it('tier 2 sends the pursuit pair; a jump straight to tier 2 sends all three', () => {
