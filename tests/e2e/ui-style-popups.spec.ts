@@ -111,28 +111,9 @@ const WIDE_FEED: FeedPop[] = [
  * list shows in the diff as a raised cap. Measured on CI's software renderer, 2026-10-03 (PR #416);
  * the playtest-3 HUD work (shelved) is where these get fixed.
  */
-const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
-  'phone landscape': [
-    // The bubble at its longest line reaches 41 px into the look-ahead's top.
-    'bark-bubble in the road ahead',
-    // Playtest 3: "The race objective sits over the heat meter". Both sit top centre at 8 px on a
-    // short landscape screen.
-    'hud-heat × hud-objective',
-  ],
-  'phone portrait': [
-    // The objective (top 48 px) and the bubble (top 52 px) share the top centre.
-    'bark-bubble × hud-objective',
-    // The rival's health bar (top right) reaches left over the centred heat badge.
-    'hud-heat × hud-target',
-  ],
-  laptop: [
-    // As upright: the objective (top 48 px) under the bubble (top 52 px).
-    'bark-bubble × hud-objective',
-  ],
-  mirrored: ['bark-bubble in the road ahead'],
-  'small phone': ['bark-bubble in the road ahead'],
-};
-const KNOWN_LAYOUT_CAP = 7;
+// Empty since the top HUD cluster (#428) and the transient overlays (#429) both landed.
+const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {};
+const KNOWN_LAYOUT_CAP = 0;
 
 function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
