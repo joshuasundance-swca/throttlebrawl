@@ -11,7 +11,8 @@
 // and the resume card after a reload (ui draws it and reports the tap; app/ does the rest).
 // ui-3: the "what's new since you last played" card beside the menu, the changelog page (both from
 // dist/changelog.json), the results screen's takedowns and style tally, and the style pop-ups
-// (moved out of the middle of the screen, smaller and merged, by playtest 1c).
+// (moved out of the middle of the screen, smaller and merged, by playtest 1c; and in playtest 3 into
+// the top ticker with the barks and the takedown names, one line at a time).
 // ui/tuning and ui/narrative belong to their own lanes. ui never writes sim state: everything it
 // changes leaves through the callbacks app/ injects.
 import {
@@ -49,17 +50,9 @@ import {
 } from './settings';
 import { createSettingsScreen, SETTINGS_CSS } from './settings-screen';
 import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './changelog-screen';
-import {
-  createPopStack,
-  createRaceTally,
-  createStyleMeter,
-  meterCash,
-  meterLabel,
-  popCash,
-  popLabel,
-  type PopEntry,
-  type StylePop,
-} from './race-feed';
+import { createRaceTally, createStyleMeter, type StylePop } from './race-feed';
+import { popItem, type TickerItem } from './ticker';
+import { createTickerUi, TICKER_CSS } from './ticker-view';
 import { HUD_TUNING, hudParam } from './hud-tuning';
 import {
   createRadioPanel,
@@ -195,6 +188,13 @@ export interface GameUi {
   readonly tuningPanel: Pick<TuningPanel, 'toggle' | 'open' | 'refreshHz'>;
   readonly narrative: Narrative;
   /**
+   * The top ticker (playtest 3, the maintainer: "The black and white text pop-ups block the actual
+   * game"): every in-race text pop-up is one line at a time along the top edge. ui feeds it the
+   * barks, the style chips, the takedown names and the live style meter itself; app/ pushes the rest
+   * (producer asks, landing lines, notes) as items of their class (ticker.ts).
+   */
+  readonly ticker: { push(item: TickerItem): void };
+  /**
    * The menu's region picker (playtest 1c): the regions to offer, from app/'s region registry, and
    * the one to show as picked (the Keys when left out). The picker hides while the list is empty.
    */
@@ -262,17 +262,6 @@ export const LONG_PRESS_MS = 500;
 const STICK_RING_PX = 60;
 /** Touches this close to the edge belong to the phone's back gesture (input/ ignores them too). */
 const EDGE_PX = 24;
-/**
- * The style pop-ups (playtest 1c, 2026-09-30 [decided]: "get in the way of seeing what's ahead").
- * At most this many chips, each up this long, a fade included; a repeat of a kind already up
- * restarts its time. [default]
- */
-const POP_MAX = 3;
-const POP_DWELL_MS = 1100;
-/** The stack starts this far below the position badge's top edge: the badge's height plus a gap. */
-const POP_BELOW_BADGE_PX = 44;
-/** Space kept under the bark bubble, its speech tail included, when the stack must move below it. */
-const POP_BUBBLE_GAP_PX = 15;
 /** How long the slow-frames offer stays up in the race, unanswered, before it fades (ms). [default] */
 export const LOOK_OFFER_MS = 12_000;
 
@@ -333,34 +322,7 @@ const CSS = `
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
 ${RADIO_PANEL_CSS}
-#style-popups { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  pointer-events: none; transition: top 0.12s ease-out; }
-#style-popups.mirrored { align-items: flex-end; }
-.style-pop { display: flex; flex-direction: column; align-items: flex-start; padding: 2px 5px 3px 4px;
-  background: rgb(10 5 20 / 55%); border-left: 3px solid #f5c542; border-radius: 3px; max-width: 100%;
-  box-sizing: border-box; animation: tb-pop ${POP_DWELL_MS}ms ease-out forwards; }
-#style-popups.mirrored .style-pop { align-items: flex-end; text-align: right; border-left: 0;
-  border-right: 3px solid #f5c542; padding: 2px 4px 3px 5px; animation-name: tb-pop-mirrored; }
-.pop-label { font: 800 10px/1.2 ui-monospace, 'Courier New', monospace; color: #f2ead8; }
-.pop-cash { font: 900 15px/1.15 ui-monospace, 'Courier New', monospace; color: #f5c542; white-space: nowrap; }
-.pop-cash:empty { display: none; }
-@keyframes tb-pop { 0% { opacity: 0; transform: translateX(-6px); } 10% { opacity: 1; transform: none; }
-  75% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes tb-pop-mirrored { 0% { opacity: 0; transform: translateX(6px); } 10% { opacity: 1; transform: none; }
-  75% { opacity: 1; } 100% { opacity: 0; } }
-/* The live style meter (playtest 1c): a chip that stays up while the run lasts, its numbers ticking.
-   Dimmer until the run has lasted long enough to pay; on landing it becomes that run's chip. */
-#ui .style-pop.style-meter { animation: tb-meter-in 0.11s ease-out; border-left-style: dashed; }
-#ui #style-popups.mirrored .style-pop.style-meter { border-left-style: none; border-right-style: dashed; }
-.style-meter .pop-label, .style-meter .pop-cash { font-variant-numeric: tabular-nums; }
-.style-meter.pending { opacity: 0.7; }
-.style-meter.pending .pop-cash { color: #f2ead8; }
-.style-meter.fading { opacity: 0; transition: opacity 0.2s ease-out; }
-#ui .style-pop.landed { animation: tb-pop-land var(--land-ms, 1600ms) ease-out forwards; transform-origin: left center; }
-#ui #style-popups.mirrored .style-pop.landed { transform-origin: right center; }
-@keyframes tb-meter-in { 0% { opacity: 0; } 100% { opacity: 1; } }
-@keyframes tb-pop-land { 0% { opacity: 1; transform: scale(1.12); } 12% { transform: none; } 75% { opacity: 1; }
-  100% { opacity: 0; } }
+${TICKER_CSS}
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
@@ -403,48 +365,39 @@ ${RADIO_PANEL_CSS}
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
-   down) or another HUD piece. Top centre, it covered the bubble, the heat badge and the objective and
+   down) or another HUD piece. Top centre, it covered the ticker, the heat badge and the objective and
    reached into the road ahead. So on a big screen it sits in the outer quarter across from the
-   pop-ups (where they flip, it flips), under the pause button. On a phone held sideways
-   and on an upright screen there is no free room for it: the quarters are full (the pop-ups, the
+   position badge (where it flips, the offer flips: .mirrored), under the pause button. On a phone held
+   sideways and on an upright screen there is no free room for it: the quarters are full (the
    objective, the heat badge) and under the road ahead sits the player's own bike (the live check
    after #430: there it covered the bike and the riders beside it for 12 s). So there it takes the
-   bark bubble's place at the top, beside the outer quarter the pop-ups use (sideways, short of the
-   rival's bar in the top row; upright, under the top row), and the bubble steps aside while it is
-   up (the barks still play). [default] */
+   ticker strip's place at the top (sideways, short of the rival's bar in the top row; upright,
+   under the top row), and the strip steps aside while it is up (its items keep their time). [default] */
 #look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
   left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
   z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-#ui:has(#style-popups.mirrored) #look-offer { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
+#look-offer.mirrored { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
 #ui .look-offer-text { font: 700 14px/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui .look-offer .row { justify-content: flex-start; gap: 8px; }
 #ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 @media (max-width: 600px) {
   #look-offer { left: calc(25vw + 4px); right: 12px; top: calc(max(8px, env(safe-area-inset-top)) + 48px); }
-  #ui:has(#style-popups.mirrored) #look-offer { left: 12px; right: calc(25vw + 4px); }
+  #look-offer.mirrored { left: 12px; right: calc(25vw + 4px); }
 }
 /* Sideways, the rival's bar sits in the top row 0.2 of the short side in from the corner, 152 px
    wide (layout: health-target): the offer stops 8 px short of it. */
 @media (orientation: landscape) and (max-height: 520px) {
   #ui #look-offer { top: max(6px, env(safe-area-inset-top)); left: calc(25vw + 4px);
     right: calc(20vmin + 168px); }
-  #ui:has(#style-popups.mirrored) #look-offer { left: calc(20vmin + 168px); right: calc(25vw + 4px); }
+  #ui #look-offer.mirrored { left: calc(20vmin + 168px); right: calc(25vw + 4px); }
 }
 /* In the top slot: one line of words over one row of buttons. */
 @media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
   #ui #look-offer { padding: 4px 10px; gap: 4px; }
   #ui #look-offer .look-offer-text { font-size: 13px; }
   #ui #look-offer .small { padding: 4px 8px; font-size: 13px; }
-  #ui:has(> #look-offer:not([hidden])) #bark-bubble { visibility: hidden; }
-}
-/* The bark bubble on a narrow screen (run W-O; ui-popups-1c report): ui/narrative centres it with
-   left: 50%, which caps its shrink-to-fit width at half the screen, so on a 412 px portrait screen a
-   42-character line wrapped to 3 lines in a 206 px box. Sized to its line here instead, up to the
-   screen less a margin, every pack line fits in 2 lines. Set from ui's own sheet so narrative's file
-   stays untouched. [default] */
-@media (max-width: 600px) {
-  #ui #bark-bubble { width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; }
+  #ui:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 }
 #build-stamp.in-race { display: none; }
 `;
@@ -469,6 +422,29 @@ function installStyleFeed(feed: (pops: readonly StyleFeedPop[]) => void): void {
   const w = window as StyleFeedWindow;
   if (w.__GAME_TEST__ === true) w.__uiStyleFeed = feed;
 }
+
+type TickerSeamWindow = Window & {
+  __GAME_TEST__?: boolean;
+  __uiTicker?: (items: readonly TickerItem[], hold?: boolean) => void;
+  __uiTickerQuiet?: boolean;
+};
+
+/**
+ * The browser specs' ticker seam (docs/architecture.md, "Testing seams"), only when the test flag
+ * is set before the page loads: `window.__uiTicker(items, hold = true)` drops what the strip shows
+ * and shows these items instead, holding the first up (so a bark or a chip from the live race cannot
+ * displace it while a spec measures it); `window.__uiTicker([])` clears it. And `__uiTickerQuiet`,
+ * set by the spec's init script, mutes everything but the live style meter and a paid run's landing.
+ * It writes no sim state.
+ */
+function installTickerSeam(replace: (items: readonly TickerItem[], hold?: boolean) => void): void {
+  const w = window as TickerSeamWindow;
+  if (w.__GAME_TEST__ === true) w.__uiTicker = replace;
+}
+const tickerQuiet = (): boolean => {
+  const w = window as TickerSeamWindow;
+  return w.__GAME_TEST__ === true && w.__uiTickerQuiet === true;
+};
 
 /**
  * The browser specs' stand-in radio (docs/architecture.md, "Testing seams"), only when the test
@@ -809,7 +785,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
-    placePopups(unit);
+    // The slow-frames offer sits across from the position badge (in the outer quarter, or in the
+    // top slot short of the rival's bar), so it flips with the layout too, shown or not.
+    lookOffer.classList.toggle('mirrored', positionOnRight());
     for (const b of touchButtons.splice(0)) b.remove();
     // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
     // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep
@@ -1173,200 +1151,43 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       tallyPlayer,
     ),
   );
-  // The style pop-ups (playtest 1c, 2026-09-30 [decided]: "get in the way of seeing what's ahead.
-  // Maybe they could be less intrusive and/or less centered"). A small stack of chips under the
-  // position badge, on its side of the screen (so it follows the left-handed mirror), well outside
-  // the middle of the road where traffic comes from. Each chip is a small word over its cash, on a
-  // see-through ground, up about a second; a repeat of a kind adds to its chip ("NEAR MISS ×3").
-  // Where the bark bubble reaches the stack (a narrow screen, a long line), the stack moves below
-  // it, and goes home once its chips are gone.
-  const popups = el('div', { id: 'style-popups' });
-  hud.append(popups);
-  const popStack = createPopStack(POP_MAX);
-  interface PopView {
-    root: HTMLElement;
-    label: HTMLElement;
-    cash: HTMLElement;
-    timer: ReturnType<typeof setTimeout> | null;
-  }
-  const popViews = new Map<PopEntry, PopView>();
-  let popHomeTop = 0;
-  let popTop = 0;
-  let bubbleEl: HTMLElement | null = null;
-  let bubbleKey = '';
-  const setPopTop = (top: number) => {
-    if (top === popTop) return;
-    popTop = top;
-    popups.style.top = `${top}px`;
-  };
-  function placePopups(unit: number) {
-    const badge = elementOf('position');
-    const across = badge?.anchor.split('-')[1] ?? 'left';
-    const right = (across === 'right') !== layout.mirror;
-    const ox = Math.round((badge?.offset[0] ?? 0.03) * unit);
-    const oy = badge?.anchor.startsWith('top') ? badge.offset[1] : 0.03;
-    const edge = `max(${ox}px, env(safe-area-inset-${right ? 'right' : 'left'}))`;
-    popups.classList.toggle('mirrored', right);
-    popups.style.left = right ? '' : edge;
-    popups.style.right = right ? edge : '';
-    // Never past the outer quarter of the width, whatever the words: on a narrow screen a long
-    // label wraps instead of reaching into the middle of the road.
-    popups.style.maxWidth = `calc(25vw - ${edge})`;
-    popHomeTop = Math.round(oy * unit + POP_BELOW_BADGE_PX);
-    bubbleKey = '';
-    setPopTop(popHomeTop);
-  }
-  const dropPop = (entry: PopEntry) => {
-    const view = popViews.get(entry);
-    if (view?.timer) clearTimeout(view.timer);
-    view?.root.remove();
-    popViews.delete(entry);
-    popStack.remove(entry);
-  };
-  // The live style meter (playtest 1c, [decided] 2026-09-30, the maintainer: "I'd like to also watch
-  // oncoming go up and up as you ride"). While an oncoming stretch or a jump lasts, a chip at the
-  // foot of the stack ticks up ("ONCOMING 4.2s +$212"); the sim computes the cash exactly as the
-  // award (#192), so when the run pays, the chip lands on that cash and becomes the run's own
-  // pop-up, merging into one of its kind already up. A run that never paid fades out. The meter
-  // counts toward the stack's cap, and the style pop-ups setting hides it with the chips.
+  // The top ticker (playtest 3, the maintainer: "The black and white text pop-ups block the actual
+  // game"; interview round 1 [decided]: "Top ticker strip": one line at a time along the top edge,
+  // fading fast, the road kept clear, takedown names flashing briefly and small). Every in-race text
+  // pop-up is an item in it: the barks (narrative/ shows them through `ticker.surface`), the style
+  // chips ("NEAR MISS ×3 +$75", repeats merge), the takedown names and the live style meter (playtest
+  // 1c, [decided]: "I'd like to also watch oncoming go up and up as you ride"; the sim computes the
+  // meter's cash exactly as the award, #192, so when a run pays, its line lands on that cash). The
+  // style pop-ups setting hides the chips and the meter (the tally still counts the cash).
+  const ticker = createTickerUi({
+    host: hud,
+    nameMs: () => hudParam(opts.tuning, 'hud.tickerNameS') * 1000,
+    quiet: tickerQuiet,
+  });
+  installTickerSeam((items, hold) => ticker.replace(items, hold));
   const meter = createStyleMeter();
-  const newMeterView = () => {
-    const label = el('span', { className: 'pop-label' });
-    const cash = el('span', { className: 'pop-cash' });
-    return { root: el('div', { className: 'style-pop style-meter' }, label, cash), label, cash };
-  };
-  let meterView = newMeterView();
-  let meterUp = false;
-  const hideMeter = (fade: boolean) => {
-    if (!meterUp) return;
-    meterUp = false;
-    const gone = meterView;
-    meterView = newMeterView();
-    if (!fade) {
-      gone.root.remove();
-      return;
-    }
-    gone.root.classList.add('fading');
-    setTimeout(() => gone.root.remove(), 220);
-  };
-  /** The chips and the meter together never pass the cap: the oldest chip makes room. */
-  const capPops = () => {
-    while (popViews.size + (meterUp ? 1 : 0) > POP_MAX) {
-      const oldest = popStack.entries()[0];
-      if (!oldest) break;
-      dropPop(oldest);
-    }
-  };
-  const clearPops = () => {
-    for (const entry of [...popViews.keys()]) dropPop(entry);
-    popStack.clear();
+  const clearTicker = () => {
     meter.reset();
-    hideMeter(false);
-    bubbleKey = '';
-    setPopTop(popHomeTop);
+    ticker.clear();
   };
-  /**
-   * Raises a pop-up. `landing` is the meter's chip for a run that just paid: it becomes the pop-up
-   * (in its place at the foot of the stack) instead of a new chip appearing beside it.
-   */
-  const popUp = (pop: StylePop, landing: typeof meterView | null = null) => {
-    const { entry, merged, dropped } = popStack.add(pop);
-    for (const d of dropped) dropPop(d);
-    let view = popViews.get(entry);
-    const restart = (root: HTMLElement) => {
-      root.style.animation = 'none';
-      void root.offsetWidth;
-      root.style.animation = '';
-    };
-    if (!view) {
-      if (landing) {
-        landing.root.classList.remove('style-meter', 'pending');
-        landing.root.classList.add('landed');
-        view = { ...landing, timer: null };
-      } else {
-        const label = el('span', { className: 'pop-label' });
-        const cash = el('span', { className: 'pop-cash' });
-        view = { root: el('div', { className: 'style-pop' }, label, cash), label, cash, timer: null };
-        // New chips go above the meter, so the meter stays at the foot where its chip will land.
-        if (meterUp && meterView.root.parentElement === popups)
-          popups.insertBefore(view.root, meterView.root);
-        else popups.append(view.root);
-      }
-      popViews.set(entry, view);
-    } else if (merged) {
-      // Restart the fade, so a run of near misses keeps its chip up; a landing merges into it.
-      if (landing) {
-        landing.root.remove();
-        view.root.classList.add('landed');
-      }
-      restart(view.root);
-    }
-    view.label.textContent = popLabel(entry);
-    view.cash.textContent = popCash(entry);
-    if (view.timer) clearTimeout(view.timer);
-    const landed = view.root.classList.contains('landed');
-    const ms = landed ? Math.round(hudParam(opts.tuning, 'hud.meterLandS') * 1000) : POP_DWELL_MS;
-    if (landed) view.root.style.setProperty('--land-ms', `${ms}ms`);
-    view.timer = setTimeout(() => dropPop(entry), ms);
-    capPops();
-  };
-  /** One frame of the meter, from the player's run in progress and this frame's pop-ups. */
-  const stepMeter = (run: EntitySnapshot['styleRun'], pops: readonly StylePop[]) => {
-    // The style pop-ups setting off: no chips and no meter (the tally still counts the cash).
-    if (!settings.stylePopups) {
-      if (meterUp || popViews.size > 0) clearPops();
-      return;
-    }
+  /** One frame of the ticker, from the player's run in progress and this frame's pop-ups. */
+  const stepTicker = (run: EntitySnapshot['styleRun'], pops: readonly StylePop[]) => {
+    ticker.setStyleEnabled(settings.stylePopups);
+    ticker.setLook(settings.look);
     const step = meter.update(run, hudParam(opts.tuning, 'hud.meterShowAfterS'));
-    let landing: typeof meterView | null = null;
-    if (step.ended && meterUp) {
-      // The run stopped: if it paid, its pop-up is in this frame's feed (the sim emits the award on
-      // the stretch's last tick, the same step whose snapshot first shows no run).
-      const paid = step.ended.qualifies && pops.some((p) => p.kind === step.ended?.kind);
-      if (paid) {
-        landing = meterView;
-        meterUp = false;
-        meterView = newMeterView();
-      } else hideMeter(true);
-    }
+    // The run stopped: if it paid, its pop-up is in this frame's feed (the sim emits the award on
+    // the stretch's last tick, the same step whose snapshot first shows no run) and lands on the
+    // meter's line; a run that never paid just goes.
+    const ended = step.ended;
+    let landing = !!ended && ended.qualifies && pops.some((p) => p.kind === ended.kind);
+    ticker.meter(step.shown);
+    const landMs = Math.round(hudParam(opts.tuning, 'hud.meterLandS') * 1000);
     for (const pop of pops) {
-      const adopt = landing && pop.kind === step.ended?.kind ? landing : null;
-      if (adopt) landing = null;
-      popUp(pop, adopt);
+      const lands = landing && pop.kind === ended?.kind;
+      if (lands) landing = false;
+      ticker.push(popItem(pop, lands, landMs));
     }
-    if (step.shown) {
-      if (!meterUp) {
-        meterUp = true;
-        popups.append(meterView.root);
-        capPops();
-      }
-      meterView.root.classList.toggle('pending', !step.shown.qualifies);
-      setText(meterView.label, meterLabel(step.shown));
-      setText(meterView.cash, meterCash(step.shown));
-    }
-  };
-  /**
-   * Keeps the stack off the bark bubble. Measured only when the chips or the bubble's line change
-   * (reading its text needs no layout); with no chips up the stack goes home.
-   */
-  const keepPopsOffBubble = () => {
-    const count = popViews.size + (meterUp ? 1 : 0);
-    if (count === 0) {
-      bubbleKey = '';
-      setPopTop(popHomeTop);
-      return;
-    }
-    bubbleEl ??= document.getElementById('bark-bubble');
-    const up = !!bubbleEl && !bubbleEl.hidden;
-    const key = up && bubbleEl ? `${count}|${bubbleEl.textContent ?? ''}` : '';
-    if (key === bubbleKey) return;
-    bubbleKey = key;
-    if (!up || !bubbleEl) return; // the bubble went: stay put until the chips are gone
-    const b = bubbleEl.getBoundingClientRect();
-    const s = popups.getBoundingClientRect();
-    const across = s.left < b.right && b.left < s.right;
-    const down = popHomeTop < b.bottom + POP_BUBBLE_GAP_PX && b.top < popHomeTop + s.height;
-    setPopTop(across && down ? Math.ceil(b.bottom + POP_BUBBLE_GAP_PX) : Math.max(popTop, popHomeTop));
+    ticker.update(performance.now(), paused);
   };
 
   // ---- The slow-frames offer (run W-O) --------------------------------------------------------
@@ -1414,6 +1235,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       cb.onSettingsChange?.(settings);
     }
   }
+  /** Whether the position badge sits on the right: the slow-frames offer goes to the other side. */
+  const positionOnRight = (): boolean => {
+    const across = elementOf('position')?.anchor.split('-')[1] ?? 'left';
+    return (across === 'right') !== layout.mirror;
+  };
   const offerClassicLook = (): boolean => {
     if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
     pauseLookOffer.hidden = false;
@@ -1461,8 +1287,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     },
   };
   // narrative-2's "cut this": a cut goes into the settings record (the debug report lists it), and
-  // the bubble's long-press ignores presses in the stick and attack zones mid-race.
+  // the ticker's long-press ignores presses in the stick and attack zones mid-race.
   const barks = createNarrative({
+    surface: ticker.surface,
     ...(opts.barkContent
       ? {
           barkSets: opts.barkContent.barkSets,
@@ -1600,7 +1427,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       targetShown = false;
       tally.reset();
       tallyPlayer = -1;
-      clearPops();
+      clearTicker();
       heatBadge?.reset();
       placeAll();
     }
@@ -1635,8 +1462,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       updateHeat(snapshot.law);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
-      stepMeter(player?.styleRun, tally.takePopups());
-      keepPopsOffBubble();
+      stepTicker(player?.styleRun, tally.takePopups());
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {
@@ -1689,6 +1515,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     },
     tuningPanel,
     narrative,
+    ticker: { push: (item) => ticker.push(item) },
     setRegions,
     get region() {
       return region;

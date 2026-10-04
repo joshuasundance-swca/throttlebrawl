@@ -740,7 +740,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
           fxDuck.gain.setTargetAtTime(1, t + durationS, 0.2);
           voiceFxTarget = fx;
         }
-        // The subtitle stays up while its voice speaks (bubble.ts listens).
+        // The subtitle stays up while its voice speaks (ui/narrative/voice-link.ts listens).
         if (typeof CustomEvent !== 'undefined') {
           barkEvents?.dispatchEvent(new CustomEvent(BARK_VOICE_EVENT, { detail: { contentRef, durationS } }));
         }
