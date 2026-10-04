@@ -707,7 +707,8 @@ test('phone landscape, left-handed mirror: pop-ups follow the position badge to 
 }) => {
   const problems = watchErrors(page);
   await startRace(page, { mirror: true });
-  const m = await feedAndMeasure(page, WIDE_FEED);
+  // The rival's bar is shown beside the bubble: sideways they share the top row.
+  const m = await feedAndMeasure(page, WIDE_FEED, { show: ['hud-target'] });
   expectClear(m, 'mirrored');
   const w = m.viewport.w;
   for (const p of m.pops) expect(p.box.left, 'on the right half').toBeGreaterThan(w / 2);
@@ -736,7 +737,8 @@ test.describe('small phone landscape', () => {
   test('pop-ups sit clear of the road ahead', async ({ page }) => {
     const problems = watchErrors(page);
     await startRace(page);
-    const m = await feedAndMeasure(page, WIDE_FEED);
+    // The rival's bar beside the bubble: on this screen the top row is tightest.
+    const m = await feedAndMeasure(page, WIDE_FEED, { show: ['hud-target'] });
     expectClear(m, 'small phone');
     await shot(page, 'small');
     expectLayout(momentFindings(m, 'small phone, start'), 'small phone');
