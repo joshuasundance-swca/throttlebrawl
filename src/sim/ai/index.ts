@@ -53,6 +53,8 @@ import {
   type Reach,
   type Seen,
 } from './sense';
+import { rivalTakeChance, SHORTCUT_APPROACH_M, SHORTCUT_CLEAR_M } from './branches';
+import { aggressionScale, signatureGapScale } from './level';
 import {
   BELL_TELL_TICKS,
   holdForBell,
@@ -241,7 +243,7 @@ const FIGHT_OFFSET_D = 1.1;
 /** How much faster than its pace a hunter rides after a player who got away ahead. */
 const HUNT_PACE = 0.08;
 /** How far before a shortcut's split zone a rival that takes it starts moving into it, m (the bot's). */
-export const SHORTCUT_APPROACH_M = 150;
+export { SHORTCUT_APPROACH_M };
 /** Its line in the zone: this far in from the zone's inner edge, m (the bot's). */
 const SHORTCUT_LINE_IN_M = 0.9;
 /** Shortcut bits kept per rider (a route has a handful). */
@@ -325,9 +327,6 @@ const SHORTCUT_YIELD_M = 3;
 const SHORTCUT_YIELD_GAP_M = 0.3;
 /** How much slower than that rider it rides to drop in behind it, m/s. */
 const SHORTCUT_YIELD_MPS = 2;
-
-/** A line kept this far outside a zone's inner edge by a rival that does not take it, m. */
-const SHORTCUT_CLEAR_M = 0.9;
 
 /** The line through a zone: just inside its inner edge (the edge nearer the centre line). */
 function zoneLine(z: RouteShortcut): number {
@@ -722,7 +721,11 @@ function driveRider(
   const weaveLine = dTarget;
 
   // Fight: brawlers hunt a target when healthy enough; everyone swings at whoever is in reach.
-  let aggr = prof.aggression * (world.params['ai.aggressionScale'] ?? 1) * config.difficulty.riderAggression;
+  let aggr =
+    prof.aggression *
+    (world.params['ai.aggressionScale'] ?? 1) *
+    config.difficulty.riderAggression *
+    aggressionScale(config);
   const healthMax = def?.healthMax ?? 100;
   const health = riderState(world).health[id] ?? healthMax;
   const healthFrac = health / Math.max(1, healthMax);
@@ -1340,13 +1343,22 @@ export const aiSystem: SimSystem = {
       // W-Q: which shortcuts it takes, from its own stream (the `ai` stream is not drawn).
       const pick = createRng(streamSeed(config.seed, 'ai.shortcuts', m.id));
       const chance = clamp(world.params['ai.shortcutChance'] ?? 0.35, 0, 1);
+      // A route's `aiTake`, and a branch holding a gap (left to the bold), decide per branch
+      // (branches.ts); one draw per shortcut either way, so no other rider's roll moves.
+      const risk = profileOf(world, config, m).riskTaking;
       let mask = 0;
-      config.route.shortcuts.forEach((_z, k) => {
-        if (k < MAX_SHORTCUTS && nextFloat(pick) < chance) mask |= 1 << k;
+      config.route.shortcuts.forEach((z, k) => {
+        if (k < MAX_SHORTCUTS && nextFloat(pick) < rivalTakeChance(config, z, risk, chance)) mask |= 1 << k;
       });
       st.shortcuts[m.id] = mask;
       const c = config.riders[m.riderIndex]?.controller;
-      initSignature(world, config.seed, m.id, c?.kind === 'ai' ? c.personality?.signature : undefined);
+      initSignature(
+        world,
+        config.seed,
+        m.id,
+        c?.kind === 'ai' ? c.personality?.signature : undefined,
+        signatureGapScale(config),
+      );
     }
   },
   step(world: World, config: SimConfig) {

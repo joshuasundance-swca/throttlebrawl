@@ -8,7 +8,16 @@
 //   tricks): the sim's own `style` events, so the screen and the ledger agree to the dollar;
 // - each objective met that carries `rewardCash` (the optional bonuses, and an event's win bonus);
 // - a stash found on the map;
-// - minus a bust's fine. Road Trip [decided]: a fine never takes cash below $0.
+// - minus the repairs for the player's wrecks, and a bust's fine. Road Trip [decided]: a fine never
+//   takes cash below $0.
+//
+// The economy of playtest 3 (the maintainer, 2026-10-03: "each new bike takes about 3-4 races, with
+// smaller purses, pricier bikes and repairs after crashes"; `[default]` for the numbers below):
+// - repairs: each wreck bills REPAIR_PRICE_SHARE of the bike ridden (at least REPAIR_MIN_CASH), at
+//   most REPAIR_WRECKS_BILLED wrecks, and never more than REPAIR_CAP_SHARE of what the race paid;
+// - a replay of a won node pays REPLAY_PAY_SCALE of its purse (the place prize and the required
+//   bonus); style and optional bonuses pay in full, so farming an old node is never the way up;
+// - a later season's purse grows (`seasonPurseScale`).
 //
 // Grudges [decided: saved with the career, so rivals keep them across sessions]: each rival's
 // points toward the player move by the rider file's `grudge` block: up by `gainPerHitTaken` per hit
@@ -18,7 +27,7 @@
 // to 0..`max`. The table goes into the next race's SimConfig.grudges.
 import type { ContentRegistry } from '../content';
 import { CASH_MAX, MAX_HISTORY, type EventOutcome, type EventResult, type Profile } from '../save';
-import type { CareerDef, CareerNode, CareerSecret, EventPlan } from './defs';
+import { careerDefs, type CareerDef, type CareerNode, type CareerSecret, type EventPlan } from './defs';
 import { applyWin, progressOf, type WinApplied } from './map';
 import type { RaceStatus, RaceTally } from './race-log';
 import { withReceipts } from './receipts';
@@ -69,19 +78,82 @@ const STYLE_LABELS: Readonly<Record<string, string>> = {
   oncoming: 'Oncoming',
   weaponSteal: 'Steals',
   trick: 'Tricks',
+  wheelie: 'Wheelies',
+  drift: 'Drifts',
 };
+
+/** A wreck bills this share of the bike's price. [default] */
+export const REPAIR_PRICE_SHARE = 0.01;
+/** The least a wreck bills, so a free bike still has a cost. [default] */
+export const REPAIR_MIN_CASH = 50;
+/** At most this many wrecks of a race are billed. [default] */
+export const REPAIR_WRECKS_BILLED = 5;
+/** The bill is never more than this share of what the race paid before it. [default] */
+export const REPAIR_CAP_SHARE = 0.25;
+/** A replay of a won node pays this share of its place prize and required bonus. [default] */
+export const REPLAY_PAY_SCALE = 0.5;
+/** A season's purse multiplier, by season: Season 2 pays 15% more, Season 3 and later 30% more. [default] */
+const SEASON_PURSE_SCALES: readonly number[] = [1, 1, 1.15, 1.3];
+
+/** The purse multiplier of a season (absent or 1 is Season 1: no change). */
+export function seasonPurseScale(season: number | undefined): number {
+  const s = typeof season === 'number' && Number.isFinite(season) ? Math.max(1, Math.floor(season)) : 1;
+  return SEASON_PURSE_SCALES[Math.min(s, SEASON_PURSE_SCALES.length - 1)] ?? 1;
+}
+
+/**
+ * What a bike costs: the lowest price any career shop asks (the garage's own rule), looking at the
+ * career being settled and then at every career the registry carries; 0 for a bike no shop sells
+ * (the starting bike, a joke ride).
+ */
+export function bikePrice(reg: ContentRegistry, def: CareerDef, bike: string | null): number {
+  if (!bike) return 0;
+  const shops = [def.shop, ...(reg.careers ? careerDefs(reg).map((d) => d.shop) : [])];
+  const prices = shops.flatMap((shop) => shop.filter((i) => i.bike === bike).map((i) => i.priceCash));
+  return prices.length ? Math.min(...prices) : 0;
+}
+
+/**
+ * The repairs for a race: `wrecks` falls on a bike that costs `price`, against what the race paid
+ * (`paid`, before repairs and fines). Wrecks past the billed few are free, and the cap keeps a rough
+ * race from costing more than a quarter of its pay.
+ */
+export function repairBill(wrecks: number, price: number, paid: number): { wrecks: number; cash: number } {
+  const billed = Math.max(0, Math.min(REPAIR_WRECKS_BILLED, Math.floor(wrecks)));
+  const each = Math.max(REPAIR_MIN_CASH, Math.round(REPAIR_PRICE_SHARE * Math.max(0, price)));
+  const cap = Math.floor(REPAIR_CAP_SHARE * Math.max(0, paid));
+  return { wrecks: billed, cash: Math.min(billed * each, cap) };
+}
 
 const ordinal = (n: number) => {
   const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
   return `${n}${s}`;
 };
 
-/** The race's cash lines, before the fine. */
-export function raceEarnings(plan: EventPlan, status: RaceStatus, tally: RaceTally): LedgerLine[] {
+/**
+ * How a race's purse is scaled: not at all for a first run in Season 1. A replay of a won node pays
+ * half (REPLAY_PAY_SCALE) and a later season pays more (`seasonPurseScale`). Only the purse is
+ * scaled, the place prize and a required bonus; style and optional bonuses pay as earned.
+ */
+export interface PurseScale {
+  replay?: boolean;
+  season?: number | undefined;
+}
+
+/** The race's cash lines, before the repairs and the fine. */
+export function raceEarnings(
+  plan: EventPlan,
+  status: RaceStatus,
+  tally: RaceTally,
+  scale: PurseScale = {},
+): LedgerLine[] {
   const lines: LedgerLine[] = [];
+  const k = seasonPurseScale(scale.season) * (scale.replay ? REPLAY_PAY_SCALE : 1);
+  const purse = (cash: number) => Math.round(cash * k);
   if (tally.finished && !tally.busted) {
-    const prize = Math.max(0, Math.round(plan.byPlaceCash[tally.place - 1] ?? 0));
-    if (prize > 0) lines.push({ label: `${ordinal(tally.place)} place`, cash: prize });
+    const prize = purse(Math.max(0, Math.round(plan.byPlaceCash[tally.place - 1] ?? 0)));
+    if (prize > 0)
+      lines.push({ label: `${ordinal(tally.place)} place${scale.replay ? ' (replay)' : ''}`, cash: prize });
   }
   for (const [kind, row] of Object.entries(tally.style).sort(([a], [b]) => (a < b ? -1 : 1))) {
     if (row.cash === 0) continue;
@@ -90,7 +162,10 @@ export function raceEarnings(plan: EventPlan, status: RaceStatus, tally: RaceTal
   }
   for (const o of status.objectives)
     if (o.met === true && o.rewardCash > 0)
-      lines.push({ label: `Bonus: ${o.label.toLowerCase()}`, cash: o.rewardCash });
+      lines.push({
+        label: `Bonus: ${o.label.toLowerCase()}`,
+        cash: o.required ? purse(o.rewardCash) : o.rewardCash,
+      });
   return lines;
 }
 
@@ -143,6 +218,8 @@ export interface SettleInput {
   tally: RaceTally;
   /** The player quit before the end (no cash, no win; grudges still count). */
   quit?: boolean;
+  /** The bike the player rode (qualified), for its repairs; the profile's current bike by default. */
+  bike?: string;
   build: string;
   at: string;
 }
@@ -158,6 +235,10 @@ export interface SettleReport {
   outcome: EventOutcome;
   won: boolean;
   lines: LedgerLine[];
+  /** The repairs billed for the player's wrecks (also a negative line in `lines`); 0 when none. */
+  repairs: number;
+  /** The node had been won before, so its purse paid half. */
+  replay: boolean;
   fine: number;
   cashBefore: number;
   cashAfter: number;
@@ -199,9 +280,21 @@ export function settleRace(profile: Profile, input: SettleInput): { profile: Pro
     secrets: [...new Set([...progress.secrets, ...newSecrets.map((s) => s.id)])].sort(),
     foundShortcuts: [...new Set([...progress.foundShortcuts, ...tally.branches])].sort(),
   };
-  // Cash.
-  const lines = quit ? [] : raceEarnings(plan, status, tally);
+  // Cash. A replay is a node (or, from free play, an event) already won on the map.
+  const replay =
+    !quit &&
+    (node
+      ? before.won.includes(node.id)
+      : def.nodes.some((n) => n.event === plan.key && before.won.includes(n.id)));
+  const lines = quit ? [] : raceEarnings(plan, status, tally, { replay, season: profile.season });
   for (const s of newSecrets) if (s.cash > 0) lines.push({ label: `Found: ${s.name}`, cash: s.cash });
+  // Repairs: the player's wrecks, against what the race paid.
+  const paid = lines.reduce((sum, l) => sum + Math.max(0, l.cash), 0);
+  const repair = quit
+    ? { wrecks: 0, cash: 0 }
+    : repairBill(tally.wrecks ?? 0, bikePrice(reg, def, input.bike ?? profile.bikes.current), paid);
+  if (repair.cash > 0)
+    lines.push({ label: repair.wrecks > 1 ? `Repairs ×${repair.wrecks}` : 'Repairs', cash: -repair.cash });
   const earned = lines.reduce((sum, l) => sum + l.cash, 0);
   const cashBefore = profile.cash;
   // A bust's fine, plus any citations billed at the finish (run W-T: Deputy Lindqvist), never
@@ -269,6 +362,8 @@ export function settleRace(profile: Profile, input: SettleInput): { profile: Pro
       outcome,
       won,
       lines,
+      repairs: repair.cash,
+      replay,
       fine,
       cashBefore,
       cashAfter,

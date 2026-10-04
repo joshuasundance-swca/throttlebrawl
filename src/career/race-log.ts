@@ -15,7 +15,8 @@
 // - grudge match: beat `rules.rival` to the line (`finish-ahead`) or knock them down
 //   `knockdownsToWin` times (`knockdowns`).
 // Optional objectives pay their `rewardCash` as bonuses: `style-cash` (score that much style
-// cash) and `ride-branch` (ride a route branch).
+// cash; playtest 3: an optional `params.kinds` counts only those style kinds, which is how a drift
+// event reads `DRIFT $x/$y`) and `ride-branch` (ride a route branch).
 //
 // Grudge rules (run W-T, the pitch deck's #14: "each tier closes on a grudge match played by the
 // rival's own rule"; `rules.rule`, [default] content the maintainer can veto). Three change the
@@ -119,6 +120,11 @@ export interface RaceTally {
   citations?: number;
   citationCash?: number;
   takedowns: number;
+  /**
+   * How many times the player went down (playtest 3, repairs): one per fall, never a second while
+   * still down. Absent means none (a tally built by hand).
+   */
+  wrecks?: number;
   /** Style cash by kind (`nearMiss`, `takedownCombo`, ...), and how many of each. */
   style: Readonly<Record<string, { count: number; cash: number }>>;
   styleCash: number;
@@ -149,6 +155,21 @@ export interface RaceIncident {
   rival: string | null;
   vehicle: string | null;
 }
+
+/**
+ * The words a style-cash objective's label uses when its `params.kinds` names one kind (playtest 3:
+ * `DRIFT $120/$500`). Several kinds, or none, read `STYLE`.
+ */
+export const STYLE_KIND_WORDS: Readonly<Record<string, string>> = {
+  nearMiss: 'NEAR MISSES',
+  airtime: 'AIRTIME',
+  oncoming: 'ONCOMING',
+  takedownCombo: 'TAKEDOWNS',
+  weaponSteal: 'STEALS',
+  trick: 'TRICKS',
+  wheelie: 'WHEELIE',
+  drift: 'DRIFT',
+};
 
 /** The most incidents one race keeps. [default] */
 export const MAX_INCIDENTS = 3;
@@ -203,6 +224,9 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
   let citationCash = 0;
   let takedowns = 0;
   let targetTakedowns = 0;
+  let wrecks = 0;
+  /** Whether the player was down (not riding) at the last snapshot: a fall is counted once. */
+  let wasDown = false;
   const style: Record<string, { count: number; cash: number }> = {};
   let styleCash = 0;
   const toRivals: Record<string, { hits: number; takedowns: number; steals: number }> = {};
@@ -315,8 +339,16 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         }
         case 'style-cash': {
           const want = Math.max(1, Math.round(n(p['cash'], 500)));
-          label = `STYLE $${Math.min(styleCash, want)}/$${want}`;
-          if (styleCash >= want) met = true;
+          // A drift event counts drift cash only (`params.kinds`); a bad list counts everything.
+          const kinds = Array.isArray(p['kinds'])
+            ? p['kinds'].filter((k): k is string => typeof k === 'string')
+            : [];
+          const only = kinds.length > 0 && kinds.length === (p['kinds'] as unknown[]).length;
+          const have = only ? kinds.reduce((sum, k) => sum + (style[k]?.cash ?? 0), 0) : styleCash;
+          const word =
+            only && kinds.length === 1 ? (STYLE_KIND_WORDS[kinds[0] as string] ?? 'STYLE') : 'STYLE';
+          label = `${word} $${Math.min(have, want)}/$${want}`;
+          if (have >= want) met = true;
           else if (over) met = false;
           break;
         }
@@ -401,6 +433,12 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
             }
             break;
           case 'crash': {
+            // The player going down is a wreck (repairs): once per fall, whatever else hits them
+            // while down, and never the tumble's own contact with a vehicle.
+            if (e.actor === me && !wasDown && e.data['contact'] !== 'tumble') {
+              wrecks++;
+              wasDown = true;
+            }
             // A rival going down against a vehicle: kept by cause id for the takedown that follows.
             const into = snap.entities[target];
             const at = spotOf(snap.entities[e.actor]);
@@ -459,6 +497,8 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         }
       }
       if (meNow) {
+        // Back on the bike (riding again) ends the fall; a crash this step already set it.
+        if (meNow.mode === 'Road' || meNow.mode === 'Airborne') wasDown = false;
         progress = meNow.progress;
         // The law: a cop whose target is the player is on them.
         const heat = snap.entities.some((e) => e.faction === 'law' && e.targetId === me && e.mode === 'Road');
@@ -509,6 +549,7 @@ export function createRaceLog(setup: RaceLogSetup): RaceLog {
         citations,
         citationCash,
         takedowns,
+        wrecks,
         style: Object.fromEntries(Object.entries(style).map(([k, v]) => [k, { ...v }])),
         styleCash,
         toRivals: Object.fromEntries(Object.entries(toRivals).map(([k, v]) => [k, { ...v }])),

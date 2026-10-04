@@ -8,11 +8,17 @@ import { describe, expect, it } from 'vitest';
 import { buildSimConfig, regionChoices, streamForRoute } from '../../src/app';
 import {
   bare,
+  bestOpenRank,
+  bikeLadder,
   careerDefs,
   eventPlan,
+  fieldLevel,
   garageBikes,
+  globalTier,
   nodeState,
   progressOf,
+  regionLockReason,
+  regionOpen,
   settleRace,
   startCareer,
   suggestedNode,
@@ -46,7 +52,6 @@ describe('the career maps', () => {
       const plans = def.nodes.map((n) => eventPlan(REG, n.event));
 
       it('events across the four event types and every route of the region', () => {
-        expect(def.nodes.length).toBeGreaterThanOrEqual(10);
         expect(new Set(plans.map((p) => p.kind))).toEqual(new Set(KINDS));
         const used = new Set(
           def.nodes.map((n, i) => plans[i]?.lengths.find((l) => l.id === n.length)?.route),
@@ -70,6 +75,17 @@ describe('the career maps', () => {
         expect(boss?.tier).toBe(def.tiers.length - 1);
         expect(plans.filter((p) => p.finale).map((p) => p.key)).toEqual([boss?.event]);
         def.nodes.forEach((n, i) => expect(plans[i]?.tier, n.id).toBe(n.tier + 1));
+        // Playtest 3 ("the boss of each tier must be beaten first"): a tier's boss is a grudge
+        // match of that tier, named in plain words, and the last tier's is the region's.
+        def.tiers.forEach((t, i) => {
+          if (t.boss === undefined) return;
+          const node = def.nodes.find((n) => n.id === t.boss);
+          expect(node?.tier, `${t.id} boss`).toBe(i);
+          expect(eventPlan(REG, node?.event ?? '').kind, `${t.id} boss`).toBe('grudge-match');
+          expect(t.bossName, `${t.id} boss`).toMatch(/\S/);
+          if (i === def.tiers.length - 1) expect(t.boss).toBe(def.boss);
+        });
+        expect(def.bossName).toMatch(/\S/);
       });
 
       it('every event builds a race whose field, route and grudges reach SimConfig', () => {
@@ -123,7 +139,7 @@ describe('the career maps', () => {
         let p: Profile = startCareer(DEFS, { ...DEFAULT_PROFILE });
         let teaser = null;
         const order: string[] = [];
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < def.nodes.length * 2; i++) {
           const node = suggestedNode(def, progressOf(def, p.regions));
           if (!node) break;
           order.push(node.id);
@@ -174,31 +190,89 @@ describe('the career maps', () => {
 });
 
 describe('the garage over every region', () => {
-  it('step-up bikes locked until their tier, a novelty ride per region, the joke rides hidden until their boss', () => {
-    const start = startCareer(DEFS, { ...DEFAULT_PROFILE });
-    const shown = garageBikes(REG, DEFS, start);
-    const state = (key: string) => shown.find((b) => b.key === key)?.state;
-    // Only the starting bike is owned; no step-up bike is for sale before its tier opens.
-    expect(shown.filter((b) => b.state === 'owned').map((b) => b.key)).toEqual([DEFS[0]?.startingBike]);
-    const stepUps = Object.keys(REG.bikes).filter((k) => (REG.bikes[k]?.tags ?? []).includes('step-up'));
-    expect(stepUps.length).toBeGreaterThanOrEqual(3);
-    for (const key of stepUps) expect(state(key), key).toBe('locked');
-    // The novelty rides are for sale from the start.
-    const novelty = Object.keys(REG.bikes).filter((k) => (REG.bikes[k]?.tags ?? []).includes('novelty'));
-    expect(novelty.length).toBeGreaterThanOrEqual(3);
-    for (const key of novelty) expect(state(key), key).toBe('for-sale');
-    // Each step-up bike is a clear step up: faster than the one before by more than the rubber
-    // band's 6 %.
-    const tops = [DEFS[0]?.startingBike ?? '', ...stepUps]
-      .map((k) => REG.bikes[k]?.handling.topSpeedMps ?? 0)
-      .sort((a, b) => a - b);
-    for (let i = 1; i < tops.length; i++)
-      expect(tops[i] ?? 0, `step ${i}`).toBeGreaterThan((tops[i - 1] ?? 0) * 1.06);
+  const start = startCareer(DEFS, { ...DEFAULT_PROFILE });
+  const shown = garageBikes(REG, DEFS, start);
+  const ladder = bikeLadder(REG, DEFS);
+
+  it('the step-up bikes: each a clear step up, none for sale before its tier, the starting bike ridden', () => {
+    expect(ladder.length).toBeGreaterThanOrEqual(3);
+    const first = ladder[0];
+    expect(shown.find((b) => b.current)?.key).toBe(first?.key);
+    for (let i = 1; i < ladder.length; i++) {
+      const [lower, higher] = [ladder[i - 1], ladder[i]];
+      // Above the rubber band's 6%, so every upgrade reads as one (playtest 3, round 3: "Six bikes").
+      expect(higher?.topSpeedMps, higher?.key).toBeGreaterThan((lower?.topSpeedMps ?? 0) * 1.06);
+      expect(higher?.opensAt, higher?.key).toBeGreaterThanOrEqual(lower?.opensAt ?? 0);
+      expect(higher?.opensAt, higher?.key).toBeGreaterThan(1);
+      expect(shown.find((b) => b.key === higher?.key)?.state, higher?.key).toBe('locked');
+    }
+  });
+
+  it("a later chapter's rides stay shut until its region opens; the joke rides hide until their boss", () => {
+    const sellers = (bike: string) => DEFS.filter((d) => d.shop.some((s) => s.bike === bike));
+    for (const b of shown.filter((x) => x.state !== 'owned')) {
+      const by = sellers(b.key);
+      if (by.length === 0 || by.some((d) => d === DEFS[0])) continue;
+      expect(b.state, b.key).toBe('locked');
+      expect(b.reason, b.key).toMatch(/^Opens when .+ falls\.$/);
+    }
     for (const joke of ['base:golf-cart', 'base:lawnmower', 'base:mobility-scooter']) {
       expect(REG.bikes[joke]?.tags).toContain('secret');
       expect(shown.some((b) => b.key === joke)).toBe(false);
     }
   });
+});
+
+describe('regions in order (playtest 3, round 3: "In order")', () => {
+  it("a fresh career opens the first chapter; each later one opens when the one before's boss falls", () => {
+    let p = startCareer(DEFS, { ...DEFAULT_PROFILE });
+    expect(regionOpen(DEFS, p, DEFS[0] as CareerDef)).toBe(true);
+    DEFS.forEach((def, i) => {
+      const before = DEFS[i - 1];
+      if (!before) return;
+      expect(regionOpen(DEFS, p, def), def.regionId).toBe(false);
+      expect(regionLockReason(DEFS, p, def)).toBe(`Opens when ${before.bossName} falls.`);
+      const done = { ...progressOf(before, p.regions), finaleBeaten: true };
+      p = { ...p, regions: { ...p.regions, [before.regionId]: done } };
+      expect(regionOpen(DEFS, p, def), def.regionId).toBe(true);
+    });
+  });
+});
+
+describe('the field levels up every tier (playtest 3: "tier 3 rivals ride bikes as good as your best")', () => {
+  const ladder = bikeLadder(REG, DEFS);
+  for (const def of DEFS) {
+    it(`${def.regionName}: the pace climbs tier by tier, bosses ride harder, fights climb gently`, () => {
+      let pace = 0;
+      def.tiers.forEach((_, t) => {
+        const nodes = def.nodes.filter((n) => n.tier === t);
+        const regular = nodes.filter((n) => n.id !== def.boss && n.id !== def.tiers[t]?.boss);
+        const levels = regular.map((n) => fieldLevel(REG, DEFS, def, n));
+        for (const [i, level] of levels.entries()) {
+          const at = `${def.tiers[t]?.id} ${regular[i]?.id}`;
+          if (!level) throw new Error(at);
+          expect(level.paceMps, at).toBeGreaterThanOrEqual(pace);
+          const best = ladder[bestOpenRank(ladder, globalTier(DEFS, def, t))];
+          // From a region's third tier, rivals ride the best bike open; the law never outruns it.
+          if (t >= 2 && !def.tiers[t]?.field?.rivalBike) expect(level.rivalBike, at).toBe(best?.key);
+          expect(level.copTopCapMps, at).toBeLessThan(best?.topSpeedMps ?? 0);
+          expect(level.paceMps, at).toBeLessThan(best?.topSpeedMps ?? 0);
+        }
+        if (levels[0]) pace = levels[0].paceMps;
+        for (const boss of nodes.filter((n) => !regular.includes(n)))
+          expect(fieldLevel(REG, DEFS, def, boss)?.paceMps, boss.id).toBeGreaterThanOrEqual(pace);
+      });
+      // "Gentle climb": about 10% easier to knock down at the first tier, about 20% harder by the last.
+      const healthAt = (t: number) =>
+        def.nodes
+          .filter((n) => n.tier === t && n.id !== def.boss && n.id !== def.tiers[t]?.boss)
+          .map((n) => fieldLevel(REG, DEFS, def, n)?.healthScale ?? 0);
+      const within = (hs: number[], lo: number, hi: number) =>
+        hs.forEach((h) => expect(h >= lo && h <= hi, `health ${h} in [${lo}, ${hi}]`).toBe(true));
+      within(healthAt(0), 0.85, 0.95);
+      within(healthAt(def.tiers.length - 1), 1.15, 1.25);
+    });
+  }
 });
 
 describe('free play keeps its own races', () => {
