@@ -19,6 +19,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from tbgis.config import BakeConfig
+from tbgis.features import stitch_ways
 from tbgis.graph import Graph, path_via
 from tbgis.osm import Way
 from tbgis.tmerc import Frame
@@ -57,14 +58,26 @@ def parse_speed(tag: str | None) -> float:
     return value * MPH if len(parts) > 1 and parts[1] == "mph" else value / 3.6
 
 
+def _tag(w: Way, k: str) -> str:
+    return str(w.id) if k == "@id" else w.tags.get(k, "")
+
+
 def route_ways(cfg: BakeConfig, ways: list[Way]) -> list[Way]:
-    """The ways allowed to carry the path: every ``routeTags`` regex must match its tag."""
+    """The ways allowed to carry the path: every ``routeTags`` regex must match its tag and, when the
+    config has a ``wayFilter``, every regex of at least one of its groups (``@id`` is the way id)."""
     rules = [(k, re.compile(v)) for k, v in cfg.routeTags.items()]
-    return [w for w in ways if all(rx.search(w.tags.get(k, "")) for k, rx in rules)]
+    groups = [[(k, re.compile(v)) for k, v in g.items()] for g in cfg.wayFilter]
+    return [
+        w
+        for w in ways
+        if all(rx.search(_tag(w, k)) for k, rx in rules)
+        and (not groups or any(all(rx.search(_tag(w, k)) for k, rx in g) for g in groups))
+    ]
 
 
 def real_path(cfg: BakeConfig, ways: list[Way]) -> RealPath:
-    graph = Graph(route_ways(cfg, ways), respect_oneway=cfg.respectOneway)
+    allowed = route_ways(cfg, ways)
+    graph = Graph([*allowed, *stitch_ways(cfg.stitches, allowed)], respect_oneway=cfg.respectOneway)
     points = [cfg.pathFrom.tup(), *(v.tup() for v in cfg.via), cfg.pathTo.tup()]
     steps = path_via(graph, points)
     frame = Frame(cfg.crs.originLatDeg, cfg.crs.originLonDeg)

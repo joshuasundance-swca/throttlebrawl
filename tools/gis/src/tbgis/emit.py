@@ -14,7 +14,8 @@ from typing import Any
 import numpy as np
 
 from tbgis import __version__
-from tbgis.config import BakeConfig
+from tbgis.config import BakeConfig, bridge_barriers
+from tbgis.features import bake_ramps, plus
 from tbgis.fetch import FetchMeta
 from tbgis.stretch import Profile, runs_of
 from tbgis.tmerc import Frame
@@ -201,6 +202,10 @@ def provenance(cfg: BakeConfig, created_at: str, osm: FetchMeta, usgs: FetchMeta
 def bake(
     cfg: BakeConfig, p: Profile, osm: FetchMeta, usgs: FetchMeta | None, created_at: str
 ) -> tuple[Json, list[Json], Json]:
+    if any(st.kind == "gap" for st in cfg.stitches):
+        # A stretch's one route runs every road, and traffic runs the main path: a gap there would
+        # swallow it (src/road/validate.ts). Gaps go on a network's branch line.
+        raise ValueError("a gap stitch needs a network bake (tbgis network): it goes on a branch line")
     splits = road_splits(cfg, p)
     if len(splits) != len(cfg.roads):
         spans = ", ".join(
@@ -216,16 +221,22 @@ def bake(
     for i, ((a, b), rn) in enumerate(zip(splits, cfg.roads, strict=True)):
         s_a, s_b = float(p.s[a]), float(p.s[b])
         length = r4(s_b - s_a)
-        n = max(1, round(length / cfg.sampleSpacingM))
+        n = max(1, round(length / (rn.sampleSpacingM or cfg.sampleSpacingM)))
         spacing = length / n
         s = s_a + spacing * np.arange(n + 1)
         s[-1] = s_b
+        features: list[Json] = []
+        for f in rn.features:
+            if not 0 <= f.s0 <= f.s1 <= length:
+                raise ValueError(f"{rn.id}: feature {f.id} at {f.s0}..{f.s1} is off the {length} m road")
+            features.append(f.model_dump(exclude_none=True))
+        features, ramp_y, ramp_g = bake_ramps(features, length, n)
         cols = {
             "x": [r4(v) for v in np.interp(s, p.s, p.x)],
-            "y": [r4(v) for v in np.interp(s, p.s, p.y)],
+            "y": [r4(v) for v in plus(np.interp(s, p.s, p.y), ramp_y)],
             "z": [r4(v) for v in np.interp(s, p.s, p.z)],
             "kappa": [r5(v) for v in np.interp(s, p.s, p.kappa)],
-            "grade": [r5(v) for v in np.interp(s, p.s, p.grade)],
+            "grade": [r5(v) for v in plus(np.interp(s, p.s, p.grade), ramp_g)],
             "bankRad": [0.0] * (n + 1),
         }
         tags: list[Json] = []
@@ -249,15 +260,9 @@ def bake(
             for t0, t1 in without(0, length, decks)
         ]
         barriers = [
-            {"s0": tg["s0"], "s1": tg["s1"], "side": "both", "kind": "rail", "heightM": cfg.bridgeRailHeightM}
-            for tg in tags
-            if tg["tag"] == "bridge"
+            *bridge_barriers(tags, cfg.bridgeRailHeightM, cfg.bridgeBarrier),
+            *(b.as_json(length) for b in rn.barriers),
         ]
-        features: list[Json] = []
-        for f in rn.features:
-            if not 0 <= f.s0 <= f.s1 <= length:
-                raise ValueError(f"{rn.id}: feature {f.id} at {f.s0}..{f.s1} is off the {length} m road")
-            features.append(f.model_dump(exclude_none=True))
         speeds = [round(v, 1) for v in p.speed[a : b + 1] if math.isfinite(v)]
         speed = Counter(speeds).most_common(1)[0][0] if speeds else 24.6
         roads.append(

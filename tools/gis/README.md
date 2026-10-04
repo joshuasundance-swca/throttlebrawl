@@ -199,6 +199,83 @@ divided road. It writes `reports/<label>.loops.json`, the closest to the stretch
 None of the loops off Twin Peaks, the Gorge or Key West is built: each is longer, with nothing on it
 yet, and a longer way with nothing on it is a trap, not a choice.
 
+## Playtest 3: jumps, gaps, landmarks and staging
+
+Playtest 3 (T9.1; the maintainer, 2026-10-03: "the 7 mile bridge has an old road parallel to it.
+Jumps could let you get from one to the other"; round 3: "the real 80 m missing span is the big
+jump"; round 1: "real landmarks") needs the bake to write the road format's playtest 3 fields
+(`src/road/types.ts`, [Gaps and landmarks](../../docs/content-packs.md)). Every switch is off by
+default. When they landed, the code before and after baked the Russian Hill network and the Twin
+Peaks stretch from one cached extract to byte-identical files.
+
+- **The feature kinds** are the game's, `landmark` included. `src/tbgis/config.py` holds the list,
+  the barrier looks and the gap respawn places, and `tests/test_capabilities.py` reads them out of
+  `src/road/validate.ts`, `src/core/surfaces.ts` and `src/road/types.ts`, so the two cannot drift.
+  Feature `params` keep JSON booleans (a landmark's `overRoad`, a solid hazard's `solid`).
+- **Ramp lips.** A `ramp` feature with `params.heightM` (and `lengthM`, `backM`) is built into the
+  elevation exactly as the hand-made compiler builds one (`rampProfile` in `src/road/compile.ts`):
+  a kicker `y = h·u²` over `lengthM`, then the back over `backM`. Its `s1` must be
+  `s0 + lengthM + backM`. The lip moves onto a sample, and the range moves with it. A `ramp`
+  without `heightM` only marks a range, as before.
+- **Stitches** (`stitches` on a stretch config or a network line): `{id, from: {lat, lon}, to,
+  trimM, kicker?, params?}` joins the two way nodes nearest `from` and `to` (each within `snapM`,
+  5 m) with a straight bridge deck, across a span the map does not draw. A `gap` stitch, the
+  default, also writes a `gap` feature over it, `trimM` in from each end and across the road's
+  width, with its `params` (`killDepthM`, `respawn: "main"` for the Moser Channel, `respawnPastM`).
+  A `kicker` (`heightM`, `lengthM`) adds a built ramp whose lip is the gap's start. Gaps go on a
+  network's branch line, never a main path, since traffic runs the main path; a stretch bake
+  refuses a gap stitch. A `deck` stitch only joins the ends.
+- **The way filter** (`wayFilter` on a stretch config or a line): groups of tag regexes, and a way
+  carries the path when it matches every regex of any one group (`@id` matches the way id). It
+  goes on top of `routeTags`. The old bridge's ways are `highway=pedestrian`,
+  `abandoned:highway=trunk` and a bare `bridge:name`, so a filter like
+  `[{"name": "^Old Seven Mile Bridge$"}, {"bridge:name": "^Old Seven Mile Bridge$"}, {"@id": "^39107118$"}]`
+  paths them and nothing beside them (a fishing pier, say). The network's `osmQuery` has to fetch
+  them.
+- **Per-road spacing** (`sampleSpacingM` on a road, 1 to 10 m). A long straight bridge at 6 m costs
+  about a third of the road data it would at 2 m. Base's real-road data gates every race, so this
+  matters for the Seven Mile.
+- **Barriers.** Per road, `barriers: [{s0, s1 (or "end"), side, kind, heightM, jumpable?, look?}]`
+  are added beside the bridge rails. Only a `wall` may be `jumpable`. `bridgeBarrier: {kind,
+  heightM, look}` (on a stretch config or a line) changes what stands along every bridge; the
+  Golden Gate's is a `wall` that `look`s like a `railing`. Left out, every bridge keeps its rail.
+- **Landmarks** (`landmarks` on a network line): `{id, model: "<asset id>#<node>", at: {lat, lon},
+  footprintM: [along, across], side?, yawDeg?, scale?, farM?, overRoad?}` becomes a `landmark`
+  feature on the road beside it. The point is projected onto the line's **real** OSM polyline,
+  because the smoothed line drifts up to 43 m between junctions. Its (s, d) are then mapped into
+  the baked road, so a buoy on a corner stays on that corner. `side` makes the bake refuse a point
+  that falls on the other side (a typo, or the wrong line). The box must lie on one road. The
+  network report lists each landmark's road, s, d and `placementErrorM`, how far the baked
+  placement lands from the real point. The pack check alone runs the footprint rule
+  (`landmark-clear`), since it needs the derived verges.
+- **Synthetic branch ends** (`leave.synthetic` / `join.synthetic`, for the Seven Mile's staging).
+  The branch leaves or joins the main line where the map has no junction, on a turn of `turnDeg`
+  (positive to the right) with its tightest radius `turnRadiusM`, a straight of `straightM` and a
+  turn back. The bake finds where that shape meets the branch line and starts (or ends) the branch's
+  own road there. It then solves the curve exactly onto it, which nudges the straight and the turn
+  angle; the report's `branches[].leave` and `.join` give the solved numbers. A junction's road ends
+  lie within 60 m of it (`src/road/validate.ts`), so a synthetic end is two roads. One is the
+  junction's connector (the turn off the main road, or onto it). The other is an ordinary staging
+  road (`roadId`), with the straight and the other turn, joined end to end with the branch road
+  (so `toOffsetM` and `fromOffsetM` stay 0). The `features` (a `rampTruck`, a `gap`) stand on the
+  straight, s measured from its start, and the bake moves them onto the staging road. A synthetic
+  leave's staging road is the branch's first road, so the branch's `id` is its `roadId`. `tags`
+  dresses both (`["bridge", "water-open"]` over the sea).
+- **`aiTake`** on a branch (0 to 1) goes into the route's branch entry: the share of rivals who
+  take it. The Seven Mile's old road says 0 (round 3: "rivals and cops on the highway only").
+- **The bake's own lint** (`src/tbgis/lint.py`) now also runs these rules, so a bad bake fails
+  before it is written:
+  - the jump lint: from a ramp, gap or ramp truck to its expected landing, `|kappa|` stays at or
+    below 0.002;
+  - a gap's and a landmark's params;
+  - jumpable walls and barrier looks;
+  - no gap on a route's main path;
+  - the scenery tags playtest 3 adds (`conch-houses`, `key-oldtown`, `old-bridge`, `pdx-blocks`,
+    `rail-line`, `brick-street`, `headlands`).
+
+Left-side split zones need no new switch. A branch leaves to the left with a negative `offsetM` and
+a zone at negative d; `tests/test_capabilities.py` bakes one.
+
 ## Fetch once, bake offline
 
 - **One Overpass query** for every US 1 way in the Keys, with tags and geometry
