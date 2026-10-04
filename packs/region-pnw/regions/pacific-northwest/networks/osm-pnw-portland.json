@@ -320,7 +320,7 @@
           "to": {
             "road": "osm-pnw-pdx-se-hawthorne",
             "end": "from",
-            "lane": "L2"
+            "lane": "R1"
           }
         }
       ],

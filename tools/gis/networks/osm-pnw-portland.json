@@ -203,8 +203,8 @@
       "join": {
         "at": { "lat": 45.5122522, "lon": -122.6607922 },
         "pieceM": 40,
-        "offsetM": -7,
-        "lane": "L2",
+        "offsetM": 2,
+        "lane": "R1",
         "insetM": 55,
         "fromOffsetM": 2,
         "fromLane": "R1",

@@ -152,7 +152,7 @@ real junction choice.
 | `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 7.17 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic to Higgs Beach: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down Truman Avenue and White Street to Atlantic: a shortcut, 170 m shorter | 14.8 and 40.4 m (main), 13.2 m (branch) |
 | `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 250 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
 | `osm-sf-russian-hill` (region-sf) | `osm-sf-hills-run` (Russian Hill), 5.27 km | the stretch bake's path exactly (run W-U): Hyde over Russian Hill and Nob Hill, California, Kearny, Columbus, Union back up the hill, Leavenworth down to the finish; two lanes | Jones Street, right off Union one block before its crest, down the hill's 29% north face and back along Chestnut onto Leavenworth: an alternate, 28 m shorter | 7.9 and 8.4 m (main), 6.5 m (branch) |
-| `osm-pnw-portland` (region-pnw) | `osm-bridge-city-run` (Bridge City), 4.61 km | downtown Portland (playtest 3, T9.4): East Burnside over the Burnside Bridge, West Burnside, south down Broadway past Pioneer Courthouse Square, east on Madison, over the Hawthorne Bridge to SE Hawthorne: two lanes each way | the Morrison Bridge, left off Broadway onto Alder, over the river and down Grand Avenue back onto Hawthorne: an alternate, 149 m shorter | 5.4 and 11.2 m (main), 9.9 m (branch) |
+| `osm-pnw-portland` (region-pnw) | `osm-bridge-city-run` (Bridge City), 4.61 km | downtown Portland (playtest 3, T9.4): East Burnside over the Burnside Bridge, West Burnside, south down Broadway past Pioneer Courthouse Square, east on Madison, over the Hawthorne Bridge to SE Hawthorne: two lanes each way | the Morrison Bridge, left off Broadway onto Alder, over the river and down Grand Avenue back onto Hawthorne: an alternate, 142 m shorter | 5.4 and 11.2 m (main), 9.9 m (branch) |
 
 Key West's frame origin (24.5675, -81.7475) is the one, of the 11 tried, that draws its busiest view
 (Stock Island looking west at the Triangle, where US 1 runs straight on into North Roosevelt) in
@@ -297,8 +297,11 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   drops 50 m, 6.3% at the steepest.
 - **The choice** leaves Broadway to the left onto Alder (a left turn, since the loop turns left), crosses
   the Morrison Bridge and comes back down Grand Avenue onto Hawthorne at the end of its viaduct. The plan
-  kept it only within 15% of the leg it replaces; it is 149 m (6.7%) shorter. Its join is moved 20 m
-  east of the real junction (`shiftM: 20`): joined straight, the sweep in `tests/sim/geometry-land.test.ts`
+  kept it only within 15% of the leg it replaces; it is 142 m (6.4%) shorter (2,074 m for 2,216 m,
+  the connectors and junction pieces counted). Its rejoin lands in the main road's right-hand lane (`offsetM: 2`,
+  `lane: "R1"`): the first try landed at d -7 as the left-side test in `tests/test_capabilities.py`
+  does, which puts a rider into the oncoming lane, and `tools/road/branch-rejoins.test.ts` refused it.
+  Its join is moved 20 m east of the real junction (`shiftM: 20`): joined straight, the sweep in `tests/sim/geometry-land.test.ts`
   found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
   closes it. A larger shift breaks the lint's 60 m rule for a junction's road ends.
 - **Dressing:** two boost-pad slots on the main road (Burnside and the Hawthorne deck), a cop lot, the
