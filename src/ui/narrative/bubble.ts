@@ -7,7 +7,7 @@
 import type { BarkView, ShownBark } from './director';
 
 const CSS = `
-#bark-bubble { position: absolute; z-index: -1; left: 50%; top: max(52px, env(safe-area-inset-top)); transform: translateX(-50%);
+#bark-bubble { position: absolute; z-index: -1; left: 50%; top: max(74px, env(safe-area-inset-top)); transform: translateX(-50%);
   max-width: min(80vw, 560px); padding: 8px 14px 9px; border-radius: 14px; background: rgb(255 255 255 / 94%);
   color: #111; font: 700 20px/1.25 system-ui, sans-serif; text-align: center; pointer-events: none;
   box-shadow: 0 3px 0 rgb(0 0 0 / 55%); }
@@ -17,6 +17,18 @@ const CSS = `
   border: 9px solid transparent; border-bottom: 0; border-top-color: rgb(255 255 255 / 94%); }
 #bark-bubble .bark-speaker { display: block; font-size: 13px; font-weight: 800; letter-spacing: 0.06em;
   text-transform: uppercase; color: #b3261e; }
+/* Where it sits (the HUD layout check, tests/e2e/ui-style-popups.spec.ts). On a big screen, under
+   the heat badge and the career objective at the top centre. On a narrow one, right under the top
+   row (the badge and the objective sit under the bubble there). On a phone held sideways the top
+   centre is the bubble's alone, and it ends above the road ahead (a quarter of the way down): it
+   sits at the top, a little narrower so it clears the rival's bar beside it, with tighter lines.
+   [default] */
+@media (max-width: 600px) { #bark-bubble { top: max(52px, env(safe-area-inset-top)); } }
+@media (orientation: landscape) and (max-height: 520px) {
+  #bark-bubble { top: max(6px, env(safe-area-inset-top)); max-width: min(38vw, 560px); padding: 5px 14px 6px;
+    line-height: 1.15; }
+}
+@media (orientation: landscape) and (max-height: 380px) { #bark-bubble { font-size: 18px; } }
 `;
 
 export interface BubbleView extends BarkView {

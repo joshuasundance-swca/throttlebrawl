@@ -2,7 +2,7 @@
 // and 1 (reliable but rich)": a patrol in every race plus a heat meter). It reads SimSnapshot.law,
 // which sim/cops fills for the player in slot 0: `heat` 0..1, its `tier` 0 to 3, and `lost` once a
 // chase is shaken off. It stays out of the way: nothing shows while the player is clean, a small
-// badge at the top centre fills as the heat rises and lights one pip per tier, and when the cops
+// badge at the top (top centre on a big screen) fills as the heat rises and lights one pip per tier, and when the cops
 // give up it says so for a few seconds, then goes. [default] Pure view logic (heatBadgeView) is
 // apart from the DOM so it can be tested in node.
 import type { SimSnapshot } from '../sim/api';
@@ -79,6 +79,19 @@ export const HEAT_BADGE_CSS = `
 #hud-heat.lost { border-color: #f5c542; color: #f5c542; }
 #hud-heat.flash { animation: tb-heat-flash 0.3s ease-out 2; }
 @keyframes tb-heat-flash { 0% { background: #e0543a; } 100% { background: #000a; } }
+/* Playtest 3: "The race objective sits over the heat meter." On a narrow screen the rival's bar
+   fills the top row between the position badge and the pause button, so the badge sits under the
+   bark bubble (two lines at most there) and the slow-frames toast, above the career objective.
+   [default] */
+@media (max-width: 600px) { #hud-heat { top: 164px; } }
+/* A phone held sideways has no room at the top centre for the badge, the objective and the bubble
+   above the road ahead, so the badge moves to the side the pause button is on, under the objective
+   there, clear of the road ahead and the attack button. [default] */
+@media (orientation: landscape) and (max-height: 520px) {
+  #hud-heat { top: max(104px, calc(env(safe-area-inset-top) + 96px)); left: auto; transform: none;
+    right: max(8px, env(safe-area-inset-right)); }
+  #hud:has(> #hud-pause.mirrored) > #hud-heat { right: auto; left: max(8px, env(safe-area-inset-left)); }
+}
 `;
 
 export interface HeatBadge {
