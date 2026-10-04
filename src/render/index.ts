@@ -41,7 +41,7 @@ import type {
   SimTrafficTypeDef,
 } from '../sim/api';
 import { AirPays, bikeScreenBox } from './air-pays';
-import { Boards, type BoardCatalog, type BoardSlot } from './boards';
+import { Boards, contentLines, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { EventProps } from './event-props';
 import { Smashables } from './smashables';
@@ -77,7 +77,7 @@ export type { LookEnv, LookStyle, MaterialKind, MaterialParams } from './look';
 export { MIN_THREAT_DRAW_M, createFlatLook } from './look';
 export type { BarrierSpan, EdgeDressing, FeatureSpan, RoadDressing, TagSpan } from './road-mesh';
 export type { EntityViewCounts, RiderProportions } from './views';
-export type { BoardCatalog, BoardItem, BoardKind } from './boards';
+export type { BoardCatalog, BoardItem, BoardKind, VisibleContent } from './boards';
 export type { FeelCounts } from './effects';
 export type { SpeedLineCounts } from './speed-lines';
 export type { RenderParams } from './tuning';
@@ -170,7 +170,13 @@ export interface GameRenderer {
    * client (CSS) pixels, as the last frame drew it, or null (docs/architecture.md, "In-game veto").
    */
   pickContentAt(clientX: number, clientY: number): string | null;
-  /** Content references of the signs and billboards in view in the last frame (for "recently seen"). */
+  /**
+   * The signs, billboards, cones and landing lines in view as the last frame drew them, once per
+   * item, each with its kind and its words on one line. app/ polls it every 30 frames in a race and
+   * notes each new ref as seen ("recently seen", the veto's list).
+   */
+  visibleContent(): VisibleContent[];
+  /** The content references of `visibleContent()`. */
   visibleContentRefs(): string[];
   /** Stops drawing these items at once (a veto on this device; presentation only). */
   hideContent(refs: Iterable<string>): void;
@@ -317,6 +323,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let modelsModule: typeof import('./models') | null = null;
   const requested = new Set<ModelKind>();
   let palette: Readonly<Record<string, string>> | undefined;
+  // The region's board catalog, for the landing lines' words (the overlay reports only refs).
+  let boardCatalog: BoardCatalog | undefined;
+  const visibleContent = (): VisibleContent[] => [
+    ...boards.visibleContent(camera),
+    ...contentLines(airPays.visibleRefs(), boardCatalog),
+  ];
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
@@ -710,6 +722,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       requestScenes(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
+      boardCatalog = catalog;
       airPays.setLines(catalog?.pools?.landing ?? []);
     },
     setTrafficTypes(defs) {
@@ -841,7 +854,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
       return boards.pick(ndc.x, ndc.y, camera);
     },
-    visibleContentRefs: () => [...boards.visibleRefs(camera), ...airPays.visibleRefs()],
+    visibleContent: () => visibleContent(),
+    visibleContentRefs: () => visibleContent().map((c) => c.ref),
     hideContent(refs) {
       const list = [...refs];
       boards.hide(list);
