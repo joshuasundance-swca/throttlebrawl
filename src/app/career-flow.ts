@@ -23,6 +23,7 @@ import {
   newCareer,
   riderTexts,
   rivalTexts,
+  rideRefusal,
   seasonRace,
   showOf,
   startCareer,
@@ -293,6 +294,25 @@ export function pauseMapView(
   const def = defs.find((d) => d.regionKey === regionKey);
   if (!def) return null;
   return pauseMap(reg, def, careerMap(reg, def, profile), roadId, s);
+}
+
+/**
+ * Why a career race may not start at a node (a shut region, a locked node), in plain words with
+ * the events named, or null when it may. app/index.ts asks before every career race starts, so no
+ * button or dev hook rides past the chapter order or the tier gates (playtest 3, round 3).
+ */
+export function rideLock(
+  reg: ContentRegistry,
+  defs: readonly CareerDef[],
+  profile: Profile,
+  def: CareerDef,
+  node: CareerNode,
+): string | null {
+  const nameOf = (id: string): string => {
+    const n = def.nodes.find((x) => x.id === id);
+    return n ? eventPlan(reg, n.event).name : id;
+  };
+  return rideRefusal(defs, profile, def, node, nameOf);
 }
 
 /** The node the career suggests in a region, or null. */

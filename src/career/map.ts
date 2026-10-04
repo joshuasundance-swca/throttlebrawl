@@ -157,6 +157,25 @@ export function regionLockReason(
   return `Opens when ${who} falls.`;
 }
 
+/**
+ * Why a career race at `node` may not start, in plain words, or null when it may (playtest 3, round
+ * 3: regions "In order"; the wave A live check rode a shut region's events). The one gate of the
+ * ride path, so no button (Ride, Next, Race it again, a restart) can bypass it: the region's map
+ * must be open (regionOpen), and the node open or won (nodeState, which is per region and so cannot
+ * see the chapter order alone). `nameOf` names a node, as lockReason does.
+ */
+export function rideRefusal(
+  defs: readonly CareerDef[],
+  profile: Profile,
+  def: CareerDef,
+  node: CareerNode,
+  nameOf: (nodeId: string) => string = (id) => id,
+): string | null {
+  const shut = regionLockReason(defs, profile, def);
+  if (shut !== null) return shut;
+  return lockReason(def, progressOf(def, profile.regions), node, nameOf);
+}
+
 export interface WinApplied {
   progress: RegionProgress;
   /** True when this node was not won before. */

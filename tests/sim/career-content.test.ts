@@ -6,6 +6,7 @@
 // play. The bot's own races are tests/sim/career-headless-*.test.ts.
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, regionChoices, streamForRoute } from '../../src/app';
+import { rideLock } from '../../src/app/career-flow';
 import {
   bare,
   bestOpenRank,
@@ -235,6 +236,31 @@ describe('regions in order (playtest 3, round 3: "In order")', () => {
       const done = { ...progressOf(before, p.regions), finaleBeaten: true };
       p = { ...p, regions: { ...p.regions, [before.regionId]: done } };
       expect(regionOpen(DEFS, p, def), def.regionId).toBe(true);
+    });
+  });
+
+  // The wave A live check rode Ferry Line Sprint and Pier Pressure on a fresh career: the ride path
+  // is the gate, for every event of every shut region, with the real packs' names.
+  it('the ride path refuses every event of a shut region, and the first chapter rides', () => {
+    let p = startCareer(DEFS, { ...DEFAULT_PROFILE });
+    const first = DEFS[0] as CareerDef;
+    for (const n of first.nodes.filter((x) => nodeState(first, progressOf(first, p.regions), x) === 'open'))
+      expect(rideLock(REG, DEFS, p, first, n), n.id).toBeNull();
+    DEFS.forEach((def, i) => {
+      const before = DEFS[i - 1];
+      if (!before) return;
+      const firstEvents = def.nodes.filter((x) => x.tier === 0);
+      for (const n of def.nodes)
+        expect(rideLock(REG, DEFS, p, def, n), `${def.regionId} ${n.id}`).toBe(
+          `Opens when ${before.bossName} falls.`,
+        );
+      const done = { ...progressOf(before, p.regions), finaleBeaten: true };
+      p = { ...p, regions: { ...p.regions, [before.regionId]: done } };
+      // Open now: the first tier's events ride, a later tier's still wait on this region's own tiers.
+      for (const n of firstEvents.filter((x) => x.requires.length === 0 && x.id !== def.tiers[0]?.boss))
+        expect(rideLock(REG, DEFS, p, def, n), `${def.regionId} ${n.id}`).toBeNull();
+      const late = def.nodes.find((x) => x.tier > 0);
+      if (late) expect(rideLock(REG, DEFS, p, def, late), late.id).not.toBeNull();
     });
   });
 });
