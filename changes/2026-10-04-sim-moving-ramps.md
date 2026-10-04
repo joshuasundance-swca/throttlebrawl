@@ -1,0 +1,13 @@
+---
+kind: dev
+audience: dev
+---
+The sim now drives the ramp trucks (playtest 3: "The ramp trucks could be in motion"), but the new carriers ship as drafts, so the live game does not have them yet. They are in dev and staging builds only until the traffic render draws the carrier's lowered ramp (task T4.3): a truck that launches you with no visible ramp would read as a bug. That task flips the six pack files (three carriers, three modifiers) to live.
+
+What a carrier does, where it is on:
+- A car carrier drives ahead of you in the outer lane. Once you are 200 m behind it, its ramp comes down. Catch it from behind and ride up the ramp: you leave its lip and fly. The faster you catch it, the bigger the air. Catch it barely faster than it drives and you meet its body instead, and you crash. The parked ramp trucks stay as they were.
+- The Keys, the Pacific Northwest and San Francisco each have one, with its own four signs ahead of it ("WIDE LOAD / NARROW LANE / NARROWER MARGIN / FOR ERROR" in the Keys), a bark from two rivals, and its own name and paint. It turns up on a straight stretch with no walls or bridge, 450 m of it, and only in races whose route has one. It drives at 20 m/s and is an ordinary big vehicle, as solid as any truck, until its ramp is down.
+- It is the size of a tow truck, 7.5 m, with a 5 m ramp at the parked truck's slope, not the parked truck's 22 m. The rival AI sizes every vehicle by the largest in the race, so a longer carrier would have changed how every rival rides around every car in a region.
+- A rider meets its ramp as it would a parked one, at the speed relative to the truck: where the rider is now is tested against the truck as the tick starts, and where it goes against the truck one tick on. Tested against a truck held still for the whole tick, a 20 m/s catch launches at 9.3 m/s of rise instead of the parked ramp's 4.9. Where its box crosses the join of two roads it is on both, so a rider never passes through it.
+- Two small shared edits ride along, because the contract left them to this lane: `src/sim/riders/index.ts` calls the deck helpers at the places it already looked at a ramp truck, and the three regions' `road-events` bark sets have two lines each for the new event (a test requires them for a live modifier, and they wait for it).
+- `docs/architecture.md` ("Jumps, ramps and airtime" and "Event modifiers") and `docs/content-packs.md` ("Event modifiers") describe it. New tests: `src/sim/riders/moving-deck.test.ts`, `src/sim/modifiers/moving.test.ts` (added to) and `tests/sim/events-moving-ramp.test.ts`, which loads the packs with the drafts on, as dev and staging builds do. Done, not phone-verified.

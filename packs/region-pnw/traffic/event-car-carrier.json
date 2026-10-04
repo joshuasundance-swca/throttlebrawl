@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "event-car-carrier",
+  "name": "Car Carrier, Thermos Aboard",
+  "category": "truck",
+  "tags": ["event", "moving-ramp", "pnw"],
+  "lengthM": 7.5,
+  "widthM": 2.4,
+  "cruiseMps": 20.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "tow-truck"
+    },
+    "paintOptions": ["#7a3b2a", "#3d4a3f", "#d9d9d9"]
+  },
+  "meta": {
+    "status": "draft",
+    "notes": "DRAFT until the traffic render draws the carrier's lowered ramp (playtest 3, T4.3), with its moving-ramp modifier. The Pacific Northwest's moving ramp truck carrier: it drives ahead in the outermost lane at 20 m/s, and once a racer is 200 m behind it its ramp comes down and its whole box is a jump (sim/modifiers, `moving-ramp`). Until then it is an ordinary big vehicle: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event places it. A tow truck's size, 7.5 m, never larger than the race's own largest vehicle (the rival AI sizes every vehicle by the largest).",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

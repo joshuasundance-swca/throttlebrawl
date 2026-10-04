@@ -1,0 +1,41 @@
+{
+  "type": "event-modifier",
+  "id": "sf-moving-ramp",
+  "name": "SF Moving Ramp",
+  "kind": "human",
+  "tags": ["set-piece", "moving-ramp"],
+  "rarityWeight": 1.5,
+  "eligibility": {
+    "regions": ["san-francisco"],
+    "eventKinds": [],
+    "timeOfDay": []
+  },
+  "trigger": {
+    "atProgress": [0.25, 0.8],
+    "chance": 0.5
+  },
+  "durationS": 0,
+  "effects": [
+    {
+      "kind": "set-piece",
+      "piece": "moving-ramp",
+      "signText": "",
+      "serial": ["RAMP-AS-A-SERVICE", "NOW IN BETA", "MOVING FAST", "BREAKING THINGS"],
+      "vehicle": "event-car-carrier",
+      "theme": "sf"
+    }
+  ],
+  "announce": {
+    "barkTrigger": "modifier-start",
+    "sign": null
+  },
+  "meta": {
+    "status": "draft",
+    "notes": "DRAFT until the traffic render draws the carrier's lowered ramp (playtest 3, T4.3): a truck that launches you with no visible ramp would read as a bug, so release builds leave it out and dev and staging builds carry it. Playtest 3 moving road event (\"the ramp trucks could be in motion\"): a car carrier drives ahead in the outermost lane at 20 m/s on a straight stretch; once a racer is 200 m behind it, its ramp comes down, and catching it from behind launches you off its lip, the faster the bigger. Four serial signs tell the joke first, punchline last.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

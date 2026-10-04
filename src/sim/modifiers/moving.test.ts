@@ -3,15 +3,18 @@
 // cable car's roll back, and which side of a lane-vote gantry a rider is under. Driven by sim steps
 // (dt = 1/60), never wall time.
 import { describe, expect, it } from 'vitest';
+import { KERB_M } from '../riders/features';
 import {
   gantrySpan,
   hopVy,
   logTargetCd,
   MOVING,
+  movingDeckOf,
   rollStep,
   serialLeads,
   slideStep,
   voteSide,
+  type DeckVehicle,
   type Slide,
 } from './moving';
 
@@ -114,5 +117,57 @@ describe('the lane vote', () => {
     // Forward lanes on the left of the centre line: the outer lane (cd -6) is the rider's right.
     expect(voteSide(-6, g.splitCd, -1)).toBe('right');
     expect(voteSide(-2, g.splitCd, -1)).toBe('left');
+  });
+});
+
+describe('the moving ramp truck (playtest 3: "the ramp trucks could be in motion")', () => {
+  /** A 7.5 m, 2.4 m carrier mid-edge, its rear at s 496.25 and driving toward increasing s. */
+  const truck: DeckVehicle = {
+    vehicle: 41,
+    edge: 2,
+    foot: 496.25,
+    dir: 1,
+    d: 1.9,
+    speedMps: 20,
+    lengthM: 7.5,
+    widthM: 2.4,
+  };
+
+  it('its deck is exactly its box: the ramp at its rear, the body to its front', () => {
+    const d = movingDeckOf(truck);
+    expect(d.vehicle).toBe(41);
+    expect(d.edge).toBe(2);
+    expect(d.dir).toBe(1);
+    expect(d.speedMps).toBe(20);
+    // The foot is the rear of the box; the front is run + body on.
+    expect(d.s0).toBe(496.25);
+    expect(d.s0 + d.rampLengthM + d.bodyM).toBeCloseTo(503.75, 9);
+    expect(d.d0).toBeCloseTo(1.9 - 1.2, 9);
+    expect(d.d1).toBeCloseTo(1.9 + 1.2, 9);
+    expect(d.bodyM).toBeGreaterThan(0);
+  });
+
+  it('carries the pack’s ramp, and keeps its slope when the box is short', () => {
+    const asked = movingDeckOf(truck, 4, 1);
+    expect(asked.rampLengthM).toBe(4);
+    expect(asked.lipHeightM).toBe(1);
+    const short = movingDeckOf({ ...truck, lengthM: 4 }, 9, 2.25);
+    expect(short.rampLengthM + short.bodyM).toBeCloseTo(4, 9);
+    expect(short.bodyM).toBeGreaterThanOrEqual(0.5);
+    expect(short.lipHeightM / short.rampLengthM).toBeCloseTo(0.25, 9);
+  });
+
+  it('is never steeper than the riders can ride up without meeting its foot as a kerb', () => {
+    // A rider's step up the ramp in one tick is slope × its speed × dt: it must stay under a kerb
+    // for the fastest bike (160 mph, 71.5 m/s), or the foot would crash the quickest riders.
+    const d = movingDeckOf(truck);
+    expect(d.lipHeightM / d.rampLengthM).toBeCloseTo(MOVING.rampSlope, 9);
+    expect(MOVING.rampSlope * (71.5 / 60)).toBeLessThanOrEqual(KERB_M);
+  });
+
+  it('its ramp drops while the field is still well behind it', () => {
+    // Early enough that nobody can reach the foot before it is down: more than the distance a racer
+    // at the top speed closes on a 20 m/s truck in the time it takes to see it (2 s of margin).
+    expect(MOVING.rampDropM).toBeGreaterThan((71.5 - 20) * 2);
   });
 });

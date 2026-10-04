@@ -203,6 +203,32 @@
         }
       ],
       "text": "Pick a lane. Don't make a fuss about it."
+    },
+    {
+      "id": "pnw-ev-moving-ramp-oldgrowth",
+      "trigger": "modifier-start",
+      "speaker": "old-growth",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-moving-ramp"
+        }
+      ],
+      "text": "Rolling ramp. The forest approves."
+    },
+    {
+      "id": "pnw-ev-moving-ramp-juniper",
+      "trigger": "modifier-start",
+      "speaker": "juniper-moss",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-pnw:pnw-moving-ramp"
+        }
+      ],
+      "text": "Free air, with a thermos. Mind the lip."
     }
   ],
   "meta": {
