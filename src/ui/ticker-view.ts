@@ -25,16 +25,16 @@ import {
 
 /**
  * Where the strip sits and how it looks, per look (`data-look`). The default is the Ink + 60s look,
- * which a new save starts on. Where it sits is the old bark bubble's spot, which the HUD layout check
- * (tests/e2e/ui-style-popups.spec.ts) already clears of every other widget and of the road ahead:
- * under the heat badge and the career objective on a big screen; right under the top row on a narrow
- * one; on a phone held sideways at the top centre, narrower, beside the rival's bar. [default]
+ * which a new save starts on. Where it sits comes from ui/hud-layout.ts (`--hl-ticker-*` on #ui): in
+ * the top row between the position badge and the rival's bar where there is 260 px of room, else its
+ * own row under the top row, always clear of every other widget and of the road ahead (the layout
+ * check, tests/e2e/ui-style-popups.spec.ts). The fallbacks are for a screen no plan has settled. [default]
  */
 export const TICKER_CSS = `
 #hud-ticker { --tk-band: rgb(17 17 17 / 72%); --tk-text: #f2ead8; --tk-tag-bg: #e0543a; --tk-tag-fg: #fff;
   --tk-accent: #f5c542; --tk-rule: 2px solid #111;
-  position: absolute; left: 50%; top: max(74px, env(safe-area-inset-top)); transform: translateX(-50%);
-  width: max-content; max-width: min(80vw, 560px); box-sizing: border-box; padding: 4px 12px 5px;
+  position: absolute; left: var(--hl-ticker-x, 50%); top: var(--hl-ticker-y, max(8px, env(safe-area-inset-top)));
+  transform: translateX(-50%); width: max-content; max-width: var(--hl-ticker-w, min(80vw, 560px)); box-sizing: border-box; padding: 4px 12px 5px;
   border-radius: 4px; background: var(--tk-band); border-bottom: var(--tk-rule); color: var(--tk-text);
   font: 700 15px/1.2 system-ui, sans-serif; text-align: center; white-space: nowrap; overflow: hidden;
   pointer-events: none; opacity: 0; transition: opacity 160ms ease-out; }
@@ -69,10 +69,6 @@ export const TICKER_CSS = `
   --tk-rule: 0 solid transparent;
   text-shadow: 2px 0 #111, -2px 0 #111, 0 2px #111, 0 -2px #111; }
 @keyframes tb-tick-in { 0% { opacity: 0; transform: translate(-50%, -4px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 600px) { #hud-ticker { top: max(52px, env(safe-area-inset-top)); max-width: calc(100vw - 24px); } }
-@media (orientation: landscape) and (max-height: 520px) {
-  #hud-ticker { top: max(6px, env(safe-area-inset-top)); max-width: min(38vw, 560px); }
-}
 @media (prefers-reduced-motion: reduce) { #hud-ticker, #hud-ticker.in { transition: none; animation: none; } }
 `;
 
