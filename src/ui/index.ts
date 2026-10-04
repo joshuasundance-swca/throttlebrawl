@@ -401,16 +401,21 @@ ${RADIO_PANEL_CSS}
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
-/* The slow-frames offer (run W-O): top centre, between the position badge and the pause button,
-   above the bark bubble (which sits under every layer); its buttons take touches only on themselves. */
-#look-offer { position: absolute; top: max(6px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
-  z-index: 1; width: min(400px, calc(100vw - 150px)); display: flex; flex-direction: column; gap: 6px;
-  pointer-events: none; }
+/* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
+   Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
+   down) or another HUD piece. Top centre, it covered the bubble, the heat badge and the objective and
+   reached into the road ahead. So it sits in the outer quarter across from the pop-ups (where they
+   flip, it flips: .mirrored), under the pause button and above the touch buttons; on an upright
+   screen, whose quarters are too narrow, it spans the screen just under the road ahead. [default] */
+#look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
+  left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
+  z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#look-offer.mirrored { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
 #ui .look-offer-text { font: 700 14px/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui .look-offer .row { justify-content: flex-start; gap: 8px; }
 #ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
-@media (max-width: 600px) { #look-offer { width: calc(100vw - 24px); top: 58px; } }
+@media (max-width: 600px) { #look-offer, #look-offer.mirrored { left: 12px; right: 12px; top: calc(65% + 10px); } }
 /* The bark bubble on a narrow screen (run W-O; ui-popups-1c report): ui/narrative centres it with
    left: 50%, which caps its shrink-to-fit width at half the screen, so on a 412 px portrait screen a
    42-character line wrapped to 3 lines in a 206 px box. Sized to its line here instead, up to the
@@ -1374,6 +1379,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const offerClassicLook = (): boolean => {
     if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
     pauseLookOffer.hidden = false;
+    // Across from the pop-ups: they take one outer quarter, the offer the other.
+    lookOffer.classList.toggle('mirrored', popups.classList.contains('mirrored'));
     // While paused only the pause menu's note shows it.
     lookOffer.hidden = paused;
     if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);

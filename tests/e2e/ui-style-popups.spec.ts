@@ -118,39 +118,21 @@ const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
     // Playtest 3: "The race objective sits over the heat meter". Both sit top centre at 8 px on a
     // short landscape screen.
     'hud-heat × hud-objective',
-    // Playtest 3's "black and white text pop-ups block the actual game" (inferred): the landing
-    // one-liner's dark plate sits over the bike, in the middle of the road.
-    'landing-line in the road ahead',
-    // The slow-frames toast sits top centre over the bubble, the heat badge and the objective, and
-    // reaches 3 px into the look-ahead.
-    'bark-bubble × look-offer',
-    'hud-heat × look-offer',
-    'hud-objective × look-offer',
-    'look-offer in the road ahead',
   ],
   'phone portrait': [
     // The objective (top 48 px) and the bubble (top 52 px) share the top centre.
     'bark-bubble × hud-objective',
     // The rival's health bar (top right) reaches left over the centred heat badge.
     'hud-heat × hud-target',
-    'landing-line in the road ahead',
-    // The toast, nearly full width, over the bubble, the objective and the pop-up stack.
-    'bark-bubble × look-offer',
-    'hud-objective × look-offer',
-    'look-offer × style-pop',
   ],
   laptop: [
     // As upright: the objective (top 48 px) under the bubble (top 52 px).
     'bark-bubble × hud-objective',
-    'landing-line in the road ahead',
-    'bark-bubble × look-offer',
-    'hud-heat × look-offer',
-    'hud-objective × look-offer',
   ],
   mirrored: ['bark-bubble in the road ahead'],
   'small phone': ['bark-bubble in the road ahead'],
 };
-const KNOWN_LAYOUT_CAP = 20;
+const KNOWN_LAYOUT_CAP = 7;
 
 function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
