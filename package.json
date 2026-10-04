@@ -40,6 +40,8 @@
     "asset:check": "node tools/blender/build.mjs --check",
     "asset:render": "node tools/blender/render.mjs",
     "asset:score": "node tools/blender/score.mjs",
+    "atlas:build": "node tools/atlas/build.mjs",
+    "atlas:check": "node tools/atlas/build.mjs --check",
     "hooks:install": "simple-git-hooks",
     "knip": "knip"
   },
