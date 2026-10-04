@@ -57,6 +57,11 @@
 //   changes into a lane that ends within TRAFFIC.mergeLookM. A road with one lane each way is
 //   exactly as before. A near miss whose rider had another vehicle just as close on the other side
 //   (threading between two cars, or between a car and an oncoming one) carries `split`.
+// - Kerb riders yield (playtest 3, T4.1; ./kerb-yield.ts): a bicycle, scooter or e-bike steps out
+//   of the way of a rider closing on it (onto the verge, else hugging the road's edge), slows while it
+//   does, and goes back to its kerb line afterwards; a rider that still clips a light one only
+//   wobbles (data.kerb) and the cyclist topples for a moment. Behind `traffic.kerbYield` and
+//   `traffic.kerbSoft`; the golf cart is not light and keeps the old contact rules.
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
@@ -79,6 +84,16 @@ import {
   type LaneMap,
 } from './corridor';
 import { IDM, idmAccel } from './idm';
+import {
+  bestSpot,
+  holdsReturn,
+  isLightKerb,
+  KERB_YIELD,
+  KERB_YIELD_TUNING,
+  threatens,
+  type DodgeSpots,
+  type KerbBody,
+} from './kerb-yield';
 
 export { buildCorridor, buildLaneMap, pickLink, toCorridor, trafficMayEnter } from './corridor';
 export type { Corridor, LaneMap } from './corridor';
@@ -185,6 +200,7 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  ...KERB_YIELD_TUNING,
 ];
 
 /** [default] starting values (docs/milestones/M1.md, "Starting numbers", and this lane). */
@@ -343,6 +359,27 @@ function kerbAhead(
   return beyond ? { ...beyond, rank: kerb.rank } : kerb;
 }
 
+/**
+ * The ground beside the road on the `out` side at u, in corridor terms (T4.1): where the drivable
+ * road ends (`edgeCd`, the outermost lane's outer edge, shoulder included) and how wide the verge
+ * band past it is (0 where the road's own edge is the edge).
+ */
+function kerbGround(
+  config: SimConfig,
+  st: TrafficState,
+  u: number,
+  out: number,
+): { edgeCd: number; vergeW: number } {
+  const c = st.corridor;
+  const i = linkAt(c, u < 0 ? 0 : u > c.length ? c.length : u);
+  const o = c.o[i] ?? 1;
+  const off = c.off[i] ?? 0;
+  const len = c.len[i] ?? 0;
+  const s = clamp(o === 1 ? u - off : off + len - u, 0, len);
+  const v = config.road.vergeAt(c.edges[i] ?? 0, s, out * o < 0 ? 'left' : 'right');
+  return { edgeCd: v.dInner * o, vergeW: v.widthM };
+}
+
 /** The shoulder lane at u on the `out` side carrying `dir`, in corridor terms, or null. */
 function shoulderAt(
   road: SimConfig['road'],
@@ -484,6 +521,14 @@ export interface TrafficState {
   weavePhase: number[];
   /** Vehicle entity id each rider is touching, or -1. */
   contactWith: number[];
+  /**
+   * Kerb riders yielding (T4.1), by vehicle slot: the world time the dodge holds to (0 once the
+   * kerb rider is back on its line), the cross-road spot it dodges to, and how long it still lies
+   * toppled, s. Reset when the slot is recycled.
+   */
+  yieldUntilS: number[];
+  yieldCd: number[];
+  toppleS: number[];
   unstableS: number[];
   /** Per rider, per vehicle slot: the vehicle's position ahead of the rider last tick (0 = unknown). */
   lastRel: number[][];
@@ -514,6 +559,9 @@ export function trafficState(world: World): TrafficState {
     laneCooldownS: [],
     weavePhase: [],
     contactWith: [],
+    yieldUntilS: [],
+    yieldCd: [],
+    toppleS: [],
     unstableS: [],
     lastRel: [],
     spawns: 0,
@@ -830,6 +878,9 @@ export function placeVehicle(
   st.spawnU[slot] = spec.u;
   st.retired[slot] = 0;
   st.laneCooldownS[slot] = TRAFFIC.laneChangeCooldownS;
+  st.yieldUntilS[slot] = 0;
+  st.yieldCd[slot] = cd;
+  st.toppleS[slot] = 0;
   // A weaver starts its weave at a seeded point (W-P); nobody else rolls, so plain traffic keeps
   // its rolls.
   st.weavePhase[slot] = (t.behaviour?.weaveM ?? 0) > 0 ? nextFloat(world.rng.traffic) * TAU : 0;
@@ -1227,6 +1278,74 @@ function riderViews(world: World, config: SimConfig, st: TrafficState): RiderVie
   return out;
 }
 
+/**
+ * Kerb riders yield (playtest 3, T4.1; docs/architecture.md, "Traffic"). Each tick, before
+ * car-following, every kerb slot in ascending order is checked against every rider view in ascending
+ * id order. While a rider threatens a kerb rider (./kerb-yield.ts `threatens`), and for
+ * KERB_YIELD.holdS after the last one has passed, the kerb rider dodges to the best spot (`bestSpot`:
+ * the verge for a light type, the road's edge, or where it is) at KERB_YIELD.mps, slowed to
+ * KERB_YIELD.speedScale of its cruise speed (move() reads `yieldUntilS`). Afterwards it returns to
+ * its kerb line at KERB_YIELD.returnMps, waiting while a rider within KERB_YIELD.returnBehindM behind
+ * it is still in its band. A toppled one (contacts()) counts its lying time down here. With
+ * `traffic.kerbYield` absent or 0 nothing is checked and no state changes.
+ */
+function updateKerbYield(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  dt: number,
+): void {
+  const n = st.id.length;
+  for (let k = 0; k < n; k++) {
+    const left = st.toppleS[k] ?? 0;
+    if (left > 0) st.toppleS[k] = left - dt > 1e-6 ? left - dt : 0;
+  }
+  const look = world.params['traffic.kerbYield'] ?? 0;
+  if (look <= 0 || riders.length === 0) return;
+  for (let k = 0; k < n; k++) {
+    const t = typeOf(config, st, k);
+    if (!isKerb(t) || (st.toppleS[k] ?? 0) > 0) continue;
+    const dir = st.dir[k] ?? 1;
+    const u = st.u[k] ?? 0;
+    const halfW = t.widthM / 2;
+    const kerb = kerbAhead(config, st, u, dir, halfW);
+    if (!kerb) continue;
+    const cd = st.cd[k] ?? 0;
+    const body: KerbBody = {
+      u,
+      cd,
+      homeCd: kerb.cd,
+      dir,
+      speed: world.movers[st.id[k] ?? -1]?.speed ?? 0,
+      lengthM: t.lengthM,
+      widthM: t.widthM,
+    };
+    const threats: number[] = [];
+    let waiting = false;
+    for (const r of riders) {
+      if (threatens(body, r, TRAFFIC.riderLengthM, TRAFFIC.riderWidthM, look)) threats.push(r.cd);
+      else if (holdsReturn(body, r, TRAFFIC.riderWidthM)) waiting = true;
+    }
+    if (threats.length > 0) {
+      const out = kerb.cd < 0 ? -1 : 1;
+      const ground = kerbGround(config, st, u, out);
+      const spots: DodgeSpots = {
+        verge:
+          isLightKerb(t) && ground.vergeW >= t.widthM + KERB_YIELD.vergeSpareM
+            ? ground.edgeCd + out * (halfW + KERB_YIELD.vergeOffsetM)
+            : null,
+        hug: ground.edgeCd - out * (halfW + KERB_YIELD.hugM),
+        stay: cd,
+      };
+      st.yieldCd[k] = bestSpot(spots, threats, t.widthM, TRAFFIC.riderWidthM);
+      st.yieldUntilS[k] = st.clockS + KERB_YIELD.holdS;
+    } else if (waiting && (st.yieldUntilS[k] ?? 0) > 0 && st.clockS >= (st.yieldUntilS[k] ?? 0)) {
+      st.yieldUntilS[k] = st.clockS + 2 * dt;
+    }
+  }
+}
+
 /** Car-following, then the no-overlap guarantee, then lane-keeping and the mover sync. */
 function move(
   world: World,
@@ -1239,7 +1358,9 @@ function move(
   const c = st.corridor;
   const speeds = st.id.map((id) => world.movers[id]?.speed ?? 0);
   const parked = parkedSlots(config, st);
+  updateKerbYield(world, config, st, riders, dt);
   const accel: number[] = [];
+  const dodge: boolean[] = [];
   for (let k = 0; k < n; k++) {
     const t = typeOf(config, st, k);
     const dir = st.dir[k] ?? 1;
@@ -1288,11 +1409,21 @@ function move(
       }
       if (end < Infinity) consider(end - t.lengthM / 2, 0);
     }
-    accel.push(idmAccel(speeds[k] ?? 0, st.v0[k] ?? 0, gap, vLead));
+    // A dodging kerb rider (T4.1) slows down while it does.
+    const dodging = isKerb(t) && st.clockS < (st.yieldUntilS[k] ?? 0);
+    dodge.push(dodging);
+    accel.push(idmAccel(speeds[k] ?? 0, (st.v0[k] ?? 0) * (dodging ? KERB_YIELD.speedScale : 1), gap, vLead));
   }
   const nextV: number[] = [];
   for (let k = 0; k < n; k++) {
-    const v = Math.max(0, (speeds[k] ?? 0) + (accel[k] ?? 0) * dt);
+    // A toppled kerb rider (T4.1) lies still.
+    let v = (st.toppleS[k] ?? 0) > 0 ? 0 : Math.max(0, (speeds[k] ?? 0) + (accel[k] ?? 0) * dt);
+    if (dodge[k]) {
+      // Slowing for the rider takes KERB_YIELD.brakeMps2, not IDM's ever softer approach to a lower
+      // cruise speed: about 0.4 s from a bicycle's cruise to 0.6 of it.
+      const slow = (st.v0[k] ?? 0) * KERB_YIELD.speedScale;
+      v = Math.min(v, Math.max(slow, (speeds[k] ?? 0) - KERB_YIELD.brakeMps2 * dt));
+    }
     nextV.push(v);
     st.u[k] = (st.u[k] ?? 0) + (st.dir[k] ?? 1) * v * dt;
   }
@@ -1353,6 +1484,23 @@ function move(
         ? clamp(target + swing, kerb.lo, kerb.hi)
         : clamp(target + swing, laneCd - half, laneCd + half);
     }
+    // A kerb rider that is toppled lies where it is; one that is dodging (T4.1) goes to its spot,
+    // and afterwards back to its line, slowly.
+    let returning = false;
+    if (kerb) {
+      const until = st.yieldUntilS[k] ?? 0;
+      if ((st.toppleS[k] ?? 0) > 0) {
+        target = st.cd[k] ?? target;
+      } else if (until > 0) {
+        if (st.clockS < until) {
+          target = st.yieldCd[k] ?? target;
+          rate = KERB_YIELD.mps;
+        } else {
+          returning = true;
+          rate = KERB_YIELD.returnMps;
+        }
+      }
+    }
     if (parked.length > 0) {
       if (isParked(tk)) {
         target = parkedCd(laneCd);
@@ -1393,6 +1541,8 @@ function move(
     const step = rate * dt;
     const nextCd = cd + clamp(target - cd, -step, step);
     st.cd[k] = nextCd;
+    // Back on its line: the dodge is over.
+    if (returning && Math.abs(nextCd - target) <= 0.05) st.yieldUntilS[k] = 0;
     const mover = world.movers[st.id[k] ?? -1];
     if (!mover) continue;
     const v = nextV[k] ?? 0;
@@ -1553,6 +1703,30 @@ function putRiderOver(config: SimConfig, st: TrafficState, m: Mover, r: RiderVie
 }
 
 /**
+ * A light kerb rider a rider has clipped topples (T4.1): it lies still for KERB_YIELD.toppleS, moved
+ * outward by the overlap `overD` plus KERB_YIELD.topplePushM, kept inside the verge (or the road's
+ * edge where there is no verge). Contacts skip it while it lies there.
+ */
+function toppleKerbRider(world: World, config: SimConfig, st: TrafficState, k: number, overD: number): void {
+  const t = typeOf(config, st, k);
+  const cd = st.cd[k] ?? 0;
+  const out = cd < 0 ? -1 : 1;
+  const ground = kerbGround(config, st, st.u[k] ?? 0, out);
+  const reach = ground.edgeCd + out * ground.vergeW - out * (t.widthM / 2 + KERB_YIELD.toppleInsetM);
+  const target = cd + out * (overD + KERB_YIELD.topplePushM);
+  // Never pulled inward by the clamp: a kerb rider already past the verge's edge stays put.
+  const next = out > 0 ? Math.max(cd, Math.min(target, reach)) : Math.min(cd, Math.max(target, reach));
+  st.cd[k] = next;
+  st.toppleS[k] = KERB_YIELD.toppleS;
+  // Once it rides on, it goes back to its kerb line at the return pace.
+  st.yieldUntilS[k] = st.clockS + 1e-6;
+  const mover = world.movers[st.id[k] ?? -1];
+  if (!mover) return;
+  mover.speed = 0;
+  fromCorridor(st.corridor, st.u[k] ?? 0, next, st.dir[k] ?? 1, mover.pos);
+}
+
+/**
  * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
  * playtest 1, 2026-09-30: "hitting cars feels bouncy"). A first contact is classed by how the
  * boxes met:
@@ -1567,13 +1741,17 @@ function putRiderOver(config: SimConfig, st: TrafficState, m: Mover, r: RiderVie
  * A close, fast pass with no contact fires `nearMiss`.
  * Playtest 3: a vehicle with its ramp down (a live moving deck, SimMovingDeck) is the riders' to
  * meet, by the deck rules, so traffic skips it; and a first contact a wheelie turns into a hood
- * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble.
+ * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble. With `traffic.kerbSoft`, a first
+ * contact with a light kerb rider (T4.1) is always a wobble with `data.kerb`, and at
+ * KERB_YIELD.toppleMinMps closing or more the cyclist topples (toppleKerbRider) and is skipped
+ * until it has lain still for KERB_YIELD.toppleS.
  */
 function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
   const T = TRAFFIC;
   const solidMps = world.params['traffic.solidHitMps'] ?? T.solidHitMps;
   const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
   const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
+  const kerbSoft = (world.params['traffic.kerbSoft'] ?? 0) > 0;
   for (const r of riders) {
     st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
     st.lastRel[r.id] ??= st.id.map(() => 0);
@@ -1591,6 +1769,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       const prev = rel[k] ?? 0;
       rel[k] = ahead === 0 ? -1e-9 : ahead;
       if (!r.touchable || isDeckVehicle(decks, vid)) continue;
+      // A toppled kerb rider (T4.1) lies on the ground: riders pass it by, and it can't be hit again.
+      if ((st.toppleS[k] ?? 0) > 0) continue;
       if (st.contactWith[r.id] === vid && (overU < -1 || overD < -0.5)) st.contactWith[r.id] = -1;
       if (overU > 0 && overD > 0) {
         const vDir = st.dir[k] ?? 1;
@@ -1598,6 +1778,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
         // The vehicle's velocity along the rider's direction, and how fast they came together.
         const vAlong = vDir === r.dir ? vSpeed : -vSpeed;
         let solid = false;
+        let soft = false;
         if (st.contactWith[r.id] !== vid) {
           st.contactWith[r.id] = vid;
           // Side by side last tick (their boxes overlapped along the road): it came in from the side.
@@ -1618,31 +1799,64 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
             closingMps: closing,
           };
           if (hoodLaunchContact(world, config, hood)) continue;
-          solid = endOn && !graze && closing >= solidMps;
-          const crash = solid || t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
           const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
-          const data = {
-            cause: 'traffic',
-            hazard: t.hazard,
-            vehicle: t.contentId,
-            contact: crash ? 'crash' : 'wobble',
-            hit,
-            impactMps: closing,
-          };
-          if (solid) {
-            // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back.
-            m.speed = Math.max(0, vAlong);
-            emit(world, 'crash', r.id, data, { target: vid });
-          } else if (crash) {
-            m.speed *= T.crashScrub;
-            emit(world, 'crash', r.id, data, { target: vid });
-          } else {
-            m.speed *= T.wobbleScrub;
+          if (kerbSoft && isKerb(t) && isLightKerb(t)) {
+            // Soft contact (T4.1): the rider only wobbles, even when it is still unstable from an
+            // earlier wobble, and a hard enough clip topples the cyclist. A toppled cyclist is moved
+            // clear, so the rider is neither pushed out of its box nor slowed to its speed; a slow
+            // brush (a scooter against a cop standing at the kerb) is resolved as any nudge is.
+            soft = closing >= KERB_YIELD.toppleMinMps;
+            m.speed *= KERB_YIELD.bumpScrub;
             const away = dcd > 0 ? -1 : 1;
-            m.yaw = clamp(m.yaw + away * r.dir * T.wobbleKickRad, -1.2, 1.2);
+            m.yaw = clamp(m.yaw + away * r.dir * KERB_YIELD.bumpKickRad, -1.2, 1.2);
             st.unstableS[r.id] = T.unstableS;
-            emit(world, 'wobble', r.id, data, { target: vid });
+            emit(
+              world,
+              'wobble',
+              r.id,
+              {
+                cause: 'traffic',
+                hazard: t.hazard,
+                vehicle: t.contentId,
+                contact: 'wobble',
+                hit,
+                impactMps: closing,
+                kerb: true,
+                ...(soft ? { toppleS: KERB_YIELD.toppleS } : {}),
+              },
+              { target: vid },
+            );
+            if (soft) toppleKerbRider(world, config, st, k, overD);
+          } else {
+            solid = endOn && !graze && closing >= solidMps;
+            const crash = solid || t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
+            const data = {
+              cause: 'traffic',
+              hazard: t.hazard,
+              vehicle: t.contentId,
+              contact: crash ? 'crash' : 'wobble',
+              hit,
+              impactMps: closing,
+            };
+            if (solid) {
+              // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back.
+              m.speed = Math.max(0, vAlong);
+              emit(world, 'crash', r.id, data, { target: vid });
+            } else if (crash) {
+              m.speed *= T.crashScrub;
+              emit(world, 'crash', r.id, data, { target: vid });
+            } else {
+              m.speed *= T.wobbleScrub;
+              const away = dcd > 0 ? -1 : 1;
+              m.yaw = clamp(m.yaw + away * r.dir * T.wobbleKickRad, -1.2, 1.2);
+              st.unstableS[r.id] = T.unstableS;
+              emit(world, 'wobble', r.id, data, { target: vid });
+            }
           }
+        }
+        if (soft) {
+          rel[k] = r.dir * ((st.u[k] ?? 0) - r.u) || -1e-9;
+          continue;
         }
         // Push the rider just out of the vehicle's box: back along the road for a solid hit;
         // sideways for a head-on brush or a side swipe; backward (and down to its speed) for a nudge.

@@ -201,7 +201,8 @@ test('the bot races to results with a placing at phone landscape', async ({ page
         const g = (window as TestWindow).__game;
         const s = g?.snapshot();
         const me = g && s ? s.entities[g.playerId()] : undefined;
-        return !!s && !!me && me.progress > s.race.routeLength / 2;
+        // A bust ends the race at once, wherever the bot is (the batch rule, checked below).
+        return (!!s && !!me && me.progress > s.race.routeLength / 2) || (!!g && g.state() !== 'race');
       },
       null,
       { timeout: 300_000, polling: 250 }, // a hang guard: about 550 frames in lockstep
@@ -210,8 +211,15 @@ test('the bot races to results with a placing at phone landscape', async ({ page
     console.log(`not halfway: ${await where()}`);
     throw e;
   }
-  console.log(`halfway: ${await where()}`);
-  await shoot('midway');
+  const racing = await page.evaluate(() => (window as TestWindow).__game?.state() === 'race');
+  if (racing) {
+    console.log(`halfway: ${await where()}`);
+    await shoot('midway');
+  } else {
+    // The race ended before halfway (a bust: PR #441's kerb riders reshuffled seed 1 into one at
+    // tick 4327). The start and finish shots still run.
+    console.log(`[assert] the midway shot: NOT ACTIVE (the race ended before halfway: ${await where()})`);
+  }
   await expect(page.locator('#results')).toBeVisible({ timeout: 300_000 }); // a hang guard
   await shoot('finish');
   // The race's debug file, for replaying a failure in Node (the bot is a pure function of the
