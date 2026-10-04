@@ -344,10 +344,19 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
   };
   const SEGS = Math.max(8, Math.min(90, Math.round(L / 120)));
   let built = 0;
+  // The slabs' edges: every 1/SEGS and at both ends of every missing span (T11.1), so a hole is as
+  // long as the data asks, not a whole number of slabs.
+  const cuts = [
+    ...Array.from({ length: SEGS + 1 }, (_, k) => k / SEGS),
+    ...(p.gaps ?? []).flatMap(([g0, g1]) => [g0, g1]).filter((u) => u > 0 && u < 1),
+  ]
+    .sort((a, b) => a - b)
+    .filter((u, i, all) => i === 0 || u - all[i - 1]! > 1e-9);
+  const slabGap = (k: number) => k >= 0 && k + 1 < cuts.length && inGap((cuts[k]! + cuts[k + 1]!) / 2);
   // The deck, as a run of slabs (skipping a gap and anything too close to a road).
-  for (let k = 0; k < SEGS; k++) {
-    const u0 = k / SEGS;
-    const u1 = (k + 1) / SEGS;
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const u0 = cuts[k]!;
+    const u1 = cuts[k + 1]!;
     const um = (u0 + u1) / 2;
     if (inGap(um) || nearAt(um)) continue;
     const [x0, z0] = at(u0);
@@ -377,31 +386,38 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
       ],
       col,
     );
+    // A broken end: where the next slab is missing, the deck's cross-section shows (a face).
+    for (const [end, x, z, y, open] of [
+      [-1, x0, z0, y0, slabGap(k - 1)],
+      [1, x1, z1, y1, slabGap(k + 1)],
+    ] as const) {
+      if (!open) continue;
+      s.poly(
+        [
+          [x - vx, y - thick, z - vz],
+          [x + vx, y - thick, z + vz],
+          [x + vx, y, z + vz],
+          [x - vx, y, z - vz],
+        ],
+        scale(col, end < 0 ? 0.8 : 0.85),
+      );
+    }
     s.inside = null;
     built++;
   }
   if (!built) return 0;
+  /** A pier from the sea floor up to height `top`, at u (none in a gap or too near a road). */
+  const pier = (u: number, top: number) => {
+    if (inGap(u) || nearAt(u)) return;
+    const [x, z] = at(u);
+    s.frustum(x, -SKIRT_M, z, tx, tz, 3 * e, W * 0.7, top + SKIRT_M, scale(col, 0.85), 3 * e, W * 0.7, false);
+  };
   if (p.style === 'girder') {
     const every = p.pierEveryM ?? 160;
     const count = Math.floor(L / every);
     for (let k = 1; k < count; k++) {
       const u = k / count;
-      if (inGap(u) || nearAt(u)) continue;
-      const [x, z] = at(u);
-      s.frustum(
-        x,
-        -SKIRT_M,
-        z,
-        tx,
-        tz,
-        3 * e,
-        W * 0.7,
-        deck + hump(u) - thick + SKIRT_M,
-        scale(col, 0.85),
-        3 * e,
-        W * 0.7,
-        false,
-      );
+      pier(u, deck + hump(u) - thick);
     }
   }
   const towerM = (p.towerM ?? p.deckM * 3) * e;
@@ -472,6 +488,149 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
           );
         }
       }
+    }
+  }
+  // The styles for the real roads' bridges (playtest 3, T11.1): all flat-coloured plates in the one
+  // soup, hanging in vertical planes beside the deck, so a bridge costs no draw call.
+  const members = scale(col, 0.88);
+  /** A point of the vertical plane `lat` m to the side of the deck's axis: m along it, y up. */
+  const plane =
+    (lat: number) =>
+    (m: number, y: number): V3 => [ax + tx * m - tz * lat, y, az + tz * m + tx * lat];
+  /** A plate in such a plane between two points, `t` thick (a post: its width along the deck). */
+  const plate = (lat: number, m0: number, y0: number, m1: number, y1: number, t: number) => {
+    const P = plane(lat);
+    s.poly([P(m0, y0), P(m1, y1), P(m1, y1 - t), P(m0, y0 - t)], members);
+  };
+  const post = (lat: number, m: number, yLo: number, yHi: number, hw: number) => {
+    const P = plane(lat);
+    s.poly([P(m - hw, yLo), P(m + hw, yLo), P(m + hw, yHi), P(m - hw, yHi)], members);
+  };
+  const overGap = (u0: number, u1: number) => (p.gaps ?? []).some(([g0, g1]) => g0 < u1 && g1 > u0);
+  if (p.style === 'truss') {
+    // Camelback spans: a polygonal top chord humped over the middle of each span, posts and
+    // diagonals between it and the deck (a through truss), or, with `deckOnTop`, the same under the
+    // deck. A span stands only where it has deck under it all along, as a removed span leaves none.
+    const H = (p.trussM ?? 9) * e;
+    const spans = Math.max(1, Math.round(L / (p.spanM ?? 60)));
+    const camel = [0.4, 0.7, 1, 1, 1, 0.7, 0.4] as const;
+    const tc = Math.max(1.2, H * 0.1);
+    const sign = p.deckOnTop === true ? -1 : 1;
+    const base = p.deckOnTop === true ? deck - thick : deck;
+    const lat = W * 0.92;
+    for (let k = 0; k < spans; k++) {
+      const u0 = k / spans;
+      const u1 = (k + 1) / spans;
+      if (overGap(u0, u1) || nearAt(u0) || nearAt((u0 + u1) / 2) || nearAt(u1)) continue;
+      const m0 = u0 * L;
+      const n = camel.length - 1;
+      const mAt = (i: number) => m0 + ((u1 - u0) * L * i) / n;
+      const yAt = (i: number) => base + sign * H * camel[i]!;
+      for (const side of [1, -1]) {
+        for (let i = 0; i < n; i++) {
+          // The chord, a post at each panel point, and a diagonal leaning toward the middle.
+          plate(side * lat, mAt(i), yAt(i), mAt(i + 1), yAt(i + 1), tc);
+          if (sign > 0) {
+            post(side * lat, mAt(i), base, yAt(i), tc * 0.4);
+            if (i < n / 2) plate(side * lat, mAt(i), base + tc, mAt(i + 1), yAt(i + 1) - tc * 0.5, tc * 0.5);
+            else plate(side * lat, mAt(i), yAt(i) - tc * 0.5, mAt(i + 1), base + tc, tc * 0.5);
+          } else {
+            post(side * lat, mAt(i), yAt(i), base, tc * 0.4);
+            if (i < n / 2) plate(side * lat, mAt(i), base, mAt(i + 1), yAt(i + 1) + tc * 1.5, tc * 0.5);
+            else plate(side * lat, mAt(i), yAt(i) + tc * 1.5, mAt(i + 1), base, tc * 0.5);
+          }
+        }
+        post(side * lat, mAt(n), sign > 0 ? base : yAt(n), sign > 0 ? yAt(n) : base, tc * 0.4);
+      }
+      // Piers at each end of a span, up to where the truss or the deck ends there.
+      if (k > 0) pier(u0, p.deckOnTop === true ? yAt(0) : deck + hump(u0) - thick);
+    }
+  } else if (p.style === 'lift') {
+    // A vertical lift span: its towers joined at the top, a counterweight hung on each outer tower's
+    // shore side, the hoist ropes down to the span and over to the counterweights, and piers under
+    // the approach spans.
+    const ordered = [...towers].sort((a, b) => a - b);
+    const first = ordered[0] ?? 0;
+    const last = ordered[ordered.length - 1] ?? 0;
+    const sheave = deck + (towerM - deck) * 0.96;
+    const cwTop = deck + (towerM - deck) * 0.7;
+    const lo = cwTop - (towerM - deck) * 0.3;
+    for (const side of ordered.length ? [1, -1] : []) {
+      const lat = W * side;
+      if (ordered.length > 1) plate(lat, first * L, sheave + 2 * e, last * L, sheave + 2 * e, 3 * e);
+      for (const [u, out] of [
+        [first, -1],
+        [last, 1],
+      ] as const) {
+        if (out > 0 && ordered.length === 1) continue;
+        const m = u * L;
+        const cw = m + out * 16 * e;
+        // The counterweight: a block as wide as a tower leg, hung out over the approach.
+        const hw = 4 * e;
+        const t = 2.4 * e;
+        const corner = (dm: number, dl: number, y: number): V3 => plane(lat * 1.05 + dl)(cw + dm, y);
+        s.inside = corner(0, 0, (lo + cwTop) / 2);
+        const faces: V3[][] = [
+          [corner(-hw, -t, lo), corner(hw, -t, lo), corner(hw, -t, cwTop), corner(-hw, -t, cwTop)],
+          [corner(-hw, t, lo), corner(hw, t, lo), corner(hw, t, cwTop), corner(-hw, t, cwTop)],
+          [corner(-hw, -t, lo), corner(-hw, t, lo), corner(-hw, t, cwTop), corner(-hw, -t, cwTop)],
+          [corner(hw, -t, lo), corner(hw, t, lo), corner(hw, t, cwTop), corner(hw, -t, cwTop)],
+          [corner(-hw, -t, cwTop), corner(hw, -t, cwTop), corner(hw, t, cwTop), corner(-hw, t, cwTop)],
+          [corner(-hw, -t, lo), corner(hw, -t, lo), corner(hw, t, lo), corner(-hw, t, lo)],
+        ];
+        for (const f of faces) s.poly(f, scale(col, 0.7));
+        s.inside = null;
+        // Ropes: tower top to the counterweight, and down to the span's end.
+        plate(lat, m, sheave, cw, cwTop, 0.5 * e);
+        plate(lat, m, sheave, m - out * 12 * e, deck + thick * 0.2, 0.5 * e);
+      }
+    }
+    const every = p.pierEveryM ?? 160;
+    const count = Math.floor(L / every);
+    for (let k = 1; k < count; k++) {
+      const u = k / count;
+      if (ordered.length > 1 && u > first && u < last) continue;
+      pier(u, deck + hump(u) - thick);
+    }
+  } else if (p.style === 'arch') {
+    // A tied arch: a parabolic rib over the span between the springings, the deck its tie, hung from
+    // it on vertical hangers. It stands only where there is deck under it.
+    const [a, b] = p.archAt ?? [0.25, 0.75];
+    const rise = (p.archM ?? p.deckM * 2.5) * e;
+    const N = 24;
+    const tc = Math.max(1.5, rise * 0.08);
+    const lat = W * 0.92;
+    const mA = a * L;
+    const mB = b * L;
+    const ribAt = (i: number) => deck + rise * 4 * (i / N) * (1 - i / N);
+    for (const side of [1, -1]) {
+      for (let i = 0; i < N; i++) {
+        const um = (mA + ((mB - mA) * (i + 0.5)) / N) / L;
+        if (inGap(um) || nearAt(um)) continue;
+        plate(
+          side * lat,
+          mA + ((mB - mA) * i) / N,
+          ribAt(i),
+          mA + ((mB - mA) * (i + 1)) / N,
+          ribAt(i + 1),
+          tc,
+        );
+      }
+      for (let i = 1; i < N; i++) {
+        const m = mA + ((mB - mA) * i) / N;
+        if (inGap(m / L) || nearAt(m / L)) continue;
+        post(side * lat, m, deck, ribAt(i) - tc, 0.4 * e);
+      }
+    }
+    // The springings and the approach spans' piers.
+    pier(a, deck + hump(a) - thick);
+    pier(b, deck + hump(b) - thick);
+    const every = p.pierEveryM ?? 160;
+    const count = Math.floor(L / every);
+    for (let k = 1; k < count; k++) {
+      const u = k / count;
+      if (u > a && u < b) continue;
+      pier(u, deck + hump(u) - thick);
     }
   }
   return 1;

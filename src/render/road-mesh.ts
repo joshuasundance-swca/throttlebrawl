@@ -128,6 +128,7 @@ const FINE_MESHES = new Set([
   'road-splitMark',
   'road-boostMark',
   'road-cableSlot',
+  'road-rebar',
   'road-posts',
   'road-rail-posts',
 ]);
@@ -157,6 +158,9 @@ export interface RoadSceneStats {
   rampTrucks: number;
   /** Ramp trucks drawn from the Blender model (the rest are the code-made stand-in). */
   rampTruckModels: number;
+  /** Broken deck ends drawn where a `gap` feature takes the road away (two to a gap), and the kickers that feed one. */
+  gapEnds: number;
+  kickers: number;
   /**
    * The set pieces drawn for this seed (playtest 1c item 2): a slotted candidate only when the race
    * seed picked it, exactly as the sim's riders meet it (road/setpieces.ts).
@@ -389,16 +393,17 @@ function goreLines(road: RoadNetwork): Map<number, number> {
 }
 
 /** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
-type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot';
+type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot' | 'rebar';
 const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
   splitZone: 'shortcut',
   splitMark: 'marking',
   boostPad: 'boost',
   boostMark: 'marking',
   cableSlot: 'marking',
+  rebar: 'rail',
 };
 /** Layers drawn in their own colour rather than their kind's palette colour. */
-const LAYER_COLOR: Partial<Record<Layer, string>> = { cableSlot: '#5b5e63' };
+const LAYER_COLOR: Partial<Record<Layer, string>> = { cableSlot: '#5b5e63', rebar: '#7a4a2e' };
 const kindOf = (layer: Layer): MaterialKind => LAYER_KIND[layer] ?? (layer as MaterialKind);
 
 /** The ramp truck's defaults, as the road lane's contract gives them (docs/content-packs.md). */
@@ -487,6 +492,65 @@ function rampTruckParts(road: RoadNetwork, edge: number, f: FeatureSpan): BoxPar
     box(u, 0, (1 + carTop) / 2, [Math.min(1.7, width - 0.6), carTop - 1, carLen], carColors[i] ?? '#888888');
   }
   return parts;
+}
+
+// A gap in the road (playtest 3, T11.1; the maintainer, 2026-10-03: "the 7 mile bridge has an old
+// road parallel to it. Jumps could let you get from one to the other"; round 3: "the real 80 m
+// missing span is the big jump"). The sim gives a `gap` feature's box no surface, so render draws
+// none there (the road's own samples go on across it, as the sim's deck plane does), ends the deck
+// at each side in a raw-concrete face with two rebar tufts, stripes the lip, and gives a kicker
+// that feeds the gap its cheeks. Flat colours in the road's own layers: no new draw call but the
+// rebar's, which only a chunk with a broken end has and which the far chunks leave out.
+/** A broken end's face hangs this far under the deck's edge on a bridge (the fascia beside it), m. */
+const STUB_DEPTH_M = 1;
+/** How much deeper than that the broken bottom edge goes at its five points across the road, m. */
+const STUB_JAG_M = [0.1, 0.4, 0, 0.3, 0.15] as const;
+/** The rebar's tufts: where across the road (a share of its drawn width), how far each bar sticks out, m. */
+const REBAR_AT = [0.28, 0.72] as const;
+const REBAR_OUT_M = 0.6;
+/** The bars of a lip's warning stripes: from the edge, how long each is and how far apart they start, m. */
+const LIP_BARS = 3;
+const LIP_BAR_M = 0.5;
+const LIP_PITCH_M = 1;
+/** A ramp that ends within this far of a gap's start (or runs into it) is the kicker that feeds it, m. */
+const KICKER_REACH_M = 8;
+/** The deck's own fascia floor off a bridge, as the fascia strip draws it. */
+const LOW_FLOOR_Y = -0.4;
+
+interface GapSpan {
+  s0: number;
+  s1: number;
+}
+
+/**
+ * The `gap` features that take the whole road away on an edge, as s ranges inside the edge, by s0.
+ * A gap whose box leaves some of the drive lanes' width out is not drawn: no baked gap does.
+ */
+function gapSpans(road: RoadNetwork, e: Edge, dress: EdgeDressing): GapSpan[] {
+  const out: GapSpan[] = [];
+  for (const f of dress.features ?? []) {
+    if (f.kind !== 'gap') continue;
+    const s0 = Math.max(0, Math.min(f.s0, f.s1));
+    const s1 = Math.min(e.length, Math.max(f.s0, f.s1));
+    if (s1 - s0 < 0.05) continue;
+    const drive = laneSpans(road.lanesAt(e.index, (s0 + s1) / 2)).drive ?? [e.dMin, e.dMax];
+    if (Math.min(f.d0, f.d1) > drive[0] + 0.5 || Math.max(f.d0, f.d1) < drive[1] - 0.5) continue;
+    out.push({ s0, s1 });
+  }
+  return out.sort((a, b) => a.s0 - b.s0);
+}
+
+/** A barrier span with the gaps cut out of it: a rail ends at a broken end, it does not span the hole. */
+function cutByGaps(b: BarrierSpan, gaps: readonly GapSpan[]): BarrierSpan[] {
+  const out: BarrierSpan[] = [];
+  let from = b.s0;
+  for (const g of gaps) {
+    if (g.s1 <= from || g.s0 >= b.s1) continue;
+    if (g.s0 > from) out.push({ ...b, s0: from, s1: g.s0 });
+    from = Math.max(from, g.s1);
+  }
+  if (from < b.s1) out.push({ ...b, s0: from });
+  return out;
 }
 
 interface Clip {
@@ -809,6 +873,8 @@ export function buildRoadScene(
   let railM = 0;
   let boardSeams = 0;
   let rampStripes = 0;
+  let gapEnds = 0;
+  let kickers = 0;
   let landM = 0;
   let minX = Infinity;
   let maxX = -Infinity;
@@ -818,6 +884,21 @@ export function buildRoadScene(
   for (const e of road.edges) {
     const dress = dressingOf(e, dressing);
     const ss = samplesOf(e);
+    // Where a `gap` takes the road away: no surface there (see GapSpan). The drawn samples then
+    // also stop exactly at each end of the gap, so the deck reaches it whatever the 2 m sampling.
+    const gaps = gapSpans(road, e, dress);
+    const inGap = (s: number, margin = 0): boolean =>
+      gaps.some((g) => s > g.s0 - margin + 1e-6 && s < g.s1 + margin - 1e-6);
+    const drawn = (): number[] => {
+      const out: number[] = [];
+      for (const s of [...ss, ...gaps.flatMap((g) => [g.s0, g.s1])].sort((a, b) => a - b)) {
+        if (!inGap(s) && (out.length === 0 || s - out[out.length - 1]! > 1e-4)) out.push(s);
+      }
+      return out;
+    };
+    const sd = gaps.length ? drawn() : ss;
+    /** Whether the stretch from one drawn sample to the next lies over a gap (a strip breaks there). */
+    const overGap = (i: number): boolean => i > 0 && gaps.length > 0 && inGap((sd[i - 1]! + sd[i]!) / 2);
     const outerL = e.dMin - VERGE_M;
     const outerR = e.dMax + VERGE_M;
     const shortcutEdge = hasShortcut(e);
@@ -832,7 +913,7 @@ export function buildRoadScene(
     // the split zone's inner edge, so what is drawn on top matches where the sim sends a rider (at
     // the split, d inside the zone takes the shortcut). Its verges go where they would lie under
     // the main road.
-    const clips: Clip[] = ss.map((s) => {
+    const clips: Clip[] = sd.map((s) => {
       const l = laneSpans(road.lanesAt(e.index, s));
       const span = l.drive ?? l.shortcut ?? ([0, 0] as [number, number]);
       const c: Clip = { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
@@ -891,7 +972,8 @@ export function buildRoadScene(
     for (const surf of surfaces) {
       const a = strip(surf.kind);
       a.breakStrip();
-      ss.forEach((s, i) => {
+      sd.forEach((s, i) => {
+        if (overGap(i)) a.breakStrip();
         const c = clips[i];
         const span = c ? surf.span(laneSpans(road.lanesAt(e.index, s)), c) : null;
         if (!span || span[1] - span[0] < 0.01 || surf.skip?.(s, span)) {
@@ -907,6 +989,7 @@ export function buildRoadScene(
     if ((dress.tags ?? []).some((t) => t.tag === 'boardwalk')) {
       const seams = strip('road');
       for (let s = BOARD_M / 2; s + BOARD_SEAM_M < e.length; s += BOARD_M) {
+        if (inGap(s) || inGap(s + BOARD_SEAM_M)) continue;
         const l = laneSpans(road.lanesAt(e.index, s));
         const span = l.shortcut ?? l.drive;
         if (!span) continue;
@@ -923,7 +1006,8 @@ export function buildRoadScene(
     for (const left of [true, false]) {
       const m = strip('splitMark');
       m.breakStrip();
-      ss.forEach((s, i) => {
+      sd.forEach((s, i) => {
+        if (overGap(i)) m.breakStrip();
         const c = clips[i];
         if (!c || !(left ? c.goreL : c.goreR)) {
           m.breakStrip();
@@ -1032,6 +1116,7 @@ export function buildRoadScene(
     }
     // Centre and lane dashes: 3 m on, 9 m off; yellow between opposite directions.
     for (let s = 2; s + 3 < e.length; s += 12) {
+      if (gaps.some((g) => s < g.s1 && s + 3 > g.s0)) continue;
       for (const div of laneSpans(road.lanesAt(e.index, s)).dividers) {
         strip(div.opposite ? 'markingCenter' : 'marking').quad(
           w(e.index, s, div.d - 0.08, 0.03),
@@ -1475,7 +1560,9 @@ export function buildRoadScene(
     ] as const) {
       const deck = strip('deck');
       deck.breakStrip();
-      for (const [i, s] of ss.entries()) {
+      for (const [k, s] of sd.entries()) {
+        if (overGap(k)) deck.breakStrip();
+        const i = Math.max(0, Math.min(ss.length - 1, Math.round(s / step)));
         // A terrain network's land strip hides the fascia where it meets the verge: skip it there.
         if (terrain && (reachOf[out][i] ?? 0) > 0) {
           deck.breakStrip();
@@ -1498,6 +1585,7 @@ export function buildRoadScene(
       (reachOf[side][Math.max(0, Math.min(ss.length - 1, Math.round(s / step)))] ?? 0) > 0;
     const postsHere = (opts.postRoads ?? isHighway)(e);
     for (let s = 0; postsHere && s < e.length; s += 25) {
+      if (inGap(s, 0.6)) continue;
       const high = road.toWorld(e.index, s, 0, 0).y >= ELEVATED_M;
       for (const [side, d] of [
         [-1, outerL + 0.25],
@@ -1514,13 +1602,14 @@ export function buildRoadScene(
     if (bentModel) {
       for (let s = BENT_SPACING_M / 2; s < e.length; s += BENT_SPACING_M) {
         const deckY = road.toWorld(e.index, s, 0, 0).y;
-        if (!bridgeAt(s) || deckY < 1) continue;
+        if (!bridgeAt(s) || deckY < 1 || inGap(s, 1)) continue;
         bentMatrices.push(bentMatrix(road, e.index, s, outerL, outerR, deckY - 0.95));
       }
     }
     for (let s = 12; s < e.length; s += 24) {
       if (terrain && groundAt(-1, s) && groundAt(1, s)) continue;
       if (bentModel && bridgeAt(s)) continue;
+      if (inGap(s, 0.5)) continue;
       for (const d of [e.dMin + 0.8, e.dMax - 0.8]) {
         const p = w(e.index, s, d, 0);
         if (p.y >= ELEVATED_M) pylonSpots.push({ p: { x: p.x, y: -0.5, z: p.z }, h: p.y - 1 + 0.5 });
@@ -1559,7 +1648,7 @@ export function buildRoadScene(
       ['left', outerL + 0.05],
       ['right', outerR - 0.05],
     ] as const) {
-      for (const b of barriersFor(road, e, dress, side)) {
+      for (const b of barriersFor(road, e, dress, side).flatMap((x) => cutByGaps(x, gaps))) {
         const s0 = Math.max(0, b.s0);
         const s1 = Math.min(e.length, b.s1);
         if (s1 <= s0) continue;
@@ -1603,6 +1692,92 @@ export function buildRoadScene(
           w(e.index, s + 0.5, r.d1, lift + 0.04),
         );
         rampStripes++;
+      }
+    }
+    // A gap's broken ends (playtest 3, T11.1): at each side the deck stops in a raw-concrete face as
+    // deep as the fascia beside it, its bottom edge jagged, with two tufts of rebar sticking out into
+    // the gap, and the lip is striped like a ramp's so it can be seen coming. A ramp that ends at the
+    // gap is its kicker: its cheeks close the wedge under it, down to the level it rises from.
+    const gapRamps = (dress.features ?? []).filter((f) => f.kind === 'ramp');
+    for (const g of gaps) {
+      const kicker = gapRamps.find((r) => {
+        const r0 = Math.min(r.s0, r.s1);
+        const r1 = Math.max(r.s0, r.s1);
+        return r0 < g.s0 && r1 >= g.s0 - KICKER_REACH_M && r1 <= g.s1 + KICKER_REACH_M;
+      });
+      /** The level the kicker rises from at s: the road's own height at its foot, carried on at its grade. */
+      let base: ((s: number) => number) | null = null;
+      if (kicker) {
+        const r0 = Math.min(kicker.s0, kicker.s1);
+        const r1 = Math.min(Math.max(kicker.s0, kicker.s1), g.s0);
+        const y0 = w(e.index, r0, 0, 0).y;
+        const back = Math.min(8, r0);
+        const grade = back > 1 ? (y0 - w(e.index, r0 - back, 0, 0).y) / back : 0;
+        base = (s) => y0 + grade * (s - r0);
+        // The cheeks: each outer edge of the lifted road down to the level it rises from, just
+        // outside the fascia beside it so the two never flicker.
+        for (const [d, out] of [
+          [outerL, -1],
+          [outerR, 1],
+        ] as const) {
+          const cheek = strip('deck');
+          cheek.breakStrip();
+          for (let s = r0; ; s = Math.min(r1, s + 1)) {
+            const top = w(e.index, s, d + out * 0.02, -0.02);
+            const floor = base(s) >= ELEVATED_M ? base(s) - STUB_DEPTH_M : LOW_FLOOR_Y;
+            const bottom = { x: top.x, y: Math.min(floor, top.y), z: top.z };
+            if (out < 0) cheek.pair(bottom, top);
+            else cheek.pair(top, bottom);
+            if (s >= r1) break;
+          }
+          cheek.breakStrip();
+        }
+        kickers++;
+      }
+      for (const end of ['near', 'far'] as const) {
+        const s = end === 'near' ? g.s0 : g.s1;
+        // Toward the gap: +s from the near end, -s from the far one.
+        const into = end === 'near' ? 1 : -1;
+        const at = (sv: number, d: number, h: number) => w(e.index, sv, d, h);
+        // The face.
+        const face = strip('deck');
+        face.breakStrip();
+        STUB_JAG_M.forEach((jag, k) => {
+          const d = outerL + ((outerR - outerL) * k) / (STUB_JAG_M.length - 1);
+          const top = at(s, d, -0.02);
+          let floor = top.y >= ELEVATED_M ? top.y - STUB_DEPTH_M : LOW_FLOOR_Y;
+          if (base && end === 'near') {
+            floor = Math.min(floor, base(s) >= ELEVATED_M ? base(s) - STUB_DEPTH_M : LOW_FLOOR_Y);
+          }
+          face.pair(top, { x: top.x, y: Math.min(floor, top.y) - jag, z: top.z });
+        });
+        face.breakStrip();
+        // The rebar: bent bars fanned out of the face, each a thin plate flat and a thin plate on edge.
+        const bars = strip('rebar');
+        for (const share of REBAR_AT) {
+          const d = outerL + (outerR - outerL) * share;
+          [-0.12, -0.04, 0.05, 0.13].forEach((dd, i) => {
+            const len = REBAR_OUT_M * [0.85, 1, 0.7, 0.92][i]!;
+            const h = -0.32 - 0.12 * i;
+            const tip = at(s + into * len, d + dd * 1.6, h + [0.14, -0.1, 0.05, -0.16][i]!);
+            bars.tri(at(s, d + dd - 0.04, h), at(s, d + dd + 0.04, h), tip);
+            bars.tri(at(s, d + dd, h - 0.04), at(s, d + dd, h + 0.04), tip);
+          });
+        }
+        // The lip's stripes, like a ramp's.
+        const lanes = laneSpans(road.lanesAt(e.index, s)).drive ?? ([e.dMin, e.dMax] as const);
+        for (let k = 0; k < LIP_BARS; k++) {
+          const a = end === 'near' ? s - LIP_BAR_M - k * LIP_PITCH_M : s + k * LIP_PITCH_M;
+          const b = a + LIP_BAR_M;
+          if (a < 0 || b > e.length) continue;
+          strip('rampMark').quad(
+            at(a, lanes[0], lift + 0.04),
+            at(a, lanes[1], lift + 0.04),
+            at(b, lanes[0], lift + 0.04),
+            at(b, lanes[1], lift + 0.04),
+          );
+        }
+        gapEnds++;
       }
     }
     // Quick wins (playtest 1b): boost pads glow on the road with chevrons pointing along +s, and
@@ -2092,6 +2267,8 @@ export function buildRoadScene(
       boostPads,
       rampTrucks,
       rampTruckModels: truckGeo ? truckMatrices.length : 0,
+      gapEnds,
+      kickers,
       setPieces,
       sceneryLandM,
       scenery: counts,
