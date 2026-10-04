@@ -32,16 +32,24 @@ import {
 } from './batch';
 
 const print = (line: string) => process.stdout.write(line + '\n');
+/** The per-tick checks always ride these seeds, all of them. */
 const PER_TICK_SEEDS = [1, 2, 3, 4, 5];
-
-let batch: BatchResult;
-beforeAll(async () => {
-  batch = await simBatch();
-}, BATCH_TIMEOUT_MS);
+/**
+ * If those seeds show no threatened pedestrian or no step onto the road (a content change that
+ * reshuffles the races can do that: on 2026-10-04 they showed 8 threatened pedestrians in all), the
+ * search rides on, seed by seed, to this one, so the checks are shown able to see what they guard.
+ */
+const PER_TICK_LAST_SEED = 16;
 
 const sum = (rs: readonly RaceResult[], f: (r: RaceResult) => number) => rs.reduce((n, r) => n + f(r), 0);
 
 describe('traffic-2: pedestrians over the shared 50-race batch', () => {
+  let batch: BatchResult;
+  // Scoped to the batch's tests, so the per-tick test below runs alone without the 50 races.
+  beforeAll(async () => {
+    batch = await simBatch();
+  }, BATCH_TIMEOUT_MS);
+
   it('every race has pedestrians, and they dive', () => {
     const rs = batch.races;
     const dives = sum(rs, (r) => r.eventCounts['pedDive'] ?? 0);
@@ -222,10 +230,16 @@ function perTickRace(seed: number): TickCheck {
   return out;
 }
 
-describe('traffic-2: per-tick checks from the snapshots, five of the batch seeds', () => {
+describe('traffic-2: per-tick checks from the snapshots, five of the batch seeds and on until they see', () => {
   it('no rider box ever overlaps a pedestrian, and every threatened pedestrian is diving', () => {
     const checks = PER_TICK_SEEDS.map(perTickRace);
     const total = (f: (c: TickCheck) => number) => checks.reduce((n, c) => n + f(c), 0);
+    // Every seed ridden is checked in full; the extra ones only until both things have been seen.
+    for (let seed = Math.max(...PER_TICK_SEEDS) + 1; seed <= PER_TICK_LAST_SEED; seed++) {
+      if (total((c) => c.threatened.size) > 0 && total((c) => c.stepOns) > 0) break;
+      checks.push(perTickRace(seed));
+    }
+    print(`[peds] per-tick seeds ridden: 1 to ${checks.length}`);
     const undived = checks.flatMap((c) => c.undived);
     const contacts = checks.flatMap((c) => c.contacts);
     const stepIns = checks.flatMap((c) => c.stepIns);
@@ -243,5 +257,6 @@ describe('traffic-2: per-tick checks from the snapshots, five of the batch seeds
     // Gap acceptance: they do cross (the check sees steps), and none steps in front of a rider.
     expect(total((c) => c.stepOns)).toBeGreaterThan(0);
     expect(stepIns.slice(0, 5)).toEqual([]);
-  }, 300_000);
+    // A hang guard: up to 16 races of per-tick checks.
+  }, 900_000);
 });

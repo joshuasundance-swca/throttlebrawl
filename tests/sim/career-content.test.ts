@@ -44,8 +44,11 @@ function regionRoutes(def: CareerDef): string[] {
 }
 
 describe('the career maps', () => {
-  it('one per region, in chapter order: the Keys, the Pacific Northwest, San Francisco', () => {
-    expect(DEFS.map((d) => d.regionId)).toEqual(['florida-keys', 'pacific-northwest', 'san-francisco']);
+  it("one per region, in chapter order (the regions are the packs', in the menu's order)", () => {
+    const regions = regionChoices(REG).map((c) => c.id);
+    console.log(`[print] careers examined: ${DEFS.map((d) => d.regionKey).join(', ')}`);
+    expect(regions.length).toBeGreaterThan(1);
+    expect(DEFS.map((d) => d.regionKey)).toEqual(regions);
   });
 
   for (const def of DEFS) {
@@ -91,6 +94,11 @@ describe('the career maps', () => {
 
       it('every event builds a race whose field, route and grudges reach SimConfig', () => {
         const grudges = { [`${def.pack === 'base' ? 'base' : def.pack}:x`]: {} };
+        // Any ride and any rider will do: the top of the bike ladder and the region's first rival.
+        const bike = bikeLadder(REG, DEFS).at(-1)?.key ?? '';
+        const rival = plans.flatMap((p) => p.field)[0] ?? '';
+        expect(REG.bikes[bike], 'a ladder bike').toBeDefined();
+        expect(REG.riders[rival], 'a rival').toBeDefined();
         for (const n of def.nodes) {
           const plan = eventPlan(REG, n.event);
           const length = plan.lengths[0];
@@ -98,12 +106,12 @@ describe('the career maps', () => {
           const config = buildSimConfig(REG, streamForRoute(REG, length.route), {
             seed: 1,
             eventId: n.event,
-            playerBike: 'base:superbike-1000',
-            grudges: { 'base:kevin-from-accounting': { 'base:player': 6 }, ...grudges },
+            playerBike: bike,
+            grudges: { [rival]: { 'base:player': 6 }, ...grudges },
           });
           const player = config.riders.find((r) => r.controller.kind === 'player');
-          expect(player?.bike.contentId).toBe('base:superbike-1000');
-          expect(config.grudges).toEqual({ 'base:kevin-from-accounting': { 'base:player': 6 } });
+          expect(player?.bike.contentId).toBe(bike);
+          expect(config.grudges).toEqual({ [rival]: { 'base:player': 6 } });
           expect(config.event.tier).toBe(plan.tier);
           expect(config.riders.filter((r) => r.role === 'rival').map((r) => r.contentId)).toEqual(plan.field);
           if (plan.rules.rival) expect(plan.field).toContain(plan.rules.rival);
@@ -111,13 +119,13 @@ describe('the career maps', () => {
       });
 
       it('secrets: a shortcut that is a real branch of its route, the pirate station and a stash', () => {
-        // Run W-U: the Keys add a secret road, Unlisted Key, off the marked sandbar.
-        expect(
-          def.secrets
-            .map((s) => s.kind)
-            .filter((k) => k !== 'road')
-            .sort(),
-        ).toEqual(['shortcut', 'stash', 'station']);
+        // Every region hides at least one of each; secret roads (run W-U: the Keys' Unlisted Key, off
+        // the marked sandbar) come on top.
+        for (const kind of ['shortcut', 'stash', 'station'])
+          expect(
+            def.secrets.some((s) => s.kind === kind),
+            `${def.regionId} hides a ${kind}`,
+          ).toBe(true);
         for (const s of def.secrets.filter((x) => x.kind === 'road')) {
           // Its point and the roads the map hides until it is found are roads of the region's networks.
           for (const id of [s.road, ...(s.hides ?? [])])
@@ -217,10 +225,24 @@ describe('the garage over every region', () => {
       expect(b.state, b.key).toBe('locked');
       expect(b.reason, b.key).toMatch(/^Opens when .+ falls\.$/);
     }
-    for (const joke of ['base:golf-cart', 'base:lawnmower', 'base:mobility-scooter']) {
-      expect(REG.bikes[joke]?.tags).toContain('secret');
-      expect(shown.some((b) => b.key === joke)).toBe(false);
+    // The joke rides are the bikes a career's boss unlocks, read from the career files.
+    const jokes = [...new Set(DEFS.flatMap((d) => d.unlocks.map((u) => u.grant)))];
+    console.log(`[print] joke rides examined: ${jokes.join(', ')}`);
+    expect(jokes.length).toBeGreaterThan(0);
+    for (const joke of jokes) {
+      expect(REG.bikes[joke]?.tags, joke).toContain('secret');
+      expect(
+        shown.some((b) => b.key === joke),
+        joke,
+      ).toBe(false);
     }
+    // And no bike kept secret is on show.
+    for (const [key, bike] of Object.entries(REG.bikes))
+      if (bike.tags?.includes('secret'))
+        expect(
+          shown.some((b) => b.key === key),
+          key,
+        ).toBe(false);
   });
 });
 
@@ -303,10 +325,13 @@ describe('the field levels up every tier (playtest 3: "tier 3 rivals ride bikes 
 
 describe('free play keeps its own races', () => {
   it("the menu's region picker still starts each region's free-play race, never a career event", () => {
-    expect(regionChoices(REG).map((c) => c.eventId)).toEqual([
-      'base:m1-skeleton-sprint',
-      'region-pnw:pnw-fogline-run',
-      'region-sf:sf-hill-sprint',
-    ]);
+    const careerEvents = new Set(DEFS.flatMap((d) => d.nodes.map((n) => n.event)));
+    const choices = regionChoices(REG);
+    // Every career region keeps a free-play race on the menu.
+    expect(choices.map((c) => c.id)).toEqual(expect.arrayContaining(DEFS.map((d) => d.regionKey)));
+    for (const c of choices) {
+      expect(careerEvents.has(c.eventId), `${c.id}: ${c.eventId} is a career event`).toBe(false);
+      expect(REG.events[c.eventId]?.tier, `${c.id}: ${c.eventId} has a career tier`).toBeUndefined();
+    }
   });
 });

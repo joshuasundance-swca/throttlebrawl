@@ -50,6 +50,9 @@ export interface DiskNetwork {
   key: string;
   region: string;
   realRoad: boolean;
+  name: string;
+  /** Its road ids, bare as the file lists them. */
+  roads: string[];
 }
 export interface DiskRoute {
   key: string;
@@ -86,20 +89,112 @@ export function diskRegions(): DiskRegion[] {
   );
 }
 
+interface NetworkFile {
+  id: string;
+  name?: string;
+  region: string;
+  roads?: string[];
+  provenance?: { origin?: string };
+}
+
 /** Every road network, its region qualified; `realRoad` when it was baked from map data. */
 export function diskNetworks(): Map<string, DiskNetwork> {
   const out = new Map<string, DiskNetwork>();
   for (const pack of packIds())
     for (const d of regionDirs(pack))
-      for (const n of jsonIn<{ id: string; region: string; provenance?: { origin?: string } }>(
-        join(d, 'networks'),
-      ))
+      for (const n of jsonIn<NetworkFile>(join(d, 'networks')))
         out.set(qualifyIn(pack, n.id), {
           key: qualifyIn(pack, n.id),
           region: qualifyIn(pack, n.region),
           realRoad: n.provenance?.origin === 'gis-pipeline',
+          name: n.name ?? n.id,
+          roads: n.roads ?? [],
         });
   return out;
+}
+
+export interface DiskCareer {
+  key: string;
+  pack: string;
+  name: string;
+  /** Qualified. */
+  region: string;
+  startingCash: number;
+  startingBike: string;
+  tutorialEvent: string;
+  tiers: { id: string; name?: string }[];
+  nodes: { id: string; event: string; tier: string; at: { road: string }; requires?: string[] }[];
+  shop: { bike: string; priceCash: number; unlockTier: string }[];
+  paints: { id: string; name: string; priceCash: number; unlockTier: string }[];
+}
+
+/** Every career file (packs/<pack>/careers/), its region qualified. */
+export function diskCareers(): DiskCareer[] {
+  return packIds().flatMap((pack) =>
+    jsonIn<Omit<DiskCareer, 'key' | 'pack'> & { id: string }>(join('packs', pack, 'careers')).map((c) => ({
+      ...c,
+      key: qualifyIn(pack, c.id),
+      pack,
+      region: qualifyIn(pack, c.region),
+    })),
+  );
+}
+
+/**
+ * What the career browser spec checks, picked from the packs by rule: the careers in the menu's
+ * chapter order; the first one's opening node (its tutorial event, raced race-first) and a
+ * first-tier node waiting on it alone; a first-tier paint the starting cash buys and a bike sold
+ * only from a later tier; the starting bike's name; the next career's map panel that holds its first
+ * node (its network's name without the bake note in brackets).
+ */
+export function careerPicks() {
+  const order = menuRegions().map((r) => r.region.key);
+  const careers = diskCareers()
+    .filter((c) => order.includes(c.region))
+    .sort((a, b) => order.indexOf(a.region) - order.indexOf(b.region));
+  const [first, next] = careers;
+  if (!first || !next) throw new Error('fewer than two careers on disk');
+  const events = new Map(diskEvents().map((e) => [e.key, e]));
+  const eventOf = (ref: string) => {
+    const e = events.get(qualifyIn(first.pack, ref));
+    if (!e) throw new Error(`no event ${ref}`);
+    return e;
+  };
+  const opening = first.nodes.find((n) => eventOf(n.event).key === eventOf(first.tutorialEvent).key);
+  const firstTier = first.tiers[0]?.id;
+  const waiting = first.nodes.find(
+    (n) => n.tier === firstTier && n.requires?.length === 1 && n.requires[0] === opening?.id,
+  );
+  if (!opening || !waiting) throw new Error(`${first.key}: no opening node and one waiting on it`);
+  const paint = first.paints.find(
+    (p) => p.unlockTier === firstTier && p.priceCash > 0 && p.priceCash <= first.startingCash,
+  );
+  const laterBike = first.shop.find((s) => s.unlockTier !== firstTier);
+  if (!paint || !laterBike) throw new Error(`${first.key}: no affordable paint or later bike`);
+  const road = next.nodes[0]?.at.road ?? '';
+  const net = [...diskNetworks().values()].find((n) => n.region === next.region && n.roads.includes(road));
+  if (!net) throw new Error(`${next.key}: no network holds ${road}`);
+  return {
+    careers,
+    first,
+    next,
+    opening,
+    openingEvent: eventOf(opening.event),
+    waiting,
+    paint,
+    laterBike,
+    startingBikeName: diskName('bikes', first.pack, first.startingBike),
+    nextPanel: net.name.replace(/ \([^)]*\)$/, ''),
+  };
+}
+
+/** A content file's `name` by its pack folder and qualified or pack-local id (`bikes`, `riders`). */
+export function diskName(folder: string, pack: string, ref: string): string {
+  const key = qualifyIn(pack, ref);
+  const [p, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  const hit = jsonIn<{ id: string; name: string }>(join('packs', p, folder)).find((x) => x.id === id);
+  if (!hit) throw new Error(`no ${folder} file for ${key}`);
+  return hit.name;
 }
 
 /** Every route, its network qualified. */

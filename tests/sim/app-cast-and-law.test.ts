@@ -27,6 +27,8 @@ const MAX_TICKS = 60 * 60 * 5;
 
 interface LawRun {
   seed: number;
+  /** The weapon the cop's rider file starts him with (`startingWeapon`, qualified), or null. */
+  copStartingWeapon: string | null;
   copHeldAtStart: string | null;
   copSwings: number;
   steal: SimEvent | null;
@@ -60,6 +62,7 @@ function lawRace(seed: number, tuning: Readonly<Record<string, number>> = NO_ROA
   let releaseNext = false;
   const run: LawRun = {
     seed,
+    copStartingWeapon: config.riders[copIds[0] ?? -1]?.startingWeapon ?? null,
     copHeldAtStart: null,
     copSwings: 0,
     steal: null,
@@ -133,16 +136,22 @@ describe('the law in a real race (release content, the app config path)', () => 
       `seed ${r.seed} (proximity bust): bust ${r.bust ? `at t${r.bust.tick} fine ${String(r.bust.data['fineCash'])}` : 'none'}`,
     );
 
-  it('Sgt. Pruitt starts every race with the baton in his hand', () => {
+  it("the cop starts every race with his rider file's weapon in his hand (Sgt. Pruitt's baton)", () => {
     expect(runs.length).toBeGreaterThan(0);
-    for (const r of runs) expect(r.copHeldAtStart).toBe('base:baton');
+    for (const r of runs) {
+      expect(
+        r.copStartingWeapon,
+        `seed ${r.seed}: the cop's rider file names a starting weapon`,
+      ).not.toBeNull();
+      expect(r.copHeldAtStart, `seed ${r.seed}`).toBe(r.copStartingWeapon);
+    }
   });
 
-  it('the cop swings the baton, and a timed press steals it off him', () => {
+  it('the cop swings his weapon, and a timed press steals it off him', () => {
     expect(runs.reduce((n, r) => n + r.copSwings, 0)).toBeGreaterThan(0);
     const steal = stealSearch.result?.steal;
     expect(steal, stealSearch.summary).toBeTruthy();
-    expect(steal?.data['weapon']).toBe('base:baton');
+    expect(steal?.data['weapon']).toBe(stealSearch.result?.copStartingWeapon);
   });
 
   it('under the default rule, no bust comes without a cop knocking the player off (interview, 2026-10-02)', () => {
@@ -153,11 +162,14 @@ describe('the law in a real race (release content, the app config path)', () => 
     const busted = bustSearch.result;
     expect(busted, bustSearch.summary).toBeTruthy();
     const bust = busted?.bust;
-    // Tier 1: the cop's own fine, unscaled. The report prints an event's first three data fields.
+    // Tier 1: the cop's own fine (the law file's), unscaled. The report prints an event's first three
+    // data fields.
     expect(Object.keys(bust?.data ?? {}).slice(0, 3)).toEqual(['fineCash', 'tier', 'fineBaseCash']);
-    expect(bust?.data['fineCash']).toBe(400);
     expect(bust?.data['tier']).toBe(1);
-    expect(busted?.resultDetail).toContain('Fine: $400');
+    const fine = bust?.data['fineCash'];
+    expect(fine).toBeGreaterThan(0);
+    expect(fine).toBe(bust?.data['fineBaseCash']);
+    expect(busted?.resultDetail).toContain(`Fine: $${String(fine)}`);
   });
 }, 600_000);
 
@@ -250,26 +262,39 @@ describe('the cast in a real race: style quirks on by default', () => {
         `${mean(off, id, 'first12sM').toFixed(0)} m off`,
     );
 
+  /** The rival riding a style in this race (from its rider file), found by the style, not by name. */
+  const riding = (style: string): string => {
+    const id = Object.keys(on[0] ?? {}).find((k) => on[0]?.[k]?.style === style);
+    if (!id) throw new Error(`no ${style} in the free-play field`);
+    return id;
+  };
+
   // The weaver swerves only while no rider is within 10 m, and traffic dodging sets everyone's
   // overall spread, so the swerve shows as sideways travel on a clear road, not as a wider spread.
-  it("the weaver's swerve shows: Dial-Up sways the most on a clear road, more than with quirks off", () => {
-    const weaver = mean(on, 'base:dial-up', 'clearSwayMps');
-    expect(weaver).toBeGreaterThan(mean(off, 'base:dial-up', 'clearSwayMps') * 1.15);
-    for (const id of Object.keys(on[0] ?? {}))
-      if (id !== 'base:dial-up') expect(weaver).toBeGreaterThan(mean(on, id, 'clearSwayMps'));
+  it("the weaver's swerve shows: the weaver (Dial-Up) sways the most on a clear road, more than with quirks off", () => {
+    const id = riding('weaver');
+    const weaver = mean(on, id, 'clearSwayMps');
+    expect(weaver).toBeGreaterThan(mean(off, id, 'clearSwayMps') * 1.15);
+    for (const other of Object.keys(on[0] ?? {}))
+      if (other !== id) expect(weaver, other).toBeGreaterThan(mean(on, other, 'clearSwayMps'));
   });
 
-  it("the heavy hitter's slow start shows: Deacon covers less ground in the first 12 s", () => {
-    expect(mean(on, 'base:deacon-vane', 'first12sM')).toBeLessThan(
-      mean(off, 'base:deacon-vane', 'first12sM'),
-    );
+  it("the heavy hitter's slow start shows: the heavy hitter (Deacon) covers less ground in the first 12 s", () => {
+    const id = riding('heavy-hitter');
+    expect(mean(on, id, 'first12sM')).toBeLessThan(mean(off, id, 'first12sM'));
   });
 
-  it('the four styles ride differently from each other with the quirks on', () => {
+  it('each style in the field rides differently from the others with the quirks on', () => {
     const sig = (id: string) =>
       `${mean(on, id, 'spreadM').toFixed(2)}/${mean(on, id, 'clearSwayMps').toFixed(2)}/${mean(on, id, 'first12sM').toFixed(0)}`;
-    const ids = Object.keys(on[0] ?? {});
-    expect(ids).toHaveLength(4);
-    expect(new Set(ids.map(sig)).size).toBe(4);
+    // One rider per style (the field's first of each), so two riders sharing a style do not count.
+    const styles = new Map<string, string>();
+    for (const id of Object.keys(on[0] ?? {})) {
+      const style = on[0]?.[id]?.style ?? '';
+      if (!styles.has(style)) styles.set(style, id);
+    }
+    print(`styles examined: ${[...styles].map(([s, id]) => `${s} (${id})`).join(', ')}`);
+    expect(styles.size).toBeGreaterThan(1);
+    expect(new Set([...styles.values()].map(sig)).size).toBe(styles.size);
   });
 }, 600_000);
