@@ -1,0 +1,136 @@
+{
+  "type": "road",
+  "id": "osm-pnw-portland-morrison-out",
+  "name": "morrison rejoin",
+  "realName": "morrison rejoin",
+  "network": "osm-pnw-portland",
+  "from": "osm-pnw-portland-j7",
+  "to": "osm-pnw-portland-j7",
+  "lengthM": 71.6404,
+  "sampleSpacingM": 1.9900111111111112,
+  "speedLimitMps": 8.9,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 71.6404,
+      "side": "both",
+      "tag": "pdx-blocks"
+    },
+    {
+      "s0": 0,
+      "s1": 71.6404,
+      "side": "both",
+      "tag": "rail-line"
+    },
+    {
+      "s0": 0,
+      "s1": 71.6404,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        990.9978, 990.9948, 991.0031, 991.0471, 991.1581, 991.3689, 991.7074, 992.1933, 992.8349, 993.6282,
+        994.5585, 995.6025, 996.7323, 997.9188, 999.1353, 1000.3619, 1001.5895, 1002.817, 1004.0445, 1005.272,
+        1006.4996, 1007.7271, 1008.9559, 1010.1982, 1011.48, 1012.8324, 1014.283, 1015.8491, 1017.5334,
+        1019.3245, 1021.2003, 1023.1343, 1025.1021, 1027.0857, 1029.0747, 1031.0648, 1033.0551
+      ],
+      "y": [
+        19.7159, 19.716, 19.7163, 19.7168, 19.7175, 19.7183, 19.7193, 19.7204, 19.7216, 19.723, 19.7244,
+        19.726, 19.7276, 19.7293, 19.7311, 19.7329, 19.7347, 19.7366, 19.7384, 19.7403, 19.7422, 19.744,
+        19.7458, 19.7476, 19.7493, 19.7509, 19.7525, 19.7539, 19.7553, 19.7565, 19.7576, 19.7586, 19.7594,
+        19.7601, 19.7605, 19.7608, 19.7609
+      ],
+      "z": [
+        750.4516, 752.4419, 754.4321, 756.4219, 758.4089, 760.3877, 762.3486, 764.2781, 766.1615, 767.9863,
+        769.7453, 771.4394, 773.0778, 774.6757, 776.2509, 777.8183, 779.3849, 780.9516, 782.5182, 784.0849,
+        785.6515, 787.2182, 788.7839, 790.3388, 791.8613, 793.3211, 794.683, 795.9099, 796.9684, 797.8339,
+        798.4963, 798.9629, 799.2579, 799.4182, 799.4875, 799.5086, 799.5144
+      ],
+      "kappa": [
+        -0.0, -0.0028666, -0.0089822, -0.016965, -0.025255, -0.0326, -0.03806, -0.041004, -0.04111, -0.038367,
+        -0.033074, -0.025839, -0.017581, -0.0095215, -0.0032108, -0.00029752, -9.877e-9, 1.763e-14,
+        -4.0392e-14, 4.0392e-14, -1.3394e-8, -0.00040345, -0.0043541, -0.012912, -0.023841, -0.035039,
+        -0.04485, -0.052028, -0.055748, -0.055604, -0.051612, -0.044207, -0.034247, -0.023005, -0.01218,
+        -0.0038873, -0.0
+      ],
+      "grade": [
+        5.1384e-5, 0.00010083, 0.00019681, 0.00028697, 0.00037132, 0.00044985, 0.00052256, 0.00058946,
+        0.00065054, 0.0007058, 0.00075524, 0.00079887, 0.00083668, 0.00086867, 0.00089485, 0.00091521,
+        0.00092975, 0.00093848, 0.00094139, 0.00093848, 0.00092975, 0.00091521, 0.00089485, 0.00086867,
+        0.00083668, 0.00079887, 0.00075524, 0.0007058, 0.00065054, 0.00058946, 0.00052256, 0.00044985,
+        0.00037132, 0.00028697, 0.00019681, 0.00010083, 5.1384e-5
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-portland.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:46:05Z",
+        "sha256": "95e74e6fffdb70bd8a1f9760fd88b72ab6776fe135882321f056ecdc809deea1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
+        "retrievedAt": "2026-10-04T22:55:31Z",
+        "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
+        "retrievedAt": "2026-10-04T22:55:16Z",
+        "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Portland street and bridge paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 11.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-portland.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

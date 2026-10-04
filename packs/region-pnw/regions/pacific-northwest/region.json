@@ -4,7 +4,7 @@
   "name": "The Pacific Northwest",
   "chapter": 2,
   "blurb": "Two lanes, a million trees, and a ferry that left without you.",
-  "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge", "osm-pnw-samish"],
+  "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge", "osm-pnw-samish", "osm-pnw-portland"],
   "timeOfDayOptions": [
     {
       "id": "dawn",
@@ -80,6 +80,13 @@
       "id": "lake-samish-keep-right",
       "text": "LAKE SAMISH: KEEP RIGHT. Same distance. Fewer semis. More ducks.",
       "status": "live"
+    },
+    {
+      "id": "morrison-keep-left",
+      "text": "MORRISON BRIDGE: KEEP LEFT. Same distance. Different bridge. Same drizzle.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "Playtest 3, T9.4: Bridge City's junction sign, standing on Broadway before the turn onto Alder."
     },
     { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },

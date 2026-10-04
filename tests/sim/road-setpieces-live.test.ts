@@ -136,6 +136,16 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-pnw:osm-i5-samish-run',
     kinds: ['boostPad'],
   },
+  // Playtest 3, T9.4: Bridge City (downtown Portland). Pads only: its streets have no straight
+  // long enough for a truck's flight, and both pad slots are on the main road (a solo ride keeps
+  // to it, so a pad on the Morrison Bridge choice would never be met).
+  {
+    name: 'osm-pnw-portland',
+    event: 'region-pnw:pnw-fogline-run',
+    lengths: ['standard'],
+    route: 'region-pnw:osm-bridge-city-run',
+    kinds: ['boostPad'],
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */

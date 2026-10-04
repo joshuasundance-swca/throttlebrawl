@@ -1,0 +1,132 @@
+{
+  "type": "route",
+  "id": "osm-bridge-city-run",
+  "name": "Bridge City",
+  "network": "osm-pnw-portland",
+  "start": {
+    "road": "osm-pnw-pdx-east-burnside",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-pnw-pdx-se-hawthorne",
+    "s": 231.9724
+  },
+  "mainPath": [
+    "osm-pnw-pdx-east-burnside",
+    "osm-pnw-pdx-burnside-bridge",
+    "osm-pnw-pdx-west-burnside",
+    "osm-pnw-pdx-broadway",
+    "osm-pnw-pdx-broadway-south",
+    "osm-pnw-pdx-madison",
+    "osm-pnw-pdx-hawthorne-bridge",
+    "osm-pnw-pdx-se-hawthorne"
+  ],
+  "allowedRoads": [
+    "osm-pnw-pdx-east-burnside",
+    "osm-pnw-pdx-burnside-bridge",
+    "osm-pnw-pdx-west-burnside",
+    "osm-pnw-pdx-broadway",
+    "osm-pnw-portland-morrison-leave",
+    "osm-pnw-pdx-broadway-south",
+    "osm-pnw-pdx-madison",
+    "osm-pnw-pdx-hawthorne-bridge",
+    "osm-pnw-portland-morrison-join",
+    "osm-pnw-pdx-se-hawthorne",
+    "osm-pnw-pdx-alder",
+    "osm-pnw-pdx-morrison-bridge",
+    "osm-pnw-pdx-grand",
+    "osm-pnw-portland-morrison-in",
+    "osm-pnw-portland-morrison-out"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 339.9696
+    },
+    {
+      "road": "osm-pnw-pdx-west-burnside",
+      "s": 232.4779
+    },
+    {
+      "road": "osm-pnw-pdx-broadway",
+      "s": 170.4829
+    },
+    {
+      "road": "osm-pnw-pdx-broadway-south",
+      "s": 227.9755
+    },
+    {
+      "road": "osm-pnw-pdx-madison",
+      "s": 249.4752
+    },
+    {
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 590.4472
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-pnw-pdx-alder",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "MORRISON BRIDGE: KEEP LEFT. Same distance. Different bridge. Same drizzle.",
+      "roads": [
+        "osm-pnw-portland-morrison-in",
+        "osm-pnw-pdx-alder",
+        "osm-pnw-pdx-morrison-bridge",
+        "osm-pnw-pdx-grand",
+        "osm-pnw-portland-morrison-out"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (run W-S; interview, 2026-10-02: map-based networks): the race-setup picker offers it in its region, and the career's events sit on its roads.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-04",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-pnw-portland.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+          "retrievedAt": "2026-10-04T22:46:05Z",
+          "sha256": "95e74e6fffdb70bd8a1f9760fd88b72ab6776fe135882321f056ecdc809deea1"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
+          "retrievedAt": "2026-10-04T22:55:31Z",
+          "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
+          "retrievedAt": "2026-10-04T22:55:16Z",
+          "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
+        }
+      ]
+    }
+  }
+}

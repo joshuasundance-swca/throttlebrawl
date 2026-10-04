@@ -1,0 +1,13 @@
+---
+kind: new
+audience: player
+---
+Bridge City is a new race in the Pacific Northwest: downtown Portland, on its real streets and bridges (playtest 3: "Duval St, downtown Portland, Golden Gate").
+
+- You start on East Burnside, cross the Burnside Bridge, ride West Burnside to Broadway, turn south past Pioneer Courthouse Square, turn east on Madison and cross the Hawthorne Bridge to SE Hawthorne. It is 4.6 km, two lanes each way.
+- "Pick your bridge": keep left off Broadway onto Alder and you cross the Morrison Bridge instead and come down Grand Avenue back onto Hawthorne. It is 149 m shorter, with a sign before the turn (MORRISON BRIDGE: KEEP LEFT. Same distance. Different bridge. Same drizzle.). You can cut the sign like any other.
+- It is in the route picker for the Pacific Northwest. The career does not use it yet, and the dusk light, the rain, the city's own signs, traffic and buildings, and the lift towers' models come in later work. Today it is plain streets and bridges with the region's usual traffic.
+
+For devs: baked by `tools/gis` from `networks/osm-pnw-portland.json` (task T9.4): 15 roads, the route `osm-bridge-city-run` and a backdrop frame file, 56 KB gzip for all of it (the plan said about 60 KB), fetched only when a race there starts. The choice is the first to leave to the left (`shiftM` 20 on its join, because joined straight, the land sweep in `tests/sim/geometry-land.test.ts` found one open land edge at Grand Avenue's end). It carries two boost-pad slots, a cop lot, a pedestrian zone at the square, the `morrison-keep-left` site sign (a small edit to the region file, which also lists the network), and two `landmark` features for the Hawthorne lift towers (`pdx-landmarks#pdx_lift_tower`, over the road). The kit comes with a later Codex batch, so they draw nothing for now, and their names are the asset plan's. The scenery tags are `pdx-blocks` and `town`, plus `rail-line` on Grand Avenue, where the map has the streetcar; render draws neither Portland tag yet.
+
+Two small test edits ride along because only this change needs them: `src/app/regions.test.ts` no longer assumes every board is pooled (a `site` sign is not), and `tests/sim/road-setpieces-live.test.ts` and `tools/gis/region-routes.test.ts` list the new route. `tools/gis/routes-pnw-pt3.test.ts` holds what only Bridge City asks. Draw calls on its main path peak at 58 of 120 before the city facades; that is measured by `src/render/scene-cost.test.ts`. Not phone-verified, and no browser run (the route picker and backdrop e2e specs list no Portland case).

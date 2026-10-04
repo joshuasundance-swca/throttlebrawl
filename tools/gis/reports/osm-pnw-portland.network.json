@@ -1,0 +1,109 @@
+{
+  "network": "osm-pnw-portland",
+  "lines": {
+    "pdx": {
+      "lengthM": 4688.6,
+      "lanesPerDirection": 2,
+      "driftClosedM": {
+        "morrison leave": 5.36,
+        "morrison join": 11.24
+      },
+      "fun": {
+        "real_length_m": 4699.7,
+        "game_length_m": 4688.6,
+        "corners": 2,
+        "tightest_radius_m": 22.2,
+        "share_tighter_than_m": {
+          "50": 0.0122,
+          "100": 0.0186,
+          "200": 0.035
+        },
+        "turn_deg_per_km": 56.2,
+        "elev_min_m": 10.3,
+        "elev_max_m": 35.8,
+        "climb_m": 27.5,
+        "descent_m": 49.5,
+        "max_grade_pct": 6.3,
+        "p95_grade_pct": 4.4,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 44,
+        "junctions_per_km": 9.36,
+        "bridges_m": 1773.1,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 5.5
+      }
+    },
+    "morrison": {
+      "lengthM": 2044.9,
+      "lanesPerDirection": 2,
+      "driftClosedM": {
+        "morrison join": 9.93
+      },
+      "fun": {
+        "real_length_m": 2053.0,
+        "game_length_m": 2044.9,
+        "corners": 1,
+        "tightest_radius_m": 22.3,
+        "share_tighter_than_m": {
+          "50": 0.0176,
+          "100": 0.0244,
+          "200": 0.045
+        },
+        "turn_deg_per_km": 81.7,
+        "elev_min_m": 11.0,
+        "elev_max_m": 20.3,
+        "climb_m": 9.8,
+        "descent_m": 5.9,
+        "max_grade_pct": 3.7,
+        "p95_grade_pct": 2.1,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 20,
+        "junctions_per_km": 9.74,
+        "bridges_m": 957.1,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 4.8
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-pnw-pdx-alder",
+      "mainM": 2175.8,
+      "branchM": 2026.7,
+      "savesM": 149.1
+    }
+  ],
+  "routes": {
+    "osm-bridge-city-run": 4608.6
+  },
+  "roads": 15,
+  "junctions": 11,
+  "landmarks": [
+    {
+      "id": "hawthorne-lift-tower-west",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 240.5925,
+      "d": 0.0,
+      "placementErrorM": 3.54
+    },
+    {
+      "id": "hawthorne-lift-tower-east",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 315.7036,
+      "d": 0.0,
+      "placementErrorM": 3.05
+    }
+  ]
+}

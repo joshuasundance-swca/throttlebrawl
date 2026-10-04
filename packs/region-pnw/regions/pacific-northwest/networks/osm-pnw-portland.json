@@ -1,0 +1,425 @@
+{
+  "type": "road-network",
+  "id": "osm-pnw-portland",
+  "name": "Bridge City: downtown Portland and its bridges (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 45.5195,
+    "originLonDeg": -122.6735,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-pnw-pdx-east-burnside",
+    "osm-pnw-pdx-burnside-bridge",
+    "osm-pnw-pdx-west-burnside",
+    "osm-pnw-pdx-broadway",
+    "osm-pnw-portland-morrison-leave",
+    "osm-pnw-pdx-broadway-south",
+    "osm-pnw-pdx-madison",
+    "osm-pnw-pdx-hawthorne-bridge",
+    "osm-pnw-portland-morrison-join",
+    "osm-pnw-pdx-se-hawthorne",
+    "osm-pnw-pdx-alder",
+    "osm-pnw-pdx-morrison-bridge",
+    "osm-pnw-pdx-grand",
+    "osm-pnw-portland-morrison-in",
+    "osm-pnw-portland-morrison-out"
+  ],
+  "junctions": [
+    {
+      "id": "osm-pnw-portland-j0",
+      "x": 1553.1533,
+      "y": 35.7998,
+      "z": -378.9189,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-east-burnside",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j1",
+      "x": 838.3235,
+      "y": 19.8724,
+      "z": -384.252,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-east-burnside",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-burnside-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j2",
+      "x": 158.7732,
+      "y": 14.0352,
+      "z": -403.7404,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-burnside-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-west-burnside",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j3",
+      "x": -304.3758,
+      "y": 10.5834,
+      "z": -383.4735,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-west-burnside",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-broadway",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j4",
+      "x": -450.609,
+      "y": 16.4894,
+      "z": -56.1654,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-broadway",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-broadway-south",
+          "end": "from"
+        },
+        {
+          "road": "osm-pnw-pdx-alder",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-portland-morrison-leave-l2",
+          "road": "osm-pnw-portland-morrison-leave",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-broadway-south",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-leave-l1",
+          "road": "osm-pnw-portland-morrison-leave",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-broadway-south",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-leave-r1",
+          "road": "osm-pnw-portland-morrison-leave",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-broadway-south",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-leave-r2",
+          "road": "osm-pnw-portland-morrison-leave",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-broadway-south",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-in",
+          "road": "osm-pnw-portland-morrison-in",
+          "from": {
+            "road": "osm-pnw-pdx-broadway",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-alder",
+            "end": "from",
+            "lane": "R1"
+          },
+          "splitZone": {
+            "s0": 300.9659,
+            "s1": 340.9659,
+            "d0": -10.5,
+            "d1": -6.0
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j5",
+      "x": -609.9447,
+      "y": 30.5699,
+      "z": 389.7124,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-broadway-south",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-madison",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j6",
+      "x": -146.4511,
+      "y": 14.722,
+      "z": 570.5646,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-madison",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-hawthorne-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j7",
+      "x": 1013.041,
+      "y": 20.1084,
+      "z": 806.2807,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-hawthorne-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-se-hawthorne",
+          "end": "from"
+        },
+        {
+          "road": "osm-pnw-pdx-grand",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-pnw-portland-morrison-join-l2",
+          "road": "osm-pnw-portland-morrison-join",
+          "from": {
+            "road": "osm-pnw-pdx-hawthorne-bridge",
+            "end": "to",
+            "lane": "L2"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "L2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-join-l1",
+          "road": "osm-pnw-portland-morrison-join",
+          "from": {
+            "road": "osm-pnw-pdx-hawthorne-bridge",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-join-r1",
+          "road": "osm-pnw-portland-morrison-join",
+          "from": {
+            "road": "osm-pnw-pdx-hawthorne-bridge",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-join-r2",
+          "road": "osm-pnw-portland-morrison-join",
+          "from": {
+            "road": "osm-pnw-pdx-hawthorne-bridge",
+            "end": "to",
+            "lane": "R2"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "R2"
+          }
+        },
+        {
+          "id": "cx-osm-pnw-portland-morrison-out",
+          "road": "osm-pnw-portland-morrison-out",
+          "from": {
+            "road": "osm-pnw-pdx-grand",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-pnw-pdx-se-hawthorne",
+            "end": "from",
+            "lane": "L2"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j8",
+      "x": 1305.0017,
+      "y": 13.8814,
+      "z": 807.8226,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-se-hawthorne",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j9",
+      "x": -53.0647,
+      "y": 10.9961,
+      "z": 90.8295,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-alder",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-morrison-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-pnw-portland-j10",
+      "x": 991.2703,
+      "y": 15.0686,
+      "z": 256.1137,
+      "ends": [
+        {
+          "road": "osm-pnw-pdx-morrison-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-pnw-pdx-grand",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-portland.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:46:05Z",
+        "sha256": "95e74e6fffdb70bd8a1f9760fd88b72ab6776fe135882321f056ecdc809deea1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
+        "retrievedAt": "2026-10-04T22:55:31Z",
+        "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
+        "retrievedAt": "2026-10-04T22:55:16Z",
+        "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Portland street and bridge paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 11.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (playtest 3, T9.4; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"): East Burnside over the Burnside Bridge, West Burnside to Broadway, south down Broadway past Pioneer Courthouse Square, east on Madison and over the Hawthorne Bridge to SE Hawthorne. The choice, \"Pick your bridge\": Alder Street off Broadway, over the Morrison Bridge and down Grand Avenue, about the same distance. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure)."
+  }
+}
