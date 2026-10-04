@@ -65,4 +65,34 @@ describe('traffic-1 over the shared seeded-race batch', () => {
     );
     expect(nearMisses).toBeGreaterThan(0);
   });
+
+  it('no rider ever crashes into a light kerb rider: a clip is a wobble with data.kerb (playtest 3)', () => {
+    // A light kerb type is a bicycle, scooter, e-bike or the cooler on wheels: kerb, 0.8 m wide or less.
+    const { config } = createBatchRace(1);
+    const light = new Set(
+      config.trafficTypes
+        .filter((t) => t.behaviour?.kerb === true && t.widthM <= 0.8)
+        .map((t) => t.contentId),
+    );
+    let crashes = 0;
+    let soft = 0;
+    let softWithoutFlag = 0;
+    for (const race of batch.races) {
+      for (const e of race.events) {
+        if (e.data['cause'] !== 'traffic' || !light.has(String(e.data['vehicle']))) continue;
+        if (e.type === 'crash') crashes++;
+        else if (e.type === 'wobble') {
+          if (e.data['kerb'] === true) soft++;
+          else softWithoutFlag++;
+        }
+      }
+    }
+    print(
+      `[traffic batch] light kerb types in the base pack: ${[...light].length}; rider crashes into one: ${crashes}; ` +
+        `soft wobbles (data.kerb): ${soft}; other wobbles: ${softWithoutFlag}`,
+    );
+    expect(light.size).toBeGreaterThan(0);
+    expect(crashes).toBe(0);
+    expect(softWithoutFlag).toBe(0);
+  });
 });
