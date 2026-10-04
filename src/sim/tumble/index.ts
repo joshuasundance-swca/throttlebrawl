@@ -37,6 +37,13 @@
 //   Road    remounted on the parked bike, rolling at `tumble.remountMps` (8 m/s, capped at the
 //           bike's top speed; interview, 2026-10-02: "remount rolling"), with health restored to
 //           full. The splash respawn on the bridge rolls the same way.
+//   Gap     (playtest 3; the maintainer, round 3: "the real 80 m missing span is the big jump (a miss
+//           = splash, respawn on the highway)") a crash with `data.overboard` (sim/riders/gap.ts: a
+//           rider past a gap's kill depth) starts with both bodies overboard (`railOver` with
+//           `gap: true` for each, on the crash's tick), and a body that slides or falls into a gap
+//           later goes overboard the same way (./rig.ts). The splash and its penalty are as for the
+//           rail; the respawn is where the gap's `params.respawn` says (road/gap.ts): `far`, at rest
+//           `respawnPastM` past its far end, or `main`, on the route's main road nearest the splash.
 import {
   cos,
   nextFloat,
@@ -46,7 +53,15 @@ import {
   type EntityId,
   type TuningParamDecl,
 } from '../../core';
-import type { RoadPos } from '../../road';
+import {
+  gapAt,
+  gapById,
+  gapFarSide,
+  gapParams,
+  nearestOnEdges,
+  type BakedFeature,
+  type RoadPos,
+} from '../../road';
 import { offRoadOn } from '../ground';
 import { riderState } from '../riders';
 import { InputFlag, type SimConfig } from '../types';
@@ -242,6 +257,12 @@ export interface TumbleRecord {
   touched: EntityId[];
   /** Where the first body went over a rail, else null: the respawn spot. */
   railAt: RoadPos | null;
+  /**
+   * The gap the first body went overboard through (playtest 3): its edge and feature id. Then the
+   * gap's `params.respawn` decides the respawn spot, not `railAt`. Absent for every other crash, so
+   * a race with no gap hashes as before.
+   */
+  gap?: { edge: number; id: string };
   /** Scaled ticks since the first body went overboard, or -1. */
   overboard: number;
   /** Tick of the first splash, or -1, and scaled ticks since it (the penalty clock). */
@@ -427,6 +448,33 @@ function startCrash(
   };
   tumbleState(world).records[m.id] = record;
   m.mode = 'Tumble';
+  if (data['overboard'] === true) startOverboard(world, config, m, record, data);
+}
+
+/**
+ * A crash that starts overboard (sim/riders/gap.ts: a rider past a gap's kill depth, or into the far
+ * deck's broken end): both bodies fall free at once, each with a `railOver` (`gap: true`), and the
+ * gap it fell through (`data.feature`, else the one under it) decides the respawn.
+ */
+function startOverboard(
+  world: World,
+  config: SimConfig,
+  m: Mover,
+  r: TumbleRecord,
+  data: Readonly<Record<string, unknown>>,
+): void {
+  const pos = m.pos;
+  const id = data['feature'];
+  const f =
+    (typeof id === 'string' ? gapById(config.road, pos.edge, id) : null) ??
+    gapAt(config.road, pos.edge, pos.s, pos.d);
+  if (f) r.gap = { edge: pos.edge, id: f.id };
+  r.railAt = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
+  r.overboard = 0;
+  for (const c of [r.riderRig, r.bikeRig]) {
+    c.overboard = true;
+    emit(world, 'railOver', m.id, { body: c.kind, gap: true }, { causeId: r.causeId });
+  }
 }
 
 function isPlayer(config: SimConfig, m: Mover): boolean {
@@ -513,7 +561,11 @@ function contacts(
 /** The rail and the splash events for one cluster's step. */
 function railEvents(world: World, m: Mover, r: TumbleRecord, c: Cluster, at: ClusterContact): void {
   if (at.railOver) {
-    emit(world, 'railOver', m.id, { body: c.kind }, { causeId: r.causeId });
+    // Into a gap (playtest 3, ./rig.ts) rather than over a rail: flagged, and the gap is kept.
+    const data = at.gap === undefined ? { body: c.kind } : { body: c.kind, gap: true };
+    emit(world, 'railOver', m.id, data, { causeId: r.causeId });
+    // The first body over decides the respawn: a rail's spot, or the gap's rule.
+    if (r.overboard < 0 && at.gap !== undefined) r.gap = { ...at.gap };
     if (r.overboard < 0) r.overboard = 0;
     r.railAt ??= { edge: at.edge, s: at.s, d: at.d, dir: m.pos.dir };
   }
@@ -668,21 +720,52 @@ function stepOnFoot(world: World, config: SimConfig, m: Mover, r: TumbleRecord, 
   m.speed = dt > 0 ? run.moved / dt : 0;
 }
 
-/** After the splash penalty: back on the bike, at rest, on the bridge where the body went over. */
+/**
+ * After the splash penalty: back on the bike, at rest, on the bridge where the body went over; or,
+ * through a gap, where the gap's `params.respawn` says (gapRespawn).
+ */
 function respawn(world: World, config: SimConfig, m: Mover, r: TumbleRecord): void {
-  const at = r.railAt ?? m.pos;
-  const dir = handBackDir(config, r, at.edge, at.s);
+  const gap = r.gap ? gapById(config.road, r.gap.edge, r.gap.id) : null;
+  const woke = gap && r.gap ? gapRespawn(config, m, r, r.gap.edge, gap) : null;
+  const at = woke?.pos ?? r.railAt ?? m.pos;
+  const dir = woke ? woke.pos.dir : handBackDir(config, r, at.edge, at.s);
   const band = ownSideBand(config.road, at.edge, at.s, dir);
   const d = at.d < band.lo ? band.lo : at.d > band.hi ? band.hi : at.d;
   const pos: RoadPos = { edge: at.edge, s: at.s, d, dir };
-  emit(
-    world,
-    'respawn',
-    m.id,
-    { reason: 'splash', crashTick: r.crashTick, splashTick: r.splashTick },
-    { causeId: r.causeId },
-  );
+  const data = { reason: 'splash', crashTick: r.crashTick, splashTick: r.splashTick };
+  emit(world, 'respawn', m.id, woke && gap ? { ...data, gap: gap.id, at: woke.at } : data, {
+    causeId: r.causeId,
+  });
   remount(world, config, m, pos);
+}
+
+/**
+ * Where a rider who went into gap `f` (on `edge`) wakes, facing the way it was going along the route:
+ * `far`, `respawnPastM` past the gap's far end on its own road (road/gap.ts, gapFarSide); `main`, on
+ * the route's main road at the point nearest the rider's splash (the Seven Mile's Moser gap: "respawn
+ * on the highway"), or past the gap there if that point is on one. A route with no main road wakes
+ * it on the far side.
+ */
+function gapRespawn(
+  config: SimConfig,
+  m: Mover,
+  r: TumbleRecord,
+  edge: number,
+  f: BakedFeature,
+): { pos: RoadPos; at: 'far' | 'main' } {
+  const road = config.road;
+  const from = r.railAt ?? m.pos;
+  if (gapParams(f).respawn === 'main') {
+    const near = nearestOnEdges(road, config.route.mainEdges, r.rider.x, r.rider.z);
+    if (near) {
+      const dir = handBackDir(config, r, near.edge, near.s);
+      const hole = gapAt(road, near.edge, near.s, near.d);
+      const pos = hole ? gapFarSide(road, near.edge, hole, dir, near.d) : { ...near, dir };
+      return { pos, at: 'main' };
+    }
+  }
+  const dir = handBackDir(config, r, edge, (f.s0 + f.s1) / 2);
+  return { pos: gapFarSide(road, edge, f, dir, from.d), at: 'far' };
 }
 
 /** Back on the bike, rolling at tumble.remountMps (capped at its top speed), with full health. */

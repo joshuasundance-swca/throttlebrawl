@@ -30,6 +30,7 @@ export {
   VERGE_BY_TAG,
 } from './cross-section';
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
+export { gapAt, gapById, gapFarSide, jumpableWallAt, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
 export {
