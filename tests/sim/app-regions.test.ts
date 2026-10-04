@@ -66,12 +66,15 @@ function botRace(eventId: string, seed: number) {
 }
 
 describe('app: every region races headlessly through the real loader', () => {
-  it('offers three regions: the Keys, the Pacific Northwest and San Francisco', () => {
-    expect(CHOICES.map((c) => c.id)).toEqual([
-      'base:florida-keys',
-      'region-pnw:pacific-northwest',
-      'region-sf:san-francisco',
-    ]);
+  it('offers every region the packs ship, once each, in chapter order', () => {
+    // Read from the packs, so a new region pack is offered the day it lands without editing this
+    // test (the Keys, the Pacific Northwest and San Francisco today).
+    const ids = CHOICES.map((c) => c.id);
+    process.stdout.write(`[app-regions] offered: ${ids.join(', ')}\n`);
+    expect([...ids].sort()).toEqual(Object.keys(REG.regions).sort());
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    const chapters = CHOICES.map((c) => c.chapter);
+    expect(chapters).toEqual([...chapters].sort((a, b) => a - b));
   });
 
   for (const choice of CHOICES) {

@@ -157,29 +157,29 @@ describe('app/config: the M1 race field (four rivals and a cop)', () => {
   const config = buildSimConfig(reg, streamForEvent(reg), { seed: 1 });
 
   it('fields the four regulars ahead of the player, and the player ahead of the law', () => {
-    expect(config.riders.map((r) => r.contentId)).toEqual([
-      'base:deacon-vane',
-      'base:dial-up',
-      'base:chad-speedwell',
-      'base:kevin-from-accounting',
-      'base:player',
-      // Playtest 2: the lot's starter, up to two on patrol and one more in the lot. Run W-T:
-      // Trooper Dalrymple rides (live), so the Keys pool cycles Pruitt, Dalrymple.
-      'base:sgt-pruitt',
-      'base:trooper-dalrymple',
-      'base:sgt-pruitt',
-      'base:trooper-dalrymple',
-    ]);
+    // Read from the event and the riders, so a new rival or cop in the pack is not a test edit.
+    const event = lookup(reg.events, 'base:m1-skeleton-sprint');
+    const rivals = (event.field?.riders ?? []).map((id) => (id.includes(':') ? id : `base:${id}`));
+    expect(rivals).toHaveLength(4);
+    const ids = config.riders.map((r) => r.contentId);
+    expect(ids.slice(0, rivals.length)).toEqual(rivals);
+    expect(ids[rivals.length]).toBe('base:player');
+    // Playtest 2: the lot's starter, up to patrolMax on patrol and one more in the lot.
+    const law = ids.slice(rivals.length + 1);
+    const cops = event.cops as { baseCount?: number; patrolMax?: number };
+    expect(law).toHaveLength((cops.baseCount ?? 0) + (cops.patrolMax ?? 0) + 1);
+    // The region's cops take turns (run W-T: Trooper Dalrymple joined Sgt. Pruitt): every live cop
+    // of the Keys rides before any one rides twice.
+    const pool = Object.entries(reg.riders)
+      .filter(([, r]) => r.role === 'cop' && r.law && (!r.region || r.region === event.region))
+      .map(([id]) => id);
+    expect(pool.length).toBeGreaterThan(0);
+    for (const id of law) expect(pool, id).toContain(id);
+    expect(new Set(law.slice(0, pool.length)).size).toBe(Math.min(pool.length, law.length));
     expect(config.riders.map((r) => r.controller.kind)).toEqual([
-      'ai',
-      'ai',
-      'ai',
-      'ai',
+      ...rivals.map(() => 'ai'),
       'player',
-      'cop',
-      'cop',
-      'cop',
-      'cop',
+      ...law.map(() => 'cop'),
     ]);
   });
 
@@ -351,45 +351,36 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
     expect(w['base:chicken']).toBe(1);
   });
 
-  it('matches the base pack region today', () => {
-    expect(withRegion(() => undefined)).toEqual({
-      'base:beach-cruiser': 1.5,
-      'base:box-truck': 2,
-      'base:chicken': 1,
-      'base:dive-bar-dog': 0.8,
-      'base:dog-walker': 1,
-      'base:fisherman': 1,
-      'base:golf-cart': 1.5,
-      // traffic-4's animals and oddity, live since 2026-10-03.
-      'base:gator': 0.6,
-      'base:gator-on-lawn-chair': 0.25,
-      'base:iguana': 1.5,
-      'base:pelican': 1,
-      'base:runaway-mobile-home': 0.3,
-      'base:pickup': 5,
-      'base:pickup-towing-boat': 1.5,
-      'base:rental-convertible': 2,
-      'base:sedan-rental': 5,
-      'base:snowbird-rv': 0.5,
-      'base:sunburnt-jogger': 1,
-      'base:tourist-with-cooler': 1,
-      // W-P road events' vehicles: placed by a set piece, never rolled by traffic.
-      'base:event-stalled-car': 0,
-      'base:event-tow-truck': 0,
-      'base:event-work-truck': 0,
-      // W-T moving road events: the boat slide's pickup and boat, the gator crossing's gators.
-      'base:event-crossing-gator': 0,
-      'base:event-hitch-pickup': 0,
-      'base:event-runaway-boat': 0,
-      'base:keys-parade-float': 0,
-      // W-R: each key's own vehicles, in no region mix: they spawn only on their key.
-      'base:cooler-on-wheels': 0,
-      'base:party-van': 0,
-      'base:resort-scooter-rider': 0,
-      'base:salvage-key-shuttle': 0,
-      'base:salvage-wrecker': 0,
-      'base:shrimp-truck': 0,
-    });
+  /** The live base region file's traffic block, as the pack ships it (the oracle for the wire). */
+  const keysTraffic = () => {
+    const file = basePackFiles().find((f) => (f.json as { type?: string }).type === 'region');
+    const traffic = (file?.json as { traffic?: KeysTraffic } | undefined)?.traffic;
+    if (!traffic) throw new Error('the base pack has no region traffic block');
+    return traffic;
+  };
+  type Listing = { kind: string; weight: number };
+  type KeysTraffic = {
+    mix: Listing[];
+    pedestrians?: Listing[];
+    animals?: Listing[];
+    areas?: { tag: string; mix: Listing[] }[];
+  };
+  const q = (kind: string) => (kind.includes(':') ? kind : `base:${kind}`);
+
+  it('matches the base pack region today: each type weighs what the region lists, 0 if listed nowhere', () => {
+    // Read from the region file, so a retuned mix or a new traffic type is not a test edit. Types
+    // the region lists nowhere (road events' vehicles, placed by a set piece; each key's own
+    // vehicles, W-R, which spawn only on their key) get 0 and are never rolled by traffic.
+    const t = keysTraffic();
+    const listed = new Map<string, number>();
+    for (const k of [...t.mix, ...(t.pedestrians ?? []), ...(t.animals ?? [])])
+      listed.set(q(k.kind), (listed.get(q(k.kind)) ?? 0) + k.weight);
+    const w = withRegion(() => undefined);
+    expect(Object.keys(w).length).toBeGreaterThan(listed.size);
+    for (const [id, weight] of Object.entries(w)) expect(weight, id).toBe(listed.get(id) ?? 0);
+    for (const id of listed.keys()) expect(w[id], `${id} is listed but not a traffic type`).toBeDefined();
+    // Some types are in the registry and listed nowhere (the zero-weight ones above).
+    expect(Object.values(w).some((x) => x === 0)).toBe(true);
   });
 
   it("writes each type its weight in each of the region's traffic areas (W-R: each key its own traffic)", () => {
@@ -398,23 +389,14 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
     const areas = Object.fromEntries(
       c.trafficTypes.filter((t) => t.areaWeights).map((t) => [t.contentId, t.areaWeights]),
     );
-    expect(areas['base:shrimp-truck']).toEqual({ 'key-fishing': 3 });
-    expect(areas['base:pickup-towing-boat']).toEqual({ 'key-fishing': 3 });
-    expect(areas['base:resort-scooter-rider']).toEqual({ 'key-resort': 2.5 });
-    expect(areas['base:golf-cart']).toEqual({ 'key-resort': 3, 'key-party': 1.5 });
-    expect(areas['base:salvage-wrecker']).toEqual({ 'key-junkyard': 3 });
-    expect(areas['base:salvage-key-shuttle']).toEqual({ 'key-junkyard': 1.5 });
-    expect(areas['base:party-van']).toEqual({ 'key-party': 4 });
-    expect(areas['base:cooler-on-wheels']).toEqual({ 'key-party': 2 });
-    expect(areas['base:sedan-rental']).toEqual({
-      'key-fishing': 2,
-      'key-resort': 2,
-      'key-junkyard': 2,
-      'key-party': 2,
-    });
+    // Each area's mix, read from the region file: a type's weight in every area that lists it.
+    const want: Record<string, Record<string, number>> = {};
+    for (const area of keysTraffic().areas ?? [])
+      for (const k of area.mix) (want[q(k.kind)] ??= {})[area.tag] = k.weight;
+    expect(Object.keys(want).length).toBeGreaterThan(0);
+    expect(areas).toEqual(want);
     // A type no area lists carries no area weights; peds never do.
-    expect(areas['base:runaway-mobile-home']).toBeUndefined();
-    expect(areas['base:fisherman']).toBeUndefined();
+    for (const p of keysTraffic().pedestrians ?? []) expect(areas[q(p.kind)], p.kind).toBeUndefined();
     // Every area tag is a district some keys-m1 road carries.
     const tags = new Set(c.road.edges.flatMap((e) => e.tags.map((g) => g.tag)));
     for (const w of Object.values(areas))

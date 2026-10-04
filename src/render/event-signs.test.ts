@@ -27,7 +27,10 @@ describe('road event warning signs', () => {
         .filter((e) => e.kind === 'set-piece' && e.signText !== undefined && e.signText !== '')
         .map((e) => ({ id: m.id, piece: e.piece ?? '', text: e.signText ?? '' })),
     );
-    expect(signs.length).toBe(17);
+    // Every warning sign the packs carry is checked (a count, not a fixed list: content lanes add
+    // road events freely).
+    console.log(`[examined] ${signs.length} road-event warning signs`);
+    expect(signs.length).toBeGreaterThan(0);
     for (const s of signs) {
       const { headline, kicker } = splitCopy(s.text);
       expect(words(headline), `${s.id}: "${headline}"`).toBeGreaterThanOrEqual(2);
@@ -57,7 +60,8 @@ describe('road event warning signs', () => {
         .filter((e) => e.serial !== undefined)
         .map((e) => ({ id: m.id, lines: e.serial ?? [] })),
     );
-    expect(serials.length).toBe(3);
+    console.log(`[examined] ${serials.length} serial sign runs`);
+    expect(serials.length).toBeGreaterThan(0);
     for (const s of serials) {
       expect(s.lines, s.id).toHaveLength(4);
       for (const line of s.lines) {
