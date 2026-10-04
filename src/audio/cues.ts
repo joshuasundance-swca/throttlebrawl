@@ -4,7 +4,7 @@
 // and says which one still needs a decision. M2 (audio-2) adds the takedown stinger, the slow-motion
 // whooshes, the rail clang, the splash, the respawn blip, the style-cash chime, the steal glint, the
 // wobble and the near-miss whoosh, and scales crashes by how hard they hit.
-import type { SimEvent, SimSnapshot } from '../sim/api';
+import type { MovesSnapshot, SimEvent, SimSnapshot } from '../sim/api';
 
 export const CUE_IDS = [
   'punch',
@@ -45,6 +45,13 @@ export const CUE_IDS = [
   'cableBell',
   'shed',
   'vote',
+  // Playtest 3's moves (moves spec §4.4): the wheelie's pop and its front coming down, a drift's
+  // tyre bite, the exit boost's rush and the hood launch's crunch and spring.
+  'wheelieUp',
+  'wheelieDown',
+  'driftBite',
+  'driftBoost',
+  'hoodBoing',
 ] as const;
 export type CueId = (typeof CUE_IDS)[number];
 
@@ -102,6 +109,16 @@ export const EVENT_CUES: Readonly<Record<string, CueId | null>> = {
   grudgeNoted: null,
   modifierStart: null,
   modifierEnd: null,
+  // Playtest 3's moves. A wheelie's pop has no event (the snapshot's `moves` says when the front
+  // goes up: createMovesCues); its end sounds only when the front comes down clean (cueForEvent).
+  // The loop-out's crash and a slammed front's wobble already sound, so they stay silent here.
+  wheelieEnd: 'wheelieDown',
+  // The drift's bite as it breaks away, then the squeal while it holds (squeal, a continuous voice).
+  driftStart: 'driftBite',
+  // The exit boost's rush, only on a clean exit that boosts (cueForEvent).
+  driftEnd: 'driftBoost',
+  // The crunch and the spring when a wheelie rides up a car's hood or trunk.
+  hoodLaunch: 'hoodBoing',
 };
 
 /** Event types that make a sound. */
@@ -111,7 +128,14 @@ export const SOUNDING_EVENTS = Object.keys(EVENT_CUES).filter((t) => EVENT_CUES[
  * Cues heard only when the player is the actor: their own style cash, their own respawn and their
  * own close passes. A rival scoring style is not news.
  */
-export const PLAYER_ONLY_EVENTS: ReadonlySet<string> = new Set(['style', 'respawn', 'nearMiss']);
+export const PLAYER_ONLY_EVENTS: ReadonlySet<string> = new Set([
+  'style',
+  'respawn',
+  'nearMiss',
+  'wheelieEnd',
+  'driftStart',
+  'driftEnd',
+]);
 
 const PRIORITY: Readonly<Record<CueId, number>> = {
   crash: 75,
@@ -151,6 +175,11 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   cableBell: 58,
   shed: 64,
   vote: 60,
+  wheelieUp: 54,
+  wheelieDown: 50,
+  driftBite: 56,
+  driftBoost: 60,
+  hoodBoing: 68,
 };
 
 /** A moving set piece's moment (`setPieceBeat`'s `data.beat`, run W-T) to its cue. */
@@ -173,6 +202,11 @@ export interface CueChoice {
   /** Which kind of the cue: a smash's `SmashableKind` (what breaks decides how it sounds). */
   variant?: string;
 }
+
+/** The exit boost (m/s) at which its rush is full: a 2.5 s drift's boost (sim/riders/drift.ts, 2 + 4). [default] */
+const BOOST_FULL_MPS = 6;
+/** A wheelie shorter than this (seconds up) comes down without a thump: a blip, not a ride. [default] */
+const WHEELIE_DOWN_MIN_S = 0.4;
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
 const num = (e: SimEvent, key: string): number | null => {
@@ -225,17 +259,32 @@ export function cueForEvent(
   }
   // A clean landing after real air surges (pitch deck #13): the thump and a rush of air.
   if (type === 'land' && e.data['surge'] === true) cue = 'surge';
+  // A wheelie's end sounds only when the front comes down clean after more than a blip; a boost
+  // rides on a clean drift exit only (the bank, a sloppy exit and a wipeout have their own sounds).
+  if (type === 'wheelieEnd' && (e.data['clean'] !== true || e.data['loopOut'] === true)) return null;
+  if (type === 'wheelieEnd' && (num(e, 'seconds') ?? 0) < WHEELIE_DOWN_MIN_S) return null;
+  if (type === 'driftEnd' && (e.data['clean'] !== true || (num(e, 'boostMps') ?? 0) <= 0)) return null;
   // The finish: the boxing bell rings you in (three strikes); a rival's finish is one ding.
   if (type === 'finish' && e.actor !== playerId) cue = 'ding';
-  const impact = cue === 'crash' ? crashImpact(e, riderSpeedMps) : 1;
+  const impact =
+    cue === 'crash'
+      ? crashImpact(e, riderSpeedMps)
+      : cue === 'driftBoost'
+        ? clamp01((num(e, 'boostMps') ?? 0) / BOOST_FULL_MPS)
+        : cue === 'hoodBoing'
+          ? clamp01((num(e, 'flips') ?? 1) / 3)
+          : 1;
   const playerInvolved = e.actor === playerId || e.target === playerId;
   const kind = e.data['kind'];
+  // A chained drift (the second link and on) adds its rising tick: the chain rides in the variant.
+  const chain = Math.round(num(e, 'chain') ?? 1);
   return {
     cue,
     priority: PRIORITY[cue] + (playerInvolved ? PLAYER_BONUS : 0),
     playerInvolved,
     impact,
     ...(cue === 'smash' && typeof kind === 'string' ? { variant: kind } : {}),
+    ...(cue === 'driftBite' && chain >= 2 ? { variant: String(chain) } : {}),
   };
 }
 
@@ -256,4 +305,62 @@ export function weaknessOf(snapshot: SimSnapshot | null | undefined, targetId: n
       : snapshot.entities.find((x) => x.id === targetId);
   if (!t || t.kind !== 'rider' || t.slot >= 0 || !(t.healthMax > 0)) return 0;
   return clamp01(1 - t.health / t.healthMax);
+}
+
+/**
+ * The drift's tyre squeal, a continuous voice (cue-patches.ts, createSquealVoice): band-passed noise
+ * from 1.8 to 3.0 kHz with its level following the slip (moves spec §4.4). `gain` is the peak at
+ * full slip, the `audio.squealGain` slider [default]; `fullRad` is the slip that is full (the drift's
+ * own cap, 34 degrees) and below `deadRad` a bike is just riding. `loHz`..`hiHz` is the band's
+ * centre from a light slip to a full one.
+ */
+export const SQUEAL = { gain: 0.22, fullRad: 0.6, deadRad: 0.04, loHz: 1800, hiHz: 3000 } as const;
+
+/** How far into the squeal a slip is, 0..1 (symmetric: a left slide sounds as a right one). */
+export function squealAmount(driftRad: number): number {
+  if (!Number.isFinite(driftRad)) return 0;
+  const a = Math.abs(driftRad);
+  return a < SQUEAL.deadRad ? 0 : Math.min(1, a / SQUEAL.fullRad);
+}
+
+/** The squeal's level at a slip: 0 below the dead zone, `gain` from full slip up. */
+export function squealLevel(driftRad: number, gain: number): number {
+  return Math.max(0, Number.isFinite(gain) ? gain : 0) * squealAmount(driftRad);
+}
+
+export interface MovesCues {
+  /**
+   * One rendered frame's `SimSnapshot.moves`: the cues that frame earns, from edges the sim has no
+   * event for. The wheelie's pop is the front going up, which is `wheelieS` leaving 0. A first look
+   * (the first frame, or the first after a null: a resume mid-wheelie) only learns, and never pops.
+   */
+  step(moves: MovesSnapshot | null | undefined): CueChoice[];
+  reset(): void;
+}
+
+export function createMovesCues(): MovesCues {
+  let prev: number | null = null;
+  return {
+    step(moves) {
+      if (!moves) {
+        prev = null;
+        return [];
+      }
+      const up = moves.wheelieS > 0;
+      const out: CueChoice[] = [];
+      if (prev !== null && prev <= 0 && up) {
+        out.push({
+          cue: 'wheelieUp',
+          priority: PRIORITY.wheelieUp + PLAYER_BONUS,
+          playerInvolved: true,
+          impact: 1,
+        });
+      }
+      prev = up ? moves.wheelieS : 0;
+      return out;
+    },
+    reset() {
+      prev = null;
+    },
+  };
 }
