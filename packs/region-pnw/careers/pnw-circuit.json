@@ -13,6 +13,15 @@
       "name": "Light Drizzle",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "juniper-grudge",
+      "field": {
+        "paceShare": 0.74,
+        "aggression": 0.85,
+        "signatureGap": 1.3,
+        "health": 0.9,
+        "power": 0.9,
+        "rivalBike": "step-down"
       }
     },
     {
@@ -20,6 +29,15 @@
       "name": "Steady Rain",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "reply-all",
+      "field": {
+        "paceShare": 0.78,
+        "aggression": 1,
+        "signatureGap": 1,
+        "health": 1,
+        "power": 1,
+        "rivalBike": "step-down"
       }
     },
     {
@@ -27,13 +45,31 @@
       "name": "Atmospheric River",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "deacon-grudge",
+      "field": {
+        "paceShare": 0.82,
+        "aggression": 1.15,
+        "signatureGap": 0.8,
+        "health": 1.1,
+        "power": 1.07,
+        "rivalBike": "best"
       }
     },
     {
       "id": "t4",
       "name": "The Big Cut",
       "advance": {
-        "requiredWins": 0
+        "requiredWins": 2
+      },
+      "boss": "big-cut",
+      "field": {
+        "paceShare": 0.85,
+        "aggression": 1.25,
+        "signatureGap": 0.7,
+        "health": 1.2,
+        "power": 1.12,
+        "rivalBike": "best"
       }
     }
   ],
@@ -62,6 +98,19 @@
       "requires": ["ferry-line"],
       "opens": ["pnw-trestle"],
       "claims": ["pnw-espresso-row", "pnw-trestle"]
+    },
+    {
+      "id": "tulip-traffic",
+      "event": "pnw-t1-tulip-traffic",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "osm-i5-nulle-run",
+        "s": 300
+      },
+      "requires": ["ferry-line"],
+      "opens": ["osm-i5-samish-summit"],
+      "claims": ["osm-i5-nulle-run"]
     },
     {
       "id": "juniper-grudge",
@@ -112,6 +161,18 @@
       "claims": ["pnw-logging-spur", "pnw-fogline-ridge"]
     },
     {
+      "id": "reply-all",
+      "event": "pnw-t2-reply-all",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "pnw-trestle",
+        "s": 425
+      },
+      "opens": ["osm-gorge-crown-point-loops"],
+      "claims": ["pnw-trestle"]
+    },
+    {
       "id": "gorge",
       "event": "pnw-t3-gorge",
       "length": "standard",
@@ -144,6 +205,37 @@
         "s": 400
       },
       "claims": ["osm-chuckanut-oyster-creek"]
+    },
+    {
+      "id": "rainout",
+      "event": "pnw-t4-rainout",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "pnw-fogline-ridge",
+        "s": 800
+      }
+    },
+    {
+      "id": "fire-watch",
+      "event": "pnw-t4-fire-watch",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "osm-chuckanut-cliffs",
+        "s": 1200
+      }
+    },
+    {
+      "id": "weigh-station",
+      "event": "pnw-t4-weigh-station",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "osm-i5-lake-samish",
+        "s": 3500
+      },
+      "claims": ["osm-samish-east-shore", "osm-samish-north-shore"]
     },
     {
       "id": "big-cut",
@@ -209,18 +301,18 @@
     },
     {
       "bike": "base:dirt-bike",
-      "priceCash": 2500,
+      "priceCash": 6000,
       "unlockTier": "t1"
     },
     {
-      "bike": "base:streetfighter-750",
-      "priceCash": 6000,
+      "bike": "grand-tourer-1100",
+      "priceCash": 25500,
       "unlockTier": "t2"
     },
     {
-      "bike": "base:superbike-1000",
-      "priceCash": 16000,
-      "unlockTier": "t3"
+      "bike": "supersport-900",
+      "priceCash": 31000,
+      "unlockTier": "t4"
     }
   ],
   "paints": [
@@ -228,29 +320,37 @@
       "id": "fern-green",
       "name": "Sword Fern Green",
       "hex": "#3f7d4a",
-      "priceCash": 300,
+      "priceCash": 1500,
       "unlockTier": "t1"
     },
     {
       "id": "overcast",
       "name": "Overcast",
       "hex": "#8a929a",
-      "priceCash": 300,
+      "priceCash": 1500,
       "unlockTier": "t1"
     },
     {
       "id": "flannel-red",
       "name": "Flannel Red",
       "hex": "#b03a2e",
-      "priceCash": 500,
+      "priceCash": 2500,
       "unlockTier": "t2"
     },
     {
       "id": "dark-roast",
       "name": "Dark Roast",
       "hex": "#5a3a28",
-      "priceCash": 500,
+      "priceCash": 2500,
       "unlockTier": "t3"
+    },
+    {
+      "id": "wet-cedar-gloss",
+      "name": "Wet Cedar Gloss",
+      "hex": "#9a5b3a",
+      "priceCash": 15000,
+      "unlockTier": "t1",
+      "unlockSeason": 2
     }
   ],
   "unlocks": [
@@ -363,12 +463,16 @@
         "lost": "You made me spill a whole pour-over. That's a feud.",
         "grudge": "Your name's on my cup board now. Spelled wrong. {g}/10."
       },
-      "old-growth": { "won": "Hm.", "lost": "Hm. Hm.", "grudge": "{g} rings." }
+      "old-growth": {
+        "won": "Hm.",
+        "lost": "Hm. Hm.",
+        "grudge": "{g} rings."
+      }
     }
   },
   "meta": {
     "status": "live",
-    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.2; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the second chapter (global tiers 5 to 8), every tier names its boss (Juniper Moss, Kevin from Accounting, Deacon Vane, Old Growth) and the field level it asks, with 15 nodes for now: the tier-3 drift event joins with the drift lane's content, so that tier holds two regular races and its boss. Five races are new: Tulip Traffic, \"Reply All, Again\" (Kevin's grudge, the tier-2 boss), Rainout, Fire Watch and Weigh Station Closed. The shop sells the Grand Tourer 1100 (rank 4, tier 2) and the Supersport 900 (rank 5, tier 4) beside the dirt bike for $6,000; the Streetfighter and the Superbike are sold in the other regions' shops. Paints cost $1,500 to $2,500, and Wet Cedar Gloss opens from Season 2. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -1,19 +1,19 @@
 {
   "type": "event",
-  "id": "pnw-t1-ferry-line",
-  "name": "Ferry Line Sprint",
+  "id": "pnw-t1-tulip-traffic",
+  "name": "Tulip Traffic",
   "kind": "classic-race",
   "region": "pacific-northwest",
-  "timeOfDay": "dawn",
+  "timeOfDay": "noon",
   "lengths": [
     {
       "id": "standard",
-      "route": "pnw-hollow-sprint",
+      "route": "osm-i5-samish-run",
       "laps": 1
     }
   ],
   "field": {
-    "riders": ["juniper-moss", "base:dial-up", "base:kevin-from-accounting", "base:chad-speedwell"],
+    "riders": ["juniper-moss", "base:deacon-vane", "base:chad-speedwell", "base:dial-up"],
     "paceMps": 41.4
   },
   "cops": {
@@ -25,18 +25,18 @@
   "rules": {},
   "objectives": [
     {
-      "id": "finish",
+      "id": "top-3",
       "kind": "finish-place",
       "params": {
-        "maxPlace": 5
+        "maxPlace": 3
       },
       "required": true
     },
     {
-      "id": "podium",
-      "kind": "finish-place",
+      "id": "back-road",
+      "kind": "ride-branch",
       "params": {
-        "maxPlace": 3
+        "branch": "osm-samish-north-shore"
       },
       "required": false,
       "rewardCash": 300
@@ -59,11 +59,11 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's first race: from the ferry landing up the switchbacks to Cedar Hollow, at dawn. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 5, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
+    "notes": "A classic race, top 3, on the real I-5 by Lake Samish at noon: the whole county is in the same lane for the flowers, and the back road along the lake is the way round. Top 3 wins it; the optional bonus is that back road. Playtest 3 (T10.2): the first tier's third regular event (docs/product-spec.md, Career). The real-world content task may swap it for a downtown Portland race. Global tier 5's purse and pace. [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
-      "createdAt": "2026-10-02"
+      "createdAt": "2026-10-04"
     }
   }
 }

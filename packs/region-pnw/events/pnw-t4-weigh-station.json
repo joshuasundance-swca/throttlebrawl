@@ -1,0 +1,64 @@
+{
+  "type": "event",
+  "id": "pnw-t4-weigh-station",
+  "name": "Weigh Station Closed",
+  "kind": "cop-escape",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-i5-samish-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["juniper-moss", "base:dial-up"],
+    "paceMps": 56.1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "escapeBy": "distance",
+    "escapeDistanceM": 3000,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 3600
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [1100, 700, 350, 200, 100, 50],
+    "perTakedownCash": 325,
+    "perNearMissCash": 33,
+    "perAirtimeCash": 49,
+    "perOncomingSecondCash": 13,
+    "takedownComboScale": 0.5,
+    "perStealCash": 82
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape: once the law is on you, ride 3 km of the I-5 by Lake Samish without being knocked off, or lose them. The sheriff's units set up at the weigh station, and the sign says it is closed. Playtest 3 (T10.2): the last tier's third regular event (docs/product-spec.md, Career). Global tier 8's purse and pace. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

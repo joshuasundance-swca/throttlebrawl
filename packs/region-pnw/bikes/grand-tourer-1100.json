@@ -1,0 +1,32 @@
+{
+  "type": "bike",
+  "id": "grand-tourer-1100",
+  "name": "Grand Tourer 1100",
+  "class": "tourer",
+  "tags": ["step-up"],
+  "handling": {
+    "topSpeedMps": 61.0,
+    "accelMps2": 6.4,
+    "brakeMps2": 10.0,
+    "steerRateMps": 5.4,
+    "massKg": 260
+  },
+  "combat": {
+    "hitPowerScale": 1.15,
+    "knockbackResistance": 0.3
+  },
+  "engineSound": {
+    "preset": "v-twin",
+    "idleHz": 24,
+    "redlineHz": 150
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The career's fourth bike (playtest 3, round 3: \"Six bikes\"; docs/product-spec.md, Bikes). About 136 mph (61.0 m/s), 9% faster than the Streetfighter 750, so it is a clear step up; heavy and long-legged, so it steers a little slower, hits 15% harder and shrugs off 30% of a shove. On sale in the Pacific Northwest's second tier for $25,500, about 3 races of winnings after it opens for a typical player (the playtest 3 plan's model, not a measurement). Its model is a byte copy of the touring flagship's under its own id (`models/bikes/grand-tourer-1100`), until Codex draws its own under the same name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

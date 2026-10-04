@@ -20,7 +20,7 @@
       "base:kevin-from-accounting",
       "base:dial-up"
     ],
-    "paceMps": 39
+    "paceMps": 47.6
   },
   "cops": {
     "mode": "every-race",
@@ -41,7 +41,7 @@
         "count": 3
       },
       "required": true,
-      "rewardCash": 1500
+      "rewardCash": 2450
     },
     {
       "id": "shortcut",
@@ -50,18 +50,18 @@
         "branch": "pnw-logging-spur"
       },
       "required": false,
-      "rewardCash": 400
+      "rewardCash": 350
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [750, 500, 250, 100, 50, 50],
+    "perTakedownCash": 275,
+    "perNearMissCash": 29,
+    "perAirtimeCash": 44,
+    "perOncomingSecondCash": 12,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 73
   },
   "modifiers": {
     "pool": "region-default",
@@ -70,7 +70,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A takedown hunt: three takedowns on the sawmill haul; the logging spur pays a bonus. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A takedown hunt: three takedowns on the sawmill haul; the logging spur pays a bonus. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 6, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["old-growth", "base:kevin-from-accounting"],
-    "paceMps": 44
+    "paceMps": 50
   },
   "cops": {
     "mode": "every-race",
@@ -34,18 +34,18 @@
       "id": "escape",
       "kind": "escape",
       "required": true,
-      "rewardCash": 2500
+      "rewardCash": 2950
     }
   ],
   "tier": 3,
   "rewards": {
-    "byPlaceCash": [4000, 2500, 1600, 900, 450, 200, 100],
-    "perTakedownCash": 320,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [900, 600, 300, 150, 100, 50],
+    "perTakedownCash": 300,
+    "perNearMissCash": 31,
+    "perAirtimeCash": 46,
+    "perOncomingSecondCash": 12,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 77
   },
   "modifiers": {
     "pool": "region-default",
@@ -54,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, heavy: once the deputies are on you, ride 3 km to the sawmill without being knocked off, or lose them. Run W-T (law with a personality): Lindqvist's citations, the patrol and the heat meter; the Fir County END OF JURISDICTION sign ends the chase.",
+    "notes": "A cop escape, heavy: once the deputies are on you, ride 3 km to the sawmill without being knocked off, or lose them. Run W-T (law with a personality): Lindqvist's citations, the patrol and the heat meter; the Fir County END OF JURISDICTION sign ends the chase. Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 7, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

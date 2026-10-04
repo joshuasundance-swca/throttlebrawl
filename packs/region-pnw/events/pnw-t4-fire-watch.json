@@ -1,0 +1,71 @@
+{
+  "type": "event",
+  "id": "pnw-t4-fire-watch",
+  "name": "Fire Watch",
+  "kind": "takedown-hunt",
+  "region": "pacific-northwest",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-chuckanut-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "old-growth",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:kevin-from-accounting",
+      "base:dial-up"
+    ],
+    "paceMps": 56.1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "targetCount": 4,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 4
+      },
+      "required": true,
+      "rewardCash": 3600
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [1100, 700, 350, 200, 100, 50],
+    "perTakedownCash": 325,
+    "perNearMissCash": 33,
+    "perAirtimeCash": 49,
+    "perOncomingSecondCash": 13,
+    "takedownComboScale": 0.5,
+    "perStealCash": 82
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt: four takedowns along Chuckanut Drive before the line, the biggest count of the region. Playtest 3 (T10.2): the last tier's second regular event (docs/product-spec.md, Career). Global tier 8's purse and pace. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

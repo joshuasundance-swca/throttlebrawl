@@ -1,0 +1,73 @@
+{
+  "type": "event",
+  "id": "pnw-t2-reply-all",
+  "name": "Reply All, Again",
+  "kind": "grudge-match",
+  "region": "pacific-northwest",
+  "timeOfDay": "noon",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "pnw-sawmill-haul",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:kevin-from-accounting"],
+    "paceMps": 48.8
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "base:kevin-from-accounting",
+    "winBy": "knockdowns",
+    "knockdownsToWin": 2,
+    "grudgeStakes": 2,
+    "rule": "audit"
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 3700
+    },
+    {
+      "id": "style",
+      "kind": "style-cash",
+      "params": {
+        "cash": 300
+      },
+      "required": false,
+      "rewardCash": 350
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [350, 350],
+    "perTakedownCash": 375,
+    "perNearMissCash": 29,
+    "perAirtimeCash": 44,
+    "perOncomingSecondCash": 12,
+    "takedownComboScale": 0.5,
+    "perStealCash": 73
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The tier-2 boss: a grudge match by Kevin's rule, The Audit, on the sawmill haul. He has followed the circuit north and copied the whole county on it. Knock him down twice, and every hit he lands adds a line item (one more knockdown, two at most). Playtest 3 (T10.2): each tier's boss is beaten before the next tier opens (docs/product-spec.md, Career). Global tier 6's purse and pace, a tier boss. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

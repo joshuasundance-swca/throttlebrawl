@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["juniper-moss"],
-    "paceMps": 34
+    "paceMps": 42.5
   },
   "cops": {
     "mode": "every-race",
@@ -32,7 +32,7 @@
       "id": "beat-rival",
       "kind": "beat-rival",
       "required": true,
-      "rewardCash": 800
+      "rewardCash": 3000
     },
     {
       "id": "style",
@@ -41,18 +41,18 @@
         "cash": 300
       },
       "required": false,
-      "rewardCash": 200
+      "rewardCash": 300
     }
   ],
   "tier": 1,
   "rewards": {
-    "byPlaceCash": [2000, 300],
-    "perTakedownCash": 200,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [300, 300],
+    "perTakedownCash": 350,
+    "perNearMissCash": 27,
+    "perAirtimeCash": 41,
+    "perOncomingSecondCash": 11,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 68
   },
   "modifiers": {
     "pool": "region-default",
@@ -61,7 +61,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A grudge match: one on one with Juniper Moss, who runs the espresso stand at the ferry line. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A grudge match: one on one with Juniper Moss, who runs the espresso stand at the ferry line. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 5, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number. Tier 1's boss.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
