@@ -336,6 +336,22 @@ describe('air that pays: the landing one-liner reads on a phone in every look', 
     }
   });
 
+  it('leaves a settling bike room under it when the screen has the room', () => {
+    // A CI race on #446: the plate was placed under the bike on the landing frame, then the bike
+    // sank 12 to 14 px (0.16 of its height) into it. A short line on a phone held sideways has room.
+    const a = new AirPays();
+    a.setLines([{ ref: 'base:region/florida-keys#short', text: 'NICE.', kind: 'sign' }]);
+    const s = snap([entity({ x: 0, y: 0, z: 0 })]);
+    a.pushEvents([surge(0)]);
+    a.update(s, s, 1, 10);
+    const bike = { left: 441, top: 215, right: 474, bottom: 292 };
+    a.fitOverlay(915, 412, 1, bike);
+    const top = 412 - (a.line.position.y + a.line.scale.y / 2);
+    const sunk = bike.bottom + 0.16 * (bike.bottom - bike.top);
+    expect(top, 'clear of the bike after it settles').toBeGreaterThan(sunk);
+    expect(top + a.line.scale.y, 'still on screen').toBeLessThanOrEqual(412);
+  });
+
   it('holds still while it shows, and rises over the bike only when the room under it is too short', () => {
     const a = new AirPays();
     a.setLines([{ ref: 'base:region/florida-keys#long', text: LONGEST, kind: 'sign' }]);

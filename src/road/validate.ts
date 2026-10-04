@@ -5,8 +5,10 @@
 //
 // road-2 adds junctions with connector roads (continuity per connector row, split zones, the
 // traffic rule for shortcut lanes) and the jump lint (ramps and gaps on straight enough road).
-import { lanesPerDirection, MAX_LANES_PER_DIRECTION } from './cross-section';
+import { lanesPerDirection, MAX_LANES_PER_DIRECTION, resolveVerge } from './cross-section';
 import {
+  GAP_RESPAWNS,
+  LANDMARK_DEFAULTS,
   rampTruckShape,
   readConnector,
   type BakedConnector,
@@ -30,6 +32,7 @@ export type RoadLintRule =
   | 'network'
   | 'connectors'
   | 'jump'
+  | 'landmark-clear'
   | 'route';
 
 export interface RoadLintIssue {
@@ -384,6 +387,7 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
   });
   (road.tags ?? []).forEach((t, i) => range(`/tags/${i}`, t.s0, t.s1));
   (road.barriers ?? []).forEach((b, i) => range(`/barriers/${i}`, b.s0, b.s1));
+  lintPlaytest3(road, add);
 
   // Jumps: an airborne body bends with the road (docs/architecture.md, "Jumps, ramps and
   // airtime"), so a ramp, gap or ramp truck must sit on road that is nearly straight from its start
@@ -413,6 +417,109 @@ export function lintRoad(road: BakedRoad, label: RoadFileLabel = defaultLabel): 
     }
   });
   return out;
+}
+
+/** A param the feature gives that is not a finite number in (lo, hi] (lo exclusive), or null. */
+function badNumber(f: BakedFeature, key: string, lo: number, hi: number, loInclusive = false): string | null {
+  const p = f.params ?? {};
+  if (!Object.hasOwn(p, key)) return null;
+  const v = p[key];
+  const ok = typeof v === 'number' && Number.isFinite(v) && (loInclusive ? v >= lo : v > lo) && v <= hi;
+  return ok ? null : `${key} ${JSON.stringify(v)} is not a number in ${loInclusive ? '[' : '('}${lo}, ${hi}]`;
+}
+
+/**
+ * Playtest 3's road rules (T3.1; docs/content-packs.md, "Gaps and landmarks", "Barriers"). The
+ * readers in ./types.ts replace a bad gap or landmark param with its default rather than throw, so
+ * the lint is where a typo surfaces:
+ * - a `gap`'s `killDepthM` and `respawnPastM` are positive numbers, and `respawn` is `far` or `main`;
+ * - a `landmark` names its `model`, its `yawDeg` is in [-180, 180], `scale` in (0, 4], `farM` above
+ *   0; and its footprint lies wholly past the verge band on its side (rule `landmark-clear`) unless
+ *   it is `overRoad` (a structure the road passes through or under: a bridge tower, a gantry);
+ * - only a `wall` may be `jumpable`.
+ */
+function lintPlaytest3(
+  road: BakedRoad,
+  add: (rule: RoadLintRule, pointer: string, message: string) => void,
+): void {
+  (road.features ?? []).forEach((f: BakedFeature, i) => {
+    const at = `/features/${i}`;
+    if (f.kind === 'gap') {
+      const p = f.params ?? {};
+      for (const key of ['killDepthM', 'respawn', 'respawnPastM']) {
+        if (key === 'respawn') {
+          if (Object.hasOwn(p, key) && !GAP_RESPAWNS.some((k) => k === p[key])) {
+            const list = GAP_RESPAWNS.join(', ');
+            add(
+              'features',
+              `${at}/params/${key}`,
+              `gap ${f.id}: respawn ${JSON.stringify(p[key])} is not one of ${list}`,
+            );
+          }
+          continue;
+        }
+        const bad = badNumber(f, key, 0, Infinity);
+        if (bad) add('features', `${at}/params/${key}`, `gap ${f.id}: ${bad}`);
+      }
+    }
+    if (f.kind !== 'landmark') return;
+    const model = f.params?.['model'];
+    if (typeof model !== 'string' || model.length === 0) {
+      add(
+        'features',
+        `${at}/params/model`,
+        `landmark ${f.id} names no model (<asset id>#<node>): it draws nothing`,
+      );
+    }
+    const checks: [string, number, number, boolean][] = [
+      ['yawDeg', -180, 180, true],
+      ['scale', 0, LANDMARK_DEFAULTS.maxScale, false],
+      ['farM', 0, Infinity, false],
+    ];
+    for (const [key, lo, hi, loInclusive] of checks) {
+      const bad = badNumber(f, key, lo, hi, loInclusive);
+      if (bad) add('features', `${at}/params/${key}`, `landmark ${f.id}: ${bad}`);
+    }
+    if (f.params?.['overRoad'] !== true) landmarkClear(road, f, at, add);
+  });
+  (road.barriers ?? []).forEach((b, i) => {
+    if (b.jumpable === true && b.kind !== 'wall') {
+      add('features', `/barriers/${i}/jumpable`, `a ${b.kind} cannot be jumpable: only a wall may be`);
+    }
+  });
+}
+
+/**
+ * `landmark-clear`: a landmark's footprint lies wholly past the outer edge of the verge band on its
+ * side (the side its centre is on) over all of s0..s1, checked every sample, so the sim never meets
+ * it and the props, smashables and scenes of the verge keep their ground.
+ */
+function landmarkClear(
+  road: BakedRoad,
+  f: BakedFeature,
+  at: string,
+  add: (rule: RoadLintRule, pointer: string, message: string) => void,
+): void {
+  const side = f.d0 + f.d1 >= 0 ? 'right' : 'left';
+  const step = road.sampleSpacingM > 0 ? road.sampleSpacingM : 1;
+  const sections = road.laneSections;
+  for (let s = f.s0; ; s += step) {
+    const sAt = s > f.s1 ? f.s1 : s;
+    let sec = sections[0];
+    for (const c of sections) if (c.s0 <= sAt) sec = c;
+    if (!sec) return;
+    const verge = resolveVerge(road, sec, side, sAt);
+    const clear = side === 'right' ? f.d0 >= verge.dOuter : f.d1 <= verge.dOuter;
+    if (!clear) {
+      add(
+        'landmark-clear',
+        at,
+        `landmark ${f.id} (d ${f.d0} to ${f.d1}) reaches the ${side} verge, which ends at d ${verge.dOuter.toFixed(2)}, at s ${sAt.toFixed(1)}: keep it past the verge, or mark a structure the road passes through overRoad`,
+      );
+      return;
+    }
+    if (sAt >= f.s1) return;
+  }
 }
 
 /**
@@ -751,6 +858,15 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
       if (!join.ok) add(`/mainPath/${i}`, `${prev} does not lead into ${r} at a junction`);
       else if (join.via !== undefined && !route.allowedRoads.includes(join.via))
         add(`/mainPath/${i}`, `the connector ${join.via} from ${prev} into ${r} is not in allowedRoads`);
+    });
+    // Playtest 3: traffic runs the main path, so a gap there would swallow it; gaps go on branches.
+    route.mainPath.forEach((r, i) => {
+      const hole = (byId.get(r)?.features ?? []).find((f) => f.kind === 'gap');
+      if (hole)
+        add(
+          `/mainPath/${i}`,
+          `road ${r} holds gap ${hole.id}: traffic runs the main path, so put gaps on branch roads`,
+        );
     });
     if (route.mainPath[0] !== route.start.road)
       add('/start/road', 'the start is not on the first main-path road');

@@ -63,6 +63,8 @@ const report = (over: Partial<SettleReport> = {}): SettleReport => ({
   outcome: 'won',
   won: true,
   lines: [],
+  repairs: 0,
+  replay: false,
   fine: 0,
   cashBefore: 0,
   cashAfter: 0,

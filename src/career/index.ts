@@ -17,6 +17,7 @@ import { progressOf } from './map';
 
 export * from './defs';
 export * from './map';
+export * from './level';
 export * from './race-log';
 export * from './settle';
 export * from './garage';

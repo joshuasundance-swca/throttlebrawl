@@ -14,9 +14,12 @@
 // - the barrier line, per cluster: when the cluster's centre leaves the band between the edge's
 //   outer drivable offsets, it bounces back off a wall, unless that side has a `rail` and the
 //   centre is higher above the deck than the rail, in which case the cluster goes overboard and
-//   falls free until it reaches the water plane (world y = 0).
+//   falls free until it reaches the water plane (world y = 0);
+// - a `gap` (playtest 3: road with no surface, road/gap.ts): a particle over one has no floor, and a
+//   cluster whose centre is over one and below the deck plane goes overboard the same way, so no body
+//   ever comes to rest on a gap.
 import { clamp } from '../../core';
-import type { RoadNetwork, RoadPos } from '../../road';
+import { gapAt, type RoadNetwork, type RoadPos } from '../../road';
 import { wallBand, type TumbleBody } from './body';
 
 const GRAVITY = 9.81;
@@ -245,6 +248,8 @@ export interface ClusterContact {
   railOver: boolean;
   /** This step the cluster reached the water plane. */
   splash: boolean;
+  /** When `railOver` came through a gap rather than over a rail: the gap's edge and feature id. */
+  gap?: { edge: number; id: string };
 }
 
 /**
@@ -286,6 +291,8 @@ export function stepCluster(
     const oz = q.z - at.z;
     const s = clamp(pc.s + ox * f.tx + oz * f.tz, 0, len);
     const d = clamp(pc.d - ox * f.tz + oz * f.tx, band.lo, band.hi);
+    // Over a gap there is nothing to stop it (playtest 3).
+    if (gapAt(road, pc.edge, s, d)) return -Infinity;
     return road.surfaceHeight(pc.edge, s, d);
   });
   const hit = c.p.map((q, i) => q.y < (floor[i] ?? -Infinity));
@@ -296,6 +303,12 @@ export function stepCluster(
   }
   c.p.forEach((q, i) => groundVelocity(q, floor[i] ?? -Infinity, hit[i] ?? false, dt, mu));
   for (let it = 0; it < ITERATIONS; it++) linkVelocities(c);
+  // Fallen into a gap: its centre over one and below the deck plane, so it goes overboard.
+  const hole = gapAt(road, pc.edge, pc.s, pc.d);
+  if (hole && centre(c.p).y < road.surfaceHeight(pc.edge, pc.s, pc.d)) {
+    c.overboard = true;
+    return { ...fallToWater(road, c, true), gap: { edge: pc.edge, id: hole.id } };
+  }
   if (barrierLine(road, c, pc, offRoad)) return fallToWater(road, c, true);
   // Inside the band, or put back on the barrier line: the centre's road position is known.
   const d = clamp(pc.d, band.lo, band.hi);
