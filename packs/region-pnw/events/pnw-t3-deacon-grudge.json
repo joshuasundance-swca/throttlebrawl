@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["base:deacon-vane"],
-    "paceMps": 44
+    "paceMps": 51.2
   },
   "cops": {
     "mode": "every-race",
@@ -33,18 +33,18 @@
       "id": "beat-rival",
       "kind": "beat-rival",
       "required": true,
-      "rewardCash": 2500
+      "rewardCash": 4400
     }
   ],
   "tier": 3,
   "rewards": {
-    "byPlaceCash": [4500, 600],
-    "perTakedownCash": 320,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [450, 450],
+    "perTakedownCash": 400,
+    "perNearMissCash": 31,
+    "perAirtimeCash": 46,
+    "perOncomingSecondCash": 12,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 77
   },
   "modifiers": {
     "pool": "region-default",
@@ -53,7 +53,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A grudge match by knockdowns: put Deacon Vane down twice on Chuckanut Drive. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A grudge match by knockdowns: put Deacon Vane down twice on Chuckanut Drive. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 7, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number. Tier 3's boss.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

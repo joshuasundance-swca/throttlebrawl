@@ -1,0 +1,28 @@
+{
+  "type": "bike",
+  "id": "supersport-900",
+  "name": "Supersport 900",
+  "class": "sport",
+  "tags": ["step-up"],
+  "handling": {
+    "topSpeedMps": 66.0,
+    "accelMps2": 7.0,
+    "brakeMps2": 10.5,
+    "steerRateMps": 6.0,
+    "massKg": 195
+  },
+  "engineSound": {
+    "preset": "inline-four",
+    "idleHz": 50,
+    "redlineHz": 380
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The career's fifth bike (playtest 3, round 3: \"Six bikes\"; docs/product-spec.md, Bikes). About 148 mph (66.0 m/s), 8% faster than the Grand Tourer 1100, so it is a clear step up; its engine sits between the Streetfighter's and the Superbike's in pitch. On sale in the Pacific Northwest's fourth tier for $31,000, about 4 races of winnings after it opens for a typical player (the playtest 3 plan's model, not a measurement). Its model is a byte copy of the Superbike's under its own id (`models/bikes/supersport-900`), until Codex draws its own under the same name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

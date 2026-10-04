@@ -14,11 +14,13 @@ const fresh = () => startCareer(DEFS, { ...DEFAULT_PROFILE });
 
 describe('the career map screen', () => {
   for (const def of DEFS) {
-    it(`${def.regionName}: a panel per network with every event a pin, and ten cards in four tiers`, () => {
+    it(`${def.regionName}: a panel per network with every event a pin, and a card for each node in its tier`, () => {
       const v = careerView(REG, DEFS, fresh(), def.regionId);
       expect(v.region.careerName).toBe(def.name);
-      expect(v.tiers.map((t) => t.nodes.length)).toEqual([3, 3, 3, 1]);
-      expect(v.tiers.map((t) => t.open)).toEqual([true, false, false, false]);
+      expect(v.tiers.map((t) => t.nodes.length)).toEqual(
+        def.tiers.map((_, i) => def.nodes.filter((n) => n.tier === i).length),
+      );
+      expect(v.tiers.map((t) => t.open)).toEqual(def.tiers.map((_, i) => i === 0));
       const pins = v.map.flatMap((p) => p.pins);
       expect(pins.map((p) => p.id).sort()).toEqual(def.nodes.map((n) => n.id).sort());
       expect(v.map.length).toBeGreaterThanOrEqual(2);

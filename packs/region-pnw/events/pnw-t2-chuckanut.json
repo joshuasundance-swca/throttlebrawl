@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["juniper-moss", "old-growth", "base:deacon-vane", "base:chad-speedwell"],
-    "paceMps": 39
+    "paceMps": 47.6
   },
   "cops": {
     "mode": "every-race",
@@ -35,13 +35,13 @@
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [2450, 1350, 850, 350, 250, 100, 50],
+    "perTakedownCash": 275,
+    "perNearMissCash": 29,
+    "perAirtimeCash": 44,
+    "perOncomingSecondCash": 12,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 73
   },
   "modifiers": {
     "pool": "region-default",
@@ -50,7 +50,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race on the real Chuckanut Drive, the cliff road over the bay. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A classic race on the real Chuckanut Drive, the cliff road over the bay. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 6, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

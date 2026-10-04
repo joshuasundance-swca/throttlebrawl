@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["old-growth", "base:dial-up"],
-    "paceMps": 39
+    "paceMps": 47.6
   },
   "cops": {
     "mode": "every-race",
@@ -34,18 +34,18 @@
       "id": "escape",
       "kind": "escape",
       "required": true,
-      "rewardCash": 1500
+      "rewardCash": 2450
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [750, 500, 250, 100, 50, 50],
+    "perTakedownCash": 275,
+    "perNearMissCash": 29,
+    "perAirtimeCash": 44,
+    "perOncomingSecondCash": 12,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 73
   },
   "modifiers": {
     "pool": "region-default",
@@ -54,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: Deputy Lindqvist and a second car. Run W-T (law with a personality): Deputy Lindqvist never rams, but every 3 s alongside is a $75 citation, billed at the finish: escape him, or pay for the company. The Fir County END OF JURISDICTION sign ends the chase.",
+    "notes": "A cop escape: Deputy Lindqvist and a second car. Run W-T (law with a personality): Deputy Lindqvist never rams, but every 3 s alongside is a $75 citation, billed at the finish: escape him, or pay for the company. The Fir County END OF JURISDICTION sign ends the chase. Playtest 3 (T10.2): the purse, the style rewards and the rival pace of global tier 6, from the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

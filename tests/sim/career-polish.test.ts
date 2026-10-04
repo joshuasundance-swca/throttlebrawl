@@ -28,6 +28,18 @@ const def = (region: string): CareerDef => {
   return d;
 };
 const fresh = () => startCareer(DEFS, { ...DEFAULT_PROFILE });
+/**
+ * A profile that reaches a region's boss the way the career puts a player there: on the fastest
+ * bike the region sells. The field's pace is a share of the best open bike's top speed (playtest 3),
+ * so a boss raced on the starting bike would only be a rider far up the road.
+ */
+function atTheBoss(d: CareerDef) {
+  const top = (bike: string) => REG.bikes[bike]?.handling.topSpeedMps ?? 0;
+  const bike = d.shop.map((s) => s.bike).sort((a, b) => top(b) - top(a))[0];
+  if (!bike) throw new Error(`${d.regionId} sells no bike`);
+  const start = fresh();
+  return { ...start, bikes: { ...start.bikes, current: bike, owned: [...start.bikes.owned, bike] } };
+}
 const RACE_MS = 240_000;
 
 describe('Bad Connection, raced as the career races it (Keys tier 3)', () => {
@@ -124,10 +136,10 @@ describe('Timber, raced as the career races it (the PNW boss)', () => {
       let timberMoves = 0;
       let checked = 0;
       // Both kinds of fall must be seen: a fall from the fists (which must not count) and one into
-      // traffic or scenery (which must). Measured on this tree: seeds 1-4 show five fist falls and
-      // none into traffic; seeds 5, 11 and 14 fell him into traffic or scenery (16 seeds: 12 fist
-      // falls, 3 traffic, 1 scenery). So races run from seed 1 until both are seen (at least four),
-      // up to sixteen, and every race's objective is checked against what happened in it.
+      // traffic or scenery (which must). Measured on this tree, on the bike the region sells last
+      // (16 seeds: 1 fist fall, 3 into traffic; on the starting bike the boss rides out of reach and
+      // all 15 falls were fists). So races run from seed 1 until both are seen (at least four), up
+      // to sixteen, and every race's objective is checked against what happened in it.
       const seen = () =>
         checked >= 4 &&
         (byKind['health'] ?? 0) > 0 &&
@@ -137,7 +149,7 @@ describe('Timber, raced as the career races it (the PNW boss)', () => {
         let rival = -1;
         let felled = 0;
         let charging = false;
-        const race = playNode(pnw, node, fresh(), seed, true, (events, snap, config) => {
+        const race = playNode(pnw, node, atTheBoss(pnw), seed, true, (events, snap, config) => {
           if (rival < 0) {
             me = config.riders.findIndex((r) => r.controller.kind === 'player');
             rival = config.riders.findIndex((r) => r.contentId === 'region-pnw:old-growth');
