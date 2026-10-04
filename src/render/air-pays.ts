@@ -132,6 +132,14 @@ export const LINE_MAX_FONT_PX = 30;
 const LINE_FONT_OF_SHORT_SIDE = 0.065;
 /** It stays this far inside the screen's edges, CSS px. */
 const LINE_MARGIN_PX = 8;
+/**
+ * The bike keeps settling after the line is placed (the landing's suspension and the chase camera
+ * catching up: in a CI race on #446 it sank 12 to 14 px, 0.16 of its screen height, under a plate
+ * placed on the landing frame). So where there is room the plate leaves it this share of the bike's
+ * height more, at most LINE_SETTLE_MAX_PX; where there is not, it keeps the old place. [default]
+ */
+const LINE_SETTLE_OF_BIKE = 0.2;
+const LINE_SETTLE_MAX_PX = 24;
 /** The dark plate behind the chalk (its contrast holds over any sky or sea: see the tests). */
 export const LINE_PLATE = '#141414';
 export const LINE_PLATE_ALPHA = 0.85;
@@ -569,7 +577,10 @@ export class AirPays {
       const foot = (h > w ? h - PORTRAIT_FOOT * Math.min(w, h) : h) - m;
       this.layout = landingLineLayout(s.item.text, w, h, measureLine, foot - under);
       // Too tall even at its smallest: it rises over the bike rather than into the HUD below.
-      this.plateTop = Math.max(h * ROAD_AHEAD_BOTTOM + m, Math.min(under, foot - this.layout.plateH));
+      const top = Math.max(h * ROAD_AHEAD_BOTTOM + m, Math.min(under, foot - this.layout.plateH));
+      // It fits under the bike: room to spare goes to the bike's settling, up to LINE_SETTLE_*.
+      const settle = bike ? Math.min(LINE_SETTLE_MAX_PX, LINE_SETTLE_OF_BIKE * (bike.bottom - bike.top)) : 0;
+      this.plateTop = top >= under ? Math.max(top, Math.min(under + settle, foot - this.layout.plateH)) : top;
       this.lineMat.map?.dispose();
       this.lineMat.map = lineTexture(this.layout, pixelRatio);
       this.lineMat.needsUpdate = true;
