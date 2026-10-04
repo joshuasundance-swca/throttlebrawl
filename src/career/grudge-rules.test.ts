@@ -5,6 +5,7 @@ import { DEFAULT_PROFILE } from '../save';
 import { GRUDGE_RULE_IDS } from '../sim/api';
 import type { GrudgeRuleId } from '../sim/api';
 import {
+  AUDIT_MAX_LINE_ITEMS,
   careerDefs,
   careerOf,
   eventPlan,
@@ -29,35 +30,60 @@ const def = (region: string): CareerDef => {
 const planOf = (d: CareerDef, node: string) =>
   eventPlan(REG, d.nodes.find((n) => n.id === node)?.event ?? '');
 
-describe("each rule is played by its rival, in a grudge match on the career's map", () => {
-  const cases = [
-    ['florida-keys', 'kevin-grudge', 'audit', 'base:kevin-from-accounting'],
-    ['florida-keys', 'junkyard-hunt', 'bad-connection', 'base:dial-up'],
-    ['san-francisco', 'collab', 'collab', 'base:chad-speedwell'],
-    ['pacific-northwest', 'big-cut', 'timber', 'region-pnw:old-growth'],
-  ] as const;
+/** Every event on a career map played by a grudge rule, read from the packs, in map order. */
+const RULED = DEFS.flatMap((d) =>
+  d.nodes.map((n) => ({ def: d, node: n.id, plan: eventPlan(REG, n.event) })),
+).filter((x) => x.plan.rules.rule !== undefined);
+const ruledBy = (rule: GrudgeRuleId) => RULED.filter((x) => x.plan.rules.rule === rule);
+/** The first event on any map played by a rule. */
+const firstRuled = (rule: GrudgeRuleId) => {
+  const hit = ruledBy(rule)[0];
+  if (!hit) throw new Error(`no event plays ${rule}`);
+  return hit;
+};
+const riderName = (id: string | undefined) => REG.riders[id ?? '']?.name ?? '';
+/** Counts are written as words on the cards, up to ten. */
+const words = (n: number) =>
+  ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][n] ?? String(n);
+const beatRival = (p: EventPlan) => p.objectives.find((o) => o.kind === 'beat-rival');
 
-  it('the Audit is Kevin, Bad Connection is Dial-Up, the Collab is Chad, Timber is Old Growth', () => {
-    for (const [region, node, rule, rival] of cases) {
-      const plan = planOf(def(region), node);
+describe("each rule is played by its rival, in a grudge match on the career's map", () => {
+  it("each rule is one rival's own, played in a grudge match with that rival in the field", () => {
+    const rivals = new Map<string, Set<string>>();
+    for (const { node, plan } of RULED) {
+      const rule = plan.rules.rule ?? '';
       expect(plan.kind, node).toBe('grudge-match');
-      expect(plan.rules.rule, node).toBe(rule);
-      expect(plan.rules.rival, node).toBe(rival);
-      expect(plan.field, node).toContain(rival);
+      expect(plan.rules.rival, node).toBeDefined();
+      expect(plan.field, node).toContain(plan.rules.rival);
+      rivals.set(rule, (rivals.get(rule) ?? new Set()).add(plan.rules.rival ?? ''));
     }
+    console.log(
+      `[examined] ${RULED.length} ruled events: ${[...rivals].map(([r, s]) => `${r} by ${[...s].join(', ')}`).join('; ')}`,
+    );
+    // The rival's own rule: one rival plays each rule, wherever it is played...
+    for (const [rule, who] of rivals) expect([...who], rule).toHaveLength(1);
+    // ...and no rival plays two.
+    const all = [...rivals.values()].flatMap((s) => [...s]);
+    expect(new Set(all).size).toBe(all.length);
     // Every rule in the closed list is played somewhere.
-    expect(new Set(cases.map((c) => c[2]))).toEqual(new Set(GRUDGE_RULE_IDS));
+    expect(new Set(rivals.keys())).toEqual(new Set(GRUDGE_RULE_IDS));
   });
 
   it('the Audit and Timber are won by knockdowns (Timber as a boss either way); the Collab to the line', () => {
-    const audit = planOf(def('florida-keys'), 'kevin-grudge');
-    expect(audit.rules.winBy).toBe('knockdowns');
-    const timber = planOf(def('pacific-northwest'), 'big-cut');
-    expect(timber.objectives.find((o) => o.kind === 'beat-rival')?.params['orKnockdowns']).toBeGreaterThan(0);
-    const collab = planOf(def('san-francisco'), 'collab');
-    expect(collab.rules.winBy).toBe('finish-ahead');
-    // The Collab is a style contest already: no separate style bonus asking for the same thing.
-    expect(collab.objectives.map((o) => o.kind)).not.toContain('style-cash');
+    for (const { node, plan } of ruledBy('audit')) expect(plan.rules.winBy, node).toBe('knockdowns');
+    for (const { node, plan } of ruledBy('timber'))
+      expect(
+        plan.rules.winBy === 'knockdowns' || Number(beatRival(plan)?.params['orKnockdowns'] ?? 0) > 0,
+        `${node}: timber is won by knockdowns, or either way`,
+      ).toBe(true);
+    for (const { node, plan } of ruledBy('collab')) {
+      expect(plan.rules.winBy, node).toBe('finish-ahead');
+      // The Collab is a style contest already: no separate style bonus asking for the same thing.
+      expect(
+        plan.objectives.map((o) => o.kind),
+        node,
+      ).not.toContain('style-cash');
+    }
   });
 
   it('Keys tier 3 closes on a grudge: every Keys tier now has one', () => {
@@ -73,10 +99,17 @@ describe('the rule card on the poster', () => {
   it('states the rule in a name and one line, from the career file or the defaults', () => {
     const texts = riderTexts(REG, DEFS);
     const profile = startCareer(DEFS, { ...DEFAULT_PROFILE });
-    const audit = posterView(REG, texts, planOf(def('florida-keys'), 'kevin-grudge'), 'dusk', profile);
-    expect(audit.rule).toMatchObject({ id: 'audit', name: 'THE AUDIT' });
-    expect(audit.rule?.line.length).toBeGreaterThan(10);
-    const race = posterView(REG, texts, planOf(def('florida-keys'), 'long-haul'), 'dusk', profile);
+    // Each ruled event's poster states its rule by the card its career gives it.
+    for (const { def: d, node, plan } of RULED) {
+      const rule = plan.rules.rule as GrudgeRuleId;
+      const poster = posterView(REG, texts, plan, 'dusk', profile);
+      expect(poster.rule, node).toEqual(ruleCard(REG, d, rule));
+      expect(poster.rule?.line.length, node).toBeGreaterThan(10);
+    }
+    const keys = def('florida-keys');
+    const classic = keys.nodes.find((n) => eventPlan(REG, n.event).kind === 'classic-race');
+    if (!classic) throw new Error('no race to the line in the Keys');
+    const race = posterView(REG, texts, planOf(keys, classic.id), 'dusk', profile);
     expect(race.rule).toBeNull();
     for (const id of GRUDGE_RULE_IDS) {
       const card = RULE_CARDS[id];
@@ -139,19 +172,30 @@ describe("the card's objective line comes from the rule (live check, mustFix 4)"
   });
 
   it('the cards read in plain words, rule by rule', () => {
-    const text = (region: string, node: string) => objectiveText(REG, planOf(def(region), node));
-    expect(text('san-francisco', 'collab')).toBe(
-      'Have more style cash than Chad Speedwell when you cross the line.',
+    // The first event of each rule, its rival's name and its counts read from the packs.
+    const collab = firstRuled('collab').plan;
+    expect(objectiveText(REG, collab)).toBe(
+      `Have more style cash than ${riderName(collab.rules.rival)} when you cross the line.`,
     );
-    expect(text('florida-keys', 'kevin-grudge')).toBe(
-      'Knock Kevin from Accounting down two times, plus one per hit you take (up to two more).',
+    const audit = firstRuled('audit').plan;
+    const auditCount = Number(beatRival(audit)?.params['knockdowns'] ?? audit.rules.knockdownsToWin ?? 1);
+    expect(objectiveText(REG, audit)).toBe(
+      `Knock ${riderName(audit.rules.rival)} down ${words(auditCount)} times, plus one per hit you take (up to ${words(AUDIT_MAX_LINE_ITEMS)} more).`,
     );
-    expect(text('pacific-northwest', 'big-cut')).toBe(
-      'Beat Old Growth to the line, or knock Old Growth into traffic or scenery three times.',
-    );
-    expect(text('florida-keys', 'junkyard-hunt')).toBe(
-      'Beat Dial-Up to the line, or knock Dial-Up down two times.',
-    );
+    // Raced to the line, or knocked down the event's count: by traffic and scenery under Timber.
+    const either = (rule: GrudgeRuleId, down: string) => {
+      const plan = ruledBy(rule).find(
+        (x) => Number(beatRival(x.plan)?.params['orKnockdowns'] ?? 0) > 0,
+      )?.plan;
+      if (!plan) throw new Error(`no ${rule} event won either way`);
+      const name = riderName(plan.rules.rival);
+      const n = words(Number(beatRival(plan)?.params['orKnockdowns']));
+      expect(objectiveText(REG, plan), rule).toBe(
+        `Beat ${name} to the line, or knock ${name} ${down} ${n} times.`,
+      );
+    };
+    either('timber', 'into traffic or scenery');
+    either('bad-connection', 'down');
   });
 
   it('a rule played by knockdowns reads by the same rule (the race log judges it that way)', () => {
@@ -160,10 +204,14 @@ describe("the card's objective line comes from the rule (live check, mustFix 4)"
       rules: { ...p.rules, winBy: 'knockdowns', knockdownsToWin: 2 },
     });
     // Timber by knockdowns still counts only traffic and scenery.
-    const timber = objectiveText(REG, byKnockdowns(planOf(def('pacific-northwest'), 'big-cut')));
-    expect(timber).toBe('Knock Old Growth into traffic or scenery two times.');
+    const timber = firstRuled('timber').plan;
+    expect(objectiveText(REG, byKnockdowns(timber))).toBe(
+      `Knock ${riderName(timber.rules.rival)} into traffic or scenery two times.`,
+    );
     // The Collab by knockdowns is judged on knockdowns (race-log ignores the style rule then).
-    const collab = objectiveText(REG, byKnockdowns(planOf(def('san-francisco'), 'collab')));
-    expect(collab).toBe('Knock Chad Speedwell down two times.');
+    const collab = firstRuled('collab').plan;
+    expect(objectiveText(REG, byKnockdowns(collab))).toBe(
+      `Knock ${riderName(collab.rules.rival)} down two times.`,
+    );
   });
 });
