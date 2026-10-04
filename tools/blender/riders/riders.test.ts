@@ -8,7 +8,16 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Color, Mesh, Vector3, type BufferAttribute, type Object3D } from 'three';
+import {
+  Color,
+  Matrix4,
+  Mesh,
+  Quaternion,
+  Vector3,
+  type BufferAttribute,
+  type Bone,
+  type Object3D,
+} from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureCached, readLock } from '../../../scripts/dataset-assets.mjs';
 import type { AssetManifest } from '../../../src/assets';
@@ -229,6 +238,77 @@ describe('the rider models (tools/blender/riders, pinned in assets.lock.json)', 
         `worst foot ${worstFoot.toFixed(3)} m from its peg`,
     );
   });
+});
+
+describe("playtest 3's moves on every real rider and bike (T2.4)", () => {
+  it('a wheelie keeps the hands on the bars and the feet on the pegs, and the knee comes down in a drift', () => {
+    let pairs = 0;
+    let worstHand = 0;
+    let worstFoot = 0;
+    let leastKnee = Infinity;
+    let worstFlipHand = 0;
+    for (const bike of bikeNames) {
+      for (const row of RIDERS) {
+        const id = `base:${row.id}`;
+        const up = world([{ contentId: id, rider: row.id, bike }]);
+        for (let i = 0; i < 25; i++) up.step([entity(0, id, { speed: 20, wheelie: 0.7 })]);
+        for (const side of ['l', 'r'] as const) {
+          const grip = up.rigs.limbEnd(0, `grip_${side}`) as Vector3;
+          const bar = up.rigs.bikePoint(0, `bar_${side}`) as Vector3;
+          const ankle = up.rigs.limbEnd(0, `ankle_${side}`) as Vector3;
+          // The boot sits 0.075 up and 0.035 back of the peg in the bike's own frame (which is tipped).
+          const tip = new Vector3(0, 0.075, 0.035).applyQuaternion(
+            (up.rigs.bikeBoneOf(0, 'bike') as Bone).getWorldQuaternion(new Quaternion()),
+          );
+          const peg = (up.rigs.bikePoint(0, `peg_${side}`) as Vector3).add(tip);
+          worstHand = Math.max(worstHand, grip.distanceTo(bar));
+          worstFoot = Math.max(worstFoot, ankle.distanceTo(peg));
+          expect(grip.distanceTo(bar), `${row.id} on ${bike}: wheelie ${side} hand`).toBeLessThan(0.08);
+          expect(ankle.distanceTo(peg), `${row.id} on ${bike}: wheelie ${side} foot`).toBeLessThan(0.06);
+        }
+        const flip = world([{ contentId: id, rider: row.id, bike }]);
+        for (let i = 0; i < 25; i++)
+          flip.step([
+            entity(0, id, {
+              mode: 'Airborne',
+              grounded: false,
+              y: 3,
+              speed: 22,
+              pitch: 0,
+              trick: 'backflip',
+            }),
+          ]);
+        for (const side of ['l', 'r'] as const) {
+          const grip = flip.rigs.limbEnd(0, `grip_${side}`) as Vector3;
+          const bar = flip.rigs.bikePoint(0, `bar_${side}`) as Vector3;
+          worstFlipHand = Math.max(worstFlipHand, grip.distanceTo(bar));
+          expect(grip.distanceTo(bar), `${row.id} on ${bike}: backflip ${side} hand`).toBeLessThan(0.1);
+        }
+        // The knee: in the bike's own frame, the inside (right) one goes out and down.
+        const frame = (lean: number, drift: number) => {
+          const w = world([{ contentId: id, rider: row.id, bike }]);
+          for (let i = 0; i < 25; i++) w.step([entity(0, id, { speed: 28, lean, drift })]);
+          // (bonePosition brings the world matrices up to date, so read it before the bike's.)
+          const knee = (w.rigs.bonePosition(0, 'shin_r') as Vector3).clone();
+          const inv = new Matrix4().copy((w.rigs.bikeBoneOf(0, 'bike') as Bone).matrixWorld).invert();
+          return knee.applyMatrix4(inv);
+        };
+        const out = frame(0.8, 0.5).sub(frame(0.8, 0));
+        leastKnee = Math.min(leastKnee, out.x);
+        expect(out.x, `${row.id} on ${bike}: knee out`).toBeGreaterThan(0.04);
+        expect(out.y, `${row.id} on ${bike}: knee down`).toBeLessThan(0);
+        expect(Math.abs(out.z), `${row.id} on ${bike}: the knee stays by the tank, not behind`).toBeLessThan(
+          0.2,
+        );
+        pairs++;
+      }
+    }
+    console.log(
+      `[examined] ${pairs} rider-on-bike pairs: wheelie at 0.7 rad, worst hand ${worstHand.toFixed(3)} m ` +
+        `from its grip, worst foot ${worstFoot.toFixed(3)} m from its peg; backflip worst hand ` +
+        `${worstFlipHand.toFixed(3)} m; drift knee out at least ${leastKnee.toFixed(3)} m`,
+    );
+  }, 120_000);
 });
 
 describe('a rider rig in EntityViews', () => {
