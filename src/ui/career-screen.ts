@@ -212,26 +212,21 @@ export const CAREER_CSS = `
 /* The landing one-liner (render/air-pays.ts) shares the prompt's band under the bike: while it shows
    (render marks its canvas), the prompt steps aside for its 2 s. [default] */
 body:has(canvas[data-landing-line]) #career-prompt { visibility: hidden; }
-#hud-objective { position: absolute; top: max(48px, calc(env(safe-area-inset-top) + 44px)); left: 50%;
-  transform: translateX(-50%); background: #0009; color: #f5c542; padding: 2px 10px; border-radius: 4px;
-  font: 800 13px ui-monospace, monospace; white-space: nowrap; pointer-events: none; max-width: calc(100vw - 140px);
-  overflow: hidden; text-overflow: ellipsis; }
-/* Under the heat badge (top 8 px) and over the bark bubble; on a narrow screen, under the badge
-   there (heat-badge.ts), just above the road ahead. [default] */
-@media (max-width: 600px) { #hud-objective { top: 202px; } }
-/* A phone held sideways (playtest 3: "The race objective sits over the heat meter"): the top
-   centre is the bark bubble's, above the road ahead, so the objective sits under the pause button
-   on its side, right-aligned and wrapping inside the quarter of the screen beside the road ahead,
-   with the heat badge under it. [default] */
+/* Playtest 3: "The race objective sits over the heat meter." The objective's slot comes from
+   ui/hud-layout.ts (--hl-obj-* on #ui), two lines at most where it has the row, three in the narrower column (--hl-obj-lines),
+   over the heat badge's slot and never on it: in the column on the pause button's side, past the road
+   ahead, where the ticker sits inline; across from the heat badge, under the ticker's slot, where it
+   is stacked. The fallbacks are for a screen no plan has settled. [default] */
+#hud-objective { position: absolute; top: var(--hl-obj-y, 60px); left: var(--hl-obj-l, 12px);
+  right: var(--hl-obj-r, auto); width: max-content; max-width: var(--hl-obj-w, 392px); box-sizing: border-box;
+  background: #0009; color: #f5c542; padding: 2px 10px; border-radius: 4px; font: 800 12px/16px ui-monospace, monospace;
+  text-align: var(--hl-obj-a, left); pointer-events: none; overflow: hidden; display: -webkit-box;
+  -webkit-box-orient: vertical; -webkit-line-clamp: var(--hl-obj-lines, 2); line-clamp: var(--hl-obj-lines, 2);
+  overflow-wrap: anywhere; }
 @media (orientation: landscape) and (max-height: 520px) {
   .career-map svg { width: 220px; height: 120px; }
   .career-map figcaption { width: 220px; }
   #career-prompt { font-size: 13px; }
-  #hud-objective { top: max(60px, calc(env(safe-area-inset-top) + 52px)); left: auto; transform: none;
-    right: max(8px, env(safe-area-inset-right)); width: max-content; box-sizing: border-box;
-    max-width: calc(25vw - 4px - max(8px, env(safe-area-inset-right))); white-space: normal; text-align: right; }
-  body:has(#hud-pause.mirrored) #hud-objective { right: auto; left: max(8px, env(safe-area-inset-left));
-    max-width: calc(25vw - 4px - max(8px, env(safe-area-inset-left))); text-align: left; }
 }
 .career-show { display: flex; flex-direction: column; gap: 8px; }
 ${SHOW_CSS}`;
