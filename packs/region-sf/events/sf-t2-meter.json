@@ -34,18 +34,18 @@
       "id": "escape",
       "kind": "escape",
       "required": true,
-      "rewardCash": 1500
+      "rewardCash": 5400
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [1600, 1100, 550, 250, 150, 100],
+    "perTakedownCash": 375,
+    "perNearMissCash": 36,
+    "perAirtimeCash": 54,
+    "perOncomingSecondCash": 14,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 91
   },
   "modifiers": {
     "pool": "region-default",
@@ -54,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: Officer Meter and a second unit. Run W-T (law with a personality): Officer Meter chases on a 30 s pursuit budget each, so outlasting the budgets is the escape ('Pursuit budget exhausted. Fiscal year resets in July.'). The Curb Authority END OF JURISDICTION sign ends it sooner.",
+    "notes": "A cop escape: Officer Meter and a second unit. Run W-T (law with a personality): Officer Meter chases on a 30 s pursuit budget each, so outlasting the budgets is the escape ('Pursuit budget exhausted. Fiscal year resets in July.'). The Curb Authority END OF JURISDICTION sign ends it sooner. Playtest 3 (T10.3): the purse of global tier 10 (docs/content-packs.md, Career).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

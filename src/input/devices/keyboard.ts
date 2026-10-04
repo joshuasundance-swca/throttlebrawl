@@ -2,7 +2,14 @@
 // values, so the map follows key positions on any layout. Esc (pause) and Backquote (the tuning
 // panel) belong to ui/. C cycles the camera view (camera-3; the integration round): the cruise
 // action stays reserved and unbuilt [decided], and gets its own key if a playtest asks for it.
+//
+// The wheelie (playtest 3) is a gesture on the throttle keys: tap W, then press and hold it again
+// within input.wheelieTapMs, and `wheelie` is set once the throttle's ramp has passed the sim's 0.3
+// floor, until the key lifts. Balance is feathering W (the sim's balance reads the throttle), and S
+// brings the nose down. Time is the samples' own dt, so a key event is timed to the tick it lands in.
 import type { ActionState } from '../actions';
+import { inputDefaults, type InputThresholds } from '../tuning';
+import { TapPair, WheelieLatch } from './wheelie-tap';
 
 export type KeyAction =
   | 'throttle'
@@ -39,7 +46,7 @@ export const DEFAULT_KEY_MAP: KeyMap = {
 
 /** What each key action does, in player words, for the pause screen's legend (playtest 1). */
 export const KEY_ACTION_NAMES: Readonly<Record<KeyAction, string>> = {
-  throttle: 'ride',
+  throttle: 'ride (double-tap: wheelie)',
   brake: 'brake',
   steerLeft: 'steer left',
   steerRight: 'steer right',
@@ -116,9 +123,19 @@ export class KeyboardState {
   private readonly pressed = new Set<string>();
   private throttle = 0;
   private readonly map: KeyMap;
+  /** The wheelie's double-tap on the throttle keys; `clock` is the samples' own time, seconds. */
+  private readonly taps = new TapPair();
+  private readonly latch = new WheelieLatch();
+  private readonly thresholds: Pick<InputThresholds, 'wheelieTapMs'>;
+  private clock = 0;
 
-  constructor(map: KeyMap = DEFAULT_KEY_MAP) {
+  /** `thresholds` is read live (createInput hands over its own, so the tuning panel moves it). */
+  constructor(
+    map: KeyMap = DEFAULT_KEY_MAP,
+    thresholds: Pick<InputThresholds, 'wheelieTapMs'> = inputDefaults(),
+  ) {
     this.map = map;
+    this.thresholds = thresholds;
   }
 
   /** Whether the map binds this code (the caller may then prevent the browser default). */
@@ -126,16 +143,35 @@ export class KeyboardState {
     return Object.values(this.map).some((codes) => codes.includes(code));
   }
   down(code: string): void {
-    if (!this.held.has(code)) this.pressed.add(code); // key auto-repeat is not a new press
+    if (!this.held.has(code)) {
+      this.pressed.add(code); // key auto-repeat is not a new press
+      // The first throttle key down is a press of the throttle; a second key on top of it is not.
+      if (this.map.throttle.includes(code) && !this.throttleHeld())
+        this.latch.press(this.taps.press(this.clock, this.windowS()));
+    }
     this.held.add(code);
   }
   up(code: string): void {
+    const was = this.throttleHeld();
     this.held.delete(code);
+    if (was && !this.throttleHeld()) {
+      this.taps.lift(this.clock, this.windowS());
+      this.latch.release();
+    }
   }
   clear(): void {
     this.held.clear();
     this.pressed.clear();
     this.throttle = 0;
+    this.taps.reset();
+    this.latch.release();
+  }
+  /** Whether a throttle key is physically down now (a press latched since the last sample is not). */
+  private throttleHeld(): boolean {
+    return this.map.throttle.some((c) => this.held.has(c));
+  }
+  private windowS(): number {
+    return this.thresholds.wheelieTapMs / 1000;
   }
   /** Held now, or pressed and released since the last sample. */
   private active(action: KeyAction): boolean {
@@ -150,6 +186,7 @@ export class KeyboardState {
     // Throttle ramps up while held (product spec), and drops at once on release.
     this.throttle = this.active('throttle') ? Math.min(1, this.throttle + dt / THROTTLE_RAMP_S) : 0;
     a.throttle = Math.max(a.throttle, this.throttle);
+    if (this.latch.sample(this.throttleHeld(), this.throttle)) a.wheelie = true;
     if (this.active('brake')) a.brake = 1;
     const steer = (this.active('steerRight') ? 1 : 0) - (this.active('steerLeft') ? 1 : 0);
     if (steer !== 0) a.steer = steer;
@@ -170,5 +207,6 @@ export class KeyboardState {
     if (this.active('skipRunBack')) a.skipRunBack = true;
     if (this.pressedNow('cycleCamera')) a.cycleCamera = true;
     this.pressed.clear();
+    this.clock += dt;
   }
 }

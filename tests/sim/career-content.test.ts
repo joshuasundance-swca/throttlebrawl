@@ -65,13 +65,12 @@ describe('the career maps', () => {
         );
       });
 
-      it('tiers of events ending in the boss, whose event is the only finale', () => {
-        def.tiers.forEach((t, i) =>
-          expect(
-            def.nodes.some((n) => n.tier === i),
-            t.id,
-          ).toBe(true),
-        );
+      it('every tier holds the wins that open it, and the boss, in the last tier, is the only finale', () => {
+        // The tier-boss format (playtest 3) holds the wins and then the tier's boss: one more node.
+        def.tiers.forEach((t, i) => {
+          const held = def.nodes.filter((n) => n.tier === i).length;
+          expect(held, t.id).toBeGreaterThanOrEqual(Math.max(1, t.requiredWins));
+        });
         const boss = def.nodes.find((n) => n.id === def.boss);
         expect(boss?.tier).toBe(def.tiers.length - 1);
         expect(plans.filter((p) => p.finale).map((p) => p.key)).toEqual([boss?.event]);
