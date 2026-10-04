@@ -36,7 +36,8 @@ import {
   targetOf,
   type RaceResult,
 } from './format';
-import { applyTopPlan, HUD_SIZE, layoutTop, placedBox, readSafe, settleLifts } from './hud-layout';
+import { applyTopPlan, HUD_SIZE, layoutTop, placedBox, readSafe, settleLifts, type Box } from './hud-layout';
+import { pickStampSpot } from './stamp';
 import { hudStyle } from './placement';
 import {
   applySettingsChange,
@@ -382,6 +383,10 @@ ${TICKER_CSS}
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 #ui[data-top='stacked']:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 #build-stamp.in-race { display: none; }
+#build-stamp { pointer-events: none; font-size: 11px; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
+  max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
+#build-stamp.at-right { left: auto; right: max(8px, env(safe-area-inset-right)); text-align: right; }
+#build-stamp.yield { display: none; }
 `;
 
 /** A style event as the browser specs feed it: the kind and its cash. */
@@ -817,6 +822,23 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
+    // The free stretch of the bottom band, between what stands in each bottom corner (the speed
+    // readout's slot, the touch buttons): a very short screen lets the career prompt use all of it.
+    let bandL = 0;
+    let bandR = 0;
+    const speedSlot = elementOf('speedometer');
+    const corner: Box[] = [
+      ...buttonBoxes,
+      ...(speedSlot && speedSlot.anchor.startsWith('bottom')
+        ? [placedBox(speedSlot, w, h, layout.mirror, HUD_SIZE.speed)]
+        : []),
+    ];
+    for (const b of corner) {
+      if ((b.left + b.right) / 2 < w / 2) bandL = Math.max(bandL, b.right);
+      else bandR = Math.max(bandR, w - b.left);
+    }
+    root.style.setProperty('--prompt-l', `${Math.ceil(bandL)}px`);
+    root.style.setProperty('--prompt-r', `${Math.ceil(bandR)}px`);
     for (const b of touchButtons.splice(0)) b.remove();
     // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
     // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep
@@ -1437,11 +1459,54 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     message: (t) => withCareer((c) => c.message(t)),
   };
 
+  // The build stamp never covers a control (F1): it is a small label in a bottom corner, it never
+  // takes a tap, and it steps to the other corner (or hides) when a control is under it. The menu's
+  // and the pause screen's footers carry the build id too. Re-checked when a screen changes, the
+  // window resizes, or a screen's content changes (a tab, the career map arriving).
+  const STAMP_AVOIDS = 'button, input, select, textarea, label, summary, a, .footer, .setting-label, output';
+  const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  let stampQueued = false;
+  const keepStampClear = () => {
+    stampQueued = false;
+    stamp.classList.remove('at-right', 'yield');
+    if (current === 'race') return;
+    const leftBox = boxOf(stamp.getBoundingClientRect());
+    stamp.classList.add('at-right');
+    const rightBox = boxOf(stamp.getBoundingClientRect());
+    stamp.classList.remove('at-right');
+    const controls: Box[] = [];
+    for (const e of root.querySelectorAll<HTMLElement>(STAMP_AVOIDS)) {
+      if (e.getClientRects().length === 0 || getComputedStyle(e).visibility === 'hidden') continue;
+      if (e.classList.contains('footer')) {
+        // A footer's box spans the screen; only its words are in the way.
+        const words = document.createRange();
+        words.selectNodeContents(e);
+        controls.push(boxOf(words.getBoundingClientRect()));
+      } else controls.push(boxOf(e.getBoundingClientRect()));
+    }
+    const spot = pickStampSpot({ left: leftBox, right: rightBox }, controls);
+    if (spot === 'right') stamp.classList.add('at-right');
+    else if (spot === 'hidden') stamp.classList.add('yield');
+  };
+  const queueStampCheck = () => {
+    if (stampQueued || current === 'race') return;
+    stampQueued = true;
+    requestAnimationFrame(keepStampClear);
+  };
+  window.addEventListener('resize', queueStampCheck);
+  new MutationObserver(queueStampCheck).observe(root, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['hidden', 'class'],
+  });
+
   function show(screen: Screen) {
     current = screen;
     for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
     if (paused) closePause();
     stamp.classList.toggle('in-race', screen === 'race');
+    queueStampCheck();
     if (screen === 'settings') {
       syncLive();
       settingsScreen.sync(settings);

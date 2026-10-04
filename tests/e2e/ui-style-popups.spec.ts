@@ -880,28 +880,38 @@ test.describe('phone portrait', () => {
   });
 });
 
-test.describe('small phone landscape', () => {
-  test.use({ viewport: { width: 740, height: 360 } });
-  test('the ticker sits clear of the road ahead', async ({ page }) => {
-    const problems = watchErrors(page);
-    await startRace(page);
-    // The rival's bar beside the ticker: on this screen the top row is tightest.
-    const m = await tickerAndMeasure(page, [LONGEST_BARK], { show: ['hud-target'] });
-    expectClear(m, 'small phone');
-    expectCompact(m, 'small phone');
-    await shot(
-      page,
-      'small',
-      m.layout.filter((p) => p.name === BIKE).map((p) => p.box),
-    );
-    const found = momentFindings(m, 'small phone, start');
-    // The HUD run's lane report inferred that the toast could reach the BRAKE button on a small
-    // phone: measured here, with every prompt.
-    found.push(...(await toastAndPrompts(page, 'small phone')));
-    expectLayout(found, 'small phone');
-    expect(problems).toEqual([]);
+// The small phones: the rival's bar beside the ticker (on these screens the top row is tightest),
+// the slow-frames toast and every prompt. 568x320 is a small older phone held sideways: its menu's
+// Race button sat under the build stamp, so the case was left out of the first version of this
+// check; the stamp keeps clear of controls now (ui/stamp.ts), and this case races from the menu
+// like the others, with the same empty known list.
+for (const [where, width, height] of [
+  ['small phone', 740, 360],
+  ['tiny phone', 568, 320],
+] as const) {
+  test.describe(`${where} landscape`, () => {
+    test.use({ viewport: { width, height } });
+    test('the ticker sits clear of the road ahead', async ({ page }) => {
+      const problems = watchErrors(page);
+      await startRace(page);
+      // The rival's bar beside the ticker: on this screen the top row is tightest.
+      const m = await tickerAndMeasure(page, [LONGEST_BARK], { show: ['hud-target'] });
+      expectClear(m, where);
+      expectCompact(m, where);
+      await shot(
+        page,
+        where.replace(/\s+/g, '-'),
+        m.layout.filter((p) => p.name === BIKE).map((p) => p.box),
+      );
+      const found = momentFindings(m, `${where}, start`);
+      // The HUD run's lane report inferred that the toast could reach the BRAKE button on a small
+      // phone: measured here, with every prompt.
+      found.push(...(await toastAndPrompts(page, where)));
+      expectLayout(found, where);
+      expect(problems).toEqual([]);
+    });
   });
-});
+}
 
 test.describe('laptop', () => {
   test.use({ viewport: { width: 1366, height: 768 }, isMobile: false, hasTouch: false });
@@ -1028,4 +1038,198 @@ test('the look-ahead and layout checks catch a centred widget and overlapped wid
     expect(layoutFindings(covered.layout, w, h, [{ name: 'career-prompt', box: promptBox }])).toContain(
       'career-prompt × touch-brake',
     );
+});
+
+// ---- The build stamp keeps clear of every control (F1) -----------------------------------------
+// The HUD run's 568x320 case could not start: the menu's Race button sat under #build-stamp, which
+// took the tap. The stamp now never takes a tap, takes the other bottom corner when a control is
+// under it, and hides when a control is under both (ui/stamp.ts). This measures it on every screen
+// with controls, at phone sizes sideways and upright and at a laptop's.
+
+/** What the stamp covers on this screen, from painted boxes (the UI ignores the pointer outside its controls). */
+async function stampCover(page: Page) {
+  return page.evaluate(() => {
+    const stamp = document.getElementById('build-stamp');
+    const shown = !!stamp && stamp.checkVisibility();
+    const sb = stamp?.getBoundingClientRect();
+    const hit = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+    const controls = [
+      ...document.querySelectorAll<HTMLElement>(
+        '#ui button, #ui input, #ui select, #ui textarea, #ui label, #ui summary, #ui a, #ui .setting-label, #ui output',
+      ),
+    ].filter((e) => e.checkVisibility() && getComputedStyle(e).visibility !== 'hidden');
+    const under: string[] = [];
+    // Footers span the screen: only their words count.
+    for (const f of document.querySelectorAll<HTMLElement>('#ui .footer')) {
+      if (!f.checkVisibility() || !sb || !shown) continue;
+      const range = document.createRange();
+      range.selectNodeContents(f);
+      if (hit(sb, range.getBoundingClientRect())) under.push(`#${f.id} (words)`);
+    }
+    // The Race button's centre must hit the button itself, never the stamp or anything else.
+    const blocked: string[] = [];
+    for (const e of controls) {
+      const r = e.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (sb && shown && hit(sb, r))
+        under.push(`${e.id || e.tagName.toLowerCase()} "${(e.textContent ?? '').trim().slice(0, 20)}"`);
+      if (e.id !== 'menu-race') continue;
+      const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
+      const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
+      const top = document.elementFromPoint(x, y);
+      if (top !== e && !e.contains(top))
+        blocked.push(`#menu-race: the tap lands on ${top?.id || top?.tagName}`);
+    }
+    return {
+      shown,
+      at: stamp?.className ?? '',
+      box: sb ? [sb.left, sb.top, sb.right, sb.bottom].map(Math.round) : null,
+      examined: controls.length,
+      under,
+      blocked,
+    };
+  });
+}
+
+/** Lets the stamp's own check run (it re-checks a frame after a screen or its content changes). */
+async function settleStamp(page: Page) {
+  await page.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  );
+}
+
+/**
+ * A tap on a control to get to the next screen. A control that is off the screen (the menu is
+ * taller than a 568x320 phone: its Settings row is cut off, a separate defect this check does not
+ * fix) is clicked by dispatch instead, and the case says so in the log.
+ */
+async function press(page: Page, selector: string, where: string) {
+  const target = page.locator(selector);
+  const onScreen = await target.evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+  });
+  if (onScreen) await target.click();
+  else {
+    console.log(`${where}: ${selector} is off the screen; clicking it by dispatch`);
+    await target.dispatchEvent('click');
+  }
+}
+
+async function expectStampClear(page: Page, where: string) {
+  await settleStamp(page);
+  const c = await stampCover(page);
+  console.log(
+    `${where}: stamp ${JSON.stringify({ shown: c.shown, at: c.at, box: c.box })}, ${c.examined} controls`,
+  );
+  expect(c.examined, `${where}: controls were examined`).toBeGreaterThan(0);
+  expect(c.under, `${where}: controls and words under the stamp`).toEqual([]);
+  expect(c.blocked, `${where}: taps that do not land on their control`).toEqual([]);
+}
+
+for (const [where, width, height, finePointer] of [
+  ['568x320', 568, 320, false],
+  ['640x360', 640, 360, false],
+  ['740x360', 740, 360, false],
+  ['915x412', 915, 412, false],
+  ['360x640 upright', 360, 640, true],
+  ['412x915 upright', 412, 915, true],
+  ['1366x768', 1366, 768, true],
+] as const) {
+  test.describe(`build stamp at ${where}`, () => {
+    // A touch device held upright gets the rotate screen, so the upright sizes (and the laptop) use a fine pointer.
+    test.use({ viewport: { width, height }, ...(finePointer ? { isMobile: false, hasTouch: false } : {}) });
+    test('never covers a control on the start screen, menu, settings tabs or changelog', async ({ page }) => {
+      const problems = watchErrors(page);
+      await page.addInitScript(() => {
+        (window as TestWindow).__GAME_TEST__ = true;
+      });
+      await page.goto('./');
+      await expect(page.locator('#start-screen')).toBeVisible();
+      // The start screen has no control to avoid: the stamp shows there (it names the build).
+      await settleStamp(page);
+      const start = await stampCover(page);
+      expect(start.shown, `${where}: the stamp shows on the start screen`).toBe(true);
+
+      await page.locator('#start-screen').click();
+      await expect(page.locator('#menu-race')).toBeVisible();
+      await expectStampClear(page, `${where}, menu`);
+
+      await press(page, '#menu-settings', where);
+      const tabs = await page.locator('[id^="settings-tab-"]').evaluateAll((els) => els.map((e) => e.id));
+      expect(tabs.length, `${where}: the settings tabs were found`).toBeGreaterThan(0);
+      for (const id of tabs) {
+        await press(page, `#${id}`, where);
+        await expectStampClear(page, `${where}, settings ${id}`);
+      }
+      await press(page, '#settings-back', where);
+
+      await press(page, '#menu-changelog', where);
+      await expect(page.locator('#changelog')).toBeVisible();
+      await expectStampClear(page, `${where}, changelog`);
+      await press(page, '#changelog-back', where);
+      await expect(page.locator('#menu-race')).toBeVisible();
+
+      // The tap on Race lands: the race starts, and the stamp is out of the race.
+      await page.locator('#menu-race').click();
+      await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+      await expect(page.locator('#build-stamp')).toBeHidden();
+      expect(problems).toEqual([]);
+    });
+  });
+}
+
+// The check must fire: a control planted under the stamp is named while the stamp is forced to
+// show, and the stamp itself steps away from it (to the other corner, or hides) when it is not.
+test('the stamp check catches a control under the stamp, and the stamp steps away from one (negative control)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  await settleStamp(page);
+  // The stamp at its home corner (left), shown, wherever the menu had put it.
+  await page.evaluate(() => {
+    const s = document.getElementById('build-stamp');
+    s?.classList.remove('at-right', 'yield');
+  });
+  const before = await stampCover(page);
+  expect(before.shown, 'the stamp was put back in its left corner').toBe(true);
+  expect(before.box, 'the stamp was measured').not.toBeNull();
+  // A button laid exactly over the stamp where it sits now.
+  await page.evaluate((box) => {
+    const [left = 0, top = 0, right = 0, bottom = 0] = box ?? [];
+    const b = document.createElement('button');
+    b.id = 'planted-under-stamp';
+    b.textContent = 'PLANTED';
+    Object.assign(b.style, {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${right - left}px`,
+      height: `${bottom - top}px`,
+      zIndex: '3',
+    });
+    document.getElementById('menu')?.append(b);
+  }, before.box);
+  await settleStamp(page);
+  const moved = await stampCover(page);
+  console.log(
+    `negative control: after planting ${JSON.stringify({ shown: moved.shown, at: moved.at, under: moved.under })}`,
+  );
+  expect(moved.under, 'the stamp stepped away from the planted button').toEqual([]);
+  expect(moved.at !== before.at || !moved.shown, 'the stamp moved or hid').toBe(true);
+  // Forced back over it, the check names it.
+  await page.evaluate(() => {
+    const s = document.getElementById('build-stamp');
+    s?.classList.remove('at-right', 'yield');
+    if (s) s.style.display = 'block';
+  });
+  const forced = await stampCover(page);
+  console.log(`negative control: forced ${JSON.stringify(forced.under)}`);
+  expect(forced.under.some((u) => u.includes('planted-under-stamp'))).toBe(true);
 });

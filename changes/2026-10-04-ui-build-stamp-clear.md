@@ -1,0 +1,7 @@
+---
+kind: fixed
+audience: player
+---
+The small build label in the corner no longer covers buttons. On a small phone held sideways (568 by 320) it sat over the menu's Race button. Now it is smaller, it never takes a tap, it moves to the other bottom corner when a button is under it, and it hides when there is a button under both. On a phone that is most of the time on the menu and some settings tabs: the menu and the pause screen still show the build in their own footers. On a very short phone (568 by 320) a long career tip now uses the whole free stretch at the bottom, in smaller type, so it stays off your bike.
+
+For devs: the choice is `src/ui/stamp.ts` (`pickStampSpot`, with a unit test); `src/ui/index.ts` measures the two corners and the visible controls on every screen change, resize and content change, and sets `at-right` or `yield` (display none, so `innerText` still reads the build) on `#build-stamp`. The text and its id are unchanged. ui sets `--prompt-l` and `--prompt-r` (what stands in each bottom corner) for the short-phone prompt rule in `career-screen.ts`. The HUD layout check (`tests/e2e/ui-style-popups.spec.ts`) has its 568x320 case back, with the known list still empty, and a new test walks the start screen, menu, every settings tab and the changelog at seven sizes (with a negative control) to prove no control is under the stamp. Known and not fixed here: the menu is taller than a 568x320 screen, so its Settings row is cut off. Not phone-verified.
