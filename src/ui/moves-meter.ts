@@ -287,6 +287,11 @@ export const MOVES_METER_CSS = `
 #hud-ticker[data-kind='driftLost'] .ticker-text { color: var(--tk-tag-bg); text-decoration: line-through; }
 #hud-ticker[data-cls='meter'][data-kind='drift'] .ticker-text { color: var(--tk-accent); }
 @media (prefers-reduced-motion: reduce) { #hud-wheelie { transition: none; } }
+/* The career prompt steps aside while the gauge is up, as it does for the landing line: a wheelie
+   lasts seconds and the prompt comes back after. On a short phone held sideways (568x320) and a phone
+   held upright, the prompt's band runs past the thumb, and no spot beside the stick is clear of it,
+   the touch buttons and the road ahead at once. [default] */
+body:has(#hud-wheelie:not([hidden])) #career-prompt { visibility: hidden; }
 `;
 
 export interface WheelieGauge {

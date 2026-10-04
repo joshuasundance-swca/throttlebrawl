@@ -34,9 +34,10 @@ import { fastForwardDone } from './lockstep';
 // happens.
 //
 // Playtest 3's wheelie gauge (T6.3, `#hud-wheelie`, the one new widget) is shown at its resting place
-// beside the stick in the heat and toast moments, so it is measured against every other piece, the
-// touch buttons and the road ahead like the rest. ui/moves-meter.test.ts sweeps where else a thumb
-// can put it.
+// beside the stick in a second frame of the heat and toast moments, so it is measured against every
+// other piece, the touch buttons and the road ahead like the rest; the career prompt steps aside
+// while it is up (ui/moves-meter.ts), so every prompt put in the box in that frame must be hidden.
+// ui/moves-meter.test.ts sweeps where else a thumb can put it.
 //
 // The live check after the HUD run (#428-#430) found what the road-ahead box alone cannot see: the
 // in-air prompt under the BRAKE button, and the slow-frames toast and the landing line over the
@@ -96,7 +97,7 @@ interface Measured {
   /** Every HUD widget and overlay painted in the same frozen frame. */
   layout: Piece[];
   /** Each career and tutorial prompt as the prompt box paints it in that frame, by its words. */
-  prompts: { text: string; box: Box }[];
+  prompts: { text: string; box: Box; hidden: boolean }[];
   /** Whether the strip had finished sliding in and fading. */
   settled: boolean;
 }
@@ -526,14 +527,20 @@ function tickerAndMeasure(page: Page, items: TickerItemLike[], opts: MeasureOpts
             }
           : null;
       // Every prompt in the career's prompt box, as it would show in this frame.
-      const prompts: { text: string; box: ReturnType<typeof box> }[] = [];
+      const prompts: { text: string; box: ReturnType<typeof box>; hidden: boolean }[] = [];
       const promptBox = document.getElementById('career-prompt');
       if (promptBox && opts.prompts?.length) {
         const was = { text: promptBox.textContent, hidden: promptBox.hidden };
         promptBox.hidden = false;
         for (const t of opts.prompts) {
           promptBox.textContent = t;
-          if (promptBox.checkVisibility()) prompts.push({ text: t, box: box(promptBox) });
+          if (promptBox.checkVisibility())
+            prompts.push({
+              text: t,
+              box: box(promptBox),
+              // Stepped aside (visibility: hidden: the landing line, the wheelie gauge): not painted.
+              hidden: getComputedStyle(promptBox).visibility === 'hidden',
+            });
         }
         promptBox.textContent = was.text;
         promptBox.hidden = was.hidden;
@@ -591,6 +598,7 @@ function momentFindings(m: Measured, where: string, promptsMeasured = false): st
   const rest = m.layout.filter((p) => p.name !== 'career-prompt');
   const byPrompt: string[] = [];
   for (const p of m.prompts) {
+    if (p.hidden) continue;
     const piece: Piece = { name: 'career-prompt', box: p.box };
     const f = layoutFindings(rest, m.viewport.w, m.viewport.h, [piece]);
     for (const x of f) found.add(x);
@@ -627,11 +635,11 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
     timeout: 15_000,
   });
   const m = await tickerAndMeasure(page, [LONGEST_BARK], {
-    show: ['look-offer', 'hud-target', 'hud-wheelie'],
+    show: ['look-offer', 'hud-target'],
     prompts: CAREER_PROMPTS,
   });
   const names = new Set(m.layout.map((p) => p.name));
-  for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target', 'hud-wheelie'])
+  for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target'])
     expect(names.has(must), `${where}: the layout probe measured ${must} with the heat up`).toBe(true);
   await shot(
     page,
@@ -640,8 +648,38 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
     ['look-offer'],
   );
   const found = momentFindings(m, `${where}, heat`, true);
+  found.push(...(await gaugeMoment(page, `${where}, heat`)));
   await page.evaluate(() => (window as TestWindow).__game?.lockstep(null));
   return found;
+}
+
+/**
+ * Playtest 3's wheelie gauge (T6.3) up at its resting place beside where the stick lands, in the same
+ * frozen frame as the moment's other pieces (a bark held, the toast and the rival's bar): it is
+ * measured against every piece, the touch buttons and the road ahead. The career prompt steps aside
+ * while the gauge is up (ui/moves-meter.ts), so every prompt put in the box in this frame is hidden.
+ */
+async function gaugeMoment(page: Page, where: string): Promise<string[]> {
+  const g = await tickerAndMeasure(page, [LONGEST_BARK], {
+    show: ['look-offer', 'hud-target', 'hud-wheelie'],
+    prompts: CAREER_PROMPTS,
+  });
+  expect(
+    g.layout.some((p) => p.name === 'hud-wheelie'),
+    `${where}: the layout probe measured hud-wheelie`,
+  ).toBe(true);
+  expect(g.prompts.length, `${where}: every prompt put in the box with the gauge up`).toBe(
+    CAREER_PROMPTS.length,
+  );
+  expect(
+    g.prompts.filter((p) => !p.hidden).map((p) => p.text),
+    `${where}: prompts that show beside the wheelie gauge`,
+  ).toEqual([]);
+  expect(
+    g.layout.some((p) => p.name === 'career-prompt'),
+    `${where}: the live prompt steps aside while the gauge is up`,
+  ).toBe(false);
+  return momentFindings(g, `${where}, wheelie gauge`);
 }
 
 /**
@@ -770,17 +808,12 @@ async function shot(page: Page, name: string, outline: readonly Box[] = [], show
  */
 async function toastAndPrompts(page: Page, where: string): Promise<string[]> {
   const m = await tickerAndMeasure(page, [LONGEST_BARK], {
-    show: ['look-offer', 'hud-target', 'hud-wheelie'],
+    show: ['look-offer', 'hud-target'],
     prompts: CAREER_PROMPTS,
   });
   expect(
     m.layout.some((p) => p.name === 'look-offer'),
     `${where}: the layout probe measured look-offer`,
-  ).toBe(true);
-  // Playtest 3's wheelie gauge (T6.3) is up too, at its resting place beside where the stick lands.
-  expect(
-    m.layout.some((p) => p.name === 'hud-wheelie'),
-    `${where}: the layout probe measured hud-wheelie`,
   ).toBe(true);
   await shot(
     page,
@@ -788,7 +821,8 @@ async function toastAndPrompts(page: Page, where: string): Promise<string[]> {
     m.layout.filter((p) => p.name === BIKE).map((p) => p.box),
     ['look-offer'],
   );
-  return momentFindings(m, `${where}, toast`, true);
+  // Playtest 3's wheelie gauge (T6.3) up too, in a second frame: the prompt steps aside for it.
+  return [...momentFindings(m, `${where}, toast`, true), ...(await gaugeMoment(page, `${where}, toast`))];
 }
 
 /** A whole case's HUD layout: the start, the heat badge and the landing line, against its list. */
