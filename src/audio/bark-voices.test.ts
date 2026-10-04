@@ -213,9 +213,11 @@ describe('spoken barks', () => {
     expect(heard).toEqual([{ contentRef: KEVIN, durationS: 3.2 }]);
   });
 
-  it('listen for the event the bark bubble sends, and the bubble for the voice event', () => {
+  it('listen for the event the ticker bark link sends, and the link for the voice event', () => {
+    // The bark bubble became the ticker strip (playtest 3, T6.1); ui/narrative/voice-link.ts now
+    // announces a shown bark and listens for the voice's length.
     const [bubble] = Object.values(
-      import.meta.glob<string>('../ui/narrative/bubble.ts', {
+      import.meta.glob<string>('../ui/narrative/voice-link.ts', {
         eager: true,
         query: '?raw',
         import: 'default',

@@ -34,9 +34,32 @@
 //     never dive; on the road they still dive from it;
 //   - a `chases` animal (a dog) runs after a passing rider for PEDS.chaseS along the verge, inside
 //     its zone and never on a bridge walkway or the road, then trots back.
+// - Gap acceptance (playtest 3, T4.2; `peds.gapAccept`, on by default): a crossing is cut into two
+//   stages, the near kerb to the refuge on the centre line (the d where the drive lanes' direction
+//   flips, or the median's middle; a one-way road has none, so one stage) and the refuge to the far
+//   kerb. Before a pedestrian steps onto the road, and before it leaves the refuge, it checks the
+//   stage: a rider fast enough to count (PEDS.threatMinMps), ahead within PEDS.gapLookM, in the
+//   stage's lanes, who would arrive inside the stage's time plus PEDS.gapMarginS, blocks the step,
+//   and it waits where it stands. Cars are not gated (they do not stop for people), big animals
+//   are. A pedestrian already on the road when a rider turns up sooner than the rest of the stage
+//   hurries (PEDS.hurryScale times its pace) to the nearer end of the stage; the dive stays the last
+//   resort. The worst-moment gag is a fake-out: the lured pedestrian walks to PEDS.fakeOutM outside
+//   the road edge, stops, and hops back as the rider passes (never onto the road).
+// - Zone-local kinds (real-world C0.4): a `roadsideZone` with `params.kinds` (a list of traffic-type
+//   ids, bare or with the pack, people or animals) spawns only those, weighted equally and whatever
+//   the region's weights, from the zone's own seeded stream, so no other spawn moves.
 // Pedestrians move across the road (d) to cross it, and along it (s) only on the verge inside
 // their zone. Every number below is a [default] starting value, to be tuned on the phone.
-import { clamp, HALF_PI, nextFloat, PI, type TuningParamDecl } from '../../core';
+import {
+  clamp,
+  createRng,
+  HALF_PI,
+  nextFloat,
+  PI,
+  streamSeed,
+  type RngState,
+  type TuningParamDecl,
+} from '../../core';
 import type { BakedFeature, RoadNeighbour, RoadNetwork } from '../../road';
 import type { SimConfig, SimTrafficTypeDef } from '../types';
 import { vehicleInfo } from '../traffic';
@@ -68,6 +91,19 @@ export const PEDS_TUNING: readonly TuningParamDecl[] = [
     max: 1.5,
     step: 0.05,
     unit: '×',
+    affectsSim: true,
+  },
+  {
+    // T4.2 (playtest 3): pedestrians check for a gap before stepping onto the road and step back
+    // instead of walking into a rider. 0 = the old crossers, who walked on regardless. [default]
+    id: 'peds.gapAccept',
+    group: 'traffic',
+    label: 'Pedestrians wait for a gap',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
     affectsSim: true,
   },
 ];
@@ -147,6 +183,18 @@ export const PEDS = {
   trotBack: 0.4,
   /** W-P: a stroller turns back this far inside its zone's ends, m. */
   strollEndM: 1,
+  /** T4.2: slack on top of the time a crossing stage takes, s. */
+  gapMarginS: 1,
+  /** T4.2: a rider this far ahead (along the road) counts for a gap check, m. */
+  gapLookM: 300,
+  /** T4.2: a rider counts when its lane is within this of the stage's span, m (half a rider + 0.6). */
+  gapLateralM: 1,
+  /** T4.2: a pedestrian caught on the road walks at this times its pace to the nearer end of its stage. */
+  hurryScale: 2.5,
+  /** T4.2: the fake-out spot: this far outside the road edge (body edge), m. */
+  fakeOutM: 0.15,
+  /** T4.2: the longest a fake-out holds at the kerb, s (scaled). */
+  fakeOutHoldS: 8,
 };
 
 /** W-P: `pedReact` kinds, as numbers in PedsState.reactKind (0 none). */
@@ -154,7 +202,16 @@ const REACT_CODE = { jumpBack: 1, fist: 2, film: 3, chase: 4 } as const;
 type ReactName = keyof typeof REACT_CODE;
 
 /** Phase codes kept in PedsState.phase (plain numbers, so the state hashes and serializes). */
-export const PED_PHASE = { loiter: 0, walk: 1, dive: 2, down: 3, react: 4, hop: 5, along: 6 } as const;
+export const PED_PHASE = {
+  loiter: 0,
+  walk: 1,
+  dive: 2,
+  down: 3,
+  react: 4,
+  hop: 5,
+  along: 6,
+  fake: 7,
+} as const;
 
 /** The threat range for a rider at `speed` m/s: it grows with speed. */
 export function pedThreatRangeM(speed: number): number {
@@ -216,6 +273,10 @@ export interface PedsState {
   vehicleContacts: number;
   /** W-P: `pedReact` events so far. */
   reacts: number;
+  /** T4.2: 1 while the walk is a gap-checked crossing (not a recovery walk off the road). */
+  gated: number[];
+  /** T4.2: 1 while the pedestrian hurries (PEDS.hurryScale times its pace). */
+  hurry: number[];
 }
 
 export function pedsState(world: World): PedsState {
@@ -246,6 +307,8 @@ export function pedsState(world: World): PedsState {
     contacts: 0,
     vehicleContacts: 0,
     reacts: 0,
+    gated: [],
+    hurry: [],
   }));
 }
 
@@ -344,7 +407,9 @@ interface Near {
 
 function nearThreats(world: World, config: SimConfig): Near[] {
   const out: Near[] = [];
-  const nb = (m: Mover) => config.road.neighbours(m.pos.edge, m.pos.s, NEIGHBOUR_RANGE_M);
+  const nb = (m: Mover, range = NEIGHBOUR_RANGE_M) => config.road.neighbours(m.pos.edge, m.pos.s, range);
+  // With gap acceptance on, riders are looked for as far as the gap check looks (T4.2).
+  const riderRange = gapAcceptOn(world) ? Math.max(NEIGHBOUR_RANGE_M, PEDS.gapLookM) : NEIGHBOUR_RANGE_M;
   for (const m of world.movers) {
     if (isThreatRider(m)) {
       out.push({
@@ -353,7 +418,7 @@ function nearThreats(world: World, config: SimConfig): Near[] {
         kerb: false,
         lengthM: PEDS.riderLengthM,
         widthM: PEDS.riderWidthM,
-        nb: nb(m),
+        nb: nb(m, riderRange),
       });
     } else if (m.kind === 'vehicle') {
       const info = vehicleInfo(world, config, m.id);
@@ -398,8 +463,13 @@ function relate(near: Near, p: Mover, range: number): Rel | null {
   return { ahead, dd: sign * p.pos.d - r.pos.d, riderD: sign * r.pos.d, sign };
 }
 
-function rollWait(world: World): number {
-  return PEDS.waitMinS + nextFloat(world.rng.peds) * (PEDS.waitMaxS - PEDS.waitMinS);
+function rollWait(world: World, rng: RngState = world.rng.peds): number {
+  return PEDS.waitMinS + nextFloat(rng) * (PEDS.waitMaxS - PEDS.waitMinS);
+}
+
+/** T4.2: whether pedestrians check for a gap (`peds.gapAccept`; absent means off). */
+function gapAcceptOn(world: World): boolean {
+  return (world.params['peds.gapAccept'] ?? 0) >= 0.5;
 }
 
 /**
@@ -423,6 +493,8 @@ export function placePed(
     /** W-P: the roadside zone's span along the edge (default: just s, so nobody strolls). */
     s0?: number;
     s1?: number;
+    /** The stream a stroller's first direction is rolled from (default: the peds stream). */
+    rng?: RngState;
   },
 ): number {
   const st = pedsState(world);
@@ -456,11 +528,13 @@ export function placePed(
   st.reactCooldownS.push(0);
   st.scaredBy.push(-1);
   st.reactKind.push(0);
+  st.gated.push(0);
+  st.hurry.push(0);
   st.spawned++;
   // A stroller (W-P) sets off along the verge at once, toward a seeded end of its zone.
   if (t && strolls(t) && s1 - s0 > 2 * PEDS.strollEndM) {
     const k = st.id.length - 1;
-    startStroll(world, st, k, nextFloat(world.rng.peds) < 0.5 ? -1 : 1, t);
+    startStroll(world, st, k, nextFloat(spec.rng ?? world.rng.peds) < 0.5 ? -1 : 1, t);
   }
   return mover.id;
 }
@@ -510,6 +584,24 @@ function pick(world: World, config: SimConfig, pool: readonly number[]): number 
   return pool[pool.length - 1] ?? -1;
 }
 
+/**
+ * Real-world C0.4: the traffic types a zone's `params.kinds` names (pedestrians and animals only),
+ * in the config's order, whatever the region's weights say; null when the zone names none that exist
+ * (it then spawns as any other zone does). An id matches with or without its pack ("base:tourist").
+ */
+function zoneKinds(config: SimConfig, f: BakedFeature): readonly number[] | null {
+  const raw = f.params?.['kinds'];
+  if (!Array.isArray(raw)) return null;
+  const want = new Set(raw.filter((k): k is string => typeof k === 'string'));
+  const out: number[] = [];
+  config.trafficTypes.forEach((t, i) => {
+    if (!isPedType(t)) return;
+    const bare = t.contentId.slice(t.contentId.indexOf(':') + 1);
+    if (want.has(t.contentId) || want.has(bare)) out.push(i);
+  });
+  return out.length > 0 ? out : null;
+}
+
 /** Spawns the pedestrians of one roadside zone. */
 function spawnZone(
   world: World,
@@ -518,25 +610,38 @@ function spawnZone(
   f: BakedFeature,
   people: readonly number[],
   animals: readonly number[],
+  kinds: readonly number[] | null,
 ): void {
   const spawns = f.params?.['spawns'];
   const length = Math.max(0, f.s1 - f.s0);
   const n = Math.min(PEDS.maxPerZone, Math.max(1, Math.floor(length / PEDS.perZoneM)));
   const side = f.d0 + f.d1 < 0 ? -1 : 1;
   const edgeLength = config.road.edges[edge]?.length ?? 0;
+  // A zone with its own kinds rolls from its own stream, so it never moves another zone's spawns.
+  const own = kinds ? createRng(streamSeed(config.seed, `peds.zone:${edge}:${f.id}:${f.s0}`)) : null;
   for (let i = 0; i < n; i++) {
-    const r = world.rng.peds;
+    const r = own ?? world.rng.peds;
     const s = clamp(f.s0 + ((i + 0.2 + 0.6 * nextFloat(r)) * length) / n, 0, edgeLength);
     const stray = clamp(world.params['peds.strayAnimalChance'] ?? PEDS.strayAnimalChance, 0, 1);
     let pool: readonly number[];
-    if (spawns === 'animals') pool = animals;
-    else if (spawns === 'pedestrians') pool = animals.length > 0 && nextFloat(r) < stray ? animals : people;
-    else pool = [...people, ...animals];
-    // A bridge walkway is no place for an animal: people only there (traffic-4).
-    if (onBridgeWalkway(config.road, edge, s)) pool = people;
-    else if (pool.length === 0) pool = people.length > 0 ? people : animals;
-    if (pool.length === 0) continue;
-    const type = pick(world, config, pool);
+    let type: number;
+    if (kinds) {
+      // Only the named kinds, equally likely; a bridge walkway still takes people only.
+      pool = onBridgeWalkway(config.road, edge, s)
+        ? kinds.filter((k) => config.trafficTypes[k]?.category === 'pedestrian')
+        : kinds;
+      if (pool.length === 0) continue;
+      type = pool[Math.min(pool.length - 1, Math.floor(nextFloat(r) * pool.length))] ?? -1;
+    } else {
+      if (spawns === 'animals') pool = animals;
+      else if (spawns === 'pedestrians') pool = animals.length > 0 && nextFloat(r) < stray ? animals : people;
+      else pool = [...people, ...animals];
+      // A bridge walkway is no place for an animal: people only there (traffic-4).
+      if (onBridgeWalkway(config.road, edge, s)) pool = people;
+      else if (pool.length === 0) pool = people.length > 0 ? people : animals;
+      if (pool.length === 0) continue;
+      type = pick(world, config, pool);
+    }
     const t = config.trafficTypes[type];
     if (!t) continue;
     const half = t.widthM / 2;
@@ -548,7 +653,7 @@ function spawnZone(
     // A stroller (W-P) walks the verge instead of crossing.
     const crosses = !railed && nextFloat(r) < chance && t.cruiseMps > 0 && !strolls(t);
     const far = offRoadD(config.road, edge, s, -side, half, 0) - side * nextFloat(r) * 1.5;
-    const timer = rollWait(world);
+    const timer = rollWait(world, r);
     // A big kind is never lured out in front of a rider at the worst moment.
     const lure = nextFloat(r) < PEDS.lureChance && t.hazard !== 'big';
     placePed(world, config, {
@@ -563,6 +668,7 @@ function spawnZone(
       lure,
       s0: f.s0,
       s1: f.s1,
+      rng: r,
     });
   }
 }
@@ -632,6 +738,8 @@ function startDive(
   }
   st.phase[k] = PED_PHASE.dive;
   st.timer[k] = PEDS.diveS;
+  st.gated[k] = 0;
+  st.hurry[k] = 0;
   st.fromD[k] = p.pos.d;
   st.toD[k] = p.pos.d + best * PEDS.diveDistM;
   st.dives++;
@@ -685,6 +793,197 @@ function riderComing(config: SimConfig, p: Mover, threats: readonly Near[]): boo
     if (rel && rel.ahead >= range + PEDS.lureLeadMinM) return true;
   }
   return false;
+}
+
+// ---- T4.2: gap acceptance ----------------------------------------------------------------
+
+/**
+ * The refuge of a crossing at (edge, s): the centre line, where the drive lanes' direction flips (the
+ * middle of the median when there is one). Null on a one-way road, or where the two directions'
+ * lanes are not apart, so a crossing there is one stage.
+ */
+function refugeD(road: RoadNetwork, edge: number, s: number): number | null {
+  const span = (dir: 1 | -1) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const lane of road.lanesAt(edge, s)) {
+      if (lane.kind === 'shoulder' || lane.direction !== dir) continue;
+      lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+      hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+    }
+    return { lo, hi };
+  };
+  const a = span(1);
+  const b = span(-1);
+  if (!Number.isFinite(a.lo) || !Number.isFinite(b.lo)) return null;
+  if (a.hi <= b.lo) return (a.hi + b.lo) / 2;
+  if (b.hi <= a.lo) return (b.hi + a.lo) / 2;
+  return null;
+}
+
+/**
+ * How soon the first rider who counts reaches pedestrian `p`, s, among riders whose lane lies within
+ * PEDS.gapLateralM of [dLo, dHi]; Infinity when none does. A rider counts when it is fast enough
+ * (PEDS.threatMinMps), ahead within PEDS.gapLookM, not yet past the pedestrian, and not far above it.
+ * Cars do not count: they do not stop for people, and the dives from them stay.
+ */
+function riderArrivalS(
+  p: Mover,
+  t: SimTrafficTypeDef,
+  threats: readonly Near[],
+  dLo: number,
+  dHi: number,
+): number {
+  return pressingRider(p, t, threats, dLo, dHi).arrival;
+}
+
+/** riderArrivalS, and the pressing rider's d in the pedestrian's frame (NaN when there is none). */
+function pressingRider(
+  p: Mover,
+  t: SimTrafficTypeDef,
+  threats: readonly Near[],
+  dLo: number,
+  dHi: number,
+): { arrival: number; d: number } {
+  let best = Infinity;
+  let d = NaN;
+  for (const near of threats) {
+    if (near.vehicle) continue;
+    const r = near.m;
+    if (r.speed < PEDS.threatMinMps || r.h - p.h >= PEDS.maxContactH) continue;
+    const rel = relate(near, p, PEDS.gapLookM);
+    if (!rel) continue;
+    const half = (near.lengthM + t.lengthM) / 2;
+    if (rel.ahead <= -half) continue;
+    if (rel.riderD < dLo - PEDS.gapLateralM || rel.riderD > dHi + PEDS.gapLateralM) continue;
+    const arrival = Math.max(0, rel.ahead - half) / r.speed;
+    if (arrival < best) {
+      best = arrival;
+      d = rel.riderD;
+    }
+  }
+  return { arrival: best, d };
+}
+
+/** The end of the first stage of a crossing from `from` to `to`: the refuge if it lies between. */
+function firstStageEnd(road: RoadNetwork, p: Mover, from: number, to: number): number {
+  const refuge = refugeD(road, p.pos.edge, p.pos.s);
+  if (refuge === null || Math.abs(from - refuge) < 1e-6) return to;
+  return Math.sign(from - refuge) !== Math.sign(to - refuge) ? refuge : to;
+}
+
+/** Whether the first stage of a crossing from `from` to `to` is clear of riders, margin included. */
+function gapClear(
+  config: SimConfig,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  threats: readonly Near[],
+  from: number,
+  to: number,
+): boolean {
+  const end = firstStageEnd(config.road, p, from, to);
+  const time = Math.abs(end - from) / t.cruiseMps + PEDS.gapMarginS;
+  return riderArrivalS(p, t, threats, Math.min(from, end), Math.max(from, end)) >= time;
+}
+
+/**
+ * One tick of a gap-checked crossing (slot k on the road, walking): the d to walk toward this tick,
+ * or null to wait where it stands (at the refuge, until the next stage is clear). A pedestrian caught
+ * by a rider sooner than the rest of its stage hurries to the nearer end of the stage: on, or back to
+ * where the stage began (the crossing is dropped there; from the refuge it then waits for a gap).
+ */
+function gatedTarget(
+  config: SimConfig,
+  st: PedsState,
+  k: number,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  threats: readonly Near[],
+): number | null {
+  const final = st.targetD[k] ?? p.pos.d;
+  const from = st.fromD[k] ?? p.pos.d;
+  const refuge = refugeD(config.road, p.pos.edge, p.pos.s);
+  const crosses = refuge !== null && Math.sign(from - refuge) !== Math.sign(final - refuge);
+  const mid = refuge ?? 0;
+  if (crosses && Math.abs(p.pos.d - mid) < 1e-6) {
+    // At the refuge: the next stage must be clear before it leaves.
+    st.hurry[k] = 0;
+    return gapClear(config, p, t, threats, mid, final) ? final : null;
+  }
+  const before = crosses && Math.sign(p.pos.d - mid) === Math.sign(from - mid);
+  const end = before ? mid : final;
+  if (st.hurry[k] !== 1) {
+    const left = Math.abs(end - p.pos.d);
+    const { arrival, d: riderD } = pressingRider(
+      p,
+      t,
+      threats,
+      Math.min(p.pos.d, end),
+      Math.max(p.pos.d, end),
+    );
+    if (arrival < left / t.cruiseMps) {
+      st.hurry[k] = 1;
+      const fast = t.cruiseMps * PEDS.hurryScale;
+      const start = before || !crosses ? from : mid;
+      // The end that keeps clear of the rider's lane (the dive's side band) wins; failing that, the
+      // end with more time to spare, like the dive's clearance score; the way on on a tie.
+      const band = (PEDS.riderWidthM + t.widthM) / 2 + PEDS.lateralM;
+      const clearOn = Math.abs(end - riderD) >= band;
+      const clearBack = Math.abs(start - riderD) >= band;
+      const back =
+        clearOn !== clearBack
+          ? clearBack
+          : arrival - Math.abs(p.pos.d - start) / fast > arrival - left / fast;
+      if (back) {
+        st.gated[k] = 0;
+        st.targetD[k] = start;
+        return start;
+      }
+    }
+  }
+  return end;
+}
+
+/** The lured pedestrian walks to the kerb, `PEDS.fakeOutM` outside the road edge, and stops there. */
+function startFakeOut(config: SimConfig, st: PedsState, k: number, p: Mover, t: SimTrafficTypeDef): void {
+  const side = p.pos.d < 0 ? -1 : 1;
+  const { lo, hi } = roadEdges(config.road, p.pos.edge, p.pos.s);
+  const spot = (side > 0 ? hi : -lo) + PEDS.fakeOutM + t.widthM / 2;
+  st.lure[k] = 0;
+  st.phase[k] = PED_PHASE.fake;
+  st.timer[k] = PEDS.fakeOutHoldS;
+  st.targetD[k] = side * Math.min(spot, Math.abs(p.pos.d));
+}
+
+/**
+ * The fake-out (the worst-moment gag): walk to the kerb, stop facing the road, and stay until no
+ * rider is coming (or the hold runs out). The close pass hops it back as the rider goes by.
+ */
+function fakeOut(
+  world: World,
+  config: SimConfig,
+  st: PedsState,
+  k: number,
+  p: Mover,
+  t: SimTrafficTypeDef,
+  dt: number,
+  threats: readonly Near[],
+): void {
+  const target = st.targetD[k] ?? p.pos.d;
+  const step = clamp(target - p.pos.d, -t.cruiseMps * dt, t.cruiseMps * dt);
+  p.pos.d += step;
+  if (Math.abs(target - p.pos.d) > 1e-6) {
+    p.speed = Math.abs(step) / Math.max(dt, 1e-9);
+    p.yaw = (step >= 0 ? 1 : -1) * HALF_PI;
+    return;
+  }
+  p.pos.d = target;
+  p.speed = 0;
+  p.yaw = (p.pos.d < 0 ? 1 : -1) * HALF_PI;
+  const { lo, hi } = roadEdges(config.road, p.pos.edge, p.pos.s);
+  if ((st.timer[k] ?? 0) <= 0 || riderArrivalS(p, t, threats, lo, hi) === Infinity) {
+    resume(world, st, k, t);
+  }
 }
 
 // ---- W-P: life that reacts ---------------------------------------------------------------
@@ -864,7 +1163,14 @@ function closePass(
 ): void {
   st.reactCooldownS[k] = Math.max(0, (st.reactCooldownS[k] ?? 0) - dt);
   const phase = st.phase[k];
-  if (phase !== PED_PHASE.loiter && phase !== PED_PHASE.along && phase !== PED_PHASE.react) return;
+  if (
+    phase !== PED_PHASE.loiter &&
+    phase !== PED_PHASE.along &&
+    phase !== PED_PHASE.react &&
+    phase !== PED_PHASE.fake
+  ) {
+    return;
+  }
   if ((st.reactCooldownS[k] ?? 0) > 0 || st.chasing[k] === 1) return;
   const p = world.movers[st.id[k] ?? -1];
   const t = config.trafficTypes[st.type[k] ?? -1];
@@ -975,18 +1281,47 @@ function move(
     walkAlong(world, config, st, k, p, t, dt);
     return;
   }
+  if (phase === PED_PHASE.fake) {
+    fakeOut(world, config, st, k, p, t, dt, threats);
+    return;
+  }
   if (phase === PED_PHASE.loiter) {
     p.speed = 0;
     if (st.crosses[k] !== 1) return;
-    if ((st.timer[k] ?? 0) > 0 && !(st.lure[k] === 1 && riderComing(config, p, threats))) return;
+    const gap = gapAcceptOn(world);
+    // T4.2: the worst-moment gag is a fake-out at the kerb, never a step onto the road.
+    if (gap && st.lure[k] === 1 && !onRoad(config.road, p, half) && riderComing(config, p, threats)) {
+      startFakeOut(config, st, k, p, t);
+      return;
+    }
+    if ((st.timer[k] ?? 0) > 0 && (gap || !(st.lure[k] === 1 && riderComing(config, p, threats)))) return;
     const home = st.homeD[k] ?? p.pos.d;
     const far = st.farD[k] ?? p.pos.d;
-    st.targetD[k] = Math.abs(p.pos.d - home) < Math.abs(p.pos.d - far) ? far : home;
+    const goal = Math.abs(p.pos.d - home) < Math.abs(p.pos.d - far) ? far : home;
+    if (gap) {
+      // T4.2: wait for a gap in the first stage (from the refuge, the same).
+      if (!gapClear(config, p, t, threats, p.pos.d, goal)) return;
+      st.gated[k] = 1;
+      st.hurry[k] = 0;
+      st.fromD[k] = p.pos.d;
+    }
+    st.targetD[k] = goal;
     st.phase[k] = PED_PHASE.walk;
   }
   // Walking across the road, at the kind's own pace. A walker waits for a rider or car in the way.
-  const target = st.targetD[k] ?? p.pos.d;
-  const step = clamp(target - p.pos.d, -t.cruiseMps * dt, t.cruiseMps * dt);
+  // A gap-checked crossing (T4.2) walks one stage at a time and may hurry.
+  let stageEnd: number | null = null;
+  if (st.gated[k] === 1) {
+    stageEnd = gatedTarget(config, st, k, p, t, threats);
+    if (stageEnd === null) {
+      p.speed = 0;
+      return;
+    }
+  }
+  const final = st.targetD[k] ?? p.pos.d;
+  const target = stageEnd ?? final;
+  const pace = t.cruiseMps * (st.hurry[k] === 1 ? PEDS.hurryScale : 1);
+  const step = clamp(target - p.pos.d, -pace * dt, pace * dt);
   const next = p.pos.d + step;
   // Blocked only by a step that closes in on someone: a stopped rider beside a pedestrian never
   // pins them, because stepping away is always allowed.
@@ -1006,6 +1341,10 @@ function move(
   if (Math.abs(target - p.pos.d) < 1e-6) {
     p.pos.d = target;
     p.speed = 0;
+    st.hurry[k] = 0;
+    // T4.2: the refuge ends a stage, not the crossing; the next stage is checked on the next tick.
+    if (target !== final) return;
+    st.gated[k] = 0;
     // A stroller who walked off the road after a dive strolls on (W-P).
     if (strolls(t)) {
       resume(world, st, k, t);
@@ -1092,13 +1431,15 @@ export const pedsSystem: SimSystem = {
       if (t.category === 'pedestrian') people.push(i);
       else if (t.category === 'animal') animals.push(i);
     });
-    if (people.length + animals.length === 0) return;
     for (const e of config.road.edges) {
       // Only the race route's roads: a network with longer routes carries zones past a shorter
       // route's finish, where nobody rides in this race.
       if (!config.route.allows(e.index)) continue;
       for (const f of config.road.featuresOf(e.index, 'roadsideZone')) {
-        spawnZone(world, config, e.index, f, people, animals);
+        // A zone's own kinds spawn even where the region lists nobody (they are "zones only").
+        const kinds = zoneKinds(config, f);
+        if (!kinds && people.length + animals.length === 0) continue;
+        spawnZone(world, config, e.index, f, people, animals, kinds);
       }
     }
   },

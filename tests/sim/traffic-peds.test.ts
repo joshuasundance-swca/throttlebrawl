@@ -14,7 +14,11 @@
 //     LARGEST pedestrian kind's box (snapshots do not name a pedestrian's kind), so it over-counts;
 //   - threat: pedThreatRangeM(speed) ahead (or PEDS.threatBehindM past) and inside the side band,
 //     using the SMALLEST kind's width and one tick of slack, so every flagged tick is one the sim
-//     must also flag. Each needs a pedDive for that pedestrian this tick or within one dive.
+//     must also flag. Each needs a pedDive for that pedestrian this tick or within one dive;
+//   - gap acceptance (playtest 3, T4.2): no pedestrian goes from off the road to on it while a rider
+//     is about to reach it. The check over-approximates with the published PEDS constants: it
+//     counts only a step that leaves the rider under half the gate's one second of margin, from a
+//     rider on the pedestrian's half of the road at the gate's minimum speed.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PEDS, pedThreatRangeM } from '../../src/sim/peds';
 import type { EntitySnapshot, RoadNetwork, SimConfig } from '../../src/sim/api';
@@ -28,12 +32,7 @@ import {
 } from './batch';
 
 const print = (line: string) => process.stdout.write(line + '\n');
-// Seed 6 stands in for seed 5 since kerb riders began yielding (T4.1): that reshuffled seed 5, where a
-// rival swung to the road's edge to pass a sedan and rode through a chicken standing there (the
-// chicken dives out as the rival arrives, and its box overlapped the rival's by 9 cm for two ticks;
-// no event, a chicken is not `big`). Pedestrian gap acceptance (T4.2) is the fix for that, and
-// should restore seed 5 here.
-const PER_TICK_SEEDS = [1, 2, 3, 4, 6];
+const PER_TICK_SEEDS = [1, 2, 3, 4, 5];
 
 let batch: BatchResult;
 beforeAll(async () => {
@@ -98,6 +97,9 @@ function relate(road: RoadNetwork, r: EntitySnapshot, p: EntitySnapshot, range: 
 }
 
 interface TickCheck {
+  /** Pedestrians seen going from off the road to on it, and those with a rider about to arrive. */
+  stepOns: number;
+  stepIns: string[];
   ticks: number;
   pairs: number;
   threatTicks: number;
@@ -123,7 +125,11 @@ function perTickRace(seed: number): TickCheck {
   const overboard = new Set<number>();
   /** Each rider's height in the last snapshot: what the peds step sees of a tumble this tick. */
   const prevH = new Map<number, number>();
+  /** Each pedestrian's last snapshot: was it on the road, and how long ago did it dive. */
+  const wasOn = new Map<number, boolean>();
   const out: TickCheck = {
+    stepOns: 0,
+    stepIns: [],
     ticks: 0,
     pairs: 0,
     threatTicks: 0,
@@ -140,6 +146,35 @@ function perTickRace(seed: number): TickCheck {
       for (const e of events) if (e.type === 'railOver') overboard.add(e.actor);
       for (const e of snap.entities) if (e.kind === 'rider' && e.mode !== 'Tumble') overboard.delete(e.id);
       const peds = snap.entities.filter((e) => e.kind === 'ped');
+      for (const p of peds) {
+        let lo = 0;
+        let hi = 0;
+        for (const lane of config.road.lanesAt(p.road.edge, p.road.s)) {
+          lo = Math.min(lo, lane.dCenterM - lane.widthM / 2);
+          hi = Math.max(hi, lane.dCenterM + lane.widthM / 2);
+        }
+        const on = p.road.d > lo && p.road.d < hi;
+        const before = wasOn.get(p.id);
+        wasOn.set(p.id, on);
+        // A dive can land on the road (and the walk off it follows); only a walk onto it is a step.
+        const diving = scaledTicks - (lastDive.get(p.id) ?? -1e9) <= diveTicks + 60 * PEDS.downS;
+        if (before !== false || !on || diving) continue;
+        out.stepOns++;
+        for (const r of snap.entities) {
+          if (r.kind !== 'rider' || !(r.mode === 'Road' || r.mode === 'Airborne' || r.mode === 'Tumble'))
+            continue;
+          if (r.speed < PEDS.threatMinMps + 0.5) continue;
+          const rel = relate(config.road, r, p, PEDS.gapLookM);
+          if (!rel || rel.along < 0) continue;
+          const arrival = (rel.along - (PEDS.riderLengthM + bigLength) / 2) / r.speed;
+          const sameHalf = Math.sign(r.road.d) === Math.sign(p.road.d) || Math.abs(r.road.d) <= 1;
+          if (arrival < PEDS.gapMarginS / 2 && sameHalf && Math.abs(r.road.h - p.road.h) < PEDS.maxContactH) {
+            out.stepIns.push(
+              `seed ${seed} tick ${snap.tick} rider ${r.id} ped ${p.id} arrival ${arrival.toFixed(2)} s`,
+            );
+          }
+        }
+      }
       for (const r of snap.entities) {
         if (r.kind !== 'rider' || !(r.mode === 'Road' || r.mode === 'Airborne' || r.mode === 'Tumble'))
           continue;
@@ -193,15 +228,20 @@ describe('traffic-2: per-tick checks from the snapshots, five of the batch seeds
     const total = (f: (c: TickCheck) => number) => checks.reduce((n, c) => n + f(c), 0);
     const undived = checks.flatMap((c) => c.undived);
     const contacts = checks.flatMap((c) => c.contacts);
+    const stepIns = checks.flatMap((c) => c.stepIns);
     print(
       `[peds] per-tick: ${checks.length} races, ${total((c) => c.ticks)} ticks, ` +
         `${total((c) => c.pairs)} rider-pedestrian pairs examined, ${total((c) => c.threatened.size)} ` +
         `threatened pedestrians over ${total((c) => c.threatTicks)} threat ticks, ` +
-        `${undived.length} without a dive, ${contacts.length} contacts`,
+        `${undived.length} without a dive, ${contacts.length} contacts; ` +
+        `${total((c) => c.stepOns)} steps onto the road, ${stepIns.length} into a rider's gap`,
     );
     expect(total((c) => c.pairs)).toBeGreaterThan(0);
     expect(total((c) => c.threatened.size)).toBeGreaterThan(0);
     expect(undived.slice(0, 5)).toEqual([]);
     expect(contacts.slice(0, 5)).toEqual([]);
+    // Gap acceptance: they do cross (the check sees steps), and none steps in front of a rider.
+    expect(total((c) => c.stepOns)).toBeGreaterThan(0);
+    expect(stepIns.slice(0, 5)).toEqual([]);
   }, 300_000);
 });

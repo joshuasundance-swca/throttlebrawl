@@ -1,13 +1,13 @@
 // The DOM side of "cut this": the confirm card, the pause screen's "recently seen" list, and the
-// long-press watcher on the bark bubble. The rules live in veto.ts and long-press.ts.
+// long-press watcher on the ticker. The rules live in veto.ts and long-press.ts.
 //
 // Two taps from the pause screen: tap a line in the list, then "Cut this". [default]
-// The bubble's long-press is watched from the document, so the bubble never takes a touch: a press
+// The ticker's long-press is watched from the document, so the ticker never takes a touch: a press
 // that starts in the stick or attack zones is ignored (docs/architecture.md, "The gesture"), and so
 // is any touch mid-race while nobody has told the narrative where those zones are.
-import type { BubbleView } from './bubble';
 import type { ShownBark } from './director';
 import { createLongPress } from './long-press';
+import type { BarkSurface } from './surface';
 import type { SeenItem, SeenLog } from './veto';
 
 const CSS = `
@@ -187,8 +187,8 @@ export interface BubblePressOptions {
   onLongPress(bark: ShownBark): void;
 }
 
-/** Watches long-presses on the bubble's box from the window, without ever consuming a pointer. */
-export function watchBubblePresses(bubble: BubbleView, opts: BubblePressOptions): () => void {
+/** Watches long-presses on the ticker's box from the window, without ever consuming a pointer. */
+export function watchBubblePresses(bubble: BarkSurface, opts: BubblePressOptions): () => void {
   const lp = createLongPress<ShownBark>({
     onLongPress: (bark) => {
       bubble.hold(false);
@@ -202,7 +202,7 @@ export function watchBubblePresses(bubble: BubbleView, opts: BubblePressOptions)
     if (!el || el.hidden || !bark) return;
     const r = el.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-    // A press on a control drawn over the bubble (a pause-menu button, the cut card) is that control's.
+    // A press on a control drawn over the ticker (a pause-menu button, the cut card) is that control's.
     if (e.target instanceof Element && e.target.closest('button, input, select, label, a, #cut-menu')) return;
     if (opts.inControlZone) {
       if (opts.inControlZone(e.clientX, e.clientY)) return;

@@ -61,9 +61,12 @@ const waitTick = (page: Page, t: number) =>
 
 async function frame(page: Page, name: string) {
   mkdirSync('test-results/screenshots', { recursive: true });
-  const png = await page
-    .locator('canvas#game')
-    .screenshot({ path: `test-results/screenshots/looks-${name}.png` });
+  // The ticker strip (playtest 3) sits in the top-centre band the sky is sampled from, and the live
+  // meter keeps it up most of the race, so it is hidden for the capture: this spec measures the scene.
+  const png = await page.locator('canvas#game').screenshot({
+    path: `test-results/screenshots/looks-${name}.png`,
+    style: '#hud-ticker { visibility: hidden !important; }',
+  });
   const stats = await pixelStats(page, png);
   const grain = await grainShare(page, png);
   const sky = await skyColour(page, png);
@@ -73,7 +76,7 @@ async function frame(page: Page, name: string) {
   return { ...stats, grain, sky };
 }
 
-/** The mean colour of a strip of open sky: the top of the frame, above the bark bubbles and clear of the HUD corners. */
+/** The mean colour of a strip of open sky: the top of the frame (the ticker hidden) and clear of the HUD corners. */
 async function skyColour(page: Page, png: Buffer): Promise<[number, number, number]> {
   return page.evaluate(async (b64: string) => {
     const img = new Image();

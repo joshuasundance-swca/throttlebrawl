@@ -30,7 +30,7 @@ type TestWindow = Window & {
   __game?: Handle;
   /** navigator.vibrate's calls, recorded by the stub below. */
   __buzzes?: unknown[];
-  /** ui's style pop-up feed (ui-style-popups.spec.ts). */
+  /** ui's style pop-up feed (ui-ticker.spec.ts). */
   __uiStyleFeed?: (pops: { kind: string; points?: number }[]) => void;
   /** The length of every audio buffer started, recorded by the stub below. */
   __plucks?: number[];
@@ -548,8 +548,8 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
     },
   },
   stylePopups: {
-    // Playtest 1c: off, a style pop-up raised mid-race draws no chip (ui-style-meter.spec.ts has the
-    // control: on, the same feed draws one).
+    // Playtest 1c: off, a style pop-up raised mid-race draws no chip on the ticker (ui-style-meter.spec.ts
+    // has the control: on, the same feed draws one).
     set: async (page) => {
       await page.locator('#settings-tab-display').click();
       await page.locator('#settings-stylePopups').uncheck();
@@ -559,7 +559,8 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       const chips = await page.evaluate(async () => {
         (window as TestWindow).__uiStyleFeed?.([{ kind: 'nearMiss', points: 25 }]);
         for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
-        return document.querySelectorAll('#style-popups .style-pop').length;
+        const root = document.getElementById('hud-ticker');
+        return root && !root.hidden && root.dataset['cls'] === 'style' ? 1 : 0;
       });
       expect(chips).toBe(0);
       await quitRace(page);

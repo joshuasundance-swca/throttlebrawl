@@ -4,8 +4,10 @@
 // combat-4; until those land nothing pops and the tally reads zero.
 //
 // Playtest 1c, 2026-09-30 [decided]: the pop-ups got in the way of the road ahead. Repeats of a kind
-// now merge into the pop-up already up ("NEAR MISS ×3", their cash summed) instead of stacking, so
-// a run of near misses is one small chip. The stack below is that model; index.ts draws it.
+// merge into the pop-up already up ("NEAR MISS ×3", their cash summed) instead of stacking.
+// Playtest 3 (2026-10-03, the maintainer: "The black and white text pop-ups block the actual game")
+// moved every pop-up into the top ticker, one line at a time: ticker.ts is the model that merges and
+// orders them, and ticker-view.ts draws it. This file only words them.
 import type { SimEvent } from '../sim/api';
 
 /** The pop-up words, in the tone guide's plain, dry voice. */
@@ -46,6 +48,8 @@ export interface StylePop {
   kind: string;
   word: string;
   points: number | null;
+  /** A takedown's name (`smashPop`): it flashes briefly and small in the ticker instead of showing as a chip. */
+  name?: true;
 }
 
 /** A domino takedown's word (W-Q): the first rider a launched body takes out, then the next. */
@@ -97,7 +101,7 @@ export function smashPop(e: SimEvent): StylePop | null {
   if (e.type !== 'smash' || e.data['takedown'] !== true) return null;
   const name = e.data['name'];
   if (typeof name !== 'string' || name === '') return null;
-  return { kind: `smash:${name}`, word: name, points: null };
+  return { kind: `smash:${name}`, word: name, points: null, name: true };
 }
 
 /** A style event's pop-up in one line, such as `NEAR MISS +$50`, or null for anything else. */
@@ -105,73 +109,6 @@ export function styleText(e: SimEvent): string | null {
   const pop = stylePop(e);
   if (!pop) return null;
   return pop.points === null ? pop.word : `${pop.word} +${cash(pop.points)}`;
-}
-
-/** One pop-up on screen: every repeat of its kind while it is up, with their cash summed. */
-export interface PopEntry {
-  readonly kind: string;
-  readonly word: string;
-  count: number;
-  cash: number;
-  /** Whether any of its events carried cash. */
-  hasCash: boolean;
-}
-
-/** The pop-up's word, with the repeat count once there is more than one: `NEAR MISS ×3`. */
-export function popLabel(e: PopEntry): string {
-  return e.count > 1 ? `${e.word} ×${e.count}` : e.word;
-}
-
-/** The pop-up's cash, such as `+$75`, or an empty string when its events carried none. */
-export function popCash(e: PopEntry): string {
-  return e.hasCash ? `+${cash(e.cash)}` : '';
-}
-
-export interface PopStack {
-  /**
-   * Adds a pop-up. A kind already up takes it (merged: the count and cash grow, its place stays);
-   * otherwise a new entry goes at the end and the oldest past the cap drop out.
-   */
-  add(pop: StylePop): { entry: PopEntry; merged: boolean; dropped: PopEntry[] };
-  /** Takes an entry off (its time ran out). Removing one already gone does nothing. */
-  remove(entry: PopEntry): void;
-  /** The entries up, oldest first. */
-  entries(): readonly PopEntry[];
-  clear(): void;
-}
-
-export function createPopStack(max: number): PopStack {
-  let up: PopEntry[] = [];
-  return {
-    add(pop) {
-      const same = up.find((e) => e.kind === pop.kind);
-      if (same) {
-        same.count++;
-        if (pop.points !== null) {
-          same.cash += pop.points;
-          same.hasCash = true;
-        }
-        return { entry: same, merged: true, dropped: [] };
-      }
-      const entry: PopEntry = {
-        kind: pop.kind,
-        word: pop.word,
-        count: 1,
-        cash: pop.points ?? 0,
-        hasCash: pop.points !== null,
-      };
-      up.push(entry);
-      const dropped = up.length > max ? up.splice(0, up.length - max) : [];
-      return { entry, merged: false, dropped };
-    },
-    remove(entry) {
-      up = up.filter((e) => e !== entry);
-    },
-    entries: () => up,
-    clear() {
-      up = [];
-    },
-  };
 }
 
 /**

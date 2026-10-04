@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { SimEvent } from '../sim/api';
 import {
-  createPopStack,
   createRaceTally,
   createStyleMeter,
   foundPop,
   meterCash,
   meterLabel,
-  popCash,
-  popLabel,
   smashPop,
   stylePop,
   styleText,
@@ -59,6 +56,7 @@ describe('style pop-ups', () => {
       kind: 'smash:CATCH OF THE DAY',
       word: 'CATCH OF THE DAY',
       points: null,
+      name: true,
     });
     // Ridden through, nobody went down: no pop.
     expect(
@@ -94,61 +92,6 @@ describe('style pop-ups', () => {
     expect(styleText(trick('newspaper', 0, 150))).toBe('THE NEWSPAPER +$150');
     expect(styleText(trick('moonwalk', 0, 50))).toBeNull();
     expect(stylePop(trick('backflip', 1, 100))?.kind).not.toBe(stylePop(trick('whip', 0, 50))?.kind);
-  });
-});
-
-// Playtest 1c, 2026-09-30 [decided]: less intrusive pop-ups. Repeats merge instead of stacking.
-describe('the pop-up stack', () => {
-  const pop = (kind: string, points: number | null = 25) => {
-    const p = stylePop(ev('style', 0, points === null ? { kind } : { kind, points }));
-    if (!p) throw new Error(`no pop-up for ${kind}`);
-    return p;
-  };
-
-  it('merges repeats of a kind into the pop-up already up, summing the cash', () => {
-    const s = createPopStack(3);
-    const first = s.add(pop('nearMiss'));
-    expect(first.merged).toBe(false);
-    expect(s.add(pop('nearMiss')).merged).toBe(true);
-    const third = s.add(pop('nearMiss'));
-    expect(third.entry).toBe(first.entry);
-    expect(s.entries()).toHaveLength(1);
-    expect(popLabel(third.entry)).toBe('NEAR MISS ×3');
-    expect(popCash(third.entry)).toBe('+$75');
-  });
-
-  it('shows a single pop-up without a count, and big cash with separators', () => {
-    const s = createPopStack(3);
-    const { entry } = s.add(pop('takedownCombo', 12345));
-    expect(popLabel(entry)).toBe('COMBO');
-    expect(popCash(entry)).toBe('+$12,345');
-    const bare = s.add(pop('airtime', null)).entry;
-    expect(popLabel(bare)).toBe('AIRTIME');
-    expect(popCash(bare)).toBe('');
-  });
-
-  it('keeps at most the cap, dropping the oldest, and a merge keeps its place', () => {
-    const s = createPopStack(2);
-    const near = s.add(pop('nearMiss')).entry;
-    const onc = s.add(pop('oncoming')).entry;
-    expect(s.add(pop('nearMiss')).dropped).toEqual([]);
-    expect(s.entries()).toEqual([near, onc]);
-    const air = s.add(pop('airtime'));
-    expect(air.dropped).toEqual([near]);
-    expect(s.entries()).toEqual([onc, air.entry]);
-  });
-
-  it('starts a fresh pop-up once the old one is gone', () => {
-    const s = createPopStack(3);
-    const old = s.add(pop('nearMiss')).entry;
-    s.add(pop('nearMiss'));
-    s.remove(old);
-    s.remove(old); // twice does nothing
-    const fresh = s.add(pop('nearMiss'));
-    expect(fresh.merged).toBe(false);
-    expect(popLabel(fresh.entry)).toBe('NEAR MISS');
-    s.clear();
-    expect(s.entries()).toEqual([]);
   });
 });
 

@@ -31,6 +31,19 @@ export const HUD_TUNING: readonly TuningParamDecl[] = [
     unit: 's',
     affectsSim: false,
   },
+  {
+    // Playtest 3's top ticker: a takedown's name ("CATCH OF THE DAY") flashes this long, briefly and
+    // small. It also pauses a bark's subtitle for that long (the voice plays on).
+    id: 'hud.tickerNameS',
+    group: 'hud',
+    label: 'Ticker: takedown name flashes',
+    default: 0.9,
+    min: 0.3,
+    max: 2,
+    step: 0.1,
+    unit: 's',
+    affectsSim: false,
+  },
 ];
 
 const DEFAULTS: Readonly<Record<string, number>> = Object.fromEntries(
