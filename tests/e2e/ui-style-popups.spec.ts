@@ -697,6 +697,7 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
     page,
     `${where.replace(/\s+/g, '-')}-heat`,
     m.layout.filter((p) => p.name === BIKE).map((p) => p.box),
+    ['look-offer'],
   );
   const found = momentFindings(m, `${where}, heat`, true);
   await page.evaluate(() => (window as TestWindow).__game?.lockstep(null));
@@ -784,28 +785,47 @@ function expectCompact(m: Measured, where: string, maxHeight = 44) {
   }
 }
 
-/** A screenshot; `outline` boxes (the measured bike) are drawn on it as dashed frames, then removed. */
-async function shot(page: Page, name: string, outline: readonly Box[] = []) {
+/**
+ * A screenshot; `outline` boxes (the measured bike) are drawn on it as dashed frames, and the `show`
+ * elements (the slow-frames toast) are up for it, then all is put back.
+ */
+async function shot(page: Page, name: string, outline: readonly Box[] = [], show: readonly string[] = []) {
   mkdirSync('test-results/screenshots', { recursive: true });
-  await page.evaluate((boxes) => {
-    for (const b of boxes) {
-      const d = document.createElement('div');
-      d.className = 'probe-outline';
-      Object.assign(d.style, {
-        position: 'fixed',
-        left: `${b.left}px`,
-        top: `${b.top}px`,
-        width: `${b.right - b.left}px`,
-        height: `${b.bottom - b.top}px`,
-        outline: '2px dashed #0ff',
-        pointerEvents: 'none',
-        zIndex: '99',
-      });
-      document.body.append(d);
-    }
-  }, outline);
+  await page.evaluate(
+    ({ boxes, ids }) => {
+      for (const id of ids) {
+        const e = document.getElementById(id);
+        if (e?.hidden) {
+          e.hidden = false;
+          e.classList.add('probe-shown');
+        }
+      }
+      for (const b of boxes) {
+        const d = document.createElement('div');
+        d.className = 'probe-outline';
+        Object.assign(d.style, {
+          position: 'fixed',
+          left: `${b.left}px`,
+          top: `${b.top}px`,
+          width: `${b.right - b.left}px`,
+          height: `${b.bottom - b.top}px`,
+          outline: '2px dashed #0ff',
+          pointerEvents: 'none',
+          zIndex: '99',
+        });
+        document.body.append(d);
+      }
+    },
+    { boxes: outline, ids: show },
+  );
   await page.screenshot({ path: `test-results/screenshots/ui-style-popups-${name}.png` });
-  await page.evaluate(() => document.querySelectorAll('.probe-outline').forEach((e) => e.remove()));
+  await page.evaluate(() => {
+    document.querySelectorAll('.probe-outline').forEach((e) => e.remove());
+    document.querySelectorAll<HTMLElement>('.probe-shown').forEach((e) => {
+      e.hidden = true;
+      e.classList.remove('probe-shown');
+    });
+  });
 }
 
 /**
@@ -827,6 +847,7 @@ async function toastAndPrompts(page: Page, where: string): Promise<string[]> {
     page,
     `${where.replace(/\s+/g, '-')}-toast`,
     m.layout.filter((p) => p.name === BIKE).map((p) => p.box),
+    ['look-offer'],
   );
   return momentFindings(m, `${where}, toast`, true);
 }

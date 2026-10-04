@@ -405,7 +405,7 @@ ${RADIO_PANEL_CSS}
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. Top centre, it covered the bubble, the heat badge and the objective and
    reached into the road ahead. So on a big screen it sits in the outer quarter across from the
-   pop-ups (where they flip, it flips: .mirrored), under the pause button. On a phone held sideways
+   pop-ups (where they flip, it flips), under the pause button. On a phone held sideways
    and on an upright screen there is no free room for it: the quarters are full (the pop-ups, the
    objective, the heat badge) and under the road ahead sits the player's own bike (the live check
    after #430: there it covered the bike and the riders beside it for 12 s). So there it takes the
@@ -415,21 +415,21 @@ ${RADIO_PANEL_CSS}
 #look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
   left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
   z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-#look-offer.mirrored { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
+#ui:has(#style-popups.mirrored) #look-offer { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
 #ui .look-offer-text { font: 700 14px/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui .look-offer .row { justify-content: flex-start; gap: 8px; }
 #ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 @media (max-width: 600px) {
   #look-offer { left: calc(25vw + 4px); right: 12px; top: calc(max(8px, env(safe-area-inset-top)) + 48px); }
-  #look-offer.mirrored { left: 12px; right: calc(25vw + 4px); }
+  #ui:has(#style-popups.mirrored) #look-offer { left: 12px; right: calc(25vw + 4px); }
 }
 /* Sideways, the rival's bar sits in the top row 0.2 of the short side in from the corner, 152 px
-   wide (layout: health-target): the offer stops short of it. */
+   wide (layout: health-target): the offer stops 8 px short of it. */
 @media (orientation: landscape) and (max-height: 520px) {
   #ui #look-offer { top: max(6px, env(safe-area-inset-top)); left: calc(25vw + 4px);
-    right: calc(20vmin + 160px); }
-  #ui #look-offer.mirrored { left: calc(20vmin + 160px); right: calc(25vw + 4px); }
+    right: calc(20vmin + 168px); }
+  #ui:has(#style-popups.mirrored) #look-offer { left: calc(20vmin + 168px); right: calc(25vw + 4px); }
 }
 /* In the top slot: one line of words over one row of buttons. */
 @media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
@@ -1417,8 +1417,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const offerClassicLook = (): boolean => {
     if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
     pauseLookOffer.hidden = false;
-    // Across from the pop-ups: they take one outer quarter, the offer the other.
-    lookOffer.classList.toggle('mirrored', popups.classList.contains('mirrored'));
     // While paused only the pause menu's note shows it.
     lookOffer.hidden = paused;
     if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);
