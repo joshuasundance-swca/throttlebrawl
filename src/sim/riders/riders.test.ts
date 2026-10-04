@@ -352,6 +352,8 @@ describe('riders-1: robustness and determinism', () => {
       'riders.newspaperAirS',
       'riders.uturnMps',
       'riders.uturnRate',
+      'riders.wheelie',
+      'riders.wheelieGain',
     ]);
     for (const d of RIDERS_TUNING) {
       expect(d.affectsSim).toBe(true);
