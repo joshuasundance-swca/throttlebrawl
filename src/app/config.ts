@@ -122,6 +122,45 @@ export interface RaceSetup {
   eventPatch?: EventPatch;
 }
 
+type Json = Record<string, unknown>;
+const asObject = (v: unknown): Json =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Json) : {};
+const asNumber = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
+/**
+ * An event with a season's remix applied (`EventPatch`, src/core/career-race.ts), before anything
+ * reads it: the kind, rules, objectives, time of day, field, weird-event chance and cap, and prizes
+ * by place. Absent fields keep the file's; no patch (null or undefined) gives the event itself. The
+ * patch's `lengthId` is the length to race, which the caller passes on as the race length. This is
+ * the same application as the career's `applyEventPatch` (src/career/season.ts, which app/ cannot
+ * import in first-load code), and tests/sim/app-field-level.test.ts holds the two equal.
+ */
+export function withEventPatch(event: RaceEvent, patch: EventPatch | null | undefined): RaceEvent {
+  if (!patch) return event;
+  const e: Json = { ...(event as unknown as Json) };
+  if (patch.kind) e['kind'] = patch.kind;
+  if (patch.rules) e['rules'] = patch.rules;
+  if (patch.objectives) e['objectives'] = patch.objectives;
+  if (patch.timeOfDay) e['timeOfDay'] = patch.timeOfDay;
+  if (patch.riders) e['field'] = { ...asObject(e['field']), riders: patch.riders };
+  if (patch.modifierChanceScale !== undefined || patch.maxModifiers !== undefined) {
+    const mods = asObject(e['modifiers']);
+    e['modifiers'] = {
+      ...mods,
+      ...(patch.modifierChanceScale !== undefined
+        ? {
+            chanceScale:
+              Math.round(asNumber(mods['chanceScale'], 1) * patch.modifierChanceScale * 1000) / 1000,
+          }
+        : {}),
+      ...(patch.maxModifiers !== undefined ? { maxPerRace: patch.maxModifiers } : {}),
+    };
+  }
+  if (patch.byPlaceCash) e['rewards'] = { ...asObject(e['rewards']), byPlaceCash: patch.byPlaceCash };
+  return e as unknown as RaceEvent;
+}
+
 /**
  * A small seeded generator for the free-play draws (mulberry32): app-side, outside the sim and its
  * streams, a pure function of the seed and the salt, so a replay's seed draws the same again.
@@ -144,9 +183,16 @@ const LIGHT_SALT = 0x6c696768; // 'ligh'
  * drawn from the region's whole cast (every live rival with no region, or this event's region, in
  * the race's packs), shuffled by the seed (seededDraw, never the sim's streams).
  */
-export function raceField(race: ContentRegistry, eventId: string, seed: number, freePlay = false): string[] {
+export function raceField(
+  race: ContentRegistry,
+  eventId: string,
+  seed: number,
+  freePlay = false,
+  /** The event with a season's patch applied (`withEventPatch`); left out: the registry's own. */
+  patched?: RaceEvent,
+): string[] {
   const id = eventKey(eventId);
-  const event = lookup(race.events, id);
+  const event = patched ?? lookup(race.events, id);
   const eventPack = packOf(id);
   const own = (event.field.riders ?? []).map((ref) => qualifyIn(eventPack, ref));
   if (!freePlay || own.length === 0) return own;
@@ -170,9 +216,16 @@ export function raceField(race: ContentRegistry, eventId: string, seed: number, 
  * `timeOfDayOptions` drawn by the seed (seededDraw). It feeds the road events' eligibility and
  * the light; presentation reads it again from the seed, as the recording carries the seed.
  */
-export function raceTimeOfDay(reg: ContentRegistry, eventId: string, seed: number, freePlay = false): string {
+export function raceTimeOfDay(
+  reg: ContentRegistry,
+  eventId: string,
+  seed: number,
+  freePlay = false,
+  /** The event with a season's patch applied (`withEventPatch`); left out: the registry's own. */
+  patched?: RaceEvent,
+): string {
   const id = eventKey(eventId);
-  const event = lookup(reg.events, id);
+  const event = patched ?? lookup(reg.events, id);
   const own = String(event.timeOfDay);
   if (!freePlay) return own;
   const region = reg.regions[qualifyIn(packOf(id), event.region)];
@@ -374,12 +427,27 @@ export function aiController(personality: Rider['personality']): SimController {
   return { kind: 'ai', style: personality?.style ?? 'racer', personality: own };
 }
 
+/**
+ * How a career race's field level reshapes one rider (`FieldLevel`, src/core/career-race.ts): a
+ * rival's health and power, a cop's top-speed cap and fines. Absent: the rider file's own numbers.
+ */
+interface RiderLevel {
+  healthScale?: number;
+  powerScale?: number;
+  topCapMps?: number | null;
+  fineScale?: number;
+}
+
+/** Rounds a scaled value to the 0.001 the career rounds its scales to, so equal inputs agree. */
+const round3 = (x: number) => Math.round(x * 1000) / 1000;
+
 function riderDef(
   reg: ContentRegistry,
   id: string,
   controller: SimRiderDef['controller'],
   paceMps: number,
   bikeOverride?: string,
+  level: RiderLevel = {},
 ): SimRiderDef {
   // `id` is qualified; the rider's own references resolve from the rider's pack.
   const pack = packOf(id);
@@ -408,7 +476,7 @@ function riderDef(
     controller,
     bike: {
       contentId: bikeKey,
-      topSpeedMps: Math.max(h.topSpeedMps * speedScale, floor),
+      topSpeedMps: Math.min(Math.max(h.topSpeedMps * speedScale, floor), level.topCapMps ?? Infinity),
       accelMps2: h.accelMps2,
       brakeMps2: h.brakeMps2,
       steerRateMps: h.steerRateMps,
@@ -417,9 +485,12 @@ function riderDef(
       hitPowerScale: bike.combat?.hitPowerScale ?? 1,
     },
     massKg: rider.stats?.massKg ?? 80,
-    healthMax: rider.stats?.healthMax ?? 100,
+    healthMax: Math.round((rider.stats?.healthMax ?? 100) * (level.healthScale ?? 1)),
     toughness: rider.stats?.toughness ?? 1,
-    power: rider.stats?.power ?? 1,
+    power:
+      level.powerScale === undefined
+        ? (rider.stats?.power ?? 1)
+        : round3((rider.stats?.power ?? 1) * level.powerScale),
     // The weapon the rider starts holding (M4 cops-3: a cop's baton or taser, which can be stolen),
     // only when the race carries it: a live rider naming a draft weapon rides bare-handed in a
     // release build, as before.
@@ -432,9 +503,10 @@ function riderDef(
             agency: qualifyIn(pack, law.agency),
             bustRadiusM: law.bustRadiusM,
             bustDwellS: law.bustDwellS,
-            fineCash: law.fineCash,
+            fineCash:
+              level.fineScale === undefined ? law.fineCash : Math.round(law.fineCash * level.fineScale),
             pursuitSpeedScale: law.pursuitSpeedScale,
-            ...(law.habit ? { habit: lawHabit(law.habit) } : {}),
+            ...(law.habit ? { habit: lawHabit(law.habit, level.fineScale) } : {}),
           },
         }
       : {}),
@@ -445,10 +517,16 @@ function riderDef(
  * A cop's `law.habit` as the sim reads it (run W-T, law with a personality): the kind, and every
  * other field that is a finite number, by name (sim/cops documents each and has its own defaults).
  */
-function lawHabit(habit: { kind: SimLawHabit['kind'] } & Record<string, unknown>): SimLawHabit {
+function lawHabit(
+  habit: { kind: SimLawHabit['kind'] } & Record<string, unknown>,
+  fineScale?: number,
+): SimLawHabit {
   const params: Record<string, number> = {};
   for (const [k, v] of Object.entries(habit))
     if (k !== 'kind' && typeof v === 'number' && Number.isFinite(v)) params[k] = v;
+  // A citation habit's cash rides the same scale as the fine, so the banner and the ledger agree.
+  const each = params['cashEach'];
+  if (fineScale !== undefined && each !== undefined) params['cashEach'] = Math.round(each * fineScale);
   return { kind: habit.kind, params };
 }
 
@@ -698,21 +776,42 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   // Only the race's packs (the event's pack and its dependencies) reach the race: carrying other
   // region packs never changes this race (docs/content-packs.md, "Region packs at runtime").
   const race = packSubset(reg, packClosure(reg, eventPack));
-  const event = lookup(race.events, eventId);
-  const length = eventLength(event, setup.length);
+  // A season's remix applies to the event before anything below reads it (the patch's length is the
+  // one to race), then the career's field level sets the pace and reshapes the riders.
+  const event = withEventPatch(lookup(race.events, eventId), setup.eventPatch);
+  const level = setup.fieldLevel;
+  const lengthId = setup.eventPatch?.lengthId ?? setup.length;
+  const length = eventLength(event, lengthId);
   // The length's route, or a real-road route of the event's region when one is chosen.
-  const routeId = raceRouteKey(race, eventId, setup.length, setup.route);
+  const routeId = raceRouteKey(race, eventId, lengthId, setup.route);
   const routeDef = lookup(race.routes, routeId);
   const route = stream.routeFor(routeDef);
-  const pace = event.field.paceMps ?? 30;
-  const rivals = raceField(race, eventId, setup.seed, setup.freePlay).map((id) =>
-    riderDef(race, id, aiController(lookup(race.riders, id).personality), pace),
+  const pace = level?.paceMps ?? event.field.paceMps ?? 30;
+  const rivalLevel: RiderLevel | undefined = level && {
+    healthScale: level.healthScale,
+    powerScale: level.powerScale,
+  };
+  const rivals = raceField(race, eventId, setup.seed, setup.freePlay, event).map((id) =>
+    riderDef(
+      race,
+      id,
+      aiController(lookup(race.riders, id).personality),
+      pace,
+      level?.rivalBike ?? undefined,
+      rivalLevel,
+    ),
   );
   // Grid order: rivals ahead, the player at the back of the racing grid, the law behind the player
   // (the race parks him a row back and he never takes a place).
   // The event's career tier (run W-R): 1 for an event without one (the free-play races).
   const tier = event.tier ?? DEFAULT_TIER;
-  const cops = copIds(race, eventId, tier).map((id) => riderDef(race, id, { kind: 'cop' }, pace));
+  const copLevel: RiderLevel | undefined = level && {
+    topCapMps: level.copTopCapMps,
+    fineScale: level.fineScale,
+  };
+  const cops = copIds(race, eventId, tier).map((id) =>
+    riderDef(race, id, { kind: 'cop' }, pace, level?.copBike ?? undefined, copLevel),
+  );
   const player = riderDef(
     race,
     qualifyIn('base', PLAYER_PRESET),
@@ -742,7 +841,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const weights = regionTrafficWeights(race, event, eventPack);
   const areaWeights = regionTrafficAreas(race, event, eventPack);
   // W-P: the road set pieces the event opts into (the sim rolls which fire, and where).
-  const timeOfDay = raceTimeOfDay(race, eventId, setup.seed, setup.freePlay);
+  const timeOfDay = raceTimeOfDay(race, eventId, setup.seed, setup.freePlay, event);
   const mods = eventModifiers(race, { ...event, timeOfDay: timeOfDay as RaceEvent['timeOfDay'] }, eventId);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
@@ -767,6 +866,10 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       cops: ((c, j) => (j ? { ...c, jurisdiction: j } : c))(eventCops(event), jurisdictionOf(race, cops)),
       ...(mods.perRace !== undefined ? { modifiersPerRace: mods.perRace } : {}),
       ...eventGrudgeRule(event, eventPack),
+      // The career field's fighting scales (absent: the sim reads 1 and 1, and the hash is as before).
+      ...(level
+        ? { level: { aggressionScale: level.aggressionScale, signatureGapScale: level.signatureGapScale } }
+        : {}),
     },
     riders,
     weapons,

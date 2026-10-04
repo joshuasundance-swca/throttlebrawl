@@ -53,6 +53,8 @@ import { createLookFallback } from './look-fallback';
 import {
   createSim,
   SIM_DT,
+  type EventPatch,
+  type FieldLevel,
   type GetReplayAndSettings,
   type OnCopyReport,
   type RendererStatsFn,
@@ -80,6 +82,7 @@ import {
   qualifyIn,
   raceStartValues,
   raceTimeOfDay,
+  withEventPatch,
 } from './config';
 import { createLoop } from './loop';
 import { appReplayKey } from './replay-key';
@@ -377,6 +380,13 @@ export function createApp(opts: AppOptions): AppHandle {
     node: CareerNode;
     plan: EventPlan;
     length: string | null;
+    /**
+     * What the career's season and tier make of this race (playtest 3): the remix patch (null in
+     * Season 1) and the field level (null with no starting bike to measure by). Both go into
+     * buildSimConfig, so a restart and a replay header carry them.
+     */
+    patch: EventPatch | null;
+    level: FieldLevel | null;
     log: RaceLog | null;
     onboarding: Onboarding;
     /** The tick its rules decided the event early (a hunt at its count, an escape), or null. */
@@ -578,6 +588,9 @@ export function createApp(opts: AppOptions): AppHandle {
       // only (grudges outside a career are "light persistence, later" [decided]).
       ...(profile.bikes.current ? { playerBike: profile.bikes.current } : {}),
       ...(careerRace ? { grudges: profile.grudges } : {}),
+      // The career's field level (the rivals' and cops' bikes and strength) and the season's remix.
+      ...(careerRace?.level ? { fieldLevel: careerRace.level } : {}),
+      ...(careerRace?.patch ? { eventPatch: careerRace.patch } : {}),
       // The road picked on the menu: a real road instead of the length's route (the replay header
       // records it as event.routeId).
       ...(route ? { route } : {}),
@@ -695,10 +708,19 @@ export function createApp(opts: AppOptions): AppHandle {
           const r = await m.decodeExportCode(code);
           if (r.kind === 'newer') return 'That code comes from a newer build. Nothing changed.';
           if (r.kind !== 'ok') return `That code did not load: ${r.reason}.`;
-          saveProfile(m.startCareer(defs, r.profile));
+          // The career it replaces is kept as a backup code, so loading one never loses another.
+          const replaced = profile.history.length > 0;
+          saveProfile(await m.restoreCareer(defs, profile, r.profile, build.id, new Date().toISOString()));
+          lastTexts = [];
+          pendingTeaser = null;
           openCareer(careerRegion, 'garage');
-          return `Loaded: $${r.profile.cash}, ${r.profile.history.length} races. Your settings stay this device's.`;
+          return (
+            `Loaded: $${r.profile.cash}, ${r.profile.history.length} races. Your settings stay this device's.` +
+            (replaced ? ' The career it replaced is kept as a backup code.' : '')
+          );
         },
+        onStartSeason: () => startNextSeason(),
+        onNewCareer: () => startOver(),
         onRetry: () => {
           if (teaserFirst()) return;
           const def = C?.careerOf(defs, careerRegion);
@@ -1029,7 +1051,15 @@ export function createApp(opts: AppOptions): AppHandle {
     if (!go('race')) return false;
     // W-Q: a free-play race's light is drawn by its seed; a career race keeps its event's own.
     const seed = seeds.next();
-    showRegion(raceTimeOfDay(registry, eventId, seed, !careerRace));
+    showRegion(
+      raceTimeOfDay(
+        registry,
+        eventId,
+        seed,
+        !careerRace,
+        careerRace?.patch ? withEventPatch(event, careerRace.patch) : undefined,
+      ),
+    );
     race = newSim(seed);
     pendingTuning.length = 0;
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
@@ -1080,13 +1110,15 @@ export function createApp(opts: AppOptions): AppHandle {
       return;
     }
     careerRegion = def.regionId;
-    const plan = m.eventPlan(registry, node.event);
-    const length = m.nodeLength(plan, node);
+    // This season's race: the remix patch, the plan with it applied, the length, the field level.
+    const { patch, plan, length, fieldLevel: level } = m.careerRaceSetup(registry, defs, profile, def, node);
     careerRace = {
       def,
       node,
       plan,
       length: length?.id ?? null,
+      patch,
+      level,
       log: null,
       onboarding: m.createOnboarding(profile.oncePerCareer),
       doneTick: null,
@@ -1232,7 +1264,17 @@ export function createApp(opts: AppOptions): AppHandle {
     );
     lastTexts = shown.texts;
     ui.career.showResults({
-      ...m.resultView(registry, c.def, c.plan, status, settled.report, tally.place, tally.racers, profile),
+      ...m.resultView(
+        registry,
+        c.def,
+        c.plan,
+        status,
+        settled.report,
+        tally.place,
+        tally.racers,
+        profile,
+        defs,
+      ),
       paper: shown.paper,
       texts: shown.texts,
     });
@@ -1296,6 +1338,45 @@ export function createApp(opts: AppOptions): AppHandle {
         },
         () => undefined, // the list still works; Ride fetches again and says so if it fails
       );
+  }
+
+  /**
+   * The Start Season button (playtest 3, round 2: "Season 2+ with a harder field and remixed
+   * events"): once every region boss of this season has fallen, the next season starts with a seed
+   * drawn now and saved with it. It resets the maps, so only the player's tap starts it.
+   */
+  function startNextSeason(): void {
+    const m = C;
+    if (!m || state === 'race') return;
+    const next = m.startSeason(defs, profile, seeds.next());
+    if (next === profile) {
+      ui.career.message('The next season opens once every region boss has fallen.');
+      return;
+    }
+    saveProfile(next);
+    lastTexts = [];
+    pendingTeaser = null;
+    careerRegion = defs[0]?.regionId ?? careerRegion;
+    openCareer(careerRegion, 'map');
+    ui.career.message(`${m.seasonLabel(next.season)} starts. Your garage and cash came with you.`);
+  }
+
+  /**
+   * The New career button (playtest 3, round 3: "a 'New career' button that keeps the old save as
+   * a backup code"): the old career is kept as an export code in the save (the garage lists it, and
+   * Load brings it back) and a fresh career starts in the Keys. Resolves to the line to show.
+   */
+  async function startOver(): Promise<string> {
+    const m = C ?? (await careerReady);
+    if (!m || state === 'race') return 'The career did not load. Reload the page and try again.';
+    const made = await m.startNewCareer(defs, profile, build.id, new Date().toISOString());
+    if (!made.kept) return 'There is nothing to start over yet: ride a race first.';
+    saveProfile(made.profile);
+    lastTexts = [];
+    pendingTeaser = null;
+    careerRegion = defs[0]?.regionId ?? careerRegion;
+    openCareer(careerRegion, 'map');
+    return 'A new career. The old one is kept as a backup code in the garage.';
   }
 
   /** A garage action's result: saved and redrawn, or its reason shown. */
