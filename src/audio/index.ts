@@ -35,9 +35,15 @@ import {
   type BarkVoices,
   type BarkVoiceState,
 } from './bark-voices';
-import { CUE_PATCHES, createSirenVoice, type SirenVoice } from './cue-patches';
+import {
+  CUE_PATCHES,
+  createSirenVoice,
+  createSquealVoice,
+  type SirenVoice,
+  type SquealVoice,
+} from './cue-patches';
 import { createCeiling } from './ceiling';
-import { cueForEvent, MELEE_CUES, weaknessOf, type CueId } from './cues';
+import { createMovesCues, cueForEvent, MELEE_CUES, SQUEAL, weaknessOf, type CueId } from './cues';
 import { createSlowmoTreatment, SLOWMO_DEFAULTS, type SlowmoTreatment } from './slowmo';
 import {
   createEngineVoice,
@@ -377,6 +383,18 @@ export const AUDIO_TUNING: readonly TuningParamDecl[] = [
     unit: '',
     affectsSim: false,
   },
+  // Playtest 3 (the drift, "a first class experience"): the tyre squeal while the bike slides.
+  {
+    id: 'audio.squealGain',
+    group: 'audio',
+    label: 'Drift squeal level (0 = off)',
+    default: SQUEAL.gain,
+    min: 0,
+    max: 1,
+    step: 0.02,
+    unit: '',
+    affectsSim: false,
+  },
   {
     id: 'audio.windFromMps',
     group: 'audio',
@@ -448,6 +466,8 @@ export interface AudioInspect {
   slowmo: { active: boolean; lowpassHz: number; musicLevel: number; pitch: number };
   /** The level the wind aims for (0 = silent). */
   windLevel: number;
+  /** The level the drift's tyre squeal aims for (0 = silent). */
+  squealLevel: number;
   /** The regional soundscape: its region, the rain's level, events alive, and the latest events. */
   soundscape: {
     region: ScapeRegion | null;
@@ -609,6 +629,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     crashImpactScale: 1,
     soundscape: 1,
     windGain: WIND_DEFAULTS.gain as number,
+    squealGain: SQUEAL.gain as number,
     windFromMps: WIND_DEFAULTS.fromMps as number,
     windFullMps: WIND_DEFAULTS.fullMps as number,
     radio: RADIO_FIRST_STATION as number,
@@ -647,6 +668,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   });
   /** The wind's voice, made on the first racing frame (outside the voice pool, like the music). */
   let wind: WindVoice | null = null;
+  /** The drift's tyre squeal (playtest 3), made on the first racing frame like the wind. */
+  let squeal: SquealVoice | null = null;
+  /** The moves' cues that have no event (the wheelie's pop, from the snapshot's `moves`). */
+  const movesCues = createMovesCues();
   /** The regional soundscape (run W-Q): its voices, made on the first racing frame, and its director. */
   let scape: ScapeVoices | null = null;
   const director: Director = createDirector(opts.radioSeed ?? 0x5ca9e);
@@ -967,6 +992,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     g.slowmo.set(false);
     playerEngine?.voice.setLevel(0);
     wind?.set(0, windParams());
+    squeal?.set(0, params.squealGain);
+    movesCues.reset();
     scape?.setRain(0);
     director.reset();
     if (pirateOn) {
@@ -1214,6 +1241,11 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     wind ??= createWindVoice(g.ctx, g.slowmo.fxIn);
     const down = me.mode === 'Tumble' || me.mode === 'OnFoot';
     wind.set(me.speed, windParams(), down ? 0 : hitStop ? 0.3 : 1);
+    // The drift's squeal follows the slip (on the road only: not in the air, down or on foot), and
+    // the wheelie's pop plays on the frame the front goes up (playtest 3).
+    squeal ??= createSquealVoice(g.ctx, g.slowmo.fxIn);
+    squeal.set(me.drift ?? 0, params.squealGain, me.mode !== 'Road' ? 0 : hitStop ? 0.3 : 1);
+    for (const c of movesCues.step(snap.moves)) playCue(g, c.cue, c.priority, 1, c.impact);
     const listener = moving(me);
     soundscape(g, snap, me, down, hitStop);
     pirate(g, snap, me);
@@ -1416,6 +1448,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         case 'audio.windGain':
           params.windGain = value;
           break;
+        case 'audio.squealGain':
+          params.squealGain = value;
+          break;
         case 'audio.windFromMps':
           params.windFromMps = value;
           break;
@@ -1489,6 +1524,7 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
         pitch: graph?.slowmo.pitch() ?? 1,
       },
       windLevel: wind?.level() ?? 0,
+      squealLevel: squeal?.level() ?? 0,
       soundscape: {
         region: scapeRegion,
         rain: scape?.rainLevel() ?? 0,

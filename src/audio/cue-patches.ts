@@ -4,7 +4,7 @@
 // body for weight with mid and high layers, since phone speakers play little below 200 Hz.
 // M2 (audio-2): crashes stack more layers the harder they hit, every cue can start pitched down
 // (the slow-motion treatment), and the takedown, splash, rail, whoosh and chime cues join.
-import type { CueId } from './cues';
+import { squealAmount, squealLevel, SQUEAL, type CueId } from './cues';
 import { noiseBuffer } from './engine-patch';
 
 export interface PlayingCue {
@@ -156,6 +156,16 @@ class Builder {
       },
     };
   }
+}
+
+/**
+ * A spring's "boing": the pitch leaps up and falls back with a wobble, over a thin metal twang. `m`
+ * scales the pitch (a second spring rings higher).
+ */
+function boing(b: Builder, t: number, m: number) {
+  b.tone('sine', 260 * m, 900 * m, t, 0.34, 0.1);
+  b.tone('sine', 900 * m, 300 * m, t + 0.1, 0.3, 0.3);
+  b.tone('triangle', 1250 * m, 1800 * m, t, 0.07, 0.16);
 }
 
 const unit = (x: number | undefined, fallback: number) =>
@@ -495,6 +505,57 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
     b.noise('bandpass', 400, 3200, 1.2, t, 0.5, 0.45, 0.03);
     b.tone('sawtooth', 180, 720, t, 0.18, 0.35);
   }),
+  // A wheelie pops (playtest 3): the engine revs as the front comes up, a rush of air and the thump
+  // of the lift.
+  wheelieUp: patch((b, t) => {
+    b.tone('sawtooth', 140, 520, t, 0.26, 0.3, 0.02);
+    b.noise('bandpass', 500, 2000, 1.2, t, 0.22, 0.25, 0.02);
+    b.tone('sine', 100, 55, t, 0.5, 0.16);
+  }),
+  // The front comes down clean: a soft thump, a scuff and a quick tyre chirp.
+  wheelieDown: patch((b, t) => {
+    b.tone('sine', 120, 52, t, 0.55, 0.16);
+    b.noise('lowpass', 900, 300, 0.7, t, 0.32, 0.08);
+    b.tone('sine', 760, 520, t + 0.01, 0.1, 0.05);
+  }),
+  // A drift breaks away (the squeal that follows is a continuous voice, createSquealVoice): a
+  // tyre's bite, a whine and a scuff. Each link of a chain after the first adds a rising tick, the
+  // chain riding in the variant.
+  driftBite: patch((b, t, _impact, _w, variant) => {
+    b.noise('bandpass', 1800, 3000, 6, t, 0.42, 0.55, 0.03);
+    b.tone('sawtooth', 1200, 1700, t, 0.07, 0.4, 0.03);
+    b.noise('lowpass', 700, 300, 0.7, t, 0.25, 0.1);
+    const chain = Math.min(5, Math.max(1, Math.round(Number(variant) || 1)));
+    for (let k = 1; k < chain; k++)
+      b.tone(
+        'triangle',
+        1568 * 2 ** ((k * 2) / 12),
+        1568 * 2 ** ((k * 2) / 12),
+        t + 0.06 + 0.075 * k,
+        0.2,
+        0.07,
+      );
+  }),
+  // The exit boost (a clean drift exit): a rising rush under an upward sweep, the blow-off valve's
+  // sigh and a turbo chirp. A bigger boost (impact) rushes louder and longer.
+  driftBoost: patch((b, t, impact) => {
+    const k = 0.7 + 0.3 * impact;
+    const dur = 0.35 + 0.35 * impact;
+    b.noise('bandpass', 400, 3600, 1.2, t, 0.5 * k, dur, 0.03);
+    b.tone('sawtooth', 160, 760, t, 0.18 * k, dur * 0.8);
+    b.noise('highpass', 4500, 3500, 0.8, t + 0.12 + 0.1 * impact, 0.3 * k, 0.25);
+    b.tone('sine', 1320, 1980, t + dur * 0.7, 0.12 * k, 0.12);
+  }),
+  // A wheelie rides up a car's hood or trunk (playtest 3, the launch): the crunch of sheet metal and
+  // the spring of the suspension; a second flip rings a second, higher spring.
+  hoodBoing: patch((b, t, impact) => {
+    b.tone('sine', 110, 45, t, 0.8, 0.16);
+    b.noise('bandpass', 1400, 500, 1.3, t, 0.65, 0.2);
+    b.noise('bandpass', 3000, 2000, 4, t, 0.3, 0.14);
+    b.tone('sine', 640, 630, t + 0.02, 0.22, 0.28);
+    boing(b, t + 0.08, 1);
+    if (impact >= 0.6) boing(b, t + 0.38, 1.35);
+  }),
   // Dial-Up's Bad Connection (run W-T): a 56k handshake in under a second, the warning before he
   // drops. The answer tone, a falling chirp, the warbling squeal, then the hiss.
   modem: patch((b, t) => {
@@ -561,5 +622,65 @@ export function createSirenVoice(ctx: BaseAudioContext, out: AudioNode): SirenVo
       lvl = 0;
     },
     level: () => lvl,
+  };
+}
+
+export interface SquealVoice {
+  /**
+   * Aims the squeal at a slip angle (radians, either side); `gain` is its level at full slip and
+   * `scale` multiplies it (0 while down, in the air or stopped).
+   */
+  set(driftRad: number, gain: number, scale?: number): void;
+  level(): number;
+  stop(): void;
+}
+
+/** The drift's continuous tyre squeal: band-passed noise (1.8 to 3.0 kHz) over a thin whine. */
+export function createSquealVoice(ctx: BaseAudioContext, out: AudioNode): SquealVoice {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx);
+  src.loop = true;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = 4;
+  band.frequency.value = SQUEAL.loHz;
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  src.connect(band);
+  band.connect(gain);
+  const whine = ctx.createOscillator();
+  whine.type = 'sawtooth';
+  whine.frequency.value = SQUEAL.loHz * 0.6;
+  const whineLevel = ctx.createGain();
+  whineLevel.gain.value = 0.18;
+  const whineBand = ctx.createBiquadFilter();
+  whineBand.type = 'lowpass';
+  whineBand.frequency.value = SQUEAL.hiHz;
+  whine.connect(whineLevel).connect(whineBand).connect(gain);
+  gain.connect(out);
+  src.start();
+  whine.start();
+  let current = 0;
+  return {
+    set(driftRad, peak, scale = 1) {
+      const t = ctx.currentTime;
+      const a = squealAmount(driftRad);
+      current = squealLevel(driftRad, peak) * Math.max(0, scale);
+      gain.gain.setTargetAtTime(current, t, 0.05);
+      band.frequency.setTargetAtTime(SQUEAL.loHz + (SQUEAL.hiHz - SQUEAL.loHz) * a, t, 0.08);
+      whine.frequency.setTargetAtTime((SQUEAL.loHz + (SQUEAL.hiHz - SQUEAL.loHz) * a) * 0.6, t, 0.08);
+    },
+    level: () => current,
+    stop() {
+      gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      current = 0;
+      for (const s of [src, whine]) {
+        try {
+          s.stop(ctx.currentTime + 0.3);
+        } catch {
+          // already stopped
+        }
+      }
+    },
   };
 }

@@ -497,7 +497,13 @@ describe('camera-2: every camera tuning value changes what the camera does', () 
       const ridden = { ...riderOn(road, s, 1.7, 30), targetId: VICTIM, lean: 0.3 * Math.sin(n / 20) };
       // A jump: 1 m up in the air for half a second.
       const air = n >= 225 && n < 255;
-      const t = air ? { ...ridden, y: ridden.y + 1, mode: 'Airborne' as const } : ridden;
+      // Playtest 3's moves, in the stretches no takedown framing covers: a drift early on, and a
+      // wheelie at the end.
+      const moves = {
+        ...(n >= 30 && n < 90 ? { drift: 0.5 } : {}),
+        ...(n >= 282 ? { wheelie: 0.6 } : {}),
+      };
+      const t = air ? { ...ridden, y: ridden.y + 1, mode: 'Airborne' as const } : { ...ridden, ...moves };
       if (n === 20)
         cam.onEvents([{ tick: n, type: 'hit', actor: VICTIM, target: ME, data: { hitImpulse: 0.5 } }]);
       if (n === 60) cam.onEvents([{ tick: n, type: 'crash', actor: ME, data: {} }]);
