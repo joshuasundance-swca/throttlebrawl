@@ -313,6 +313,60 @@ describe('ticker: the live meter', () => {
   });
 });
 
+describe('ticker: the drift chain meter (T6.3)', () => {
+  const chain = (n: number, cash: number): MeterRun => ({
+    kind: 'drift',
+    seconds: 1,
+    cash,
+    qualifies: true,
+    chain: n,
+  });
+
+  it('reads DRIFT ×2 +$140 as the meter line and follows the chain and the cash in place', () => {
+    const t = createTicker();
+    t.meter(chain(3, 140), 0);
+    const first = shown(t, 0);
+    expect(first?.cls).toBe('meter');
+    expect(first?.kind).toBe('drift');
+    expect(first && tickerLabel(first)).toBe('DRIFT ×2');
+    expect(first && tickerCash(first)).toBe('+$140');
+    t.meter(chain(4, 190), 16);
+    const next = t.step(16);
+    expect(next.changed).toBe(true);
+    expect(next.item && tickerLabel(next.item)).toBe('DRIFT ×2.5');
+    expect(next.item && tickerCash(next.item)).toBe('+$190');
+  });
+
+  it('empties visibly on a wipeout: the chain goes and a DRIFT LOST chip takes the strip', () => {
+    const t = createTicker();
+    t.meter(chain(2, 90), 0);
+    expect(shown(t, 0)?.cls).toBe('meter');
+    t.meter(null, 100);
+    t.push({ cls: 'style', text: 'DRIFT LOST', kind: 'driftLost', cash: null }, 100);
+    const lost = shown(t, 100);
+    expect(lost?.cls).toBe('style');
+    expect(lost?.text).toBe('DRIFT LOST');
+    expect(lost && tickerCash(lost)).toBe('');
+    // It goes by itself; nothing of the chain comes back.
+    expect(shown(t, 100 + 1100)).toBeNull();
+  });
+
+  it('lands on its award: the banked drift pop is the chip the meter becomes', () => {
+    const t = createTicker();
+    t.meter(chain(2, 90), 0);
+    t.meter(null, 200);
+    const pop = stylePop({ tick: 1, type: 'style', actor: 0, data: { kind: 'drift', points: 90, chain: 2 } });
+    expect(pop).not.toBeNull();
+    if (!pop) return;
+    t.push(popItem(pop, true, 1600), 200);
+    const item = shown(t, 200);
+    expect(item?.cls).toBe('style');
+    expect(item?.landed).toBe(true);
+    expect(item && tickerLabel(item)).toBe('DRIFT');
+    expect(item && tickerCash(item)).toBe('+$90');
+  });
+});
+
 describe('ticker: the queue and the stylePopups setting', () => {
   it('keeps at most 6 waiting, dropping the oldest of the lowest class', () => {
     const t = createTicker();

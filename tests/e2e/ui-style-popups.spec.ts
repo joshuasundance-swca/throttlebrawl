@@ -33,6 +33,11 @@ import { fastForwardDone } from './lockstep';
 // a list that can only shrink: a finding not on it fails, and so does an entry that no longer
 // happens.
 //
+// Playtest 3's wheelie gauge (T6.3, `#hud-wheelie`, the one new widget) is shown at its resting place
+// beside the stick in the heat and toast moments, so it is measured against every other piece, the
+// touch buttons and the road ahead like the rest. ui/moves-meter.test.ts sweeps where else a thumb
+// can put it.
+//
 // The live check after the HUD run (#428-#430) found what the road-ahead box alone cannot see: the
 // in-air prompt under the BRAKE button, and the slow-frames toast and the landing line over the
 // player's own bike. So the player's bike is a piece too (its painted screen box: the rider's
@@ -622,11 +627,11 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
     timeout: 15_000,
   });
   const m = await tickerAndMeasure(page, [LONGEST_BARK], {
-    show: ['look-offer', 'hud-target'],
+    show: ['look-offer', 'hud-target', 'hud-wheelie'],
     prompts: CAREER_PROMPTS,
   });
   const names = new Set(m.layout.map((p) => p.name));
-  for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target'])
+  for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target', 'hud-wheelie'])
     expect(names.has(must), `${where}: the layout probe measured ${must} with the heat up`).toBe(true);
   await shot(
     page,
@@ -765,12 +770,17 @@ async function shot(page: Page, name: string, outline: readonly Box[] = [], show
  */
 async function toastAndPrompts(page: Page, where: string): Promise<string[]> {
   const m = await tickerAndMeasure(page, [LONGEST_BARK], {
-    show: ['look-offer', 'hud-target'],
+    show: ['look-offer', 'hud-target', 'hud-wheelie'],
     prompts: CAREER_PROMPTS,
   });
   expect(
     m.layout.some((p) => p.name === 'look-offer'),
     `${where}: the layout probe measured look-offer`,
+  ).toBe(true);
+  // Playtest 3's wheelie gauge (T6.3) is up too, at its resting place beside where the stick lands.
+  expect(
+    m.layout.some((p) => p.name === 'hud-wheelie'),
+    `${where}: the layout probe measured hud-wheelie`,
   ).toBe(true);
   await shot(
     page,
