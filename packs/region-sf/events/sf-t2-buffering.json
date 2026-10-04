@@ -1,0 +1,66 @@
+{
+  "type": "event",
+  "id": "sf-t2-buffering",
+  "name": "Buffering",
+  "kind": "grudge-match",
+  "region": "san-francisco",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-hills-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:dial-up"],
+    "paceMps": 37
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "base:dial-up",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2,
+    "rule": "bad-connection"
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "params": {
+        "orKnockdowns": 2
+      },
+      "rewardCash": 8100
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [800, 800],
+    "perTakedownCash": 475,
+    "perNearMissCash": 36,
+    "perAirtimeCash": 54,
+    "perOncomingSecondCash": 14,
+    "takedownComboScale": 0.5,
+    "perStealCash": 91
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The tier-2 boss: a grudge match by Dial-Up's rule, Bad Connection, on the Russian Hill streets (a modem screech, a second frozen, a reconnect up the road). Beat him to the line, or knock him down twice while he buffers. Playtest 3 (T10.3): each tier's boss is beaten before the next tier opens. [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

@@ -39,18 +39,18 @@
         "maxPlace": 3
       },
       "required": false,
-      "rewardCash": 300
+      "rewardCash": 650
     }
   ],
   "tier": 1,
   "rewards": {
-    "byPlaceCash": [1500, 900, 600, 300, 150],
-    "perTakedownCash": 200,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [4400, 2400, 1550, 650, 450, 200, 150],
+    "perTakedownCash": 350,
+    "perNearMissCash": 34,
+    "perAirtimeCash": 52,
+    "perOncomingSecondCash": 14,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 86
   },
   "modifiers": {
     "pool": "region-default",
@@ -59,7 +59,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "San Francisco's first race: the waterfront at foggy dawn, from the foot of the bridge past the piers and the clock-tower ferry hall to the sea lions. Run W-U: it ran from the piers up the cable line before; the waterfront needed an event, as every route of the region carries one, and the hills keep four. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "San Francisco's first race: the waterfront at foggy dawn, from the foot of the bridge past the piers and the clock-tower ferry hall to the sea lions. Run W-U: it ran from the piers up the cable line before; the waterfront needed an event, as every route of the region carries one, and the hills keep four. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.3): the purse of global tier 9 (docs/content-packs.md, Career).",
     "provenance": {
       "origin": "agent",
       "author": "agent",
