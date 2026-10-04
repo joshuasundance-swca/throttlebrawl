@@ -11,7 +11,7 @@
 // - A line cut with "cut this" never plays again on this device, and stops at once if it is playing.
 // - A clip that arrives more than STALE_S after its subtitle showed is dropped (the moment passed).
 
-/** The subtitle's event (src/ui/narrative/bubble.ts dispatches it on `window` when a bark shows). */
+/** The subtitle's event (src/ui/narrative/voice-link.ts dispatches it on `window` when a bark shows). */
 export const BARK_SHOWN_EVENT = 'throttlebrawl:bark';
 /** Sent back when a line's voice starts, `{contentRef, durationS}`: the subtitle stays as long. */
 export const BARK_VOICE_EVENT = 'throttlebrawl:bark-voice';

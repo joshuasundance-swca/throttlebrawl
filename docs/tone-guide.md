@@ -330,7 +330,7 @@ A bark is a short rival line shown as a text bubble in milestone 1 and voiced la
 
 ### Writing rules [default]
 
-1. **One line, one beat.** Aim for 42 characters or fewer; keep every line to 80 or fewer (the pack check warns above 80). A bubble stays up for the longer of 2 seconds and the line's length divided by 15 characters per second, so a 42-character line shows for about 2.8 seconds. (Streaming subtitle guides cap adult programs at 20 characters per second for viewers who aren't steering a bike *(unverified; recalled, not fetched)*.) A new bark never starts while a bubble is still up, and a short quiet gap follows every bark.
+1. **One line, one beat.** Aim for 42 characters or fewer; keep every line to 80 or fewer (the pack check warns above 80). A bark shows on the top ticker, one line at a time, small and dark, and stays up for the longer of 2 seconds and the line's length divided by 15 characters per second, so a 42-character line shows for about 2.8 seconds. (Streaming subtitle guides cap adult programs at 20 characters per second for viewers who aren't steering a bike *(unverified; recalled, not fetched)*.) A new bark never starts while another is still up, and a short quiet gap follows every bark. A takedown name ("CATCH OF THE DAY") flashes on the same strip for under a second and may pause a bark's subtitle while it does; the bark comes back for the time it had left.
 2. **Sentence case.** At most one exclamation mark. No emoji.
 3. **In character.** If the line would work for any rival, rewrite it until it wouldn't.
 4. **Every line has a trigger, and conditions where it needs them.** Use the triggers and condition facts listed in [the content-pack doc](./content-packs.md#line-fields). A line with no trigger doesn't load.
@@ -347,7 +347,7 @@ The data format, the trigger list, the condition facts, the cooldowns and the li
 - **Contextual.** A line that fits the moment beats a generic one. The picker favors specific and memory-aware lines.
 - **Non-repetitive.** A line isn't heard again soon, lines heard often fade, and silence beats a repeat.
 - **Memory.** Rivals remember your history with them for the whole career, across play sessions, because grudges are saved with the career [decided] (cockpit answer, 2026-09-29): hits, takedowns, steals, and who beat whom last time. Rivals also remember each other, which gives them lines about each other.
-- **Not drowning the race.** At most one bubble at a time. The race is louder than the chatter.
+- **Not drowning the race.** At most one line on the ticker at a time. The race is louder than the chatter.
 
 ### Memory slots, a proposed extension [default]
 

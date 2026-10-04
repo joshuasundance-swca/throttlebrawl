@@ -1,16 +1,15 @@
-// ui/narrative: bark bubbles, "cut this", and (later) interludes. The narrative lane owns this
+// ui/narrative: barks, "cut this", and (later) interludes. The narrative lane owns this
 // folder. The seam: app/ hands each tick's SimEvents to `onEvents`, with the snapshot and the race
 // seed as context; the director turns them into bark requests, the selector picks a line on a
-// presentation random stream, and the bubble shows it. It never reads sim internals and never
+// presentation random stream, and the HUD ticker shows it. It never reads sim internals and never
 // changes the sim.
 //
-// "Cut this" (narrative-2): a long-press on the bubble, a tap in the pause screen's "recently
+// "Cut this" (narrative-2): a long-press on the ticker, a tap in the pause screen's "recently
 // seen" list, or a billboard or sign app/ picked in the paused scene (`offerCut`) opens the confirm
 // card. A cut hides the item on this device at once and hands `{contentRef, raceId, tick}` to
 // `onVeto`, which the owner of the settings record stores (the debug report lists it from there).
 import { loadBasePack, type ContentRegistry } from '../../content';
 import { SIM_HZ, type SimEvent } from '../../sim/api';
-import { createBubbleView, type BubbleView } from './bubble';
 import { createBarkDirector, type BarkView, type NarrativeContext, type ShownBark } from './director';
 import {
   BARK_TUNING,
@@ -21,6 +20,7 @@ import {
   type BarkParams,
   type BarkSelector,
 } from './selector';
+import type { BarkSurface } from './surface';
 import { createSeenLog, type SeenItem, type SeenKind, type VetoFlag } from './veto';
 import { createCutMenu, mountRecentlySeen, watchBubblePresses, type CutMenu } from './veto-ui';
 
@@ -61,9 +61,14 @@ export interface NarrativeOptions {
   bikes?: ContentRegistry['bikes'];
   includeDrafts?: boolean;
   params?: BarkParams;
-  /** Where the bubble and the cut card go; `#ui`, else the body, when left out. */
+  /** Where the cut card goes; `#ui`, else the body, when left out. */
   host?: () => HTMLElement | null;
-  /** A view other than the DOM bubble (tests); no long-press is watched then. */
+  /**
+   * Where barks show and are pressed: the HUD ticker. Its long-press is watched for "cut this".
+   * Without it (and without `view`) the narrative stays silent.
+   */
+  surface?: BarkSurface;
+  /** A view other than the ticker (tests); no long-press is watched then. */
   view?: BarkView;
   /** Content references already cut on this device (from the settings record). */
   vetoed?: readonly string[];
@@ -87,7 +92,7 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
   // Built on first use, so creating the UI never pays for it.
   let director: ReturnType<typeof createBarkDirector> | null = null;
   let selector: BarkSelector | null = null;
-  let bubble: BubbleView | null = null;
+  let bubble: BarkSurface | null = null;
   const pending: [string, number][] = [];
 
   const cut = (item: SeenItem) => {
@@ -95,7 +100,7 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
     vetoed.add(item.contentRef);
     selector?.veto(item.contentRef);
     seen.remove(item.contentRef);
-    if (bubble?.current()?.contentRef === item.contentRef) bubble.hide();
+    bubble?.cut(item.contentRef);
     options.onVeto?.({ contentRef: item.contentRef, raceId: item.raceId, tick: item.tick });
   };
   const offer = (item: SeenItem) => {
@@ -123,9 +128,9 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
     };
     selector = createBarkSelector(lines, options.params, 0, { vetoed });
     for (const [id, value] of pending.splice(0)) selector.setParam(id, value);
-    let view = options.view;
-    if (!view) {
-      const b = createBubbleView(options.host);
+    let view: BarkView = options.view ?? { show: () => undefined, hide: () => undefined };
+    if (!options.view && options.surface) {
+      const b = options.surface;
       bubble = b;
       view = b;
       watchBubblePresses(b, {

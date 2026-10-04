@@ -31,6 +31,12 @@
 // (`newspaper`); still holding it at the ground, the rider lands holding the newspaper, a crash
 // thrown high like a botched flip (`data.attempt: 'newspaper'`). 0 turns the pose off (a recording
 // made before it, whose tuning leaves the key out, rides exactly as before).
+// The hood launch's backflips (playtest 3: "wheelie into the hood of a car... launch you up into a
+// jump doing backflips"; sim/riders/wheelie.ts launches): a scripted spin (`startSpin`) turns the
+// bike over backwards at a set rate, with no level pull and no air commands, until it is half a turn
+// short of its last full turn; from there the usual rules finish it (the level pull completes the
+// turn, and a held brake or kick works under the same lands-upright check). A flight that starts
+// from a hood launch is marked, and its landing says so (`Touchdown.hood`, `land.data.hood`).
 import { atan, clamp, PI, TAU, wrapAngle, type TuningParamDecl } from '../../core';
 import {
   InputFlag,
@@ -130,8 +136,23 @@ const LANDING_WINDOW_S = 0.1;
 const BOTCHED_UP_MPS = 5;
 const BOTCHED_SIDE_MPS = 3;
 
+/**
+ * The hood launch's spin (a slice of the air state the wheelie's state supplies, sim/riders/
+ * wheelie.ts `newWheelieState`): the full backflips the spin is for (0: no spin), its rate in rad/s,
+ * and 1 while the flight is a hood launch's.
+ */
+export interface SpinState {
+  spin: number[];
+  spinRate: number[];
+  hood: number[];
+}
+
+export function newSpinState(): SpinState {
+  return { spin: [], spinRate: [], hood: [] };
+}
+
 /** The riders state this file keeps (a slice of RiderState). */
-export interface AirState {
+export interface AirState extends SpinState {
   /** The bike's pitch, radians, nose up positive, from the horizontal; unwrapped through flips. */
   pitch: number[];
   /** Its rate, rad/s. */
@@ -180,6 +201,25 @@ export function startFlight(st: AirState, m: Mover, input: SimInput | undefined,
   st.paper[m.id] = 0;
   st.paperFold[m.id] = 0;
   st.paperRead[m.id] = 0;
+  endSpin(st, m.id);
+}
+
+/**
+ * A hood launch's backflips (sim/riders/wheelie.ts), on a flight `startFlight` has just begun:
+ * `turns` full turns, coasting at `rate` rad/s until half a turn short of the last.
+ */
+export function startSpin(st: AirState, m: Mover, turns: number, rate: number): void {
+  st.spin[m.id] = turns;
+  st.spinRate[m.id] = rate;
+  st.pitchRate[m.id] = rate;
+  st.hood[m.id] = 1;
+}
+
+/** No spin and no hood flight (written only when set, so a race without one hashes as before). */
+function endSpin(st: AirState, id: number): void {
+  if (st.spin[id]) st.spin[id] = 0;
+  if (st.spinRate[id]) st.spinRate[id] = 0;
+  if (st.hood[id]) st.hood[id] = 0;
 }
 
 /** On the ground the bike lies along the slope, upright, doing no trick. */
@@ -190,6 +230,7 @@ export function groundPitch(st: AirState, m: Mover, slope: number): void {
   st.paperArm[m.id] = 0;
   st.paper[m.id] = 0;
   st.paperFold[m.id] = 0;
+  endSpin(st, m.id);
 }
 
 /** Whether the rider has the newspaper out (reading it, or still folding it). */
@@ -248,6 +289,18 @@ export function stepAttitude(
   airS = 0,
 ): number {
   const slope = slopeAt(config, m);
+  // A hood launch's spin coasts the bike over at its own rate, half a turn short of its last turn.
+  const turns = st.spin[m.id] ?? 0;
+  if (turns > 0) {
+    const spinRate = st.spinRate[m.id] ?? 0;
+    if ((st.pitch[m.id] ?? slope) - slope < TAU * turns - PI) {
+      st.pitchRate[m.id] = spinRate;
+      st.pitch[m.id] = (st.pitch[m.id] ?? slope) + spinRate * dt;
+      st.trick[m.id] = trickInProgress(st, m, slope);
+      return steer * AIR_LEAN;
+    }
+    st.spin[m.id] = 0;
+  }
   let block = st.airBlock[m.id] ?? 0;
   if (!brakeOn(input)) block &= ~1;
   if (!kickOn(input)) block &= ~2;
@@ -351,6 +404,8 @@ export interface Touchdown {
   throw: { upMps: number; sideMps: number } | null;
   /** The trick being tried at touch-down, for a botched one's crash data ('' for none). */
   attempt: TrickId | '';
+  /** The flight was a hood launch's (sim/riders/wheelie.ts): `land.data.hood`. */
+  hood: boolean;
 }
 
 export function touchdown(st: AirState, m: Mover, slope: number): Touchdown {
@@ -389,6 +444,7 @@ export function touchdown(st: AirState, m: Mover, slope: number): Touchdown {
     wobbles,
     throw: attempt !== '' ? { upMps: BOTCHED_UP_MPS, sideMps: side * BOTCHED_SIDE_MPS } : null,
     attempt,
+    hood: (st.hood[m.id] ?? 0) === 1,
   };
 }
 

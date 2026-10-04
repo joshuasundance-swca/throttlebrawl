@@ -167,7 +167,7 @@ test('voices in the build: no clip in the first load; the first bark fetches its
   expect(clips, 'no clip loads before a race').toEqual([]);
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await page.locator('#menu-race').click();
-  const bubble = page.locator('#bark-bubble');
+  const bubble = page.locator('#hud-ticker[data-cls="bark"]');
   await expect(bubble).toBeVisible({ timeout: 15_000 });
   const ref = (await bubble.getAttribute('data-content-ref')) ?? '';
   const line = ref.slice(ref.indexOf('#') + 1);

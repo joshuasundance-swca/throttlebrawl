@@ -4,12 +4,16 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 // Run W-O, the polish-1 follow-ups (skeptic-pol and sync-pol reports):
 // - the R key's radio choice is saved the moment it changes, not only when pause or settings opens;
 // - the radio panel's "Cut." note is readable on a phone (big, upright, on its own ground);
-// - the bark bubble stays within two lines on a 412 px-wide portrait screen, for every line the
-//   packs carry.
+// - the bark on the top ticker stays within two lines (one slot, at most 44 px) on a 412 px-wide
+//   portrait screen, for every line the packs carry.
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
   __game?: { state(): string; snapshot(): { tick: number } | null; setBot(on: boolean): void };
+  __uiTicker?: (
+    items: { cls: string; text: string; tag?: string; contentRef?: string; dwellMs?: number }[],
+    hold?: boolean,
+  ) => void;
 };
 
 /** Every bark line the packs carry (base and regions). */
@@ -189,47 +193,66 @@ test.describe('portrait', () => {
     await shot(page, 'cut-note-portrait');
   });
 
-  test('the bark bubble holds every pack line in at most two lines', async ({ page }) => {
+  test('the ticker holds every pack line in at most two lines', async ({ page }) => {
     test.setTimeout(90_000);
     expect(LINES.length, 'pack lines to measure').toBeGreaterThan(100);
     await page.goto('./');
     await page.locator('#start-screen').click();
     await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
     await page.locator('#menu-race').click();
-    const bubble = page.locator('#bark-bubble');
+    const bubble = page.locator('#hud-ticker[data-cls="bark"]');
     await expect(bubble).toBeVisible({ timeout: 15_000 });
     await shot(page, 'bark-portrait');
-    // The real bubble, its own line swapped for each pack line in turn: count the text's line boxes.
-    const result = await bubble.evaluate((el, lines) => {
-      const text = el.querySelector<HTMLElement>('.bark-text');
-      if (!text) return null;
-      const own = text.textContent;
+    // The real ticker, each pack line shown on it in turn (held up): count the text's line boxes.
+    const result = await page.evaluate((lines) => {
+      const root = document.getElementById('hud-ticker');
+      const show = (text: string) =>
+        (window as TestWindow).__uiTicker?.([
+          {
+            cls: 'bark',
+            tag: 'Deacon Vane',
+            text,
+            contentRef: 'base:bark-set/deacon-core#test',
+            dwellMs: 600_000,
+          },
+        ]);
+      if (!root) return null;
       let worst = { lines: 0, text: '' };
+      let tallest = 0;
+      let smallest = 99;
+      let widest = 0;
       const counts: number[] = [];
       for (const l of lines) {
-        text.textContent = l;
+        show(l);
+        const text = root.querySelector<HTMLElement>('.ticker-text');
+        if (!text) return null;
         const n = text.getClientRects().length;
         counts.push(n);
         if (n > worst.lines) worst = { lines: n, text: l };
+        const r = root.getBoundingClientRect();
+        tallest = Math.max(tallest, r.height);
+        widest = Math.max(widest, r.right);
+        smallest = Math.min(smallest, parseFloat(getComputedStyle(root).fontSize));
       }
       // The longest line, left up for the screenshot.
-      text.textContent = [...lines].sort((a, b) => b.length - a.length)[0] ?? own;
-      const r = el.getBoundingClientRect();
+      show([...lines].sort((a, b) => b.length - a.length)[0] ?? '');
+      const r = root.getBoundingClientRect();
       return {
         worst,
         twoLines: counts.filter((n) => n === 2).length,
         oneLine: counts.filter((n) => n === 1).length,
+        tallest,
+        widest,
         box: { left: r.left, right: r.right, width: r.width },
-        fontSize: parseFloat(getComputedStyle(text).fontSize),
+        fontSize: smallest,
       };
     }, LINES);
-    console.log(`bark bubble at 412 px: ${LINES.length} lines measured, ${JSON.stringify(result)}`);
+    console.log(`ticker at 412 px: ${LINES.length} lines measured, ${JSON.stringify(result)}`);
     expect(result).not.toBeNull();
     expect(result?.worst.lines, `worst: "${result?.worst.text}"`).toBeLessThanOrEqual(2);
-    expect(result?.fontSize).toBeGreaterThanOrEqual(18);
-    expect((result?.box.left ?? -1) >= 0 && (result?.box.right ?? 999) <= 412, 'inside the screen').toBe(
-      true,
-    );
+    expect(result?.tallest, 'one slot, at most 44 px').toBeLessThanOrEqual(44);
+    expect(result?.fontSize).toBeGreaterThanOrEqual(12);
+    expect((result?.box.left ?? -1) >= 0 && (result?.widest ?? 999) <= 412, 'inside the screen').toBe(true);
     await shot(page, 'bark-portrait-longest');
   });
 });

@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 
 // narrative-2 in the real build (docs/milestones/M2.md, narrative-2, "Automated acceptance"):
-// - a long-press (500 ms or more) on a rival's bark bubble opens "cut this" with the line on it,
+// - a long-press (500 ms or more) on a rival's bark on the top ticker opens "cut this" with the line on it,
 //   and confirming cuts it: the content reference is then in the copied debug report;
-// - a touch held on the bubble where it overlaps the stick zone is ignored mid-race, so the bubble
+// - a touch held on the ticker where it overlaps the stick zone is ignored mid-race, so the ticker
 //   never steals a steering thumb; a touch on its part outside the zones works;
 // - the pause screen's "recently seen" list cuts a line in two taps, and the report lists it too.
 // The race is ridden by the stub bot. The billboard long-press in the paused scene waits for
@@ -55,9 +55,9 @@ async function startRace(page: Page) {
   await page.locator('#menu-race').click();
 }
 
-/** The bubble on screen now, or the next one (not `except`): its line, reference and box. */
+/** The bark on the ticker now, or the next one (not `except`): its line, reference and box. */
 async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
-  const bubble = page.locator('#bark-bubble');
+  const bubble = page.locator('#hud-ticker[data-cls="bark"]');
   await expect(async () => {
     await expect(bubble).toBeVisible();
     expect(await bubble.getAttribute('data-content-ref')).not.toBe(except);
@@ -66,7 +66,7 @@ async function nextBubble(page: Page, except = ''): Promise<SeenBubble> {
     const r = el.getBoundingClientRect();
     return {
       ref: el.getAttribute('data-content-ref') ?? '',
-      text: el.querySelector('.bark-text')?.textContent ?? '',
+      text: el.querySelector('.ticker-text')?.textContent ?? '',
       left: r.left,
       right: r.right,
       x: r.x + r.width / 2,
@@ -109,14 +109,16 @@ async function copiedReport(page: Page, button: string): Promise<string> {
   return page.evaluate(() => (window as TestWindow).__copied?.at(-1) ?? '');
 }
 
-test('long-pressing a bark bubble cuts the line, and the copied debug report lists it', async ({ page }) => {
+test('long-pressing a bark on the ticker cuts the line, and the copied debug report lists it', async ({
+  page,
+}) => {
   test.setTimeout(120_000);
   const problems = watchErrors(page);
   await startRace(page);
   const menu = page.locator('#cut-menu');
 
   // The stick zone is the left 0.9 × the short side of the screen (packs/base/hud). A touch held on
-  // the bubble inside it is steering, not a cut.
+  // the ticker inside it is steering, not a cut.
   const viewport = page.viewportSize();
   if (!viewport) throw new Error('no viewport');
   const stickRight = 0.9 * Math.min(viewport.width, viewport.height);
@@ -125,8 +127,8 @@ test('long-pressing a bark bubble cuts the line, and the copied debug report lis
   await holdTouch(page, first.left + 10, first.y, 600);
   await expect(menu).toHaveCount(0);
 
-  // A mouse held still for 650 ms on a fresh bubble: "cut this", with the line on the card. The
-  // bubble stays up while pressed, whatever its own time says.
+  // A mouse held still for 650 ms on a fresh bark: "cut this", with the line on the card. The
+  // bark stays up while pressed, whatever its own time says.
   const seen = await nextBubble(page, first.ref);
   console.log(`bubble ${seen.ref}: "${seen.text}"`);
   expect(seen.ref).toMatch(/^base:bark-set\/[a-z0-9-]+#[a-z0-9-]+$/);
@@ -151,11 +153,11 @@ test('long-pressing a bark bubble cuts the line, and the copied debug report lis
   await expect(menu).toBeHidden();
   await expect(page.locator('#cut-done')).toContainText('Cut');
   const still = await page
-    .locator('#bark-bubble')
+    .locator('#hud-ticker')
     .evaluate((el) => !(el as HTMLElement).hidden && el.getAttribute('data-content-ref'));
   expect(still).not.toBe(seen.ref);
 
-  // A touch on the bubble's part outside the stick and attack zones works mid-race.
+  // A touch on the ticker's part outside the stick and attack zones works mid-race.
   const third = await nextBubble(page, seen.ref);
   const outside = Math.max(third.x, stickRight + 10);
   expect(outside).toBeLessThan(third.right - 4);

@@ -915,7 +915,8 @@ function truckContact(
  * A solid road hazard (run W-U: a parked pickup, a stump, a chainsaw bear; sim/riders/features.ts)
  * is a wall box. From the side the rider is held beside it and scrapes, like a barrier; head on it
  * stops where it was and takes its whole speed as the impact, so a fast one crashes and a crawl
- * only wobbles. Events carry `object` (what it is) and the hazard's `feature` id.
+ * only wobbles. Events carry `object` (what it is) and the hazard's `feature` id. Returns true when a
+ * wheelie launched the rider off it instead (playtest 3): the rider is in the air.
  */
 function hazardContact(
   world: World,
@@ -924,12 +925,12 @@ function hazardContact(
   m: Mover,
   before: { edge: number; s: number; d: number },
   dt: number,
-): void {
+): boolean {
   const pos = m.pos;
   const hazard = solidHazardAt(config, pos.edge, pos.s, pos.d);
   if (!hazard) {
     st.hazardTouch[m.id] = 0;
-    return;
+    return false;
   }
   const v = m.speed;
   const yawBefore = m.yaw;
@@ -945,21 +946,22 @@ function hazardContact(
     const impact = scrapeAlong(config, m, side, dt);
     pos.d = side > 0 ? d0 - 0.01 : d1 + 0.01;
     wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
-    return;
+    return false;
   }
   if (wasInside) {
     // Already in it (put down there): step out beside it, toward the nearer side.
     pos.d = pos.d - d0 < d1 - pos.d ? d0 - 0.01 : d1 + 0.01;
-    return;
+    return false;
   }
   // Head on in a wheelie (playtest 3; the critic's S2: a parked pickup is a car too): the wheelie
   // may launch the rider off it instead (sim/riders/wheelie.ts).
-  if (hazardLaunch(world, config, st, m, hazard, v)) return;
+  if (hazardLaunch(world, config, st, m, hazard, v)) return true;
   pos.edge = before.edge;
   pos.s = before.s;
   pos.d = before.d;
   m.speed = 0;
   wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra });
+  return false;
 }
 
 /** A grounded rider riding onto a boost pad gets its boost, once per crossing, and one `boost` event. */
@@ -1081,7 +1083,13 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt);
-  hazardContact(world, config, st, m, before, dt);
+  if (hazardContact(world, config, st, m, before, dt)) {
+    // Launched off a parked car by a wheelie (playtest 3): its flight is already set up.
+    st.throttle[m.id] = throttle;
+    st.brake[m.id] = brake;
+    gearAndRpm(st, m);
+    return;
+  }
 
   // Take-off: the surface fell away faster than gravity can follow (the ballistic height clears it).
   // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
@@ -1340,6 +1348,8 @@ function land(world: World, config: SimConfig, st: RiderState, m: Mover, surface
     trick,
     flips,
     pitchOff: td.pitchOff,
+    // Off a hood launch (playtest 3): sim/race scores its trick × race.styleHoodScale.
+    ...(td.hood ? { hood: true } : {}),
   };
   // Air that pays: a clean landing after real air spits the bike forward (rivals too).
   const surge = quality === 'clean' ? landingSurge(world, config, st, m, airTicks) : 0;
