@@ -2,41 +2,190 @@
 // "wheelie into the hood of a car... launch you up into a jump doing backflips"; the maintainer's
 // gesture: double-tap the throttle, then balance it by thumb height).
 //
-// This is the contract stub (K0a): the hooks sim/riders and sim/traffic call, each returning its
-// neutral value, so every race rides exactly as before. The wheelie lane (T2.1) fills the bodies
-// here and the backflip spin in air.ts, without touching riders/index.ts or traffic/index.ts:
+// The K0a contract's hooks, called from sim/riders and sim/traffic:
 // - `wheelieStep`, each grounded tick after the throttle and brake are read: the steering scale
 //   (× maxYaw) and the pitch the front is up (added to the ground pitch, so the snapshot's `pitch`
 //   is the bike's real pitch and a take-off starts the flight from it);
 // - `wheelieTakeoff`, the tick a grounded rider leaves the ground: the wheelie ends (its angle is
 //   already in the flight's starting pitch);
 // - `hoodLaunchContact`, traffic's first contact with a vehicle, before it is classed as a crash or
-//   a wobble: true means the wheelie launched the rider and traffic leaves the contact alone (no
-//   crash, no push-out). The body brakes the vehicle itself (its mover's speed);
+//   a wobble: true means the wheelie launched the rider and traffic leaves the contact alone;
 // - `hazardLaunch`, a grounded rider meeting a solid road hazard head on (a parked pickup: the
-//   critic's S2, "a car is a car"): true means it launched, and the hazard rule leaves it alone.
-//   The launch must start above `hazardTop(hazard)`, or the air rule crashes it into the hazard;
+//   critic's S2, "a car is a car"): true means it launched, from above the hazard's top;
 // - `wheelieOf` and `wheelieMoves`, for the snapshot (`EntitySnapshot.wheelie`, `SimSnapshot.moves`).
-// The wheelie is off while its tuning keys are absent (`riders.wheelie`), as every move here is, so
-// recordings made before ride as they did.
-import type { EntityId, TuningParamDecl } from '../../core';
+//
+// The wheelie (scratch spec moves.md §3.2, [default] every number):
+// - **Pop.** On the rising edge of InputFlag.wheelie, a player riding at 6 m/s or more (× the speed
+//   multiplier) with at least 0.3 throttle, not wobbling, U-turning or drifting, lifts the front at
+//   2.5 rad/s. AI riders never pop.
+// - **Hold.** Once up, the flag no longer matters: the throttle balances it. The front's angle θ
+//   above the slope follows θ̈ = K·(θ*(u) − θ) + λ·(θ − θ_bp) − D·θ̇ − B·brake, θ*(u) =
+//   clamp((u − 0.3)/0.7, 0, 1) × 1.4: the λ term is "past the balance point it wants to keep going",
+//   the brake is the rear brake bringing the nose down. The sweet band (θ 0.35 to 0.85) sits at a
+//   throttle of about 0.52 to 0.68; `riders.wheelieGain` scales K and λ (lower: lazier).
+// - **End.** The front back down (θ ≤ 0.04): clean when it falls slower than 2.5 rad/s, else a wobble
+//   (`cause: 'wheelie'`). Over the top (θ ≥ 1.2): a loop-out, a crash thrown up and back. Also on a
+//   wobble or a hit (dirty), a take-off or a hood launch (clean), under 3 m/s (clean), or a rider
+//   taken off the bike in between (dirty). Every end emits `wheelieEnd`, which sim/race scores.
+// - **While up**, steering has 0.6 of its reach; the throttle is still the throttle.
+//
+// The hood launch (moves.md §3.3, the critic's S2): in a wheelie with the front at least 0.35 rad up
+// (the front wheel about hood height), meeting end on and not a graze, at 8 m/s closing or more (×
+// the speed multiplier), a car you can ride up (a normal-hazard `car` or `oddity` at least 3.5 m
+// long: sedans, pickups, vans, robotaxis, stalled cars; never bicycles, scooters, golf carts or
+// anything `big`), or a parked car-like road hazard (`object` pickup, sedan or car), launches the
+// rider instead of crashing: 1 m up (just over a hazard's top), rising at 0.45 × the closing speed,
+// at least 6 m/s and at most what keeps the apex at HOOD_APEX_M, at 0.9 of its speed, the bike
+// spinning 1 to 3 backflips (sim/riders/air.ts `startSpin`). An oncoming car is a `hood` launch,
+// one going your way a `trunk` launch; the car brakes to 0.6 of its speed. `hoodLaunch` and a
+// `jump` (data.hood) fire, and the landing carries `data.hood` for sim/race's hood-trick scale.
+//
+// The wheelie is off while its switch is absent or 0 (`riders.wheelie`), so recordings made before
+// ride as they did, and nothing is written for a rider that never pops.
+import { clamp, cos, TAU, type EntityId, type TuningParamDecl } from '../../core';
 import type { BakedFeature } from '../../road';
-import type { MovesSnapshot, SimConfig, SimInput, SimTrafficTypeDef } from '../types';
-import type { Mover, World } from '../world';
+import {
+  InputFlag,
+  type MovesSnapshot,
+  type SimConfig,
+  type SimInput,
+  type SimTrafficTypeDef,
+} from '../types';
+import { emit, speedMultiplierOf, type Mover, type World } from '../world';
+import {
+  FLIP_MAX_RATE,
+  newSpinState,
+  slopeAt,
+  startFlight,
+  startSpin,
+  timeToGround,
+  type SpinState,
+} from './air';
+import { driftOf } from './drift';
+import { hazardObject, hazardTop } from './features';
 import type { RiderState } from './index';
+import { uturnTurning } from './uturn';
 
-/** The wheelie's tuning (T2.1 declares `riders.wheelie` and `riders.wheelieGain` here). */
-export const WHEELIE_TUNING: readonly TuningParamDecl[] = [];
+/** The wheelie's tuning: its switch (absent or 0: off) and its balance gain. */
+export const WHEELIE_TUNING: readonly TuningParamDecl[] = [
+  {
+    // Playtest 3's wheelie and hood launch: 1 on, 0 off (absent: off, so old recordings ride as
+    // they did). [default] on.
+    id: 'riders.wheelie',
+    group: 'crashes',
+    label: 'Wheelie',
+    default: 1,
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: '',
+    affectsSim: true,
+  },
+  {
+    // Scales the balance's pull toward the throttle's angle and its tip past the balance point
+    // together: lower is a lazier, wider sweet band, higher a twitchier one. [default] 1.
+    id: 'riders.wheelieGain',
+    group: 'crashes',
+    label: 'Wheelie: balance gain',
+    default: 1,
+    min: 0.5,
+    max: 2,
+    step: 0.1,
+    unit: '×',
+    affectsSim: true,
+  },
+];
 
+/** The pop's lift, rad/s. */
+export const WHEELIE_POP_RATE = 2.5;
+/** The slowest a wheelie pops, m/s (× the speed multiplier), and the least throttle. */
+export const WHEELIE_MIN_MPS = 6;
+export const WHEELIE_MIN_THROTTLE = 0.3;
+/** Under this speed (× the multiplier) the front settles, m/s. */
+export const WHEELIE_SETTLE_MPS = 3;
+/** The balance: pull K toward the throttle's angle, tip λ past the balance point, damping D. */
+export const WHEELIE_K = 8;
+export const WHEELIE_TIP = 3;
+export const WHEELIE_BALANCE_RAD = 0.6;
+export const WHEELIE_DAMP = 4;
 /**
- * The wheelie's per-rider state, by entity id, part of RiderState (T2.1 adds its arrays here and
- * their empty values in `newWheelieState`).
+ * The rear brake's pull on the nose, rad/s² at full brake. 26, not the spec's 12: at 12, ten ticks
+ * of full brake from 0.8 rad only reach 0.64 (computed), short of the spec's own "under 0.5".
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- the contract's seam: T2.1 fills it
-export interface WheelieState {}
+export const WHEELIE_BRAKE = 26;
+/** The throttle's angle at full throttle, radians. */
+export const WHEELIE_TARGET_MAX = 1.4;
+/** The front is down at or under this, radians; over the top at or past WHEELIE_LOOP_RAD. */
+export const WHEELIE_DOWN_RAD = 0.04;
+export const WHEELIE_LOOP_RAD = 1.2;
+/** Falling faster than this when it lands, rad/s, the front slams down: a wobble. */
+export const WHEELIE_SLAM_RATE = 2.5;
+/** The sweet band, radians. */
+export const WHEELIE_SWEET = { lo: 0.35, hi: 0.85 } as const;
+/** Steering's reach while the front is up. */
+export const WHEELIE_STEER_SCALE = 0.6;
+/** A slammed-down front's wobble, ticks: the riders' WOBBLE_TICKS (a test pins them equal). */
+export const WHEELIE_WOBBLE_TICKS = 36;
+/** A loop-out throws the rider up this fast, m/s. */
+const LOOP_OUT_UP_MPS = 3;
+
+/** The hood launch needs the front up this far, radians (the front wheel about hood height). */
+export const HOOD_MIN_THETA = 0.35;
+/** A vehicle you can ride up is at least this long, m. */
+export const HOOD_MIN_LENGTH_M = 3.5;
+/** The least closing speed that launches, m/s (× the speed multiplier). */
+export const HOOD_MIN_CLOSING_MPS = 8;
+/** The launch rises at this share of the closing speed... */
+export const HOOD_VY_SHARE = 0.45;
+/** ...at least this fast, m/s (× the multiplier)... */
+export const HOOD_VY_MIN_MPS = 6;
+/**
+ * ...and at most what keeps the apex this high above the road, m: a flat landing then comes down at
+ * 13.7 m/s, under the landing's 14 m/s wobble line (the spec's 14 m/s cap from 1 m came down at 14.7,
+ * a wobble on every big launch; computed).
+ */
+export const HOOD_APEX_M = 9.5;
+/** Off a moving car the flight starts this high, m. */
+export const HOOD_LAUNCH_H_M = 1;
+/** Off a parked hazard it starts this far over its top, m (the air rule crashes anything below it). */
+export const HAZARD_LAUNCH_CLEAR_M = 0.1;
+/** The rider keeps this share of its speed; the car brakes to this share of its own. */
+export const HOOD_SPEED_KEEP = 0.9;
+export const HOOD_CAR_BRAKE = 0.6;
+/** Backflips: one per 2π / HOOD_FLIP_RATE seconds of forecast air, 1 to HOOD_MAX_FLIPS... */
+export const HOOD_FLIP_RATE = 5.5;
+export const HOOD_MAX_FLIPS = 3;
+/** ...spun at a rate that would finish them in this share of the air. */
+export const HOOD_SPIN_SHARE = 0.85;
+/** Parked road hazards that are cars (`params.object`). */
+export const CAR_LIKE_HAZARDS: readonly string[] = ['pickup', 'sedan', 'car'];
+
+const GRAVITY = 9.81;
+
+/** The wheelie's per-rider state, by entity id, part of RiderState; plus the hood launch's spin. */
+export interface WheelieState extends SpinState {
+  /** The front's angle above the slope, radians (0: down), and its rate, rad/s. */
+  wheelie: number[];
+  wheelieRate: number[];
+  /** World ticks (× timeScale) this wheelie has been up, and of those in the sweet band. */
+  wheelieUp: number[];
+  wheelieSweet: number[];
+  /** The wheelie flag last tick (1 held), for its rising edge. */
+  wheelieFlag: number[];
+  /** The last tick the wheelie was stepped: a gap means the rider was off the bike in between. */
+  wheelieTick: number[];
+}
 
 export function newWheelieState(): WheelieState {
-  return {};
+  return {
+    ...newSpinState(),
+    wheelie: [],
+    wheelieRate: [],
+    wheelieUp: [],
+    wheelieSweet: [],
+    wheelieFlag: [],
+    wheelieTick: [],
+  };
 }
 
 /** What a wheelie does to a grounded tick. */
@@ -49,26 +198,132 @@ export interface WheelieStep {
 
 const NO_WHEELIE: Readonly<WheelieStep> = { steerScale: 1, pitchAdd: 0 };
 
+function isOn(world: World): boolean {
+  return (world.params['riders.wheelie'] ?? 0) > 0;
+}
+
+/** Ends the wheelie: `wheelieEnd` with its world seconds, and the state back to front down. */
+function endWheelie(world: World, st: WheelieState, m: Mover, clean: boolean, loopOut = false): void {
+  const id = m.id;
+  emit(world, 'wheelieEnd', id, {
+    seconds: (st.wheelieUp[id] ?? 0) / 60,
+    sweetS: (st.wheelieSweet[id] ?? 0) / 60,
+    clean,
+    loopOut,
+  });
+  st.wheelie[id] = 0;
+  st.wheelieRate[id] = 0;
+  st.wheelieUp[id] = 0;
+  st.wheelieSweet[id] = 0;
+}
+
 /**
  * One grounded tick of the wheelie: pop on the rising edge of InputFlag.wheelie, balance by the
- * throttle, end on the front coming down, a loop-out, a hit or a take-off. `throttle` and `brake`
+ * throttle, end on the front coming down, a loop-out, a hit or a slow crawl. `throttle` and `brake`
  * are 0..1, as the riding model reads them.
  */
 export function wheelieStep(
-  _world: World,
-  _config: SimConfig,
-  _st: RiderState,
-  _m: Mover,
-  _input: SimInput,
-  _throttle: number,
-  _brake: number,
-  _dt: number,
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  input: SimInput,
+  throttle: number,
+  brake: number,
+  dt: number,
 ): Readonly<WheelieStep> {
-  return NO_WHEELIE;
+  const id = m.id;
+  let theta = st.wheelie[id] ?? 0;
+  const on = isOn(world);
+  if (!on && theta <= 0) return NO_WHEELIE;
+  const def = config.riders[m.riderIndex];
+  if (!def || def.controller.kind !== 'player') return NO_WHEELIE;
+  const flag = (input.flags & InputFlag.wheelie) !== 0 ? 1 : 0;
+  const rising = flag === 1 && (st.wheelieFlag[id] ?? 0) === 0;
+  if ((st.wheelieFlag[id] ?? 0) !== flag) st.wheelieFlag[id] = flag;
+  const mult = speedMultiplierOf(config);
+  const ts = world.timeScale;
+
+  if (theta > 0) {
+    // Off the bike in between (a crash, a tumble): it comes back with the front down.
+    if (st.wheelieTick[id] !== world.tick - 1 || !on) {
+      endWheelie(world, st, m, false);
+      return NO_WHEELIE;
+    }
+    // A wobble or a hit (combat and contacts wobble the rider) drops the front.
+    if ((st.wobble[id] ?? 0) > 0) {
+      endWheelie(world, st, m, false);
+      return NO_WHEELIE;
+    }
+    // Crawling, the front settles.
+    if (m.speed < WHEELIE_SETTLE_MPS * mult) {
+      endWheelie(world, st, m, true);
+      return NO_WHEELIE;
+    }
+    const gain = world.params['riders.wheelieGain'] ?? 1;
+    const target =
+      clamp((throttle - WHEELIE_MIN_THROTTLE) / (1 - WHEELIE_MIN_THROTTLE), 0, 1) * WHEELIE_TARGET_MAX;
+    let rate = st.wheelieRate[id] ?? 0;
+    const accel =
+      gain * (WHEELIE_K * (target - theta) + WHEELIE_TIP * (theta - WHEELIE_BALANCE_RAD)) -
+      WHEELIE_DAMP * rate -
+      WHEELIE_BRAKE * brake;
+    rate += accel * dt;
+    theta += rate * dt;
+    st.wheelieRate[id] = rate;
+    st.wheelie[id] = theta;
+    st.wheelieTick[id] = world.tick;
+    st.wheelieUp[id] = (st.wheelieUp[id] ?? 0) + ts;
+    if (theta >= WHEELIE_SWEET.lo && theta <= WHEELIE_SWEET.hi)
+      st.wheelieSweet[id] = (st.wheelieSweet[id] ?? 0) + ts;
+    if (theta >= WHEELIE_LOOP_RAD) {
+      // Over the top: thrown up and back, straight (the tumble reads upMps and sideMps).
+      st.wobble[id] = 0;
+      emit(world, 'crash', id, {
+        cause: 'wheelie',
+        loopOut: true,
+        upMps: LOOP_OUT_UP_MPS,
+        sideMps: 0,
+        speed: m.speed,
+      });
+      endWheelie(world, st, m, false, true);
+      return NO_WHEELIE;
+    }
+    if (theta <= WHEELIE_DOWN_RAD && rate < 0) {
+      const clean = rate >= -WHEELIE_SLAM_RATE;
+      if (!clean) {
+        st.wobble[id] = Math.max(st.wobble[id] ?? 0, WHEELIE_WOBBLE_TICKS);
+        emit(world, 'wobble', id, { cause: 'wheelie', speed: m.speed, rateRad: rate });
+      }
+      endWheelie(world, st, m, clean);
+      return NO_WHEELIE;
+    }
+    return { steerScale: WHEELIE_STEER_SCALE, pitchAdd: theta };
+  }
+
+  // The pop.
+  if (
+    !rising ||
+    m.speed < WHEELIE_MIN_MPS * mult ||
+    throttle < WHEELIE_MIN_THROTTLE ||
+    (st.wobble[id] ?? 0) > 0 ||
+    uturnTurning(st, id) ||
+    driftOf(world, m) !== 0
+  )
+    return NO_WHEELIE;
+  theta = WHEELIE_POP_RATE * dt;
+  st.wheelieRate[id] = WHEELIE_POP_RATE;
+  st.wheelie[id] = theta;
+  st.wheelieUp[id] = ts;
+  st.wheelieSweet[id] = 0;
+  st.wheelieTick[id] = world.tick;
+  return { steerScale: WHEELIE_STEER_SCALE, pitchAdd: theta };
 }
 
-/** A grounded rider leaves the ground this tick: the wheelie, if any, ends. */
-export function wheelieTakeoff(_world: World, _st: RiderState, _m: Mover): void {}
+/** A grounded rider leaves the ground this tick: the wheelie, if any, ends (cleanly). */
+export function wheelieTakeoff(world: World, st: RiderState, m: Mover): void {
+  if ((st.wheelie[m.id] ?? 0) > 0) endWheelie(world, st, m, true);
+}
 
 /** A rider's first contact with a traffic vehicle, as traffic classes it. */
 export interface HoodContact {
@@ -87,29 +342,124 @@ export interface HoodContact {
   closingMps: number;
 }
 
+/** Whether a traffic type is a car a wheelie can ride up (moves §3.3). */
+export function hoodLaunchable(t: SimTrafficTypeDef): boolean {
+  return (
+    t.hazard === 'normal' &&
+    t.lengthM >= HOOD_MIN_LENGTH_M &&
+    (t.category === 'car' || t.category === 'oddity') &&
+    t.behaviour?.kerb !== true
+  );
+}
+
+/** Whether the rider is in a live wheelie high enough to ride up a car, and not crashing this tick. */
+function upForIt(world: World, st: WheelieState, m: Mover): boolean {
+  if (m.mode !== 'Road' || (st.wheelie[m.id] ?? 0) < HOOD_MIN_THETA) return false;
+  if (st.wheelieTick[m.id] !== world.tick) return false;
+  return !world.events.some((e) => e.actor === m.id && e.type === 'crash');
+}
+
 /** Whether a wheelie launches the rider off this vehicle (and has done it). */
-export function hoodLaunchContact(_world: World, _config: SimConfig, _c: HoodContact): boolean {
-  return false;
+export function hoodLaunchContact(world: World, config: SimConfig, c: HoodContact): boolean {
+  const st = world.systems['riders'] as RiderState | undefined;
+  const m = world.movers[c.rider];
+  if (!st || !m || !upForIt(world, st, m)) return false;
+  if (!hoodLaunchable(c.type) || !c.endOn || c.graze || !c.front) return false;
+  if (c.closingMps < HOOD_MIN_CLOSING_MPS * speedMultiplierOf(config)) return false;
+  launch(world, config, st, m, {
+    closingMps: c.closingMps,
+    startH: HOOD_LAUNCH_H_M,
+    part: c.oncoming ? 'hood' : 'trunk',
+    data: { vehicle: c.type.contentId },
+    target: c.vehicle,
+  });
+  const car = world.movers[c.vehicle];
+  if (car && car.kind === 'vehicle') car.speed *= HOOD_CAR_BRAKE;
+  return true;
 }
 
 /** Whether a wheelie launches a grounded rider off a solid road hazard it meets head on. */
 export function hazardLaunch(
-  _world: World,
-  _config: SimConfig,
-  _st: RiderState,
-  _m: Mover,
-  _hazard: BakedFeature,
-  _closingMps: number,
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  hazard: BakedFeature,
+  closingMps: number,
 ): boolean {
-  return false;
+  const object = hazardObject(hazard);
+  if (!CAR_LIKE_HAZARDS.includes(object) || !upForIt(world, st, m)) return false;
+  if (closingMps < HOOD_MIN_CLOSING_MPS * speedMultiplierOf(config)) return false;
+  launch(world, config, st, m, {
+    closingMps,
+    startH: hazardTop(hazard) + HAZARD_LAUNCH_CLEAR_M,
+    part: 'hood',
+    data: { feature: hazard.id, object },
+  });
+  return true;
+}
+
+/**
+ * The launch, as sim/modifiers' `hop()` puts a rider in the air: the wheelie ends (cleanly), the
+ * rider flies from `startH` at the launch's rise, and the bike spins its backflips.
+ */
+function launch(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  o: {
+    closingMps: number;
+    startH: number;
+    part: 'hood' | 'trunk';
+    data: Record<string, string>;
+    target?: EntityId;
+  },
+): void {
+  const theta = st.wheelie[m.id] ?? 0;
+  const mult = speedMultiplierOf(config);
+  const gravity = GRAVITY * mult * mult;
+  const pos = m.pos;
+  const road = config.road;
+  const vyCap = Math.sqrt(2 * gravity * Math.max(0, HOOD_APEX_M - o.startH));
+  const vy0 = clamp(HOOD_VY_SHARE * o.closingMps, Math.min(HOOD_VY_MIN_MPS * mult, vyCap), vyCap);
+  endWheelie(world, st, m, true);
+  m.mode = 'Airborne';
+  m.h = o.startH;
+  st.yAbs[m.id] = road.surfaceHeight(pos.edge, pos.s, pos.d) + o.startH;
+  st.vy[m.id] = vy0;
+  st.airTicks[m.id] = 0;
+  m.speed *= HOOD_SPEED_KEEP;
+  // The flight starts at the bike's real pitch: the slope plus the front's angle.
+  startFlight(st, m, world.inputs[m.id], slopeAt(config, m) + theta);
+  const groundRate = road.frameAt(pos.edge, pos.s).grade * pos.dir * m.speed * cos(m.yaw);
+  const airS = timeToGround(o.startH, vy0 - groundRate, gravity);
+  const flips = clamp(Math.floor((airS * HOOD_FLIP_RATE) / TAU), 1, HOOD_MAX_FLIPS);
+  const spinRate = Math.min(FLIP_MAX_RATE, (TAU * flips) / (HOOD_SPIN_SHARE * Math.max(airS, 1e-3)));
+  startSpin(st, m, flips, spinRate);
+  const cause = emit(
+    world,
+    'hoodLaunch',
+    m.id,
+    { part: o.part, closingMps: o.closingMps, vyMps: vy0, flips, ...o.data },
+    o.target !== undefined ? { target: o.target } : {},
+  );
+  emit(world, 'jump', m.id, { speed: m.speed, vyMps: vy0, hood: true }, { causeId: cause });
 }
 
 /** The wheelie angle above the slope for the snapshot, radians; 0 when none. */
-export function wheelieOf(_world: World, _m: Mover): number {
-  return 0;
+export function wheelieOf(world: World, m: Mover): number {
+  if (m.kind !== 'rider' || m.mode !== 'Road') return 0;
+  const st = world.systems['riders'] as Partial<WheelieState> | undefined;
+  return st?.wheelie?.[m.id] ?? 0;
 }
 
 /** The player's wheelie for the HUD (SimSnapshot.moves). */
-export function wheelieMoves(_world: World, _id: EntityId): Pick<MovesSnapshot, 'wheelieS' | 'wheelieBand'> {
-  return { wheelieS: 0, wheelieBand: null };
+export function wheelieMoves(world: World, id: EntityId): Pick<MovesSnapshot, 'wheelieS' | 'wheelieBand'> {
+  const m = world.movers[id];
+  const theta = m ? wheelieOf(world, m) : 0;
+  if (theta <= 0) return { wheelieS: 0, wheelieBand: null };
+  const st = world.systems['riders'] as Partial<WheelieState> | undefined;
+  const band = theta < WHEELIE_SWEET.lo ? 'low' : theta > WHEELIE_SWEET.hi ? 'high' : 'sweet';
+  return { wheelieS: (st?.wheelieUp?.[id] ?? 0) / 60, wheelieBand: band };
 }
