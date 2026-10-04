@@ -13,11 +13,11 @@
 // The race loads the way the game loads it: every carried pack combined into one registry, the
 // route picked with RaceSetup.route (app/config.ts).
 import { describe, expect, it } from 'vitest';
-import { buildSimConfig, createStreamCache, realRoutes } from '../../src/app';
+import { buildSimConfig, createStreamCache, realRoutes, regionChoices } from '../../src/app';
 import { lookup, registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
-import { chooseSetPieces } from '../../src/road';
+import { chooseSetPieces, setPieceSlots } from '../../src/road';
 import { createSim, type SimConfig } from '../../src/sim/api';
 import { NO_ROAD_EVENTS } from './batch';
 
@@ -27,30 +27,21 @@ const REG = registryFromGlob(
 const STREAMS = createStreamCache();
 const MAX_TICKS = 60 * 60 * 10;
 
+interface Case {
+  event: string;
+  route: string;
+}
+
 /**
- * Every real-road route a region offers, with the event it is raced in. The region bakes carry
- * seeded set-piece slots; the Keys' Bahia Honda bake (gis-1) predates them and has none.
+ * Every real-road route a region offers, with the region's free-play event it is raced in, read from
+ * the packs (regionChoices, realRoutes): a road a lane adds is raced here the day it lands, and this
+ * file holds no list to edit. Today: the Keys' Bahia Honda and Key West, the Pacific Northwest's
+ * Chuckanut, the Gorge and I-5 by Lake Samish, and San Francisco's Russian Hill, Twin Peaks and its
+ * hand-made districts (downtown, Chinatown and North Beach, the Mission, the waterfront).
  */
-const ROUTES = [
-  { event: 'base:m1-skeleton-sprint', route: 'base:osm-bahia-honda-run', setPieces: false },
-  { event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-chuckanut-run', setPieces: true },
-  { event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-gorge-run', setPieces: true },
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-hills-run', setPieces: true },
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:osm-sf-twin-peaks-run', setPieces: true },
-  // Run W-R: San Francisco's downtown, hand-made on its own network, offered beside the real roads.
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-downtown-run', setPieces: true },
-  // Run W-U: Chinatown and North Beach, hand-made on its own network (steep blocks, a hard elbow).
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-chinatown-northbeach-run', setPieces: true },
-  // Run W-U: San Francisco's mural alleys, hand-made on their own network, five tight corners.
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-mission-run', setPieces: true },
-  // Run W-U: San Francisco's waterfront, likewise.
-  { event: 'region-sf:sf-hill-sprint', route: 'region-sf:sf-waterfront-run', setPieces: true },
-  // Run W-S: the real-road networks (tools/gis `tbgis network`), a four-lane highway and a junction
-  // choice each: Key West (the Boulevard) and I-5 by Lake Samish.
-  { event: 'base:m1-skeleton-sprint', route: 'base:osm-key-west-run', setPieces: true },
-  { event: 'region-pnw:pnw-fogline-run', route: 'region-pnw:osm-i5-samish-run', setPieces: true },
-] as const;
-type Case = (typeof ROUTES)[number];
+const ROUTES: readonly Case[] = regionChoices(REG).flatMap((c) =>
+  realRoutes(REG, c.eventId).map((route) => ({ event: c.eventId, route })),
+);
 
 function raceConfig(c: Case, seed: number): SimConfig {
   // W-P road events off: this measures the riders, the AI, the law and traffic, and an event reshuffles
@@ -113,11 +104,36 @@ function botRace(c: Case, seed: number) {
 }
 
 describe('real roads as routes: each one races well inside its region race', () => {
-  it('the regions offer exactly these real roads', () => {
-    const offered = [
-      ...new Set(ROUTES.map((c) => c.event).flatMap((e) => realRoutes(REG, e).map((r) => `${e} ${r}`))),
-    ].sort();
-    expect(offered).toEqual(ROUTES.map((c) => `${c.event} ${c.route}`).sort());
+  it("every route of a region is raced: the free-play event's lengths, a road it offers, or a career length on its own road", () => {
+    // The rule the picker follows (the maintainer, 2026-10-01: "Yes, add as routes"; run W-R's
+    // districts offered beside the real roads), so a route built but never offered fails, while a
+    // new road needs no edit here.
+    let examined = 0;
+    for (const choice of regionChoices(REG)) {
+      const pack = choice.eventId.slice(0, choice.eventId.indexOf(':'));
+      const q = (id: string) => (id.includes(':') ? id : `${pack}:${id}`);
+      const event = lookup(REG.events, choice.eventId);
+      const own = new Set(event.lengths.map((l) => q(l.route)));
+      const ownNetworks = new Set([...own].map((r) => q(REG.routes[r]?.network ?? '')));
+      const offered = new Set(realRoutes(REG, choice.eventId));
+      const careerLengths = new Set(
+        Object.entries(REG.events)
+          .filter(([id, e]) => e.tier !== undefined && id.startsWith(`${pack}:`))
+          .flatMap(([, e]) => e.lengths.map((l) => q(l.route))),
+      );
+      for (const [id, r] of Object.entries(REG.routes)) {
+        if (!id.startsWith(`${pack}:`) || REG.networks[q(r.network)]?.region !== event.region) continue;
+        examined++;
+        const raced =
+          own.has(id) || offered.has(id) || (ownNetworks.has(q(r.network)) && careerLengths.has(id));
+        expect(raced, `${id}: in ${choice.id}, but no race offers it`).toBe(true);
+      }
+    }
+    process.stdout.write(
+      `[real routes] ${examined} routes examined, ${ROUTES.length} offered as real roads\n`,
+    );
+    expect(ROUTES.length).toBeGreaterThan(0);
+    expect(examined).toBeGreaterThan(ROUTES.length);
   });
 
   for (const c of ROUTES) {
@@ -176,9 +192,11 @@ describe('real roads as routes: each one races well inside its region race', () 
       const own = buildSimConfig(REG, STREAMS.forEvent(REG, c.event), { seed: 1, eventId: c.event });
       expect(config.riders.map((r) => r.contentId)).toEqual(own.riders.map((r) => r.contentId));
       expect(config.trafficTypes).toEqual(own.trafficTypes);
-      // Each seed places one candidate per set-piece slot (tests/sim/road-setpieces-live.test.ts
-      // rides every candidate).
-      expect(chooseSetPieces(config.road.edges, 1).size > 0).toBe(c.setPieces);
+      // Each seed places one candidate per set-piece slot its roads carry (none on a bake that
+      // predates them, such as the Keys' Bahia Honda; tests/sim/road-setpieces-live.test.ts rides
+      // every candidate).
+      const slots = [...setPieceSlots(config.road.edges).values()].filter((ids) => ids.length > 0);
+      expect(chooseSetPieces(config.road.edges, 1).size).toBe(slots.length);
     });
 
     it(`${c.route}: the bot finishes the race (a DNF is a bust, never a stall), every mover valid`, () => {
@@ -203,7 +221,9 @@ describe('real roads as routes: each one races well inside its region race', () 
   }
 
   it('a seed replays to identical state hashes on a real road; another seed differs', () => {
-    const c = ROUTES[3];
+    // San Francisco's Russian Hill (the replay check's road since run W-O), or the first real road.
+    const c = ROUTES.find((r) => r.route === 'region-sf:osm-sf-hills-run') ?? ROUTES[0];
+    if (!c) throw new Error('no real-road route');
     const a = botRace(c, 4);
     const again = botRace(c, 4);
     expect(again.hashes).toEqual(a.hashes);

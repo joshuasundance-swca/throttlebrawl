@@ -87,6 +87,9 @@ function words(modifier: string, field: string): string[] {
   return [v];
 }
 
+/** The logs the PNW truck sheds: the pack's own count (six today), so a retune is not a test edit. */
+const LOGS = Number(effect('region-pnw:pnw-log-spill')['logs']);
+
 interface Run {
   events: SimEvent[];
   hashes: number[];
@@ -138,9 +141,10 @@ function ride(cfg: SimConfig, maxTicks = 60 * 60 * 5, until?: (r: Run) => boolea
     if (sim.tick % 600 === 0) run.hashes.push(sim.hash());
     const st = setPieceState(world);
     run.pieces = st.pieces;
-    // The logs once all six have come to rest, before the piece ends and clears them.
+    // The logs once all the truck carries (the pack's count) have come to rest, before the piece
+    // ends and clears them.
     const shed = st.props.filter((q) => q.kind === 'log');
-    if (run.logRest.length === 0 && shed.length === 6 && shed.every((q) => !q.moving)) {
+    if (run.logRest.length === 0 && shed.length === LOGS && shed.every((q) => !q.moving)) {
       const c = trafficState(world).corridor;
       for (const q of shed) {
         const p = st.pieces[q.piece];
@@ -191,7 +195,8 @@ describe('weird events that move (W-T)', () => {
     expect(Math.abs(p.myaw)).toBeGreaterThan(0.4);
   });
 
-  it('the PNW log spill: six logs across both lanes, and riding over one is a hop', () => {
+  it('the PNW log spill: every log across both lanes, and riding over one is a hop', () => {
+    expect(Number.isInteger(LOGS) && LOGS > 1, `the pack's log count: ${LOGS}`).toBe(true);
     // Which seeds put a racer over a log depends on the field's lines: the first seed where one
     // hops is used (R6), and the logs' spread is checked on it.
     const found = firstSeed(
@@ -206,13 +211,13 @@ describe('weird events that move (W-T)', () => {
     if (!run) return;
     expect(run.problem).toBeNull();
     expect(beats(run, 'shed')).toHaveLength(1);
-    expect(run.pieces[0]?.dropped).toBe(6);
-    expect(run.maxLogs).toBe(6);
+    expect(run.pieces[0]?.dropped).toBe(LOGS);
+    expect(run.maxLogs).toBe(LOGS);
     // At rest across both lanes: some on the forward side of the centre line, some on the oncoming.
     console.log(
       `[print] logs at rest, m from the centre line: ${run.logRest.map((x) => x.toFixed(1)).join(', ')}`,
     );
-    expect(run.logRest).toHaveLength(6);
+    expect(run.logRest).toHaveLength(LOGS);
     expect(run.logRest.some((x) => x > 0.5)).toBe(true);
     expect(run.logRest.some((x) => x < -0.5)).toBe(true);
     for (const x of run.logRest) expect(Math.abs(x)).toBeLessThan(5);

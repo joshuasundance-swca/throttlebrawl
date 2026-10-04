@@ -16,6 +16,7 @@ import sys
 
 import bmesh
 import bpy
+from _winding import prepare_winding
 from mathutils import Vector
 
 
@@ -316,6 +317,7 @@ def export(out, texcoords=False, normals=True):
     `normals=False` leaves the normals out: every prop is faceted, so the game rebuilds each face's
     normal from its corners (models.ts), and a kit of many small props ships in about half the bytes.
     """
+    prepare_winding()
     bpy.ops.export_scene.gltf(
         filepath=out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_extras=True, export_attributes=True,

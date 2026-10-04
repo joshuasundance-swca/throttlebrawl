@@ -86,7 +86,7 @@ def fern(mb, rng):
         ca, sa = math.cos(a), math.sin(a)
         px, pf = -sa, ca  # across the blade
 
-        def at(t, z, w):
+        def at(t, z, w, ca=ca, sa=sa, length=length, px=px, pf=pf):
             return (ca * length * t + px * w, sa * length * t + pf * w, z)
 
         b0, b1 = at(0.0, 0.05, -0.05), at(0.0, 0.05, 0.05)

@@ -17,6 +17,8 @@ import { themeAt, type SideTag } from '../../src/render/scenery';
 interface Slot {
   kind: string;
   id?: string;
+  /** The region sign or billboard a board slot shows. */
+  item?: string;
   s0: number;
   s1: number;
   d0: number;
@@ -81,5 +83,55 @@ describe('sign and billboard slots stand on land', () => {
       }
     }
     expect(wet).toEqual([]);
+  });
+
+  // Run W-P (maintainer, 2026-10-01b: "the worlds just feel very empty"): every region sign and
+  // billboard has a slot, so each one can be seen and vetoed in a race. Checked per region over all
+  // its roads, whichever network carries the slot (a hand-made track, a district's own network, a
+  // real-road network's junction sign), so a lane that adds a board or a network edits no list here.
+  it("every live region sign and billboard has a slot on one of its region's roads; a slot that names one names a live one", () => {
+    const missing: string[] = [];
+    const unknown: string[] = [];
+    let regions = 0;
+    let items = 0;
+    for (const pack of readdirSync(path.join(root, 'packs'))) {
+      const dir = path.join(root, 'packs', pack, 'regions');
+      if (!existsSync(dir)) continue;
+      for (const region of readdirSync(dir)) {
+        const file = path.join(dir, region, 'region.json');
+        if (!existsSync(file)) continue;
+        const r = JSON.parse(readFileSync(file, 'utf8')) as {
+          signs?: { id: string; status?: string }[];
+          billboards?: { id: string; status?: string }[];
+        };
+        const live = new Set(
+          [...(r.signs ?? []), ...(r.billboards ?? [])]
+            .filter((i) => (i.status ?? 'live') === 'live')
+            .map((i) => i.id),
+        );
+        const slotted = new Set(
+          all
+            .filter(([f]) => f.startsWith(`${pack}/${region}/`))
+            .flatMap(([f, road]) =>
+              (road.features ?? [])
+                .filter((x) => x.kind === 'billboard')
+                .map((x) => ({ where: `${f} ${x.id ?? '?'}`, item: x.item ?? '' })),
+            )
+            .map(({ where, item }) => {
+              // A slot with no item is a pooled slot: it shows one from the region's pool.
+              if (item !== '' && !live.has(item)) unknown.push(`${where}: ${item}`);
+              return item;
+            }),
+        );
+        for (const id of live) if (!slotted.has(id)) missing.push(`${pack}/${region}: ${id}`);
+        regions++;
+        items += live.size;
+      }
+    }
+    console.log(`board items examined: ${items} in ${regions} regions`);
+    expect(regions).toBeGreaterThanOrEqual(3);
+    expect(items).toBeGreaterThan(20);
+    expect(missing, 'region items with no slot on any of its roads').toEqual([]);
+    expect(unknown, 'slots naming no live item of their region').toEqual([]);
   });
 });

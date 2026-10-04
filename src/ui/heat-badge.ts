@@ -67,7 +67,8 @@ export function heatBadgeView(law: LawView | undefined, now: number, mem: HeatBa
 }
 
 export const HEAT_BADGE_CSS = `
-#hud-heat { position: absolute; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+#hud-heat { position: absolute; top: var(--hl-heat-y, max(58px, env(safe-area-inset-top)));
+  left: var(--hl-heat-l, auto); right: var(--hl-heat-r, max(8px, env(safe-area-inset-right)));
   padding: 3px 10px 4px; background: #000a; border: 2px solid #e0543a; border-radius: 4px;
   font: 800 12px ui-monospace, 'Courier New', monospace; letter-spacing: 0.1em; color: #f2ead8;
   white-space: nowrap; text-align: center; pointer-events: none; }
@@ -79,19 +80,11 @@ export const HEAT_BADGE_CSS = `
 #hud-heat.lost { border-color: #f5c542; color: #f5c542; }
 #hud-heat.flash { animation: tb-heat-flash 0.3s ease-out 2; }
 @keyframes tb-heat-flash { 0% { background: #e0543a; } 100% { background: #000a; } }
-/* Playtest 3: "The race objective sits over the heat meter." On a narrow screen the rival's bar
-   fills the top row between the position badge and the pause button, so the badge sits under the
-   bark bubble (two lines at most there) and the slow-frames toast, above the career objective.
-   [default] */
-@media (max-width: 600px) { #hud-heat { top: 164px; } }
-/* A phone held sideways has no room at the top centre for the badge, the objective and the bubble
-   above the road ahead, so the badge moves to the side the pause button is on, under the objective
-   there, clear of the road ahead and the attack button. [default] */
-@media (orientation: landscape) and (max-height: 520px) {
-  #hud-heat { top: max(104px, calc(env(safe-area-inset-top) + 96px)); left: auto; transform: none;
-    right: max(8px, env(safe-area-inset-right)); }
-  #hud:has(> #hud-pause.mirrored) > #hud-heat { right: auto; left: max(8px, env(safe-area-inset-left)); }
-}
+/* Playtest 3: "The race objective sits over the heat meter." Where the badge goes is settled by
+   ui/hud-layout.ts (--hl-heat-* on #ui): under the career objective in the column on the pause
+   button's side, past the road ahead, on a screen wide enough for the ticker to sit inline; in the
+   row under the ticker's slot, across from the objective, on a narrow one. Its slot is reserved
+   while it is hidden, so it never moves a neighbour. [default] */
 `;
 
 export interface HeatBadge {

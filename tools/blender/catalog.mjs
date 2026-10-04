@@ -133,6 +133,7 @@ export { VARIANT_VIEWS, VIEWS } from './catalog/views.mjs';
  * @property {string[]} [convexParts]  closed convex mesh nodes; the score checks every face is
  *   wound outward (the only front a face has once its normals are dropped)
  * @property {boolean} [keepNormals]  ship the NORMAL attribute (the optimiser drops it otherwise)
+ * @property {boolean} [rampTrailer]  detached trailer: same ramp geometry, no cab or carried cars
  * @property {{names: string[], minHeight: number}} [attach]  wire attach empties
  */
 

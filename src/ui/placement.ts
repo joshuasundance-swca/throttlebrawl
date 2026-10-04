@@ -11,7 +11,7 @@ export const HUD_ELEMENTS = [
   'health-self',
   'health-target',
   'minimap', // reserved (M3)
-  'bark-bubble', // ui/narrative's bubble
+  'bark-bubble', // the old bark bubble; the ticker (ui/hud-layout.ts) places itself now. Kept so saved layouts naming it stay valid
   'touch-attack',
   'touch-brake',
   'touch-stick-zone',

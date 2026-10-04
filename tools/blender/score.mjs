@@ -364,7 +364,10 @@ export function scoreGlb(buf, prop, opts = {}) {
 
   // ---- the ramp truck (gameplay-critical ramp geometry)
   if (prop.kind === 'tow_truck') {
-    const req = ['tow_truck', 'cab', 'trailer', 'ramp_surface'];
+    const rootName = prop.rampTrailer ? 'ramp_trailer' : 'tow_truck';
+    const req = prop.rampTrailer
+      ? [rootName, 'trailer', 'ramp_surface']
+      : [rootName, 'cab', 'trailer', 'ramp_surface'];
     const missing = req.filter((n) => !byName.has(n));
     const cars = nodeNames.filter((n) => n && /^car_\d+$/.test(n));
     const wheelInst = inst.filter((x) => /^wheel_/.test(x.name));
@@ -377,11 +380,16 @@ export function scoreGlb(buf, prop, opts = {}) {
     );
     check(
       'root_at_origin',
-      nodeWorldPos('tow_truck')?.every((v) => Math.abs(v) < 1e-3),
-      `tow_truck at ${nodeWorldPos('tow_truck')}`,
+      nodeWorldPos(rootName)?.every((v) => Math.abs(v) < 1e-3),
+      `${rootName} at ${nodeWorldPos(rootName)}`,
     );
-    check('cars_2_to_3', cars.length >= 2 && cars.length <= 3, `${cars.length} car_N nodes`);
-    check('wheels_separate_nodes', wheelInst.length >= 6, `${wheelInst.length} wheel_* mesh nodes`);
+    if (!prop.rampTrailer)
+      check('cars_2_to_3', cars.length >= 2 && cars.length <= 3, `${cars.length} car_N nodes`);
+    check(
+      'wheels_separate_nodes',
+      wheelInst.length >= (prop.rampTrailer ? 4 : 6),
+      `${wheelInst.length} wheel_* mesh nodes`,
+    );
     check(
       'wheels_on_ground',
       wheelGround.length > 0 && wheelGround.every((y) => Math.abs(y) <= 0.05),
@@ -395,7 +403,9 @@ export function scoreGlb(buf, prop, opts = {}) {
     const s = box.size;
     check(
       'dims_plausible',
-      inRange(s[2], [16, 23.5]) && inRange(s[0], [2.3, 2.9]) && inRange(s[1], [3.2, 4.35]),
+      inRange(s[2], prop.rampTrailer ? [11.3, 11.7] : [16, 23.5]) &&
+        inRange(s[0], [2.3, 2.9]) &&
+        inRange(s[1], prop.rampTrailer ? [2.7, 2.9] : [3.2, 4.35]),
       `length(z) ${s[2]}, width(x) ${s[0]}, height(y) ${s[1]}`,
     );
     check('forward_is_plus_z', box.max[2] > 10 && box.min[2] > -1.5, `z range ${box.min[2]}..${box.max[2]}`);
@@ -729,18 +739,22 @@ export function scoreGlb(buf, prop, opts = {}) {
       const hasNormals = uvPrim.attributes.NORMAL !== undefined;
       const nrm = hasNormals ? read(uvPrim.attributes.NORMAL) : [];
       const facing = new Set();
+      const side = ex.facing_axis === 'x';
+      const axis = side ? 0 : 2;
+      const horizontal = side ? 2 : 0;
       if (!hasNormals) {
         const idx = uvPrim.indices !== undefined ? read(uvPrim.indices) : [...Array(pos.length / 3).keys()];
         const P = (k) => xf(x.world, [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]]);
         for (let t = 0; t + 2 < idx.length; t += 3) {
           const n = cross(sub(P(idx[t + 1]), P(idx[t])), sub(P(idx[t + 2]), P(idx[t])));
           const l = len(n);
-          if (l > 1e-12 && n[2] / l > 0.99) for (const k of [idx[t], idx[t + 1], idx[t + 2]]) facing.add(k);
+          if (l > 1e-12 && n[axis] / l > 0.99)
+            for (const k of [idx[t], idx[t + 1], idx[t + 2]]) facing.add(k);
         }
       }
       const front = [];
       for (let k = 0; k < pos.length / 3; k++) {
-        if (hasNormals ? nrm[k * 3 + 2] > 0.99 : facing.has(k))
+        if (hasNormals ? nrm[k * 3 + axis] > 0.99 : facing.has(k))
           front.push({
             p: xf(x.world, [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]]),
             uv: [uv[k * 2], uv[k * 2 + 1]],
@@ -749,8 +763,14 @@ export function scoreGlb(buf, prop, opts = {}) {
       const fb = bbox(front.map((f) => f.p));
       const near = (a, b) => Math.abs(a - b) < 1e-3;
       // glTF puts UV (0, 0) at the image's top-left; seen from the front (+Z) that is min x, max y
-      const tl = front.filter((f) => near(f.p[0], fb.min[0]) && near(f.p[1], fb.max[1]));
-      const br = front.filter((f) => near(f.p[0], fb.max[0]) && near(f.p[1], fb.min[1]));
+      const tl = front.filter(
+        (f) =>
+          near(f.p[horizontal], side ? fb.max[horizontal] : fb.min[horizontal]) && near(f.p[1], fb.max[1]),
+      );
+      const br = front.filter(
+        (f) =>
+          near(f.p[horizontal], side ? fb.min[horizontal] : fb.max[horizontal]) && near(f.p[1], fb.min[1]),
+      );
       ok =
         front.length >= 4 &&
         tl.length > 0 &&
@@ -758,10 +778,10 @@ export function scoreGlb(buf, prop, opts = {}) {
         br.length > 0 &&
         br.every((f) => near(f.uv[0], 1) && near(f.uv[1], 1)) &&
         ex.text_surface === true &&
-        near(ex.width_m, fb.size[0]) &&
+        near(ex.width_m, fb.size[horizontal]) &&
         near(ex.height_m, fb.size[1]) &&
-        fb.size[2] < 1e-3;
-      detail = `front face ${fb.size[0]} x ${fb.size[1]} m (extras ${ex.width_m} x ${ex.height_m}), ${front.length} front verts by ${hasNormals ? 'normal' : 'winding'}, top-left uv ${JSON.stringify(tl[0]?.uv)}`;
+        fb.size[axis] < 1e-3;
+      detail = `${side ? '+X side' : '+Z front'} face ${fb.size[horizontal]} x ${fb.size[1]} m (extras ${ex.width_m} x ${ex.height_m}), ${front.length} front verts by ${hasNormals ? 'normal' : 'winding'}, top-left uv ${JSON.stringify(tl[0]?.uv)}`;
     } else if (prims.length !== 1) detail = `${prims.length} primitives (a text surface is one material)`;
     check(`${name}_text_surface`, ok, detail);
   }

@@ -36,6 +36,7 @@ import {
   targetOf,
   type RaceResult,
 } from './format';
+import { applyTopPlan, HUD_SIZE, layoutTop, placedBox, readSafe, settleLifts } from './hud-layout';
 import { hudStyle } from './placement';
 import {
   applySettingsChange,
@@ -267,6 +268,8 @@ export const LOOK_OFFER_MS = 12_000;
 
 const CSS = `
 #ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff;
+  --hl-safe-t: env(safe-area-inset-top, 0px); --hl-safe-r: env(safe-area-inset-right, 0px);
+  --hl-safe-b: env(safe-area-inset-bottom, 0px); --hl-safe-l: env(safe-area-inset-left, 0px);
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #ui button, #ui input, #ui label { pointer-events: auto; font: inherit; }
 #ui .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
@@ -299,7 +302,7 @@ const CSS = `
 #hud-speed, #hud-position, #hud-health, #hud-target { position: absolute; padding: 4px 10px; background: #0008;
   border-radius: 4px; white-space: nowrap; }
 #hud-speed, #hud-position { font-size: 22px; font-weight: 800; }
-#hud-health, #hud-target { font: 700 12px ui-monospace, monospace; }
+#hud-health, #hud-target { font: 700 12px ui-monospace, monospace; width: 150px; box-sizing: border-box; }
 .hud-bar { width: 130px; height: 9px; margin-top: 3px; background: #fff3; border: 1px solid #fff9; }
 .hud-bar > div { height: 100%; width: 100%; background: #f5c542; }
 #hud-target .hud-bar > div { background: #e0543a; }
@@ -365,40 +368,19 @@ ${TICKER_CSS}
 #ui .notice { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
-   down) or another HUD piece. Top centre, it covered the ticker, the heat badge and the objective and
-   reached into the road ahead. So on a big screen it sits in the outer quarter across from the
-   position badge (where it flips, the offer flips: .mirrored), under the pause button. On a phone held
-   sideways and on an upright screen there is no free room for it: the quarters are full (the
-   objective, the heat badge) and under the road ahead sits the player's own bike (the live check
-   after #430: there it covered the bike and the riders beside it for 12 s). So there it takes the
-   ticker strip's place at the top (sideways, short of the rival's bar in the top row; upright,
-   under the top row), and the strip steps aside while it is up (its items keep their time). [default] */
-#look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
-  left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
-  z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-#look-offer.mirrored { left: max(10px, env(safe-area-inset-left)); right: calc(75% + 4px); }
-#ui .look-offer-text { font: 700 14px/1.3 system-ui, sans-serif; color: #f2ead8; }
-#ui .look-offer .row { justify-content: flex-start; gap: 8px; }
-#ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
+   down) or another HUD piece. ui/hud-layout.ts settles where it goes and sets --hl-toast-* on #ui: on
+   a screen wide enough for the ticker to sit inline it is the column under the position badge (the
+   objective and the heat badge hold the other side), and on a narrow one it takes the ticker
+   strip's slot, and the strip steps aside while it is up (its items keep their time). [default] */
+#ui #look-offer { position: absolute; top: var(--hl-toast-y, calc(max(8px, env(safe-area-inset-top)) + 52px));
+  left: var(--hl-toast-x, 12px); width: var(--hl-toast-w, max-content); max-width: var(--hl-toast-mw, 92vw);
+  transform: translateX(var(--hl-toast-t, 0px)); z-index: 1; display: flex; flex-direction: column; gap: 4px;
+  pointer-events: none; padding: 4px 8px; }
+#ui .look-offer-text { font: 700 13px/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui .look-offer .row { justify-content: flex-start; gap: 6px; }
+#ui .look-offer .small { min-height: 40px; padding: 4px 8px; font-size: 13px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
-@media (max-width: 600px) {
-  #look-offer { left: calc(25vw + 4px); right: 12px; top: calc(max(8px, env(safe-area-inset-top)) + 48px); }
-  #look-offer.mirrored { left: 12px; right: calc(25vw + 4px); }
-}
-/* Sideways, the rival's bar sits in the top row 0.2 of the short side in from the corner, 152 px
-   wide (layout: health-target): the offer stops 8 px short of it. */
-@media (orientation: landscape) and (max-height: 520px) {
-  #ui #look-offer { top: max(6px, env(safe-area-inset-top)); left: calc(25vw + 4px);
-    right: calc(20vmin + 168px); }
-  #ui #look-offer.mirrored { left: calc(20vmin + 168px); right: calc(25vw + 4px); }
-}
-/* In the top slot: one line of words over one row of buttons. */
-@media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
-  #ui #look-offer { padding: 4px 10px; gap: 4px; }
-  #ui #look-offer .look-offer-text { font-size: 13px; }
-  #ui #look-offer .small { padding: 4px 8px; font-size: 13px; }
-  #ui:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
-}
+#ui[data-top='stacked']:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 #build-stamp.in-race { display: none; }
 `;
 
@@ -777,17 +759,64 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const placeAll = () => {
     const { w, h } = screenSize();
     const unit = Math.min(w, h);
+    // The touch buttons' boxes first: the text widgets settle off them (ui/hud-layout.ts, rule 6).
+    const buttonBoxes = coarse
+      ? layout.elements
+          .filter((e) => e.visible && (e.element === 'touch-attack' || e.element === 'touch-brake'))
+          .map((e) => {
+            const r = placeElement(e, w, h, layout.mirror);
+            return { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
+          })
+      : [];
+    // The top layout (ui/hud-layout.ts): the ticker, the slow-frames offer, the objective and the heat
+    // badge take their slots from where the record puts the position badge and the rival's bar, which
+    // moves off the position badge on a narrow screen. Slots are reserved whether shown or not.
+    const inTopRow = (name: string, size: readonly [number, number]) => {
+      const e = elementOf(name);
+      return e && e.anchor.startsWith('top') ? placedBox(e, w, h, layout.mirror, size) : null;
+    };
+    const top = layoutTop({
+      w,
+      h,
+      safe: readSafe(root),
+      mirror: layout.mirror,
+      position: inTopRow('position', HUD_SIZE.position),
+      target: inTopRow('health-target', HUD_SIZE.health),
+    });
+    applyTopPlan(root, top, w);
+    const lifts = settleLifts(
+      (['speedometer', 'health-self'] as const).flatMap((name) => {
+        const e = elementOf(name);
+        const size = name === 'speedometer' ? HUD_SIZE.speed : HUD_SIZE.health;
+        return e && e.anchor.startsWith('bottom')
+          ? [{ name, box: placedBox(e, w, h, layout.mirror, size) }]
+          : [];
+      }),
+      buttonBoxes,
+    );
     for (const [name, node] of Object.entries(hudPieces)) {
       const e = elementOf(name);
       const hide = !e || (e.touchOnly && !coarse) || (name === 'health-target' && !targetShown);
       node.hidden = !!hide;
-      if (e) Object.assign(node.style, hudStyle(e, unit, layout.mirror));
+      if (!e) continue;
+      let placed = e;
+      let mirror = layout.mirror;
+      const lift = lifts[name] ?? 0;
+      if (lift > 0) placed = { ...e, offset: [e.offset[0], e.offset[1] + lift / unit] };
+      if (name === 'health-target' && top.target) {
+        // Displaced off the position badge: it tops the column under the top row, on the pause button's side.
+        const right = !layout.mirror;
+        placed = {
+          ...e,
+          anchor: right ? 'top-right' : 'top-left',
+          offset: [(right ? w - top.target.right : top.target.left) / unit, top.target.top / unit],
+        };
+        mirror = false;
+      }
+      Object.assign(node.style, hudStyle(placed, unit, mirror));
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
-    // The slow-frames offer sits across from the position badge (in the outer quarter, or in the
-    // top slot short of the rival's bar), so it flips with the layout too, shown or not.
-    lookOffer.classList.toggle('mirrored', positionOnRight());
     for (const b of touchButtons.splice(0)) b.remove();
     // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
     // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep
@@ -1235,11 +1264,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       cb.onSettingsChange?.(settings);
     }
   }
-  /** Whether the position badge sits on the right: the slow-frames offer goes to the other side. */
-  const positionOnRight = (): boolean => {
-    const across = elementOf('position')?.anchor.split('-')[1] ?? 'left';
-    return (across === 'right') !== layout.mirror;
-  };
   const offerClassicLook = (): boolean => {
     if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
     pauseLookOffer.hidden = false;

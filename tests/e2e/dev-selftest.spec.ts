@@ -13,8 +13,13 @@ test('?selftest=1 runs the self-test race and says MATCH', async ({ page }) => {
   });
   await page.goto('./?selftest=1');
   const panel = page.locator('#selftest');
-  await expect(panel).toBeVisible();
+  // The panel appears only once the lazy dev/ and self-test chunks have loaded, which is slow on a
+  // loaded software-rendering runner: a separate 5 s wait for it to appear timed out on main
+  // (2026-10-04, #431's push; the next main commit passed with the same code). So the spec waits on
+  // the page's own done signal, the panel's `data-status` (set when the race ends), under the one
+  // 90 s hang guard, and then the panel must be visible.
   await expect(panel).toHaveAttribute('data-status', /^(MATCH|MISMATCH|not-built)$/, { timeout: 90_000 });
+  await expect(panel).toBeVisible();
   const text = (await panel.innerText()).replace(/\s+/g, ' ');
   console.log(`self-test panel: ${text}`);
   expect(await panel.getAttribute('data-status')).toBe('MATCH');

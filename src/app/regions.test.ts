@@ -38,15 +38,27 @@ describe('app: regions', () => {
     expect(narrativeSettingOf(ALL, 'base:m1-skeleton-sprint').regionId).toBe('florida-keys');
   });
 
-  it('offers the Keys, the Pacific Northwest and San Francisco, by chapter, each with its event', () => {
+  it('offers every region the packs ship, by chapter, each with its own free-play event', () => {
+    // Read from the packs (the Keys, the Pacific Northwest and San Francisco today), so a new region
+    // pack is offered without editing this test.
     const choices = regionChoices(ALL);
-    expect(choices.map((c) => [c.id, c.eventId, c.packId])).toEqual([
-      ['base:florida-keys', 'base:m1-skeleton-sprint', 'base'],
-      ['region-pnw:pacific-northwest', 'region-pnw:pnw-fogline-run', 'region-pnw'],
-      ['region-sf:san-francisco', 'region-sf:sf-hill-sprint', 'region-sf'],
-    ]);
-    expect(choices.map((c) => c.name)).toEqual(['The Keys', 'The Pacific Northwest', 'San Francisco']);
-    expect(choices.every((c) => (c.blurb ?? '').length > 0)).toBe(true);
+    expect(choices.map((c) => c.id).sort()).toEqual(Object.keys(ALL.regions).sort());
+    expect(choices.length).toBeGreaterThanOrEqual(3);
+    const chapters = choices.map((c) => c.chapter);
+    expect(chapters).toEqual([...chapters].sort((a, b) => a - b));
+    for (const c of choices) {
+      const region = ALL.regions[c.id] as { name?: string; blurb?: string; id: string } | undefined;
+      const event = ALL.events[c.eventId];
+      // The choice's event is a free-play race (no career tier) of this region, from the region's pack.
+      expect(c.packId, c.id).toBe(c.id.slice(0, c.id.indexOf(':')));
+      expect(c.eventId.startsWith(`${c.packId}:`), c.id).toBe(true);
+      expect(event?.region, c.id).toBe(region?.id);
+      expect(event?.tier, c.id).toBeUndefined();
+      // Its name and blurb are the region file's own words.
+      expect(c.name, c.id).toBe(region?.name);
+      expect((c.blurb ?? '').length, c.id).toBeGreaterThan(0);
+      expect(c.blurb, c.id).toBe(region?.blurb);
+    }
     // The base pack alone offers just the Keys.
     expect(regionChoices(loadBasePack()).map((c) => c.id)).toEqual(['base:florida-keys']);
   });
@@ -157,18 +169,44 @@ describe('app: regions', () => {
         expect(Object.values(cat.items).some((i) => i.ref === l.ref)).toBe(false);
       }
     }
+    // A cut line leaves the pool (the in-game veto). The line is read from the pack, so a copy edit
+    // there is not a test failure.
     const keys = boardCatalog(ALL, 'base:florida-keys');
-    expect(keys.pools?.landing?.map((l) => l.text)).toContain('TEN OUT OF TEN, SAYS A PELICAN');
-    const cut = boardCatalog(ALL, 'base:florida-keys', new Set(['base:region/florida-keys#pelican']));
-    expect(cut.pools?.landing?.some((l) => l.ref === 'base:region/florida-keys#pelican')).toBe(false);
+    const line = keys.pools?.landing?.[0];
+    expect(line?.ref.startsWith('base:region/florida-keys#')).toBe(true);
+    const cut = boardCatalog(ALL, 'base:florida-keys', new Set([line?.ref ?? '']));
+    expect(cut.pools?.landing?.some((l) => l.ref === line?.ref)).toBe(false);
+    expect(cut.pools?.landing).toHaveLength((keys.pools?.landing?.length ?? 0) - 1);
   });
 
   it("merges the region palette with its time of day's", () => {
-    const p = racePalette(ALL, 'region-pnw:pacific-northwest', 'dawn');
-    expect(p['road']).toBe('#3b3f3e');
-    expect(p['sky']).toBe('#c4ccc6');
-    expect(racePalette(ALL, 'region-pnw:pacific-northwest', 'noon')['sky']).toBe('#aab5b1');
-    expect(racePalette(ALL, 'base:florida-keys', 'golden-hour')['sky']).toBe('#f6b26b');
+    // The time of day's own colours win and the region's fill in the rest, read from the packs for
+    // every region and time of day (a retuned colour is not a test edit).
+    let won = 0;
+    let filled = 0;
+    for (const [key, region] of Object.entries(ALL.regions)) {
+      const own = (region.palette ?? {}) as Readonly<Record<string, string>>;
+      for (const option of region.timeOfDayOptions) {
+        const over = ((option as { palette?: unknown }).palette ?? {}) as Readonly<Record<string, string>>;
+        const p = racePalette(ALL, key, option.id);
+        expect(Object.keys(p).sort(), `${key} ${option.id}`).toEqual(
+          [...new Set([...Object.keys(own), ...Object.keys(over)])].sort(),
+        );
+        for (const [name, colour] of Object.entries(p)) {
+          if (name in over) {
+            expect(colour, `${key} ${option.id} ${name}`).toBe(over[name]);
+            if (name in own && own[name] !== over[name]) won++;
+          } else {
+            expect(colour, `${key} ${option.id} ${name}`).toBe(own[name]);
+            filled++;
+          }
+        }
+      }
+    }
+    // Both halves of the rule were examined: a time of day overrode a region colour, and a region
+    // colour showed through.
+    expect(won).toBeGreaterThan(0);
+    expect(filled).toBeGreaterThan(0);
   });
 
   it('caches one stream per network', () => {
@@ -183,24 +221,36 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
   const dial = (r: ReturnType<typeof raceRadio>) =>
     stationsForRegion(r.stations, r.region).map((s) => `${s.packId}:${s.id}`);
 
+  /**
+   * The dial's stations as the packs list them: every station whose regions name `region` (or, with
+   * `region` null, every station), except the hidden pirate and a rider's own (audio's pirate and
+   * Pivot FM tests have those). Read from the packs, so a lane that adds a station edits no test here.
+   */
+  const onDial = (reg: typeof ALL, region: string | null) =>
+    Object.entries(reg.stations)
+      .filter(([, s]) => !s.pirate && !s.rider)
+      .filter(([, s]) => region === null || s.regions.includes(region.slice(region.indexOf(':') + 1)))
+      .map(([k]) => k)
+      .sort();
+
   it("the Keys play the Keys' own stations, filtered by the region", () => {
     const r = raceRadio(ALL, 'base:florida-keys');
     expect(r.region).toBe('base:florida-keys');
-    expect(dial(r)).toEqual(['base:keys-rockabilly', 'base:keys-surf', 'base:keys-tradewinds']);
+    expect(onDial(ALL, 'base:florida-keys').length).toBeGreaterThanOrEqual(2);
+    expect([...dial(r)].sort()).toEqual(onDial(ALL, 'base:florida-keys'));
   });
 
-  it('the Pacific Northwest and San Francisco play their own three stations, and only those', () => {
+  it('the Pacific Northwest and San Francisco play their own stations, and only those', () => {
     // Playtest 2, 2026-10-02: "There should be different stations and music in different regions".
-    expect(dial(raceRadio(ALL, 'region-pnw:pacific-northwest'))).toEqual([
-      'region-pnw:pnw-drizzle',
-      'region-pnw:pnw-salal',
-      'region-pnw:pnw-stump',
-    ]);
-    expect(dial(raceRadio(ALL, 'region-sf:san-francisco'))).toEqual([
-      'region-sf:sf-burn-rate',
-      'region-sf:sf-fog-bank',
-      'region-sf:sf-gold-rush',
-    ]);
+    for (const region of ['region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
+      const own = onDial(ALL, region);
+      expect(own.length, region).toBeGreaterThanOrEqual(2);
+      expect(
+        own.every((k) => k.startsWith(`${region.slice(0, region.indexOf(':'))}:`)),
+        region,
+      ).toBe(true);
+      expect([...dial(raceRadio(ALL, region))].sort(), region).toEqual(own);
+    }
   });
 
   it('a region with no station of its own gets the base pack stations, unfiltered', () => {
@@ -211,7 +261,8 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     for (const region of ['region-pnw:pacific-northwest', 'region-sf:san-francisco']) {
       const r = raceRadio(baseOnly, region);
       expect(r.region, region).toBeNull();
-      expect(dial(r), region).toEqual(['base:keys-rockabilly', 'base:keys-surf', 'base:keys-tradewinds']);
+      expect(onDial(baseOnly, null).length, region).toBeGreaterThan(0);
+      expect([...dial(r)].sort(), region).toEqual(onDial(baseOnly, null));
     }
   });
 
