@@ -153,6 +153,7 @@ import {
   type SimRiderDef,
 } from '../types';
 import { groundUnder } from '../ground';
+import { lawBarredZone, lineOutsideZone } from '../ai/branches';
 import { blockerAt, lineClear, pathClear, see, type Obstacle } from '../ai/sense';
 import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -1219,6 +1220,12 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
     vWant = Math.min(CRAWL_MPS, bike.topSpeedMps);
     if (shoulder) dWant = shoulder.dCenterM;
   }
+  // The law stays on the highway (playtest 3, round 3: "rivals and cops stay on the highway"): a
+  // branch the route bars to them (`aiTake` 0, or a gap with no `aiTake`: sim/ai/branches.ts) is
+  // never entered. His line, chasing a man who takes it, keeps out of its split zone, and he rides
+  // the main path on to wait where it rejoins. (He does not share the rivals' shortcut roll.)
+  const barred = lawBarredZone(config, pos.edge, pos.s, pos.dir);
+  if (barred) dWant = lineOutsideZone(barred, dWant);
   // Traffic has the last word (W-S): round the car ahead in his line, or behind it.
   const edgeNow = config.road.edges[pos.edge];
   const guard = trafficGuard(
