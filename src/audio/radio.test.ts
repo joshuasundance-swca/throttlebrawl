@@ -37,6 +37,11 @@ const dialIds = (stations: readonly RadioStation[], region?: string): string[] =
     .filter((s) => !s.pirate && !s.rider && (region === undefined || s.regions.includes(region)))
     .map((s) => s.id)
     .sort();
+/** The base pack's dial stations in the pack's own order; with `region`, those naming it. */
+const onDial = (region?: string): string[] =>
+  baseStations()
+    .filter((s) => !s.pirate && !s.rider && (region === undefined || s.regions.includes(region)))
+    .map((s) => s.id);
 const station = (id: string) => {
   const s = baseStations().find((x) => x.id === id);
   if (!s) throw new Error(`no station ${id}`);
@@ -103,18 +108,15 @@ describe('station data (packs/base/stations)', () => {
     };
     const genre: RadioStation = { ...station('keys-surf'), id: 'everywhere', regions: [] };
     const all = [...baseStations(), genre, pnw];
+    // The base pack's dial stations, in the pack's order, are the fallbacks (read from the pack).
     expect(stationsForRegion(all, 'region-pnw:pacific-northwest').map((s) => s.id)).toEqual([
       'pnw-x',
       'everywhere',
-      'keys-rockabilly',
-      'keys-surf',
-      'keys-tradewinds',
+      ...onDial(),
     ]);
     // The Keys never pick up another region's station.
     expect(stationsForRegion(all, 'florida-keys').map((s) => s.id)).toEqual([
-      'keys-rockabilly',
-      'keys-surf',
-      'keys-tradewinds',
+      ...onDial('florida-keys'),
       'everywhere',
     ]);
   });
@@ -401,28 +403,35 @@ describe('the radio in the mixer', () => {
     return { ctx, keys, audio, tick };
   }
 
+  /** The dial the mixer shows: the given stations in the order the region rule puts them. */
+  const theDial = (stations: readonly RadioStation[], region: string | null = null) =>
+    stationsForRegion(stations, region).map((s) => s.id);
+
   it('the R key cycles score, each station, off; switching changes the playing track', async () => {
     const { keys, audio, tick } = await racing(baseStations());
+    const dial = theDial(baseStations());
+    expect(dial.length).toBeGreaterThanOrEqual(2);
+    // With no region, the dial is every dial station in the pack's order.
+    expect(dial).toEqual(onDial());
+    expect([...audio.inspect().radio.stations]).toEqual(dial);
     // A race starts on the region's first station (playtest 2); this test starts from the score.
     expect(audio.inspect().radio.choice).toBe(RADIO_FIRST_STATION);
     audio.setParam('audio.radio', RADIO_SCORE);
     tick(0.1);
     expect(audio.inspect().radio.tunedTo).toBe('score');
     expect(audio.inspect().musicPlaying).toBe(true);
+    // Each press tunes the next station on the dial, in its order, and plays one of its tracks.
+    let t = 0.2;
+    for (const id of dial) {
+      press(keys);
+      tick((t += 0.05));
+      const r = audio.inspect().radio;
+      expect(r.tunedTo).toBe(id);
+      expect(r.nowPlaying?.ref.startsWith(`base:station/${id}#`), `${id}: ${r.nowPlaying?.ref}`).toBe(true);
+      expect(audio.inspect().musicPlaying).toBe(false);
+    }
     press(keys);
-    tick(0.2);
-    const r = audio.inspect().radio;
-    expect(r.tunedTo).toBe('keys-rockabilly');
-    expect(r.nowPlaying?.ref).toMatch(/^base:station\/keys-rockabilly#/);
-    expect(audio.inspect().musicPlaying).toBe(false);
-    press(keys);
-    tick(0.3);
-    expect(audio.inspect().radio.nowPlaying?.ref).toMatch(/^base:station\/keys-surf#/);
-    press(keys);
-    tick(0.35);
-    expect(audio.inspect().radio.nowPlaying?.ref).toMatch(/^base:station\/keys-tradewinds#/);
-    press(keys);
-    tick(0.4);
+    tick(t + 0.05);
     expect(audio.inspect().radio.tunedTo).toBe('off');
     expect(audio.inspect().radio.nowPlaying).toBeNull();
     expect(audio.inspect().musicPlaying).toBe(false);
@@ -437,24 +446,29 @@ describe('the radio in the mixer', () => {
 
   it('the tuning slider picks the station; past the last one is off', async () => {
     const { audio } = await racing(baseStations());
-    audio.setParam('audio.radio', 2);
-    expect(audio.inspect().radio.tunedTo).toBe('keys-rockabilly');
+    const dial = theDial(baseStations());
+    // Slider stops from RADIO_FIRST_STATION on are the dial's stations, in its order.
+    dial.forEach((id, i) => {
+      audio.setParam('audio.radio', RADIO_FIRST_STATION + i);
+      expect(audio.inspect().radio.tunedTo, `stop ${RADIO_FIRST_STATION + i}`).toBe(id);
+    });
     audio.setParam('audio.radio', RADIO_OFF);
     expect(audio.inspect().radio.tunedTo).toBe('off');
-    audio.setParam('audio.radio', 6);
+    audio.setParam('audio.radio', RADIO_FIRST_STATION + dial.length);
     expect(audio.inspect().radio.tunedTo).toBe('off');
     audio.setParam('audio.radio', RADIO_SCORE);
     expect(audio.inspect().radio.tunedTo).toBe('score');
     // Another region hears no Keys station.
     audio.setRegion('pacific-northwest');
-    audio.setParam('audio.radio', 2);
+    audio.setParam('audio.radio', RADIO_FIRST_STATION);
     expect(audio.inspect().radio.tunedTo).toBe('off');
   });
 
   it('loads the base pack`s stations by itself the first time a station is picked', async () => {
     const { audio } = await racing();
-    audio.setParam('audio.radio', 3);
-    await vi.waitFor(() => expect(audio.inspect().radio.tunedTo).toBe('keys-surf'), { timeout: 10_000 });
+    audio.setParam('audio.radio', RADIO_FIRST_STATION + 1);
+    const second = theDial(baseStations())[1];
+    await vi.waitFor(() => expect(audio.inspect().radio.tunedTo).toBe(second), { timeout: 10_000 });
     expect([...audio.inspect().radio.stations].sort()).toEqual(dialIds(baseStations(), 'florida-keys'));
   });
 

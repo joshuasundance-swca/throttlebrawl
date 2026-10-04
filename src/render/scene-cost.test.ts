@@ -6,6 +6,10 @@
 // 25 m, and every mesh the renderer would draw from there (visible, and inside the camera's
 // frustum, as three.js culls) is counted. The still scene must leave the riders, the traffic, the
 // cops and the effects their share of the frame budget (tests/perf/budget.json).
+// Playtest 3 (T11.3): the camera also rides every branch (a road the route allows off its main path:
+// a shortcut, a junction's other arm, the Seven Mile Bridge's old road), because a rider, a rival or
+// a cop who takes one sees that scene too, and a new real route (Duval, Seven Mile, Lombard, the
+// Golden Gate, Portland) is covered the moment its route file lands, with no list to edit here.
 import {
   Frustum,
   InstancedMesh,
@@ -48,6 +52,7 @@ interface Route {
   id: string;
   network: string;
   mainPath: string[];
+  allowedRoads: string[];
 }
 const routeFiles = import.meta.glob<Route>('../../packs/*/regions/*/routes/*.json', {
   eager: true,
@@ -111,6 +116,15 @@ function drawn(root: Object3D, frustum: Frustum, into: Map<string, Load>): void 
     for (const c of o.children) walk(c, label);
   };
   walk(root, root.name);
+}
+
+/** The roads the camera rides for a route: the main path, then each allowed road off it. */
+function legsOf(route: Route): { id: string; main: boolean }[] {
+  const onMain = new Set(route.mainPath);
+  return [
+    ...route.mainPath.map((id) => ({ id, main: true })),
+    ...route.allowedRoads.filter((id) => !onMain.has(id)).map((id) => ({ id, main: false })),
+  ];
 }
 
 const ROUTES = Object.values(routeFiles);
@@ -177,13 +191,17 @@ describe('the still scene along every route', () => {
       let sumTris = 0;
       let poses = 0;
       let prev: { x: number; z: number } | null = null;
-      for (const id of route.mainPath) {
+      // The main path first, each road ridden the way the route runs; then each branch road, once,
+      // in its own direction (the roads' order in the route file).
+      const legs = legsOf(route);
+      let branchPoses = 0;
+      for (const { id, main } of legs) {
         const e = road.edgeIndex(id);
         const edge = road.edges[e]!;
         const a = road.toWorld(e, 0, 0, 0);
         const b = road.toWorld(e, edge.length, 0, 0);
         const fwd: boolean =
-          !prev || Math.hypot(a.x - prev.x, a.z - prev.z) <= Math.hypot(b.x - prev.x, b.z - prev.z);
+          !main || !prev || Math.hypot(a.x - prev.x, a.z - prev.z) <= Math.hypot(b.x - prev.x, b.z - prev.z);
         for (let u = 10; u < edge.length - 10; u += 25) {
           const s = fwd ? u : edge.length - u;
           const dir = fwd ? 1 : -1;
@@ -229,8 +247,9 @@ describe('the still scene along every route', () => {
           sumDraws += total.draws;
           sumTris += total.tris;
           poses++;
+          if (!main) branchPoses++;
         }
-        prev = fwd ? b : a;
+        if (main) prev = fwd ? b : a;
       }
       if (!worst) throw new Error('no poses');
       const byPart = [...worst.parts.entries()]
@@ -239,11 +258,34 @@ describe('the still scene along every route', () => {
         .map(([k, l]) => `${k.split('/')[1]}:${l.draws}d/${Math.round(l.tris)}t`)
         .join(' ');
       print(
-        `[examined] ${route.id}: ${poses} views; draw calls max ${maxDraws} mean ${(sumDraws / poses).toFixed(1)}; triangles max ${Math.round(worst.total.tris)} mean ${Math.round(sumTris / poses)} | the most at ${worst.at}: ${byPart}`,
+        `[examined] ${route.id}: ${poses} views; ${branchPoses} on branches; draw calls max ${maxDraws} mean ${(sumDraws / poses).toFixed(1)}; triangles max ${Math.round(worst.total.tris)} mean ${Math.round(sumTris / poses)} | the most at ${worst.at}: ${byPart}`,
       );
       expect(poses).toBeGreaterThan(20);
       expect(maxDraws).toBeLessThanOrEqual(STILL_DRAWS_MAX);
       expect(worst.total.tris).toBeLessThanOrEqual(STILL_TRIS_MAX);
     }, 120_000);
   }
+});
+
+describe('the branch checkpoints', () => {
+  it('cover every road each route allows, each one a road of the route network', () => {
+    let branches = 0;
+    let ridable = 0;
+    for (const route of ROUTES) {
+      const { road } = track(route.network);
+      for (const { id, main } of legsOf(route)) {
+        const edge = road.edges[road.edgeIndex(id)];
+        expect(edge, `${route.id}: ${id} is not a road of ${route.network}`).toBeDefined();
+        if (!main) {
+          branches++;
+          if ((edge?.length ?? 0) >= 45) ridable++;
+        }
+      }
+    }
+    print(
+      `[examined] branch checkpoints: ${branches} branch roads over ${ROUTES.length} routes, ${ridable} long enough to ride`,
+    );
+    // The Key West Boulevard shortcut and its like: if this reads zero, the legs are not being built.
+    expect(ridable).toBeGreaterThan(0);
+  });
 });

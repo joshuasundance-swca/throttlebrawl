@@ -19,7 +19,14 @@ import {
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoadNetwork, fixtureNetwork } from '../road';
-import type { EntitySnapshot, PropKind, PropSnapshot, SimSnapshot, SmashableSnapshot } from '../sim/api';
+import type {
+  EntitySnapshot,
+  PropKind,
+  PropSnapshot,
+  SimSnapshot,
+  SimTrafficTypeDef,
+  SmashableSnapshot,
+} from '../sim/api';
 import { EventProps } from './event-props';
 import { mergeBoxes } from './geometry';
 import { createFlatLook } from './look';
@@ -484,5 +491,151 @@ describe("the road's fine detail stays near (run W-T, the draw-call headroom)", 
       if (o instanceof Mesh && o.name === 'road-marking' && o.parent?.name === `road-chunk-${far.chunk}`)
         expect(o.visible).toBe(true);
     });
+  });
+});
+
+describe('the moving ramp truck and the new local life keep the composed peak at 104 of 120 (playtest 3, T4.3)', () => {
+  // The plan's composition (scratch/pt3/critic.md section 6, from the specs): today's peak scene
+  // (Keys seed 5, a roadwork beside a speed trap) is 96 calls; the drift's skids and smoke add 2; a
+  // moving carrier adds up to 3; and a region's new kinds of traffic add up to 3 more. The composed
+  // figure is what the perf gate sees, 104 of the 120 it allows. Each term below is measured here as
+  // the number of calls its figures add to a scene, so the sum stays true if a figure grows a mesh.
+  const PEAK_TODAY = 96;
+  const SKIDS_AND_SMOKE = 2;
+  const CARRIER_BUDGET = 3;
+  const NEW_KINDS_BUDGET = 3;
+  const COMPOSED_CAP = 104;
+  const FRAME_BUDGET = 120;
+
+  const types: SimTrafficTypeDef[] = [
+    ['base:event-car-carrier', 'truck', 7.5, 2.4],
+    ['base:rental-convertible', 'car', 4.6, 1.8],
+    ['base:box-truck', 'truck', 7.5, 2.4],
+    ['base:pedicab', 'car', 2.6, 1.2],
+    ['base:island-tram', 'truck', 14, 2.2],
+    ['base:rooster', 'animal', 0.45, 0.3],
+    ['region-pnw:pdx-streetcar', 'truck', 20, 2.5],
+    ['region-pnw:elk', 'animal', 2.4, 0.9],
+    ['region-pnw:raccoon', 'animal', 0.6, 0.3],
+    ['region-sf:sea-lion', 'animal', 2, 0.8],
+    ['region-sf:parrot-flock', 'animal', 2, 2],
+    ['base:tourist-with-cooler', 'pedestrian', 0.5, 0.6],
+  ].map(([contentId, category, lengthM, widthM]) => ({
+    contentId: contentId as string,
+    category: category as SimTrafficTypeDef['category'],
+    lengthM: lengthM as number,
+    widthM: widthM as number,
+    cruiseMps: 10,
+    hazard: 'normal',
+  }));
+
+  let nextId = 1;
+  const thing = (contentId: string, z: number): EntitySnapshot => {
+    const t = types.find((x) => x.contentId === contentId);
+    const kind = t?.category === 'pedestrian' || t?.category === 'animal' ? 'ped' : 'vehicle';
+    return {
+      id: nextId++,
+      kind,
+      mode: 'Road',
+      road: { edge: 0, s: 0, d: 0, h: 0, dir: 1, yaw: 0 },
+      x: 2,
+      y: 0,
+      z,
+      heading: 0,
+      speed: 10,
+      lean: 0,
+      contentId,
+      name: `t${nextId}`,
+      faction: 'rider',
+      slot: -1,
+      throttle: 0,
+      rpm: 0,
+      gear: 1,
+      grounded: true,
+      health: 100,
+      healthMax: 100,
+      attackPhase: 'idle',
+      heldWeapon: null,
+      targetId: -1,
+      lastAttackerId: -1,
+      progress: 0,
+      distanceToFinish: 1000,
+      place: 1,
+      finished: false,
+    };
+  };
+  /** The ordinary traffic every scene has: cars, a box truck, a pedestrian. */
+  const ordinary = () => [
+    thing('base:rental-convertible', -30),
+    thing('base:rental-convertible', -50),
+    thing('base:box-truck', -70),
+    thing('base:tourist-with-cooler', -40),
+  ];
+  /** Draw calls the entity views make for these entities, after any events. */
+  function callsFor(entities: EntitySnapshot[], rampDown: number[] = []): number {
+    const views = new EntityViews(look);
+    views.setTrafficTypes(types);
+    views.sync(null, { ...snap([]), entities }, 1, 0);
+    views.pushEvents(
+      rampDown.map((actor) => ({ tick: 1, type: 'setPieceBeat', actor, data: { beat: 'rampDown' } })),
+    );
+    views.sync(null, { ...snap([]), entities }, 1, 0.1);
+    return draws(views.root);
+  }
+  const base = callsFor(ordinary());
+
+  it('a carrier is one call, two with one ramp up and one down (a double), and never more than 3', () => {
+    const lone = thing('base:event-car-carrier', -100);
+    const second = thing('base:event-car-carrier', -170);
+    const one = callsFor([...ordinary(), lone]) - base;
+    const double = callsFor([...ordinary(), lone, second], [second.id]) - base;
+    const bothDown = callsFor([...ordinary(), lone, second], [lone.id, second.id]) - base;
+    console.log(
+      `[examined] draw calls a carrier adds: lone ${one}, up and down ${double}, both down ${bothDown}`,
+    );
+    expect(one).toBe(1);
+    expect(double).toBe(2);
+    expect(bothDown).toBe(1);
+    expect(Math.max(one, double, bothDown)).toBeLessThanOrEqual(CARRIER_BUDGET);
+  });
+
+  it("a region's new kinds are one call each, however many of each are in view", () => {
+    const keys = ['base:pedicab', 'base:island-tram', 'base:rooster'];
+    const pnw = ['region-pnw:pdx-streetcar', 'region-pnw:elk', 'region-pnw:raccoon'];
+    const sf = ['region-sf:sea-lion', 'region-sf:parrot-flock'];
+    for (const [region, ids] of [
+      ['Keys', keys],
+      ['Pacific Northwest', pnw],
+      ['San Francisco', sf],
+    ] as const) {
+      const crowd = ids.flatMap((id, k) => [
+        thing(id, -60 - k * 20),
+        thing(id, -62 - k * 20),
+        thing(id, -64 - k * 20),
+      ]);
+      const added = callsFor([...ordinary(), ...crowd]) - base;
+      console.log(
+        `[examined] draw calls ${region}'s ${ids.length} new kinds add (3 of each in view): ${added}`,
+      );
+      expect(added, region).toBe(ids.length);
+      expect(added, region).toBeLessThanOrEqual(NEW_KINDS_BUDGET);
+    }
+  });
+
+  it('the worst scene composed is at most 104, and the frame budget keeps its headroom', () => {
+    const lone = thing('base:event-car-carrier', -100);
+    const second = thing('base:event-car-carrier', -170);
+    const crowd = ['base:pedicab', 'base:island-tram', 'base:rooster'].flatMap((id, k) => [
+      thing(id, -60 - k * 20),
+      thing(id, -62 - k * 20),
+    ]);
+    const added = callsFor([...ordinary(), lone, second, ...crowd], [second.id]) - base;
+    const composed = PEAK_TODAY + SKIDS_AND_SMOKE + added;
+    console.log(
+      `[examined] composed peak: ${PEAK_TODAY} today + ${SKIDS_AND_SMOKE} skids and smoke + ${added} (a carrier up and down and three new kinds) = ${composed} of ${FRAME_BUDGET}`,
+    );
+    expect(added).toBeLessThanOrEqual(CARRIER_BUDGET + NEW_KINDS_BUDGET);
+    expect(composed).toBeLessThanOrEqual(COMPOSED_CAP);
+    expect(composed).toBeLessThanOrEqual(FRAME_BUDGET);
   });
 });

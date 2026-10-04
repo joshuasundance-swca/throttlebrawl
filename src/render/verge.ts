@@ -9,6 +9,9 @@
 //   picket in the Keys, a split-rail in the Pacific Northwest, a painted garden fence in San
 //   Francisco), a row of ferns and bushes at a `brush` edge, and a strip of shallows past a `water`
 //   edge; walls, buildings and rails are already drawn by the road and the scenery;
+// - a bridge railing (playtest 3: a barrier with `look: "railing"`, the Golden Gate's): a kerb, posts
+//   and three rails, see-through, in panels along the barrier within RAILING_DRAW_M (the road leaves
+//   such a barrier's solid band out); it stops a tumble body like any wall, because the sim says so;
 // - the feel: dust, sand spray, gravel and grass flung up behind a bike on loose ground, a splash at
 //   the water's edge, leaves at the ferns, and boards flying when a fence goes.
 // Presentation only: it reads the road, the snapshot and the events, and may use Math.random and
@@ -43,6 +46,16 @@ export const VERGE_CHUNK_M = 512;
 export const FENCE_SEG_M = 2;
 /** Metres between fern clumps along a `brush` edge. [default] */
 const BRUSH_STEP_M = 3.5;
+/** One railing panel's length along the road, m. [default] */
+export const RAILING_SEG_M = 2;
+/** A railing panel's own height, m: the barrier's `heightM` scales it. The Golden Gate's is 1.3. */
+const RAILING_H_M = 1.3;
+/** The railing stands this far past the road's outermost lane edge, as the road's own rail band does, m. */
+export const RAILING_OUT_M = 0.55;
+/** Railings are drawn out to this far from the camera, m. [default] */
+export const RAILING_DRAW_M = 120;
+/** The railing's paint when the region's palette has no `bridgePaint`: International Orange. [default] */
+const RAILING_PAINT = '#c0452f';
 /** Fences and ferns are drawn out to this far from the camera (the band always), m. [default] */
 export const VERGE_DRAW_M = 150;
 /** Past this fences and ferns draw without their thinnest faces (run W-S), m. [default] */
@@ -129,6 +142,23 @@ function fenceParts(style: FenceStyle, lod: 'near' | 'far' = 'near'): BoxPart[] 
     parts.push({ size: [0.06, 1.15, 0.06], at: [-half + 0.2 + i * 0.4, 0.58, 0], color: green, omit: post });
   }
   return parts;
+}
+
+/** One bridge-railing panel (local x along the road, y up, centred): a kerb, a post and three rails. */
+function railingParts(paint: string): BoxPart[] {
+  const half = RAILING_SEG_M / 2;
+  return [
+    { size: [RAILING_SEG_M, 0.3, 0.34], at: [0, 0.15, 0], color: '#a8a39a', omit: RAIL_OMIT },
+    {
+      size: [0.18, RAILING_H_M, 0.18],
+      at: [-half + 0.09, RAILING_H_M / 2, 0],
+      color: paint,
+      omit: POST_OMIT.near,
+    },
+    { size: [RAILING_SEG_M, 0.16, 0.22], at: [0, RAILING_H_M - 0.08, 0], color: paint, omit: RAIL_OMIT },
+    { size: [RAILING_SEG_M, 0.08, 0.12], at: [0, 0.92, 0], color: paint, omit: RAIL_OMIT },
+    { size: [RAILING_SEG_M, 0.08, 0.12], at: [0, 0.62, 0], color: paint, omit: RAIL_OMIT },
+  ];
 }
 
 /** A clump of ferns: fronds fanned out from the middle (the sim's `brush` edge). */
@@ -224,6 +254,13 @@ interface FencePanel {
   broken: boolean;
 }
 
+/** One railing panel as built: its world midpoint and pose. */
+interface RailingPanel {
+  x: number;
+  z: number;
+  m: Matrix4;
+}
+
 /** A fern clump as built. */
 interface Clump {
   x: number;
@@ -251,11 +288,16 @@ export interface VergeCounts {
   /** Bursts started since the build, by kind (splash, leaves, boards). */
   bursts: Readonly<Record<'splash' | 'leaves' | 'boards', number>>;
   fenceStyle: FenceStyle;
+  /** Bridge-railing panels built, and drawn in the last refill (inside RAILING_DRAW_M). */
+  railingPanels: number;
+  nearRailing: number;
 }
 
 /** The most fence panels and fern clumps drawn at once (inside VERGE_DRAW_M), each one draw call. */
 const NEAR_PANELS = 480;
 const NEAR_CLUMPS = 420;
+/** The most railing panels drawn at once: both sides of a straight bridge, RAILING_DRAW_M ahead. */
+const NEAR_RAILING = 400;
 /** The near sets refill when the camera has moved this far, m. */
 const REFILL_M = 12;
 /**
@@ -373,6 +415,8 @@ class Pool {
 export interface VergeOptions {
   /** The network's scenery tags (all of them): they pick the fence style and the fern colour. */
   tags: ReadonlySet<string>;
+  /** A bridge railing's paint (`#rrggbb`): the region palette's `bridgePaint`; International Orange without. */
+  railingColour?: string | undefined;
 }
 
 /**
@@ -387,6 +431,8 @@ export class VergeLayer {
   private readonly panels: FencePanel[] = [];
   private readonly panelsByEdge = new Map<number, FencePanel[]>();
   private readonly clumps: Clump[] = [];
+  private readonly railing: RailingPanel[] = [];
+  private readonly railingMesh: InstancedMesh;
   /** The fences and ferns near the camera, and (past VERGE_LOD_M) their lighter far forms. */
   private readonly fenceMesh: InstancedMesh;
   private readonly fenceFar: InstancedMesh;
@@ -449,13 +495,21 @@ export class VergeLayer {
     this.brushMesh.name = 'verge-brush';
     this.brushFar = new InstancedMesh(brushFarGeo, propMat, NEAR_CLUMPS);
     this.brushFar.name = 'verge-brush-far';
+    const railingGeo = mergeBoxes(railingParts(opts.railingColour ?? RAILING_PAINT));
+    this.geometries.push(railingGeo);
+    this.railingMesh = new InstancedMesh(railingGeo, propMat, NEAR_RAILING);
+    this.railingMesh.name = 'verge-railing';
     for (const m of this.instanced()) {
       m.count = 0;
       m.visible = false;
       // Only what is near the camera is in them, so they are never culled whole.
       m.frustumCulled = false;
     }
-    this.group.add(this.dust.mesh, this.boards.mesh, ...this.instanced());
+    this.group.add(
+      this.dust.mesh,
+      this.boards.mesh,
+      ...this.instanced().filter((m) => m !== this.railingMesh),
+    );
 
     // The band and the shallows share one strip set (one mesh per chunk).
     const strips = new ColourStrips();
@@ -529,6 +583,9 @@ export class VergeLayer {
         }
       }
     }
+    this.buildRailing();
+    // A road with no railing look has no railing mesh in the scene at all.
+    if (this.railing.length > 0) this.group.add(this.railingMesh);
     for (const key of strips.chunks.keys()) {
       const g = strips.build(key);
       if (!g) continue;
@@ -536,6 +593,46 @@ export class VergeLayer {
       const mesh = new Mesh(g, groundMat);
       mesh.name = 'verge-band';
       this.group.add(mesh);
+    }
+  }
+
+  /**
+   * The bridge railing: every barrier with `look: "railing"` (the road's own record of it, on the
+   * edge) in panels of RAILING_SEG_M along its side, at the road's outer lane edge, tilted with the
+   * deck's grade.
+   */
+  private buildRailing(): void {
+    const up = new Vector3(0, 1, 0);
+    const along = new Vector3(0, 0, 1);
+    const yaw = new Quaternion();
+    const pitch = new Quaternion();
+    for (const e of this.road.edges) {
+      for (const b of e.barriers) {
+        if (b.look !== 'railing') continue;
+        const s0 = Math.max(0, b.s0);
+        const s1 = Math.min(e.length, b.s1);
+        for (const side of [-1, 1] as const) {
+          if (b.side !== 'both' && b.side !== (side < 0 ? 'left' : 'right')) continue;
+          const d = side < 0 ? e.dMin - RAILING_OUT_M : e.dMax + RAILING_OUT_M;
+          for (let s = s0; s < s1 - 1e-6; s += RAILING_SEG_M) {
+            const end = Math.min(s1, s + RAILING_SEG_M);
+            const a = this.road.toWorld(e.index, s, d, 0);
+            const c = this.road.toWorld(e.index, end, d, 0);
+            const flat = Math.hypot(c.x - a.x, c.z - a.z);
+            if (flat < 1e-3) continue;
+            yaw.setFromAxisAngle(up, Math.atan2(-(c.z - a.z), c.x - a.x));
+            pitch.setFromAxisAngle(along, Math.atan2(c.y - a.y, flat));
+            const x = (a.x + c.x) / 2;
+            const z = (a.z + c.z) / 2;
+            const m = new Matrix4().compose(
+              new Vector3(x, (a.y + c.y) / 2, z),
+              yaw.clone().multiply(pitch),
+              new Vector3(flat / RAILING_SEG_M, b.heightM / RAILING_H_M, 1),
+            );
+            this.railing.push({ x, z, m });
+          }
+        }
+      }
     }
   }
 
@@ -622,6 +719,18 @@ export class VergeLayer {
       this.fenceFar,
     ]);
     fill(this.clumps, NEAR_CLUMPS, (c) => c, [this.brushMesh, this.brushFar]);
+    let nRailing = 0;
+    for (const p of this.railing) {
+      if (nRailing >= NEAR_RAILING) break;
+      const dx = p.x - cameraX;
+      const dz = p.z - cameraZ;
+      if (dx * dx + dz * dz > RAILING_DRAW_M * RAILING_DRAW_M || dx * fx + dz * fz < -VERGE_BEHIND_M)
+        continue;
+      this.railingMesh.setMatrixAt(nRailing++, p.m);
+    }
+    this.railingMesh.count = nRailing;
+    this.railingMesh.visible = nRailing > 0;
+    this.railingMesh.instanceMatrix.needsUpdate = true;
     this.filledX = cameraX;
     this.filledZ = cameraZ;
     this.filledFx = fx;
@@ -747,12 +856,14 @@ export class VergeLayer {
       boards: this.boards.count,
       bursts: { ...this.bursts },
       fenceStyle: this.fenceStyle,
+      railingPanels: this.railing.length,
+      nearRailing: this.railingMesh.count,
     };
   }
 
-  /** The four instanced sets: near fences, far fences, near ferns, far ferns. */
+  /** The five instanced sets: near fences, far fences, near ferns, far ferns, bridge railing. */
   private instanced(): InstancedMesh[] {
-    return [this.fenceMesh, this.fenceFar, this.brushMesh, this.brushFar];
+    return [this.fenceMesh, this.fenceFar, this.brushMesh, this.brushFar, this.railingMesh];
   }
 
   dispose(): void {
