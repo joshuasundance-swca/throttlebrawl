@@ -41,7 +41,9 @@ import {
 import { mergeBoxes, type BoxPart } from './geometry';
 import { cullByInstances } from './prop-batch';
 import {
-  DOG_HEIGHT_M,
+  ANIMAL_HEIGHT_M,
+  FLOCK_LIFT_M,
+  isAnimalFigure,
   isTrafficFigure,
   PEOPLE_FIGURES,
   peopleFigureFor,
@@ -355,6 +357,35 @@ interface Timer {
 
 const WOBBLE_S = 0.6;
 const DIVE_S = 0.8;
+/**
+ * A clipped kerb rider topples (playtest 3, T4.3; the sim's `wobble` with `data.kerb` and
+ * `data.toppleS`): it tips over away from the rider to this angle in `TOPPLE_FALL_S`, lies there, and
+ * gets up over the last `TOPPLE_RISE_S` of the sim's `toppleS`. [default]
+ */
+const TOPPLE_ANGLE = (70 * Math.PI) / 180;
+const TOPPLE_FALL_S = 0.2;
+const TOPPLE_RISE_S = 0.4;
+/**
+ * A moving ramp truck's lowered-ramp flag is dropped once the truck has been out of the snapshot for
+ * this many frames (a pause draws no frames, so it never counts against a truck).
+ */
+const RAMP_FORGET_FRAMES = 600;
+/** How fast a parrot flock circles, rad/s. */
+const FLOCK_TURN = 1.4;
+
+/** One cyclist toppling: when it began (wall clock), for how long, who clipped it, and which way. */
+interface Topple {
+  at: number;
+  durS: number;
+  from: number;
+  /** +1 over to its right, -1 to its left; 0 until the first frame that knows where both are. */
+  side: number;
+}
+
+const smoothstep = (k: number) => {
+  const c = Math.min(1, Math.max(0, k));
+  return c * c * (3 - 2 * c);
+};
 
 export interface EntityViewCounts {
   riders: number;
@@ -387,6 +418,11 @@ export class EntityViews {
   private readonly dives = new Map<number, Timer>();
   /** W-P: a person's fist or phone held up at a rider (`pedReact`), until a wall-clock time. */
   private readonly gestures = new Map<number, { until: number; kind: 'fist' | 'film' }>();
+  /** Playtest 3: the moving ramp trucks whose ramp is down (`setPieceBeat` `rampDown`), by entity id, with the frame last seen. */
+  private readonly rampsDown = new Map<number, number>();
+  private frames = 0;
+  /** Playtest 3: the kerb riders toppled by a clip (`wobble` with `data.kerb` and `data.toppleS`), by entity id. */
+  private readonly topples = new Map<number, Topple>();
   private readonly kicks = new Set<number>();
   private readonly flashes = new Map<number, number>();
   private readonly getUps = new Map<number, number>();
@@ -445,6 +481,9 @@ export class EntityViews {
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */
   setTrafficTypes(defs: readonly SimTrafficTypeDef[]): void {
+    // A new race: its entities are new, whatever ids they share with the last one's.
+    this.rampsDown.clear();
+    this.topples.clear();
     this.trafficTypes.clear();
     for (const d of defs) this.trafficTypes.set(d.contentId, d);
   }
@@ -492,6 +531,19 @@ export class EntityViews {
         else this.kicks.delete(ev.actor);
       }
       if (ev.type === 'kick') this.kicks.add(ev.actor);
+      // Playtest 3: a moving ramp truck's ramp comes down, for good (the carrier draws it lowered).
+      if (ev.type === 'setPieceBeat' && ev.data['beat'] === 'rampDown')
+        this.rampsDown.set(ev.actor, this.frames);
+      // Playtest 3: a rider clipped a kerb rider and it topples (a slow brush has no `toppleS`).
+      const toppleS = ev.data['toppleS'];
+      if (
+        ev.type === 'wobble' &&
+        ev.data['kerb'] === true &&
+        ev.target !== undefined &&
+        typeof toppleS === 'number' &&
+        toppleS > 0
+      )
+        this.topples.set(ev.target, { at: this.now, durS: toppleS, from: ev.actor, side: 0 });
       if (ev.type === 'pedDive') {
         this.dives.set(ev.actor, { until: this.now + DIVE_S, side });
         this.gestures.delete(ev.actor);
@@ -529,6 +581,9 @@ export class EntityViews {
     this.prevById.clear();
     if (prev) for (const e of prev.entities) this.prevById.set(e.id, e);
     this.seen.clear();
+    this.frames++;
+    for (const [id, last] of this.rampsDown)
+      if (this.frames - last > RAMP_FORGET_FRAMES) this.rampsDown.delete(id);
     const slots: Record<string, number> = {};
     for (const key of Object.keys(this.instanced)) slots[key] = 0;
     let riders = 0;
@@ -558,11 +613,16 @@ export class EntityViews {
         pickups++;
       } else if (e.kind === 'vehicle' && trafficFigureFor(e.contentId)) {
         // W-P: each region's own traffic as itself (traffic-figures.ts).
-        const fig = trafficFigureFor(e.contentId) as keyof typeof TRAFFIC_FIGURE_HEIGHT_M;
+        let fig = trafficFigureFor(e.contentId) as keyof typeof TRAFFIC_FIGURE_HEIGHT_M;
+        // Playtest 3: a car carrier whose ramp has come down draws it lowered.
+        if (fig === 'carCarrier' && this.rampsDown.has(e.id)) {
+          fig = 'carCarrierRamp';
+          this.rampsDown.set(e.id, this.frames);
+        }
         const dims = this.trafficTypes.get(e.contentId) ?? TRAFFIC_FIGURE_DIMS[fig];
         const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(0, p.heading, -p.lean);
+        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, TRAFFIC_FIGURE_HEIGHT_M[fig], dims.lengthM);
         mesh.setMatrixAt(
           i,
@@ -575,7 +635,7 @@ export class EntityViews {
         const dims = this.trafficTypes.get(e.contentId) ?? FIGURE_DEFAULT_DIMS[fig];
         const i = (slots[fig] = (slots[fig] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(fig, i + 1);
-        this.euler.set(0, p.heading, -p.lean);
+        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, FIGURE_HEIGHT_M[fig], dims.lengthM);
         mesh.setMatrixAt(
           i,
@@ -588,7 +648,7 @@ export class EntityViews {
         const dims = def ?? DEFAULT_DIMS[shape];
         const i = (slots[shape] = (slots[shape] ?? 0) + 1) - 1;
         const mesh = this.ensureCapacity(shape, i + 1);
-        this.euler.set(0, p.heading, -p.lean);
+        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
         this.scale.set(dims.widthM, SHAPE_HEIGHT[shape], dims.lengthM);
         mesh.setMatrixAt(
           i,
@@ -611,11 +671,17 @@ export class EntityViews {
         const mesh = this.ensureCapacity(key, i + 1);
         const dive = this.diveAmount(e, a);
         this.euler.set(0, p.heading, dive.side * 1.35 * dive.amount);
-        const lift = Math.sin(Math.PI * dive.amount) * 0.6 * (dive.timed ? 1 : 0);
-        if (regional === 'dog') {
-          const dims = def ?? TRAFFIC_FIGURE_DIMS.dog;
-          this.scale.set(dims.widthM, DOG_HEIGHT_M, dims.lengthM);
-          mesh.setColorAt(i, this.color.setStyle(trafficFigureTint('dog', e.contentId, e.id)));
+        let lift = Math.sin(Math.PI * dive.amount) * 0.6 * (dive.timed ? 1 : 0);
+        if (regional && isAnimalFigure(regional)) {
+          // The dog and the big animals, scaled to their type's width and length.
+          const dims = def ?? TRAFFIC_FIGURE_DIMS[regional];
+          this.scale.set(dims.widthM, ANIMAL_HEIGHT_M[regional], dims.lengthM);
+          mesh.setColorAt(i, this.color.setStyle(trafficFigureTint(regional, e.contentId, e.id)));
+          if (regional === 'parrotFlock') {
+            // Circling over the road, and a dive is up and away rather than over on its side.
+            this.euler.set(0, p.heading + timeS * FLOCK_TURN, 0);
+            lift = FLOCK_LIFT_M + 0.15 * Math.sin(timeS * 3 + e.id) + 3 * dive.amount;
+          }
         } else if (regional) {
           this.scale.set(1, 1, 1);
           mesh.setColorAt(i, this.color.setStyle(trafficFigureTint(regional, e.contentId, e.id)));
@@ -648,6 +714,7 @@ export class EntityViews {
     for (const [id, w] of this.wobbles) if (w.until < timeS) this.wobbles.delete(id);
     for (const [id, d] of this.dives) if (d.until < timeS) this.dives.delete(id);
     for (const [id, g] of this.gestures) if (g.until < timeS) this.gestures.delete(id);
+    for (const [id, t] of this.topples) if (timeS - t.at >= t.durS) this.topples.delete(id);
     for (const [id, f] of this.flashes) if (f < timeS) this.flashes.delete(id);
     for (const [id, g] of this.getUps) if (g < timeS) this.getUps.delete(id);
     for (const [id, f] of this.fists) if (f.until < timeS) this.fists.delete(id);
@@ -962,6 +1029,30 @@ export class EntityViews {
     this.pickups.delete(id);
     this.root.remove(view.root);
     this.freePickups.push(view);
+  }
+
+  /**
+   * The roll (about the model's own z, as `-lean` is) a clipped kerb rider's figure has this frame:
+   * it tips over away from the rider that clipped it, falls fast, lies, and gets up at the end of
+   * the sim's `toppleS`. 0 when it is not toppled.
+   */
+  private toppleRoll(e: EntitySnapshot, p: Pose, curr: SimSnapshot): number {
+    const t = this.topples.get(e.id);
+    if (!t) return 0;
+    const age = this.now - t.at;
+    if (age >= t.durS) {
+      this.topples.delete(e.id);
+      return 0;
+    }
+    if (t.side === 0) {
+      // Away from the rider: the side of the figure's own right (cos h, 0, -sin h) it is on.
+      const rider = entityById(curr, t.from);
+      const dot = rider ? (e.x - rider.x) * Math.cos(p.heading) - (e.z - rider.z) * Math.sin(p.heading) : 1;
+      t.side = dot < 0 ? -1 : 1;
+    }
+    const k = Math.min(smoothstep(age / TOPPLE_FALL_S), smoothstep((t.durS - age) / TOPPLE_RISE_S));
+    // A positive roll about z takes the figure's top to its left, so the right is negative.
+    return -t.side * TOPPLE_ANGLE * k;
   }
 
   /** Which side (+1 right, -1 left) of the rider a target is on; right when there is none. */
