@@ -343,7 +343,8 @@ export function scoreGlb(buf, prop, opts = {}) {
   // A bridge kit's bays hang below their deck-level roots (piers to the water), so a kit with bays
   // checks the ground per root instead (`<root>_base_on_ground`, `<bay>_deck_level`).
   const bayRoots = new Set(prop.variants?.bays?.roots ?? []);
-  if (prop.kind !== 'boat' && bayRoots.size === 0)
+  const foundationRoots = (prop.variants?.roots ?? []).filter((v) => extrasOf(v).foundation_m !== undefined);
+  if (prop.kind !== 'boat' && bayRoots.size === 0 && foundationRoots.length === 0)
     check('ground_at_y0', Math.abs(box.min[1]) <= 0.05, `min y = ${box.min[1]}`);
   if (B.tris !== undefined) check('tris_budget', tris <= B.tris, `${tris} / ${B.tris}`);
   if (B.draws !== undefined)
@@ -610,8 +611,13 @@ export function scoreGlb(buf, prop, opts = {}) {
       if (bayK < 0)
         check(
           `${v}_base_on_ground`,
-          bb && rootPos && Math.abs(rootPos[1]) <= 1e-3 && Math.abs(bb.min[1]) <= 0.05,
-          `root ${rootPos}, min y ${bb?.min[1]}`,
+          bb &&
+            rootPos &&
+            Math.abs(rootPos[1]) <= 1e-3 &&
+            Number.isFinite(extrasOf(v).foundation_m ?? 0) &&
+            (extrasOf(v).foundation_m ?? 0) >= 0 &&
+            Math.abs(bb.min[1] + (extrasOf(v).foundation_m ?? 0)) <= 0.05,
+          `root ${rootPos}, min y ${bb?.min[1]}, foundation_m ${extrasOf(v).foundation_m ?? 0}`,
         );
       else {
         // A bay: its root is the deck top at the bay's start, and it runs `bay_m` along +Z. The

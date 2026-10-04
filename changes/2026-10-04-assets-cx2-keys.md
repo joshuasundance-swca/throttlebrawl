@@ -1,0 +1,7 @@
+---
+kind: dev
+audience: dev
+---
+The Florida Keys get their own art kit (playtest 3, Codex batch CX2). A 1024-pixel atlas (11.6 KB) holds Keys siding, shutters, tin roofs, storefronts, striped awnings and six wordless murals (roosters, a sunset, a fish, a manatee, a conch, a hurricane party). Seven new models sit in the base pack, which is the Keys' pack: the Duval Street kit (three balcony shopfronts, two conch cottages, an open-air corner bar, a scooter rack, a planter palm); the Southernmost Point buoy at its real 3.66 m by 2.13 m, in our own colour bands, the mile 0 marker and Mallory Square's pier edge with its lamps; the Seven Mile Bridge's repeating bays for the new and the old spans, the old bridge's broken end, the repair staging the ramp trucks stand on with a work barge beside it, and Pigeon Key's cottages and dock; and four Keys traffic types (an invented island tour tram, a rental convertible, a pickup towing a boat, a motorhome).
+
+No word is baked into the atlas, not even real landmark lettering: shop names, the buoy's words, the mile marker and the "bridge out" board are blank text surfaces the game paints from pack data, so the in-game "cut this" veto reaches all of them. The score learns one rule: a root that reaches below its ground (the pier's seawall, the barge's hull) declares `foundation_m`, and the score checks that depth. Bridge bays also carry `deck_w_m`. Nothing is wired into the game yet: placing the landmarks, the bays, the traffic and the atlas is the render lanes' job. Blender previews only; not phone-verified.
