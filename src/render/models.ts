@@ -420,3 +420,106 @@ export async function loadSceneryModels(
   );
   return { models, report };
 }
+
+// Landmark kits (playtest 3, round 1: "real landmarks"; docs/content-packs.md, "Gaps and landmarks").
+// A kit is a GLB of named root nodes under `models/landmarks/<kit>` that a road file's `landmark`
+// features place by name (`<asset id>#<node>`); src/render/landmarks.ts draws them. Unlike the
+// scenery kits above, a landmark kit's nodes are not a fixed list: every named root of the file is
+// baked, with its numeric extras (`top_m`, `cable_saddle_x_m`, `bay_m`, `cable_entry_m`), so a new
+// node needs no code here. A kit the list below does not name is never fetched.
+
+/** Each landmark kit, by its asset id's last part (`models/landmarks/<kit>`). [default] */
+export const LANDMARK_KITS = [
+  'golden-gate',
+  'keys-landmarks',
+  'sf-landmarks',
+  'pdx-landmarks',
+  'gorge-landmarks',
+] as const;
+export type LandmarkKitId = (typeof LANDMARK_KITS)[number];
+
+const LANDMARK_PREFIX = 'models/landmarks/';
+
+/** A landmark kit's asset id. */
+export const landmarkKitAsset = (kit: LandmarkKitId): string => `${LANDMARK_PREFIX}${kit}`;
+
+/**
+ * A feature's `model` (`<asset id>#<node>`, or `<kit>#<node>`) split into its kit and node, or null
+ * when it names no node or a kit this list does not know (it then draws nothing).
+ */
+export function parseLandmarkModel(model: string | null): { kit: LandmarkKitId; node: string } | null {
+  if (!model) return null;
+  const at = model.indexOf('#');
+  if (at <= 0 || at === model.length - 1) return null;
+  const head = model.slice(0, at);
+  const short = head.startsWith(LANDMARK_PREFIX) ? head.slice(LANDMARK_PREFIX.length) : head;
+  const kit = LANDMARK_KITS.find((k) => k === short);
+  return kit ? { kit, node: model.slice(at + 1) } : null;
+}
+
+/**
+ * Region palette keys that repaint a landmark kit's material roles: `bridge_paint` (a landmark
+ * bridge's paint) follows the palette's `bridgePaint`, so one bridge kit can be repainted per region.
+ */
+export const LANDMARK_ROLE_PALETTE: Readonly<Record<string, string>> = { bridge_paint: 'bridgePaint' };
+
+/** One root node of a landmark kit, baked in its own frame (origin at the node's own origin). */
+export interface LandmarkNode {
+  /** Position, normal and colour as a triangle soup (no index). */
+  geometry: BufferGeometry;
+  /** The node's numeric extras (and its meshes'), by name; the node's own win. */
+  extras: Readonly<Record<string, number>>;
+  /** The vertex runs of each material role, so a palette can repaint a role. */
+  roles: readonly RoleRun[];
+}
+
+export interface LandmarkKit {
+  id: LandmarkKitId;
+  nodes: ReadonlyMap<string, LandmarkNode>;
+  /** True when any node has single-sided geometry, so the kit's mesh draws both faces. */
+  doubleSided: boolean;
+}
+
+/** The numeric extras on a node and under it (a deeper node's never override a shallower one's). */
+function numericExtras(root: Object3D): Record<string, number> {
+  const out: Record<string, number> = {};
+  root.traverse((o) => {
+    for (const [k, v] of Object.entries(o.userData)) if (!(k in out) && num(v) !== null) out[k] = v as number;
+  });
+  return out;
+}
+
+/** Bakes a loaded glTF scene into a landmark kit: every named root under the scene is one node. */
+export function bakeLandmarkKit(id: LandmarkKitId, scene: Object3D): LandmarkKit {
+  scene.updateMatrixWorld(true);
+  const nodes = new Map<string, LandmarkNode>();
+  let doubleSided = false;
+  for (const root of scene.children) {
+    if (!root.name || nodes.has(root.name)) continue;
+    const v = bakeVariant(root);
+    if (v.geometry.getAttribute('position').count === 0) continue;
+    nodes.set(root.name, { geometry: v.geometry, extras: numericExtras(root), roles: v.roles });
+    doubleSided ||= v.doubleSided;
+  }
+  return { id, nodes, doubleSided };
+}
+
+/**
+ * Loads each named landmark kit through the asset manifest. A kit that is missing, fails its hash or
+ * does not parse is left out, and a feature that names it draws nothing (never a placeholder box).
+ */
+export async function loadLandmarkKits(
+  manifest: AssetManifest,
+  ids: readonly LandmarkKitId[],
+): Promise<Map<LandmarkKitId, LandmarkKit>> {
+  const kits = new Map<LandmarkKitId, LandmarkKit>();
+  await Promise.all(
+    ids.map(async (id) => {
+      const res = await manifest.load<LandmarkKit | null>(landmarkKitAsset(id), () => null, {
+        decode: (data) => bakeLandmarkKit(id, readGlb(data)),
+      });
+      if (res.value) kits.set(id, res.value);
+    }),
+  );
+  return kits;
+}

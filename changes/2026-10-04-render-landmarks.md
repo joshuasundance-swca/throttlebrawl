@@ -1,0 +1,11 @@
+---
+kind: dev
+audience: dev
+---
+The game can now draw real landmarks and bridge railings. Nothing a player sees changes yet: no route names a landmark, and the Golden Gate kit is still to come from its Codex batch (CX3), so this builds and tests against fixture kits made in code.
+
+For devs. A road file's `landmark` feature now draws (`src/render/landmarks.ts`, a lazy chunk fetched only for a road that has one; `models.ts` holds the kit list `LANDMARK_KITS` and `loadLandmarkKits`). Every landmark of a network is one mesh and one draw call (the plan's cap is 3, the aim 1). Each is cut into pieces with levels of detail (near, the kit's `_lod1` or `far_` node, nothing past 820 m, which is just beyond the camera's 760 m far plane; the plan's 2,000 m would only add clipped triangles to the perf gate's count), refilled into the index buffer as the camera moves. A missing kit or node draws nothing. The `overRoad` exemption (K0b) is already in the lint, so a tower or gantry the road runs through passes `landmark-clear`; a beside-the-road landmark's footprint now keeps the roadside props off (`landmarkFootprints`, fed to `reserved`).
+
+The Golden Gate is a virtual node, `golden-gate#gg_bridge`: the code places the kit's towers, a bay every 15.24 m, the anchorages and draws the main cables as 6-sided tubes along a parabola from saddle to saddle (tower tops meet the tubes' ring centres to under 1 cm in the test). On the CX3 brief's triangle counts the worst view along the deck is 8,520 triangles against the plan's 9,060. `params.baseY` is new and free-form (the model's origin height in world metres; a tower from the water says 0), and the region palette's new `bridgePaint` repaints a kit's `bridge_paint` role, the cables and the railing.
+
+A barrier with `look: "railing"` is now drawn: the road leaves its solid band out (`road-mesh.ts`, one `continue` in the barrier loop), and `verge.ts` draws a kerb, posts and three rails in 2 m panels within 120 m of the camera, one instanced mesh (one more draw call only on a road with such a barrier). The sim still sees a wall. Shared edits riding along because only this change needs them: one lazy-chunk wiring block in `render/index.ts` (landmarks, like the airboats), and the new module in `scripts/first-load.test.ts`'s must-stay-lazy list. Not phone-verified; no model was seen, only fixtures.
