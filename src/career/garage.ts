@@ -4,11 +4,37 @@
 // several regions' shops is for sale once any of them reaches its tier, at the lowest price there.
 // Anything tagged `secret` is hidden until an `unlocks` entry grants it (docs/content-packs.md,
 // "Career"). Paints are each region's own (`paints`, run W-R): bought once, worn on any bike.
-// DOM-free.
+// Playtest 3 (round 1: "each tier unlocks the next bike class, and the boss of each tier must be
+// beaten first"; round 3: "Six bikes", regions "In order"): a shop row opens with its tier, which
+// opens when the tier before's boss falls, and only once its region is open; a season's paint
+// (`unlockSeason`) waits for that season. DOM-free.
 import type { ContentRegistry } from '../content';
 import type { Profile } from '../save';
 import type { CareerDef } from './defs';
-import { progressOf, tierOpen } from './map';
+import { progressOf, regionLockReason, tierBoss, tierOpen } from './map';
+
+/**
+ * Whether something a career sells from tier `t` is open, and if not, why: the region's lock first,
+ * then the gate of the tier before (its boss, when it has one).
+ */
+function shopGate(
+  defs: readonly CareerDef[],
+  def: CareerDef,
+  profile: Profile,
+  t: number,
+): { open: boolean; reason: string } {
+  const shut = regionLockReason(defs, profile, def);
+  if (shut !== null) return { open: false, reason: shut };
+  if (tierOpen(def, progressOf(def, profile.regions), t)) return { open: true, reason: '' };
+  const before = def.tiers[t - 1];
+  const boss = tierBoss(def, t - 1);
+  if (before && boss !== null)
+    return {
+      open: false,
+      reason: `Opens when you beat ${before.bossName || boss} in ${before.name} (${def.regionName}).`,
+    };
+  return { open: false, reason: `Opens with ${def.tiers[t]?.name ?? 'a later tier'} (${def.regionName}).` };
+}
 
 export type GarageState = 'owned' | 'for-sale' | 'locked';
 
@@ -53,10 +79,8 @@ export function garageBikes(
   const owned = new Set(profile.bikes.owned);
   const entries = new Map<string, { price: number; open: boolean; reason: string }[]>();
   for (const def of defs) {
-    const progress = progressOf(def, profile.regions);
     for (const item of def.shop) {
-      const open = tierOpen(def, progress, item.unlockTier);
-      const reason = `Opens with ${def.tiers[item.unlockTier]?.name ?? 'a later tier'} (${def.regionName}).`;
+      const { open, reason } = shopGate(defs, def, profile, item.unlockTier);
       const row = entries.get(item.bike) ?? [];
       row.push({ price: item.priceCash, open, reason });
       entries.set(item.bike, row);
@@ -133,21 +157,22 @@ export function garagePaints(defs: readonly CareerDef[], profile: Profile): Gara
   const out: GaragePaint[] = [];
   const seen = new Set<string>();
   for (const def of defs) {
-    const progress = progressOf(def, profile.regions);
     for (const p of def.paints) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
-      const open = tierOpen(def, progress, p.unlockTier);
+      const season = p.unlockSeason ?? 1;
+      const gate =
+        profile.season < season
+          ? { open: false, reason: `Opens in Season ${season}.` }
+          : shopGate(defs, def, profile, p.unlockTier);
       out.push({
         id: p.id,
         name: p.name,
         hex: p.hex,
         priceCash: p.priceCash,
-        state: profile.paintsOwned.includes(p.id) ? 'owned' : open ? 'for-sale' : 'locked',
+        state: profile.paintsOwned.includes(p.id) ? 'owned' : gate.open ? 'for-sale' : 'locked',
         regionName: def.regionName,
-        reason: open
-          ? ''
-          : `Opens with ${def.tiers[p.unlockTier]?.name ?? 'a later tier'} (${def.regionName}).`,
+        reason: profile.paintsOwned.includes(p.id) ? '' : gate.reason,
       });
     }
   }
