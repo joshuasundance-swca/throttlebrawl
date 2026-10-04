@@ -15,11 +15,16 @@
 // - trick (playtest 2, 2026-10-02: "I love the idea of doing flips"): a `land` that holds (not a
 //   crash) with a `data.trick`, worth perAirtimeCash × `race.styleTrickScale` × its weight: a flip's
 //   full turns (a double backflip is 2), a wheelie landing or a whip ½. It needs no minimum airtime
-//   (a flip needs the air anyway), and it adds to the landing's airtime cash.
+//   (a flip needs the air anyway), and it adds to the landing's airtime cash. A landing off a hood
+//   launch (playtest 3, `land.data.hood`) scores it × `race.styleHoodScale`;
+// - wheelie (playtest 3): a clean `wheelieEnd` of at least `race.styleWheelieMinS`, worth
+//   perWheelieSecondCash × (its sweet-band seconds + half the rest);
+// - drift (playtest 3): a `driftEnd` that banks a chain scores the `data.points` sim/riders/drift.ts
+//   accrued (perDriftSecondCash per second of full slip at full speed, × the chain).
 // Each scores a `style` event (data.kind, data.points) beside `addStyle`, for racers still racing;
 // the law never scores, and a source worth 0 cash emits nothing. Durations are world time, the sum
 // of timeScale / 60 over the ticks, so slow motion stretches nothing and hit-stop adds nothing.
-import type { EntityId, TuningParamDecl } from '../../core';
+import { clamp, type EntityId, type TuningParamDecl } from '../../core';
 import { topSpeedOf } from '../riders';
 import type { SimConfig, SimEvent, SimStyleRewards, StyleKind, StyleRunSnapshot } from '../types';
 import { addStyle, emit, systemState, type Mover, type World } from '../world';
@@ -92,6 +97,31 @@ export const STYLE_TUNING: readonly TuningParamDecl[] = [
     default: 2,
     min: 0,
     max: 6,
+    step: 0.25,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    // A wheelie scores only once it has been up this long (playtest 3; moves spec §2). [default]
+    id: 'race.styleWheelieMinS',
+    group: 'race',
+    label: 'Style: wheelie at least',
+    default: 1,
+    min: 0.25,
+    max: 4,
+    step: 0.25,
+    unit: 's',
+    affectsSim: true,
+  },
+  {
+    // A hood launch's landed trick (playtest 3: "wheelie into the hood of a car... launch you up
+    // into a jump doing backflips") pays this many times a ramp's. [default]
+    id: 'race.styleHoodScale',
+    group: 'race',
+    label: 'Style: hood-launch trick ×',
+    default: 1.5,
+    min: 1,
+    max: 4,
     step: 0.25,
     unit: '×',
     affectsSim: true,
@@ -262,8 +292,26 @@ export function scoreStyle(world: World, config: SimConfig, scoring: (id: Entity
           const flips = Number(e.data['flips'] ?? 0);
           const scale = world.params['race.styleTrickScale'] ?? 2;
           const points = rewards.perAirtimeCash * scale * trickWeight(trick, flips);
-          score(world, id, 'trick', points, { trick, flips }, e.causeId);
+          if (e.data['hood'] === true) {
+            const hood = world.params['race.styleHoodScale'] ?? 1.5;
+            score(world, id, 'trick', points * hood, { trick, flips, hood: true }, e.causeId);
+          } else score(world, id, 'trick', points, { trick, flips }, e.causeId);
         }
+        break;
+      }
+      case 'wheelieEnd': {
+        const seconds = Number(e.data['seconds'] ?? 0);
+        const minS = world.params['race.styleWheelieMinS'] ?? 1;
+        if (e.data['clean'] !== true || e.data['loopOut'] === true || seconds + 1e-9 < minS) break;
+        const sweetS = clamp(Number(e.data['sweetS'] ?? 0), 0, seconds);
+        const points = (rewards.perWheelieSecondCash ?? 0) * (sweetS + 0.5 * (seconds - sweetS));
+        score(world, id, 'wheelie', points, { seconds, sweetS }, e.causeId);
+        break;
+      }
+      case 'driftEnd': {
+        const points = Number(e.data['points'] ?? 0);
+        const chain = Number(e.data['chain'] ?? 1);
+        if (points > 0) score(world, id, 'drift', points, { chain }, e.causeId);
         break;
       }
       case 'crash':

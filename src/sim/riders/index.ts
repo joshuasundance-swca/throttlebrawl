@@ -24,10 +24,20 @@
 // lands a heavy hit on him, which knocks him off only if he is already hurt; and the snapshot gets
 // the forecast touch-down point (`touchdownOf`) for render's chalk mark. Each is off when its tuning
 // key is left out, so every recording made before rides as it did.
+// Playtest 3's moves (the K0a contract): the wheelie (sim/riders/wheelie.ts), the drift
+// (sim/riders/drift.ts) and road gaps and jumpable walls (sim/riders/gap.ts) plug in through hooks
+// below, each neutral while its move is off, so their lanes never edit this file.
 import { atan, atan2, clamp, cos, sin, type TuningParamDecl, type VergeEdge } from '../../core';
 import { sRateFactor } from '../../road';
 import type { RideLimits } from '../ground';
-import type { SimConfig, SimInput, SimRiderDef, SimSteerAssist, TouchdownSnapshot } from '../types';
+import type {
+  MovesSnapshot,
+  SimConfig,
+  SimInput,
+  SimRiderDef,
+  SimSteerAssist,
+  TouchdownSnapshot,
+} from '../types';
 import {
   AIR_TUNING,
   groundPitch,
@@ -40,6 +50,7 @@ import {
   type AirState,
 } from './air';
 import { applyShove, riderContacts } from './contact';
+import { driftMoves, driftStep, driftTakeoff, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
 import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
 import {
   BOOST_ACCEL_MPS2,
@@ -56,6 +67,7 @@ import {
   truckBodyTop,
   truckClearMps,
 } from './features';
+import { airWallSkip, gapFall, gapUnder, GAP_TUNING, newGapState, type GapState } from './gap';
 import { uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
@@ -78,8 +90,19 @@ import {
   type SimSystem,
   type World,
 } from '../world';
+import {
+  hazardLaunch,
+  newWheelieState,
+  wheelieMoves,
+  wheelieStep,
+  wheelieTakeoff,
+  WHEELIE_TUNING,
+  type WheelieState,
+} from './wheelie';
 
 export { trickOf } from './air';
+export { driftOf } from './drift';
+export { wheelieOf } from './wheelie';
 export { LOOSE_GROUND, offRoadOf, vergeState, type BrokenFence } from './verge';
 
 export const RIDERS_TUNING: readonly TuningParamDecl[] = [
@@ -283,13 +306,18 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...FUNNEL_TUNING,
   ...AIR_TUNING,
   ...UTURN_TUNING,
+  // Playtest 3's moves: each lane declares its own keys in its own file.
+  ...WHEELIE_TUNING,
+  ...DRIFT_TUNING,
+  ...GAP_TUNING,
 ];
 
 /**
  * Per-rider plain state, by entity id (the air's attitude and tricks: sim/riders/air.ts; U-turns:
- * sim/riders/uturn.ts).
+ * sim/riders/uturn.ts; playtest 3's wheelie, drift and gaps: wheelie.ts, drift.ts and gap.ts, whose
+ * `new...State()` give their empty arrays).
  */
-export interface RiderState extends AirState, UturnState {
+export interface RiderState extends AirState, UturnState, WheelieState, DriftState, GapState {
   throttle: number[];
   brake: number[];
   rpm: number[];
@@ -453,7 +481,21 @@ export function riderState(world: World): RiderState {
     paperFold: [],
     paperRead: [],
     uturn: [],
+    ...newWheelieState(),
+    ...newDriftState(),
+    ...newGapState(),
   }));
+}
+
+/**
+ * The player in slot 0's wheelie and drift for the HUD (SimSnapshot.moves; playtest 3), or null
+ * when no player rides. Reads the state without creating it.
+ */
+export function movesOf(world: World, config: SimConfig): MovesSnapshot | null {
+  const i = config.riders.findIndex((r) => r.controller.kind === 'player' && r.controller.slot === 0);
+  const m = i < 0 ? undefined : world.movers.find((o) => o.kind === 'rider' && o.riderIndex === i);
+  if (!m) return null;
+  return { ...wheelieMoves(world, m.id), ...driftMoves(world, m.id) };
 }
 
 /**
@@ -910,6 +952,9 @@ function hazardContact(
     pos.d = pos.d - d0 < d1 - pos.d ? d0 - 0.01 : d1 + 0.01;
     return;
   }
+  // Head on in a wheelie (playtest 3; the critic's S2: a parked pickup is a car too): the wheelie
+  // may launch the rider off it instead (sim/riders/wheelie.ts).
+  if (hazardLaunch(world, config, st, m, hazard, v)) return;
   pos.edge = before.edge;
   pos.s = before.s;
   pos.d = before.d;
@@ -969,6 +1014,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // A U-turn (interview, 2026-10-02): a slow player holding the brake and full lock pivots round
   // (sim/riders/uturn.ts); null while riding normally.
   const uturn = uturnStep(world, st, def, m, steer, brake, fresh);
+  // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
+  // (steering × maxYawScale, a drag, the knee-down lean). Neutral while each is off.
+  const wh = wheelieStep(world, config, st, m, input, throttle, brake, dt);
+  const dr = driftStep(world, config, st, m, input, steer, throttle, brake, dt);
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
   // top speed for a while and pushes the bike toward it. The launch punch (playtest 1c) multiplies
@@ -1005,13 +1054,14 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   }
   if (onShoulder(config, m)) accel -= SHOULDER_DRAG * m2;
   if (wobble > 0) accel -= WOBBLE_DRAG * m2;
+  if (dr.dragMps2 !== 0) accel -= dr.dragMps2 * m2;
   // Gassing round a U-turn never takes the bike past the turn's speed.
   if (uturn && dt > 0 && v + accel * dt > uturn.capMps) accel = Math.min(accel, (uturn.capMps - v) / dt);
   m.speed = Math.max(0, v + accel * dt);
 
   // Lateral: steering asks for a heading offset; the road turning under the bike pulls it.
   const authority = (wobble > 0 ? WOBBLE_STEER : 1) * feel.grip;
-  const maxYaw = maxYawAt(bike.steerRateMps, m.speed, steerScale);
+  const maxYaw = maxYawAt(bike.steerRateMps, m.speed, steerScale) * dr.maxYawScale * wh.steerScale;
   const assist = assistYaw(config, m, slotAssists(config, slotOf(def)).steer, maxYaw);
   const asked = steer * authority * maxYaw;
   // Without a nudge the heading asked for is untouched (no clamp, no +0), exactly as before M2.
@@ -1040,7 +1090,9 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
-  const lip = ballistic > ground + TAKEOFF_CLEARANCE_M;
+  // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
+  const overGap = gapUnder(world, config, m);
+  const lip = overGap || ballistic > ground + TAKEOFF_CLEARANCE_M;
   // Over a crest, the pull needed to follow the road (speed along it² × its downward curvature)
   // can beat gravity well before one tick's ballistic gap reaches the lip threshold: then the bike
   // floats off the top. Only on the road itself (a truck deck has its own lip).
@@ -1066,24 +1118,26 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
     // A lip's ballistic height is already this tick's end; a crest's start is the hilltop now.
     st.vy[m.id] = crest ? vy0 : vy0 - gravity * dt;
     st.airTicks[m.id] = 0;
-    // The flight starts at the slope the bike rode off (last tick's ground pitch).
+    // The flight starts at the slope the bike rode off (last tick's ground pitch, a wheelie's
+    // angle included); the wheelie and the drift end.
     startFlight(st, m, input, st.pitch[m.id] ?? slopeAt(config, m));
-    emit(
-      world,
-      'jump',
-      m.id,
-      crest ? { speed: m.speed, vyMps: vy0, crest: 1 } : { speed: m.speed, vyMps: vy0 },
-    );
+    wheelieTakeoff(world, st, m);
+    driftTakeoff(world, st, m);
+    const data = crest ? { speed: m.speed, vyMps: vy0, crest: 1 } : { speed: m.speed, vyMps: vy0 };
+    emit(world, 'jump', m.id, overGap ? { ...data, gap: true } : data);
   } else {
     m.h = deck;
     st.yAbs[m.id] = ground;
     if (dt > 0) st.vy[m.id] = (ground - yBefore) / dt;
     touchPads(world, config, st, m);
     groundPitch(st, m, slopeAt(config, m));
+    // A wheelie's front is up this far above the slope (playtest 3).
+    if (wh.pitchAdd !== 0) st.pitch[m.id] = (st.pitch[m.id] ?? 0) + wh.pitchAdd;
   }
 
-  // Lean from sideways acceleration (the heading's world turn rate is the rider's own turn rate).
-  settle(world, st, m, atan((m.speed * ownTurn) / GRAVITY), dt);
+  // Lean from sideways acceleration (the heading's world turn rate is the rider's own turn rate),
+  // or the drift's knee-down lean while it slides (playtest 3).
+  settle(world, st, m, dr.leanTarget ?? atan((m.speed * ownTurn) / GRAVITY), dt);
   st.throttle[m.id] = throttle;
   st.brake[m.id] = brake;
   gearAndRpm(st, m);
@@ -1186,7 +1240,8 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   st.vy[m.id] = vy - gravity * dt;
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   crossToBranch(config, m);
-  barrierContact(world, config, st, m, dt);
+  // High enough over a `jumpable` wall (playtest 3, sim/riders/gap.ts), the rider flies over it.
+  if (!airWallSkip(world, config, st, m, y)) barrierContact(world, config, st, m, dt);
   st.airTicks[m.id] = (st.airTicks[m.id] ?? 0) + world.timeScale;
 
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
@@ -1220,10 +1275,14 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   const tGround = timeToGround(y - (surface + deck), (st.vy[m.id] ?? 0) - groundRate, gravity);
   const airS = (st.airTicks[m.id] ?? 0) / 60;
   const leanTarget = stepAttitude(world, config, st, m, def, input, steer, dt, tGround, airS);
-  if (y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
+  // Over a gap (playtest 3, sim/riders/gap.ts) there is nothing to land on: the rider falls on, and
+  // past the gap's kill depth it goes overboard.
+  const overGap = gapUnder(world, config, m);
+  if (!overGap && y - (surface + deck) <= 0) land(world, config, st, m, surface, deck);
   else {
     m.h = y - surface;
     st.yAbs[m.id] = y;
+    if (overGap) gapFall(world, config, st, m, y - (surface + deck));
   }
   settle(world, st, m, m.mode === 'Airborne' ? leanTarget : 0, dt);
   st.throttle[m.id] = throttle;
