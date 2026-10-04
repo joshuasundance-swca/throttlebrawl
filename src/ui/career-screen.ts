@@ -28,6 +28,13 @@ export interface CareerCallbacks {
   onExport(): Promise<string>;
   /** Loads a backup code; resolves to a line to show (what happened). */
   onImport(code: string): Promise<string>;
+  /** The Start Season card's button: starts the next season (it resets the maps). */
+  onStartSeason(): void;
+  /**
+   * The New career button: keeps the old career as a backup code and starts a fresh one; resolves
+   * to a line to show.
+   */
+  onNewCareer(): Promise<string>;
   /** Results: race the same event again. */
   onRetry(): void;
   /** Results or the teaser: back to the map. */
@@ -59,12 +66,22 @@ export interface GaragePaintRow {
   reason: string;
 }
 
+/** A career kept as a backup code when the player started a new one. */
+export interface GarageBackupRow {
+  /** The export code. */
+  code: string;
+  /** "Season 2, kept 2026-10-04". */
+  label: string;
+}
+
 export interface GarageView {
   cash: number;
   bikes: GarageBikeRow[];
   paints: GaragePaintRow[];
   /** The paint on the bike ridden now, or null. */
   paint: string | null;
+  /** The careers kept as backup codes, oldest first (absent: none). */
+  backups?: GarageBackupRow[];
 }
 
 export interface CareerResultView {
@@ -141,6 +158,9 @@ export const CAREER_CSS = `
 .career-tabs .small[aria-selected='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a; }
 .career-head { text-align: left; }
 .career-head .title { font-size: 22px; display: inline-block; }
+.career-season-card { background: #0006; border: 2px solid #f5c542; padding: 8px 10px; display: flex; flex-direction: column;
+  gap: 6px; align-items: stretch; margin-top: 6px; }
+.career-season-card .title { font-size: 18px; color: #f5c542; }
 .career-tally { font: 600 13px ui-monospace, monospace; color: #f2ead8; margin-top: 4px; }
 .career-maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .career-map { flex: 0 0 auto; margin: 0; background: #0b1a24; border: 2px solid #111; box-shadow: 3px 3px 0 #000; }
@@ -434,14 +454,29 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
       }),
     );
     const t = v.region.tally;
+    const card = v.seasonCard;
     head.replaceChildren(
       el('div', { className: 'title', textContent: v.region.careerName }),
       el('div', {
         className: 'career-tally',
         textContent:
+          `${v.season.n > 1 ? `${v.season.label} · ` : ''}` +
           `${v.region.finaleBeaten ? 'Free play' : v.region.tierName} · won ${t.won}/${t.nodes} · ` +
           `roads claimed ${t.claimed} · secrets ${t.secretsFound}/${t.secrets}`,
       }),
+      // Every region boss of this season has fallen: the next season is one tap away (it resets the
+      // maps, so it never starts by itself).
+      ...(card
+        ? [
+            el(
+              'div',
+              { className: 'career-season-card', id: 'career-season-card' },
+              el('div', { className: 'title', textContent: card.title }),
+              ...card.lines.map((line) => el('div', { className: 'career-news', textContent: line })),
+              button('career-start-season', 'big', `Start Season ${card.season}`, () => cb.onStartSeason()),
+            ),
+          ]
+        : []),
     );
     maps.replaceChildren(
       ...(v.map.length
@@ -549,6 +584,40 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     });
     const plain = button('garage-paint-none', 'small', 'Its own colours', () => cb.onPaint(null));
     plain.disabled = g.paint === null;
+    // New career: two taps (the second within a few seconds), so a stray one never starts over.
+    let armed: ReturnType<typeof setTimeout> | null = null;
+    const newCareer = button('career-new', 'small', 'New career', () => {
+      if (armed === null) {
+        newCareer.textContent = 'Tap again to start over';
+        armed = setTimeout(() => {
+          armed = null;
+          newCareer.textContent = 'New career';
+        }, 6000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = null;
+      newCareer.textContent = 'New career';
+      void cb.onNewCareer().then(message);
+    });
+    const keptRows = (g.backups ?? []).map((b, i) =>
+      el(
+        'div',
+        { className: 'garage-row' },
+        el('div', { className: 'what', textContent: b.label }),
+        el(
+          'div',
+          { className: 'row' },
+          button(`career-backup-show-${i}`, 'small', 'Show code', () => {
+            codeBox.value = b.code;
+            codeBox.select();
+          }),
+          button(`career-backup-restore-${i}`, 'small', 'Restore', () => {
+            void cb.onImport(b.code).then(message);
+          }),
+        ),
+      ),
+    );
     garageBox.replaceChildren(
       el('h3', { textContent: `Bikes (${units})` }),
       ...bikeRows,
@@ -586,6 +655,15 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           }),
         ),
       ),
+      el('h3', { textContent: 'New career' }),
+      el('div', {
+        className: 'career-news',
+        textContent:
+          'Start over with a fresh garage and an empty map. Your old career is kept as a backup code, ' +
+          'and loading it brings it back.',
+      }),
+      el('div', { className: 'row' }, newCareer),
+      ...(keptRows.length > 0 ? [el('h3', { textContent: 'Kept careers' }), ...keptRows] : []),
     );
   };
 

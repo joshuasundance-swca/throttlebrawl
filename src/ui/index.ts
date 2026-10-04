@@ -1404,6 +1404,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         onPaint: noop,
         onExport: () => Promise.resolve(''),
         onImport: () => Promise.resolve(''),
+        onStartSeason: noop,
+        onNewCareer: () => Promise.resolve(''),
         onRetry: noop,
         onMap: noop,
         onNext: noop,

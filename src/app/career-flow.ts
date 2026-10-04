@@ -5,11 +5,13 @@
 // (starting a career race, settling it, the race-first start) is in app/index.ts, beside the
 // free-play race it shares a loop with.
 import {
+  backupCode,
   careerMap,
   careerView,
   clearedNotWon,
   currentGig,
   eventPlan,
+  fieldLevel,
   garageBikes,
   garagePaints,
   gigNeedText,
@@ -18,12 +20,16 @@ import {
   pickAsk,
   posterView,
   progressOf,
+  newCareer,
   riderTexts,
   rivalTexts,
+  seasonRace,
   showOf,
+  startCareer,
   suggestedNode,
   type AskDef,
   type CareerDef,
+  type CareerNode,
   type CareerView,
   type EventPlan,
   type GigDef,
@@ -35,7 +41,8 @@ import {
   type SettleReport,
 } from '../career';
 import type { ContentRegistry } from '../content';
-import type { Profile } from '../save';
+import type { EventPatch, FieldLevel } from '../sim/api';
+import { MAX_CAREER_BACKUPS, type Profile } from '../save';
 import type { CareerResultView, CareerShowView, GarageView, TeaserView } from '../ui';
 import { formatSpeed, ordinal } from '../ui';
 
@@ -61,6 +68,10 @@ export function garageView(
     })),
     paints: garagePaints(defs, profile).map((p) => ({ ...p })),
     paint: current ? (profile.bikes.paint[current] ?? null) : null,
+    backups: profile.careerBackups.map((b) => ({
+      code: b.code,
+      label: `Season ${b.season}${b.at ? `, kept ${b.at.slice(0, 10)}` : ''}`,
+    })),
   };
 }
 
@@ -77,6 +88,70 @@ export function mapView(
 const riderName = (reg: ContentRegistry, key: string) =>
   reg.riders[key]?.name ?? key.slice(key.indexOf(':') + 1);
 
+/**
+ * What a career race runs this season (playtest 3): the remix patch (null in Season 1), the event
+ * plan with it applied, the length it races, and the field level of its tier and season (null when
+ * the registry has no starting bike to measure by). app/ passes the patch and the level to
+ * buildSimConfig and runs the race log on the plan.
+ */
+export interface CareerRaceSetup {
+  patch: EventPatch | null;
+  plan: EventPlan;
+  length: { id: string; route: string } | null;
+  fieldLevel: FieldLevel | null;
+}
+
+export function careerRaceSetup(
+  reg: ContentRegistry,
+  defs: readonly CareerDef[],
+  profile: Profile,
+  def: CareerDef,
+  node: CareerNode,
+): CareerRaceSetup {
+  const { patch, plan, length } = seasonRace(reg, defs, profile, def, node);
+  return { patch, plan, length, fieldLevel: fieldLevel(reg, defs, def, node, profile.season) };
+}
+
+/**
+ * The New career button (playtest 3, round 3: "a 'New career' button that keeps the old save as a
+ * backup code"): the old career as an export code kept in the save, and a fresh career. A career
+ * with no race run yet has nothing to keep, so it comes back as it is (`kept` false): a stray tap
+ * must never push a real backup off the newest few.
+ */
+export async function startNewCareer(
+  defs: readonly CareerDef[],
+  profile: Profile,
+  buildId: string,
+  at: string,
+): Promise<{ profile: Profile; kept: boolean }> {
+  if (profile.history.length === 0) return { profile, kept: false };
+  const code = await backupCode(profile, buildId, at);
+  return { profile: newCareer(defs, profile, { code, at }), kept: true };
+}
+
+/**
+ * Loading a backup code (or any export code) as the career: the profile the code carries, with the
+ * career it replaces kept as a backup of its own (when it has raced) and the backups already kept,
+ * the newest few, so restoring never loses a career.
+ */
+export async function restoreCareer(
+  defs: readonly CareerDef[],
+  current: Profile,
+  loaded: Profile,
+  buildId: string,
+  at: string,
+): Promise<Profile> {
+  const replaced =
+    current.history.length > 0
+      ? [{ code: await backupCode(current, buildId, at), at, season: current.season }]
+      : [];
+  const seen = new Set<string>();
+  const careerBackups = [...loaded.careerBackups, ...current.careerBackups, ...replaced]
+    .filter((b) => !seen.has(b.code) && seen.add(b.code))
+    .slice(-MAX_CAREER_BACKUPS);
+  return startCareer(defs, { ...loaded, careerBackups });
+}
+
 /** The career results screen: the outcome, the objectives, every dollar, and what changed. */
 export function resultView(
   reg: ContentRegistry,
@@ -87,6 +162,8 @@ export function resultView(
   place: number,
   racers: number,
   after: Profile,
+  /** Every career (the season's remix draws on them); left out: this one alone. */
+  defs: readonly CareerDef[] = [def],
 ): CareerResultView {
   // A race to the line cleared below first is CLEARED, never WON beside "5th of 5" (skeptic, run W-S).
   const cleared = clearedNotWon(plan, report, place)
@@ -120,7 +197,7 @@ export function resultView(
     fine: report.fine,
     cashAfter: report.cashAfter,
     news,
-    nextName: next ? eventPlan(reg, next.event).name : null,
+    nextName: next ? seasonRace(reg, defs, after, def, next).plan.name : null,
   };
 }
 
@@ -153,7 +230,9 @@ export function showMapView(
       .flatMap((t) => t.nodes)
       .map((card) => {
         const node = def.nodes.find((x) => x.id === card.id);
-        return [card.id, posterView(reg, lines, eventPlan(reg, node?.event ?? ''), card.timeOfDay, profile)];
+        // The season's plan: a remixed event's poster shows what it is this season.
+        const plan = node ? seasonRace(reg, defs, profile, def, node).plan : eventPlan(reg, '');
+        return [card.id, posterView(reg, lines, plan, card.timeOfDay, profile)];
       }),
   );
   const gig = currentGig(showOf(reg, def), profile, def.regionId);
@@ -222,6 +301,9 @@ export function nextNodeOf(def: CareerDef, profile: Profile) {
 }
 
 export {
+  canStartSeason,
+  seasonLabel,
+  startSeason,
   ASK_AT_FRACTION,
   ASK_LABEL,
   askObjective,
