@@ -6,6 +6,9 @@
 //     dist/, lazy chunks included (a conservative stand-in for transfer).
 //     Models are counted per region too (run W-Q): the dataset models under assets/ds/<region>/
 //     load only when a race in that region starts, so each region's stay under its own limit.
+//     Pack-baked models and region atlases count too (playtest 3, C0a): each dist file is matched
+//     to its pack file by content, and a region pack's files, a region's atlas and any base-pack
+//     model whose catalog row names a region count as that region's own (dataset-assets.mjs).
 //     It prints the first-load JavaScript's headroom and, on CI (or with --base <ref>), the pull
 //     request's own change against main: it builds the merge base with origin/main in a throwaway
 //     worktree under .cache/ (git-ignored) and measures it the same way. A growth of 5 KB or more
@@ -21,7 +24,17 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { CACHE_DIR, modelsByRegion, SHARED, worstRaceModelBytes } from './dataset-assets.mjs';
+import { glbPath, PROPS } from '../tools/blender/catalog.mjs';
+import {
+  CACHE_DIR,
+  modelsByRegion,
+  packSourceRegion,
+  packSources,
+  regionsByPack,
+  SHARED,
+  sha256,
+  worstRaceModelBytes,
+} from './dataset-assets.mjs';
 import { firstLoadScripts } from './first-load.mjs';
 import { examined, fmtBytes, git, refExists, repoRoot } from './lib.mjs';
 import {
@@ -52,6 +65,13 @@ const budget = JSON.parse(readFileSync(path.join(repoRoot, 'tests/perf/budget.js
 
 const toPosix = (p) => p.split(path.sep).join('/');
 
+// Which pack file each dist model or atlas came from, by content, and the region it counts under.
+const packFileByHash = packSources(repoRoot);
+const regionOfSource = packSourceRegion(
+  regionsByPack(repoRoot),
+  new Map(PROPS.filter((p) => p.region).map((p) => [glbPath(p), p.region])),
+);
+
 /** Measures one build folder: its first-load JavaScript (gzip), lazy chunks and every file. */
 function measure(dir) {
   const first = firstLoadScripts(readFileSync(path.join(dir, 'index.html'), 'utf8'), (rel) =>
@@ -64,7 +84,8 @@ function measure(dir) {
     const rel = toPosix(path.relative(dir, path.join(entry.parentPath, entry.name)));
     out.files++;
     out.raw += buf.length;
-    out.distFiles.push({ rel, bytes: buf.length });
+    const source = /\.(glb|png)$/.test(entry.name) ? packFileByHash.get(sha256(buf)) : undefined;
+    out.distFiles.push({ rel, bytes: buf.length, ...(source ? { source } : {}) });
     if (/\.m?js$/.test(entry.name)) {
       const gz = gzipSync(buf, { level: 9 }).length;
       if (first.has(rel)) {
@@ -127,7 +148,13 @@ if (here.jsGzip > budget.jsGzipKB * 1024)
   problems.push(`first-load JavaScript ${fmtBytes(here.jsGzip)} gzip is over ${budget.jsGzipKB} KB`);
 if (here.raw > budget.firstLoadKB * 1024)
   problems.push(`first load ${fmtBytes(here.raw)} is over ${budget.firstLoadKB} KB`);
-const models = modelsByRegion(here.distFiles);
+const models = modelsByRegion(here.distFiles, regionOfSource);
+const ownLine =
+  [...models]
+    .filter(([region]) => region !== SHARED)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([region, m]) => `${region} ${fmtBytes(m.bytes)}`)
+    .join(', ') || 'no region has its own models';
 for (const [region, m] of [...models].sort(([a], [b]) => (a < b ? -1 : 1))) {
   console.log(`perf: models ${region}: ${m.files} files, ${fmtBytes(m.bytes)}`);
   if (region !== SHARED && m.bytes > budget.regionModelsKB * 1024)
@@ -162,7 +189,8 @@ examined(
     `(budget ${budget.jsGzipKB} KB, ${fmtBytes(Math.abs(fl.headroomBytes))} ${fl.headroomBytes >= 0 ? 'headroom' : 'over'}), ` +
     `lazy JavaScript ${fmtBytes(lazyGzip)} gzip in ${here.lazy.length} chunks, ` +
     `first load ${fmtBytes(here.raw)} (budget ${budget.firstLoadKB} KB), models in ${models.size} groups ` +
-    `(${fmtBytes(models.get(SHARED)?.bytes ?? 0)} shared; one race's worst ${fmtBytes(worstRaceModelBytes(models))}, ` +
+    `(${fmtBytes(models.get(SHARED)?.bytes ?? 0)} shared; own: ${ownLine}; ` +
+    `one race's worst ${fmtBytes(worstRaceModelBytes(models))}, ` +
     `budget ${budget.regionModelsKB} KB per region)`,
 );
 for (const p of problems) console.error(`perf: ${p}`);

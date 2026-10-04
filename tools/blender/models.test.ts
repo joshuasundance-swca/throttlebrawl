@@ -9,7 +9,7 @@ import { Box3, Vector3 } from 'three';
 import type { Mesh, Object3D } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { describe, expect, it } from 'vitest';
-import { ASSET_ROOT, glbPath, PROPS } from './catalog.mjs';
+import { CATALOG_FILES, glbPath, PROPS } from './catalog.mjs';
 import { parseGlb, scoreGlb } from './score.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -40,22 +40,117 @@ function loadInThree(buf: Buffer): Promise<Object3D> {
   });
 }
 
+// The rows the catalog held before the per-region split (playtest 3, C0a), in order: the split
+// moved every one into catalog/base.mjs unchanged, so later batches only ever append.
+const BEFORE_SPLIT = [
+  ['rustbucket_400', 'models/bikes/rustbucket-400'],
+  ['streetfighter_750', 'models/bikes/streetfighter-750'],
+  ['superbike_1000', 'models/bikes/superbike-1000'],
+  ['chopper', 'models/bikes/chopper'],
+  ['sport_stickered', 'models/bikes/sport-stickered'],
+  ['dirt_bike', 'models/bikes/dirt-bike'],
+  ['step_through', 'models/bikes/step-through'],
+  ['bagger', 'models/bikes/bagger'],
+  ['cop_moto', 'models/bikes/cop-moto'],
+  ['parking_trike', 'models/bikes/parking-trike'],
+  ['ebike_carbon', 'models/bikes/ebike-carbon'],
+  ['moped', 'models/bikes/moped'],
+  ['lawnmower', 'models/bikes/lawnmower'],
+  ['mobility_scooter', 'models/bikes/mobility-scooter'],
+  ['golf_cart', 'models/bikes/golf-cart'],
+  ['touring_flagship', 'models/bikes/touring-flagship'],
+  ['tow_truck', 'models/props/tow-truck'],
+  ['boat', 'models/props/boat'],
+  ['palms', 'models/scenery/palms'],
+  ['mangroves', 'models/scenery/mangroves'],
+  ['bait_shack', 'models/scenery/bait-shack'],
+  ['power_pole', 'models/scenery/power-pole'],
+  ['skiff', 'models/scenery/skiff'],
+  ['road_signs', 'models/scenery/road-signs'],
+  ['conifers', 'models/scenery/conifers'],
+  ['row_houses', 'models/scenery/row-houses'],
+  ['cable_car', 'models/props/cable-car'],
+  ['sawmill', 'models/scenery/sawmill'],
+  ['trestle_bent', 'models/scenery/trestle-bent'],
+  ['fog_banks', 'models/scenery/fog-banks'],
+  ['pnw_roadside', 'models/scenery/pnw-roadside'],
+  ['sf_roadside', 'models/scenery/sf-roadside'],
+  ['keys_roadside', 'models/scenery/keys-roadside'],
+  ['keys_islets', 'models/scenery/keys-islets'],
+  ['sf_downtown', 'models/scenery/sf-downtown'],
+];
+
+/** Every `.glb` under any pack's `assets/models/`, repo-relative with forward slashes. */
+function packGlbs(): string[] {
+  const out: string[] = [];
+  for (const pack of readdirSync(path.join(repoRoot, 'packs'))) {
+    const dir = path.join(repoRoot, 'packs', pack, 'assets', 'models');
+    if (!existsSync(dir)) continue;
+    for (const e of readdirSync(dir, { recursive: true, withFileTypes: true }))
+      if (e.isFile() && e.name.endsWith('.glb'))
+        out.push(path.relative(repoRoot, path.join(e.parentPath, e.name)).split(path.sep).join('/'));
+  }
+  return out.sort();
+}
+
 describe('the Blender model catalog', () => {
   it('names a script and a unique kebab-case asset id per prop', () => {
-    const ids = PROPS.map((p) => p.asset);
-    expect(new Set(ids).size).toBe(ids.length);
+    const files = PROPS.map((p) => glbPath(p));
+    expect(new Set(files).size).toBe(files.length);
+    expect(new Set(PROPS.map((p) => p.name)).size).toBe(PROPS.length);
     for (const p of PROPS) {
-      expect(p.asset).toMatch(/^models\/(props|scenery|bikes)\/[a-z0-9]+(-[a-z0-9]+)*$/);
+      expect(p.asset).toMatch(/^models\/(props|scenery|bikes|traffic|landmarks)\/[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(existsSync(path.join(repoRoot, 'tools/blender', p.script)), p.script).toBe(true);
     }
   });
 
-  it('has no GLB in the pack that the catalog does not list', () => {
-    const dir = path.join(repoRoot, ASSET_ROOT, 'models');
-    const found = readdirSync(dir, { recursive: true, withFileTypes: true })
-      .filter((e) => e.isFile() && e.name.endsWith('.glb'))
-      .map((e) => path.relative(repoRoot, path.join(e.parentPath, e.name)).split(path.sep).join('/'))
-      .sort();
+  it('kept every row it had before the per-region split, in order, in catalog/base.mjs', () => {
+    const base = CATALOG_FILES.find((f) => f.file === 'base')!;
+    const before = base.rows.slice(0, BEFORE_SPLIT.length);
+    expect(before.map((p) => [p.name, p.asset])).toEqual(BEFORE_SPLIT);
+    for (const p of before) {
+      expect(p.pack ?? 'base', p.name).toBe('base');
+      expect(glbPath(p)).toBe(`packs/base/assets/${p.asset}.glb`);
+    }
+  });
+
+  it('is the concatenation of its per-region files, each row in its own pack and region', () => {
+    expect(CATALOG_FILES.map((f) => f.file)).toEqual(['base', 'traffic', 'keys', 'sf', 'pnw']);
+    expect(CATALOG_FILES.flatMap((f) => f.rows)).toEqual(PROPS);
+    const expected: Record<string, { pack: string; region?: string }> = {
+      traffic: { pack: 'base' },
+      keys: { pack: 'base', region: 'florida-keys' },
+      sf: { pack: 'region-sf', region: 'san-francisco' },
+      pnw: { pack: 'region-pnw', region: 'pacific-northwest' },
+    };
+    for (const { file, rows } of CATALOG_FILES) {
+      const want = expected[file];
+      if (!want) continue;
+      for (const p of rows) {
+        expect(p.pack ?? 'base', `${file}: ${p.name}`).toBe(want.pack);
+        if (want.region) expect(p.region, `${file}: ${p.name}`).toBe(want.region);
+      }
+    }
+  });
+
+  it("puts each row's GLB in a real pack, under one of that pack's regions when it names one", () => {
+    for (const p of PROPS) {
+      const pack = p.pack ?? 'base';
+      expect(existsSync(path.join(repoRoot, 'packs', pack, 'pack.json')), `${p.name}: pack ${pack}`).toBe(
+        true,
+      );
+      if (p.region)
+        expect(
+          existsSync(path.join(repoRoot, 'packs', pack, 'regions', p.region)),
+          `${p.name}: ${p.region}`,
+        ).toBe(true);
+      if (p.atlas) expect(p.atlas.sheet, `${p.name}: atlas sheet`).toBe(p.region);
+    }
+  });
+
+  it('has no GLB in any pack that the catalog does not list', () => {
+    const found = packGlbs();
+    expect(found.length).toBeGreaterThanOrEqual(BEFORE_SPLIT.length);
     expect(found).toEqual(PROPS.map((p) => glbPath(p)).sort());
   });
 });
@@ -90,7 +185,9 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
           ? [prop.boat!.root, prop.boat!.hull, 'probe_bow', 'probe_stern', 'probe_port', 'probe_starboard']
           : prop.kind === 'single'
             ? [prop.single!.root, ...prop.single!.nodes]
-            : ['tow_truck', 'cab', 'trailer', 'ramp_surface'];
+            : prop.kind === 'vehicle'
+              ? ['vehicle', 'vehicle_body', 'hood']
+              : ['tow_truck', 'cab', 'trailer', 'ramp_surface'];
     for (const n of roots) expect(names.has(n), n).toBe(true);
     expect(meshes).toBeGreaterThan(0);
     for (const t of prop.textSurfaces ?? []) {

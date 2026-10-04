@@ -281,6 +281,7 @@ Tag: `[decided]` for the goal (bundle at the start, stream and cache later, "I d
 
   `<hf-user>` is a placeholder for the maintainer's Hugging Face account, filled in at setup. `{revision}` is not written in the pack: it is filled from the single dataset pin that [the engineering doc](./engineering.md#big-and-generated-assets) keeps, an exact commit and not a branch, so a pack version always means the same bytes and there is only one pin to bump.
 - Allowed asset formats `[default]`: `glb` (models), `png` and `webp` (images), `ogg` and `opus` (audio), `json` and `bin` (data). Nothing executable.
+- A region's texture atlas `[default]` (playtest 3) is a PNG-8 file with asset id `textures/atlas/<region>` and kind `texture`, beside its layout `textures/atlas/<region>-layout` ([engineering](./engineering.md#big-and-generated-assets)). It holds no invented words: those stay pack text.
 - Procedural and code-made assets `[decided]` ("code-made assets first") are referenced by a preset name plus parameters rather than an asset id, for example `"procedural": { "preset": "scooter", "params": { "wheelbaseM": 1.25 } }`. An entry may have both, and a loaded model overrides the procedural one.
 
 ## Entry schemas

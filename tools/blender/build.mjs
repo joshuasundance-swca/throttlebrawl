@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Builds the catalog's props with headless Blender into packs/base/assets/models/ (README.md).
+// Builds the catalog's props with headless Blender into each row's pack: packs/<pack>/assets/,
+// `pack` defaulting to base (README.md; catalog.mjs `glbPath`).
 //
 //   node tools/blender/build.mjs              build every prop, twice each, and commit-ready copy
 //   node tools/blender/build.mjs boat palms   build some of them
