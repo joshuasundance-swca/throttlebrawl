@@ -1,0 +1,12 @@
+---
+kind: changed
+audience: player
+---
+The career's balance is now measured, and four things were tuned or fixed where it fell short.
+
+- **Bikes cost more.** Played through hundreds of seeded seasons by a modelled player, a typical player who rides the race the map suggests next could buy the Streetfighter, the Grand Tourer, the Supersport and the Superbike the moment each went on sale, because the races between bikes bank more than a bike cost. The playtest's promise is about 3 to 4 races per bike, so the prices go up: the Sport 600 $9,750 to $11,250, the Streetfighter 750 $16,750 to $21,000, the Grand Tourer 1100 $25,500 to $31,750, the Supersport 900 $31,000 to $34,000 and the Superbike 1000 $48,750 to $60,250. That player now buys each a median of 3 to 4 races after it goes on sale. A player who rushes every boss waits 5 to 8 races, and a struggling player 8 to 13, still on the top bike by the end of Season 1.
+- **Fights climb more gently.** Rivals' aggression now runs 0.9 to 1.2 across a region's tiers (it was 0.85 to 1.25), and their signature moves come about 10% less often at the first tier to about 20% more by the last (the gap was 1.3 to 0.7, up to 43% more). A tier boss adds 5% and the region boss 10% (they added 10% and 20%). Health is unchanged: about 10% easier to knock down at a region's first tier, about 20% harder by its last.
+- **A bike from another region rides everywhere.** A Grand Tourer or a Supersport bought in the Pacific Northwest raced as the Rustbucket in the Keys and San Francisco, and San Francisco's first two tiers put their rivals on their own bikes for the same reason. The race now takes any bike it names from whichever pack holds it (a small edit in `src/app/config.ts`, the app lane's file, which only this fix needs).
+- **Season 2 rivals ride the best bike in every tier**, as the product spec says; a tier's Season 1 "step-down" block no longer holds them back.
+
+New tests: `tests/sim/career-economy.test.ts` (the money), `tests/sim/career-field-ladder.test.ts` (the field's pace climbs tier by tier on one road in the sim, the rivals' and the law's bikes, the gentle fight climb read from the running sim), `tests/sim/career-season-two.test.ts` (Season 2 keeps the garage, is harder at every node, and can be finished), with the player model in `tests/sim/career-model.ts`. The headless career races now carry the career's field level and remix, as the app's do. The numbers are `[default]`; done, not phone-verified.
