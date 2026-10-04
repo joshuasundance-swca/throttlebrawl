@@ -781,7 +781,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         renderer.render(scene, camera);
       }
       // The landing one-liner goes over the finished frame (the film pass would paint the sky over it).
-      airPays.drawOverlay(renderer, camera, canvas.clientWidth, canvas.clientHeight);
+      airPays.drawOverlay(renderer, canvas.clientWidth, canvas.clientHeight);
     },
     resize,
     stats() {
