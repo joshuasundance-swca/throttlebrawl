@@ -404,9 +404,13 @@ ${RADIO_PANEL_CSS}
 /* The slow-frames offer (run W-O): above every layer; its buttons take touches only on themselves.
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. Top centre, it covered the bubble, the heat badge and the objective and
-   reached into the road ahead. So it sits in the outer quarter across from the pop-ups (where they
-   flip, it flips: .mirrored), under the pause button and above the touch buttons; on an upright
-   screen, whose quarters are too narrow, it spans the screen just under the road ahead. [default] */
+   reached into the road ahead. So on a big screen it sits in the outer quarter across from the
+   pop-ups (where they flip, it flips: .mirrored), under the pause button. On an upright screen,
+   whose quarters are too narrow, it spans the screen just under the road ahead. On a phone held
+   sideways the top and both quarters are full (the bubble, the pop-ups, the objective and the heat
+   badge), so it sits centred just under the road ahead, a little tighter, between the bottom
+   corners' readouts and touch buttons (which sit about 0.6 of the screen's height in from each
+   side) and above the career prompt. [default] */
 #look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
   left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
   z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
@@ -416,6 +420,12 @@ ${RADIO_PANEL_CSS}
 #ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 @media (max-width: 600px) { #look-offer, #look-offer.mirrored { left: 12px; right: 12px; top: calc(65% + 10px); } }
+@media (orientation: landscape) and (max-height: 520px) {
+  #ui #look-offer { top: calc(65% + 5px); left: 50%; right: auto; transform: translateX(-50%);
+    width: max(300px, min(440px, calc(100% - 120vmin))); padding: 6px 12px; gap: 4px; }
+  #ui #look-offer .look-offer-text { font-size: 13px; }
+  #ui #look-offer .small { padding: 4px 8px; font-size: 13px; }
+}
 /* The bark bubble on a narrow screen (run W-O; ui-popups-1c report): ui/narrative centres it with
    left: 50%, which caps its shrink-to-fit width at half the screen, so on a 412 px portrait screen a
    42-character line wrapped to 3 lines in a 206 px box. Sized to its line here instead, up to the
