@@ -2,7 +2,7 @@
 // the player will touch down (red when crooked), the newspaper held up while reading it and thrown
 // off on a newspaper crash, and the region's one-liner on a surge landing, listed for "cut this".
 // Driven by hand-built snapshots and events at fixed times (no wall clock, no frames).
-import { Color, MeshBasicMaterial, PerspectiveCamera } from 'three';
+import { Color, MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimEvent, SimSnapshot, TouchdownSnapshot } from '../sim/api';
 import {
@@ -15,6 +15,8 @@ import {
   LINE_PLATE,
   LINE_PLATE_ALPHA,
   nextLineIndex,
+  ROAD_AHEAD_BOTTOM,
+  ROAD_AHEAD_WIDTH,
 } from './air-pays';
 import type { BoardItem } from './boards';
 
@@ -256,12 +258,15 @@ describe('air that pays: the landing one-liner reads on a phone in every look', 
       const l = landingLineLayout(LONGEST, w, h, measure);
       expect(l.fontPx, `${w}x${h}`).toBeGreaterThanOrEqual(LINE_MIN_FONT_PX);
       expect(l.plateW, `${w}x${h}`).toBeLessThanOrEqual(w - 16);
+      // Landscape: no wider than the road ahead, so the bottom corners' HUD stays clear.
+      if (w >= h) expect(l.plateW, `${w}x${h}`).toBeLessThanOrEqual(w * ROAD_AHEAD_WIDTH - 16);
       for (const row of l.rows) expect(measure(row, l.fontPx)).toBeLessThanOrEqual(l.plateW);
       expect(l.rows.join(' ')).toBe(LONGEST);
       expect(l.plateH).toBeGreaterThanOrEqual(l.rows.length * l.fontPx);
     }
-    // Wide enough, it is one row; a portrait phone wraps it into two rather than shrinking it.
-    expect(landingLineLayout(LONGEST, 1280, 720, measure).rows).toHaveLength(1);
+    // Wide enough, it is one row; the longest wraps into two rather than shrinking, either way up.
+    expect(landingLineLayout('TEN OUT OF TEN, SAYS A PELICAN', 1920, 1080, measure).rows).toHaveLength(1);
+    expect(landingLineLayout(LONGEST, 1280, 720, measure).rows).toHaveLength(2);
     expect(landingLineLayout(LONGEST, 360, 740, measure).rows).toHaveLength(2);
   });
 
@@ -287,27 +292,32 @@ describe('air that pays: the landing one-liner reads on a phone in every look', 
     }
   });
 
-  it('sits over the bike on screen at its laid-out size, kept inside the screen', () => {
+  it('sits centred just under the road ahead at its laid-out size, out of the middle of the view', () => {
+    // Playtest 3: "The black and white text pop-ups block the actual game". The road ahead is the
+    // middle half across, 25-65 % down; the plate sits wholly below it, inside the screen.
     const a = new AirPays();
     a.setLines([{ ref: 'base:region/florida-keys#long', text: LONGEST, kind: 'sign' }]);
     const s = snap([entity({ x: 0, y: 0, z: 0 })]);
     a.pushEvents([surge(0)]);
     a.update(s, s, 1, 10);
-    // The chase camera: behind (+z) and above the bike, looking ahead along -z.
-    const cam = new PerspectiveCamera(62, 800 / 360, 0.3, 760);
-    cam.position.set(0, 3.2, 7);
-    cam.lookAt(0, 1.2, -8);
-    cam.updateMatrixWorld();
-    expect(a.fitOverlay(cam, 800, 360, 1.5)).toBe(true);
-    const l = landingLineLayout(LONGEST, 800, 360);
-    expect(a.line.scale.x).toBeCloseTo(l.plateW);
-    expect(a.line.scale.y).toBeCloseTo(l.plateH);
-    // Centred over the bike (x = 400 CSS px), its plate wholly on screen.
-    expect(a.line.position.x).toBeCloseTo(400, 0);
-    expect(a.line.position.y - l.plateH / 2).toBeGreaterThanOrEqual(0);
-    expect(a.line.position.y + l.plateH / 2).toBeLessThanOrEqual(360);
+    for (const [w, h] of [
+      [915, 412],
+      [412, 915],
+      [1366, 768],
+      [800, 360],
+    ] as const) {
+      expect(a.fitOverlay(w, h, 1.5)).toBe(true);
+      const l = landingLineLayout(LONGEST, w, h);
+      expect(a.line.scale.x).toBeCloseTo(l.plateW);
+      expect(a.line.scale.y).toBeCloseTo(l.plateH);
+      expect(a.line.position.x, `${w}x${h}: centred`).toBeCloseTo(w / 2, 0);
+      // The overlay camera has y up: the plate's top, CSS px from the screen's top.
+      const top = h - (a.line.position.y + l.plateH / 2);
+      expect(top, `${w}x${h}: under the road ahead`).toBeGreaterThanOrEqual(h * ROAD_AHEAD_BOTTOM);
+      expect(top + l.plateH, `${w}x${h}: on screen`).toBeLessThanOrEqual(h);
+    }
     // Nothing shown: nothing to draw.
     a.update(s, s, 1, 13);
-    expect(a.fitOverlay(cam, 800, 360, 1.5)).toBe(false);
+    expect(a.fitOverlay(800, 360, 1.5)).toBe(false);
   });
 });

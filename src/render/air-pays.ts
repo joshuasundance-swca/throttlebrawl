@@ -4,11 +4,15 @@
 //   touch-down point (`EntitySnapshot.touchdown`), turned along the bike's heading there: chalk white
 //   for a clean landing, red when landing now would be crooked;
 // - the one-liner: a clean landing after real air (`land` with `data.surge`) pops one of the region's
-//   `landingLines` ('TEN OUT OF TEN, SAYS A PELICAN') in chalk over the player's bike for a moment.
-//   It is listed among the content in view while it shows, so "cut this" can cut it. It draws on a
-//   screen-space overlay AFTER the look's film pass, in CSS pixels on a dark plate, at least
-//   LINE_MIN_FONT_PX tall (the live check, run W-T: drawn in the 3D scene, the film pass painted the
-//   sky over it in the default Ink + 60s look, and in classic its letters were about 6 px tall);
+//   `landingLines` ('TEN OUT OF TEN, SAYS A PELICAN') in chalk for a moment, centred just under the
+//   road ahead. It is listed among the content in view while it shows, so "cut this" can cut it. It
+//   draws on a screen-space overlay AFTER the look's film pass, in CSS pixels on a dark plate, at
+//   least LINE_MIN_FONT_PX tall (the live check, run W-T: drawn in the 3D scene, the film pass
+//   painted the sky over it in the default Ink + 60s look, and in classic its letters were about 6 px
+//   tall). Playtest 3 (2026-10-03): "The black and white text pop-ups block the actual game", and the
+//   HUD rule is that nothing covers the road ahead (the middle half across, 25-65 % down) or another
+//   HUD piece. Over the bike, it sat in the middle of the road; under the road ahead it keeps to the
+//   middle half of a landscape screen, between the bottom corners' speed, health and touch buttons;
 // - the newspaper: while the player's rider sits back reading it (`trick: 'newspaper'`), the paper is
 //   held up in front of him; landing with it (a crash whose `data.attempt` is `newspaper`), it flies
 //   off down the road.
@@ -29,8 +33,6 @@ import {
   SRGBColorSpace,
   Sprite,
   SpriteMaterial,
-  Vector3,
-  type Camera,
   type Texture,
   type WebGLRenderer,
 } from 'three';
@@ -45,12 +47,15 @@ export const CHALK_CROOKED = '#e8392c';
 const RING_R = 0.75;
 const LINE_W = 0.11;
 const LIFT_M = 0.05;
-/** The one-liner shows this long, s, fading over the last FADE_S; it rises RISE_M as it goes. */
+/** The one-liner shows this long, s, fading over the last FADE_S. */
 export const LINE_S = 2;
 const FADE_S = 0.45;
-const RISE_M = 0.35;
-/** Its plate's foot floats this high over the bike, m (projected onto the screen each frame). */
-const LINE_UP_M = 2.9;
+/**
+ * The road ahead on screen, as fractions of the view (the HUD rule, playtest 3): the plate's top sits
+ * just under its bottom edge, and on a landscape screen the plate is no wider than it.
+ */
+export const ROAD_AHEAD_BOTTOM = 0.65;
+export const ROAD_AHEAD_WIDTH = 0.5;
 /**
  * The one-liner's letters on screen, CSS px: about 6.5% of the screen's short side, never under
  * LINE_MIN_FONT_PX (a phone at arm's length) nor over LINE_MAX_FONT_PX.
@@ -163,6 +168,8 @@ function twoRows(text: string): string[] {
 /**
  * Lays the one-liner out for a screen `viewW` x `viewH` CSS px: one row at the screen's letter size
  * when it fits, else two rows, shrinking only as far as LINE_MIN_FONT_PX if even those are too wide.
+ * Its room is the screen's width on an upright screen (the touch buttons sit well below it there)
+ * and the road ahead's width on a landscape one (the bottom corners hold the HUD beside it).
  */
 export function landingLineLayout(
   text: string,
@@ -170,7 +177,8 @@ export function landingLineLayout(
   viewH: number,
   measure: MeasureText = measureLine,
 ): LineLayout {
-  const room = Math.max(1, viewW - 2 * LINE_MARGIN_PX);
+  const across = viewH > viewW ? viewW : viewW * ROAD_AHEAD_WIDTH;
+  const room = Math.max(1, across - 2 * LINE_MARGIN_PX);
   const want = Math.round(Math.min(viewW, viewH) * LINE_FONT_OF_SHORT_SIDE);
   let fontPx = Math.min(LINE_MAX_FONT_PX, Math.max(LINE_MIN_FONT_PX, want));
   const plateFor = (rows: string[], px: number) => {
@@ -274,9 +282,8 @@ export class AirPays {
   private lines: BoardItem[] = [];
   private lastLine = -1;
   private shown: { item: BoardItem; until: number } | null = null;
-  /** Where the line's plate stands in the world this frame (over the bike), or null when hidden. */
-  private anchor: Vector3 | null = null;
-  private readonly projected = new Vector3();
+  /** Whether the line shows this frame (a line is up and the player is there). */
+  private posed = false;
   /** What the line's texture was painted for: the line, the screen and the pixel ratio. */
   private paintedKey = '';
   private layout: LineLayout | null = null;
@@ -450,28 +457,24 @@ export class AirPays {
     if (!s || timeS >= s.until || !pose) {
       if (s && timeS >= s.until) this.clearLine();
       this.line.visible = false;
-      this.anchor = null;
+      this.posed = false;
       return;
     }
     const left = s.until - timeS;
-    const age = LINE_S - left;
     this.lineMat.opacity = Math.min(1, left / FADE_S);
-    this.anchor = (this.anchor ?? new Vector3()).set(
-      pose.x,
-      pose.y + LINE_UP_M + (RISE_M * age) / LINE_S,
-      pose.z,
-    );
+    this.posed = true;
     this.counts.line = s.item.text;
   }
 
   /**
-   * Lays the one-liner out on a `viewW` x `viewH` CSS px screen for this frame: its plate sits over the
-   * bike as `camera` sees it, kept wholly on screen, at its laid-out size. Repaints the texture only
-   * when the line, the screen or the pixel ratio changes. Returns whether a line is showing.
+   * Lays the one-liner out on a `viewW` x `viewH` CSS px screen for this frame: its plate is centred
+   * across, its top just under the road ahead, kept wholly on screen, at its laid-out size. Repaints
+   * the texture only when the line, the screen or the pixel ratio changes. Returns whether a line is
+   * showing.
    */
-  fitOverlay(camera: Camera, viewW: number, viewH: number, pixelRatio: number): boolean {
+  fitOverlay(viewW: number, viewH: number, pixelRatio: number): boolean {
     const s = this.shown;
-    if (!s || !this.anchor) {
+    if (!s || !this.posed) {
       this.line.visible = false;
       return false;
     }
@@ -492,15 +495,15 @@ export class AirPays {
       cam.top = h;
       cam.updateProjectionMatrix();
     }
-    // The anchor on screen (CSS px from the top); behind the camera it goes to the upper middle.
-    const p = this.projected.copy(this.anchor).project(camera);
-    const inFront = p.z > -1 && p.z < 1;
-    const sx = inFront ? ((p.x + 1) / 2) * w : w / 2;
-    const footY = inFront ? ((1 - p.y) / 2) * h : h * 0.3;
+    // The plate's centre, CSS px from the top: just under the road ahead, wholly on screen.
     const m = LINE_MARGIN_PX;
-    const cx = clamp(sx, l.plateW / 2 + m, w - l.plateW / 2 - m, w / 2);
-    const cyTop = clamp(footY - l.plateH / 2, l.plateH / 2 + m, h - l.plateH / 2 - m, h / 2);
-    this.line.position.set(cx, h - cyTop, 0);
+    const cyTop = clamp(
+      h * ROAD_AHEAD_BOTTOM + m + l.plateH / 2,
+      l.plateH / 2 + m,
+      h - l.plateH / 2 - m,
+      h / 2,
+    );
+    this.line.position.set(w / 2, h - cyTop, 0);
     this.line.scale.set(l.plateW, l.plateH, 1);
     // Painted only where there is a canvas (not in node tests): the layout above still holds.
     this.line.visible = this.lineMat.map !== null;
@@ -511,8 +514,8 @@ export class AirPays {
    * Draws the one-liner over the finished frame, after the film pass, so the look neither inks,
    * grades nor paints the sky over it. One draw call while it shows, none otherwise.
    */
-  drawOverlay(gl: WebGLRenderer, camera: Camera, viewW: number, viewH: number): void {
-    if (!this.fitOverlay(camera, viewW, viewH, gl.getPixelRatio()) || !this.line.visible) return;
+  drawOverlay(gl: WebGLRenderer, viewW: number, viewH: number): void {
+    if (!this.fitOverlay(viewW, viewH, gl.getPixelRatio()) || !this.line.visible) return;
     const autoClear = gl.autoClear;
     gl.autoClear = false;
     gl.render(this.overlay, this.overlayCamera);
@@ -521,7 +524,7 @@ export class AirPays {
 
   private clearLine(): void {
     this.shown = null;
-    this.anchor = null;
+    this.posed = false;
     this.line.visible = false;
     this.counts.line = null;
   }
