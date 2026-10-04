@@ -88,43 +88,49 @@ describe('region-sf: the San Francisco race', () => {
     const event = lookup(REG.events, EVENT);
     expect(event.region).toBe('san-francisco');
     const region = lookup(REG.regions, 'region-sf:san-francisco');
-    // The hand-made hills, then the real streets raced as routes (the maintainer, 2026-10-01).
-    // Run W-R's downtown and run W-U's districts (Chinatown and North Beach, the mural alleys, the
-    // waterfront), hand-made on their own networks.
-    expect(region.networks).toEqual([
-      'sf-hills',
-      'osm-sf-russian-hill',
-      'osm-sf-twin-peaks',
-      'sf-downtown',
-      'sf-chinatown-northbeach',
-      'sf-mission',
-      'sf-waterfront',
-    ]);
+    // The region file lists every road network of the region and only those: the hand-made hills,
+    // the real streets raced as routes (the maintainer, 2026-10-01) and each district's own network
+    // (run W-R's downtown, run W-U's). Read from the packs, so a lane that adds a network lists it
+    // in region.json, not here.
+    const own = Object.entries(REG.networks)
+      .filter(([k, n]) => k.startsWith('region-sf:') && n.region === 'san-francisco')
+      .map(([k]) => k.slice('region-sf:'.length));
+    expect(own.length).toBeGreaterThan(0);
+    expect([...region.networks].sort()).toEqual(own.sort());
     // At least the first board set; content lanes add more (tools/road/sf-hills.test.ts gives each a slot).
     expect(region.signs?.length).toBeGreaterThanOrEqual(3);
     expect(region.billboards?.length).toBeGreaterThanOrEqual(2);
     const { config } = sfRace(1);
-    const ids = config.riders.map((r) => r.name);
-    // Playtest 2: the lot's starter, up to two cops on patrol and one more in the lot.
-    expect(ids).toEqual([
-      'Pivot',
-      'Gripman Gus',
-      'Chad Speedwell',
-      'Dial-Up',
-      'You',
-      'Officer Meter',
-      'Officer Meter',
-      'Officer Meter',
-      'Officer Meter',
-    ]);
-    // The region's mix picks the kinds: the region vehicles weigh in, a Keys-only kind never spawns.
+    // The event's field in its order, then the player, then the law. Playtest 2: the lot's starter,
+    // up to patrolMax cops on patrol and one more in the lot, every one the region's own cop.
+    const qualify = (id: string) => (id.includes(':') ? id : `region-sf:${id}`);
+    const rivals = (event.field?.riders ?? []).map(qualify);
+    expect(rivals.length).toBeGreaterThan(0);
+    expect(config.riders.slice(0, rivals.length).map((r) => r.contentId)).toEqual(rivals);
+    expect(config.riders[rivals.length]?.controller.kind).toBe('player');
+    const law = config.riders.slice(rivals.length + 1);
+    process.stdout.write(`[region-sf] field: ${config.riders.map((r) => r.name).join(', ')}\n`);
+    const cops = event.cops as { baseCount?: number; patrolMax?: number };
+    expect(law).toHaveLength((cops.baseCount ?? 0) + (cops.patrolMax ?? 0) + 1);
+    for (const r of law) {
+      expect(r.controller.kind, r.contentId).toBe('cop');
+      expect(lookup(REG.riders, r.contentId).region, r.contentId).toBe('san-francisco');
+    }
+    // The region's mix picks the kinds: each type weighs what the region file lists for it (its
+    // traffic mix, pedestrians and animals), and a type it lists nowhere (a Keys-only kind) never
+    // spawns. Read from the region file, so a retuned mix is not a test edit.
     const weight = (id: string) => config.trafficTypes.find((t) => t.contentId === id)?.weight;
+    const listed = new Map<string, number>();
+    const t = region.traffic;
+    for (const k of [...t.mix, ...(t.pedestrians ?? []), ...(t.animals ?? [])])
+      listed.set(qualify(k.kind), (listed.get(qualify(k.kind)) ?? 0) + k.weight);
+    expect(t.mix.length).toBeGreaterThan(0);
+    for (const type of config.trafficTypes)
+      expect(type.weight, type.contentId).toBe(listed.get(type.contentId) ?? 0);
+    expect([...listed.keys()].some((k) => k.startsWith('region-sf:') && (weight(k) ?? 0) > 0)).toBe(true);
     // Playtest 2 ("including in forests"), run W-R: cable cars run only on downtown's cable-car
     // streets (render), never as traffic on a race road.
     expect(weight('region-sf:cable-car') ?? 0).toBe(0);
-    expect(weight('region-sf:startup-shuttle')).toBe(1);
-    expect(weight('region-sf:rideshare-hatchback')).toBe(5);
-    expect(weight('base:fisherman')).toBe(0);
   });
 
   it('the bot finishes in about 2 to 3 minutes, on the route, and catches air off the crests', () => {

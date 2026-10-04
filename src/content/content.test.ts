@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { basePackFiles, buildRegistry, contentHashes, loadBasePack, lookup, type PackFile } from './index';
 
+/** The base pack's road files as they sit on disk (keys only: the loader is what is under test). */
+const BASE_ROAD_FILES = import.meta.glob('/packs/base/regions/*/roads/*.json');
+
 function edited(path: string, edit: (json: Record<string, unknown>) => void): PackFile[] {
   return basePackFiles().map((f) => {
     if (f.path !== path) return f;
@@ -16,43 +19,16 @@ describe('content: the base pack', () => {
     expect(reg.packs[0]?.id).toBe('base');
     expect(lookup(reg.bikes, 'rustbucket-400').handling.topSpeedMps).toBeCloseTo(44.7);
     expect(lookup(reg.riders, 'deacon-vane').role).toBe('rival');
-    // The hand-made roads; the GIS side quest adds osm- prefixed roads beside them.
+    // The hand-made roads: every one the pack ships on disk loads, and nothing else does (the GIS
+    // side quest's osm- roads come with the pack library, not the bundled pack). The list is read
+    // from the files, so a lane that adds a road does not edit this test.
+    const onDisk = Object.keys(BASE_ROAD_FILES)
+      .map((p) => `base:${p.slice(p.lastIndexOf('/') + 1, -'.json'.length)}`)
+      .filter((k) => !k.startsWith('base:osm-'))
+      .sort();
+    expect(onDisk.length).toBeGreaterThan(0);
     const handMade = Object.keys(reg.roads).filter((k) => !k.startsWith('base:osm-'));
-    expect(handMade.sort()).toEqual([
-      'base:c-boardwalk-in',
-      'base:c-boardwalk-merge-main',
-      'base:c-boardwalk-out',
-      'base:c-boardwalk-split-main',
-      'base:c-boat-ramp-in',
-      'base:c-boat-ramp-out',
-      'base:c-marina-merge-main',
-      'base:c-marina-split-main',
-      'base:c-sandbar-flats-in',
-      'base:c-sandbar-flats-merge-main',
-      'base:c-sandbar-flats-out',
-      'base:c-sandbar-flats-split-main',
-      'base:c-unlisted-in',
-      'base:c-unlisted-merge-sandbar',
-      'base:c-unlisted-out',
-      'base:c-unlisted-split-sandbar',
-      'base:m1-boat-ramp-cut',
-      'base:m1-conch-row',
-      'base:m1-last-resort-causeway',
-      'base:m1-long-bridge',
-      'base:m1-mangrove-bend',
-      'base:m1-mangrove-boardwalk',
-      'base:m1-mangrove-cut',
-      'base:m1-mangrove-reach',
-      'base:m1-marina-bends',
-      'base:m1-marina-run',
-      'base:m1-pelican-bridge',
-      'base:m1-sandbar-causeway',
-      'base:m1-sandbar-flats',
-      'base:m1-sandbar-shoal',
-      'base:m1-sandbar-spit',
-      'base:m1-tarpon-flats',
-      'base:m1-unlisted-key',
-    ]);
+    expect(handMade.sort()).toEqual(onDisk);
     expect(reg.index.length).toBe(basePackFiles().length - 1);
     expect(Object.isFrozen(lookup(reg.bikes, 'rustbucket-400').handling)).toBe(true);
   });
