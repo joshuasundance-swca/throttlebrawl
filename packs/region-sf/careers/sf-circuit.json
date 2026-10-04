@@ -8,10 +8,62 @@
   "tutorialEvent": "sf-t1-pier-pressure",
   "firstRun": "race-first",
   "tiers": [
-    { "id": "t1", "name": "Seed Round", "advance": { "requiredWins": 2 } },
-    { "id": "t2", "name": "Series A", "advance": { "requiredWins": 2 } },
-    { "id": "t3", "name": "Series B", "advance": { "requiredWins": 2 } },
-    { "id": "t4", "name": "The Down Round", "advance": { "requiredWins": 0 } }
+    {
+      "id": "t1",
+      "name": "Seed Round",
+      "advance": { "requiredWins": 2 },
+      "boss": "collab",
+      "field": {
+        "paceShare": 0.74,
+        "aggression": 0.85,
+        "signatureGap": 1.3,
+        "health": 0.9,
+        "power": 0.9,
+        "rivalBike": "step-down"
+      }
+    },
+    {
+      "id": "t2",
+      "name": "Series A",
+      "advance": { "requiredWins": 2 },
+      "boss": "buffering",
+      "field": {
+        "paceShare": 0.78,
+        "aggression": 1.0,
+        "signatureGap": 1.0,
+        "health": 1.0,
+        "power": 1.0,
+        "rivalBike": "step-down"
+      }
+    },
+    {
+      "id": "t3",
+      "name": "Series B",
+      "advance": { "requiredWins": 2 },
+      "boss": "gus-grudge",
+      "field": {
+        "paceShare": 0.82,
+        "aggression": 1.15,
+        "signatureGap": 0.8,
+        "health": 1.1,
+        "power": 1.07,
+        "rivalBike": "best"
+      }
+    },
+    {
+      "id": "t4",
+      "name": "The Down Round",
+      "advance": { "requiredWins": 2 },
+      "boss": "down-round",
+      "field": {
+        "paceShare": 0.85,
+        "aggression": 1.25,
+        "signatureGap": 0.7,
+        "health": 1.2,
+        "power": 1.12,
+        "rivalBike": "best"
+      }
+    }
   ],
   "nodes": [
     {
@@ -38,6 +90,16 @@
       "requires": ["pier-pressure"],
       "opens": ["sf-painted-row"],
       "claims": ["sf-pier-row", "sf-cable-line-grade", "sf-switchback-street"]
+    },
+    {
+      "id": "burn-rate",
+      "event": "sf-t1-burn-rate",
+      "length": "standard",
+      "tier": "t1",
+      "at": { "road": "sf-dt-founders-plaza", "s": 120 },
+      "requires": ["pier-pressure"],
+      "opens": ["sf-dt-inference-ave"],
+      "claims": ["sf-dt-founders-plaza", "sf-dt-inference-ave"]
     },
     {
       "id": "collab",
@@ -91,6 +153,15 @@
       "claims": ["sf-stair-alley", "sf-painted-row"]
     },
     {
+      "id": "buffering",
+      "event": "sf-t2-buffering",
+      "length": "standard",
+      "tier": "t2",
+      "at": { "road": "osm-sf-hyde", "s": 800 },
+      "opens": ["osm-sf-upper-market"],
+      "claims": ["osm-sf-hyde"]
+    },
+    {
       "id": "twin-peaks",
       "event": "sf-t3-twin-peaks",
       "length": "standard",
@@ -98,6 +169,14 @@
       "at": { "road": "osm-sf-upper-market", "s": 300 },
       "opens": ["osm-sf-twin-peaks-climb"],
       "claims": ["osm-sf-upper-market", "osm-sf-portola"]
+    },
+    {
+      "id": "curb-authority",
+      "event": "sf-t3-curb-authority",
+      "length": "standard",
+      "tier": "t3",
+      "at": { "road": "sf-bridge-approach", "s": 300 },
+      "claims": ["sf-fogline-climb", "sf-bridge-approach"]
     },
     {
       "id": "gus-grudge",
@@ -116,12 +195,20 @@
       ]
     },
     {
-      "id": "curb-authority",
-      "event": "sf-t3-curb-authority",
+      "id": "series-c",
+      "event": "sf-t4-series-c",
       "length": "standard",
-      "tier": "t3",
-      "at": { "road": "sf-bridge-approach", "s": 300 },
-      "claims": ["sf-fogline-climb", "sf-bridge-approach"]
+      "tier": "t4",
+      "at": { "road": "sf-dt-cable-crossing", "s": 200 },
+      "opens": ["sf-dt-burn-rate-row", "sf-dt-campus-way"],
+      "claims": ["sf-dt-cable-crossing"]
+    },
+    {
+      "id": "tow-away",
+      "event": "sf-t4-tow-away",
+      "length": "standard",
+      "tier": "t4",
+      "at": { "road": "osm-sf-union-crest", "s": 40 }
     },
     {
       "id": "down-round",
@@ -174,26 +261,39 @@
   },
   "shop": [
     { "bike": "base:rustbucket-400", "priceCash": 0, "unlockTier": "t1" },
-    { "bike": "base:chopper", "priceCash": 4000, "unlockTier": "t1" },
-    { "bike": "base:streetfighter-750", "priceCash": 6000, "unlockTier": "t2" },
-    { "bike": "base:superbike-1000", "priceCash": 16000, "unlockTier": "t3" }
+    { "bike": "base:chopper", "priceCash": 15000, "unlockTier": "t1" },
+    { "bike": "base:superbike-1000", "priceCash": 48750, "unlockTier": "t2" }
   ],
   "paints": [
-    { "id": "fog-grey", "name": "Karl Grey", "hex": "#b9bec4", "priceCash": 300, "unlockTier": "t1" },
+    { "id": "fog-grey", "name": "Karl Grey", "hex": "#b9bec4", "priceCash": 3000, "unlockTier": "t1" },
     {
       "id": "cable-car-maroon",
       "name": "Cable Car Maroon",
       "hex": "#7a1f2b",
-      "priceCash": 300,
+      "priceCash": 3000,
       "unlockTier": "t1"
     },
-    { "id": "burn-rate", "name": "Burn Rate Orange", "hex": "#ff6a13", "priceCash": 500, "unlockTier": "t2" },
+    {
+      "id": "burn-rate",
+      "name": "Burn Rate Orange",
+      "hex": "#ff6a13",
+      "priceCash": 5000,
+      "unlockTier": "t2"
+    },
     {
       "id": "unicorn",
       "name": "Unicorn Valuation Violet",
       "hex": "#8b5cf6",
-      "priceCash": 500,
+      "priceCash": 5000,
       "unlockTier": "t3"
+    },
+    {
+      "id": "down-round-gold",
+      "name": "Down Round Gold",
+      "hex": "#d4a017",
+      "priceCash": 15000,
+      "unlockTier": "t1",
+      "unlockSeason": 2
     }
   ],
   "unlocks": [{ "grant": "base:mobility-scooter", "when": { "kind": "boss-beaten", "ref": "down-round" } }],
@@ -303,7 +403,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones (run W-U: Gripman Gus's grudge moved to Chinatown and North Beach, so every route has an event; the fogline climb is claimed with the bridge approach); secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones (run W-U: Gripman Gus's grudge moved to Chinatown and North Beach, so every route has an event; the fogline climb is claimed with the bridge approach); secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.3; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the third chapter (global tiers 9 to 12), every tier names its boss (Chad, Dial-Up, Gus, Pivot) and the field level it asks, with 14 nodes for now: the tier-3 and tier-4 drift events join with the drift lane's content. The shop sells the Superbike (rank 6) at tier 2 and the chopper for $15,000; paints cost $3,000 to $5,000, and Down Round Gold opens from Season 2. [default] every number.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
   }
 }
