@@ -11,6 +11,8 @@ import math
 from itertools import pairwise
 from typing import Any
 
+from tbgis.config import BARRIER_LOOKS, GAP_RESPAWNS
+
 type Json = dict[str, Any]
 
 JUNCTION_TOL_M = 0.5
@@ -60,7 +62,133 @@ TAGS = {
     "wharf-street",
     "ferry-plaza",
     "wharf-lot",
+    # Playtest 3's real places (docs/content-packs.md, "Gaps and landmarks").
+    "conch-houses",
+    "key-oldtown",
+    "old-bridge",
+    "pdx-blocks",
+    "rail-line",
+    "brick-street",
+    "headlands",
 }
+
+# The jump lint (src/road/validate.ts ROAD_LINT, docs/content-packs.md "Jump lint"): from a ramp,
+# gap or ramp truck to where a bike at the starter bike's top speed lands, the road is straight.
+JUMP_SPEED_MPS = 44.7
+JUMP_MAX_KAPPA = 0.002
+GAP_RUN_OUT_M = 20.0
+GRAVITY = 9.81
+RAMP_TRUCK = {"rampLengthM": 11.5, "lipHeightM": 2.8}  # src/road/types.ts RAMP_TRUCK_DEFAULTS
+
+
+def _js_round(v: float) -> int:
+    return math.floor(v + 0.5)  # JavaScript's Math.round, which the game's lint uses
+
+
+def _positive(f: Json, key: str, fallback: float) -> float:
+    v = (f.get("params") or {}).get(key)
+    ok = isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+    return float(v) if ok else fallback  # type: ignore[arg-type]
+
+
+def flight_end(f: Json, ys: list[float], sp: float) -> float:
+    """Where a jump's expected flight ends, in s (src/road/validate.ts expectedFlightEnd)."""
+    count = len(ys)
+    length = (count - 1) * sp
+    if f["kind"] == "gap":
+        return float(min(length, f["s1"] + GAP_RUN_OUT_M))
+    if f["kind"] == "rampTruck":
+        run = _positive(f, "rampLengthM", RAMP_TRUCK["rampLengthM"])
+        lip_h = _positive(f, "lipHeightM", RAMP_TRUCK["lipHeightM"])
+        lip = min(count - 1, _js_round((f["s0"] + run) / sp))
+        slope = lip_h / run
+        y_lip = ys[lip] + lip_h
+    else:
+        i_a = max(0, math.floor(f["s0"] / sp))
+        i_b = min(count - 1, math.ceil(f["s1"] / sp))
+        lip = i_a
+        for i in range(i_a, i_b + 1):
+            if ys[i] > ys[lip]:
+                lip = i
+        slope = (ys[lip] - ys[lip - 1]) / sp if lip > 0 else 0.0
+        y_lip = ys[lip]
+    for i in range(lip + 1, count):
+        dx = (i - lip) * sp
+        t = dx / JUMP_SPEED_MPS
+        if y_lip + slope * dx - 0.5 * GRAVITY * t * t <= ys[i]:
+            return i * sp
+    return length
+
+
+def lint_jumps(road: Json) -> list[str]:
+    """Ramps, gaps and ramp trucks sit on road that is straight to their expected landing."""
+    errs: list[str] = []
+    data = road["samples"]["data"]
+    ys, ks = data["y"], data["kappa"]
+    sp = float(road["sampleSpacingM"])
+    last = len(ys) - 1
+    for f in road.get("features", []):
+        if f["kind"] not in ("ramp", "gap", "rampTruck"):
+            continue
+        s0 = max(0.0, float(f["s0"]))
+        s1 = min(last * sp, flight_end(f, ys, sp))
+        i0, i1 = math.floor(s0 / sp), min(last, math.ceil(s1 / sp))
+        worst, at = 0.0, i0
+        for i in range(i0, i1 + 1):
+            if abs(ks[i]) > worst:
+                worst, at = abs(ks[i]), i
+        if worst > JUMP_MAX_KAPPA:
+            errs.append(
+                f"{road['id']}: {f['kind']} {f['id']} sits on a bend: |kappa| {worst:.3g} at s {at * sp:.1f} "
+                f"is over {JUMP_MAX_KAPPA} between s {s0:.1f} and its expected landing at s {s1:.1f}"
+            )
+    return errs
+
+
+def lint_playtest3(road: Json) -> list[str]:
+    """Gap and landmark params, and jumpable walls (src/road/validate.ts lintPlaytest3); the
+    footprint rule (landmark-clear) needs the derived verges, so the pack check alone runs it."""
+    errs: list[str] = []
+    rid = road["id"]
+    for f in road.get("features", []):
+        p = f.get("params") or {}
+        if f["kind"] == "gap":
+            if "respawn" in p and p["respawn"] not in GAP_RESPAWNS:
+                errs.append(
+                    f"{rid}: gap {f['id']}: respawn {p['respawn']!r} is not one of {', '.join(GAP_RESPAWNS)}"
+                )
+            for k in ("killDepthM", "respawnPastM"):
+                if k in p and _positive(f, k, -1.0) < 0:
+                    errs.append(f"{rid}: gap {f['id']}: {k} {p[k]!r} is not a number above 0")
+        if f["kind"] == "landmark":
+            if not isinstance(p.get("model"), str) or not p["model"]:
+                errs.append(f"{rid}: landmark {f['id']} names no model (<asset id>#<node>)")
+            yaw, scale = p.get("yawDeg", 0.0), p.get("scale", 1.0)
+            if not (isinstance(yaw, int | float) and -180 <= yaw <= 180):
+                errs.append(f"{rid}: landmark {f['id']}: yawDeg {yaw!r} is not in [-180, 180]")
+            if not (isinstance(scale, int | float) and 0 < scale <= 4):
+                errs.append(f"{rid}: landmark {f['id']}: scale {scale!r} is not in (0, 4]")
+            if "farM" in p and _positive(f, "farM", -1.0) < 0:
+                errs.append(f"{rid}: landmark {f['id']}: farM {p['farM']!r} is not a number above 0")
+    for b in road.get("barriers", []):
+        if b.get("jumpable") is True and b["kind"] != "wall":
+            errs.append(f"{rid}: a {b['kind']} cannot be jumpable: only a wall may be")
+        if "look" in b and b["look"] not in BARRIER_LOOKS:
+            errs.append(f"{rid}: barrier look {b['look']!r} is not one of {', '.join(BARRIER_LOOKS)}")
+    return errs
+
+
+def gaps_on_main_path(route: Json, by_id: dict[str, Json]) -> list[str]:
+    """Traffic runs a route's main path, so a gap there would swallow it: gaps go on branch roads."""
+    errs: list[str] = []
+    for rid in route["mainPath"]:
+        hole = next((f for f in by_id.get(rid, {}).get("features", []) if f["kind"] == "gap"), None)
+        if hole is not None:
+            errs.append(
+                f"route {route['id']}: road {rid} holds gap {hole['id']}: traffic runs the main path, "
+                "so put gaps on branch roads"
+            )
+    return errs
 
 
 def lint_road(
@@ -128,6 +256,8 @@ def lint_road(
         errs.append(f"{rid}: OSM-derived files use the osm- prefix")
     if not any(s.get("spdx") == "ODbL-1.0" for s in road.get("provenance", {}).get("sources", [])):
         errs.append(f"{rid}: no ODbL source in provenance")
+    errs += lint_jumps(road)
+    errs += lint_playtest3(road)
     return errs
 
 
@@ -163,6 +293,7 @@ def lint_bake(network: Json, roads: list[Json], route: Json) -> list[str]:
         r = by_id.get(route[key]["road"])
         if r is None or not 0 <= route[key]["s"] <= r["lengthM"]:
             errs.append(f"route {route['id']}: {key} is not on its road")
+    errs += gaps_on_main_path(route, by_id)
     return errs
 
 
@@ -303,4 +434,5 @@ def lint_net_route(route: Json, by_id: dict[str, Json], junctions: dict[str, Jso
             if r in path or r in seen:
                 errs.append(f"route {rid}: branch {b['id']} road {r} is on the main path or another branch")
             seen.add(r)
+    errs += gaps_on_main_path(route, by_id)
     return errs

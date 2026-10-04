@@ -37,20 +37,25 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from tbgis import __version__
 from tbgis.config import (
+    FEATURE_ID,
     BakeConfig,
+    BridgeBarrier,
     Compression,
     Crs,
     Elevation,
+    Feature,
     LatLon,
     RoadName,
     Route,
     Smoothing,
+    Stitch,
     Strict,
     Verges,
+    bridge_barriers,
 )
 from tbgis.emit import (
     OSM_ATTRIBUTION,
@@ -62,6 +67,7 @@ from tbgis.emit import (
     road_splits,
     without,
 )
+from tbgis.features import bake_ramps, plus, real_station, stitch_features, stitch_span
 from tbgis.fetch import FetchMeta
 from tbgis.fun import fun_report
 from tbgis.osm import Way
@@ -100,6 +106,41 @@ class SideTags(Strict):
     right: list[str] = Field(default_factory=list)
 
 
+class Landmark(Strict):
+    """A real structure placed from its lat/lon (playtest 3: "real landmarks"): it becomes a
+    ``landmark`` feature on the road beside it (src/road/types.ts ``landmarkParams``). The point is
+    projected onto the line's real OSM polyline, so its (s, d) are right against the real road, then
+    mapped into the baked road; the report says how far that lands from the real point. Its box is
+    ``footprintM`` [along, across] centred there. ``side`` says which side it must fall on (a bake
+    that finds it on the other refuses: a typo in the lat/lon, or the wrong line)."""
+
+    id: str = Field(pattern=FEATURE_ID)
+    model: str = Field(pattern=r"^[^#\s]+#[^#\s]+$")  # <asset id>#<node>
+    at: LatLon
+    footprintM: tuple[float, float]  # noqa: N815
+    side: Literal["left", "right"] | None = None
+    yawDeg: float | None = Field(None, ge=-180, le=180)  # noqa: N815
+    scale: float | None = Field(None, gt=0, le=4)
+    farM: float | None = Field(None, gt=0)  # noqa: N815
+    overRoad: bool = False  # noqa: N815 (a structure the road passes through or under)
+
+    @model_validator(mode="after")
+    def _footprint(self) -> Landmark:
+        if not (self.footprintM[0] > 0 and self.footprintM[1] > 0):
+            raise ValueError(f"landmark {self.id}: footprintM [along, across] above 0")
+        return self
+
+    def params(self) -> dict[str, object]:
+        out: dict[str, object] = {"model": self.model}
+        for k in ("yawDeg", "scale", "farM"):
+            v = getattr(self, k)
+            if v is not None:
+                out[k] = float(v)
+        if self.overRoad:
+            out["overRoad"] = True
+        return out
+
+
 class Line(Strict):
     """One real path through the OSM graph, cut into named roads, like a stretch config."""
 
@@ -111,6 +152,13 @@ class Line(Strict):
     start: LatLon | None = None
     end: LatLon | None = None
     routeTags: dict[str, str] = Field(default_factory=dict)  # noqa: N815
+    # As the stretch config's: groups of regexes, any one of which a way must match ("@id": its id).
+    wayFilter: list[dict[str, str]] = Field(default_factory=list)  # noqa: N815
+    # Spans the map does not draw, joined by a straight deck; a gap stitch also writes a gap there.
+    stitches: list[Stitch] = Field(default_factory=list)
+    landmarks: list[Landmark] = Field(default_factory=list)
+    # What stands along every bridge (None: a rail of the network's bridgeRailHeightM).
+    bridgeBarrier: BridgeBarrier | None = None  # noqa: N815
     respectOneway: bool = True  # noqa: N815
     splitAt: list[LatLon] = Field(default_factory=list)  # noqa: N815
     splitOnNameChange: bool = False  # noqa: N815
@@ -146,7 +194,49 @@ class Zone(Strict):
     d1: float
 
 
-class Leave(Strict):
+class Staging(Strict):
+    """A synthetic branch end (playtest 3: the Seven Mile's staging platforms): the branch leaves
+    or joins the main line where the map has no junction (``at`` is any point on the main line), on
+    a connector of a turn, a straight and a turn back. ``turnDeg`` is the first turn, positive to
+    the right (the second turns back by about as much), ``turnRadiusM`` the tightest radius of each
+    eased turn and ``straightM`` the straight between them. The bake starts the branch's own road
+    where that connector lands on the branch line, then solves the connector exactly onto it, which
+    nudges the straight and the turn angle (the report says by how much). ``features`` stand on the
+    straight, s measured from its start (a ramp truck and a gap); the bake moves them onto the
+    staging road (``roadId``). Off by default: a real junction's connector is solved from
+    ``turnsM`` and ``insetM``."""
+
+    synthetic: bool = False
+    turnRadiusM: float | None = Field(None, gt=0)  # noqa: N815
+    turnDeg: float | None = Field(None, ge=-90, le=90)  # noqa: N815
+    straightM: float | None = Field(None, gt=0)  # noqa: N815
+    features: list[Feature] = Field(default_factory=list)
+    # The connector's scenery tags (None: the land tags of the branch road beside it).
+    tags: list[str] | None = None
+    # The staging road's id (None: <network>-<label>-staging-in or -staging-out). A junction's road
+    # ends lie within 60 m of it (src/road/validate.ts), so a synthetic end is two roads: the
+    # junction's connector (the turn off the main road, or onto it) and this ordinary staging road
+    # (the straight and the other turn), joined end to end with the branch line's own road. A
+    # synthetic leave's staging road is the branch's first road, so the branch's id is its id.
+    roadId: str | None = Field(None, pattern=OSM_ID)  # noqa: N815
+
+    @model_validator(mode="after")
+    def _staging(self) -> Staging:
+        if self.synthetic and (self.turnRadiusM is None or not self.turnDeg or self.straightM is None):
+            raise ValueError("a synthetic branch end needs turnRadiusM, a non-zero turnDeg and straightM")
+        if self.features and not self.synthetic:
+            raise ValueError(
+                "features on a connector need a synthetic branch end (its straight is configured)"
+            )
+        for f in self.features:
+            if f.s0 < 0 or (self.straightM is not None and f.s1 > self.straightM):
+                raise ValueError(
+                    f"connector feature {f.id}: {f.s0:g}..{f.s1:g} is off the {self.straightM:g} m straight"
+                )
+        return self
+
+
+class Leave(Staging):
     at: LatLon  # the real junction on the main line where the branch line starts
     pieceM: float = Field(40.0, gt=0)  # noqa: N815 (the main line's connector piece, centred on it)
     # Moves the junction (its piece and the turn-off) along the main line from the real fork,
@@ -160,8 +250,14 @@ class Leave(Strict):
     toLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
 
+    @model_validator(mode="after")
+    def _centred(self) -> Leave:
+        if self.synthetic and self.toOffsetM != 0:
+            raise ValueError("a synthetic leave's staging road meets the branch road end to end: toOffsetM 0")
+        return self
 
-class Join(Strict):
+
+class Join(Staging):
     at: LatLon  # the real junction on the main line where the branch line ends
     pieceM: float = Field(40.0, gt=0)  # noqa: N815
     shiftM: float = 0.0  # noqa: N815 (as Leave.shiftM; positive = later, past the real junction)
@@ -171,6 +267,14 @@ class Join(Strict):
     fromOffsetM: float = 0.0  # noqa: N815 (across the branch's last road, where the connector starts)
     fromLane: str = "R1"  # noqa: N815
     turnsM: tuple[float, float] = (15.0, 15.0)  # noqa: N815
+
+    @model_validator(mode="after")
+    def _centred(self) -> Join:
+        if self.synthetic and self.fromOffsetM != 0:
+            raise ValueError(
+                "a synthetic join's staging road meets the branch road end to end: fromOffsetM 0"
+            )
+        return self
 
 
 class Branch(Strict):
@@ -184,6 +288,9 @@ class Branch(Strict):
     kind: Literal["shortcut", "detour", "alternate"] | None = None
     marked: bool = True
     sign: str | None = None
+    # The share of rivals that take it, 0 to 1 (playtest 3, round 3: "rivals and cops stay on the
+    # highway"); None leaves it to the AI's own rule (src/road/types.ts BakedRouteBranch.aiTake).
+    aiTake: float | None = Field(None, ge=0, le=1)  # noqa: N815
     connectorWidthM: float = Field(6.0, gt=0, le=12)  # noqa: N815 (the connectors' one shortcut lane)
     # Names the junction roads the bake makes for it (<network>-<label>-leave, -join, -in, -out);
     # the line id when left out. The route-facing `id` keeps the id the game would derive (the
@@ -272,6 +379,8 @@ def stretch_config(cfg: NetworkConfig, ln: Line) -> BakeConfig:
         via=ln.via,
         pathTo=ln.pathTo,
         routeTags=ln.routeTags,
+        wayFilter=ln.wayFilter,
+        stitches=ln.stitches,
         respectOneway=ln.respectOneway,
         splitAt=ln.splitAt,
         splitOnNameChange=ln.splitOnNameChange,
@@ -379,6 +488,17 @@ class BakedLine:
             float(np.interp(s, p.s, p.z)),
             float(np.interp(s, p.s, p.heading)),
         )
+
+    def project(self, x: float, z: float) -> tuple[float, float]:
+        """The arc length of the profile's point nearest (x, z), and the distance to it."""
+        p = self.p
+        ax, az = p.x[:-1], p.z[:-1]
+        dx, dz = np.diff(p.x), np.diff(p.z)
+        ll = np.maximum(dx * dx + dz * dz, 1e-12)
+        t = np.clip(((x - ax) * dx + (z - az) * dz) / ll, 0.0, 1.0)
+        dist = np.hypot(ax + t * dx - x, az + t * dz - z)
+        i = int(np.argmin(dist))
+        return float(p.s[i] + t[i] * (p.s[i + 1] - p.s[i])), float(dist[i])
 
 
 def real_point(rp: RealPath, frame: Frame, pt: LatLon) -> tuple[float, float, float]:
@@ -545,6 +665,79 @@ def connector_shape(
     return best
 
 
+# An eased turn's curvature peaks at 1.875 times its mean (ease_rate's peak, 30/16, at t = 0.5).
+EASE_PEAK = 1.875
+
+
+def turn_length(radius: float, deg: float) -> float:
+    """The length of an eased turn through ``deg`` whose tightest radius is ``radius``."""
+    return EASE_PEAK * radius * math.radians(abs(deg))
+
+
+def max_kappa(sh: Shape) -> float:
+    return max(abs(sh.kappa(u)) for u in np.linspace(0, sh.length, 400))
+
+
+@dataclass(frozen=True)
+class Staged:
+    """A synthetic branch end, solved: the connector curve, and where on the branch line it lands
+    (a leave) or departs (a join)."""
+
+    shape: Shape
+    s_line: float
+
+
+def solve_staging(
+    st: Staging,
+    main_pt: tuple[float, float, float, float],
+    line: BakedLine,
+    offset: float,
+    leaving: bool,
+    label: str,
+    width: float,
+) -> Staged:
+    """The configured turn, straight and turn back, from the main road's end (a leave) or onto it (a
+    join); the branch line meets it where that shape ends, and the connector is then solved exactly
+    onto the branch line there, keeping the configured turns' lengths."""
+    assert st.turnRadiusM is not None and st.turnDeg is not None and st.straightM is not None
+    turn = turn_length(st.turnRadiusM, st.turnDeg)
+    phi = math.radians(st.turnDeg)
+    mx, _, mz, mh = main_pt
+    guess = Shape(mh, phi, -phi, turn, st.straightM, turn)
+    n = max(64, round(guess.length / 0.25))
+    if leaving:
+        ex, ez = guess.end(mx, mz, n)
+    else:
+        dx, dz = guess.end(0.0, 0.0, n)
+        ex, ez = mx - dx, mz - dz
+    s_line, miss = line.project(ex, ez)
+    if not 1.0 < s_line < float(line.p.s[-1]) - 1.0:
+        raise ValueError(f"{label}: the staging lands off the branch line (at s {s_line:.1f})")
+    bx, _, bz, bh = offset_point(line, s_line, offset)
+    sh = (
+        solve_shape(mx, mz, mh, bx, bz, bh, turn, turn)
+        if leaving
+        else solve_shape(bx, bz, bh, mx, mz, mh, turn, turn)
+    )
+    if sh is None:
+        raise ValueError(f"{label}: no connector of these turns reaches the branch line ({miss:.1f} m off)")
+    if max_kappa(sh) * (width / 2) >= 0.45:
+        raise ValueError(f"{label}: the turns are too tight for the connector's width")
+    return Staged(sh, s_line)
+
+
+def staging_report(sh: Shape, road: str, on: float) -> Json:
+    """What the solve made of a synthetic end: the first turn, the straight (starting at ``on`` on
+    the staging road), and the tightest radius."""
+    return {
+        "road": road,
+        "turnDeg": round(math.degrees(sh.phi1), 2),
+        "straightM": round(sh.ls, 4),
+        "tightestRadiusM": round(1 / max_kappa(sh), 1),
+        "straightStartM": round(on, 4),
+    }
+
+
 # ----------------------------------------------------------------------------------------------
 # Roads
 
@@ -569,6 +762,9 @@ class Piece:
     connector: bool = False
     frm: str = ""
     to: str = ""
+    # The span of its line it was cut from (line s), for features placed in line s.
+    s_a: float = 0.0
+    s_b: float = 0.0
 
 
 def lane_section(cs: CrossSection) -> Json:
@@ -639,14 +835,6 @@ def tag_ranges(bl: BakedLine, a: float, b: float, land: list[str], sides: SideTa
     return tags
 
 
-def rails(tags: list[Json], height: float) -> list[Json]:
-    return [
-        {"s0": t["s0"], "s1": t["s1"], "side": "both", "kind": "rail", "heightM": height}
-        for t in tags
-        if t["tag"] == "bridge"
-    ]
-
-
 @dataclass
 class LineCuts:
     """A line cut into pieces: (s_a, s_b, piece label or None for an ordinary road)."""
@@ -654,12 +842,18 @@ class LineCuts:
     spans: list[tuple[float, float, str | None]]
 
 
-def line_cuts(cfg: NetworkConfig, bl: BakedLine, pieces: list[tuple[float, float, str]]) -> LineCuts:
-    """The line's ordinary roads and junction pieces, in order along it."""
+def line_cuts(
+    cfg: NetworkConfig,
+    bl: BakedLine,
+    pieces: list[tuple[float, float, str]],
+    ends: tuple[float | None, float | None] = (None, None),
+) -> LineCuts:
+    """The line's ordinary roads and junction pieces, in order along it. A branch line's roads run
+    from ``insetM`` to ``insetM`` short of its end, or between its synthetic ends (``ends``)."""
     p = bl.p
     br = branch_of_line(cfg, bl.line.id)
-    lo = br.leave.insetM if br else 0.0
-    hi = float(p.s[-1]) - (br.join.insetM if br else 0.0)
+    lo = ends[0] if ends[0] is not None else (br.leave.insetM if br else 0.0)
+    hi = ends[1] if ends[1] is not None else float(p.s[-1]) - (br.join.insetM if br else 0.0)
     if hi - lo < 60:
         raise ValueError(f"line {bl.line.id}: {hi - lo:.0f} m left between its insets")
     base = {float(p.s[a]) for a, _ in road_splits(bl.cfg, p)} | {float(p.s[road_splits(bl.cfg, p)[-1][1]])}
@@ -691,7 +885,8 @@ def make_piece(
     sides: SideTags,
     cs: CrossSection,
 ) -> Piece:
-    _, x, y, z = resample_line(bl, a, b, cfg.sampleSpacingM)
+    spacing = (rn.sampleSpacingM if rn else None) or cfg.sampleSpacingM
+    _, x, y, z = resample_line(bl, a, b, spacing)
     tags = tag_ranges(bl, a, b, land, sides)
     features: list[Json] = []
     length = r4(b - a)
@@ -699,6 +894,10 @@ def make_piece(
         if not 0 <= f.s0 <= f.s1 <= length:
             raise ValueError(f"{pid}: feature {f.id} at {f.s0}..{f.s1} is off the {length} m road")
         features.append(f.model_dump(exclude_none=True))
+    barriers = [
+        *bridge_barriers(tags, cfg.bridgeRailHeightM, bl.line.bridgeBarrier),
+        *(br.as_json(length) for br in (rn.barriers if rn else [])),
+    ]
     p = bl.p
     i0 = int(np.argmin(np.abs(p.s - a)))
     i1 = int(np.argmin(np.abs(p.s - b)))
@@ -715,9 +914,11 @@ def make_piece(
         speed=speed_of(bl, a, b),
         surface=bl.line.surface,
         tags=tags,
-        barriers=rails(tags, cfg.bridgeRailHeightM),
+        barriers=barriers,
         features=features,
         connector=rn is None,
+        s_a=a,
+        s_b=b,
     )
 
 
@@ -732,14 +933,15 @@ def curve_piece(
     name: str,
     a: tuple[float, float, float, float],
     b: tuple[float, float, float, float],
-    turns: tuple[float, float],
+    sh: Shape,
     width: float,
     spacing: float,
     speed: float,
     land: list[str],
+    span: tuple[float, float] | None = None,
 ) -> Piece:
-    """A branch connector road: the solved curve from a to b, its height eased between theirs."""
-    sh = connector_shape((a[0], a[2], a[3]), (b[0], b[2], b[3]), turns, width)
+    """A branch connector road: the solved curve from a to b, its height eased between theirs. With
+    ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road)."""
     fine = max(64, math.ceil(sh.length / 0.1))
     du = sh.length / fine
     fx = [a[0]]
@@ -749,14 +951,16 @@ def curve_piece(
         fx.append(fx[-1] + math.sin(h) * du)
         fz.append(fz[-1] - math.cos(h) * du)
     u = du * np.arange(fine + 1)
-    n = max(1, round(sh.length / spacing))
-    s: F64 = (sh.length / n) * np.arange(n + 1, dtype=np.float64)
-    s[-1] = sh.length
+    u0, u1 = span if span is not None else (0.0, sh.length)
+    n = max(1, round((u1 - u0) / spacing))
+    s: F64 = u0 + ((u1 - u0) / n) * np.arange(n + 1, dtype=np.float64)
+    s[-1] = u1
     x = np.interp(s, u, np.array(fx))
     z = np.interp(s, u, np.array(fz))
-    x[-1], z[-1] = b[0], b[2]
+    if u1 == sh.length:
+        x[-1], z[-1] = b[0], b[2]
     y = a[1] + (b[1] - a[1]) * smoothstep(s / sh.length)
-    length = float(sh.length)
+    length = float(u1 - u0)
     return Piece(
         id=pid,
         name=name,
@@ -764,7 +968,7 @@ def curve_piece(
         x=x,
         y=y,
         z=z,
-        kappa_ends=(sh.kappa(0.0), sh.kappa(sh.length)),
+        kappa_ends=(sh.kappa(u0), sh.kappa(u1)),
         lane_section=shortcut_section(width),
         speed=speed,
         surface="asphalt",
@@ -791,9 +995,13 @@ def road_json(cfg: NetworkConfig, pc: Piece, prov: Json, notes: str) -> Json:
     spacing = length / n
     kappa = discrete_kappa(pc.x, pc.z, spacing, pc.kappa_ends)
     grade = np.gradient(pc.y, spacing) if n > 1 else np.full(n + 1, (pc.y[-1] - pc.y[0]) / length)
+    # Ramp lips go into the elevation on the road's own samples, as the hand-made compiler does.
+    features, ramp_y, ramp_g = bake_ramps(pc.features, length, n)
+    y = plus(pc.y, ramp_y)
+    grade = plus(grade, ramp_g)
     cols = {
         "x": [r4(v) for v in pc.x],
-        "y": [r4(v) for v in pc.y],
+        "y": [r4(v) for v in y],
         "z": [r4(v) for v in pc.z],
         "kappa": [r5(v) for v in kappa],
         "grade": [r5(v) for v in grade],
@@ -815,7 +1023,7 @@ def road_json(cfg: NetworkConfig, pc: Piece, prov: Json, notes: str) -> Json:
         "surface": pc.surface,
         "laneSections": [pc.lane_section],
         "tags": clip,
-        "features": pc.features,
+        "features": features,
         "barriers": [{**b, "s1": min(b["s1"], length)} for b in pc.barriers],
         "samples": {"encoding": "json-columns", "columns": list(cols), "data": cols},
         "provenance": prov,
@@ -915,11 +1123,35 @@ def bake_network(
             if b0 - a1 < 2 * PIECE_CLEAR_M:
                 raise ValueError(f"line {lid}: junctions {la} and {lb} are too close")
 
+    # Synthetic branch ends (playtest 3's staging): solve each connector first, since the branch
+    # line's roads start and end where it lands.
+    staged: dict[tuple[str, str], Staged] = {}
+    line_ends: dict[str, tuple[float | None, float | None]] = {}
+    for b in cfg.branches:
+        main, line = lines[b.of], lines[b.line]
+        lo: float | None = None
+        hi: float | None = None
+        if b.leave.synthetic:
+            end_pt = offset_point(main, centre[f"{b.tag}-leave"] - b.leave.pieceM / 2, b.leave.offsetM)
+            st = solve_staging(
+                b.leave, end_pt, line, b.leave.toOffsetM, True, f"branch {b.id} leave", b.connectorWidthM
+            )
+            staged[(b.id, "leave")] = st
+            lo = st.s_line
+        if b.join.synthetic:
+            end_pt = offset_point(main, centre[f"{b.tag}-join"] + b.join.pieceM / 2, b.join.offsetM)
+            st = solve_staging(
+                b.join, end_pt, line, b.join.fromOffsetM, False, f"branch {b.id} join", b.connectorWidthM
+            )
+            staged[(b.id, "join")] = st
+            hi = st.s_line
+        line_ends[b.line] = (lo, hi)
+
     # Cut every line into pieces and ordinary roads.
     order: list[Piece] = []
     by_line: dict[str, list[tuple[Piece, str | None]]] = {}
     for lid, bl in lines.items():
-        cuts = line_cuts(cfg, bl, pieces[lid])
+        cuts = line_cuts(cfg, bl, pieces[lid], line_ends.get(lid, (None, None)))
         ordinary = [sp for sp in cuts.spans if sp[2] is None]
         if len(ordinary) != len(bl.line.roads):
             spans = ", ".join(
@@ -948,6 +1180,12 @@ def bake_network(
                 pc = make_piece(cfg, bl, sa, sb, None, pid, f"{label} junction", tags_before, sides, cs)
             out.append((pc, label))
         by_line[lid] = out
+
+    # Features placed in line s: stitched gaps (with their kickers) and landmarks from lat/lon.
+    report_landmarks: list[Json] = []
+    for lid, bl in lines.items():
+        place_stitches(bl, by_line[lid])
+        report_landmarks += place_landmarks(cfg, bl, by_line[lid])
 
     junctions: list[Json] = []
 
@@ -1022,53 +1260,138 @@ def bake_network(
             raise ValueError(f"branch {b.id}: it must rejoin after it leaves")
         before, after = mseq[k_leave - 1][0], mseq[k_join + 1][0]
         first, last = bseq[0][0], bseq[-1][0]
-        if b.id != first.id:
-            # The game derives a branch's id from its first road (docs/content-packs.md, Branches);
-            # a named one keeps that id, so a career's `route#id` holds either way.
-            raise ValueError(f"branch {b.id}: name it {first.id}, the id the game derives")
-        land_in, land_out = bl_tags(bseq[0]), bl_tags(bseq[-1])
+        land_in = b.leave.tags if b.leave.tags is not None else bl_tags(bseq[0])
+        land_out = b.join.tags if b.join.tags is not None else bl_tags(bseq[-1])
+        s_first, s_last = line_cuts_ends(b, line, staged)
         leave_pt = offset_point(main, centre[f"{b.tag}-leave"] - b.leave.pieceM / 2, b.leave.offsetM)
-        land_pt = offset_point(line, b.leave.insetM, b.leave.toOffsetM)
-        kin = curve_piece(
-            f"{cfg.id}-{b.tag}-in",
-            f"{b.tag} turn-off",
-            leave_pt,
-            land_pt,
-            b.leave.turnsM,
-            b.connectorWidthM,
-            cfg.sampleSpacingM,
-            min(before.speed, first.speed),
-            land_in,
+        land_pt = offset_point(line, s_first, b.leave.toOffsetM)
+        st_in = staged.get((b.id, "leave"))
+        sh_in = (
+            st_in.shape
+            if st_in
+            else connector_shape(_xzh(leave_pt), _xzh(land_pt), b.leave.turnsM, b.connectorWidthM)
         )
-        s_last = float(line.p.s[-1]) - b.join.insetM
         a2 = offset_point(line, s_last, b.join.fromOffsetM)
         t2 = offset_point(main, centre[f"{b.tag}-join"] + b.join.pieceM / 2, b.join.offsetM)
-        kout = curve_piece(
-            f"{cfg.id}-{b.tag}-out",
-            f"{b.tag} rejoin",
-            a2,
-            t2,
-            b.join.turnsM,
-            b.connectorWidthM,
-            cfg.sampleSpacingM,
-            min(last.speed, after.speed),
-            land_out,
+        st_out = staged.get((b.id, "join"))
+        sh_out = (
+            st_out.shape if st_out else connector_shape(_xzh(a2), _xzh(t2), b.join.turnsM, b.connectorWidthM)
         )
+        width, spacing = b.connectorWidthM, cfg.sampleSpacingM
+        speed_in, speed_out = min(before.speed, first.speed), min(last.speed, after.speed)
+        # A synthetic end is the junction's connector (the turn off or onto the main road) and an
+        # ordinary staging road (the straight, with its features, and the other turn); see Staging.
+        stage_in = stage_out = None
+        if st_in is None:
+            kin = curve_piece(
+                f"{cfg.id}-{b.tag}-in",
+                f"{b.tag} turn-off",
+                leave_pt,
+                land_pt,
+                sh_in,
+                width,
+                spacing,
+                speed_in,
+                land_in,
+            )
+        else:
+            cut = sh_in.l1
+            kin = curve_piece(
+                f"{cfg.id}-{b.tag}-in",
+                f"{b.tag} turn-off",
+                leave_pt,
+                land_pt,
+                sh_in,
+                width,
+                spacing,
+                speed_in,
+                land_in,
+                (0.0, cut),
+            )
+            sid = b.leave.roadId or f"{cfg.id}-{b.tag}-staging-in"
+            stage_in = curve_piece(
+                sid,
+                f"{b.tag} staging",
+                leave_pt,
+                land_pt,
+                sh_in,
+                width,
+                spacing,
+                speed_in,
+                land_in,
+                (cut, sh_in.length),
+            )
+            stage_in.connector = False
+            stage_in.features = straight_features(b.leave, sh_in, 0.0, f"branch {b.id} leave")
+        if st_out is None:
+            kout = curve_piece(
+                f"{cfg.id}-{b.tag}-out",
+                f"{b.tag} rejoin",
+                a2,
+                t2,
+                sh_out,
+                width,
+                spacing,
+                speed_out,
+                land_out,
+            )
+        else:
+            cut = sh_out.l1 + sh_out.ls
+            sid = b.join.roadId or f"{cfg.id}-{b.tag}-staging-out"
+            stage_out = curve_piece(
+                sid, f"{b.tag} staging", a2, t2, sh_out, width, spacing, speed_out, land_out, (0.0, cut)
+            )
+            stage_out.connector = False
+            stage_out.features = straight_features(b.join, sh_out, sh_out.l1, f"branch {b.id} join")
+            kout = curve_piece(
+                f"{cfg.id}-{b.tag}-out",
+                f"{b.tag} rejoin",
+                a2,
+                t2,
+                sh_out,
+                width,
+                spacing,
+                speed_out,
+                land_out,
+                (cut, sh_out.length),
+            )
+        head = stage_in or first
+        tail = stage_out or last
+        if b.id != head.id:
+            # The game derives a branch's id from its first road (docs/content-packs.md, Branches);
+            # a named one keeps that id, so a career's `route#id` holds either way.
+            raise ValueError(f"branch {b.id}: name it {head.id}, the id the game derives")
+        staging: Json = {}
+        if stage_in is not None:
+            staging["leave"] = staging_report(sh_in, stage_in.id, 0.0)
+        if stage_out is not None:
+            staging["join"] = staging_report(sh_out, stage_out.id, sh_out.l1)
         js, jm = by_label[f"{b.tag}-leave"], by_label[f"{b.tag}-join"]
-        # The branch line's own end junctions become the split and merge junctions.
-        junctions[:] = [j for j in junctions if j["id"] not in (first.frm, last.to)]
-        first.frm, last.to = js["id"], jm["id"]
+        # The branch line's own end junctions become the split and merge junctions; at a synthetic
+        # end they stay, joining the staging road to the branch road end to end.
+        drop = {first.frm} if stage_in is None else set()
+        drop |= {last.to} if stage_out is None else set()
+        junctions[:] = [j for j in junctions if j["id"] not in drop]
+        if stage_in is not None:
+            j_first = next(j for j in junctions if j["id"] == first.frm)
+            j_first["ends"].insert(0, {"road": stage_in.id, "end": "to"})
+            stage_in.to = first.frm
+        if stage_out is not None:
+            j_last = next(j for j in junctions if j["id"] == last.to)
+            j_last["ends"].append({"road": stage_out.id, "end": "from"})
+            stage_out.frm = last.to
+        head.frm, tail.to = js["id"], jm["id"]
         kin.frm = kin.to = js["id"]
         kout.frm = kout.to = jm["id"]
-        js["ends"].append({"road": first.id, "end": "from"})
-        jm["ends"].append({"road": last.id, "end": "to"})
+        js["ends"].append({"road": head.id, "end": "from"})
+        jm["ends"].append({"road": tail.id, "end": "to"})
         before_len = float(np.sum(np.hypot(np.diff(before.x), np.diff(before.z))))
         js["connectors"].append(
             {
                 "id": f"cx-{kin.id}",
                 "road": kin.id,
                 "from": {"road": before.id, "end": "to", "lane": b.leave.lane},
-                "to": {"road": first.id, "end": "from", "lane": b.leave.toLane},
+                "to": {"road": head.id, "end": "from", "lane": b.leave.toLane if stage_in is None else "S1"},
                 "splitZone": {
                     "s0": r4(before_len - b.leave.zone.lengthM),
                     "s1": r4(before_len),
@@ -1081,12 +1404,23 @@ def bake_network(
             {
                 "id": f"cx-{kout.id}",
                 "road": kout.id,
-                "from": {"road": last.id, "end": "to", "lane": b.join.fromLane},
+                "from": {
+                    "road": tail.id,
+                    "end": "to",
+                    "lane": b.join.fromLane if stage_out is None else "S1",
+                },
                 "to": {"road": after.id, "end": "from", "lane": b.join.lane},
             }
         )
-        order += [kin, kout]
-        branch_roads[b.id] = [kin.id, *(pc.id for pc, _ in bseq), kout.id]
+        stages = [pc for pc in (stage_in, stage_out) if pc is not None]
+        order += [kin, *stages, kout] if stages else [kin, kout]
+        branch_roads[b.id] = [
+            kin.id,
+            *([stage_in.id] if stage_in else []),
+            *(pc.id for pc, _ in bseq),
+            *([stage_out.id] if stage_out else []),
+            kout.id,
+        ]
         main_len = centre[f"{b.tag}-join"] - centre[f"{b.tag}-leave"]
         branch_len = (
             float(np.sum(np.hypot(np.diff(kin.x), np.diff(kin.z))))
@@ -1095,12 +1429,15 @@ def bake_network(
             - b.leave.pieceM / 2
             - b.join.pieceM / 2
         )
+        for pc in stages:
+            branch_len += float(np.sum(np.hypot(np.diff(pc.x), np.diff(pc.z))))
         report_branches.append(
             {
                 "id": b.id,
                 "mainM": round(main_len, 1),
                 "branchM": round(branch_len, 1),
                 "savesM": round(main_len - branch_len, 1),
+                **staging,
             }
         )
 
@@ -1152,7 +1489,100 @@ def bake_network(
         "roads": len(roads_json),
         "junctions": len(junctions),
     }
+    if report_landmarks:
+        report["landmarks"] = report_landmarks
     return NetworkBake(network, roads_json, routes, report)
+
+
+def _xzh(p: tuple[float, float, float, float]) -> tuple[float, float, float]:
+    return (p[0], p[2], p[3])
+
+
+def line_cuts_ends(b: Branch, line: BakedLine, staged: dict[tuple[str, str], Staged]) -> tuple[float, float]:
+    """Where the branch line's own roads start and end, in its s."""
+    lo = staged[(b.id, "leave")].s_line if (b.id, "leave") in staged else b.leave.insetM
+    hi = staged[(b.id, "join")].s_line if (b.id, "join") in staged else float(line.p.s[-1]) - b.join.insetM
+    return lo, hi
+
+
+def straight_features(end: Staging, sh: Shape, on: float, label: str) -> list[Json]:
+    """A synthetic end's features, from straight-relative s into the staging road's s (its straight
+    starts at ``on``)."""
+    out: list[Json] = []
+    for f in end.features:
+        if f.s1 > sh.ls + 1e-6:
+            raise ValueError(
+                f"{label}: feature {f.id} ends at {f.s1:g}, past the solved {sh.ls:.1f} m straight"
+            )
+        out.append({**f.model_dump(exclude_none=True), "s0": r4(on + f.s0), "s1": r4(on + f.s1)})
+    return out
+
+
+def piece_holding(seq: list[tuple[Piece, str | None]], s0: float, s1: float, what: str) -> Piece:
+    """The line's road (an ordinary road or a junction piece) whose span holds s0..s1 whole."""
+    for pc, _ in seq:
+        if pc.s_a - 1e-6 <= s0 and s1 <= pc.s_b + 1e-6:
+            return pc
+    spans = ", ".join(f"{pc.id} {pc.s_a:.0f}-{pc.s_b:.0f}" for pc, _ in seq)
+    raise ValueError(
+        f"{what} (line s {s0:.1f}..{s1:.1f}) does not lie on one road ({spans}): move it or the cuts"
+    )
+
+
+def half_width(pc: Piece) -> float:
+    return float(max(abs(ln["dCenterM"]) + ln["widthM"] / 2 for ln in pc.lane_section["lanes"]))
+
+
+def place_stitches(bl: BakedLine, seq: list[tuple[Piece, str | None]]) -> None:
+    """Each gap stitch's gap (and kicker) on the road that holds it, in that road's s."""
+    for k, st in enumerate(bl.line.stitches):
+        if st.kind != "gap":
+            continue
+        s_from, s_to = stitch_span(bl.rp, bl.p, st, k)
+        lo = s_from + st.trimM - (st.kicker.lengthM if st.kicker else 0.0)
+        pc = piece_holding(seq, lo, s_to - st.trimM, f"stitch {st.id}")
+        for f in stitch_features(st, s_from, s_to, half_width(pc)):
+            dumped = f.model_dump(exclude_none=True)
+            pc.features.append({**dumped, "s0": r4(f.s0 - pc.s_a), "s1": r4(f.s1 - pc.s_a)})
+
+
+def place_landmarks(cfg: NetworkConfig, bl: BakedLine, seq: list[tuple[Piece, str | None]]) -> list[Json]:
+    """Each landmark as a ``landmark`` feature on the road beside it: (s, d) against the real line,
+    mapped into the baked road. Returns the report rows, with how far the baked placement lands
+    from the real point."""
+    frame = Frame(cfg.crs.originLatDeg, cfg.crs.originLonDeg)
+    rows: list[Json] = []
+    for lm in bl.line.landmarks:
+        s_real, d, wx, wz = real_station(bl.rp, frame, lm.at.lat, lm.at.lon)
+        if lm.side is not None and (d >= 0) != (lm.side == "right"):
+            other = "right" if d >= 0 else "left"
+            raise ValueError(f"landmark {lm.id}: it is {abs(d):.1f} m {other} of the road, not {lm.side}")
+        s = float(np.interp(s_real, bl.p.s_real, bl.p.s))
+        along, across = lm.footprintM
+        pc = piece_holding(seq, s - along / 2, s + along / 2, f"landmark {lm.id}")
+        pc.features.append(
+            {
+                "kind": "landmark",
+                "id": lm.id,
+                "s0": r4(s - along / 2 - pc.s_a),
+                "s1": r4(s + along / 2 - pc.s_a),
+                "d0": r4(d - across / 2),
+                "d1": r4(d + across / 2),
+                "params": lm.params(),
+            }
+        )
+        gx, _, gz, _ = offset_point(bl, s, d)
+        rows.append(
+            {
+                "id": lm.id,
+                "line": bl.line.id,
+                "road": pc.id,
+                "s": r4(s - pc.s_a),
+                "d": r4(d),
+                "placementErrorM": round(math.hypot(gx - wx, gz - wz), 2),
+            }
+        )
+    return rows
 
 
 def idx(bl: BakedLine, a: float, b: float) -> tuple[int, int]:
@@ -1212,6 +1642,8 @@ def route_json(
             named["marked"] = b.marked
             if b.sign:
                 named["sign"] = b.sign
+            if b.aiTake is not None:
+                named["aiTake"] = b.aiTake
             branches.append({**named, "roads": branch_roads[b.id]})
     finish_len = by_id[rt.finishRoad]["lengthM"]
     finish_s = finish_len + rt.finishS if rt.finishS < 0 else rt.finishS

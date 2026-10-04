@@ -3,9 +3,34 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# The road format's vocabularies, exactly as the game reads them (src/road/validate.ts
+# FEATURE_KINDS, src/core/surfaces.ts BARRIER_LOOKS, src/road/types.ts GAP_RESPAWNS; playtest 3's
+# contract, K0b). tests/test_capabilities.py reads those files and fails when the two drift apart.
+FeatureKind = Literal[
+    "ramp",
+    "gap",
+    "hazard",
+    "roadsideZone",
+    "copSpawn",
+    "raceMarker",
+    "billboard",
+    "boostPad",
+    "rampTruck",
+    "landmark",
+]
+FEATURE_KINDS: tuple[str, ...] = get_args(FeatureKind)
+BarrierLook = Literal["railing"]
+BARRIER_LOOKS: tuple[str, ...] = get_args(BarrierLook)
+GapRespawn = Literal["far", "main"]
+GAP_RESPAWNS: tuple[str, ...] = get_args(GapRespawn)
+FEATURE_ID = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+# A feature's params: free-form in the road format, so numbers, words and switches (a landmark's
+# overRoad, a solid hazard's solid) all pass through as JSON gives them.
+Params = dict[str, bool | float | str]
 
 
 class Strict(BaseModel):
@@ -60,33 +85,149 @@ class Elevation(Strict):
     bridgeDeck: Literal["sea", "span"] = "sea"  # noqa: N815
 
 
+RAMP_KEYS = ("heightM", "lengthM", "backM")
+
+
 class Feature(Strict):
     """A feature range in road space (metres along this road; d positive to the right).
 
-    The kinds are the road file's (docs/content-packs.md, "Road file"), boost pads and ramp trucks
-    included; a pad or truck with ``params.slot`` is one candidate for that slot, and each race's
-    seed picks one per slot. A ``billboard`` slot names one region ``item`` or a ``pool``.
+    The kinds are the road file's (docs/content-packs.md, "Road file"), boost pads, ramp trucks and
+    playtest 3's landmarks included; a pad or truck with ``params.slot`` is one candidate for that
+    slot, and each race's seed picks one per slot. A ``billboard`` slot names one region ``item`` or
+    a ``pool``.
+
+    A ``ramp`` with ``params.heightM`` is a lip the bake builds into the elevation, as the hand-made
+    compiler does (src/road/compile.ts ``rampProfile``): a kicker rising ``heightM`` over
+    ``lengthM`` (``y = h u^2``), then a back dropping to the road over ``backM`` (default 0). Its
+    range is the kicker and the back, so ``s1`` is ``s0 + lengthM + backM``; the bake moves the lip
+    onto a sample and the range with it. A ``ramp`` without ``heightM`` only marks a range.
     """
 
-    kind: Literal[
-        "ramp",
-        "gap",
-        "hazard",
-        "roadsideZone",
-        "copSpawn",
-        "raceMarker",
-        "billboard",
-        "boostPad",
-        "rampTruck",
-    ]
-    id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    kind: FeatureKind
+    id: str = Field(pattern=FEATURE_ID)
     s0: float
     s1: float
     d0: float
     d1: float
     item: str | None = None
     pool: Literal["signs", "billboards"] | None = None
-    params: dict[str, str | float] | None = None
+    params: Params | None = None
+
+    @model_validator(mode="after")
+    def _ramp_range(self) -> Feature:
+        if self.kind != "ramp" or not self.params or "heightM" not in self.params:
+            return self
+        vals = {k: self.params.get(k, 0.0) for k in RAMP_KEYS}
+        if not all(isinstance(v, float | int) and not isinstance(v, bool) for v in vals.values()):
+            raise ValueError(f"ramp {self.id}: heightM, lengthM and backM are numbers")
+        h, run, back = (float(vals[k]) for k in RAMP_KEYS)
+        if not (h > 0 and run > 0 and back >= 0):
+            raise ValueError(f"ramp {self.id}: heightM and lengthM above 0, backM at least 0")
+        if abs(self.s1 - (self.s0 + run + back)) > 1e-3:
+            raise ValueError(
+                f"ramp {self.id}: s1 {self.s1} is not s0 + lengthM + backM ({self.s0 + run + back:g})"
+            )
+        return self
+
+    def ramp_spec(self) -> tuple[float, float, float] | None:
+        """(heightM, lengthM, backM) of a ramp the bake builds, or None."""
+        if self.kind != "ramp" or not self.params or "heightM" not in self.params:
+            return None
+        h, run, back = (float(self.params.get(k, 0.0)) for k in RAMP_KEYS)
+        return h, run, back
+
+
+class Barrier(Strict):
+    """A rail or wall along one side of a road (docs/content-packs.md, "Barriers"), beside the rails
+    the bake puts on every bridge. ``s1`` may be ``"end"``. Playtest 3: ``jumpable`` (a wall only)
+    lets an airborne rider over it; ``look`` draws it as a bridge railing."""
+
+    s0: float = Field(ge=0)
+    s1: float | Literal["end"]
+    side: Literal["left", "right", "both"]
+    kind: Literal["rail", "wall"]
+    heightM: float = Field(1.0, gt=0)  # noqa: N815
+    jumpable: bool | None = None
+    look: BarrierLook | None = None
+
+    @model_validator(mode="after")
+    def _jumpable_wall(self) -> Barrier:
+        if self.jumpable and self.kind != "wall":
+            raise ValueError(f"a {self.kind} cannot be jumpable: only a wall may be")
+        return self
+
+    def as_json(self, length: float) -> dict[str, object]:
+        out = self.model_dump(exclude_none=True)
+        out["s1"] = length if self.s1 == "end" else min(float(self.s1), length)
+        return out
+
+
+class BridgeBarrier(Strict):
+    """What stands along both sides of every bridge (default: a rail ``bridgeRailHeightM`` tall).
+    The Golden Gate's is a wall that looks like a railing: it stops tumble bodies."""
+
+    kind: Literal["rail", "wall"] = "rail"
+    heightM: float | None = Field(None, gt=0)  # noqa: N815 (None: the config's bridgeRailHeightM)
+    look: BarrierLook | None = None
+
+
+def bridge_barriers(
+    tags: list[dict[str, object]], height: float, spec: BridgeBarrier | None
+) -> list[dict[str, object]]:
+    """A barrier along both sides of each ``bridge`` tag's range."""
+    out: list[dict[str, object]] = []
+    for t in tags:
+        if t["tag"] != "bridge":
+            continue
+        b: dict[str, object] = {
+            "s0": t["s0"],
+            "s1": t["s1"],
+            "side": "both",
+            "kind": "rail",
+            "heightM": height,
+        }
+        if spec is not None:
+            b["kind"] = spec.kind
+            b["heightM"] = spec.heightM if spec.heightM is not None else height
+            if spec.look is not None:
+                b["look"] = spec.look
+        out.append(b)
+    return out
+
+
+class Kicker(Strict):
+    """A baked ramp whose lip is a gap's start (the Moser Channel jump: 2.0 m over 16 m)."""
+
+    heightM: float = Field(gt=0)  # noqa: N815
+    lengthM: float = Field(gt=0)  # noqa: N815
+
+
+class Stitch(Strict):
+    """Joins two OSM way ends across a span the map does not draw (playtest 3: the Old Seven Mile
+    Bridge's missing span). The bake adds a straight deck between the way ends nearest ``from`` and
+    ``to`` (each within ``snapM``), and for ``kind: "gap"`` a ``gap`` feature over it, ``trimM`` in
+    from each end and across the road's width (or ``d0``..``d1``), with ``params`` (killDepthM,
+    respawn, respawnPastM). ``kicker`` adds a baked ramp whose lip is the gap's start. A ``deck``
+    stitch only joins the ends."""
+
+    id: str = Field(pattern=FEATURE_ID)
+    from_: LatLon = Field(alias="from")
+    to: LatLon
+    kind: Literal["gap", "deck"] = "gap"
+    trimM: float = Field(0.0, ge=0)  # noqa: N815
+    snapM: float = Field(5.0, gt=0)  # noqa: N815
+    d0: float | None = None
+    d1: float | None = None
+    params: Params | None = None
+    kicker: Kicker | None = None
+
+    @model_validator(mode="after")
+    def _gap_only(self) -> Stitch:
+        if self.kind == "deck" and (self.kicker or self.params):
+            raise ValueError(f"stitch {self.id}: a deck stitch has no gap, so no kicker or params")
+        if (self.d0 is None) != (self.d1 is None):
+            raise ValueError(f"stitch {self.id}: give both d0 and d1, or neither")
+        return self
 
 
 class RoadName(Strict):
@@ -96,6 +237,10 @@ class RoadName(Strict):
     # land only: playtest 1c item 3).
     tags: list[str] = []
     features: list[Feature] = []
+    # This road's own sample spacing (1-10 m, the lint's range); None: the config's. A long straight
+    # bridge at 6 m costs a third of the road data it would at 2 m (the Seven Mile, critic C1).
+    sampleSpacingM: float | None = Field(None, ge=1, le=10)  # noqa: N815
+    barriers: list[Barrier] = []
 
 
 ROUTE_NOTES = "An alternative route on the real road; no event points at it yet (road-4 decides)."
@@ -142,6 +287,12 @@ class BakeConfig(Strict):
     # Only ways whose tags match every regex here carry the path (for example {"ref": "^SR 11$"});
     # every way in the extract still counts toward the junctions report.
     routeTags: dict[str, str] = {}  # noqa: N815
+    # And, when given, only ways that match one of these groups (each group: every regex matches;
+    # the key "@id" matches the way id), so a line can path over ways with different tags, such as
+    # an old bridge drawn as highway=pedestrian, abandoned:highway=trunk and a bare bridge:name.
+    wayFilter: list[dict[str, str]] = []  # noqa: N815
+    # Spans the map does not draw, joined by a straight deck (and a gap feature on a network line).
+    stitches: list[Stitch] = []
     # False lets a street route run against a one-way street (a race closes the streets).
     respectOneway: bool = True  # noqa: N815
     # Split a road at the grid point nearest each of these (named sections on a long rural road).
@@ -166,6 +317,7 @@ class BakeConfig(Strict):
     elevation: Elevation = Elevation()
     sampleSpacingM: float = Field(2.0, ge=1, le=10)  # noqa: N815
     bridgeRailHeightM: float = Field(1.0, gt=0)  # noqa: N815 (a rail along both sides of every bridge)
+    bridgeBarrier: BridgeBarrier | None = None  # noqa: N815 (None: that rail, as every bake so far)
     # Each travel lane's width. 3.4 m is the M1 lane table the Keys bake has; the hand-made roads
     # went to 4.0 m after playtest 1 ("road too narrow to weave"), and the region bakes match them.
     laneWidthM: float = Field(3.4, ge=2.5, le=5.0)  # noqa: N815
