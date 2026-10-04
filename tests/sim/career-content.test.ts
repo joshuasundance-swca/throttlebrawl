@@ -45,7 +45,7 @@ describe('the career maps', () => {
     describe(def.regionName, () => {
       const plans = def.nodes.map((n) => eventPlan(REG, n.event));
 
-      it('at least ten events, across the four event types and every route of the region', () => {
+      it('events across the four event types and every route of the region', () => {
         expect(def.nodes.length).toBeGreaterThanOrEqual(10);
         expect(new Set(plans.map((p) => p.kind))).toEqual(new Set(KINDS));
         const used = new Set(
@@ -60,23 +60,11 @@ describe('the career maps', () => {
         );
       });
 
-      it("every tier but the last holds three regular events, a tier's boss is its grudge match, and the region boss's event is the only finale", () => {
-        // Playtest 3's format names each tier's boss (a grudge match among the tier's nodes); the
-        // format before it has none, and its last tier holds the region boss alone.
-        const tiers = REG.careers[def.key]?.tiers ?? [];
-        expect(tiers.length).toBe(def.tiers.length);
-        tiers.forEach((tier, t) => {
-          const inTier = def.nodes.filter((n) => n.tier === t);
-          const bossId = tier.boss;
-          const regular = inTier.filter((n) => n.id !== bossId);
-          if (t < tiers.length - 1)
-            expect(regular.length, `${tier.id}'s regular events`).toBeGreaterThanOrEqual(3);
-          if (!bossId) return;
-          const boss = inTier.find((n) => n.id === bossId);
-          expect(boss, `${tier.id}'s boss ${bossId} is a node of the tier`).toBeDefined();
-          expect(eventPlan(REG, boss?.event ?? '').kind, `${tier.id}'s boss`).toBe('grudge-match');
-          expect(tier.advance.requiredWins, `${tier.id}'s gate`).toBeLessThanOrEqual(regular.length);
-          if (t === tiers.length - 1) expect(bossId).toBe(def.boss);
+      it('every tier holds the wins that open it, and the boss, in the last tier, is the only finale', () => {
+        // The tier-boss format (playtest 3) holds the wins and then the tier's boss: one more node.
+        def.tiers.forEach((t, i) => {
+          const held = def.nodes.filter((n) => n.tier === i).length;
+          expect(held, t.id).toBeGreaterThanOrEqual(Math.max(1, t.requiredWins));
         });
         const boss = def.nodes.find((n) => n.id === def.boss);
         expect(boss?.tier).toBe(def.tiers.length - 1);

@@ -14,7 +14,7 @@ const fresh = () => startCareer(DEFS, { ...DEFAULT_PROFILE });
 
 describe('the career map screen', () => {
   for (const def of DEFS) {
-    it(`${def.regionName}: a panel per network, every event a pin and a card in its tier`, () => {
+    it(`${def.regionName}: a panel per network with every event a pin, and a card for each node in its tier`, () => {
       const v = careerView(REG, DEFS, fresh(), def.regionId);
       expect(v.region.careerName).toBe(def.name);
       expect(v.tiers.map((t) => t.nodes.length)).toEqual(

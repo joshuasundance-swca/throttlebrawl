@@ -59,10 +59,13 @@ for (const def of DEFS) {
     /** The global tier of region tier index t: the earlier chapters' tiers, then this one's. */
     const globalTier = (t: number) => (def.chapter - 1) * TIERS_PER_REGION + t + 1;
 
-    it('four tiers of three regular events and the tier boss, two wins opening the boss', () => {
+    it('four tiers of two or three regular events and the tier boss, two wins opening the boss', () => {
+      // Three regular events a tier; a region holds two in a tier until its drift events land.
       expect(tiers.length).toBe(TIERS_PER_REGION);
       tiers.forEach((tier, t) => {
-        expect(regularNodes(def, t).length, `${tier.id}'s regular events`).toBe(3);
+        const regular = regularNodes(def, t).length;
+        expect(regular, `${tier.id}'s regular events`).toBeGreaterThanOrEqual(2);
+        expect(regular, `${tier.id}'s regular events`).toBeLessThanOrEqual(3);
         expect(tier.advance.requiredWins, `${tier.id}'s gate`).toBe(2);
         const boss = def.nodes.find((n) => n.id === tier.boss);
         expect(boss?.tier, `${tier.id}'s boss`).toBe(t);

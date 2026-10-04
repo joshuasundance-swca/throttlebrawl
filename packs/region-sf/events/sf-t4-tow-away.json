@@ -1,0 +1,64 @@
+{
+  "type": "event",
+  "id": "sf-t4-tow-away",
+  "name": "Tow-Away Zone",
+  "kind": "cop-escape",
+  "region": "san-francisco",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-hills-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["pivot", "base:dial-up"],
+    "paceMps": 43
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "escapeBy": "survive",
+    "surviveS": 60,
+    "copsFromStart": 3
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 8000
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [2400, 1600, 800, 400, 250, 150],
+    "perTakedownCash": 425,
+    "perNearMissCash": 40,
+    "perAirtimeCash": 60,
+    "perOncomingSecondCash": 16,
+    "takedownComboScale": 0.5,
+    "perStealCash": 100
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape, the heaviest of the region: three of Officer Meter's units on you from the start, survive 60 s on the Russian Hill streets. Their pursuit budgets run out, and the Curb Authority's END OF JURISDICTION sign ends it sooner. Playtest 3 (T10.3). [default]",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}
