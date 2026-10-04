@@ -252,6 +252,7 @@ def bake(
             tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "bridge"})
             if water:
                 tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "water-open"})
+            tags += [{"s0": t0, "s1": t1, "side": "both", "tag": t} for t in rn.deckTags]
         # The config's land tags cover the road except its bridges: a land tag on a bridge would
         # stand scenery on the deck (playtest 1c item 3).
         tags += [

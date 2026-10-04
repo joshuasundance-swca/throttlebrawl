@@ -1,0 +1,71 @@
+{
+  "network": "osm-keys-duval",
+  "lines": {
+    "oldtown": {
+      "lengthM": 3532.6,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 3532.6,
+        "game_length_m": 3532.6,
+        "corners": 2,
+        "tightest_radius_m": 15.9,
+        "share_tighter_than_m": {
+          "50": 0.0175,
+          "100": 0.0221,
+          "200": 0.0266
+        },
+        "turn_deg_per_km": 64.7,
+        "elev_min_m": 1.0,
+        "elev_max_m": 3.0,
+        "climb_m": 4.9,
+        "descent_m": 4.9,
+        "max_grade_pct": 0.9,
+        "p95_grade_pct": 0.8,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 39,
+        "junctions_per_km": 11.04,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 7.7
+      }
+    }
+  },
+  "branches": [],
+  "routes": {
+    "osm-duval-run": 3452.6
+  },
+  "roads": 2,
+  "junctions": 3,
+  "landmarks": [
+    {
+      "id": "southernmost-buoy",
+      "line": "oldtown",
+      "road": "osm-duval-whitehead",
+      "s": 1579.6456,
+      "d": 8.7946,
+      "placementErrorM": 5.27
+    },
+    {
+      "id": "mile-0",
+      "line": "oldtown",
+      "road": "osm-duval-whitehead",
+      "s": 411.5933,
+      "d": 7.6154,
+      "placementErrorM": 0.24
+    },
+    {
+      "id": "mallory-pier",
+      "line": "oldtown",
+      "road": "osm-duval-street",
+      "s": 1761.9614,
+      "d": -193.7569,
+      "placementErrorM": 7.89
+    }
+  ]
+}

@@ -136,6 +136,23 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-pnw:osm-i5-samish-run',
     kinds: ['boostPad'],
   },
+  // Playtest 3 (T9.2): Duval Street and the Seven Mile Bridge, their pads on the main road. The
+  // Seven Mile's two ramp trucks stand on the old road's repair platforms with no slot (always
+  // there); tools/gis/routes-keys-pt3.test.ts rides them, bike by bike.
+  {
+    name: 'osm-keys-duval',
+    event: 'base:m1-skeleton-sprint',
+    lengths: ['standard'],
+    route: 'base:osm-duval-run',
+    kinds: ['boostPad'],
+  },
+  {
+    name: 'osm-keys-seven-mile',
+    event: 'base:m1-skeleton-sprint',
+    lengths: ['standard'],
+    route: 'base:osm-seven-mile-run',
+    kinds: ['boostPad'],
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
@@ -186,12 +203,19 @@ interface Candidate {
   slot: string;
 }
 
+/**
+ * Every pad and truck the seed places. Not a truck with no slot off the route's main path: that one
+ * is a branch's fixed way in, always there (playtest 3: "the static one could be used to get to
+ * shortcuts"; round 3, the Seven Mile's "ramp trucks on repair platforms"), ridden by its own tests.
+ */
 function candidates(config: SimConfig): Candidate[] {
   const out: Candidate[] = [];
+  const main = new Set(config.route.mainEdges);
   for (const e of config.road.edges) {
     for (const f of e.features) {
       if (f.kind !== 'boostPad' && f.kind !== 'rampTruck') continue;
       const slot = f.params?.['slot'];
+      if (f.kind === 'rampTruck' && typeof slot !== 'string' && !main.has(e.index)) continue;
       out.push({ edge: e.index, edgeId: e.id, f, slot: typeof slot === 'string' ? slot : '' });
     }
   }

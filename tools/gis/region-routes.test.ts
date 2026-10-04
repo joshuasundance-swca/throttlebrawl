@@ -33,9 +33,15 @@ import { DEPTH_M, HALF_ALONG_M, SCENERY_RADIUS_M, type ScenerySpot } from '../..
 // Run W-S added the real-road networks (`tbgis network`: several real roads joined at their real
 // junctions, a junction choice and a multi-lane highway each): Key West in the base pack and I-5 by
 // Lake Samish in the Pacific Northwest. `osmFiles` counts each pack's osm- networks and routes (the
-// base pack's gis-1 Bahia Honda stretch among them; its scenery predates these checks).
+// base pack's gis-1 Bahia Honda stretch among them; its scenery predates these checks). Playtest 3
+// (T9.2) added Duval Street and the Seven Mile Bridge with its old road to the base pack.
 const PACKS = [
-  { pack: 'base', region: 'florida-keys', networks: ['osm-keys-key-west'], osmFiles: 2 },
+  {
+    pack: 'base',
+    region: 'florida-keys',
+    networks: ['osm-keys-key-west', 'osm-keys-duval', 'osm-keys-seven-mile'],
+    osmFiles: 4,
+  },
   {
     pack: 'region-pnw',
     region: 'pacific-northwest',

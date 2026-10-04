@@ -79,6 +79,10 @@ class Elevation(Strict):
     humpHeightM: float = Field(12.0, ge=0)  # noqa: N815 (navigation hump above the deck, exaggerated)
     humpLengthM: float = Field(420.0, gt=0)  # noqa: N815
     humpMinBridgeM: float = Field(800.0, gt=0)  # noqa: N815 (only long bridges get a hump)
+    # Where the hump stands on the real map (playtest 3: the Seven Mile Bridge humps over Moser
+    # Channel). Only the long bridge that holds that point gets the hump; None: each long bridge
+    # humps at its middle, as every bake before it.
+    humpAt: LatLon | None = None  # noqa: N815
     # "sea": decks sit deckM above the water (y = 0), as on the Keys. "span": a deck runs straight
     # between the land heights at its two ends, for a bridge over a creek or a ravine in high
     # country, where 3DEP reads the valley floor under it.
@@ -236,6 +240,9 @@ class RoadName(Strict):
     # Scenery tags for both sides of the whole road, except over its bridges (scenery stands on
     # land only: playtest 1c item 3).
     tags: list[str] = []
+    # Tags over the road's bridges only, beside `bridge` (playtest 3: the Old Seven Mile Bridge's
+    # `old-bridge` deck look). The land tags above never reach a deck.
+    deckTags: list[str] = []  # noqa: N815
     features: list[Feature] = []
     # This road's own sample spacing (1-10 m, the lint's range); None: the config's. A long straight
     # bridge at 6 m costs a third of the road data it would at 2 m (the Seven Mile, critic C1).

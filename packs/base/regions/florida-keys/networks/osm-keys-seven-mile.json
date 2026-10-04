@@ -1,0 +1,350 @@
+{
+  "type": "road-network",
+  "id": "osm-keys-seven-mile",
+  "name": "The Seven Mile Bridge and the Old Seven Mile Bridge (OSM network bake)",
+  "region": "florida-keys",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 24.7,
+    "originLonDeg": -81.17,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-sm-knights-key",
+    "osm-sm-bridge-east",
+    "osm-keys-seven-mile-old-road-leave",
+    "osm-sm-bridge",
+    "osm-keys-seven-mile-old-road-join",
+    "osm-sm-bridge-west",
+    "osm-sm-little-duck-key",
+    "osm-sm-old-east",
+    "osm-sm-old-moser",
+    "osm-sm-old-west",
+    "osm-keys-seven-mile-old-road-in",
+    "osm-sm-old-road",
+    "osm-sm-old-road-back",
+    "osm-keys-seven-mile-old-road-out"
+  ],
+  "junctions": [
+    {
+      "id": "osm-keys-seven-mile-j0",
+      "x": 4907.423,
+      "y": 5.632,
+      "z": -810.9802,
+      "ends": [
+        {
+          "road": "osm-sm-knights-key",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j1",
+      "x": 4622.2751,
+      "y": 5.0658,
+      "z": -770.6647,
+      "ends": [
+        {
+          "road": "osm-sm-knights-key",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-bridge-east",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j2",
+      "x": 4010.2427,
+      "y": 4.0,
+      "z": -671.5327,
+      "ends": [
+        {
+          "road": "osm-sm-bridge-east",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-bridge",
+          "end": "from"
+        },
+        {
+          "road": "osm-sm-old-road",
+          "end": "from"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-leave-l1",
+          "road": "osm-keys-seven-mile-old-road-leave",
+          "from": {
+            "road": "osm-sm-bridge-east",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-sm-bridge",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-leave-r1",
+          "road": "osm-keys-seven-mile-old-road-leave",
+          "from": {
+            "road": "osm-sm-bridge-east",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-sm-bridge",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-in",
+          "road": "osm-keys-seven-mile-old-road-in",
+          "from": {
+            "road": "osm-sm-bridge-east",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-sm-old-road",
+            "end": "from",
+            "lane": "S1"
+          },
+          "splitZone": {
+            "s0": 560.0089,
+            "s1": 600.0089,
+            "d0": 4.95,
+            "d1": 8.0
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j3",
+      "x": -5675.4694,
+      "y": 4.0,
+      "z": 1885.9209,
+      "ends": [
+        {
+          "road": "osm-sm-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-bridge-west",
+          "end": "from"
+        },
+        {
+          "road": "osm-sm-old-road-back",
+          "end": "to"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-join-l1",
+          "road": "osm-keys-seven-mile-old-road-join",
+          "from": {
+            "road": "osm-sm-bridge",
+            "end": "to",
+            "lane": "L1"
+          },
+          "to": {
+            "road": "osm-sm-bridge-west",
+            "end": "from",
+            "lane": "L1"
+          }
+        },
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-join-r1",
+          "road": "osm-keys-seven-mile-old-road-join",
+          "from": {
+            "road": "osm-sm-bridge",
+            "end": "to",
+            "lane": "R1"
+          },
+          "to": {
+            "road": "osm-sm-bridge-west",
+            "end": "from",
+            "lane": "R1"
+          }
+        },
+        {
+          "id": "cx-osm-keys-seven-mile-old-road-out",
+          "road": "osm-keys-seven-mile-old-road-out",
+          "from": {
+            "road": "osm-sm-old-road-back",
+            "end": "to",
+            "lane": "S1"
+          },
+          "to": {
+            "road": "osm-sm-bridge-west",
+            "end": "from",
+            "lane": "R1"
+          }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j4",
+      "x": -5935.5974,
+      "y": 2.8816,
+      "z": 1965.4161,
+      "ends": [
+        {
+          "road": "osm-sm-bridge-west",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-little-duck-key",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j5",
+      "x": -6385.6264,
+      "y": 4.3439,
+      "z": 2204.2487,
+      "ends": [
+        {
+          "road": "osm-sm-little-duck-key",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j6",
+      "x": 3803.7737,
+      "y": 4.0,
+      "z": -710.7332,
+      "ends": [
+        {
+          "road": "osm-sm-old-road",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-old-east",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j7",
+      "x": 362.352,
+      "y": 4.0,
+      "z": -131.2963,
+      "ends": [
+        {
+          "road": "osm-sm-old-east",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-old-moser",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j8",
+      "x": -141.0159,
+      "y": 4.0,
+      "z": 34.6318,
+      "ends": [
+        {
+          "road": "osm-sm-old-moser",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-old-west",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-seven-mile-j9",
+      "x": -5532.9791,
+      "y": 4.0,
+      "z": 1817.5993,
+      "ends": [
+        {
+          "road": "osm-sm-old-west",
+          "end": "to"
+        },
+        {
+          "road": "osm-sm-old-road-back",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-seven-mile.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\n(\nway[\"highway\"](24.67,-81.25,24.72,-81.10);\nway[\"abandoned:highway\"](24.67,-81.25,24.72,-81.10);\nway[\"bridge:name\"](24.67,-81.25,24.72,-81.10);\n);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:49:35Z",
+        "sha256": "2995b2dbe1b8656ef2575d91ce39c8f9cd75df1081c2b9b0ca1d14b581594ee9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 609 points in 1 request(s) (lon, lat WGS84, sha256 8e1a61c197426a59), bilinear (line us1)",
+        "retrievedAt": "2026-10-04T22:57:56Z",
+        "sha256": "355aea33d93f583e2581110febef15a0b471a0e01e5cf04337bf9cd665987ff3"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 532 points in 1 request(s) (lon, lat WGS84, sha256 92bd739b98b00f3a), bilinear (line old)",
+        "retrievedAt": "2026-10-04T22:58:07Z",
+        "sha256": "9dd625b7d8394819e11a7c7044fd1482145319222d10f905a2f670668d8b880b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Seven Mile Bridge way paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.1 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (playtest 3, T9.2; the maintainer, round 3: \"real geometry and length (about 11 km); ramp trucks on repair platforms hop about 30 m between the bridges; the real 80 m missing span is the big jump (a miss = splash, respawn on the highway); rivals and cops stay on the highway\"). The Overseas Highway (US 1) from Knights Key over the 1982 Seven Mile Bridge to Little Duck Key, at its real length, the navigation hump over Moser Channel. The Old Seven Mile Bridge (1909-1912) runs beside it to the north, from its four OSM ways (the trail to Pigeon Key, Pigeon Key to Moser Channel, Moser Channel west, and the path onto Little Duck Key): the old road. A ramp truck on a repair staging hops you onto it near Knights Key and another hops you back near Little Duck Key, where the bridges close to about 20 m; the missing swing span over Moser Channel is the big jump. Bridge decks, the hump, the stagings and the kicker are synthesized; the lines are pinned to the real map at the stagings (closure)."
+  }
+}

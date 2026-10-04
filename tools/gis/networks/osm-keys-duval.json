@@ -1,0 +1,232 @@
+{
+  "id": "osm-keys-duval",
+  "name": "Key West Old Town: Whitehead Street, the Southernmost Point and Duval Street (OSM network bake)",
+  "region": "florida-keys",
+  "crs": {
+    "originLatDeg": 24.5535,
+    "originLonDeg": -81.8015
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street|pedestrian|service)$\"](24.543,-81.812,24.564,-81.790);\nout tags geom;",
+  "osmExtract": ".cache/osm/keys-duval.json",
+  "outRoot": "packs/base/regions/florida-keys",
+  "waysLabel": "Key West street",
+  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"). Key West's Old Town at its real size: from Mallory Square south down Whitehead Street past the lighthouse and the Mile 0 marker to the Southernmost Point buoy, left along South Street, then the whole of Duval Street north from the Atlantic to the Gulf, finishing at Front Street beside Mallory Square. Its own frame origin, since it never shares a scene with keys-m1. The buoy, the Mile 0 marker and the Mallory Square pier are landmarks placed from their real positions; the Mile 0 marker stands on the sidewalk, a few metres out from its OSM point on the road's edge.",
+  "lines": [
+    {
+      "id": "oldtown",
+      "pathFrom": {
+        "lat": 24.5584002,
+        "lon": -81.8063455
+      },
+      "via": [
+        {
+          "lat": 24.5465959,
+          "lon": -81.7974942
+        },
+        {
+          "lat": 24.5472498,
+          "lon": -81.7963867
+        }
+      ],
+      "pathTo": {
+        "lat": 24.560935,
+        "lon": -81.8066096
+      },
+      "start": {
+        "lat": 24.55835,
+        "lon": -81.80631
+      },
+      "end": {
+        "lat": 24.5608083,
+        "lon": -81.8065152
+      },
+      "routeTags": {
+        "name": "^(Whitehead Street|South Street|Duval Street)$"
+      },
+      "respectOneway": false,
+      "splitAt": [
+        {
+          "lat": 24.5475473,
+          "lon": -81.7966091
+        }
+      ],
+      "realName": "Duval Street",
+      "smoothing": {
+        "headingSigmaM": 10
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 60,
+        "minLandM": 1.0,
+        "bridgeDeck": "sea",
+        "deckM": 4.0,
+        "deckRampM": 50,
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1,
+        "verges": {
+          "left": {
+            "widthM": 1.5,
+            "surface": "kerb",
+            "edge": "hard"
+          },
+          "right": {
+            "widthM": 1.5,
+            "surface": "kerb",
+            "edge": "hard"
+          }
+        }
+      },
+      "landmarks": [
+        {
+          "id": "southernmost-buoy",
+          "model": "models/landmarks/keys-landmarks#southernmost_buoy",
+          "at": {
+            "lat": 24.5465022,
+            "lon": -81.7974966
+          },
+          "footprintM": [2.2, 2.2]
+        },
+        {
+          "id": "mile-0",
+          "model": "models/landmarks/keys-landmarks#mile_marker_0",
+          "at": {
+            "lat": 24.5552531,
+            "lon": -81.8040686
+          },
+          "footprintM": [0.8, 0.8]
+        },
+        {
+          "id": "mallory-pier",
+          "model": "models/landmarks/keys-landmarks#mallory_pier",
+          "at": {
+            "lat": 24.55968,
+            "lon": -81.80799
+          },
+          "footprintM": [12, 6],
+          "yawDeg": -54
+        }
+      ],
+      "roads": [
+        {
+          "id": "osm-duval-whitehead",
+          "name": "Whitehead Street",
+          "tags": ["town", "palms", "conch-houses", "key-oldtown"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 5.5,
+              "d1": 9
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-whitehead-north",
+              "s0": 300,
+              "s1": 306,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "duval-pad-whitehead"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-whitehead-south",
+              "s0": 1000,
+              "s1": 1006,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "duval-pad-whitehead"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "buoy-queue",
+              "s0": 1490,
+              "s1": 1570,
+              "d0": 5.6,
+              "d1": 10.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-duval-street",
+          "name": "Duval Street",
+          "tags": ["town", "palms", "conch-houses", "key-oldtown"],
+          "features": [
+            {
+              "kind": "boostPad",
+              "id": "pad-duval-lower",
+              "s0": 500,
+              "s1": 506,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "duval-pad-street"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "duval-sidewalk",
+              "s0": 800,
+              "s1": 880,
+              "d0": 5.6,
+              "d1": 10.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-duval-upper",
+              "s0": 1250,
+              "s1": 1256,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "duval-pad-street"
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "mallory-sunset",
+              "s0": 1660,
+              "s1": 1740,
+              "d0": -10.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-duval-run",
+      "name": "Duval Street",
+      "line": "oldtown",
+      "startRoad": "osm-duval-whitehead",
+      "finishRoad": "osm-duval-street"
+    }
+  ]
+}

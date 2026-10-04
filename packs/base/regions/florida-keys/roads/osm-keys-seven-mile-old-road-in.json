@@ -1,0 +1,121 @@
+{
+  "type": "road",
+  "id": "osm-keys-seven-mile-old-road-in",
+  "name": "old-road turn-off",
+  "realName": "old-road turn-off",
+  "network": "osm-keys-seven-mile",
+  "from": "osm-keys-seven-mile-j2",
+  "to": "osm-keys-seven-mile-j2",
+  "lengthM": 39.2692,
+  "sampleSpacingM": 1.96346,
+  "speedLimitMps": 20.1,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 39.2692,
+      "side": "both",
+      "tag": "bridge"
+    },
+    {
+      "s0": 0,
+      "s1": 39.2692,
+      "side": "both",
+      "tag": "water-open"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        4029.1804, 4027.2423, 4025.3038, 4023.364, 4021.4216, 4019.4756, 4017.525, 4015.5697, 4013.6104,
+        4011.6481, 4009.6847, 4007.7222, 4005.7628, 4003.8081, 4001.8591, 3999.9161, 3997.9787, 3996.0458,
+        3994.116, 3992.1878, 3990.26
+      ],
+      "y": [
+        4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
+        4.0
+      ],
+      "z": [
+        -679.6792, -679.3641, -679.0516, -678.7477, -678.4605, -678.1997, -677.9751, -677.7958, -677.67,
+        -677.6038, -677.6009, -677.6626, -677.7877, -677.9722, -678.2099, -678.493, -678.812, -679.1573,
+        -679.5192, -679.8896, -680.2627
+      ],
+      "kappa": [
+        0.0, 0.00068806, 0.0022325, 0.0044062, 0.0068966, 0.0094544, 0.011849, 0.013892, 0.015467, 0.016441,
+        0.01677, 0.016451, 0.015458, 0.013895, 0.011852, 0.0094502, 0.0068996, 0.0044049, 0.0022324,
+        0.00068839, 0.0
+      ],
+      "grade": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-seven-mile.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\n(\nway[\"highway\"](24.67,-81.25,24.72,-81.10);\nway[\"abandoned:highway\"](24.67,-81.25,24.72,-81.10);\nway[\"bridge:name\"](24.67,-81.25,24.72,-81.10);\n);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:49:35Z",
+        "sha256": "2995b2dbe1b8656ef2575d91ce39c8f9cd75df1081c2b9b0ca1d14b581594ee9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 609 points in 1 request(s) (lon, lat WGS84, sha256 8e1a61c197426a59), bilinear (line us1)",
+        "retrievedAt": "2026-10-04T22:57:56Z",
+        "sha256": "355aea33d93f583e2581110febef15a0b471a0e01e5cf04337bf9cd665987ff3"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 532 points in 1 request(s) (lon, lat WGS84, sha256 92bd739b98b00f3a), bilinear (line old)",
+        "retrievedAt": "2026-10-04T22:58:07Z",
+        "sha256": "9dd625b7d8394819e11a7c7044fd1482145319222d10f905a2f670668d8b880b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Seven Mile Bridge way paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.1 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-seven-mile.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

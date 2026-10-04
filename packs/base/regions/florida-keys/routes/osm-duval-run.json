@@ -1,0 +1,58 @@
+{
+  "type": "route",
+  "id": "osm-duval-run",
+  "name": "Duval Street",
+  "network": "osm-keys-duval",
+  "start": {
+    "road": "osm-duval-whitehead",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-duval-street",
+    "s": 1740.8157
+  },
+  "mainPath": ["osm-duval-whitehead", "osm-duval-street"],
+  "allowedRoads": ["osm-duval-whitehead", "osm-duval-street"],
+  "checkpoints": [],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (run W-S; interview, 2026-10-02: map-based networks): the race-setup picker offers it in its region, and the career's events sit on its roads.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-04",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-keys-duval.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street|pedestrian|service)$\"](24.543,-81.812,24.564,-81.790);\nout tags geom;",
+          "retrievedAt": "2026-10-04T23:05:49Z",
+          "sha256": "3b967c44781023552d9b182806588a8a87cdf81c47a7d3fdadec90bb210a596c"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 179 points in 1 request(s) (lon, lat WGS84, sha256 84fa596de18bc9d9), bilinear (line oldtown)",
+          "retrievedAt": "2026-10-04T23:07:04Z",
+          "sha256": "80286274f0c04682dd97ef2292088c426c4c89dfd6470ae36c0aa96f1b59e8bf"
+        }
+      ]
+    }
+  }
+}

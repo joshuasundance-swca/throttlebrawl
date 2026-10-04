@@ -4,7 +4,7 @@
   "name": "The Keys",
   "chapter": 1,
   "blurb": "One road, too many bridges, and a deputy who has seen everything twice.",
-  "networks": ["keys-m1", "osm-keys-key-west"],
+  "networks": ["keys-m1", "osm-keys-key-west", "osm-keys-duval", "osm-keys-seven-mile"],
   "timeOfDayOptions": [{ "id": "golden-hour", "lighting": "keys-golden", "palette": { "sky": "#f6b26b" } }],
   "palette": { "water": "#19b5b0", "road": "#44474d", "accent": "#f2c14e", "sky": "#8fd3f0" },
   "traffic": {

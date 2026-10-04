@@ -1,0 +1,100 @@
+{
+  "type": "road-network",
+  "id": "osm-keys-duval",
+  "name": "Key West Old Town: Whitehead Street, the Southernmost Point and Duval Street (OSM network bake)",
+  "region": "florida-keys",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 24.5535,
+    "originLonDeg": -81.8015,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": ["osm-duval-whitehead", "osm-duval-street"],
+  "junctions": [
+    {
+      "id": "osm-keys-duval-j0",
+      "x": -487.095,
+      "y": 1.0,
+      "z": -537.3624,
+      "ends": [
+        {
+          "road": "osm-duval-whitehead",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-duval-j1",
+      "x": 501.674,
+      "y": 1.0,
+      "z": 654.91,
+      "ends": [
+        {
+          "road": "osm-duval-whitehead",
+          "end": "to"
+        },
+        {
+          "road": "osm-duval-street",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-keys-duval-j2",
+      "x": -502.9768,
+      "y": 1.0,
+      "z": -815.4081,
+      "ends": [
+        {
+          "road": "osm-duval-street",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-duval.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street|pedestrian|service)$\"](24.543,-81.812,24.564,-81.790);\nout tags geom;",
+        "retrievedAt": "2026-10-04T23:05:49Z",
+        "sha256": "3b967c44781023552d9b182806588a8a87cdf81c47a7d3fdadec90bb210a596c"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 179 points in 1 request(s) (lon, lat WGS84, sha256 84fa596de18bc9d9), bilinear (line oldtown)",
+        "retrievedAt": "2026-10-04T23:07:04Z",
+        "sha256": "80286274f0c04682dd97ef2292088c426c4c89dfd6470ae36c0aa96f1b59e8bf"
+      }
+    ],
+    "modified": true,
+    "modifications": "1 real Key West street paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.0 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (playtest 3, T9.2; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"). Key West's Old Town at its real size: from Mallory Square south down Whitehead Street past the lighthouse and the Mile 0 marker to the Southernmost Point buoy, left along South Street, then the whole of Duval Street north from the Atlantic to the Gulf, finishing at Front Street beside Mallory Square. Its own frame origin, since it never shares a scene with keys-m1. The buoy, the Mile 0 marker and the Mallory Square pier are landmarks placed from their real positions; the Mile 0 marker stands on the sidewalk, a few metres out from its OSM point on the road's edge."
+  }
+}

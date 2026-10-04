@@ -1,0 +1,374 @@
+{
+  "id": "osm-keys-seven-mile",
+  "name": "The Seven Mile Bridge and the Old Seven Mile Bridge (OSM network bake)",
+  "region": "florida-keys",
+  "crs": {
+    "originLatDeg": 24.7,
+    "originLonDeg": -81.17
+  },
+  "osmQuery": "[out:json][timeout:120];\n(\nway[\"highway\"](24.67,-81.25,24.72,-81.10);\nway[\"abandoned:highway\"](24.67,-81.25,24.72,-81.10);\nway[\"bridge:name\"](24.67,-81.25,24.72,-81.10);\n);\nout tags geom;",
+  "osmExtract": ".cache/osm/keys-seven-mile.json",
+  "outRoot": "packs/base/regions/florida-keys",
+  "waysLabel": "Seven Mile Bridge way",
+  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 3: \"real geometry and length (about 11 km); ramp trucks on repair platforms hop about 30 m between the bridges; the real 80 m missing span is the big jump (a miss = splash, respawn on the highway); rivals and cops stay on the highway\"). The Overseas Highway (US 1) from Knights Key over the 1982 Seven Mile Bridge to Little Duck Key, at its real length, the navigation hump over Moser Channel. The Old Seven Mile Bridge (1909-1912) runs beside it to the north, from its four OSM ways (the trail to Pigeon Key, Pigeon Key to Moser Channel, Moser Channel west, and the path onto Little Duck Key): the old road. A ramp truck on a repair staging hops you onto it near Knights Key and another hops you back near Little Duck Key, where the bridges close to about 20 m; the missing swing span over Moser Channel is the big jump. Bridge decks, the hump, the stagings and the kicker are synthesized; the lines are pinned to the real map at the stagings (closure).",
+  "lines": [
+    {
+      "id": "us1",
+      "pathFrom": {
+        "lat": 24.7080711,
+        "lon": -81.1129338
+      },
+      "pathTo": {
+        "lat": 24.6795169,
+        "lon": -81.2340119
+      },
+      "start": {
+        "lat": 24.7073,
+        "lon": -81.1215
+      },
+      "end": {
+        "lat": 24.6801,
+        "lon": -81.2331
+      },
+      "routeTags": {
+        "ref": "^US 1$"
+      },
+      "realName": "Overseas Highway",
+      "smoothing": {
+        "headingSigmaM": 30
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 60,
+        "minLandM": 1.0,
+        "bridgeDeck": "sea",
+        "deckM": 4.0,
+        "deckRampM": 80,
+        "humpHeightM": 13,
+        "humpLengthM": 600,
+        "humpAt": {
+          "lat": 24.6990242,
+          "lon": -81.1691062
+        }
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "roads": [
+        {
+          "id": "osm-sm-knights-key",
+          "name": "Knights Key",
+          "tags": ["town", "palms", "key-fishing"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 5.5,
+              "d1": 9
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "knights-key-marina",
+              "s0": 120,
+              "s1": 200,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sm-bridge-east",
+          "name": "Seven Mile Bridge",
+          "sampleSpacingM": 6
+        },
+        {
+          "id": "osm-sm-bridge",
+          "name": "Seven Mile Bridge",
+          "sampleSpacingM": 6,
+          "features": [
+            {
+              "kind": "boostPad",
+              "id": "pad-bridge-east-early",
+              "s0": 1500,
+              "s1": 1506,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "sm-pad-east"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-bridge-east-late",
+              "s0": 3000,
+              "s1": 3006,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "sm-pad-east"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-bridge-west-early",
+              "s0": 6600,
+              "s1": 6606,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "sm-pad-west"
+              }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-bridge-west-late",
+              "s0": 8200,
+              "s1": 8206,
+              "d0": 0.5,
+              "d1": 3,
+              "params": {
+                "boostMps": 8,
+                "holdS": 1.5,
+                "slot": "sm-pad-west"
+              }
+            }
+          ]
+        },
+        {
+          "id": "osm-sm-bridge-west",
+          "name": "Seven Mile Bridge",
+          "sampleSpacingM": 6
+        },
+        {
+          "id": "osm-sm-little-duck-key",
+          "name": "Little Duck Key",
+          "tags": ["palms", "beach"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "little-duck-beach",
+              "s0": 200,
+              "s1": 280,
+              "d0": -12.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "pedestrians"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "old",
+      "pathFrom": {
+        "lat": 24.7070685,
+        "lon": -81.1246839
+      },
+      "pathTo": {
+        "lat": 24.6824485,
+        "lon": -81.2284195
+      },
+      "wayFilter": [
+        {
+          "@id": "^(11119801|39107582|39107581|39107118)$"
+        }
+      ],
+      "respectOneway": false,
+      "splitBridgeMinM": 50000,
+      "realName": "Old Seven Mile Bridge",
+      "smoothing": {
+        "headingSigmaM": 30
+      },
+      "elevation": {
+        "sampleEveryM": 20,
+        "lowPassSigmaM": 60,
+        "minLandM": 1.0,
+        "bridgeDeck": "sea",
+        "deckM": 4.0,
+        "deckRampM": 80,
+        "humpHeightM": 0
+      },
+      "crossSection": {
+        "laneWidthM": 4.0,
+        "lanesPerDirection": 1
+      },
+      "splitAt": [
+        {
+          "lat": 24.7011848,
+          "lon": -81.1664212
+        },
+        {
+          "lat": 24.699693,
+          "lon": -81.1714
+        }
+      ],
+      "stitches": [
+        {
+          "id": "pigeon-key-deck",
+          "from": {
+            "lat": 24.7042585,
+            "lon": -81.156163
+          },
+          "to": {
+            "lat": 24.7042107,
+            "lon": -81.156346
+          },
+          "kind": "deck"
+        },
+        {
+          "id": "moser-gap",
+          "from": {
+            "lat": 24.7003378,
+            "lon": -81.1692412
+          },
+          "to": {
+            "lat": 24.700112,
+            "lon": -81.1699901
+          },
+          "trimM": 8,
+          "kicker": {
+            "heightM": 1.6,
+            "lengthM": 16
+          },
+          "params": {
+            "respawn": "main"
+          }
+        },
+        {
+          "id": "little-duck-deck",
+          "from": {
+            "lat": 24.6854828,
+            "lon": -81.21837
+          },
+          "to": {
+            "lat": 24.6854355,
+            "lon": -81.2185292
+          },
+          "kind": "deck"
+        }
+      ],
+      "roads": [
+        {
+          "id": "osm-sm-old-east",
+          "name": "Old Seven Mile Bridge",
+          "deckTags": ["old-bridge"],
+          "sampleSpacingM": 6
+        },
+        {
+          "id": "osm-sm-old-moser",
+          "name": "Moser Channel",
+          "deckTags": ["old-bridge"]
+        },
+        {
+          "id": "osm-sm-old-west",
+          "name": "Old Seven Mile Bridge",
+          "deckTags": ["old-bridge"],
+          "sampleSpacingM": 6
+        }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-sm-old-road",
+      "label": "old-road",
+      "line": "old",
+      "of": "us1",
+      "kind": "alternate",
+      "marked": true,
+      "aiTake": 0,
+      "sign": "OLD ROAD: CLOSED. MOSTLY. Bring momentum.",
+      "leave": {
+        "at": {
+          "lat": 24.7060569,
+          "lon": -81.1303713
+        },
+        "offsetM": 5,
+        "lane": "R1",
+        "zone": {
+          "lengthM": 40,
+          "d0": 4.95,
+          "d1": 8
+        },
+        "synthetic": true,
+        "turnRadiusM": 60,
+        "turnDeg": 20,
+        "straightM": 150,
+        "roadId": "osm-sm-old-road",
+        "tags": ["bridge", "water-open"],
+        "features": [
+          {
+            "kind": "rampTruck",
+            "id": "staging-truck-east",
+            "s0": 10,
+            "s1": 32,
+            "d0": -1.5,
+            "d1": 1.5
+          },
+          {
+            "kind": "gap",
+            "id": "staging-gap-east",
+            "s0": 34,
+            "s1": 64,
+            "d0": -3,
+            "d1": 3
+          }
+        ]
+      },
+      "join": {
+        "at": {
+          "lat": 24.682963,
+          "lon": -81.2260802
+        },
+        "offsetM": 2,
+        "lane": "R1",
+        "synthetic": true,
+        "turnRadiusM": 60,
+        "turnDeg": -7,
+        "straightM": 150,
+        "roadId": "osm-sm-old-road-back",
+        "tags": ["bridge", "water-open"],
+        "features": [
+          {
+            "kind": "rampTruck",
+            "id": "staging-truck-west",
+            "s0": 10,
+            "s1": 32,
+            "d0": -1.5,
+            "d1": 1.5
+          },
+          {
+            "kind": "gap",
+            "id": "staging-gap-west",
+            "s0": 34,
+            "s1": 64,
+            "d0": -3,
+            "d1": 3
+          }
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-seven-mile-run",
+      "name": "Seven Mile Bridge",
+      "line": "us1",
+      "startRoad": "osm-sm-knights-key",
+      "finishRoad": "osm-sm-little-duck-key"
+    }
+  ]
+}

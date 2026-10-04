@@ -1,0 +1,119 @@
+{
+  "type": "route",
+  "id": "osm-seven-mile-run",
+  "name": "Seven Mile Bridge",
+  "network": "osm-keys-seven-mile",
+  "start": {
+    "road": "osm-sm-knights-key",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-sm-little-duck-key",
+    "s": 473.0072
+  },
+  "mainPath": [
+    "osm-sm-knights-key",
+    "osm-sm-bridge-east",
+    "osm-sm-bridge",
+    "osm-sm-bridge-west",
+    "osm-sm-little-duck-key"
+  ],
+  "allowedRoads": [
+    "osm-sm-knights-key",
+    "osm-sm-bridge-east",
+    "osm-keys-seven-mile-old-road-leave",
+    "osm-sm-bridge",
+    "osm-keys-seven-mile-old-road-join",
+    "osm-sm-bridge-west",
+    "osm-sm-little-duck-key",
+    "osm-sm-old-east",
+    "osm-sm-old-moser",
+    "osm-sm-old-west",
+    "osm-keys-seven-mile-old-road-in",
+    "osm-sm-old-road",
+    "osm-sm-old-road-back",
+    "osm-keys-seven-mile-old-road-out"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-sm-bridge-east",
+      "s": 300.0045
+    },
+    {
+      "road": "osm-sm-bridge",
+      "s": 4998.0716
+    },
+    {
+      "road": "osm-sm-bridge-west",
+      "s": 126.0019
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-sm-old-road",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "OLD ROAD: CLOSED. MOSTLY. Bring momentum.",
+      "aiTake": 0.0,
+      "roads": [
+        "osm-keys-seven-mile-old-road-in",
+        "osm-sm-old-road",
+        "osm-sm-old-east",
+        "osm-sm-old-moser",
+        "osm-sm-old-west",
+        "osm-sm-old-road-back",
+        "osm-keys-seven-mile-old-road-out"
+      ]
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (run W-S; interview, 2026-10-02: map-based networks): the race-setup picker offers it in its region, and the career's events sit on its roads.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-04",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-keys-seven-mile.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\n(\nway[\"highway\"](24.67,-81.25,24.72,-81.10);\nway[\"abandoned:highway\"](24.67,-81.25,24.72,-81.10);\nway[\"bridge:name\"](24.67,-81.25,24.72,-81.10);\n);\nout tags geom;",
+          "retrievedAt": "2026-10-04T22:49:35Z",
+          "sha256": "2995b2dbe1b8656ef2575d91ce39c8f9cd75df1081c2b9b0ca1d14b581594ee9"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 609 points in 1 request(s) (lon, lat WGS84, sha256 8e1a61c197426a59), bilinear (line us1)",
+          "retrievedAt": "2026-10-04T22:57:56Z",
+          "sha256": "355aea33d93f583e2581110febef15a0b471a0e01e5cf04337bf9cd665987ff3"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 532 points in 1 request(s) (lon, lat WGS84, sha256 92bd739b98b00f3a), bilinear (line old)",
+          "retrievedAt": "2026-10-04T22:58:07Z",
+          "sha256": "9dd625b7d8394819e11a7c7044fd1482145319222d10f905a2f670668d8b880b"
+        }
+      ]
+    }
+  }
+}
