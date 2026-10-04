@@ -203,20 +203,19 @@ interface Candidate {
   slot: string;
 }
 
-/**
- * Every pad and truck the seed places. Not a truck with no slot off the route's main path: that one
- * is a branch's fixed way in, always there (playtest 3: "the static one could be used to get to
- * shortcuts"; round 3, the Seven Mile's "ramp trucks on repair platforms"), ridden by its own tests.
- */
 function candidates(config: SimConfig): Candidate[] {
   const out: Candidate[] = [];
-  const main = new Set(config.route.mainEdges);
   for (const e of config.road.edges) {
     for (const f of e.features) {
       if (f.kind !== 'boostPad' && f.kind !== 'rampTruck') continue;
       const slot = f.params?.['slot'];
-      if (f.kind === 'rampTruck' && typeof slot !== 'string' && !main.has(e.index)) continue;
-      out.push({ edge: e.index, edgeId: e.id, f, slot: typeof slot === 'string' ? slot : '' });
+      // A pad or truck in no slot is a fixed piece of its road, there in every race (playtest 3, T5.2:
+      // the static ramp trucks of the Pacific Northwest's Mill Yard Cut and San Francisco's Plaza Cut,
+      // and the pad on each cut; T9.2: the Seven Mile's two repair-platform trucks). The seed has no
+      // say in it, so it is no candidate; the cuts' own checks ride them (tools/road/truck-shortcuts.test.ts,
+      // tools/gis/routes-keys-pt3.test.ts).
+      if (typeof slot !== 'string') continue;
+      out.push({ edge: e.index, edgeId: e.id, f, slot });
     }
   }
   return out;

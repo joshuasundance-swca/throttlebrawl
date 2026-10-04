@@ -244,7 +244,16 @@ export interface Seating {
   chestLean: number;
   /** The pelvis's own forward tilt. */
   hipsLean: number;
+  /**
+   * The most upright (or back-leaning) chest the arms still allow: the lean at which the shoulders
+   * are STRETCH_REACH of an arm's length from the grips. A wheelie or a backflip sits back this far
+   * and no further, so the hands stay on the bars. At most `chestLean`.
+   */
+  stretchLean: number;
 }
+
+/** How much of an arm's length the stretched pose may use (the seated one uses 0.88). */
+export const STRETCH_REACH = 0.97;
 
 /**
  * Solves the seated lean: the hips sit on the seat anchor, and the chest leans forward (or back,
@@ -271,5 +280,16 @@ export function seating(rider: RiderFrame, bike: BikeFrame): Seating {
       best = a;
     }
   }
-  return { hips, chestLean: best, hipsLean: best * 0.35 };
+  // Sitting back: walk the lean down from the seated one until the arms are nearly straight.
+  let stretch = best;
+  for (let a = best; a >= -0.9; a -= 0.025) {
+    const hipsLean = a * 0.35;
+    leanForward(hipsLean, qh);
+    const chest = rider.rest.chest.clone().sub(rider.rest.hips).applyQuaternion(qh).add(hips);
+    leanForward(a, q);
+    const sh = shoulderMid.clone().sub(rider.rest.chest).applyQuaternion(q).add(chest);
+    if (sh.distanceTo(barMid) > STRETCH_REACH * (reach / 0.88)) break;
+    stretch = a;
+  }
+  return { hips, chestLean: best, hipsLean: best * 0.35, stretchLean: stretch };
 }

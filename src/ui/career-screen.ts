@@ -14,7 +14,27 @@ import type {
   PosterView,
   RivalText,
 } from '../career';
-import { gigNode, paperNode, posterNode, SHOW_CSS, textsNode, toDom, type GigCard } from './career-show';
+import {
+  bikeNotes,
+  gigNode,
+  ledgerNode,
+  mapLegendNode,
+  money,
+  nodeTag,
+  paperNode,
+  posterNode,
+  regionLockNode,
+  regionTabLabel,
+  seasonBadge,
+  seasonCardNode,
+  shutRegionView,
+  SHOW_CSS,
+  tallyLine,
+  textsNode,
+  tierHead,
+  toDom,
+  type GigCard,
+} from './career-show';
 
 export interface CareerCallbacks {
   onRegion(regionId: string): void;
@@ -54,6 +74,11 @@ export interface GarageBikeRow {
   current: boolean;
   secret: boolean;
   reason: string;
+  /** Its place in the ladder of step-up bikes (1 = the starting bike), and the ladder's length. */
+  step?: number;
+  steps?: number;
+  /** What one crash costs in repairs on this bike. */
+  repairCash?: number;
 }
 
 export interface GaragePaintRow {
@@ -76,6 +101,8 @@ export interface GarageBackupRow {
 
 export interface GarageView {
   cash: number;
+  /** About what one race pays now (the highest open tier's purse), or absent when unknown. */
+  racePay?: number;
   bikes: GarageBikeRow[];
   paints: GaragePaintRow[];
   /** The paint on the bike ridden now, or null. */
@@ -154,13 +181,12 @@ export const CAREER_CSS = `
 .career-wallet .swatch { display: inline-block; width: 12px; height: 12px; border: 2px solid #111; margin-right: 4px;
   vertical-align: middle; }
 .career-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.career-tabs .small { white-space: nowrap; flex: 0 0 auto; font-size: 13px; padding: 4px 10px; }
+.career-tabs .small { white-space: normal; max-width: 100%; text-align: center; flex: 0 1 auto; font-size: 13px; padding: 4px 10px; }
 .career-tabs .small[aria-selected='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a; }
 .career-head { text-align: left; }
 .career-head .title { font-size: 22px; display: inline-block; }
 .career-season-card { background: #0006; border: 2px solid #f5c542; padding: 8px 10px; display: flex; flex-direction: column;
   gap: 6px; align-items: stretch; margin-top: 6px; }
-.career-season-card .title { font-size: 18px; color: #f5c542; }
 .career-tally { font: 600 13px ui-monospace, monospace; color: #f2ead8; margin-top: 4px; }
 .career-maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .career-map { flex: 0 0 auto; margin: 0; background: #0b1a24; border: 2px solid #111; box-shadow: 3px 3px 0 #000; }
@@ -200,6 +226,7 @@ export const CAREER_CSS = `
 .career-garage h3 { margin: 6px 0; font: 900 14px ui-monospace, monospace; color: #f2ead8; text-transform: uppercase; }
 .garage-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #0006; padding: 6px 8px;
   border: 1px dashed #fff4; font: 600 14px system-ui, sans-serif; text-align: left; }
+.garage-row .what { min-width: 0; overflow-wrap: anywhere; }
 .garage-row .what small { display: block; font: 500 12px ui-monospace, monospace; opacity: 0.85; }
 .garage-row .swatch { display: inline-block; width: 18px; height: 18px; border: 2px solid #111; vertical-align: middle; margin-right: 6px; }
 .garage-row.current { outline: 2px solid #f5c542; }
@@ -282,7 +309,6 @@ function svg<K extends keyof SVGElementTagNameMap>(
   return node;
 }
 
-const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const safeId = (s: string) => s.replace(/[^a-z0-9-]/gi, '-');
 const STATE_WORD: Readonly<Record<string, string>> = { won: 'WON', open: 'OPEN', locked: 'LOCKED' };
 
@@ -313,6 +339,8 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
   }
   const radius = scale * 0.028;
   for (const p of panel.pins) {
+    // A circle is an event, a level square a tier boss, a diamond the region boss (the legend says
+    // so: a boss must read without its colour).
     const pin = p.boss
       ? svg('rect', {
           x: p.x - radius,
@@ -321,8 +349,18 @@ export function mapFigure(panel: MapPanel, onPin: (id: string) => void): HTMLEle
           height: radius * 2,
           transform: `rotate(45 ${p.x} ${p.z})`,
         })
-      : svg('circle', { cx: p.x, cy: p.z, r: radius });
-    pin.setAttribute('class', `pin ${p.state}${p.suggested ? ' suggested' : ''}`);
+      : p.tierBoss
+        ? svg('rect', {
+            x: p.x - radius * 0.9,
+            y: p.z - radius * 0.9,
+            width: radius * 1.8,
+            height: radius * 1.8,
+          })
+        : svg('circle', { cx: p.x, cy: p.z, r: radius });
+    pin.setAttribute(
+      'class',
+      `pin ${p.state}${p.tierBoss ? ' tierboss' : ''}${p.boss ? ' regionboss' : ''}${p.suggested ? ' suggested' : ''}`,
+    );
     pin.setAttribute('vector-effect', 'non-scaling-stroke');
     pin.dataset['node'] = p.id;
     pin.addEventListener('click', () => onPin(p.id));
@@ -441,7 +479,10 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     // The card sits under the map: bring it into view when a card lower down opened it.
     if (!map.hidden) detail.scrollIntoView({ block: 'nearest' });
   };
-  const drawMap = (v: CareerView) => {
+  const drawMap = (raw: CareerView) => {
+    // A shut region (the regions open in order) shows every event locked, whatever its own tiers say.
+    const v = shutRegionView(raw);
+    view = v;
     const swatch = el('span', { className: 'swatch' });
     if (v.bike.paint) swatch.style.background = v.bike.paint;
     wallet.replaceChildren(
@@ -450,49 +491,52 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     );
     tabs.replaceChildren(
       ...v.regions.map((r) => {
-        const b = button(
-          `career-region-${safeId(r.id)}`,
-          'small',
-          `${r.name} ${r.won}/${r.nodes}${r.finaleBeaten ? ' ★' : ''}`,
-          () => cb.onRegion(r.id),
+        const b = button(`career-region-${safeId(r.id)}`, 'small', regionTabLabel(r), () =>
+          cb.onRegion(r.id),
         );
         b.setAttribute('role', 'tab');
         b.setAttribute('aria-selected', String(r.id === v.region.id));
+        if (!r.open) {
+          b.classList.add('career-tab-locked');
+          b.dataset['locked'] = 'true';
+          b.title = r.lockReason;
+        }
         return b;
       }),
     );
-    const t = v.region.tally;
     const card = v.seasonCard;
+    const lock = regionLockNode(v);
     head.replaceChildren(
-      el('div', { className: 'title', textContent: v.region.careerName }),
-      el('div', {
-        className: 'career-tally',
-        textContent:
-          `${v.season.n > 1 ? `${v.season.label} · ` : ''}` +
-          `${v.region.finaleBeaten ? 'Free play' : v.region.tierName} · won ${t.won}/${t.nodes} · ` +
-          `roads claimed ${t.claimed} · secrets ${t.secretsFound}/${t.secrets}`,
-      }),
+      el(
+        'div',
+        { className: 'career-title-row' },
+        el('div', { className: 'title', textContent: v.region.careerName }),
+        el('span', { className: 'career-badge', id: 'career-season', textContent: seasonBadge(v) }),
+      ),
+      el('div', { className: 'career-tally', textContent: tallyLine(raw) }),
+      ...(lock ? [toDom(lock)] : []),
       // Every region boss of this season has fallen: the next season is one tap away (it resets the
       // maps, so it never starts by itself).
       ...(card
         ? [
-            el(
-              'div',
-              { className: 'career-season-card', id: 'career-season-card' },
-              el('div', { className: 'title', textContent: card.title }),
-              ...card.lines.map((line) => el('div', { className: 'career-news', textContent: line })),
-              button('career-start-season', 'big', `Start Season ${card.season}`, () => cb.onStartSeason()),
-            ),
+            (() => {
+              const box = toDom(seasonCardNode(card));
+              box.append(
+                button('career-start-season', 'big', `Start Season ${card.season}`, () => cb.onStartSeason()),
+              );
+              return box;
+            })(),
           ]
         : []),
     );
     maps.replaceChildren(
       ...(v.map.length
-        ? v.map.map((p) => mapFigure(p, (id) => showCard(id)))
+        ? [...v.map.map((p) => mapFigure(p, (id) => showCard(id))), toDom(mapLegendNode())]
         : [el('div', { className: 'career-loading', textContent: 'The map draws once the roads are in.' })]),
     );
     tiers.replaceChildren(
       ...v.tiers.map((tier) => {
+        const th = tierHead(tier);
         const box = el(
           'section',
           { className: `career-tier${tier.open ? '' : ' locked'}` },
@@ -500,24 +544,22 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
             'h3',
             {},
             el('span', { textContent: tier.name }),
-            el('span', {
-              textContent: tier.open
-                ? tier.requiredWins
-                  ? `${Math.min(tier.wins, tier.requiredWins)}/${tier.requiredWins} wins`
-                  : ''
-                : 'locked',
-            }),
+            el('span', { className: 'tier-status', textContent: th.status }),
           ),
+          ...(th.why ? [el('div', { className: 'tier-why', textContent: th.why })] : []),
         );
         const grid = el('div', { className: 'career-nodes' });
         for (const n of tier.nodes) {
           const b = button(`career-node-${safeId(n.id)}`, 'small', '', () => showCard(n.id));
           b.classList.add('career-node', n.state);
           if (n.boss) b.classList.add('boss');
+          if (n.tierBoss) b.classList.add('tierboss');
           if (n.id === v.suggested) b.classList.add('suggested');
           b.dataset['node'] = n.id;
           b.dataset['state'] = n.state;
+          const tag = nodeTag(n);
           b.append(
+            ...(tag ? [el('span', { className: 'node-tag', textContent: tag })] : []),
             el('span', { className: 'node-name', textContent: n.name }),
             el('span', {
               className: 'node-kind',
@@ -549,13 +591,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           'div',
           { className: 'what' },
           `${b.name}${b.secret ? ' (secret)' : ''}`,
-          el('small', {
-            textContent: b.current
-              ? `${b.speed} · riding it`
-              : b.state === 'locked'
-                ? `${b.speed} · ${b.reason}`
-                : b.speed,
-          }),
+          ...bikeNotes(b, g.cash, g.racePay).map((line) => el('small', { textContent: line })),
         ),
       );
       if (action) row.append(action);
@@ -628,6 +664,15 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
     );
     garageBox.replaceChildren(
       el('h3', { textContent: `Bikes (${units})` }),
+      ...(g.racePay
+        ? [
+            el('div', {
+              className: 'garage-pay',
+              id: 'garage-pay',
+              textContent: `You have ${money(g.cash)}. A race pays about ${money(g.racePay)} at your tier.`,
+            }),
+          ]
+        : []),
       ...bikeRows,
       el('h3', { textContent: 'Paint' }),
       el('div', {
@@ -663,14 +708,18 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           }),
         ),
       ),
-      el('h3', { textContent: 'New career' }),
-      el('div', {
-        className: 'career-news',
-        textContent:
-          'Start over with a fresh garage and an empty map. Your old career is kept as a backup code, ' +
-          'and loading it brings it back.',
-      }),
-      el('div', { className: 'row' }, newCareer),
+      el(
+        'div',
+        { className: 'career-newcareer', id: 'career-newcareer' },
+        el('h3', { textContent: 'New career' }),
+        el('div', {
+          className: 'career-news',
+          textContent:
+            'Start over with a fresh garage and an empty map. Your old career is kept as a backup code, ' +
+            'and loading it brings it back.',
+        }),
+        el('div', { className: 'row' }, newCareer),
+      ),
       ...(keptRows.length > 0 ? [el('h3', { textContent: 'Kept careers' }), ...keptRows] : []),
     );
   };
@@ -720,21 +769,6 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           el('span', { textContent: `${o.required ? '' : 'Bonus: '}${o.label}` }),
         ),
       );
-      const ledger = r.lines.map((l) =>
-        el('li', {}, el('span', { textContent: l.label }), el('span', { textContent: money(l.cash) })),
-      );
-      if (r.fine > 0)
-        ledger.push(
-          el('li', {}, el('span', { textContent: 'Fine' }), el('span', { textContent: `-${money(r.fine)}` })),
-        );
-      ledger.push(
-        el(
-          'li',
-          { className: 'total' },
-          el('span', { textContent: 'Cash' }),
-          el('span', { textContent: money(r.cashAfter) }),
-        ),
-      );
       const buttons = [
         button('career-results-map', 'big', 'Map', () => cb.onMap()),
         button('career-results-retry', 'small', 'Race it again', () => cb.onRetry()),
@@ -749,7 +783,7 @@ export function createCareerScreens(cb: CareerCallbacks, button: ButtonFn): Care
           el('div', { className: 'career-tally', textContent: r.eventName }),
           ...(r.paper ? [toDom(paperNode(r.paper))] : []),
           el('ul', { className: 'career-results-list', id: 'career-results-objectives' }, ...items),
-          el('ul', { className: 'career-results-list', id: 'career-results-cash' }, ...ledger),
+          toDom(ledgerNode(r.lines, r.fine, r.cashAfter)),
           ...r.news.map((line) => el('div', { className: 'career-news', textContent: line })),
           ...[r.texts ? textsNode(r.texts) : null].flatMap((t) => (t ? [toDom(t)] : [])),
           el('div', { className: 'row' }, ...buttons),

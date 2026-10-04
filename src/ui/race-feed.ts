@@ -17,6 +17,11 @@ const STYLE_WORDS: Readonly<Record<string, string>> = {
   airtime: 'AIRTIME',
   takedownCombo: 'COMBO',
   weaponSteal: 'STOLEN',
+  // Playtest 3's moves (T6.3): a clean wheelie pays by the second, a drift chain pays when it banks.
+  // Without these two a paid move never reached the ticker (the wave A live check: 5 paid wheelies
+  // and 5 drift banks, 0 ticker lines). race-feed.test.ts holds every sim style kind to a word.
+  wheelie: 'WHEELIE',
+  drift: 'DRIFT',
 };
 
 /** A landed trick's word (playtest 2, 2026-10-02: flips), by `data.trick`. */
@@ -117,15 +122,34 @@ export function styleText(e: SimEvent): string | null {
  * and whether it has lasted long enough to score.
  */
 export interface MeterRun {
-  kind: 'oncoming' | 'airtime';
+  kind: 'oncoming' | 'airtime' | 'drift';
   seconds: number;
   cash: number;
   qualifies: boolean;
+  /** A drift's chain length so far (ui/moves-meter.ts reads it from `SimSnapshot.moves`). */
+  chain?: number;
 }
 
-/** The live meter's words: the kind and its seconds, such as `ONCOMING 4.2s`. */
+/**
+ * The cash multiplier of a drift chain's `chain`th drift: ×1, ×1.5, ×2, ×2.5, then ×3 at most. It is
+ * the sim's `driftChainMult` (sim/riders/drift.ts), kept by hand because ui reaches the sim only
+ * through sim/api; tests/sim/moves-meter-pins.test.ts holds the two together.
+ */
+export function driftMultiplier(chain: number): number {
+  return Math.min(3, 1 + 0.5 * Math.max(0, chain - 1));
+}
+
+/**
+ * The live meter's words: the kind and its seconds, such as `ONCOMING 4.2s`; a drift chain has no
+ * clock, its words are the chain's multiplier once it chains, such as `DRIFT ×2`.
+ */
 export function meterLabel(run: MeterRun): string {
-  return `${STYLE_WORDS[run.kind] ?? run.kind.toUpperCase()} ${run.seconds.toFixed(1)}s`;
+  const word = STYLE_WORDS[run.kind] ?? run.kind.toUpperCase();
+  if (run.kind === 'drift') {
+    const mult = driftMultiplier(run.chain ?? 1);
+    return mult > 1 ? `${word} ×${mult}` : word;
+  }
+  return `${word} ${run.seconds.toFixed(1)}s`;
 }
 
 /** The live meter's cash, such as `+$212`. */

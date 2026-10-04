@@ -10,9 +10,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
+  createRouteProgress,
   resolveVerge,
   type BakedNetwork,
   type BakedRoad,
+  type BakedRoute,
   type RoadNetwork,
 } from '../road';
 import {
@@ -39,6 +41,10 @@ const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/net
   import: 'default',
 });
 const roadFiles = import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.json', {
+  eager: true,
+  import: 'default',
+});
+const routeFiles = import.meta.glob<BakedRoute>('../../packs/region-sf/regions/san-francisco/routes/*.json', {
   eager: true,
   import: 'default',
 });
@@ -147,7 +153,10 @@ describe('San Francisco downtown: what stands along the avenue', () => {
     expect(variants).toContain(DT.screenSeries);
     const hq = byRule('hq');
     expect(hq.length).toBe(1);
-    const last = dt.road.edges[dt.road.edges.length - 1]!;
+    // On the avenue's last road, the route's finish road (the road list ends with the Plaza Cut's own
+    // roads since playtest 3, T5.2, so it is not the last edge).
+    const route = Object.values(routeFiles).find((r) => r.id === 'sf-downtown-run')!;
+    const last = dt.road.edges[createRouteProgress(dt.road, route).finish.edge]!;
     expect(hq[0]!.edge).toBe(last.index);
     // Within the last 100 m before the finish (40 m short of the end).
     expect(last.length - hq[0]!.s).toBeLessThan(140);

@@ -10,7 +10,14 @@
     "sf-dt-inference-ave",
     "sf-dt-cable-crossing",
     "sf-dt-burn-rate-row",
-    "sf-dt-campus-way"
+    "sf-dt-campus-way",
+    "c-dt-plaza-split",
+    "sf-dt-campus-yard",
+    "c-dt-plaza-merge",
+    "sf-dt-campus-end",
+    "c-dt-plaza-in",
+    "sf-dt-plaza-cut",
+    "c-dt-plaza-out"
   ],
   "junctions": [
     {
@@ -72,10 +79,99 @@
     },
     {
       "id": "j-sf-downtown-5",
+      "x": -2419.1537,
+      "y": 1,
+      "z": 2368.897,
+      "ends": [
+        { "road": "sf-dt-campus-way", "end": "to" },
+        { "road": "sf-dt-campus-yard", "end": "from" },
+        { "road": "sf-dt-plaza-cut", "end": "from" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-dt-plaza-split-l2",
+          "road": "c-dt-plaza-split",
+          "from": { "road": "sf-dt-campus-way", "end": "to", "lane": "L2" },
+          "to": { "road": "sf-dt-campus-yard", "end": "from", "lane": "L2" }
+        },
+        {
+          "id": "cx-c-dt-plaza-split-l1",
+          "road": "c-dt-plaza-split",
+          "from": { "road": "sf-dt-campus-way", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-dt-campus-yard", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-dt-plaza-split-r1",
+          "road": "c-dt-plaza-split",
+          "from": { "road": "sf-dt-campus-way", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-dt-campus-yard", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-dt-plaza-split-r2",
+          "road": "c-dt-plaza-split",
+          "from": { "road": "sf-dt-campus-way", "end": "to", "lane": "R2" },
+          "to": { "road": "sf-dt-campus-yard", "end": "from", "lane": "R2" }
+        },
+        {
+          "id": "cx-c-dt-plaza-in",
+          "road": "c-dt-plaza-in",
+          "from": { "road": "sf-dt-campus-way", "end": "to", "lane": "R2" },
+          "to": { "road": "sf-dt-plaza-cut", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 640, "s1": 665, "d0": 9.5, "d1": 16.5 }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-6",
+      "x": -2578.4809,
+      "y": 1,
+      "z": 2534.7692,
+      "ends": [
+        { "road": "sf-dt-campus-yard", "end": "to" },
+        { "road": "sf-dt-campus-end", "end": "from" },
+        { "road": "sf-dt-plaza-cut", "end": "to" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-dt-plaza-merge-l2",
+          "road": "c-dt-plaza-merge",
+          "from": { "road": "sf-dt-campus-yard", "end": "to", "lane": "L2" },
+          "to": { "road": "sf-dt-campus-end", "end": "from", "lane": "L2" }
+        },
+        {
+          "id": "cx-c-dt-plaza-merge-l1",
+          "road": "c-dt-plaza-merge",
+          "from": { "road": "sf-dt-campus-yard", "end": "to", "lane": "L1" },
+          "to": { "road": "sf-dt-campus-end", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-dt-plaza-merge-r1",
+          "road": "c-dt-plaza-merge",
+          "from": { "road": "sf-dt-campus-yard", "end": "to", "lane": "R1" },
+          "to": { "road": "sf-dt-campus-end", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-dt-plaza-merge-r2",
+          "road": "c-dt-plaza-merge",
+          "from": { "road": "sf-dt-campus-yard", "end": "to", "lane": "R2" },
+          "to": { "road": "sf-dt-campus-end", "end": "from", "lane": "R2" }
+        },
+        {
+          "id": "cx-c-dt-plaza-out",
+          "road": "c-dt-plaza-out",
+          "from": { "road": "sf-dt-plaza-cut", "end": "to", "lane": "S1" },
+          "to": { "road": "sf-dt-campus-end", "end": "from", "lane": "R2" }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-sf-downtown-7",
       "x": -2637.2454,
       "y": 1,
       "z": 2594.7904,
-      "ends": [{ "road": "sf-dt-campus-way", "end": "to" }],
+      "ends": [{ "road": "sf-dt-campus-end", "end": "to" }],
       "connectors": [],
       "control": "none"
     }

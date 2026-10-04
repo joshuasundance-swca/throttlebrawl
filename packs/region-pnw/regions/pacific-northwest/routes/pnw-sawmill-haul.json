@@ -3,7 +3,7 @@
   "id": "pnw-sawmill-haul",
   "network": "pnw-c1",
   "start": { "road": "pnw-ferry-landing", "s": 40, "dir": 1 },
-  "finish": { "road": "pnw-sawmill-flats", "s": 963.5 },
+  "finish": { "road": "pnw-sawmill-end", "s": 63.5 },
   "mainPath": [
     "pnw-ferry-landing",
     "pnw-switchback-grade",
@@ -11,7 +11,9 @@
     "pnw-trestle",
     "pnw-espresso-row",
     "pnw-fogline-ridge",
-    "pnw-sawmill-flats"
+    "pnw-sawmill-flats",
+    "pnw-sawmill-yard",
+    "pnw-sawmill-end"
   ],
   "allowedRoads": [
     "pnw-ferry-landing",
@@ -23,9 +25,16 @@
     "pnw-espresso-row",
     "pnw-fogline-ridge",
     "pnw-sawmill-flats",
+    "c-pnw-mill-split",
+    "pnw-sawmill-yard",
+    "c-pnw-mill-merge",
+    "pnw-sawmill-end",
     "c-pnw-spur-in",
     "pnw-logging-spur",
-    "c-pnw-spur-out"
+    "c-pnw-spur-out",
+    "c-pnw-mill-in",
+    "pnw-mill-yard-cut",
+    "c-pnw-mill-out"
   ],
   "checkpoints": [
     { "road": "pnw-cedar-hollow", "s": 300 },
@@ -42,6 +51,14 @@
       "marked": true,
       "sign": "LOGGING SPUR: KEEP RIGHT. Shorter by a hill. Longer by a log truck.",
       "roads": ["c-pnw-spur-in", "pnw-logging-spur", "c-pnw-spur-out"]
+    },
+    {
+      "id": "pnw-mill-yard-cut",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "MILL YARD CUT-THROUGH. Authorised vehicles only. Airborne is authorised.",
+      "aiTake": 0,
+      "roads": ["c-pnw-mill-in", "pnw-mill-yard-cut", "c-pnw-mill-out"]
     }
   ],
   "closed": false,
