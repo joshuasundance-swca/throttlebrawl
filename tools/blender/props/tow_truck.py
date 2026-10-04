@@ -13,10 +13,15 @@ z = metres up. The ramp foot sits at the origin; the truck runs forward from the
 
 import math
 import sys
+from pathlib import Path
 
 import bmesh
 import bpy
 from mathutils import Vector
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _winding import prepare_winding
 
 # ---------------------------------------------------------------- tuning
 RAMP_RUN = 11.5            # horizontal run of ramp_surface (m)
@@ -367,6 +372,7 @@ def main():
             ob.parent = root
             ob.location = P(sx * WHEEL_X, fw, WHEEL_R)
 
+    prepare_winding()
     bpy.ops.export_scene.gltf(
         filepath=out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_extras=True, export_attributes=True,

@@ -135,7 +135,7 @@ def seagrape_tree(mb, rng):
 def traps(mb, rng):
     """Lobster traps stacked by a shack: wooden crates, a buoy hung on the stack."""
     w, d, h = 0.6, 0.45, 0.42
-    for i, (x, z) in enumerate(((-0.62, 0.0), (0.0, 0.0), (0.62, 0.0), (-0.31, h), (0.31, h), (0.0, 2 * h))):
+    for _i, (x, z) in enumerate(((-0.62, 0.0), (0.0, 0.0), (0.62, 0.0), (-0.31, h), (0.31, h), (0.0, 2 * h))):
         mb.box(-d, d, x - w / 2 + 0.02, x + w / 2 - 0.02, z, z + h - 0.02, "wood")
     for x, mat in ((-0.95, "car_red"), (0.95, "sign_face")):
         mb.cyl((x, 0.0, 0.55), "z", 0.13, 0.22, 6, mat)

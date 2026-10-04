@@ -15,10 +15,15 @@ rail, so the rods no longer widen the boat (the trial's rods made it 3.60 m wide
 
 import math
 import sys
+from pathlib import Path
 
 import bmesh
 import bpy
 from mathutils import Vector
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _winding import prepare_winding
 
 # ---------------------------------------------------------------- tuning
 # Hull stations, stern to bow:
@@ -342,6 +347,7 @@ def main():
         e.parent = root
         e.location = loc
 
+    prepare_winding()
     bpy.ops.export_scene.gltf(
         filepath=out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_extras=True, export_attributes=True,
