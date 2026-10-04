@@ -20,8 +20,8 @@
     "paintOptions": ["#f2c14e", "#d9d9d9", "#e8743b"]
   },
   "meta": {
-    "status": "live",
-    "notes": "The moving ramp truck's carrier (playtest 3: \"the ramp trucks could be in motion\"): it drives ahead in the outermost lane at 20 m/s, and once a racer is 200 m behind it its ramp comes down and its whole box is a jump (sim/modifiers, `moving-ramp`). Until then it is an ordinary big vehicle: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event places it. Exactly a tow truck's size, 7.5 m, because the rival AI sizes every vehicle by the largest in the race and this must never be larger than the region's own largest vehicle.",
+    "status": "draft",
+    "notes": "DRAFT until the traffic render draws the carrier's lowered ramp (playtest 3, T4.3), with its three moving-ramp modifiers. The moving ramp truck's carrier (playtest 3: \"the ramp trucks could be in motion\"): it drives ahead in the outermost lane at 20 m/s, and once a racer is 200 m behind it its ramp comes down and its whole box is a jump (sim/modifiers, `moving-ramp`). Until then it is an ordinary big vehicle: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event places it. Exactly a tow truck's size, 7.5 m, because the rival AI sizes every vehicle by the largest in the race and this must never be larger than the region's own largest vehicle.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

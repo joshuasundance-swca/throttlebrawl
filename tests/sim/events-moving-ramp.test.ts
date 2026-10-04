@@ -27,8 +27,12 @@ import { MOVING_DECKS_KEY, type SimMovingDecks } from '../../src/sim/types';
 import type { Mover, World } from '../../src/sim/world';
 import { ISOLATED } from './batch';
 
+// With the drafts on, as dev and staging builds carry them: the carriers are draft in the packs until
+// the traffic render draws their lowered ramp (a release build leaves them out), and these tests are
+// about the sim, not about what a release build carries.
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
+  { includeDrafts: true },
 );
 const STREAMS = createStreamCache();
 const ROAD_EVENTS_ONLY = { ...ISOLATED, 'modifiers.setPieceChance': 1 };
