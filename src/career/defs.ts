@@ -4,7 +4,7 @@
 // pack that holds it, tiers become indexes, and the fields the schema keeps loose (paints, the
 // ending's lines, a secret's name and cash) are read defensively. DOM-free.
 import { packOf, type Career, type ContentRegistry } from '../content';
-import { GRUDGE_RULE_IDS } from '../core';
+import { GRUDGE_RULE_IDS, TIER_RIVAL_BIKES, type TierRivalBike } from '../core';
 import { OBJECTIVE_KINDS, type ObjectiveSpec, type RaceRules } from './race-log';
 
 /** A reference qualified by the pack that holds it (a bare id names an entry of that pack). */
@@ -12,11 +12,36 @@ export const qualify = (pack: string, ref: string): string => (ref.includes(':')
 /** The id without its pack (`base:florida-keys` -> `florida-keys`). */
 export const bare = (ref: string): string => ref.slice(ref.indexOf(':') + 1);
 
+/**
+ * A tier's own field level (the career file's `tiers[].field`, playtest 3): each part overrides the
+ * career's default for that tier (level.ts); absent parts keep it.
+ */
+export interface TierField {
+  paceShare?: number;
+  aggression?: number;
+  signatureGap?: number;
+  health?: number;
+  power?: number;
+  rivalBike?: TierRivalBike;
+}
+
 export interface CareerTier {
   id: string;
   name: string;
-  /** Wins in this tier that open the next one. */
+  /**
+   * Wins in this tier that open the next one, or, when the tier has a `boss`, that open the boss
+   * (the boss's own win is not one of them).
+   */
   requiredWins: number;
+  /**
+   * The tier's boss, a node of this tier (playtest 3: "the boss of each tier must be beaten first"):
+   * beating it opens the next tier. Absent on a map from before playtest 3, where wins alone do.
+   */
+  boss?: string;
+  /** Who the boss is, in plain words (the grudge's rival, else its event's name). */
+  bossName?: string;
+  /** The tier's field level overrides; absent means the career's defaults. */
+  field?: TierField;
 }
 
 export interface CareerNode {
@@ -72,6 +97,8 @@ export interface CareerPaint {
   hex: string;
   priceCash: number;
   unlockTier: number;
+  /** The first season it is for sale in (playtest 3's season paints); 1 when the file names none. */
+  unlockSeason?: number;
 }
 
 export interface CareerUnlock {
@@ -110,6 +137,8 @@ export interface CareerDef {
   tiers: readonly CareerTier[];
   nodes: readonly CareerNode[];
   boss: string;
+  /** Who the region boss is, in plain words ("Mother Rust"): the line that says what opens the next region. */
+  bossName?: string;
   secrets: readonly CareerSecret[];
   shop: readonly CareerShopItem[];
   paints: readonly CareerPaint[];
@@ -129,6 +158,38 @@ const num = (v: unknown, fallback: number): number =>
 const HEX = /^#[0-9a-f]{6}$/i;
 const SECRET_KINDS = ['shortcut', 'road', 'station', 'stash'] as const;
 
+/**
+ * Who a boss node is, in plain words: its grudge's rival ("Kevin from Accounting"), else its event's
+ * name, else the node id.
+ */
+function bossNameOf(reg: ContentRegistry, nodes: readonly CareerNode[], id: string): string {
+  const node = nodes.find((n) => n.id === id);
+  if (!node) return id;
+  const event = reg.events[node.event];
+  const rival = str(obj(event?.rules)['rival']);
+  const rider = rival ? obj(reg.riders[qualify(packOf(node.event), rival)]) : {};
+  return str(rider['name']) || str(event?.name) || id;
+}
+
+/** A tier's `field` block, read defensively (a bad part is dropped), or null when it has none. */
+function tierField(v: unknown): TierField | null {
+  const raw = obj(v);
+  const out: TierField = {};
+  const pos = (k: string): number | undefined => {
+    const x = raw[k];
+    return typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : undefined;
+  };
+  const share = pos('paceShare');
+  if (share !== undefined) out.paceShare = Math.min(1, share);
+  for (const k of ['aggression', 'signatureGap', 'health', 'power'] as const) {
+    const x = pos(k);
+    if (x !== undefined) out[k] = x;
+  }
+  const bike = TIER_RIVAL_BIKES.find((b) => b === raw['rivalBike']);
+  if (bike) out.rivalBike = bike;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** One career file, resolved. `key` is its registry key. */
 export function resolveCareer(reg: ContentRegistry, key: string): CareerDef {
   const c = reg.careers[key];
@@ -141,16 +202,8 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
   const loose = c as unknown as Json;
   const regionKey = qualify(pack, c.region);
   const region = obj(reg.regions[regionKey]);
-  const tiers: CareerTier[] = c.tiers.map((t) => ({
-    id: t.id,
-    name: t.name ?? t.id,
-    requiredWins: t.advance.requiredWins,
-  }));
-  const tierOf = (id: string) =>
-    Math.max(
-      0,
-      tiers.findIndex((t) => t.id === id),
-    );
+  const tierIds = c.tiers.map((t) => t.id);
+  const tierOf = (id: string) => Math.max(0, tierIds.indexOf(id));
   const nodes: CareerNode[] = c.nodes.map((n) => ({
     id: n.id,
     event: qualify(pack, n.event),
@@ -162,6 +215,19 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
     opens: [...(n.opens ?? [])],
     claims: [...(n.claims ?? [])],
   }));
+  const tiers: CareerTier[] = c.tiers.map((t, i) => {
+    const raw = t as unknown as Json;
+    const tier: CareerTier = { id: t.id, name: t.name ?? t.id, requiredWins: t.advance.requiredWins };
+    // A boss that is no node of this tier gates nothing (the career lint reports it).
+    const boss = str(raw['boss']);
+    if (nodes.some((n) => n.id === boss && n.tier === i)) {
+      tier.boss = boss;
+      tier.bossName = bossNameOf(reg, nodes, boss);
+    }
+    const field = tierField(raw['field']);
+    if (field) tier.field = field;
+    return tier;
+  });
   const tutorialEvent = c.tutorialEvent ? qualify(pack, c.tutorialEvent) : null;
   const secrets: CareerSecret[] = (c.secrets ?? []).map((s) => {
     const raw = s as unknown as Json;
@@ -189,6 +255,7 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
       hex: str(p['hex']).toLowerCase(),
       priceCash: Math.max(0, Math.round(num(p['priceCash'], 0))),
       unlockTier: tierOf(str(p['unlockTier'], tiers[0]?.id ?? '')),
+      unlockSeason: Math.max(1, Math.round(num(p['unlockSeason'], 1))),
     }));
   const ending = obj(c.ending);
   const next = str(ending['next']);
@@ -208,6 +275,7 @@ function fromFile(reg: ContentRegistry, key: string, c: Career): CareerDef {
     tiers,
     nodes,
     boss: c.boss,
+    bossName: bossNameOf(reg, nodes, c.boss),
     secrets,
     shop: (c.shop ?? []).map((s) => ({
       bike: qualify(pack, s.bike),
