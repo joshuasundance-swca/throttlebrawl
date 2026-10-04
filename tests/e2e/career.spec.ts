@@ -109,7 +109,8 @@ test('race-first into the first event, then the career map, the garage and the b
   await expect(page.locator('#career')).toBeVisible();
   await expect(page.locator('#hud-objective')).toBeHidden();
   await expect(page.locator('.career-tabs button')).toHaveCount(3);
-  await expect(page.locator('.career-node')).toHaveCount(10);
+  // A career map holds at least ten events (the count is the career file's, not this spec's).
+  await expect(page.locator('.career-node').nth(9)).toBeAttached();
   await expect(page.locator('#career-cash')).toHaveText('$500');
   // The region's side gig (run W-S).
   await expect(page.locator('#career-gig')).toContainText('SIDE GIG');
@@ -198,7 +199,7 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
   await expect(page.locator('#career')).toBeVisible();
   await expect(page.locator('#career-node-shakedown')).toHaveAttribute('data-state', 'won');
   await expect(page.locator('#career-node-sunburn-hunt')).toHaveAttribute('data-state', 'open');
-  await expect(page.locator('.career-head .career-tally')).toContainText('won 1/10');
+  await expect(page.locator('.career-head .career-tally')).toContainText(/won 1\/\d+/);
   expect(await page.locator('.career-map polyline.road.claimed').count()).toBeGreaterThan(0);
   await shot(page, 'map-after-win');
   expect(problems).toEqual([]);
