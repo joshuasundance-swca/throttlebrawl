@@ -8,7 +8,16 @@ import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
 import { pedInfo, pedsSystem, PEDS_TUNING } from './peds';
 import { gridPosition, raceState, raceSystem, RACE_TUNING, styleRunOf } from './race';
-import { riderState, ridersSystem, RIDERS_TUNING, touchdownOf, trickOf } from './riders';
+import {
+  driftOf,
+  movesOf,
+  riderState,
+  ridersSystem,
+  RIDERS_TUNING,
+  touchdownOf,
+  trickOf,
+  wheelieOf,
+} from './riders';
 import { smashSnapshots, SMASH_TUNING, withSmashables } from './smash';
 import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
@@ -147,6 +156,9 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       ground: m.kind === 'rider' ? groundUnder(road, m.pos.edge, m.pos.s, m.pos.d, m.h) : null,
       routeDir: m.pos.dir * config.route.orientation(m.pos.edge) === -1 ? -1 : 1,
       branch: m.kind === 'rider' ? (config.route.branchAt(m.pos.edge)?.id ?? null) : null,
+      // Playtest 3's moves: the wheelie's angle and the drift's slip.
+      wheelie: m.kind === 'rider' ? wheelieOf(world, m) : 0,
+      drift: m.kind === 'rider' ? driftOf(world, m) : 0,
     };
   });
   return {
@@ -161,6 +173,7 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
     props: [...propSnapshots(world, config), ...lawProps(world, config)],
     law: lawSnapshot(world, config),
     smashables: smashSnapshots(world, config),
+    moves: movesOf(world, config),
   };
 }
 

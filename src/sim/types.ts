@@ -9,7 +9,13 @@ export const SIM_DT = 1 / SIM_HZ;
 
 // ---- Input -------------------------------------------------------------------------------
 
-/** Flag bits of SimInput.flags. `grab` is reserved; `lookBack` and `pause` are ignored by the sim. */
+/**
+ * Flag bits of SimInput.flags (16 bits from playtest 3; quantizeInput keeps 0xffff). `grab` is
+ * reserved; `lookBack` and `pause` are ignored by the sim. `wheelie` (playtest 3, "a way to do
+ * wheelies"; the maintainer's gesture: double-tap the throttle, then balance it by thumb height) is
+ * a level flag, held while the double-tap's second press is held; sim/riders/wheelie.ts reads its
+ * rising edge to pop the front, and only for a player.
+ */
 export const InputFlag = {
   attack: 1,
   attackSideLeft: 2,
@@ -19,6 +25,7 @@ export const InputFlag = {
   lookBack: 32,
   skipRunBack: 64,
   pause: 128,
+  wheelie: 256,
 } as const;
 
 /** One player slot's command for one tick, quantized so recordings are exact. */
@@ -29,7 +36,7 @@ export interface SimInput {
   throttle: number;
   /** uint8, 0..255. */
   brake: number;
-  /** InputFlag bits. */
+  /** InputFlag bits, uint16. */
   flags: number;
 }
 
@@ -171,7 +178,76 @@ export interface EntitySnapshot {
    * snapshots; the sim fills it for every entity.
    */
   branch?: string | null;
+  /**
+   * The wheelie's angle above the slope, radians (playtest 3, sim/riders/wheelie.ts), 0 when the
+   * front wheel is down, and for other kinds. `pitch` already includes it, so render rotates the
+   * bike once; this is for the rig's rear-contact pivot and the HUD gauge. Optional for hand-built
+   * snapshots; the sim fills it for every entity.
+   */
+  wheelie?: number;
+  /**
+   * The drift's slip angle, radians (playtest 3, sim/riders/drift.ts): positive when the nose points
+   * to the right of the rider's travel, 0 when not drifting, and for other kinds. Render draws the
+   * bike at yaw + drift. Optional for hand-built snapshots; the sim fills it for every entity.
+   */
+  drift?: number;
 }
+
+/**
+ * The player's new moves as the HUD sees them (SimSnapshot.moves; playtest 3): the wheelie gauge
+ * beside the stick and the drift chain on the ticker's meter.
+ */
+export interface MovesSnapshot {
+  /** World seconds of the wheelie in progress, 0 when none. */
+  wheelieS: number;
+  /** Where the wheelie sits: under the sweet band, in it, over it (a loop-out warning), or null. */
+  wheelieBand: 'low' | 'sweet' | 'high' | null;
+  /** World seconds of the drift in progress, 0 when none. */
+  driftS: number;
+  /** The chain's length so far (1 for a lone drift), 0 when no chain is open. */
+  driftChain: number;
+  /** Unbanked drift style cash: banked by a `driftEnd` with points, emptied by a crash or wobble. */
+  driftCash: number;
+  /** The drift's side, 1 right or -1 left, 0 when not drifting. */
+  driftSide: -1 | 0 | 1;
+}
+
+/**
+ * A moving deck (playtest 3, "the ramp trucks could be in motion"): a vehicle whose ramp is down,
+ * published each tick by sim/modifiers into the registry `systemState(world, MOVING_DECKS_KEY)`
+ * (a `SimMovingDecks`). Riders read its ramp like a parked ramp truck's (sim/riders/features.ts);
+ * traffic's contacts skip the vehicle while it has a live entry, so the riders' deck rules own that
+ * contact. Positions are along the vehicle's road at its current spot.
+ */
+export interface SimMovingDeck {
+  /** The vehicle's entity id. */
+  vehicle: EntityId;
+  /** The road edge it drives on, and where its ramp's foot is along it, m. */
+  edge: number;
+  s0: number;
+  /** Its travel direction along the edge. */
+  dir: 1 | -1;
+  /** Its lateral extent, m. */
+  d0: number;
+  d1: number;
+  speedMps: number;
+  rampLengthM: number;
+  lipHeightM: number;
+  /** The body's length past the lip, m. */
+  bodyM: number;
+}
+
+/** The moving-deck registry (SimMovingDeck): the decks live this tick. */
+export interface SimMovingDecks {
+  live: SimMovingDeck[];
+}
+
+/**
+ * The `systemState` key of the moving-deck registry. Only its writer (sim/modifiers) creates it;
+ * readers look it up in `world.systems` without creating it, so a race with no moving deck hashes
+ * as before.
+ */
+export const MOVING_DECKS_KEY = 'decks';
 
 /**
  * A rival's signature move (interview, 2026-10-02: "Visible personalities"): one move per rival,
@@ -320,6 +396,12 @@ export interface SimSnapshot {
    * for hand-built snapshots; the sim always fills it (empty when the race has none).
    */
   smashables?: readonly SmashableSnapshot[];
+  /**
+   * The player in slot 0's wheelie and drift (playtest 3), for the HUD, like `law` (all zero while
+   * neither move runs); null when no player rides. Optional for hand-built snapshots; the sim
+   * always fills it.
+   */
+  moves?: MovesSnapshot | null;
 }
 
 /** One roadside smashable (SimSnapshot.smashables): where it stands, and whether it is smashed. */
@@ -528,6 +610,30 @@ export type SimEventType =
    * heavy hit on him: a `hit` event whose `data.weapon` is `landing`, the landing's causeId.
    */
   | 'land'
+  /**
+   * A wheelie into a car launched the rider (playtest 3: "wheelie into the hood of a car... launch
+   * you up into a jump doing backflips"; sim/riders/wheelie.ts). Actor = the rider, target = the
+   * vehicle (absent for a parked road hazard, whose feature id is `data.feature`); `data.part` is
+   * `hood` (the car came at the rider) or `trunk` (it drove the rider's way), `data.closingMps`,
+   * `data.vyMps` and `data.flips`, the backflips the launch spins. The `jump` that starts the flight
+   * carries `data.hood`, and so does its `land`.
+   */
+  | 'hoodLaunch'
+  /**
+   * A wheelie ended (playtest 3). Actor = the rider; `data.seconds` (world time up), `data.sweetS`
+   * (of those, in the sweet band), `data.clean` (the front came down gently) and `data.loopOut`
+   * (it went over backwards, with a `crash` whose `cause` is `wheelie`). sim/race scores a clean one
+   * of at least `race.styleWheelieMinS` as a `wheelie` style event.
+   */
+  | 'wheelieEnd'
+  /** A drift began (playtest 3, sim/riders/drift.ts). Actor = the rider; `data.side` and `data.speed`. */
+  | 'driftStart'
+  /**
+   * A drift ended. Actor = the rider; `data.seconds`, `data.clean`, `data.chain` (its place in the
+   * chain), `data.boostMps` (the exit boost, 0 for none) and `data.points`: the chain's style cash,
+   * above 0 only on the end that banks it (sim/race scores it as a `drift` style event).
+   */
+  | 'driftEnd'
   | 'pedDive'
   /**
    * A pedestrian or animal reacts to a rider going by (W-P, 2026-10-01). Actor = the pedestrian,
@@ -637,9 +743,11 @@ export const LAW_EVENT_KINDS = [
 export type LawEventKind = (typeof LAW_EVENT_KINDS)[number];
 
 /**
- * `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md), and `trick`
+ * `data.kind` of a `style` event: the five style-cash sources (docs/milestones/M2.md), `trick`
  * (playtest 2, 2026-10-02: "I love the idea of doing flips"), a trick landed, with `data.trick` its
- * `TrickId` and `data.flips` the full turns for a flip.
+ * `TrickId` and `data.flips` the full turns for a flip, and playtest 3's `wheelie` (a clean wheelie,
+ * by the second) and `drift` (a drift chain banked). The product spec's style sources include
+ * "maybe other stuff" `[decided]`.
  */
 export const STYLE_KINDS = [
   'nearMiss',
@@ -648,6 +756,8 @@ export const STYLE_KINDS = [
   'takedownCombo',
   'weaponSteal',
   'trick',
+  'wheelie',
+  'drift',
 ] as const;
 export type StyleKind = (typeof STYLE_KINDS)[number];
 
@@ -952,6 +1062,13 @@ export interface SimStyleRewards {
   perTakedownCash: number;
   takedownComboScale: number;
   perStealCash: number;
+  /**
+   * Playtest 3's moves: a clean wheelie's cash per second (the sweet band's seconds whole, the rest
+   * at half), and a drift's per second of full slip at full speed (sim/riders/drift.ts accrues it).
+   * Absent means 0 (hand-built configs); buildSimConfig writes them from the event's rewards.
+   */
+  perWheelieSecondCash?: number;
+  perDriftSecondCash?: number;
 }
 
 /**

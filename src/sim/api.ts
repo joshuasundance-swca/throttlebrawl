@@ -34,6 +34,7 @@ export type {
   LawHabitId,
   LawSnapshot,
   MoverMode,
+  MovesSnapshot,
   ParkedBikeSnapshot,
   PedReactKind,
   PropKind,
@@ -140,7 +141,7 @@ export function quantizeInput(a: AnalogInput): SimInput {
     steer: level(clamp(a.steer, -1, 1), 127),
     throttle: level(clamp(a.throttle, 0, 1), 255),
     brake: level(clamp(a.brake, 0, 1), 255),
-    flags: a.flags & 0xff,
+    flags: a.flags & 0xffff,
   };
 }
 

@@ -28,6 +28,12 @@ export interface ActionState {
    * Presentation only: it never reaches the SimInput, so a replay does not record it.
    */
   cycleCamera?: boolean;
+  /**
+   * The wheelie (playtest 3: double-tap the throttle, then balance it by thumb height): level-held
+   * while the double-tap's second press holds. It reaches the sim as InputFlag.wheelie; the throttle
+   * is the balance. Optional, so hand-built action states stay valid.
+   */
+  wheelie?: boolean;
 }
 
 export function emptyActions(): ActionState {
@@ -53,5 +59,6 @@ export function toSimInput(a: ActionState): SimInput {
   if (a.kickStraight) flags |= InputFlag.attackSideLeft | InputFlag.attackSideRight;
   if (a.lookBack) flags |= InputFlag.lookBack;
   if (a.skipRunBack) flags |= InputFlag.skipRunBack;
+  if (a.wheelie) flags |= InputFlag.wheelie;
   return quantizeInput({ steer: a.steer, throttle: a.throttle, brake: a.brake, flags });
 }
