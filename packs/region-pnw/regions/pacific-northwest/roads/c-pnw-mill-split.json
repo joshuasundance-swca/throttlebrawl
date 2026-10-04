@@ -1,0 +1,63 @@
+{
+  "type": "road",
+  "id": "c-pnw-mill-split",
+  "name": "Mill yard gate",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-7",
+  "to": "j-pnw-c1-7",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 22.4,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        { "id": "L0", "dCenterM": -4.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 4.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+      ]
+    }
+  ],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "left", "tag": "forest" },
+    { "s0": 0, "s1": 30, "side": "right", "tag": "sawmill" }
+  ],
+  "features": [],
+  "barriers": [{ "s0": 0, "s1": 30, "side": "right", "kind": "wall", "heightM": 1.2, "jumpable": true }],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        2539.8824, 2540.4086, 2540.9349, 2541.4611, 2541.9873, 2542.5136, 2543.0398, 2543.566, 2544.0923,
+        2544.6185, 2545.1447, 2545.671, 2546.1972, 2546.7234, 2547.2497, 2547.7759
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -4159.6566, -4161.5861, -4163.5157, -4165.4452, -4167.3747, -4169.3042, -4171.2338, -4173.1633,
+        -4175.0928, -4177.0224, -4178.9519, -4180.8814, -4182.8109, -4184.7405, -4186.67, -4188.5995
+      ],
+      "kappa": [
+        5.5511150000000004e-17, 2.775558e-16, -3.330669e-16, 5.5511150000000004e-17, 1.665335e-16,
+        1.110223e-16, 0, 3.330669e-16, 2.220446e-16, -2.220446e-16, -3.330669e-16, 0, 3.330669e-16,
+        -1.665335e-16, 2.775558e-16, 2.775558e-16
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "type": "road",
+  "id": "c-pnw-mill-out",
+  "name": "Mill yard exit",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-8",
+  "to": "j-pnw-c1-8",
+  "lengthM": 30.152031490416334,
+  "sampleSpacingM": 2.010135432694422,
+  "speedLimitMps": 22.4,
+  "surface": "concrete",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [
+    { "s0": 0, "s1": 30.152031490416334, "side": "left", "tag": "forest" },
+    { "s0": 0, "s1": 30.152031490416334, "side": "right", "tag": "sawmill" }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        2610.6832, 2611.1558, 2611.6359, 2612.1231, 2612.6173, 2613.1179, 2613.6245, 2614.1363, 2614.6527,
+        2615.173, 2615.6964, 2616.222, 2616.7493, 2617.2776, 2617.8063, 2618.3352
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -4420.0538, -4422.0076, -4423.9596, -4425.9098, -4427.8582, -4429.805, -4431.7503, -4433.6941,
+        -4435.6368, -4437.5784, -4439.5192, -4441.4594, -4443.3992, -4445.3387, -4447.278, -4449.2173
+      ],
+      "kappa": [
+        0.001908829, 0.001894322, 0.001846007, 0.001765198, 0.001654135, 0.001515977, 0.00135481, 0.001175641,
+        0.0009844041, 0.0007879529, 0.0005940663, 0.0004114465, 0.0002497192, 0.0001194334, 0.0000320617, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

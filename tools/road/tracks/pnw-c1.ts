@@ -24,7 +24,7 @@
 // every corner and a crowd that parts. The pickups, the cart, the stumps, the log piles and the
 // bears are solid `hazard` features (sim/riders/features.ts), all on the verge bands; render draws
 // them (src/render/pnw-places.ts). No timed ferry jump, and no Bigfoot.
-import type { BakedFeature } from '../../../src/road';
+import type { BakedBarrier, BakedFeature } from '../../../src/road';
 import type { TrackSource } from '../../../src/road/compile';
 
 /** The pack this track bakes into (the baker reads this export): packs/region-pnw. */
@@ -176,6 +176,74 @@ function stumpSocial(): BakedFeature[] {
   }
   return out;
 }
+
+// ---- The Mill Yard Cut (playtest 3, T5.2; the maintainer: "the static one could be used to get to
+// shortcuts") ----
+/**
+ * A truck-only way round the last of the flats' straight: a concrete haul road through the mill's
+ * yard, beside the main road, behind a low `jumpable` wall. Only a bike in the air gets over the
+ * wall. A rider rides up the ramp truck parked on the right shoulder, leaves its lip and steers
+ * right; the split zone lies past the lanes' outer edge (d from 5.5), so nobody on the ground can
+ * reach it, and one who misses the truck rides on past on the main road. No rival and no cop takes
+ * it (`aiTake` 0), and it carries no traffic.
+ */
+export const MILL_CUT = {
+  /** The end of the flats' first piece: where the split connector starts, in that road's s. */
+  splitS: 600,
+  connectorM: 30,
+  /** The main road's piece beside the cut. */
+  yardM: 240,
+  /** The truck's ramp foot and the lip, 25 m short of the split (a ramp is 11.5 m long). */
+  truckS0: 563.5,
+  lipS: 575,
+  /**
+   * Where the yard road starts: its reference line, 5 m right of the main road's centre line, half a
+   * metre inside the road's edge (a junction must lie on the road it leaves), and its one lane, 8 m
+   * wide, starting on that line: d 5 to 13 beside the main road. (The sim counts a road's band from
+   * its reference line out to its lanes' far edge, so the near edge is the line.) It overlaps the
+   * main road's outer half metre, which a rider on the ground (centre at most 5, half a bike in from
+   * the edge) never gets half a bike into, so nobody on the ground is handed across, and a rider in
+   * the air out past the edge is.
+   */
+  offsetM: 5,
+  laneM: 8,
+  laneCentreM: 4,
+  truck: {
+    kind: 'rampTruck',
+    id: 'carrier-mill-cut',
+    s0: 563.5,
+    s1: 585.5,
+    d0: 3.4,
+    d1: 5.4,
+    params: { rampLengthM: 11.5, lipHeightM: 2.8 },
+  } satisfies BakedFeature,
+  /** From the ramp's foot to the end of the road, on the right; 1.2 m, the default wall height. */
+  wall: {
+    s0: 563.5,
+    s1: 600,
+    side: 'right',
+    kind: 'wall',
+    heightM: 1.2,
+    jumpable: true,
+  } satisfies BakedBarrier,
+  /**
+   * The wall goes on along the main road beside the yard road, over the split connector and the first
+   * 125 m of the next piece (155 m past the split): where the yard road lies beside it, a rider on the
+   * ground could otherwise ride out onto the verge (the off-road switch is on) and be handed across.
+   */
+  wallAfter: { s0: 0, s1: 'end', side: 'right', kind: 'wall', heightM: 1.2, jumpable: true } satisfies Omit<
+    BakedBarrier,
+    's1'
+  > & { s1: 'end' },
+  wallAlongM: 125,
+  sign: 'MILL YARD CUT-THROUGH. Authorised vehicles only. Airborne is authorised.',
+} as const;
+
+/** The flats' scenery: forest on the left, the sawmill on the right, on every piece of it. */
+const SAWMILL_TAGS = [
+  { s0: 0, s1: 'end', side: 'left', tag: 'forest' },
+  { s0: 0, s1: 'end', side: 'right', tag: 'sawmill' },
+] as const;
 
 export const PNW_C1: TrackSource = {
   network: {
@@ -682,15 +750,15 @@ export const PNW_C1: TrackSource = {
       barriers: [],
     },
     {
+      // The flats up to the mill yard's gate (playtest 3, T5.2): the truck, the wall and the split
+      // zone of the Mill Yard Cut stand on its last 40 m.
       id: 'pnw-sawmill-flats',
       name: 'Sawmill Flats',
+      lengthM: MILL_CUT.splitS,
       speedLimitMps: FOREST_MPS,
       surface: 'asphalt',
       humps: [],
-      tags: [
-        { s0: 0, s1: 'end', side: 'left', tag: 'forest' },
-        { s0: 0, s1: 'end', side: 'right', tag: 'sawmill' },
-      ],
+      tags: SAWMILL_TAGS,
       features: [
         {
           kind: 'roadsideZone',
@@ -700,16 +768,6 @@ export const PNW_C1: TrackSource = {
           d0: 5.6,
           d1: 12.6,
           params: { spawns: 'pedestrians' },
-        },
-        // The sprint to the standard finish.
-        {
-          kind: 'boostPad',
-          id: 'pad-sawmill-sprint',
-          s0: 640,
-          s1: 646,
-          d0: 0.5,
-          d1: 3,
-          params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-sprint' },
         },
         // Playtest 1c item 2: the sprint pad's other spots on the flats.
         {
@@ -722,15 +780,87 @@ export const PNW_C1: TrackSource = {
           params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-sprint' },
         },
         {
+          kind: 'billboard',
+          id: 'sign-sawmill-cut-ahead',
+          s0: 518,
+          s1: 528,
+          d0: 6.5,
+          d1: 9,
+          item: 'mill-cut',
+        },
+        // Playtest 3 (T5.2; the maintainer: "the static one could be used to get to shortcuts"): the
+        // truck that is always there (no slot), parked on the right shoulder with its ramp down. Its lip is
+        // 25 m short of the split zone, so a bike that leaves it and steers right is still in the air
+        // when it reaches the zone, out past the wall.
+        MILL_CUT.truck,
+      ],
+      barriers: [MILL_CUT.wall],
+    },
+    {
+      id: 'c-pnw-mill-split',
+      name: 'Mill yard gate',
+      connector: true,
+      lengthM: MILL_CUT.connectorM,
+      speedLimitMps: FOREST_MPS,
+      surface: 'asphalt',
+      humps: [],
+      tags: SAWMILL_TAGS,
+      features: [],
+      barriers: [MILL_CUT.wallAfter],
+    },
+    {
+      // Beside the Mill Yard Cut: the same flats, the main road's own traffic.
+      id: 'pnw-sawmill-yard',
+      name: 'Sawmill Flats',
+      lengthM: MILL_CUT.yardM,
+      speedLimitMps: FOREST_MPS,
+      surface: 'asphalt',
+      humps: [],
+      tags: SAWMILL_TAGS,
+      features: [
+        // The sprint to the standard finish.
+        {
+          kind: 'boostPad',
+          id: 'pad-sawmill-sprint',
+          s0: 10,
+          s1: 16,
+          d0: 0.5,
+          d1: 3,
+          params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-sprint' },
+        },
+        {
           kind: 'boostPad',
           id: 'pad-sawmill-final',
-          s0: 800,
-          s1: 806,
+          s0: 170,
+          s1: 176,
           d0: 0.5,
           d1: 3,
           params: { boostMps: 8, holdS: 1.5, slot: 'pnw-pad-sprint' },
         },
       ],
+      barriers: [{ ...MILL_CUT.wallAfter, s1: MILL_CUT.wallAlongM }],
+    },
+    {
+      id: 'c-pnw-mill-merge',
+      name: 'Mill yard exit',
+      connector: true,
+      lengthM: MILL_CUT.connectorM,
+      speedLimitMps: FOREST_MPS,
+      surface: 'asphalt',
+      humps: [],
+      tags: SAWMILL_TAGS,
+      features: [],
+      barriers: [],
+    },
+    {
+      // The last of the flats, to the mill's end: the long route's finish is on it.
+      id: 'pnw-sawmill-end',
+      name: 'Sawmill Flats',
+      speedLimitMps: FOREST_MPS,
+      surface: 'asphalt',
+      humps: [],
+      tags: SAWMILL_TAGS,
+      features: [],
       barriers: [],
     },
   ],
@@ -808,6 +938,84 @@ export const PNW_C1: TrackSource = {
         },
       ],
     },
+    {
+      // The Mill Yard Cut (playtest 3, T5.2): a concrete haul road through the mill's yard, behind a
+      // jumpable wall on the right of the flats; only the ramp truck's flight reaches it. The zone
+      // starts at the lanes' outer edge, so a rider on the ground can never pick it.
+      leave: {
+        road: 'pnw-sawmill-flats',
+        offsetM: MILL_CUT.offsetM,
+        lane: 'R1',
+        zone: { lengthM: MILL_CUT.splitS - MILL_CUT.lipS, d0: 5.5, d1: 12.5 },
+      },
+      join: { road: 'pnw-sawmill-end', offsetM: -0.5, lane: 'R1' },
+      turnsM: [20, 60],
+      // Two points of the flats' straight, 5 m right of its centre line, 85 and 170 m past the split:
+      // they hold the yard road parallel to the main road while the sim's hand-over between the two
+      // can act (the first 150 m), so a rider pressing the wall on the ground is never taken across.
+      // The yard road then eases back to the main road's lane for the merge.
+      via: [
+        { x: 2567.07, z: -4240.35, headingDeg: 15.26, turnM: 20 },
+        { x: 2589.44, z: -4322.35, headingDeg: 15.26, turnM: 20 },
+      ],
+      lanes: [
+        { id: 'S1', dCenterM: MILL_CUT.laneCentreM, widthM: MILL_CUT.laneM, direction: 1, kind: 'shortcut' },
+      ],
+      named: {
+        id: 'pnw-mill-yard-cut',
+        kind: 'alternate',
+        marked: true,
+        sign: MILL_CUT.sign,
+        aiTake: 0,
+      },
+      roads: [
+        {
+          id: 'c-pnw-mill-in',
+          name: 'Mill yard gate',
+          connector: true,
+          lengthM: MILL_CUT.connectorM,
+          speedLimitMps: FOREST_MPS,
+          surface: 'concrete',
+          humps: [],
+          tags: SAWMILL_TAGS,
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'pnw-mill-yard-cut',
+          name: 'Mill Yard Cut',
+          lengthM: MILL_CUT.yardM,
+          speedLimitMps: FOREST_MPS,
+          surface: 'concrete',
+          humps: [],
+          tags: SAWMILL_TAGS,
+          features: [
+            // The reward for the jump, besides a road with no traffic on it.
+            {
+              kind: 'boostPad',
+              id: 'pad-mill-cut',
+              s0: 110,
+              s1: 116,
+              d0: 2.5,
+              d1: 5.5,
+              params: { boostMps: 8, holdS: 1.5 },
+            },
+          ],
+          barriers: [],
+        },
+        {
+          id: 'c-pnw-mill-out',
+          name: 'Mill yard exit',
+          connector: true,
+          speedLimitMps: FOREST_MPS,
+          surface: 'concrete',
+          humps: [],
+          tags: SAWMILL_TAGS,
+          features: [],
+          barriers: [],
+        },
+      ],
+    },
   ],
   routes: [
     {
@@ -839,7 +1047,7 @@ export const PNW_C1: TrackSource = {
       // Long (about 6.6 km): on over Fogline Ridge to the end of the Sawmill Flats.
       id: 'pnw-sawmill-haul',
       start: { road: 'pnw-ferry-landing', s: 40, dir: 1 },
-      finish: { road: 'pnw-sawmill-flats', s: -40 },
+      finish: { road: 'pnw-sawmill-end', s: -40 },
       checkpoints: [
         { road: 'pnw-cedar-hollow', s: 300 },
         { road: 'pnw-cedar-hollow', s: 900 },

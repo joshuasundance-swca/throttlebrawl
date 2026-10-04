@@ -1,0 +1,52 @@
+{
+  "type": "road",
+  "id": "c-dt-plaza-out",
+  "name": "Plaza gate",
+  "realName": null,
+  "network": "sf-downtown",
+  "from": "j-sf-downtown-6",
+  "to": "j-sf-downtown-6",
+  "lengthM": 30.50284840156104,
+  "sampleSpacingM": 2.0335232267707357,
+  "speedLimitMps": 15.6,
+  "surface": "concrete",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30.50284840156104, "side": "both", "tag": "plaza-cut" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -2569.5394, -2570.87, -2572.2117, -2573.5643, -2574.9272, -2576.2997, -2577.6811, -2579.0703,
+        -2580.4662, -2581.8679, -2583.2741, -2584.6836, -2586.0956, -2587.509, -2588.9232, -2590.3375
+      ],
+      "y": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "z": [
+        2521.8627, 2523.4005, 2524.9285, 2526.447, 2527.9562, 2529.4566, 2530.949, 2532.434, 2533.9127,
+        2535.386, 2536.855, 2538.3207, 2539.7841, 2541.2461, 2542.7074, 2544.1685
+      ],
+      "kappa": [
+        0.003605364, 0.003588544, 0.003506103, 0.003360355, 0.003155422, 0.002897249, 0.002593604,
+        0.002254084, 0.001890108, 0.001514921, 0.001143592, 0.0007930157, 0.0004819117, 0.0002308241,
+        0.00006212222, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-02",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-downtown.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

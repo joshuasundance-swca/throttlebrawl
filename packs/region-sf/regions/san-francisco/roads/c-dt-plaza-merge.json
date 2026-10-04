@@ -1,0 +1,65 @@
+{
+  "type": "road",
+  "id": "c-dt-plaza-merge",
+  "name": "Campus Way",
+  "realName": null,
+  "network": "sf-downtown",
+  "from": "j-sf-downtown-6",
+  "to": "j-sf-downtown-6",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 15.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        { "id": "L0", "dCenterM": -8.75, "widthM": 1.5, "direction": -1, "kind": "shoulder" },
+        { "id": "L2", "dCenterM": -6, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "L1", "dCenterM": -2, "widthM": 4, "direction": -1, "kind": "drive" },
+        { "id": "R1", "dCenterM": 2, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R2", "dCenterM": 6, "widthM": 4, "direction": 1, "kind": "drive" },
+        { "id": "R0", "dCenterM": 8.75, "widthM": 1.5, "direction": 1, "kind": "shoulder" }
+      ]
+    }
+  ],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "left", "tag": "towers" },
+    { "s0": 0, "s1": 30, "side": "right", "tag": "plaza" }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -2568.0847, -2569.4696, -2570.855, -2572.2406, -2573.6267, -2575.0131, -2576.3999, -2577.7871,
+        -2579.1747, -2580.5628, -2581.9512, -2583.3402, -2584.7295, -2586.1194, -2587.5097, -2588.9005
+      ],
+      "y": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "z": [
+        2523.9563, 2525.3991, 2526.8417, 2528.2839, 2529.7257, 2531.1672, 2532.6083, 2534.049, 2535.4893,
+        2536.9292, 2538.3687, 2539.8078, 2541.2464, 2542.6846, 2544.1223, 2545.5595
+      ],
+      "kappa": [
+        0.000118435, 0.0001219258, 0.0001254234, 0.0001289279, 0.0001324396, 0.0001359587, 0.0001394853,
+        0.0001430196, 0.0001465619, 0.0001501125, 0.0001536714, 0.0001572389, 0.0001608151, 0.0001644005,
+        0.000167995, 0.0001715989
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-02",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-downtown.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

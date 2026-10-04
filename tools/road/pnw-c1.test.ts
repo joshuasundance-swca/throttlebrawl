@@ -196,15 +196,24 @@ describe('tools/road: the baked Pacific Northwest track', () => {
   it('places the set-piece slots: ramp truck spots on the trestle straight, boost pads, a cop spawn', () => {
     const all = net.edges.flatMap((e) => e.features.map((f) => ({ e, f })));
     const trucks = all.filter(({ f }) => f.kind === 'rampTruck');
-    // Playtest 1c item 2: three candidate spots, one picked per race by the seed.
-    expect(trucks.map(({ e }) => e.id)).toEqual(['pnw-trestle', 'pnw-trestle', 'pnw-trestle']);
-    for (const { f: t } of trucks) {
-      // Straight from the truck's foot to well past a top-speed landing.
-      for (let s = t.s0; s <= t.s1 + 150; s += 2)
-        expect(Math.abs(net.kappaAt(id('pnw-trestle'), s))).toBeLessThanOrEqual(0.002);
+    // Playtest 1c item 2: three candidate spots, one picked per race by the seed. Playtest 3 (T5.2)
+    // adds a fourth that is always there, in no slot: the Mill Yard Cut's (tools/road/truck-shortcuts.test.ts).
+    expect(trucks.map(({ e }) => e.id)).toEqual([
+      'pnw-trestle',
+      'pnw-trestle',
+      'pnw-trestle',
+      'pnw-sawmill-flats',
+    ]);
+    expect(trucks.filter(({ f }) => f.params?.['slot'] === 'pnw-truck')).toHaveLength(3);
+    for (const { e, f: t } of trucks) {
+      // Straight from the truck's foot to well past a top-speed landing (the cut's truck stands at
+      // the end of its road: its flight goes on over the next).
+      for (let s = t.s0; s <= Math.min(t.s1 + 150, e.length); s += 2)
+        expect(Math.abs(net.kappaAt(e.index, s))).toBeLessThanOrEqual(0.002);
     }
-    // Two pad slots: two spots at the landing and three on the sawmill flats.
-    expect(all.filter(({ f }) => f.kind === 'boostPad')).toHaveLength(5);
+    // Two pad slots: two spots at the landing and three on the sawmill flats, and the Mill Yard
+    // Cut's own pad (T5.2), in no slot.
+    expect(all.filter(({ f }) => f.kind === 'boostPad')).toHaveLength(6);
     expect(all.filter(({ f }) => f.kind === 'copSpawn')).toHaveLength(1);
   });
 
@@ -232,7 +241,8 @@ describe('tools/road: the baked Pacific Northwest track', () => {
       expect(Math.min(Math.abs(f.d0), Math.abs(f.d1)), f.id).toBeGreaterThanOrEqual(6.5);
       expect(all[2]?.allows(e.index), f.id).toBe(true);
     }
-    // All but the ridge's sign are on the standard route too.
-    expect(slots.filter(({ e }) => all[1]?.allows(e.index)).length).toBe(slots.length - 1);
+    // All but the ridge's sign and the mill yard's (T5.2: the flats are on the long route only) are
+    // on the standard route too.
+    expect(slots.filter(({ e }) => all[1]?.allows(e.index)).length).toBe(slots.length - 2);
   });
 });

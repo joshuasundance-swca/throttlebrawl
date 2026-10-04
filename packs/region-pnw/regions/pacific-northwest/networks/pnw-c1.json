@@ -15,9 +15,16 @@
     "pnw-espresso-row",
     "pnw-fogline-ridge",
     "pnw-sawmill-flats",
+    "c-pnw-mill-split",
+    "pnw-sawmill-yard",
+    "c-pnw-mill-merge",
+    "pnw-sawmill-end",
     "c-pnw-spur-in",
     "pnw-logging-spur",
-    "c-pnw-spur-out"
+    "c-pnw-spur-out",
+    "c-pnw-mill-in",
+    "pnw-mill-yard-cut",
+    "c-pnw-mill-out"
   ],
   "junctions": [
     {
@@ -144,10 +151,75 @@
     },
     {
       "id": "j-pnw-c1-7",
+      "x": 2543.8291,
+      "y": 3,
+      "z": -4174.1281,
+      "ends": [
+        { "road": "pnw-sawmill-flats", "end": "to" },
+        { "road": "pnw-sawmill-yard", "end": "from" },
+        { "road": "pnw-mill-yard-cut", "end": "from" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-mill-split-l1",
+          "road": "c-pnw-mill-split",
+          "from": { "road": "pnw-sawmill-flats", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-sawmill-yard", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-mill-split-r1",
+          "road": "c-pnw-mill-split",
+          "from": { "road": "pnw-sawmill-flats", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-sawmill-yard", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-mill-in",
+          "road": "c-pnw-mill-in",
+          "from": { "road": "pnw-sawmill-flats", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-mill-yard-cut", "end": "from", "lane": "S1" },
+          "splitZone": { "s0": 575, "s1": 600, "d0": 5.5, "d1": 12.5 }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-8",
+      "x": 2614.8708,
+      "y": 3,
+      "z": -4434.6143,
+      "ends": [
+        { "road": "pnw-sawmill-yard", "end": "to" },
+        { "road": "pnw-sawmill-end", "end": "from" },
+        { "road": "pnw-mill-yard-cut", "end": "to" }
+      ],
+      "connectors": [
+        {
+          "id": "cx-c-pnw-mill-merge-l1",
+          "road": "c-pnw-mill-merge",
+          "from": { "road": "pnw-sawmill-yard", "end": "to", "lane": "L1" },
+          "to": { "road": "pnw-sawmill-end", "end": "from", "lane": "L1" }
+        },
+        {
+          "id": "cx-c-pnw-mill-merge-r1",
+          "road": "c-pnw-mill-merge",
+          "from": { "road": "pnw-sawmill-yard", "end": "to", "lane": "R1" },
+          "to": { "road": "pnw-sawmill-end", "end": "from", "lane": "R1" }
+        },
+        {
+          "id": "cx-c-pnw-mill-out",
+          "road": "c-pnw-mill-out",
+          "from": { "road": "pnw-mill-yard-cut", "end": "to", "lane": "S1" },
+          "to": { "road": "pnw-sawmill-end", "end": "from", "lane": "R1" }
+        }
+      ],
+      "control": "none"
+    },
+    {
+      "id": "j-pnw-c1-9",
       "x": 2646.0503,
       "y": 3,
       "z": -4548.9388,
-      "ends": [{ "road": "pnw-sawmill-flats", "end": "to" }],
+      "ends": [{ "road": "pnw-sawmill-end", "end": "to" }],
       "connectors": [],
       "control": "none"
     }
