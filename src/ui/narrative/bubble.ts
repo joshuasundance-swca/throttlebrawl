@@ -26,7 +26,7 @@ const CSS = `
 @media (max-width: 600px) { #bark-bubble { top: max(52px, env(safe-area-inset-top)); } }
 @media (orientation: landscape) and (max-height: 520px) {
   #bark-bubble { top: max(6px, env(safe-area-inset-top)); max-width: min(38vw, 560px); padding: 5px 14px 6px;
-    line-height: 1.15; }
+    box-sizing: border-box; line-height: 1.15; }
 }
 @media (orientation: landscape) and (max-height: 380px) { #bark-bubble { font-size: 18px; } }
 `;
