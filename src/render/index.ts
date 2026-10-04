@@ -40,7 +40,7 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
-import { AirPays } from './air-pays';
+import { AirPays, bikeScreenBox } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot } from './boards';
 import { FeelEffects, type FeelCounts } from './effects';
 import { EventProps } from './event-props';
@@ -320,6 +320,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
+  /** Whether the canvas carries `data-landing-line` (the landing one-liner is up). */
+  let landingLineMarked = false;
   // Run W-R: the rider rigs, a lazy chunk that loads with the first race's looks.
   let rigs: RiderRigs | null = null;
   let rigsLoading = false;
@@ -780,8 +782,26 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         if (film) loadPost();
         renderer.render(scene, camera);
       }
-      // The landing one-liner goes over the finished frame (the film pass would paint the sky over it).
-      airPays.drawOverlay(renderer, canvas.clientWidth, canvas.clientHeight);
+      // The landing one-liner goes over the finished frame (the film pass would paint the sky over it),
+      // under the player's bike as this frame shows it.
+      const frame = me && airPays.visibleRefs().length > 0 ? views.riderFrame(me.id) : null;
+      const bike = frame
+        ? bikeScreenBox(
+            frame.matrixWorld.elements,
+            camera.matrixWorldInverse.elements,
+            camera.projectionMatrix.elements,
+            canvas.clientWidth,
+            canvas.clientHeight,
+          )
+        : null;
+      airPays.drawOverlay(renderer, canvas.clientWidth, canvas.clientHeight, bike);
+      // While the line shows, the canvas says so: ui's career prompt, which shares its band, steps
+      // aside (ui/career-screen.ts).
+      const lineUp = airPays.line.visible;
+      if (lineUp !== landingLineMarked) {
+        landingLineMarked = lineUp;
+        canvas.toggleAttribute('data-landing-line', lineUp);
+      }
     },
     resize,
     stats() {

@@ -11,8 +11,12 @@
 //   painted the sky over it in the default Ink + 60s look, and in classic its letters were about 6 px
 //   tall). Playtest 3 (2026-10-03): "The black and white text pop-ups block the actual game", and the
 //   HUD rule is that nothing covers the road ahead (the middle half across, 25-65 % down) or another
-//   HUD piece. Over the bike, it sat in the middle of the road; under the road ahead it keeps to the
-//   middle half of a landscape screen, between the bottom corners' speed, health and touch buttons;
+//   HUD piece. Over the bike, it sat in the middle of the road; just under the road ahead it still
+//   covered the bike from the seat down in the Keys (the live check after #430). So it sits under the
+//   player's bike as the camera shows it (its screen box, projected from the rider's frame), between
+//   the bottom corners' speed, health and touch buttons, a little smaller when the room is short.
+//   While it shows, render marks its canvas `data-landing-line`, and ui's career prompt (which shares
+//   that band) steps aside for its 2 s;
 // - the newspaper: while the player's rider sits back reading it (`trick: 'newspaper'`), the paper is
 //   held up in front of him; landing with it (a crash whose `data.attempt` is `newspaper`), it flies
 //   off down the road.
@@ -56,6 +60,69 @@ const FADE_S = 0.45;
  */
 export const ROAD_AHEAD_BOTTOM = 0.65;
 export const ROAD_AHEAD_WIDTH = 0.5;
+/**
+ * The bottom corners' HUD on a landscape screen (the touch buttons, with the speed and health across
+ * from them) reaches about this far in from each side, as a fraction of the short side (the classic
+ * layout's BRAKE button: 0.4 in, 0.18 wide). On an upright screen the speed and health rise about
+ * PORTRAIT_FOOT of the short side from the bottom. [default]
+ */
+export const CORNER_REACH = 0.6;
+export const PORTRAIT_FOOT = 0.3;
+/**
+ * The player's bike and rider as boxes in the rider's frame (render/views.ts: x across, y up from
+ * the ground, z along with the nose toward -z), metres: the bike, then the rider on it. Their screen
+ * box is what the landing line keeps clear of. tests/e2e/ui-style-popups.spec.ts measures the same
+ * shape independently.
+ */
+export const BIKE_SHAPE: readonly { min: [number, number, number]; max: [number, number, number] }[] = [
+  { min: [-0.35, 0, -0.95], max: [0.35, 1.05, 0.95] },
+  { min: [-0.45, 0.5, -0.45], max: [0.45, 1.75, 0.35] },
+];
+
+/** A box on screen, CSS px from the top left. */
+export interface ScreenBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * The screen box of BIKE_SHAPE in a frame (`frame`: its world matrix, column-major), seen through a
+ * camera (its view and projection matrices) on a `viewW` x `viewH` CSS px screen; null when it is
+ * behind the camera.
+ */
+export function bikeScreenBox(
+  frame: ArrayLike<number>,
+  view: ArrayLike<number>,
+  projection: ArrayLike<number>,
+  viewW: number,
+  viewH: number,
+): ScreenBox | null {
+  const mul = (e: ArrayLike<number>, x: number, y: number, z: number): [number, number, number, number] => [
+    (e[0] ?? 0) * x + (e[4] ?? 0) * y + (e[8] ?? 0) * z + (e[12] ?? 0),
+    (e[1] ?? 0) * x + (e[5] ?? 0) * y + (e[9] ?? 0) * z + (e[13] ?? 0),
+    (e[2] ?? 0) * x + (e[6] ?? 0) * y + (e[10] ?? 0) * z + (e[14] ?? 0),
+    (e[3] ?? 0) * x + (e[7] ?? 0) * y + (e[11] ?? 0) * z + (e[15] ?? 0),
+  ];
+  const box = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+  for (const b of BIKE_SHAPE)
+    for (const x of [b.min[0], b.max[0]])
+      for (const y of [b.min[1], b.max[1]])
+        for (const z of [b.min[2], b.max[2]]) {
+          const wp = mul(frame, x, y, z);
+          const vp = mul(view, wp[0], wp[1], wp[2]);
+          const [cx, cy, , cw] = mul(projection, vp[0], vp[1], vp[2]);
+          if (!(cw > 0.05)) continue; // behind the camera
+          const sx = ((cx / cw + 1) / 2) * viewW;
+          const sy = ((1 - cy / cw) / 2) * viewH;
+          box.left = Math.min(box.left, sx);
+          box.right = Math.max(box.right, sx);
+          box.top = Math.min(box.top, sy);
+          box.bottom = Math.max(box.bottom, sy);
+        }
+  return box.right > box.left ? box : null;
+}
 /**
  * The one-liner's letters on screen, CSS px: about 6.5% of the screen's short side, never under
  * LINE_MIN_FONT_PX (a phone at arm's length) nor over LINE_MAX_FONT_PX.
@@ -167,28 +234,37 @@ function twoRows(text: string): string[] {
 
 /**
  * Lays the one-liner out for a screen `viewW` x `viewH` CSS px: one row at the screen's letter size
- * when it fits, else two rows, shrinking only as far as LINE_MIN_FONT_PX if even those are too wide.
- * Its room is the screen's width on an upright screen (the touch buttons sit well below it there)
- * and the road ahead's width on a landscape one (the bottom corners hold the HUD beside it).
+ * when it fits, else two rows, shrinking only as far as LINE_MIN_FONT_PX if even those are too wide
+ * or taller than `maxH`. Its room is the screen's width on an upright screen, and on a landscape one
+ * the road ahead's width, kept inside the bottom corners' HUD (CORNER_REACH).
  */
 export function landingLineLayout(
   text: string,
   viewW: number,
   viewH: number,
   measure: MeasureText = measureLine,
+  maxH = Infinity,
 ): LineLayout {
-  const across = viewH > viewW ? viewW : viewW * ROAD_AHEAD_WIDTH;
+  const short = Math.min(viewW, viewH);
+  const across =
+    viewH > viewW
+      ? viewW
+      : Math.min(viewW * ROAD_AHEAD_WIDTH, viewW - 2 * (CORNER_REACH * short + LINE_MARGIN_PX));
   const room = Math.max(1, across - 2 * LINE_MARGIN_PX);
-  const want = Math.round(Math.min(viewW, viewH) * LINE_FONT_OF_SHORT_SIDE);
+  const want = Math.round(short * LINE_FONT_OF_SHORT_SIDE);
   let fontPx = Math.min(LINE_MAX_FONT_PX, Math.max(LINE_MIN_FONT_PX, want));
   const plateFor = (rows: string[], px: number) => {
     const pad = Math.round(px * 0.6);
     const wide = Math.max(...rows.map((r) => measure(r, px)));
     return { w: Math.ceil(wide + 2 * pad), h: Math.ceil(rows.length * px * 1.2 + px * 0.6) };
   };
+  const tooBig = (rows: string[], px: number) => {
+    const p = plateFor(rows, px);
+    return p.w > room || p.h > maxH;
+  };
   let rows = [text];
   if (plateFor(rows, fontPx).w > room) rows = twoRows(text);
-  while (fontPx > LINE_MIN_FONT_PX && plateFor(rows, fontPx).w > room) fontPx -= 1;
+  while (fontPx > LINE_MIN_FONT_PX && tooBig(rows, fontPx)) fontPx -= 1;
   const plate = plateFor(rows, fontPx);
   return { rows, fontPx, plateW: Math.min(plate.w, room), plateH: plate.h };
 }
@@ -287,6 +363,8 @@ export class AirPays {
   /** What the line's texture was painted for: the line, the screen and the pixel ratio. */
   private paintedKey = '';
   private layout: LineLayout | null = null;
+  /** The plate's top, CSS px from the screen's top, as set when the line first showed. */
+  private plateTop = 0;
   private pendingSurge: SimEvent[] = [];
   private pendingCrash: SimEvent[] = [];
   private flying: Flying | null = null;
@@ -468,11 +546,12 @@ export class AirPays {
 
   /**
    * Lays the one-liner out on a `viewW` x `viewH` CSS px screen for this frame: its plate is centred
-   * across, its top just under the road ahead, kept wholly on screen, at its laid-out size. Repaints
-   * the texture only when the line, the screen or the pixel ratio changes. Returns whether a line is
-   * showing.
+   * across, its top under the road ahead and under the player's bike (`bike`, its screen box, as the
+   * line first shows), above the bottom HUD on an upright screen, wholly on screen. Its size and place
+   * are set as it first shows (and again if the screen or the pixel ratio changes), so it holds still
+   * while the bike bobs; the texture is repainted only then. Returns whether a line is showing.
    */
-  fitOverlay(viewW: number, viewH: number, pixelRatio: number): boolean {
+  fitOverlay(viewW: number, viewH: number, pixelRatio: number, bike: ScreenBox | null = null): boolean {
     const s = this.shown;
     if (!s || !this.posed) {
       this.line.visible = false;
@@ -480,10 +559,17 @@ export class AirPays {
     }
     const w = Math.max(1, viewW);
     const h = Math.max(1, viewH);
+    const m = LINE_MARGIN_PX;
     const key = `${s.item.ref}|${w}|${h}|${pixelRatio}`;
     if (key !== this.paintedKey || !this.layout) {
       this.paintedKey = key;
-      this.layout = landingLineLayout(s.item.text, w, h);
+      // The band it may use: from under the road ahead and the bike to the screen's foot (on an
+      // upright screen, above the speed and health).
+      const under = Math.max(h * ROAD_AHEAD_BOTTOM, bike?.bottom ?? 0) + m;
+      const foot = (h > w ? h - PORTRAIT_FOOT * Math.min(w, h) : h) - m;
+      this.layout = landingLineLayout(s.item.text, w, h, measureLine, foot - under);
+      // Too tall even at its smallest: it rises over the bike rather than into the HUD below.
+      this.plateTop = Math.max(h * ROAD_AHEAD_BOTTOM + m, Math.min(under, foot - this.layout.plateH));
       this.lineMat.map?.dispose();
       this.lineMat.map = lineTexture(this.layout, pixelRatio);
       this.lineMat.needsUpdate = true;
@@ -495,14 +581,8 @@ export class AirPays {
       cam.top = h;
       cam.updateProjectionMatrix();
     }
-    // The plate's centre, CSS px from the top: just under the road ahead, wholly on screen.
-    const m = LINE_MARGIN_PX;
-    const cyTop = clamp(
-      h * ROAD_AHEAD_BOTTOM + m + l.plateH / 2,
-      l.plateH / 2 + m,
-      h - l.plateH / 2 - m,
-      h / 2,
-    );
+    // The plate's centre, CSS px from the top, wholly on screen.
+    const cyTop = clamp(this.plateTop + l.plateH / 2, l.plateH / 2 + m, h - l.plateH / 2 - m, h / 2);
     this.line.position.set(w / 2, h - cyTop, 0);
     this.line.scale.set(l.plateW, l.plateH, 1);
     // Painted only where there is a canvas (not in node tests): the layout above still holds.
@@ -514,8 +594,8 @@ export class AirPays {
    * Draws the one-liner over the finished frame, after the film pass, so the look neither inks,
    * grades nor paints the sky over it. One draw call while it shows, none otherwise.
    */
-  drawOverlay(gl: WebGLRenderer, viewW: number, viewH: number): void {
-    if (!this.fitOverlay(viewW, viewH, gl.getPixelRatio()) || !this.line.visible) return;
+  drawOverlay(gl: WebGLRenderer, viewW: number, viewH: number, bike: ScreenBox | null = null): void {
+    if (!this.fitOverlay(viewW, viewH, gl.getPixelRatio(), bike) || !this.line.visible) return;
     const autoClear = gl.autoClear;
     gl.autoClear = false;
     gl.render(this.overlay, this.overlayCamera);
