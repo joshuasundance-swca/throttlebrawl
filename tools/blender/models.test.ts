@@ -187,7 +187,9 @@ describe.each(PROPS.map((p) => [p.name, p] as [string, Prop]))('model %s', (_nam
             ? [prop.single!.root, ...prop.single!.nodes]
             : prop.kind === 'vehicle'
               ? ['vehicle', 'vehicle_body', 'hood']
-              : ['tow_truck', 'cab', 'trailer', 'ramp_surface'];
+              : prop.rampTrailer
+                ? ['ramp_trailer', 'trailer', 'ramp_surface']
+                : ['tow_truck', 'cab', 'trailer', 'ramp_surface'];
     for (const n of roots) expect(names.has(n), n).toBe(true);
     expect(meshes).toBeGreaterThan(0);
     for (const t of prop.textSurfaces ?? []) {

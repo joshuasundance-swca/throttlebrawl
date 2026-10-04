@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { findBlender, runBlender, SKIP_NOTE } from './blender.mjs';
 import { glbPath, PROPS } from './catalog.mjs';
 import { repoRoot, scoreGlb } from './score.mjs';
+import { optimizeFile } from './optimize.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -52,7 +53,7 @@ function main(argv) {
       bad++;
       continue;
     }
-    const [a, b] = outs.map((o) => readFileSync(o));
+    const [a, b] = outs.map((o) => optimizeFile(o, prop));
     const same = sha(a) === sha(b);
     const score = scoreGlb(a, prop);
     const committed = path.join(repoRoot, glbPath(prop));
@@ -60,11 +61,11 @@ function main(argv) {
     let note;
     if (check) note = matches ? 'matches the committed GLB' : 'DIFFERS from the committed GLB';
     else if (matches) note = 'unchanged';
-    else {
+    else if (same && !score.summary.failed.length) {
       mkdirSync(path.dirname(committed), { recursive: true });
       copyFileSync(outs[0], committed);
       note = `written to ${glbPath(prop)}`;
-    }
+    } else note = 'not written: determinism or score failed';
     const s = score.summary;
     console.log(
       `BUILD ${prop.name}: ${runs[0].secs}s + ${runs[1].secs}s, ${a.length} bytes, deterministic ${same}, ` +
