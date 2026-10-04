@@ -27,9 +27,10 @@ import { fastForwardDone } from './lockstep';
 // HUD widget and overlay on screen is measured from its painted box: no two may overlap, and none
 // may reach into the look-ahead. Three moments are measured: the race's start (the ticker, the
 // objective and the career prompt), once the heat badge is up (with the slow-frames toast, the
-// rival's health bar and a bark on the ticker beside them), and while the landing one-liner
-// shows (render draws it in WebGL, so its plate is read from the overlay sprite three.js draws,
-// through three's own devtools hook). Overlaps main already has are named in KNOWN_LAYOUT_FINDINGS,
+// rival's health bar and a bark on the ticker beside them), and through a landing that pays (the
+// landing one-liner is a `line` item on the ticker since the ticker integration, T8.2; the strip is
+// measured against the player's bike on every frame of the landing's settle). Overlaps main already
+// has are named in KNOWN_LAYOUT_FINDINGS,
 // a list that can only shrink: a finding not on it fails, and so does an entry that no longer
 // happens.
 //
@@ -37,32 +38,49 @@ import { fastForwardDone } from './lockstep';
 // in-air prompt under the BRAKE button, and the slow-frames toast and the landing line over the
 // player's own bike. So the player's bike is a piece too (its painted screen box: the rider's
 // drawn frame, projected through the camera three.js last drew the race with; it may sit in the
-// road ahead, it is the thing ahead of the camera), the touch buttons are pieces, every career and
-// tutorial prompt is measured in the prompt box at the heat moment (or the start, in a quick race),
-// and the landing line is read with the toast up beside it and the in-air prompt as it is.
+// road ahead, it is the thing ahead of the camera), the touch buttons are pieces, every tutorial
+// prompt is measured in the prompt box at the heat moment (or the start, in a quick race), and the
+// longest producer ask is measured as the ticker item it now is. The live check after the HUD fix
+// (#431) found the landing line still over the bottom of the bike on the Keys for about 1.3 s (it
+// was placed from the first in-air frame, then the bike sank). The line is a ticker item now, and
+// the landing moment measures the strip against the bike on every frame of the landing's settle.
 
 const LOOK_AHEAD = { left: 0.25, right: 0.75, top: 0.25, bottom: 0.65 };
 /** The player's bike: allowed in the road ahead, never under another piece. */
 const BIKE = 'player-bike';
 
 /**
- * Every prompt the career box shows: the tutorial's (career/onboarding.ts) and the producer's asks
- * from every career pack, as app/ words them (`PRODUCER: <ask> +$<cash>`, and the thank-you).
+ * Every prompt the career's prompt box shows: the tutorial's (career/onboarding.ts). The producer's
+ * asks left the box for the ticker (T8.2): they are `ask` items, measured below as the strip's.
  */
 interface CareerFile {
   show?: { asks?: { text: string; cash: number }[] };
 }
-const CAREER_PROMPTS: readonly string[] = [
-  ...Object.values(PROMPTS),
-  ...readdirSync('packs').flatMap((pack) => {
-    const dir = `packs/${pack}/careers`;
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-      .filter((f) => f.endsWith('.json'))
-      .flatMap((f) => (JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as CareerFile).show?.asks ?? [])
-      .flatMap((a) => [`PRODUCER: ${a.text} +$${a.cash}`, `PRODUCER: Got it. +$${a.cash}`]);
-  }),
-];
+const CAREER_PROMPTS: readonly string[] = Object.values(PROMPTS);
+
+/** The producer's asks from every career pack. */
+const ASKS = readdirSync('packs').flatMap((pack) => {
+  const dir = `packs/${pack}/careers`;
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .flatMap((f) => (JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as CareerFile).show?.asks ?? []);
+});
+
+/** Every region's landing one-liners (the pools app/ picks from). */
+interface RegionFile {
+  landingLines?: { text: string }[];
+}
+const LANDING_LINES = readdirSync('packs').flatMap((pack) => {
+  const dir = `packs/${pack}/regions`;
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).flatMap((r) => {
+    const file = `${dir}/${r}/region.json`;
+    return existsSync(file)
+      ? ((JSON.parse(readFileSync(file, 'utf8')) as RegionFile).landingLines ?? []).map((l) => l.text)
+      : [];
+  });
+});
 
 interface BarkSetFile {
   lines: { text: string }[];
@@ -137,8 +155,6 @@ type TestWindow = Window & {
   __uiTicker?: (items: TickerItemLike[], hold?: boolean) => void;
   /** The layout probe (installLayoutProbe): every painted HUD widget and overlay. */
   __layoutPieces?: () => Piece[];
-  /** The layout probe: the landing one-liner's plate as the last frame drew it, or null. */
-  __landingPlate?: () => Box | null;
   /** The layout probe: the player's bike as the last frame drew it (its screen box), or null. */
   __playerBike?: () => Box | null;
 };
@@ -154,6 +170,18 @@ const LONGEST_BARK: TickerItemLike = {
 /** The widest style chip a race makes: a run of near misses with a big cash figure. */
 const WIDE_CHIP: TickerItemLike = { cls: 'style', text: 'NEAR MISS ×12', kind: 'nearMiss', cash: 12345 };
 const NAME: TickerItemLike = { cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 600_000 };
+/** The widest producer ask (app/ticker-feed.ts `producerAskItem`): the tag, the words and the cash. */
+const LONGEST_ASK: TickerItemLike = (() => {
+  const widest = ASKS.reduce((a, b) => (b.text.length > a.text.length ? b : a), { text: '', cash: 0 });
+  return { cls: 'ask', tag: 'PRODUCER', text: widest.text, cash: widest.cash, dwellMs: 600_000 };
+})();
+/** The widest landing line, as app/ puts it on the strip (`landingLineItem`). */
+const LONGEST_LANDING: TickerItemLike = {
+  cls: 'line',
+  text: LANDING_LINES.reduce((a, b) => (b.length > a.length ? b : a), ''),
+  contentRef: 'base:region/florida-keys#test-landing',
+  dwellMs: 600_000,
+};
 
 /**
  * The layout findings main has today, by case: "a × b" for two pieces that overlap, "a in the road
@@ -241,9 +269,7 @@ function watchErrors(page: Page): string[] {
  * The layout probe, before the page loads. `__layoutPieces()` measures every painted HUD widget and
  * overlay: the HUD's own pieces (any new one is picked up by being in #hud, the ticker among them),
  * the career's objective and prompt, the touch buttons, the slow-frames toast, the notice card and
- * the player's bike. `__landingPlate()` reads the landing one-liner's sprite (render/air-pays.ts)
- * from the overlay scene three.js reported through its devtools hook: in CSS px, an orthographic
- * camera with y up and the sprite centred on its position. `__playerBike()` finds the player's
+ * the player's bike. `__playerBike()` finds the player's
  * rider frame (render/views.ts: the group a rider's boxes or its rig are drawn on, at its ground
  * point, turned with its heading, lean and pitch) nearest the player's snapshot position, and
  * projects a box round the bike and rider through the camera the renderer last drew the race with
@@ -251,13 +277,6 @@ function watchErrors(page: Page): string[] {
  */
 async function installLayoutProbe(page: Page) {
   await page.addInitScript(() => {
-    interface SpriteLike {
-      visible: boolean;
-      position: { x: number; y: number };
-      scale: { x: number; y: number };
-      center: { x: number; y: number };
-      material: { opacity: number; map: unknown };
-    }
     interface NodeLike {
       name: string;
       rotation: { order: string };
@@ -274,7 +293,7 @@ async function installLayoutProbe(page: Page) {
       isWebGLRenderer?: boolean;
       name?: string;
       domElement?: HTMLCanvasElement;
-      getObjectByName?: (name: string) => (SpriteLike & NodeLike) | undefined;
+      getObjectByName?: (name: string) => NodeLike | undefined;
       render?: (scene: Observed, camera: CameraLike) => void;
     }
     const seen: Observed[] = [];
@@ -295,7 +314,6 @@ async function installLayoutProbe(page: Page) {
     const w = window as Window & {
       __THREE_DEVTOOLS__?: EventTarget;
       __layoutPieces?: () => { name: string; box: Box }[];
-      __landingPlate?: () => Box | null;
       __playerBike?: () => Box | null;
       __game?: {
         playerId(): number;
@@ -381,17 +399,6 @@ async function installLayoutProbe(page: Page) {
       const bike = w.__playerBike?.() ?? null;
       if (bike) out.push({ name: 'player-bike', box: bike });
       return out;
-    };
-    w.__landingPlate = () => {
-      const scene = seen.find((s) => s.isScene && s.name === 'air-pays-overlay');
-      const line = scene?.getObjectByName?.('landing-line');
-      const canvas = seen.find((s) => s.isWebGLRenderer)?.domElement;
-      if (!line || !canvas || !line.visible || !line.material.map || !(line.material.opacity > 0.05))
-        return null;
-      const c = canvas.getBoundingClientRect();
-      const left = c.left + line.position.x - line.scale.x * line.center.x;
-      const top = c.top + canvas.clientHeight - (line.position.y + line.scale.y * (1 - line.center.y));
-      return { left, top, right: left + line.scale.x, bottom: top + line.scale.y };
     };
   });
 }
@@ -640,12 +647,20 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
 }
 
 /**
- * Rides on until the player's next clean landing after real air, then reads the landing one-liner's
- * plate every frame it shows, with the slow-frames toast held up beside it (both are transient, and
- * could show at once): the plate must stay out of the road ahead and off every piece drawn in its
- * frame, the player's bike included. The prompt (the in-air one comes with every first jump) and
- * the toast are checked against everything in those frames too. Pairs of the other pieces (the
- * ticker, moving on its own clock) are judged at the frozen moments instead.
+ * Rides on until the player's next clean landing after real air (the one that puts a line on the
+ * ticker), then measures the strip as a landing line, every frame for a stretch of the settle (the
+ * live check found the bike sinking 30 to 64 px as the camera eased back after touchdown): the strip
+ * must stay out of the road ahead and off every piece drawn in its frame, the player's bike
+ * included. The slow-frames toast is held up beside it where the layout puts the two side by side
+ * (stacked, the strip steps aside while the toast shows, so there is no line to measure then). The
+ * prompt (the in-air one comes with every first jump) is checked against everything in those frames
+ * too. Pairs of the other pieces (the ticker, moving on its own clock) are judged at the frozen
+ * moments instead.
+ *
+ * The real path (the landing's event reaching the strip) can be displaced by a bark that is up at
+ * that moment (a lower class waits or is dropped), so the strip is given the regions' widest
+ * landing line through the seam, held, and the real path is checked where nothing displaces it: the
+ * veto's "recently seen" list, which app/ notes the line in as it puts it on the strip.
  */
 async function landingMoment(page: Page, where: string): Promise<string[]> {
   await page.evaluate(() => {
@@ -662,33 +677,43 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
     );
   });
   await fastForwardDone(page, `${where}: a landing that pays`);
-  const samples = await page.evaluate(async () => {
+  const samples = await page.evaluate(async (line) => {
     const w = window as TestWindow;
-    const out: { plate: Box; pieces: Piece[]; vw: number; vh: number }[] = [];
-    // The toast held up beside the line, where ui/ places it (hidden again after).
+    const out: { strip: Box; pieces: Piece[]; vw: number; vh: number }[] = [];
+    // The strip carries the landing line, held up so the live race cannot displace it.
+    w.__uiTicker?.([line], true);
+    // The toast held up beside the strip, where ui/ places the two side by side (hidden again after).
     const toast = document.getElementById('look-offer');
     const toastWasHidden = toast?.hidden ?? false;
-    if (toast) toast.hidden = false;
+    const stacked = document.getElementById('ui')?.dataset['top'] === 'stacked';
+    if (toast && !stacked) toast.hidden = false;
     const t0 = performance.now();
-    // The line lasts 2 s; 4 s and 240 frames are hang guards only.
-    for (let i = 0; i < 240 && performance.now() - t0 < 4000; i++) {
+    // 90 frames: the camera's settle after a touchdown takes about 1.3 s of the race. 6 s is a hang guard.
+    for (let i = 0; i < 90 && performance.now() - t0 < 6000; i++) {
       await new Promise((r) => requestAnimationFrame(r));
-      const plate = w.__landingPlate?.() ?? null;
-      if (plate) out.push({ plate, pieces: w.__layoutPieces?.() ?? [], vw: innerWidth, vh: innerHeight });
-      else if (out.length > 0) break;
+      const pieces = w.__layoutPieces?.() ?? [];
+      const strip = pieces.find((p) => p.name === 'hud-ticker');
+      const el = document.getElementById('hud-ticker');
+      if (strip && el?.dataset['cls'] === 'line')
+        out.push({
+          strip: strip.box,
+          pieces: pieces.filter((p) => p !== strip),
+          vw: innerWidth,
+          vh: innerHeight,
+        });
     }
     if (toast) toast.hidden = toastWasHidden;
     return out;
-  });
+  }, LONGEST_LANDING);
   console.log(
-    `${where}: the landing line's plate in ${samples.length} frames: ${JSON.stringify(samples.map((s) => s.plate))}`,
+    `${where}: the strip as a landing line in ${samples.length} frames: ${JSON.stringify(samples.slice(0, 3).map((s) => roundBox(s.strip)))} ...`,
   );
-  expect(samples.length, `${where}: the landing one-liner was drawn and measured`).toBeGreaterThan(0);
+  expect(samples.length, `${where}: the strip showed the landing line and was measured`).toBeGreaterThan(20);
   const checked = new Set(['career-prompt', 'look-offer', BIKE]);
   const found = new Set<string>();
   const bikes: Box[] = [];
   for (const s of samples) {
-    const line: Piece = { name: 'landing-line', box: s.plate };
+    const line: Piece = { name: 'landing-line', box: s.strip };
     const pieces = s.pieces.filter((p) => !p.name.startsWith('div.card'));
     const against = [line, ...pieces.filter((p) => checked.has(p.name))];
     for (const f of layoutFindings(pieces, s.vw, s.vh, against)) found.add(f);
@@ -697,9 +722,40 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
   }
   console.log(`${where}: the player's bike in those frames: ${JSON.stringify(bikes.map(roundBox))}`);
   expect(bikes.length, `${where}: the bike was measured in every landing frame`).toBe(samples.length);
+  // The strip never covers the bike, on any frame: the check the HUD run's live check asked for.
+  const covering = samples.filter((s) => {
+    const bike = s.pieces.find((p) => p.name === BIKE);
+    return !!bike && overlaps(s.strip, bike.box);
+  });
+  expect(covering.length, `${where}: frames where the landing line covers the bike`).toBe(0);
   const first = samples[0];
   if (first) logPieces(`${where}, landing`, first.pieces);
+  await recentlySeenHasLanding(page, where);
   return [...found];
+}
+
+/**
+ * The real path, end to end: app/ put the landing's line on the strip (and noted it as seen), so
+ * the pause screen's "recently seen" list names one of the regions' landing lines. The pause ends
+ * the case's measuring, so this runs last.
+ */
+async function recentlySeenHasLanding(page: Page, where: string) {
+  await page.keyboard.press('Escape');
+  const list = page.locator('#pause-screen #recently-seen');
+  await expect(list, `${where}: the pause screen's recently-seen list`).toBeVisible();
+  const rows = await list
+    .locator('.rs-item')
+    .evaluateAll((els) =>
+      els.map((e) => ({ ref: e.getAttribute('data-content-ref') ?? '', text: e.textContent ?? '' })),
+    );
+  console.log(`${where}: recently seen: ${JSON.stringify(rows.map((r) => r.ref))}`);
+  const landing = rows.filter((r) => LANDING_LINES.some((l) => r.text.includes(l)));
+  expect(
+    landing.map((r) => r.ref),
+    `${where}: the landing line is in "recently seen" (app/ noted it as it put it on the strip)`,
+  ).not.toEqual([]);
+  for (const r of landing)
+    expect(r.ref, `${where}: a landing line's reference`).toMatch(/^[\w-]+:region\/[\w-]+#[\w-]+$/);
 }
 
 /**
@@ -818,6 +874,16 @@ test('phone landscape: the ticker sits clear of the road ahead, stays small and 
   const name = await tickerAndMeasure(page, [NAME]);
   expectClear(name, 'phone landscape, name');
   expect(name.ticker?.fontPx, 'a takedown name is small').toBeLessThanOrEqual(12);
+
+  // The producer's longest ask and the widest landing line (T8.2: both are ticker items now).
+  const ask = await tickerAndMeasure(page, [LONGEST_ASK]);
+  expectClear(ask, 'phone landscape, ask');
+  expectCompact(ask, 'phone landscape, ask');
+  expect(ask.ticker?.text, 'the ask is tagged PRODUCER and shows its cash').toMatch(/^PRODUCER .+ \+\$\d+$/);
+  const landing = await tickerAndMeasure(page, [LONGEST_LANDING]);
+  expectClear(landing, 'phone landscape, landing line');
+  expectCompact(landing, 'phone landscape, landing line');
+  expect(landing.ticker?.cls).toBe('line');
 
   // A quick fade: a chip left to itself is gone well inside a few seconds (1.1 s of the strip's clock).
   await page.evaluate(() =>
@@ -991,6 +1057,13 @@ test('the look-ahead and layout checks catch a centred widget and overlapped wid
     box: { left: w * 0.2, right: w * 0.8, top: h * 0.3, bottom: h * 0.4 },
   };
   expect(layoutFindings(m.layout, w, h, [plate])).toContain('landing-line in the road ahead');
+  // A landing line laid over the bike is caught, the way the landing moment measures it.
+  const bikeBox = m.layout.find((p) => p.name === BIKE)?.box;
+  expect(bikeBox, 'the probe measured the player bike').toBeDefined();
+  if (bikeBox)
+    expect(layoutFindings(m.layout, w, h, [{ name: 'landing-line', box: bikeBox }])).toContain(
+      `landing-line × ${BIKE}`,
+    );
 
   // The player's bike is measured where the chase camera puts it (low in the middle, a rider-sized
   // box), and it may sit in the road ahead.
