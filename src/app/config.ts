@@ -770,12 +770,32 @@ export function eventGrudgeRule(event: RaceEvent, eventPack: string): Pick<SimEv
   return { grudgeRule: { rule, rival: qualifyIn(eventPack, rival) } };
 }
 
+/** A race's registry with the named bikes (qualified keys) added from the full registry. */
+function withBikes(
+  race: ContentRegistry,
+  reg: ContentRegistry,
+  keys: readonly (string | null | undefined)[],
+): ContentRegistry {
+  const extra = keys.flatMap((k) => {
+    const bike = k && !race.bikes[k] ? reg.bikes[k] : undefined;
+    return k && bike ? [[k, bike] as const] : [];
+  });
+  if (extra.length === 0) return race;
+  return { ...race, bikes: { ...race.bikes, ...Object.fromEntries(extra) } };
+}
+
 export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup: RaceSetup): SimConfig {
   const eventId = eventKey(setup.eventId ?? DEFAULT_EVENT);
   const eventPack = packOf(eventId);
   // Only the race's packs (the event's pack and its dependencies) reach the race: carrying other
-  // region packs never changes this race (docs/content-packs.md, "Region packs at runtime").
-  const race = packSubset(reg, packClosure(reg, eventPack));
+  // region packs never changes this race (docs/content-packs.md, "Region packs at runtime"). The one
+  // exception is a bike the setup names: the garage is global and the career's field rides the best
+  // bike open anywhere (playtest 3), so a Pacific Northwest bike rides in a Keys race too.
+  const race = withBikes(packSubset(reg, packClosure(reg, eventPack)), reg, [
+    setup.playerBike,
+    setup.fieldLevel?.rivalBike,
+    setup.fieldLevel?.copBike,
+  ]);
   // A season's remix applies to the event before anything below reads it (the patch's length is the
   // one to race), then the career's field level sets the pace and reshapes the riders.
   const event = withEventPatch(lookup(race.events, eventId), setup.eventPatch);

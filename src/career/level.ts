@@ -15,10 +15,12 @@
 // - rivals ride the best open bike from a region's third tier (every tier from Season 2), the rank
 //   below it before; the cops ride the rivals' bike, capped at 0.98 of the best open top speed, so
 //   a player on that bike can always outrun the law on a straight;
-// - aggression 0.85, 1.0, 1.15, 1.25, x1.1 for a tier boss and x1.2 for the region boss, +0.1 a
-//   season, at most 1.6; the signature gap 1.3, 1.0, 0.8, 0.7, divided by the same boss factor,
-//   x0.9 a season, at least 0.5; health 0.9, 1.0, 1.1, 1.2, +0.1 for the region boss, +0.05 a
-//   season, at most 1.4; power 0.9, 1.0, 1.07, 1.12, +0.05 a season, at most 1.3;
+// - the fights climb gently ("about 10% easier ... about 20% harder"; T7.5 retuned the design's
+//   0.85 to 1.25 and 1.3 to 0.7, which overshot it): aggression 0.9, 1.0, 1.1, 1.2, x1.05 for a
+//   tier boss and x1.1 for the region boss, +0.1 a season, at most 1.6; the signature gap 1.1, 1.0,
+//   0.9, 0.85 (so about 10% fewer moves to about 20% more), divided by the same boss factor, x0.9 a
+//   season, at least 0.5; health 0.9, 1.0, 1.1, 1.2, +0.1 for the region boss, +0.05 a season, at
+//   most 1.4; power 0.9, 1.0, 1.07, 1.12, +0.05 a season, at most 1.3;
 // - the cops' fines x(1 + 0.08 (g - 1)).
 import type { ContentRegistry } from '../content';
 import type { FieldLevel } from '../core';
@@ -36,14 +38,14 @@ export interface LadderBike {
 /** Per region tier (index 0 = the first; a region with more tiers keeps the last value). */
 export const FIELD_DEFAULTS = {
   paceShare: [0.74, 0.78, 0.82, 0.85],
-  aggression: [0.85, 1.0, 1.15, 1.25],
-  signatureGap: [1.3, 1.0, 0.8, 0.7],
+  aggression: [0.9, 1.0, 1.1, 1.2],
+  signatureGap: [1.1, 1.0, 0.9, 0.85],
   health: [0.9, 1.0, 1.1, 1.2],
   power: [0.9, 1.0, 1.07, 1.12],
   /** The first region tier (index) whose rivals ride the best open bike. */
   bestBikeFromTier: 2,
-  tierBoss: { paceShare: 0.02, aggression: 1.1 },
-  regionBoss: { paceShare: 0.04, aggression: 1.2, health: 0.1 },
+  tierBoss: { paceShare: 0.02, aggression: 1.05 },
+  regionBoss: { paceShare: 0.04, aggression: 1.1, health: 0.1 },
   perSeason: { paceShare: 0.03, aggression: 0.1, signatureGap: 0.9, health: 0.05, power: 0.05 },
   cap: { paceShare: 0.95, aggression: 1.6, signatureGapMin: 0.5, health: 1.4, power: 1.3 },
   copTopShare: 0.98,
@@ -128,7 +130,8 @@ export function fieldLevel(
       D.perSeason.paceShare * s,
   );
   const bossFactor = regionBoss ? D.regionBoss.aggression : tierBoss ? D.tierBoss.aggression : 1;
-  const wantsBest = field.rivalBike ? field.rivalBike === 'best' : t >= D.bestBikeFromTier || season > 1;
+  // From Season 2 every tier's rivals ride the best bike, whatever the tier's Season 1 block says.
+  const wantsBest = season > 1 || (field.rivalBike ? field.rivalBike === 'best' : t >= D.bestBikeFromTier);
   const rides = wantsBest ? best : (ladder[Math.max(0, rank - 1)] ?? best);
   return {
     paceMps: r1(share * best.topSpeedMps),
