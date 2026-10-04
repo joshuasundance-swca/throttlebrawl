@@ -16,10 +16,15 @@ now bigger brown nuts in the trunk mesh, hanging below the crown, at no extra dr
 import math
 import random
 import sys
+from pathlib import Path
 
 import bmesh
 import bpy
 from mathutils import Vector
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _winding import prepare_winding
 
 # ---------------------------------------------------------------- tuning
 VARIANTS = [
@@ -246,6 +251,7 @@ def main():
         build_crown(mb, p)
         mb.build(f"{p['name']}_fronds", mats, root)
 
+    prepare_winding()
     bpy.ops.export_scene.gltf(
         filepath=out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_extras=True, export_attributes=True,

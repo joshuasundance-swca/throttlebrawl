@@ -481,6 +481,30 @@ const SIGN = {
 } as unknown as Prop;
 
 describe('text surfaces', () => {
+  it('reads a +X side panel by winding and rejects its reversed face', () => {
+    const sideSign = (back: boolean) => {
+      const face = panel(2, 1, back);
+      // Rotate a front sign 90 degrees about Y: min X maps to max Z (screen left).
+      face.positions = face.positions.flatMap((_, i, a) =>
+        i % 3 === 0 ? [a[i + 2]!, a[i + 1]!, -a[i]!] : [],
+      );
+      return makeGlb({
+        nodes: [
+          { name: 'sign', children: [1] },
+          {
+            name: 'sign_face',
+            mesh: 0,
+            extras: { text_surface: true, facing_axis: 'x', width_m: 2, height_m: 1 },
+          },
+        ],
+        meshes: [{ name: 'sign_face', primitives: [face] }],
+        materials: [{ name: 'sign_face' }],
+        roots: [0],
+      });
+    };
+    expect(checkOf(sideSign(false), SIGN, 'sign_face_text_surface')?.pass).toBe(true);
+    expect(checkOf(sideSign(true), SIGN, 'sign_face_text_surface')?.pass).toBe(false);
+  });
   it('find the front face by winding when the GLB ships no normals', () => {
     expect(checkOf(sign(false, false), SIGN, 'sign_face_text_surface')?.pass).toBe(true);
     expect(checkOf(sign(true, false), SIGN, 'sign_face_text_surface')?.pass).toBe(false);
