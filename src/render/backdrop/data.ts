@@ -68,17 +68,33 @@ export interface PeakPiece extends Base {
   craterShare?: number;
 }
 
+export const BRIDGE_STYLES = ['suspension', 'girder', 'truss', 'lift', 'arch'] as const;
+export type BridgeStyle = (typeof BRIDGE_STYLES)[number];
+
 export interface BridgePiece extends Base {
   kind: 'bridge';
   from: Pt;
   to: Pt;
-  /** "suspension" (towers and cables), "girder" (a long deck on piers). */
-  style: 'suspension' | 'girder';
+  /**
+   * "suspension" (towers and cables), "girder" (a long deck on piers), and, for the real roads'
+   * bridges (playtest 3): "truss" (camelback spans, honouring `gaps`: the old Bahia Honda and Seven
+   * Mile bridges), "lift" (two towers with counterweights: the Hawthorne and Steel bridges) and
+   * "arch" (a tied arch: Fremont).
+   */
+  style: BridgeStyle;
   deckM: number;
   colour: string;
   /** Tower positions along the span, 0..1, and their height over the water, m. */
   towersAt?: readonly number[];
   towerM?: number;
+  /** A truss bridge's span between piers (default 60 m) and the height of its camelback (default 9 m). */
+  spanM?: number;
+  trussM?: number;
+  /** A truss with the deck on top of it, the truss hanging under (default: a through truss, over the deck). */
+  deckOnTop?: boolean;
+  /** A tied arch's springings along the span, 0..1 (default 0.25 and 0.75), and its rise over the deck, m. */
+  archAt?: readonly [number, number];
+  archM?: number;
   /** Where the cables come down to the deck between two suspension spans, 0..1. */
   anchorsAt?: readonly number[];
   /** A girder bridge's piers, m apart (default 160). */
@@ -390,6 +406,39 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
         out.push(`${at}: traffic must be 0..60 lights each way`);
       if (tc !== undefined && (!Array.isArray(tc) || tc.length !== 2 || tc.some((c) => !HEX.test(String(c)))))
         out.push(`${at}: trafficColours must be two #rrggbb`);
+    }
+    if (q['kind'] === 'bridge') {
+      if (!BRIDGE_STYLES.some((st) => st === q['style']))
+        out.push(`${at}: style must be one of ${BRIDGE_STYLES.join(', ')}`);
+      const gaps = q['gaps'];
+      if (
+        gaps !== undefined &&
+        (!Array.isArray(gaps) ||
+          gaps.some(
+            (g) =>
+              !Array.isArray(g) ||
+              g.length !== 2 ||
+              typeof g[0] !== 'number' ||
+              typeof g[1] !== 'number' ||
+              !(g[0] >= 0 && g[0] < g[1] && g[1] <= 1),
+          ))
+      )
+        out.push(`${at}: gaps must be [from, to] shares of the length, 0 <= from < to <= 1`);
+      for (const k of ['spanM', 'trussM', 'archM'])
+        if (q[k] !== undefined && !(typeof q[k] === 'number' && q[k] > 0))
+          out.push(`${at}: ${k} must be > 0`);
+      const arch = q['archAt'];
+      if (
+        arch !== undefined &&
+        (!Array.isArray(arch) ||
+          arch.length !== 2 ||
+          typeof arch[0] !== 'number' ||
+          typeof arch[1] !== 'number' ||
+          !(arch[0] >= 0 && arch[0] < arch[1] && arch[1] <= 1))
+      )
+        out.push(`${at}: archAt must be [from, to] shares of the length, 0 <= from < to <= 1`);
+      if (q['deckOnTop'] !== undefined && typeof q['deckOnTop'] !== 'boolean')
+        out.push(`${at}: deckOnTop must be true or false`);
     }
     if (q['kind'] === 'floor' && Array.isArray(q['area']) && (q['area'] as unknown[]).length < 3)
       out.push(`${at}: a floor area needs at least 3 points`);

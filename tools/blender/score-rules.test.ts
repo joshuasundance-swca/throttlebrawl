@@ -381,6 +381,37 @@ const KIT = {
 } as unknown as Prop;
 
 describe('bridge bays', () => {
+  it('checks a deck-level non-bay foundation without exempting ordinary ground roots', () => {
+    const pier = (foundation?: number, depth = 1.8) =>
+      makeGlb({
+        roots: [0],
+        nodes: [
+          {
+            name: 'pier',
+            children: [1],
+            extras: foundation === undefined ? {} : { foundation_m: foundation },
+          },
+          { name: 'pier_body', mesh: 0 },
+        ],
+        meshes: [{ name: 'pier_body', primitives: [box([-15, -depth, -12], [15, 0.2, 0])] }],
+        materials: [{ name: 'concrete' }],
+      });
+    const prop = {
+      ...KIT,
+      variants: {
+        ...KIT.variants!,
+        roots: ['pier'],
+        xs: [0],
+        bays: undefined,
+        lods: undefined,
+        height: [0, 1],
+      },
+    } as unknown as Prop;
+    expect(failedOf(pier(1.8), prop)).toEqual([]);
+    expect(failedOf(pier(undefined), prop)).toContain('pier_base_on_ground');
+    expect(failedOf(pier(1.8, 2.4), prop)).toContain('pier_base_on_ground');
+    expect(failedOf(pier(-1.8), prop)).toContain('pier_base_on_ground');
+  });
   it('pass when a bay runs exactly its bay_m along +Z with its root at deck level', () => {
     const res = scoreGlb(bridgeKit(41, 24), KIT);
     expect(res.summary.failed).toEqual([]);

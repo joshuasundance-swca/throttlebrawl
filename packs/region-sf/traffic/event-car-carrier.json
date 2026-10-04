@@ -21,7 +21,7 @@
   },
   "meta": {
     "status": "draft",
-    "notes": "DRAFT until the traffic render draws the carrier's lowered ramp (playtest 3, T4.3), with its moving-ramp modifier. San Francisco's moving ramp truck carrier: it drives ahead in the outermost lane at 20 m/s, and once a racer is 200 m behind it its ramp comes down and its whole box is a jump (sim/modifiers, `moving-ramp`). Until then it is an ordinary big vehicle: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event places it. A tow truck's size, 7.5 m, never larger than the race's own largest vehicle (the rival AI sizes every vehicle by the largest).",
+    "notes": "DRAFT in San Francisco only, with its `sf-moving-ramp` modifier (see its notes for why). San Francisco's moving ramp truck carrier: it drives ahead in the outermost lane at 20 m/s, and once a racer is 200 m behind it its ramp comes down and its whole box is a jump (sim/modifiers, `moving-ramp`). Until then it is an ordinary big vehicle: riding into it crashes you. Never in a region's traffic mix (weight 0): a road event places it. A tow truck's size, 7.5 m, never larger than the race's own largest vehicle (the rival AI sizes every vehicle by the largest).",
     "provenance": {
       "origin": "agent",
       "author": "agent",

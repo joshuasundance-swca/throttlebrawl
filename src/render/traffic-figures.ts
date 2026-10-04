@@ -10,6 +10,10 @@
 // dog is scaled per instance to its type's width and length and the figure's height, a person is
 // drawn at its own size in metres. White parts take the instance tint (the paint). Flat colours,
 // no textures: every look recolours them. Presentation only.
+// Playtest 3 (T4.3) adds the real-world local life (a pedicab, a road train, a streetcar, a rooster
+// and a parrot flock), the big animals that used to share the chicken's shape (elk, raccoon, sea
+// lion), and the moving ramp truck: a car carrier drawn twice, ramp stowed and ramp lowered, which
+// views.ts swaps at the `rampDown` beat.
 import type { SimTrafficTypeDef } from '../sim/api';
 import type { BoxPart } from './geometry';
 
@@ -27,12 +31,36 @@ export const TRAFFIC_FIGURES = [
   'rainCyclist',
   'eBike',
   'scooterRider',
+  'pedicab',
+  'roadTrain',
+  'streetcar',
+  'carCarrier',
+  'carCarrierRamp',
 ] as const;
 export type TrafficFigure = (typeof TRAFFIC_FIGURES)[number];
 
 /** A person or animal figure; `personFist` and `personPhone` are the reaction poses. */
-export const PEOPLE_FIGURES = ['jogger', 'hiker', 'dogWalker', 'dog', 'personFist', 'personPhone'] as const;
+export const PEOPLE_FIGURES = [
+  'jogger',
+  'hiker',
+  'dogWalker',
+  'dog',
+  'personFist',
+  'personPhone',
+  'elk',
+  'raccoon',
+  'seaLion',
+  'rooster',
+  'parrotFlock',
+] as const;
 export type PeopleFigure = (typeof PEOPLE_FIGURES)[number];
+
+/** The people figures that are animals: scaled to their type's width and length, like the dog. */
+const ANIMAL_FIGURES = ['dog', 'elk', 'raccoon', 'seaLion', 'rooster', 'parrotFlock'] as const;
+export type AnimalFigure = (typeof ANIMAL_FIGURES)[number];
+export function isAnimalFigure(key: string): key is AnimalFigure {
+  return (ANIMAL_FIGURES as readonly string[]).includes(key);
+}
 
 const name = (contentId: string) => contentId.slice(contentId.lastIndexOf(':') + 1);
 
@@ -51,6 +79,12 @@ export function trafficFigureFor(contentId: string): TrafficFigure | null {
   if (/scooter-rider/.test(id)) return 'scooterRider';
   if (/cruiser/.test(id)) return 'cruiser';
   if (/cyclist/.test(id)) return 'rainCyclist';
+  // Playtest 3: the local life, and the moving ramp truck (views.ts swaps it for its lowered-ramp twin).
+  if (/pedicab/.test(id)) return 'pedicab';
+  if (/island-tram|road-train/.test(id)) return 'roadTrain';
+  if (/streetcar/.test(id)) return 'streetcar';
+  if (/cargo-bike/.test(id)) return 'cruiser';
+  if (/car-carrier/.test(id)) return 'carCarrier';
   return null;
 }
 
@@ -64,12 +98,22 @@ export function peopleFigureFor(
   gesture: 'fist' | 'film' | null,
 ): PeopleFigure | null {
   const id = name(contentId);
-  const animal = def ? def.category === 'animal' : /dog|doodle/.test(id);
-  if (animal) return /(^|-)dog$|doodle/.test(id) ? 'dog' : null;
+  const animal = def
+    ? def.category === 'animal'
+    : /dog|doodle|(^|-)elk$|raccoon|sea-lion|rooster|parrot/.test(id);
+  if (animal) {
+    if (/(^|-)dog$|doodle/.test(id)) return 'dog';
+    if (/(^|-)elk$/.test(id)) return 'elk';
+    if (/raccoon/.test(id)) return 'raccoon';
+    if (/sea-lion/.test(id)) return 'seaLion';
+    if (/rooster/.test(id)) return 'rooster';
+    if (/parrot/.test(id)) return 'parrotFlock';
+    return null;
+  }
   if (gesture === 'fist') return 'personFist';
   if (gesture === 'film') return 'personPhone';
   if (/jogger|runner/.test(id)) return 'jogger';
-  if (/hiker/.test(id)) return 'hiker';
+  if (/hiker|pod-diner/.test(id)) return 'hiker';
   if (/dog-walker/.test(id)) return 'dogWalker';
   return null;
 }
@@ -88,13 +132,27 @@ export const TRAFFIC_FIGURE_HEIGHT_M: Readonly<Record<TrafficFigure, number>> = 
   rainCyclist: 1.75,
   eBike: 1.8,
   scooterRider: 1.8,
+  pedicab: 2.1,
+  roadTrain: 2.6,
+  streetcar: 3.4,
+  carCarrier: 2.6,
+  carCarrierRamp: 2.6,
 };
-/** A dog's height, metres (its width and length come from its type). */
-export const DOG_HEIGHT_M = 0.6;
+/** Each animal figure's height, metres (its width and length come from its type). */
+export const ANIMAL_HEIGHT_M: Readonly<Record<AnimalFigure, number>> = {
+  dog: 0.6,
+  elk: 2.4,
+  raccoon: 0.4,
+  seaLion: 0.7,
+  rooster: 0.55,
+  parrotFlock: 1.0,
+};
+/** How high a parrot flock circles above the road, metres (it dives up and away from there). */
+export const FLOCK_LIFT_M = 1.8;
 
 /** Sizes when a type is missing from the catalog, metres. */
 export const TRAFFIC_FIGURE_DIMS: Readonly<
-  Record<TrafficFigure | 'dog', { widthM: number; lengthM: number }>
+  Record<TrafficFigure | AnimalFigure, { widthM: number; lengthM: number }>
 > = {
   golfCart: { widthM: 1.3, lengthM: 2.4 },
   convertible: { widthM: 1.8, lengthM: 4.6 },
@@ -108,7 +166,18 @@ export const TRAFFIC_FIGURE_DIMS: Readonly<
   rainCyclist: { widthM: 0.6, lengthM: 1.8 },
   eBike: { widthM: 0.7, lengthM: 1.8 },
   scooterRider: { widthM: 0.55, lengthM: 1.1 },
+  pedicab: { widthM: 1.2, lengthM: 2.6 },
+  roadTrain: { widthM: 2.2, lengthM: 14 },
+  streetcar: { widthM: 2.5, lengthM: 20 },
+  // The car carrier is a tow truck's size: the rival AI sizes every vehicle by the largest in a race.
+  carCarrier: { widthM: 2.4, lengthM: 7.5 },
+  carCarrierRamp: { widthM: 2.4, lengthM: 7.5 },
   dog: { widthM: 0.35, lengthM: 0.9 },
+  elk: { widthM: 0.9, lengthM: 2.4 },
+  raccoon: { widthM: 0.3, lengthM: 0.6 },
+  seaLion: { widthM: 0.8, lengthM: 2.0 },
+  rooster: { widthM: 0.3, lengthM: 0.45 },
+  parrotFlock: { widthM: 2, lengthM: 2 },
 };
 
 /**
@@ -123,8 +192,22 @@ const DOG_COAT: Readonly<Record<string, string>> = {
   'dive-bar-dog': '#c9a36b',
 };
 
-/** The instance tint for a figure: a dog's coat, white (no tint) for everything else. */
+/** The coats of the big animals (the packs' `paintOptions`): the figure's light parts take one by id. */
+const ANIMAL_COATS: Readonly<Record<'elk' | 'raccoon' | 'seaLion', readonly string[]>> = {
+  elk: ['#7a5a3c', '#a07a52', '#3b2b20'],
+  raccoon: ['#6f6a63', '#7d776e', '#5f5a53'],
+  seaLion: ['#6b5a4a', '#4a3f35'],
+};
+
+/**
+ * The instance tint for a figure: a dog's coat, an elk's, a raccoon's or a sea lion's, and white (no
+ * tint) for everything else.
+ */
 export function trafficFigureTint(fig: TrafficFigure | PeopleFigure, contentId: string, id: number): string {
+  if (fig === 'elk' || fig === 'raccoon' || fig === 'seaLion') {
+    const coats = ANIMAL_COATS[fig];
+    return coats[Math.abs(id) % coats.length] ?? '#ffffff';
+  }
   if (fig !== 'dog') return '#ffffff';
   const n = name(contentId);
   for (const [k, c] of Object.entries(DOG_COAT)) if (n.includes(k)) return c;
@@ -390,6 +473,344 @@ const PERSON_PHONE: BoxPart[] = [
   { size: [0.13, 0.2, 0.01], at: [0, 1.46, -0.52], color: '#8fd3f0' },
 ];
 
+// ---- Playtest 3 (T4.3) shapes ------------------------------------------------------------
+// Designed in metres on the type's own width, height and length (the origin on the ground, centred,
+// facing -z), then divided into the unit box the instance scale stretches back out.
+
+/** A box in metres, fitted to a figure of this width, height and length (no rotation about x). */
+function fit(parts: readonly BoxPart[], w: number, h: number, l: number): BoxPart[] {
+  return parts.map((p) => ({
+    ...p,
+    size: [p.size[0] / w, p.size[1] / h, p.size[2] / l],
+    at: [p.at[0] / w, p.at[1] / h, p.at[2] / l],
+  }));
+}
+
+/**
+ * A thin slab whose TOP surface runs from (z0, y0) to (z1, y1), in metres, on a figure of this
+ * width, height and length. A box turns in the unit box before the instance scale stretches it, so
+ * its angle is the unit box's, not the metres': the line through its top face is the same line both
+ * ways, since the stretch is linear. `lift` raises it off that line, metres.
+ */
+function slab(
+  fig: { w: number; h: number; l: number },
+  z0: number,
+  y0: number,
+  z1: number,
+  y1: number,
+  widthM: number,
+  thickM: number,
+  color: string,
+  lift = 0,
+): BoxPart {
+  const dy = (y1 - y0) / fig.h;
+  const dz = (z1 - z0) / fig.l;
+  const len = Math.hypot(dy, dz);
+  // A turn about x takes the box's long z axis to (y, z) = (-sin a, cos a).
+  const a = Math.atan2(dz < 0 ? dy : -dy, Math.abs(dz));
+  const t = thickM / fig.h;
+  // The top face is half a thickness out along the box's up axis, (cos a, sin a) in (y, z).
+  return {
+    size: [widthM / fig.w, t, len],
+    at: [
+      0,
+      (y0 + y1) / 2 / fig.h + lift / fig.h - (Math.cos(a) * t) / 2,
+      (z0 + z1) / 2 / fig.l - (Math.sin(a) * t) / 2,
+    ],
+    color,
+    rotX: a,
+  };
+}
+
+/** The car carrier: a 7.5 m by 2.4 m tow truck whose whole bed is the ramp (sim/modifiers moving-ramp). */
+const CARRIER = { w: 2.4, h: 2.6, l: 7.5 };
+/** The sim's ramp: it runs 5 m from the rear and rises 1.22 m (MOVING.rampRunM and rampSlope). */
+const CARRIER_RUN_M = 5;
+const CARRIER_LIP_M = 1.22;
+const CARRIER_REAR_M = CARRIER.l / 2;
+const CARRIER_YELLOW = '#f2c14e';
+const CARRIER_SLATE = '#4a4f55';
+
+/** Everything the carrier has with its ramp up or down: the cab, the rack, the lip, the wheels. */
+function carrierShared(): BoxPart[] {
+  return fit(
+    [
+      // The cab, a windscreen and a side window band, the bumper and the amber roof light.
+      { size: [2.3, 1.6, 1.7], at: [0, 1.6, -2.9], color: CARRIER_YELLOW },
+      { size: [2.0, 0.6, 0.04], at: [0, 2.0, -3.73], color: GLASS },
+      { size: [2.32, 0.5, 0.9], at: [0, 2.0, -2.85], color: GLASS },
+      { size: [2.3, 0.3, 0.12], at: [0, 0.55, -3.69], color: '#2b2b2b' },
+      { size: [0.8, 0.12, 0.25], at: [0, 2.5, -2.9], color: '#ffb000' },
+      // The frame under the cab, the headache rack behind it, and the level lip past the ramp.
+      { size: [1.9, 0.3, 3.1], at: [0, 0.7, -2.15], color: '#2b2b2b' },
+      { size: [2.2, 0.8, 0.1], at: [0, 1.6, -1.95], color: CARRIER_SLATE },
+      { size: [2.0, 0.2, 0.8], at: [0, 1.1, -1.65], color: CARRIER_SLATE },
+      // Three axles, the wheels outside the ramp's width.
+      ...[-2.9, -0.4, 0.9].flatMap((z): BoxPart[] => [
+        { size: [0.3, 0.9, 0.9], at: [-1.05, 0.45, z], color: DARK },
+        { size: [0.3, 0.9, 0.9], at: [1.05, 0.45, z], color: DARK },
+      ]),
+    ],
+    CARRIER.w,
+    CARRIER.h,
+    CARRIER.l,
+  );
+}
+
+/** Ramp up: the bed level at the lip, its side rails, and the ramp folded up at the rear. */
+const CAR_CARRIER: BoxPart[] = [
+  ...carrierShared(),
+  ...fit(
+    [
+      { size: [2.2, 0.2, 5.0], at: [0, 1.1, 1.25], color: CARRIER_SLATE },
+      { size: [0.1, 0.25, 5.0], at: [-1.1, 1.3, 1.25], color: CARRIER_YELLOW },
+      { size: [0.1, 0.25, 5.0], at: [1.1, 1.3, 1.25], color: CARRIER_YELLOW },
+      { size: [0.2, 0.5, 4.4], at: [-0.95, 0.85, 1.5], color: '#2b2b2b' },
+      { size: [0.2, 0.5, 4.4], at: [0.95, 0.85, 1.5], color: '#2b2b2b' },
+      // The folded ramp stands at the rear, its warning stripes facing the road behind.
+      { size: [1.8, 1.0, 0.1], at: [0, 1.7, 3.65], color: CARRIER_SLATE },
+      { size: [1.6, 0.12, 0.02], at: [0, 1.4, 3.71], color: CARRIER_YELLOW },
+      { size: [1.6, 0.12, 0.02], at: [0, 1.8, 3.71], color: CARRIER_YELLOW },
+    ],
+    CARRIER.w,
+    CARRIER.h,
+    CARRIER.l,
+  ),
+];
+
+/** Ramp down: the bed tilted to the road, hazard-striped, running up to the sim's lip. */
+const CAR_CARRIER_RAMP: BoxPart[] = [
+  ...carrierShared(),
+  slab(
+    CARRIER,
+    CARRIER_REAR_M,
+    0.02,
+    CARRIER_REAR_M - CARRIER_RUN_M,
+    CARRIER_LIP_M,
+    1.8,
+    0.14,
+    CARRIER_SLATE,
+  ),
+  // Warning stripes across the ramp, each a thin slab on the same slope.
+  ...[0.6, 1.5, 2.4, 3.3, 4.2].map((d) => {
+    const rise = (m: number) => 0.02 + ((CARRIER_LIP_M - 0.02) * m) / CARRIER_RUN_M;
+    return slab(
+      CARRIER,
+      CARRIER_REAR_M - (d - 0.1),
+      rise(d - 0.1),
+      CARRIER_REAR_M - (d + 0.1),
+      rise(d + 0.1),
+      1.7,
+      0.03,
+      CARRIER_YELLOW,
+      0.02,
+    );
+  }),
+];
+
+/** A pedicab: a bike front, a two-seat bench and a canopy (the Keys' Duval Street). */
+const PEDICAB: BoxPart[] = fit(
+  [
+    { size: [0.08, 0.7, 0.7], at: [0, 0.35, -1.0], color: DARK },
+    { size: [0.1, 0.6, 0.6], at: [-0.55, 0.3, 0.75], color: DARK },
+    { size: [0.1, 0.6, 0.6], at: [0.55, 0.3, 0.75], color: DARK },
+    { size: [1.1, 0.08, 0.08], at: [0, 0.3, 0.75], color: METAL },
+    { size: [0.08, 0.08, 1.4], at: [0, 0.5, -0.25], color: '#2b2b2b' },
+    { size: [0.6, 0.04, 0.04], at: [0, 1.05, -0.95], color: '#2b2b2b' },
+    { size: [0.9, 0.25, 0.7], at: [0, 0.55, 0.6], color: '#c0392b' },
+    { size: [0.9, 0.5, 0.1], at: [0, 0.95, 1.0], color: '#c0392b' },
+    // The rider, up front, and two passengers on the bench.
+    { size: [0.4, 0.5, 0.25], at: [0, 1.0, -0.45], color: '#3b7d5a' },
+    { size: [0.22, 0.22, 0.22], at: [0, 1.38, -0.45], color: SKIN },
+    { size: [0.3, 0.4, 0.2], at: [-0.22, 0.95, 0.65], color: '#ff8fab' },
+    { size: [0.18, 0.18, 0.18], at: [-0.22, 1.28, 0.65], color: SKIN },
+    { size: [0.3, 0.4, 0.2], at: [0.22, 0.95, 0.65], color: '#5bc0eb' },
+    { size: [0.18, 0.18, 0.18], at: [0.22, 1.28, 0.65], color: SKIN },
+    // The canopy and its four posts, a fringe along the back edge.
+    { size: [0.04, 1.0, 0.04], at: [-0.52, 1.3, 0.2], color: METAL },
+    { size: [0.04, 1.0, 0.04], at: [0.52, 1.3, 0.2], color: METAL },
+    { size: [0.04, 1.0, 0.04], at: [-0.52, 1.3, 1.0], color: METAL },
+    { size: [0.04, 1.0, 0.04], at: [0.52, 1.3, 1.0], color: METAL },
+    { size: [1.2, 0.08, 1.2], at: [0, 1.85, 0.6], color: '#f2c14e' },
+    { size: [1.2, 0.1, 0.06], at: [0, 1.76, 1.2], color: '#e84a5f' },
+  ],
+  1.2,
+  2.1,
+  2.6,
+);
+
+/** An island tram (a generic tourist road train): a tractor and two open carts of sightseers. */
+const ROAD_TRAIN: BoxPart[] = fit(
+  [
+    // The tractor.
+    { size: [1.4, 0.8, 1.3], at: [0, 0.95, -6.45], color: '#2f7d4f' },
+    { size: [1.6, 1.0, 1.3], at: [0, 1.5, -5.25], color: '#2f7d4f' },
+    { size: [1.8, 0.08, 1.5], at: [0, 2.1, -5.25], color: '#f4f1e8' },
+    { size: [0.06, 0.4, 0.06], at: [0.5, 1.3, -6.9], color: METAL },
+    ...[-6.3, -4.8].flatMap((z): BoxPart[] => [
+      { size: [0.3, 0.8, 0.8], at: [-1.0, 0.4, z], color: DARK },
+      { size: [0.3, 0.8, 0.8], at: [1.0, 0.4, z], color: DARK },
+    ]),
+    // Two open carts, each on its own pair of wheels, with benches of passengers.
+    ...[-1.6, 3.6].flatMap((zc): BoxPart[] => [
+      { size: [2.0, 0.2, 4.6], at: [0, 0.6, zc], color: '#f4f1e8' },
+      { size: [0.08, 0.5, 4.6], at: [-1.0, 0.95, zc], color: '#2f7d4f' },
+      { size: [0.08, 0.5, 4.6], at: [1.0, 0.95, zc], color: '#2f7d4f' },
+      { size: [0.3, 0.7, 0.7], at: [-1.0, 0.35, zc + 1.4], color: DARK },
+      { size: [0.3, 0.7, 0.7], at: [1.0, 0.35, zc + 1.4], color: DARK },
+      { size: [1.6, 0.3, 0.3], at: [0, 0.85, zc - 0.6], color: '#7a4b3a' },
+      { size: [1.6, 0.3, 0.3], at: [0, 0.85, zc + 0.8], color: '#7a4b3a' },
+      { size: [0.4, 0.6, 0.25], at: [-0.4, 1.2, zc - 0.6], color: '#5bc0eb' },
+      { size: [0.2, 0.2, 0.2], at: [-0.4, 1.6, zc - 0.6], color: SKIN },
+      { size: [0.4, 0.6, 0.25], at: [0.4, 1.2, zc - 0.6], color: '#ff8fab' },
+      { size: [0.2, 0.2, 0.2], at: [0.4, 1.6, zc - 0.6], color: SKIN },
+      { size: [0.4, 0.6, 0.25], at: [-0.4, 1.2, zc + 0.8], color: '#f2c14e' },
+      { size: [0.2, 0.2, 0.2], at: [-0.4, 1.6, zc + 0.8], color: SKIN },
+    ]),
+    // The hitches between them.
+    { size: [0.2, 0.15, 0.7], at: [0, 0.5, -3.9], color: METAL },
+    { size: [0.2, 0.15, 0.7], at: [0, 0.5, 1.0], color: METAL },
+  ],
+  2.2,
+  2.6,
+  14,
+);
+
+/** A streetcar: a 20 m low-floor car in two sections, a pantograph on the roof (Portland). */
+const STREETCAR: BoxPart[] = fit(
+  [
+    ...[-5.1, 5.1].flatMap((zc): BoxPart[] => [
+      { size: [2.4, 2.4, 9.6], at: [0, 1.7, zc], color: '#e8e2c8' },
+      { size: [2.42, 0.3, 9.6], at: [0, 0.85, zc], color: '#2f7d4f' },
+      { size: [2.44, 0.8, 9.0], at: [0, 2.15, zc], color: GLASS },
+      { size: [2.0, 0.15, 9.2], at: [0, 3.0, zc], color: '#d6d0b4' },
+      { size: [2.46, 0.5, 2.2], at: [0, 0.3, zc - 2.6], color: '#2b2b2b' },
+      { size: [2.46, 0.5, 2.2], at: [0, 0.3, zc + 2.6], color: '#2b2b2b' },
+      { size: [2.46, 1.8, 1.0], at: [0, 1.5, zc], color: '#cfc9ac' },
+    ]),
+    // The articulation between the sections.
+    { size: [2.1, 2.3, 0.6], at: [0, 1.7, 0], color: '#2b2b2b' },
+    // The pantograph, the destination board and the lamps.
+    { size: [0.04, 0.4, 0.04], at: [-0.3, 3.35, -3.0], color: METAL },
+    { size: [0.04, 0.4, 0.04], at: [0.3, 3.35, -3.0], color: METAL },
+    { size: [0.8, 0.04, 0.04], at: [0, 3.58, -3.0], color: METAL },
+    { size: [1.4, 0.3, 0.02], at: [0, 2.75, -9.91], color: '#ffb000' },
+    { size: [0.3, 0.15, 0.02], at: [-0.8, 0.9, -9.91], color: '#fff3c4' },
+    { size: [0.3, 0.15, 0.02], at: [0.8, 0.9, -9.91], color: '#fff3c4' },
+  ],
+  2.5,
+  3.4,
+  20,
+);
+
+/** A rooster: the chicken with a red comb and a tail plume (the Keys). */
+const ROOSTER: BoxPart[] = fit(
+  [
+    { size: [0.2, 0.2, 0.3], at: [0, 0.27, 0.04], color: '#b5552b' },
+    { size: [0.18, 0.18, 0.1], at: [0, 0.32, -0.1], color: '#d98c3a' },
+    { size: [0.1, 0.12, 0.12], at: [0, 0.45, -0.15], color: '#b5552b' },
+    { size: [0.04, 0.07, 0.1], at: [0, 0.53, -0.15], color: '#c0392b' },
+    { size: [0.03, 0.06, 0.03], at: [0, 0.38, -0.22], color: '#c0392b' },
+    { size: [0.04, 0.03, 0.06], at: [0, 0.45, -0.24], color: '#e2a33a' },
+    { size: [0.03, 0.17, 0.03], at: [-0.05, 0.09, 0.02], color: '#e2a33a' },
+    { size: [0.03, 0.17, 0.03], at: [0.05, 0.09, 0.02], color: '#e2a33a' },
+    { size: [0.05, 0.22, 0.07], at: [0, 0.38, 0.19], color: '#1f3d2e' },
+    { size: [0.05, 0.18, 0.06], at: [0, 0.46, 0.22], color: '#2e7d5b' },
+    { size: [0.04, 0.12, 0.05], at: [0, 0.52, 0.25], color: '#c0392b' },
+  ],
+  0.3,
+  0.55,
+  0.45,
+);
+
+/** A flock of six parrots circling (SF's Telegraph Hill): views.ts lifts it and turns it. */
+const PARROT_FLOCK: BoxPart[] = fit(
+  Array.from({ length: 6 }, (_, k): BoxPart[] => {
+    const a = (k / 6) * Math.PI * 2;
+    const x = 0.7 * Math.cos(a);
+    const z = 0.7 * Math.sin(a);
+    const y = 0.45 + 0.1 * (k % 3);
+    // Beaks lead the way the flock turns (views.ts turns it by +y, which carries a bird at angle a
+    // round to a smaller angle).
+    const turn = -a;
+    const [fx, fz] = [-Math.sin(turn), -Math.cos(turn)];
+    return [
+      { size: [0.12, 0.1, 0.3], at: [x, y, z], color: '#3fae49', rotY: turn },
+      { size: [0.5, 0.03, 0.14], at: [x, y + 0.02, z], color: '#2e8b57', rotY: turn },
+      { size: [0.1, 0.1, 0.1], at: [x + 0.14 * fx, y + 0.03, z + 0.14 * fz], color: '#d9382b' },
+      { size: [0.05, 0.04, 0.2], at: [x - 0.2 * fx, y - 0.02, z - 0.2 * fz], color: '#1f6f43', rotY: turn },
+    ];
+  }).flat(),
+  2,
+  1.0,
+  2,
+);
+
+/** An elk, antlers and all (the Pacific Northwest): its light parts take the coat. */
+const ELK: BoxPart[] = fit(
+  [
+    { size: [0.55, 0.6, 1.3], at: [0, 1.15, 0.2], color: PAINTED },
+    { size: [0.26, 0.35, 0.4], at: [0, 1.5, -0.6], color: PAINTED },
+    { size: [0.24, 0.5, 0.28], at: [0, 1.8, -0.8], color: PAINTED },
+    { size: [0.22, 0.26, 0.5], at: [0, 1.95, -1.05], color: PAINTED },
+    { size: [0.16, 0.14, 0.18], at: [0, 1.88, -1.35], color: '#2b2b2b' },
+    { size: [0.05, 0.4, 0.05], at: [-0.15, 2.2, -0.95], color: '#d8c9a3' },
+    { size: [0.05, 0.4, 0.05], at: [0.15, 2.2, -0.95], color: '#d8c9a3' },
+    { size: [0.3, 0.05, 0.05], at: [-0.3, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.3, 0.05, 0.05], at: [0.3, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, -0.25], color: '#4a3a28' },
+    { size: [0.12, 1.0, 0.14], at: [0.2, 0.5, -0.25], color: '#4a3a28' },
+    { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, 0.7], color: '#4a3a28' },
+    { size: [0.12, 1.0, 0.14], at: [0.2, 0.5, 0.7], color: '#4a3a28' },
+    { size: [0.4, 0.3, 0.05], at: [0, 1.2, 0.87], color: '#e8d9b8' },
+    { size: [0.08, 0.14, 0.06], at: [0, 1.4, 0.9], color: '#e8d9b8' },
+  ],
+  0.9,
+  2.4,
+  2.4,
+);
+
+/** A raccoon: a masked face and a ringed tail (the Pacific Northwest). */
+const RACCOON: BoxPart[] = fit(
+  [
+    { size: [0.22, 0.18, 0.3], at: [0, 0.2, -0.02], color: PAINTED },
+    { size: [0.2, 0.17, 0.17], at: [0, 0.24, -0.2], color: '#d9d4c8' },
+    { size: [0.22, 0.06, 0.04], at: [0, 0.26, -0.285], color: '#222222' },
+    { size: [0.08, 0.07, 0.06], at: [0, 0.21, -0.3], color: '#222222' },
+    { size: [0.05, 0.06, 0.04], at: [-0.07, 0.35, -0.2], color: '#222222' },
+    { size: [0.05, 0.06, 0.04], at: [0.07, 0.35, -0.2], color: '#222222' },
+    { size: [0.06, 0.12, 0.06], at: [-0.08, 0.06, -0.1], color: '#2b2b2b' },
+    { size: [0.06, 0.12, 0.06], at: [0.08, 0.06, -0.1], color: '#2b2b2b' },
+    { size: [0.06, 0.12, 0.06], at: [-0.08, 0.06, 0.08], color: '#2b2b2b' },
+    { size: [0.06, 0.12, 0.06], at: [0.08, 0.06, 0.08], color: '#2b2b2b' },
+    { size: [0.1, 0.1, 0.05], at: [0, 0.22, 0.17], color: PAINTED },
+    { size: [0.1, 0.1, 0.05], at: [0, 0.23, 0.22], color: '#2b2b2b' },
+    { size: [0.1, 0.1, 0.05], at: [0, 0.24, 0.27], color: PAINTED },
+  ],
+  0.3,
+  0.4,
+  0.6,
+);
+
+/** A sea lion hauled out on the road: chest up, flippers out (San Francisco's pier). */
+const SEA_LION: BoxPart[] = fit(
+  [
+    { size: [0.6, 0.45, 1.1], at: [0, 0.25, 0.15], color: PAINTED },
+    { size: [0.4, 0.4, 0.4], at: [0, 0.4, -0.35], color: PAINTED },
+    { size: [0.22, 0.28, 0.35], at: [0, 0.55, -0.7], color: PAINTED },
+    { size: [0.14, 0.12, 0.25], at: [0, 0.5, -0.9], color: '#3a2f27' },
+    { size: [0.08, 0.06, 0.06], at: [0, 0.52, -1.0], color: '#111111' },
+    { size: [0.3, 0.06, 0.18], at: [-0.25, 0.1, -0.3], color: '#3a2f27' },
+    { size: [0.3, 0.06, 0.18], at: [0.25, 0.1, -0.3], color: '#3a2f27' },
+    { size: [0.35, 0.05, 0.2], at: [-0.2, 0.08, 0.8], color: '#3a2f27' },
+    { size: [0.35, 0.05, 0.2], at: [0.2, 0.08, 0.8], color: '#3a2f27' },
+    { size: [0.3, 0.18, 0.3], at: [0, 0.15, 0.65], color: PAINTED },
+  ],
+  0.8,
+  0.7,
+  2.0,
+);
+
 /** Each regional figure's boxes. */
 export const TRAFFIC_FIGURE_PARTS: Readonly<Record<TrafficFigure | PeopleFigure, BoxPart[]>> = {
   golfCart: GOLF_CART,
@@ -404,12 +825,22 @@ export const TRAFFIC_FIGURE_PARTS: Readonly<Record<TrafficFigure | PeopleFigure,
   rainCyclist: RAIN_CYCLIST,
   eBike: E_BIKE,
   scooterRider: SCOOTER_RIDER,
+  pedicab: PEDICAB,
+  roadTrain: ROAD_TRAIN,
+  streetcar: STREETCAR,
+  carCarrier: CAR_CARRIER,
+  carCarrierRamp: CAR_CARRIER_RAMP,
   jogger: JOGGER,
   hiker: HIKER,
   dogWalker: DOG_WALKER,
   dog: DOG,
   personFist: PERSON_FIST,
   personPhone: PERSON_PHONE,
+  elk: ELK,
+  raccoon: RACCOON,
+  seaLion: SEA_LION,
+  rooster: ROOSTER,
+  parrotFlock: PARROT_FLOCK,
 };
 
 /** Whether a figure is a road vehicle (its mesh uses the vehicle material). */

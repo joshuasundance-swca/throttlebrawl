@@ -11,8 +11,11 @@ builder and export call. Conventions (tools/blender/README.md):
 - Faceted normals (no smooth shading), and nothing depends on time or unseeded randomness.
 """
 
+import json
 import math
 import sys
+from functools import lru_cache
+from pathlib import Path
 
 import bmesh
 import bpy
@@ -257,6 +260,41 @@ def text_panel(name, mats, mat, parent, width, height, centre, thickness=0.0):
     ob["text_surface"] = True
     ob["width_m"] = round(width, 4)
     ob["height_m"] = round(height, 4)
+    return ob
+
+
+@lru_cache(maxsize=1)
+def _keys_layout():
+    path = Path(__file__).resolve().parents[3] / "packs/base/assets/textures/atlas/florida-keys-layout.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def atlas_uv(tile_id, u, v):
+    """Tile-local top-left UVs to sheet UVs, inset half a pixel inside the inner rect.
+
+    Blender's exporter flips V; return Blender UVs so the exported coordinates follow glTF.
+    Missing tiles fail loudly instead of silently sampling a neighbouring picture.
+    """
+    layout = _keys_layout()
+    a, b, c, d = layout["tiles"][tile_id]["rect"]
+    inset = 0.5 / layout["size"]
+    uu = min(c - inset, max(a + inset, a + (c - a) * u))
+    vv = min(d - inset, max(b + inset, b + (d - b) * v))
+    return (uu, 1.0 - vv)
+
+
+def atlas_panel(name, mats, mat, parent, width, height, centre, tile_id, uv_rect=(0, 0, 1, 1)):
+    """One front-facing atlas rectangle, with no baked texture or text-surface extras."""
+    ob = text_panel(name, mats, mat, parent, width, height, centre)
+    for key in ("text_surface", "width_m", "height_m"):
+        del ob[key]
+    ob["atlas_tile"] = tile_id
+    layer = ob.data.uv_layers.active.data
+    # text_panel's Blender UVs have V up; tile-local V has its origin at the top.
+    for loop in layer:
+        u, v = loop.uv
+        a, b, c, d = uv_rect
+        loop.uv = atlas_uv(tile_id, a + (c-a)*u, b + (d-b)*(1.0-v))
     return ob
 
 
