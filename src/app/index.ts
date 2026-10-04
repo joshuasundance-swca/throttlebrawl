@@ -1084,6 +1084,13 @@ export function createApp(opts: AppOptions): AppHandle {
   function startCareerRace(def: CareerDef, node: CareerNode): void {
     const m = C;
     if (loadingRoads || !m) return;
+    // The one gate of every career ride (Ride, Next, Race it again, restart, dev hooks): a shut
+    // region or a locked node never starts, whatever button asked (playtest 3, regions in order).
+    const refusal = m.rideLock(registry, defs, profile, def, node);
+    if (refusal !== null) {
+      ui.notice(refusal);
+      return;
+    }
     if (state === 'race' || state === 'results') go('back');
     if (transition(state, 'race') === null) return;
     const missing = packClosure(registry, packOf(node.event)).filter((id) => !library.hasRoads(id));
@@ -1468,6 +1475,7 @@ export function createApp(opts: AppOptions): AppHandle {
       const n = def ? m?.nodeOf(def, node) : null;
       if (!m || !def || !n) return false;
       if (!careerStarted(profile)) saveProfile(m.startCareer(defs, profile));
+      if (m.rideLock(registry, defs, profile, def, n) !== null) return false;
       startCareerRace(def, n);
       return true;
     },

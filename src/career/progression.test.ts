@@ -14,6 +14,7 @@ import {
   progressOf,
   regionLockReason,
   regionOpen,
+  rideRefusal,
   startCareer,
   suggestedNode,
   tierOpen,
@@ -270,6 +271,57 @@ describe('regions in order: the Keys, then the PNW when its boss falls, then SF'
     expect(regionOpen(DEFS, { ...p, history: [{ ...race(), node: null }] }, SF)).toBe(false);
     expect(regionOpen(DEFS, { ...p, season: 2, history: [race()] }, SF)).toBe(false);
     expect(regionOpen(DEFS, { ...p, season: 2, history: [race(2)] }, SF)).toBe(true);
+  });
+
+  // The wave A live check rode the PNW's and SF's first events on a fresh career with the Keys boss
+  // standing, and one race there opened that region. The gate is in the ride path, so no button can
+  // start a race in a shut region (nodeState alone is per region).
+  describe('the ride gate: no button starts a race in a shut region', () => {
+    const first = (def: CareerDef) => nodeById(def, `${def.regionId}-t1-a`);
+
+    it("a fresh career refuses the PNW's and SF's first events and says whose fall opens them", () => {
+      const p = fresh();
+      expect(nodeState(PNW, progressOf(PNW, p.regions), first(PNW))).toBe('open');
+      expect(rideRefusal(DEFS, p, PNW, first(PNW))).toBe('Opens when Mother Rust falls.');
+      expect(rideRefusal(DEFS, p, SF, first(SF))).toBe('Opens when Old Growth falls.');
+      expect(rideRefusal(DEFS, p, KEYS, first(KEYS))).toBeNull();
+    });
+
+    it('refusing leaves the region shut: the gate does not depend on a race having been played', () => {
+      const p = fresh();
+      expect(rideRefusal(DEFS, p, PNW, first(PNW))).not.toBeNull();
+      expect(regionOpen(DEFS, p, PNW)).toBe(false);
+    });
+
+    it("the Keys boss's fall opens the PNW, not SF; the PNW boss's fall opens SF", () => {
+      const p = fresh();
+      const keys = { ...progressOf(KEYS, p.regions), finaleBeaten: true };
+      const afterKeys: Profile = { ...p, regions: { ...p.regions, keys } };
+      expect(rideRefusal(DEFS, afterKeys, PNW, first(PNW))).toBeNull();
+      expect(rideRefusal(DEFS, afterKeys, SF, first(SF))).toBe('Opens when Old Growth falls.');
+      const pnw = { ...progressOf(PNW, p.regions), finaleBeaten: true };
+      const afterPnw: Profile = { ...afterKeys, regions: { ...afterKeys.regions, pnw } };
+      expect(rideRefusal(DEFS, afterPnw, SF, first(SF))).toBeNull();
+    });
+
+    it('an open region still refuses its locked nodes, and a won node replays', () => {
+      const p = fresh();
+      const boss = nodeById(KEYS, 'keys-t1-boss');
+      expect(rideRefusal(DEFS, p, KEYS, boss)).toBe('Win 2 more in Tourist Season.');
+      expect(rideRefusal(DEFS, p, KEYS, nodeById(KEYS, 'keys-t2-a'))).toMatch(/Tourist Season/);
+      const keys = winAll(KEYS, progressOf(KEYS, p.regions), ['keys-t1-a', 'keys-t1-b']);
+      const won: Profile = { ...p, regions: { ...p.regions, keys } };
+      expect(rideRefusal(DEFS, won, KEYS, boss)).toBeNull();
+      expect(rideRefusal(DEFS, won, KEYS, nodeById(KEYS, 'keys-t1-a'))).toBeNull();
+    });
+
+    it('places already raced this season stay rideable, in a shut region too', () => {
+      const p = fresh();
+      const pnw = { ...progressOf(PNW, p.regions), won: ['pnw-t1-a'] };
+      const raced: Profile = { ...p, regions: { ...p.regions, pnw } };
+      expect(rideRefusal(DEFS, raced, PNW, first(PNW))).toBeNull();
+      expect(rideRefusal(DEFS, raced, PNW, nodeById(PNW, 'pnw-t1-b'))).toBeNull();
+    });
   });
 });
 
