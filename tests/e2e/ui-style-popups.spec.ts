@@ -111,29 +111,9 @@ const WIDE_FEED: FeedPop[] = [
  * list shows in the diff as a raised cap. Measured on CI's software renderer, 2026-10-03 (PR #416);
  * the playtest-3 HUD work (shelved) is where these get fixed.
  */
-const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {
-  'phone landscape': [
-    // Playtest 3's "black and white text pop-ups block the actual game" (inferred): the landing
-    // one-liner's dark plate sits over the bike, in the middle of the road.
-    'landing-line in the road ahead',
-    // The slow-frames toast sits top centre over the bubble, and reaches 3 px into the look-ahead.
-    'bark-bubble × look-offer',
-    'look-offer in the road ahead',
-  ],
-  'phone portrait': [
-    'landing-line in the road ahead',
-    // The toast, nearly full width, over the bubble and the pop-up stack.
-    'bark-bubble × look-offer',
-    'look-offer × style-pop',
-  ],
-  laptop: [
-    'landing-line in the road ahead',
-    'bark-bubble × look-offer',
-    'hud-heat × look-offer',
-    'hud-objective × look-offer',
-  ],
-};
-const KNOWN_LAYOUT_CAP = 10;
+// Empty since the top HUD cluster (#428) and the transient overlays (#429) both landed.
+const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {};
+const KNOWN_LAYOUT_CAP = 0;
 
 function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
