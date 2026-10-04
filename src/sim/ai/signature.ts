@@ -53,6 +53,11 @@ export interface SignatureState {
   lineD: number[];
   /** Each rider's own random stream (mulberry32 state), seeded from the race seed and its id. */
   rng: number[];
+  /**
+   * The career's `signatureGapScale` (below 1, moves come more often), set only when it is not 1, so
+   * a race without a level leaves the state, and its hash, exactly as it was.
+   */
+  gapScale?: number;
 }
 
 const SIGNATURE_STATE = 'ai.signature';
@@ -249,11 +254,17 @@ function enter(
   if (phase === 'act') sg.count[id] = (sg.count[id] ?? 0) + 1;
 }
 
+/** A move's gap or spread, in ticks, as the career's signature rate scales it (the same at 1). */
+function scaled(sg: SignatureState, ticks: number): number {
+  return sg.gapScale === undefined ? ticks : Math.round(ticks * sg.gapScale);
+}
+
 /** Ends the move now and schedules the next one from the move's gap. */
 function finish(world: World, sg: SignatureState, id: EntityId, move: SignatureId, spec = SPEC[move]): void {
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
-  sg.next[id] = world.tick + spec.gap + Math.floor(roll(world, id) * (spec.spread + 1));
+  sg.next[id] =
+    world.tick + scaled(sg, spec.gap) + Math.floor(roll(world, id) * (scaled(sg, spec.spread) + 1));
 }
 
 /** A float in [0, 1) from rider `id`'s own signature stream (advances it). */
@@ -271,8 +282,10 @@ export function initSignature(
   raceSeed: number,
   id: EntityId,
   move: SignatureId | undefined,
+  gapScale = 1,
 ): void {
   const sg = signatureState(world);
+  if (gapScale !== 1) sg.gapScale = gapScale;
   // Its own substream, so a move's rolls never shift the AI's shared stream (the races without a
   // move, and every other rider's rolls, stay exactly what they were).
   sg.rng[id] = streamSeed(raceSeed, 'ai.signature', id);
@@ -290,7 +303,8 @@ export function initSignature(
   sg.lineD[id] = 0;
   // A move that answers a hit (Kevin's counter) is ready at once; the others wait out the start.
   const spec = move && move !== 'counter' ? SPEC[move] : null;
-  sg.next[id] = spec && spec.spread > 0 ? FIRST_TICK + Math.floor(roll(world, id) * spec.spread) : 0;
+  sg.next[id] =
+    spec && spec.spread > 0 ? FIRST_TICK + Math.floor(roll(world, id) * scaled(sg, spec.spread)) : 0;
 }
 
 /** The rider is down, unsticking or out of the race: any move in progress ends (no new roll). */
@@ -301,7 +315,7 @@ export function interruptSignature(world: World, id: EntityId): void {
   if (!move || move === 'slow-burn') return;
   enter(sg, id, world.tick, null, 0);
   sg.aux[id] = 0;
-  sg.next[id] = Math.max(sg.next[id] ?? 0, world.tick + SPEC[move].gap);
+  sg.next[id] = Math.max(sg.next[id] ?? 0, world.tick + scaled(sg, SPEC[move].gap));
 }
 
 // ---- Deacon: slow to anger, then relentless ---------------------------------------------------
