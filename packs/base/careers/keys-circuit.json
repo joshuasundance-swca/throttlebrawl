@@ -13,6 +13,15 @@
       "name": "Tourist Season",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "kevin-grudge",
+      "field": {
+        "paceShare": 0.74,
+        "aggression": 0.85,
+        "signatureGap": 1.3,
+        "health": 0.9,
+        "power": 0.9,
+        "rivalBike": "step-down"
       }
     },
     {
@@ -20,6 +29,15 @@
       "name": "Hurricane Season",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "chad-grudge",
+      "field": {
+        "paceShare": 0.78,
+        "aggression": 1.0,
+        "signatureGap": 1.0,
+        "health": 1.0,
+        "power": 1.0,
+        "rivalBike": "step-down"
       }
     },
     {
@@ -27,13 +45,31 @@
       "name": "Off Season",
       "advance": {
         "requiredWins": 2
+      },
+      "boss": "junkyard-hunt",
+      "field": {
+        "paceShare": 0.82,
+        "aggression": 1.15,
+        "signatureGap": 0.8,
+        "health": 1.1,
+        "power": 1.07,
+        "rivalBike": "best"
       }
     },
     {
       "id": "t4",
       "name": "The Drawbridge",
       "advance": {
-        "requiredWins": 0
+        "requiredWins": 2
+      },
+      "boss": "drawbridge",
+      "field": {
+        "paceShare": 0.85,
+        "aggression": 1.25,
+        "signatureGap": 0.7,
+        "health": 1.2,
+        "power": 1.12,
+        "rivalBike": "best"
       }
     }
   ],
@@ -62,6 +98,17 @@
       "requires": ["shakedown"],
       "opens": ["m1-sandbar-causeway"],
       "claims": ["m1-pelican-bridge"]
+    },
+    {
+      "id": "rental-return",
+      "event": "keys-t1-rental-return",
+      "length": "standard",
+      "tier": "t1",
+      "at": {
+        "road": "m1-marina-bends",
+        "s": 420
+      },
+      "requires": ["shakedown"]
     },
     {
       "id": "kevin-grudge",
@@ -107,6 +154,18 @@
       ]
     },
     {
+      "id": "spring-break",
+      "event": "keys-t2-spring-break",
+      "length": "standard",
+      "tier": "t2",
+      "at": {
+        "road": "osm-kw-atlantic",
+        "s": 400
+      },
+      "opens": ["osm-kw-higgs-beach"],
+      "claims": ["osm-kw-bertha", "osm-kw-atlantic"]
+    },
+    {
       "id": "chad-grudge",
       "event": "keys-t2-chad-grudge",
       "length": "standard",
@@ -117,18 +176,6 @@
       },
       "opens": ["osm-kw-north-roosevelt"],
       "claims": ["osm-kw-stock-island", "osm-kw-smathers-beach"]
-    },
-    {
-      "id": "junkyard-hunt",
-      "event": "keys-t3-dialup-grudge",
-      "length": "standard",
-      "tier": "t3",
-      "at": {
-        "road": "m1-conch-row",
-        "s": 600
-      },
-      "opens": ["m1-long-bridge"],
-      "claims": ["m1-conch-row"]
     },
     {
       "id": "pruitt-overtime",
@@ -152,6 +199,60 @@
       },
       "opens": ["m1-last-resort-causeway"],
       "claims": ["m1-long-bridge"]
+    },
+    {
+      "id": "speed-monitored",
+      "event": "keys-t3-speed-monitored",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "m1-tarpon-flats",
+        "s": 250
+      }
+    },
+    {
+      "id": "junkyard-hunt",
+      "event": "keys-t3-dialup-grudge",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "m1-conch-row",
+        "s": 600
+      },
+      "opens": ["m1-long-bridge"],
+      "claims": ["m1-conch-row"]
+    },
+    {
+      "id": "hurricane-party",
+      "event": "keys-t4-hurricane-party",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "m1-long-bridge",
+        "s": 1900
+      }
+    },
+    {
+      "id": "auntie",
+      "event": "keys-t4-auntie",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "osm-kw-truman",
+        "s": 150
+      },
+      "opens": ["osm-kw-white-street"],
+      "claims": ["osm-kw-truman"]
+    },
+    {
+      "id": "mile-marker-zero",
+      "event": "keys-t4-mile-marker-zero",
+      "length": "standard",
+      "tier": "t4",
+      "at": {
+        "road": "osm-kw-white-street",
+        "s": 600
+      }
     },
     {
       "id": "drawbridge",
@@ -229,18 +330,18 @@
     },
     {
       "bike": "moped",
-      "priceCash": 900,
+      "priceCash": 1500,
       "unlockTier": "t1"
     },
     {
-      "bike": "streetfighter-750",
-      "priceCash": 6000,
+      "bike": "sport-600",
+      "priceCash": 9750,
       "unlockTier": "t2"
     },
     {
-      "bike": "superbike-1000",
-      "priceCash": 16000,
-      "unlockTier": "t3"
+      "bike": "streetfighter-750",
+      "priceCash": 16750,
+      "unlockTier": "t4"
     }
   ],
   "paints": [
@@ -271,6 +372,14 @@
       "hex": "#2ab7a9",
       "priceCash": 500,
       "unlockTier": "t3"
+    },
+    {
+      "id": "hurricane-chrome",
+      "name": "Hurricane Chrome",
+      "hex": "#c4ccd1",
+      "priceCash": 15000,
+      "unlockTier": "t4",
+      "unlockSeason": 2
     }
   ],
   "unlocks": [
@@ -314,7 +423,11 @@
         "line": "Hear the modem? He drops out, then reconnects up the road. Hit him while he buffers."
       }
     },
-    "paper": { "name": "The Mile Marker Shriek", "style": "rag", "tagline": "Printed between hurricanes" },
+    "paper": {
+      "name": "The Mile Marker Shriek",
+      "style": "rag",
+      "tagline": "Printed between hurricanes"
+    },
     "heads": {
       "boss": [
         "{RIVAL} DETHRONED; GANG CALLS EMERGENCY FISH FRY",
@@ -428,7 +541,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Overseas Circuit: florida-keys's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number.",
+    "notes": "The Overseas Circuit: florida-keys's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Playtest 3 (T10.1; the maintainer, 2026-10-03: \"The progression doesn't feel right\"; round 3, \"Six bikes\", \"Gentle climb\"): sixteen nodes, four tiers of three regular events and the tier's boss (two wins open the boss, beating it opens the next tier; tier four's boss is Mother Rust). Each tier carries its field level (the pace share of the best bike open, aggression, signature gap, health and power, and which bike the rivals ride), the shop sells the Rustbucket, the Moped, the Sport 600 (tier two) and the Streetfighter (tier four), and the Superbike is San Francisco's. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. Hurricane Chrome is the first season paint (open from Season 2). [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

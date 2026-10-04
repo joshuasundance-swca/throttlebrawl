@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["mother-rust", "tammy-two-stroke", "deacon-vane", "dial-up"],
-    "paceMps": 46
+    "paceMps": 49.8
   },
   "cops": {
     "mode": "every-race",
@@ -33,31 +33,22 @@
       "id": "beat-rival",
       "kind": "beat-rival",
       "required": true,
-      "rewardCash": 0,
+      "rewardCash": 4100,
       "params": {
         "orKnockdowns": 3
       }
-    },
-    {
-      "id": "podium",
-      "kind": "finish-place",
-      "params": {
-        "maxPlace": 3
-      },
-      "required": false,
-      "rewardCash": 1000
     }
   ],
   "tier": 4,
   "finale": true,
   "rewards": {
-    "byPlaceCash": [8000, 3000, 1500, 600, 300],
-    "perTakedownCash": 400,
+    "byPlaceCash": [600, 400, 250, 150, 100],
+    "perTakedownCash": 325,
     "perNearMissCash": 25,
-    "perAirtimeCash": 40,
+    "perAirtimeCash": 38,
     "perOncomingSecondCash": 10,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 64
   },
   "modifiers": {
     "pool": "region-default",
@@ -66,7 +57,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Keys' finale: Mother Rust and her Swamp Kin (Tammy rides with her) all the way to the drawbridge. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "The Keys' finale: Mother Rust and her Swamp Kin (Tammy rides with her) all the way to the drawbridge. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number. The region boss: no flat podium bonus any more.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

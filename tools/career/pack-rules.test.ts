@@ -232,8 +232,9 @@ describe('tier bosses and the bike ladder (playtest 3)', () => {
     ]);
   });
 
-  // The base pack's own Keys career sells the Streetfighter for $6,000 today; a test career
-  // selling it too is a step-up bike in two shops.
+  // The test career sells the Streetfighter; the base pack's own Keys career is made to sell it
+  // too, with its tier bosses named (the format) or not (the format before playtest 3), so the
+  // test holds whatever the shipped Keys career sells or names today.
   const twoShops = (keysBosses: boolean) => {
     const out = withBosses((c) => {
       c['shop'] = [
@@ -241,13 +242,20 @@ describe('tier bosses and the bike ladder (playtest 3)', () => {
         { bike: 'streetfighter-750', priceCash: 16750, unlockTier: 't2' },
       ];
     });
-    if (!keysBosses) return out;
     return out.map((f) => {
       if (f.path !== 'careers/keys-circuit.json') return f;
       const keys = structuredClone(f.json) as Json;
-      // Name a boss on each tier of the real Keys career (its grudge nodes, the region boss last).
+      const tiers = keys['tiers'] as Json[];
+      // Name a boss on each tier of the real Keys career (its grudge nodes, the region boss last),
+      // or none.
       const bosses = ['kevin-grudge', 'chad-grudge', 'junkyard-hunt', 'drawbridge'];
-      (keys['tiers'] as Json[]).forEach((t, i) => (t['boss'] = bosses[i]));
+      tiers.forEach((t, i) => {
+        if (keysBosses) t['boss'] = bosses[i];
+        else delete t['boss'];
+      });
+      const shop = keys['shop'] as Json[];
+      if (!shop.some((s) => s['bike'] === 'streetfighter-750'))
+        shop.push({ bike: 'streetfighter-750', priceCash: 16750, unlockTier: 't2' });
       return { ...f, json: keys };
     });
   };

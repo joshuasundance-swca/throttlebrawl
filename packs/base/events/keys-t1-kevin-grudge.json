@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["kevin-from-accounting"],
-    "paceMps": 34
+    "paceMps": 34.0
   },
   "cops": {
     "mode": "every-race",
@@ -34,7 +34,7 @@
       "id": "beat-rival",
       "kind": "beat-rival",
       "required": true,
-      "rewardCash": 800
+      "rewardCash": 1350
     },
     {
       "id": "style",
@@ -43,18 +43,18 @@
         "cash": 300
       },
       "required": false,
-      "rewardCash": 200
+      "rewardCash": 150
     }
   ],
   "tier": 1,
   "rewards": {
-    "byPlaceCash": [2000, 300],
-    "perTakedownCash": 200,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [150, 150],
+    "perTakedownCash": 250,
+    "perNearMissCash": 20,
+    "perAirtimeCash": 30,
+    "perOncomingSecondCash": 8,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 50
   },
   "modifiers": {
     "pool": "region-default",
@@ -63,7 +63,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A grudge match by Kevin's rule, The Audit: knock him down twice on the real Overseas Highway, Bahia Honda, and every hit he lands on you adds a line item (one more knockdown, two at most). Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop).",
+    "notes": "A grudge match by Kevin's rule, The Audit: knock him down twice on the real Overseas Highway, Bahia Honda, and every hit he lands on you adds a line item (one more knockdown, two at most). Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number. Tier 1's boss.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

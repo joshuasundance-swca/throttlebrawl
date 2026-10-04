@@ -50,11 +50,19 @@ describe('cops: no region parks its cop in a travel lane', () => {
       const waiting = new Set(cops);
       const where: string[] = [];
       const pulledOut: string[] = [];
+      let roadblockAt = -1;
       // The lot cop pulls out after cops.spawnDelayS (20 s on Normal) when the race brings him; since
       // playtest 2 the starting cops patrol up the road instead and pull out as the player arrives,
       // and the lot's cop waits for a speed trap or chaos. 30 s of every cop's wait is examined.
       for (let t = 0; t < 60 * 30 && waiting.size > 0; t++) {
         const snap = sim.snapshot();
+        // Heat tier 3 is the roadblock: it parks waiting cops across the player's lanes on purpose
+        // (sim/cops, "The roadblock"), and the steady cruise can build the heat that far, so the wait
+        // spots are examined up to then (T10.1's slower Keys field reached it at 28 s on Key West).
+        if ((snap.law?.tier ?? 0) >= 3) {
+          roadblockAt = t;
+          break;
+        }
         for (const id of [...waiting]) {
           const cop = snap.entities[id];
           if (!cop) throw new Error(`no cop ${id}`);
@@ -79,7 +87,7 @@ describe('cops: no region parks its cop in a travel lane', () => {
       }
       console.log(
         `[examined] ${eventId} (${length}): ${cops.length} cops; ${pulledOut.join('; ') || 'none pulled out'}; ` +
-          `${waiting.size} still waiting at 30 s`,
+          `${waiting.size} still waiting at ${roadblockAt >= 0 ? `the roadblock, ${(roadblockAt / 60).toFixed(1)} s` : '30 s'}`,
       );
       expect(where.slice(0, 3)).toEqual([]);
     },

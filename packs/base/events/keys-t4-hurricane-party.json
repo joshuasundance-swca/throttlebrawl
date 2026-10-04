@@ -1,7 +1,7 @@
 {
   "type": "event",
-  "id": "keys-t3-long-haul",
-  "name": "The Long Haul",
+  "id": "keys-t4-hurricane-party",
+  "name": "Hurricane Party",
   "kind": "classic-race",
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
@@ -21,7 +21,7 @@
       "tammy-two-stroke",
       "the-mayor"
     ],
-    "paceMps": 41.1
+    "paceMps": 47.5
   },
   "cops": {
     "mode": "every-race",
@@ -38,17 +38,26 @@
         "maxPlace": 3
       },
       "required": true
+    },
+    {
+      "id": "win",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 1
+      },
+      "required": false,
+      "rewardCash": 250
     }
   ],
-  "tier": 3,
+  "tier": 4,
   "rewards": {
-    "byPlaceCash": [1350, 750, 450, 200, 150, 50, 50],
-    "perTakedownCash": 200,
-    "perNearMissCash": 24,
-    "perAirtimeCash": 35,
-    "perOncomingSecondCash": 9,
+    "byPlaceCash": [1650, 900, 600, 250, 150, 100, 50],
+    "perTakedownCash": 225,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 38,
+    "perOncomingSecondCash": 10,
     "takedownComboScale": 0.5,
-    "perStealCash": 59
+    "perStealCash": 64
   },
   "modifiers": {
     "pool": "region-default",
@@ -57,11 +66,11 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race, full pack: every rival over the long bridge. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
+    "notes": "A classic race, full pack, the long haul: the storm is two days out and the whole key is at the same party. Top 3 is required; winning is the optional bonus. Playtest 3 (T10.1): the last tier's first regular event (progression.md, section 2). Its dusk is the region's golden hour until the Keys add one (T10.4). [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
-      "createdAt": "2026-10-02"
+      "createdAt": "2026-10-04"
     }
   }
 }

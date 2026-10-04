@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["deacon-vane", "dial-up", "chad-speedwell", "tammy-two-stroke", "the-mayor"],
-    "paceMps": 39
+    "paceMps": 39.1
   },
   "cops": {
     "mode": "every-race",
@@ -39,18 +39,18 @@
         "branch": "m1-mangrove-boardwalk"
       },
       "required": false,
-      "rewardCash": 400
+      "rewardCash": 150
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [1100, 600, 400, 150, 100, 50],
+    "perTakedownCash": 175,
+    "perNearMissCash": 22,
+    "perAirtimeCash": 33,
+    "perOncomingSecondCash": 9,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 55
   },
   "modifiers": {
     "pool": "region-default",
@@ -59,7 +59,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race, longer: the standard run through the mangroves to Conch Row. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Run W-U: the bonus is the Mangrove Boardwalk (the ride-branch objective, was the boat-ramp cut), the back road through the swamp this race is named for.",
+    "notes": "A classic race, longer: the standard run through the mangroves to Conch Row. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Run W-U: the bonus is the Mangrove Boardwalk (the ride-branch objective, was the boat-ramp cut), the back road through the swamp this race is named for. Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
