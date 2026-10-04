@@ -108,10 +108,10 @@ const WIDE_FEED: FeedPop[] = [
  * ahead" for a piece inside the look-ahead. This list can only shrink. Fix one and delete its line
  * (the check fails while a line names something that no longer happens); never add one to get a
  * new overlap through: move the widget instead. KNOWN_LAYOUT_CAP holds the count, so growing the
- * list shows in the diff as a raised cap. Measured on CI's software renderer, 2026-10-03 (PR #416).
- * Empty since the playtest-3 layout moves (2026-10-03: the top HUD cluster, the slow-frames toast and
- * the landing line): keep it so.
+ * list shows in the diff as a raised cap. Measured on CI's software renderer, 2026-10-03 (PR #416);
+ * the playtest-3 HUD work (shelved) is where these get fixed.
  */
+// Empty since the top HUD cluster (#428) and the transient overlays (#429) both landed.
 const KNOWN_LAYOUT_FINDINGS: Record<string, readonly string[]> = {};
 const KNOWN_LAYOUT_CAP = 0;
 
