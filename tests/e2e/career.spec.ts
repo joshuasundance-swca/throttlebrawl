@@ -188,6 +188,8 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
     /^(WON|\d+(ST|ND|RD|TH) OF \d+\. CLEARED\.)$/,
   );
   await expect(page.locator('#career-results-cash')).toContainText('place');
+  // A negative line (repairs, the fine) puts the minus before the dollar sign (wave A live check).
+  await expect(page.locator('#career-results-cash')).not.toContainText('$-');
   await expect(page.locator('#career-results')).toContainText('claimed on the map');
   // The Keys rag's front page: a headline built from the race (run W-S).
   await expect(page.locator('#career-paper')).toHaveClass(/paper-rag/);
