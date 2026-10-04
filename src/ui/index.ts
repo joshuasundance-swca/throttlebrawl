@@ -785,6 +785,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
+    // The slow-frames offer sits across from the position badge (in the outer quarter, or in the
+    // top slot short of the rival's bar), so it flips with the layout too, shown or not.
+    lookOffer.classList.toggle('mirrored', positionOnRight());
     for (const b of touchButtons.splice(0)) b.remove();
     // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
     // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep
@@ -1240,8 +1243,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const offerClassicLook = (): boolean => {
     if (settings.lookFallbackDismissed || settings.look === 'classic' || current !== 'race') return false;
     pauseLookOffer.hidden = false;
-    // Across from the position badge, in the outer quarter.
-    lookOffer.classList.toggle('mirrored', positionOnRight());
     // While paused only the pause menu's note shows it.
     lookOffer.hidden = paused;
     if (lookOfferTimer !== null) clearTimeout(lookOfferTimer);

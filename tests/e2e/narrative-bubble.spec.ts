@@ -40,6 +40,8 @@ test('a rival barks at race start in a readable ticker line that then goes away'
   // Everything about the painted line is read in one go, while it is up: a slow software-rendered
   // screenshot can outlast a 2 s bark, so nothing is measured after the screenshot.
   const seen = await bubble.evaluate((el) => {
+    // Judged at rest: the strip's 100 ms fade-in can still be running on the frame it turns visible.
+    for (const a of el.getAnimations()) a.finish();
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     return {
