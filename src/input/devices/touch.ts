@@ -5,6 +5,10 @@
 // - The floating stick appears where the left thumb lands inside the stick zone; drag up for
 //   scaled throttle, sideways to steer, lift to coast. Its base sits at least one stick radius
 //   from the screen edge.
+// - The wheelie (playtest 3): a quick tap of the stick, then a second press within wheelieTapMs of
+//   the lift and within wheelieTapPx of that base, re-uses the first tap's base, so the thumb's
+//   height above it is the throttle on the very first sample, and sets `wheelie` for as long as that
+//   press holds (once the throttle is at the sim's 0.3 floor). Lifting is coast: the front comes down.
 // - The brake button brakes while held.
 // - The attack button sets `attack` on the press (one tick), with the auto-target side. Within
 //   attackDragMs, a flat sideways drag beyond attackDragPx picks a side; within kickSwipeMs, a
@@ -19,6 +23,7 @@
 import type { Rect } from '../../core';
 import type { ActionState } from '../actions';
 import type { InputThresholds } from '../tuning';
+import { TapPair, WheelieLatch } from './wheelie-tap';
 
 /** Touches this close to the left or right screen edge are ignored (the Android back gesture). */
 export const EDGE_PX = 24;
@@ -37,6 +42,12 @@ interface Stick {
   y0: number;
   x: number;
   y: number;
+}
+
+/** Where a quick tap's stick base was, for the second press of a double-tap to re-use. */
+interface TapBase {
+  x0: number;
+  y0: number;
 }
 
 interface AttackGesture {
@@ -67,6 +78,12 @@ export class TouchState {
   private readonly brakes = new Set<number>();
   private brakeLatched = false;
   private readonly t: InputThresholds;
+  /** The wheelie's double-tap: the stick presses as taps, and the base the last tap had. */
+  private readonly taps = new TapPair();
+  private readonly latch = new WheelieLatch();
+  private tapBase: TapBase | null = null;
+  /** The newest event time, ms: the lift time of a caller that gives none. */
+  private lastTime = 0;
   /** M2 input-2 options: tilt-only steering turns the stick's steering off; pull-back brake. */
   readonly options = { stickSteers: true, pullBackBrake: false };
 
@@ -76,6 +93,7 @@ export class TouchState {
 
   /** A pointer went down. Returns what it grabbed, or null when it is not ours. */
   down(id: number, x: number, y: number, time: number, zones: TouchZones): TouchTarget {
+    this.lastTime = time;
     if (x < EDGE_PX || x > zones.width - EDGE_PX) return null;
     if (inside(zones.attack, x, y)) {
       this.attack = {
@@ -98,8 +116,17 @@ export class TouchState {
     }
     if (!this.stick && inside(zones.stick, x, y)) {
       const r = this.t.stickRangePx;
-      const x0 = clamp(x, r, Math.max(r, zones.width - r));
-      const y0 = clamp(y, r, Math.max(r, zones.height - r));
+      let x0 = clamp(x, r, Math.max(r, zones.width - r));
+      let y0 = clamp(y, r, Math.max(r, zones.height - r));
+      // The second press of a double-tap keeps the first tap's base, near enough to where it landed.
+      const base = this.taps.press(time, this.t.wheelieTapMs) ? this.tapBase : null;
+      const again = !!base && Math.hypot(x - base.x0, y - base.y0) <= this.t.wheelieTapPx;
+      if (again) {
+        x0 = base.x0;
+        y0 = base.y0;
+      }
+      this.latch.press(again);
+      this.tapBase = null;
       this.stick = { id, x0, y0, x, y };
       return 'stick';
     }
@@ -107,6 +134,7 @@ export class TouchState {
   }
 
   move(id: number, x: number, y: number, time: number): void {
+    this.lastTime = time;
     if (this.stick?.id === id) {
       this.stick.x = x;
       this.stick.y = y;
@@ -139,9 +167,19 @@ export class TouchState {
     }
   }
 
-  /** A pointer lifted, was cancelled or lost its capture: all are a release. */
-  up(id: number): void {
-    if (this.stick?.id === id) this.stick = null; // lift to coast
+  /**
+   * A pointer lifted, was cancelled or lost its capture: all are a release. `time` is the event's
+   * timestamp, ms (the newest event's when left out); a short stick press is a tap that may open a
+   * double-tap.
+   */
+  up(id: number, time: number = this.lastTime): void {
+    this.lastTime = Math.max(this.lastTime, time);
+    if (this.stick?.id === id) {
+      this.taps.lift(time, this.t.wheelieTapMs);
+      this.tapBase = { x0: this.stick.x0, y0: this.stick.y0 };
+      this.stick = null; // lift to coast
+      this.latch.release();
+    }
     this.brakes.delete(id);
     if (this.attack?.id === id) this.attack.released = true;
   }
@@ -149,9 +187,17 @@ export class TouchState {
   /** Releases everything (the window lost focus). */
   clear(): void {
     this.stick = null;
+    this.taps.reset();
+    this.latch.release();
+    this.tapBase = null;
     this.brakes.clear();
     this.brakeLatched = false;
     if (this.attack) this.attack.released = true;
+  }
+
+  /** The stick's base while a thumb is on it, CSS px on the play surface, or null. */
+  base(): { x: number; y: number } | null {
+    return this.stick ? { x: this.stick.x0, y: this.stick.y0 } : null;
   }
 
   /** Writes this tick's touch actions into `a` and clears what the tick consumed. */
@@ -166,6 +212,7 @@ export class TouchState {
       const steer = past === 0 ? 0 : Math.sign(sx) * past ** Math.max(1, this.t.stickSteerExpo);
       if (steer !== 0 && this.options.stickSteers) a.steer = steer;
       a.throttle = Math.max(a.throttle, up);
+      if (this.latch.sample(true, up)) a.wheelie = true;
       if (this.options.pullBackBrake) {
         // Pulling the stick down brakes, past the same dead zone as steering (M2 input-2).
         const down = clamp((this.stick.y - this.stick.y0) / r, 0, 1);

@@ -7,7 +7,7 @@
 // option (thumb, tilt, or both added together), auto-throttle and pull-back brake as options, and
 // haptics (input/feedback) fed the player's sim events.
 import type { EntityId } from '../core';
-import { placeElement, type SimEvent, type SimInput, type TouchLayout } from '../sim/api';
+import { placeElement, type MovesSnapshot, type SimEvent, type SimInput, type TouchLayout } from '../sim/api';
 import { emptyActions, toSimInput, type ActionState } from './actions';
 import {
   DEFAULT_PAD_MAP,
@@ -89,6 +89,16 @@ export interface InputSystem {
   readonly haptics: Haptics;
   /** One sim step's events: buzzes for the local player's hits, takedowns and crashes. */
   onEvents(events: readonly SimEvent[], playerId: EntityId): void;
+  /**
+   * One sim step's `snapshot.moves`: the buzz when a wheelie's band turns `high`. Not a race input.
+   * Call it every step (null between races), since it is the swing it listens for.
+   */
+  onMoves(moves: Pick<MovesSnapshot, 'wheelieBand'> | null | undefined): void;
+  /**
+   * Where the floating stick's base is while a thumb is on it, CSS px on the play surface, or null:
+   * the wheelie gauge sits beside it (ui/ reads it through here).
+   */
+  stickBase(): { x: number; y: number } | null;
   dispose(): void;
 }
 
@@ -174,10 +184,10 @@ const browserGamepads = (): readonly (PadLike | null)[] => {
 
 export function createInput(opts: InputOptions): InputSystem {
   const thresholds: InputThresholds = inputDefaults();
-  const keyboard = new KeyboardState(opts.keyMap);
+  const keyboard = new KeyboardState(opts.keyMap, thresholds);
   const touch = new TouchState(thresholds);
   const padBase = opts.padMap ?? DEFAULT_PAD_MAP;
-  const gamepad = new GamepadState(padBase);
+  const gamepad = new GamepadState(padBase, thresholds);
   let padBindings: ControlOptions['padBindings'] | null = null;
   const readPads = opts.gamepads ?? browserGamepads;
   const haptics = createHaptics(opts.vibrate === undefined ? {} : { vibrate: opts.vibrate });
@@ -186,6 +196,8 @@ export function createInput(opts: InputOptions): InputSystem {
   let layout = opts.layout;
   let driver: ((a: ActionState) => void) | null = null;
   let last = emptyActions();
+  /** Whether the devices' wheelie flag was up last sample, for the tick that marks its pop. */
+  let wheelieUp = false;
 
   /** An injected tilt device (setTilt), or null for the browser's sensors. */
   let injectedTilt: TiltSource | null = null;
@@ -261,7 +273,10 @@ export function createInput(opts: InputOptions): InputSystem {
     touch.move(p.pointerId, p.clientX - box.left, p.clientY - box.top, p.timeStamp);
   };
   // pointerup, pointercancel and a lost capture are all a release.
-  const onPointerUp: Listener = (e) => touch.up((e as unknown as PointerLike).pointerId);
+  const onPointerUp: Listener = (e) => {
+    const p = e as unknown as PointerLike;
+    touch.up(p.pointerId, p.timeStamp);
+  };
 
   const pointerEvents: [string, Listener][] = [
     ['pointerdown', onPointerDown],
@@ -288,16 +303,23 @@ export function createInput(opts: InputOptions): InputSystem {
         const drained = emptyActions();
         keyboard.sample(drained, dt);
         touch.sample(emptyActions());
-        gamepad.sample(drained, readPads(), thresholds.gamepadDeadZone);
+        gamepad.sample(drained, readPads(), thresholds.gamepadDeadZone, dt);
         if (drained.cycleCamera) a.cycleCamera = true;
+        wheelieUp = false;
       } else {
         keyboard.sample(a, dt);
         touch.sample(a);
-        gamepad.sample(a, readPads(), thresholds.gamepadDeadZone);
+        gamepad.sample(a, readPads(), thresholds.gamepadDeadZone, dt);
         const tiltSteer = (injectedTilt ?? sensorTilt)?.steer(dt) ?? null;
         if (tiltSteer !== null) a.steer = Math.max(-1, Math.min(1, a.steer + tiltSteer));
-        // Auto-throttle: full throttle unless braking, so the brake still stops the bike.
-        if (controls.autoThrottle && a.brake === 0) a.throttle = 1;
+        if (controls.autoThrottle) {
+          // Auto-throttle: full throttle unless braking, so the brake still stops the bike. It leaves
+          // nothing to balance a wheelie with (full gas loops it out), so the gesture is off.
+          a.wheelie = false;
+          if (a.brake === 0) a.throttle = 1;
+        }
+        if (a.wheelie && !wheelieUp) haptics.pulse('wheelieStart');
+        wheelieUp = !!a.wheelie;
       }
       last = a;
       return toSimInput(a);
@@ -328,6 +350,10 @@ export function createInput(opts: InputOptions): InputSystem {
     onEvents(events, playerId) {
       haptics.onEvents(events, playerId);
     },
+    onMoves(moves) {
+      haptics.onMoves(moves);
+    },
+    stickBase: () => touch.base(),
     dispose() {
       sensorTilt?.dispose();
       sensorTilt = null;

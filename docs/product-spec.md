@@ -85,7 +85,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Side choice | Drag off the attack button left or right to pick the side. | [decided] |
 | Kick | Swipe **down** on the attack button. | [decided] |
 | Kick direction | Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you ride up behind someone (directional swipe)". A kick swipe leaning down-left or down-right kicks to that side; a swipe **up** is the straight kick at the rider directly ahead, with a longer forward reach. Keyboard: hold U or O with K for a side kick, I for the straight kick. Gamepad: Triangle with Square or Circle, L1 for the straight kick. | [default] |
-| Wheelie | Double-tap the throttle to pop a wheelie, then balance it by thumb height on the throttle: too high loops out, too low drops the front. A wheelie into a car's hood launches you into a backflip jump (playtest 3, 2026-10-03: "if you wheelie into the hood of a car it should launch you up into a jump doing backflips"). The pop needs at least 0.3 throttle, and the trunk of the car ahead launches too. | [decided] for the double-tap, the balance and the hood launch; [default] for the 0.3 floor and the trunk |
+| Wheelie | Double-tap the throttle to pop a wheelie, then balance it by thumb height on the throttle: too high loops out, too low drops the front. A wheelie into a car's hood launches you into a backflip jump (playtest 3, 2026-10-03: "if you wheelie into the hood of a car it should launch you up into a jump doing backflips"). The pop needs at least 0.3 throttle, and the trunk of the car ahead launches too. On the phone the second tap keeps the first tap's stick base, so where the thumb lands above it is the throttle at once; the keyboard is tap W then hold it (feather W to balance), and the gamepad is two pulls of R2. Auto-throttle has nothing to balance with, so it turns the wheelie off. | [decided] for the double-tap, the balance and the hood launch; [default] for the 0.3 floor, the trunk, the 280 ms and 90 px of the double-tap (both on the tuning panel) and the keyboard and gamepad forms |
 | Drift | Braking hard into a hairpin at speed drifts, as "a first class experience" (playtest 3, 2026-10-03): a drift meter with style cash that chained corners multiply, an exit boost, smoke, skid marks, knee down and a camera lean, plus drift career events. | [decided] |
 | Held weapon | Swings with the same attack button; the button's icon changes. | [default] |
 | Weapon steal | The same attack button, timed. See [Combat](#combat). | [decided] |
@@ -104,7 +104,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 
 | Key | Action | Tag |
 |---|---|---|
-| W / Up | Throttle (ramps up while held) | [default] |
+| W / Up | Throttle (ramps up while held); tap then hold: wheelie | [default] |
 | S / Down | Brake | [default] |
 | A, D / Left, Right | Steer | [default] |
 | J | Attack (auto-target) | [default] |

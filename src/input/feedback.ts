@@ -5,10 +5,14 @@
 //
 // Not naggy: one buzz per sim step at most (the strongest event wins), and a weaker buzz never
 // cuts into a stronger one that is still playing.
+//
+// The wheelie (playtest 3): a 12 ms tick when the double-tap registers (createInput pulses it on the
+// wheelie flag's rising edge), a 30 ms buzz each time the front swings up into the `high` band (the
+// loop-out warning), and the crash pattern on a loop-out.
 import type { EntityId } from '../core';
-import type { SimEvent } from '../sim/api';
+import type { MovesSnapshot, SimEvent } from '../sim/api';
 
-export type HapticKind = 'hitLanded' | 'hitTaken' | 'takedown' | 'crash';
+export type HapticKind = 'hitLanded' | 'hitTaken' | 'takedown' | 'crash' | 'wheelieStart' | 'wheelieHigh';
 
 /** Vibration patterns, ms (on, off, on, ...). The hits scale with the hit's `hitImpulse`. */
 export const HAPTIC_PATTERNS: Readonly<Record<HapticKind, readonly number[]>> = {
@@ -16,10 +20,19 @@ export const HAPTIC_PATTERNS: Readonly<Record<HapticKind, readonly number[]>> = 
   hitTaken: [45],
   takedown: [40, 50, 90],
   crash: [120, 40, 60],
+  wheelieStart: [12],
+  wheelieHigh: [30],
 };
 
 /** Stronger kinds win a step and are not interrupted by weaker ones. */
-const PRIORITY: Readonly<Record<HapticKind, number>> = { hitLanded: 1, hitTaken: 2, takedown: 3, crash: 4 };
+const PRIORITY: Readonly<Record<HapticKind, number>> = {
+  wheelieStart: 1,
+  hitLanded: 2,
+  wheelieHigh: 3,
+  hitTaken: 4,
+  takedown: 5,
+  crash: 6,
+};
 
 export type VibrateFn = (pattern: number | number[]) => boolean;
 
@@ -30,6 +43,12 @@ export interface Haptics {
   enabled(): boolean;
   /** One sim step's events; `playerId` is the local player's entity. `nowMs` defaults to the clock. */
   onEvents(events: readonly SimEvent[], playerId: EntityId, nowMs?: number): HapticKind | null;
+  /**
+   * The player's moves from the sim step's snapshot (`SimSnapshot.moves`): a buzz when the wheelie's
+   * band turns `high`, once per swing up, not every tick it stays there. Null, or undefined, is no
+   * wheelie.
+   */
+  onMoves(moves: Pick<MovesSnapshot, 'wheelieBand'> | null | undefined, nowMs?: number): HapticKind | null;
   /** A one-off buzz (the Start tap's first vibration is platform's; this is for tests and menus). */
   pulse(kind: HapticKind): void;
 }
@@ -45,6 +64,9 @@ export function hapticKind(e: SimEvent, playerId: EntityId): HapticKind | null {
       return e.actor === playerId ? 'takedown' : null;
     case 'crash':
       return e.actor === playerId ? 'crash' : null;
+    case 'wheelieEnd':
+      // A loop-out also emits its own crash; either way the player feels the crash pattern, once.
+      return e.actor === playerId && e.data['loopOut'] === true ? 'crash' : null;
     default:
       return null;
   }
@@ -81,6 +103,7 @@ export function createHaptics(opts: HapticsOptions = {}): Haptics {
   let on = opts.enabled ?? true;
   let busyUntil = 0;
   let busyPriority = 0;
+  let wheelieBand: MovesSnapshot['wheelieBand'] = null;
 
   const play = (kind: HapticKind, pattern: number[], nowMs: number): boolean => {
     if (!vibrate || !on) return false;
@@ -120,6 +143,13 @@ export function createHaptics(opts: HapticsOptions = {}): Haptics {
       }
       if (!best) return null;
       return play(best.kind, hapticPattern(best.kind, impulseOf(best.e)), nowMs) ? best.kind : null;
+    },
+    onMoves(moves, nowMs = clock()) {
+      const band = moves?.wheelieBand ?? null;
+      const turnedHigh = band === 'high' && wheelieBand !== 'high';
+      wheelieBand = band;
+      if (!turnedHigh || !vibrate || !on) return null;
+      return play('wheelieHigh', hapticPattern('wheelieHigh'), nowMs) ? 'wheelieHigh' : null;
     },
     pulse(kind) {
       play(kind, hapticPattern(kind), clock());
