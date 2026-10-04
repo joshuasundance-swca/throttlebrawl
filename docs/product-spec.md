@@ -305,7 +305,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 - Cash comes from placing, takedowns and near-misses. There is no betting. [decided]
 - Style cash comes from near-miss traffic, airtime, oncoming-lane riding, takedown combos and weapon steals, plus "maybe other stuff". [decided] It is scored in M2 and banked from M4. [default]
 - Cash goes on bikes, paint and fines. There are no entry fees in v1. [default]
-- **Tighter money** (playtest 3: "each new bike takes about 3-4 races of winnings; smaller purses, pricier bikes, repairs after crashes"). [decided] How [default]: purses grow about 22% a tier from about $900 at the first; each crash bills a repair of 1% of the bike's price (at least $50, at most 5 a race, never more than a quarter of what the race paid, and never below $0 in Road Trip); a won event replayed pays half its prize and required bonus (style pays in full); a wheelie and a drift pay style cash by the second; later seasons pay more.
+- **Tighter money** (playtest 3: "each new bike takes about 3-4 races of winnings; smaller purses, pricier bikes, repairs after crashes"). [decided] How [default]: purses grow about 22% a tier from about $900 at the first; each crash bills a repair of 1% of the bike's price (at least $50, at most 5 a race, never more than a quarter of what the race paid, and never below $0 in Road Trip); a won event replayed pays half its prize and required bonus (style pays in full); a wheelie and a drift pay style cash by the second; the producer's ask and the side gig pay 10% more for each tier up the whole career (a $250 ask pays $350 at the fifth tier, in steps of $50); later seasons pay more (Season 2 about 15% more purse, Season 3 on about 30%).
 
 ### Bikes
 

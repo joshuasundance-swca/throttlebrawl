@@ -65,6 +65,12 @@ export interface RiderTexts {
 }
 
 export interface ShowText {
+  /**
+   * The career tiers of every earlier chapter's region (playtest 3): added to a region tier it
+   * gives the global tier g that scales the ask's and the gig's pay. Absent means 0 (a hand-made
+   * ShowText).
+   */
+  tierBase?: number;
   paper: { name: string; style: PaperStyle; tagline: string };
   heads: Readonly<Record<MomentKind, readonly string[]>>;
   asks: readonly AskDef[];
@@ -116,6 +122,7 @@ export function showOf(reg: ContentRegistry, def: CareerDef): ShowText {
   const paper = obj(show['paper']);
   const heads = obj(show['heads']);
   return {
+    tierBase: tierBaseOf(careerDefs(reg), def),
     paper: {
       name: str(paper['name'], def.regionName),
       style: PAPER_STYLES.find((s) => s === paper['style']) ?? 'rag',
@@ -149,6 +156,29 @@ export function showOf(reg: ContentRegistry, def: CareerDef): ShowText {
         text: str(g['text']),
       })),
   };
+}
+
+/**
+ * The tiers of the chapters before `def`'s (the Keys' 4 make the Pacific Northwest's tier 1 the
+ * global tier 5). Chapters are the regions' own order, from the career files.
+ */
+export function tierBaseOf(defs: readonly CareerDef[], def: CareerDef): number {
+  return defs.filter((d) => d.chapter < def.chapter).reduce((sum, d) => sum + d.tiers.length, 0);
+}
+
+/** The global tier g of a region tier (1 = the region's first). */
+const globalTier = (show: ShowText, regionTier: number): number =>
+  (show.tierBase ?? 0) + Math.max(1, Math.round(regionTier));
+
+/**
+ * What an ask or a gig pays at global tier `g` (playtest 3, the maintainer: "the money gentle but
+ * tighter"; `[default]`): the file's cash times 1 + 0.1 x (g - 1), in steps of $50, a tie going
+ * down. So the $250 ask pays $350 at g5 and $500 at g12. Integer arithmetic, so no float tie.
+ */
+export function askCashAt(cash: number, g: number): number {
+  const tier = Math.max(1, Math.round(g));
+  const tenths = Math.max(0, Math.round(cash)) * (9 + tier); // cash x 10 x scale
+  return Math.ceil(tenths / 500 - 0.5) * 50;
 }
 
 /** Every career file's rider texts, by qualified rider id (a bare id names the file's own pack). */
@@ -338,7 +368,9 @@ export function pickAsk(show: ShowText, plan: EventPlan, seed: number): AskDef |
     if (a.kind === 'style-cash' && plan.rules.rule === 'collab') return false;
     return !plan.objectives.some((o) => o.kind === a.kind);
   });
-  return pick(fits, `ask:${plan.key}:${seed}`) ?? null;
+  const chosen = pick(fits, `ask:${plan.key}:${seed}`);
+  // The ask pays more up the tiers, so every reader of its cash (the prompt, the objective) agrees.
+  return chosen ? { ...chosen, cash: askCashAt(chosen.cash, globalTier(show, plan.tier)) } : null;
 }
 
 /** The ask as an optional objective the race log judges from the moment it is asked. */
@@ -358,7 +390,11 @@ export const ASK_LABEL = "Producer's ask";
 
 /** The region's side gig now: one at a time, the next one after every race (seeded by the history). */
 export function currentGig(show: ShowText, profile: Profile, regionId: string): GigDef | null {
-  return pick(show.gigs, `gig:${regionId}:${profile.history.length}`) ?? null;
+  const gig = pick(show.gigs, `gig:${regionId}:${profile.history.length}`);
+  if (!gig) return null;
+  // A gig is the region's, not one node's: it pays by the highest tier the player has opened there.
+  const reached = profile.regions[regionId]?.tier ?? 1;
+  return { ...gig, cash: askCashAt(gig.cash, globalTier(show, reached)) };
 }
 
 /** What a gig asks, in plain words. */
