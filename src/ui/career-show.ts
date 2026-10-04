@@ -8,7 +8,7 @@
 // Each piece is built as a small node tree first (`ShowNode`), so the unit tests read the rendered
 // text, classes and colours without a browser; `toDom` makes the elements. Lives in the career
 // screens' lazy chunk (career-screen.ts imports it), off the first-load JavaScript budget.
-import type { PaperView, PosterView, RivalText } from '../career';
+import type { CareerView, NodeCard, PaperView, PosterView, RivalText, SeasonCard, TierView } from '../career';
 
 export interface ShowNode {
   tag: string;
@@ -48,7 +48,14 @@ export function toDom(node: ShowNode): HTMLElement {
   return e;
 }
 
-const money = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
+/**
+ * Dollars, the sign first: `$150`, `-$150` (playtest 3's live check read repairs as "$-150" beside
+ * "Fine -$396"). A sum that rounds to nothing is not a loss.
+ */
+export function money(v: number): string {
+  const r = Math.round(v);
+  return `${r < 0 ? '-' : ''}$${Math.abs(r).toLocaleString('en-US')}`;
+}
 
 /** The stream's poster at the top of an event card: the chyron, then a face and a beef line each. */
 export function posterNode(p: PosterView): ShowNode {
@@ -162,6 +169,195 @@ export function gigNode(g: GigCard): ShowNode {
   );
 }
 
+// ---- Playtest 3: the career screens' words ----------------------------------------------------
+// Chapters, tiers and bosses on the map, the region order, the garage's six bikes and what each
+// costs in races, repairs on the ledger and the season card. Pure functions of the views (strings
+// and node trees), so the tests read the words without a browser; career-screen.ts draws them.
+
+/** The results ledger: each line, the fine, and the cash after, with money signed the same way. */
+export function ledgerNode(
+  lines: readonly { label: string; cash: number }[],
+  fine: number,
+  cashAfter: number,
+): ShowNode {
+  const line = (label: string, cash: number, cls = 'ledger-line') =>
+    n('li', { cls }, n('span', { text: label }), n('span', { text: money(cash) }));
+  return n(
+    'ul',
+    { cls: 'career-results-list', id: 'career-results-cash' },
+    ...lines.map((l) => line(l.label, l.cash)),
+    ...(fine > 0 ? [line('Fine', -fine)] : []),
+    line('Cash', cashAfter, 'ledger-line total'),
+  );
+}
+
+/** What a boss's card and button are tagged: a tier boss opens the next tier, the region boss ends it. */
+export function nodeTag(c: Pick<NodeCard, 'boss' | 'tierBoss'>): string {
+  return c.boss ? 'REGION BOSS' : c.tierBoss ? 'TIER BOSS' : '';
+}
+
+/**
+ * A tier header's right side and, for a closed tier, why it is closed (its first locked card's
+ * line, which names the boss to beat). An open tier counts its wins, then says its boss is open
+ * or beaten.
+ */
+export function tierHead(t: TierView): { status: string; why: string } {
+  if (!t.open) return { status: 'locked', why: t.nodes.find((c) => c.reason)?.reason ?? '' };
+  const boss = t.nodes.find((c) => c.tierBoss);
+  const wins = Math.min(t.wins, t.requiredWins);
+  if (boss) {
+    if (boss.state === 'won') return { status: 'boss beaten', why: '' };
+    return {
+      status: t.wins >= t.requiredWins ? 'boss open' : `${wins}/${t.requiredWins} wins, then the boss`,
+      why: '',
+    };
+  }
+  return { status: t.requiredWins ? `${wins}/${t.requiredWins} wins` : '', why: '' };
+}
+
+/** The line under the career's name: the high-water tier (the highest one open), then the tally. */
+export function tallyLine(v: CareerView): string {
+  const t = v.region.tally;
+  let high = 0;
+  v.tiers.forEach((x, i) => {
+    if (x.open) high = i;
+  });
+  const where = v.region.finaleBeaten
+    ? 'Free play'
+    : `Tier ${high + 1} of ${v.tiers.length}: ${v.tiers[high]?.name ?? v.region.tierName}`;
+  return `${where} · won ${t.won}/${t.nodes} · roads claimed ${t.claimed} · secrets ${t.secretsFound}/${t.secrets}`;
+}
+
+/** The season's badge: "Season 1", "Season 2: Renewed". */
+export const seasonBadge = (v: CareerView): string => v.season.label;
+
+/** What each map pin's shape means (a boss must read without its colour). */
+export function mapLegendNode(): ShowNode {
+  const item = (cls: string, mark: string, text: string) =>
+    n(
+      'span',
+      { cls: 'legend-item' },
+      n('i', { cls: `legend-mark ${cls}`, text: mark, attrs: { 'aria-hidden': 'true' } }),
+      n('span', { text }),
+    );
+  return n(
+    'div',
+    { cls: 'career-legend', id: 'career-legend' },
+    item('event', '●', 'event'),
+    item('tier-boss', '■', 'tier boss'),
+    item('region-boss', '◆', 'region boss'),
+  );
+}
+
+/** A region tab: its name and tally, a star once its boss has fallen, "locked" while it is shut. */
+export function regionTabLabel(r: CareerView['regions'][number]): string {
+  return `${r.name} ${r.won}/${r.nodes}${r.finaleBeaten ? ' ★' : ''}${r.open ? '' : ' · locked'}`;
+}
+
+/** The banner over a shut region's map: why it is shut, and where the boss that opens it waits. */
+export function regionLockNode(v: CareerView): ShowNode | null {
+  const i = v.regions.findIndex((r) => r.id === v.region.id);
+  const row = v.regions[i];
+  if (!row || row.open) return null;
+  const before = v.regions[i - 1];
+  return n(
+    'div',
+    { cls: 'career-lock', id: 'career-lock', attrs: { role: 'status' } },
+    n('b', { text: 'LOCKED' }),
+    n('span', { text: row.lockReason || 'Not open yet.' }),
+    ...(before
+      ? [n('span', { cls: 'lock-where', text: `The boss is the last race of ${before.name}.` })]
+      : []),
+  );
+}
+
+/**
+ * A shut region as the screen shows it: every event locked with the region's reason, no tier open,
+ * no pin suggested. The career's per-region node state cannot see the chapter order, so without
+ * this a shut region's first event would look open (the wave A live check rode one). An open region
+ * comes back as it is.
+ */
+export function shutRegionView(v: CareerView): CareerView {
+  const row = v.regions.find((r) => r.id === v.region.id);
+  if (!row || row.open) return v;
+  const reason = row.lockReason || 'Not open yet.';
+  return {
+    ...v,
+    suggested: null,
+    tiers: v.tiers.map((t) => ({
+      ...t,
+      open: false,
+      nodes: t.nodes.map((c) => ({ ...c, state: 'locked' as const, reason })),
+    })),
+    map: v.map.map((m) => ({
+      ...m,
+      pins: m.pins.map((p) => ({ ...p, state: 'locked' as const, suggested: false })),
+    })),
+  };
+}
+
+/** The next season's card: its name, its lines, and what starting does (the button is the screen's). */
+export function seasonCardNode(card: SeasonCard): ShowNode {
+  return n(
+    'section',
+    { cls: 'career-season-card', id: 'career-season-card' },
+    n('div', { cls: 'season-title', text: card.title }),
+    ...card.lines.map((line) => n('div', { cls: 'career-news', text: line })),
+    n('div', {
+      cls: 'career-news',
+      text: 'The maps start over, in order. Your cash, bikes, paints and grudges come with you.',
+    }),
+  );
+}
+
+/** How many races of pay a price is away: 0 when the cash is there, null when the pay is unknown. */
+export function racesToAfford(price: number, cash: number, racePay: number | undefined): number | null {
+  if (price <= cash) return 0;
+  if (racePay === undefined || !(racePay > 0)) return null;
+  return Math.ceil((price - cash) / racePay);
+}
+
+/** The garage row fields these words read (career-screen's GarageBikeRow has them). */
+export interface BikeNoteRow {
+  speed: string;
+  priceCash: number;
+  state: 'owned' | 'for-sale' | 'locked';
+  current: boolean;
+  secret: boolean;
+  reason: string;
+  /** Its place in the ladder of step-up bikes (1 = the starting bike), and the ladder's length. */
+  step?: number;
+  steps?: number;
+  /** What one crash costs in repairs on this bike. */
+  repairCash?: number;
+}
+
+/**
+ * A garage row's small lines: its place and speed, then why it is locked, what it costs in races of
+ * pay, or what a crash costs on the bike you ride. `racePay` is about what one race pays now.
+ */
+export function bikeNotes(b: BikeNoteRow, cash: number, racePay?: number): string[] {
+  const tag = b.step ? `Step ${b.step} of ${b.steps ?? b.step}` : b.secret ? '' : 'Novelty ride';
+  const first = [tag, b.speed, b.current ? 'riding it' : ''].filter(Boolean).join(' · ');
+  const out = [first];
+  if (b.state === 'owned') {
+    if (b.current && b.repairCash) out.push(`a crash costs about ${money(b.repairCash)} to fix`);
+    return out;
+  }
+  if (b.state === 'locked' && b.reason) out.push(b.reason);
+  const races = racesToAfford(b.priceCash, cash, racePay);
+  const afford =
+    races === null
+      ? ''
+      : races === 0
+        ? b.state === 'locked'
+          ? 'you have the cash'
+          : 'you can afford it'
+        : `about ${races} ${races === 1 ? 'race' : 'races'} to afford`;
+  out.push([money(b.priceCash), afford].filter(Boolean).join(' · '));
+  return out;
+}
+
 export const SHOW_CSS = `
 .show-poster { margin: -10px -12px 8px; padding: 6px 10px 8px; background: #111; color: #f2ead8;
   border-bottom: 3px solid #e0543a; }
@@ -226,6 +422,35 @@ export const SHOW_CSS = `
 #pause-map .career-map svg, #pause-map .career-map figcaption { width: 100%; max-width: 360px; }
 #pause-map .career-map svg { height: auto; aspect-ratio: 26 / 15; }
 #pause-map .here { fill: #ff4a3d; stroke: #fff; stroke-width: 3; }
+/* Playtest 3: the season badge and card, the region lock, tier and boss tags, the legend, the
+   garage's lines and the new-career panel. Every box wraps (overflow-wrap) and nothing is rotated
+   or fixed-width, so a 320 px phone keeps every first line (tests/e2e/career-layout.spec.ts). */
+.career-title-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.career-badge { font: 900 12px ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; color: #111;
+  background: #f5c542; padding: 2px 8px; overflow-wrap: anywhere; }
+.career-season-card .season-title { transform: none; align-self: stretch; box-sizing: border-box; max-width: 100%;
+  overflow-wrap: anywhere; line-height: 1.3; padding: 4px 0; font: 900 18px/1.3 ui-monospace, 'Courier New', monospace;
+  letter-spacing: 0.04em; text-transform: uppercase; color: #f5c542; text-align: left; }
+.career-lock { display: flex; flex-direction: column; gap: 2px; text-align: left; background: #2a0e12; color: #f2ead8;
+  border: 2px solid #e0543a; padding: 6px 10px; font: 600 13px/1.35 system-ui, sans-serif; overflow-wrap: anywhere; }
+.career-lock b { font: 900 12px ui-monospace, monospace; letter-spacing: 0.12em; color: #ff7a5c; }
+.career-lock .lock-where { opacity: 0.85; }
+.career-tab-locked { opacity: 0.75; border-style: dashed !important; }
+.career-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; font: 600 12px ui-monospace, monospace;
+  color: #f2ead8; }
+.career-legend .legend-item { display: inline-flex; gap: 4px; align-items: center; }
+.career-legend .legend-mark { font-style: normal; color: #f5c542; }
+.career-tier h3 .tier-status { text-align: right; overflow-wrap: anywhere; }
+.career-tier .tier-why { margin: -2px 0 6px; font: 600 12px/1.35 system-ui, sans-serif; color: #c9b9a0; overflow-wrap: anywhere; }
+.career-node .node-tag { align-self: flex-start; font: 900 10px ui-monospace, monospace; letter-spacing: 0.1em; background: #111;
+  color: #f5c542; padding: 0 5px; }
+.career-node.tierboss, .career-node.boss { border-width: 4px; }
+.career-node .node-name, .career-node .node-kind { overflow-wrap: anywhere; }
+.career-map .pin.tierboss { stroke-width: 3; }
+.garage-row .what small { overflow-wrap: anywhere; }
+.garage-pay { font: 700 13px system-ui, sans-serif; color: #f2ead8; text-align: left; overflow-wrap: anywhere; }
+.career-newcareer { display: flex; flex-direction: column; gap: 6px; text-align: left; border: 2px dashed #e0543a; padding: 8px 10px; }
+.career-newcareer h3 { margin-top: 0; }
 @media (orientation: landscape) and (max-height: 520px) {
   .show-paper .paper-mast { font-size: 20px; }
   .show-paper .paper-headline { font-size: 19px; }
