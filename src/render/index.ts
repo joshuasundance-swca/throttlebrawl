@@ -57,6 +57,8 @@ import type { WaterfrontCounts, WaterfrontLayer } from './waterfront';
 import type { BlocksCounts, BlocksLayer } from './chinatown-northbeach';
 import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
+import type { LandmarkCounts, LandmarkLayer } from './landmarks';
+import type { LandmarkKit, LandmarkKitId } from './models';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import { Rain, rainColourOf } from './rain';
@@ -231,6 +233,8 @@ export interface SceneryStatus {
   mission: MissionCounts | null;
   /** The ground band beside the road and its edges (run W-R), or null while its chunk loads. */
   verge: VergeCounts | null;
+  /** The real landmarks beside or over the road (playtest 3), or null on a road with none or while their kit loads. */
+  landmarks?: LandmarkCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
   scenes: ScenesCounts | null;
   /** San Francisco's waterfront (run W-U), or null while its chunk loads or on any other road. */
@@ -371,7 +375,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       kit,
       landReach: (e, side, s) => rs.landReach(e, side, s),
       spots: rs.spots,
-      reserved: scenes?.reserved() ?? [],
+      reserved: [
+        ...(scenes?.reserved() ?? []),
+        ...(landmarksModule ? landmarksModule.landmarkFootprints(roadArgs.road) : []),
+      ],
     });
     scene.add(roadside.group);
   };
@@ -529,8 +536,39 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     verge = null;
     if (!vergeModule || !roadArgs) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
-    verge = new vergeModule.VergeLayer(roadArgs.road, look, { tags });
+    verge = new vergeModule.VergeLayer(roadArgs.road, look, {
+      tags,
+      railingColour: palette?.['bridgePaint'],
+    });
     scene.add(verge.group);
+  };
+  // Playtest 3: the real landmarks (landmarks.ts), one lazy chunk and one mesh for the whole network,
+  // fetched only for a road that has a `landmark` feature. Their kits load through the asset manifest;
+  // a landmark whose kit fails draws nothing. Their footprints keep the roadside props off.
+  let landmarksModule: typeof import('./landmarks') | null = null;
+  let landmarks: LandmarkLayer | null = null;
+  let landmarkKits: ReadonlyMap<LandmarkKitId, LandmarkKit> | null = null;
+  const buildLandmarks = () => {
+    landmarks?.dispose();
+    landmarks = null;
+    if (!landmarksModule || !landmarkKits || !roadArgs) return;
+    landmarks = new landmarksModule.LandmarkLayer(landmarkKits, look, { road: roadArgs.road, palette });
+    scene.add(landmarks.group);
+  };
+  const requestLandmarks = (road: RoadNetwork) => {
+    landmarks?.dispose();
+    landmarks = null;
+    landmarkKits = null;
+    if (!road.edges.some((e) => e.features.some((f) => f.kind === 'landmark'))) return;
+    void import('./landmarks').then(async (m) => {
+      landmarksModule = m;
+      const assets = opts.assets;
+      const kits = assets ? await m.loadLandmarkKits(assets, m.landmarkKitsFor(road)) : new Map();
+      if (roadArgs?.road !== road) return;
+      landmarkKits = kits;
+      buildLandmarks();
+      buildRoadside(); // now keeps off the landmarks' ground
+    });
   };
   // Run W-U: the airboats beside a road side tagged `airboats` (the Keys' Mangrove Boardwalk), a lazy
   // chunk loaded only for a road that has the tag. Built once per setRoad, like the verge.
@@ -707,6 +745,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           buildPlaces();
         });
       backdrop.setRoad(road);
+      requestLandmarks(road);
       requestScenes(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
@@ -766,6 +805,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         sceneryVisible += mission.update(pose.x, pose.z, moving, missionModule.raceShare(curr));
       }
       lastFrameAt = t;
+      landmarks?.update(pose.x, pose.z);
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
       airboats?.update(curr, t, dt * (curr?.timeScale ?? 1));
@@ -890,6 +930,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       blocks: blocks?.counts() ?? null,
       mission: mission?.counts() ?? null,
       verge: verge?.counts() ?? null,
+      landmarks: landmarks?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
       waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
