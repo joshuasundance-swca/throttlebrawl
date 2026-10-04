@@ -335,6 +335,8 @@ export function settleRace(profile: Profile, input: SettleInput): { profile: Pro
     takedowns: tally.takedowns,
     build: input.build,
     at: input.at,
+    // The season it was played in, from Season 2 (a Season 1 result is written as before).
+    ...(profile.season > 1 ? { season: profile.season } : {}),
   };
   const history = [...profile.history, result].slice(-MAX_HISTORY);
   const next: Profile = {

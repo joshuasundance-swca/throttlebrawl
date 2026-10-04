@@ -3,30 +3,30 @@
 // it from the registry and the profile; ui/ only draws it (the career-show lane dresses it). The
 // map is the career's personality (interview, 2026-10-02, round 6: "The map"): claimed roads glow,
 // open roads are drawn, locked ones are dim, events are pins, found secrets are marked. DOM-free.
+//
+// Playtest 3 (round 2: "Longer + seasons"; round 1: "the boss of each tier must be beaten first";
+// round 3: regions "In order"): the view names the season, offers the next one as a card once
+// every region boss has fallen, pins each tier's boss, says why a region is shut, and from Season
+// 2 shows each card as the season remixed it, with the node's best from this season only.
 import { packOf, type ContentRegistry } from '../content';
 import type { Profile } from '../save';
-import {
-  bare,
-  careerOf,
-  eventPlan,
-  nodeLength,
-  qualify,
-  type CareerDef,
-  type CareerNode,
-  type EventPlan,
-} from './defs';
+import { bare, careerOf, qualify, type CareerDef, type CareerNode, type EventPlan } from './defs';
 import { currentPaintHex } from './garage';
 import {
   lockReason,
   mapTally,
   nodeState,
   progressOf,
+  regionLockReason,
+  regionOpen,
   suggestedNode,
+  tierBoss,
   tierOpen,
   winsInTier,
   type NodeState,
 } from './map';
 import { AUDIT_MAX_LINE_ITEMS } from './race-log';
+import { canStartSeason, seasonCardLines, seasonLabel, seasonRace } from './season';
 
 export type RoadState = 'claimed' | 'open' | 'locked';
 
@@ -45,7 +45,10 @@ export interface MapPin {
   x: number;
   z: number;
   state: NodeState;
+  /** The region boss. */
   boss: boolean;
+  /** A tier's boss (the region boss is not one): beating it opens the next tier. */
+  tierBoss: boolean;
   suggested: boolean;
 }
 
@@ -89,8 +92,14 @@ export interface NodeCard {
   state: NodeState;
   /** Why it is locked, or ''. */
   reason: string;
+  /** The region boss. */
   boss: boolean;
-  /** The best this node has gone, from the history: `won`, `placed`, `lost`, `busted`, or null. */
+  /** A tier's boss (the region boss is not one): beating it opens the next tier. */
+  tierBoss: boolean;
+  /**
+   * The best this node has gone this season, from the history: `won`, `placed`, `lost`, `busted`,
+   * or null.
+   */
   best: string | null;
   /** The road it sits on, by name. */
   where: string;
@@ -105,7 +114,20 @@ export interface TierView {
   nodes: NodeCard[];
 }
 
+/** The card that starts the next season (it resets the maps, so the player starts it). */
+export interface SeasonCard {
+  /** The season it starts. */
+  season: number;
+  /** "Season 2: Renewed". */
+  title: string;
+  lines: string[];
+}
+
 export interface CareerView {
+  /** The season the career is in, and its name ("Season 2: Renewed"). */
+  season: { n: number; label: string };
+  /** The next season's card once every region boss of this one has fallen, else null. */
+  seasonCard: SeasonCard | null;
   cash: number;
   bike: { key: string | null; name: string; paint: string | null };
   regions: {
@@ -115,6 +137,10 @@ export interface CareerView {
     won: number;
     nodes: number;
     finaleBeaten: boolean;
+    /** Whether its map is open (the regions open in order). */
+    open: boolean;
+    /** Why it is shut ("Opens when Mother Rust falls."), or ''. */
+    lockReason: string;
   }[];
   region: {
     id: string;
@@ -268,8 +294,9 @@ function routeKm(reg: ContentRegistry, routeKey: string): number | null {
 function bestOutcome(profile: Profile, def: CareerDef, node: CareerNode): string | null {
   let best: string | null = null;
   for (const h of profile.history) {
-    // A quit is no result.
+    // A quit is no result, and an earlier season's is not this map's.
     if (h.region !== def.regionId || h.node !== node.id || h.outcome === 'quit') continue;
+    if ((h.season ?? 1) !== profile.season) continue;
     if (best === null || (OUTCOME_RANK[h.outcome] ?? 0) > (OUTCOME_RANK[best] ?? 0)) best = h.outcome;
   }
   return best;
@@ -286,11 +313,12 @@ export function careerView(
   if (!def) throw new Error('no career');
   const progress = progressOf(def, profile.regions);
   const suggested = suggestedNode(def, progress);
-  const plans = new Map(def.nodes.map((n) => [n.id, eventPlan(reg, n.event)]));
-  const nameOf = (id: string) => plans.get(id)?.name ?? id;
+  const races = new Map(def.nodes.map((n) => [n.id, seasonRace(reg, defs, profile, def, n)]));
+  const nameOf = (id: string) => races.get(id)?.plan.name ?? id;
   const card = (n: CareerNode): NodeCard => {
-    const plan = plans.get(n.id) as EventPlan;
-    const length = nodeLength(plan, n);
+    const race = races.get(n.id);
+    const plan = race?.plan as EventPlan;
+    const length = race?.length ?? null;
     const route = length?.route ?? '';
     const winBonus = plan.objectives.filter((o) => o.required).reduce((s, o) => s + o.rewardCash, 0);
     const roadKey = qualify(def.pack, n.road);
@@ -307,13 +335,19 @@ export function careerView(
       state: nodeState(def, progress, n),
       reason: lockReason(def, progress, n, nameOf) ?? '',
       boss: n.id === def.boss,
+      tierBoss: n.id !== def.boss && tierBoss(def, n.tier) === n.id,
       best: bestOutcome(profile, def, n),
       where: reg.roads[roadKey]?.name ?? '',
       rivals: plan.field.map((r) => riderName(reg, r)),
     };
   };
   const currentBike = profile.bikes.current;
+  const next = profile.season + 1;
   return {
+    season: { n: profile.season, label: seasonLabel(profile.season) },
+    seasonCard: canStartSeason(defs, profile)
+      ? { season: next, title: seasonLabel(next), lines: seasonCardLines(next) }
+      : null,
     cash: profile.cash,
     bike: {
       key: currentBike,
@@ -329,6 +363,8 @@ export function careerView(
         won: d.nodes.filter((n) => p.won.includes(n.id)).length,
         nodes: d.nodes.length,
         finaleBeaten: p.finaleBeaten,
+        open: regionOpen(defs, profile, d),
+        lockReason: regionLockReason(defs, profile, d) ?? '',
       };
     }),
     region: {
@@ -443,6 +479,7 @@ export function careerMap(reg: ContentRegistry, def: CareerDef, profile: Profile
           z: p[1],
           state: nodeState(def, progress, n),
           boss: n.id === def.boss,
+          tierBoss: n.id !== def.boss && tierBoss(def, n.tier) === n.id,
           suggested: n.id === suggested,
         });
     }
