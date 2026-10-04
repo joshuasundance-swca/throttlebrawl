@@ -3,27 +3,30 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { fastForwardDone } from './lockstep';
 
 // Playtest 1c, 2026-09-30 [decided]: "The little pop-ups about near miss etc get in the way of
-// seeing what's ahead. Maybe they could be less intrusive and/or less centered". The style pop-ups
-// (ui-3) must stay out of the central look-ahead: the middle half of the screen's width, from above
-// the horizon (hills and cresting traffic) down to just above the rider. Measured on the race
-// screens of the dev machine's software renderer, the horizon sits at about 44% of the height and
-// the rider's head at about 53% in every shape tried, so the rectangle below has a wide margin.
-// They must also keep off the bark bubble, the HUD, the pause button and the touch buttons, on a
-// phone held sideways and upright, a small phone, the left-handed mirror and a laptop.
+// seeing what's ahead. Maybe they could be less intrusive and/or less centered". Playtest 3,
+// 2026-10-03 [decided]: "The black and white text pop-ups block the actual game", answered by the top
+// ticker strip: every in-race text pop-up (a rival's or cop's bark, a style chip, a takedown name,
+// the live style meter) is one line at a time in `#hud-ticker`. The strip must stay out of the
+// central look-ahead: the middle half of the screen's width, from above the horizon (hills and
+// cresting traffic) down to just above the rider. Measured on the race screens of the dev machine's
+// software renderer, the horizon sits at about 44% of the height and the rider's head at about 53%
+// in every shape tried, so the rectangle below has a wide margin. It must also keep off the HUD,
+// the pause button and the touch buttons, on a phone held sideways and upright, a small phone, the
+// left-handed mirror and a laptop.
 //
-// The pop-ups come from `window.__uiStyleFeed` (ui's test seam): style events fed through the same
-// tally the sim's events go through, because the seeded bot race does not reliably earn style cash
-// early. The bubble's line is swapped for the base pack's longest line while it is up, so it is
-// measured at its widest real content.
+// What the strip shows comes from `window.__uiTicker` (ui's test seam): it drops what shows, shows
+// these items and holds the first up, so the live race cannot displace it while the spec measures
+// it. The bark is swapped for the base pack's longest line, so it is measured at its widest real
+// content. (ui-ticker.spec.ts measures the strip's own fit and looks; the events path is in it too.)
 //
 // The whole HUD's layout (the quality-confidence retro's rec 6, 2026-10-03: 5 of the 13 playtest
 // defects were layout). Playtest 3 found the race objective sitting over the heat meter, and black
 // and white text blocking the game. So on a phone held sideways (the default look), a phone held
 // upright and a laptop, during a real career race (the objective line only shows in one), every
 // HUD widget and overlay on screen is measured from its painted box: no two may overlap, and none
-// may reach into the look-ahead. Three moments are measured: the race's start (the bubble, the
-// pop-ups, the objective and the career prompt), once the heat badge is up (with the slow-frames
-// toast, the rival's health bar and the bubble held up beside it), and while the landing one-liner
+// may reach into the look-ahead. Three moments are measured: the race's start (the ticker, the
+// objective and the career prompt), once the heat badge is up (with the slow-frames toast, the
+// rival's health bar and a bark on the ticker beside them), and while the landing one-liner
 // shows (render draws it in WebGL, so its plate is read from the overlay sprite three.js draws,
 // through three's own devtools hook). Overlaps main already has are named in KNOWN_LAYOUT_FINDINGS,
 // a list that can only shrink: a finding not on it fails, and so does an entry that no longer
@@ -52,17 +55,23 @@ interface Piece {
 }
 interface Measured {
   viewport: { w: number; h: number };
-  pops: { text: string; box: Box; labelPx: number; cashPx: number; opacity: number; duration: string }[];
-  bubble: Box | null;
-  bubbleText: string;
+  /** The strip as painted, or null when it is not up. */
+  ticker: { cls: string; text: string; box: Box; fontPx: number; opacity: number } | null;
   others: { id: string; box: Box }[];
   /** Every HUD widget and overlay painted in the same frozen frame. */
   layout: Piece[];
-  /** Whether every chip had slid in and the stack had stopped moving, and when (ms after the feed). */
+  /** Whether the strip had finished sliding in and fading. */
   settled: boolean;
-  settledMs: number;
 }
-type FeedPop = { kind: string; points?: number };
+interface TickerItemLike {
+  cls: string;
+  text: string;
+  tag?: string;
+  cash?: number | null;
+  kind?: string;
+  contentRef?: string;
+  dwellMs?: number;
+}
 interface LawLike {
   heat: number;
   tier: number;
@@ -89,19 +98,24 @@ type TestWindow = Window & {
       opts?: { perFrame?: number; then?: number | null },
     ): void;
   };
-  __uiStyleFeed?: (pops: FeedPop[]) => void;
+  __uiTicker?: (items: TickerItemLike[], hold?: boolean) => void;
   /** The layout probe (installLayoutProbe): every painted HUD widget and overlay. */
   __layoutPieces?: () => Piece[];
   /** The layout probe: the landing one-liner's plate as the last frame drew it, or null. */
   __landingPlate?: () => Box | null;
 };
 
-/** Twelve near misses, a long oncoming stretch and a big combo: the widest pop-ups a race makes. */
-const WIDE_FEED: FeedPop[] = [
-  ...Array.from({ length: 12 }, () => ({ kind: 'nearMiss', points: 25 })),
-  { kind: 'oncoming', points: 1440 },
-  { kind: 'takedownCombo', points: 12345 },
-];
+/** A rival's bark with the base pack's longest line: the widest content the strip carries. */
+const LONGEST_BARK: TickerItemLike = {
+  cls: 'bark',
+  tag: 'Deacon Vane',
+  text: LONGEST_LINE,
+  contentRef: 'base:bark-set/deacon-core#test',
+  dwellMs: 600_000,
+};
+/** The widest style chip a race makes: a run of near misses with a big cash figure. */
+const WIDE_CHIP: TickerItemLike = { cls: 'style', text: 'NEAR MISS ×12', kind: 'nearMiss', cash: 12345 };
+const NAME: TickerItemLike = { cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 600_000 };
 
 /**
  * The layout findings main has today, by case: "a × b" for two pieces that overlap, "a in the road
@@ -182,9 +196,8 @@ function watchErrors(page: Page): string[] {
 
 /**
  * The layout probe, before the page loads. `__layoutPieces()` measures every painted HUD widget and
- * overlay: the HUD's own pieces (any new one, such as a ticker, is picked up by being in #hud), the
- * career's objective and prompt, each pop-up chip, the touch buttons, the bark bubble (with its
- * 9 px tail), the slow-frames toast and the notice card. `__landingPlate()` reads the landing
+ * overlay: the HUD's own pieces (any new one is picked up by being in #hud, the ticker among them),
+ * the career's objective and prompt, the touch buttons, the slow-frames toast and the notice card. `__landingPlate()` reads the landing
  * one-liner's sprite (render/air-pays.ts) from the overlay scene three.js reported through its
  * devtools hook: in CSS px, an orthographic camera with y up and the sprite centred on its position.
  */
@@ -221,25 +234,19 @@ async function installLayoutProbe(page: Page) {
       const sel = [
         '#hud > *',
         '#career-overlays > *',
-        '#style-popups > .style-pop',
         '#touch-surface > .touch-button',
-        '#bark-bubble',
         '#look-offer',
         '#ui > .notice',
       ].join(', ');
-      const containers = new Set(['style-popups', 'career-overlays']);
+      const containers = new Set(['career-overlays']);
       const nodes = new Set(document.querySelectorAll<HTMLElement>(sel));
       for (const e of nodes) {
         if (containers.has(e.id)) continue;
         if (!e.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
         const r = e.getBoundingClientRect();
         if (r.width < 1 || r.height < 1) continue;
-        const name = e.classList.contains('style-pop')
-          ? 'style-pop'
-          : e.id || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
-        // The bubble's speech tail hangs 9 px below its box.
-        const tail = e.id === 'bark-bubble' ? 9 : 0;
-        out.push({ name, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom + tail } });
+        const name = e.id || `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`;
+        out.push({ name, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
       }
       return out;
     };
@@ -267,10 +274,9 @@ async function startRace(
   await installLayoutProbe(page);
   if (opts.classic) {
     // The laptop is the biggest screen here, and software WebGL takes about half a second a frame
-    // there in the default ink look's offscreen pass: the 1.1 s pop-ups could fade before two
-    // frames had passed (W-P's busier roads tipped it over in CI three times running). The pop-up
-    // layout does not depend on the look, so this case races in the Classic look, chosen through
-    // the saved record as a player would (as tests/perf/perf.spec.ts does).
+    // there in the default ink look's offscreen pass (W-P's busier roads tipped it over in CI three
+    // times running). The layout does not depend on the look, so this case races in the Classic
+    // look, chosen through the saved record as a player would (as tests/perf/perf.spec.ts does).
     await page.addInitScript(() => {
       const record = {
         format: 'settings',
@@ -334,14 +340,11 @@ async function startRace(
     await page.locator('#menu-race').click();
   }
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 20);
-  await expect(page.locator('#bark-bubble')).toBeVisible({ timeout: 10_000 });
+  // The race's first bark is on the strip: the real pipeline (events, narrative, ticker) is live.
+  await expect(page.locator('#hud-ticker[data-cls="bark"]')).toBeVisible({ timeout: 10_000 });
 }
 
 interface MeasureOpts {
-  /** A bubble far wider than today's (a future layout, or a longer line), reaching the stack. */
-  wideBubble?: boolean;
-  /** Put the bubble up with the longest line if it has gone, so the moment is measured with it. */
-  holdBubble?: boolean;
   /**
    * Elements to show while measuring, as ui/ shows them in a race: the slow-frames toast
    * (#look-offer, app/ raises it when frames run slow) and the rival's health bar (#hud-target, up
@@ -351,98 +354,28 @@ interface MeasureOpts {
 }
 
 /**
- * Widens the bark bubble to the longest base-pack line, feeds the pop-ups, and measures everything
- * on a frozen frame, while the bubble is still up. The feed reaches the screen on the next drawn
- * frame (ui raises the chips and moves the stack off the bubble in the same race update). In the
- * first frame that shows them, before any timer can run, every pop-up animation is paused at a set
- * point of its dwell (a quarter of the way in: past the 10% slide-in, before the 75% fade) and the
- * stack's move is finished, then everything is measured. So the layout is judged at rest whatever
- * the renderer's speed: on a software renderer at about half a second a frame, a wait of a few
- * frames could land in the 1.1 s fade-out, or after ui's timer had removed the chips.
+ * Puts these items on the strip (held up, so the live race cannot displace them), lets its slide-in
+ * and fade finish, and measures everything on the same frozen frame. The strip is judged at rest
+ * whatever the renderer's speed: on a software renderer at about half a second a frame, a wait of a
+ * few frames could land in a fade-out.
  */
-function feedAndMeasure(page: Page, feed: FeedPop[], opts: MeasureOpts = {}): Promise<Measured> {
+function tickerAndMeasure(page: Page, items: TickerItemLike[], opts: MeasureOpts = {}): Promise<Measured> {
   return page.evaluate(
-    async ({ feed, longest, opts }) => {
+    ({ items, opts }) => {
       const box = (e: Element): { left: number; top: number; right: number; bottom: number } => {
         const r = e.getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
       };
-      const bubble = document.getElementById('bark-bubble');
-      const text = bubble?.querySelector('.bark-text');
-      // Held up: the bubble as narrative/ shows it, with the longest line (its timer may have ended).
-      const holdUp = () => {
-        if (opts.holdBubble && bubble && text && bubble.hidden) {
-          text.textContent = longest;
-          bubble.hidden = false;
-          return true;
-        }
-        return false;
-      };
-      let held = holdUp();
-      if (bubble && !bubble.hidden && text) text.textContent = longest;
-      if (bubble && opts.wideBubble) Object.assign(bubble.style, { width: '96vw', maxWidth: 'none' });
-      const chipTexts = () =>
-        [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) => e.textContent ?? '').join('|');
-      const before = chipTexts();
-      (window as TestWindow).__uiStyleFeed?.(feed);
-      const frame = () => new Promise((r) => requestAnimationFrame(r));
-      const host = document.getElementById('style-popups');
-      const atRest = () => {
-        const chips = [...document.querySelectorAll<HTMLElement>('.style-pop')];
-        return (
-          chips.length > 0 &&
-          chips.every((c) => getComputedStyle(c).transform === 'none') &&
-          !!host &&
-          getComputedStyle(host).top === host.style.top
-        );
-      };
-      // The frame that shows the feed: the chips changed (an empty feed: the next frame). The game
-      // loop's frame callback was queued before this one, so it has already run in that frame. 600
-      // frames is a hang guard only.
-      const t0 = performance.now();
-      let frames = 0;
-      do {
-        await frame();
-        frames++;
-      } while (feed.length > 0 && chipTexts() === before && frames < 600);
-      // Freeze. Document.getAnimations() brings styles up to date first, so the stack's move (a CSS
-      // transition on `top`) exists by now.
+      (window as TestWindow).__uiTicker?.(items);
+      const root = document.getElementById('hud-ticker');
       for (const a of document.getAnimations()) {
-        const target = a.effect instanceof KeyframeEffect ? a.effect.target : null;
-        if (!host || !(target instanceof HTMLElement)) continue;
-        const timing = a.effect?.getComputedTiming();
-        if (a instanceof CSSTransition) {
-          if (target === host) a.finish(); // the stack's move below the bubble: to where it ends
-        } else if (target.classList.contains('style-pop') && host.contains(target)) {
-          if (timing?.fill === 'forwards') {
-            // A chip's dwell: a quarter of the way in, slid in and fully shown.
-            a.pause();
-            a.currentTime = (typeof timing.duration === 'number' ? timing.duration : 0) * 0.25;
-          } else a.finish(); // the live meter's 0.11 s fade-in
-        }
+        if (root && a.effect instanceof KeyframeEffect && a.effect.target === root) a.finish();
       }
-      const settled = atRest();
-      const settledMs = Math.round(performance.now() - t0);
-      held = holdUp() || held;
       // Shown for the measurement only, where ui/ has already placed them: hidden again after.
       const shownNow = (opts.show ?? [])
         .map((id) => document.getElementById(id))
         .filter((e): e is HTMLElement => !!e && e.hidden === true);
       for (const e of shownNow) e.hidden = false;
-      const pops = [...document.querySelectorAll<HTMLElement>('.style-pop')]
-        .filter((e) => e.checkVisibility())
-        .map((e) => {
-          const label = e.querySelector('.pop-label') ?? e;
-          const cash = e.querySelector('.pop-cash') ?? e;
-          return {
-            text: e.innerText.replace(/\s+/g, ' ').trim(),
-            box: box(e),
-            labelPx: parseFloat(getComputedStyle(label).fontSize),
-            cashPx: parseFloat(getComputedStyle(cash).fontSize),
-            opacity: parseFloat(getComputedStyle(e).opacity),
-            duration: getComputedStyle(e).animationDuration,
-          };
-        });
       const others = [
         'hud-speed',
         'hud-position',
@@ -456,24 +389,34 @@ function feedAndMeasure(page: Page, feed: FeedPop[], opts: MeasureOpts = {}): Pr
         .filter((e): e is HTMLElement => !!e && e.checkVisibility())
         .map((e) => ({ id: e.id, box: box(e) }));
       const layout = (window as TestWindow).__layoutPieces?.() ?? [];
-      const shown = !!bubble && !bubble.hidden && bubble.checkVisibility();
-      const bubbleText = shown ? (text?.textContent ?? '') : '';
-      const bubbleBox = shown && bubble ? { ...box(bubble), bottom: box(bubble).bottom + 9 } : null;
+      const up = !!root && !root.hidden && root.checkVisibility();
+      const style = root ? getComputedStyle(root) : null;
+      const ticker =
+        up && root && style
+          ? {
+              cls: root.dataset['cls'] ?? '',
+              text: [
+                root.querySelector('.ticker-tag')?.textContent ?? '',
+                root.querySelector('.ticker-text')?.textContent ?? '',
+                root.querySelector('.ticker-cash')?.textContent ?? '',
+              ]
+                .filter((t) => t !== '')
+                .join(' '),
+              box: box(root),
+              fontPx: parseFloat(style.fontSize),
+              opacity: parseFloat(style.opacity),
+            }
+          : null;
       for (const e of shownNow) e.hidden = true;
-      if (held && bubble) bubble.hidden = true;
       return {
         viewport: { w: window.innerWidth, h: window.innerHeight },
-        pops,
-        // The bubble's speech tail hangs 9 px below its box.
-        bubble: bubbleBox,
-        bubbleText,
+        ticker,
         others,
         layout,
-        settled,
-        settledMs,
+        settled: !!root && root.getAnimations().length === 0,
       };
     },
-    { feed, longest: LONGEST_LINE, opts },
+    { items, opts },
   );
 }
 
@@ -481,27 +424,20 @@ function expectClear(m: Measured, where: string) {
   const { w, h } = m.viewport;
   const look = lookAheadBox(w, h);
   console.log(`${where}: look-ahead ${JSON.stringify(look)}`);
-  console.log(`${where}: ${m.pops.length} pop-ups ${JSON.stringify(m.pops)}`);
-  console.log(`${where}: bubble ${JSON.stringify(m.bubble)} "${m.bubbleText}"`);
+  console.log(`${where}: ticker ${JSON.stringify(m.ticker)}`);
   console.log(`${where}: ${m.others.length} HUD pieces and controls ${m.others.map((o) => o.id).join(', ')}`);
-  console.log(`${where}: settled ${m.settled} after ${m.settledMs} ms`);
-  expect(m.pops.length, `${where}: pop-ups on screen`).toBeGreaterThan(0);
-  expect(m.settled, `${where}: measured at rest, after the slide-in and any move`).toBe(true);
-  for (const p of m.pops) {
-    expect(p.opacity, `${where}: "${p.text}" clearly shown`).toBeGreaterThanOrEqual(0.5);
-    expect(overlaps(p.box, look), `${where}: "${p.text}" stays out of the look-ahead`).toBe(false);
-  }
-  expect(m.bubble, `${where}: the bark bubble was up while measured`).not.toBeNull();
-  expect(m.bubbleText).toBe(LONGEST_LINE);
-  for (const p of m.pops) {
-    if (m.bubble) expect(overlaps(p.box, m.bubble), `${where}: "${p.text}" clear of the bubble`).toBe(false);
-    for (const o of m.others)
-      expect(overlaps(p.box, o.box), `${where}: "${p.text}" clear of ${o.id}`).toBe(false);
-    expect(
-      p.box.left >= 0 && p.box.top >= 0 && p.box.right <= w && p.box.bottom <= h,
-      `${where}: on screen`,
-    ).toBe(true);
-  }
+  expect(m.settled, `${where}: measured at rest, after the slide-in and the fade`).toBe(true);
+  expect(m.ticker, `${where}: the ticker was up while measured`).not.toBeNull();
+  const t = m.ticker;
+  if (!t) return;
+  expect(t.opacity, `${where}: "${t.text}" clearly shown`).toBeGreaterThanOrEqual(0.9);
+  expect(overlaps(t.box, look), `${where}: "${t.text}" stays out of the look-ahead`).toBe(false);
+  for (const o of m.others)
+    expect(overlaps(t.box, o.box), `${where}: "${t.text}" clear of ${o.id}`).toBe(false);
+  expect(
+    t.box.left >= 0 && t.box.top >= 0 && t.box.right <= w && t.box.bottom <= h,
+    `${where}: on screen`,
+  ).toBe(true);
 }
 
 /** One measured moment's layout findings, with what it examined printed beside them. */
@@ -509,16 +445,15 @@ function momentFindings(m: Measured, where: string): string[] {
   logPieces(where, m.layout);
   const names = new Set(m.layout.map((p) => p.name));
   // The probe sees what the pop-up check sees: it is not measuring an empty screen.
-  for (const must of ['hud-speed', 'hud-position', 'style-pop', 'bark-bubble'])
+  for (const must of ['hud-speed', 'hud-position', 'hud-ticker'])
     expect(names.has(must), `${where}: the layout probe measured ${must}`).toBe(true);
   return layoutFindings(m.layout, m.viewport.w, m.viewport.h);
 }
 
 /**
- * Rides on (fast-forward) until the heat badge is up, then measures the HUD with it, the pop-ups,
- * the bubble held up, the slow-frames toast and the rival's health bar shown. The race then crawls
- * a tick a frame, so the
- * heat cannot cool off while the badge's lazy chunk arrives.
+ * Rides on (fast-forward) until the heat badge is up, then measures the HUD with it, a bark held
+ * on the ticker, the slow-frames toast and the rival's health bar shown. The race then crawls a
+ * tick a frame, so the heat cannot cool off while the badge's lazy chunk arrives.
  */
 async function heatMoment(page: Page, where: string): Promise<string[]> {
   await page.evaluate(() => {
@@ -536,7 +471,7 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
   await expect(page.locator('#hud-heat'), `${where}: the heat badge came up`).toBeVisible({
     timeout: 15_000,
   });
-  const m = await feedAndMeasure(page, WIDE_FEED, { holdBubble: true, show: ['look-offer', 'hud-target'] });
+  const m = await tickerAndMeasure(page, [LONGEST_BARK], { show: ['look-offer', 'hud-target'] });
   const names = new Set(m.layout.map((p) => p.name));
   for (const must of ['hud-heat', 'hud-objective', 'look-offer', 'hud-target'])
     expect(names.has(must), `${where}: the layout probe measured ${must} with the heat up`).toBe(true);
@@ -549,7 +484,7 @@ async function heatMoment(page: Page, where: string): Promise<string[]> {
 /**
  * Rides on until the player's next clean landing after real air, then reads the landing one-liner's
  * plate every frame it shows: it must stay out of the road ahead and off the HUD drawn in its frame
- * (the HUD's lasting pieces; the bubble, pop-ups and toasts come and go on their own clocks).
+ * (the HUD's lasting pieces; the ticker, the toast and the prompt come and go on their own clocks).
  */
 async function landingMoment(page: Page, where: string): Promise<string[]> {
   await page.evaluate(() => {
@@ -583,7 +518,7 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
     `${where}: the landing line's plate in ${samples.length} frames: ${JSON.stringify(samples.map((s) => s.plate))}`,
   );
   expect(samples.length, `${where}: the landing one-liner was drawn and measured`).toBeGreaterThan(0);
-  const transient = new Set(['style-pop', 'bark-bubble', 'look-offer', 'career-prompt', 'hud-target']);
+  const transient = new Set(['hud-ticker', 'look-offer', 'career-prompt', 'hud-target']);
   const found = new Set<string>();
   for (const s of samples) {
     const line: Piece = { name: 'landing-line', box: s.plate };
@@ -596,21 +531,16 @@ async function landingMoment(page: Page, where: string): Promise<string[]> {
 }
 
 /**
- * Less intrusive, still readable: small words, a readable cash figure, a short dwell. A chip is one
- * line of words over its cash; on a screen too narrow for the words they may wrap (`maxHeight`).
+ * Less intrusive, still readable: small words on one line (or two, on a screen too narrow for the
+ * words), a readable cash figure, a slot of at most 44 px. A takedown name is smaller still.
  */
-function expectCompact(m: Measured, where: string, maxHeight = 44) {
-  expect(m.pops.map((p) => p.text).sort()).toEqual([
-    'COMBO +$12,345',
-    'NEAR MISS ×12 +$300',
-    'ONCOMING +$1,440',
-  ]);
-  for (const p of m.pops) {
-    expect(p.labelPx, `${where}: small words`).toBeLessThanOrEqual(12);
-    expect(p.cashPx, `${where}: readable cash`).toBeGreaterThanOrEqual(14);
-    expect(p.box.bottom - p.box.top, `${where}: a compact chip`).toBeLessThanOrEqual(maxHeight);
-    expect(parseFloat(p.duration), `${where}: a short dwell`).toBeLessThanOrEqual(1.2);
-  }
+function expectCompact(m: Measured, where: string) {
+  const t = m.ticker;
+  expect(t, `${where}: the ticker was up`).not.toBeNull();
+  if (!t) return;
+  expect(t.fontPx, `${where}: small words`).toBeLessThanOrEqual(15);
+  expect(t.fontPx, `${where}: readable words`).toBeGreaterThanOrEqual(12);
+  expect(t.box.bottom - t.box.top, `${where}: one slot`).toBeLessThanOrEqual(44);
 }
 
 async function shot(page: Page, name: string) {
@@ -634,64 +564,59 @@ test('the known layout list only shrinks', () => {
   );
 });
 
-test('phone landscape: pop-ups sit clear of the road ahead, merge repeats and fade quickly', async ({
+test('phone landscape: the ticker sits clear of the road ahead, stays small and fades quickly', async ({
   page,
 }) => {
   test.setTimeout(150_000);
   const problems = watchErrors(page);
   await startRace(page, { career: true });
-  const m = await feedAndMeasure(page, WIDE_FEED);
-  expectClear(m, 'phone landscape');
-  expectCompact(m, 'phone landscape');
+  const bark = await tickerAndMeasure(page, [LONGEST_BARK]);
+  expectClear(bark, 'phone landscape, bark');
+  expectCompact(bark, 'phone landscape, bark');
+  expect(bark.ticker?.text).toBe(`Deacon Vane ${LONGEST_LINE}`);
   await shot(page, 'phone');
 
-  // A quick fade: gone well inside two seconds of the screenshot.
+  const chip = await tickerAndMeasure(page, [WIDE_CHIP]);
+  expectClear(chip, 'phone landscape, chip');
+  expectCompact(chip, 'phone landscape, chip');
+  expect(chip.ticker?.text).toBe('NEAR MISS ×12 +$12,345');
+
+  // A takedown name flashes small.
+  const name = await tickerAndMeasure(page, [NAME]);
+  expectClear(name, 'phone landscape, name');
+  expect(name.ticker?.fontPx, 'a takedown name is small').toBeLessThanOrEqual(12);
+
+  // A quick fade: a chip left to itself is gone well inside a few seconds (1.1 s of the strip's clock).
+  await page.evaluate(() =>
+    (window as TestWindow).__uiTicker?.(
+      [{ cls: 'style', text: 'NEAR MISS', kind: 'nearMiss', cash: 25 }],
+      false,
+    ),
+  );
   const before = Date.now();
-  await expect(page.locator('.style-pop')).toHaveCount(0, { timeout: 2_000 });
-  console.log(`pop-ups gone ${Date.now() - before} ms after the screenshot`);
+  await page.waitForFunction(
+    () => {
+      const root = document.getElementById('hud-ticker');
+      return !root || root.hidden || !(root.textContent ?? '').includes('NEAR MISS');
+    },
+    null,
+    { timeout: 6_000 },
+  );
+  console.log(`chip gone ${Date.now() - before} ms after it was shown`);
 
-  // A near miss in a later step, while the first one's chip is up, adds to that chip rather than
-  // stacking a second one. Both feeds run inside the page, so a slow round trip to the test runner
-  // (a loaded machine) cannot let the first chip time out in between. The second feed goes in the
-  // frame that first shows the first chip, so it reaches a later race update one frame later,
-  // whatever the renderer's speed (a fixed 150 ms wait used to sit in between). 600 frames is a
-  // hang guard only.
-  const merged = await page.evaluate(async () => {
-    const feed = (window as TestWindow).__uiStyleFeed;
-    const texts = () =>
-      [...document.querySelectorAll<HTMLElement>('.style-pop')].map((e) =>
-        e.innerText.replace(/\s+/g, ' ').trim(),
-      );
-    const nextChange = async () => {
-      const was = texts().join('|');
-      for (let i = 0; i < 600 && texts().join('|') === was; i++)
-        await new Promise((r) => requestAnimationFrame(r));
-    };
-    let change = nextChange();
-    feed?.([{ kind: 'nearMiss', points: 25 }]);
-    await change;
-    change = nextChange();
-    feed?.([{ kind: 'nearMiss', points: 25 }]);
-    await change;
-    return texts();
-  });
-  console.log(`merged across steps: ${JSON.stringify(merged)}`);
-  expect(merged).toEqual(['NEAR MISS ×2 +$50']);
-
-  await expectWholeLayout(page, m, 'phone landscape');
+  await expectWholeLayout(page, bark, 'phone landscape');
   expect(problems).toEqual([]);
 });
 
-test('phone landscape, left-handed mirror: pop-ups follow the position badge to the other side', async ({
+test('phone landscape, left-handed mirror: the ticker stays clear with the rival bar beside it', async ({
   page,
 }) => {
   const problems = watchErrors(page);
   await startRace(page, { mirror: true });
-  // The rival's bar is shown beside the bubble: sideways they share the top row.
-  const m = await feedAndMeasure(page, WIDE_FEED, { show: ['hud-target'] });
+  // The rival's bar is shown beside the ticker: sideways they share the top row.
+  const m = await tickerAndMeasure(page, [LONGEST_BARK], { show: ['hud-target'] });
   expectClear(m, 'mirrored');
-  const w = m.viewport.w;
-  for (const p of m.pops) expect(p.box.left, 'on the right half').toBeGreaterThan(w / 2);
+  expectCompact(m, 'mirrored');
   await shot(page, 'mirrored');
   expectLayout(momentFindings(m, 'mirrored, start'), 'mirrored');
   expect(problems).toEqual([]);
@@ -699,13 +624,13 @@ test('phone landscape, left-handed mirror: pop-ups follow the position badge to 
 
 test.describe('phone portrait', () => {
   test.use({ viewport: { width: 412, height: 915 } });
-  test('pop-ups sit clear of the road ahead', async ({ page }) => {
+  test('the ticker sits clear of the road ahead', async ({ page }) => {
     test.setTimeout(150_000);
     const problems = watchErrors(page);
     await startRace(page, { portrait: true, career: true });
-    const m = await feedAndMeasure(page, WIDE_FEED);
+    const m = await tickerAndMeasure(page, [LONGEST_BARK]);
     expectClear(m, 'phone portrait');
-    expectCompact(m, 'phone portrait', 60);
+    expectCompact(m, 'phone portrait');
     await shot(page, 'portrait');
     await expectWholeLayout(page, m, 'phone portrait');
     expect(problems).toEqual([]);
@@ -714,12 +639,13 @@ test.describe('phone portrait', () => {
 
 test.describe('small phone landscape', () => {
   test.use({ viewport: { width: 740, height: 360 } });
-  test('pop-ups sit clear of the road ahead', async ({ page }) => {
+  test('the ticker sits clear of the road ahead', async ({ page }) => {
     const problems = watchErrors(page);
     await startRace(page);
-    // The rival's bar beside the bubble: on this screen the top row is tightest.
-    const m = await feedAndMeasure(page, WIDE_FEED, { show: ['hud-target'] });
+    // The rival's bar beside the ticker: on this screen the top row is tightest.
+    const m = await tickerAndMeasure(page, [LONGEST_BARK], { show: ['hud-target'] });
     expectClear(m, 'small phone');
+    expectCompact(m, 'small phone');
     await shot(page, 'small');
     expectLayout(momentFindings(m, 'small phone, start'), 'small phone');
     expect(problems).toEqual([]);
@@ -728,11 +654,11 @@ test.describe('small phone landscape', () => {
 
 test.describe('laptop', () => {
   test.use({ viewport: { width: 1366, height: 768 }, isMobile: false, hasTouch: false });
-  test('pop-ups sit clear of the road ahead', async ({ page }) => {
+  test('the ticker sits clear of the road ahead', async ({ page }) => {
     test.setTimeout(150_000);
     const problems = watchErrors(page);
     await startRace(page, { classic: true, career: true });
-    const m = await feedAndMeasure(page, WIDE_FEED);
+    const m = await tickerAndMeasure(page, [LONGEST_BARK]);
     expectClear(m, 'laptop');
     expectCompact(m, 'laptop');
     await shot(page, 'laptop');
@@ -741,33 +667,37 @@ test.describe('laptop', () => {
   });
 });
 
-test('a bubble that reaches the stack pushes it below the bubble, still clear of the road', async ({
-  page,
-}) => {
-  const problems = watchErrors(page);
-  await startRace(page);
-  const m = await feedAndMeasure(page, WIDE_FEED, { wideBubble: true });
-  expectClear(m, 'wide bubble');
-  const bubbleBottom = m.bubble?.bottom ?? Infinity;
-  for (const p of m.pops)
-    expect(p.box.top, `"${p.text}" below the bubble`).toBeGreaterThanOrEqual(bubbleBottom);
-  await shot(page, 'wide-bubble');
-  expect(problems).toEqual([]);
-});
-
-// The overlap checks must fire: a pop-up planted in the middle of the screen is caught, and so is a
-// HUD widget moved over another (here the heat badge's spot, where playtest 3 saw the objective).
-test('the look-ahead and layout checks catch a centred pop-up and overlapped widgets (negative control)', async ({
+// The overlap checks must fire: a widget planted in the middle of the screen is caught, so is one
+// moved over another (here the heat badge's spot, where playtest 3 saw the objective), and so is
+// one laid over the ticker.
+test('the look-ahead and layout checks catch a centred widget and overlapped widgets (negative control)', async ({
   page,
 }) => {
   await startRace(page);
-  await page.evaluate(() => {
-    const host = document.getElementById('style-popups');
-    const pop = document.createElement('div');
-    pop.className = 'style-pop';
-    pop.textContent = 'PLANTED';
-    Object.assign(pop.style, { position: 'fixed', left: '45%', top: '40%', animation: 'none', opacity: '1' });
-    host?.append(pop);
+  const first = await tickerAndMeasure(page, [LONGEST_BARK]);
+  const strip = first.ticker?.box;
+  expect(strip, 'the ticker was up to plant against').toBeDefined();
+  await page.evaluate((strip) => {
+    const hud = document.getElementById('hud');
+    const planted = (id: string, text: string, style: Record<string, string>) => {
+      const d = document.createElement('div');
+      d.id = id;
+      d.textContent = text;
+      Object.assign(d.style, style);
+      hud?.append(d);
+    };
+    // A widget in the middle of the road ahead.
+    planted('planted-pop', 'PLANTED', { position: 'fixed', left: '45%', top: '40%', background: '#000a' });
+    // One laid exactly over the ticker.
+    if (strip)
+      planted('planted-over-ticker', 'OVER', {
+        position: 'fixed',
+        left: `${strip.left}px`,
+        top: `${strip.top}px`,
+        width: `${strip.right - strip.left}px`,
+        height: `${strip.bottom - strip.top}px`,
+        background: '#000a',
+      });
     // The speed readout dropped onto the position badge, and a widget at the heat badge's spot
     // under one at the objective's: both pairs overlap by construction.
     const speed = document.getElementById('hud-speed');
@@ -776,12 +706,8 @@ test('the look-ahead and layout checks catch a centred pop-up and overlapped wid
       const p = position.getBoundingClientRect();
       Object.assign(speed.style, { left: `${p.left}px`, top: `${p.top}px`, right: 'auto', bottom: 'auto' });
     }
-    const hud = document.getElementById('hud');
-    for (const id of ['planted-heat', 'planted-objective']) {
-      const d = document.createElement('div');
-      d.id = id;
-      d.textContent = id === 'planted-heat' ? 'HEAT' : 'FINISH';
-      Object.assign(d.style, {
+    for (const id of ['planted-heat', 'planted-objective'])
+      planted(id, id === 'planted-heat' ? 'HEAT' : 'FINISH', {
         position: 'absolute',
         top: '8px',
         left: '50%',
@@ -789,21 +715,16 @@ test('the look-ahead and layout checks catch a centred pop-up and overlapped wid
         padding: '4px 10px',
         background: '#000a',
       });
-      hud?.append(d);
-    }
-  });
-  const m = await feedAndMeasure(page, []);
+  }, strip);
+  const m = await tickerAndMeasure(page, [LONGEST_BARK]);
   const { w, h } = m.viewport;
-  const look = lookAheadBox(w, h);
-  const planted = m.pops.find((p) => p.text === 'PLANTED');
-  expect(planted).toBeDefined();
-  if (planted) expect(overlaps(planted.box, look)).toBe(true);
   const found = layoutFindings(m.layout, w, h);
   console.log(`negative control: layout findings ${JSON.stringify(found)}`);
   expect(found).toContain('hud-position × hud-speed');
   expect(found).toContain('planted-heat × planted-objective');
-  expect(found).toContain('style-pop in the road ahead');
-  // A landing plate laid over the middle of the road is caught against the road ahead and the HUD.
+  expect(found).toContain('planted-pop in the road ahead');
+  expect(found).toContain('hud-ticker × planted-over-ticker');
+  // A ticker laid over the middle of the road is caught against the road ahead as well.
   const plate: Piece = {
     name: 'landing-line',
     box: { left: w * 0.2, right: w * 0.8, top: h * 0.3, bottom: h * 0.4 },

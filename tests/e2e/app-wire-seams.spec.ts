@@ -261,11 +261,11 @@ test("a Pacific Northwest race's locals talk, with the region pack's lines", asy
   const deadline = Date.now() + 150_000;
   while (Date.now() < deadline && !heard.some((h) => pnwLines.has(h.text))) {
     const bark = await page.evaluate(() => {
-      const b = document.querySelector<HTMLElement>('#bark-bubble');
+      const b = document.querySelector<HTMLElement>('#hud-ticker[data-cls="bark"]');
       if (!b || b.hidden) return null;
       return {
-        speaker: b.querySelector('.bark-speaker')?.textContent ?? '',
-        text: b.querySelector('.bark-text')?.textContent ?? '',
+        speaker: b.querySelector('.ticker-tag')?.textContent ?? '',
+        text: b.querySelector('.ticker-text')?.textContent ?? '',
       };
     });
     if (bark && !heard.some((h) => h.text === bark.text)) heard.push(bark);
