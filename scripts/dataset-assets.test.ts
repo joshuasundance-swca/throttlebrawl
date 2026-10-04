@@ -11,7 +11,10 @@ import {
   lockProblems,
   manifestRow,
   modelsByRegion,
+  packSourceRegion,
+  packSources,
   readLock,
+  regionsByPack,
   remoteFiles,
   repoProblems,
   resolveUrl,
@@ -276,6 +279,81 @@ describe('models per region', () => {
       'san-francisco': { files: 1, bytes: 400 },
     });
     expect(worstRaceModelBytes(by)).toBe(610);
+  });
+});
+
+describe('models per region, pack-baked (playtest 3, C0a)', () => {
+  const regionOf = packSourceRegion(
+    new Map([
+      ['base', ['florida-keys']],
+      ['region-sf', ['san-francisco']],
+      ['region-pnw', ['pacific-northwest']],
+    ]),
+    new Map([['packs/base/assets/models/landmarks/buoy.glb', 'florida-keys']]),
+  );
+
+  it("counts a region pack's models and atlas as its region's, and base's as shared unless its row names a region", () => {
+    const by = modelsByRegion(
+      [
+        { rel: 'assets/palms-1.glb', bytes: 100, source: 'packs/base/assets/models/scenery/palms.glb' },
+        { rel: 'assets/buoy-1.glb', bytes: 7, source: 'packs/base/assets/models/landmarks/buoy.glb' },
+        {
+          rel: 'assets/florida-keys-1.png',
+          bytes: 30,
+          source: 'packs/base/assets/textures/atlas/florida-keys.png',
+        },
+        {
+          rel: 'assets/gg-1.glb',
+          bytes: 50,
+          source: 'packs/region-sf/assets/models/landmarks/golden-gate-kit.glb',
+        },
+        {
+          rel: 'assets/san-francisco-1.png',
+          bytes: 40,
+          source: 'packs/region-sf/assets/textures/atlas/san-francisco.png',
+        },
+        { rel: 'assets/ds/san-francisco/gus-1.glb', bytes: 400 },
+        // not models: a pack image that is no atlas, and a build image with no pack source
+        { rel: 'assets/scene-1.png', bytes: 999, source: 'packs/base/assets/scenes/sky.png' },
+        { rel: 'assets/icon-1.png', bytes: 999 },
+      ],
+      regionOf,
+    );
+    expect(Object.fromEntries(by)).toEqual({
+      shared: { files: 1, bytes: 100 },
+      'florida-keys': { files: 2, bytes: 37 },
+      'san-francisco': { files: 3, bytes: 490 },
+    });
+    expect(worstRaceModelBytes(by)).toBe(590);
+  });
+
+  it('names a region for each kind of pack file, and shared for what no region owns', () => {
+    expect(regionOf('packs/region-pnw/assets/models/traffic/log-truck.glb')).toBe('pacific-northwest');
+    expect(regionOf('packs/base/assets/models/traffic/sedan.glb')).toBe('shared');
+    expect(regionOf('packs/base/assets/textures/atlas/florida-keys.png')).toBe('florida-keys');
+    expect(regionOf('packs/base/assets/textures/atlas/not-a-region.png')).toBe('shared');
+    expect(regionOf('packs/nowhere/assets/models/x.glb')).toBe('shared');
+  });
+
+  it("finds each pack's models and atlases by content, and each pack's regions on disk", () => {
+    const fake = path.join(root, 'packs-by-content');
+    const write = (rel: string, body: string) => {
+      mkdirSync(path.dirname(path.join(fake, rel)), { recursive: true });
+      writeFileSync(path.join(fake, rel), body);
+    };
+    write('packs/base/assets/models/scenery/palms.glb', 'palms');
+    write('packs/region-sf/assets/models/landmarks/gg.glb', 'gg');
+    write('packs/region-sf/assets/textures/atlas/san-francisco.png', 'atlas');
+    write('packs/region-sf/assets/textures/atlas/san-francisco-layout.json', '{}');
+    write('packs/base/assets/scenes/sky.png', 'sky');
+    write('packs/region-sf/regions/san-francisco/region.json', '{}');
+    const sources = packSources(fake);
+    expect(Object.fromEntries(sources)).toEqual({
+      [sha256(bytesOf('palms'))]: 'packs/base/assets/models/scenery/palms.glb',
+      [sha256(bytesOf('gg'))]: 'packs/region-sf/assets/models/landmarks/gg.glb',
+      [sha256(bytesOf('atlas'))]: 'packs/region-sf/assets/textures/atlas/san-francisco.png',
+    });
+    expect(Object.fromEntries(regionsByPack(fake))).toEqual({ base: [], 'region-sf': ['san-francisco'] });
   });
 });
 

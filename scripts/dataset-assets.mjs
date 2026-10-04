@@ -291,16 +291,93 @@ export function repoProblems(root, lock) {
   return problems;
 }
 
+/** A region's texture atlas inside a pack: `packs/<pack>/assets/textures/atlas/<region>.png`. */
+const ATLAS_RE = /^packs\/[^/]+\/assets\/textures\/atlas\/([^/]+)\.png$/;
+/** A model baked into a pack: any `.glb` under `packs/<pack>/assets/`. */
+const PACK_MODEL_RE = /^packs\/([^/]+)\/assets\/.+\.glb$/;
+
+/** Each pack's region ids (`packs/<pack>/regions/<id>/`), sorted; a pack with none maps to []. */
+export function regionsByPack(root) {
+  const out = new Map();
+  const packs = path.join(root, 'packs');
+  if (!existsSync(packs)) return out;
+  for (const pack of readdirSync(packs).sort()) {
+    if (!statSync(path.join(packs, pack)).isDirectory()) continue;
+    const dir = path.join(packs, pack, 'regions');
+    out.set(
+      pack,
+      existsSync(dir)
+        ? readdirSync(dir)
+            .filter((r) => statSync(path.join(dir, r)).isDirectory())
+            .sort()
+        : [],
+    );
+  }
+  return out;
+}
+
 /**
- * Model bytes per region in a build: dataset models under `assets/ds/<region>/`, and every other
- * model (the base pack's baked scenery) as shared. `files` are dist-relative posix paths with sizes.
+ * Every pack-baked model and region atlas, by the sha256 of its bytes: the bundler copies a file
+ * into dist/ unchanged under a hashed name, so its content is how the perf check finds which pack
+ * file a dist file came from (playtest 3, C0a). Repo-relative posix paths.
  */
-export function modelsByRegion(files) {
+export function packSources(root) {
+  const out = new Map();
+  const packs = path.join(root, 'packs');
+  if (!existsSync(packs)) return out;
+  for (const pack of readdirSync(packs).sort()) {
+    const assets = path.join(packs, pack, 'assets');
+    if (!existsSync(assets)) continue;
+    for (const e of readdirSync(assets, { recursive: true, withFileTypes: true })) {
+      if (!e.isFile()) continue;
+      const rel = path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join('/');
+      if (PACK_MODEL_RE.test(rel) || ATLAS_RE.test(rel))
+        out.set(sha256(readFileSync(path.join(e.parentPath, e.name))), rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * Which region a pack-baked file counts under (playtest 3, C0a; the scratch asset plan, decision 6):
+ * a model whose catalog row names a region counts as that region's (`rowRegions`, by repo path);
+ * a region atlas counts under the region it is named for; any other file in a region pack counts
+ * as that pack's region (when it has exactly one); the rest, the base pack's shared models
+ * included, count as shared.
+ * @param {Map<string, string[]>} packRegionIds  `regionsByPack`
+ * @param {Map<string, string>} [rowRegions]  repo path of a GLB -> its catalog row's `region`
+ * @returns {(source: string) => string}
+ */
+export function packSourceRegion(packRegionIds, rowRegions = new Map()) {
+  const known = new Set([...packRegionIds.values()].flat());
+  return (source) => {
+    const row = rowRegions.get(source);
+    if (row) return row;
+    const atlas = ATLAS_RE.exec(source);
+    if (atlas) return known.has(atlas[1]) ? atlas[1] : SHARED;
+    const pack = /^packs\/([^/]+)\//.exec(source)?.[1];
+    const regions = pack && pack !== 'base' ? (packRegionIds.get(pack) ?? []) : [];
+    return regions.length === 1 ? regions[0] : SHARED;
+  };
+}
+
+/**
+ * Model bytes per region in a build. `files` are dist-relative posix paths with sizes; a file the
+ * perf check matched to a pack file carries that file's repo path as `source`.
+ * - Dataset models count under `assets/ds/<region>/`.
+ * - Pack-baked models and region atlases (`source` set) count where `regionOfSource` says.
+ * - Any other model counts as shared; any other image is not a model and is not counted.
+ * @param {{rel: string, bytes: number, source?: string}[]} files
+ * @param {(source: string) => string} [regionOfSource]
+ */
+export function modelsByRegion(files, regionOfSource = () => SHARED) {
   const out = new Map();
   for (const f of files) {
-    if (!f.rel.endsWith('.glb')) continue;
+    const isModel = f.rel.endsWith('.glb');
+    const isAtlas = !!f.source && ATLAS_RE.test(f.source);
+    if (!isModel && !isAtlas) continue;
     const m = new RegExp(`^${DIST_DIR}/([^/]+)/`).exec(f.rel);
-    const region = m?.[1] ?? SHARED;
+    const region = m?.[1] ?? (f.source ? regionOfSource(f.source) : SHARED);
     const cur = out.get(region) ?? { files: 0, bytes: 0 };
     cur.files++;
     cur.bytes += f.bytes;

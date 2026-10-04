@@ -367,12 +367,12 @@ ${TICKER_CSS}
    Playtest 3's HUD rule (2026-10-03): nothing covers the road ahead (the middle half across, 25-65 %
    down) or another HUD piece. Top centre, it covered the ticker, the heat badge and the objective and
    reached into the road ahead. So on a big screen it sits in the outer quarter across from the
-   position badge (where it flips, the offer flips: .mirrored), under the pause button. On an upright screen,
-   whose quarters are too narrow, it spans the screen just under the road ahead. On a phone held
-   sideways the top and both quarters are full (the ticker, the objective and the heat
-   badge), so it sits centred just under the road ahead, a little tighter, between the bottom
-   corners' readouts and touch buttons (which sit about 0.6 of the screen's height in from each
-   side) and above the career prompt. [default] */
+   position badge (where it flips, the offer flips: .mirrored), under the pause button. On a phone held
+   sideways and on an upright screen there is no free room for it: the quarters are full (the
+   objective, the heat badge) and under the road ahead sits the player's own bike (the live check
+   after #430: there it covered the bike and the riders beside it for 12 s). So there it takes the
+   ticker strip's place at the top (sideways, short of the rival's bar in the top row; upright,
+   under the top row), and the strip steps aside while it is up (its items keep their time). [default] */
 #look-offer { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px);
   left: calc(75% + 4px); right: max(10px, env(safe-area-inset-right));
   z-index: 1; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
@@ -381,12 +381,23 @@ ${TICKER_CSS}
 #ui .look-offer .row { justify-content: flex-start; gap: 8px; }
 #ui .look-offer .small { min-height: 40px; padding: 4px 12px; font-size: 14px; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
-@media (max-width: 600px) { #look-offer, #look-offer.mirrored { left: 12px; right: 12px; top: calc(65% + 10px); } }
+@media (max-width: 600px) {
+  #look-offer { left: calc(25vw + 4px); right: 12px; top: calc(max(8px, env(safe-area-inset-top)) + 48px); }
+  #look-offer.mirrored { left: 12px; right: calc(25vw + 4px); }
+}
+/* Sideways, the rival's bar sits in the top row 0.2 of the short side in from the corner, 152 px
+   wide (layout: health-target): the offer stops 8 px short of it. */
 @media (orientation: landscape) and (max-height: 520px) {
-  #ui #look-offer { top: calc(65% + 5px); left: 50%; right: auto; transform: translateX(-50%);
-    width: max(300px, min(440px, calc(100% - 120vmin))); padding: 6px 12px; gap: 4px; }
+  #ui #look-offer { top: max(6px, env(safe-area-inset-top)); left: calc(25vw + 4px);
+    right: calc(20vmin + 168px); }
+  #ui #look-offer.mirrored { left: calc(20vmin + 168px); right: calc(25vw + 4px); }
+}
+/* In the top slot: one line of words over one row of buttons. */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
+  #ui #look-offer { padding: 4px 10px; gap: 4px; }
   #ui #look-offer .look-offer-text { font-size: 13px; }
   #ui #look-offer .small { padding: 4px 8px; font-size: 13px; }
+  #ui:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 }
 #build-stamp.in-race { display: none; }
 `;
@@ -775,10 +786,24 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
     for (const b of touchButtons.splice(0)) b.remove();
-    if (!coarse) return;
+    // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
+    // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep
+    // inside them (the live check after #430: the in-air prompt ran under BRAKE). [default]
+    let reach = 0;
+    let rise = 0;
+    const setReach = () => {
+      root.style.setProperty('--touch-reach', `${Math.ceil(reach)}px`);
+      root.style.setProperty('--touch-rise', `${Math.ceil(rise)}px`);
+    };
+    if (!coarse) {
+      setReach();
+      return;
+    }
     for (const e of layout.elements) {
       if (!e.visible || (e.element !== 'touch-attack' && e.element !== 'touch-brake')) continue;
       const r = placeElement(e, w, h, layout.mirror);
+      reach = Math.max(reach, r.x + r.w / 2 > w / 2 ? w - r.x : r.x + r.w);
+      rise = Math.max(rise, h - r.y);
       const b = el('div', {
         id: e.element,
         className: 'touch-button',
@@ -797,6 +822,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       touchSurface.append(b);
       touchButtons.push(b);
     }
+    setReach();
   };
   window.addEventListener('resize', placeAll);
 
@@ -1171,7 +1197,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       { id, className: 'card look-offer', hidden: true },
       el('div', {
         className: 'look-offer-text',
-        textContent: 'Running slow on this look? The Classic look is lighter.',
+        // Short enough for one line in the top slot on a small phone held sideways.
+        textContent: 'Running slow? Classic is lighter.',
       }),
       el(
         'div',

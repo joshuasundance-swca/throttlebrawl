@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DOUBLE_SIDED_ROLES, glbPath, PROPS, ROLES } from './catalog.mjs';
+import { atlasLayoutPath, DOUBLE_SIDED_ROLES, glbPath, PROPS, ROLES } from './catalog.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const repoRoot = path.resolve(HERE, '../..');
@@ -134,16 +134,58 @@ const inRange = (v, [lo, hi]) => v >= lo && v <= hi;
  * @property {{draws_naive: number, draws_instanced: number, draws_merged_floor: number}} draws
  * @property {Check[]} checks
  * @property {{passed: number, total: number, failed: string[]}} summary
+ * @typedef {{tiles: Record<string, {rect: [number, number, number, number]}>}} AtlasLayout
+ *   The part of tools/atlas's `<sheet>-layout.json` the score reads: each tile's inner rect in UV
+ *   units, [u0, v0, u1, v1], gutter excluded
  */
+
+const VEHICLE_EXTRAS = [
+  'length_m',
+  'width_m',
+  'height_m',
+  'wheelbase_m',
+  'hood_top_m',
+  'hood_front_m',
+  'hood_back_m',
+];
+const VEHICLE_CLASSES = ['car', 'truck', 'bus', 'trailer'];
+const VEHICLE_NODES = [
+  'vehicle',
+  'vehicle_body',
+  'hood',
+  'light_head_l',
+  'light_head_r',
+  'light_tail_l',
+  'light_tail_r',
+];
+/** Within `tol` as a share of `want` (sizes and lengths). */
+const within = (got, want, tol) => Math.abs(got - want) <= tol * Math.abs(want);
+
+/**
+ * Reads an atlas sheet's layout JSON for a prop, or null when it is missing or unreadable.
+ * @param {import('./catalog.mjs').Prop} prop
+ * @returns {AtlasLayout | null}
+ */
+function readAtlasLayout(prop) {
+  const rel = atlasLayoutPath(prop);
+  if (!rel || !existsSync(path.join(repoRoot, rel))) return null;
+  try {
+    return JSON.parse(readFileSync(path.join(repoRoot, rel), 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Scores a parsed GLB against a catalog row. Returns the counts, the derived draws and a list
  * of {id, pass, detail} checks; nothing is weighted into one number.
  * @param {Buffer} buf
  * @param {import('./catalog.mjs').Prop} prop
+ * @param {{atlasLayout?: AtlasLayout | null}} [opts]  `atlasLayout` stands in for the sheet's
+ *   layout JSON (null: there is none); left out, a row with an atlas reads it from its pack
  * @returns {Score}
  */
-export function scoreGlb(buf, prop) {
+export function scoreGlb(buf, prop, opts = {}) {
   const { gltf, bin } = parseGlb(buf);
   const read = accessorReader(gltf, bin);
   const nodes = gltf.nodes || [];
@@ -212,6 +254,7 @@ export function scoreGlb(buf, prop) {
     has_texture: JSON.stringify(m).includes('"index"'),
     alphaMode: m.alphaMode ?? 'OPAQUE',
     metallic: m.pbrMetallicRoughness?.metallicFactor ?? 1,
+    baseColor: m.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1],
     emissive:
       (m.emissiveFactor ?? [0, 0, 0]).some((c) => c > 0) || !!m.extensions?.KHR_materials_emissive_strength,
     doubleSided: !!m.doubleSided,
@@ -297,20 +340,26 @@ export function scoreGlb(buf, prop) {
   check('names_snake_case', badNames.length === 0, badNames.join(',') || 'ok');
   check('no_duplicate_node_names', dupNames.length === 0, dupNames.join(',') || 'ok');
   check('no_scaled_nodes', scaled.length === 0, scaled.join(',') || 'every node has scale 1');
-  if (prop.kind !== 'boat') check('ground_at_y0', Math.abs(box.min[1]) <= 0.05, `min y = ${box.min[1]}`);
+  // A bridge kit's bays hang below their deck-level roots (piers to the water), so a kit with bays
+  // checks the ground per root instead (`<root>_base_on_ground`, `<bay>_deck_level`).
+  const bayRoots = new Set(prop.variants?.bays?.roots ?? []);
+  if (prop.kind !== 'boat' && bayRoots.size === 0)
+    check('ground_at_y0', Math.abs(box.min[1]) <= 0.05, `min y = ${box.min[1]}`);
   if (B.tris !== undefined) check('tris_budget', tris <= B.tris, `${tris} / ${B.tris}`);
   if (B.draws !== undefined)
     check('draws_budget', drawsInstanced <= B.draws, `${drawsInstanced} / ${B.draws} (naive ${drawsNaive})`);
   check('materials_budget', usedMats.size <= B.materials, `${usedMats.size} / ${B.materials}`);
-  // UVs are allowed only on text surfaces (the game paints words on them); nothing else needs them
+  // UVs are allowed only on text surfaces (the game paints words on them) and on the row's atlas
+  // surfaces (they sample the region's atlas); nothing else needs them
   const uvMeshes = inst
     .filter((x) => meshesDef[x.mesh].primitives.some((p) => p.attributes.TEXCOORD_0 !== undefined))
     .map((x) => x.name);
-  const allowedUv = new Set(prop.textSurfaces ?? []);
+  const allowedUv = new Set([...(prop.textSurfaces ?? []), ...(prop.atlas?.surfaces ?? [])]);
+  const strayUv = uvMeshes.filter((n) => !allowedUv.has(n));
   check(
-    'uvs_only_on_text_surfaces',
-    uvMeshes.every((n) => allowedUv.has(n)),
-    uvMeshes.join(',') || 'no UVs',
+    'uvs_only_on_text_or_atlas_surfaces',
+    strayUv.length === 0,
+    strayUv.length ? `UVs on ${strayUv.join(',')}` : `${uvMeshes.length} mesh nodes with UVs, all allowed`,
   );
 
   // ---- the ramp truck (gameplay-critical ramp geometry)
@@ -514,6 +563,8 @@ export function scoreGlb(buf, prop) {
   if (prop.kind === 'variants') {
     const V = prop.variants;
     const matSets = [];
+    /** @type {Map<string, {tris: number, bb: ReturnType<typeof bbox> | null, rootPos: number[] | null}>} */
+    const perRoot = new Map();
     V.roots.forEach((v, k) => {
       const sub = subtreeInst(v);
       let vt = 0;
@@ -544,11 +595,41 @@ export function scoreGlb(buf, prop) {
       check(`${v}_tris_budget`, vt > 0 && vt <= vtMax, `${vt} / ${vtMax}`);
       check(`${v}_draws_budget`, vd <= V.perVariant.draws, `${vd} / ${V.perVariant.draws}`);
       check(`${v}_height`, bb && inRange(bb.max[1], vh), `height ${bb?.max[1]}, range ${vh}`);
-      check(
-        `${v}_base_on_ground`,
-        bb && rootPos && Math.abs(rootPos[1]) <= 1e-3 && Math.abs(bb.min[1]) <= 0.05,
-        `root ${rootPos}, min y ${bb?.min[1]}`,
-      );
+      perRoot.set(v, { tris: vt, bb, rootPos });
+      const bayK = V.bays?.roots.indexOf(v) ?? -1;
+      if (bayK < 0)
+        check(
+          `${v}_base_on_ground`,
+          bb && rootPos && Math.abs(rootPos[1]) <= 1e-3 && Math.abs(bb.min[1]) <= 0.05,
+          `root ${rootPos}, min y ${bb?.min[1]}`,
+        );
+      else {
+        // A bay: its root is the deck top at the bay's start, and it runs `bay_m` along +Z. The
+        // game repeats it along a deck it builds itself, so the length must be exact (1%).
+        const ex = extrasOf(v);
+        const want = V.bays.lengthM[bayK];
+        const runZ = bb && rootPos ? [r3(bb.min[2] - rootPos[2]), r3(bb.max[2] - rootPos[2])] : null;
+        check(
+          `${v}_bay_length`,
+          typeof ex.bay_m === 'number' &&
+            want !== undefined &&
+            within(ex.bay_m, want, 0.01) &&
+            runZ !== null &&
+            Math.abs(runZ[0]) <= 0.01 * ex.bay_m &&
+            within(runZ[1], ex.bay_m, 0.01),
+          `bay_m ${ex.bay_m ?? 'missing'} (catalog ${want}), runs z ${runZ?.join('..')} from its root`,
+        );
+        const pier = typeof ex.pier_m === 'number' ? ex.pier_m : null;
+        const depth = bb ? -bb.min[1] : null;
+        check(
+          `${v}_deck_level`,
+          rootPos !== null &&
+            Math.abs(rootPos[1]) <= 1e-3 &&
+            depth !== null &&
+            (pier === null ? depth >= -0.05 : Math.abs(depth - pier) <= Math.max(0.05, 0.01 * pier)),
+          `root y ${rootPos?.[1]}, reaches down ${depth} m (pier_m ${pier ?? 'none'})`,
+        );
+      }
       check(
         `${v}_at_x`,
         rootPos && Math.abs(rootPos[0] - V.xs[k]) < 1e-3 && Math.abs(rootPos[2]) < 1e-3,
@@ -575,6 +656,33 @@ export function scoreGlb(buf, prop) {
     });
     if (V.sharedMaterials)
       check('variants_share_materials', new Set(matSets).size === 1, matSets.join(' | '));
+    for (const b of V.bays?.roots ?? [])
+      if (!V.roots.includes(b)) check(`${b}_bay_length`, false, `bay ${b} is not one of the variant roots`);
+    // Levels of detail: the far stand-in keeps a share of the near one's triangles inside its box
+    // (each relative to its own root, within 5% of lod0's extent on that axis).
+    for (const { lod0, lod1, maxRatio = 0.3 } of V.lods ?? []) {
+      const a = perRoot.get(lod0);
+      const b = perRoot.get(lod1);
+      if (!a?.bb || !b?.bb || !a.rootPos || !b.rootPos) {
+        check(`${lod1}_lod`, false, `${lod0} or ${lod1} is not a variant root with geometry`);
+        continue;
+      }
+      const rel = (x) => [0, 1, 2].map((c) => [x.bb.min[c] - x.rootPos[c], x.bb.max[c] - x.rootPos[c]]);
+      const ra = rel(a);
+      const rb = rel(b);
+      const off = [0, 1, 2].map(
+        (c) =>
+          Math.max(Math.abs(rb[c][0] - ra[c][0]), Math.abs(rb[c][1] - ra[c][1])) /
+          Math.max(a.bb.size[c], 1e-6),
+      );
+      const share = b.tris / Math.max(a.tris, 1);
+      check(
+        `${lod1}_lod`,
+        share <= maxRatio + 1e-9 && off.every((o) => o <= 0.05 + 1e-9),
+        `${b.tris} of ${a.tris} triangles (${r3(share * 100)} %, max ${maxRatio * 100} %); box off by ` +
+          `${off.map((o) => `${r3(o * 100)} %`).join(', ')} of ${lod0}'s x, y, z`,
+      );
+    }
   }
 
   // ---- one prop, one root
@@ -616,10 +724,23 @@ export function scoreGlb(buf, prop) {
     if (uvPrim && prims.length === 1) {
       const pos = read(uvPrim.attributes.POSITION);
       const uv = read(uvPrim.attributes.TEXCOORD_0);
-      const nrm = uvPrim.attributes.NORMAL !== undefined ? read(uvPrim.attributes.NORMAL) : [];
+      // A GLB with normals says which corners face +Z; one without (the optimiser drops them) says
+      // it by winding alone, which is also all the game's back-face culling reads.
+      const hasNormals = uvPrim.attributes.NORMAL !== undefined;
+      const nrm = hasNormals ? read(uvPrim.attributes.NORMAL) : [];
+      const facing = new Set();
+      if (!hasNormals) {
+        const idx = uvPrim.indices !== undefined ? read(uvPrim.indices) : [...Array(pos.length / 3).keys()];
+        const P = (k) => xf(x.world, [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]]);
+        for (let t = 0; t + 2 < idx.length; t += 3) {
+          const n = cross(sub(P(idx[t + 1]), P(idx[t])), sub(P(idx[t + 2]), P(idx[t])));
+          const l = len(n);
+          if (l > 1e-12 && n[2] / l > 0.99) for (const k of [idx[t], idx[t + 1], idx[t + 2]]) facing.add(k);
+        }
+      }
       const front = [];
       for (let k = 0; k < pos.length / 3; k++) {
-        if (nrm[k * 3 + 2] > 0.99)
+        if (hasNormals ? nrm[k * 3 + 2] > 0.99 : facing.has(k))
           front.push({
             p: xf(x.world, [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]]),
             uv: [uv[k * 2], uv[k * 2 + 1]],
@@ -640,9 +761,146 @@ export function scoreGlb(buf, prop) {
         near(ex.width_m, fb.size[0]) &&
         near(ex.height_m, fb.size[1]) &&
         fb.size[2] < 1e-3;
-      detail = `front face ${fb.size[0]} x ${fb.size[1]} m (extras ${ex.width_m} x ${ex.height_m}), ${front.length} front verts, top-left uv ${JSON.stringify(tl[0]?.uv)}`;
+      detail = `front face ${fb.size[0]} x ${fb.size[1]} m (extras ${ex.width_m} x ${ex.height_m}), ${front.length} front verts by ${hasNormals ? 'normal' : 'winding'}, top-left uv ${JSON.stringify(tl[0]?.uv)}`;
     } else if (prims.length !== 1) detail = `${prims.length} primitives (a text surface is one material)`;
     check(`${name}_text_surface`, ok, detail);
+  }
+
+  // ---- atlas surfaces: every triangle samples one tile's inner rect, so mip levels and
+  // neighbouring tiles never bleed into it (tools/atlas lays the sheet out; its layout is the contract)
+  if (prop.atlas) {
+    const layout = opts.atlasLayout === undefined ? readAtlasLayout(prop) : opts.atlasLayout;
+    const rects = layout?.tiles ? Object.values(layout.tiles).map((t) => t.rect) : [];
+    const eps = 1e-6;
+    const inRect = (r, [u, v]) => u >= r[0] - eps && u <= r[2] + eps && v >= r[1] - eps && v <= r[3] + eps;
+    let triangles = 0;
+    const bad = [];
+    for (const name of prop.atlas.surfaces) {
+      const xs = instOf(name);
+      if (xs.length !== 1) {
+        bad.push(`${name}: ${xs.length} mesh nodes`);
+        continue;
+      }
+      for (const p of meshesDef[xs[0].mesh].primitives) {
+        if ((p.mode ?? 4) !== 4) continue;
+        if (p.attributes.TEXCOORD_0 === undefined) {
+          bad.push(`${name}: a primitive without UVs`);
+          continue;
+        }
+        const uv = read(p.attributes.TEXCOORD_0);
+        const count = gltf.accessors[p.attributes.POSITION].count;
+        const idx = p.indices !== undefined ? read(p.indices) : [...Array(count).keys()];
+        for (let t = 0; t + 2 < idx.length; t += 3) {
+          triangles++;
+          const uvs = [idx[t], idx[t + 1], idx[t + 2]].map((k) => [uv[k * 2], uv[k * 2 + 1]]);
+          if (!rects.some((r) => uvs.every((q) => inRect(r, q))))
+            bad.push(`${name} triangle ${t / 3} at uv ${uvs.map((q) => q.map(r3).join(',')).join(' ')}`);
+        }
+      }
+    }
+    check(
+      'atlas_uvs_in_tiles',
+      layout !== null && rects.length > 0 && bad.length === 0,
+      layout === null || rects.length === 0
+        ? `no layout for sheet ${prop.atlas.sheet} (${atlasLayoutPath(prop)}); the sheet must be built first`
+        : `${triangles} triangles on ${prop.atlas.surfaces.length} surface(s) against ${rects.length} tiles` +
+            (bad.length
+              ? `; outside one tile: ${bad.slice(0, 4).join('; ')}${bad.length > 4 ? ` (+${bad.length - 4})` : ''}`
+              : ''),
+    );
+  }
+
+  // ---- outward winding: once normals are dropped, a face's front is its winding alone and the
+  // game culls the back. For a closed convex part every face must point away from its centre.
+  if (prop.convexParts?.length) {
+    let faces = 0;
+    const inward = [];
+    for (const name of prop.convexParts) {
+      const xs = instOf(name);
+      if (xs.length !== 1) {
+        inward.push(`${name}: ${xs.length} mesh nodes`);
+        continue;
+      }
+      const tris = worldTris(xs[0]);
+      const pb = bbox(tris.flat());
+      const centre = [0, 1, 2].map((c) => (pb.min[c] + pb.max[c]) / 2);
+      let wrong = 0;
+      for (const t of tris) {
+        const n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
+        if (len(n) < 1e-12) continue;
+        faces++;
+        const mid = [0, 1, 2].map((c) => (t[0][c] + t[1][c] + t[2][c]) / 3);
+        const out = sub(mid, centre);
+        if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] <= 0) wrong++;
+      }
+      if (wrong) inward.push(`${name}: ${wrong} faces wound inward`);
+    }
+    check(
+      'faces_wound_outward',
+      inward.length === 0 && faces > 0,
+      `${faces} faces on ${prop.convexParts.length} convex part(s)${inward.length ? `; ${inward.join('; ')}` : ', all outward'}`,
+    );
+  }
+
+  // ---- vehicles: instanced traffic, one body each, launched off by a wheelie at the hood
+  if (prop.kind === 'vehicle') {
+    const missing = VEHICLE_NODES.filter((n) => !byName.has(n));
+    check(
+      'required_nodes',
+      missing.length === 0,
+      missing.length ? `missing ${missing.join(',')}` : VEHICLE_NODES.join(','),
+    );
+    check(
+      'root_at_origin',
+      nodeWorldPos('vehicle')?.every((v) => Math.abs(v) < 1e-3),
+      `vehicle at ${nodeWorldPos('vehicle')}`,
+    );
+    const ex = extrasOf('vehicle');
+    const badExtras = VEHICLE_EXTRAS.filter((k) => typeof ex[k] !== 'number' || !Number.isFinite(ex[k]));
+    check(
+      'vehicle_extras',
+      badExtras.length === 0 && VEHICLE_CLASSES.includes(ex.class),
+      badExtras.length
+        ? `missing or not a number: ${badExtras.join(',')}`
+        : `class ${ex.class ?? 'missing'} (one of ${VEHICLE_CLASSES.join(', ')})`,
+    );
+    const s = box.size;
+    check(
+      'vehicle_size_matches_extras',
+      badExtras.length === 0 &&
+        within(s[2], ex.length_m, 0.02) &&
+        within(s[0], ex.width_m, 0.02) &&
+        within(s[1], ex.height_m, 0.02),
+      `box ${s[2]} x ${s[0]} x ${s[1]} m (length, width, height) vs extras ${ex.length_m} x ${ex.width_m} x ${ex.height_m}`,
+    );
+    const hood = nodeWorldPos('hood');
+    check(
+      'hood_on_top',
+      hood !== null &&
+        badExtras.length === 0 &&
+        ex.hood_front_m > ex.hood_back_m &&
+        ex.hood_front_m <= box.max[2] + 0.01 &&
+        Math.abs(hood[0]) <= 0.05 &&
+        Math.abs(hood[1] - ex.hood_top_m) <= 0.05 &&
+        hood[2] >= ex.hood_back_m - 0.05 &&
+        hood[2] <= ex.hood_front_m + 0.05,
+      `hood empty at ${hood ?? 'missing'}; hood_top_m ${ex.hood_top_m}, from z ${ex.hood_back_m} to ${ex.hood_front_m}`,
+    );
+    const paint = materials.find((m) => m.name === 'paint_primary');
+    check(
+      'paint_primary_white',
+      paint?.used && paint.baseColor.slice(0, 3).every((c) => c >= 0.999),
+      paint
+        ? `paint_primary ${paint.baseColor.slice(0, 3).map(r3).join(',')}${paint.used ? '' : ' (unused)'}`
+        : 'no paint_primary',
+    );
+    const text = new Set(prop.textSurfaces ?? []);
+    const extra = inst.filter((x) => x.name !== 'vehicle_body' && !text.has(x.name)).map((x) => x.name);
+    check(
+      'vehicle_one_body',
+      instOf('vehicle_body').length === 1 && extra.length === 0,
+      extra.length ? `other mesh nodes: ${extra.join(',')}` : 'vehicle_body (and text surfaces) only',
+    );
   }
 
   // ---- wire attach points (power pole)

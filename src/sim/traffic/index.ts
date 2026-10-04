@@ -60,7 +60,8 @@
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
-import type { SimConfig, SimTrafficTypeDef } from '../types';
+import { hoodLaunchContact } from '../riders/wheelie';
+import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 import {
   buildCorridor,
@@ -1564,11 +1565,15 @@ function putRiderOver(config: SimConfig, st: TrafficState, m: Mover, r: RiderVie
  *   a wobble with the speed scrub, pushed just clear of the car. It is still a crash when the rider
  *   is unstable from an earlier wobble, or the vehicle is `big` (M1's rules).
  * A close, fast pass with no contact fires `nearMiss`.
+ * Playtest 3: a vehicle with its ramp down (a live moving deck, SimMovingDeck) is the riders' to
+ * meet, by the deck rules, so traffic skips it; and a first contact a wheelie turns into a hood
+ * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble.
  */
 function contacts(world: World, config: SimConfig, st: TrafficState, riders: RiderView[], dt: number): void {
   const T = TRAFFIC;
   const solidMps = world.params['traffic.solidHitMps'] ?? T.solidHitMps;
   const closingMin = world.params['traffic.nearMissClosingMps'] ?? T.nearMissClosingMps;
+  const decks = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
   for (const r of riders) {
     st.unstableS[r.id] = Math.max(0, (st.unstableS[r.id] ?? 0) - dt);
     st.lastRel[r.id] ??= st.id.map(() => 0);
@@ -1585,7 +1590,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       const ahead = r.dir * du;
       const prev = rel[k] ?? 0;
       rel[k] = ahead === 0 ? -1e-9 : ahead;
-      if (!r.touchable) continue;
+      if (!r.touchable || isDeckVehicle(decks, vid)) continue;
       if (st.contactWith[r.id] === vid && (overU < -1 || overD < -0.5)) st.contactWith[r.id] = -1;
       if (overU > 0 && overD > 0) {
         const vDir = st.dir[k] ?? 1;
@@ -1601,6 +1606,18 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           const front = du * r.dir > 0;
           const closing = Math.abs(m.speed - vAlong);
           const graze = endOn && overD < T.grazeM;
+          const oncoming = vDir !== r.dir;
+          const hood = {
+            rider: r.id,
+            vehicle: vid,
+            type: t,
+            endOn,
+            graze,
+            front,
+            oncoming,
+            closingMps: closing,
+          };
+          if (hoodLaunchContact(world, config, hood)) continue;
           solid = endOn && !graze && closing >= solidMps;
           const crash = solid || t.hazard === 'big' || (st.unstableS[r.id] ?? 0) > 0;
           const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
@@ -1679,6 +1696,12 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
       }
     }
   }
+}
+
+/** Whether a vehicle has a live moving deck this tick (playtest 3's moving ramp trucks). */
+function isDeckVehicle(decks: readonly { vehicle: number }[], vid: number): boolean {
+  for (const d of decks) if (d.vehicle === vid) return true;
+  return false;
 }
 
 export const trafficSystem: SimSystem = {

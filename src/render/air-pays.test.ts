@@ -2,21 +2,26 @@
 // the player will touch down (red when crooked), the newspaper held up while reading it and thrown
 // off on a newspaper crash, and the region's one-liner on a surge landing, listed for "cut this".
 // Driven by hand-built snapshots and events at fixed times (no wall clock, no frames).
-import { Color, MeshBasicMaterial } from 'three';
+import { Color, MeshBasicMaterial, Object3D, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimEvent, SimSnapshot, TouchdownSnapshot } from '../sim/api';
 import {
   AirPays,
+  BIKE_SHAPE,
+  bikeScreenBox,
   CHALK_CLEAN,
   CHALK_CROOKED,
   chalkMarkGeometry,
+  CORNER_REACH,
   landingLineLayout,
   LINE_MIN_FONT_PX,
   LINE_PLATE,
   LINE_PLATE_ALPHA,
   nextLineIndex,
+  PORTRAIT_FOOT,
   ROAD_AHEAD_BOTTOM,
   ROAD_AHEAD_WIDTH,
+  type ScreenBox,
 } from './air-pays';
 import type { BoardItem } from './boards';
 
@@ -265,7 +270,9 @@ describe('air that pays: the landing one-liner reads on a phone in every look', 
       expect(l.plateH).toBeGreaterThanOrEqual(l.rows.length * l.fontPx);
     }
     // Wide enough, it is one row; the longest wraps into two rather than shrinking, either way up.
-    expect(landingLineLayout('TEN OUT OF TEN, SAYS A PELICAN', 1920, 1080, measure).rows).toHaveLength(1);
+    // (Inside the bottom corners' reach, a 1920x1080 screen's band is 608 px: that line takes two.)
+    expect(landingLineLayout('TEN OUT OF TEN, SAYS A PELICAN', 2560, 1440, measure).rows).toHaveLength(1);
+    expect(landingLineLayout('TEN OUT OF TEN, SAYS A PELICAN', 1920, 1080, measure).rows).toHaveLength(2);
     expect(landingLineLayout(LONGEST, 1280, 720, measure).rows).toHaveLength(2);
     expect(landingLineLayout(LONGEST, 360, 740, measure).rows).toHaveLength(2);
   });
@@ -292,32 +299,113 @@ describe('air that pays: the landing one-liner reads on a phone in every look', 
     }
   });
 
-  it('sits centred just under the road ahead at its laid-out size, out of the middle of the view', () => {
+  it('sits centred under the road ahead and the bike, inside the bottom corners, at its laid-out size', () => {
     // Playtest 3: "The black and white text pop-ups block the actual game". The road ahead is the
-    // middle half across, 25-65 % down; the plate sits wholly below it, inside the screen.
+    // middle half across, 25-65 % down; the plate sits wholly below it and below the player's bike
+    // (the live check after #430: just under the road ahead it covered the bike in the Keys), inside
+    // the bottom corners' HUD across, above the speed and health on an upright screen.
+    const a = new AirPays();
+    a.setLines([{ ref: 'base:region/florida-keys#long', text: LONGEST, kind: 'sign' }]);
+    const s = snap([entity({ x: 0, y: 0, z: 0 })]);
+    // The bike boxes CI measured (ui-style-popups.spec.ts), and none.
+    const cases: [number, number, ScreenBox | null][] = [
+      [915, 412, { left: 437, top: 221, right: 478, bottom: 309 }],
+      [412, 915, { left: 150, top: 480, right: 262, bottom: 712 }],
+      [1366, 768, { left: 639, top: 394, right: 728, bottom: 576 }],
+      [800, 360, null],
+    ];
+    for (const [w, h, bike] of cases) {
+      a.pushEvents([surge(0)]);
+      a.update(s, s, 1, 10);
+      expect(a.fitOverlay(w, h, 1.5, bike)).toBe(true);
+      const plateW = a.line.scale.x;
+      const plateH = a.line.scale.y;
+      const where = `${w}x${h}`;
+      expect(a.line.position.x, `${where}: centred`).toBeCloseTo(w / 2, 0);
+      // The overlay camera has y up: the plate's top, CSS px from the screen's top.
+      const top = h - (a.line.position.y + plateH / 2);
+      expect(top, `${where}: under the road ahead`).toBeGreaterThanOrEqual(h * ROAD_AHEAD_BOTTOM);
+      if (bike) expect(top, `${where}: under the bike`).toBeGreaterThanOrEqual(bike.bottom);
+      const foot = h > w ? h - PORTRAIT_FOOT * w : h;
+      expect(top + plateH, `${where}: above the HUD at the foot`).toBeLessThanOrEqual(foot);
+      if (w > h)
+        expect(plateW, `${where}: inside the bottom corners`).toBeLessThanOrEqual(w - 2 * CORNER_REACH * h);
+      const l = landingLineLayout(LONGEST, w, h);
+      expect(plateH, `${where}: never taller than its free layout`).toBeLessThanOrEqual(l.plateH);
+      a.update(s, s, 1, 13); // the line goes
+    }
+  });
+
+  it('holds still while it shows, and rises over the bike only when the room under it is too short', () => {
     const a = new AirPays();
     a.setLines([{ ref: 'base:region/florida-keys#long', text: LONGEST, kind: 'sign' }]);
     const s = snap([entity({ x: 0, y: 0, z: 0 })]);
     a.pushEvents([surge(0)]);
     a.update(s, s, 1, 10);
-    for (const [w, h] of [
-      [915, 412],
-      [412, 915],
-      [1366, 768],
-      [800, 360],
-    ] as const) {
-      expect(a.fitOverlay(w, h, 1.5)).toBe(true);
-      const l = landingLineLayout(LONGEST, w, h);
-      expect(a.line.scale.x).toBeCloseTo(l.plateW);
-      expect(a.line.scale.y).toBeCloseTo(l.plateH);
-      expect(a.line.position.x, `${w}x${h}: centred`).toBeCloseTo(w / 2, 0);
-      // The overlay camera has y up: the plate's top, CSS px from the screen's top.
-      const top = h - (a.line.position.y + l.plateH / 2);
-      expect(top, `${w}x${h}: under the road ahead`).toBeGreaterThanOrEqual(h * ROAD_AHEAD_BOTTOM);
-      expect(top + l.plateH, `${w}x${h}: on screen`).toBeLessThanOrEqual(h);
-    }
-    // Nothing shown: nothing to draw.
+    const bike = { left: 440, top: 220, right: 480, bottom: 310 };
+    a.fitOverlay(915, 412, 1, bike);
+    const y = a.line.position.y;
+    a.fitOverlay(915, 412, 1, { ...bike, top: 240, bottom: 330 });
+    expect(a.line.position.y, 'the bike bobs, the plate holds').toBe(y);
     a.update(s, s, 1, 13);
+    // A bike so low that even the smallest plate cannot fit under it: the plate keeps out of the road
+    // ahead and on the screen, at its smallest letters.
+    a.pushEvents([surge(0, 9)]);
+    a.update(s, s, 1, 20);
+    a.fitOverlay(915, 412, 1, { ...bike, bottom: 400 });
+    const top = 412 - (a.line.position.y + a.line.scale.y / 2);
+    expect(top).toBeGreaterThanOrEqual(412 * ROAD_AHEAD_BOTTOM);
+    expect(top + a.line.scale.y).toBeLessThanOrEqual(412);
+    // Nothing shown: nothing to draw.
+    a.update(s, s, 1, 23);
     expect(a.fitOverlay(800, 360, 1.5)).toBe(false);
+  });
+
+  it("measures the bike's screen box through the camera as three.js projects it", () => {
+    const camera = new PerspectiveCamera(60, 915 / 412, 0.3, 700);
+    camera.position.set(0.3, 2.6, 5);
+    camera.lookAt(0, 0.9, -18);
+    camera.updateMatrixWorld();
+    const frame = new Object3D();
+    frame.position.set(0.2, 0, 0);
+    frame.rotation.set(0, 0.2, -0.3, 'YXZ');
+    frame.updateMatrixWorld();
+    const box = bikeScreenBox(
+      frame.matrixWorld.elements,
+      camera.matrixWorldInverse.elements,
+      camera.projectionMatrix.elements,
+      915,
+      412,
+    );
+    expect(box).not.toBeNull();
+    const want = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+    for (const b of BIKE_SHAPE)
+      for (const x of [b.min[0], b.max[0]])
+        for (const y of [b.min[1], b.max[1]])
+          for (const z of [b.min[2], b.max[2]]) {
+            const v = new Vector3(x, y, z).applyMatrix4(frame.matrixWorld).project(camera);
+            const sx = ((v.x + 1) / 2) * 915;
+            const sy = ((1 - v.y) / 2) * 412;
+            want.left = Math.min(want.left, sx);
+            want.right = Math.max(want.right, sx);
+            want.top = Math.min(want.top, sy);
+            want.bottom = Math.max(want.bottom, sy);
+          }
+    for (const k of ['left', 'top', 'right', 'bottom'] as const) expect(box?.[k]).toBeCloseTo(want[k], 3);
+    // Low in the middle of the screen, as the chase camera shows the bike.
+    expect(((box?.left ?? 0) + (box?.right ?? 0)) / 2).toBeGreaterThan(915 * 0.3);
+    expect(box?.bottom ?? 0).toBeGreaterThan(412 * 0.5);
+    // Behind the camera: no box.
+    frame.position.set(0, 0, 20);
+    frame.updateMatrixWorld();
+    expect(
+      bikeScreenBox(
+        frame.matrixWorld.elements,
+        camera.matrixWorldInverse.elements,
+        camera.projectionMatrix.elements,
+        915,
+        412,
+      ),
+    ).toBeNull();
   });
 });

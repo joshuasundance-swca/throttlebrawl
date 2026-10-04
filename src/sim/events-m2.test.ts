@@ -9,7 +9,7 @@ describe('the M2 SimEvent contract', () => {
     expect([...TAKEDOWN_KINDS]).toEqual(['traffic', 'scenery', 'health']);
   });
 
-  it('lists the five style sources the maintainer decided, and tricks (playtest 2, 2026-10-02)', () => {
+  it('lists the five style sources the maintainer decided, tricks (playtest 2) and the playtest 3 moves', () => {
     expect([...STYLE_KINDS]).toEqual([
       'nearMiss',
       'airtime',
@@ -17,6 +17,8 @@ describe('the M2 SimEvent contract', () => {
       'takedownCombo',
       'weaponSteal',
       'trick',
+      'wheelie',
+      'drift',
     ]);
     expect([...TRICK_IDS]).toEqual(['backflip', 'frontflip', 'wheelie', 'whip', 'newspaper']);
   });
