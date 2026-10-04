@@ -196,12 +196,22 @@ export const CAREER_CSS = `
   max-width: min(640px, 92vw); text-transform: uppercase; }
 #career-teaser .teaser-line:first-of-type { color: #f5c542; font-size: 24px; }
 /* The prompt sits low in the middle, between the speed (left) and the touch buttons (right), clear
-   of the bark bubble at the top and of the road ahead. */
+   of the bark bubble at the top and of the road ahead. It wraps inside the touch buttons' reach on
+   both sides (ui/ sets --touch-reach from where it places them; the live check after #430: the
+   in-air prompt, the longest, ran under BRAKE on a phone held sideways). [default] */
 #career-prompt { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom));
-  width: max-content; max-width: min(520px, calc(100vw - 360px)); background: #111d; color: #f2ead8;
+  width: max-content; max-width: min(520px, calc(100vw - 360px), calc(100vw - 2 * var(--touch-reach, 0px) - 16px));
+  background: #111d; color: #f2ead8;
   border-left: 4px solid #f5c542; padding: 6px 12px; box-sizing: border-box;
   font: 800 14px/1.3 ui-monospace, 'Courier New', monospace; pointer-events: none; z-index: 1; }
-@media (max-width: 700px) { #career-prompt { max-width: calc(100vw - 24px); bottom: 150px; } }
+/* Upright and narrow: across the screen, just above the speed and health (and any touch buttons),
+   as low as it can sit under the player's bike. */
+@media (max-width: 700px) and (orientation: portrait) {
+  #career-prompt { max-width: calc(100vw - 24px); bottom: max(126px, calc(var(--touch-rise, 0px) + 8px)); }
+}
+/* The landing one-liner (render/air-pays.ts) shares the prompt's band under the bike: while it shows
+   (render marks its canvas), the prompt steps aside for its 2 s. [default] */
+body:has(canvas[data-landing-line]) #career-prompt { visibility: hidden; }
 #hud-objective { position: absolute; top: max(48px, calc(env(safe-area-inset-top) + 44px)); left: 50%;
   transform: translateX(-50%); background: #0009; color: #f5c542; padding: 2px 10px; border-radius: 4px;
   font: 800 13px ui-monospace, monospace; white-space: nowrap; pointer-events: none; max-width: calc(100vw - 140px);
