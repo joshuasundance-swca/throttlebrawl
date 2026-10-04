@@ -10,6 +10,10 @@
 //     wheels spin with speed, the fork steers with the turn; a wheelie on launch, a stoppie on hard
 //     braking, a squat on landing, punches, weapon swings and kicks toward the target, a whip in the
 //     air, each rival's signature move while it shows; coat tails, ties and braids stream in the wind;
+//     playtest 3's moves (T2.4): the wheelie drawn from the sim's own angle (`EntitySnapshot.wheelie`)
+//     with the rider sitting back, the drift's slide (the bike drawn at heading minus the slip, the
+//     inside knee down, rubber and smoke under the tyre: skids.ts), a backflip's and a front flip's
+//     own postures;
 //   - tumbling: the rider flails where views.ts throws the body and the bike cartwheels on its own;
 //   - on foot: running back, the get-up and the fist shake; the bike stands on its stand;
 //   - hurt (under half health) a rider sheds their prop, and under a third the bike trails smoke;
@@ -41,6 +45,7 @@ import { mergeBoxes } from '../geometry';
 import { readGlb } from '../glb';
 import type { LookStyle } from '../look';
 import { FALLBACK_BIKE_MODEL, withPlayerPaint, type RiderLook } from '../rider-looks';
+import { Skids } from '../skids';
 import type { RenderParams } from '../tuning';
 import { bakePart, paintedColors, RIDER_BONES, type BakedPart, type PartKind, type RiderBone } from './bake';
 import { Ghosts } from './ghost';
@@ -73,6 +78,16 @@ export const SHED_HEALTH = 0.5;
 export const SMOKE_HEALTH = 0.34;
 const SQUAT_S = 0.35;
 const SMOKE_CAP = 96;
+/** A wheelie this far up (rad) has the rider sat all the way back; below it, part of the way. */
+const WHEELIE_SEATBACK = 0.6;
+/** The drift's knee comes down past this slip (rad) and this lean (see moves.md section 4.4). */
+const KNEE_MIN_SLIP = 0.2;
+const KNEE_MIN_LEAN = 0.6;
+/** A tyre lays rubber past this slip (rad), or in a stoppie past this much nose-down and speed. */
+const MARK_MIN_SLIP = 0.15;
+const MARK_MAX_SLIP = 0.6;
+const STOPPIE_MARK = -0.1;
+const STOPPIE_MARK_MPS = 15;
 const SMOKE_EVERY_S = 0.07;
 const SMOKE_LIFE_S = 1.3;
 /** The ghost's tint (a dead screen's blue) and its faint glow (run W-U, Bad Connection). */
@@ -107,6 +122,9 @@ export interface RiderRigCounts {
   loaded: string[];
   failed: { id: string; error: string }[];
   smoke: number;
+  /** Skid-mark quads laid, and tyre-smoke puffs up (skids.ts; playtest 3's drift and stoppie). */
+  skids: number;
+  tyreSmoke: number;
 }
 
 const X = new Vector3(1, 0, 0);
@@ -187,6 +205,13 @@ class Rig {
   private steer = 0;
   private accel = 0;
   private wheelie = 0;
+  /** Whether the front's angle this frame came from the sim (so the air takes it back at once). */
+  private simWheelie = false;
+  /** The drawn drift slip (rad, positive: the nose to the right of the travel), eased. */
+  private slip = 0;
+  /** How far the inside knee is down (0 to 1), and which side it is (1 right, -1 left). */
+  private knee = 0;
+  private kneeSide = 1;
   private whip = 0;
   private spinFront = 0;
   private spinRear = 0;
@@ -440,15 +465,43 @@ class Rig {
       const max = wheelieMax(this.bike.bikeClass, this.look.bikeModel);
       const launching = grounded && e.throttle > 0.6 && e.speed > 0.3 && e.speed < 16 && this.accel > 1.5;
       const braking = grounded && e.speed > 5 && this.accel < -7;
-      const wantWheelie = launching
-        ? max * (1 - e.speed / 16) * (0.85 + 0.15 * Math.sin(t * 3 + this.id))
-        : braking
-          ? -0.2 * clamp((-this.accel - 7) / 4 + 0.5, 0, 1)
-          : 0;
-      this.wheelie += (wantWheelie - this.wheelie) * easeK(wantWheelie !== 0 ? 5 : 4, dt);
+      // A wheelie the sim is balancing (playtest 3) is drawn at its own angle; the guess from the
+      // acceleration (a launch's lift, a stoppie) stays for everyone else.
+      const simUp = e.mode === 'Road' && (e.wheelie ?? 0) > 0;
+      const wantWheelie = simUp
+        ? (e.wheelie ?? 0)
+        : launching
+          ? max * (1 - e.speed / 16) * (0.85 + 0.15 * Math.sin(t * 3 + this.id))
+          : braking
+            ? -0.2 * clamp((-this.accel - 7) / 4 + 0.5, 0, 1)
+            : 0;
+      if (this.simWheelie && !simUp && e.mode !== 'Road')
+        this.wheelie = 0; // a launch carries the angle in its pitch
+      else this.wheelie += (wantWheelie - this.wheelie) * easeK(simUp ? 18 : wantWheelie !== 0 ? 5 : 4, dt);
+      this.simWheelie = simUp;
+      // The slide: drawn only on the road (the sim's slip is 0 elsewhere), eased a little.
+      const slipWant = e.mode === 'Road' ? (e.drift ?? 0) : 0;
+      this.slip += (slipWant - this.slip) * easeK(24, dt);
+      const kneeWant =
+        e.mode === 'Road' && Math.abs(e.drift ?? 0) > KNEE_MIN_SLIP && Math.abs(e.lean) >= KNEE_MIN_LEAN;
+      if (kneeWant) this.kneeSide = e.lean >= 0 ? 1 : -1;
+      this.knee += ((kneeWant ? 1 : 0) - this.knee) * easeK(10, dt);
       const whipWant = e.mode === 'Airborne' && e.trick === 'whip' ? (e.lean >= 0 ? -1.05 : 1.05) : 0;
       this.whip += (whipWant - this.whip) * easeK(6, dt);
       const m = this.bikeGroup.matrix.copy(f.root.matrix);
+      if (Math.abs(this.slip) > 1e-4) {
+        // Heading minus the slip, about the middle of the wheelbase and the road's vertical: the
+        // body's lean (the root's roll) is applied first, so the yaw is taken out around it.
+        const zc = (this.bike.frontContact.z + this.bike.rearContact.z) / 2;
+        const rz = f.root.rotation.z;
+        qa.setFromAxisAngle(Z, -rz);
+        qb.setFromAxisAngle(Y, -this.slip);
+        qc.setFromAxisAngle(Z, rz);
+        qa.multiply(qb).multiply(qc);
+        m.multiply(m4.makeTranslation(0, 0, zc))
+          .multiply(m4b.makeRotationFromQuaternion(qa))
+          .multiply(m4.makeTranslation(0, 0, -zc));
+      }
       if (Math.abs(this.wheelie) > 1e-4) {
         const pivot = this.wheelie > 0 ? this.bike.rearContact : this.bike.frontContact;
         m.multiply(m4.makeTranslation(pivot.x, pivot.y, pivot.z))
@@ -464,6 +517,9 @@ class Rig {
       wheelSpeed = e.speed;
     } else {
       this.wheelie = 0;
+      this.simWheelie = false;
+      this.slip = 0;
+      this.knee = 0;
       this.whip = 0;
       this.riderGroup.matrix.copy(f.root.matrix);
       if (tumbling && f.tumbleBike.visible) {
@@ -572,6 +628,26 @@ class Rig {
     emit(va, vb);
   }
 
+  /**
+   * Whether a tyre is laying rubber this frame, and where: the rear tyre while the bike slides (its
+   * slip past MARK_MIN_SLIP), the front one in a hard stoppie. Writes the tyre's world point into
+   * `out` and returns the strength (0 to 1, the smoke's), or 0 when none is marking (in the air, on
+   * foot, tumbling, or rolling normally).
+   */
+  tyreMark(e: EntitySnapshot, out: Vector3): number {
+    if (e.mode !== 'Road') return 0;
+    const slide = Math.abs(this.slip);
+    if (slide > MARK_MIN_SLIP) {
+      out.copy(this.bike.rearContact).applyMatrix4(this.bikeGroup.matrix);
+      return clamp(slide / MARK_MAX_SLIP, 0.3, 1);
+    }
+    if (this.wheelie < STOPPIE_MARK && e.speed > STOPPIE_MARK_MPS) {
+      out.copy(this.bike.frontContact).applyMatrix4(this.bikeGroup.matrix);
+      return 0.5;
+    }
+    return 0;
+  }
+
   private attackSide(e: EntitySnapshot, curr: SimSnapshot): number {
     if (e.targetId < 0) return 1;
     const target = byId(curr, e.targetId);
@@ -596,7 +672,9 @@ class Rig {
     const attacking = phase === 'windup' || phase === 'active' || phase === 'recovery';
     if (phase === 'idle' || phase === 'cooldown') this.kicking = false;
     const air = e.mode === 'Airborne';
-    const flip = air && (e.trick === 'backflip' || e.trick === 'frontflip');
+    const backflip = air && e.trick === 'backflip';
+    const flip = backflip || (air && e.trick === 'frontflip');
+    const seatBack = this.seat.stretchLean - this.seat.chestLean;
 
     // Hips on the seat (squatting on a landing, standing a little on the pegs in the air).
     let lean = this.seat.chestLean;
@@ -608,10 +686,25 @@ class Rig {
     const hips = new Vector3().copy(this.seat.hips);
     hips.y += drop - 0.05 * squat;
     if (air && !flip) hips.add(new Vector3(0, 0.07, -0.02));
-    if (flip) {
-      hips.y -= 0.04;
-      lean += 0.35;
+    if (flip) hips.y -= 0.04;
+    if (backflip) {
+      // Sat right back with the arms nearly straight and the head thrown back, holding on.
+      lean += 0.85 * seatBack;
+      headPitch -= 0.4;
+    } else if (flip) {
+      // A front flip: tucked over the bars, chin down.
+      lean += 0.5;
+      headPitch += 0.55;
     }
+    // A wheelie (the sim's angle, or a launch's lift): sat back as far as the arms allow, the head
+    // brought level so he looks where he is going, not at the sky. Riding, not in a flip.
+    if (!air && this.wheelie > 0) {
+      lean += seatBack * clamp(this.wheelie / WHEELIE_SEATBACK, 0, 1);
+      headPitch += 0.7 * this.wheelie;
+    }
+    // The drift: the inside knee comes down, the hips slide to the inside.
+    const knee = this.knee;
+    if (knee > 0.001) hips.x += this.kneeSide * 0.1 * knee;
     if (air && e.trick === 'wheelie') lean -= 0.25;
     // The newspaper (the pitch deck's #13): sat back as if in a lawn chair, reading (air-pays.ts
     // holds the paper up in front of him; the arms reach for it below).
@@ -805,6 +898,12 @@ class Rig {
       const hip = limbRoot(R, P, 'hips', m, new Vector3());
       const peg = new Vector3().copy(this.bike.pegs[side]).add(new Vector3(0, 0.075 + drop, 0.035));
       let want: Vector3 = peg;
+      const pole = ridingPole('leg', side, new Vector3());
+      if (knee > 0.001 && sideSign(side) === this.kneeSide) {
+        // Knee down: the foot stays by its peg, the knee swings out and down toward the road.
+        want = peg.clone().add(new Vector3(this.kneeSide * 0.03 * knee, -0.03 * knee, 0));
+        pole.lerp(new Vector3(this.kneeSide * 0.7, -0.55, -1).normalize(), knee).normalize();
+      }
       if (this.kicking && attacking && sideSign(side) === s) {
         const off =
           phase === 'windup'
@@ -818,7 +917,7 @@ class Rig {
       cur.lerp(want, easeK(18, dt));
       const mid = new Vector3();
       const end = new Vector3();
-      twoBoneIk(hip, cur, m.upper, m.lower, ridingPole('leg', side, new Vector3()), mid, end);
+      twoBoneIk(hip, cur, m.upper, m.lower, pole, mid, end);
       setLimb(
         P,
         side === 'l' ? 'thigh_l' : 'thigh_r',
@@ -1103,6 +1202,9 @@ type PartLoad = { part: BakedPart | null; error: string | null };
  */
 export class RiderRigs {
   readonly root = new Group();
+  /** Skid marks and tyre smoke: two meshes, hidden while empty (skids.ts). */
+  private readonly skids = new Skids();
+  private readonly markAt = new Vector3();
   /** The race's looks as app/ named them, and as drawn (the player's with the career paint). */
   private readonly baseLooks = new Map<string, RiderLook>();
   private readonly looks = new Map<string, RiderLook>();
@@ -1135,11 +1237,12 @@ export class RiderRigs {
     this.smokeMesh.name = 'rig-smoke';
     this.smokeMesh.count = 0;
     this.smokeMesh.frustumCulled = false;
-    this.root.add(this.smokeMesh);
+    this.root.add(this.smokeMesh, this.skids.root);
   }
 
   /** The race's riders and their models; loading starts now (only the models this race needs). */
   setLooks(looks: readonly RiderLook[]): void {
+    this.skids.clear(); // a new race starts on clean tarmac
     for (const l of looks) {
       // A rig built from an older look is rebuilt on its next update (rigFor compares looks).
       this.baseLooks.set(l.contentId, l);
@@ -1237,6 +1340,8 @@ export class RiderRigs {
     if (!rig) return false;
     rig.ghost = this.ghosts.opacity(e, f.time);
     rig.update(e, prev, curr, f, this.cam, this.root);
+    const rubber = rig.tyreMark(e, this.markAt);
+    this.skids.lay(e.id, rubber > 0 ? this.markAt : null, rubber, f.dt);
     rig.smoke(e, f.time, (at, vel) => {
       if (this.puffs.length >= SMOKE_CAP) this.puffs.shift();
       this.puffs.push({ pos: at.clone(), vel: vel.clone(), age: 0 });
@@ -1251,6 +1356,7 @@ export class RiderRigs {
     if (!rig) return;
     rig.dispose(this.root);
     this.rigs.delete(id);
+    this.skids.forget(id);
   }
 
   /**
@@ -1277,6 +1383,7 @@ export class RiderRigs {
     this.smokeMesh.count = n;
     this.smokeMesh.visible = n > 0;
     this.smokeMesh.instanceMatrix.needsUpdate = true;
+    this.skids.endFrame(dt);
   }
 
   private lastDrawn = new Set<number>();
@@ -1297,7 +1404,28 @@ export class RiderRigs {
         .map(([id, p]) => ({ id, error: p.error ?? '' }))
         .sort((a, b) => a.id.localeCompare(b.id)),
       smoke: this.puffs.length,
+      skids: this.skids.counts().quads,
+      tyreSmoke: this.skids.counts().smoke,
     };
+  }
+
+  /** The skid marks' ribbon, the tyre smoke's instanced mesh and the group holding both (tests). */
+  skidsMesh(): Mesh {
+    return this.skids.ribbon;
+  }
+  tyreSmokeMesh(): InstancedMesh {
+    return this.skids.smokeMesh;
+  }
+  skidsRoot(): Group {
+    return this.skids.root;
+  }
+
+  /** A rig's bone's world rotation, for tests: which way a named part of the rider faces now. */
+  boneRotation(entityId: number, bone: RiderBone, out = new Quaternion()): Quaternion | null {
+    const rig = this.rigs.get(entityId);
+    if (!rig) return null;
+    this.root.updateMatrixWorld(true);
+    return rig.bones[bone].getWorldQuaternion(out);
   }
 
   /** A rig's bones in world space, for tests: where a named point of the rider is now. */
