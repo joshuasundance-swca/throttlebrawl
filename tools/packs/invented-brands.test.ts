@@ -23,6 +23,54 @@ const FOUND_REAL: readonly { name: RegExp; found: string }[] = [
   },
 ];
 
+// Real marks near the places playtest 3 brings in (the maintainer, round 1: "Duval St, downtown
+// Portland, Golden Gate"; "Brands and businesses stay invented"): businesses, attractions, products
+// and trademarked signs that a Key West, Portland or San Francisco lane could reach for. They must
+// never appear in any pack text (signs, billboards, barks, names, landing lines, smashables,
+// scenes). Matched case-insensitively with any run of whitespace between words, so a hard-wrapped
+// phrase still matches. Place names stay fine as flavor ("Real place and road names are fine as
+// flavor" [decided]): the Golden Gate is a place; the bridge district's own name is not. San
+// Francisco's transit service is left off: a shipped pirate-radio track names it as part of the city.
+const REAL_MARKS: readonly string[] = [
+  'Pier 39',
+  'Transamerica',
+  'Margaritaville',
+  'Sloppy Joe',
+  'Conch Tour Train',
+  'Conch Train',
+  'White Stag',
+  'TriMet',
+  'MAX Light Rail',
+  'Voodoo',
+  "Powell's",
+  'Stumptown',
+  'Ghirardelli',
+  'Oracle Park',
+  'Hemingway',
+  'Keep Portland Weird',
+  'Full House',
+  'Golden Gate Bridge Highway',
+  'Weather Machine',
+];
+
+/** A mark as a pattern: case-insensitive, any whitespace between its words, whole words only. */
+function markPattern(mark: string): RegExp {
+  const words = mark
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "['’]?"));
+  return new RegExp(`(?<![A-Za-z0-9])${words.join('\\s+')}(?![A-Za-z0-9])`, 'i');
+}
+
+/** Every string in a parsed JSON value, object keys included. */
+function stringsOf(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsOf);
+  if (value && typeof value === 'object')
+    return Object.entries(value).flatMap(([k, v]) => [k, ...stringsOf(v)]);
+  return [];
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 function jsonFiles(dir: string): string[] {
@@ -51,6 +99,36 @@ describe('pack brands are invented', () => {
         if (name.test(text)) hits.push(`${path.relative(root, f)}: ${String(name)} (${found})`);
       }
     }
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('pack text names no real mark near the playtest 3 places', () => {
+  const files = jsonFiles(path.join(root, 'packs'));
+
+  it('matches a mark across case, curly apostrophes and hard-wrapped whitespace, and whole words only', () => {
+    expect(markPattern('Pier 39').test('PIER\n   39 EXIT')).toBe(true);
+    expect(markPattern("Powell's").test('powell’s books')).toBe(true);
+    expect(markPattern('Voodoo').test('voodoos')).toBe(false);
+    expect(markPattern('Golden Gate Bridge Highway').test('THE GOLDEN GATE')).toBe(false);
+  });
+
+  it('no pack file names one', () => {
+    const hits: string[] = [];
+    const patterns = REAL_MARKS.map((mark) => ({ mark, re: markPattern(mark) }));
+    let strings = 0;
+    for (const f of files) {
+      // Every string in the file, keys included, as parsed: a "\n" inside a JSON string is a real
+      // line break here, so a hard-wrapped mark still matches.
+      for (const s of stringsOf(JSON.parse(readFileSync(f, 'utf8')))) {
+        strings++;
+        for (const { mark, re } of patterns)
+          if (re.test(s)) hits.push(`${path.relative(root, f)}: ${mark} in "${s}"`);
+      }
+    }
+    console.log(
+      `[examined] ${strings} strings in ${files.length} pack JSON files against ${REAL_MARKS.length} real marks`,
+    );
     expect(hits).toEqual([]);
   });
 });

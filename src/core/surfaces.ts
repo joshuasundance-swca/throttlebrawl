@@ -35,6 +35,14 @@ export type VergeSurface = (typeof VERGE_SURFACES)[number];
 export const VERGE_EDGES = ['soft', 'brush', 'water', 'hard', 'fence', 'rail'] as const;
 export type VergeEdge = (typeof VERGE_EDGES)[number];
 
+/**
+ * How a road file's barrier draws (its optional `look`; playtest 3, "Golden Gate"): render only,
+ * the barrier's `kind` still decides what it stops. `railing`: a bridge railing, which on a `wall`
+ * looks open but stops tumble bodies like any wall.
+ */
+export const BARRIER_LOOKS = ['railing'] as const;
+export type BarrierLook = (typeof BARRIER_LOOKS)[number];
+
 /** What divides the two directions of a road with a median: paint, a kerbed island, grass or a barrier. */
 export const MEDIAN_KINDS = ['paint', 'kerb', 'grass', 'barrier'] as const;
 export type MedianKind = (typeof MEDIAN_KINDS)[number];

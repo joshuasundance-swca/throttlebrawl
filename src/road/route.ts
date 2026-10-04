@@ -28,6 +28,11 @@ export interface RouteBranch {
   marked: boolean;
   /** The sign at the split, or null. */
   sign: string | null;
+  /**
+   * The share of rivals that take it, 0 to 1, as the route file names it (playtest 3), or null: the
+   * AI's own rule decides.
+   */
+  aiTake: number | null;
   /** What it is made of: the surface of its longest road (`dirt` for a marked dirt shortcut). */
   surface: RoadSurface;
   /** Its edges (connectors included), in the order reached from the split. */
@@ -300,6 +305,7 @@ function routeBranches(
       kind: n?.b.kind ?? kindOf(zone.gainM),
       marked: n?.b.marked ?? true,
       sign: n?.b.sign ?? null,
+      aiTake: n?.b.aiTake ?? null,
       surface: surfaceOf(edges),
       edges,
       choice: zone,
@@ -315,6 +321,7 @@ function routeBranches(
       kind: n.b.kind ?? 'alternate',
       marked: n.b.marked ?? true,
       sign: n.b.sign ?? null,
+      aiTake: n.b.aiTake ?? null,
       surface: surfaceOf(edges),
       edges,
       choice: null,

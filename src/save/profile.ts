@@ -10,7 +10,7 @@
 // newer than the build refused and kept. Every version ships a golden fixture in
 // tests/fixtures/save/ that CI migrates to the current version. Fields this build does not know
 // are carried through load and save untouched, as the settings do. DOM-free.
-import { checkHeader, wrapRecord, type VersionedRecord } from '../core';
+import { checkHeader, MAX_SEASON, wrapRecord, type VersionedRecord } from '../core';
 import type { StorageLike } from './index';
 
 export const PROFILE_FORMAT = 'profile';
@@ -52,6 +52,26 @@ export interface EventResult {
   /** The build and the time it was played. */
   build: string;
   at: string;
+  /**
+   * The season it was played in (playtest 3), 2 to MAX_SEASON; absent means Season 1, so a Season
+   * 1 result is written exactly as before.
+   */
+  season?: number;
+}
+
+/**
+ * A finished career kept as a backup code when the player starts a new one (playtest 3, round 3:
+ * "a 'New career' button that keeps the old save as a backup code"): the export code
+ * (save/export-code.ts) of the profile as it was, without its own `careerBackups`, so backups
+ * never nest. Importing the code restores that career.
+ */
+export interface CareerBackup {
+  /** The export code, `EC1.` and at most MAX_BACKUP_CODE_CHARS characters. */
+  code: string;
+  /** When it was kept (ISO time), '' when unknown. */
+  at: string;
+  /** The season that career had reached. */
+  season: number;
 }
 
 /**
@@ -111,9 +131,27 @@ export interface Profile {
    * `paintsOwned`: a record without it has none, and the version stays 1.
    */
   receipts: Receipt[];
+  /**
+   * The season (playtest 3, round 2: "Longer + seasons": "Season 2+ with a harder field and
+   * remixed events, the garage carried over"), 1 to MAX_SEASON. Additive: a record without it is
+   * in Season 1, and the version stays 1.
+   */
+  season: number;
+  /**
+   * The season's remix seed, a uint32 drawn when the season starts (0 in Season 1, which is never
+   * remixed): the same profile always remixes the same way.
+   */
+  seasonSeed: number;
+  /** Careers kept when the player started a new one, oldest first, at most MAX_CAREER_BACKUPS. */
+  careerBackups: CareerBackup[];
 }
 
+export { MAX_SEASON };
 export const MAX_HISTORY = 200;
+/** Careers kept as backup codes (the oldest drops off). */
+export const MAX_CAREER_BACKUPS = 3;
+/** The longest backup code kept, characters (a long finished career's plain code is far shorter). */
+export const MAX_BACKUP_CODE_CHARS = 200_000;
 export const MAX_IDS = 500;
 export const CASH_MAX = 1_000_000_000;
 export const MAX_RECEIPTS = 24;
@@ -128,6 +166,9 @@ export const DEFAULT_PROFILE: Readonly<Profile> = {
   paintsOwned: [],
   oncePerCareer: [],
   receipts: [],
+  season: 1,
+  seasonSeed: 0,
+  careerBackups: [],
 };
 
 export function emptyRegion(): RegionProgress {
@@ -194,6 +235,31 @@ function result(v: unknown): EventResult | null {
     takedowns: int(r['takedowns'], 0, 999, 0),
     build: text(r['build'], 64),
     at: text(r['at'], 40),
+    ...seasonField(r['season']),
+  };
+}
+
+/** A result's season: written only for Season 2 on, so Season 1 results stay as they were. */
+function seasonField(v: unknown): { season?: number } {
+  const s = int(v, 1, MAX_SEASON, 1);
+  return s > 1 ? { season: s } : {};
+}
+
+/** A season's remix seed: a uint32, else 0. */
+function uint32(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 0xffffffff ? v : 0;
+}
+
+function careerBackup(v: unknown): CareerBackup | null {
+  const r = obj(v);
+  const code = r['code'];
+  if (typeof code !== 'string' || !code.startsWith('EC1.') || code.length > MAX_BACKUP_CODE_CHARS)
+    return null;
+  const at = r['at'];
+  return {
+    code,
+    at: typeof at === 'string' && at.length <= 40 ? at : '',
+    season: int(r['season'], 1, MAX_SEASON, 1),
   };
 }
 
@@ -264,6 +330,12 @@ export function sanitiseProfile(data: unknown): Profile {
       .map(receipt)
       .filter((r): r is Receipt => r !== null)
       .slice(-MAX_RECEIPTS),
+    season: int(d['season'], 1, MAX_SEASON, 1),
+    seasonSeed: uint32(d['seasonSeed']),
+    careerBackups: (Array.isArray(d['careerBackups']) ? d['careerBackups'] : [])
+      .map(careerBackup)
+      .filter((b): b is CareerBackup => b !== null)
+      .slice(-MAX_CAREER_BACKUPS),
   };
 }
 

@@ -60,7 +60,16 @@ export type {
   RouteSource,
   TrackSource,
 } from './compile';
-export { RAMP_TRUCK_DEFAULTS, rampTruckShape, readConnector } from './types';
+export {
+  GAP_DEFAULTS,
+  GAP_RESPAWNS,
+  gapParams,
+  LANDMARK_DEFAULTS,
+  landmarkParams,
+  RAMP_TRUCK_DEFAULTS,
+  rampTruckShape,
+  readConnector,
+} from './types';
 export type {
   BakedBarrier,
   BakedConnector,
@@ -80,4 +89,7 @@ export type {
   BakedTag,
   BakedVerge,
   FeatureKind,
+  GapParams,
+  GapRespawn,
+  LandmarkParams,
 } from './types';
