@@ -65,7 +65,13 @@ describe('the career map screen', () => {
     );
     expect(card('drawbridge')?.kindLabel).toBe('Boss');
     expect(card('sunburn-hunt')?.reason).toBe('Win The Shakedown first.');
-    expect(card('deputy-dash')?.reason).toBe('Win 2 more in Tourist Season.');
+    // A card in a closed tier says how many wins the tier before still needs, by that tier's name,
+    // and names its boss when it has one (the exact count and boss are the pack's, not this test's).
+    const keys = careerOf(DEFS, 'florida-keys');
+    const before = keys?.tiers[0]?.name ?? '';
+    expect(card('deputy-dash')?.reason).toMatch(
+      new RegExp(`^Win \\d+ more in ${before}(, then beat .+)?\\.$`),
+    );
     expect(card('shakedown')?.route).toBe('Marina Run to Sandbar Causeway');
   });
 
