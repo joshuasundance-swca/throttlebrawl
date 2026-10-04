@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -23,15 +23,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const region = path.join(root, 'packs/base/regions/florida-keys');
 const read = (dir: string, id: string): unknown =>
   JSON.parse(readFileSync(path.join(region, dir, `${id}.json`), 'utf8')) as unknown;
-/** The region items named by board slots on the region's real-road (`osm-*`) roads. */
-const realRoadBoardItems = (dir: string): Set<string> =>
-  new Set(
-    readdirSync(path.join(dir, 'roads'))
-      .filter((f) => f.startsWith('osm-') && f.endsWith('.json'))
-      .flatMap((f) => (JSON.parse(readFileSync(path.join(dir, 'roads', f), 'utf8')) as BakedRoad).features)
-      .flatMap((f) => (f?.kind === 'billboard' && f.item ? [f.item] : [])),
-  );
-
 const compiled = compileTrack(KEYS_M1);
 const network = read('networks', 'keys-m1') as BakedNetwork;
 const roads = network.roads.map((id) => read('roads', id) as BakedRoad);
@@ -61,12 +52,9 @@ describe('tools/road: the baked M1 track', () => {
     console.log(
       `M1 track: ${roads.map((r) => `${r.id} ${r.lengthM.toFixed(1)} m`).join(', ')}; route ${progress.length.toFixed(1)} m`,
     );
-    // road-2: four main roads and two connector roads on the main path, and the shortcut's three;
-    // road-3: five more main roads past the Sandbar Causeway; run W-R: the sandbar's two connectors
-    // on the main path past the short route's finish, and its three roads; run W-U: the Mangrove
-    // Cut in five (two more roads and the boardwalk's two connectors), the boardwalk's three roads,
-    // the sandbar in five (two more roads and two connectors inside it) and the secret island's three.
-    expect(net.edges.length).toBe(33);
+    // Every road the network lists is an edge (road-2's first nine, then each run's roads and
+    // connectors: road-3, W-R's sandbar, W-U's boardwalk and secret island), however many it lists.
+    expect(net.edges.map((e) => e.id)).toEqual(network.roads);
     expect(progress.mainEdges.map((e) => net.edges[e]?.id)).toEqual([
       'm1-marina-run',
       'c-marina-split-main',
@@ -109,7 +97,7 @@ describe('tools/road: the baked M1 track', () => {
   });
 
   it('playtest 1: travel lanes about 4 m wide (M1 had 3.4 m), with rideable shoulders both sides', () => {
-    let checked = 0;
+    const checked = new Set<number>();
     for (const e of net.edges) {
       const lanes = net.lanesAt(e.index, e.length / 2);
       if (lanes.some((l) => l.kind === 'shortcut')) continue;
@@ -124,10 +112,13 @@ describe('tools/road: the baked M1 track', () => {
       // No gaps: the shoulder starts where the travel lane ends.
       expect(Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2)), e.id).toBeCloseTo(-5.5, 9);
       expect(Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2)), e.id).toBeCloseTo(5.5, 9);
-      checked++;
+      checked.add(e.index);
     }
-    // The long route's main path: eleven roads and six connectors (run W-R, then W-U's boardwalk).
-    expect(checked).toBe(17);
+    // Every road and connector of the longest route's main way was checked (eleven roads and six
+    // connectors today, after run W-R's sandbar and W-U's boardwalk), however many there are.
+    const longest = createRouteProgress(net, routes[routes.length - 1] as BakedRoute);
+    expect(longest.mainEdges.length).toBeGreaterThan(0);
+    for (const e of longest.mainEdges) expect(checked.has(e), net.edges[e]?.id).toBe(true);
   });
 
   it('road-3: three race lengths, short, standard and long, each longer route carrying on from the last', () => {
@@ -187,13 +178,10 @@ describe('tools/road: the baked M1 track', () => {
       `board slots: ${slots.map(({ e, f }) => `${f.id} -> ${f.item} on ${e.id} s ${f.s0}-${f.s1} d ${f.d0}..${f.d1}`).join('; ')}`,
     );
     expect(slots.length).toBeGreaterThanOrEqual(2);
-    // Run W-P (maintainer, 2026-10-01b: "the worlds just feel very empty"): every item has a slot,
-    // so each one can be seen and vetoed in a race, and a new item needs a slot here too. Run W-S: a
-    // junction sign that only makes sense on a real-road network (the Key West Boulevard's) may
-    // stand on that network's roads instead; every item still has a slot somewhere in the region.
-    const realItems = realRoadBoardItems(region);
-    for (const item of realItems) expect(items.has(item), item).toBe(true);
-    expect(new Set([...slots.map(({ f }) => f.item), ...realItems])).toEqual(new Set(items.keys()));
+    // Every item has a slot somewhere in the region (run W-P: each one can be seen and vetoed in a
+    // race), on this track or another of the region's networks (run W-S: a junction sign on the Key
+    // West Boulevard's): tools/road/board-slots-on-land.test.ts checks that over all the region's
+    // roads. Here, each slot of this track names a live item, off the road, on the right lengths.
     expect(new Set(slots.map(({ f }) => f.id)).size).toBe(slots.length);
     for (const { e, f } of slots) {
       // A named item (a stable content reference for the veto), live in the region file.
