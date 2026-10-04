@@ -164,6 +164,32 @@
         }
       ],
       "text": "Forty years. Nobody ever asked us a thing."
+    },
+    {
+      "id": "sf-ev-moving-ramp-pivot",
+      "trigger": "modifier-start",
+      "speaker": "pivot",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-moving-ramp"
+        }
+      ],
+      "text": "We pivoted from cars to ramps. Disrupt."
+    },
+    {
+      "id": "sf-ev-moving-ramp-gus",
+      "trigger": "modifier-start",
+      "speaker": "gripman-gus",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "region-sf:sf-moving-ramp"
+        }
+      ],
+      "text": "Truck's got a ramp. I've got a bell."
     }
   ],
   "meta": {

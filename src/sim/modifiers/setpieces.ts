@@ -49,6 +49,16 @@
 //   road through the pedestrian system (a gator crossing for the Keys' vote).
 // - Any piece may carry `serial`: one joke over four small signs, punchline last.
 // Each moving piece's moment fires `setPieceBeat` (a bell, a bark).
+//
+// Playtest 3 (the maintainer, 2026-10-03: "The ramp trucks could be in motion"):
+// - moving-ramp: a car carrier (`vehicle`, a tow truck's size) drives ahead in the outermost
+//   route-forward lane at its cruise speed, on a straight stretch kept clear of bridges and walls.
+//   Until a racer is within `MOVING.rampDropM` behind it, it is an ordinary big vehicle. Then its ramp
+//   comes down (`setPieceBeat` `rampDown`) and, until the piece ends, its box is a moving deck: each
+//   tick the piece publishes it in the `decks` registry (SimMovingDeck, `publishDecks` below), the
+//   riders ride up it and jump off its lip like a parked ramp truck's but at the speed relative to
+//   it (sim/riders/features.ts), and traffic leaves contacts with it to the riders. The faster a
+//   racer catches it, the bigger the air; one barely faster than the truck meets its body.
 import { atan2, clamp, cos, nextFloat, sin, type EntityId } from '../../core';
 import type { EdgeLink, RoadPos } from '../../road';
 import { addHeat, CHAOS_MEMORY_TICKS, COP_CHASING, COP_PARKED, copsState, HEAT } from '../cops';
@@ -57,13 +67,23 @@ import { riderState } from '../riders';
 import { slopeAt, startFlight } from '../riders/air';
 import { placeVehicle, toCorridor, trafficState, type Corridor } from '../traffic';
 import { fromCorridor, lanesAt } from '../traffic/corridor';
-import type { PropKind, PropSnapshot, SimConfig, SimModifierDef, SimModifierEffect } from '../types';
+import {
+  MOVING_DECKS_KEY,
+  type PropKind,
+  type PropSnapshot,
+  type SimConfig,
+  type SimModifierDef,
+  type SimModifierEffect,
+  type SimMovingDeck,
+  type SimMovingDecks,
+} from '../types';
 import { emit, speedMultiplierOf, systemState, type Mover, type World } from '../world';
 import {
   gantrySpan,
   hopVy,
   logTargetCd,
   MOVING,
+  movingDeckOf,
   rollStep,
   serialLeads,
   slideStep,
@@ -83,6 +103,7 @@ export const SET_PIECES = [
   'cable-runaway',
   'lane-vote',
   'animal-crossing',
+  'moving-ramp',
 ] as const;
 export type SetPieceName = (typeof SET_PIECES)[number];
 
@@ -360,6 +381,8 @@ function pieceLength(piece: string, floats: number): number {
       return 60;
     case 'cable-runaway':
       return 150;
+    case 'moving-ramp':
+      return MOVING.rampReachM;
     case 'animal-crossing':
       return 10 + MOVING.animals * MOVING.animalGapM;
     default:
@@ -420,6 +443,21 @@ function stretchOk(
       if (f.s0 > pos.s + 25) break;
       if (AVOID_FEATURES.has(f.kind) && pos.s >= f.s0 - 25 && pos.s <= f.s1 + 25) return false;
     }
+  }
+  return true;
+}
+
+/**
+ * Whether the moving ramp truck's stretch [u, u + len] is straight enough to land on, |kappa| at
+ * most `MOVING.rampMaxKappa` (a flight follows most of a bend, but a tight one would send it off
+ * the road): the jump it gives comes down on the stretch ahead of the truck.
+ */
+function straightEnough(config: SimConfig, c: Corridor, u: number, len: number): boolean {
+  const dir = c.routeDir;
+  const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  for (let a = 0; a <= len; a += 10) {
+    fromCorridor(c, u + dir * a, 0, dir, pos);
+    if (Math.abs(config.road.kappaAt(pos.edge, pos.s)) > MOVING.rampMaxKappa) return false;
   }
   return true;
 }
@@ -538,6 +576,7 @@ export function initSetPieces(world: World, config: SimConfig): void {
         const p = lo + (Math.max(lo, hi) - lo) * nextFloat(rng);
         const u = st.u0 + c.routeDir * p * st.routeLen;
         if (!roomFor(st, bypassed, u, len, lead) || !stretchOk(config, c, u, len, lead, tag)) continue;
+        if (piece === 'moving-ramp' && !straightEnough(config, c, u, len)) continue;
         if (downhill > 0 && t < SET_PIECE.placeTries / 2 && routeGrade(config, c, u, len) > -downhill)
           continue;
         const placed = newPiece(config, c, mi, ei, piece, u, len, lead);
@@ -721,7 +760,8 @@ function addProp(
 
 /**
  * Places a vehicle `along` metres route-forward of the piece's start; its entity id, or -1. A
- * parked one stands on the verge, its inner side just outside the drivable width.
+ * parked one stands on the verge, its inner side just outside the drivable width. A moving one
+ * takes the route-forward lane of `rank` (0 the innermost; a rank past the last is the outermost).
  */
 function placeOn(
   world: World,
@@ -731,6 +771,7 @@ function placeOn(
   contentId: string,
   along: number,
   moving: boolean,
+  rank = 0,
 ): number {
   const type = typeIndex(config, contentId);
   if (type < 0) return -1;
@@ -738,7 +779,7 @@ function placeOn(
   const v0 = moving ? (t && t.cruiseMps > 0 ? t.cruiseMps : SET_PIECE.hayTruckMps) : 0;
   const dir = c.routeDir === 1 ? 1 : -1;
   const tr = trafficState(world);
-  const slot = placeVehicle(world, config, { type, u: p.u + dir * along, dir, rank: 0, v0, speed: v0 });
+  const slot = placeVehicle(world, config, { type, u: p.u + dir * along, dir, rank, v0, speed: v0 });
   const id = tr.id[slot] ?? -1;
   if (id >= 0) {
     p.vehicles.push(id);
@@ -948,6 +989,7 @@ function goLive(world: World, config: SimConfig, st: SetPieceState, index: numbe
     case 'boat-slide':
     case 'log-spill':
     case 'cable-runaway':
+    case 'moving-ramp':
       // #391: their vehicles go on the road as the leading racer nears (keepVehicle), not now: from
       // here they would stand past traffic's keep-alive range, and traffic would take them.
       break;
@@ -1100,6 +1142,7 @@ const MOVER_ALONG: Readonly<Record<string, number>> = {
   'boat-slide': 40,
   'log-spill': 20,
   'cable-runaway': 120,
+  'moving-ramp': 40,
 };
 const moverIndex = (p: SetPiece) => (p.piece === 'boat-slide' ? 1 : 0);
 
@@ -1179,6 +1222,11 @@ function placeMover(world: World, config: SimConfig, c: Corridor, p: SetPiece, a
       // Climbing its street ahead, at a cable car's crawl.
       placeOn(world, config, c, p, str(e, 'vehicle', ''), along, true);
       break;
+    case 'moving-ramp':
+      // Driving in the outermost forward lane, so the faster lanes stay free for anyone who would
+      // rather pass it than ride it.
+      placeOn(world, config, c, p, str(e, 'vehicle', ''), along, true, Number.MAX_SAFE_INTEGER);
+      break;
     default:
       break;
   }
@@ -1186,13 +1234,14 @@ function placeMover(world: World, config: SimConfig, c: Corridor, p: SetPiece, a
 
 /**
  * How far route-forward of its start a moving piece reaches while the field has yet to meet it, m:
- * its vehicle (the tow, the log truck, the cable car) until its beat, and the log truck until it has
- * shed every log. 0 for the other pieces.
+ * its vehicle (the tow, the log truck, the cable car) until its beat, the log truck until it has
+ * shed every log, and the ramp truck for as long as the piece lasts (its ramp is down from the beat
+ * on, and the field still has to pass it). 0 for the other pieces.
  */
 function moverReach(world: World, config: SimConfig, p: SetPiece): number {
   if (MOVER_ALONG[p.piece] === undefined) return 0;
   const logs = Math.round(num(effectOf(config, p) ?? { kind: '' }, 'logs', MOVING.logs));
-  if (p.beat !== 0 && !(p.piece === 'log-spill' && p.dropped < logs)) return 0;
+  if (p.beat !== 0 && p.piece !== 'moving-ramp' && !(p.piece === 'log-spill' && p.dropped < logs)) return 0;
   const slot = stillOurs(world, p, 0);
   const tr = trafficState(world);
   return slot < 0 ? 0 : tr.corridor.routeDir * ((tr.u[slot] ?? p.u) - p.u);
@@ -1238,9 +1287,82 @@ export function stepSetPieces(world: World, config: SimConfig, over: boolean): v
     if (p.piece === 'boat-slide') stepBoat(world, config, p, racers, dt);
     if (p.piece === 'log-spill') stepLogTruck(world, config, st, p, i, racers);
     if (p.piece === 'cable-runaway') stepCable(world, config, p, racers, dt);
+    if (p.piece === 'moving-ramp') stepRamp(world, config, p, racers);
     if (p.piece === 'lane-vote') stepVote(world, config, st, p, i, racers, dt);
   });
   stepProps(world, config, st, riders, dt);
+  publishDecks(world, config, st);
+}
+
+/**
+ * The moving ramp truck: until a racer is within `rampDropM` behind it, it is an ordinary big vehicle;
+ * then its ramp comes down (`setPieceBeat` `rampDown`, the truck as the actor), for good.
+ */
+function stepRamp(world: World, config: SimConfig, p: SetPiece, racers: readonly RiderAt[]): void {
+  if (p.beat !== 0) return;
+  const tr = trafficState(world);
+  const slot = stillOurs(world, p, 0);
+  if (slot < 0) return;
+  const dir = tr.corridor.routeDir;
+  const u = tr.u[slot] ?? 0;
+  const close = racers.some((r) => {
+    const behind = dir * (u - r.u);
+    return behind > 0 && behind < MOVING.rampDropM;
+  });
+  if (close) beat(world, config, p, 'rampDown', tr.id[slot] ?? -1);
+}
+
+/**
+ * Publishes the moving decks (SimMovingDeck) for the tick the riders will step next: each ramp
+ * truck whose ramp is down, where it stands now. Where its box crosses the join of two roads it is
+ * on both, one entry for each edge (its rear, middle and front are mapped through the traffic
+ * corridor), so a rider on either road meets the same deck. The registry is created with the first
+ * deck and never otherwise, so a race with no moving ramp hashes as before; traffic skips contacts
+ * with a vehicle named in it, and the riders ride it (sim/riders/features.ts).
+ */
+function publishDecks(world: World, config: SimConfig, st: SetPieceState): void {
+  const live: SimMovingDeck[] = [];
+  for (const p of st.pieces) {
+    if (p.piece !== 'moving-ramp' || p.phase !== 1 || p.beat !== 1) continue;
+    const tr = trafficState(world);
+    const slot = stillOurs(world, p, 0);
+    const id = slot < 0 ? -1 : (tr.id[slot] ?? -1);
+    const mover = world.movers[id];
+    const t = config.trafficTypes[p.vehicleTypes[0] ?? -1];
+    if (slot < 0 || !mover || !t) continue;
+    const e = effectOf(config, p);
+    const run = e ? num(e, 'rampLengthM', MOVING.rampRunM) : MOVING.rampRunM;
+    const lip = e ? num(e, 'lipHeightM', run * MOVING.rampSlope) : run * MOVING.rampSlope;
+    // Rear, middle and front of its box along its travel, as corridor u and as road positions.
+    const dir = tr.dir[slot] ?? 1;
+    const rearU = (tr.u[slot] ?? 0) - (dir * t.lengthM) / 2;
+    const pos: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+    const edges = new Set<number>();
+    for (const along of [0, t.lengthM / 2, t.lengthM]) {
+      fromCorridor(tr.corridor, rearU + dir * along, tr.cd[slot] ?? 0, dir, pos);
+      if (edges.has(pos.edge)) continue;
+      edges.add(pos.edge);
+      live.push(
+        movingDeckOf(
+          {
+            vehicle: id,
+            edge: pos.edge,
+            foot: pos.s - pos.dir * along,
+            dir: pos.dir,
+            d: pos.d,
+            speedMps: mover.speed,
+            lengthM: t.lengthM,
+            widthM: t.widthM,
+          },
+          run,
+          lip,
+        ),
+      );
+    }
+  }
+  const registry = world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined;
+  if (registry) registry.live = live;
+  else if (live.length > 0) systemState<SimMovingDecks>(world, MOVING_DECKS_KEY, () => ({ live }));
 }
 
 /**

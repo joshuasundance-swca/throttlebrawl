@@ -8,8 +8,13 @@
 //   is a hop;
 // - the cable car runaway: it loses its grip and rolls back down its cable street at you;
 // - the lane vote: a gantry splits two events, and the side a rider passes under picks one.
+// - the moving ramp truck (playtest 3: "the ramp trucks could be in motion"): a car carrier driving
+//   ahead whose ramp comes down as the field closes in; its deck is its own box, published for the
+//   riders as a SimMovingDeck.
 // [default] every number, to be tuned on the phone.
 import { clamp } from '../../core';
+import { RAMP_TRUCK_DEFAULTS } from '../../road';
+import type { SimMovingDeck } from '../types';
 
 export const MOVING = {
   /** Serial signs: metres between them, and how far out they start when a warning sign stays. */
@@ -76,7 +81,72 @@ export const MOVING = {
   // ---- the animal crossing
   animals: 4,
   animalGapM: 9,
+  // ---- the moving ramp truck
+  /**
+   * Its ramp comes down (`setPieceBeat` `rampDown`) once a racer is this close behind it, m: seconds
+   * before anyone reaches the foot, even at a bike's top speed.
+   */
+  rampDropM: 200,
+  /**
+   * Its ramp's run, m, and the slope it rises at: the parked truck's 13.7° (RAMP_TRUCK_DEFAULTS),
+   * which is also the steepest the riders' kerb rule lets the quickest bike ride onto. The carrier is
+   * a 7.5 m tow truck, the longest vehicle every region's race may add: the rival AI sizes every
+   * vehicle by the largest in the race, so it cannot be the parked truck's 22 m.
+   */
+  rampRunM: 5,
+  rampSlope: RAMP_TRUCK_DEFAULTS.lipHeightM / RAMP_TRUCK_DEFAULTS.rampLengthM,
+  /** The least of its body past the lip, m (the cab and what it carries). */
+  minBodyM: 0.5,
+  /**
+   * The sharpest bend its stretch may have, 1/m (a 120 m radius): a flight follows most of a bend
+   * (`riders.airCarve`), so this keeps its jump on the road without leaving the Pacific Northwest's
+   * winding roads with no stretch at all (at 1/250, only 22 of its 54 event and route pairings had one).
+   */
+  rampMaxKappa: 1 / 120,
+  /** How far route-forward of its start the stretch is kept clear of walls and bends, m. */
+  rampReachM: 450,
 };
+
+/**
+ * A carrier on the road, as the set piece reads it from traffic: how big it is, and where its rear
+ * is on one road edge (its `foot`, s on that edge, the box running `lengthM` on from it along `dir`).
+ * The same carrier is on two edges at once while it crosses where they join, one entry for each.
+ */
+export interface DeckVehicle {
+  /** Its entity id. */
+  vehicle: number;
+  edge: number;
+  foot: number;
+  dir: 1 | -1;
+  /** Where its middle is across that edge (d). */
+  d: number;
+  speedMps: number;
+  lengthM: number;
+  widthM: number;
+}
+
+/**
+ * The moving deck a carrier gives the riders on one edge (SimMovingDeck): its box is the deck, the
+ * ramp's foot at its rear and the body to its front, `widthM` across. `runM` is the ramp's run and
+ * `lipM` its lip (the slope is kept when a short box shortens the run, and a box leaves at least
+ * `minBodyM` of body). The foot may lie off the edge's ends: the deck is the same box across a join.
+ */
+export function movingDeckOf(v: DeckVehicle, runM: number = MOVING.rampRunM, lipM?: number): SimMovingDeck {
+  const slope = lipM !== undefined && runM > 0 ? lipM / runM : MOVING.rampSlope;
+  const run = Math.max(0.1, Math.min(runM, v.lengthM - MOVING.minBodyM));
+  return {
+    vehicle: v.vehicle,
+    edge: v.edge,
+    s0: v.foot,
+    dir: v.dir,
+    d0: v.d - v.widthM / 2,
+    d1: v.d + v.widthM / 2,
+    speedMps: v.speedMps,
+    rampLengthM: run,
+    lipHeightM: run * slope,
+    bodyM: v.lengthM - run,
+  };
+}
 
 /**
  * The serial signs' distances ahead of the event, first line first (furthest), punchline last.

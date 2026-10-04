@@ -15,6 +15,13 @@
 //   is a barrier contact. It faces riders travelling toward +s.
 // - Set pieces from the race seed (playtest 1c item 2): a pad or truck with `params.slot` is one
 //   candidate for that slot, there only when the race seed picks it (road/setpieces).
+// - Moving decks (playtest 3, "the ramp trucks could be in motion"): a truck with its ramp down that
+//   drives on (sim/modifiers' moving-ramp piece) publishes a SimMovingDeck each tick. `movingDecks`
+//   turns the registry into the same box a parked truck is, at two moments of the tick: `now`, where
+//   the trucks stand as the tick starts, for the rider's old position, and `next`, one step on, for
+//   the position it moves to. A rider then rides up a deck exactly as it rides up a parked ramp, but
+//   its climb is the RELATIVE speed times the slope (the deck under it moves too), so the faster it
+//   catches the truck the bigger its air, and a rider barely faster than the truck meets its body.
 import {
   chooseSetPieces,
   RAMP_TRUCK_DEFAULTS,
@@ -22,7 +29,8 @@ import {
   setPieceActive,
   type BakedFeature,
 } from '../../road';
-import type { SimConfig } from '../types';
+import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDeck, type SimMovingDecks } from '../types';
+import type { World } from '../world';
 
 /** A boostPad's defaults: speed added (m/s) and how long the boost lasts (s). */
 export const BOOST_DEFAULT_MPS = 8;
@@ -78,10 +86,75 @@ export function boostOf(f: BakedFeature): { mps: number; holdS: number } {
   return { mps: num(f, 'boostMps', BOOST_DEFAULT_MPS), holdS: num(f, 'holdS', BOOST_DEFAULT_HOLD_S) };
 }
 
-/** Where a rampTruck's body starts (the top-deck car's rear), in s. */
-function bodyStartOf(f: BakedFeature): number {
+/** The moving decks this tick, as parked-truck boxes (see the header). */
+export interface MovingDecks {
+  /** Where each stands as the tick starts. */
+  readonly now: readonly BakedFeature[];
+  /** Where each stands as the tick ends: one step of its travel on. */
+  readonly next: readonly BakedFeature[];
+}
+
+/** No moving decks: nearly every race, every tick. */
+export const NO_DECKS: MovingDecks = { now: [], next: [] };
+
+/** A moving deck as a parked truck's box, its foot `after` seconds on from where the registry has it. */
+function deckFeature(d: SimMovingDeck, after: number): BakedFeature {
+  const foot = d.s0 + d.dir * d.speedMps * after;
+  const total = d.rampLengthM + d.bodyM;
+  return {
+    kind: 'rampTruck',
+    id: `moving:${d.vehicle}`,
+    s0: d.dir === 1 ? foot : foot - total,
+    s1: d.dir === 1 ? foot + total : foot,
+    d0: Math.min(d.d0, d.d1),
+    d1: Math.max(d.d0, d.d1),
+    params: {
+      rampLengthM: d.rampLengthM,
+      lipHeightM: d.lipHeightM,
+      moving: true,
+      edge: d.edge,
+      facing: d.dir,
+      speedMps: d.speedMps,
+    },
+  };
+}
+
+/**
+ * The moving decks the riding model reads this tick: the registry sim/modifiers published at the end
+ * of the last one (`systemState(world, MOVING_DECKS_KEY)`), at `now` and one `dt` on. The same
+ * boxes (and so the same identities) serve every query of one rider's step.
+ */
+export function movingDecks(world: World, dt: number): MovingDecks {
+  const live = (world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live;
+  if (!live || live.length === 0) return NO_DECKS;
+  return { now: live.map((d) => deckFeature(d, 0)), next: live.map((d) => deckFeature(d, dt)) };
+}
+
+/** The way a truck faces along its edge: 1 toward increasing s (every parked truck), or a moving one's travel. */
+function facingOf(f: BakedFeature): 1 | -1 {
+  return f.params?.['facing'] === -1 ? -1 : 1;
+}
+
+/** How far along a truck from its ramp's foot the point s is, m (negative behind the foot). */
+function intoOf(f: BakedFeature, s: number): number {
+  return facingOf(f) === -1 ? f.s1 - s : s - f.s0;
+}
+
+/** A truck's speed along its edge, m/s (0 for a parked one). */
+function truckSpeedOf(f: BakedFeature): number {
+  const v = f.params?.['speedMps'];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/** Whether a moving deck stands on the edge (a parked truck is on its own edge's feature list). */
+function onEdge(f: BakedFeature, edge: number): boolean {
+  return f.params?.['edge'] === edge;
+}
+
+/** How far along a truck its body starts (the top-deck car's rear), from its ramp's foot, m. */
+function bodyIntoOf(f: BakedFeature): number {
   const { run } = rampTruckShape(f);
-  return f.s0 + run + (TRUCK_PLATFORM_M * run) / RAMP_TRUCK_LENGTH_M;
+  return run + (TRUCK_PLATFORM_M * run) / RAMP_TRUCK_LENGTH_M;
 }
 
 /** The top of a rampTruck's body above the road: the top-deck car's roof. */
@@ -96,43 +169,57 @@ export function truckBodyTop(f: BakedFeature): number {
  */
 function deckOf(f: BakedFeature, s: number): number {
   const { run, lip } = rampTruckShape(f);
-  const into = s - f.s0;
+  const into = intoOf(f, s);
   if (into < run) return (lip * into) / run;
-  return s < bodyStartOf(f) ? lip : truckBodyTop(f);
+  return into < bodyIntoOf(f) ? lip : truckBodyTop(f);
 }
 
 /**
  * Height of a ramp truck above the road at (edge, s, d); 0 off every truck. Over a truck's body it
  * is the body's top; with `bodies: false` the body counts as 0 (what an airborne rider may land on).
+ * `moving` is the tick's moving decks (`movingDecks`), checked beside the edge's parked trucks.
  */
 export function deckHeight(
   config: SimConfig,
   edge: number,
   s: number,
   d: number,
-  opts: { bodies?: boolean } = {},
+  opts: { bodies?: boolean; moving?: readonly BakedFeature[] } = {},
 ): number {
   const features = config.road.edges[edge]?.features ?? [];
   let h = 0;
   for (const f of features) {
     if (f.s0 > s) break;
     if (f.kind !== 'rampTruck' || s > f.s1 || d < f.d0 || d > f.d1 || !present(config, f)) continue;
-    if (opts.bodies === false && s >= bodyStartOf(f)) continue;
+    if (opts.bodies === false && intoOf(f, s) >= bodyIntoOf(f)) continue;
+    const deck = deckOf(f, s);
+    if (deck > h) h = deck;
+  }
+  for (const f of opts.moving ?? []) {
+    if (!onEdge(f, edge) || s < f.s0 || s > f.s1 || d < f.d0 || d > f.d1) continue;
+    if (opts.bodies === false && intoOf(f, s) >= bodyIntoOf(f)) continue;
     const deck = deckOf(f, s);
     if (deck > h) h = deck;
   }
   return h;
 }
 
-/** The rampTruck whose body holds (s, d), or null. */
-export function truckBodyAt(config: SimConfig, edge: number, s: number, d: number): BakedFeature | null {
-  const f = rampTruckAt(config, edge, s, d);
-  return f && s >= bodyStartOf(f) ? f : null;
+/** The rampTruck (or moving deck, from `moving`) whose body holds (s, d), or null. */
+export function truckBodyAt(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  d: number,
+  moving: readonly BakedFeature[] = [],
+): BakedFeature | null {
+  const f = rampTruckAt(config, edge, s, d, moving);
+  return f && intoOf(f, s) >= bodyIntoOf(f) ? f : null;
 }
 
 /**
  * The slowest a rider can leave a rampTruck's lip and clear its body, landing on the road past its
  * front (s1): v² = g·x² / (2·cos²θ·(lip + x·tanθ)), x from the lip to the front, θ the ramp's angle.
+ * For a moving deck this is the speed over the deck, in the truck's own frame (see `clearsBody`).
  */
 export function truckClearMps(f: BakedFeature, gravity: number): number {
   const { run, lip } = rampTruckShape(f);
@@ -140,6 +227,30 @@ export function truckClearMps(f: BakedFeature, gravity: number): number {
   const tan = lip / run;
   const cos2 = 1 / (1 + tan * tan);
   return Math.sqrt((gravity * x * x) / (2 * cos2 * (lip + x * tan)));
+}
+
+/** The truck's speed along a rider's heading `dir`, m/s: negative when they meet head on. */
+function truckAlong(f: BakedFeature, dir: 1 | -1): number {
+  return truckSpeedOf(f) * facingOf(f) * dir;
+}
+
+/**
+ * Whether a rider going `speed` along its heading `dir` (along the edge) is fast enough over a truck
+ * to clear its body. A parked truck wants `truckClearMps`; a moving one wants that much more than
+ * the truck's own speed along the rider's heading, so a rider barely faster than the truck, or one
+ * riding into its front, never clears it.
+ */
+export function clearsBody(f: BakedFeature, speed: number, dir: 1 | -1, gravity: number): boolean {
+  const along = truckAlong(f, dir);
+  return along >= 0 && speed - along >= truckClearMps(f, gravity);
+}
+
+/**
+ * How fast a rider closes on a truck along its heading, m/s: the whole speed for a parked truck, the
+ * speed relative to it for a moving one. The impact a collision with its body carries.
+ */
+export function truckClosingMps(f: BakedFeature, speed: number, dir: 1 | -1): number {
+  return Math.max(0, speed - truckAlong(f, dir));
 }
 
 /**
@@ -188,12 +299,21 @@ export function solidHazardAt(config: SimConfig, edge: number, s: number, d: num
   return null;
 }
 
-/** The rampTruck whose box holds (s, d), or null. */
-export function rampTruckAt(config: SimConfig, edge: number, s: number, d: number): BakedFeature | null {
+/** The rampTruck (or moving deck, from `moving`) whose box holds (s, d), or null. */
+export function rampTruckAt(
+  config: SimConfig,
+  edge: number,
+  s: number,
+  d: number,
+  moving: readonly BakedFeature[] = [],
+): BakedFeature | null {
   const features = config.road.edges[edge]?.features ?? [];
   for (const f of features) {
     if (f.s0 > s) break;
     if (f.kind === 'rampTruck' && s <= f.s1 && d >= f.d0 && d <= f.d1 && present(config, f)) return f;
+  }
+  for (const f of moving) {
+    if (onEdge(f, edge) && s >= f.s0 && s <= f.s1 && d >= f.d0 && d <= f.d1) return f;
   }
   return null;
 }

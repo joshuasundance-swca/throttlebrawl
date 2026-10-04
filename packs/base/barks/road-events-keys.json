@@ -229,6 +229,32 @@
         }
       ],
       "text": "Polls are open. Make it content."
+    },
+    {
+      "id": "keys-ev-moving-ramp-kevin",
+      "trigger": "modifier-start",
+      "speaker": "kevin-from-accounting",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-moving-ramp"
+        }
+      ],
+      "text": "Per my last email: don't ride the truck."
+    },
+    {
+      "id": "keys-ev-moving-ramp-chad",
+      "trigger": "modifier-start",
+      "speaker": "chad-speedwell",
+      "when": [
+        {
+          "fact": "modifier.id",
+          "op": "eq",
+          "value": "base:keys-moving-ramp"
+        }
+      ],
+      "text": "Moving ramp. Obviously I'm filming this."
     }
   ],
   "meta": {

@@ -1,0 +1,11 @@
+---
+kind: new
+audience: player
+---
+The ramp trucks are in motion (playtest 3: "The ramp trucks could be in motion"). Now and then a car carrier drives ahead of you in the outer lane, and once you are 200 m behind it, its ramp comes down. Catch it from behind and ride up the ramp: you leave its lip and fly. The faster you catch it, the bigger the air. Catch it barely faster than it drives and you meet its body instead, and you crash. The parked ramp trucks stay as they were.
+
+- The Keys, the Pacific Northwest and San Francisco each have one, with its own four signs ahead of it ("WIDE LOAD / NARROW LANE / NARROWER MARGIN / FOR ERROR" in the Keys), a bark from two rivals, and its own name and paint. It turns up on a straight stretch with no walls or bridge, 450 m of it, and only in races whose route has one. It drives at 20 m/s and is an ordinary big vehicle, as solid as any truck, until its ramp is down.
+- It is the size of a tow truck, 7.5 m, with a 5 m ramp at the parked truck's slope, not the parked truck's 22 m. The rival AI sizes every vehicle by the largest in the race, so a longer carrier would have changed how every rival rides around every car in a region.
+- A rider meets its ramp as it would a parked one, at the speed relative to the truck: where the rider is now is tested against the truck as the tick starts, and where it goes against the truck one tick on. Tested against a truck held still for the whole tick, a 20 m/s catch launches at 9.3 m/s of rise instead of the parked ramp's 4.9. Where its box crosses the join of two roads it is on both, so a rider never passes through it.
+- Two small shared edits ride along, because the contract left them to this lane: `src/sim/riders/index.ts` calls the deck helpers at the places it already looked at a ramp truck, and the three regions' `road-events` bark sets have two lines each for the new event (a test requires them).
+- `docs/architecture.md` ("Jumps, ramps and airtime" and "Event modifiers") and `docs/content-packs.md` ("Event modifiers") describe it. New tests: `src/sim/riders/moving-deck.test.ts`, `src/sim/modifiers/moving.test.ts` (added to) and `tests/sim/events-moving-ramp.test.ts`. The carrier is drawn as an ordinary tow truck for now: its lowered ramp is drawn by the traffic render task (T4.3), so until then you ride up a ramp you cannot see. Done, not phone-verified.

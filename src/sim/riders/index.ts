@@ -56,16 +56,19 @@ import {
   BOOST_ACCEL_MPS2,
   boostOf,
   boostPadAt,
+  clearsBody,
   deckHeight,
   hazardObject,
   hazardTop,
   HAZARD_REACH_D_M,
   KERB_M,
+  movingDecks,
   rampTruckAt,
   solidHazardAt,
   truckBodyAt,
   truckBodyTop,
-  truckClearMps,
+  truckClosingMps,
+  type MovingDecks,
 } from './features';
 import { airWallSkip, gapFall, gapUnder, GAP_TUNING, newGapState, type GapState } from './gap';
 import { uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
@@ -866,6 +869,8 @@ function wallOutcome(
  * more than a kerb in one tick rode into its side or front, not up its ramp. From the side it is
  * held beside the truck and scrapes, like the barrier rule; head on, it stops where it was and
  * takes the whole speed as the impact. Events carry `object: 'rampTruck'` and the truck's id.
+ * Playtest 3: a moving deck (`decks`, sim/riders/features.ts) is a truck like any other, met where it
+ * stands as this tick ends (`decks.next`); what a head-on hit carries is the speed relative to it.
  */
 function truckContact(
   world: World,
@@ -874,21 +879,26 @@ function truckContact(
   m: Mover,
   before: { edge: number; s: number; d: number; deck: number },
   dt: number,
+  decks: MovingDecks,
 ): void {
   const pos = m.pos;
-  const truck = rampTruckAt(config, pos.edge, pos.s, pos.d);
+  const truck = rampTruckAt(config, pos.edge, pos.s, pos.d, decks.next);
   // Off the lip fast enough to clear the body, in the tick that crosses into it: a launch, not a
   // contact (the take-off rule below sends it airborne over the truck).
   const launch =
     !!truck &&
     before.deck > KERB_M &&
-    truckBodyAt(config, pos.edge, pos.s, pos.d) === truck &&
-    m.speed >= truckClearMps(truck, GRAVITY * accelMultiplierOf(config));
-  if (!truck || launch || deckHeight(config, pos.edge, pos.s, pos.d) - before.deck <= KERB_M) {
+    truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next) === truck &&
+    clearsBody(truck, m.speed, pos.dir, GRAVITY * accelMultiplierOf(config));
+  if (
+    !truck ||
+    launch ||
+    deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.next }) - before.deck <= KERB_M
+  ) {
     st.truckTouch[m.id] = 0;
     return;
   }
-  const v = m.speed;
+  const v = truckClosingMps(truck, m.speed, pos.dir);
   const yawBefore = m.yaw;
   const newContact = st.truckTouch[m.id] !== 1;
   st.truckTouch[m.id] = 1;
@@ -1003,12 +1013,15 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const fresh = st.lastTick[m.id] !== world.tick - 1;
   // Put down inside a ramp truck (a remount where the bike came to rest, by tumble's hand-back):
   // step out beside it on the road's side, so the rider is never stood on or in the truck.
-  const inside = fresh && m.h === 0 ? rampTruckAt(config, pos.edge, pos.s, pos.d) : null;
-  if (inside && deckHeight(config, pos.edge, pos.s, pos.d) > 0) {
+  // Playtest 3's moving decks: the trucks as this tick starts (`now`) for where the bike is, and one
+  // step on (`next`) for where it goes, so the deck under it moves too.
+  const decks = movingDecks(world, dt);
+  const inside = fresh && m.h === 0 ? rampTruckAt(config, pos.edge, pos.s, pos.d, decks.now) : null;
+  if (inside && deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.now }) > 0) {
     const out = Math.sign(inside.d1 - inside.d0) * TRUCK_STEP_OUT_M;
     pos.d = Math.abs(inside.d0) <= Math.abs(inside.d1) ? inside.d0 - out : inside.d1 + out;
   }
-  const deckBefore = deckHeight(config, pos.edge, pos.s, pos.d);
+  const deckBefore = deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.now });
   const before = { edge: pos.edge, s: pos.s, d: pos.d, deck: deckBefore };
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
@@ -1082,7 +1095,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
   crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
-  truckContact(world, config, st, m, before, dt);
+  truckContact(world, config, st, m, before, dt, decks);
   if (hazardContact(world, config, st, m, before, dt)) {
     // Launched off a parked car by a wheelie (playtest 3): its flight is already set up.
     st.throttle[m.id] = throttle;
@@ -1095,7 +1108,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // The ground is the road, or a ramp truck's ramp or lip platform (never its body, which a grounded
   // rider is kept out of above): h is always the height above the road.
   const surface = road.surfaceHeight(pos.edge, pos.s, pos.d);
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
   const ground = surface + deck;
   const ballistic = yBefore + vyBefore * dt - 0.5 * gravity * dt * dt;
   // Over a gap (playtest 3, sim/riders/gap.ts) there is no surface: the ground fell away.
@@ -1256,12 +1269,16 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   // A rider never lands on a ramp truck's body (the car on its top deck, the cab): fast enough off
   // the lip, it clears the truck; too slow, and below the body's top, it hits it (the integration
   // skeptic's F2: it used to land on a level deck inside that car).
-  const body = truckBodyAt(config, pos.edge, pos.s, pos.d);
-  if (body && y - surface < truckBodyTop(body) && m.speed < truckClearMps(body, gravity)) {
+  // Playtest 3: a moving deck is where its truck stands as the tick ends (`next`), and the speed to
+  // clear its body is over the truck, not over the road.
+  const decks = movingDecks(world, dt);
+  const body = truckBodyAt(config, pos.edge, pos.s, pos.d, decks.next);
+  if (body && y - surface < truckBodyTop(body) && !clearsBody(body, m.speed, pos.dir, gravity)) {
     m.h = Math.max(0, y - surface);
     st.yAbs[m.id] = y;
     st.wobble[m.id] = 0;
-    const data = { cause: 'barrier', speed: m.speed, impactMps: m.speed, yaw: m.yaw, side: 1 };
+    const impact = truckClosingMps(body, m.speed, pos.dir);
+    const data = { cause: 'barrier', speed: m.speed, impactMps: impact, yaw: m.yaw, side: 1 };
     emit(world, 'crash', m.id, { ...data, object: 'rampTruck', feature: body.id });
     return;
   }
@@ -1275,7 +1292,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
     emit(world, 'crash', m.id, { ...data, object: hazardObject(hazard), feature: hazard.id });
     return;
   }
-  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false });
+  const deck = deckHeight(config, pos.edge, pos.s, pos.d, { bodies: false, moving: decks.next });
   // Air control and flips (playtest 2): the bike's pitch, and the lean the steering asks for. The
   // time to the ground is forecast over the ground's current slope, so a held brake or kick never
   // turns the bike past where it can right itself before touch-down.
