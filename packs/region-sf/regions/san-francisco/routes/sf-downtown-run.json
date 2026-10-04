@@ -4,25 +4,44 @@
   "name": "Downtown",
   "network": "sf-downtown",
   "start": { "road": "sf-dt-founders-plaza", "s": 40, "dir": 1 },
-  "finish": { "road": "sf-dt-campus-way", "s": 954 },
+  "finish": { "road": "sf-dt-campus-end", "s": 29 },
   "mainPath": [
     "sf-dt-founders-plaza",
     "sf-dt-inference-ave",
     "sf-dt-cable-crossing",
     "sf-dt-burn-rate-row",
-    "sf-dt-campus-way"
+    "sf-dt-campus-way",
+    "sf-dt-campus-yard",
+    "sf-dt-campus-end"
   ],
   "allowedRoads": [
     "sf-dt-founders-plaza",
     "sf-dt-inference-ave",
     "sf-dt-cable-crossing",
     "sf-dt-burn-rate-row",
-    "sf-dt-campus-way"
+    "sf-dt-campus-way",
+    "c-dt-plaza-split",
+    "sf-dt-campus-yard",
+    "c-dt-plaza-merge",
+    "sf-dt-campus-end",
+    "c-dt-plaza-in",
+    "sf-dt-plaza-cut",
+    "c-dt-plaza-out"
   ],
   "checkpoints": [
     { "road": "sf-dt-inference-ave", "s": 400 },
     { "road": "sf-dt-cable-crossing", "s": 300 },
     { "road": "sf-dt-burn-rate-row", "s": 650 }
+  ],
+  "branches": [
+    {
+      "id": "sf-dt-plaza-cut",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "PLAZA ENTRANCE: DELIVERIES ONLY. Founders arrive by ramp.",
+      "aiTake": 0,
+      "roads": ["c-dt-plaza-in", "sf-dt-plaza-cut", "c-dt-plaza-out"]
+    }
   ],
   "closed": false,
   "startGrid": { "rows": 3, "perRow": 2, "rowGapM": 8 },

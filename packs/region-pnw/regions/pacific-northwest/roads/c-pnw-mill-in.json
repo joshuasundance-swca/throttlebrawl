@@ -1,0 +1,54 @@
+{
+  "type": "road",
+  "id": "c-pnw-mill-in",
+  "name": "Mill yard gate",
+  "realName": null,
+  "network": "pnw-c1",
+  "from": "j-pnw-c1-7",
+  "to": "j-pnw-c1-7",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 22.4,
+  "surface": "concrete",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [
+    { "s0": 0, "s1": 30, "side": "left", "tag": "forest" },
+    { "s0": 0, "s1": 30, "side": "right", "tag": "sawmill" }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        2544.7062, 2545.2324, 2545.7587, 2546.2849, 2546.8111, 2547.3373, 2547.8635, 2548.3897, 2548.9158,
+        2549.442, 2549.9681, 2550.4942, 2551.0204, 2551.5465, 2552.0727, 2552.5988
+      ],
+      "y": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "z": [
+        -4158.341, -4160.2705, -4162.2001, -4164.1296, -4166.0591, -4167.9887, -4169.9182, -4171.8478,
+        -4173.7773, -4175.7069, -4177.6364, -4179.566, -4181.4955, -4183.4251, -4185.3546, -4187.2842
+      ],
+      "kappa": [
+        0, -5.723723e-7, -0.000001808743, -0.000003115686, -0.000004069341, -0.000004415418, -0.000004069192,
+        -0.00000311551, -0.000001808782, -5.729894e-7, -8.324108e-10, 0, 0, 0, 0, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-01",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/pnw-c1.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}
