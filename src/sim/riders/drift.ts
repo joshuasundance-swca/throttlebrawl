@@ -16,17 +16,18 @@
 //   more, the bars at DRIFT_STEER or more, and the road bending that way (|κ| ≥ 1/150 within the
 //   next DRIFT_LOOK_M). A `driftStart` fires with the side (1 right, -1 left) and the speed.
 // - Hold. The brake is no longer needed (held, it still brakes); the throttle may come back on (a
-//   power slide). The slip
-//   β follows its target, side × βmax × (0.55 + 0.45 × |steer|), at DRIFT_BETA_RATE. It buys a
-//   tighter line at a higher speed (maxYaw × 1 + `riders.driftSteerGain` × |β|/βmax) and costs
-//   speed (`riders.driftDrag` × |β|/βmax m/s²); the rider leans in to the cap, knee down.
+//   power slide). The slip β follows its target, side × βmax × (0.55 + 0.45 × |steer|), at
+//   DRIFT_BETA_RATE. It buys a tighter line at a higher speed (maxYaw × 1 + `riders.driftSteerGain`
+//   × |β|/βmax) and costs speed (`riders.driftDrag` × |β|/βmax m/s²); the rider leans in to the
+//   cap, knee down.
 // - Exit. The bars let go (|steer| < DRIFT_LET_GO for DRIFT_GATE_TICKS), turned the other way past
-//   DRIFT_LET_GO, the speed under `riders.driftExitMps`, a take-off, a U-turn, or a wipeout (a
-//   crash, a wobble or a hit taken, read from the last tick's events and the wobble timer). β then
-//   eases back to 0. An exit is clean when the bike points down the road (|yaw| ≤ DRIFT_CLEAN_YAW),
-//   nothing knocked it out, and it lasted DRIFT_CLEAN_S or more. Flicking the bars to the other
-//   lock (DRIFT_FLICK) faster than DRIFT_HIGHSIDE_MPS with |β| over DRIFT_HIGHSIDE_BETA is a
-//   highside: a `wobble` (cause `drift`), never a crash. Unwinding the bars out of a bend is not.
+//   DRIFT_LET_GO, the speed under `riders.driftExitMps`, a take-off, a U-turn, a wheelie popped
+//   mid-slide, or a wipeout (a crash, a wobble or a hit taken, read from the last tick's events and
+//   the wobble timer). β then eases back to 0. An exit is clean when the bike points down the road
+//   (|yaw| ≤ DRIFT_CLEAN_YAW), nothing knocked it out, and it lasted DRIFT_CLEAN_S or more.
+//   Flicking the bars to the other lock (DRIFT_FLICK) faster than DRIFT_HIGHSIDE_MPS with |β| over
+//   DRIFT_HIGHSIDE_BETA is a highside: a `wobble` (cause `drift`), never a crash. Unwinding the
+//   bars out of a bend is not.
 // - Exit boost. A clean exit raises the top speed by 2 + 4 × min(1, seconds / 2.5) m/s for 1.2 s and
 //   pushes the bike to it, on the boost a pad gives (a bigger boost already running is kept), as
 //   the landing surge does.
@@ -402,6 +403,11 @@ export function driftStep(
       if (side !== 0) endDrift(world, st, m, { wipeout: true, takeoff: false }, mult);
       else empty(st, id);
       side = 0;
+    } else if (away && side !== 0) {
+      // Off the ground mid-slide by a way that skipped the take-off hook (a wheelie's launch off a
+      // parked car), and down again on the wheels: the slide ended when it left the ground.
+      endDrift(world, st, m, { wipeout: false, takeoff: true }, mult);
+      side = 0;
     }
   }
 
@@ -413,7 +419,8 @@ export function driftStep(
     st.driftGate[id] = letGo ? (st.driftGate[id] ?? 0) + world.timeScale : 0;
     const reversed = steer * side < -DRIFT_LET_GO;
     const slow = m.speed < (world.params['riders.driftExitMps'] ?? DRIFT_DEFAULTS.exitMps) * mult;
-    if (wobbling || uturn) {
+    // A U-turn or a wheelie popped mid-slide ends it (no wipeout); a wobble wipes it out.
+    if (wobbling || uturn || wheelieOf(world, m) !== 0) {
       endDrift(world, st, m, { wipeout: wobbling, takeoff: false }, mult);
       side = 0;
     } else if (reversed || slow || (st.driftGate[id] ?? 0) >= DRIFT_GATE_TICKS) {

@@ -379,6 +379,24 @@ describe('drift: the chain and the meter', () => {
     expect(driftMoves(h.world, id)).toEqual({ driftS: 0, driftChain: 0, driftCash: 0, driftSide: 0 });
   });
 
+  it('a slide that left the ground without the take-off hook ends on landing, its chain banked', () => {
+    const h = riderHarness(config(HAIRPIN), START);
+    const st = riders(h.world);
+    const id = h.rider.id;
+    ride(h, hairpinScript(44, 10), 900, { until: () => (st.driftS[id] ?? 0) >= 1 });
+    // A second in the air (a wheelie's launch off a parked car returns before the take-off hook),
+    // then down on the wheels: the landing is in the last tick's events.
+    h.world.tick += 60;
+    h.world.lastEvents = [
+      { tick: h.world.tick - 1, type: 'land', actor: id, data: { quality: 'clean' }, causeId: 1 },
+    ];
+    const out = h.step(input(0.5, 0, 1));
+    const end = ofType(out, 'driftEnd')[0];
+    expect(end?.data['clean']).toBe(false);
+    expect(Number(end?.data['points'])).toBeGreaterThan(0);
+    expect(driftMoves(h.world, id)).toEqual({ driftS: 0, driftChain: 0, driftCash: 0, driftSide: 0 });
+  });
+
   it('a take-off ends the drift there: no boost, and its chain banks at once', () => {
     const h = riderHarness(config(HAIRPIN), START);
     const st = riders(h.world);
