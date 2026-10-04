@@ -55,6 +55,8 @@ export const BIKE_CLASSES = [
   'lawnmower',
   'mobility-scooter',
   'golf-cart',
+  // Playtest 3 (round 3: "Six bikes"): the Grand Tourer 1100, a heavy touring bike.
+  'tourer',
 ] as const;
 export const EVENT_KINDS = ['classic-race', 'takedown-hunt', 'cop-escape', 'grudge-match'] as const;
 /**

@@ -25,6 +25,8 @@ import {
   secondsToTicks,
   tuningDefaults,
   type DifficultyPreset,
+  type EventPatch,
+  type FieldLevel,
   type SimAiPersonality,
   type SimAssists,
   type SimConfig,
@@ -105,6 +107,19 @@ export interface RaceSetup {
    * (the career sets its own field per event; tests and the shared batch race the event's).
    */
   freePlay?: boolean;
+  /**
+   * The career field's level for this race (playtest 3, round 1: "the field levels up every tier
+   * (tier 3 rivals ride bikes as good as your best)"): the pace, the rivals' and cops' bikes, and
+   * the rivals' health, power, aggression and signature rate (docs/product-spec.md, "Rivals"). Left
+   * out: the event file's field as it is, so a config is byte-identical to before. The career
+   * computes it; buildSimConfig applies it (the app-wiring task).
+   */
+  fieldLevel?: FieldLevel;
+  /**
+   * A season's remix of the node (playtest 3, round 2: "Season 2+ with a harder field and remixed
+   * events"), applied to the event before anything reads it. Left out: the event file as it is.
+   */
+  eventPatch?: EventPatch;
 }
 
 /**
@@ -171,15 +186,29 @@ const STANDARD_LENGTH = 'standard';
 const NO_ASSISTS: SimAssists = { steer: 'off', autoThrottle: false };
 const DIFFICULTY_PREFIX = 'difficulty.';
 
-/** The event's style-cash values (its `rewards` style fields), each 0 when the file leaves it out. */
+/**
+ * Playtest 3's moves pay per second at these multiples of the event's oncoming rate when its file
+ * names no rate of its own [default]: a clean wheelie 2x, a banked drift 3x (Keys tier 3's
+ * oncoming 10 gives 20 and 30), so every existing event pays them at its own tier's scale.
+ */
+export const WHEELIE_CASH_PER_ONCOMING = 2;
+export const DRIFT_CASH_PER_ONCOMING = 3;
+
+/**
+ * The event's style-cash values (its `rewards` style fields), each 0 when the file leaves it out,
+ * except the wheelie's and the drift's, which default from the oncoming rate.
+ */
 function styleRewards(rewards: RaceEvent['rewards']): SimStyleRewards {
+  const oncoming = rewards.perOncomingSecondCash ?? 0;
   return {
     perNearMissCash: rewards.perNearMissCash ?? 0,
     perAirtimeCash: rewards.perAirtimeCash ?? 0,
-    perOncomingSecondCash: rewards.perOncomingSecondCash ?? 0,
+    perOncomingSecondCash: oncoming,
     perTakedownCash: rewards.perTakedownCash ?? 0,
     takedownComboScale: rewards.takedownComboScale ?? 0,
     perStealCash: rewards.perStealCash ?? 0,
+    perWheelieSecondCash: rewards.perWheelieSecondCash ?? WHEELIE_CASH_PER_ONCOMING * oncoming,
+    perDriftSecondCash: rewards.perDriftSecondCash ?? DRIFT_CASH_PER_ONCOMING * oncoming,
   };
 }
 

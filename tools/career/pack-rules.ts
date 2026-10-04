@@ -103,14 +103,33 @@ function checkCareer(ctx: LintContext, c: ParsedEntry): Finding[] {
       });
     }
   });
+  const boss = str(d['boss']);
   tiers.forEach((t, i) => {
     const wins = isObj(t['advance']) ? t['advance']['requiredWins'] : undefined;
     const count = perTier.get(i) ?? 0;
+    // Playtest 3: a tier that names its boss asks its wins of its regular nodes, then the boss.
+    const tierBoss = t['boss'] === undefined ? null : str(t['boss']);
+    const regular = tierBoss === null ? count : count - 1;
     if (count === 0) err(`/tiers/${i}`, `tier ${str(t['id'])} has no nodes`);
-    else if (typeof wins === 'number' && wins > count)
-      err(`/tiers/${i}/advance/requiredWins`, `${wins} wins asked, but the tier has ${count} nodes`);
+    else if (typeof wins === 'number' && wins > regular)
+      err(
+        `/tiers/${i}/advance/requiredWins`,
+        tierBoss === null
+          ? `${wins} wins asked, but the tier has ${count} nodes`
+          : `${wins} wins asked, but the tier has ${regular} regular nodes besides its boss`,
+      );
+    if (tierBoss === null) return;
+    const ptr = `/tiers/${i}/boss`;
+    const node = nodes.find((n) => str(n['id']) === tierBoss);
+    if (!node || nodeTier.get(tierBoss) !== i) err(ptr, `no node ${tierBoss} in tier ${str(t['id'])}`);
+    else {
+      const event = ctx.resolve(c.packId, str(node['event']), 'event').entry;
+      if (event && event.data['kind'] !== 'grudge-match')
+        err(ptr, `tier ${str(t['id'])}'s boss ${tierBoss} is not a grudge-match event`);
+    }
+    if (i === tiers.length - 1 && tierBoss !== boss)
+      err(ptr, `the last tier's boss ${tierBoss} is not the region boss ${boss}`);
   });
-  const boss = str(d['boss']);
   const bossTier = nodeTier.get(boss);
   if (bossTier === undefined) err('/boss', `no node ${boss}`);
   else {
@@ -147,6 +166,51 @@ function checkCareers(ctx: LintContext): Finding[] {
     if (other && c.status !== 'draft')
       out.push(warning('careers', c.path, '/region', `${region} already has the career ${other}`));
     if (c.status !== 'draft') byRegion.set(region, c.id);
+  }
+  out.push(...checkShops(ctx));
+  return out;
+}
+
+/** Whether every tier of a career names its boss (playtest 3's tier-boss format). */
+const namesTierBosses = (c: ParsedEntry): boolean => {
+  const tiers = list(c.data['tiers']).filter(isObj);
+  return tiers.length > 0 && tiers.every((t) => typeof t['boss'] === 'string');
+};
+
+/**
+ * Playtest 3 (round 3: "Six bikes": a new bike every second tier, each region's shop selling its
+ * own): a priced bike sits in at most one career's shop. The garage is global, so a bike bought in
+ * one region rides in all of them. A free bike (the starting one) is never counted. While a career
+ * selling the bike still has no tier bosses (the format before playtest 3), a second shop only
+ * warns, so each region's content can move over in its own PR.
+ */
+function checkShops(ctx: LintContext): Finding[] {
+  const out: Finding[] = [];
+  const sellers = new Map<string, { career: ParsedEntry; index: number }[]>();
+  for (const c of ctx.entries('career')) {
+    if (c.status === 'draft') continue;
+    list(c.data['shop'])
+      .filter(isObj)
+      .forEach((s, index) => {
+        if (typeof s['priceCash'] !== 'number' || s['priceCash'] <= 0) return;
+        const bike = ctx.resolve(c.packId, str(s['bike']), 'bike').entry;
+        if (!bike) return; // the refs rule reports it
+        const key = `${bike.packId}:${bike.id}`;
+        sellers.set(key, [...(sellers.get(key) ?? []), { career: c, index }]);
+      });
+  }
+  for (const [bike, at] of sellers) {
+    if (at.length < 2) continue;
+    const hard = at.every((a) => namesTierBosses(a.career));
+    const where = at.map((a) => a.career.id).join(', ');
+    for (const a of at) {
+      const msg = `${bike} is for sale in ${at.length} shops (${where}); a step-up bike sits in one region's shop`;
+      out.push(
+        hard
+          ? error('careers', a.career.path, `/shop/${a.index}/bike`, msg)
+          : warning('careers', a.career.path, `/shop/${a.index}/bike`, msg),
+      );
+    }
   }
   return out;
 }

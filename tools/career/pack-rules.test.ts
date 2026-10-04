@@ -172,6 +172,114 @@ describe('career maps', () => {
   });
 });
 
+// Playtest 3 (round 1: "each tier unlocks the next bike class, and the boss of each tier must be
+// beaten first"; round 3: "Six bikes": a new bike every second tier). A tier may name its boss, a
+// grudge-match node of that tier that opens the next one; the last tier's boss is the region's.
+describe('tier bosses and the bike ladder (playtest 3)', () => {
+  const T1_GRUDGE = {
+    id: 't1-grudge',
+    event: 'keys-t1-kevin-grudge',
+    tier: 't1',
+    at: { road: 'm1-marina-run', s: 60 },
+  };
+  const withBosses = (edit?: (c: Json) => void) =>
+    files((c) => {
+      (c['nodes'] as Json[]).push(structuredClone(T1_GRUDGE));
+      const tiers = c['tiers'] as Json[];
+      Object.assign(tiers[0] as Json, { boss: 't1-grudge' });
+      Object.assign(tiers[1] as Json, { boss: 'the-grudge', advance: { requiredWins: 0 } });
+      edit?.(c);
+    });
+
+  it('a career whose tiers name grudge-match bosses, the last one the region boss, passes', () => {
+    expect(errors(withBosses())).toEqual([]);
+  });
+
+  it("refuses a tier boss outside its tier, not a grudge match, or a last tier's boss that is not the region's", () => {
+    const found = errors(
+      withBosses((c) => {
+        const tiers = c['tiers'] as Json[];
+        (tiers[0] as Json)['boss'] = 'causeway-sprint';
+        (tiers[1] as Json)['boss'] = 'ghost';
+      }),
+      'careers',
+    );
+    expect(found).toEqual([
+      expect.stringMatching(/\/tiers\/0\/boss: tier t1's boss causeway-sprint is not a grudge-match event/),
+      expect.stringMatching(/\/tiers\/1\/boss: no node ghost in tier t2/),
+      expect.stringMatching(/\/tiers\/1\/boss: the last tier's boss ghost is not the region boss the-grudge/),
+    ]);
+    const elsewhere = errors(
+      withBosses((c) => {
+        (c['tiers'] as Json[])[0] = { ...(c['tiers'] as Json[])[0], boss: 'the-grudge' };
+      }),
+      'careers',
+    );
+    expect(elsewhere).toEqual([expect.stringMatching(/\/tiers\/0\/boss: no node the-grudge in tier t1/)]);
+  });
+
+  it("a tier's gate counts its regular nodes only: the boss is not one of the wins it asks", () => {
+    const found = errors(
+      withBosses((c) => {
+        (c['tiers'] as Json[])[0] = { ...(c['tiers'] as Json[])[0], advance: { requiredWins: 2 } };
+      }),
+      'careers',
+    );
+    expect(found).toEqual([
+      expect.stringMatching(
+        /\/tiers\/0\/advance\/requiredWins: 2 wins asked, but the tier has 1 regular nodes/,
+      ),
+    ]);
+  });
+
+  // The base pack's own Keys career sells the Streetfighter for $6,000 today; a test career
+  // selling it too is a step-up bike in two shops.
+  const twoShops = (keysBosses: boolean) => {
+    const out = withBosses((c) => {
+      c['shop'] = [
+        { bike: 'rustbucket-400', priceCash: 0, unlockTier: 't1' },
+        { bike: 'streetfighter-750', priceCash: 16750, unlockTier: 't2' },
+      ];
+    });
+    if (!keysBosses) return out;
+    return out.map((f) => {
+      if (f.path !== 'careers/keys-circuit.json') return f;
+      const keys = structuredClone(f.json) as Json;
+      // Name a boss on each tier of the real Keys career (its grudge nodes, the region boss last).
+      const bosses = ['kevin-grudge', 'chad-grudge', 'junkyard-hunt', 'drawbridge'];
+      (keys['tiers'] as Json[]).forEach((t, i) => (t['boss'] = bosses[i]));
+      return { ...f, json: keys };
+    });
+  };
+  const findings = (f: PackFile[], level: 'error' | 'warning') => {
+    const parsed = parsePack(f);
+    return (parsed.pack ? lintPacks([parsed.pack], { rules: packRules }) : [])
+      .filter((x) => x.level === level && x.rule === 'careers' && /shop/.test(x.pointer))
+      .map((x) => formatFinding(x));
+  };
+
+  it('a priced bike in two shops only warns while a career still has no tier bosses', () => {
+    const f = twoShops(false);
+    expect(findings(f, 'error')).toEqual([]);
+    expect(findings(f, 'warning')).toEqual(
+      expect.arrayContaining([expect.stringMatching(/streetfighter-750 is for sale in 2 shops/)]),
+    );
+  });
+
+  it('and fails once every career selling it names its tier bosses; a free bike is never counted', () => {
+    const f = twoShops(true);
+    const keysTiers = (f.find((x) => x.path === 'careers/keys-circuit.json')?.json as Json)[
+      'tiers'
+    ] as Json[];
+    expect(keysTiers.every((t) => typeof t['boss'] === 'string')).toBe(true);
+    const found = findings(f, 'error');
+    expect(found).toEqual(
+      expect.arrayContaining([expect.stringMatching(/streetfighter-750 is for sale in 2 shops/)]),
+    );
+    expect(found.join('\n')).not.toMatch(/rustbucket-400/);
+  });
+});
+
 describe('event rules by kind', () => {
   it('asks each kind for the rules it needs, and a grudge rival must be a rider', () => {
     const schema = (kind: string, rules: Json) =>

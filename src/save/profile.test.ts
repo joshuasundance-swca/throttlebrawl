@@ -5,8 +5,11 @@ import {
   createSettingsStore,
   DEFAULT_PROFILE,
   emptyRegion,
+  MAX_BACKUP_CODE_CHARS,
+  MAX_CAREER_BACKUPS,
   MAX_HISTORY,
   MAX_RECEIPTS,
+  MAX_SEASON,
   migrateProfile,
   MIGRATIONS,
   PROFILE_NOTICE_NEWER,
@@ -136,6 +139,90 @@ describe('sanitiseProfile', () => {
     });
     expect(many.receipts).toHaveLength(MAX_RECEIPTS);
     expect(many.receipts[0]?.n).toBe(4);
+  });
+});
+
+// Playtest 3 (round 2, "Longer + seasons": "then Season 2+ with a harder field and remixed events,
+// the garage carried over"; round 3, "Both": "Season 2 on the finished save, plus a 'New career'
+// button that keeps the old save as a backup code"). Additive fields with defaults, so the version
+// stays 1 and every old record loads as Season 1.
+describe('seasons and career backups (playtest 3)', () => {
+  const backup = { code: 'EC1.p.eyJ4IjoxfQ.0123abcd', at: '2026-10-04T10:00:00.000Z', season: 1 };
+
+  it('an old record, and the golden fixture, load as Season 1 with seed 0 and no backups', () => {
+    expect(DEFAULT_PROFILE).toMatchObject({ season: 1, seasonSeed: 0, careerBackups: [] });
+    expect(sanitiseProfile({ cash: 5 })).toMatchObject({ season: 1, seasonSeed: 0, careerBackups: [] });
+    for (const f of fixtures()) {
+      const m = migrateProfile(f.raw);
+      if (m.kind !== 'ok') throw new Error(f.name);
+      const p = sanitiseProfile(m.data);
+      expect(p).toMatchObject({ season: 1, seasonSeed: 0, careerBackups: [] });
+      // A Season 1 result carries no season field: absent means 1, so old records stay byte-identical.
+      for (const h of p.history) expect(h).not.toHaveProperty('season');
+    }
+  });
+
+  it('keeps the season (1 to MAX_SEASON), its uint32 seed, and each later-season result its season', () => {
+    const p = sanitiseProfile({
+      season: 3,
+      seasonSeed: 0xdeadbeef,
+      history: [
+        { event: 'base:e', region: 'florida-keys', season: 2 },
+        { event: 'base:e', region: 'florida-keys', season: 1 },
+        { event: 'base:e', region: 'florida-keys' },
+      ],
+    });
+    expect(p.season).toBe(3);
+    expect(p.seasonSeed).toBe(0xdeadbeef);
+    expect(p.history.map((h) => h.season)).toEqual([2, undefined, undefined]);
+    expect(sanitiseProfile(p)).toEqual(p);
+    expect(sanitiseProfile({ season: 0 }).season).toBe(1);
+    expect(sanitiseProfile({ season: 500 }).season).toBe(MAX_SEASON);
+    expect(sanitiseProfile({ season: 'two' }).season).toBe(1);
+    for (const bad of [-1, 2 ** 32, 1.5, Number.NaN, '7'])
+      expect(sanitiseProfile({ seasonSeed: bad }).seasonSeed).toBe(0);
+    expect(sanitiseProfile({ seasonSeed: 2 ** 32 - 1 }).seasonSeed).toBe(2 ** 32 - 1);
+  });
+
+  it('keeps well-formed backup codes, the newest MAX_CAREER_BACKUPS, and drops the rest', () => {
+    const p = sanitiseProfile({
+      careerBackups: [
+        backup,
+        { ...backup, code: 'not a code' },
+        { ...backup, code: `EC1.p.${'a'.repeat(MAX_BACKUP_CODE_CHARS)}.0123abcd` },
+        { ...backup, at: 7 },
+        'junk',
+      ],
+    });
+    expect(p.careerBackups).toEqual([backup, { ...backup, at: '' }]);
+    expect(sanitiseProfile(p)).toEqual(p);
+    const many = sanitiseProfile({
+      careerBackups: Array.from({ length: MAX_CAREER_BACKUPS + 2 }, (_v, i) => ({
+        ...backup,
+        season: i + 1,
+      })),
+    });
+    expect(many.careerBackups.map((b) => b.season)).toEqual(
+      Array.from({ length: MAX_CAREER_BACKUPS }, (_v, i) => i + 3),
+    );
+  });
+
+  it('round-trips through the store', () => {
+    const { storage } = memoryStorage();
+    const store = createProfileStore({ keyPrefix: 'tb', build: 'b', storage });
+    const p = sanitiseProfile({
+      cash: 9,
+      season: 2,
+      seasonSeed: 123456789,
+      careerBackups: [backup],
+      history: [{ event: 'base:e', region: 'florida-keys', season: 2 }],
+    });
+    expect(store.save(p)).toBe(true);
+    const back = createProfileStore({ keyPrefix: 'tb', build: 'b', storage }).load();
+    expect(back).toEqual(p);
+    console.log(
+      `[examined] season ${back.season}, seed ${back.seasonSeed}, ${back.careerBackups.length} backup`,
+    );
   });
 });
 

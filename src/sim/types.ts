@@ -1012,6 +1012,20 @@ export interface SimEventDef {
    * the others from the public events. Absent, every race runs as before, so no hash moves.
    */
   grudgeRule?: { rule: GrudgeRuleId; rival: string };
+  /**
+   * The career field's level for the rivals' fighting (playtest 3, round 1: "the field levels up
+   * every tier"; round 3, "Gentle climb"): `aggressionScale` multiplies every rival's aggression on
+   * top of the difficulty preset, and `signatureGapScale` each signature move's gap and spread
+   * (below 1, more often). buildSimConfig writes it from the career's FieldLevel. Absent means 1 and
+   * 1, and every race runs as before, so no hash moves.
+   */
+  level?: SimEventLevel;
+}
+
+/** SimEventDef.level: the career tier's scales on the rivals' fighting. */
+export interface SimEventLevel {
+  aggressionScale: number;
+  signatureGapScale: number;
 }
 
 /**

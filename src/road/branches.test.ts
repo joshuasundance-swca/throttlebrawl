@@ -21,6 +21,15 @@ function track(branches?: BakedRoute['branches'], surface?: 'dirt') {
 }
 
 describe('route branches', () => {
+  // Playtest 3 (round 3: "rivals and cops stay on the highway"): a route file's branch may say what
+  // share of rivals take it; null when it does not, and the AI's own rule decides (sim/ai).
+  it("carries a named branch's aiTake, and null for a derived branch or one that names none", () => {
+    expect(track([{ id: 'old-bridge', roads: ['cut'], aiTake: 0 }]).route.branches[0]?.aiTake).toBe(0);
+    expect(track([{ id: 'cut', roads: ['cut'], aiTake: 0.5 }]).route.branches[0]?.aiTake).toBe(0.5);
+    expect(track([{ id: 'cut', roads: ['cut'] }]).route.branches[0]?.aiTake).toBeNull();
+    expect(track().route.branches[0]?.aiTake).toBeNull();
+  });
+
   it('derives one branch per split zone when the route file names none', () => {
     const { net, route } = track();
     expect(route.shortcuts).toHaveLength(1);

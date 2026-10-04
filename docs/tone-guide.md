@@ -237,6 +237,16 @@ The Pacific Northwest comes off the shelf now, with San Francisco, as a content 
 - **Do:** understatement, politeness as menace, specific local types (the logger, the barista, the walk-on commuter). **Don't:** lumberjack-pancake parody, flannel puns, quoting famous TV set in the region, or jokes at real groups, towns or companies.
 - **Engine gaps this region shows** (follow-ups for the runtime, road and render lanes): no conifers or ground plane yet (the scenery is the Keys' palms over open water), no rain, and no real climbs, because the road compiler pins every junction to one base height.
 
+### Real places (playtest 3)
+
+The maintainer picked all three real-world options, real landmarks, real road layouts and real local life, adding "Duval St, downtown Portland, Golden Gate"; brands and businesses stay invented (playtest 3, round 1). [decided] Real place and road names are fine as flavor, as in the Keys. [decided] The rest is [default]:
+
+- **Businesses stay invented,** and so do signs, carts and shops on real streets. `tools/packs/invented-brands.test.ts` holds a list of real marks near these places (bars, attractions, transit brands, a famous sign) that no pack text may name; add to it whenever a review finds another.
+- **The Golden Gate** is named as a place, "the Golden Gate", and drawn faithfully. It is never the setting of a fall or rail joke (no rider goes over its rail), never the bridge district's own name, and it stays out of the logo and thumbnails.
+- **Duval Street and Key West's Old Town:** dusk crowds, roosters, pedicabs and street performers at the sunset pier; the joke is the tourist economy and the institutions, never the residents.
+- **Downtown Portland:** the bridges, the food-cart pods and the rain. The famous stag sign's spot holds an invented neon leaping salmon reading STILL RAINING (the maintainer's pick, playtest 3, round 3: "Salmon: STILL RAINING"), marked new, so it can be cut like any sign.
+- **The Old Seven Mile Bridge:** real geometry and its real names (the Seven Mile Bridge, Knight's Key, Pigeon Key, Moser Channel, Little Duck Key) as flavor; nothing invented is claimed as its history.
+
 ### Shelf regions
 
 The seven shelf regions are decided; the flavor sketches and the "Also possible" row are planner proposals. [default]
@@ -260,7 +270,7 @@ Flavor sketches from the playback page:
 
 Playtest 1c brought new regions forward: "I do think we should start adding other regions races etc to avoid over optimizing, keep things fun, ensure everything works", in the order "Pnw and sf first then others". [decided] San Francisco ships crude first, as the `region-sf` content pack, and reuses the base game's bikes, weapons and regular rivals. Everything below is a planner draft. [default]
 
-- **Realism:** evocative, not literal, like the Keys. The track's streets have made-up names, and no landmark is branded: the bridge is "a big orange suspension bridge" and is never named.
+- **Realism:** evocative, not literal, like the Keys. The track's streets have made-up names, and no landmark is branded: the bridge is "a big orange suspension bridge" and is never named. Playtest 3 changes the bridge (above, [Real places](#real-places-playtest-3)): it is "the Golden Gate".
 - **Sights:**
   - steep blocks, and the crest of each one where the cross street flattens out
   - painted row houses, shoulder to shoulder
@@ -372,6 +382,7 @@ These never ship, whatever the joke. [default]
 - No gore, and no hitting pedestrians or animals for points. They dive clear. [decided]
 - No real people as targets or characters: no politicians, celebrities or real influencers. A guest "celebrity" rider is always a fictional celebrity, never a real person.
 - No real brands, logos or company names in satire. Parody a type, not a trademark.
+- Satire never targets a neighbourhood, its residents or people living on the street, in any region (playtest 3 extends San Francisco's line to Key West's Bahama Village beside Duval and Portland's Old Town and Chinatown). [default]
 - No "Road Rash" in names or branding. [decided] "Inspired by Road Rash" is fine in prose, such as the readme, the credits and these docs. [decided]
 - No reproducing Road Rash's characters, lines, track names or HUD.
 - No slurs, and no jokes whose target is a real group's identity.

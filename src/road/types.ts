@@ -1,7 +1,15 @@
 // The baked road format as road/ reads it (docs/content-packs.md, "Road networks, roads and
 // routes"). These are structural input types: content/'s parsed files satisfy them, so road/
 // never imports content/. Optional fields carry `| undefined` for exactOptionalPropertyTypes.
-import type { LaneInfo, MedianKind, RoadSurface, RouteBranchKind, VergeEdge, VergeSurface } from '../core';
+import type {
+  BarrierLook,
+  LaneInfo,
+  MedianKind,
+  RoadSurface,
+  RouteBranchKind,
+  VergeEdge,
+  VergeSurface,
+} from '../core';
 
 /**
  * A verge band beside the road (W-Q cross-section; interview, 2026-10-02: "Anywhere with ground"):
@@ -35,6 +43,13 @@ export interface BakedLaneSection {
 /** Feature kinds, exactly the architecture doc's list. */
 export type FeatureKind =
   | 'ramp'
+  /**
+   * No road surface over s0..s1 × d0..d1 (playtest 3: the Old Seven Mile Bridge's missing span, "the
+   * real 80 m missing span is the big jump (a miss = splash, respawn on the highway)"). A grounded
+   * rider entering it falls; nothing lands on it; a rider `params.killDepthM` below the deck crashes
+   * overboard into the water and respawns per `params.respawn` (`gapParams`). Traffic never meets
+   * one: the bake puts gaps only on branch roads, which carry none.
+   */
   | 'gap'
   | 'hazard'
   | 'roadsideZone'
@@ -53,7 +68,16 @@ export type FeatureKind =
    * height to s1. It faces riders travelling toward increasing s. Not baked into the road profile:
    * it covers only its own width.
    */
-  | 'rampTruck';
+  | 'rampTruck'
+  /**
+   * A real landmark placed beside or over the road (playtest 3, round 1: "real landmarks"; "Duval
+   * St, downtown Portland, Golden Gate"). Its s0..s1 × d0..d1 box is the footprint scenery, props,
+   * smashables and scenes keep off. Render draws it from `params.model` (`landmarkParams`); the sim
+   * ignores it, though it counts in the sim content hash like any feature. A structure the road
+   * runs through or under (a bridge tower, a gantry) says `params.overRoad: true`; every other
+   * footprint lies wholly past the verge (the road lint's job).
+   */
+  | 'landmark';
 
 export interface BakedFeature {
   kind: string;
@@ -83,6 +107,14 @@ export interface BakedBarrier {
   side: 'left' | 'right' | 'both';
   kind: 'rail' | 'wall';
   heightM: number;
+  /**
+   * A wall an airborne rider higher than `heightM` above the deck flies over (playtest 3: the
+   * static ramp trucks that reach shortcuts); a grounded rider meets it as a wall. Only on a `wall`
+   * (the schema refuses it on a rail). Absent means false.
+   */
+  jumpable?: boolean | undefined;
+  /** How it draws (render only; `kind` still decides what it stops). Absent: as its kind. */
+  look?: BarrierLook | undefined;
 }
 
 export interface BakedSamples {
@@ -217,6 +249,12 @@ export interface BakedRouteBranch {
   marked?: boolean | undefined;
   /** The deadpan sign at the split ("SANDBAR: NOT ADVISED."), when it has one. */
   sign?: string | undefined;
+  /**
+   * The share of rivals that take it, 0 to 1 (playtest 3, round 3: "rivals and cops stay on the
+   * highway"). Absent: the AI's own rule decides (`ai.shortcutChance`, and a branch holding a `gap`
+   * is left to the bold).
+   */
+  aiTake?: number | undefined;
 }
 
 /** Everything the road module needs to build one network. */
@@ -238,5 +276,80 @@ export function rampTruckShape(f: BakedFeature): { run: number; lip: number } {
   return {
     run: n('rampLengthM', RAMP_TRUCK_DEFAULTS.rampLengthM),
     lip: n('lipHeightM', RAMP_TRUCK_DEFAULTS.lipHeightM),
+  };
+}
+
+/** Reads a positive finite number param, or the fallback. */
+function positiveParam(f: BakedFeature, key: string, fallback: number): number {
+  const v = f.params?.[key];
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+/**
+ * A gap's defaults [default] (playtest 3 critic, C1): a rider 1.5 m below the deck has missed and
+ * crashes overboard; it wakes 10 m past the gap's far end.
+ */
+export const GAP_DEFAULTS = { killDepthM: 1.5, respawnPastM: 10 } as const;
+
+/**
+ * Where a rider who missed a gap wakes [default]: `far`, at rest on the gap's own road at s1 +
+ * `respawnPastM`, which never strands a rider; `main`, on the route's main road nearest the splash
+ * (the Seven Mile's Moser gap: the maintainer, round 3, "a miss = splash, respawn on the highway").
+ */
+export const GAP_RESPAWNS = ['far', 'main'] as const;
+export type GapRespawn = (typeof GAP_RESPAWNS)[number];
+
+export interface GapParams {
+  /** How far below the deck plane a falling rider has missed, m. */
+  killDepthM: number;
+  respawn: GapRespawn;
+  /** For `far`: how far past the gap's s1 the rider wakes, m. */
+  respawnPastM: number;
+}
+
+/** A `gap` feature's params, each bad or missing one at its default (never throws). */
+export function gapParams(f: BakedFeature): GapParams {
+  const r = f.params?.['respawn'];
+  return {
+    killDepthM: positiveParam(f, 'killDepthM', GAP_DEFAULTS.killDepthM),
+    respawn: GAP_RESPAWNS.find((k) => k === r) ?? 'far',
+    respawnPastM: positiveParam(f, 'respawnPastM', GAP_DEFAULTS.respawnPastM),
+  };
+}
+
+/** A landmark's defaults [default]: drawn at its near detail out to 400 m, unturned, at scale 1. */
+export const LANDMARK_DEFAULTS = { farM: 400, yawDeg: 0, scale: 1, maxScale: 4 } as const;
+
+export interface LandmarkParams {
+  /** The model: a node of a landmark kit, `<asset id>#<node>`; null when the feature names none. */
+  model: string | null;
+  /** Turn about the vertical, degrees, -180 to 180, from the road's heading at s0. */
+  yawDeg: number;
+  /** Uniform scale, above 0 and at most 4. */
+  scale: number;
+  /** Past this distance the far detail draws, m. */
+  farM: number;
+  /** True for a structure the road runs through or under (a bridge tower, a gantry). */
+  overRoad: boolean;
+}
+
+/** A `landmark` feature's params, each bad or missing one at its default (never throws). */
+export function landmarkParams(f: BakedFeature): LandmarkParams {
+  const p = f.params ?? {};
+  const model = p['model'];
+  const yaw = p['yawDeg'];
+  const scale = p['scale'];
+  return {
+    model: typeof model === 'string' && model.length > 0 ? model : null,
+    yawDeg:
+      typeof yaw === 'number' && Number.isFinite(yaw) && yaw >= -180 && yaw <= 180
+        ? yaw
+        : LANDMARK_DEFAULTS.yawDeg,
+    scale:
+      typeof scale === 'number' && Number.isFinite(scale) && scale > 0 && scale <= LANDMARK_DEFAULTS.maxScale
+        ? scale
+        : LANDMARK_DEFAULTS.scale,
+    farM: positiveParam(f, 'farM', LANDMARK_DEFAULTS.farM),
+    overRoad: p['overRoad'] === true,
   };
 }

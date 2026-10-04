@@ -20,6 +20,7 @@ export const BIKE_CLASS_MODELS: Readonly<Record<string, string>> = {
   lawnmower: 'lawnmower',
   'mobility-scooter': 'mobility-scooter',
   'golf-cart': 'golf-cart',
+  tourer: 'touring-flagship',
 };
 
 /** One rider in a race, as app/ knows it (SimConfig's rider plus its pack file's `look`). */

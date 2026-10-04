@@ -95,6 +95,7 @@ const FEATURE_KINDS: readonly FeatureKind[] = [
   'billboard',
   'boostPad',
   'rampTruck',
+  'landmark',
 ];
 const REQUIRED_COLUMNS = ['x', 'y', 'z', 'kappa', 'grade'] as const;
 

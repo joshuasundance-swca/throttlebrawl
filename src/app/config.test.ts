@@ -452,6 +452,9 @@ describe('app/config: the event’s style cash reaches the sim (the riders-5 con
       perTakedownCash: 200,
       takedownComboScale: 0.5,
       perStealCash: 60,
+      // Playtest 3's moves, from the oncoming rate when the event leaves them out (below).
+      perWheelieSecondCash: 20,
+      perDriftSecondCash: 30,
     });
   });
 
@@ -463,6 +466,23 @@ describe('app/config: the event’s style cash reaches the sim (the riders-5 con
       perTakedownCash: 0,
       takedownComboScale: 0,
       perStealCash: 0,
+      perWheelieSecondCash: 0,
+      perDriftSecondCash: 0,
     });
+  });
+
+  // Playtest 3 ("I'd love a way to do wheelies"; the drift: "we should consider that a first class
+  // experience"): a clean wheelie and a banked drift pay style cash per second. An event that
+  // names no rate pays 2 and 3 times its oncoming rate [default], so every existing event pays
+  // them at its own tier's scale (Keys tier 3's oncoming 10 gives 20 and 30); one that names a
+  // rate keeps it.
+  it('pays the wheelie and the drift at 2 and 3 times the oncoming rate unless the event names its own', () => {
+    expect(withRewards({ perOncomingSecondCash: 10 })).toMatchObject({
+      perWheelieSecondCash: 20,
+      perDriftSecondCash: 30,
+    });
+    expect(
+      withRewards({ perOncomingSecondCash: 10, perWheelieSecondCash: 5, perDriftSecondCash: 0 }),
+    ).toMatchObject({ perWheelieSecondCash: 5, perDriftSecondCash: 0 });
   });
 });

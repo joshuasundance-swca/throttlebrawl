@@ -52,6 +52,7 @@
       "rat": { "preset": "single-thump" },
       "sport": { "preset": "inline-four" },
       "super": { "preset": "inline-four", "idleHz": 55, "redlineHz": 420 },
+      "tourer": { "preset": "v-twin", "idleHz": 24, "redlineHz": 150 },
       "lawnmower": { "preset": "mower-putt" }
     }
   },

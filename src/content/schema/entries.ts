@@ -4,11 +4,14 @@
 // names; cross-file rules live in the content lint (src/content/lint.ts).
 import { z } from 'zod';
 import {
+  BARRIER_LOOKS,
   GRUDGE_RULE_IDS,
+  MAX_SEASON,
   MEDIAN_KINDS,
   ROAD_SURFACES,
   ROUTE_BRANCH_KINDS,
   SMASHABLE_KINDS,
+  TIER_RIVAL_BIKES,
   VERGE_EDGES,
   VERGE_SURFACES,
 } from '../../core';
@@ -286,6 +289,11 @@ export const eventSchema = entry('event', {
     perOncomingSecondCash: cash.optional(),
     takedownComboScale: nonNegative.optional(),
     perStealCash: cash.optional(),
+    // Playtest 3's moves ("a way to do wheelies"; the drift as "a first class experience"): a clean
+    // wheelie's and a banked drift's cash per second. Absent: 2 and 3 times the oncoming rate
+    // [default] (app/config.ts).
+    perWheelieSecondCash: cash.optional(),
+    perDriftSecondCash: cash.optional(),
   }),
   modifiers: z
     .looseObject({
@@ -316,6 +324,8 @@ export const eventSchema = entry('event', {
  * A barrier span along a road (docs/content-packs.md, "Road file"; M2 content-2): a `rail` lets a
  * tumble body above `heightM` cross it, a `wall` does not. Water is the region's sea level, world
  * y = 0, so there is no per-road water height. The road lint checks the span lies inside the road.
+ * Playtest 3: a `wall` may be `jumpable` (an airborne rider above it flies over: the static ramp
+ * trucks' shortcuts), and any barrier may draw with a `look` (`railing`: the Golden Gate's).
  */
 export const barrierSchema = z
   .looseObject({
@@ -324,8 +334,14 @@ export const barrierSchema = z
     side: z.enum(['left', 'right', 'both']),
     kind: z.enum(['rail', 'wall']),
     heightM: z.number().positive(),
+    jumpable: z.boolean().optional(),
+    look: z.enum(BARRIER_LOOKS).optional(),
   })
-  .refine((b) => b.s1 > b.s0, { message: 's1 must be past s0', path: ['s1'] });
+  .refine((b) => b.s1 > b.s0, { message: 's1 must be past s0', path: ['s1'] })
+  .refine((b) => b.jumpable !== true || b.kind === 'wall', {
+    message: 'only a wall barrier can be jumpable',
+    path: ['jumpable'],
+  });
 
 const laneSchema = z.looseObject({
   id: z.string(),
@@ -410,6 +426,9 @@ export const roadSchema = entry('road', {
           // parked car-carrier whose rear deck is a jump ramp.
           'boostPad',
           'rampTruck',
+          // Playtest 3 (round 1: "real landmarks"): a landmark beside or over the road, drawn by
+          // render from `params.model`; the sim ignores it (docs/content-packs.md, "Road file").
+          'landmark',
         ]),
         id: idSchema,
         s0: z.number(),
@@ -451,6 +470,9 @@ export const routeSchema = entry('route', {
         kind: z.enum(ROUTE_BRANCH_KINDS).optional(),
         marked: z.boolean().optional(),
         sign: z.string().min(1).max(80).optional(),
+        // Playtest 3 (round 3: "rivals and cops stay on the highway"): the share of rivals that
+        // take it; absent, the AI's own rule decides.
+        aiTake: unit01.optional(),
       }),
     )
     .optional(),
@@ -670,8 +692,32 @@ export const careerSchema = entry('career', {
       z.looseObject({
         id: idSchema,
         name: z.string().optional(),
-        /** Wins in this tier that open the next one. */
+        /**
+         * Wins in this tier that open the next one, or, when the tier names a `boss`, that open the
+         * boss (the boss's own win is not one of them).
+         */
         advance: z.looseObject({ requiredWins: z.number().int().min(0) }),
+        /**
+         * Playtest 3 (round 1: "the boss of each tier must be beaten first"): the tier's boss, a node
+         * of this tier whose event is a grudge match; beating it opens the next tier. The last
+         * tier's boss is the region's (`boss`). The career lint checks both.
+         */
+        boss: idSchema.optional(),
+        /**
+         * Playtest 3 (round 1: "the field levels up every tier"): the tier's field level, each one
+         * the career's default when absent (docs/product-spec.md, "Rivals").
+         */
+        field: z
+          .looseObject({
+            /** The event pace as a share of the best step-up bike open at this tier. */
+            paceShare: z.number().positive().max(1).optional(),
+            aggression: z.number().positive().max(3).optional(),
+            signatureGap: z.number().positive().max(3).optional(),
+            health: z.number().positive().max(3).optional(),
+            power: z.number().positive().max(3).optional(),
+            rivalBike: z.enum(TIER_RIVAL_BIKES).optional(),
+          })
+          .optional(),
       }),
     )
     .min(1),
@@ -708,6 +754,22 @@ export const careerSchema = entry('career', {
     .optional(),
   ending: z.looseObject({ teaser: z.string().optional(), freePlayAfter: z.boolean() }).optional(),
   shop: z.array(z.looseObject({ bike: refSchema, priceCash: cash, unlockTier: idSchema })).optional(),
+  /**
+   * The region's paints (run W-R): bought once, worn on any bike. Playtest 3 (round 2: "Longer +
+   * seasons"): a paint may open only from a later season (`unlockSeason`; 1 when absent).
+   */
+  paints: z
+    .array(
+      z.looseObject({
+        id: idSchema,
+        name: z.string().optional(),
+        hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be #rrggbb'),
+        priceCash: cash,
+        unlockTier: idSchema,
+        unlockSeason: z.number().int().min(1).max(MAX_SEASON).optional(),
+      }),
+    )
+    .optional(),
   unlocks: z
     .array(
       z.looseObject({
