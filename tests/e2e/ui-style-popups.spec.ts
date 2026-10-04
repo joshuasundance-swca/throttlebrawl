@@ -1192,7 +1192,13 @@ test('the stamp check catches a control under the stamp, and the stamp steps awa
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
   await settleStamp(page);
+  // The stamp at its home corner (left), shown, wherever the menu had put it.
+  await page.evaluate(() => {
+    const s = document.getElementById('build-stamp');
+    s?.classList.remove('at-right', 'yield');
+  });
   const before = await stampCover(page);
+  expect(before.shown, 'the stamp was put back in its left corner').toBe(true);
   expect(before.box, 'the stamp was measured').not.toBeNull();
   // A button laid exactly over the stamp where it sits now.
   await page.evaluate((box) => {

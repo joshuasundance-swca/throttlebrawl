@@ -823,14 +823,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
     // The free stretch of the bottom band, between what stands in each bottom corner (the speed
-    // readout, the touch buttons): a very short screen lets the career prompt use all of it.
+    // readout's slot, the touch buttons): a very short screen lets the career prompt use all of it.
     let bandL = 0;
     let bandR = 0;
-    const speedBox = speed.getBoundingClientRect();
+    const speedSlot = elementOf('speedometer');
     const corner: Box[] = [
       ...buttonBoxes,
-      ...(speedBox.width > 0 && !speed.hidden
-        ? [{ left: speedBox.left, top: speedBox.top, right: speedBox.right, bottom: speedBox.bottom }]
+      ...(speedSlot && speedSlot.anchor.startsWith('bottom')
+        ? [placedBox(speedSlot, w, h, layout.mirror, HUD_SIZE.speed)]
         : []),
     ];
     for (const b of corner) {
