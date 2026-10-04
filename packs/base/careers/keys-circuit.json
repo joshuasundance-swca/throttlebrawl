@@ -17,8 +17,8 @@
       "boss": "kevin-grudge",
       "field": {
         "paceShare": 0.74,
-        "aggression": 0.85,
-        "signatureGap": 1.3,
+        "aggression": 0.9,
+        "signatureGap": 1.1,
         "health": 0.9,
         "power": 0.9,
         "rivalBike": "step-down"
@@ -49,8 +49,8 @@
       "boss": "junkyard-hunt",
       "field": {
         "paceShare": 0.82,
-        "aggression": 1.15,
-        "signatureGap": 0.8,
+        "aggression": 1.1,
+        "signatureGap": 0.9,
         "health": 1.1,
         "power": 1.07,
         "rivalBike": "best"
@@ -65,8 +65,8 @@
       "boss": "drawbridge",
       "field": {
         "paceShare": 0.85,
-        "aggression": 1.25,
-        "signatureGap": 0.7,
+        "aggression": 1.2,
+        "signatureGap": 0.85,
         "health": 1.2,
         "power": 1.12,
         "rivalBike": "best"
@@ -335,12 +335,12 @@
     },
     {
       "bike": "sport-600",
-      "priceCash": 9750,
+      "priceCash": 11250,
       "unlockTier": "t2"
     },
     {
       "bike": "streetfighter-750",
-      "priceCash": 16750,
+      "priceCash": 21000,
       "unlockTier": "t4"
     }
   ],

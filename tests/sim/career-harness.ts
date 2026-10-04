@@ -4,11 +4,15 @@
 // play"). A career race here is built exactly as the app builds one: the app's buildSimConfig with
 // the profile's bike and grudges, the career's race log watching the sim's events and snapshots,
 // then the career's settle. The dev bot rides; nothing is scripted in its favour except what a
-// player can do too (retry, buy the best bike the cash allows).
+// player can do too (retry, buy the best bike the cash allows). Playtest 3: a career race carries
+// the career's field level for its tier and season, and the season's remix, exactly as the app's
+// career race does (`careerRaceSetup`), so the headless career meets the field the player meets.
 import { buildSimConfig, createStreamCache } from '../../src/app';
+import { careerRaceSetup } from '../../src/app/career-flow';
 import {
   bare,
   buyBike,
+  careerDefs,
   createOnboarding,
   createRaceLog,
   eventPlan,
@@ -27,6 +31,7 @@ import {
 import { registryFromGlob, type ContentRegistry } from '../../src/content';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
+import type { FieldLevel } from '../../src/core';
 import type { Profile } from '../../src/save';
 import {
   createSim,
@@ -63,7 +68,8 @@ export function botFocus(plan: ReturnType<typeof eventPlan>): BotFocus {
   return 'race';
 }
 
-function botView(snap: SimSnapshot, me: number, focus: BotFocus): SimSnapshot {
+/** What the bot is shown (its eyes): every rider it should not fight shows as a pickup. */
+export function botView(snap: SimSnapshot, me: number, focus: BotFocus): SimSnapshot {
   if (focus === 'hunt') return snap;
   const keep = (e: EntitySnapshot) => typeof focus === 'object' && e.contentId === focus.rival;
   return {
@@ -84,9 +90,56 @@ export interface CareerRace {
   prompts: string[];
 }
 
+/** Every career, in chapter order (the field level counts the tiers of the chapters before). */
+const DEFS = careerDefs(REG);
+
+/** How a test bends a career race: free play, a tuning profile, or another tier's field level. */
+export interface CareerRaceOptions {
+  /** A free-play race of the node's event: the event file's own field, as free play races it. */
+  free?: boolean;
+  /** The sim tuning (a balance test races with the ISOLATED profile). */
+  tuning?: Readonly<Record<string, number>>;
+  /** Race this node at another field level (a balance test races every tier on one road). */
+  level?: FieldLevel;
+}
+
 /**
- * One career race at a map node, ridden by the dev bot, settled into the profile. `free`: a
- * free-play race of the node's event (it pays, but wins nothing on the map).
+ * A career race at a map node as the app builds it (playtest 3: the season's plan and length, the
+ * field level of the node's tier and season, and the season's remix).
+ */
+export function careerRace(
+  def: CareerDef,
+  node: CareerNode,
+  profile: Profile,
+  seed: number,
+  opts: CareerRaceOptions = {},
+): {
+  plan: ReturnType<typeof eventPlan>;
+  length: { id: string; route: string };
+  config: SimConfig;
+  level: FieldLevel | null;
+} {
+  const setup = opts.free ? null : careerRaceSetup(REG, DEFS, profile, def, node);
+  const plan = setup?.plan ?? eventPlan(REG, node.event);
+  const length = setup ? setup.length : nodeLength(plan, node);
+  if (!length) throw new Error(`${node.event} has no length`);
+  const level = setup ? (opts.level ?? setup.fieldLevel) : null;
+  const config = buildSimConfig(REG, STREAMS.forEvent(REG, node.event, length.id), {
+    seed,
+    eventId: node.event,
+    length: length.id,
+    ...(profile.bikes.current ? { playerBike: profile.bikes.current } : {}),
+    grudges: profile.grudges,
+    ...(level ? { fieldLevel: level } : {}),
+    ...(setup?.patch ? { eventPatch: setup.patch } : {}),
+    ...(opts.tuning ? { tuning: { ...opts.tuning } } : {}),
+  });
+  return { plan, length, config, level };
+}
+
+/**
+ * One career race at a map node (`careerRace`), ridden by the dev bot, settled into the profile.
+ * `free`: a free-play race of the node's event (it pays, but wins nothing on the map).
  */
 export function playNode(
   def: CareerDef,
@@ -97,16 +150,7 @@ export function playNode(
   /** Sees every step's events and snapshot (run W-U: checks that read the race as it runs). */
   watch?: (events: readonly SimEvent[], snap: SimSnapshot, config: SimConfig) => void,
 ): CareerRace {
-  const plan = eventPlan(REG, node.event);
-  const length = nodeLength(plan, node);
-  if (!length) throw new Error(`${node.event} has no length`);
-  const config = buildSimConfig(REG, STREAMS.forEvent(REG, node.event, length.id), {
-    seed,
-    eventId: node.event,
-    length: length.id,
-    ...(profile.bikes.current ? { playerBike: profile.bikes.current } : {}),
-    grudges: profile.grudges,
-  });
+  const { plan, length, config } = careerRace(def, node, profile, seed, { free });
   const sim = createSim(config);
   const me = config.riders.findIndex((r) => r.controller.kind === 'player');
   const log = createRaceLog({
