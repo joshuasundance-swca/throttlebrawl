@@ -94,6 +94,16 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('airTipM', 'Air: tip forward (aim lower)', 2.5, 0, 8, 0.25, 'm'),
   decl('airLiftM', 'Air: camera lift', 0.8, 0, 3, 0.1, 'm'),
   decl('airTipFullM', 'Air: full tip from height', 2, 0.25, 8, 0.25, 'm'),
+  // Playtest 3 [default]: braking into a hairpin is "a first class experience". In a drift the
+  // camera slides outside the corner, aims into it and rolls on with the slip (driftRoll is the
+  // roll per radian of slip, so full slip, 0.6 rad, rolls 0.12 rad more); on a wheelie it pulls back
+  // and looks up with the nose, in full at the sweet band's middle. Reduce-motion halves them.
+  decl('driftRoll', 'Drift: extra roll per rad of slip', 0.2, 0, 0.5, 0.05, ''),
+  decl('driftSideM', 'Drift: camera slides outside', 1, 0, 3, 0.1, 'm'),
+  decl('driftAimM', 'Drift: aim swings into the corner', 1.5, 0, 4, 0.1, 'm'),
+  decl('wheelieBackM', 'Wheelie: camera pulls back', 1, 0, 3, 0.1, 'm'),
+  decl('wheelieAimM', 'Wheelie: aim rises', 0.9, 0, 3, 0.1, 'm'),
+  decl('wheelieFovDeg', 'Wheelie: extra field of view', 4, 0, 12, 0.5, '°'),
   // camera-3 (docs/milestones/M3.md) [default]: the far chase and helmet views. Until ui adds a
   // settings row, the view is this slider (0 low chase, 1 far chase, 2 helmet) and the view key.
   decl('mode', 'View: 0 chase, 1 far, 2 helmet', 0, 0, VIEW_MODES.length - 1, 1, ''),

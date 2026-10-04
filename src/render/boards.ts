@@ -2,7 +2,8 @@
 // veto"). A road's `billboard` feature is a slot; it names one region item, or a pool the game
 // fills from. Each board view carries its item's content reference, so the veto can name exactly
 // what the player long-pressed (`pick`), and the pause screen can list what was on screen
-// (`visibleRefs`). ui/ never imports render/: app/ hands the result across.
+// (`visibleRefs`, and `visibleContent`, which adds each item's kind and words for the ticker's
+// "recently seen" poll). ui/ never imports render/: app/ hands the result across.
 import {
   BufferGeometry,
   CanvasTexture,
@@ -49,6 +50,42 @@ export interface BoardCatalog {
     /** The region's `landingLines` (air-pays.ts draws one on a surge landing; no road slot uses them). */
     landing?: readonly BoardItem[];
   };
+}
+
+/**
+ * One item in view, as the poll (app/, every 30 frames in a race) reads it: its content reference,
+ * what it is, and its words on one line. `line` is a landing one-liner (air-pays.ts's overlay
+ * until the ticker takes it over); the rest are boards.
+ */
+export interface VisibleContent {
+  ref: string;
+  kind: BoardKind | 'line';
+  label: string;
+}
+
+/** An item's words on one line (whitespace runs, newlines included, become one space). */
+export function labelOf(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Landing lines by content reference, as `VisibleContent`. The overlay reports only refs, so the
+ * words come from the catalog (its items and pools); a ref it does not hold keeps an empty label,
+ * so it is still noted as seen.
+ */
+export function contentLines(refs: readonly string[], catalog: BoardCatalog | undefined): VisibleContent[] {
+  const byRef = new Map<string, BoardItem>();
+  if (catalog) {
+    const pools = catalog.pools ?? {};
+    for (const item of [
+      ...Object.values(catalog.items),
+      ...(pools.signs ?? []),
+      ...(pools.billboards ?? []),
+      ...(pools.landing ?? []),
+    ])
+      byRef.set(item.ref, item);
+  }
+  return refs.map((ref) => ({ ref, kind: 'line', label: labelOf(byRef.get(ref)?.text ?? '') }));
 }
 
 /** A `billboard` feature on a road, structurally (docs/content-packs.md, "Road file"). */
@@ -430,19 +467,25 @@ export class Boards {
     return this.views.find((v) => v.panel === hit.object)?.ref ?? null;
   }
 
-  /** Content references of the shown boards inside the view and within VISIBLE_M. */
-  visibleRefs(camera: Camera): string[] {
+  /** The shown boards inside the view and within VISIBLE_M, once per item: ref, kind and words. */
+  visibleContent(camera: Camera): VisibleContent[] {
     camera.updateMatrixWorld();
     this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pv);
     camera.getWorldPosition(this.camPos);
-    const out = new Set<string>();
+    const out = new Map<string, VisibleContent>();
     for (const v of this.views) {
-      if (!v.group.visible) continue;
+      if (!v.group.visible || out.has(v.ref)) continue;
       if (v.centre.distanceTo(this.camPos) > VISIBLE_M) continue;
-      if (this.frustum.containsPoint(v.centre)) out.add(v.ref);
+      if (this.frustum.containsPoint(v.centre))
+        out.set(v.ref, { ref: v.ref, kind: v.kind, label: labelOf(v.text) });
     }
-    return [...out];
+    return [...out.values()];
+  }
+
+  /** Content references of the shown boards inside the view and within VISIBLE_M. */
+  visibleRefs(camera: Camera): string[] {
+    return this.visibleContent(camera).map((c) => c.ref);
   }
 
   clear(): void {

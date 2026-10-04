@@ -387,23 +387,24 @@ describe('the six-bike ladder', () => {
 });
 
 describe('the field levels up every tier', () => {
-  // The design's Season 1 table, per global tier (docs/product-spec.md, "Rivals"): the pace of a
+  // The design's Season 1 table, per global tier (docs/product-spec.md, "Rivals"; T7.5 retuned the
+  // fights to the maintainer's gentle climb, about -10% to +20% over a region): the pace of a
   // regular event and of the tier's boss (m/s), the bike the rivals ride, then aggression, the
   // signature gap, health and power for a regular event and for the boss.
   type Row = [number, number, string, number, number, number, number, number, number, number];
   const ROWS: Row[] = [
-    [33.1, 34.0, 'rustbucket-400', 0.85, 0.935, 1.3, 1.182, 0.9, 0.9, 0.9],
-    [39.1, 40.1, 'rustbucket-400', 1.0, 1.1, 1.0, 0.909, 1.0, 1.0, 1.0],
-    [41.1, 42.1, 'sport-600', 1.15, 1.265, 0.8, 0.727, 1.1, 1.1, 1.07],
-    [47.5, 49.8, 'streetfighter-750', 1.25, 1.5, 0.7, 0.583, 1.2, 1.3, 1.12],
-    [41.4, 42.5, 'sport-600', 0.85, 0.935, 1.3, 1.182, 0.9, 0.9, 0.9],
-    [47.6, 48.8, 'streetfighter-750', 1.0, 1.1, 1.0, 0.909, 1.0, 1.0, 1.0],
-    [50.0, 51.2, 'grand-tourer-1100', 1.15, 1.265, 0.8, 0.727, 1.1, 1.1, 1.07],
-    [56.1, 58.7, 'supersport-900', 1.25, 1.5, 0.7, 0.583, 1.2, 1.3, 1.12],
-    [48.8, 50.2, 'grand-tourer-1100', 0.85, 0.935, 1.3, 1.182, 0.9, 0.9, 0.9],
-    [55.8, 57.2, 'supersport-900', 1.0, 1.1, 1.0, 0.909, 1.0, 1.0, 1.0],
-    [58.6, 60.1, 'superbike-1000', 1.15, 1.265, 0.8, 0.727, 1.1, 1.1, 1.07],
-    [60.8, 63.6, 'superbike-1000', 1.25, 1.5, 0.7, 0.583, 1.2, 1.3, 1.12],
+    [33.1, 34.0, 'rustbucket-400', 0.9, 0.945, 1.1, 1.048, 0.9, 0.9, 0.9],
+    [39.1, 40.1, 'rustbucket-400', 1.0, 1.05, 1.0, 0.952, 1.0, 1.0, 1.0],
+    [41.1, 42.1, 'sport-600', 1.1, 1.155, 0.9, 0.857, 1.1, 1.1, 1.07],
+    [47.5, 49.8, 'streetfighter-750', 1.2, 1.32, 0.85, 0.773, 1.2, 1.3, 1.12],
+    [41.4, 42.5, 'sport-600', 0.9, 0.945, 1.1, 1.048, 0.9, 0.9, 0.9],
+    [47.6, 48.8, 'streetfighter-750', 1.0, 1.05, 1.0, 0.952, 1.0, 1.0, 1.0],
+    [50.0, 51.2, 'grand-tourer-1100', 1.1, 1.155, 0.9, 0.857, 1.1, 1.1, 1.07],
+    [56.1, 58.7, 'supersport-900', 1.2, 1.32, 0.85, 0.773, 1.2, 1.3, 1.12],
+    [48.8, 50.2, 'grand-tourer-1100', 0.9, 0.945, 1.1, 1.048, 0.9, 0.9, 0.9],
+    [55.8, 57.2, 'supersport-900', 1.0, 1.05, 1.0, 0.952, 1.0, 1.0, 1.0],
+    [58.6, 60.1, 'superbike-1000', 1.1, 1.155, 0.9, 0.857, 1.1, 1.1, 1.07],
+    [60.8, 63.6, 'superbike-1000', 1.2, 1.32, 0.85, 0.773, 1.2, 1.3, 1.12],
   ];
   const BEST_TOP = [44.7, 50.1, 50.1, 55.9, 55.9, 61.0, 61.0, 66.0, 66.0, 71.5, 71.5, 71.5];
 
@@ -449,8 +450,8 @@ describe('the field levels up every tier', () => {
   it('Season 2 on: everyone rides the best bike, and the field is harder again', () => {
     const s2 = fieldLevel(REG, DEFS, KEYS, nodeById(KEYS, 'keys-t1-a'), 2);
     expect(s2).toMatchObject({ paceMps: 55.1, rivalBike: 'base:superbike-1000', copTopCapMps: 70.1 });
-    expect(s2?.aggressionScale).toBeCloseTo(0.95, 3);
-    expect(s2?.signatureGapScale).toBeCloseTo(1.17, 3);
+    expect(s2?.aggressionScale).toBeCloseTo(1.0, 3);
+    expect(s2?.signatureGapScale).toBeCloseTo(0.99, 3);
     expect(s2?.healthScale).toBeCloseTo(0.95, 3);
     expect(s2?.powerScale).toBeCloseTo(0.95, 3);
     // The caps hold however long the career runs.
@@ -472,6 +473,19 @@ describe('the field levels up every tier', () => {
     const t2 = fieldLevel(REG, defs, tuned, nodeById(tuned, 'keys-t2-a'));
     expect(t2?.rivalBike).toBe('base:sport-600');
     expect(t2?.aggressionScale).toBeCloseTo(1.4, 3);
+  });
+
+  it("a tier's step-down block is Season 1's: from Season 2 its rivals ride the best bike", () => {
+    // The product spec's Rivals: "from a region's third tier, and in every tier from Season 2,
+    // rivals ride that bike". The real career files name `step-down` for their first two tiers.
+    const tuned = region(KEYS_SPEC, [{ field: { rivalBike: 'step-down' } }]);
+    const defs = [tuned, PNW, SF];
+    expect(fieldLevel(REG, defs, tuned, nodeById(tuned, 'keys-t1-a'), 1)?.rivalBike).toBe(
+      'base:rustbucket-400',
+    );
+    expect(fieldLevel(REG, defs, tuned, nodeById(tuned, 'keys-t1-a'), 2)?.rivalBike).toBe(
+      'base:superbike-1000',
+    );
   });
 
   it('a map without tier bosses still levels up, its one boss the region boss', () => {

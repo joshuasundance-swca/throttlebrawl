@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { SimEvent } from '../sim/api';
+import { STYLE_KINDS, TRICK_IDS, type SimEvent } from '../sim/api';
 import {
   createRaceTally,
   createStyleMeter,
+  driftMultiplier,
   foundPop,
   meterCash,
   meterLabel,
@@ -30,6 +31,37 @@ describe('style pop-ups', () => {
     expect(styleText(ev('style', 0, { kind: 'airtime', points: 75 }))).toBe('AIRTIME +$75');
     expect(styleText(ev('style', 0, { kind: 'takedownCombo', points: 300 }))).toBe('COMBO +$300');
     expect(styleText(ev('style', 0, { kind: 'weaponSteal', points: 40 }))).toBe('STOLEN +$40');
+  });
+
+  it('words every style kind the sim can pay, so a paid move never goes without a ticker line (the wave A live check)', () => {
+    // The live check: 5 paid wheelies and 5 drift banks gave 0 ticker lines, because stylePop had no
+    // word for them. Every kind in the sim's own list must pop, and every trick it names.
+    const unworded: string[] = [];
+    for (const kind of STYLE_KINDS) {
+      if (kind === 'trick') {
+        for (const trick of TRICK_IDS)
+          if (!stylePop(ev('style', 0, { kind, trick, flips: 1, points: 50 })))
+            unworded.push(`trick:${trick}`);
+      } else if (!stylePop(ev('style', 0, { kind, points: 50 }))) unworded.push(kind);
+    }
+    expect(unworded).toEqual([]);
+  });
+
+  it('pops a paid wheelie and a banked drift with their cash, each its own merge key (playtest 3)', () => {
+    expect(styleText(ev('style', 0, { kind: 'wheelie', points: 140, seconds: 3.2, sweetS: 2.5 }))).toBe(
+      'WHEELIE +$140',
+    );
+    expect(styleText(ev('style', 0, { kind: 'drift', points: 210, chain: 2 }))).toBe('DRIFT +$210');
+    // The landed-wheelie trick and the wheelie ridden on the road are different pops: they do not merge.
+    expect(stylePop(ev('style', 0, { kind: 'wheelie', points: 1 }))?.kind).not.toBe(
+      stylePop(ev('style', 0, { kind: 'trick', trick: 'wheelie', flips: 0, points: 1 }))?.kind,
+    );
+    const tally = createRaceTally();
+    tally.onEvents(
+      [ev('style', 0, { kind: 'wheelie', points: 140 }), ev('style', 0, { kind: 'drift', points: 210 })],
+      0,
+    );
+    expect(tally.takePopups().map((p) => p.word)).toEqual(['WHEELIE', 'DRIFT']);
   });
 
   it("stamps a shortcut's first ride with the seconds it saved, as its own chip (W-Q)", () => {
@@ -227,5 +259,29 @@ describe('the live style meter', () => {
     m.reset();
     expect(m.showing).toBeNull();
     expect(m.update(null, 0.5)).toEqual({ shown: null, ended: null });
+  });
+});
+
+describe('the drift chain as a meter line (playtest 3, T6.3)', () => {
+  const drift = (chain: number, cash: number): MeterRun => ({
+    kind: 'drift',
+    seconds: 0,
+    cash,
+    qualifies: cash > 0,
+    chain,
+  });
+
+  it('reads DRIFT with the chain multiplier once it chains, and the unbanked cash beside it', () => {
+    expect(meterLabel(drift(1, 90))).toBe('DRIFT');
+    expect(meterLabel(drift(2, 140))).toBe('DRIFT ×1.5');
+    expect(meterLabel(drift(3, 140))).toBe('DRIFT ×2');
+    expect(meterLabel(drift(4, 140))).toBe('DRIFT ×2.5');
+    expect(meterLabel(drift(5, 140))).toBe('DRIFT ×3');
+    expect(meterLabel(drift(9, 140))).toBe('DRIFT ×3');
+    expect(meterCash(drift(3, 140))).toBe('+$140');
+  });
+
+  it('keeps the multiplier ladder the sim pays: x1, x1.5, x2, x2.5, then x3 at most', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map(driftMultiplier)).toEqual([1, 1, 1.5, 2, 2.5, 3, 3]);
   });
 });

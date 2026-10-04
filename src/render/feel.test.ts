@@ -26,7 +26,15 @@ import {
   type RoadNetwork,
 } from '../road';
 import type { EntitySnapshot, SimEvent, SimSnapshot, TumbleSnapshot } from '../sim/api';
-import { Boards, resolveSlot, VISIBLE_M, type BoardCatalog, type BoardItem, type BoardSlot } from './boards';
+import {
+  Boards,
+  contentLines,
+  resolveSlot,
+  VISIBLE_M,
+  type BoardCatalog,
+  type BoardItem,
+  type BoardSlot,
+} from './boards';
 import { FeelEffects } from './effects';
 import { clientToNdc } from './index';
 import { createFlatLook } from './look';
@@ -633,6 +641,47 @@ describe('the placeholder boards', () => {
     // A rebuild keeps the veto.
     boards.build(road, () => slots, catalog);
     expect(boards.pick(0, 0, cameraAt(boards, ref, 40))).toBeNull();
+  });
+
+  it('lists what is in view as {ref, kind, label}, the label being the item words on one line', () => {
+    const boards = built();
+    const ref = 'base:region/florida-keys#timeshare';
+    expect(boards.visibleContent(cameraAt(boards, ref, 60))).toContainEqual({
+      ref,
+      kind: 'billboard',
+      label: 'TIMESHARE ON A SANDBAR',
+    });
+    // The same set as the refs, one entry per ref, and nothing once it is vetoed or out of range.
+    const seen = boards.visibleContent(cameraAt(boards, ref, 60));
+    expect(seen.map((c) => c.ref)).toEqual(boards.visibleRefs(cameraAt(boards, ref, 60)));
+    expect(new Set(seen.map((c) => c.ref)).size).toBe(seen.length);
+    expect(boards.visibleContent(cameraAt(boards, ref, VISIBLE_M + 50)).map((c) => c.ref)).not.toContain(ref);
+    boards.hide([ref]);
+    expect(boards.visibleContent(cameraAt(boards, ref, 60)).map((c) => c.ref)).not.toContain(ref);
+  });
+
+  it('collapses a multi-line item to one line for its label', () => {
+    const wordy = item('wordy', 'sign', '  NO PARKING.\n  Towing   is\tfun.  ');
+    const b = new Boards(createFlatLook());
+    const slot: BoardSlot = { kind: 'billboard', id: 'w', s0: 100, s1: 104, d0: 7, d1: 9, item: 'wordy' };
+    b.build(road, () => [slot], { items: { wordy } });
+    const cam = cameraAt(b, wordy.ref, 50);
+    expect(b.visibleContent(cam)).toEqual([
+      { ref: wordy.ref, kind: 'sign', label: 'NO PARKING. Towing is fun.' },
+    ]);
+  });
+
+  it('gives a landing line (the overlay pool) its words and the kind "line"', () => {
+    const line = item('thud', 'sign', 'That landing had a plot.');
+    const cat: BoardCatalog = { items: {}, pools: { landing: [line] } };
+    expect(contentLines([line.ref], cat)).toEqual([
+      { ref: line.ref, kind: 'line', label: 'That landing had a plot.' },
+    ]);
+    // A ref the catalog does not hold still reaches the poll, with an empty label, so it is noted.
+    expect(contentLines(['base:region/x#gone'], cat)).toEqual([
+      { ref: 'base:region/x#gone', kind: 'line', label: '' },
+    ]);
+    expect(contentLines([], undefined)).toEqual([]);
   });
 
   it('turns client pixels into device coordinates over the canvas rect', () => {

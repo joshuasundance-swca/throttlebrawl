@@ -893,13 +893,25 @@ export function createApp(opts: AppOptions): AppHandle {
           // The low chase cam reads the road (look-ahead), the rider's mode and auto-target (framing
           // bias) and the other riders' positions (camera-1).
           const at = curr?.entities[playerId];
-          pose = camera.update({ ...me, mode: at?.mode, targetId: at?.targetId, road: at?.road }, dt, {
-            entities: curr?.entities,
-            // The held look-back action (camera-1's lookBack: L, or the pad's R1).
-            lookBack: input.lastActions().lookBack,
-            // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
-            aspect: viewAspect(),
-          });
+          // Playtest 3's moves (the drift's slip and the wheelie's angle) lean the camera in too.
+          pose = camera.update(
+            {
+              ...me,
+              mode: at?.mode,
+              targetId: at?.targetId,
+              road: at?.road,
+              drift: at?.drift,
+              wheelie: at?.wheelie,
+            },
+            dt,
+            {
+              entities: curr?.entities,
+              // The held look-back action (camera-1's lookBack: L, or the pad's R1).
+              lookBack: input.lastActions().lookBack,
+              // The view's shape: a wide phone-landscape view gets a higher camera (playtest 1 item 11).
+              aspect: viewAspect(),
+            },
+          );
         } else if (me && !attractPose) pose = attractPose = camera.snap(me, { aspect: viewAspect() });
         if (pose) renderer.render(state === 'race' ? prev : null, curr, alpha, pose);
         // The engines (yours and the nearest riders'), the siren, horns and the music (audio-1).

@@ -39,6 +39,11 @@
 // the aim drops by `camera.airTipM` and the camera rises by `camera.airLiftM`, in full from
 // `camera.airTipFullM` over the road below, on the same springs, so the ground the bike will land
 // on (and render's chalk mark there) comes into view and the tip eases back on the landing.
+// The moves (playtest 3: braking into a hairpin should be "a first class experience"). In a drift the
+// camera slides to the outside of the corner to show the bike's flank, aims into the corner so the
+// bike stays near the middle of the frame, and rolls on with the slip. On a wheelie it pulls back
+// and looks up with the nose. All of it eases in on the same springs, reduce-motion halves it, and
+// each number is a slider (`camera.drift*`, `camera.wheelie*`) that turns it off at 0.
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
@@ -58,6 +63,10 @@ export interface CameraTarget {
   /** Entity id, so the rig can pick out the events that involve this rider. */
   id?: number | undefined;
   lean?: number | undefined;
+  /** The drift's slip angle, radians, positive when the nose points right (EntitySnapshot.drift). */
+  drift?: number | undefined;
+  /** The wheelie's angle above the slope, radians (EntitySnapshot.wheelie). */
+  wheelie?: number | undefined;
   mode?: MoverMode | undefined;
   /** The rider's current auto-target, or -1. */
   targetId?: number | undefined;
@@ -168,6 +177,12 @@ export interface ChaseParams {
   airTipM: number;
   airLiftM: number;
   airTipFullM: number;
+  driftRoll: number;
+  driftSideM: number;
+  driftAimM: number;
+  wheelieBackM: number;
+  wheelieAimM: number;
+  wheelieFovDeg: number;
 }
 
 export interface ChaseRig {
@@ -190,6 +205,14 @@ const leanOf = (t: CameraTarget): number => {
   const lean = t.lean ?? 0;
   return Number.isFinite(lean) ? lean : 0;
 };
+
+/** The drift's slip angle at full effect (sim/riders/drift.ts: 34 degrees); a deeper slip adds nothing. */
+const DRIFT_FULL_RAD = 0.6;
+/** The wheelie angle at full effect: the middle of the sweet band (sim/riders/wheelie.ts). */
+const WHEELIE_FULL_RAD = 0.7;
+
+/** A snapshot number or 0 (a missing, NaN or infinite field leaves the framing as it was). */
+const fieldOf = (v: number | undefined): number => (v !== undefined && Number.isFinite(v) ? v : 0);
 
 // Relative spring rates: the aim settles a little faster than the placement, so a bend is read
 // before the camera swings; the FOV breathes a little slower.
@@ -400,16 +423,41 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
           ? 1
           : 0;
     aimY -= params.airTipM * tip;
+
+    // The moves. Reduce-motion halves them (the shake setting runs from 1 to 0).
+    const calm = 0.5 + 0.5 * shakeAmount;
+    const slip = Math.max(-1, Math.min(1, fieldOf(t.drift) / DRIFT_FULL_RAD));
+    const up = Math.min(1, Math.max(0, fieldOf(t.wheelie) / WHEELIE_FULL_RAD));
+    let moveSide = 0;
+    if (slip !== 0 && !helmet) {
+      // Outside the corner is away from the slip's side. The camera slides out to show the bike's
+      // flank, and the aim swings the other way, into the corner, so the bike stays near the middle.
+      const rx = -fz;
+      const rz = fx;
+      const aim = slip * params.driftAimM * calm;
+      aimX += rx * aim;
+      aimZ += rz * aim;
+      moveSide = -slip * params.driftSideM * calm;
+    }
+    if (up > 0) aimY += params.wheelieAimM * up * calm;
     return {
       yaw: yawOf(fx, fz),
-      distance: (far ? params.farDistanceM : params.chaseDistanceM) + wide * params.wideDistanceM,
+      distance:
+        (far ? params.farDistanceM : params.chaseDistanceM) +
+        wide * params.wideDistanceM +
+        params.wheelieBackM * up * calm,
       height: (far ? params.farHeightM : params.heightM) + wide * params.wideHeightM + params.airLiftM * tip,
-      side,
+      side: side + moveSide,
       aimX: aimX - t.x,
       aimY: aimY - t.y,
       aimZ: aimZ - t.z,
-      roll: -lean * (helmet ? params.helmetRollFraction * share : params.rollFraction),
-      fov: (helmet ? params.helmetFovDeg : params.fovBaseDeg) + params.fovKickDeg * kick * kick * share,
+      roll:
+        -lean * (helmet ? params.helmetRollFraction * share : params.rollFraction) -
+        slip * DRIFT_FULL_RAD * params.driftRoll * calm * share,
+      fov:
+        (helmet ? params.helmetFovDeg : params.fovBaseDeg) +
+        params.fovKickDeg * kick * kick * share +
+        params.wheelieFovDeg * up * calm * share,
     };
   };
 
