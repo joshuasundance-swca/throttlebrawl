@@ -155,7 +155,12 @@ function makeConfig(o: Opts = {}): SimConfig {
     route,
     modifiers: [],
     grudges: {},
-    tuning: { ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)), ...(o.tuning ?? {}) },
+    // These are the original pedestrians (T4.2's gap acceptance is off; src/sim/peds/gap.test.ts has it on).
+    tuning: {
+      ...tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim)),
+      'peds.gapAccept': 0,
+      ...(o.tuning ?? {}),
+    },
     difficulty: { presetId: 'normal', riderAggression: 1, copFrequency: 1, rubberBand: 1 },
     assists: 'off',
     slowMo: false,
@@ -597,6 +602,6 @@ describe('peds: determinism', () => {
   });
 
   it('exposes the phase names the state uses', () => {
-    expect(PED_PHASE).toEqual({ loiter: 0, walk: 1, dive: 2, down: 3, react: 4, hop: 5, along: 6 });
+    expect(PED_PHASE).toEqual({ loiter: 0, walk: 1, dive: 2, down: 3, react: 4, hop: 5, along: 6, fake: 7 });
   });
 });

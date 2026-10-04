@@ -3,10 +3,15 @@ import { mkdirSync } from 'node:fs';
 
 // Playtest 1c ([decided] 2026-09-30, the maintainer: "I'd like to also watch oncoming go up and up
 // as you ride"). In a real race with the real sim, the player rides in the oncoming lane: while the
-// stretch lasts, a live chip under the position badge ticks up ("ONCOMING 2.4s +$24"); when the
-// stretch ends it pays, and the chip lands exactly on the awarded cash and becomes that run's
-// pop-up. It keeps the pop-ups' placement rules: out of the central look-ahead (the rectangle
+// stretch lasts, a live line on the top ticker ticks up ("ONCOMING 2.4s +$24"); when the stretch
+// ends it pays, and the line lands exactly on the awarded cash and becomes that run's pop-up. It
+// keeps the pop-ups' placement rules: out of the central look-ahead (the rectangle
 // ui-style-popups.spec.ts measured), on screen.
+//
+// The ticker shows one thing at a time and the live meter is its quietest item (a bark or a near
+// miss takes the strip from it, playtest 3), so this spec mutes everything but the meter and a paid
+// run's landing (`__uiTickerQuiet`, ui's test seam): it is about the meter, not about what else the
+// race says.
 //
 // A small driver inside the page steers the rider with keyboard events every frame, toward the
 // oncoming lane's centre (−2 m times the travel direction, as tests/sim/riders-style-run.test.ts
@@ -32,9 +37,9 @@ interface RideState {
   samples: Sample[];
   /** The player's oncoming awards, with the stretch they paid and its world seconds. */
   awards: { points: number; stretch: number; seconds: number }[];
-  /** The chip the meter became, a few frames after the first award. */
-  landed: { text: string; sameElement: boolean } | null;
-  /** Every chip seen, for the placement check. */
+  /** The line the meter became, a few frames after the first award. */
+  landed: { text: string; landedClass: boolean; cls: string } | null;
+  /** Every pop-up line seen, for the placement check. */
   chips: { text: string; box: Box }[];
   log: string[];
   done: boolean;
@@ -42,6 +47,7 @@ interface RideState {
 
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
+  __uiTickerQuiet?: boolean;
   __meterRide?: RideState;
   __game?: {
     setSeed(seed: number): void;
@@ -84,7 +90,6 @@ function startDriver(page: Page, holdS: number, limitMs: number): Promise<void> 
       };
       const t0 = performance.now();
       let back = false;
-      let meterEl: Element | null = null;
       let paidAt = -1;
       let lastTick = -1;
       let stretch = -1;
@@ -133,30 +138,30 @@ function startDriver(page: Page, holdS: number, limitMs: number): Promise<void> 
         const u = 0.35 * ((back ? 2 : -2) * dir - d) * dir - 2.5 * yaw;
         hold('KeyD', u > 0.08);
         hold('KeyA', u < -0.08);
-        const meter = document.querySelector('.style-meter');
-        if (meter) {
-          meterEl = meter;
+        const strip = document.querySelector<HTMLElement>('#hud-ticker');
+        const up = !!strip && !strip.hidden && strip.checkVisibility();
+        const words = strip?.querySelector('.ticker-text')?.textContent ?? '';
+        const money = strip?.querySelector('.ticker-cash')?.textContent ?? '';
+        if (strip && up && strip.dataset['cls'] === 'meter') {
           state.samples.push({
-            label: meter.querySelector('.pop-label')?.textContent ?? '',
-            cash: meter.querySelector('.pop-cash')?.textContent ?? '',
-            pending: meter.classList.contains('pending'),
-            box: box(meter),
+            label: words,
+            cash: money,
+            pending: strip.classList.contains('pending'),
+            box: box(strip),
             run,
             stretch,
           });
-        }
-        for (const c of document.querySelectorAll<HTMLElement>('#style-popups .style-pop')) {
-          if (c.checkVisibility()) state.chips.push({ text: c.innerText, box: box(c) });
+        } else if (strip && up) {
+          state.chips.push({ text: `${words} ${money}`.trim(), box: box(strip) });
         }
         if (state.awards.length > 0 && paidAt < 0) paidAt = performance.now();
-        // A few frames after the award: the chip it landed on, once the handover is done.
+        // A few frames after the award: the line it landed on, once the handover is done.
         if (paidAt >= 0 && performance.now() - paidAt > 100) {
-          const chip = [...document.querySelectorAll<HTMLElement>('#style-popups .style-pop')].find((c) =>
-            (c.textContent ?? '').startsWith('ONCOMING'),
-          );
+          const landed = strip && up && words.startsWith('ONCOMING') && strip.dataset['cls'] === 'style';
           state.landed = {
-            text: chip ? chip.innerText.replace(/\s+/g, ' ').trim() : '(none)',
-            sameElement: !!chip && chip === meterEl,
+            text: landed ? `${words} ${money}`.trim() : '(none)',
+            landedClass: !!landed && strip.classList.contains('landed'),
+            cls: strip?.dataset['cls'] ?? '',
           };
           return finish();
         }
@@ -173,6 +178,7 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
   const problems = watchErrors(page);
   await page.addInitScript(() => {
     (window as TestWindow).__GAME_TEST__ = true;
+    (window as TestWindow).__uiTickerQuiet = true;
   });
   await page.goto('./');
   await page.locator('#start-screen').click();
@@ -211,7 +217,7 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
   console.log(
     `meter: ${r.samples.length} frames in all, ${shown.length} in the paid stretch ${paid.stretch}; ` +
       `first "${first?.label} ${first?.cash}", last "${last?.label} ${last?.cash}"; ` +
-      `award $${paid.points}; landed on "${r.landed?.text}" (same element: ${r.landed?.sameElement})`,
+      `award $${paid.points}; landed on "${r.landed?.text}" (${r.landed?.cls}, landed class: ${r.landed?.landedClass})`,
   );
 
   // It showed and it climbed: within the stretch, seconds and cash only go up. It is judged in the
@@ -242,7 +248,7 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
     expect(s.pending).toBe(!s.run?.qualifies);
   }
   expect(shown.some((s) => s.pending) && shown.some((s) => !s.pending), 'dim, then bright').toBe(true);
-  // It landed exactly on the award and became the run's own chip (the same element). The last meter
+  // It landed exactly on the award and became the run's own line on the strip. The last meter
   // frame is the sim's run in that frame (checked above), up to a drawn frame before the pay: a
   // stretch that ends between two drawn frames pays its last ticks' cash on the landing (seen with
   // forced 40-50 ms frames: the meter's last frame read $33, the award and the chip $34).
@@ -250,9 +256,10 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
     paid.points,
   );
   expect(r.landed?.text).toBe(`ONCOMING +$${paid.points.toLocaleString('en-US')}`);
-  expect(r.landed?.sameElement, 'the meter became the chip').toBe(true);
+  expect(r.landed?.cls, 'the meter became a pop-up line').toBe('style');
+  expect(r.landed?.landedClass, 'it is marked as the landed award').toBe(true);
 
-  // Placement: every chip and every meter frame stays on screen and out of the look-ahead.
+  // Placement: every line and every meter frame stays on screen and out of the look-ahead.
   const { width: w, height: h } = viewport;
   const ahead = {
     left: w * LOOK_AHEAD.left,
@@ -279,7 +286,7 @@ test('the live oncoming meter ticks up, then lands on the award and becomes its 
 
 // The "Style pop-ups" setting (playtest 1c, on by default): off hides the chips and the meter at
 // once, mid-race too, and the choice survives a reload. Pop-ups come from ui's test feed
-// (`window.__uiStyleFeed`), through the same tally the sim's events use.
+// (`window.__uiStyleFeed`), through the same tally the sim's events use, on the top ticker.
 test('the style pop-ups setting turns the chips off mid-race and is kept after a reload', async ({
   page,
 }) => {
@@ -293,11 +300,15 @@ test('the style pop-ups setting turns the chips off mid-race and is kept after a
   await page.locator('#start-screen').click();
   await page.locator('#menu-race').click();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 5);
+  type SeamWindow = FeedWindow & { __uiTicker?: (items: unknown[]) => void };
   const feed = () =>
     page.evaluate(async () => {
+      // The strip cleared first: the race's own bark at its start would otherwise hold it.
+      (window as SeamWindow).__uiTicker?.([]);
       (window as FeedWindow).__uiStyleFeed?.([{ kind: 'nearMiss', points: 25 }]);
       for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
-      return document.querySelectorAll('#style-popups .style-pop').length;
+      const root = document.getElementById('hud-ticker');
+      return root && !root.hidden && root.dataset['cls'] === 'style' ? 1 : 0;
     });
   // On (the default): the chip shows. This is the control for the "off" check below.
   expect(await feed(), 'chips with the setting on').toBe(1);
