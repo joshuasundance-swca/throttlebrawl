@@ -282,7 +282,8 @@ describe.each(CUTS)('$name', (cut) => {
     let rides = 0;
     for (const speed of [18, 28, 38]) {
       for (const steer of [0, 0.3, 1]) {
-        // Past the truck, at the wall's foot, pressing right all the way past the split.
+        // Past the truck, at the wall's foot, pressing right (or not) all the way past the split, the
+        // stretch where the cut lies beside the road and the merge, to the avenue's last piece.
         const h = riderHarness(l.config, {
           edge: avenue,
           s: truck.s1 + 2,
@@ -290,7 +291,7 @@ describe.each(CUTS)('$name', (cut) => {
           speed,
         });
         const seen = new Set<string>();
-        for (let t = 0; t < 360; t++) {
+        for (let t = 0; t < 3000 && !seen.has(cut.end); t++) {
           h.step(input(1, 0, steer));
           seen.add(l.road.edges[h.rider.pos.edge]?.id ?? '');
         }
@@ -298,7 +299,7 @@ describe.each(CUTS)('$name', (cut) => {
           `[examined] ground, ${speed} m/s steer ${steer}: ${[...seen].join(' > ')} (d ${h.rider.pos.d.toFixed(2)})`,
         );
         for (const id of cut.roads) expect(seen.has(id), `${speed} ${steer}: ${id}`).toBe(false);
-        expect(seen.has(l.road.edges[avenue + 2]?.id ?? 'x')).toBe(true);
+        expect(seen.has(cut.end), `${speed} ${steer}: reached the last piece`).toBe(true);
         rides++;
       }
     }
