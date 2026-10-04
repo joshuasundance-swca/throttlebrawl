@@ -1,0 +1,65 @@
+{
+  "type": "event",
+  "id": "keys-t2-spring-break",
+  "name": "Spring Break Hunt",
+  "kind": "takedown-hunt",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-key-west-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["chad-speedwell", "the-mayor", "tammy-two-stroke", "dial-up"],
+    "paceMps": 39.1
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "targetCount": 3,
+    "targets": "any",
+    "endOnCount": true
+  },
+  "objectives": [
+    {
+      "id": "takedowns",
+      "kind": "takedowns",
+      "params": {
+        "count": 3
+      },
+      "required": true,
+      "rewardCash": 1100
+    }
+  ],
+  "tier": 2,
+  "rewards": {
+    "byPlaceCash": [350, 200, 100, 50, 50],
+    "perTakedownCash": 175,
+    "perNearMissCash": 22,
+    "perAirtimeCash": 33,
+    "perOncomingSecondCash": 9,
+    "takedownComboScale": 0.5,
+    "perStealCash": 55
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A takedown hunt on the real Key West streets: three takedowns on anyone before the line ends it, with the spring-break convoy for company. Playtest 3 (T10.1): the second tier's third regular event (progression.md, section 2). Its night is the region's golden hour until the Keys add a night (T10.4). [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

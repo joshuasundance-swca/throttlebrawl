@@ -14,7 +14,7 @@
   ],
   "field": {
     "riders": ["chad-speedwell", "the-mayor"],
-    "paceMps": 39
+    "paceMps": 39.1
   },
   "cops": {
     "mode": "every-race",
@@ -34,18 +34,18 @@
       "id": "escape",
       "kind": "escape",
       "required": true,
-      "rewardCash": 1500
+      "rewardCash": 1100
     }
   ],
   "tier": 2,
   "rewards": {
-    "byPlaceCash": [2500, 1500, 1000, 500, 250, 120],
-    "perTakedownCash": 260,
-    "perNearMissCash": 25,
-    "perAirtimeCash": 40,
-    "perOncomingSecondCash": 10,
+    "byPlaceCash": [350, 200, 100],
+    "perTakedownCash": 175,
+    "perNearMissCash": 22,
+    "perAirtimeCash": 33,
+    "perOncomingSecondCash": 9,
     "takedownComboScale": 0.5,
-    "perStealCash": 60
+    "perStealCash": 55
   },
   "modifiers": {
     "pool": "region-default",
@@ -54,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape: two cops come out and chaos brings more. Run W-T (law with a personality): built from Sgt. Pruitt, who gets more relentless the longer he chases, so the 45 s are hardest at the end; the patrol, the heat meter and the Keys County END OF JURISDICTION sign ride too (crossing the sign with the law on you loses them, which wins the escape).",
+    "notes": "A cop escape: two cops come out and chaos brings more. Run W-T (law with a personality): built from Sgt. Pruitt, who gets more relentless the longer he chases, so the 45 s are hardest at the end; the patrol, the heat meter and the Keys County END OF JURISDICTION sign ride too (crossing the sign with the law on you loses them, which wins the escape). Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
