@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { fastForwardDone } from './lockstep';
+import { diskNetworks, domId, menuRegions, offeredRoutes } from './packs-on-disk';
 import { NOT_BLANK_VARIANCE, pixelStats } from './pixels';
 
 // Real roads as routes (the maintainer, 2026-10-01: "Yes, add as routes"). After the region, the
@@ -56,6 +57,12 @@ async function header(
 
 const chipNames = (page: Page) => page.locator('#route-picker button.route');
 
+/** The route each chip stands for, in order ('' for the event's own road). */
+const chipRoutes = (page: Page) =>
+  chipNames(page).evaluateAll((bs) => bs.map((b) => (b as HTMLElement).dataset['route'] ?? ''));
+
+const bare = (key: string) => key.slice(key.indexOf(':') + 1);
+
 test('each region offers its own road first, then its real roads by name, and the menu fits the phone', async ({
   page,
 }) => {
@@ -64,39 +71,42 @@ test('each region offers its own road first, then its real roads by name, and th
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await toMenu(page);
   const picker = page.locator('#route-picker');
-  // The Keys: the hand-made causeway road, the real Overseas Highway at Bahia Honda, and run W-S's
-  // Key West network.
-  await expect(picker).toBeVisible();
-  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run', 'Key West']);
-  await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'true');
+  // What each region should offer is read from the packs on disk (packs-on-disk.ts restates the
+  // rule): the region's event's own road, then every route on the region's map-data networks and on
+  // its other hand-made networks, by id. A new real road baked into a pack is expected here without
+  // editing this spec.
+  const networks = diskNetworks();
+  const regions = menuRegions().map(({ region, event }) => {
+    const offered = offeredRoutes(event);
+    return {
+      key: region.key,
+      chip: `#region-${domId(region.key)}`,
+      names: [event.name ?? event.id, ...offered.map((r) => r.name ?? bare(r.key))],
+      ids: ['', ...offered.map((r) => r.key)],
+      firstReal: offered.find((r) => networks.get(r.network)?.realRoad)?.key ?? null,
+    };
+  });
+  console.log(
+    `[print] routes from the packs: ${regions.map((r) => `${r.key} ${r.names.join(' | ')}`).join('; ')}`,
+  );
+  // Real roads as routes is the point: there is more than one region, and the default offers one.
+  expect(regions.length, 'regions on the menu').toBeGreaterThan(1);
+  expect(regions[0]?.firstReal, `${regions[0]?.key} offers a real road`).not.toBeNull();
 
-  const regions = [
-    {
-      chip: '#region-region-pnw-pacific-northwest',
-      routes: ['Fogline Run', 'Chuckanut Drive', 'Columbia River Highway', 'I-5 by Lake Samish'],
-    },
-    {
-      chip: '#region-region-sf-san-francisco',
-      // Run W-R: the hand-made downtown on its own network, offered after the real roads; run W-U's
-      // Chinatown and North Beach, the mural alleys and the waterfront the same way (the picker lists
-      // routes by id).
-      routes: [
-        'Fogline Hill Sprint',
-        'Russian Hill',
-        'Twin Peaks',
-        'Chinatown & North Beach',
-        'Downtown',
-        'Mural Alleys',
-        'Waterfront',
-      ],
-    },
-  ];
   const view = page.viewportSize()!;
   mkdirSync('test-results/screenshots', { recursive: true });
-  for (const r of regions) {
-    await page.locator(r.chip).click();
-    // The region's road data arrives, then its routes are offered, its own road picked.
-    await expect(chipNames(page)).toHaveText(r.routes, { timeout: 30_000 });
+  for (const [i, r] of regions.entries()) {
+    // The first region is the menu's default; the others are picked by their chip.
+    if (i > 0) await page.locator(r.chip).click();
+    if (r.ids.length < 2) {
+      // Only the region's own road: nothing to pick, so no picker.
+      await expect(picker).toBeHidden({ timeout: 30_000 });
+      continue;
+    }
+    // The region's road data arrives, then its routes are offered in order, its own road picked.
+    await expect(picker).toBeVisible({ timeout: 30_000 });
+    await expect(chipNames(page)).toHaveText(r.names, { timeout: 30_000 });
+    expect(await chipRoutes(page), `${r.key}: each chip's route, in order`).toEqual(r.ids);
     await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'true');
     // Phone first: every chip is a full touch target, and the pickers and Race stay on screen.
     for (const b of await chipNames(page).all()) {
@@ -108,21 +118,21 @@ test('each region offers its own road first, then its real roads by name, and th
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(box.y + box.height).toBeLessThanOrEqual(view.height);
     }
+    if (r.firstReal === null) continue;
     // A real road's chip shows the real road or streets it follows.
-    const real = chipNames(page).nth(1);
+    const real = page.locator(`#route-${domId(r.firstReal)}`);
     await real.click();
     await expect(real).toHaveAttribute('aria-checked', 'true');
     await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'false');
     await expect(picker.locator('.route-blurb')).toHaveText(/^Real (road|streets): .+\. \d+\.\d km\.$/);
-    await page.screenshot({
-      path: `test-results/screenshots/route-picker-${r.routes[1]?.replace(/\W+/g, '-')}.png`,
-    });
+    await page.screenshot({ path: `test-results/screenshots/route-picker-${domId(bare(r.firstReal))}.png` });
     // A real road's blurb takes the region blurb's place.
     await expect(page.locator('#region-picker .region-blurb')).toBeHidden();
   }
-  // Back to the Keys: its own routes again, its own road picked (a pick belongs to its region).
-  await page.locator('#region-base-florida-keys').click();
-  await expect(chipNames(page)).toHaveText(['Causeway Sprint', 'Bahia Honda Run', 'Key West']);
+  // Back to the first region: its own routes again, its own road picked (a pick belongs to its region).
+  const first = regions[0]!;
+  await page.locator(first.chip).click();
+  await expect(chipNames(page)).toHaveText(first.names);
   await expect(page.locator('#route-own')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('#region-picker .region-blurb')).toBeVisible();
   expect(problems).toEqual([]);
@@ -140,8 +150,12 @@ test('a picked real road is raced to the finish by the bot, and the recording na
   });
   page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
   await toMenu(page);
-  await page.locator('#region-region-sf-san-francisco').click();
-  const peaks = page.locator('#route-region-sf-osm-sf-twin-peaks-run');
+  // Twin Peaks is this test's fixture road; its region and that region's event come from the packs.
+  const TWIN_PEAKS = 'region-sf:osm-sf-twin-peaks-run';
+  const home = menuRegions().find(({ event }) => offeredRoutes(event).some((r) => r.key === TWIN_PEAKS));
+  expect(home, `a region offers ${TWIN_PEAKS}`).toBeDefined();
+  await page.locator(`#region-${domId(home!.region.key)}`).click();
+  const peaks = page.locator(`#route-${domId(TWIN_PEAKS)}`);
   await expect(peaks).toBeVisible({ timeout: 30_000 });
   await peaks.click();
   await expect(peaks).toHaveAttribute('aria-checked', 'true');
@@ -165,8 +179,8 @@ test('a picked real road is raced to the finish by the bot, and the recording na
   // The recording names the real road beside the seed.
   const h = await header(page);
   console.log(`[print] header: event ${h.eventId}, route ${h.config?.event?.routeId}, seed ${h.seed}`);
-  expect(h.eventId).toBe('region-sf:sf-hill-sprint');
-  expect(h.config?.event?.routeId).toBe('region-sf:osm-sf-twin-peaks-run');
+  expect(h.eventId).toBe(home!.event.key);
+  expect(h.config?.event?.routeId).toBe(TWIN_PEAKS);
   expect(h.seed).toBe(SEED);
   mkdirSync('test-results/screenshots', { recursive: true });
   const png = await page
