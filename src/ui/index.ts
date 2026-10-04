@@ -386,7 +386,7 @@ ${TICKER_CSS}
 #build-stamp { pointer-events: none; font-size: 11px; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
   max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
 #build-stamp.at-right { left: auto; right: max(8px, env(safe-area-inset-right)); text-align: right; }
-#build-stamp.yield { visibility: hidden; }
+#build-stamp.yield { display: none; }
 `;
 
 /** A style event as the browser specs feed it: the kind and its cash. */
@@ -822,6 +822,23 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // The pause button sits in the top corner away from the position readout, and mirrors with it.
     pauseButton.classList.toggle('mirrored', layout.mirror);
+    // The free stretch of the bottom band, between what stands in each bottom corner (the speed
+    // readout, the touch buttons): a very short screen lets the career prompt use all of it.
+    let bandL = 0;
+    let bandR = 0;
+    const speedBox = speed.getBoundingClientRect();
+    const corner: Box[] = [
+      ...buttonBoxes,
+      ...(speedBox.width > 0 && !speed.hidden
+        ? [{ left: speedBox.left, top: speedBox.top, right: speedBox.right, bottom: speedBox.bottom }]
+        : []),
+    ];
+    for (const b of corner) {
+      if ((b.left + b.right) / 2 < w / 2) bandL = Math.max(bandL, b.right);
+      else bandR = Math.max(bandR, w - b.left);
+    }
+    root.style.setProperty('--prompt-l', `${Math.ceil(bandL)}px`);
+    root.style.setProperty('--prompt-r', `${Math.ceil(bandR)}px`);
     for (const b of touchButtons.splice(0)) b.remove();
     // How far the touch buttons reach in from their side and up from the bottom (CSS px): the
     // pieces centred low between the bottom corners (the career prompt, the slow-frames toast) keep

@@ -248,6 +248,14 @@ body:has(canvas[data-landing-line]) #career-prompt { visibility: hidden; }
   .career-map figcaption { width: 220px; }
   #career-prompt { font-size: 13px; }
 }
+/* A very short phone held sideways (568x320): under the player's bike there are about 55 px, so the
+   prompt takes the whole free stretch of the bottom band (ui/ sets --prompt-l and --prompt-r: what
+   stands in each bottom corner) in 12 px type, and wraps to three lines at most. [default] */
+@media (orientation: landscape) and (max-height: 340px) {
+  #career-prompt { left: calc(var(--prompt-l, 0px) + (100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px)) / 2);
+    max-width: calc(100vw - var(--prompt-l, 0px) - var(--prompt-r, 0px) - 12px);
+    font-size: 12px; line-height: 1.2; padding: 3px 8px; }
+}
 .career-show { display: flex; flex-direction: column; gap: 8px; }
 ${SHOW_CSS}`;
 
