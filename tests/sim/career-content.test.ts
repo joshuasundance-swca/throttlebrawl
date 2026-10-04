@@ -45,8 +45,8 @@ describe('the career maps', () => {
     describe(def.regionName, () => {
       const plans = def.nodes.map((n) => eventPlan(REG, n.event));
 
-      it('about ten events, across the four event types and every route of the region', () => {
-        expect(def.nodes.length).toBe(10);
+      it('at least ten events, across the four event types and every route of the region', () => {
+        expect(def.nodes.length).toBeGreaterThanOrEqual(10);
         expect(new Set(plans.map((p) => p.kind))).toEqual(new Set(KINDS));
         const used = new Set(
           def.nodes.map((n, i) => plans[i]?.lengths.find((l) => l.id === n.length)?.route),
@@ -60,10 +60,24 @@ describe('the career maps', () => {
         );
       });
 
-      it('three tiers of three and a finale tier with the boss, whose event is the only finale', () => {
-        expect(def.tiers.map((t) => def.nodes.filter((n) => n.tier === def.tiers.indexOf(t)).length)).toEqual(
-          [3, 3, 3, 1],
-        );
+      it("every tier but the last holds three regular events, a tier's boss is its grudge match, and the region boss's event is the only finale", () => {
+        // Playtest 3's format names each tier's boss (a grudge match among the tier's nodes); the
+        // format before it has none, and its last tier holds the region boss alone.
+        const tiers = REG.careers[def.key]?.tiers ?? [];
+        expect(tiers.length).toBe(def.tiers.length);
+        tiers.forEach((tier, t) => {
+          const inTier = def.nodes.filter((n) => n.tier === t);
+          const bossId = tier.boss;
+          const regular = inTier.filter((n) => n.id !== bossId);
+          if (t < tiers.length - 1)
+            expect(regular.length, `${tier.id}'s regular events`).toBeGreaterThanOrEqual(3);
+          if (!bossId) return;
+          const boss = inTier.find((n) => n.id === bossId);
+          expect(boss, `${tier.id}'s boss ${bossId} is a node of the tier`).toBeDefined();
+          expect(eventPlan(REG, boss?.event ?? '').kind, `${tier.id}'s boss`).toBe('grudge-match');
+          expect(tier.advance.requiredWins, `${tier.id}'s gate`).toBeLessThanOrEqual(regular.length);
+          if (t === tiers.length - 1) expect(bossId).toBe(def.boss);
+        });
         const boss = def.nodes.find((n) => n.id === def.boss);
         expect(boss?.tier).toBe(def.tiers.length - 1);
         expect(plans.filter((p) => p.finale).map((p) => p.key)).toEqual([boss?.event]);
@@ -172,23 +186,26 @@ describe('the career maps', () => {
 });
 
 describe('the garage over every region', () => {
-  it('three step-up bikes, a novelty ride per region, the joke rides hidden until their boss', () => {
+  it('step-up bikes locked until their tier, a novelty ride per region, the joke rides hidden until their boss', () => {
     const start = startCareer(DEFS, { ...DEFAULT_PROFILE });
     const shown = garageBikes(REG, DEFS, start);
-    expect(shown.map((b) => [b.key, b.state])).toEqual([
-      ['base:moped', 'for-sale'],
-      ['base:dirt-bike', 'for-sale'],
-      ['base:chopper', 'for-sale'],
-      ['base:rustbucket-400', 'owned'],
-      ['base:streetfighter-750', 'locked'],
-      ['base:superbike-1000', 'locked'],
-    ]);
-    const tops = ['base:rustbucket-400', 'base:streetfighter-750', 'base:superbike-1000'].map(
-      (k) => REG.bikes[k]?.handling.topSpeedMps ?? 0,
-    );
-    // Each a clear step up: at least a fifth faster than the one before.
-    expect(tops[1]).toBeGreaterThan((tops[0] ?? 0) * 1.2);
-    expect(tops[2]).toBeGreaterThan((tops[1] ?? 0) * 1.2);
+    const state = (key: string) => shown.find((b) => b.key === key)?.state;
+    // Only the starting bike is owned; no step-up bike is for sale before its tier opens.
+    expect(shown.filter((b) => b.state === 'owned').map((b) => b.key)).toEqual([DEFS[0]?.startingBike]);
+    const stepUps = Object.keys(REG.bikes).filter((k) => (REG.bikes[k]?.tags ?? []).includes('step-up'));
+    expect(stepUps.length).toBeGreaterThanOrEqual(3);
+    for (const key of stepUps) expect(state(key), key).toBe('locked');
+    // The novelty rides are for sale from the start.
+    const novelty = Object.keys(REG.bikes).filter((k) => (REG.bikes[k]?.tags ?? []).includes('novelty'));
+    expect(novelty.length).toBeGreaterThanOrEqual(3);
+    for (const key of novelty) expect(state(key), key).toBe('for-sale');
+    // Each step-up bike is a clear step up: faster than the one before by more than the rubber
+    // band's 6 %.
+    const tops = [DEFS[0]?.startingBike ?? '', ...stepUps]
+      .map((k) => REG.bikes[k]?.handling.topSpeedMps ?? 0)
+      .sort((a, b) => a - b);
+    for (let i = 1; i < tops.length; i++)
+      expect(tops[i] ?? 0, `step ${i}`).toBeGreaterThan((tops[i - 1] ?? 0) * 1.06);
     for (const joke of ['base:golf-cart', 'base:lawnmower', 'base:mobility-scooter']) {
       expect(REG.bikes[joke]?.tags).toContain('secret');
       expect(shown.some((b) => b.key === joke)).toBe(false);

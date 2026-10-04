@@ -1,19 +1,19 @@
 {
   "type": "event",
-  "id": "keys-t1-shakedown",
-  "name": "The Shakedown",
+  "id": "keys-t1-rental-return",
+  "name": "Rental Return",
   "kind": "classic-race",
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
   "lengths": [
     {
       "id": "standard",
-      "route": "m1-skeleton-sprint",
+      "route": "m1-standard-run",
       "laps": 1
     }
   ],
   "field": {
-    "riders": ["deacon-vane", "dial-up", "chad-speedwell", "kevin-from-accounting"],
+    "riders": ["the-mayor", "chad-speedwell", "tammy-two-stroke", "dial-up"],
     "paceMps": 33.1
   },
   "cops": {
@@ -25,18 +25,18 @@
   "rules": {},
   "objectives": [
     {
-      "id": "finish",
+      "id": "top-3",
       "kind": "finish-place",
       "params": {
-        "maxPlace": 5
+        "maxPlace": 3
       },
       "required": true
     },
     {
-      "id": "podium",
-      "kind": "finish-place",
+      "id": "shortcut",
+      "kind": "ride-branch",
       "params": {
-        "maxPlace": 3
+        "branch": "m1-sandbar-flats"
       },
       "required": false,
       "rewardCash": 150
@@ -59,11 +59,11 @@
   },
   "meta": {
     "status": "live",
-    "notes": "Event 1, the learn-by-riding race (product spec, Career): finish to win, a podium pays a bonus. Run W-T: the patrol (1 or 2 cops up the road) and the heat meter, as every v1 event has them (docs/content-packs.md, \"Event\"; the career events had left them out, so a career race met only the lot's cop). Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
+    "notes": "A classic race, the standard run: the rental has to be at the counter by the line, upright, and the deposit is on every rider's mind. Top 3 wins it; the optional bonus is the Sandbar Flats, the back road across the shallows. Playtest 3 (T10.1): the first tier's third regular event (progression.md, section 2). Its sunset is the region's golden hour until the Keys add a noon (T10.4). [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
-      "createdAt": "2026-10-02"
+      "createdAt": "2026-10-04"
     }
   }
 }

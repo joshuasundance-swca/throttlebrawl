@@ -1,19 +1,19 @@
 {
   "type": "event",
-  "id": "keys-t3-pruitt-overtime",
-  "name": "Sgt. Pruitt's Overtime",
+  "id": "keys-t3-speed-monitored",
+  "name": "Speed Monitored by Aircraft",
   "kind": "cop-escape",
   "region": "florida-keys",
   "timeOfDay": "golden-hour",
   "lengths": [
     {
       "id": "standard",
-      "route": "osm-bahia-honda-run",
+      "route": "m1-standard-run",
       "laps": 1
     }
   ],
   "field": {
-    "riders": ["dial-up", "kevin-from-accounting"],
+    "riders": ["tammy-two-stroke", "the-mayor"],
     "paceMps": 41.1
   },
   "cops": {
@@ -26,7 +26,7 @@
   },
   "rules": {
     "escapeBy": "distance",
-    "escapeDistanceM": 3000,
+    "escapeDistanceM": 2750,
     "copsFromStart": 2
   },
   "objectives": [
@@ -54,11 +54,11 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, heavy: once the law is on you, ride 3 km of the real Overseas Highway without being knocked off, or lose them. Run W-T (law with a personality): Trooper Dalrymple radar-guns the Bahia Honda bridge from the patrol (ride over it under 65 mph and he lets you go), Pruitt's overtime makes him relentless, and the Keys County END OF JURISDICTION sign ends the chase if you reach it. Playtest 3 (T10.1): the purse, the style rewards and the rival pace follow the tier ladder (docs/product-spec.md, Cash and Rivals): the field climbs by tier, the money is smaller and tighter. [default] every number.",
+    "notes": "A cop escape, 2.75 km: the sign said the speed is monitored by aircraft, and the aircraft reported it. Once the law is on you, ride the distance without being knocked off, or lose them. Playtest 3 (T10.1): the third tier's third regular event (progression.md, section 2); the phase-2 content task moves it onto the Seven Mile Bridge's old road, where the law does not follow (critic.md, W1). [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
-      "createdAt": "2026-10-02"
+      "createdAt": "2026-10-04"
     }
   }
 }

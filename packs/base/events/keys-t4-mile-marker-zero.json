@@ -1,0 +1,64 @@
+{
+  "type": "event",
+  "id": "keys-t4-mile-marker-zero",
+  "name": "Mile Marker Zero",
+  "kind": "cop-escape",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-key-west-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["kevin-from-accounting", "chad-speedwell"],
+    "paceMps": 47.5
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 2,
+    "chaosSummon": true,
+    "randomness": 0.2,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "escapeBy": "distance",
+    "escapeDistanceM": 3000,
+    "copsFromStart": 2
+  },
+  "objectives": [
+    {
+      "id": "escape",
+      "kind": "escape",
+      "required": true,
+      "rewardCash": 1650
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [500, 350, 150],
+    "perTakedownCash": 225,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 38,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 64
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A cop escape, 3 km through Key West, to the end of the road: there is nowhere further to go, which the law has noticed. Playtest 3 (T10.1): the last tier's third regular event (progression.md, section 2). [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

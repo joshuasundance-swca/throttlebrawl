@@ -1,0 +1,62 @@
+{
+  "type": "event",
+  "id": "keys-t4-auntie",
+  "name": "Auntie's Rules",
+  "kind": "grudge-match",
+  "region": "florida-keys",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-key-west-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["tammy-two-stroke"],
+    "paceMps": 47.5
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {
+    "rival": "tammy-two-stroke",
+    "winBy": "finish-ahead",
+    "grudgeStakes": 2
+  },
+  "objectives": [
+    {
+      "id": "beat-rival",
+      "kind": "beat-rival",
+      "required": true,
+      "rewardCash": 1650
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [500, 350],
+    "perTakedownCash": 225,
+    "perNearMissCash": 25,
+    "perAirtimeCash": 38,
+    "perOncomingSecondCash": 10,
+    "takedownComboScale": 0.5,
+    "perStealCash": 64
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A grudge match against Tammy Two-Stroke through Key West: beat her to the line, her rules, no rule card. Not a tier boss (the region's is Mother Rust), so it pays as a regular event. Playtest 3 (T10.1): the last tier's second regular event (progression.md, section 2). [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "type": "bike",
+  "id": "sport-600",
+  "name": "Sport 600",
+  "class": "sport",
+  "tags": ["step-up"],
+  "handling": {
+    "topSpeedMps": 50.1,
+    "accelMps2": 5.4,
+    "brakeMps2": 9.5,
+    "steerRateMps": 5.7,
+    "massKg": 185
+  },
+  "engineSound": {
+    "preset": "inline-four"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The career's second bike (playtest 3, round 3: \"Six bikes\"; progression.md, section 3). About 112 mph (50.1 m/s), 12% faster than the Rustbucket's 100, so it is a clear step up; on sale in the Keys' second tier for $9,750, about 3 races of winnings after it opens. Its model is a byte copy of the stickered sport bike's under its own id (`models/bikes/sport-600`), until Codex draws its own under the same name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}
