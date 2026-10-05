@@ -18,6 +18,13 @@
 //   its slot rails run across the avenue, and a cable car rides it. Nowhere else does one run.
 // - a city floor under it all, out to CITY_FLOOR_M, so no sea shows between the blocks.
 //
+// Playtest 3 (T12.6) adds downtown Portland's blocks to this layer: a `pdx-blocks` side gets a front
+// row of Codex CX4's cast-iron fronts, brick lofts, office blocks and pink towers (`planPortland`), a
+// cross street every block, bike racks, and a pod of food carts where a pedestrian zone says so. They
+// stand on the land the road scene drew and keep clear of every road, feature and building; the
+// stretches draw exactly as San Francisco's do (one mesh each, the Pacific Northwest atlas as its map),
+// and the carts' name boards are text surfaces whose words are pack signs (text-surfaces.ts).
+//
 // The cross traffic and the cable cars are presentation only, like everything in render: the sim
 // never sees them. So they never cross the avenue while a racer or a traffic vehicle is within
 // their clearance of the crossing (`crossingNeed`: what a racer at top speed covers while they cross,
@@ -47,6 +54,7 @@ import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { LAND_TOP_M, scatterHash, themeAt, type SideTag, type SideTheme } from './scenery';
 import { ATLAS_WHITE_UV, hasAtlasUv } from './scenery-merge';
+import { placeSurface, type PlacedSurface } from './text-surfaces';
 
 /** The kit's variants (tools/blender/props/sf_downtown.py), by name. */
 export const DT = {
@@ -299,6 +307,12 @@ export interface DowntownInput {
    * when the modules have loaded. The lots are the modules' footprints, which are wider.
    */
   stacked?: boolean;
+  /**
+   * Downtown Portland (playtest 3, T12.6): the blocks of a `pdx-blocks` side, drawn from CX4's kit (the
+   * layer's `kit`). `landReach` is the road scene's: how far past the verge the drawn land runs there
+   * (RoadScene.landReach), so a building stands on ground.
+   */
+  portland?: { landReach(edge: number, side: -1 | 1, s: number): number };
 }
 
 const hex = (h: string): [number, number, number] => {
@@ -309,6 +323,11 @@ const hex = (h: string): [number, number, number] => {
 /** Whether the network has a downtown at all (any downtown tag). */
 export function hasDowntown(tags: ReadonlySet<string>): boolean {
   return ['towers', 'plaza', 'cross-street', 'cable-crossing'].some((t) => tags.has(t));
+}
+
+/** Whether the network has Portland's blocks (the `pdx-blocks` tag): the Pacific Northwest's own downtown. */
+export function hasPortland(tags: ReadonlySet<string>): boolean {
+  return tags.has('pdx-blocks');
 }
 
 /** A cross street's height at u across the avenue (signed, toward +d), for a crossing at road height y. */
@@ -334,45 +353,8 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
     const targetM = Math.max(MIN_STACK_M, (OLD_HEIGHT_M[variant] ?? 40) * scale);
     return { model: 'tower', sy: 1, mids: midsFor(targetM), targetM };
   };
-  const items: DowntownItem[] = [];
   const crossings: Crossing[] = [];
-  const soups = new Map<string, Soup>();
-  const centres = new Map<string, { xs: number; zs: number; n: number; pts: Point3[] }>();
-  const soupAt = (edge: number, s: number): Soup => {
-    const key = `${edge}:${Math.floor(Math.max(0, s) / STRETCH_M)}`;
-    let soup = soups.get(key);
-    if (!soup) {
-      soup = { pos: [], col: [] };
-      soups.set(key, soup);
-    }
-    return soup;
-  };
-  const note = (edge: number, s: number, p: Point3) => {
-    const key = `${edge}:${Math.floor(Math.max(0, s) / STRETCH_M)}`;
-    const c = centres.get(key) ?? { xs: 0, zs: 0, n: 0, pts: [] };
-    c.xs += p.x;
-    c.zs += p.z;
-    c.n++;
-    c.pts.push(p);
-    centres.set(key, c);
-  };
-  /** A triangle; a flat one is turned to face up (the surfaces are seen from above). */
-  const tri = (soup: Soup, a: Point3, b: Point3, c: Point3, colour: string, up = true) => {
-    const ny = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
-    if (up && ny < 0) [b, c] = [c, b];
-    soup.pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    const [r, g, bl] = hex(colour);
-    for (let i = 0; i < 3; i++) soup.col.push(r, g, bl);
-  };
-  /** A quad: a, b one edge and c, d the opposite one (a beside c), faced up unless `up` is false. */
-  const quad = (soup: Soup, a: Point3, b: Point3, c: Point3, d: Point3, colour: string, up = true) => {
-    tri(soup, a, c, b, colour, up);
-    tri(soup, b, c, d, colour, up);
-  };
-  const place = (it: DowntownItem) => {
-    items.push(it);
-    note(it.edge, it.s, it.p);
-  };
+  const { soupAt, quad, place, note, finish } = planner();
 
   const hqEdge = lastDowntownEdge(road, dressing);
   for (const e of road.edges) {
@@ -866,26 +848,480 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
     note(c.edge, c.s, at(c.outer + CROSS_REACH_M, 0));
   }
 
-  const stretches = [...centres.entries()].map(([key, c]) => {
-    const cx = c.xs / c.n;
-    const cz = c.zs / c.n;
-    const radius = Math.max(...c.pts.map((p) => Math.hypot(p.x - cx, p.z - cz))) + 40;
-    return { key, cx, cz, radius };
-  });
-  for (const key of soups.keys()) {
-    if (centres.has(key)) continue;
-    const s = soups.get(key);
-    if (!s || s.pos.length < 3) continue;
-    let xs = 0;
-    let zs = 0;
-    const n = s.pos.length / 3;
-    for (let i = 0; i < n; i++) {
-      xs += s.pos[i * 3] ?? 0;
-      zs += s.pos[i * 3 + 2] ?? 0;
-    }
-    stretches.push({ key, cx: xs / n, cz: zs / n, radius: CITY_FLOOR_M + 80 });
+  return finish(crossings, CITY_FLOOR_M + 80);
+}
+
+/** CX4's kit (`models/scenery/pdx-downtown`, models.ts ROOTS.pdxDowntown), by variant. */
+export const PDX = {
+  castIron: 0,
+  brickLoft: 1,
+  officeBlock: 2,
+  towerBase: 3,
+  towerMid: 4,
+  towerCrown: 5,
+  cartA: 6,
+  cartB: 7,
+  cartC: 8,
+  bikeRack: 9,
+} as const;
+const PDX_CARTS: readonly number[] = [PDX.cartA, PDX.cartB, PDX.cartC];
+/** The front row's mix: a third cast iron, a third brick lofts, offices, and now and then a pink tower. [default] */
+const PDX_FRONT_MIX: readonly number[] = [
+  PDX.castIron,
+  PDX.brickLoft,
+  PDX.officeBlock,
+  PDX.castIron,
+  PDX.brickLoft,
+  PDX.officeBlock,
+  PDX.towerBase,
+];
+/** A block is 200 feet, so a cross street opens in the front row after this much frontage, m. */
+export const PDX_BLOCK_M = 61;
+/** Portland's cross streets are 60 feet wide, m. */
+export const PDX_STREET_M = 18;
+/**
+ * A building may reach this far past the land the road scene drew, m: the road scene's terrain skirt falls
+ * away at about 1 in 2.2 beyond it, so its back corners hang that much over a drop of about 2 m. Seen from
+ * the road, the front of the building hides it.
+ */
+export const PDX_OVERHANG_M = 5;
+/**
+ * A building's base reaches this far under the lowest ground along its front, m. It is small: the base
+ * moves a facade's bottom edge, so it stretches the facade's picture by the same share, and a front row
+ * on the road's grade (3 % up Broadway) needs only the slope across one lot.
+ */
+export const PDX_SINK_M = 0.3;
+/** A bike rack stands on the sidewalk every so often, m. [default] */
+const PDX_RACK_EVERY_M = 38;
+/** Carts in a pod stand this far apart along the road, and this far behind the pedestrian zone, m. [default] */
+export const PDX_CART_PITCH_M = 12;
+export const PDX_CART_BACK_M = 1;
+/** A cart's footprint: its body and the picnic table beside it, m (the model's box is x -2.5 to 5.6, z -2.4 to 0.8). */
+const PDX_CART_WIDTH_M = 8.1;
+const PDX_CART_DEPTH_M = 2.4;
+const PDX_CART_MID_X_M = 1.55;
+/** What a feature of these kinds keeps clear of buildings (the road scene's own list, and landmarks). */
+const PDX_CLEAR = new Set([...KEEP_CLEAR, 'landmark']);
+/** A pedestrian zone with this `params.dressing` is a food-cart pod: a lot, with carts standing in it. */
+export const PDX_PODS = 'food-carts';
+
+/** A building's footprint on the ground: its middle, its two axes (u along the front, v out of it) and half sizes. */
+export interface Rect {
+  cx: number;
+  cz: number;
+  ux: number;
+  uz: number;
+  vx: number;
+  vz: number;
+  hw: number;
+  hd: number;
+}
+
+/**
+ * The footprint of a model of `width` by `depth` whose front middle stands at `p` turned by `turn` (the
+ * model's +Z, its front's normal, is (sin turn, cos turn); its +X is (cos turn, -sin turn); the building
+ * runs back along -Z).
+ */
+export function rectOf(p: Point3, turn: number, width: number, depth: number): Rect {
+  const vx = Math.sin(turn);
+  const vz = Math.cos(turn);
+  return {
+    cx: p.x - (vx * depth) / 2,
+    cz: p.z - (vz * depth) / 2,
+    ux: Math.cos(turn),
+    uz: -Math.sin(turn),
+    vx,
+    vz,
+    hw: width / 2,
+    hd: depth / 2,
+  };
+}
+
+/** Whether two footprints overlap by more than a seam (separating-axis test, with 0.2 m of give). */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  const give = 0.2;
+  const radius = (r: Rect, ax: number, az: number) =>
+    r.hw * Math.abs(r.ux * ax + r.uz * az) + r.hd * Math.abs(r.vx * ax + r.vz * az);
+  for (const [ax, az] of [
+    [a.ux, a.uz],
+    [a.vx, a.vz],
+    [b.ux, b.uz],
+    [b.vx, b.vz],
+  ] as const) {
+    const apart = Math.abs((b.cx - a.cx) * ax + (b.cz - a.cz) * az);
+    if (apart >= radius(a, ax, az) + radius(b, ax, az) - give) return false;
   }
-  return { items, crossings, soups, stretches };
+  return true;
+}
+
+/** A building keeps this far from any road's verge, m: the sidewalk less what a front's corner may give. */
+export const PDX_ROAD_CLEAR_M = SIDEWALK_M - 0.6;
+
+/** The width and depth of one of the kit's buildings, m: its bounding box (the front is at z = 0). */
+export function pdxFootprint(kit: SceneryModel, variant: number): readonly [number, number] {
+  const g = kit.variants[variant];
+  if (!g) return [0, 0];
+  if (!g.boundingBox) g.computeBoundingBox();
+  const b = g.boundingBox;
+  return b ? [b.max.x - b.min.x, Math.max(0, -b.min.z)] : [0, 0];
+}
+
+/**
+ * Downtown Portland's blocks (playtest 3, T12.6; wave B's punch list, item 3): on every `pdx-blocks` side
+ * of the road, a front row of CX4's cast-iron fronts, brick lofts, office blocks and now and then a
+ * pink tower (stacked from its modules, as San Francisco's are), a cross street every block, bike racks on
+ * the sidewalk, and a pod of food carts where a pedestrian zone says `dressing: food-carts`. Everything
+ * stands on land the road scene drew (`input.portland.landReach`): a building keeps clear of every
+ * feature the road keeps clear (a zone, a sign, a landmark), moves back behind one that only crosses its
+ * front, and gives up its lot where it cannot stand on ground. Pure placement (tests read it).
+ */
+export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownPlan {
+  const { road, dressing, seed } = input;
+  const landReach = (edge: number, side: -1 | 1, s: number) => input.portland?.landReach(edge, side, s) ?? 0;
+  const { soupAt, quad, place, finish } = planner();
+  const sizes = new Map<number, readonly [number, number]>();
+  const size = (variant: number) => {
+    let s = sizes.get(variant);
+    if (!s) {
+      s = pdxFootprint(kit, variant);
+      sizes.set(variant, s);
+    }
+    return s;
+  };
+  /** Every building placed so far, on any road: two roads' fronts meet at a corner and must not overlap. */
+  const footprints: Rect[] = [];
+  /**
+   * Whether none of a footprint's corners, edge middles and centre lies on a road, or within a sidewalk of
+   * one (the inside of a bend and a junction's other road, which the land strip does not see): each point
+   * is projected onto the nearest road of the edge's neighbourhood.
+   */
+  const clearOfRoads = (r: Rect, hint: number): boolean => {
+    const at = (a: number, b: number) => ({
+      x: r.cx + r.ux * a + r.vx * b,
+      z: r.cz + r.uz * a + r.vz * b,
+    });
+    const points = [-1, 0, 1].flatMap((i) => [-1, 0, 1].map((j) => at(i * r.hw, j * r.hd)));
+    return points.every((q) => {
+      const pos = road.project(q.x, q.z, hint);
+      const e2 = road.edges[pos.edge];
+      if (!e2) return true;
+      const edge = pos.d < 0 ? -e2.dMin : e2.dMax;
+      return Math.abs(pos.d) >= edge + PDX_ROAD_CLEAR_M;
+    });
+  };
+  for (const e of road.edges) {
+    const dress = dressing?.[e.id];
+    const tags = (dress?.tags ?? e.tags) as readonly SideTag[] | undefined;
+    if (!tags?.some((t) => t.tag === 'pdx-blocks')) continue;
+    const all = dress?.features ?? e.features;
+    const features = all.filter((f) => PDX_CLEAR.has(f.kind));
+    const pods = all.filter((f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === PDX_PODS);
+    const h = (k: number, side: number, salt: number) =>
+      scatterHash(seed, 5113 + e.index * 977, k, side * 37 + salt);
+    const outerOf = (side: -1 | 1) => (side < 0 ? -e.dMin : e.dMax) + VERGE_M;
+    const w = (s: number, d: number, hgt: number) => road.toWorld(e.index, s, d, hgt);
+    const faceRoad = (p: Point3, s: number) => {
+      const c = w(s, 0, 0);
+      return Math.atan2(c.x - p.x, c.z - p.z);
+    };
+    const reach = (side: -1 | 1, s: number) =>
+      Math.min(landReach(e.index, side, s), landReach(e.index, side, Math.min(e.length, s + 2)));
+    /** The runs of s where a side is Portland's blocks, at 2 m steps: [start, end] pairs. */
+    const runs = (side: -1 | 1): [number, number][] => {
+      const out: [number, number][] = [];
+      let start = -1;
+      for (let s = 0; s <= e.length + 1e-6; s += 2) {
+        const here = themeAt(tags, side < 0 ? 'left' : 'right', Math.min(s, e.length)) === 'blocks';
+        if (here && start < 0) start = s;
+        if ((!here || s + 2 > e.length + 1e-6) && start >= 0) {
+          out.push([start, here ? e.length : s - 2]);
+          start = -1;
+        }
+      }
+      return out;
+    };
+    /** The features over s0..s1 on a side, as how far out from the road's middle they reach: [near, far]. */
+    const across = (side: -1 | 1, s0: number, s1: number, margin: number) =>
+      features
+        .filter((f) => Math.min(f.s0, f.s1) - margin < s1 && Math.max(f.s0, f.s1) + margin > s0)
+        .map((f) => {
+          const lo = Math.min(f.d0, f.d1) * side;
+          const hi = Math.max(f.d0, f.d1) * side;
+          return [Math.min(lo, hi), Math.max(lo, hi)] as const;
+        });
+    /** How far past the verge a building's front must stand over s0..s1: a sidewalk, or behind a feature. */
+    const backFor = (side: -1 | 1, s0: number, s1: number) => {
+      const outer = outerOf(side);
+      let back = SIDEWALK_M;
+      for (const [, far] of across(side, s0, s1, 1.5)) if (far > outer + back - 0.5) back = far - outer + 0.5;
+      return back;
+    };
+    /** The ground a building over s0..s1 at d stands on: its highest and lowest road height there, m. */
+    const groundOver = (s0: number, s1: number, d: number) => {
+      let hi = -Infinity;
+      let lo = Infinity;
+      for (let i = 0; i <= 3; i++) {
+        const y = w(Math.max(0, Math.min(e.length, s0 + ((s1 - s0) * i) / 3)), d, 0).y;
+        hi = Math.max(hi, y);
+        lo = Math.min(lo, y);
+      }
+      return { hi, lo };
+    };
+
+    for (const side of [-1, 1] as const) {
+      const outer = outerOf(side);
+      const streets: [number, number][] = [];
+      for (const [a, b] of runs(side)) {
+        // The paving: a sidewalk past the verge, and the lot behind it out to the land's edge.
+        for (let s = a; s < b; s += 6) {
+          const s1 = Math.min(b, s + 6);
+          const r = Math.min(reach(side, s), reach(side, s1));
+          if (r < 1) continue;
+          const soup = soupAt(e.index, s);
+          const walk = Math.min(r, SIDEWALK_M);
+          const n0 = w(s, side * outer, 0.03);
+          const n1 = w(s1, side * outer, 0.03);
+          const m0 = w(s, side * (outer + walk), 0.03);
+          const m1 = w(s1, side * (outer + walk), 0.03);
+          const f0 = w(s, side * (outer + r), 0.03);
+          const f1 = w(s1, side * (outer + r), 0.03);
+          const face = (p: Point3, q: Point3, p1: Point3, q1: Point3, colour: string) =>
+            side > 0 ? quad(soup, p, q, p1, q1, colour) : quad(soup, q, p, q1, p1, colour);
+          face(n0, m0, n1, m1, DOWNTOWN_COLOURS.sidewalk);
+          if (r > walk) face(m0, f0, m1, f1, DOWNTOWN_COLOURS.floor);
+        }
+        // The front row.
+        let cursor = a + 1;
+        let block = 0;
+        for (let k = 0; cursor < b - 6; k++) {
+          // A food-cart pod is a lot: the carts stand in it (below), and no building does.
+          const inPod = (s0: number, s1: number) =>
+            pods.find(
+              (p) =>
+                (p.d0 + p.d1 < 0 ? -1 : 1) === side &&
+                s0 < Math.max(p.s0, p.s1) + 2 &&
+                s1 > Math.min(p.s0, p.s1) - 2,
+            );
+          const pod = inPod(cursor, cursor + 1);
+          if (pod) {
+            cursor = Math.max(cursor + 1, Math.max(pod.s0, pod.s1) + 3);
+            continue;
+          }
+          if (block >= PDX_BLOCK_M) {
+            // A cross street: its asphalt from the verge out across the land.
+            const s0 = cursor;
+            const s1 = Math.min(b, cursor + PDX_STREET_M);
+            const r = Math.min(reach(side, s0), reach(side, s1));
+            if (r >= 1) {
+              const soup = soupAt(e.index, s0);
+              const n0 = w(s0, side * outer, 0.05);
+              const n1 = w(s1, side * outer, 0.05);
+              const f0 = w(s0, side * (outer + r), 0.05);
+              const f1 = w(s1, side * (outer + r), 0.05);
+              if (side > 0) quad(soup, n0, f0, n1, f1, DOWNTOWN_COLOURS.street);
+              else quad(soup, f0, n0, f1, n1, DOWNTOWN_COLOURS.street);
+            }
+            streets.push([s0, s1]);
+            cursor = s1;
+            block = 0;
+            continue;
+          }
+          const pick =
+            PDX_FRONT_MIX[Math.floor(h(k * 7 + Math.round(a), side, 1) * PDX_FRONT_MIX.length)] ??
+            PDX.castIron;
+          // The lot this building would take, and whether it stands on ground: tries the pick, then the
+          // shallowest front, and gives the lot up (a gap) when neither stands.
+          const fits = (variant: number) => {
+            const [width, depth] = size(variant);
+            if (!(width > 0) || cursor + width > b || inPod(cursor, cursor + width)) return null;
+            const s0 = cursor;
+            const s1 = cursor + width;
+            const s = (s0 + s1) / 2;
+            const back = backFor(side, s0 - 0.3, s1 + 0.3);
+            // The land under its front and its depth, looked at every few metres along it.
+            let r = reach(side, s1);
+            for (let u = s0; u < s1; u += 5) r = Math.min(r, reach(side, u));
+            if (r < back + 4 || r < back + depth - PDX_OVERHANG_M) return null;
+            const d = side * (outer + back);
+            const p = w(s, d, 0);
+            const turn = faceRoad(p, s);
+            const rect = rectOf(p, turn, width, depth);
+            // Not over a road (the inside of a bend, a junction) and not over another building.
+            if (!clearOfRoads(rect, e.index) || footprints.some((o) => rectsOverlap(rect, o))) return null;
+            return { width, depth, back, s0, s1, s, d, p, turn, rect };
+          };
+          let variant: number = pick;
+          let chosen = fits(pick);
+          if (!chosen && pick !== PDX.castIron) {
+            variant = PDX.castIron;
+            chosen = fits(PDX.castIron);
+          }
+          if (!chosen) {
+            cursor += 6;
+            block += 6;
+            continue;
+          }
+          const { width, s0, s1, s, d, p, turn, rect } = chosen;
+          footprints.push(rect);
+          const ground = groundOver(s0, s1, d);
+          const base = {
+            p: { x: p.x, y: ground.hi + LAND_TOP_M, z: p.z },
+            turn,
+            foot: ground.lo + LAND_TOP_M - PDX_SINK_M,
+            edge: e.index,
+            s,
+            d,
+          };
+          if (variant === PDX.towerBase) {
+            const targetM = 40 + 70 * h(k + Math.round(a), side, 3);
+            place({
+              ...base,
+              model: 'tower',
+              variant,
+              rule: 'pdx-tower',
+              sy: 1,
+              mids: midsFor(targetM),
+              targetM,
+            });
+          } else place({ ...base, model: 'kit', variant, rule: 'pdx-front', sy: 1 });
+          cursor += width + (h(k + Math.round(a), side, 2) < 0.15 ? 5 : 0.4);
+          block += width;
+        }
+        // Bike racks on the sidewalk, away from the cross streets and from anything kept clear.
+        for (let k = 0; ; k++) {
+          const s = a + 9 + k * PDX_RACK_EVERY_M + (side > 0 ? PDX_RACK_EVERY_M / 2 : 0);
+          if (s > b - 4) break;
+          if (h(k + Math.round(a), side, 5) > 0.55) continue;
+          if (streets.some(([s0, s1]) => s > s0 - 2 && s < s1 + 2)) continue;
+          if (across(side, s - 2, s + 2, 0.5).some(([near, far]) => far > outer && near < outer + SIDEWALK_M))
+            continue;
+          if (reach(side, s) < SIDEWALK_M) continue;
+          const d = side * (outer + 1.5);
+          const p = w(s, d, 0.03);
+          place({
+            model: 'kit',
+            variant: PDX.bikeRack,
+            rule: 'pdx-rack',
+            p,
+            turn: faceRoad(p, s),
+            sy: 1,
+            foot: null,
+            edge: e.index,
+            s,
+            d,
+          });
+        }
+      }
+    }
+
+    // The cart pods: each carts stands in the lot behind its pedestrian zone, serving side to the road.
+    for (const pod of pods) {
+      const side: -1 | 1 = (pod.d0 + pod.d1) / 2 < 0 ? -1 : 1;
+      const far = Math.max(Math.abs(pod.d0), Math.abs(pod.d1));
+      const d = side * (far + PDX_CART_BACK_M);
+      const lo = Math.min(pod.s0, pod.s1);
+      const hi = Math.max(pod.s0, pod.s1);
+      const first = Math.floor(h(0, side, 9) * 3);
+      for (let k = 0, s = lo + 5; s <= hi - 5; k++, s += PDX_CART_PITCH_M) {
+        // The cart's body runs 2.4 m back from its serving side; it must stand on drawn land.
+        if (outerOf(side) + reach(side, s) < far + PDX_CART_BACK_M + 2.4) continue;
+        const variant = PDX_CARTS[(first + k) % PDX_CARTS.length] ?? PDX.cartA;
+        const p = w(s, d, 0.03);
+        const turn = faceRoad(p, s);
+        // A cart stands clear of every building (its body, and the table beside it).
+        const rect = rectOf({ x: p.x, y: p.y, z: p.z }, turn, PDX_CART_WIDTH_M, PDX_CART_DEPTH_M);
+        const shifted = {
+          ...rect,
+          cx: rect.cx + rect.ux * PDX_CART_MID_X_M,
+          cz: rect.cz + rect.uz * PDX_CART_MID_X_M,
+        };
+        if (footprints.some((o) => rectsOverlap(shifted, o))) continue;
+        footprints.push(shifted);
+        place({
+          model: 'kit',
+          variant,
+          rule: 'pdx-cart',
+          p,
+          turn,
+          sy: 1,
+          foot: null,
+          edge: e.index,
+          s,
+          d,
+        });
+      }
+    }
+  }
+  return finish([], STRETCH_M + 40);
+}
+
+/**
+ * What both cities' plans build with: the placed items, the merged surfaces by stretch of road, and
+ * each stretch's extent (`finish`, which gives a stretch that has only surfaces `reachM` of room).
+ */
+function planner() {
+  const items: DowntownItem[] = [];
+  const soups = new Map<string, Soup>();
+  const centres = new Map<string, { xs: number; zs: number; n: number; pts: Point3[] }>();
+  const keyOf = (edge: number, s: number) => `${edge}:${Math.floor(Math.max(0, s) / STRETCH_M)}`;
+  const soupAt = (edge: number, s: number): Soup => {
+    const key = keyOf(edge, s);
+    let soup = soups.get(key);
+    if (!soup) {
+      soup = { pos: [], col: [] };
+      soups.set(key, soup);
+    }
+    return soup;
+  };
+  const note = (edge: number, s: number, p: Point3) => {
+    const key = keyOf(edge, s);
+    const c = centres.get(key) ?? { xs: 0, zs: 0, n: 0, pts: [] };
+    c.xs += p.x;
+    c.zs += p.z;
+    c.n++;
+    c.pts.push(p);
+    centres.set(key, c);
+  };
+  /** A triangle; a flat one is turned to face up (the surfaces are seen from above). */
+  const tri = (soup: Soup, a: Point3, b: Point3, c: Point3, colour: string, up = true) => {
+    const ny = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
+    if (up && ny < 0) [b, c] = [c, b];
+    soup.pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    const [r, g, bl] = hex(colour);
+    for (let i = 0; i < 3; i++) soup.col.push(r, g, bl);
+  };
+  /** A quad: a, b one edge and c, d the opposite one (a beside c), faced up unless `up` is false. */
+  const quad = (soup: Soup, a: Point3, b: Point3, c: Point3, d: Point3, colour: string, up = true) => {
+    tri(soup, a, c, b, colour, up);
+    tri(soup, b, c, d, colour, up);
+  };
+  const place = (it: DowntownItem) => {
+    items.push(it);
+    note(it.edge, it.s, it.p);
+  };
+  const finish = (crossings: Crossing[], reachM: number): DowntownPlan => {
+    const stretches = [...centres.entries()].map(([key, c]) => {
+      const cx = c.xs / c.n;
+      const cz = c.zs / c.n;
+      const radius = Math.max(...c.pts.map((p) => Math.hypot(p.x - cx, p.z - cz))) + 40;
+      return { key, cx, cz, radius };
+    });
+    for (const key of soups.keys()) {
+      if (centres.has(key)) continue;
+      const s = soups.get(key);
+      if (!s || s.pos.length < 3) continue;
+      let xs = 0;
+      let zs = 0;
+      const n = s.pos.length / 3;
+      for (let i = 0; i < n; i++) {
+        xs += s.pos[i * 3] ?? 0;
+        zs += s.pos[i * 3 + 2] ?? 0;
+      }
+      stretches.push({ key, cx: xs / n, cz: zs / n, radius: reachM });
+    }
+    return { items, crossings, soups, stretches };
+  };
+  return { items, soups, soupAt, tri, quad, place, note, finish };
 }
 
 /** Whether a crossing on this edge lies within m of s. */
@@ -1073,7 +1509,10 @@ export class DowntownLayer {
     private readonly modules?: SceneryModel,
   ) {
     this.group.name = 'road-downtown';
-    this.plan = planDowntown({ ...input, stacked: modules !== undefined });
+    // Portland's blocks (T12.6) are drawn from the one kit; San Francisco's from its kit and the modules.
+    this.plan = input.portland
+      ? planPortland(input, kit)
+      : planDowntown({ ...input, stacked: modules !== undefined });
     this.stretches = this.plan.stretches.map((s) => ({ ...s, mesh: null }));
     this.vehicles = seedCrossTraffic(this.plan.crossings, input.seed);
     const material = look.material('vehicle', { vertexColors: true });
@@ -1178,6 +1617,28 @@ export class DowntownLayer {
     return this.vehicles;
   }
 
+  /**
+   * The text surfaces of the placed models (a food cart's name board), in the world, for the words of
+   * their pack signs to be painted over (text-surfaces.ts). The blank panel stays in the stretch's mesh.
+   */
+  surfaces(): PlacedSurface[] {
+    const out: PlacedSurface[] = [];
+    const q = new Quaternion();
+    const up = new Vector3(0, 1, 0);
+    for (const it of this.plan.items) {
+      if (it.model !== 'kit') continue;
+      const panels = this.kit.surfaces?.[it.variant];
+      if (!panels?.length) continue;
+      const m = new Matrix4().compose(
+        this.v.set(it.p.x, it.p.y, it.p.z).clone(),
+        q.setFromAxisAngle(up, it.turn),
+        this.one,
+      );
+      for (const panel of panels) out.push(placeSurface(panel, m));
+    }
+    return out;
+  }
+
   dispose(): void {
     for (const st of this.stretches) this.free(st);
     for (const g of this.meshes) g.mesh.dispose();
@@ -1197,6 +1658,18 @@ export class DowntownLayer {
    * props item, a base, its mids and a crown for a stacked tower (never scaled in y).
    */
   private partsOf(it: DowntownItem): { g: BufferGeometry; lift: number; sy: number; sink: boolean }[] {
+    if (it.model === 'tower' && this.input.portland) {
+      // The pink tower: its three modules are the kit's own.
+      const vs = this.kit.variants;
+      const [base, mid, crown] = [vs[PDX.towerBase], vs[PDX.towerMid], vs[PDX.towerCrown]];
+      if (!base || !mid || !crown) return [];
+      const mids = it.mids ?? 1;
+      const parts = [{ g: base, lift: 0, sy: 1, sink: true }];
+      for (let k = 0; k < mids; k++)
+        parts.push({ g: mid, lift: MODULE_M.base + k * MODULE_M.mid, sy: 1, sink: false });
+      parts.push({ g: crown, lift: MODULE_M.base + mids * MODULE_M.mid, sy: 1, sink: false });
+      return parts;
+    }
     if (it.model === 'tower') {
       const style = MODULE_STYLE[it.variant];
       const vs = this.modules?.variants;
@@ -1223,7 +1696,7 @@ export class DowntownLayer {
     const placed = items.map((it) => ({ it, parts: this.partsOf(it) }));
     // The stretch draws with the region atlas as its map when the modules brought one (every part
     // that is not an atlas surface samples its white tile: still one mesh, one draw).
-    const map = this.modules?.map;
+    const map = this.input.portland ? this.kit.map : this.modules?.map;
     let total = soup ? soup.pos.length / 3 : 0;
     for (const { parts } of placed) for (const p of parts) total += p.g.getAttribute('position').count;
     const pos = new Float32Array(total * 3);

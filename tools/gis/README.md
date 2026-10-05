@@ -344,12 +344,17 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   ways, the only ones that run along a baked road are the streetcar's on Grand (all 496 m of it lies
   within 12 m of a rail; no other road has more than 56 m, a street crossing, and the check finds
   rails where they are: it reads Grand's full length).
-  `pdx-blocks` and `rail-line` draw nothing until the render lane's Portland work (T12.4).
+  `pdx-blocks` is drawn since T12.6 (downtown Portland's blocks, `src/render/downtown.ts`); `rail-line` still draws nothing.
 - **Landmarks:** the two Hawthorne lift towers, `pdx-landmarks#pdx_lift_tower` (`overRoad`), at the
   ends of OSM's 75 m lift span, on the deck (placement 3.5 and 3.1 m from the real points). CX4 built the kit
   under those names (`models/landmarks/pdx-landmarks`, region-pnw), so they draw. The kit also holds the
   Burnside operator towers (`pdx_bascule_pier`), the roof sign (`pdx_roof_sign`) and the square
-  (`pdx_plaza`); this config does not place them yet.
+  (`pdx_plaza`). T12.6 places the last two as features of their roads (`roof-sign` on West Burnside, on
+  the right; `square-plaza` on Broadway South, on the left, over the courthouse-square zone), written by
+  hand into this config and the baked roads like T10.5's dressing, since the OSM extract is not in the repo;
+  `routes-pnw-dressing.test.ts` holds the two to each other. The cart pod's zone (`cart-pod`) gains
+  `dressing: food-carts`, which the renderer reads as a lot for Portland's carts. The Burnside operator
+  towers are not placed.
 - **Size:** 17 files, 200 KB minified, 56.2 KB gzip. The three bridge roads sample every 4 m.
   The still scene on the main path draws at most 58 of 120 calls (mean 37) before the Portland
   facades (T12.4) add theirs.

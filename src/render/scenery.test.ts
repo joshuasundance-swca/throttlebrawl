@@ -338,6 +338,9 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       sevenMileKit: 6,
       // playtest 3 (T12.4): San Francisco's stackable towers, CX3: five styles of base, mid and crown
       sfTowerModules: 15,
+      // playtest 3 (T12.6): downtown Portland's three street fronts, the pink tower's base, mid and
+      // crown, three food carts and a bike rack (CX4)
+      pdxDowntown: 10,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -358,12 +361,13 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         const c = g.getAttribute('color');
         for (let i = 0; i < c.count; i += 3) colours.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
         // A roadside kit's fern or fence section is one flat colour; the kit as a whole has many.
-        // (A new-span bay is one concrete colour.)
+        // (A new-span bay is one concrete colour, and so is a tower's mid module: stone or glass.)
         const single =
           kind === 'fogBanks' ||
           kind.endsWith('Roadside') ||
           kind === 'sevenMileKit' ||
-          kind === 'sfTowerModules';
+          kind === 'sfTowerModules' ||
+          kind === 'pdxDowntown';
         expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(single ? 0 : 1);
       }
       if (kind.endsWith('Roadside')) {

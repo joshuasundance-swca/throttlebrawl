@@ -133,6 +133,15 @@
                 "spawns": "pedestrians",
                 "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
               }
+            },
+            {
+              "kind": "landmark",
+              "id": "roof-sign",
+              "s0": 55,
+              "s1": 69,
+              "d0": 13.5,
+              "d1": 33.5,
+              "params": { "model": "pdx-landmarks#pdx_roof_sign", "yawDeg": 180, "scale": 0.8 }
             }
           ]
         },
@@ -157,7 +166,11 @@
               "s1": 150,
               "d0": 12,
               "d1": 18,
-              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:pod-diner"] }
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["region-pnw:pod-diner"],
+                "dressing": "food-carts"
+              }
             },
             {
               "kind": "roadsideZone",
@@ -204,6 +217,15 @@
               "d0": 12,
               "d1": 17,
               "params": { "spawns": "pedestrians", "kinds": ["region-pnw:umbrella-commuter"] }
+            },
+            {
+              "kind": "landmark",
+              "id": "square-plaza",
+              "s0": 77,
+              "s1": 103,
+              "d0": -38.7,
+              "d1": -13.5,
+              "params": { "model": "pdx-landmarks#pdx_plaza", "scale": 0.45 }
             }
           ]
         },

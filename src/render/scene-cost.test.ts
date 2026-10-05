@@ -22,12 +22,24 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { BlocksLayer, hasBlocks } from './chinatown-northbeach';
-import { DowntownLayer, hasDowntown } from './downtown';
+import { DowntownLayer, hasDowntown, hasPortland } from './downtown';
 import { hasMission, MissionLayer } from './mission';
+import { landmarkKitsFor, LandmarkLayer } from './landmarks';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
-import { bakeRepoModel } from './model-files.test-util';
-import { modelKindsFor, type ModelKind, type SceneryModels } from './models';
+import { bakeRepoModel, readAsset } from './model-files.test-util';
+import {
+  bakeLandmarkKit,
+  landmarkKitAsset,
+  modelKindsFor,
+  type LandmarkKit,
+  type LandmarkKitId,
+  type ModelKind,
+  type SceneryModels,
+} from './models';
+import { readGlb } from './glb';
+import type { BoardCatalog } from './boards';
+import { TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
@@ -58,6 +70,33 @@ const routeFiles = import.meta.glob<Route>('../../packs/*/regions/*/routes/*.jso
   eager: true,
   import: 'default',
 });
+const regionFiles = import.meta.glob<{ id: string; signs?: { id: string; text: string; status?: string }[] }>(
+  '../../packs/*/regions/*/region.json',
+  { eager: true, import: 'default' },
+);
+
+/**
+ * The region signs the game would hand the renderer (live ones, by id), for the words painted on a model's
+ * board (playtest 3, T12.6): every region's, since a road's own region is not named here and ids do not collide.
+ */
+function signCatalog(): BoardCatalog {
+  const items: Record<string, { ref: string; text: string; kind: 'sign' }> = {};
+  for (const [path, region] of Object.entries(regionFiles)) {
+    const pack = /packs\/([^/]+)\//.exec(path)?.[1] ?? '';
+    for (const s of region.signs ?? [])
+      if ((s.status ?? 'live') === 'live' && !items[s.id])
+        items[s.id] = { ref: `${pack}:region/${region.id}#${s.id}`, text: s.text, kind: 'sign' };
+  }
+  return { items };
+}
+
+/** A network's landmark kits, as the game loads them (none for a road with no landmark feature). */
+async function landmarkKitsOf(road: RoadNetwork): Promise<Map<LandmarkKitId, LandmarkKit>> {
+  const kits = new Map<LandmarkKitId, LandmarkKit>();
+  for (const id of landmarkKitsFor(road))
+    kits.set(id, bakeLandmarkKit(id, readGlb(await readAsset(landmarkKitAsset(id), 'glb'))));
+  return kits;
+}
 
 function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   const [path, network] = Object.entries(networkFiles).find(([, n]) => n.id === id) ?? [];
@@ -161,8 +200,17 @@ describe('the still scene along every route', () => {
           : null;
       if (roadside) for (let i = 0; i < 2000 && !roadside.ready; i++) roadside.update(1e9, 1e9, 360);
       const verge = new VergeLayer(road, look, { tags });
-      const dt =
-        models.sfDowntown && hasDowntown(tags)
+      const dt = hasPortland(tags)
+        ? models.pdxDowntown
+          ? // Downtown Portland's blocks (playtest 3, T12.6), on the land the road scene drew.
+            new DowntownLayer(models.pdxDowntown, undefined, undefined, look, {
+              road,
+              dressing,
+              seed,
+              portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+            })
+          : null
+        : models.sfDowntown && hasDowntown(tags)
           ? new DowntownLayer(
               models.sfDowntown,
               models.sfRoadside,
@@ -172,6 +220,15 @@ describe('the still scene along every route', () => {
               // The stacked towers (playtest 3, T12.4), as the renderer passes them.
               models.sfTowerModules,
             )
+          : null;
+      // The real landmarks (one mesh, one draw), and the words painted on their boards and on the
+      // downtown's (one mesh, one draw): both are in the frame the renderer draws.
+      const kits = await landmarkKitsOf(road);
+      const lm = kits.size > 0 ? new LandmarkLayer(kits, look, { road }) : null;
+      const placed = [...(lm?.surfaces() ?? []), ...(dt?.surfaces() ?? [])];
+      const words =
+        placed.length > 0
+          ? new TextSurfaceLayer(look, placed, { catalog: signCatalog(), createCanvas: () => null })
           : null;
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
@@ -187,7 +244,12 @@ describe('the still scene along every route', () => {
         : null;
       const cam = new PerspectiveCamera(70, 915 / 412, 0.3, CAMERA_FAR_M);
       let worst: { at: string; total: Load; parts: Map<string, Load> } | null = null;
+      // The view that costs the most draw calls is often not the one with the most triangles.
+      let busiest: { at: string; total: Load; parts: Map<string, Load> } | null = null;
       let maxDraws = 0;
+      // The same two maxima over the main path alone (a rider on the route sees these; a branch is another view).
+      let mainDraws = 0;
+      let mainTris = 0;
       let sumDraws = 0;
       let sumTris = 0;
       let poses = 0;
@@ -217,7 +279,10 @@ describe('the still scene along every route', () => {
           rs.update(eye.x, eye.z, 0, DRAW_M, LOD_M, Infinity);
           if (roadside) for (let i = 0; i < 12; i++) roadside.update(eye.x, eye.z, DRAW_M);
           verge.update(eye.x, eye.z, null, 0, aim.x, aim.z);
-          dt?.update(eye.x, eye.z, 0, []);
+          // The renderer builds one stretch a frame; a ride to here has had a frame for each.
+          if (dt) for (let i = 0; i < 12; i++) dt.update(eye.x, eye.z, 0, []);
+          lm?.update(eye.x, eye.z);
+          words?.update(eye.x, eye.z);
           // Everything near enough is built at once here (the renderer builds one a frame).
           wf?.update(eye.x, eye.z, LOD_M, undefined, 1000);
           places?.update(eye.x, eye.z, DRAW_M, LOD_M, Infinity);
@@ -232,6 +297,8 @@ describe('the still scene along every route', () => {
           if (roadside) drawn(roadside.group, frustum, parts);
           drawn(verge.group, frustum, parts);
           if (dt) drawn(dt.group, frustum, parts);
+          if (lm) drawn(lm.group, frustum, parts);
+          if (words) drawn(words.group, frustum, parts);
           if (wf) drawn(wf.group, frustum, parts);
           if (places) drawn(places.group, frustum, parts);
           if (blocks) drawn(blocks.group, frustum, parts);
@@ -244,7 +311,13 @@ describe('the still scene along every route', () => {
             },
           );
           if (!worst || total.tris > worst.total.tris) worst = { at: `${id}@${s.toFixed(0)}`, total, parts };
+          if (!busiest || total.draws > busiest.total.draws)
+            busiest = { at: `${id}@${s.toFixed(0)}`, total, parts };
           maxDraws = Math.max(maxDraws, total.draws);
+          if (main) {
+            mainDraws = Math.max(mainDraws, total.draws);
+            mainTris = Math.max(mainTris, total.tris);
+          }
           sumDraws += total.draws;
           sumTris += total.tris;
           poses++;
@@ -253,13 +326,15 @@ describe('the still scene along every route', () => {
         if (main) prev = fwd ? b : a;
       }
       if (!worst) throw new Error('no poses');
-      const byPart = [...worst.parts.entries()]
-        .sort((x, y) => y[1].tris - x[1].tris)
-        .slice(0, 8)
-        .map(([k, l]) => `${k.split('/')[1]}:${l.draws}d/${Math.round(l.tris)}t`)
-        .join(' ');
+      const describe = (parts: Map<string, Load>, by: 'tris' | 'draws') =>
+        [...parts.entries()]
+          .sort((x, y) => y[1][by] - x[1][by])
+          .slice(0, 8)
+          .map(([k, l]) => `${k.split('/')[1]}:${l.draws}d/${Math.round(l.tris)}t`)
+          .join(' ');
+      const byPart = describe(worst.parts, 'tris');
       print(
-        `[examined] ${route.id}: ${poses} views; ${branchPoses} on branches; draw calls max ${maxDraws} mean ${(sumDraws / poses).toFixed(1)}; triangles max ${Math.round(worst.total.tris)} mean ${Math.round(sumTris / poses)} | the most at ${worst.at}: ${byPart}`,
+        `[examined] ${route.id}: ${poses} views; ${branchPoses} on branches; draw calls max ${maxDraws} mean ${(sumDraws / poses).toFixed(1)}; triangles max ${Math.round(worst.total.tris)} mean ${Math.round(sumTris / poses)}; main path alone: ${mainDraws} draw calls, ${Math.round(mainTris)} triangles | the most triangles at ${worst.at}: ${byPart} | the most draws (${busiest?.total.draws ?? 0}, ${Math.round(busiest?.total.tris ?? 0)} triangles) at ${busiest?.at ?? '?'}: ${busiest ? describe(busiest.parts, 'draws') : ''}`,
       );
       expect(poses).toBeGreaterThan(20);
       expect(maxDraws).toBeLessThanOrEqual(STILL_DRAWS_MAX);

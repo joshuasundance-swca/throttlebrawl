@@ -33,8 +33,13 @@ interface Road {
 }
 
 const read = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8')) as T;
-const config = read<{ lines: { roads?: ConfigRoad[] }[] }>('tools/gis/networks/osm-pnw-portland.json');
+const config = read<{ lines: { roads?: ConfigRoad[]; landmarks?: { id: string }[] }[] }>(
+  'tools/gis/networks/osm-pnw-portland.json',
+);
 const roads = config.lines.flatMap((l) => l.roads ?? []);
+// The landmarks the bake places from a lat/lon (the Hawthorne lift towers); the others (the roof sign, the
+// square) are a road's own features, in its list like a sign's slot.
+const fromLatLon = new Set(config.lines.flatMap((l) => (l.landmarks ?? []).map((x) => x.id)));
 const baked = (id: string) => read<Road>(`${REGION}/roads/${id}.json`);
 
 describe("Bridge City's dressing is in the bake config and in the baked roads alike", () => {
@@ -51,8 +56,8 @@ describe("Bridge City's dressing is in the bake config and in the baked roads al
           road.features.find((x) => x.id === f.id),
           `${r.id}: ${f.id}`,
         ).toMatchObject(f);
-      // The landmarks come from the config's `landmarks` list, not a road's own features.
-      const own = road.features.filter((x) => x.kind !== 'landmark').map((x) => x.id);
+      // The landmarks placed from a lat/lon come from the config's `landmarks` list, not a road's features.
+      const own = road.features.filter((x) => !fromLatLon.has(x.id)).map((x) => x.id);
       expect(own.sort(), r.id).toEqual((r.features ?? []).map((f) => f.id).sort());
     }
   });

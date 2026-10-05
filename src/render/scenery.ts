@@ -45,7 +45,9 @@ export type SideTheme =
   | 'festival'
   | 'clearcut'
   // playtest 3 (T10.6), the Marin Headlands: open grass hills, no trees, no poles
-  | 'headlands';
+  | 'headlands'
+  // playtest 3 (T12.6), downtown Portland's blocks (render/downtown.ts draws what stands there)
+  | 'blocks';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -106,6 +108,11 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // fences, which reads as the PNW, not the Marin Headlands' grass hills"): coastal scrub and
   // grass. Land with nothing of the scatter on it, no conifers (the PNW's far trees) and no poles.
   headlands: 'headlands',
+  // Playtest 3 (T12.6; wave B's punch list, item 3: Broadway should read as downtown, not as open
+  // fields with farmhouses): Portland's brick and cast-iron blocks. Nothing of the scatter's stands there (no
+  // palms, no bait shacks, no poles, which the `town` tag beside it would give); the downtown layer
+  // (downtown.ts) stands the street fronts, the towers and the cart pod.
+  'pdx-blocks': 'blocks',
 };
 /**
  * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
@@ -121,6 +128,8 @@ const THEME_ORDER: readonly LandTheme[] = [
   'crossing',
   'plaza',
   'downtown',
+  // Ahead of `commercial`: a Portland block is also tagged `town`.
+  'blocks',
   'park',
   'lanterns',
   'cafes',
@@ -262,6 +271,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   festival: {},
   clearcut: {},
   headlands: {},
+  blocks: {},
 };
 /**
  * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
@@ -281,6 +291,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'festival',
   'clearcut',
   'headlands',
+  'blocks',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {

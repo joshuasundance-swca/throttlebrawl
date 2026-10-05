@@ -42,6 +42,7 @@ import {
   type LandmarkKitId,
   type LandmarkNode,
 } from './models';
+import { placeSurface, type PlacedSurface } from './text-surfaces';
 
 export { loadLandmarkKits } from './models';
 export type { LandmarkKit, LandmarkKitId } from './models';
@@ -515,6 +516,7 @@ export interface LandmarkOptions {
 export class LandmarkLayer {
   readonly group = new Group();
   private readonly pieces: Piece[] = [];
+  private readonly surfaceList: PlacedSurface[] = [];
   private readonly mesh: Mesh | null;
   private readonly geometry: BufferGeometry | null;
   private readonly live: Uint32Array;
@@ -588,6 +590,8 @@ export class LandmarkLayer {
     const base = at.node.replace(/_lod[01]$/, '');
     const far = kit.nodes.get(`${base}_lod1`) ?? kit.nodes.get(`far_${base}`);
     const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+    // Its blank boards (the roof sign's) are painted with pack text, by text-surfaces.ts.
+    for (const surface of near.surfaces) this.surfaceList.push(placeSurface(surface, m));
     return [
       {
         x: at.x,
@@ -634,6 +638,14 @@ export class LandmarkLayer {
       farPieces: this.farPieces,
       drawCalls: this.mesh?.visible ? 1 : 0,
     };
+  }
+
+  /**
+   * The text surfaces of the placed landmarks (the roof sign's board), in the world, for the words of
+   * their pack signs to be painted over (text-surfaces.ts). The blank panel stays in the mesh.
+   */
+  surfaces(): readonly PlacedSurface[] {
+    return this.surfaceList;
   }
 
   /** Where each placed piece's levels begin and end, for tests: [maxM, triangles] per piece. */

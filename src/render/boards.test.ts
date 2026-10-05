@@ -9,7 +9,7 @@ import { createFlatLook } from './look';
 
 interface RegionCopy {
   billboards?: { id: string; text: string }[];
-  signs?: { id: string; text: string }[];
+  signs?: { id: string; text: string; tags?: string[] }[];
 }
 const REGIONS = import.meta.glob<RegionCopy>('/packs/*/regions/*/region.json', {
   eager: true,
@@ -37,6 +37,7 @@ describe('board copy', () => {
     expect(files.length).toBe(3);
     let billboards = 0;
     let signs = 0;
+    let surfaces = 0;
     for (const [file, region] of Object.entries(REGIONS)) {
       for (const b of region.billboards ?? []) {
         const { headline, kicker } = splitCopy(b.text);
@@ -46,6 +47,14 @@ describe('board copy', () => {
         billboards++;
       }
       for (const sgn of region.signs ?? []) {
+        // The words on a model's blank board (the roof sign, a cart's name: playtest 3, T12.6) are painted by
+        // text-surfaces.ts, not printed on a board: a name board holds a few words, no kicker.
+        if (sgn.tags?.includes('surface')) {
+          expect(words(sgn.text), `${file} ${sgn.id}: "${sgn.text}"`).toBeLessThanOrEqual(5);
+          expect(sgn.tags, `${file} ${sgn.id} is pooled nowhere`).toContain('site');
+          surfaces++;
+          continue;
+        }
         const { headline, kicker } = splitCopy(sgn.text);
         expect(words(headline), `${file} ${sgn.id}: "${headline}"`).toBeGreaterThanOrEqual(2);
         expect(words(headline), `${file} ${sgn.id}: "${headline}"`).toBeLessThanOrEqual(5);
@@ -56,10 +65,12 @@ describe('board copy', () => {
     // Floors, not exact counts, so new content in any region does not break this check (run W-Q's
     // distinct keys added 6 billboards and 12 signs); they prove the loops examined every file.
     console.info(
-      `[examined] board copy: ${billboards} billboards, ${signs} signs in ${files.length} regions`,
+      `[examined] board copy: ${billboards} billboards, ${signs} signs (and ${surfaces} surface texts, which are no board) in ${files.length} regions`,
     );
     expect(billboards).toBeGreaterThanOrEqual(22);
     expect(signs).toBeGreaterThanOrEqual(32);
+    // The surface texts are the Portland roof sign's and its three food carts' (they are looked at, not skipped).
+    expect(surfaces).toBeGreaterThanOrEqual(4);
   });
 });
 

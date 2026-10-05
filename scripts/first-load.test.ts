@@ -59,6 +59,10 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]atlas\.ts$/,
   // Landmarks (playtest 3): loaded with a race whose road has a `landmark` feature.
   /[\\/]src[\\/]render[\\/]landmarks\.ts$/,
+  // The words painted on a model's blank board (playtest 3, T12.6): loaded with the road that has one.
+  /[\\/]src[\\/]render[\\/]text-surfaces\.ts$/,
+  // Downtown Portland's blocks and San Francisco's downtown share one layer, loaded with their models.
+  /[\\/]src[\\/]render[\\/]downtown\.ts$/,
   // Traffic models (playtest 3, T12.2): loaded with a race's traffic types, never the first screen.
   /[\\/]src[\\/]render[\\/]vehicles\.ts$/,
   /[\\/]src[\\/]ui[\\/]tuning[\\/]index\.ts$/,
