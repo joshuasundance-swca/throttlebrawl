@@ -20,7 +20,7 @@
 // yet (no packs/, no seeded-race batch) is listed as NOT ACTIVE with the reason, never as a pass;
 // it switches itself on when the lane that owns it adds its files.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
@@ -131,12 +131,23 @@ const STEPS = [
 /**
  * The test files of a shardable step, as its runner lists them (so a slice plan covers exactly
  * what the unsharded run would run), with each file's test count where the runner prints it.
+ * Vitest writes its list to a JSON file, not stdout: a 325-line list read through a pipe came back
+ * cut short on CI (2026-10-05, the unit tier's plan test planned 249 of 325 files), and a short list
+ * plans a short slice set that no slice-level check can notice.
  */
 function runnerFiles(kind) {
+  const listFile = path.join(
+    repoRoot,
+    'node_modules',
+    '.cache',
+    'throttlebrawl',
+    `vitest-list-${kind}-${process.pid}.json`,
+  );
   const cmd =
     kind === 'e2e'
       ? ['playwright', 'test', '--list', '--project=e2e']
-      : ['vitest', 'list', '--project', kind, '--filesOnly'];
+      : ['vitest', 'list', '--project', kind, '--filesOnly', `--json=${listFile}`];
+  if (kind !== 'e2e') mkdirSync(path.dirname(listFile), { recursive: true });
   const res = spawnSync('npx', ['--no-install', ...cmd], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -150,11 +161,19 @@ function runnerFiles(kind) {
     );
     process.exit(1);
   }
-  const re = kind === 'e2e' ? /\[e2e\] › (\S+?):\d+:\d+ › /g : new RegExp(`^\\[${kind}\\] (\\S+)\\s*$`, 'gm');
   const tests = new Map();
-  for (const m of out.matchAll(re)) {
-    const f = m[1].replaceAll('\\', '/');
-    tests.set(f, (tests.get(f) ?? 0) + 1);
+  if (kind === 'e2e') {
+    for (const m of out.matchAll(/\[e2e\] › (\S+?):\d+:\d+ › /g)) {
+      const f = m[1].replaceAll('\\', '/');
+      tests.set(f, (tests.get(f) ?? 0) + 1);
+    }
+  } else {
+    const listed = JSON.parse(readFileSync(listFile, 'utf8'));
+    rmSync(listFile, { force: true });
+    for (const { file } of listed) {
+      const f = path.relative(repoRoot, file).split(path.sep).join('/');
+      tests.set(f, (tests.get(f) ?? 0) + 1);
+    }
   }
   return { files: [...tests.keys()].sort(), tests };
 }
@@ -258,6 +277,8 @@ if (planOnly) {
     process.exit(1);
   }
   for (const step of steps) if (step.shardable) sliceOf(step);
+  // Let stdout drain first: process.exit drops writes still queued for a pipe.
+  await new Promise((resolve) => process.stdout.write('', resolve));
   process.exit(0);
 }
 
