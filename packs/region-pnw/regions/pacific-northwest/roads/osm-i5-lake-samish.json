@@ -91,7 +91,8 @@
       "s1": 410.0,
       "d0": 12.5,
       "d1": 15.0,
-      "pool": "signs"
+      "pool": "signs",
+      "params": { "style": "guide" }
     },
     {
       "kind": "boostPad",
@@ -135,7 +136,8 @@
       "s1": 4610.0,
       "d0": 12.5,
       "d1": 15.0,
-      "pool": "signs"
+      "pool": "signs",
+      "params": { "style": "guide" }
     }
   ],
   "barriers": [

@@ -49,10 +49,11 @@ const roadFiles = import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.j
   eager: true,
   import: 'default',
 });
-const regionFiles = import.meta.glob<{ id: string; palette?: Record<string, string> }>(
-  '../../packs/*/regions/*/region.json',
-  { eager: true, import: 'default' },
-);
+const regionFiles = import.meta.glob<{
+  id: string;
+  palette?: Record<string, string>;
+  timeOfDayOptions?: { id: string; palette?: Record<string, string> }[];
+}>('../../packs/*/regions/*/region.json', { eager: true, import: 'default' });
 const trafficFiles = import.meta.glob<{ id: string }>('../../packs/*/traffic/*.json', {
   eager: true,
   import: 'default',
@@ -66,10 +67,11 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   return { road: createRoadNetwork({ network, roads }), dressing };
 }
 
-function palette(regionId: string): Record<string, string> {
+function palette(regionId: string, timeOfDay?: string): Record<string, string> {
   const r = Object.values(regionFiles).find((x) => x.id === regionId);
   if (!r) throw new Error(`no region ${regionId}`);
-  return r.palette ?? {};
+  const light = r.timeOfDayOptions?.find((o) => o.id === timeOfDay);
+  return { ...(r.palette ?? {}), ...(light?.palette ?? {}) };
 }
 
 function solids(group: Object3D, keep: RegExp): Object3D[] {
@@ -351,9 +353,12 @@ describe('the Pacific Northwest', () => {
     expect(count(scene)).toBeLessThan(count(plain));
   });
 
-  it('asks for drizzle in a grey-green light', () => {
-    const env = { timeOfDay: 'noon', palette: palette('pacific-northwest') };
+  it('asks for drizzle in a grey-green light, in the lights that rain and not in the dawn fog', () => {
+    const env = { timeOfDay: 'noon', palette: palette('pacific-northwest', 'noon') };
+    expect(env.palette['rain']).toMatch(/^#/);
     expect(rainColourOf(env)).toBe(env.palette['rain']);
+    const dawn = { timeOfDay: 'dawn', palette: palette('pacific-northwest', 'dawn') };
+    expect(rainColourOf(dawn)).toBeNull();
     const s = new Scene();
     look.setupScene(s, env);
     const sun = s.children.find((c): c is DirectionalLight => c instanceof DirectionalLight)!;

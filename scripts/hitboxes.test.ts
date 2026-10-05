@@ -23,7 +23,13 @@ import { PEDS } from '../src/sim/peds';
 import { KIND_SPEC, SMASH } from '../src/sim/smash';
 import { TRAFFIC } from '../src/sim/traffic';
 import { partsFor, READ_SCALE } from '../src/render/event-props';
-import { FIGURE_PARTS, oddityFigureFor, pedFigureFor } from '../src/render/figures';
+import {
+  critterHeightM,
+  FIGURE_HEIGHT_M,
+  FIGURE_PARTS,
+  oddityFigureFor,
+  pedFigureFor,
+} from '../src/render/figures';
 import { mergeBoxes, type BoxPart } from '../src/render/geometry';
 import { readGlb } from '../src/render/glb';
 import { bakeRepoModel } from '../src/render/model-files.test-util';
@@ -32,13 +38,16 @@ import { bakePart, RIDER_BOX_M } from '../src/render/riders/bake';
 import { BARRIER_OUT_M } from '../src/render/road-mesh';
 import { smashableParts } from '../src/render/smashables';
 import {
+  ANIMAL_HEIGHT_M,
   isAnimalFigure,
   peopleFigureFor,
+  TRAFFIC_FIGURE_HEIGHT_M,
   TRAFFIC_FIGURE_PARTS,
   trafficFigureFor,
 } from '../src/render/traffic-figures';
 import { RAILING_OUT_M } from '../src/render/verge';
 import { bakeVehicle, trafficModelRows } from '../src/render/vehicles';
+import { fitUnitFootprint } from '../src/render/views';
 
 /** How far a drawn end or side may sit from its sim box's, m (the lane brief: "say 0.15 m per side"). */
 const TOLERANCE_M = 0.15;
@@ -66,8 +75,12 @@ const EXCEPTIONS: Readonly<Record<string, { upToM: number; why: string }>> = {
 };
 const keyOf = (r: Pick<Row, 'group' | 'thing'>) => `${r.group}: ${r.thing}`;
 const limitOf = (r: Pick<Row, 'group' | 'thing'>) => EXCEPTIONS[keyOf(r)]?.upToM ?? TOLERANCE_M;
-/** A part wholly above this is over a rider's head (the tumble's rider box is 1.6 m tall), m. */
-const OVERHEAD_M = 1.6;
+/**
+ * A part wholly above this is over a rider's head, m: a seated rider's helmet tops out near 1.8 m
+ * (the tumble's rider box is 1.6 m tall), and 2.0 keeps an elk's head (1.8 m up) in
+ * while leaving out a café umbrella (2.1 m up) and a coffee cart's awning (2.3 m).
+ */
+const OVERHEAD_M = 2.0;
 /** A part thinner than this in two of its three sizes is a line (a lead, a wire), m. */
 const WIRE_M = 0.05;
 const PACKS = ['base', 'region-pnw', 'region-sf'] as const;
@@ -185,6 +198,29 @@ function trafficOutcome(t: PackType): string {
   return t.hazard === 'big' ? 'crash' : 'wobble (crash end-on at 6 m/s+)';
 }
 
+/**
+ * A unit figure's footprint after views.ts fits it into its unit box: the fit is worked out on the
+ * whole merged figure, as the render does, and the same per-axis scale and shift moved onto the
+ * footprint (which leaves out overhead parts and wires).
+ */
+function fittedUnit(parts: readonly BoxPart[], scale: readonly [number, number, number]): Foot {
+  const g = mergeBoxes(parts);
+  g.computeBoundingBox();
+  const was = (g.boundingBox as Box3).clone();
+  fitUnitFootprint(g);
+  const now = g.boundingBox as Box3;
+  const axis = (lo0: number, hi0: number, lo1: number, hi1: number) => {
+    const k = (hi1 - lo1) / Math.max(1e-9, hi0 - lo0);
+    return (v: number) => lo1 + (v - lo0) * k;
+  };
+  const fx = axis(was.min.x, was.max.x, now.min.x, now.max.x);
+  const fz = axis(was.min.z, was.max.z, now.min.z, now.max.z);
+  // The footprint is found in metres (a wire and a head height are metres), then put back in units.
+  const m = partsFoot(parts, scale);
+  const [w, , l] = scale;
+  return { z0: fz(m.z0 / l), z1: fz(m.z1 / l), x0: fx(m.x0 / w), x1: fx(m.x1 / w) };
+}
+
 const CAR_W = 1.04; // views.ts CAR_PARTS and TRUCK_PARTS: the wheels stand 2% out each side.
 
 /**
@@ -201,7 +237,11 @@ function trafficRows(): Row[] {
   for (const t of packTypes()) {
     const def = t as unknown as SimTrafficTypeDef;
     const walker = t.category === 'pedestrian' || t.category === 'animal';
-    const unit = (parts: readonly BoxPart[]) => partsFoot(parts, [t.widthM, 1, t.lengthM]);
+    // A scaled figure is fitted into its unit box first, as views.ts does (fitUnitFootprint).
+    const unit = (parts: readonly BoxPart[], heightM: number) => {
+      const f = fittedUnit(parts, [t.widthM, heightM, t.lengthM]);
+      return { z0: f.z0 * t.lengthM, z1: f.z1 * t.lengthM, x0: f.x0 * t.widthM, x1: f.x1 * t.widthM };
+    };
     let drawn: Foot;
     let how: string;
     const model = models.get(t.contentId)?.models[0];
@@ -222,10 +262,10 @@ function trafficRows(): Row[] {
       drawn = geometryFoot(g);
       how = `model ${model}`;
     } else if (!walker && fig) {
-      drawn = unit(TRAFFIC_FIGURE_PARTS[fig]);
+      drawn = unit(TRAFFIC_FIGURE_PARTS[fig], TRAFFIC_FIGURE_HEIGHT_M[fig]);
       how = `figure ${fig}`;
     } else if (!walker && odd) {
-      drawn = unit(FIGURE_PARTS[odd]);
+      drawn = unit(FIGURE_PARTS[odd], FIGURE_HEIGHT_M[odd]);
       how = `figure ${odd}`;
     } else if (!walker) {
       drawn = {
@@ -238,7 +278,7 @@ function trafficRows(): Row[] {
     } else {
       const people = peopleFigureFor(def, t.contentId, null);
       if (people && isAnimalFigure(people)) {
-        drawn = unit(TRAFFIC_FIGURE_PARTS[people]);
+        drawn = unit(TRAFFIC_FIGURE_PARTS[people], ANIMAL_HEIGHT_M[people]);
         how = `figure ${people}`;
       } else if (people) {
         drawn = partsFoot(TRAFFIC_FIGURE_PARTS[people]);
@@ -250,7 +290,10 @@ function trafficRows(): Row[] {
           drawn = { z0: -0.2, z1: 0.2, x0: -0.22, x1: 0.22 };
           how = 'figure person (own size)';
         } else {
-          drawn = unit(FIGURE_PARTS[ped]);
+          drawn = unit(
+            FIGURE_PARTS[ped],
+            ped === 'critter' ? critterHeightM(t.lengthM) : FIGURE_HEIGHT_M[ped],
+          );
           how = `figure ${ped}`;
         }
       }
@@ -463,7 +506,7 @@ function carrierRows(): Row[] {
   const up = new Set(TRAFFIC_FIGURE_PARTS.carCarrier.map((p) => JSON.stringify(p)));
   const rampOnly = TRAFFIC_FIGURE_PARTS.carCarrierRamp.filter((p) => !up.has(JSON.stringify(p)));
   return types.map((t) => {
-    const f = partsFoot(rampOnly, [t.widthM, 1, t.lengthM]);
+    const f = partsFoot(rampOnly, [t.widthM, TRAFFIC_FIGURE_HEIGHT_M.carCarrierRamp, t.lengthM]);
     return {
       group: 'moving ramp truck',
       thing: `${t.contentId} ramp (the rear ${MOVING.rampRunM} m)`,

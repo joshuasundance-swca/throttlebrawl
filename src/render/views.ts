@@ -411,6 +411,42 @@ export interface EntityViewCounts {
   pooled: number;
 }
 
+/**
+ * Fits a unit vehicle figure's x and z into [-0.5, 0.5] (its type's sim box once scaled), each axis
+ * only when it overhangs: one longer than 1 is shrunk to 1, then one still past an end is slid back
+ * in. Height is left alone, and a figure that fits is drawn exactly as before; fitting again
+ * changes nothing.
+ */
+export function fitUnitFootprint(g: BufferGeometry): void {
+  g.computeBoundingBox();
+  const b = g.boundingBox;
+  if (!b) return;
+  const fit = (lo: number, hi: number): { s: number; shift: number } => {
+    if (lo >= -0.5 && hi <= 0.5) return { s: 1, shift: 0 };
+    const s = Math.min(1, 1 / Math.max(1e-6, hi - lo));
+    const shift = lo * s < -0.5 ? -0.5 - lo * s : hi * s > 0.5 ? 0.5 - hi * s : 0;
+    return { s, shift };
+  };
+  const x = fit(b.min.x, b.max.x);
+  const z = fit(b.min.z, b.max.z);
+  if (x.s === 1 && z.s === 1 && x.shift === 0 && z.shift === 0) return;
+  g.scale(x.s, 1, z.s);
+  g.translate(x.shift, 0, z.shift);
+  g.computeBoundingBox();
+}
+
+/** The ped figures scaled to their type's width and length (the animals), not drawn at their own size. */
+const SCALED_PED_FIGURES: ReadonlySet<string> = new Set([
+  'iguana',
+  'pelican',
+  'gator',
+  'lawnGator',
+  'critter',
+]);
+export function isScaledPedFigure(name: string): boolean {
+  return isAnimalFigure(name) || SCALED_PED_FIGURES.has(name);
+}
+
 export class EntityViews {
   readonly root = new Group();
   /** The blob shadows under riders and vehicles (shadows.ts): one instanced mesh. */
@@ -911,11 +947,15 @@ export class EntityViews {
     kind: 'vehicle' | 'ped',
     capacity: number,
   ): InstancedMesh {
-    const mesh = new InstancedMesh(
-      Array.isArray(parts) ? this.geometry(`inst:${name}`, () => parts) : parts,
-      this.material(kind),
-      capacity,
-    );
+    const boxes = Array.isArray(parts) ? this.geometry(`inst:${name}`, () => parts) : null;
+    // A vehicle is scaled to its type's sim box (widthM by lengthM), so its unit figure must not
+    // reach past the unit footprint: a kayak rack or a tow hitch drawn past it was paint the sim
+    // calls empty road, ridden into (the helmet clipping, 2026-10-05). A figure is pulled in only
+    // on an axis it overhangs, about its origin, so one that fits is drawn exactly as before.
+    // An animal figure is scaled to its type's box the same way (playtest 4 hitbox audit: a pelican's
+    // beak, a gator's tail and an elk's head reached past theirs); a person is drawn at its own size.
+    if (boxes && (kind === 'vehicle' || isScaledPedFigure(name))) fitUnitFootprint(boxes);
+    const mesh = new InstancedMesh(boxes ?? (parts as BufferGeometry), this.material(kind), capacity);
     mesh.name = `views-${name}`;
     mesh.count = 0;
     mesh.visible = false;

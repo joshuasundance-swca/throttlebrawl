@@ -30,7 +30,9 @@
 // - `farChase`: the same rig with its own distance, height and look-ahead goals, so switching
 //   between it and the low chase cam blends on the springs and never overshoots.
 // - `helmet`: the camera sits at the rider's head, placed with the same lean and heading render
-//   gives the rider model, so render's near plane always hides the rider's own helmet. It looks
+//   gives the rider model, so render's near plane (or, leaned hard, the view's edge) hides the
+//   rider's own helmet; its sideways swing is held to `camera.helmetReachM`, so it never leans out
+//   over traffic the rider's contact box passes clean (2026-10-05). It looks
 //   along the road at a point ahead, rolls with a share of the lean and has its own FOV. Under the
 //   reduce-shake setting its roll and FOV kick shrink toward `camera.helmetCalm`. Switching into or
 //   out of it is a hard cut (a blend would fly through the rider), and so is a takedown framing
@@ -146,6 +148,7 @@ export interface ChaseParams {
   farLookAheadM: number;
   helmetHeightM: number;
   helmetForwardM: number;
+  helmetReachM: number;
   helmetLookAheadM: number;
   helmetAimHeightM: number;
   helmetFovDeg: number;
@@ -557,8 +560,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
   /**
    * At the rider's head. The point is placed as render places the rider model (render/index.ts:
    * Euler(0, heading, -lean) about the rider's road position), at `helmetHeightM` up and
-   * `helmetForwardM` forward in the model, so it stays inside the rider's own helmet whatever the
-   * lean and the heading, and render's near plane hides that helmet. The aim and the roll come from
+   * `helmetForwardM` forward in the model, so it rides in the rider's own helmet, and render's near
+   * plane hides that helmet; past `helmetReachM` sideways it stays at the reach (the helmet is then
+   * beside it, out of the view). The aim and the roll come from
    * the springs (along the road, `helmetLookAheadM` ahead at `helmetAimHeightM`).
    */
   const helmetPlacement = (t: CameraTarget): Placement => {
@@ -566,8 +570,12 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     const h = params.helmetHeightM;
     const ch = Math.cos(t.heading);
     const sh = Math.sin(t.heading);
-    // In the model: right is (cos h, 0, -sin h), forward is (-sin h, 0, -cos h).
-    const right = h * Math.sin(lean);
+    // In the model: right is (cos h, 0, -sin h), forward is (-sin h, 0, -cos h). The head swings
+    // out with the lean only as far as `helmetReachM`, inside the rider's contact box (0.8 m wide,
+    // sim/traffic TRAFFIC.riderWidthM): at a hard lean the model's head is over a metre out, over
+    // a car the sim lets the bike pass, and the eye there was inside the car (2026-10-05).
+    const reach = Math.max(0, params.helmetReachM);
+    const right = Math.min(reach, Math.max(-reach, h * Math.sin(lean)));
     const fwd = params.helmetForwardM;
     return {
       x: t.x + ch * right - sh * fwd,

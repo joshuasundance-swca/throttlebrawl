@@ -166,6 +166,27 @@ def bar(mats, root, a):
                     (0, 2.62 if a else 0.19, 7.3 if a else 4.95))
 
 
+def osprey(mats):
+    root = _lib.empty("keys_osprey_post",loc=(65,0,0))
+    mb = _lib.MB(["wood","bark","trim","steel_dark"])
+    mb.box(-0.12,0.12,-0.12,0.12,0,9,"wood")
+    mb.box(-0.7,0.7,-0.7,0.7,8.9,9.05,"wood")
+    # Irregular overlapping angular sticks leave a nest bowl, with a perched bird above.
+    for i in range(5):
+        a = i*math.tau/5
+        b = a+1.4
+        mb.tube([(0.75*math.cos(a),0.75*math.sin(a),9.13),
+                 (0.75*math.cos(b),0.75*math.sin(b),9.24)], [0.08]*2,"bark",sides=3)
+    mb.blob((0,0.05,9.45),(0.22,0.35,0.29),"trim")
+    mb.hull([(-0.25,-0.22,9.15),(0.25,-0.22,9.15),(0,0.2,9.65),(0,-0.4,9.6)],"bark")
+    mb.hull([(-0.22,-0.12,9.3),(0,-0.35,9.15),(0.22,-0.12,9.3),(0,-0.1,9.66)],"bark")
+    mb.box(0.1,0.34,-0.12,0.12,9.65,9.89,"trim")
+    for side in (-1,1):
+        mb.side_quad(side*0.125,0.13,0.29,9.73,9.78,"steel_dark",side)
+    mb.hull([(-0.055,0.34,9.7),(0.055,0.34,9.7),(0,0.47,9.71),(0,0.34,9.78)],"steel_dark")
+    mb.build("keys_osprey_post_body",mats,root)
+
+
 def main():
     _lib.reset_scene()
     mats = _lib.make_mats(COLOURS)
@@ -182,6 +203,7 @@ def main():
         tree(mats, _lib.empty(name, loc=(x, 0, 0)), kind)
     bar(mats, _lib.empty("duval_open_bar_a", loc=(31, 0, 0)), True)
     bar(mats, _lib.empty("duval_open_bar_b", loc=(50, 0, 0)), False)
+    osprey(mats)
     _lib.export(_lib.out_path(), texcoords=True, normals=False)
 
 

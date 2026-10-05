@@ -66,6 +66,56 @@ function present(config: SimConfig, f: BakedFeature): boolean {
   return setPieceActive(f, pickedFor(config));
 }
 
+/**
+ * A staging road's gap begins within this far past its truck's lip, m [default]. The Seven Mile's
+ * hop starts 2 m past the lip (baked: truck s1 32, gap s0 34); a carrier truck on an ordinary road
+ * has no gap beside it.
+ */
+const STAGING_GAP_AFTER_LIP_M = 10;
+/** The short road into a staging road (the turn-off's connector) is at most this long, m [default]. */
+export const STAGING_APPROACH_M = 100;
+
+const stagings = new WeakMap<SimConfig, Map<number, boolean>>();
+
+/**
+ * Whether the edge is a staging road (playtest 4, P4-10; R3's open item): a platform built for a
+ * hop, a ramp truck with a gap right past its lip, such as the Seven Mile's turn-off and way back.
+ * Its edges guide rather than wall (riders/index.ts, barrierContact), and so does the short
+ * connector that leads onto it, so a rider who holds right all the way in keeps the speed the hop
+ * needs. Pack data, not a name: any road with that truck-then-gap shape is one.
+ */
+export function stagingGuideAt(config: SimConfig, edge: number): boolean {
+  let known = stagings.get(config);
+  if (!known) {
+    known = new Map();
+    stagings.set(config, known);
+  }
+  let guided = known.get(edge);
+  if (guided === undefined) {
+    guided = isStaging(config, edge) || leadsOntoStaging(config, edge);
+    known.set(edge, guided);
+  }
+  return guided;
+}
+
+function isStaging(config: SimConfig, edge: number): boolean {
+  const features = config.road.edges[edge]?.features ?? [];
+  return features.some(
+    (t) =>
+      t.kind === 'rampTruck' &&
+      present(config, t) &&
+      features.some((g) => g.kind === 'gap' && g.s0 >= t.s1 && g.s0 - t.s1 <= STAGING_GAP_AFTER_LIP_M),
+  );
+}
+
+function leadsOntoStaging(config: SimConfig, edge: number): boolean {
+  const e = config.road.edges[edge];
+  if (!e || e.length > STAGING_APPROACH_M) return false;
+  return config.road
+    .nextEdges(edge, 'to')
+    .some((l) => config.route.allows(l.edge) && l.entersAt === 'from' && isStaging(config, l.edge));
+}
+
 function num(f: BakedFeature, key: string, fallback: number): number {
   const v = f.params?.[key];
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;

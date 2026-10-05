@@ -1,0 +1,5 @@
+---
+kind: changed
+audience: player
+---
+Drifting has more room for error. Cars no longer appear in or just before the tight bends where drifts start (cars already on the road still drive through), a car near a rider who is sliding edges toward its own kerb to give the slide a metre, and a slide that touches a wall or rail wobbles you instead of crashing you unless you hit it hard (1.6 times the old crash speed). Speed and steering are still all yours, and nothing steers for you. Measured with the drift bot on the Crown Point loops, with traffic at its normal density over 20 seeds: 12 of 180 drifts ended in a crash before (6.7 %), 2 of 160 after (1.3 %), and the drift cash the bot banks is the same. For devs: three tuning keys, `traffic.driftBendClearM`, `traffic.driftRoomM` and `riders.driftEdgeForgive` (0, 0 and 1 are the old rules); tests are `tests/sim/drift-room.test.ts`, `src/sim/traffic/drift-room.test.ts` and a case in `src/sim/riders/drift.test.ts`. The Twin Peaks and Lombard Street routes were examined but the bot rarely drifts there with traffic, so they support no figure. Not browser-run; not phone-verified.

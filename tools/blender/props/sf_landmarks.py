@@ -9,7 +9,8 @@ from _lib import MB, empty, export, make_mats, out_path, reset_scene, text_panel
 
 COLOURS = {"concrete": "#e0d9c4", "stone": "#b5b1a4", "glass": "#263d43",
            "steel_dark": "#34444a", "sign_face": "#e6e6de",
-           "car_red": "#a74235", "tile_green": "#4f806c"}
+           "car_red": "#a74235", "tile_green": "#4f806c",
+           "trim": "#eee9da", "paint_cream": "#efe4ca", "wood": "#795238", "tile_red": "#b96343"}
 
 
 def coit(name, x, mats, detailed):
@@ -127,6 +128,80 @@ def church(name, x, mats, detailed):
     mb.build(name+"_body", mats, root)
 
 
+def flatiron(name, x, mats, detailed):
+    """Thirty-metre wedge, straight east wall and copper-green domed prow."""
+    from _lib import P
+
+    root = empty(name, loc=(x, 0, 0))
+    root["top_m"] = 35.5
+    mb = MB(["tile_green", "trim", "glass"])
+    plan = [(-9,-15),(9,-15),(9,15),(4,15)]
+    mb.loft([[P(xx,f,h) for xx,f in plan] for h in (0,29.4)], "tile_green")
+    mb.loft([[P(xx*1.02,f*1.015,h) for xx,f in plan] for h in (29.4,30)], "trim")
+    mb.cyl((6.5,12.5,30), "z", 2.5, 4, 6, "tile_green")
+    mb.loft([[P(6.5+r*math.cos(i*math.tau/6),12.5+r*math.sin(i*math.tau/6),h)
+              for i in range(6)] for r,h in ((2.6,34),(1.7,35),(0.12,35.5))], "tile_green")
+    if detailed:
+        # Cream frames under individually offset panes on BOTH long facades.
+        for side in (-1,1):
+            for k in range(6):
+                h = 4.1+k*4
+                for j in range(8):
+                    f = -13.1+j*3.6
+                    for inset,role,off in ((0,"trim",0.025),(0.12,"glass",0.055)):
+                        pts = []
+                        for ff,zz in ((f-1+inset,h+inset),(f+1-inset,h+inset),
+                                      (f+1-inset,h+2.5-inset),(f-1+inset,h+2.5-inset)):
+                            xx = 9+off if side > 0 else -9+(ff+15)*13/30-off
+                            pts.append(P(xx,ff,zz))
+                        face = mb.bm.faces.new([mb.v(p) for p in pts])
+                        face.normal_update()
+                        if face.normal.x*side < 0:
+                            face.normal_flip()
+                        mb.tag([face],role,closed=False)
+            # Continuous ground-level dark shop band follows the angled wall too.
+            pts = [P(9.04 if side>0 else -9+(ff+15)*13/30-0.04,ff,h)
+                   for ff,h in ((-14,0.4),(14,0.4),(14,3.3),(-14,3.3))]
+            face = mb.bm.faces.new([mb.v(p) for p in pts])
+            face.normal_update()
+            if face.normal.x*side < 0:
+                face.normal_flip()
+            mb.tag([face],"glass",closed=False)
+        for h in (4,8,12,16,20,24,28):
+            mb.loft([[P(xx*1.005,f*1.002,z) for xx,f in plan] for z in (h-0.13,h)],"trim")
+        for h in (6,10,14,18,22,26,31):
+            mb.front_quad(15.04,5.8,7.2,h,h+1.9,"glass")
+    mb.build(name+"_body",mats,root)
+
+
+def mission(mats):
+    root = empty("sf_mission_church",loc=(295,0,0))
+    root["top_m"] = 13
+    mb = MB(["paint_cream","tile_red","wood","glass","steel_dark"])
+    mb.box(-35,-0.7,-6,6,0,7.8,"paint_cream")
+    mb.box(-0.7,0,-6,6,0,7,"paint_cream")
+    mb.fprism([(-6.3,7.8),(6.3,7.8),(0,10.5)],-35.2,-0.9,"tile_red")
+    # A recessed balcony with three genuine front openings, bells hanging in each.
+    mb.box(-0.8,0.6,-6,6,7,7.35,"paint_cream")
+    for x in (-5.7,-2,2,5.7):
+        mb.box(-0.7,0,x-0.3,x+0.3,7.35,11.4,"paint_cream")
+    mb.box(-0.7,0,-6,6,10.9,11.5,"paint_cream")
+    mb.fprism([(-6,11.5),(6,11.5),(0,13)],-0.7,0,"paint_cream")
+    for x in (-4,0,4):
+        mb.box(-0.15,-0.05,x-0.035,x+0.035,9.3,10.95,"steel_dark")
+        mb.cyl((x,-0.1,9.25),"z",0.42,0.45,6,"steel_dark",r_top=0.16)
+    for x in (-5,-2.6,2.6,5):
+        mb.cyl((x,-0.18,3.5),"z",0.5,3.5,6,"paint_cream")
+        mb.box(-0.3,0.45,x-0.65,x+0.65,6.6,7,"paint_cream")
+    mb.front_quad(0.04,-1.25,1.25,0,3.9,"wood")
+    for x in (-0.8,-0.3,0.3,0.8):
+        mb.front_quad(0.055,x-0.02,x+0.02,0,3.9,"steel_dark")
+    for side in (-1,1):
+        for f in (-7,-16,-25):
+            mb.side_quad(side*6.025,f-0.5,f+0.5,3.2,4.6,"glass",side)
+    mb.build("sf_mission_church_body",mats,root)
+
+
 def main():
     reset_scene()
     mats = make_mats(COLOURS)
@@ -152,6 +227,9 @@ def main():
     dragon_gate(mats)
     church("sf_twin_spire_lod0", 110, mats, True)
     church("sf_twin_spire_lod1", 160, mats, False)
+    flatiron("sf_flatiron_lod0", 220, mats, True)
+    flatiron("sf_flatiron_lod1", 250, mats, False)
+    mission(mats)
     export(out_path(), texcoords=True)
 
 

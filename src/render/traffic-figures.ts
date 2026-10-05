@@ -177,7 +177,7 @@ export const TRAFFIC_FIGURE_DIMS: Readonly<
   carCarrier: { widthM: 2.4, lengthM: 7.5 },
   carCarrierRamp: { widthM: 2.4, lengthM: 7.5 },
   dog: { widthM: 0.35, lengthM: 0.9 },
-  elk: { widthM: 0.9, lengthM: 2.4 },
+  elk: { widthM: 0.6, lengthM: 2.4 },
   raccoon: { widthM: 0.3, lengthM: 0.6 },
   seaLion: { widthM: 0.8, lengthM: 2.0 },
   rooster: { widthM: 0.3, lengthM: 0.45 },
@@ -786,8 +786,8 @@ const ELK: BoxPart[] = fit(
     { size: [0.16, 0.14, 0.18], at: [0, 1.88, -1.35], color: '#2b2b2b' },
     { size: [0.05, 0.4, 0.05], at: [-0.15, 2.2, -0.95], color: '#d8c9a3' },
     { size: [0.05, 0.4, 0.05], at: [0.15, 2.2, -0.95], color: '#d8c9a3' },
-    { size: [0.3, 0.05, 0.05], at: [-0.3, 2.3, -0.95], color: '#d8c9a3' },
-    { size: [0.3, 0.05, 0.05], at: [0.3, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.2, 0.05, 0.05], at: [-0.2, 2.3, -0.95], color: '#d8c9a3' },
+    { size: [0.2, 0.05, 0.05], at: [0.2, 2.3, -0.95], color: '#d8c9a3' },
     { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, -0.25], color: '#4a3a28' },
     { size: [0.12, 1.0, 0.14], at: [0.2, 0.5, -0.25], color: '#4a3a28' },
     { size: [0.12, 1.0, 0.14], at: [-0.2, 0.5, 0.7], color: '#4a3a28' },
@@ -795,7 +795,9 @@ const ELK: BoxPart[] = fit(
     { size: [0.4, 0.3, 0.05], at: [0, 1.2, 0.87], color: '#e8d9b8' },
     { size: [0.08, 0.14, 0.06], at: [0, 1.4, 0.9], color: '#e8d9b8' },
   ],
-  0.9,
+  // 0.6 m wide, its body's width (playtest 4 hitbox audit: it was fitted to 0.9 m, the spread of
+  // its antlers, so the sim's box stood 0.18 m out from its flanks; the antlers spread 0.6 now).
+  0.6,
   2.4,
   2.4,
 );

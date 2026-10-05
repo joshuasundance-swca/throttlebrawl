@@ -66,6 +66,7 @@ import {
   movingDecks,
   rampTruckAt,
   solidHazardAt,
+  stagingGuideAt,
   truckBodyAt,
   truckBodyTop,
   truckClosingMps,
@@ -720,7 +721,8 @@ function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
  * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble. At a split
- * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead. Where the road
+ * zone's outer edge (splitGuideAt), and along a staging road's edges (stagingGuideAt), the rider is
+ * only turned along the edge instead. Where the road
  * narrows ahead (a lane that ends, W-R), the edge funnels in first (laneDropGuide).
  */
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
@@ -739,7 +741,7 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   }
   const side: 1 | -1 = pos.d > hi ? 1 : -1; // road-frame side of the wall
   const limit = side > 0 ? hi : lo;
-  if (splitGuideAt(config, pos.edge, pos.s, side, limit)) {
+  if (splitGuideAt(config, pos.edge, pos.s, side, limit) || stagingGuideAt(config, pos.edge)) {
     pos.d = limit;
     m.yaw = 0;
     st.touching[m.id] = 0;
@@ -762,7 +764,10 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   const impact = scrapeAlong(config, m, side, dt, EDGE_DRAG[kind]);
   pos.d = limit;
   st.touching[m.id] = 1;
-  const hit = { impact, v, yawBefore, side, newContact };
+  // A drift is slid on purpose along the edge, so the wall forgives it more (drift room).
+  const sliding = (st.driftSide[m.id] ?? 0) !== 0 || (st.driftBeta[m.id] ?? 0) !== 0;
+  const crashScale = sliding ? Math.max(1, world.params['riders.driftEdgeForgive'] ?? 1) : 1;
+  const hit = { impact, v, yawBefore, side, newContact, crashScale };
   if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
   else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
   else groundEdge(world, st, m, kind, hit);
@@ -871,10 +876,12 @@ function wallOutcome(
     crash?: boolean;
     /** Never a crash, only a wobble (a fence that held: off-road, run W-R). */
     noCrash?: boolean;
+    /** Multiplies the crash speed (1 when left out): a drift's edge room. */
+    crashScale?: number;
   },
 ): void {
   const { impact, v, yawBefore, side } = hit;
-  const crashAt = world.params['riders.crashImpactMps'] ?? 6;
+  const crashAt = (world.params['riders.crashImpactMps'] ?? 6) * (hit.crashScale ?? 1);
   const unstable = (st.wobble[m.id] ?? 0) > 0;
   const crashes =
     hit.noCrash !== true &&

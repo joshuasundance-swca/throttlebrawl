@@ -34,7 +34,7 @@ const BIG_M = 6.5;
 /** A contact may sit this far from the drawn shapes (a tick of relative motion, and the push), m. */
 const DRAWN_GAP_M = 0.2;
 /** A moment counts for the control when the drawn shapes stand this far apart, m. */
-const AIR_M = 0.25;
+const AIR_M = 0.15;
 
 const L = TRAFFIC.riderLengthM;
 const W = TRAFFIC.riderWidthM;
@@ -128,6 +128,7 @@ describe('traffic contacts happen where the vehicles are drawn (playtest 4)', ()
         `the corridor boxes overlapped a big vehicle the drawn shapes kept ${AIR_M} m+ apart\n` +
         (far.length ? `  ${far.slice(0, 8).join('\n  ')}\n` : ''),
     );
+    // If content or the bot change so that these seeds hold none, add seeds until they do.
     expect(air, 'the negative control finds corridor-box overlaps in the air').toBeGreaterThan(0);
     expect(bigContacts, 'the races meet big vehicles').toBeGreaterThan(5);
     expect(far).toEqual([]);
