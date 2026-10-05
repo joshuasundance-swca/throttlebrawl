@@ -759,7 +759,10 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   const impact = scrapeAlong(config, m, side, dt, EDGE_DRAG[kind]);
   pos.d = limit;
   st.touching[m.id] = 1;
-  const hit = { impact, v, yawBefore, side, newContact };
+  // A drift is slid on purpose along the edge, so the wall forgives it more (drift room).
+  const sliding = (st.driftSide[m.id] ?? 0) !== 0 || (st.driftBeta[m.id] ?? 0) !== 0;
+  const crashScale = sliding ? Math.max(1, world.params['riders.driftEdgeForgive'] ?? 1) : 1;
+  const hit = { impact, v, yawBefore, side, newContact, crashScale };
   if (kind === 'hard' || kind === 'rail') wallOutcome(world, st, m, hit);
   else if (kind === 'fence') wallOutcome(world, st, m, { ...hit, extra: { object: 'fence' }, noCrash: true });
   else groundEdge(world, st, m, kind, hit);
@@ -868,10 +871,12 @@ function wallOutcome(
     crash?: boolean;
     /** Never a crash, only a wobble (a fence that held: off-road, run W-R). */
     noCrash?: boolean;
+    /** Multiplies the crash speed (1 when left out): a drift's edge room. */
+    crashScale?: number;
   },
 ): void {
   const { impact, v, yawBefore, side } = hit;
-  const crashAt = world.params['riders.crashImpactMps'] ?? 6;
+  const crashAt = (world.params['riders.crashImpactMps'] ?? 6) * (hit.crashScale ?? 1);
   const unstable = (st.wobble[m.id] ?? 0) > 0;
   const crashes =
     hit.noCrash !== true &&

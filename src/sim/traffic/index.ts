@@ -66,7 +66,8 @@
 //   solid rear-end is still a crash).
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
-import { sRateFactor } from '../../road';
+import { sRateFactor, type RoadPos } from '../../road';
+import { driftOf } from '../riders/drift';
 import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -139,6 +140,35 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     max: 3,
     step: 0.1,
     unit: '×',
+    affectsSim: true,
+  },
+  {
+    // Drift room (playtest 4, "more room for error in heavy traffic"): no vehicle spawns in or this
+    // far (m) before or after a bend of 75 m radius or tighter, where a drift starts and slides; the
+    // road there is as clear as a spawn can leave it (cars already on the road still drive in).
+    // 0 is off, the old density everywhere. [default]
+    id: 'traffic.driftBendClearM',
+    group: 'traffic',
+    label: 'No new traffic near tight bends',
+    default: 40,
+    min: 0,
+    max: 120,
+    step: 5,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
+    // Drift room, likewise: a vehicle with a drifting rider within DRIFT_ROOM_LOOK_M (55 m) edges this
+    // far (m) toward its kerb, as far as its road allows, and back when the slide is over. 0 is off.
+    // [default]
+    id: 'traffic.driftRoomM',
+    group: 'traffic',
+    label: 'Traffic keeps clear of a drift',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.1,
+    unit: 'm',
     affectsSim: true,
   },
   {
@@ -903,6 +933,42 @@ export function placeVehicle(
   return slot;
 }
 
+/** A bend this tight (1/m, a 75 m radius) is a drift bend: the drift's corner with some margin. */
+export const DRIFT_BEND_KAPPA = 1 / 75;
+/** How finely the corridor is sampled for drift bends, m. */
+const BEND_STEP_M = 5;
+/** A rider slips at least this much (rad) to count as drifting for the traffic's room. */
+const DRIFT_SLIP_MIN = 0.05;
+/** Traffic edges aside for a drifting rider within this far of it along the road, m (`traffic.driftRoomM`). */
+const DRIFT_ROOM_LOOK_M = 55;
+const bendMasks = new WeakMap<TrafficState, Uint8Array>();
+
+/** Per BEND_STEP_M of the corridor: 1 where the road bends at DRIFT_BEND_KAPPA or tighter. */
+function bendMask(config: SimConfig, st: TrafficState): Uint8Array {
+  let mask = bendMasks.get(st);
+  if (mask) return mask;
+  const c = st.corridor;
+  mask = new Uint8Array(Math.ceil(c.length / BEND_STEP_M) + 1);
+  const at: RoadPos = { edge: 0, s: 0, d: 0, dir: 1 };
+  for (let i = 0; i < mask.length; i++) {
+    fromCorridor(c, i * BEND_STEP_M, 0, 1, at);
+    mask[i] = Math.abs(config.road.kappaAt(at.edge, at.s)) >= DRIFT_BEND_KAPPA ? 1 : 0;
+  }
+  bendMasks.set(st, mask);
+  return mask;
+}
+
+/** Whether corridor u is in, or within `traffic.driftBendClearM` of, a drift bend. */
+function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: number): boolean {
+  const clear = world.params['traffic.driftBendClearM'] ?? 0;
+  if (!(clear > 0)) return false;
+  const mask = bendMask(config, st);
+  const lo = Math.max(0, Math.floor((u - clear) / BEND_STEP_M));
+  const hi = Math.min(mask.length - 1, Math.ceil((u + clear) / BEND_STEP_M));
+  for (let i = lo; i <= hi; i++) if (mask[i] === 1) return true;
+  return false;
+}
+
 /**
  * Tries to (re)spawn a vehicle heading `dir`: candidate slots from the front of the anchors'
  * windows backward, each checked against the corridor ends, the fairness rule and lane room.
@@ -947,6 +1013,7 @@ function trySpawn(
     if (u < c.lo + TRAFFIC.endMarginM || u > c.hi - TRAFFIC.endMarginM) continue;
     if (nearestAnchor(anchors, u) > TRAFFIC.windowM) continue;
     if (!spawnAllowed(anchors, u, st.reactionM)) continue;
+    if (nearTightBend(world, config, st, u)) continue;
     const lanes = lanesAt(config.road, c, u, dir);
     if (lanes.length === 0) continue;
     const area = hasAreas ? trafficAreaAt(config, c, u) : null;
@@ -1251,6 +1318,8 @@ interface RiderView {
   touchable: boolean;
   /** Down: in the crash tumble or on foot (W-Q: traffic swerves round them). */
   down: boolean;
+  /** Sliding in a drift (or easing out of one): traffic gives it room (drift room). */
+  drifting: boolean;
   /**
    * On another road (a branch) whose asphalt here is a corridor road's (run W-U fixes' re-check):
    * its view is that point's corridor position, and contact moves it on its own road.
@@ -1277,6 +1346,7 @@ function riderViews(world: World, config: SimConfig, st: TrafficState): RiderVie
       speed: m.speed,
       touchable: m.mode === 'Road',
       down: m.mode === 'Tumble' || m.mode === 'OnFoot',
+      drifting: Math.abs(driftOf(world, m)) > DRIFT_SLIP_MIN,
       over: p.over,
     });
   }
@@ -1548,6 +1618,20 @@ function move(
         target = out > 0 ? Math.min(target, round) : Math.max(target, round);
         rate = TRAFFIC.swerveMps;
       }
+    }
+    // A drifting rider swings wide: a vehicle near one edges toward its kerb, inside its road.
+    const roomM = world.params['traffic.driftRoomM'] ?? 0;
+    if (
+      roomM > 0 &&
+      !isParked(tk) &&
+      !kerb &&
+      riders.some((r) => r.drifting && Math.abs(r.u - u) < DRIFT_ROOM_LOOK_M)
+    ) {
+      const out = laneCd < 0 ? -1 : 1;
+      const limit = Math.abs(kerbGround(config, st, u, out).edgeCd) - tk.widthM / 2 - 0.1;
+      const want = Math.min(Math.abs(laneCd) + roomM, limit);
+      if (want > Math.abs(target)) target = out * want;
+      rate = TRAFFIC.swerveMps;
     }
     const cd = st.cd[k] ?? 0;
     const step = rate * dt;
