@@ -372,17 +372,30 @@ frame origin. Two more switches, both off by default, so every earlier bake is u
 | Network | Route (picker name) | What it is | Numbers (from the bake) |
 |---|---|---|---|
 | `osm-keys-duval` | `osm-duval-run` (Duval Street), 3,453 m | From Mallory Square south down Whitehead Street past the Mile 0 marker to the Southernmost Point buoy, left along South Street, then all of Duval Street north to Front Street | two right-angle corners, the tightest 15.9 m; 7.7 m largest drift; landmarks: the buoy (5.3 m from its OSM point after the corner's smoothing), the Mile 0 marker (stood on the sidewalk, 5.4 m out from its OSM point on the road's edge) and Mallory Square's pier (its real spot is 190 m from the road's end, out of the race's sight, so T10.4 stood it 21 m off the finish on the Gulf side, placed by hand in the baked road and the config, not re-baked) |
-| `osm-keys-seven-mile` | `osm-seven-mile-run` (Seven Mile Bridge), 11,649 m | US 1 from Knights Key over the 1982 bridge (10.85 km of deck at 6 m samples) to Little Duck Key, the 13 m hump over Moser Channel; the Old Seven Mile Bridge to the north from its four OSM ways (way D onto Little Duck Key included, the 19 m and 17 m breaks between its OSM ways joined by deck stitches) | the old road, an `alternate` with `aiTake` 0, 10,084 m against the highway's 10,036 m between its two repair platforms; the Moser gap 64.5 m (the 79.7 m hole less 8 m trims), its kicker 1.6 m over 16 m on a 2 m-sampled road |
+| `osm-keys-seven-mile` | `osm-seven-mile-run` (Seven Mile Bridge), 11,649 m | US 1 from Knights Key over the 1982 bridge (10.85 km of deck at 6 m samples) to Little Duck Key, the 13 m hump over Moser Channel; the Old Seven Mile Bridge to the north from its four OSM ways (way D onto Little Duck Key included, the 19 m and 17 m breaks between its OSM ways joined by deck stitches) | the old road, an `alternate` with `aiTake` 0, 10,080 m against the highway's 10,036 m between its two repair platforms; the Moser gap 64.5 m (the 79.7 m hole less 8 m trims), its kicker 1.6 m over 16 m on a 2 m-sampled road |
 
-- **The repair platforms.** A synthetic leave about 620 m onto the bridge (a 20 degree turn, a 150 m
-  straight) and a synthetic join where the bridges close to about 20 m near Little Duck Key (a 6
-  degree turn, a 150 m straight). Each straight carries a static ramp truck (no slot: always there)
-  and a 30 m `gap` just past its front, the "ramp trucks on repair platforms hop about 30 m between
-  the bridges" of round 3. The west one passes the jump lint, so the old road needs no land merge.
-- **The turn-off's split zone** is the outer edge of the shoulder (d 4.95 to 8 on a road whose edge
-  is 5.5 m out): a rider who keeps right to the rail takes the old road, while the AI's and the dev
-  bot's own lines (0.7 and 0.6 m inside the edge) never aim into it. A zone over the travel lane
-  swept a rival who was only passing a car onto the old road.
+- **The repair platforms.** A synthetic leave about 620 m onto the bridge and a synthetic join where
+  the bridges close to about 20 m near Little Duck Key (a 6 degree turn, a 150 m straight). Each
+  straight carries a static ramp truck (no slot: always there) as wide as the 6 m deck, and a 30 m
+  `gap` just past its front, the "ramp trucks on repair platforms hop about 30 m between the
+  bridges" of round 3. The west one passes the jump lint, so the old road needs no land merge.
+  A miss at either hop, like one at the Moser gap, wakes the rider on the highway
+  (`respawn: "main"`; playtest 4: "a miss respawns on the highway").
+- **The turn-off** (playtest 4, P4-10; the maintainer: "too hard to get on"; the feel audit's F10a)
+  is built to be easy to aim at. The leave turns 9 degrees (9.4 solved) with its tightest radius
+  240 m (230.6 solved), so the 71 m connector, the run-up to the truck, bends no tighter than the fastest bike
+  holds at its top speed (71.5 m/s needs 213 m or more), then a 520 m straight closes on the old
+  bridge, which runs off to the north at about 4 degrees. The connector starts 3 m right of the
+  highway's centre line (`offsetM` 3), so a rider who takes the turn-off anywhere across the zone
+  and lets go drifts out across the deck but stays on it. Before, a 20 degree turn at 60 m carried
+  a rider who let go, at any speed from the Rustbucket's top, past the 3 m truck into the water.
+- **The turn-off's split zone** is the shoulder and the right lane's outer 0.5 m (d 3.5 to 8 on a
+  road whose edge is 5.5 m out), the last 80 m before the split: a rider need not be pressed to the
+  rail, and one holding the right lane's centre line (d 2) still rides on along the highway. It
+  used to be d 4.95 to 8 over 40 m, past the lines the AI and the dev bot keep, because a zone over
+  the travel lane swept a rival who was only passing a car onto the old road; since #489 the sim
+  keeps rivals and cops off it (`sim/ai/branches.ts`), and the dev bot now takes it like the other
+  shortcuts. `tests/sim/keys-seven-mile-turn-off.test.ts` rides it per bike at top speed.
 - **The kicker's size** comes from the sim, not the vacuum figures: `tools/gis/routes-keys-pt3.test.ts`
   rides every bike in the packs over it. At 1.6 m the slowest lip speed that clears is 39.1 to 39.7
   m/s for every bike; the Rustbucket flat out (44.4 m/s at the lip) lands 11.5 m past the far edge,
