@@ -20,3 +20,5 @@ For devs:
 Not phone-verified, and not seen in a browser.
 
 Keeper fix: two pinned lists grew with the new roads. `tools/gis/osm-route.test.ts` counts each baked Keys network's files from its own road list (41 now: 21 before, plus Duval's 4 and the Seven Mile's 16), all still under the one ODbL rule. `tools/road/lane-drops-live.test.ts` lists the three lane drops where the old road's two lanes narrow to a one-lane repair platform (9, 6 and 9 stations, each within the 90 m taper). The career check waits for both routes' wave C events (#476).
+
+Keeper fix 2: `tests/timings.json` refreshed (`node scripts/timings.mjs 37250673324 37249569329`, this PR's run and Bridge City's). The sim slice that holds the long-race files timed out at 10 minutes twice on this PR: the table planned it at 355 s, but its files took 392 s (cops-parking), 314 s (cops-steal-chance) and 292 s (riders-landings) with the new routes. The refreshed plan is 498 to 511 s per slice.
