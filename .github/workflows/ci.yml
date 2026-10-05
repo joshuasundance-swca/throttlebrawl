@@ -84,16 +84,17 @@ jobs:
 
   # The unit tests in parallel slices, split by measured CI seconds like the sim batch below. On one
   # runner they took 435 s (run 37261695645): about 980 s of tests plus each file's setup and
-  # import on three workers. Their slowest file (tools/gis/region-routes.test.ts, about 310 to 340 s)
-  # is the floor, and the plan gives it a slice of its own. [default]
+  # import on three workers. Their slowest file (tools/gis/region-routes.test.ts) is the floor. The
+  # plan adds about 0.8 s per file for that setup and import, which Vitest's per-file times leave
+  # out. [default]
   unit:
     name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    # 189 and 220 s on run 37263764562. Not 1.5x that: region-routes ran 174 s alone there but
-    # 337 s beside other files, and a refreshed plan can put files beside it again.
-    timeout-minutes: 7
+    # About 1.5x a slice, rounded up: the plan puts each at about 265 s of tests plus 0.8 s of setup
+    # per file, and region-routes takes 140 to 175 s alone but up to 337 s beside other files.
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +124,7 @@ jobs:
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    # 1.5x the mean slice of this layout's first two runs (366 s), rounded up; the slowest was 467 s.
+    # 1.5x the mean slice of this layout's first three runs (362 s), rounded up; the slowest was 467 s.
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -147,7 +148,7 @@ jobs:
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
   # red slice never hides another's result. [default]
   # Six slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice. The timeout
-  # is 1.5x the mean slice of this layout's first two runs (385 s), rounded up.
+  # is 1.5x the mean slice of this layout's first three runs (386 s), rounded up.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]

@@ -32,9 +32,14 @@ import { repoRoot } from './lib.mjs';
 
 export const TIMINGS_FILE = 'tests/timings.json';
 
-/** Parallel test workers per CI runner, and the order each runner starts its files in. */
+/**
+ * Parallel test workers per CI runner, the order each runner starts its files in, and seconds each
+ * file costs beyond its measured time (perFile). Vitest's per-file line times the tests only; the
+ * unit files' setup and import add about 0.8 s each (run 37266882407: 695 s of tests in a 320-file
+ * slice, which Vitest put at 73% of its time). Few, long sim files make it negligible there.
+ */
 export const TIERS = {
-  unit: { workers: 3, order: 'longest-first' },
+  unit: { workers: 3, order: 'longest-first', perFile: 0.8 },
   sim: { workers: 3, order: 'longest-first' },
   e2e: { workers: 2, order: 'path' },
 };
@@ -105,6 +110,7 @@ function makespan(items, workers) {
  * @param {string[]} [o.together] files that must share one slice, run first (the batch readers)
  * @param {string[]} [o.first] files the runner starts before all others (the preset batch readers)
  * @param {number} [o.lastExtra] seconds the last slice spends after its files (perf)
+ * @param {number} [o.perFile] seconds each file costs beyond its measured time (setup and import)
  * @returns {{ files: string[], predicted: number }[]}
  */
 export function planSlices({
@@ -116,13 +122,14 @@ export function planSlices({
   together = [],
   first = [],
   lastExtra = 0,
+  perFile = 0,
 }) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`planSlices: n must be a whole number >= 1, got ${n}`);
   const all = [...new Set(files)].sort();
   // The table's own times, not only this tier's files: the same estimate as unmeasured() reports
   // and tests/sequencer.ts orders by.
   const fallback = estimateSeconds(Object.values(seconds).filter(isSeconds));
-  const cost = (f) => (isSeconds(seconds[f]) ? seconds[f] : fallback);
+  const cost = (f) => (isSeconds(seconds[f]) ? seconds[f] : fallback) + perFile;
 
   const item = (f) => ({ files: [f], cost: cost(f), pinned: together.includes(f) });
   const items = all.filter((f) => !together.includes(f)).map(item);
@@ -191,5 +198,6 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     together: tier === 'sim' ? batchUsers(files, read) : [],
     first: tier === 'sim' ? presetUsers(files, read) : [],
     lastExtra: tier === 'e2e' ? (timings.perf ?? 0) : 0,
+    perFile: 'perFile' in spec ? spec.perFile : 0,
   });
 }

@@ -135,6 +135,22 @@ describe('planSlices', () => {
     expect(presetUsers(Object.keys(src), (f: string) => src[f] ?? '')).toEqual(['b.test.ts']);
   });
 
+  it("prices each unit file's setup and import, which its measured time leaves out", () => {
+    // Vitest's per-file line times the tests only. On run 37266882407 the unit slice of 320 files
+    // summed 695 s of tests, but Vitest's own split says tests were 73% of its time: about 0.8 s more
+    // per file. Planned without it, that slice said 203 s and took 353 s, beside a 156 s slice.
+    const files = ['big', ...Array.from({ length: 400 }, (_, i) => `f${String(i).padStart(3, '0')}`)];
+    const seconds = Object.fromEntries(files.map((f) => [f, f === 'big' ? 300 : 2]));
+    const plan = planTier('unit', files, 2, { timings: { unit: seconds } });
+    expect(TIERS.unit.perFile).toBeGreaterThan(0);
+    // 400 small files at 2 s are 267 s on 3 workers, which fits beside the 300 s file; at 2.8 s each
+    // they are 373 s, so some go to the big file's slice.
+    const small = plan.map((s) => s.files.filter((f) => f !== 'big').length);
+    expect(Math.min(...small)).toBeGreaterThan(0);
+    for (const s of plan) expect(s.predicted).toBeLessThanOrEqual(301);
+    expect(plan.find((s) => s.files.includes('big'))?.predicted).toBe(301);
+  });
+
   it('leaves the last slice room for perf (lastExtra)', () => {
     const files = ['a', 'b', 'c', 'd', 'e', 'f'];
     const seconds = Object.fromEntries(files.map((f) => [f, 10]));
