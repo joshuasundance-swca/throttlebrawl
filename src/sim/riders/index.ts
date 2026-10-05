@@ -632,14 +632,16 @@ function onShoulder(config: SimConfig, m: Mover): boolean {
  * Playtest 1b ([decided] 2026-09-30, "you get forced away like it's a barrier"): past its own edge's
  * drivable band where a sibling branch is drawn overlapping (just past a split or before a merge), a
  * rider moves onto that branch, keeping its world position and heading, and no barrier event fires.
- * Only onto the race's allowed edges. Traffic never does this: it only calls road.advance.
+ * Only onto the race's allowed edges. Traffic never does this: it only calls road.advance. True when
+ * it handed the rider over.
  */
-function crossToBranch(config: SimConfig, m: Mover): void {
+function crossToBranch(config: SimConfig, m: Mover): boolean {
   const pos = m.pos;
   const { lo, hi } = barrierLimits(config, pos.edge, pos.s);
-  if (pos.d >= lo && pos.d <= hi) return;
+  if (pos.d >= lo && pos.d <= hi) return false;
   const turn = config.road.handover(pos, BIKE_HALF_WIDTH_M, (e) => config.route.allows(e));
   if (turn !== null) m.yaw += turn;
+  return turn !== null;
 }
 
 /**
@@ -1093,7 +1095,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   m.h = 0;
   applyShove(config, st, m, dt);
   if (road.advance(pos) === 'deadEnd') m.speed = 0;
-  crossToBranch(config, m);
+  const handed = crossToBranch(config, m);
   barrierContact(world, config, st, m, dt);
   truckContact(world, config, st, m, before, dt, decks);
   if (hazardContact(world, config, st, m, before, dt)) {
@@ -1149,7 +1151,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   } else {
     m.h = deck;
     st.yAbs[m.id] = ground;
-    if (dt > 0) st.vy[m.id] = (ground - yBefore) / dt;
+    // A handover onto a sibling branch (crossToBranch) moves the rider between two drawn surfaces,
+    // which can stand apart where real branches climb and fall (playtest 3, T9.4: 0.6 m on Bridge
+    // City). That step is no vertical speed, or the next tick launches the bike off flat road.
+    if (dt > 0) st.vy[m.id] = handed ? vyBefore : (ground - yBefore) / dt;
     touchPads(world, config, st, m);
     groundPitch(st, m, slopeAt(config, m));
     // A wheelie's front is up this far above the slope (playtest 3).
