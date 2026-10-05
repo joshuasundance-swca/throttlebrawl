@@ -449,7 +449,9 @@ describe('assembly, on a real git repo', () => {
     ok('checkout', '-q', '-b', 'p6', base);
     heads.p6 = commitFile('a.txt', 'uno\ntwo\nthree\n', 'p6'); // conflicts with main
     ok('checkout', '-q', 'main');
-  });
+    // About 25 git processes: well under a second on CI, but over the 10 s default on a busy
+    // Windows dev machine, where each spawn is slow. A guard against a hang, not a wait.
+  }, 60_000);
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   it('merges each head in order, deterministically, with the no-reply train identity', () => {
