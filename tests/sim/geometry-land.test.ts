@@ -8,7 +8,8 @@
 // - nothing over water: every place a pedestrian can stand, walk or dive to in a route's roadside
 //   zones has land or road under it at its height (playtest 1b, "pedestrians stand in the water"),
 //   read from the sim's own rules: anywhere across the zone, off the road, crossing to the far
-//   side unless a rail stops it, and a 3.5 m dive either way;
+//   side unless a rail stops it or the zone's own kinds all stroll (strollers never cross), and a
+//   3.5 m dive either way;
 // - no land over a road: no road's surface has land BURIED_M (1.5 m) or more over it, as the land
 //   build's own rule says (road-mesh.ts stripClear).
 // Before this, the land walks ran on hand-written lists of networks (regions.test.ts three,
@@ -132,6 +133,30 @@ const PED_HALF_M = 0.45;
 /** Ground this far under the pedestrian's road-height feet is an embankment below, not its ground. */
 const PED_SINK_M = 0.25;
 
+/** The packs' traffic types, for the sim's crossing rule below. */
+const TRAFFIC_TYPES = Object.values(
+  import.meta.glob<{ id: string; cruiseMps?: number; behaviour?: { strolls?: boolean } }>(
+    '/packs/*/traffic/*.json',
+    { eager: true, import: 'default' },
+  ),
+);
+
+/**
+ * A zone whose own `kinds` are all strollers: the sim never sends a stroller across the road
+ * (src/sim/peds/index.ts: `crosses` needs `!strolls(t)`, a stroller walks its verge), so nobody
+ * from it reaches the far side. A kind that names no type, or one that does not stroll, keeps the
+ * far side in. Every type with the kind's bare id must stroll.
+ */
+function strollersOnly(kinds: unknown): boolean {
+  if (!Array.isArray(kinds) || kinds.length === 0) return false;
+  return kinds.every((k) => {
+    if (typeof k !== 'string') return false;
+    const bare = k.includes(':') ? k.slice(k.indexOf(':') + 1) : k;
+    const types = TRAFFIC_TYPES.filter((t) => t.id === bare);
+    return types.length > 0 && types.every((t) => t.behaviour?.strolls === true && (t.cruiseMps ?? 0) > 0);
+  });
+}
+
 /** The places in every route's roadside zones a pedestrian can reach that have no ground under them. */
 export function wetPeds(
   t: Track,
@@ -149,6 +174,7 @@ export function wetPeds(
       const far = Math.max(Math.abs(f.d0), Math.abs(f.d1));
       const s0 = Math.max(0, Math.min(f.s0, f.s1));
       const s1 = Math.min(e.length, Math.max(f.s0, f.s1));
+      const strollers = strollersOnly(f.params?.['kinds']);
       let bad = false;
       for (let s = s0; s <= s1 && !bad; s += 2) {
         let lo = 0;
@@ -162,7 +188,7 @@ export function wetPeds(
           t.road.barrierAt(e.index, s, 'left') !== null || t.road.barrierAt(e.index, s, 'right') !== null;
         // The zone's side, out to its far edge and a dive past it; the far side, if anyone crosses.
         const reach: [-1 | 1, number][] = [[zoneSide, Math.max(far, clear(zoneSide)) + PED_DIVE_M]];
-        if (!railed)
+        if (!railed && !strollers)
           reach.push([-zoneSide as -1 | 1, clear(-zoneSide as -1 | 1) + PED_FAR_SLACK_M + PED_DIVE_M]);
         for (const [side, out] of reach) {
           const from = side > 0 ? hi : -lo;
