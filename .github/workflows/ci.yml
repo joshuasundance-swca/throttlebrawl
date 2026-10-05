@@ -1,4 +1,4 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit (two slices), sim (five
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit (two slices), sim (six
 # slices) and browser (six slices, the last also running perf) run in parallel, each running its tiers of
 # `npm run check`; `gate` is the single required status check, and it fails unless every one of
 # them succeeded. Every job is planned to finish inside about 70% of a 10-minute run, and its
@@ -117,19 +117,20 @@ jobs:
   # files that read the shared seeded batch share one slice, so it is computed once; the readers of
   # the Easy and Hard batches start first there. fail-fast is off so a red slice never hides
   # another's result. [default]
-  # Five slices since 2026-10-05: with four, #475's green run took 520 to 592 s a slice and one slice
-  # timed out at 10 minutes. The batch readers' slice is now the floor.
+  # Six slices since 2026-10-05: with four, #475's green run took 520 to 592 s a slice and one slice
+  # timed out at 10 minutes. The slowest files are now the floor (docs/engineering.md, "The floors").
   sim:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    # 1.5x the mean slice of this layout's first three runs (362 s), rounded up; the slowest was 467 s.
+    # About 1.5x a slice (planned about 320 s of tests), rounded up to leave room for slow runners:
+    # five slices of this PR's runs took up to 535 s.
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
         with:
