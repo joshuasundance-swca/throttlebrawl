@@ -5,7 +5,11 @@
   "chapter": 1,
   "blurb": "One road, too many bridges, and a deputy who has seen everything twice.",
   "networks": ["keys-m1", "osm-keys-key-west", "osm-keys-duval", "osm-keys-seven-mile"],
-  "timeOfDayOptions": [{ "id": "golden-hour", "lighting": "keys-golden", "palette": { "sky": "#f6b26b" } }],
+  "timeOfDayOptions": [
+    { "id": "noon", "lighting": "keys-noon-glare" },
+    { "id": "golden-hour", "lighting": "keys-golden", "palette": { "sky": "#f6b26b" } },
+    { "id": "dusk", "lighting": "keys-dusk", "palette": { "sky": "#c9728a" } }
+  ],
   "palette": { "water": "#19b5b0", "road": "#44474d", "accent": "#f2c14e", "sky": "#8fd3f0" },
   "traffic": {
     "mix": [
@@ -74,6 +78,17 @@
           { "kind": "golf-cart", "weight": 1.5 },
           { "kind": "rental-convertible", "weight": 1.5 },
           { "kind": "sedan-rental", "weight": 2 }
+        ]
+      },
+      {
+        "tag": "key-oldtown",
+        "mix": [
+          { "kind": "golf-cart", "weight": 3 },
+          { "kind": "resort-scooter-rider", "weight": 3 },
+          { "kind": "rental-convertible", "weight": 2 },
+          { "kind": "sedan-rental", "weight": 2 },
+          { "kind": "pedicab", "weight": 1 },
+          { "kind": "island-tram", "weight": 0.6 }
         ]
       }
     ]
@@ -216,6 +231,30 @@
       "text": "TIKI BAR: OPEN. Since before anyone found it.",
       "tags": ["site", "key-secret"],
       "status": "live"
+    },
+    {
+      "id": "oldtown-southernmost",
+      "text": "SOUTHERNMOST POINT, PROBABLY. Photo line 40 min.",
+      "tags": ["key-oldtown"],
+      "status": "live"
+    },
+    {
+      "id": "oldtown-roosters",
+      "text": "FREE-RANGE ROOSTERS. Protected. Unbothered.",
+      "tags": ["key-oldtown"],
+      "status": "live"
+    },
+    {
+      "id": "oldtown-sunset",
+      "text": "SUNSET CELEBRATION: DAILY. The sun has no comment.",
+      "tags": ["key-oldtown"],
+      "status": "live"
+    },
+    {
+      "id": "oldtown-ship",
+      "text": "YOUR SHIP LEAVES AT 4:30. It will not wait. It is a ship.",
+      "tags": ["key-oldtown"],
+      "status": "live"
     }
   ],
   "billboards": [
@@ -287,6 +326,18 @@
       "text": "LOUDER THAN THE GATORS. Prop Wash Airboat Tours. Earplugs $9.",
       "tags": ["site"],
       "status": "live"
+    },
+    {
+      "id": "shore-desk",
+      "text": "FOUR HOURS, ONE STREET. Shore Excursion Desk.",
+      "tags": ["key-oldtown"],
+      "status": "live"
+    },
+    {
+      "id": "tram-tours",
+      "text": "KNOW WHAT YOU SEE. Island Tour Tram. Narrated, loudly.",
+      "tags": ["key-oldtown"],
+      "status": "live"
     }
   ],
   "landingLines": [
@@ -317,6 +368,24 @@
       "weight": 2,
       "status": "live",
       "note": "Run W-T. A row of mailboxes on posts; stands on any open road with room."
+    },
+    {
+      "id": "shore-excursion-desk",
+      "kind": "pop-up-desk",
+      "text": "SHORE EXCURSION DESK",
+      "weight": 2,
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 3 (T10.4). A cruise line's folding desk and banner on Duval's pavement: an institution's, never one of the street's own shops."
+    },
+    {
+      "id": "cruise-day-parking",
+      "kind": "parking-meter",
+      "text": "CRUISE DAY PARKING",
+      "weight": 2,
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 3 (T10.4). The city's meters along the kerb, set to cruise-ship hours."
     }
   ],
   "meta": {

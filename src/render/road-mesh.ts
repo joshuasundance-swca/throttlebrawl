@@ -25,6 +25,7 @@ import {
 } from 'three';
 import { chooseSetPieces, SEEDED_SET_PIECE_KINDS, type Edge, type RoadNetwork } from '../road';
 import type { LaneInfo } from '../sim/api';
+import { BAY_BLOCK_M, BAY_DRAW_M, isSevenMile, planBays } from './bridge-bays';
 import { ChunkedStrips, mergeBoxes, openBox, type BoxPart, type Point3 } from './geometry';
 import { EdgeLocator } from './overlap';
 import type { LookStyle, MaterialKind } from './look';
@@ -202,6 +203,8 @@ export interface RoadScene {
   stats: RoadSceneStats;
   /** Every scenery spot placed (for tests and the debug overlay). */
   spots: readonly ScenerySpot[];
+  /** The bridge bays placed (playtest 3, T12.3), apart from `spots`: they are no scatter. */
+  bays: readonly ScenerySpot[];
   /**
    * Per frame: hides scenery farther than `drawM` from the camera, draws the merged blocks past
    * `lodM` as their far stand-ins, builds up to `builds` blocks coming into range (default one),
@@ -746,6 +749,8 @@ function standIn(kind: SceneryKind): BufferGeometry {
       { size: [0.3, 5, 0.3], at: [-2, 4, 0], color: '#7a5d42' },
       { size: [3.6, 0.5, 3.6], at: [-2, 6.6, 0], color: '#3f8a43', rotY: 0.4 },
     ],
+    // a bridge bay has no stand-in: with no kit the bridge keeps its plain deck (bridge-bays.ts)
+    bay: [],
   };
   return mergeBoxes(parts[kind]);
 }
@@ -766,6 +771,7 @@ const MODEL_OF: Readonly<Record<SceneryKind, keyof SceneryModels>> = {
   sawmill: 'sawmill',
   fogBank: 'fogBanks',
   islet: 'keysIslets',
+  bay: 'sevenMileKit',
 };
 
 /**
@@ -886,6 +892,11 @@ export function buildRoadScene(
     terrain && road.edges.some((e) => (dressingOf(e, dressing).tags ?? []).some((t) => t.tag === 'forest'));
   const bentModel = timber ? opts.models?.trestleBent : undefined;
   const bentMatrices: Matrix4[] = [];
+  // Playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts), only with the kit loaded, and kept
+  // out of `spots` (the scatter's list, which the roadside layer and the sweeps read).
+  const bayModel = opts.models?.sevenMileKit;
+  const sevenMile = bayModel ? isSevenMile(road.edges.map((e) => dressingOf(e, dressing).tags)) : false;
+  const baySpots: ScenerySpot[] = [];
   const nearWater = terrain ? waterGrid(road, dressing) : () => false;
   let railM = 0;
   let boardSeams = 0;
@@ -1598,6 +1609,20 @@ export function buildRoadScene(
         fogBanks: opts.palette?.['fogBank'] !== undefined,
       }),
     );
+    if (sevenMile) {
+      baySpots.push(
+        ...planBays({
+          edge: e.index,
+          length: e.length,
+          tags: dress.tags,
+          shortcutOnly: laneSpans(road.lanesAt(e.index, e.length / 2)).drive === null,
+          sevenMile,
+          gaps,
+          ramps: (dress.features ?? []).filter((f) => f.kind === 'ramp'),
+          at: (s) => w(e.index, s, 0, 0),
+        }),
+      );
+    }
     // Deck fascia on bridges, an embankment down to the water elsewhere, on both sides.
     for (const [d, out] of [
       [outerL, -1],
@@ -2215,12 +2240,14 @@ export function buildRoadScene(
   group.add(scenery);
   const batches: SceneryBatch[] = [];
   const mergeItems: MergeItem[] = [];
+  const bayItems: MergeItem[] = [];
   const counts = Object.fromEntries(SCENERY_KINDS.map((k) => [k, 0])) as Record<SceneryKind, number>;
   const fromModels: SceneryKind[] = [];
   const turn = new Quaternion();
   const upAxis = new Vector3(0, 1, 0);
+  const placed = baySpots.length ? [...spots, ...baySpots] : spots;
   for (const kind of SCENERY_KINDS) {
-    const mine = spots.filter((s) => s.kind === kind);
+    const mine = placed.filter((s) => s.kind === kind);
     counts[kind] = mine.length;
     const model = opts.models?.[MODEL_OF[kind]];
     if (model) fromModels.push(kind);
@@ -2236,7 +2263,7 @@ export function buildRoadScene(
     if (!INSTANCED_KINDS.has(kind)) {
       for (const s of mine) {
         const geometry = geos[Math.min(geos.length - 1, s.variant)] ?? geos[0];
-        if (geometry) mergeItems.push({ spot: s, geometry, material });
+        if (geometry) (kind === 'bay' ? bayItems : mergeItems).push({ spot: s, geometry, material });
       }
       continue;
     }
@@ -2290,6 +2317,21 @@ export function buildRoadScene(
   // Counted at full detail, as the instanced batches were (the meshes are built as the camera comes).
   triangles += merged.triangles;
   meshes += merged.count;
+  // The bridge bays merge in bigger squares of their own (bridge-bays.ts: BAY_BLOCK_M), so a view of
+  // a long bridge adds a few meshes however many bays it has; the blocks of the scatter are 160 m
+  // squares and a bridge crosses one every 160 m.
+  const bayMerged = bayItems.length
+    ? new MergedScenery(
+        bayItems,
+        look.material('prop', { vertexColors: true, doubleSided: true }),
+        BAY_BLOCK_M,
+      )
+    : null;
+  if (bayMerged) {
+    scenery.add(bayMerged.group);
+    triangles += bayMerged.triangles;
+    meshes += bayMerged.count;
+  }
 
   // The sea, at world y = 0 (sea level in the network frame).
   const water = new Mesh(new PlaneGeometry(maxX - minX + 3000, maxZ - minZ + 3000), look.material('water'));
@@ -2323,6 +2365,7 @@ export function buildRoadScene(
       sceneryModels: fromModels,
     },
     spots,
+    bays: baySpots,
     landReach(edge, side, s) {
       const l = landOf[edge];
       if (!l) return 0;
@@ -2336,6 +2379,7 @@ export function buildRoadScene(
         for (const mesh of fine) mesh.visible = near;
       }
       let shown = merged.update(cameraX, cameraZ, drawM, lodM, builds);
+      if (bayMerged) shown += bayMerged.update(cameraX, cameraZ, Math.min(drawM, BAY_DRAW_M), lodM, builds);
       for (const b of batches) {
         const visible = b.always || Math.hypot(b.cx - cameraX, b.cz - cameraZ) - b.radius < drawM;
         b.mesh.visible = visible;
@@ -2354,9 +2398,21 @@ export function buildRoadScene(
       }
       return shown;
     },
-    merged: () => merged.counts(),
+    merged: () => {
+      const a = merged.counts();
+      const b = bayMerged?.counts();
+      if (!b) return a;
+      return {
+        blocks: a.blocks + b.blocks,
+        built: a.built + b.built,
+        meshes: a.meshes + b.meshes,
+        triangles: a.triangles + b.triangles,
+        far: a.far + b.far,
+      };
+    },
     dispose() {
       merged.dispose();
+      bayMerged?.dispose();
       // Instanced chunks share one geometry per kind: dispose each once. The models' geometries
       // belong to the renderer's model cache and outlive this scene.
       const seen = new Set<BufferGeometry>(shared);

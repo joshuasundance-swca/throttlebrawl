@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "pedicab",
+  "name": "Pedicab",
+  "category": "car",
+  "tags": ["local", "cyclist", "key-oldtown"],
+  "lengthM": 2.6,
+  "widthM": 1.2,
+  "cruiseMps": 4.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "pedicab"
+    },
+    "paintOptions": ["#ff8fab", "#7fd1c7", "#f2c14e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 3 (T10.4; real-world local life, Duval Street): a bike with a two-seat bench and a canopy, pedalled up the kerb lane at a stroll. The driver quotes a fare, then a different fare. A kerb rider like the golf cart (it keeps to the kerb, so you pass it); weight 1 in the Old Town's traffic, never in the region's own mix. [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

@@ -4,7 +4,7 @@
   "name": "Hurricane Party",
   "kind": "classic-race",
   "region": "florida-keys",
-  "timeOfDay": "golden-hour",
+  "timeOfDay": "dusk",
   "lengths": [
     {
       "id": "standard",
@@ -66,7 +66,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A classic race, full pack, the long haul: the storm is two days out and the whole key is at the same party. Top 3 is required; winning is the optional bonus. Playtest 3 (T10.1): the last tier's first regular event (progression.md, section 2). Its dusk is the region's golden hour until the Keys add one (T10.4). [default] every number and name.",
+    "notes": "A classic race, full pack, the long haul: the storm is two days out and the whole key is at the same party. Top 3 is required; winning is the optional bonus. Playtest 3 (T10.1): the last tier's first regular event (progression.md, section 2). Its dusk is the region's own since T10.4. [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -1,0 +1,84 @@
+{
+  "type": "event",
+  "id": "sf-t3-figure-eight",
+  "name": "Figure Eight",
+  "kind": "classic-race",
+  "region": "san-francisco",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-twin-peaks-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": [
+      "pivot",
+      "base:deacon-vane",
+      "base:chad-speedwell",
+      "base:dial-up",
+      "base:kevin-from-accounting"
+    ],
+    "paceMps": 42
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "finish",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 5
+      },
+      "required": true
+    },
+    {
+      "id": "drift",
+      "kind": "style-cash",
+      "params": {
+        "cash": 300,
+        "kinds": ["drift"]
+      },
+      "required": true
+    },
+    {
+      "id": "podium",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": false,
+      "rewardCash": 1000
+    }
+  ],
+  "tier": 3,
+  "rewards": {
+    "byPlaceCash": [6550, 3600, 2300, 1000, 650, 350, 200],
+    "perTakedownCash": 400,
+    "perNearMissCash": 38,
+    "perAirtimeCash": 57,
+    "perOncomingSecondCash": 15,
+    "takedownComboScale": 0.5,
+    "perStealCash": 95
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Figure Eight (playtest 3, T10.6; the progression plan's drift race, the maintainer: \"Braking into a hairpin at speeds makes a nice drift like mechanism\"). A race to the line up Twin Peaks (11 corners, 3 hairpins) whose second required objective is $300 of drift style cash (the HUD reads DRIFT $x/$300; other style does not count); the optional podium bonus is the usual 0.15 W. The target is capped at 60 % of what the scripted drift bot banks on this route alone, at this event's own drift rate ($45 a second of full slip, 3 times the oncoming rate) on the weakest bike a player could own by then: $523 on the Superbike, so a cap of $314, and the target is $300, rounded down to $50 (tests/sim/drift-events.test.ts fails any drift event over its cap). The purse, the style rewards and the rival pace are global tier 11's. [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

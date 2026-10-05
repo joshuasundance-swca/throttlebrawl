@@ -120,6 +120,9 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['gardens', band(3, 'grass', 'fence')],
   ['warehouses', band(4, 'kerb', 'soft')],
   ['piers', band(4, 'kerb', 'soft')],
+  // The Marin Headlands (playtest 3, T10.6): open grass to the hill's edge, soft ground running out,
+  // with no ferns (the `brush` edge is the Pacific Northwest's) and no fence.
+  ['headlands', band(5, 'grass', 'soft')],
   ['forest', band(6, 'dirt', 'brush')],
 ];
 

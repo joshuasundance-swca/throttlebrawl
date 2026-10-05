@@ -77,7 +77,11 @@ describe('W-Q: a free-play race draws its field and its light by the seed', () =
     const times = new Set(SEEDS.map((s) => raceTimeOfDay(ALL, SF, s, true)));
     expect([...times].sort()).toEqual(['dawn', 'golden-hour']);
     expect(raceTimeOfDay(ALL, SF, 9, true)).toBe(raceTimeOfDay(ALL, SF, 9, true));
-    // The Keys list has one entry: always golden hour.
-    expect(new Set(SEEDS.map((s) => raceTimeOfDay(ALL, KEYS, s, true)))).toEqual(new Set(['golden-hour']));
+    // The Keys list has several (T10.4 added noon and dusk): each draw is one of them, and 40 seeds
+    // draw more than one.
+    const keysLights = ALL.regions['base:florida-keys']?.timeOfDayOptions.map((o) => o.id) ?? [];
+    const keysDrawn = new Set(SEEDS.map((s) => raceTimeOfDay(ALL, KEYS, s, true)));
+    for (const light of keysDrawn) expect(keysLights).toContain(light);
+    expect(keysDrawn.size).toBeGreaterThan(1);
   });
 });

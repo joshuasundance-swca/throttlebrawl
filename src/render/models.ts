@@ -24,6 +24,7 @@ import {
 } from 'three';
 import type { AssetManifest } from '../assets';
 import { ATLAS_WHITE_UV, loadRegionAtlas, withAtlas } from './atlas';
+import { BAY_ROOT, BAY_ROOTS, belowDeck } from './bridge-bays';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
 
@@ -53,6 +54,8 @@ export const MODEL_ASSETS = {
   sfTowerModules: 'models/scenery/sf-tower-modules',
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
+  // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
+  sevenMileKit: 'models/scenery/seven-mile-kit',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -102,6 +105,8 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_lamp',
   ],
   keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
+  // The kit also holds the cottages, dock and barge of Pigeon Key; only the bays are baked here.
+  sevenMileKit: BAY_ROOTS,
   sfDowntown: [
     'dt_tower_glass',
     'dt_tower_stone',
@@ -232,6 +237,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     // Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets) lines its street with
     // the Duval kit.
     if (n.tags.has('key-oldtown')) out.add('duvalKit');
+    // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
+    if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
@@ -436,9 +443,13 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
     const v = bakeVariant(root);
-    variants.push(v.geometry);
-    roles.push(v.roles);
-    tiles.push(v.tiles);
+    // The gap end's barricade and board stand across the lanes at the lip, where a rider passes (the
+    // sim has nothing there): only the stub under the deck is drawn (bridge-bays.ts `belowDeck`). Its
+    // trimmed geometry keeps no UVs, so it takes no atlas tile runs either.
+    const trimmed = kind === 'sevenMileKit' && name === BAY_ROOT.gapEnd;
+    variants.push(trimmed ? belowDeck(v.geometry) : v.geometry);
+    roles.push(trimmed ? [] : v.roles);
+    tiles.push(trimmed ? [] : v.tiles);
     doubleSided ||= v.doubleSided;
   }
   const out: SceneryModel = { kind, variants, doubleSided, roles };

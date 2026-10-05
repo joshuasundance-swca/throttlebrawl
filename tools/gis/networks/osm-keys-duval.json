@@ -10,7 +10,7 @@
   "osmExtract": ".cache/osm/keys-duval.json",
   "outRoot": "packs/base/regions/florida-keys",
   "waysLabel": "Key West street",
-  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"). Key West's Old Town at its real size: from Mallory Square south down Whitehead Street past the lighthouse and the Mile 0 marker to the Southernmost Point buoy, left along South Street, then the whole of Duval Street north from the Atlantic to the Gulf, finishing at Front Street beside Mallory Square. Its own frame origin, since it never shares a scene with keys-m1. The buoy, the Mile 0 marker and the Mallory Square pier are landmarks placed from their real positions; the Mile 0 marker stands on the sidewalk, a few metres out from its OSM point on the road's edge.",
+  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"). Key West's Old Town at its real size: from Mallory Square south down Whitehead Street past the lighthouse and the Mile 0 marker to the Southernmost Point buoy, left along South Street, then the whole of Duval Street north from the Atlantic to the Gulf, finishing at Front Street beside Mallory Square. Its own frame origin, since it never shares a scene with keys-m1. The buoy, the Mile 0 marker and the Mallory Square pier are landmarks; the buoy and the marker are placed from their real positions (the Mile 0 marker stands on the sidewalk, a few metres out from its OSM point on the road's edge). The pier is not: its real spot is about 190 m from the road, out of sight of the race, so it stands 21 m off the finish on the Gulf side, a forecourt of 24 m kept clear in front of it, its deck running out to the water's edge, turned square to the road (playtest 3, T10.4: \"place it where the finish can see it\"). The three zones' `kinds` and the two rooster zones are the Keys content lane's (T10.4); the pier's `at` is the point that placement stands on once the real polyline's offset (about 8 m here) is added, so a re-bake lands it within a few metres of s 1745, d -21 and its road file is the one to check.",
   "lines": [
     {
       "id": "oldtown",
@@ -102,11 +102,12 @@
           "id": "mallory-pier",
           "model": "models/landmarks/keys-landmarks#mallory_pier",
           "at": {
-            "lat": 24.55968,
-            "lon": -81.80799
+            "lat": 24.5604318,
+            "lon": -81.8064861
           },
-          "footprintM": [12, 6],
-          "yawDeg": -54
+          "footprintM": [30, 24],
+          "side": "left",
+          "yawDeg": -90
         }
       ],
       "roads": [
@@ -150,6 +151,15 @@
               }
             },
             {
+              "kind": "billboard",
+              "id": "sign-whitehead-southernmost",
+              "s0": 1400,
+              "s1": 1410,
+              "d0": -9,
+              "d1": -6.5,
+              "item": "oldtown-southernmost"
+            },
+            {
               "kind": "roadsideZone",
               "id": "buoy-queue",
               "s0": 1490,
@@ -157,7 +167,8 @@
               "d0": 5.6,
               "d1": 10.6,
               "params": {
-                "spawns": "pedestrians"
+                "spawns": "pedestrians",
+                "kinds": ["tourist-with-cooler", "cruise-day-tripper"]
               }
             }
           ]
@@ -167,6 +178,45 @@
           "name": "Duval Street",
           "tags": ["town", "palms", "conch-houses", "key-oldtown"],
           "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "duval-roosters-a",
+              "s0": 300,
+              "s1": 400,
+              "d0": -10.6,
+              "d1": -5.6,
+              "params": {
+                "spawns": "animals",
+                "kinds": ["rooster"]
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-duval-roosters",
+              "s0": 420,
+              "s1": 430,
+              "d0": -9,
+              "d1": -6.5,
+              "item": "oldtown-roosters"
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-duval-tram",
+              "s0": 600,
+              "s1": 610,
+              "d0": -9,
+              "d1": -6.5,
+              "item": "tram-tours"
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-duval-shore-desk",
+              "s0": 700,
+              "s1": 710,
+              "d0": 6.5,
+              "d1": 9,
+              "item": "shore-desk"
+            },
             {
               "kind": "boostPad",
               "id": "pad-duval-lower",
@@ -188,8 +238,29 @@
               "d0": 5.6,
               "d1": 10.6,
               "params": {
-                "spawns": "pedestrians"
+                "spawns": "pedestrians",
+                "kinds": ["cruise-day-tripper", "tourist-with-cooler"]
               }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "duval-roosters-b",
+              "s0": 1100,
+              "s1": 1180,
+              "d0": 5.6,
+              "d1": 10.6,
+              "params": {
+                "kinds": ["rooster", "cruise-day-tripper"]
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-duval-ship",
+              "s0": 1400,
+              "s1": 1410,
+              "d0": 6.5,
+              "d1": 9,
+              "item": "oldtown-ship"
             },
             {
               "kind": "boostPad",
@@ -205,6 +276,15 @@
               }
             },
             {
+              "kind": "billboard",
+              "id": "sign-duval-sunset",
+              "s0": 1600,
+              "s1": 1610,
+              "d0": -9,
+              "d1": -6.5,
+              "item": "oldtown-sunset"
+            },
+            {
               "kind": "roadsideZone",
               "id": "mallory-sunset",
               "s0": 1660,
@@ -212,7 +292,8 @@
               "d0": -10.6,
               "d1": -5.6,
               "params": {
-                "spawns": "pedestrians"
+                "spawns": "pedestrians",
+                "kinds": ["street-performer", "cruise-day-tripper"]
               }
             }
           ]

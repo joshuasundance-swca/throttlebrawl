@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { DEFAULT_SETTINGS } from '../../src/save';
 
 // audio-2 acceptance (docs/milestones/M2.md, "audio-2 · The mix"), rendered offline in a real
 // browser with the real WebAudio graph:
@@ -293,7 +294,13 @@ test('a pile-up at full volume does not clip', async ({ page }) => {
 // quieter". At the settings record's default volumes, the engine flat out now sits a few dB over a
 // station's music instead of about 15 dB over it, and a ride with shifts, throttle snaps and decel
 // pops at full volume does not clip. Each case renders 5 s offline through the real graph.
-test('the engine sits a few dB over the music at the default volumes, and a busy ride does not clip', async ({
+// Playtest 4 (P4-18, the maintainer: "Effects are too loud by default compared to the other audio"):
+// the default Effects level went from 90% to 70% (4.4 dB lower on the effects bus). The cases now read
+// the record's own defaults (src/save), so they measure what a new device hears, and the engine flat
+// out is held within a few dB of the music either way, about level with it. By the gain arithmetic it
+// moved from about 4.5 dB over the music (the figure measured in playtest 2) to about level; this
+// spec's log line has the render's own numbers.
+test('the engine sits about level with the music at the default volumes, and a busy ride does not clip', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -404,7 +411,8 @@ test('the engine sits a few dB over the music at the default volumes, and a busy
       },
       { c, table },
     );
-  const defaults = { master: 0.8, music: 0.6, effects: 0.9, engineGain: 1, ride: false };
+  const { master, music: musicLevel, effects } = DEFAULT_SETTINGS.volumes;
+  const defaults = { master, music: musicLevel, effects, engineGain: 1, ride: false };
   const engine = await level({ ...defaults, radio: 0 });
   const before = await level({ ...defaults, radio: 0, engineGain: 0.5 / 0.15 });
   const music = await level({ ...defaults, radio: 2, effects: 0 });
@@ -417,8 +425,10 @@ test('the engine sits a few dB over the music at the default volumes, and a busy
   );
   expect(problems).toEqual([]);
   expect(before.db - engine.db).toBeGreaterThan(9);
-  expect(engine.db - music.db).toBeGreaterThan(1);
-  expect(engine.db - music.db).toBeLessThan(8);
+  // About level with the music, either way by a few dB: never more than 4 dB over it (at Effects 90%
+  // it sat about 4.5 dB over) and never more than 3 dB under it.
+  expect(engine.db - music.db).toBeGreaterThan(-3);
+  expect(engine.db - music.db).toBeLessThan(4);
   expect(ride.feel.shifts).toBeGreaterThanOrEqual(4);
   expect(ride.feel.pops).toBeGreaterThan(0);
   expect(ride.peak).toBeLessThan(1);

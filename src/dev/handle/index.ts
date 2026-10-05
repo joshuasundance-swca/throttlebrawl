@@ -46,6 +46,8 @@ export interface TestHandle {
   playerId(): number;
   setBot(on: boolean): void;
   setSeed(seed: number): void;
+  /** The time of day a free-play race of the menu's event draws with this seed. */
+  freePlayTimeOfDay(seed: number): string;
   tap(): void;
   startRace(): void;
   checks(): RaceChecks;
@@ -189,6 +191,7 @@ export function installTestHandle(app: AppHandle): TestHandle {
       installDriver();
     },
     setSeed: (seed) => app.setSeed(seed),
+    freePlayTimeOfDay: (seed) => app.freePlayTimeOfDay(seed),
     tap: () => app.tap(),
     startRace() {
       // A fresh bot per race, so its counters and memory start clean.
