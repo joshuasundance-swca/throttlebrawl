@@ -56,6 +56,52 @@ export const VIEW_SETTINGS: readonly ViewSetting[] = ['chase', 'far', 'helmet'];
 export type RadioSetting = 'score' | 'station' | 'off';
 export const RADIO_SETTINGS: readonly RadioSetting[] = ['score', 'station', 'off'];
 
+/**
+ * The menu race's options (playtest 4, P4-12 and P4-13: "Maybe Races from main menu should have
+ * options?"; "To change bike for main menu races you have to go into career garage"). They apply to
+ * the menu's Race only, never to a career race, and are remembered between races here. Difficulty and
+ * the race length are the record's own `difficulty` and `raceLength`, which the options screen shows
+ * too; the region and the road are the menu's pickers. Each default changes nothing, so a record
+ * without the field races as before. Additive: the version stays 1. [default]
+ */
+export interface RaceOptions {
+  /**
+   * The race type (P4-12's "other race & challenge types" is [open]: the maintainer wants to compare
+   * first). Only `race` exists; the field is the seam a new type fills, and the screen shows the row
+   * once there are two.
+   */
+  kind: RaceKind;
+  /** A bike (qualified id, `base:superbike-1000`), or null for the career garage's bike. */
+  bike: string | null;
+  /** One of the region's times of day (`golden-hour`), or null for a draw by the seed, as before. */
+  timeOfDay: string | null;
+  /** The region's own weather, always dry, or rain. Render only: it never reaches the sim. */
+  weather: RaceWeather;
+  /** How many rivals ride (0 to MAX_RACE_RIVALS), or null for the event's own count. */
+  rivals: number | null;
+  /** The law rides (the event's cops) or stays home. */
+  cops: boolean;
+  /** How busy the road is, as a scale on the `traffic.density` slider. */
+  traffic: RaceTraffic;
+}
+export type RaceKind = 'race';
+export const RACE_KINDS: readonly RaceKind[] = ['race'];
+export type RaceWeather = 'local' | 'dry' | 'rain';
+export const RACE_WEATHER: readonly RaceWeather[] = ['local', 'dry', 'rain'];
+export type RaceTraffic = 'none' | 'light' | 'usual' | 'heavy';
+export const RACE_TRAFFIC: readonly RaceTraffic[] = ['none', 'light', 'usual', 'heavy'];
+/** The most rivals a menu race may field (a grid of four rows behind the player). [default] */
+export const MAX_RACE_RIVALS = 7;
+export const DEFAULT_RACE_OPTIONS: Readonly<RaceOptions> = Object.freeze({
+  kind: 'race',
+  bike: null,
+  timeOfDay: null,
+  weather: 'local',
+  rivals: null,
+  cops: true,
+  traffic: 'usual',
+});
+
 /** One "cut this" flag from the in-game veto (docs/architecture.md, "In-game veto"). */
 export interface VetoFlag {
   /** `<packId>:<type>/<entryId>#<itemId>`. */
@@ -144,6 +190,8 @@ export interface Settings {
   lastSeenBuild: string | null;
   /** Local "cut this" flags, one per content reference, oldest first. */
   vetoes: VetoFlag[];
+  /** The menu race's options (playtest 4, P4-12 and P4-13); they feed the next menu race. */
+  raceOptions: RaceOptions;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -182,6 +230,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
+  raceOptions: DEFAULT_RACE_OPTIONS,
 };
 
 /** The Effects default before playtest 4: the one saved level `migrateEffects` moves. */
@@ -284,6 +333,30 @@ function sanitiseVetoes(v: unknown): VetoFlag[] {
   return out;
 }
 
+const CONTENT_REF = /^[a-z0-9][a-z0-9-]{0,63}:[a-z0-9][a-z0-9-]{0,63}$/;
+const TIME_ID = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** The menu race's options with each bad field at its default (a missing record: all defaults). */
+export function sanitiseRaceOptions(data: unknown): RaceOptions {
+  const d = obj(data);
+  const def = DEFAULT_RACE_OPTIONS;
+  const bike = d['bike'];
+  const time = d['timeOfDay'];
+  const rivals = d['rivals'];
+  return {
+    kind: oneOf(d['kind'], RACE_KINDS, def.kind),
+    bike: typeof bike === 'string' && CONTENT_REF.test(bike) ? bike : def.bike,
+    timeOfDay: typeof time === 'string' && TIME_ID.test(time) ? time : def.timeOfDay,
+    weather: oneOf(d['weather'], RACE_WEATHER, def.weather),
+    rivals:
+      typeof rivals === 'number' && Number.isInteger(rivals) && rivals >= 0 && rivals <= MAX_RACE_RIVALS
+        ? rivals
+        : def.rivals,
+    cops: bool(d['cops'], def.cops),
+    traffic: oneOf(d['traffic'], RACE_TRAFFIC, def.traffic),
+  };
+}
+
 /** Keeps each well-formed field and defaults the rest, so a bad value never reaches audio or input. */
 /**
  * Pre-playtest-2 records (playtest 2, 2026-10-02: "There should be different stations and music in
@@ -367,6 +440,7 @@ export function sanitiseSettings(data: unknown): Settings {
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
     vetoes: sanitiseVetoes(d['vetoes']),
+    raceOptions: sanitiseRaceOptions(d['raceOptions']),
   };
 }
 

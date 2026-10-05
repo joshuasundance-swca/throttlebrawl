@@ -10,6 +10,7 @@ import {
   HASH_EVERY_TICKS,
   makeReplayKey,
   REPLAY_FORMAT_VERSION,
+  replayHeader,
   type ReplayableSim,
   type ReplayHeader,
 } from './index';
@@ -191,5 +192,45 @@ describe('the replay controller', () => {
     ]);
     expect(c.inputsAt(1)).toEqual([script(1)]);
     expect(c.inputsAt(3)).toBeNull();
+  });
+});
+
+// Playtest 4 (P4-12): a menu race's picked options ride in the header beside its config, so a debug
+// file says what was picked (the weather and the light the renderer drew are not in the SimConfig).
+describe('the race options in the header', () => {
+  const config = {
+    seed: 9,
+    event: { contentId: 'base:e' },
+    tuning: { a: 1 },
+    playerSlots: 1,
+    road: { heavy: true },
+    route: { heavy: true },
+  } as unknown as Parameters<typeof replayHeader>[0];
+
+  it('carries the picks given, as a copy, through the file and back', () => {
+    const picks = {
+      kind: 'race',
+      bike: 'base:moped',
+      weather: 'rain',
+      rivals: 0,
+      cops: false,
+      timeOfDay: null,
+    };
+    const h = replayHeader(config, 'k', picks);
+    expect(h.raceOptions).toEqual(picks);
+    picks.rivals = 5;
+    expect(h.raceOptions?.['rivals']).toBe(0);
+    const rec = createInputRecorder();
+    rec.beginRace({ config }, 'k', { weather: 'dry' });
+    rec.record(0, [input(0)]);
+    const back = decodeReplay(JSON.parse(JSON.stringify(rec.file())));
+    expect(back.header.raceOptions).toEqual({ weather: 'dry' });
+  });
+
+  it('leaves the field out when there are none (a career race), so its header is as before', () => {
+    expect('raceOptions' in replayHeader(config, 'k')).toBe(false);
+    const rec = createInputRecorder();
+    rec.beginRace({ config }, 'k');
+    expect('raceOptions' in (rec.current()?.header ?? {})).toBe(false);
   });
 });

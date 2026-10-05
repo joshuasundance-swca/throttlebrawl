@@ -95,6 +95,8 @@ import type { TuningPanel } from './tuning';
 import { keyLegend } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
+import { raceOptionRows, stepRaceOption, type RaceOptionId, type RaceOptionsView } from './race-options';
+import type { RaceOptionsScreen } from './race-options-view';
 import type { HeatBadge } from './heat-badge';
 import type { CareerCallbacks, CareerScreens } from './career-screen';
 import type { RadioPanel } from './radio-panel-view';
@@ -105,6 +107,7 @@ export { DEFAULT_REGION, sameRegion } from './regions';
 export type { RegionOption } from './regions';
 export type { RouteOption } from './routes';
 export type { RaceResult } from './format';
+export type { OptionChoice, RaceOptionsView } from './race-options';
 export type {
   CareerCallbacks,
   CareerResultView,
@@ -132,6 +135,8 @@ export type Screen =
   | 'race'
   | 'results'
   | 'changelog'
+  // The menu race's options (playtest 4, P4-12 and P4-13).
+  | 'raceOptions'
   // The career (run W-R): its map and garage, its results, the next region's teaser.
   | 'career'
   | 'careerResults'
@@ -186,6 +191,13 @@ export interface UiCallbacks {
   careerStarted?: () => boolean;
   /** The career screens' taps (run W-R); app/ builds their views and acts on them. */
   career?: CareerCallbacks;
+  /**
+   * The menu race's options (playtest 4, P4-12 and P4-13): what app/ offers for the next menu race at
+   * the region and road the menu has picked, asked each time the options screen opens. The picks
+   * themselves are the settings record's `raceOptions` (plus its difficulty and race length), saved
+   * through onSettingsChange. The menu's Options button is hidden until this is wired.
+   */
+  raceOptions?: () => RaceOptionsView;
 }
 
 export interface GameUi {
@@ -657,6 +669,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         { className: 'row' },
         ...(cb.onCareer ? [careerButton] : []),
         button('menu-race', 'big', 'Race', () => cb.onRace()),
+        // The menu race's options (playtest 4, P4-12 and P4-13), beside the Race they set up. Small, so
+        // Start career stays the first big tap (P4-5).
+        ...(cb.raceOptions ? [button('menu-options', 'small', 'Options', () => show('raceOptions'))] : []),
       ),
       el(
         'div',
@@ -1549,7 +1564,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       if (!settingsScreen.root.hidden) closeSettings();
       else if (paused) resume();
       else pause();
-    } else if (current === 'settings') show('menu');
+    } else if (current === 'settings' || current === 'raceOptions') show('menu');
   });
 
   const screens: Record<Screen, HTMLElement[]> = {
@@ -1559,6 +1574,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     race: [hud, touchSurface],
     results: [results],
     changelog: [changelogScreen.root],
+    // Filled when the options screen's lazy chunk arrives (below).
+    raceOptions: [],
     // Filled when the career's lazy chunk arrives (below).
     career: [],
     careerResults: [],
@@ -1611,6 +1628,37 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     realCareer = c;
     for (const f of careerCalls.splice(0)) f(c);
   });
+  // The menu race's options (playtest 4, P4-12 and P4-13): a lazy chunk too, fetched as the game
+  // boots. Each step is a new settings record, saved like a settings row, so the picks are
+  // remembered between races; app/ reads them at the next menu race.
+  let raceOptionsScreen: RaceOptionsScreen | null = null;
+  let raceView: RaceOptionsView | null = null;
+  const drawRaceOptions = () => {
+    if (!raceOptionsScreen || !raceView) return;
+    raceOptionsScreen.draw(raceOptionRows(raceView, settings), raceView.where);
+  };
+  const stepRaceOptions = (id: RaceOptionId, dir: 1 | -1) => {
+    if (!raceView) return;
+    const next = stepRaceOption(raceView, settings, id, dir);
+    settings = next;
+    settingsScreen.sync(settings);
+    cb.onSettingsChange?.(next);
+    drawRaceOptions();
+  };
+  if (cb.raceOptions)
+    void import('./race-options-view').then((m) => {
+      style.textContent += m.RACE_OPTIONS_CSS;
+      const screen = m.createRaceOptionsScreen((id, cls, text, onClick) => button(id, cls, text, onClick), {
+        onStep: stepRaceOptions,
+        onBack: () => show('menu'),
+        onRace: () => cb.onRace(),
+      });
+      settingsScreen.root.before(screen.root);
+      screens.raceOptions.push(screen.root);
+      screen.root.hidden = current !== 'raceOptions';
+      raceOptionsScreen = screen;
+      drawRaceOptions();
+    });
   const career: CareerUi = {
     showMap: (v, g, t, s) => withCareer((c) => c.showMap(v, g, t, s)),
     showPauseMap: (v) => withCareer((c) => c.showPauseMap(v)),
@@ -1631,6 +1679,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The menu's words too: the title, the blurbs and the what's-new card (wave C's check: at 568x320
     // the stamp sat over the card's first line).
     '#menu:not([hidden]) *',
+    '#race-options:not([hidden]) *',
     '#career:not([hidden]) *',
     '#career-results:not([hidden]) *',
     '#career-teaser:not([hidden]) *',
@@ -1715,6 +1764,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       offerNews();
     }
     if (screen === 'changelog') void loadChangelog().then((notes) => changelogScreen.setNotes(notes));
+    // The choices follow the region and the road the menu has picked, and the garage.
+    if (screen === 'raceOptions') {
+      raceView = cb.raceOptions?.() ?? null;
+      drawRaceOptions();
+    }
   }
 
   const setText = (node: HTMLElement, text: string) => {
