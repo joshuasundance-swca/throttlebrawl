@@ -296,7 +296,14 @@ async function measureCountdown(page: Page, label: string, plantOverNumber = fal
     ({ want, plant, atPeak }) => {
       const count = document.querySelector<HTMLElement>('#countdown .count');
       if (!count || count.textContent !== want) return null;
-      // The entrance's end (at rest), or its first frame, held there (the peak).
+      // The entrance's end (at rest), or its first frame, held there (the peak). The entrance runs on
+      // the wall clock, so on a slow machine it can be over before this frame; for the peak, restart
+      // it first, so the check never depends on how fast the browser got here.
+      if (atPeak) {
+        count.style.animation = 'none';
+        count.getBoundingClientRect(); // a style flush, so the restart takes
+        count.style.animation = '';
+      }
       for (const a of count.getAnimations()) {
         if (atPeak) {
           a.pause();
