@@ -262,11 +262,16 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     // its own, and render/downtown.ts stands the street fronts there (src/render/portland-blocks.test.ts
     // checks them on land). The `town`, `pdx-deck` and `rail-line` tags beside it say nothing more about it.
     const BLOCKS = new Set([...OPEN, 'pdx-blocks', 'town', 'pdx-deck', 'rail-line']);
+    // Key West's Old Town (playtest 4, P4-19) is a street too: `key-oldtown` is a land theme of its own that
+    // outranks the `town` and `palms` tags beside it, so the scatter puts no palm, shack or pole there
+    // (the roadside kit's fronts and trees do, src/render/duval-street.test.ts).
+    const OLDTOWN = new Set([...OPEN, 'key-oldtown', 'town', 'palms', 'conch-houses']);
     const tagged = baked(id).roads.flatMap((r) => (r.tags ?? []).map((t) => t.tag));
     const open =
       tagged.every((t) => OPEN.has(t)) ||
-      (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t)));
-    if (open) expect(spots, 'open grass hills and city blocks scatter nothing').toBe(0);
+      (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t))) ||
+      (tagged.includes('key-oldtown') && tagged.every((t) => OLDTOWN.has(t)));
+    if (open) expect(spots, 'open grass hills, city blocks and the Old Town scatter nothing').toBe(0);
     else expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
     // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3), on the networks
