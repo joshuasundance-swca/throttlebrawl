@@ -449,8 +449,13 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
         Math.round((127 * (a - t.tiltDeadZoneDeg)) / (t.tiltFullLockDeg / sens - t.tiltDeadZoneDeg));
       await tiltTo(page, 0, 0);
       await tiltTo(page, 8, 8);
-      // eslint-disable-next-line no-restricted-syntax -- debt: the tilt filter settles per input sample (sim ticks), so this should wait on ticks
-      await page.waitForTimeout(800); // the tilt filter (0.1 s) settles
+      // The tilt filter (0.1 s) settles per input sample, one per sim tick: wait a second of ticks,
+      // not of wall clock (800 ms of a loaded CI browser once left it at 66 to 69 of 73).
+      const from = await page.evaluate(() => (window as TestWindow).__game?.snapshot()?.tick ?? 0);
+      await page.waitForFunction(
+        (t) => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > t + 60,
+        from,
+      );
       const last = await waitLast(page, (s) => s.steer !== 0);
       console.log(
         `tilt sensitivity 2: ${a.toFixed(1)}° steers ${last.steer}; expected ${at(2)}, Normal ${at(1)}`,
