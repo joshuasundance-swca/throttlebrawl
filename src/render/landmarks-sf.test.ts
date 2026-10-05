@@ -7,6 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { assetIndex, createPackLibrary } from '../content';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
+import { buildSoup, roadPointsOf } from './backdrop/builder';
+import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
 import { readGlb } from './glb';
 import { LandmarkLayer, landmarkKitsFor, landmarkPlacements, SUSPENSION } from './landmarks';
 import { createFlatLook } from './look';
@@ -89,6 +91,50 @@ describe('the Golden Gate kit on the baked bridge', () => {
       );
       expect(hits).toBe(0);
     }
+  });
+});
+
+// Gate G2 (playtest 3): the Golden Gate route shows exactly one bridge. The near kit above draws it,
+// so the far `golden-gate-bridge` backdrop piece must build nothing on that network. Its keep-out drops
+// every slab within keepOutM of a road, and on this route that is every slab; if that ever changes (a
+// shorter keep-out, a route off the bridge), this fails rather than drawing a second bridge. Control:
+// from Lombard, which races nowhere near the bridge, the same piece still draws on the horizon.
+const backdropRegion = import.meta.glob<BackdropRegionFile>(
+  '../../packs/region-sf/assets/backdrop/san-francisco/region.json',
+  {
+    eager: true,
+    import: 'default',
+  },
+)['../../packs/region-sf/assets/backdrop/san-francisco/region.json']!;
+const backdropNetworks = import.meta.glob<BackdropNetworkFile>(
+  '../../packs/region-sf/assets/backdrop/san-francisco/networks/*.json',
+  { eager: true, import: 'default' },
+);
+
+function farBridgeTriangles(id: string): number {
+  const network = Object.entries(backdropNetworks).find(([k]) => k.endsWith(`/${id}.json`))?.[1];
+  if (!network) throw new Error(`no backdrop for ${id}`);
+  const points = roadPointsOf(track(id).edges, 1);
+  const only = (ids: string[]) => ({
+    ...backdropRegion,
+    pieces: backdropRegion.pieces.filter((p) => ids.includes(p.id)),
+  });
+  const withBridge = buildSoup(only(['golden-gate-bridge']), network, points, 7).stats.triangles;
+  const without = buildSoup(only([]), network, points, 7).stats.triangles;
+  return withBridge - without;
+}
+
+describe('one Golden Gate on its route (gate G2)', () => {
+  it('builds no far backdrop bridge where the near kit draws, and keeps it on the horizon elsewhere', () => {
+    expect(landmarkPlacements(track('osm-sf-golden-gate')).some((p) => p.node === 'gg_bridge')).toBe(true);
+    const onRoute = farBridgeTriangles('osm-sf-golden-gate');
+    const fromLombard = farBridgeTriangles('osm-sf-lombard');
+    stdout.write(
+      `[examined] far golden-gate-bridge triangles: ${onRoute} on its route, ${fromLombard} from Lombard\n`,
+    );
+    expect(onRoute).toBe(0);
+    expect(fromLombard).toBeGreaterThan(0);
+    expect(landmarkPlacements(track('osm-sf-lombard')).some((p) => p.node === 'gg_bridge')).toBe(false);
   });
 });
 
