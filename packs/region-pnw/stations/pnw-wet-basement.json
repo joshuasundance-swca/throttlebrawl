@@ -1,0 +1,57 @@
+{
+  "type": "station",
+  "id": "pnw-wet-basement",
+  "name": "Wet Basement 1450 AM",
+  "genre": "garage",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "sump-pump-shuffle",
+      "title": "Sump Pump Shuffle",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 168, "key": "E", "progression": "stomp" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "gutter-overflow",
+      "title": "Gutter Overflow",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 176, "key": "A", "progression": "dirt" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "mildew-in-the-amp",
+      "title": "Mildew in the Amp",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 160, "key": "D", "progression": "creep" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "tarp-on-the-drum-kit",
+      "title": "Tarp on the Drum Kit",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 152, "key": "G", "progression": "louie" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "ninth-straight-day",
+      "title": "Ninth Straight Day",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 182, "key": "C", "progression": "stomp" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "dehumidifier-full-again",
+      "title": "Dehumidifier Full Again",
+      "procedural": { "preset": "garage-band", "params": { "bpm": 172, "key": "E", "progression": "dirt" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "The Pacific Northwest's driving garage rock (playtest 4, P4-17: the maintainer picked \"driving garage and grunge\" among four directions for the region's radio, which \"seems very simple and slow\"). A combo organ riff, a fuzz guitar chopping eighths, a tambourine and a floor tom, a stop-time break with guitar fills, a fuzz solo that ends in a rave-up, and the chorus hook again, at 152-182 bpm (src/audio/radio-compose-extra.ts, preset garage-band). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

@@ -21,6 +21,12 @@ import { firstSeed, ISOLATED, seedRange } from './batch';
 
 const REG = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
 
+/** Sim ticks in `s` seconds of race (the sim runs at 60 ticks a second). */
+const seconds = (s: number) => s * 60;
+/** The PNW roadblock search: at most this many ticks in one race, and this many in all (see its test). */
+const ROADBLOCK_RACE_TICKS = 5_000;
+const ROADBLOCK_BUDGET_TICKS = 40_000;
+
 interface Ride {
   config: SimConfig;
   playerId: number;
@@ -29,21 +35,23 @@ interface Ride {
   snaps: Map<number, SimSnapshot>;
   first: SimSnapshot;
   finished: boolean;
+  /** The sim ticks the ride ran. */
+  ticks: number;
 }
 
-/** Rides one race with the bot until `done` says so, the race ends or `maxS` passes. */
+/** Rides one race with the bot until `done` says so, the race ends or `maxTicks` sim ticks pass. */
 function ride(
   eventId: string,
   seed: number,
   tuning: Record<string, number>,
-  maxS: number,
+  maxTicks: number,
   done: (r: Ride) => boolean = () => false,
 ): Ride {
   const { sim, config, playerId } = createHeadlessRace({ seed, eventId, tuning }, { registry: REG });
   const bot = createBot();
   let snap = sim.snapshot();
-  const r: Ride = { config, playerId, events: [], snaps: new Map(), first: snap, finished: false };
-  while (!sim.isOver() && sim.tick < maxS * 60 && !done(r)) {
+  const r: Ride = { config, playerId, events: [], snaps: new Map(), first: snap, finished: false, ticks: 0 };
+  while (!sim.isOver() && sim.tick < maxTicks && !done(r)) {
     const a = emptyActions();
     bot.drive(snap, playerId, config.route, a);
     sim.step([toSimInput(a)]);
@@ -53,6 +61,7 @@ function ride(
     r.events.push(...evs);
     if (snap.race.finishOrder.includes(playerId)) r.finished = true;
   }
+  r.ticks = sim.tick;
   return r;
 }
 
@@ -96,7 +105,8 @@ describe('law with a personality: real races', () => {
     const found = firstSeed(
       'the Keys radar reading',
       seedRange(1, 6),
-      (seed) => ride(event, seed, tuning, 120, (r) => lawOf(r, 'radar').length > 0 && r.events.length > 2),
+      (seed) =>
+        ride(event, seed, tuning, seconds(120), (r) => lawOf(r, 'radar').length > 0 && r.events.length > 2),
       (r) => lawOf(r, 'radar').length > 0,
     );
     const r = found.result;
@@ -128,7 +138,7 @@ describe('law with a personality: real races', () => {
     const found = firstSeed(
       'the PNW citations',
       seedRange(1, 6),
-      (seed) => ride(event, seed, tuning, 360),
+      (seed) => ride(event, seed, tuning, seconds(360)),
       (r) => r.finished && lawOf(r, 'citation').length > 0,
     );
     const r = found.result;
@@ -153,7 +163,7 @@ describe('law with a personality: real races', () => {
     const found = firstSeed(
       'the SF pursuit budget',
       seedRange(1, 6),
-      (seed) => ride(event, seed, tuning, 180),
+      (seed) => ride(event, seed, tuning, seconds(180)),
       (r) => lawOf(r, 'budgetOut').length > 0,
     );
     const r = found.result;
@@ -179,7 +189,7 @@ describe('law with a personality: real races', () => {
     const found = firstSeed(
       'the Keys jurisdiction sign',
       seedRange(1, 6),
-      (seed) => ride(event, seed, tuning, 300, (r) => lawOf(r, 'jurisdiction').length > 0),
+      (seed) => ride(event, seed, tuning, seconds(300), (r) => lawOf(r, 'jurisdiction').length > 0),
       (r) => lawOf(r, 'jurisdiction').length > 0,
     );
     const r = found.result;
@@ -203,41 +213,54 @@ describe('law with a personality: real races', () => {
     ).toBe(false);
   });
 
-  // The whole world on, three times the heat (tier 3 never comes in the isolation profile). Measured
-  // over seeds 1 to 8 (run W-T): 2 of 8 races met a roadblock before the radio rule; 5 of 8 with it
-  // on the tree it was written on, 3 of 8 once main's later systems reshuffled the races. A rate
-  // band would move with every such system, so this checks that the radioed-ahead path fires in a
-  // real race (a roadblock cop who was already chasing), on the first seed that shows it. The search
-  // runs to seed 24, not 8: content that reshuffles the races moves it on (playtest 3 wave C's PNW
-  // content put the first such race at seed 9). Each race stops once a radioed-ahead roadblock fires,
-  // and the test has its own timeout: nine full races took 90 to 104 s on CI, over the sim project's
-  // 90 s default, and a search to seed 24 can run them all.
-  it(
-    'the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock',
-    {
-      timeout: 300_000,
-    },
-    () => {
-      const event = eventOf('pacific-northwest');
-      const radioed = (r: Ride) => {
-        const chasing = new Set<number>();
-        let ahead = 0;
-        for (const e of r.events) {
-          if (e.type !== 'siren') continue;
-          if (e.data['on'] !== true) chasing.delete(e.actor);
-          else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
-          else if (chasing.has(e.actor)) ahead++;
-        }
-        return ahead;
-      };
-      const found = firstSeed(
-        'a PNW roadblock cop radioed ahead',
-        seedRange(1, 24),
-        (seed) => ride(event, seed, { 'cops.heatScale': 3 }, 360, (r) => radioed(r) > 0),
-        (r) => radioed(r) > 0,
-      );
-      process.stdout.write(`cops law: PNW roadblock: ${found.summary}\n`);
-      expect(found.result, found.summary).not.toBeNull();
-    },
-  );
+  // The whole world on, and heat that builds fast (tier 3 never comes in the isolation profile).
+  // This checks that the radioed-ahead path fires in a real race (a roadblock cop who was already
+  // chasing), on the first seed that shows it. A rate band would move with every system main adds (2
+  // of 8 races met a roadblock before the radio rule, 5 of 8 with it, then 3 of 8 once later systems
+  // reshuffled the races; playtest 3 wave C's PNW content put the first such race at seed 9), so the
+  // search moves on to the next seed instead.
+  //
+  // The search's cost is a budget of sim ticks, not a wall-clock timeout: each race stops once a
+  // radioed-ahead roadblock fires, or at ROADBLOCK_RACE_TICKS, and the whole search stops at
+  // ROADBLOCK_BUDGET_TICKS, so its worst case is the same number of steps on any machine. CI stepped
+  // about 1 ms a tick on 2026-10-05 (nine full races, 90 to 104 s), so the budget is about half of
+  // the sim project's 90 s default. Out of budget with no radioed roadblock is the real "this never
+  // happens any more".
+  it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
+    const event = eventOf('pacific-northwest');
+    const radioed = (r: Ride) => {
+      const chasing = new Set<number>();
+      let ahead = 0;
+      for (const e of r.events) {
+        if (e.type !== 'siren') continue;
+        if (e.data['on'] !== true) chasing.delete(e.actor);
+        else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
+        else if (chasing.has(e.actor)) ahead++;
+      }
+      return ahead;
+    };
+    let spent = 0;
+    const found = firstSeed(
+      'a PNW roadblock cop radioed ahead',
+      seedRange(1, ROADBLOCK_BUDGET_TICKS / ROADBLOCK_RACE_TICKS),
+      (seed) => {
+        const left = ROADBLOCK_BUDGET_TICKS - spent;
+        const r = ride(
+          event,
+          seed,
+          { 'cops.heatScale': 30 },
+          Math.min(ROADBLOCK_RACE_TICKS, left),
+          (x) => radioed(x) > 0,
+        );
+        spent += r.ticks;
+        return r;
+      },
+      (r) => radioed(r) > 0,
+    );
+    process.stdout
+      .write(`cops law: PNW roadblock: ${found.summary}; ${spent} of ${ROADBLOCK_BUDGET_TICKS} ticks
+`);
+    expect(spent).toBeLessThanOrEqual(ROADBLOCK_BUDGET_TICKS);
+    expect(found.result, found.summary).not.toBeNull();
+  });
 });

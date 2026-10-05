@@ -9,6 +9,7 @@ Tags mean what they mean in [the product spec](../product-spec.md#how-to-read-th
 | [Playtest 1, 1b and 1c](./playtest-1.md) | 2026-09-30 | M1, then two later builds of main | camera, road width, the kick, contact physics; then randomness, acceleration and the first new regions |
 | [Playtest 2 and its interview](./playtest-2.md) | 2026-10-02 | main after runs W-O and part of W-P | "primitive and monotonous at times"; the career un-held; freedom, off-road, real models |
 | [Playtest 3 and its interview](./playtest-3.md) | 2026-10-03 | main after run W-T | the career finished in one evening with no struggle; HUD clutter; wheelies, drift, real places |
+| [Playtest 4 and its answers](./playtest-4.md) | 2026-10-04 | main after playtest 3's waves A and B | clunky combat timing, a wheelie that fights the throttle, a track-like steering feel, an old bridge that is hard to reach, and empty places; menu first, a wheelie button, auto-aim plus swipe |
 
 ## Decision rounds between playtests
 

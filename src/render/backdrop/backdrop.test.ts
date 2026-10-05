@@ -131,6 +131,8 @@ const SIGNATURES: Record<string, PieceKind[]> = {
   'pnw-c1': ['ridge', 'peak', 'vessels', 'floor'],
   'osm-pnw-chuckanut': ['ridge', 'peak', 'vessels', 'floor'],
   'osm-pnw-gorge': ['ridge', 'peak', 'vessels', 'floor'],
+  // Playtest 4, P4-20: downtown Portland's skyline, bridges, hills and river.
+  'osm-pnw-portland': ['ridge', 'peak', 'bridge', 'skyline', 'blocks', 'mast', 'vessels', 'floor'],
   'sf-hills': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-russian-hill': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-twin-peaks': ['bridge', 'skyline', 'vessels', 'clouds', 'floor', 'blocks'],
@@ -170,6 +172,7 @@ const MOVERS: Record<string, string[]> = {
   'pnw-c1': ['sound-ferry', 'far-shore-freight'],
   'osm-pnw-chuckanut': ['outbound-ferry'],
   'osm-pnw-gorge': ['river-tug', 'far-bank-freight'],
+  'osm-pnw-portland': ['steel-bridge', 'broadway-bridge', 'fremont-bridge', 'willamette-tug'],
   'sf-hills': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-russian-hill': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-twin-peaks': ['golden-gate-bridge', 'headlands-pour'],

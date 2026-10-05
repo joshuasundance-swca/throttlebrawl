@@ -203,28 +203,23 @@ test('the pause radio panel names what plays, switches stations and songs, and c
   // A station picked here is the saved radio choice.
   expect(data?.radio).toBe('station');
 
-  // On round: the second station, then off (the R key's order), then the score.
+  // On round: the second station and the rest of the dial (as many as the pack's files name: a
+  // third since run W-Q, a fourth since playtest 4), then off (the R key's order), then the score.
   await page.locator('#radio-next').click();
   await expect(page.locator('#radio-station')).toHaveText(second.name);
-  // The Keys' third station (run W-Q), then off.
-  const third = STATIONS[2];
-  await page.locator('#radio-next').click();
-  await expect(page.locator('#radio-station')).toHaveText(third?.name ?? '');
+  const tunes = ['tune 3'];
+  for (let i = 2; i < STATIONS.length; i++) {
+    await page.locator('#radio-next').click();
+    await expect(page.locator('#radio-station')).toHaveText(STATIONS[i]?.name ?? '');
+    tunes.push(`tune ${i + 2}`);
+  }
   await page.locator('#radio-next').click();
   await expect(page.locator('#radio-station')).toHaveText('Radio off');
   await page.locator('#radio-next').click();
   await expect(page.locator('#radio-station')).toHaveText('The score');
   const log = await page.evaluate(() => (window as TestWindow).__radioLog ?? []);
   console.log(`radio source calls: ${log.join(', ')}`);
-  expect(log).toEqual([
-    'tune 2',
-    'skip',
-    `cut ${first.tracks[1]?.id}`,
-    'tune 3',
-    'tune 4',
-    'tune 0',
-    'tune 1',
-  ]);
+  expect(log).toEqual(['tune 2', 'skip', `cut ${first.tracks[1]?.id}`, ...tunes, 'tune 0', 'tune 1']);
   expect(problems).toEqual([]);
 });
 
