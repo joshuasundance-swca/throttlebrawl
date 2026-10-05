@@ -141,7 +141,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
-  volumes: { master: 0.8, music: 0.6, effects: 0.9, voices: 0.8 },
+  // Effects 70% since playtest 4 (P4-18, the maintainer: "Effects are too loud by default compared to
+  // the other audio"), from 90%: the music, effects, voices ladder. Only a default: a level a device
+  // has saved loads as it was saved (sanitiseSettings below fills in only a missing one).
+  volumes: { master: 0.8, music: 0.6, effects: 0.7, voices: 0.8 },
   mute: false,
   voicesOn: true,
   mirror: false,

@@ -13,11 +13,19 @@
 // The tuning declarations (tuning.ts) and the station tables (stations.ts) load at boot.
 import { stationsForRegion, type RadioStation } from './stations';
 import type { AudioInspect, AudioOptions, AudioSystem } from './system';
-import { busTargets, RADIO_FIRST_STATION, radioKeyAction, VOICE_DEFAULTS, type Volumes } from './tuning';
+import {
+  busTargets,
+  DEFAULT_VOLUMES,
+  RADIO_FIRST_STATION,
+  radioKeyAction,
+  VOICE_DEFAULTS,
+  type Volumes,
+} from './tuning';
 
 export {
   AUDIO_TUNING,
   busTargets,
+  DEFAULT_VOLUMES,
   DUCK_DEFAULTS,
   ENGINE_FEEL_DEFAULTS,
   ENGINE_LEVELS,
@@ -38,9 +46,6 @@ export type { NowPlaying, RadioBand } from './radio';
 
 type Engine = typeof import('./system');
 
-/** The engine's own defaults (system.ts), for `inspect()` before it loads. */
-const START_VOLUMES: Volumes = { master: 0.8, music: 0.6, effects: 0.9, voices: 0.9 };
-
 /**
  * The audio system: a stand-in now, the engine (system.ts) once its lazy chunk is in. `load`
  * fetches the chunk (tests pass their own); a failed fetch is tried again at the next `resume()`.
@@ -57,7 +62,8 @@ export function createAudio(
   const pending: ((a: AudioSystem) => void)[] = [];
   let resumed = false;
   // What inspect() reports before the engine loads (the same rules as system.ts).
-  let volumes = START_VOLUMES;
+  // The engine's own defaults (system.ts), for `inspect()` before it loads.
+  let volumes: Volumes = { ...DEFAULT_VOLUMES };
   let muted = false;
   let voiceGain: number = VOICE_DEFAULTS.gain;
   let radioChoice: number = RADIO_FIRST_STATION;

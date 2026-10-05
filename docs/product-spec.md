@@ -127,6 +127,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Setting | Tag |
 |---|---|
 | Four volume sliders (master, music, effects, voices), plus mute | [decided] |
+| Default levels: master 80%, music 60%, effects 70%, voices 80%, so the effects sit between the music and the voices (effects were 90% until playtest 4, the maintainer: "Effects are too loud by default compared to the other audio"). Only a device with no saved level gets the new default; a saved level is kept | [default] |
 | A Voices on/off switch beside mute (spoken barks; off keeps the Voices slider's level), on by default with the Voices slider at 80% (maintainer, 2026-10-01: "add a Voices volume and an off switch") | [decided]; the 80% default is [default] |
 | Haptics on/off | [decided] |
 | Takedown slow motion on/off | [decided] |
