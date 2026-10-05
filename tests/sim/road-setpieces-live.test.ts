@@ -136,6 +136,22 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-pnw:osm-i5-samish-run',
     kinds: ['boostPad'],
   },
+  // Playtest 3 (T9.3): the Golden Gate (pads on Hawk Hill and Conzelman Road) and Lombard (a pad on
+  // the flats past the crooked block). Pads only: neither has a straight long enough for a truck.
+  {
+    name: 'osm-sf-golden-gate',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:osm-sf-golden-gate-run',
+    kinds: ['boostPad'],
+  },
+  {
+    name: 'osm-sf-lombard',
+    event: 'region-sf:sf-hill-sprint',
+    lengths: ['standard'],
+    route: 'region-sf:osm-sf-lombard-run',
+    kinds: ['boostPad'],
+  },
 ];
 
 /** The skeptic's two browser seeds (skeptic-1c report, mustFix 1). */
@@ -377,7 +393,12 @@ describe('playtest 1c item 2: the live tracks place their set pieces from the ra
         `[set pieces] ${r.name} over 60 seeds: ${placements.size} placements; ${JSON.stringify([...seen].sort())}\n`,
       );
       for (const c of candidates(config)) expect(seen.get(c.f.id) ?? 0, c.f.id).toBeGreaterThan(5);
-      expect(placements.size).toBeGreaterThan(3);
+      // At least four placements, or every one the slots allow when they allow fewer (playtest 3,
+      // T9.3: Lombard's single slot has two spots, so two placements is all of them).
+      const perSlot = new Map<string, number>();
+      for (const c of candidates(config)) perSlot.set(c.slot, (perSlot.get(c.slot) ?? 0) + 1);
+      const possible = [...perSlot.values()].reduce((a, n) => a * n, 1);
+      expect(placements.size).toBeGreaterThanOrEqual(Math.min(4, possible));
     });
   }
 
