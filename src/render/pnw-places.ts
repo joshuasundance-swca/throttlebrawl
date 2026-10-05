@@ -27,6 +27,7 @@ import type { BakedFeature, RoadNetwork } from '../road';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { MIN_THREAT_DRAW_M, type LookStyle } from './look';
 import { MergedScenery, SCENERY_LOD_M, type MergeItem } from './scenery-merge';
+import { ferrySections, FERRY_ROOF } from './roofs';
 import { LAND_TOP_M, scatterHash, type ScenerySpot } from './scenery';
 
 /** The tags this layer draws. */
@@ -246,14 +247,15 @@ const C = {
 // ---- the ferry ------------------------------------------------------------------------------
 /** Hull half width, the car deck's walls and the passenger deck's heights above the car deck, m. */
 export const FERRY_DIM = {
-  hullHalfW: 12,
+  hullHalfW: FERRY_ROOF.halfWidthM,
   wallD: 10,
   wallW: 0.6,
   bulwarkH: 2.6,
-  ceilingY: 6.6,
+  /** The passenger deck's underside: roofs.ts keeps the rain out from under it. */
+  ceilingY: FERRY_ROOF.heightM,
   cabinTopY: 10,
   /** The passenger deck stops this far short of each end of the hull. */
-  cabinInsetM: 20,
+  cabinInsetM: FERRY_ROOF.insetM,
 } as const;
 
 /** One stretch of the hull, `len` along, standing `deckY` above the water (its local y = 0 is the deck). */
@@ -696,12 +698,11 @@ export function placeItems(road: RoadNetwork, seed: number, landReach: LandReach
 
     // The ferry.
     for (const t of tagRanges(road, e.index, 'ferry')) {
-      const n = Math.max(1, Math.round((t.s1 - t.s0) / 18));
-      const len = (t.s1 - t.s0) / n;
+      const { n, len, cabin: hasDeck } = ferrySections(t.s0, t.s1);
       const deckY = road.toWorld(e.index, (t.s0 + t.s1) / 2, 0, 0).y;
       for (let i = 0; i < n; i++) {
         const s = t.s0 + (i + 0.5) * len;
-        const cabin = s > t.s0 + FERRY_DIM.cabinInsetM && s < t.s1 - FERRY_DIM.cabinInsetM;
+        const cabin = hasDeck(i);
         const y = road.toWorld(e.index, s, 0, 0).y;
         items.push({
           kind: 'ferry-hull',
