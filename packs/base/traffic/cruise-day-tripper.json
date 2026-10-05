@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "cruise-day-tripper",
+  "name": "Cruise Day-Tripper",
+  "category": "pedestrian",
+  "tags": ["tourist", "key-oldtown"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.2,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#f4f1e8", "#8fd3f0", "#ff8fab"] },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 3 (T10.4; Duval Street's cruise-ship crowd): six hours ashore, a lanyard, one plan, and the road in the way of it. Crosses wherever the crowd is going; dives clear without losing the lanyard. Only Duval's zones spawn it (a zone's `kinds`). The joke is the tourist economy, never the people who live there. [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-04" }
+  }
+}

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { basePackFiles, buildRegistry, LAW_HABITS, loadBasePack, lookup, SIGNATURE_MOVES } from '../content';
+import {
+  basePackFiles,
+  buildRegistry,
+  LAW_HABITS,
+  loadBasePack,
+  lookup,
+  registryFromGlob,
+  SIGNATURE_MOVES,
+} from '../content';
 import { LAW_HABIT_IDS, SIGNATURE_IDS } from '../sim/api';
 import { aiController, buildSimConfig, streamForEvent } from './config';
 
@@ -397,8 +405,21 @@ describe('app/config: the region traffic mix reaches the sim (the traffic-3 cont
     expect(areas).toEqual(want);
     // A type no area lists carries no area weights; peds never do.
     for (const p of keysTraffic().pedestrians ?? []) expect(areas[q(p.kind)], p.kind).toBeUndefined();
-    // Every area tag is a district some keys-m1 road carries.
-    const tags = new Set(c.road.edges.flatMap((e) => e.tags.map((g) => g.tag)));
+    // Every area tag is a district some road of the region's networks carries: the race's own road is
+    // keys-m1's, but the Old Town's tag is on the real Duval Street network (playtest 3, T10.4), which
+    // the base pack's minimal file list leaves out, so this reads every pack the way the game loads them.
+    const all = registryFromGlob(import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }));
+    const region = all.regions['base:florida-keys'];
+    const tags = new Set(
+      (region?.networks ?? []).flatMap((n) =>
+        (all.networks[`base:${n}`]?.roads ?? []).flatMap((r) =>
+          ((all.roads[`base:${r}`] as { tags?: { tag: string }[] } | undefined)?.tags ?? []).map(
+            (g) => g.tag,
+          ),
+        ),
+      ),
+    );
+    expect(tags.size).toBeGreaterThan(0);
     for (const w of Object.values(areas))
       for (const k of Object.keys(w ?? {})) expect(tags.has(k)).toBe(true);
   });

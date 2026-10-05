@@ -239,6 +239,11 @@ export interface AppHandle {
   /** Called after every sim step with the new snapshot (the test handle's checks). */
   onStep(listener: ((snapshot: SimSnapshot, events: readonly SimEvent[]) => void) | null): void;
   setSeed(seed: number): void;
+  /**
+   * The time of day a free-play race of the menu's event draws with this seed (raceTimeOfDay), so a
+   * browser test can pick its seed by the light it needs instead of pinning a lucky one.
+   */
+  freePlayTimeOfDay(seed: number): string;
   tap(): void;
   startRace(): void;
   backToMenu(): void;
@@ -1476,6 +1481,7 @@ export function createApp(opts: AppOptions): AppHandle {
     setSeed(s) {
       seeds.fix(s);
     },
+    freePlayTimeOfDay: (s) => raceTimeOfDay(registry, eventId, s, true),
     tap() {
       if (state !== 'tapToStart') return;
       void runStartTap(() => audio.resume());

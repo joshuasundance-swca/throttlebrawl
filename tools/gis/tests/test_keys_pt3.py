@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from tbgis.config import BakeConfig
+from tbgis.config import BakeConfig, Feature
 from tbgis.emit import bake
 from tbgis.fetch import FetchMeta
 from tbgis.network import NetworkConfig, bake_network
@@ -157,3 +157,23 @@ def test_deck_tags_in_a_stretch_bake_too() -> None:
     bridge = next(r for r in roads if r["id"] == "osm-test-bridge")
     assert tag_rows(bridge, "old-bridge") == tag_rows(bridge, "bridge") != []
     assert tag_rows(bridge, "palms") == []
+
+
+def test_a_roadside_zone_names_its_kinds() -> None:
+    """A zone's `kinds` (zone-local people and animals, playtest 3) is a list of words: the config
+    takes it, and the feature carries it through unchanged (T10.4: Duval's crowd)."""
+    f = Feature.model_validate(
+        {
+            "kind": "roadsideZone",
+            "id": "test-zone",
+            "s0": 10,
+            "s1": 90,
+            "d0": 5.6,
+            "d1": 10.6,
+            "params": {"spawns": "pedestrians", "kinds": ["street-performer", "cruise-day-tripper"]},
+        }
+    )
+    assert f.model_dump(exclude_none=True)["params"] == {
+        "spawns": "pedestrians",
+        "kinds": ["street-performer", "cruise-day-tripper"],
+    }
