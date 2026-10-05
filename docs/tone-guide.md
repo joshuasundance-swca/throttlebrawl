@@ -491,3 +491,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: keep a region's vibe, and give it the structure and drive of the busiest stations: a verse, a build, a chorus and a hook, not a slow loop. Simple and slow reads as a miss even when the mood is right. He wanted four directions for the Pacific Northwest: driving garage and grunge, indie and folk with drive, rainy-night synth, and the same vibe with more complexity.
 - Scope: global (music)
 - Action taken: decided as richer music in every region (product spec, Audio); the stations themselves are built in the run that follows.
+
+### 2026-10-05 · Combat target box
+- Item: the amber corner brackets on the rider a tap would hit (playtest 4, P4-6, #529)
+- Surface: UI
+- Verdict: veto
+- Maintainer said: "I don't like the combat targeting boxes. I'd rather not have a strong visual marker like that. It's disruptive and kinda ugly tbh"
+- Lesson: no strong shape drawn over the road or the scene for an assist. If a cue is ever needed it is barely there (a faint tint on the rider, say) and off by default; when in doubt, show nothing.
+- Scope: global (UI)
+- Action taken: the marker is removed from render (`src/render/aim-marker.ts` and its test deleted); auto-aim and the swipe sides are unchanged, and the sim still publishes `aimId`.

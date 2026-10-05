@@ -40,7 +40,6 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
-import { AimMarker } from './aim-marker';
 import { AirPays } from './air-pays';
 import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
@@ -301,8 +300,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const boards = new Boards(look);
   // Air that pays (the pitch deck's #13): the chalk mark and the newspaper.
   const airPays = new AirPays();
-  // The aim marker (playtest 4, P4-6): brackets on the rider a tap would hit.
-  const aimMarker = new AimMarker();
   // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
   // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
   // can start (it waits for the base pack's real roads); until then none is drawn.
@@ -350,14 +347,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
   let rainEnv: LookEnv | null = null;
   const backdrop = new Backdrop();
-  const persistent = new Set<Object3D>([
-    views.root,
-    boards.root,
-    airPays.root,
-    aimMarker.root,
-    camera,
-    backdrop.root,
-  ]);
+  const persistent = new Set<Object3D>([views.root, boards.root, airPays.root, camera, backdrop.root]);
   for (const o of persistent) scene.add(o);
   loadRace();
   let roadScene: RoadScene | null = null;
@@ -942,7 +932,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         race.smashables.sync(curr, t);
       } else loadRace();
       airPays.update(prev, curr, alpha, t);
-      aimMarker.update(prev, curr, alpha, camera.position);
       sceneryVisible = roadScene
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
         : 0;
