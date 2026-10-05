@@ -1,0 +1,12 @@
+{
+  "vista_house_lod0": {
+    "triangles": 600,
+    "sha256": "678c0c8e3556b798e7c96854d9d7911bf095cf9cf25a30da658a5a8348178528",
+    "authoredState": "8201535a3b3c2cacc82ccd2cef10cedb05eae7cbdd73f3c2287760377649197b"
+  },
+  "vista_house_lod1": {
+    "triangles": 154,
+    "sha256": "a7efd20837573cf175b83b519846abb9e0ba59a404622d431a1d9ef9d60bd60c",
+    "authoredState": "2108dd87a321b29987a56a6f6edbc8ceb541280daa4fea9d0724caaf88058195"
+  }
+}

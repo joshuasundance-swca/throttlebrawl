@@ -1,0 +1,83 @@
+{
+  "keys_landmarks": {
+    "southernmost_buoy": {
+      "triangles": 296,
+      "sha256": "5320f68eece25c51c1bab377aaab3dc8767fea12f7b5c2bd0054bcdad9ffdd46",
+      "authoredState": "202010925d5101013322a5cb31ee5af07b1703b91068a25abf779a6a27075f16"
+    },
+    "mile_marker_0": {
+      "triangles": 26,
+      "sha256": "bb10495464ab2deee3863ca28e6719f372f7288b7393fab7002437693e0285e2",
+      "authoredState": "5d5e7333faa78cef24ffbd64b80e5cee416c4d506ca40e7045e80080f80e9fc6"
+    },
+    "mallory_pier": {
+      "triangles": 646,
+      "sha256": "5f818dd0e517b9e81a5f7f7ceeea7ebced6b08269b286659e16aff8a18d91413",
+      "authoredState": "8b0c6575cb845796d72655da38001c9641fa0b22e789017d5ce6bfe0d0430c24"
+    }
+  },
+  "sf_landmarks": {
+    "coit_tower": {
+      "triangles": 840,
+      "sha256": "df5415a24fa1bcd2389b4422b736f4690bb5fd376187707a8532ddfd19c9146f",
+      "authoredState": "9be8cfddf05157819d4592b7320df1270b50cbbb1b54894ba6041be5642c104f"
+    },
+    "coit_tower_lod1": {
+      "triangles": 168,
+      "sha256": "c9b280f9bf16927e26ec38b66bfe2ce565252d5a91bba9c4a612794ef34b9d9e",
+      "authoredState": "0b7568e70b5e12bb3a98cf9b2090a5baeff0e7b08715bbef0835bda3f0765978"
+    },
+    "toll_gantry": {
+      "triangles": 294,
+      "sha256": "704de233e361072c9093e48e3aa9d8684870b96f9da95215fe46854b41c1b203",
+      "authoredState": "799865d135817b5f63f784bf75304024c2961eba4117e3326cdcf4baa0ffaebb"
+    }
+  },
+  "pdx_landmarks": {
+    "pdx_lift_tower_lod0": {
+      "triangles": 568,
+      "sha256": "ab6978f12f5f17b6d90faf96633b8c66bdd755a56fc851dd010007600839b075",
+      "authoredState": "acad5ea6bc87c0185f512bd32f2d8c621aa19d0dacf8863b064d54d3392ac999"
+    },
+    "pdx_lift_tower_lod1": {
+      "triangles": 60,
+      "sha256": "3228d9e4ad567fb62954aaf7c9220dba0b03ea077aa3e98cd186135c1bd35965",
+      "authoredState": "8294578e568ada3a752dafde14324cb33d73e6f1c50f4a3d5e9e451aaec4ab4c"
+    },
+    "pdx_truss_bay": {
+      "triangles": 156,
+      "sha256": "b8e047eb252f806906379dccc2a184d25cfcd6dde0f3cdfae38c4a230b85a03e",
+      "authoredState": "d63e629a0fd678e3b66f6890dc709aaf6d6e6544392bd8e89d69f40cad14d025"
+    },
+    "pdx_lift_span": {
+      "triangles": 228,
+      "sha256": "55d8c10d6fd47298023734ba9849f2217844fa4668ae662552ae096eca135dda",
+      "authoredState": "83acf18c7dd448bd59ef6a4a5228f6c8ba91177fa79e41420fed5386f1651312"
+    },
+    "pdx_bascule_pier": {
+      "triangles": 144,
+      "sha256": "17c832cb371ad9c2f380c43682c7be50201cc3aed257981c7f18e8422412c73c",
+      "authoredState": "08926afa77cb1ef3194c5aa5e4acc2e1d68c4be1f67487c2c386e6a6be510110"
+    },
+    "pdx_st_johns_tower_lod0": {
+      "triangles": 512,
+      "sha256": "303cb0249cda95b37343006ae8df9b69887e1625389ce81a33015bebb4e631b5",
+      "authoredState": "eb7a08e30e7411aa61dc76ccb37982442bbe40973fe72b7bfc182e7ecfb80739"
+    },
+    "pdx_st_johns_tower_lod1": {
+      "triangles": 88,
+      "sha256": "3af5d51bdc8fb54c25ff24fe0aaed40bcb5304008c39b65cc1415f5bdc1fce2a",
+      "authoredState": "a38ed64f2c5565e6ec7c35fdb7dfa6adfb9b7ed413dc3ed45a7cf8ea08ac6200"
+    },
+    "pdx_roof_sign": {
+      "triangles": 276,
+      "sha256": "67ac3353a74b0a31c54535b9aae6d5ab66dfbae4da9c487be1ebfc087c11aae0",
+      "authoredState": "f7d02e5fcd7946e1369a7d735fcfd648422cae3975cd47f8a29498c42711db9b"
+    },
+    "pdx_plaza": {
+      "triangles": 478,
+      "sha256": "9a9df11dc7c57a1715c7081311460828add27621bf3396185afe946a374e6452",
+      "authoredState": "576004b86cd2f91c561b5e45ffb8c398511c9d77d967156c168e73b87de1cd1f"
+    }
+  }
+}
