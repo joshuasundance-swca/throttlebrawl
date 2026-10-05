@@ -57,6 +57,8 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]glb\.ts$/,
   // Landmarks (playtest 3): loaded with a race whose road has a `landmark` feature.
   /[\\/]src[\\/]render[\\/]landmarks\.ts$/,
+  // Traffic models (playtest 3, T12.2): loaded with a race's traffic types, never the first screen.
+  /[\\/]src[\\/]render[\\/]vehicles\.ts$/,
   /[\\/]src[\\/]ui[\\/]tuning[\\/]index\.ts$/,
   /[\\/]src[\\/]dev[\\/]selftest[\\/]index\.ts$/,
   // dev/ beyond dev/boot.ts (the test flag and the error capture): src/main.ts loads it lazily.
