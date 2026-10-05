@@ -206,7 +206,8 @@
               "d1": -12,
               "params": {
                 "spawns": "pedestrians",
-                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"],
+                "music": "busker"
               }
             },
             {
