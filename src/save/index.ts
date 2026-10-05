@@ -22,6 +22,12 @@ export const SETTINGS_VERSION = 1;
 
 /** Steering assist strength; the same ids as the sim's `SimSteerAssist` (riders-4). */
 export type SteerAssistSetting = 'off' | 'light' | 'strong';
+/**
+ * The steering style; the same ids as the sim's `SimSteerStyle` (playtest 4, P4-8). `arcade`, the
+ * default, is the original guided riding model; `free` has no pull toward the road, so the bike
+ * goes where it points.
+ */
+export type SteerStyleSetting = 'arcade' | 'free';
 /** Steering method (the product spec's settings): thumb, tilt, or both added together. */
 export type SteeringMethod = 'thumb' | 'tilt' | 'both';
 /** Throttle: scaled drag on the stick, or auto-throttle (an assist the sim applies per slot). */
@@ -131,6 +137,12 @@ export interface Settings {
   difficulty: DifficultyPreset;
   /** Assists for this device's player; auto-throttle is `throttle: 'auto'`. */
   assists: { steer: SteerAssistSetting };
+  /**
+   * The steering style (playtest 4, P4-8): Arcade (the default) or Free. Feeds SimConfig through
+   * `settingsAssists`, so it applies at the next race and lands in the replay header. Additive: the
+   * version stays 1.
+   */
+  steerStyle: SteerStyleSetting;
   /** The lower-overall-speed multiplier, in (0, 1]; 1 is full speed. */
   speedMultiplier: number;
   /** The event length id (`short`, `standard`, `long`); an id the event lacks means its first. */
@@ -208,6 +220,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   difficulty: DEFAULT_DIFFICULTY,
   // The M2 containers are frozen: spreading the defaults shares them, so nothing may push into them.
   assists: Object.freeze({ steer: 'off' as const }),
+  // Today's guided model under its honest name (playtest 4, P4-8: "arcade guided good") [decided].
+  steerStyle: 'arcade',
   speedMultiplier: 1,
   raceLength: 'standard',
   steering: 'thumb',
@@ -412,6 +426,7 @@ export function sanitiseSettings(data: unknown): Settings {
     units: units === 'mph' || units === 'kmh' ? units : def.units,
     difficulty: isDifficultyPreset(difficulty) ? difficulty : def.difficulty,
     assists: { steer: oneOf(obj(d['assists'])['steer'], ['off', 'light', 'strong'], def.assists.steer) },
+    steerStyle: oneOf(d['steerStyle'], ['arcade', 'free'], def.steerStyle),
     speedMultiplier:
       typeof speed === 'number' && Number.isFinite(speed) && speed > 0 && speed <= 1
         ? speed
@@ -464,9 +479,16 @@ export function audioVolumes(s: Readonly<Settings>): Settings['volumes'] {
   return { ...s.volumes, voices: s.voicesOn ? s.volumes.voices : 0 };
 }
 
-/** This device's player assists in the sim's per-slot shape (`SimAssists`), for buildSimConfig. */
-export function settingsAssists(s: Readonly<Settings>): { steer: SteerAssistSetting; autoThrottle: boolean } {
-  return { steer: s.assists.steer, autoThrottle: s.throttle === 'auto' };
+/**
+ * This device's player assists and steering style in the sim's per-slot shape (`SimAssists`), for
+ * buildSimConfig: the style is always written, so the replay header records it.
+ */
+export function settingsAssists(s: Readonly<Settings>): {
+  steer: SteerAssistSetting;
+  autoThrottle: boolean;
+  steerStyle: SteerStyleSetting;
+} {
+  return { steer: s.assists.steer, autoThrottle: s.throttle === 'auto', steerStyle: s.steerStyle };
 }
 
 const KNOWN_FIELDS = new Set(Object.keys(DEFAULT_SETTINGS));

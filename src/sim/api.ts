@@ -67,6 +67,7 @@ export type {
   SimSmashableDef,
   SimSnapshot,
   SimSteerAssist,
+  SimSteerStyle,
   SimStyleRewards,
   SimTrafficBehaviour,
   SimTrafficTypeDef,

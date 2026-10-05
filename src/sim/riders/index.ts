@@ -384,7 +384,10 @@ export const COAST_DECEL = 0.6;
 /** How far beside a ramp truck a rider put down inside it steps out, m. */
 const TRUCK_STEP_OUT_M = 0.3;
 const GRAVITY = 9.81;
-/** 1/s: how fast the bike reaches the steered heading. */
+/**
+ * 1/s: how fast the bike reaches the steered heading (Arcade). The Free steering style turns the
+ * bike at this same first rate, the stick's heading × YAW_RESPONSE, with nothing turning it back.
+ */
 const YAW_RESPONSE = 4;
 /** rad: the largest heading offset steering can ask for. */
 const MAX_YAW = 0.5;
@@ -1099,13 +1102,23 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // Lateral: steering asks for a heading offset; the road turning under the bike pulls it.
   const authority = (wobble > 0 ? WOBBLE_STEER : 1) * feel.grip;
   const maxYaw = maxYawAt(bike.steerRateMps, m.speed, steerScale) * dr.maxYawScale * wh.steerScale;
-  const assist = assistYaw(config, m, slotAssists(config, slotOf(def)).steer, maxYaw);
+  const slot = slotAssists(config, slotOf(def));
+  const assist = assistYaw(config, m, slot.steer, maxYaw);
   const asked = steer * authority * maxYaw;
   // Without a nudge the heading asked for is untouched (no clamp, no +0), exactly as before M2.
   const yawTarget = assist === 0 ? asked : clamp(asked + assist, -maxYaw, maxYaw);
   // In a U-turn the bike turns at the turn's own rate, past the usual limit; a turn given up midway
-  // comes back from wherever it got to (with no U-turn, |yaw| is never past 1.2 here).
-  const ownTurn = uturn ? uturn.rate : (yawTarget - m.yaw) * YAW_RESPONSE;
+  // comes back from wherever it got to (with no U-turn, |yaw| is never past 1.2 here). Arcade (the
+  // default, and every AI rider) eases the heading to the one asked for, so letting go lines the
+  // bike up with the road. Free (playtest 4, P4-8: "true assist off", with no hidden pull toward the
+  // road [decided]) turns at the same first rate, so a full-lock turn holds the same bends, but
+  // nothing turns it back: held lock keeps turning past Arcade's cap, and hands off the bike keeps
+  // its heading in the world, going where it points.
+  const ownTurn = uturn
+    ? uturn.rate
+    : slot.steerStyle === 'free'
+      ? yawTarget * YAW_RESPONSE
+      : (yawTarget - m.yaw) * YAW_RESPONSE;
   const along = m.speed * cos(m.yaw) * sRateFactor(frameKappa, pos.d);
   const yawLimit = uturn ? Infinity : Math.max(1.2, Math.abs(m.yaw));
   m.yaw = clamp(m.yaw + (ownTurn - pos.dir * frameKappa * along) * dt, -yawLimit, yawLimit);

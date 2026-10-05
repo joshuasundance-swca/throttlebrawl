@@ -372,7 +372,7 @@ Tag: `[decided]` (the maintainer, playtest 4, 2026-10-04) for every item below; 
 | Attacks | Auto-aim plus swipe; no kick wait; presses buffered; a bump never cancels an attack | [Controls](./product-spec.md#controls) | yes |
 | Drift | Anywhere above about 40 mph | [Controls](./product-spec.md#controls) | yes |
 | U-turn | Its own gesture; hairpin braking never flips you | [Controls](./product-spec.md#controls) | yes |
-| Steering feel | Arcade by default, plus a true Free mode, then the shortcut and spot fixes | [Controls](./product-spec.md#controls) | not yet |
+| Steering feel | Arcade by default, plus a true Free mode, then the shortcut and spot fixes | [Controls](./product-spec.md#controls) | Arcade and Free, yes; the spot fixes, not yet |
 | Smoking bikes | About 5 to 10 % slower | [Combat](./product-spec.md#combat) | yes |
 | Golf carts | They swerve onto the verge; a clip is still a crash | [Traffic](./product-spec.md#traffic-and-pedestrians) | yes |
 | Bike prices | Kept: about 3 to 4 races a bike | [Cash](./product-spec.md#cash) | nothing to build |

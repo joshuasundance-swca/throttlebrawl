@@ -50,6 +50,7 @@ const m2Custom: Settings = {
   units: 'kmh',
   difficulty: 'hard',
   assists: { steer: 'strong' },
+  steerStyle: 'free',
   speedMultiplier: 0.8,
   raceLength: 'long',
   steering: 'both',
@@ -118,6 +119,8 @@ const M2_FIELDS = [
   'effectsDefault',
   // Playtest 4 (P4-12, P4-13): the menu race's options.
   'raceOptions',
+  // Playtest 4 (P4-8): the steering style, Arcade or Free.
+  'steerStyle',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -240,6 +243,7 @@ describe('the M2 settings record', () => {
     const bad = sanitiseSettings({
       difficulty: 'nightmare',
       assists: { steer: 'max' },
+      steerStyle: 'sideways',
       speedMultiplier: 1.5,
       raceLength: 'Very Long!',
       steering: 'feet',
@@ -373,8 +377,13 @@ describe('the M2 settings record', () => {
     expect(sanitiseSettings({ radio: 'score' }).radio).toBe('score');
   });
 
-  it('maps the assists and throttle settings to the sim slot assists shape', () => {
-    expect(settingsAssists(DEFAULT_SETTINGS)).toEqual({ steer: 'off', autoThrottle: false });
-    expect(settingsAssists(m2Custom)).toEqual({ steer: 'strong', autoThrottle: true });
+  it('maps the assists, throttle and steering style settings to the sim slot assists shape', () => {
+    // The style is always written (playtest 4, P4-8), so the replay header records it.
+    expect(settingsAssists(DEFAULT_SETTINGS)).toEqual({
+      steer: 'off',
+      autoThrottle: false,
+      steerStyle: 'arcade',
+    });
+    expect(settingsAssists(m2Custom)).toEqual({ steer: 'strong', autoThrottle: true, steerStyle: 'free' });
   });
 });

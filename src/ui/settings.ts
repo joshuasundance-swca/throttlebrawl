@@ -25,6 +25,7 @@ export type SettingId =
   | 'raceLength'
   | 'speedMultiplier'
   | 'assists.steer'
+  | 'steerStyle'
   | 'slowMo'
   | 'steering'
   | 'tiltSensitivity'
@@ -116,6 +117,20 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 0.8, label: '80%' },
       { value: 0.7, label: '70%' },
       { value: 0.6, label: '60%' },
+    ],
+    nextRace: true,
+  },
+  {
+    // Playtest 4, P4-8 (the maintainer: "maybe allow true assist off but rename today's default.
+    // arcade guided good."): today's guided riding model under its honest name, the default, and an
+    // opt-in Free style where held lock keeps turning the bike. Above the assist, which is separate.
+    id: 'steerStyle',
+    tab: 'race',
+    label: 'Steering style',
+    kind: 'choice',
+    options: [
+      { value: 'arcade', label: 'Arcade' },
+      { value: 'free', label: 'Free' },
     ],
     nextRace: true,
   },

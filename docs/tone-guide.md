@@ -492,6 +492,15 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Scope: global (music)
 - Action taken: decided as richer music in every region (product spec, Audio); the stations themselves are built in the run that follows.
 
+### 2026-10-05 · Combat target box
+- Item: the amber corner brackets on the rider a tap would hit (playtest 4, P4-6, #529)
+- Surface: UI
+- Verdict: veto
+- Maintainer said: "I don't like the combat targeting boxes. I'd rather not have a strong visual marker like that. It's disruptive and kinda ugly tbh"
+- Lesson: no strong shape drawn over the road or the scene for an assist. If a cue is ever needed it is barely there (a faint tint on the rider, say) and off by default; when in doubt, show nothing.
+- Scope: global (UI)
+- Action taken: the marker is removed from render (`src/render/aim-marker.ts` and its test deleted); auto-aim and the swipe sides are unchanged, and the sim still publishes `aimId`.
+
 ### 2026-10-05 · Countdown blocks the road
 - Item: the big 3, 2, 1, GO number in the middle of the race screen (playtest 4, P4-11, #514)
 - Surface: UI
