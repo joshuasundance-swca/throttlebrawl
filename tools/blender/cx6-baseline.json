@@ -1,0 +1,108 @@
+{
+  "sf_landmarks": {
+    "coit_tower": {
+      "triangles": 840,
+      "sha256": "df5415a24fa1bcd2389b4422b736f4690bb5fd376187707a8532ddfd19c9146f",
+      "authoredState": "9be8cfddf05157819d4592b7320df1270b50cbbb1b54894ba6041be5642c104f"
+    },
+    "coit_tower_lod1": {
+      "triangles": 168,
+      "sha256": "c9b280f9bf16927e26ec38b66bfe2ce565252d5a91bba9c4a612794ef34b9d9e",
+      "authoredState": "0b7568e70b5e12bb3a98cf9b2090a5baeff0e7b08715bbef0835bda3f0765978"
+    },
+    "sf_dragon_gate": {
+      "triangles": 414,
+      "sha256": "b18c5cbb9a4c690fe63c500d0eba7baf5cd043fdd830ef6f170c03722aaeb964",
+      "authoredState": "6c649b77ef2dc0c101dc02a9557da8179b5e5b5c5f0cffbe426435971f021fe3"
+    },
+    "sf_twin_spire_lod0": {
+      "triangles": 600,
+      "sha256": "bbc458fbd7900ec2f53f5508856ceaf14ef6a9c803ba3895e3b125bf06d7b88c",
+      "authoredState": "e00e15a5453ea9b042c26df5773d570964cad346511ca3565b97a5dac020a307"
+    },
+    "sf_twin_spire_lod1": {
+      "triangles": 56,
+      "sha256": "82b46ac18e206b0c86e7410662767abc6363069cb535f5abfc90f03ad4c7748d",
+      "authoredState": "772957c5457b6c200a72e2dd14279893654aff02b2c4a204989cda1ad908d5f0"
+    },
+    "toll_gantry": {
+      "triangles": 294,
+      "sha256": "704de233e361072c9093e48e3aa9d8684870b96f9da95215fe46854b41c1b203",
+      "authoredState": "799865d135817b5f63f784bf75304024c2961eba4117e3326cdcf4baa0ffaebb"
+    }
+  },
+  "keys_landmarks": {
+    "east_martello_lod0": {
+      "triangles": 304,
+      "sha256": "1c0288367abbf21f74d1c0792131fb29688098cbdb57702700c5a49c81e271d1",
+      "authoredState": "07de0dcea9238749168df18ae98f93c4841b8baf3580ad62d53ad87805e0c58b"
+    },
+    "east_martello_lod1": {
+      "triangles": 84,
+      "sha256": "a75778b9341fd1c80f66a5f8529e98aeb69ef058ad61004f41f3e0154c9378ed",
+      "authoredState": "2115b07d1108324c3b494433efff1b54ae9a765881b79dc682711d28c3d9f32d"
+    },
+    "mallory_pier": {
+      "triangles": 646,
+      "sha256": "5f818dd0e517b9e81a5f7f7ceeea7ebced6b08269b286659e16aff8a18d91413",
+      "authoredState": "8b0c6575cb845796d72655da38001c9641fa0b22e789017d5ce6bfe0d0430c24"
+    },
+    "mile_marker_0": {
+      "triangles": 26,
+      "sha256": "bb10495464ab2deee3863ca28e6719f372f7288b7393fab7002437693e0285e2",
+      "authoredState": "5d5e7333faa78cef24ffbd64b80e5cee416c4d506ca40e7045e80080f80e9fc6"
+    },
+    "southernmost_buoy": {
+      "triangles": 296,
+      "sha256": "5320f68eece25c51c1bab377aaab3dc8767fea12f7b5c2bd0054bcdad9ffdd46",
+      "authoredState": "202010925d5101013322a5cb31ee5af07b1703b91068a25abf779a6a27075f16"
+    },
+    "west_martello": {
+      "triangles": 368,
+      "sha256": "9ffd711fcbbd61c51a43f04d87e5d3f479f1e01210f6834eb1fd841d59b25715",
+      "authoredState": "f0e33e5c13772540d0b90c75c9510c428754cc1f87882e903c4aa181d699a078"
+    }
+  },
+  "keys_identity": {
+    "duval_open_bar_a": {
+      "triangles": 472,
+      "sha256": "bd149306d70c6a45e84a0f731f706313cd14d397d4fed17ad6ee8b7dd3620699",
+      "authoredState": "018cef693bf0fd0e8bd34ff4ec50f0398a4b213da23e924142e5df9844488b45"
+    },
+    "duval_open_bar_b": {
+      "triangles": 410,
+      "sha256": "573f25546ca6844d3fa4404baee89941fcd91a32c029e4ea6c8dfed5373b69e3",
+      "authoredState": "c96bc098af939852e1eef3de0b246547874bd089dd83117d5d2964c71b53e6ab"
+    },
+    "key_deer_buck": {
+      "triangles": 194,
+      "sha256": "811f2ee6270805db4f5951c467280622a88597e0738b1814b042a6489c80dbd4",
+      "authoredState": "deb00f352ffe1c0747a9d121ef6dec836b77a946dd10cca0a36adb4f3d345f3f"
+    },
+    "key_deer_doe": {
+      "triangles": 162,
+      "sha256": "ae683a9ee654d89222ad2987a8aaed1e1a6eaf9aae653115491fe781f5ff71a9",
+      "authoredState": "35a1a8ae3b88eca53ad116e2f020acf93502897b485c9fb10a0ad6a92a4b7ccb"
+    },
+    "keys_banyan": {
+      "triangles": 192,
+      "sha256": "0afd602f5f67f9f9925b0ee49ca0e9c4798ec9fbabf8f74c8041e25edee324fd",
+      "authoredState": "aac2385f504b00db135805d4a6c375f3949be1404e817fa693d47bf3cf875a76"
+    },
+    "keys_frangipani": {
+      "triangles": 152,
+      "sha256": "50d7c1fcf3acbe979ca41f95ae5fcde2d2bfb545d1c6aca82b16828aaf12e370",
+      "authoredState": "91996c928e679cc01fc351a50d3afab074e1b7789bb27d93f4d2894db7023a6e"
+    },
+    "keys_mile_marker": {
+      "triangles": 26,
+      "sha256": "6548a5f781446726fad06a73b781c906f27ead7b81b90f02712be26f59fb32fd",
+      "authoredState": "ad03d34b3276f1ee3beef4c2600651c07d0f22bf04bb4cc340062c9960a94372"
+    },
+    "keys_poinciana": {
+      "triangles": 172,
+      "sha256": "9462e12da271cafe5a13c79ba6f7acc4d1f4be45a492334eef91f73b7d581caf",
+      "authoredState": "696334597d75f406ef2aada51018dedf5b0ba42518694e23826bc706b6968e58"
+    }
+  }
+}

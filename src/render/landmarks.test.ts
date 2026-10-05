@@ -550,3 +550,77 @@ describe('the code-made blobs and boxes face outward', () => {
     around(blob, new Vector3(10, 20, -5), 20);
   });
 });
+
+// Playtest 4, B7: Portland's truss bays and lift span run from their origin along +Z (the kit's `bay_m`
+// extra says how far), while a tower stands about its origin. A landmark feature is placed by its middle,
+// so a node with a `bay_m` stands with its middle on the feature's, and its length fills the footprint
+// the road names, from s0 to s1, end to end with the bay beside it.
+describe('a bay stands by its middle, so its footprint is the road its length fills', () => {
+  /** A strip of road deck `lengthM` long from the origin along +Z, `widthM` across, as a bay is modelled. */
+  function bayNode(name: string, lengthM: number, extras: Record<string, number>): Mesh {
+    const g = new BufferGeometry();
+    const w = 9;
+    g.setAttribute(
+      'position',
+      new BufferAttribute(
+        new Float32Array([-w, 8, 0, w, 8, 0, w, 8, lengthM, -w, 8, 0, w, 8, lengthM, -w, 8, lengthM]),
+        3,
+      ),
+    );
+    const mesh = new Mesh(g, Object.assign(new MeshBasicMaterial({ color: '#808080' }), { name: 'steel' }));
+    mesh.name = name;
+    Object.assign(mesh.userData, extras);
+    return mesh;
+  }
+  const pdxKit = (): LandmarkKit =>
+    bakeLandmarkKit(
+      'pdx-landmarks',
+      sceneOf([bayNode('pdx_truss_bay', 40, { bay_m: 40 }), bayNode('pdx_stub', 40, {})]),
+    );
+
+  /** The along-the-road range of every vertex the layer draws for the landmark, s, m. */
+  function drawnRange(road: RoadNetwork, node: string, s0: number, s1: number): [number, number] {
+    const layer = new LandmarkLayer(kitsOf(pdxKit()), look, { road });
+    const c = road.toWorld(0, (s0 + s1) / 2, 0, 0);
+    layer.update(c.x, c.z);
+    const mesh = layer.group.children.find((o) => o.name === 'landmarks') as Mesh;
+    const pos = mesh.geometry.getAttribute('position');
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      const s = road.project(pos.getX(i), pos.getZ(i), 0).s;
+      lo = Math.min(lo, s);
+      hi = Math.max(hi, s);
+    }
+    expect(node).toBeTruthy();
+    return [lo, hi];
+  }
+  const bayFeature = (id: string, node: string, s0: number, s1: number): BakedFeature => ({
+    kind: 'landmark',
+    id,
+    s0,
+    s1,
+    d0: -12,
+    d1: 12,
+    params: { model: `pdx-landmarks#${node}`, overRoad: true },
+  });
+
+  it('fills the footprint from s0 to s1 for a node that says bay_m, to 0.1 m', () => {
+    const road = roadWith([bayFeature('bay', 'pdx_truss_bay', 600, 640)]);
+    const [lo, hi] = drawnRange(road, 'pdx_truss_bay', 600, 640);
+    stdout.write(`[examined] a 40 m bay on s 600 to 640 draws from s ${lo.toFixed(2)} to ${hi.toFixed(2)}\n`);
+    expect(lo).toBeGreaterThan(600 - 0.1);
+    expect(lo).toBeLessThan(600 + 0.1);
+    expect(hi).toBeGreaterThan(640 - 0.1);
+    expect(hi).toBeLessThan(640 + 0.1);
+  });
+
+  it('keeps the origin at the middle for a node without bay_m (the control: a tower is not shifted)', () => {
+    const road = roadWith([bayFeature('stub', 'pdx_stub', 600, 640)]);
+    const [lo, hi] = drawnRange(road, 'pdx_stub', 600, 640);
+    expect(lo).toBeGreaterThan(620 - 0.1);
+    expect(lo).toBeLessThan(620 + 0.1);
+    expect(hi).toBeGreaterThan(660 - 0.1);
+    expect(hi).toBeLessThan(660 + 0.1);
+  });
+});

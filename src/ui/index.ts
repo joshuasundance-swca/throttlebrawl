@@ -50,6 +50,7 @@ import {
   type Box,
 } from './hud-layout';
 import {
+  chainLossShown,
   createDriftMeter,
   DRIFT_LOST,
   driftOutcome,
@@ -142,6 +143,18 @@ export type Screen =
   | 'careerResults'
   | 'teaser';
 
+/**
+ * The browser's offer to install the game as an app (platform/'s install offer, roadmap M5). The
+ * menu's Install button shows only while `available()` holds, and its tap calls `prompt()` inside
+ * the tap; nothing else ever opens the prompt, so it never nags.
+ */
+export interface InstallSource {
+  available(): boolean;
+  prompt(): unknown;
+  /** Called whenever `available()` may have changed. */
+  onChange(cb: () => void): void;
+}
+
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
   onStartTap(): void;
@@ -198,6 +211,8 @@ export interface UiCallbacks {
    * through onSettingsChange. The menu's Options button is hidden until this is wired.
    */
   raceOptions?: () => RaceOptionsView;
+  /** Installing the game as an app (roadmap M5). The menu's Install button is hidden until this is wired. */
+  install?: InstallSource;
 }
 
 export interface GameUi {
@@ -655,6 +670,12 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     careerButton.classList.toggle(START_HERE_CLASS, !started);
   };
   syncCareerButton();
+  // Install as an app (roadmap M5): only while the browser offers it, and only from this tap.
+  const install = cb.install;
+  const installButton = button('menu-install', 'small', 'Install app', () => void install?.prompt());
+  const syncInstallButton = () => (installButton.hidden = !install?.available());
+  syncInstallButton();
+  install?.onChange(syncInstallButton);
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
@@ -679,6 +700,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         button('menu-settings', 'small', 'Settings', () => show('settings')),
         button('menu-changelog', 'small', "What's new", () => show('changelog')),
         button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+        ...(install ? [installButton] : []),
       ),
     ),
     whatsNewCard.root,
@@ -1385,6 +1407,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     run: EntitySnapshot['styleRun'],
     pops: readonly StylePop[],
     moves: SimSnapshot['moves'],
+    loses: boolean,
   ) => {
     ticker.setStyleEnabled(settings.stylePopups);
     ticker.setLook(settings.look);
@@ -1393,11 +1416,13 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The run stopped: if it paid, its pop-up is in this frame's feed (the sim emits the award on
     // the stretch's last tick, the same step whose snapshot first shows no run) and lands on the
     // meter's line; a run that never paid just goes. The drift chain ends the same way: it banks
-    // (a `drift` pop in this frame's feed lands on its line) or a wipeout emptied it, which the
-    // strip shows as DRIFT LOST (T6.3, the critic's C7: it "empties visibly on a wipeout").
+    // (a `drift` pop in this frame's feed lands on its line) or a crash emptied it, which the
+    // strip shows as DRIFT LOST (T6.3, the critic's C7: it "empties visibly on a wipeout"). Only a
+    // crash empties it (playtest 4): a wobble, a bump or a stagger keeps the chain, so the chip needs
+    // the rider down. A chain open at the finish line is paid, so it banks.
     const ended = step.ended;
     let landing = !!ended && ended.qualifies && pops.some((p) => p.kind === ended.kind);
-    const outcome = driftOutcome(drift, pops);
+    const outcome = driftOutcome(drift, pops, loses);
     let driftLanding = outcome === 'banked';
     if (outcome === 'lost') {
       ticker.push({ cls: 'style', text: DRIFT_LOST.text, kind: DRIFT_LOST.kind, cash: null });
@@ -1795,7 +1820,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       updateHeat(snapshot.law);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
-      stepTicker(player?.styleRun, tally.takePopups(), snapshot.moves);
+      stepTicker(player?.styleRun, tally.takePopups(), snapshot.moves, chainLossShown(player));
       wheelieGauge?.update(gaugeView(snapshot.moves, player?.wheelie));
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');

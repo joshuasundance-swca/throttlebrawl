@@ -104,6 +104,134 @@
       "s": 315.7036,
       "d": 0.0,
       "placementErrorM": 3.05
+    },
+    {
+      "id": "burnside-bascule-pier-east",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 339.2555,
+      "d": 0.0,
+      "placementErrorM": 1.38
+    },
+    {
+      "id": "burnside-bascule-pier-west",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 409.9096,
+      "d": 0.0,
+      "placementErrorM": 1.52
+    },
+    {
+      "id": "burnside-truss-east-1",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 314.2555,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "burnside-truss-east-2",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 274.2555,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "burnside-truss-west-1",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 434.9096,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "burnside-truss-west-2",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-burnside-bridge",
+      "s": 474.9096,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-lift-span",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 278.1481,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-west-1",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 215.5925,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-west-2",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 175.5925,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-1",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 340.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-2",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 380.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-3",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 420.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-4",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 460.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-5",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 500.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-6",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 540.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
+    },
+    {
+      "id": "hawthorne-truss-east-7",
+      "line": "pdx",
+      "road": "osm-pnw-pdx-hawthorne-bridge",
+      "s": 580.7036,
+      "d": 0.0,
+      "placementErrorM": 0.0
     }
   ]
 }

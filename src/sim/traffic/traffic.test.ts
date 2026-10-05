@@ -542,7 +542,9 @@ describe('traffic-1 sim acceptance', () => {
     expect(results['wide']).toEqual([]);
   });
 
-  it('a first side brush wobbles, a second while unstable crashes, and a truck always crashes', () => {
+  it('a side brush wobbles; a second slow brush while still shaky, and a slow brush on a truck, wobble too', () => {
+    // Playtest 4's one rule (./contact-rule.ts): the closing speed decides, not the vehicle's size nor
+    // an earlier wobble (until then a second touch while unstable, or any truck touch, crashed).
     // Ride alongside a car and lean into it: a wobble, no crash, speed scrubbed.
     const config = makeConfig({ riders: SOLO, types: [CAR, TRUCK], tuning: NO_TRAFFIC });
     const world = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 0.3, dir: 1 }, speed: 20 }]);
@@ -569,29 +571,32 @@ describe('traffic-1 sim acceptance', () => {
       Math.abs((st.cd[0] ?? 0) - (world.movers[0]?.pos.d ?? 0)) - (CAR.widthM + TRAFFIC.riderWidthM) / 2;
     expect(side).toBeGreaterThanOrEqual(0);
     expect(side).toBeLessThan(0.1);
-    // Still unstable: pull clear for a moment, then brush the car again and crash.
+    // Still unstable: pull clear for a moment, then brush the car again, slowly: a wobble again.
     const again: SimEvent[] = [];
     const rider0 = world.movers[0];
     if (rider0) rider0.pos.d -= 0.6;
     again.push(...stepWorld(world, config, SCENARIO, [hold(150)]));
     expect(st.contactWith[0]).toBe(-1);
+    expect(st.unstableS[0]).toBeGreaterThan(0);
     if (rider0) rider0.pos.d = (st.cd[0] ?? 0) - (CAR.widthM + TRAFFIC.riderWidthM) / 2 + 0.3;
     again.push(...stepWorld(world, config, SCENARIO, [hold(150)]));
-    const crash = again.find((e) => e.type === 'crash');
-    expect(crash?.data['cause']).toBe('traffic');
-    expect(crash?.data['hazard']).toBe('normal');
+    expect(again.filter((e) => e.type === 'crash')).toEqual([]);
+    const second = again.find((e) => e.type === 'wobble');
+    expect(second?.data['cause']).toBe('traffic');
+    expect(Number(second?.data['impactMps'])).toBeLessThan(TRAFFIC.solidHitMps);
 
-    // A truck crashes you on the first touch, even a side brush.
+    // A truck: the same slow side brush is a wobble too, its vehicle named.
     const w2 = scenarioWorld(config, [{ pos: { edge: 0, s: 100, d: 0.1, dir: 1 }, speed: 20 }]);
     const truck = placeVehicle(w2, config, { type: 1, u: 101, dir: 1, v0: 20, speed: 20 });
     const e2: SimEvent[] = [];
-    for (let i = 0; i < 600 && !e2.some((e) => e.type === 'crash'); i++)
+    for (let i = 0; i < 600 && trafficState(w2).contactWith[0] === -1; i++)
       e2.push(...stepWorld(w2, config, SCENARIO, [{ steer: 40, throttle: 150, brake: 0, flags: 0 }]));
-    const truckCrash = e2.find((e) => e.type === 'crash');
-    expect(truckCrash?.data['hazard']).toBe('big');
-    expect(truckCrash?.data['hit']).toBe('side');
-    expect(truckCrash?.target).toBe(trafficState(w2).id[truck]);
-    expect(vehicleInfo(w2, config, truckCrash?.target ?? -1)?.contentId).toBe('base:truck');
+    expect(e2.filter((e) => e.type === 'crash')).toEqual([]);
+    const truckWobble = e2.find((e) => e.type === 'wobble');
+    expect(truckWobble?.data['hazard']).toBe('big');
+    expect(truckWobble?.data['hit']).toBe('side');
+    expect(truckWobble?.target).toBe(trafficState(w2).id[truck]);
+    expect(vehicleInfo(w2, config, truckWobble?.target ?? -1)?.contentId).toBe('base:truck');
   });
 
   it('the density sliders: oncoming at zero spawns none, and turning it up mid-race brings them', () => {

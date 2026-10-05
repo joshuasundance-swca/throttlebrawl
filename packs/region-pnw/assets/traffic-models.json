@@ -1,10 +1,30 @@
 {
   "formatVersion": 1,
-  "notes": "Render-only (playtest 3, T12.2): see the base pack's traffic-models.json. The Pacific Northwest's own types that draw from a shared base-pack model; its other types keep their figures until its own models arrive.",
+  "notes": "Render-only (playtest 3, T12.2; playtest 4 run B): see the base pack's traffic-models.json. The Pacific Northwest's own types that draw from a model: the muddy pickup from the shared pickup, and the log truck, the camper van, the kayak wagon and the Portland streetcar from this pack's own models (models/traffic/<name> in this pack's assets). Its other types keep their figures.",
   "types": {
     "region-pnw:muddy-pickup": {
       "models": ["models/traffic/pickup"],
       "paint": ["#5d6b4f", "#7a3b2a", "#3d4a3f"]
+    },
+    "region-pnw:log-truck": {
+      "models": ["models/traffic/log-truck"],
+      "paint": ["#7a3b2a", "#3d4a3f", "#c9b48a"]
+    },
+    "region-pnw:camper-van": {
+      "models": ["models/traffic/camper-van"],
+      "paint": ["#e8e2c8", "#9fb6a8", "#d9a441"]
+    },
+    "region-pnw:mossy-wagon": {
+      "models": ["models/traffic/sedan"],
+      "paint": ["#5d6b4f", "#8a8f86", "#6e4b3a"]
+    },
+    "region-pnw:wagon-with-kayaks": {
+      "models": ["models/traffic/wagon-with-kayaks"],
+      "paint": ["#3d5a6c", "#8a8f86", "#6e4b3a"]
+    },
+    "region-pnw:pdx-streetcar": {
+      "models": ["models/traffic/pdx-streetcar"],
+      "paint": ["#b8433a", "#2f6f73", "#d8d2c4"]
     }
   }
 }

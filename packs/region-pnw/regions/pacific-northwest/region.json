@@ -4,6 +4,7 @@
   "name": "The Pacific Northwest",
   "chapter": 2,
   "blurb": "Two lanes, a million trees, and a ferry that left without you.",
+  "signStyle": "town",
   "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge", "osm-pnw-samish", "osm-pnw-portland"],
   "timeOfDayOptions": [
     {
@@ -14,7 +15,7 @@
     {
       "id": "noon",
       "lighting": "pnw-overcast-drizzle",
-      "palette": { "sky": "#aab5b1", "fog": "#b7c0bb", "water": "#4c6762" }
+      "palette": { "sky": "#aab5b1", "fog": "#b7c0bb", "water": "#4c6762", "rain": "#c4ceca" }
     },
     {
       "id": "dusk",
@@ -23,6 +24,7 @@
         "sky": "#8a8296",
         "fog": "#8f8a9a",
         "water": "#3f5160",
+        "rain": "#c4ceca",
         "sunlight": "#a68f8f",
         "skylight": "#b9b4cc"
       }
@@ -38,7 +40,6 @@
     "foliage": "#2f4f39",
     "foliageDark": "#1f3628",
     "trunk": "#55433a",
-    "rain": "#c4ceca",
     "sunlight": "#b4b6ad",
     "skylight": "#e2e9e5",
     "rail": "#7d6c57",
@@ -179,6 +180,13 @@
       "status": "live",
       "note": "NEW, playtest 3, T12.6: the name board of the third food-cart model (`pdx_food_cart_c_name`). An invented business."
     },
+    {
+      "id": "pdx-chinatown-gate-plaque",
+      "text": "CHINATOWN. UMBRELLAS WELCOME.",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, B7 (CX5's item 13): the words on the plaque of Old Town's Chinatown gate on West Burnside, a text surface on the model's `pdx_chinatown_gate_plaque` panel. The joke is the weather, aimed at no one's neighbourhood (the tone guide's hard line on Portland's Old Town and Chinatown). A taste call for the maintainer; vetoable like any sign, and a cut leaves the plaque blank."
+    },
     { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
     {
@@ -318,7 +326,7 @@
   ],
   "meta": {
     "status": "live",
-    "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the palette carries it (W-O, 2026-10-01, render only): `rain` turns on the drizzle, `sunlight` and `skylight` set the overcast light, and `foliage`, `foliageDark` and `trunk` paint the conifers. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto. Playtest 3 (T10.5): a rainy `dusk` for downtown Portland's neon hour (the rain palette key is on in every time of day), and two traffic areas, `pdx-blocks` and `pdx-deck`, that give Bridge City city cars, cyclists and the streetcar instead of the forest's mix (the four `site` signs on its roads are placed by its road files).",
+    "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the palette carries it (W-O, 2026-10-01, render only): `rain` turns on the drizzle, `sunlight` and `skylight` set the overcast light, and `foliage`, `foliageDark` and `trunk` paint the conifers. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto. Playtest 3 (T10.5): a rainy `dusk` for downtown Portland's neon hour (the rain palette key was on in every time of day then; playtest 4 moved it to the noon and dusk options, so the dawn fog is dry, and an event's own `weather` can set rain or dry for its race), and two traffic areas, `pdx-blocks` and `pdx-deck`, that give Bridge City city cars, cyclists and the streetcar instead of the forest's mix (the four `site` signs on its roads are placed by its road files).",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }
