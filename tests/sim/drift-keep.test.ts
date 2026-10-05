@@ -140,7 +140,7 @@ const RIVAL_BUMP: Spec = {
 describe('drift keep: the same wall touch, a wobble or a crash', () => {
   // The slide's touch on the wall is 6.4 m/s. The crash speed (`riders.crashImpactMps`, 6 by
   // default) is the only thing that differs: under it the touch crashes, over it, it wobbles.
-  const crashed = play({ ...WALL, tuning: { 'riders.crashImpactMps': 4 } });
+  const crashed = play({ ...WALL, tuning: { 'riders.crashImpactMps': 2 } });
   const wobbled = play({ ...WALL, tuning: { 'riders.crashImpactMps': 12 } });
 
   it('a crash: the rider goes down and the chain is empty that tick, stays empty through the run-back and the remount', () => {
@@ -362,7 +362,7 @@ describe('drift keep: the ticker says DRIFT LOST only on a crash', () => {
   }
 
   it('a crash shows it once, as he goes down; a wall wobble, a bump, a brush and a punch never do', () => {
-    const down = play({ ...WALL, tuning: { 'riders.crashImpactMps': 4 } });
+    const down = play({ ...WALL, tuning: { 'riders.crashImpactMps': 2 } });
     const crashAt = ofType(down.events, 'crash')[0]?.tick ?? -1;
     expect(crashAt).toBeGreaterThan(0);
     const crash = strip(down);
@@ -384,7 +384,7 @@ describe('drift keep: the ticker says DRIFT LOST only on a crash', () => {
 
 describe('drift keep: the replay hash stays deterministic', () => {
   const cases: [string, Spec][] = [
-    ['a wall crash', { ...WALL, tuning: { 'riders.crashImpactMps': 4 } }],
+    ['a wall crash', { ...WALL, tuning: { 'riders.crashImpactMps': 2 } }],
     ['a wall wobble', { ...WALL, tuning: { 'riders.crashImpactMps': 12 } }],
     ['a rival bump', RIVAL_BUMP],
   ];
