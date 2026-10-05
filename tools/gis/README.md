@@ -371,8 +371,15 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   the right; `square-plaza` on Broadway South, on the left, over the courthouse-square zone), written by
   hand into this config and the baked roads like T10.5's dressing, since the OSM extract is not in the repo;
   `routes-pnw-dressing.test.ts` holds the two to each other. The cart pod's zone (`cart-pod`) gains
-  `dressing: food-carts`, which the renderer reads as a lot for Portland's carts. The Burnside operator
-  towers are not placed.
+  `dressing: food-carts`, which the renderer reads as a lot for Portland's carts. Playtest 4, B7 places the
+  rest of the bridges' kit from OSM's own tags (the Overpass API, checked against the baked roads; the
+  extract is not in the repo, so the baked features and report rows were written by hand, as the roof
+  sign's were): the Burnside Bridge's two bascule piers (`pdx_bascule_pier`) at the ends of the 70 m movable
+  span (OSM ways 245133024 and 117996189) and two 40 m truss bays (`pdx_truss_bay`) outward from each over the
+  95 m approach trusses; the Hawthorne Bridge's lift span (`pdx_lift_span`, 64 m) between the lift towers
+  and truss bays outward from them (2 west, 7 east, over OSM's 72 m and 273 m of truss). Each is an
+  `overRoad` entry of the config's `landmarks` list. The Chinatown gate is a road feature of West
+  Burnside (`chinatown-gate`, with the render param `crossStreet`) at OSM node 2544562055.
 - **Size:** 17 files, 200 KB minified, 56.2 KB gzip. The three bridge roads sample every 4 m.
   The still scene on the main path draws at most 58 of 120 calls (mean 37) before the Portland
   facades (T12.4) add theirs.

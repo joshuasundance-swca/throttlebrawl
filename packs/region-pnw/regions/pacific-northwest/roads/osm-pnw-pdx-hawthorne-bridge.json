@@ -147,6 +147,126 @@
         "model": "pdx-landmarks#pdx_lift_tower",
         "overRoad": true
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-lift-span",
+      "s0": 246.1481,
+      "s1": 310.1481,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_lift_span",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-west-1",
+      "s0": 195.5925,
+      "s1": 235.5925,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-west-2",
+      "s0": 155.5925,
+      "s1": 195.5925,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-1",
+      "s0": 320.7036,
+      "s1": 360.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-2",
+      "s0": 360.7036,
+      "s1": 400.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-3",
+      "s0": 400.7036,
+      "s1": 440.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-4",
+      "s0": 440.7036,
+      "s1": 480.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-5",
+      "s0": 480.7036,
+      "s1": 520.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-6",
+      "s0": 520.7036,
+      "s1": 560.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
+    },
+    {
+      "kind": "landmark",
+      "id": "hawthorne-truss-east-7",
+      "s0": 560.7036,
+      "s1": 600.7036,
+      "d0": -12.0,
+      "d1": 12.0,
+      "params": {
+        "model": "pdx-landmarks#pdx_truss_bay",
+        "overRoad": true
+      }
     }
   ],
   "barriers": [
