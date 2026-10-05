@@ -1,0 +1,256 @@
+{
+  "formatVersion": 1,
+  "size": 1024,
+  "tile": 128,
+  "gutterPx": 4,
+  "white": [0.0625, 0.0625],
+  "tiles": {
+    "white": {
+      "rect": [0.00390625, 0.00390625, 0.12109375, 0.12109375],
+      "kind": "facade",
+      "mean": "#ffffff"
+    },
+    "brick-running": {
+      "rect": [0.12890625, 0.00390625, 0.24609375, 0.12109375],
+      "kind": "facade",
+      "mean": "#cdcdcd"
+    },
+    "brick-flemish": {
+      "rect": [0.25390625, 0.00390625, 0.37109375, 0.12109375],
+      "kind": "facade",
+      "mean": "#cfcfcf"
+    },
+    "brick-corbelled-cornice": {
+      "rect": [0.37890625, 0.00390625, 0.49609375, 0.12109375],
+      "kind": "facade",
+      "mean": "#cecece"
+    },
+    "cast-iron-round-arches": {
+      "rect": [0.50390625, 0.00390625, 0.62109375, 0.12109375],
+      "kind": "facade",
+      "mean": "#acacac"
+    },
+    "cast-iron-pilasters": {
+      "rect": [0.62890625, 0.00390625, 0.74609375, 0.12109375],
+      "kind": "facade",
+      "mean": "#949494"
+    },
+    "ribbon-windows-1": {
+      "rect": [0.75390625, 0.00390625, 0.87109375, 0.12109375],
+      "kind": "facade",
+      "mean": "#898989"
+    },
+    "ribbon-windows-2": {
+      "rect": [0.87890625, 0.00390625, 0.99609375, 0.12109375],
+      "kind": "facade",
+      "mean": "#858585"
+    },
+    "granite-bands": {
+      "rect": [0.00390625, 0.12890625, 0.12109375, 0.24609375],
+      "kind": "facade",
+      "mean": "#939393"
+    },
+    "granite-bands-wide": {
+      "rect": [0.12890625, 0.12890625, 0.24609375, 0.24609375],
+      "kind": "facade",
+      "mean": "#979797"
+    },
+    "warehouse-steel-sash-1": {
+      "rect": [0.25390625, 0.12890625, 0.37109375, 0.24609375],
+      "kind": "facade",
+      "mean": "#949494"
+    },
+    "warehouse-steel-sash-2": {
+      "rect": [0.37890625, 0.12890625, 0.49609375, 0.24609375],
+      "kind": "facade",
+      "mean": "#8e8e8e"
+    },
+    "timber-shiplap": {
+      "rect": [0.50390625, 0.12890625, 0.62109375, 0.24609375],
+      "kind": "facade",
+      "mean": "#cdcdcd"
+    },
+    "timber-board-batten": {
+      "rect": [0.62890625, 0.12890625, 0.74609375, 0.24609375],
+      "kind": "facade",
+      "mean": "#c5c5c5"
+    },
+    "timber-shakes": {
+      "rect": [0.75390625, 0.12890625, 0.87109375, 0.24609375],
+      "kind": "facade",
+      "mean": "#bababa"
+    },
+    "cedar-shingles": {
+      "rect": [0.87890625, 0.12890625, 0.99609375, 0.24609375],
+      "kind": "facade",
+      "mean": "#b4b4b4"
+    },
+    "corrugated-metal-1": {
+      "rect": [0.00390625, 0.25390625, 0.12109375, 0.37109375],
+      "kind": "facade",
+      "mean": "#b6b6b6"
+    },
+    "corrugated-metal-2": {
+      "rect": [0.12890625, 0.25390625, 0.24609375, 0.37109375],
+      "kind": "facade",
+      "mean": "#bababa"
+    },
+    "stucco": {
+      "rect": [0.25390625, 0.25390625, 0.37109375, 0.37109375],
+      "kind": "facade",
+      "mean": "#eeeeee"
+    },
+    "storefront-transoms-1": {
+      "rect": [0.37890625, 0.25390625, 0.49609375, 0.37109375],
+      "kind": "facade",
+      "mean": "#898989"
+    },
+    "storefront-transoms-2": {
+      "rect": [0.50390625, 0.25390625, 0.62109375, 0.37109375],
+      "kind": "facade",
+      "mean": "#888888"
+    },
+    "food-cart-front-1": {
+      "rect": [0.62890625, 0.25390625, 0.74609375, 0.37109375],
+      "kind": "art",
+      "mean": "#6a7c72"
+    },
+    "food-cart-front-2": {
+      "rect": [0.75390625, 0.25390625, 0.87109375, 0.37109375],
+      "kind": "art",
+      "mean": "#997d75"
+    },
+    "food-cart-front-3": {
+      "rect": [0.87890625, 0.25390625, 0.99609375, 0.37109375],
+      "kind": "art",
+      "mean": "#96906e"
+    },
+    "food-cart-front-4": {
+      "rect": [0.00390625, 0.37890625, 0.12109375, 0.49609375],
+      "kind": "art",
+      "mean": "#658581"
+    },
+    "food-cart-front-5": {
+      "rect": [0.12890625, 0.37890625, 0.24609375, 0.49609375],
+      "kind": "art",
+      "mean": "#737179"
+    },
+    "food-cart-front-6": {
+      "rect": [0.25390625, 0.37890625, 0.37109375, 0.49609375],
+      "kind": "art",
+      "mean": "#816e69"
+    },
+    "food-cart-front-7": {
+      "rect": [0.37890625, 0.37890625, 0.49609375, 0.49609375],
+      "kind": "art",
+      "mean": "#8e836c"
+    },
+    "food-cart-front-8": {
+      "rect": [0.50390625, 0.37890625, 0.62109375, 0.49609375],
+      "kind": "art",
+      "mean": "#637375"
+    },
+    "storefront-1": {
+      "rect": [0.62890625, 0.37890625, 0.74609375, 0.49609375],
+      "kind": "art",
+      "mean": "#647472"
+    },
+    "storefront-2": {
+      "rect": [0.75390625, 0.37890625, 0.87109375, 0.49609375],
+      "kind": "art",
+      "mean": "#757574"
+    },
+    "storefront-3": {
+      "rect": [0.87890625, 0.37890625, 0.99609375, 0.49609375],
+      "kind": "art",
+      "mean": "#747c71"
+    },
+    "storefront-4": {
+      "rect": [0.00390625, 0.50390625, 0.12109375, 0.62109375],
+      "kind": "art",
+      "mean": "#627878"
+    },
+    "storefront-5": {
+      "rect": [0.12890625, 0.50390625, 0.24609375, 0.62109375],
+      "kind": "art",
+      "mean": "#697174"
+    },
+    "storefront-6": {
+      "rect": [0.25390625, 0.50390625, 0.37109375, 0.62109375],
+      "kind": "art",
+      "mean": "#6e706e"
+    },
+    "storefront-7": {
+      "rect": [0.37890625, 0.50390625, 0.49609375, 0.62109375],
+      "kind": "art",
+      "mean": "#71776f"
+    },
+    "storefront-8": {
+      "rect": [0.50390625, 0.50390625, 0.62109375, 0.62109375],
+      "kind": "art",
+      "mean": "#627173"
+    },
+    "mural-leaping-salmon": {
+      "rect": [0.62890625, 0.50390625, 0.74609375, 0.62109375],
+      "kind": "art",
+      "mean": "#617072"
+    },
+    "mural-heron": {
+      "rect": [0.75390625, 0.50390625, 0.87109375, 0.62109375],
+      "kind": "art",
+      "mean": "#62786b"
+    },
+    "mural-rain-over-bridge": {
+      "rect": [0.87890625, 0.50390625, 0.99609375, 0.62109375],
+      "kind": "art",
+      "mean": "#728d8f"
+    },
+    "mural-owl": {
+      "rect": [0.00390625, 0.62890625, 0.12109375, 0.74609375],
+      "kind": "art",
+      "mean": "#54655c"
+    },
+    "bridge-truss-lattice": {
+      "rect": [0.12890625, 0.62890625, 0.24609375, 0.74609375],
+      "kind": "art",
+      "mean": "#4f6760"
+    },
+    "bridge-rivet-plates": {
+      "rect": [0.25390625, 0.62890625, 0.37109375, 0.74609375],
+      "kind": "art",
+      "mean": "#4a625e"
+    },
+    "bridge-gothic-tracery": {
+      "rect": [0.37890625, 0.62890625, 0.49609375, 0.74609375],
+      "kind": "art",
+      "mean": "#4c655d"
+    }
+  },
+  "palette": [
+    { "hex": "#ffffff", "role": "grey_0" },
+    { "hex": "#eeeeee", "role": "grey_1" },
+    { "hex": "#d8d8d8", "role": "grey_2" },
+    { "hex": "#c0c0c0", "role": "grey_3" },
+    { "hex": "#a4a4a4", "role": "grey_4" },
+    { "hex": "#858585", "role": "grey_5" },
+    { "hex": "#626262", "role": "grey_6" },
+    { "hex": "#414141", "role": "grey_7" },
+    { "hex": "#202020", "role": "grey_8" },
+    { "hex": "#233239", "role": "ink" },
+    { "hex": "#50636c", "role": "slate" },
+    { "hex": "#426675", "role": "glass" },
+    { "hex": "#91afb7", "role": "glint" },
+    { "hex": "#e2d9c2", "role": "cream" },
+    { "hex": "#647863", "role": "moss" },
+    { "hex": "#344e44", "role": "leaf" },
+    { "hex": "#8eaaa8", "role": "rain" },
+    { "hex": "#c87b6b", "role": "salmon" },
+    { "hex": "#955b52", "role": "brick" },
+    { "hex": "#ac8757", "role": "copper" },
+    { "hex": "#786174", "role": "plum" },
+    { "hex": "#c1a65e", "role": "ochre" },
+    { "hex": "#558b86", "role": "teal" },
+    { "hex": "#8c7662", "role": "timber" },
+    { "hex": "#7f9290", "role": "steel" }
+  ]
+}
