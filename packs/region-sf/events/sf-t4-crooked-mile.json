@@ -1,0 +1,60 @@
+{
+  "type": "event",
+  "id": "sf-t4-crooked-mile",
+  "name": "The Crooked Mile",
+  "kind": "classic-race",
+  "region": "san-francisco",
+  "timeOfDay": "golden-hour",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-lombard-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["base:kevin-from-accounting", "base:dial-up", "base:chad-speedwell"],
+    "paceMps": 43
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [8000, 4400, 2800, 1200, 800, 400, 250],
+    "perTakedownCash": 425,
+    "perNearMissCash": 40,
+    "perAirtimeCash": 60,
+    "perOncomingSecondCash": 16,
+    "takedownComboScale": 0.5,
+    "perStealCash": 100
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Crooked Mile (playtest 3, T10.6; the maintainer, round 3: \"Lombard becomes a slow 'crooked mile' race if drift can't hold there\"). The real Lombard Street, 1.8 km from the climb to Hyde, down the one-lane brick block with its eight hairpins, on to Telegraph Hill. The T2.6 probe found a drift holds there only at lowered floors (12 and 6 m/s) an event cannot set, so it is a classic race, not a drift race: a small field of three rivals (the block is one lane, no place for six), and the drift race stays on Twin Peaks (Figure Eight, the tier before). It takes the slot the plan drew for a second drift race, \"Crookedest Street, Allegedly\", since a tier holds three regular races and a second drift race on the same hairpins would add no variety. The usual cop and heat. The purse and the style rewards are global tier 12's. [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}
