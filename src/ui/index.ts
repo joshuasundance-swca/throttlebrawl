@@ -436,7 +436,10 @@ ${REDUCE_MOTION_CSS}
   #ui #pause-screen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; justify-items: center;
     overflow: hidden; }
-  #pause-main { grid-column: 1; grid-row: 1; gap: 8px; }
+  /* The menu scrolls in its column when it is taller than the screen (the largest Text size on a
+     640 x 360 phone put "Paused" 40 px above the top), as the cards beside it do. [default] */
+  #pause-main { grid-column: 1; grid-row: 1; gap: 8px; max-height: 100%; overflow-y: auto; }
+  #pause-main > * { flex-shrink: 0; }
   #pause-build { grid-column: 1; grid-row: 2; }
   #pause-cards { grid-column: 2; grid-row: 1 / 3; max-height: 100%; overflow-y: auto; gap: 8px; }
   /* Playtest 4's wheelie key made the legend 15 rows: one size down here keeps the open legend and
