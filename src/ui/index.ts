@@ -430,9 +430,11 @@ ${TICKER_CSS}
   #pause-build { grid-column: 1; grid-row: 2; }
   #pause-cards { grid-column: 2; grid-row: 1 / 3; max-height: 100%; overflow-y: auto; gap: 8px; }
   /* Playtest 4's wheelie key made the legend 15 rows: one size down here keeps the open legend and
-     the first "cut this" row on a 412 px high phone at once (they were 20 px short). [default] */
+     the first "cut this" row on a 412 px high phone at once (they were 20 px short). The U-turn key's
+     row (2026-10-05) put them 2 px short again; tighter lines (1.15, not 1.3) win back about 2 px a
+     line. [default] */
   #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row;
-    font-size: 12px; line-height: 1.3; gap: 1px 14px; }
+    font-size: 12px; line-height: 1.15; gap: 1px 14px; }
 }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
