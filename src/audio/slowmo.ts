@@ -3,9 +3,10 @@
 // Two nodes sit on the bus inputs: every effects source feeds `fxIn` (a low-pass that stays wide
 // open outside slow motion) and the music loop feeds `musicIn` (a duck gain). The bus gains
 // themselves are untouched, so they keep following the volume sliders. Pitch is applied by the
-// sources: engines through their detune, cues when they start (index.ts reads `pitch()`).
+// sources: engines through their detune, cues when they start (system.ts reads `pitch()`).
+import { SLOWMO_DEFAULTS } from './tuning';
 
-/** Presentation-only feel numbers, each a tuning slider (index.ts, AUDIO_TUNING). */
+/** Presentation-only feel numbers, each a tuning slider (tuning.ts, AUDIO_TUNING). */
 export interface SlowmoParams {
   /** Low-pass cutoff on the effects bus during slow motion, Hz. */
   lowpassHz: number;
@@ -17,12 +18,8 @@ export interface SlowmoParams {
   glideS: number;
 }
 
-export const SLOWMO_DEFAULTS: SlowmoParams = {
-  lowpassHz: 900,
-  pitchSemis: -5,
-  musicDuck: 0.35,
-  glideS: 0.06,
-};
+// Its numbers live in tuning.ts beside the slider that reads them, off the lazy audio engine.
+export { SLOWMO_DEFAULTS };
 
 /** The low-pass cutoff outside slow motion: effectively open. */
 export const OPEN_HZ = 20000;

@@ -42,9 +42,9 @@ import type {
 } from '../sim/api';
 import { AirPays, bikeScreenBox } from './air-pays';
 import { Boards, contentLines, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
-import { FeelEffects, type FeelCounts } from './effects';
-import { EventProps } from './event-props';
-import { Smashables } from './smashables';
+import type { FeelCounts, FeelEffects } from './effects';
+import type { EventPropCounts, EventProps } from './event-props';
+import type { Smashables } from './smashables';
 import { createFlatLook, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
@@ -61,7 +61,7 @@ import type { LandmarkCounts, LandmarkLayer } from './landmarks';
 import type { LandmarkKit, LandmarkKitId } from './models';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
-import { Rain, rainColourOf } from './rain';
+import type { Rain } from './rain';
 import { roofSpans, underRoof, type RoofSpan } from './roofs';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
@@ -72,7 +72,7 @@ import {
   type RoadScene,
   type RoadSceneStats,
 } from './road-mesh';
-import { SpeedLines, type SpeedLineCounts } from './speed-lines';
+import type { SpeedLineCounts, SpeedLines } from './speed-lines';
 import { applyRenderParam, defaultRenderParams } from './tuning';
 import { EntityViews, entityById, type EntityViewCounts, type EntityViewOptions } from './views';
 
@@ -284,33 +284,60 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   // it shows): the road chunks past it are culled, and the depth buffer is finer up close.
   const camera = new PerspectiveCamera(62, 16 / 9, 0.3, CAMERA_FAR_M);
   const params = defaultRenderParams();
-  const effects = new FeelEffects(look, params);
-  const views = new EntityViews(look, { ...opts, effects, params });
+  const views = new EntityViews(look, { ...opts, params });
   const boards = new Boards(look);
   // Air that pays (the pitch deck's #13): the chalk mark, the newspaper and the landing one-liner.
   const airPays = new AirPays();
-  // W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
-  const eventProps = new EventProps(look);
-  // Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
-  // share the road events' still batch: one draw call for both (the draw-call headroom).
-  const smashables = new Smashables(look, Math.random, eventProps.batches().still);
-  // The tint and the speed lines ride on the camera, so the camera joins the scene graph.
-  const speedLines = new SpeedLines(look, params);
-  // The drizzle rides on the camera too (rain.ts).
-  const rain = new Rain(look, params);
-  camera.add(effects.tint, speedLines.root, rain.root);
+  // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
+  // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
+  // can start (it waits for the base pack's real roads); until then none is drawn.
+  // - The feel effects (effects.ts: sparks, the splash, the slow-motion tint), the speed lines and
+  //   the drizzle a region's palette asks for (rain.ts). The tint, the speed lines and the drizzle
+  //   ride on the camera, so the camera joins the scene graph.
+  // - W-P: the road events' props (cones, flares, signs, the people working them), from the snapshot.
+  // - Run W-T: the roadside smashables, standing or in pieces, from the snapshot. The standing ones
+  //   share the road events' still batch: one draw call for both (the draw-call headroom).
+  let race: {
+    effects: FeelEffects;
+    speedLines: SpeedLines;
+    rain: Rain;
+    rainColourOf: (env: LookEnv) => string | null;
+    eventProps: EventProps;
+    smashables: Smashables;
+  } | null = null;
+  let raceLoading = false;
+  const loadRace = () => {
+    if (race || raceLoading) return;
+    raceLoading = true;
+    void import('./race-parts')
+      .then((m) => {
+        const effects = new m.FeelEffects(look, params);
+        const speedLines = new m.SpeedLines(look, params);
+        const rain = new m.Rain(look, params);
+        if (rainEnv) rain.set(m.rainColourOf(rainEnv));
+        const eventProps = new m.EventProps(look);
+        const smashables = new m.Smashables(look, Math.random, eventProps.batches().still);
+        views.setEffects(effects);
+        camera.add(effects.tint, speedLines.root, rain.root);
+        for (const o of [effects.root, eventProps.root, smashables.root]) {
+          persistent.add(o);
+          scene.add(o);
+        }
+        race = { effects, speedLines, rain, rainColourOf: m.rainColourOf, eventProps, smashables };
+      })
+      .catch(() => {
+        raceLoading = false; // tried again on the next frame
+      });
+  };
+  const noProps: EventPropCounts = { byKind: {}, total: 0, signs: [] };
+  const noFeel: FeelCounts = { sparks: 0, drops: 0, paper: 0, rings: 0, reactors: 0, tint: 0 };
+  const noLines: SpeedLineCounts = { level: 0, lines: 0 };
+  /** The last road's look environment: the drizzle's colour comes from it once rain.ts is in. */
+  let rainEnv: LookEnv | null = null;
   const backdrop = new Backdrop();
-  const persistent = new Set<Object3D>([
-    views.root,
-    effects.root,
-    boards.root,
-    airPays.root,
-    eventProps.root,
-    smashables.root,
-    camera,
-    backdrop.root,
-  ]);
+  const persistent = new Set<Object3D>([views.root, boards.root, airPays.root, camera, backdrop.root]);
   for (const o of persistent) scene.add(o);
+  loadRace();
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
@@ -729,7 +756,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       look.setupScene(scene, env);
       regionFog = env.palette?.['fog'] !== undefined;
       applyRegionFog();
-      rain.set(rainColourOf(env));
+      rainEnv = env;
+      race?.rain.set(race.rainColourOf(env));
       const nextPalette = env.palette;
       if (JSON.stringify(nextPalette ?? {}) !== JSON.stringify(palette ?? {})) {
         palette = nextPalette;
@@ -788,12 +816,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       camera.position.set(pose.x, pose.y, pose.z);
       camera.lookAt(pose.lookX, pose.lookY, pose.lookZ);
       if (pose.roll) camera.rotateZ(pose.roll);
-      effects.fitTint(camera);
+      race?.effects.fitTint(camera);
       // Speed lines follow the player's speed (the entity in slot 0), over real frame time.
       const t = now();
       backdrop.update(camera.position, scene, t);
-      eventProps.sync(curr, t);
-      smashables.sync(curr, t);
+      if (race) {
+        race.eventProps.sync(curr, t);
+        race.smashables.sync(curr, t);
+      } else loadRace();
       airPays.update(prev, curr, alpha, t);
       sceneryVisible = roadScene
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
@@ -828,14 +858,14 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       airboats?.update(curr, t, dt * (curr?.timeScale ?? 1));
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
-      speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
+      race?.speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
       // No drizzle under a roof (the ferry's passenger deck): the rain is a screen overlay, so the
       // camera standing under a roof is what stops it (roofs.ts).
       const sheltered =
         roadArgs !== null && roofs.length > 0
           ? underRoof(roadArgs.road, roofs, pose.x, pose.y, pose.z, me?.road.edge)
           : false;
-      rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), sheltered);
+      race?.rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), sheltered);
       renderer.info.reset();
       look.frame(t, params);
       const film = look.post(params);
@@ -881,7 +911,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         width: canvas.width,
         height: canvas.height,
         setPieces: roadScene?.stats.setPieces ?? [],
-        eventProps: eventProps.counts(),
+        eventProps: race?.eventProps.counts() ?? noProps,
       };
     },
     viewCounts: () => views.viewCounts(),
@@ -913,8 +943,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
     },
-    feelCounts: () => effects.counts(),
-    speedLineCounts: () => speedLines.counts(),
+    feelCounts: () => race?.effects.counts() ?? noFeel,
+    speedLineCounts: () => race?.speedLines.counts() ?? noLines,
     get aspect() {
       return camera.aspect;
     },
@@ -947,7 +977,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       road: roadScene?.stats ?? null,
       models: modelReport,
       visible: sceneryVisible,
-      rain: rain.count(),
+      rain: race?.rain.count() ?? 0,
       roadside: roadside?.counts() ?? null,
       backdrop: backdrop.status().stats,
       downtown: downtown?.counts() ?? null,

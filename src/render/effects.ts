@@ -25,6 +25,16 @@ import type { RenderParams } from './tuning';
 /** Sea level: the water plane a splash lands on (docs/architecture.md, "Crash tumble"). */
 export const WATER_Y = 0;
 const SPARK_CAP = 128;
+/**
+ * A hit's spark is a chip this big, m (G7, the wave B live check: at 0.12 m a burst beside the
+ * player's bike, two metres from the lens, was a cloud of big flat yellow polygons over the lower
+ * left of the screen). Inside SPARK_NEAR_M of the lens a chip is also scaled down with its
+ * distance, so its size on screen stops growing: the closer the burst, the finer its chips.
+ */
+const SPARK_SIZE_M = 0.09;
+const SPARK_NEAR_M = 6;
+/** The least a spark shrinks to, as a share of its size, however close it is to the lens. */
+const SPARK_NEAR_FLOOR = 0.25;
 const DROP_CAP = 96;
 /** W-T: sheets of paper from a burst briefcase; they drift down slowly (a light gravity). */
 const PAPER_CAP = 64;
@@ -64,6 +74,13 @@ class Particles {
     private readonly gravity: number,
     /** Particles below this y while falling die (droplets back into the sea). */
     private readonly floorY: number | null,
+    /**
+     * Where the camera is, or null: with it, a particle closer to the lens than `nearM` is drawn
+     * smaller in proportion (never below `nearFloor` of its size), so its size on screen stays put.
+     */
+    private readonly eye: Vector3 | null = null,
+    private readonly nearM = 0,
+    private readonly nearFloor = 1,
   ) {
     this.mesh = new InstancedMesh(geometry, material, capacity);
     this.mesh.name = name;
@@ -118,10 +135,12 @@ class Particles {
       this.p[w * 3 + 2] = z;
       this.life[w] = life;
       const k = life / (this.maxLife[w] || 1);
-      this.mesh.setMatrixAt(
-        w,
-        this.m.compose(this.pos.set(x, y, z), this.q, this.scale.setScalar(0.35 + 0.65 * k)),
-      );
+      let size = 0.35 + 0.65 * k;
+      if (this.eye && this.nearM > 0) {
+        const d = Math.hypot(x - this.eye.x, y - this.eye.y, z - this.eye.z);
+        size *= Math.min(1, Math.max(this.nearFloor, d / this.nearM));
+      }
+      this.mesh.setMatrixAt(w, this.m.compose(this.pos.set(x, y, z), this.q, this.scale.setScalar(size)));
       w++;
     }
     this.live = w;
@@ -173,7 +192,9 @@ const SKIFF_PARTS: BoxPart[] = [
 
 const ARM_PARTS: BoxPart[] = [{ size: [0.13, 0.6, 0.13], at: [0, -0.3, 0], color: '#f2c14e' }];
 
-const SPARK_PARTS: BoxPart[] = [{ size: [0.12, 0.12, 0.12], at: [0, 0, 0], color: '#ffc23a' }];
+const SPARK_PARTS: BoxPart[] = [
+  { size: [SPARK_SIZE_M, SPARK_SIZE_M, SPARK_SIZE_M], at: [0, 0, 0], color: '#ffc23a' },
+];
 const DROP_PARTS: BoxPart[] = [{ size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#ffffff' }];
 /** A sheet of letter paper with a ruled line or two (the receipts were inside the briefcase). */
 const PAPER_PARTS: BoxPart[] = [
@@ -215,6 +236,9 @@ export class FeelEffects {
   private readonly fisherArms: [Group, Group];
   private tintLevel = 0;
   private now = 0;
+  /** The camera's place (fitTint refreshes it each frame); `eyeKnown` once it has been told. */
+  private readonly eye = new Vector3();
+  private eyeKnown = false;
   private readonly params: RenderParams;
 
   constructor(look: LookStyle, params: RenderParams) {
@@ -227,6 +251,9 @@ export class FeelEffects {
       SPARK_CAP,
       14,
       null,
+      this.eye,
+      SPARK_NEAR_M,
+      SPARK_NEAR_FLOOR,
     );
     this.drops = new Particles(
       'feel-splash-drops',
@@ -291,16 +318,35 @@ export class FeelEffects {
   burst(at: Point, strength: number, dirX = 0, dirZ = 0): void {
     const n = Math.round(this.params.sparkCount * strength);
     const speed = this.params.sparkSpeedMps;
+    // The way from the lens to the burst: a spark never flies back along it, at the camera (G7:
+    // sparks thrown at the lens filled the lower left of the screen).
+    let ax = 0;
+    let ay = 0;
+    let az = 0;
+    if (this.eyeKnown) {
+      ax = at.x - this.eye.x;
+      ay = at.y - this.eye.y;
+      az = at.z - this.eye.z;
+      const len = Math.hypot(ax, ay, az);
+      if (len > 1e-6) {
+        ax /= len;
+        ay /= len;
+        az /= len;
+      } else ax = ay = az = 0;
+    }
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = speed * (0.4 + 0.8 * Math.random());
-      this.sparks.spawn(
-        at,
-        Math.cos(a) * sp * 0.6 + dirX * sp,
-        speed * (0.3 + 0.7 * Math.random()),
-        Math.sin(a) * sp * 0.6 + dirZ * sp,
-        0.25 + 0.3 * Math.random(),
-      );
+      let vx = Math.cos(a) * sp * 0.6 + dirX * sp;
+      let vy = speed * (0.3 + 0.7 * Math.random());
+      let vz = Math.sin(a) * sp * 0.6 + dirZ * sp;
+      const toward = vx * ax + vy * ay + vz * az;
+      if (toward < 0) {
+        vx -= toward * ax;
+        vy -= toward * ay;
+        vz -= toward * az;
+      }
+      this.sparks.spawn(at, vx, vy, vz, 0.25 + 0.3 * Math.random());
     }
   }
 
@@ -397,6 +443,8 @@ export class FeelEffects {
 
   /** Sizes the tint to fill the camera's view just beyond its near plane. */
   fitTint(camera: Camera): void {
+    camera.getWorldPosition(this.eye);
+    this.eyeKnown = true;
     const cam = camera as PerspectiveCamera;
     const dist = Math.max(0.05, (cam.near ?? 0.1) * 1.5);
     const h = 2 * dist * Math.tan(((cam.fov ?? 60) * Math.PI) / 360);

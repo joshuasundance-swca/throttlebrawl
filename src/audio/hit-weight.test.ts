@@ -5,7 +5,7 @@ import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
 import { CUE_PATCHES } from './cue-patches';
 import { weaknessOf } from './cues';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { createAudio } from './index';
+import { createAudio } from './system';
 
 function rider(id: number, over: Partial<EntitySnapshot> = {}): EntitySnapshot {
   return {

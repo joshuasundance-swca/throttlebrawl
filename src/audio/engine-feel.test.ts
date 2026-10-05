@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEngineFeel, ENGINE_FEEL_DEFAULTS, heardRpm } from './engine-feel';
 import { fakeContextFactory } from './fake-context';
-import { createAudio, ENGINE_LEVELS } from './index';
+import { createAudio, ENGINE_LEVELS } from './system';
 import type { EntitySnapshot, SimSnapshot } from '../sim/api';
 
 const P = ENGINE_FEEL_DEFAULTS;

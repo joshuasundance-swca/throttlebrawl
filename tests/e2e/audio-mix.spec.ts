@@ -8,7 +8,8 @@ import ts from 'typescript';
 // - the bus gains still follow the settings;
 // - a pile-up does not clip (the phone check's "nothing clips in a pile-up", as a render).
 // The whole src/audio module is transpiled as-is and served from a routed path; it has no runtime
-// imports outside its folder (its sim imports are type-only).
+// imports outside its folder (its sim imports are type-only). The harness imports the engine
+// (system.ts) itself: index.ts's stand-in would fetch it as a lazy chunk, which this route leaves out.
 
 const dir = new URL('../../src/audio/', import.meta.url);
 const modules = new Map<string, string>();
@@ -51,7 +52,7 @@ async function render(page: Page, scenario: Scenario) {
       onEvents(e: unknown[], s?: Snap | null): void;
       inspect(): { slowmo: { active: boolean; lowpassHz: number } };
     };
-    const url = '/__audio-mix/index.js';
+    const url = '/__audio-mix/system.js';
     const m = (await import(url)) as {
       createAudio(o: { createContext: () => BaseAudioContext; offline: boolean }): Audio;
     };
@@ -320,7 +321,7 @@ test('the engine sits a few dB over the music at the default volumes, and a busy
           frame(s: Record<string, unknown> | null, playerId: number): void;
           inspect(): { engineFeel: { shifts: number; revs: number; pops: number } };
         };
-        const url = '/__audio-mix/index.js';
+        const url = '/__audio-mix/system.js';
         const m = (await import(url)) as {
           createAudio(o: Record<string, unknown>): Audio;
           stationsFromTable(t: Record<string, unknown>): unknown[];

@@ -15,7 +15,7 @@ import { CUE_PATCHES, SMASH_MATERIALS } from './cue-patches';
 import { BEAT_CUES, cueForEvent } from './cues';
 import { createEngineVoice, resolveEngineProfile } from './engine-patch';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { createAudio, RUNAWAY_BELL, SPUTTER } from './index';
+import { createAudio, RUNAWAY_BELL, SPUTTER } from './system';
 
 function rider(id: number, over: Partial<EntitySnapshot> = {}): EntitySnapshot {
   return {
