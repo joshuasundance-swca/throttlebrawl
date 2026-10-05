@@ -49,7 +49,7 @@ export const DEFAULT_KEY_MAP: KeyMap = {
 /** What each key action does, in player words, for the pause screen's legend (playtest 1). */
 export const KEY_ACTION_NAMES: Readonly<Record<KeyAction, string>> = {
   throttle: 'ride',
-  brake: 'brake',
+  brake: 'brake / U-turn',
   steerLeft: 'steer left',
   steerRight: 'steer right',
   attack: 'punch',

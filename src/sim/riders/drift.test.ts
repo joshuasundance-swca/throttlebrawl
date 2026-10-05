@@ -529,9 +529,9 @@ describe('drift: when it never starts', () => {
       { id: 'b', lengthM: Math.PI * 6, kappa: 1 / 6 },
       { id: 'c', lengthM: 200, kappa: 0 },
     ];
-    // Turned in short of full lock: below riders.uturnMps (12 m/s) the brake and full lock start a
-    // U-turn (sim/riders/uturn.ts), which wins. A Lombard drift event that lowers the floors under
-    // it must keep that in mind (T2.6).
+    // Turned in short of full lock (0.7). Braking into full lock below 12 m/s used to start a U-turn
+    // that won over a drift; since playtest 4 (P4-9) the U-turn has its own gesture
+    // (sim/riders/uturn.ts), so a lowered-floor drift on Lombard is not fought by it (T2.6).
     const script: Script = (h) => {
       const p = h.rider.pos;
       if (p.edge === 0 && p.s > 400 - 6) return input(0, 1, 0.7);

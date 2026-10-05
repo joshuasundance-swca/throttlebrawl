@@ -92,7 +92,7 @@ Already settled, so the audit's other options do not reopen them: the wheelie bu
 
 - The numbers: 7.5 % for the smoking slowdown, a countdown beat of one second, the button's place and size, and the hold's rise rate (all on the tuning panel where they are numbers).
 - The swipe's details: a slanted swipe down stays auto-aimed (it no longer picks a side), and a swipe down is still the kick.
-- The U-turn gesture's exact form and its keyboard and gamepad forms, and how Arcade and Free sit beside the steering-assist levels.
+- The U-turn gesture's exact form and its keyboard and gamepad forms (built: tap the brake, then press it again and hold it at full lock; the same on the brake key and the trigger), and how Arcade and Free sit beside the steering-assist levels.
 - Weather as a menu race option waits for a weather feature; the options are built in the order the code allows.
 - The order of the places' identity passes.
 

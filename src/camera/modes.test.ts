@@ -481,7 +481,8 @@ describe('camera-2: reduce-shake scales every shake', () => {
 describe('camera-2: every camera tuning value changes what the camera does', () => {
   /** A scripted minute of camera work that exercises every mode, as one flat trace of numbers. */
   function script(cam: FollowCamera): number[] {
-    const road = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0.004 }]));
+    // A tight bend (R 8 m, playtest 4's tight-bend look: it only moves the camera on a bend under its radius).
+    const road = createRoadNetwork(fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0.12 }]));
     const out: number[] = [];
     let s = 100;
     const rival = (at: number) => {

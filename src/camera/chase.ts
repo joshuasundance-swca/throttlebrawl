@@ -44,6 +44,10 @@
 // bike stays near the middle of the frame, and rolls on with the slip. On a wheelie it pulls back
 // and looks up with the nose. All of it eases in on the same springs, reduce-motion halves it, and
 // each number is a slider (`camera.drift*`, `camera.wheelie*`) that turns it off at 0.
+// Tight bends (playtest 4, P4-9): the look-ahead shortens on a bend tighter than
+// `camera.tightBendRadiusM` (its radius over that, down to `camera.tightBendMinShare`), and the
+// bearing spring slows by the same share, so Lombard Street's hairpins do not swing the view from one
+// apex to the next. A radius of 0 turns it off.
 // The camera never writes sim state and never reads anything but the target, the entities it is
 // handed and the road handle.
 import type { EntitySnapshot, MoverMode, RoadNetwork, SimEvent } from '../sim/api';
@@ -183,6 +187,8 @@ export interface ChaseParams {
   wheelieBackM: number;
   wheelieAimM: number;
   wheelieFovDeg: number;
+  tightBendRadiusM: number;
+  tightBendMinShare: number;
 }
 
 export interface ChaseRig {
@@ -238,6 +244,8 @@ const REMOUNT_CUT_RAD = 0;
 const DIR_CONFIDENCE = 0.25;
 /** A look-ahead point closer than this (a dead end just ahead) is replaced by the fallback. */
 const MIN_AIM_M = 2;
+/** How far apart the tight-bend look samples the road's curvature along the look-ahead, metres. */
+const TIGHT_STEP_M = 2;
 /** The longest frame the rig integrates; the loop already clamps to this. */
 const MAX_DT = 0.25;
 /** A victim flung further than this is framed as if it were this far away. */
@@ -337,6 +345,33 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
     return calm + (1 - calm) * shakeAmount;
   };
 
+  /**
+   * Playtest 4, P4-9 (audit F9b): "Lombard's hairpins feel impossible to control smoothly". The
+   * hairpins are about 21 m apart and the aim sat 18 m ahead, so it swung from one apex to the next.
+   * The look-ahead is scaled by the tightest bend within it, its radius over `tightBendRadiusM`
+   * (30 m), never under `tightBendMinShare`; 1 on a straight and on any bend of that radius or
+   * wider, and 1 when `tightBendRadiusM` is 0 (off).
+   */
+  const tightBendShare = (edge: number, s: number, dir: 1 | -1, lookM: number): number => {
+    const r0 = params.tightBendRadiusM;
+    if (!road || !(r0 > 0) || !(lookM > 0)) return 1;
+    const at = { edge, s, d: 0, dir };
+    let kappa = 0;
+    for (let a = 0; a <= lookM; a += TIGHT_STEP_M) {
+      if (a > 0) {
+        at.s += dir * TIGHT_STEP_M;
+        if (road.advance(at) === 'deadEnd') break;
+      }
+      kappa = Math.max(kappa, Math.abs(road.kappaAt(at.edge, at.s)));
+    }
+    if (!(kappa > 0)) return 1;
+    const floor = Math.min(1, Math.max(0, params.tightBendMinShare));
+    return Math.min(1, Math.max(floor, 1 / kappa / r0));
+  };
+
+  /** The tight-bend share the last goal used (1 off a tight bend): it shortens the aim and slows the bearing spring by the same share. */
+  let tight = 1;
+
   const goalFor = (t: CameraTarget, ctx: CameraContext | undefined, view: ViewMode): Goal => {
     const hx = -Math.sin(t.heading);
     const hz = -Math.cos(t.heading);
@@ -347,8 +382,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       haveTravel = true;
     }
     const helmet = view === 'helmet';
-    const lookAheadM =
+    let lookAheadM =
       view === 'farChase' ? params.farLookAheadM : helmet ? params.helmetLookAheadM : params.lookAheadM;
+    tight = 1;
     const lookHeightM = helmet ? params.helmetAimHeightM : params.lookHeightM;
 
     let fx = hx;
@@ -374,6 +410,9 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       }
       fx = frame.tx * dir;
       fz = frame.tz * dir;
+      // On a tight bend the aim shortens so it stays on the bend the rider is in (see tightBendShare).
+      tight = tightBendShare(pos.edge, pos.s, dir, lookAheadM);
+      lookAheadM *= tight;
       const ahead = { edge: pos.edge, s: pos.s + dir * lookAheadM, d: pos.d, dir };
       road.advance(ahead);
       const p = road.toWorld(ahead.edge, ahead.s, ahead.d, 0);
@@ -706,7 +745,7 @@ export function createChaseRig(params: ChaseParams, initialRoad: RoadNetwork | n
       wasOnBike = riding;
       shown = view;
       const w = params.springRate;
-      stepAngleSpring(s.yaw, g.yaw, w, dt);
+      stepAngleSpring(s.yaw, g.yaw, w * tight, dt);
       stepSpring(s.distance, g.distance, w, dt);
       stepSpring(s.height, g.height, w, dt);
       stepSpring(s.side, g.side, w, dt);

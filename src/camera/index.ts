@@ -104,6 +104,10 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('wheelieBackM', 'Wheelie: camera pulls back', 1, 0, 3, 0.1, 'm'),
   decl('wheelieAimM', 'Wheelie: aim rises', 0.9, 0, 3, 0.1, 'm'),
   decl('wheelieFovDeg', 'Wheelie: extra field of view', 4, 0, 12, 0.5, '°'),
+  // Playtest 4, P4-9 [default]: "Lombard's hairpins feel impossible to control smoothly". The aim
+  // shortens on a bend tighter than this radius (radius over this, down to the floor); 0 is off.
+  decl('tightBendRadiusM', 'Tight bends: shorten look-ahead under radius (0 off)', 30, 0, 100, 1, 'm'),
+  decl('tightBendMinShare', 'Tight bends: shortest look-ahead share', 0.3, 0.1, 1, 0.05, ''),
   // camera-3 (docs/milestones/M3.md) [default]: the far chase and helmet views. Until ui adds a
   // settings row, the view is this slider (0 low chase, 1 far chase, 2 helmet) and the view key.
   decl('mode', 'View: 0 chase, 1 far, 2 helmet', 0, 0, VIEW_MODES.length - 1, 1, ''),
