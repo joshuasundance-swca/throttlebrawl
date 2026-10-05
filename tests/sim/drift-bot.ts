@@ -20,10 +20,10 @@ export const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
 );
 const STREAMS = createStreamCache();
-const MAX_TICKS = 60 * 600;
+export const MAX_TICKS = 60 * 600;
 
 /** The drift bot turns in on bends of this curvature or more (60 m radius, the spec's corner). */
-const CORNER_KAPPA = 1 / 60;
+export const CORNER_KAPPA = 1 / 60;
 /** It slows for a bend to sqrt(HOLD_MARGIN × steer rate / κ): what the slide's reach can hold. */
 const HOLD_MARGIN = 6;
 /** It turns in only at up to this much over that speed; faster, it brakes straight first. */
@@ -80,7 +80,7 @@ export function soloConfig(
 }
 
 /** The sharpest bend within `lookM` ahead along the rider's travel (κ·dir: positive turns right). */
-function sharpestAhead(config: SimConfig, pos: RoadPos, lookM: number): number {
+export function sharpestAhead(config: SimConfig, pos: RoadPos, lookM: number): number {
   const at: RoadPos = { ...pos };
   let best = 0;
   for (let a = 0; a <= lookM; a += 3) {

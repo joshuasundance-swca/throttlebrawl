@@ -42,7 +42,7 @@ async function windRms(page: Page, speed: number): Promise<number> {
       setParam(id: string, value: number): void;
       frame(s: Record<string, unknown> | null, playerId: number): void;
     };
-    const url = '/__audio-wind/index.js';
+    const url = '/__audio-wind/system.js';
     const m = (await import(url)) as {
       createAudio(o: { createContext: () => BaseAudioContext; offline: boolean }): Audio;
     };

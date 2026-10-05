@@ -17,7 +17,7 @@ import {
   type CueId,
 } from './cues';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { AUDIO_TUNING, createAudio } from './index';
+import { AUDIO_TUNING, createAudio } from './system';
 
 const ev = (type: SimEventType, actor: number, data: SimEvent['data'] = {}, target?: number): SimEvent =>
   target === undefined ? { tick: 10, type, actor, data } : { tick: 10, type, actor, target, data };
