@@ -3,13 +3,26 @@
 // side the rider ahead is on when you press; a kick with both side flags is the straight kick, a
 // boot into the rider directly ahead. The input lane maps the swipe and the keys onto those flags.
 import { describe, expect, it } from 'vitest';
-import { F, flags, makeHarness, ofType, type Harness, type Placement } from './harness.test-util';
+import {
+  F,
+  flags,
+  KICK as KICK_WEAPON,
+  makeHarness,
+  ofType,
+  type Harness,
+  type Placement,
+} from './harness.test-util';
 
 const KICK = F.attack | F.kick;
 const STRAIGHT = KICK | F.attackSideLeft | F.attackSideRight;
+/**
+ * These rides were laid out for M1's 13-tick kick wind-up; playtest 4 cut it (P4-6). Closing at
+ * 2 m/s, the rival starts this much nearer, so he is where he was when the active moment starts.
+ */
+const SHIFT = (2 * (13 - KICK_WEAPON.windupTicks)) / 60;
 
 /**
- * The player rides up behind a rival who is `gap` metres ahead (2.5 by default) and slightly right,
+ * The player rides up behind a rival who is `gap` metres ahead (2.5 by default, less SHIFT) and slightly right,
  * closing at 2 m/s, and presses on tick 1. With `passRight`, the player drifts right 0.1 m a tick to
  * 1.6 m, so the rival ends up on the player's LEFT as they draw level.
  */
@@ -19,7 +32,7 @@ function rideUp(
 ): Harness {
   const placements: Placement[] = [
     { s: 100, d: 0, speed: 22, role: 'player' },
-    { s: 100 + (opts.gap ?? 2.5), d: 0.2, speed: 20 },
+    { s: 100 + (opts.gap ?? 2.5) - SHIFT, d: 0.2, speed: 20 },
   ];
   const h = makeHarness(placements, (t, id) => (id === 0 && t === 1 ? flags(press) : undefined), opts.tuning);
   for (let t = 0; t < 70; t++) {
@@ -80,7 +93,7 @@ describe('playtest 2: the directional kick from behind', () => {
     const h = makeHarness(
       [
         { s: 100, d: 0, speed: 22, role: 'player' },
-        { s: 102.5, d: 0.2, speed: 20 },
+        { s: 102.5 - SHIFT, d: 0.2, speed: 20 },
       ],
       (t, id) =>
         id !== 0

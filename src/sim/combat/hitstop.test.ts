@@ -69,7 +69,7 @@ describe('combat-1 through the real sim', () => {
       const sim = createSim(duelConfig());
       const frames: { tick: number; xs: number[]; ts: number; hash: number; hit: boolean }[] = [];
       for (let t = 0; t < 130; t++) {
-        const freeze = t >= KICK_AT + 14 && t <= KICK_AT + 16;
+        const freeze = t >= KICK_AT + KICK.windupTicks + 1 && t <= KICK_AT + KICK.windupTicks + 3;
         const player = ride(t === KICK_AT ? F.attack | F.kick : 0, freeze ? steerDuringFreeze : 0);
         sim.step([player, ride()]);
         const snap = sim.snapshot();
@@ -85,7 +85,7 @@ describe('combat-1 through the real sim', () => {
     };
     const a = run(0);
     const hitAt = a.findIndex((f) => f.hit);
-    expect(hitAt).toBe(KICK_AT + 13);
+    expect(hitAt).toBe(KICK_AT + KICK.windupTicks);
     const at = (i: number) => a[hitAt + i];
     for (let i = 1; i <= 4; i++) expect(at(i)?.xs).toEqual(at(0)?.xs);
     expect(at(5)?.xs).not.toEqual(at(0)?.xs);
@@ -164,7 +164,7 @@ describe('combat-1 through the real sim', () => {
     console.log(
       `combat-3 real-riders kick: hit on tick ${hitTick}; rival d ${before.toFixed(2)} -> ${dAt[dAt.length - 1]?.toFixed(2)}`,
     );
-    expect(hitTick).toBe(KICK_AT + 13);
+    expect(hitTick).toBe(KICK_AT + KICK.windupTicks);
     expect(rival?.mode).toBe('Road');
     // About a lane: the 3.6 m shove, less the little the riders phase's own motion takes back, or
     // the whole way to the drivable edge (4.4 m either side of the fixture's centre line).
@@ -188,8 +188,9 @@ describe('combat-1 through the real sim', () => {
     }
     expect(seen[9]).toMatchObject({ phase: 'idle', target: -1, rivalLast: -1 });
     expect(seen[10]).toMatchObject({ phase: 'windup', target: 0, rivalLast: -1 });
-    expect(seen[23]).toMatchObject({ phase: 'active', target: 0, rivalLast: 1 });
+    expect(seen[10 + KICK.windupTicks]).toMatchObject({ phase: 'active', target: 0, rivalLast: 1 });
     expect(seen.some((s) => s.phase === 'recovery')).toBe(true);
-    expect(seen.some((s) => s.phase === 'cooldown')).toBe(true);
+    // Playtest 4 ([decided] "No wait"): a player's kick shows no cooldown; the leg's return is all.
+    expect(seen.some((s) => s.phase === 'cooldown')).toBe(false);
   });
 });

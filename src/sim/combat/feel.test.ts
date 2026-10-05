@@ -3,7 +3,7 @@
 // determinism item runs through createSim in hitstop.test.ts.
 import { describe, expect, it } from 'vitest';
 import { riderState } from '../riders';
-import { F, flags, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
+import { F, flags, KICK, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
 
 const KICK_PRESS = F.attack | F.kick;
 const once = (tick: number, f: number) => (t: number) => (t === tick ? flags(f) : undefined);
@@ -77,7 +77,7 @@ describe('combat-3: knockback is a short curve (playtest 1 item 4: a kick shoves
   it('the curve peaks right after the hit-stop, then decays to zero over combat.knockbackDecayS', () => {
     const { h, speeds } = lateralTrace(pair(), scriptOf({ 0: once(0, KICK_PRESS) }), 70);
     const hitTick = ofType(h.events, 'hit')[0]?.tick ?? -1;
-    expect(hitTick).toBe(13);
+    expect(hitTick).toBe(KICK.windupTicks);
     // Frozen for the 4 hit-stop ticks, then moving away from the attacker (+d here).
     expect(speeds.slice(hitTick + 1, hitTick + 5)).toEqual([0, 0, 0, 0]);
     const moving = speeds.slice(hitTick + 5).filter((v) => v > 0);
@@ -242,17 +242,32 @@ describe('combat-3: a player’s health recovers out of combat', () => {
 
 describe('combat-3: a press while staggered', () => {
   it('a press while staggered is kept, and the attack (a kick, if the swipe is held) starts as the stagger ends', () => {
-    // The rival's kick lands on tick 13 and staggers the player 21 world ticks (after the 4-tick
-    // hit-stop, ticks 18–38). The player presses on tick 20 and holds the kick flag.
+    // The rival's kick lands on its wind-up's last tick and staggers the player KICK.staggerTicks
+    // world ticks after the 4-tick hit-stop. The player presses on tick 15 and holds the kick flag.
+    const ends = KICK.windupTicks + 4 + KICK.staggerTicks;
     const h = makeHarness(
       pair({ role: 'rival' }, { role: 'player' }),
       scriptOf({
         0: once(0, KICK_PRESS),
-        1: (t) => (t === 20 ? flags(F.attack | F.kick) : t > 20 && t < 60 ? flags(F.kick) : undefined),
+        1: (t) => (t === 15 ? flags(F.attack | F.kick) : t > 15 && t < 60 ? flags(F.kick) : undefined),
       }),
     );
     h.run(80);
     const mine = ofType(h.events, 'attackStart').filter((e) => e.actor === 1);
-    expect(mine.map((e) => [e.tick, e.data['weapon']])).toEqual([[38, 'base:kick']]);
+    expect(mine.map((e) => [e.tick, e.data['weapon']])).toEqual([[ends, 'base:kick']]);
+  });
+
+  it('playtest 4: a kick swiped while staggered stays a kick even if the flag is let go before the stagger ends', () => {
+    const ends = KICK.windupTicks + 4 + KICK.staggerTicks;
+    const h = makeHarness(
+      pair({ role: 'rival' }, { role: 'player' }),
+      scriptOf({
+        0: once(0, KICK_PRESS),
+        1: (t) => (t === 15 ? flags(F.attack) : t === 17 ? flags(F.kick) : undefined),
+      }),
+    );
+    h.run(80);
+    const mine = ofType(h.events, 'attackStart').filter((e) => e.actor === 1);
+    expect(mine.map((e) => [e.tick, e.data['weapon']])).toEqual([[ends, 'base:kick']]);
   });
 });
