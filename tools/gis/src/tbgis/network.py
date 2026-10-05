@@ -235,7 +235,7 @@ class Staging(Strict):
     # The connector's scenery tags (None: the land tags of the branch road beside it).
     tags: list[str] | None = None
     # The staging road's id (None: <network>-<label>-staging-in or -staging-out). A junction's road
-    # ends lie within 60 m of it (src/road/validate.ts), so a synthetic end is two roads: the
+    # ends lie within 250 m of it (src/road/validate.ts), so a synthetic end is two roads: the
     # junction's connector (the turn off the main road, or onto it) and this ordinary staging road
     # (the straight and the other turn), joined end to end with the branch line's own road. A
     # synthetic leave's staging road is the branch's first road, so the branch's id is its id.
@@ -317,6 +317,10 @@ class Branch(Strict):
     # the line id when left out. The route-facing `id` keeps the id the game would derive (the
     # branch's first road), so a career's `route#id` never changes with it.
     label: str | None = Field(None, pattern=ID)
+    # The tightest bend either connector may have, m (playtest 4, P4-4 and P4-8; the road lint's
+    # shortcut rule, src/road/validate.ts): the bake picks turn lengths that keep to it, and refuses
+    # a leave or join with no room for them. None: the first turn lengths that fit the lane.
+    minRadiusM: float | None = Field(None, gt=0)  # noqa: N815
 
     @property
     def tag(self) -> str:
@@ -665,25 +669,50 @@ def solve_shape(
     return s
 
 
+_TURN_SCALES = (1.0, 1.5, 0.75, 2.0, 0.5, 2.5, 0.35, 3.0)
+
+
 def connector_shape(
-    a: tuple[float, float, float], b: tuple[float, float, float], turns: tuple[float, float], width: float
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+    turns: tuple[float, float],
+    width: float,
+    min_radius: float | None = None,
+    label: str = "",
 ) -> Shape:
     """The curve from point a to point b (x, z, heading), with the given turns or others; refused
     when even the best one bends too hard for its lane (the road lint wants |kappa| x half-width
-    under 0.5; this keeps it under 0.45)."""
+    under 0.5; this keeps it under 0.45). With ``min_radius`` (the shortcut lint's bend rule: a rider
+    arriving at speed has to hold it) the first of the turn lengths that keeps every bend at or
+    above that radius wins, and a connector that cannot is refused, naming the radius it did reach."""
     best: Shape | None = None
     worst_kd = math.inf
-    for scale in (1.0, 1.5, 0.75, 2.0, 0.5, 2.5, 0.35, 3.0):
+    # With a radius to keep, the turn lengths are tried in small steps from the shortest up, so the
+    # first fit is the least sweeping one that keeps to it.
+    scales = [round(0.3 + 0.05 * i, 2) for i in range(75)] if min_radius is not None else _TURN_SCALES
+    for scale in scales:
         sh = solve_shape(a[0], a[1], a[2], b[0], b[1], b[2], turns[0] * scale, turns[1] * scale)
         if sh is None:
             continue
-        kd = max(abs(sh.kappa(u)) for u in np.linspace(0, sh.length, 200)) * (width / 2)
+        kappa = max(abs(sh.kappa(u)) for u in np.linspace(0, sh.length, 200))
+        kd = kappa * (width / 2)
         if kd < worst_kd:
             best, worst_kd = sh, kd
-        if kd < 0.35:
+        if min_radius is not None:
+            if kappa * min_radius <= 1.0 and kd < 0.45:
+                return sh
+        elif kd < 0.35:
             break
     if best is None or worst_kd >= 0.45:
-        raise ValueError(f"no connector fits from {a} to {b} (|kappa| x half-width {worst_kd:.2f})")
+        prefix = f"{label}: " if label else ""
+        raise ValueError(f"{prefix}no connector fits from {a} to {b} (|kappa| x half-width {worst_kd:.2f})")
+    if min_radius is not None:
+        radius = (width / 2) / worst_kd
+        raise ValueError(
+            f"{label}: no connector from {a} to {b} keeps every bend at {min_radius:g} m or more "
+            f"(the best has a radius of {radius:.1f} m): move the junction piece or the branch's "
+            f"inset so the turn has room"
+        )
     return best
 
 
@@ -1300,13 +1329,24 @@ def bake_network(
         sh_in = (
             st_in.shape
             if st_in
-            else connector_shape(_xzh(leave_pt), _xzh(land_pt), b.leave.turnsM, b.connectorWidthM)
+            else connector_shape(
+                _xzh(leave_pt),
+                _xzh(land_pt),
+                b.leave.turnsM,
+                b.connectorWidthM,
+                b.minRadiusM,
+                f"branch {b.id} leave",
+            )
         )
         a2 = offset_point(line, s_last, b.join.fromOffsetM)
         t2 = offset_point(main, centre[f"{b.tag}-join"] + b.join.pieceM / 2, b.join.offsetM)
         st_out = staged.get((b.id, "join"))
         sh_out = (
-            st_out.shape if st_out else connector_shape(_xzh(a2), _xzh(t2), b.join.turnsM, b.connectorWidthM)
+            st_out.shape
+            if st_out
+            else connector_shape(
+                _xzh(a2), _xzh(t2), b.join.turnsM, b.connectorWidthM, b.minRadiusM, f"branch {b.id} join"
+            )
         )
         width, spacing = b.connectorWidthM, cfg.sampleSpacingM
         speed_in, speed_out = min(before.speed, first.speed), min(last.speed, after.speed)

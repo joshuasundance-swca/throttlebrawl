@@ -7,6 +7,35 @@
       "driftClosedM": {
         "the-boulevard leave": 14.79,
         "the-boulevard join": 40.38
+      },
+      "fun": {
+        "real_length_m": 7278.8,
+        "game_length_m": 7250.4,
+        "corners": 4,
+        "tightest_radius_m": 47.4,
+        "share_tighter_than_m": {
+          "50": 0.0052,
+          "100": 0.0299,
+          "200": 0.0636
+        },
+        "turn_deg_per_km": 70.5,
+        "elev_min_m": 1.0,
+        "elev_max_m": 4.0,
+        "climb_m": 6.7,
+        "descent_m": 7.0,
+        "max_grade_pct": 11.9,
+        "p95_grade_pct": 0.5,
+        "share_steeper_than_pct": {
+          "8": 0.0092,
+          "15": 0.0
+        },
+        "launch_crests": 1,
+        "launch_speed_mps": 27.5,
+        "junctions": 27,
+        "junctions_per_km": 3.71,
+        "bridges_m": 171.4,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 15.3
       }
     },
     "boulevard": {
@@ -14,15 +43,44 @@
       "lanesPerDirection": 1,
       "driftClosedM": {
         "the-boulevard join": 13.15
+      },
+      "fun": {
+        "real_length_m": 5676.4,
+        "game_length_m": 5667.1,
+        "corners": 1,
+        "tightest_radius_m": 31.9,
+        "share_tighter_than_m": {
+          "50": 0.0067,
+          "100": 0.0106,
+          "200": 0.0341
+        },
+        "turn_deg_per_km": 49.8,
+        "elev_min_m": 1.0,
+        "elev_max_m": 4.0,
+        "climb_m": 4.8,
+        "descent_m": 5.3,
+        "max_grade_pct": 11.4,
+        "p95_grade_pct": 0.4,
+        "share_steeper_than_pct": {
+          "8": 0.0067,
+          "15": 0.0
+        },
+        "launch_crests": 1,
+        "launch_speed_mps": 29.1,
+        "junctions": 37,
+        "junctions_per_km": 6.52,
+        "bridges_m": 69.1,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 9.2
       }
     }
   },
   "branches": [
     {
       "id": "osm-kw-north-roosevelt",
-      "mainM": 5847.3,
-      "branchM": 5677.4,
-      "savesM": 169.9
+      "mainM": 5947.3,
+      "branchM": 5673.0,
+      "savesM": 274.3
     }
   ],
   "routes": {

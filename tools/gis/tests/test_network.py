@@ -16,8 +16,10 @@ from tbgis.lint import lint_network
 from tbgis.network import (
     NetworkBake,
     NetworkConfig,
+    Shape,
     bake_line,
     bake_network,
+    connector_shape,
     correction,
     solve_shape,
     stretch_config,
@@ -271,3 +273,19 @@ def test_the_connector_solve_lands_on_its_target() -> None:
     x, z = sh.end(0, 0, 2000)
     assert math.hypot(x - 30, z + 60) < 1e-3
     assert sh.heading(sh.length) == pytest.approx(math.pi / 2)
+
+
+def test_a_connector_keeps_its_minimum_radius_or_is_refused() -> None:
+    """The shortcut lint's bend rule (playtest 4): a 90 degree corner taken with a radius to keep
+    gets the least sweeping turns that keep it, and a corner with no room for them is refused."""
+    start, end = (0.0, 0.0, 0.0), (130.0, -130.0, math.pi / 2)
+    plain = connector_shape(start, end, (20.0, 20.0), 6.0)
+    kept = connector_shape(start, end, (20.0, 20.0), 6.0, 40.0, "branch b leave")
+
+    def tightest(sh: Shape) -> float:
+        return 1 / max(abs(sh.kappa(u)) for u in np.linspace(0, sh.length, 400))
+
+    assert tightest(kept) >= 39.5
+    assert tightest(plain) < tightest(kept)
+    with pytest.raises(ValueError, match=r"branch b leave: no connector .* keeps every bend at 80 m or more"):
+        connector_shape(start, end, (20.0, 20.0), 6.0, 80.0, "branch b leave")

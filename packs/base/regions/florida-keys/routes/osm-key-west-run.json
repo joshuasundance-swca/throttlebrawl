@@ -10,7 +10,7 @@
   },
   "finish": {
     "road": "osm-kw-higgs-beach",
-    "s": 280.0184
+    "s": 160.0186
   },
   "mainPath": [
     "osm-kw-stock-island",
@@ -36,7 +36,7 @@
   "checkpoints": [
     {
       "road": "osm-kw-smathers-beach",
-      "s": 2343.6202
+      "s": 2333.6209
     },
     {
       "road": "osm-kw-bertha",
@@ -44,7 +44,7 @@
     },
     {
       "road": "osm-kw-atlantic",
-      "s": 437.522
+      "s": 477.5218
     }
   ],
   "branches": [
@@ -74,7 +74,7 @@
     "provenance": {
       "origin": "gis-pipeline",
       "author": "tools/gis",
-      "createdAt": "2026-10-03",
+      "createdAt": "2026-10-05",
       "tool": {
         "name": "tools/gis/src/tbgis/network.py",
         "version": "0.1.0",
@@ -87,8 +87,8 @@
           "attribution": "© OpenStreetMap contributors",
           "url": "https://www.openstreetmap.org/copyright",
           "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](24.54,-81.81,24.585,-81.72);\nout tags geom;",
-          "retrievedAt": "2026-10-03T03:16:48Z",
-          "sha256": "afdcdde0d2bf8f43d804dc23d4ea9a38579f31348e58c9eb42ae367f5ad6cdd9"
+          "retrievedAt": "2026-10-05T13:11:41Z",
+          "sha256": "104e156dccabaf8ea7b9c3688c1431b848b90f01e891bb8c2d61b643e12fc68b"
         },
         {
           "name": "USGS 3DEP elevation",
@@ -96,7 +96,7 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 384 points in 1 request(s) (lon, lat WGS84, sha256 78fd1e1c348e6776), bilinear (line us1)",
-          "retrievedAt": "2026-10-03T04:25:46Z",
+          "retrievedAt": "2026-10-05T13:11:43Z",
           "sha256": "d2ce07ea808e0864ed0bab0d95705297125e39d607f56d5433ed51133c4a9092"
         },
         {
@@ -105,7 +105,7 @@
           "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
           "url": "https://www.usgs.gov/3d-elevation-program",
           "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 285 points in 1 request(s) (lon, lat WGS84, sha256 47389b34fecac2d5), bilinear (line boulevard)",
-          "retrievedAt": "2026-10-03T04:25:52Z",
+          "retrievedAt": "2026-10-05T13:11:44Z",
           "sha256": "2c78c3cd4784f16dc606854cce8e5f847bf1179e76fa7dd6ff5b32a0b2d89246"
         }
       ]

@@ -117,9 +117,9 @@
     },
     {
       "id": "osm-sf-russian-hill-j5",
-      "x": 329.2593,
-      "y": 66.7533,
-      "z": -2745.4001,
+      "x": 398.3827,
+      "y": 58.0398,
+      "z": -2756.4434,
       "ends": [
         {
           "road": "osm-sf-union",
@@ -177,8 +177,8 @@
             "lane": "R1"
           },
           "splitZone": {
-            "s0": 420.0237,
-            "s1": 470.0237,
+            "s0": 310.0237,
+            "s1": 360.0237,
             "d0": 3.0,
             "d1": 6.0
           }
@@ -206,9 +206,9 @@
     },
     {
       "id": "osm-sf-russian-hill-j7",
-      "x": 106.7283,
-      "y": 44.3992,
-      "z": -3143.0197,
+      "x": 98.8317,
+      "y": 38.1965,
+      "z": -3192.3922,
       "ends": [
         {
           "road": "osm-sf-leavenworth",
@@ -305,7 +305,7 @@
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-03",
+    "createdAt": "2026-10-05",
     "tool": {
       "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
@@ -318,8 +318,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
-        "retrievedAt": "2026-10-03T16:36:41Z",
-        "sha256": "da84fc1b1394c66ae35c744aaa7ce6c522c4a7eb345c76bc5f545cf1b67f58ca"
+        "retrievedAt": "2026-10-05T13:21:11Z",
+        "sha256": "b149ab6507548ffb0c7b17c9ae4f1754aa77f3b02b2fd87f5668cd12aa693473"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -327,7 +327,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear (line hills)",
-        "retrievedAt": "2026-10-03T16:41:12Z",
+        "retrievedAt": "2026-10-05T13:21:12Z",
         "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
       },
       {
@@ -336,7 +336,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 58 points in 1 request(s) (lon, lat WGS84, sha256 7a960cdf229e2612), bilinear (line jones)",
-        "retrievedAt": "2026-10-03T16:41:32Z",
+        "retrievedAt": "2026-10-05T13:21:13Z",
         "sha256": "b3087b97520aa40310d54e64de738c32ea6d44212bb5c4bce2508cab40a281d1"
       }
     ],

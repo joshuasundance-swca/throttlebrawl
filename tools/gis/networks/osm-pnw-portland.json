@@ -184,8 +184,8 @@
             {
               "kind": "billboard",
               "id": "sign-morrison-keep-left",
-              "s0": 240,
-              "s1": 250,
+              "s0": 170,
+              "s1": 180,
               "d0": -15,
               "d1": -12.5,
               "item": "morrison-keep-left"
@@ -336,6 +336,7 @@
   ],
   "branches": [
     {
+      "minRadiusM": 42.5,
       "id": "osm-pnw-pdx-alder",
       "line": "morrison",
       "of": "pdx",
@@ -344,25 +345,25 @@
       "sign": "MORRISON BRIDGE: KEEP LEFT. Same distance. Different bridge. Same drizzle.",
       "leave": {
         "at": { "lat": 45.52001, "lon": -122.67927 },
-        "pieceM": 40,
+        "pieceM": 180,
         "offsetM": -8,
         "lane": "L2",
         "zone": { "lengthM": 40, "d0": -10.5, "d1": -6 },
-        "insetM": 55,
+        "insetM": 100,
         "toOffsetM": 2,
         "toLane": "R1",
-        "turnsM": [20, 20]
+        "turnsM": [40, 40]
       },
       "join": {
         "at": { "lat": 45.5122522, "lon": -122.6607922 },
-        "pieceM": 40,
+        "pieceM": 60,
         "offsetM": 2,
         "lane": "R1",
-        "insetM": 55,
+        "insetM": 90,
         "fromOffsetM": 2,
         "fromLane": "R1",
-        "shiftM": 20,
-        "turnsM": [30, 30]
+        "shiftM": 80,
+        "turnsM": [40, 40]
       },
       "label": "morrison"
     }

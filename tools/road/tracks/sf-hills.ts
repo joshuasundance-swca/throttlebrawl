@@ -549,7 +549,7 @@ export const SF_HILLS: TrackSource = {
       // It joins the two-lane on-ramp (W-R's freeway), where the bridge approach began before it.
       join: { road: 'sf-bridge-onramp', offsetM: 3, lane: 'R1' },
       // The gate turn is tight and inside the gate connector, so the path is straight where it starts.
-      turnsM: [24, 70],
+      turnsM: [100, 70],
       lanes: [{ id: 'S1', dCenterM: 0, widthM: 5, direction: 1, kind: 'shortcut' }],
       // Named for the routes (W-R): the id it would derive, written into every route that allows it.
       named: {

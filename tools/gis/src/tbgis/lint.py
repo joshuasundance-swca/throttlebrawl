@@ -67,6 +67,7 @@ TAGS = {
     "key-oldtown",
     "old-bridge",
     "pdx-blocks",
+    "pdx-deck",
     "rail-line",
     "brick-street",
     "headlands",
@@ -195,7 +196,7 @@ def lint_road(
     road: Json, junctions: dict[str, Json], *, end_tol: dict[str, float] | None = None, ends: bool = True
 ) -> list[str]:
     """One road's own rules. ``end_tol`` widens the end check per junction (a junction with connector
-    roads lets its ends lie within 60 m, the connectors span the gap); ``ends`` False skips it (a
+    roads lets its ends lie within 250 m, the connectors span the gap); ``ends`` False skips it (a
     connector road, checked against the road ends it joins instead)."""
     rid = road["id"]
     errs: list[str] = []
@@ -331,7 +332,7 @@ def lint_bake(network: Json, roads: list[Json], route: Json) -> list[str]:
 
 
 # Network bakes (tbgis network): junctions with connector roads, as src/road/validate.ts checks them.
-JUNCTION_RADIUS_M = 60.0
+JUNCTION_RADIUS_M = 250.0  # was 60: the shortcut rule's wide connectors (playtest 4, P4-4)
 JOIN_ANGLE_RAD = 0.0524  # 3 degrees
 
 

@@ -320,6 +320,7 @@
   ],
   "branches": [
     {
+      "minRadiusM": 42.5,
       "id": "osm-kw-north-roosevelt",
       "line": "boulevard",
       "of": "us1",
@@ -331,7 +332,7 @@
           "lat": 24.5699179,
           "lon": -81.7525323
         },
-        "pieceM": 40,
+        "pieceM": 80,
         "offsetM": 6,
         "lane": "R2",
         "zone": {
@@ -339,10 +340,10 @@
           "d0": 6,
           "d1": 10
         },
-        "insetM": 30,
+        "insetM": 100,
         "toOffsetM": 2,
         "toLane": "R1",
-        "turnsM": [20, 20],
+        "turnsM": [40, 40],
         "shiftM": -40
       },
       "join": {
@@ -350,14 +351,14 @@
           "lat": 24.5478409,
           "lon": -81.7849649
         },
-        "pieceM": 40,
-        "shiftM": 20,
+        "pieceM": 80,
+        "shiftM": 120,
         "offsetM": 2,
         "lane": "R1",
-        "insetM": 40,
+        "insetM": 140,
         "fromOffsetM": 2,
         "fromLane": "R1",
-        "turnsM": [20, 20]
+        "turnsM": [40, 40]
       },
       "label": "the-boulevard"
     }
