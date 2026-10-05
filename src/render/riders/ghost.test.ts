@@ -3,7 +3,7 @@
 // career-polish.test.ts checks the sim keeps his signature at lag/act from drop to reconnect).
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SignatureId, SignaturePhase, SimEvent } from '../../sim/api';
-import { frozenInLag, ghostOpacity, Ghosts, GHOST_REJOIN_S, rejoinOpacity } from './ghost';
+import { frozenInLag, ghostOpacity, Ghosts, GHOST_REJOIN_S, rejoinOpacity, respawnOpacity } from './ghost';
 
 const rider = (id: number, over: Partial<EntitySnapshot> = {}): EntitySnapshot =>
   ({ id, kind: 'rider', mode: 'Road', signature: null, ...over }) as EntitySnapshot;
@@ -91,5 +91,19 @@ describe('the Bad Connection ghost', () => {
     );
     expect(rejoinOpacity(0)).toBe(1);
     expect(rejoinOpacity(0.06)).toBeLessThan(1);
+  });
+});
+
+describe('back on the bike: the player rides through traffic, gently see-through (playtest 4)', () => {
+  it("fades the player's own rider only, softly, and only while the sim says so", () => {
+    const me = (ghost: boolean) => rider(1, { slot: 0, ghost });
+    const levels = Array.from({ length: 60 }, (_, i) => respawnOpacity(me(true), i / 60));
+    // Never solid, never faint: between half and four fifths, and it breathes.
+    expect(Math.min(...levels)).toBeGreaterThanOrEqual(0.5);
+    expect(Math.max(...levels)).toBeLessThanOrEqual(0.8);
+    expect(Math.max(...levels) - Math.min(...levels)).toBeGreaterThan(0.2);
+    expect(respawnOpacity(me(false), 0.1)).toBe(1);
+    // A rival or a cop riding through traffic draws solid: the cue is the player's.
+    expect(respawnOpacity(rider(2, { slot: -1, ghost: true }), 0.1)).toBe(1);
   });
 });
