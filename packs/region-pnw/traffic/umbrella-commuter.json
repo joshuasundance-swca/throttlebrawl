@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "umbrella-commuter",
+  "name": "Commuter Under an Umbrella",
+  "category": "pedestrian",
+  "tags": ["local", "downtown", "commuter"],
+  "lengthM": 0.5,
+  "widthM": 0.7,
+  "cruiseMps": 1.5,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-tourist"
+    },
+    "paintOptions": ["#3f5a6b", "#b8433a", "#2b2f2e"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Downtown's walk-to-work crowd: a work bag, a phone and an umbrella that is mostly a gesture. Dives clear and keeps the umbrella up. Placeholder shape: the tourist pedestrian preset. Playtest 3, T10.5: Bridge City's sidewalk crowds name it in their zones' `kinds`, so no forest zone and no region weight ever spawns one.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

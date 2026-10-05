@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "pod-diner",
+  "name": "Food Cart Regular",
+  "category": "pedestrian",
+  "tags": ["local", "downtown"],
+  "lengthM": 0.5,
+  "widthM": 0.5,
+  "cruiseMps": 1.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": false,
+    "laneChanges": false,
+    "dives": true,
+    "strolls": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "ped-hiker"
+    },
+    "paintOptions": ["#2e5e4e", "#e2a33a", "#8a929a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Has been in the same line for the same dumplings since before the rain started. Holds a paper boat of food with both hands and dives clear without dropping it. Playtest 3, T10.5 (the real-world spec's section 6): the food-cart pod's own diners, in the `cart-pod` zone's `kinds` and nowhere else.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

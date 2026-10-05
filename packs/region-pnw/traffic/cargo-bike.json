@@ -1,0 +1,32 @@
+{
+  "type": "traffic-type",
+  "id": "cargo-bike",
+  "name": "Cargo Bike",
+  "category": "car",
+  "tags": ["local", "cyclist"],
+  "lengthM": 2.4,
+  "widthM": 0.8,
+  "cruiseMps": 5.0,
+  "hazard": "normal",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false,
+    "kerb": true
+  },
+  "look": {
+    "procedural": {
+      "preset": "cyclist-cruiser"
+    },
+    "paintOptions": ["#2f6f73", "#e2a33a", "#8a929a"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A long bike with a box on the front: two kids, a week of groceries and a bag of compost, in the rain, uphill, unbothered. Rides the kerb; you pass. Playtest 3, T10.5 (the real-world spec's section 6): downtown Portland's own cyclist, in the `pdx-blocks` traffic area at weight 0.5.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

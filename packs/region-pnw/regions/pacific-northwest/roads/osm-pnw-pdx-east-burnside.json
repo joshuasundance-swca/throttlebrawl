@@ -67,6 +67,12 @@
       "tag": "bridge"
     },
     {
+      "s0": 699.938,
+      "s1": 714.9366,
+      "side": "both",
+      "tag": "pdx-deck"
+    },
+    {
       "s0": 0.0,
       "s1": 699.938,
       "side": "both",
@@ -102,6 +108,18 @@
       }
     },
     {
+      "kind": "roadsideZone",
+      "id": "east-burnside-crowd",
+      "s0": 340.0,
+      "s1": 440.0,
+      "d0": 12.0,
+      "d1": 17.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter"]
+      }
+    },
+    {
       "kind": "boostPad",
       "id": "pad-burnside-late",
       "s0": 480.0,
@@ -113,6 +131,15 @@
         "holdS": 1.5,
         "slot": "pdx-pad-burnside"
       }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-twelve-bridges",
+      "s0": 585.0,
+      "s1": 595.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "twelve-bridges"
     }
   ],
   "barriers": [

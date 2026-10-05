@@ -76,6 +76,39 @@
   "features": [
     {
       "kind": "billboard",
+      "id": "sign-cart-pod",
+      "s0": 20.0,
+      "s1": 30.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "cart-pod"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "cart-pod",
+      "s0": 50.0,
+      "s1": 150.0,
+      "d0": 12.0,
+      "d1": 18.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:pod-diner"]
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "broadway-crowd",
+      "s0": 150.0,
+      "s1": 230.0,
+      "d0": -17.0,
+      "d1": -12.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter"]
+      }
+    },
+    {
+      "kind": "billboard",
       "id": "sign-morrison-keep-left",
       "s0": 240.0,
       "s1": 250.0,

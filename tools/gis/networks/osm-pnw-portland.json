@@ -59,6 +59,7 @@
           "id": "osm-pnw-pdx-east-burnside",
           "name": "East Burnside",
           "tags": ["pdx-blocks", "town"],
+          "deckTags": ["pdx-deck"],
           "features": [
             { "kind": "copSpawn", "id": "cop-lot", "s0": 4, "s1": 20, "d0": 8.5, "d1": 12 },
             {
@@ -71,6 +72,15 @@
               "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-burnside" }
             },
             {
+              "kind": "roadsideZone",
+              "id": "east-burnside-crowd",
+              "s0": 340,
+              "s1": 440,
+              "d0": 12,
+              "d1": 17,
+              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:umbrella-commuter"] }
+            },
+            {
               "kind": "boostPad",
               "id": "pad-burnside-late",
               "s0": 480,
@@ -78,6 +88,15 @@
               "d0": 0.5,
               "d1": 3,
               "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-burnside" }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-twelve-bridges",
+              "s0": 585,
+              "s1": 595,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "twelve-bridges"
             }
           ]
         },
@@ -85,14 +104,70 @@
           "id": "osm-pnw-pdx-burnside-bridge",
           "name": "Burnside Bridge",
           "tags": ["pdx-blocks", "town"],
+          "deckTags": ["pdx-deck"],
           "sampleSpacingM": 4
         },
-        { "id": "osm-pnw-pdx-west-burnside", "name": "West Burnside", "tags": ["pdx-blocks", "town"] },
+        {
+          "id": "osm-pnw-pdx-west-burnside",
+          "name": "West Burnside",
+          "tags": ["pdx-blocks", "town"],
+          "deckTags": ["pdx-deck"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-share-the-lane",
+              "s0": 30,
+              "s1": 40,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "share-the-lane"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "west-burnside-crowd",
+              "s0": 150,
+              "s1": 250,
+              "d0": -17,
+              "d1": -12,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+              }
+            }
+          ]
+        },
         {
           "id": "osm-pnw-pdx-broadway",
           "name": "Broadway",
           "tags": ["pdx-blocks", "town"],
           "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-cart-pod",
+              "s0": 20,
+              "s1": 30,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "cart-pod"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "cart-pod",
+              "s0": 50,
+              "s1": 150,
+              "d0": 12,
+              "d1": 18,
+              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:pod-diner"] }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "broadway-crowd",
+              "s0": 150,
+              "s1": 230,
+              "d0": -17,
+              "d1": -12,
+              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:umbrella-commuter"] }
+            },
             {
               "kind": "billboard",
               "id": "sign-morrison-keep-left",
@@ -116,15 +191,55 @@
               "s1": 125,
               "d0": -19,
               "d1": -12,
-              "params": { "spawns": "pedestrians" }
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+              }
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "broadway-south-crowd",
+              "s0": 220,
+              "s1": 320,
+              "d0": 12,
+              "d1": 17,
+              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:umbrella-commuter"] }
             }
           ]
         },
-        { "id": "osm-pnw-pdx-madison", "name": "Madison", "tags": ["pdx-blocks", "town"] },
+        {
+          "id": "osm-pnw-pdx-madison",
+          "name": "Madison",
+          "tags": ["pdx-blocks", "town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "madison-crowd",
+              "s0": 120,
+              "s1": 220,
+              "d0": -17,
+              "d1": -12,
+              "params": {
+                "spawns": "pedestrians",
+                "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+              }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-bridge-lift",
+              "s0": 395,
+              "s1": 405,
+              "d0": 12.5,
+              "d1": 15,
+              "item": "bridge-lift"
+            }
+          ]
+        },
         {
           "id": "osm-pnw-pdx-hawthorne-bridge",
           "name": "Hawthorne Bridge",
           "tags": ["pdx-blocks", "town"],
+          "deckTags": ["pdx-deck"],
           "sampleSpacingM": 4,
           "features": [
             {
@@ -147,7 +262,22 @@
             }
           ]
         },
-        { "id": "osm-pnw-pdx-se-hawthorne", "name": "SE Hawthorne", "tags": ["pdx-blocks", "town"] }
+        {
+          "id": "osm-pnw-pdx-se-hawthorne",
+          "name": "SE Hawthorne",
+          "tags": ["pdx-blocks", "town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "se-hawthorne-crowd",
+              "s0": 90,
+              "s1": 170,
+              "d0": 12,
+              "d1": 17,
+              "params": { "spawns": "pedestrians", "kinds": ["region-pnw:umbrella-commuter"] }
+            }
+          ]
+        }
       ]
     },
     {
@@ -175,6 +305,7 @@
           "id": "osm-pnw-pdx-morrison-bridge",
           "name": "Morrison Bridge",
           "tags": ["pdx-blocks", "town"],
+          "deckTags": ["pdx-deck"],
           "sampleSpacingM": 4
         },
         { "id": "osm-pnw-pdx-grand", "name": "Grand Avenue", "tags": ["pdx-blocks", "town", "rail-line"] }
