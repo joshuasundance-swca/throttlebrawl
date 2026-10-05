@@ -1,5 +1,5 @@
 # The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit (two slices), sim (six
-# slices) and browser (six slices, the last also running perf) run in parallel, each running its tiers of
+# slices) and browser (seven slices, the last also running perf) run in parallel, each running its tiers of
 # `npm run check`; `gate` is the single required status check, and it fails unless every one of
 # them succeeded. Every job is planned to finish inside about 70% of a 10-minute run, and its
 # timeout-minutes is about 1.5 times its expected time, a guard against a hang rather than a budget.
@@ -124,7 +124,7 @@ jobs:
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    # About 1.5x a slice (planned about 320 s of tests), rounded up to leave room for slow runners:
+    # About 1.5x a slice (planned about 280 s of tests), rounded up to leave room for slow runners:
     # five slices of this PR's runs took up to 535 s.
     timeout-minutes: 10
     strategy:
@@ -148,8 +148,9 @@ jobs:
   # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
   # red slice never hides another's result. [default]
-  # Six slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice. The timeout
-  # is 1.5x the mean slice of this layout's first three runs (386 s), rounded up.
+  # Seven slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice, and with
+  # six this PR's runs took 274 to 536 s. The timeout is about 1.5x a slice (planned about 335 s of
+  # tests, plus about 30 s to set up and build), rounded up.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
@@ -159,7 +160,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v7
         with:
