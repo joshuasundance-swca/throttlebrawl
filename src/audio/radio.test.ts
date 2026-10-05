@@ -71,6 +71,8 @@ describe('station data (packs/base/stations)', () => {
       rockabilly: 'rockabilly-trio',
       island: 'island-band',
       swamp: 'swamp-band',
+      // Run C (task C8): Cuban son (Ninety Miles 90.0 FM).
+      son: 'son-band',
     };
     for (const s of all) {
       expect(Object.keys(PRESET)).toContain(s.genre);
@@ -479,7 +481,9 @@ describe('the radio in the mixer', () => {
 
   it('the radio plays into the music bus (through the duck and the slow-motion duck)', async () => {
     const { ctx, audio, tick } = await racing(baseStations());
-    audio.setParam('audio.radio', 2);
+    // The surf station, whose plucked strings are buffer sources the walk below can count; found by
+    // its id, so a station added to the dial moves nothing here.
+    audio.setParam('audio.radio', RADIO_FIRST_STATION + theDial(baseStations()).indexOf('keys-surf'));
     for (let t = 0.1; t < 1; t += 0.05) tick(t);
     // Walk from any radio source to the destination; the path must pass the music bus, which is
     // the bus the music slider drives (system.ts builds music, effects, voices in that order).
