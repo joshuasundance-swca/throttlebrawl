@@ -53,6 +53,8 @@ TAGS = {
     "key-resort",
     "key-junkyard",
     "key-party",
+    # Big Pine's Key deer (playtest 4, P4-19, B5): the road they graze beside.
+    "key-deer",
     # San Francisco's waterfront (run W-U; docs/content-packs.md, "San Francisco's waterfront").
     "promenade",
     "pier-shed",

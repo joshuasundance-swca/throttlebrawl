@@ -659,6 +659,14 @@ export function isHighway(edge: Edge): boolean {
 
 /** Features no scenery stands in (with room for the model). */
 const KEEP_CLEAR = new Set(['billboard', 'boostPad', 'rampTruck', 'roadsideZone', 'copSpawn']);
+/**
+ * Whether no scenery stands in a feature: the kinds above, and a landmark's footprint (playtest 4, P4-19, B5:
+ * the Martello forts are 21 to 23 m across on the verge's land, and a bait shack stood in one). A landmark
+ * the road passes through or under (`overRoad`: a bridge tower, a gantry) stands on the road or in the water
+ * and takes no ground.
+ */
+const keepsClear = (f: FeatureSpan): boolean =>
+  KEEP_CLEAR.has(f.kind) || (f.kind === 'landmark' && f.params?.['overRoad'] !== true);
 /** At least this much room between a feature and any scenery (a palm's crown spreads past its trunk), m. */
 const FEATURE_CLEAR_M = 3;
 /**
@@ -1698,7 +1706,7 @@ export function buildRoadScene(
         clear: (s, d, radius) =>
           !(dress.features ?? []).some(
             (f) =>
-              KEEP_CLEAR.has(f.kind) &&
+              keepsClear(f) &&
               s >= Math.min(f.s0, f.s1) - Math.max(radius, FEATURE_CLEAR_M) &&
               s <= Math.max(f.s0, f.s1) + Math.max(radius, FEATURE_CLEAR_M) &&
               d >= Math.min(f.d0, f.d1) - Math.max(radius, FEATURE_CLEAR_M) &&

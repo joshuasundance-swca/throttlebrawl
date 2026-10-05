@@ -56,6 +56,10 @@ export const MODEL_ASSETS = {
   duvalKit: 'models/scenery/duval-kit',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
+  // Playtest 4 (P4-19, Codex CX5): the Keys' place-identity props. Only the Key deer are baked here, for Big
+  // Pine (roadside.ts KEYS_KIT, the `key-deer` rule); the kit also holds a mile post, the Old Town trees and
+  // the open-front bars, which a later run wires.
+  keysIdentity: 'models/scenery/keys-identity',
   // Playtest 3 (T12.6, Codex CX4): downtown Portland's street fronts, pink tower modules, food carts and
   // bike rack, in region-pnw's pack (downtown.ts)
   pdxDowntown: 'models/scenery/pdx-downtown',
@@ -110,6 +114,8 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
   keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
   // The kit also holds the cottages, dock and barge of Pigeon Key; only the bays are baked here.
   sevenMileKit: BAY_ROOTS,
+  // Variant 0 the buck, 1 the doe (a buck with antlers is 1.3 m, a doe 0.7 m; front +Z, feet on y 0).
+  keysIdentity: ['key_deer_buck', 'key_deer_doe'],
   sfDowntown: [
     'dt_tower_glass',
     'dt_tower_stone',
@@ -258,6 +264,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     if (n.tags.has('key-oldtown')) out.add('duvalKit');
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
+    // Playtest 4 (P4-19, B5): the Key deer, for the road that has the `key-deer` tag (Big Pine Bend).
+    if (n.tags.has('key-deer')) out.add('keysIdentity');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');

@@ -80,7 +80,18 @@
     {
       "id": "osm-big-pine-bend",
       "name": "Big Pine Bend",
-      "tags": ["mangrove"]
+      "tags": ["mangrove", "key-deer"],
+      "features": [
+        {
+          "kind": "billboard",
+          "id": "sign-key-deer",
+          "s0": 14,
+          "s1": 24,
+          "d0": 6.5,
+          "d1": 9,
+          "item": "key-deer-crossing"
+        }
+      ]
     }
   ],
   "route": {

@@ -331,13 +331,15 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
   const s = ctx.soup;
   s.begin(p.haze ?? 0);
   const col = rgb(p.colour);
-  const W = 16 * e;
+  // The deck's half-width and its slab's thickness: a far bridge's own sizes "as it reads from the road"
+  // (32 m wide, 4 m thick or more), unless the piece says its own (a near bridge, B5: the old Bahia Honda).
+  const W = (p.widthM !== undefined ? p.widthM / 2 : 16) * e;
   const deck = p.deckM * e;
   // A deck that climbs or falls end to end (playtest 4, G1: the Golden Gate, 71 m at Marin, 59 m at the
   // toll plaza); a suspension or girder bridge only, the other styles stand on `deck`.
   const deckEnd = (p.deckEndM ?? p.deckM) * e;
   const deckAt = (u: number) => deck + (deckEnd - deck) * u;
-  const thick = Math.max(4, deck * 0.12) * e;
+  const thick = (p.thickM ?? Math.max(4, deck * 0.12)) * e;
   const hump = (u: number) =>
     p.humpAt !== undefined ? (p.humpM ?? 0) * e * Math.exp(-(((u - p.humpAt) / 0.05) ** 2)) : 0;
   const inGap = (u: number) => (p.gaps ?? []).some(([g0, g1]) => u >= g0 && u <= g1);

@@ -88,6 +88,11 @@ export interface RoadsideRule {
   district?: readonly string[];
   notDistrict?: readonly string[];
   /**
+   * Stands only this far along a road from its start, m (playtest 4, P4-19, B5: the Key deer stand after the
+   * sign that warns of them, which is the first thing on Big Pine Bend). Default: from the start.
+   */
+  fromS?: number;
+  /**
    * Its clear-ground disc (radius `r`) sits this far behind the anchor, m: for a big building or a
    * boat whose body reaches back from its front, the disc covers the body, not the kerb before it.
    */
@@ -419,6 +424,16 @@ export const KEYS_KIT: RoadsideKit = {
     rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true, notDistrict: NOT_TOWN }),
     // The verge: sea grape crowding the road's edge, the near parallax at speed.
     rule('seagrape', [0], KEYS_LAND, 6, 0.7, [0.4, 2.5], 0.9, { ...UNDER, size: [0.8, 1.3] }),
+    // Playtest 4 (P4-19, B5; the identity sheets' B2): Big Pine's Key deer, CX5's buck and doe (models.ts
+    // `keysIdentity`, variant 0 the buck and 1 the doe, mostly does), grazing the verges of the road tagged
+    // `key-deer`, past the sign that warns of them (`fromS`), each facing its own way. Last in the list, so
+    // adding it moves no other rule's seeded placements.
+    rule('key-deer', [0, 1, 1], KEYS_LAND, 38, 0.65, [1.4, 3.5], 0.9, {
+      model: 'keysIdentity',
+      district: ['key-deer'],
+      fromS: 40,
+      size: [0.95, 1.1],
+    }),
   ],
 };
 
@@ -851,6 +866,7 @@ export class RoadsideScatter {
     for (let k = 0; ; k++) {
       const s0 = (k + 0.15 + (rule.align ? 0 : 0.7 * h(k, side, 0))) * spacing;
       if (s0 > e.length) break;
+      if (rule.fromS !== undefined && s0 < rule.fromS) continue;
       if (h(k, side, 1) >= rule.rate) continue;
       const [near, spread] = rule.across;
       // Off-road (run W-R): a solid prop stands clear of the ridable band; the understory may grow on it.

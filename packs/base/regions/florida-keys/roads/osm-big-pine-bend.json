@@ -51,9 +51,25 @@
       "s1": 415.0026,
       "side": "both",
       "tag": "mangrove"
+    },
+    {
+      "s0": 0,
+      "s1": 415.0026,
+      "side": "both",
+      "tag": "key-deer"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-key-deer",
+      "s0": 14.0,
+      "s1": 24.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "key-deer-crossing"
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

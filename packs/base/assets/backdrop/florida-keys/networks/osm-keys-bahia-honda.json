@@ -2,5 +2,27 @@
   "formatVersion": 1,
   "network": "osm-keys-bahia-honda",
   "originLatDeg": 24.7,
-  "originLonDeg": -81.1
+  "originLonDeg": -81.1,
+  "pieces": [
+    {
+      "id": "old-bahia-honda-bridge",
+      "kind": "bridge",
+      "frame": "local",
+      "style": "truss",
+      "from": [-17956.4, 4379.8],
+      "to": [-19375, 4623.5],
+      "deckM": 14,
+      "deckOnTop": true,
+      "widthM": 7,
+      "thickM": 1.2,
+      "trussM": 9,
+      "spanM": 57,
+      "gaps": [
+        [0.12, 0.16],
+        [0.96, 1]
+      ],
+      "colour": "#7a6a5c",
+      "keepOutM": 12
+    }
+  ]
 }

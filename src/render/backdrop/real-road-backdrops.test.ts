@@ -7,7 +7,8 @@
 // - the Golden Gate from the headlands (G1): the far bridge stands on the near kit's own line and shows
 //   from Hawk Hill and Conzelman Road, where the near kit is lost in the fog;
 // - Coit Tower over Telegraph Hill on the San Francisco networks with no near Coit Tower (W2);
-// - the old Bahia Honda rail bridge beside the new one (B1).
+// - the old Bahia Honda rail bridge beside the new one (B1; B5 moved it into the baked road's own metres,
+//   next to the new bridge: bahia-honda.test.ts).
 import { Color, type ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../../road';
@@ -330,47 +331,5 @@ describe('Coit Tower over Telegraph Hill (W2)', () => {
     );
     // Its hill-top spot is 60 m from Chinatown's lantern row: there the keep-out leaves it out.
     expect(standing.length).toBeGreaterThanOrEqual(SF.length - withNear.length - 1);
-  });
-});
-
-// B1: the old Bahia Honda rail bridge, a steel truss with the 1938 road deck on top of it and two spans
-// taken out, beside the new bridge the route rides.
-describe('the old Bahia Honda bridge (B1)', () => {
-  const ID = 'osm-keys-bahia-honda';
-
-  it('stands beside the new bridge, off every road, with its truss under the deck and a span out', () => {
-    const piece = piecesOf(ID).find((p) => p.id === 'old-bahia-honda-bridge') as BridgePiece | undefined;
-    expect(piece, 'the piece').toBeDefined();
-    if (!piece) return;
-    expect(piece.style).toBe('truss');
-    expect(piece.deckOnTop).toBe(true);
-    expect((piece.gaps ?? []).length).toBeGreaterThanOrEqual(1);
-    const road = track(ID);
-    const ring = build(ID, () => false).soup;
-    const soup = build(ID, (p) => p.id === piece.id).soup;
-    const verts = pieceVertices(soup, ring);
-    const e = road.edgeIndex('osm-bahia-honda-bridge');
-    const len = road.edges[e]!.length;
-    const deck = Array.from({ length: Math.ceil(len / 5) + 1 }, (_, i) =>
-      road.toWorld(e, Math.min(len, i * 5), 0, 0),
-    );
-    const every = roadPointsOf(road.edges, 1);
-    let nearest = Infinity;
-    let nearestRoad = Infinity;
-    let under = 0;
-    for (const v of verts) {
-      const p = vtx(soup, v);
-      nearest = Math.min(nearest, ...deck.map((q) => Math.hypot(q.x - p.x, q.z - p.z)));
-      nearestRoad = Math.min(nearestRoad, ...every.map(([x, z]) => Math.hypot(x - p.x, z - p.z)));
-      if (p.y < piece.deckM - 3 && p.y > 0) under++;
-    }
-    print(
-      `old Bahia Honda: ${verts.length / 3} triangles, ${nearest.toFixed(0)} m from the new bridge's deck at the nearest, ${nearestRoad.toFixed(0)} m from any road; ${under} vertices of truss under its deck`,
-    );
-    expect(verts.length).toBeGreaterThan(300);
-    // Beside the new bridge (a few hundred metres off), and off every road by the sweep's 150 m.
-    expect(nearest).toBeLessThan(400);
-    expect(nearestRoad).toBeGreaterThan(150);
-    expect(under).toBeGreaterThan(50);
   });
 });
