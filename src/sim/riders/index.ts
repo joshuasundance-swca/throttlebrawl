@@ -66,6 +66,7 @@ import {
   movingDecks,
   rampTruckAt,
   solidHazardAt,
+  stagingGuideAt,
   truckBodyAt,
   truckBodyTop,
   truckClosingMps,
@@ -717,7 +718,8 @@ function laneDropGuide(world: World, config: SimConfig, st: RiderState, m: Mover
  * The barrier rule. Past the outer edge the rider is held inside, loses the speed it carried into
  * the wall and scrapes. A new contact emits one event: a crash when the speed into the wall is at
  * least the crash speed (or 40 % of it while already wobbling), otherwise a wobble. At a split
- * zone's outer edge (splitGuideAt) the rider is only turned along the edge instead. Where the road
+ * zone's outer edge (splitGuideAt), and along a staging road's edges (stagingGuideAt), the rider is
+ * only turned along the edge instead. Where the road
  * narrows ahead (a lane that ends, W-R), the edge funnels in first (laneDropGuide).
  */
 function barrierContact(world: World, config: SimConfig, st: RiderState, m: Mover, dt: number): void {
@@ -736,7 +738,7 @@ function barrierContact(world: World, config: SimConfig, st: RiderState, m: Move
   }
   const side: 1 | -1 = pos.d > hi ? 1 : -1; // road-frame side of the wall
   const limit = side > 0 ? hi : lo;
-  if (splitGuideAt(config, pos.edge, pos.s, side, limit)) {
+  if (splitGuideAt(config, pos.edge, pos.s, side, limit) || stagingGuideAt(config, pos.edge)) {
     pos.d = limit;
     m.yaw = 0;
     st.touching[m.id] = 0;
