@@ -587,6 +587,8 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
   ),
   speedMultiplier: raceProbe('race', 'speedMultiplier', '0.8', '"speedMultiplier":0.8'),
   'assists.steer': raceProbe('race', 'assists-steer', 'light', '"steer":"light"'),
+  // Playtest 4, P4-8: the Free steering style reaches the next race's SimConfig (its replay header).
+  steerStyle: raceProbe('race', 'steerStyle', 'free', '"steerStyle":"free"'),
   slowMo: {
     set: async (page) => {
       await page.locator('#settings-tab-race').click();

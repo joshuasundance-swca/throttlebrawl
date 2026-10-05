@@ -1140,11 +1140,26 @@ export interface SimDifficulty {
 /** Steering assist strength (M2 riders-4): nudges yaw away from the shoulder and barriers. */
 export type SimSteerAssist = 'off' | 'light' | 'strong';
 
-/** One human slot's assists (M2 riders-4). Independent of the input method. */
+/**
+ * How a human slot's stick turns the bike (playtest 4, P4-8). `arcade` is the original riding model:
+ * the stick asks for a heading relative to the road, capped (about 8° at 40 m/s), and letting go
+ * lines the bike up with the road again. `free` is a true off, with no hidden pull toward the road:
+ * the same first turn, but held lock goes on turning the bike past that cap, and hands off the bike
+ * keeps its heading, going where it points. AI riders always ride `arcade`.
+ */
+export type SimSteerStyle = 'arcade' | 'free';
+
+/** One human slot's assists (M2 riders-4) and steering style. Independent of the input method. */
 export interface SimAssists {
   steer: SimSteerAssist;
   /** The sim holds full throttle for this slot (the input's throttle is ignored). */
   autoThrottle: boolean;
+  /**
+   * The steering style (playtest 4, P4-8). Absent means `arcade`, so a recording or a hand-built
+   * config from before it rides as it did; buildSimConfig writes it from the settings, so the replay
+   * header records it.
+   */
+  steerStyle?: SimSteerStyle;
 }
 
 /** Per player slot settings that are sim state (M2). AI riders have no slot and ignore them. */
