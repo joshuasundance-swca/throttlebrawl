@@ -77,15 +77,15 @@ describe('app: the base pack punch and kick (combat-1, M1 starting numbers)', ()
     });
   });
 
-  it('kick: 13 / 6 / 27 ticks, a 30-tick cooldown, reach 1.0 m × 1.7 m, and a harder shove', () => {
+  it('kick: 7 / 6 / 33 ticks (playtest 4: the wind-up M1 had at 13 moved after the hit), a 30-tick cooldown, reach 1.0 m × 1.7 m, and a harder shove', () => {
     const kick = byId('base:kick');
     expect(kick).toMatchObject({
       unarmed: true,
       reachSM: 1.0,
       reachDM: 1.7,
-      windupTicks: 13,
+      windupTicks: 7,
       activeTicks: 6,
-      recoveryTicks: 27,
+      recoveryTicks: 33,
       cooldownTicks: 30,
       hitStopMs: 60,
     });

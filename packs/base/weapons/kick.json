@@ -7,16 +7,16 @@
   "tags": ["unarmed"],
   "unarmed": true,
   "reach": { "sM": 1.0, "dM": 1.7 },
-  "windupS": 0.22,
+  "windupS": 0.12,
   "activeS": 0.1,
-  "recoveryS": 0.45,
+  "recoveryS": 0.55,
   "cooldownS": 0.5,
   "damage": 18,
   "knockback": { "lateralMps": 18.0, "staggerS": 0.35 },
   "hitStopMs": 60,
   "meta": {
     "status": "live",
-    "notes": "M1 starting numbers (docs/milestones/M1.md): 13 / 6 / 27 ticks and a 30-tick cooldown. Damage is combat-1's [default]. The shove is combat-3's (playtest 1, 2026-09-30: a landed kick pushes the target about a lane width, like a forced swerve): 18 m/s peak, falling to zero over the 0.4 s shove, moves the target 3.6 m at equal mass. The tuning panel's 'Kick shove' and 'Shove length' sliders adjust it.",
+    "notes": "M1 starting numbers (docs/milestones/M1.md): 13 / 6 / 27 ticks and a 30-tick cooldown. Playtest 4 (P4-6, 'reduce delay between tap and attack'): the wind-up is 7 ticks (117 ms, was 217 ms), as short as the 80 ms side drag allows (src/input/gesture.ts), and the 6 ticks it lost went into the recovery (33), so the whole cycle and the rivals' kick rhythm are unchanged. The cooldown is the rivals' only: a player's kick waits for nothing but the leg ([decided] 'No wait', about 0.8 s between kicks; sim/combat). Damage is combat-1's [default]. The shove is combat-3's (playtest 1, 2026-09-30: a landed kick pushes the target about a lane width, like a forced swerve): 18 m/s peak, falling to zero over the 0.4 s shove, moves the target 3.6 m at equal mass. The tuning panel's 'Kick shove' and 'Shove length' sliders adjust it.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-09-29" }
   }
 }
