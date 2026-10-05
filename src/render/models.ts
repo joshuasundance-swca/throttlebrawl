@@ -24,7 +24,15 @@ import {
 } from 'three';
 import type { AssetManifest } from '../assets';
 import { ATLAS_WHITE_UV, loadRegionAtlas, withAtlas } from './atlas';
-import { BAY_ROOT, BAY_ROOTS, belowDeck, withStagingLegs } from './bridge-bays';
+import {
+  ARCH_ROOTS,
+  ARCH_TAG,
+  BAY_ROOT,
+  BAY_ROOTS,
+  TRESTLE_TAG,
+  belowDeck,
+  withStagingLegs,
+} from './bridge-bays';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
 
@@ -59,6 +67,13 @@ export const MODEL_ASSETS = {
   // Playtest 3 (T12.6, Codex CX4): downtown Portland's street fronts, pink tower modules, food carts and
   // bike rack, in region-pnw's pack (downtown.ts)
   pdxDowntown: 'models/scenery/pdx-downtown',
+  // Playtest 4 (P4-19, Codex CX5): the Presidio's Monterey cypress and blue gum eucalyptus, in
+  // region-sf's pack (scenery.ts, the `coastTree` kind on a `presidio` side)
+  sfIdentity: 'models/scenery/sf-identity',
+  // Playtest 4 (P4-19, Codex CX5): the Columbia River Highway's concrete deck arches, two nodes of the
+  // Gorge's landmark kit (bridge-bays.ts `planArches`, under an `arch-bridge` deck). The file is a
+  // landmark kit, so it loads with the kit's own decoder (`KIT_MODELS`).
+  gorgeArches: 'models/landmarks/gorge-landmarks',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -158,6 +173,8 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'pdx_food_cart_c',
     'pdx_bike_rack',
   ],
+  sfIdentity: ['sf_cypress', 'sf_eucalyptus'],
+  gorgeArches: ARCH_ROOTS,
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -261,7 +278,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
-    if (n.tags.has('forest') && n.tags.has('bridge')) out.add('trestleBent');
+    // Playtest 4 (P4-19): the Presidio's trees, on the Golden Gate's toll plaza.
+    if (n.tags.has('presidio')) out.add('sfIdentity');
     const urban = ['row-houses', 'painted-houses', 'gardens'].some((t) => n.tags.has(t));
     if (urban) {
       out.add('rowHouses');
@@ -292,6 +310,9 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     // Run W-U: San Francisco's mural alleys (mission.ts) borrow the city kit's lamps and bins.
     if (['shopfronts', 'murals', 'mascot-mural'].some((t) => n.tags.has(t))) out.add('sfRoadside');
   }
+  // Playtest 4 (P4-19): a bridge's supports follow its own deck's tag, not the network's forest.
+  if (n.tags.has(TRESTLE_TAG)) out.add('trestleBent');
+  if (n.tags.has(ARCH_TAG)) out.add('gorgeArches');
   if (n.palette.has('fogBank')) out.add('fogBanks');
   if (n.traffic.some((id) => /cable-car/.test(id))) out.add('cableCar');
   return MODEL_KINDS.filter((k) => out.has(k));
@@ -613,9 +634,12 @@ export async function loadSceneryModels(
   const report: ModelLoadReport = { loaded: [], fellBack: [] };
   await Promise.all(
     kinds.map(async (kind) => {
-      const res = await manifest.load<SceneryModel | null>(MODEL_ASSETS[kind], () => null, {
-        decode: (data) => bakeModel(kind, readGlb(data)),
-      });
+      const kit = KIT_MODELS[kind];
+      const res = kit
+        ? await loadKitModel(manifest, kind, kit)
+        : await manifest.load<SceneryModel | null>(MODEL_ASSETS[kind], () => null, {
+            decode: (data) => bakeModel(kind, readGlb(data)),
+          });
       if (res.value) {
         // Its region atlas loads with it (the manifest loads each file once, however many ask).
         const sheet = ATLAS_SHEETS[kind];
@@ -634,6 +658,43 @@ export async function loadSceneryModels(
 // scenery kits above, a landmark kit's nodes are not a fixed list: every named root of the file is
 // baked, with its numeric extras (`top_m`, `cable_saddle_x_m`, `bay_m`, `cable_entry_m`), so a new
 // node needs no code here. A kit the list below does not name is never fetched.
+
+/**
+ * Scenery models whose nodes live in a landmark kit (playtest 4, P4-19: the Gorge's deck arches). The
+ * manifest loads a file once and hands every later caller the first caller's decoded value, so such a
+ * model is read through the kit's own decoder (`bakeLandmarkKit`, as `loadLandmarkKits` reads it) and
+ * its variants are taken from the kit's nodes: whichever asks first, both get what they expect.
+ */
+const KIT_MODELS: Readonly<Partial<Record<ModelKind, LandmarkKitId>>> = { gorgeArches: 'gorge-landmarks' };
+
+/** A scenery model from a landmark kit's nodes, one variant per root `ROOTS` names. Throws on a missing node. */
+export function modelFromKit(kind: ModelKind, kit: LandmarkKit): SceneryModel {
+  const variants: BufferGeometry[] = [];
+  const roles: RoleRun[][] = [];
+  for (const name of ROOTS[kind]) {
+    const node = kit.nodes.get(name);
+    if (!node) throw new Error(`${landmarkKitAsset(kit.id)} has no node ${name}`);
+    variants.push(node.geometry);
+    roles.push([...node.roles]);
+  }
+  return { kind, variants, doubleSided: kit.doubleSided, roles };
+}
+
+async function loadKitModel(
+  manifest: AssetManifest,
+  kind: ModelKind,
+  id: LandmarkKitId,
+): Promise<{ value: SceneryModel | null; error?: string | undefined }> {
+  const res = await manifest.load<LandmarkKit | null>(landmarkKitAsset(id), () => null, {
+    decode: (data) => bakeLandmarkKit(id, readGlb(data)),
+  });
+  if (!res.value) return { value: null, error: res.error };
+  try {
+    return { value: modelFromKit(kind, res.value) };
+  } catch (err) {
+    return { value: null, error: String(err) };
+  }
+}
 
 /** Each landmark kit, by its asset id's last part (`models/landmarks/<kit>`). [default] */
 export const LANDMARK_KITS = [

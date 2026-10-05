@@ -5,7 +5,9 @@
 // arches and steel girders, the platforms the ramp trucks stand on, and the broken end of a deck.
 // Each bay is a rigid module with its origin at the deck top where it starts, running along +Z, so
 // this module only decides where each one stands: end to end along a bridge, turned to the road's
-// heading and sheared up its grade so the deck of the bay is the deck of the road.
+// heading and sheared up its grade so the deck of the bay is the deck of the road. Playtest 4 (P4-19)
+// adds the same for any deck tagged `arch-bridge`: the Columbia River Highway's concrete deck arches,
+// from Codex CX5's Gorge kit (`planArches`).
 //
 // Nothing here draws. The spots (`ScenerySpot`, kind `bay`) go into the road scene's merged
 // scenery blocks (road-mesh.ts, scenery-merge.ts), so a bay costs no mesh where a block already
@@ -227,6 +229,108 @@ export function planBays(e: BayEdge): ScenerySpot[] {
         place(kind, a, b);
         a = b;
       }
+    }
+  }
+  return out;
+}
+
+// ---- Supports picked by the deck's own tag (playtest 4, P4-19; the identity sheets' cause C5) ------
+// Until playtest 4 a network with `forest` anywhere stood every bridge on timber trestle bents, so the
+// Columbia River Highway's concrete deck arches, I-5's concrete bridges and Upper Market's bridge
+// stood on timber. Now a deck says what holds it up: `trestle` stands it on timber bents (road-mesh.ts),
+// `arch-bridge` gives it Codex CX5's concrete deck arches (below), and any other deck keeps the plain
+// concrete pylons.
+
+/** A deck tagged this stands on timber trestle bents (road-mesh.ts). */
+export const TRESTLE_TAG = 'trestle';
+/** A deck tagged this gets the concrete deck arches (`planArches`). */
+export const ARCH_TAG = 'arch-bridge';
+
+/** The arches: a 24 m bay, and the one 46 m span a short deck takes whole. */
+export type ArchKind = 'bay' | 'span';
+/** Each arch's root node in the Gorge kit (`models/landmarks/gorge-landmarks`, tools/blender/props/gorge_landmarks.py). */
+export const ARCH_ROOT: Readonly<Record<ArchKind, string>> = {
+  bay: 'gorge_arch_bay',
+  span: 'gorge_arch_span_46',
+};
+/** The arch kinds in the order of the model's variants: an arch spot's `variant` indexes this. */
+export const ARCH_KINDS: readonly ArchKind[] = ['bay', 'span'];
+/** The arches' root nodes in variant order (models.ts bakes one variant per root). */
+export const ARCH_ROOTS: readonly string[] = ARCH_KINDS.map((k) => ARCH_ROOT[k]);
+/** Each arch's length along the road, m: its root's `bay_m` extra. */
+export const ARCH_M: Readonly<Record<ArchKind, number>> = { bay: 24, span: 46 };
+/** How far each arch's piers reach under the deck top, m: its root's `pier_m` extra. */
+export const ARCH_PIER_M: Readonly<Record<ArchKind, number>> = { bay: 16, span: 28 };
+/**
+ * Where an arch's stone footings stand, at the foot of its piers: this far either side of the deck's
+ * centre line, and this far in from each end of the arch, m (measured on the kit: 3 m across by 2.4 m
+ * along, from x 2.1 to 5.1 and z 0 to 2.4 at each end).
+ */
+export const ARCH_FOOTING = { x: 3.6, inM: 1.2 } as const;
+
+/** One road's decks, as the arch planner reads them. */
+export interface ArchEdge {
+  edge: number;
+  length: number;
+  /** The road's scenery tags (`bridge` marks a deck; `arch-bridge` an arched one). */
+  tags: readonly BayTag[] | undefined;
+  /** The gaps the road draws as broken ends; no arch stands over one. */
+  gaps: readonly BayRange[];
+  /** The ramps; no arch stands under a kicker's lifted road. */
+  ramps: readonly BayRange[];
+  /** The road's centre line at s, in world metres (deck top height). */
+  at(s: number): Point3;
+}
+
+/**
+ * Plans the arches of one road, as spots (kind `arch`) for the merged bridge blocks.
+ *
+ * Each `bridge` stretch also tagged `arch-bridge` gets them. A deck no longer than the big span and
+ * one bay (under 70 m) takes the one 46 m span, as Shepperd's Dell's single arch; a longer deck takes
+ * 24 m bays end to end, as many as fit. Either way the arches are centred on the deck, so what is
+ * left bare (less than a bay) is split between its two ends. A deck shorter than one bay takes none,
+ * and none stands over a gap or a kicker. Each arch is turned to its chord and sheared up its grade,
+ * as the Seven Mile's bays are (`planBays`).
+ */
+export function planArches(e: ArchEdge): ScenerySpot[] {
+  const tags = e.tags ?? [];
+  const span = (t: BayTag): Span => [
+    Math.max(0, Math.min(t.s0, t.s1)),
+    Math.min(e.length, Math.max(t.s0, t.s1)),
+  ];
+  const decks = intersect(
+    union(tags.filter((t) => t.tag === 'bridge').map(span)),
+    union(tags.filter((t) => t.tag === ARCH_TAG).map(span)),
+  );
+  if (!decks.length) return [];
+  const blocked = union([
+    ...e.gaps.map((g): Span => [g.s0, g.s1]),
+    ...e.ramps.map((r): Span => [Math.min(r.s0, r.s1), Math.max(r.s0, r.s1)]),
+  ]);
+  const out: ScenerySpot[] = [];
+  for (const [from, to] of subtract(decks, blocked)) {
+    const len = to - from;
+    const one = len >= ARCH_M.span && len < ARCH_M.span + ARCH_M.bay;
+    const kind: ArchKind = one ? 'span' : 'bay';
+    const n = one ? 1 : Math.floor(len / ARCH_M.bay + 1e-9);
+    let a = from + (len - n * ARCH_M[kind]) / 2;
+    for (let k = 0; k < n; k++, a += ARCH_M[kind]) {
+      const p0 = e.at(a);
+      const p1 = e.at(a + ARCH_M[kind]);
+      const run = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+      out.push({
+        kind: 'arch',
+        variant: ARCH_KINDS.indexOf(kind),
+        p: p0,
+        turn: Math.atan2(p1.x - p0.x, p1.z - p0.z),
+        size: 1,
+        phase: 0,
+        edge: e.edge,
+        s: a,
+        d: 0,
+        slope: run > 1e-6 ? (p1.y - p0.y) / run : 0,
+        reachM: ARCH_M[kind] + BAY_ASIDE_M,
+      });
     }
   }
   return out;

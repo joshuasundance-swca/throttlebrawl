@@ -179,7 +179,7 @@
           "id": "osm-sf-gg-toll-plaza",
           "name": "Toll Plaza",
           "realName": "Golden Gate",
-          "tags": ["headlands"],
+          "tags": ["presidio"],
           "features": [
             {
               "kind": "billboard",

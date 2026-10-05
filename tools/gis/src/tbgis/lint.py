@@ -71,6 +71,10 @@ TAGS = {
     "rail-line",
     "brick-street",
     "headlands",
+    # Playtest 4 (P4-19): the Presidio's trees, and a deck's own supports (src/render/bridge-bays.ts).
+    "presidio",
+    "arch-bridge",
+    "trestle",
 }
 
 # The jump lint (src/road/validate.ts ROAD_LINT, docs/content-packs.md "Jump lint"): from a ramp,

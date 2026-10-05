@@ -25,8 +25,10 @@
     { "s0": 0, "s1": 150, "side": "right", "tag": "marina" },
     { "s0": 0, "s1": 150, "side": "left", "tag": "town" },
     { "s0": 150, "s1": 164, "side": "both", "tag": "bridge" },
+    { "s0": 150, "s1": 164, "side": "both", "tag": "trestle" },
     { "s0": 164, "s1": 326, "side": "both", "tag": "ferry" },
     { "s0": 326, "s1": 340, "side": "both", "tag": "bridge" },
+    { "s0": 326, "s1": 340, "side": "both", "tag": "trestle" },
     { "s0": 340, "s1": 420, "side": "right", "tag": "marina" },
     { "s0": 340, "s1": 420, "side": "left", "tag": "town" },
     { "s0": 420, "s1": 700, "side": "both", "tag": "forest" }

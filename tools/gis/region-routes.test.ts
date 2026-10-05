@@ -146,7 +146,7 @@ const look = createFlatLook();
 /** The fixed test seeds and the seeds the skeptics named (scenery-sweep.test.ts's NAMED). */
 const SEEDS = [1, 2, 3, 7, 11, 2447605036, 3230531489, 4052564335, 1783423519, 2901547813];
 // Every land kind, the region scenery included (conifers, row houses, the sawmill: #234).
-const LAND = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill']);
+const LAND = new Set(['palm', 'mangrove', 'shack', 'pole', 'conifer', 'house', 'sawmill', 'coastTree']);
 const WIDE = new Set(['shack', 'mangrove', 'house', 'sawmill']);
 const RING = 0.6;
 
