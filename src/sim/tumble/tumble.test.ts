@@ -14,7 +14,7 @@ import { modifiersSystem } from '../modifiers';
 import { pedsSystem } from '../peds';
 import { gridPosition, raceState, raceSystem } from '../race';
 import { riderState, ridersSystem } from '../riders';
-import { trafficSystem } from '../traffic';
+import { trafficGhost, trafficSystem } from '../traffic';
 import { InputFlag, type SimConfig, type SimInput } from '../types';
 import {
   addMover,
@@ -282,6 +282,7 @@ describe('tumble: a scripted crash', () => {
     expect(h.world.tick - handback).toBeLessThanOrEqual(runTicks);
     expect(h.player.pos).toEqual(bikeCopy);
     expect(h.player.speed).toBe(8); // remounts rolling (interview, 2026-10-02)
+    expect(trafficGhost(h.world, 1)).toBe(true); // rides through traffic for a moment (playtest 4)
     expect(riderState(h.world).health[1]).toBe(100);
     expect(isDown(h.world, 1)).toBe(false);
     expect(tumbleRecord(h.world, 1)).toBeNull();

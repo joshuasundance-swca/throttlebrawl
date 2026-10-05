@@ -62,6 +62,7 @@ export const DRIFT_DEFAULTS = {
   chainS: 4,
   minMps: 18,
   exitMps: 10,
+  edgeForgive: 1.6,
 } as const;
 
 export const DRIFT_TUNING: readonly TuningParamDecl[] = [
@@ -125,6 +126,20 @@ export const DRIFT_TUNING: readonly TuningParamDecl[] = [
     max: 40,
     step: 0.5,
     unit: 'm/s',
+    affectsSim: true,
+  },
+  {
+    // Drift room (playtest 4, "more room for error in heavy traffic"): while a drift slides, a
+    // barrier or rail crashes only from this many times the barrier crash speed; under it, a
+    // wobble, never a crash. 1 is the old rule. [default]
+    id: 'riders.driftEdgeForgive',
+    group: 'steering',
+    label: 'Drift: edge forgiveness',
+    default: DRIFT_DEFAULTS.edgeForgive,
+    min: 1,
+    max: 3,
+    step: 0.1,
+    unit: '×',
     affectsSim: true,
   },
   {

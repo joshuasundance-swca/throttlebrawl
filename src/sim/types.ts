@@ -197,6 +197,13 @@ export interface EntitySnapshot {
    * bike at yaw + drift. Optional for hand-built snapshots; the sim fills it for every entity.
    */
   drift?: number;
+  /**
+   * A rider back on the bike moments ago, riding through traffic (playtest 4; sim/traffic,
+   * startTrafficGhost): traffic and it pass through each other until it is clear. Render shows it
+   * subtly on the player's own bike. False for other kinds. Optional for hand-built snapshots; the
+   * sim fills it for every entity.
+   */
+  ghost?: boolean;
 }
 
 /**

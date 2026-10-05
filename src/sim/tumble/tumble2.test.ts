@@ -18,7 +18,7 @@ import { modifiersSystem } from '../modifiers';
 import { pedsSystem } from '../peds';
 import { gridPosition, raceSystem } from '../race';
 import { riderState, ridersSystem } from '../riders';
-import { placeVehicle, toCorridor, trafficState, trafficSystem } from '../traffic';
+import { placeVehicle, toCorridor, trafficGhost, trafficState, trafficSystem } from '../traffic';
 import type { SimConfig, SimEvent, SimEventType, SimInput, SimRiderDef } from '../types';
 import {
   addMover,
@@ -446,6 +446,8 @@ describe('tumble-2: over the rail', () => {
     expect(h.player.speed).toBe(8);
     expect(tumbleRecord(h.world, 1)).toBeNull();
     expect(riderState(h.world).health[1]).toBe(100);
+    // A ghost to traffic for a moment (playtest 4): a fair restart among the bridge's cars.
+    expect(trafficGhost(h.world, 1)).toBe(true);
     // The respawn is near where the body went over (not back at the start).
     expect(Math.abs(h.player.pos.s - 300)).toBeLessThan(40);
   });

@@ -73,3 +73,20 @@ export class Ghosts {
     return 1;
   }
 }
+
+/**
+ * Back on the bike (playtest 4): while the sim says the player's rider rides through traffic
+ * (EntitySnapshot.ghost, sim/traffic startTrafficGhost), the player's own rider and bike draw a little
+ * see-through, breathing gently between these levels a few times a second: a soft cue, no marker (the
+ * maintainer dislikes strong ones). Rivals and cops draw solid. Presentation only. [default]
+ */
+const RESPAWN_LOW = 0.5;
+const RESPAWN_HIGH = 0.8;
+const RESPAWN_HZ = 4;
+
+/** The see-through level of a player's rider riding through traffic, at wall-clock `t`: 1 is solid. */
+export function respawnOpacity(e: EntitySnapshot, t: number): number {
+  if (e.ghost !== true || e.slot < 0) return 1;
+  const k = 0.5 + 0.5 * Math.sin(t * RESPAWN_HZ * 2 * Math.PI);
+  return RESPAWN_LOW + (RESPAWN_HIGH - RESPAWN_LOW) * k;
+}

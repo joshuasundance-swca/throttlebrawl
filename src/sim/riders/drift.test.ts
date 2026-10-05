@@ -158,6 +158,7 @@ describe('drift: the tuning', () => {
       'riders.driftDrag',
       'riders.driftChainS',
       'riders.driftMinMps',
+      'riders.driftEdgeForgive',
       'riders.driftExitMps',
     ]);
     for (const d of DRIFT_TUNING) expect(d.affectsSim).toBe(true);
@@ -574,5 +575,38 @@ describe('drift: when it never starts', () => {
     }
     expect(events.filter((e) => e.type === 'driftStart' && e.actor === ai.id)).toEqual([]);
     expect(driftOf(pack.world, ai)).toBe(0);
+  });
+});
+
+describe('drift room: the edge forgives a slide (playtest 4)', () => {
+  /** A slide held against a wall on a long bend: the first barrier event, and the state it ended in. */
+  function wallHit(tuning: Record<string, number>, sliding: boolean): SimEvent | undefined {
+    const h = riderHarness(testConfig({ edges: [{ id: 'a', lengthM: 3000, kappa: 1 / 80 }], tuning }), {
+      s: 100,
+      d: 0,
+      speed: 36,
+    });
+    const st = riders(h.world);
+    for (let t = 0; t < 240; t++) {
+      if (sliding) {
+        st.driftSide[h.rider.id] = 1;
+        st.driftBeta[h.rider.id] = 0.3;
+      }
+      const hit = barrier(h.step(input(1, 0, -1)))[0];
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  it('a slide that would crash at the wall wobbles at 1.6 times the crash speed; a rider not sliding still crashes', () => {
+    const base = wallHit({}, true);
+    expect(base?.type).toBe('wobble'); // the default forgiveness already turns this hit to a wobble
+    const hit = Number(base?.data['impactMps']);
+    // Crash speed set under the impact: with no forgiveness it crashes, with 1.6 times it does not.
+    const tuned = { 'riders.crashImpactMps': hit / 1.3 };
+    expect(wallHit({ ...tuned, 'riders.driftEdgeForgive': 1 }, true)?.type).toBe('crash');
+    expect(wallHit({ ...tuned, 'riders.driftEdgeForgive': 1.6 }, true)?.type).toBe('wobble');
+    // Not sliding, the room is not given: the same hit crashes at the same crash speed.
+    expect(wallHit({ ...tuned, 'riders.driftEdgeForgive': 1.6 }, false)?.type).toBe('crash');
   });
 });

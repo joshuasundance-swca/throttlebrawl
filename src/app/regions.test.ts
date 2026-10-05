@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stationsForRegion } from '../audio';
+import { signStyleOf } from '../render';
 import { loadBasePack, registryFromGlob } from '../content';
 import { buildSimConfig, copIds, streamForEvent } from './config';
 import {
@@ -8,6 +9,7 @@ import {
   narrativeSettingOf,
   racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeKeyOf,
@@ -162,6 +164,59 @@ describe('app: regions', () => {
       ).toBe(false);
     }
     expect(keys.pools?.signs?.some((s) => s.ref.endsWith('#ices-before-road'))).toBe(true);
+  });
+
+  describe('sign faces by region and slot (playtest 4, P4-19: regional sign faces)', () => {
+    const KEYS = 'base:florida-keys';
+    const PNW = 'region-pnw:pacific-northwest';
+    const SF = 'region-sf:san-francisco';
+    const styleOf = (v: unknown) => (v as { signStyle?: unknown }).signStyle;
+    type Slot = { kind: string; id?: string; item?: string; pool?: string; params?: { style?: unknown } };
+    const slotsOf = (roadKey: string): Slot[] =>
+      ((ALL.roads[roadKey] as { features?: Slot[] } | undefined)?.features ?? []).filter(
+        (f) => f.kind === 'billboard',
+      );
+
+    it("hands a region's sign style to its catalog, and only that", () => {
+      for (const key of Object.keys(ALL.regions))
+        expect(boardCatalog(ALL, key).style, key).toBe(styleOf(ALL.regions[key]));
+    });
+
+    it('gives each shipped region a style render knows, and each region its own look', () => {
+      const styles = [KEYS, PNW, SF].map((k) => boardCatalog(ALL, k).style);
+      for (const s of styles) expect(signStyleOf(s), JSON.stringify(s)).not.toBeNull();
+      expect(new Set(styles).size).toBe(3);
+      expect(styles).not.toContain('default');
+    });
+
+    it('names only styles render knows, in every region and every road slot', () => {
+      for (const [key, region] of Object.entries(ALL.regions)) {
+        const s = styleOf(region);
+        if (s !== undefined) expect(signStyleOf(s), `${key} signStyle ${JSON.stringify(s)}`).not.toBeNull();
+      }
+      for (const [key, road] of Object.entries(ALL.roads))
+        for (const f of (road as { features?: Slot[] }).features ?? []) {
+          const s = f.params?.style;
+          if (f.kind === 'billboard' && s !== undefined)
+            expect(signStyleOf(s), `${key} ${f.id} style ${JSON.stringify(s)}`).not.toBeNull();
+        }
+    });
+
+    it("overrides the Gorge's and the interstate's sign slots with their own faces", () => {
+      const pnw = boardCatalog(ALL, PNW);
+      const signSlots = (prefix: string) =>
+        Object.keys(ALL.roads)
+          .filter((k) => k.startsWith(`region-pnw:${prefix}`))
+          .flatMap((k) => slotsOf(k))
+          .filter((f) => f.pool === 'signs' || (f.item !== undefined && pnw.items[f.item]?.kind === 'sign'));
+      const gorge = signSlots('osm-gorge-');
+      const i5 = signSlots('osm-i5-');
+      // The loops prove they examined something: each place has signs to dress.
+      expect(gorge.length).toBeGreaterThan(0);
+      expect(i5.length).toBeGreaterThan(0);
+      for (const f of gorge) expect(f.params?.style, f.id).toBe('historic');
+      for (const f of i5) expect(f.params?.style, f.id).toBe('guide');
+    });
   });
 
   it("hands render the words for a model's blank board as vetoable items that no pool carries (playtest 3, T12.6)", () => {
@@ -332,5 +387,65 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     const r = raceRadio(withPnw, 'region-pnw:pacific-northwest');
     expect(r.region).toBe('region-pnw:pacific-northwest');
     expect(r.stations.map((s) => s.id)).toContain('fog-fm');
+  });
+});
+
+// Playtest 4 (the identity sheets, cause 10): rain is a property of the light or of the event, not of
+// the whole region, so the Pacific Northwest has dry races too. The menu race's own pick still wins.
+describe('app: the weather a race draws', () => {
+  const PNW = 'region-pnw:pacific-northwest';
+  const EVENT = 'region-pnw:pnw-t1-espresso-hunt';
+  /** The registry with one event rebuilt: its light and weather as the case sets them. */
+  const withEvent = (over: Record<string, unknown>) =>
+    ({ ...ALL, events: { ...ALL.events, [EVENT]: { ...ALL.events[EVENT], ...over } } }) as typeof ALL;
+  const lights = (ALL.regions[PNW]?.timeOfDayOptions ?? []).map((o) => o.id);
+  /** Lights that rain by themselves, and lights that do not. */
+  const rainy = lights.filter((t) => racePalette(ALL, PNW, t)['rain']);
+  const dry = lights.filter((t) => !racePalette(ALL, PNW, t)['rain']);
+  const wetLight = rainy[0] ?? 'no-rainy-light';
+  const dryLight = dry[0] ?? 'no-dry-light';
+
+  it('the region has lights that rain and lights that do not, and the base palette alone does not rain', () => {
+    console.log(
+      `[examined] PNW lights ${lights.join(', ')}: rain in ${rainy.join(', ')}; dry in ${dry.join(', ')}`,
+    );
+    expect(rainy.length).toBeGreaterThanOrEqual(1);
+    expect(dry.length).toBeGreaterThanOrEqual(1);
+    expect(ALL.regions[PNW]?.palette?.['rain']).toBeUndefined();
+  });
+
+  it("a light's own rain reaches the race, and a dry light draws none", () => {
+    for (const t of rainy) expect(raceSky(ALL, EVENT, t).wet, t).toBe(true);
+    for (const t of dry) expect(raceSky(ALL, EVENT, t).wet, t).toBe(false);
+  });
+
+  it("an event's weather beats its own light: dry in a rainy one, rain in a dry one", () => {
+    const dryEvent = withEvent({ timeOfDay: wetLight, weather: 'dry' });
+    expect(raceSky(dryEvent, EVENT, wetLight).wet).toBe(false);
+    expect(raceSky(dryEvent, EVENT, wetLight).palette['rain']).toBeUndefined();
+    const rainEvent = withEvent({ timeOfDay: dryLight, weather: 'rain' });
+    expect(raceSky(rainEvent, EVENT, dryLight).wet).toBe(true);
+    // The control: the same events with no weather follow their light.
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: undefined }), EVENT, wetLight).wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: dryLight, weather: undefined }), EVENT, dryLight).wet).toBe(false);
+  });
+
+  it("an event's weather is for its own light: raced at another hour, that hour's weather holds", () => {
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'dry' }), EVENT, dryLight).wet).toBe(false);
+    expect(raceSky(withEvent({ timeOfDay: dryLight, weather: 'dry' }), EVENT, wetLight).wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'rain' }), EVENT, dryLight).wet).toBe(false);
+  });
+
+  it("the menu race's pick beats the event and the light, and never dries the registry's palette", () => {
+    expect(raceSky(ALL, EVENT, wetLight, 'dry').wet).toBe(false);
+    expect(raceSky(ALL, EVENT, wetLight, 'dry').palette['rain']).toBeUndefined();
+    expect(racePalette(ALL, PNW, wetLight)['rain']).toBeDefined();
+    const asked = raceSky(ALL, EVENT, dryLight, 'rain');
+    expect(asked.wet).toBe(true);
+    expect(asked.weather).toBe('rain');
+    expect(raceSky(ALL, EVENT, wetLight, 'local').wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'dry' }), EVENT, wetLight, 'rain').wet).toBe(
+      true,
+    );
   });
 });

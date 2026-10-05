@@ -34,6 +34,11 @@ export default defineConfig({
     hasTouch: true,
     // CI renders WebGL in software; harmless where a GPU exists.
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
+    // The game's offline worker (src/platform/sw.ts) is blocked in every spec but the offline one
+    // (tests/e2e/app-offline.spec.ts, which allows it): a worker answering the page's requests
+    // would hide them from the specs' page.route() stubs, and caching the whole build in each spec
+    // would cost every slice its download. [default]
+    serviceWorkers: 'block',
   },
   projects: [
     { name: 'e2e', testDir: 'tests/e2e' },

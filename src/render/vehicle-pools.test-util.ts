@@ -95,8 +95,25 @@ export async function readRepoFile(rel: string): Promise<ArrayBuffer> {
 }
 
 /**
- * An asset manifest that reads the base pack's models from disk, the way the build's manifest
- * serves them. An id in `failing` falls back to its stand-in, as a missing or corrupt file does.
+ * The bytes of a model by asset id, from whichever pack carries it: the manifest resolves an id
+ * across every pack (a region's own models sit in its region pack), so the tests do too.
+ */
+export async function readModel(asset: string): Promise<ArrayBuffer> {
+  const mod: string = 'node:fs';
+  const fs = (await import(/* @vite-ignore */ mod)) as {
+    readdirSync(p: string): string[];
+    existsSync(p: string): boolean;
+  };
+  for (const pack of fs.readdirSync('packs').sort()) {
+    const rel = `packs/${pack}/assets/${asset}.glb`;
+    if (fs.existsSync(rel)) return readRepoFile(rel);
+  }
+  throw new Error(`no pack carries ${asset}`);
+}
+
+/**
+ * An asset manifest that reads the packs' models from disk, the way the build's manifest serves
+ * them. An id in `failing` falls back to its stand-in, as a missing or corrupt file does.
  */
 export function diskManifest(failing: ReadonlySet<string> = new Set()): AssetManifest {
   const load: AssetManifest['load'] = async <T>(
@@ -106,7 +123,7 @@ export function diskManifest(failing: ReadonlySet<string> = new Set()): AssetMan
   ) => {
     try {
       if (failing.has(id)) throw new Error('missing');
-      const data = await readRepoFile(`packs/base/assets/${id}.glb`);
+      const data = await readModel(id);
       if (!opts?.decode) throw new Error('no decoder');
       const value = await opts.decode(data, undefined as never);
       return { id, source: 'baked' as const, value, fellBack: false };
