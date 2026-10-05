@@ -29,9 +29,11 @@
 //   negate the attack"). The riding phase's contact (sim/riders/contact) holds two bikes 2 m apart
 //   nose to tail, merges their speeds and glances them apart, so a rider you ride into is pushed
 //   out of a punch's or kick's reach before it lands. When a player's bike touches the rider his
-//   attack is aimed at (or, with none, a rider on its side) during its wind-up or active moment, the
-//   attack lands on that rider in its active moment while he is within BUMP_REACH_M along and
-//   across. Rivals' attacks keep the reach box. [default]
+//   attack is aimed at (or, with none, a rider on its side) during its wind-up or active moment, or
+//   in the BUMP_AFTER_TICKS (0.5 s) before its press (run B's B15: a press just after a rear bump
+//   found the rider 2 m ahead, past every reach), the attack lands on that rider in its active
+//   moment while he is within BUMP_REACH_M along and across. Without a bump the reach boxes are
+//   unchanged, and rivals' attacks keep the reach box. [default]
 // - The kick conversion (M2 combat-3, playtest 1 item 3): a `kick` flag converts any attack but a
 //   kick into a kick while it is still in its wind-up (M1's rule), or while it is no older than
 //   combat.kickConvertMs (default 250 ms, 15 ticks) in any phase. A natural swipe-down takes longer
@@ -581,6 +583,11 @@ export const PRESS_BUFFER_TICKS = 10;
  * or kick's wind-up and active moment; 3 m covers both. [default]
  */
 export const BUMP_REACH_M = 3;
+/**
+ * A player's attack started this many ticks (0.5 s) after his bike last touched a rider counts that
+ * bump as its own: a felt bump, the reaction to it and the thumb's way to the button. [default]
+ */
+export const BUMP_AFTER_TICKS = 30;
 const SIDE_BITS = InputFlag.attackSideLeft | InputFlag.attackSideRight;
 /** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
 const MASS_RATIO_MIN = 0.5;
@@ -1368,11 +1375,11 @@ function landBump(world: World, config: SimConfig, st: CombatState, a: Mover, w:
 }
 
 /**
- * The rider a player's attack touched this tick (the riding phase's contact, which ran before this
- * one), or -1: the attack's target first, else a rider on its side (any side when it has none; the
- * rider ahead for the straight kick).
+ * The rider a player's attack touched from tick `since` to this one (the riding phase's contact,
+ * which ran before this phase), or -1: the attack's target first, else a rider on its side (any
+ * side when it has none; the rider ahead for the straight kick).
  */
-function touchedNow(world: World, config: SimConfig, st: CombatState, a: Mover): EntityId {
+function touchedSince(world: World, config: SimConfig, st: CombatState, a: Mover, since: number): EntityId {
   const contact = riderState(world).contactTick ?? {};
   const target = st.targetId[a.id] ?? -1;
   const side = st.side[a.id] ?? 0;
@@ -1380,7 +1387,8 @@ function touchedNow(world: World, config: SimConfig, st: CombatState, a: Mover):
   for (const o of world.movers) {
     if (o.id === a.id || !isRiding(o)) continue;
     const key = a.id < o.id ? `${a.id}-${o.id}` : `${o.id}-${a.id}`;
-    if (contact[key] !== world.tick) continue;
+    const at = contact[key];
+    if (at === undefined || at < since || at > world.tick) continue;
     if (o.id === target) return o.id;
     if (found >= 0 || target >= 0) continue;
     const rel = relative(config.road, a, o, BUMP_REACH_M + 2);
@@ -2073,7 +2081,7 @@ export const combatSystem: SimSystem = {
       // The bump rule: remember the rider a player's attack touched in this tick's riding phase,
       // while it was winding up or out (his target, once touched, stays the one).
       if (player && (st.phase[id] === 'windup' || st.phase[id] === 'active') && !st.landed[id]) {
-        const touched = touchedNow(world, config, st, a);
+        const touched = touchedSince(world, config, st, a, world.tick);
         const was = st.touched[id] ?? -1;
         if (touched >= 0 && (was < 0 || was !== st.targetId[id])) st.touched[id] = touched;
       }
@@ -2097,7 +2105,8 @@ export const combatSystem: SimSystem = {
           const w = resolveWeapon(config, st, id, (f & InputFlag.kick) !== 0);
           if (w) {
             setAim(world, config, st, a, w.contentId === KICK_ID ? f : f & ~InputFlag.kick);
-            st.touched[id] = -1;
+            // The bump rule reaches back: a bump just before a player's press is this attack's own.
+            st.touched[id] = player ? touchedSince(world, config, st, a, world.tick - BUMP_AFTER_TICKS) : -1;
             startAttack(world, st, a, w, undefined);
           }
         }
