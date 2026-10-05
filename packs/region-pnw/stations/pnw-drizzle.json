@@ -11,7 +11,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 98,
+          "bpm": 120,
           "key": "D",
           "progression": "drop"
         }
@@ -25,7 +25,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 112,
+          "bpm": 132,
           "key": "C#",
           "progression": "heave"
         }
@@ -39,7 +39,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 104,
+          "bpm": 126,
           "key": "D",
           "progression": "sludge"
         }
@@ -53,7 +53,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 126,
+          "bpm": 144,
           "key": "E",
           "progression": "grind"
         }
@@ -67,7 +67,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 118,
+          "bpm": 138,
           "key": "B",
           "progression": "drop"
         }
@@ -81,7 +81,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 130,
+          "bpm": 148,
           "key": "A",
           "progression": "heave"
         }
@@ -95,7 +95,7 @@
       "procedural": {
         "preset": "grunge-band",
         "params": {
-          "bpm": 94,
+          "bpm": 116,
           "key": "G",
           "progression": "sludge"
         }
@@ -107,7 +107,7 @@
   "djBarkSet": "dj-pnw-drizzle",
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's loud station: grunge (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Quiet verses of clean arpeggios into loud, distorted power-chord choruses, drop-tuned keys, 94-130 bpm (src/audio/radio-compose-regional.ts, preset grunge-band). It played slow surf before playtest 2; the song names stayed. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "notes": "The Pacific Northwest's loud station: grunge (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Since playtest 4 (P4-17: \"PNW seems very simple and slow\") each track is a whole sixteen-bar song at 112-148 bpm: a drop-tuned riff, a quiet verse of clean arpeggios, a build, a loud chorus of chugged power chords whose hook returns with a harmony, and the riff to close (src/audio/radio-compose-pnw.ts, preset grunge-band). It played slow surf before playtest 2; the song names stayed. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

@@ -218,16 +218,18 @@ test("the radio follows the region: the Keys stations, then the Pacific Northwes
   const keys = (await view(page)).radio;
   console.log(`Keys radio: ${JSON.stringify(keys)}`);
   expect(keys.region).toBe('base:florida-keys');
-  expect(keys.stations).toEqual(['keys-rockabilly', 'keys-surf', 'keys-tradewinds']);
+  expect(keys.stations).toEqual(dialFromPacks('base', 'florida-keys'));
   // Back to the menu, pick the Pacific Northwest, race there.
   await page.keyboard.press('Escape');
   await page.locator('#pause-quit').click();
   await race(page, '#region-region-pnw-pacific-northwest');
   const pnw = (await view(page)).radio;
   // Playtest 2 (2026-10-02, "different stations and music in different regions"): the region's
-  // own stations (three since run W-Q), and the race starts on the first of them.
+  // own stations (as the pack's station files name them), and the race starts on the first of them.
   expect(pnw.region).toBe('region-pnw:pacific-northwest');
-  expect(pnw.stations).toEqual(['pnw-drizzle', 'pnw-salal', 'pnw-stump']);
+  const pnwDial = dialFromPacks('region-pnw', 'pacific-northwest');
+  expect(pnw.stations).toEqual(pnwDial);
+  expect(pnwDial.slice(0, 2)).toEqual(['pnw-drizzle', 'pnw-salal']);
   await page.waitForFunction(
     () => (window as TestWindow).__app?.presentation().radio.tunedTo === 'pnw-drizzle',
   );
@@ -239,6 +241,20 @@ test("the radio follows the region: the Keys stations, then the Pacific Northwes
   console.log(`Pacific Northwest radio after R: ${JSON.stringify((await view(page)).radio)}`);
   expect(problems).toEqual([]);
 });
+
+/**
+ * A region's dial as its pack's station files make it: every station naming the region, except a
+ * hidden pirate and a rider's own, in id order (the order the registry sorts them).
+ */
+function dialFromPacks(pack: string, region: string): string[] {
+  const dir = `packs/${pack}/stations`;
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as Record<string, unknown>)
+    .filter((s) => (s['regions'] as string[]).includes(region) && !s['pirate'] && !s['rider'])
+    .map((s) => s['id'] as string)
+    .sort();
+}
 
 /** Every line text in a pack's bark files. */
 function barkLines(pack: string): Set<string> {

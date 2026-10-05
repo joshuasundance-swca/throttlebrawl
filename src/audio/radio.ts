@@ -16,7 +16,7 @@
 // 2026-10-02): this file holds only the stations, the playlists and the player's clock, and the
 // player is handed the band, or a promise of it, and stays silent until it arrives.
 import type { Composition } from './radio-compose';
-import { isMore, isRegional } from './radio-genres';
+import { isExtra, isMore, isRegional } from './radio-genres';
 import type { RadioGenre, RadioRig } from './radio-synth';
 import { seededRandom, trackSeed } from './radio-util';
 
@@ -60,7 +60,7 @@ export interface RadioBand {
 
 /** The band a station plays on: its `genre`, surf when the genre has no band of its own yet. */
 export const genreOf = (s: RadioStation): RadioGenre =>
-  s.genre === 'rockabilly' || isRegional(s.genre) || isMore(s.genre) ? s.genre : 'surf';
+  s.genre === 'rockabilly' || isRegional(s.genre) || isMore(s.genre) || isExtra(s.genre) ? s.genre : 'surf';
 
 export interface NowPlaying {
   stationId: string;
