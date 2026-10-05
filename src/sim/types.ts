@@ -879,6 +879,12 @@ export interface SimRiderDef {
    * means 1; buildSimConfig always writes it.
    */
   power?: number;
+  /**
+   * The career field level's power scale on this rival (playtest 3, "Fights: gentle climb"):
+   * times its hits on the player by combat.levelPowerOnPlayer, up to combat.levelPowerMax. Absent
+   * means 1; buildSimConfig writes it only for a level that is not 1.
+   */
+  levelPower?: number;
   /** Present on a cop (role `cop`, faction `law`). */
   law?: SimLawDef | undefined;
   /**
