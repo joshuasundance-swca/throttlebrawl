@@ -14,7 +14,8 @@ export interface InputThresholds {
   kickSwipeMs: number;
   /**
    * Playtest 2's directional kick: a kick swipe within this many degrees of straight down is the
-   * auto-sided kick; further over (up to kickConeDeg) it kicks to the side it leans to.
+   * auto-sided kick; further over (up to kickConeDeg) it kicks to the side it leans to. Playtest 4
+   * raised it from 20 to 35: only a clearly sideways swipe picks a side.
    */
   kickSideDeg: number;
   /**
@@ -73,8 +74,10 @@ export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('kickSwipePx', 'Kick swipe distance', 24, 8, 80, 1, 'px'),
   decl('kickSwipeMs', 'Kick swipe window', 200, 30, 230, 5, 'ms'),
   // Playtest 2 (2026-10-02): "Kick timing requires the ability to choose kick direction as you
-  // ride up behind someone (directional swipe)". [default]
-  decl('kickSideDeg', 'Kick swipe side lean', 20, 5, 40, 1, 'deg'),
+  // ride up behind someone (directional swipe)". Playtest 4 (P4-6, "Auto-aim + swipe" [decided]): the
+  // combat audit found a lean of 21 to 59 degrees picked a side by accident, so only a clearly
+  // sideways swipe (past 35 degrees of the 60-degree kick cone) does; the rest stays auto-aimed. [default]
+  decl('kickSideDeg', 'Kick swipe side lean', 35, 5, 40, 1, 'deg'),
   decl('kickConeDeg', 'Kick swipe cone', 60, 45, 75, 1, 'deg'),
   decl('stickRangePx', 'Stick range', 60, 30, 140, 5, 'px'),
   decl('stickDeadZone', 'Stick steer dead zone', 0.08, 0, 0.3, 0.01, ''),

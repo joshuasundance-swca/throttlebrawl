@@ -24,7 +24,7 @@ import {
 } from 'three';
 import type { AssetManifest } from '../assets';
 import { ATLAS_WHITE_UV, loadRegionAtlas, withAtlas } from './atlas';
-import { BAY_ROOT, BAY_ROOTS, belowDeck } from './bridge-bays';
+import { BAY_ROOT, BAY_ROOTS, belowDeck, withStagingLegs } from './bridge-bays';
 import { readGlb } from './glb';
 import { markAtlasUv } from './scenery-merge';
 
@@ -526,7 +526,9 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     // sim has nothing there): only the stub under the deck is drawn (bridge-bays.ts `belowDeck`). Its
     // trimmed geometry keeps no UVs, so it takes no atlas tile runs either.
     const trimmed = kind === 'sevenMileKit' && name === BAY_ROOT.gapEnd;
-    variants.push(trimmed ? belowDeck(v.geometry) : v.geometry);
+    // The repair platform gets outrigger piles a camera over its deck can see (`withStagingLegs`).
+    const platform = kind === 'sevenMileKit' && name === BAY_ROOT.staging;
+    variants.push(trimmed ? belowDeck(v.geometry) : platform ? withStagingLegs(v.geometry) : v.geometry);
     roles.push(trimmed ? [] : v.roles);
     tiles.push(trimmed ? [] : v.tiles);
     surfaces.push(v.surfaces);

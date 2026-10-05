@@ -905,6 +905,20 @@ function aim(
 }
 
 /**
+ * The rider an attack by `id` would hit right now, or -1 (playtest 4, P4-6, "Auto-aim + swipe": the
+ * player sees who a tap will hit). During an attack it is the attack's own target; otherwise it is
+ * what an auto-sided press would aim at, by the same `aim()` the press uses, so the marker follows
+ * the sim and never a copy of its rule. Only a rider that is riding and alive has one.
+ */
+export function aimPreview(world: World, config: SimConfig, id: EntityId): EntityId {
+  const a = world.movers.find((m) => m.id === id);
+  if (!a || !isRiding(a) || (riderState(world).health[id] ?? 0) <= 0) return -1;
+  const st = combatState(world);
+  if ((st.phase[id] ?? 'idle') !== 'idle') return st.targetId[id] ?? -1;
+  return aim(world, config, a, 0).target;
+}
+
+/**
  * An attack with no target yet aims again (playtest 4, the audit's F2): an auto-sided one picks the
  * nearest rider and his side once he is in the box, a forced side keeps its side and picks a target
  * on it, and the straight kick looks ahead again.

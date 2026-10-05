@@ -87,6 +87,12 @@ export interface EntitySnapshot {
   heldWeapon: string | null;
   /** Current auto-target, or -1. */
   targetId: EntityId;
+  /**
+   * The rider a tap would hit now (playtest 4, P4-6: the aim marker): the attack's own target during
+   * an attack, else what an auto-sided press aims at; -1 for nobody. Set for a player's rider only
+   * (a rival's is -1), and presentation only. Optional for hand-built snapshots.
+   */
+  aimId?: EntityId;
   lastAttackerId: EntityId;
   /** Metres from the start line along the route. */
   progress: number;

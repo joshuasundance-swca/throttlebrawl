@@ -192,6 +192,25 @@ describe('app: regions', () => {
     expect(cut.items['pdx-food-cart-a-name']).toBeDefined();
   });
 
+  it("hands render the toll gantry's board words as a vetoable item that no pool carries (playtest 4, P1)", () => {
+    // The Golden Gate toll gantry's `toll_gantry_sign` panel is a text surface: render finds its words by the
+    // node's name in kebab case, the way the roof sign's are found, and a cut leaves the board blank.
+    const sf = boardCatalog(ALL, 'region-sf:san-francisco');
+    const pooled = new Set([...(sf.pools?.signs ?? []), ...(sf.pools?.billboards ?? [])].map((i) => i.ref));
+    expect(sf.items['toll-gantry-sign']).toMatchObject({
+      kind: 'sign',
+      ref: 'region-sf:region/san-francisco#toll-gantry-sign',
+    });
+    expect(
+      pooled.has(sf.items['toll-gantry-sign']?.ref ?? ''),
+      'in no pool: a slot elsewhere cannot show it',
+    ).toBe(false);
+    const cutRef = sf.items['toll-gantry-sign']?.ref ?? '';
+    const cut = boardCatalog(ALL, 'region-sf:san-francisco', new Set([cutRef]));
+    expect(cut.items['toll-gantry-sign']).toBeUndefined();
+    expect(cut.items['toll-view'], 'the other signs stay').toBeDefined();
+  });
+
   it("hands render each region's landing one-liners as their own pool, never as a road slot's item", () => {
     // Air that pays (the pitch deck's #13): 'TEN OUT OF TEN, SAYS A PELICAN' on a clean landing.
     for (const key of ['base:florida-keys', 'region-pnw:pacific-northwest', 'region-sf:san-francisco']) {

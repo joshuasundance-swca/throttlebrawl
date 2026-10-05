@@ -21,6 +21,7 @@
 // anchorages, because their shape follows the deck the road lane bakes. Presentation only. This is a
 // lazy chunk: it loads with a region's race, never in the first load.
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -29,6 +30,7 @@ import {
   Matrix3,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   Quaternion,
   Vector3,
 } from 'three';
@@ -82,19 +84,82 @@ export const SUSPENSION = {
   radiusMid: 0.8,
   /** A cable is cut into pieces about this long, so each picks its own level of detail, m. */
   pieceM: 160,
+  /**
+   * The suspender ropes (playtest 4, P1: "no suspender ropes"): one hangs from each main cable down to
+   * the deck's edge at every bay, a 3-sided tube of this radius near and mid (thicker, so it still
+   * shows), in the cable's own mesh, so they cost no draw call. A rope shorter than `ropeMinM` is left
+   * out (where the cable meets the deck or a tower's leg), and the ropes are cut into pieces of
+   * `ropesPerPiece` bays so each picks its own level of detail.
+   */
+  ropeRadiusNear: 0.14,
+  /** A rope draws thin out to `ropeNearM`, thicker to `ropeMidM`, and not at all past it (the cables and towers carry the bridge there), m. */
+  ropeNearM: 200,
+  ropeMidM: 500,
+  ropeRadiusMid: 0.32,
+  ropeSides: 3,
+  ropeMinM: 1.5,
+  ropeTowerClearM: 12,
+  ropesPerPiece: 8,
+  /** Where a rope's foot meets the deck: this far over the deck top (the railing's rail), m. */
+  ropeFootM: 1.1,
 } as const;
 
 /** The paint of a landmark bridge when the region's palette has no `bridgePaint`: International Orange. */
 const BRIDGE_PAINT = '#c0452f';
+
+/**
+ * Neon (playtest 4, P1; the wave C check: "the neon salmon is a thin dark outline"). A vertex of a node
+ * whose material role is in `GLOW_ROLES` is not drawn with the lit mesh: it goes to a second mesh, drawn
+ * unlit and additive, as a bright `core` of the model's own tube and a `halo` shell stood `shellM` out
+ * from it along its normals, at `haloGain` of the halo's colour, so the stroke reads as light, not as a
+ * dark line against a dusk sky. One more draw call, only while a glowing landmark is in range. [default]
+ */
+export const GLOW_ROLES: Readonly<Record<string, { core: string; halo: string }>> = {
+  neon: { core: '#ffa6d2', halo: '#ff2d8f' },
+};
+export const GLOW = { shellM: 0.45, haloGain: 0.45 } as const;
+
+/**
+ * A rain cloud over a landmark (playtest 4, P1; the wave C check: Pioneer Courthouse Square "reads as a low
+ * brick strip", not "a square under a rain cloud"). The square's model is a hand's breadth of paving under
+ * a 5 m weather column, and the land the road draws caps its scale at about 0.45, so from the road it is
+ * all but flat. A feature that says `params.cloudM` (a height over its ground, m) gets a cloud of flat
+ * grey blobs that high over its middle and a curtain of rain falling from it, code-made into the same
+ * mesh (no draw call): the cloud shows above the street's roofline from down the road, the rain says
+ * what it is. [default]
+ */
+export const RAIN_CLOUD = {
+  /** The blobs: [x, y over the cloud's base, z, half-width x, half-height, half-width z] about the middle, m. */
+  blobs: [
+    [-6, 0.4, 2, 6.5, 2.4, 5.5],
+    [0, 1.2, 0, 8.5, 3.2, 6.5],
+    [6.5, 0.2, -1.5, 6, 2.4, 5],
+    [-1.5, 0.6, -6, 5.5, 2.2, 4.5],
+    [2, 0.8, 6, 5.5, 2.4, 4.5],
+  ],
+  cloud: '#808a92',
+  rain: '#bcd3de',
+  /** The rain: streaks on a grid this far apart, each this wide, jittered, and falling to this far over the ground, m. */
+  streakPitchM: 3.2,
+  streakWidthM: 0.12,
+  streakEndM: 0.6,
+  /** The cloud and its rain draw within these, m (the rain is too thin to see far out). */
+  cloudDrawM: LANDMARK_MID_M,
+  rainDrawM: 320,
+} as const;
 
 /** A run of a mesh's vertices (a triangle list) that one level of a piece draws. */
 interface Run {
   v0: number;
   n: number;
 }
-/** A level of detail: shown while the piece is no farther than `maxM`. Levels run nearest first. */
+/**
+ * A level of detail: shown while the piece is no farther than `maxM`. Levels run nearest first. `glow`
+ * is the run of the glow mesh's vertices the level also draws (a node's neon), if it has any.
+ */
 interface Tier extends Run {
   maxM: number;
+  glow?: Run | null;
 }
 /** One thing that picks its level by distance: where it stands, how big, and its levels. */
 interface Piece {
@@ -226,7 +291,7 @@ function cableRange(
 }
 
 /** Builds one vertex-coloured triangle soup, and hands back the run each added part took. */
-class MeshBuilder {
+export class MeshBuilder {
   readonly pos: number[] = [];
   readonly nrm: number[] = [];
   readonly col: number[] = [];
@@ -238,8 +303,14 @@ class MeshBuilder {
     return this.pos.length / 3;
   }
 
-  /** A kit node under `m`, its roles named in `paint` recoloured. */
-  addNode(node: LandmarkNode, m: Matrix4, paint: ReadonlyMap<string, Color>): Run {
+  /** Where the vertices of a glowing role go (a second builder), or null: the node's neon stays in the lit mesh. */
+  glow: MeshBuilder | null = null;
+
+  /**
+   * A kit node under `m`, its roles named in `paint` recoloured. With a `glow` builder, the vertices of a
+   * `GLOW_ROLES` role go there instead (core, then halo shell); the run says where in `glow` they went.
+   */
+  addNode(node: LandmarkNode, m: Matrix4, paint: ReadonlyMap<string, Color>): Run & { glow: Run | null } {
     const v0 = this.vertices;
     const g = node.geometry;
     const pos = g.getAttribute('position');
@@ -247,20 +318,133 @@ class MeshBuilder {
     const col = g.getAttribute('color');
     const nm = new Matrix3().getNormalMatrix(m);
     const roleOf = new Map<number, Color>();
+    const glowOf = new Map<number, { core: Color; halo: Color }>();
     for (const run of node.roles) {
       const c = paint.get(run.role);
       if (c) for (let i = run.start; i < run.start + run.count; i++) roleOf.set(i, c);
+      const lit = this.glow ? GLOW_ROLES[run.role] : undefined;
+      if (lit) {
+        const colours = {
+          core: new Color(lit.core),
+          halo: new Color(lit.halo).multiplyScalar(GLOW.haloGain),
+        };
+        for (let i = run.start; i < run.start + run.count; i++) glowOf.set(i, colours);
+      }
     }
+    const glowStart = this.glow?.vertices ?? 0;
+    const lifted: number[] = [];
     for (let i = 0; i < pos.count; i++) {
       this.p.fromBufferAttribute(pos, i).applyMatrix4(m);
       this.n.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize();
+      const lit = glowOf.get(i);
+      if (lit && this.glow) {
+        this.glow.pos.push(this.p.x, this.p.y, this.p.z);
+        this.glow.nrm.push(this.n.x, this.n.y, this.n.z);
+        this.glow.col.push(lit.core.r, lit.core.g, lit.core.b);
+        lifted.push(i);
+        continue;
+      }
       this.pos.push(this.p.x, this.p.y, this.p.z);
       this.nrm.push(this.n.x, this.n.y, this.n.z);
       const c = roleOf.get(i);
       if (c) this.col.push(c.r, c.g, c.b);
       else this.col.push(col.getX(i), col.getY(i), col.getZ(i));
     }
-    return { v0, n: pos.count };
+    // The halo: the same triangles stood out along their normals, dimmer.
+    if (this.glow) {
+      for (const i of lifted) {
+        this.p.fromBufferAttribute(pos, i).applyMatrix4(m);
+        this.n.fromBufferAttribute(nrm, i).applyMatrix3(nm).normalize();
+        const lit = glowOf.get(i);
+        if (!lit) continue;
+        this.glow.pos.push(
+          this.p.x + this.n.x * GLOW.shellM,
+          this.p.y + this.n.y * GLOW.shellM,
+          this.p.z + this.n.z * GLOW.shellM,
+        );
+        this.glow.nrm.push(this.n.x, this.n.y, this.n.z);
+        this.glow.col.push(lit.halo.r, lit.halo.g, lit.halo.b);
+      }
+    }
+    const glowN = (this.glow?.vertices ?? 0) - glowStart;
+    return { v0, n: this.vertices - v0, glow: glowN > 0 ? { v0: glowStart, n: glowN } : null };
+  }
+
+  /** One flat-shaded triangle, counter-clockwise from outside. */
+  private tri(a: Vector3, b: Vector3, c: Vector3, colour: Color): void {
+    const n = this.n.subVectors(b, a).cross(this.p.subVectors(c, a)).normalize();
+    for (const v of [a, b, c]) {
+      this.pos.push(v.x, v.y, v.z);
+      this.nrm.push(n.x, n.y, n.z);
+      this.col.push(colour.r, colour.g, colour.b);
+    }
+  }
+
+  /** A flattened icosahedron (20 flat triangles) about `centre`, `rx`, `ry`, `rz` across: a low-poly blob. */
+  addBlob(centre: Vector3, rx: number, ry: number, rz: number, colour: Color): Run {
+    const v0 = this.vertices;
+    const t = (1 + Math.sqrt(5)) / 2;
+    const corners: [number, number, number][] = [
+      [-1, t, 0],
+      [1, t, 0],
+      [-1, -t, 0],
+      [1, -t, 0],
+      [0, -1, t],
+      [0, 1, t],
+      [0, -1, -t],
+      [0, 1, -t],
+      [t, 0, -1],
+      [t, 0, 1],
+      [-t, 0, -1],
+      [-t, 0, 1],
+    ];
+    const v = corners.map(([x, y, z]) => {
+      const l = Math.hypot(x, y, z);
+      return new Vector3(centre.x + (x / l) * rx, centre.y + (y / l) * ry, centre.z + (z / l) * rz);
+    });
+    const faces = [
+      [0, 11, 5],
+      [0, 5, 1],
+      [0, 1, 7],
+      [0, 7, 10],
+      [0, 10, 11],
+      [1, 5, 9],
+      [5, 11, 4],
+      [11, 10, 2],
+      [10, 7, 6],
+      [7, 1, 8],
+      [3, 9, 4],
+      [3, 4, 2],
+      [3, 2, 6],
+      [3, 6, 8],
+      [3, 8, 9],
+      [4, 9, 5],
+      [2, 4, 11],
+      [6, 2, 10],
+      [8, 6, 7],
+      [9, 8, 1],
+    ] as const;
+    for (const [a, b, c] of faces) this.tri(v[a] as Vector3, v[b] as Vector3, v[c] as Vector3, colour);
+    return { v0, n: this.vertices - v0 };
+  }
+
+  /** An axis-aligned box from `lo` to `hi`: 12 flat triangles, outward. */
+  addBox(lo: Vector3, hi: Vector3, colour: Color): Run {
+    const v0 = this.vertices;
+    const p = (x: number, y: number, z: number) => new Vector3(x, y, z);
+    const quad = (a: Vector3, b: Vector3, c: Vector3, d: Vector3) => {
+      this.tri(a, b, c, colour);
+      this.tri(a, c, d, colour);
+    };
+    const [x0, y0, z0] = [lo.x, lo.y, lo.z];
+    const [x1, y1, z1] = [hi.x, hi.y, hi.z];
+    quad(p(x1, y0, z1), p(x1, y0, z0), p(x1, y1, z0), p(x1, y1, z1));
+    quad(p(x0, y0, z0), p(x0, y0, z1), p(x0, y1, z1), p(x0, y1, z0));
+    quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y1, z1), p(x0, y1, z1));
+    quad(p(x1, y0, z0), p(x0, y0, z0), p(x0, y1, z0), p(x1, y1, z0));
+    quad(p(x0, y1, z1), p(x1, y1, z1), p(x1, y1, z0), p(x0, y1, z0));
+    quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y0, z1), p(x0, y0, z1));
+    return { v0, n: this.vertices - v0 };
   }
 
   /** A code-made triangle soup (fred.ts) under `m`: positions and normals turned, colours as made. */
@@ -451,8 +635,16 @@ function suspensionBridge(c: Compose): Piece[] | null {
   }
 
   // The main cables: two, each hung from a saddle on each tower's top, down to an anchorage at each end.
+  // Each is three parabolas: the side span from its anchorage entry to a saddle, the main span between
+  // the saddles, and the other side span down to its entry.
   const top = tower0.extras['top_m'];
   const saddleX = tower0.extras['cable_saddle_x_m'];
+  interface CableSpan {
+    a: Vector3;
+    b: Vector3;
+    sag: number;
+  }
+  const cables: { sigma: number; spans: [CableSpan, CableSpan, CableSpan] }[] = [];
   if (finite(top) && finite(saddleX)) {
     const entry = anchor?.extras['cable_entry_m'] ?? SUSPENSION.entryM;
     const deckMid = at2((sT[0] + sT[1]) / 2, 0).y;
@@ -461,43 +653,153 @@ function suspensionBridge(c: Compose): Piece[] | null {
       const end = anchorM.map((m, i) =>
         new Vector3((i === 0 ? sigma : -sigma) * saddleX, entry, 0).applyMatrix4(m),
       );
-      const span = (a: Vector3, b: Vector3, sag: number, near: number, mid: number) => {
-        const pieceCount = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.z - a.z) / SUSPENSION.pieceM));
-        const nearEach = Math.max(1, Math.round(near / pieceCount));
-        const midEach = Math.max(1, Math.round(mid / pieceCount));
-        for (let k = 0; k < pieceCount; k++) {
-          const u0 = k / pieceCount;
-          const u1 = (k + 1) / pieceCount;
-          const nearPts = cableRange(a, b, sag, u0, u1, nearEach);
-          const midPts = cableRange(a, b, sag, u0, u1, midEach);
-          const first = nearPts[0] as Vector3;
-          const last = nearPts[nearPts.length - 1] as Vector3;
-          pieces.push({
-            x: (first.x + last.x) / 2,
-            z: (first.z + last.z) / 2,
-            r: Math.hypot(last.x - first.x, last.z - first.z) / 2 + 2,
-            tiers: [
-              {
-                maxM: LANDMARK_NEAR_M,
-                ...builder.addTube(nearPts, SUSPENSION.radiusNear, SUSPENSION.sides, paintColour),
-              },
-              {
-                maxM: LANDMARK_MID_M,
-                ...builder.addTube(midPts, SUSPENSION.radiusMid, SUSPENSION.sides, paintColour),
-              },
-            ],
-          });
-        }
-      };
       const [t0, t1] = saddle as [Vector3, Vector3];
       const [a0, a1] = end as [Vector3, Vector3];
       const mainSag = Math.max(1, (t0.y + t1.y) / 2 - (deckMid + SUSPENSION.midClearM));
-      span(t0, t1, mainSag, SUSPENSION.mainNear, SUSPENSION.mainMid);
-      span(a0, t0, a0.distanceTo(t0) * SUSPENSION.sideSag, SUSPENSION.sideNear, SUSPENSION.sideMid);
-      span(t1, a1, t1.distanceTo(a1) * SUSPENSION.sideSag, SUSPENSION.sideNear, SUSPENSION.sideMid);
+      cables.push({
+        sigma,
+        spans: [
+          { a: a0, b: t0, sag: a0.distanceTo(t0) * SUSPENSION.sideSag },
+          { a: t0, b: t1, sag: mainSag },
+          { a: t1, b: a1, sag: t1.distanceTo(a1) * SUSPENSION.sideSag },
+        ],
+      });
+    }
+  }
+  const tubeSpan = (sp: CableSpan, near: number, mid: number) => {
+    const pieceCount = Math.max(
+      1,
+      Math.round(Math.hypot(sp.b.x - sp.a.x, sp.b.z - sp.a.z) / SUSPENSION.pieceM),
+    );
+    const nearEach = Math.max(1, Math.round(near / pieceCount));
+    const midEach = Math.max(1, Math.round(mid / pieceCount));
+    for (let k = 0; k < pieceCount; k++) {
+      const u0 = k / pieceCount;
+      const u1 = (k + 1) / pieceCount;
+      const nearPts = cableRange(sp.a, sp.b, sp.sag, u0, u1, nearEach);
+      const midPts = cableRange(sp.a, sp.b, sp.sag, u0, u1, midEach);
+      const first = nearPts[0] as Vector3;
+      const last = nearPts[nearPts.length - 1] as Vector3;
+      pieces.push({
+        x: (first.x + last.x) / 2,
+        z: (first.z + last.z) / 2,
+        r: Math.hypot(last.x - first.x, last.z - first.z) / 2 + 2,
+        tiers: [
+          {
+            maxM: LANDMARK_NEAR_M,
+            ...builder.addTube(nearPts, SUSPENSION.radiusNear, SUSPENSION.sides, paintColour),
+          },
+          {
+            maxM: LANDMARK_MID_M,
+            ...builder.addTube(midPts, SUSPENSION.radiusMid, SUSPENSION.sides, paintColour),
+          },
+        ],
+      });
+    }
+  };
+  for (const { spans } of cables) {
+    tubeSpan(spans[0], SUSPENSION.sideNear, SUSPENSION.sideMid);
+    tubeSpan(spans[1], SUSPENSION.mainNear, SUSPENSION.mainMid);
+    tubeSpan(spans[2], SUSPENSION.sideNear, SUSPENSION.sideMid);
+  }
+
+  // The suspender ropes: one at every bay from each cable down to the deck's edge, straight down from
+  // the point of the cable above it (the cable is a parabola between its saddles and anchorage entries).
+  if (cables.length > 0 && finite(saddleX) && (bayNear ?? bayFar)) {
+    const count = Math.floor((f.s1 - f.s0) / bayM);
+    for (let first = 0; first < count; first += SUSPENSION.ropesPerPiece) {
+      const ropes: Vector3[][] = [];
+      let sx = 0;
+      let sz = 0;
+      let ends = 0;
+      const last = Math.min(count, first + SUSPENSION.ropesPerPiece);
+      for (let i = first; i < last; i++) {
+        const s = f.s0 + (i + 0.5) * bayM;
+        const k = s < sT[0] ? 0 : s < sT[1] ? 1 : 2;
+        if (Math.min(Math.abs(s - sT[0]), Math.abs(s - sT[1])) < SUSPENSION.ropeTowerClearM) continue;
+        for (const { sigma, spans } of cables) {
+          const span = spans[k];
+          const foot = at2(s, -sigma * saddleX);
+          const ab = span.b.clone().sub(span.a);
+          const along =
+            ((foot.x - span.a.x) * ab.x + (foot.z - span.a.z) * ab.z) / (ab.x * ab.x + ab.z * ab.z);
+          const u = Math.min(1, Math.max(0, along));
+          const cable = span.a.clone().lerp(span.b, u);
+          cable.y -= span.sag * 4 * u * (1 - u);
+          const bottom = new Vector3(cable.x, foot.y + SUSPENSION.ropeFootM, cable.z);
+          if (cable.y - bottom.y < SUSPENSION.ropeMinM) continue;
+          ropes.push([bottom, cable]);
+          sx += cable.x;
+          sz += cable.z;
+          ends++;
+        }
+      }
+      if (ends === 0) continue;
+      const cx = sx / ends;
+      const cz = sz / ends;
+      let reach = 0;
+      for (const [bottom] of ropes)
+        reach = Math.max(reach, Math.hypot((bottom as Vector3).x - cx, (bottom as Vector3).z - cz));
+      const runOf = (ropes: Vector3[][], radius: number): Run => {
+        const v0 = builder.vertices;
+        for (const rope of ropes) builder.addTube(rope, radius, SUSPENSION.ropeSides, paintColour);
+        return { v0, n: builder.vertices - v0 };
+      };
+      pieces.push({
+        x: cx,
+        z: cz,
+        r: reach + 2,
+        tiers: [
+          { maxM: SUSPENSION.ropeNearM, ...runOf(ropes, SUSPENSION.ropeRadiusNear) },
+          { maxM: SUSPENSION.ropeMidM, ...runOf(ropes, SUSPENSION.ropeRadiusMid) },
+        ],
+      });
     }
   }
   return pieces;
+}
+
+/**
+ * A rain cloud over a landmark (`RAIN_CLOUD`): flat grey blobs `baseM` over the feature's ground at its
+ * middle, and a curtain of thin pale streaks falling from it to the ground. Two pieces, so the cloud
+ * shows from far out and the rain only near.
+ */
+function rainCloud(b: MeshBuilder, at: LandmarkPlacement, baseM: number): Piece[] {
+  const C = RAIN_CLOUD;
+  const baseY = at.y + baseM;
+  const cloudColour = new Color(C.cloud);
+  const rainColour = new Color(C.rain);
+  const v0 = b.vertices;
+  for (const [x, y, z, rx, ry, rz] of C.blobs)
+    b.addBlob(new Vector3(at.x + x, baseY + y, at.z + z), rx, ry, rz, cloudColour);
+  const cloud: Run = { v0, n: b.vertices - v0 };
+  // The curtain: a jittered grid inside the cloud's span, each streak from just over the ground up into the cloud.
+  const r0 = b.vertices;
+  const reachX = Math.max(...C.blobs.map(([x, , , rx]) => Math.abs(x) + rx)) * 0.8;
+  const reachZ = Math.max(...C.blobs.map(([, , z, , , rz]) => Math.abs(z) + rz)) * 0.8;
+  const hash = (i: number, j: number) => {
+    const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  const w = C.streakWidthM / 2;
+  for (let i = -4; i <= 4; i++) {
+    for (let j = -4; j <= 4; j++) {
+      const x = i * C.streakPitchM + (hash(i, j) - 0.5) * C.streakPitchM * 0.8;
+      const z = j * C.streakPitchM + (hash(j, i + 9) - 0.5) * C.streakPitchM * 0.8;
+      if ((x / reachX) ** 2 + (z / reachZ) ** 2 > 1) continue;
+      b.addBox(
+        new Vector3(at.x + x - w, at.y + C.streakEndM, at.z + z - w),
+        new Vector3(at.x + x + w, baseY + 0.5, at.z + z + w),
+        rainColour,
+      );
+    }
+  }
+  const rain: Run = { v0: r0, n: b.vertices - r0 };
+  const r = Math.max(reachX, reachZ) + 2;
+  return [
+    { x: at.x, z: at.z, r, tiers: [{ maxM: C.cloudDrawM, ...cloud }] },
+    { x: at.x, z: at.z, r, tiers: [{ maxM: C.rainDrawM, ...rain }] },
+  ];
 }
 
 /**
@@ -557,6 +859,12 @@ export class LandmarkLayer {
   private readonly mesh: Mesh | null;
   private readonly geometry: BufferGeometry | null;
   private readonly live: Uint32Array;
+  /** The glowing mesh (neon, `GLOW_ROLES`): unlit, additive, its own index. Null when no landmark glows. */
+  private readonly glowMesh: Mesh | null = null;
+  private readonly glowGeometry: BufferGeometry | null = null;
+  private readonly glowLive: Uint32Array;
+  private glowDrawn = 0;
+  private glowMaterial: MeshBasicMaterial | null = null;
   private placed = 0;
   private skipped = 0;
   private drawn = 0;
@@ -568,6 +876,8 @@ export class LandmarkLayer {
   constructor(kits: ReadonlyMap<LandmarkKitId, LandmarkKit>, look: LookStyle, opts: LandmarkOptions) {
     this.group.name = 'landmarks';
     const builder = new MeshBuilder();
+    const glowBuilder = new MeshBuilder();
+    builder.glow = glowBuilder;
     const paint = new Map<string, Color>();
     for (const [role, key] of Object.entries(LANDMARK_ROLE_PALETTE)) {
       const hex = opts.palette?.[key];
@@ -594,9 +904,31 @@ export class LandmarkLayer {
       this.pieces.push(...made);
     }
     this.live = new Uint32Array(builder.vertices);
+    this.glowLive = new Uint32Array(glowBuilder.vertices);
+    if (glowBuilder.vertices > 0) {
+      // Shares nothing with the lit mesh but its pieces' levels: its own vertices and its own index.
+      const gg = new BufferGeometry();
+      gg.setAttribute('position', new Float32BufferAttribute(glowBuilder.pos, 3));
+      gg.setAttribute('normal', new Float32BufferAttribute(glowBuilder.nrm, 3));
+      gg.setAttribute('color', new Float32BufferAttribute(glowBuilder.col, 3));
+      gg.setIndex(new BufferAttribute(this.glowLive, 1));
+      gg.setDrawRange(0, 0);
+      this.glowGeometry = gg;
+      // An unlit material, copied so the additive blend never leaks into the look's shared one.
+      const lit = look.material('glint', { vertexColors: true }).clone() as MeshBasicMaterial;
+      lit.blending = AdditiveBlending;
+      lit.transparent = true;
+      lit.depthWrite = false;
+      this.glowMaterial = lit;
+      this.glowMesh = new Mesh(gg, lit);
+      this.glowMesh.name = 'landmarks-glow';
+      this.glowMesh.frustumCulled = false;
+      this.glowMesh.visible = false;
+    }
     if (builder.vertices === 0) {
       this.geometry = null;
       this.mesh = null;
+      if (this.glowMesh) this.group.add(this.glowMesh);
       return;
     }
     const g = new BufferGeometry();
@@ -613,6 +945,7 @@ export class LandmarkLayer {
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
     this.group.add(this.mesh);
+    if (this.glowMesh) this.group.add(this.glowMesh);
   }
 
   /** One kit node as a piece: its near node, and the kit's lighter node past the feature's `farM`. */
@@ -629,7 +962,7 @@ export class LandmarkLayer {
     const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
     // Its blank boards (the roof sign's) are painted with pack text, by text-surfaces.ts.
     for (const surface of near.surfaces) this.surfaceList.push(placeSurface(surface, m));
-    return [
+    const pieces: Piece[] = [
       {
         x: at.x,
         z: at.z,
@@ -637,15 +970,20 @@ export class LandmarkLayer {
         tiers: tiersOf(b, m, paint, near, far, at.params.farM),
       },
     ];
+    // A rain cloud over it, when the feature says how high (`params.cloudM`).
+    const cloudM = num(at.feature, 'cloudM', 0);
+    if (cloudM > 0) pieces.push(...rainCloud(b, at, cloudM));
+    return pieces;
   }
 
   /** Refills the index with the level each piece shows at the camera; cheap, and only after it moved. */
   update(cameraX: number, cameraZ: number): void {
-    if (!this.mesh || !this.geometry) return;
+    if (!this.mesh && !this.glowMesh) return;
     if (Math.hypot(cameraX - this.filledX, cameraZ - this.filledZ) < LANDMARK_REFILL_M) return;
     this.filledX = cameraX;
     this.filledZ = cameraZ;
     let w = 0;
+    let gw = 0;
     this.nearPieces = 0;
     this.farPieces = 0;
     for (const piece of this.pieces) {
@@ -656,12 +994,22 @@ export class LandmarkLayer {
       if (level === 0) this.nearPieces++;
       else this.farPieces++;
       for (let k = 0; k < tier.n; k++) this.live[w++] = tier.v0 + k;
+      if (tier.glow) for (let k = 0; k < tier.glow.n; k++) this.glowLive[gw++] = tier.glow.v0 + k;
     }
     this.drawn = w;
-    const index = this.geometry.getIndex();
-    if (index) index.needsUpdate = true;
-    this.geometry.setDrawRange(0, w);
-    this.mesh.visible = w > 0;
+    this.glowDrawn = gw;
+    if (this.geometry && this.mesh) {
+      const index = this.geometry.getIndex();
+      if (index) index.needsUpdate = true;
+      this.geometry.setDrawRange(0, w);
+      this.mesh.visible = w > 0;
+    }
+    if (this.glowGeometry && this.glowMesh) {
+      const index = this.glowGeometry.getIndex();
+      if (index) index.needsUpdate = true;
+      this.glowGeometry.setDrawRange(0, gw);
+      this.glowMesh.visible = gw > 0;
+    }
   }
 
   counts(): LandmarkCounts {
@@ -670,10 +1018,10 @@ export class LandmarkLayer {
       skipped: this.skipped,
       pieces: this.pieces.length,
       vertices: this.live.length,
-      trianglesDrawn: this.drawn / 3,
+      trianglesDrawn: (this.drawn + this.glowDrawn) / 3,
       nearPieces: this.nearPieces,
       farPieces: this.farPieces,
-      drawCalls: this.mesh?.visible ? 1 : 0,
+      drawCalls: (this.mesh?.visible ? 1 : 0) + (this.glowMesh?.visible ? 1 : 0),
     };
   }
 
@@ -693,5 +1041,7 @@ export class LandmarkLayer {
   dispose(): void {
     this.group.removeFromParent();
     this.geometry?.dispose();
+    this.glowGeometry?.dispose();
+    this.glowMaterial?.dispose();
   }
 }

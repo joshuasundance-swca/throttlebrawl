@@ -85,6 +85,13 @@
     },
     { "id": "zero-spaces", "text": "2 HR PARKING. 0 SPACES. 7 am to 6 pm.", "status": "live" },
     { "id": "toll-view", "text": "BRIDGE TOLL $9. View not included.", "status": "live" },
+    {
+      "id": "toll-gantry-sign",
+      "text": "TOLL BY PLATE. SMILE.",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, P1 (the wave C check: the Golden Gate toll gantry's board was a blank panel): the words on the toll gantry's board, white on highway green. A text surface, not a board: the game paints it on the model's `toll_gantry_sign` panel (docs/content-packs.md, Text surfaces), and cutting it in the game leaves the board blank. An invented line, vetoable like any sign."
+    },
     { "id": "robotaxi-cones", "text": "ROBOTAXI ZONE. Do not place cones on hoods.", "status": "live" },
     { "id": "shuttles-only", "text": "BUS STOP: SHUTTLES ONLY. Buses by appointment.", "status": "live" },
     { "id": "summer-fog", "text": "VISIBILITY 200 FT. Summer has begun.", "status": "live" },

@@ -20,6 +20,7 @@ import {
   rectOf,
   rectsOverlap,
   SIDEWALK_M,
+  towerFootprint,
   type DowntownItem,
   type Rect,
 } from './downtown';
@@ -616,5 +617,142 @@ describe("Bridge City's second row (playtest 4, P4-20)", () => {
       }
       expect(other.items.filter(isBack).length, `seed ${seed}`).toBeGreaterThan(50);
     }
+  });
+
+  // Playtest 4, P1 (the wave C check: the roof sign "shows only S or STI..." because "a building hides
+  // it"): the sign's board faces the bridge, and Broadway's front row stood between. The road now names
+  // a sight line (`params.sightM`), and the plan leaves it free. The check casts a ray from a camera on
+  // the route to a grid of points on the board, against every building the plan stands, at its height.
+  describe("the roof sign's board is seen whole from down the road (playtest 4, P1)", () => {
+    type Pt = { x: number; y: number; z: number };
+    const heightOf = (it: DowntownItem): [number, number, number] => {
+      if (it.model === 'tower') {
+        const [w, d] = towerFootprint(it.variant, false);
+        return [w, d, it.targetM ?? 30];
+      }
+      const [w, d] = pdxFootprint(kit, it.variant);
+      const g = kit.variants[it.variant];
+      g?.computeBoundingBox();
+      return [w, d, (g?.boundingBox?.max.y ?? 20) * it.sy];
+    };
+    const boxesOf = (p: typeof plan) =>
+      p.items.filter(isBuilding).map((it) => {
+        const [w, d, h] = heightOf(it);
+        return { r: rectOf(it.p, it.turn, w, d), y0: it.p.y, h };
+      });
+    /** How many of the target points a camera sees: a ray 1 m at a time, blocked inside any building's box. */
+    const seen = (boxes: ReturnType<typeof boxesOf>, cam: Pt, targets: Pt[]): number =>
+      targets.filter((t) => {
+        const len = Math.hypot(t.x - cam.x, t.y - cam.y, t.z - cam.z);
+        for (let k = 1; k < len - 1; k++) {
+          const u = k / len;
+          const x = cam.x + (t.x - cam.x) * u;
+          const y = cam.y + (t.y - cam.y) * u;
+          const z = cam.z + (t.z - cam.z) * u;
+          for (const b of boxes) {
+            const dx = x - b.r.cx;
+            const dz = z - b.r.cz;
+            if (
+              Math.abs(dx * b.r.ux + dz * b.r.uz) < b.r.hw &&
+              Math.abs(dx * b.r.vx + dz * b.r.vz) < b.r.hd &&
+              y < b.y0 + b.h
+            )
+              return false;
+          }
+        }
+        return true;
+      }).length;
+
+    async function view(p: typeof plan) {
+      const layer = new LandmarkLayer(
+        new Map([
+          [
+            'pdx-landmarks' as const,
+            bakeLandmarkKit(
+              'pdx-landmarks',
+              readGlb(await readAsset('models/landmarks/pdx-landmarks', 'glb')),
+            ),
+          ],
+        ]),
+        look,
+        { road },
+      );
+      const board = layer.surfaces().find((s) => s.id === 'pdx-roof-sign-words');
+      if (!board) throw new Error('no roof sign board');
+      const xs = [...board.positions].filter((_, i) => i % 3 === 0);
+      const ys = [...board.positions].filter((_, i) => i % 3 === 1);
+      const zs = [...board.positions].filter((_, i) => i % 3 === 2);
+      const [x0, x1, y0, y1, z0, z1] = [
+        Math.min(...xs),
+        Math.max(...xs),
+        Math.min(...ys),
+        Math.max(...ys),
+        Math.min(...zs),
+        Math.max(...zs),
+      ];
+      // A 5 by 3 grid across the board's face.
+      const targets: Pt[] = [];
+      for (let a = 0; a <= 4; a++)
+        for (let b = 0; b <= 2; b++)
+          targets.push({
+            x: x0 + ((x1 - x0) * a) / 4,
+            y: y0 + ((y1 - y0) * b) / 2,
+            z: z0 + ((z1 - z0) * a) / 4,
+          });
+      const boxes = boxesOf(p);
+      const sign = landmarkPlacements(road).find((l) => l.node === 'pdx_roof_sign');
+      const burnside = road.edgeIndex('osm-pnw-pdx-west-burnside');
+      const bridgeEdge = road.edgeIndex('osm-pnw-pdx-burnside-bridge');
+      const bridgeLen = road.edges[bridgeEdge]?.length ?? 0;
+      // The rider's camera (5 m behind, 2.6 m up, the chase camera's own numbers), from 300 m out on the
+      // bridge to 15 m before the sign's start: the board's face is toward the rider all that way.
+      const cams: { at: string; cam: Pt }[] = [];
+      const add = (edge: number, s: number, at: string) => {
+        const f = road.frameAt(edge, s);
+        const c = road.toWorld(edge, s, 0, 0);
+        cams.push({ at, cam: { x: c.x - f.tx * 5, y: c.y + 2.6, z: c.z - f.tz * 5 } });
+      };
+      for (let s = bridgeLen - 300; s < bridgeLen; s += 20) add(bridgeEdge, s, `bridge s ${s.toFixed(0)}`);
+      for (let s = 0; s <= (sign?.feature.s0 ?? 0) - 15; s += 10) add(burnside, s, `West Burnside s ${s}`);
+      return { targets, boxes, cams };
+    }
+
+    it('shows every point of the board from every camera between 300 m out on the bridge and the sign', async () => {
+      const { targets, boxes, cams } = await view(plan);
+      let worst = targets.length;
+      let worstAt = '';
+      for (const { at, cam } of cams) {
+        const n = seen(boxes, cam, targets);
+        if (n < worst) {
+          worst = n;
+          worstAt = at;
+        }
+      }
+      stdout.write(
+        `[examined] roof sign board: ${targets.length} points from ${cams.length} cameras along ${cams[0]?.at} to ${cams[cams.length - 1]?.at}; the worst view sees ${worst} (${worstAt || 'all'}), against ${boxes.length} buildings\n`,
+      );
+      expect(worst).toBe(targets.length);
+    });
+
+    it('finds the front row that hid it when the road names no sight line (the control)', async () => {
+      const plain = Object.fromEntries(
+        bakedRoads.map((r) => [
+          r.id,
+          {
+            ...r,
+            features: (r.features ?? []).map((f) =>
+              f.kind === 'landmark' ? { ...f, params: { ...f.params, sightM: undefined } } : f,
+            ),
+          },
+        ]),
+      ) as unknown as RoadDressing;
+      const control = planPortland({ ...input, dressing: plain }, kit);
+      const { targets, boxes, cams } = await view(control);
+      const hidden = cams.filter(({ cam }) => seen(boxes, cam, targets) < targets.length).length;
+      stdout.write(
+        `[examined] without the sight line: ${hidden} of ${cams.length} cameras lose part of the board\n`,
+      );
+      expect(hidden).toBeGreaterThan(5);
+    });
   });
 });
