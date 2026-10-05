@@ -14,11 +14,14 @@ COLOURS = {
     "bridge_paint": "#547366", "trim": "#b4bcae", "steel_dark": "#344449",
     "concrete": "#a7aaa2", "stone": "#848e8b", "brick": "#925745",
     "glass": "#304b50", "sign_face": "#183b40", "neon": "#edba72", "foliage": "#4b6355",
+    "car_red": "#ab4234", "paint_yellow": "#cab46b", "tile_green": "#527e61",
 }
 ROOTS = ["pdx_lift_tower_lod0", "pdx_lift_tower_lod1", "pdx_truss_bay", "pdx_lift_span",
          "pdx_bascule_pier", "pdx_st_johns_tower_lod0", "pdx_st_johns_tower_lod1",
          "pdx_roof_sign", "pdx_plaza"]
 XS = [-240, -190, -140, -90, -40, 10, 60, 110, 180]
+ROOTS.append("pdx_chinatown_gate")
+XS.append(250)
 
 
 def root(name, **extras):
@@ -224,6 +227,32 @@ def plaza(mats):
     weather.build(name+"_weather",mats,r)
 
 
+def chinatown_gate(mats):
+    name = "pdx_chinatown_gate"
+    r = root(name, top_m=11)
+    mb = MB(COLOURS)
+    # Four columns frame a broad central street opening and two sidewalk openings.
+    for x in (-6.0, -4.5, 4.5, 6.0):
+        mb.box(-0.5, 0.5, x-0.25, x+0.25, 0, 7.4, "car_red")
+        mb.box(-0.55, 0.55, x-0.35, x+0.35, 5.7, 6.2, "paint_yellow")
+    mb.box(-0.55, 0.55, -4.75, 4.75, 6.3, 7.4, "car_red")
+    # Five tiers of hipped roofs; corners rise above the lower centre eaves.
+    for x, w, h, top in ((0, 5.3, 8.7, 11), (-5.2, 1.4, 6.8, 8.3),
+                          (5.2, 1.4, 6.8, 8.3), (-2.5, 2.2, 7.5, 9.2), (2.5, 2.2, 7.5, 9.2)):
+        mb.hull([(x-w, -1.2, h+0.3), (x+w, -1.2, h+0.3),
+                 (x+w, 1.2, h+0.3), (x-w, 1.2, h+0.3),
+                 (x-w*0.4, 0, top), (x+w*0.4, 0, top),
+                 (x, -1.2, h), (x, 1.2, h)], "tile_green")
+        mb.box(-0.6, 0.6, x-w*0.7, x+w*0.7, h-0.3, h, "paint_yellow")
+    for x in (-6.0, 6.0):
+        # Stone guardians are original block silhouettes, beside the sidewalk.
+        mb.box(0.6, 1.5, x-0.4, x+0.4, 0, 0.6, "stone")
+        mb.box(0.7, 1.4, x-0.3, x+0.3, 0.6, 1.3, "stone")
+        mb.blob((x, 1.35, 1.5), (0.3, 0.3, 0.35), "stone")
+    mb.build(name+"_body", mats, r)
+    text_panel(name+"_plaque", mats, "sign_face", r, 4.8, 0.75, (0, 0.57, 6.85))
+
+
 reset_scene()
 mats = make_mats(COLOURS)
 lift(ROOTS[0],mats,True)
@@ -235,4 +264,5 @@ gothic(ROOTS[5],mats,True)
 gothic(ROOTS[6],mats,False)
 roof_sign(mats)
 plaza(mats)
+chinatown_gate(mats)
 export(out_path(),texcoords=True,normals=False)

@@ -93,6 +93,14 @@ export const ROLES = [
   'neon',
   // asphalt that is part of a model (a parking pad, a pier deck), not the game's road
   'asphalt',
+  // CX5: flame red-orange poinciana flowers.
+  'blossom',
+  // CX5: cream-white frangipani flowers.
+  'blossom_pale',
+  // CX5: bright waterfall ribbons.
+  'falls_water',
+  // CX5: copper-green and glazed roof tiles.
+  'tile_green',
 ];
 
 /** Roles allowed to export doubleSided (single-sided leaf geometry). Everything else is culled. */
