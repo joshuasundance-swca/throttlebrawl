@@ -169,7 +169,9 @@ export type SceneryKind =
   | 'house'
   | 'sawmill'
   | 'fogBank'
-  | 'islet';
+  | 'islet'
+  // playtest 3, T12.3: a bridge bay (bridge-bays.ts places them; the scatter never does)
+  | 'bay';
 export const SCENERY_KINDS: readonly SceneryKind[] = [
   'palm',
   'mangrove',
@@ -182,6 +184,7 @@ export const SCENERY_KINDS: readonly SceneryKind[] = [
   'sawmill',
   'fogBank',
   'islet',
+  'bay',
 ];
 
 export interface ScenerySpot {
@@ -199,6 +202,16 @@ export interface ScenerySpot {
   s: number;
   /** Signed lateral offset on that edge, m. */
   d: number;
+  /**
+   * A bridge bay's grade (playtest 3, T12.3): the model is sheared up by this much per metre along
+   * its +Z, so its deck follows the road's and its piers stay upright. Absent: 0.
+   */
+  slope?: number | undefined;
+  /**
+   * How far the model reaches from its origin, m, when a prop is longer than the merged blocks'
+   * default room (a 41 m bay): the block's culling counts it. Absent: the default.
+   */
+  reachM?: number | undefined;
 }
 
 /** Metres between candidate spots of each kind on one side, at density 1. [default] */
@@ -216,6 +229,8 @@ export const SCATTER_SPACING_M: Readonly<Record<SceneryKind, number>> = {
   fogBank: 170,
   // run W-Q: a candidate islet every so often on each open-water side of a tropical road
   islet: 200,
+  // bays are placed along a bridge by bridge-bays.ts, never scattered
+  bay: 0,
 };
 /** Share of a theme's candidate spots that get each kind. [default] */
 const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = {
@@ -272,6 +287,7 @@ const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {
   fogBank: [150, 150],
   // out past the boats, near enough to see from the road
   islet: [32, 50],
+  bay: [0, 0],
 };
 /** Clear ground each kind needs around its anchor (other roads, features), m. */
 export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
@@ -287,6 +303,7 @@ export const SCENERY_RADIUS_M: Readonly<Record<SceneryKind, number>> = {
   fogBank: 40,
   // ISLET_CLEAR_M (declared below, so the literal here)
   islet: 16,
+  bay: 0,
 };
 /**
  * What of each kind a rider would hit, as a radius round its anchor, m (off-road, run W-R): a palm's
@@ -311,6 +328,7 @@ const VARIANTS: Readonly<Record<SceneryKind, number>> = {
   sawmill: 1,
   fogBank: 2,
   islet: 4,
+  bay: 6,
 };
 /** Each conifer variant's share of a forest: the two firs, the young fir, the cedar. [default] */
 const CONIFER_MIX = [0.3, 0.32, 0.23, 0.15];

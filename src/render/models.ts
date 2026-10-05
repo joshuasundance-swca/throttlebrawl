@@ -18,6 +18,7 @@ import {
   type Object3D,
 } from 'three';
 import type { AssetManifest } from '../assets';
+import { BAY_ROOT, BAY_ROOTS, belowDeck } from './bridge-bays';
 import { readGlb } from './glb';
 
 /** Each model's asset id (docs/content-packs.md, "Asset references"). */
@@ -42,6 +43,8 @@ export const MODEL_ASSETS = {
   keysIslets: 'models/scenery/keys-islets',
   // run W-R: San Francisco's downtown towers, screens, headquarters, lamps and signals (downtown.ts)
   sfDowntown: 'models/scenery/sf-downtown',
+  // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
+  sevenMileKit: 'models/scenery/seven-mile-kit',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -91,6 +94,8 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'sf_lamp',
   ],
   keysIslets: ['keys_islet_shack', 'keys_islet_wreck', 'keys_islet_mangrove', 'keys_islet_stilts'],
+  // The kit also holds the cottages, dock and barge of Pigeon Key; only the bays are baked here.
+  sevenMileKit: BAY_ROOTS,
   sfDowntown: [
     'dt_tower_glass',
     'dt_tower_stone',
@@ -178,6 +183,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     out.add('mangroves');
     out.add('keysRoadside');
     out.add('keysIslets');
+    // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
+    if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {
     if (n.tags.has('forest') || n.tags.has('sawmill')) out.add('conifers');
     if (n.tags.has('sawmill')) out.add('sawmill');
@@ -339,8 +346,11 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
     const v = bakeVariant(root);
-    variants.push(v.geometry);
-    roles.push(v.roles);
+    // The gap end's barricade and board stand across the lanes at the lip, where a rider passes (the
+    // sim has nothing there): only the stub under the deck is drawn (bridge-bays.ts `belowDeck`).
+    const trimmed = kind === 'sevenMileKit' && name === BAY_ROOT.gapEnd;
+    variants.push(trimmed ? belowDeck(v.geometry) : v.geometry);
+    roles.push(trimmed ? [] : v.roles);
     doubleSided ||= v.doubleSided;
   }
   const out: SceneryModel = { kind, variants, doubleSided, roles };

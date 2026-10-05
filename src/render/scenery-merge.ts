@@ -282,8 +282,13 @@ export class MergedScenery {
     for (const list of byKey.values()) {
       const cx = list.reduce((a, it) => a + it.spot.p.x, 0) / list.length;
       const cz = list.reduce((a, it) => a + it.spot.p.z, 0) / list.length;
-      const radius =
-        Math.max(...list.map((it) => Math.hypot(it.spot.p.x - cx, it.spot.p.z - cz))) + PROP_REACH_M;
+      // A prop longer than the usual room (a 41 m bridge bay) says how far it reaches from its origin.
+      const radius = Math.max(
+        ...list.map(
+          (it) =>
+            Math.hypot(it.spot.p.x - cx, it.spot.p.z - cz) + Math.max(PROP_REACH_M, it.spot.reachM ?? 0),
+        ),
+      );
       let nearN = 0;
       let farN = 0;
       for (const it of list) {
@@ -388,17 +393,24 @@ export class MergedScenery {
         const cos = Math.cos(spot.turn);
         const sin = Math.sin(spot.turn);
         const k = spot.size;
+        // A bridge bay's slope shears it up along its +Z (y' = y + slope z): horizontal lengths and
+        // upright piers are kept, and the deck rises with the road.
+        const slope = spot.slope ?? 0;
         for (let v = 0; v < f.n; v++, o++) {
           const x = f.pos[v * 3] ?? 0;
           const z = f.pos[v * 3 + 2] ?? 0;
           pos[o * 3] = spot.p.x + k * (x * cos + z * sin);
-          pos[o * 3 + 1] = spot.p.y + k * (f.pos[v * 3 + 1] ?? 0);
+          pos[o * 3 + 1] = spot.p.y + k * ((f.pos[v * 3 + 1] ?? 0) + slope * z);
           pos[o * 3 + 2] = spot.p.z + k * (z * cos - x * sin);
           const nx = f.nrm[v * 3] ?? 0;
+          const ny = f.nrm[v * 3 + 1] ?? 0;
           const nz = f.nrm[v * 3 + 2] ?? 0;
-          nrm[o * 3] = nx * cos + nz * sin;
-          nrm[o * 3 + 1] = f.nrm[v * 3 + 1] ?? 0;
-          nrm[o * 3 + 2] = nz * cos - nx * sin;
+          // A shear moves a normal by the inverse transpose: n' = (nx, ny, nz - slope ny), renormalised.
+          const sz = slope === 0 ? nz : nz - slope * ny;
+          const norm = slope === 0 ? 1 : Math.hypot(nx, ny, sz) || 1;
+          nrm[o * 3] = (nx * cos + sz * sin) / norm;
+          nrm[o * 3 + 1] = ny / norm;
+          nrm[o * 3 + 2] = (sz * cos - nx * sin) / norm;
           col[o * 3] = f.col[v * 3] ?? 1;
           col[o * 3 + 1] = f.col[v * 3 + 1] ?? 1;
           col[o * 3 + 2] = f.col[v * 3 + 2] ?? 1;

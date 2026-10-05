@@ -331,6 +331,9 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // run W-Q adds each key's own props (fishing village, resort strip, junkyard key, party key)
       keysRoadside: 26,
       sfDowntown: 12,
+      // playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts): the new span's two, the old
+      // bridge's two, a gap end and a repair platform
+      sevenMileKit: 6,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -340,7 +343,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         expect(g.getAttribute('color'), kind).toBeDefined();
         const box = g.boundingBox!;
         // Each variant sits on its own anchor: the ground (or the waterline) at y = 0, centred in x.
-        expect(box.min.y, kind).toBeGreaterThan(-0.7);
+        // (A bridge bay's deck top is y = 0 and its pier reaches down, 19.8 m for the tall one.)
+        expect(box.min.y, kind).toBeGreaterThan(kind === 'sevenMileKit' ? -20 : -0.7);
         expect(box.min.y, kind).toBeLessThan(0.05);
         // (The downtown signal's mast arm reaches 9 m out over the lanes from its pole, run W-R.)
         expect(Math.abs((box.min.x + box.max.x) / 2), kind).toBeLessThan(
@@ -350,7 +354,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         const c = g.getAttribute('color');
         for (let i = 0; i < c.count; i += 3) colours.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
         // A roadside kit's fern or fence section is one flat colour; the kit as a whole has many.
-        const single = kind === 'fogBanks' || kind.endsWith('Roadside');
+        // (A new-span bay is one concrete colour.)
+        const single = kind === 'fogBanks' || kind.endsWith('Roadside') || kind === 'sevenMileKit';
         expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(single ? 0 : 1);
       }
       if (kind.endsWith('Roadside')) {
