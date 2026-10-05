@@ -4,6 +4,7 @@
   "name": "San Francisco",
   "chapter": 3,
   "blurb": "Every street is uphill, including the downhill ones. The fog has a residential permit.",
+  "signStyle": "blade",
   "networks": [
     "sf-hills",
     "osm-sf-russian-hill",
