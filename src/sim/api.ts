@@ -9,6 +9,9 @@ import { clamp } from '../core';
 import { InputFlag, type SimInput } from './types';
 
 export { createSim, SIM_TUNING } from './create';
+// The share of health at or under which a bike smokes (and is a little slower): the render draws the
+// smoke from the same number (playtest 4, P4-14).
+export { SMOKE_HEALTH } from './riders/smoke';
 export {
   InputFlag,
   LAW_EVENT_KINDS,
@@ -96,6 +99,7 @@ export type {
   LayoutElement,
   OnCopyReport,
   PackIndexFn,
+  Rect,
   RecordTuningChange,
   RendererStats,
   RendererStatsFn,
@@ -105,6 +109,7 @@ export type {
   RouteBranchKind,
   RouteQueries,
   SmashableKind,
+  TouchButtonRects,
   TouchLayout,
   TuningParamDecl,
   TuningValues,
@@ -119,9 +124,14 @@ export {
   hashHex,
   isDifficultyPreset,
   placeElement,
+  placeTouchButtons,
+  ROAD_AHEAD,
   secondsToTicks,
   SMASHABLE_KINDS,
+  TOUCH_BUTTON_ELEMENTS,
+  TOUCH_GAP_PX,
   tuningDefaults,
+  WHEELIE_BUTTON_MIN_PX,
 } from '../core';
 export type { RoadFrame, RoadNetwork, RouteBranch, RouteProgress, WorldPoint } from '../road';
 

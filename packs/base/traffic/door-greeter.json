@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "door-greeter",
+  "name": "Door Greeter",
+  "category": "pedestrian",
+  "tags": ["local", "key-oldtown"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 0.4,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true, "strolls": true },
+  "look": { "procedural": { "preset": "ped-tourist" }, "paintOptions": ["#f2c14e", "#2ab7a9", "#c04a8a"] },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 4 (P4-16, Duval Street as a party street): stands at the door of a bar with a laminated menu and calls every rider \"boss\". Paces its patch of the kerb and never crosses; dives clear, menu first. Only Duval's party zones spawn it (a zone's `kinds`). [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import classicPreset from '../../packs/base/hud/classic.json';
-import { placeElement, type LayoutElement, type MovesSnapshot } from '../sim/api';
+import { placeElement, placeTouchButtons, type LayoutElement, type MovesSnapshot } from '../sim/api';
 import {
   createDriftMeter,
   driftOutcome,
@@ -205,10 +205,12 @@ function world(w: number, h: number, mirror: boolean): World {
   const position = placedBox(element('position'), w, h, mirror, HUD_SIZE.position);
   const target = placedBox(element('health-target'), w, h, mirror, HUD_SIZE.health);
   const plan = layoutTop({ w, h, safe: NO_SAFE, mirror, position, target });
-  const buttons = ['touch-attack', 'touch-brake'].map((n) => {
-    const r = placeElement(element(n), w, h, mirror);
-    return { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
-  });
+  // The touch buttons as ui/ places them: attack, brake and playtest 4's wheelie button, settled.
+  const placed = placeTouchButtons({ id: 'classic', mirror, elements: classic.elements }, w, h);
+  const buttons = [placed.attack, placed.brake, placed.wheelie].flatMap((r) =>
+    r ? [{ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h }] : [],
+  );
+  expect(buttons).toHaveLength(3);
   const speed = placedBox(element('speedometer'), w, h, mirror, HUD_SIZE.speed);
   const self = placedBox(element('health-self'), w, h, mirror, HUD_SIZE.health);
   const lifts = settleLifts(

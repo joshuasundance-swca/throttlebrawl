@@ -48,6 +48,9 @@
 // - Zone-local kinds (real-world C0.4): a `roadsideZone` with `params.kinds` (a list of traffic-type
 //   ids, bare or with the pack, people or animals) spawns only those, weighted equally and whatever
 //   the region's weights, from the zone's own seeded stream, so no other spawn moves.
+// - Crowd zones (playtest 4, P4-16: a party street): `params.everyM` and `params.maxPeds` make a zone a
+//   crowd, a person every everyM metres of kerb up to maxPeds (PEDS.crowdMinEveryM, PEDS.maxCrowd bound
+//   them), where an ordinary zone is one per PEDS.perZoneM and at most PEDS.maxPerZone.
 // Pedestrians move across the road (d) to cross it, and along it (s) only on the verge inside
 // their zone. Every number below is a [default] starting value, to be tuned on the phone.
 import {
@@ -113,6 +116,13 @@ export const PEDS = {
   /** One pedestrian per this many metres of roadside zone. */
   perZoneM: 25,
   maxPerZone: 4,
+  /**
+   * Playtest 4 (P4-16, a party street): a crowd zone's own `params.everyM` and `params.maxPeds`
+   * (metres of kerb per person, most people) are taken within these, so a bad number never floods
+   * a road. A zone without them is as it was.
+   */
+  crowdMinEveryM: 3,
+  maxCrowd: 16,
   /** Waiting pedestrians stand at least this far outside the drivable road, m (plus half width). */
   offRoadMarginM: 0.6,
   /** Chance a pedestrian (or an animal) is a road crosser. */
@@ -602,6 +612,20 @@ function zoneKinds(config: SimConfig, f: BakedFeature): readonly number[] | null
   return out.length > 0 ? out : null;
 }
 
+/**
+ * How many people one zone spawns: one per `PEDS.perZoneM` of its length, at most `PEDS.maxPerZone`; a
+ * crowd zone (playtest 4, a party street) names its own `params.everyM` and `params.maxPeds`, kept
+ * within `PEDS.crowdMinEveryM` and `PEDS.maxCrowd`. A value that is not a number is ignored.
+ */
+function zoneCount(f: BakedFeature, length: number): number {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+  const every = num(f.params?.['everyM']);
+  const most = num(f.params?.['maxPeds']);
+  const everyM = every === null ? PEDS.perZoneM : Math.max(PEDS.crowdMinEveryM, every);
+  const cap = most === null ? PEDS.maxPerZone : Math.min(PEDS.maxCrowd, Math.floor(most));
+  return Math.min(cap, Math.max(1, Math.floor(length / everyM)));
+}
+
 /** Spawns the pedestrians of one roadside zone. */
 function spawnZone(
   world: World,
@@ -614,7 +638,7 @@ function spawnZone(
 ): void {
   const spawns = f.params?.['spawns'];
   const length = Math.max(0, f.s1 - f.s0);
-  const n = Math.min(PEDS.maxPerZone, Math.max(1, Math.floor(length / PEDS.perZoneM)));
+  const n = zoneCount(f, length);
   const side = f.d0 + f.d1 < 0 ? -1 : 1;
   const edgeLength = config.road.edges[edge]?.length ?? 0;
   // A zone with its own kinds rolls from its own stream, so it never moves another zone's spawns.

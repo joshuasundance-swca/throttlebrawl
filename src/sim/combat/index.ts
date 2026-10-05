@@ -1816,6 +1816,8 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
     const at = config.road.toWorld(pickup.pos.edge, pickup.pos.s, pickup.pos.d, 0);
     let best: { rider: Mover; dist2: number } | null = null;
     for (const { m, x, z } of takers) {
+      // Took one earlier this tick: one weapon per hand, the other stays on the road.
+      if (st.held[m.id]) continue;
       if ((x - at.x) * (x - at.x) + (z - at.z) * (z - at.z) > PICKUP_NEAR_M2) continue;
       const rel = relative(config.road, m, pickup, PICKUP_S_M + 2);
       if (!rel || Math.abs(rel.ds) > PICKUP_S_M || Math.abs(rel.dd) > PICKUP_D_M) continue;

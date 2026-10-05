@@ -106,6 +106,9 @@ const TYPES: SimTrafficTypeDef[] = [
   road('region-pnw:raccoon', 'animal', 0.6, 0.3),
   road('region-sf:sea-lion', 'animal', 2.0, 0.8),
   road('base:rooster', 'animal', 0.45, 0.3),
+  // Playtest 4 (P4-16): the party street's people.
+  road('base:bar-hopper', 'pedestrian', 0.5, 0.6),
+  road('base:birthday-party', 'pedestrian', 0.5, 0.6),
   road('region-sf:parrot-flock', 'animal', 2, 2),
 ];
 const def = (id: string) => TYPES.find((t) => t.contentId === id);
@@ -141,6 +144,11 @@ describe('which regional figure draws each type', () => {
     expect(p('base:dive-bar-dog')).toBe('dog');
     expect(p('region-sf:doodle')).toBe('dog');
     expect(p('base:tourist-with-cooler')).toBeNull();
+    // The party street's revellers have a figure of their own; the door greeter is an ordinary person.
+    expect(p('base:bar-hopper')).toBe('reveller');
+    expect(p('base:birthday-party')).toBe('reveller');
+    expect(p('base:door-greeter')).toBeNull();
+    expect(p('base:bar-hopper', 'film')).toBe('personPhone');
     expect(p('base:tourist-with-cooler', 'fist')).toBe('personFist');
     expect(p('base:sunburnt-jogger', 'film')).toBe('personPhone');
     // Animals never take a person's pose.
@@ -212,6 +220,7 @@ describe('the entity views draw the regional traffic and people as themselves', 
       'views-hiker': 1,
       'views-dogWalker': 1,
       'views-dog': 2,
+      'views-reveller': 2,
       'views-ped': 1,
       'views-car': 1,
       'views-truck': 1,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import classicPreset from '../../../packs/base/hud/classic.json';
-import { placeElement, type LayoutElement } from '../../sim/api';
+import { placeTouchButtons, type LayoutElement } from '../../sim/api';
 import { overlap, pauseBox, type Box } from '../hud-layout';
 import {
   PANEL_AIR,
@@ -23,11 +23,6 @@ interface Preset {
   elements: LayoutElement[];
 }
 const classic = classicPreset as unknown as Preset;
-const element = (name: string): LayoutElement => {
-  const e = classic.elements.find((x) => x.element === name);
-  if (!e) throw new Error(`the Classic preset has no ${name}`);
-  return e;
-};
 const NO_SAFE = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /** The phone screens the browser checks use, sideways, plus the other common sizes and a laptop. */
@@ -46,13 +41,16 @@ const SCREENS: { w: number; h: number; touch: boolean }[] = [
   { w: 1366, h: 768, touch: false },
 ];
 
-/** The touch buttons as the Classic preset places them (the real boxes the panel must not cover). */
+/**
+ * The touch buttons as the Classic preset places them (the real boxes the panel must not cover): the
+ * attack and brake buttons, and playtest 4's wheelie button as core settles it.
+ */
 function buttonsOf(s: { w: number; h: number; touch: boolean }, mirror: boolean): Box[] {
   if (!s.touch) return [];
-  return ['touch-attack', 'touch-brake'].map((n) => {
-    const r = placeElement(element(n), s.w, s.h, mirror);
-    return { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
-  });
+  const placed = placeTouchButtons({ id: 'classic', mirror, elements: classic.elements }, s.w, s.h);
+  return [placed.attack, placed.brake, placed.wheelie].flatMap((r) =>
+    r ? [{ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h }] : [],
+  );
 }
 
 /** How far the buttons reach, and rise: the way ui/index.ts's placeAll works out `--touch-reach` and `--touch-rise`. */
@@ -83,7 +81,7 @@ function legacyBox(w: number, h: number): Box {
 
 describe('the old placement (negative control: the check can see the bug)', () => {
   for (const s of SCREENS) {
-    it(`${s.w}x${s.h}: 8 px from the top-right corner covered the pause button${s.touch ? ' and both touch buttons' : ''}`, () => {
+    it(`${s.w}x${s.h}: 8 px from the top-right corner covered the pause button${s.touch ? ' and the touch buttons' : ''}`, () => {
       const old = legacyBox(s.w, s.h);
       expect(overlap(old, pauseBox(s.w, NO_SAFE, false))).toBe(true);
       for (const b of buttonsOf(s, false)) expect(overlap(old, b)).toBe(true);
@@ -95,7 +93,7 @@ describe('where the tuning panel stands', () => {
   for (const mirror of [false, true]) {
     describe(mirror ? 'left-handed mirror' : 'right-handed', () => {
       for (const s of SCREENS) {
-        it(`${s.w}x${s.h}: clear of the pause button${s.touch ? ' and both touch buttons' : ''}, on the screen, with room to use`, () => {
+        it(`${s.w}x${s.h}: clear of the pause button${s.touch ? ' and the touch buttons' : ''}, on the screen, with room to use`, () => {
           const { input: i, buttons } = input(s, mirror);
           const plan = planPanel(i);
           const pause = pauseBox(s.w, NO_SAFE, mirror);
@@ -146,11 +144,13 @@ describe('where the tuning panel stands', () => {
     expect(plan.box.bottom).toBeLessThanOrEqual(highest - PANEL_AIR);
     // Not shrunk more than it has to: it stops within a button's own air of the highest touch button.
     expect(plan.box.bottom).toBeGreaterThan(highest - PANEL_AIR - 24);
-    // The numbers the change note quotes: 60 px down to 263 px at 915x412 (203 px tall, 157 of it
-    // sliders under the 46 px header), and 60 px down to 203 px at 568x320 (143 px tall).
-    expect([plan.box.top, plan.box.bottom]).toEqual([60, 263]);
+    // The numbers: 60 px down to 237 px at 915x412 (177 px tall, 131 of it sliders under the 46 px
+    // header), and 60 px down to 194 px at 568x320 (134 px tall). Playtest 4's wheelie button, over
+    // the brake beside the attack button, is the highest touch button now (P4-1's numbers, before it,
+    // were 263 and 203).
+    expect([plan.box.top, plan.box.bottom]).toEqual([60, 237]);
     const tiny = planPanel(input({ w: 568, h: 320, touch: true }, false).input).box;
-    expect([tiny.top, tiny.bottom]).toEqual([60, 203]);
+    expect([tiny.top, tiny.bottom]).toEqual([60, 194]);
   });
 
   it('is 300 px wide, or 46 % of a narrow screen', () => {

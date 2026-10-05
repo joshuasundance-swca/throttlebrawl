@@ -1,6 +1,6 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { placeElement, type TouchLayout } from '../../src/core/layout.ts';
+import { placeElement, placeTouchButtons, type TouchLayout } from '../../src/core/layout.ts';
 import { inputDefaults } from '../../src/input/tuning.ts';
 import { InputFlag, type SimInput } from '../../src/sim/types.ts';
 
@@ -98,6 +98,27 @@ function layoutRect(element: string, width: number, height: number) {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
 
+/** The wheelie button's middle, where core's settle rule puts it (playtest 4, P4-7). */
+function wheelieButton(width: number, height: number) {
+  const hud = JSON.parse(readFileSync('packs/base/hud/classic.json', 'utf8')) as TouchLayout;
+  const r = placeTouchButtons(hud, width, height).wheelie;
+  if (!r) throw new Error('no touch-wheelie in the classic layout');
+  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+}
+
+/** Waits until the last recorded input has `flag` set (`on`) or clear. */
+async function untilFlag(page: Page, flag: keyof typeof InputFlag, on: boolean) {
+  await page.waitForFunction(
+    ([bit, want]) => {
+      const all = (window as TestWindow).__game?.inputs() ?? [];
+      const last = all[all.length - 1];
+      return !!last && ((last.flags & bit) !== 0) === want;
+    },
+    [InputFlag[flag], on] as const,
+    { timeout: 10_000 },
+  );
+}
+
 type Point = { x: number; y: number; id: number };
 /**
  * One touch event. `at` (seconds since the epoch) stamps the event: Chrome carries it into the
@@ -119,7 +140,7 @@ const touch = (
   });
 const now = () => Date.now() / 1000;
 
-test('touch: the stick, the brake and the attack gestures produce the expected SimInput', async ({
+test('touch: the stick, the brake, the wheelie button and the attack gestures produce the expected SimInput', async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -144,6 +165,13 @@ test('touch: the stick, the brake and the attack gestures produce the expected S
   expect((await untilLast(page, { brake: 255 }))?.brake).toBe(255);
   await touch(cdp, 'touchEnd', []);
   await untilLast(page, { brake: 0 });
+
+  // The wheelie button (playtest 4, P4-7): the flag held while the finger is down, gone on the lift.
+  const wheelie = wheelieButton(view.width, view.height);
+  await touch(cdp, 'touchStart', [{ ...wheelie, id: 20 }]);
+  await untilFlag(page, 'wheelie', true);
+  await touch(cdp, 'touchEnd', []);
+  await untilFlag(page, 'wheelie', false);
 
   // A tap on attack: attack on exactly one tick, auto side, no kick.
   let from = await tickCount(page);

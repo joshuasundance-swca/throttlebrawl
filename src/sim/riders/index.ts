@@ -52,6 +52,7 @@ import {
 import { applyShove, riderContacts } from './contact';
 import { driftMoves, driftStep, driftTakeoff, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
 import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
+import { smokeTopScale, SMOKE_TUNING } from './smoke';
 import {
   BOOST_ACCEL_MPS2,
   boostOf,
@@ -313,6 +314,8 @@ export const RIDERS_TUNING: readonly TuningParamDecl[] = [
   ...WHEELIE_TUNING,
   ...DRIFT_TUNING,
   ...GAP_TUNING,
+  // Playtest 4: a smoking bike loses a little top speed (sim/riders/smoke.ts).
+  ...SMOKE_TUNING,
 ];
 
 /**
@@ -513,6 +516,19 @@ export function maxYawAt(steerRateMps: number, speed: number, steerScale: number
 /** Top speed after the tuning panel's speed scale and the lower-overall-speed multiplier. */
 export function topSpeedOf(world: World, config: SimConfig, bikeTopMps: number): number {
   return bikeTopMps * (world.params['riders.speedScale'] ?? 1) * speedMultiplierOf(config);
+}
+
+/**
+ * The scale a smoking bike puts on its own top speed (playtest 4, P4-14; sim/riders/smoke.ts): 1
+ * while its rider has more than the smoking line of his health, `1 - riders.smokeSlowdown` at or
+ * under it. A missing key (a config built without the tuning defaults) is no slowdown.
+ */
+function smokeScaleOf(world: World, st: RiderState, m: Mover, def: SimRiderDef): number {
+  return smokeTopScale(
+    world.params['riders.smokeSlowdown'] ?? 0,
+    st.health[m.id] ?? def.healthMax,
+    def.healthMax,
+  );
 }
 
 /** What the lower overall speed does to accelerations and gravity: m², so paths keep their shape. */
@@ -1033,7 +1049,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const uturn = uturnStep(world, st, def, m, steer, brake, fresh);
   // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
   // (steering × maxYawScale, a drag, the knee-down lean). Neutral while each is off.
-  const wh = wheelieStep(world, config, st, m, input, throttle, brake, dt);
+  const wh = wheelieStep(world, config, st, m, input, brake, dt);
   const dr = driftStep(world, config, st, m, input, steer, throttle, brake, dt);
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the
@@ -1052,7 +1068,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   // The ground under the wheels (off-road, run W-R): its speed scales the top speed and the push,
   // its grip the steering; 1 and 1 on the road, and with the off-road switch off.
   const feel = groundFeel(config, world.params, m);
-  const ownTop = topSpeedOf(world, config, bike.topSpeedMps) * feel.speed;
+  const ownTop = topSpeedOf(world, config, bike.topSpeedMps) * feel.speed * smokeScaleOf(world, st, m, def);
   const top = ownTop + boostTop;
   const a = bike.accelMps2 * accelScale * m2 * feel.speed;
   const fade = clamp(1 - v / (ownTop * LAUNCH_FADE_SHARE), 0, 1);
@@ -1247,7 +1263,7 @@ function stepAirborne(world: World, config: SimConfig, st: RiderState, m: Mover)
   if (boostLeft > 0) st.boost[m.id] = Math.max(0, boostLeft - world.timeScale);
 
   const boostTop = boostLeft > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const top = topSpeedOf(world, config, bike.topSpeedMps) + boostTop;
+  const top = topSpeedOf(world, config, bike.topSpeedMps) * smokeScaleOf(world, st, m, def) + boostTop;
   const a = bike.accelMps2 * (world.params['riders.accelScale'] ?? 1) * m2;
   m.speed = Math.max(0, m.speed - ((a * m.speed * m.speed) / (top * top)) * dt);
   const kappa = road.kappaAt(pos.edge, pos.s);
@@ -1494,7 +1510,7 @@ export function touchdownOf(world: World, config: SimConfig, m: Mover): Touchdow
   let v = m.speed;
   // The air drag the flight itself feels (stepAirborne): the bike slows toward its top speed's drag.
   const boostTop = (st.boost[m.id] ?? 0) > 0 ? (st.boostMps[m.id] ?? 0) * speedMultiplierOf(config) : 0;
-  const top = topSpeedOf(world, config, def.bike.topSpeedMps) + boostTop;
+  const top = topSpeedOf(world, config, def.bike.topSpeedMps) * smokeScaleOf(world, st, m, def) + boostTop;
   const drag =
     top > 0
       ? (def.bike.accelMps2 * (world.params['riders.accelScale'] ?? 1) * accelMultiplierOf(config)) /
