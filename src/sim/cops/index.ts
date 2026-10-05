@@ -140,7 +140,7 @@
 // Every timer advances by world.timeScale per tick (M1 cross-lane rule), so a hit-stop freezes
 // them and M2's slow motion stretches them. All state is plain data keyed by entity id.
 import { atan2, clamp, nextFloat, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadPos } from '../../road';
+import type { RoadPos, RouteBranch } from '../../road';
 import { combatState, relative } from '../combat';
 import { barrierLimits, maxYawAt, riderState } from '../riders';
 import {
@@ -153,7 +153,17 @@ import {
   type SimRiderDef,
 } from '../types';
 import { groundUnder } from '../ground';
-import { lawBarredZone, lineOutsideZone } from '../ai/branches';
+import {
+  keepOff,
+  lawBarredZone,
+  lawNeverTakes,
+  lineOutsideZone,
+  STRAY_GAIN,
+  STRAY_LATERAL_MPS,
+  STRAY_PAST_EDGE_M,
+  STRAY_RETURN_MPS,
+  wayBack,
+} from '../ai/branches';
 import { blockerAt, lineClear, pathClear, see, type Obstacle } from '../ai/sense';
 import { vehicleInfo } from '../traffic';
 import { emit, speedMultiplierOf, systemState, type Mover, type SimSystem, type World } from '../world';
@@ -1224,20 +1234,17 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   // branch the route bars to them (`aiTake` 0, or a gap with no `aiTake`: sim/ai/branches.ts) is
   // never entered. His line, chasing a man who takes it, keeps out of its split zone, and he rides
   // the main path on to wait where it rejoins. (He does not share the rivals' shortcut roll.)
+  // Wave C, G3 (keepOff): a dodge keeps out of it too, and off the side where the branch still
+  // overlaps the main road just past the split (traffic's lines are bounded short of both); a shove
+  // that puts him there is steered out of hard, below.
   const barred = lawBarredZone(config, pos.edge, pos.s, pos.dir);
   if (barred) dWant = lineOutsideZone(barred, dWant);
   // Traffic has the last word (W-S): round the car ahead in his line, or behind it.
   const edgeNow = config.road.edges[pos.edge];
-  const guard = trafficGuard(
-    world,
-    config,
-    cop,
-    dWant,
-    vWant,
-    (edgeNow?.dMin ?? -5) + 0.8,
-    (edgeNow?.dMax ?? 5) - 0.8,
-  );
-  dWant = guard.d;
+  const lawNever = (b: RouteBranch): boolean => lawNeverTakes(config, b);
+  const keep = keepOff(config, pos, (edgeNow?.dMin ?? -5) + 0.8, (edgeNow?.dMax ?? 5) - 0.8, lawNever);
+  const guard = trafficGuard(world, config, cop, dWant, vWant, keep.lo, keep.hi);
+  dWant = keep.guarded ? clamp(guard.d, keep.lo, keep.hi) : guard.d;
   if (guard.v < vWant) {
     vWant = guard.v;
     if (v > vWant) feedBrake = Math.max(feedBrake, guard.brake);
@@ -1259,8 +1266,37 @@ function drive(world: World, config: SimConfig, st: CopsState, cop: Mover, def: 
   const steerScale = world.params['riders.steerScale'] ?? 1;
   // Alongside he holds his line firmly, so a knockback does not keep him out of reach for long.
   // Dodging traffic, he swerves as briskly as a rival does (sim/ai: 5 m/s across).
-  const gain = st.closing[cop.id] === 1 || guard.dodging ? 1.6 : 0.8;
-  const latMax = guard.dodging ? 5 : 3;
+  let gain = st.closing[cop.id] === 1 || guard.dodging ? 1.6 : 0.8;
+  let latMax = guard.dodging ? 5 : 3;
+  // The law stays on the highway (wave C, G3; sim/ai/branches.ts), when a shove puts him where his
+  // line never goes. On a branch barred to the law, while it still overlaps the main road, he brakes
+  // to a crawl and rides for that edge, where the road's handover puts him back on the main road; past
+  // that point he stops where he is (a cop never turns round), and his chase is over: the heat can
+  // send him again from there, as any cop whose chase ended (sendHeatCop puts him on the main road).
+  // Shoved toward a barred split, he is steered out of it hard.
+  const strayOn = config.route.branchAt(pos.edge);
+  if (strayOn && lawNever(strayOn) && edge) {
+    const back = wayBack(config, pos);
+    dWant = back === 0 ? pos.d : back > 0 ? edge.dMax + STRAY_PAST_EDGE_M : edge.dMin - STRAY_PAST_EDGE_M;
+    gain = STRAY_GAIN;
+    latMax = STRAY_LATERAL_MPS;
+    // A bike turns only as it rolls: on the way back he keeps a crawl, so he gets across.
+    const crawl = back !== 0 && v <= STRAY_RETURN_MPS;
+    throttle = crawl
+      ? clamp(
+          holdThrottle(bike.accelMps2, bike.topSpeedMps, STRAY_RETURN_MPS) + 0.5 * (STRAY_RETURN_MPS - v),
+          0,
+          1,
+        )
+      : 0;
+    brake = crawl ? 0 : 1;
+    // A pursuit burst's push would carry him on past his brakes.
+    riderState(world).boost[cop.id] = 0;
+    if (back === 0 && v < CRAWL_MPS) endChase(world, st, cop.id);
+  } else if (keep.pushed) {
+    gain = Math.max(gain, STRAY_GAIN);
+    latMax = Math.max(latMax, STRAY_LATERAL_MPS);
+  }
   const vLat = clamp((dWant - pos.d) * gain, -latMax, latMax) * pos.dir;
   const wantYaw = vLat / Math.max(v, 5);
   const turn = pos.dir * config.road.kappaAt(pos.edge, pos.s) * v + 3 * (wantYaw - cop.yaw);
