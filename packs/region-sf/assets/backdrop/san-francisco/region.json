@@ -67,6 +67,16 @@
       "id": "golden-gate-bridge",
       "kind": "bridge",
       "style": "suspension",
+      "networks": [
+        "osm-sf-lombard",
+        "osm-sf-russian-hill",
+        "osm-sf-twin-peaks",
+        "sf-chinatown-northbeach",
+        "sf-downtown",
+        "sf-hills",
+        "sf-mission",
+        "sf-waterfront"
+      ],
       "from": [37.8105, -122.4772],
       "to": [37.8302, -122.479],
       "deckM": 67,

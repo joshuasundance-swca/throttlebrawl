@@ -170,8 +170,8 @@ describe('the Golden Gate (osm-sf-golden-gate)', () => {
     const m = marks[0];
     expect(m?.id).toBe('gg-bridge');
     const p = m?.params as { model: string; overRoad?: boolean };
-    // The model is the kit's composite node (render/landmarks.ts COMPOSITES). The kit itself is
-    // CX3's: until it lands the feature draws nothing, and the far backdrop piece is the bridge.
+    // The model is the kit's composite node (render/landmarks.ts COMPOSITES), CX3's kit; the far
+    // backdrop piece leaves this network, so the route shows exactly one bridge (src/render/landmarks-sf.test.ts).
     expect(p.model).toBe('golden-gate#gg_bridge');
     expect(p.overRoad).toBe(true);
     // Anchorage to anchorage: 343 m side spans and the 1,280 m main span are 1,966 m; the box is
@@ -189,6 +189,32 @@ describe('the Golden Gate (osm-sf-golden-gate)', () => {
     const rep = report('osm-sf-golden-gate');
     expect(rep.landmarks[0]?.placementErrorM).toBeLessThan(35);
     expect(rep.lines['gg']?.fun.max_deviation_m).toBeLessThan(35);
+  });
+
+  it('carries the toll gantry across the toll plaza, centred on its lanes and clear of its verge', () => {
+    const plaza = road('osm-sf-gg-toll-plaza');
+    const marks = (plaza.features ?? []).filter((f) => f.kind === 'landmark');
+    expect(marks).toHaveLength(1);
+    const m = marks[0];
+    expect(m?.id).toBe('toll-gantry');
+    const p = m?.params as { model: string; overRoad?: boolean };
+    expect(p.model).toBe('sf-landmarks#toll_gantry');
+    // The road lint's `landmark-clear` would refuse a box over the lanes: the gantry spans them.
+    expect(p.overRoad).toBe(true);
+    // Centred on the road's axis, and wide enough (the kit's 31 m span plus its posts) to straddle
+    // every lane and shoulder of the plaza's drawn width.
+    expect(Math.abs(((m?.d0 ?? 0) + (m?.d1 ?? 0)) / 2)).toBeLessThan(0.5);
+    const lanes = plaza.laneSections[0]?.lanes ?? [];
+    const half = Math.max(...lanes.map((l) => Math.abs(l.dCenterM) + l.widthM / 2));
+    expect(m?.d1 ?? 0).toBeGreaterThan(half);
+    expect(m?.d0 ?? 0).toBeLessThan(-half);
+    // Past the plaza's sign, inside the road, and the bake placed it on the line (the real point is
+    // 28 m from the smoothed line, as the bridge's is: the config's point is tuned onto the real one).
+    expect(m?.s0 ?? 0).toBeGreaterThan(70);
+    expect(m?.s1 ?? 0).toBeLessThan(plaza.lengthM);
+    const placed = report('osm-sf-golden-gate').landmarks.find((x) => x.id === 'toll-gantry');
+    expect(placed?.road).toBe('osm-sf-gg-toll-plaza');
+    expect(Math.abs(placed?.d ?? 99)).toBeLessThan(0.5);
   });
 
   it('keeps Conzelman Road wide enough for the road format and a lane drop at each end of the deck', () => {
