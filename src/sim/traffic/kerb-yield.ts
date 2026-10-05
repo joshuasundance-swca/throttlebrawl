@@ -35,12 +35,21 @@ export const KERB_YIELD = {
   returnMps: 1.2,
   /** It waits to go back while a rider is within this far behind it, in its lateral band, m. */
   returnBehindM: 30,
-  /** Only a type at most this wide (bicycles, scooters, e-bikes, the cooler) takes the verge, m. */
-  lightMaxWidthM: 0.8,
+  /**
+   * Only a type at most this wide (bicycles, scooters, e-bikes, the cooler) gets the soft contact and
+   * topples (`softContact`). Taking the verge is for every kerb type (`takesVerge`, P4-3).
+   */
+  softMaxWidthM: 0.8,
   /** The verge must be at least this much wider than the kerb rider for it to step onto it, m. */
   vergeSpareM: 0.4,
   /** On the verge it rides this far past the road edge, kerb rider's edge to the road's, m. */
   vergeOffsetM: 0.2,
+  /**
+   * The smashables' inner line past the road's edge, m (`SMASH.gapM`, asserted equal in the tests): a
+   * kerb rider on the verge keeps its outer side inside it, so it never drives through a prop. A type
+   * wider than 0.7 m (the golf cart) therefore rides partly over the road's edge, not 0.2 m past it.
+   */
+  propLineM: 0.9,
   /** Hugging the edge: its outer side keeps this far off the road's edge, m. */
   hugM: 0.05,
   /** Soft contact: the rider keeps this share of its speed, and is kicked away this far, rad. */
@@ -84,9 +93,38 @@ export const KERB_YIELD_TUNING: readonly TuningParamDecl[] = [
   },
 ];
 
-/** Whether a kerb type is light enough to take the verge and to topple (not the golf cart). */
-export function isLightKerb(t: Pick<SimTrafficTypeDef, 'widthM'>): boolean {
-  return t.widthM <= KERB_YIELD.lightMaxWidthM;
+/**
+ * Whether a kerb rider may step onto a verge band `vergeW` wide: every kerb type may (playtest 4,
+ * P4-3: "golf carts and similar things should swerve out of the way"), wherever the band is at least
+ * `vergeSpareM` wider than it. Where it is not, the rider hugs the road's edge as before.
+ */
+export function takesVerge(t: Pick<SimTrafficTypeDef, 'widthM'>, vergeW: number): boolean {
+  return vergeW >= t.widthM + KERB_YIELD.vergeSpareM;
+}
+
+/**
+ * How far past the road's edge the centre of a kerb rider `widthM` wide rides on the verge, m
+ * (negative: part of it still over the edge): `vergeOffsetM` clear of the edge, but never with its
+ * outer side beyond `propLineM`. A light type (0.7 m or less) rides 0.2 m past the edge as it did in
+ * playtest 3; the 1.3 m golf cart rides with its outer edge on the prop line and its inner edge
+ * 0.4 m inside the road's edge, which is as far out of the way as a cart can go. Never further in
+ * than the hug (the outer side 0.05 m inside the edge).
+ */
+export function vergeOffsetFor(widthM: number): number {
+  const half = widthM / 2;
+  return Math.max(
+    -(half + KERB_YIELD.hugM),
+    Math.min(half + KERB_YIELD.vergeOffsetM, KERB_YIELD.propLineM - half),
+  );
+}
+
+/**
+ * Whether a kerb type gets the soft contact (a wobble, never a crash) and topples when clipped: the
+ * light ones, 0.8 m wide or less. The golf cart is a car: a solid rear-end is still a crash (the
+ * maintainer, playtest 4: "Keep it a crash").
+ */
+export function softContact(t: Pick<SimTrafficTypeDef, 'widthM'>): boolean {
+  return t.widthM <= KERB_YIELD.softMaxWidthM;
 }
 
 /** What a threat test reads of a rider (index.ts's RiderView). */
