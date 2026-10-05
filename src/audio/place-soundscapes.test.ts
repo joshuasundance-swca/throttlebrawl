@@ -325,21 +325,28 @@ describe('the packs name only sounds the voices can play, in the places they bel
     for (const m of sounds) expect(m.value, `${m.zone.id}`).toBe('falls');
   });
 
-  it("each Gorge falls sits over its road's creek bridge, and is heard there at full", () => {
+  it("each Gorge falls stands on land just past its road's creek bridge, and the bridge hears it", () => {
     const falls = zonesWith('sound').filter((z) => z.road.id.startsWith('osm-gorge-'));
     // Latourell Creek and Shepperd's Dell: two roads, one fall each.
     expect(new Set(falls.map((z) => z.road.id))).toEqual(
       new Set(['osm-gorge-latourell', 'osm-gorge-shepperds-dell']),
     );
     for (const z of falls) {
+      // Its hikers stand on land, so the zone is off the deck (a zone over the bridge stood them over
+      // the creek: the geometry sweeps caught it), and within 40 m of it.
       const bridges = (z.road.tags ?? []).filter((t) => t.tag === 'bridge');
       expect(
         bridges.some((b) => z.zone.s0 <= b.s1 && z.zone.s1 >= b.s0),
-        z.zone.id,
-      ).toBe(true);
+        `${z.zone.id} over a bridge`,
+      ).toBe(false);
+      const near = bridges.filter((b) => z.zone.s0 - b.s1 <= 40 && b.s0 - z.zone.s1 <= 40);
+      expect(near.length, `${z.zone.id} beside a bridge`).toBe(1);
       const mid = (z.zone.s0 + z.zone.s1) / 2;
       const scape: ScapeRoad = { edges: [{ tags: z.road.tags ?? [], features: z.road.features ?? [] }] };
       expect(fallsAt(scape, 0, mid)).toBe(1);
+      // The roar is still loud crossing the creek.
+      const deck = (near[0]!.s0 + near[0]!.s1) / 2;
+      expect(fallsAt(scape, 0, deck), `${z.zone.id} on the bridge`).toBeGreaterThan(0.35);
     }
   });
 
