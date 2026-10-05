@@ -51,6 +51,16 @@ const REAL_MARKS: readonly string[] = [
   'Full House',
   'Golden Gate Bridge Highway',
   'Weather Machine',
+  // Playtest 4 (P4-16, Duval as a party street): the real bars, events and crawls of Key West that a
+  // party-street lane could reach for. The street's shops and bars are invented.
+  'Captain Tony',
+  "Hog's Breath",
+  'Green Parrot',
+  'Irish Kevin',
+  'Fat Tuesday',
+  'Schooner Wharf',
+  'Fantasy Fest',
+  'Duval Crawl',
 ];
 
 /** A mark as a pattern: case-insensitive, any whitespace between its words, whole words only. */

@@ -2,6 +2,8 @@
 // different regions"): each composes deterministically, stays in its own tempo range, and uses its
 // own instruments, so a Pacific Northwest or San Francisco station never sounds like the Keys' surf
 // and rockabilly. Their loudness and clipping are measured offline in tests/e2e/audio-radio.spec.ts.
+// Since playtest 4 (P4-17) the Pacific Northwest's grunge and folk are whole songs
+// (radio-compose-pnw.ts); radio-p4.test.ts holds the region's dial to San Francisco's bar.
 import { describe, expect, it } from 'vitest';
 import { FakeAudioContext } from './fake-context';
 import { composeTrack, RADIO_PRESETS, type Composition, type RadioNote } from './radio-compose';
@@ -12,6 +14,7 @@ import {
   REGIONAL_PRESETS,
   SYNTH_FORMS,
 } from './radio-compose-regional';
+import { FOLK_PLAN, GRUNGE_PLAN, PNW_BARS } from './radio-compose-pnw';
 import { createRadioPlayer, genreOf, type RadioStation } from './radio';
 import { RADIO_BAND } from './radio-band';
 import { RIG_TRIM } from './radio-rigs';
@@ -34,7 +37,9 @@ describe('the regional bands', () => {
       expect(a.notes).toEqual(b.notes);
       expect(compose(p, 43).notes).not.toEqual(a.notes);
       expect(a.stepsPerBeat).toBe(4);
-      expect(a.bars).toBe(8);
+      // San Francisco's bands loop eight bars; since playtest 4 the Pacific Northwest's are whole
+      // sixteen-bar songs (radio-compose-pnw.ts).
+      expect(a.bars).toBe(p === 'grunge-band' || p === 'folk-band' ? PNW_BARS : 8);
       for (const n of a.notes) {
         expect(n.step).toBeGreaterThanOrEqual(0);
         expect(n.step).toBeLessThan(a.steps);
@@ -45,10 +50,11 @@ describe('the regional bands', () => {
     }
   });
 
-  it('keep their own tempos, slower than the Keys (surf 140-175, rockabilly 150-205), and honour params', () => {
+  it('keep their own tempos and honour params', () => {
     const ranges: Record<string, [number, number]> = {
-      'grunge-band': [92, 132],
-      'folk-band': [92, 128],
+      // Playtest 4 (P4-17, "PNW seems very simple and slow"): faster than before (92-132, 92-128).
+      'grunge-band': [112, 148],
+      'folk-band': [116, 148],
       'synth-band': [98, 126],
       'psych-band': [100, 130],
     };
@@ -68,39 +74,58 @@ describe('the regional bands', () => {
     expect(Object.keys(PSYCH_FORMS)).toContain(compose('psych-band', 5).form);
   });
 
-  it('grunge: a quiet verse into a loud chorus of power chords (root, fifth, octave) and open cymbals', () => {
+  // Playtest 4 (P4-17): the Pacific Northwest's bands are whole songs, section by section.
+  const bars = (sec: string, plan: readonly string[]) => plan.flatMap((p, i) => (p === sec ? [i] : []));
+  const inBars = (c: Composition, layer: RadioNote['layer'], bs: readonly number[]) =>
+    of(c, layer).filter((n) => bs.includes(Math.floor(n.step / 16)));
+  const mean = (xs: RadioNote[]) => xs.reduce((a, n) => a + n.vel, 0) / xs.length;
+
+  it('grunge: a drop-tuned riff, a quiet verse, a build, a loud chorus of power chords whose hook returns harmonised', () => {
     for (const s of seeds) {
       const c = compose('grunge-band', s);
-      const half = c.steps / 2;
-      const chords = of(c, 'rhythm');
-      expect(chords.length).toBeGreaterThan(0);
-      // Power chords live in the chorus only, the clean arpeggio in the verse only.
-      expect(chords.every((n) => n.step >= half)).toBe(true);
-      expect(of(c, 'arp').every((n) => n.step < half)).toBe(true);
-      expect(of(c, 'arp').length).toBeGreaterThan(0);
-      // No thirds in a power chord: every strum is root, fifth and octave.
+      const [verse, pre, chorus, riff] = ['verse', 'pre', 'chorus', 'riff'].map((x) => bars(x, GRUNGE_PLAN));
+      // The clean arpeggio lives in the verse only; the riff, the build and the chorus are distorted.
+      expect(of(c, 'arp').every((n) => verse!.includes(Math.floor(n.step / 16)))).toBe(true);
+      expect(inBars(c, 'arp', verse!).length).toBeGreaterThan(0);
+      expect(inBars(c, 'rhythm', verse!)).toHaveLength(0);
+      // The riff is a dyad: every strike is a root and its fifth.
+      const dyads = new Map<number, number[]>();
+      for (const n of inBars(c, 'rhythm', riff!)) dyads.set(n.step, [...(dyads.get(n.step) ?? []), n.midi]);
+      for (const ms of dyads.values())
+        expect(ms.map((m) => m - Math.min(...ms)).sort((a, b) => a - b)).toEqual([0, 7]);
+      // No thirds in a chorus power chord: every strike is root, fifth and octave.
       const byStep = new Map<number, number[]>();
-      for (const n of chords) byStep.set(n.step, [...(byStep.get(n.step) ?? []), n.midi]);
+      for (const n of inBars(c, 'rhythm', chorus!))
+        byStep.set(n.step, [...(byStep.get(n.step) ?? []), n.midi]);
+      expect(byStep.size).toBeGreaterThan(0);
       for (const ms of byStep.values()) {
         const lo = Math.min(...ms);
         expect(ms.map((m) => m - lo).sort((a, b) => a - b)).toEqual([0, 7, 12]);
       }
-      expect(of(c, 'openhat').every((n) => n.step >= half)).toBe(true);
-      expect(of(c, 'openhat').length).toBeGreaterThan(0);
-      const verseSnare = of(c, 'snare').filter((n) => n.step < half);
-      const chorusSnare = of(c, 'snare').filter((n) => n.step >= half);
-      const mean = (xs: RadioNote[]) => xs.reduce((a, n) => a + n.vel, 0) / xs.length;
-      expect(mean(chorusSnare)).toBeGreaterThan(mean(verseSnare) + 0.15);
-      // Bends: the chorus lead slides up into its notes.
+      // The build rolls: its last bar is a sixteenth snare roll that gets louder.
+      const roll = inBars(c, 'snare', [pre!.at(-1)!]);
+      expect(roll).toHaveLength(16);
+      expect(roll.at(-1)!.vel).toBeGreaterThan(roll[0]!.vel + 0.3);
+      // Open cymbals and a harder snare in the chorus than in the verse.
+      expect(of(c, 'openhat').every((n) => chorus!.includes(Math.floor(n.step / 16)))).toBe(true);
+      expect(mean(inBars(c, 'snare', chorus!))).toBeGreaterThan(mean(inBars(c, 'snare', verse!)) + 0.15);
+      // The hook (the chorus's first two bars) returns four bars on, over the same chords, with a
+      // harmony over it.
+      const hook = inBars(c, 'lead', chorus!.slice(0, 2));
+      const again = inBars(c, 'lead', chorus!.slice(4, 6));
+      expect(hook.length).toBeGreaterThan(0);
+      for (const n of hook) expect(again.some((m) => m.step === n.step + 64 && m.midi === n.midi)).toBe(true);
+      expect(again.some((m) => !hook.some((n) => n.step + 64 === m.step && n.midi === m.midi))).toBe(true);
+      // Bends.
       expect(of(c, 'lead').some((n) => n.slide === -2)).toBe(true);
     }
   });
 
-  it('folk: stomp and clap, a tambourine, a strummed acoustic with up strokes, a glockenspiel, banjo rolls', () => {
+  it('folk: a strummed verse with the tune, a build, then a driving chorus with a stomp on every beat and a mandolin', () => {
     for (const s of seeds) {
       const c = compose('folk-band', s);
       const l = layers(c);
-      for (const want of ['kick', 'clap', 'tamb', 'rhythm', 'glock', 'arp', 'bass'] as const)
+      for (const want of ['kick', 'clap', 'tamb', 'rhythm', 'glock', 'arp', 'bass', 'lead'] as const)
         expect(l.has(want)).toBe(true);
       // No drum kit: no snare, hats or cymbals.
       for (const not of ['snare', 'hat', 'openhat', 'crash', 'ride'] as const) expect(l.has(not)).toBe(false);
@@ -112,8 +137,19 @@ describe('the regional bands', () => {
         const same = up.filter((n) => n.step === f.step);
         expect(f.midi).toBe(Math.max(...same.map((n) => n.midi)));
       }
-      // A major key: the tune walks the major pentatonic and lands on chord tones, all in the major scale.
-      for (const n of of(c, 'glock'))
+      // The chorus drives: a stomp on every beat, sixteenth tambourine, banjo rolls.
+      const chorus = bars('chorus', FOLK_PLAN);
+      for (const b of chorus) {
+        expect(inBars(c, 'kick', [b]).map((n) => n.step % 16)).toEqual([0, 4, 8, 12]);
+        expect(inBars(c, 'tamb', [b])).toHaveLength(16);
+        expect(inBars(c, 'arp', [b])).toHaveLength(16);
+      }
+      // The verse does not stomp on every beat.
+      for (const b of bars('verse', FOLK_PLAN)) expect(inBars(c, 'kick', [b]).length).toBeLessThan(4);
+      // The mandolin is tremolo-picked and only in the chorus.
+      expect(of(c, 'lead').every((n) => n.trem && chorus.includes(Math.floor(n.step / 16)))).toBe(true);
+      // A major key: the tune walks the major scale.
+      for (const n of [...of(c, 'glock'), ...of(c, 'lead')])
         expect([0, 2, 4, 5, 7, 9, 11]).toContain((((n.midi - c.key) % 12) + 12) % 12);
     }
   });

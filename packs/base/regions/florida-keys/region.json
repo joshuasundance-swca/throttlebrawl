@@ -87,7 +87,7 @@
           { "kind": "resort-scooter-rider", "weight": 3 },
           { "kind": "rental-convertible", "weight": 2 },
           { "kind": "sedan-rental", "weight": 2 },
-          { "kind": "pedicab", "weight": 1 },
+          { "kind": "pedicab", "weight": 3 },
           { "kind": "island-tram", "weight": 0.6 }
         ]
       }
@@ -255,6 +255,191 @@
       "text": "YOUR SHIP LEAVES AT 4:30. It will not wait. It is a ship.",
       "tags": ["key-oldtown"],
       "status": "live"
+    },
+    {
+      "id": "duval-balcony-a-shop-name-0",
+      "text": "SANDAL OBSERVATORY",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_a_shop_name_0` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-a-shop-name-0-2` and `duval-balcony-a-shop-name-0-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-a-shop-name-0-2",
+      "text": "SUNBURN & SOUVENIRS",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-a-shop-name-0-3",
+      "text": "SHADES OF REGRET",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-a-shop-name-1",
+      "text": "THE SALTY REGRET",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_a_shop_name_1` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-a-shop-name-1-2` and `duval-balcony-a-shop-name-1-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-a-shop-name-1-2",
+      "text": "NEON IGUANA",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-a-shop-name-1-3",
+      "text": "BOARDING AT FOUR",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-0",
+      "text": "T-SHIRT UNIVERSITY",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_b_shop_name_0` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-b-shop-name-0-2` and `duval-balcony-b-shop-name-0-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-b-shop-name-0-2",
+      "text": "HOT SAUCE HEAVEN",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-0-3",
+      "text": "RUM, MOSTLY",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-1",
+      "text": "KARAOKE, MERCY EXTRA",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_b_shop_name_1` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-b-shop-name-1-2` and `duval-balcony-b-shop-name-1-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-b-shop-name-1-2",
+      "text": "HAPPY HOUR HAPPY HOUR",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-1-3",
+      "text": "TUESDAY ALL WEEK",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-2",
+      "text": "PIE, ONE WAY",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_b_shop_name_2` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-b-shop-name-2-2` and `duval-balcony-b-shop-name-2-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-b-shop-name-2-2",
+      "text": "THE UNPLANNED PARROT",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-b-shop-name-2-3",
+      "text": "FLIP-FLOP EMBASSY",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-0",
+      "text": "BAREFOOT & BORROWED",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_c_shop_name_0` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-c-shop-name-0-2` and `duval-balcony-c-shop-name-0-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-c-shop-name-0-2",
+      "text": "THE LAST ROUND",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-0-3",
+      "text": "SOUVENIR SOUVENIR",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-1",
+      "text": "ONE MORE FOR THE ROAD",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_c_shop_name_1` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-c-shop-name-1-2` and `duval-balcony-c-shop-name-1-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-c-shop-name-1-2",
+      "text": "BUY ONE, REGRET TWO",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-1-3",
+      "text": "LIME & PUNISHMENT",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-2",
+      "text": "CONCH CHOWDER ANNEX",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_balcony_c_shop_name_2` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-balcony-c-shop-name-2-2` and `duval-balcony-c-shop-name-2-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-balcony-c-shop-name-2-2",
+      "text": "SPF NEGOTIABLE",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-balcony-c-shop-name-2-3",
+      "text": "BREAKFAST AT NOON",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-corner-bar-name",
+      "text": "THE SUNSET ALIBI",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-16, Duval Street as a party street): the neon words on a Duval shopfront's blank board, an invented business. A text surface, not a board: the game paints it on the Duval kit's `duval_corner_bar_name` panel (docs/content-packs.md, Text surfaces), and the board's other names are the signs `duval-corner-bar-name-2` and `duval-corner-bar-name-3`, one picked per building. Cutting one in the game leaves its buildings on the other names. Vetoable like any sign."
+    },
+    {
+      "id": "duval-corner-bar-name-2",
+      "text": "THE OPEN DOOR POLICY",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "duval-corner-bar-name-3",
+      "text": "THE ALL-DAY ANNEX",
+      "tags": ["site", "surface", "new"],
+      "status": "live"
+    },
+    {
+      "id": "sidewalk-capacity",
+      "text": "SIDEWALK CAPACITY: 40. Current occupancy: all of them. City notice.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). The city's notice, the joke is the institution and the tourist economy."
+    },
+    {
+      "id": "noise-ordinance",
+      "text": "NOISE ORDINANCE IN EFFECT. Effect pending. City notice.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). The city's notice on a party street."
     }
   ],
   "billboards": [
@@ -338,6 +523,34 @@
       "text": "KNOW WHAT YOU SEE. Island Tour Tram. Narrated, loudly.",
       "tags": ["key-oldtown"],
       "status": "live"
+    },
+    {
+      "id": "crawl-cartographers",
+      "text": "SIX BARS, NO PLAN. Crawl Cartographers, est. last Tuesday.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). An invented bar-crawl outfit."
+    },
+    {
+      "id": "pedal-mercy",
+      "text": "RIDE THE LAST BLOCK. Fare to be discussed. Pedal Mercy Pedicabs.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). An invented pedicab company; the pedicab driver quotes a fare, then a different fare."
+    },
+    {
+      "id": "balcony-seats",
+      "text": "WAVE FROM THE BALCONY. Neighbors advise against it. Balcony Seats, $12.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). An invented balcony-by-the-hour business; the neighbors are the straight men."
+    },
+    {
+      "id": "key-change-karaoke",
+      "text": "KARAOKE FROM NOON. Mercy sold separately. The Key Change.",
+      "tags": ["key-oldtown"],
+      "status": "live",
+      "note": "Playtest 4 (P4-16). An invented karaoke bar."
     }
   ],
   "landingLines": [

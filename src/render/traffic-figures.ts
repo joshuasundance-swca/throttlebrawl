@@ -52,6 +52,8 @@ export const PEOPLE_FIGURES = [
   'seaLion',
   'rooster',
   'parrotFlock',
+  // Playtest 4 (P4-16): a party-street reveller, a cup raised and a neon lei.
+  'reveller',
 ] as const;
 export type PeopleFigure = (typeof PEOPLE_FIGURES)[number];
 
@@ -115,6 +117,8 @@ export function peopleFigureFor(
   if (/jogger|runner/.test(id)) return 'jogger';
   if (/hiker|pod-diner/.test(id)) return 'hiker';
   if (/dog-walker/.test(id)) return 'dogWalker';
+  // Playtest 4 (P4-16, Duval Street as a party street): the bar hoppers and the birthday parties.
+  if (/bar-hopper|birthday-party|reveller/.test(id)) return 'reveller';
   return null;
 }
 
@@ -461,6 +465,18 @@ const PERSON_FIST: BoxPart[] = [
   { size: [0.1, 0.52, 0.1], at: [-0.28, 1.05, 0], color: SKIN },
   { size: [0.1, 0.5, 0.1], at: [0.3, 1.62, -0.04], color: SKIN },
   { size: [0.15, 0.15, 0.15], at: [0.3, 1.92, -0.04], color: SKIN },
+];
+/** A reveller on a party street (playtest 4, P4-16): a hat, a neon lei, a cup held high. */
+const REVELLER: BoxPart[] = [
+  ...LEGS,
+  { size: [0.44, 0.6, 0.26], at: [0, 1.1, 0], color: '#ff4fa3' },
+  { size: [0.5, 0.07, 0.3], at: [0, 1.34, 0], color: '#b6ff3c' },
+  { size: [0.1, 0.2, 0.04], at: [0, 1.2, -0.15], color: '#2de2ff' },
+  { size: [0.24, 0.26, 0.24], at: [0, 1.55, 0], color: SKIN },
+  { size: [0.16, 0.28, 0.16], at: [0, 1.82, 0], color: '#ffd23f' },
+  { size: [0.1, 0.52, 0.1], at: [-0.28, 1.05, 0], color: SKIN },
+  { size: [0.1, 0.5, 0.1], at: [0.3, 1.62, -0.04], color: SKIN },
+  { size: [0.14, 0.2, 0.14], at: [0.3, 1.95, -0.04], color: '#2de2ff' },
 ];
 /** A phone held up to film (both arms forward, the screen lit). */
 const PERSON_PHONE: BoxPart[] = [
@@ -836,6 +852,7 @@ export const TRAFFIC_FIGURE_PARTS: Readonly<Record<TrafficFigure | PeopleFigure,
   dog: DOG,
   personFist: PERSON_FIST,
   personPhone: PERSON_PHONE,
+  reveller: REVELLER,
   elk: ELK,
   raccoon: RACCOON,
   seaLion: SEA_LION,

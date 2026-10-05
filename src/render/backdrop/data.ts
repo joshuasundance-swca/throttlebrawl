@@ -68,7 +68,7 @@ export interface PeakPiece extends Base {
   craterShare?: number;
 }
 
-export const BRIDGE_STYLES = ['suspension', 'girder', 'truss', 'lift', 'arch'] as const;
+export const BRIDGE_STYLES = ['suspension', 'girder', 'truss', 'lift', 'arch', 'stayed'] as const;
 export type BridgeStyle = (typeof BRIDGE_STYLES)[number];
 
 export interface BridgePiece extends Base {
@@ -79,7 +79,8 @@ export interface BridgePiece extends Base {
    * "suspension" (towers and cables), "girder" (a long deck on piers), and, for the real roads'
    * bridges (playtest 3): "truss" (camelback spans, honouring `gaps`: the old Bahia Honda and Seven
    * Mile bridges), "lift" (two towers with counterweights: the Hawthorne and Steel bridges) and
-   * "arch" (a tied arch: Fremont).
+   * "arch" (a tied arch: Fremont) and, for Bridge City's skyline (playtest 4, P4-20), "stayed" (towers
+   * with straight stays fanned down to the deck on both sides: the Tilikum Crossing).
    */
   style: BridgeStyle;
   deckM: number;
@@ -116,6 +117,25 @@ export interface BridgePiece extends Base {
   trafficSpeedMps?: number;
 }
 
+/** The crowns an authored tower may wear (playtest 4, P4-20): what a skyline's silhouette is read by. */
+export const TOWER_CROWNS = ['flat', 'stepped', 'pyramid', 'slant', 'spire'] as const;
+export type TowerCrown = (typeof TOWER_CROWNS)[number];
+
+/** One authored tower of a skyline: it stands where it says, so a city's known silhouettes are there. */
+export interface SkylineTower {
+  at: Pt;
+  heightM: number;
+  widthM: number;
+  /** Its depth, m (default 0.85 of its width). */
+  depthM?: number;
+  colour: string;
+  /**
+   * "flat" (a plant box on the roof), "stepped" (two setbacks), "pyramid" (the top tenth tapers to a
+   * point), "slant" (a roof that slopes to a ridge) or "spire" (a needle); default "flat".
+   */
+  crown?: TowerCrown;
+}
+
 export interface SkylinePiece extends Base {
   kind: 'skyline';
   centre: Pt;
@@ -128,6 +148,12 @@ export interface SkylinePiece extends Base {
   spires?: number;
   orbs?: number;
   orbColour?: string;
+  /** Ground height under the skyline, m (default 0): the towers rise this much more (a city on a plateau). */
+  baseM?: number;
+  /** The city grid's heading, degrees (the towers' long axis; default: one seeded by the piece's id). */
+  gridDeg?: number;
+  /** Authored towers, beside the scatter (`count` may be 0 for these alone). */
+  towers?: readonly SkylineTower[];
 }
 
 export interface BlocksPiece extends Base {
@@ -439,6 +465,30 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
         out.push(`${at}: archAt must be [from, to] shares of the length, 0 <= from < to <= 1`);
       if (q['deckOnTop'] !== undefined && typeof q['deckOnTop'] !== 'boolean')
         out.push(`${at}: deckOnTop must be true or false`);
+    }
+    if (q['kind'] === 'skyline') {
+      const towers = q['towers'];
+      if (towers !== undefined) {
+        if (!Array.isArray(towers)) out.push(`${at}: towers must be a list`);
+        else
+          for (const [j, t] of (towers as Record<string, unknown>[]).entries()) {
+            const tt = `${at}.towers[${j}]`;
+            const at2 = t['at'];
+            if (!Array.isArray(at2) || at2.length !== 2 || at2.some((n) => typeof n !== 'number'))
+              out.push(`${tt}: at must be [a, b] numbers`);
+            for (const k of ['heightM', 'widthM'])
+              if (!(typeof t[k] === 'number' && t[k] > 0)) out.push(`${tt}: ${k} must be > 0`);
+            if (t['depthM'] !== undefined && !(typeof t['depthM'] === 'number' && t['depthM'] > 0))
+              out.push(`${tt}: depthM must be > 0`);
+            if (typeof t['colour'] !== 'string' || !HEX.test(t['colour']))
+              out.push(`${tt}: colour not #rrggbb`);
+            if (t['crown'] !== undefined && !TOWER_CROWNS.some((c) => c === t['crown']))
+              out.push(`${tt}: crown must be one of ${TOWER_CROWNS.join(', ')}`);
+          }
+      }
+      for (const k of ['baseM', 'gridDeg'])
+        if (q[k] !== undefined && !(typeof q[k] === 'number' && Number.isFinite(q[k])))
+          out.push(`${at}: ${k} must be a number`);
     }
     if (q['kind'] === 'floor' && Array.isArray(q['area']) && (q['area'] as unknown[]).length < 3)
       out.push(`${at}: a floor area needs at least 3 points`);

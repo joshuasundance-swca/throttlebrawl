@@ -11,7 +11,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 96,
+          "bpm": 118,
           "key": "G",
           "progression": "rain"
         }
@@ -25,7 +25,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 116,
+          "bpm": 136,
           "key": "D",
           "progression": "campfire"
         }
@@ -39,7 +39,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 108,
+          "bpm": 128,
           "key": "A",
           "progression": "lift"
         }
@@ -53,7 +53,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 124,
+          "bpm": 144,
           "key": "C",
           "progression": "campfire"
         }
@@ -67,7 +67,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 100,
+          "bpm": 122,
           "key": "F",
           "progression": "hymn"
         }
@@ -81,7 +81,7 @@
       "procedural": {
         "preset": "folk-band",
         "params": {
-          "bpm": 112,
+          "bpm": 132,
           "key": "G",
           "progression": "hymn"
         }
@@ -93,7 +93,7 @@
   "djBarkSet": null,
   "meta": {
     "status": "live",
-    "notes": "The Pacific Northwest's quiet station: indie folk (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Foot stomps, claps and a tambourine, a strummed acoustic, banjo rolls and a glockenspiel tune, in major keys at 96-124 bpm (src/audio/radio-compose-regional.ts, preset folk-band). Melodies are generated from each track's seed, so they are original. No DJ lines yet (djBarkSet null). Cut a track by setting its status to vetoed.",
+    "notes": "The Pacific Northwest's quiet station: indie folk (playtest 2, 2026-10-02: \"There should be different stations and music in different regions\"). Since playtest 4 (P4-17: \"indie and folk with drive\") each track is a whole sixteen-bar song in a major key at 116-148 bpm: a strummed intro, a verse with the glockenspiel tune, a build, then a driving chorus (four-on-the-floor stomp, sixteenth tambourine, banjo rolls, the hook and a tremolo mandolin) (src/audio/radio-compose-pnw.ts, preset folk-band). Melodies are generated from each track's seed, so they are original. No DJ lines yet (djBarkSet null). Cut a track by setting its status to vetoed.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

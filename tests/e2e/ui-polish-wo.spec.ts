@@ -50,6 +50,17 @@ const savedRadio = (page: Page) =>
     return undefined;
   });
 
+/**
+ * How many stations the Keys' dial has, as the base pack's station files make it (no hidden pirate
+ * or rider's own), so a station added to the Keys edits nothing here.
+ */
+function keysDial(): number {
+  return readdirSync('packs/base/stations')
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(`packs/base/stations/${f}`, 'utf8')) as Record<string, unknown>)
+    .filter((s) => (s['regions'] as string[]).includes('florida-keys') && !s['pirate'] && !s['rider']).length;
+}
+
 async function raceStarted(page: Page) {
   await page.waitForFunction(() => {
     const g = (window as TestWindow).__game;
@@ -65,14 +76,15 @@ test('the R key saves the radio choice at once, with no pause or settings in bet
   await page.locator('#menu-race').click();
   await raceStarted(page);
   expect(await savedRadio(page)).not.toBe('score');
-  // The race starts on the Keys' first station (playtest 2, 2026-10-02). R four times (the second
-  // and third stations, off, the score): the score is saved at once, without the pause menu or
-  // settings.
-  for (let i = 0; i < 4; i++) await page.keyboard.press('KeyR');
+  // The race starts on the Keys' first station (playtest 2, 2026-10-02). R through the rest of the
+  // dial, then off, then the score: the score is saved at once, without the pause menu or settings.
+  const dial = keysDial();
+  expect(dial).toBeGreaterThanOrEqual(2);
+  for (let i = 0; i < dial + 1; i++) await page.keyboard.press('KeyR');
   await expect.poll(() => savedRadio(page), { timeout: 3000 }).toBe('score');
   await expect(page.locator('#pause-screen')).toBeHidden();
-  // R four more times (the three stations, then off): off is saved too.
-  for (let i = 0; i < 4; i++) await page.keyboard.press('KeyR');
+  // R through every station, then off: off is saved too.
+  for (let i = 0; i < dial + 1; i++) await page.keyboard.press('KeyR');
   await expect.poll(() => savedRadio(page), { timeout: 3000 }).toBe('off');
   // Kept across a reload, and the Radio row shows it.
   await page.reload();

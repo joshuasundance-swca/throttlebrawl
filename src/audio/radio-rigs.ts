@@ -5,7 +5,8 @@
 //   chords and the bent lead), a clean arpeggio guitar into an echo, a driven bass, a big kit with
 //   open cymbals and a short room;
 // - folk: a strummed acoustic guitar with a body resonance, banjo rolls, a glockenspiel, an
-//   upright bass, foot stomps, claps and a tambourine, in a small room;
+//   upright bass, foot stomps, claps and a tambourine, in a small room, and (playtest 4) a
+//   tremolo-picked mandolin;
 // - synth: oscillators only: a filtered saw bass with a pluck envelope, a detuned saw pad, a square
 //   arpeggio and a gliding saw lead into a dotted-eighth echo, over a drum machine;
 // - psych: a drawbar organ (one periodic wave) through a tremolo and a two-stage phaser, a fuzz lead
@@ -24,8 +25,10 @@ export { REGIONAL_GENRES, type RegionalGenre } from './radio-genres';
  * offline in tests/e2e/audio-radio.spec.ts, which checks they sit within a few dB of each other).
  */
 export const RIG_TRIM: Readonly<Record<RegionalGenre, number>> = {
-  grunge: 0.8,
-  folk: 1.45,
+  // Playtest 4's whole songs open on a riff (grunge) and build to louder choruses (folk), so both
+  // were trimmed to keep their first bars and their whole songs level with the other bands.
+  grunge: 0.62,
+  folk: 1.3,
   synth: 1.4,
   psych: 1.0,
 };
@@ -313,7 +316,7 @@ export function createRegionalRig(ctx: BaseAudioContext, out: AudioNode, genre: 
     glock.connect(roomIn);
     drums.connect(roomIn);
     roomIn.connect(room(0.3));
-    timbres = { rhythm: 'acoustic', arp: 'banjo', bass: 'upright' };
+    timbres = { rhythm: 'acoustic', arp: 'banjo', lead: 'banjo', bass: 'upright' };
     play = (n, t, stepS) => {
       const v = n.vel;
       const hold = n.len * stepS;
@@ -338,6 +341,14 @@ export function createRegionalRig(ctx: BaseAudioContext, out: AudioNode, genre: 
         case 'arp':
           pluck(banjo, buffer(n.midi, 'banjo'), t, 0.6 * v, hold * 1.5, 0.12);
           break;
+        case 'lead': {
+          // The mandolin (playtest 4): a bright string re-picked every half step when tremolo-picked.
+          const picks = n.trem ? Math.max(1, Math.round(n.len * 2)) : 1;
+          const h = n.trem ? stepS / 2 : hold;
+          for (let k = 0; k < picks; k++)
+            pluck(banjo, buffer(n.midi, 'banjo'), t + k * h, (k % 2 ? 0.4 : 0.5) * v, h * 0.95, 0.04);
+          break;
+        }
         case 'glock': {
           // A bar of metal: the fundamental and its inharmonic partial, ringing.
           const f = midiHz(n.midi);

@@ -14,9 +14,25 @@
 //
 // This file runs the brake; tests/sim/riders-landings-held-kick.test.ts runs the kick, with the same
 // check (tests/sim/landings-held.ts), so CI can run the two on different runners.
-import { describe, it } from 'vitest';
-import { checkHeld, HELD_TIMEOUT_MS } from './landings-held';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { checkHeld, HELD_TIMEOUT_MS, PATTERNS } from './landings-held';
 
 describe('forgiving landings: the brake or the kick held in the air on every route (W-Q0 verifier)', () => {
   it('brake held to the ground: 0 jumps down', () => checkHeld('brake held to the ground'), HELD_TIMEOUT_MS);
+
+  // One test file per air command (so CI can run them on different runners), which means a new key in
+  // PATTERNS runs nowhere until someone adds its file. This fails until they do.
+  it('every air command in PATTERNS has a test file that runs it', () => {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const run = new Set<string>();
+    for (const f of readdirSync(dir).filter((n) => /^riders-landings-held.*\.test\.ts$/.test(n))) {
+      for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/checkHeld\('([^']+)'\)/g)) {
+        if (m[1]) run.add(m[1]);
+      }
+    }
+    expect([...run].sort()).toEqual(Object.keys(PATTERNS).sort());
+  });
 });

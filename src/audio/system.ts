@@ -78,6 +78,7 @@ import { seededRandom } from './radio-util';
 import {
   CABLE_BELL_RANGE_M,
   createDirector,
+  musicAt,
   LOG_TRUCK_RANGE_M,
   scapeRegionOf,
   tagsAt,
@@ -833,6 +834,8 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
       grounded: !down && me.mode !== 'Airborne',
       tags: tagsAt(scapeRoad, me.road.edge, me.road.s),
       near,
+      // A party street's open fronts (playtest 4, P4-16): the Keys only; the zone under the rider.
+      music: region === 'keys' ? musicAt(scapeRoad, me.road.edge, me.road.s) : null,
     });
     const level = Math.max(0, params.soundscape) * (hitStop ? 0.3 : 1);
     scape.setRain(frame.rain * level);

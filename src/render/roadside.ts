@@ -35,6 +35,7 @@ import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { formsOf, writeUv, type FlatForm } from './scenery-merge';
+import { placeSurface, type PlacedSurface } from './text-surfaces';
 import {
   LAND_TOP_M,
   ridableBandPast,
@@ -980,6 +981,7 @@ export class RoadsideLayer {
 
   /** The model each rule draws from: the kit's own, or the one it names (Old Town's). */
   private readonly modelOf = new Map<string, SceneryModel>();
+  private readonly seed: number;
 
   constructor(
     private readonly model: SceneryModel,
@@ -987,6 +989,7 @@ export class RoadsideLayer {
     input: RoadsideInput,
   ) {
     this.group.name = 'road-roadside';
+    this.seed = input.seed;
     this.scatter = new RoadsideScatter(input);
     for (const r of input.kit.rules) {
       const m = r.model ? input.models?.[r.model] : model;
@@ -1006,6 +1009,31 @@ export class RoadsideLayer {
   /** Whether every prop is placed. */
   get ready(): boolean {
     return this.scatter.done;
+  }
+
+  /**
+   * The text surfaces of the street-front buildings placed so far (playtest 4, P4-16: Duval's shop
+   * names), in the world, for the words of their pack signs to be painted over (text-surfaces.ts). Each
+   * carries a `pick` from its building's place, so neighbours of one kind show different names. The
+   * blank boards stay in the stretches' meshes: a name that is cut leaves a blank board.
+   */
+  surfaces(): PlacedSurface[] {
+    const out: PlacedSurface[] = [];
+    const q = new Quaternion();
+    const up = new Vector3(0, 1, 0);
+    const at = new Vector3();
+    const one = new Vector3(1, 1, 1);
+    for (const it of this.scatter.items) {
+      if (!it.foot) continue;
+      const panels = this.modelOf.get(it.rule)?.surfaces?.[it.variant];
+      if (!panels?.length) continue;
+      const m = new Matrix4().compose(at.set(it.p.x, it.p.y, it.p.z), q.setFromAxisAngle(up, it.turn), one);
+      const pick = Math.floor(
+        scatterHash(this.seed, 9001 + it.edge, Math.round(it.s), it.d < 0 ? 1 : 2) * 1024,
+      );
+      for (const panel of panels) out.push({ ...placeSurface(panel, m), pick });
+    }
+    return out;
   }
 
   /** Groups the finished roads' props into stretches. */

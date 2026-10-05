@@ -125,6 +125,14 @@ export const CLASSIC_PALETTE: Readonly<Record<MaterialKind, string>> = {
 /** Unlit kinds: they must read as light sources (the cop's bar, the steal glint). */
 const UNLIT = new Set<MaterialKind>(['glint', 'lightbar', 'spark', 'tint', 'board', 'streak', 'boost']);
 
+/**
+ * Whether the time of day lights the neon and the string lights (playtest 4, P4-16: a party street at
+ * dusk): dusk and night. By day the same boards are plain signwriting and the strings are not hung.
+ */
+export function isLitTime(timeOfDay: string | undefined): boolean {
+  return timeOfDay === 'dusk' || timeOfDay === 'night';
+}
+
 /** The classic sky (and haze) by time of day. */
 export const SKY_BY_TIME: Readonly<Record<string, string>> = {
   dawn: '#f3c6a5',
