@@ -41,6 +41,7 @@ import { readGlb } from './glb';
 import type { BoardCatalog } from './boards';
 import { TextSurfaceLayer } from './text-surfaces';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
+import { PartyLights } from './party-lights';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
 import { SCENERY_LOD_M } from './scenery-merge';
@@ -225,11 +226,20 @@ describe('the still scene along every route', () => {
       // downtown's (one mesh, one draw): both are in the frame the renderer draws.
       const kits = await landmarkKitsOf(road);
       const lm = kits.size > 0 ? new LandmarkLayer(kits, look, { road }) : null;
-      const placed = [...(lm?.surfaces() ?? []), ...(dt?.surfaces() ?? [])];
+      // Playtest 4 (P4-16): and the Old Town's shop names on the street fronts the roadside placed.
+      const placed = [...(lm?.surfaces() ?? []), ...(dt?.surfaces() ?? []), ...(roadside?.surfaces() ?? [])];
       const words =
         placed.length > 0
           ? new TextSurfaceLayer(look, placed, { catalog: signCatalog(), createCanvas: () => null })
           : null;
+      // Playtest 4 (P4-16): a party street's string lights, as at dusk (the dearest time of day to draw).
+      const lights = new PartyLights(look, {
+        road,
+        dressing,
+        seed,
+        lit: true,
+        landReach: (e, side, s) => rs.landReach(e, side, s),
+      });
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;
       // Run W-U: the Pacific Northwest's places (the ferry, the clear-cut, the Stump Social).
@@ -283,6 +293,7 @@ describe('the still scene along every route', () => {
           if (dt) for (let i = 0; i < 12; i++) dt.update(eye.x, eye.z, 0, []);
           lm?.update(eye.x, eye.z);
           words?.update(eye.x, eye.z);
+          lights.update(eye.x, eye.z);
           // Everything near enough is built at once here (the renderer builds one a frame).
           wf?.update(eye.x, eye.z, LOD_M, undefined, 1000);
           places?.update(eye.x, eye.z, DRAW_M, LOD_M, Infinity);
@@ -299,6 +310,7 @@ describe('the still scene along every route', () => {
           if (dt) drawn(dt.group, frustum, parts);
           if (lm) drawn(lm.group, frustum, parts);
           if (words) drawn(words.group, frustum, parts);
+          drawn(lights.group, frustum, parts);
           if (wf) drawn(wf.group, frustum, parts);
           if (places) drawn(places.group, frustum, parts);
           if (blocks) drawn(blocks.group, frustum, parts);

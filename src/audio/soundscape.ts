@@ -7,7 +7,9 @@
 // - the Pacific Northwest: rain pattering on the helmet (harder the faster you go), and a log
 //   truck's engine brake, from a truck that is really near and now and then from up the road;
 // - San Francisco: a two-tone foghorn from across the bay, more often in the fog, and cable-car
-//   bells ONLY on a cable-line stretch (a rider on one, or a cable car that stands on one).
+//   bells ONLY on a cable-line stretch (a rider on one, or a cable car that stands on one);
+// - a party street (playtest 4, P4-16: Duval): bar music from the open fronts, where a roadside zone
+//   names a style (`params.music`): a phrase after phrase, swelling as the rider comes up to the zone.
 //
 // This file is the director: pure decisions from the road under the rider, no audio nodes
 // (soundscape-voices.ts makes the sounds). Timers run on the audio clock and a seeded generator,
@@ -34,13 +36,33 @@ export const CABLE_BELL_RANGE_M = 90;
 /** A log truck this close brakes for the bend, m [default]. */
 export const LOG_TRUCK_RANGE_M = 110;
 
+/** The styles of bar music the voices can play (a party zone's `params.music`). */
+export const BAR_STYLES = ['cover-band', 'steel-drum', 'karaoke'] as const;
+export type BarStyle = (typeof BAR_STYLES)[number];
+/** One bar's phrase lasts this long, s (four beats at 160 a minute) [default]. */
+export const BAR_PHRASE_S = 1.5;
+/** A phrase is handed over this long before it starts, so it is scheduled on the audio clock, s. */
+export const BAR_LOOKAHEAD_S = 0.25;
+/** The music is heard this far outside its zone's ends, fading, m [default]. */
+export const BAR_FADE_M = 60;
+/** Quieter than this, and nothing is played. */
+export const BAR_MIN_LEVEL = 0.05;
+
+/** The bar music under a position: its style, and how loud (1 inside the zone, fading outside). */
+export interface BarMusic {
+  style: BarStyle;
+  level: number;
+}
+
 export type ScapeEvent =
   | { kind: 'joint'; level: number; wheelGapS: number }
   | { kind: 'gull'; level: number; pitch: number }
   | { kind: 'halyard'; level: number; pitch: number }
   | { kind: 'engineBrake'; level: number; distant: boolean }
   | { kind: 'foghorn'; level: number }
-  | { kind: 'bell'; level: number; strikes: number };
+  | { kind: 'bell'; level: number; strikes: number }
+  /** One phrase of a bar's music, to start at `at` on the audio clock; `bar` counts phrases (the variation). */
+  | { kind: 'barMusic'; level: number; style: BarStyle; at: number; bar: number };
 
 export interface ScapeNear {
   id: number;
@@ -64,6 +86,8 @@ export interface ScapeInput {
   tags: ReadonlySet<string>;
   /** Nearby vehicles (traffic), nearest first. */
   near: readonly ScapeNear[];
+  /** The bar music under the rider (`musicAt`), or none. */
+  music?: BarMusic | null;
 }
 
 export interface ScapeFrame {
@@ -86,7 +110,17 @@ export function scapeRandom(seed: number): () => number {
 
 /** What the soundscape reads of the road: each edge's scenery tags (a `RoadNetwork` fits). */
 export interface ScapeRoad {
-  readonly edges: readonly { readonly tags: readonly { s0: number; s1: number; tag: string }[] }[];
+  readonly edges: readonly {
+    readonly tags: readonly { s0: number; s1: number; tag: string }[];
+    /** The edge's features (a party zone names its music in `params.music`). */
+    readonly features?: readonly {
+      readonly kind: string;
+      readonly id?: string;
+      readonly s0: number;
+      readonly s1: number;
+      readonly params?: Readonly<Record<string, unknown>> | undefined;
+    }[];
+  }[];
 }
 
 const NO_TAGS: ReadonlySet<string> = new Set();
@@ -98,6 +132,28 @@ export function tagsAt(road: ScapeRoad | null, edge: number, s: number): Readonl
   let out: Set<string> | null = null;
   for (const t of tags) if (s >= t.s0 && s <= t.s1) (out ??= new Set()).add(t.tag);
   return out ?? NO_TAGS;
+}
+
+/**
+ * The bar music under a position (playtest 4, P4-16): a `roadsideZone` whose `params.music` names a
+ * style is a bar's frontage, heard at full inside its s range and fading to nothing over BAR_FADE_M
+ * outside it; where two reach, the louder. Null for no road, no zone, a style the voices lack, or out
+ * of earshot.
+ */
+export function musicAt(road: ScapeRoad | null, edge: number, s: number): BarMusic | null {
+  const features = road?.edges[edge]?.features;
+  if (!features) return null;
+  let best: BarMusic | null = null;
+  for (const f of features) {
+    if (f.kind !== 'roadsideZone') continue;
+    const style = f.params?.['music'];
+    if (typeof style !== 'string' || !(BAR_STYLES as readonly string[]).includes(style)) continue;
+    const away = s < f.s0 ? f.s0 - s : s > f.s1 ? s - f.s1 : 0;
+    if (away >= BAR_FADE_M) continue;
+    const level = (1 - away / BAR_FADE_M) ** 1.5;
+    if (level > (best?.level ?? 0)) best = { style: style as BarStyle, level };
+  }
+  return best;
 }
 
 const WET = ['water-open', 'water-shallow', 'marina', 'beach', 'bridge', 'causeway'] as const;
@@ -125,6 +181,9 @@ export function createDirector(seed = 0x5ca9e): Director {
   let nextBrake = 0;
   let nextFog = 0;
   let nextBell = 0;
+  /** When the next phrase of bar music starts (the audio clock), or -1 for none yet, and how many have played. */
+  let nextBar = -1;
+  let barCount = 0;
   /** When each log truck or cable car last sounded, by entity id. */
   const lastNear = new Map<number, number>();
 
@@ -134,6 +193,7 @@ export function createDirector(seed = 0x5ca9e): Director {
     nextBrake = t + between(12, 26);
     nextFog = t + between(6, 16);
     nextBell = t + between(1, 4);
+    nextBar = -1;
     lastNear.clear();
   };
 
@@ -141,6 +201,7 @@ export function createDirector(seed = 0x5ca9e): Director {
     reset() {
       region = null;
       lastEdge = -1;
+      nextBar = -1;
     },
     step(i) {
       const events: ScapeEvent[] = [];
@@ -176,6 +237,22 @@ export function createDirector(seed = 0x5ca9e): Director {
             events.push({ kind: 'halyard', level: between(0.35, 1), pitch: between(0.8, 1.35) });
           nextHalyard = i.t + between(2.5, 6);
         } else if (i.t >= nextHalyard) nextHalyard = i.t + between(1, 3);
+        // A party street's open fronts: a phrase after phrase, each on the clock where the last ended, so
+        // the beat holds; a long gap (a respawn, a pause) starts again from now, never in a burst.
+        const bar = i.music;
+        if (bar && i.grounded && bar.level >= BAR_MIN_LEVEL) {
+          if (nextBar < 0 || i.t > nextBar + BAR_PHRASE_S) nextBar = i.t;
+          if (i.t + BAR_LOOKAHEAD_S >= nextBar) {
+            events.push({
+              kind: 'barMusic',
+              level: bar.level,
+              style: bar.style,
+              at: nextBar,
+              bar: barCount++,
+            });
+            nextBar += BAR_PHRASE_S;
+          }
+        }
       }
 
       let rain = 0;

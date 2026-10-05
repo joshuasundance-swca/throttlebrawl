@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "birthday-party",
+  "name": "Birthday Party Guest",
+  "category": "pedestrian",
+  "tags": ["tourist", "key-oldtown"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.1,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-reveller" }, "paintOptions": ["#ffd23f", "#ff7ab8", "#8fd3f0"] },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 4 (P4-16, Duval Street as a party street): somebody's fortieth. Everyone in the group wears the same sash and each of them is the birthday person. Crosses in a loose bunch, slowly, singing; dives clear sash first. Only Duval's party zones spawn it (a zone's `kinds`). [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

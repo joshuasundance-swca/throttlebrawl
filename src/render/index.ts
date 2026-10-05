@@ -45,7 +45,7 @@ import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from '
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventPropCounts, EventProps } from './event-props';
 import type { Smashables } from './smashables';
-import { createFlatLook, type LookEnv, type LookStyle } from './look';
+import { createFlatLook, isLitTime, type LookEnv, type LookStyle } from './look';
 import { createLookSet } from './looks';
 import type { LookPost } from './looks/post';
 import type { ModelKind, ModelLoadReport, SceneryModels } from './models';
@@ -61,6 +61,7 @@ import type { LandmarkCounts, LandmarkLayer } from './landmarks';
 import type { LandmarkKit, LandmarkKitId } from './models';
 import type { TextSurfaceCounts, TextSurfaceLayer } from './text-surfaces';
 import type { AirboatCounts, AirboatLayer } from './airboats';
+import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { Rain } from './rain';
 import { roofCover, roofSpans, type RoofSpan } from './roofs';
@@ -259,6 +260,8 @@ export interface SceneryStatus {
   airboats?: AirboatCounts | null;
   /** The Pacific Northwest's ferry, clear-cut and the Stump Social (run W-U), or null on a road without them. */
   places?: PnwPlacesCounts | null;
+  /** A party street's string lights (playtest 4, P4-16), or null by day, on a road without one, or while their chunk loads. */
+  partyLights?: PartyLightsCounts | null;
 }
 
 export interface RendererOptions extends EntityViewOptions {
@@ -371,6 +374,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let textSurfacesModule: typeof import('./text-surfaces') | null = null;
   let textSurfaces: TextSurfaceLayer | null = null;
   let roadCatalog: BoardCatalog | undefined;
+  /** The race's time of day: dusk and night light Duval's neon names and its string lights (playtest 4, P4-16). */
+  let roadTime: string | undefined;
+  /** Whether the roadside layer's name boards (Duval's shop names) are in the text layer yet (they place over the first frames). */
+  let roadsideWords = false;
   const visibleContent = (): VisibleContent[] => [
     ...boards.visibleContent(camera),
     ...(textSurfaces?.visibleContent(camera) ?? []),
@@ -403,6 +410,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const buildRoadside = () => {
     roadside?.dispose();
     roadside = null;
+    roadsideWords = false;
     const m = roadsideModule;
     const rs = roadScene;
     const mm = modelsModule;
@@ -519,7 +527,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const buildTextSurfaces = () => {
     textSurfaces?.dispose();
     textSurfaces = null;
-    const placed = [...(landmarks?.surfaces() ?? []), ...(downtown?.surfaces() ?? [])];
+    const placed = [
+      ...(landmarks?.surfaces() ?? []),
+      ...(downtown?.surfaces() ?? []),
+      // Playtest 4 (P4-16): the Old Town's shop names, once the street fronts are placed.
+      ...(roadside?.ready ? roadside.surfaces() : []),
+    ];
     if (placed.length === 0) return;
     const m = textSurfacesModule;
     if (!m) {
@@ -529,7 +542,11 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       });
       return;
     }
-    textSurfaces = new m.TextSurfaceLayer(look, placed, { catalog: roadCatalog, hidden: hiddenRefs });
+    textSurfaces = new m.TextSurfaceLayer(look, placed, {
+      catalog: roadCatalog,
+      hidden: hiddenRefs,
+      lit: isLitTime(roadTime),
+    });
     scene.add(textSurfaces.group);
   };
   // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
@@ -691,6 +708,24 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     });
     scene.add(places.group);
   };
+  // Playtest 4 (P4-16): a party street's string lights (party-lights.ts), a lazy chunk loaded only for a road
+  // with a party zone, and hung only at dusk and after. Built with the road scene, whose land it stands on.
+  let partyModule: typeof import('./party-lights') | null = null;
+  let party: PartyLights | null = null;
+  const buildParty = () => {
+    party?.dispose();
+    party = null;
+    const rs = roadScene;
+    if (!partyModule || !roadArgs || !rs || !isLitTime(roadTime)) return;
+    party = new partyModule.PartyLights(look, {
+      road: roadArgs.road,
+      dressing: roadArgs.dressing,
+      seed: sceneSeed,
+      lit: true,
+      landReach: (e, side, s) => rs.landReach(e, side, s),
+    });
+    scene.add(party.group);
+  };
   const buildRoad = () => {
     if (!roadArgs) return;
     if (roadScene) {
@@ -711,6 +746,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     buildPlaces();
     buildBlocks();
     buildMission();
+    buildParty();
   };
   /** Repaints the loaded models with the race's palette (their old painted copies are freed). */
   const repaint = () => {
@@ -819,6 +855,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         palette = nextPalette;
         repaint();
       }
+      roadTime = env.timeOfDay;
       roadArgs = { road, dressing, density: params.roadsideDensity };
       roofs = roofSpans(road);
       buildRoad();
@@ -836,6 +873,22 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           void import('./airboats').then((m) => {
             airboatsModule = m;
             buildAirboats();
+          });
+      }
+      party?.dispose();
+      party = null;
+      const hasParty = road.edges.some((e) =>
+        (dressing?.[e.id]?.features ?? e.features).some(
+          // A roadside zone whose `dressing` is `party` (party-lights.ts `PARTY_DRESSING`).
+          (f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === 'party',
+        ),
+      );
+      if (hasParty && isLitTime(env.timeOfDay)) {
+        if (partyModule) buildParty();
+        else
+          void import('./party-lights').then((m) => {
+            partyModule = m;
+            buildParty();
           });
       }
       const placeTags = networkTags(road, dressing).tags;
@@ -883,6 +936,12 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         ? roadScene.update(pose.x, pose.z, t, params.sceneryDrawM, params.sceneryLodM)
         : 0;
       if (roadside) sceneryVisible += roadside.update(pose.x, pose.z, params.sceneryDrawM);
+      // The street fronts are placed over the first frames of a race; their shop names follow.
+      if (roadside?.ready && !roadsideWords) {
+        roadsideWords = true;
+        buildTextSurfaces();
+      }
+      party?.update(pose.x, pose.z);
       if (places) sceneryVisible += places.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
       boards.update(pose.x, pose.z, params.sceneryDrawM);
       scenes?.update(pose.x, pose.z, params.sceneryDrawM, params.sceneryLodM);
@@ -1025,6 +1084,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,
       places: places?.counts() ?? null,
+      partyLights: party?.counts() ?? null,
     }),
   };
 }

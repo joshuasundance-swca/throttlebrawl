@@ -14,7 +14,7 @@ describe('input: the keyboard legend for the pause screen', () => {
     expect(find('punch left')).toBe('U');
     expect(find('punch right')).toBe('O');
     expect(find(KEY_ACTION_NAMES.throttle)).toBe('W / ↑');
-    expect(KEY_ACTION_NAMES.throttle).toBe('ride (double-tap: wheelie)'); // playtest 3's wheelie
+    expect(find('wheelie (hold)')).toBe('H'); // playtest 4's wheelie button
     expect(find('brake')).toBe('S / ↓');
     expect(find('steer left')).toBe('A / ←');
     expect(find('steer right')).toBe('D / →');

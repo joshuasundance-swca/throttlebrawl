@@ -133,11 +133,12 @@ describe('sign and billboard slots stand on land', () => {
           (i) => (i.status ?? 'live') === 'live',
         );
         // A sign tagged `surface` is the words on a model's blank board, not a board: it needs no road slot,
-        // but it must be the name of a text surface in one of its pack's models, or it is dead text.
+        // but it must be the name of a text surface in one of its pack's models, or it is dead text. A
+        // board may have other names (playtest 4, Duval's shop names): the surface's id and `-2` to `-9`.
         const painted = surfaceSignIds(pack);
         const live = new Set(liveItems.filter((i) => !i.tags?.includes('surface')).map((i) => i.id));
         for (const i of liveItems)
-          if (i.tags?.includes('surface') && !painted.has(i.id))
+          if (i.tags?.includes('surface') && !painted.has(i.id) && !painted.has(i.id.replace(/-[2-9]$/, '')))
             missing.push(`${pack}/${region}: ${i.id} is a surface text no model of its pack paints`);
         const slotted = new Set(
           all

@@ -632,6 +632,36 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
       if (u > a && u < b) continue;
       pier(u, deck + hump(u) - thick);
     }
+  } else if (p.style === 'stayed') {
+    // A cable-stayed bridge (playtest 4, P4-20: the Tilikum Crossing): straight stays fan from each
+    // tower's upper part down to the deck on both sides, in a plane beside each edge of the deck, the
+    // farthest stays from the highest anchors, each side out to half way to the next tower (or the end).
+    const ordered = [...towers].sort((x, y) => x - y);
+    const stay = Math.max(0.5, 0.9 * e);
+    ordered.forEach((u, i) => {
+      const m0 = u * L;
+      for (const dir of [-1, 1] as const) {
+        const nb = dir < 0 ? ordered[i - 1] : ordered[i + 1];
+        const reach = nb !== undefined ? (Math.abs(nb - u) * L) / 2 : dir < 0 ? m0 : L - m0;
+        const n = Math.max(2, Math.min(12, Math.floor(reach / (16 * e))));
+        const top = towerM - 2 * e;
+        for (let k = 1; k <= n; k++) {
+          const m = m0 + (dir * reach * k) / n;
+          if (inGap(m / L) || nearAt(m / L)) continue;
+          const anchor = top - (top - deck) * 0.4 * ((n - k) / n);
+          for (const side of [1, -1]) plate(side * W * 0.9, m0, anchor, m, deck + 1, stay);
+        }
+      }
+    });
+    const every = p.pierEveryM ?? 160;
+    const count = Math.floor(L / every);
+    const first = ordered[0] ?? 0;
+    const last = ordered[ordered.length - 1] ?? 0;
+    for (let k = 1; k < count; k++) {
+      const u = k / count;
+      if (ordered.length > 1 && u > first && u < last) continue;
+      pier(u, deck + hump(u) - thick);
+    }
   }
   return 1;
 }
@@ -646,7 +676,10 @@ export function buildSkyline(p: SkylinePiece, ctx: ShapeCtx): number {
   const s = ctx.soup;
   s.begin(p.haze ?? 0);
   s.gradient = { y0: 0, fadeM: 160 * e, amount: 0.35 };
-  const grid = r() * Math.PI;
+  const seeded = r() * Math.PI;
+  // A city's grid (the heading of its streets), when the data gives one; else seeded by the piece's id.
+  const grid = p.gridDeg !== undefined ? (p.gridDeg * Math.PI) / 180 : seeded;
+  const ground = p.baseM ?? 0;
   const colours = p.colours.map(rgb);
   const orb = rgb(p.orbColour ?? '#fff1c9');
   let built = 0;
@@ -658,7 +691,7 @@ export function buildSkyline(p: SkylinePiece, ctx: ShapeCtx): number {
     const centreK = 1 - 0.55 * (rad / p.radiusM);
     const spire = k < (p.spires ?? 0);
     const hasOrb = !spire && k < (p.spires ?? 0) + (p.orbs ?? 0);
-    const h = lerp(p.heightM[0], p.heightM[1], Math.pow(r(), 1.5)) * e * (spire ? 1 : centreK);
+    const h = lerp(p.heightM[0], p.heightM[1], Math.pow(r(), 1.5)) * e * (spire ? 1 : centreK) + ground;
     const w = lerp(p.widthM[0], p.widthM[1], r()) * e;
     const d = w * lerp(0.6, 1.15, r());
     const style = r();
@@ -670,7 +703,7 @@ export function buildSkyline(p: SkylinePiece, ctx: ShapeCtx): number {
     built++;
     if (spire) {
       // A tall tapering tower with a needle (invented: it reads as a city, it copies no building).
-      const hs = Math.max(h, p.heightM[1] * e);
+      const hs = Math.max(h, p.heightM[1] * e + ground);
       s.frustum(x, -SKIRT_M, z, ux, uz, w * 0.62, w * 0.62, hs * 0.86 + SKIRT_M, c, w * 0.18, w * 0.18);
       s.frustum(x, hs * 0.86, z, ux, uz, w * 0.18, w * 0.18, hs * 0.14, c, 0.8, 0.8, false);
     } else if (hasOrb) {
@@ -688,6 +721,43 @@ export function buildSkyline(p: SkylinePiece, ctx: ShapeCtx): number {
       // A crown: a small box on the roof.
       s.frustum(x, -SKIRT_M, z, ux, uz, w / 2, d / 2, h + SKIRT_M, c);
       s.frustum(x, h, z, ux, uz, w * 0.26, d * 0.26, h * 0.07, scale(c, 0.9));
+    }
+  }
+  // Authored towers (playtest 4, P4-20): each where the data puts it, with the crown it names.
+  const ux = Math.cos(grid);
+  const uz = Math.sin(grid);
+  for (const t of p.towers ?? []) {
+    const [x, z] = ctx.toWorld(t.at);
+    if (ctx.nearRoad(x, z, keep)) continue;
+    built++;
+    const h = t.heightM * e + ground;
+    const hw = (t.widthM * e) / 2;
+    const hd = ((t.depthM ?? t.widthM * 0.85) * e) / 2;
+    const c = rgb(t.colour);
+    const top = scale(c, 1.05);
+    switch (t.crown ?? 'flat') {
+      case 'stepped':
+        // Two setbacks: a body to 0.86 of the height, a narrower step, then a narrower top.
+        s.frustum(x, -SKIRT_M, z, ux, uz, hw, hd, h * 0.86 + SKIRT_M, c);
+        s.frustum(x, h * 0.86, z, ux, uz, hw * 0.78, hd * 0.78, h * 0.08, top);
+        s.frustum(x, h * 0.94, z, ux, uz, hw * 0.5, hd * 0.5, h * 0.06, scale(c, 0.95));
+        break;
+      case 'pyramid':
+        s.frustum(x, -SKIRT_M, z, ux, uz, hw, hd, h * 0.9 + SKIRT_M, c);
+        s.frustum(x, h * 0.9, z, ux, uz, hw, hd, h * 0.1, top, hw * 0.06, hd * 0.06);
+        break;
+      case 'slant':
+        // A roof that slopes to a ridge along the long axis.
+        s.frustum(x, -SKIRT_M, z, ux, uz, hw, hd, h * 0.92 + SKIRT_M, c);
+        s.frustum(x, h * 0.92, z, ux, uz, hw, hd, h * 0.08, top, hw, hd * 0.12);
+        break;
+      case 'spire':
+        s.frustum(x, -SKIRT_M, z, ux, uz, hw, hd, h * 0.88 + SKIRT_M, c, hw * 0.8, hd * 0.8);
+        s.frustum(x, h * 0.88, z, ux, uz, hw * 0.2, hd * 0.2, h * 0.12, top, 0.8, 0.8, false);
+        break;
+      default:
+        s.frustum(x, -SKIRT_M, z, ux, uz, hw, hd, h + SKIRT_M, c);
+        s.frustum(x, h, z, ux, uz, hw * 0.3, hd * 0.3, Math.max(2, h * 0.03), scale(c, 0.9));
     }
   }
   return built > 0 ? 1 : 0;

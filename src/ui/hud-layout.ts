@@ -27,7 +27,7 @@
 // (tests/e2e/ui-style-popups.spec.ts) forced: row C goes to the column on the pause button's side
 // in inline mode (the objective needs the width, and the left of the road ahead holds the toast),
 // and no slot reaches the road ahead (the middle half across, 25-65 % down).
-import { placeElement, type LayoutElement } from '../sim/api';
+import { placeElement, ROAD_AHEAD, type LayoutElement } from '../sim/api';
 
 /** A screen box in CSS pixels. */
 export interface Box {
@@ -37,8 +37,12 @@ export interface Box {
   bottom: number;
 }
 
-/** The road ahead, as fractions of the screen: the middle half across, 25-65 % down. The browser check holds the same box. */
-export const LOOK_AHEAD = { left: 0.25, right: 0.75, top: 0.25, bottom: 0.65 } as const;
+/**
+ * The road ahead, as fractions of the screen: the middle half across, 25-65 % down. The browser check
+ * holds the same box. It lives in core (ROAD_AHEAD) since playtest 4's wheelie button, which input/
+ * hit-tests where ui/ draws it, settles off it too.
+ */
+export const LOOK_AHEAD = ROAD_AHEAD;
 
 /** Upper bounds of the painted widgets, CSS px (the browser spec measures the real ones). */
 export const HUD_SIZE = {

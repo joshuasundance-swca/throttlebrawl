@@ -1,5 +1,5 @@
 // Playtest 3's input contract (K0a): the action state's `wheelie`, which the devices set while the
-// throttle's double-tap is held, reaches the sim as InputFlag.wheelie, and leaves the other bits alone.
+// wheelie button is held (playtest 4), reaches the sim as InputFlag.wheelie, and leaves the other bits alone.
 import { describe, expect, it } from 'vitest';
 import { InputFlag } from '../sim/api';
 import { emptyActions, toSimInput } from './actions';

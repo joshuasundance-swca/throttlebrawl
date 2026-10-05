@@ -99,6 +99,7 @@ export type {
   LayoutElement,
   OnCopyReport,
   PackIndexFn,
+  Rect,
   RecordTuningChange,
   RendererStats,
   RendererStatsFn,
@@ -108,6 +109,7 @@ export type {
   RouteBranchKind,
   RouteQueries,
   SmashableKind,
+  TouchButtonRects,
   TouchLayout,
   TuningParamDecl,
   TuningValues,
@@ -122,9 +124,14 @@ export {
   hashHex,
   isDifficultyPreset,
   placeElement,
+  placeTouchButtons,
+  ROAD_AHEAD,
   secondsToTicks,
   SMASHABLE_KINDS,
+  TOUCH_BUTTON_ELEMENTS,
+  TOUCH_GAP_PX,
   tuningDefaults,
+  WHEELIE_BUTTON_MIN_PX,
 } from '../core';
 export type { RoadFrame, RoadNetwork, RouteBranch, RouteProgress, WorldPoint } from '../road';
 

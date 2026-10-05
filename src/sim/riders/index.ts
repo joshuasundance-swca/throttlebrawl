@@ -1049,7 +1049,7 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const uturn = uturnStep(world, st, def, m, steer, brake, fresh);
   // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
   // (steering × maxYawScale, a drag, the knee-down lean). Neutral while each is off.
-  const wh = wheelieStep(world, config, st, m, input, throttle, brake, dt);
+  const wh = wheelieStep(world, config, st, m, input, brake, dt);
   const dr = driftStep(world, config, st, m, input, steer, throttle, brake, dt);
 
   // Longitudinal: full throttle on the flat converges to top speed. A boost pad's boost raises the

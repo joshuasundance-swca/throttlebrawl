@@ -1,0 +1,18 @@
+{
+  "type": "traffic-type",
+  "id": "bar-hopper",
+  "name": "Bar Hopper",
+  "category": "pedestrian",
+  "tags": ["tourist", "key-oldtown"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 1.5,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true },
+  "look": { "procedural": { "preset": "ped-reveller" }, "paintOptions": ["#ff4fa3", "#2de2ff", "#b6ff3c"] },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 4 (P4-16, Duval Street as a party street): a plan to see six bars before the sun is down, a neon lei and a cup the size of a vase, held level the whole way. Crosses wherever the next bar is; dives clear with the cup up and the plan intact. Only Duval's party zones spawn it (a zone's `kinds`). The joke is the tourist plan, never the people who live there. [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

@@ -213,6 +213,220 @@
         "model": "models/landmarks/keys-landmarks#mallory_pier",
         "yawDeg": -90.0
       }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-1-l",
+      "s0": 100.0,
+      "s1": 280.0,
+      "d0": -11.0,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "tourist-with-cooler"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "cover-band"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-1-r",
+      "s0": 100.0,
+      "s1": 280.0,
+      "d0": 5.6,
+      "d1": 11.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "cover-band"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-2-l",
+      "s0": 450.0,
+      "s1": 570.0,
+      "d0": -11.0,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "tourist-with-cooler"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "steel-drum"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-2-r",
+      "s0": 450.0,
+      "s1": 570.0,
+      "d0": 5.6,
+      "d1": 11.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "steel-drum"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-3-l",
+      "s0": 910.0,
+      "s1": 1070.0,
+      "d0": -11.0,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "tourist-with-cooler"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "karaoke"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-3-r",
+      "s0": 910.0,
+      "s1": 1070.0,
+      "d0": 5.6,
+      "d1": 11.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "karaoke"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-4-l",
+      "s0": 1200.0,
+      "s1": 1380.0,
+      "d0": -11.0,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "tourist-with-cooler"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "cover-band"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-4-r",
+      "s0": 1200.0,
+      "s1": 1380.0,
+      "d0": 5.6,
+      "d1": 11.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "cover-band"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-5-l",
+      "s0": 1430.0,
+      "s1": 1580.0,
+      "d0": -11.0,
+      "d1": -5.6,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "tourist-with-cooler"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "steel-drum"
+      }
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "party-5-r",
+      "s0": 1430.0,
+      "s1": 1580.0,
+      "d0": 5.6,
+      "d1": 11.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["bar-hopper", "birthday-party", "door-greeter", "cruise-day-tripper"],
+        "everyM": 9.0,
+        "maxPeds": 9.0,
+        "dressing": "party",
+        "music": "steel-drum"
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-crawl",
+      "s0": 70.0,
+      "s1": 80.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "crawl-cartographers"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-capacity",
+      "s0": 300.0,
+      "s1": 310.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "sidewalk-capacity"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-pedal",
+      "s0": 585.0,
+      "s1": 595.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "pedal-mercy"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-balcony",
+      "s0": 890.0,
+      "s1": 900.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "balcony-seats"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-karaoke",
+      "s0": 1085.0,
+      "s1": 1095.0,
+      "d0": 6.5,
+      "d1": 9.0,
+      "item": "key-change-karaoke"
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-duval-noise",
+      "s0": 1185.0,
+      "s1": 1195.0,
+      "d0": -9.0,
+      "d1": -6.5,
+      "item": "noise-ordinance"
     }
   ],
   "barriers": [],

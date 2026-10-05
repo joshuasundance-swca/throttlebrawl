@@ -17,9 +17,11 @@
 // changes leaves through the callbacks app/ injects.
 import {
   placeElement,
+  placeTouchButtons,
   type EntitySnapshot,
   type LayoutElement,
   type OnCopyReport,
+  type Rect,
   type SimSnapshot,
   type TouchLayout,
 } from '../sim/api';
@@ -296,6 +298,8 @@ export interface UiOptions {
 export const LONG_PRESS_MS = 500;
 /** How far the stick knob travels, in CSS pixels (visual only; input/ owns the real range). */
 const STICK_RING_PX = 60;
+/** The wheelie button shows its hint word from this wide, CSS px (9 px type: 7 letters fit). [default] */
+const WHEELIE_HINT_MIN_PX = 48;
 /** Touches this close to the edge belong to the phone's back gesture (input/ ignores them too). */
 const EDGE_PX = 24;
 /** How long the slow-frames offer stays up in the race, unanswered, before it fades (ms). [default] */
@@ -377,6 +381,8 @@ const CSS = `
   display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
   pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
 .touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
+.touch-small { font-size: 16px; }
+.touch-small .touch-hint { font-size: 9px; }
 #touch-stick-ring { position: absolute; width: ${STICK_RING_PX * 2}px; height: ${STICK_RING_PX * 2}px;
   margin: -${STICK_RING_PX}px 0 0 -${STICK_RING_PX}px; border: 3px solid #fffc; border-radius: 50%;
   background: #0003; pointer-events: none; box-sizing: border-box; }
@@ -410,7 +416,10 @@ ${TICKER_CSS}
   #pause-main { grid-column: 1; grid-row: 1; gap: 8px; }
   #pause-build { grid-column: 1; grid-row: 2; }
   #pause-cards { grid-column: 2; grid-row: 1 / 3; max-height: 100%; overflow-y: auto; gap: 8px; }
-  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row; }
+  /* Playtest 4's wheelie key made the legend 15 rows: one size down here keeps the open legend and
+     the first "cut this" row on a 412 px high phone at once (they were 20 px short). [default] */
+  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row;
+    font-size: 12px; line-height: 1.3; gap: 1px 14px; }
 }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
@@ -839,19 +848,29 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   });
   const elementOf = (name: string): LayoutElement | undefined =>
     layout.elements.find((e) => e.element === name && e.visible);
+  /** The touch buttons the record shows, each with its box as core settles it (input/ hit-tests these). */
+  const touchButtonList = (w: number, h: number): { e: LayoutElement; r: Rect }[] => {
+    const placed = placeTouchButtons(layout, w, h);
+    const boxes: Record<string, Rect | null> = {
+      'touch-attack': placed.attack,
+      'touch-brake': placed.brake,
+      'touch-wheelie': placed.wheelie,
+    };
+    return layout.elements.flatMap((e) => {
+      const r = e.visible ? boxes[e.element] : null;
+      return r ? [{ e, r }] : [];
+    });
+  };
 
   let gaugeBlock: GaugeBlockers | null = null;
   const placeAll = () => {
     const { w, h } = screenSize();
     const unit = Math.min(w, h);
     // The touch buttons' boxes first: the text widgets settle off them (ui/hud-layout.ts, rule 6).
+    // core settles the wheelie button off the other two (playtest 4); input/ hit-tests the same boxes.
+    const touchRects = touchButtonList(w, h);
     const buttonBoxes = coarse
-      ? layout.elements
-          .filter((e) => e.visible && (e.element === 'touch-attack' || e.element === 'touch-brake'))
-          .map((e) => {
-            const r = placeElement(e, w, h, layout.mirror);
-            return { left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h };
-          })
+      ? touchRects.map(({ r }) => ({ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h }))
       : [];
     // The top layout (ui/hud-layout.ts): the ticker, the slow-frames offer, the objective and the heat
     // badge take their slots from where the record puts the position badge and the rival's bar, which
@@ -945,19 +964,21 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       setReach();
       return;
     }
-    for (const e of layout.elements) {
-      if (!e.visible || (e.element !== 'touch-attack' && e.element !== 'touch-brake')) continue;
-      const r = placeElement(e, w, h, layout.mirror);
+    for (const { e, r } of touchRects) {
       reach = Math.max(reach, r.x + r.w / 2 > w / 2 ? w - r.x : r.x + r.w);
       rise = Math.max(rise, h - r.y);
-      const b = el('div', {
-        id: e.element,
-        className: 'touch-button',
-        textContent: e.element === 'touch-attack' ? 'HIT' : 'BRAKE',
-      });
+      const label = e.element === 'touch-attack' ? 'HIT' : e.element === 'touch-brake' ? 'BRAKE' : '▲';
+      const b = el('div', { id: e.element, className: 'touch-button', textContent: label });
       // The kick hint (playtest 1, 2026-09-30: "Can't kick"): swipe down on the button to kick.
       if (e.element === 'touch-attack')
         b.append(el('span', { className: 'touch-hint', id: 'touch-kick-hint', textContent: '▼ kick' }));
+      // Playtest 4's wheelie button: hold to lift the front, let go to drop it.
+      // The hint word shows where the button is big enough to hold it (it shrinks on a 16:9 phone).
+      if (e.element === 'touch-wheelie') {
+        b.classList.add('touch-small');
+        if (r.w >= WHEELIE_HINT_MIN_PX)
+          b.append(el('span', { className: 'touch-hint', textContent: 'wheelie' }));
+      }
       Object.assign(b.style, {
         left: `${r.x}px`,
         top: `${r.y}px`,
@@ -1006,12 +1027,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (p.x < EDGE_PX || p.x > p.w - EDGE_PX) return;
     const zone = elementOf('touch-stick-zone');
     if (!zone) return;
-    const inButton = ['touch-attack', 'touch-brake'].some((name) => {
-      const b = elementOf(name);
-      if (!b) return false;
-      const r = placeElement(b, p.w, p.h, layout.mirror);
-      return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-    });
+    const inButton = touchButtonList(p.w, p.h).some(
+      ({ r }) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h,
+    );
     const z = placeElement(zone, p.w, p.h, layout.mirror);
     if (inButton || p.x < z.x || p.x > z.x + z.w || p.y < z.y || p.y > z.y + z.h) return;
     stickPointer = e.pointerId;
@@ -1494,11 +1512,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       if (current !== 'race' || paused) return false;
       const box = touchSurface.getBoundingClientRect();
       const [px, py] = [x - box.left, y - box.top];
-      return layout.elements.some((e) => {
-        if (!e.visible || (e.element !== 'touch-stick-zone' && e.element !== 'touch-attack')) return false;
-        const r = placeElement(e, box.width, box.height, layout.mirror);
-        return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
-      });
+      const hit = (r: Rect) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+      const zone = elementOf('touch-stick-zone');
+      if (zone && hit(placeElement(zone, box.width, box.height, layout.mirror))) return true;
+      // The touch buttons (the wheelie button is held by design: a hold there is never a veto press).
+      return touchButtonList(box.width, box.height).some(({ r }) => hit(r));
     },
   });
   // app/ hands every step's events to the narrative; ui reads the same feed for the style pop-ups
