@@ -88,6 +88,8 @@ export interface ScapeInput {
   near: readonly ScapeNear[];
   /** The bar music under the rider (`musicAt`), or none. */
   music?: BarMusic | null;
+  /** A dry race (playtest 4): no rain on the helmet. Absent: the region's own weather. */
+  dry?: boolean;
 }
 
 export interface ScapeFrame {
@@ -258,7 +260,7 @@ export function createDirector(seed = 0x5ca9e): Director {
       let rain = 0;
       if (region === 'pnw') {
         // Rain on the helmet: a steady patter, harder with speed; softer when off the bike.
-        rain = i.grounded ? 0.45 + 0.55 * clamp01(speed / 35) : 0.25;
+        if (!i.dry) rain = i.grounded ? 0.45 + 0.55 * clamp01(speed / 35) : 0.25;
         for (const n of i.near) {
           if (!n.contentId.includes('log-truck') || n.distanceM > LOG_TRUCK_RANGE_M) continue;
           if (i.t - (lastNear.get(n.id) ?? -99) < 30) continue;

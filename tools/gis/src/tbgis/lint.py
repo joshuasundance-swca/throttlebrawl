@@ -68,6 +68,7 @@ TAGS = {
     "old-bridge",
     "pdx-blocks",
     "pdx-deck",
+    "gg-deck",
     "rail-line",
     "brick-street",
     "headlands",

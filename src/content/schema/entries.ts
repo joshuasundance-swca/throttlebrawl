@@ -257,6 +257,10 @@ export const eventSchema = entry('event', {
   kind: z.enum(EVENT_KINDS),
   region: idSchema,
   timeOfDay: z.enum(TIMES_OF_DAY),
+  // Playtest 4 (the identity sheets, cause 10): the weather this event's own light is drawn in, when
+  // it differs from what the light does by itself (a region time-of-day option's palette `rain`).
+  // Render only: it never reaches the sim, so it is out of the sim hash.
+  weather: z.enum(['dry', 'rain']).optional(),
   lengths: z.array(z.looseObject({ id: idSchema, route: refSchema, laps: z.number().int().min(1) })).min(1),
   field: z.looseObject({
     riders: z.array(refSchema).optional(),
@@ -840,7 +844,7 @@ export const SIM_EXCLUDED_FIELDS: Readonly<Record<EntryType, readonly string[] |
   rider: ['name', 'tags', 'meta', 'look', 'paint', 'blurb'],
   crew: ['name', 'tags', 'meta'],
   weapon: ['name', 'tags', 'meta', 'look', 'sounds'],
-  event: ['name', 'tags', 'meta', 'interludes'],
+  event: ['name', 'tags', 'meta', 'interludes', 'weather'],
   // A career picks which events to play and in what order; each race's sim comes from its event.
   career: null,
   region: [

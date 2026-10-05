@@ -102,8 +102,8 @@ import {
   boardCatalog,
   createStreamCache,
   narrativeSettingOf,
-  racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeChoices,
@@ -140,6 +140,7 @@ export {
   createStreamCache,
   racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeChoices,
@@ -474,6 +475,8 @@ export function createApp(opts: AppOptions): AppHandle {
   let shownReceipts = '';
   /** The weather shown: the menu race's pick (playtest 4, P4-12), else the region's own. */
   let shownWeather: RaceWeather = 'local';
+  /** The event shown: its own weather is part of the sky (`raceSky`), so two events on one road differ. */
+  let shownEvent = '';
   /**
    * The region's landing one-liners (playtest 3: they ride the top ticker, never the renderer's
    * overlay, which gets an empty pool). The last one shown, so it is not picked twice running.
@@ -493,13 +496,15 @@ export function createApp(opts: AppOptions): AppHandle {
       shownRoad === stream.road &&
       shownTime === timeOfDay &&
       shownReceipts === receipts &&
-      shownWeather === weather
+      shownWeather === weather &&
+      shownEvent === eventId
     )
       return;
     shownRoad = stream.road;
     shownTime = timeOfDay;
     shownReceipts = receipts;
     shownWeather = weather;
+    shownEvent = eventId;
     const regionKey = regionKeyOf(registry, eventId);
     const roadPack = packOf(
       networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
@@ -510,14 +515,14 @@ export function createApp(opts: AppOptions): AppHandle {
     const vetoed = new Set(settings.vetoes.map((v) => v.contentRef));
     // `palette` is the region's colours (docs/content-packs.md, "Region packs at runtime",
     // Palette), which the renderer reads over the look's own (#205).
+    // The weather is the menu race's pick (playtest 4, P4-12), else the event's own, else the light's
+    // (`raceSky`): render only, so a dry race has neither the drizzle nor the rain on the helmet.
+    const sky = raceSky(registry, eventId, timeOfDay, weather);
     const env: LookEnv & { palette: Record<string, string> } = {
       timeOfDay,
-      palette: racePalette(registry, regionKey, timeOfDay),
+      palette: sky.palette,
+      ...(sky.weather ? { weather: sky.weather } : {}),
     };
-    // The menu race's weather (playtest 4, P4-12), render only: dry drops the region's drizzle (its
-    // palette's `rain` colour), rain asks for it anywhere (render/rain.ts).
-    if (weather === 'dry') delete env.palette['rain'];
-    if (weather === 'rain') env.weather = 'rain';
     // A world that keeps receipts (run W-T): in a career race, the boards nearest where a rival went
     // into a vehicle, or you were busted, say so.
     const boards =
@@ -545,7 +550,7 @@ export function createApp(opts: AppOptions): AppHandle {
     renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
-    audio.setRoad(stream.road);
+    audio.setRoad(stream.road, sky.wet);
     attractPose = null;
     tuneRadio();
   };
