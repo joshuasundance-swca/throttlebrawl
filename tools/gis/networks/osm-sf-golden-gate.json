@@ -56,6 +56,13 @@
           "at": { "lat": 37.8197517, "lon": -122.4786142 },
           "footprintM": [1960, 40],
           "overRoad": true
+        },
+        {
+          "id": "toll-gantry",
+          "model": "sf-landmarks#toll_gantry",
+          "at": { "lat": 37.807219, "lon": -122.475712 },
+          "footprintM": [3, 33],
+          "overRoad": true
         }
       ],
       "roads": [

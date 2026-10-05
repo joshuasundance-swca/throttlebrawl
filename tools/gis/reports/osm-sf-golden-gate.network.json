@@ -50,6 +50,14 @@
       "s": 1418.7075,
       "d": 0.0089,
       "placementErrorM": 27.76
+    },
+    {
+      "id": "toll-gantry",
+      "line": "gg",
+      "road": "osm-sf-gg-toll-plaza",
+      "s": 119.772,
+      "d": -0.0483,
+      "placementErrorM": 27.69
     }
   ]
 }

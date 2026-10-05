@@ -1,0 +1,13 @@
+---
+kind: new
+audience: player
+---
+A toll gantry now stands over the lanes of the Golden Gate's toll plaza, and the Golden Gate route shows one bridge, the near model with its towers and cables, with no second faint bridge on the horizon behind it. Coit Tower already stands on Telegraph Hill beside the Lombard route's finish.
+
+For devs (playtest 3, wave C, T12.5; wave B's punch list, item 4; gate G2).
+
+- **Toll gantry.** `tools/gis/networks/osm-sf-golden-gate.json` gains a `toll-gantry` landmark (`sf-landmarks#toll_gantry`, `overRoad`, a 3 by 33 m box) and `osm-sf-gg-toll-plaza.json` is re-baked with it: centred on the lanes (d -0.05 m), at s 119.8, past the plaza's sign. The bake's point is on the real line, which is 26 m from the smoothed one, so the config's lat/lon was tuned onto it (as the bridge's is) and the report's d checks it. The re-bake changed only that road and the report: the other four roads and the route came out identical apart from their provenance timestamps and extract hash, so they are left as committed.
+- **One Golden Gate (G2).** The far `golden-gate-bridge` backdrop piece now lists the networks that draw it (`networks` in the SF backdrop `region.json`): every network but `osm-sf-golden-gate`. Before, its keep-out dropped every slab on that route as a side effect; now the data says it, and the keep-out stays as a second guard.
+- **Tests.** `src/render/landmarks-sf.test.ts`: the piece's list is exactly the networks with no near `gg_bridge` (so a new SF network has to choose); the placed gantry's posts stand outside the road's drawn width, nothing of it hangs below 5.5 m over the lanes, and the layer draws it in one call; and every landmark of every SF network finds its kit node and draws in one call (the plan's cap is 3) within the plan's 18,000-triangle bridge cap (worst view examined on that network: 7,288 triangles). `tools/gis/routes-sf-pt3.test.ts` checks the bake's gantry (centred, wider than the plaza, `overRoad`). The list case and the gantry case were seen to fail with the data reverted.
+- **Not done: Lombard's planting beds.** The kit's beds (`lombard_bed_curve_l/r`) are rigid 3 m rings meant to hug a hairpin's inner verge, but the crooked block drops about 18 % (15 to 19 % at the eight hairpin apexes), so a flat bed would hang or sink by about 1.3 m at its ends, and the landmark layer only turns a model about the vertical. The hedge from #491 already dresses the hairpins. Placing the beds wants either a slope-following landmark or code-made beds in `verge.ts`; `docs/content-packs.md` (Gaps and landmarks) says so.
+- Not phone-verified, and no browser was run; the gantry's look has only been checked as numbers.

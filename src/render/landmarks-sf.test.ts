@@ -153,3 +153,136 @@ describe('Coit Tower on Telegraph Hill', () => {
     expect(layer.counts().nearPieces).toBeGreaterThan(0);
   });
 });
+
+// The far bridge's own list (gate G2, made explicit): the `golden-gate-bridge` piece names the networks
+// that draw it, and a network whose road carries a near `gg_bridge` is not among them, so the route
+// shows one bridge whatever the piece's keep-out does. The rule runs over every San Francisco network,
+// so a new one has to choose: with a near bridge it stays off the list; without, it is on it.
+describe('the far Golden Gate piece names exactly the networks without a near bridge', () => {
+  it('lists every San Francisco network that places no gg_bridge, and none that does', () => {
+    const piece = backdropRegion.pieces.find((p) => p.id === 'golden-gate-bridge');
+    expect(piece?.networks, 'the piece lists its networks').toBeDefined();
+    const listed = new Set(piece?.networks ?? []);
+    const networks = Object.values(networkFiles).map((n) => n.id);
+    expect(networks.length).toBeGreaterThan(1);
+    const nearBridge = (id: string): boolean => {
+      const net = Object.values(networkFiles).find((n) => n.id === id);
+      return Object.values(roadFiles).some(
+        (r) =>
+          net?.roads.includes(r.id) === true &&
+          (r.features ?? []).some(
+            (f) => f.kind === 'landmark' && String(f.params?.['model']).endsWith('#gg_bridge'),
+          ),
+      );
+    };
+    const withNear = networks.filter(nearBridge);
+    expect(withNear, 'a near bridge exists on some network').not.toHaveLength(0);
+    for (const id of networks)
+      expect(listed.has(id), `${id}: ${nearBridge(id) ? 'near' : 'far'}`).toBe(!nearBridge(id));
+    stdout.write(
+      `[examined] ${networks.length} San Francisco networks: ${withNear.join(', ')} place a near bridge and are off the far piece's list; ${listed.size} others draw it\n`,
+    );
+  });
+});
+
+// The toll gantry (CX3's `sf-landmarks#toll_gantry`) over the toll plaza's road. It is an overRoad
+// landmark, so the road lint lets it stand across the lanes; this checks what the lint cannot: that
+// the placed model's posts stand outside the road's drawn width and its beam clears every rider.
+describe('the toll gantry over the toll plaza', () => {
+  const RIDER_CLEAR_M = 5.5; // a rider on a bike, with margin; a truck is 4 m
+  const halfWidth = (road: BakedRoad): number => {
+    let half = 0;
+    for (const sec of road.laneSections)
+      for (const lane of sec.lanes) half = Math.max(half, Math.abs(lane.dCenterM) + lane.widthM / 2);
+    return half;
+  };
+
+  it('finds its kit and node, stands centred on the road, and keeps the lanes clear', async () => {
+    const road = track('osm-sf-golden-gate');
+    const kits = await kitsFor(road);
+    const layer = new LandmarkLayer(kits, look, { road });
+    expect(layer.counts().skipped).toBe(0);
+    const gantry = landmarkPlacements(road).find((p) => p.node === 'toll_gantry');
+    expect(gantry, 'the toll gantry is placed').toBeDefined();
+    if (!gantry) return;
+    expect(gantry.params.overRoad).toBe(true);
+    const bakedRoad = Object.values(roadFiles).find((r) => r.id === road.edges[gantry.edge]?.id);
+    expect(bakedRoad?.id).toBe('osm-sf-gg-toll-plaza');
+    if (!bakedRoad) return;
+    const half = halfWidth(bakedRoad);
+    // Centred on the road: the box's middle is the road's axis, so the posts mirror each other.
+    expect(Math.abs((gantry.feature.d0 + gantry.feature.d1) / 2)).toBeLessThan(0.5);
+    const node = kits.get('sf-landmarks')?.nodes.get('toll_gantry');
+    expect(node).toBeDefined();
+    if (!node) return;
+    const pos = node.geometry.getAttribute('position');
+    const sMid = (gantry.feature.s0 + gantry.feature.s1) / 2;
+    expect(Math.abs(road.toWorld(gantry.edge, sMid, 0, 0).y - gantry.y)).toBeLessThan(0.01);
+    let inLanes = 0;
+    let posts = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      if (y < RIDER_CLEAR_M && Math.abs(x) < half) inLanes++;
+      if (y < 1 && Math.abs(x) >= half) posts++;
+    }
+    stdout.write(
+      `[examined] toll gantry over a ${(half * 2).toFixed(1)} m road at s ${sMid.toFixed(0)}: ${pos.count} vertices, ${inLanes} below ${RIDER_CLEAR_M} m inside the lanes, ${posts} post-foot vertices outside them\n`,
+    );
+    expect(inLanes).toBe(0);
+    expect(posts).toBeGreaterThan(0);
+
+    // Near it, the layer draws the gantry and the bridge in one call.
+    layer.update(gantry.x, gantry.z);
+    expect(layer.counts().drawCalls).toBe(1);
+    expect(layer.counts().nearPieces).toBeGreaterThan(0);
+  });
+});
+
+// Every San Francisco landmark, on its real baked road: each feature names a node its kit has, and
+// all of a network's landmarks draw in one call, inside the plan's triangle cap for a landmark view.
+describe('every San Francisco landmark resolves and draws within the landmark caps', () => {
+  const LANDMARK_DRAW_CAP = 3; // the plan's cap on landmark draws in a view; the aim is 1
+  const LANDMARK_TRIANGLE_CAP = 18_000; // the plan's bridge-kit cap (real-world L3a), the largest landmark
+  const withLandmarks = Object.values(networkFiles).filter((n) =>
+    Object.values(roadFiles).some(
+      (r) => n.roads.includes(r.id) && (r.features ?? []).some((f) => f.kind === 'landmark'),
+    ),
+  );
+
+  it('has landmark networks to check', () => {
+    const ids = withLandmarks.map((n) => n.id);
+    expect(ids).toContain('osm-sf-golden-gate');
+    expect(ids).toContain('osm-sf-lombard');
+  });
+
+  it.each(withLandmarks.map((n) => n.id))(
+    '%s: every landmark finds its node, and one call draws them',
+    async (id) => {
+      const road = track(id);
+      const kits = await kitsFor(road);
+      const placements = landmarkPlacements(road);
+      expect(placements.length).toBeGreaterThan(0);
+      for (const p of placements)
+        expect(
+          kits.get(p.kit)?.nodes.has(p.node) || p.node === 'gg_bridge',
+          `${p.feature.id}: ${p.kit}#${p.node}`,
+        ).toBe(true);
+      const layer = new LandmarkLayer(kits, look, { road });
+      expect(layer.counts().placed).toBe(placements.length);
+      expect(layer.counts().skipped).toBe(0);
+      let worst = 0;
+      for (const p of placements) {
+        layer.update(p.x, p.z);
+        const c = layer.counts();
+        expect(c.drawCalls).toBeLessThanOrEqual(LANDMARK_DRAW_CAP);
+        expect(c.drawCalls, `${p.feature.id}: aims for one draw call`).toBe(1);
+        worst = Math.max(worst, c.trianglesDrawn);
+      }
+      stdout.write(
+        `[examined] ${id}: ${placements.length} landmarks, one draw call in each view, worst view ${worst} triangles\n`,
+      );
+      expect(worst).toBeLessThanOrEqual(LANDMARK_TRIANGLE_CAP);
+    },
+  );
+});

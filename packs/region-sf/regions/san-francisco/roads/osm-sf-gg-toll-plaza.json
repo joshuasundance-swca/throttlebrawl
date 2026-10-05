@@ -94,6 +94,18 @@
       "d0": 14.0,
       "d1": 17.0,
       "pool": "signs"
+    },
+    {
+      "kind": "landmark",
+      "id": "toll-gantry",
+      "s0": 118.272,
+      "s1": 121.272,
+      "d0": -16.5483,
+      "d1": 16.4517,
+      "params": {
+        "model": "sf-landmarks#toll_gantry",
+        "overRoad": true
+      }
     }
   ],
   "barriers": [],
@@ -176,7 +188,7 @@
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-04",
+    "createdAt": "2026-10-05",
     "tool": {
       "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
@@ -189,8 +201,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.800,-122.504,37.840,-122.462);\nout tags geom;",
-        "retrievedAt": "2026-10-04T23:01:42Z",
-        "sha256": "7ed26991b6f2b4479498fc5b898cfe68b4b2546bd5b2c595c1d6c776f0eb3a45"
+        "retrievedAt": "2026-10-05T06:36:49Z",
+        "sha256": "3822a4f954c6463a122b277b9ed1bbf1fa176b2601c2a34daba4332216c2a48b"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -198,7 +210,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 613 points in 1 request(s) (lon, lat WGS84, sha256 83f11a7a7f3095ff), bilinear (line gg)",
-        "retrievedAt": "2026-10-04T23:10:08Z",
+        "retrievedAt": "2026-10-05T06:36:55Z",
         "sha256": "bde9ab79d44731852b3141858fa99a8abfcf65cb9c0cf4691abc93ebeda9e012"
       }
     ],
