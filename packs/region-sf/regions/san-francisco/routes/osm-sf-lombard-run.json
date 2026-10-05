@@ -1,0 +1,77 @@
+{
+  "type": "route",
+  "id": "osm-sf-lombard-run",
+  "name": "Lombard Street",
+  "network": "osm-sf-lombard",
+  "start": {
+    "road": "osm-sf-lombard-climb",
+    "s": 40.0,
+    "dir": 1
+  },
+  "finish": {
+    "road": "osm-sf-lombard-telegraph-hill",
+    "s": 366.0512
+  },
+  "mainPath": [
+    "osm-sf-lombard-climb",
+    "osm-sf-lombard-crooked",
+    "osm-sf-lombard-flats",
+    "osm-sf-lombard-telegraph-hill"
+  ],
+  "allowedRoads": [
+    "osm-sf-lombard-climb",
+    "osm-sf-lombard-crooked",
+    "osm-sf-lombard-flats",
+    "osm-sf-lombard-telegraph-hill"
+  ],
+  "checkpoints": [
+    {
+      "road": "osm-sf-lombard-crooked",
+      "s": 96.4025
+    },
+    {
+      "road": "osm-sf-lombard-flats",
+      "s": 507.6081
+    }
+  ],
+  "closed": false,
+  "startGrid": {
+    "rows": 3,
+    "perRow": 2,
+    "rowGapM": 8
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A route drawn from a real-road network (playtest 3, T9.3): Lombard Street from Polk Street over the crest at Hyde, down the crooked block's eight hairpins and on to Telegraph Hill Boulevard, up to Coit Tower.",
+    "provenance": {
+      "origin": "gis-pipeline",
+      "author": "tools/gis",
+      "createdAt": "2026-10-04",
+      "tool": {
+        "name": "tools/gis/src/tbgis/network.py",
+        "version": "0.1.0",
+        "configRef": "tools/gis/networks/osm-sf-lombard.json"
+      },
+      "sources": [
+        {
+          "name": "OpenStreetMap",
+          "spdx": "ODbL-1.0",
+          "attribution": "© OpenStreetMap contributors",
+          "url": "https://www.openstreetmap.org/copyright",
+          "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.796,-122.426,37.809,-122.400);\nout tags geom;",
+          "retrievedAt": "2026-10-04T23:10:35Z",
+          "sha256": "98dce52cc9b95b4b2d7d4a9ffb728e0e7169069d154efef4f93c65d4d4a7f101"
+        },
+        {
+          "name": "USGS 3DEP elevation",
+          "spdx": "LicenseRef-US-Public-Domain",
+          "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+          "url": "https://www.usgs.gov/3d-elevation-program",
+          "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 192 points in 1 request(s) (lon, lat WGS84, sha256 fc3f08ef46633f8d), bilinear (line lombard)",
+          "retrievedAt": "2026-10-04T23:11:11Z",
+          "sha256": "4f0d32a86c267a78b34440c0b4d2e71c633e022b49003f6ebc560fa5f9f1cd26"
+        }
+      ]
+    }
+  }
+}

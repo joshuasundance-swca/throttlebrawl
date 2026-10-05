@@ -153,6 +153,8 @@ real junction choice.
 | `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 250 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
 | `osm-sf-russian-hill` (region-sf) | `osm-sf-hills-run` (Russian Hill), 5.27 km | the stretch bake's path exactly (run W-U): Hyde over Russian Hill and Nob Hill, California, Kearny, Columbus, Union back up the hill, Leavenworth down to the finish; two lanes | Jones Street, right off Union one block before its crest, down the hill's 29% north face and back along Chestnut onto Leavenworth: an alternate, 28 m shorter | 7.9 and 8.4 m (main), 6.5 m (branch) |
 | `osm-pnw-portland` (region-pnw) | `osm-bridge-city-run` (Bridge City), 4.61 km | downtown Portland (playtest 3, T9.4): East Burnside over the Burnside Bridge, West Burnside, south down Broadway past Pioneer Courthouse Square, east on Madison, over the Hawthorne Bridge to SE Hawthorne: two lanes each way | the Morrison Bridge, left off Broadway onto Alder, over the river and down Grand Avenue back onto Hawthorne: an alternate, 142 m shorter | 5.4 and 11.2 m (main), 9.9 m (branch) |
+| `osm-sf-golden-gate` (region-sf, T9.3) | `osm-sf-golden-gate-run` (Golden Gate), 6.04 km | Hawk Hill down Conzelman Road's hairpins to Alexander Avenue, US 101 southbound from Vista Point across the bridge and through the toll plaza (no `routeTags`: the shortest path over the extract is the real line); six lanes and a barrier median on the deck | none (a gap goes only on a branch, and traffic runs the main path) | 28 m at most (a 6 km line pinned only at its ends) |
+| `osm-sf-lombard` (region-sf, T9.3) | `osm-sf-lombard-run` (Lombard Street), 1.83 km | Lombard Street from Polk over the crest at Hyde, down the crooked block (the real eight hairpins: one lane, one way, red brick), on along Lombard to Telegraph Hill Boulevard and up to the circle at Coit Tower | none | 5 m at most |
 
 Key West's frame origin (24.5675, -81.7475) is the one, of the 11 tried, that draws its busiest view
 (Stock Island looking west at the Triangle, where US 1 runs straight on into North Roosevelt) in
@@ -273,6 +275,27 @@ Peaks stretch from one cached extract to byte-identical files.
   - no gap on a route's main path;
   - the scenery tags playtest 3 adds (`conch-houses`, `key-oldtown`, `old-bridge`, `pdx-blocks`,
     `rail-line`, `brick-street`, `headlands`).
+
+- **T9.3's switches** (the Golden Gate and Lombard bakes; each off by default, and on the same cached
+  extract and elevation the old code and the new baked the Russian Hill network and the Twin Peaks
+  stretch to byte-identical files):
+  - `bridgeWays` (a line): OSM way ids that count as bridge though the map leaves the tag off. The
+    Golden Gate's Marin approach viaduct (way 1560010152, 108 m between two tagged runs) crosses a
+    gulch, and bare-earth land under it would pull the deck down 20 m.
+  - `elevation.waterBridgeMinM`: a `"span"` deck (straight between its abutments' heights, with the
+    hump) at least this long stands over open water and gets `water-open`, as a `"sea"` deck does.
+    A short deck over a road keeps none. The Golden Gate's is the 2.74 km deck with a 3.6 m hump over
+    the main span: 74 m at Vista Point, about 67 m over the middle, 56 m at the toll plaza.
+  - `crossSection.oneWay` (a line, or one road through `roadLanes`): one forward lane, centred, no
+    shoulders. The road format's width rule is `|kappa| * dMax < 0.5`, and a two-way table has dMax
+    4.75 m (a 9.5 m radius at the tightest); one lane has 2 m (4 m). Lombard's crooked block turns at
+    5.3 m. The roads either side stay two-way, and the join narrows like any lane drop.
+  - `roadSurface` (a line): a surface per road id where it differs from the line's (the block is
+    brick, its street asphalt).
+  - `roads[].realName`: what the picker calls the road when the map's own name is not the one to show
+    (OSM's "Golden Gate Bridge" is shown as "Golden Gate").
+  - A road sampled at 1.2 m or finer keeps a tight turn's chord within the lint's 0.01 m of its
+    spacing (2 m samples on a 5 m radius are 0.013 m short); the crooked block is sampled every 1.2 m.
 
 Left-side split zones need no new switch. A branch leaves to the left with a negative `offsetM` and
 a zone at negative d; `tests/test_capabilities.py` bakes one.
