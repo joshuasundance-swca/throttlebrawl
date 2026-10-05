@@ -193,7 +193,11 @@ test('the pause menu lists exactly the decided entries, and the tuning entry app
   await page.locator('#settings-tab-race').click();
   const tags = page.locator('#settings-pane-race .next-race');
   const tagCount = await tags.count();
-  expect(tagCount).toBe(5);
+  // Every Race setting applies next race, so every row on the tab carries the tag (not a fixed
+  // count: playtest 4's steering style added a sixth row).
+  const raceRows = await page.locator('#settings-pane-race [data-setting]').count();
+  expect(raceRows).toBeGreaterThan(0);
+  expect(tagCount).toBe(raceRows);
   for (let i = 0; i < tagCount; i++) await expect(tags.nth(i)).toBeVisible();
   await shot(page, 'settings-race-from-pause');
 
