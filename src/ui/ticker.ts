@@ -9,8 +9,13 @@
 // sliders (hud-tuning.ts).
 //
 // Priority (1 = top). A higher class preempts a lower one that is showing. A preempted teach, ask,
-// bark or system item is frozen with its remaining time and comes back; a preempted line, style or
-// meter item is stale and is dropped (the meter comes back once the strip is idle).
+// bark or system item is frozen with its remaining time and comes back; a preempted line, cash-less
+// style or meter item is stale and is dropped (the meter comes back once the strip is idle).
+//
+// A PAID style chip (cash above 0: BACKFLIP +$240) is never dropped: not for waiting, not for being
+// preempted, not for the queue limit (playtest 3, wave-B live check: a landing line and the flip's
+// chip arrive together, the line outranks the chip, and the chip used to expire behind it). It waits
+// its turn, is frozen with its remaining time when taken, and shows after the line.
 import { meterLabel, type MeterRun, type StylePop } from './race-feed';
 
 export type TickerClass = 'teach' | 'name' | 'ask' | 'bark' | 'system' | 'line' | 'style' | 'meter';
@@ -36,7 +41,10 @@ export const tickerPriority = (cls: TickerClass): number => PRIORITY[cls];
 
 /** Most items waiting at once; past it the oldest of the lowest class goes. */
 export const TICKER_QUEUE_MAX = 6;
-/** How long each class waits in the queue before it is dropped as stale (ms). A resumed item never expires. */
+/**
+ * How long each class waits in the queue before it is dropped as stale (ms). A resumed item never
+ * expires, and neither does a paid style chip (`isPaidStyle`): the `style` figure is for cash-less ones.
+ */
 export const TICKER_MAX_WAIT_MS: Readonly<Record<TickerClass, number>> = {
   teach: 8000,
   name: 600,
@@ -59,6 +67,10 @@ export const TICKER_SYSTEM_MS = 3000;
 export const TICKER_RELEASE_GRACE_MS = 1000;
 /** A voiced bark's subtitle outlasts its voice by this much (ms). */
 export const TICKER_VOICE_TAIL_MS = 250;
+
+/** A style chip that carries cash: it is never dropped (see the top of this file). */
+export const isPaidStyle = (cls: TickerClass, cash: number | null | undefined): boolean =>
+  cls === 'style' && cash !== null && cash !== undefined && cash > 0;
 
 /** The classes whose item is frozen and resumed when a higher class takes the strip. */
 const RESUMES: ReadonlySet<TickerClass> = new Set(['teach', 'ask', 'bark', 'system']);
@@ -238,7 +250,10 @@ export function createTicker(options: TickerOptions = {}): Ticker {
       // Stale waiters go.
       const before = queue.length;
       queue = queue.filter(
-        (e) => e.remainingMs !== null || now - e.queuedAt <= TICKER_MAX_WAIT_MS[e.item.cls],
+        (e) =>
+          e.remainingMs !== null ||
+          isPaidStyle(e.item.cls, e.cash) ||
+          now - e.queuedAt <= TICKER_MAX_WAIT_MS[e.item.cls],
       );
       if (queue.length !== before) version++;
       // The showing item's time.
@@ -282,7 +297,7 @@ export function createTicker(options: TickerOptions = {}): Ticker {
         return;
       }
       if (next && !cur.held && PRIORITY[next.item.cls] < PRIORITY[cur.cls]) {
-        if (RESUMES.has(cur.cls)) {
+        if (RESUMES.has(cur.cls) || isPaidStyle(cur.cls, cur.cash)) {
           // Frozen with the time it has left; it keeps its id, so it goes before later items of its class.
           queue.push({
             id: cur.id,
@@ -290,6 +305,8 @@ export function createTicker(options: TickerOptions = {}): Ticker {
               cls: cur.cls,
               text: cur.text,
               ...(cur.tag !== undefined ? { tag: cur.tag } : {}),
+              ...(cur.kind !== undefined ? { kind: cur.kind } : {}),
+              ...(cur.landed ? { landed: true } : {}),
               ...(cur.contentRef !== undefined ? { contentRef: cur.contentRef } : {}),
               ...(cur.raceId !== undefined ? { raceId: cur.raceId } : {}),
               ...(cur.tick !== undefined ? { tick: cur.tick } : {}),
@@ -313,11 +330,11 @@ export function createTicker(options: TickerOptions = {}): Ticker {
 
   const overflow = () => {
     while (queue.length > TICKER_QUEUE_MAX) {
-      let drop = queue[0];
+      // A paid chip is never the one to go: the limit counts only what may be dropped.
+      let drop: Entry | undefined;
       for (const e of queue) {
-        if (!drop) break;
-        const worse = PRIORITY[e.item.cls] > PRIORITY[drop.item.cls];
-        if (worse) drop = e;
+        if (isPaidStyle(e.item.cls, e.cash)) continue;
+        if (!drop || PRIORITY[e.item.cls] > PRIORITY[drop.item.cls]) drop = e;
       }
       if (!drop) break;
       take(drop);
@@ -349,6 +366,14 @@ export function createTicker(options: TickerOptions = {}): Ticker {
           same.count++;
           same.cash = sum(same.cash, cash);
           same.queuedAt = now;
+          // A taken chip that is topped up gets its whole time again, and a landed award keeps its own.
+          same.remainingMs = null;
+          if (item.landed)
+            same.item = {
+              ...same.item,
+              landed: true,
+              ...(item.dwellMs !== undefined ? { dwellMs: item.dwellMs } : {}),
+            };
           settle();
           return;
         }

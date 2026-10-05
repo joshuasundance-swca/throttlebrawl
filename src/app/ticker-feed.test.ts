@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as feed from './ticker-feed';
 import type { BoardCatalog, BoardItem, VisibleContent } from '../render';
 import type { SimEvent } from '../sim/api';
 import {
@@ -9,12 +10,11 @@ import {
   producerThanksItem,
   seenKindOf,
   SEEN_POLL_EVERY,
-  SLOW_FRAMES_ITEM,
   withoutLandingLines,
 } from './ticker-feed';
 
 // Playtest 3, the ticker integration (task T8.2; the design spec "The integration side"): app/ puts
-// the producer's asks, the landing one-liners and the slow-frames note on the top ticker, and polls
+// the producer's asks and the landing one-liners on the top ticker, and polls
 // the renderer for the signs and billboards in view so the veto's "recently seen" list names them.
 // These are the pure parts; the wiring in app/index.ts is covered by the browser specs.
 
@@ -116,11 +116,10 @@ describe("the producer's items", () => {
   });
 });
 
-describe('the slow-frames note', () => {
-  it('is a system line that says where the offer lives', () => {
-    expect(SLOW_FRAMES_ITEM.cls).toBe('system');
-    expect(SLOW_FRAMES_ITEM.text).toMatch(/pause menu/i);
-    expect(SLOW_FRAMES_ITEM).not.toHaveProperty('contentRef');
+describe('the slow-frames offer', () => {
+  it('is shown once, as the toast: the feed has no ticker note for it', () => {
+    // The toast carries the offer's buttons; a second line on the strip would say it twice.
+    expect(Object.keys(feed).filter((k) => /slow/i.test(k))).toEqual([]);
   });
 });
 

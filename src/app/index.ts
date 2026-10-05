@@ -117,7 +117,6 @@ import {
   landingLineItem,
   producerAskItem,
   producerThanksItem,
-  SLOW_FRAMES_ITEM,
   withoutLandingLines,
 } from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
@@ -957,8 +956,8 @@ export function createApp(opts: AppOptions): AppHandle {
         const racing = state === 'race' && !ui.paused && holds.size === 0;
         const inkLook = settings.look !== 'classic' && !settings.lookFallbackDismissed && lookWatchOn();
         if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) {
-          // The offer's buttons live in the pause menu's card; the strip says where.
-          if (ui.offerClassicLook()) ui.ticker.push(SLOW_FRAMES_ITEM);
+          // The offer is ui's toast (one tap to Classic, or "No thanks"); the strip does not repeat it.
+          ui.offerClassicLook();
         }
         const slowMs = testSlowFrameMs();
         if (slowMs > 0) {

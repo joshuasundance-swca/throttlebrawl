@@ -5,6 +5,7 @@ import {
   createSeenLog,
   isContentRef,
   RECENTLY_SEEN_MAX,
+  seenItemOf,
   VETO_LONG_PRESS_MS,
   vetoedRefs,
   type SeenItem,
@@ -117,5 +118,39 @@ describe('content references', () => {
       ]),
     ).toEqual(['base:bark-set/kevin-core#kevin-pass-email', 'base:region/florida-keys#ices-before-road']);
     expect(vetoedRefs(undefined)).toEqual([]);
+  });
+});
+
+describe('the item "cut this" offers for a long-press on the strip', () => {
+  const shown = {
+    contentRef: 'base:bark-set/kevin-core#line-1',
+    speakerName: 'KEVIN',
+    text: 'Nice wheelie, nerd.',
+    raceId: 'seed-1',
+    tick: 60,
+  };
+
+  it('names a bark as "Speaker: line", a bark', () => {
+    expect(seenItemOf(shown)).toEqual({
+      contentRef: shown.contentRef,
+      kind: 'bark',
+      label: 'KEVIN: Nice wheelie, nerd.',
+      raceId: 'seed-1',
+      tick: 60,
+    });
+  });
+
+  it('names a landing line by its words alone, as a sign (not a bark with an empty speaker)', () => {
+    const line = {
+      ...shown,
+      contentRef: 'base:region/keys#line-3',
+      speakerName: '',
+      text: 'TEN OUT OF TEN, SAYS A PELICAN',
+      strip: 'line' as const,
+    };
+    const it = seenItemOf(line);
+    expect(it.kind).toBe('sign');
+    expect(it.label).toBe('TEN OUT OF TEN, SAYS A PELICAN');
+    expect(it.contentRef).toBe(line.contentRef);
   });
 });

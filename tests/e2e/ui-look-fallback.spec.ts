@@ -90,6 +90,9 @@ test('a new save starts on Ink + 60s film; slow frames offer Classic, in the rac
   await expect(page.locator('#look-offer')).toBeVisible({ timeout: 40_000 });
   console.log(`look offer up ${((Date.now() - t0) / 1000).toFixed(1)} s after the slow frames began`);
   await expect(page.locator('#look-offer')).toContainText('Classic');
+  await expect(page.locator('#hud-ticker'), 'the strip does not repeat the toast').not.toContainText(
+    /slow frames/i,
+  );
   await slowFrames(page, 0);
   const buttons = await offerButtons(page, '#look-offer');
   console.log(`race offer buttons: ${JSON.stringify(buttons)}`);
