@@ -5,6 +5,7 @@
 import { stationsFromTable, type RadioStation } from '../audio';
 import { lookup, packOf, type ContentRegistry, type Region } from '../content';
 import type { BoardCatalog, BoardItem, BoardKind } from '../render';
+import type { RaceWeather } from '../save';
 import type { RegionStream } from '../stream';
 import {
   eventKey,
@@ -122,6 +123,41 @@ export function racePalette(
     Record<string, string>
   >;
   return { ...own, ...over };
+}
+
+/** The sky a race draws: its palette, and whether the drizzle is on (render only, never the sim). */
+export interface RaceSky {
+  /** The race's palette; a copy, so a dry pick never dries the registry's. */
+  palette: Record<string, string>;
+  /** `rain` when rain was asked for outright and the palette names no rain colour of its own. */
+  weather?: 'rain';
+  /** Whether the race rains: the drizzle's colour is in the palette, or rain was asked for. */
+  wet: boolean;
+}
+
+/**
+ * The weather a race draws (playtest 4, the identity sheets' cause 10: the Pacific Northwest rained
+ * at every hour). In order: the menu race's pick (`dry` or `rain`; `local` defers), then the event's
+ * own `weather` when the race is drawn in the event's own light, then what the light does by itself
+ * (a region time-of-day option's palette `rain`). Rain on the helmet follows the same answer
+ * (`wet`). Presentation only: nothing here reaches the sim.
+ */
+export function raceSky(
+  reg: ContentRegistry,
+  eventId: string,
+  timeOfDay: string,
+  pick: RaceWeather = 'local',
+): RaceSky {
+  const key = eventKey(eventId);
+  const event = lookup(reg.events, key);
+  const palette = { ...racePalette(reg, regionKeyOf(reg, key), timeOfDay) };
+  const own = (event as { weather?: unknown }).weather;
+  const eventAsks =
+    String(event.timeOfDay) === timeOfDay && (own === 'dry' || own === 'rain') ? own : 'local';
+  const ask = pick !== 'local' ? pick : eventAsks;
+  if (ask === 'dry') delete palette['rain'];
+  const wet = ask === 'rain' || Boolean(palette['rain']);
+  return { palette, ...(ask === 'rain' ? { weather: 'rain' as const } : {}), wet };
 }
 
 /** What bark `when` conditions read about the race (ui/narrative's `NarrativeSetting`, structurally). */
