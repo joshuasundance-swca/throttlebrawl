@@ -97,9 +97,10 @@ export const VOICE_DEFAULTS = { duck: 0.7, fxDuck: 0.75, gain: 2 } as const;
  * Engine levels on the effects bus, before the `audio.engineGain` slider [default]. Playtest 2
  * (2026-10-02: "Engine monotonous and maybe too loud", then "Richer and quieter"): measured offline
  * at the default volumes (tests/e2e/audio-mix.spec.ts), the player's engine flat out sat about
- * 15 dB over the music at 0.5; at 0.15 it sits about 4.5 dB over it, and a cruising engine about
+ * 15 dB over the music at 0.5; at 0.15 it sat about 4.5 dB over it, and a cruising engine about
  * level with it. Other riders' engines are a little louder than yours up close, so a rival passing
- * is heard.
+ * is heard. Playtest 4 then took the default Effects level down 4.4 dB (`DEFAULT_VOLUMES`), which
+ * puts the engine flat out about level with the music; these levels did not change.
  */
 export const ENGINE_LEVELS = { player: 0.15, other: 0.16, pops: 1 } as const;
 
@@ -395,6 +396,24 @@ export interface Volumes {
   effects: number;
   voices: number;
 }
+
+/**
+ * The levels audio starts at, until app/ hands it the settings record's volumes at boot (the record's
+ * own defaults are save/'s `DEFAULT_SETTINGS.volumes`, and src/app/default-mix.test.ts holds the
+ * buses they share equal). Playtest 4 (P4-18, the maintainer: "Effects are too loud by default
+ * compared to the other audio") [default]: Effects went from 90% to 70%. With the squared taper that
+ * is the effects bus at 0.49 of full instead of 0.81, 4.4 dB lower: from 7.0 dB over the music bus
+ * (and 2.0 dB over the voices bus) to 2.7 dB over the music bus and 2.3 dB under the voices bus, so
+ * the ladder is music, effects, voices. Only the default moved; a level a device has saved is kept,
+ * except a saved 90% (the old default), which save/'s `migrateEffects` moves to 70% once.
+ * Voices start at 90% here and at 80% in the record, which hands over its own at boot.
+ */
+export const DEFAULT_VOLUMES: Readonly<Volumes> = Object.freeze({
+  master: 0.8,
+  music: 0.6,
+  effects: 0.7,
+  voices: 0.9,
+});
 
 /**
  * Gains the buses aim for. Sliders are 0..1 with a squared taper, so the middle of a slider

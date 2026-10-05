@@ -179,6 +179,14 @@
       "claims": ["sf-fogline-climb", "sf-bridge-approach"]
     },
     {
+      "id": "figure-eight",
+      "event": "sf-t3-figure-eight",
+      "length": "standard",
+      "tier": "t3",
+      "at": { "road": "osm-sf-twin-peaks-climb", "s": 900 },
+      "claims": ["osm-sf-twin-peaks-climb"]
+    },
+    {
       "id": "gus-grudge",
       "event": "sf-t3-gus-grudge",
       "length": "standard",
@@ -195,13 +203,32 @@
       ]
     },
     {
-      "id": "series-c",
-      "event": "sf-t4-series-c",
+      "id": "golden-gate",
+      "event": "sf-t4-golden-gate",
       "length": "standard",
       "tier": "t4",
-      "at": { "road": "sf-dt-cable-crossing", "s": 200 },
+      "at": { "road": "osm-sf-gg-bridge", "s": 1400 },
       "opens": ["sf-dt-burn-rate-row", "sf-dt-campus-way"],
-      "claims": ["sf-dt-cable-crossing"]
+      "claims": [
+        "osm-sf-gg-hawk-hill",
+        "osm-sf-gg-conzelman",
+        "osm-sf-gg-vista-point",
+        "osm-sf-gg-bridge",
+        "osm-sf-gg-toll-plaza"
+      ]
+    },
+    {
+      "id": "crooked-mile",
+      "event": "sf-t4-crooked-mile",
+      "length": "standard",
+      "tier": "t4",
+      "at": { "road": "osm-sf-lombard-crooked", "s": 100 },
+      "claims": [
+        "osm-sf-lombard-climb",
+        "osm-sf-lombard-crooked",
+        "osm-sf-lombard-flats",
+        "osm-sf-lombard-telegraph-hill"
+      ]
     },
     {
       "id": "tow-away",
@@ -403,7 +430,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones (run W-U: Gripman Gus's grudge moved to Chinatown and North Beach, so every route has an event; the fogline climb is claimed with the bridge approach); secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.3; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the third chapter (global tiers 9 to 12), every tier names its boss (Chad, Dial-Up, Gus, Pivot) and the field level it asks, with 14 nodes for now: the tier-3 and tier-4 drift events join with the drift lane's content. The shop sells the Superbike (rank 6) at tier 2 and the chopper for $15,000; paints cost $3,000 to $5,000, and Down Round Gold opens from Season 2. [default] every number.",
+    "notes": "The Bay Circuit: san-francisco's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones (run W-U: Gripman Gus's grudge moved to Chinatown and North Beach, so every route has an event; the fogline climb is claimed with the bridge approach); secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.3; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the third chapter (global tiers 9 to 12), every tier names its boss (Chad, Dial-Up, Gus, Pivot) and the field level it asks, with 16 nodes (playtest 3, T10.6: the third tier's drift race, Figure Eight, on the Twin Peaks hairpins; the fourth tier's Series C hunt is the Golden Gate, International Orange, at dawn; and Lombard Street is The Crooked Mile, a classic race, since a drift holds there only at floors an event cannot set). The shop sells the Superbike (rank 6) at tier 2 and the chopper for $15,000; paints cost $3,000 to $5,000, and Down Round Gold opens from Season 2. [default] every number.",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-02" }
   }
 }

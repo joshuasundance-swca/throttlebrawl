@@ -2,5 +2,170 @@
 // `region: 'san-francisco'`, so its GLB lands in packs/region-sf/assets/ and the per-region model
 // budget counts it as San Francisco's. CX3 appends here; no other batch edits this file.
 
+import { VARIANT_VIEWS, VIEWS } from './views.mjs';
+
+const bridgeRoots = [
+  'gg_tower_lod0',
+  'gg_tower_lod1',
+  'gg_bay_lod0',
+  'gg_bay_lod1',
+  'gg_suspender',
+  'gg_anchorage',
+  'gg_approach_pier',
+  'gg_fort_arch',
+];
+const styles = ['glass', 'stone', 'screen', 'crown', 'midrise'];
+
 /** @type {import('../catalog.mjs').Prop[]} */
-export const SF_PROPS = [];
+export const SF_PROPS = [
+  {
+    name: 'golden_gate_kit',
+    script: 'props/golden_gate_kit.py',
+    asset: 'models/landmarks/golden-gate',
+    pack: 'region-sf',
+    region: 'san-francisco',
+    kind: 'variants',
+    budget: { materials: 3 },
+    variants: {
+      roots: bridgeRoots,
+      xs: [-180, -130, -80, -35, 10, 60, 115, 165],
+      parts: ['body'],
+      perVariant: { tris: 900, draws: 20 },
+      tris: [900, 120, 48, 24, 40, 300, 120, 200],
+      height: [0, 228],
+      heights: [
+        [226.5, 227.5],
+        [226.5, 227.5],
+        [-0.01, 0.05],
+        [-0.01, 0.05],
+        [0.99, 1.01],
+        [7.9, 8.1],
+        [9.99, 10.01],
+        [-0.31, -0.29],
+      ],
+      sway: false,
+      sharedMaterials: false,
+      bays: { roots: ['gg_bay_lod0', 'gg_bay_lod1', 'gg_fort_arch'], lengthM: [15.24, 15.24, 98] },
+      lods: [
+        { lod0: 'gg_tower_lod0', lod1: 'gg_tower_lod1' },
+        { lod0: 'gg_bay_lod0', lod1: 'gg_bay_lod1', maxRatio: 0.5 },
+      ],
+    },
+    atlas: {
+      sheet: 'san-francisco',
+      surfaces: [
+        ...[-17.5, 17.5].flatMap((x) =>
+          [0, 1, 2, 3].flatMap((k) =>
+            [-1, 1].map((s) =>
+              `gg_tower_lod0_panel_${x}_${k}_${s}`.replaceAll('-', 'n').replaceAll('.', '_'),
+            ),
+          ),
+        ),
+        'gg_bay_lod0_truss_n1',
+        'gg_bay_lod0_truss_1',
+      ],
+    },
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'sf_landmarks',
+    script: 'props/sf_landmarks.py',
+    asset: 'models/landmarks/sf-landmarks',
+    pack: 'region-sf',
+    region: 'san-francisco',
+    kind: 'variants',
+    budget: { materials: 5 },
+    variants: {
+      roots: ['coit_tower', 'coit_tower_lod1', 'toll_gantry'],
+      xs: [-45, -15, 25],
+      parts: ['body'],
+      perVariant: { tris: 900, draws: 5 },
+      tris: [900, 200, 500],
+      height: [0, 65],
+      heights: [
+        [63.5, 64.5],
+        [63.5, 64.5],
+        [8, 9],
+      ],
+      sway: false,
+      sharedMaterials: false,
+      lods: [{ lod0: 'coit_tower', lod1: 'coit_tower_lod1' }],
+    },
+    textSurfaces: ['toll_gantry_sign'],
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'sf_tower_modules',
+    script: 'props/sf_tower_modules.py',
+    asset: 'models/scenery/sf-tower-modules',
+    pack: 'region-sf',
+    region: 'san-francisco',
+    kind: 'variants',
+    budget: { materials: 6 },
+    variants: {
+      roots: styles.flatMap((s) => ['base', 'mid', 'crown'].map((m) => `${s}_${m}`)),
+      xs: Array.from({ length: 15 }, (_, i) => -280 + i * 40),
+      parts: ['body'],
+      perVariant: { tris: 90, draws: 7 },
+      tris: styles.flatMap(() => [60, 40, 90]),
+      height: [0, 14.01],
+      heights: styles.flatMap(() => [
+        [6.99, 7.01],
+        [13.99, 14.01],
+        [7.99, 8.01],
+      ]),
+      sway: false,
+      sharedMaterials: false,
+    },
+    atlas: {
+      sheet: 'san-francisco',
+      surfaces: styles.flatMap((s) => ['front', 'back', 'left', 'right'].map((f) => `${s}_mid_facade_${f}`)),
+    },
+    textSurfaces: ['screen_crown_screen'],
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'lombard_kit',
+    script: 'props/lombard_kit.py',
+    asset: 'models/scenery/lombard-kit',
+    pack: 'region-sf',
+    region: 'san-francisco',
+    kind: 'variants',
+    budget: { materials: 5 },
+    variants: {
+      roots: ['lombard_bed_curve_l', 'lombard_bed_curve_r', 'lombard_hedge'],
+      xs: [-8, 0, 8],
+      parts: ['body'],
+      perVariant: { tris: 150, draws: 5 },
+      tris: [150, 150, 60],
+      height: [0, 1.3],
+      heights: [
+        [1.19, 1.21],
+        [1.19, 1.21],
+        [0.99, 1.01],
+      ],
+      sway: false,
+      sharedMaterials: false,
+    },
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  .../** @type {[string,string,number][]} */ ([
+    ['sf_streetcar', 'sf-streetcar', 600],
+    ['sf_trolleybus', 'sf-trolleybus', 650],
+    ['robotaxi', 'robotaxi', 400],
+    ['startup_shuttle', 'startup-shuttle', 450],
+  ]).map(([name, id, tris]) => ({
+    name,
+    script: `props/${name}.py`,
+    asset: `models/traffic/${id}`,
+    pack: 'region-sf',
+    region: 'san-francisco',
+    kind: /** @type {const} */ ('vehicle'),
+    budget: { tris, draws: 7, materials: 7 },
+    views: VIEWS,
+  })),
+];

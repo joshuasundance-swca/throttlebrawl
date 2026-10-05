@@ -4,7 +4,7 @@ Each region gets one small texture sheet, an **atlas**: 1024 x 1024 pixels, PNG-
 
 A sheet is code, not a painting: `sheets/<region>.mjs` draws every tile with the integer primitives in `raster.mjs`, and `build.mjs` bakes it into the region's pack. Because every pixel decision is integer arithmetic with a seeded random stream, a bake is the same on every machine, and CI rebakes and compares without Blender. Blender stays the geometry tool; a Blender render is GPU and driver dependent, so it is not used for atlases.
 
-Status `[default]`: the tool is "done, not phone-verified". The Keys sheet (`sheets/florida-keys.mjs`, CX2) has 16 facade and 28 art tiles and holds no lettering at all: the Southernmost Point buoy's words and the `MILE 0` sign are text surfaces on their models, so the in-game veto covers them too (`cx2-keys.test.ts` fails the sheet if a tile draws glyphs). The San Francisco and Pacific Northwest sheets come from CX3 and CX4.
+Status `[default]`: the tool is "done, not phone-verified". The Keys sheet (`sheets/florida-keys.mjs`, CX2) has 16 facade and 28 art tiles and holds no lettering at all: the Southernmost Point buoy's words and the `MILE 0` sign are text surfaces on their models, so the in-game veto covers them too (`cx2-keys.test.ts` fails the sheet if a tile draws glyphs). San Francisco's sheet (`sheets/san-francisco.mjs`, CX3) has 22 greyscale facade and 21 picture tiles, 27 palette roles and no lettering (`cx3-sf.test.ts` forbids glyphs); the PNG is 15,930 bytes. The Pacific Northwest sheet comes from CX4.
 
 ## Commands
 
