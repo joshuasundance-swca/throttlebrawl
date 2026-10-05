@@ -1,0 +1,163 @@
+{
+  "id": "osm-sf-lombard",
+  "name": "Lombard Street to Coit Tower (OSM network bake)",
+  "region": "san-francisco",
+  "crs": {
+    "originLatDeg": 37.8025,
+    "originLonDeg": -122.414
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.796,-122.426,37.809,-122.400);\nout tags geom;",
+  "osmExtract": ".cache/osm/sf-lombard.json",
+  "outRoot": "packs/region-sf/regions/san-francisco",
+  "waysLabel": "Lombard Street and Telegraph Hill Boulevard",
+  "networkNotes": "A real-road network (playtest 3, T9.3; the maintainer, 2026-10-03: \"hairpin races like Lombard\", \"real road layouts\"): Lombard Street east from Polk Street, up to the crest at Hyde Street, down the crooked block (the real eight hairpins, one-way and one lane wide, red brick), on along Lombard to Telegraph Hill Boulevard and up to the circle at Coit Tower. The smoothing is 2 m, tight enough to keep the hairpins (a wider one rounds them away); the crooked block is sampled every metre so its 5 m turns keep their shape, and a lane is the whole road there, since a two-way table fails the road format's width rule on a 5 m radius (a 1.5 m planter verge each side stands beyond it). Cross streets are pass-through only.",
+  "lines": [
+    {
+      "id": "lombard",
+      "pathFrom": { "lat": 37.80155, "lon": -122.42292 },
+      "pathTo": { "lat": 37.80269, "lon": -122.40577 },
+      "start": { "lat": 37.80155, "lon": -122.42292 },
+      "end": { "lat": 37.80269, "lon": -122.40577 },
+      "routeTags": { "name": "^(Lombard Street|Telegraph Hill Boulevard)$" },
+      "splitAt": [
+        { "lat": 37.8019952, "lon": -122.4196302 },
+        { "lat": 37.8022186, "lon": -122.4179869 },
+        { "lat": 37.8036555, "lon": -122.4066077 }
+      ],
+      "realName": "Lombard Street",
+      "smoothing": { "headingSigmaM": 2 },
+      "elevation": { "sampleEveryM": 10, "lowPassSigmaM": 12, "bridgeDeck": "span", "humpHeightM": 0 },
+      "crossSection": { "laneWidthM": 4.0, "lanesPerDirection": 1 },
+      "surface": "asphalt",
+      "roadSurface": { "osm-sf-lombard-crooked": "brick" },
+      "roadLanes": {
+        "osm-sf-lombard-crooked": {
+          "laneWidthM": 4.0,
+          "oneWay": true,
+          "verges": {
+            "left": { "widthM": 1.5, "surface": "grass", "edge": "brush" },
+            "right": { "widthM": 1.5, "surface": "grass", "edge": "brush" }
+          }
+        }
+      },
+      "landmarks": [
+        {
+          "id": "coit-tower",
+          "model": "sf-landmarks#coit_tower",
+          "at": { "lat": 37.80238, "lon": -122.40582 },
+          "footprintM": [22, 22]
+        }
+      ],
+      "roads": [
+        {
+          "id": "osm-sf-lombard-climb",
+          "name": "Lombard Climb",
+          "tags": ["row-houses", "painted-houses"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 6.1,
+              "d1": 9.6
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-lombard-climb",
+              "s0": 120,
+              "s1": 130,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-top",
+              "s0": 220,
+              "s1": 280,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": { "spawns": "pedestrians" }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-lombard-crooked",
+          "name": "The Crooked Block",
+          "sampleSpacingM": 1.2,
+          "tags": ["brick-street", "gardens"]
+        },
+        {
+          "id": "osm-sf-lombard-flats",
+          "name": "Lombard Street",
+          "tags": ["row-houses"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "lombard-bottom",
+              "s0": 20,
+              "s1": 80,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": { "spawns": "pedestrians" }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-lombard-flats",
+              "s0": 300,
+              "s1": 306,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "lombard-pad-flats" }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-lombard-flats",
+              "s0": 520,
+              "s1": 530,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-lombard-flats-late",
+              "s0": 760,
+              "s1": 766,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "lombard-pad-flats" }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-lombard-telegraph-hill",
+          "name": "Telegraph Hill Boulevard",
+          "tags": ["row-houses"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-telegraph-hill",
+              "s0": 150,
+              "s1": 160,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-sf-lombard-run",
+      "name": "Lombard Street",
+      "line": "lombard",
+      "startRoad": "osm-sf-lombard-climb",
+      "finishRoad": "osm-sf-lombard-telegraph-hill",
+      "notes": "A route drawn from a real-road network (playtest 3, T9.3): Lombard Street from Polk Street over the crest at Hyde, down the crooked block's eight hairpins and on to Telegraph Hill Boulevard, up to Coit Tower."
+    }
+  ]
+}

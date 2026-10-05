@@ -1,0 +1,200 @@
+{
+  "id": "osm-sf-golden-gate",
+  "name": "Conzelman Road and the Golden Gate Bridge (OSM network bake)",
+  "region": "san-francisco",
+  "crs": {
+    "originLatDeg": 37.817,
+    "originLonDeg": -122.48
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.800,-122.504,37.840,-122.462);\nout tags geom;",
+  "osmExtract": ".cache/osm/sf-golden-gate.json",
+  "outRoot": "packs/region-sf/regions/san-francisco",
+  "waysLabel": "Conzelman Road, US 101 and the Presidio Parkway",
+  "networkNotes": "A real-road network (playtest 3, T9.3; the maintainer, 2026-10-03: \"Golden Gate\", \"real landmarks\"): from Hawk Hill down Conzelman Road's hairpins to Alexander Avenue, onto US 101 southbound at Vista Point, across the Golden Gate Bridge and through the toll plaza. The deck is the real path's one carriageway drawn as a six-lane road (three lanes each way and a barrier median, the real deck's width), at the bridge's real height, and the bridge landmark (a feature over the road, drawn from the kit once it is placed) stands over it between its anchorages. Cross streets are pass-through only.",
+  "lines": [
+    {
+      "id": "gg",
+      "pathFrom": { "lat": 37.827, "lon": -122.4993 },
+      "pathTo": { "lat": 37.80664, "lon": -122.47509 },
+      "start": { "lat": 37.827, "lon": -122.4993 },
+      "end": { "lat": 37.80664, "lon": -122.47509 },
+      "bridgeWays": [1560010152],
+      "splitAt": [
+        { "lat": 37.8335904, "lon": -122.493539 },
+        { "lat": 37.8337778, "lon": -122.4836265 }
+      ],
+      "realName": "Golden Gate",
+      "smoothing": { "headingSigmaM": 10 },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 12,
+        "bridgeDeck": "span",
+        "humpHeightM": 3.6,
+        "humpLengthM": 1280,
+        "waterBridgeMinM": 800
+      },
+      "crossSection": { "laneWidthM": 4.0, "lanesPerDirection": 1 },
+      "roadLanes": {
+        "osm-sf-gg-bridge": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 3,
+          "medianM": 0.6,
+          "medianKind": "barrier"
+        },
+        "osm-sf-gg-toll-plaza": {
+          "laneWidthM": 4.0,
+          "lanesPerDirection": 3,
+          "medianM": 0.6,
+          "medianKind": "barrier"
+        }
+      },
+      "bridgeBarrier": { "kind": "wall", "heightM": 1.3, "look": "railing" },
+      "landmarks": [
+        {
+          "id": "gg-bridge",
+          "model": "golden-gate#gg_bridge",
+          "at": { "lat": 37.8197517, "lon": -122.4786142 },
+          "footprintM": [1960, 40],
+          "overRoad": true
+        }
+      ],
+      "roads": [
+        {
+          "id": "osm-sf-gg-hawk-hill",
+          "name": "Hawk Hill",
+          "tags": ["headlands", "forest"],
+          "features": [
+            {
+              "kind": "copSpawn",
+              "id": "cop-lot",
+              "s0": 4,
+              "s1": 20,
+              "d0": 6.1,
+              "d1": 9.6
+            },
+            {
+              "kind": "roadsideZone",
+              "id": "hawk-hill-overlook",
+              "s0": 30,
+              "s1": 110,
+              "d0": 5.6,
+              "d1": 12.6,
+              "params": { "spawns": "pedestrians" }
+            },
+            {
+              "kind": "billboard",
+              "id": "sign-hawk-hill",
+              "s0": 150,
+              "s1": 160,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-hawk-hill",
+              "s0": 450,
+              "s1": 456,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "gg-pad-early" }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-hawk-hill-late",
+              "s0": 700,
+              "s1": 706,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "gg-pad-early" }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-gg-conzelman",
+          "name": "Conzelman Road",
+          "tags": ["headlands", "forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-conzelman",
+              "s0": 300,
+              "s1": 310,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-conzelman",
+              "s0": 1100,
+              "s1": 1106,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "gg-pad-late" }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-conzelman-late",
+              "s0": 1350,
+              "s1": 1356,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "gg-pad-late" }
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-gg-vista-point",
+          "name": "Vista Point",
+          "realName": "Vista Point",
+          "tags": ["headlands", "forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-vista-point",
+              "s0": 100,
+              "s1": 110,
+              "d0": 6.5,
+              "d1": 9,
+              "pool": "signs"
+            }
+          ]
+        },
+        {
+          "id": "osm-sf-gg-bridge",
+          "name": "Golden Gate",
+          "realName": "Golden Gate",
+          "sampleSpacingM": 6
+        },
+        {
+          "id": "osm-sf-gg-toll-plaza",
+          "name": "Toll Plaza",
+          "realName": "Golden Gate",
+          "tags": ["forest"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-toll-plaza",
+              "s0": 60,
+              "s1": 70,
+              "d0": 14,
+              "d1": 17,
+              "pool": "signs"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-sf-golden-gate-run",
+      "name": "Golden Gate",
+      "line": "gg",
+      "startRoad": "osm-sf-gg-hawk-hill",
+      "finishRoad": "osm-sf-gg-toll-plaza",
+      "notes": "A route drawn from a real-road network (playtest 3, T9.3): Hawk Hill down Conzelman Road to Vista Point, then south across the Golden Gate Bridge and through the toll plaza."
+    }
+  ]
+}
