@@ -40,7 +40,7 @@ import {
   type Material,
 } from 'three';
 import type { AssetManifest } from '../../assets';
-import type { EntitySnapshot, SimEvent, SimSnapshot } from '../../sim/api';
+import { SMOKE_HEALTH, type EntitySnapshot, type SimEvent, type SimSnapshot } from '../../sim/api';
 import { mergeBoxes } from '../geometry';
 import { readGlb } from '../glb';
 import type { LookStyle } from '../look';
@@ -73,9 +73,12 @@ export { bakePart } from './bake';
 
 /** Beyond this distance from the camera a rider draws without its detail parts (faces, prints). */
 export const RIDER_LOD_M = 60;
-/** A rider sheds its prop below this share of its health, and its bike smokes below the second. */
+/**
+ * A rider sheds its prop below this share of its health, and its bike smokes at or under
+ * `SMOKE_HEALTH` (the sim's: a smoking bike is also a little slower, playtest 4's P4-14).
+ */
 export const SHED_HEALTH = 0.5;
-export const SMOKE_HEALTH = 0.34;
+export { SMOKE_HEALTH };
 const SQUAT_S = 0.35;
 const SMOKE_CAP = 96;
 /** A wheelie this far up (rad) has the rider sat all the way back; below it, part of the way. */
