@@ -45,8 +45,8 @@ const PACKS = [
   {
     pack: 'region-pnw',
     region: 'pacific-northwest',
-    networks: ['osm-pnw-chuckanut', 'osm-pnw-gorge', 'osm-pnw-samish'],
-    osmFiles: 3,
+    networks: ['osm-pnw-chuckanut', 'osm-pnw-gorge', 'osm-pnw-samish', 'osm-pnw-portland'],
+    osmFiles: 4,
   },
   {
     pack: 'region-sf',

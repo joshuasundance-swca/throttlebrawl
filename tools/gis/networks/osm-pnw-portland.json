@@ -1,0 +1,226 @@
+{
+  "id": "osm-pnw-portland",
+  "name": "Bridge City: downtown Portland and its bridges (OSM network bake)",
+  "region": "pacific-northwest",
+  "crs": {
+    "originLatDeg": 45.5195,
+    "originLonDeg": -122.6735
+  },
+  "osmQuery": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+  "osmExtract": ".cache/osm/pnw-portland.json",
+  "outRoot": "packs/region-pnw/regions/pacific-northwest",
+  "waysLabel": "Portland street and bridge",
+  "networkNotes": "A real-road network (playtest 3, T9.4; the maintainer, round 1: \"Duval St, downtown Portland, Golden Gate\"): East Burnside over the Burnside Bridge, West Burnside to Broadway, south down Broadway past Pioneer Courthouse Square, east on Madison and over the Hawthorne Bridge to SE Hawthorne. The choice, \"Pick your bridge\": Alder Street off Broadway, over the Morrison Bridge and down Grand Avenue, about the same distance. Junction pieces and connector roads are synthesized; the lines are pinned to the real junctions (closure).",
+  "lines": [
+    {
+      "id": "pdx",
+      "pathFrom": { "lat": 45.5226, "lon": -122.6526 },
+      "via": [
+        { "lat": 45.523, "lon": -122.6775 },
+        { "lat": 45.51601, "lon": -122.68142 },
+        { "lat": 45.51441, "lon": -122.67542 }
+      ],
+      "pathTo": { "lat": 45.51223, "lon": -122.6555 },
+      "start": { "lat": 45.52291, "lon": -122.65362 },
+      "end": { "lat": 45.51224, "lon": -122.6568 },
+      "routeTags": {
+        "name": "^((East|West) Burnside Street|Burnside Bridge|Southwest Broadway|Southwest Madison Street|Hawthorne Bridge|Southeast Hawthorne Boulevard)$"
+      },
+      "respectOneway": false,
+      "splitOnNameChange": true,
+      "splitBridgeMinM": 2000,
+      "realName": "Portland streets",
+      "smoothing": { "headingSigmaM": 14 },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 12,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": { "laneWidthM": 4.0, "lanesPerDirection": 2 },
+      "landmarks": [
+        {
+          "id": "hawthorne-lift-tower-west",
+          "model": "pdx-landmarks#pdx_lift_tower",
+          "at": { "lat": 45.513586, "lon": -122.6725382 },
+          "footprintM": [10, 24],
+          "overRoad": true
+        },
+        {
+          "id": "hawthorne-lift-tower-east",
+          "model": "pdx-landmarks#pdx_lift_tower",
+          "at": { "lat": 45.5133506, "lon": -122.6716324 },
+          "footprintM": [10, 24],
+          "overRoad": true
+        }
+      ],
+      "roads": [
+        {
+          "id": "osm-pnw-pdx-east-burnside",
+          "name": "East Burnside",
+          "tags": ["pdx-blocks", "town"],
+          "features": [
+            { "kind": "copSpawn", "id": "cop-lot", "s0": 4, "s1": 20, "d0": 8.5, "d1": 12 },
+            {
+              "kind": "boostPad",
+              "id": "pad-burnside-early",
+              "s0": 260,
+              "s1": 266,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-burnside" }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-burnside-late",
+              "s0": 480,
+              "s1": 486,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-burnside" }
+            }
+          ]
+        },
+        {
+          "id": "osm-pnw-pdx-burnside-bridge",
+          "name": "Burnside Bridge",
+          "tags": ["pdx-blocks", "town"],
+          "sampleSpacingM": 4
+        },
+        { "id": "osm-pnw-pdx-west-burnside", "name": "West Burnside", "tags": ["pdx-blocks", "town"] },
+        {
+          "id": "osm-pnw-pdx-broadway",
+          "name": "Broadway",
+          "tags": ["pdx-blocks", "town"],
+          "features": [
+            {
+              "kind": "billboard",
+              "id": "sign-morrison-keep-left",
+              "s0": 240,
+              "s1": 250,
+              "d0": -15,
+              "d1": -12.5,
+              "item": "morrison-keep-left"
+            }
+          ]
+        },
+        {
+          "id": "osm-pnw-pdx-broadway-south",
+          "name": "Broadway South",
+          "tags": ["pdx-blocks", "town"],
+          "features": [
+            {
+              "kind": "roadsideZone",
+              "id": "courthouse-square",
+              "s0": 55,
+              "s1": 125,
+              "d0": -19,
+              "d1": -12,
+              "params": { "spawns": "pedestrians" }
+            }
+          ]
+        },
+        { "id": "osm-pnw-pdx-madison", "name": "Madison", "tags": ["pdx-blocks", "town"] },
+        {
+          "id": "osm-pnw-pdx-hawthorne-bridge",
+          "name": "Hawthorne Bridge",
+          "tags": ["pdx-blocks", "town"],
+          "sampleSpacingM": 4,
+          "features": [
+            {
+              "kind": "boostPad",
+              "id": "pad-hawthorne-early",
+              "s0": 420,
+              "s1": 426,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-hawthorne" }
+            },
+            {
+              "kind": "boostPad",
+              "id": "pad-hawthorne-late",
+              "s0": 700,
+              "s1": 706,
+              "d0": 0.5,
+              "d1": 3,
+              "params": { "boostMps": 8, "holdS": 1.5, "slot": "pdx-pad-hawthorne" }
+            }
+          ]
+        },
+        { "id": "osm-pnw-pdx-se-hawthorne", "name": "SE Hawthorne", "tags": ["pdx-blocks", "town"] }
+      ]
+    },
+    {
+      "id": "morrison",
+      "pathFrom": { "lat": 45.52001, "lon": -122.67927 },
+      "pathTo": { "lat": 45.5122522, "lon": -122.6607922 },
+      "routeTags": {
+        "name": "^(Southwest Alder Street|Morrison Bridge|Southeast Grand Avenue)$"
+      },
+      "respectOneway": false,
+      "splitOnNameChange": true,
+      "splitBridgeMinM": 2000,
+      "realName": "Portland streets",
+      "smoothing": { "headingSigmaM": 14 },
+      "elevation": {
+        "sampleEveryM": 10,
+        "lowPassSigmaM": 12,
+        "bridgeDeck": "span",
+        "humpHeightM": 0
+      },
+      "crossSection": { "laneWidthM": 4.0, "lanesPerDirection": 2 },
+      "roads": [
+        { "id": "osm-pnw-pdx-alder", "name": "Alder", "tags": ["pdx-blocks", "town"] },
+        {
+          "id": "osm-pnw-pdx-morrison-bridge",
+          "name": "Morrison Bridge",
+          "tags": ["pdx-blocks", "town"],
+          "sampleSpacingM": 4
+        },
+        { "id": "osm-pnw-pdx-grand", "name": "Grand Avenue", "tags": ["pdx-blocks", "town", "rail-line"] }
+      ]
+    }
+  ],
+  "branches": [
+    {
+      "id": "osm-pnw-pdx-alder",
+      "line": "morrison",
+      "of": "pdx",
+      "kind": "alternate",
+      "marked": true,
+      "sign": "MORRISON BRIDGE: KEEP LEFT. Same distance. Different bridge. Same drizzle.",
+      "leave": {
+        "at": { "lat": 45.52001, "lon": -122.67927 },
+        "pieceM": 40,
+        "offsetM": -8,
+        "lane": "L2",
+        "zone": { "lengthM": 40, "d0": -10.5, "d1": -6 },
+        "insetM": 55,
+        "toOffsetM": 2,
+        "toLane": "R1",
+        "turnsM": [20, 20]
+      },
+      "join": {
+        "at": { "lat": 45.5122522, "lon": -122.6607922 },
+        "pieceM": 40,
+        "offsetM": 2,
+        "lane": "R1",
+        "insetM": 55,
+        "fromOffsetM": 2,
+        "fromLane": "R1",
+        "shiftM": 20,
+        "turnsM": [30, 30]
+      },
+      "label": "morrison"
+    }
+  ],
+  "routes": [
+    {
+      "id": "osm-bridge-city-run",
+      "name": "Bridge City",
+      "line": "pdx",
+      "startRoad": "osm-pnw-pdx-east-burnside",
+      "finishRoad": "osm-pnw-pdx-se-hawthorne"
+    }
+  ]
+}
