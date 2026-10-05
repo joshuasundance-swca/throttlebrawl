@@ -1,0 +1,75 @@
+{
+  "type": "station",
+  "id": "pnw-wipers",
+  "name": "Intermittent 95.5",
+  "genre": "darkwave",
+  "regions": ["pacific-northwest"],
+  "tracks": [
+    {
+      "id": "wipers-on-intermittent",
+      "title": "Wipers on Intermittent",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 104, "key": "A", "progression": "bridges" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "twelve-bridges-all-wet",
+      "title": "Twelve Bridges, All Wet",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 110, "key": "E", "progression": "overpass" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "food-cart-after-close",
+      "title": "Food Cart After Close",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 100, "key": "D", "progression": "rainline" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "still-raining-extended",
+      "title": "Still Raining (Extended Mix)",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 116, "key": "F#", "progression": "sodium" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "sodium-light-wet-asphalt",
+      "title": "Sodium Light on Wet Asphalt",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 112, "key": "B", "progression": "sodium" }
+      },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "last-train-over-the-river",
+      "title": "Last Train Over the River",
+      "procedural": {
+        "preset": "darkwave-band",
+        "params": { "bpm": 118, "key": "C#", "progression": "rainline" }
+      },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "Portland's rainy-night synth station (playtest 4, P4-17: the maintainer picked \"rainy-night synth for Portland\" among four directions for the region's radio). Rain on the glass, a string-machine pad and a glassy electric piano, then a sixteenth sequencer bass, then a drum machine with a gated snare, then a lead whose hook returns after a breakdown, in minor keys at 100-118 bpm (src/audio/radio-compose-extra.ts, preset darkwave-band). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

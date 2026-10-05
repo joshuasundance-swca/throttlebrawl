@@ -158,6 +158,12 @@ for (const [pack, id] of [
   ['base', 'keys-tradewinds'],
   ['region-pnw', 'pnw-stump'],
   ['region-sf', 'sf-gold-rush'],
+  // Playtest 4 (P4-17): the Pacific Northwest's garage and rainy-night synth, the Keys' swamp
+  // blues and San Francisco's jazz.
+  ['region-pnw', 'pnw-wet-basement'],
+  ['region-pnw', 'pnw-wipers'],
+  ['base', 'keys-wetland'],
+  ['region-sf', 'sf-down-round'],
 ] as const) {
   test(`radio: ${pack}'s own station ${id} plays without clipping`, async ({ page }) => {
     const file = new URL(`../../packs/${pack}/stations/${id}.json`, import.meta.url);
@@ -191,6 +197,11 @@ test('radio: every band plays unclipped, within 3.5 dB of the others', async ({ 
     ['ambient', 'ambient-band'],
     ['funk', 'funk-band'],
     ['chip', 'chip-band'],
+    // Playtest 4 (P4-17): four more bands.
+    ['garage', 'garage-band'],
+    ['darkwave', 'darkwave-band'],
+    ['swamp', 'swamp-band'],
+    ['jazz', 'jazz-band'],
   ] as const;
   const problems = await openHarness(page);
   const levels: Record<string, number> = {};
@@ -367,7 +378,7 @@ type ProbeWindow = Window & {
 test.describe('in the game', () => {
   test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 720 } });
 
-  test('radio: a Keys race starts on rockabilly; R tunes surf, island, then off, then the score', async ({
+  test('radio: a Keys race starts on rockabilly; R tunes surf, the rest of the dial, then off, then the score', async ({
     page,
   }) => {
     const problems: string[] = [];
@@ -407,13 +418,18 @@ test.describe('in the game', () => {
     const rockabilly = await heard(2000);
     await page.keyboard.press('r');
     const surf = await heard(2000);
-    // The Keys' third station (run W-Q) is Salt Air, the island band, before the radio goes off.
-    await page.keyboard.press('r');
-    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
-    await page.waitForTimeout(400);
-    await page.keyboard.press('r');
-    // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
-    await page.waitForTimeout(400);
+    // The rest of the Keys' dial (Salt Air since run W-Q, Brackish since playtest 4: as many as the
+    // station files name, after rockabilly and surf), then the radio goes off.
+    const dial = readdirSync(stationsDir).filter((f) => {
+      if (!f.endsWith('.json')) return false;
+      const s = JSON.parse(readFileSync(new URL(f, stationsDir), 'utf8')) as Record<string, unknown>;
+      return (s['regions'] as string[]).includes('florida-keys') && !s['pirate'] && !s['rider'];
+    }).length;
+    for (let k = 2; k <= dial; k++) {
+      await page.keyboard.press('r');
+      // eslint-disable-next-line no-restricted-syntax -- the station switch crossfades on the audio clock
+      await page.waitForTimeout(400);
+    }
     const off = await heard(1000);
     await page.keyboard.press('r');
     const score = await heard(1500);

@@ -10,6 +10,11 @@ export type MoreGenre = Extract<RadioGenre, 'island' | 'dub' | 'stoner' | 'ambie
 /** The six newer bands' genres (radio-rigs-more.ts plays them). */
 export const MORE_GENRES: readonly MoreGenre[] = ['island', 'dub', 'stoner', 'ambient', 'funk', 'chip'];
 
+export type ExtraGenre = Extract<RadioGenre, 'garage' | 'darkwave' | 'swamp' | 'jazz'>;
+/** Playtest 4's four bands (radio-rigs-extra.ts plays them). */
+export const EXTRA_GENRES: readonly ExtraGenre[] = ['garage', 'darkwave', 'swamp', 'jazz'];
+
 export const isRegional = (g: string): g is RegionalGenre =>
   (REGIONAL_GENRES as readonly string[]).includes(g);
 export const isMore = (g: string): g is MoreGenre => (MORE_GENRES as readonly string[]).includes(g);
+export const isExtra = (g: string): g is ExtraGenre => (EXTRA_GENRES as readonly string[]).includes(g);

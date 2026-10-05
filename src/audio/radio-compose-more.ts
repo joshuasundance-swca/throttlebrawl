@@ -10,8 +10,8 @@
 // - `dub-band` (the Keys' pirate): 66-82 bpm, minor. One-drop (kick and rim on beat three only), a
 //   deep melodic sub bass, offbeat skanks and a sparse melodica, all thrown into an echo.
 // The Pacific Northwest:
-// - `stoner-band`: 62-88 bpm. A two-bar fuzz riff on the minor pentatonic repeated until the wah
-//   solo, over half-time drums and a doubled bass.
+// - `stoner-band`: its progressions are here; since playtest 4 (P4-17, "PNW seems very simple and
+//   slow") its songs are radio-compose-pnw.ts's.
 // - `ambient-band` (the Pacific Northwest's pirate): 54-68 bpm, no drums. Long maj7/add9 pads, a
 //   drone, sparse bells and a breathy low line, drifting like fog off the sound.
 // San Francisco:
@@ -92,7 +92,10 @@ export const CHIP_FORMS: Readonly<Record<string, readonly Chord[]>> = {
   title: [maj(-4), maj(-2), min(0), min(0)],
 };
 
-/** Composes one of the six bands; null for a name this file does not know. */
+/**
+ * Composes five of the six bands; null for a name this file does not know (`stoner-band` is
+ * radio-compose-pnw.ts's).
+ */
 export function composeMore(
   preset: string,
   params: Readonly<Record<string, unknown>>,
@@ -103,8 +106,6 @@ export function composeMore(
       return composeIsland(params, seed);
     case 'dub-band':
       return composeDub(params, seed);
-    case 'stoner-band':
-      return composeStoner(params, seed);
     case 'ambient-band':
       return composeAmbient(params, seed);
     case 'funk-band':
@@ -336,122 +337,6 @@ function composeDub(params: Readonly<Record<string, unknown>>, seed: number): Co
     }
   }
   return finish(base('dub-band', seed, { bpm, key, form }), notes);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Stoner
-
-/** One riff step: where, how long, and the semitones above the chord's root. */
-type Riff = readonly (readonly [number, number, number])[];
-const STONER_RIFFS: readonly Riff[] = [
-  [
-    [0, 3, 0],
-    [3, 1, 0],
-    [4, 2, 3],
-    [6, 2, 5],
-    [8, 4, 0],
-    [12, 2, 7],
-    [14, 2, 6],
-  ],
-  [
-    [0, 4, 0],
-    [4, 2, 0],
-    [6, 2, 3],
-    [8, 3, 5],
-    [11, 1, 3],
-    [12, 4, 0],
-  ],
-  [
-    [0, 2, 0],
-    [2, 2, 0],
-    [4, 4, 5],
-    [8, 2, 3],
-    [10, 2, 0],
-    [12, 4, -2],
-  ],
-];
-
-function composeStoner(params: Readonly<Record<string, unknown>>, seed: number): Composition {
-  const { r, bpm, key, form, prog } = common(
-    params,
-    seed,
-    [62, 88],
-    ['C', 'D', 'E', 'F#', 'G'],
-    STONER_FORMS,
-  );
-  const notes: RadioNote[] = [];
-  const riff = pick(r, STONER_RIFFS);
-  const lo = key + 31;
-  const hi = key + 46;
-  let prev = key + 36;
-
-  for (let bar = 0; bar < BARS; bar++) {
-    const chord = prog[bar % prog.length]!;
-    const root = key + chord.root;
-    const at = bar * S;
-    const solo = bar >= 4 && bar <= 6;
-    const last = bar === BARS - 1;
-
-    // Half-time drums: the snare on three only, a tom roll to close.
-    if (bar % 4 === 0) notes.push(drum(at, 'crash', 0.85, 0, 12));
-    notes.push(drum(at, 'kick', humanize(r, 0.95)));
-    notes.push(drum(at + 8, 'snare', humanize(r, 0.95)));
-    for (const s of [3, 6, 10, 14]) if (r() < 0.55) notes.push(drum(at + s, 'kick', humanize(r, 0.8)));
-    for (let s = 0; s < S; s += 4) notes.push(drum(at + s, 'hat', humanize(r, s % 8 === 0 ? 0.5 : 0.35)));
-    if (last)
-      for (let s = 12; s < S; s++) notes.push(drum(at + s, 'tom', humanize(r, 0.85), 52 - 2 * (s - 12)));
-
-    // The riff, doubled by the bass an octave down; the riff goes quiet under the solo.
-    for (const [s, len, iv] of riff) {
-      if (last && s >= 12) continue;
-      const m = root + 12 + iv;
-      notes.push({ step: at + s, layer: 'bass', midi: root + iv, len, vel: humanize(r, 0.9) });
-      notes.push({
-        step: at + s,
-        layer: 'rhythm',
-        midi: m,
-        len,
-        vel: humanize(r, solo ? 0.5 : 0.9),
-        strum: 0,
-      });
-      notes.push({
-        step: at + s,
-        layer: 'rhythm',
-        midi: m + 7,
-        len,
-        vel: humanize(r, solo ? 0.5 : 0.85),
-        strum: 1,
-      });
-    }
-
-    // The wah solo: bent pentatonic lines over bars 4-6.
-    if (solo) {
-      const { notes: line, last: end } = melodyBar(
-        r,
-        at,
-        pick(r, [
-          [4, 2, 2, 8],
-          [6, 2, 8],
-          [2, 2, 4, 4, 4],
-          [8, 4, 4],
-        ]),
-        chord,
-        key,
-        MINOR_PENTA,
-        prev,
-        key + 31,
-        key + 46,
-        'lead',
-        0.8,
-      );
-      for (const n of line) if (n.len >= 4 && r() < 0.6) n.slide = -2;
-      notes.push(...line);
-      prev = end;
-    }
-  }
-  void lo;
-  void hi;
-  return finish(base('stoner-band', seed, { bpm, key, form }), notes);
 }
 
 // ---------------------------------------------------------------------------------------------

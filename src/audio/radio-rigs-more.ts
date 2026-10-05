@@ -5,8 +5,8 @@
 //   a nylon guitar chopping the offbeats and a round bass;
 // - dub: a sub-bass sine, a dry rim and a one-drop kick, a skank chop and a reedy melodica thrown
 //   into a tempo-locked tape echo and a spring;
-// - stoner: a fuzzed riff guitar through a cabinet and a hall, a fuzz bass, a wah solo and a heavy,
-//   slow kit;
+// - stoner: a fuzzed riff guitar through a cabinet and a hall, a fuzz bass, a wah solo and a heavy
+//   kit (with a washy ride since playtest 4);
 // - ambient: slow detuned pads, a drone, struck bells and a breathy line, all in a long room;
 // - funk: a slap bass with octave pops, chicken-scratch guitar through a bandpass, horn stabs with
 //   a filter that opens on the attack and a tight kit with ghost notes;
@@ -229,6 +229,11 @@ function stoner(ctx: BaseAudioContext, k: Kit): Built {
           break;
         case 'hat':
           k.noise('highpass', 7000, 0.7, t, 0.1 * v, 0.07);
+          break;
+        case 'ride':
+          // Under the solo (playtest 4): a dark, washy ride.
+          k.noise('bandpass', 5200, 1.2, t, 0.12 * v, 0.45);
+          k.tone('sine', 2100, 2100, t, 0.03 * v, 0.3);
           break;
         case 'crash':
           k.noise('highpass', 3800, 0.7, t, 0.25 * v, 1.8);
