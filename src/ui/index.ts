@@ -403,7 +403,10 @@ ${TICKER_CSS}
   #pause-main { grid-column: 1; grid-row: 1; gap: 8px; }
   #pause-build { grid-column: 1; grid-row: 2; }
   #pause-cards { grid-column: 2; grid-row: 1 / 3; max-height: 100%; overflow-y: auto; gap: 8px; }
-  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row; }
+  /* Playtest 4's wheelie key made the legend 15 rows: one size down here keeps the open legend and
+     the first "cut this" row on a 412 px high phone at once (they were 20 px short). [default] */
+  #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row;
+    font-size: 12px; line-height: 1.3; gap: 1px 14px; }
 }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
