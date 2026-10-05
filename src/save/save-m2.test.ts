@@ -69,6 +69,8 @@ const m2Custom: Settings = {
   radioStation: 'keys-surf',
   // A record written under the old default (the field itself is new in playtest 2).
   radioDefault: 'score',
+  // Playtest 4 (P4-18): the Effects default this record was written under (0.9 is the old one).
+  effectsDefault: 0.9,
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
@@ -102,6 +104,8 @@ const M2_FIELDS = [
   'radioStation',
   // Playtest 2 (2026-10-02): which radio default the record was written under.
   'radioDefault',
+  // Playtest 4 (P4-18): which Effects default the record was written under (see save-mix.test.ts).
+  'effectsDefault',
 ] as const;
 
 describe('the M2 settings record', () => {
@@ -137,6 +141,8 @@ describe('the M2 settings record', () => {
       // regions": a race starts on its region's own station.
       radio: 'station',
       radioDefault: 'station',
+      // Playtest 4 (P4-18): Effects start at 70%, the music, effects, voices ladder.
+      effectsDefault: 0.7,
       gamepadBindings: {},
       lastSeenBuild: null,
       vetoes: [],

@@ -69,7 +69,7 @@
         {
           "id": "osm-sf-gg-hawk-hill",
           "name": "Hawk Hill",
-          "tags": ["headlands", "forest"],
+          "tags": ["headlands"],
           "features": [
             {
               "kind": "copSpawn",
@@ -120,7 +120,7 @@
         {
           "id": "osm-sf-gg-conzelman",
           "name": "Conzelman Road",
-          "tags": ["headlands", "forest"],
+          "tags": ["headlands"],
           "features": [
             {
               "kind": "billboard",
@@ -155,7 +155,7 @@
           "id": "osm-sf-gg-vista-point",
           "name": "Vista Point",
           "realName": "Vista Point",
-          "tags": ["headlands", "forest"],
+          "tags": ["headlands"],
           "features": [
             {
               "kind": "billboard",
@@ -178,7 +178,7 @@
           "id": "osm-sf-gg-toll-plaza",
           "name": "Toll Plaza",
           "realName": "Golden Gate",
-          "tags": ["forest"],
+          "tags": ["headlands"],
           "features": [
             {
               "kind": "billboard",
