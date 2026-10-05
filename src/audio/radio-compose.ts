@@ -22,9 +22,15 @@
 // music in different regions"), are in radio-compose-regional.ts: `grunge-band` and `folk-band` for
 // the Pacific Northwest, `synth-band` and `psych-band` for San Francisco.
 //
+// Four more (playtest 4, P4-17) are in radio-compose-extra.ts: `garage-band` and `darkwave-band` for
+// the Pacific Northwest, `swamp-band` for the Keys and `jazz-band` for San Francisco. They, and the
+// Pacific Northwest's grunge, folk and stoner bands since then, are whole songs with sections.
+//
 // Every melody here is generated from the seed (random walks on the scale over chord tones), so
 // the songs are original by construction; no existing tune is transcribed.
+import { composeExtra, EXTRA_PRESETS } from './radio-compose-extra';
 import { composeMore, MORE_PRESETS } from './radio-compose-more';
+import { composePnw } from './radio-compose-pnw';
 import { composeRegional, REGIONAL_PRESETS } from './radio-compose-regional';
 import type { RadioGenre } from './radio-synth';
 import {
@@ -41,7 +47,13 @@ import {
 
 export { hashString, keyRoot, seededRandom, trackSeed } from './radio-util';
 
-export const RADIO_PRESETS = ['surf-trio', 'rockabilly-trio', ...REGIONAL_PRESETS, ...MORE_PRESETS] as const;
+export const RADIO_PRESETS = [
+  'surf-trio',
+  'rockabilly-trio',
+  ...REGIONAL_PRESETS,
+  ...MORE_PRESETS,
+  ...EXTRA_PRESETS,
+] as const;
 export type RadioPreset = (typeof RADIO_PRESETS)[number];
 
 export type RadioLayer =
@@ -69,7 +81,13 @@ export type RadioLayer =
   | 'conga'
   | 'steel'
   | 'skank'
-  | 'stab';
+  | 'stab'
+  // Playtest 4's bands' parts (radio-compose-extra.ts): rain on the glass, an electric piano, a
+  // harmonica and a washboard.
+  | 'rain'
+  | 'ep'
+  | 'harp'
+  | 'scrape';
 
 export interface RadioNote {
   /** Grid step in the loop (sixteenths for surf, triplet eighths for rockabilly). */
@@ -129,7 +147,12 @@ export function composeTrack(spec: ProceduralSpec, seed: number): Composition | 
   const params = spec.params ?? {};
   if (spec.preset === 'surf-trio') return composeSurf(params, seed >>> 0);
   if (spec.preset === 'rockabilly-trio') return composeRockabilly(params, seed >>> 0);
-  return composeRegional(spec.preset, params, seed >>> 0) ?? composeMore(spec.preset, params, seed >>> 0);
+  return (
+    composePnw(spec.preset, params, seed >>> 0) ??
+    composeRegional(spec.preset, params, seed >>> 0) ??
+    composeMore(spec.preset, params, seed >>> 0) ??
+    composeExtra(spec.preset, params, seed >>> 0)
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
