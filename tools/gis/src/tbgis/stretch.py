@@ -90,7 +90,7 @@ def real_path(cfg: BakeConfig, ways: list[Way]) -> RealPath:
         x=xz[:, 0],
         z=xz[:, 1],
         cum=np.concatenate([[0.0], np.cumsum(seglen)]),
-        seg_bridge=np.array([s.way.is_bridge for s in steps]),
+        seg_bridge=np.array([s.way.is_bridge or s.way.id in cfg.bridgeWays for s in steps]),
         seg_speed=np.array([parse_speed(s.way.tags.get("maxspeed")) for s in steps]),
         seg_way=np.array([s.way.id for s in steps], dtype=np.int64),
         names={s.way.id: s.way.tags.get("name", "") for s in steps},

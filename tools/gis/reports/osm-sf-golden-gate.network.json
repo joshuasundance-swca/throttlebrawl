@@ -1,0 +1,55 @@
+{
+  "network": "osm-sf-golden-gate",
+  "lines": {
+    "gg": {
+      "lengthM": 6115.9,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 6115.9,
+        "game_length_m": 6115.9,
+        "corners": 22,
+        "tightest_radius_m": 12.8,
+        "share_tighter_than_m": {
+          "50": 0.0705,
+          "100": 0.1968,
+          "200": 0.3013
+        },
+        "turn_deg_per_km": 298.1,
+        "elev_min_m": 54.9,
+        "elev_max_m": 247.7,
+        "climb_m": 0.6,
+        "descent_m": 193.2,
+        "max_grade_pct": 12.6,
+        "p95_grade_pct": 9.8,
+        "share_steeper_than_pct": {
+          "8": 0.1502,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 8,
+        "junctions_per_km": 1.31,
+        "bridges_m": 2742.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 28.0
+      }
+    }
+  },
+  "branches": [],
+  "routes": {
+    "osm-sf-golden-gate-run": 6035.8
+  },
+  "roads": 5,
+  "junctions": 6,
+  "landmarks": [
+    {
+      "id": "gg-bridge",
+      "line": "gg",
+      "road": "osm-sf-gg-bridge",
+      "s": 1418.7075,
+      "d": 0.0089,
+      "placementErrorM": 27.76
+    }
+  ]
+}

@@ -250,7 +250,8 @@ def bake(
                 continue  # the shared junction sample of a neighbouring bridge road
             decks.append((t0, t1))
             tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "bridge"})
-            if water:
+            min_m = cfg.elevation.waterBridgeMinM
+            if water or (min_m is not None and (rb - ra) * p.h >= min_m):
                 tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "water-open"})
             tags += [{"s0": t0, "s1": t1, "side": "both", "tag": t} for t in rn.deckTags]
         # The config's land tags cover the road except its bridges: a land tag on a bridge would
@@ -271,7 +272,7 @@ def bake(
                 "type": "road",
                 "id": rn.id,
                 "name": rn.name,
-                "realName": (cfg.realNameFromOsm and longest_name(p, a, b)) or cfg.realName,
+                "realName": rn.realName or (cfg.realNameFromOsm and longest_name(p, a, b)) or cfg.realName,
                 "network": cfg.id,
                 "from": f"{cfg.id}-j{i}",
                 "to": f"{cfg.id}-j{i + 1}",

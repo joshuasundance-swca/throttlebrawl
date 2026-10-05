@@ -51,8 +51,9 @@ const PACKS = [
   {
     pack: 'region-sf',
     region: 'san-francisco',
-    networks: ['osm-sf-russian-hill', 'osm-sf-twin-peaks'],
-    osmFiles: 2,
+    // Playtest 3 (T9.3) added the Golden Gate and Lombard Street.
+    networks: ['osm-sf-russian-hill', 'osm-sf-twin-peaks', 'osm-sf-golden-gate', 'osm-sf-lombard'],
+    osmFiles: 4,
   },
 ] as const;
 
@@ -117,8 +118,10 @@ describe('the region packs carry the real roads under ODbL', () => {
         expect(routes).toHaveLength(1);
         expect(lintRoadNetwork({ network, roads, routes })).toEqual([]);
         // The hand-made roads' lanes (4 m since playtest 1), so weaving feels the same: one to three
-        // each way (the network bakes' highways have two), and a junction's turn-off and rejoin
-        // carry one shortcut lane instead, so traffic never takes them.
+        // each way (the network bakes' highways have two; the Golden Gate's deck has three), and a
+        // junction's turn-off and rejoin carry one shortcut lane instead, so traffic never takes them.
+        // A one-way street is the exception (playtest 3, T9.3): Lombard's crooked block is one
+        // forward lane and nothing else, so its 5 m hairpins pass the width rule.
         for (const r of roads) {
           const lanes = r.laneSections[0]?.lanes ?? [];
           const drive = lanes.filter((l) => l.kind === 'drive');
@@ -129,6 +132,7 @@ describe('the region packs carry the real roads under ODbL', () => {
               lanes.map((l) => l.kind),
               r.id,
             ).toEqual(['shortcut']);
+          else if (lanes.length === 1) expect(drive.length === 1 && each === 1, r.id).toBe(true);
           else expect(drive.length === 2 * each && each >= 1 && each <= 3, r.id).toBe(true);
         }
       }

@@ -1,0 +1,141 @@
+{
+  "type": "road-network",
+  "id": "osm-sf-lombard",
+  "name": "Lombard Street to Coit Tower (OSM network bake)",
+  "region": "san-francisco",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 37.8025,
+    "originLonDeg": -122.414,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-sf-lombard-climb",
+    "osm-sf-lombard-crooked",
+    "osm-sf-lombard-flats",
+    "osm-sf-lombard-telegraph-hill"
+  ],
+  "junctions": [
+    {
+      "id": "osm-sf-lombard-j0",
+      "x": -785.2991,
+      "y": 47.0807,
+      "z": 105.9384,
+      "ends": [
+        {
+          "road": "osm-sf-lombard-climb",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-lombard-j1",
+      "x": -495.8648,
+      "y": 85.3084,
+      "z": 56.0728,
+      "ends": [
+        {
+          "road": "osm-sf-lombard-climb",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-lombard-crooked",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-lombard-j2",
+      "x": -351.0693,
+      "y": 53.3006,
+      "z": 30.1854,
+      "ends": [
+        {
+          "road": "osm-sf-lombard-crooked",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-lombard-flats",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-lombard-j3",
+      "x": 651.5499,
+      "y": 57.3525,
+      "z": -128.1744,
+      "ends": [
+        {
+          "road": "osm-sf-lombard-flats",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-lombard-telegraph-hill",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-lombard-j4",
+      "x": 729.3417,
+      "y": 86.5405,
+      "z": -21.3729,
+      "ends": [
+        {
+          "road": "osm-sf-lombard-telegraph-hill",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-sf-lombard.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.796,-122.426,37.809,-122.400);\nout tags geom;",
+        "retrievedAt": "2026-10-04T23:10:35Z",
+        "sha256": "98dce52cc9b95b4b2d7d4a9ffb728e0e7169069d154efef4f93c65d4d4a7f101"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 192 points in 1 request(s) (lon, lat WGS84, sha256 fc3f08ef46633f8d), bilinear (line lombard)",
+        "retrievedAt": "2026-10-04T23:11:11Z",
+        "sha256": "4f0d32a86c267a78b34440c0b4d2e71c633e022b49003f6ebc560fa5f9f1cd26"
+      }
+    ],
+    "modified": true,
+    "modifications": "1 real Lombard Street and Telegraph Hill Boulevard paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.0 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (playtest 3, T9.3; the maintainer, 2026-10-03: \"hairpin races like Lombard\", \"real road layouts\"): Lombard Street east from Polk Street, up to the crest at Hyde Street, down the crooked block (the real eight hairpins, one-way and one lane wide, red brick), on along Lombard to Telegraph Hill Boulevard and up to the circle at Coit Tower. The smoothing is 2 m, tight enough to keep the hairpins (a wider one rounds them away); the crooked block is sampled every metre so its 5 m turns keep their shape, and a lane is the whole road there, since a two-way table fails the road format's width rule on a 5 m radius (a 1.5 m planter verge each side stands beyond it). Cross streets are pass-through only."
+  }
+}

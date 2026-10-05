@@ -1,0 +1,160 @@
+{
+  "type": "road-network",
+  "id": "osm-sf-golden-gate",
+  "name": "Conzelman Road and the Golden Gate Bridge (OSM network bake)",
+  "region": "san-francisco",
+  "crs": {
+    "kind": "tmerc",
+    "originLatDeg": 37.817,
+    "originLonDeg": -122.48,
+    "originElevM": 0
+  },
+  "chunking": {
+    "kind": "none"
+  },
+  "roads": [
+    "osm-sf-gg-hawk-hill",
+    "osm-sf-gg-conzelman",
+    "osm-sf-gg-vista-point",
+    "osm-sf-gg-bridge",
+    "osm-sf-gg-toll-plaza"
+  ],
+  "junctions": [
+    {
+      "id": "osm-sf-golden-gate-j0",
+      "x": -1696.3683,
+      "y": 247.6652,
+      "z": -1109.6791,
+      "ends": [
+        {
+          "road": "osm-sf-gg-hawk-hill",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-golden-gate-j1",
+      "x": -1191.1156,
+      "y": 177.0089,
+      "z": -1847.0007,
+      "ends": [
+        {
+          "road": "osm-sf-gg-hawk-hill",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-gg-conzelman",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-golden-gate-j2",
+      "x": -309.992,
+      "y": 83.4835,
+      "z": -1858.4219,
+      "ends": [
+        {
+          "road": "osm-sf-gg-conzelman",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-gg-vista-point",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-golden-gate-j3",
+      "x": -48.1414,
+      "y": 73.9121,
+      "z": -1707.5816,
+      "ends": [
+        {
+          "road": "osm-sf-gg-vista-point",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-gg-bridge",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-golden-gate-j4",
+      "x": 327.7873,
+      "y": 56.2162,
+      "z": 982.9105,
+      "ends": [
+        {
+          "road": "osm-sf-gg-bridge",
+          "end": "to"
+        },
+        {
+          "road": "osm-sf-gg-toll-plaza",
+          "end": "from"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    },
+    {
+      "id": "osm-sf-golden-gate-j5",
+      "x": 445.6379,
+      "y": 55.0569,
+      "z": 1125.4329,
+      "ends": [
+        {
+          "road": "osm-sf-gg-toll-plaza",
+          "end": "to"
+        }
+      ],
+      "connectors": [],
+      "control": "none"
+    }
+  ],
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-sf-golden-gate.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.800,-122.504,37.840,-122.462);\nout tags geom;",
+        "retrievedAt": "2026-10-04T23:01:42Z",
+        "sha256": "7ed26991b6f2b4479498fc5b898cfe68b4b2546bd5b2c595c1d6c776f0eb3a45"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 613 points in 1 request(s) (lon, lat WGS84, sha256 83f11a7a7f3095ff), bilinear (line gg)",
+        "retrievedAt": "2026-10-04T23:10:08Z",
+        "sha256": "bde9ab79d44731852b3141858fa99a8abfcf65cb9c0cf4691abc93ebeda9e012"
+      }
+    ],
+    "modified": true,
+    "modifications": "1 real Conzelman Road, US 101 and the Presidio Parkway paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.0 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A real-road network (playtest 3, T9.3; the maintainer, 2026-10-03: \"Golden Gate\", \"real landmarks\"): from Hawk Hill down Conzelman Road's hairpins to Alexander Avenue, onto US 101 southbound at Vista Point, across the Golden Gate Bridge and through the toll plaza. The deck is the real path's one carriageway drawn as a six-lane road (three lanes each way and a barrier median, the real deck's width), at the bridge's real height, and the bridge landmark (a feature over the road, drawn from the kit once it is placed) stands over it between its anchorages. Cross streets are pass-through only."
+  }
+}

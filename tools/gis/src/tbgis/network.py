@@ -91,6 +91,9 @@ PIECE_CLEAR_M = 50.0
 # The config
 
 
+type Surface = Literal["asphalt", "concrete", "brick", "cobbles", "gravel", "dirt", "sand", "grass"]
+
+
 class CrossSection(Strict):
     """A line's lanes: as the stretch config's cross-section fields (docs/content-packs.md)."""
 
@@ -99,6 +102,17 @@ class CrossSection(Strict):
     medianM: float = Field(0.0, ge=0, le=30)  # noqa: N815
     medianKind: Literal["paint", "kerb", "grass", "barrier"] = "paint"  # noqa: N815
     verges: Verges | None = None
+    # One lane, forward, centred on the line, with no shoulders: a one-way street as narrow as its
+    # one lane (the crooked block of Lombard Street, whose 5 m hairpins a two-way table would fail
+    # the |kappa| * dMax rule on). A join with the two-way roads either side narrows like any lane
+    # drop (src/sim/riders/funnel.ts).
+    oneWay: bool = False  # noqa: N815
+
+    @model_validator(mode="after")
+    def _one_way(self) -> CrossSection:
+        if self.oneWay and (self.lanesPerDirection != 1 or self.medianM != 0):
+            raise ValueError("a one-way section is one lane: lanesPerDirection 1 and no median")
+        return self
 
 
 class SideTags(Strict):
@@ -154,6 +168,8 @@ class Line(Strict):
     routeTags: dict[str, str] = Field(default_factory=dict)  # noqa: N815
     # As the stretch config's: groups of regexes, any one of which a way must match ("@id": its id).
     wayFilter: list[dict[str, str]] = Field(default_factory=list)  # noqa: N815
+    # OSM way ids that count as bridge though the map leaves the tag off (see BakeConfig).
+    bridgeWays: list[int] = Field(default_factory=list)  # noqa: N815
     # Spans the map does not draw, joined by a straight deck; a gap stitch also writes a gap there.
     stitches: list[Stitch] = Field(default_factory=list)
     landmarks: list[Landmark] = Field(default_factory=list)
@@ -169,7 +185,9 @@ class Line(Strict):
     elevation: Elevation = Elevation()
     crossSection: CrossSection = CrossSection()  # noqa: N815
     speedLimitMps: float | None = Field(None, gt=0)  # noqa: N815 (else the OSM maxspeed mode)
-    surface: Literal["asphalt", "concrete", "brick", "cobbles", "gravel", "dirt", "sand", "grass"] = "asphalt"
+    surface: Surface = "asphalt"
+    # Per road id: its own surface where it differs from the line's (a brick block in an asphalt street).
+    roadSurface: dict[str, Surface] = Field(default_factory=dict)  # noqa: N815
     # The ordinary roads, in order: the pieces between every cut (name changes, long bridges,
     # splitAt points and junction pieces), leaving out the junction pieces themselves.
     roads: list[RoadName]
@@ -178,6 +196,9 @@ class Line(Strict):
     # sea on one side of a beach road).
     roadLanes: dict[str, CrossSection] = Field(default_factory=dict)  # noqa: N815
     sideTags: dict[str, SideTags] = Field(default_factory=dict)  # noqa: N815
+
+    def surface_of(self, rid: str) -> Surface:
+        return self.roadSurface.get(rid, self.surface)
 
     def lanes_of(self, rid: str) -> CrossSection:
         return self.roadLanes.get(rid, self.crossSection)
@@ -380,6 +401,7 @@ def stretch_config(cfg: NetworkConfig, ln: Line) -> BakeConfig:
         pathTo=ln.pathTo,
         routeTags=ln.routeTags,
         wayFilter=ln.wayFilter,
+        bridgeWays=ln.bridgeWays,
         stitches=ln.stitches,
         respectOneway=ln.respectOneway,
         splitAt=ln.splitAt,
@@ -768,7 +790,12 @@ class Piece:
 
 
 def lane_section(cs: CrossSection) -> Json:
-    section: Json = {"s0": 0, "lanes": lanes(cs.laneWidthM, cs.lanesPerDirection, cs.medianM)}
+    section: Json
+    if cs.oneWay:
+        lane = {"id": "R1", "dCenterM": 0, "widthM": cs.laneWidthM, "direction": 1, "kind": "drive"}
+        section = {"s0": 0, "lanes": [lane]}
+    else:
+        section = {"s0": 0, "lanes": lanes(cs.laneWidthM, cs.lanesPerDirection, cs.medianM)}
     if cs.medianM > 0:
         section["median"] = {"widthM": cs.medianM, "kind": cs.medianKind}
     if cs.verges is not None:
@@ -826,7 +853,8 @@ def tag_ranges(
                 continue
             decks.append((t0, t1))
             tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "bridge"})
-            if water:
+            min_m = bl.line.elevation.waterBridgeMinM
+            if water or (min_m is not None and (rb - ra) * float(p.h) >= min_m):
                 tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "water-open"})
             tags += [{"s0": t0, "s1": t1, "side": "both", "tag": t} for t in deck or []]
     tags += [
@@ -904,7 +932,7 @@ def make_piece(
     p = bl.p
     i0 = int(np.argmin(np.abs(p.s - a)))
     i1 = int(np.argmin(np.abs(p.s - b)))
-    real = longest_name(p, i0, i1) or bl.line.realName or name
+    real = (rn.realName if rn else None) or longest_name(p, i0, i1) or bl.line.realName or name
     return Piece(
         id=pid,
         name=name,
@@ -915,7 +943,7 @@ def make_piece(
         kappa_ends=(float(np.interp(a, p.s, p.kappa)), float(np.interp(b, p.s, p.kappa))),
         lane_section=lane_section(cs),
         speed=speed_of(bl, a, b),
-        surface=bl.line.surface,
+        surface=bl.line.surface_of(pid),
         tags=tags,
         barriers=barriers,
         features=features,

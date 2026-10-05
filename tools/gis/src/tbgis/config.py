@@ -87,6 +87,10 @@ class Elevation(Strict):
     # between the land heights at its two ends, for a bridge over a creek or a ravine in high
     # country, where 3DEP reads the valley floor under it.
     bridgeDeck: Literal["sea", "span"] = "sea"  # noqa: N815
+    # A "span" deck crosses a creek or a ravine, so it gets no water tag. Set, a span deck at least
+    # this long (m) does stand over open water, as the Golden Gate's does: it gets `water-open` like
+    # a sea deck. None (the default): no span deck gets one.
+    waterBridgeMinM: float | None = Field(None, gt=0)  # noqa: N815
 
 
 RAMP_KEYS = ("heightM", "lengthM", "backM")
@@ -237,6 +241,10 @@ class Stitch(Strict):
 class RoadName(Strict):
     id: str = Field(pattern=r"^osm-[a-z0-9]+(-[a-z0-9]+)*$")
     name: str
+    # What the picker calls the real road when the map's own name is not the one to show (the
+    # Golden Gate's deck is OSM's "Golden Gate Bridge"; the game says "Golden Gate"). None: the
+    # longest OSM name along it, as every bake so far.
+    realName: str | None = None  # noqa: N815
     # Scenery tags for both sides of the whole road, except over its bridges (scenery stands on
     # land only: playtest 1c item 3).
     tags: list[str] = []
@@ -298,6 +306,9 @@ class BakeConfig(Strict):
     # the key "@id" matches the way id), so a line can path over ways with different tags, such as
     # an old bridge drawn as highway=pedestrian, abandoned:highway=trunk and a bare bridge:name.
     wayFilter: list[dict[str, str]] = []  # noqa: N815
+    # OSM way ids that count as bridge though the map leaves the tag off (the Golden Gate's Marin
+    # approach viaduct, which crosses a gulch: bare-earth land under it must not pull the deck down).
+    bridgeWays: list[int] = []  # noqa: N815
     # Spans the map does not draw, joined by a straight deck (and a gap feature on a network line).
     stitches: list[Stitch] = []
     # False lets a street route run against a one-way street (a race closes the streets).

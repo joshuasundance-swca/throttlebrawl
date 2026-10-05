@@ -1,0 +1,55 @@
+{
+  "network": "osm-sf-lombard",
+  "lines": {
+    "lombard": {
+      "lengthM": 1908.4,
+      "lanesPerDirection": 1,
+      "driftClosedM": {},
+      "fun": {
+        "real_length_m": 1908.4,
+        "game_length_m": 1908.4,
+        "corners": 13,
+        "tightest_radius_m": 5.3,
+        "share_tighter_than_m": {
+          "50": 0.1959,
+          "100": 0.2478,
+          "200": 0.2797
+        },
+        "turn_deg_per_km": 818.5,
+        "elev_min_m": 8.7,
+        "elev_max_m": 86.5,
+        "climb_m": 116.2,
+        "descent_m": 76.8,
+        "max_grade_pct": 22.2,
+        "p95_grade_pct": 21.3,
+        "share_steeper_than_pct": {
+          "8": 0.5359,
+          "15": 0.2012
+        },
+        "launch_crests": 2,
+        "launch_speed_mps": 39.0,
+        "junctions": 11,
+        "junctions_per_km": 5.76,
+        "bridges_m": 0.0,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 5.0
+      }
+    }
+  },
+  "branches": [],
+  "routes": {
+    "osm-sf-lombard-run": 1828.1
+  },
+  "roads": 4,
+  "junctions": 5,
+  "landmarks": [
+    {
+      "id": "coit-tower",
+      "line": "lombard",
+      "road": "osm-sf-lombard-telegraph-hill",
+      "s": 379.1513,
+      "d": -21.5442,
+      "placementErrorM": 4.86
+    }
+  ]
+}
