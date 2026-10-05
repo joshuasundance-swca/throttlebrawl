@@ -3,7 +3,7 @@
 // rider is near one place on the route, takes over the radio there (the score too, unless the radio
 // is off) behind a burst of tuning static, and gives the dial back when the rider rides on. The spot
 // is a fraction of the way along the route and a radius, so it works on every route length of a
-// region. Pure; index.ts drives it.
+// region. Pure; system.ts drives it.
 
 export interface PirateSpot {
   /** How far along the route the spot is, 0..1 of the route's length. */

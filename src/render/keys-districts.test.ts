@@ -76,7 +76,8 @@ const bySeed = SEEDS.map((seed) => ({ seed, items: scatter(seed) }));
 
 describe('the distinct Keys (keys-m1)', () => {
   it("stands each key's own props on that key only, and plenty of them", () => {
-    const districtRules = KEYS_KIT.rules.filter((r) => r.district);
+    // Old Town's rules draw from the Duval kit and stand only on Duval (duval.test.ts covers them).
+    const districtRules = KEYS_KIT.rules.filter((r) => r.district && !r.model);
     expect(districtRules.length).toBeGreaterThanOrEqual(14);
     const placed = new Map<string, number>();
     for (const { seed, items } of bySeed) {

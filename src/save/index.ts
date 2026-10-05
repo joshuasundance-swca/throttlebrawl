@@ -480,5 +480,14 @@ export function createSettingsStore(opts: SettingsStoreOptions): SettingsStore {
 
 // The career profile record (W-Q contracts): src/save/profile.ts.
 export * from './profile';
-// The export code (run W-R): src/save/export-code.ts.
-export * from './export-code';
+// The export code (run W-R): src/save/export-code.ts, a lazy chunk off the first-load JavaScript.
+// Only the career's backups and the export and import buttons use it, and both are async anyway.
+export type { ExportBundle, ImportResult } from './export-code';
+type ExportCode = typeof import('./export-code');
+const exportCode = (): Promise<ExportCode> => import('./export-code');
+/** The export code for a bundle (export-code.ts, fetched on first use). */
+export const encodeExportCode: ExportCode['encodeExportCode'] = async (bundle, opts) =>
+  (await exportCode()).encodeExportCode(bundle, opts);
+/** Reads an export code (export-code.ts, fetched on first use). */
+export const decodeExportCode: ExportCode['decodeExportCode'] = async (code) =>
+  (await exportCode()).decodeExportCode(code);

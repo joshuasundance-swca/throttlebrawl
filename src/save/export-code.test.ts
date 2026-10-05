@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { canonicalJson, compressionSupported, crc32 } from './export-code';
 import {
-  canonicalJson,
-  compressionSupported,
-  crc32,
   createProfileStore,
   decodeExportCode,
   DEFAULT_PROFILE,

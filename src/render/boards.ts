@@ -47,45 +47,25 @@ export interface BoardCatalog {
   pools?: {
     signs?: readonly BoardItem[];
     billboards?: readonly BoardItem[];
-    /** The region's `landingLines` (air-pays.ts draws one on a surge landing; no road slot uses them). */
+    /** The region's `landingLines` (app/ puts one on the top ticker on a surge landing; render and no road slot use them). */
     landing?: readonly BoardItem[];
   };
 }
 
 /**
  * One item in view, as the poll (app/, every 30 frames in a race) reads it: its content reference,
- * what it is, and its words on one line. `line` is a landing one-liner (air-pays.ts's overlay
- * until the ticker takes it over); the rest are boards.
+ * what it is, and its words on one line. Only boards are in view in the scene; the landing
+ * one-liner is on the top ticker (app/).
  */
 export interface VisibleContent {
   ref: string;
-  kind: BoardKind | 'line';
+  kind: BoardKind;
   label: string;
 }
 
 /** An item's words on one line (whitespace runs, newlines included, become one space). */
 export function labelOf(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Landing lines by content reference, as `VisibleContent`. The overlay reports only refs, so the
- * words come from the catalog (its items and pools); a ref it does not hold keeps an empty label,
- * so it is still noted as seen.
- */
-export function contentLines(refs: readonly string[], catalog: BoardCatalog | undefined): VisibleContent[] {
-  const byRef = new Map<string, BoardItem>();
-  if (catalog) {
-    const pools = catalog.pools ?? {};
-    for (const item of [
-      ...Object.values(catalog.items),
-      ...(pools.signs ?? []),
-      ...(pools.billboards ?? []),
-      ...(pools.landing ?? []),
-    ])
-      byRef.set(item.ref, item);
-  }
-  return refs.map((ref) => ({ ref, kind: 'line', label: labelOf(byRef.get(ref)?.text ?? '') }));
 }
 
 /** A `billboard` feature on a road, structurally (docs/content-packs.md, "Road file"). */

@@ -9,6 +9,9 @@
 //   picket in the Keys, a split-rail in the Pacific Northwest, a painted garden fence in San
 //   Francisco), a row of ferns and bushes at a `brush` edge, and a strip of shallows past a `water`
 //   edge; walls, buildings and rails are already drawn by the road and the scenery;
+// - a hedge (playtest 3, Lombard's crooked block): a road tagged `gardens` whose band ends in brush
+//   ends in a low clipped hedge instead of fern clumps, in panels that run along the band's edge and
+//   follow it round a hairpin, so nothing stands up or piles inside a bend;
 // - a bridge railing (playtest 3: a barrier with `look: "railing"`, the Golden Gate's): a kerb, posts
 //   and three rails, see-through, in panels along the barrier within RAILING_DRAW_M (the road leaves
 //   such a barrier's solid band out); it stops a tumble body like any wall, because the sim says so;
@@ -26,6 +29,7 @@ import {
   Mesh,
   Quaternion,
   Vector3,
+  type Object3D,
 } from 'three';
 import type { BakedVerge, RoadNetwork } from '../road';
 import type { EntitySnapshot, GroundSurface, SimEvent, SimSnapshot } from '../sim/api';
@@ -46,6 +50,19 @@ export const VERGE_CHUNK_M = 512;
 export const FENCE_SEG_M = 2;
 /** Metres between fern clumps along a `brush` edge. [default] */
 const BRUSH_STEP_M = 3.5;
+/**
+ * A hedge panel's length along the band's edge, m [default]: a panel is cut shorter where the edge
+ * turns (HEDGE_TURN_RAD) or the bend is tight, so a hedge follows a hairpin panel by panel.
+ */
+export const HEDGE_SEG_M = 2;
+/** A hedge stands this far past the band's outer edge (its middle), m: ferns stand 0.25 to 0.75 beyond it. */
+export const HEDGE_OFF_M = 0.45;
+/** A hedge panel turns no more than this from its first end to its last, radians. [default] */
+const HEDGE_TURN_RAD = 0.45;
+/** A hedge panel shorter than this is left out (the fold inside a bend tighter than the hedge is wide), m. */
+const HEDGE_MIN_M = 0.25;
+/** The road's own tags that make a brush edge a hedge. */
+const HEDGE_TAG = 'gardens';
 /** One railing panel's length along the road, m. [default] */
 export const RAILING_SEG_M = 2;
 /** A railing panel's own height, m: the barrier's `heightM` scales it. The Golden Gate's is 1.3. */
@@ -178,6 +195,23 @@ function brushParts(colour: string, dark: string, lod: 'near' | 'far' = 'near'):
   return parts;
 }
 
+/**
+ * One clipped hedge panel (local x along the edge, y up, centred): a dark body, a lighter top and, up
+ * close, a few hydrangea heads. Low (0.7 m), so it reads as a hedge and never as a frame.
+ */
+function hedgeParts(lod: 'near' | 'far' = 'near'): BoxPart[] {
+  const parts: BoxPart[] = [
+    { size: [HEDGE_SEG_M, 0.55, 0.7], at: [0, 0.275, 0], color: '#3d6e3a', omit: ['ny'] },
+    { size: [HEDGE_SEG_M - 0.1, 0.12, 0.6], at: [0, 0.61, 0], color: '#5f9a47', omit: ['ny', 'px', 'nx'] },
+  ];
+  if (lod === 'near') {
+    for (const x of [-0.55, 0.5]) {
+      parts.push({ size: [0.22, 0.16, 0.22], at: [x, 0.74, 0.05], color: '#d9728f', omit: ['ny'] });
+    }
+  }
+  return parts;
+}
+
 /** The fence a network builds, by its land: tropical pickets, city garden fences, forest split rails. */
 export function fenceStyleFor(tags: ReadonlySet<string>): FenceStyle {
   if (['palms', 'beach', 'mangrove', 'swamp'].some((t) => tags.has(t))) return 'picket';
@@ -291,11 +325,16 @@ export interface VergeCounts {
   /** Bridge-railing panels built, and drawn in the last refill (inside RAILING_DRAW_M). */
   railingPanels: number;
   nearRailing: number;
+  /** Hedge panels built, and drawn in the last refill (inside VERGE_DRAW_M). */
+  hedgePanels: number;
+  nearHedge: number;
 }
 
 /** The most fence panels and fern clumps drawn at once (inside VERGE_DRAW_M), each one draw call. */
 const NEAR_PANELS = 480;
 const NEAR_CLUMPS = 420;
+/** The most hedge panels drawn at once: both sides of the road, inside VERGE_DRAW_M. */
+const NEAR_HEDGE = 420;
 /** The most railing panels drawn at once: both sides of a straight bridge, RAILING_DRAW_M ahead. */
 const NEAR_RAILING = 400;
 /** The near sets refill when the camera has moved this far, m. */
@@ -431,6 +470,7 @@ export class VergeLayer {
   private readonly panels: FencePanel[] = [];
   private readonly panelsByEdge = new Map<number, FencePanel[]>();
   private readonly clumps: Clump[] = [];
+  private readonly hedges: Clump[] = [];
   private readonly railing: RailingPanel[] = [];
   private readonly railingMesh: InstancedMesh;
   /** The fences and ferns near the camera, and (past VERGE_LOD_M) their lighter far forms. */
@@ -438,6 +478,8 @@ export class VergeLayer {
   private readonly fenceFar: InstancedMesh;
   private readonly brushMesh: InstancedMesh;
   private readonly brushFar: InstancedMesh;
+  private readonly hedgeMesh: InstancedMesh;
+  private readonly hedgeFar: InstancedMesh;
   private readonly bandM: Record<Surface, number> = {
     shoulder: 0,
     dirt: 0,
@@ -449,6 +491,7 @@ export class VergeLayer {
   private shallowsM = 0;
   private brokenPanels = 0;
   private readonly dust: Pool;
+  private readonly leaves: Pool;
   private readonly boards: Pool;
   private readonly pending: SimEvent[] = [];
   private readonly emitAcc = new Map<number, number>();
@@ -484,8 +527,23 @@ export class VergeLayer {
     const brushFarGeo = mergeBoxes(brushParts(fern, fernDark, 'far'));
     const bitGeo = mergeBoxes([{ size: [0.12, 0.12, 0.12], at: [0, 0, 0], color: '#ffffff' }]);
     const boardGeo = mergeBoxes([{ size: [0.9, 0.1, 0.05], at: [0, 0, 0], color: '#ffffff' }]);
-    this.geometries.push(fenceGeo, fenceFarGeo, brushGeo, brushFarGeo, bitGeo, boardGeo);
+    // A leaf: a small flat chip that tumbles (the ferns' and hedges' burst; a cube read as a block).
+    const leafGeo = mergeBoxes([{ size: [0.2, 0.02, 0.12], at: [0, 0, 0], color: '#ffffff' }]);
+    const hedgeGeo = mergeBoxes(hedgeParts());
+    const hedgeFarGeo = mergeBoxes(hedgeParts('far'));
+    this.geometries.push(
+      fenceGeo,
+      fenceFarGeo,
+      brushGeo,
+      brushFarGeo,
+      bitGeo,
+      boardGeo,
+      leafGeo,
+      hedgeGeo,
+      hedgeFarGeo,
+    );
     this.dust = new Pool('verge-dust', bitGeo, propMat, 240, 9.81);
+    this.leaves = new Pool('verge-leaves', leafGeo, propMat, 96, 6);
     this.boards = new Pool('verge-boards', boardGeo, propMat, 48, 9.81);
     this.fenceMesh = new InstancedMesh(fenceGeo, propMat, NEAR_PANELS);
     this.fenceMesh.name = 'verge-fence';
@@ -495,6 +553,10 @@ export class VergeLayer {
     this.brushMesh.name = 'verge-brush';
     this.brushFar = new InstancedMesh(brushFarGeo, propMat, NEAR_CLUMPS);
     this.brushFar.name = 'verge-brush-far';
+    this.hedgeMesh = new InstancedMesh(hedgeGeo, propMat, NEAR_HEDGE);
+    this.hedgeMesh.name = 'verge-hedge';
+    this.hedgeFar = new InstancedMesh(hedgeFarGeo, propMat, NEAR_HEDGE);
+    this.hedgeFar.name = 'verge-hedge-far';
     const railingGeo = mergeBoxes(railingParts(opts.railingColour ?? RAILING_PAINT));
     this.geometries.push(railingGeo);
     this.railingMesh = new InstancedMesh(railingGeo, propMat, NEAR_RAILING);
@@ -505,11 +567,9 @@ export class VergeLayer {
       // Only what is near the camera is in them, so they are never culled whole.
       m.frustumCulled = false;
     }
-    this.group.add(
-      this.dust.mesh,
-      this.boards.mesh,
-      ...this.instanced().filter((m) => m !== this.railingMesh),
-    );
+    // A road with no railing look, no hedge or no leaf burst has none of those meshes in the scene.
+    const later = new Set<Object3D>([this.railingMesh, this.hedgeMesh, this.hedgeFar]);
+    this.group.add(this.dust.mesh, this.boards.mesh, ...this.instanced().filter((m) => !later.has(m)));
 
     // The band and the shallows share one strip set (one mesh per chunk).
     const strips = new ColourStrips();
@@ -519,11 +579,18 @@ export class VergeLayer {
     for (const e of road.edges) {
       for (const side of [-1, 1] as const) {
         const name = side < 0 ? 'left' : 'right';
-        const n = Math.max(1, Math.ceil(e.length / VERGE_STEP_M));
+        // The samples: the road's own stations where they are at most VERGE_STEP_M apart (so the band's
+        // edges turn exactly as the road's do through a hairpin; Lombard's are 1.2 m apart), else the
+        // stations cut evenly down to VERGE_STEP_M or less.
+        const step = e.spacing / Math.max(1, Math.ceil(e.spacing / VERGE_STEP_M - 1e-9));
+        const samples: number[] = [];
+        for (let k = 0; k * step < e.length - 1e-6; k++) samples.push(k * step);
+        samples.push(e.length);
         // The band, then (a second pass, its own strip) the shallows past a water edge.
         for (const pass of ['band', 'shallows'] as const) {
-          for (let i = 0; i <= n; i++) {
-            const s = Math.min(e.length, i * VERGE_STEP_M);
+          for (let i = 0; i < samples.length; i++) {
+            const s = samples[i] ?? 0;
+            const ds = i > 0 ? s - (samples[i - 1] ?? 0) : 0;
             const v = road.vergeAt(e.index, s, name);
             // No shallows at a seawall (run W-U, the waterfront's promenade): the bay lies metres below.
             const sheer = () =>
@@ -544,8 +611,8 @@ export class VergeLayer {
             if (side < 0) strips.pair(far, near, c);
             else strips.pair(near, far, c);
             if (i > 0) {
-              if (pass === 'band') this.bandM[v.surface] += VERGE_STEP_M;
-              else this.shallowsM += VERGE_STEP_M;
+              if (pass === 'band') this.bandM[v.surface] += ds;
+              else this.shallowsM += ds;
             }
           }
           strips.breakStrip();
@@ -573,7 +640,7 @@ export class VergeLayer {
         }
         for (let s = BRUSH_STEP_M / 2; s < e.length; s += BRUSH_STEP_M) {
           const v = road.vergeAt(e.index, s, name);
-          if (v.widthM < MIN_BAND_M || v.edge !== 'brush') continue;
+          if (v.widthM < MIN_BAND_M || v.edge !== 'brush' || hedged(e.tags, side, s)) continue;
           const k = hash(e.index, s, side);
           const at = road.toWorld(e.index, s + (k - 0.5) * 1.2, v.dOuter + side * (0.25 + k * 0.5), -0.05);
           q.setFromAxisAngle(up, k * Math.PI * 2);
@@ -581,11 +648,13 @@ export class VergeLayer {
           const m = new Matrix4().compose(new Vector3(at.x, at.y, at.z), q, new Vector3(size, size, size));
           this.clumps.push({ x: at.x, z: at.z, m });
         }
+        this.buildHedge(e, side);
       }
     }
     this.buildRailing();
     // A road with no railing look has no railing mesh in the scene at all.
     if (this.railing.length > 0) this.group.add(this.railingMesh);
+    if (this.hedges.length > 0) this.group.add(this.hedgeMesh, this.hedgeFar);
     for (const key of strips.chunks.keys()) {
       const g = strips.build(key);
       if (!g) continue;
@@ -593,6 +662,66 @@ export class VergeLayer {
       const mesh = new Mesh(g, groundMat);
       mesh.name = 'verge-band';
       this.group.add(mesh);
+    }
+  }
+
+  /**
+   * The hedge along one side of an edge: where the road is tagged `gardens` and its band ends in
+   * brush, panels of up to HEDGE_SEG_M laid along the curve HEDGE_OFF_M past the band's outer edge.
+   * Each panel is cut where the edge has turned HEDGE_TURN_RAD or has run its length, and stands
+   * along the chord of its own stretch, so it follows a hairpin; a stretch folded away by a bend
+   * tighter than the hedge is wide is left out.
+   */
+  private buildHedge(e: RoadNetwork['edges'][number], side: Side): void {
+    // Most roads have no hedge at all: skip them before walking a metre.
+    if (!e.tags.some((t) => t.tag === HEDGE_TAG)) return;
+    const name = side < 0 ? 'left' : 'right';
+    const up = new Vector3(0, 1, 0);
+    const q = new Quaternion();
+    const on = (s: number): boolean => {
+      const v = this.road.vergeAt(e.index, s, name);
+      return v.widthM >= MIN_BAND_M && v.edge === 'brush' && hedged(e.tags, side, s);
+    };
+    const at = (s: number): Point3 =>
+      this.road.toWorld(e.index, s, this.road.vergeAt(e.index, s, name).dOuter + side * HEDGE_OFF_M, 0);
+    const heading = (s: number): number => {
+      const f = this.road.frameAt(e.index, s);
+      return Math.atan2(f.tz, f.tx);
+    };
+    let s = 0;
+    while (s < e.length - 1e-3) {
+      if (!on(s)) {
+        s = Math.min(e.length, s + 1);
+        continue;
+      }
+      const a = at(s);
+      const h0 = heading(s);
+      let t = s;
+      let b = a;
+      let run = 0;
+      while (t < e.length - 1e-3) {
+        const next = Math.min(e.length, t + 0.25);
+        if (!on(next)) break;
+        const p = at(next);
+        run += Math.hypot(p.x - b.x, p.z - b.z);
+        b = p;
+        t = next;
+        const turn = Math.abs(Math.atan2(Math.sin(heading(t) - h0), Math.cos(heading(t) - h0)));
+        if (run >= HEDGE_SEG_M || turn >= HEDGE_TURN_RAD) break;
+      }
+      const chord = Math.hypot(b.x - a.x, b.z - a.z);
+      // A folded stretch (the edge doubling back on itself) has a chord far shorter than its run.
+      if (t > s && chord >= HEDGE_MIN_M && run < chord * 1.5) {
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 0.05, z: (a.z + b.z) / 2 };
+        q.setFromAxisAngle(up, Math.atan2(-(b.z - a.z), b.x - a.x));
+        const m = new Matrix4().compose(
+          new Vector3(mid.x, mid.y, mid.z),
+          q,
+          new Vector3(chord / HEDGE_SEG_M, 1, 1),
+        );
+        this.hedges.push({ x: mid.x, z: mid.z, m });
+      }
+      s = t > s ? t : Math.min(e.length, s + 0.25);
     }
   }
 
@@ -719,6 +848,7 @@ export class VergeLayer {
       this.fenceFar,
     ]);
     fill(this.clumps, NEAR_CLUMPS, (c) => c, [this.brushMesh, this.brushFar]);
+    fill(this.hedges, NEAR_HEDGE, (c) => c, [this.hedgeMesh, this.hedgeFar]);
     let nRailing = 0;
     for (const p of this.railing) {
       if (nRailing >= NEAR_RAILING) break;
@@ -773,6 +903,7 @@ export class VergeLayer {
     if (this.dirty || !(moved < REFILL_M) || aimChanged || (turned && (fx !== 0 || fz !== 0)))
       this.refill(cameraX, cameraZ, fx, fz);
     this.dust.update(dt);
+    this.leaves.update(dt);
     this.boards.update(dt);
   }
 
@@ -790,8 +921,11 @@ export class VergeLayer {
     const water = cause === 'water';
     this.tmp.set(water ? '#e6f7f7' : '#4e7d3a');
     const count = water ? 28 : 16;
+    // The leaves' pool joins the scene at the first burst.
+    if (!water && this.leaves.mesh.parent === null) this.group.add(this.leaves.mesh);
     for (let i = 0; i < count; i++) {
-      this.dust.spawn(
+      // Leaves tumble as flat chips; the splash is spray.
+      (water ? this.dust : this.leaves).spawn(
         { x: e.x + (Math.random() - 0.5), y: e.y + 0.3, z: e.z + (Math.random() - 0.5) },
         {
           x: (Math.random() - 0.5) * 5,
@@ -800,6 +934,7 @@ export class VergeLayer {
         },
         0.6 + Math.random() * 0.5,
         this.tmp,
+        water ? 0 : 2 + Math.random() * 3,
       );
     }
     this.bursts[water ? 'splash' : 'leaves']++;
@@ -852,25 +987,50 @@ export class VergeLayer {
       nearClumps: this.brushMesh.count + this.brushFar.count,
       farPanels: this.fenceFar.count,
       farClumps: this.brushFar.count,
-      particles: this.dust.count,
+      particles: this.dust.count + this.leaves.count,
       boards: this.boards.count,
       bursts: { ...this.bursts },
       fenceStyle: this.fenceStyle,
       railingPanels: this.railing.length,
       nearRailing: this.railingMesh.count,
+      hedgePanels: this.hedges.length,
+      nearHedge: this.hedgeMesh.count + this.hedgeFar.count,
     };
   }
 
-  /** The five instanced sets: near fences, far fences, near ferns, far ferns, bridge railing. */
+  /** The instanced sets: near and far fences, ferns and hedges, and the bridge railing. */
   private instanced(): InstancedMesh[] {
-    return [this.fenceMesh, this.fenceFar, this.brushMesh, this.brushFar, this.railingMesh];
+    return [
+      this.fenceMesh,
+      this.fenceFar,
+      this.brushMesh,
+      this.brushFar,
+      this.hedgeMesh,
+      this.hedgeFar,
+      this.railingMesh,
+    ];
   }
 
   dispose(): void {
     this.group.removeFromParent();
     for (const g of this.geometries) g.dispose();
-    for (const m of [this.dust.mesh, this.boards.mesh, ...this.instanced()]) m.dispose();
+    for (const m of [this.dust.mesh, this.leaves.mesh, this.boards.mesh, ...this.instanced()]) m.dispose();
   }
+}
+
+/** Whether a road's own tags make its brush edge a hedge at s on a side (a `gardens` tag over it). */
+function hedged(
+  tags: readonly { s0: number; s1: number; side?: string; tag: string }[],
+  side: Side,
+  s: number,
+): boolean {
+  return tags.some(
+    (t) =>
+      t.tag === HEDGE_TAG &&
+      s >= t.s0 &&
+      s <= t.s1 &&
+      (t.side === undefined || t.side === 'both' || t.side === (side < 0 ? 'left' : 'right')),
+  );
 }
 
 /** A stable 0..1 value per (edge, s, side), for the ferns' jitter (the same each build). */

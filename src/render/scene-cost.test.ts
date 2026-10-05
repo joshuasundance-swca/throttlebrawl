@@ -160,6 +160,8 @@ describe('the still scene along every route', () => {
               kit,
               landReach: (e, side, s) => rs.landReach(e, side, s),
               spots: rs.spots,
+              // The kits a rule draws from besides its own (Key West's Old Town, playtest 3).
+              models,
             })
           : null;
       if (roadside) for (let i = 0; i < 2000 && !roadside.ready; i++) roadside.update(1e9, 1e9, 360);
