@@ -44,8 +44,9 @@
         {
           "id": "coit-tower",
           "model": "sf-landmarks#coit_tower",
-          "at": { "lat": 37.80238, "lon": -122.40582 },
-          "footprintM": [22, 22]
+          "at": { "lat": 37.803833, "lon": -122.407232 },
+          "footprintM": [28, 28],
+          "scale": 1.25
         }
       ],
       "roads": [

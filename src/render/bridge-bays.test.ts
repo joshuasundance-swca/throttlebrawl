@@ -9,7 +9,16 @@
 // the planner's own numbers (each bay is as long as the plan says), the scene against a code-made
 // kit, and the real bake with the real kit. Each rule has a control: the same check on a case that
 // should find nothing, so a pass cannot be an empty one.
-import { Box3, BoxGeometry, Frustum, Matrix4, Mesh, PerspectiveCamera, type BufferGeometry } from 'three';
+import {
+  Box3,
+  BoxGeometry,
+  Frustum,
+  Matrix4,
+  Mesh,
+  PerspectiveCamera,
+  Vector3,
+  type BufferGeometry,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -27,6 +36,7 @@ import {
   BAY_ROOTS,
   GAP_END_ZONE_M,
   PIER_M,
+  STAGING_LEGS,
   isSevenMile,
   planBays,
   type BayEdge,
@@ -318,6 +328,53 @@ describe('the kit the planner places (CX2, seven-mile-kit.glb)', () => {
     // And its underside is whole: the girders and the concrete block under the deck are still there.
     expect(end.boundingBox!.min.y).toBeLessThan(-1);
     expect(end.getAttribute('position').count).toBeGreaterThan(20);
+  });
+
+  it("stands the repair platform on piles a camera over its deck sees: outside the rails, from the deck's edge down to the sea (playtest 4, P1)", () => {
+    const platform = REAL_KIT.variants[KINDS.indexOf(rootOf('staging'))]!;
+    // The kit's own piles and rails stay inside +-3.92 m; the outrigger piles are what this adds. A
+    // control: the model as the Codex batch made it has nothing past the rails, so the measure finds the legs.
+    const rawRoot = readGlb(KIT_GLB).getObjectByName(rootOf('staging'))!;
+    rawRoot.updateMatrixWorld(true);
+    const raw = new Box3().setFromObject(rawRoot);
+    const rootX = rawRoot.getWorldPosition(new Vector3()).x;
+    expect(Math.max(raw.max.x - rootX, rootX - raw.min.x), 'the kit as made').toBeLessThan(4.1);
+    const pos = platform.getAttribute('position');
+    const col = platform.getAttribute('color');
+    const [cr, cg, cb] = STAGING_LEGS.colour;
+    // The piles' own vertices, by their colour (the kit has none of it): the top ring of a pile on the
+    // +x side, and its foot ring, the mean of each ring being the pile's axis there.
+    const mine: { x: number; y: number }[] = [];
+    for (let i = 0; i < pos.count; i++)
+      if (
+        Math.abs(col.getX(i) - cr) < 1e-4 &&
+        Math.abs(col.getY(i) - cg) < 1e-4 &&
+        Math.abs(col.getZ(i) - cb) < 1e-4
+      )
+        mine.push({ x: pos.getX(i), y: pos.getY(i) });
+    expect(mine.length, 'vertices of the outrigger piles').toBeGreaterThan(40);
+    // The repair decks of the real bake stand 4 m over the sea (osm-sm-old-road and its three kin).
+    const deckAboveSeaM = 4;
+    const top = mine.filter((v) => v.x > 0 && v.y > STAGING_LEGS.topY - 0.2);
+    const foot = mine.filter((v) => v.x > 0 && v.y < STAGING_LEGS.footY + 0.2);
+    expect(top.length).toBeGreaterThan(0);
+    expect(foot.length).toBeGreaterThan(0);
+    const meanX = (vs: { x: number }[]) => vs.reduce((a, v) => a + v.x, 0) / vs.length;
+    const u = (STAGING_LEGS.topY + deckAboveSeaM) / (STAGING_LEGS.topY - STAGING_LEGS.footY);
+    const atWater = meanX(top) + (meanX(foot) - meanX(top)) * u;
+    const RAIL_OUTSIDE_M = 3.92 + 0.5;
+    print(
+      `repair platform piles: ${mine.length} pile vertices, at the waterline ${atWater.toFixed(2)} m from the centre (rails at 3.92 m), the foot ${STAGING_LEGS.footY} m under the deck`,
+    );
+    expect(atWater, 'the piles meet the water clear of the rails').toBeGreaterThan(RAIL_OUTSIDE_M);
+    // They reach the water from a 4 m deck, and past it.
+    expect(STAGING_LEGS.footY).toBeLessThan(-deckAboveSeaM);
+    // The kit's own triangles come first and unchanged, so its role runs still name them.
+    expect(pos.count - mine.length).toBeGreaterThan(0);
+    // And the platform still spans its 10 m bay across the centre and reaches the pier's depth.
+    platform.computeBoundingBox();
+    expect(platform.boundingBox!.min.z).toBeGreaterThan(-0.05);
+    expect(platform.boundingBox!.max.z).toBeLessThan(10.3);
   });
 
   it('loads for a network with an old-bridge tag, and for no other', () => {

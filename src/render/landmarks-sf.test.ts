@@ -12,7 +12,9 @@ import type { BackdropNetworkFile, BackdropRegionFile } from './backdrop/data';
 import { readGlb } from './glb';
 import { LandmarkLayer, landmarkKitsFor, landmarkPlacements, SUSPENSION } from './landmarks';
 import { createFlatLook } from './look';
+import { paintSurface, styleOfSurface, type SurfaceContext } from './text-surfaces';
 import { bakeLandmarkKit, landmarkKitAsset, type LandmarkKit, type LandmarkKitId } from './models';
+import { bakeRepoModel } from './model-files.test-util';
 
 const look = createFlatLook();
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
@@ -91,6 +93,28 @@ describe('the Golden Gate kit on the baked bridge', () => {
       );
       expect(hits).toBe(0);
     }
+  });
+});
+
+// Playtest 4, P1 (the wave C check: "no suspender ropes"): the real kit's bays set where the ropes hang.
+describe('the Golden Gate hangs suspender ropes on the real bridge', () => {
+  it('draws a rope at every bay of both cables, in the one mesh, with the real kit', async () => {
+    const road = track('osm-sf-golden-gate');
+    const kits = await kitsFor(road);
+    const layer = new LandmarkLayer(kits, look, { road });
+    const ropePieces = layer.levels().filter((tiers) => tiers[0]?.[0] === SUSPENSION.ropeNearM);
+    const triangles = ropePieces.reduce((n, tiers) => n + (tiers[0]?.[1] ?? 0), 0);
+    // Two cables, a rope every bay (15.24 m) along the 1,960 m, less the stretch each tower's legs keep clear
+    // and the ends where the cable meets the deck; a rope is a 3-sided tube, 6 triangles.
+    const ropes = triangles / 6;
+    stdout.write(`[examined] real Golden Gate: ${ropePieces.length} rope pieces, ${ropes} suspender ropes, ${triangles} near triangles
+`);
+    expect(ropes).toBeGreaterThan(2 * Math.floor(1960 / 15.24) * 0.8);
+    let meshes = 0;
+    layer.group.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh) meshes++;
+    });
+    expect(meshes, 'ropes are in the one mesh').toBe(1);
   });
 });
 
@@ -285,4 +309,196 @@ describe('every San Francisco landmark resolves and draws within the landmark ca
       expect(worst).toBeLessThanOrEqual(LANDMARK_TRIANGLE_CAP);
     },
   );
+});
+
+// Playtest 4, P1 (the wave C check: "the toll gantry's board is a blank dark panel"): the kit's board is
+// a text surface, and a surface with no pack sign draws blank. The Golden Gate's region now has the sign.
+describe("the toll gantry's board says something", () => {
+  const regionFile = import.meta.glob<{
+    signs?: { id: string; text: string; status?: string; tags?: string[] }[];
+  }>('../../packs/region-sf/regions/san-francisco/region.json', { eager: true, import: 'default' });
+  const signs = Object.values(regionFile)[0]?.signs ?? [];
+
+  it("paints the pack sign on the placed board, facing a rider coming down the road, inside the board's cell", async () => {
+    const road = track('osm-sf-golden-gate');
+    const kits = await kitsFor(road);
+    const layer = new LandmarkLayer(kits, look, { road });
+    const board = layer.surfaces().find((s) => s.name === 'toll_gantry_sign');
+    expect(board, 'the layer hands the gantry board to the text-surface layer').toBeDefined();
+    if (!board) return;
+    const sign = signs.find((x) => x.id === board.id);
+    expect(sign, `a pack sign for ${board.name} (${board.id})`).toBeDefined();
+    expect(sign?.status).toBe('live');
+    expect(sign?.tags).toEqual(expect.arrayContaining(['new', 'surface', 'site']));
+    expect(sign?.text.length ?? 0).toBeGreaterThan(0);
+    // It faces back down the road: a rider travelling toward +s looks along +s at its face.
+    const gantry = landmarkPlacements(road).find((p) => p.node === 'toll_gantry');
+    if (!gantry) throw new Error('no gantry');
+    const frame = road.frameAt(gantry.edge, (gantry.feature.s0 + gantry.feature.s1) / 2);
+    const facing = board.normal.x * frame.tx + board.normal.z * frame.tz;
+    expect(facing, 'the board faces the oncoming rider').toBeLessThan(-0.9);
+    // Painted on its own cell, the words are green-board white and fit with a readable height.
+    const calls: { text: string; size: number }[] = [];
+    const ctx: SurfaceContext = {
+      font: '',
+      fillStyle: '',
+      shadowColor: '',
+      shadowBlur: 0,
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      fillRect() {},
+      fillText(text) {
+        calls.push({ text, size: Number(/(\d+)px/.exec(ctx.font)?.[1]) });
+      },
+      measureText(text) {
+        return { width: text.length * Number(/(\d+)px/.exec(ctx.font)?.[1] ?? 0) * 0.72 };
+      },
+    };
+    const cell = { x: 0, y: 0, w: 1024, h: Math.round(1024 * (board.heightM / board.widthM)) };
+    const fit = paintSurface(ctx, cell, styleOfSurface(board.name), sign?.text ?? '');
+    stdout.write(
+      `[examined] toll gantry board ${board.widthM} x ${board.heightM} m, "${sign?.text}": letters ${fit.size} px of a ${cell.h} px cell, facing ${facing.toFixed(2)}\n`,
+    );
+    expect(calls[0]?.text).toBe(sign?.text);
+    expect(fit.size).toBeGreaterThanOrEqual(cell.h / 3);
+    expect(styleOfSurface(board.name).bg).not.toBe(styleOfSurface('anything_else').bg);
+  });
+});
+
+// Playtest 4, P1 (the wave C check: "Coit Tower never reads as a tower from Lombard"): at the circle on the
+// hill it was a grey shaft cut off at the top of the frame, and from the flats the row houses hid it, since
+// it stood 13 to 30 degrees off the road's line. It now stands where the flats' last straight runs at it.
+// The check: from every camera along that straight, from 520 m out to 210 m (where its top leaves the
+// frame), the tower is inside the picture (its top under the frame's top edge, its middle inside its width)
+// and no row of houses hides more than half of it, the houses taken at their real height along both sides
+// of the road, shoulder to shoulder (the worst the scatter can be).
+describe('Coit Tower reads as a tower from Lombard (playtest 4, P1)', () => {
+  const FRAME_UP_DEG = 26; // half the camera's 60 degree field, less its slight downward pitch
+  const FRAME_ACROSS_DEG = 40; // half the width of a 16:9 frame, a little in
+  const COIT_M = 64; // the model's height at scale 1 (sf_landmarks.py)
+
+  type Pt = { x: number; y: number; z: number };
+
+  async function houseRoofM(): Promise<number> {
+    const houses = await bakeRepoModel('rowHouses');
+    let top = 0;
+    for (const g of houses.variants) {
+      g.computeBoundingBox();
+      top = Math.max(top, g.boundingBox?.max.y ?? 0);
+    }
+    return top;
+  }
+
+  /** How much of a tower of `heightM` standing at `base` a camera sees over the terrace, 0 to 1, and its top's elevation. */
+  function visible(
+    road: RoadNetwork,
+    edge: number,
+    cam: Pt,
+    base: Pt,
+    heightM: number,
+    roofM: number,
+  ): { share: number; topDeg: number } {
+    const e = road.edges[edge];
+    if (!e) throw new Error('no edge');
+    // The terrace on each side: a front wall past the verge and a sidewalk (scenery.ts ACROSS_M), 11.5 m deep.
+    const inner = e.dMax + 0.6 + 2.6;
+    const outer = inner + 11.5;
+    const heights = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1].map((u) => u * heightM);
+    let seen = 0;
+    for (const h of heights) {
+      const t = { x: base.x, y: base.y + h, z: base.z };
+      const len = Math.hypot(t.x - cam.x, t.y - cam.y, t.z - cam.z);
+      let blocked = false;
+      // March to the tower's own footprint's edge (a house is never in it).
+      for (let k = 4; k < len - 30 && !blocked; k += 4) {
+        const u = k / len;
+        const x = cam.x + (t.x - cam.x) * u;
+        const y = cam.y + (t.y - cam.y) * u;
+        const z = cam.z + (t.z - cam.z) * u;
+        const d = Math.abs(road.project(x, z, edge).d);
+        // The houses stand on the road's level there (the flats are flat to a few metres).
+        if (d >= inner && d <= outer && y < cam.y - 2.6 + roofM) blocked = true;
+      }
+      if (!blocked) seen++;
+    }
+    return {
+      share: seen / heights.length,
+      topDeg:
+        (Math.atan2(base.y + heightM - cam.y, Math.hypot(base.x - cam.x, base.z - cam.z)) * 180) / Math.PI,
+    };
+  }
+
+  it('shows at least half the tower, inside the picture, along the whole last straight of the flats', async () => {
+    const road = track('osm-sf-lombard');
+    const kits = await kitsFor(road);
+    const coit = landmarkPlacements(road).find((p) => p.node === 'coit_tower');
+    expect(coit, 'Coit Tower is placed').toBeDefined();
+    if (!coit) return;
+    const node = kits.get('sf-landmarks')?.nodes.get('coit_tower');
+    node?.geometry.computeBoundingBox();
+    const modelTop = node?.geometry.boundingBox?.max.y ?? COIT_M;
+    const heightM = modelTop * coit.scale;
+    const roofM = await houseRoofM();
+    const flats = road.edgeIndex('osm-sf-lombard-flats');
+    expect(coit.edge, 'on the flats').toBe(flats);
+    const sTower = (coit.feature.s0 + coit.feature.s1) / 2;
+    const base: Pt = { x: coit.x, y: coit.y, z: coit.z };
+    let worst = 1;
+    let worstAt = 0;
+    let checked = 0;
+    let lowestTop = 90;
+    for (let back = 520; back >= 210; back -= 10) {
+      const s = sTower - back;
+      if (s < 0) continue;
+      const f = road.frameAt(flats, s);
+      const p = road.toWorld(flats, s, 0, 0);
+      const cam: Pt = { x: p.x - f.tx * 5, y: p.y + 2.6, z: p.z - f.tz * 5 };
+      const { share, topDeg } = visible(road, flats, cam, base, heightM, roofM);
+      // Inside the picture: its top under the frame's top, its middle within the frame's width.
+      const bearing =
+        (Math.atan2(
+          (base.x - cam.x) * -f.tz + (base.z - cam.z) * f.tx,
+          (base.x - cam.x) * f.tx + (base.z - cam.z) * f.tz,
+        ) *
+          180) /
+        Math.PI;
+      expect(topDeg, `${back} m out: its top`).toBeLessThan(FRAME_UP_DEG);
+      expect(Math.abs(bearing), `${back} m out: its bearing`).toBeLessThan(FRAME_ACROSS_DEG);
+      lowestTop = Math.min(lowestTop, topDeg);
+      if (share < worst) {
+        worst = share;
+        worstAt = back;
+      }
+      checked++;
+    }
+    stdout.write(
+      `[examined] Coit Tower ${heightM.toFixed(0)} m (scale ${coit.scale}) at s ${sTower.toFixed(0)} of the flats: ${checked} cameras from 520 m to 210 m out, houses ${roofM.toFixed(1)} m on both sides; the worst sees ${(worst * 100).toFixed(0)} % of it (${worstAt} m out)\n`,
+    );
+    expect(checked).toBeGreaterThan(25);
+    expect(worst).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('finds the houses hiding a tower that stands off the road, where the old place was (the control)', async () => {
+    const road = track('osm-sf-lombard');
+    const flats = road.edgeIndex('osm-sf-lombard-flats');
+    const roofM = await houseRoofM();
+    // The old place: 13 to 30 degrees off the line of the flats' last 600 m, 150 m out to the side.
+    const s = 960;
+    const f = road.frameAt(flats, s);
+    const p = road.toWorld(flats, s, 0, 0);
+    const base: Pt = { x: p.x + f.tz * 150 + f.tx * 200, y: p.y + 25, z: p.z - f.tx * 150 + f.tz * 200 };
+    let hidden = 0;
+    let total = 0;
+    for (let back = 520; back >= 210; back -= 30) {
+      total++;
+      const q = road.toWorld(flats, s - back, 0, 0);
+      const g = road.frameAt(flats, s - back);
+      const cam: Pt = { x: q.x - g.tx * 5, y: q.y + 2.6, z: q.z - g.tz * 5 };
+      if (visible(road, flats, cam, base, COIT_M, roofM).share < 0.5) hidden++;
+    }
+    stdout.write(
+      `[examined] a tower 13 to 30 degrees off the line: hidden (under half seen) from ${hidden} of ${total} cameras\n`,
+    );
+    expect(hidden).toBeGreaterThan(total / 2);
+  });
 });

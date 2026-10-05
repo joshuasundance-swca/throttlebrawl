@@ -99,6 +99,18 @@
         "holdS": 1.5,
         "slot": "lombard-pad-flats"
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "coit-tower",
+      "s0": 948.0,
+      "s1": 976.0,
+      "d0": -44.0,
+      "d1": -16.0,
+      "params": {
+        "model": "sf-landmarks#coit_tower",
+        "scale": 1.25
+      }
     }
   ],
   "barriers": [],
