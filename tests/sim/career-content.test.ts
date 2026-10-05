@@ -53,8 +53,6 @@ const AWAITING_EVENT = new Set([
   'base:osm-duval-run',
   'base:osm-seven-mile-run',
   'region-pnw:osm-bridge-city-run',
-  'region-sf:osm-sf-golden-gate-run',
-  'region-sf:osm-sf-lombard-run',
 ]);
 
 describe('the career maps', () => {

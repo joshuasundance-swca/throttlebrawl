@@ -1,0 +1,60 @@
+{
+  "type": "event",
+  "id": "sf-t4-golden-gate",
+  "name": "International Orange",
+  "kind": "classic-race",
+  "region": "san-francisco",
+  "timeOfDay": "dawn",
+  "lengths": [
+    {
+      "id": "standard",
+      "route": "osm-sf-golden-gate-run",
+      "laps": 1
+    }
+  ],
+  "field": {
+    "riders": ["pivot", "gripman-gus", "base:chad-speedwell", "base:kevin-from-accounting", "base:dial-up"],
+    "paceMps": 43
+  },
+  "cops": {
+    "mode": "every-race",
+    "baseCount": 1,
+    "patrolMax": 2,
+    "heat": true
+  },
+  "rules": {},
+  "objectives": [
+    {
+      "id": "top-3",
+      "kind": "finish-place",
+      "params": {
+        "maxPlace": 3
+      },
+      "required": true
+    }
+  ],
+  "tier": 4,
+  "rewards": {
+    "byPlaceCash": [8000, 4400, 2800, 1200, 800, 400, 250],
+    "perTakedownCash": 425,
+    "perNearMissCash": 40,
+    "perAirtimeCash": 60,
+    "perOncomingSecondCash": 16,
+    "takedownComboScale": 0.5,
+    "perStealCash": 100
+  },
+  "modifiers": {
+    "pool": "region-default",
+    "maxPerRace": 1,
+    "chanceScale": 1
+  },
+  "meta": {
+    "status": "live",
+    "notes": "The Golden Gate, \"International Orange\" (playtest 3, T10.6; the critic's W1: the fourth tier's Series C takedown hunt gives way to the real bridge). A classic race at dawn, in the fog, from Hawk Hill down Conzelman Road's hairpins, past Vista Point, across the 2.74 km bridge (six lanes, a barrier median, 67 m over the water) and through the toll plaza, with the full pack and the heat. The bridge is named plainly, \"the Golden Gate\", and the event carries no fall or rail jokes and nothing in its name or look about the logo (the coordinator's default for the maintainer's \"Golden Gate\", round 3). The law is the region's Curb Authority; no real agency is named. The purse and the style rewards are global tier 12's (the same as Series C's). [default] every number and name.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

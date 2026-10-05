@@ -43,7 +43,9 @@ export type SideTheme =
   | 'wharf'
   // run W-U, the Pacific Northwest's places (render/pnw-places.ts draws what stands there)
   | 'festival'
-  | 'clearcut';
+  | 'clearcut'
+  // playtest 3 (T10.6), the Marin Headlands: open grass hills, no trees, no poles
+  | 'headlands';
 export type LandTheme = Exclude<SideTheme, 'none' | 'water'>;
 
 /** Each land tag's theme. Tags not listed here (fog, cable-line) say nothing about the ground. */
@@ -100,6 +102,10 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
   // shops, the bears, the stumps and the slash. (A `ferry` stretch is no land: the sea, and the ferry.)
   festival: 'festival',
   clearcut: 'clearcut',
+  // Playtest 3 (T10.6; wave B's punch list, "Conzelman Road is lined with dense pines and log
+  // fences, which reads as the PNW, not the Marin Headlands' grass hills"): coastal scrub and
+  // grass. Land with nothing of the scatter on it, no conifers (the PNW's far trees) and no poles.
+  headlands: 'headlands',
 };
 /**
  * Land that ends at a seawall (run W-U): its strip reaches only this far past the verge, m, and
@@ -128,6 +134,8 @@ const THEME_ORDER: readonly LandTheme[] = [
   'sawmill',
   'urban',
   'industrial',
+  // Ahead of the forest: a side tagged both is the open hill (the bakes' old stand-in tag).
+  'headlands',
   'forest',
 ];
 
@@ -238,6 +246,7 @@ const RATE: Readonly<Record<LandTheme, Partial<Record<SceneryKind, number>>>> = 
   wharf: {},
   festival: {},
   clearcut: {},
+  headlands: {},
 };
 /**
  * Themes with no power poles: a downtown's (and the waterfront's) wires are underground, the mural
@@ -256,6 +265,7 @@ const NO_POLES: ReadonlySet<LandTheme> = new Set([
   'wharf',
   'festival',
   'clearcut',
+  'headlands',
 ]);
 /** Where each kind stands past the verge: the nearest offset and the random spread beyond it, m. */
 const ACROSS_M: Readonly<Record<SceneryKind, readonly [number, number]>> = {

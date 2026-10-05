@@ -247,6 +247,31 @@ export function laneEndOnMap(m: LaneMap, u: number, dir: number, rank: number, r
   return Infinity;
 }
 
+/**
+ * Where a vehicle heading `dir` that stands at u, on a stretch with no drive lane its way (a
+ * one-way block entered from the wrong end), last had a lane: the corridor position just inside
+ * the lane side of the run's near boundary, or null when u has a lane its way or the run reaches
+ * the corridor's end on that side (playtest 3, T10.6: Lombard Street's crooked block).
+ */
+export function laneRunBoundary(m: LaneMap, u: number, dir: number): number | null {
+  const n = m.u0.length;
+  if (n === 0) return null;
+  const count = dir === 1 ? m.plus : m.minus;
+  let i = 0;
+  while (i + 1 < n && (m.u0[i + 1] ?? Infinity) <= u) i++;
+  if ((count[i] ?? 0) > 0) return null;
+  // Heading +u it came from the segments before i, heading -u from those after it.
+  let j = i;
+  if (dir === 1) {
+    while (j >= 0 && (count[j] ?? 0) <= 0) j--;
+    return j >= 0 ? (m.u0[j + 1] ?? 0) - LANE_RUN_MARGIN_M : null;
+  }
+  while (j < n && (count[j] ?? 0) <= 0) j++;
+  return j < n ? (m.u0[j] ?? 0) + LANE_RUN_MARGIN_M : null;
+}
+/** How far inside a lane's side of a boundary a vehicle that may not go on is held, m. */
+const LANE_RUN_MARGIN_M = 0.05;
+
 /** How many drive lanes carry corridor direction `dir` at u, from the lane map (W-R). */
 export function laneCountOnMap(m: LaneMap, u: number, dir: number): number {
   const n = m.u0.length;
