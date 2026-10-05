@@ -11,6 +11,11 @@
 // a rider who misses a Seven Mile jump wakes on the highway (the decision for P4-10: "a miss respawns
 // on the highway"), the truck hops included.
 //
+// Run A's R3 left one habit open: a rider who keeps holding right after the split scraped along the
+// platform's water edge (10 m/s² of drag) for the whole connector and fell short of the hop on the
+// Chopper and the Rustbucket. A staging road's edges now guide (sim/riders/features.ts), so the
+// third habit, 'hold right', is held to the same bar.
+//
 // One rider alone on the real road with the real systems (no field, no traffic): the road's shape is
 // what is under test. Everything is read from the packs (the zone, the trucks, the gaps, the bikes),
 // so a re-bake is measured as it lands.
@@ -115,7 +120,7 @@ const BASE = gapSimConfig(bundle, { route });
 const CAP_TICKS = 60 * 30;
 
 /** What the rider does with the steering once it is on the old road's roads. */
-type Habit = 'let go' | 'centreline';
+type Habit = 'let go' | 'centreline' | 'hold right';
 
 interface Run {
   took: boolean;
@@ -156,6 +161,7 @@ function ride(
     const onBranch = OLD_ROADS.has(id);
     took ||= onBranch;
     let steer = 0;
+    if (onBranch && habit === 'hold right' && p.mode === 'Road') steer = 1;
     if (onBranch && habit === 'centreline' && p.mode === 'Road') {
       // A thumb holding the middle of the deck: toward d = 0, damped by the heading.
       steer = Math.max(-1, Math.min(1, -0.8 * p.pos.d - 6 * p.yaw));
@@ -191,6 +197,37 @@ function row(name: string, b: { id: string; bike: SimBikeDef }, habit: Habit, d:
   return `${name} ${b.id} (${b.bike.topSpeedMps} m/s) ${habit} from d ${d.toFixed(2)}: ${outcome}, wobbles [${run.wobbles.join(' ')}], d ${run.dAtTruck.toFixed(2)} at the truck, lip ${Number(run.jump?.data['speed'] ?? NaN).toFixed(1)} m/s, ends ${run.where}`;
 }
 
+/** The speed a rider holding right loses riding `ticks` from (edge, s) at the bike's top speed, m/s. */
+function holdRightLoss(bike: SimBikeDef, edgeId: string, s: number, ticks: number): number {
+  const config: SimConfig = { ...BASE, riders: [{ ...BASE.riders[0]!, bike }] };
+  const world = createWorld(config);
+  const p = addMover(world, 'rider', { edge: config.road.edgeIndex(edgeId), s, d: 0, dir: 1 }, 0);
+  for (const sys of SYSTEMS) sys.init(world, config);
+  p.speed = bike.topSpeedMps;
+  for (let t = 0; t < ticks; t++) {
+    stepWorld(world, config, SYSTEMS, [{ steer: 127, throttle: 255, brake: 0, flags: 0 }]);
+  }
+  return bike.topSpeedMps - p.speed;
+}
+
+describe('a rider held against a staging deck keeps its speed', () => {
+  it('loses nothing along the connector and the platform, where the old bridge beside it scrapes', () => {
+    const bike = RUSTBUCKET.bike;
+    // Full throttle at top speed, so only the edge can slow the rider. Two seconds of holding right.
+    const TICKS = 120;
+    const connector = holdRightLoss(bike, ROAD.edges[ZONE.toEdge]!.id, 0, 60);
+    const platform = holdRightLoss(bike, IN.id, IN.truck.s1 + 40, TICKS);
+    // The check can see a scrape: the same hold on the old bridge, which is no staging road, loses speed.
+    const bridge = holdRightLoss(bike, AFTER_IN, 1000, TICKS);
+    print(
+      `held right (connector 60 ticks, the rest ${TICKS}), speed lost: connector ${connector.toFixed(2)}, platform ${platform.toFixed(2)}, old bridge ${bridge.toFixed(2)} m/s`,
+    );
+    expect(bridge, 'a hold on the old bridge scrapes').toBeGreaterThan(2);
+    expect(connector).toBeLessThan(1);
+    expect(platform).toBeLessThan(1);
+  });
+});
+
 describe("the turn-off's paint shows where the sim guides", () => {
   it('paints the split guide’s lead-in, and reads a guided zone at the riders’ half-width', () => {
     // render/road-mesh.ts paints chevrons over a guided zone's lead-in and does not import sim/riders,
@@ -216,7 +253,7 @@ describe('the Seven Mile old road is easy to take: at top speed, anywhere across
     const rows: string[] = [];
     const missed: string[] = [];
     for (const b of FAST) {
-      for (const habit of ['let go', 'centreline'] as const) {
+      for (const habit of ['let go', 'centreline', 'hold right'] as const) {
         for (const d of offsets) {
           const run = ride(b.bike, { edge: zoneEdge, s: z.s0, d }, habit, IN, (id) => id === AFTER_IN);
           rows.push(row('turn-off', b, habit, d, run));
@@ -242,7 +279,7 @@ describe('the Seven Mile old road is easy to take: at top speed, anywhere across
     const rows: string[] = [];
     const missed: string[] = [];
     for (const b of FAST) {
-      for (const habit of ['let go', 'centreline'] as const) {
+      for (const habit of ['let go', 'centreline', 'hold right'] as const) {
         for (const d of offsets) {
           const run = ride(b.bike, { edge: before, s, d }, habit, OUT, (id) => main.has(id));
           rows.push(row('way back', b, habit, d, run));

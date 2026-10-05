@@ -8,6 +8,7 @@ import {
   narrativeSettingOf,
   racePalette,
   raceRadio,
+  raceSky,
   regionChoices,
   regionKeyOf,
   routeKeyOf,
@@ -332,5 +333,65 @@ describe('app: the race radio per region (radio-1 head start, the integration ro
     const r = raceRadio(withPnw, 'region-pnw:pacific-northwest');
     expect(r.region).toBe('region-pnw:pacific-northwest');
     expect(r.stations.map((s) => s.id)).toContain('fog-fm');
+  });
+});
+
+// Playtest 4 (the identity sheets, cause 10): rain is a property of the light or of the event, not of
+// the whole region, so the Pacific Northwest has dry races too. The menu race's own pick still wins.
+describe('app: the weather a race draws', () => {
+  const PNW = 'region-pnw:pacific-northwest';
+  const EVENT = 'region-pnw:pnw-t1-espresso-hunt';
+  /** The registry with one event rebuilt: its light and weather as the case sets them. */
+  const withEvent = (over: Record<string, unknown>) =>
+    ({ ...ALL, events: { ...ALL.events, [EVENT]: { ...ALL.events[EVENT], ...over } } }) as typeof ALL;
+  const lights = (ALL.regions[PNW]?.timeOfDayOptions ?? []).map((o) => o.id);
+  /** Lights that rain by themselves, and lights that do not. */
+  const rainy = lights.filter((t) => racePalette(ALL, PNW, t)['rain']);
+  const dry = lights.filter((t) => !racePalette(ALL, PNW, t)['rain']);
+  const wetLight = rainy[0] ?? 'no-rainy-light';
+  const dryLight = dry[0] ?? 'no-dry-light';
+
+  it('the region has lights that rain and lights that do not, and the base palette alone does not rain', () => {
+    console.log(
+      `[examined] PNW lights ${lights.join(', ')}: rain in ${rainy.join(', ')}; dry in ${dry.join(', ')}`,
+    );
+    expect(rainy.length).toBeGreaterThanOrEqual(1);
+    expect(dry.length).toBeGreaterThanOrEqual(1);
+    expect(ALL.regions[PNW]?.palette?.['rain']).toBeUndefined();
+  });
+
+  it("a light's own rain reaches the race, and a dry light draws none", () => {
+    for (const t of rainy) expect(raceSky(ALL, EVENT, t).wet, t).toBe(true);
+    for (const t of dry) expect(raceSky(ALL, EVENT, t).wet, t).toBe(false);
+  });
+
+  it("an event's weather beats its own light: dry in a rainy one, rain in a dry one", () => {
+    const dryEvent = withEvent({ timeOfDay: wetLight, weather: 'dry' });
+    expect(raceSky(dryEvent, EVENT, wetLight).wet).toBe(false);
+    expect(raceSky(dryEvent, EVENT, wetLight).palette['rain']).toBeUndefined();
+    const rainEvent = withEvent({ timeOfDay: dryLight, weather: 'rain' });
+    expect(raceSky(rainEvent, EVENT, dryLight).wet).toBe(true);
+    // The control: the same events with no weather follow their light.
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: undefined }), EVENT, wetLight).wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: dryLight, weather: undefined }), EVENT, dryLight).wet).toBe(false);
+  });
+
+  it("an event's weather is for its own light: raced at another hour, that hour's weather holds", () => {
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'dry' }), EVENT, dryLight).wet).toBe(false);
+    expect(raceSky(withEvent({ timeOfDay: dryLight, weather: 'dry' }), EVENT, wetLight).wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'rain' }), EVENT, dryLight).wet).toBe(false);
+  });
+
+  it("the menu race's pick beats the event and the light, and never dries the registry's palette", () => {
+    expect(raceSky(ALL, EVENT, wetLight, 'dry').wet).toBe(false);
+    expect(raceSky(ALL, EVENT, wetLight, 'dry').palette['rain']).toBeUndefined();
+    expect(racePalette(ALL, PNW, wetLight)['rain']).toBeDefined();
+    const asked = raceSky(ALL, EVENT, dryLight, 'rain');
+    expect(asked.wet).toBe(true);
+    expect(asked.weather).toBe('rain');
+    expect(raceSky(ALL, EVENT, wetLight, 'local').wet).toBe(true);
+    expect(raceSky(withEvent({ timeOfDay: wetLight, weather: 'dry' }), EVENT, wetLight, 'rain').wet).toBe(
+      true,
+    );
   });
 });

@@ -257,7 +257,8 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     // A network whose land is all open grass hill (the Golden Gate's `headlands`, playtest 3, T10.6)
     // scatters nothing: its check is that nothing stands there, while any other network must have
     // spots to check (so a scatter that placed none would not pass for a clean one).
-    const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog']);
+    // `gg-deck` (playtest 4) is the deck's traffic-area tag beside `bridge`; it says nothing about land.
+    const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog', 'gg-deck']);
     // Downtown Portland's blocks (playtest 3, T12.6) scatter nothing either: `pdx-blocks` is a land theme of
     // its own, and render/downtown.ts stands the street fronts there (src/render/portland-blocks.test.ts
     // checks them on land). The `town`, `pdx-deck` and `rail-line` tags beside it say nothing more about it.
