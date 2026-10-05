@@ -491,3 +491,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: keep a region's vibe, and give it the structure and drive of the busiest stations: a verse, a build, a chorus and a hook, not a slow loop. Simple and slow reads as a miss even when the mood is right. He wanted four directions for the Pacific Northwest: driving garage and grunge, indie and folk with drive, rainy-night synth, and the same vibe with more complexity.
 - Scope: global (music)
 - Action taken: decided as richer music in every region (product spec, Audio); the stations themselves are built in the run that follows.
+
+### 2026-10-05 · Countdown blocks the road
+- Item: the big 3, 2, 1, GO number in the middle of the race screen (playtest 4, P4-11, #514)
+- Surface: UI
+- Verdict: veto
+- Maintainer said: "The 3 2 1 countdown blocks visibility of what's directly ahead so it's hard to plan your start. It should be less obstructive."
+- Lesson: a start-of-race cue never sits over the road ahead, because the player plans the launch by looking at it. Keep cues small and translucent, beside the road (or in the top band), never in the road-ahead box.
+- Scope: global (UI)
+- Action taken: the number is small and translucent in the strip left of the road-ahead box; `tests/e2e/ui-menu-first.spec.ts` now measures it clear of the road ahead at 915x412, 412x915 and 568x320.

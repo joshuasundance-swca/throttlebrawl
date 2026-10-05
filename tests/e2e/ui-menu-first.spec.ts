@@ -337,7 +337,7 @@ async function measureCountdown(page: Page, label: string, plantOverNumber = fal
 const overlap = (a: Box, b: Box) =>
   a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
-/** The HUD layout's road-ahead box (ui/hud-layout.ts LOOK_AHEAD): the middle half across, 25 to 65 % down. */
+/** The HUD layout's road-ahead box (ui/hud-layout.ts LOOK_AHEAD): the middle half across, 25 to 65 % down. The countdown stays out of it. */
 const roadAhead = (w: number, h: number): Box => ({
   left: 0.25 * w,
   right: 0.75 * w,
@@ -349,12 +349,13 @@ for (const [where, width, height, finePointer] of [
   ['568x320', 568, 320, false],
   ['640x360', 640, 360, false],
   ['915x412', 915, 412, false],
+  ['412x915', 412, 915, false],
   ['1366x768', 1366, 768, true],
 ] as const) {
   test.describe(`countdown at ${where}`, () => {
     test.use({ viewport: { width, height }, ...(finePointer ? { isMobile: false, hasTouch: false } : {}) });
 
-    test('the number is on the screen, in the road-ahead box and off every other HUD piece, at 3 and at GO', async ({
+    test('the number is on the screen, clear of the road ahead and off every other HUD piece, at 3 and at GO', async ({
       page,
     }) => {
       test.setTimeout(120_000);
@@ -379,11 +380,11 @@ for (const [where, width, height, finePointer] of [
         expect(c.top, `${at}: number inside the screen`).toBeGreaterThanOrEqual(-0.5);
         expect(c.right, `${at}: number inside the screen`).toBeLessThanOrEqual(m.w + 0.5);
         expect(c.bottom, `${at}: number inside the screen`).toBeLessThanOrEqual(m.h + 0.5);
-        const road = roadAhead(m.w, m.h);
-        expect(c.left, `${at}: number inside the road-ahead box`).toBeGreaterThanOrEqual(road.left - 0.5);
-        expect(c.right, `${at}: number inside the road-ahead box`).toBeLessThanOrEqual(road.right + 0.5);
-        expect(c.top, `${at}: number inside the road-ahead box`).toBeGreaterThanOrEqual(road.top - 0.5);
-        expect(c.bottom, `${at}: number inside the road-ahead box`).toBeLessThanOrEqual(road.bottom + 0.5);
+        // The maintainer's veto (2026-10-05): the number never covers what is directly ahead.
+        expect(overlap(c, roadAhead(m.w, m.h)), `${at}: number over the road ahead`).toBe(false);
+        // Small: no more than 60 px tall and a quarter of the screen's width.
+        expect(c.bottom - c.top, `${at}: number is small`).toBeLessThanOrEqual(64);
+        expect(c.right - c.left, `${at}: number is small`).toBeLessThanOrEqual(0.25 * m.w + 0.5);
         expect(
           m.others.filter((o) => overlap(c, o.box)).map((o) => o.name),
           `${at}: HUD pieces under the number`,
@@ -406,4 +407,13 @@ test('the countdown overlap check names a piece planted under the number (negati
   expect(again.others.filter((o) => overlap(again.count, o.box)).map((o) => o.name)).toContain(
     'planted-cover',
   );
+});
+
+// The road-ahead check can fire too: a number laid in the middle of the screen is found over the box.
+test('the road-ahead check finds a number in the middle of the screen (negative control)', () => {
+  const road = roadAhead(915, 412);
+  const middle: Box = { left: 440, top: 150, right: 475, bottom: 190 };
+  const beside: Box = { left: 40, top: 150, right: 90, bottom: 190 };
+  expect(overlap(middle, road)).toBe(true);
+  expect(overlap(beside, road)).toBe(false);
 });
