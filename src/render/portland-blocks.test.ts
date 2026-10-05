@@ -11,6 +11,7 @@ import {
   hasPortland,
   MODULE_M,
   PDX,
+  PDX_BACK_ROW_M,
   PDX_CART_BACK_M,
   PDX_OVERHANG_M,
   PDX_PODS,
@@ -28,8 +29,8 @@ import { landmarkPlacements, LandmarkLayer } from './landmarks';
 import { createFlatLook } from './look';
 import { bakeLandmarkKit, modelKindsFor, type LandmarkKit } from './models';
 import { bakeRepoModel, readAsset } from './model-files.test-util';
-import { buildRoadScene, networkTags, type RoadDressing, type RoadScene } from './road-mesh';
-import { themeAt } from './scenery';
+import { buildRoadScene, networkTags, SCENERY_LAND_M, type RoadDressing, type RoadScene } from './road-mesh';
+import { themeAt, WIDE_LAND_M } from './scenery';
 
 const look = createFlatLook();
 const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process.stdout;
@@ -56,7 +57,12 @@ const input = {
   portland: { landReach: (e: number, side: -1 | 1, s: number) => scene.landReach(e, side, s) },
 };
 const plan = planPortland(input, kit);
-const isBuilding = (it: DowntownItem) => it.rule === 'pdx-front' || it.rule === 'pdx-tower';
+/** The street fronts, and the second row behind them (playtest 4, P4-20). */
+const isFront = (it: DowntownItem) => it.rule === 'pdx-front' || it.rule === 'pdx-tower';
+const isBack = (it: DowntownItem) => it.rule === 'pdx-back' || it.rule === 'pdx-back-tower';
+/** A small front that closes the far end of a cross street. */
+const isEnd = (it: DowntownItem) => it.rule === 'pdx-end';
+const isBuilding = (it: DowntownItem) => isFront(it) || isBack(it) || isEnd(it);
 const sideOf = (it: DowntownItem): -1 | 1 => (it.d < 0 ? -1 : 1);
 const outerOf = (edge: number, side: -1 | 1) => {
   const e = road.edges[edge];
@@ -112,7 +118,7 @@ describe("Bridge City's blocks", () => {
       const edge = road.edgeIndex(id);
       const length = road.edges[edge]?.length ?? 0;
       for (const side of [-1, 1] as const) {
-        const here = plan.items.filter((i) => i.edge === edge && sideOf(i) === side && isBuilding(i));
+        const here = plan.items.filter((i) => i.edge === edge && sideOf(i) === side && isFront(i));
         expect(here.length, `${id} ${side}`).toBeGreaterThanOrEqual(6);
         // The frontage: how much of the side's length a building covers. (A pod, a landmark, a cross
         // street and a lot take the rest.)
@@ -445,11 +451,170 @@ describe("the roof sign and the square on Bridge City's roads", () => {
     const e = plaza?.edge ?? 0;
     const reach = scene.landReach(e, -1, ((plaza?.feature.s0 ?? 0) + (plaza?.feature.s1 ?? 0)) / 2);
     expect(Math.abs(plaza?.feature.d0 ?? 0) - outerOf(e, -1)).toBeLessThanOrEqual(reach + PDX_OVERHANG_M);
-    // And no building is placed over it.
-    for (const b of plan.items.filter((i) => isBuilding(i) && i.edge === e && sideOf(i) === -1))
+    // And no building is placed over it: one that stands beside it in s stands behind the square, past its far edge.
+    const near = Math.min(Math.abs(plaza?.feature.d0 ?? 0), Math.abs(plaza?.feature.d1 ?? 0));
+    const far = Math.max(Math.abs(plaza?.feature.d0 ?? 0), Math.abs(plaza?.feature.d1 ?? 0));
+    for (const b of plan.items.filter((i) => isBuilding(i) && i.edge === e && sideOf(i) === -1)) {
+      const [width, depth] = pdxFootprint(kit, b.variant);
+      const beside =
+        b.s - width / 2 < (plaza?.feature.s1 ?? 0) + 1 && b.s + width / 2 > (plaza?.feature.s0 ?? 0) - 1;
       expect(
-        b.s < (plaza?.feature.s0 ?? 0) - 1 || b.s > (plaza?.feature.s1 ?? 0) + 1,
+        !beside || Math.abs(b.d) >= far - 1e-6 || Math.abs(b.d) + depth <= near + 1e-6,
         `a building at s ${b.s.toFixed(0)} over the square`,
       ).toBe(true);
+    }
+  });
+});
+
+// Playtest 4, P4-20 ("Bridge City ... be as content-rich as the others"): the blocks stood one deep, a
+// front row on a 24 m strip, where San Francisco's downtown stands three (front, taller back row, the
+// buildings that line each cross street). The blocks' land is wider now (WIDE_LAND_M), and a second row
+// of taller buildings stands behind the street fronts on it.
+describe("Bridge City's second row (playtest 4, P4-20)", () => {
+  const heightOf = (it: DowntownItem) =>
+    it.model === 'tower' ? (it.targetM ?? 0) : (kit.variants[it.variant]?.boundingBox?.max.y ?? 0);
+  const backs = plan.items.filter(isBack);
+
+  it("draws the blocks' land wider than the usual strip, and only the blocks' land", () => {
+    expect(Object.keys(WIDE_LAND_M)).toEqual(['blocks']);
+    const wide: number[] = [];
+    for (const id of ['osm-pnw-pdx-broadway', 'osm-pnw-pdx-broadway-south', 'osm-pnw-pdx-alder']) {
+      const edge = road.edgeIndex(id);
+      const length = road.edges[edge]?.length ?? 0;
+      for (const side of [-1, 1] as const)
+        for (let s = 10; s < length - 10; s += 10) wide.push(scene.landReach(edge, side, s));
+    }
+    const share = wide.filter((r) => r >= (WIDE_LAND_M.blocks ?? 0) - 4).length / wide.length;
+    stdout.write(`[examined] ${wide.length} samples on three roads: ${(share * 100).toFixed(0)} % have a strip of 56 m or more
+`);
+    expect(share).toBeGreaterThan(0.8);
+    // The control: the same roads with the `pdx-blocks` tag taken off keep the `town` ground and its usual strip.
+    const retagged = Object.fromEntries(
+      bakedRoads.map((r) => [
+        r.id,
+        { ...r, tags: (r.tags ?? []).map((t) => (t.tag === 'pdx-blocks' ? { ...t, tag: 'no-blocks' } : t)) },
+      ]),
+    ) as unknown as RoadDressing;
+    const plain = buildRoadScene(road, look, retagged, { seed: 1, models: {}, roadsideDensity: 1 });
+    let widest = 0;
+    for (const e of road.edges)
+      for (const side of [-1, 1] as const)
+        for (let s = 0; s < e.length; s += 10) widest = Math.max(widest, plain.landReach(e.index, side, s));
+    expect(widest).toBeLessThanOrEqual(SCENERY_LAND_M);
+  });
+
+  it('stands a second row behind the street fronts, on both sides of the avenue and in step with them', () => {
+    expect(backs.length).toBeGreaterThan(50);
+    for (const id of ['osm-pnw-pdx-broadway', 'osm-pnw-pdx-broadway-south']) {
+      const edge = road.edgeIndex(id);
+      for (const side of [-1, 1] as const)
+        expect(
+          backs.filter((b) => b.edge === edge && sideOf(b) === side).length,
+          `${id} ${side}`,
+        ).toBeGreaterThanOrEqual(3);
+    }
+    // Behind the fronts: never closer than the deepest front plus an alley (PDX_BACK_ROW_M).
+    for (const b of backs)
+      expect(
+        Math.abs(b.d) - outerOf(b.edge, sideOf(b)),
+        `${idOf(b.edge)} s ${b.s.toFixed(0)}`,
+      ).toBeGreaterThanOrEqual(PDX_BACK_ROW_M - 1e-6);
+    // Behind most of the front row there is a second row: along Broadway's frontage, the share of the
+    // metres a front building covers that a second-row building covers too.
+    let fronted = 0;
+    let doubled = 0;
+    for (const id of ['osm-pnw-pdx-broadway', 'osm-pnw-pdx-broadway-south', 'osm-pnw-pdx-alder']) {
+      const edge = road.edgeIndex(id);
+      const length = road.edges[edge]?.length ?? 0;
+      for (const side of [-1, 1] as const) {
+        const span = (list: DowntownItem[]) =>
+          list
+            .filter((i) => i.edge === edge && sideOf(i) === side)
+            .map((i) => [
+              i.s - pdxFootprint(kit, i.variant)[0] / 2,
+              i.s + pdxFootprint(kit, i.variant)[0] / 2,
+            ]);
+        const front = span(plan.items.filter(isFront));
+        const back = span(backs);
+        for (let s = 0; s < length; s += 3) {
+          if (!front.some(([a, b]) => s >= (a ?? 0) && s <= (b ?? 0))) continue;
+          fronted++;
+          if (back.some(([a, b]) => s >= (a ?? 0) && s <= (b ?? 0))) doubled++;
+        }
+      }
+    }
+    stdout.write(
+      `[examined] ${backs.length} second-row buildings; behind ${((doubled / fronted) * 100).toFixed(0)} % of the metres a front building covers on Broadway, Broadway South and Alder
+`,
+    );
+    expect(doubled / fronted).toBeGreaterThan(0.5);
+  });
+
+  it('is taller than the row in front of it, so it shows over the roofs', () => {
+    const mean = (list: DowntownItem[]) => list.reduce((a, i) => a + heightOf(i), 0) / list.length;
+    const front = mean(plan.items.filter(isFront));
+    const back = mean(backs);
+    stdout.write(`[examined] mean height: fronts ${front.toFixed(0)} m, second row ${back.toFixed(0)} m
+`);
+    expect(back).toBeGreaterThan(front);
+    // Its towers stack from the modules, never stretched, like the fronts' pink towers.
+    for (const t of plan.items.filter((i) => i.rule === 'pdx-back-tower')) {
+      expect(t.model).toBe('tower');
+      expect(t.sy).toBe(1);
+    }
+  });
+
+  it("closes each cross street's far end with a front, the street open the whole way to it", () => {
+    const ends = plan.items.filter(isEnd);
+    expect(ends.length).toBeGreaterThan(5);
+    for (const it of ends) {
+      const side = sideOf(it);
+      const outer = outerOf(it.edge, side);
+      const [width] = pdxFootprint(kit, it.variant);
+      // Its face looks down the street: the corridor from the verge to it holds no other building.
+      const corridor = (b: DowntownItem) => {
+        const [bw, bd] = pdxFootprint(kit, b.variant);
+        const inS = b.s - bw / 2 < it.s + width / 2 && b.s + bw / 2 > it.s - width / 2;
+        const lo = Math.abs(b.d);
+        return inS && lo + bd > outer + 1 && lo < Math.abs(it.d) - 1e-6;
+      };
+      const blockers = plan.items.filter(
+        (b) => b !== it && b.edge === it.edge && sideOf(b) === side && isBuilding(b) && corridor(b),
+      );
+      expect(
+        blockers.map((b) => `${b.rule} s ${b.s.toFixed(0)}`),
+        `${idOf(it.edge)} s ${it.s.toFixed(0)}`,
+      ).toEqual([]);
+    }
+    stdout.write(`[examined] ${ends.length} cross streets closed at their far end, each corridor free of buildings
+`);
+  });
+
+  it('keeps the rule for every seed: no overlap, on land, and still doubled', () => {
+    for (const seed of [2, 3, 4]) {
+      const other = planPortland({ ...input, seed }, kit);
+      const rects = other.items
+        .filter((i) => isBuilding(i) || i.rule === 'pdx-cart')
+        .map((i) => {
+          const [width, depth] = i.rule === 'pdx-cart' ? [8.1, 2.4] : pdxFootprint(kit, i.variant);
+          return { i, r: rectOf(i.p, i.turn, width, depth) };
+        });
+      for (let a = 0; a < rects.length; a++)
+        for (let b = a + 1; b < rects.length; b++)
+          expect(rectsOverlap(rects[a]?.r as Rect, rects[b]?.r as Rect), `seed ${seed}: ${a} and ${b}`).toBe(
+            false,
+          );
+      for (const it of other.items.filter((i) => isBack(i) || isEnd(i))) {
+        const side = sideOf(it);
+        const [width, depth] = pdxFootprint(kit, it.variant);
+        const front = Math.abs(it.d) - outerOf(it.edge, side);
+        for (const u of [it.s - width / 2, it.s, it.s + width / 2])
+          expect(
+            scene.landReach(it.edge, side, Math.max(0, u)),
+            `seed ${seed} ${idOf(it.edge)} s ${u.toFixed(0)}`,
+          ).toBeGreaterThanOrEqual(front + depth - PDX_OVERHANG_M - 1e-6);
+      }
+      expect(other.items.filter(isBack).length, `seed ${seed}`).toBeGreaterThan(50);
+    }
   });
 });

@@ -236,11 +236,58 @@ describe('the arch style', () => {
   });
 });
 
+describe('the stayed style (playtest 4, P4-20: the Tilikum Crossing)', () => {
+  const p = piece({ style: 'stayed', deckM: 10, towersAt: [0.4, 0.6], towerM: 50 });
+  const tris = trisOf(p);
+  /** Slanted stays: thin plates between a point on the deck (1 m over it) and a point up a tower. */
+  const stays = tris.filter(
+    (t) => Math.abs(Math.min(...ys(t)) - (10 + 1 - 0.9)) < 0.5 && Math.max(...ys(t)) > 10 + 8,
+  );
+
+  it('fans stays from each tower down to the deck on both sides, the farthest from the highest anchors', () => {
+    expect(stays.length).toBeGreaterThan(40);
+    for (const u of [0.4, 0.6]) {
+      const m0 = u * LENGTH;
+      // The stays that hang from this tower: one end of each plate is at the tower.
+      const here = stays.filter((t) => xs(t).some((x) => Math.abs(x - m0) < 1e-6));
+      const mean = (t: Tri) => xs(t).reduce((a, b) => a + b, 0) / 3;
+      const before = here.filter((t) => mean(t) < m0 - 2);
+      const after = here.filter((t) => mean(t) > m0 + 2);
+      expect(before.length, `before ${u}`).toBeGreaterThan(8);
+      expect(after.length, `after ${u}`).toBeGreaterThan(8);
+      // The stay that lands farthest from the tower starts higher up it than the one that lands nearest.
+      const reach = (t: Tri) => Math.max(...xs(t).map((x) => Math.abs(x - m0)));
+      const anchor = (t: Tri) => Math.max(...ys(t));
+      const far = after.reduce((a, b) => (reach(b) > reach(a) ? b : a));
+      const near = after.reduce((a, b) => (reach(b) < reach(a) ? b : a));
+      expect(anchor(far)).toBeGreaterThan(anchor(near));
+    }
+  });
+
+  it('stands two towers as tall as asked, and a control without towers has no stays', () => {
+    expect(Math.max(...tris.flatMap(ys))).toBeGreaterThan(49);
+    expect(Math.max(...tris.flatMap(ys))).toBeLessThan(53);
+    const none = trisOf(piece({ style: 'stayed', deckM: 10 }));
+    expect(none.filter((t) => Math.max(...ys(t)) > 10 + 8)).toEqual([]);
+  });
+
+  it('lands no stay on a missing span, and does where the span is there', () => {
+    const gaps = [[0.3, 0.38]] as const;
+    const landings = (list: Tri[]) =>
+      list
+        .flatMap((t) => t.filter((v) => v[1]! > 10.05 && v[1]! < 11.05).map((v) => v[0]!))
+        .filter((x) => x > 0.3 * LENGTH && x < 0.38 * LENGTH);
+    const holed = trisOf(piece({ style: 'stayed', deckM: 10, towersAt: [0.4, 0.6], towerM: 50, gaps }));
+    expect(landings(holed)).toEqual([]);
+    expect(landings(tris).length).toBeGreaterThan(0);
+  });
+});
+
 describe('what each style costs', () => {
   it('stays small: a 1.5 km bridge of any style is a few thousand flat triangles', () => {
     const stdout = (globalThis as unknown as { process: { stdout: { write(s: string): void } } }).process
       .stdout;
-    const counts = (['girder', 'truss', 'lift', 'arch'] as const).map((style) => {
+    const counts = (['girder', 'truss', 'lift', 'arch', 'stayed'] as const).map((style) => {
       const n = trisOf(
         piece({ style, towersAt: [0.45, 0.55], towerM: 40, archAt: [0.3, 0.7], archM: 30 }),
       ).length;
