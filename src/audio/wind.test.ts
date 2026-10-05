@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimSnapshot } from '../sim/api';
 import { fakeContextFactory } from './fake-context';
-import { AUDIO_TUNING, createAudio } from './index';
+import { AUDIO_TUNING, createAudio } from './system';
 import { WIND_DEFAULTS, windLevel } from './wind';
 
 const P = { gain: WIND_DEFAULTS.gain, fromMps: WIND_DEFAULTS.fromMps, fullMps: WIND_DEFAULTS.fullMps };

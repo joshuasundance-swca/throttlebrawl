@@ -77,7 +77,7 @@ export const DEFAULT_PROPORTIONS: RiderProportions = { height: 1, bulk: 1, head:
 
 export interface EntityViewOptions {
   proportions?: (contentId: string) => RiderProportions;
-  /** Where sparks and splashes go (the renderer's effects); none in bare view tests. */
+  /** Where sparks and splashes go (the renderer's effects, or `setEffects`); none in bare view tests. */
   effects?: FeelEffects;
   /** The feel numbers, shared with the renderer so a tuning change applies at once. */
   params?: RenderParams;
@@ -428,7 +428,8 @@ export class EntityViews {
   private readonly getUps = new Map<number, number>();
   private readonly fists = new Map<number, { until: number; target: number }>();
   private readonly pending: SimEvent[] = [];
-  private readonly effects: FeelEffects | null;
+  /** Where sparks and splashes go: from the options, or set once its lazy chunk has loaded. */
+  private effects: FeelEffects | null;
   private readonly params: RenderParams;
   private alpha = 1;
   private dt = 0;
@@ -469,6 +470,11 @@ export class EntityViews {
   setRigs(rigs: RiderRigs): void {
     this.rigs = rigs;
     this.root.add(rigs.root);
+  }
+
+  /** The renderer's feel effects, once their lazy chunk has loaded (none drawn before then). */
+  setEffects(effects: FeelEffects): void {
+    this.effects = effects;
   }
 
   /**

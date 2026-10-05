@@ -48,13 +48,12 @@ import {
 } from './hud-layout';
 import {
   createDriftMeter,
-  createWheelieGauge,
   DRIFT_LOST,
   driftOutcome,
+  GAUGE,
   gaugeBlockers,
   gaugeView,
   meterLine,
-  MOVES_METER_CSS,
   placeGauge,
   restBase,
   type GaugeBlockers,
@@ -79,8 +78,6 @@ import { popItem, type TickerItem } from './ticker';
 import { createTickerUi, TICKER_CSS } from './ticker-view';
 import { HUD_TUNING, hudParam } from './hud-tuning';
 import {
-  createRadioPanel,
-  RADIO_PANEL_CSS,
   playingStation,
   RADIO_FIRST_STATION,
   radioChoiceFor,
@@ -95,6 +92,8 @@ import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regio
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
 import type { HeatBadge } from './heat-badge';
 import type { CareerCallbacks, CareerScreens } from './career-screen';
+import type { RadioPanel } from './radio-panel-view';
+import type { WheelieGauge } from './moves-gauge';
 
 export { ordinal, resultText, formatSpeed } from './format';
 export { DEFAULT_REGION, sameRegion } from './regions';
@@ -347,9 +346,7 @@ const CSS = `
   border-radius: 50%; background: #fffa; }
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
-${RADIO_PANEL_CSS}
 ${TICKER_CSS}
-${MOVES_METER_CSS}
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
@@ -755,7 +752,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   pauseButton.addEventListener('click', () => pause());
   // Playtest 3's wheelie gauge (T6.3): the one new widget, beside the floating stick, only while a
   // wheelie is up. ui/moves-meter.ts says where it stands (the layout's settle rule) and what it shows.
-  const wheelieGauge = createWheelieGauge();
+  // Its DOM and styles (moves-gauge.ts) are a lazy chunk, fetched now, in long before a race starts.
+  let wheelieGauge: WheelieGauge | null = null;
   const hud = el(
     'div',
     { id: 'hud', hidden: true },
@@ -763,7 +761,6 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     position,
     selfHealth.root,
     targetHealth.root,
-    wheelieGauge.root,
     pauseButton,
   );
   const hudPieces: Record<string, HTMLElement> = {
@@ -773,6 +770,12 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     'health-target': targetHealth.root,
   };
   let targetShown = false;
+  void import('./moves-gauge').then((m) => {
+    style.textContent += m.movesMeterCss(GAUGE);
+    wheelieGauge = m.createWheelieGauge();
+    pauseButton.before(wheelieGauge.root);
+    placeGaugeNow();
+  });
 
   // ---- Touch visuals -----------------------------------------------------------------------
   const touchSurface = el('div', { id: 'touch-surface', hidden: true });
@@ -942,7 +945,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       look: lookAheadBox(w, h),
       ringPx: STICK_RING_PX,
     });
-    wheelieGauge.place(spot?.box ?? null);
+    wheelieGauge?.place(spot?.box ?? null);
   }
   const localPoint = (e: PointerEvent) => {
     const box = touchSurface.getBoundingClientRect();
@@ -1043,33 +1046,40 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     tuningButton.hidden = settingValue(settings, 'showTuningPanel') !== true;
   };
   // The radio panel (radio-1's follow-up): what plays, the next station, the next song and "cut
-  // this" on the song. A station picked here becomes the saved radio choice.
-  const radioPanel = createRadioPanel({
-    tune: (choice) => {
-      tuneRadio(choice);
-      // The exact station is saved first (run W-P), so the kind's apply below keeps it.
-      const stations = radioSource?.state().stations ?? [];
-      const station =
-        radioSettingOf(choice) === 'station'
-          ? (stations[Math.round(choice) - RADIO_FIRST_STATION] ?? null)
-          : null;
-      const stationChanged = station !== null && station !== settings.radioStation;
-      if (stationChanged) settings = { ...settings, radioStation: station };
-      const kind = radioSettingOf(choice);
-      if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
-      else if (stationChanged) cb.onSettingsChange?.(settings);
-    },
-    onCut: (flag) => {
-      settings = withVeto(settings, flag);
-      cb.onSettingsChange?.(settings);
-    },
+  // this" on the song. A station picked here becomes the saved radio choice. The panel is a lazy
+  // chunk (radio-panel-view.ts, off the first-load JavaScript), fetched now, so it is in long before
+  // a race can be paused; it slots in above the keyboard legend.
+  let radioPanel: RadioPanel | null = null;
+  void import('./radio-panel-view').then((m) => {
+    style.textContent += m.RADIO_PANEL_CSS;
+    radioPanel = m.createRadioPanel({
+      tune: (choice) => {
+        tuneRadio(choice);
+        // The exact station is saved first (run W-P), so the kind's apply below keeps it.
+        const stations = radioSource?.state().stations ?? [];
+        const station =
+          radioSettingOf(choice) === 'station'
+            ? (stations[Math.round(choice) - RADIO_FIRST_STATION] ?? null)
+            : null;
+        const stationChanged = station !== null && station !== settings.radioStation;
+        if (stationChanged) settings = { ...settings, radioStation: station };
+        const kind = radioSettingOf(choice);
+        if (kind !== settings.radio) change({ kind: 'set', id: 'radio', value: kind });
+        else if (stationChanged) cb.onSettingsChange?.(settings);
+      },
+      onCut: (flag) => {
+        settings = withVeto(settings, flag);
+        cb.onSettingsChange?.(settings);
+      },
+    });
+    radioPanel.setSource(radioSource);
+    pauseKeys.before(radioPanel.root);
   });
-  radioPanel.setSource(radioSource);
   let radioTimer: ReturnType<typeof setInterval> | null = null;
   // The legend and the "recently seen" list (mounted below, once the narrative exists) share a
   // column, so on a short phone screen neither pushes the other off it (playtest 1c item 8). The
   // radio panel heads it: small, and the thing most often wanted mid-race.
-  const pauseCards = el('div', { id: 'pause-cards' }, radioPanel.root, pauseKeys);
+  const pauseCards = el('div', { id: 'pause-cards' }, pauseKeys);
   const pauseScreen = el(
     'div',
     { id: 'pause-screen', className: 'screen', hidden: true },
@@ -1156,8 +1166,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     syncLive();
     // The radio's song and station can change while the panel is up (a station loading in).
     if (radioSource) {
-      radioPanel.refresh();
-      radioTimer ??= setInterval(() => radioPanel.refresh(), 500);
+      radioPanel?.refresh();
+      radioTimer ??= setInterval(() => radioPanel?.refresh(), 500);
     }
     touchSurface.hidden = true; // taps on the pause screen never reach input/
     stickPointer = null;
@@ -1606,7 +1616,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       placeAll();
     }
     // The gauge shows only in a race, and only while a wheelie is up (updateRace draws it).
-    if (screen !== 'race') wheelieGauge.update(gaugeView(null, 0));
+    if (screen !== 'race') wheelieGauge?.update(gaugeView(null, 0));
     if (screen === 'menu') {
       checkNews();
       offerNews();
@@ -1639,7 +1649,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
       stepTicker(player?.styleRun, tally.takePopups(), snapshot.moves);
-      wheelieGauge.update(gaugeView(snapshot.moves, player?.wheelie));
+      wheelieGauge?.update(gaugeView(snapshot.moves, player?.wheelie));
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {

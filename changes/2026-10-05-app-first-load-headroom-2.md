@@ -1,0 +1,17 @@
+---
+kind: dev
+audience: dev
+---
+The game's startup JavaScript is 30.6 KB smaller (gzip), so this wave's new content and render code has room: the first load went from 468.4 to 437.8 KB of the 500 KB budget, and the headroom from 31.6 to 62.2 KB. Code nothing needs before the first race now loads as lazy chunks, fetched as the menu comes up, so it is in long before a race can start (a race already waits for the base pack's real roads). Players should see no change.
+
+What moved (lazy chunk, gzip):
+- The sound engine, 21.5 KB (`src/audio/system.ts`, which was `src/audio/index.ts`): the bus graph, the engines, the cues and their patches, the radio player, the music, the soundscape and the spoken barks. `src/audio/index.ts` now returns a stand-in from `createAudio` straight away. The start tap still creates and resumes the AudioContext inside the tap and hands it to the engine. Settings made before the engine loads reach it in the order they were made. Frames and events before then play nothing, and `inspect()` reports the settings' bus targets and whether a voice could speak, as the engine does. The tuning declarations (and the five default tables they read) moved to `src/audio/tuning.ts`, and the station tables to `src/audio/stations.ts`: both load at boot.
+- The race's moving parts in render, 10.4 KB (`src/render/race-parts.ts`): the feel effects, the speed lines, the drizzle, the road events' props and the smashables. `EntityViews.setEffects` hands the effects to the views once they load.
+- The career's backup codes, 1.2 KB (`src/save/export-code.ts`; `encodeExportCode` and `decodeExportCode` from `src/save` fetch it, and both were async already).
+- The pause menu's radio panel, 1.2 KB (`src/ui/radio-panel-view.ts`; its rules stay in `radio-panel.ts`), and the wheelie gauge's DOM and the moves' HUD styles, 1.1 KB (`src/ui/moves-gauge.ts`; its rules stay in `moves-meter.ts`).
+
+The lazy chunks add up to 35.4 KB, so the whole download grows by about 4.8 KB. That is the cost of splitting files that compressed well together.
+
+The career screens, the garage and the season code were already lazy (with `career-flow`). Still in the first load, as follow-up ideas: the region packs' JSON entries (fetching them like their road data would be a content-loader change), zod's JSON-schema code (pulled in by zod's classic API), and the HUD ticker and the barks, which are wired into the UI too tightly to split safely here.
+
+Checks: `scripts/first-load.test.ts` lists the 16 moved modules as lazy. It builds the game and fails if any of them is back in the first load or in no lazy chunk at all. On main's build all 16 were in the first-load chunks (checked against that build's module report). `src/audio/lazy-engine.test.ts` covers the stand-in: the context starts in the tap and the engine plays on it, settings made early arrive in order, the stand-in's bus targets and voice state match the engine's, early frames play nothing, and a failed fetch is tried again at the next tap. The audio unit tests and the offline audio browser specs now import the engine (`system.ts`) itself. Numbers: a production build on the dev machine, gzip level 9 per first-load file, summed as `npm run perf` does. Not phone-verified.

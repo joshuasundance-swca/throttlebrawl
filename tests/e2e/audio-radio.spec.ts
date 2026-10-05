@@ -60,7 +60,7 @@ async function render(page: Page, args: Args) {
       update(p: { rpm: number; throttle: number; speed: number } | null): void;
       inspect(): { radio: { tunedTo: string; nowPlaying: { ref: string } | null } };
     };
-    const url = '/__audio-radio/index.js';
+    const url = '/__audio-radio/system.js';
     const m = (await import(url)) as {
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
@@ -241,7 +241,7 @@ test('radio: the hidden pirate takes over near its spot and hands the radio back
       frame(s: Record<string, unknown> | null, playerId: number): void;
       inspect(): { radio: { tunedTo: string; stations: string[] } };
     };
-    const url = '/__audio-radio/index.js';
+    const url = '/__audio-radio/system.js';
     const m = (await import(url)) as {
       createAudio(o: Record<string, unknown>): Audio;
       stationsFromTable(t: Record<string, unknown>): unknown[];
