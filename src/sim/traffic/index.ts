@@ -75,6 +75,7 @@ import {
   fromCorridor,
   laneCountOnMap,
   laneEndOnMap,
+  laneRunBoundary,
   lanesAt,
   linkAt,
   linkOf,
@@ -1463,9 +1464,19 @@ function move(
       u = clamp(u, c.lo, c.hi);
       nextV[k] = 0;
     }
+    const tk = typeOf(config, st, k);
+    // A road vehicle never rides a stretch with no lane its way (playtest 3, T10.6: an oncoming car
+    // that could not stop for the end of its lane rolled into Lombard Street's one-way block and sat
+    // there head-on with the cars coming down, for good). It is held at the lane's end, stopped.
+    if (!isKerb(tk) && !isParked(tk)) {
+      const edge = laneRunBoundary(st.laneMap, u, dir);
+      if (edge !== null) {
+        u = edge;
+        nextV[k] = 0;
+      }
+    }
     st.u[k] = u;
     const lanes = lanesAt(config.road, c, u, dir);
-    const tk = typeOf(config, st, k);
     const kerb = isKerb(tk) ? kerbAhead(config, st, u, dir, tk.widthM / 2) : null;
     // A kerb rider keeps the outermost lane's rank as lanes come and go along the road.
     if (kerb) st.rank[k] = kerb.rank;
