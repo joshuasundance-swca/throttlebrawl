@@ -2,6 +2,7 @@
 // the siren while the cop is near (M1.md audio-1; the product spec's fairness rule wants a threat
 // heard before it arrives). Presentation only: nothing here feeds back into the sim.
 import type { EntitySnapshot } from '../sim/api';
+import { HORN_DEFAULTS } from './tuning';
 
 export interface HornOptions {
   /** How far ahead an oncoming vehicle honks, metres. */
@@ -12,7 +13,8 @@ export interface HornOptions {
   cooldownS: number;
 }
 
-export const HORN_DEFAULTS: HornOptions = { rangeM: 70, laneHalfWidthM: 1.8, cooldownS: 4 };
+// Its numbers live in tuning.ts beside the slider that reads them, off the lazy audio engine.
+export { HORN_DEFAULTS };
 
 const BIG = /truck|rv|bus|semi|rig/i;
 

@@ -11,33 +11,10 @@
 //   revs.
 // - Throttle rev: snapping the throttle open flares the revs and the load for a moment.
 // - Decel pops: snapping it shut at high revs, or coasting there, pops and crackles the exhaust.
+import { ENGINE_FEEL_DEFAULTS } from './tuning';
 
-export const ENGINE_FEEL_DEFAULTS = {
-  /** The heard rpm above first gear runs from this to redline. */
-  shiftFloorRpm: 6000,
-  idleRpm: 1200,
-  redlineRpm: 10000,
-  /** The clutch dip: level multiplier and how long it lasts. */
-  shiftDip: 0.45,
-  shiftDipS: 0.09,
-  /** A downshift's blip, in rpm, fading over `blipS`. */
-  downBlipRpm: 1500,
-  blipS: 0.22,
-  /** A throttle snap (rise per second) that flares, and the flare's size and length. */
-  revRisePerS: 3,
-  revRpm: 1400,
-  revS: 0.25,
-  /** Pops: a throttle shut from above `popFrom` to below `popTo` above `popMinRpm`. */
-  popFrom: 0.55,
-  popTo: 0.15,
-  popMinRpm: 5000,
-  /** A burst's length and its count range. */
-  popBurstS: 0.7,
-  popBurstMin: 3,
-  popBurstMax: 6,
-  /** Coasting at high revs with the throttle shut: pops per second. */
-  coastPopsPerS: 1.5,
-} as const;
+// Its numbers live in tuning.ts beside the slider that reads them, off the lazy audio engine.
+export { ENGINE_FEEL_DEFAULTS };
 export type EngineFeelParams = { -readonly [K in keyof typeof ENGINE_FEEL_DEFAULTS]: number };
 
 export interface FeelInput {

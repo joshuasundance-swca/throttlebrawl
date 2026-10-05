@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimSnapshot } from '../sim/api';
 import { fakeContextFactory } from './fake-context';
-import { createAudio } from './index';
+import { createAudio } from './system';
 import {
   inPirateSpot,
   pirateCentreM,

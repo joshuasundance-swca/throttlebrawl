@@ -66,6 +66,27 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]dev[\\/]report[\\/]index\.ts$/,
   /[\\/]src[\\/]dev[\\/]report[\\/]summary\.ts$/,
   /[\\/]src[\\/]dev[\\/]perf[\\/]index\.ts$/,
+  // Startup-code headroom (playtest 3, wave C): code no screen needs before the first race, each
+  // fetched as the menu comes up. The sound engine (audio/index.ts stands in until it loads) with
+  // its cue patches, cues, engines, radio player, music, soundscape and spoken barks:
+  /[\\/]src[\\/]audio[\\/]system\.ts$/,
+  /[\\/]src[\\/]audio[\\/]cue-patches\.ts$/,
+  /[\\/]src[\\/]audio[\\/]cues\.ts$/,
+  /[\\/]src[\\/]audio[\\/]engine-patch\.ts$/,
+  /[\\/]src[\\/]audio[\\/]radio\.ts$/,
+  /[\\/]src[\\/]audio[\\/]music\.ts$/,
+  /[\\/]src[\\/]audio[\\/]soundscape-voices\.ts$/,
+  /[\\/]src[\\/]audio[\\/]bark-voices\.ts$/,
+  // the race's moving parts in render (render/race-parts.ts):
+  /[\\/]src[\\/]render[\\/]effects\.ts$/,
+  /[\\/]src[\\/]render[\\/]event-props\.ts$/,
+  /[\\/]src[\\/]render[\\/]smashables\.ts$/,
+  /[\\/]src[\\/]render[\\/]speed-lines\.ts$/,
+  /[\\/]src[\\/]render[\\/]rain\.ts$/,
+  // the career's backup codes, the pause menu's radio panel and the wheelie gauge's DOM:
+  /[\\/]src[\\/]save[\\/]export-code\.ts$/,
+  /[\\/]src[\\/]ui[\\/]radio-panel-view\.ts$/,
+  /[\\/]src[\\/]ui[\\/]moves-gauge\.ts$/,
 ];
 
 describe('the production build', { timeout: 120_000 }, () => {

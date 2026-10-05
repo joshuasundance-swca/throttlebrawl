@@ -4,18 +4,10 @@
 // hiss. It runs into the effects input, so the slow motion's low-pass and the effects bus level
 // apply to it. Numbers are presentation tuning sliders [default].
 import { noiseBuffer } from './engine-patch';
+import { WIND_DEFAULTS } from './tuning';
 
-export const WIND_DEFAULTS = {
-  /** Peak level at full speed (0 = off). */
-  gain: 0.3,
-  /** Speed where the wind starts, m/s. */
-  fromMps: 10,
-  /** Speed where it is full, m/s (the starter bike's top speed is about 45 m/s). */
-  fullMps: 45,
-  /** The band's centre at the start and at full speed, Hz. */
-  lowHz: 320,
-  highHz: 1500,
-} as const;
+// Its numbers live in tuning.ts beside the slider that reads them, off the lazy audio engine.
+export { WIND_DEFAULTS };
 
 export interface WindParams {
   gain: number;
