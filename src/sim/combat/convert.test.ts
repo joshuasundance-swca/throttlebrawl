@@ -1,7 +1,7 @@
 // combat-3's kick conversion (playtest 1 item 3, sim side) and `hitImpulse` on hit events
 // (docs/milestones/M2.md, "combat-3 · Hit feel").
 import { describe, expect, it } from 'vitest';
-import { F, flags, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
+import { F, flags, KICK, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
 
 const KICK_PRESS = F.attack | F.kick;
 const once = (tick: number, f: number) => (t: number) => (t === tick ? flags(f) : undefined);
@@ -21,24 +21,33 @@ describe('combat-3: the swipe-down kick (playtest 1 item 3, sim side)', () => {
   const swipe = (from: number) =>
     scriptOf({ 0: (t) => flags((t === 0 ? F.attack : 0) | (t >= from && t <= 40 ? F.kick : 0)) });
 
-  it('a 180 ms swipe (the kick flag from 12 ticks after the press) makes the punch a kick, landing on the kick’s own schedule', () => {
+  /** Where a converted kick lands: on its own schedule from the press, or the tick after the swipe when that is later. */
+  const landsAt = (flagTick: number) => Math.max(KICK.windupTicks, flagTick + 1);
+
+  it('a 180 ms swipe (the kick flag from 12 ticks after the press) makes the punch a kick, landing as soon as the swipe allows', () => {
     // 180 ms is 10.8 → 11 ticks, plus one sampling tick: the flag arrives on tick 12.
     const h = makeHarness(kickOnly(), swipe(12));
     h.run(60);
     const starts = ofType(h.events, 'attackStart');
     expect(starts.map((e) => e.data['weapon'])).toEqual(['base:punch', 'base:kick']);
     expect(starts[1]?.causeId).toBe(starts[0]?.causeId);
-    expect(ofType(h.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([[13, 'base:kick']]);
+    expect(ofType(h.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([
+      [landsAt(12), 'base:kick'],
+    ]);
     expect(ofType(h.events, 'kick')).toHaveLength(1);
   });
 
   it('the same at 200 ms (the flag on tick 13), and an early swipe lands no sooner than a straight kick', () => {
     const late = makeHarness(kickOnly(), swipe(13));
     late.run(60);
-    expect(ofType(late.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([[14, 'base:kick']]);
+    expect(ofType(late.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([
+      [landsAt(13), 'base:kick'],
+    ]);
     const early = makeHarness(kickOnly(), swipe(4));
     early.run(60);
-    expect(ofType(early.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([[13, 'base:kick']]);
+    expect(ofType(early.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([
+      [landsAt(4), 'base:kick'],
+    ]);
   });
 
   it('with the target in punch reach, the jab lands and the kick still follows', () => {
@@ -58,32 +67,41 @@ describe('combat-3: the swipe-down kick (playtest 1 item 3, sim side)', () => {
     const inWindup = makeHarness(kickOnly(), swipe(5), { 'combat.kickConvertMs': 0 });
     inWindup.run(60);
     expect(ofType(inWindup.events, 'hit').map((e) => [e.tick, e.data['weapon']])).toEqual([
-      [18, 'base:kick'],
+      [5 + KICK.windupTicks, 'base:kick'],
     ]);
     const after = makeHarness(kickOnly(), swipe(9), { 'combat.kickConvertMs': 0 });
     after.run(60);
     expect(ofType(after.events, 'attackStart').map((e) => e.data['weapon'])).toEqual(['base:punch']);
   });
 
-  it('a kick still cooling down does not convert a punch', () => {
-    // Kick on tick 0 (its cycle and hit-stop end on tick 50, cooldown to tick 80), a swipe on 55.
-    const h = makeHarness(
-      alongside(),
-      scriptOf({
-        0: (t) =>
-          t === 0
-            ? flags(KICK_PRESS)
-            : t === 55
-              ? flags(F.attack)
-              : t > 55 && t < 75
-                ? flags(F.kick)
-                : undefined,
-      }),
+  it('a rival’s kick still cooling down does not convert a punch (a player’s kick never cools down)', () => {
+    // Kick on tick 0 (its swing ends on tick `swing`, rival on rival: no hit-stop; the cooldown runs
+    // on after it), a swipe 4 ticks into the cooldown.
+    const swing = KICK.windupTicks + KICK.activeTicks + KICK.recoveryTicks;
+    const at = swing + 4;
+    const swipeAfterKick = (t: number) =>
+      t === 0
+        ? flags(KICK_PRESS)
+        : t === at
+          ? flags(F.attack)
+          : t > at && t < at + 20
+            ? flags(F.kick)
+            : undefined;
+    const rival = makeHarness(
+      alongside().map((p) => ({ ...p, role: 'rival' as const })),
+      scriptOf({ 0: swipeAfterKick }),
     );
-    h.run(100);
-    expect(ofType(h.events, 'attackStart').map((e) => [e.tick, e.data['weapon']])).toEqual([
+    rival.run(swing + 40);
+    expect(ofType(rival.events, 'attackStart').map((e) => [e.tick, e.data['weapon']])).toEqual([
       [0, 'base:kick'],
-      [55, 'base:punch'],
+      [at, 'base:punch'],
+    ]);
+    const player = makeHarness(alongside(), scriptOf({ 0: swipeAfterKick }));
+    player.run(swing + 40);
+    expect(ofType(player.events, 'attackStart').map((e) => e.data['weapon'])).toEqual([
+      'base:kick',
+      'base:punch',
+      'base:kick',
     ]);
   });
 });

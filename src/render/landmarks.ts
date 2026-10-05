@@ -35,6 +35,7 @@ import {
   Vector3,
 } from 'three';
 import { landmarkParams, type BakedFeature, type LandmarkParams, type RoadNetwork } from '../road';
+import { fredSoup, FRED, type Soup } from './fred';
 import type { LookStyle } from './look';
 import {
   LANDMARK_KITS,
@@ -446,6 +447,23 @@ export class MeshBuilder {
     return { v0, n: this.vertices - v0 };
   }
 
+  /** A code-made triangle soup (fred.ts) under `m`: positions and normals turned, colours as made. */
+  addSoup(soup: Soup, m: Matrix4): Run {
+    const v0 = this.vertices;
+    const nm = new Matrix3().getNormalMatrix(m);
+    for (let i = 0; i < soup.pos.length; i += 3) {
+      this.p.set(soup.pos[i] ?? 0, soup.pos[i + 1] ?? 0, soup.pos[i + 2] ?? 0).applyMatrix4(m);
+      this.n
+        .set(soup.nrm[i] ?? 0, soup.nrm[i + 1] ?? 0, soup.nrm[i + 2] ?? 0)
+        .applyMatrix3(nm)
+        .normalize();
+      this.pos.push(this.p.x, this.p.y, this.p.z);
+      this.nrm.push(this.n.x, this.n.y, this.n.z);
+      this.col.push(soup.col[i] ?? 0, soup.col[i + 1] ?? 0, soup.col[i + 2] ?? 0);
+    }
+    return { v0, n: this.vertices - v0 };
+  }
+
   /**
    * A tube along `pts`: `sides` faces round, outward winding, open at its ends (a tower or an
    * anchorage covers them).
@@ -784,9 +802,28 @@ function rainCloud(b: MeshBuilder, at: LandmarkPlacement, baseM: number): Piece[
   ];
 }
 
+/**
+ * Fred the Tree (playtest 4, P4-15): `keys-landmarks#fred_the_tree`, the little pine on the old Seven
+ * Mile Bridge, made in fred.ts. One piece with one level, drawn out to LANDMARK_MID_M; the kit only
+ * has to be loaded (the composite reads none of its nodes), and he stands where the feature puts him.
+ */
+function fredTheTree(c: Compose): Piece[] {
+  const { at, builder } = c;
+  const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+  return [
+    {
+      x: at.x,
+      z: at.z,
+      r: FRED.radiusM * at.scale,
+      tiers: [{ maxM: LANDMARK_MID_M, ...builder.addSoup(fredSoup(), m) }],
+    },
+  ];
+}
+
 /** Virtual nodes composed in code, by `<kit>#<node>`. */
 const COMPOSITES: Readonly<Record<string, (c: Compose) => Piece[] | null>> = {
   'golden-gate#gg_bridge': suspensionBridge,
+  'keys-landmarks#fred_the_tree': fredTheTree,
 };
 
 export interface LandmarkCounts {

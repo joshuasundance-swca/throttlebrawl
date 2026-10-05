@@ -71,10 +71,34 @@ export function roofSpans(road: RoadNetwork): RoofSpan[] {
   return spans;
 }
 
+/** How far in from a roof's end or side the camera is fully under it, m: the drizzle thins out over this. */
+export const ROOF_COVER_FADE_M = 4;
+
 /**
- * Whether a point (a camera) stands under one of the roofs: on a road with a roof, over its span and
- * inside its width, and below its underside. `hintEdge` is the road the player is on.
+ * How far under a roof a point (a camera) stands, m: the way in from the nearest of the roof's ends
+ * and sides, or -1 where it is not under one: not on a road with a roof, past its span or width, or
+ * above its underside. `hintEdge` is the road the player is on.
  */
+function roofDepth(
+  road: RoadNetwork,
+  spans: readonly RoofSpan[],
+  x: number,
+  y: number,
+  z: number,
+  hintEdge?: number,
+): number {
+  if (spans.length === 0) return -1;
+  const at = road.project(x, z, hintEdge);
+  let best = -1;
+  for (const r of spans) {
+    if (r.edge !== at.edge || at.s < r.s0 || at.s > r.s1 || Math.abs(at.d) > r.halfWidthM) continue;
+    if (y >= road.surfaceHeight(at.edge, at.s, at.d) + r.heightM) continue;
+    best = Math.max(best, Math.min(at.s - r.s0, r.s1 - at.s, r.halfWidthM - Math.abs(at.d)));
+  }
+  return best;
+}
+
+/** Whether a point (a camera) stands under one of the roofs: over its span, inside its width, below its underside. */
 export function underRoof(
   road: RoadNetwork,
   spans: readonly RoofSpan[],
@@ -83,11 +107,22 @@ export function underRoof(
   z: number,
   hintEdge?: number,
 ): boolean {
-  if (spans.length === 0) return false;
-  const at = road.project(x, z, hintEdge);
-  for (const r of spans) {
-    if (r.edge !== at.edge || at.s < r.s0 || at.s > r.s1 || Math.abs(at.d) > r.halfWidthM) continue;
-    if (y < road.surfaceHeight(at.edge, at.s, at.d) + r.heightM) return true;
-  }
-  return false;
+  return roofDepth(road, spans, x, y, z, hintEdge) >= 0;
+}
+
+/**
+ * How much of the sky a camera has a roof over, 0 (in the open) to 1 (`ROOF_COVER_FADE_M` or more
+ * in from the roof's ends and sides). It is read from where the camera is, so the drizzle under a
+ * roof does not depend on how long the camera has been there or how long the frames are (rain.ts).
+ */
+export function roofCover(
+  road: RoadNetwork,
+  spans: readonly RoofSpan[],
+  x: number,
+  y: number,
+  z: number,
+  hintEdge?: number,
+): number {
+  const depth = roofDepth(road, spans, x, y, z, hintEdge);
+  return depth <= 0 ? 0 : Math.min(1, depth / ROOF_COVER_FADE_M);
 }

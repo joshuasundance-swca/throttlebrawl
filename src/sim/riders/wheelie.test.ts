@@ -28,6 +28,7 @@ import {
   HOOD_LAUNCH_H_M,
   HOOD_VY_SHARE,
   hoodLaunchContact,
+  wheelieCrashReason,
   type HoodContact,
   WHEELIE_BRAKE,
   WHEELIE_SWEET,
@@ -571,6 +572,67 @@ describe('the hood launch (moves §3.3)', () => {
     expect(st.id.length).toBe(1);
   });
 
+  it('a held wheelie into the back of a cruise-speed sedan (24.6 m/s) from 20 m behind launches a Rustbucket at any closing speed from 3 m/s, never a solid crash (playtest 4, P4-2)', () => {
+    // Playtest 4: "Wheelie into the back of a car should also allow backflips". The moves audit's case:
+    // a Rustbucket riding up at the sedan's speed plus a few m/s, front up (the hold-and-release
+    // rhythm), closed at 6 to 8 m/s and crashed, because the trunk needed 8. Closing speeds are the
+    // sim's own, read from the contact; the starting speeds and gas only spread them across the band.
+    const RUSTBUCKET = { ...PLAYER.bike, topSpeedMps: 44.7, accelMps2: 4.9 };
+    const config: SimConfig = { ...roadConfig([SEDAN]), riders: [{ ...PLAYER, bike: RUSTBUCKET }] };
+    const inBand: number[] = [];
+    for (const over of [3.5, 5, 6.9, 7.9]) {
+      for (const gas of [0.5, 0.6]) {
+        const sc = scene(
+          config,
+          { s: 120, d: 1.7, speed: SEDAN.cruiseMps + over },
+          { type: 0, u: 140, dir: 1, speed: SEDAN.cruiseMps },
+        );
+        rideIn(sc, 60 * 8, balancer(sc.world, sc.rider.id, gas));
+        const what = `${over} m/s over, gas ${gas}`;
+        const launch = find(sc.events, 'hoodLaunch');
+        expect(find(sc.events, 'wobble') ?? find(sc.events, 'crash'), what).toBeUndefined();
+        expect(launch?.data['part'], what).toBe('trunk');
+        expect(Number(launch?.data['flips']), what).toBeGreaterThanOrEqual(1);
+        const closing = Number(launch?.data['closingMps']);
+        if (closing < 8) inBand.push(closing);
+        expect(find(sc.events, 'land')?.data['quality'], what).not.toBe('crash');
+      }
+    }
+    console.log(
+      `[examined] launches under the old 8 m/s line: ${inBand.map((c) => c.toFixed(1)).join(', ')}`,
+    );
+    // The cases are only worth anything if several of them met the car in the old dead band.
+    expect(inBand.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('a wheelie into a car’s back launches from 3 m/s of closing (a small hop, one flip); the hood still needs 8', () => {
+    const sc = scene(roadConfig([SEDAN]), { s: 100, d: 1.7, speed: 20 });
+    const st = riderState(sc.world);
+    const id = sc.rider.id;
+    const contact = (o: Partial<HoodContact> = {}): HoodContact => ({
+      rider: id,
+      vehicle: 99,
+      type: SEDAN,
+      endOn: true,
+      graze: false,
+      front: true,
+      oncoming: false,
+      closingMps: 6.9,
+      ...o,
+    });
+    st.wheelie[id] = 0.6;
+    st.wheelieRate[id] = 0;
+    st.wheelieTick[id] = sc.world.tick;
+    sc.rider.mode = 'Road';
+    expect(hoodLaunchContact(sc.world, sc.config, contact({ closingMps: 2.9 })), 'trunk under 3').toBe(false);
+    expect(hoodLaunchContact(sc.world, sc.config, contact({ oncoming: true, closingMps: 7.9 })), 'hood').toBe(
+      false,
+    );
+    expect(hoodLaunchContact(sc.world, sc.config, contact({ closingMps: 3 })), 'trunk at 3').toBe(true);
+    expect(sc.rider.mode).toBe('Airborne');
+    expect(find(sc.world.events, 'hoodLaunch')?.data).toMatchObject({ part: 'trunk', vyMps: 6, flips: 1 });
+  });
+
   it('the car brakes to 0.6 of its speed at the launch', () => {
     const config = roadConfig([SEDAN]);
     const sc = scene(config, { s: 100, d: -1.7, speed: 26 }, { type: 0, u: 300, dir: -1, speed: 24.6 });
@@ -584,10 +646,10 @@ describe('the hood launch (moves §3.3)', () => {
     expect(sc.world.movers[sc.vid]?.speed).toBeCloseTo(before * 0.6, 1);
   });
 
-  it('too low a front (held under the sweet band) or a big truck: the contact is today’s crash', () => {
+  it('too low a front (held under the sweet band) or a big truck: the contact is today’s crash, with a one-word reason', () => {
     for (const c of [
       { what: 'θ about 0.1', types: [SEDAN], lo: 0.05, hi: 0.15 },
-      { what: 'big truck', types: [BOX_TRUCK], lo: 0.5, hi: 0.7 },
+      { what: 'big truck', types: [BOX_TRUCK], lo: 0.5, hi: 0.7, why: 'BIG' },
     ]) {
       const sc = scene(
         roadConfig(c.types),
@@ -597,7 +659,11 @@ describe('the hood launch (moves §3.3)', () => {
       rideIn(sc, 60 * 8, balancer(sc.world, sc.rider.id, SWEET_U, c.lo, c.hi));
       expect(find(sc.events, 'hoodLaunch'), c.what).toBeUndefined();
       const crash = find(sc.events, 'crash');
-      expect(crash?.data, c.what).toMatchObject({ cause: 'traffic', hit: 'frontal' });
+      expect(crash?.data, c.what).toMatchObject({
+        cause: 'traffic',
+        hit: 'frontal',
+        ...(c.why ? { wheelieReason: c.why } : {}),
+      });
     }
   });
 
@@ -646,6 +712,43 @@ describe('the hood launch (moves §3.3)', () => {
     expect(sc.rider.mode).toBe('Airborne');
   });
 
+  it('a crash from a live wheelie gets a one-word reason: BIG, SMALL, LOW, BEHIND, SIDEWAYS, else WOBBLY (P4-2)', () => {
+    const sc = scene(roadConfig([SEDAN]), { s: 100, d: 1.7, speed: 20 });
+    const st = riderState(sc.world);
+    const id = sc.rider.id;
+    const contact = (o: Partial<HoodContact> = {}): HoodContact => ({
+      rider: id,
+      vehicle: 99,
+      type: SEDAN,
+      endOn: true,
+      graze: false,
+      front: true,
+      oncoming: false,
+      closingMps: 7,
+      ...o,
+    });
+    const up = (theta: number, tick = sc.world.tick) => {
+      st.wheelie[id] = theta;
+      st.wheelieTick[id] = tick;
+      sc.rider.mode = 'Road';
+    };
+    up(0.6);
+    expect(wheelieCrashReason(sc.world, contact({ type: BOX_TRUCK }))).toBe('BIG');
+    expect(wheelieCrashReason(sc.world, contact({ type: { ...SEDAN, category: 'rv' } }))).toBe('BIG');
+    expect(wheelieCrashReason(sc.world, contact({ type: CRUISER }))).toBe('SMALL');
+    expect(wheelieCrashReason(sc.world, contact({ front: false }))).toBe('BEHIND');
+    expect(wheelieCrashReason(sc.world, contact({ endOn: false }))).toBe('SIDEWAYS');
+    expect(wheelieCrashReason(sc.world, contact({ graze: true }))).toBe('SIDEWAYS');
+    expect(wheelieCrashReason(sc.world, contact())).toBe('WOBBLY');
+    up(0.2);
+    expect(wheelieCrashReason(sc.world, contact())).toBe('LOW');
+    // Not in a wheelie (front down, or one that ended before this tick): nothing to say.
+    up(0);
+    expect(wheelieCrashReason(sc.world, contact())).toBeUndefined();
+    up(0.6, sc.world.tick - 1);
+    expect(wheelieCrashReason(sc.world, contact())).toBeUndefined();
+  });
+
   it('kick held through the whole flight: still no crash, and no more flips than the launch spun', () => {
     const config = roadConfig([SEDAN]);
     const sc = scene(config, { s: 100, d: -1.7, speed: 26 }, { type: 0, u: 300, dir: -1, speed: 24.6 });
@@ -668,6 +771,8 @@ describe('the hood launch (moves §3.3)', () => {
     rideIn(sc, 60 * 8, () => input(SWEET_U));
     expect(find(sc.events, 'hoodLaunch')).toBeUndefined();
     expect(find(sc.events, 'crash')?.data).toMatchObject({ cause: 'traffic', hit: 'frontal' });
+    // Not in a wheelie: no wheelie reason to give.
+    expect(find(sc.events, 'crash')?.data).not.toHaveProperty('wheelieReason');
   });
 });
 

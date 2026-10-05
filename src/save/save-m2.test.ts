@@ -74,6 +74,16 @@ const m2Custom: Settings = {
   gamepadBindings: { kick: ['button3'], lookBack: ['button5', 'button7'] },
   lastSeenBuild: 'f630c3c',
   vetoes: [{ contentRef: 'base:barks/rival-taunts#line-3', raceId: 'race-1', tick: 1234 }],
+  // Playtest 4 (P4-12, P4-13): the menu race's options (see save-race-options.test.ts).
+  raceOptions: {
+    kind: 'race',
+    bike: 'base:superbike-1000',
+    timeOfDay: 'dusk',
+    weather: 'rain',
+    rivals: 2,
+    cops: false,
+    traffic: 'light',
+  },
 };
 
 const M2_FIELDS = [
@@ -106,6 +116,8 @@ const M2_FIELDS = [
   'radioDefault',
   // Playtest 4 (P4-18): which Effects default the record was written under (see save-mix.test.ts).
   'effectsDefault',
+  // Playtest 4 (P4-12, P4-13): the menu race's options.
+  'raceOptions',
 ] as const;
 
 describe('the M2 settings record', () => {

@@ -4,10 +4,11 @@
 // load leaves them out: system.ts imports this file when the audio graph is built (the start tap),
 // and radio.ts's player stays silent until it arrives. Tests and offline harnesses hand RADIO_BAND
 // in directly.
-import { isMore, isRegional } from './radio-genres';
+import { isExtra, isMore, isRegional } from './radio-genres';
 import { composeTrack, type Composition } from './radio-compose';
 import { composeMedley, PIVOT_PRESET } from './radio-compose-pivot';
 import { createRegionalRig } from './radio-rigs';
+import { createExtraRig } from './radio-rigs-extra';
 import { createMoreRig } from './radio-rigs-more';
 import { createRadioRig, type RadioGenre, type RadioRig } from './radio-synth';
 import { trackSeed } from './radio-util';
@@ -27,6 +28,7 @@ export function composeFor(track: RadioTrack): Composition | null {
 export function createBandRig(ctx: BaseAudioContext, out: AudioNode, genre: RadioGenre): RadioRig {
   if (isRegional(genre)) return createRegionalRig(ctx, out, genre);
   if (isMore(genre)) return createMoreRig(ctx, out, genre);
+  if (isExtra(genre)) return createExtraRig(ctx, out, genre);
   return createRadioRig(ctx, out, genre);
 }
 

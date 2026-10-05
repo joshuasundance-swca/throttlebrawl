@@ -557,14 +557,18 @@ export function initSetPieces(world: World, config: SimConfig): void {
       const lo = Math.max(SET_PIECE.minProgress, m.atProgress[0]);
       const hi = Math.min(SET_PIECE.maxProgress, m.atProgress[1]);
       const walls = WALLS_OK.has(piece);
-      if (tag !== '') {
+      if (tag !== '' || piece === 'moving-ramp') {
         // #391: a piece tied to a road tag picks among the spots that fit, every 10 m of its window,
         // rather than hoping a random try lands on a street that may be a fifth of the route.
         const fits: number[] = [];
         const step = 10 / Math.max(1, st.routeLen);
         for (let p = lo; p <= hi; p += step) {
           const u = st.u0 + c.routeDir * p * st.routeLen;
-          if (roomFor(st, bypassed, u, len, lead) && stretchOk(config, c, u, len, lead, tag, walls))
+          if (
+            roomFor(st, bypassed, u, len, lead, piece === 'moving-ramp' ? MOVING.rampTailM : undefined) &&
+            stretchOk(config, c, u, len, lead, tag, walls) &&
+            (piece !== 'moving-ramp' || straightEnough(config, c, u, len))
+          )
             fits.push(u);
         }
         const u = fits[Math.min(fits.length - 1, Math.floor(nextFloat(rng) * fits.length))];
@@ -589,18 +593,24 @@ export function initSetPieces(world: World, config: SimConfig): void {
   }
 }
 
-/** Whether a piece at u (len long, its signs `lead` ahead) keeps clear of the others and of every bypass. */
+/**
+ * Whether a piece at u (len long, its signs `lead` ahead) keeps clear of the others and of every
+ * bypass. With `tail`, only the last `tail` metres of the piece must clear the bypasses (the signs
+ * and the rest of its stretch may overlap one): a piece that drives on ahead of the field, whose
+ * end every racer who took a shortcut still rides to once it rejoins.
+ */
 function roomFor(
   st: SetPieceState,
   bypassed: readonly [number, number][],
   u: number,
   len: number,
   lead: number,
+  tail?: number,
 ): boolean {
   const near = (at: number, l: number) => Math.abs(at - u) < SET_PIECE.spacingM + l;
   if (st.pieces.some((q) => near(q.u, q.len) || (q.voteLeft >= 0 && near(q.voteU, q.len)))) return false;
   // Never on a stretch a shortcut bypasses: every racer must ride past it.
-  const from = Math.abs(u - st.u0) - lead - 10;
+  const from = tail === undefined ? Math.abs(u - st.u0) - lead - 10 : Math.abs(u - st.u0) + len - tail;
   const to = Math.abs(u - st.u0) + len + 10;
   return !bypassed.some(([a, b]) => from < b && to > a);
 }

@@ -65,7 +65,19 @@
       "tag": "old-bridge"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "landmark",
+      "id": "fred-the-tree",
+      "s0": 3558.559,
+      "s1": 3562.559,
+      "d0": -6.8961,
+      "d1": -5.8961,
+      "params": {
+        "model": "models/landmarks/keys-landmarks#fred_the_tree"
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 0.0,

@@ -2,9 +2,11 @@
 // tuning scales. Items 8 and 9 run through createSim in hitstop.test.ts.
 import { describe, expect, it } from 'vitest';
 import { combatState, combatView } from './index';
-import { F, flags, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
+import { F, flags, KICK, makeHarness, ofType, scriptOf, type Placement } from './harness.test-util';
 
 const KICK_PRESS = F.attack | F.kick;
+/** The tick a kick pressed on tick 0 lands (its wind-up: 7 ticks since playtest 4, M1's 13). */
+const LANDS = KICK.windupTicks;
 const once = (tick: number, f: number) => (t: number) => (t === tick ? flags(f) : undefined);
 
 describe('combat-1: the kick needs reach', () => {
@@ -47,24 +49,27 @@ describe('combat-1: the kick needs reach', () => {
     expect(hits).toHaveLength(1);
     const hit = hits[0];
     expect(hit?.target).toBe(1);
-    // Wind-up is ticks 0–12 (13 ticks), the active moment starts on tick 13.
-    expect(phases.slice(0, 13).every((p) => p === 'windup')).toBe(true);
-    expect(phases[13]).toBe('active');
-    expect(hit?.tick).toBe(13);
+    // The wind-up fills the ticks before LANDS, and the active moment starts on LANDS.
+    expect(phases.slice(0, LANDS).every((p) => p === 'windup')).toBe(true);
+    expect(phases[LANDS]).toBe('active');
+    expect(hit?.tick).toBe(LANDS);
     expect(ofType(h.events, 'kick')).toHaveLength(1);
     // Sideways speed: zero before the hit, clearly positive (away from the attacker) after the hit-stop.
     const lateral = (t: number) => ((dTrace[t] ?? 0) - (dTrace[t - 1] ?? 0)) * 60;
-    expect(lateral(12)).toBe(0);
-    expect(lateral(18)).toBeGreaterThan(3);
+    expect(lateral(LANDS - 1)).toBe(0);
+    expect(lateral(LANDS + 5)).toBeGreaterThan(3);
     expect(dTrace[40]).toBeGreaterThan(2.2);
   });
 
   it('3. a rival who brakes out of reach during the wind-up is missed (and is hit when it does not brake)', () => {
+    // M1's 13-tick kick wind-up: long enough to brake 1 m out of reach in (the rule holds for any
+    // wind-up; playtest 4's 7-tick kick leaves too little time to show it at a 9 m/s² brake).
+    const m1Kick = [{ ...KICK, windupTicks: 13 }];
     const riders: Placement[] = [
       { s: 100, d: 0, speed: 26, role: 'player' },
       { s: 100, d: 1.2, speed: 22 },
     ];
-    const cruise = makeHarness(riders, scriptOf({ 0: once(0, KICK_PRESS) }));
+    const cruise = makeHarness(riders, scriptOf({ 0: once(0, KICK_PRESS) }), {}, m1Kick);
     cruise.run(40);
     expect(ofType(cruise.events, 'hit')).toHaveLength(1);
 
@@ -74,6 +79,8 @@ describe('combat-1: the kick needs reach', () => {
         0: once(0, KICK_PRESS),
         1: () => ({ steer: 0, throttle: 0, brake: 255, flags: 0 }),
       }),
+      {},
+      m1Kick,
     );
     brakes.run(40);
     expect(ofType(brakes.events, 'hit')).toHaveLength(0);
@@ -82,10 +89,11 @@ describe('combat-1: the kick needs reach', () => {
 });
 
 describe('combat-1: presses, repeats and the cooldown', () => {
-  it('4. mashing kick 20 times in one second lands at most one kick, and the next request is a punch', () => {
+  /** Kick pressed every third tick for a second, by rider 0 (`role`) next to a rival. */
+  const mash = (role: 'player' | 'rival') => {
     const h = makeHarness(
       [
-        { s: 100, d: 0, role: 'player' },
+        { s: 100, d: 0, role },
         { s: 100, d: 1.2 },
       ],
       scriptOf({ 0: (t) => (t < 60 && t % 3 === 0 ? flags(KICK_PRESS) : undefined) }),
@@ -95,19 +103,33 @@ describe('combat-1: presses, repeats and the cooldown', () => {
       h.run(1);
       if (combatView(h.world, 0).attackPhase === 'cooldown') sawCooldown = true;
     }
-    const presses = Array.from({ length: 60 }, (_, t) => t).filter((t) => t % 3 === 0);
-    expect(presses).toHaveLength(20);
-    const starts = ofType(h.events, 'attackStart');
-    expect(starts.filter((e) => e.data['weapon'] === 'base:kick')).toHaveLength(1);
-    expect(ofType(h.events, 'kick').length).toBeLessThanOrEqual(1);
-    expect(ofType(h.events, 'hit').length).toBeLessThanOrEqual(starts.length);
-    // The kick cycle (13 + 6 + 27 ticks, plus the 4-tick hit-stop) ends on tick 50; the press on
-    // tick 51 falls in the kick's cooldown and becomes a punch.
-    expect(starts.map((e) => [e.tick, e.data['weapon']])).toEqual([
+    return { h, sawCooldown, starts: ofType(h.events, 'attackStart').map((e) => [e.tick, e.data['weapon']]) };
+  };
+  /** The tick the leg is back after a landed kick on tick 0: its whole swing plus the 4-tick hit-stop. */
+  const back = KICK.windupTicks + KICK.activeTicks + KICK.recoveryTicks + 4;
+
+  it('4. a rival mashing kick 20 times in one second lands one kick, and the next request is a punch', () => {
+    const { h, sawCooldown, starts } = mash('rival');
+    expect(ofType(h.events, 'kick')).toHaveLength(1);
+    // A rival's press is never kept, so the first press after the kick's swing (rivals' hits on
+    // each other have no hit-stop) falls in its cooldown and becomes a punch.
+    const next = Math.ceil((back - 4) / 3) * 3;
+    expect(starts).toEqual([
       [0, 'base:kick'],
-      [51, 'base:punch'],
+      [next, 'base:punch'],
     ]);
     expect(sawCooldown).toBe(true);
+  });
+
+  it('playtest 4: a player mashing kick gets a kick each time the leg is back, never a punch and no cooldown', () => {
+    const { h, sawCooldown, starts } = mash('player');
+    // The press kept from the end of the first kick's recovery starts the second kick on the tick it ends.
+    expect(starts).toEqual([
+      [0, 'base:kick'],
+      [back, 'base:kick'],
+    ]);
+    expect(ofType(h.events, 'hit').every((e) => e.data['weapon'] === 'base:kick')).toBe(true);
+    expect(sawCooldown).toBe(false);
   });
 });
 
@@ -137,14 +159,15 @@ describe('combat-1: sides and targets', () => {
     );
     h.run(40);
     const hits = ofType(h.events, 'hit');
-    expect(hits.map((e) => [e.tick, e.target])).toEqual([[13, 2]]);
+    expect(hits.map((e) => [e.tick, e.target])).toEqual([[LANDS, 2]]);
   });
 
   it('5c. a drag once the active moment has started does not flip the side', () => {
     const h = makeHarness(
       field,
       scriptOf({
-        0: (t) => (t === 0 ? flags(KICK_PRESS) : t >= 13 && t <= 30 ? flags(F.attackSideRight) : undefined),
+        0: (t) =>
+          t === 0 ? flags(KICK_PRESS) : t >= LANDS && t <= 30 ? flags(F.attackSideRight) : undefined,
       }),
     );
     h.run(40);
@@ -215,12 +238,12 @@ describe('combat-1: damage and knock-off', () => {
         { s: 100, d: 0, role: 'player' },
         { s: 100, d: 1.2 },
       ],
-      scriptOf({ 0: once(0, KICK_PRESS), 1: once(10, F.attack) }),
+      scriptOf({ 0: once(0, KICK_PRESS), 1: once(LANDS - 3, F.attack) }),
     );
     h.run(60);
     const rivalStarts = ofType(h.events, 'attackStart').filter((e) => e.actor === 1);
     expect(rivalStarts).toHaveLength(1);
-    // The rival's punch (wind-up ticks 10–16) is cut off by the kick landing on tick 13.
+    // The rival's punch (a 7-tick wind-up from LANDS - 3) is cut off by the kick landing on LANDS.
     expect(
       h.events.filter((e) => e.actor === 1 && (e.type === 'hit' || e.type === 'attackMiss')),
     ).toHaveLength(0);

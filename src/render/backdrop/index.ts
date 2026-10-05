@@ -4,7 +4,7 @@
 // (`assets/backdrop/<region>/`, docs/content-packs.md, "Backdrop"): the Cascades, the Olympics and
 // their volcanoes, the Columbia's gorge walls and falls; San Francisco's invented skyline, its two
 // big bridges, the bay's ships, Twin Peaks and the mast, the fog bank; the Keys' long bridges,
-// mangrove islands, reef light, sailboats and thunderheads.
+// mangrove islands, reef light, sailboats and fair-weather clouds.
 //
 // This file is the small static half the renderer holds. The data and the builder (builder.ts) are
 // lazy chunks, fetched the first time a road with a backdrop is shown: a region's backdrop loads

@@ -89,6 +89,7 @@ function race(c: Case, pattern: Pattern): Held {
   let heldNow = false;
   let heldLanded = false;
   let landTick = Number.NEGATIVE_INFINITY;
+  let cleanLanding = false;
   while (!sim.isOver() && sim.tick < MAX_TICKS && !snap.race.finishOrder.includes(playerId)) {
     const actions = emptyActions();
     bot.drive(snap, playerId, config.route, actions);
@@ -106,13 +107,18 @@ function race(c: Case, pattern: Pattern): Held {
       if (e.type === 'jump') heldNow = false;
       if (e.type === 'land') {
         if (heldNow) out.held++;
+        // A clean landing that then meets traffic is the road's, not the landing's: the races part
+        // ways with the control's long before, so the control cannot show it (P4-6's combat timing:
+        // the Fogline Run's log hop landed clean at tick 5879, then met an oncoming log truck at 5884).
         heldLanded = heldNow;
+        cleanLanding = e.data['quality'] === 'clean';
         landTick = e.tick;
         heldNow = false;
       }
       if (e.type === 'crash') {
         // Down in the air with the command held, or on or just after a landing it was held for.
-        const mine = heldNow || (heldLanded && e.tick - landTick <= AFTER_TICKS);
+        const roads = cleanLanding && e.data['cause'] === 'traffic';
+        const mine = heldNow || (heldLanded && !roads && e.tick - landTick <= AFTER_TICKS);
         if (heldNow) out.held++;
         if (mine) {
           const why = `${String(e.data['cause'])}${e.data['botched'] ? ' (botched)' : ''}`;

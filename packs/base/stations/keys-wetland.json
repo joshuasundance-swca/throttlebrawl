@@ -1,0 +1,57 @@
+{
+  "type": "station",
+  "id": "keys-wetland",
+  "name": "Brackish 1090 AM",
+  "genre": "swamp",
+  "regions": ["florida-keys"],
+  "tracks": [
+    {
+      "id": "mangrove-root-blues",
+      "title": "Mangrove Root Blues",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 92, "key": "E", "progression": "twelve" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "skeeter-season",
+      "title": "Skeeter Season",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 98, "key": "A", "progression": "quick" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "airboat-at-low-tide",
+      "title": "Airboat at Low Tide",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 104, "key": "G", "progression": "stomp" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "gator-on-the-lawn-chair",
+      "title": "Gator on the Lawn Chair",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 88, "key": "D", "progression": "minor" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "no-see-ums",
+      "title": "No-See-Ums",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 100, "key": "C", "progression": "twelve" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "shutters-stay-up",
+      "title": "Hurricane Shutters Stay Up",
+      "procedural": { "preset": "swamp-band", "params": { "bpm": 94, "key": "E", "progression": "minor" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "The Keys' swamp blues (playtest 4, P4-17: \"feel free to make more for all regions\"; swamp blues is one of the genres the maintainer said appeal, product-spec). A 12/8 shuffle at 88-104 bpm: a harmonica that calls and a slide guitar that answers, then a slide solo with harmonica fills, a tremolo guitar pulsing with the triplets, a washboard, a foot stomp, a walking bass and a turnaround (src/audio/radio-compose-extra.ts, preset swamp-band). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

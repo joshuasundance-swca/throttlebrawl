@@ -482,3 +482,12 @@ The first four entries are seeded from the planning interview, which ran over 28
 - Lesson: the expressive cloned takes are kept wherever both Whisper models hear the scripted words and the clip sounds like the rival's other lines. A take fails when it slurs a word ("Dodged it" heard as "Daws did"), ad-libs ("Mm-mm. Last call."), or drifts away from its rival's voice. Words that run together are fixed in the spoken text with a beat ("the risks... slide"), never in the subtitle. Homophones ("brakes"/"breaks", "Fare's"/"Fair's") and number spellings ("ten-x"/"10x") are not misses.
 - Scope: global (voices)
 - Action taken: 9 clips redone free with Kokoro-82M on the dev machine's GPU in the rival's reference voice; each redone line carries an `audioNote` saying why, and each set's `meta.voice.review` lists its picks. Any of them can still be vetoed with "cut this" or in chat.
+
+### 2026-10-04 · Music: more complex, in every region
+- Item: the radio stations' music, the Pacific Northwest's in particular
+- Surface: radio track
+- Verdict: tweak (the Pacific Northwest's), love (San Francisco's), keep (the Keys')
+- Maintainer said: "The more complex SF music is impressive probably my favorite I like Keys music too but PNW seems very simple and slow. It's not as good as the others even if I get the motivation and vibe." and "I'm surprised how good the music is lol feel free to make more for all regions :P"
+- Lesson: keep a region's vibe, and give it the structure and drive of the busiest stations: a verse, a build, a chorus and a hook, not a slow loop. Simple and slow reads as a miss even when the mood is right. He wanted four directions for the Pacific Northwest: driving garage and grunge, indie and folk with drive, rainy-night synth, and the same vibe with more complexity.
+- Scope: global (music)
+- Action taken: decided as richer music in every region (product spec, Audio); the stations themselves are built in the run that follows.

@@ -120,6 +120,26 @@ export interface RaceSetup {
    * events"), applied to the event before anything reads it. Left out: the event file as it is.
    */
   eventPatch?: EventPatch;
+  /**
+   * The menu race's options (playtest 4, P4-12: "Maybe Races from main menu should have options?").
+   * Each is left out at its default, so a config without them is byte-identical to before.
+   *
+   * `timeOfDay`: a free-play race's chosen light, one of the region's `timeOfDayOptions`; left out,
+   * or one the region lacks, the seed draws it as before (`raceTimeOfDay`).
+   */
+  timeOfDay?: string;
+  /**
+   * How many rivals a free-play race fields, drawn from the region's cast by the seed (at most the
+   * cast's size; `raceField`). Left out: the event's own count. A career race ignores it.
+   */
+  rivals?: number;
+  /** False fields no law: no cop riders, and the event's cops block reads `none`. Left out: the event's. */
+  cops?: boolean;
+  /**
+   * The menu race's traffic, a scale on the `traffic.density` slider at race start (the result kept
+   * inside the slider's 0 to 3). Left out: as the slider says.
+   */
+  trafficScale?: number;
 }
 
 type Json = Record<string, unknown>;
@@ -181,7 +201,9 @@ const LIGHT_SALT = 0x6c696768; // 'ligh'
 /**
  * The rival ids a race fields (qualified): the event's own field, or for a free-play race as many
  * drawn from the region's whole cast (every live rival with no region, or this event's region, in
- * the race's packs), shuffled by the seed (seededDraw, never the sim's streams).
+ * the race's packs), shuffled by the seed (seededDraw, never the sim's streams). A menu race may ask
+ * for `count` rivals instead (playtest 4, P4-12): the first `count` of the same shuffle, at most the
+ * whole cast, so the usual count draws exactly the usual field.
  */
 export function raceField(
   race: ContentRegistry,
@@ -190,6 +212,8 @@ export function raceField(
   freePlay = false,
   /** The event with a season's patch applied (`withEventPatch`); left out: the registry's own. */
   patched?: RaceEvent,
+  /** How many rivals a free-play race fields; left out: the event's own count. */
+  count?: number,
 ): string[] {
   const id = eventKey(eventId);
   const event = patched ?? lookup(race.events, id);
@@ -208,13 +232,15 @@ export function raceField(
     const j = Math.floor(next() * (i + 1));
     [cast[i], cast[j]] = [cast[j] as string, cast[i] as string];
   }
+  if (count !== undefined && Number.isFinite(count)) return cast.slice(0, Math.max(0, Math.floor(count)));
   return cast.length >= own.length ? cast.slice(0, own.length) : own;
 }
 
 /**
  * A race's time of day: the event's own, or for a free-play race one of its region's
- * `timeOfDayOptions` drawn by the seed (seededDraw). It feeds the road events' eligibility and
- * the light; presentation reads it again from the seed, as the recording carries the seed.
+ * `timeOfDayOptions` drawn by the seed (seededDraw), or the one the menu race chose (playtest 4,
+ * P4-12) when the region offers it. It feeds the road events' eligibility and the light;
+ * presentation reads it again from the seed and the choice, as the recording carries both.
  */
 export function raceTimeOfDay(
   reg: ContentRegistry,
@@ -223,6 +249,8 @@ export function raceTimeOfDay(
   freePlay = false,
   /** The event with a season's patch applied (`withEventPatch`); left out: the registry's own. */
   patched?: RaceEvent,
+  /** The menu race's chosen light; ignored outside free play, or when the region lacks it. */
+  chosen?: string | null,
 ): string {
   const id = eventKey(eventId);
   const event = patched ?? lookup(reg.events, id);
@@ -230,6 +258,7 @@ export function raceTimeOfDay(
   if (!freePlay) return own;
   const region = reg.regions[qualifyIn(packOf(id), event.region)];
   const options = (region?.timeOfDayOptions ?? []).map((o) => o.id).sort();
+  if (chosen && options.includes(chosen)) return chosen;
   if (options.length === 0) return own;
   return options[Math.floor(seededDraw(seed, LIGHT_SALT)() * options.length)] ?? own;
 }
@@ -555,6 +584,12 @@ export const MAX_FIELDED_COPS = 5;
 /** The event's career tier until career-1 lands: the first. */
 export const DEFAULT_TIER = 1;
 
+/** The cops block of a race with the law off (the menu race's "Cops: off", playtest 4, P4-12). */
+const NO_LAW: SimEventCops = { mode: 'none', baseCount: 0, tierScale: 0, chaosSummon: false, randomness: 0 };
+/** The traffic system's master density slider and its top (sim/traffic's declaration). */
+const TRAFFIC_DENSITY = 'traffic.density';
+const TRAFFIC_DENSITY_MAX = 3;
+
 const finiteOr = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 
@@ -814,7 +849,7 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     healthScale: level.healthScale,
     powerScale: level.powerScale,
   };
-  const rivals = raceField(race, eventId, setup.seed, setup.freePlay, event).map((id) =>
+  const rivals = raceField(race, eventId, setup.seed, setup.freePlay, event, setup.rivals).map((id) =>
     riderDef(
       race,
       id,
@@ -832,7 +867,9 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
     topCapMps: level.copTopCapMps,
     fineScale: level.fineScale,
   };
-  const cops = copIds(race, eventId, tier).map((id) =>
+  // The menu race's "Cops: off" (playtest 4, P4-12) fields none, and its cops block reads `none`.
+  const lawOff = setup.cops === false;
+  const cops = (lawOff ? [] : copIds(race, eventId, tier)).map((id) =>
     riderDef(race, id, { kind: 'cop' }, pace, level?.copBike ?? undefined, copLevel),
   );
   const player = riderDef(
@@ -864,11 +901,20 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
   const weights = regionTrafficWeights(race, event, eventPack);
   const areaWeights = regionTrafficAreas(race, event, eventPack);
   // W-P: the road set pieces the event opts into (the sim rolls which fire, and where).
-  const timeOfDay = raceTimeOfDay(race, eventId, setup.seed, setup.freePlay, event);
+  const timeOfDay = raceTimeOfDay(race, eventId, setup.seed, setup.freePlay, event, setup.timeOfDay);
   const mods = eventModifiers(race, { ...event, timeOfDay: timeOfDay as RaceEvent['timeOfDay'] }, eventId);
   const given = setup.tuning ?? {};
   const tuning: Record<string, number> = tuningDefaults(SIM_TUNING.filter((d) => d.affectsSim));
   for (const [id, value] of Object.entries(given)) if (!id.startsWith(DIFFICULTY_PREFIX)) tuning[id] = value;
+  // The menu race's traffic (playtest 4, P4-12): a scale on the density slider, kept inside its range.
+  const scale = setup.trafficScale;
+  if (scale !== undefined && Number.isFinite(scale) && scale !== 1) {
+    const density = tuning[TRAFFIC_DENSITY] ?? 1;
+    tuning[TRAFFIC_DENSITY] = Math.min(
+      TRAFFIC_DENSITY_MAX,
+      Math.max(0, Math.round(density * scale * 100) / 100),
+    );
+  }
   const playerSlots = 1;
   const slots: SimSlotConfig[] = Array.from({ length: playerSlots }, (_, i) => ({
     assists: { ...(setup.assists?.[i] ?? NO_ASSISTS) },
@@ -886,7 +932,9 @@ export function buildSimConfig(reg: ContentRegistry, stream: RegionStream, setup
       style: styleRewards(event.rewards),
       // M4 cops-3: the tier (1 until career-1) and the law's spawn mix, chaos meter and fines.
       tier,
-      cops: ((c, j) => (j ? { ...c, jurisdiction: j } : c))(eventCops(event), jurisdictionOf(race, cops)),
+      cops: lawOff
+        ? NO_LAW
+        : ((c, j) => (j ? { ...c, jurisdiction: j } : c))(eventCops(event), jurisdictionOf(race, cops)),
       ...(mods.perRace !== undefined ? { modifiersPerRace: mods.perRace } : {}),
       ...eventGrudgeRule(event, eventPack),
       // The career field's fighting scales (absent: the sim reads 1 and 1, and the hash is as before).

@@ -685,6 +685,52 @@ async function gaugeMoment(page: Page, where: string): Promise<string[]> {
 }
 
 /**
+ * Seeds the landing moment tries, CAREER_SEED first, before a paid landing counts as never coming
+ * (a bound, as firstSeed's). Whether the bot lands a jump clean is a property of the seed, and any
+ * sim change moves it (P4-6's combat timing took seed 4's only one away), so the moment searches. [default]
+ */
+const LANDING_SEEDS = 6;
+
+/**
+ * Rides on to the player's next clean landing after real air. When the race ends first, the career's
+ * first race starts again, as on a new device (the storage cleared; the init scripts set the look and
+ * the probe again), on the next seed, and rides to its first one.
+ */
+async function rideToPaidLanding(page: Page, where: string): Promise<void> {
+  for (let i = 0; i < LANDING_SEEDS; i++) {
+    const seed = CAREER_SEED + i;
+    if (i > 0) {
+      await page.evaluate(() => localStorage.clear());
+      await page.goto('./');
+      await page.evaluate((s) => {
+        const g = (window as TestWindow).__game;
+        g?.setSeed(s);
+        g?.setBot(true);
+      }, seed);
+      await rideFirstCareerRace(page);
+    }
+    await page.evaluate(() => {
+      const g = (window as TestWindow).__game;
+      if (!g) return;
+      const from = g.snapshot()?.tick ?? 0;
+      const me = g.playerId();
+      g.fastForward(
+        (s) =>
+          s.tick > from + 4 * 60 * 60 ||
+          g
+            .events()
+            .some((e) => e.type === 'land' && e.data?.['surge'] === true && e.actor === me && e.tick > from),
+      );
+    });
+    await fastForwardDone(page, `${where}: a landing that pays (seed ${seed})`);
+    if ((await page.evaluate(() => (window as TestWindow).__game?.state())) === 'race') return;
+  }
+  throw new Error(
+    `${where}: no paid landing before the race's end on seeds ${CAREER_SEED} to ${CAREER_SEED + LANDING_SEEDS - 1}`,
+  );
+}
+
+/**
  * Rides on until the player's next clean landing after real air (the one that puts a line on the
  * ticker), then measures the strip as a landing line, every frame for a stretch of the settle (the
  * live check found the bike sinking 30 to 64 px as the camera eased back after touchdown): the strip
@@ -701,20 +747,7 @@ async function gaugeMoment(page: Page, where: string): Promise<string[]> {
  * veto's "recently seen" list, which app/ notes the line in as it puts it on the strip.
  */
 async function landingMoment(page: Page, where: string): Promise<string[]> {
-  await page.evaluate(() => {
-    const g = (window as TestWindow).__game;
-    if (!g) return;
-    const from = g.snapshot()?.tick ?? 0;
-    const me = g.playerId();
-    g.fastForward(
-      (s) =>
-        s.tick > from + 4 * 60 * 60 ||
-        g
-          .events()
-          .some((e) => e.type === 'land' && e.data?.['surge'] === true && e.actor === me && e.tick > from),
-    );
-  });
-  await fastForwardDone(page, `${where}: a landing that pays`);
+  await rideToPaidLanding(page, where);
   const samples = await page.evaluate(async (line) => {
     const w = window as TestWindow;
     const out: { strip: Box; pieces: Piece[]; vw: number; vh: number }[] = [];

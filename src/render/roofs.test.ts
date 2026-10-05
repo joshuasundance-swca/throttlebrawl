@@ -9,7 +9,7 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import { createFlatLook } from './look';
 import { FERRY_DIM, placeItems } from './pnw-places';
 import { MAX_DROPS, Rain } from './rain';
-import { FERRY_ROOF, ferrySections, roofSpans, underRoof } from './roofs';
+import { FERRY_ROOF, ferrySections, roofCover, roofSpans, underRoof } from './roofs';
 import { defaultRenderParams } from './tuning';
 
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/*.json', {
@@ -79,28 +79,90 @@ describe('the roofs the scene stands over the road', () => {
 });
 
 describe('the drizzle under a roof', () => {
-  const run = (rain: Rain, seconds: number, sheltered: boolean) => {
-    for (let i = 0; i < seconds * 60; i++) rain.update(30, 1 / 60, sheltered);
+  const run = (rain: Rain, seconds: number, cover: number, dt = 1 / 60) => {
+    for (let i = 0; i < Math.round(seconds / dt); i++) rain.update(30, dt, cover);
   };
 
-  it('stops while the camera is under a roof, and comes back when it is out', () => {
+  it('stops where the camera is under a roof, and comes back when it is out', () => {
     const rain = new Rain(createFlatLook(), defaultRenderParams());
     rain.set('#c4ceca');
-    run(rain, 0.1, false);
+    run(rain, 0.1, 0);
     expect(rain.count()).toBe(MAX_DROPS / 2);
-    run(rain, 1, true);
+    run(rain, 1, 1);
     expect(rain.count()).toBe(0);
     expect(rain.root.visible).toBe(false);
-    run(rain, 1, false);
+    run(rain, 1, 0);
     expect(rain.count()).toBe(MAX_DROPS / 2);
   });
 
-  it('thins out rather than blinking off', () => {
+  it('follows where the camera is, not how long it has been there: one short frame under a roof is dry', () => {
+    // The wave C check saw two or three streaks under the ferry's deck in a frame the camera had been
+    // under it for seconds: a fade timed by frames lags whenever frames are few or slow (a stall, a
+    // slow-motion crash, a harness that steps the sim in bursts). The cover is read from the camera's
+    // place each frame, so a frame of any length, the first or the hundredth, draws none.
+    for (const dt of [0.0005, 1 / 60, 0.1]) {
+      const rain = new Rain(createFlatLook(), defaultRenderParams());
+      rain.set('#c4ceca');
+      run(rain, 0.2, 0);
+      expect(rain.count()).toBe(MAX_DROPS / 2);
+      rain.update(30, dt, 1);
+      expect(rain.count(), `one frame of ${dt} s under the roof`).toBe(0);
+      rain.update(30, dt, 0);
+      expect(rain.count(), `one frame of ${dt} s out from under it`).toBe(MAX_DROPS / 2);
+    }
+  });
+
+  it('thins out with the cover rather than blinking off', () => {
     const rain = new Rain(createFlatLook(), defaultRenderParams());
     rain.set('#c4ceca');
-    run(rain, 0.1, false);
-    run(rain, 0.1, true);
-    expect(rain.count()).toBeGreaterThan(0);
-    expect(rain.count()).toBeLessThan(MAX_DROPS / 2);
+    const counts = [0, 0.25, 0.5, 0.75, 1].map((cover) => {
+      rain.update(30, 1 / 60, cover);
+      return rain.count();
+    });
+    expect(counts[0]).toBe(MAX_DROPS / 2);
+    expect(counts[4]).toBe(0);
+    for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeLessThan(counts[i - 1]!);
+  });
+});
+
+describe('how far under a roof the camera is', () => {
+  const r = spans[0]!;
+  const cover = (s: number, d: number, up: number) => {
+    const p = pnw.toWorld(r.edge, s, d, 0);
+    return roofCover(pnw, spans, p.x, pnw.surfaceHeight(r.edge, s, d) + up, p.z, r.edge);
+  };
+
+  it('is none out from under the roof, full well inside it, and grows with the way in from each end and side', () => {
+    const mid = (r.s0 + r.s1) / 2;
+    expect(cover(r.s0 - 3, 0, 3), 'before the roof').toBe(0);
+    expect(cover(r.s1 + 3, 0, 3), 'past the roof').toBe(0);
+    expect(cover(mid, 0, FERRY_ROOF.heightM + 3), 'above the roof').toBe(0);
+    expect(cover(mid, FERRY_ROOF.halfWidthM + 4, 3), 'beside the ferry').toBe(0);
+    expect(cover(mid, 0, 3), 'on the car deck, mid-ferry').toBe(1);
+    const way = [0.5, 1.5, 3, 6].map((m) => cover(r.s0 + m, 0, 3));
+    for (let i = 1; i < way.length; i++) expect(way[i]!, `${i}`).toBeGreaterThanOrEqual(way[i - 1]!);
+    expect(way[0]!).toBeGreaterThan(0);
+    expect(way[0]!).toBeLessThan(1);
+    expect(way.at(-1)).toBe(1);
+    // The same from the far end, and from the side.
+    expect(cover(r.s1 - 1.5, 0, 3)).toBeCloseTo(cover(r.s0 + 1.5, 0, 3), 6);
+    expect(cover(mid, FERRY_ROOF.halfWidthM - 1.5, 3)).toBeCloseTo(cover(r.s0 + 1.5, 0, 3), 6);
+  });
+
+  it('agrees with underRoof: any point under the roof has some cover, any other has none', () => {
+    const mid = (r.s0 + r.s1) / 2;
+    for (const [s, d, up] of [
+      [mid, 0, 3],
+      [r.s0 + 1, 0, 3],
+      [r.s0 - 3, 0, 3],
+      [mid, 0, FERRY_ROOF.heightM + 3],
+      [mid, FERRY_ROOF.halfWidthM + 4, 3],
+    ] as const) {
+      const p = pnw.toWorld(r.edge, s, d, 0);
+      const y = pnw.surfaceHeight(r.edge, s, d) + up;
+      expect(roofCover(pnw, spans, p.x, y, p.z, r.edge) > 0, `${s} ${d} ${up}`).toBe(
+        underRoof(pnw, spans, p.x, y, p.z, r.edge),
+      );
+    }
   });
 });
