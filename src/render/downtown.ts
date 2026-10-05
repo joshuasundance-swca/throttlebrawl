@@ -891,6 +891,22 @@ export const PDX_OVERHANG_M = 5;
  * on the road's grade (3 % up Broadway) needs only the slope across one lot.
  */
 export const PDX_SINK_M = 0.3;
+/**
+ * The second row (playtest 4, P4-20): its fronts stand at least this far past the verge, m: a sidewalk,
+ * the deepest street front (the kit's 24 m towers) and an alley. [default]
+ */
+export const PDX_BACK_ROW_M = SIDEWALK_M + 24 + 3.6;
+/** The second row's mix: offices and brick lofts, with a pink tower now and then, taller than the fronts. [default] */
+const PDX_BACK_MIX: readonly number[] = [
+  PDX.officeBlock,
+  PDX.brickLoft,
+  PDX.towerBase,
+  PDX.brickLoft,
+  PDX.officeBlock,
+  PDX.towerBase,
+];
+/** A second-row pink tower's height range, m (Portland's tallest stand about 160 m). [default] */
+const PDX_BACK_TOWER_M = [60, 150] as const;
 /** A bike rack stands on the sidewalk every so often, m. [default] */
 const PDX_RACK_EVERY_M = 38;
 /** Carts in a pod stand this far apart along the road, and this far behind the pedestrian zone, m. [default] */
@@ -990,6 +1006,29 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
   };
   /** Every building placed so far, on any road: two roads' fronts meet at a corner and must not overlap. */
   const footprints: Rect[] = [];
+  /** Work that waits until every road's street fronts stand: the second row never takes a front's lot. */
+  const later: (() => void)[] = [];
+  /**
+   * Whether none of a footprint's corners, edge middles and centre lies on another road's land at a
+   * different height: its strip is drawn there at its own level, which would bury or float the building.
+   */
+  const offOtherLand = (r: Rect, own: number, y: number): boolean => {
+    const at = (a: number, b: number) => ({
+      x: r.cx + r.ux * a + r.vx * b,
+      z: r.cz + r.uz * a + r.vz * b,
+    });
+    return [-1, 0, 1]
+      .flatMap((i) => [-1, 0, 1].map((j) => at(i * r.hw, j * r.hd)))
+      .every((q) => {
+        const pos = road.project(q.x, q.z, own);
+        const e2 = road.edges[pos.edge];
+        if (pos.edge === own || !e2) return true;
+        const side: -1 | 1 = pos.d < 0 ? -1 : 1;
+        const out = (side < 0 ? -e2.dMin : e2.dMax) + VERGE_M;
+        if (Math.abs(pos.d) > out + landReach(pos.edge, side, pos.s) + 1) return true;
+        return Math.abs(road.toWorld(pos.edge, pos.s, 0, 0).y - y) <= 1;
+      });
+  };
   /**
    * Whether none of a footprint's corners, edge middles and centre lies on a road, or within a sidewalk of
    * one (the inside of a bend and a junction's other road, which the land strip does not see): each point
@@ -1100,18 +1139,41 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           face(n0, m0, n1, m1, DOWNTOWN_COLOURS.sidewalk);
           if (r > walk) face(m0, f0, m1, f1, DOWNTOWN_COLOURS.floor);
         }
+        // A food-cart pod is a lot: the carts stand in it (below), and no building does.
+        const inPod = (s0: number, s1: number) =>
+          pods.find(
+            (p) =>
+              (p.d0 + p.d1 < 0 ? -1 : 1) === side &&
+              s0 < Math.max(p.s0, p.s1) + 2 &&
+              s1 > Math.min(p.s0, p.s1) - 2,
+          );
+        /**
+         * The lot a building of `variant` would take at `at` along the road (its front standing at least
+         * `minBack` past the verge), and whether it stands on ground: null where it does not fit.
+         */
+        const lotFor = (variant: number, at: number, minBack: number) => {
+          const [width, depth] = size(variant);
+          if (!(width > 0) || at + width > b || inPod(at, at + width)) return null;
+          const s0 = at;
+          const s1 = at + width;
+          const s = (s0 + s1) / 2;
+          const back = Math.max(backFor(side, s0 - 0.3, s1 + 0.3), minBack);
+          // The land under its front and its depth, looked at every few metres along it.
+          let r = reach(side, s1);
+          for (let u = s0; u < s1; u += 5) r = Math.min(r, reach(side, u));
+          if (r < back + 4 || r < back + depth - PDX_OVERHANG_M) return null;
+          const d = side * (outer + back);
+          const p = w(s, d, 0);
+          const turn = faceRoad(p, s);
+          const rect = rectOf(p, turn, width, depth);
+          // Not over a road (the inside of a bend, a junction) and not over another building.
+          if (!clearOfRoads(rect, e.index) || footprints.some((o) => rectsOverlap(rect, o))) return null;
+          return { width, depth, back, s0, s1, s, d, p, turn, rect };
+        };
         // The front row.
         let cursor = a + 1;
         let block = 0;
         for (let k = 0; cursor < b - 6; k++) {
-          // A food-cart pod is a lot: the carts stand in it (below), and no building does.
-          const inPod = (s0: number, s1: number) =>
-            pods.find(
-              (p) =>
-                (p.d0 + p.d1 < 0 ? -1 : 1) === side &&
-                s0 < Math.max(p.s0, p.s1) + 2 &&
-                s1 > Math.min(p.s0, p.s1) - 2,
-            );
           const pod = inPod(cursor, cursor + 1);
           if (pod) {
             cursor = Math.max(cursor + 1, Math.max(pod.s0, pod.s1) + 3);
@@ -1139,32 +1201,13 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           const pick =
             PDX_FRONT_MIX[Math.floor(h(k * 7 + Math.round(a), side, 1) * PDX_FRONT_MIX.length)] ??
             PDX.castIron;
-          // The lot this building would take, and whether it stands on ground: tries the pick, then the
-          // shallowest front, and gives the lot up (a gap) when neither stands.
-          const fits = (variant: number) => {
-            const [width, depth] = size(variant);
-            if (!(width > 0) || cursor + width > b || inPod(cursor, cursor + width)) return null;
-            const s0 = cursor;
-            const s1 = cursor + width;
-            const s = (s0 + s1) / 2;
-            const back = backFor(side, s0 - 0.3, s1 + 0.3);
-            // The land under its front and its depth, looked at every few metres along it.
-            let r = reach(side, s1);
-            for (let u = s0; u < s1; u += 5) r = Math.min(r, reach(side, u));
-            if (r < back + 4 || r < back + depth - PDX_OVERHANG_M) return null;
-            const d = side * (outer + back);
-            const p = w(s, d, 0);
-            const turn = faceRoad(p, s);
-            const rect = rectOf(p, turn, width, depth);
-            // Not over a road (the inside of a bend, a junction) and not over another building.
-            if (!clearOfRoads(rect, e.index) || footprints.some((o) => rectsOverlap(rect, o))) return null;
-            return { width, depth, back, s0, s1, s, d, p, turn, rect };
-          };
+          // The lot this building would take: tries the pick, then the shallowest front, and gives the lot
+          // up (a gap) when neither stands.
           let variant: number = pick;
-          let chosen = fits(pick);
+          let chosen = lotFor(pick, cursor, 0);
           if (!chosen && pick !== PDX.castIron) {
             variant = PDX.castIron;
-            chosen = fits(PDX.castIron);
+            chosen = lotFor(PDX.castIron, cursor, 0);
           }
           if (!chosen) {
             cursor += 6;
@@ -1197,6 +1240,99 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
           cursor += width + (h(k + Math.round(a), side, 2) < 0.15 ? 5 : 0.4);
           block += width;
         }
+        // The second row (playtest 4, P4-20), once every road's street fronts stand: taller buildings behind
+        // the fronts, an alley back, with the cross streets running on between them. San Francisco's downtown
+        // stands three deep; this is the Portland blocks' second. Each stands on the strip's wide land.
+        later.push(() => {
+          let at = a + 1;
+          for (let k = 0; at < b - 6; k++) {
+            const street = streets.find(([s0, s1]) => at < s1 + 1 && at + 4 > s0 - 1);
+            if (street) {
+              at = Math.max(at + 1, street[1] + 1);
+              continue;
+            }
+            const pod = inPod(at, at + 1);
+            if (pod) {
+              at = Math.max(at + 1, Math.max(pod.s0, pod.s1) + 3);
+              continue;
+            }
+            const first =
+              PDX_BACK_MIX[Math.floor(h(k * 11 + Math.round(a), side, 21) * PDX_BACK_MIX.length)] ??
+              PDX.officeBlock;
+            // The pick, then the others (a narrower lot may fit where the pick does not): the first that
+            // stands clear of a cross street, on this road's land and on ground.
+            let pick: number = first;
+            let chosen: ReturnType<typeof lotFor> = null;
+            for (const variant of [first, PDX.officeBlock, PDX.brickLoft, PDX.castIron]) {
+              const [wide] = size(variant);
+              if (streets.some(([s0, s1]) => at < s1 + 1 && at + wide > s0 - 1)) continue;
+              const lot = lotFor(variant, at, PDX_BACK_ROW_M);
+              if (!lot || !offOtherLand(lot.rect, e.index, lot.p.y)) continue;
+              pick = variant;
+              chosen = lot;
+              break;
+            }
+            if (!chosen) {
+              // Past a cross street the lot after it starts at its far kerb.
+              const into = streets.find(([s0, s1]) => at < s1 + 1 && at + size(first)[0] > s0 - 1);
+              at = into ? Math.max(at + 1, into[1] + 1) : at + 6;
+              continue;
+            }
+            const { width, s0, s1, s, d, p, turn, rect } = chosen;
+            footprints.push(rect);
+            const ground = groundOver(s0, s1, d);
+            const base = {
+              p: { x: p.x, y: ground.hi + LAND_TOP_M, z: p.z },
+              turn,
+              foot: ground.lo + LAND_TOP_M - PDX_SINK_M,
+              edge: e.index,
+              s,
+              d,
+            };
+            if (pick === PDX.towerBase) {
+              const targetM =
+                PDX_BACK_TOWER_M[0] + (PDX_BACK_TOWER_M[1] - PDX_BACK_TOWER_M[0]) * h(k, side, 22);
+              place({
+                ...base,
+                model: 'tower',
+                variant: pick,
+                rule: 'pdx-back-tower',
+                sy: 1,
+                mids: midsFor(targetM),
+                targetM,
+              });
+            } else place({ ...base, model: 'kit', variant: pick, rule: 'pdx-back', sy: 1 });
+            at += width + (h(k, side, 23) < 0.2 ? 4 : 0.6);
+          }
+          // A cross street runs on between the two rows to the land's edge, where a small cast-iron
+          // front closes it, its face down the street (the street never ends in a drop).
+          for (const [s0, s1] of streets) {
+            if (s0 < a || s1 > b) continue;
+            const r = Math.min(reach(side, s0), reach(side, s1));
+            const [wide, deep] = size(PDX.castIron);
+            if (r < PDX_BACK_ROW_M + deep) continue;
+            const lot = lotFor(
+              PDX.castIron,
+              (s0 + s1) / 2 - wide / 2,
+              Math.floor(r) - deep + PDX_OVERHANG_M - 2,
+            );
+            if (!lot || !offOtherLand(lot.rect, e.index, lot.p.y)) continue;
+            footprints.push(lot.rect);
+            const ground = groundOver(lot.s0, lot.s1, lot.d);
+            place({
+              p: { x: lot.p.x, y: ground.hi + LAND_TOP_M, z: lot.p.z },
+              turn: lot.turn,
+              foot: ground.lo + LAND_TOP_M - PDX_SINK_M,
+              edge: e.index,
+              s: lot.s,
+              d: lot.d,
+              model: 'kit',
+              variant: PDX.castIron,
+              rule: 'pdx-end',
+              sy: 1,
+            });
+          }
+        });
         // Bike racks on the sidewalk, away from the cross streets and from anything kept clear.
         for (let k = 0; ; k++) {
           const s = a + 9 + k * PDX_RACK_EVERY_M + (side > 0 ? PDX_RACK_EVERY_M / 2 : 0);
@@ -1262,6 +1398,7 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
       }
     }
   }
+  for (const job of later) job();
   return finish([], STRETCH_M + 40);
 }
 
