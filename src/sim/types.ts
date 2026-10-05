@@ -212,7 +212,7 @@ export interface MovesSnapshot {
   driftS: number;
   /** The chain's length so far (1 for a lone drift), 0 when no chain is open. */
   driftChain: number;
-  /** Unbanked drift style cash: banked by a `driftEnd` with points, emptied by a crash or wobble. */
+  /** Unbanked drift style cash: banked by a `driftEnd` with points, emptied only by a crash. */
   driftCash: number;
   /** The drift's side, 1 right or -1 left, 0 when not drifting. */
   driftSide: -1 | 0 | 1;

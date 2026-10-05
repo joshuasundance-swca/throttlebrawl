@@ -3,9 +3,10 @@
 //
 // - The drift chain is the ticker's `meter` item ("DRIFT ×2 +$140"), not a second widget: a run
 //   (`driftRun`) the live style meter's slot shows while the chain's unbanked cash is up, and a
-//   wipeout empties it. The sim zeroes the cash without a paying event on a crash, a wobble or a
-//   hit, so `createDriftMeter` hands back the value that vanished and ui/index.ts lands it on its
-//   award when a `drift` pop arrives the same frame, or flashes DRIFT LOST when none does.
+//   crash empties it (only a crash: a wobble, a bump or a stagger keeps the chain, playtest 4). The
+//   sim zeroes the cash without a paying event when the rider goes down, so `createDriftMeter`
+//   hands back the value that vanished and ui/index.ts lands it on its award when a `drift` pop
+//   arrives the same frame, or flashes DRIFT LOST when none does and the rider is down.
 // - The wheelie gauge is the only new widget: a thin vertical bar beside the floating stick, the
 //   sweet band green, over it red, the loop-out darker, the marker at the front's angle. It shows
 //   only while a wheelie is up. `placeGauge` is the layout's settle rule for it (hud-layout.ts,
@@ -80,16 +81,31 @@ export function createDriftMeter(): DriftMeter {
 
 /**
  * What became of a chain whose cash just left the snapshot: `banked` when a `drift` pop arrived in
- * the same frame (the sim banks and scores in one step), `lost` when none did on a live race (a
- * wipeout emptied it), else `none` (nothing ended, or the race itself went away).
+ * the same frame (the sim banks and scores in one step), `lost` when none did on a live race and
+ * the chain could only have gone one way (`loses`: the rider is down after a crash, or has finished
+ * with the chain open, which the sim forfeits), else `none` (nothing ended, the race itself went
+ * away, or the cash went some way that is no loss).
  */
 export function driftOutcome(
   drift: DriftStep,
   pops: readonly { kind: string }[],
+  loses: boolean,
 ): 'none' | 'banked' | 'lost' {
   if (!drift.ended) return 'none';
   if (pops.some((p) => p.kind === 'drift')) return 'banked';
-  return drift.raceLive ? 'lost' : 'none';
+  return drift.raceLive && loses ? 'lost' : 'none';
+}
+
+/**
+ * Whether a chain that vanishes from the snapshot with no payout was lost for a reason the strip
+ * names. A crash is the only thing that empties a chain mid-race (playtest 4: a wobble, a bump or a
+ * stagger keeps it), and the rider is then down (tumbling or running back to the bike). A rider who
+ * has finished loses an open chain too (the sim banks nothing after the finish; T6.3 chose to say
+ * so). Anything else is no loss.
+ */
+export function chainLossShown(player: { mode: string; finished?: boolean } | null | undefined): boolean {
+  if (!player) return false;
+  return player.mode === 'Tumble' || player.mode === 'OnFoot' || player.finished === true;
 }
 
 /**
@@ -100,7 +116,7 @@ export function meterLine(drift: DriftStep, styleRun: MeterRun | null): MeterRun
   return drift.drifting ? drift.shown : (styleRun ?? drift.shown);
 }
 
-/** The ticker chip a wipeout leaves where the drift chain was (it empties visibly). */
+/** The ticker chip a crash leaves where the drift chain was (it empties visibly). */
 export const DRIFT_LOST = { kind: 'driftLost', text: 'DRIFT LOST' } as const;
 
 // ---- The wheelie gauge -------------------------------------------------------------------------

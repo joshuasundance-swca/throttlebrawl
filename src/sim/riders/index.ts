@@ -50,7 +50,15 @@ import {
   type AirState,
 } from './air';
 import { applyShove, riderContacts } from './contact';
-import { driftMoves, driftStep, driftTakeoff, DRIFT_TUNING, newDriftState, type DriftState } from './drift';
+import {
+  driftDown,
+  driftMoves,
+  driftStep,
+  driftTakeoff,
+  DRIFT_TUNING,
+  newDriftState,
+  type DriftState,
+} from './drift';
 import { funnelLimits, FUNNEL_TUNING, ridingLimitsAt } from './funnel';
 import { smokeTopScale, SMOKE_TUNING } from './smoke';
 import {
@@ -1612,7 +1620,11 @@ export const ridersSystem: SimSystem = {
     for (const m of world.movers) {
       if (m.kind !== 'rider' || m.riderIndex < 0) continue;
       if (m.mode === 'Road') stepGrounded(world, config, st, m);
-      else if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
+      else {
+        if (m.mode === 'Airborne') stepAirborne(world, config, st, m);
+        // Not riding: a crash last tick loses the drift chain now (it is stepped only on the road).
+        driftDown(world, st, m);
+      }
     }
     // Bumps stop where riding does (the verge's edge with off-road on), never back on the road.
     riderContacts(world, config, st, {

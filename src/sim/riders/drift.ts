@@ -24,12 +24,20 @@
 //   cap, knee down.
 // - Exit. The bars let go (|steer| < DRIFT_LET_GO for DRIFT_GATE_TICKS), turned the other way past
 //   DRIFT_LET_GO, the speed under `riders.driftExitMps`, a take-off, a U-turn, a wheelie popped
-//   mid-slide, or a wipeout (a crash, a wobble or a hit taken, read from the last tick's events and
+//   mid-slide, or a knock (a crash, a wobble or a hit taken, read from the last tick's events and
 //   the wobble timer). β then eases back to 0. An exit is clean when the bike points down the road
 //   (|yaw| ≤ DRIFT_CLEAN_YAW), nothing knocked it out, and it lasted DRIFT_CLEAN_S or more.
 //   Flicking the bars to the other lock (DRIFT_FLICK) faster than DRIFT_HIGHSIDE_MPS with |β| over
 //   DRIFT_HIGHSIDE_BETA is a highside: a `wobble` (cause `drift`), never a crash. Unwinding the
 //   bars out of a bend is not.
+// - Keeping the chain (playtest 4, the maintainer, 2026-10-05: "it's too easy to lose a drift. I
+//   think crashing should lose it but maybe not just wobbling or bumping"). A knock that is not a
+//   crash (a wobble, a bump or side contact with traffic, a rival, a wall or a prop, a hit that only
+//   staggers, a highside) still ends the slide, as before, but the chain and its cash stay: the
+//   slide ends unclean, with no boost, and the chain's window opens for the next drift. ONLY a
+//   crash empties the chain: the tick the rider goes down (sim/riders calls `driftDown` for a rider
+//   off the road), or, as a net, on the first riding tick after a spell off the road that did not
+//   end in a landing on the wheels (the remount that follows a crash).
 // - Exit boost. A clean exit raises the top speed by 2 + 4 × min(1, seconds / 2.5) m/s for 1.2 s and
 //   pushes the bike to it, on the boost a pad gives (a bigger boost already running is kept), as
 //   the landing surge does.
@@ -38,12 +46,13 @@
 //   `riders.driftChainS` of the last clean exit (grounded riding time) extends the chain: ×1, ×1.5,
 //   ×2, ×2.5, then ×3. When that window lapses, one `driftEnd` with `bank: true` carries the
 //   chain's points and sim/race scores them as a `drift` style event. A sloppy exit (not clean,
-//   but no wipeout) banks at once; a wipeout empties the unbanked meter (the only new loss: the
-//   maintainer called knockdowns "about right").
+//   but no knock) banks at once; a knock keeps the chain open (above); a crash empties the unbanked
+//   meter (the only loss: the maintainer called knockdowns "about right").
 //
 // Every `driftEnd` carries `seconds`, `clean`, `chain`, `boostMps` and `points` (above 0 only on
-// the end that banks the chain); the bank after a lapsed window is a `driftEnd` with `bank: true`
-// and no slide behind it. A rider who finishes with a chain still open loses it: sim/race scores
+// the end that banks the chain), plus `lost` (the cash a crash emptied) or `kept` (the cash a knock
+// left open); the bank after a lapsed window is a `driftEnd` with `bank: true` and no slide behind
+// it. A rider who finishes with a chain still open loses it: sim/race scores
 // only racers still racing (a finisher's bank would need a line in race/style.ts's closeStyle).
 // AI riders never drift in this pass. Off while `riders.drift` is absent or 0, so recordings made
 // before ride as they did. Deterministic: core math only, plain numbers in the riders' state.
@@ -274,10 +283,18 @@ function clearDrift(st: DriftState, id: EntityId): void {
   st.driftWindow[id] = 0;
 }
 
-/** A wipeout last tick: the rider crashed or wobbled (any cause), or took a hit. */
-function wipedOut(events: readonly SimEvent[], id: EntityId): boolean {
+/** The rider went down last tick: a `crash` (any cause). The only thing that loses a chain. */
+function crashedLast(events: readonly SimEvent[], id: EntityId): boolean {
+  return events.some((e) => e.type === 'crash' && e.actor === id);
+}
+
+/**
+ * The rider was knocked last tick without going down: a `wobble` (a bump, a brush, a wall or a
+ * prop, any cause) or a `hit` taken (a stagger). It ends a slide; it does not touch the chain.
+ */
+function knockedLast(events: readonly SimEvent[], id: EntityId): boolean {
   for (const e of events) {
-    if ((e.type === 'crash' || e.type === 'wobble') && e.actor === id) return true;
+    if (e.type === 'wobble' && e.actor === id) return true;
     if (e.type === 'hit' && e.target === id) return true;
   }
   return false;
@@ -310,7 +327,7 @@ function bank(world: World, st: DriftState, m: Mover): void {
   emit(world, 'driftEnd', m.id, { seconds: 0, clean: true, chain, points, boostMps: 0, bank: true });
 }
 
-/** Empties the open chain (a wipeout): its points are lost. */
+/** Empties the open chain (a crash): its points are lost. */
 function empty(st: DriftState, id: EntityId): void {
   st.driftChain[id] = 0;
   st.driftCash[id] = 0;
@@ -318,14 +335,15 @@ function empty(st: DriftState, id: EntityId): void {
 }
 
 /**
- * Ends the drift in progress. `wipeout` (a crash, a wobble or a hit, or a highside) empties the
- * meter; a clean exit boosts and opens the chain's window; any other exit banks at once.
+ * Ends the drift in progress. `crash` (the rider went down) empties the meter; `knocked` (a wobble,
+ * a bump or a stagger, or a highside) ends the slide unclean and leaves the chain open, its window
+ * running; a clean exit boosts and opens the chain's window; any other exit banks at once.
  */
 function endDrift(
   world: World,
   st: RiderState,
   m: Mover,
-  how: { wipeout: boolean; takeoff: boolean; flick?: boolean },
+  how: { crash: boolean; knocked?: boolean; takeoff: boolean; flick?: boolean },
   /** The lower-overall-speed multiplier (speedMultiplierOf). */
   mult: number,
 ): void {
@@ -335,16 +353,32 @@ function endDrift(
   const chain = st.driftChain[id] ?? 0;
   const highside =
     how.flick === true && Math.abs(beta) > DRIFT_HIGHSIDE_BETA && m.speed > DRIFT_HIGHSIDE_MPS * mult;
-  const lost = how.wipeout || highside;
+  const knocked = !how.crash && (how.knocked === true || highside);
   const clean =
-    !lost && !how.takeoff && Math.abs(m.yaw) <= DRIFT_CLEAN_YAW && seconds + 1e-9 >= DRIFT_CLEAN_S;
+    !how.crash &&
+    !knocked &&
+    !how.takeoff &&
+    Math.abs(m.yaw) <= DRIFT_CLEAN_YAW &&
+    seconds + 1e-9 >= DRIFT_CLEAN_S;
   st.driftSide[id] = 0;
   st.driftGate[id] = 0;
   st.driftS[id] = 0;
-  if (lost) {
+  if (how.crash) {
     const cash = st.driftCash[id] ?? 0;
     empty(st, id);
     emit(world, 'driftEnd', id, { seconds, clean: false, chain, points: 0, boostMps: 0, lost: cash });
+  } else if (knocked) {
+    // The slide is over, the chain is not: its cash stays up and the next drift within the window
+    // extends it (the window banks it if none comes).
+    st.driftWindow[id] = world.params['riders.driftChainS'] ?? DRIFT_DEFAULTS.chainS;
+    emit(world, 'driftEnd', id, {
+      seconds,
+      clean: false,
+      chain,
+      points: 0,
+      boostMps: 0,
+      kept: st.driftCash[id] ?? 0,
+    });
   } else if (clean) {
     const boostMps = driftBoostMps(seconds);
     const left = st.boost[id] ?? 0;
@@ -390,19 +424,23 @@ export function driftStep(
   const mult = speedMultiplierOf(config);
   let side = st.driftSide[id] ?? 0;
 
-  // A wipeout since last tick empties the meter. Back on the road after a spell off it, only a
-  // landing on the wheels keeps the chain: a crash, a fall or a remount after one does not.
+  // A crash since last tick empties the meter. Back on the road after a spell off it, only a
+  // landing on the wheels keeps the chain: a crash, a fall or a remount after one does not. A knock
+  // that is not a crash (a wobble, a bump, a stagger) ends a slide but keeps the chain.
   if (busy(st, id)) {
     const away = last !== undefined && world.tick - last > 1;
-    const wiped = wipedOut(world.lastEvents, id) || (away && !landed(world.lastEvents, id));
+    const wiped = crashedLast(world.lastEvents, id) || (away && !landed(world.lastEvents, id));
     if (wiped) {
-      if (side !== 0) endDrift(world, st, m, { wipeout: true, takeoff: false }, mult);
+      if (side !== 0) endDrift(world, st, m, { crash: true, takeoff: false }, mult);
       else empty(st, id);
+      side = 0;
+    } else if (side !== 0 && knockedLast(world.lastEvents, id)) {
+      endDrift(world, st, m, { crash: false, knocked: true, takeoff: false }, mult);
       side = 0;
     } else if (away && side !== 0) {
       // Off the ground mid-slide by a way that skipped the take-off hook (a wheelie's launch off a
       // parked car), and down again on the wheels: the slide ended when it left the ground.
-      endDrift(world, st, m, { wipeout: false, takeoff: true }, mult);
+      endDrift(world, st, m, { crash: false, takeoff: true }, mult);
       side = 0;
     }
   }
@@ -415,13 +453,14 @@ export function driftStep(
     st.driftGate[id] = letGo ? (st.driftGate[id] ?? 0) + world.timeScale : 0;
     const reversed = steer * side < -DRIFT_LET_GO;
     const slow = m.speed < (world.params['riders.driftExitMps'] ?? DRIFT_DEFAULTS.exitMps) * mult;
-    // A U-turn or a wheelie popped mid-slide ends it (no wipeout); a wobble wipes it out.
+    // A U-turn or a wheelie popped mid-slide ends it, and so does a wobble (still riding, so the
+    // chain is kept: only a crash loses it).
     if (wobbling || uturn || wheelieOf(world, m) !== 0) {
-      endDrift(world, st, m, { wipeout: wobbling, takeoff: false }, mult);
+      endDrift(world, st, m, { crash: false, knocked: wobbling, takeoff: false }, mult);
       side = 0;
     } else if (reversed || slow || (st.driftGate[id] ?? 0) >= DRIFT_GATE_TICKS) {
       const flick = steer * side <= -DRIFT_FLICK;
-      endDrift(world, st, m, { wipeout: false, takeoff: false, flick }, mult);
+      endDrift(world, st, m, { crash: false, takeoff: false, flick }, mult);
       side = 0;
     }
   } else {
@@ -485,10 +524,22 @@ export function driftStep(
  * its chain banks (a take-off is never a highside, so the speed multiplier plays no part).
  */
 export function driftTakeoff(world: World, st: RiderState, m: Mover): void {
-  if ((st.driftSide[m.id] ?? 0) !== 0) endDrift(world, st, m, { wipeout: false, takeoff: true }, 1);
+  if ((st.driftSide[m.id] ?? 0) !== 0) endDrift(world, st, m, { crash: false, takeoff: true }, 1);
   if (st.driftBeta?.[m.id]) st.driftBeta[m.id] = 0;
   // An entry half-made over the lip starts again on the ground.
   if (st.driftGate?.[m.id]) st.driftGate[m.id] = 0;
+}
+
+/**
+ * A rider who is not on the road this tick (in the air, tumbling, running back to the bike): a crash
+ * last tick empties the open chain now, so the rider going down is what loses it, not the remount
+ * seconds later. A tumbling rider is never stepped by `driftStep`. Only the player's chain can be
+ * open; for anyone else, or while nothing is open, this does nothing.
+ */
+export function driftDown(world: World, st: RiderState, m: Mover): void {
+  if (!busy(st, m.id) || !crashedLast(world.lastEvents, m.id)) return;
+  if ((st.driftSide[m.id] ?? 0) !== 0) endDrift(world, st, m, { crash: true, takeoff: false }, 1);
+  else empty(st, m.id);
 }
 
 /** The riders' state as the snapshot reads it (never created by a read). */
