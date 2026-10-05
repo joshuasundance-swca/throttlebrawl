@@ -7,10 +7,12 @@ import {
   estimateSeconds,
   planSlices,
   planTier,
+  presetUsers,
   readTimings,
   TIERS,
   unmeasured,
 } from './shard-plan.mjs';
+import { timedOrder } from '../tests/sequencer';
 import { parseLog } from './timings.mjs';
 
 const timings = readTimings() as {
@@ -105,6 +107,33 @@ describe('planSlices', () => {
     expect(plan[0]?.predicted).toBe(400);
   });
 
+  it('starts the preset batch readers first, so the Easy and Hard batches compute beside the Normal one', () => {
+    // Until 2026-10-05 the readers started longest first: the three longest all waited about 280 s
+    // for the Normal batch, and only then did the Easy and Hard batches start (about 120 s each), so
+    // the reader slice took 517 s on #475's run. Started first, the two preset readers compute Easy
+    // and Hard while a third worker computes Normal. tests/sequencer.ts starts them in this order, and
+    // the plan simulates the same order, so its prediction is the runner's. (With fixed per-file
+    // times the order can only look the same or worse; the gain is the shorter waits, which the next
+    // measured times carry.)
+    const files = ['normal', 'easy-hard1', 'easy-hard2'];
+    const seconds = { normal: 300, 'easy-hard1': 100, 'easy-hard2': 100 };
+    const base = { files, seconds, n: 1, workers: 2, order: 'longest-first' as const, together: files };
+    // Longest first: normal and easy-hard1 at 0, easy-hard2 at 100, ending at 300.
+    expect(planSlices(base)[0]?.predicted).toBe(300);
+    // Preset readers first: easy-hard1 and easy-hard2 at 0, normal at 100, ending at 400.
+    expect(planSlices({ ...base, first: ['easy-hard1', 'easy-hard2'] })[0]?.predicted).toBe(400);
+  });
+
+  it('finds the preset batch readers by their source, apart from the Normal batch readers', () => {
+    const src: Record<string, string> = {
+      'a.test.ts': 'beforeAll(async () => { batch = await simBatch(); });',
+      'b.test.ts':
+        "[easy, hard, normal] = await Promise.all([presetBatch('easy'), presetBatch('hard'), simBatch()]);",
+      'c.test.ts': "import { runSeededRace } from './batch';",
+    };
+    expect(presetUsers(Object.keys(src), (f: string) => src[f] ?? '')).toEqual(['b.test.ts']);
+  });
+
   it('leaves the last slice room for perf (lastExtra)', () => {
     const files = ['a', 'b', 'c', 'd', 'e', 'f'];
     const seconds = Object.fromEntries(files.map((f) => [f, 10]));
@@ -143,6 +172,49 @@ describe('planSlices', () => {
   });
 });
 
+describe('tests/sequencer.ts timedOrder', () => {
+  it('starts the preset batch readers, then each tabled project longest first, and keeps project order', () => {
+    const files = [
+      { project: 'unit', file: 'src/quick.test.ts' },
+      { project: 'unit', file: 'tools/gis/region-routes.test.ts' },
+      { project: 'unit', file: 'src/untabled.test.ts' },
+      { project: 'sim', file: 'tests/sim/long.test.ts' },
+      { project: 'sim', file: 'tests/sim/presets.test.ts' },
+      { project: 'sim', file: 'tests/sim/mid.test.ts' },
+    ];
+    const table = {
+      unit: { 'src/quick.test.ts': 1, 'tools/gis/region-routes.test.ts': 300 },
+      sim: { 'tests/sim/long.test.ts': 300, 'tests/sim/presets.test.ts': 150, 'tests/sim/mid.test.ts': 200 },
+    };
+    const read = (f: string) => (f.endsWith('presets.test.ts') ? "await presetBatch('easy');" : '');
+    expect(timedOrder(files, (x) => x, table, read).map((x) => x.file)).toEqual([
+      // The unit table (2026-10-05): the slowest file first; an untabled one counts as the mean.
+      'tools/gis/region-routes.test.ts',
+      'src/untabled.test.ts',
+      'src/quick.test.ts',
+      // The sim project: the preset reader first, then longest first.
+      'tests/sim/presets.test.ts',
+      'tests/sim/long.test.ts',
+      'tests/sim/mid.test.ts',
+    ]);
+  });
+
+  it("keeps the runner's own order for a project with no table", () => {
+    const files = [
+      { project: 'other', file: 'b.test.ts' },
+      { project: 'other', file: 'a.test.ts' },
+    ];
+    expect(
+      timedOrder(
+        files,
+        (x) => x,
+        {},
+        () => '',
+      ).map((x) => x.file),
+    ).toEqual(['b.test.ts', 'a.test.ts']);
+  });
+});
+
 describe('timings.mjs parseLog', () => {
   it('reads Vitest per-file lines and Playwright per-test lines, colour codes and all', () => {
     const log = [
@@ -163,5 +235,24 @@ describe('timings.mjs parseLog', () => {
     expect(got.e2e['tests/e2e/audio-engine.spec.ts']).toBeCloseTo(1.9);
     expect(got.e2e['tests/e2e/ui-radio-panel.spec.ts']).toBeUndefined();
     expect(got.perf).toBeCloseTo(22.7);
+  });
+
+  it('reads the unit project’s per-file lines into their own table, apart from the sim batch', () => {
+    // The unit job's slowest file (tools/gis/region-routes.test.ts, 337 s on #475's run) started
+    // 74 s into the run in Vitest's own order; with a unit table the sequencer starts it first.
+    const log = [
+      'unit\tUNKNOWN STEP\t2026-10-05T01:53:01Z  ^[[32m✓^[[39m ^[[30m^[[42m unit ^[[49m^[[39m src/sim/ai/ai.test.ts ^[[2m(^[[22m^[[2m39 tests^[[22m^[[2m)^[[22m^[[33m 3655^[[2mms^[[22m^[[39m',
+      'unit\tUNKNOWN STEP\t2026-10-05T01:53:02Z  \u001b[32m✓\u001b[39m \u001b[30m\u001b[42m unit \u001b[49m\u001b[39m tools/gis/region-routes.test.ts \u001b[2m(\u001b[22m\u001b[2m30 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 337100\u001b[2mms\u001b[22m\u001b[39m',
+      'unit\tUNKNOWN STEP\t2026-10-05T01:53:03Z  ^[[31m×^[[39m ^[[30m^[[42m unit ^[[49m^[[39m scripts/notes.test.ts ^[[2m(^[[22m^[[2m12 tests | 1 failed^[[22m^[[2m)^[[22m^[[33m 812^[[2mms^[[22m^[[39m',
+      // A test line inside a file (indented, no file path) is not a file's time.
+      'unit\tUNKNOWN STEP\t2026-10-05T01:53:04Z      ^[[33m^[[2m✓^[[22m^[[39m down the shortcut: one stamp^[[33m 429^[[2mms^[[22m^[[39m',
+    ].join('\n');
+    const got = parseLog(log);
+    expect(got.unit).toEqual({
+      'src/sim/ai/ai.test.ts': 3.655,
+      'tools/gis/region-routes.test.ts': 337.1,
+      'scripts/notes.test.ts': 0.812,
+    });
+    expect(got.sim).toEqual({});
   });
 });

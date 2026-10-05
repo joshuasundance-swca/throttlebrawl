@@ -11,8 +11,8 @@ export default mergeConfig(
       // The bundled base pack's hand-made Keys road data is fetched at boot in the browser; every
       // test that reads `loadBasePack()` gets it from disk first (run W-S, the first-load budget).
       setupFiles: ['./tests/setup/base-roads.ts'],
-      // The sim files start longest first, by their measured CI seconds (tests/timings.json), so a
-      // long file never starts last; the unit project keeps Vitest's own order. [default]
+      // The unit and sim files start longest first, by their measured CI seconds (tests/timings.json),
+      // so a long file never starts last. [default]
       sequence: { sequencer: TimedSequencer },
       projects: [
         {

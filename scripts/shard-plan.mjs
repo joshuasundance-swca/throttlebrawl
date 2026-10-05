@@ -15,6 +15,11 @@
 //   by side on their workers, so they are planned like any other file. (Until 2026-10-03 the
 //   readers were one block as long as the longest reader, which left the other readers' time out:
 //   main run 37157149149 planned 387 s for sim slice 1/4, which took 537 s.)
+// - The readers of the Easy and Hard batches (presetBatch) start before every other sim file, on CI
+//   and in tests/sequencer.ts alike, so those two batches compute beside the Normal one instead of
+//   after it. Until 2026-10-05 the three longest readers started first and all waited about 280 s
+//   for the Normal batch, and only then did Easy and Hard start (about 120 s each): the reader
+//   slice took 517 s on #475's run.
 // - A runner runs several files at once (WORKERS): Vitest's default on CI's 4 vCPUs is 3, and
 //   Playwright's is 2. A slice's predicted time simulates that: each file goes to the first free
 //   worker, in the order the runner starts them (Vitest: longest first, see
@@ -45,6 +50,11 @@ export function readTimings(file = path.join(repoRoot, TIMINGS_FILE)) {
 /** The sim test files that read the shared seeded batch, found by their source. */
 export function batchUsers(files, read = (f) => readFileSync(path.join(repoRoot, f), 'utf8')) {
   return files.filter((f) => /\b(?:simBatch|presetBatch)\s*\(/.test(read(f)));
+}
+
+/** The sim test files that read the Easy or Hard batch (presetBatch), found by their source: they start first. */
+export function presetUsers(files, read = (f) => readFileSync(path.join(repoRoot, f), 'utf8')) {
+  return files.filter((f) => /\bpresetBatch\s*\(/.test(read(f)));
 }
 
 /** What a file with no measured time is planned as: the mean of the measured ones; 1 for none. */
@@ -92,6 +102,7 @@ function makespan(items, workers) {
  * @param {number} o.workers parallel workers per runner
  * @param {'longest-first' | 'path'} [o.order] the order a runner starts its files in
  * @param {string[]} [o.together] files that must share one slice, run first (the batch readers)
+ * @param {string[]} [o.first] files the runner starts before all others (the preset batch readers)
  * @param {number} [o.lastExtra] seconds the last slice spends after its files (perf)
  * @returns {{ files: string[], predicted: number }[]}
  */
@@ -102,6 +113,7 @@ export function planSlices({
   workers,
   order = 'path',
   together = [],
+  first = [],
   lastExtra = 0,
 }) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`planSlices: n must be a whole number >= 1, got ${n}`);
@@ -120,9 +132,12 @@ export function planSlices({
     items: i === 0 ? all.filter((f) => together.includes(f)).map(item) : [],
     tail: i === n - 1 ? lastExtra : 0,
   }));
+  const early = (it) => (first.includes(it.files[0]) ? 0 : 1);
   const runOrder = (list) =>
     order === 'longest-first'
-      ? [...list].sort((a, b) => b.cost - a.cost || a.files[0].localeCompare(b.files[0]))
+      ? [...list].sort(
+          (a, b) => early(a) - early(b) || b.cost - a.cost || a.files[0].localeCompare(b.files[0]),
+        )
       : [...list].sort((a, b) => a.files[0].localeCompare(b.files[0]));
   const predict = (s, extra) => makespan(runOrder(extra ? [...s.items, extra] : s.items), workers) + s.tail;
 
@@ -173,6 +188,7 @@ export function planTier(tier, files, n, { timings = readTimings(), read } = {})
     workers: spec.workers,
     order: spec.order,
     together: tier === 'sim' ? batchUsers(files, read) : [],
+    first: tier === 'sim' ? presetUsers(files, read) : [],
     lastExtra: tier === 'e2e' ? (timings.perf ?? 0) : 0,
   });
 }

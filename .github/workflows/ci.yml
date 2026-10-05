@@ -1,7 +1,8 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static and unit (one job), sim (four
-# slices) and browser (four slices, the last also running perf) run in parallel, each running its
-# tiers of `npm run check`; `gate` is the single required status check, and it fails unless every
-# one of them succeeded.
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit, sim (five slices) and browser
+# (six slices, the last also running perf) run in parallel, each running its tiers of
+# `npm run check`; `gate` is the single required status check, and it fails unless every one of
+# them succeeded. Every job is planned to finish inside about 70% of a 10-minute run, and its
+# timeout-minutes is about 1.5 times its expected time, a guard against a hang rather than a budget.
 # On a push to main, a green gate deploys to the game Space and writes the release notes. A push
 # whose tree a green PR run already tested skips that suite: `plan` finds the PR run's record,
 # `prod-build` runs the push-only identity leak scan, builds with the prod stamp and boots that
@@ -59,14 +60,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/tested-tree.mjs decide
 
-  # The static checks, then the unit tests, in one job: together they finish well inside the
-  # browser slices' time, and one job sets up one runner instead of two. [default]
-  static-unit:
-    name: static and unit
+  # The static checks: types, lint, format, packs, leak scan, size and notes. About 2 minutes, so
+  # its own job; with the unit tests after them in one job (until 2026-10-05) it took up to 564 s.
+  # [default]
+  static:
+    name: static
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v7
         with:
@@ -77,16 +79,38 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit signatures
-      - name: Types, lint, format, packs, leak scan, size, notes, then the unit tests
-        run: npm run check -- --tier static,unit
+      - name: Types, lint, format, packs, leak scan, size, notes
+        run: npm run check -- --tier static
+
+  # The unit tests, one runner. Their slowest file (tools/gis/region-routes.test.ts, about 310 to
+  # 340 s on CI) is the floor of this job; tests/sequencer.ts starts it first from its measured time
+  # (tests/timings.json), so the other files fill the other workers around it. [default]
+  unit:
+    name: unit
+    needs: [plan]
+    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm run check -- --tier unit
 
   # The seeded sim batch in parallel slices. The test runner lists the files and
   # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
   # lands in exactly one slice, so the slices' test counts add up to the unsharded run's, and the
-  # files that read the shared seeded batch share one slice, so it is computed once. fail-fast is
-  # off so a red slice never hides the other's result. [default]
-  # Four slices since 2026-10-03: with three, the slices' last 15 green runs had medians of 7.9 to
-  # 9.3 minutes and a max of 9.8 against the 10-minute limit.
+  # files that read the shared seeded batch share one slice, so it is computed once; the readers of
+  # the Easy and Hard batches start first there. fail-fast is off so a red slice never hides
+  # another's result. [default]
+  # Five slices since 2026-10-05: with four, #475's green run took 520 to 592 s a slice and one slice
+  # timed out at 10 minutes. The batch readers' slice is now the floor.
   sim:
     name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
@@ -96,7 +120,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -114,16 +138,17 @@ jobs:
   # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
   # red slice never hides another's result. [default]
+  # Six slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -273,7 +298,7 @@ jobs:
   # turn a PR red: if it fails, main just runs the whole suite.
   gate:
     name: gate
-    needs: [plan, static-unit, sim, browser, prod-build]
+    needs: [plan, static, unit, sim, browser, prod-build]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 3

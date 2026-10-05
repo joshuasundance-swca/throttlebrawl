@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static and unit in one job, and the sim and
-//                                    browser slices as parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static, unit, and each sim and browser slice
+//                                    as parallel jobs)
 //   npm run check -- --tier sim --shard 1/2
 //                                    one slice of a tier: the sim batch or the browser tests. The
 //                                    test runner lists the tier's files and scripts/shard-plan.mjs
