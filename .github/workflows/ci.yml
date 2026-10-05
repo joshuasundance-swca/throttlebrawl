@@ -1,13 +1,26 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit (two slices), sim (six
-# slices) and browser (seven slices, the last also running perf) run in parallel, each running its tiers of
-# `npm run check`; `gate` is the single required status check, and it fails unless every one of
-# them succeeded. Every job is planned to finish inside about 70% of a 10-minute run, and its
-# timeout-minutes is about 1.5 times its expected time, a guard against a hang rather than a budget.
-# On a push to main, a green gate deploys to the game Space and writes the release notes. A push
-# whose tree a green PR run already tested skips that suite: `plan` finds the PR run's record,
-# `prod-build` runs the push-only identity leak scan, builds with the prod stamp and boots that
-# build, and the gate accepts the skipped suite on that path only (scripts/tested-tree.mjs).
-# No `paths:` filter: a required check behind one never reports on some PRs.
+# The gate (docs/engineering.md, "CI on GitHub Actions" and "The bundle train"). The suite itself
+# (static, unit in two slices, sim in six, browser in seven with perf in the last) lives in
+# suite.yml, shared with the bundle train (train.yml) so the two can never drift. `gate` is the
+# single required status check.
+#
+# On a pull request, `route` (scripts/train.mjs) picks the PR's path:
+# - full: the full suite on this PR, and the aggregate is the PR's `gate`: every PR while the train
+#   is off (.github/train.json, "live": false), and with it on, forks, Dependabot, the
+#   "[full-gate]" escape hatch and PRs that change .github/ (a train runs main's workflows, not
+#   the PR's). Only this path records the tree it tested, for main's skip path (below).
+# - train: the quick check (static plus the build and its size budget, and the two unit slices).
+#   Its aggregate is named `quick`, never `gate`, so auto-merge waits for the train, which runs the
+#   full suite once on a bundle of ready PRs and posts `gate` as a commit status on each head.
+# - docs: the same quick check, and its aggregate is the PR's `gate` (no sim or browser tier needed).
+# One source of `gate` per head commit: this workflow's aggregate job, or the train's status.
+#
+# On a push to main: the full suite, then (green) deploy to the game Space and the release notes:
+# the backstop after every landing. A push whose tree a green full-path PR run already tested skips
+# that suite: `plan` finds the PR run's record, `prod-build` runs the push-only identity leak scan,
+# builds with the prod stamp and boots that build, and the aggregate accepts the skipped suite on
+# that path only (scripts/tested-tree.mjs).
+# No `paths:` filter: a required check behind one never reports on some PRs. Path awareness is the
+# route job's.
 name: ci
 
 on:
@@ -23,6 +36,8 @@ concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Read by prod-build; the suite gets the same values as inputs (a called workflow does not inherit
+# this env).
 env:
   BUILD_ID: ${{ github.event.pull_request.head.sha || github.sha }}
   BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
@@ -60,180 +75,52 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/tested-tree.mjs decide
 
-  # The static checks: types, lint, format, packs, leak scan, size and notes. About 2 minutes, so
-  # its own job; with the unit tests after them in one job (until 2026-10-05) it took up to 564 s.
-  # The timeout is 1.5x its 122 s mean, rounded up. [default]
-  static:
-    name: static
-    needs: [plan]
-    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
+  # Pull request only: which path this PR takes (train, docs or full), from what it changes (its
+  # merge commit against main) and who opened it. The PR's title and body reach the script through
+  # env, never a run: line. [default]
+  route:
+    name: route
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 3
+    outputs:
+      path: ${{ steps.route.outputs.path }}
     steps:
+      # The PR's merge commit and its first parent (main), to list what the PR changes.
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm audit signatures
-      - name: Types, lint, format, packs, leak scan, size, notes
-        run: npm run check -- --tier static
+          fetch-depth: 2
+          sparse-checkout: |
+            scripts
+            .github
+      - name: Which path this PR takes (train, docs or full)
+        id: route
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: node scripts/train.mjs route
 
-  # The unit tests in parallel slices, split by measured CI seconds like the sim batch below. On one
-  # runner they took 435 s (run 37261695645): about 980 s of tests plus each file's setup and
-  # import on three workers. Their slowest file (tools/gis/region-routes.test.ts) is the floor. The
-  # plan adds about 0.8 s per file for that setup and import, which Vitest's per-file times leave
-  # out. [default]
-  unit:
-    name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [plan]
-    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
-    runs-on: ubuntu-latest
-    # About 1.5x a slice, rounded up: the plan puts each at about 265 s of tests plus 0.8 s of setup
-    # per file, and region-routes takes 140 to 175 s alone but up to 337 s beside other files.
-    timeout-minutes: 8
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Unit tests, one slice
-        run: npm run check -- --tier unit --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-
-  # The seeded sim batch in parallel slices. The test runner lists the files and
-  # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
-  # lands in exactly one slice, so the slices' test counts add up to the unsharded run's, and the
-  # files that read the shared seeded batch share one slice, so it is computed once; the readers of
-  # the Easy and Hard batches start first there. fail-fast is off so a red slice never hides
-  # another's result. [default]
-  # Six slices since 2026-10-05: with four, #475's green run took 520 to 592 s a slice and one slice
-  # timed out at 10 minutes. The slowest files are now the floor (docs/engineering.md, "The floors").
-  sim:
-    name: sim (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [plan]
-    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
-    runs-on: ubuntu-latest
-    # About 1.5x a slice (planned about 280 s of tests), rounded up to leave room for slow runners:
-    # five slices of this PR's runs took up to 535 s.
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - name: Seeded sim batch, one slice
-        run: npm run check -- --tier sim --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-
-  # The browser tests in parallel slices, split the same way by spec file. Each slice builds and
-  # tests its own build. The last slice then runs perf on that same build, after its own e2e files,
-  # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
-  # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
-  # red slice never hides another's result. [default]
-  # Seven slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice, and with
-  # six this PR's runs took 274 to 536 s. The timeout is about 1.5x a slice (planned about 335 s of
-  # tests, plus about 30 s to set up and build), rounded up.
-  browser:
-    name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [plan]
-    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      # Keyed by the browser builds Playwright pins, so a lock-file change alone keeps the cache.
-      - name: Playwright browser cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
-      # Chromium's system packages (fonts, mesa) come from the Ubuntu mirror, which sometimes crawls:
-      # 32 MB took 7.5 minutes at 72 kB/s on 2026-10-01, and 299 s in another run. Their .deb files
-      # are kept between runs and put in apt's own archive folder, so apt installs the same packages
-      # and downloads only what changed. The kept set is saved again (from slice 1) only when it
-      # differs from the one restored.
-      - name: Chromium system packages, restore
-        id: debs
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/.cache/playwright-debs
-          key: playwright-debs-${{ runner.os }}-restore
-          restore-keys: playwright-debs-${{ runner.os }}-
-      - name: Install Chromium and its system packages
-        id: install
-        run: |
-          mkdir -p ~/.cache/playwright-debs
-          if ls ~/.cache/playwright-debs/*.deb > /dev/null 2>&1; then
-            sudo cp ~/.cache/playwright-debs/*.deb /var/cache/apt/archives/
-          fi
-          npx playwright install --with-deps --only-shell chromium
-          rm -rf ~/.cache/playwright-debs && mkdir -p ~/.cache/playwright-debs
-          for f in /var/cache/apt/archives/*.deb; do
-            [ -e "$f" ] || continue
-            p=$(dpkg-deb -f "$f" Package)
-            if [ "$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null)" = "$(dpkg-deb -f "$f" Version)" ]; then
-              cp "$f" ~/.cache/playwright-debs/
-            fi
-          done
-          echo "kept $(ls ~/.cache/playwright-debs | wc -l) .deb files"
-          echo "key=playwright-debs-${RUNNER_OS}-$(ls ~/.cache/playwright-debs | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      - name: Chromium system packages, save
-        if: matrix.shard == 1 && steps.install.outputs.key != steps.debs.outputs.cache-matched-key
-        uses: actions/cache/save@v6
-        with:
-          path: ~/.cache/playwright-debs
-          key: ${{ steps.install.outputs.key }}
-      - name: Build, browser tests (one slice)
-        if: matrix.shard != strategy.job-total
-        run: npm run check -- --tier browser --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-      - name: Build, browser tests (the last slice), then perf on the same build
-        if: matrix.shard == strategy.job-total
-        run: npm run check -- --tier browser,perf --shard ${{ matrix.shard }}/${{ strategy.job-total }}
-      - name: Screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: screenshots-${{ matrix.shard }}
-          path: test-results/
-          retention-days: 7
-          if-no-files-found: ignore
-      - name: Keep the tested build for the deploy
-        if: matrix.shard == strategy.job-total && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-          retention-days: 1
-          if-no-files-found: error
+  # The suite (suite.yml, shared with the train): every tier on a push to main and on a PR's full
+  # path, the quick check (3 jobs) on the train and docs paths. Skipped on main's skip path. Its
+  # jobs show as `suite / static`, `suite / unit (1/2)` and so on.
+  suite:
+    needs: [plan, route]
+    if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) && (needs.route.result == 'skipped' || needs.route.result == 'success') }}
+    uses: ./.github/workflows/suite.yml
+    with:
+      full: ${{ github.event_name == 'push' || needs.route.outputs.path == 'full' }}
+      save-caches: true
+      upload-dist: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      build-id: ${{ github.event.pull_request.head.sha || github.sha }}
+      build-branch: ${{ github.head_ref || github.ref_name }}
+      build-channel: ${{ github.event_name == 'push' && 'prod' || 'dev' }}
+      # Author and committer of the PR's own commits (never HEAD, the synthetic merge commit), or
+      # on a push to main the squash commit GitHub just made.
+      identity-range: ${{ github.event_name == 'pull_request' && format('origin/main..{0}', github.event.pull_request.head.sha) || 'HEAD~1..HEAD' }}
+      # Who opened the PR, from the event (a branch cannot set it).
+      notes-pr-author: ${{ github.event.pull_request.user.login }}
 
   # The skip path's push-only work: what the suite would have done that depends on the push, not
   # the tree. The leak scan checks the squash commit's author and committer
@@ -302,15 +189,18 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Green on exactly two shapes (scripts/tested-tree.mjs gateVerdict): the suite path, where every
-  # suite job succeeded; or the skip path, only when `plan` said this tree was tested, where every
-  # suite job was skipped and prod-build succeeded. A failed, cancelled or missing job fails it on
-  # either path. On a PR, a green gate records the tree it tested as an artifact named
-  # `tested-tree-<tree>` (7 days), which is what `plan` looks up on main. The record step cannot
-  # turn a PR red: if it fails, main just runs the whole suite.
-  gate:
-    name: gate
-    needs: [plan, static, unit, sim, browser, prod-build]
+  # The aggregate: named `gate` (the one required check) on main and on a PR's docs and full paths,
+  # and `quick` on the train path, where the train posts `gate`. Its job id is not `gate`, so no
+  # placeholder name can ever read as one. Green on exactly two shapes (scripts/tested-tree.mjs
+  # gateVerdict): the suite path, where the suite succeeded; or the skip path, only when `plan`
+  # said this tree was tested, where the suite was skipped and prod-build succeeded. A failed,
+  # cancelled or missing job fails it on either path. On a PR's full path, a green gate records the
+  # tree it tested as an artifact named `tested-tree-<tree>` (7 days), which is what `plan` looks
+  # up on main; the quick check never records one, since it did not run the full suite. The record
+  # step cannot turn a PR red: if it fails, main just runs the whole suite.
+  aggregate:
+    name: ${{ needs.route.outputs.path == 'train' && 'quick' || 'gate' }}
+    needs: [plan, route, suite, prod-build]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -321,11 +211,14 @@ jobs:
       - name: Every gate job passed, on the suite path or the skip path
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: node scripts/tested-tree.mjs gate
+          ROUTE: ${{ needs.route.outputs.path }}
+        run: |
+          echo "path: ${ROUTE:-push to main}"
+          node scripts/tested-tree.mjs gate
       # The checkout is the commit this run tested: on a PR, GitHub's merge of the head into main.
       - name: Record the tree this PR run tested
         id: record
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && needs.route.outputs.path == 'full'
         continue-on-error: true
         env:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -360,8 +253,8 @@ jobs:
   # [default]
   deploy-prod:
     name: deploy-prod
-    needs: [gate]
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.gate.result == 'success' }}
+    needs: [aggregate]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.aggregate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

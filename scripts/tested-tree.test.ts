@@ -124,21 +124,33 @@ type Needs = Record<string, { result?: string; outputs?: Record<string, string> 
 const suite = (result: string): Needs => Object.fromEntries(SUITE.map((job) => [job, { result }]));
 const suitePath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'false' } },
+  route: { result: 'skipped' },
   ...suite('success'),
   'prod-build': { result: 'skipped' },
   ...over,
 });
 const skipPath = (over: Needs = {}): Needs => ({
   plan: { result: 'success', outputs: { skip: 'true' } },
+  route: { result: 'skipped' },
   ...suite('skipped'),
   'prod-build': { result: 'success' },
   ...over,
 });
 
 describe('gateVerdict', () => {
-  it('is green on a PR: plan skipped, the suite green', () => {
-    const v = gateVerdict(suitePath({ plan: { result: 'skipped', outputs: {} } }));
+  it('is green on a PR: plan skipped, route green, the suite green', () => {
+    const v = gateVerdict(
+      suitePath({ plan: { result: 'skipped', outputs: {} }, route: { result: 'success' } }),
+    );
     expect(v).toMatchObject({ ok: true, path: 'suite' });
+  });
+
+  it('fails a PR whose route failed or was cancelled, even with the suite green', () => {
+    for (const result of ['failure', 'cancelled']) {
+      const v = gateVerdict(suitePath({ plan: { result: 'skipped', outputs: {} }, route: { result } }));
+      expect(v.ok, result).toBe(false);
+      expect(v.problems.join(' ')).toContain('route');
+    }
   });
 
   it('is green on a main push that ran the suite', () => {
@@ -180,13 +192,13 @@ describe('gateVerdict', () => {
   });
 
   it('fails the skip path when a suite job ran anyway, red or green', () => {
-    expect(gateVerdict(skipPath({ sim: { result: 'failure' } })).ok).toBe(false);
-    expect(gateVerdict(skipPath({ sim: { result: 'success' } })).ok).toBe(false);
+    expect(gateVerdict(skipPath({ suite: { result: 'failure' } })).ok).toBe(false);
+    expect(gateVerdict(skipPath({ suite: { result: 'success' } })).ok).toBe(false);
   });
 
   it('fails a missing job', () => {
     const needs = suitePath();
-    delete needs.browser;
+    delete needs.suite;
     expect(gateVerdict(needs).ok).toBe(false);
     expect(gateVerdict({}).ok).toBe(false);
   });
@@ -195,19 +207,23 @@ describe('gateVerdict', () => {
 describe('ci.yml wiring', () => {
   const ci = readFileSync(path.join(import.meta.dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 
-  it("gate needs every job its verdict reads, so none can drop out of the gate's view", () => {
-    const m = /\n {2}gate:\n(?: {4}.*\n)*? {4}needs: \[([^\]]*)\]/.exec(ci);
-    expect(m, 'gate needs: line').not.toBeNull();
+  it("the aggregate (gate) needs every job its verdict reads, so none can drop out of the gate's view", () => {
+    const m = /\n {2}aggregate:\n(?: {4}.*\n)*? {4}needs: \[([^\]]*)\]/.exec(ci);
+    expect(m, 'aggregate needs: line').not.toBeNull();
     const needs = (m?.[1] ?? '').split(',').map((s) => s.trim());
-    expect(needs.sort()).toEqual(['plan', ...SUITE, PROD_BUILD].sort());
+    expect(needs.sort()).toEqual(['plan', 'route', ...SUITE, PROD_BUILD].sort());
   });
 
-  it('every suite job and prod-build waits on plan, and deploy-prod still needs gate', () => {
-    for (const job of [...SUITE, PROD_BUILD]) {
-      const block = new RegExp(`\\n {2}${job}:\\n(?: {4}.*\\n)*? {4}needs: \\[plan\\]`);
+  it('the suite waits on plan and route, prod-build on plan, and deploy-prod still needs the aggregate', () => {
+    const wants: [string, string][] = [
+      ...SUITE.map((job): [string, string] => [job, 'plan, route']),
+      [PROD_BUILD, 'plan'],
+      ['deploy-prod', 'aggregate'],
+    ];
+    for (const [job, needs] of wants) {
+      const block = new RegExp(`\\n {2}${job}:\\n(?: {4}.*\\n)*? {4}needs: \\[${needs}\\]`);
       expect(block.test(ci), job).toBe(true);
     }
-    expect(/\n {2}deploy-prod:\n(?: {4}.*\n)*? {4}needs: \[gate\]/.test(ci)).toBe(true);
   });
 
   // A job skipped by its own `if:` is always upstream of deploy-prod and release now (prod-build on
@@ -227,7 +243,7 @@ describe('ci.yml wiring', () => {
   it('every job that needs another opens its if: with a status function, so a skipped ancestor never skips it', () => {
     const list = jobs();
     expect(list.map((j) => j.name)).toEqual(
-      expect.arrayContaining(['plan', ...SUITE, PROD_BUILD, 'gate', 'deploy-prod', 'release']),
+      expect.arrayContaining(['plan', 'route', ...SUITE, PROD_BUILD, 'aggregate', 'deploy-prod', 'release']),
     );
     for (const job of list.filter((j) => j.needs)) {
       expect(job.cond, `${job.name} has an if:`).toBeDefined();
@@ -237,8 +253,14 @@ describe('ci.yml wiring', () => {
 
   it('deploy-prod and release check their own upstream result, not only the status function', () => {
     const byName = new Map(jobs().map((j) => [j.name, j.cond ?? '']));
-    expect(byName.get('deploy-prod')).toContain("needs.gate.result == 'success'");
+    expect(byName.get('deploy-prod')).toContain("needs.aggregate.result == 'success'");
     expect(byName.get('release')).toContain("needs.deploy-prod.result == 'success'");
     expect(byName.get(PROD_BUILD)).toContain("needs.plan.result == 'success'");
+  });
+
+  it('only a full-path PR run records the tree it tested: the quick check never vouches for main', () => {
+    const rec = /- name: Record the tree this PR run tested\n(?: {8}.*\n)*? {8}if: (.+)\n/.exec(ci);
+    expect(rec, 'the record step').not.toBeNull();
+    expect(rec?.[1]).toBe("github.event_name == 'pull_request' && needs.route.outputs.path == 'full'");
   });
 });

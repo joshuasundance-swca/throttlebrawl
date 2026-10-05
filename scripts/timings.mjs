@@ -94,8 +94,9 @@ function main(runIds) {
     const run = { unit: {}, sim: {}, e2e: {}, perf: 0 };
     for (const job of jobs) {
       // A red job's other files still timed true; a cancelled or skipped one says nothing. The unit
-      // tests ran in `static and unit` until 2026-10-05, then in `unit`.
-      if (!/^(sim|browser|unit|static and unit)\b/.test(job.name)) continue;
+      // tests ran in `static and unit` until 2026-10-05, then in `unit`. Since the suite moved into
+      // suite.yml (2026-10-05), ci.yml's jobs are named `suite / unit (1/2)` and so on.
+      if (!/^(?:suite \/ )?(sim|browser|unit|static and unit)\b/.test(job.name)) continue;
       if (!['success', 'failure'].includes(job.conclusion)) continue;
       const got = parseLog(gh(['run', 'view', '--job', String(job.databaseId), '--log']));
       Object.assign(run.unit, got.unit);

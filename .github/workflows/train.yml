@@ -1,0 +1,202 @@
+# The bundle train (docs/engineering.md, "The bundle train"). [decided] (the maintainer,
+# 2026-10-02, and revived 2026-10-05: "Revive the train instead of limiting parallel lanes"): the
+# full suite runs once on a bundle of ready PRs instead of once per PR. Green: they all land. Red:
+# the bundle splits to find the culprit, and the rest still land. While .github/train.json says
+# "live": false, plan stops at once (one short job per finished ci run) unless it is a dry run.
+#
+# One train at a time (the concurrency group never cancels a running train). It runs when a ci or
+# train-kick run finishes, and when a finished train sends the next one (workflow_dispatch, the one
+# event GITHUB_TOKEN may start). GitHub keeps one waiting run per group and replaces it with a
+# newer one; that loses nothing, because every run plans from scratch from the PRs' `gate`
+# statuses. So no job here may skip planning.
+#
+# Jobs and their rights (no job that runs PR code can write anything):
+# - plan (read only): who rides, oldest first, up to the cap; the assembled tree.
+# - wait-main (actions: write, runs no repo code): main red, so wait for rerun-main.yml's second
+#   attempt, then send the next train.
+# - announce (statuses and PR comments, runs main's own scripts only): "riding" statuses, conflicts.
+# - suite (contents: read): the full suite on main + the bundle, the same suite.yml ci.yml runs.
+# - control (contents: read): a lone PR that failed, on its own branch, to tell its own failure
+#   from a composition failure.
+# - report (statuses, PR comments, dispatch; runs main's own scripts only): results, the landing,
+#   and the next train.
+# PR titles, bodies and branch names never reach a run: line; scripts read them from the API.
+name: train
+
+on:
+  workflow_run:
+    workflows: [ci, train-kick]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Plan and test, but post nothing (no statuses, comments or next train)
+        type: boolean
+        default: false
+      prs:
+        description: Dry run only. PR numbers to bundle, in order (for example "341 342"); empty takes whoever is eligible
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'train-dry' || 'train' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+      checks: read
+      actions: read
+    outputs:
+      depart: ${{ steps.plan.outputs.depart }}
+      post: ${{ steps.plan.outputs.post }}
+      base: ${{ steps.plan.outputs.base }}
+      heads: ${{ steps.plan.outputs.heads }}
+      tree: ${{ steps.plan.outputs.tree }}
+      commit: ${{ steps.plan.outputs.commit }}
+      bundle: ${{ steps.plan.outputs.bundle }}
+      conflicts: ${{ steps.plan.outputs.conflicts }}
+      single: ${{ steps.plan.outputs.single }}
+      wait_main: ${{ steps.plan.outputs.wait_main }}
+    steps:
+      # Main's own scripts (this workflow's commit). PR heads are fetched as git objects and merged
+      # without a working tree; nothing from a PR runs here.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Who rides, and the tree they make
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          TRAIN_PRS: ${{ inputs.prs }}
+        run: node scripts/train.mjs plan
+
+  # Main red on its first attempt: rerun-main.yml re-runs its failed jobs once, in case it was a
+  # flake (this job never re-runs anything itself). This job waits for that second attempt, then
+  # sends the next train itself, rather than counting on the attempt's completion to start one
+  # (whether a run re-run with GitHub's own token fires workflow_run is unverified). It stops
+  # waiting early when main moves on (the newer commit's own ci run starts the next train) or when
+  # no second attempt starts within 5 minutes (rerun-main.yml declined). A second red attempt stops
+  # the train in plan: it waits for a fix, which the keeper lands with [full-gate].
+  wait-main:
+    name: wait for main's re-run
+    needs: plan
+    if: needs.plan.outputs.wait_main != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Wait for main's second attempt, then send the next train
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ needs.plan.outputs.wait_main }}
+          RUN_SHA: ${{ needs.plan.outputs.base }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            attempt=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.run_attempt')
+            status=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.status')
+            head=$(gh api "repos/$REPO/branches/main" --jq '.commit.sha')
+            echo "check $i: main ci run $RUN_ID attempt $attempt, $status; main is ${head::7}"
+            if [ "$attempt" -gt 1 ] && [ "$status" = completed ]; then break; fi
+            if [ "$head" != "$RUN_SHA" ]; then echo "main moved on; its own run decides"; break; fi
+            if [ "$attempt" = 1 ] && [ "$i" -gt 10 ]; then echo "no second attempt started"; break; fi
+            sleep 30
+          done
+          gh workflow run train.yml --repo "$REPO" --ref main
+
+  announce:
+    name: announce
+    needs: plan
+    if: needs.plan.outputs.post == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Riding statuses, and conflicts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
+          TRAIN_CONFLICTS: ${{ needs.plan.outputs.conflicts }}
+          TRAIN_BASE: ${{ needs.plan.outputs.base }}
+        run: node scripts/train.mjs announce
+
+  suite:
+    needs: plan
+    if: needs.plan.outputs.depart == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/suite.yml
+    with:
+      full: true
+      base: ${{ needs.plan.outputs.base }}
+      heads: ${{ needs.plan.outputs.heads }}
+      tree: ${{ needs.plan.outputs.tree }}
+      save-caches: false
+      build-id: ${{ needs.plan.outputs.commit }}
+      build-branch: train
+      identity-range: ${{ format('{0}..HEAD', needs.plan.outputs.base) }}
+      notes-base: ${{ needs.plan.outputs.base }}
+
+  control:
+    needs: [plan, suite]
+    if: always() && needs.plan.outputs.single != '' && needs.suite.result == 'failure'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/suite.yml
+    with:
+      full: true
+      base: ${{ needs.plan.outputs.single }}
+      save-caches: false
+      build-id: ${{ needs.plan.outputs.single }}
+      build-branch: train-control
+      identity-range: ${{ format('{0}..HEAD', needs.plan.outputs.base) }}
+      notes-base: ${{ needs.plan.outputs.base }}
+      artifact-prefix: control-
+
+  report:
+    name: report
+    needs: [plan, suite, control]
+    if: always() && needs.plan.outputs.depart == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+      actions: write
+      # The PR listing (GraphQL statusCheckRollup) reads check runs.
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Results, the landing, and the next train
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          TRAIN_RESULT: ${{ needs.suite.result }}
+          TRAIN_CONTROL: ${{ needs.control.result }}
+          TRAIN_BUNDLE: ${{ needs.plan.outputs.bundle }}
+          TRAIN_BASE: ${{ needs.plan.outputs.base }}
+          TRAIN_TREE: ${{ needs.plan.outputs.tree }}
+        run: node scripts/train.mjs report
