@@ -95,6 +95,7 @@ import {
   RADIO_FIRST_STATION,
   RADIO_OFF,
   RADIO_SCORE,
+  radioKeyAction,
   VOICE_DEFAULTS,
   type Volumes,
 } from './tuning';
@@ -564,12 +565,9 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const keys =
     opts.radioKeys === undefined ? (typeof window === 'undefined' ? null : window) : opts.radioKeys;
   keys?.addEventListener('keydown', (ev) => {
-    const e = ev as KeyboardEvent;
-    if (e.code !== 'KeyR' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-    const target = e.target as { tagName?: string } | null;
-    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT') return;
-    if (e.shiftKey) graph?.radio.skip();
-    else nextRadio();
+    const action = radioKeyAction(ev);
+    if (action === 'skip') graph?.radio.skip();
+    else if (action === 'next') nextRadio();
   });
 
   const live = (): Graph | null => (graph && (opts.offline || graph.ctx.state === 'running') ? graph : null);

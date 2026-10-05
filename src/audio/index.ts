@@ -12,7 +12,7 @@
 //   reports the settings' bus targets and whether a voice could speak, as the engine would.
 // The tuning declarations (tuning.ts) and the station tables (stations.ts) load at boot.
 import type { AudioInspect, AudioOptions, AudioSystem } from './system';
-import { busTargets, RADIO_FIRST_STATION, VOICE_DEFAULTS, type Volumes } from './tuning';
+import { busTargets, RADIO_FIRST_STATION, radioKeyAction, VOICE_DEFAULTS, type Volumes } from './tuning';
 
 export {
   AUDIO_TUNING,
@@ -65,7 +65,12 @@ export function createAudio(
   const fetchEngine = (): Promise<AudioSystem | null> => {
     loading ??= load().then(
       (m) => {
-        const a = m.createAudio({ ...opts, createContext: () => tapContext ?? createContext() });
+        // The stand-in listens for the R key (below), so the engine does not.
+        const a = m.createAudio({
+          ...opts,
+          radioKeys: null,
+          createContext: () => tapContext ?? createContext(),
+        });
         for (const set of pending.splice(0)) set(a);
         engine = a;
         return a;
@@ -80,6 +85,16 @@ export function createAudio(
     return loading;
   };
   void fetchEngine();
+
+  // The R key, listened for from now, not from when the engine loads: ui/ saves the radio choice
+  // from its own keydown listener, added after this one, and it must see the choice the key made.
+  const keys =
+    opts.radioKeys === undefined ? (typeof window === 'undefined' ? null : window) : opts.radioKeys;
+  keys?.addEventListener('keydown', (ev) => {
+    const action = radioKeyAction(ev);
+    if (action === 'skip') engine?.skipTrack();
+    else if (action === 'next') engine?.nextRadio();
+  });
 
   /** Calls the engine now, or keeps the call for when it loads. */
   const set = (call: (a: AudioSystem) => void) => {

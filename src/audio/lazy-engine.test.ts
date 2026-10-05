@@ -120,6 +120,27 @@ describe('the audio stand-in (audio/index.ts)', () => {
     expect(audio.inspect().lastCues).toEqual([]);
   });
 
+  it("listens for the R key from the start, so a listener added after it (ui's save) sees the new choice", async () => {
+    // ui/ saves the radio choice from its own keydown listener, added after createAudio. The engine
+    // loads later, so its listener alone would run after ui's and each save would lag a press.
+    const chunk = deferredLoad();
+    const keys = new EventTarget();
+    const audio = createAudio({ ...quiet, radioKeys: keys, createContext: contexts().create }, chunk.load);
+    const seen: number[] = [];
+    keys.addEventListener('keydown', () => seen.push(audio.inspect().radio.choice));
+    await chunk.resolve();
+    await flush();
+    const press = () =>
+      keys.dispatchEvent(
+        Object.assign(new Event('keydown'), { code: 'KeyR', shiftKey: false, repeat: false }),
+      );
+    const before = audio.inspect().radio.choice;
+    press();
+    const after = audio.inspect().radio.choice;
+    expect(after).not.toBe(before);
+    expect(seen).toEqual([after]);
+  });
+
   it('stays silent when the engine fails to load, and fetches it again at the next start tap', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const chunk = deferredLoad();

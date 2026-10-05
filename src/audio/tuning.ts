@@ -72,6 +72,18 @@ export const RADIO_SCORE = 1;
  * be different stations and music in different regions"), as the settings record's Radio default.
  */
 export const RADIO_FIRST_STATION = 2;
+/**
+ * What a keydown does to the radio: R tunes the next choice, Shift+R skips the track; nothing with
+ * another modifier, on a held key's repeats, or while typing in a field.
+ */
+export function radioKeyAction(ev: Event): 'next' | 'skip' | null {
+  const e = ev as KeyboardEvent;
+  if (e.code !== 'KeyR' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return null;
+  const target = e.target as { tagName?: string } | null;
+  if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT')
+    return null;
+  return e.shiftKey ? 'skip' : 'next';
+}
 export const DUCK_DEFAULTS = { level: 0.4, holdS: 0.9 } as const;
 /**
  * Spoken barks [default]. The music dips a little under a voice (not as far as under a crash), the
