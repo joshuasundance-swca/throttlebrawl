@@ -287,11 +287,14 @@ describe('every San Francisco landmark resolves and draws within the landmark ca
       const kits = await kitsFor(road);
       const placements = landmarkPlacements(road);
       expect(placements.length).toBeGreaterThan(0);
-      for (const p of placements)
+      // A node is found as the layer finds it: by its name, else as `<name>_lod0` (a node with levels of detail).
+      for (const p of placements) {
+        const nodes = kits.get(p.kit)?.nodes;
         expect(
-          kits.get(p.kit)?.nodes.has(p.node) || p.node === 'gg_bridge',
+          nodes?.has(p.node) || nodes?.has(`${p.node}_lod0`) || p.node === 'gg_bridge',
           `${p.feature.id}: ${p.kit}#${p.node}`,
         ).toBe(true);
+      }
       const layer = new LandmarkLayer(kits, look, { road });
       expect(layer.counts().placed).toBe(placements.length);
       expect(layer.counts().skipped).toBe(0);

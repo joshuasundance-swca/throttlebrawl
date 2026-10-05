@@ -1,0 +1,21 @@
+{
+  "type": "traffic-type",
+  "id": "lombard-photographer",
+  "name": "Phone Photographer",
+  "category": "pedestrian",
+  "tags": ["region-sf", "lombard"],
+  "lengthM": 0.5,
+  "widthM": 0.6,
+  "cruiseMps": 0.9,
+  "hazard": "normal",
+  "behaviour": { "carFollowing": false, "laneChanges": false, "dives": true, "strolls": true },
+  "look": {
+    "procedural": { "preset": "ped-tourist" },
+    "paintOptions": ["#f4f1e8", "#8fd3f0", "#ff8fab", "#ffd166"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 4 (P4-19; the identity sheets' L1, Lombard's crowd): the eighth photo of the same hairpin. Paces the stairs and the kerb for a better angle, steps back from the kerb when a rider comes close, and dives like anyone else when one comes closer. Walks along its zone and never crosses the street. In no region-wide list: only the crooked block's and the hill's zones name it (a zone's `kinds`). The joke is the tourist economy, never the people who live there. [default] every number.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

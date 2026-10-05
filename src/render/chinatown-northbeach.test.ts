@@ -216,3 +216,97 @@ describe("San Francisco's Chinatown and North Beach: what stands along the stree
     layer.dispose();
   });
 });
+
+// Playtest 4, P4-19 (CX5's Dragon Gate across Lantern Row and the twin-spired church across the park): the
+// districts are code-made and plan their own fronts, so each must keep off a `landmark` feature's footprint:
+// the frontage breaks for the gate and closes up round it, no lantern string hangs through it, and no
+// building, tree or bench of the park stands in the church. The control plans the same roads without the
+// landmark features and finds the districts standing in the footprints, so the rule is what keeps them out.
+describe('the districts keep off the landmarks', () => {
+  /** The land beside a building's front: its depth, then the second row behind it (chinatown-northbeach.ts). */
+  const FRONT_DEPTH_M = 14;
+  const BACK_ROW_M = 0.5 + 16;
+  const landmarks = net.roads.flatMap((r) =>
+    (r.features ?? [])
+      .filter((f) => f.kind === 'landmark')
+      .map((f) => ({ edge: net.road.edgeIndex(r.id), id: f.id, s0: f.s0, s1: f.s1, d0: f.d0, d1: f.d1 })),
+  );
+  const without: RoadDressing = Object.fromEntries(
+    net.roads.map((r) => [r.id, { ...r, features: (r.features ?? []).filter((f) => f.kind !== 'landmark') }]),
+  );
+  const bare = planBlocks({ road: net.road, dressing: without, seed: 7 });
+
+  /** Buildings of a plan that stand in a footprint (front, second row and the park row). */
+  const buildingsIn = (p: BlocksPlan, l: (typeof landmarks)[number]) =>
+    p.buildings.filter((b) => {
+      if (b.edge !== l.edge || b.district === 'side') return false;
+      const depth = b.district === 'park' ? FRONT_DEPTH_M : FRONT_DEPTH_M + BACK_ROW_M;
+      const lo = Math.min(b.side * b.front, b.side * (b.front + depth));
+      const hi = Math.max(b.side * b.front, b.side * (b.front + depth));
+      return b.s0 < l.s1 && b.s1 > l.s0 && lo < l.d1 && hi > l.d0;
+    });
+
+  it('names the two landmarks it keeps off', () => {
+    expect(landmarks.map((l) => l.id).sort()).toEqual(['dragon-gate', 'twin-spire-church']);
+  });
+
+  it('stands no building in a footprint, where the same roads without the landmarks do', () => {
+    for (const l of landmarks) {
+      const inside = buildingsIn(plan, l);
+      const control = buildingsIn(bare, l);
+      print(
+        `[examined] ${l.id}: ${inside.length} buildings in its footprint (${control.length} without the landmark feature)`,
+      );
+      expect(inside.length, l.id).toBe(0);
+    }
+    // The control, on the gate (the church's footprint holds trees, not buildings: the next test).
+    const gate = landmarks.find((l) => l.id === 'dragon-gate');
+    if (!gate) throw new Error('no gate');
+    expect(buildingsIn(bare, gate).length, 'the control').toBeGreaterThan(0);
+  });
+
+  it('closes the frontage up to the gate, within 1 m, on both sides', () => {
+    const gate = landmarks.find((l) => l.id === 'dragon-gate');
+    if (!gate) throw new Error('no gate');
+    for (const side of [-1, 1] as const) {
+      const row = plan.buildings.filter(
+        (b) => b.edge === gate.edge && b.side === side && b.district === 'lanterns',
+      );
+      const before = row.filter((b) => b.s1 <= gate.s0 + 1e-6).map((b) => b.s1);
+      const after = row.filter((b) => b.s0 >= gate.s1 - 1e-6).map((b) => b.s0);
+      expect(gate.s0 - Math.max(...before), `side ${side}: the building before`).toBeLessThan(1);
+      expect(Math.min(...after) - gate.s1, `side ${side}: the building after`).toBeLessThan(1);
+    }
+  });
+
+  it('hangs no lantern string through the gate, where the same roads without it do', () => {
+    const gate = landmarks.find((l) => l.id === 'dragon-gate');
+    if (!gate) throw new Error('no gate');
+    const through = (p: BlocksPlan) =>
+      p.strings.filter((s) => s.edge === gate.edge && s.s > gate.s0 - 1 && s.s < gate.s1 + 1);
+    print(
+      `[examined] strings at the gate (s ${gate.s0} to ${gate.s1}): ${through(plan).length}, without the feature ${through(bare).length}`,
+    );
+    expect(through(plan)).toEqual([]);
+    expect(plan.strings.length).toBeGreaterThan(80);
+  });
+
+  it('plants no tree in the church, where the same park without it does', () => {
+    const church = landmarks.find((l) => l.id === 'twin-spire-church');
+    if (!church) throw new Error('no church');
+    const inside = (p: BlocksPlan) =>
+      p.treeSpots.filter(
+        (t) =>
+          t.edge === church.edge &&
+          t.s > church.s0 - 2 &&
+          t.s < church.s1 + 2 &&
+          Math.abs(t.d) > Math.min(Math.abs(church.d0), Math.abs(church.d1)) - 2 &&
+          Math.abs(t.d) < Math.max(Math.abs(church.d0), Math.abs(church.d1)) + 2,
+      );
+    print(
+      `[examined] trees in the church's footprint: ${inside(plan).length} (${inside(bare).length} without it)`,
+    );
+    expect(inside(plan)).toEqual([]);
+    expect(inside(bare).length, 'the control').toBeGreaterThan(0);
+  });
+});

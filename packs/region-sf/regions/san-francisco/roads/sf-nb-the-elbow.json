@@ -47,6 +47,15 @@
       "item": "nb-elbow-brake"
     },
     {
+      "kind": "landmark",
+      "id": "twin-spire-church",
+      "s0": 63,
+      "s1": 93,
+      "d0": -36.5,
+      "d1": -18.5,
+      "params": { "model": "sf-landmarks#sf_twin_spire", "yawDeg": -90, "frontM": 9, "farM": 260 }
+    },
+    {
       "kind": "roadsideZone",
       "id": "nb-elbow-park",
       "s0": 170,

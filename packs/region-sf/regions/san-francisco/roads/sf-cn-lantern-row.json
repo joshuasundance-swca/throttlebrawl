@@ -29,6 +29,33 @@
   "features": [
     { "kind": "copSpawn", "id": "cn-lantern-lot", "s0": 4, "s1": 20, "d0": 6.1, "d1": 9.2 },
     {
+      "kind": "landmark",
+      "id": "dragon-gate",
+      "s0": 49.8,
+      "s1": 54.2,
+      "d0": -12,
+      "d1": 12,
+      "params": { "model": "sf-landmarks#sf_dragon_gate", "yawDeg": 180, "overRoad": true }
+    },
+    {
+      "kind": "hazard",
+      "id": "dragon-gate-post-r",
+      "s0": 51.3,
+      "s1": 52.7,
+      "d0": 6.2,
+      "d1": 7.2,
+      "params": { "solid": true, "object": "gate-post", "heightM": 7.6 }
+    },
+    {
+      "kind": "hazard",
+      "id": "dragon-gate-post-l",
+      "s0": 51.3,
+      "s1": 52.7,
+      "d0": -7.2,
+      "d1": -6.2,
+      "params": { "solid": true, "object": "gate-post", "heightM": 7.6 }
+    },
+    {
       "kind": "roadsideZone",
       "id": "cn-lantern-walkers",
       "s0": 60,

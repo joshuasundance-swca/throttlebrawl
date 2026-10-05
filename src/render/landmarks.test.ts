@@ -172,6 +172,30 @@ describe('a landmark stands where its footprint is on the road', () => {
     expect(b.yaw - Math.atan2(road.frameAt(0, 910).tx, road.frameAt(0, 910).tz)).toBeCloseTo(Math.PI / 2, 9);
   });
 
+  it("stands the model's origin params.frontM ahead of the footprint's middle along its +Z, scaled (a church's origin is its facade)", () => {
+    const road = roadWith([
+      lm('a', 'sf-landmarks#coit_tower', {
+        s0: 400,
+        s1: 430,
+        d0: -38,
+        d1: -20,
+        params: { model: 'sf-landmarks#coit_tower', yawDeg: -90, frontM: 9, scale: 2 },
+      }),
+      lm('b', 'sf-landmarks#coit_tower', { s0: 900, s1: 930, d0: -38, d1: -20 }),
+    ]);
+    const [a, b] = landmarkPlacements(road);
+    if (!a || !b) throw new Error('two placements');
+    // Turned -90 degrees from the road's heading, +Z points to the road's right (+d); the origin is
+    // 9 m x scale 2 = 18 m that way from the middle, which is 29 m left of the road.
+    const middle = road.toWorld(0, 415, -29, 0);
+    const right = road.toWorld(0, 415, -29 + 18, 0);
+    expect(Math.hypot(a.x - right.x, a.z - right.z)).toBeLessThan(0.1);
+    expect(Math.hypot(a.x - middle.x, a.z - middle.z)).toBeGreaterThan(17);
+    // No frontM: the origin stays at the middle.
+    const bMiddle = road.toWorld(0, 915, -29, 0);
+    expect(Math.hypot(b.x - bMiddle.x, b.z - bMiddle.z)).toBeLessThan(0.1);
+  });
+
   it('stands a landmark at params.baseY when it says so (a tower rising from the water)', () => {
     const road = roadWith(
       [lm('a', 'sf-landmarks#coit_tower', { params: { model: 'sf-landmarks#coit_tower', baseY: 0 } })],

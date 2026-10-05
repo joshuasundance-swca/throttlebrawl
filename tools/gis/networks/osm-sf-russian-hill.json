@@ -75,7 +75,7 @@
         {
           "id": "osm-sf-hyde",
           "name": "Hyde",
-          "tags": ["row-houses", "painted-houses", "cable-line"],
+          "tags": ["row-houses", "painted-houses", "cable-line", "cable-route"],
           "features": [
             {
               "kind": "copSpawn",
@@ -125,7 +125,7 @@
         {
           "id": "osm-sf-california",
           "name": "California",
-          "tags": ["row-houses", "cable-line"],
+          "tags": ["row-houses", "cable-line", "cable-route"],
           "features": [
             {
               "kind": "billboard",
