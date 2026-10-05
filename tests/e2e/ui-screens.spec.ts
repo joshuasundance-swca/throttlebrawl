@@ -400,3 +400,51 @@ test('the rotate screen wears the ui style and its text fits a portrait phone', 
   expect(look.box.width).toBeLessThanOrEqual(412);
   await shot(page, 'rotate');
 });
+
+// Roadmap M5, credits-1 ("check the credits"): the credits page lists every row of the ledger
+// (dist/credits.json, which the build writes from THIRD_PARTY_ASSETS.md and the packs), labels the
+// AI-made ones, shows the map-data credit and the licence text, and fits the shortest phone held
+// sideways. The file is the oracle for the counts, so a new ledger row needs no edit here; the rule
+// that every logged asset reaches the file is scripts/credits.test.ts.
+test('credits: every ledger entry is listed, AI-made ones are labelled, the licence text opens, and it fits a short phone', async ({
+  page,
+}) => {
+  const problems = watchErrors(page);
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-credits')).toBeVisible();
+  await expectNoOverflow(page, 'menu with the Credits button');
+
+  const file = (await (await page.request.get('./credits.json')).json()) as {
+    entries: { ai: boolean }[];
+    licences: { id: string; name: string; text: string }[];
+  };
+  const ai = file.entries.filter((e) => e.ai).length;
+  console.log(
+    `dist/credits.json: ${file.entries.length} entries (${ai} AI-made), ${file.licences.length} licence texts`,
+  );
+  expect(file.entries.length).toBeGreaterThan(0);
+
+  await page.locator('#menu-credits').click();
+  const list = page.locator('#credits-list');
+  await expect(list.locator('.credit-entry')).toHaveCount(file.entries.length);
+  await expect(list.locator('.credit-ai')).toHaveCount(ai);
+  await expect(list.locator('a[href^="https://www.openstreetmap.org/"]').first()).toBeVisible();
+  await expectNoOverflow(page, 'credits');
+  await shot(page, 'credits');
+
+  // The licence text the licences require opens in place, and the page still fits.
+  for (const licence of file.licences) {
+    const row = list.locator('.credit-licence', { hasText: licence.name });
+    await row.locator('summary').click();
+    await expect(row.locator('pre')).toBeVisible();
+    expect((await row.locator('pre').textContent()) ?? '').toContain(licence.text.slice(0, 40));
+  }
+  await list.locator('.credit-entry').first().locator('summary').click();
+  await expectNoOverflow(page, 'credits with the licence texts open');
+
+  await page.locator('#credits-back').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  expect(problems).toEqual([]);
+});

@@ -319,7 +319,7 @@ The detailed task plan is [milestones/M5.md](./milestones/M5.md).
 | The real name applied, with a storage-key migration and a changelog notice. New Spaces are created under the real name, and the old game Space becomes a one-page "we moved" link; nothing is deleted. Creating the new Spaces is confirmed with the maintainer at the time | [decided] (real name before M5; `milestones-rename-hosting`, cockpit answer, 2026-09-29) | blueprint, decision |
 | A pre-launch leak re-audit over the whole tree and the whole git history. The audit the maintainer decided on, "before going public", runs earlier: a one-off scan before the first docs push, then `leakscan:all` over the whole history in M1's infra-1 | [default] for the M5 re-audit; [decided] for the audit before going public | blueprint, decision |
 | Offline play and installing as an app (built early, playtest 4 run B: the offline worker, the web manifest and the menu's Install button; the browser test that loads the game with the network off is `tests/e2e/app-offline.spec.ts`) | [decided] that offline is preferred; [default] for the mechanism | product spec, [engineering](./engineering.md#deploy-game-space-and-staging-space) |
-| A credits and data-licences page | [default] | product spec |
+| A credits and data-licences page (built early, playtest 4 run C: the menu's Credits button; the rule test is `scripts/credits.test.ts`) | [default] | product spec |
 | A replay viewer with cinematic cameras | [decided] that cinematic replay cameras are wanted; [default] for M5, and it may move after v1 | added |
 | More easter eggs | [default] | decision |
 | The public launch: sharing the game Space link | [decided] launch bar; the announcement is the maintainer's call | blueprint |
