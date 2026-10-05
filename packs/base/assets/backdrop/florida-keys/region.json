@@ -35,6 +35,24 @@
       "keepOutM": 600
     },
     {
+      "id": "old-bahia-honda-bridge",
+      "networks": ["osm-keys-bahia-honda", "osm-keys-seven-mile"],
+      "kind": "bridge",
+      "style": "truss",
+      "from": [24.65542, -81.2969],
+      "to": [24.65476, -81.28076],
+      "deckM": 20,
+      "deckOnTop": true,
+      "trussM": 11,
+      "spanM": 57,
+      "gaps": [
+        [0, 0.025],
+        [0.869, 0.892]
+      ],
+      "colour": "#7a6a5c",
+      "keepOutM": 210
+    },
+    {
       "id": "reef-light-east",
       "kind": "lighthouse",
       "at": [24.6276, -81.1105],
