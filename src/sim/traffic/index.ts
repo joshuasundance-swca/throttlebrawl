@@ -61,7 +61,9 @@
 //   of the way of a rider closing on it (onto the verge, else hugging the road's edge), slows while it
 //   does, and goes back to its kerb line afterwards; a rider that still clips a light one only
 //   wobbles (data.kerb) and the cyclist topples for a moment. Behind `traffic.kerbYield` and
-//   `traffic.kerbSoft`; the golf cart is not light and keeps the old contact rules.
+//   `traffic.kerbSoft`. Playtest 4 (P4-3): the golf cart takes the verge too where there is room,
+//   outer edge inside the smashables' line, but is not light: it keeps the old contact rules (a
+//   solid rear-end is still a crash).
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
@@ -88,10 +90,12 @@ import { IDM, idmAccel } from './idm';
 import {
   bestSpot,
   holdsReturn,
-  isLightKerb,
   KERB_YIELD,
   KERB_YIELD_TUNING,
+  softContact,
+  takesVerge,
   threatens,
+  vergeOffsetFor,
   type DodgeSpots,
   type KerbBody,
 } from './kerb-yield';
@@ -1284,7 +1288,7 @@ function riderViews(world: World, config: SimConfig, st: TrafficState): RiderVie
  * car-following, every kerb slot in ascending order is checked against every rider view in ascending
  * id order. While a rider threatens a kerb rider (./kerb-yield.ts `threatens`), and for
  * KERB_YIELD.holdS after the last one has passed, the kerb rider dodges to the best spot (`bestSpot`:
- * the verge for a light type, the road's edge, or where it is) at KERB_YIELD.mps, slowed to
+ * the verge for any kerb type with room for it (P4-3), the road's edge, or where it is) at KERB_YIELD.mps, slowed to
  * KERB_YIELD.speedScale of its cruise speed (move() reads `yieldUntilS`). Afterwards it returns to
  * its kerb line at KERB_YIELD.returnMps, waiting while a rider within KERB_YIELD.returnBehindM behind
  * it is still in its band. A toppled one (contacts()) counts its lying time down here. With
@@ -1332,10 +1336,7 @@ function updateKerbYield(
       const out = kerb.cd < 0 ? -1 : 1;
       const ground = kerbGround(config, st, u, out);
       const spots: DodgeSpots = {
-        verge:
-          isLightKerb(t) && ground.vergeW >= t.widthM + KERB_YIELD.vergeSpareM
-            ? ground.edgeCd + out * (halfW + KERB_YIELD.vergeOffsetM)
-            : null,
+        verge: takesVerge(t, ground.vergeW) ? ground.edgeCd + out * vergeOffsetFor(t.widthM) : null,
         hug: ground.edgeCd - out * (halfW + KERB_YIELD.hugM),
         stay: cd,
       };
@@ -1811,7 +1812,7 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
           };
           if (hoodLaunchContact(world, config, hood)) continue;
           const hit = graze ? 'graze' : endOn ? (front ? 'frontal' : 'rear') : 'side';
-          if (kerbSoft && isKerb(t) && isLightKerb(t)) {
+          if (kerbSoft && isKerb(t) && softContact(t)) {
             // Soft contact (T4.1): the rider only wobbles, even when it is still unstable from an
             // earlier wobble, and a hard enough clip topples the cyclist. A toppled cyclist is moved
             // clear, so the rider is neither pushed out of its box nor slowed to its speed; a slow
