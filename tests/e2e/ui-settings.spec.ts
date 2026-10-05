@@ -38,7 +38,7 @@ type TestWindow = Window & {
   __app?: {
     presentation(): {
       camera: { shake: number };
-      display: { frameDivisor: number };
+      display: { frameDivisor: number; quality: { tier: string } };
       audio: { busTargets: { voices: number } };
     };
   };
@@ -631,6 +631,20 @@ const PROBES: Record<string, { set: Probe; effect: Probe; persisted: Probe }> = 
       await quitRace(page);
     },
     persisted: (page) => chosen(page, 'display', 'frameRateCap', 'third'),
+  },
+  qualityTier: {
+    // Graphics (roadmap M5): a pinned tier is the tier app/ draws with. Under the test flag the
+    // governor leaves the renderer alone (render-quality.spec.ts turns it on), so the tier is read
+    // from app's presentation view.
+    set: (page) => choose(page, 'display', 'qualityTier', 'low'),
+    effect: async (page) => {
+      await raceAlone(page);
+      expect(
+        await page.evaluate(() => (window as TestWindow).__app?.presentation().display.quality.tier),
+      ).toBe('low');
+      await quitRace(page);
+    },
+    persisted: (page) => chosen(page, 'display', 'qualityTier', 'low'),
   },
   view: {
     // The helmet cam: the camera rides at the rider's head, so the rider's own bike and back, at

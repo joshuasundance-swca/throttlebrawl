@@ -35,6 +35,13 @@ export type ThrottleMode = 'scaled' | 'auto';
 /** Frame-rate cap as a divisor of the measured display refresh: full, half or a third. */
 export type FrameRateCap = 'full' | 'half' | 'third';
 /**
+ * Graphics (roadmap M5, the A16 speed pass): `auto` lets the game pick a quality tier from measured
+ * frame time; `high`, `medium` or `low` pins one (render/quality.ts). Presentation only, applied at
+ * once. Additive: the version stays 1, and an id this build doesn't know sanitises to `auto`.
+ */
+export type QualitySettingValue = 'auto' | 'high' | 'medium' | 'low';
+export const QUALITY_SETTINGS: readonly QualitySettingValue[] = ['auto', 'high', 'medium', 'low'];
+/**
  * The look (playtest 1b item 6: styles as settings, [decided]): render/'s look ids. `classic` is the
  * M1 look; `kodak` is "Ink + 1960s film"; playtest 1c item 5 adds `wasteland` ("Sun-bleached
  * wasteland") and `brush` ("Kodachrome brush"). Render only: it never feeds SimConfig. Additive:
@@ -158,6 +165,8 @@ export interface Settings {
   slowMo: boolean;
   reduceShake: boolean;
   frameRateCap: FrameRateCap;
+  /** Graphics: `auto` or a pinned quality tier; applies at once. */
+  qualityTier: QualitySettingValue;
   /** The look; applies at once. */
   look: LookSetting;
   /**
@@ -232,6 +241,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   slowMo: true,
   reduceShake: false,
   frameRateCap: 'full',
+  qualityTier: 'auto',
   look: 'kodak',
   lookFallbackDismissed: false,
   showTuningPanel: false,
@@ -443,6 +453,7 @@ export function sanitiseSettings(data: unknown): Settings {
     slowMo: bool(d['slowMo'], def.slowMo),
     reduceShake: bool(d['reduceShake'], def.reduceShake),
     frameRateCap: oneOf(d['frameRateCap'], ['full', 'half', 'third'], def.frameRateCap),
+    qualityTier: oneOf(d['qualityTier'], QUALITY_SETTINGS, def.qualityTier),
     look: oneOf(d['look'], LOOK_SETTINGS, def.look),
     lookFallbackDismissed: bool(d['lookFallbackDismissed'], def.lookFallbackDismissed),
     showTuningPanel: bool(d['showTuningPanel'], def.showTuningPanel),

@@ -61,6 +61,8 @@ const m2Custom: Settings = {
   slowMo: false,
   reduceShake: true,
   frameRateCap: 'half',
+  // Roadmap M5 (the A16 speed pass): a pinned quality tier.
+  qualityTier: 'low',
   look: 'brush',
   lookFallbackDismissed: true,
   showTuningPanel: true,
@@ -121,6 +123,8 @@ const M2_FIELDS = [
   'raceOptions',
   // Playtest 4 (P4-8): the steering style, Arcade or Free.
   'steerStyle',
+  // Roadmap M5 (the A16 speed pass): Graphics, Auto or a pinned quality tier.
+  'qualityTier',
 ] as const;
 
 describe('the M2 settings record', () => {

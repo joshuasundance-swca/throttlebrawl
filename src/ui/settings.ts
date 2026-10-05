@@ -34,6 +34,7 @@ export type SettingId =
   | 'haptics'
   | 'reduceShake'
   | 'frameRateCap'
+  | 'qualityTier'
   | 'look'
   | 'stylePopups'
   | 'view'
@@ -206,6 +207,20 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'full', label: 'Smooth' },
       { value: 'half', label: 'Half' },
       { value: 'third', label: 'Third' },
+    ],
+  },
+  {
+    // Roadmap M5, the A16 speed pass: Auto picks a quality tier from measured frame time and softens
+    // the picture under load; the others pin a tier (render/quality.ts). Applies at once.
+    id: 'qualityTier',
+    tab: 'display',
+    label: 'Graphics',
+    kind: 'choice',
+    options: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'high', label: 'High' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'low', label: 'Low' },
     ],
   },
   {
