@@ -108,6 +108,12 @@ export const ROAD_LINT = {
   shortcutZoneInsideM: 1.5,
   /** Half a bike: a rider's centre stops this far inside the lanes' outer edge (sim/riders `BIKE_HALF_WIDTH_M`). */
   riderEdgeM: 0.5,
+  /**
+   * A shortcut connector's lanes, where they lie inside a main road's surface (it leaves tangentially, so
+   * for tens of metres it is drawn over the road it leaves), stand within this of that surface's height,
+   * metres. Past it the rider is drawn under the road, or the road under the rider.
+   */
+  shortcutHeightM: 0.1,
 } as const;
 
 const GRAVITY = 9.81;
@@ -677,6 +683,70 @@ function laneExtent(road: BakedRoad, s0: number, s1: number): { lo: number; hi: 
 }
 
 /**
+ * The most a connector's surface lies above or below a main road's where its lanes are inside that
+ * road's lanes (0.3 m in from their edges): the gap, the connector's s and the main road's s there.
+ */
+function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number; sMain: number } | null {
+  const cx = c.samples.data['x'];
+  const cy = c.samples.data['y'];
+  const cz = c.samples.data['z'];
+  const mx = m.samples.data['x'];
+  const my = m.samples.data['y'];
+  const mz = m.samples.data['z'];
+  if (!cx || !cy || !cz || !mx || !my || !mz || mx.length < 2) return null;
+  let worst: { gap: number; s: number; sMain: number } | null = null;
+  for (let i = 0; i < cx.length; i++) {
+    const px = cx[i] as number;
+    const pz = cz[i] as number;
+    // The nearest sample of the main road, then the nearer of its two segments.
+    let bi = 0;
+    let bd = Infinity;
+    for (let k = 0; k < mx.length; k++) {
+      const dx = (mx[k] as number) - px;
+      const dz = (mz[k] as number) - pz;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bd) {
+        bd = d2;
+        bi = k;
+      }
+    }
+    if (bd > 30 * 30) continue;
+    let best: { dist: number; y: number; d: number; s: number } | null = null;
+    for (const k of [bi - 1, bi]) {
+      if (k < 0 || k + 1 >= mx.length) continue;
+      const ax = mx[k] as number;
+      const az = mz[k] as number;
+      const tx = (mx[k + 1] as number) - ax;
+      const tz = (mz[k + 1] as number) - az;
+      const len2 = tx * tx + tz * tz || 1;
+      const raw = ((px - ax) * tx + (pz - az) * tz) / len2;
+      // Past either end of the road there is no surface of its own (the junction's piece draws it).
+      if ((k === 0 && raw < 0) || (k + 2 === mx.length && raw > 1)) continue;
+      const t = Math.min(1, Math.max(0, raw));
+      const dx = px - (ax + t * tx);
+      const dz = pz - (az + t * tz);
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (!best || dist < best.dist) {
+        const len = Math.sqrt(len2);
+        best = {
+          dist,
+          y: (my[k] as number) + t * ((my[k + 1] as number) - (my[k] as number)),
+          d: (-(px - ax) * tz + (pz - az) * tx) / len,
+          s: (k + t) * m.sampleSpacingM,
+        };
+      }
+    }
+    if (!best) continue;
+    const { lo, hi } = laneExtent(m, best.s, best.s);
+    if (best.d <= lo + 0.3 || best.d >= hi - 0.3) continue;
+    const gap = (cy[i] as number) - best.y;
+    if (!worst || Math.abs(gap) > Math.abs(worst.gap))
+      worst = { gap, s: i * c.sampleSpacingM, sMain: best.s };
+  }
+  return worst;
+}
+
+/**
  * The shortcut lint (playtest 4, P4-4 and P4-8; the riding audit's F8b), for one connector row that
  * leads onto or off a shortcut (a row with a split zone, or whose connector carries a `shortcut`
  * lane):
@@ -695,10 +765,24 @@ function lintShortcutRow(
   c: BakedRoad,
   a: BakedRoad,
   b: BakedRoad,
+  mains: readonly BakedRoad[],
   add: (rule: RoadLintRule, pointer: string, message: string) => void,
 ): void {
   const zone = row.splitZone;
   if (!zone && !lanesOf(c).some((l) => l.kind === 'shortcut')) return;
+  for (const m of mains) {
+    const over = overlapHeightGap(c, m);
+    if (over && Math.abs(over.gap) > ROAD_LINT.shortcutHeightM) {
+      const side =
+        over.gap < 0 ? 'under it: a rider is drawn inside the road' : 'over it: a rider is drawn floating';
+      add(
+        'shortcut',
+        '/road',
+        `connector ${c.id} lies inside ${m.id}'s surface at its s ${over.s.toFixed(0)} but ${Math.abs(over.gap).toFixed(2)} m ${side} (at most ${ROAD_LINT.shortcutHeightM} m apart)`,
+      );
+      break;
+    }
+  }
   const run = ROAD_LINT.shortcutRunUpM;
   const [r0, r1] = row.to.end === 'from' ? [0, run] : [b.lengthM - run, b.lengthM];
   const onConnector = tightestKappa(c, 0, c.lengthM);
@@ -906,7 +990,11 @@ export function lintRoadNetwork(input: RoadLintInput, label: RoadFileLabel = def
             `split zone must reach the ${row.from.end} end of ${a.id}, where the connector leaves`,
           );
       }
-      lintShortcutRow(row, c, a, b, add);
+      // The main roads this connector can lie inside: the junction's through pieces and the roads it joins.
+      const mains = [a, b, ...rows.map((r) => byId.get(r.row.road))].filter(
+        (m): m is BakedRoad => !!m && m !== c && !lanesOf(m).some((l) => l.kind === 'shortcut'),
+      );
+      lintShortcutRow(row, c, a, b, mains, add);
       const shortcut = (r: BakedRoad) => lanesOf(r).some((l) => l.kind === 'shortcut');
       if ((shortcut(a) || shortcut(b)) && lanesOf(c).some((l) => l.kind === 'drive')) {
         add(

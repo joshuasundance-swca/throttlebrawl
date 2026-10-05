@@ -75,6 +75,24 @@ export class GroundTris {
     return best;
   }
 
+  /** Every ground face under (x, z) below `top`, highest first (what stacks there, as seen from above). */
+  allAt(x: number, z: number, top = 1e4): { y: number; name: string }[] {
+    const ray = new Ray(new Vector3(x, top, z), new Vector3(0, -1, 0));
+    const hit = new Vector3();
+    const out: { y: number; name: string }[] = [];
+    for (const t of this.cells.get(`${Math.floor(x / CELL_M)},${Math.floor(z / CELL_M)}`) ?? []) {
+      if (ray.intersectTriangle(t.a, t.b, t.c, !t.both, hit)) out.push({ y: hit.y, name: t.name });
+    }
+    return out.sort((a, b) => b.y - a.y);
+  }
+
+  /** Every face's three corners, for a test that samples what the scene draws (not where rays land). */
+  triangles(): { a: Vector3; b: Vector3; c: Vector3; name: string }[] {
+    const seen = new Set<Tri>();
+    for (const list of this.cells.values()) for (const t of list) seen.add(t);
+    return [...seen].map((t) => ({ a: t.a, b: t.b, c: t.c, name: t.name }));
+  }
+
   /** Distance to the first ground face a ray meets within `far`, as the renderer draws it. */
   firstHit(from: Vector3, dir: Vector3, far: number): number | null {
     const ray = new Ray(from.clone(), dir.clone().normalize());

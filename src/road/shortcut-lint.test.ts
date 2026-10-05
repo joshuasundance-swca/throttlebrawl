@@ -91,6 +91,32 @@ describe('the shortcut lint: the bend a rider has to hold', () => {
   });
 });
 
+describe('the shortcut lint: the connector stays at the road it leaves', () => {
+  const lowered = (by: number) => {
+    const b = bake() as Mutable<ReturnType<typeof bake>>;
+    const c = b.roads.find((r) => r.id === 'c-in');
+    if (!c) throw new Error('no c-in');
+    const y = c.samples.data['y'] as number[];
+    for (let i = 0; i < y.length; i++) y[i] = (y[i] as number) + by;
+    return b;
+  };
+
+  it('passes the compiled fixture, whose connector follows the road beneath it', () => {
+    expect(shortcutIssues(bake())).toEqual([]);
+  });
+
+  it('fails a connector drawn under the road it leaves, and one drawn over it', () => {
+    const under = shortcutIssues(lowered(-1.5));
+    expect(under.some((i) => /c-in lies inside .* 1\.\d\d m under it/.test(i.message))).toBe(true);
+    const over = shortcutIssues(lowered(0.8));
+    expect(over.some((i) => /c-in lies inside .* 0\.\d\d m over it/.test(i.message))).toBe(true);
+  });
+
+  it('allows a small gap: the shortcut surface is drawn 5 cm over the road, by design', () => {
+    expect(shortcutIssues(lowered(0.05))).toEqual([]);
+  });
+});
+
 describe('the shortcut lint: where the zone starts', () => {
   const zoneOf = (b: ReturnType<typeof bake>) => {
     for (const j of b.network.junctions)

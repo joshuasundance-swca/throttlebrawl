@@ -45,10 +45,10 @@
         1805.0471, 1805.8747, 1806.6587, 1807.3863, 1808.0525, 1808.6616, 1809.2268, 1809.7661, 1810.2964
       ],
       "y": [
-        97.9509, 97.952, 97.955, 97.96, 97.9667, 97.975, 97.9849, 97.9961, 98.0087, 98.0224, 98.0371, 98.0528,
-        98.0692, 98.0863, 98.104, 98.122, 98.1404, 98.159, 98.1776, 98.1962, 98.2146, 98.2326, 98.2503,
-        98.2674, 98.2838, 98.2995, 98.3142, 98.3279, 98.3404, 98.3517, 98.3616, 98.3699, 98.3766, 98.3816,
-        98.3846, 98.3857
+        97.9509, 97.952, 97.9572, 97.9838, 98.032, 98.0974, 98.1757, 98.2626, 98.3542, 98.4465, 98.5362,
+        98.62, 98.6951, 98.7592, 98.8104, 98.8474, 98.8691, 98.8752, 98.8656, 98.8431, 98.8186, 98.7936,
+        98.7681, 98.7421, 98.7155, 98.6885, 98.6608, 98.6327, 98.6039, 98.5746, 98.5445, 98.5139, 98.4827,
+        98.4509, 98.4185, 98.3857
       ],
       "z": [
         2001.6063, 2003.3912, 2005.1761, 2006.961, 2008.7457, 2010.5303, 2012.3147, 2014.0989, 2015.8831,
@@ -63,10 +63,10 @@
         0.0073122, 0.012106, 0.015549, 0.016711, 0.015319, 0.011715, 0.0068665, 0.0023688, 1.3358e-32
       ],
       "grade": [
-        0.00052683, 0.0010332, 0.0020153, 0.002936, 0.0037953, 0.0045932, 0.0053297, 0.0060049, 0.0066187,
-        0.0071711, 0.0076621, 0.0080918, 0.00846, 0.0087669, 0.0090124, 0.0091966, 0.0093193, 0.0093807,
-        0.0093807, 0.0093193, 0.0091966, 0.0090124, 0.0087669, 0.00846, 0.0080918, 0.0076621, 0.0071711,
-        0.0066187, 0.0060049, 0.0053297, 0.0045932, 0.0037953, 0.002936, 0.0020153, 0.0010332, 0.00052683
+        0.00052683, 0.0015845, 0.0080364, 0.018868, 0.028644, 0.036232, 0.04167, 0.045026, 0.046396, 0.045912,
+        0.043741, 0.040073, 0.035118, 0.029098, 0.022245, 0.014798, 0.0070068, -0.00088065, -0.0080839,
+        -0.011849, -0.012478, -0.01274, -0.013003, -0.013266, -0.013529, -0.013793, -0.014064, -0.014352,
+        -0.014661, -0.014983, -0.015302, -0.015609, -0.015899, -0.016178, -0.01645, -0.016586
       ],
       "bankRad": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -77,7 +77,7 @@
   "provenance": {
     "origin": "gis-pipeline",
     "author": "tools/gis",
-    "createdAt": "2026-10-03",
+    "createdAt": "2026-10-05",
     "tool": {
       "name": "tools/gis/src/tbgis/network.py",
       "version": "0.1.0",
@@ -90,8 +90,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
-        "retrievedAt": "2026-10-03T03:18:37Z",
-        "sha256": "22f78576cad535d60ca5abafdc52856222c5e981bb0bdd7c7ea244def55fc6be"
+        "retrievedAt": "2026-10-05T13:53:55Z",
+        "sha256": "697ac8ae9622e831971109d1c0d154d37a563d696cec60ac4947da03eed73d48"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -99,7 +99,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
-        "retrievedAt": "2026-10-03T03:37:48Z",
+        "retrievedAt": "2026-10-05T13:54:13Z",
         "sha256": "97504d8a047c50144ba1f4e2b446cf7f802b15b8bbf13f6b830a5fde6134e918"
       },
       {
@@ -108,7 +108,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
-        "retrievedAt": "2026-10-03T03:37:56Z",
+        "retrievedAt": "2026-10-05T13:54:14Z",
         "sha256": "4803c76e65c6ebed78d5c848a92c46f2240ea920f1463e71cf00e0554d2e8419"
       }
     ],

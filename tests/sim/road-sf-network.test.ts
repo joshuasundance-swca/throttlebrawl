@@ -114,9 +114,10 @@ describe('the Russian Hill network: the Jones Street choice', () => {
     expect(config.road.edges[zone?.edge ?? -1]?.id).toBe('osm-sf-union');
     expect(zone?.d0).toBeGreaterThan(2); // past the right lane's centre: lane-keeping riders stay on Union
     // The bake's numbers (tools/gis/reports/osm-sf-russian-hill.network.json): Jones and Chestnut are
-    // about 28 m shorter than the Union crest and Leavenworth, so it is an alternate, not a shortcut.
+    // about 100 m shorter than the Union crest and Leavenworth (its wide connectors, which a bike at
+    // speed holds, cut the two street corners), so it is still an alternate, not a big shortcut.
     expect(zone?.gainM).toBeGreaterThan(10);
-    expect(zone?.gainM).toBeLessThan(40);
+    expect(zone?.gainM).toBeLessThan(130);
   });
 
   it('a rider who keeps right takes Jones, rejoins Leavenworth and finishes, on the route all the way', () => {

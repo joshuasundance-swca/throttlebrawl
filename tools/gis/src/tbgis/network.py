@@ -988,6 +988,20 @@ def offset_point(bl: BakedLine, s: float, d: float) -> tuple[float, float, float
     return x + d * math.cos(h), y, z + d * math.sin(h), h
 
 
+# Over this distance past a main road's surface, a connector's height eases from the road's to its own.
+MAIN_BLEND_M = 6.0
+# A main road's verge, which the renderer draws past the lanes (road-mesh VERGE_M).
+MAIN_VERGE_M = 0.6
+
+
+def surface_reach(section: Json, right: bool) -> float:
+    """How far a road's lanes (and its verge) reach from the centre line on one side."""
+    lanes_ = section["lanes"]
+    if right:
+        return max(ln["dCenterM"] + ln["widthM"] / 2 for ln in lanes_) + MAIN_VERGE_M
+    return -min(ln["dCenterM"] - ln["widthM"] / 2 for ln in lanes_) + MAIN_VERGE_M
+
+
 def curve_piece(
     pid: str,
     name: str,
@@ -999,9 +1013,16 @@ def curve_piece(
     speed: float,
     land: list[str],
     span: tuple[float, float] | None = None,
+    main: BakedLine | None = None,
+    half: float = 0.0,
 ) -> Piece:
     """A branch connector road: the solved curve from a to b, its height eased between theirs. With
-    ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road)."""
+    ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road).
+    With ``main`` (the line the connector leaves or joins) and ``half`` (how far that road's surface
+    reaches on the connector's side), the height follows the main road's while the connector lies
+    over its surface and eases into its own over the next MAIN_BLEND_M: the connector leaves
+    tangentially, so for tens of metres it is drawn under the road it leaves, and a steep branch
+    (Jones Street) dropped 3 m under the surface before it came out (playtest 4, P4-4)."""
     fine = max(64, math.ceil(sh.length / 0.1))
     du = sh.length / fine
     fx = [a[0]]
@@ -1020,6 +1041,11 @@ def curve_piece(
     if u1 == sh.length:
         x[-1], z[-1] = b[0], b[2]
     y = a[1] + (b[1] - a[1]) * smoothstep(s / sh.length)
+    if main is not None:
+        for i in range(len(s)):
+            s_main, dist = main.project(float(x[i]), float(z[i]))
+            over = 1.0 - float(smoothstep(np.array((dist - half) / MAIN_BLEND_M)))
+            y[i] += over * (main.at(s_main)[1] - y[i])
     length = float(u1 - u0)
     return Piece(
         id=pid,
@@ -1364,6 +1390,9 @@ def bake_network(
                 spacing,
                 speed_in,
                 land_in,
+                None,
+                main,
+                surface_reach(before.lane_section, b.leave.offsetM >= 0),
             )
         else:
             cut = sh_in.l1
@@ -1405,6 +1434,9 @@ def bake_network(
                 spacing,
                 speed_out,
                 land_out,
+                None,
+                main,
+                surface_reach(after.lane_section, b.join.offsetM >= 0),
             )
         else:
             cut = sh_out.l1 + sh_out.ls
