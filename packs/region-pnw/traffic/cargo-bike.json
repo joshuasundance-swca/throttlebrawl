@@ -5,7 +5,7 @@
   "category": "car",
   "tags": ["local", "cyclist"],
   "lengthM": 2.4,
-  "widthM": 0.8,
+  "widthM": 0.6,
   "cruiseMps": 5.0,
   "hazard": "normal",
   "behaviour": {

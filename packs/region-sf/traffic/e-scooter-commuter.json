@@ -4,7 +4,7 @@
   "name": "E-Scooter Commuter",
   "category": "pedestrian",
   "tags": ["region-sf"],
-  "lengthM": 0.9,
+  "lengthM": 0.5,
   "widthM": 0.6,
   "cruiseMps": 2.5,
   "hazard": "normal",
