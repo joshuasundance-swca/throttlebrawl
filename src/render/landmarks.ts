@@ -965,7 +965,12 @@ export class LandmarkLayer {
     if (!near) return null;
     const base = at.node.replace(/_lod[01]$/, '');
     const far = kit.nodes.get(`${base}_lod1`) ?? kit.nodes.get(`far_${base}`);
+    // A bay (a node that says `bay_m`) runs from its origin along +Z, while a tower stands about its
+    // origin; the feature's footprint is where the structure stands, so a bay is placed by its middle
+    // (playtest 4, B7: Portland's truss bays and lift span fill the footprints the road names).
+    const bayM = near.extras['bay_m'];
     const m = matrixAt(at.x, at.y, at.z, at.yaw, at.scale);
+    if (finite(bayM) && bayM > 0) m.multiply(new Matrix4().makeTranslation(0, 0, -bayM / 2));
     // Its blank boards (the roof sign's) are painted with pack text, by text-surfaces.ts.
     for (const surface of near.surfaces) this.surfaceList.push(placeSurface(surface, m));
     const pieces: Piece[] = [

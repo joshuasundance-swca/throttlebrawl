@@ -192,7 +192,9 @@ describe('Bridge City: downtown Portland', () => {
       expect(Math.abs(t.d), t.id).toBeLessThanOrEqual(1);
       expect(t.placementErrorM, t.id).toBeLessThanOrEqual(6);
     }
-    const placed = (roads.get(a!.road)?.features ?? []).filter((f) => f.kind === 'landmark');
+    const placed = (roads.get(a!.road)?.features ?? []).filter(
+      (f) => f.kind === 'landmark' && String(f.params?.['model']).endsWith('#pdx_lift_tower'),
+    );
     expect(placed.map((f) => f.params?.['overRoad'])).toEqual([true, true]);
     // The kit is the plan's Portland kit; the node is the plan's tower module (CX4 builds both).
     for (const f of placed) expect(f.params?.['model']).toBe('pdx-landmarks#pdx_lift_tower');
@@ -219,4 +221,88 @@ describe('Bridge City: downtown Portland', () => {
     );
     expect(kb).toBeLessThan(75);
   });
+});
+
+// Playtest 4, B7 (the maintainer: "Bridge City should look like downtown Portland ... as content-rich as the
+// others"): the bridges' own structures stand on the decks. The positions are the real bridges' (OpenStreetMap
+// marks each movable span and each truss), the structures are CX4's kit, and the rule is where they stand
+// against each other and against the deck: every one inside its bridge run, astride the deck, end to end with
+// its neighbours, never over another structure.
+describe("Bridge City's bridges carry their own structures", () => {
+  const BURNSIDE = 'osm-pnw-pdx-burnside-bridge';
+  const HAWTHORNE = 'osm-pnw-pdx-hawthorne-bridge';
+  const landmarksOn = (id: string) =>
+    (roads.get(id)?.features ?? []).filter((f) => f.kind === 'landmark').sort((a, b) => a.s0 - b.s0);
+  const nodeOf = (f: Feature) => String(f.params?.['model']).split('#')[1] ?? '';
+  const kindsOn = (id: string, node: string) => landmarksOn(id).filter((f) => nodeOf(f) === node);
+
+  it('stands the Burnside Bridge bascule piers at the two ends of the real 70 m movable span, astride the deck', () => {
+    const piers = kindsOn(BURNSIDE, 'pdx_bascule_pier');
+    expect(piers).toHaveLength(2);
+    const centres = piers.map((f) => (f.s0 + f.s1) / 2);
+    // OSM's movable (bascule) span runs from lon -122.6680141 to -122.6671101 at lat 45.523: 70.4 m.
+    expect(Math.abs((centres[1] ?? 0) - (centres[0] ?? 0) - 70.4)).toBeLessThanOrEqual(8);
+    for (const f of piers) {
+      expect(f.params?.['overRoad'], f.id).toBe(true);
+      expect(f.d0, f.id).toBeLessThan(0);
+      expect(f.d1, f.id).toBeGreaterThan(0);
+    }
+    const rows = report.landmarks.filter((l) => l.id.startsWith('burnside-bascule-pier'));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.road, row.id).toBe(BURNSIDE);
+      expect(Math.abs(row.d), row.id).toBeLessThanOrEqual(1);
+      expect(row.placementErrorM, row.id).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it("stands the Hawthorne Bridge's lift span between its two lift towers, inside their inner faces", () => {
+    const towers = kindsOn(HAWTHORNE, 'pdx_lift_tower');
+    const spans = kindsOn(HAWTHORNE, 'pdx_lift_span');
+    expect(towers).toHaveLength(2);
+    expect(spans).toHaveLength(1);
+    const [west, east] = towers;
+    const span = spans[0];
+    // The kit's span is 64 m; the real towers stand 75 m apart, 10 m thick: 65 m between their faces.
+    expect((span?.s1 ?? 0) - (span?.s0 ?? 0)).toBeCloseTo(64, 0);
+    expect(span?.s0 ?? 0).toBeGreaterThanOrEqual((west?.s1 ?? 0) - 0.5);
+    expect(span?.s1 ?? 0).toBeLessThanOrEqual((east?.s0 ?? 0) + 0.5);
+  });
+
+  for (const [bridge, structures] of [
+    [BURNSIDE, ['pdx_bascule_pier', 'pdx_truss_bay']],
+    [HAWTHORNE, ['pdx_lift_tower', 'pdx_lift_span', 'pdx_truss_bay']],
+  ] as const) {
+    it(`${bridge}: every structure stands inside the bridge run, none overlaps another, and the truss bays run end to end`, () => {
+      const r = roads.get(bridge);
+      const run = (r?.tags ?? []).find((t) => t.tag === 'bridge');
+      expect(run, 'a bridge run').toBeDefined();
+      const all = landmarksOn(bridge).filter((f) => (structures as readonly string[]).includes(nodeOf(f)));
+      expect(all.length).toBeGreaterThan(4);
+      for (const f of all) {
+        expect(f.s0, f.id).toBeGreaterThanOrEqual((run?.s0 ?? 0) - 0.5);
+        expect(f.s1, f.id).toBeLessThanOrEqual((run?.s1 ?? 0) + 0.5);
+        expect(f.params?.['overRoad'], f.id).toBe(true);
+        expect(f.d0, f.id).toBeLessThan(0);
+        expect(f.d1, f.id).toBeGreaterThan(0);
+      }
+      for (let i = 1; i < all.length; i++)
+        expect(all[i]!.s0, `${all[i - 1]!.id} then ${all[i]!.id}`).toBeGreaterThanOrEqual(
+          all[i - 1]!.s1 - 0.5,
+        );
+      // Bays are 40 m (the kit's `bay_m`), and each touches the structure beside it (a bay, a pier or a tower).
+      const bays = all.filter((f) => nodeOf(f) === 'pdx_truss_bay');
+      expect(bays.length, 'truss bays').toBeGreaterThanOrEqual(4);
+      for (const f of bays) {
+        expect(f.s1 - f.s0, f.id).toBeCloseTo(40, 0);
+        const i = all.indexOf(f);
+        const before = all[i - 1];
+        const after = all[i + 1];
+        const touching =
+          (before !== undefined && Math.abs(f.s0 - before.s1) <= 0.5) ||
+          (after !== undefined && Math.abs(after.s0 - f.s1) <= 0.5);
+        expect(touching, `${f.id} touches a neighbour`).toBe(true);
+      }
+    });
+  }
 });

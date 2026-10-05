@@ -1147,13 +1147,38 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
               s0 < Math.max(p.s0, p.s1) + 2 &&
               s1 > Math.min(p.s0, p.s1) - 2,
           );
+        // The cross streets this side's features ask for (playtest 4, B7: Old Town's Chinatown gate is a
+        // landmark that says `params.crossStreet`, and stands over a street's mouth): a street opens centred
+        // on each, PDX_STREET_M wide, and no building takes a lot across it.
+        const gates = all
+          .filter(
+            (f) =>
+              f.kind === 'landmark' &&
+              f.params?.['crossStreet'] === true &&
+              (f.d0 + f.d1 < 0 ? -1 : 1) === side,
+          )
+          .map((f): [number, number] => {
+            const mid = (f.s0 + f.s1) / 2;
+            return [mid - PDX_STREET_M / 2, mid + PDX_STREET_M / 2];
+          })
+          .filter(([g0, g1]) => g0 >= a && g1 <= b)
+          .sort((x, y) => x[0] - y[0]);
+        /** Where the front row goes on from `from` towards `to`: not past the start of a gate's street. */
+        const advance = (from: number, to: number) => {
+          const g = gates.find(([g0]) => g0 >= from - 0.3 && g0 < to);
+          return g ? Math.max(from, g[0]) : to;
+        };
+        /** A gate's street that a lot over [s0, s1] would cross. */
+        const gateAcross = (s0: number, s1: number) =>
+          gates.find(([g0, g1]) => s0 < g1 - 0.3 && s1 > g0 - 0.3);
         /**
          * The lot a building of `variant` would take at `at` along the road (its front standing at least
          * `minBack` past the verge), and whether it stands on ground: null where it does not fit.
          */
         const lotFor = (variant: number, at: number, minBack: number) => {
           const [width, depth] = size(variant);
-          if (!(width > 0) || at + width > b || inPod(at, at + width)) return null;
+          if (!(width > 0) || at + width > b || inPod(at, at + width) || gateAcross(at, at + width))
+            return null;
           const s0 = at;
           const s1 = at + width;
           const s = (s0 + s1) / 2;
@@ -1179,10 +1204,8 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
             cursor = Math.max(cursor + 1, Math.max(pod.s0, pod.s1) + 3);
             continue;
           }
-          if (block >= PDX_BLOCK_M) {
-            // A cross street: its asphalt from the verge out across the land.
-            const s0 = cursor;
-            const s1 = Math.min(b, cursor + PDX_STREET_M);
+          // A cross street: its asphalt from the verge out across the land.
+          const openStreet = (s0: number, s1: number) => {
             const r = Math.min(reach(side, s0), reach(side, s1));
             if (r >= 1) {
               const soup = soupAt(e.index, s0);
@@ -1196,6 +1219,17 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
             streets.push([s0, s1]);
             cursor = s1;
             block = 0;
+          };
+          // The street a gate asks for opens where the front row reaches it (the lots before it end short of it).
+          const gate = gates.find(([g0, g1]) => cursor < g1 && cursor >= g0 - 0.3);
+          if (gate) {
+            openStreet(Math.max(cursor, gate[0]), gate[1]);
+            continue;
+          }
+          // The block's own cross street, unless a gate's street is about to open close ahead.
+          const gateAhead = gates.find(([g0]) => g0 > cursor && g0 - cursor < PDX_BLOCK_M / 2);
+          if (block >= PDX_BLOCK_M && !gateAhead) {
+            openStreet(cursor, Math.min(b, cursor + PDX_STREET_M));
             continue;
           }
           const pick =
@@ -1210,8 +1244,9 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
             chosen = lotFor(PDX.castIron, cursor, 0);
           }
           if (!chosen) {
-            cursor += 6;
-            block += 6;
+            const before = cursor;
+            cursor = advance(cursor, cursor + 6);
+            block += cursor - before;
             continue;
           }
           const { width, s0, s1, s, d, p, turn, rect } = chosen;
@@ -1237,7 +1272,7 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
               targetM,
             });
           } else place({ ...base, model: 'kit', variant, rule: 'pdx-front', sy: 1 });
-          cursor += width + (h(k + Math.round(a), side, 2) < 0.15 ? 5 : 0.4);
+          cursor = advance(cursor, cursor + width + (h(k + Math.round(a), side, 2) < 0.15 ? 5 : 0.4));
           block += width;
         }
         // The second row (playtest 4, P4-20), once every road's street fronts stand: taller buildings behind
