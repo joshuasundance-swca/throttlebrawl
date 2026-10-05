@@ -52,6 +52,7 @@ import {
   settingsAssists,
   type FrameRateCap,
   type Profile,
+  type RaceWeather,
   type StorageLike,
 } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
@@ -93,6 +94,7 @@ import {
   withEventPatch,
 } from './config';
 import { createLoop } from './loop';
+import { menuRaceSetup, raceOptionsView } from './race-options';
 import { appReplayKey } from './replay-key';
 import type { CareerFlow } from './career-flow';
 import { createOutcome, raceResult, RESULTS_BEAT_TICKS, resultsDue } from './results';
@@ -470,6 +472,8 @@ export function createApp(opts: AppOptions): AppHandle {
   let shownTime = '';
   /** The receipts the boards were drawn with ('' outside a career race). */
   let shownReceipts = '';
+  /** The weather shown: the menu race's pick (playtest 4, P4-12), else the region's own. */
+  let shownWeather: RaceWeather = 'local';
   /**
    * The region's landing one-liners (playtest 3: they ride the top ticker, never the renderer's
    * overlay, which gets an empty pool). The last one shown, so it is not picked twice running.
@@ -482,13 +486,20 @@ export function createApp(opts: AppOptions): AppHandle {
    * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
    * its signs and billboards (minus this device's cuts), its time of day and palette.
    */
-  const showRegion = (timeOfDay: string = String(event.timeOfDay)) => {
+  const showRegion = (timeOfDay: string = String(event.timeOfDay), weather: RaceWeather = 'local') => {
     // Run W-T: a career race shows the region's receipts on its boards, so they key the cache too.
     const receipts = careerRace && C ? JSON.stringify(profile.receipts.at(-1) ?? null) : '';
-    if (shownRoad === stream.road && shownTime === timeOfDay && shownReceipts === receipts) return;
+    if (
+      shownRoad === stream.road &&
+      shownTime === timeOfDay &&
+      shownReceipts === receipts &&
+      shownWeather === weather
+    )
+      return;
     shownRoad = stream.road;
     shownTime = timeOfDay;
     shownReceipts = receipts;
+    shownWeather = weather;
     const regionKey = regionKeyOf(registry, eventId);
     const roadPack = packOf(
       networkKeyOf(registry, routeKeyOf(registry, eventId, settings.raceLength, route)),
@@ -503,6 +514,10 @@ export function createApp(opts: AppOptions): AppHandle {
       timeOfDay,
       palette: racePalette(registry, regionKey, timeOfDay),
     };
+    // The menu race's weather (playtest 4, P4-12), render only: dry drops the region's drizzle (its
+    // palette's `rain` colour), rain asks for it anywhere (render/rain.ts).
+    if (weather === 'dry') delete env.palette['rain'];
+    if (weather === 'rain') env.weather = 'rain';
     // A world that keeps receipts (run W-T): in a career race, the boards nearest where a rival went
     // into a vehicle, or you were busted, say so.
     const boards =
@@ -615,9 +630,16 @@ export function createApp(opts: AppOptions): AppHandle {
       // applies at the next race start or restart, never mid-race, and lands in the replay header.
       // A career race runs its map node's length; free play the Race length setting.
       length: careerRace?.length ?? settings.raceLength,
-      // The career's bike rides every race (the garage, run W-R); its grudges ride career races
-      // only (grudges outside a career are "light persistence, later" [decided]).
-      ...(profile.bikes.current ? { playerBike: profile.bikes.current } : {}),
+      // The career's bike rides a career race (the garage, run W-R); a menu race rides the bike its
+      // options picked, else the garage's, and takes their light, field, law and traffic (playtest 4,
+      // P4-12 and P4-13: app/race-options.ts; every pick lands in this config or the replay header).
+      // The grudges ride career races only (grudges outside a career are "light persistence, later"
+      // [decided]).
+      ...(careerRace
+        ? profile.bikes.current
+          ? { playerBike: profile.bikes.current }
+          : {}
+        : menuRaceSetup(registry, settings.raceOptions, profile.bikes)),
       ...(careerRace ? { grudges: profile.grudges } : {}),
       // The career's field level (the rivals' and cops' bikes and strength) and the season's remix.
       ...(careerRace?.level ? { fieldLevel: careerRace.level } : {}),
@@ -639,7 +661,11 @@ export function createApp(opts: AppOptions): AppHandle {
     renderer.setTrafficTypes(config.trafficTypes);
     renderer.setRiderLooks(riderLooks(config));
     // The garage's paint on the player's bike (run W-R's garage; the seam from the rider-models lane).
-    renderer.setPlayerPaint(C ? C.currentPaintHex(defs, profile) : null);
+    // The bike that rides wears the garage's paint for it (none on a bike the garage has not painted).
+    const ridden = config.riders[playerId]?.bike.contentId ?? null;
+    renderer.setPlayerPaint(
+      C ? C.currentPaintHex(defs, { ...profile, bikes: { ...profile.bikes, current: ridden } }) : null,
+    );
     // The roadside scenery scatters from the race's seed (playtest 1c item 2).
     renderer.setSceneSeed(seed);
     audio.setEngineSounds(engineSounds(config));
@@ -710,6 +736,12 @@ export function createApp(opts: AppOptions): AppHandle {
       onCareer: () => void careerReady.then(() => openCareer()),
       // Menu first (playtest 4, P4-5): until the career has started the menu says "Start career".
       careerStarted: () => careerStarted(profile),
+      // The menu race's options (playtest 4, P4-12 and P4-13) for the region picked on the menu (its
+      // event, even before its road data is in) and the road picked there.
+      raceOptions: () => {
+        const at = pickedChoice()?.eventId ?? eventId;
+        return raceOptionsView(registry, at, at === eventId ? route : null, profile.bikes, settings.units);
+      },
       career: {
         onRegion: (id) => openCareer(id),
         onRide: (nodeId) => {
@@ -1120,8 +1152,10 @@ export function createApp(opts: AppOptions): AppHandle {
   function launchRace(lengthId: string): boolean {
     stream = streams.forEvent(registry, eventId, lengthId, route);
     if (!go('race')) return false;
-    // W-Q: a free-play race's light is drawn by its seed; a career race keeps its event's own.
+    // W-Q: a free-play race's light is drawn by its seed, or picked in its options with its weather
+    // (playtest 4, P4-12); a career race keeps its event's own.
     const seed = seeds.next();
+    const options = careerRace ? null : settings.raceOptions;
     showRegion(
       raceTimeOfDay(
         registry,
@@ -1129,13 +1163,16 @@ export function createApp(opts: AppOptions): AppHandle {
         seed,
         !careerRace,
         careerRace?.patch ? withEventPatch(event, careerRace.patch) : undefined,
+        options?.timeOfDay,
       ),
+      options?.weather,
     );
     race = newSim(seed);
     pendingTuning.length = 0;
     countdown.begin(countdownOn());
-    // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
-    recorder.beginRace(race, replayKey);
+    // The full header (the SimConfig as plain data), so a saved debug file replays on its own, and a
+    // menu race's picks beside it (playtest 4, P4-12).
+    recorder.beginRace(race, replayKey, options ? { ...options } : undefined);
     outcome = createOutcome();
     lookWatch.reset();
     seenPoll.reset();
@@ -1502,7 +1539,8 @@ export function createApp(opts: AppOptions): AppHandle {
     setSeed(s) {
       seeds.fix(s);
     },
-    freePlayTimeOfDay: (s) => raceTimeOfDay(registry, eventId, s, true),
+    freePlayTimeOfDay: (s) =>
+      raceTimeOfDay(registry, eventId, s, true, undefined, settings.raceOptions.timeOfDay),
     tap() {
       if (state !== 'tapToStart') return;
       void runStartTap(() => audio.resume());

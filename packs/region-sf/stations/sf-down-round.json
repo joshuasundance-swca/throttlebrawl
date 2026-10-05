@@ -1,0 +1,57 @@
+{
+  "type": "station",
+  "id": "sf-down-round",
+  "name": "Down Round 88.5",
+  "genre": "jazz",
+  "regions": ["san-francisco"],
+  "tracks": [
+    {
+      "id": "flat-valuation",
+      "title": "Flat Valuation",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 160, "key": "F", "progression": "rhythm" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "bridge-loan",
+      "title": "Bridge Loan",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 144, "key": "G", "progression": "autumn" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "cap-table-blues",
+      "title": "Cap Table Blues",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 152, "key": "C", "progression": "blues" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "fog-delay",
+      "title": "Fog Delay",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 176, "key": "D", "progression": "modal" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "term-sheet-in-b-flat",
+      "title": "Term Sheet in B-Flat",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 168, "key": "A#", "progression": "rhythm" } },
+      "origin": "agent",
+      "status": "live"
+    },
+    {
+      "id": "extension-round",
+      "title": "Extension Round",
+      "procedural": { "preset": "jazz-band", "params": { "bpm": 136, "key": "D#", "progression": "autumn" } },
+      "origin": "agent",
+      "status": "live"
+    }
+  ],
+  "djBarkSet": null,
+  "meta": {
+    "status": "live",
+    "notes": "San Francisco's jazz station (playtest 4, P4-17: the maintainer's favourite was \"the more complex SF music\", and \"feel free to make more for all regions\"). A swinging combo at 136-176 bpm: a ride cymbal's swing, a walking bass with chromatic approaches, an electric piano comping rootless voicings, and a muted horn playing a head over ii-V changes, then a bebop solo (src/audio/radio-compose-extra.ts, preset jazz-band). The names keep the city's startup satire (a down round, a cap table, a term sheet). Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-05" }
+  }
+}

@@ -65,8 +65,15 @@ describe('station data (packs/base/stations)', () => {
         all.map((s) => s.genre),
         genre,
       ).toContain(genre);
+    // Playtest 4 (P4-17) adds swamp blues (Brackish 1090 AM).
+    const PRESET: Record<string, string> = {
+      surf: 'surf-trio',
+      rockabilly: 'rockabilly-trio',
+      island: 'island-band',
+      swamp: 'swamp-band',
+    };
     for (const s of all) {
-      expect(['surf', 'rockabilly', 'island']).toContain(s.genre);
+      expect(Object.keys(PRESET)).toContain(s.genre);
       expect(s.regions).toEqual(['florida-keys']);
       // Run W-P adds regional song names; the content lane may add more.
       expect(s.tracks.length).toBeGreaterThanOrEqual(3);
@@ -76,9 +83,7 @@ describe('station data (packs/base/stations)', () => {
         expect(t.status).toBe('live');
         expect(t.title.length).toBeGreaterThan(0);
         expect(RADIO_PRESETS).toContain(t.procedural?.preset);
-        expect(t.procedural?.preset).toBe(
-          { surf: 'surf-trio', rockabilly: 'rockabilly-trio', island: 'island-band' }[s.genre],
-        );
+        expect(t.procedural?.preset).toBe(PRESET[s.genre]);
         expect(t.ref).toBe(stationTrackRef('base', s.id, t.id));
         expect(t.ref).toMatch(/^base:station\/[a-z0-9-]+#[a-z0-9-]+$/);
         expect(composeFor(t)).not.toBeNull();
@@ -546,6 +551,9 @@ describe('the regions own stations (playtest 2, 2026-10-02: "different stations 
     island: 'island-band',
     stoner: 'stoner-band',
     funk: 'funk-band',
+    garage: 'garage-band',
+    darkwave: 'darkwave-band',
+    jazz: 'jazz-band',
   };
   const want: [string, string, string, string][] = [
     ['region-pnw', 'pnw-drizzle', 'pacific-northwest', 'grunge'],
@@ -554,6 +562,10 @@ describe('the regions own stations (playtest 2, 2026-10-02: "different stations 
     ['region-sf', 'sf-fog-bank', 'san-francisco', 'psych'],
     ['region-pnw', 'pnw-stump', 'pacific-northwest', 'stoner'],
     ['region-sf', 'sf-gold-rush', 'san-francisco', 'funk'],
+    // Playtest 4 (P4-17).
+    ['region-pnw', 'pnw-wet-basement', 'pacific-northwest', 'garage'],
+    ['region-pnw', 'pnw-wipers', 'pacific-northwest', 'darkwave'],
+    ['region-sf', 'sf-down-round', 'san-francisco', 'jazz'],
   ];
   it.each(want)(
     '%s carries %s, four or more code-made tracks of its own band that compose as written',

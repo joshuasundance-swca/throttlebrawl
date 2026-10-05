@@ -18,9 +18,18 @@ import {
   squeezedDepth,
   triangulate,
 } from './builder';
-import { backdropProblems, type BackdropNetworkFile, type BackdropRegionFile, type PieceKind } from './data';
+import {
+  backdropProblems,
+  CLOUD_STYLES,
+  type BackdropNetworkFile,
+  type BackdropRegionFile,
+  type CloudsPiece,
+  type PieceKind,
+} from './data';
 import { geoFrame } from './geo';
 import { backdropFilesFor } from './index';
+import { buildClouds, type ShapeCtx } from './shapes';
+import { Soup, type Rgb } from './soup';
 
 const networkFiles = import.meta.glob<
   BakedNetwork & { region: string; crs: { originLatDeg: number; originLonDeg: number } }
@@ -131,6 +140,8 @@ const SIGNATURES: Record<string, PieceKind[]> = {
   'pnw-c1': ['ridge', 'peak', 'vessels', 'floor'],
   'osm-pnw-chuckanut': ['ridge', 'peak', 'vessels', 'floor'],
   'osm-pnw-gorge': ['ridge', 'peak', 'vessels', 'floor'],
+  // Playtest 4, P4-20: downtown Portland's skyline, bridges, hills and river.
+  'osm-pnw-portland': ['ridge', 'peak', 'bridge', 'skyline', 'blocks', 'mast', 'vessels', 'floor'],
   'sf-hills': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-russian-hill': ['bridge', 'skyline', 'peak', 'mast', 'vessels', 'clouds', 'floor', 'blocks'],
   'osm-sf-twin-peaks': ['bridge', 'skyline', 'vessels', 'clouds', 'floor', 'blocks'],
@@ -170,6 +181,7 @@ const MOVERS: Record<string, string[]> = {
   'pnw-c1': ['sound-ferry', 'far-shore-freight'],
   'osm-pnw-chuckanut': ['outbound-ferry'],
   'osm-pnw-gorge': ['river-tug', 'far-bank-freight'],
+  'osm-pnw-portland': ['steel-bridge', 'broadway-bridge', 'fremont-bridge', 'willamette-tug'],
   'sf-hills': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-russian-hill': ['golden-gate-bridge', 'bay-bridge-west', 'headlands-pour', 'twin-peaks-pour'],
   'osm-sf-twin-peaks': ['golden-gate-bridge', 'headlands-pour'],
@@ -316,5 +328,142 @@ describe('the floor triangulation', () => {
           checked++;
         }
     expect(checked).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// Playtest 3's wave C check: "the lone tall cloud on the horizon reads as a mushroom cloud in Duval
+// and Seven Mile frames". The rule: no cloud the backdrop draws has a waist (narrower at some height than both
+// below and above it: a stalk under a cap), and none is taller than it is wide (a lone tower).
+describe('the clouds', () => {
+  const LEVELS = 24;
+
+  /**
+   * A cloud's silhouette: its width (m, the widest pair of points where its triangles cross the level)
+   * at each of LEVELS heights through the middle of its range, and its overall height and width.
+   */
+  function silhouette(pos: readonly number[]): { widths: number[]; height: number; width: number } {
+    const tris: [number, number, number][][] = [];
+    for (let i = 0; i < pos.length; i += 9)
+      tris.push(
+        [0, 3, 6].map((o): [number, number, number] => [pos[i + o]!, pos[i + o + 1]!, pos[i + o + 2]!]),
+      );
+    const ys = tris.flatMap((t) => t.map((v) => v[1]));
+    const y0 = Math.min(...ys);
+    const y1 = Math.max(...ys);
+    const across = (pts: readonly [number, number][]) => {
+      let w = 0;
+      for (const a of pts) for (const b of pts) w = Math.max(w, Math.hypot(a[0] - b[0], a[1] - b[1]));
+      return w;
+    };
+    const widths = Array.from({ length: LEVELS }, (_, i) => {
+      const y = y0 + ((i + 0.5) / LEVELS) * (y1 - y0);
+      const pts: [number, number][] = [];
+      for (const t of tris)
+        for (let e = 0; e < 3; e++) {
+          const a = t[e]!;
+          const b = t[(e + 1) % 3]!;
+          if ((a[1] - y) * (b[1] - y) >= 0) continue;
+          const f = (y - a[1]) / (b[1] - a[1]);
+          pts.push([a[0] + (b[0] - a[0]) * f, a[2] + (b[2] - a[2]) * f]);
+        }
+      return across(pts);
+    });
+    return {
+      widths,
+      height: y1 - y0,
+      width: across(tris.flatMap((t) => t.map((v) => [v[0], v[2]] as [number, number]))),
+    };
+  }
+
+  /**
+   * How deep the silhouette's deepest waist is: a level narrower than the widest level below it AND
+   * the widest above it, as a share of the narrower of those two (0 for a heap; a stalk under a cap
+   * is well over a third).
+   */
+  const waist = (w: readonly number[]) =>
+    Math.max(
+      0,
+      ...w.map((x, j) => {
+        const lower = Math.max(0, ...w.slice(0, j));
+        const upper = Math.max(0, ...w.slice(j + 1));
+        const side = Math.min(lower, upper);
+        return side > 0 ? 1 - x / side : 0;
+      }),
+    );
+
+  const cloudOf = (p: CloudsPiece, seed: number) => {
+    const soup = new Soup();
+    const ctx: ShapeCtx = {
+      soup,
+      toWorld: (q) => [q[0], q[1]],
+      nearRoad: () => false,
+      centre: [0, 0],
+      seed,
+    };
+    // One cloud of the piece's own style and size, anywhere on its distance ring.
+    const { path: _path, ...rest } = p;
+    const one: CloudsPiece = { ...rest, count: 1, distanceM: p.distanceM ?? [9000, 9000] };
+    buildClouds(one, ctx);
+    return silhouette(soup.pos);
+  };
+
+  it('has a negative control: a tower with an anvil has a waist, and is taller than it is wide', () => {
+    const soup = new Soup();
+    const c: Rgb = [1, 1, 1];
+    for (let k = 0; k < 4; k++) soup.blob([0, 700 + k * 900, 0], 900, 900, 900, c, c, 0, 6000, k);
+    soup.blob([0, 5200, 0], 3300, 400, 2500, c, c, 0, 6000, 0);
+    const m = silhouette(soup.pos);
+    expect(waist(m.widths)).toBeGreaterThan(0.3);
+    // A heap (a wide puff with a smaller one on it) has none.
+    const heap = new Soup();
+    heap.blob([0, 600, 0], 2500, 700, 2000, c, c, 0, 2500, 0);
+    heap.blob([0, 1300, 0], 1300, 600, 1100, c, c, 0, 2500, 1);
+    expect(waist(silhouette(heap.pos).widths)).toBeLessThan(0.1);
+  });
+
+  it('draws no waist and no lone tower, in any style the packs use, for any seed', () => {
+    const styles = new Set<string>();
+    let worst = 0;
+    for (const region of Object.values(backdropRegions))
+      for (const p of region.pieces)
+        // A pour is fog lying on a crest: its own builder, no standing cloud.
+        if (p.kind === 'clouds' && p.style !== 'pour') {
+          styles.add(p.style);
+          for (let seed = 1; seed <= 25; seed++) {
+            const m = cloudOf(p, seed);
+            worst = Math.max(worst, waist(m.widths));
+            expect(waist(m.widths), `${p.id} seed ${seed}: a cap over a stalk`).toBeLessThanOrEqual(0.2);
+            expect(m.width / m.height, `${p.id} seed ${seed}: a lone tower`).toBeGreaterThanOrEqual(1.2);
+          }
+        }
+    expect(styles.has('cumulus'), 'the Keys have a heap of cumulus').toBe(true);
+    print(`clouds: ${[...styles].join(', ')}; the deepest waist of any ${worst.toFixed(2)}`);
+  });
+
+  it('has no style that builds a tower with an anvil: a pack that names one is refused', () => {
+    expect(CLOUD_STYLES as readonly string[]).not.toContain('thunderhead');
+    const piece = {
+      id: 'c',
+      kind: 'clouds',
+      count: 1,
+      distanceM: [9000, 9000],
+      baseM: 600,
+      topM: [2000, 3000],
+    };
+    const refused = (style: string) =>
+      backdropProblems(
+        {
+          formatVersion: 1,
+          region: 'x',
+          hazeM: 1,
+          floorColour: '#ffffff',
+          pieces: [{ ...piece, colour: '#ffffff', style }],
+        },
+        'region',
+      );
+    expect(refused('thunderhead')).toEqual(
+      expect.arrayContaining(['pieces[0]: style must be one of cumulus, bank, fog, pour']),
+    );
+    expect(refused('cumulus')).toEqual([]);
   });
 });

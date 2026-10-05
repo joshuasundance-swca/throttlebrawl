@@ -26,7 +26,18 @@ export interface ReplayHeader {
   /** Player slots recorded per tick. */
   playerSlots?: number;
   hashEveryTicks?: number;
+  /**
+   * A menu race's picked options (playtest 4, P4-12: app/'s settings record 
+aceOptions), as plain
+   * values. What changes the sim is in config already; this says what was picked, the weather and
+   * the light included (render reads them, never the sim). Absent for a career race. Additive: the
+   * format stays 1.
+   */
+  raceOptions?: Readonly<Record<string, RaceOptionValue>>;
 }
+
+/** One picked option's value in the header. */
+export type RaceOptionValue = string | number | boolean | null;
 
 export interface Recording {
   header: ReplayHeader;
@@ -44,8 +55,12 @@ export function makeReplayKey(simCodeHash: string, simContentHash: string): stri
   return `${simCodeHash}+${simContentHash}`;
 }
 
-/** A complete header for a race: the SimConfig as plain data plus the key. */
-export function replayHeader(config: SimConfig, replayKey: string): ReplayHeader {
+/** A complete header for a race: the SimConfig as plain data plus the key (and a menu race's picks). */
+export function replayHeader(
+  config: SimConfig,
+  replayKey: string,
+  raceOptions?: Readonly<Record<string, RaceOptionValue>>,
+): ReplayHeader {
   const { road: _road, route: _route, ...plain } = config;
   return {
     formatVersion: REPLAY_FORMAT_VERSION,
@@ -56,6 +71,7 @@ export function replayHeader(config: SimConfig, replayKey: string): ReplayHeader
     config: structuredClone(plain),
     playerSlots: config.playerSlots,
     hashEveryTicks: HASH_EVERY_TICKS,
+    ...(raceOptions ? { raceOptions: { ...raceOptions } } : {}),
   };
 }
 
@@ -71,8 +87,12 @@ export function configFromHeader(
 
 export interface InputRecorder {
   begin(header: ReplayHeader): void;
-  /** Starts a recording from the race's own config (the full header). */
-  beginRace(sim: Pick<Sim, 'config'>, replayKey: string): void;
+  /** Starts a recording from the race's own config (the full header), with a menu race's picks. */
+  beginRace(
+    sim: Pick<Sim, 'config'>,
+    replayKey: string,
+    raceOptions?: Readonly<Record<string, RaceOptionValue>>,
+  ): void;
   /**
    * Carries on a saved recording after a resume (replay-2): the next `record` is for the tick
    * after its last input. A finished recording's end marker is dropped.
@@ -97,8 +117,8 @@ export function createInputRecorder(): InputRecorder {
     begin(header) {
       rec = { header, inputs: [], params: [], hashes: [] };
     },
-    beginRace(sim, replayKey) {
-      recorder.begin(replayHeader(sim.config, replayKey));
+    beginRace(sim, replayKey, raceOptions) {
+      recorder.begin(replayHeader(sim.config, replayKey, raceOptions));
     },
     resume(saved) {
       rec = {

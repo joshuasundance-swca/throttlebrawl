@@ -105,6 +105,14 @@ export const MOVING = {
   rampMaxKappa: 1 / 120,
   /** How far route-forward of its start the stretch is kept clear of walls and bends, m. */
   rampReachM: 450,
+  /**
+   * The last of its stretch, m, where its ramp is down and the field catches it, must lie past every
+   * shortcut's rejoin; the run before it (and its signs) may overlap a shortcut. A racer who took the
+   * shortcut rejoins behind the truck and catches it there, so a route whose only straight lies
+   * beside a shortcut (San Francisco's own, Fogline Hill Sprint: 0 of 40 seeds in the wave C check)
+   * still gets one.
+   */
+  rampTailM: 200,
 };
 
 /**

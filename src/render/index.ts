@@ -64,7 +64,7 @@ import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PartyLights, PartyLightsCounts } from './party-lights';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { Rain } from './rain';
-import { roofSpans, underRoof, type RoofSpan } from './roofs';
+import { roofCover, roofSpans, type RoofSpan } from './roofs';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
 import {
@@ -973,13 +973,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       race?.speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
-      // No drizzle under a roof (the ferry's passenger deck): the rain is a screen overlay, so the
-      // camera standing under a roof is what stops it (roofs.ts).
-      const sheltered =
+      // No drizzle under a roof (the ferry's passenger deck): the rain is a screen overlay, so how far
+      // under a roof the camera stands is what thins it out (roofs.ts), read from where it is.
+      const cover =
         roadArgs !== null && roofs.length > 0
-          ? underRoof(roadArgs.road, roofs, pose.x, pose.y, pose.z, me?.road.edge)
-          : false;
-      race?.rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), sheltered);
+          ? roofCover(roadArgs.road, roofs, pose.x, pose.y, pose.z, me?.road.edge)
+          : 0;
+      race?.rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), cover);
       renderer.info.reset();
       look.frame(t, params);
       const film = look.post(params);

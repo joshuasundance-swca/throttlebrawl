@@ -101,5 +101,15 @@
     "osm-seven-mile-run": 11649.2
   },
   "roads": 14,
-  "junctions": 10
+  "junctions": 10,
+  "landmarks": [
+    {
+      "id": "fred-the-tree",
+      "line": "old",
+      "road": "osm-sm-old-west",
+      "s": 3560.559,
+      "d": -6.3961,
+      "placementErrorM": 0.02
+    }
+  ]
 }

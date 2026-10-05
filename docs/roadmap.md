@@ -30,6 +30,7 @@ This doc owns *when* things are built. *What* they are lives in the [product spe
 - [M4 · Career and cast](#m4--career-and-cast)
 - [M5 · Launch polish](#m5--launch-polish)
 - [Regions, alongside the milestones](#regions-alongside-the-milestones)
+- [Playtest 4, alongside the milestones](#playtest-4-alongside-the-milestones)
 - [Side quests](#side-quests)
 - [Where each v1 item lands](#where-each-v1-item-lands)
 - [Decisions and when they matter](#decisions-and-when-they-matter)
@@ -260,7 +261,7 @@ The detailed task plan is [milestones/M4.md](./milestones/M4.md).
 | The first fixed crew, Mother Rust's gang | [default] | product spec |
 | Cops and busts: the spawn mix (tier-rising, every race, chaos-summoned), fines, Sgt. Pruitt, and a baton and taser you can steal | [decided] for the mix, the bust and fine, Pruitt, and the baton and taser; [default] for fines scaling by tier and for stealing from cops | blueprint, decision |
 | Cash from placing, takedowns and near-misses, with M2's style cash now banked (near-miss traffic, airtime, oncoming-lane riding, takedown combos and weapon steals, plus "maybe other stuff"); no betting | [decided] for the sources; [default] for M4 and the amounts | decision |
-| Three bikes, each a clear step up (six since playtest 3, 2026-10-03: a Sport 600, a Grand Tourer 1100 and a Supersport 900 join them), plus slow novelty rides: a moped or scooter, a dirt bike and an old chopper; paint-only customization | [decided] for the vehicle kinds, three step-up bikes and paint-only; [default] for which kind fills which slot, and for the prices | blueprint, decision |
+| Three bikes, each a clear step up (six since playtest 3, 2026-10-03: a Sport 600, a Grand Tourer 1100 and a Supersport 900 join them), plus slow novelty rides: a moped or scooter, a dirt bike and an old chopper; paint-only customization | [decided] for the vehicle kinds, three step-up bikes and paint-only, and (playtest 4, 2026-10-04) for keeping the prices as they are, about 3 to 4 races a bike for a player who follows the map; [default] for which kind fills which slot | blueprint, decision |
 | Secret joke rides: a riding lawnmower, a mobility scooter and a golf cart | [decided] that they are wanted; [default] that they arrive as easter eggs in M4 | decision |
 | The Keys law is a mix of real agency structure (county deputies, state troopers, maybe marine patrol) under parody names, plus fully parody forces | [default] (the maintainer: "maybe a mix of all") | decision |
 | All v1 weapons: club or pipe, chain, wasteland junk, and the cops' baton or taser | [decided] for the list; [default] for M4 | decision |
@@ -270,11 +271,12 @@ The detailed task plan is [milestones/M4.md](./milestones/M4.md).
 | Learn by riding event 1, with prompts that appear as they become relevant | [decided] | decision |
 | The first run is menu first: the start tap lands on the main menu with "Start career" as the obvious first tap | [decided] (the maintainer, playtest 4, 2026-10-04: "Menu first"; it replaced the earlier race-first `[default]`) | decision |
 | Every race starts with a 3-2-1-GO countdown | [decided] (playtest 4: "Races should have a 3 2 1 go type countdown"); [default] for the timing | decision |
+| A race from the main menu has options: bike (no garage trip), light and weather, rivals and cops, difficulty, length and traffic, remembered between races ([product spec](./product-spec.md#ux-and-menus)) | [decided] for the options (playtest 4, P4-12 and P4-13); [default] for the screen and the values; new race and challenge types [open] | decision |
 | The ending: beating the boss plays a next-region teaser, and free play continues | [decided]; [default] that v1 free play means replaying any event | decision |
 | Failure mode: Road Trip as the default, with a `failureMode` seam for the later Classic and Hardcore options (which follow the loop and may slip past M4) | [decided] for Road Trip as the default and the two later options (`product-failure-states`, cockpit answer, 2026-09-29); [default] for their timing | decision, product spec |
 | Saving on the device plus a copyable export code; save migrations and golden fixtures | [decided] for local save plus code; [default] for M4 | decision, [architecture](./architecture.md#save-format) |
 | Weird events: at least one of each kind (nature, human, wasteland, league) | [decided] for the kinds; [default] for M4 rather than the shelf | decision |
-| Radio: stations by genre plus regional stations, with surf and rockabilly first for the Keys, and a hidden pirate station per region. Tracks are code-made only for now (interview, 2026-10-02: "More code-made music only"), which sets aside the 2026-09-29 answer's AI-generated tracks; the maintainer cuts the ones they don't like with "cut this". DJ lines come later | [decided] for genre and regional stations, those two first, code-made tracks only for now, the veto, and the DJ timing; [default] for M4 | decision |
+| Radio: stations by genre plus regional stations, with surf and rockabilly first for the Keys, and a hidden pirate station per region. Tracks are code-made only for now (interview, 2026-10-02: "More code-made music only"), which sets aside the 2026-09-29 answer's AI-generated tracks; the maintainer cuts the ones they don't like with "cut this". DJ lines come later. Playtest 4 (2026-10-04) asks for richer music in every region, the Pacific Northwest's first | [decided] for genre and regional stations, those two first, code-made tracks only for now, the veto, the DJ timing and richer music in every region; [default] for M4 | decision |
 | A shortlist of real names, from which the maintainer picks before M5 | [decided] that the real name comes before M5; [default] for the process | decision |
 | A first batch of easter eggs | [decided] that all kinds are wanted; [default] for M4 | decision |
 
@@ -355,8 +357,32 @@ Regions no longer wait for v1. The maintainer, after the third phone playtest: "
 - **Build-out, not new regions** `[decided]` (the maintainer, 2026-10-01): "polish and build out the regions we have now (more roads, GIS-based network maybe, better visuals and experience, stuff like that)". New regions wait with the new race types. Real roads became routes the same day ("Yes, add as routes"): Chuckanut Drive and the Columbia River Highway in the Pacific Northwest, Russian Hill and Twin Peaks in San Francisco, picked on the menu after the region ([content packs](./content-packs.md#region-packs-at-runtime)).
 - **What each region builds first** `[decided]` (interview, 2026-10-02): San Francisco's downtown towers, then the waterfront, Chinatown and North Beach, and the Mission; the Keys' distinct keys, then sandbars, mangrove back roads and a secret island. Playtest 3 (2026-10-03) adds real places (Duval Street, downtown Portland, the Golden Gate first) and the Seven Mile Bridge with jumps between the old and new spans. The details are in [the product spec](./product-spec.md#world-frame).
 - **Career order** `[decided]` (playtest 3, 2026-10-03: "In order"): the career opens the Keys first, the Pacific Northwest after the Keys boss and San Francisco after the Pacific Northwest boss; places already raced stay open.
-- **New race types wait:** "These can wait until later". The regions reuse the existing race; no new race type is built for them yet, except the drift events playtest 3 asked for. [decided]
+- **New race types wait:** "These can wait until later". The regions reuse the existing race; no new race type is built for them yet, except the drift events playtest 3 asked for. [decided] Playtest 4 (2026-10-04) leaves new race and challenge types [open]: "idk I need to consider more options and compare to career, other games, etc"; nothing is built until he decides ([Open decisions](#open-decisions)).
 - **What comes next:** the next region is the maintainer's pick once these two play well. The candidates are the shelf regions in [the product spec](./product-spec.md#world-frame). [decided] for "then others"; [default] that the maintainer picks which one, as a taste call.
+
+## Playtest 4, alongside the milestones
+
+Tag: `[decided]` (the maintainer, playtest 4, 2026-10-04) for every item below; `[default]` for the timing and the numbers. The answers are in [playtest 4](./playtests/playtest-4.md); the design is in the product spec section named in each row. Phone play is the primary play, so every control change is designed for the touch screen first, with the keyboard and gamepad kept at parity, and any new input or setting that changes the sim is recorded in the replay. This is polish and correction alongside M4 and M5, not a new milestone: the maintainer's standing direction is "more polish, correction, more complete worlds".
+
+| Item | Decision | Where | Built by 2026-10-05 |
+|---|---|---|---|
+| First run | Menu first, replacing the race-first `[default]` of M4 | [Career](./product-spec.md#career) | yes |
+| Race start | A 3-2-1-GO countdown | [Career](./product-spec.md#career) | yes |
+| Wheelie | A button, hold to lift, release to drop; the trunk launch from about 3 m/s | [Controls](./product-spec.md#controls) | the button, yes; the trunk speed, not yet |
+| Attacks | Auto-aim plus swipe; no kick wait; presses buffered; a bump never cancels an attack | [Controls](./product-spec.md#controls) | not yet |
+| Drift | Anywhere above about 40 mph | [Controls](./product-spec.md#controls) | yes |
+| U-turn | Its own gesture; hairpin braking never flips you | [Controls](./product-spec.md#controls) | not yet |
+| Steering feel | Arcade by default, plus a true Free mode, then the shortcut and spot fixes | [Controls](./product-spec.md#controls) | not yet |
+| Smoking bikes | About 5 to 10 % slower | [Combat](./product-spec.md#combat) | yes |
+| Golf carts | They swerve onto the verge; a clip is still a crash | [Traffic](./product-spec.md#traffic-and-pedestrians) | yes |
+| Bike prices | Kept: about 3 to 4 races a bike | [Cash](./product-spec.md#cash) | nothing to build |
+| The Seven Mile Bridge | The respawn on the highway stays; the old road is easy to get onto | [World frame](./product-spec.md#world-frame) | yes |
+| Places | An identity pass for every real place, order up to the coordinator | [World frame](./product-spec.md#world-frame) | in progress |
+| Menu races | Options: bike, route, time and weather, rivals and cops, length or laps | [UX and menus](./product-spec.md#ux-and-menus) | not yet |
+| Music | Richer in every region | [Audio](./product-spec.md#audio) | in progress |
+| New race and challenge types | `[open]` | [Open decisions](./product-spec.md#open-decisions) | no |
+
+The last column is a status as of the date at its head, read from the merged changes then; it goes stale, and the changelog is the record.
 
 ## Side quests
 
@@ -462,7 +488,7 @@ Taste calls that come up later are not open questions yet, because the options d
 
 ## Open decisions
 
-None are open. This page's own question, `roadmap-side-quest-order`, was answered on 2026-09-29: look experiments with AI concept art start first among the three optional side quests. [decided] The four milestone questions (`milestones-real-road-swap`, `milestones-career-grudges-persist`, `milestones-radio-music-source` and `milestones-rename-hosting`) were answered in the same round and are in [the table above](#decisions-and-when-they-matter).
+One is open: new race and challenge types (`product-new-race-types`, playtest 4, 2026-10-04; see [the product spec](./product-spec.md#open-decisions)). This page's own question, `roadmap-side-quest-order`, was answered on 2026-09-29: look experiments with AI concept art start first among the three optional side quests. [decided] The four milestone questions (`milestones-real-road-swap`, `milestones-career-grudges-persist`, `milestones-radio-music-source` and `milestones-rename-hosting`) were answered in the same round and are in [the table above](#decisions-and-when-they-matter).
 
 ## Sources
 

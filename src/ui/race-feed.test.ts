@@ -5,11 +5,13 @@ import {
   createStyleMeter,
   driftMultiplier,
   foundPop,
+  hoodPop,
   meterCash,
   meterLabel,
   smashPop,
   stylePop,
   styleText,
+  wheelieCrashPop,
   type MeterRun,
 } from './race-feed';
 import { resultText } from './format';
@@ -97,6 +99,32 @@ describe('style pop-ups', () => {
     const tally = createRaceTally();
     tally.onEvents([named, ev('smash', 5, { name: 'METER EXPIRED', takedown: true })], 2);
     expect(tally.takePopups().map((p) => p.word)).toEqual(['CATCH OF THE DAY']);
+  });
+
+  it('names a wheelie launch HOOD ORNAMENT off a hood and TRUNK SPACE off a car’s back, for the player only (P4-2)', () => {
+    const hood = ev('hoodLaunch', 2, { part: 'hood', closingMps: 50, flips: 2 });
+    const trunk = ev('hoodLaunch', 2, { part: 'trunk', closingMps: 3.4, flips: 1 });
+    expect(hoodPop(hood)).toEqual({
+      kind: 'hood:HOOD ORNAMENT',
+      word: 'HOOD ORNAMENT',
+      points: null,
+      name: true,
+    });
+    expect(hoodPop(trunk)?.word).toBe('TRUNK SPACE');
+    expect(hoodPop(ev('crash', 2, { part: 'trunk' }))).toBeNull();
+    const tally = createRaceTally();
+    tally.onEvents([trunk, ev('hoodLaunch', 5, { part: 'hood' }), hood], 2);
+    expect(tally.takePopups().map((p) => p.word)).toEqual(['TRUNK SPACE', 'HOOD ORNAMENT']);
+  });
+
+  it('gives a wheelie crash its one-word reason, and a crash with none no pop (P4-2)', () => {
+    const why = ev('crash', 2, { cause: 'traffic', hit: 'frontal', wheelieReason: 'LOW' });
+    expect(wheelieCrashPop(why)).toEqual({ kind: 'wheelieCrash:LOW', word: 'LOW', points: null, name: true });
+    expect(wheelieCrashPop(ev('crash', 2, { cause: 'traffic', hit: 'frontal' }))).toBeNull();
+    expect(wheelieCrashPop(ev('wobble', 2, { wheelieReason: 'LOW' }))).toBeNull();
+    const tally = createRaceTally();
+    tally.onEvents([why, ev('crash', 2, { cause: 'traffic' }), ev('crash', 5, { wheelieReason: 'BIG' })], 2);
+    expect(tally.takePopups().map((p) => p.word)).toEqual(['LOW']);
   });
 
   it('names a domino takedown DOUBLE, and one further down the line STRIKE (W-Q)', () => {

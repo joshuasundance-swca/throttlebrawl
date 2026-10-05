@@ -109,6 +109,30 @@ export function smashPop(e: SimEvent): StylePop | null {
   return { kind: `smash:${name}`, word: name, points: null, name: true };
 }
 
+/**
+ * A wheelie launch's name (playtest 4, P4-2: the spec's planned "HOOD ORNAMENT" and "TRUNK SPACE"):
+ * a car's hood or a parked car's launches the rider (`hoodLaunch` `data.part` `hood`), the back of a car
+ * going the rider's way `trunk`. Like a takedown's name it flashes briefly and small, with no cash (the
+ * landing's trick pays). Null for anything else.
+ */
+export function hoodPop(e: SimEvent): StylePop | null {
+  if (e.type !== 'hoodLaunch') return null;
+  const word = e.data['part'] === 'trunk' ? 'TRUNK SPACE' : 'HOOD ORNAMENT';
+  return { kind: `hood:${word}`, word, points: null, name: true };
+}
+
+/**
+ * The one word a wheelie crash gets (P4-2, sim/riders/wheelie.ts `wheelieCrashReason`: `LOW`, `BIG`,
+ * `SMALL`, `SIDEWAYS`, `BEHIND`, `WOBBLY`), as a name that flashes briefly and small. Null for a crash
+ * with no reason (not in a wheelie) and for anything else.
+ */
+export function wheelieCrashPop(e: SimEvent): StylePop | null {
+  if (e.type !== 'crash') return null;
+  const reason = e.data['wheelieReason'];
+  if (typeof reason !== 'string' || reason === '') return null;
+  return { kind: `wheelieCrash:${reason}`, word: reason, points: null, name: true };
+}
+
 /** A style event's pop-up in one line, such as `NEAR MISS +$50`, or null for anything else. */
 export function styleText(e: SimEvent): string | null {
   const pop = stylePop(e);
@@ -233,6 +257,9 @@ export function createRaceTally(): RaceTally {
           if (pop) popups.push(pop);
         } else if (e.type === 'smash') {
           const pop = smashPop(e);
+          if (pop) popups.push(pop);
+        } else if (e.type === 'hoodLaunch' || e.type === 'crash') {
+          const pop = hoodPop(e) ?? wheelieCrashPop(e);
           if (pop) popups.push(pop);
         }
       }

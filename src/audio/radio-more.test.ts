@@ -14,7 +14,7 @@ import {
   MORE_PRESETS,
   STONER_FORMS,
 } from './radio-compose-more';
-import { REGIONAL_PRESETS } from './radio-compose-regional';
+import { PNW_BARS, STONER_PLAN } from './radio-compose-pnw';
 import { createRadioPlayer, genreOf, type RadioStation } from './radio';
 import { RADIO_BAND } from './radio-band';
 import { createMoreRig, crushCurve, MORE_GENRES, MORE_TRIM, pulseWave } from './radio-rigs-more';
@@ -38,7 +38,8 @@ describe('the six newer bands', () => {
       expect(a.notes).toEqual(b.notes);
       expect(compose(p, 43).notes).not.toEqual(a.notes);
       expect(a.stepsPerBeat).toBe(4);
-      expect(a.bars).toBe(8);
+      // Since playtest 4 the stoner band plays whole sixteen-bar songs (radio-compose-pnw.ts).
+      expect(a.bars).toBe(p === 'stoner-band' ? PNW_BARS : 8);
       expect(a.notes.length).toBeGreaterThan(20);
       for (const n of a.notes) {
         expect(n.step).toBeGreaterThanOrEqual(0);
@@ -55,7 +56,8 @@ describe('the six newer bands', () => {
     const ranges: Record<string, [number, number]> = {
       'island-band': [100, 124],
       'dub-band': [66, 82],
-      'stoner-band': [62, 88],
+      // Playtest 4 (P4-17, "PNW seems very simple and slow"): was 62-88.
+      'stoner-band': [100, 126],
       'ambient-band': [54, 68],
       'funk-band': [104, 122],
       'chip-band': [138, 164],
@@ -125,12 +127,27 @@ describe('the six newer bands', () => {
     }
   });
 
-  it('stoner: one riff repeated, half-time drums, a wah solo that bends in the middle', () => {
+  it('stoner: one riff on a straight groove, a half-time doom break, a wah solo that bends and runs', () => {
+    const where = (sec: string) => STONER_PLAN.flatMap((p, i) => (p === sec ? [i] : []));
+    const [riffBars, doomBars, soloBars] = [where('riff'), where('doom'), where('solo')];
     for (const s of seeds) {
       const c = compose('stoner-band', s);
-      // Half-time: the snare is on beat three only.
-      expect(of(c, 'snare').every((n) => n.step % 16 === 8)).toBe(true);
-      // The riff has one rhythm: the same steps in every bar the guitar plays.
+      // The riff's groove has the snare on two and four; the doom is half time, the snare on three.
+      for (const b of riffBars) {
+        const hits = of(c, 'snare')
+          .filter((n) => bar(n) === b)
+          .map((n) => n.step % 16);
+        expect(hits).toContain(4);
+        expect(hits).toContain(12);
+        expect(hits).not.toContain(8);
+      }
+      for (const b of doomBars)
+        expect(
+          of(c, 'snare')
+            .filter((n) => bar(n) === b)
+            .map((n) => n.step % 16),
+        ).toEqual([8]);
+      // The riff has one rhythm: the same steps in every bar it plays.
       const stepsIn = (b: number) => [
         ...new Set(
           of(c, 'rhythm')
@@ -138,22 +155,25 @@ describe('the six newer bands', () => {
             .map((n) => n.step % 16),
         ),
       ];
-      const first = stepsIn(0).sort((a, b) => a - b);
-      for (const b of [1, 2, 3, 4, 5, 6]) expect(stepsIn(b).sort((x, y) => x - y)).toEqual(first);
+      const first = stepsIn(riffBars[0]!).sort((a, b) => a - b);
+      for (const b of [...riffBars, ...soloBars]) expect(stepsIn(b).sort((x, y) => x - y)).toEqual(first);
       // The guitar plays fifths (root and fifth, an octave above the bass).
       const bass = of(c, 'bass');
       expect(Math.min(...of(c, 'rhythm').map((n) => n.midi))).toBeGreaterThan(
         Math.min(...bass.map((n) => n.midi)),
       );
-      // The solo: bars 4-6, bent.
+      // The solo: only in its bars, bent, ending in a sixteenth run up the scale.
       const solo = of(c, 'lead');
       expect(solo.length).toBeGreaterThan(0);
-      expect(solo.every((n) => bar(n) >= 4 && bar(n) <= 6)).toBe(true);
+      expect(solo.every((n) => soloBars.includes(bar(n)))).toBe(true);
       expect(solo.some((n) => n.slide === -2)).toBe(true);
+      const run = solo.filter((n) => bar(n) === soloBars.at(-1));
+      expect(run).toHaveLength(16);
+      for (let i = 1; i < run.length; i++) expect(run[i]!.midi).toBeGreaterThanOrEqual(run[i - 1]!.midi);
       // The riff goes quiet under the solo.
       const mean = (xs: RadioNote[]) => xs.reduce((a, n) => a + n.vel, 0) / xs.length;
-      expect(mean(of(c, 'rhythm').filter((n) => bar(n) === 5))).toBeLessThan(
-        mean(of(c, 'rhythm').filter((n) => bar(n) === 1)) - 0.15,
+      expect(mean(of(c, 'rhythm').filter((n) => bar(n) === soloBars[1]))).toBeLessThan(
+        mean(of(c, 'rhythm').filter((n) => bar(n) === riffBars[1])) - 0.15,
       );
     }
   });
@@ -225,11 +245,9 @@ describe('the six newer bands', () => {
   });
 
   it('sound unlike every other band: each has a layer set no other band has', () => {
-    const sets = ['surf-trio', 'rockabilly-trio', ...REGIONAL_PRESETS, ...MORE_PRESETS].map((p) =>
-      [...layers(compose(p, 9))].sort().join(','),
-    );
+    // Every band the radio has, playtest 4's included.
+    const sets = RADIO_PRESETS.map((p) => [...layers(compose(p, 9))].sort().join(','));
     expect(new Set(sets).size).toBe(sets.length);
-    expect(sets).toHaveLength(12);
   });
 });
 

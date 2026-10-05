@@ -97,6 +97,8 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]save[\\/]export-code\.ts$/,
   /[\\/]src[\\/]ui[\\/]radio-panel-view\.ts$/,
   /[\\/]src[\\/]ui[\\/]moves-gauge\.ts$/,
+  // The menu race's options screen (playtest 4, P4-12): its DOM; its rules stay in race-options.ts.
+  /[\\/]src[\\/]ui[\\/]race-options-view\.ts$/,
 ];
 
 describe('the production build', { timeout: 120_000 }, () => {

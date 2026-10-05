@@ -121,6 +121,13 @@ const LAND_TAGS: Readonly<Record<string, LandTheme>> = {
  * sim's water edge.
  */
 export const SEAWALL_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { promenade: 11.4 };
+/**
+ * Land that is wider than the usual strip (playtest 4, P4-20: Bridge City "as content-rich as the
+ * others"): a theme listed here has a strip this wide past the verge, m, tried first (road-mesh.ts
+ * falls back to the usual strip, then narrower, where another road is in the way). Downtown Portland's
+ * blocks stand two deep on it: the street fronts, then a taller second row behind them.
+ */
+export const WIDE_LAND_M: Readonly<Partial<Record<LandTheme, number>>> = { blocks: 60 };
 /** When one side carries several land tags, the first theme in this list wins. */
 const THEME_ORDER: readonly LandTheme[] = [
   'festival',

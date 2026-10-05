@@ -42,9 +42,10 @@ export const KICK: SimWeaponDef = {
   unarmed: true,
   reachSM: 1.0,
   reachDM: 1.7,
-  windupTicks: 13,
+  // Playtest 4 (P4-6): 7 ticks to the hit (M1's 13), the 6 ticks moved into the recovery (M1's 27).
+  windupTicks: 7,
   activeTicks: 6,
-  recoveryTicks: 27,
+  recoveryTicks: 33,
   cooldownTicks: 30,
   damage: 18,
   hitStopMs: 60,
@@ -150,7 +151,11 @@ export function harnessConfig(
       raceEndTimeoutTicks: 1800,
     },
     riders,
-    weapons: [PUNCH, KICK, ...extraWeapons],
+    // An extra weapon with the punch's or the kick's id replaces it (M1's 13-tick kick, for one).
+    weapons: [
+      ...[PUNCH, KICK].filter((w) => !extraWeapons.some((x) => x.contentId === w.contentId)),
+      ...extraWeapons,
+    ],
     trafficTypes: [],
     road,
     route,

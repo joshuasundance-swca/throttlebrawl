@@ -4,16 +4,34 @@
 //
 // Rules, in brief:
 // - An attack starts on the tick its `attack` flag rises (docs/architecture.md, "Movers"): a
-//   wind-up, a short active moment, a recovery, and for a weapon with a cooldown (the kick) a
-//   cooldown after that. Presses during wind-up, active or recovery are ignored. A kick asked for
-//   during its cooldown becomes a punch, so the button never feels dead. For the same reason a
-//   player's press made while staggered is kept, and the attack starts on the tick the stagger ends
-//   (M2 combat-3); the kick flag is read then, so a swipe held through the stagger still kicks.
+//   wind-up, a short active moment, a recovery, and for a rival's weapon with a cooldown (the kick)
+//   a cooldown after that. A rival's kick asked for during its cooldown becomes a punch. A player's
+//   kick has no cooldown: it waits only for the leg's return (playtest 4, [decided] "No wait": about
+//   0.8 s between kicks), so a player's kick is never swapped for a punch. Rivals keep the data's
+//   wait, so they kick as often as before (their AI paces by the whole cycle). [default]
+// - The press buffer (playtest 4, P4-6: "reduce delay between tap and attack"; the feel audit's F1).
+//   A player's press made in the last PRESS_BUFFER_TICKS of a recovery is kept, and the attack
+//   starts on the first legal tick: the tick the recovery ends, or the stagger after it. Earlier
+//   presses (wind-up, active, the start of the recovery) are ignored, as in M1. A player's press made
+//   while staggered is kept the same way (M2 combat-3). A kept press keeps its flags: a kick asked
+//   for at the press or by a swipe recognised later stays a kick, and the latest side wins. Rivals'
+//   presses are never kept: the AI presses again when it wants to. [default]
 // - Phase timers count scaled time (world.timeScale per tick); only the hit-stop countdown runs
 //   on raw ticks, because a countdown scaled by a zero timeScale would never end.
 // - Auto-target picks the nearest valid rider in the acquisition box, preferring a non-cop. The
 //   side is the sign of the target's lateral offset; the side flags override it during the
 //   wind-up (and re-pick the target on that side), never once the active moment has started.
+//   An attack with no target yet re-aims every tick of its wind-up (playtest 4, the feel audit's
+//   F2): a press made before the rider is inside the box picks him, and his side, once he is. One
+//   still without a target by its active moment swings at either side (side 0), never only the
+//   right. [default]
+// - A bump never cancels an attack (playtest 4, P4-6: "bumping into a rival while attacking doesn't
+//   negate the attack"). The riding phase's contact (sim/riders/contact) holds two bikes 2 m apart
+//   nose to tail, merges their speeds and glances them apart, so a rider you ride into is pushed
+//   out of a punch's or kick's reach before it lands. When a player's bike touches the rider his
+//   attack is aimed at (or, with none, a rider on its side) during its wind-up or active moment, the
+//   attack lands on that rider in its active moment while he is within BUMP_REACH_M along and
+//   across. Rivals' attacks keep the reach box. [default]
 // - The kick conversion (M2 combat-3, playtest 1 item 3): a `kick` flag converts any attack but a
 //   kick into a kick while it is still in its wind-up (M1's rule), or while it is no older than
 //   combat.kickConvertMs (default 250 ms, 15 ticks) in any phase. A natural swipe-down takes longer
@@ -555,6 +573,15 @@ export const ACQUIRE_S_M = 4;
 export const ACQUIRE_D_M = 3;
 /** The straight kick's lateral half-width: it boots the rider directly ahead. [default] */
 export const STRAIGHT_KICK_D_M = 1;
+/** A player's press this close to the end of a recovery (10 ticks, 167 ms) is kept. [default] */
+export const PRESS_BUFFER_TICKS = 10;
+/**
+ * How far (along and across, m) a rider a player's attack touched stays in its reach. Contact holds
+ * two bikes 2 m apart nose to tail and glances them about 1 m further apart across within a punch's
+ * or kick's wind-up and active moment; 3 m covers both. [default]
+ */
+export const BUMP_REACH_M = 3;
+const SIDE_BITS = InputFlag.attackSideLeft | InputFlag.attackSideRight;
 /** The attacker/target total-mass ratio is clamped to this range before it scales a shove. */
 const MASS_RATIO_MIN = 0.5;
 const MASS_RATIO_MAX = 2;
@@ -659,8 +686,12 @@ export interface CombatState {
   };
   /** Last tick's flags, for press edges. */
   prevFlags: number[];
-  /** An attack press made while staggered, kept until the stagger ends. */
+  /** A player's kept attack press (made while staggered, or at the end of a recovery). */
   pending: boolean[];
+  /** The kept press's kick and side flags (InputFlag bits), updated while it waits. */
+  pendingFlags: number[];
+  /** The rider a player's current attack touched (-1: none), for the bump rule. */
+  touched: EntityId[];
   /** Raw ticks of hit-stop left, and the timeScale to restore afterwards. */
   hitStopTicks: number;
   resumeTimeScale: number;
@@ -729,6 +760,8 @@ export function combatState(world: World): CombatState {
     slowmo: { actor: -1, target: -1, cause: 0, resume: 1, startTick: -1 },
     prevFlags: [],
     pending: [],
+    pendingFlags: [],
+    touched: [],
     hitStopTicks: 0,
     resumeTimeScale: 1,
     held: [],
@@ -853,7 +886,8 @@ function straightFlag(flags: number): boolean {
 /**
  * Picks the auto-target and side for an attacker; `override` is a side flag (0 = none). The
  * straight kick aims at the nearest rider ahead inside the narrow straight box, and its side (the
- * way the shove goes) is the side he is on.
+ * way the shove goes) is the side he is on. With no override and nobody to aim at, the side is 0:
+ * not chosen yet (the wind-up re-aims; the active moment swings at either side).
  */
 function aim(
   world: World,
@@ -866,8 +900,40 @@ function aim(
     ? candidates(world, config, a, 0, STRAIGHT_KICK_D_M, 0, ACQUIRE_S_M)[0]
     : candidates(world, config, a, ACQUIRE_S_M, ACQUIRE_D_M, override)[0];
   if (override !== 0) return { target: best?.id ?? -1, side: override };
-  if (!best) return { target: -1, side: 1 };
+  if (!best) return { target: -1, side: 0 };
   return { target: best.id, side: best.dd < 0 ? -1 : 1 };
+}
+
+/**
+ * An attack with no target yet aims again (playtest 4, the audit's F2): an auto-sided one picks the
+ * nearest rider and his side once he is in the box, a forced side keeps its side and picks a target
+ * on it, and the straight kick looks ahead again.
+ */
+function reAim(world: World, config: SimConfig, st: CombatState, a: Mover): void {
+  if ((st.targetId[a.id] ?? -1) >= 0) return;
+  const straight = st.straight[a.id] === true;
+  const aimed = aim(world, config, a, straight ? 0 : (st.side[a.id] ?? 0), straight);
+  st.targetId[a.id] = aimed.target;
+  st.side[a.id] = aimed.side;
+}
+
+/** A kept press's flags, updated by this tick's: the kick sticks once asked for, the latest side wins. */
+function keepFlags(kept: number, now: number): number {
+  const sides = (now & SIDE_BITS) !== 0 ? now & SIDE_BITS : kept & SIDE_BITS;
+  return ((kept | now) & InputFlag.kick) | sides;
+}
+
+/** Keeps a player's press (the stagger queue, the press buffer), with this tick's flags. */
+function keep(st: CombatState, id: EntityId, flags: number): void {
+  st.pendingFlags[id] = keepFlags(st.pending[id] ? (st.pendingFlags[id] ?? 0) : 0, flags);
+  st.pending[id] = true;
+}
+
+/** Whether a rider is in the last PRESS_BUFFER_TICKS of an attack's recovery (scaled ticks). */
+function inBuffer(config: SimConfig, st: CombatState, id: EntityId): boolean {
+  if (st.phase[id] !== 'recovery') return false;
+  const w = weaponById(config, st.weapon[id] ?? '');
+  return !!w && w.recoveryTicks - (st.elapsed[id] ?? 0) <= PRESS_BUFFER_TICKS + EPS;
 }
 
 /** Aims an attack from this tick's flags: the straight kick, a forced side, or the auto side. */
@@ -924,6 +990,7 @@ function endAttack(st: CombatState, id: EntityId): void {
   st.weapon[id] = '';
   st.elapsed[id] = 0;
   st.targetId[id] = -1;
+  st.touched[id] = -1;
 }
 
 /** Advances an attack by `ts` scaled ticks through as many phase ends as that covers. */
@@ -952,7 +1019,8 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
         st.landed[id] = true;
       }
     } else if (phase === 'active') {
-      if (!st.landed[id]) {
+      // A bump in the riding phase of the tick the active moment ends still lands (the bump rule).
+      if (!st.landed[id] && !landBump(world, config, st, a, w)) {
         const target = st.targetId[id] ?? -1;
         const extra: { target?: EntityId; causeId?: number } = { causeId: st.cause[id] ?? 0 };
         if (target >= 0) extra.target = target;
@@ -969,7 +1037,8 @@ function advance(world: World, config: SimConfig, st: CombatState, a: Mover, ts:
       }
       st.phase[id] = 'recovery';
     } else {
-      if (w.cooldownTicks > 0) {
+      // A player's attack waits for nothing but its own recovery ([decided] "No wait").
+      if (w.cooldownTicks > 0 && !isPlayer(config, a)) {
         st.cooldown[id] = w.cooldownTicks;
         st.cooldownWeapon[id] = w.contentId;
       }
@@ -1053,7 +1122,7 @@ function land(
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
   // The shove along d, away from the attacker (the attack side when they are level).
-  const away = (dd === 0 ? (st.side[id] ?? 1) : dd < 0 ? -1 : 1) * a.pos.dir;
+  const away = (dd === 0 ? (st.side[id] ?? 1) || 1 : dd < 0 ? -1 : 1) * a.pos.dir;
   // The momentum kick (playtest 1 item 9): a player kicking while steering into the target adds
   // their own sideways speed toward it to the shove, × combat.momentumKickGain, capped. Players
   // only: rivals steer constantly, and with it their pack fights changed enough to halve the
@@ -1268,6 +1337,44 @@ function hitTest(world: World, config: SimConfig, st: CombatState, a: Mover): vo
   const pick = inReach.find((c) => c.id === st.targetId[id]) ?? inReach[0];
   const victim = pick ? world.movers[pick.id] : undefined;
   if (pick && victim) land(world, config, st, a, victim, w, pick.dd);
+  else landBump(world, config, st, a, w);
+}
+
+/**
+ * The bump rule: a rider this attack touched stays in its reach while he is within BUMP_REACH_M
+ * along and across; lands on him and returns true, or returns false.
+ */
+function landBump(world: World, config: SimConfig, st: CombatState, a: Mover, w: SimWeaponDef): boolean {
+  const bumped = world.movers[st.touched[a.id] ?? -1];
+  if (!bumped || !isRiding(bumped) || (riderState(world).health[bumped.id] ?? 0) <= 0) return false;
+  const rel = relative(config.road, a, bumped, BUMP_REACH_M + 2);
+  if (!rel || Math.abs(rel.ds) > BUMP_REACH_M || Math.abs(rel.dd) > BUMP_REACH_M) return false;
+  land(world, config, st, a, bumped, w, rel.dd);
+  return true;
+}
+
+/**
+ * The rider a player's attack touched this tick (the riding phase's contact, which ran before this
+ * one), or -1: the attack's target first, else a rider on its side (any side when it has none; the
+ * rider ahead for the straight kick).
+ */
+function touchedNow(world: World, config: SimConfig, st: CombatState, a: Mover): EntityId {
+  const contact = riderState(world).contactTick ?? {};
+  const target = st.targetId[a.id] ?? -1;
+  const side = st.side[a.id] ?? 0;
+  let found = -1;
+  for (const o of world.movers) {
+    if (o.id === a.id || !isRiding(o)) continue;
+    const key = a.id < o.id ? `${a.id}-${o.id}` : `${o.id}-${a.id}`;
+    if (contact[key] !== world.tick) continue;
+    if (o.id === target) return o.id;
+    if (found >= 0 || target >= 0) continue;
+    const rel = relative(config.road, a, o, BUMP_REACH_M + 2);
+    if (!rel) continue;
+    const onSide = st.straight[a.id] ? rel.ds > 0 : side === 0 || side * rel.dd >= 0;
+    if (onSide) found = o.id;
+  }
+  return found;
 }
 
 function totalMass(config: SimConfig, m: Mover): number {
@@ -1835,18 +1942,19 @@ function pickupPass(world: World, config: SimConfig, st: CombatState): void {
  * The kick flag on an attack that is not a kick: converts it while it is in its wind-up, or while
  * it is inside the kick-conversion window (keeping its age); the file header has the rule.
  */
-function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover, flags: number): void {
+function convertToKick(world: World, config: SimConfig, st: CombatState, a: Mover, flags: number): boolean {
   const id = a.id;
   const age = st.age[id] ?? 0;
   const window = Math.round(((world.params['combat.kickConvertMs'] ?? 250) * 60) / 1000);
   const early = age <= window + EPS;
-  if (!early && st.phase[id] !== 'windup') return;
+  if (!early && st.phase[id] !== 'windup') return false;
   const kick = resolveWeapon(config, st, id, true);
-  if (!kick || kick.contentId !== KICK_ID) return;
+  if (!kick || kick.contentId !== KICK_ID) return false;
   const carried = early ? Math.min(age, Math.max(0, kick.windupTicks - 1)) : 0;
   // A swipe that asks for the straight kick re-aims the converted kick at the rider ahead.
   if (straightFlag(flags)) setAim(world, config, st, a, flags);
   startAttack(world, st, a, kick, st.cause[id], carried);
+  return true;
 }
 
 export const combatSystem: SimSystem = {
@@ -1883,6 +1991,8 @@ export const combatSystem: SimSystem = {
       st.takedowns[m.id] = 0;
       st.prevFlags[m.id] = 0;
       st.pending[m.id] = false;
+      st.pendingFlags[m.id] = 0;
+      st.touched[m.id] = -1;
       st.held[m.id] = '';
       st.heldPickup[m.id] = -1;
       st.stealCued[m.id] = false;
@@ -1942,7 +2052,16 @@ export const combatSystem: SimSystem = {
       if (!isRiding(a) || (health[id] ?? 0) <= 0) {
         if (st.phase[id] !== 'idle') endAttack(st, id);
         st.pending[id] = false;
+        st.pendingFlags[id] = 0;
         continue;
+      }
+      const player = isPlayer(config, a);
+      // The bump rule: remember the rider a player's attack touched in this tick's riding phase,
+      // while it was winding up or out (his target, once touched, stays the one).
+      if (player && (st.phase[id] === 'windup' || st.phase[id] === 'active') && !st.landed[id]) {
+        const touched = touchedNow(world, config, st, a);
+        const was = st.touched[id] ?? -1;
+        if (touched >= 0 && (was < 0 || was !== st.targetId[id])) st.touched[id] = touched;
       }
       advance(world, config, st, a, ts);
       stealCue(world, config, st, a);
@@ -1953,12 +2072,18 @@ export const combatSystem: SimSystem = {
         const staggered = (st.stagger[id] ?? 0) > EPS;
         // A player's press while staggered is kept and starts the attack as the stagger ends
         // (combat-3). AI controllers press again when they want to, so theirs is dropped as in M1.
-        if (pressed[id] && staggered && isPlayer(config, a)) st.pending[id] = true;
+        if (pressed[id] && staggered && player) keep(st, id, flags);
         if ((pressed[id] || st.pending[id]) && !staggered) {
+          // A kept press starts with its own kick and side flags, updated by this tick's.
+          const f = st.pending[id]
+            ? (flags & ~(InputFlag.kick | SIDE_BITS)) | keepFlags(st.pendingFlags[id] ?? 0, flags)
+            : flags;
           st.pending[id] = false;
-          const w = resolveWeapon(config, st, id, wantKick);
+          st.pendingFlags[id] = 0;
+          const w = resolveWeapon(config, st, id, (f & InputFlag.kick) !== 0);
           if (w) {
-            setAim(world, config, st, a, w.contentId === KICK_ID ? flags : flags & ~InputFlag.kick);
+            setAim(world, config, st, a, w.contentId === KICK_ID ? f : f & ~InputFlag.kick);
+            st.touched[id] = -1;
             startAttack(world, st, a, w, undefined);
           }
         }
@@ -1975,10 +2100,17 @@ export const combatSystem: SimSystem = {
             a,
             flags & ~(override < 0 ? InputFlag.attackSideRight : InputFlag.attackSideLeft),
           );
-        }
+        } else reAim(world, config, st, a);
       }
-      if (st.phase[id] !== 'idle' && wantKick && st.weapon[id] !== KICK_ID)
+      const converted =
+        st.phase[id] !== 'idle' &&
+        wantKick &&
+        st.weapon[id] !== KICK_ID &&
         convertToKick(world, config, st, a, flags);
+      // The press buffer: a player's press in the last PRESS_BUFFER_TICKS of a recovery (one the kick
+      // conversion did not take) is kept; a kept press keeps reading the kick and side flags.
+      if (pressed[id] && player && !converted && inBuffer(config, st, id)) keep(st, id, flags);
+      else if (st.pending[id]) st.pendingFlags[id] = keepFlags(st.pendingFlags[id] ?? 0, flags);
       hitTest(world, config, st, a);
     }
     flyPass(world, config, st, ts);

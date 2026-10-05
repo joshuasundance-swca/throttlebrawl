@@ -11,7 +11,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 74,
+          "bpm": 108,
           "key": "D",
           "progression": "doom"
         }
@@ -25,7 +25,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 66,
+          "bpm": 100,
           "key": "C",
           "progression": "desert"
         }
@@ -39,7 +39,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 82,
+          "bpm": 116,
           "key": "E",
           "progression": "haze"
         }
@@ -53,7 +53,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 70,
+          "bpm": 104,
           "key": "F#",
           "progression": "tritone"
         }
@@ -67,7 +67,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 78,
+          "bpm": 112,
           "key": "G",
           "progression": "haze"
         }
@@ -81,7 +81,7 @@
       "procedural": {
         "preset": "stoner-band",
         "params": {
-          "bpm": 86,
+          "bpm": 124,
           "key": "D",
           "progression": "doom"
         }
@@ -92,7 +92,7 @@
   ],
   "meta": {
     "status": "live",
-    "notes": "Code-made stoner rock (src/audio/radio-compose-more.ts, preset stoner-band): a two-bar fuzz riff, a doubled bass, half-time drums and a wah solo. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
+    "notes": "Code-made stoner rock (src/audio/radio-compose-pnw.ts, preset stoner-band). Since playtest 4 (P4-17: \"PNW seems very simple and slow\") a whole sixteen-bar song at 100-126 bpm: the fuzz riff over busy hats, a half-time doom break, a galloping wah solo that ends in a run, the riff and the doom again. Melodies are generated from each track's seed, so they are original. Cut a track by setting its status to vetoed.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
