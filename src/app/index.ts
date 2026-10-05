@@ -34,7 +34,7 @@ import {
   type ContentRegistry,
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
-import { APP_ID, runStartTap, watchLifecycle } from '../platform';
+import { APP_ID, installOffer, runStartTap, startOffline, watchLifecycle } from '../platform';
 import {
   createRenderer,
   interpolateEntity,
@@ -745,6 +745,8 @@ export function createApp(opts: AppOptions): AppHandle {
       careerStarted: () => careerStarted(profile),
       // The menu race's options (playtest 4, P4-12 and P4-13) for the region picked on the menu (its
       // event, even before its road data is in) and the road picked there.
+      // Install as an app (roadmap M5): the menu offers it only while the browser does.
+      install: installOffer(),
       raceOptions: () => {
         const at = pickedChoice()?.eventId ?? eventId;
         return raceOptionsView(registry, at, at === eventId ? route : null, profile.bikes, settings.units);
@@ -1043,6 +1045,9 @@ export function createApp(opts: AppOptions): AppHandle {
     },
     onShown: () => hold('hidden', false),
   });
+  // Offline play (roadmap M5): a production build's worker caches the whole build once the page
+  // has loaded, so a loaded game plays with the network off.
+  startOffline();
   // A lost WebGL context holds the game until the renderer has rebuilt the scene (render-1).
   renderer.onContextChange((lost) => hold('context', lost));
   window.addEventListener('resize', () => renderer.resize());
