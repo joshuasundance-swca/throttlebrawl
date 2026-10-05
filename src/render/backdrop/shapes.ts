@@ -891,7 +891,7 @@ export function buildVessels(p: VesselsPiece, ctx: ShapeCtx): number {
   return built > 0 ? 1 : 0;
 }
 
-// ---- Clouds, thunderheads, fog banks ------------------------------------------------------------
+// ---- Clouds, fog banks ------------------------------------------------------------
 
 /** A compass bearing (0 = north, clockwise) and a distance from a point, as world [x, z]. */
 function bearingFrom(cx: number, cz: number, deg: number, dist: number): [number, number] {
@@ -938,39 +938,37 @@ export function buildClouds(p: CloudsPiece, ctx: ShapeCtx): number {
     const base = p.baseM;
     const top = lerp(p.topM[0], p.topM[1], r()) * e;
     const H = top - base;
-    if (p.style === 'thunderhead') {
-      // A flat dark base, a tower of overlapping puffs leaning a little downwind, and the anvil
-      // spreading flat and wide above it all.
-      const lean = r() * Math.PI * 2;
-      const lx = Math.cos(lean);
-      const lz = Math.sin(lean);
-      for (let k = 0; k < 3; k++) {
-        const a = (k / 3) * Math.PI * 2 + r();
-        const c: V3 = [x + Math.cos(a) * H * 0.18, base + H * 0.06, z + Math.sin(a) * H * 0.18];
-        s.blob(c, H * 0.3, H * 0.1, H * 0.26, over, under, base, top, r());
-      }
-      const puffs = 7 + Math.floor(r() * 3);
-      for (let k = 0; k < puffs; k++) {
-        const f = k / (puffs - 1);
-        const rad = H * lerp(0.21, 0.15, f) * lerp(0.85, 1.15, r());
-        const drift = f * H * 0.12;
-        const ox = (r() - 0.5) * rad * 0.7 + lx * drift;
-        const oz = (r() - 0.5) * rad * 0.7 + lz * drift;
-        s.blob(
-          [x + ox, base + H * (0.12 + f * 0.66), z + oz],
-          rad,
-          rad * 0.95,
-          rad,
-          over,
-          under,
-          base,
-          top,
-          r(),
-        );
-      }
-      const anvil = H * 0.55;
-      const ac: V3 = [x + lx * anvil * 0.35, top - H * 0.08, z + lz * anvil * 0.35];
-      s.blob(ac, anvil, H * 0.07, anvil * 0.75, over, under, base, top, lean);
+    if (p.style === 'cumulus') {
+      // A heap of fair-weather cloud: a wide row of puffs along its base, a smaller row on top of it
+      // and one small crown, each row narrower than the one below. Nothing is narrower than what sits
+      // on it, so it never has a stalk and a cap (the Keys' thunderheads, an anvil on a tower, read
+      // as a mushroom cloud: the maintainer, playtest 3).
+      const span = H * lerp(1.5, 2.1, r());
+      const ang = r() * Math.PI;
+      const ax = Math.cos(ang);
+      const az = Math.sin(ang);
+      const row = (n: number, share: number, centre: number, tall: number) => {
+        const w = span * share;
+        for (let k = 0; k < n; k++) {
+          const along = n === 1 ? 0 : (k / (n - 1) - 0.5) * w * (1 - 1 / (n + 1));
+          const rx = (w / (n + 1)) * lerp(0.85, 1.1, r());
+          const ry = H * tall * lerp(0.85, 1.1, r());
+          s.blob(
+            [x + ax * along, base + H * centre, z + az * along],
+            rx,
+            ry,
+            rx * 0.8,
+            over,
+            under,
+            base,
+            top,
+            r(),
+          );
+        }
+      };
+      row(4 + Math.floor(r() * 2), 1, 0.27, 0.3);
+      row(2 + Math.floor(r() * 2), 0.56, 0.46, 0.27);
+      row(1, 0.26, 0.74, 0.26);
     } else {
       // A long low bank (or rolling fog): flattened puffs side by side.
       const fog = p.style === 'fog';

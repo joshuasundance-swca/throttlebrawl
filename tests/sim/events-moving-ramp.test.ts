@@ -19,6 +19,7 @@ import type { SimConfig, SimEvent, SimModifierDef } from '../../src/sim/api';
 import { vehicleSize } from '../../src/sim/ai/sense';
 import { createSimWithWorld } from '../../src/sim/create';
 import { setPieceState } from '../../src/sim/modifiers';
+import { bypassedSpans, SET_PIECE } from '../../src/sim/modifiers/setpieces';
 import { MOVING } from '../../src/sim/modifiers/moving';
 import { riderState } from '../../src/sim/riders';
 import { toCorridor, trafficState } from '../../src/sim/traffic';
@@ -175,10 +176,23 @@ const mine = (s: Scene, type: SimEvent['type']) =>
   s.events.filter((e) => e.type === type && e.actor === s.player.id);
 const decks = (s: Scene) => (s.world.systems[MOVING_DECKS_KEY] as SimMovingDecks | undefined)?.live ?? [];
 
-/** Spawns the carrier by putting the player on its stretch, `behind` metres short of its spot. */
+/**
+ * Spawns the carrier by putting the player on its stretch, `behind` metres short of its spot, or
+ * where the road last bends too tightly to ride at speed with no steering (the stretch itself is
+ * straight, its run-up need not be: a Key West street may turn a corner just before it).
+ */
 function approach(s: Scene, behind: number, speed: number): { carrier: number; u0: number } {
   const p = pieceOf(s);
-  const u0 = p.u - s.c.routeDir * behind;
+  const pos = { edge: 0, s: 0, d: 0, dir: 1 as 1 | -1 };
+  let start = behind;
+  for (let a = 0; a <= behind; a += 5) {
+    fromCorridor(s.c, p.u - s.c.routeDir * a, 0, s.c.routeDir, pos);
+    if (Math.abs(s.cfg.road.kappaAt(pos.edge, pos.s)) > MOVING.rampMaxKappa) {
+      start = Math.max(0, a - 25);
+      break;
+    }
+  }
+  const u0 = p.u - s.c.routeDir * start;
   putPlayer(s, u0, outerCd(s, u0), speed);
   s.sim.step([{ steer: 0, throttle: 255, brake: 0, flags: 0 }]);
   s.events.push(...s.sim.events());
@@ -259,32 +273,38 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
     for (const d of decks(s)) expect(d.vehicle).toBe(carrier);
   });
 
-  it('launches a rider who catches it, which lands clean past its front', () => {
-    const s = scene(placedRace(region));
-    const { carrier } = approach(s, 290, 36);
-    let landed = false;
-    for (let t = 0; t < 60 * 45 && !landed && mine(s, 'crash').length === 0; t++) {
-      step(s, carrier);
-      landed = s.jumps.length > 0 && mine(s, 'land').length > 0;
-    }
-    // The jump off the carrier's lip: the one the player made as it left the ramp for the body
-    // (the ramp is 5 m, the box 7.5; a crest's launch on a hill is not this).
-    const off = s.jumps.find((j) => j.into >= MOVING.rampRunM && j.into <= 7.5 + 1);
-    const land = mine(s, 'land').find((e) => e.tick > (off?.ev.tick ?? Infinity));
-    const car = s.world.movers[carrier];
-    const front = (toCorridor(s.c, car?.pos ?? s.player.pos)?.u ?? 0) + s.c.routeDir * 3.75;
-    const landU = toCorridor(s.c, s.player.pos)?.u ?? 0;
-    console.log(
-      `[print] ${region.name}: jump rise ${Number(off?.ev.data['vyMps']).toFixed(2)} m/s at ${Number(off?.ev.data['speed']).toFixed(1)} m/s; land ${String(land?.data['quality'])}, ${(s.c.routeDir * (landU - front)).toFixed(1)} m past the front`,
-    );
-    expect(mine(s, 'crash'), 'it did not crash').toEqual([]);
-    expect(off, 'it jumped off the carrier').toBeDefined();
-    expect(land?.data['quality']).toBe('clean');
-    // Landed on the road, past the truck's front where it stands now.
-    expect(s.c.routeDir * (landU - front)).toBeGreaterThan(0);
-    // The carrier was never a traffic crash: its contacts are the riders' while the ramp is down.
-    expect(s.events.filter((e) => e.type === 'crash' && e.data['cause'] === 'traffic')).toEqual([]);
-  });
+  it.each([1, 2, 3])(
+    'launches a rider who catches it, which lands clean past its front (seed %i)',
+    (seed) => {
+      const s = scene(placedRace(region, seed));
+      const { carrier } = approach(s, 290, 36);
+      // The jump off the carrier's lip: the one the player made as it left the ramp for the body
+      // (the ramp is 5 m, the box 7.5). A crest's launch on a hill, which a road with grades has,
+      // is not this one: the loop waits for the lip's own jump and the landing after it.
+      const offTheLip = (j: Scene['jumps'][number]) => j.into >= MOVING.rampRunM && j.into <= 7.5 + 1;
+      const landedAfterLip = () => {
+        const off = s.jumps.find(offTheLip);
+        return off !== undefined && mine(s, 'land').some((e) => e.tick > off.ev.tick);
+      };
+      for (let t = 0; t < 60 * 45 && !landedAfterLip() && mine(s, 'crash').length === 0; t++)
+        step(s, carrier);
+      const off = s.jumps.find(offTheLip);
+      const land = mine(s, 'land').find((e) => e.tick > (off?.ev.tick ?? Infinity));
+      const car = s.world.movers[carrier];
+      const front = (toCorridor(s.c, car?.pos ?? s.player.pos)?.u ?? 0) + s.c.routeDir * 3.75;
+      const landU = toCorridor(s.c, s.player.pos)?.u ?? 0;
+      console.log(
+        `[print] ${region.name} seed ${seed}: jump rise ${Number(off?.ev.data['vyMps']).toFixed(2)} m/s at ${Number(off?.ev.data['speed']).toFixed(1)} m/s; land ${String(land?.data['quality'])}, ${(s.c.routeDir * (landU - front)).toFixed(1)} m past the front`,
+      );
+      expect(mine(s, 'crash'), 'it did not crash').toEqual([]);
+      expect(off, 'it jumped off the carrier').toBeDefined();
+      expect(land?.data['quality']).toBe('clean');
+      // Landed on the road, past the truck's front where it stands now.
+      expect(s.c.routeDir * (landU - front)).toBeGreaterThan(0);
+      // The carrier was never a traffic crash: its contacts are the riders' while the ramp is down.
+      expect(s.events.filter((e) => e.type === 'crash' && e.data['cause'] === 'traffic')).toEqual([]);
+    },
+  );
 
   it('meets the rider who is barely faster than it: a crash into its body, not a jump', () => {
     const s = scene(placedRace(region));
@@ -299,11 +319,83 @@ describe.each(REGIONS)('the moving ramp truck in $name', (region) => {
     const crash = mine(s, 'crash')[0];
     expect(crash?.data).toMatchObject({ cause: 'barrier', object: 'rampTruck' });
     expect(String(crash?.data['feature'])).toMatch(/^moving:/);
-    expect(mine(s, 'jump'), 'it never left the ground for a jump').toEqual([]);
+    // A crest elsewhere on the road may launch it; the carrier's box must not.
+    const inBox = s.jumps.filter((j) => j.into >= 0 && j.into <= 7.5 + 1);
+    expect(inBox, 'it never left the carrier for a jump').toEqual([]);
   });
 });
 
+/**
+ * Where the carrier is placed on one route, by seed: the piece (or null) of each race with the
+ * region's moving-ramp event forced in, and the race's config.
+ */
+function placements(region: (typeof REGIONS)[number], route: string | undefined, seeds: readonly number[]) {
+  return seeds.map((seed) => {
+    const cfg = forced(config(region.event, seed, route), region.mod);
+    const { world } = createSimWithWorld(cfg);
+    const st = setPieceState(world);
+    return { cfg, st, piece: st.pieces.find((p) => p.piece === 'moving-ramp') ?? null };
+  });
+}
+
 describe('the moving ramp truck, everywhere', () => {
+  const SEEDS = [1, 2, 3, 4, 5, 6];
+
+  it('is placed by the road, not the seed: a route either has a stretch for it or never does', () => {
+    for (const region of REGIONS) {
+      for (const route of [undefined, ...realRoutes(REG, region.event)]) {
+        const placed = placements(region, route, SEEDS).filter((p) => p.piece !== null).length;
+        expect(
+          [0, SEEDS.length],
+          `${region.name}, ${route ?? 'its own route'}: placed on ${placed} of ${SEEDS.length} seeds`,
+        ).toContain(placed);
+      }
+    }
+  });
+
+  it("keeps the last of its stretch clear of every shortcut's span, on every route", () => {
+    let seen = 0;
+    for (const region of REGIONS) {
+      for (const route of [undefined, ...realRoutes(REG, region.event)]) {
+        for (const { cfg, st, piece } of placements(region, route, SEEDS)) {
+          if (!piece) continue;
+          seen++;
+          const label = `${region.name}, ${route ?? 'its own route'}`;
+          // The part of the route's progress the last of its stretch covers (+ 10 m, as the rule reads it).
+          const from = Math.abs(piece.u - st.u0) + piece.len - MOVING.rampTailM;
+          const to = Math.abs(piece.u - st.u0) + piece.len + 10;
+          // A long bypass is a junction choice between two real roads, not a shortcut: the rule keeps
+          // only its two ends clear (SET_PIECE.longBranchM), and a rider on the other road misses
+          // the truck as at any fork.
+          const shortcuts = bypassedSpans(cfg).flatMap(([a, b]): [number, number][] =>
+            Number.isFinite(b) && b - a > SET_PIECE.longBranchM
+              ? [
+                  [a, a + SET_PIECE.branchEndM],
+                  [b - SET_PIECE.branchEndM, b],
+                ]
+              : [[a, b]],
+          );
+          for (const [a, b] of shortcuts) {
+            expect(
+              from < b && to > a,
+              `${label}: its last ${MOVING.rampTailM} m is in the span [${a}, ${b}]`,
+            ).toBe(false);
+          }
+        }
+      }
+    }
+    expect(seen, 'at least one route has a stretch').toBeGreaterThan(0);
+  });
+
+  it("gives each region's own race a carrier whichever the seed (San Francisco's has its only straight beside a shortcut)", () => {
+    for (const region of REGIONS) {
+      const placed = placements(region, undefined, SEEDS).map((p) => p.piece !== null);
+      expect(placed, `${region.name}: its own race, seeds ${SEEDS.join(', ')}`).toEqual(
+        SEEDS.map(() => true),
+      );
+    }
+  });
+
   it('never makes the rival AI see every vehicle bigger than it did', () => {
     // sim/ai sizes every vehicle by the race's largest traffic type, so a carrier longer than the
     // region's own largest would change how every rival rides there.

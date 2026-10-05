@@ -114,13 +114,13 @@
       "keepOutM": 900
     },
     {
-      "id": "thunderheads",
+      "id": "fair-weather-cumulus",
       "kind": "clouds",
-      "style": "thunderhead",
-      "count": 4,
-      "distanceM": [24000, 42000],
-      "baseM": 700,
-      "topM": [6500, 10000],
+      "style": "cumulus",
+      "count": 5,
+      "distanceM": [14000, 34000],
+      "baseM": 600,
+      "topM": [2200, 3600],
       "colour": "#fffaf2",
       "shadeColour": "#8d97a8"
     },

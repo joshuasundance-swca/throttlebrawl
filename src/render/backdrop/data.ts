@@ -160,15 +160,19 @@ export interface VesselsPiece extends Base {
   colours?: readonly string[];
 }
 
+/** The clouds' styles. None is a tower with an anvil: that reads as a mushroom cloud. */
+export const CLOUD_STYLES = ['cumulus', 'bank', 'fog', 'pour'] as const;
+
 export interface CloudsPiece extends Base {
   kind: 'clouds';
   /**
-   * "thunderhead" (a tower with an anvil), "bank" (a low flat cloud), "fog" (a rolling fog bank),
+   * "cumulus" (a wide heap of fair-weather cloud, each row of puffs narrower than the one below it),
+   * "bank" (a low flat cloud), "fog" (a rolling fog bank),
    * or "pour" (W-T): fog lying on a crest `path` at `baseM` and pouring down its far side toward
    * `driftBearingDeg`, `driftM` out and `dropM` down, in tongues that slide down, thin into the
    * haze and start again at the crest, one round every `driftPeriodS`.
    */
-  style: 'thunderhead' | 'bank' | 'fog' | 'pour';
+  style: (typeof CLOUD_STYLES)[number];
   /** A scatter around the network's centre: compass bearings (0 = north, clockwise) and distances. */
   bearingDeg?: readonly [number, number];
   distanceM?: readonly [number, number];
@@ -394,6 +398,8 @@ export function backdropProblems(json: unknown, kind: 'region' | 'network'): str
       out.push(`${at}: vessels need a path, or a count with a centre and radiusM or distanceM`);
     if (q['kind'] === 'clouds' && !q['path'] && !(q['distanceM'] && q['count']))
       out.push(`${at}: clouds need a path or distanceM and count`);
+    if (q['kind'] === 'clouds' && !CLOUD_STYLES.some((st) => st === q['style']))
+      out.push(`${at}: style must be one of ${CLOUD_STYLES.join(', ')}`);
     if (q['kind'] === 'clouds' && q['style'] === 'pour' && !q['path'])
       out.push(`${at}: a pour needs its crest as a path`);
     if (q['kind'] === 'train' && (!Array.isArray(q['path']) || (q['path'] as unknown[]).length !== 2))
