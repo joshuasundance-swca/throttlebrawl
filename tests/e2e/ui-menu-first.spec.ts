@@ -286,14 +286,23 @@ test('the race holds at tick 0 through 3, 2, 1 with nothing recorded and a press
   expect(problems).toEqual([]);
 });
 
-/** Waits for the countdown to show `label`, then measures it and every other HUD piece in that frame. */
-async function measureCountdown(page: Page, label: string, plantOverNumber = false) {
+/**
+ * Waits for the countdown to show `label`, then measures it and every other HUD piece in that frame:
+ * at rest (the entrance finished), or with `peak` at the entrance's first frame, where it is biggest
+ * and brightest.
+ */
+async function measureCountdown(page: Page, label: string, plantOverNumber = false, peak = false) {
   const handle = await page.waitForFunction(
-    ({ want, plant }) => {
+    ({ want, plant, atPeak }) => {
       const count = document.querySelector<HTMLElement>('#countdown .count');
       if (!count || count.textContent !== want) return null;
-      // The pop's end: measured at rest.
-      for (const a of count.getAnimations()) a.finish();
+      // The entrance's end (at rest), or its first frame, held there (the peak).
+      for (const a of count.getAnimations()) {
+        if (atPeak) {
+          a.pause();
+          a.currentTime = 0;
+        } else a.finish();
+      }
       const box = (e: Element) => {
         const r = e.getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
@@ -322,14 +331,17 @@ async function measureCountdown(page: Page, label: string, plantOverNumber = fal
         if (r.width < 1 || r.height < 1) continue;
         others.push({ name: e.id || e.className, box: box(e) });
       }
-      return { w: innerWidth, h: innerHeight, count: box(count), others };
+      const opacity = Number(getComputedStyle(count).opacity);
+      return { w: innerWidth, h: innerHeight, count: box(count), opacity, classes: count.className, others };
     },
-    { want: label, plant: plantOverNumber },
+    { want: label, plant: plantOverNumber, atPeak: peak },
   );
   return (await handle.jsonValue()) as {
     w: number;
     h: number;
     count: Box;
+    opacity: number;
+    classes: string;
     others: { name: string; box: Box }[];
   };
 }
@@ -363,12 +375,38 @@ for (const [where, width, height, finePointer] of [
       const problems = watchErrors(page);
       await startFreePlayRace(page);
       await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+      const threePeak = await measureCountdown(page, '3', false, true);
       const three = await measureCountdown(page, '3');
       // To GO at 5 ticks a drawn frame (frames, not seconds).
       await page.evaluate(() => (window as TestWindow).__game?.lockstep(5));
+      const goPeak = await measureCountdown(page, 'GO', false, true);
       const go = await measureCountdown(page, 'GO');
+      // Noticed at first glance (the maintainer, 2026-10-05: "hard to see at first without knowing
+      // where to look"): each beat arrives bigger and fully bright, then settles small and
+      // translucent; the first beat (the 3) arrives bigger than the others.
+      const tall = (b: Box) => b.bottom - b.top;
+      for (const [label, peakM, restM] of [
+        ['3', threePeak, three],
+        ['GO', goPeak, go],
+      ] as const) {
+        console.log(
+          `${where}, ${label}: entrance peak ${Math.round(tall(peakM.count))} px at opacity ${peakM.opacity}, rest ${Math.round(tall(restM.count))} px at opacity ${restM.opacity} (${peakM.classes})`,
+        );
+        expect(peakM.opacity, `${where}, ${label}: full bright as it arrives`).toBeGreaterThan(0.95);
+        expect(restM.opacity, `${where}, ${label}: translucent at rest`).toBeLessThan(0.7);
+        expect(tall(peakM.count), `${where}, ${label}: bigger as it arrives`).toBeGreaterThan(
+          1.3 * tall(restM.count),
+        );
+      }
+      expect(threePeak.classes, 'the 3 is the first beat').toContain('first');
+      expect(goPeak.classes, 'GO is not').not.toContain('first');
+      expect(tall(threePeak.count) / tall(three.count), 'the first beat arrives bigger').toBeGreaterThan(
+        tall(goPeak.count) / tall(go.count) + 0.2,
+      );
       for (const [label, m] of [
+        ['3 at the entrance peak', threePeak],
         ['3', three],
+        ['GO at the entrance peak', goPeak],
         ['GO', go],
       ] as const) {
         const at = `${where}, ${label}`;
@@ -383,9 +421,11 @@ for (const [where, width, height, finePointer] of [
         expect(c.bottom, `${at}: number inside the screen`).toBeLessThanOrEqual(m.h + 0.5);
         // The maintainer's veto (2026-10-05): the number never covers what is directly ahead.
         expect(overlap(c, roadAhead(m.w, m.h)), `${at}: number over the road ahead`).toBe(false);
-        // Small: no more than 60 px tall and a quarter of the screen's width.
-        expect(c.bottom - c.top, `${at}: number is small`).toBeLessThanOrEqual(64);
-        expect(c.right - c.left, `${at}: number is small`).toBeLessThanOrEqual(0.25 * m.w + 0.5);
+        // Small at rest: no more than 64 px tall. At rest and at the entrance's peak, within the
+        // strip's quarter of the screen's width (the strip clips across, so none of it is cut).
+        if (!label.includes('peak'))
+          expect(c.bottom - c.top, `${at}: number is small`).toBeLessThanOrEqual(64);
+        expect(c.right - c.left, `${at}: number fits the strip`).toBeLessThanOrEqual(0.25 * m.w + 0.5);
         expect(
           m.others.filter((o) => overlap(c, o.box)).map((o) => o.name),
           `${at}: HUD pieces under the number`,
