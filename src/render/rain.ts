@@ -20,6 +20,8 @@ const NEAR_M = 1.2;
 const FALL_MPS = 7.5;
 /** The streaks' opacity: a drizzle, not a downpour. [default] */
 const OPACITY = 0.32;
+/** How long the rain takes to thin out under a roof, and to come back out from under it, s. [default] */
+const SHELTER_FADE_S = 0.3;
 
 /** The rain colour a race's environment asks for, or null for a dry race. */
 export function rainColourOf(env: LookEnv): string | null {
@@ -40,6 +42,8 @@ export class Rain {
   private readonly drops: Drop[] = [];
   private seed = 0x7a1e;
   private on = false;
+  /** 0 = in the open, 1 = under a roof (eased): the share of the streaks left out. */
+  private cover = 0;
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
   private readonly pos = new Vector3();
@@ -86,11 +90,16 @@ export class Rain {
     d.z = -depth;
   }
 
-  /** Moves the streaks for a frame: `speedMps` is the rider's speed and `dt` the frame time, s. */
-  update(speedMps: number, dt: number): void {
-    const count = this.on
-      ? Math.max(0, Math.min(MAX_DROPS, Math.round((MAX_DROPS / 2) * this.params.rainAmount)))
-      : 0;
+  /**
+   * Moves the streaks for a frame: `speedMps` is the rider's speed and `dt` the frame time, s.
+   * `sheltered` is whether the camera stands under a roof (roofs.ts): the rain thins out and stops
+   * there, and comes back when the camera is out from under it.
+   */
+  update(speedMps: number, dt: number, sheltered = false): void {
+    const step = Math.max(0, Math.min(0.1, dt)) / SHELTER_FADE_S;
+    this.cover = Math.max(0, Math.min(1, this.cover + (sheltered ? step : -step)));
+    const open = Math.max(0, Math.min(MAX_DROPS, Math.round((MAX_DROPS / 2) * this.params.rainAmount)));
+    const count = this.on ? Math.round(open * (1 - this.cover)) : 0;
     this.root.visible = count > 0;
     this.root.count = count;
     if (!count) return;

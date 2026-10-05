@@ -62,6 +62,7 @@ import type { LandmarkKit, LandmarkKitId } from './models';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { Rain } from './rain';
+import { roofSpans, underRoof, type RoofSpan } from './roofs';
 import type { RiderLook } from './rider-looks';
 import type { RiderRigCounts, RiderRigs } from './riders';
 import {
@@ -340,6 +341,8 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let roadScene: RoadScene | null = null;
   /** The last setRoad's inputs, so a roadside-density change can rebuild the road meshes. */
   let roadArgs: { road: RoadNetwork; dressing: RoadDressing | undefined; density: number } | null = null;
+  /** The roofs over the current road (roofs.ts): the drizzle stops under them. */
+  let roofs: readonly RoofSpan[] = [];
   let sceneSeed = 1;
   /** Whether the race's region names a fog colour: its haze then closes in (render.regionFogFarM). */
   let regionFog = false;
@@ -761,6 +764,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         repaint();
       }
       roadArgs = { road, dressing, density: params.roadsideDensity };
+      roofs = roofSpans(road);
       buildRoad();
       if (vergeModule) buildVerge();
       else
@@ -855,7 +859,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       const me = curr?.entities.find((e) => e.slot === 0);
       const riding = me && me.mode !== 'Tumble' && me.mode !== 'OnFoot';
       race?.speedLines.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), camera);
-      race?.rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1));
+      // No drizzle under a roof (the ferry's passenger deck): the rain is a screen overlay, so the
+      // camera standing under a roof is what stops it (roofs.ts).
+      const sheltered =
+        roadArgs !== null && roofs.length > 0
+          ? underRoof(roadArgs.road, roofs, pose.x, pose.y, pose.z, me?.road.edge)
+          : false;
+      race?.rain.update(riding ? me.speed : 0, dt * (curr?.timeScale ?? 1), sheltered);
       renderer.info.reset();
       look.frame(t, params);
       const film = look.post(params);
