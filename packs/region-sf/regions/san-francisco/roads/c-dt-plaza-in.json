@@ -13,7 +13,7 @@
   "laneSections": [
     { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
   ],
-  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "plaza-cut" }],
+  "tags": [{ "s0": 0, "s1": 30, "side": "right", "tag": "plaza-cut" }],
   "features": [],
   "barriers": [],
   "samples": {
