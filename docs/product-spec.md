@@ -294,7 +294,7 @@ The maintainer asked for accessibility basics "without being obtrusive or gettin
 
 - The time-of-day values are the region's lighting presets from [the content-pack format](./content-packs.md#region). This table is the product proposal, and the sample career in the content-pack doc follows its boss; either can change. [default]
 
-- Each event sets its own time of day. Weather comes later. [decided]
+- Each event sets its own time of day. Weather comes later. [decided] A race from the main menu may pick its light and a dry or rainy race (see [the menu race's options](#ux-and-menus)); the rain is the drizzle the Pacific Northwest already has, drawn only, and it changes nothing about the riding. [default]
 - Race length can be chosen per event: short, standard or long, roughly 2, 4 or 6 minutes. [decided for choice; default for lengths]
 - You learn the controls by riding event 1, with prompts that appear only as they become relevant. The steal prompt, for example, appears the first time a rival winds up. [decided for learn-by-riding; default for the prompt timing]
 - The first run is **menu first** `[decided]` (the maintainer, playtest 4, 2026-10-04: "Menu first"). A brand-new player (nothing stored, or site data cleared) sees the main menu after the start tap, with "Start career" as the obvious first tap, and never a race straight away; Start career opens the career map with the tutorial event suggested, and event 1's prompts teach the controls as you ride it. This replaces the earlier `[default]` race-first start (the maintainer had said "maybe race first" and "we may need to iterate on the intro"; a phone player who cleared site data was surprised to land in a race).
@@ -437,6 +437,15 @@ The bike can't be destroyed. Playtest 3 (2026-10-03) added repairs after crashes
 ## UX and menus
 
 - Menus are in a 90s grunge zine style. [decided] The maintainer is fine with menus. [decided]
+- **Options for a race from the main menu** (playtest 4, 2026-10-04: "Maybe Races from main menu should have options?" and "To change bike for main menu races you have to go into career garage"; asked which, he picked all four: bike choice; route, time and weather; rivals and cops; race length or laps, plus traffic density). [decided] New race and challenge types are [open]: he wants to compare them with the career and other games first, so the options carry a race-type seam with only today's race in it. How [default]:
+  - One options screen, from the menu's **Options** button beside Race; Race on the screen or on the menu starts the race with the picks. The picks are remembered on the device between races and reloads, and apply to menu races only: a career race keeps its own event, field and bike.
+  - Each option is one row with an arrow at each end and the value between (tapping the value steps forward too), big enough for a thumb; the rows flow into two or three columns on a phone held sideways. Keyboard: Tab to a row, the arrows step it, Escape goes back.
+  - **Bike**: the garage's bike (the default), or any bike in the game, slowest first with its top speed, without going through the garage. The secret joke rides join the list once the garage owns one, so they stay easter eggs.
+  - **Where**: the menu's region and road pickers, as before; the screen says where the race runs. **Time**: any (a different light each race, as before) or one of the region's lights. **Weather**: the region's own, dry or rain (render only).
+  - **Rivals**: the usual field, or none up to seven, drawn from the region's riders. **Cops**: on or off; off means no law at all. **Difficulty**: Easy, Normal or Hard (the same setting as the settings screen's).
+  - **Length**: the event's lengths (the settings screen's Race length); a picked real road sets its own length, so the row hides. Laps wait for a road that loops: every route today runs point to point.
+  - **Traffic**: none, light, usual or heavy (0, 0.5, 1 and 1.75 times the traffic density slider).
+  - Every pick that changes the race goes into the race's config, so the replay rebuilds it, and the replay header also carries the picks themselves.
 - **What's new since you last played.** Each device remembers the last build it saw and shows only what changed since then, as a card. [decided]
 - A full changelog page in the menu, with the same notes in the GitHub releases. [decided]
 - The HUD shows speed, position, your health, the nearest rival's health and a minimap. Each piece can be shown, hidden or moved, with Full, Classic and Minimal presets. [decided for configurability; default for the list]
