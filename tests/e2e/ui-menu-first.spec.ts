@@ -349,7 +349,8 @@ for (const [where, width, height, finePointer] of [
   ['568x320', 568, 320, false],
   ['640x360', 640, 360, false],
   ['915x412', 915, 412, false],
-  ['412x915', 412, 915, false],
+  // Tall and narrow with a fine pointer: a touch phone held upright gets the rotate screen, not a race.
+  ['412x915', 412, 915, true],
   ['1366x768', 1366, 768, true],
 ] as const) {
   test.describe(`countdown at ${where}`, () => {
