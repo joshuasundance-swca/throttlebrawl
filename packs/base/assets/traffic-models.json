@@ -1,0 +1,42 @@
+{
+  "formatVersion": 1,
+  "notes": "Render-only (playtest 3, T12.2): which Blender vehicle model draws each of this pack's traffic types, in place of the code-made boxes. Never type JSON: the sim does not read it. A type draws at its own lengthM and widthM, in one of its own paintOptions; a type with two models takes one by entity (none has two yet: each model in view is a draw call). A type with no row keeps its box. Models are base-pack asset ids (models/traffic/<name>).",
+  "types": {
+    "base:sedan-rental": {
+      "models": ["models/traffic/sedan"],
+      "paint": ["#f4f1e8", "#c9d6df", "#e8c07d"]
+    },
+    "base:pickup": {
+      "models": ["models/traffic/pickup"],
+      "paint": ["#8a3b2e", "#2f4f5f", "#d9d4c7"]
+    },
+    "base:event-hitch-pickup": {
+      "models": ["models/traffic/pickup"],
+      "paint": []
+    },
+    "base:party-van": {
+      "models": ["models/traffic/minivan"],
+      "paint": ["#e84a5f", "#f2a7c3", "#5bc0eb"]
+    },
+    "base:box-truck": {
+      "models": ["models/traffic/box-truck"],
+      "paint": ["#e8e2c8", "#7fd1c7", "#d9d9d9"]
+    },
+    "base:shrimp-truck": {
+      "models": ["models/traffic/box-truck"],
+      "paint": ["#f4f1e8", "#e88a6a", "#7fd1c7"]
+    },
+    "base:rental-convertible": {
+      "models": ["models/traffic/rental-convertible"],
+      "paint": ["#e84a5f", "#ffffff", "#5bc0eb"]
+    },
+    "base:pickup-towing-boat": {
+      "models": ["models/traffic/pickup-boat"],
+      "paint": ["#d9d9d9", "#2f5d8a", "#b23a2e"]
+    },
+    "base:snowbird-rv": {
+      "models": ["models/traffic/snowbird-rv"],
+      "paint": ["#f2efe6", "#c9b48a", "#7a9e9f"]
+    }
+  }
+}

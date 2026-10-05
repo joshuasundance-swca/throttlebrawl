@@ -2,6 +2,8 @@
 // entity id, updated from the interpolated snapshot. Riders are merged primitive boxes with a lean,
 // an attack pose from the attack phase, a wobble, a held weapon with the steal glint, and (for the
 // law) a flashing light bar. Cars, trucks and pedestrians are instanced, one draw call per shape.
+// Playtest 3 (T12.2): a traffic type with a Blender model (vehicles.ts) draws as that model, one
+// instanced mesh per model, and keeps its box until the model has loaded.
 // M2 render-2 adds the feel: a hit target flashes and throws sparks, a crashed rider ragdolls while
 // the bike cartwheels clear on its own body (EntitySnapshot.tumble), a knocked-off rider gets up and
 // shakes a fist, and a body over the rail makes a splash (the effects live in effects.ts).
@@ -26,6 +28,7 @@ import type {
   SimTrafficTypeDef,
   TumbleBodySnapshot,
 } from '../sim/api';
+import type { AssetManifest } from '../assets';
 import type { FeelEffects, Point } from './effects';
 import {
   critterHeightM,
@@ -56,6 +59,7 @@ import {
 } from './traffic-figures';
 import type { LookStyle } from './look';
 import type { RiderRigs } from './riders';
+import type { BakedVehicle, VehicleSet, VehicleSets } from './vehicles';
 import {
   BlobShadows,
   DEFAULT_VEHICLE_SHADOW,
@@ -81,6 +85,8 @@ export interface EntityViewOptions {
   effects?: FeelEffects;
   /** The feel numbers, shared with the renderer so a tuning change applies at once. */
   params?: RenderParams;
+  /** The asset manifest: traffic models load through it (without one, the boxes are drawn). */
+  assets?: AssetManifest;
 }
 
 /** Interpolated pose fields, written into a caller-owned object (no allocation per frame). */
@@ -235,6 +241,16 @@ const PED_PARTS: BoxPart[] = [
 const GLINT_PARTS: BoxPart[] = [
   { size: [0.16, 0.16, 0.16], at: [0, 0, 0], color: '#fffbe0', rotY: Math.PI / 4 },
 ];
+
+/**
+ * The paint of a traffic type whose row lists none (T12.2): muted, and never so dark that the glass
+ * and tyres, which the tint multiplies too, disappear into the body.
+ */
+export const VEHICLE_PAINT_FALLBACK: readonly string[] = ['#d9d4c7', '#9fb0b8', '#b5543f', '#4f6f5a'];
+/** The key of a model's instanced mesh (and its slot count): `vehicle:<asset id>`. */
+const VEHICLE_KEY = 'vehicle:';
+const vehicleKey = (asset: string): string => `${VEHICLE_KEY}${asset}`;
+const isVehicleKey = (key: string): boolean => key.startsWith(VEHICLE_KEY);
 
 type Shape = 'car' | 'truck';
 const SHAPE_HEIGHT: Record<Shape, number> = { car: 1.45, truck: 3.3 };
@@ -412,6 +428,13 @@ export class EntityViews {
   private readonly trafficTypes = new Map<string, SimTrafficTypeDef>();
   /** Figures drawn from a loaded model (setFigureModel), by figure. */
   private readonly figureModels = new Map<string, BufferGeometry>();
+  private readonly assets: AssetManifest | null;
+  /** Playtest 3 (T12.2): the traffic types that draw from a Blender model, by content id. */
+  private vehicleSets: VehicleSets = new Map();
+  /** The models of those types, by their mesh key (`vehicleKey`). */
+  private readonly vehicleGeometries = new Map<string, BufferGeometry>();
+  /** Which `setTrafficTypes` the model load in flight belongs to (a late one is dropped). */
+  private vehicleRequest = 0;
   private readonly prevById = new Map<number, EntitySnapshot>();
   private readonly seen = new Set<number>();
   private readonly wobbles = new Map<number, Timer>();
@@ -453,6 +476,7 @@ export class EntityViews {
     this.proportions = opts.proportions ?? (() => DEFAULT_PROPORTIONS);
     this.effects = opts.effects ?? null;
     this.params = opts.params ?? defaultRenderParams();
+    this.assets = opts.assets ?? null;
     this.root.name = 'entities';
     this.root.add(this.shadows.root);
     this.instanced = {
@@ -486,6 +510,43 @@ export class EntityViews {
     this.topples.clear();
     this.trafficTypes.clear();
     for (const d of defs) this.trafficTypes.set(d.contentId, d);
+    // Playtest 3 (T12.2): the models of the last race's types that this race uses stay; the others
+    // are dropped, and this race's own load in (vehicles.ts is a lazy chunk).
+    this.vehicleSets = new Map([...this.vehicleSets].filter(([id]) => this.trafficTypes.has(id)));
+    this.requestVehicleModels(defs);
+  }
+
+  /**
+   * Draws these traffic types from their Blender models instead of the boxes (T12.2): each model is
+   * one instanced mesh, shared by the types that use it. A type that is not here keeps its box.
+   * `setTrafficTypes` calls it once the race's models have loaded; tests call it directly.
+   */
+  setVehicleModels(sets: VehicleSets): void {
+    this.vehicleSets = sets;
+    for (const set of sets.values())
+      for (const v of set.variants) {
+        const key = vehicleKey(v.asset);
+        this.vehicleGeometries.set(key, v.geometry);
+        const mesh = this.instanced[key];
+        if (mesh && mesh.geometry !== v.geometry) mesh.geometry = v.geometry;
+      }
+  }
+
+  /** Fetches the models of the race's road vehicles (a lazy chunk); a failure leaves their boxes. */
+  private requestVehicleModels(defs: readonly SimTrafficTypeDef[]): void {
+    const assets = this.assets;
+    if (!assets) return;
+    const ids = defs
+      .filter((d) => d.category !== 'pedestrian' && d.category !== 'animal')
+      .map((d) => d.contentId);
+    const request = ++this.vehicleRequest;
+    void import('./vehicles')
+      .then((m) => m.loadVehicleSets(assets, ids))
+      .then((sets) => {
+        if (request !== this.vehicleRequest) return;
+        this.setVehicleModels(new Map([...this.vehicleSets, ...sets]));
+      })
+      .catch(() => undefined);
   }
 
   /**
@@ -611,6 +672,25 @@ export class EntityViews {
         }
         this.seen.add(e.id);
         pickups++;
+      } else if (e.kind === 'vehicle' && this.vehicleSets.has(e.contentId)) {
+        // Playtest 3 (T12.2): a type with a Blender model draws as it, in the type's own size and
+        // one of its paints. The model is built at its own size, so each axis scales by how far the
+        // type is from it; the height follows the width (a shorter truck is not a lower one).
+        const set = this.vehicleSets.get(e.contentId) as VehicleSet;
+        const v = set.variants[Math.abs(e.id) % set.variants.length] as BakedVehicle;
+        const dims = this.trafficTypes.get(e.contentId) ?? v;
+        const key = vehicleKey(v.asset);
+        const i = (slots[key] = (slots[key] ?? 0) + 1) - 1;
+        const mesh = this.ensureCapacity(key, i + 1);
+        const wide = dims.widthM / v.widthM;
+        this.euler.set(0, p.heading, -p.lean + this.toppleRoll(e, p, curr));
+        this.scale.set(wide, wide, dims.lengthM / v.lengthM);
+        mesh.setMatrixAt(
+          i,
+          this.m.compose(this.v.set(p.x, p.y, p.z), this.q.setFromEuler(this.euler), this.scale),
+        );
+        const paint = set.paint.length ? set.paint : VEHICLE_PAINT_FALLBACK;
+        mesh.setColorAt(i, this.color.setStyle(paint[Math.abs(e.id) % paint.length] ?? '#ffffff'));
       } else if (e.kind === 'vehicle' && trafficFigureFor(e.contentId)) {
         // W-P: each region's own traffic as itself (traffic-figures.ts).
         let fig = trafficFigureFor(e.contentId) as keyof typeof TRAFFIC_FIGURE_HEIGHT_M;
@@ -726,7 +806,9 @@ export class EntityViews {
     const sum = (keys: readonly string[]) => keys.reduce((acc, k) => acc + (slots[k] ?? 0), 0);
     this.counts = {
       riders,
-      vehicles: sum(['car', 'truck', 'mobileHome', 'boatTrailer', 'cableCar', ...TRAFFIC_FIGURES]),
+      vehicles:
+        sum(['car', 'truck', 'mobileHome', 'boatTrailer', 'cableCar', ...TRAFFIC_FIGURES]) +
+        sum(Object.keys(slots).filter(isVehicleKey)),
       peds: sum(['ped', 'iguana', 'pelican', 'gator', 'lawnGator', 'critter', ...PEOPLE_FIGURES]),
       pickups,
       pooled: this.riders.size + this.freeRiders.length + this.pickups.size + this.freePickups.length,
@@ -828,12 +910,12 @@ export class EntityViews {
 
   private makeInstanced(
     name: string,
-    parts: BoxPart[],
+    parts: BoxPart[] | BufferGeometry,
     kind: 'vehicle' | 'ped',
     capacity: number,
   ): InstancedMesh {
     const mesh = new InstancedMesh(
-      this.geometry(`inst:${name}`, () => parts),
+      Array.isArray(parts) ? this.geometry(`inst:${name}`, () => parts) : parts,
       this.material(kind),
       capacity,
     );
@@ -854,6 +936,11 @@ export class EntityViews {
    */
   private ensureCapacity(shape: string, needed: number): InstancedMesh {
     let mesh = this.instanced[shape];
+    const vehicleModel = isVehicleKey(shape) ? this.vehicleGeometries.get(shape) : undefined;
+    if (!mesh && vehicleModel) {
+      mesh = this.makeInstanced(shape, vehicleModel, 'vehicle', 4);
+      this.instanced[shape] = mesh;
+    }
     if (!mesh) {
       const fig = shape as keyof typeof FIGURE_PARTS;
       const regional = TRAFFIC_FIGURE_PARTS[shape as keyof typeof TRAFFIC_FIGURE_PARTS];
