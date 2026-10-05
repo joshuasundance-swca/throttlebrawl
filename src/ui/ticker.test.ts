@@ -170,14 +170,14 @@ describe('ticker: merging style chips', () => {
     expect(item?.endsAt).toBe(800 + 1100);
   });
 
-  it('merges a repeat into the chip that waits behind a bark', () => {
+  it('merges a repeat into the chip that waits behind a name', () => {
     const t = createTicker();
-    t.push(bark('a', 'x', 3000), 0);
+    t.push({ cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 3000 }, 0);
     t.push(near(25), 100);
     t.push(near(25), 200);
     const waiting = t.waiting();
     expect(waiting).toHaveLength(1);
-    // The paid chip never goes stale: it shows, merged, once the bark ends.
+    // The paid chip never goes stale: it shows, merged, once the name ends.
     expect(shown(t, 3000)?.text).toBe('NEAR MISS');
     expect(shown(t, 3000)?.count).toBe(2);
     expect(shown(t, 3000)?.cash).toBe(50);
@@ -225,30 +225,30 @@ describe('ticker: a paid style chip is never dropped (the flip behind its landin
     return out;
   };
 
-  it('shows the landing line, then the flip chip with its cash, when the line comes first', () => {
+  it('shows the flip chip with its cash, then the landing line, when the line comes first', () => {
     const t = createTicker();
     t.push(landing(), 0);
     t.push(flip(), 10);
-    expect(seen(t, 10, 4000)).toEqual(['line:TEN OUT OF TEN, SAYS A PELICAN', 'style:BACKFLIP +$240']);
+    expect(seen(t, 10, 4000)).toEqual(['style:BACKFLIP +$240', 'line:TEN OUT OF TEN, SAYS A PELICAN']);
   });
 
   it('shows the same two, in the same order, when the chip comes first', () => {
     const t = createTicker();
     t.push(flip(), 0);
     t.push(landing(), 10);
-    expect(seen(t, 10, 4000)).toEqual(['line:TEN OUT OF TEN, SAYS A PELICAN', 'style:BACKFLIP +$240']);
+    expect(seen(t, 10, 4000)).toEqual(['style:BACKFLIP +$240', 'line:TEN OUT OF TEN, SAYS A PELICAN']);
   });
 
   it('gives the chip that was taken its remaining time, not a fresh one', () => {
     const t = createTicker();
     t.push(flip(), 0);
-    t.push(landing(), 300);
-    // The line (1.6 s) runs 300..1900; the chip had 800 ms left of its 1100.
-    expect(shown(t, 1899)?.cls).toBe('line');
-    const back = shown(t, 1900);
+    t.push({ cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 900 }, 300);
+    // The name runs 300..1200; the chip had 800 ms left of its 1100.
+    expect(shown(t, 1199)?.cls).toBe('name');
+    const back = shown(t, 1200);
     expect(back?.cls).toBe('style');
-    expect(back?.endsAt).toBe(1900 + 800);
-    expect(shown(t, 2700)).toBeNull();
+    expect(back?.endsAt).toBe(1200 + 800);
+    expect(shown(t, 2000)).toBeNull();
   });
 
   it('keeps a paid chip behind a long run of higher items, however long they last', () => {
@@ -275,12 +275,101 @@ describe('ticker: a paid style chip is never dropped (the flip behind its landin
 
   it('merges a second paid flip into the one that waits, summing the cash', () => {
     const t = createTicker();
-    t.push(landing(), 0);
+    t.push({ cls: 'name', text: 'CATCH OF THE DAY', dwellMs: 900 }, 0);
     t.push(flip(120), 10);
     t.push(flip(120), 20);
-    const item = shown(t, 1600);
+    const item = shown(t, 900);
     expect(item?.count).toBe(2);
     expect(item?.cash).toBe(240);
+  });
+});
+
+describe('ticker: a paid chip takes the strip within a second (the flip behind its barks)', () => {
+  const CHIP_MS = 1100;
+  const cashAt = (t: ReturnType<typeof createTicker>, from: number, to: number): number | null => {
+    for (let now = from; now <= to; now += 10) {
+      if (shown(t, now)?.cash === 240) return now;
+    }
+    return null;
+  };
+
+  it('shows the chip at once over a landing line and three queued barks', () => {
+    const t = createTicker();
+    // A bark is up with two more behind it (a newer waiting bark replaces an older one), then the
+    // landing: its line and the flip's chip arrive on one step.
+    t.push(bark('a', 'first', 3000), 0);
+    t.push(bark('b', 'second', 3000), 100);
+    t.push(bark('c', 'third', 3000), 200);
+    t.push(landing(), 1000);
+    t.push(flip(), 1000);
+    const at = cashAt(t, 1000, 3000);
+    expect(at).not.toBeNull();
+    expect((at ?? Infinity) - 1000).toBeLessThanOrEqual(1000);
+    // It has its whole time; nothing takes the strip from it.
+    expect(shown(t, 1000 + CHIP_MS - 1)?.cash).toBe(240);
+  });
+
+  it('shows the chip first when it comes with the line and the barks queue behind it', () => {
+    const t = createTicker();
+    t.push(landing(), 0);
+    t.push(flip(), 0);
+    t.push(bark('a', 'x', 2000), 5);
+    t.push(bark('b', 'y', 2000), 6);
+    t.push(bark('c', 'z', 2000), 7);
+    expect(shown(t, 10)?.cash).toBe(240);
+    expect(shown(t, CHIP_MS - 1)?.cash).toBe(240);
+    expect(shown(t, CHIP_MS)?.cash).not.toBe(240);
+  });
+
+  it('freezes the bark it took the strip from, and gives it back with its remaining time', () => {
+    const t = createTicker();
+    t.push(bark('a', 'x', 2000), 0);
+    t.push(flip(), 500);
+    expect(shown(t, 500)?.cls).toBe('style');
+    const back = shown(t, 500 + CHIP_MS);
+    expect(back?.cls).toBe('bark');
+    expect(back?.endsAt).toBe(500 + CHIP_MS + 1500);
+  });
+
+  it('keeps the landing line it took the strip from: it shows after the chip', () => {
+    const t = createTicker();
+    t.push(landing(), 0);
+    t.push(flip(), 100);
+    expect(shown(t, 100)?.cls).toBe('style');
+    const back = shown(t, 100 + CHIP_MS);
+    expect(back?.cls).toBe('line');
+    expect(back?.endsAt).toBe(100 + CHIP_MS + 1500);
+  });
+
+  it('still lets a takedown name, an ask or a hint go first, and shows the chip right after', () => {
+    for (const cls of ['name', 'ask', 'teach'] as const) {
+      const t = createTicker();
+      t.push({ cls, text: 'UP', dwellMs: 900 }, 0);
+      t.push(bark('a', 'x', 2000), 10);
+      t.push(flip(), 20);
+      expect(shown(t, 20)?.cls, cls).toBe(cls);
+      expect(shown(t, 900)?.cash, cls).toBe(240);
+    }
+  });
+
+  it('does not take the strip from a finger resting on the showing item', () => {
+    const t = createTicker();
+    t.push(bark('a', 'x', 2000), 0);
+    t.hold(true, 100);
+    t.push(flip(), 200);
+    expect(shown(t, 200)?.cls).toBe('bark');
+    t.hold(false, 300);
+    expect(shown(t, 300)?.cls).toBe('style');
+  });
+
+  it('keeps a cash-less chip below a bark, as before', () => {
+    const t = createTicker();
+    t.push(near(null), 0);
+    t.push(bark('a'), 10);
+    expect(shown(t, 10)?.cls).toBe('bark');
+    t.push(bark('b', 'later', 2000), 20);
+    t.push(near(null), 30);
+    expect(shown(t, 30)?.cls).toBe('bark');
   });
 });
 

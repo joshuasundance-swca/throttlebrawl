@@ -5,9 +5,12 @@
 // player rider held at 40 m/s. What it checks, in the order of the lane's brief (T4.1):
 //   - a light kerb rider (a bicycle, a scooter) steps out of the rider's way as the time to contact
 //     drops under 2 s, keeps clear, is never touched, and is back on its kerb line afterwards;
-//   - with no verge it hugs the edge and slows; a golf cart never leaves the road;
+//   - with no verge it hugs the edge and slows;
+//   - playtest 4 (P4-3, "golf carts and similar things should swerve out of the way"): a golf cart
+//     takes the verge too where there is room, on a road with a shoulder as on one without, keeping
+//     its outer edge inside the smashables' line; where there is no room it hugs the edge;
 //   - a rider steered into a light kerb rider only wobbles (`data.kerb`), and the cyclist topples
-//     for 2 s; a solid frontal into a golf cart still crashes;
+//     for 2 s; a solid frontal into a golf cart still crashes (the maintainer: "Keep it a crash");
 //   - the sliders: `traffic.kerbYield` 0 turns the dodge off and `traffic.kerbSoft` 0 the soft
 //     contact; with the keys absent a race rides exactly as before (the old rear-end crash);
 //   - two runs give the same hash at every 60th tick (no RNG draws, fixed iteration order).
@@ -26,7 +29,7 @@ import { ridersSystem } from '../riders';
 import { SMASH } from '../smash';
 import type { SimConfig, SimEvent, SimInput, SimRiderDef, SimTrafficTypeDef } from '../types';
 import { addMover, createWorld, stepWorld, type SimSystem, type World } from '../world';
-import { KERB_YIELD } from './kerb-yield';
+import { KERB_YIELD, takesVerge, vergeOffsetFor } from './kerb-yield';
 import { kerbCd, placeVehicle, TRAFFIC, trafficState, trafficSystem } from './index';
 
 // ---- fixtures ----------------------------------------------------------------------------
@@ -97,14 +100,24 @@ const PLAYER: SimRiderDef = {
 interface Opts {
   /** The road's verge: a `town` tag gives the 4 m kerb band; rails on both sides give none. */
   verge?: 'town' | 'rails';
+  /** 1.5 m shoulders outside both directions' lanes (the Keys roads' shape): the cart rides in one. */
+  shoulder?: boolean;
   tuning?: Record<string, number>;
   /** Tuning keys left out of the config altogether, as in a race made before they existed. */
   omit?: readonly string[];
   seed?: number;
 }
 
-function bundle(verge: 'town' | 'rails'): BakedNetworkBundle {
-  const b = fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0, lanes: LANES }]);
+const SHOULDER_LANES: readonly LaneInfo[] = [
+  { id: 'L0', dCenterM: -4.25, widthM: 1.5, direction: -1, kind: 'shoulder' },
+  ...LANES,
+  { id: 'R0', dCenterM: 4.25, widthM: 1.5, direction: 1, kind: 'shoulder' },
+];
+/** Where the road's drivable surface ends with the shoulders on: the verge starts here. */
+const SHOULDER_EDGE_M = 5;
+
+function bundle(verge: 'town' | 'rails', shoulder: boolean): BakedNetworkBundle {
+  const b = fixtureNetwork([{ id: 'a', lengthM: 1000, kappa: 0, lanes: shoulder ? SHOULDER_LANES : LANES }]);
   const tags: BakedTag[] = verge === 'town' ? [{ s0: 0, s1: 1000, side: 'both', tag: 'town' }] : [];
   const barriers: BakedBarrier[] =
     verge === 'rails' ? [{ s0: 0, s1: 1000, side: 'both', kind: 'rail', heightM: 1 }] : [];
@@ -112,7 +125,7 @@ function bundle(verge: 'town' | 'rails'): BakedNetworkBundle {
 }
 
 function makeConfig(o: Opts = {}): SimConfig {
-  const road = createRoadNetwork(bundle(o.verge ?? 'town'));
+  const road = createRoadNetwork(bundle(o.verge ?? 'town', o.shoulder ?? false));
   const route = createRouteProgress(road, {
     id: 'r',
     network: 'fixture',
@@ -170,11 +183,15 @@ interface Scene {
  * A kerb rider of `type` at u = 250 (the rider, held at 40 m/s in `riderD`, starts at u = 100, so
  * 150 m behind it), `riderD` from the centre line.
  */
-function scene(type: number, o: Opts & { riderD?: number; riderU?: number; kerbU?: number } = {}): Scene {
+function scene(
+  type: number,
+  o: Opts & { riderD?: number; riderU?: number; kerbU?: number; riderSpeed?: number } = {},
+): Scene {
   const config = makeConfig(o);
   const world = createWorld(config);
+  const speed = o.riderSpeed ?? RIDER_SPEED;
   const m = addMover(world, 'rider', { edge: 0, s: o.riderU ?? 100, d: o.riderD ?? 1.75, dir: 1 }, 0);
-  m.speed = RIDER_SPEED;
+  m.speed = speed;
   for (const s of SCENARIO) s.init(world, config);
   const slot = placeVehicle(world, config, { type, u: o.kerbU ?? 250, dir: 1 });
   const st = trafficState(world);
@@ -186,7 +203,7 @@ function scene(type: number, o: Opts & { riderD?: number; riderU?: number; kerbU
     step() {
       const mover = world.movers[0];
       if (mover) {
-        mover.speed = RIDER_SPEED;
+        mover.speed = speed;
         mover.pos.d = d;
         mover.yaw = 0;
       }
@@ -273,7 +290,7 @@ describe('kerb riders yield (playtest 3): a bicycle steps out of the way', () =>
     for (const w of [0.55, 0.6, 0.7]) {
       expect(w + KERB_YIELD.vergeOffsetM).toBeLessThanOrEqual(SMASH.gapM + 1e-9);
     }
-    expect(KERB_YIELD.lightMaxWidthM).toBeLessThanOrEqual(0.8);
+    expect(KERB_YIELD.softMaxWidthM).toBeLessThanOrEqual(0.8);
   });
 
   it('slows to 0.6 of its cruise speed within 30 ticks, with rails on both sides it hugs the edge', () => {
@@ -297,13 +314,13 @@ describe('kerb riders yield (playtest 3): a bicycle steps out of the way', () =>
     expect(EDGE_M - far).toBeCloseTo(KERB_YIELD.hugM, 6);
   });
 
-  it('a golf cart never leaves the road, and a solid frontal still crashes the rider', () => {
-    const s = scene(T_CART);
+  it('a golf cart with no verge stays inside the road, and a solid frontal still crashes the rider', () => {
+    const s = scene(T_CART, { verge: 'rails' });
     for (let t = 0; t < 600; t++) {
       s.step();
       expect(s.kerb().cd + GOLF_CART.widthM / 2).toBeLessThanOrEqual(EDGE_M + 1e-9);
     }
-    // Not light: no soft contact. Yielding off, the rider meets its tail at 40 m/s.
+    // Not soft: yielding off, the rider meets its tail at 40 m/s and it is still a crash.
     const hit = scene(T_CART, { tuning: { 'traffic.kerbYield': 0 }, riderD: 2.85 });
     const events: SimEvent[] = [];
     for (let t = 0; t < 600 && !events.some((e) => e.type === 'crash'); t++) events.push(...hit.step());
@@ -311,6 +328,110 @@ describe('kerb riders yield (playtest 3): a bicycle steps out of the way', () =>
     expect(crash?.data['cause']).toBe('traffic');
     expect(crash?.data['kerb']).toBeUndefined();
     expect(events.filter((e) => e.type === 'wobble')).toEqual([]);
+  });
+
+  it('a golf cart takes the verge where there is room, inside the smashables line (P4-3)', () => {
+    const s = scene(T_CART);
+    const events: SimEvent[] = [];
+    const home = kerbLine(s, GOLF_CART.widthM);
+    let far = -Infinity;
+    let minClear = Infinity;
+    for (let t = 0; t < 600; t++) {
+      events.push(...s.step());
+      far = Math.max(far, s.kerb().cd);
+      if (Math.abs(s.kerb().u - s.rider().u) < (GOLF_CART.lengthM + TRAFFIC.riderLengthM) / 2 + 1)
+        minClear = Math.min(minClear, sideClear(s, GOLF_CART.widthM));
+    }
+    // Past the road's edge, not just hugging it, and its outer edge stops at the smashables' line.
+    expect(far).toBeGreaterThan(home + 0.5);
+    expect(far - GOLF_CART.widthM / 2).toBeLessThan(EDGE_M);
+    expect(far + GOLF_CART.widthM / 2).toBeCloseTo(EDGE_M + SMASH.gapM, 6);
+    expect(minClear).toBeGreaterThanOrEqual(0.4);
+    expect(events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toEqual([]);
+  });
+
+  describe('a shoulder road (the Keys shape): the cart rides in the shoulder and moves onto the verge', () => {
+    const run = (riderD: number, riderSpeed: number, tuning: Record<string, number> = {}) => {
+      const s = scene(T_CART, { shoulder: true, riderD, riderSpeed, tuning });
+      const events: SimEvent[] = [];
+      const home = kerbLine(s, GOLF_CART.widthM);
+      let far = -Infinity;
+      let minClear = Infinity;
+      let passed = false;
+      // 150 m at 20 m/s against a cart at 7.5 m/s takes 12 s (720 ticks), then the cart returns.
+      for (let t = 0; t < 1000; t++) {
+        events.push(...s.step());
+        far = Math.max(far, s.kerb().cd);
+        if (s.rider().u >= s.kerb().u) passed = true;
+        if (Math.abs(s.kerb().u - s.rider().u) < (GOLF_CART.lengthM + TRAFFIC.riderLengthM) / 2 + 1)
+          minClear = Math.min(minClear, sideClear(s, GOLF_CART.widthM));
+      }
+      return { s, events, home, far, minClear, passed };
+    };
+
+    it('rides in the middle of the shoulder when not dodging', () => {
+      const s = scene(T_CART, { shoulder: true });
+      expect(kerbLine(s, GOLF_CART.widthM)).toBeCloseTo(4.25, 6);
+    });
+
+    // A rider on the cart's own line used to meet it end-on: the dodge moved the cart 5 cm. Now the cart
+    // is 1.0 m further out (its outer edge on the prop line, the most the verge may give it), so a
+    // rider on the shoulder's inner half is never touched.
+    for (const speed of [20, 35]) {
+      it(`a rider on the shoulder's inner half closing at ${speed} m/s never touches it`, () => {
+        const r = run(3.6, speed);
+        expect(r.passed).toBe(true);
+        expect(r.events.filter((e) => e.type === 'crash' || e.type === 'wobble')).toEqual([]);
+        expect(r.far).toBeGreaterThan(r.home + 0.9);
+        expect(r.far + GOLF_CART.widthM / 2).toBeCloseTo(SHOULDER_EDGE_M + SMASH.gapM, 6);
+        expect(r.minClear).toBeGreaterThanOrEqual(0.4);
+      });
+
+      // Dead on the cart's line the boxes still just touch beside each other, so there may be a side
+      // brush or a graze (a wobble, as for any vehicle) as the rider passes, but never the end-on crash it had before.
+      it(`a rider on the cart's own line closing at ${speed} m/s is not crashed into it`, () => {
+        const r = run(4.25, speed);
+        expect(r.passed).toBe(true);
+        expect(r.events.filter((e) => e.type === 'crash')).toEqual([]);
+        const hits = r.events.filter((e) => e.type === 'wobble').map((e) => e.data['hit']);
+        expect(hits.every((h) => h === 'side' || h === 'graze')).toBe(true);
+        expect(r.far).toBeGreaterThan(r.home + 0.9);
+        expect(r.far + GOLF_CART.widthM / 2).toBeLessThanOrEqual(SHOULDER_EDGE_M + SMASH.gapM + 1e-9);
+      });
+    }
+
+    it('a rider in the lane never makes it move', () => {
+      const r = run(2.0, 35);
+      expect(r.far).toBeCloseTo(r.home, 6);
+      expect(r.events).toEqual([]);
+    });
+
+    it('it is back on its line after the rider has passed', () => {
+      const r = run(4.25, 20);
+      expect(r.s.kerb().cd).toBeCloseTo(r.home, 3);
+    });
+
+    it('yielding off, the same rider still crashes into it from behind (a solid rear-end stays a crash)', () => {
+      const r = run(4.25, 20, { 'traffic.kerbYield': 0 });
+      expect(r.events.some((e) => e.type === 'crash' && e.data['cause'] === 'traffic')).toBe(true);
+    });
+  });
+
+  it('every kerb type may take a verge with room for it, and no other', () => {
+    for (const t of [BICYCLE, SCOOTER, GOLF_CART]) {
+      expect(takesVerge(t, t.widthM + KERB_YIELD.vergeSpareM)).toBe(true);
+      expect(takesVerge(t, t.widthM + KERB_YIELD.vergeSpareM - 0.05)).toBe(false);
+    }
+  });
+
+  it('the verge spot keeps any kerb type inside the smashables line, and a light one where it was', () => {
+    for (const w of [0.55, 0.6, 0.7, 1.3]) {
+      expect(vergeOffsetFor(w) + w / 2).toBeLessThanOrEqual(SMASH.gapM + 1e-9);
+    }
+    // The light widths ride exactly 0.2 m past the edge, as in playtest 3.
+    for (const w of [0.55, 0.6, 0.7])
+      expect(vergeOffsetFor(w)).toBeCloseTo(w / 2 + KERB_YIELD.vergeOffsetM, 9);
+    expect(KERB_YIELD.propLineM).toBe(SMASH.gapM);
   });
 
   it('a rider on the verge: the bicycle stays inside the road', () => {

@@ -441,11 +441,47 @@ describe('drift: the chain and the meter', () => {
 });
 
 describe('drift: when it never starts', () => {
-  it('braking and turning on a straight (no bend ahead) is no drift', () => {
+  it('braking and turning on a straight (no bend ahead) is a drift too: it starts anywhere (playtest 4, P4-8)', () => {
+    // Playtest 4 turned the old "no drift on a straight" rule round on purpose: the maintainer
+    // chose "Anywhere", so the road's bend is no part of the entry, only speed, brake and bars.
     const h = riderHarness(config(HAIRPIN), { s: 40, d: -3, speed: 40 });
     const r = ride(h, () => input(0, 1, 0.8), 60);
-    expect(ofType(r.events, 'driftStart')).toEqual([]);
-    expect(r.track.every((p) => p.drift === 0)).toBe(true);
+    const starts = ofType(r.events, 'driftStart');
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.data['side']).toBe(1);
+    expect(r.track.some((p) => p.drift > 0)).toBe(true);
+    expect(r.track.some((p) => p.edge !== 0)).toBe(false); // it never reached the bend: a straight
+  });
+
+  it('on a straight the meter, the cash and the exit boost still work, and a left drift goes left', () => {
+    const h = riderHarness(config(HAIRPIN), { s: 40, d: -3, speed: 40 });
+    const r = ride(h, (hh, t) => (t < 70 ? input(0, 1, -0.8) : input(0.3, 0, 0)), 200, {
+      until: (hh) => hh.rider.pos.edge !== 0,
+    });
+    expect(ofType(r.events, 'driftStart')[0]?.data['side']).toBe(-1);
+    expect(r.track.some((p) => p.cash > 0)).toBe(true);
+    const ends = ofType(r.events, 'driftEnd').filter((e) => e.data['bank'] !== true);
+    expect(ends).toHaveLength(1);
+    expect(r.events.some((e) => e.type === 'crash')).toBe(false);
+  });
+
+  it('a straight is still no drift below the speed floor, without the brake, or without the bars', () => {
+    const floor = ride(
+      riderHarness(config(HAIRPIN), { s: 40, d: -3, speed: 12 }),
+      () => input(0, 1, 0.8),
+      60,
+    );
+    const noBrake = ride(
+      riderHarness(config(HAIRPIN), { s: 40, d: -3, speed: 40 }),
+      () => input(1, 0, 0.8),
+      60,
+    );
+    const noBars = ride(
+      riderHarness(config(HAIRPIN), { s: 40, d: -3, speed: 40 }),
+      () => input(0, 1, 0.2),
+      60,
+    );
+    for (const r of [floor, noBrake, noBars]) expect(ofType(r.events, 'driftStart')).toEqual([]);
   });
 
   it('a stab of the brake shorter than the gate is no drift', () => {

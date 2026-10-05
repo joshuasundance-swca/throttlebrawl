@@ -14,8 +14,11 @@
 //
 // A PAID style chip (cash above 0: BACKFLIP +$240) is never dropped: not for waiting, not for being
 // preempted, not for the queue limit (playtest 3, wave-B live check: a landing line and the flip's
-// chip arrive together, the line outranks the chip, and the chip used to expire behind it). It waits
-// its turn, is frozen with its remaining time when taken, and shows after the line.
+// chip arrive together, the line outranks the chip, and the chip used to expire behind it). It is
+// frozen with its remaining time when taken. It also ranks above a bark, a system line and a landing
+// line (playtest 4, the wave-C live check: the chip showed 10 s after its landing, behind the barks):
+// it takes the strip as it arrives, a bark or line it took the strip from is frozen and comes back
+// after it, and only a hint, an ask or a takedown name (the top three classes) go first.
 import { meterLabel, type MeterRun, type StylePop } from './race-feed';
 
 export type TickerClass = 'teach' | 'name' | 'ask' | 'bark' | 'system' | 'line' | 'style' | 'meter';
@@ -71,6 +74,13 @@ export const TICKER_VOICE_TAIL_MS = 250;
 /** A style chip that carries cash: it is never dropped (see the top of this file). */
 export const isPaidStyle = (cls: TickerClass, cash: number | null | undefined): boolean =>
   cls === 'style' && cash !== null && cash !== undefined && cash > 0;
+
+/**
+ * Where an item ranks: its class's priority, except a paid chip, which ranks just above a bark (a
+ * smaller number is higher). The classes' own numbers (`tickerPriority`) are unchanged.
+ */
+const rankOf = (cls: TickerClass, cash: number | null | undefined): number =>
+  isPaidStyle(cls, cash) ? PRIORITY.bark - 0.5 : PRIORITY[cls];
 
 /** The classes whose item is frozen and resumed when a higher class takes the strip. */
 const RESUMES: ReadonlySet<TickerClass> = new Set(['teach', 'ask', 'bark', 'system']);
@@ -229,9 +239,18 @@ export function createTicker(options: TickerOptions = {}): Ticker {
   const best = (): Entry | undefined => {
     let pick: Entry | undefined;
     for (const e of queue) {
-      if (!pick || PRIORITY[e.item.cls] < PRIORITY[pick.item.cls]) pick = e;
+      if (!pick || rankOf(e.item.cls, e.cash) < rankOf(pick.item.cls, pick.cash)) pick = e;
     }
     return pick;
+  };
+
+  /**
+   * Whether a waiting entry takes the strip from the item showing: a higher rank does. A paid chip's
+   * lift does not reach another style chip (a cash-less one, say), which it waits behind as before.
+   */
+  const outranks = (e: Entry, shownItem: { cls: TickerClass; cash: number | null }): boolean => {
+    const mine = shownItem.cls === 'style' ? PRIORITY[e.item.cls] : rankOf(e.item.cls, e.cash);
+    return mine < rankOf(shownItem.cls, shownItem.cash);
   };
 
   const take = (e: Entry) => {
@@ -249,10 +268,13 @@ export function createTicker(options: TickerOptions = {}): Ticker {
     for (let guard = 0; guard < 32; guard++) {
       // Stale waiters go.
       const before = queue.length;
+      // A landing line that waits behind the paid chip showing is not stale: it comes right after.
+      const behindPaid = cur !== null && isPaidStyle(cur.cls, cur.cash);
       queue = queue.filter(
         (e) =>
           e.remainingMs !== null ||
           isPaidStyle(e.item.cls, e.cash) ||
+          (behindPaid && e.item.cls === 'line') ||
           now - e.queuedAt <= TICKER_MAX_WAIT_MS[e.item.cls],
       );
       if (queue.length !== before) version++;
@@ -296,8 +318,11 @@ export function createTicker(options: TickerOptions = {}): Ticker {
         }
         return;
       }
-      if (next && !cur.held && PRIORITY[next.item.cls] < PRIORITY[cur.cls]) {
-        if (RESUMES.has(cur.cls) || isPaidStyle(cur.cls, cur.cash)) {
+      if (next && !cur.held && outranks(next, cur)) {
+        // A landing line a paid chip takes the strip from is kept (it shows after the chip); any
+        // other taking drops it as stale.
+        const keptLine = cur.cls === 'line' && isPaidStyle(next.item.cls, next.cash);
+        if (RESUMES.has(cur.cls) || isPaidStyle(cur.cls, cur.cash) || keptLine) {
           // Frozen with the time it has left; it keeps its id, so it goes before later items of its class.
           queue.push({
             id: cur.id,

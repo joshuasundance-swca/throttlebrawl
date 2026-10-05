@@ -1,0 +1,7 @@
+---
+kind: changed
+audience: player
+---
+A drift now starts anywhere. Brake hard and steer hard above about 40 mph and the bike slides, on a straight road as much as in a bend. Before, a drift started only where the road itself curved ahead, so it never happened on the Seven Mile or in San Francisco's downtown. The rest of the move is as it was: the style meter and its cash, the chain, the exit boost, the smoke and the knee down all work on a straight. A stab of the brake shorter than 0.15 s, a slow bike, no brake or only a gentle turn of the bars still do not drift.
+
+For devs: `src/sim/riders/drift.ts` drops the bend-ahead check from the entry (`bendAhead`, `DRIFT_KAPPA` and `DRIFT_LOOK_M` are gone; nothing else used them); the floor stays `riders.driftMinMps` at 18 m/s. `src/sim/riders/drift.test.ts`: the old test "braking and turning on a straight (no bend ahead) is no drift" is rewritten on purpose to expect a drift, with new cases for a left drift, its cash and boost on a straight, and for the floors that still hold (speed, brake, bars). `tests/sim/drift-anywhere.test.ts` rides the Seven Mile and San Francisco's downtown, brakes and turns on a straight stretch (the sharpest bend within 60 m under a 400 m radius, so the old rule would have refused), both sides: a `driftStart` fires (0 of 4 cases before the change). The drift bot's career-event figures and the replay check stay green. Product spec's Drift row updated. Not phone-verified.

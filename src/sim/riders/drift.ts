@@ -13,8 +13,10 @@
 // - Entry. A player's rider on the road, not wobbling, wheelieing or mid U-turn, holding all of
 //   these for DRIFT_GATE_TICKS (0.15 s, so a stab of the brake in traffic never drifts): speed at
 //   least `riders.driftMinMps` (× the lower-overall-speed multiplier), the brake at DRIFT_BRAKE or
-//   more, the bars at DRIFT_STEER or more, and the road bending that way (|κ| ≥ 1/150 within the
-//   next DRIFT_LOOK_M). A `driftStart` fires with the side (1 right, -1 left) and the speed.
+//   more and the bars at DRIFT_STEER or more. Anywhere (playtest 4, P4-8, "Anywhere": the road's
+//   bend is no part of the entry, so a drift starts on a straight too; it was gated on a bend
+//   ahead, which kept it off the Seven Mile and SF downtown). A `driftStart` fires with the side
+//   (1 right, -1 left) and the speed.
 // - Hold. The brake is no longer needed (held, it still brakes); the throttle may come back on (a
 //   power slide). The slip β follows its target, side × βmax × (0.55 + 0.45 × |steer|), at
 //   DRIFT_BETA_RATE. It buys a tighter line at a higher speed (maxYaw × 1 + `riders.driftSteerGain`
@@ -46,7 +48,6 @@
 // AI riders never drift in this pass. Off while `riders.drift` is absent or 0, so recordings made
 // before ride as they did. Deterministic: core math only, plain numbers in the riders' state.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
-import type { RoadPos } from '../../road';
 import type { MovesSnapshot, SimConfig, SimEvent, SimInput } from '../types';
 import { emit, speedMultiplierOf, type Mover, type World } from '../world';
 import type { RiderState } from './index';
@@ -150,11 +151,6 @@ export const DRIFT_GATE_TICKS = 9;
 export const DRIFT_BRAKE = 0.7;
 /** The bars count as turned in from this share of full lock. [default] */
 export const DRIFT_STEER = 0.5;
-/** The road must bend at least this much (1/m, a 150 m radius) within DRIFT_LOOK_M ahead. [default] */
-export const DRIFT_KAPPA = 1 / 150;
-export const DRIFT_LOOK_M = 30;
-/** The look-ahead's sample step, m. */
-const LOOK_STEP_M = 6;
 /** The largest slip, rad (34°). [default] */
 export const DRIFT_BETA_MAX = 0.6;
 /** β follows its target at this rate while drifting, 1/s, and eases back to 0 at DRIFT_EASE after. */
@@ -275,21 +271,6 @@ function wipedOut(events: readonly SimEvent[], id: EntityId): boolean {
 /** Whether the rider came down off a flight last tick on its wheels (no crash). */
 function landed(events: readonly SimEvent[], id: EntityId): boolean {
   return events.some((e) => e.type === 'land' && e.actor === id && e.data['quality'] !== 'crash');
-}
-
-/** Whether the road bends toward `side` (1 right, -1 left) by DRIFT_KAPPA within DRIFT_LOOK_M ahead. */
-function bendAhead(config: SimConfig, pos: RoadPos, side: number): boolean {
-  const at: RoadPos = { edge: pos.edge, s: pos.s, d: pos.d, dir: pos.dir };
-  for (let ahead = 0; ahead <= DRIFT_LOOK_M; ahead += LOOK_STEP_M) {
-    if (ahead > 0) {
-      at.s += at.dir * LOOK_STEP_M;
-      if (config.road.advance(at) === 'deadEnd') return false;
-    }
-    // κ·dir is the bend as the rider sees it: positive turns to its right.
-    const k = config.road.kappaAt(at.edge, at.s) * at.dir;
-    if (k * side >= DRIFT_KAPPA) return true;
-  }
-  return false;
 }
 
 /** The style points a drift earns per world second, before the chain (perDriftSecondCash scaled). */
@@ -443,8 +424,7 @@ export function driftStep(
       !uturn &&
       wheelieOf(world, m) === 0 &&
       brake >= DRIFT_BRAKE &&
-      m.speed >= (world.params['riders.driftMinMps'] ?? DRIFT_DEFAULTS.minMps) * mult &&
-      bendAhead(config, m.pos, want);
+      m.speed >= (world.params['riders.driftMinMps'] ?? DRIFT_DEFAULTS.minMps) * mult;
     st.driftGate[id] = ready ? (st.driftGate[id] ?? 0) + world.timeScale : 0;
     if (ready && (st.driftGate[id] ?? 0) >= DRIFT_GATE_TICKS) {
       side = want;
