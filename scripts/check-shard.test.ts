@@ -88,6 +88,28 @@ describe('check --shard', () => {
     60_000,
   );
 
+  // The unit tests shard too since 2026-10-05: one job took 435 s, with its slowest file 337 s.
+  it('plans unit slices that hold every unit test file on disk exactly once', () => {
+    const res = spawnSync(process.execPath, [script, '--tier', 'unit', '--shard', '1/2', '--plan'], {
+      encoding: 'utf8',
+    });
+    expect(res.status, res.stderr).toBe(0);
+    const slices = res.stdout.split(/^\[slice \d+\/\d+\].*$/m).slice(1);
+    expect(slices).toHaveLength(2);
+    const planned = slices.flatMap((s) => [...s.matchAll(/^ {2}(\S+)$/gm)].map((m) => m[1]));
+    for (const s of slices) expect(s.trim(), 'no empty slice').not.toBe('');
+    const onDisk = ['src', 'scripts', 'tools']
+      .flatMap((dir) =>
+        readdirSync(path.resolve(import.meta.dirname, '..', dir), { recursive: true })
+          .map((f) => `${dir}/${String(f).replaceAll('\\', '/')}`)
+          .filter((f) => f.endsWith('.test.ts') && !f.includes('/node_modules/')),
+      )
+      .sort();
+    expect(onDisk.length).toBeGreaterThan(100);
+    expect(new Set(planned).size, 'no file in two slices').toBe(planned.length);
+    expect([...planned].sort()).toEqual(onDisk);
+  }, 60_000);
+
   it('still refuses perf alone in a slice, even the last one', () => {
     const r = check('--tier', 'perf', '--shard', '2/2');
     expect(r.code).toBe(1);
