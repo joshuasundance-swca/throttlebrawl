@@ -346,10 +346,10 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   rails where they are: it reads Grand's full length).
   `pdx-blocks` and `rail-line` draw nothing until the render lane's Portland work (T12.4).
 - **Landmarks:** the two Hawthorne lift towers, `pdx-landmarks#pdx_lift_tower` (`overRoad`), at the
-  ends of OSM's 75 m lift span, on the deck (placement 3.5 and 3.1 m from the real points). **Provisional:**
-  the kit and node names are the asset plan's (assets.md); they draw nothing until CX4 builds the kit,
-  and if CX4 names them otherwise this config is edited and re-baked. The Burnside operator towers,
-  the roof sign and the cart pod are not placed (their kit is not built; the plan's wave C).
+  ends of OSM's 75 m lift span, on the deck (placement 3.5 and 3.1 m from the real points). CX4 built the kit
+  under those names (`models/landmarks/pdx-landmarks`, region-pnw), so they draw. The kit also holds the
+  Burnside operator towers (`pdx_bascule_pier`), the roof sign (`pdx_roof_sign`) and the square
+  (`pdx_plaza`); this config does not place them yet.
 - **Size:** 17 files, 200 KB minified, 56.2 KB gzip. The three bridge roads sample every 4 m.
   The still scene on the main path draws at most 58 of 120 calls (mean 37) before the Portland
   facades (T12.4) add theirs.

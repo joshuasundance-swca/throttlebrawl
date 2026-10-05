@@ -2,7 +2,7 @@
 // `pack: 'region-pnw'` and `region: 'pacific-northwest'`, so its GLB lands in
 // packs/region-pnw/assets/ and the per-region model budget counts it as the region's. CX4 appends
 // here, after the two step-up bikes' rows (playtest 3, T10.2); no other batch edits this file.
-import { VIEWS } from './views.mjs';
+import { VARIANT_VIEWS, VIEWS } from './views.mjs';
 
 /** The nodes every bike export names, in the order the scripts make them. */
 const BIKE_NODES = [
@@ -64,4 +64,124 @@ export const PNW_PROPS = [
     },
     views: VIEWS,
   },
+  {
+    name: 'pdx_landmarks',
+    script: 'props/pdx_landmarks.py',
+    asset: 'models/landmarks/pdx-landmarks',
+    pack: 'region-pnw',
+    region: 'pacific-northwest',
+    kind: 'variants',
+    budget: { materials: 10 },
+    variants: {
+      roots: [
+        'pdx_lift_tower_lod0',
+        'pdx_lift_tower_lod1',
+        'pdx_truss_bay',
+        'pdx_lift_span',
+        'pdx_bascule_pier',
+        'pdx_st_johns_tower_lod0',
+        'pdx_st_johns_tower_lod1',
+        'pdx_roof_sign',
+        'pdx_plaza',
+      ],
+      xs: [-240, -190, -140, -90, -40, 10, 60, 110, 180],
+      parts: ['body'],
+      perVariant: { tris: 800, draws: 10 },
+      tris: [700, 100, 160, 260, 300, 800, 110, 400, 600],
+      height: [0, 125],
+      heights: [
+        [35.99, 36.01],
+        [35.99, 36.01],
+        [7.9, 8.1],
+        [9.9, 10.1],
+        [9.9, 10.1],
+        [124.99, 125.01],
+        [124.99, 125.01],
+        [20, 22],
+        [12.99, 13.01],
+      ],
+      sway: false,
+      sharedMaterials: false,
+      bays: { roots: ['pdx_truss_bay', 'pdx_lift_span'], lengthM: [40, 64] },
+      lods: [
+        { lod0: 'pdx_lift_tower_lod0', lod1: 'pdx_lift_tower_lod1' },
+        { lod0: 'pdx_st_johns_tower_lod0', lod1: 'pdx_st_johns_tower_lod1' },
+      ],
+    },
+    textSurfaces: ['pdx_roof_sign_words'],
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  {
+    name: 'pdx_downtown',
+    script: 'props/pdx_downtown.py',
+    asset: 'models/scenery/pdx-downtown',
+    pack: 'region-pnw',
+    region: 'pacific-northwest',
+    kind: 'variants',
+    budget: { materials: 10 },
+    variants: {
+      roots: [
+        'pdx_cast_iron',
+        'pdx_brick_loft',
+        'pdx_office_block',
+        'pdx_pink_tower_base',
+        'pdx_pink_tower_mid',
+        'pdx_pink_tower_crown',
+        'pdx_food_cart_a',
+        'pdx_food_cart_b',
+        'pdx_food_cart_c',
+        'pdx_bike_rack',
+      ],
+      xs: [-225, -175, -125, -75, -25, 25, 75, 125, 175, 225],
+      parts: ['body'],
+      perVariant: { tris: 300, draws: 14 },
+      tris: [300, 220, 200, 60, 40, 90, 160, 160, 160, 40],
+      height: [0, 28],
+      heights: [
+        [11.99, 12.01],
+        [24.99, 25.01],
+        [27.99, 28.01],
+        [6.99, 7.01],
+        [13.99, 14.01],
+        [7.99, 8.01],
+        [2.99, 3.01],
+        [2.99, 3.01],
+        [2.99, 3.01],
+        [1.59, 1.61],
+      ],
+      sway: false,
+      sharedMaterials: false,
+    },
+    atlas: {
+      sheet: 'pacific-northwest',
+      surfaces: [
+        ...['pdx_cast_iron', 'pdx_brick_loft', 'pdx_office_block'].flatMap((n) =>
+          Array.from({ length: 4 }, (_, i) => `${n}_facade_${i}`),
+        ),
+        ...['base', 'mid', 'crown'].flatMap((m) =>
+          Array.from({ length: 8 }, (_, i) => `pdx_pink_tower_${m}_facade_${i}`),
+        ),
+        ...['a', 'b', 'c'].map((s) => `pdx_food_cart_${s}_front`),
+      ],
+    },
+    textSurfaces: ['pdx_food_cart_a_name', 'pdx_food_cart_b_name', 'pdx_food_cart_c_name'],
+    convexParts: [],
+    views: VARIANT_VIEWS,
+  },
+  .../** @type {[string,string,number,number][]} */ ([
+    ['pdx_streetcar', 'pdx-streetcar', 700, 7],
+    ['wagon_with_kayaks', 'wagon-with-kayaks', 380, 7],
+    ['camper_van', 'camper-van', 450, 8],
+    ['log_truck', 'log-truck', 800, 8],
+  ]).map(([name, id, tris, materials]) => ({
+    name,
+    script: `props/${name}.py`,
+    asset: `models/traffic/${id}`,
+    pack: 'region-pnw',
+    region: 'pacific-northwest',
+    kind: /** @type {const} */ ('vehicle'),
+    budget: { tris, draws: materials, materials },
+    views: VIEWS,
+  })),
 ];
