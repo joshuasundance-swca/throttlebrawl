@@ -50,6 +50,8 @@ export const MODEL_ASSETS = {
   keysIslets: 'models/scenery/keys-islets',
   // run W-R: San Francisco's downtown towers, screens, headquarters, lamps and signals (downtown.ts)
   sfDowntown: 'models/scenery/sf-downtown',
+  // Playtest 3 (T12.4, Codex CX3): San Francisco's stackable towers, in region-sf's pack (downtown.ts)
+  sfTowerModules: 'models/scenery/sf-tower-modules',
   // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
   duvalKit: 'models/scenery/duval-kit',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
@@ -119,6 +121,25 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'dt_bench',
     'dt_orb',
   ],
+  // Five styles (glass, stone, screen, crown, midrise), each a 7 m base, a 14 m four-storey mid and an
+  // 8 m crown, in that order: variant = style * 3 + module (downtown.ts stacks them).
+  sfTowerModules: [
+    'glass_base',
+    'glass_mid',
+    'glass_crown',
+    'stone_base',
+    'stone_mid',
+    'stone_crown',
+    'screen_base',
+    'screen_mid',
+    'screen_crown',
+    'crown_base',
+    'crown_mid',
+    'crown_crown',
+    'midrise_base',
+    'midrise_mid',
+    'midrise_crown',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -166,7 +187,10 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
  * The region atlas each model's atlas surfaces sample (atlas.ts; `textures/atlas/<sheet>`): it loads
  * with the model, and the model draws with it as its map.
  */
-export const ATLAS_SHEETS: Readonly<Partial<Record<ModelKind, string>>> = { duvalKit: 'florida-keys' };
+export const ATLAS_SHEETS: Readonly<Partial<Record<ModelKind, string>>> = {
+  duvalKit: 'florida-keys',
+  sfTowerModules: 'san-francisco',
+};
 
 /** San Francisco's waterfront tags (run W-U; tools/road/tracks/sf-waterfront.ts). */
 export const WATERFRONT_TAGS: readonly string[] = [
@@ -231,6 +255,8 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     // cross traffic and its sidewalk clutter, and the cable car on a cable-car street.
     if (['towers', 'plaza', 'cross-street', 'cable-crossing'].some((t) => n.tags.has(t))) {
       out.add('sfDowntown');
+      // Playtest 3 (T12.4): the towers stack CX3's modules, with the San Francisco atlas.
+      out.add('sfTowerModules');
       out.add('sfRoadside');
     }
     if (n.tags.has('cable-crossing')) out.add('cableCar');

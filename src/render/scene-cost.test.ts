@@ -24,10 +24,10 @@ import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork 
 import { BlocksLayer, hasBlocks } from './chinatown-northbeach';
 import { DowntownLayer, hasDowntown } from './downtown';
 import { hasMission, MissionLayer } from './mission';
-import { readGlb } from './glb';
 import { CAMERA_FAR_M } from './index';
 import { createFlatLook } from './look';
-import { bakeModel, MODEL_ASSETS, modelKindsFor, type ModelKind, type SceneryModels } from './models';
+import { bakeRepoModel } from './model-files.test-util';
+import { modelKindsFor, type ModelKind, type SceneryModels } from './models';
 import { hasPnwPlaces, PnwPlacesLayer } from './pnw-places';
 import { buildRoadScene, networkTags, type RoadDressing } from './road-mesh';
 import { KITS, kitFor, RoadsideLayer } from './roadside';
@@ -70,19 +70,14 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   return { road: createRoadNetwork({ network, roads }), dressing };
 }
 
-async function readRepoFile(rel: string): Promise<ArrayBuffer> {
-  const mod: string = 'node:fs';
-  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string): Uint8Array };
-  const buf = fs.readFileSync(rel);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-}
-
 async function modelsFor(road: RoadNetwork, dressing: RoadDressing): Promise<SceneryModels> {
   const { tropical, tags } = networkTags(road, dressing);
   const kinds = modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
   const out: SceneryModels = {};
   for (const k of kinds) {
-    out[k] = bakeModel(k, readGlb(await readRepoFile(`packs/base/assets/${MODEL_ASSETS[k]}.glb`)));
+    // As the game loads it: from the pack that carries it, with its region atlas (T12.4: the downtown's
+    // stacked towers draw with San Francisco's).
+    out[k] = await bakeRepoModel(k);
   }
   return out;
 }
@@ -168,11 +163,15 @@ describe('the still scene along every route', () => {
       const verge = new VergeLayer(road, look, { tags });
       const dt =
         models.sfDowntown && hasDowntown(tags)
-          ? new DowntownLayer(models.sfDowntown, models.sfRoadside, models.cableCar, look, {
-              road,
-              dressing,
-              seed,
-            })
+          ? new DowntownLayer(
+              models.sfDowntown,
+              models.sfRoadside,
+              models.cableCar,
+              look,
+              { road, dressing, seed },
+              // The stacked towers (playtest 3, T12.4), as the renderer passes them.
+              models.sfTowerModules,
+            )
           : null;
       // Run W-U: San Francisco's waterfront.
       const wf = hasWaterfront(tags) ? new WaterfrontLayer(models, look, { road, dressing, seed }) : null;

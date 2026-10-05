@@ -9,6 +9,7 @@ import { Mesh, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { readGlb } from './glb';
+import { readAsset } from './model-files.test-util';
 import { createFlatLook } from './look';
 import {
   bakeModel,
@@ -46,13 +47,8 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
 }
 
 async function model(kind: ModelKind) {
-  const mod: string = 'node:fs';
-  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string): Uint8Array };
-  const buf = fs.readFileSync(`packs/base/assets/${MODEL_ASSETS[kind]}.glb`);
-  return bakeModel(
-    kind,
-    readGlb(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer),
-  );
+  // A model lives in the base pack or, for a region's own (San Francisco's tower modules), its region pack.
+  return bakeModel(kind, readGlb(await readAsset(MODEL_ASSETS[kind], 'glb')));
 }
 
 const ALL: SceneryModels = {};

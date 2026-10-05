@@ -16,7 +16,7 @@ import {
 import { createFlatLook } from './look';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createAssetManifest } from '../assets';
-import { assetIndex, loadBasePack } from '../content';
+import { assetIndex, createPackLibrary } from '../content';
 import { readGlb } from './glb';
 import {
   bakeModel,
@@ -39,8 +39,8 @@ const roadFiles = import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.j
   eager: true,
   import: 'default',
 });
-/** The GLBs the build ships (the same glob the content module hands the asset manifest). */
-const glbFiles = import.meta.glob<string>('/packs/base/assets/models/**/*.glb', {
+/** The GLBs the build ships (the same glob the content module hands the asset manifest): the base pack's and each region pack's. */
+const glbFiles = import.meta.glob<string>('/packs/*/assets/models/**/*.glb', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -64,8 +64,8 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
 }
 
 async function glbOf(kind: ModelKind): Promise<ArrayBuffer> {
-  const key = `/packs/base/assets/${MODEL_ASSETS[kind]}.glb`;
-  if (!glbFiles[key]) throw new Error(`no GLB for ${kind}`);
+  const key = Object.keys(glbFiles).find((k) => k.endsWith(`/assets/${MODEL_ASSETS[kind]}.glb`));
+  if (!key) throw new Error(`no GLB for ${kind}`);
   return readRepoFile(key);
 }
 
@@ -336,6 +336,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // playtest 3, T12.3: the Seven Mile's bays (bridge-bays.ts): the new span's two, the old
       // bridge's two, a gap end and a repair platform
       sevenMileKit: 6,
+      // playtest 3 (T12.4): San Francisco's stackable towers, CX3: five styles of base, mid and crown
+      sfTowerModules: 15,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {
@@ -357,7 +359,11 @@ describe('the Blender models (playtest 1c item 4)', async () => {
         for (let i = 0; i < c.count; i += 3) colours.add(`${c.getX(i).toFixed(2)},${c.getY(i).toFixed(2)}`);
         // A roadside kit's fern or fence section is one flat colour; the kit as a whole has many.
         // (A new-span bay is one concrete colour.)
-        const single = kind === 'fogBanks' || kind.endsWith('Roadside') || kind === 'sevenMileKit';
+        const single =
+          kind === 'fogBanks' ||
+          kind.endsWith('Roadside') ||
+          kind === 'sevenMileKit' ||
+          kind === 'sfTowerModules';
         expect(colours.size, `${kind} keeps its flat colours`).toBeGreaterThan(single ? 0 : 1);
       }
       if (kind.endsWith('Roadside')) {
@@ -551,28 +557,30 @@ describe('the ramp-truck model against the sim ramp (13.7 degrees, 11.5 m, 2.8 m
 });
 
 describe('loading through the asset manifest (docs/architecture.md, "Asset manifest")', () => {
-  it('lists every base-pack model by asset id, as a baked mesh', () => {
-    const entries = assetIndex(loadBasePack());
+  it('lists every scenery model by asset id, as a baked mesh, in the pack that carries it', () => {
+    const entries = assetIndex(createPackLibrary().registry());
     const ids = entries.map((e) => e.id);
     for (const kind of MODEL_KINDS) expect(ids, kind).toContain(MODEL_ASSETS[kind]);
     for (const e of entries) {
       expect(e.kind).toBe('mesh');
       expect(e.source).toBe('baked');
-      expect(e.packId).toBe('base');
       expect(e.path).toMatch(/\.glb$/);
     }
+    // The Keys' kits are the base pack's; San Francisco's towers are its region pack's.
+    expect(entries.find((e) => e.id === MODEL_ASSETS.palms)?.packId).toBe('base');
+    expect(entries.find((e) => e.id === MODEL_ASSETS.sfTowerModules)?.packId).toBe('region-sf');
     console.log(`[examined] ${entries.length} asset manifest rows: ${ids.join(', ')}`);
   });
 
   it('loads the models that arrive and keeps the stand-in for one that fails', async () => {
-    const entries = assetIndex(loadBasePack());
+    const entries = assetIndex(createPackLibrary().registry());
     const manifest = createAssetManifest(() => entries, {
       baseUrl: 'http://test/',
       fetchFn: async (input) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         const entry = entries.find((e) => new URL(e.path, 'http://test/').href === url);
         if (!entry || entry.id === MODEL_ASSETS.boat) return new Response('missing', { status: 404 });
-        return new Response(await readRepoFile(`/packs/base/assets/${entry.id}.glb`));
+        return new Response(await readRepoFile(`/packs/${entry.packId}/assets/${entry.id}.glb`));
       },
     });
     const { models, report } = await loadSceneryModels(manifest);
