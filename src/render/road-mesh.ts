@@ -38,6 +38,7 @@ import {
   ridableBandPast,
   SCENERY_KINDS,
   SEAWALL_LAND_M,
+  WIDE_LAND_M,
   scatterEdge,
   themeAt,
   type SceneryKind,
@@ -1316,7 +1317,14 @@ export function buildRoadScene(
           // switchbacks). The strip and its shelf stay inside LAND_FOLD of the turn's radius.
           const k = insideKappa(side, s);
           const room = k > 0 ? LAND_FOLD / k - outer - SCENERY_SHELF_M : Infinity;
-          for (const width of seawall !== undefined ? [seawall] : [SCENERY_LAND_M, 14, 6]) {
+          const wide = WIDE_LAND_M[th];
+          const widths =
+            seawall !== undefined
+              ? [seawall]
+              : wide !== undefined
+                ? [wide, (wide + SCENERY_LAND_M) / 2, SCENERY_LAND_M, 14, 6]
+                : [SCENERY_LAND_M, 14, 6];
+          for (const width of widths) {
             if (width > room) continue;
             const d = outer + width + SCENERY_SHELF_M;
             if (
