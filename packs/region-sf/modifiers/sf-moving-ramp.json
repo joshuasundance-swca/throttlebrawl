@@ -30,8 +30,8 @@
     "sign": null
   },
   "meta": {
-    "status": "draft",
-    "notes": "DRAFT in San Francisco only, with its carrier (playtest 3 wave B): the render draws the lowered ramp now, but going live here moves the seeded San Francisco races (in CI, region-sf seed 6 rode the switchback and the park cut, which have no crest lips, and the headless career's series-c did not end in 720 s). Live once those two tests are re-checked. Playtest 3 moving road event (\"the ramp trucks could be in motion\"): a car carrier drives ahead in the outermost lane at 20 m/s on a straight stretch; once a racer is 200 m behind it, its ramp comes down, and catching it from behind launches you off its lip, the faster the bigger. Four serial signs tell the joke first, punchline last.",
+    "status": "live",
+    "notes": "Playtest 3 moving road event (\"the ramp trucks could be in motion\"): a car carrier drives ahead in the outermost lane at 20 m/s on a straight stretch; once a racer is 200 m behind it, its ramp comes down, and catching it from behind launches you off its lip, the faster the bigger. Four serial signs tell the joke first, punchline last.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

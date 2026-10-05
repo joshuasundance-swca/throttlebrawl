@@ -7,16 +7,22 @@
 // player can do too (retry, buy the best bike the cash allows). Playtest 3: a career race carries
 // the career's field level for its tier and season, and the season's remix, exactly as the app's
 // career race does (`careerRaceSetup`), so the headless career meets the field the player meets.
+// The bot rides at least the bike the career gives at a node's tier (the best step-up bike open
+// there, the one the field level is measured against), and a race's time limit comes from its
+// route's length and that bike (`raceLimitS`), not one fixed stop for every road and bike.
 import { buildSimConfig, createStreamCache } from '../../src/app';
 import { careerRaceSetup } from '../../src/app/career-flow';
 import {
   bare,
+  bestOpenRank,
+  bikeLadder,
   buyBike,
   careerDefs,
   createOnboarding,
   createRaceLog,
   eventPlan,
   garageBikes,
+  globalTier,
   nodeLength,
   nodeState,
   progressOf,
@@ -45,8 +51,28 @@ export const REG: ContentRegistry = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
 );
 const STREAMS = createStreamCache();
-/** A race's safety stop: 12 minutes of race. */
+/** A race's safety stop: 12 minutes of race, or the race's own time limit when that is longer. */
 const MAX_TICKS = 60 * 60 * 12;
+/**
+ * A race's time limit is its route ridden at this share of the player's bike's top speed on
+ * average, crashes, respawns, traffic and fights included. The dev bot averages about 0.55 to 0.65
+ * of the starting bike's top speed on San Francisco's hills (tests/sim/region-sf.test.ts), and less
+ * of a fast bike's in the city: about 0.37 of the superbike's in the San Francisco career's slowest
+ * races (2026-10-04). A fifth leaves it close to double its own time, so the limit catches a race
+ * that cannot end (a stall, a loop, a finish nobody reaches), not a slow ride. [default]
+ */
+export const RACE_LIMIT_SHARE = 0.2;
+
+/**
+ * A race's time limit, s: the route's length (start to finish, as the sim races it) at
+ * RACE_LIMIT_SHARE of the player's bike's top speed (scaled by the race's speed multiplier).
+ */
+export function raceLimitS(config: SimConfig): number {
+  const me = config.riders.find((r) => r.controller.kind === 'player');
+  const top = (me?.bike.topSpeedMps ?? 0) * (config.speedMultiplier ?? 1);
+  if (!(top > 0)) throw new Error(`${config.event.contentId}: the player has no bike top speed`);
+  return config.route.length / (RACE_LIMIT_SHARE * top);
+}
 
 /**
  * The career bot's plan for an event (a player's plan too): the dev bot rides and fights; what it
@@ -92,6 +118,39 @@ export interface CareerRace {
 
 /** Every career, in chapter order (the field level counts the tiers of the chapters before). */
 const DEFS = careerDefs(REG);
+const LADDER = bikeLadder(REG, DEFS);
+
+/**
+ * The bike the career gives at a node's tier: the best step-up bike open at its global tier
+ * (Season 1), the bike its field level is measured against (src/career/level.ts). Null when the
+ * ladder has none open there.
+ */
+export function tierBike(def: CareerDef, node: CareerNode): { key: string; topSpeedMps: number } | null {
+  return LADDER[bestOpenRank(LADDER, globalTier(DEFS, def, node.tier))] ?? null;
+}
+
+/**
+ * The profile riding at least the bike the career gives at the node's tier, as a player who kept
+ * up would (owned from then on); a faster bike it already rides stays. Cash is untouched.
+ */
+export function onTierBike(
+  reg: ContentRegistry,
+  def: CareerDef,
+  node: CareerNode,
+  profile: Profile,
+): Profile {
+  const bike = tierBike(def, node);
+  const current = profile.bikes.current ? reg.bikes[profile.bikes.current]?.handling.topSpeedMps : undefined;
+  if (!bike || (current !== undefined && current >= bike.topSpeedMps)) return profile;
+  return {
+    ...profile,
+    bikes: {
+      ...profile.bikes,
+      owned: [...new Set([...profile.bikes.owned, bike.key])].sort(),
+      current: bike.key,
+    },
+  };
+}
 
 /** How a test bends a career race: free play, a tuning profile, or another tier's field level. */
 export interface CareerRaceOptions {
@@ -166,7 +225,8 @@ export function playNode(
   const bot = createBot();
   const focus = botFocus(plan);
   let snap = sim.snapshot();
-  while (!sim.isOver() && sim.tick < MAX_TICKS) {
+  const stop = Math.max(MAX_TICKS, Math.ceil(raceLimitS(config) * 60));
+  while (!sim.isOver() && sim.tick < stop) {
     const a = emptyActions();
     bot.drive(botView(snap, me, focus), me, config.route, a);
     sim.step([toSimInput(a)]);
@@ -213,7 +273,8 @@ export interface CareerRun {
 /**
  * A region's whole career, the way a player who never gives up plays it: the open node tried the
  * fewest times (the tutorial first, then the lowest tier; so after a loss they move on and come
- * back), a fresh seed for every try, and the fastest affordable bike bought after every race. It
+ * back), a fresh seed for every try, at least the bike the career gives at the node's tier
+ * (`onTierBike`), and the fastest affordable bike bought after every race. It
  * stops when the boss falls, or when every open node has been tried `maxTries` times; then, in
  * free play, every node never ridden gets one race, so every event is played.
  */
@@ -246,6 +307,7 @@ export function runCareer(
     const n = (tries[node.id] ?? 0) + 1;
     tries[node.id] = n;
     const seed = 7919 * (def.nodes.indexOf(node) + 1) + n;
+    profile = onTierBike(REG, def, node, profile);
     const race = playNode(def, node, profile, seed, free);
     races.push(race);
     profile = shop(defs, race.profile);
