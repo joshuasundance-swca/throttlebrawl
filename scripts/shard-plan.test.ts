@@ -93,6 +93,23 @@ describe('planSlices', () => {
     expectPartition(['r1', 'r2', 'r3', 'x', 'y', 'z'], plan);
   });
 
+  it("keeps every other file out of the batch readers' slice", () => {
+    // The readers' slice waits on the Normal batch, computed by one worker: 218 to 375 s from one
+    // runner to the next on 2026-10-05, and then the readers' own work. Measured times cannot price
+    // that wait well, so other files there only stretch it: on run 37270067041 the plan added 15
+    // other files to it, and the slice took 535 s against a plan of 335.
+    const plan = planSlices({
+      files: ['r1', 'r2', 'x', 'y', 'z'],
+      seconds: { r1: 100, r2: 50, x: 200, y: 200, z: 10 },
+      n: 2,
+      workers: 3,
+      order: 'longest-first',
+      together: ['r1', 'r2'],
+    });
+    expect(plan[0]?.files).toEqual(['r1', 'r2']);
+    expect(plan[1]?.files).toEqual(['x', 'y', 'z']);
+  });
+
   it('charges every batch reader its own measured time, not only the longest one', () => {
     // A reader's measured time already includes its wait for the batch, and the readers wait side
     // by side, so the slice is the readers' makespan. Main run 37157149149 (sim 1/4): the plan said

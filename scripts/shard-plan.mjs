@@ -15,6 +15,10 @@
 //   by side on their workers, so they are planned like any other file. (Until 2026-10-03 the
 //   readers were one block as long as the longest reader, which left the other readers' time out:
 //   main run 37157149149 planned 387 s for sim slice 1/4, which took 537 s.)
+// - No other file shares the readers' slice (since 2026-10-05). The readers wait on the Normal batch,
+//   which one worker computes in 218 to 375 s depending on the runner, then do their own work, so
+//   their measured times cannot price the slice well; other files there only stretch it (run
+//   37270067041: 15 other files beside them, 535 s against a plan of 335).
 // - The readers of the Easy and Hard batches (presetBatch) start before every other sim file, on CI
 //   and in tests/sequencer.ts alike, so those two batches compute beside the Normal one instead of
 //   after it. Until 2026-10-05 the three longest readers started first and all waited about 280 s
@@ -149,10 +153,13 @@ export function planSlices({
       : [...list].sort((a, b) => a.files[0].localeCompare(b.files[0]));
   const predict = (s, extra) => makespan(runOrder(extra ? [...s.items, extra] : s.items), workers) + s.tail;
 
+  // The batch readers' slice holds the readers alone (when there is another slice): they wait on a
+  // batch one worker computes, whose time varies by runner, and other files there only stretch it.
+  const start = together.length > 0 && n > 1 ? 1 : 0;
   for (const item of items) {
-    let best = 0;
-    let bestTime = predict(slices[0], item);
-    for (let i = 1; i < n; i++) {
+    let best = start;
+    let bestTime = predict(slices[start], item);
+    for (let i = start + 1; i < n; i++) {
       const t = predict(slices[i], item);
       if (t < bestTime) {
         best = i;
