@@ -130,6 +130,12 @@ export interface Settings {
    */
   radioDefault: RadioSetting;
   /**
+   * The Effects level this record was written under as the default (playtest 4, P4-18): 0.7 from this
+   * build on. Its absence marks a record from before, which `migrateEffects` moves off a saved 0.9, the
+   * old default, once. Not a settings row.
+   */
+  effectsDefault: number;
+  /**
    * Gamepad remaps: action id → control tokens (such as `button3`), in input/'s vocabulary. Only
    * remapped actions are listed; an empty object means input/'s default bindings.
    */
@@ -143,7 +149,8 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   // Effects 70% since playtest 4 (P4-18, the maintainer: "Effects are too loud by default compared to
   // the other audio"), from 90%: the music, effects, voices ladder. Only a default: a level a device
-  // has saved loads as it was saved (sanitiseSettings below fills in only a missing one).
+  // has saved loads as it was saved (sanitiseSettings below fills in only a missing one), except a
+  // saved 90%, the old default, which `migrateEffects` moves here once (`effectsDefault` below).
   volumes: { master: 0.8, music: 0.6, effects: 0.7, voices: 0.8 },
   mute: false,
   voicesOn: true,
@@ -171,11 +178,14 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   radio: 'station',
   radioStation: null,
   radioDefault: 'station',
+  effectsDefault: 0.7,
   gamepadBindings: Object.freeze({}),
   lastSeenBuild: null,
   vetoes: Object.freeze([]) as unknown as VetoFlag[],
 };
 
+/** The Effects default before playtest 4: the one saved level `migrateEffects` moves. */
+const OLD_DEFAULT_EFFECTS = 0.9;
 /** Upper bound on stored vetoes, so a runaway record cannot fill storage. */
 export const MAX_VETOES = 1000;
 const MAX_BINDING_ACTIONS = 32;
@@ -288,6 +298,23 @@ function migrateRadio(s: Settings, raw: unknown): Settings {
   return old && s.radio === 'score' && s.radioStation === null ? { ...s, radio: DEFAULT_SETTINGS.radio } : s;
 }
 
+/**
+ * Playtest 4 (P4-18, the maintainer: "Effects are too loud by default compared to the other audio"):
+ * the default Effects level went from 90% to 70%. The record is saved whole (dismissing the what's-new
+ * card saves it), so nearly every device that has played holds the old default as if it were a choice,
+ * and the new default would reach only new devices. Loading a record from before (no `effectsDefault`)
+ * with Effects at exactly 0.9 moves it to today's default; any other saved level is a choice and stays.
+ * A record this build wrote carries `effectsDefault`, so it is never touched, and a 90% picked
+ * afterwards sticks. It runs on the load and not on storage: the record is rewritten (with the marker)
+ * by the next save, and until then the same load gives the same answer.
+ */
+function migrateEffects(s: Settings, raw: unknown): Settings {
+  const old = obj(raw)['effectsDefault'] === undefined;
+  return old && s.volumes.effects === OLD_DEFAULT_EFFECTS
+    ? { ...s, volumes: { ...s.volumes, effects: DEFAULT_SETTINGS.volumes.effects } }
+    : s;
+}
+
 export function sanitiseSettings(data: unknown): Settings {
   const d = obj(data);
   const v = obj(d['volumes']);
@@ -335,6 +362,7 @@ export function sanitiseSettings(data: unknown): Settings {
     view: oneOf(d['view'], VIEW_SETTINGS, def.view),
     radio: oneOf(d['radio'], RADIO_SETTINGS, def.radio),
     radioDefault: oneOf(d['radioDefault'], RADIO_SETTINGS, def.radioDefault),
+    effectsDefault: unit(d['effectsDefault'], def.effectsDefault),
     radioStation: text(d['radioStation'], 64) ?? def.radioStation,
     gamepadBindings: sanitiseBindings(d['gamepadBindings']),
     lastSeenBuild: text(d['lastSeenBuild'], 64) ?? def.lastSeenBuild,
@@ -452,7 +480,7 @@ export function createSettingsStore(opts: SettingsStoreOptions): SettingsStore {
       }
       if (header.kind !== 'ok') return sanitiseSettings({});
       const rec = raw as VersionedRecord<'settings', unknown>;
-      const settings = migrateRadio(sanitiseSettings(rec.data), rec.data);
+      const settings = migrateEffects(migrateRadio(sanitiseSettings(rec.data), rec.data), rec.data);
       extras = unknownFields(rec.data);
       last = { ...rec, format: SETTINGS_FORMAT, data: settings };
       return settings;

@@ -404,7 +404,8 @@ export interface Volumes {
  * compared to the other audio") [default]: Effects went from 90% to 70%. With the squared taper that
  * is the effects bus at 0.49 of full instead of 0.81, 4.4 dB lower: from 7.0 dB over the music bus
  * (and 2.0 dB over the voices bus) to 2.7 dB over the music bus and 2.3 dB under the voices bus, so
- * the ladder is music, effects, voices. Only the default moved; a level a device has saved is kept.
+ * the ladder is music, effects, voices. Only the default moved; a level a device has saved is kept,
+ * except a saved 90% (the old default), which save/'s `migrateEffects` moves to 70% once.
  * Voices start at 90% here and at 80% in the record, which hands over its own at boot.
  */
 export const DEFAULT_VOLUMES: Readonly<Volumes> = Object.freeze({
