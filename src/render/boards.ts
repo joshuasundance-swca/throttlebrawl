@@ -43,6 +43,11 @@ export interface BoardItem {
  * `pool`). app/ builds it from the content registry, leaving out vetoed items.
  */
 export interface BoardCatalog {
+  /**
+   * The region's sign style (its region file's `signStyle`): the face every `sign` in the region
+   * wears unless its slot names another. A name `signStyleOf` does not know counts as absent.
+   */
+  style?: string;
   items: Readonly<Record<string, BoardItem>>;
   pools?: {
     signs?: readonly BoardItem[];
@@ -78,12 +83,16 @@ export interface BoardSlot {
   d1: number;
   item?: string;
   pool?: string;
+  /** Kind-specific values; a slot's `style` names its sign face (see `SIGN_STYLES`). */
+  params?: Readonly<Record<string, unknown>> | undefined;
 }
 
 export interface BoardView {
   ref: string;
   slotId: string;
   kind: BoardKind;
+  /** The face style a `sign` wears (always `default` for a billboard or a cone). */
+  style: SignStyle;
   text: string;
   group: Group;
   /** The printed face, the part a long-press lands on. */
@@ -109,11 +118,61 @@ export const BOARD_SIZES: Record<BoardKind, { panelH: number; bottom: number; mi
 const AIM_AHEAD_M = 70;
 /** How far behind the printed face the posts stand, metres. */
 const POST_BEHIND_M = 0.22;
-const FACE: Record<BoardKind, { bg: string; fg: string; frame: string }> = {
-  sign: { bg: '#1f6b3a', fg: '#ffffff', frame: '#cfd3d6' },
+
+/**
+ * The sign faces (playtest 4, P4-19, C6: every sign in every region was the same green). A region
+ * file's `signStyle` sets its signs' face, and a road's `billboard` slot can override it with
+ * `params.style`. Colours only: every style prints on the same panel, so the copy fits as it did.
+ * `[default]` taste, from memory of the places, not checked against a source:
+ * - `default`: the green every sign always wore, unchanged;
+ * - `mile-marker`: the Keys' bright green highway posts, on white;
+ * - `historic`: the Gorge's brown heritage-route signs (the Columbia River Highway);
+ * - `guide`: the interstate's deep green guide signs, white-bordered, on steel;
+ * - `blade`: San Francisco's street blades, blue-green on black lamp-post iron;
+ * - `town`: the Northwest's mossy routed-cedar town signs.
+ */
+export const SIGN_STYLES = ['default', 'mile-marker', 'historic', 'guide', 'blade', 'town'] as const;
+export type SignStyle = (typeof SIGN_STYLES)[number];
+
+export interface BoardFace {
+  bg: string;
+  fg: string;
+  frame: string;
+  /** An inset rule round the printed face (the real signs' border); absent for none. */
+  border?: string;
+}
+
+export const SIGN_FACES: Record<SignStyle, BoardFace> = {
+  default: { bg: '#1f6b3a', fg: '#ffffff', frame: '#cfd3d6' },
+  'mile-marker': { bg: '#0b8a43', fg: '#ffffff', frame: '#f2f2ee', border: '#ffffff' },
+  historic: { bg: '#5c3b22', fg: '#f4ecd8', frame: '#3a2616', border: '#f4ecd8' },
+  guide: { bg: '#00623f', fg: '#ffffff', frame: '#8a9094', border: '#ffffff' },
+  blade: { bg: '#1f4e6b', fg: '#ffffff', frame: '#232323', border: '#ffffff' },
+  town: { bg: '#34483a', fg: '#f1e8c9', frame: '#6b5a3a', border: '#c9b98a' },
+};
+
+/** The sign style a pack named, or null when it names none this build knows. */
+export function signStyleOf(name: unknown): SignStyle | null {
+  return (SIGN_STYLES as readonly unknown[]).includes(name) ? (name as SignStyle) : null;
+}
+
+/**
+ * The style a board wears: only a `sign` takes one (billboards and the incident cones keep their
+ * looks); the slot's own `params.style`, else the region's, else the default.
+ */
+export function styleOfSlot(kind: BoardKind, slot: BoardSlot, catalog: BoardCatalog): SignStyle {
+  if (kind !== 'sign') return 'default';
+  return signStyleOf(slot.params?.['style']) ?? signStyleOf(catalog.style) ?? 'default';
+}
+
+const FACE: Record<Exclude<BoardKind, 'sign'>, BoardFace> = {
   billboard: { bg: '#f4ecd8', fg: '#2b2b2b', frame: '#6b5a3a' },
   cone: { bg: '#ff6a13', fg: '#151515', frame: '#3a3a3a' },
 };
+/** The face a board prints on: a sign's by its style, the others' by their kind. */
+function faceOf(kind: BoardKind, style: SignStyle): BoardFace {
+  return kind === 'sign' ? SIGN_FACES[style] : FACE[kind];
+}
 /** A traffic cone (event-props.ts's shape), `k` times life size, standing at (x, z). */
 const CONE_ORANGE = '#ff6a13';
 const CONE_WHITE = '#f4f4f0';
@@ -323,7 +382,7 @@ export function boardCanvas(kind: BoardKind, aspect: number): { width: number; h
  * The printed face: a big headline over a small kicker, in the panel's own proportions (the canvas
  * aspect matches the panel, so the letters are not stretched). Null where there is no DOM canvas.
  */
-function faceTexture(item: BoardItem, aspect: number): Texture | null {
+function faceTexture(item: BoardItem, face: BoardFace, aspect: number): Texture | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
   const px = boardCanvas(item.kind, aspect);
@@ -331,9 +390,15 @@ function faceTexture(item: BoardItem, aspect: number): Texture | null {
   canvas.height = px.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  const face = FACE[item.kind];
   ctx.fillStyle = face.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (face.border) {
+    // A rule inside the copy's padding (layoutCopy's `pad`, 7 % of the height), so it never meets a letter.
+    const inset = Math.round(canvas.height * 0.035);
+    ctx.strokeStyle = face.border;
+    ctx.lineWidth = Math.max(2, Math.round(canvas.height * 0.02));
+    ctx.strokeRect(inset, inset, canvas.width - inset * 2, canvas.height - inset * 2);
+  }
   paintCopy(ctx, canvas.width, canvas.height, item.text, face.fg);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
@@ -398,7 +463,7 @@ export class Boards {
         if (slot.kind !== 'billboard') continue;
         const item = resolveSlot(slot, catalog);
         if (!item) continue;
-        this.views.push(this.buildView(road, edge.index, edge.length, slot, item));
+        this.views.push(this.buildView(road, edge.index, edge.length, slot, item, catalog));
       }
     }
     for (const v of this.views) {
@@ -484,6 +549,7 @@ export class Boards {
     length: number,
     slot: BoardSlot,
     item: BoardItem,
+    catalog: BoardCatalog,
   ): BoardView {
     const size = BOARD_SIZES[item.kind];
     const s = Math.min(length, Math.max(0, (slot.s0 + slot.s1) / 2));
@@ -498,7 +564,8 @@ export class Boards {
     // instead of edge-on from a hundred metres out.
     const aim = road.toWorld(edge, Math.max(0, s - AIM_AHEAD_M), 0, 0);
     group.rotation.y = Math.atan2(aim.x - base.x, aim.z - base.z);
-    const face = FACE[item.kind];
+    const style = styleOfSlot(item.kind, slot, catalog);
+    const face = faceOf(item.kind, style);
     const postH = size.bottom + size.panelH;
     // Posts and the cross rails stand BEHIND the printed face (local -z), so nothing crosses the
     // words; the face itself is a thin panel in front of them.
@@ -519,7 +586,7 @@ export class Boards {
             { size: [w + 0.3, 0.16, 0.14], at: [0, postH + 0.08, back * 0.5], color: face.frame },
           ];
     const frameMesh = new Mesh(mergeBoxes(frame), this.look.material('post', { vertexColors: true }));
-    const map = faceTexture(item, w / size.panelH);
+    const map = faceTexture(item, face, w / size.panelH);
     const panel = new Mesh(
       panelGeometry(w, size.panelH),
       this.look.material('board', map ? { map } : { color: face.bg }),
@@ -534,6 +601,7 @@ export class Boards {
       ref: item.ref,
       slotId: slot.id ?? '',
       kind: item.kind,
+      style,
       text: item.text,
       group,
       panel,

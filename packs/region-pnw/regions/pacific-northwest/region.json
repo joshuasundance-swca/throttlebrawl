@@ -4,6 +4,7 @@
   "name": "The Pacific Northwest",
   "chapter": 2,
   "blurb": "Two lanes, a million trees, and a ferry that left without you.",
+  "signStyle": "town",
   "networks": ["pnw-c1", "osm-pnw-chuckanut", "osm-pnw-gorge", "osm-pnw-samish", "osm-pnw-portland"],
   "timeOfDayOptions": [
     {

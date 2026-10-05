@@ -102,7 +102,9 @@ export function boardCatalog(
   add(region.signs, 'sign', pools.signs);
   add(region.billboards, 'billboard', pools.billboards);
   add(region.landingLines, 'sign', pools.landing, false);
-  return { items, pools };
+  // The region's sign face (`signStyle`, docs/content-packs.md "Region"); render ignores a name it does not know.
+  const style = (region as { signStyle?: unknown }).signStyle;
+  return { ...(typeof style === 'string' ? { style } : {}), items, pools };
 }
 
 /**

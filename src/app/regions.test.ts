@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stationsForRegion } from '../audio';
+import { signStyleOf } from '../render';
 import { loadBasePack, registryFromGlob } from '../content';
 import { buildSimConfig, copIds, streamForEvent } from './config';
 import {
@@ -162,6 +163,59 @@ describe('app: regions', () => {
       ).toBe(false);
     }
     expect(keys.pools?.signs?.some((s) => s.ref.endsWith('#ices-before-road'))).toBe(true);
+  });
+
+  describe('sign faces by region and slot (playtest 4, P4-19: regional sign faces)', () => {
+    const KEYS = 'base:florida-keys';
+    const PNW = 'region-pnw:pacific-northwest';
+    const SF = 'region-sf:san-francisco';
+    const styleOf = (v: unknown) => (v as { signStyle?: unknown }).signStyle;
+    type Slot = { kind: string; id?: string; item?: string; pool?: string; params?: { style?: unknown } };
+    const slotsOf = (roadKey: string): Slot[] =>
+      ((ALL.roads[roadKey] as { features?: Slot[] } | undefined)?.features ?? []).filter(
+        (f) => f.kind === 'billboard',
+      );
+
+    it("hands a region's sign style to its catalog, and only that", () => {
+      for (const key of Object.keys(ALL.regions))
+        expect(boardCatalog(ALL, key).style, key).toBe(styleOf(ALL.regions[key]));
+    });
+
+    it('gives each shipped region a style render knows, and each region its own look', () => {
+      const styles = [KEYS, PNW, SF].map((k) => boardCatalog(ALL, k).style);
+      for (const s of styles) expect(signStyleOf(s), JSON.stringify(s)).not.toBeNull();
+      expect(new Set(styles).size).toBe(3);
+      expect(styles).not.toContain('default');
+    });
+
+    it('names only styles render knows, in every region and every road slot', () => {
+      for (const [key, region] of Object.entries(ALL.regions)) {
+        const s = styleOf(region);
+        if (s !== undefined) expect(signStyleOf(s), `${key} signStyle ${JSON.stringify(s)}`).not.toBeNull();
+      }
+      for (const [key, road] of Object.entries(ALL.roads))
+        for (const f of (road as { features?: Slot[] }).features ?? []) {
+          const s = f.params?.style;
+          if (f.kind === 'billboard' && s !== undefined)
+            expect(signStyleOf(s), `${key} ${f.id} style ${JSON.stringify(s)}`).not.toBeNull();
+        }
+    });
+
+    it("overrides the Gorge's and the interstate's sign slots with their own faces", () => {
+      const pnw = boardCatalog(ALL, PNW);
+      const signSlots = (prefix: string) =>
+        Object.keys(ALL.roads)
+          .filter((k) => k.startsWith(`region-pnw:${prefix}`))
+          .flatMap((k) => slotsOf(k))
+          .filter((f) => f.pool === 'signs' || (f.item !== undefined && pnw.items[f.item]?.kind === 'sign'));
+      const gorge = signSlots('osm-gorge-');
+      const i5 = signSlots('osm-i5-');
+      // The loops prove they examined something: each place has signs to dress.
+      expect(gorge.length).toBeGreaterThan(0);
+      expect(i5.length).toBeGreaterThan(0);
+      for (const f of gorge) expect(f.params?.style, f.id).toBe('historic');
+      for (const f of i5) expect(f.params?.style, f.id).toBe('guide');
+    });
   });
 
   it("hands render the words for a model's blank board as vetoable items that no pool carries (playtest 3, T12.6)", () => {
