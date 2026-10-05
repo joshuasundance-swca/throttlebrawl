@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,9 +28,10 @@ BARRIER_LOOKS: tuple[str, ...] = get_args(BarrierLook)
 GapRespawn = Literal["far", "main"]
 GAP_RESPAWNS: tuple[str, ...] = get_args(GapRespawn)
 FEATURE_ID = r"^[a-z0-9]+(-[a-z0-9]+)*$"
-# A feature's params: free-form in the road format, so numbers, words and switches (a landmark's
-# overRoad, a solid hazard's solid) all pass through as JSON gives them.
-Params = dict[str, bool | float | str]
+# A feature's params: free-form in the road format, so numbers, words, switches (a landmark's
+# overRoad, a solid hazard's solid) and lists of words (a roadside zone's `kinds`, playtest 3's
+# zone-local people and animals) all pass through as JSON gives them.
+Params = dict[str, bool | float | str | list[str]]
 
 
 class Strict(BaseModel):
@@ -128,7 +129,7 @@ class Feature(Strict):
         vals = {k: self.params.get(k, 0.0) for k in RAMP_KEYS}
         if not all(isinstance(v, float | int) and not isinstance(v, bool) for v in vals.values()):
             raise ValueError(f"ramp {self.id}: heightM, lengthM and backM are numbers")
-        h, run, back = (float(vals[k]) for k in RAMP_KEYS)
+        h, run, back = (float(cast("float", vals[k])) for k in RAMP_KEYS)
         if not (h > 0 and run > 0 and back >= 0):
             raise ValueError(f"ramp {self.id}: heightM and lengthM above 0, backM at least 0")
         if abs(self.s1 - (self.s0 + run + back)) > 1e-3:
@@ -141,7 +142,7 @@ class Feature(Strict):
         """(heightM, lengthM, backM) of a ramp the bake builds, or None."""
         if self.kind != "ramp" or not self.params or "heightM" not in self.params:
             return None
-        h, run, back = (float(self.params.get(k, 0.0)) for k in RAMP_KEYS)
+        h, run, back = (float(cast("float", self.params.get(k, 0.0))) for k in RAMP_KEYS)
         return h, run, back
 
 

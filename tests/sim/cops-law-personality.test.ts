@@ -209,27 +209,35 @@ describe('law with a personality: real races', () => {
   // band would move with every such system, so this checks that the radioed-ahead path fires in a
   // real race (a roadblock cop who was already chasing), on the first seed that shows it. The search
   // runs to seed 24, not 8: content that reshuffles the races moves it on (playtest 3 wave C's PNW
-  // content put the first such race at seed 9).
-  it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
-    const event = eventOf('pacific-northwest');
-    const radioed = (r: Ride) => {
-      const chasing = new Set<number>();
-      let ahead = 0;
-      for (const e of r.events) {
-        if (e.type !== 'siren') continue;
-        if (e.data['on'] !== true) chasing.delete(e.actor);
-        else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
-        else if (chasing.has(e.actor)) ahead++;
-      }
-      return ahead;
-    };
-    const found = firstSeed(
-      'a PNW roadblock cop radioed ahead',
-      seedRange(1, 24),
-      (seed) => ride(event, seed, { 'cops.heatScale': 3 }, 360),
-      (r) => radioed(r) > 0,
-    );
-    process.stdout.write(`cops law: PNW roadblock: ${found.summary}\n`);
-    expect(found.result, found.summary).not.toBeNull();
-  });
+  // content put the first such race at seed 9). Each race stops once a radioed-ahead roadblock fires,
+  // and the test has its own timeout: nine full races took 90 to 104 s on CI, over the sim project's
+  // 90 s default, and a search to seed 24 can run them all.
+  it(
+    'the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock',
+    {
+      timeout: 300_000,
+    },
+    () => {
+      const event = eventOf('pacific-northwest');
+      const radioed = (r: Ride) => {
+        const chasing = new Set<number>();
+        let ahead = 0;
+        for (const e of r.events) {
+          if (e.type !== 'siren') continue;
+          if (e.data['on'] !== true) chasing.delete(e.actor);
+          else if (e.data['cause'] !== 'roadblock') chasing.add(e.actor);
+          else if (chasing.has(e.actor)) ahead++;
+        }
+        return ahead;
+      };
+      const found = firstSeed(
+        'a PNW roadblock cop radioed ahead',
+        seedRange(1, 24),
+        (seed) => ride(event, seed, { 'cops.heatScale': 3 }, 360, (r) => radioed(r) > 0),
+        (r) => radioed(r) > 0,
+      );
+      process.stdout.write(`cops law: PNW roadblock: ${found.summary}\n`);
+      expect(found.result, found.summary).not.toBeNull();
+    },
+  );
 });

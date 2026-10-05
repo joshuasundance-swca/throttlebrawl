@@ -254,7 +254,13 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
         `far-forest conifers ${farSpots} ray-checked, ${farBad.length} past the drawn skirt` +
         `${farBad[0] ? `, e.g. ${farBad[0]}` : ''}\n`,
     );
-    expect(spots).toBeGreaterThan(0);
+    // A network whose land is all open grass hill (the Golden Gate's `headlands`, playtest 3, T10.6)
+    // scatters nothing: its check is that nothing stands there, while any other network must have
+    // spots to check (so a scatter that placed none would not pass for a clean one).
+    const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog']);
+    const open = baked(id).roads.every((r) => (r.tags ?? []).every((t) => OPEN.has(t.tag)));
+    if (open) expect(spots, 'open grass hills scatter nothing').toBe(0);
+    else expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
     // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3), on the networks
     // that grow one (Russian Hill and Key West have no forest).

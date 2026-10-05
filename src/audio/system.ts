@@ -90,6 +90,7 @@ import {
 import { createScapeVoices, type ScapeVoices } from './soundscape-voices';
 import {
   busTargets,
+  DEFAULT_VOLUMES,
   DUCK_DEFAULTS,
   ENGINE_LEVELS,
   RADIO_FIRST_STATION,
@@ -303,7 +304,7 @@ const OTHER_ENGINES_RANGE_M = 150;
 export function createAudio(opts: AudioOptions = {}): AudioSystem {
   const createContext = opts.createContext ?? (() => new AudioContext());
   let graph: Graph | null = null;
-  let volumes: Volumes = { master: 0.8, music: 0.6, effects: 0.9, voices: 0.9 };
+  let volumes: Volumes = { ...DEFAULT_VOLUMES };
   let muted = false;
   const params = {
     engineGain: 1,

@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "island-tram",
+  "name": "Island Tour Tram",
+  "category": "truck",
+  "tags": ["local", "tourist", "key-oldtown"],
+  "lengthM": 7.5,
+  "widthM": 2.2,
+  "cruiseMps": 4.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "road-train"
+    },
+    "paintOptions": ["#f2c14e", "#7fd1c7", "#f4f1e8"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Playtest 3 (T10.4; real-world local life, Duval Street): a tractor and two open cars of sightseers, narrating a town that is right there. Four metres a second, no lane changes, big: you pass it or you meet it. Seven and a half metres, the Keys' longest vehicle and no longer: the rival AI sizes every vehicle by the largest type of the race, so a longer tram would change how every rival rides the Keys. Weight 0.6 in the Old Town's traffic only. [default] every number.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-04"
+    }
+  }
+}

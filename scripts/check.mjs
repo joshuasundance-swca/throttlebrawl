@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // npm run check: the whole gate, in CI order (docs/engineering.md, "The gate").
 //   npm run check                    every tier
-//   npm run check -- --tier static   one tier (CI runs static and unit in one job, and the sim and
-//                                    browser slices as parallel jobs)
+//   npm run check -- --tier static   one tier (CI runs static, unit, and each sim and browser slice
+//                                    as parallel jobs)
 //   npm run check -- --tier sim --shard 1/2
-//                                    one slice of a tier: the sim batch or the browser tests. The
+//                                    one slice of a tier: the unit tests, the sim batch or the
+//                                    browser tests. The
 //                                    test runner lists the tier's files and scripts/shard-plan.mjs
 //                                    splits them by their measured CI seconds; every file lands in
 //                                    exactly one slice. A step marked everySlice (the build) runs
@@ -19,7 +20,7 @@
 // yet (no packs/, no seeded-race batch) is listed as NOT ACTIVE with the reason, never as a pass;
 // it switches itself on when the lane that owns it adds its files.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { fmtBytes, git, refExists, repoRoot, treeFiles } from './lib.mjs';
@@ -103,7 +104,8 @@ const STEPS = [
         : true;
     },
   },
-  { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest },
+  // The unit tests shard like the sim batch (CI's unit slices since 2026-10-05).
+  { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest, shardable: 'unit' },
   {
     tier: 'sim',
     name: 'sim batch',
@@ -129,12 +131,23 @@ const STEPS = [
 /**
  * The test files of a shardable step, as its runner lists them (so a slice plan covers exactly
  * what the unsharded run would run), with each file's test count where the runner prints it.
+ * Vitest writes its list to a JSON file, not stdout: a 325-line list read through a pipe came back
+ * cut short on CI (2026-10-05, the unit tier's plan test planned 249 of 325 files), and a short list
+ * plans a short slice set that no slice-level check can notice.
  */
 function runnerFiles(kind) {
+  const listFile = path.join(
+    repoRoot,
+    'node_modules',
+    '.cache',
+    'throttlebrawl',
+    `vitest-list-${kind}-${process.pid}.json`,
+  );
   const cmd =
-    kind === 'sim'
-      ? ['vitest', 'list', '--project', 'sim', '--filesOnly']
-      : ['playwright', 'test', '--list', '--project=e2e'];
+    kind === 'e2e'
+      ? ['playwright', 'test', '--list', '--project=e2e']
+      : ['vitest', 'list', '--project', kind, '--filesOnly', `--json=${listFile}`];
+  if (kind !== 'e2e') mkdirSync(path.dirname(listFile), { recursive: true });
   const res = spawnSync('npx', ['--no-install', ...cmd], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -148,11 +161,19 @@ function runnerFiles(kind) {
     );
     process.exit(1);
   }
-  const re = kind === 'sim' ? /^\[sim\] (\S+)\s*$/gm : /\[e2e\] › (\S+?):\d+:\d+ › /g;
   const tests = new Map();
-  for (const m of out.matchAll(re)) {
-    const f = m[1].replaceAll('\\', '/');
-    tests.set(f, (tests.get(f) ?? 0) + 1);
+  if (kind === 'e2e') {
+    for (const m of out.matchAll(/\[e2e\] › (\S+?):\d+:\d+ › /g)) {
+      const f = m[1].replaceAll('\\', '/');
+      tests.set(f, (tests.get(f) ?? 0) + 1);
+    }
+  } else {
+    const listed = JSON.parse(readFileSync(listFile, 'utf8'));
+    rmSync(listFile, { force: true });
+    for (const { file } of listed) {
+      const f = path.relative(repoRoot, file).split(path.sep).join('/');
+      tests.set(f, (tests.get(f) ?? 0) + 1);
+    }
   }
   return { files: [...tests.keys()].sort(), tests };
 }
@@ -201,7 +222,7 @@ if (shard !== null) {
     !steps.some((s) => s.shardable) ||
     steps.some((s) => !s.shardable && !s.everySlice && !s.lastSliceOnly)
   ) {
-    console.error('check: --shard needs a --tier whose steps all shard (sim, browser)');
+    console.error('check: --shard needs a --tier whose steps all shard (unit, sim, browser)');
     process.exit(1);
   }
   if (slice.i !== slice.n && steps.some((s) => s.lastSliceOnly)) {
@@ -256,6 +277,8 @@ if (planOnly) {
     process.exit(1);
   }
   for (const step of steps) if (step.shardable) sliceOf(step);
+  // Let stdout drain first: process.exit drops writes still queued for a pipe.
+  await new Promise((resolve) => process.stdout.write('', resolve));
   process.exit(0);
 }
 
@@ -282,10 +305,10 @@ for (const step of steps) {
   // The runner must have run exactly the slice: every planned file (Vitest), every listed test of
   // them (Playwright), so a filter that matched more or fewer files cannot pass unnoticed.
   if (planned && code === 0) {
-    const ran = step.shardable === 'sim' ? vitestFiles(out) : playwrightRunning(out);
-    const want = step.shardable === 'sim' ? planned.files.length : planned.tests;
-    if (ran !== want)
-      result = `FAIL (ran ${ran}, the slice planned ${want} ${step.shardable === 'sim' ? 'files' : 'tests'})`;
+    const vitest = step.shardable !== 'e2e';
+    const ran = vitest ? vitestFiles(out) : playwrightRunning(out);
+    const want = vitest ? planned.files.length : planned.tests;
+    if (ran !== want) result = `FAIL (ran ${ran}, the slice planned ${want} ${vitest ? 'files' : 'tests'})`;
   }
   if (result !== 'pass') failed = true;
   rows.push([label, result, `${text} (${secs}s)`]);

@@ -4,11 +4,11 @@
   "name": "Speed Monitored by Aircraft",
   "kind": "cop-escape",
   "region": "florida-keys",
-  "timeOfDay": "golden-hour",
+  "timeOfDay": "noon",
   "lengths": [
     {
       "id": "standard",
-      "route": "m1-standard-run",
+      "route": "osm-seven-mile-run",
       "laps": 1
     }
   ],
@@ -26,7 +26,7 @@
   },
   "rules": {
     "escapeBy": "distance",
-    "escapeDistanceM": 2750,
+    "escapeDistanceM": 3500,
     "copsFromStart": 2
   },
   "objectives": [
@@ -54,7 +54,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "A cop escape, 2.75 km: the sign said the speed is monitored by aircraft, and the aircraft reported it. Once the law is on you, ride the distance without being knocked off, or lose them. Playtest 3 (T10.1): the third tier's third regular event (progression.md, section 2); the phase-2 content task moves it onto the Seven Mile Bridge's old road, where the law does not follow (critic.md, W1). [default] every number and name.",
+    "notes": "A cop escape on the real Seven Mile Bridge (playtest 3, T10.4; critic W1, round 3: \"rivals and cops on the highway only\"): the sign said the speed is monitored by aircraft, and at noon, on a bridge with nowhere to hide, the aircraft reported it. Two cops are on you from the start. Ride 3.5 km without being knocked off, or lose them. The old bridge is how you lose them: the law stays on the highway and cannot follow onto the old road, so the repair platforms' hops (a ramp truck, a 30 m gap) are the way out, and a rider who falls short of one wakes on the highway, with the law. Third tier's third regular event (progression.md, section 2). [default] every number and name.",
     "provenance": {
       "origin": "agent",
       "author": "agent",
