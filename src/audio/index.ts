@@ -224,6 +224,9 @@ export function createAudio(
     duck() {
       engine?.duck();
     },
+    countdownBeat(n) {
+      engine?.countdownBeat(n);
+    },
     say: (contentRef) => engine?.say(contentRef) ?? Promise.resolve(false),
   };
 }

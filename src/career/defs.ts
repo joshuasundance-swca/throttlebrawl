@@ -131,8 +131,13 @@ export interface CareerDef {
   startingCash: number;
   /** Qualified bike id. */
   startingBike: string;
-  /** The node the race-first start rides (the tutorial event's node), or null. */
+  /** The tutorial event's node (its prompts teach the controls), or null. */
   tutorialNode: string | null;
+  /**
+   * The first run's shape as the file writes it. Since playtest 4 nothing reads it: a new device
+   * opens on the menu ("Menu first", P4-5), and the career's first race starts from the map like
+   * any other. Kept as the seam for a later intro.
+   */
   firstRun: 'race-first' | 'intro-first';
   tiers: readonly CareerTier[];
   nodes: readonly CareerNode[];

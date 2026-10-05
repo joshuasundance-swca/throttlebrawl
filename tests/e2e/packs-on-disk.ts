@@ -142,7 +142,7 @@ export function diskCareers(): DiskCareer[] {
 
 /**
  * What the career browser spec checks, picked from the packs by rule: the careers in the menu's
- * chapter order; the first one's opening node (its tutorial event, raced race-first) and a
+ * chapter order; the first one's opening node (its tutorial event, the one the menu's Start career suggests) and a
  * first-tier node waiting on it alone; a first-tier paint the starting cash buys and a bike sold
  * only from a later tier; the starting bike's name; the next career's map panel that holds its first
  * node (its network's name without the bake note in brackets).

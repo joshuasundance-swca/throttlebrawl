@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { rideFirstCareerRace } from './career-start';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
 // Playtest 3 (the maintainer, 2026-10-03): "The black and white text pop-ups block the actual game."
@@ -57,7 +58,6 @@ interface Measured {
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __raceFirst?: boolean;
   __game?: {
     setBot(on: boolean): void;
     setSeed(seed: number): void;
@@ -101,7 +101,6 @@ async function startRace(page: Page, opts: { portrait?: boolean; look?: string }
     ({ portrait }) => {
       const w = window as TestWindow;
       w.__GAME_TEST__ = true;
-      w.__raceFirst = true;
       // A phone held upright shows platform/'s rotate screen and pauses; to measure the race screen
       // in that shape the page is told it is not portrait (as ui-style-popups.spec.ts does).
       if (portrait) {
@@ -129,8 +128,7 @@ async function startRace(page: Page, opts: { portrait?: boolean; look?: string }
     g?.setSeed(seed);
     g?.setBot(true);
   }, CAREER_SEED);
-  await page.locator('#start-screen').click();
-  await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+  await rideFirstCareerRace(page);
   await expect(page.locator('#hud-objective')).toBeVisible();
   await page.waitForFunction(() => ((window as TestWindow).__game?.snapshot()?.tick ?? 0) > 20);
 }

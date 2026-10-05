@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { rideFirstCareerRace } from './career-start';
 
 // The HUD's top layout (playtest 3, the maintainer: "The race objective sits over the heat meter";
 // design spec "HUD layout: nothing overlaps"; ui/hud-layout.ts). hud-layout.test.ts checks the slots
@@ -24,7 +25,6 @@ interface Measured {
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __raceFirst?: boolean;
   __game?: {
     setBot(on: boolean): void;
     setSeed(seed: number): void;
@@ -42,14 +42,9 @@ const LONG_BARK =
   'You took the long way round and I respect that, said the man in the lane you were not in at all';
 
 async function startRace(page: Page, opts: { career: boolean; mirror?: boolean }) {
-  await page.addInitScript(
-    ({ career }) => {
-      (window as TestWindow).__GAME_TEST__ = true;
-      // A new device's first tap goes straight into the career's first race (its objective is up).
-      if (career) (window as TestWindow).__raceFirst = true;
-    },
-    { career: opts.career },
-  );
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
   await page.goto('./');
   if (opts.career) {
     // The bot rides from the first tick, so every case rides the same race.
@@ -59,11 +54,11 @@ async function startRace(page: Page, opts: { career: boolean; mirror?: boolean }
       g?.setBot(true);
     });
   }
-  await page.locator('#start-screen').click();
   if (opts.career) {
-    await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+    await rideFirstCareerRace(page);
     await expect(page.locator('#hud-objective')).toBeVisible();
   } else {
+    await page.locator('#start-screen').click();
     await expect(page.locator('#menu-race')).toBeVisible();
     if (opts.mirror) {
       await page.locator('#menu-settings').click();

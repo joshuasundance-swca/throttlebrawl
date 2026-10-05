@@ -345,6 +345,11 @@ export const CUE_PATCHES: Readonly<Record<CueId, CuePatch>> = {
   go: patch((b, t) => {
     b.held('square', 880, t, 0.25, 0.14, 4000);
   }),
+  // The countdown's beep (playtest 4, P4-11): the same square voice as GO, an octave down and
+  // softer, so the three beats lead up to the one that means ride.
+  countBeat: patch((b, t) => {
+    b.held('square', 440, t, 0.16, 0.12, 3000);
+  }),
   // Your finish (run W-U, pitch deck #5: "a boxing-bell 'ding' marks the finish"): the ring's bell,
   // struck three times as at the end of a round, over the old rising jingle, quieter.
   finish: patch((b, t) => {

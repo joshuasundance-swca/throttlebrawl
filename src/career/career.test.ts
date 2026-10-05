@@ -9,7 +9,6 @@ import {
   careerStarted,
   createOnboarding,
   currentPaintHex,
-  firstRace,
   garageBikes,
   garagePaints,
   lockReason,
@@ -203,7 +202,7 @@ const winNode = (p: Profile, id: string, t: Partial<RaceTally> = {}) => {
 };
 
 describe('starting a career', () => {
-  it('a fresh profile gets the starting cash and bike, and the map its start roads; race-first rides the tutorial', () => {
+  it('a fresh profile gets the starting cash and bike, and the map its start roads', () => {
     expect(careerStarted(DEFAULT_PROFILE)).toBe(false);
     const p = fresh();
     expect(careerStarted(p)).toBe(true);
@@ -211,7 +210,6 @@ describe('starting a career', () => {
     expect(p.bikes).toEqual({ owned: ['base:rustbucket-400'], current: 'base:rustbucket-400', paint: {} });
     expect(p.regions['florida-keys']?.unlockedRoads).toEqual(['road-a']);
     expect(startCareer([DEF], p)).toBe(p); // a started career is left alone
-    expect(firstRace([DEF])?.node.id).toBe('a');
   });
 });
 
