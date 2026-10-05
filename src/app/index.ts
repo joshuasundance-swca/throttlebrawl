@@ -35,7 +35,14 @@ import {
 } from '../content';
 import { createHaptics, createInput, type ActionState } from '../input';
 import { APP_ID, runStartTap, watchLifecycle } from '../platform';
-import { createRenderer, interpolateEntity, riderLookOf, type LookEnv, type RiderRigCounts } from '../render';
+import {
+  createRenderer,
+  interpolateEntity,
+  riderLookOf,
+  type BoardItem,
+  type LookEnv,
+  type RiderRigCounts,
+} from '../render';
 import { configFromHeader, createInputRecorder, createReplayController, decodeReplay } from '../replay';
 import {
   audioVolumes,
@@ -104,6 +111,15 @@ import { boardSpots, spotOn, withIncidentSites, withReceiptBoards } from './rece
 import { roadsForHeader } from './resume';
 import { createRaceSeeds, type SeedSource } from './seed';
 import { transition, type AppEvent, type AppState } from './states';
+import {
+  createSeenPoll,
+  landingLineFor,
+  landingLineItem,
+  producerAskItem,
+  producerThanksItem,
+  SLOW_FRAMES_ITEM,
+  withoutLandingLines,
+} from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
 
 export { createHeadlessRace } from './headless';
@@ -450,6 +466,14 @@ export function createApp(opts: AppOptions): AppHandle {
   /** The receipts the boards were drawn with ('' outside a career race). */
   let shownReceipts = '';
   /**
+   * The region's landing one-liners (playtest 3: they ride the top ticker, never the renderer's
+   * overlay, which gets an empty pool). The last one shown, so it is not picked twice running.
+   */
+  let landingPool: readonly BoardItem[] = [];
+  let lastLandingRef: string | null = null;
+  /** The poll for the signs and billboards in view ("recently seen", the veto's list). */
+  const seenPoll = createSeenPoll();
+  /**
    * Shows the race's region: its road with the road files as set dressing (rails, ramp stripes),
    * its signs and billboards (minus this device's cuts), its time of day and palette.
    */
@@ -487,7 +511,9 @@ export function createApp(opts: AppOptions): AppHandle {
             vetoed,
           )
         : [];
-    const withBoards = withReceiptBoards(dressing, boardCatalog(registry, regionKey, vetoed), boards);
+    const regionBoards = boardCatalog(registry, regionKey, vetoed);
+    landingPool = regionBoards.pools?.landing ?? [];
+    const withBoards = withReceiptBoards(dressing, regionBoards, boards);
     // Run W-U: a bust also leaves an incident site (cones round an "INCIDENT SITE #n" placard) at
     // the very spot, on any road of the race.
     const onRace = new Set(stream.road.edges.map((e) => e.id));
@@ -496,7 +522,7 @@ export function createApp(opts: AppOptions): AppHandle {
         ? C.incidentSites(registry, careerRace.def, profile.receipts, (r) => onRace.has(r), vetoed)
         : [];
     const shown = withIncidentSites(stream.road, withBoards.dressing, withBoards.catalog, sites);
-    renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
+    renderer.setRoad(stream.road, env, shown.dressing, withoutLandingLines(shown.catalog));
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road);
@@ -866,7 +892,10 @@ export function createApp(opts: AppOptions): AppHandle {
       audio.onEvents(events, curr);
       renderer.pushEvents(events);
       input.onEvents(events, playerId);
+      noteLanding(events);
     }
+    // The wheelie's band, every step (null while none): the buzz when it turns high is a swing.
+    input.onMoves(curr.moves);
     if (tick % 60 === 0) recorder.checkpoint(tick, race.hash());
     outcome.note(events, playerId, tick);
     noteCareer(events, tick);
@@ -919,11 +948,18 @@ export function createApp(opts: AppOptions): AppHandle {
         // The whole-snapshot HUD: speed, "1st / N" among the racers (not the traffic), your health
         // and your target's.
         if (state === 'race' && curr) ui.updateRace(curr, playerId, settings.units);
+        // The signs and billboards in view, every 30 frames of a race, into the veto's "recently seen".
+        if (state === 'race' && !ui.paused) {
+          for (const seen of seenPoll.frame(() => renderer.visibleContent())) ui.narrative.noteSeen(seen);
+        }
         // The look fallback (run W-O): frames that stay slow on an ink look bring up ui's offer to
         // switch to Classic, once a race, unless the player said no before.
         const racing = state === 'race' && !ui.paused && holds.size === 0;
         const inkLook = settings.look !== 'classic' && !settings.lookFallbackDismissed && lookWatchOn();
-        if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) ui.offerClassicLook();
+        if (lookWatch.frame(dt * 1000, { racing, inkLook, divisor: frameDivisor() })) {
+          // The offer's buttons live in the pause menu's card; the strip says where.
+          if (ui.offerClassicLook()) ui.ticker.push(SLOW_FRAMES_ITEM);
+        }
         const slowMs = testSlowFrameMs();
         if (slowMs > 0) {
           const until = performance.now() + slowMs;
@@ -1078,6 +1114,9 @@ export function createApp(opts: AppOptions): AppHandle {
     recorder.beginRace(race, replayKey);
     outcome = createOutcome();
     lookWatch.reset();
+    seenPoll.reset();
+    lastLandingRef = null;
+    input.onMoves(null);
     prev = null;
     curr = race.snapshot();
     recent = [];
@@ -1169,6 +1208,23 @@ export function createApp(opts: AppOptions): AppHandle {
     careerRace.gig = extra.gig;
   }
 
+  /**
+   * The player's landing that paid puts one of the region's one-liners on the top ticker (the
+   * renderer's overlay is off: its pool is empty). It is vetoable, so it is noted as seen, and a line
+   * cut on this device is out of the pool at once.
+   */
+  function noteLanding(events: readonly SimEvent[]): void {
+    if (landingPool.length === 0) return;
+    const cut = new Set(settings.vetoes.map((v) => v.contentRef));
+    const pool = landingPool.filter((p) => !cut.has(p.ref));
+    const pick = landingLineFor(events, playerId, pool, lastLandingRef);
+    if (!pick || !race) return;
+    lastLandingRef = pick.item.ref;
+    const item = landingLineItem(pick.item, pick.tick, `seed-${race.config.seed}`);
+    ui.ticker.push(item);
+    ui.narrative.noteSeen({ contentRef: pick.item.ref, kind: 'sign', label: item.text, tick: pick.tick });
+  }
+
   /** One step of a career race: its rules, its prompts, the objective line, an early end. */
   function noteCareer(events: readonly SimEvent[], tick: number): void {
     const c = careerRace;
@@ -1203,12 +1259,12 @@ export function createApp(opts: AppOptions): AppHandle {
         routeId: '',
         roadIds: [],
       });
-      ui.career.prompt(`PRODUCER: ${c.ask.text} +$${c.ask.cash}`);
+      ui.ticker.push(producerAskItem(c.ask));
     }
     c.askLog.note(events, curr);
     if (!c.askMet && c.askLog.status().objectives[0]?.met === true) {
       c.askMet = true;
-      ui.career.prompt(`PRODUCER: Got it. +$${c.ask.cash}`);
+      ui.ticker.push(producerThanksItem(c.ask));
     }
   }
 
