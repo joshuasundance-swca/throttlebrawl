@@ -68,9 +68,9 @@ const isSeconds = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 /**
  * The files of a tier that the timing table has no time for, and the seconds each is planned as.
- * @param {'sim' | 'e2e'} tier
+ * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
- * @param {{ timings?: { sim?: Record<string, number>, e2e?: Record<string, number> } }} [options]
+ * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number> } }} [options]
  * @returns {{ files: string[], seconds: number }}
  */
 export function unmeasured(tier, files, { timings = readTimings() } = {}) {
@@ -174,10 +174,10 @@ export function planSlices({
 
 /**
  * The plan for one tier, from the timing table and (for sim) the batch readers.
- * @param {'sim' | 'e2e'} tier
+ * @param {'unit' | 'sim' | 'e2e'} tier
  * @param {string[]} files
  * @param {number} n
- * @param {{ timings?: { sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number }, read?: (file: string) => string }} [options]
+ * @param {{ timings?: { unit?: Record<string, number>, sim?: Record<string, number>, e2e?: Record<string, number>, perf?: number }, read?: (file: string) => string }} [options]
  */
 export function planTier(tier, files, n, { timings = readTimings(), read } = {}) {
   const spec = TIERS[tier];
