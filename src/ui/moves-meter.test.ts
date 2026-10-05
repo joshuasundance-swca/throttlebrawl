@@ -140,15 +140,14 @@ describe('what becomes of a chain that left the snapshot', () => {
     expect(driftOutcome(ending(null), [], true)).toBe('none');
   });
 
-  it('a chain can be lost while the rider is down (a crash), or finished with it open; not while he rides', () => {
-    const at = (mode: string, finished = false) => chainLossShown({ mode, finished });
-    expect([at('Tumble'), at('OnFoot'), at('Road', true)]).toEqual([true, true, true]);
+  it('a chain can be lost only while the rider is down (a crash), never while he rides or has finished', () => {
+    const at = (mode: string) => chainLossShown({ mode });
+    expect([at('Tumble'), at('OnFoot')]).toEqual([true, true]);
     expect([at('Road'), at('Airborne'), at('Free')]).toEqual([false, false, false]);
-    expect([chainLossShown(null), chainLossShown(undefined), chainLossShown({ mode: 'Road' })]).toEqual([
-      false,
-      false,
-      false,
-    ]);
+    // A chain open at the finish line is paid by the sim (a drift pop), so a finisher riding on is no loss.
+    const finisher = { mode: 'Road', finished: true };
+    expect(chainLossShown(finisher)).toBe(false);
+    expect([chainLossShown(null), chainLossShown(undefined)]).toEqual([false, false]);
   });
 
   it('shows one line: a drift under the rider, else a live run, else the open chain', () => {

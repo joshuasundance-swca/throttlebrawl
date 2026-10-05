@@ -52,8 +52,9 @@
 // Every `driftEnd` carries `seconds`, `clean`, `chain`, `boostMps` and `points` (above 0 only on
 // the end that banks the chain), plus `lost` (the cash a crash emptied) or `kept` (the cash a knock
 // left open); the bank after a lapsed window is a `driftEnd` with `bank: true` and no slide behind
-// it. A rider who finishes with a chain still open loses it: sim/race scores
-// only racers still racing (a finisher's bank would need a line in race/style.ts's closeStyle).
+// it. A rider who finishes with a chain open is paid it at the line (`driftFinish`, called by
+// sim/race when the rider stops racing): a `driftEnd` with `bank: true` and `finish: true`, scored
+// there as a `drift` style event, since sim/race scores only racers still racing.
 // AI riders never drift in this pass. Off while `riders.drift` is absent or 0, so recordings made
 // before ride as they did. Deterministic: core math only, plain numbers in the riders' state.
 import { clamp, type EntityId, type TuningParamDecl } from '../../core';
@@ -540,6 +541,40 @@ export function driftDown(world: World, st: RiderState, m: Mover): void {
   if (!busy(st, m.id) || !crashedLast(world.lastEvents, m.id)) return;
   if ((st.driftSide[m.id] ?? 0) !== 0) endDrift(world, st, m, { crash: true, takeoff: false }, 1);
   else empty(st, m.id);
+}
+
+/**
+ * A racer stops racing (over the finish line, or classified at the race end): the chain still open is
+ * paid, the cash of a slide in progress included, so a chain open at the line is not forfeited and
+ * "DRIFT LOST" is a crash's alone. Returns the points and the chain's length for sim/race to score
+ * as a `drift` style event (the rider no longer scores events), or null when no chain is open. The
+ * chain is closed and so is a slide in progress, as at a take-off: no boost, and the slip eases back
+ * as after any drift. The `driftEnd` it emits carries `finish: true`, which scoring skips: the
+ * points are scored by the caller, once. Reads the state without creating it.
+ */
+export function driftFinish(world: World, m: Mover): { points: number; chain: number } | null {
+  const st = stateOf(world);
+  const id = m.id;
+  const chain = st?.driftChain?.[id] ?? 0;
+  if (!st || chain <= 0) return null;
+  const points = st.driftCash[id] ?? 0;
+  const seconds = (st.driftSide[id] ?? 0) !== 0 ? (st.driftS[id] ?? 0) : 0;
+  st.driftSide[id] = 0;
+  st.driftGate[id] = 0;
+  st.driftS[id] = 0;
+  st.driftChain[id] = 0;
+  st.driftCash[id] = 0;
+  st.driftWindow[id] = 0;
+  emit(world, 'driftEnd', id, {
+    seconds,
+    clean: false,
+    chain,
+    points,
+    boostMps: 0,
+    bank: true,
+    finish: true,
+  });
+  return { points, chain };
 }
 
 /** The riders' state as the snapshot reads it (never created by a read). */

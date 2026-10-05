@@ -1398,7 +1398,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // (a `drift` pop in this frame's feed lands on its line) or a crash emptied it, which the
     // strip shows as DRIFT LOST (T6.3, the critic's C7: it "empties visibly on a wipeout"). Only a
     // crash empties it (playtest 4): a wobble, a bump or a stagger keeps the chain, so the chip needs
-    // the rider down (or finished with the chain open, which the sim forfeits).
+    // the rider down. A chain open at the finish line is paid, so it banks.
     const ended = step.ended;
     let landing = !!ended && ended.qualifies && pops.some((p) => p.kind === ended.kind);
     const outcome = driftOutcome(drift, pops, loses);

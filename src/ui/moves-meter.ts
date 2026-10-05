@@ -81,10 +81,10 @@ export function createDriftMeter(): DriftMeter {
 
 /**
  * What became of a chain whose cash just left the snapshot: `banked` when a `drift` pop arrived in
- * the same frame (the sim banks and scores in one step), `lost` when none did on a live race and
- * the chain could only have gone one way (`loses`: the rider is down after a crash, or has finished
- * with the chain open, which the sim forfeits), else `none` (nothing ended, the race itself went
- * away, or the cash went some way that is no loss).
+ * the same frame (the sim banks and scores in one step, at the end of the window or at the finish
+ * line), `lost` when none did on a live race and the rider is down (`loses`: a crash emptied it,
+ * the only thing that does), else `none` (nothing ended, the race itself went away, or the cash went
+ * some way that is no loss).
  */
 export function driftOutcome(
   drift: DriftStep,
@@ -98,14 +98,12 @@ export function driftOutcome(
 
 /**
  * Whether a chain that vanishes from the snapshot with no payout was lost for a reason the strip
- * names. A crash is the only thing that empties a chain mid-race (playtest 4: a wobble, a bump or a
- * stagger keeps it), and the rider is then down (tumbling or running back to the bike). A rider who
- * has finished loses an open chain too (the sim banks nothing after the finish; T6.3 chose to say
- * so). Anything else is no loss.
+ * names. A crash is the only thing that empties a chain (playtest 4: a wobble, a bump or a stagger
+ * keeps it, and a chain open at the finish line is paid), and the rider is then down (tumbling or
+ * running back to the bike). Anything else is no loss.
  */
-export function chainLossShown(player: { mode: string; finished?: boolean } | null | undefined): boolean {
-  if (!player) return false;
-  return player.mode === 'Tumble' || player.mode === 'OnFoot' || player.finished === true;
+export function chainLossShown(player: { mode: string } | null | undefined): boolean {
+  return player?.mode === 'Tumble' || player?.mode === 'OnFoot';
 }
 
 /**

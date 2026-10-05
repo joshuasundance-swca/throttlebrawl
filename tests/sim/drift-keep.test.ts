@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { tuningDefaults } from '../../src/core';
 import { COMBAT_TUNING, combatSystem } from '../../src/sim/combat';
 import { PUNCH } from '../../src/sim/combat/harness.test-util';
+import { raceSystem } from '../../src/sim/race';
 import { riderState, ridersSystem } from '../../src/sim/riders';
 import { driftMoves } from '../../src/sim/riders/drift';
 import { input, testConfig } from '../../src/sim/riders/testing';
@@ -21,7 +22,7 @@ import { placeVehicle, trafficState, trafficSystem } from '../../src/sim/traffic
 import { toCorridor } from '../../src/sim/traffic/corridor';
 import { tumbleSystem } from '../../src/sim/tumble';
 import { chainLossShown, createDriftMeter, driftOutcome } from '../../src/ui/moves-meter';
-import type { SimConfig, SimEvent, SimTrafficTypeDef } from '../../src/sim/types';
+import type { SimConfig, SimEvent, SimInput, SimTrafficTypeDef } from '../../src/sim/types';
 import { InputFlag } from '../../src/sim/types';
 import {
   addMover,
@@ -72,6 +73,13 @@ interface Spec {
   /** Called before each tick's step: places the rival or the car, sets the rival's input. */
   incident?: (c: Ctx) => void;
   ticks?: number;
+  /** The finish line's s on the road (the race phase needs it); left out, the far end of the road. */
+  finishS?: number;
+  /**
+   * The player's input each tick, given the tick and whether he has finished; brake and bars held,
+   * a drift on a straight, when left out.
+   */
+  drive?: (t: number, finished: boolean) => SimInput;
 }
 
 interface Played {
@@ -90,6 +98,7 @@ function play(spec: Spec): Played {
     edges: STRAIGHT,
     tuning: { ...tuningDefaults(COMBAT_TUNING), ...(spec.tuning ?? {}) },
     rivals: spec.rival ? 1 : 0,
+    ...(spec.finishS !== undefined ? { finish: { road: 'a', s: spec.finishS } } : {}),
   });
   const config: SimConfig = {
     ...base,
@@ -106,7 +115,9 @@ function play(spec: Spec): Played {
   const track: Played['track'] = [];
   for (let t = 0; t < (spec.ticks ?? 420); t++) {
     spec.incident?.({ world, config, t, player, rival });
-    events.push(...stepWorld(world, config, spec.systems, [input(0, 1, 0.8)]));
+    const finished = events.some((e) => e.type === 'finish' && e.actor === player.id);
+    const command = spec.drive ? spec.drive(t, finished) : input(0, 1, 0.8);
+    events.push(...stepWorld(world, config, spec.systems, [command]));
     track.push({ mode: player.mode, moves: driftMoves(world, player.id), hash: worldHash(world) });
   }
   return { world, player, events, track };
@@ -340,28 +351,129 @@ describe('drift keep: bumps and a stagger', () => {
   });
 });
 
-describe('drift keep: the ticker says DRIFT LOST only on a crash', () => {
-  /** What the strip decides each tick of a played ride, from the sim's own numbers. */
-  function strip(p: Played): { lost: number[]; banked: number[] } {
-    const meter = createDriftMeter();
-    const lost: number[] = [];
-    const banked: number[] = [];
-    p.track.forEach((point, t) => {
-      const paid = p.events.some(
-        (e) => e.tick === t && e.type === 'driftEnd' && Number(e.data['points']) > 0,
-      );
-      const step = meter.update({ wheelieS: 0, wheelieBand: null, ...point.moves });
-      const outcome = driftOutcome(
-        step,
-        paid ? [{ kind: 'drift' }] : [],
-        chainLossShown({ mode: point.mode }),
-      );
-      if (outcome === 'lost') lost.push(t);
-      if (outcome === 'banked') banked.push(t);
-    });
-    return { lost, banked };
-  }
+/** What the strip decides each tick of a played ride, from the sim's own numbers. */
+function strip(p: Played): { lost: number[]; banked: number[] } {
+  const meter = createDriftMeter();
+  const lost: number[] = [];
+  const banked: number[] = [];
+  p.track.forEach((point, t) => {
+    // The pop: the race phase's `drift` style event, or, in a ride with no race phase, the banking
+    // driftEnd standing in for it (a finish's own driftEnd is paid by the style event beside it).
+    const paid = p.events.some(
+      (e) =>
+        e.tick === t &&
+        ((e.type === 'style' && e.data['kind'] === 'drift') ||
+          (e.type === 'driftEnd' && Number(e.data['points']) > 0 && e.data['finish'] !== true)),
+    );
+    const step = meter.update({ wheelieS: 0, wheelieBand: null, ...point.moves });
+    const outcome = driftOutcome(step, paid ? [{ kind: 'drift' }] : [], chainLossShown({ mode: point.mode }));
+    if (outcome === 'lost') lost.push(t);
+    if (outcome === 'banked') banked.push(t);
+  });
+  return { lost, banked };
+}
 
+/** The race phase too, with a finish line a drift begun at s 100 crosses ~0.6 s in. */
+const RACE: SimSystem[] = [ridersSystem, tumbleSystem, raceSystem];
+const FINISH_S = 125;
+const finishes = (p: Played) => ofType(p.events, 'finish').filter((e) => e.actor === p.player.id);
+const driftChips = (p: Played) =>
+  ofType(p.events, 'style').filter((e) => e.actor === p.player.id && e.data['kind'] === 'drift');
+
+describe('drift keep: a chain open at the finish line is paid, not lost', () => {
+  // The maintainer, via the coordinator: DRIFT LOST only on a crash. A rider who crosses the line
+  // with a chain open used to forfeit it (the race phase scored only racers still racing) and the
+  // strip said DRIFT LOST. Now the line banks it, as a normal drift chip.
+  it('a slide across the line pays its chain as one drift chip that tick, and DRIFT LOST never shows', () => {
+    const played = play({
+      systems: RACE,
+      finishS: FINISH_S,
+      ticks: 200,
+      // On the line he lets go and rolls on, so nothing else drifts after it.
+      drive: (_t, finished) => (finished ? input(0.2, 0, 0) : input(0, 1, 0.8)),
+    });
+    const fin = finishes(played);
+    expect(fin).toHaveLength(1);
+    const at = fin[0]?.tick ?? -1;
+    // Mid-slide on the line, a chain up with cash.
+    const before = played.track[at - 1]?.moves;
+    expect(before?.driftSide).toBe(1);
+    expect(before?.driftChain).toBe(1);
+    expect(before?.driftCash).toBeGreaterThan(0);
+    const chips = driftChips(played);
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.tick).toBe(at);
+    expect(chips[0]?.data['chain']).toBe(1);
+    // The chip is the chain's cash at the line (a tick more of the slide at most), and it is in the tally.
+    expect(Math.abs(Number(chips[0]?.data['points']) - (before?.driftCash ?? 0))).toBeLessThanOrEqual(2);
+    expect(played.world.facts.styleTally[played.player.id]).toBe(chips[0]?.data['points']);
+    // Nothing is left open: the slide ended on the line and the chain is empty.
+    expect(played.track[at]?.moves).toEqual(NOTHING);
+    const ends = ofType(played.events, 'driftEnd');
+    expect(ends).toHaveLength(1);
+    expect(ends[0]?.data['finish']).toBe(true);
+    expect(ends[0]?.data['bank']).toBe(true);
+    const ticker = strip(played);
+    expect(ticker.lost).toEqual([]);
+    expect(ticker.banked).toEqual([at]);
+    console.log(
+      `[examined] finish at tick ${at}: mid-slide, chain ${before?.driftChain} cash ${before?.driftCash} the tick before; ` +
+        `drift chip ${JSON.stringify(chips[0]?.data)}; tally ${played.world.facts.styleTally[played.player.id]}; ` +
+        `driftEnd ${JSON.stringify(ends[0]?.data)}; strip lost [${ticker.lost.join(',')}] banked [${ticker.banked.join(',')}]`,
+    );
+  });
+
+  it('a chain waiting for its next corner is paid at the line, with its length', () => {
+    const played = play({
+      systems: RACE,
+      finishS: FINISH_S,
+      ticks: 120,
+      drive: () => input(1, 0, 0),
+      incident: ({ world, t, player }) => {
+        // Two links banked-in-waiting, $40 up, three and a half seconds of window left.
+        if (t !== 0) return;
+        const st = riderState(world);
+        st.driftChain[player.id] = 2;
+        st.driftCash[player.id] = 40;
+        st.driftWindow[player.id] = 3.5;
+      },
+    });
+    const fin = finishes(played);
+    expect(fin).toHaveLength(1);
+    const at = fin[0]?.tick ?? -1;
+    expect(played.track[at - 1]?.moves.driftCash).toBe(40);
+    const chips = driftChips(played);
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.tick).toBe(at);
+    expect(chips[0]?.data['points']).toBe(40);
+    expect(chips[0]?.data['chain']).toBe(2);
+    expect(played.track[at]?.moves).toEqual(NOTHING);
+    const ticker = strip(played);
+    expect(ticker.lost).toEqual([]);
+    expect(ticker.banked).toEqual([at]);
+  });
+
+  it('riding on after the line pays nothing more: a drift begun after it is not scored, and not DRIFT LOST', () => {
+    const played = play({
+      systems: RACE,
+      finishS: FINISH_S,
+      // Brake and bars held throughout, so he drifts again after the line and meets the wall (a wobble).
+      tuning: { 'riders.crashImpactMps': 12 },
+    });
+    const at = finishes(played)[0]?.tick ?? -1;
+    expect(at).toBeGreaterThan(0);
+    const starts = ofType(played.events, 'driftStart').filter((e) => e.tick > at);
+    expect(starts.length, 'he drifted again after the line').toBeGreaterThan(0);
+    const later = banks(played.events).filter((e) => e.tick > at && e.data['finish'] !== true);
+    expect(later.length, 'that chain lapsed after the line').toBeGreaterThan(0);
+    expect(Number(later[0]?.data['points'])).toBeGreaterThan(0);
+    // The line's chip is the only drift pay; the later chain is not scored (the race is his no more).
+    expect(driftChips(played)).toHaveLength(1);
+    expect(strip(played).lost).toEqual([]);
+  });
+});
+
+describe('drift keep: the ticker says DRIFT LOST only on a crash', () => {
   it('a crash shows it once, as he goes down; a wall wobble, a bump, a brush and a punch never do', () => {
     const down = play({ ...WALL, tuning: { 'riders.crashImpactMps': 2 } });
     const crashAt = ofType(down.events, 'crash')[0]?.tick ?? -1;
@@ -388,9 +500,10 @@ describe('drift keep: the replay hash stays deterministic', () => {
     ['a wall crash', { ...WALL, tuning: { 'riders.crashImpactMps': 2 } }],
     ['a wall wobble', { ...WALL, tuning: { 'riders.crashImpactMps': 12 } }],
     ['a rival bump', RIVAL_BUMP],
+    ['a finish with a chain open', { systems: RACE, finishS: FINISH_S, ticks: 200 }],
   ];
 
-  it('the same inputs give the same world hash on every tick, for a crash, a wobble and a bump', () => {
+  it('the same inputs give the same world hash on every tick, for a crash, a wobble, a bump and a finish', () => {
     const lines: string[] = [];
     for (const [label, spec] of cases) {
       const a = play(spec);
