@@ -260,9 +260,6 @@ export const CAREER_CSS = `
 @media (max-width: 700px) and (orientation: portrait) {
   #career-prompt { max-width: calc(100vw - 24px); bottom: max(126px, calc(var(--touch-rise, 0px) + 8px)); }
 }
-/* The landing one-liner (render/air-pays.ts) shares the prompt's band under the bike: while it shows
-   (render marks its canvas), the prompt steps aside for its 2 s. [default] */
-body:has(canvas[data-landing-line]) #career-prompt { visibility: hidden; }
 /* Playtest 3: "The race objective sits over the heat meter." The objective's slot comes from
    ui/hud-layout.ts (--hl-obj-* on #ui), two lines at most where it has the row, three in the narrower column (--hl-obj-lines),
    over the heat badge's slot and never on it: in the column on the pause button's side, past the road

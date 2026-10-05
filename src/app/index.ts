@@ -117,7 +117,6 @@ import {
   landingLineItem,
   producerAskItem,
   producerThanksItem,
-  withoutLandingLines,
 } from './ticker-feed';
 import { APP_TUNING, presentationOwner } from './tuning';
 
@@ -521,7 +520,7 @@ export function createApp(opts: AppOptions): AppHandle {
         ? C.incidentSites(registry, careerRace.def, profile.receipts, (r) => onRace.has(r), vetoed)
         : [];
     const shown = withIncidentSites(stream.road, withBoards.dressing, withBoards.catalog, sites);
-    renderer.setRoad(stream.road, env, shown.dressing, withoutLandingLines(shown.catalog));
+    renderer.setRoad(stream.road, env, shown.dressing, shown.catalog);
     camera.setRoad(stream.road);
     // The regional soundscape reads the road's scenery tags (bridges, water, cable lines, forest).
     audio.setRoad(stream.road);
@@ -1208,9 +1207,8 @@ export function createApp(opts: AppOptions): AppHandle {
   }
 
   /**
-   * The player's landing that paid puts one of the region's one-liners on the top ticker (the
-   * renderer's overlay is off: its pool is empty). It is vetoable, so it is noted as seen, and a line
-   * cut on this device is out of the pool at once.
+   * The player's landing that paid puts one of the region's one-liners on the top ticker. It is
+   * vetoable, so it is noted as seen, and a line cut on this device is out of the pool at once.
    */
   function noteLanding(events: readonly SimEvent[]): void {
     if (landingPool.length === 0) return;

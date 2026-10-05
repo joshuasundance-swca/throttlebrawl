@@ -19,7 +19,6 @@ import {
   Quaternion,
   Vector3,
   type Material,
-  type Object3D,
 } from 'three';
 import type {
   EntitySnapshot,
@@ -499,14 +498,6 @@ export class EntityViews {
   /** The renderer's feel effects, once their lazy chunk has loaded (none drawn before then). */
   setEffects(effects: FeelEffects): void {
     this.effects = effects;
-  }
-
-  /**
-   * A rider's frame as the last sync placed it (its ground point, turned with its heading, lean and
-   * pitch; its boxes or its rig are drawn on it), or null when the rider is not drawn.
-   */
-  riderFrame(id: number): Object3D | null {
-    return this.riders.get(id)?.root ?? null;
   }
 
   /** The traffic catalog (sizes and categories), from `SimConfig.trafficTypes`. */

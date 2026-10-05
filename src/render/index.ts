@@ -40,8 +40,8 @@ import type {
   SimSnapshot,
   SimTrafficTypeDef,
 } from '../sim/api';
-import { AirPays, bikeScreenBox } from './air-pays';
-import { Boards, contentLines, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
+import { AirPays } from './air-pays';
+import { Boards, type BoardCatalog, type BoardSlot, type VisibleContent } from './boards';
 import type { FeelCounts, FeelEffects } from './effects';
 import type { EventPropCounts, EventProps } from './event-props';
 import type { Smashables } from './smashables';
@@ -286,7 +286,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   const params = defaultRenderParams();
   const views = new EntityViews(look, { ...opts, params });
   const boards = new Boards(look);
-  // Air that pays (the pitch deck's #13): the chalk mark, the newspaper and the landing one-liner.
+  // Air that pays (the pitch deck's #13): the chalk mark and the newspaper.
   const airPays = new AirPays();
   // The race's moving parts, one lazy chunk off the first-load JavaScript (race-parts.ts: the menu's
   // grid needs none of them). It is fetched as the renderer starts, so it is in long before a race
@@ -357,17 +357,10 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let modelsModule: typeof import('./models') | null = null;
   const requested = new Set<ModelKind>();
   let palette: Readonly<Record<string, string>> | undefined;
-  // The region's board catalog, for the landing lines' words (the overlay reports only refs).
-  let boardCatalog: BoardCatalog | undefined;
-  const visibleContent = (): VisibleContent[] => [
-    ...boards.visibleContent(camera),
-    ...contentLines(airPays.visibleRefs(), boardCatalog),
-  ];
+  const visibleContent = (): VisibleContent[] => boards.visibleContent(camera);
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
-  /** Whether the canvas carries `data-landing-line` (the landing one-liner is up). */
-  let landingLineMarked = false;
   // Run W-R: the rider rigs, a lazy chunk that loads with the first race's looks.
   let rigs: RiderRigs | null = null;
   let rigsLoading = false;
@@ -793,8 +786,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       requestScenes(road);
       requestModels();
       boards.build(road, (id) => dressing?.[id]?.features as readonly BoardSlot[] | undefined, catalog);
-      boardCatalog = catalog;
-      airPays.setLines(catalog?.pools?.landing ?? []);
     },
     setTrafficTypes(defs) {
       views.setTrafficTypes(defs);
@@ -875,26 +866,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         if (film) loadPost();
         renderer.render(scene, camera);
       }
-      // The landing one-liner goes over the finished frame (the film pass would paint the sky over it),
-      // under the player's bike as this frame shows it.
-      const frame = me && airPays.visibleRefs().length > 0 ? views.riderFrame(me.id) : null;
-      const bike = frame
-        ? bikeScreenBox(
-            frame.matrixWorld.elements,
-            camera.matrixWorldInverse.elements,
-            camera.projectionMatrix.elements,
-            canvas.clientWidth,
-            canvas.clientHeight,
-          )
-        : null;
-      airPays.drawOverlay(renderer, canvas.clientWidth, canvas.clientHeight, bike);
-      // While the line shows, the canvas says so: ui's career prompt, which shares its band, steps
-      // aside (ui/career-screen.ts).
-      const lineUp = airPays.line.visible;
-      if (lineUp !== landingLineMarked) {
-        landingLineMarked = lineUp;
-        canvas.toggleAttribute('data-landing-line', lineUp);
-      }
     },
     resize,
     stats() {
@@ -939,7 +910,6 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     hideContent(refs) {
       const list = [...refs];
       boards.hide(list);
-      airPays.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
     },
