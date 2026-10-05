@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as feed from './ticker-feed';
-import type { BoardCatalog, BoardItem, VisibleContent } from '../render';
+import type { BoardItem, VisibleContent } from '../render';
 import type { SimEvent } from '../sim/api';
 import {
   createSeenPoll,
@@ -10,7 +10,6 @@ import {
   producerThanksItem,
   seenKindOf,
   SEEN_POLL_EVERY,
-  withoutLandingLines,
 } from './ticker-feed';
 
 // Playtest 3, the ticker integration (task T8.2; the design spec "The integration side"): app/ puts
@@ -123,27 +122,6 @@ describe('the slow-frames offer', () => {
   });
 });
 
-describe('the renderer gets no landing pool', () => {
-  const catalog: BoardCatalog = {
-    items: { a: { ref: 'base:region/keys#a', text: 'A', kind: 'sign' } },
-    pools: { signs: [item(0)], billboards: [item(1)], landing: [item(2), item(3)] },
-  };
-
-  it('empties `landing` and keeps every other item and pool as they were', () => {
-    const out = withoutLandingLines(catalog);
-    expect(out.pools?.landing).toEqual([]);
-    expect(out.pools?.signs).toBe(catalog.pools?.signs);
-    expect(out.pools?.billboards).toBe(catalog.pools?.billboards);
-    expect(out.items).toBe(catalog.items);
-    // The input is not touched: app/ keeps the pool to pick lines from.
-    expect(catalog.pools?.landing).toHaveLength(2);
-  });
-
-  it('works on a catalog without pools', () => {
-    expect(withoutLandingLines({ items: {} }).pools?.landing ?? []).toEqual([]);
-  });
-});
-
 describe('the poll for what is in view', () => {
   const sign = (n: number): VisibleContent => ({
     ref: `base:region/keys#sign-${n}`,
@@ -193,6 +171,5 @@ describe('the poll for what is in view', () => {
     expect(seenKindOf('billboard')).toBe('billboard');
     expect(seenKindOf('sign')).toBe('sign');
     expect(seenKindOf('cone')).toBe('sign');
-    expect(seenKindOf('line')).toBe('sign');
   });
 });

@@ -132,6 +132,7 @@ const FINE_MESHES = new Set([
   'road-boostMark',
   'road-cableSlot',
   'road-rebar',
+  'road-brickCourse',
   'road-posts',
   'road-rail-posts',
 ]);
@@ -152,6 +153,8 @@ export interface RoadSceneStats {
   railM: number;
   /** Plank seams drawn across boardwalks (run W-U). */
   boardSeams: number;
+  /** Mortar joints drawn across brick roads (playtest 3). */
+  brickCourses: number;
   rampStripes: number;
   pylons: number;
   /** Metres of road with a land strip beside it (roadside zones; walkways on railed sides excluded). */
@@ -345,6 +348,15 @@ export const SECRET_LIFT_M = 0.04;
 /** A boardwalk's plank pitch and the dark seam between two planks, m (run W-U). [default] */
 export const BOARD_M = 1.4;
 const BOARD_SEAM_M = 0.09;
+
+/**
+ * A brick road's mortar joints (playtest 3, Lombard's crooked block): one across the lanes every
+ * BRICK_COURSE_M, BRICK_JOINT_M wide, laid just over the brick. Spaced wide and drawn thick so they
+ * read at speed (a hair-thin joint every 20 cm would only shimmer). [default]
+ */
+export const BRICK_COURSE_M = 1;
+const BRICK_JOINT_M = 0.12;
+const BRICK_JOINT_LIFT_M = 0.012;
 /** Lift of the painted split zone over the main road (under the lane markings at 0.03). */
 const ZONE_LIFT_M = 0.015;
 /** Width of a painted line, m. */
@@ -398,7 +410,8 @@ function goreLines(road: RoadNetwork): Map<number, number> {
 }
 
 /** Layers that share a material kind but are separate meshes, so tests (and looks) can tell them apart. */
-type Layer = MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot' | 'rebar';
+type Layer =
+  MaterialKind | 'splitZone' | 'splitMark' | 'boostPad' | 'boostMark' | 'cableSlot' | 'rebar' | 'brickCourse';
 const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
   splitZone: 'shortcut',
   splitMark: 'marking',
@@ -406,6 +419,8 @@ const LAYER_KIND: Partial<Record<Layer, MaterialKind>> = {
   boostMark: 'marking',
   cableSlot: 'marking',
   rebar: 'rail',
+  // Mortar: a light joint on the red brick, in the paved-shoulder colour.
+  brickCourse: 'shoulder',
 };
 /** Layers drawn in their own colour rather than their kind's palette colour. */
 const LAYER_COLOR: Partial<Record<Layer, string>> = { cableSlot: '#5b5e63', rebar: '#7a4a2e' };
@@ -885,6 +900,7 @@ export function buildRoadScene(
   const nearWater = terrain ? waterGrid(road, dressing) : () => false;
   let railM = 0;
   let boardSeams = 0;
+  let brickCourses = 0;
   let rampStripes = 0;
   let gapEnds = 0;
   let kickers = 0;
@@ -919,7 +935,18 @@ export function buildRoadScene(
     // A secret fork leaves a shortcut road, and both are shortcut surfaces: it draws just over the
     // road it leaves, in the same colour, so the two never flicker where they overlap (run W-U).
     const lift = shortcutEdge ? SHORTCUT_LIFT_M + (secretEdge(e.index) ? SECRET_LIFT_M : 0) : 0;
-    for (const kind of ['road', 'shortcut', 'shoulder', 'marking', 'markingCenter', 'deck'] as const) {
+    // A brick road's lanes are the brick material (a boardwalk is brick for grip but planks to the
+    // eye: its tag keeps it the road's own colour).
+    const brickEdge = e.surface === 'brick' && !(dress.tags ?? []).some((t) => t.tag === 'boardwalk');
+    for (const kind of [
+      'road',
+      'brick',
+      'shortcut',
+      'shoulder',
+      'marking',
+      'markingCenter',
+      'deck',
+    ] as const) {
       strip(kind).breakStrip();
     }
     // A shortcut that overlaps a main road is clipped to the part beside it or, near a split, to
@@ -965,7 +992,7 @@ export function buildRoadScene(
       lift: number;
       skip?: (s: number, span: [number, number]) => boolean;
     }[] = [
-      { kind: 'road', span: (l) => l.drive, lift: 0 },
+      { kind: brickEdge ? 'brick' : 'road', span: (l) => l.drive, lift: 0 },
       { kind: 'shortcut', span: (l, c) => (l.shortcut ? [c.lo, c.hi] : null), lift },
       { kind: 'shoulder', span: (l, c) => (c.vergeL ? [outerL, lanesSpan(l)[0]] : null), lift: -0.02 },
       { kind: 'shoulder', span: (l, c) => (c.vergeR ? [lanesSpan(l)[1], outerR] : null), lift: -0.02 },
@@ -996,6 +1023,22 @@ export function buildRoadScene(
         a.pair(w(e.index, s, span[0], surf.lift), w(e.index, s, span[1], surf.lift));
       });
       a.breakStrip();
+    }
+    // Playtest 3: a brick road's mortar joints, one across the drive lanes every BRICK_COURSE_M.
+    if (brickEdge) {
+      const joints = strip('brickCourse');
+      for (let s = BRICK_COURSE_M / 2; s + BRICK_JOINT_M < e.length; s += BRICK_COURSE_M) {
+        if (inGap(s) || inGap(s + BRICK_JOINT_M)) continue;
+        const span = laneSpans(road.lanesAt(e.index, s)).drive;
+        if (!span) continue;
+        joints.quad(
+          w(e.index, s, span[0], BRICK_JOINT_LIFT_M),
+          w(e.index, s, span[1], BRICK_JOINT_LIFT_M),
+          w(e.index, s + BRICK_JOINT_M, span[0], BRICK_JOINT_LIFT_M),
+          w(e.index, s + BRICK_JOINT_M, span[1], BRICK_JOINT_LIFT_M),
+        );
+        brickCourses++;
+      }
     }
     // Run W-U (the Keys' Mangrove Boardwalk): a road tagged 'boardwalk' is planks, a dark seam
     // across its lanes every BOARD_M (in the road's own colour, so no draw call is added).
@@ -2307,6 +2350,7 @@ export function buildRoadScene(
       triangles,
       railM,
       boardSeams,
+      brickCourses,
       rampStripes,
       pylons: pylonSpots.length,
       landM,

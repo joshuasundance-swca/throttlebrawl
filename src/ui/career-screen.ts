@@ -187,7 +187,11 @@ export const CAREER_CSS = `
 .career-head .title { font-size: 22px; display: inline-block; }
 .career-season-card { background: #0006; border: 2px solid #f5c542; padding: 8px 10px; display: flex; flex-direction: column;
   gap: 6px; align-items: stretch; margin-top: 6px; }
+/* The title banner is tilted and throws a 4 px red underline, which hangs about 8 px below its box on
+   the low end of the tilt; the tally keeps clear of that (playtest 3, wave B's check: "clipped at its
+   top by the title banner's red underline"). [default] */
 .career-tally { font: 600 13px ui-monospace, monospace; color: #f2ead8; margin-top: 4px; }
+.career-head .career-tally { margin-top: 12px; }
 .career-maps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .career-map { flex: 0 0 auto; margin: 0; background: #0b1a24; border: 2px solid #111; box-shadow: 3px 3px 0 #000; }
 .career-map figcaption { font: 700 11px ui-monospace, monospace; color: #f2ead8; padding: 2px 6px; background: #111;
@@ -256,9 +260,6 @@ export const CAREER_CSS = `
 @media (max-width: 700px) and (orientation: portrait) {
   #career-prompt { max-width: calc(100vw - 24px); bottom: max(126px, calc(var(--touch-rise, 0px) + 8px)); }
 }
-/* The landing one-liner (render/air-pays.ts) shares the prompt's band under the bike: while it shows
-   (render marks its canvas), the prompt steps aside for its 2 s. [default] */
-body:has(canvas[data-landing-line]) #career-prompt { visibility: hidden; }
 /* Playtest 3: "The race objective sits over the heat meter." The objective's slot comes from
    ui/hud-layout.ts (--hl-obj-* on #ui), two lines at most where it has the row, three in the narrower column (--hl-obj-lines),
    over the heat badge's slot and never on it: in the column on the pause button's side, past the road

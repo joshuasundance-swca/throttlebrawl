@@ -328,8 +328,7 @@ async function installLayoutProbe(page: Page) {
     };
     w.__THREE_DEVTOOLS__ = hook;
     // The bike, then the rider on it, as boxes in the rider's frame: across, up from the ground,
-    // along (metres; render/air-pays.ts BIKE_SHAPE, kept the same by hand: this is the check's own
-    // measure, fitted to the painted rider in CI's screenshots).
+    // along (metres; this is the check's own measure, fitted to the painted rider in CI's screenshots).
     const SHAPE: { min: [number, number, number]; max: [number, number, number] }[] = [
       { min: [-0.35, 0, -0.95], max: [0.35, 1.05, 0.95] },
       { min: [-0.45, 0.5, -0.45], max: [0.45, 1.75, 0.35] },
@@ -1217,9 +1216,9 @@ async function settleStamp(page: Page) {
 }
 
 /**
- * A tap on a control to get to the next screen. A control that is off the screen (the menu is
- * taller than a 568x320 phone: its Settings row is cut off, a separate defect this check does not
- * fix) is clicked by dispatch instead, and the case says so in the log.
+ * A tap on a control to get to the next screen. A control that is off the screen is clicked by
+ * dispatch instead, and the case says so in the log. (The menu's controls are on the screen at
+ * every size now: the menu fit check below holds them there, so this is for the settings tabs.)
  */
 async function press(page: Page, selector: string, where: string) {
   const target = page.locator(selector);
@@ -1297,6 +1296,95 @@ for (const [where, width, height, finePointer] of [
   });
 }
 
+// ---- The menu fits a short phone (wave B's check, F1) --------------------------------------------
+// The main menu was taller than a 568x320 phone, so its Settings row sat below the screen and the
+// F1 check above had to tap it by dispatch. Every control of the menu, the region chips and the
+// menu's own block must now lie on the screen, with the what's-new card up (a first launch shows it)
+// and after it is dismissed, on the short sizes and the default phone. (The route chips scroll
+// sideways inside their own row by design, so they are not measured here: ui-route-picker.spec.ts
+// holds the picker itself on the screen.)
+
+/** The menu's controls that stick out of the screen, by name. */
+async function menuOffScreen(page: Page) {
+  return page.evaluate(() => {
+    const picks =
+      '#menu-career, #menu-race, #menu-settings, #menu-changelog, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
+    const off: string[] = [];
+    let examined = 0;
+    for (const e of document.querySelectorAll<HTMLElement>(picks)) {
+      if (!e.checkVisibility()) continue;
+      examined++;
+      const r = e.getBoundingClientRect();
+      if (r.left < -0.5 || r.top < -0.5 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5)
+        off.push(
+          `${e.id || e.className || e.tagName.toLowerCase()} [${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}]`,
+        );
+    }
+    return { off, examined, view: [innerWidth, innerHeight] };
+  });
+}
+
+for (const [where, width, height] of [
+  ['568x320', 568, 320],
+  ['640x360', 640, 360],
+  ['740x360', 740, 360],
+  ['915x412', 915, 412],
+] as const) {
+  test.describe(`menu fit at ${where}`, () => {
+    test.use({ viewport: { width, height } });
+    test('every menu control is on the screen, with the what-is-new card up and after it is dismissed', async ({
+      page,
+    }) => {
+      await page.addInitScript(() => {
+        (window as TestWindow).__GAME_TEST__ = true;
+      });
+      await page.goto('./');
+      await page.locator('#start-screen').click();
+      await expect(page.locator('#menu-race')).toBeVisible();
+      await settleStamp(page);
+      const card = page.locator('#whats-new');
+      const cardUp = await card.isVisible();
+      const first = await menuOffScreen(page);
+      console.log(
+        `${where}: card ${cardUp ? 'up' : 'not shown'}, ${first.examined} menu pieces, off ${JSON.stringify(first.off)}`,
+      );
+      expect(first.examined, `${where}: menu pieces were examined`).toBeGreaterThan(5);
+      expect(first.off, `${where}: menu pieces off the screen (card ${cardUp ? 'up' : 'not shown'})`).toEqual(
+        [],
+      );
+      if (cardUp) {
+        await page.locator('#whats-new-ok').click();
+        await expect(card).toBeHidden();
+        await settleStamp(page);
+        const after = await menuOffScreen(page);
+        console.log(
+          `${where}: card dismissed, ${after.examined} menu pieces, off ${JSON.stringify(after.off)}`,
+        );
+        expect(after.off, `${where}: menu pieces off the screen (card dismissed)`).toEqual([]);
+      }
+      // Settings takes a real tap here, not a dispatch.
+      await page.locator('#menu-settings').click();
+      await expect(page.locator('#settings-back')).toBeVisible();
+    });
+  });
+}
+
+// The check must fire: the same menu on a screen too short for it names what sticks out.
+test('the menu fit check names a control that is off the screen (negative control)', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  // The start tap may take the page fullscreen, and a fullscreen window cannot be resized.
+  await page.evaluate(() => (document.fullscreenElement ? document.exitFullscreen() : undefined));
+  await page.setViewportSize({ width: 568, height: 120 });
+  await settleStamp(page);
+  const squeezed = await menuOffScreen(page);
+  expect(squeezed.off.length, 'a 120 px tall screen cannot hold the menu').toBeGreaterThan(0);
+});
+
 // The check must fire: a control planted under the stamp is named while the stamp is forced to
 // show, and the stamp itself steps away from it (to the other corner, or hides) when it is not.
 test('the stamp check catches a control under the stamp, and the stamp steps away from one (negative control)', async ({
@@ -1350,3 +1438,198 @@ test('the stamp check catches a control under the stamp, and the stamp steps awa
   console.log(`negative control: forced ${JSON.stringify(forced.under)}`);
   expect(forced.under.some((u) => u.includes('planted-under-stamp'))).toBe(true);
 });
+
+// ---- The tuning panel keeps off the pause button and the touch buttons (playtest 4, P4-1) -----------
+// The maintainer: "Tuning on mobile blocks pause button and it seems you can't get it to minimize once
+// it's up so you have to refresh the whole page/game". The panel used to stand 8 px in from the top-right
+// corner, over the pause button and the touch buttons, and its Close button scrolled away with the
+// sliders. Now it docks under the pause button (on the mirror's side too), stops above the touch
+// buttons, and its header (Minimise, Close) is outside the part that scrolls (ui/tuning/place.ts, which
+// src/ui/tuning/place.test.ts holds in numbers). Measured here from the painted boxes in a real race: the
+// panel open over the running race, at the default phone, the mirror, the small phone and an upright
+// screen (a touch device held upright shows the rotate screen, so that one races with a fine pointer,
+// as the other upright cases do), with the same empty known list as the HUD. Its two header controls
+// must be on the screen and hit by a tap at their centres, before and after the sliders are scrolled to
+// the end; the pause button must still take a tap with the panel up (and the way back from the pause
+// screen, Resume, must not sit under the panel); Minimise must leave only the header, and Close must
+// close it.
+
+interface TuningMeasured {
+  viewport: { w: number; h: number };
+  /** The panel, the pause button and the touch buttons that are up, as painted. */
+  pieces: Piece[];
+  /** Whether a tap at the pause button's centre lands on the pause button. */
+  pauseHit: boolean;
+  /** The header's two controls: where they are, whether they are on the screen, and whether a tap at their centre lands on them. */
+  controls: { id: string; box: Box; onScreen: boolean; hit: boolean }[];
+  /** The scrolling part: whether it shows less than it holds, and how far it is scrolled. */
+  scroll: { scrollable: boolean; top: number };
+  side: string;
+}
+
+function measureTuning(page: Page): Promise<TuningMeasured> {
+  return page.evaluate(() => {
+    const box = (e: Element) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    };
+    const hits = (e: Element) => {
+      const r = e.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!top && (top === e || e.contains(top));
+    };
+    const panel = document.getElementById('tuning-panel');
+    const pieces: { name: string; box: ReturnType<typeof box> }[] = [];
+    if (panel?.checkVisibility()) pieces.push({ name: 'tuning-panel', box: box(panel) });
+    for (const id of ['hud-pause', 'touch-attack', 'touch-brake']) {
+      const e = document.getElementById(id);
+      if (e?.checkVisibility()) pieces.push({ name: id, box: box(e) });
+    }
+    const pause = document.getElementById('hud-pause');
+    const controls = ['tuning-min', 'tuning-close'].flatMap((id) => {
+      const e = document.getElementById(id);
+      if (!e?.checkVisibility()) return [];
+      const b = box(e);
+      const onScreen = b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight;
+      return [{ id, box: b, onScreen, hit: hits(e) }];
+    });
+    const scroll = panel?.querySelector<HTMLElement>('.tp-scroll');
+    return {
+      viewport: { w: innerWidth, h: innerHeight },
+      pieces,
+      pauseHit: !!pause && pause.checkVisibility() && hits(pause),
+      controls,
+      scroll: {
+        scrollable: !!scroll && scroll.scrollHeight > scroll.clientHeight + 1,
+        top: scroll?.scrollTop ?? 0,
+      },
+      side: panel?.dataset['side'] ?? '',
+    };
+  });
+}
+
+/** What is wrong with one measured moment of the open panel (empty when all is well). */
+function tuningFindings(m: TuningMeasured): string[] {
+  const out = new Set<string>();
+  const panel = m.pieces.find((p) => p.name === 'tuning-panel');
+  if (!panel) return ['the panel was not up'];
+  for (const p of m.pieces)
+    if (p !== panel && overlaps(panel.box, p.box)) out.add(`tuning-panel × ${p.name}`);
+  const b = panel.box;
+  if (b.left < 0 || b.top < 0 || b.right > m.viewport.w || b.bottom > m.viewport.h)
+    out.add('tuning-panel off the screen');
+  if (!m.pauseHit) out.add('hud-pause covered');
+  for (const c of m.controls) {
+    if (!c.onScreen) out.add(`${c.id} off the screen`);
+    if (!c.hit) out.add(`${c.id} covered`);
+  }
+  return [...out].sort();
+}
+
+for (const [where, width, height, touch, mirror] of [
+  ['915x412', 915, 412, true, false],
+  ['915x412 left-handed', 915, 412, true, true],
+  ['568x320', 568, 320, true, false],
+  ['412x915 upright', 412, 915, false, false],
+] as const) {
+  test.describe(`tuning panel at ${where}`, () => {
+    test.use({ viewport: { width, height }, ...(touch ? {} : { isMobile: false, hasTouch: false }) });
+    test('stays off the pause button and the touch buttons; one tap minimises or closes it', async ({
+      page,
+    }) => {
+      test.setTimeout(150_000);
+      const problems = watchErrors(page);
+      await startRace(page, { mirror });
+      // A tap as a player makes it: a real touch where the screen has one (Playwright checks the tap
+      // would land on the control itself, not on something over it), a click on the upright case.
+      const tap = (selector: string) =>
+        touch ? page.locator(selector).tap() : page.locator(selector).click();
+      const panel = page.locator('#tuning-panel');
+
+      await page.keyboard.press('Backquote');
+      await expect(panel).toBeVisible();
+      const open = await measureTuning(page);
+      logPieces(`${where}, panel open`, open.pieces);
+      const names = new Set(open.pieces.map((p) => p.name));
+      for (const must of ['tuning-panel', 'hud-pause', ...(touch ? ['touch-attack', 'touch-brake'] : [])])
+        expect(names.has(must), `${where}: the check measured ${must}`).toBe(true);
+      expect(
+        open.controls.map((c) => c.id),
+        `${where}: the header's two controls were measured`,
+      ).toEqual(['tuning-min', 'tuning-close']);
+      expect(open.side, `${where}: the panel docks on the pause button's side`).toBe(
+        mirror ? 'left' : 'right',
+      );
+      const found = [...tuningFindings(open)];
+      await shot(page, `tuning-${where.replace(/\s+/g, '-')}`);
+
+      // The sliders scrolled to the end: the header does not go with them.
+      await page.locator('#tuning-panel .tp-scroll').evaluate((e) => {
+        e.scrollTop = e.scrollHeight;
+      });
+      const scrolled = await measureTuning(page);
+      console.log(
+        `${where}: sliders ${scrolled.scroll.scrollable ? 'scroll' : 'fit'}, scrolled to ${Math.round(scrolled.scroll.top)} px; header controls ${JSON.stringify(scrolled.controls.map((c) => [c.id, roundBox(c.box), c.onScreen, c.hit]))}`,
+      );
+      if (touch)
+        expect(scrolled.scroll.scrollable, `${where}: the sliders hold more than the panel shows`).toBe(true);
+      if (scrolled.scroll.scrollable)
+        expect(scrolled.scroll.top, `${where}: the sliders were scrolled`).toBeGreaterThan(0);
+      found.push(...tuningFindings(scrolled));
+      expectLayout(found, `tuning panel at ${where}`);
+
+      // The pause button takes a tap with the panel up, and Resume is not under the panel.
+      await tap('#hud-pause');
+      await expect(page.locator('#pause-screen')).toBeVisible();
+      await expect(panel, 'the panel stays up over the pause screen').toBeVisible();
+      const resumeHit = await page.evaluate(() => {
+        const e = document.getElementById('pause-resume');
+        if (!e) return false;
+        const r = e.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!top && (top === e || e.contains(top));
+      });
+      expect(resumeHit, `${where}: Resume is not under the panel`).toBe(true);
+      await tap('#pause-resume');
+      await expect(page.locator('#pause-screen')).toBeHidden();
+
+      // One tap minimises it: only the header is left, still clear, and one tap brings it back.
+      await tap('#tuning-min');
+      await expect(page.locator('#tuning-panel .tp-scroll')).toBeHidden();
+      const minimised = await measureTuning(page);
+      const chip = minimised.pieces.find((p) => p.name === 'tuning-panel');
+      console.log(`${where}: minimised ${JSON.stringify(chip && roundBox(chip.box))}`);
+      expect(
+        (chip?.box.bottom ?? 1e6) - (chip?.box.top ?? 0),
+        `${where}: only the header is left`,
+      ).toBeLessThanOrEqual(64);
+      expectLayout(tuningFindings(minimised), `tuning panel at ${where}`);
+      await tap('#tuning-min');
+      await expect(page.locator('#tuning-panel .tp-scroll')).toBeVisible();
+
+      // One tap closes it, and the key opens it again, fully open.
+      await tap('#tuning-close');
+      await expect(panel).toBeHidden();
+      await page.keyboard.press('Backquote');
+      await expect(panel).toBeVisible();
+      await expect(page.locator('#tuning-panel .tp-scroll')).toBeVisible();
+
+      // The check fires: the panel put back where it used to stand (8 px in from the top corner, the
+      // screen's height) sits on the pause button, and the check names it.
+      await page.evaluate(
+        ({ side, h }) => {
+          const p = document.getElementById('tuning-panel');
+          if (!p) return;
+          Object.assign(p.style, { top: '8px', maxHeight: `${h - 16}px`, left: 'auto', right: 'auto' });
+          p.style[side === 'left' ? 'left' : 'right'] = '8px';
+        },
+        { side: mirror ? 'left' : 'right', h: height },
+      );
+      const planted = tuningFindings(await measureTuning(page));
+      console.log(`${where}: negative control: the old stand ${JSON.stringify(planted)}`);
+      expect(planted).toContain('tuning-panel × hud-pause');
+      expect(planted).toContain('hud-pause covered');
+      expect(problems).toEqual([]);
+    });
+  });
+}

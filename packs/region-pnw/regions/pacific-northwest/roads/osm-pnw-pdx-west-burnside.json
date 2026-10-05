@@ -67,6 +67,12 @@
       "tag": "bridge"
     },
     {
+      "s0": 0.0,
+      "s1": 6.9994,
+      "side": "both",
+      "tag": "pdx-deck"
+    },
+    {
       "s0": 6.9994,
       "s1": 464.9558,
       "side": "both",
@@ -79,7 +85,29 @@
       "tag": "town"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "billboard",
+      "id": "sign-share-the-lane",
+      "s0": 30.0,
+      "s1": 40.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "share-the-lane"
+    },
+    {
+      "kind": "roadsideZone",
+      "id": "west-burnside-crowd",
+      "s0": 150.0,
+      "s1": 250.0,
+      "d0": -17.0,
+      "d1": -12.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+      }
+    }
+  ],
   "barriers": [
     {
       "s0": 0.0,

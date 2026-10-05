@@ -55,8 +55,12 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]looks[\\/]post\.ts$/,
   /[\\/]src[\\/]render[\\/]models\.ts$/,
   /[\\/]src[\\/]render[\\/]glb\.ts$/,
+  // The region atlas (playtest 3, T12.1): its decoder loads with the models that sample it.
+  /[\\/]src[\\/]render[\\/]atlas\.ts$/,
   // Landmarks (playtest 3): loaded with a race whose road has a `landmark` feature.
   /[\\/]src[\\/]render[\\/]landmarks\.ts$/,
+  // Traffic models (playtest 3, T12.2): loaded with a race's traffic types, never the first screen.
+  /[\\/]src[\\/]render[\\/]vehicles\.ts$/,
   /[\\/]src[\\/]ui[\\/]tuning[\\/]index\.ts$/,
   /[\\/]src[\\/]dev[\\/]selftest[\\/]index\.ts$/,
   // dev/ beyond dev/boot.ts (the test flag and the error capture): src/main.ts loads it lazily.
@@ -66,6 +70,27 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]dev[\\/]report[\\/]index\.ts$/,
   /[\\/]src[\\/]dev[\\/]report[\\/]summary\.ts$/,
   /[\\/]src[\\/]dev[\\/]perf[\\/]index\.ts$/,
+  // Startup-code headroom (playtest 3, wave C): code no screen needs before the first race, each
+  // fetched as the menu comes up. The sound engine (audio/index.ts stands in until it loads) with
+  // its cue patches, cues, engines, radio player, music, soundscape and spoken barks:
+  /[\\/]src[\\/]audio[\\/]system\.ts$/,
+  /[\\/]src[\\/]audio[\\/]cue-patches\.ts$/,
+  /[\\/]src[\\/]audio[\\/]cues\.ts$/,
+  /[\\/]src[\\/]audio[\\/]engine-patch\.ts$/,
+  /[\\/]src[\\/]audio[\\/]radio\.ts$/,
+  /[\\/]src[\\/]audio[\\/]music\.ts$/,
+  /[\\/]src[\\/]audio[\\/]soundscape-voices\.ts$/,
+  /[\\/]src[\\/]audio[\\/]bark-voices\.ts$/,
+  // the race's moving parts in render (render/race-parts.ts):
+  /[\\/]src[\\/]render[\\/]effects\.ts$/,
+  /[\\/]src[\\/]render[\\/]event-props\.ts$/,
+  /[\\/]src[\\/]render[\\/]smashables\.ts$/,
+  /[\\/]src[\\/]render[\\/]speed-lines\.ts$/,
+  /[\\/]src[\\/]render[\\/]rain\.ts$/,
+  // the career's backup codes, the pause menu's radio panel and the wheelie gauge's DOM:
+  /[\\/]src[\\/]save[\\/]export-code\.ts$/,
+  /[\\/]src[\\/]ui[\\/]radio-panel-view\.ts$/,
+  /[\\/]src[\\/]ui[\\/]moves-gauge\.ts$/,
 ];
 
 describe('the production build', { timeout: 120_000 }, () => {

@@ -8,6 +8,10 @@
 // The region build-out (W-O, the maintainer, 2026-10-01) adds the Pacific Northwest's conifers,
 // sawmill and trestle bent and San Francisco's row houses, cable car and fog banks. They load only
 // when a race's network needs them (`modelKindsFor`), and a region palette repaints them by role.
+// Playtest 3 (T12.1, "models + small atlases"): a model with atlas surfaces (Codex CX2's Duval kit)
+// bakes their UVs, every other vertex on the atlas's white tile, and loads its region's atlas with it
+// (atlas.ts, `ATLAS_SHEETS`), so it still draws in its merged mesh's one material, with the sheet
+// as that material's map.
 import {
   BufferGeometry,
   Color,
@@ -16,10 +20,13 @@ import {
   Vector3,
   type Mesh,
   type Object3D,
+  type Texture,
 } from 'three';
 import type { AssetManifest } from '../assets';
+import { ATLAS_WHITE_UV, loadRegionAtlas, withAtlas } from './atlas';
 import { BAY_ROOT, BAY_ROOTS, belowDeck } from './bridge-bays';
 import { readGlb } from './glb';
+import { markAtlasUv } from './scenery-merge';
 
 /** Each model's asset id (docs/content-packs.md, "Asset references"). */
 export const MODEL_ASSETS = {
@@ -43,6 +50,8 @@ export const MODEL_ASSETS = {
   keysIslets: 'models/scenery/keys-islets',
   // run W-R: San Francisco's downtown towers, screens, headquarters, lamps and signals (downtown.ts)
   sfDowntown: 'models/scenery/sf-downtown',
+  // Playtest 3 (T12.1, Codex CX2): Key West's Old Town, the street front along Duval (roadside.ts)
+  duvalKit: 'models/scenery/duval-kit',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
 } as const;
@@ -139,7 +148,25 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'keys_closed_bar',
     'keys_flamingo',
   ],
+  // Its variants: 0 to 2 balconied shopfronts, 3 and 4 conch houses, 5 the corner bar, 6 a scooter
+  // rack, 7 a palm in a planter (roadside.ts KEYS_KIT, the `oldtown` rules).
+  duvalKit: [
+    'duval_balcony_a',
+    'duval_balcony_b',
+    'duval_balcony_c',
+    'duval_conch_a',
+    'duval_conch_b',
+    'duval_corner_bar',
+    'duval_scooter_rack',
+    'duval_planter_palm',
+  ],
 };
+
+/**
+ * The region atlas each model's atlas surfaces sample (atlas.ts; `textures/atlas/<sheet>`): it loads
+ * with the model, and the model draws with it as its map.
+ */
+export const ATLAS_SHEETS: Readonly<Partial<Record<ModelKind, string>>> = { duvalKit: 'florida-keys' };
 
 /** San Francisco's waterfront tags (run W-U; tools/road/tracks/sf-waterfront.ts). */
 export const WATERFRONT_TAGS: readonly string[] = [
@@ -183,6 +210,9 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
     out.add('mangroves');
     out.add('keysRoadside');
     out.add('keysIslets');
+    // Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets) lines its street with
+    // the Duval kit.
+    if (n.tags.has('key-oldtown')) out.add('duvalKit');
     // Playtest 3 (T12.3): the Seven Mile's bays, for the network with the old bridge on it.
     if (n.tags.has('old-bridge')) out.add('sevenMileKit');
   } else {
@@ -257,6 +287,14 @@ export interface SceneryModel {
   ramp?: RampMeasure;
   /** Per variant, the vertex runs of each material role, so a palette can repaint a role. */
   roles?: readonly RoleRun[][];
+  /**
+   * Per variant, the vertex runs of each atlas surface and its tile (a mesh with an `atlas_tile`
+   * extra). A model with any has a `uv` attribute on every variant: its atlas surfaces' own UVs,
+   * and the atlas's white tile for every other vertex (atlas.ts).
+   */
+  tiles?: readonly TileRun[][];
+  /** The region atlas its UVs sample, once loaded (atlas.ts `withAtlas`); without it, it draws plain. */
+  map?: Texture;
 }
 
 /** A run of vertices baked from one material role. */
@@ -266,17 +304,43 @@ export interface RoleRun {
   count: number;
 }
 
+/** A run of vertices baked from one atlas surface, and the atlas tile it samples. */
+export interface TileRun {
+  tile: string;
+  start: number;
+  count: number;
+}
+
 export type SceneryModels = Partial<Record<ModelKind, SceneryModel>>;
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-/** Bakes one variant: every mesh under `root`, in the root's frame, flat colours as vertex colours. */
-function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: boolean; roles: RoleRun[] } {
+/** The atlas tile a mesh's surface samples (its own `atlas_tile` extra, or its node's), or null. */
+function atlasTileOf(mesh: Object3D): string | null {
+  const own: unknown = mesh.userData['atlas_tile'];
+  if (typeof own === 'string' && own) return own;
+  const node: unknown = mesh.parent?.userData['atlas_tile'];
+  return typeof node === 'string' && node ? node : null;
+}
+
+/**
+ * Bakes one variant: every mesh under `root`, in the root's frame, flat colours as vertex colours.
+ * An atlas surface (playtest 3, T12.1) keeps its UVs; when a variant has any, every other vertex gets
+ * the atlas's white tile, so the whole variant draws with the atlas as its map.
+ */
+function bakeVariant(root: Object3D): {
+  geometry: BufferGeometry;
+  doubleSided: boolean;
+  roles: RoleRun[];
+  tiles: TileRun[];
+} {
   root.updateMatrixWorld(true);
   const toRoot = root.matrixWorld.clone().invert();
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
+  const uvs: number[] = [];
+  const tiles: TileRun[] = [];
   const m = new Matrix4();
   const nm = new Matrix4();
   const p = new Vector3();
@@ -300,6 +364,9 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
     const count = index ? index.count : pos.count;
     const start = positions.length / 3;
     roles.push({ role: mat?.name ?? '', start, count });
+    const uv = g.getAttribute('uv');
+    const tile = uv ? atlasTileOf(mesh) : null;
+    if (tile) tiles.push({ tile, start, count });
     for (let i = 0; i < count; i++) {
       const k = index ? index.getX(i) : i;
       p.fromBufferAttribute(pos, k).applyMatrix4(m);
@@ -308,6 +375,8 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
       else n.set(0, 1, 0);
       normals.push(n.x, n.y, n.z);
       colors.push(c.r, c.g, c.b);
+      if (tile && uv) uvs.push(uv.getX(k), uv.getY(k));
+      else uvs.push(ATLAS_WHITE_UV[0], ATLAS_WHITE_UV[1]);
     }
     // A GLB shipped without normals (the roadside kits, run W-P, to halve their bytes) is faceted:
     // each triangle's normal is its face's.
@@ -317,9 +386,10 @@ function bakeVariant(root: Object3D): { geometry: BufferGeometry; doubleSided: b
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+  if (tiles.length) geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  return { geometry, doubleSided, roles };
+  return { geometry, doubleSided, roles, tiles };
 }
 
 /** Sets the normals of `count` triangle-list vertices from `start` to their faces' normals. */
@@ -341,19 +411,34 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   scene.updateMatrixWorld(true);
   const variants: BufferGeometry[] = [];
   const roles: RoleRun[][] = [];
+  const tiles: TileRun[][] = [];
   let doubleSided = false;
   for (const name of ROOTS[kind]) {
     const root = scene.getObjectByName(name);
     if (!root) throw new Error(`${MODEL_ASSETS[kind]} has no node ${name}`);
     const v = bakeVariant(root);
     // The gap end's barricade and board stand across the lanes at the lip, where a rider passes (the
-    // sim has nothing there): only the stub under the deck is drawn (bridge-bays.ts `belowDeck`).
+    // sim has nothing there): only the stub under the deck is drawn (bridge-bays.ts `belowDeck`). Its
+    // trimmed geometry keeps no UVs, so it takes no atlas tile runs either.
     const trimmed = kind === 'sevenMileKit' && name === BAY_ROOT.gapEnd;
     variants.push(trimmed ? belowDeck(v.geometry) : v.geometry);
     roles.push(trimmed ? [] : v.roles);
+    tiles.push(trimmed ? [] : v.tiles);
     doubleSided ||= v.doubleSided;
   }
   const out: SceneryModel = { kind, variants, doubleSided, roles };
+  if (tiles.some((t) => t.length)) {
+    out.tiles = tiles;
+    // Every variant of an atlas model samples the atlas: the plain ones on its white tile.
+    for (const g of variants) {
+      markAtlasUv(g);
+      if (g.getAttribute('uv')) continue;
+      const n = g.getAttribute('position').count;
+      const uv = new Float32Array(n * 2);
+      for (let i = 0; i < n; i++) uv.set(ATLAS_WHITE_UV, i * 2);
+      g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+    }
+  }
   if (kind === 'truck') {
     const ramp = scene.getObjectByName('ramp_surface') as Mesh | undefined;
     if (!ramp?.isMesh) throw new Error(`${MODEL_ASSETS.truck} has no ramp_surface`);
@@ -423,7 +508,10 @@ export async function loadSceneryModels(
         decode: (data) => bakeModel(kind, readGlb(data)),
       });
       if (res.value) {
-        models[kind] = res.value;
+        // Its region atlas loads with it (the manifest loads each file once, however many ask).
+        const sheet = ATLAS_SHEETS[kind];
+        models[kind] =
+          sheet && res.value.tiles ? withAtlas(res.value, await loadRegionAtlas(manifest, sheet)) : res.value;
         report.loaded.push(kind);
       } else report.fellBack.push({ kind, error: res.error ?? 'no stand-in model' });
     }),

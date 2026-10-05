@@ -11,15 +11,30 @@
 // ROADSIDE_NEAR_M a stretch drops its understory, and past ROADSIDE_MID_M its middling props too
 // (trees, huts and fences stay): each level is a prefix of its vertex buffer, so the far triangles
 // drop without a second mesh. Past ROADSIDE_MID_M the props that stay draw as their far stand-ins
-// (run W-S, scenery-merge.ts), kept after the near ones in the same buffer. It is a lazy chunk: a race loads it with its region's models, and
+// (run W-S, scenery-merge.ts), kept in the same buffer. It is a lazy chunk: a race loads it with its region's models, and
 // the first load never pays for it.
-import { BufferGeometry, Float32BufferAttribute, Group, Matrix4, Mesh, Quaternion, Vector3 } from 'three';
+//
+// Playtest 3 (T12.1; the wave-B punch list: Duval "with no Old Town shopfronts"): a rule may draw
+// from another model than the kit's (`model`), and may stand its buildings end to end as a street
+// front (`Frontage`). Key West's Old Town does both with Codex CX2's Duval kit; a stretch holding
+// them draws with the Keys atlas as its map, still one mesh, and past ROADSIDE_FRONT_M its fronts
+// draw as their far stand-ins.
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  Group,
+  Matrix4,
+  Mesh,
+  Quaternion,
+  Vector3,
+  type Texture,
+} from 'three';
 import type { RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
-import { formsOf, type FlatForm } from './scenery-merge';
+import { formsOf, writeUv, type FlatForm } from './scenery-merge';
 import {
   LAND_TOP_M,
   ridableBandPast,
@@ -76,7 +91,32 @@ export interface RoadsideRule {
    * boat whose body reaches back from its front, the disc covers the body, not the kerb before it.
    */
   discBack?: number;
+  /**
+   * The model it draws from, when not the kit's own (playtest 3, T12.1: Key West's Old Town draws
+   * from the Duval kit, `duvalKit`). Its props are left out when that model has not loaded.
+   */
+  model?: string;
+  /** A street front: buildings stood end to end along the road instead of scattered (see `Frontage`). */
+  frontage?: Frontage;
 }
+
+/**
+ * A street front (playtest 3, T12.1; the wave-B punch list: Duval "with no Old Town shopfronts"): the
+ * rule's buildings stood end to end along each side, each by its own width and depth (its model's
+ * bounding box), their fronts on one line `across[0]` m past the verge, facing the road. A building
+ * that does not fit (a feature, a pedestrian zone, a landmark, a palm, another road, too little land)
+ * is skipped and the next tried a few metres on; now and then a lot is left empty.
+ */
+export interface Frontage {
+  /** The gap between neighbours, [min, max] m. */
+  gap: readonly [number, number];
+  /** The share of plots left as an empty lot, and the lot's length, m. */
+  lotRate: number;
+  lotM: number;
+}
+
+/** A street front tries the next building this far on when one does not fit, m. [default] */
+const FRONTAGE_STEP_M = 3;
 
 /** Whether one of these tags covers that side of the road at s (a district tag says nothing about the ground). */
 export function inDistrict(
@@ -215,6 +255,12 @@ const PARTY = ['key-party'];
 // Run W-U: Unlisted Key, the secret island off the sandbar: a tiki bar nobody has found, its coolers
 // and a flamingo, and none of the conch town's cottages, pickets, mailboxes or pie.
 const SECRET = ['key-secret'];
+// Playtest 3 (T12.1): Key West's Old Town (Duval and Whitehead Streets). Its street front comes from
+// the Duval kit (models.ts `duvalKit`): balconied shopfronts, conch houses and the corner bar behind
+// the sidewalk palms, with planters and scooter racks on the sidewalk; no trailers, traps, pelicans
+// or bait boards there.
+const OLDTOWN = ['key-oldtown'];
+const OLDTOWN_LAND: readonly LandTheme[] = ['palms', 'commercial', 'beach'];
 /** Keys where mailboxes do not stand (the hotels, the junk, the party). */
 const NOT_TOWN = [...RESORT, ...JUNKYARD, ...PARTY, ...SECRET];
 /** Every key with its own look: conch cottages and their pickets stand only in the conch town. */
@@ -224,6 +270,28 @@ const TOWN_AND_SHORE: readonly LandTheme[] = [...KEYS_TOWN, ...SHORE];
 export const KEYS_KIT: RoadsideKit = {
   id: 'keys',
   rules: [
+    // Old Town's street front first (playtest 3, T12.1), its fronts 9 m past the verge, behind the
+    // scatter's palms (they stand 2.2 to 7.7 m out): the Duval kit's variants 0 to 2 balconied
+    // shopfronts, 3 and 4 conch houses, 5 the corner bar.
+    rule('oldtown-front', [0, 0, 1, 1, 2, 2, 3, 4, 5], OLDTOWN_LAND, 0, 1, [9, 0], 0, {
+      model: 'duvalKit',
+      frontage: { gap: [0.6, 3], lotRate: 0.08, lotM: 9 },
+      district: OLDTOWN,
+      face: true,
+      tier: 0,
+    }),
+    rule('oldtown-planter', [7], OLDTOWN_LAND, 22, 0.55, [3.4, 2.5], 1.3, {
+      model: 'duvalKit',
+      district: OLDTOWN,
+      tier: 1,
+    }),
+    rule('oldtown-scooters', [6], OLDTOWN_LAND, 40, 0.5, [3.6, 2], 2.1, {
+      model: 'duvalKit',
+      district: OLDTOWN,
+      face: true,
+      along: 2.1,
+      tier: 2,
+    }),
     // Each key's big pieces first: they claim their ground before the clutter. Their clear-ground
     // disc covers the body behind the front (`discBack`), and the hotels stand back behind the
     // power poles with a lot before them.
@@ -323,7 +391,11 @@ export const KEYS_KIT: RoadsideKit = {
       along: 1.4,
       notDistrict: [...JUNKYARD, ...PARTY, ...SECRET],
     }),
-    rule('bait', [9], [...KEYS_TOWN, 'beach'], 160, 0.7, [0.5, 0.5], 1.2, { ...BIG, along: 1.1 }),
+    rule('bait', [9], [...KEYS_TOWN, 'beach'], 160, 0.7, [0.5, 0.5], 1.2, {
+      ...BIG,
+      along: 1.1,
+      notDistrict: OLDTOWN,
+    }),
     rule('picket', [7], KEYS_TOWN, 60, 0.5, [2.4, 0.4], 0.3, {
       along: 2,
       face: true,
@@ -331,12 +403,17 @@ export const KEYS_KIT: RoadsideKit = {
       run: [2, 6, 4],
       notDistrict: ANY_KEY,
     }),
-    rule('trailer', [4], KEYS_LAND, 120, 0.45, [3, 4], 2.4, { ...BIG, back: 2.6, along: 0.9 }),
-    rule('pelican', [3], [...SHORE, 'mangrove'], 90, 0.5, [10, 10], 0.6, { tier: 0 }),
+    rule('trailer', [4], KEYS_LAND, 120, 0.45, [3, 4], 2.4, {
+      ...BIG,
+      back: 2.6,
+      along: 0.9,
+      notDistrict: OLDTOWN,
+    }),
+    rule('pelican', [3], [...SHORE, 'mangrove'], 90, 0.5, [10, 10], 0.6, { tier: 0, notDistrict: OLDTOWN }),
     rule('seagrape-tree', [1], [...SHORE, ...KEYS_TOWN], 25, 0.6, [3, 8], 1.8, { tier: 0, canopy: true }),
     rule('traps', [2], TOWN_AND_SHORE, 70, 0.5, [1.5, 4], 1.1, {
       face: true,
-      notDistrict: [...RESORT, ...PARTY],
+      notDistrict: [...RESORT, ...PARTY, ...OLDTOWN],
     }),
     rule('mailbox', [8], KEYS_TOWN, 30, 0.6, [0.6, 0.3], 0.5, { face: true, notDistrict: NOT_TOWN }),
     // The verge: sea grape crowding the road's edge, the near parallax at speed.
@@ -373,6 +450,11 @@ export interface RoadsideItem {
   pitch: number;
   size: number;
   tier: 0 | 1 | 2;
+  /**
+   * A street-front building's footprint (`Frontage`): half its width along the road, and how far it
+   * reaches toward the road (its front, the balcony) and back from its anchor, m.
+   */
+  foot?: { half: number; front: number; back: number };
 }
 
 /**
@@ -385,6 +467,12 @@ export const ROADSIDE_DRAW_M = 200;
 /** Past these a stretch drops its understory, then its middling props, m. [default] */
 export const ROADSIDE_NEAR_M = 50;
 export const ROADSIDE_MID_M = 120;
+/**
+ * Past this a street front (Old Town's buildings, `Frontage`) draws as its far stand-ins, m: a long
+ * straight street shows hundreds of metres of fronts, and the full models only matter close by.
+ * [default] (playtest 3, T12.1: Duval's busiest view, triangles held under the still scene's share)
+ */
+export const ROADSIDE_FRONT_M = 80;
 /** A built stretch farther than this is freed, m. */
 const ROADSIDE_KEEP_M = ROADSIDE_DRAW_M + 160;
 /** Milliseconds a frame spent placing props while a race starts. [default] */
@@ -430,6 +518,11 @@ export interface RoadsideInput {
   spots: readonly ScenerySpot[];
   /** Ground already taken by the staged roadside scenes (run W-T): discs, world m. */
   reserved?: readonly { x: number; z: number; r: number }[];
+  /**
+   * The loaded models by kind, for rules that draw from a model other than the kit's (`model`:
+   * Old Town's Duval kit). A rule whose model is missing places nothing.
+   */
+  models?: Readonly<Partial<Record<string, SceneryModel>>>;
 }
 
 /** A grid of discs, for keeping props apart. Discs over 8 m (the sawmill) are kept in a list. */
@@ -632,6 +725,8 @@ export class RoadsideScatter {
     const e = road.edges[edgeIndex];
     const rule = input.kit.rules[ri];
     if (!e || !rule) return;
+    // A rule drawing from another model (Old Town's kit) places nothing until that model is in.
+    if (rule.model && !input.models?.[rule.model]) return;
     const taken = this.taken;
     const dress = dressing?.[e.id];
     const tags = dress?.tags as readonly SideTag[] | undefined;
@@ -658,6 +753,99 @@ export class RoadsideScatter {
     const h = (k: number, sd: number, salt: number) =>
       scatterHash(seed, 7919 + e.index * 977 + ri * 131, k, sd * 17 + salt + 40);
     const outer = side < 0 ? -e.dMin + VERGE_M : e.dMax + VERGE_M;
+    if (rule.frontage) {
+      const model = rule.model ? input.models?.[rule.model] : undefined;
+      if (!model) return;
+      const fr = rule.frontage;
+      // A building keeps off the landmarks' footprints too (the buoy, the Mile 0 marker).
+      const blocks = (dress?.features ?? []).filter(
+        (f) => KEEP_CLEAR.has(f.kind) || (f.kind === 'landmark' && f.params?.['overRoad'] !== true),
+      );
+      const sideName = side < 0 ? 'left' : 'right';
+      const onLand = (u: number) =>
+        (rule.on as readonly string[]).includes(themeAt(tags, sideName, u)) &&
+        (!rule.district || inDistrict(tags, sideName, u, rule.district)) &&
+        !(rule.notDistrict && inDistrict(tags, sideName, u, rule.notDistrict));
+      let s = h(0, side, 0) * fr.gap[1];
+      for (let k = 0; s < e.length; k++) {
+        const variant = rule.v[Math.floor(h(k, side, 4) * rule.v.length) % rule.v.length] ?? 0;
+        const box = model.variants[variant]?.boundingBox;
+        if (!box) break;
+        if (h(k, side, 7) < fr.lotRate) {
+          s += fr.lotM;
+          continue;
+        }
+        const half = Math.max(-box.min.x, box.max.x);
+        const front = Math.max(0, box.max.z);
+        const back = Math.max(0, -box.min.z);
+        const depth = front + back;
+        const sc = s + half;
+        if (sc + half > e.length) break;
+        const ends = [sc - half, sc, sc + half];
+        // Its front line past the ridable band; its whole depth on the drawn land.
+        const across = Math.max(rule.across[0], ridableBandPast(road, e.index, side, sc, outer));
+        let fits =
+          ends.every(onLand) && ends.every((u) => across + depth <= input.landReach(e.index, side, u));
+        const dFront = side * (outer + across);
+        const dBack = side * (outer + across + depth);
+        const lo = Math.min(dFront, dBack);
+        const hi = Math.max(dFront, dBack);
+        const overlaps = (s0: number, s1: number, d0: number, d1: number) =>
+          sc + half > Math.min(s0, s1) - 1 &&
+          sc - half < Math.max(s0, s1) + 1 &&
+          hi > Math.min(d0, d1) - 1 &&
+          lo < Math.max(d0, d1) + 1;
+        if (fits) fits = !blocks.some((f) => overlaps(f.s0, f.s1, f.d0, f.d1));
+        if (fits) fits = !zones.some((z) => overlaps(z.s0, z.s1, z.lo, z.hi));
+        // Its ground as discs along its middle: clear of the scenery, the scenes and the landmarks.
+        const r = Math.min(depth, 2 * half) / 2;
+        const discs: { x: number; z: number }[] = [];
+        if (fits) {
+          const mid = side * (outer + across + depth / 2);
+          if (2 * half >= depth) {
+            for (let u = -half + r; u < half - r + r / 2; u += r)
+              discs.push(road.toWorld(e.index, sc + u, mid, 0));
+            discs.push(road.toWorld(e.index, sc + half - r, mid, 0));
+          } else {
+            for (let t = r; t < depth - r + r / 2; t += r)
+              discs.push(road.toWorld(e.index, sc, side * (outer + across + t), 0));
+            discs.push(road.toWorld(e.index, sc, side * (outer + across + depth - r), 0));
+          }
+          fits = !discs.some((c) => taken.hits(c.x, c.z, r, false));
+        }
+        // No other road under any corner, and no higher road's land over it.
+        if (fits)
+          fits = ends.every((u) =>
+            [dFront, dBack].every((dd) => {
+              const q = road.toWorld(e.index, u, dd, LAND_TOP_M);
+              return !otherRoad(u, q.x, q.z, 1) && !underHigher(q.x, q.z, q.y, u);
+            }),
+          );
+        if (!fits) {
+          s += FRONTAGE_STEP_M;
+          continue;
+        }
+        const d = side * (outer + across + front);
+        const p = road.toWorld(e.index, sc, d, LAND_TOP_M);
+        const toRoad = road.toWorld(e.index, sc, 0, 0);
+        for (const c of discs) taken.add(c.x, c.z, r);
+        this.items.push({
+          rule: rule.id,
+          variant,
+          edge: e.index,
+          s: sc,
+          d,
+          p,
+          turn: Math.atan2(toRoad.x - p.x, toRoad.z - p.z),
+          pitch: 0,
+          size: 1,
+          tier: rule.tier ?? 0,
+          foot: { half, front, back },
+        });
+        s = sc + half + fr.gap[0] + (fr.gap[1] - fr.gap[0]) * h(k, side, 8);
+      }
+      return;
+    }
     const spacing = rule.every / this.density;
     for (let k = 0; ; k++) {
       const s0 = (k + 0.15 + (rule.align ? 0 : 0.7 * h(k, side, 0))) * spacing;
@@ -757,11 +945,18 @@ interface Chunk {
   cz: number;
   radius: number;
   mesh: Mesh | null;
-  /** Vertices up to the end of each tier (the props are sorted by tier, so each is a prefix). */
-  ends: [number, number, number];
-  /** The vertex range of the tier-0 props' far stand-ins, drawn instead past ROADSIDE_MID_M (run W-S). */
-  far: [number, number];
+  /**
+   * The vertex range each level of detail draws (`levelOf`): every prop out to ROADSIDE_NEAR_M; then
+   * without the understory to ROADSIDE_FRONT_M; then with the street fronts as their far stand-ins
+   * to ROADSIDE_MID_M; then only the tier-0 props' and street fronts' stand-ins (run W-S). The
+   * buffer is laid out so each is one run (`build`).
+   */
+  levels: [number, number][];
 }
+
+/** A stretch's level of detail at a distance from the camera (`Chunk.levels`). */
+const levelOf = (dist: number): number =>
+  dist <= ROADSIDE_NEAR_M ? 0 : dist <= ROADSIDE_FRONT_M ? 1 : dist <= ROADSIDE_MID_M ? 2 : 3;
 
 export interface RoadsideCounts {
   /** Props placed, by rule. */
@@ -783,6 +978,9 @@ export class RoadsideLayer {
   /** Whether the last update built a stretch (tests, the debug overlay). */
   builtLast = false;
 
+  /** The model each rule draws from: the kit's own, or the one it names (Old Town's). */
+  private readonly modelOf = new Map<string, SceneryModel>();
+
   constructor(
     private readonly model: SceneryModel,
     private readonly look: LookStyle,
@@ -790,6 +988,14 @@ export class RoadsideLayer {
   ) {
     this.group.name = 'road-roadside';
     this.scatter = new RoadsideScatter(input);
+    for (const r of input.kit.rules) {
+      const m = r.model ? input.models?.[r.model] : model;
+      if (m) this.modelOf.set(r.id, m);
+    }
+  }
+
+  private geometryOf(it: RoadsideItem): BufferGeometry | undefined {
+    return this.modelOf.get(it.rule)?.variants[it.variant];
   }
 
   /** Every prop placed so far (all of them once `ready`). */
@@ -820,7 +1026,7 @@ export class RoadsideLayer {
       const cx = items.reduce((n, i) => n + i.p.x, 0) / items.length;
       const cz = items.reduce((n, i) => n + i.p.z, 0) / items.length;
       const radius = Math.max(...items.map((i) => Math.hypot(i.p.x - cx, i.p.z - cz))) + 15;
-      this.chunks.push({ items, cx, cz, radius, mesh: null, ends: [0, 0, 0], far: [0, 0] });
+      this.chunks.push({ items, cx, cz, radius, mesh: null, levels: [] });
     }
   }
 
@@ -856,9 +1062,8 @@ export class RoadsideLayer {
       const dist = Math.hypot(c.cx - cameraX, c.cz - cameraZ) - c.radius;
       if (dist < draw) {
         // Past ROADSIDE_MID_M only the tier-0 props draw, as their far stand-ins.
-        const farOnly = dist > ROADSIDE_MID_M;
-        const start = farOnly ? c.far[0] : 0;
-        const count = farOnly ? c.far[1] - c.far[0] : c.ends[dist > ROADSIDE_NEAR_M ? 1 : 2];
+        const [start, end] = c.levels[levelOf(dist)] ?? [0, 0];
+        const count = end - start;
         mesh.geometry.setDrawRange(start, count);
         mesh.visible = count > 0;
         if (mesh.visible) {
@@ -902,19 +1107,26 @@ export class RoadsideLayer {
   }
 
   private build(c: Chunk) {
-    const geos = this.model.variants;
-    // The near props, tier by tier, then the far stand-ins of the tier-0 props (run W-S): past
-    // ROADSIDE_MID_M only those draw, and as their stand-ins (scenery-merge.ts `formsOf`).
+    // The near props and the far stand-ins of the tier-0 props and street fronts (run W-S;
+    // scenery-merge.ts `formsOf`), laid out by level of detail (`Chunk.levels`).
     let total = 0;
+    // A stretch with an atlas model's props in it (Old Town's) draws with the region atlas as its
+    // map, every other prop on the atlas's white tile: still one mesh, one draw (playtest 3, T12.1).
+    let map: Texture | undefined;
+    let doubleSided = this.model.doubleSided;
     for (const it of c.items) {
-      const g = geos[it.variant];
+      const g = this.geometryOf(it);
       if (!g) continue;
       const f = formsOf(g);
       total += f.near.n + (it.tier === 0 ? f.far.n : 0);
+      const m = this.modelOf.get(it.rule);
+      map ??= m?.map;
+      doubleSided ||= m?.doubleSided ?? false;
     }
     const pos = new Float32Array(total * 3);
     const nrm = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
+    const uv = map ? new Float32Array(total * 2) : null;
     const m = new Matrix4();
     const q = new Quaternion();
     const qp = new Quaternion();
@@ -923,12 +1135,12 @@ export class RoadsideLayer {
     const zAxis = new Vector3(0, 0, 1);
     const one = new Vector3();
     let o = 0;
-    const ends: [number, number, number] = [0, 0, 0];
     const emit = (it: RoadsideItem, form: FlatForm) => {
       const gp = form.pos;
       const gn = form.nrm;
       const n = form.n;
       for (let i = 0; i < n * 3; i++) col[o * 3 + i] = form.col[i] ?? 1;
+      if (uv) writeUv(uv, o, form);
       if (it.pitch) {
         // A fence section on a grade: the general transform.
         q.setFromAxisAngle(up, it.turn).multiply(qp.setFromAxisAngle(zAxis, it.pitch));
@@ -960,32 +1172,52 @@ export class RoadsideLayer {
         }
       }
     };
-    for (const it of c.items) {
-      const g = geos[it.variant];
-      if (!g) continue;
-      emit(it, formsOf(g).near);
-      for (let t = it.tier; t < 3; t++) ends[t] = o;
-    }
-    const farFrom = o;
-    for (const it of c.items) {
-      const g = geos[it.variant];
-      if (g && it.tier === 0) emit(it, formsOf(g).far);
-    }
+    // The buffer, so each level is one run: [tier-0 stand-ins | street-front stand-ins | tier-0 and
+    // tier-1 props | street fronts | the understory]. Near: the last four; to ROADSIDE_FRONT_M: the
+    // middle three; to ROADSIDE_MID_M: the street fronts' stand-ins and the tier-0 and tier-1 props;
+    // past it: the stand-ins.
+    const fronts = c.items.filter((it) => it.foot);
+    const others = c.items.filter((it) => !it.foot);
+    const run = (
+      list: readonly RoadsideItem[],
+      pass: 'near' | 'far',
+      keep: (it: RoadsideItem) => boolean,
+    ) => {
+      for (const it of list) {
+        const g = this.geometryOf(it);
+        if (g && keep(it)) emit(it, formsOf(g)[pass]);
+      }
+    };
+    const a0 = o;
+    run(others, 'far', (it) => it.tier === 0);
+    const b0 = o;
+    run(fronts, 'far', () => true);
+    const c0 = o;
+    run(others, 'near', (it) => it.tier < 2);
+    const d1 = o;
+    run(fronts, 'near', () => true);
+    const e1 = o;
+    run(others, 'near', (it) => it.tier === 2);
+    c.levels = [
+      [c0, o],
+      [c0, e1],
+      [b0, d1],
+      [a0, c0],
+    ];
     const geo = new BufferGeometry();
     geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
     geo.setAttribute('normal', new Float32BufferAttribute(nrm, 3));
     geo.setAttribute('color', new Float32BufferAttribute(col, 3));
+    if (uv) geo.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     geo.computeBoundingSphere();
     const mesh = new Mesh(
       geo,
-      this.look.material('prop', { vertexColors: true, doubleSided: this.model.doubleSided }),
+      this.look.material('prop', { vertexColors: true, doubleSided, ...(map ? { map } : {}) }),
     );
     mesh.name = 'road-roadside';
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
     this.group.add(mesh);
     c.mesh = mesh;
-    c.ends = ends;
-    c.far = [farFrom, o];
   }
 }

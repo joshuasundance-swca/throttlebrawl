@@ -1,7 +1,7 @@
 // The radio's band (main-green-4, 2026-10-02): the code-made songs (radio-compose*.ts) and the
 // instruments that play them (radio-synth.ts, radio-rigs*.ts), in one lazy chunk. They are the
 // biggest piece of audio/ and nothing before the first station tunes in needs them, so the first
-// load leaves them out: index.ts imports this file when the audio graph is built (the start tap),
+// load leaves them out: system.ts imports this file when the audio graph is built (the start tap),
 // and radio.ts's player stays silent until it arrives. Tests and offline harnesses hand RADIO_BAND
 // in directly.
 import { isMore, isRegional } from './radio-genres';

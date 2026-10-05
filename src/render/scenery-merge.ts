@@ -12,6 +12,9 @@
 // those; nearer, the real models. Both live in the block's one buffer, so switching is a draw range,
 // not a rebuild.
 //
+// Atlas models (playtest 3, T12.1; atlas.ts): a block holding one carries UVs for all of it, the
+// plain models on the atlas's white tile, and a far stand-in takes each picture's mean colour.
+//
 // Presentation only: what stands where is still scenery.ts's seeded scatter (the spots).
 import {
   BufferGeometry,
@@ -45,6 +48,13 @@ export interface FlatForm {
   col: ArrayLike<number>;
   /** Vertices (three per triangle). */
   n: number;
+  /**
+   * Its atlas UVs (playtest 3, T12.1; atlas.ts), or absent: a merge that draws with the atlas puts
+   * a form without them on the atlas's white tile.
+   */
+  uv?: ArrayLike<number> | null;
+  /** The colours its far stand-in averages, when they differ from `col` (an atlas picture's mean). */
+  fcol?: ArrayLike<number>;
 }
 
 const flatCache = new WeakMap<BufferGeometry, { near: FlatForm; far: FlatForm }>();
@@ -61,7 +71,44 @@ function flatten(g: BufferGeometry): FlatForm {
   const nrm = attr(src, 'normal')!.array;
   const n = pos.length / 3;
   const col = attr(src, 'color')?.array ?? new Float32Array(n * 3).fill(1);
-  return { pos, nrm, col, n };
+  const form: FlatForm = { pos, nrm, col, n };
+  // Only an atlas model's UVs sample the atlas; a code-made box's own UVs would land anywhere on it.
+  const uv = hasAtlasUv(g) ? attr(src, 'uv') : null;
+  if (uv) form.uv = uv.array;
+  const far = attr(src, 'farColor');
+  if (far) form.fcol = far.array;
+  return form;
+}
+
+/**
+ * The region atlas's white tile's centre (atlas.ts): tile (0, 0) of a 1024 sheet of 128 px tiles
+ * (tools/atlas: "Tile (0, 0) is the white tile, always"). A vertex that is not on an atlas surface
+ * samples it, so it draws its own colour. It lives here, in the first load, so the merges need not
+ * import the atlas chunk.
+ */
+export const ATLAS_WHITE_UV = [0.0625, 0.0625] as const;
+
+/** Marks a geometry whose `uv` samples the region atlas (models.ts sets it on an atlas model's variants). */
+export function markAtlasUv(g: BufferGeometry): void {
+  g.userData['atlasUv'] = true;
+}
+
+/** Whether a geometry's `uv` samples the region atlas (never a code-made shape's own UVs). */
+export function hasAtlasUv(g: BufferGeometry): boolean {
+  return g.userData['atlasUv'] === true && !!g.getAttribute('uv');
+}
+
+/** Writes a form's UVs into a merged buffer from vertex `o` (the white tile where it has none). Returns the next vertex. */
+export function writeUv(out: Float32Array, o: number, form: FlatForm): number {
+  if (form.uv) {
+    out.set(form.uv, o * 2);
+    return o + form.n;
+  }
+  for (let v = 0; v < form.n; v++, o++) {
+    out[o * 2] = ATLAS_WHITE_UV[0];
+    out[o * 2 + 1] = ATLAS_WHITE_UV[1];
+  }
+  return o;
 }
 
 /**
@@ -84,6 +131,8 @@ export function farStandIn(near: FlatForm): FlatForm {
     y1 = Math.max(y1, y);
   }
   const h = Math.max(1e-3, y1 - y0);
+  // An atlas picture far away is its tile's mean (atlas.ts `farColor`), so the switch does not flash.
+  const tone = near.fcol ?? near.col;
   interface Band {
     x0: number;
     x1: number;
@@ -127,9 +176,9 @@ export function farStandIn(near: FlatForm): FlatForm {
       band.lo = Math.min(band.lo, v(k, 1));
       band.hi = Math.max(band.hi, v(k, 1));
       const c = (t * 3 + k) * 3;
-      band.r += ((near.col[c] ?? 1) * area) / 3;
-      band.g += ((near.col[c + 1] ?? 1) * area) / 3;
-      band.b += ((near.col[c + 2] ?? 1) * area) / 3;
+      band.r += ((tone[c] ?? 1) * area) / 3;
+      band.g += ((tone[c + 1] ?? 1) * area) / 3;
+      band.b += ((tone[c + 2] ?? 1) * area) / 3;
     }
     band.area += area;
   }
@@ -385,10 +434,13 @@ export class MergedScenery {
     const pos = new Float32Array(total * 3);
     const nrm = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
+    // A block holding an atlas model carries UVs for all of it (the others on the white tile).
+    const uv = s.geos.some(hasAtlasUv) ? new Float32Array(total * 2) : null;
     let o = 0;
     for (const pass of ['near', 'far'] as const) {
       s.spots.forEach((spot, i) => {
         const f = formsOf(s.geos[i]!)[pass];
+        if (uv) writeUv(uv, o, f);
         // Turned about the vertical and scaled: x' = x cos + z sin, z' = z cos - x sin.
         const cos = Math.cos(spot.turn);
         const sin = Math.sin(spot.turn);
@@ -421,6 +473,7 @@ export class MergedScenery {
     geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
     geo.setAttribute('normal', new Float32BufferAttribute(nrm, 3));
     geo.setAttribute('color', new Float32BufferAttribute(col, 3));
+    if (uv) geo.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     geo.computeBoundingSphere();
     const mesh = new Mesh(geo, s.material);
     mesh.name = 'road-scenery';

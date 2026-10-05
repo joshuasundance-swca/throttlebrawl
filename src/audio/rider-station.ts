@@ -6,7 +6,7 @@
 // crash) while it plays and it goes to dead air; after a beat his line plays, and once he is back on
 // his bike near you the station returns with its next track (while he lies near you the air stays
 // dead; ride on and your own station comes back). This file is the pure state machine;
-// index.ts feeds it the rider's distance each frame and acts on what it says.
+// system.ts feeds it the rider's distance each frame and acts on what it says.
 
 /** [default] Hysteresis and timings, metres and seconds. */
 export const RIDER_STATION = {

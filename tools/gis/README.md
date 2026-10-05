@@ -332,7 +332,14 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
   found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
   closes it. A larger shift breaks the lint's 60 m rule for a junction's road ends.
 - **Dressing:** two boost-pad slots on the main road (Burnside and the Hawthorne deck), a cop lot, the
-  junction sign, and a pedestrian zone beside Pioneer Courthouse Square on Broadway's left. The scenery
+  junction sign, and a pedestrian zone beside Pioneer Courthouse Square on Broadway's left.
+  T10.5 adds the downtown's people and signs: sidewalk `roadsideZone`s that name their `kinds`
+  (a commuter crowd on each street, the courthouse square's, the food-cart pod's diners), four site
+  signs, and `deckTags: ["pdx-deck"]` on the five roads that carry a bridge run (a bridge deck holds only
+  the `bridge` tag, so the deck needs a tag of its own for the traffic area that gives downtown its
+  cars and keeps the forest's trucks off the bridges). The OSM extract is not in the repo, so these
+  were written into the baked roads by hand to match what the bake writes;
+  `routes-pnw-dressing.test.ts` holds the config and the roads to each other. The scenery
   tags are `pdx-blocks` and `town`; `rail-line` is on Grand Avenue only: of the OSM tram and light-rail
   ways, the only ones that run along a baked road are the streetcar's on Grand (all 496 m of it lies
   within 12 m of a rail; no other road has more than 56 m, a street crossing, and the check finds

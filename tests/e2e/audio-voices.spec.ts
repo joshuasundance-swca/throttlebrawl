@@ -60,7 +60,7 @@ async function render(page: Page, args: Args) {
       say(ref: string): Promise<boolean>;
       inspect(): { voice: { playing: string | null; fxLevel: number }; duckLevel: number };
     };
-    const url = '/__audio-voices/index.js';
+    const url = '/__audio-voices/system.js';
     const m = (await import(url)) as {
       createAudio(o: Record<string, unknown>): Audio;
     };
