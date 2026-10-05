@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { BARK_SHOWN_EVENT, BARK_VOICE_EVENT, barkClipPath, STALE_S } from './bark-voices';
 import { fakeContextFactory, type FakeAudioContext, type FakeNode } from './fake-context';
-import { createAudio, DUCK_DEFAULTS, VOICE_DEFAULTS } from './index';
+import { createAudio, DUCK_DEFAULTS, VOICE_DEFAULTS } from './system';
 
 const KEVIN = 'base:bark-set/kevin-core#kevin-pass-email';
 const DEACON = 'base:bark-set/deacon-core#deacon-hit-ditch';

@@ -15,6 +15,17 @@
       "id": "noon",
       "lighting": "pnw-overcast-drizzle",
       "palette": { "sky": "#aab5b1", "fog": "#b7c0bb", "water": "#4c6762" }
+    },
+    {
+      "id": "dusk",
+      "lighting": "pnw-dusk-drizzle",
+      "palette": {
+        "sky": "#8a8296",
+        "fog": "#8f8a9a",
+        "water": "#3f5160",
+        "sunlight": "#a68f8f",
+        "skylight": "#b9b4cc"
+      }
     }
   ],
   "palette": {
@@ -67,7 +78,31 @@
           { "kind": "mossy-wagon", "weight": 1, "hazard": "normal" }
         ]
       },
-      { "tag": "festival", "mix": [{ "kind": "stump-social-marshal", "weight": 1, "hazard": "normal" }] }
+      { "tag": "festival", "mix": [{ "kind": "stump-social-marshal", "weight": 1, "hazard": "normal" }] },
+      {
+        "tag": "pdx-blocks",
+        "mix": [
+          { "kind": "base:sedan-rental", "weight": 4, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "mossy-wagon", "weight": 2, "hazard": "normal" },
+          { "kind": "wagon-with-kayaks", "weight": 1, "hazard": "normal" },
+          { "kind": "rain-cape-cyclist", "weight": 1.2, "hazard": "normal" },
+          { "kind": "cargo-bike", "weight": 0.5, "hazard": "normal" },
+          { "kind": "pdx-streetcar", "weight": 1, "hazard": "big" }
+        ]
+      },
+      {
+        "tag": "pdx-deck",
+        "mix": [
+          { "kind": "base:sedan-rental", "weight": 4, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "mossy-wagon", "weight": 2, "hazard": "normal" },
+          { "kind": "wagon-with-kayaks", "weight": 1, "hazard": "normal" },
+          { "kind": "rain-cape-cyclist", "weight": 1.2, "hazard": "normal" },
+          { "kind": "cargo-bike", "weight": 0.5, "hazard": "normal" },
+          { "kind": "pdx-streetcar", "weight": 1, "hazard": "big" }
+        ]
+      }
     ]
   },
   "signs": [
@@ -87,6 +122,34 @@
       "tags": ["site"],
       "status": "live",
       "note": "Playtest 3, T9.4: Bridge City's junction sign, standing on Broadway before the turn onto Alder."
+    },
+    {
+      "id": "bridge-lift",
+      "text": "BRIDGE LIFT IN PROGRESS. Bring a book.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "Playtest 3, T10.5: Bridge City, on Madison before the Hawthorne Bridge, which lifts about 120 times a month."
+    },
+    {
+      "id": "cart-pod",
+      "text": "FOOD CART POD, NEXT LOT. Line: 40 min. Rain: now.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "Playtest 3, T10.5: Bridge City, on Broadway by the cart-pod zone."
+    },
+    {
+      "id": "share-the-lane",
+      "text": "STREETCAR: SHARE THE LANE. It was here first. It will not say so.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "Playtest 3, T10.5: Bridge City, on West Burnside."
+    },
+    {
+      "id": "twelve-bridges",
+      "text": "TWELVE BRIDGES, ONE RIVER. You get two. Pick fast.",
+      "tags": ["site"],
+      "status": "live",
+      "note": "Playtest 3, T10.5: Bridge City, at the east bridgehead on East Burnside."
     },
     { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
@@ -227,7 +290,7 @@
   ],
   "meta": {
     "status": "live",
-    "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the palette carries it (W-O, 2026-10-01, render only): `rain` turns on the drizzle, `sunlight` and `skylight` set the overcast light, and `foliage`, `foliageDark` and `trunk` paint the conifers. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto.",
+    "notes": "Region 2, crude first (playtest 1c, 2026-09-30, roadmap change [decided]: \"Pnw and sf first then others\"). Grey-green palette with the riders' own saturated colours on top; the palette keys follow the render look's material kinds (sky, water, road, shoulder, land, rail, deck) plus fog, foliage, trunk and accent for the render lane's palette hook. The look calls for drizzle; weather stays reserved, so the palette carries it (W-O, 2026-10-01, render only): `rain` turns on the drizzle, `sunlight` and `skylight` set the overcast light, and `foliage`, `foliageDark` and `trunk` paint the conifers. Traffic mixes this pack's placeholder vehicles (each reuses an existing shape) with base's pickup and rental. Every name and line is a placeholder the maintainer may veto. Playtest 3 (T10.5): a rainy `dusk` for downtown Portland's neon hour (the rain palette key is on in every time of day), and two traffic areas, `pdx-blocks` and `pdx-deck`, that give Bridge City city cars, cyclists and the streetcar instead of the forest's mix (the four `site` signs on its roads are placed by its road files).",
     "provenance": { "origin": "agent", "author": "agent", "createdAt": "2026-10-01" }
   }
 }

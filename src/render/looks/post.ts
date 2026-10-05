@@ -3,7 +3,10 @@
 // drawn into an offscreen target with a depth texture; this pass then:
 // - inks outlines where depth breaks or creases (riders, vehicles, road edges against the sea,
 //   rails) and where brightness jumps sharply (road against sand, markings), fading them out with
-//   distance so the far haze stays soft;
+//   distance so the far haze stays soft. A surface that writes alpha 0 into the scene target
+//   (render/looks/index.ts, `NO_INK_KINDS`: a board's printed face, the hit sparks) is left out of
+//   the BRIGHTNESS ink, as are the pixels beside it, so its own lettering and specks stay as
+//   drawn: an outline through every letter stroke turned a sign into a smear (G7);
 // - paints the sky as a warm gradient (its horizon colour is the fog colour, so it meets the haze);
 // - converts to display sRGB, applies the look's grade (one 3D-table tap; the table is swapped in
 //   place when the look changes), a warm vignette and moving film grain.
@@ -61,7 +64,8 @@ void main() {
   gl_Position = vec4(position.xy, 0.0, 1.0);
 }`;
 
-const FRAGMENT = /* glsl */ `
+/** The final pass's fragment shader (exported so a test can read its ink gating). */
+export const POST_FRAGMENT = /* glsl */ `
 precision highp sampler3D;
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
@@ -107,30 +111,44 @@ float brushNoise(vec2 p) {
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+// 0 on and beside a surface that asked for no brightness ink (it wrote alpha 0 and drew something),
+// 1 elsewhere. Sky pixels (nothing drawn: depth 1) never count.
+float inkAllowed(vec4 c, float d) { return (c.a < 0.5 && d < 0.999999) ? 0.0 : 1.0; }
+
 void main() {
   float width = uInkWidth;
   if (uBrush > 0.0) width *= 1.0 + uBrush * (brushNoise(gl_FragCoord.xy / 22.0) - 0.5) * 1.2;
   vec2 ox = vec2(uTexel.x * width, 0.0);
   vec2 oy = vec2(0.0, uTexel.y * width);
   float dc = texture(tDepth, vUv).r;
-  vec3 col = texture(tColor, vUv).rgb;
+  vec4 tc = texture(tColor, vUv);
+  vec3 col = tc.rgb;
   float ink = 0.0;
   if (dc >= 0.999999) {
     col = mix(uSkyHorizon, uSkyTop, smoothstep(0.45, 1.1, vUv.y));
   } else {
     float ic = invDist(dc);
-    float il = invDist(texture(tDepth, vUv - ox).r);
-    float ir = invDist(texture(tDepth, vUv + ox).r);
-    float id = invDist(texture(tDepth, vUv - oy).r);
-    float iu = invDist(texture(tDepth, vUv + oy).r);
+    float dl = texture(tDepth, vUv - ox).r;
+    float dr = texture(tDepth, vUv + ox).r;
+    float dd = texture(tDepth, vUv - oy).r;
+    float du = texture(tDepth, vUv + oy).r;
+    float il = invDist(dl);
+    float ir = invDist(dr);
+    float id = invDist(dd);
+    float iu = invDist(du);
     float lap = max(abs(il + ir - 2.0 * ic), abs(id + iu - 2.0 * ic)) / ic;
     // A brush line has a harder edge than a pen line.
     float depthInk = smoothstep(0.035, mix(0.1, 0.055, uBrush), lap);
-    float ll = sqrt(luma(texture(tColor, vUv - ox).rgb));
-    float lr = sqrt(luma(texture(tColor, vUv + ox).rgb));
-    float ld = sqrt(luma(texture(tColor, vUv - oy).rgb));
-    float lu = sqrt(luma(texture(tColor, vUv + oy).rgb));
+    vec4 cl = texture(tColor, vUv - ox);
+    vec4 cr = texture(tColor, vUv + ox);
+    vec4 cd = texture(tColor, vUv - oy);
+    vec4 cu = texture(tColor, vUv + oy);
+    float ll = sqrt(luma(cl.rgb));
+    float lr = sqrt(luma(cr.rgb));
+    float ld = sqrt(luma(cd.rgb));
+    float lu = sqrt(luma(cu.rgb));
     float colorInk = smoothstep(0.14, 0.26, max(abs(ll - lr), abs(ld - lu)));
+    colorInk *= inkAllowed(tc, dc) * inkAllowed(cl, dl) * inkAllowed(cr, dr) * inkAllowed(cd, dd) * inkAllowed(cu, du);
     ink = max(depthInk, colorInk) * (1.0 - smoothstep(uInkFar * 0.5, uInkFar, 1.0 / ic)) * uInk;
   }
   col = mix(col, uInkColor, clamp(ink, 0.0, 1.0));
@@ -176,7 +194,7 @@ export class LookPost {
     this.lut.needsUpdate = true;
     this.material = new ShaderMaterial({
       vertexShader: VERTEX,
-      fragmentShader: FRAGMENT,
+      fragmentShader: POST_FRAGMENT,
       depthTest: false,
       depthWrite: false,
       uniforms: {

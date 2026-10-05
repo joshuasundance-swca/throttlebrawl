@@ -26,15 +26,7 @@ import {
   type RoadNetwork,
 } from '../road';
 import type { EntitySnapshot, SimEvent, SimSnapshot, TumbleSnapshot } from '../sim/api';
-import {
-  Boards,
-  contentLines,
-  resolveSlot,
-  VISIBLE_M,
-  type BoardCatalog,
-  type BoardItem,
-  type BoardSlot,
-} from './boards';
+import { Boards, resolveSlot, VISIBLE_M, type BoardCatalog, type BoardItem, type BoardSlot } from './boards';
 import { FeelEffects } from './effects';
 import { clientToNdc } from './index';
 import { createFlatLook } from './look';
@@ -669,19 +661,6 @@ describe('the placeholder boards', () => {
     expect(b.visibleContent(cam)).toEqual([
       { ref: wordy.ref, kind: 'sign', label: 'NO PARKING. Towing is fun.' },
     ]);
-  });
-
-  it('gives a landing line (the overlay pool) its words and the kind "line"', () => {
-    const line = item('thud', 'sign', 'That landing had a plot.');
-    const cat: BoardCatalog = { items: {}, pools: { landing: [line] } };
-    expect(contentLines([line.ref], cat)).toEqual([
-      { ref: line.ref, kind: 'line', label: 'That landing had a plot.' },
-    ]);
-    // A ref the catalog does not hold still reaches the poll, with an empty label, so it is noted.
-    expect(contentLines(['base:region/x#gone'], cat)).toEqual([
-      { ref: 'base:region/x#gone', kind: 'line', label: '' },
-    ]);
-    expect(contentLines([], undefined)).toEqual([]);
   });
 
   it('turns client pixels into device coordinates over the canvas rect', () => {

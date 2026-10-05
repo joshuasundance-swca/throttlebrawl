@@ -21,7 +21,7 @@ import {
   type BarkSelector,
 } from './selector';
 import type { BarkSurface } from './surface';
-import { createSeenLog, type SeenItem, type SeenKind, type VetoFlag } from './veto';
+import { createSeenLog, seenItemOf, type SeenItem, type SeenKind, type VetoFlag } from './veto';
 import { createCutMenu, mountRecentlySeen, watchBubblePresses, type CutMenu } from './veto-ui';
 
 export { BARK_TUNING } from './selector';
@@ -136,14 +136,7 @@ export function createNarrative(options: NarrativeOptions = {}): Narrative {
       watchBubblePresses(b, {
         inControlZone: options.inControlZone,
         racing: () => racing,
-        onLongPress: (bark) =>
-          offer({
-            contentRef: bark.contentRef,
-            kind: 'bark',
-            label: `${bark.speakerName}: ${bark.text}`,
-            raceId: bark.raceId,
-            tick: bark.tick,
-          }),
+        onLongPress: (bark) => offer(seenItemOf(bark)),
       });
     }
     const bikeClassOf = (riderId: string): string | undefined => {

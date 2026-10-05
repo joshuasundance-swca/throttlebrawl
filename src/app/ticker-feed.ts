@@ -4,12 +4,10 @@
 //
 // - the producer's ask, and its thank-you, as `ask` items tagged PRODUCER;
 // - the landing one-liner, picked here from the region's `landingLines` on the player's own landing
-//   that paid (a `land` event with `data.surge`), as a vetoable `line` item. render/ gets an empty
-//   landing pool (`withoutLandingLines`), so its WebGL overlay never draws one: the line is on the
-//   strip, off the bike and off the road;
-// - the slow-frames note, as a `system` item;
+//   that paid (a `land` event with `data.surge`), as a vetoable `line` item. It is on the strip, off
+//   the bike and off the road: render/ no longer draws a landing line of its own;
 // - the poll for the signs and billboards in view, so the veto's "recently seen" list names them.
-import type { BoardCatalog, BoardItem, VisibleContent } from '../render';
+import type { BoardItem, VisibleContent } from '../render';
 import type { SimEvent } from '../sim/api';
 import type { GameUi } from '../ui';
 
@@ -25,8 +23,8 @@ export const PRODUCER_THANKS_MS = 2000;
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
 /**
- * Which line comes next: never the one just shown when the pool has another. The same rule the
- * renderer's overlay used (render/air-pays.ts), so a seeded race picks the lines it always did.
+ * Which line comes next: never the one just shown when the pool has another. The rule the
+ * renderer's old overlay used, so a seeded race picks the lines it always did.
  */
 function nextLineIndex(count: number, last: number, tick: number): number {
   if (count <= 0) return -1;
@@ -77,22 +75,9 @@ export function producerThanksItem(ask: { cash: number }): TickerItem {
   return { cls: 'ask', tag: PRODUCER_TAG, text: 'Got it.', cash: ask.cash, dwellMs: PRODUCER_THANKS_MS };
 }
 
-/**
- * The slow-frames note (the look fallback's offer; run W-O). The buttons stay in the pause menu's
- * card; the strip only says where they are.
- */
-export const SLOW_FRAMES_ITEM: TickerItem = {
-  cls: 'system',
-  text: 'Slow frames? The Classic look is in the pause menu.',
-};
-
-/**
- * The board catalog as render/ gets it: the landing pool emptied, so its overlay never draws a line
- * (app/ puts it on the strip). Every other item and pool is kept as it was; the input is not changed.
- */
-export function withoutLandingLines(catalog: BoardCatalog): BoardCatalog {
-  return { ...catalog, pools: { ...catalog.pools, landing: [] } };
-}
+// The slow-frames offer is not here: it is ui's toast, which carries its own buttons (one tap to
+// Classic, or "No thanks"), and the strip does not repeat it (playtest 3, wave-B live check: the
+// toast and a ticker note said the same thing at once).
 
 /** How often (in rendered frames) the poll reads what is in view. */
 export const SEEN_POLL_EVERY = 30;

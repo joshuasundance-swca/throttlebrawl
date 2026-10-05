@@ -33,6 +33,7 @@ import { createFlatLook } from './look';
 import { PropBatch } from './prop-batch';
 import { buildRoadScene, chunkDistance, ROAD_FINE_DRAW_M } from './road-mesh';
 import { Smashables } from './smashables';
+import { modelDrawDelta, regionPools } from './vehicle-pools.test-util';
 import { EntityViews } from './views';
 
 const look = createFlatLook();
@@ -494,17 +495,20 @@ describe("the road's fine detail stays near (run W-T, the draw-call headroom)", 
   });
 });
 
-describe('the moving ramp truck and the new local life keep the composed peak at 104 of 120 (playtest 3, T4.3)', () => {
+describe('the moving ramp truck, the new local life and the traffic models keep the composed peak at 106 of 120 (playtest 3, T4.3 and T12.2)', () => {
   // The plan's composition (scratch/pt3/critic.md section 6, from the specs): today's peak scene
   // (Keys seed 5, a roadwork beside a speed trap) is 96 calls; the drift's skids and smoke add 2; a
   // moving carrier adds up to 3; and a region's new kinds of traffic add up to 3 more. The composed
   // figure is what the perf gate sees, 104 of the 120 it allows. Each term below is measured here as
   // the number of calls its figures add to a scene, so the sum stays true if a figure grows a mesh.
+  // The traffic models (T12.2) add up to 2 more, the most any of the regions' traffic pools draws
+  // over the boxes the models replace (vehicles.test.ts holds each pool to it): 106 of 120.
   const PEAK_TODAY = 96;
   const SKIDS_AND_SMOKE = 2;
   const CARRIER_BUDGET = 3;
   const NEW_KINDS_BUDGET = 3;
-  const COMPOSED_CAP = 104;
+  const TRAFFIC_MODELS_BUDGET = 2;
+  const COMPOSED_CAP = 106;
   const FRAME_BUDGET = 120;
 
   const types: SimTrafficTypeDef[] = [
@@ -622,7 +626,7 @@ describe('the moving ramp truck and the new local life keep the composed peak at
     }
   });
 
-  it('the worst scene composed is at most 104, and the frame budget keeps its headroom', () => {
+  it('the worst scene composed is at most 106, and the frame budget keeps its headroom', async () => {
     const lone = thing('base:event-car-carrier', -100);
     const second = thing('base:event-car-carrier', -170);
     const crowd = ['base:pedicab', 'base:island-tram', 'base:rooster'].flatMap((id, k) => [
@@ -630,11 +634,18 @@ describe('the moving ramp truck and the new local life keep the composed peak at
       thing(id, -62 - k * 20),
     ]);
     const added = callsFor([...ordinary(), lone, second, ...crowd], [second.id]) - base;
-    const composed = PEAK_TODAY + SKIDS_AND_SMOKE + added;
+    // The traffic models: the worst pool of any region, every one of its types in view at once.
+    let modelsAdded = 0;
+    for (const pool of regionPools()) {
+      const d = await modelDrawDelta(pool.ids);
+      modelsAdded = Math.max(modelsAdded, d.models - d.boxes);
+    }
+    const composed = PEAK_TODAY + SKIDS_AND_SMOKE + added + modelsAdded;
     console.log(
-      `[examined] composed peak: ${PEAK_TODAY} today + ${SKIDS_AND_SMOKE} skids and smoke + ${added} (a carrier up and down and three new kinds) = ${composed} of ${FRAME_BUDGET}`,
+      `[examined] composed peak: ${PEAK_TODAY} today + ${SKIDS_AND_SMOKE} skids and smoke + ${added} (a carrier up and down and three new kinds) + ${modelsAdded} (traffic models over their boxes, the worst region pool) = ${composed} of ${FRAME_BUDGET}`,
     );
     expect(added).toBeLessThanOrEqual(CARRIER_BUDGET + NEW_KINDS_BUDGET);
+    expect(modelsAdded).toBeLessThanOrEqual(TRAFFIC_MODELS_BUDGET);
     expect(composed).toBeLessThanOrEqual(COMPOSED_CAP);
     expect(composed).toBeLessThanOrEqual(FRAME_BUDGET);
   });

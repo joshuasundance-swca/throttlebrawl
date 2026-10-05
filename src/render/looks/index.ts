@@ -21,7 +21,7 @@
 // that time of day, for `sky`) replaces that colour in every look, and the ink looks still ink,
 // hatch and grade it. A palette colour equal to the classic one means "the look's own", which is
 // how the Keys, whose palette is the classic look's, stay exactly as they were in every look.
-import { Color, MeshLambertMaterial, type Fog, type Material, type Scene } from 'three';
+import { Color, MeshBasicMaterial, MeshLambertMaterial, type Fog, type Material, type Scene } from 'three';
 import {
   CLASSIC_PALETTE,
   type LookEnv,
@@ -29,13 +29,20 @@ import {
   type MaterialKind,
   type MaterialParams,
 } from '../look';
-import { inkModeOf, patchInkShader, type InkMode, type InkUniforms } from './ink';
+import {
+  inkModeOf,
+  NO_INK_KINDS,
+  patchInkShader,
+  patchNoInkShader,
+  type InkMode,
+  type InkUniforms,
+} from './ink';
 import type { PostSettings } from './post';
 import { BRUSH, KODAK, skyOf, WASTELAND, type InkRecipe } from './recipes';
 
 export { kodachromeGrade, bleachGrade, neutralGrade, buildGradeLut, GRADES, LUT_SIZE } from './grade';
 export type { GradeId } from './grade';
-export { patchInkShader, VERTEX_ANCHORS, FRAGMENT_ANCHORS } from './ink';
+export { patchInkShader, patchNoInkShader, NO_INK_KINDS, VERTEX_ANCHORS, FRAGMENT_ANCHORS } from './ink';
 export type { InkUniforms, ShaderParts } from './ink';
 // LookPost is not re-exported: render/index.ts loads post.ts as a lazy chunk (the film pass).
 export type { PostSettings } from './post';
@@ -93,6 +100,8 @@ interface Tracked {
   kind: MaterialKind;
   /** The ink patch mode, for lit materials; null for unlit ones. */
   mode: InkMode | null;
+  /** An unlit material left out of the brightness ink (ink.ts, NO_INK_KINDS): patched while inked. */
+  noInk: boolean;
 }
 
 const linear = (hex: string): [number, number, number] => {
@@ -157,7 +166,7 @@ export function createLookSet(base: LookStyle): LookSet {
       else m.color.copy(t.classic);
     }
     // The ink patch changes the lit program: recompile once, now.
-    if (t.mode && recompile) m.needsUpdate = true;
+    if ((t.mode || t.noInk) && recompile) m.needsUpdate = true;
   };
 
   const applyUniforms = () => {
@@ -196,6 +205,7 @@ export function createLookSet(base: LookStyle): LookSet {
       classic: !ownColour && withColor.color ? withColor.color.clone() : null,
       kind,
       mode: m instanceof MeshLambertMaterial ? inkModeOf(kind) : null,
+      noInk: m instanceof MeshBasicMaterial && !m.transparent && NO_INK_KINDS.has(kind),
     };
     if (t.mode) {
       const mode = t.mode;
@@ -204,6 +214,12 @@ export function createLookSet(base: LookStyle): LookSet {
       };
       // Every ink look shares one program per mode: their differences are uniforms and colours.
       m.customProgramCacheKey = () => (inked() ? `ink-${mode}` : 'classic');
+    }
+    if (t.noInk) {
+      m.onBeforeCompile = (shader) => {
+        if (inked()) patchNoInkShader(shader);
+      };
+      m.customProgramCacheKey = () => (inked() ? 'ink-no-ink' : 'classic');
     }
     tracked.set(m, t);
     if (current !== DEFAULT_LOOK || overrides.size > 0) applyMaterial(t, current !== DEFAULT_LOOK);

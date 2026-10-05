@@ -24,6 +24,23 @@ export interface SeenItem {
   tick: number;
 }
 
+/**
+ * The item "cut this" offers for what a long-press found on the strip: a bark as "Speaker: line", a
+ * landing one-liner (no speaker) as a sign with its words alone, as the "recently seen" list names it.
+ */
+export function seenItemOf(shown: {
+  contentRef: string;
+  speakerName: string;
+  text: string;
+  raceId: string;
+  tick: number;
+  strip?: 'line';
+}): SeenItem {
+  const { contentRef, raceId, tick } = shown;
+  if (shown.strip === 'line') return { contentRef, kind: 'sign', label: shown.text, raceId, tick };
+  return { contentRef, kind: 'bark', label: `${shown.speakerName}: ${shown.text}`, raceId, tick };
+}
+
 /** How many items the "recently seen" list keeps (docs/milestones/M2.md, narrative-2). */
 export const RECENTLY_SEEN_MAX = 20;
 

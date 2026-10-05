@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimSnapshot } from '../sim/api';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { AUDIO_TUNING, createAudio } from './index';
+import { AUDIO_TUNING, createAudio } from './system';
 import {
   createDirector,
   JOINT_SPACING_M,

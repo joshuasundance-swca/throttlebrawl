@@ -16,7 +16,7 @@
 //   Settle: a text widget that overlaps a touch button moves up off its anchored edge until it is
 //   6 px clear (rule 6, `settleLifts`).
 //
-// The slow-frames offer (the toast; app/ takes it into the ticker as a line in a later task) has its
+// The slow-frames offer (the toast; the strip does not repeat it) has its
 // own reserved slot: in inline mode the near column under the position badge (so it never meets the
 // objective or the heat badge in the far column), in stacked mode the ticker's slot (the strip
 // steps aside while it is up). docs/product-spec.md ("Nothing covers the road ahead") and

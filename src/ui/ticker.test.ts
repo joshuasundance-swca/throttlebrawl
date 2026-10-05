@@ -22,7 +22,14 @@ const bark = (ref: string, text = 'Nice wheelie, nerd.', dwellMs = 2000): Ticker
   contentRef: ref,
   dwellMs,
 });
-const near = (cash = 50): TickerItem => ({ cls: 'style', text: 'NEAR MISS', kind: 'nearMiss', cash });
+const near = (cash: number | null = 50): TickerItem => ({
+  cls: 'style',
+  text: 'NEAR MISS',
+  kind: 'nearMiss',
+  cash,
+});
+const flip = (cash = 240): TickerItem => ({ cls: 'style', text: 'BACKFLIP', kind: 'trick:BACKFLIP', cash });
+const landing = (text = 'TEN OUT OF TEN, SAYS A PELICAN'): TickerItem => ({ cls: 'line', text });
 const shown = (t: ReturnType<typeof createTicker>, now: number) => t.step(now).item;
 
 describe('ticker: one item at a time', () => {
@@ -51,9 +58,9 @@ describe('ticker: one item at a time', () => {
 });
 
 describe('ticker: preemption', () => {
-  it('lets a bark preempt a style item, which is dropped as stale', () => {
+  it('lets a bark preempt a cash-less style item, which is dropped as stale', () => {
     const t = createTicker();
-    t.push(near(), 0);
+    t.push(near(null), 0);
     t.push(bark('a'), 100);
     expect(shown(t, 100)?.cls).toBe('bark');
     // The bark's time passes; the chip does not come back.
@@ -170,8 +177,18 @@ describe('ticker: merging style chips', () => {
     t.push(near(25), 200);
     const waiting = t.waiting();
     expect(waiting).toHaveLength(1);
-    // A style chip waits 1.5 s at most: it is stale by the time the bark ends.
+    // The paid chip never goes stale: it shows, merged, once the bark ends.
+    expect(shown(t, 3000)?.text).toBe('NEAR MISS');
+    expect(shown(t, 3000)?.count).toBe(2);
+    expect(shown(t, 3000)?.cash).toBe(50);
+  });
+
+  it('still drops a cash-less chip that waited more than 1.5 s', () => {
+    const t = createTicker();
+    t.push(bark('a', 'x', 3000), 0);
+    t.push(near(null), 100);
     expect(shown(t, 3000)).toBeNull();
+    expect(t.waiting()).toEqual([]);
   });
 
   it('keeps different kinds apart, and a cash-less chip cash-less', () => {
@@ -194,6 +211,76 @@ describe('ticker: merging style chips', () => {
     expect(item?.landed).toBe(true);
     expect(item?.count).toBe(2);
     expect(item?.endsAt).toBe(2100);
+  });
+});
+
+describe('ticker: a paid style chip is never dropped (the flip behind its landing line)', () => {
+  const seen = (t: ReturnType<typeof createTicker>, from: number, to: number) => {
+    const out: string[] = [];
+    for (let now = from; now <= to; now += 50) {
+      const item = shown(t, now);
+      const label = item ? `${item.cls}:${tickerLabel(item)}${item.cash ? ' ' + tickerCash(item) : ''}` : '';
+      if (label && out[out.length - 1] !== label) out.push(label);
+    }
+    return out;
+  };
+
+  it('shows the landing line, then the flip chip with its cash, when the line comes first', () => {
+    const t = createTicker();
+    t.push(landing(), 0);
+    t.push(flip(), 10);
+    expect(seen(t, 10, 4000)).toEqual(['line:TEN OUT OF TEN, SAYS A PELICAN', 'style:BACKFLIP +$240']);
+  });
+
+  it('shows the same two, in the same order, when the chip comes first', () => {
+    const t = createTicker();
+    t.push(flip(), 0);
+    t.push(landing(), 10);
+    expect(seen(t, 10, 4000)).toEqual(['line:TEN OUT OF TEN, SAYS A PELICAN', 'style:BACKFLIP +$240']);
+  });
+
+  it('gives the chip that was taken its remaining time, not a fresh one', () => {
+    const t = createTicker();
+    t.push(flip(), 0);
+    t.push(landing(), 300);
+    // The line (1.6 s) runs 300..1900; the chip had 800 ms left of its 1100.
+    expect(shown(t, 1899)?.cls).toBe('line');
+    const back = shown(t, 1900);
+    expect(back?.cls).toBe('style');
+    expect(back?.endsAt).toBe(1900 + 800);
+    expect(shown(t, 2700)).toBeNull();
+  });
+
+  it('keeps a paid chip behind a long run of higher items, however long they last', () => {
+    const t = createTicker();
+    t.push({ cls: 'teach', text: 'T', dwellMs: 5000 }, 0);
+    t.push({ cls: 'ask', text: 'ASK', dwellMs: 3000 }, 50);
+    t.push(flip(), 100);
+    expect(shown(t, 5000)?.text).toBe('ASK');
+    // Waited 8 s by now, and the chip's own 1.5 s is long past.
+    expect(shown(t, 8000)?.text).toBe('BACKFLIP');
+  });
+
+  it('never counts a paid chip against the six that wait', () => {
+    const t = createTicker();
+    t.push({ cls: 'teach', text: 'T', dwellMs: 20_000 }, 0);
+    for (let i = 0; i < 4; i++) t.push({ cls: 'ask', text: `ask ${i}` }, 1);
+    t.push({ cls: 'system', text: 'sys' }, 1);
+    t.push(flip(), 1);
+    t.push(landing(), 1);
+    t.push({ cls: 'system', text: 'sys 2' }, 1);
+    const waiting = t.waiting();
+    expect(waiting.some((i) => i.text === 'BACKFLIP')).toBe(true);
+  });
+
+  it('merges a second paid flip into the one that waits, summing the cash', () => {
+    const t = createTicker();
+    t.push(landing(), 0);
+    t.push(flip(120), 10);
+    t.push(flip(120), 20);
+    const item = shown(t, 1600);
+    expect(item?.count).toBe(2);
+    expect(item?.cash).toBe(240);
   });
 });
 
@@ -464,7 +551,10 @@ describe('ticker: the race feed as items', () => {
     expect(item?.text).toBe('CATCH OF THE DAY');
     expect(item && tickerCash(item)).toBe('');
     t.push(popItem(named), 200);
-    expect(t.waiting()).toHaveLength(1);
+    // The second name waits as its own item; the paid near miss it took the strip from waits too.
+    const waiting = t.waiting();
+    expect(waiting.filter((i) => i.cls === 'name')).toHaveLength(1);
+    expect(waiting.filter((i) => i.cls === 'style')).toHaveLength(1);
   });
 
   it('lands a paid run for the time given', () => {

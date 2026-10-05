@@ -4,24 +4,34 @@
 //   - one dynamic ribbon, a ring buffer of SKID_QUADS quads (SKID_WIDTH_M wide) laid under a tyre
 //     that is sliding (a drift's rear tyre, a stoppie's front one). When the ring is full the
 //     oldest quads are overwritten, so a long race never grows it;
-//   - one InstancedMesh of SMOKE_MAX tyre-smoke puffs that rise and thin out.
+//   - one InstancedMesh of SMOKE_MAX tyre-smoke puffs: soft, translucent, camera-facing clouds that
+//     swell as they rise and fade to nothing (G7, the wave B live check: the first smoke was a turned
+//     cube, which the ink looks outlined into grey concrete slabs. A cloud with a soft edge has no
+//     luminance step for the ink pass to draw, and each puff fades by its own alpha).
 // riders/index.ts owns an instance (the rider rigs are already a lazy chunk, so none of this is in
 // the first load) and calls `lay` for every rider each frame. Presentation only: the smoke's
 // scatter uses a non-seeded random source, which is allowed (nothing here feeds the sim).
 import {
   BufferGeometry,
+  DataTexture,
   DoubleSide,
+  DynamicDrawUsage,
   Float32BufferAttribute,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
+  LinearFilter,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  PlaneGeometry,
   Quaternion,
+  RGBAFormat,
+  SRGBColorSpace,
   Uint16BufferAttribute,
+  UnsignedByteType,
   Vector3,
 } from 'three';
-import { mergeBoxes } from './geometry';
 
 /** Quads in the ribbon's ring: at one a 0.3 m step, about 150 m of rubber. */
 export const SKID_QUADS = 512;
@@ -37,11 +47,17 @@ const MIN_STEP_M = 0.3;
 const MAX_STEP_M = 8;
 const SMOKE_LIFE_S = 1.1;
 /** Puffs a second under a tyre sliding at full strength. */
-const SMOKE_RATE = 36;
+const SMOKE_RATE = 26;
 const MARK_COLOR = '#0c0c0c';
 const MARK_OPACITY = 0.55;
-const SMOKE_COLOR = '#dcdcdc';
-const SMOKE_OPACITY = 0.5;
+const SMOKE_COLOR = '#d9d8d4';
+/** A puff's most opaque moment, at full slide strength and at the lightest (a share of 1). */
+export const SMOKE_PEAK_ALPHA = 0.42;
+const SMOKE_PEAK_LIGHT = 0.22;
+/** A puff fades in over this share of its life, so it does not pop into being. */
+const SMOKE_FADE_IN = 0.12;
+/** The cloud texture's side, px. */
+const CLOUD_PX = 64;
 
 interface Tyre {
   x: number;
@@ -65,6 +81,86 @@ interface Puff {
   vz: number;
   age: number;
   size: number;
+  /** Turn about the view axis, radians (so the clouds are not all the same way up). */
+  roll: number;
+  /** Its own peak alpha (a harder slide smokes thicker). */
+  peak: number;
+}
+
+/** What `onBeforeCompile` receives (the vertex and fragment source, three's own anchors). */
+export interface SmokeShaderParts {
+  vertexShader: string;
+  fragmentShader: string;
+}
+
+const SMOKE_VERTEX_DECL = `attribute vec2 aPuff;
+varying float vPuffAlpha;`;
+// The puff's centre goes through the model-view matrix; its corners are then laid out in VIEW space,
+// so it always faces the lens, turned by its own roll.
+const SMOKE_VERTEX = `
+vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+float puffSize = length(instanceMatrix[0].xyz);
+float puffCos = cos(aPuff.y);
+float puffSin = sin(aPuff.y);
+mvPosition.xy += mat2(puffCos, puffSin, -puffSin, puffCos) * position.xy * puffSize;
+gl_Position = projectionMatrix * mvPosition;
+vPuffAlpha = aPuff.x;`;
+
+/** Patches a basic material's shader so each instance is a view-facing, individually faded puff. */
+export function patchSmokeShader(shader: SmokeShaderParts): void {
+  const swap = (src: string, anchor: string, withText: string, where: string): string => {
+    const at = src.indexOf(anchor);
+    if (at < 0 || src.indexOf(anchor, at + anchor.length) >= 0)
+      throw new Error(`skids: the smoke patch expects exactly one "${anchor}" in the ${where} shader`);
+    return src.slice(0, at) + withText + src.slice(at + anchor.length);
+  };
+  let v = shader.vertexShader;
+  v = swap(v, '#include <common>', `#include <common>\n${SMOKE_VERTEX_DECL}`, 'vertex');
+  v = swap(v, '#include <project_vertex>', SMOKE_VERTEX, 'vertex');
+  let f = shader.fragmentShader;
+  f = swap(f, '#include <common>', '#include <common>\nvarying float vPuffAlpha;', 'fragment');
+  f = swap(
+    f,
+    '#include <opaque_fragment>',
+    'diffuseColor.a *= vPuffAlpha;\n#include <opaque_fragment>',
+    'fragment',
+  );
+  shader.vertexShader = v;
+  shader.fragmentShader = f;
+}
+
+const smoothstep = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * A cloud's alpha: three overlapping soft lobes, dense at the middle and gone at the rim, so a puff
+ * has no edge at all (alpha 0 at the texture's border). White: the material tints it.
+ */
+export function cloudAlpha(u: number, v: number): number {
+  const lobe = (cx: number, cy: number, r: number) =>
+    Math.pow(1 - smoothstep(0, 1, Math.hypot(u - cx, v - cy) / r), 1.5);
+  return Math.max(lobe(0, 0, 0.62), lobe(-0.22, 0.14, 0.46), lobe(0.2, -0.12, 0.5)) * 0.95;
+}
+
+/** The soft-cloud texture (`CLOUD_PX` square RGBA), made in code so there is nothing to load. */
+function cloudTexture(): DataTexture {
+  const data = new Uint8Array(CLOUD_PX * CLOUD_PX * 4);
+  for (let y = 0; y < CLOUD_PX; y++)
+    for (let x = 0; x < CLOUD_PX; x++) {
+      const u = ((x + 0.5) / CLOUD_PX) * 2 - 1;
+      const v = ((y + 0.5) / CLOUD_PX) * 2 - 1;
+      const i = (y * CLOUD_PX + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      data[i + 3] = Math.round(255 * cloudAlpha(u, v));
+    }
+  const tex = new DataTexture(data, CLOUD_PX, CLOUD_PX, RGBAFormat, UnsignedByteType);
+  tex.colorSpace = SRGBColorSpace;
+  tex.minFilter = tex.magFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 export class Skids {
@@ -72,6 +168,7 @@ export class Skids {
   readonly root = new Group();
   readonly ribbon: Mesh;
   readonly smokeMesh: InstancedMesh;
+  private readonly puffAttr: InstancedBufferAttribute;
   private readonly positions: Float32Array;
   private readonly posAttr: Float32BufferAttribute;
   private readonly tyres = new Map<number, Tyre>();
@@ -114,17 +211,19 @@ export class Skids {
     this.ribbon.renderOrder = 1;
     this.ribbon.visible = false;
 
-    this.smokeMesh = new InstancedMesh(
-      // A turned cube, like the hurt bike's smoke (riders/index.ts): no new geometry class to load.
-      mergeBoxes([{ size: [1, 1, 1], at: [0, 0, 0], color: SMOKE_COLOR, rotY: Math.PI / 4 }]),
-      new MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        opacity: SMOKE_OPACITY,
-        depthWrite: false,
-      }),
-      SMOKE_MAX,
-    );
+    const cloud = new PlaneGeometry(1, 1);
+    this.puffAttr = new InstancedBufferAttribute(new Float32Array(SMOKE_MAX * 2), 2);
+    this.puffAttr.setUsage(DynamicDrawUsage);
+    cloud.setAttribute('aPuff', this.puffAttr);
+    const smokeMat = new MeshBasicMaterial({
+      color: SMOKE_COLOR,
+      map: cloudTexture(),
+      transparent: true,
+      depthWrite: false,
+    });
+    smokeMat.onBeforeCompile = (shader) => patchSmokeShader(shader);
+    smokeMat.customProgramCacheKey = () => 'tyre-smoke';
+    this.smokeMesh = new InstancedMesh(cloud, smokeMat, SMOKE_MAX);
     this.smokeMesh.name = 'tyre-smoke';
     this.smokeMesh.frustumCulled = false;
     this.smokeMesh.renderOrder = 2;
@@ -236,7 +335,9 @@ export class Skids {
       vy: 0.5 + r() * 0.7,
       vz: (r() - 0.5) * 1.4,
       age: 0,
-      size: 0.5 + 0.5 * strength + r() * 0.3,
+      size: 0.7 + 0.7 * strength + r() * 0.4,
+      roll: r() * Math.PI * 2,
+      peak: SMOKE_PEAK_LIGHT + (SMOKE_PEAK_ALPHA - SMOKE_PEAK_LIGHT) * Math.max(0, Math.min(1, strength)),
     });
   }
 
@@ -271,16 +372,21 @@ export class Skids {
     }
     while (this.puffs.length && (this.puffs[0]?.age ?? 0) > SMOKE_LIFE_S) this.puffs.shift();
     let n = 0;
+    const fade = this.puffAttr.array as Float32Array;
     for (const p of this.puffs) {
       const k = Math.min(1, p.age / SMOKE_LIFE_S);
-      // It swells as it rises, then thins away over its last third (the shrinking is the fade:
-      // one material cannot give each puff its own opacity).
-      const fade = k > 0.7 ? (1 - k) / 0.3 : 1;
-      this.s.setScalar(Math.max(0.001, p.size * (0.3 + 0.9 * k) * fade));
+      // It swells as it rises and thins away by its own alpha: in over the first moments, then a
+      // smooth fall to nothing at the end of its life (so it never pops out).
+      const alpha = p.peak * smoothstep(0, SMOKE_FADE_IN, k) * (1 - smoothstep(0.25, 1, k));
+      this.s.setScalar(p.size * (0.45 + 1.1 * k));
       this.v.set(p.x, p.y, p.z);
       this.m.compose(this.v, this.q.identity(), this.s);
-      this.smokeMesh.setMatrixAt(n++, this.m);
+      this.smokeMesh.setMatrixAt(n, this.m);
+      fade[n * 2] = alpha;
+      fade[n * 2 + 1] = p.roll + k * 0.6;
+      n++;
     }
+    this.puffAttr.needsUpdate = true;
     this.smokeMesh.count = n;
     this.smokeMesh.visible = n > 0;
     this.smokeMesh.instanceMatrix.needsUpdate = true;
@@ -305,7 +411,9 @@ export class Skids {
     this.ribbon.geometry.dispose();
     (this.ribbon.material as MeshBasicMaterial).dispose();
     this.smokeMesh.geometry.dispose();
-    (this.smokeMesh.material as MeshBasicMaterial).dispose();
+    const smokeMat = this.smokeMesh.material as MeshBasicMaterial;
+    smokeMat.map?.dispose();
+    smokeMat.dispose();
     this.smokeMesh.dispose();
   }
 }

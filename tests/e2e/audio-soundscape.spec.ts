@@ -69,7 +69,7 @@ async function render(page: Page, ride: Ride): Promise<Heard> {
       frame(s: Record<string, unknown> | null, playerId: number): void;
       inspect(): { soundscape: { played: { kind: string }[] } };
     };
-    const url = '/__audio-scape/index.js';
+    const url = '/__audio-scape/system.js';
     const m = (await import(url)) as {
       createAudio(o: Record<string, unknown>): Audio;
     };

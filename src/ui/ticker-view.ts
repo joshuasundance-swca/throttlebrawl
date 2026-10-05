@@ -215,6 +215,7 @@ export function createTickerUi(options: TickerUiOptions): TickerUi {
     durationS: (item.endsAt - item.startedAt) / 1000,
     tick: item.tick ?? 0,
     raceId: item.raceId ?? '',
+    ...(item.cls === 'line' ? { strip: 'line' as const } : {}),
   });
 
   const surface: BarkSurface = {

@@ -139,9 +139,13 @@ const CAMPUS_TAIL_TAGS = [towers('left'), { s0: 0, s1: 'end', side: 'right', tag
 
 /**
  * The cut's own roads carry a tag no theme reads, so render draws no towers, plaza or scatter of its
- * own beside them (the avenue's pieces draw the plaza they run through).
+ * own beside them (the avenue's pieces draw the plaza they run through). It is on their right only:
+ * road/cross-section.ts gives that side 2 m of soft paving, so a bike that is held to the right
+ * through its whole flight is stopped at the cut's side with no crash (before, the cut's right edge
+ * was a hard one and it crashed there, in the air). The left side is the avenue's, where a rider is
+ * handed back across.
  */
-const PLAZA_CUT_TAGS = [{ s0: 0, s1: 'end', side: 'both', tag: 'plaza-cut' }] as const;
+const PLAZA_CUT_TAGS = [{ s0: 0, s1: 'end', side: 'right', tag: 'plaza-cut' }] as const;
 
 export const SF_DOWNTOWN: TrackSource = {
   network: {

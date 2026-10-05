@@ -82,6 +82,8 @@ export interface Placement {
   /** The rider's fight stats (playtest 2): damage and stagger taken divided, damage dealt multiplied. */
   toughness?: number;
   power?: number;
+  /** The career field level's power scale on this rival (SimRiderDef.levelPower). */
+  levelPower?: number;
   /** Rider mass, kg (80 when absent); the bike adds 180. */
   massKg?: number;
   /** The bike's `combat` block (combat-3): resistance 0..1 and hit power. */
@@ -135,6 +137,7 @@ export function harnessConfig(
     healthMax: p.healthMax ?? 100,
     ...(p.toughness !== undefined ? { toughness: p.toughness } : {}),
     ...(p.power !== undefined ? { power: p.power } : {}),
+    ...(p.levelPower !== undefined ? { levelPower: p.levelPower } : {}),
     ...(p.startingWeapon !== undefined ? { startingWeapon: p.startingWeapon } : {}),
   }));
   return {

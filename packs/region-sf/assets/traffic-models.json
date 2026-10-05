@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "notes": "Render-only (playtest 3, T12.2): see the base pack's traffic-models.json. San Francisco's own types that draw from a shared base-pack model; its other types keep their figures until its own models arrive.",
+  "types": {
+    "region-sf:rideshare-hatchback": {
+      "models": ["models/traffic/hatchback"],
+      "paint": ["#2f3a4a", "#d9d9d9", "#5c6b73"]
+    },
+    "region-sf:startup-shuttle": {
+      "models": ["models/traffic/city-bus"],
+      "paint": ["#f4f4f2", "#2b2d33"]
+    }
+  }
+}

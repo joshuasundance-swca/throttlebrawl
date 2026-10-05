@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "notes": "Render-only (playtest 3, T12.2): see the base pack's traffic-models.json. The Pacific Northwest's own types that draw from a shared base-pack model; its other types keep their figures until its own models arrive.",
+  "types": {
+    "region-pnw:muddy-pickup": {
+      "models": ["models/traffic/pickup"],
+      "paint": ["#5d6b4f", "#7a3b2a", "#3d4a3f"]
+    }
+  }
+}

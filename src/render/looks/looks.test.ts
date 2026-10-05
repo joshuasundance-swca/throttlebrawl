@@ -34,6 +34,7 @@ const ALL_KINDS: MaterialKind[] = [
   'road',
   'shoulder',
   'shortcut',
+  'brick',
   'marking',
   'markingCenter',
   'rampMark',

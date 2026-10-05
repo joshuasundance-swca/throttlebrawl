@@ -73,7 +73,20 @@
       "tag": "town"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "se-hawthorne-crowd",
+      "s0": 90.0,
+      "s1": 170.0,
+      "d0": 12.0,
+      "d1": 17.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter"]
+      }
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

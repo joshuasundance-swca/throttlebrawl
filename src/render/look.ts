@@ -20,6 +20,8 @@ export type MaterialKind =
   | 'road'
   | 'shoulder'
   | 'shortcut'
+  // Playtest 3: a brick road's lanes (Lombard's crooked block); its mortar joints are the `shoulder` kind.
+  | 'brick'
   | 'marking'
   | 'markingCenter'
   | 'rampMark'
@@ -93,6 +95,7 @@ export const CLASSIC_PALETTE: Readonly<Record<MaterialKind, string>> = {
   road: '#44474d',
   shoulder: '#8a8170',
   shortcut: '#b08a5a',
+  brick: '#a4553f',
   marking: '#f2efe6',
   markingCenter: '#f2c14e',
   rampMark: '#ff7a1a',
