@@ -179,6 +179,13 @@
       "status": "live",
       "note": "NEW, playtest 3, T12.6: the name board of the third food-cart model (`pdx_food_cart_c_name`). An invented business."
     },
+    {
+      "id": "pdx-chinatown-gate-plaque",
+      "text": "CHINATOWN. UMBRELLAS WELCOME.",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4, B7 (CX5's item 13): the words on the plaque of Old Town's Chinatown gate on West Burnside, a text surface on the model's `pdx_chinatown_gate_plaque` panel. The joke is the weather, aimed at no one's neighbourhood (the tone guide's hard line on Portland's Old Town and Chinatown). A taste call for the maintainer; vetoable like any sign, and a cut leaves the plaque blank."
+    },
     { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
     {
