@@ -251,7 +251,31 @@ describe('the Seven Mile Bridge: real geometry, the old road beside it', () => {
       expect(gap.s0 - truck.s1).toBeGreaterThanOrEqual(0);
       expect(gap.s0 - truck.s1).toBeLessThan(5);
       expect(OLD_ROAD?.roads).toContain(id);
+      // Playtest 4 (P4-10): the truck is as wide as the deck, so a rider anywhere on the platform
+      // rides up its ramp rather than past it into the water.
+      const edge = SM_ROAD.edgeIndex(id);
+      const deck = SM_ROAD.lanesAt(edge, truck.s0);
+      const lo = Math.min(...deck.map((l) => l.dCenterM - l.widthM / 2));
+      const hi = Math.max(...deck.map((l) => l.dCenterM + l.widthM / 2));
+      expect(Math.min(truck.d0, truck.d1), id).toBeLessThanOrEqual(lo);
+      expect(Math.max(truck.d0, truck.d1), id).toBeGreaterThanOrEqual(hi);
     }
+  });
+
+  it('wakes a rider who misses any Seven Mile jump on the highway (playtest 4: "a miss respawns on the highway")', () => {
+    const gaps = SM.roads.flatMap((r) =>
+      featuresOf(r)
+        .filter((f) => f.kind === 'gap')
+        .map((f) => `${r.id} ${f.id}`),
+    );
+    const far = SM.roads.flatMap((r) =>
+      featuresOf(r)
+        .filter((f) => f.kind === 'gap' && f.params?.['respawn'] !== 'main')
+        .map((f) => `${r.id} ${f.id}`),
+    );
+    print(`gaps: ${gaps.join(', ')}`);
+    expect(gaps.length).toBeGreaterThanOrEqual(3);
+    expect(far).toEqual([]);
   });
 });
 
@@ -394,7 +418,7 @@ describe('the Moser gap: the Rustbucket clears it flat out, a rider well under t
 });
 
 describe('the repair platforms: a ramp truck hops the 30 m gap between the bridges', () => {
-  it('every bike at least as fast as the Rustbucket clears both hops over the truck; a moped wakes on the far side', () => {
+  it('every bike at least as fast as the Rustbucket clears both hops over the truck; a moped wakes on the highway', () => {
     if (!RUSTBUCKET) throw new Error('no Rustbucket in the packs');
     const rows: string[] = [];
     for (const id of ['osm-sm-old-road', 'osm-sm-old-road-back']) {
@@ -420,7 +444,9 @@ describe('the repair platforms: a ramp truck hops the 30 m gap between the bridg
           true,
         );
         rows.push(`${id} moped: ${JSON.stringify(slow.respawn?.data)} on ${slow.edge}`);
-        expect(slow.respawn?.data).toMatchObject({ gap: gap.id, at: 'far' });
+        // Playtest 4 (P4-10, wave C's check): a miss at either hop wakes on the highway, not past the gap.
+        expect(slow.respawn?.data).toMatchObject({ gap: gap.id, at: 'main' });
+        expect(SM.route.mainPath).toContain(slow.edge);
       }
     }
     print(`staging hops:\n  ${rows.join('\n  ')}`);
@@ -429,22 +455,30 @@ describe('the repair platforms: a ramp truck hops the 30 m gap between the bridg
 
 // ---- Rivals and cops stay on the highway --------------------------------------------------------
 
-describe('the turn-off: a rider who keeps right to the rail takes the old road, the field rides on', () => {
-  it("puts the split zone on the shoulder's outer edge: past the lines the AI and the bot keep, inside a rider's reach", () => {
-    // The AI aims no further out than 0.7 m inside the road's edge, the dev bot 0.6 m (sim/ai's
-    // dHi, dev/bot's span); a rider pressed against the rail stands BIKE_HALF_WIDTH_M inside it,
-    // where the split guide carries it along the zone to the split. So the zone starts between.
+describe('the turn-off: a rider who keeps right takes the old road, the field rides on', () => {
+  it("puts the split zone over the shoulder: well inside a rider's reach, clear of the travel lane's centre, out to the edge", () => {
+    // Playtest 4 (P4-10, the maintainer: "too hard to get on"; the feel audit's F10a): the zone used to
+    // start 0.05 m inside a rider's reach (BIKE_HALF_WIDTH_M inside the rail), so only a bike pressed
+    // against the rail took the turn-off; every other shortcut's zone starts 2 to 3 m inside it. It
+    // sat past the lines the AI keeps so the field would not be swept onto the old road; since #489
+    // the sim keeps rivals and cops off it (sim/ai/branches.ts), so the zone no longer has that job.
+    // A rider holding the right lane's centre line still rides on along the highway.
     const zone = SM_ROAD.splitZones().find((z) =>
       OLD_ROAD?.roads.includes(SM_ROAD.edges[z.toEdge]?.id ?? ''),
     );
     if (!zone) throw new Error('no split zone onto the old road');
-    const edge = Math.max(...SM_ROAD.lanesAt(zone.edge, zone.s1).map((l) => l.dCenterM + l.widthM / 2));
+    const lanes = SM_ROAD.lanesAt(zone.edge, zone.s1);
+    const edge = Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2));
+    const reach = edge - BIKE_HALF_WIDTH_M;
+    const laneCentre = Math.max(...lanes.filter((l) => l.kind === 'drive').map((l) => l.dCenterM));
     print(
-      `zone on ${SM_ROAD.edges[zone.edge]?.id} s ${zone.s0.toFixed(0)}..${zone.s1.toFixed(0)} d ${zone.d0}..${zone.d1}; the road's edge at d ${edge}`,
+      `zone on ${SM_ROAD.edges[zone.edge]?.id} s ${zone.s0.toFixed(0)}..${zone.s1.toFixed(0)} d ${zone.d0}..${zone.d1}; the right lane's centre at d ${laneCentre}, a rider's reach d ${reach}, the road's edge d ${edge}`,
     );
-    expect(zone.d0).toBeGreaterThan(edge - 0.6);
-    expect(zone.d0).toBeLessThan(edge - BIKE_HALF_WIDTH_M);
+    expect(reach - zone.d0).toBeGreaterThanOrEqual(1.5);
+    expect(zone.d0).toBeGreaterThan(laneCentre + 1);
     expect(zone.d1).toBeGreaterThan(edge);
+    // Long enough to aim at: about 80 m, twice the old 40 m.
+    expect(zone.s1 - zone.s0).toBeGreaterThan(75);
   });
 
   it(

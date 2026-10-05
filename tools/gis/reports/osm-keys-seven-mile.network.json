@@ -79,13 +79,13 @@
     {
       "id": "osm-sm-old-road",
       "mainM": 10036.1,
-      "branchM": 10083.9,
-      "savesM": -47.8,
+      "branchM": 10079.5,
+      "savesM": -43.3,
       "leave": {
         "road": "osm-sm-old-road",
-        "turnDeg": 20.2,
-        "straightM": 150.2271,
-        "tightestRadiusM": 59.4,
+        "turnDeg": 9.37,
+        "straightM": 520.3214,
+        "tightestRadiusM": 230.6,
         "straightStartM": 0.0
       },
       "join": {
