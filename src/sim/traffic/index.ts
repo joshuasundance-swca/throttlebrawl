@@ -86,12 +86,15 @@ import {
   type Corridor,
   type LaneMap,
 } from './corridor';
+import { roadsideClass } from '../roadside';
 import { IDM, idmAccel } from './idm';
 import {
   bestSpot,
   holdsReturn,
   KERB_YIELD,
   KERB_YIELD_TUNING,
+  deepSpot,
+  inboardSpot,
   softContact,
   takesVerge,
   threatens,
@@ -1307,10 +1310,11 @@ function updateKerbYield(
     if (left > 0) st.toppleS[k] = left - dt > 1e-6 ? left - dt : 0;
   }
   const look = world.params['traffic.kerbYield'] ?? 0;
+  const deepOn = (world.params['traffic.kerbDeep'] ?? 0) >= 0.5;
   if (look <= 0 || riders.length === 0) return;
   for (let k = 0; k < n; k++) {
     const t = typeOf(config, st, k);
-    if (!isKerb(t) || (st.toppleS[k] ?? 0) > 0) continue;
+    if (!isKerb(t) || roadsideClass(t) === 'solid' || (st.toppleS[k] ?? 0) > 0) continue;
     const dir = st.dir[k] ?? 1;
     const u = st.u[k] ?? 0;
     const halfW = t.widthM / 2;
@@ -1339,6 +1343,12 @@ function updateKerbYield(
         verge: takesVerge(t, ground.vergeW) ? ground.edgeCd + out * vergeOffsetFor(t.widthM) : null,
         hug: ground.edgeCd - out * (halfW + KERB_YIELD.hugM),
         stay: cd,
+        ...(deepOn && roadsideClass(t) === 'dodges'
+          ? {
+              deep: deepSpot(t, ground.edgeCd, ground.vergeW, out),
+              inboard: inboardSpot(cd, threats, t.widthM, TRAFFIC.riderWidthM, out),
+            }
+          : {}),
       };
       st.yieldCd[k] = bestSpot(spots, threats, t.widthM, TRAFFIC.riderWidthM);
       st.yieldUntilS[k] = st.clockS + KERB_YIELD.holdS;

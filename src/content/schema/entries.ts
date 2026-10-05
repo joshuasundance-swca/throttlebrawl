@@ -543,6 +543,7 @@ const trafficBehaviourSchema = z.looseObject({
   convoy: z.number().int().min(1).max(4).optional(),
   strolls: z.boolean().optional(),
   chases: z.boolean().optional(),
+  roadside: z.enum(['dodges', 'yields', 'solid']).optional(),
 });
 
 export const trafficTypeSchema = entry('traffic-type', {
