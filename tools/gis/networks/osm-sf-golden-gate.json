@@ -60,6 +60,7 @@
         {
           "id": "toll-gantry",
           "model": "sf-landmarks#toll_gantry",
+          "yawDeg": 180,
           "at": { "lat": 37.807219, "lon": -122.475712 },
           "footprintM": [3, 33],
           "overRoad": true

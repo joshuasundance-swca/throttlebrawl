@@ -1014,7 +1014,17 @@ export function planPortland(input: DowntownInput, kit: SceneryModel): DowntownP
     const tags = (dress?.tags ?? e.tags) as readonly SideTag[] | undefined;
     if (!tags?.some((t) => t.tag === 'pdx-blocks')) continue;
     const all = dress?.features ?? e.features;
-    const features = all.filter((f) => PDX_CLEAR.has(f.kind));
+    // A landmark that says `params.sightM` also keeps that much of its own side clear of buildings before
+    // its start (the side a rider comes from), so a roof sign shows whole from down the road, not over a
+    // front row that hides it (playtest 4, P1: the roof sign showed only "S" or "STI...").
+    const features = all
+      .filter((f) => PDX_CLEAR.has(f.kind))
+      .flatMap((f) => {
+        const view = f.kind === 'landmark' ? Number(f.params?.['sightM']) : 0;
+        if (!(view > 0)) return [f];
+        const start = Math.min(f.s0, f.s1);
+        return [f, { ...f, s0: start - view, s1: start }];
+      });
     const pods = all.filter((f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === PDX_PODS);
     const h = (k: number, side: number, salt: number) =>
       scatterHash(seed, 5113 + e.index * 977, k, side * 37 + salt);

@@ -55,10 +55,17 @@ export interface SurfaceStyle {
   glow: string | null;
 }
 
-/** Neon on a dark board for the roof sign; chalk on a dark board for everything else. [default] */
+/**
+ * Neon on a dark board for the roof sign; white on highway green for the toll gantry's (playtest 4, P1:
+ * it was a blank panel); chalk on a dark board for everything else. [default]
+ */
 const NEON: SurfaceStyle = { bg: '#121827', fg: '#ff7ab8', glow: '#ff2d8f' };
+const HIGHWAY: SurfaceStyle = { bg: '#0f5a3a', fg: '#f6f6ee', glow: null };
 const CHALK: SurfaceStyle = { bg: '#2a2f2d', fg: '#f2e9d2', glow: null };
-const STYLES: Readonly<Record<string, SurfaceStyle>> = { pdx_roof_sign_words: NEON };
+const STYLES: Readonly<Record<string, SurfaceStyle>> = {
+  pdx_roof_sign_words: NEON,
+  toll_gantry_sign: HIGHWAY,
+};
 export const styleOfSurface = (name: string): SurfaceStyle => STYLES[name] ?? CHALK;
 
 /** One surface as a model put it in the world: its triangles, already lifted in front of the panel. */

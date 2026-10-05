@@ -242,6 +242,116 @@ function bayKind(e: BayEdge, style: Style, k: number, a: number): BayKind {
 }
 
 /**
+ * The repair platform's outrigger piles (playtest 4, P1; the wave C check: "a floating orange slab"). The
+ * kit's own pipe piles stand inside the deck's width, so a camera over the deck sees only the slab. A
+ * bent of two raked piles under each side of the deck, every `stationM` along the bay, leaves the deck's
+ * edge near the top and meets the water outside it, where a rider coming along the deck sees them
+ * against the sea. In bay metres: x across the road, y up from the deck top, z along the bay. [default]
+ */
+export const STAGING_LEGS = {
+  /** Where each pile leaves the deck's underside (x, y), and where it ends (x, y: well under the water). */
+  topX: 3.7,
+  topY: -0.5,
+  footX: 5.6,
+  footY: -6,
+  radiusM: 0.26,
+  sides: 6,
+  /** Along the bay, m: two bents in each 10 m bay. */
+  stationsM: [2.5, 7.5],
+  /** A cross-brace between the two piles of each side's bent, at this height (y), m. */
+  braceY: -2.2,
+  braceRadiusM: 0.1,
+  /** Weathered, rust-brown steel pipe (the old bridge's rail colour family). */
+  colour: [0.36, 0.27, 0.21],
+} as const;
+
+/** Appends a 6-sided tube from `a` to `b` to the vertex lists, outward normals, open ends. */
+function pushTube(
+  out: { pos: number[]; nrm: number[]; col: number[] },
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+  radius: number,
+  sides: number,
+  colour: readonly number[],
+): void {
+  const axis = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const len = Math.hypot(axis[0] ?? 0, axis[1] ?? 0, axis[2] ?? 0);
+  const t = axis.map((v) => v / len) as [number, number, number];
+  // Any vector not along the axis seeds the ring's frame.
+  const seed: [number, number, number] = Math.abs(t[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const cross = (p: readonly number[], q: readonly number[]): [number, number, number] => [
+    (p[1] ?? 0) * (q[2] ?? 0) - (p[2] ?? 0) * (q[1] ?? 0),
+    (p[2] ?? 0) * (q[0] ?? 0) - (p[0] ?? 0) * (q[2] ?? 0),
+    (p[0] ?? 0) * (q[1] ?? 0) - (p[1] ?? 0) * (q[0] ?? 0),
+  ];
+  const norm = (v: [number, number, number]): [number, number, number] => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const u = norm(cross(t, seed));
+  const w = norm(cross(t, u));
+  const ring = (k: number): [number, number, number] => {
+    const phi = (k / sides) * Math.PI * 2;
+    const c = Math.cos(phi);
+    const s = Math.sin(phi);
+    return [u[0] * c + w[0] * s, u[1] * c + w[1] * s, u[2] * c + w[2] * s];
+  };
+  const at = (end: readonly number[], o: [number, number, number]) => {
+    out.pos.push((end[0] ?? 0) + o[0] * radius, (end[1] ?? 0) + o[1] * radius, (end[2] ?? 0) + o[2] * radius);
+    out.nrm.push(o[0], o[1], o[2]);
+    out.col.push(colour[0] ?? 0, colour[1] ?? 0, colour[2] ?? 0);
+  };
+  for (let k = 0; k < sides; k++) {
+    const o0 = ring(k);
+    const o1 = ring(k + 1);
+    // Counter-clockwise seen from outside: a0, b0, a1 and a1, b0, b1 (a at the start, b at the end).
+    at(a, o0);
+    at(b, o0);
+    at(a, o1);
+    at(a, o1);
+    at(b, o0);
+    at(b, o1);
+  }
+}
+
+/**
+ * The repair platform's variant with its outrigger piles (`STAGING_LEGS`) added: a new geometry (the
+ * source is left alone), the kit's own triangles first and unchanged, so a role run still names them.
+ * The kit variants are triangle lists with position, normal and colour only.
+ */
+export function withStagingLegs(g: BufferGeometry): BufferGeometry {
+  const L = STAGING_LEGS;
+  const add = { pos: [] as number[], nrm: [] as number[], col: [] as number[] };
+  for (const z of L.stationsM) {
+    for (const side of [-1, 1]) {
+      pushTube(add, [side * L.topX, L.topY, z], [side * L.footX, L.footY, z], L.radiusM, L.sides, L.colour);
+    }
+    // The brace joins the two piles where each stands at its height.
+    const x = (y: number) => L.topX + ((L.footX - L.topX) * (L.topY - y)) / (L.topY - L.footY);
+    pushTube(add, [-x(L.braceY), L.braceY, z], [x(L.braceY), L.braceY, z], L.braceRadiusM, 4, L.colour);
+  }
+  const out = new BufferGeometry();
+  for (const [name, extra] of [
+    ['position', add.pos],
+    ['normal', add.nrm],
+    ['color', add.col],
+  ] as const) {
+    const src = g.getAttribute(name);
+    const merged = new Float32Array(src.count * 3 + extra.length);
+    for (let i = 0; i < src.count; i++) {
+      merged[i * 3] = src.getX(i);
+      merged[i * 3 + 1] = src.getY(i);
+      merged[i * 3 + 2] = src.getZ(i);
+    }
+    merged.set(extra, src.count * 3);
+    out.setAttribute(name, new Float32BufferAttribute(merged, 3));
+  }
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
+}
+
+/**
  * The model of a gap end without what stands above its deck: the batch drew a barricade, two posts
  * and a "bridge out" board across the lanes at the lip, where a rider passes (the sim has nothing
  * there), so only the stub under the deck is kept (the triangles with a corner below the deck's top

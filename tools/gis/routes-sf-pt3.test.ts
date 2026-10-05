@@ -304,18 +304,26 @@ describe('Lombard Street (osm-sf-lombard)', () => {
     expect(issues.length).toBeGreaterThan(0);
   });
 
-  it('puts Coit Tower beside the road at the finish, off the road, where the map has it', () => {
+  it("stands Coit Tower at the foot of Telegraph Hill, off the road, where the flats' straight points at it (playtest 4, P1)", () => {
+    // Playtest 4, P1 (the wave C check): at the circle on the hill it was only a grey shaft cut off at the top
+    // of the frame, behind the row houses. It now stands where the flats' last straight runs at it, so a
+    // rider sees it whole from far down the street (src/render/landmarks-sf.test.ts holds the sight line).
+    const flats = road('osm-sf-lombard-flats');
     const tele = road('osm-sf-lombard-telegraph-hill');
-    const marks = (tele.features ?? []).filter((f) => f.kind === 'landmark');
+    expect((tele.features ?? []).filter((f) => f.kind === 'landmark')).toHaveLength(0);
+    const marks = (flats.features ?? []).filter((f) => f.kind === 'landmark');
     expect(marks).toHaveLength(1);
     const m = marks[0];
     expect((m?.params as { model: string }).model).toBe('sf-landmarks#coit_tower');
-    // A 22 m box, 10 to 33 m to the road's left, a little past the route's finish (40 m before the end).
-    expect((m?.s1 ?? 0) - (m?.s0 ?? 0)).toBeCloseTo(22, 3);
+    // The model is scaled 1.25, so its 22 m footprint is a 28 m box, 16 m and more to the road's left, whole
+    // inside the road's length.
+    expect((m?.params as { scale: number }).scale).toBe(1.25);
+    expect((m?.s1 ?? 0) - (m?.s0 ?? 0)).toBeCloseTo(28, 3);
     expect(m?.d1).toBeLessThan(-8);
-    expect(m?.s0).toBeGreaterThan(tele.lengthM - 60);
+    expect(m?.s0).toBeGreaterThan(flats.lengthM - 100);
+    expect(m?.s1).toBeLessThan(flats.lengthM);
     const row = report('osm-sf-lombard').landmarks[0];
-    expect(row?.road).toBe('osm-sf-lombard-telegraph-hill');
+    expect(row?.road).toBe('osm-sf-lombard-flats');
     expect(row?.placementErrorM).toBeLessThan(8);
     expect(report('osm-sf-lombard').lines['lombard']?.fun.max_deviation_m).toBeLessThan(10);
   });

@@ -141,7 +141,7 @@
               "s1": 69,
               "d0": 13.5,
               "d1": 33.5,
-              "params": { "model": "pdx-landmarks#pdx_roof_sign", "yawDeg": 180, "scale": 0.8 }
+              "params": { "model": "pdx-landmarks#pdx_roof_sign", "yawDeg": 180, "scale": 0.8, "sightM": 60 }
             }
           ]
         },
@@ -225,7 +225,7 @@
               "s1": 103,
               "d0": -38.7,
               "d1": -13.5,
-              "params": { "model": "pdx-landmarks#pdx_plaza", "scale": 0.45 }
+              "params": { "model": "pdx-landmarks#pdx_plaza", "scale": 0.45, "cloudM": 22 }
             }
           ]
         },
