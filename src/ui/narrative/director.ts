@@ -49,6 +49,11 @@ export interface ShownBark {
   /** The sim tick it started on, and the race, for a "cut this" flag. */
   tick: number;
   raceId: string;
+  /**
+   * What the strip item is when it is not a rival's or cop's bark: `line` is the landing one-liner,
+   * which has no speaker and is listed as a sign ("cut this" names it by its words alone).
+   */
+  strip?: 'line';
 }
 
 export interface BarkView {

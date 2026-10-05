@@ -7,7 +7,6 @@
 //   that paid (a `land` event with `data.surge`), as a vetoable `line` item. render/ gets an empty
 //   landing pool (`withoutLandingLines`), so its WebGL overlay never draws one: the line is on the
 //   strip, off the bike and off the road;
-// - the slow-frames note, as a `system` item;
 // - the poll for the signs and billboards in view, so the veto's "recently seen" list names them.
 import type { BoardCatalog, BoardItem, VisibleContent } from '../render';
 import type { SimEvent } from '../sim/api';
@@ -77,14 +76,9 @@ export function producerThanksItem(ask: { cash: number }): TickerItem {
   return { cls: 'ask', tag: PRODUCER_TAG, text: 'Got it.', cash: ask.cash, dwellMs: PRODUCER_THANKS_MS };
 }
 
-/**
- * The slow-frames note (the look fallback's offer; run W-O). The buttons stay in the pause menu's
- * card; the strip only says where they are.
- */
-export const SLOW_FRAMES_ITEM: TickerItem = {
-  cls: 'system',
-  text: 'Slow frames? The Classic look is in the pause menu.',
-};
+// The slow-frames offer is not here: it is ui's toast, which carries its own buttons (one tap to
+// Classic, or "No thanks"), and the strip does not repeat it (playtest 3, wave-B live check: the
+// toast and a ticker note said the same thing at once).
 
 /**
  * The board catalog as render/ gets it: the landing pool emptied, so its overlay never draws a line
