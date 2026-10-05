@@ -84,7 +84,8 @@
           "s1": 460,
           "d0": 6.5,
           "d1": 9,
-          "pool": "signs"
+          "pool": "signs",
+          "params": { "style": "historic" }
         },
         {
           "kind": "boostPad",
@@ -114,7 +115,8 @@
           "s1": 130,
           "d0": 6.5,
           "d1": 9,
-          "pool": "signs"
+          "pool": "signs",
+          "params": { "style": "historic" }
         },
         {
           "kind": "boostPad",
@@ -190,7 +192,8 @@
           "s1": 210,
           "d0": 6.5,
           "d1": 9,
-          "pool": "signs"
+          "pool": "signs",
+          "params": { "style": "historic" }
         },
         {
           "kind": "roadsideZone",

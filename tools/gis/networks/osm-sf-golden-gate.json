@@ -173,7 +173,8 @@
           "id": "osm-sf-gg-bridge",
           "name": "Golden Gate",
           "realName": "Golden Gate",
-          "sampleSpacingM": 6
+          "sampleSpacingM": 6,
+          "deckTags": ["gg-deck"]
         },
         {
           "id": "osm-sf-gg-toll-plaza",

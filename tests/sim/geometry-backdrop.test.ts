@@ -3,7 +3,10 @@
 // Every vertex of the horizon is checked by its kind, with no exemption:
 // - a standing piece (a ridge, a skyline, a bridge, a ship at both ends of its run) keeps out of
 //   the roads: 150 m from every road point (src/render/backdrop/backdrop.test.ts's check, which
-//   skipped the floors, "floors lie under the sea, so they may pass beneath", on eight networks);
+//   skipped the floors, "floors lie under the sea, so they may pass beneath", on eight networks),
+//   unless it carries a near fade (`nearFadeM`, playtest 4, G1: the far Golden Gate over its own road):
+//   such a vertex is never drawn nearer than the near fog's end (builder.ts nearFadeAt), so it cannot
+//   stand on a road as drawn, and the negative control shows the same vertices without it are caught;
 // - a floor (far land and water, and the far ground ring) lies under the sea as drawn: from a
 //   chase camera along every road, the vertex shader's own placement (builder.ts VERTEX: a floor
 //   keeps its true position, anything else is pulled in along its line of sight) puts it below
@@ -96,6 +99,50 @@ function floorSoup(id: string, seed: number) {
   );
 }
 
+/**
+ * The standing vertices of a soup (not a floor, not the ring, not faded), at both ends of any run,
+ * and the closest any comes to a road point.
+ */
+function standingCheck(
+  pts: readonly (readonly [number, number])[],
+  soup: Soup,
+): { standing: number; floors: number; faded: number; closest: number } {
+  const cell = new Map<string, (readonly [number, number])[]>();
+  for (const p of pts) {
+    const k = `${Math.floor(p[0] / 200)},${Math.floor(p[1] / 200)}`;
+    (cell.get(k) ?? cell.set(k, []).get(k)!).push(p);
+  }
+  let standing = 0;
+  let floors = 0;
+  let faded = 0;
+  let closest = Infinity;
+  for (let v = 0; v < soup.pos.length / 3; v++) {
+    if (soup.info[v * 4 + 1]! > 0 || soup.info[v * 4 + 3]! > 0) {
+      floors++;
+      continue;
+    }
+    // Never drawn nearer than the near fog's end (playtest 4, G1): it cannot stand on a road as drawn.
+    if (soup.fade[v]! > 0) {
+      faded++;
+      continue;
+    }
+    const dx = soup.motion[v * 4]!;
+    const dz = soup.motion[v * 4 + 1]!;
+    for (const m of dx || dz ? [-1, 0, 1] : [0]) {
+      const x = soup.pos[v * 3]! + dx * m;
+      const z = soup.pos[v * 3 + 2]! + dz * m;
+      standing++;
+      const cx = Math.floor(x / 200);
+      const cz = Math.floor(z / 200);
+      for (let i = cx - 1; i <= cx + 1; i++)
+        for (let j = cz - 1; j <= cz + 1; j++)
+          for (const [px, pz] of cell.get(`${i},${j}`) ?? [])
+            closest = Math.min(closest, Math.hypot(px - x, pz - z));
+    }
+  }
+  return { standing, floors, faded, closest };
+}
+
 /** Known violations on main (2026-10-03). The list may only shrink. Empty: main has none. */
 const KNOWN: readonly KnownViolation[] = [];
 
@@ -109,34 +156,8 @@ describe("geometry invariants: the backdrop on every route's network, every vert
       const { region, network } = filesFor(t.id);
       const pts = roadPointsOf(t.road.edges, 1);
       const { soup } = buildSoup(region, network, pts, 7);
-      // Standing pieces: every vertex not a floor and not the ring, at both ends of any run.
-      const cell = new Map<string, [number, number][]>();
-      for (const [x, z] of pts) {
-        const k = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
-        (cell.get(k) ?? cell.set(k, []).get(k)!).push([x, z]);
-      }
-      let standing = 0;
-      let floors = 0;
-      let closest = Infinity;
-      for (let v = 0; v < soup.pos.length / 3; v++) {
-        if (soup.info[v * 4 + 1]! > 0 || soup.info[v * 4 + 3]! > 0) {
-          floors++;
-          continue;
-        }
-        const dx = soup.motion[v * 4]!;
-        const dz = soup.motion[v * 4 + 1]!;
-        for (const m of dx || dz ? [-1, 0, 1] : [0]) {
-          const x = soup.pos[v * 3]! + dx * m;
-          const z = soup.pos[v * 3 + 2]! + dz * m;
-          standing++;
-          const cx = Math.floor(x / 200);
-          const cz = Math.floor(z / 200);
-          for (let i = cx - 1; i <= cx + 1; i++)
-            for (let j = cz - 1; j <= cz + 1; j++)
-              for (const [px, pz] of cell.get(`${i},${j}`) ?? [])
-                closest = Math.min(closest, Math.hypot(px - x, pz - z));
-        }
-      }
+      // Standing pieces: every vertex not a floor, not the ring and not faded, at both ends of any run.
+      const { standing, floors, faded, closest } = standingCheck(pts, soup);
       // Floors: every one of them as drawn, the ring included, from the cameras on the roads.
       const f = floorsOverSea(t, floorSoup(t.id, 7).soup);
       const found = [
@@ -147,7 +168,7 @@ describe("geometry invariants: the backdrop on every route's network, every vert
       const { fresh, seen, stale } = against(keys, KNOWN);
       print(
         `[examined] ${t.id}: ${standing} standing vertex positions (closest to a road ${Number.isFinite(closest) ? `${closest.toFixed(0)} m` : 'over 200 m'}), ` +
-          `${floors} floor and ring vertices; ${f.vertices} floor vertices drawn from ${f.cameras} cameras x ${FOG_FAR_M.length} fog ends, ` +
+          `${floors} floor and ring vertices, ${faded} faded; ${f.vertices} floor vertices drawn from ${f.cameras} cameras x ${FOG_FAR_M.length} fog ends, ` +
           `${f.over.length} views with one over the sea; ${seen.length} known${fresh.length ? `; new: ${found.slice(0, 4).join(' | ')}` : ''}`,
       );
       expect(standing).toBeGreaterThan(1000);
@@ -184,5 +205,22 @@ describe("geometry invariants: the backdrop on every route's network, every vert
     );
     expect(a.over.length).toBeGreaterThan(0);
     expect(b.over.length).toBeGreaterThan(0);
+  });
+
+  it('negative control: the far Golden Gate without its near fade stands on its road, and is found', () => {
+    const t = track(NETWORKS.find((n) => n.id === 'osm-sf-golden-gate')!);
+    const { region, network } = filesFor(t.id);
+    const pts = roadPointsOf(t.road.edges, 1);
+    const { soup } = buildSoup(region, network, pts, 7);
+    const clean = standingCheck(pts, soup);
+    for (let v = 0; v < soup.fade.length; v++) soup.fade[v] = 0;
+    const unfaded = standingCheck(pts, soup);
+    print(
+      `[negative control] osm-sf-golden-gate: ${clean.faded} faded vertices, closest standing ${clean.closest.toFixed(0)} m; ` +
+        `with the fade taken off, closest ${unfaded.closest.toFixed(0)} m`,
+    );
+    expect(clean.faded).toBeGreaterThan(100);
+    expect(clean.closest).toBeGreaterThan(KEEP_OUT_M);
+    expect(unfaded.closest).toBeLessThan(KEEP_OUT_M);
   });
 });

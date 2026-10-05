@@ -142,6 +142,18 @@ export type Screen =
   | 'careerResults'
   | 'teaser';
 
+/**
+ * The browser's offer to install the game as an app (platform/'s install offer, roadmap M5). The
+ * menu's Install button shows only while `available()` holds, and its tap calls `prompt()` inside
+ * the tap; nothing else ever opens the prompt, so it never nags.
+ */
+export interface InstallSource {
+  available(): boolean;
+  prompt(): unknown;
+  /** Called whenever `available()` may have changed. */
+  onChange(cb: () => void): void;
+}
+
 export interface UiCallbacks {
   /** The start tap. Called inside the pointer event, so platform calls keep user activation. */
   onStartTap(): void;
@@ -198,6 +210,8 @@ export interface UiCallbacks {
    * through onSettingsChange. The menu's Options button is hidden until this is wired.
    */
   raceOptions?: () => RaceOptionsView;
+  /** Installing the game as an app (roadmap M5). The menu's Install button is hidden until this is wired. */
+  install?: InstallSource;
 }
 
 export interface GameUi {
@@ -655,6 +669,12 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     careerButton.classList.toggle(START_HERE_CLASS, !started);
   };
   syncCareerButton();
+  // Install as an app (roadmap M5): only while the browser offers it, and only from this tap.
+  const install = cb.install;
+  const installButton = button('menu-install', 'small', 'Install app', () => void install?.prompt());
+  const syncInstallButton = () => (installButton.hidden = !install?.available());
+  syncInstallButton();
+  install?.onChange(syncInstallButton);
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
@@ -679,6 +699,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         button('menu-settings', 'small', 'Settings', () => show('settings')),
         button('menu-changelog', 'small', "What's new", () => show('changelog')),
         button('menu-copy-report', 'small', 'Copy debug report', () => void cb.onCopyReport()),
+        ...(install ? [installButton] : []),
       ),
     ),
     whatsNewCard.root,

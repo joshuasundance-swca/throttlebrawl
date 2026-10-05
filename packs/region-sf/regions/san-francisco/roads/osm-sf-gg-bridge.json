@@ -89,6 +89,12 @@
       "s1": 2739.9685,
       "side": "both",
       "tag": "water-open"
+    },
+    {
+      "s0": 0.0,
+      "s1": 2739.9685,
+      "side": "both",
+      "tag": "gg-deck"
     }
   ],
   "features": [
