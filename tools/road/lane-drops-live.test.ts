@@ -68,7 +68,9 @@ describe('lane drops on the live roads (W-R)', () => {
     // Playtest 3's two SF bakes add three on purpose (T9.3): the Golden Gate's bridge narrows riding
     // back (its three oncoming lanes meet Vista Point's ramp, which has one), and Lombard's two-way
     // streets meet the one-lane, one-way crooked block (riding forward on the climb, and in the
-    // oncoming lane on the flats).
+    // oncoming lane on the flats). The Seven Mile's old road (playtest 3, T9.2) narrows from its two
+    // lanes to the one-lane repair platforms (`osm-sm-old-road`, `osm-sm-old-road-back`) at both of
+    // them.
     expect([...found.keys()].sort()).toEqual([
       'osm-kw-north-roosevelt dir -1',
       'osm-kw-north-roosevelt dir 1',
@@ -76,6 +78,9 @@ describe('lane drops on the live roads (W-R)', () => {
       'osm-sf-gg-bridge dir -1',
       'osm-sf-lombard-climb dir 1',
       'osm-sf-lombard-flats dir -1',
+      'osm-sm-old-east dir -1',
+      'osm-sm-old-road dir -1',
+      'osm-sm-old-west dir 1',
       'sf-bridge-approach dir -1',
     ]);
     expect(found.get('sf-bridge-approach dir -1')).toBeLessThanOrEqual(18);
@@ -83,6 +88,9 @@ describe('lane drops on the live roads (W-R)', () => {
       'osm-kw-north-roosevelt dir -1',
       'osm-kw-north-roosevelt dir 1',
       'osm-kw-smathers-beach dir 1',
+      'osm-sm-old-east dir -1',
+      'osm-sm-old-road dir -1',
+      'osm-sm-old-west dir 1',
     ])
       expect(found.get(k), k).toBeLessThanOrEqual(10);
   });

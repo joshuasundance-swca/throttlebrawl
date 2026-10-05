@@ -346,7 +346,18 @@ describe('the road meshes', () => {
           o.name,
         ).toBe(true);
       });
-      const elevated = road.edges.some((e) => Array.from(e.y).some((y) => y >= ELEVATED_M));
+      // A raised bridge deck gets its rails and pylons. Land can stand that high too (Key West's Old
+      // Town reaches 3 m on Duval Street, playtest 3), so only a bridge's own range counts.
+      const elevated = road.edges.some((e) =>
+        e.tags.some(
+          (t) =>
+            t.tag === 'bridge' &&
+            Array.from(e.y).some((y, i) => {
+              const s = (i * e.length) / Math.max(1, e.y.length - 1);
+              return s >= t.s0 && s <= t.s1 && y >= ELEVATED_M;
+            }),
+        ),
+      );
       if (elevated) {
         expect(stats.railM).toBeGreaterThan(0);
         expect(stats.pylons).toBeGreaterThan(0);

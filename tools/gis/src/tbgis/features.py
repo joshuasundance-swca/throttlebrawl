@@ -164,6 +164,9 @@ def stitch_span(rp: RealPath, p: Profile, st: Stitch, k: int) -> tuple[float, fl
     return float(np.interp(real0, p.s_real, p.s)), float(np.interp(real1, p.s_real, p.s))
 
 
+KICKER_BACK_SHARE = 0.5  # a stitched kicker's back runs over this share of its gap
+
+
 def stitch_features(st: Stitch, s_from: float, s_to: float, half_width: float) -> list[Feature]:
     """A gap stitch's features in line s: the gap ``trimM`` in from each way end, and its kicker."""
     if st.kind != "gap":
@@ -176,9 +179,22 @@ def stitch_features(st: Stitch, s_from: float, s_to: float, half_width: float) -
     out: list[Feature] = []
     if st.kicker is not None:
         k = st.kicker
-        params = {"heightM": k.heightM, "lengthM": k.lengthM, "backM": 0.0}
+        # The kicker's back falls to the deck over the first half of the gap, where nobody rides: a
+        # lip that dropped to the deck in one sample would break the game's grade rule (the road
+        # lint skips a ramp's own range, and the back puts the drop inside it, over several samples
+        # at any spacing). Render still counts the ramp as the gap's kicker (it runs into the gap).
+        back = r4((s1 - s0) * KICKER_BACK_SHARE)
+        params = {"heightM": k.heightM, "lengthM": k.lengthM, "backM": back}
         out.append(
-            Feature(kind="ramp", id=f"{st.id}-kicker", s0=s0 - k.lengthM, s1=s0, d0=d0, d1=d1, params=params)
+            Feature(
+                kind="ramp",
+                id=f"{st.id}-kicker",
+                s0=s0 - k.lengthM,
+                s1=s0 + back,
+                d0=d0,
+                d1=d1,
+                params=params,
+            )
         )
     out.append(Feature(kind="gap", id=st.id, s0=s0, s1=s1, d0=d0, d1=d1, params=st.params))
     return out

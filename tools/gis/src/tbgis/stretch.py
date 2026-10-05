@@ -215,7 +215,9 @@ def build_profile(cfg: BakeConfig, rp: RealPath, land_y: F64 | None, land_s: F64
     z = z0 + np.concatenate([[0.0], np.cumsum(-np.cos(mid) * hg)])
     kappa = np.gradient(heading_g, hg)
 
-    y = elevation(cfg, s, s_real_g, bridge_g, land_y, land_s, hg)
+    at = cfg.elevation.humpAt
+    hump_real = None if at is None else project_s(rp, *frame.to_world(at.lat, at.lon))
+    y = elevation(cfg, s, s_real_g, bridge_g, land_y, land_s, hg, hump_real)
     return Profile(
         h=hg,
         s=s,
@@ -264,8 +266,11 @@ def elevation(
     land_y: F64 | None,
     land_s: F64 | None,
     h: float,
+    hump_real: float | None = None,
 ) -> F64:
-    """Land from the elevation samples (by real arc length); bridge decks and humps synthesized."""
+    """Land from the elevation samples (by real arc length); bridge decks and humps synthesized.
+    ``hump_real`` (real arc length, from ``elevation.humpAt``) puts the hump there, on the long
+    bridge that holds it and no other; None humps each long bridge at its middle."""
     e = cfg.elevation
     if land_y is None or land_s is None:
         raw = np.full_like(s, e.minLandM)
@@ -295,7 +300,12 @@ def elevation(
             rise = smoothstep(u / ramp) * smoothstep((s[b - 1] - s) / ramp)
             y = np.where(on, y + (e.deckM - y) * rise, y)
         if length >= e.humpMinBridgeM and e.humpHeightM > 0:
-            centre = (s[a] + s[b - 1]) / 2
+            if hump_real is None:
+                centre = (s[a] + s[b - 1]) / 2
+            elif s_real[a] <= hump_real <= s_real[b - 1]:
+                centre = float(np.interp(hump_real, s_real, s))
+            else:
+                continue
             v = (s - (centre - e.humpLengthM / 2)) / e.humpLengthM
             inside = (v > 0) & (v < 1)
             y = y + np.where(inside, e.humpHeightM * (1 - np.cos(2 * np.pi * v)) / 2, 0.0)

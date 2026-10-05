@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registryFromGlob } from '../content';
 import type { ReplayHeader } from '../replay';
-import { buildSimConfig, raceRouteKey, realRoutes, streamForEvent } from './config';
+import { buildSimConfig, isRealRoute, raceRouteKey, realRoutes, streamForEvent } from './config';
 import { createHeadlessRace } from './headless';
 import { createStreamCache, routeChoices, routeKeyOf } from './regions';
 import { roadsForHeader } from './resume';
@@ -25,25 +25,33 @@ const plain = ({ road: _r, route: _q, ...rest }: ReturnType<typeof buildSimConfi
 
 describe('app: real-road routes', () => {
   it("lists the region's real roads only: not the event's own lengths, hand-made spares or other regions", () => {
-    expect(realRoutes(BASE, KEYS)).toEqual([BAHIA, KEY_WEST]);
-    // The Keys' hand-made spare routes (m1-standard-run, m1-long-haul) are not real roads.
+    const keys = realRoutes(BASE, KEYS);
+    expect(keys).toEqual(expect.arrayContaining([BAHIA, KEY_WEST]));
+    // Every one is a real-road route of the Keys' own pack, none the event's own length or a
+    // hand-made spare (m1-standard-run, m1-long-haul).
+    for (const id of keys) {
+      expect(id.startsWith('base:osm-'), id).toBe(true);
+      expect(isRealRoute(BASE, id), id).toBe(true);
+    }
     expect(Object.keys(BASE.routes)).toEqual(expect.arrayContaining(['base:m1-long-haul']));
+    expect(keys).not.toContain('base:m1-long-haul');
     // With every pack carried, the Keys still list only their own; a region's list never holds
     // another region's routes.
-    expect(realRoutes(ALL, KEYS)).toEqual([BAHIA, KEY_WEST]);
+    expect(realRoutes(ALL, KEYS)).toEqual(keys);
     for (const event of ['region-pnw:pnw-fogline-run', 'region-sf:sf-hill-sprint'])
-      for (const keys of [BAHIA, KEY_WEST]) expect(realRoutes(ALL, event)).not.toContain(keys);
+      for (const id of keys) expect(realRoutes(ALL, event)).not.toContain(id);
   });
 
   it('offers the hand-made road first (the default), then each real road by name, with its length', () => {
     const choices = routeChoices(BASE, KEYS);
-    expect(choices.map((c) => [c.id, c.name])).toEqual([
-      [null, 'Causeway Sprint'],
-      [BAHIA, 'Bahia Honda Run'],
-      [KEY_WEST, 'Key West'],
-    ]);
-    expect(choices[2]?.blurb).toMatch(/^Real streets: Overseas Highway, South Roosevelt, .* \d+\.\d km\.$/);
-    const real = choices[1];
+    expect(choices.map((c) => c.id)).toEqual([null, ...realRoutes(BASE, KEYS)]);
+    expect(choices[0]?.name).toBe('Causeway Sprint');
+    expect(choices.find((c) => c.id === KEY_WEST)?.name).toBe('Key West');
+    expect(choices.find((c) => c.id === KEY_WEST)?.blurb).toMatch(
+      /^Real streets: Overseas Highway, South Roosevelt, .* \d+\.\d km\.$/,
+    );
+    const real = choices.find((c) => c.id === BAHIA);
+    expect(real?.name).toBe('Bahia Honda Run');
     const raced = buildSimConfig(BASE, streamForEvent(BASE, KEYS, undefined, BAHIA), {
       seed: 1,
       eventId: KEYS,

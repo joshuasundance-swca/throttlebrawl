@@ -225,7 +225,9 @@ Peaks stretch from one cached extract to byte-identical files.
   5 m) with a straight bridge deck, across a span the map does not draw. A `gap` stitch, the
   default, also writes a `gap` feature over it, `trimM` in from each end and across the road's
   width, with its `params` (`killDepthM`, `respawn: "main"` for the Moser Channel, `respawnPastM`).
-  A `kicker` (`heightM`, `lengthM`) adds a built ramp whose lip is the gap's start. Gaps go on a
+  A `kicker` (`heightM`, `lengthM`) adds a built ramp whose lip is the gap's start, and whose back
+  falls to the deck over the first half of the gap, where nobody rides (T9.2: a lip that dropped to
+  the deck in one sample broke the game's grade rule, which the bake's lint now runs too). Gaps go on a
   network's branch line, never a main path, since traffic runs the main path; a stretch bake
   refuses a gap stitch. A `deck` stitch only joins the ends.
 - **The way filter** (`wayFilter` on a stretch config or a line): groups of tag regexes, and a way
@@ -270,6 +272,8 @@ Peaks stretch from one cached extract to byte-identical files.
   before it is written:
   - the jump lint: from a ramp, gap or ramp truck to its expected landing, `|kappa|` stays at or
     below 0.002;
+  - the grade rule (T9.2): stored grade agrees with the elevations outside every ramp's range, as
+    `src/road/validate.ts` checks it;
   - a gap's and a landmark's params;
   - jumpable walls and barrier looks;
   - no gap on a route's main path;
@@ -342,6 +346,36 @@ bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB
 - **Size:** 17 files, 200 KB minified, 56.2 KB gzip. The three bridge roads sample every 4 m.
   The still scene on the main path draws at most 58 of 120 calls (mean 37) before the Portland
   facades (T12.4) add theirs.
+
+## Playtest 3: Duval Street and the Seven Mile Bridge
+
+T9.2 baked the first two playtest 3 places in the base pack (the Keys), both networks with their own
+frame origin. Two more switches, both off by default, so every earlier bake is unchanged:
+
+- `elevation.humpAt` (`{lat, lon}`): the navigation hump stands over that real point, on the long
+  bridge that holds it, instead of at each long bridge's middle.
+- `deckTags` on a road: tags written over its bridges only, beside `bridge` (the Old Seven Mile
+  Bridge's `old-bridge` deck look). A road's `tags` still never reach a deck.
+
+| Network | Route (picker name) | What it is | Numbers (from the bake) |
+|---|---|---|---|
+| `osm-keys-duval` | `osm-duval-run` (Duval Street), 3,453 m | From Mallory Square south down Whitehead Street past the Mile 0 marker to the Southernmost Point buoy, left along South Street, then all of Duval Street north to Front Street | two right-angle corners, the tightest 15.9 m; 7.7 m largest drift; landmarks: the buoy (5.3 m from its OSM point after the corner's smoothing), the Mile 0 marker (stood on the sidewalk, 5.4 m out from its OSM point on the road's edge) and Mallory Square's pier (7.9 m) |
+| `osm-keys-seven-mile` | `osm-seven-mile-run` (Seven Mile Bridge), 11,649 m | US 1 from Knights Key over the 1982 bridge (10.85 km of deck at 6 m samples) to Little Duck Key, the 13 m hump over Moser Channel; the Old Seven Mile Bridge to the north from its four OSM ways (way D onto Little Duck Key included, the 19 m and 17 m breaks between its OSM ways joined by deck stitches) | the old road, an `alternate` with `aiTake` 0, 10,084 m against the highway's 10,036 m between its two repair platforms; the Moser gap 64.5 m (the 79.7 m hole less 8 m trims), its kicker 1.6 m over 16 m on a 2 m-sampled road |
+
+- **The repair platforms.** A synthetic leave about 620 m onto the bridge (a 20 degree turn, a 150 m
+  straight) and a synthetic join where the bridges close to about 20 m near Little Duck Key (a 6
+  degree turn, a 150 m straight). Each straight carries a static ramp truck (no slot: always there)
+  and a 30 m `gap` just past its front, the "ramp trucks on repair platforms hop about 30 m between
+  the bridges" of round 3. The west one passes the jump lint, so the old road needs no land merge.
+- **The turn-off's split zone** is the outer edge of the shoulder (d 4.95 to 8 on a road whose edge
+  is 5.5 m out): a rider who keeps right to the rail takes the old road, while the AI's and the dev
+  bot's own lines (0.7 and 0.6 m inside the edge) never aim into it. A zone over the travel lane
+  swept a rival who was only passing a car onto the old road.
+- **The kicker's size** comes from the sim, not the vacuum figures: `tools/gis/routes-keys-pt3.test.ts`
+  rides every bike in the packs over it. At 1.6 m the slowest lip speed that clears is 39.1 to 39.7
+  m/s for every bike; the Rustbucket flat out (44.4 m/s at the lip) lands 11.5 m past the far edge,
+  and a rider at 85 % of its top speed misses and wakes on the highway (`respawn: "main"`). At the
+  critic's 2.0 m the threshold was 35.1 to 35.7 m/s, which a rider well under top speed cleared.
 
 ## Fetch once, bake offline
 

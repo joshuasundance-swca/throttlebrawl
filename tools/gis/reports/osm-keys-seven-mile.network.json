@@ -1,0 +1,105 @@
+{
+  "network": "osm-keys-seven-mile",
+  "lines": {
+    "us1": {
+      "lengthM": 11729.2,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "old-road leave": 0.01,
+        "old-road join": 0.03
+      },
+      "fun": {
+        "real_length_m": 11729.2,
+        "game_length_m": 11729.2,
+        "corners": 0,
+        "tightest_radius_m": 661.2,
+        "share_tighter_than_m": {
+          "50": 0.0,
+          "100": 0.0,
+          "200": 0.0
+        },
+        "turn_deg_per_km": 2.5,
+        "elev_min_m": 2.5,
+        "elev_max_m": 17.0,
+        "climb_m": 17.4,
+        "descent_m": 18.7,
+        "max_grade_pct": 6.8,
+        "p95_grade_pct": 2.6,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 0,
+        "junctions_per_km": 0.0,
+        "bridges_m": 10928.6,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 0.9
+      }
+    },
+    "old": {
+      "lengthM": 10076.2,
+      "lanesPerDirection": 1,
+      "driftClosedM": {
+        "old-road join": 0.13
+      },
+      "fun": {
+        "real_length_m": 10076.3,
+        "game_length_m": 10076.2,
+        "corners": 0,
+        "tightest_radius_m": 822.9,
+        "share_tighter_than_m": {
+          "50": 0.0,
+          "100": 0.0,
+          "200": 0.0
+        },
+        "turn_deg_per_km": 1.5,
+        "elev_min_m": 1.0,
+        "elev_max_m": 4.0,
+        "climb_m": 3.0,
+        "descent_m": 3.0,
+        "max_grade_pct": 5.6,
+        "p95_grade_pct": 0.0,
+        "share_steeper_than_pct": {
+          "8": 0.0,
+          "15": 0.0
+        },
+        "launch_crests": 0,
+        "launch_speed_mps": null,
+        "junctions": 0,
+        "junctions_per_km": 0.0,
+        "bridges_m": 10076.3,
+        "tunnels_m": 0.0,
+        "max_deviation_m": 0.8
+      }
+    }
+  },
+  "branches": [
+    {
+      "id": "osm-sm-old-road",
+      "mainM": 10036.1,
+      "branchM": 10083.9,
+      "savesM": -47.8,
+      "leave": {
+        "road": "osm-sm-old-road",
+        "turnDeg": 20.2,
+        "straightM": 150.2271,
+        "tightestRadiusM": 59.4,
+        "straightStartM": 0.0
+      },
+      "join": {
+        "road": "osm-sm-old-road-back",
+        "turnDeg": -6.28,
+        "straightM": 150.1533,
+        "tightestRadiusM": 56.0,
+        "straightStartM": 13.7445
+      }
+    }
+  ],
+  "routes": {
+    "osm-seven-mile-run": 11649.2
+  },
+  "roads": 14,
+  "junctions": 10
+}

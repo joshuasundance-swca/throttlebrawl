@@ -1,0 +1,170 @@
+{
+  "type": "road",
+  "id": "osm-sm-old-road-back",
+  "name": "old-road staging",
+  "realName": "old-road staging",
+  "network": "osm-keys-seven-mile",
+  "from": "osm-keys-seven-mile-j9",
+  "to": "osm-keys-seven-mile-j3",
+  "lengthM": 163.8975,
+  "sampleSpacingM": 1.99875,
+  "speedLimitMps": 24.6,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "S1",
+          "dCenterM": 0,
+          "widthM": 6.0,
+          "direction": 1,
+          "kind": "shortcut"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0,
+      "s1": 163.8975,
+      "side": "both",
+      "tag": "bridge"
+    },
+    {
+      "s0": 0,
+      "s1": 163.8975,
+      "side": "both",
+      "tag": "water-open"
+    }
+  ],
+  "features": [
+    {
+      "kind": "rampTruck",
+      "id": "staging-truck-west",
+      "s0": 23.7445,
+      "s1": 45.7445,
+      "d0": -1.5,
+      "d1": 1.5
+    },
+    {
+      "kind": "gap",
+      "id": "staging-gap-west",
+      "s0": 47.7445,
+      "s1": 77.7445,
+      "d0": -3.0,
+      "d1": 3.0
+    }
+  ],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -5532.9791, -5534.8767, -5536.7693, -5538.6486, -5540.508, -5542.3466, -5544.1703, -5545.9887,
+        -5547.8067, -5549.6248, -5551.4428, -5553.2609, -5555.0789, -5556.897, -5558.715, -5560.533,
+        -5562.3511, -5564.1691, -5565.9872, -5567.8052, -5569.6233, -5571.4413, -5573.2594, -5575.0774,
+        -5576.8955, -5578.7135, -5580.5315, -5582.3496, -5584.1676, -5585.9857, -5587.8037, -5589.6218,
+        -5591.4398, -5593.2579, -5595.0759, -5596.8939, -5598.712, -5600.53, -5602.3481, -5604.1661,
+        -5605.9842, -5607.8022, -5609.6203, -5611.4383, -5613.2563, -5615.0744, -5616.8924, -5618.7105,
+        -5620.5285, -5622.3466, -5624.1646, -5625.9827, -5627.8007, -5629.6188, -5631.4368, -5633.2548,
+        -5635.0729, -5636.8909, -5638.709, -5640.527, -5642.3451, -5644.1631, -5645.9812, -5647.7992,
+        -5649.6172, -5651.4353, -5653.2533, -5655.0714, -5656.8894, -5658.7075, -5660.5255, -5662.3436,
+        -5664.1616, -5665.9796, -5667.7977, -5669.6157, -5671.4338, -5673.2518, -5675.0699, -5676.8879,
+        -5678.706, -5680.524, -5682.3421
+      ],
+      "y": [
+        4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
+        4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
+        4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
+        4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
+        4.0, 4.0, 4.0
+      ],
+      "z": [
+        1817.5993, 1818.2272, 1818.8699, 1819.5503, 1820.2833, 1821.0672, 1821.8851, 1822.7149, 1823.5454,
+        1824.3759, 1825.2064, 1826.0368, 1826.8673, 1827.6978, 1828.5283, 1829.3588, 1830.1893, 1831.0198,
+        1831.8503, 1832.6808, 1833.5113, 1834.3418, 1835.1723, 1836.0028, 1836.8333, 1837.6638, 1838.4943,
+        1839.3248, 1840.1553, 1840.9858, 1841.8163, 1842.6468, 1843.4773, 1844.3078, 1845.1383, 1845.9688,
+        1846.7993, 1847.6298, 1848.4603, 1849.2908, 1850.1213, 1850.9518, 1851.7823, 1852.6128, 1853.4433,
+        1854.2737, 1855.1042, 1855.9347, 1856.7652, 1857.5957, 1858.4262, 1859.2567, 1860.0872, 1860.9177,
+        1861.7482, 1862.5787, 1863.4092, 1864.2397, 1865.0702, 1865.9007, 1866.7312, 1867.5617, 1868.3922,
+        1869.2227, 1870.0532, 1870.8837, 1871.7142, 1872.5447, 1873.3752, 1874.2057, 1875.0362, 1875.8667,
+        1876.6972, 1877.5277, 1878.3582, 1879.1887, 1880.0192, 1880.8497, 1881.6802, 1882.5106, 1883.3411,
+        1884.1716, 1885.0021
+      ],
+      "kappa": [
+        -0.0, -0.0039179, -0.0099886, -0.014083, -0.01379, -0.0092693, -0.0032479, -0.00021233, 5.1769e-14,
+        -1.4642e-13, 1.4642e-13, -9.465e-14, 4.2881e-14, 5.1769e-14, -1.4642e-13, 1.4642e-13, -5.1769e-14,
+        -4.2881e-14, 4.2881e-14, -4.2881e-14, 4.2881e-14, 5.1769e-14, -9.465e-14, 4.2881e-14, -4.2881e-14,
+        4.2881e-14, 5.1769e-14, -1.4642e-13, 1.4642e-13, -5.1769e-14, -4.2881e-14, 4.2881e-14, -4.2881e-14,
+        4.2881e-14, 5.1769e-14, -9.465e-14, 4.2881e-14, -4.2881e-14, 4.2881e-14, 5.1769e-14, -1.4642e-13,
+        1.4642e-13, -5.1769e-14, -4.2881e-14, 4.2881e-14, -4.2881e-14, 9.465e-14, -5.1769e-14, -4.2881e-14,
+        4.2881e-14, 5.1769e-14, -1.4642e-13, 1.4642e-13, -1.4642e-13, 1.4642e-13, -5.1769e-14, -4.2881e-14,
+        9.465e-14, -1.4642e-13, 1.4642e-13, -5.1769e-14, -4.2881e-14, 4.2881e-14, 5.1769e-14, -1.4642e-13,
+        1.4642e-13, -1.4642e-13, 1.4642e-13, 0.0, -1.4642e-13, 1.4642e-13, -5.1769e-14, -4.2881e-14,
+        4.2881e-14, -4.2881e-14, 4.2881e-14, 5.1769e-14, -1.4642e-13, 1.4642e-13, -1.4642e-13, 1.4642e-13,
+        0.0, 0.0
+      ],
+      "grade": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-keys-seven-mile.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\n(\nway[\"highway\"](24.67,-81.25,24.72,-81.10);\nway[\"abandoned:highway\"](24.67,-81.25,24.72,-81.10);\nway[\"bridge:name\"](24.67,-81.25,24.72,-81.10);\n);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:49:35Z",
+        "sha256": "2995b2dbe1b8656ef2575d91ce39c8f9cd75df1081c2b9b0ca1d14b581594ee9"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 609 points in 1 request(s) (lon, lat WGS84, sha256 8e1a61c197426a59), bilinear (line us1)",
+        "retrievedAt": "2026-10-04T22:57:56Z",
+        "sha256": "355aea33d93f583e2581110febef15a0b471a0e01e5cf04337bf9cd665987ff3"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 532 points in 1 request(s) (lon, lat WGS84, sha256 92bd739b98b00f3a), bilinear (line old)",
+        "retrievedAt": "2026-10-04T22:58:07Z",
+        "sha256": "9dd625b7d8394819e11a7c7044fd1482145319222d10f905a2f670668d8b880b"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Seven Mile Bridge way paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 0.1 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-keys-seven-mile.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}

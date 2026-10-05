@@ -7,6 +7,7 @@
   "pieces": [
     {
       "id": "seven-mile-bridge",
+      "networks": ["keys-m1", "osm-keys-bahia-honda", "osm-keys-key-west"],
       "kind": "bridge",
       "style": "girder",
       "from": [24.7065, -81.15],
@@ -21,6 +22,7 @@
     },
     {
       "id": "old-seven-mile-bridge",
+      "networks": ["keys-m1", "osm-keys-bahia-honda", "osm-keys-key-west"],
       "kind": "bridge",
       "style": "girder",
       "from": [24.709, -81.1478],

@@ -832,10 +832,12 @@ def speed_of(bl: BakedLine, a: float, b: float) -> float:
     return float(vals[int(np.argmax(counts))])
 
 
-def tag_ranges(bl: BakedLine, a: float, b: float, land: list[str], sides: SideTags) -> list[Json]:
-    """Tags for the line stretch [a, b]: bridges (and the sea under a sea deck) by the real map, the
-    road's tags (both sides, then each side's own) everywhere else (scenery stands on land only:
-    playtest 1c item 3)."""
+def tag_ranges(
+    bl: BakedLine, a: float, b: float, land: list[str], sides: SideTags, deck: list[str] | None = None
+) -> list[Json]:
+    """Tags for the line stretch [a, b]: bridges (and the sea under a sea deck) by the real map, with
+    the road's ``deck`` tags over them, and the road's tags (both sides, then each side's own)
+    everywhere else (scenery stands on land only: playtest 1c item 3)."""
     p = bl.p
     length = b - a
     on = (p.s >= a - 1e-9) & (p.s <= b + 1e-9)
@@ -854,6 +856,7 @@ def tag_ranges(bl: BakedLine, a: float, b: float, land: list[str], sides: SideTa
             min_m = bl.line.elevation.waterBridgeMinM
             if water or (min_m is not None and (rb - ra) * float(p.h) >= min_m):
                 tags.append({"s0": t0, "s1": t1, "side": "both", "tag": "water-open"})
+            tags += [{"s0": t0, "s1": t1, "side": "both", "tag": t} for t in deck or []]
     tags += [
         {"s0": r4(t0), "s1": r4(t1), "side": side, "tag": t}
         for side, names in (("both", land), ("left", sides.left), ("right", sides.right))
@@ -915,7 +918,7 @@ def make_piece(
 ) -> Piece:
     spacing = (rn.sampleSpacingM if rn else None) or cfg.sampleSpacingM
     _, x, y, z = resample_line(bl, a, b, spacing)
-    tags = tag_ranges(bl, a, b, land, sides)
+    tags = tag_ranges(bl, a, b, land, sides, rn.deckTags if rn else None)
     features: list[Json] = []
     length = r4(b - a)
     for f in rn.features if rn else []:

@@ -136,6 +136,23 @@ const REGIONS: readonly [Region, ...Region[]] = [
     route: 'region-pnw:osm-i5-samish-run',
     kinds: ['boostPad'],
   },
+  // Playtest 3 (T9.2): Duval Street and the Seven Mile Bridge, their pads on the main road. The
+  // Seven Mile's two ramp trucks stand on the old road's repair platforms with no slot (always
+  // there); tools/gis/routes-keys-pt3.test.ts rides them, bike by bike.
+  {
+    name: 'osm-keys-duval',
+    event: 'base:m1-skeleton-sprint',
+    lengths: ['standard'],
+    route: 'base:osm-duval-run',
+    kinds: ['boostPad'],
+  },
+  {
+    name: 'osm-keys-seven-mile',
+    event: 'base:m1-skeleton-sprint',
+    lengths: ['standard'],
+    route: 'base:osm-seven-mile-run',
+    kinds: ['boostPad'],
+  },
   // Playtest 3, T9.4: Bridge City (downtown Portland). Pads only: its streets have no straight
   // long enough for a truck's flight, and both pad slots are on the main road (a solo ride keeps
   // to it, so a pad on the Morrison Bridge choice would never be met).
@@ -220,8 +237,9 @@ function candidates(config: SimConfig): Candidate[] {
       const slot = f.params?.['slot'];
       // A pad or truck in no slot is a fixed piece of its road, there in every race (playtest 3, T5.2:
       // the static ramp trucks of the Pacific Northwest's Mill Yard Cut and San Francisco's Plaza Cut,
-      // and the pad on each cut). The seed has no say in it, so it is no candidate; the cuts' own
-      // checks ride them (tools/road/truck-shortcuts.test.ts).
+      // and the pad on each cut; T9.2: the Seven Mile's two repair-platform trucks). The seed has no
+      // say in it, so it is no candidate; the cuts' own checks ride them (tools/road/truck-shortcuts.test.ts,
+      // tools/gis/routes-keys-pt3.test.ts).
       if (typeof slot !== 'string') continue;
       out.push({ edge: e.index, edgeId: e.id, f, slot });
     }

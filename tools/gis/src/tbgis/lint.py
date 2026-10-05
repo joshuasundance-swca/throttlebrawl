@@ -256,9 +256,42 @@ def lint_road(
         errs.append(f"{rid}: OSM-derived files use the osm- prefix")
     if not any(s.get("spdx") == "ODbL-1.0" for s in road.get("provenance", {}).get("sources", [])):
         errs.append(f"{rid}: no ODbL source in provenance")
+    errs += lint_grade(road)
     errs += lint_jumps(road)
     errs += lint_playtest3(road)
     return errs
+
+
+GRADE_ABS_TOL = 0.01  # src/road/validate.ts ROAD_LINT.gradeAbsTol
+
+
+def lint_grade(road: Json) -> list[str]:
+    """Stored grade agrees with the elevations (src/road/validate.ts, "Grade from elevations"): the
+    central difference of y against the stored grade, each averaged over five samples, outside every
+    ramp's range and two samples either side (a lip is a deliberate kink)."""
+    data = road["samples"]["data"]
+    ys, gs = data["y"], data["grade"]
+    sp = float(road["sampleSpacingM"])
+    last = len(ys) - 1
+    if last < 1:
+        return []
+    g_pos = [
+        (ys[min(i + 1, last)] - ys[max(i - 1, 0)]) / ((min(i + 1, last) - max(i - 1, 0)) * sp)
+        for i in range(last + 1)
+    ]
+    lips = [f for f in road.get("features", []) if f["kind"] == "ramp"]
+
+    def smooth(v: list[float], i: int) -> float:
+        win = v[max(0, i - 2) : min(last, i + 2) + 1]
+        return sum(win) / len(win)
+
+    for i in range(last + 1):
+        s = i * sp
+        if any(f["s0"] - 2 * sp <= s <= f["s1"] + 2 * sp for f in lips):
+            continue
+        if abs(smooth(g_pos, i) - smooth(gs, i)) > GRADE_ABS_TOL:
+            return [f"{road['id']}: grade disagrees with the elevations at s {s:.1f}"]
+    return []
 
 
 def lint_bake(network: Json, roads: list[Json], route: Json) -> list[str]:
