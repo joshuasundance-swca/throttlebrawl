@@ -85,6 +85,21 @@ describe('solid road hazards (run W-U)', () => {
     expect(r.h.rider.pos.s).toBeLessThan(PICKUP.s0);
   });
 
+  it("a parked pickup is a parked vehicle: the vehicles' one rule decides it, a stump keeps the barrier line", () => {
+    // Playtest 4 (sim/traffic/contact-rule.ts): 8 m/s into the pickup is under traffic.solidHitMps,
+    // a wobble; the same 8 m/s into a stump is over the barrier's riders.crashImpactMps, a crash.
+    const pickup = rideInto(withHazards([PICKUP]), 8, 3.4, 60 * 12);
+    expect(pickup.events.filter((e) => e.type === 'crash')).toEqual([]);
+    expect(pickup.events.some((e) => e.type === 'wobble' && e.data['object'] === 'pickup')).toBe(true);
+    const stump = rideInto(
+      withHazards([{ ...PICKUP, params: { solid: true, object: 'stump', heightM: 0.6 } }]),
+      8,
+    );
+    expect(stump.events.find((e) => e.type === 'crash')?.data['object']).toBe('stump');
+    // Past the vehicles' line the pickup is a crash too.
+    expect(rideInto(withHazards([PICKUP]), 14).events.some((e) => e.type === 'crash')).toBe(true);
+  });
+
   it('a rider steering into its side is held beside it and scrapes along, never inside', () => {
     const config = withHazards([{ ...PICKUP, s0: 600, s1: 640 }]);
     const h = riderHarness(config, { s: 605, d: 0.8, speed: 15, yaw: 0.12 });

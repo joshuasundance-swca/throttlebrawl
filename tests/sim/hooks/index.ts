@@ -14,6 +14,7 @@ import type { DifficultyPreset } from '../../../src/core';
 import type { SimConfig, SimEvent, SimSnapshot } from '../../../src/sim/api';
 import { aiRivalsHook } from './ai-rivals';
 import { devHook } from './dev';
+import { respawnHook } from './respawn';
 
 export interface BatchRaceInfo {
   seed: number;
@@ -34,4 +35,4 @@ export interface BatchHook {
   create(race: BatchRaceInfo): BatchHookRun;
 }
 
-export const BATCH_HOOKS: readonly BatchHook[] = [devHook, aiRivalsHook];
+export const BATCH_HOOKS: readonly BatchHook[] = [devHook, aiRivalsHook, respawnHook];
