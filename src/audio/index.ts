@@ -208,8 +208,8 @@ export function createAudio(
       region = regionId;
       set((a) => a.setRegion(regionId));
     },
-    setRoad(road) {
-      set((a) => a.setRoad(road));
+    setRoad(road, wet) {
+      set((a) => a.setRoad(road, wet));
     },
     setRadioCut(refs) {
       set((a) => a.setRadioCut(refs));

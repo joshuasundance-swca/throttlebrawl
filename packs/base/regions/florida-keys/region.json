@@ -4,6 +4,7 @@
   "name": "The Keys",
   "chapter": 1,
   "blurb": "One road, too many bridges, and a deputy who has seen everything twice.",
+  "signStyle": "mile-marker",
   "networks": ["keys-m1", "osm-keys-key-west", "osm-keys-duval", "osm-keys-seven-mile"],
   "timeOfDayOptions": [
     { "id": "noon", "lighting": "keys-noon-glare" },

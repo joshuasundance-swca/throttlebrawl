@@ -218,6 +218,14 @@ describe('content schema: the M2 formats', () => {
     ]);
   });
 
+  it("takes an event's weather, dry or rain, which is presentation only and stays out of the sim hash (playtest 4)", () => {
+    const base = event({ byPlaceCash: [100] });
+    expect(issues('event', base)).toEqual([]);
+    for (const weather of ['dry', 'rain']) expect(issues('event', { ...base, weather }), weather).toEqual([]);
+    expect(issues('event', { ...base, weather: 'hail' })).toHaveLength(1);
+    expect(SIM_EXCLUDED_FIELDS.event).toContain('weather');
+  });
+
   const barks = (line: Record<string, unknown>, defaults: Record<string, unknown> = {}) => ({
     type: 'bark-set',
     id: 'kevin-core',

@@ -4,6 +4,7 @@
   "name": "San Francisco",
   "chapter": 3,
   "blurb": "Every street is uphill, including the downhill ones. The fog has a residential permit.",
+  "signStyle": "blade",
   "networks": [
     "sf-hills",
     "osm-sf-russian-hill",
@@ -54,6 +55,28 @@
       { "kind": "hesitron-robotaxi", "weight": 2.5, "hazard": "normal" },
       { "kind": "delivery-e-bike", "weight": 1.5, "hazard": "normal" },
       { "kind": "e-scooter-rider", "weight": 1.5, "hazard": "normal" }
+    ],
+    "areas": [
+      {
+        "tag": "gg-deck",
+        "mix": [
+          { "kind": "rideshare-hatchback", "weight": 5, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 2, "hazard": "normal" },
+          { "kind": "startup-shuttle", "weight": 1, "hazard": "big" },
+          { "kind": "base:box-truck", "weight": 1, "hazard": "big" },
+          { "kind": "hesitron-robotaxi", "weight": 2.5, "hazard": "normal" }
+        ]
+      },
+      {
+        "tag": "headlands",
+        "mix": [
+          { "kind": "rideshare-hatchback", "weight": 3, "hazard": "normal" },
+          { "kind": "base:sedan-rental", "weight": 3, "hazard": "normal" },
+          { "kind": "base:pickup", "weight": 3, "hazard": "normal" },
+          { "kind": "startup-shuttle", "weight": 0.5, "hazard": "big" }
+        ]
+      }
     ],
     "pedestrians": [
       { "kind": "e-scooter-commuter", "weight": 1 },

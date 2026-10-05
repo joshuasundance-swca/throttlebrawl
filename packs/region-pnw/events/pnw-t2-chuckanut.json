@@ -5,6 +5,7 @@
   "kind": "classic-race",
   "region": "pacific-northwest",
   "timeOfDay": "noon",
+  "weather": "dry",
   "lengths": [
     {
       "id": "standard",

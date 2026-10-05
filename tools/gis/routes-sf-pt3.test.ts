@@ -349,3 +349,53 @@ describe('Lombard Street (osm-sf-lombard)', () => {
     expect(at).toBeLessThan(12);
   });
 });
+
+// Playtest 4 (the identity sheets, cause 8): the deck's own traffic-area tag lives in the committed
+// road and in the config that bakes it, so a re-bake gives it back (the OSM extract is not in the
+// repo; this holds the two to each other, as routes-pnw-dressing.test.ts does for Bridge City).
+describe('the Golden Gate deck carries its traffic-area tag in the config and in the baked road', () => {
+  interface ConfigRoad {
+    id: string;
+    deckTags?: string[];
+  }
+  const config = JSON.parse(readFileSync('tools/gis/networks/osm-sf-golden-gate.json', 'utf8')) as {
+    lines: { roads?: ConfigRoad[] }[];
+  };
+  const roads = config.lines.flatMap((l) => l.roads ?? []);
+  const region = JSON.parse(readFileSync(`${PACK}/region.json`, 'utf8')) as {
+    traffic: { areas?: { tag: string }[] };
+  };
+  const areaTags = new Set((region.traffic.areas ?? []).map((a) => a.tag));
+
+  it('each deck tag in the config covers every bridge run of its road, in the baked tags', () => {
+    const decked = roads.filter((r) => (r.deckTags ?? []).length > 0);
+    expect(decked.map((r) => r.id)).toContain('osm-sf-gg-bridge');
+    for (const r of decked) {
+      const tags = road(r.id).tags ?? [];
+      const bridges = tags.filter((t) => t.tag === 'bridge');
+      expect(bridges.length, `${r.id} has a bridge run`).toBeGreaterThan(0);
+      for (const b of bridges)
+        for (const name of r.deckTags ?? [])
+          expect(
+            tags.some((t) => t.tag === name && t.s0 === b.s0 && t.s1 === b.s1 && t.side === 'both'),
+            `${r.id}: ${name} over the bridge at ${b.s0}-${b.s1}`,
+          ).toBe(true);
+    }
+  });
+
+  it("a baked road carries the deck tag only if the config asks for it, and the region's areas name it", () => {
+    const configured = new Set(roads.filter((r) => (r.deckTags ?? []).includes('gg-deck')).map((r) => r.id));
+    for (const id of [
+      'osm-sf-gg-hawk-hill',
+      'osm-sf-gg-conzelman',
+      'osm-sf-gg-vista-point',
+      'osm-sf-gg-bridge',
+      'osm-sf-gg-toll-plaza',
+    ])
+      expect(
+        (road(id).tags ?? []).some((t) => t.tag === 'gg-deck'),
+        id,
+      ).toBe(configured.has(id));
+    expect(areaTags.has('gg-deck')).toBe(true);
+  });
+});
