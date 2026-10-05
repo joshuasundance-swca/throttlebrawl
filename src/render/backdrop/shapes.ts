@@ -333,6 +333,10 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
   const col = rgb(p.colour);
   const W = 16 * e;
   const deck = p.deckM * e;
+  // A deck that climbs or falls end to end (playtest 4, G1: the Golden Gate, 71 m at Marin, 59 m at the
+  // toll plaza); a suspension or girder bridge only, the other styles stand on `deck`.
+  const deckEnd = (p.deckEndM ?? p.deckM) * e;
+  const deckAt = (u: number) => deck + (deckEnd - deck) * u;
   const thick = Math.max(4, deck * 0.12) * e;
   const hump = (u: number) =>
     p.humpAt !== undefined ? (p.humpM ?? 0) * e * Math.exp(-(((u - p.humpAt) / 0.05) ** 2)) : 0;
@@ -361,8 +365,8 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
     if (inGap(um) || nearAt(um)) continue;
     const [x0, z0] = at(u0);
     const [x1, z1] = at(u1);
-    const y0 = deck + hump(u0);
-    const y1 = deck + hump(u1);
+    const y0 = deckAt(u0) + hump(u0);
+    const y1 = deckAt(u1) + hump(u1);
     const vx = -tz * W;
     const vz = tx * W;
     s.inside = [(x0 + x1) / 2, (y0 + y1) / 2 - thick / 2, (z0 + z1) / 2];
@@ -417,7 +421,7 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
     const count = Math.floor(L / every);
     for (let k = 1; k < count; k++) {
       const u = k / count;
-      pier(u, deck + hump(u) - thick);
+      pier(u, deckAt(u) + hump(u) - thick);
     }
   }
   const towerM = (p.towerM ?? p.deckM * 3) * e;
@@ -442,16 +446,16 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
         leg * 0.8,
       );
     for (const f of [0.45, 0.72, 0.98]) {
-      const y = deck + (towerM - deck) * f;
+      const y = deckAt(u) + (towerM - deckAt(u)) * f;
       s.beam([x - vx, y, z - vz], [x + vx, y, z + vz], 4 * e, col);
     }
   }
   if (p.style === 'suspension' && towers.length) {
     // The main cables: from deck-level ends and anchorages up over the tower tops, sagging between.
     const ctrl: { u: number; y: number; top: boolean }[] = [
-      { u: 0, y: deck, top: false },
-      { u: 1, y: deck, top: false },
-      ...(p.anchorsAt ?? []).map((u) => ({ u, y: deck + 2, top: false })),
+      { u: 0, y: deckAt(0), top: false },
+      { u: 1, y: deckAt(1), top: false },
+      ...(p.anchorsAt ?? []).map((u) => ({ u, y: deckAt(u) + 2, top: false })),
       ...towers.map((u) => ({ u, y: towerM - 2 * e, top: true })),
     ].sort((a, b) => a.u - b.u);
     const th = 3.2 * e;
@@ -459,7 +463,9 @@ export function buildBridge(p: BridgePiece, ctx: ShapeCtx): number {
       const a = ctrl[k]!;
       const b = ctrl[k + 1]!;
       const sag =
-        a.top && b.top ? Math.min(a.y, b.y) - (deck + 6) : (Math.max(a.y, b.y) - Math.min(a.y, b.y)) * 0.12;
+        a.top && b.top
+          ? Math.min(a.y, b.y) - (deckAt((a.u + b.u) / 2) + 6)
+          : (Math.max(a.y, b.y) - Math.min(a.y, b.y)) * 0.12;
       const N = 14;
       const pts: [number, number, number][] = [];
       for (let i = 0; i <= N; i++) {

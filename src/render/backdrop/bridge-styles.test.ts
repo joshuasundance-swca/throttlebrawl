@@ -368,3 +368,41 @@ describe('the backdrop, with the new styles in it', () => {
     expect(bad({ archAt: [0.7, 0.3] })).toContain('archAt');
   });
 });
+
+// Playtest 4, G1: the far Golden Gate lies on the near kit's own deck, which climbs from about 59 m at
+// the toll plaza to 71 m at the Marin end, so a bridge's deck may slope end to end (`deckEndM`).
+describe('a sloping deck (deckEndM)', () => {
+  /** The deck's top at a slab edge x: the highest vertex there (a girder bridge has no tower or cable). */
+  const topAt = (tris: Tri[], x: number) =>
+    Math.max(...tris.flatMap((t) => t.filter((v) => Math.abs(v[0]! - x) < 1e-6).map((v) => v[1]!)));
+
+  it('runs from deckM at `from` to deckEndM at `to`; level without it', () => {
+    const sloped = trisOf(piece({ style: 'girder', deckM: 10, deckEndM: 22 }));
+    const level = trisOf(piece({ style: 'girder', deckM: 10 }));
+    // A 1,500 m deck is 13 slabs (one per 120 m or so): their edges are where its height is exact.
+    const edge = (LENGTH * 6) / 13;
+    expect(topAt(sloped, 0)).toBeCloseTo(10, 6);
+    expect(topAt(sloped, LENGTH)).toBeCloseTo(22, 6);
+    expect(topAt(sloped, edge)).toBeCloseTo(10 + (12 * 6) / 13, 6);
+    // Control: the same bridge with no deckEndM is level.
+    expect(topAt(level, 0)).toBeCloseTo(10, 6);
+    expect(topAt(level, LENGTH)).toBeCloseTo(10, 6);
+    expect(topAt(level, edge)).toBeCloseTo(10, 6);
+  });
+
+  it('is refused on a style that stands on a level deck, and a bad value is refused', () => {
+    const file = (p: Partial<BridgePiece>) => ({
+      formatVersion: 1,
+      region: 'x',
+      hazeM: 1,
+      floorColour: '#ffffff',
+      pieces: [piece({ style: 'suspension', ...p })],
+    });
+    expect(backdropProblems(file({ deckEndM: 20 }), 'region')).toEqual([]);
+    expect(backdropProblems(file({ style: 'truss', deckEndM: 20 }), 'region')).toEqual([
+      'pieces[0]: deckEndM is for a suspension or girder bridge',
+    ]);
+    expect(backdropProblems(file({ deckEndM: -1 }), 'region')).toEqual(['pieces[0]: deckEndM must be > 0']);
+    expect(backdropProblems(file({ nearFadeM: 0 }), 'region')).toEqual(['pieces[0]: nearFadeM must be > 0']);
+  });
+});
