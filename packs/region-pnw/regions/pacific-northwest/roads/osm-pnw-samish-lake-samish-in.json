@@ -46,9 +46,9 @@
       ],
       "y": [
         156.4008, 156.3398, 156.2793, 156.2187, 156.1581, 156.0973, 156.0365, 155.9757, 155.9149, 155.8542,
-        155.7935, 155.7329, 155.6724, 155.6118, 155.5512, 155.4904, 155.4272, 155.358, 155.2812, 155.196,
-        155.1019, 154.9994, 154.889, 154.7713, 154.6468, 154.5161, 154.3807, 154.2428, 154.1063, 153.9766,
-        153.8608, 153.7664, 153.7006, 153.666, 153.6466, 153.6399
+        155.7935, 155.7329, 155.6724, 155.6118, 155.5512, 155.4904, 155.4296, 155.3687, 155.3077, 155.2466,
+        155.1855, 155.1243, 155.0631, 155.0019, 154.9408, 154.8796, 154.7961, 154.6733, 154.519, 154.3446,
+        154.164, 153.9923, 153.8442, 153.7316, 153.6626, 153.6399
       ],
       "z": [
         -2476.072, -2475.0946, -2474.1135, -2473.1208, -2472.1065, -2471.0603, -2469.9734, -2468.8399,
@@ -65,9 +65,9 @@
       ],
       "grade": [
         -0.030533, -0.030414, -0.030316, -0.030357, -0.030396, -0.030427, -0.030444, -0.030443, -0.030424,
-        -0.030391, -0.030354, -0.030327, -0.030319, -0.030336, -0.030379, -0.031042, -0.033163, -0.036537,
-        -0.040551, -0.044876, -0.049199, -0.053299, -0.057108, -0.060647, -0.06388, -0.066611, -0.068428,
-        -0.068695, -0.066629, -0.061455, -0.05263, -0.040094, -0.025137, -0.013524, -0.0065117, -0.0033203
+        -0.030391, -0.030354, -0.030327, -0.030319, -0.030336, -0.030377, -0.030429, -0.03048, -0.030525,
+        -0.030563, -0.030594, -0.030618, -0.030635, -0.030638, -0.030625, -0.030623, -0.036213, -0.051638,
+        -0.069369, -0.082294, -0.088875, -0.088175, -0.080052, -0.065269, -0.04546, -0.022942, -0.011327
       ],
       "bankRad": [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -91,8 +91,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified)$\"](48.6,-122.46,48.73,-122.32);\nout tags geom;",
-        "retrievedAt": "2026-10-05T13:53:55Z",
-        "sha256": "697ac8ae9622e831971109d1c0d154d37a563d696cec60ac4947da03eed73d48"
+        "retrievedAt": "2026-10-05T16:44:20Z",
+        "sha256": "e991e67d5f76df1d5604fedb7333a2b9cdaa03cb812a429d3d378608241395af"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -100,7 +100,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 397 points in 1 request(s) (lon, lat WGS84, sha256 8dc00a674e3ac7c7), bilinear (line i5)",
-        "retrievedAt": "2026-10-05T13:54:13Z",
+        "retrievedAt": "2026-10-05T16:44:21Z",
         "sha256": "97504d8a047c50144ba1f4e2b446cf7f802b15b8bbf13f6b830a5fde6134e918"
       },
       {
@@ -109,7 +109,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 592 points in 1 request(s) (lon, lat WGS84, sha256 8919eff80172a2d6), bilinear (line samish)",
-        "retrievedAt": "2026-10-05T13:54:14Z",
+        "retrievedAt": "2026-10-05T16:44:24Z",
         "sha256": "4803c76e65c6ebed78d5c848a92c46f2240ea920f1463e71cf00e0554d2e8419"
       }
     ],

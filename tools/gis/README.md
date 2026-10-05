@@ -131,7 +131,13 @@ real junction choice.
   connectors carry one `shortcut` lane, so traffic stays on the main road; the branch's own roads
   keep their real lanes and carry none. `shiftM` moves a junction along the main line off the real
   gore (at a wide fork the main road already bends there; beside a ramp the connector then stands in
-  for the ramp's first stretch, where the two roads' land would overlap). A branch's `id` must be
+  for the ramp's first stretch, where the two roads' land would overlap). `minRadiusM` (playtest 4,
+  P4-4 and P4-8) is the tightest bend either connector may have: the bake tries the turn lengths in
+  small steps and keeps the first that holds it, or refuses the branch naming the radius it did
+  reach (the road lint's `shortcut` rule wants 42.5 m for a rider arriving at 30 m/s). Where a
+  connector's lane lies over the main road's surface it takes that road's height, easing into its
+  own over 14 m beyond the surface, and the end that joins the branch's own road keeps that road's
+  height (`curve_piece`). A branch's `id` must be
   its first road's (the id the game derives, so a career's `route#id` holds); `label` names the
   generated junction roads.
 - **The closure.** Positions are integrated from the smoothed heading, so a line drifts off the real

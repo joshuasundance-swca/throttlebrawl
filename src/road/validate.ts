@@ -111,9 +111,13 @@ export const ROAD_LINT = {
   /**
    * A shortcut connector's lanes, where they lie inside a main road's surface (it leaves tangentially, so
    * for tens of metres it is drawn over the road it leaves), stand within this of that surface's height,
-   * metres. Past it the rider is drawn under the road, or the road under the rider.
+   * metres: the 5 cm the shortcut surface is lifted by design, and the few centimetres a flat
+   * connector's lane edge differs from a steep main road that it leaves at an angle. Past it the rider
+   * is drawn under the road, or the road under the rider.
    */
-  shortcutHeightM: 0.1,
+  shortcutHeightM: 0.15,
+  /** A main road's verge, drawn past its lanes (render/road-mesh `VERGE_M`), metres. */
+  mainVergeM: 0.6,
 } as const;
 
 const GRAVITY = 9.81;
@@ -684,7 +688,9 @@ function laneExtent(road: BakedRoad, s0: number, s1: number): { lo: number; hi: 
 
 /**
  * The most a connector's surface lies above or below a main road's where its lanes are inside that
- * road's lanes (0.3 m in from their edges): the gap, the connector's s and the main road's s there.
+ * road's drawn surface (its lanes and verges, 0.3 m in from the edge): the gap, the connector's s and
+ * the main road's s there. Read at the connector's centre and at both lane edges, since a steep
+ * branch can leave the main road's centre at its height and still have a lane edge under its verge.
  */
 function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number; sMain: number } | null {
   const cx = c.samples.data['x'];
@@ -693,55 +699,65 @@ function overlapHeightGap(c: BakedRoad, m: BakedRoad): { gap: number; s: number;
   const mx = m.samples.data['x'];
   const my = m.samples.data['y'];
   const mz = m.samples.data['z'];
-  if (!cx || !cy || !cz || !mx || !my || !mz || mx.length < 2) return null;
+  if (!cx || !cy || !cz || !mx || !my || !mz || mx.length < 2 || cx.length < 2) return null;
+  const half = laneExtent(c, 0, c.lengthM);
+  const offsets = [0, half.hi - 0.3, half.lo + 0.3];
   let worst: { gap: number; s: number; sMain: number } | null = null;
   for (let i = 0; i < cx.length; i++) {
-    const px = cx[i] as number;
-    const pz = cz[i] as number;
-    // The nearest sample of the main road, then the nearer of its two segments.
-    let bi = 0;
-    let bd = Infinity;
-    for (let k = 0; k < mx.length; k++) {
-      const dx = (mx[k] as number) - px;
-      const dz = (mz[k] as number) - pz;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < bd) {
-        bd = d2;
-        bi = k;
+    // The connector's direction here, from its neighbouring samples; d runs to the right of it.
+    const j0 = Math.max(0, i - 1);
+    const j1 = Math.min(cx.length - 1, i + 1);
+    const tx = (cx[j1] as number) - (cx[j0] as number);
+    const tz = (cz[j1] as number) - (cz[j0] as number);
+    const tl = Math.sqrt(tx * tx + tz * tz) || 1;
+    for (const off of offsets) {
+      const px = (cx[i] as number) + (off * -tz) / tl;
+      const pz = (cz[i] as number) + (off * tx) / tl;
+      // The nearest sample of the main road, then the nearer of its two segments.
+      let bi = 0;
+      let bd = Infinity;
+      for (let k = 0; k < mx.length; k++) {
+        const dx = (mx[k] as number) - px;
+        const dz = (mz[k] as number) - pz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bd) {
+          bd = d2;
+          bi = k;
+        }
       }
-    }
-    if (bd > 30 * 30) continue;
-    let best: { dist: number; y: number; d: number; s: number } | null = null;
-    for (const k of [bi - 1, bi]) {
-      if (k < 0 || k + 1 >= mx.length) continue;
-      const ax = mx[k] as number;
-      const az = mz[k] as number;
-      const tx = (mx[k + 1] as number) - ax;
-      const tz = (mz[k + 1] as number) - az;
-      const len2 = tx * tx + tz * tz || 1;
-      const raw = ((px - ax) * tx + (pz - az) * tz) / len2;
-      // Past either end of the road there is no surface of its own (the junction's piece draws it).
-      if ((k === 0 && raw < 0) || (k + 2 === mx.length && raw > 1)) continue;
-      const t = Math.min(1, Math.max(0, raw));
-      const dx = px - (ax + t * tx);
-      const dz = pz - (az + t * tz);
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (!best || dist < best.dist) {
-        const len = Math.sqrt(len2);
-        best = {
-          dist,
-          y: (my[k] as number) + t * ((my[k + 1] as number) - (my[k] as number)),
-          d: (-(px - ax) * tz + (pz - az) * tx) / len,
-          s: (k + t) * m.sampleSpacingM,
-        };
+      if (bd > 30 * 30) continue;
+      let best: { dist: number; y: number; d: number; s: number } | null = null;
+      for (const k of [bi - 1, bi]) {
+        if (k < 0 || k + 1 >= mx.length) continue;
+        const ax = mx[k] as number;
+        const az = mz[k] as number;
+        const sx = (mx[k + 1] as number) - ax;
+        const sz = (mz[k + 1] as number) - az;
+        const len2 = sx * sx + sz * sz || 1;
+        const raw = ((px - ax) * sx + (pz - az) * sz) / len2;
+        // Past either end of the road there is no surface of its own (the junction's piece draws it).
+        if ((k === 0 && raw < 0) || (k + 2 === mx.length && raw > 1)) continue;
+        const f = Math.min(1, Math.max(0, raw));
+        const dx = px - (ax + f * sx);
+        const dz = pz - (az + f * sz);
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (!best || dist < best.dist) {
+          const len = Math.sqrt(len2);
+          best = {
+            dist,
+            y: (my[k] as number) + f * ((my[k + 1] as number) - (my[k] as number)),
+            d: (-(px - ax) * sz + (pz - az) * sx) / len,
+            s: (k + f) * m.sampleSpacingM,
+          };
+        }
       }
+      if (!best) continue;
+      const { lo, hi } = laneExtent(m, best.s, best.s);
+      if (best.d <= lo - ROAD_LINT.mainVergeM + 0.3 || best.d >= hi + ROAD_LINT.mainVergeM - 0.3) continue;
+      const gap = (cy[i] as number) - best.y;
+      if (!worst || Math.abs(gap) > Math.abs(worst.gap))
+        worst = { gap, s: i * c.sampleSpacingM, sMain: best.s };
     }
-    if (!best) continue;
-    const { lo, hi } = laneExtent(m, best.s, best.s);
-    if (best.d <= lo + 0.3 || best.d >= hi - 0.3) continue;
-    const gap = (cy[i] as number) - best.y;
-    if (!worst || Math.abs(gap) > Math.abs(worst.gap))
-      worst = { gap, s: i * c.sampleSpacingM, sMain: best.s };
   }
   return worst;
 }

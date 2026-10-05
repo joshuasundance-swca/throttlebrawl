@@ -989,7 +989,9 @@ def offset_point(bl: BakedLine, s: float, d: float) -> tuple[float, float, float
 
 
 # Over this distance past a main road's surface, a connector's height eases from the road's to its own.
-MAIN_BLEND_M = 6.0
+MAIN_BLEND_M = 14.0
+# Within this of the end that joins the branch's own road, a connector keeps that road's height.
+MAIN_END_FREE_M = 20.0
 # A main road's verge, which the renderer draws past the lanes (road-mesh VERGE_M).
 MAIN_VERGE_M = 0.6
 
@@ -998,8 +1000,8 @@ def surface_reach(section: Json, right: bool) -> float:
     """How far a road's lanes (and its verge) reach from the centre line on one side."""
     lanes_ = section["lanes"]
     if right:
-        return max(ln["dCenterM"] + ln["widthM"] / 2 for ln in lanes_) + MAIN_VERGE_M
-    return -min(ln["dCenterM"] - ln["widthM"] / 2 for ln in lanes_) + MAIN_VERGE_M
+        return float(max(ln["dCenterM"] + ln["widthM"] / 2 for ln in lanes_)) + MAIN_VERGE_M
+    return -float(min(ln["dCenterM"] - ln["widthM"] / 2 for ln in lanes_)) + MAIN_VERGE_M
 
 
 def curve_piece(
@@ -1015,12 +1017,13 @@ def curve_piece(
     span: tuple[float, float] | None = None,
     main: BakedLine | None = None,
     half: float = 0.0,
+    leaves_main: bool = True,
 ) -> Piece:
     """A branch connector road: the solved curve from a to b, its height eased between theirs. With
     ``span`` (u0, u1), only that stretch of the curve (a synthetic end's connector or staging road).
     With ``main`` (the line the connector leaves or joins) and ``half`` (how far that road's surface
-    reaches on the connector's side), the height follows the main road's while the connector lies
-    over its surface and eases into its own over the next MAIN_BLEND_M: the connector leaves
+    reaches on the connector's side), the height follows the main road's while any of the connector's
+    lane lies over its surface and eases into its own over the next MAIN_BLEND_M: the connector leaves
     tangentially, so for tens of metres it is drawn under the road it leaves, and a steep branch
     (Jones Street) dropped 3 m under the surface before it came out (playtest 4, P4-4)."""
     fine = max(64, math.ceil(sh.length / 0.1))
@@ -1044,7 +1047,11 @@ def curve_piece(
     if main is not None:
         for i in range(len(s)):
             s_main, dist = main.project(float(x[i]), float(z[i]))
-            over = 1.0 - float(smoothstep(np.array((dist - half) / MAIN_BLEND_M)))
+            over = 1.0 - float(smoothstep(np.array((dist - half - width / 2) / MAIN_BLEND_M)))
+            # The end that joins the branch's own road keeps that road's height (the two are cut
+            # end to end), even where the branch runs close beside the main road.
+            end = (sh.length - s[i]) if leaves_main else s[i]
+            over *= float(smoothstep(np.array(min(1.0, end / MAIN_END_FREE_M))))
             y[i] += over * (main.at(s_main)[1] - y[i])
     length = float(u1 - u0)
     return Piece(
@@ -1437,6 +1444,7 @@ def bake_network(
                 None,
                 main,
                 surface_reach(after.lane_section, b.join.offsetM >= 0),
+                False,
             )
         else:
             cut = sh_out.l1 + sh_out.ls

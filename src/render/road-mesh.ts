@@ -344,6 +344,8 @@ function barriersFor(
 
 /** The shortcut surface sits this far above the main road, so the two never flicker where they overlap. */
 export const SHORTCUT_LIFT_M = 0.05;
+/** How far a shortcut's surface is laid over the edge of the road it is clipped against, metres (playtest 4, P4-4). */
+const CLIP_LAP_M = 0.1;
 /** A secret fork's surface sits this much higher again, over the shortcut it leaves (run W-U). */
 export const SECRET_LIFT_M = 0.04;
 /** A boardwalk's plank pitch and the dark seam between two planks, m (run W-U). [default] */
@@ -997,31 +999,75 @@ export function buildRoadScene(
     // the split zone's inner edge, so what is drawn on top matches where the sim sends a rider (at
     // the split, d inside the zone takes the shortcut). Its verges go where they would lie under
     // the main road.
-    const clips: Clip[] = sd.map((s) => {
+    const plainClip = (s: number): Clip => {
       const l = laneSpans(road.lanesAt(e.index, s));
       const span = l.drive ?? l.shortcut ?? ([0, 0] as [number, number]);
-      const c: Clip = { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
+      return { lo: span[0], hi: span[1], vergeL: true, vergeR: true, goreL: false, goreR: false };
+    };
+    const clips: Clip[] = sd.map((s) => {
+      const c = plainClip(s);
+      const span: [number, number] = [c.lo, c.hi];
       if (!shortcutEdge) return c;
       if (underMain(e, s, outerL)) {
         c.vergeL = false;
         let free = span[0];
         while (free < span[1] && underMain(e, s, free)) free += 0.1;
+        // Refined to a millimetre or so, then laid a little over the main road's edge: the two
+        // edges are straight between rows that are 2 m apart, and at the shallow angle a shortcut
+        // leaves at, a few centimetres of difference is a metres-long sliver of open ground.
+        if (free > span[0] && free < span[1]) {
+          let out = free - 0.1;
+          let inn = free;
+          for (let k = 0; k < 7; k++) {
+            const mid = (out + inn) / 2;
+            if (underMain(e, s, mid)) out = mid;
+            else inn = mid;
+          }
+          free = inn - CLIP_LAP_M;
+        }
         if (gore !== undefined && gore > span[0] && gore < free) {
           c.lo = gore;
           c.goreL = true;
-        } else c.lo = Math.min(free, span[1]);
+        } else c.lo = Math.max(span[0], Math.min(free, span[1]));
       }
       if (underMain(e, s, outerR)) {
         c.vergeR = false;
         let free = span[1];
         while (free > c.lo && underMain(e, s, free)) free -= 0.1;
+        if (free > c.lo && free < span[1]) {
+          let out = free + 0.1;
+          let inn = free;
+          for (let k = 0; k < 7; k++) {
+            const mid = (out + inn) / 2;
+            if (underMain(e, s, mid)) out = mid;
+            else inn = mid;
+          }
+          free = inn + CLIP_LAP_M;
+        }
         if (gore !== undefined && gore < span[1] && gore > free) {
           c.hi = gore;
           c.goreR = true;
-        } else c.hi = Math.max(free, c.lo);
+        } else c.hi = Math.min(span[1], Math.max(free, c.lo));
       }
       return c;
     });
+    // The end row of a connector that meets a road head on (a real road's branch) is "under" that
+    // road only at the one point where the two meet, and clipping it there pinches the connector to
+    // nothing over its last sample step: a wedge-shaped hole through to the ground below (playtest 4,
+    // P4-4). Where the next row in is not clipped at all, the end row is not either. At the end that
+    // leaves a main road the next row in is clipped too, so that clip stays.
+    if (shortcutEdge && sd.length > 1) {
+      const unclipped = (c: Clip | undefined, s: number): boolean => {
+        const p = plainClip(s);
+        return !!c && c.lo === p.lo && c.hi === p.hi && c.vergeL && c.vergeR && !c.goreL && !c.goreR;
+      };
+      for (const [i, inner] of [
+        [0, 1],
+        [sd.length - 1, sd.length - 2],
+      ] as const) {
+        if (unclipped(clips[inner], sd[inner]!) && !unclipped(clips[i], sd[i]!)) clips[i] = plainClip(sd[i]!);
+      }
+    }
     const zonesHere = zones.filter((z) => z.edge === e.index);
     const inZone = (s: number, d: number) =>
       zonesHere.some(

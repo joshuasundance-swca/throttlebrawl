@@ -58,8 +58,8 @@
         32.7502, 32.7519, 32.7572, 32.7658, 32.7777, 32.7927, 32.8109, 32.832, 32.856, 32.8828, 32.9122,
         32.9442, 32.9787, 33.0156, 33.0548, 33.0961, 33.1396, 33.185, 33.2323, 33.2814, 33.3322, 33.3845,
         33.4384, 33.4936, 33.5502, 33.6079, 33.6667, 33.7265, 33.7872, 33.8487, 33.9109, 33.9736, 34.0369,
-        34.1006, 34.1646, 34.2287, 34.293, 34.3573, 34.4214, 34.4854, 34.5491, 34.6124, 34.6751, 34.7373,
-        34.7988, 34.8595, 34.9193, 34.9781, 35.0359, 35.2387, 35.9548, 36.8218, 37.5594, 38.0232, 38.1717,
+        34.1006, 34.1646, 34.2287, 34.293, 34.3573, 34.4214, 34.4854, 34.5575, 34.8488, 35.3703, 36.0227,
+        36.7197, 37.3895, 37.9756, 38.4386, 38.7547, 38.916, 38.9286, 38.8088, 38.6125, 38.4189, 38.2305,
         38.0477, 37.8709, 37.7003, 37.5358, 37.3774, 37.2247, 37.0778, 36.9362, 36.8001, 36.6694, 36.5443,
         36.4249, 36.3116, 36.2045, 36.1036, 36.0089, 35.9199, 35.8359
       ],
@@ -90,8 +90,8 @@
         0.014086, 0.015404, 0.016671, 0.017889, 0.019058, 0.020176, 0.021245, 0.022264, 0.023234, 0.024154,
         0.025024, 0.025844, 0.026614, 0.027335, 0.028007, 0.028628, 0.0292, 0.029722, 0.030194, 0.030617,
         0.030989, 0.031313, 0.031586, 0.03181, 0.031984, 0.032108, 0.032183, 0.032207, 0.032183, 0.032108,
-        0.031984, 0.03181, 0.031586, 0.031313, 0.030989, 0.030617, 0.030194, 0.029722, 0.0292, 0.065291,
-        0.23027, 0.39667, 0.40205, 0.30104, 0.15344, 0.0061416, -0.075373, -0.087053, -0.083968, -0.080915,
+        0.034102, 0.091065, 0.20365, 0.29413, 0.33812, 0.34247, 0.3147, 0.26288, 0.19522, 0.11962, 0.043566,
+        -0.026845, -0.079196, -0.097713, -0.09573, -0.093001, -0.090094, -0.087053, -0.083968, -0.080915,
         -0.077944, -0.075074, -0.072295, -0.069573, -0.066859, -0.064102, -0.061256, -0.058299, -0.055236,
         -0.052109, -0.049001, -0.046035, -0.043367, -0.042129
       ],
@@ -119,8 +119,8 @@
         "attribution": "© OpenStreetMap contributors",
         "url": "https://www.openstreetmap.org/copyright",
         "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$\"](37.785,-122.425,37.810,-122.400);\nout tags geom;",
-        "retrievedAt": "2026-10-05T13:21:11Z",
-        "sha256": "b149ab6507548ffb0c7b17c9ae4f1754aa77f3b02b2fd87f5668cd12aa693473"
+        "retrievedAt": "2026-10-05T16:40:11Z",
+        "sha256": "64c8aba150ceb9027b3d447a55a5d68b61d839fc17d6c585fea947f186e0ad88"
       },
       {
         "name": "USGS 3DEP elevation",
@@ -128,7 +128,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 537 points in 1 request(s) (lon, lat WGS84, sha256 584357c571a154ca), bilinear (line hills)",
-        "retrievedAt": "2026-10-05T13:21:12Z",
+        "retrievedAt": "2026-10-05T16:40:14Z",
         "sha256": "c53e3c5f3a2a4a85762b33b2d88c951d40cb964e7ec0edd60bd17b677d357f79"
       },
       {
@@ -137,7 +137,7 @@
         "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
         "url": "https://www.usgs.gov/3d-elevation-program",
         "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 58 points in 1 request(s) (lon, lat WGS84, sha256 7a960cdf229e2612), bilinear (line jones)",
-        "retrievedAt": "2026-10-05T13:21:13Z",
+        "retrievedAt": "2026-10-05T16:40:16Z",
         "sha256": "b3087b97520aa40310d54e64de738c32ea6d44212bb5c4bce2508cab40a281d1"
       }
     ],
