@@ -1,20 +1,21 @@
-// The race-start countdown's number (playtest 4, P4-11): a big 3, 2, 1 and GO in the middle of the
-// race screen while app/ holds the sim at the grid. It sits in the road-ahead box the HUD layout
-// keeps clear (ui/hud-layout.ts: the middle half across, 25 to 65 % down), centred in it, so it
-// covers no other HUD piece by construction, and it takes no touch. Sized by the screen's short side
-// so it fits a 568x320 phone and a 320x568 one alike. Each change makes a fresh element, which
-// restarts its small pop; reduced motion gets no pop. [default]
+// The race-start countdown's number (playtest 4, P4-11; made small and clear of the road after the
+// maintainer's 2026-10-05 veto: "The 3 2 1 countdown blocks visibility of what's directly ahead so it's
+// hard to plan your start. It should be less obstructive."). It stands beside the road, never in it: a
+// small, translucent number centred in the strip left of the road-ahead box the HUD layout keeps clear
+// (ui/hud-layout.ts: the middle half across, 25 to 65 % down), at 45 % down, so it covers neither the road
+// ahead nor the top band's pieces, and it takes no touch. Sized by the screen's short side and held
+// inside that strip (a quarter of the width) so it fits a 568x320 phone and a 412x915 one alike. Each
+// change makes a fresh element, which restarts its small fade-in; reduced motion gets none. [default]
 
 export const COUNTDOWN_CSS = `
-#countdown { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); z-index: 1;
-  pointer-events: none; text-align: center; }
+#countdown { position: absolute; left: 0; width: 25%; top: 45%; transform: translateY(-50%); z-index: 1;
+  pointer-events: none; text-align: center; overflow: hidden; }
 #countdown[hidden] { display: none; }
-#countdown .count { display: inline-block; min-width: 1.4em; padding: 0 0.22em; box-sizing: border-box;
-  font: 900 clamp(48px, 22vmin, 150px)/1.05 ui-monospace, 'Courier New', monospace; text-transform: uppercase;
-  color: #f2ead8; background: #111; box-shadow: 4px 4px 0 #e0543a; transform: rotate(-2deg);
-  animation: tb-count-pop 0.32s ease-out; }
+#countdown .count { display: inline-block; padding: 0 0.1em; box-sizing: border-box; opacity: 0.6;
+  font: 900 clamp(28px, 9vmin, 56px)/1.05 ui-monospace, 'Courier New', monospace; text-transform: uppercase;
+  color: #f2ead8; text-shadow: 0 0 4px #111, 2px 2px 0 #111; animation: tb-count-pop 0.25s ease-out; }
 #countdown .count.go { color: #f5c542; }
-@keyframes tb-count-pop { from { transform: rotate(-2deg) scale(1.35); opacity: 0.4; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
+@keyframes tb-count-pop { from { opacity: 0.15; } to { opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) { #countdown .count { animation: none; } }
 `;
 

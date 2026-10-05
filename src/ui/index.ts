@@ -818,7 +818,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       });
     }
   };
-  // The race-start countdown's number (playtest 4, P4-11), drawn in the road-ahead box.
+  // The race-start countdown's number (playtest 4, P4-11), small and beside the road ahead, never in it.
   const countdownView = createCountdownView();
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
