@@ -169,16 +169,20 @@ function jsonFiles(dir: string): string[] {
 
 interface PackType extends Pick<SimTrafficTypeDef, 'category' | 'hazard' | 'lengthM' | 'widthM'> {
   contentId: string;
+  /** The sidewalk lane's roadside class (`behaviour.roadside`), where the pack gives one. */
+  roadside?: string;
 }
 
 function packTypes(): PackType[] {
   const out: PackType[] = [];
   for (const pack of PACKS)
     for (const f of jsonFiles(`packs/${pack}/traffic`)) {
-      const t = JSON.parse(readFileSync(f, 'utf8')) as Omit<PackType, 'contentId'> & {
+      const t = JSON.parse(readFileSync(f, 'utf8')) as Omit<PackType, 'contentId' | 'roadside'> & {
         type: string;
         id: string;
+        behaviour?: { roadside?: unknown };
       };
+      const roadside = t.behaviour?.roadside;
       if (t.type !== 'traffic-type') continue;
       out.push({
         contentId: `${pack}:${t.id}`,
@@ -186,6 +190,7 @@ function packTypes(): PackType[] {
         hazard: t.hazard,
         lengthM: t.lengthM,
         widthM: t.widthM,
+        ...(typeof roadside === 'string' ? { roadside } : {}),
       });
     }
   return out;
@@ -193,9 +198,15 @@ function packTypes(): PackType[] {
 
 /** What touching a traffic type does to a rider (sim/traffic contacts, sim/peds react). */
 function trafficOutcome(t: PackType): string {
+  // The roadside class decides it where a pack gives one (docs/content-packs.md, roadside classes).
+  if (t.roadside === 'dodges') return 'none (dodges: gets out of the way)';
+  if (t.roadside === 'yields') return 'crash if hit (yields)';
+  if (t.roadside === 'solid') return 'crash (solid: does not move)';
   const walker = t.category === 'pedestrian' || t.category === 'animal';
   if (walker) return t.hazard === 'big' ? 'crash' : 'none (it dives aside)';
-  return t.hazard === 'big' ? 'crash' : 'wobble (crash end-on at 6 m/s+)';
+  // Today's traffic rule (sim/traffic contacts): a big vehicle crashes on any touch; the rest wobble,
+  // or crash end-on at `traffic.solidHitMps` closing or more.
+  return t.hazard === 'big' ? 'crash' : `wobble (crash end-on at ${TRAFFIC.solidHitMps} m/s+)`;
 }
 
 /**
