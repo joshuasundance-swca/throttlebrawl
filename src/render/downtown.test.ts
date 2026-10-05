@@ -7,6 +7,7 @@
 // cable-car streets and nowhere else. The cross traffic is presentation only, so the key check is the
 // gate: ridden by a rider at full speed down the whole avenue, no cross vehicle is ever on the avenue
 // near anyone, and the traffic still crosses and queues.
+import { InstancedMesh, Mesh, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   createRoadNetwork,
@@ -22,15 +23,20 @@ import {
   crossingNeed,
   DT,
   DowntownLayer,
+  MODULE_M,
   planDowntown,
   seedCrossTraffic,
   SIDEWALK_M,
   stepCrossTraffic,
+  towerFootprint,
   type Crossing,
 } from './downtown';
+import { withAtlas } from './atlas';
 import { readGlb } from './glb';
 import { createFlatLook } from './look';
-import { bakeModel, MODEL_ASSETS, modelKindsFor, type ModelKind, type SceneryModel } from './models';
+import { bakeRepoModel, readAsset, readAtlas } from './model-files.test-util';
+import { bakeModel, MODEL_ASSETS, modelKindsFor } from './models';
+import { ATLAS_WHITE_UV } from './scenery-merge';
 import { networkTags, type RoadDressing } from './road-mesh';
 
 const look = createFlatLook();
@@ -60,21 +66,15 @@ function track(id: string): { road: RoadNetwork; dressing: RoadDressing; roads: 
   return { road: createRoadNetwork({ network, roads }), dressing, roads };
 }
 
-async function readRepoFile(rel: string): Promise<ArrayBuffer> {
-  const mod: string = 'node:fs';
-  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string): Uint8Array };
-  const buf = fs.readFileSync(rel);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-}
-async function model(kind: ModelKind): Promise<SceneryModel> {
-  return bakeModel(kind, readGlb(await readRepoFile(`packs/base/assets/${MODEL_ASSETS[kind]}.glb`)));
-}
-
-const KIT = await model('sfDowntown');
-const PROPS = await model('sfRoadside');
-const CABLE = await model('cableCar');
+const KIT = await bakeRepoModel('sfDowntown');
+const PROPS = await bakeRepoModel('sfRoadside');
+const CABLE = await bakeRepoModel('cableCar');
+// CX3's stackable towers, with the San Francisco atlas (playtest 3, T12.4).
+const MODULES = await bakeRepoModel('sfTowerModules');
 const dt = track('sf-downtown');
-const plan = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
+// The shipping plan stacks the modules; `plain` is the fallback (no modules loaded): the old kit, stretched.
+const plan = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7, stacked: true });
+const plain = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
 const byRule = (rule: string) => plan.items.filter((i) => i.rule === rule);
 const roadOf = (edge: number) => dt.roads.find((r) => r.id === dt.road.edges[edge]?.id) as BakedRoad;
 
@@ -86,14 +86,18 @@ describe('San Francisco downtown: what stands along the avenue', () => {
       const { tropical, tags } = networkTags(road, dressing);
       return modelKindsFor({ tropical, tags, palette: new Set(), traffic: [] });
     };
-    expect(needs('sf-downtown')).toEqual(expect.arrayContaining(['sfDowntown', 'sfRoadside', 'cableCar']));
-    for (const other of ['sf-hills', 'osm-sf-twin-peaks', 'pnw-c1', 'keys-m1'])
+    expect(needs('sf-downtown')).toEqual(
+      expect.arrayContaining(['sfDowntown', 'sfTowerModules', 'sfRoadside', 'cableCar']),
+    );
+    for (const other of ['sf-hills', 'osm-sf-twin-peaks', 'pnw-c1', 'keys-m1']) {
       expect(needs(other), other).not.toContain('sfDowntown');
+      expect(needs(other), other).not.toContain('sfTowerModules');
+    }
   });
 
   it("stands the front row of towers on the sim's hard edge, a near-continuous frontage between the cross streets", () => {
     const towers = byRule('tower');
-    expect(towers.length).toBeGreaterThan(200);
+    expect(towers.length).toBeGreaterThan(100);
     let covered = 0;
     let frontage = 0;
     for (const t of towers) {
@@ -105,7 +109,10 @@ describe('San Francisco downtown: what stands along the avenue', () => {
       expect(Math.abs(Math.abs(t.d) - Math.abs(v.dOuter)), `${r.id} s ${t.s}`).toBeLessThan(0.05);
     }
     // Frontage: every 2 m of a downtown side, within a tower's lot.
-    const lots = towers.map((t) => ({ edge: t.edge, side: Math.sign(t.d), s0: t.s - 12, s1: t.s + 12 }));
+    const lots = towers.map((t) => {
+      const half = towerFootprint(t.variant, true)[0] / 2;
+      return { edge: t.edge, side: Math.sign(t.d), s0: t.s - half, s1: t.s + half };
+    });
     for (const e of dt.road.edges) {
       for (const side of [-1, 1]) {
         for (let s = 0; s < e.length; s += 2) {
@@ -121,7 +128,9 @@ describe('San Francisco downtown: what stands along the avenue', () => {
     print(
       `[examined] ${towers.length} front-row towers over ${frontage * 2} m of tower sides: ${((100 * covered) / frontage).toFixed(1)} % covered`,
     );
-    expect(covered / frontage).toBeGreaterThan(0.85);
+    // (The stretched kit covered 85.2 % of it. The modules' lots are 24 to 34 m wide, so a run's last
+    // gap can be up to a lot wide: 84.7 %. A frontage broken by more than a fifth would not be one.)
+    expect(covered / frontage).toBeGreaterThan(0.8);
     // A taller second row behind, and towers behind the plazas.
     expect(byRule('back-tower').length).toBeGreaterThan(50);
     expect(byRule('plaza-tower').length).toBeGreaterThan(5);
@@ -130,14 +139,7 @@ describe('San Francisco downtown: what stands along the avenue', () => {
   it('keeps every cross street open: no tower in it, its own buildings lining it', () => {
     for (const t of byRule('tower')) {
       for (const c of plan.crossings.filter((x) => x.edge === t.edge)) {
-        const width =
-          t.variant === DT.towerStone
-            ? 24
-            : t.variant === DT.towerCrown
-              ? 18
-              : t.variant === DT.midrise
-                ? 20
-                : 22;
+        const width = towerFootprint(t.variant, true)[0];
         const overlap = Math.min(t.s + width / 2, c.s + c.half) - Math.max(t.s - width / 2, c.s - c.half);
         expect(overlap, `tower at ${t.s} vs cross street at ${c.s}`).toBeLessThanOrEqual(0);
       }
@@ -207,11 +209,11 @@ describe('San Francisco downtown: what stands along the avenue', () => {
   });
 
   it('is the same for the same seed and differs for another', () => {
-    const again = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7 });
+    const again = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 7, stacked: true });
     expect(again.items.map((i) => [i.variant, i.p.x, i.sy])).toEqual(
       plan.items.map((i) => [i.variant, i.p.x, i.sy]),
     );
-    const other = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 8 });
+    const other = planDowntown({ road: dt.road, dressing: dt.dressing, seed: 8, stacked: true });
     expect(other.items.map((i) => i.variant)).not.toEqual(plan.items.map((i) => i.variant));
   });
 });
@@ -289,11 +291,14 @@ describe('San Francisco downtown: cross traffic and cable cars', () => {
 
 describe('San Francisco downtown: the layer as drawn', () => {
   it('draws stretches near the camera in a few meshes, inside the phone budget, the cross traffic instanced', () => {
-    const layer = new DowntownLayer(KIT, PROPS, CABLE, look, {
-      road: dt.road,
-      dressing: dt.dressing,
-      seed: 7,
-    });
+    const layer = new DowntownLayer(
+      KIT,
+      PROPS,
+      CABLE,
+      look,
+      { road: dt.road, dressing: dt.dressing, seed: 7 },
+      MODULES,
+    );
     let maxTris = 0;
     let maxMeshes = 0;
     for (let s = 0; s < 3600; s += 100) {
@@ -324,6 +329,185 @@ describe('San Francisco downtown: the layer as drawn', () => {
     expect(names).toContain('road-downtown-cross-traffic');
     layer.dispose();
     expect(layer.group.parent).toBeNull();
+  });
+});
+
+// Playtest 3 (T12.4): the towers are CX3's stackable modules (a 7 m base, 14 m four-storey mids, an
+// 8 m crown), stacked to the height wanted instead of stretched, drawn with the San Francisco atlas as
+// their stretch's one material. A facade tile always spans exactly one mid, so a window is never
+// stretched.
+describe('San Francisco downtown: stacked towers', () => {
+  const STACKED_RULES = new Set(['tower', 'plaza-tower', 'back-tower', 'cross-building']);
+  const stackedItems = plan.items.filter((i) => i.model === 'tower');
+  const STYLES = [DT.towerGlass, DT.towerStone, DT.screenAgi, DT.towerCrown, DT.midrise];
+
+  /** Rides the layer along the route, as the renderer would: the most triangles and meshes in range at once. */
+  function ride(layer: DowntownLayer) {
+    let tris = 0;
+    let meshes = 0;
+    for (let s = 0; s < 3600; s += 100) {
+      let edge = 0;
+      let u = s;
+      while (edge < dt.road.edges.length - 1 && u > (dt.road.edges[edge]?.length ?? 0)) {
+        u -= dt.road.edges[edge]?.length ?? 0;
+        edge++;
+      }
+      const cam = dt.road.toWorld(edge, u, 0, 0);
+      for (let k = 0; k < 12; k++) layer.update(cam.x, cam.z, 1 / 60, [cam]);
+      const c = layer.counts();
+      tris = Math.max(tris, c.triangles);
+      meshes = Math.max(meshes, c.meshes);
+    }
+    return { tris, meshes };
+  }
+  const stretchMeshes = (layer: DowntownLayer) => {
+    const out: Mesh<BufferGeometry>[] = [];
+    layer.group.traverse((o) => {
+      if (o instanceof Mesh && !(o instanceof InstancedMesh) && o.name === 'road-downtown')
+        out.push(o as Mesh<BufferGeometry>);
+    });
+    return out;
+  };
+  const input = { road: dt.road, dressing: dt.dressing, seed: 7 };
+
+  it('draws every tower the old way stretched as modules, and keeps the headquarters and the furniture as they were', () => {
+    expect(stackedItems.length).toBeGreaterThan(100);
+    for (const it of plan.items) {
+      if (STACKED_RULES.has(it.rule)) expect(it.model, `${it.rule} at s ${it.s}`).toBe('tower');
+      else expect(it.model, it.rule).not.toBe('tower');
+    }
+    expect(
+      plain.items.some((i) => i.model === 'tower'),
+      'no modules, no stacked towers',
+    ).toBe(false);
+    expect(new Set(plain.items.map((i) => i.rule))).toEqual(new Set(plan.items.map((i) => i.rule)));
+  });
+
+  it('stacks each tower to its target height within half a mid, in whole modules, never scaled', () => {
+    let worst = 0;
+    for (const it of stackedItems) {
+      expect(it.sy, `${it.rule} at s ${it.s}`).toBe(1);
+      expect(Number.isInteger(it.mids)).toBe(true);
+      expect(it.mids).toBeGreaterThanOrEqual(1);
+      const height = MODULE_M.base + it.mids! * MODULE_M.mid + MODULE_M.crown;
+      worst = Math.max(worst, Math.abs(height - it.targetM!));
+      expect(Math.abs(height - it.targetM!), `${it.rule} at s ${it.s}`).toBeLessThanOrEqual(
+        MODULE_M.mid / 2 + 1e-9,
+      );
+    }
+    const heights = new Set(stackedItems.map((i) => i.mids ?? 0));
+    print(
+      `[examined] ${stackedItems.length} stacked towers, ${heights.size} distinct heights (${Math.min(...heights)} to ${Math.max(...heights)} mids), worst gap to target ${worst.toFixed(1)} m`,
+    );
+    // Heights vary: a skyline, not a wall.
+    expect(heights.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it("lots are the modules' own footprints, and no two towers in a row overlap along the street", () => {
+    STYLES.forEach((v, style) => {
+      const [w, d] = towerFootprint(v, true);
+      for (const [part, h] of [
+        [0, MODULE_M.base],
+        [1, MODULE_M.mid],
+        [2, MODULE_M.crown],
+      ] as const) {
+        const box = MODULES.variants[style * 3 + part]!.boundingBox!;
+        expect(box.max.y - box.min.y, `style ${style} module ${part} height`).toBeCloseTo(h, 1);
+        expect(box.max.x - box.min.x, `style ${style} module ${part} width`).toBeLessThanOrEqual(w + 0.01);
+      }
+      const base = MODULES.variants[style * 3]!.boundingBox!;
+      expect(base.max.x - base.min.x, `style ${style} width`).toBeCloseTo(w, 1);
+      expect(base.max.z - base.min.z, `style ${style} depth`).toBeCloseTo(d, 1);
+    });
+    expect(towerFootprint(DT.screenAgi, true)).toEqual(towerFootprint(DT.screenSeries, true));
+    const rows = new Map<string, typeof stackedItems>();
+    for (const it of stackedItems.filter((i) => i.rule === 'tower' || i.rule === 'plaza-tower')) {
+      const key = `${it.edge}:${Math.sign(it.d)}:${it.rule}`;
+      rows.set(key, [...(rows.get(key) ?? []), it]);
+    }
+    for (const [key, row] of rows) {
+      row.sort((a, b) => a.s - b.s);
+      for (let i = 1; i < row.length; i++) {
+        const a = row[i - 1]!;
+        const b = row[i]!;
+        const gap = b.s - a.s - (towerFootprint(a.variant, true)[0] + towerFootprint(b.variant, true)[0]) / 2;
+        expect(gap, `${key} at s ${a.s.toFixed(1)} and ${b.s.toFixed(1)}`).toBeGreaterThanOrEqual(-1e-6);
+      }
+    }
+  });
+
+  it("draws a facade tile at exactly one mid's height, never stretched, in the stretch's one atlas material", () => {
+    expect(MODULES.map, 'the atlas loaded with the modules').toBeDefined();
+    const layer = new DowntownLayer(KIT, PROPS, CABLE, look, input, MODULES);
+    ride(layer);
+    const meshes = stretchMeshes(layer);
+    expect(meshes.length).toBeGreaterThan(0);
+    let facades = 0;
+    let plainTris = 0;
+    for (const mesh of meshes) {
+      const material = mesh.material as { map?: unknown };
+      expect(material.map, 'every stretch draws with the atlas').toBe(MODULES.map);
+      const pos = mesh.geometry.getAttribute('position');
+      const uv = mesh.geometry.getAttribute('uv');
+      expect(uv, 'a stretch with the atlas carries UVs for all of it').toBeDefined();
+      const onWhite = (i: number) =>
+        Math.abs(uv.getX(i) - ATLAS_WHITE_UV[0]) < 1e-6 && Math.abs(uv.getY(i) - ATLAS_WHITE_UV[1]) < 1e-6;
+      for (let t = 0; t + 2 < pos.count; t += 3) {
+        if ([t, t + 1, t + 2].every(onWhite)) {
+          plainTris++;
+          continue;
+        }
+        facades++;
+        const ys = [pos.getY(t), pos.getY(t + 1), pos.getY(t + 2)];
+        const span = Math.max(...ys) - Math.min(...ys);
+        // A facade quad is a mid's face: each of its triangles is one mid tall, or flat.
+        expect(Math.min(span, Math.abs(span - MODULE_M.mid)), 'facade triangle height').toBeLessThan(1e-3);
+      }
+    }
+    print(
+      `[examined] ${meshes.length} stretches in range: ${facades} facade triangles, every one a mid tall (none stretched), ${plainTris} plain`,
+    );
+    expect(facades).toBeGreaterThan(100);
+    layer.dispose();
+  });
+
+  it('costs no more than the stretched kit: about the same triangles, no more draws, along the whole route', () => {
+    const stacked = new DowntownLayer(KIT, PROPS, CABLE, look, input, MODULES);
+    const old = new DowntownLayer(KIT, PROPS, CABLE, look, input);
+    const a = ride(stacked);
+    const b = ride(old);
+    print(
+      `[examined] downtown along the route: stacked up to ${a.meshes} meshes and ${a.tris} triangles in range, the stretched kit ${b.meshes} and ${b.tris}`,
+    );
+    expect(a.meshes).toBeLessThanOrEqual(b.meshes);
+    expect(a.tris).toBeLessThanOrEqual(b.tris * 1.3);
+    stacked.dispose();
+    old.dispose();
+  });
+
+  it('falls back to the stretched kit with no modules, and to plain colour with no sheet, and throws on neither', async () => {
+    const old = new DowntownLayer(KIT, PROPS, CABLE, look, input);
+    expect(old.plan.items.some((i) => i.model === 'tower')).toBe(false);
+    ride(old);
+    for (const mesh of stretchMeshes(old))
+      expect((mesh.material as { map?: unknown }).map ?? null).toBeNull();
+    old.dispose();
+    // The modules baked, the sheet failed to load: they draw in their tiles' mean colours, no map.
+    const bare = withAtlas(
+      bakeModel('sfTowerModules', readGlb(await readAsset(MODEL_ASSETS.sfTowerModules, 'glb'))),
+      {
+        sheet: 'san-francisco',
+        layout: (await readAtlas('san-francisco')).layout,
+        texture: null,
+      },
+    );
+    const layer = new DowntownLayer(KIT, PROPS, CABLE, look, input, bare);
+    expect(layer.plan.items.some((i) => i.model === 'tower')).toBe(true);
+    ride(layer);
+    const meshes = stretchMeshes(layer);
+    expect(meshes.length).toBeGreaterThan(0);
+    for (const mesh of meshes) expect((mesh.material as { map?: unknown }).map ?? null).toBeNull();
+    layer.dispose();
   });
 });
 

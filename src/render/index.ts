@@ -473,11 +473,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!m || !roadArgs || !kit) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
     if (!m.hasDowntown(tags)) return;
-    downtown = new m.DowntownLayer(kit, models.sfRoadside, models.cableCar, look, {
-      road: roadArgs.road,
-      dressing: roadArgs.dressing,
-      seed: sceneSeed,
-    });
+    downtown = new m.DowntownLayer(
+      kit,
+      models.sfRoadside,
+      models.cableCar,
+      look,
+      { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed },
+      // Playtest 3 (T12.4): the towers stack these when they have loaded (else the stretched kit).
+      models.sfTowerModules,
+    );
     scene.add(downtown.group);
   };
   // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.

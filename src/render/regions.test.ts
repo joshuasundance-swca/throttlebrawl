@@ -24,6 +24,7 @@ import { oddityFigureFor } from './figures';
 import { readGlb } from './glb';
 import { GroundTris, openLandEnds } from './land-probe.test-util';
 import { createFlatLook } from './look';
+import { readAsset } from './model-files.test-util';
 import {
   bakeModel,
   MODEL_ASSETS,
@@ -57,13 +58,6 @@ const trafficFiles = import.meta.glob<{ id: string }>('../../packs/*/traffic/*.j
   import: 'default',
 });
 
-async function readRepoFile(rel: string): Promise<ArrayBuffer> {
-  const mod: string = 'node:fs';
-  const fs = (await import(/* @vite-ignore */ mod)) as { readFileSync(p: string): Uint8Array };
-  const buf = fs.readFileSync(rel);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-}
-
 function track(id: string): { road: RoadNetwork; dressing: RoadDressing } {
   const network = Object.values(networkFiles).find((n) => n.id === id);
   if (!network) throw new Error(`no network ${id}`);
@@ -96,8 +90,7 @@ function under(objs: Object3D[], x: number, z: number, top = 200): { name: strin
 }
 
 const models: SceneryModels = {};
-for (const k of MODEL_KINDS)
-  models[k] = bakeModel(k, readGlb(await readRepoFile(`packs/base/assets/${MODEL_ASSETS[k]}.glb`)));
+for (const k of MODEL_KINDS) models[k] = bakeModel(k, readGlb(await readAsset(MODEL_ASSETS[k], 'glb')));
 
 const GROUND = /^road-(land|water|road|shoulder|shortcut|deck|marking|splitZone|rampMark|boost|cableSlot)/;
 

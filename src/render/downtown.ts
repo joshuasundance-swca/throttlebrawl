@@ -5,7 +5,9 @@
 // on the downtown network's tagged land (src/render/scenery.ts's `downtown`, `plaza` and `crossing`
 // themes; the road scene draws the land itself):
 //
-// - the towers, shoulder to shoulder behind a 3.4 m sidewalk (the sim's hard edge, road/
+// - the towers (playtest 3, T12.4: CX3's stackable modules, a base, four-storey mids and a crown
+//   stacked to the height wanted, never stretched, so a window keeps its shape; the old stretched kit
+//   draws them only when the modules have not loaded), shoulder to shoulder behind a 3.4 m sidewalk (the sim's hard edge, road/
 //   cross-section.ts: 4 m past the shoulder), a taller second row behind them, towers behind each
 //   plaza, and the deadpan headquarters behind the last plaza;
 // - the sidewalks and the plaza paving, the lamps, the planters, benches and the orb, and the
@@ -24,7 +26,8 @@
 //
 // Drawing (the phone's budget): the static parts of one STRETCH_M stretch of road, both sides,
 // are merged into one vertex-coloured mesh, built when the camera comes near and freed when it has
-// gone (one draw per stretch in sight). The moving vehicles are one instanced mesh per model. This
+// gone (one draw per stretch in sight). With the modules, that mesh's material has the San Francisco
+// atlas as its map (the stretch's other parts sit on the atlas's white tile): still one draw. The moving vehicles are one instanced mesh per model. This
 // is a lazy chunk: it loads with the downtown's models, never in the first load.
 import {
   BufferGeometry,
@@ -43,6 +46,7 @@ import type { LookStyle } from './look';
 import type { SceneryModel } from './models';
 import type { RoadDressing } from './road-mesh';
 import { LAND_TOP_M, scatterHash, themeAt, type SideTag, type SideTheme } from './scenery';
+import { ATLAS_WHITE_UV, hasAtlasUv } from './scenery-merge';
 
 /** The kit's variants (tools/blender/props/sf_downtown.py), by name. */
 export const DT = {
@@ -69,6 +73,51 @@ export const SF_PROPS = {
   boards: [6, 7, 8],
 } as const;
 
+/**
+ * CX3's stackable tower modules (`models/scenery/sf-tower-modules`, models.ts `sfTowerModules`): per
+ * style a base, a mid and a crown, with these heights, m. A mid is four storeys and stacks onto itself
+ * and onto the base and the crown at the same outline, so any whole number of mids makes a tower.
+ */
+export const MODULE_M = { base: 7, mid: 14, crown: 8 } as const;
+/** The module styles, in the model's variant order (variant = style * 3 + 0 base, 1 mid, 2 crown). */
+const MODULE_STYLE: Readonly<Record<number, number>> = {
+  [DT.towerGlass]: 0,
+  [DT.towerStone]: 1,
+  [DT.screenAgi]: 2,
+  [DT.screenSeries]: 2,
+  [DT.towerCrown]: 3,
+  [DT.midrise]: 4,
+};
+/** Each module style's front width and depth, m (the modules' footprints). */
+const MODULE_FOOTPRINT: readonly (readonly [number, number])[] = [
+  [28, 24],
+  [30, 26],
+  [32, 26],
+  [34, 28],
+  [24, 20],
+];
+/** The old kit's tower heights, m: the stacked towers' heights are these times the same seeded scale. */
+const OLD_HEIGHT_M: Readonly<Record<number, number>> = {
+  [DT.towerGlass]: 63,
+  [DT.towerStone]: 63,
+  [DT.screenAgi]: 54.5,
+  [DT.screenSeries]: 54.5,
+  [DT.towerCrown]: 86,
+  [DT.midrise]: 26.8,
+};
+/** What fills the end of a run, widest first (the styles' footprints, wide to narrow). */
+const STACKED_FILL: readonly number[] = [
+  DT.towerCrown,
+  DT.screenAgi,
+  DT.towerStone,
+  DT.towerGlass,
+  DT.midrise,
+];
+/** The shortest stacked tower: a base, one mid and a crown. */
+const MIN_STACK_M = MODULE_M.base + MODULE_M.mid + MODULE_M.crown;
+/** The tallest stack, in mids (a back-row tower at its tallest is about 190 m). */
+const MAX_MIDS = 14;
+
 /** Each tower variant's front width and depth, m (the kit's footprints). */
 const FOOTPRINT: Readonly<Record<number, readonly [number, number]>> = {
   [DT.towerGlass]: [22, 20],
@@ -79,6 +128,22 @@ const FOOTPRINT: Readonly<Record<number, readonly [number, number]>> = {
   [DT.hq]: [46, 30],
   [DT.midrise]: [20, 18],
 };
+/**
+ * A tower variant's front width and depth, m: the module style's when it is stacked (`stacked`), else
+ * the old kit's. The headquarters and the plain props only have the kit's.
+ */
+export function towerFootprint(variant: number, stacked: boolean): readonly [number, number] {
+  const style = MODULE_STYLE[variant];
+  if (stacked && style !== undefined) return MODULE_FOOTPRINT[style] ?? [22, 20];
+  return FOOTPRINT[variant] ?? [22, 20];
+}
+
+/** The mids that make a tower of `targetM` (a base, the mids and a crown): the nearest whole number. */
+function midsFor(targetM: number): number {
+  const mids = Math.round((targetM - MODULE_M.base - MODULE_M.crown) / MODULE_M.mid);
+  return Math.max(1, Math.min(MAX_MIDS, mids));
+}
+
 /** The front row's mix: plain towers mostly, a screen tower now and then, older midrises between. */
 const FRONT_MIX: readonly number[] = [
   DT.towerGlass,
@@ -168,16 +233,23 @@ export const DOWNTOWN_COLOURS = {
   wall: '#9f9686',
 } as const;
 
-/** One placed model: a variant of the kit (or of the borrowed SF props) at a world point. */
+/**
+ * One placed model: a variant of the kit (or of the borrowed SF props) at a world point, or a stacked
+ * tower (`model: 'tower'`: `variant` is the kit variant it stands in for, which picks its module
+ * style; `mids` is how many mids it stacks).
+ */
 export interface DowntownItem {
-  model: 'kit' | 'props';
+  model: 'kit' | 'props' | 'tower';
   variant: number;
   rule: string;
   p: Point3;
   /** Turn about the vertical (the model's +Z goes to (sin, cos) in x, z). */
   turn: number;
-  /** Height scale (towers vary in height), uniform 1 otherwise. */
+  /** Height scale (the kit's towers vary in height), uniform 1 otherwise, and always 1 for a stacked tower. */
   sy: number;
+  /** A stacked tower: how many four-storey mids, and the height it was asked to be, m. */
+  mids?: number;
+  targetM?: number;
   /** World y its base is pushed down to (a tower's foot under the slope), or null. */
   foot: number | null;
   edge: number;
@@ -222,6 +294,11 @@ export interface DowntownInput {
   road: RoadNetwork;
   dressing: RoadDressing | undefined;
   seed: number;
+  /**
+   * Stack CX3's tower modules instead of stretching the old kit (playtest 3, T12.4): the layer sets it
+   * when the modules have loaded. The lots are the modules' footprints, which are wider.
+   */
+  stacked?: boolean;
 }
 
 const hex = (h: string): [number, number, number] => {
@@ -246,6 +323,17 @@ export function crossProfile(c: Pick<Crossing, 'cable' | 'outer'>, roadY: number
 /** Plans the downtown of a network: towers, furniture, cross streets and the floor. */
 export function planDowntown(input: DowntownInput): DowntownPlan {
   const { road, dressing, seed } = input;
+  const stacked = input.stacked === true;
+  const footprint = (variant: number) => towerFootprint(variant, stacked);
+  /** A tower of the kit's variant, `scale` times its old height: stacked modules, or the stretched kit. */
+  const towerOf = (
+    variant: number,
+    scale: number,
+  ): Pick<DowntownItem, 'model' | 'sy' | 'mids' | 'targetM'> => {
+    if (!stacked || MODULE_STYLE[variant] === undefined) return { model: 'kit', sy: scale };
+    const targetM = Math.max(MIN_STACK_M, (OLD_HEIGHT_M[variant] ?? 40) * scale);
+    return { model: 'tower', sy: 1, mids: midsFor(targetM), targetM };
+  };
   const items: DowntownItem[] = [];
   const crossings: Crossing[] = [];
   const soups = new Map<string, Soup>();
@@ -425,16 +513,17 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
               Math.floor(h(k * 7 + Math.round(a), side, 1) * (want === 'plaza' ? BACK_MIX : FRONT_MIX).length)
             ];
             if (variant === undefined) break;
-            let [width, depth] = FOOTPRINT[variant] ?? [22, 20];
+            let [width, depth] = footprint(variant);
             let pick = variant;
-            // Near the run's end a narrower building fills what is left.
+            // Near the run's end a narrower building fills what is left (stacked, the widest style that
+            // still fits, so the frontage stays near-continuous with the modules' wider lots).
             if (cursor + width > b - 0.5) {
-              const narrow = [DT.midrise, DT.towerCrown].find(
-                (v) => cursor + (FOOTPRINT[v]?.[0] ?? 99) <= b - 0.5,
+              const narrow = (stacked ? STACKED_FILL : [DT.midrise, DT.towerCrown]).find(
+                (v) => cursor + footprint(v)[0] <= b - 0.5,
               );
               if (narrow === undefined) break;
               pick = narrow;
-              [width, depth] = FOOTPRINT[narrow] ?? [18, 18];
+              [width, depth] = footprint(narrow);
             }
             const s = cursor + width / 2;
             cursor += width + (h(k + Math.round(a), side, 2) < 0.3 ? 2 : 0.4);
@@ -445,12 +534,11 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
               continue;
             const p = w(s, side * (outer + back), 0);
             place({
-              model: 'kit',
+              ...towerOf(pick, 0.75 + 0.6 * h(k + Math.round(a), side, 3)),
               variant: pick,
               rule: want === 'plaza' ? 'plaza-tower' : 'tower',
               p: { x: p.x, y: p.y + LAND_TOP_M, z: p.z },
               turn: faceRoad(p, s),
-              sy: 0.75 + 0.6 * h(k + Math.round(a), side, 3),
               foot: p.y - TOWER_SINK_M,
               edge: e.index,
               s,
@@ -465,7 +553,7 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
       for (const [a, b] of runs(side, 'downtown')) {
         for (let k = 0; ; k++) {
           const s = a + (k + 0.5) * BACK_ROW_EVERY_M;
-          if (s + 12 > b) break;
+          if (s + (stacked ? 17 : 12) > b) break;
           if (h(k + Math.round(a), side, 4) < 0.25) continue;
           const variant =
             BACK_MIX[Math.floor(h(k + Math.round(a), side, 5) * BACK_MIX.length)] ?? DT.towerGlass;
@@ -474,12 +562,11 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
           const d = side * (outer + BACK_ROW_M + 10 * h(k, side, 6));
           const p = w(s, d, 0);
           place({
-            model: 'kit',
+            ...towerOf(variant, 1.2 + 1.0 * h(k + Math.round(a), side, 7)),
             variant,
             rule: 'back-tower',
             p: { x: p.x, y: w(s, 0, 0).y + LAND_TOP_M, z: p.z },
             turn: faceRoad(p, s),
-            sy: 1.2 + 1.0 * h(k + Math.round(a), side, 7),
             foot: CITY_FLOOR_Y - 1,
             edge: e.index,
             s,
@@ -699,18 +786,17 @@ export function planDowntown(input: DowntownInput): DowntownPlan {
             scatterHash(seed, 6007 + c.edge * 131 + Math.round(c.s), k, sign * 3 + vs) < 0.7
               ? DT.midrise
               : DT.towerStone;
-          const [width] = FOOTPRINT[variant] ?? [20, 18];
+          const [width] = footprint(variant);
           const u = cursor + width / 2;
           cursor += width + 1;
           const base = at(sign * u, vs * c.half);
           const toStreet = at(sign * u, 0);
           place({
-            model: 'kit',
+            ...towerOf(variant, 0.8 + 0.6 * scatterHash(seed, 6011 + c.edge, k, sign * 5 + vs)),
             variant,
             rule: 'cross-building',
             p: { x: base.x, y: base.y + 0.05, z: base.z },
             turn: Math.atan2(toStreet.x - base.x, toStreet.z - base.z),
-            sy: 0.8 + 0.6 * scatterHash(seed, 6011 + c.edge, k, sign * 5 + vs),
             foot: CITY_FLOOR_Y - 1,
             edge: c.edge,
             s: c.s,
@@ -983,9 +1069,11 @@ export class DowntownLayer {
     cableCar: SceneryModel | undefined,
     private readonly look: LookStyle,
     private readonly input: DowntownInput,
+    /** CX3's tower modules with their atlas (models.ts `sfTowerModules`); without them the kit's towers stretch. */
+    private readonly modules?: SceneryModel,
   ) {
     this.group.name = 'road-downtown';
-    this.plan = planDowntown(input);
+    this.plan = planDowntown({ ...input, stacked: modules !== undefined });
     this.stretches = this.plan.stretches.map((s) => ({ ...s, mesh: null }));
     this.vehicles = seedCrossTraffic(this.plan.crossings, input.seed);
     const material = look.material('vehicle', { vertexColors: true });
@@ -1103,17 +1191,45 @@ export class DowntownLayer {
     st.mesh = null;
   }
 
+  /**
+   * The geometries an item draws, each with the height it stands at above the item's base, its
+   * vertical scale and whether its bottom is pushed down to the item's foot: one part for a kit or
+   * props item, a base, its mids and a crown for a stacked tower (never scaled in y).
+   */
+  private partsOf(it: DowntownItem): { g: BufferGeometry; lift: number; sy: number; sink: boolean }[] {
+    if (it.model === 'tower') {
+      const style = MODULE_STYLE[it.variant];
+      const vs = this.modules?.variants;
+      const base = style === undefined ? undefined : vs?.[style * 3];
+      const mid = style === undefined ? undefined : vs?.[style * 3 + 1];
+      const crown = style === undefined ? undefined : vs?.[style * 3 + 2];
+      if (!base || !mid || !crown) return [];
+      const mids = it.mids ?? 1;
+      const parts = [{ g: base, lift: 0, sy: 1, sink: true }];
+      for (let k = 0; k < mids; k++)
+        parts.push({ g: mid, lift: MODULE_M.base + k * MODULE_M.mid, sy: 1, sink: false });
+      parts.push({ g: crown, lift: MODULE_M.base + mids * MODULE_M.mid, sy: 1, sink: false });
+      return parts;
+    }
+    const g = (it.model === 'kit' ? this.kit : this.props)?.variants[it.variant];
+    return g ? [{ g, lift: 0, sy: it.sy, sink: true }] : [];
+  }
+
   private build(st: Built) {
     const soup = this.plan.soups.get(st.key);
     const items = this.plan.items.filter(
       (it) => `${it.edge}:${Math.floor(Math.max(0, it.s) / STRETCH_M)}` === st.key,
     );
+    const placed = items.map((it) => ({ it, parts: this.partsOf(it) }));
+    // The stretch draws with the region atlas as its map when the modules brought one (every part
+    // that is not an atlas surface samples its white tile: still one mesh, one draw).
+    const map = this.modules?.map;
     let total = soup ? soup.pos.length / 3 : 0;
-    const geoOf = (it: DowntownItem) => (it.model === 'kit' ? this.kit : this.props)?.variants[it.variant];
-    for (const it of items) total += geoOf(it)?.getAttribute('position').count ?? 0;
+    for (const { parts } of placed) for (const p of parts) total += p.g.getAttribute('position').count;
     const pos = new Float32Array(total * 3);
     const nrm = new Float32Array(total * 3);
     const col = new Float32Array(total * 3);
+    const uv = map ? new Float32Array(total * 2) : null;
     let o = 0;
     if (soup) {
       pos.set(soup.pos, 0);
@@ -1130,38 +1246,48 @@ export class DowntownLayer {
         b.cross(c).normalize();
         for (let k = 0; k < 3; k++) b.toArray(nrm, (i + k) * 3);
       }
+      if (uv) for (let v = 0; v < o; v++) uv.set(ATLAS_WHITE_UV, v * 2);
     }
-    for (const it of items) {
-      const g = geoOf(it);
-      if (!g) continue;
-      const gp = g.getAttribute('position').array;
-      const gn = g.getAttribute('normal').array;
-      const gc = g.getAttribute('color').array;
-      const n = gp.length / 3;
-      col.set(gc, o * 3);
+    for (const { it, parts } of placed) {
       const cos = Math.cos(it.turn);
       const sin = Math.sin(it.turn);
-      for (let i = 0; i < n; i++, o++) {
-        const x = gp[i * 3] ?? 0;
-        const y = gp[i * 3 + 1] ?? 0;
-        const z = gp[i * 3 + 2] ?? 0;
-        pos[o * 3] = it.p.x + x * cos + z * sin;
-        // A tower's foot reaches down under the slope; the rest scales with its height.
-        pos[o * 3 + 1] = it.foot !== null && y < 0.01 ? it.foot : it.p.y + y * it.sy;
-        pos[o * 3 + 2] = it.p.z + z * cos - x * sin;
-        const nx = gn[i * 3] ?? 0;
-        const nz = gn[i * 3 + 2] ?? 0;
-        nrm[o * 3] = nx * cos + nz * sin;
-        nrm[o * 3 + 1] = gn[i * 3 + 1] ?? 0;
-        nrm[o * 3 + 2] = nz * cos - nx * sin;
+      for (const part of parts) {
+        const g = part.g;
+        const gp = g.getAttribute('position').array;
+        const gn = g.getAttribute('normal').array;
+        const gc = g.getAttribute('color').array;
+        const guv = uv && hasAtlasUv(g) ? g.getAttribute('uv').array : null;
+        const n = gp.length / 3;
+        col.set(gc, o * 3);
+        if (uv) {
+          if (guv) uv.set(guv, o * 2);
+          else for (let v = 0; v < n; v++) uv.set(ATLAS_WHITE_UV, (o + v) * 2);
+        }
+        for (let i = 0; i < n; i++, o++) {
+          const x = gp[i * 3] ?? 0;
+          const y = gp[i * 3 + 1] ?? 0;
+          const z = gp[i * 3 + 2] ?? 0;
+          pos[o * 3] = it.p.x + x * cos + z * sin;
+          // A tower's foot reaches down under the slope; the rest scales with its height (a stacked
+          // tower's modules stand at their heights, unscaled).
+          pos[o * 3 + 1] =
+            part.sink && it.foot !== null && y < 0.01 ? it.foot : it.p.y + part.lift + y * part.sy;
+          pos[o * 3 + 2] = it.p.z + z * cos - x * sin;
+          const nx = gn[i * 3] ?? 0;
+          const nz = gn[i * 3 + 2] ?? 0;
+          nrm[o * 3] = nx * cos + nz * sin;
+          nrm[o * 3 + 1] = gn[i * 3 + 1] ?? 0;
+          nrm[o * 3 + 2] = nz * cos - nx * sin;
+        }
       }
     }
     const geo = new BufferGeometry();
     geo.setAttribute('position', new Float32BufferAttribute(pos.subarray(0, o * 3), 3));
     geo.setAttribute('normal', new Float32BufferAttribute(nrm.subarray(0, o * 3), 3));
     geo.setAttribute('color', new Float32BufferAttribute(col.subarray(0, o * 3), 3));
+    if (uv) geo.setAttribute('uv', new Float32BufferAttribute(uv.subarray(0, o * 2), 2));
     geo.computeBoundingSphere();
-    const mesh = new Mesh(geo, this.look.material('prop', { vertexColors: true }));
+    const mesh = new Mesh(geo, this.look.material('prop', { vertexColors: true, ...(map ? { map } : {}) }));
     mesh.name = 'road-downtown';
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
