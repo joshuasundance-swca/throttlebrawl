@@ -152,6 +152,11 @@ function fly(
     steerAfter?: number;
     /** `air`: steer right in the air over the avenue (the default); `ground`: only once down again. */
     steerWhen?: 'air' | 'ground';
+    /**
+     * A thumb that holds the stick (1 right, -1 left, 0 none) from the lip until the bike is down,
+     * over whatever road it is above, however far it has gone: it overrides `steerWhen`.
+     */
+    held?: -1 | 0 | 1;
     maxTicks?: number;
   },
 ): Flight {
@@ -167,7 +172,9 @@ function fly(
     if (air) airTicks++;
     const onAvenue = h.rider.pos.edge === avenue;
     let steer = 0;
-    if (opts.steerWhen === 'ground') {
+    if (opts.held !== undefined) {
+      steer = air ? opts.held : jumped ? follow(h) : 0;
+    } else if (opts.steerWhen === 'ground') {
       // Down again after the jump on the avenue's own road: press right against the wall.
       if (jumped && !air && onAvenue) steer = 1;
       else if (!air && !onAvenue) steer = follow(h);
@@ -357,6 +364,48 @@ describe.each(CUTS)('$name', (cut) => {
       console.log(`[examined] right only once down, ${speed} m/s: ${down.edges.join(' > ')}`);
       for (const id of cut.roads) expect(down.edges, `${speed} down: ${id}`).not.toContain(id);
     }
+  });
+
+  it("has a soft edge on the right of every road of the cut, so the cut's far side is never a wall that crashes a flight", () => {
+    for (const id of cut.roads) {
+      const e = l.road.edgeIndex(id);
+      const len = l.road.edges[e]?.length ?? 0;
+      for (const s of [0, len / 2, len]) {
+        const v = l.road.vergeAt(e, s, 'right');
+        expect(v.edge, `${id} s ${s}`).toBe('soft');
+        expect(v.widthM, `${id} s ${s}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('a thumb that holds right, holds left or holds nothing from the lip until the bike is down never crashes, at any speed off the lip, and rides on to the end of the route', () => {
+    // The wave-B live check: a player who held the stick right through the whole flight crossed the
+    // Plaza Cut in the air and crashed into its far edge (3 of 3). Whatever the thumb holds, the bike
+    // comes down on the cut or on the avenue, and nothing on the way is a wall that crashes it.
+    if (!truck) throw new Error('no truck');
+    const edge = rightEdge(l.road, avenue, truck.s0);
+    let flights = 0;
+    const lines: string[] = [];
+    for (const held of [1, -1, 0] as const) {
+      for (const speed of [24, 30, 36, 40, 44, 48]) {
+        for (const d of [truck.d0 + 0.3, Math.min(truck.d1, edge - 1.2)]) {
+          const f = fly(l, cut, { speed, d, steerUntilD: 0, held, maxTicks: 2400 });
+          flights++;
+          const label = `held ${held}, ${speed} m/s from d ${d.toFixed(1)}`;
+          lines.push(
+            `${label}: ${f.edges.join(' > ')}; landed ${f.landing?.edge} d ${f.landing?.d.toFixed(2)}; ${f.events.filter((e) => e === 'crash' || e === 'wobble').join(',') || 'clean'}`,
+          );
+          expect(f.events, label).not.toContain('crash');
+          expect(f.landing, label).not.toBeNull();
+          // Down on the route's own roads (the avenue's pieces and the cut's), and on to its last piece.
+          for (const id of f.edges)
+            expect(l.route.allows(l.road.edgeIndex(id)), `${label}: ${id}`).toBe(true);
+          expect(f.edges.at(-1), label).toBe(cut.end);
+        }
+      }
+    }
+    console.log(`[examined] ${flights} held-stick flights up the truck\n  ${lines.join('\n  ')}`);
+    expect(flights).toBe(36);
   });
 
   it('is shut to every rival, the bold included, and to the law', () => {

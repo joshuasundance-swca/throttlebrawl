@@ -81,6 +81,10 @@ export const VERGE_BY_TAG: readonly (readonly [tag: string, verge: BakedVerge])[
   ['cross-street', band(20, 'shoulder', 'soft')],
   ['cable-crossing', band(20, 'shoulder', 'soft')],
   ['plaza', band(18, 'kerb', 'soft')],
+  // The Plaza Cut's own roads (playtest 3, T5.2; render reads no theme from this tag): a bike held to
+  // the right through its whole flight crosses the cut in the air, and a hard edge there is a crash.
+  // The paving runs on 2 m, soft: it holds the bike at the cut's side with no event.
+  ['plaza-cut', band(2, 'kerb', 'soft')],
   ['towers', band(4, 'kerb', 'hard')],
   // San Francisco's mural alleys (run W-U; the pitch deck after playtest 2, #8: "the Mission's mural
   // alleys"): an alley's painted walls stand 1.5 m past the shoulder, the mascot's corner wall the
