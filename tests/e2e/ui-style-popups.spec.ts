@@ -706,8 +706,7 @@ async function rideToPaidLanding(page: Page, where: string): Promise<void> {
         g?.setSeed(s);
         g?.setBot(true);
       }, seed);
-      await page.locator('#start-screen').click();
-      await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+      await rideFirstCareerRace(page);
     }
     await page.evaluate(() => {
       const g = (window as TestWindow).__game;
