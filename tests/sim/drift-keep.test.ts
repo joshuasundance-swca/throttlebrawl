@@ -252,7 +252,8 @@ describe('drift keep: bumps and a stagger', () => {
   it("a car's side brush (traffic's wobble) ends the slide and keeps the chain, which banks when the window lapses", () => {
     const played = play({
       systems: [ridersSystem, trafficSystem, tumbleSystem],
-      tuning: { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0 },
+      // No other cars, and drift room (a car edging aside for a drifter) off, so the one car is where it is put.
+      tuning: { 'traffic.densitySame': 0, 'traffic.densityOncoming': 0, 'traffic.driftRoomM': 0 },
       incident: ({ world, config, t, player }) => {
         if (t !== INCIDENT_TICK) return;
         // A car alongside, a metre ahead, at the rider's speed, in the next lane over.
