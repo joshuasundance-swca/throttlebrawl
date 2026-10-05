@@ -9,7 +9,8 @@ from _lib import MB, empty, export, make_mats, out_path, reset_scene, text_panel
 COLOURS = {"concrete": "#c9c8bc", "steel_dark": "#283c43", "trim": "#ffffff",
            "car_red": "#d55448", "paint_yellow": "#efca56", "sign_face": "#276548",
            "wood": "#a58463", "light_head": "#fff0c2",
-           "brick": "#a76046", "foliage": "#47845a"}
+           "brick": "#a76046", "foliage": "#47845a",
+           "car_blue": "#203c58", "car_white": "#f2f0e8", "glass": "#293e49", "car_yellow": "#e4a23e"}
 
 
 def east_martello(mats, root, far):
@@ -75,6 +76,42 @@ def west_martello(mats, root):
     mb.build("west_martello_body", mats, root)
 
 
+def cruise(name,x,mats,detailed):
+    from _lib import P
+
+    root = empty(name,loc=(x,0,0))
+    root["top_m"],root["foundation_m"] = 60,8
+    mb = MB(["car_blue","car_white","glass","car_yellow","trim"])
+    # Squared stern, broad beam, raked and tapered bow: two unequal hull rings.
+    bottom = [(-13,-141),(13,-141),(13,104),(0,136),(-13,104)]
+    upper = [(-18,-145),(18,-145),(18,110),(0,145),(-18,110)]
+    mb.loft([[P(xx,f,h) for xx,f in plan] for plan,h in ((bottom,-8),(upper,12))],"car_blue")
+    for f0,f1,w,low,high in ((-132,117,16.5,12,30),(-115,101,15.5,30,45),(-92,78,13.5,45,52)):
+        mb.box(f0,f1,-w,w,low,high,"car_white")
+    mb.box(-75,-53,-5,5,52,60,"trim")
+    if detailed:
+        # Eight dark balcony courses on each side, in stepped white superstructure.
+        for side in (-1,1):
+            for k in range(8):
+                h = 14+k*4
+                w,f0,f1 = (16.5,-131,115) if h<30 else ((15.5,-114,100) if h<45 else (13.5,-91,77))
+                mb.side_quad(side*(w+0.035),f0,f1,h,h+1.65,"glass",side)
+            for f in (-97,-65,-33,-1,31,63):
+                cx = side*16.5
+                boat = [(cx-0.9,f-5.4),(cx-0.9,f+5.4),(cx,f+7),
+                        (cx+0.9,f+5.4),(cx+0.9,f-5.4),(cx,f-7)]
+                mb.loft([[P(xx,ff,h) for xx,ff in boat] for h in (24.5,27)],"car_yellow")
+        # Forward bridge has projecting wings but stays within the hull's beam.
+        mb.box(72,85,-18,18,46,49,"car_white")
+        mb.front_quad(85.035,-17,17,46.5,48.5,"glass")
+        for side in (-1,1):
+            mb.side_quad(side*18.035,73,84,46.5,48.5,"glass",side)
+        # Roof recreation deck and plain rail silhouettes, no funnel markings.
+        mb.box(-24,26,-7,7,52,52.3,"trim")
+        mb.box(-23,25,-4,4,52.3,52.45,"glass")
+    mb.build(name+"_body",mats,root)
+
+
 def main():
     reset_scene()
     mats = make_mats(COLOURS)
@@ -127,6 +164,8 @@ def main():
     east_martello(mats, empty("east_martello_lod0", loc=(68, 0, 0)), False)
     east_martello(mats, empty("east_martello_lod1", loc=(123, 0, 0)), True)
     west_martello(mats, empty("west_martello", loc=(170, 0, 0)))
+    cruise("cruise_ship_lod0",280,mats,True)
+    cruise("cruise_ship_lod1",335,mats,False)
     export(out_path(), texcoords=True)
 
 
