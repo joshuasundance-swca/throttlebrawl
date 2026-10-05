@@ -1,0 +1,7 @@
+---
+kind: fixed
+audience: player
+---
+Two small-phone layout fixes. On the career map, the line under the title ("Tier 1 of 4: ...") is no longer cut off by the title banner's red underline, and the small build label in the corner no longer sits on top of a card's last line or a "LOCKED" tier header: it steps to the other corner, or hides, when words or buttons are under it, including as you scroll. On a short phone held sideways (568 by 320, and 640 by 360), the main menu was taller than the screen, so Settings was off the bottom; the menu is now tighter (smaller title, buttons and chips, one or two lines of blurb) and fits, and the "what's new" card moves under the menu there instead of squeezing beside it.
+
+For devs: `src/ui/index.ts` (`keepStampClear` now also counts each line of text inside `#career`, `#career-results` and `#career-teaser`, and re-checks on scroll; a `max-height: 380px` landscape block for `#menu`), `src/ui/career-screen.ts` (`.career-head .career-tally` margin). Layout check: `tests/e2e/career-layout.spec.ts` measures the underline and the stamp against every word and control on the map (each region) and the garage, scrolled to the top, middle and end, in every look at 915x412 and 568x320, with negative controls and an empty known list; `tests/e2e/ui-style-popups.spec.ts` has a menu fit check at four sizes with the card up and dismissed. Browser specs were not run on the dev machine (CI runs them). Not phone-verified.

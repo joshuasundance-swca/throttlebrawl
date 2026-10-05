@@ -321,6 +321,31 @@ const CSS = `
   transform: rotate(-1deg); }
 #region-picker .region-blurb { font: italic 500 13px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; max-width: 100%; }
+/* A short phone held sideways (568x320, 640x360): the menu was taller than the screen, so Settings
+   sat below it (playtest 3, wave B's check F1). Short screens get a tighter menu: smaller title,
+   buttons and chips (still 40 px or more to touch), one-line labels, a blurb clipped to two lines, and
+   the what's-new card stacked under the menu instead of beside it (it would squeeze the region chips
+   into a column), so the controls come first and the card is a scroll away. The screen also scrolls,
+   which keeps a taller state reachable. The footer's build id keeps the bottom 22 px, and gives way to
+   the card (the stamp carries the build id then). [default] */
+@media (orientation: landscape) and (max-height: 380px) {
+  #ui #menu { justify-content: safe center; overflow-y: auto; padding-top: 4px; padding-bottom: 22px; }
+  #ui #menu > * { flex-shrink: 0; }
+  #ui #menu.with-news { flex-direction: column; gap: 6px; }
+  #ui #menu.with-news .footer { display: none; }
+  #ui #menu .menu-main { gap: 3px; }
+  #ui #menu .title { font-size: 20px; padding: 1px 12px; }
+  #ui #menu .big { font-size: 20px; min-height: 42px; padding: 4px 28px; }
+  #ui #menu .small { font-size: 13px; min-height: 40px; padding: 2px 12px; }
+  #ui #menu #region-picker, #ui #menu #route-picker { gap: 2px; }
+  #ui #menu #region-picker .row { gap: 6px; }
+  #ui #menu #route-picker .route-row { gap: 6px; padding: 2px 4px 3px; }
+  #ui #menu .region-label, #ui #menu .route-label { font-size: 11px; line-height: 13px; }
+  #ui #menu .region-blurb, #ui #menu .route-blurb { font-size: 11px; line-height: 1.2; display: -webkit-box;
+    -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  #ui #menu #region-picker.route-picked .region-blurb { display: none; }
+  #ui #menu #whats-new { width: min(560px, 100%); }
+}
 #start-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
 #hud-speed, #hud-position, #hud-health, #hud-target { position: absolute; padding: 4px 10px; background: #0008;
   border-radius: 4px; white-space: nowrap; }
@@ -1548,6 +1573,11 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // window resizes, or a screen's content changes (a tab, the career map arriving).
   const STAMP_AVOIDS = 'button, input, select, textarea, label, summary, a, .footer, .setting-label, output';
   const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  const STAMP_TEXT_SCREENS = [
+    '#career:not([hidden]) *',
+    '#career-results:not([hidden]) *',
+    '#career-teaser:not([hidden]) *',
+  ].join(', ');
   let stampQueued = false;
   const keepStampClear = () => {
     stampQueued = false;
@@ -1567,6 +1597,18 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
         controls.push(boxOf(words.getBoundingClientRect()));
       } else controls.push(boxOf(e.getBoundingClientRect()));
     }
+    // The career screens scroll and are mostly words in cards, not controls: their words count too
+    // (playtest 3, wave B's check: the stamp sat over a side-gig card's last line and a tier's LOCKED
+    // header). Each line of text is its own box, so a card's blank corner never blocks the stamp.
+    for (const e of root.querySelectorAll<HTMLElement>(STAMP_TEXT_SCREENS)) {
+      if (e.getClientRects().length === 0 || getComputedStyle(e).visibility === 'hidden') continue;
+      for (const n of e.childNodes) {
+        if (n.nodeType !== Node.TEXT_NODE || (n.textContent ?? '').trim() === '') continue;
+        const words = document.createRange();
+        words.selectNodeContents(n);
+        for (const r of words.getClientRects()) controls.push(boxOf(r));
+      }
+    }
     const spot = pickStampSpot({ left: leftBox, right: rightBox }, controls);
     if (spot === 'right') stamp.classList.add('at-right');
     else if (spot === 'hidden') stamp.classList.add('yield');
@@ -1577,6 +1619,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     requestAnimationFrame(keepStampClear);
   };
   window.addEventListener('resize', queueStampCheck);
+  // A scrolling screen (the career's) moves its words under the stamp without changing the DOM.
+  root.addEventListener('scroll', queueStampCheck, { capture: true, passive: true });
   new MutationObserver(queueStampCheck).observe(root, {
     subtree: true,
     childList: true,
