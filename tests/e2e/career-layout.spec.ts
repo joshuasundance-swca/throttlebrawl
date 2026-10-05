@@ -291,6 +291,10 @@ async function careerFindings(page: Page, stampBox?: Rect4 | null) {
         const range = document.createRange();
         range.selectNodeContents(n);
         for (const r of range.getClientRects()) {
+          // A line under half a pixel either way paints no readable word, and the stamp's own rule
+          // (ui/stamp.ts) skips an unpainted box too: the map's secret marks are sized in the
+          // network's metres, so at a whole-network scale they can come out that small.
+          if (r.width < 0.5 || r.height < 0.5) continue;
           words++;
           if (sb && hit(sb, r))
             out.add(`the stamp covers ${name} "${(n.textContent ?? '').trim().slice(0, 24)}"`);

@@ -1378,6 +1378,8 @@ test('the menu fit check names a control that is off the screen (negative contro
   await page.goto('./');
   await page.locator('#start-screen').click();
   await expect(page.locator('#menu-race')).toBeVisible();
+  // The start tap may take the page fullscreen, and a fullscreen window cannot be resized.
+  await page.evaluate(() => (document.fullscreenElement ? document.exitFullscreen() : undefined));
   await page.setViewportSize({ width: 568, height: 120 });
   await settleStamp(page);
   const squeezed = await menuOffScreen(page);
