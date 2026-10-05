@@ -470,6 +470,10 @@ ${REDUCE_MOTION_CSS}
 #ui .look-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui .look-offer .row { justify-content: flex-start; gap: 6px; }
 #ui .look-offer .small { min-height: 40px; padding: 4px 8px; font-size: 0.8125rem; pointer-events: auto; }
+/* The race's copy keeps the Normal size at every Text size: in the near column (148 px across on a
+   640 x 360 phone) the larger words and buttons wrapped into a card 183 px tall, down onto the health
+   bars. The pause menu's copy of the offer (#pause-look-offer) grows with the setting. [default] */
+#ui #look-offer .look-offer-text, #ui #look-offer .small { font-size: 13px; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 #ui[data-top='stacked']:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 #build-stamp.in-race { display: none; }

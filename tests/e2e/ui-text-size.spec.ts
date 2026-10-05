@@ -68,16 +68,17 @@ function findOverflow(page: Page) {
 
 /** Every visible button on the screen can be scrolled onto it and then hit: nothing covers it. */
 async function expectButtonsReachable(page: Page, where: string, scope: string) {
-  const ids = await page.evaluate(
-    (s) =>
-      [...document.querySelectorAll<HTMLElement>(`${s} button`)]
-        .filter((b) => b.checkVisibility())
-        .map((b, i) => {
-          b.dataset['tsProbe'] = String(i);
-          return b.dataset['tsProbe'];
-        }),
-    scope,
-  );
+  const ids = await page.evaluate((s) => {
+    // A probe left on a button of the last tab (now hidden) would match twice: clear them first.
+    for (const old of document.querySelectorAll<HTMLElement>('[data-ts-probe]'))
+      delete old.dataset['tsProbe'];
+    return [...document.querySelectorAll<HTMLElement>(`${s} button`)]
+      .filter((b) => b.checkVisibility())
+      .map((b, i) => {
+        b.dataset['tsProbe'] = String(i);
+        return b.dataset['tsProbe'];
+      });
+  }, scope);
   expect(ids.length, `${where}: buttons found`).toBeGreaterThan(0);
   const unreachable: string[] = [];
   for (const id of ids) {

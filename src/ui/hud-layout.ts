@@ -86,7 +86,8 @@ export const TOAST_STACK_H = 76;
 export const TOAST_COLUMN_H = 150;
 /**
  * The part of those two heights that is words (three lines of 13 px type in the column, two in the
- * strip); the buttons are 40 px tall at every Text size, so only the words grow with it.
+ * strip); the buttons are 40 px tall at every Text size, so only the words grow with it. The race's
+ * offer now draws at the Normal size at every Text size (ui/index.ts), so this is headroom.
  */
 export const TOAST_COLUMN_WORDS_H = 51;
 export const TOAST_STACK_WORDS_H = 34;
