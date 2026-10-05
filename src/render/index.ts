@@ -414,6 +414,9 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         ...(scenes?.reserved() ?? []),
         ...(landmarksModule ? landmarksModule.landmarkFootprints(roadArgs.road) : []),
       ],
+      // Playtest 3 (T12.1): rules that draw from another kit (Key West's Old Town, the Duval kit,
+      // with its region atlas loaded alongside it in models.ts).
+      models,
     });
     scene.add(roadside.group);
   };

@@ -331,6 +331,8 @@ describe('the Blender models (playtest 1c item 4)', async () => {
       // run W-Q adds each key's own props (fishing village, resort strip, junkyard key, party key)
       keysRoadside: 26,
       sfDowntown: 12,
+      // playtest 3 (T12.1): Key West's Old Town, Codex CX2's Duval kit
+      duvalKit: 8,
     };
     const lines: string[] = [];
     for (const kind of MODEL_KINDS) {

@@ -55,6 +55,8 @@ const LAZY_MODULES = [
   /[\\/]src[\\/]render[\\/]looks[\\/]post\.ts$/,
   /[\\/]src[\\/]render[\\/]models\.ts$/,
   /[\\/]src[\\/]render[\\/]glb\.ts$/,
+  // The region atlas (playtest 3, T12.1): its decoder loads with the models that sample it.
+  /[\\/]src[\\/]render[\\/]atlas\.ts$/,
   // Landmarks (playtest 3): loaded with a race whose road has a `landmark` feature.
   /[\\/]src[\\/]render[\\/]landmarks\.ts$/,
   // Traffic models (playtest 3, T12.2): loaded with a race's traffic types, never the first screen.
