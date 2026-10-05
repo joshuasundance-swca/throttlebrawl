@@ -1,5 +1,6 @@
 // platform: the start-tap sequence, the rotate-your-phone trigger, every lifecycle listener, the
-// page guards, the screen wake lock and the app-id constant (docs/architecture.md, "Input" and
+// page guards, the screen wake lock, the offline worker's registration, the install offer and the
+// app-id constant (docs/architecture.md, "Input" and
 // "Fixed timestep and the loop"; docs/milestones/M1.md, platform-1; docs/milestones/M2.md,
 // platform-2). platform/ may import only core/, so audio arrives as
 // the injected `resumeAudio` callback. The browser APIs sit behind `PlatformEnv`, so the unit
@@ -408,4 +409,119 @@ export function keepAwake(on: boolean): void {
 /** Whether the screen wake lock is held right now. */
 export function wakeLockHeld(): boolean {
   return page().wakeLockHeld();
+}
+
+// ---- Offline play and installing as an app (roadmap M5, launch polish) ----------------------
+// The maintainer: "Offline definitely preferable". The worker (sw.ts, its policy offline-worker.ts)
+// caches the whole build once the page has loaded, so a loaded game plays with the network off;
+// public/manifest.webmanifest makes the game installable. docs/engineering.md, "Deploy", Offline.
+
+/** The worker's file, beside index.html (scripts/service-worker.mjs writes it). */
+export const SERVICE_WORKER_FILE = 'sw.js';
+
+/** The part of `navigator` the registration needs; the real one or a test's stand-in. */
+interface WorkerNavigator {
+  serviceWorker?: { register(url: string, opts?: { scope?: string }): Promise<unknown> };
+}
+
+/**
+ * Registers the offline worker, scoped to the page's folder, once the page has loaded (`loaded`
+ * says it already has), so its downloads never compete with the first screen. Resolves true once
+ * registered; false where there are no service workers or the browser refused (a test browser that
+ * blocks them, a private window). Never throws and logs nothing: the game plays the same online.
+ */
+export function registerOfflineWorker(
+  nav: WorkerNavigator,
+  win: EventTarget,
+  loaded: boolean,
+): Promise<boolean> {
+  const sw = nav.serviceWorker;
+  if (!sw || typeof sw.register !== 'function') return Promise.resolve(false);
+  const register = () =>
+    sw.register(`./${SERVICE_WORKER_FILE}`, { scope: './' }).then(
+      () => true,
+      () => false,
+    );
+  if (loaded) return register();
+  return new Promise((resolve) => win.addEventListener('load', () => resolve(register()), { once: true }));
+}
+
+/**
+ * The game's own offline worker, in a production build only: a dev server's modules change on every
+ * save and must never be cached.
+ */
+export function startOffline(): void {
+  if (!import.meta.env.PROD || typeof window === 'undefined') return;
+  void registerOfflineWorker(navigator, window, document.readyState === 'complete');
+}
+
+/** Chrome's `beforeinstallprompt` event: the browser offering to install the page as an app. */
+interface InstallPromptEvent extends Event {
+  prompt(): Promise<unknown>;
+  userChoice?: Promise<{ outcome: string }>;
+}
+
+/** What the menu's Install button reads and taps (ui's `InstallSource` has the same shape). */
+export interface InstallOffer {
+  /** Whether the browser offers an install right now. */
+  available(): boolean;
+  /**
+   * The browser's install prompt, opened inside the caller's tap (it needs the tap's activation).
+   * Resolves to the player's answer, or 'unavailable' when nothing is offered.
+   */
+  prompt(): Promise<'accepted' | 'dismissed' | 'unavailable'>;
+  /** Called whenever `available()` may have changed. */
+  onChange(cb: () => void): void;
+}
+
+/**
+ * The install offer, which never nags: the browser's own automatic install banner is held back (it
+ * would pop over the game), and the offer waits for the player to tap the menu's Install button.
+ * Browsers without the event (iOS Safari, Firefox) still install from their own menus.
+ */
+export function createInstallOffer(win: EventTarget): InstallOffer {
+  let held: InstallPromptEvent | null = null;
+  const watchers: (() => void)[] = [];
+  const changed = () => {
+    for (const cb of watchers) cb();
+  };
+  win.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    held = e as InstallPromptEvent;
+    changed();
+  });
+  win.addEventListener('appinstalled', () => {
+    held = null;
+    changed();
+  });
+  return {
+    available: () => held !== null,
+    prompt() {
+      const e = held;
+      if (!e) return Promise.resolve('unavailable');
+      // An offer prompts once; the browser offers again later if the player said no.
+      held = null;
+      let shown: Promise<unknown>;
+      try {
+        shown = e.prompt();
+      } catch (err) {
+        shown = Promise.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+      changed();
+      return shown
+        .then(() => e.userChoice)
+        .then(
+          (c) => (c?.outcome === 'accepted' ? 'accepted' : 'dismissed'),
+          () => 'dismissed' as const,
+        );
+    },
+    onChange: (cb) => void watchers.push(cb),
+  };
+}
+
+let sharedOffer: InstallOffer | null = null;
+/** The page's one install offer, listening from the first call (app/ makes it at boot). */
+export function installOffer(): InstallOffer {
+  sharedOffer ??= createInstallOffer(window);
+  return sharedOffer;
 }

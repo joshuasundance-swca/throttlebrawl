@@ -19,7 +19,7 @@ import {
   wheelieOf,
 } from './riders';
 import { smashSnapshots, SMASH_TUNING, withSmashables } from './smash';
-import { trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
+import { trafficGhost, trafficSystem, TRAFFIC_TUNING, vehicleInfo } from './traffic';
 import { parkedBike, tumbleRecord, tumbleSystem, TUMBLE_TUNING, type TumbleBody } from './tumble';
 import type {
   EntitySnapshot,
@@ -161,6 +161,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       // Playtest 3's moves: the wheelie's angle and the drift's slip.
       wheelie: m.kind === 'rider' ? wheelieOf(world, m) : 0,
       drift: m.kind === 'rider' ? driftOf(world, m) : 0,
+      // Playtest 4: back on the bike, riding through traffic for a moment.
+      ghost: m.kind === 'rider' && trafficGhost(world, m.id),
     };
   });
   return {

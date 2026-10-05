@@ -116,6 +116,10 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('farLookAheadM', 'Far chase: look-ahead', 28, 5, 60, 1, 'm'),
   decl('helmetHeightM', 'Helmet cam: eye height', 1.78, 1.5, 2.1, 0.02, 'm'),
   decl('helmetForwardM', 'Helmet cam: eye forward', 0.1, -0.2, 0.4, 0.02, 'm'),
+  // 2026-10-05 [default] (the maintainer: "in first person helmet view it seems easy to clip through
+  // cars"): how far the eye swings sideways with the lean, inside the rider's 0.4 m half-width
+  // contact box with 0.2 m to spare (chase.ts helmetPlacement; tests/sim/helmet-traffic.test.ts).
+  decl('helmetReachM', 'Helmet cam: farthest the eye leans out', 0.2, 0, 1.3, 0.05, 'm'),
   decl('helmetLookAheadM', 'Helmet cam: look-ahead', 30, 8, 60, 1, 'm'),
   decl('helmetAimHeightM', 'Helmet cam: aim height', 1.1, 0, 2, 0.1, 'm'),
   decl('helmetFovDeg', 'Helmet cam: field of view', 70, 50, 95, 1, '°'),

@@ -360,6 +360,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.driftDrag',
       'riders.driftChainS',
       'riders.driftMinMps',
+      'riders.driftEdgeForgive',
       'riders.driftExitMps',
       'riders.smokeSlowdown',
     ]);

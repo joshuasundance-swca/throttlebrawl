@@ -116,7 +116,8 @@
               "s1": 770,
               "d0": 12.5,
               "d1": 15,
-              "item": "lake-samish-keep-right"
+              "item": "lake-samish-keep-right",
+              "params": { "style": "guide" }
             }
           ]
         },
@@ -132,7 +133,8 @@
               "s1": 410,
               "d0": 12.5,
               "d1": 15,
-              "pool": "signs"
+              "pool": "signs",
+              "params": { "style": "guide" }
             },
             {
               "kind": "boostPad",
@@ -176,7 +178,8 @@
               "s1": 4610,
               "d0": 12.5,
               "d1": 15,
-              "pool": "signs"
+              "pool": "signs",
+              "params": { "style": "guide" }
             }
           ]
         },
