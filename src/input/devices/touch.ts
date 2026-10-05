@@ -13,9 +13,10 @@
 // - The attack button sets `attack` on the press (one tick), with the auto-target side. Within
 //   attackDragMs, a flat sideways drag beyond attackDragPx picks a side; within kickSwipeMs, a
 //   swipe beyond kickSwipePx within kickConeDeg (60) of straight down turns it into a kick. The
-//   directional kick (playtest 2, 2026-10-02): a kick swipe leaning more than kickSideDeg (20)
-//   from straight down kicks to the side it leans to, and a swipe within 45 degrees of straight UP
-//   is the straight kick at the rider ahead. Side and kick are level-held while the finger stays
+//   directional kick (playtest 2, 2026-10-02): a kick swipe leaning more than kickSideDeg (35;
+//   playtest 4, P4-6: it was 20, and a slanted swipe picked a side by accident) from straight down
+//   kicks to the side it leans to (a lean under it stays auto-aimed at the closest rival), and a swipe
+//   within 45 degrees of straight UP is the straight kick at the rider ahead. Side and kick are level-held while the finger stays
 //   down. After the windows the gesture is locked.
 //   The press also asks to skip the run-back; the sim acts on it only while on foot.
 // - Touches within EDGE_PX of the left or right edge are ignored: the back gesture owns them.

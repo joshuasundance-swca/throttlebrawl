@@ -2,7 +2,7 @@
 // and answers snapshots and hashes. Internal to src/sim; everything outside imports sim/api.ts.
 import { atan2, cos, DIFFICULTY_TUNING, sin, type TuningParamDecl } from '../core';
 import { aiSystem, AI_TUNING, signatureView } from './ai';
-import { combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
+import { aimPreview, combatSystem, combatView, COMBAT_TUNING, pickupWeapon } from './combat';
 import { copsSystem, COPS_TUNING, lawProps, lawSnapshot } from './cops';
 import { GROUND_TUNING, groundUnder } from './ground';
 import { modifiersSystem, MODIFIERS_TUNING, propSnapshots } from './modifiers';
@@ -135,6 +135,8 @@ function snapshotOf(world: World, config: SimConfig): SimSnapshot {
       health: riders.health[m.id] ?? 0,
       healthMax: def?.healthMax ?? 0,
       ...combatView(world, m.id),
+      // The aim marker (playtest 4, P4-6): who a tap by the player would hit.
+      aimId: def?.controller.kind === 'player' ? aimPreview(world, config, m.id) : -1,
       progress: race.progress[m.id] ?? 0,
       distanceToFinish: race.distanceToFinish[m.id] ?? 0,
       place: race.place[m.id] ?? 0,

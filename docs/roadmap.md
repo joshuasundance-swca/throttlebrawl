@@ -369,7 +369,7 @@ Tag: `[decided]` (the maintainer, playtest 4, 2026-10-04) for every item below; 
 | First run | Menu first, replacing the race-first `[default]` of M4 | [Career](./product-spec.md#career) | yes |
 | Race start | A 3-2-1-GO countdown | [Career](./product-spec.md#career) | yes |
 | Wheelie | A button, hold to lift, release to drop; the trunk launch from about 3 m/s | [Controls](./product-spec.md#controls) | the button, yes; the trunk speed, not yet |
-| Attacks | Auto-aim plus swipe; no kick wait; presses buffered; a bump never cancels an attack | [Controls](./product-spec.md#controls) | not yet |
+| Attacks | Auto-aim plus swipe; no kick wait; presses buffered; a bump never cancels an attack | [Controls](./product-spec.md#controls) | yes |
 | Drift | Anywhere above about 40 mph | [Controls](./product-spec.md#controls) | yes |
 | U-turn | Its own gesture; hairpin braking never flips you | [Controls](./product-spec.md#controls) | not yet |
 | Steering feel | Arcade by default, plus a true Free mode, then the shortcut and spot fixes | [Controls](./product-spec.md#controls) | not yet |
