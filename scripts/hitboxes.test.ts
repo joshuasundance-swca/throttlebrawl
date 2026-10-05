@@ -451,7 +451,7 @@ function hazardRows(features: { road: string; f: Feature }[]): Row[] {
     const w = Math.abs(f.d1 - f.d0);
     const len = Math.abs(f.s1 - f.s0);
     const h = Number(f.params?.['heightM'] ?? 1.5);
-    // One row per object and size (to the centimetre): the logging spur alone has 60 stumps.
+    // One row per object and size (to the decimetre): the logging spur alone has 93 stumps.
     const key = `${kind}:${w.toFixed(1)}:${len.toFixed(1)}:${h}`;
     if (seen.has(key)) continue;
     seen.add(key);
