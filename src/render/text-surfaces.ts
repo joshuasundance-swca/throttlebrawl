@@ -59,7 +59,31 @@ export interface SurfaceStyle {
 const NEON: SurfaceStyle = { bg: '#121827', fg: '#ff7ab8', glow: '#ff2d8f' };
 const CHALK: SurfaceStyle = { bg: '#2a2f2d', fg: '#f2e9d2', glow: null };
 const STYLES: Readonly<Record<string, SurfaceStyle>> = { pdx_roof_sign_words: NEON };
-export const styleOfSurface = (name: string): SurfaceStyle => STYLES[name] ?? CHALK;
+
+/**
+ * Duval Street's shop names (playtest 4, P4-16): neon at dusk, each board its own colour (a street of
+ * one pink is a cheap street), and plain signwriting by day. [default]
+ */
+const neon = (fg: string, glow: string, bg = '#13111d'): SurfaceStyle => ({ bg, fg, glow });
+const SHOP_NEON: Readonly<Record<string, SurfaceStyle>> = {
+  duval_balcony_a_shop_name_0: neon('#ff7ab8', '#ff2d8f'),
+  duval_balcony_a_shop_name_1: neon('#7ff0ff', '#00c8ff', '#0f1a22'),
+  duval_balcony_b_shop_name_0: neon('#c8ff6a', '#7dff00', '#121a14'),
+  duval_balcony_b_shop_name_1: neon('#ffd27a', '#ff9f1c', '#1a150f'),
+  duval_balcony_b_shop_name_2: neon('#d6a8ff', '#9b5cff', '#17121f'),
+  duval_balcony_c_shop_name_0: neon('#ff9a8a', '#ff4d3d', '#1c1214'),
+  duval_balcony_c_shop_name_1: neon('#8ff5d8', '#00d9a5', '#0f1b1b'),
+  duval_balcony_c_shop_name_2: neon('#ffe07a', '#ffb000', '#1a170d'),
+  duval_corner_bar_name: neon('#ff8fd0', '#ff3fa8', '#190f1a'),
+};
+const SHOP_BY_DAY: SurfaceStyle = { bg: '#f1e6c8', fg: '#2b3a42', glow: null };
+
+/** A surface's style: Duval's shop names are neon when `lit` (dusk, night), signwriting by day. */
+export const styleOfSurface = (name: string, lit = true): SurfaceStyle => {
+  const shop = SHOP_NEON[name];
+  if (shop) return lit ? shop : SHOP_BY_DAY;
+  return STYLES[name] ?? CHALK;
+};
 
 /** One surface as a model put it in the world: its triangles, already lifted in front of the panel. */
 export interface PlacedSurface {
@@ -75,6 +99,11 @@ export interface PlacedSurface {
   /** The panel's middle, in the world, and the way its face looks. */
   centre: Vector3;
   normal: Vector3;
+  /**
+   * Which of the board's names this building shows (playtest 4, Duval's shop names): the layer takes
+   * it modulo the names the catalog has for the sign (`id`, `id-2`, `id-3`...). None: the first.
+   */
+  pick?: number;
 }
 
 /**
@@ -169,6 +198,9 @@ export function paintSurface(
   return { size: fit.size, width: measure(fit.lines[0] ?? text, fit.size) };
 }
 
+/** The suffixes of a board's other names: `duval-balcony-a-shop-name-0-2` to `-5`. */
+const ALTERNATES: readonly number[] = [2, 3, 4, 5];
+
 /** The shared canvas's width, px. */
 const CANVAS_W = 1024;
 /** The gap between two cells, px (so a mipmap does not bleed one text into the next). */
@@ -213,6 +245,8 @@ export interface TextSurfaceOptions {
   catalog: BoardCatalog | undefined;
   /** Refs cut on this device: their surfaces stay blank. */
   hidden?: Iterable<string>;
+  /** Dusk or night: Duval's shop names glow as neon; by day they are plain signwriting. Default lit. */
+  lit?: boolean;
   /** Makes the shared canvas (the game's: a DOM canvas; none where there is no DOM). */
   createCanvas?: (width: number, height: number) => { ctx: SurfaceContext; texture: Texture } | null;
 }
@@ -264,20 +298,25 @@ export class TextSurfaceLayer {
     this.group.name = 'text-surfaces';
     this.hiddenRefs = new Set(opts.hidden ?? []);
     const items = opts.catalog?.items ?? {};
-    const want: PlacedSurface[] = [];
+    const lit = opts.lit ?? true;
+    // A board may have several names (`id`, `id-2`...): the building's pick chooses among those the
+    // catalog has, so a cut name leaves the other buildings theirs.
+    const want: { s: PlacedSurface; id: string }[] = [];
     for (const s of surfaces) {
-      if (items[s.id]) want.push(s);
+      const names = [s.id, ...ALTERNATES.map((k) => `${s.id}-${k}`)].filter((n) => items[n]);
+      const id = names[Math.abs(Math.floor(s.pick ?? 0)) % Math.max(1, names.length)];
+      if (id) want.push({ s, id });
     }
     this.total = want.length;
     // One canvas row per distinct sign.
     const distinct = new Map<string, { id: string; text: string; style: SurfaceStyle; aspect: number }>();
-    for (const s of want) {
-      const item = items[s.id];
-      if (item && !distinct.has(s.id))
-        distinct.set(s.id, {
-          id: s.id,
+    for (const { s, id } of want) {
+      const item = items[id];
+      if (item && !distinct.has(id))
+        distinct.set(id, {
+          id,
           text: item.text,
-          style: styleOfSurface(s.name),
+          style: styleOfSurface(s.name, lit),
           aspect: s.widthM / s.heightM,
         });
     }
@@ -296,9 +335,9 @@ export class TextSurfaceLayer {
     // One mesh for all of them.
     const pos: number[] = [];
     const uv: number[] = [];
-    for (const s of want) {
-      const item = items[s.id];
-      const row = rowOf.get(s.id);
+    for (const { s, id } of want) {
+      const item = items[id];
+      const row = rowOf.get(id);
       if (!item || !row) continue;
       const v0 = pos.length / 3;
       pos.push(...s.positions);
@@ -315,7 +354,7 @@ export class TextSurfaceLayer {
     g.setIndex(new BufferAttribute(this.live, 1));
     g.setDrawRange(0, 0);
     this.geometry = g;
-    const bg = this.shown[0] ? styleOfSurface(this.shown[0].surface.name).bg : CHALK.bg;
+    const bg = this.shown[0] ? styleOfSurface(this.shown[0].surface.name, lit).bg : CHALK.bg;
     this.mesh = new Mesh(g, look.material('board', this.texture ? { map: this.texture } : { color: bg }));
     this.mesh.name = 'text-surfaces';
     // The quads are far apart (a road's length): never culled whole; the index holds only the near ones.

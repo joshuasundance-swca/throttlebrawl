@@ -7,11 +7,13 @@
 // tools/gis/routes-keys-pt3.test.ts; the field staying on the highway is ai-stay-on-highway.test.ts.
 import { describe, expect, it } from 'vitest';
 import { buildSimConfig, createStreamCache } from '../../src/app';
+import { BAR_STYLES } from '../../src/audio/soundscape';
 import { bare, careerDefs, careerOf, createRaceLog, eventPlan, startCareer } from '../../src/career';
 import { createBot } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim, type SimConfig } from '../../src/sim/api';
 import { vehicleSize } from '../../src/sim/ai/sense';
+import { PEDS } from '../../src/sim/peds';
 import { DEFAULT_PROFILE } from '../../src/save';
 import { careerRace, onTierBike, REG } from './career-harness';
 
@@ -232,6 +234,105 @@ describe('the Old Town on the map and in the roadside zones', () => {
   });
 });
 
+// Playtest 4 (P4-16, "Duval St should be a party street"): the party zones are crowds with music and string
+// lights; their people are the Old Town's own kinds; and the street's boards and pedicabs say the same.
+describe('Duval as a party street', () => {
+  interface Zone {
+    id: string;
+    s0: number;
+    s1: number;
+    d0: number;
+    d1: number;
+    kind: string;
+    params?: Record<string, unknown>;
+  }
+  const duval = REG.roads['base:osm-duval-street'] as unknown as { lengthM: number; features: Zone[] };
+  const zones = duval.features.filter((f) => f.kind === 'roadsideZone' && f.params?.['dressing'] === 'party');
+  const sideOf = (z: Zone) => (z.d0 + z.d1 < 0 ? -1 : 1);
+
+  it("every party zone is a crowd of the Old Town's people, with a style of music the street can play", () => {
+    expect(zones.length).toBeGreaterThanOrEqual(6);
+    for (const z of zones) {
+      const kinds = z.params?.['kinds'] as string[] | undefined;
+      expect(Array.isArray(kinds), `${z.id} names its kinds`).toBe(true);
+      expect(kinds?.length ?? 0, `${z.id} has a mix`).toBeGreaterThanOrEqual(3);
+      for (const k of kinds ?? []) {
+        const t = REG.trafficTypes[`base:${k}`];
+        expect(t?.category, `${z.id}: ${k} is a person`).toBe('pedestrian');
+      }
+      const every = z.params?.['everyM'];
+      const most = z.params?.['maxPeds'];
+      expect(
+        typeof every === 'number' && every >= PEDS.crowdMinEveryM && every < PEDS.perZoneM,
+        `${z.id} everyM`,
+      ).toBe(true);
+      expect(
+        typeof most === 'number' && most > PEDS.maxPerZone && most <= PEDS.maxCrowd,
+        `${z.id} maxPeds`,
+      ).toBe(true);
+      expect(BAR_STYLES as readonly string[], `${z.id} music`).toContain(z.params?.['music']);
+    }
+    // The party's own kinds are the Old Town's: tagged for it, so no other street meets them.
+    for (const k of ['bar-hopper', 'birthday-party', 'door-greeter'])
+      expect(REG.trafficTypes[`base:${k}`]?.tags, k).toContain('key-oldtown');
+  });
+
+  it('the party is on both sides of the street and over a good share of it, in blocks with gaps between', () => {
+    const covered = (side: number) =>
+      zones.filter((z) => sideOf(z) === side).reduce((n, z) => n + (z.s1 - z.s0), 0) / duval.lengthM;
+    for (const side of [-1, 1]) expect(covered(side), `side ${side}`).toBeGreaterThan(0.3);
+    // Gaps: the music fades between blocks and the crowd thins (no zone runs the whole street).
+    for (const z of zones) expect(z.s1 - z.s0, z.id).toBeLessThan(duval.lengthM / 4);
+    // A zone stands clear of the other zones and the boards of its own side (no crowd on top of a board).
+    for (const z of zones)
+      for (const f of duval.features) {
+        if (f.id === z.id) continue;
+        if (!['roadsideZone', 'billboard'].includes(f.kind) || (f.d0 + f.d1 < 0 ? -1 : 1) !== sideOf(z))
+          continue;
+        expect(f.s1 <= z.s0 || f.s0 >= z.s1, `${z.id} overlaps ${f.id}`).toBe(true);
+      }
+  });
+
+  it('a race starts with the crowd already standing in each party zone', () => {
+    const config = buildSimConfig(REG, STREAMS.forRoute(REG, 'base:osm-duval-run'), {
+      seed: 1,
+      eventId: 'base:keys-t1-last-light-duval',
+      route: 'base:osm-duval-run',
+    });
+    const snap = createSim(config).snapshot();
+    const edge = config.road.edgeIndex('osm-duval-street');
+    const peds = snap.entities.filter((e) => e.kind === 'ped' && e.road.edge === edge);
+    let total = 0;
+    for (const z of zones) {
+      const want = Math.min(
+        z.params?.['maxPeds'] as number,
+        Math.floor((z.s1 - z.s0) / (z.params?.['everyM'] as number)),
+      );
+      const here = peds.filter(
+        (e) => e.road.s >= z.s0 && e.road.s <= z.s1 && Math.sign(e.road.d) === sideOf(z),
+      );
+      expect(here.length, z.id).toBeGreaterThanOrEqual(want);
+      total += here.length;
+    }
+    print(`${zones.length} party zones, ${total} people standing in them at the start`);
+    expect(total).toBeGreaterThan(50);
+  });
+
+  it('pedicabs are a main sight of the Old Town, and the street has boards of its own for the party', () => {
+    const area = REG.regions['base:florida-keys']?.traffic?.areas?.find((a) => a.tag === 'key-oldtown');
+    const weight = (k: string) => area?.mix.find((m) => m.kind === k)?.weight ?? 0;
+    expect(weight('pedicab')).toBeGreaterThanOrEqual(2);
+    const region = REG.regions['base:florida-keys'];
+    const oldtown = [...(region?.signs ?? []), ...(region?.billboards ?? [])].filter((b) =>
+      (b.tags ?? []).includes('key-oldtown'),
+    );
+    const slots = duval.features.filter((f) => f.kind === 'billboard');
+    // The original boards (four on Duval), and the party's six.
+    expect(slots.length).toBeGreaterThanOrEqual(9);
+    expect(oldtown.length).toBeGreaterThanOrEqual(10);
+  });
+});
+
 describe('a tour of Duval Street', () => {
   /** Seeds enough for a rare vehicle to turn up in at least one (a band, not a lucky seed). */
   const SEEDS = [1, 2, 3, 4];
@@ -264,7 +365,17 @@ describe('a tour of Duval Street', () => {
     const all = new Set<string>();
     for (const seed of SEEDS) for (const k of tour(seed)) all.add(k);
     print(`kinds met over seeds ${SEEDS.join(', ')}: ${[...all].sort().join(', ')}`);
-    for (const kind of ['rooster', 'cruise-day-tripper', 'street-performer', 'pedicab', 'island-tram'])
+    for (const kind of [
+      'rooster',
+      'cruise-day-tripper',
+      'street-performer',
+      'pedicab',
+      'island-tram',
+      // Playtest 4 (P4-16): the party street's crowd.
+      'bar-hopper',
+      'birthday-party',
+      'door-greeter',
+    ])
       expect(all, kind).toContain(kind);
   }, 600_000);
 });

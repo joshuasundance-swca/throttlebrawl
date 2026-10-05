@@ -1,11 +1,12 @@
 // The regional soundscape's sounds (run W-Q audio; the director that decides when is soundscape.ts).
 // Everything is made in code like the rest of the mix [decided: code-made sounds first]: a bridge
 // joint's two-wheel thump, a gull, a halyard's clink, a log truck's engine brake, a two-tone
-// foghorn, a cable-car bell, and the rain on the helmet. Each event is a handful of sources that stop
+// foghorn, a cable-car bell, a party street's bar music (playtest 4, P4-16: a cover band, a steel pan
+// and a karaoke machine through a doorway) and the rain on the helmet. Each event is a handful of sources that stop
 // themselves, started at `t` on the audio clock; the rain is one looping buffer of droplet ticks.
 // They feed the effects input, so the slow-motion low-pass and the effects bus apply.
 import { noiseBuffer } from './engine-patch';
-import type { ScapeEvent } from './soundscape';
+import { BAR_PHRASE_S, type ScapeEvent } from './soundscape';
 
 const SILENT = 0.0001;
 /** The one-shot events' level at full (the rain has its own), measured against the engine, [default]. */
@@ -254,6 +255,140 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
     if (last) track(last);
   };
 
+  // --- A party street's bar music -------------------------------------------------------------
+  // One phrase (BAR_PHRASE_S, four beats) of a bar's music, heard through an open front: everything
+  // goes through a low-pass (a doorway muffles the highs), a little under the effects bus. Three styles,
+  // each with four variations by the phrase's number so a long street is not one loop: a cover band
+  // (kick, snare, hats, a bass walking the chords, power-chord stabs), a steel pan (a pentatonic tune,
+  // a bass boom and a conga), and a karaoke machine (a bossa shaker, an organ chord and a singer a
+  // quarter-tone flat, wobbling). The director schedules each phrase on the audio clock, so they chain.
+  let muffle: BiquadFilterNode | null = null;
+  const doorway = (): AudioNode => {
+    if (muffle) return muffle;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1500;
+    lp.Q.value = 0.7;
+    const body = ctx.createGain();
+    body.gain.value = 0.6;
+    lp.connect(body).connect(bus);
+    muffle = lp;
+    return lp;
+  };
+  const BEAT = BAR_PHRASE_S / 4;
+  const EIGHTH = BEAT / 2;
+
+  const barMusic = (e: Extract<ScapeEvent, { kind: 'barMusic' }>, t: number, g: number) => {
+    const to = doorway();
+    const v = e.level * g;
+    const t0 = Math.max(e.at, t);
+    const v4 = ((e.bar % 4) + 4) % 4;
+    // The source that ends last stands for the phrase in the event count.
+    const last: { src: AudioScheduledSourceNode | null; end: number } = { src: null, end: 0 };
+    const keep = (src: AudioScheduledSourceNode, end: number) => {
+      if (end >= last.end) {
+        last.end = end;
+        last.src = src;
+      }
+    };
+    const at = (eighths: number) => t0 + eighths * EIGHTH;
+    const tn = (
+      type: OscillatorType,
+      f: number,
+      f1: number,
+      k: number,
+      peak: number,
+      decay: number,
+      atk = 0,
+    ) => keep(tone(type, f, f1, at(k), peak * v, decay, atk, to), at(k) + atk + decay);
+    const nz = (
+      type: BiquadFilterType,
+      f: number,
+      f1: number,
+      q: number,
+      k: number,
+      peak: number,
+      decay: number,
+    ) => keep(noise(type, f, f1, q, at(k), peak * v, decay, 0, to), at(k) + decay);
+
+    if (e.style === 'cover-band') {
+      // E, A, B, A: the chords of any bar band.
+      const root = [82.41, 110, 123.47, 110][v4] as number;
+      for (const k of [0, 4]) {
+        tn('sine', 120, 45, k, 0.9, 0.14);
+        if (v4 % 2 === 1 && k === 4) tn('sine', 120, 45, 5, 0.6, 0.12);
+      }
+      for (const k of [2, 6]) {
+        nz('bandpass', 1800, 1200, 0.8, k, 0.5, 0.1);
+        tn('triangle', 190, 150, k, 0.25, 0.08);
+      }
+      for (let k = 0; k < 8; k++) nz('highpass', 7000, 7000, 0.7, k, 0.12, 0.03);
+      for (let k = 0; k < 8; k++)
+        tn('sawtooth', k % 4 === 3 ? root * 1.498 : root, k % 4 === 3 ? root * 1.498 : root, k, 0.4, 0.16);
+      for (const k of [0, 5]) {
+        tn('sawtooth', root * 4, root * 4, k, 0.16, 0.3);
+        tn('sawtooth', root * 4 * 1.498, root * 4 * 1.498, k, 0.14, 0.3);
+      }
+    } else if (e.style === 'steel-drum') {
+      // C pentatonic, four tunes: the pan is a sine and its octave with a quick decay.
+      const scale = [523.25, 587.33, 659.25, 784, 880, 1046.5];
+      const tunes = [
+        [0, 2, 3, 2, 4, 3, 2, 0],
+        [3, 4, 5, 4, 3, 2, 3, 2],
+        [2, 3, 2, 0, 2, 3, 4, 3],
+        [4, 3, 2, 3, 0, 2, 3, 0],
+      ] as const;
+      // A rest on two steps keeps it syncopated (the calypso's 3 + 3 + 2).
+      const rests = new Set([1, 4, 7].map((x) => (x + v4) % 8));
+      (tunes[v4] as readonly number[]).forEach((deg, k) => {
+        if (rests.has(k)) return;
+        const f = scale[deg] as number;
+        tn('sine', f, f, k, 0.5, 0.4);
+        tn('sine', f * 2, f * 2, k, 0.2, 0.18);
+      });
+      for (const k of [0, 5]) tn('sine', 98, 60, k, 0.7, 0.25);
+      for (const k of [3, 6, 7]) nz('bandpass', 900, 700, 2, k, 0.22, 0.05);
+    } else {
+      // Karaoke: C, Am, F, G under a singer who is not quite on the note.
+      const chord = (
+        [
+          [261.63, 329.63, 392],
+          [220, 261.63, 329.63],
+          [174.61, 220, 261.63],
+          [196, 246.94, 293.66],
+        ] as const
+      )[v4] ?? [261.63, 329.63, 392];
+      for (const f of chord) tn('square', f, f, 0, 0.1, BAR_PHRASE_S * 0.95, 0.03);
+      for (const k of [0, 4]) tn('sine', 110, 50, k, 0.7, 0.14);
+      for (let k = 0; k < 8; k++) nz('highpass', 6000, 6000, 0.7, k, k % 2 ? 0.1 : 0.06, 0.04);
+      // The singer: two held notes a half bar each, flat, with a wobble.
+      const tunes = [
+        [392, 440],
+        [440, 392],
+        [349.23, 392],
+        [392, 293.66],
+      ] as const;
+      (tunes[v4] as readonly number[]).forEach((f, half) => {
+        const k = half * 4;
+        const o = ctx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.value = f * 0.985;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 5.5;
+        const depth = ctx.createGain();
+        depth.gain.value = 9;
+        lfo.connect(depth).connect(o.frequency);
+        o.connect(env(at(k), 0.42 * v, BEAT * 1.8, 0.08, to));
+        o.start(at(k));
+        o.stop(at(k) + 0.08 + BEAT * 1.8 + 0.03);
+        lfo.start(at(k));
+        lfo.stop(at(k) + 0.08 + BEAT * 1.8 + 0.03);
+        keep(o, at(k) + 0.08 + BEAT * 1.8);
+      });
+    }
+    if (last.src) track(last.src);
+  };
+
   // --- The rain on the helmet ----------------------------------------------------------------
   // Droplet ticks through a high-pass and a presence band; a second, slower layer of the same
   // buffer a semitone down thickens it. One looping source each, so it costs the same however hard
@@ -308,6 +443,9 @@ export function createScapeVoices(ctx: BaseAudioContext, out: AudioNode): ScapeV
           break;
         case 'bell':
           bell(e, t, gain);
+          break;
+        case 'barMusic':
+          barMusic(e, t, gain);
           break;
       }
       return true;
