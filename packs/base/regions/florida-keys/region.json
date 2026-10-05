@@ -440,6 +440,13 @@
       "tags": ["key-oldtown"],
       "status": "live",
       "note": "Playtest 4 (P4-16). The city's notice on a party street."
+    },
+    {
+      "id": "keys-mile-marker-face",
+      "text": "MILE {n}",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 4 (P4-19, the Seven Mile's identity): the number on a Keys mile post, a plain face like the real green ones. A text surface, not a board: the game paints it on the `keys_mile_marker_face` panel of the `keys-identity` kit (docs/content-packs.md, Text surfaces), and `{n}` is the number the post's landmark feature carries (`params.number`: 46 down to 40 on the Seven Mile), so one sign serves every post. Cutting it in the game blanks every post. Vetoable like any sign."
     }
   ],
   "billboards": [

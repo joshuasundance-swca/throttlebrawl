@@ -10,7 +10,7 @@
   "osmExtract": ".cache/osm/keys-seven-mile.json",
   "outRoot": "packs/base/regions/florida-keys",
   "waysLabel": "Seven Mile Bridge way",
-  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 3: \"real geometry and length (about 11 km); ramp trucks on repair platforms hop about 30 m between the bridges; the real 80 m missing span is the big jump (a miss = splash, respawn on the highway); rivals and cops stay on the highway\"). The Overseas Highway (US 1) from Knights Key over the 1982 Seven Mile Bridge to Little Duck Key, at its real length, the navigation hump over Moser Channel. The Old Seven Mile Bridge (1909-1912) runs beside it to the north, from its four OSM ways (the trail to Pigeon Key, Pigeon Key to Moser Channel, Moser Channel west, and the path onto Little Duck Key): the old road. A ramp truck on a repair staging hops you onto it near Knights Key and another hops you back near Little Duck Key, where the bridges close to about 20 m; the missing swing span over Moser Channel is the big jump. Bridge decks, the hump, the stagings and the kicker are synthesized; the lines are pinned to the real map at the stagings (closure). Playtest 4 (P4-10; the maintainer: \"as long as it's reasonably and fairly truly accessible then the current respawn is fine. it's just too hard to get on\"): the turn-off's zone starts in the shoulder and runs 80 m, the run-up to the truck bends no tighter than the fastest bike holds at its top speed, each ramp truck is as wide as its deck, and a miss at any of the three jumps wakes the rider on the highway. Playtest 4 (P4-15; the maintainer: \"Old seven mile bridge should have Fred the Tree\"): Fred the Tree, the little pine that grows from the old deck at 24.6896 N, 81.2048 W, is a landmark of the old road's west stretch, code-made (`keys-landmarks#fred_the_tree`, src/render/fred.ts), on the side the new highway is, its box starting 0.4 m past the rail: the bake centres it 6.4 m from the old road's line, so `at` is the real point moved that far south.",
+  "networkNotes": "A real-road network (playtest 3, T9.2; the maintainer, round 3: \"real geometry and length (about 11 km); ramp trucks on repair platforms hop about 30 m between the bridges; the real 80 m missing span is the big jump (a miss = splash, respawn on the highway); rivals and cops stay on the highway\"). The Overseas Highway (US 1) from Knights Key over the 1982 Seven Mile Bridge to Little Duck Key, at its real length, the navigation hump over Moser Channel. The Old Seven Mile Bridge (1909-1912) runs beside it to the north, from its four OSM ways (the trail to Pigeon Key, Pigeon Key to Moser Channel, Moser Channel west, and the path onto Little Duck Key): the old road. A ramp truck on a repair staging hops you onto it near Knights Key and another hops you back near Little Duck Key, where the bridges close to about 20 m; the missing swing span over Moser Channel is the big jump. Bridge decks, the hump, the stagings and the kicker are synthesized; the lines are pinned to the real map at the stagings (closure). Playtest 4 (P4-10; the maintainer: \"as long as it's reasonably and fairly truly accessible then the current respawn is fine. it's just too hard to get on\"): the turn-off's zone starts in the shoulder and runs 80 m, the run-up to the truck bends no tighter than the fastest bike holds at its top speed, each ramp truck is as wide as its deck, and a miss at any of the three jumps wakes the rider on the highway. Playtest 4 (P4-15; the maintainer: \"Old seven mile bridge should have Fred the Tree\"): Fred the Tree, the little pine that grows from the old deck at 24.6896 N, 81.2048 W, is a landmark of the old road's west stretch, code-made (`keys-landmarks#fred_the_tree`, src/render/fred.ts), on the side the new highway is, its box starting 0.4 m past the rail: the bake centres it 6.4 m from the old road's line, so `at` is the real point moved that far south. Playtest 4 (P4-19; the identity study's fix 10, the Seven Mile's identity): Pigeon Key, the five-acre island under the old bridge, is a landmark of the old road's east stretch (`seven-mile-kit#pigeon_key`, code-made island ground and palms in src/render/pigeon-key.ts, with the kit's two cottages and dock on it): its box is centred on the article's point (24.703991 N, 81.155308 W, Wikipedia, \"Pigeon Key\"), 48.5 m off the old road on the side the new highway is, wholly past the lanes, and says `island` so boats and islets float clear of it. And the highway line carries `mileposts`: a green mile post (`keys-identity#keys_mile_marker`) at every whole mile number, 1,609.344 m apart, on the right just outside the rail, with its number in `params.number` for the sign `keys-mile-marker-face` (\"MILE {n}\"); the bridge's east end is mile 46.804 (Wikipedia, \"Overseas Highway\": the bridge is \"40.011-46.804\"), so the posts read 46 to 41 on the bridge and 40 on Little Duck Key.",
   "lines": [
     {
       "id": "us1",
@@ -34,6 +34,16 @@
         "ref": "^US 1$"
       },
       "realName": "Overseas Highway",
+      "mileposts": {
+        "model": "keys-identity#keys_mile_marker",
+        "mile": 46.804,
+        "at": {
+          "lat": 24.70695,
+          "lon": -81.12432
+        },
+        "offsetM": 5.85,
+        "landOffsetM": 10
+      },
       "smoothing": {
         "headingSigmaM": 30
       },
@@ -270,6 +280,16 @@
           },
           "footprintM": [4, 1],
           "side": "left"
+        },
+        {
+          "id": "pigeon-key",
+          "model": "seven-mile-kit#pigeon_key",
+          "at": {
+            "lat": 24.703991,
+            "lon": -81.155308
+          },
+          "footprintM": [110, 54],
+          "island": true
         }
       ],
       "roads": [

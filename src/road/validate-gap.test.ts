@@ -117,4 +117,17 @@ describe('landmarks', () => {
       expect.stringMatching(/^features \/features\/0\/params\/farM: /),
     ]);
   });
+
+  it('takes an island flag and a whole-number number, and flags a typo in either', () => {
+    expect(
+      lintRoad(withFeature(landmark(40, 70, { model: 'kit#island', island: true, number: 46 }))),
+    ).toEqual([]);
+    const issues = lintRoad(withFeature(landmark(40, 70, { model: 'kit#post', island: 'yes', number: 4.5 })));
+    expect(messages(issues)).toEqual([
+      expect.stringMatching(/^features \/features\/0\/params\/island: /),
+      expect.stringMatching(/^features \/features\/0\/params\/number: /),
+    ]);
+    const negative = lintRoad(withFeature(landmark(40, 70, { model: 'kit#post', number: -1 })));
+    expect(messages(negative)).toEqual([expect.stringMatching(/^features \/features\/0\/params\/number: /)]);
+  });
 });

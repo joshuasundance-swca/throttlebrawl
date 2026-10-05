@@ -468,7 +468,8 @@ function badNumber(f: BakedFeature, key: string, lo: number, hi: number, loInclu
  * the lint is where a typo surfaces:
  * - a `gap`'s `killDepthM` and `respawnPastM` are positive numbers, and `respawn` is `far` or `main`;
  * - a `landmark` names its `model`, its `yawDeg` is in [-180, 180], `scale` in (0, 4], `farM` above
- *   0; and its footprint lies wholly past the verge band on its side (rule `landmark-clear`) unless
+ *   0, `island` (when given) is true or false and `number` (when given) is a whole number from 0 up;
+ *   and its footprint lies wholly past the verge band on its side (rule `landmark-clear`) unless
  *   it is `overRoad` (a structure the road passes through or under: a bridge tower, a gantry);
  * - only a `wall` may be `jumpable`.
  */
@@ -514,6 +515,23 @@ function lintPlaytest3(
       const bad = badNumber(f, key, lo, hi, loInclusive);
       if (bad) add('features', `${at}/params/${key}`, `landmark ${f.id}: ${bad}`);
     }
+    const params = f.params ?? {};
+    if (Object.hasOwn(params, 'island') && typeof params['island'] !== 'boolean')
+      add(
+        'features',
+        `${at}/params/island`,
+        `landmark ${f.id}: island ${JSON.stringify(params['island'])} is not true or false`,
+      );
+    const number = params['number'];
+    if (
+      Object.hasOwn(params, 'number') &&
+      !(typeof number === 'number' && Number.isInteger(number) && number >= 0)
+    )
+      add(
+        'features',
+        `${at}/params/number`,
+        `landmark ${f.id}: number ${JSON.stringify(number)} is not a whole number from 0 up`,
+      );
     if (f.params?.['overRoad'] !== true) landmarkClear(road, f, at, add);
   });
   (road.barriers ?? []).forEach((b, i) => {

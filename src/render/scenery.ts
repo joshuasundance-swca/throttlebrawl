@@ -13,7 +13,7 @@
 // The region build-out (W-O, the maintainer, 2026-10-01: "better visuals and experience") adds the
 // Pacific Northwest's clustered conifers and sawmill and San Francisco's terraces of painted row
 // houses on their own themes, conifers on the far ground of a forest, and fog banks offshore.
-import type { RoadNetwork } from '../road';
+import { landmarkParams, type RoadNetwork } from '../road';
 import type { Point3 } from './geometry';
 
 /** What one side of a road is at some s. */
@@ -391,6 +391,64 @@ export function scatterHash(seed: number, a: number, b: number, c: number): numb
 
 /** The loose ground a rider rides on beside the road (off-road, run W-R): solid scenery keeps off it. */
 const LOOSE_BAND: ReadonlySet<string> = new Set(['dirt', 'gravel', 'sand', 'grass']);
+
+/** Water kept clear round an island's box, m: a boat's length and a swell. [default] */
+export const ISLAND_CLEAR_M = 10;
+
+/** The box of a landmark that stands on an island of its own, in the world. */
+export interface IslandBox {
+  /** The box's middle, and the road's unit heading there (its along axis); across is the road's normal. */
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  halfAlongM: number;
+  halfAcrossM: number;
+}
+
+/**
+ * Every `landmark` feature that says `island` (playtest 4, Pigeon Key), as a box in the world. The sea
+ * round it is not open water: boats and islets keep off (`onIsland`), whichever road the scatter walks.
+ */
+export function islandBoxes(road: RoadNetwork): IslandBox[] {
+  const out: IslandBox[] = [];
+  for (const e of road.edges) {
+    for (const f of road.featuresOf(e.index, 'landmark')) {
+      if (!landmarkParams(f).island) continue;
+      const s = (f.s0 + f.s1) / 2;
+      const d = (f.d0 + f.d1) / 2;
+      const c = road.toWorld(e.index, s, d, 0);
+      const t = road.frameAt(e.index, s);
+      out.push({
+        x: c.x,
+        z: c.z,
+        tx: t.tx,
+        tz: t.tz,
+        halfAlongM: Math.abs(f.s1 - f.s0) / 2,
+        halfAcrossM: Math.abs(f.d1 - f.d0) / 2,
+      });
+    }
+  }
+  return out;
+}
+
+/** Whether a point is on an island's box or within `clearM` of it. */
+export function onIsland(
+  boxes: readonly IslandBox[],
+  x: number,
+  z: number,
+  clearM = ISLAND_CLEAR_M,
+): boolean {
+  for (const b of boxes) {
+    const dx = x - b.x;
+    const dz = z - b.z;
+    const along = dx * b.tx + dz * b.tz;
+    // The box's across axis is the road's normal at its middle.
+    const across = -dx * b.tz + dz * b.tx;
+    if (Math.abs(along) <= b.halfAlongM + clearM && Math.abs(across) <= b.halfAcrossM + clearM) return true;
+  }
+  return false;
+}
 
 /**
  * How far past `outer` (a distance from the centre line, positive) the ridable band of loose ground
