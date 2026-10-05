@@ -15,7 +15,8 @@ describe('input: the keyboard legend for the pause screen', () => {
     expect(find('punch right')).toBe('O');
     expect(find(KEY_ACTION_NAMES.throttle)).toBe('W / ↑');
     expect(find('wheelie (hold)')).toBe('H'); // playtest 4's wheelie button
-    expect(find('brake')).toBe('S / ↓');
+    expect(find(KEY_ACTION_NAMES.brake)).toBe('S / ↓');
+    expect(KEY_ACTION_NAMES.brake).toContain('U-turn'); // playtest 4's own gesture
     expect(find('steer left')).toBe('A / ←');
     expect(find('steer right')).toBe('D / →');
     expect(find('look back')).toBe('L');

@@ -72,7 +72,7 @@ import {
   type MovingDecks,
 } from './features';
 import { airWallSkip, gapFall, gapUnder, GAP_TUNING, newGapState, type GapState } from './gap';
-import { uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
+import { uturnForget, uturnSettle, uturnStep, uturnTurning, UTURN_TUNING, type UturnState } from './uturn';
 import {
   behindFence,
   breakFence,
@@ -487,6 +487,9 @@ export function riderState(world: World): RiderState {
     paperFold: [],
     paperRead: [],
     uturn: [],
+    uturnTap: [],
+    uturnClock: [],
+    uturnDown: [],
     ...newWheelieState(),
     ...newDriftState(),
     ...newGapState(),
@@ -1044,9 +1047,10 @@ function stepGrounded(world: World, config: SimConfig, st: RiderState, m: Mover)
   const yBefore = road.surfaceHeight(pos.edge, pos.s, pos.d) + deckBefore;
   const vyBefore = fresh ? 0 : (st.vy[m.id] ?? 0);
   st.lastTick[m.id] = world.tick;
-  // A U-turn (interview, 2026-10-02): a slow player holding the brake and full lock pivots round
-  // (sim/riders/uturn.ts); null while riding normally.
-  const uturn = uturnStep(world, st, def, m, steer, brake, fresh);
+  // A U-turn (interview, 2026-10-02; playtest 4's own gesture, P4-9): a slow player who double-taps
+  // the brake and then holds it with full lock pivots round (sim/riders/uturn.ts); null while riding
+  // normally.
+  const uturn = uturnStep(world, st, def, m, steer, brake, fresh, dt);
   // Playtest 3's moves: the wheelie (steering × steerScale, the front's pitch) and the drift
   // (steering × maxYawScale, a drag, the knee-down lean). Neutral while each is off.
   const wh = wheelieStep(world, config, st, m, input, brake, dt);
@@ -1581,6 +1585,7 @@ export const ridersSystem: SimSystem = {
       st.truckTouch[m.id] = 0;
       st.hazardTouch[m.id] = 0;
       st.uturn[m.id] = 0;
+      uturnForget(st, m.id);
       startFlight(st, m, undefined, slopeAt(config, m));
     }
   },

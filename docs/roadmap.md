@@ -371,7 +371,7 @@ Tag: `[decided]` (the maintainer, playtest 4, 2026-10-04) for every item below; 
 | Wheelie | A button, hold to lift, release to drop; the trunk launch from about 3 m/s | [Controls](./product-spec.md#controls) | the button, yes; the trunk speed, not yet |
 | Attacks | Auto-aim plus swipe; no kick wait; presses buffered; a bump never cancels an attack | [Controls](./product-spec.md#controls) | yes |
 | Drift | Anywhere above about 40 mph | [Controls](./product-spec.md#controls) | yes |
-| U-turn | Its own gesture; hairpin braking never flips you | [Controls](./product-spec.md#controls) | not yet |
+| U-turn | Its own gesture; hairpin braking never flips you | [Controls](./product-spec.md#controls) | yes |
 | Steering feel | Arcade by default, plus a true Free mode, then the shortcut and spot fixes | [Controls](./product-spec.md#controls) | not yet |
 | Smoking bikes | About 5 to 10 % slower | [Combat](./product-spec.md#combat) | yes |
 | Golf carts | They swerve onto the verge; a clip is still a crash | [Traffic](./product-spec.md#traffic-and-pedestrians) | yes |
