@@ -40,14 +40,17 @@
 //
 // The hood launch (moves.md §3.3, the critic's S2): in a wheelie with the front at least 0.35 rad up
 // (the front wheel about hood height), meeting end on and not a graze, at 8 m/s closing or more (×
-// the speed multiplier), a car you can ride up (a normal-hazard `car` or `oddity` at least 3.5 m
+// the speed multiplier; off the back of a car going your way from 3 m/s, playtest 4's P4-2: "wheelie
+// into the back of a car should also allow backflips", so a wheelie into a car is never a solid
+// crash), a car you can ride up (a normal-hazard `car` or `oddity` at least 3.5 m
 // long: sedans, pickups, vans, robotaxis, stalled cars; never bicycles, scooters, golf carts or
 // anything `big`), or a parked car-like road hazard (`object` pickup, sedan or car), launches the
 // rider instead of crashing: 1 m up (just over a hazard's top), rising at 0.45 × the closing speed,
 // at least 6 m/s and at most what keeps the apex at HOOD_APEX_M, at 0.9 of its speed, the bike
 // spinning 1 to 3 backflips (sim/riders/air.ts `startSpin`). An oncoming car is a `hood` launch,
 // one going your way a `trunk` launch; the car brakes to 0.6 of its speed. `hoodLaunch` and a
-// `jump` (data.hood) fire, and the landing carries `data.hood` for sim/race's hood-trick scale.
+// `jump` (data.hood) fire, and the landing carries `data.hood` for sim/race's hood-trick scale. A
+// crash into a vehicle from a live wheelie says why in one word (`wheelieCrashReason`).
 //
 // The wheelie is off while its switch is absent or 0 (`riders.wheelie`), so recordings made before
 // ride as they did, and nothing is written for a rider that never pops.
@@ -160,8 +163,15 @@ const LOOP_OUT_UP_MPS = 3;
 export const HOOD_MIN_THETA = 0.35;
 /** A vehicle you can ride up is at least this long, m. */
 export const HOOD_MIN_LENGTH_M = 3.5;
-/** The least closing speed that launches, m/s (× the speed multiplier). */
+/** The least closing speed that launches off a car's hood (or a parked car), m/s (× the speed multiplier). */
 export const HOOD_MIN_CLOSING_MPS = 8;
+/**
+ * The least closing speed that launches off the back of a car going your way, m/s (× the multiplier;
+ * playtest 4, P4-2, [decided] "should also allow backflips": from about 3 m/s). Under it the front
+ * wobbles down; at it and over, a held wheelie into a car's back is never a solid crash (the traffic
+ * rule's solid line is 6 m/s), and the launch's own minimum rise gives a small hop and one flip.
+ */
+export const HOOD_TRUNK_MIN_CLOSING_MPS = 3;
 /** The launch rises at this share of the closing speed... */
 export const HOOD_VY_SHARE = 0.45;
 /** ...at least this fast, m/s (× the multiplier)... */
@@ -418,7 +428,8 @@ export function hoodLaunchContact(world: World, config: SimConfig, c: HoodContac
   const m = world.movers[c.rider];
   if (!st || !m || !upForIt(world, st, m)) return false;
   if (!hoodLaunchable(c.type) || !c.endOn || c.graze || !c.front) return false;
-  if (c.closingMps < HOOD_MIN_CLOSING_MPS * speedMultiplierOf(config)) return false;
+  const least = c.oncoming ? HOOD_MIN_CLOSING_MPS : HOOD_TRUNK_MIN_CLOSING_MPS;
+  if (c.closingMps < least * speedMultiplierOf(config)) return false;
   launch(world, config, st, m, {
     closingMps: c.closingMps,
     startH: HOOD_LAUNCH_H_M,
@@ -429,6 +440,29 @@ export function hoodLaunchContact(world: World, config: SimConfig, c: HoodContac
   const car = world.movers[c.vehicle];
   if (car && car.kind === 'vehicle') car.speed *= HOOD_CAR_BRAKE;
   return true;
+}
+
+/**
+ * The one-word reason a rider in a live wheelie crashed into a vehicle instead of launching (playtest
+ * 4, P4-2; `crash` data `wheelieReason`, which the ticker shows), or undefined when the rider was not
+ * in a wheelie. The first reason that holds, in the order the rule asks: a vehicle the wheelie cannot
+ * ride up (`BIG`: a truck, an RV or anything `big`; `SMALL`: a cyclist, a scooter, a golf cart), the
+ * front under the launch's floor (`LOW`), not ahead (`BEHIND`), not end on (`SIDEWAYS`), and else a
+ * rider already wobbling (`WOBBLY`).
+ */
+export function wheelieCrashReason(world: World, c: HoodContact): string | undefined {
+  const st = world.systems['riders'] as RiderState | undefined;
+  const m = world.movers[c.rider];
+  if (!st || !m || m.mode !== 'Road') return undefined;
+  const theta = st.wheelie[m.id] ?? 0;
+  if (theta <= 0 || st.wheelieTick[m.id] !== world.tick) return undefined;
+  if (!hoodLaunchable(c.type)) {
+    return c.type.hazard === 'big' || c.type.lengthM >= HOOD_MIN_LENGTH_M ? 'BIG' : 'SMALL';
+  }
+  if (theta < HOOD_MIN_THETA) return 'LOW';
+  if (!c.front) return 'BEHIND';
+  if (!c.endOn || c.graze) return 'SIDEWAYS';
+  return 'WOBBLY';
 }
 
 /** Whether a wheelie launches a grounded rider off a solid road hazard it meets head on. */

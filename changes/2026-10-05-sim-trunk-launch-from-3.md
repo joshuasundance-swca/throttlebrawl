@@ -1,0 +1,9 @@
+---
+kind: changed
+audience: player
+---
+A wheelie into the back of a car now launches you instead of crashing you, as long as the front is up and you meet it head on to tail. You need only about 3 m/s (7 mph) of closing speed: a small hop and one backflip at the least, more when you hit it faster. Before, the back of a car launched you only if you closed at 8 m/s or more, and between 6 and 8 it was a solid crash, so a Rustbucket in a held wheelie behind a car going 24.6 m/s (a sedan's cruise) hit it at 6.9 m/s and went down. The moves audit found the launch worked when the contact was hard enough and that nothing told you why a wheelie crash had not launched. The hood of an oncoming car still needs 8 m/s, and under 3 m/s the front still wobbles down as before.
+
+The ticker now names the launch, HOOD ORNAMENT off a hood or a parked car and TRUNK SPACE off a car's back, and gives a wheelie that crashed into something one word of why: LOW (the front was not up far enough), BIG (a truck or an RV), SMALL (a cyclist, a scooter or a golf cart), SIDEWAYS, BEHIND or WOBBLY (already wobbling). They flash briefly and small, like a takedown's name.
+
+For devs: `src/sim/riders/wheelie.ts` (`HOOD_TRUNK_MIN_CLOSING_MPS` = 3, used when the car goes the rider's way; `wheelieCrashReason`), `src/sim/traffic/index.ts` (a crash from a live wheelie carries `data.wheelieReason`), `src/ui/race-feed.ts` (`hoodPop`, `wheelieCrashPop`). Per-PR sim test in `src/sim/riders/wheelie.test.ts`: a Rustbucket (real bike numbers) in the hold-and-release rhythm behind a 24.6 m/s sedan, from 20 m back, over four approach speeds and two throttles, launches every time, and 7 of the 8 contacts were under the old 8 m/s line (5.7 to 7.9 m/s); it failed first, on a wobble at 5.7 m/s, before the change. Replay and determinism are unchanged: no new input or setting, and the reason is event data only. Not phone-verified.

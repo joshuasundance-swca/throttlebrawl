@@ -67,7 +67,7 @@
 // Every number below is a [default] starting value, to be tuned on the phone.
 import { clamp, nextFloat, sin, TAU, type TuningParamDecl } from '../../core';
 import { sRateFactor } from '../../road';
-import { hoodLaunchContact } from '../riders/wheelie';
+import { hoodLaunchContact, wheelieCrashReason } from '../riders/wheelie';
 import { MOVING_DECKS_KEY, type SimConfig, type SimMovingDecks, type SimTrafficTypeDef } from '../types';
 import { addMover, emit, systemState, type Mover, type SimSystem, type World } from '../world';
 import {
@@ -1738,6 +1738,11 @@ function toppleKerbRider(world: World, config: SimConfig, st: TrafficState, k: n
   fromCorridor(st.corridor, st.u[k] ?? 0, next, st.dir[k] ?? 1, mover.pos);
 }
 
+/** A crash's `wheelieReason` (sim/riders/wheelie.ts `wheelieCrashReason`), or nothing when it has none. */
+function wheelieReasonData(reason: string | undefined): { wheelieReason?: string } {
+  return reason === undefined ? {} : { wheelieReason: reason };
+}
+
 /**
  * Wobbles, crashes and near misses between riders and vehicles (M1 traffic-1, reshaped by
  * playtest 1, 2026-09-30: "hitting cars feels bouncy"). A first contact is classed by how the
@@ -1753,7 +1758,8 @@ function toppleKerbRider(world: World, config: SimConfig, st: TrafficState, k: n
  * A close, fast pass with no contact fires `nearMiss`.
  * Playtest 3: a vehicle with its ramp down (a live moving deck, SimMovingDeck) is the riders' to
  * meet, by the deck rules, so traffic skips it; and a first contact a wheelie turns into a hood
- * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble. With `traffic.kerbSoft`, a first
+ * launch (sim/riders/wheelie.ts) is neither a crash nor a wobble, and a crash a wheelie did not turn
+ * into a launch says why in one word (`data.wheelieReason`, P4-2). With `traffic.kerbSoft`, a first
  * contact with a light kerb rider (T4.1) is always a wobble with `data.kerb`, and at
  * KERB_YIELD.toppleMinMps closing or more the cyclist topples (toppleKerbRider) and is skipped
  * until it has lain still for KERB_YIELD.toppleS.
@@ -1849,6 +1855,8 @@ function contacts(world: World, config: SimConfig, st: TrafficState, riders: Rid
               contact: crash ? 'crash' : 'wobble',
               hit,
               impactMps: closing,
+              // A rider in a wheelie who crashed instead of launching is told why, in one word.
+              ...(crash ? wheelieReasonData(wheelieCrashReason(world, hood)) : {}),
             };
             if (solid) {
               // Inelastic: the rider ends at the vehicle's speed along the road, never bounced back.

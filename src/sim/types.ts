@@ -569,6 +569,10 @@ export type SimEventType =
   | 'stealWindow'
   /** A rider lost stability without going down (barrier scrape, rough landing, a first contact). */
   | 'wobble'
+  /**
+   * A rider went down. A crash into a vehicle from a live wheelie that did not launch carries a
+   * one-word `data.wheelieReason` (playtest 4, P4-2; sim/riders/wheelie.ts `wheelieCrashReason`).
+   */
   | 'crash'
   /**
    * A rider went down within the attribution window of someone's hit (M2 combat-4). Actor = the
@@ -614,7 +618,8 @@ export type SimEventType =
    * A wheelie into a car launched the rider (playtest 3: "wheelie into the hood of a car... launch
    * you up into a jump doing backflips"; sim/riders/wheelie.ts). Actor = the rider, target = the
    * vehicle (absent for a parked road hazard, whose feature id is `data.feature`); `data.part` is
-   * `hood` (the car came at the rider) or `trunk` (it drove the rider's way), `data.closingMps`,
+   * `hood` (the car came at the rider, 8 m/s closing or more) or `trunk` (it drove the rider's way,
+   * from 3 m/s: playtest 4's P4-2), `data.closingMps`,
    * `data.vyMps` and `data.flips`, the backflips the launch spins. The `jump` that starts the flight
    * carries `data.hood`, and so does its `land`.
    */
