@@ -277,6 +277,57 @@ describe('the Seven Mile Bridge: real geometry, the old road beside it', () => {
     expect(gaps.length).toBeGreaterThanOrEqual(3);
     expect(far).toEqual([]);
   });
+
+  it('stands Fred the Tree on the old bridge where the real one grows, on the side the new highway is', () => {
+    // Playtest 4, P4-15 (the maintainer: "Old seven mile bridge should have Fred the Tree"). The real
+    // tree grows out of the old deck near mile marker 41, at 24.6896 N, 81.2048 W (Wikipedia, "Fred the
+    // Tree"), and is seen from the new highway. Its box is a landmark of the old road, along the real
+    // station and on the highway's side, past the lane edges: a thing to see, never one to hit.
+    const FRED_AT: [number, number] = [24.6896, -81.2048];
+    const owners = SM.roads.filter((r) => featuresOf(r).some((f) => f.id === 'fred-the-tree'));
+    expect(
+      owners.map((r) => r.id),
+      'one road carries Fred',
+    ).toEqual(['osm-sm-old-west']);
+    const road = owners[0] as BakedRoad;
+    const fred = featuresOf(road).find((f) => f.id === 'fred-the-tree') as BakedFeature;
+    expect(fred.kind).toBe('landmark');
+    expect(fred.params?.['model']).toBe('models/landmarks/keys-landmarks#fred_the_tree');
+
+    const edge = SM_ROAD.edgeIndex(road.id);
+    const sMid = (fred.s0 + fred.s1) / 2;
+    const dMid = (fred.d0 + fred.d1) / 2;
+    const [rx, rz] = frameSM.toWorld(FRED_AT[0], FRED_AT[1]);
+    const real = nearestOn(road, rx, rz);
+    print(
+      `Fred at s ${sMid.toFixed(0)}, d ${dMid.toFixed(1)}; the real tree is at s ${real.s.toFixed(0)} on the old road (${real.off.toFixed(1)} m from its line)`,
+    );
+    // Along the road: within a sample or two of the real station (the bake pins s to the real line).
+    expect(Math.abs(sMid - real.s)).toBeLessThan(12);
+
+    // Clear of every lane, shoulders included, so no rider's path touches its box.
+    const lanes = SM_ROAD.lanesAt(edge, sMid);
+    const lo = Math.min(...lanes.map((l) => l.dCenterM - l.widthM / 2));
+    const hi = Math.max(...lanes.map((l) => l.dCenterM + l.widthM / 2));
+    expect(Math.min(fred.d0, fred.d1) >= hi || Math.max(fred.d0, fred.d1) <= lo).toBe(true);
+    // Small: a ground box of a few metres, not a block that could shut a view.
+    expect(fred.s1 - fred.s0).toBeLessThanOrEqual(6);
+    expect(Math.abs(fred.d1 - fred.d0)).toBeLessThanOrEqual(3);
+
+    // On the side the new highway is: nearer the 1982 bridge than the old road's own line is.
+    const at = SM_ROAD.toWorld(edge, sMid, dMid, 0);
+    const centre = SM_ROAD.toWorld(edge, sMid, 0, 0);
+    const toHighway = (x: number, z: number) =>
+      Math.min(
+        ...SM.roads
+          .filter((r) => ['osm-sm-bridge', 'osm-sm-bridge-east', 'osm-sm-bridge-west'].includes(r.id))
+          .map((r) => nearestOn(r, x, z).off),
+      );
+    print(
+      `Fred is ${toHighway(at.x, at.z).toFixed(0)} m from the new highway, the old road's line ${toHighway(centre.x, centre.z).toFixed(0)} m`,
+    );
+    expect(toHighway(at.x, at.z)).toBeLessThan(toHighway(centre.x, centre.z));
+  });
 });
 
 // ---- The jumps, measured in the sim, per bike ---------------------------------------------------
