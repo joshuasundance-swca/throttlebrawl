@@ -4,7 +4,9 @@
 // engine loads is lost, and what inspect() reports before then agrees with the engine.
 import { describe, expect, it, vi } from 'vitest';
 import { createAudio } from './index';
+import { registryFromGlob } from '../content';
 import { FakeAudioContext } from './fake-context';
+import { stationsFromTable } from './stations';
 import { busTargets, type Volumes } from './tuning';
 
 type Engine = typeof import('./system');
@@ -104,6 +106,26 @@ describe('the audio stand-in (audio/index.ts)', () => {
       expect(before.voice.on).toBe(after.voice.on);
       expect(before.voice.level).toBe(after.voice.level);
       expect(before.radio.choice).toBe(after.radio.choice);
+    }
+  });
+
+  it("reports the region's stations before the engine loads, as the engine does, so a saved station can be tuned at boot", async () => {
+    // ui/ tunes the saved station at boot by finding it in inspect().radio.stations; an empty list
+    // there tuned the region's first station instead (radio-station-persist.spec.ts).
+    const registry = registryFromGlob(
+      import.meta.glob('/packs/*/**/*.json', { eager: true, import: 'default' }),
+    );
+    const all = stationsFromTable(registry.stations);
+    for (const region of [null, 'florida-keys', 'san-francisco']) {
+      const chunk = deferredLoad();
+      const audio = createAudio({ ...quiet, createContext: contexts().create }, chunk.load);
+      audio.setStations(all);
+      audio.setRegion(region);
+      const before = [...audio.inspect().radio.stations];
+      expect(before.length, `${region}: stations`).toBeGreaterThan(1);
+      await chunk.resolve();
+      await flush();
+      expect(before, `${region}`).toEqual([...audio.inspect().radio.stations]);
     }
   });
 

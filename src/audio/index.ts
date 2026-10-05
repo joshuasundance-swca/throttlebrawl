@@ -11,6 +11,7 @@
 // - Per-frame calls (`frame`, `update`, `onEvents`) before then play nothing, and `inspect()`
 //   reports the settings' bus targets and whether a voice could speak, as the engine would.
 // The tuning declarations (tuning.ts) and the station tables (stations.ts) load at boot.
+import { stationsForRegion, type RadioStation } from './stations';
 import type { AudioInspect, AudioOptions, AudioSystem } from './system';
 import { busTargets, RADIO_FIRST_STATION, radioKeyAction, VOICE_DEFAULTS, type Volumes } from './tuning';
 
@@ -60,6 +61,10 @@ export function createAudio(
   let muted = false;
   let voiceGain: number = VOICE_DEFAULTS.gain;
   let radioChoice: number = RADIO_FIRST_STATION;
+  // The stations and region as the engine will have them (system.ts's own defaults), so ui/ can find
+  // the saved station at boot.
+  let stations: readonly RadioStation[] = opts.stations ?? [];
+  let region: string | null = null;
 
   let loading: Promise<AudioSystem | null> | null = null;
   const fetchEngine = (): Promise<AudioSystem | null> => {
@@ -127,7 +132,7 @@ export function createAudio(
       radio: {
         choice: radioChoice,
         tunedTo: 'pending',
-        stations: [],
+        stations: stationsForRegion(stations, region).map((st) => st.id),
         nowPlaying: null,
         history: [],
         pirate: { on: false, station: null },
@@ -189,10 +194,12 @@ export function createAudio(
     },
     state: () => engine?.state() ?? tapContext?.state ?? 'none',
     inspect: () => engine?.inspect() ?? standIn(),
-    setStations(stations) {
-      set((a) => a.setStations(stations));
+    setStations(list) {
+      stations = list;
+      set((a) => a.setStations(list));
     },
     setRegion(regionId) {
+      region = regionId;
       set((a) => a.setRegion(regionId));
     },
     setRoad(road) {
