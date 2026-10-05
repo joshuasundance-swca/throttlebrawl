@@ -25,6 +25,9 @@
 //   five uniforms. W-T (the horizon comes alive) adds a one-way glide on the same attributes: a
 //   freight train, a landing seaplane, a bridge's traffic and fog pouring over a crest run end to
 //   end, thin into the haze near each end and come round again, still without a per-frame touch.
+// - A piece with `nearFadeM` (playtest 4, G1: the Golden Gate from the headlands) is the far form of a
+//   model the near world draws up close: no fragment of it nearer (in view depth) than the near fog's
+//   end, where the near model is wholly in the fog, then it comes out of the haze. One bridge, never two.
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Mesh, ShaderMaterial } from 'three';
 import {
   backdropProblems,
@@ -82,6 +85,29 @@ export function floorDrawnDepth(z: number, fogFar: number): number {
   return 1 / (1 / BACKDROP_FAR_M + c / z);
 }
 
+/**
+ * Where a faded piece (`nearFadeM`, playtest 4, G1) starts to be drawn, m of view depth: the near fog's
+ * end, where the near world's own model of the same thing is wholly in the fog (three's fog is by view
+ * depth too), and never past the squeeze's far end, just inside the camera's far plane that clips the
+ * near model.
+ */
+export function fadeFrom(fogFar: number): number {
+  return Math.min(fogFar, BACKDROP_FAR_M);
+}
+
+/**
+ * A faded piece's vertex at view depth `depth`: null where it is not drawn at all (nearer than
+ * fadeFrom), else the extra haze over it, 1 at fadeFrom down to 0 `fadeM` metres past it (a smoothstep).
+ * With `fadeM` 0 the piece has no near fade: 0 everywhere. The backdrop's fragment shader does the same.
+ */
+export function nearFadeAt(depth: number, fadeM: number, fogFar: number): number | null {
+  if (fadeM <= 0) return 0;
+  const k = (depth - fadeFrom(fogFar)) / fadeM;
+  if (k < 0) return null;
+  const x = Math.min(1, k);
+  return 1 - x * x * (3 - 2 * x);
+}
+
 /** A glide is fully seen over the middle of its run; past this share of the half-run it thins out. */
 export const GLIDE_FADE = 0.8;
 
@@ -111,8 +137,11 @@ attribute vec3 aColor;
 attribute vec4 aInfo;
 attribute vec4 aMotion;
 attribute float aLift;
+attribute float aFade;
 varying vec3 vColor;
 varying float vHaze;
+varying float vFade;
+varying float vDepth;
 void main() {
   vec3 p = position;
   // A swing (a ship, a fog bank) or, with a negative speed, a one-way glide that comes round again
@@ -122,6 +151,9 @@ void main() {
   p.xz += aMotion.xy * m;
   p.y += aLift * m;
   p.xz += uCam.xz * aInfo.w;
+  // A faded piece (playtest 4, G1) is cut by its TRUE view depth, as three's fog fades the near model.
+  vFade = aFade;
+  vDepth = -(viewMatrix * vec4(p, 1.0)).z;
   vec3 v = p - uCam;
   float d = max(length(v), 0.5);
   float r = d <= uRMin ? d : uRMin + (uRMax - uRMin) * (d - uRMin) / (d - uRMin + uSqueeze);
@@ -158,10 +190,21 @@ void main() {
 
 const FRAGMENT = /* glsl */ `
 uniform vec3 uHaze;
+uniform float uFadeFrom;
 varying vec3 vColor;
 varying float vHaze;
+varying float vFade;
+varying float vDepth;
 void main() {
-  gl_FragColor = vec4(mix(vColor, uHaze, vHaze), 1.0);
+  float h = vHaze;
+  // The far form of a near model (nearFadeAt mirrors this): nothing of it nearer than the near fog's
+  // end, where the near model is wholly in the fog, then out of the haze over vFade metres.
+  if (vFade > 0.0) {
+    float k = (vDepth - uFadeFrom) / vFade;
+    if (k < 0.0) discard;
+    h = max(h, 1.0 - smoothstep(0.0, 1.0, k));
+  }
+  gl_FragColor = vec4(mix(vColor, uHaze, h), 1.0);
   #include <colorspace_fragment>
 }`;
 
@@ -306,7 +349,9 @@ export function buildSoup(
     }
     const ctx: ShapeCtx = { soup, toWorld, nearRoad, centre, seed };
     const from = soup.motion.length;
+    soup.nearFade = p.nearFadeM ?? 0;
     const kept = buildPiece(p, ctx);
+    soup.nearFade = 0;
     if (kept) stats.kinds[p.kind] = (stats.kinds[p.kind] ?? 0) + 1;
     else stats.skipped++;
     // What moves (W-T): any vertex the piece built with a drift.
@@ -408,6 +453,7 @@ export function buildBackdrop(
   geometry.setAttribute('aInfo', new Float32BufferAttribute(soup.info, 4));
   geometry.setAttribute('aMotion', new Float32BufferAttribute(soup.motion, 4));
   geometry.setAttribute('aLift', new Float32BufferAttribute(soup.lift, 1));
+  geometry.setAttribute('aFade', new Float32BufferAttribute(soup.fade, 1));
   const uniforms = {
     uCam: { value: [0, 0, 0] as [number, number, number] },
     uTime: { value: 0 },
@@ -417,6 +463,7 @@ export function buildBackdrop(
     uHazeM: { value: region.hazeM },
     uHazeMax: { value: region.hazeMax ?? 0.8 },
     uFogFar: { value: 700 },
+    uFadeFrom: { value: fadeFrom(700) },
     uHaze: { value: new Color('#ffffff') },
   };
   // Facets face every way (curtains, ribbons, sails): draw both sides.
@@ -440,6 +487,7 @@ export function buildBackdrop(
       // The squeeze starts where the near fog is full, never past the far end.
       uniforms.uRMin.value = squeezeStart(fogFar);
       uniforms.uFogFar.value = fogFar;
+      uniforms.uFadeFrom.value = fadeFrom(fogFar);
       uniforms.uHaze.value.copy(haze);
     },
     dispose() {
