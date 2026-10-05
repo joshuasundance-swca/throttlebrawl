@@ -39,10 +39,13 @@ const ROAD_URLS = import.meta.glob<string>(
   { eager: true, query: '?url', import: 'default' },
 );
 /**
- * The base pack's baked models (playtest 1c item 4): the bundler emits each GLB into the build and
- * gives its URL, so the files ship with the game and load through the asset manifest by id.
+ * Every pack's baked models (playtest 1c item 4): the bundler emits each GLB into the build and
+ * gives its URL, so the files ship with the game and load through the asset manifest by id. A
+ * region's own models sit in its region pack (tools/blender/README.md, "Pack and region"; playtest 3:
+ * the landmark kits and the step-up bikes), so the glob covers every pack, and only a URL string per
+ * model rides in the first load: a file is fetched when something loads its id.
  */
-const MODEL_URLS = import.meta.glob<string>('/packs/base/assets/**/*.glb', {
+const MODEL_URLS = import.meta.glob<string>('/packs/*/assets/**/*.glb', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -52,26 +55,30 @@ const packPath = (key: string) => key.replace(/^\/packs\/base\//, '');
 
 /**
  * The asset manifest rows the registry's packs contribute (docs/architecture.md, "Asset
- * manifest"): the base pack's GLBs, by asset id (the path under assets/ without its extension).
+ * manifest"): each carried pack's GLBs, by asset id (the path under the pack's assets/ without its
+ * extension), with the pack's id. A pack the registry does not carry contributes none.
  * `path` is the bundler's URL for the file, which the manifest resolves against the page. `bytes`
  * and `hash` stay 0 and '' in the build: the core contract allows that until the indexer's sizes
  * and hashes reach the runtime (tools/packs writes them to pack.index.json, never committed).
  */
 export function assetIndex(reg: ContentRegistry): readonly AssetIndexEntry[] {
-  if (!reg.packs.some((p) => p.id === 'base')) return [];
+  const carried = new Set(reg.packs.map((p) => p.id));
   return Object.keys(MODEL_URLS)
     .sort()
-    .map((key) => {
-      const rel = key.replace(/^\/packs\/base\/assets\//, '');
-      return {
-        id: rel.replace(/\.[^./]+$/, ''),
-        kind: 'mesh' as const,
-        source: 'baked' as const,
-        path: MODEL_URLS[key] ?? key,
-        bytes: 0,
-        hash: '',
-        packId: 'base',
-      };
+    .flatMap((key) => {
+      const m = /^\/packs\/([^/]+)\/assets\/(.+)$/.exec(key);
+      if (!m || !carried.has(m[1] as string)) return [];
+      return [
+        {
+          id: (m[2] as string).replace(/\.[^./]+$/, ''),
+          kind: 'mesh' as const,
+          source: 'baked' as const,
+          path: MODEL_URLS[key] ?? key,
+          bytes: 0,
+          hash: '',
+          packId: m[1] as string,
+        },
+      ];
     });
 }
 
