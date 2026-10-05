@@ -50,6 +50,8 @@ export function buildBridgeTraffic(p: BridgePiece, ctx: ShapeCtx): number {
   // The deck's half width and height, as the bridge builder draws them.
   const W = 16 * e;
   const deck = p.deckM * e;
+  // A sloping deck (deckEndM): each light rides the slope, rising or falling as it goes.
+  const deckEnd = (p.deckEndM ?? p.deckM) * e;
   const s = ctx.soup;
   const r = raceRng(ctx, `${p.id}:traffic`);
   const [head, tail] = (p.trafficColours ?? ['#fff2cf', '#ff4b38']).map(rgb) as [Rgb, Rgb];
@@ -62,10 +64,16 @@ export function buildBridgeTraffic(p: BridgePiece, ctx: ShapeCtx): number {
     const off = dir * W * 0.45;
     for (let k = 0; k < n; k++) {
       s.begin(-1);
-      s.glide((dir * tx * L) / 2, (dir * tz * L) / 2, 0, period, (k + r() * 0.7) / n);
+      s.glide(
+        (dir * tx * L) / 2,
+        (dir * tz * L) / 2,
+        (dir * (deckEnd - deck)) / 2,
+        period,
+        (k + r() * 0.7) / n,
+      );
       s.frustum(
         mx - tz * off,
-        deck,
+        (deck + deckEnd) / 2,
         mz + tx * off,
         tx,
         tz,
