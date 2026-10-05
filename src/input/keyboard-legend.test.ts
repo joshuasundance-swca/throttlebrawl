@@ -15,8 +15,11 @@ describe('input: the keyboard legend for the pause screen', () => {
     expect(find('punch right')).toBe('O');
     expect(find(KEY_ACTION_NAMES.throttle)).toBe('W / ↑');
     expect(find('wheelie (hold)')).toBe('H'); // playtest 4's wheelie button
-    expect(find(KEY_ACTION_NAMES.brake)).toBe('S / ↓');
-    expect(KEY_ACTION_NAMES.brake).toContain('U-turn'); // playtest 4's own gesture
+    // Space joined the brake for the drift (2026-10-05); Q is the U-turn button, Esc pauses.
+    expect(find(KEY_ACTION_NAMES.brake)).toBe('S / ↓ / Space');
+    expect(find(KEY_ACTION_NAMES.uturn)).toBe('Q');
+    expect(KEY_ACTION_NAMES.uturn).toContain('U-turn');
+    expect(find('pause')).toBe('Esc');
     expect(find('steer left')).toBe('A / ←');
     expect(find('steer right')).toBe('D / →');
     expect(find('look back')).toBe('L');
@@ -41,6 +44,10 @@ describe('input: the keyboard legend for the pause screen', () => {
     expect(keyLabel('Escape')).toBe('Esc');
     expect(keyLabel('Backquote')).toBe('`');
     expect(keyLabel('ArrowRight')).toBe('→');
-    expect(keyLabel('ShiftLeft')).toBe('ShiftLeft');
+    expect(keyLabel('ShiftLeft')).toBe('L Shift');
+    expect(keyLabel('ControlRight')).toBe('R Ctrl');
+    expect(keyLabel('Numpad0')).toBe('Num 0');
+    expect(keyLabel('Slash')).toBe('/');
+    expect(keyLabel('Backslash')).toBe('\\');
   });
 });

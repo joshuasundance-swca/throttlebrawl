@@ -92,7 +92,7 @@ import {
 import { parseChangelog, sameBuild, whatsNewSince, type ChangelogNote, type WhatsNew } from './whats-new';
 import { createNarrative, type Narrative } from './narrative';
 import type { TuningPanel } from './tuning';
-import { keyLegend } from '../input';
+import { keyLegend, keyMapFromBindings } from '../input';
 import { cleanRegions, pickRegion, sameRegion, type RegionOption } from './regions';
 import { createRoutePicker, ROUTE_PICKER_CSS, type RouteOption } from './routes';
 import { raceOptionRows, stepRaceOption, type RaceOptionId, type RaceOptionsView } from './race-options';
@@ -738,6 +738,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (radioChanged) applyRadio();
     settingsScreen.sync(settings);
     syncPauseEntries();
+    drawKeyLegend();
     cb.onSettingsChange?.(next);
   };
   /**
@@ -784,6 +785,18 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       preview,
     }),
   );
+  // The Keys tab (2026-10-05): where a keyboard can be used (a fine pointer), once a pad connects, and
+  // in preview mode. A touch-only phone never shows it: its controls are the touch layout.
+  const padConnected = () => {
+    try {
+      return [...(navigator.getGamepads?.() ?? [])].some((p) => !!p?.connected);
+    } catch {
+      return false;
+    }
+  };
+  const fine = typeof matchMedia === 'function' && matchMedia('(pointer: fine)').matches;
+  settingsScreen.setRemap(preview || fine || padConnected());
+  window.addEventListener('gamepadconnected', () => settingsScreen.setRemap(true));
   settingsScreen.sync(settings);
   // The saved view and radio, at boot: app/ pushes every presentation value to its module next.
   applyView();
@@ -1089,16 +1102,26 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // The keyboard legend (playtest 1, 2026-09-30: "idk how to kick on the laptop"): on the pause
   // screen only, never on the in-race HUD [decided] ("don't clutter the in-game HUD"). Open where
   // the pointer is fine (a laptop), folded on a touch screen, where it is one line.
-  const keyRows = [...keyLegend(), { keys: 'Esc', action: 'pause' }, { keys: '`', action: 'tuning panel' }];
+  // Drawn from the player's own keys (Settings, Keys; 2026-10-05), and redrawn when they change.
+  const keysGrid = el('div', { className: 'keys-grid' });
+  let legendFor: Settings['keyBindings'] | null = null;
+  const drawKeyLegend = () => {
+    if (legendFor === settings.keyBindings) return;
+    legendFor = settings.keyBindings;
+    const rows = [
+      ...keyLegend(keyMapFromBindings(settings.keyBindings)),
+      { keys: '`', action: 'tuning panel' },
+    ];
+    keysGrid.replaceChildren(
+      ...rows.map((r) => el('div', {}, el('b', { textContent: r.keys }), ` ${r.action}`)),
+    );
+  };
+  drawKeyLegend();
   const pauseKeys = el(
     'details',
     { id: 'pause-keys', className: 'card', open: !coarse },
     el('summary', { textContent: 'Keyboard' }),
-    el(
-      'div',
-      { className: 'keys-grid' },
-      ...keyRows.map((r) => el('div', {}, el('b', { textContent: r.keys }), ` ${r.action}`)),
-    ),
+    keysGrid,
   );
   const restartButton = entry(
     button('pause-restart', 'small', 'Restart', () => {
@@ -1558,11 +1581,17 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   window.addEventListener('keydown', () => {
     if (radioSource) queueMicrotask(() => syncLive());
   });
+  // Esc pauses, resumes and backs out of a screen; the player's other pause keys (Settings, Keys)
+  // pause and resume only.
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Escape' || e.repeat) return;
+    if (e.repeat) return;
+    const esc = e.code === 'Escape';
+    if (!esc && !(current === 'race' && keyMapFromBindings(settings.keyBindings).pause.includes(e.code)))
+      return;
     if (current === 'race') {
-      if (!settingsScreen.root.hidden) closeSettings();
-      else if (paused) resume();
+      if (!settingsScreen.root.hidden) {
+        if (esc) closeSettings();
+      } else if (paused) resume();
       else pause();
     } else if (current === 'settings' || current === 'raceOptions') show('menu');
   });

@@ -48,6 +48,7 @@ describe('app: settings to input control options', () => {
       pullBackBrake: true,
       haptics: false,
       gamepadBindings: { kick: ['button4'] },
+      keyBindings: { brake: ['ShiftLeft'] },
     });
     expect(got).toEqual({
       steering: 'both',
@@ -56,6 +57,7 @@ describe('app: settings to input control options', () => {
       pullBackBrake: true,
       haptics: false,
       padBindings: { kick: ['button4'] },
+      keyBindings: { brake: ['ShiftLeft'] },
     });
     for (const key of Object.keys(DEFAULT_CONTROL_OPTIONS) as (keyof typeof got)[])
       expect(got[key], key).not.toEqual(DEFAULT_CONTROL_OPTIONS[key]);

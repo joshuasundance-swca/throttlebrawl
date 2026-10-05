@@ -107,23 +107,26 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | Key | Action | Tag |
 |---|---|---|
 | W / Up | Throttle (ramps up while held) | [default] |
-| S / Down | Brake | [default] |
+| S / Down / Space | Brake. Space joined on 2026-10-05 so a drift (brake, steer and throttle at once) sits under the left thumb: Space with W and A or D, or Space with the arrows. The maintainer: "on computer drifting is a bit less than ideal because the brake is the s key". A double tap still makes the U-turn. | [default] |
 | A, D / Left, Right | Steer | [default] |
+| Q (hold) | U-turn button: hold it and steer the way round. It makes the brake's double tap for you (2026-10-05). | [default] |
 | H (hold) | Wheelie: hold to lift the front, release to drop it (playtest 4). Not Shift: five quick presses of Shift open the Sticky Keys prompt on Windows. | [default] |
 | J | Attack (auto-target) | [default] |
 | U / O | Attack, forced left / right | [default] |
 | K | Kick | [default] |
 | C | Change the camera view: low chase, far chase, helmet (camera-3; d-pad up on a gamepad). The cruise-control action stays reserved, on the shelf [decided], and gets a key of its own if a playtest asks for it. | [default] |
-| Esc | Pause | [default] |
-| Space | Skip the run-back while on foot | [default] |
+| Esc | Pause. Esc always pauses; Settings, Keys can add more pause keys. | [default] |
+| Space | Skip the run-back while on foot (it shares Space with the brake: the skip only counts on foot) | [default] |
 | L (hold) | Look back | [default] |
 | Backquote (`) | Open the tuning panel | [default] |
 
 - Keyboard is as important as touch, and every key is remappable. [decided for equal priority; default for remapping]
+- Remapping (2026-10-05, the maintainer: "can we customize keyboard settings and stuff? I want to be sure it's a joy to play and use all functions"): Settings has a Keys tab listing every action with its keys (up to three) or pad buttons (up to two; the steering stick takes one). Tap a slot and press the key or button; Esc cancels and Backspace clears a slot, but an action always keeps at least one binding. A key or button that does two jobs is flagged in words on both rows ("Also: Punch"), and R is flagged as the radio's key; skipping the run-back may share with anything. Reset puts a device back to its defaults. The remaps are saved with the settings (`keyBindings`, `gamepadBindings`: only what changed). Esc always pauses and Backquote stays the tuning panel's. The pause screen's keyboard legend shows the player's own keys. The tab shows where a keyboard (a fine pointer) or a pad is around, and never on a touch-only phone, whose touch controls don't change. Remapping is input only: the sim and replays see the same commands. [default]
 
 ### Gamepad
 
 - All input goes through one mapping layer designed for gamepads from the start. A PS4-style controller, including one paired over Bluetooth to the phone, is added around milestone 2. [decided]
+- Default buttons (standard mapping): left stick and d-pad left and right steer, R2 throttle, L2 brake, Cross punch (and skip the run-back), Square and Circle to a side, Triangle kick, L1 the straight kick, R1 look back, d-pad up the camera view, R3 (hold) wheelie, d-pad down (hold) the U-turn button, Options pause. All remappable in Settings, Keys. The pad's pause button opens the pause screen; resuming is the screen's Resume. [default]
 
 ### Settings
 

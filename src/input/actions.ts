@@ -34,6 +34,11 @@ export interface ActionState {
    * throttle stays the throttle. Optional, so hand-built action states stay valid.
    */
   wheelie?: boolean;
+  /**
+   * A press edge for the pause screen (a pad's pause button; the keyboard's pause keys are ui's own).
+   * Presentation only: it never reaches the SimInput.
+   */
+  pause?: boolean;
 }
 
 export function emptyActions(): ActionState {
