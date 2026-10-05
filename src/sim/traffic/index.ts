@@ -172,6 +172,21 @@ export const TRAFFIC_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
+    // Hairpin yield (playtest 4, the Gorge's first turns: the field, carried wide round the Crown
+    // Point loop, met the oncoming car in it head on): a vehicle waits short of a bend of 75 m radius
+    // or tighter while a rider is in it or within this far (m) beyond it, coming its way, and drives
+    // on once they are through. 0 (and a race whose tuning leaves it out) is off. [default]
+    id: 'traffic.hairpinYieldM',
+    group: 'traffic',
+    label: 'Traffic waits at a hairpin for riders',
+    default: 250,
+    min: 0,
+    max: 400,
+    step: 10,
+    unit: 'm',
+    affectsSim: true,
+  },
+  {
     // M2 traffic-3: 0 is off. Playtest 1 found nothing unfair, so it ships off. [default]
     id: 'traffic.oncomingEaseInS',
     group: 'traffic',
@@ -970,6 +985,89 @@ function nearTightBend(world: World, config: SimConfig, st: TrafficState, u: num
 }
 
 /**
+ * Where a waiting vehicle stops: this far short of the drift bend's mouth (m), clear of a rider
+ * carried wide out of the bend into its lane, who steers back across it within about 50 m. [default]
+ */
+const HAIRPIN_WAIT_M = 60;
+
+/**
+ * Hairpin yield (`traffic.hairpinYieldM`): how far ahead of corridor u, travelling `dir`, the next
+ * drift bend (DRIFT_BEND_KAPPA, the corridor's bend mask) begins, when a rider is in that bend or
+ * within the key's reach beyond it, riding toward u; else Infinity (also with the key off, and in
+ * a bend already: a vehicle in one drives on through). Riders going the vehicle's way never count.
+ * Pure + - * / over the corridor and the rider views.
+ */
+function hairpinMouth(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  u: number,
+  dir: number,
+): number {
+  const reach = world.params['traffic.hairpinYieldM'] ?? 0;
+  if (!(reach > 0) || riders.length === 0) return Infinity;
+  const c = st.corridor;
+  const mask = bendMask(config, st);
+  const bendAt = (a: number): boolean | null => {
+    const x = u + dir * a;
+    if (x < 0 || x > c.length) return null;
+    return mask[Math.round(x / BEND_STEP_M)] === 1;
+  };
+  let mouth = -1;
+  for (let a = 0; a <= TRAFFIC.lookaheadM; a += BEND_STEP_M) {
+    const at = bendAt(a);
+    if (at === null) return Infinity;
+    if (at) {
+      mouth = a;
+      break;
+    }
+  }
+  if (mouth <= 0) return Infinity;
+  let far = mouth;
+  while (bendAt(far + BEND_STEP_M) === true) far += BEND_STEP_M;
+  for (const r of riders) {
+    if (r.dir === dir) continue;
+    const ahead = dir * (r.u - u);
+    if (ahead >= mouth && ahead <= far + reach) return mouth;
+  }
+  return Infinity;
+}
+
+/**
+ * The distance ahead of vehicle k to the line where it waits for riders coming round a hairpin
+ * (HAIRPIN_WAIT_M short of its mouth), or Infinity: none coming, or k already past its wait line.
+ */
+function hairpinWait(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  k: number,
+): number {
+  const mouth = hairpinMouth(world, config, st, riders, st.u[k] ?? 0, st.dir[k] ?? 1);
+  return mouth - HAIRPIN_WAIT_M > 0 ? mouth - HAIRPIN_WAIT_M : Infinity;
+}
+
+/**
+ * A spawn slot a vehicle could not wait in time at (hairpin yield): riders are coming round the
+ * hairpin ahead of it, and it would start past its wait line or inside its comfortable stopping
+ * distance of it.
+ */
+function hairpinSpawnBlocked(
+  world: World,
+  config: SimConfig,
+  st: TrafficState,
+  riders: readonly RiderView[],
+  u: number,
+  dir: number,
+  v0: number,
+): boolean {
+  const mouth = hairpinMouth(world, config, st, riders, u, dir);
+  return mouth < HAIRPIN_WAIT_M + (v0 * v0) / (2 * IDM.comfortDecelMps2);
+}
+
+/**
  * Tries to (re)spawn a vehicle heading `dir`: candidate slots from the front of the anchors'
  * windows backward, each checked against the corridor ends, the fairness rule and lane room.
  */
@@ -1030,6 +1128,7 @@ function trySpawn(
     riders ??= riderViews(world, config, st);
     if (!riderClear(riders, t, u, spawnCd(config, c, t, u, dir, lanes[rank]?.cd ?? 0))) continue;
     const v0 = t.cruiseMps * speedRoll;
+    if (!isParked(t) && hairpinSpawnBlocked(world, config, st, riders, u, dir, v0)) continue;
     const slot = placeVehicle(world, config, { type, u, dir, rank, v0 }, k);
     st.spawns++;
     if (k >= 0) st.recycles++;
@@ -1480,6 +1579,12 @@ function move(
         }
       }
       if (end < Infinity) consider(end - t.lengthM / 2, 0);
+    }
+    // Hairpin yield (playtest 4): riders coming round a tight bend toward it hold it short of the
+    // bend, a stopped obstacle at its wait line.
+    if (!isParked(t)) {
+      const wait = hairpinWait(world, config, st, riders, k);
+      if (wait < Infinity) consider(wait - t.lengthM / 2, 0);
     }
     // A dodging kerb rider (T4.1) slows down while it does.
     const dodging = isKerb(t) && st.clockS < (st.yieldUntilS[k] ?? 0);

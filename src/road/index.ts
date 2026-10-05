@@ -30,6 +30,8 @@ export {
   VERGE_BY_TAG,
 } from './cross-section';
 export type { CrossSection, ResolvedVerge, VergeSide, VergeSource } from './cross-section';
+export { BRIDGE_TAPER_SLOPE, bridgedAt } from './bridge-taper';
+export type { TaperedVerge } from './bridge-taper';
 export { gapAt, gapById, gapFarSide, jumpableWallAt, nearestOnEdges } from './gap';
 export { createRouteProgress } from './route';
 export type { RouteBranch, RouteCheckpoint, RouteProgress, RouteShortcut } from './route';
