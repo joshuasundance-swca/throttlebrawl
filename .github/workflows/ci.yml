@@ -62,7 +62,7 @@ jobs:
 
   # The static checks: types, lint, format, packs, leak scan, size and notes. About 2 minutes, so
   # its own job; with the unit tests after them in one job (until 2026-10-05) it took up to 564 s.
-  # [default]
+  # The timeout is 1.5x its 122 s mean, rounded up. [default]
   static:
     name: static
     needs: [plan]
@@ -91,7 +91,9 @@ jobs:
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    # 189 and 220 s on run 37263764562. Not 1.5x that: region-routes ran 174 s alone there but
+    # 337 s beside other files, and a refreshed plan can put files beside it again.
+    timeout-minutes: 7
     strategy:
       fail-fast: false
       matrix:
@@ -121,7 +123,8 @@ jobs:
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    # 1.5x the mean slice of this layout's first two runs (366 s), rounded up; the slowest was 467 s.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -143,7 +146,8 @@ jobs:
   # as perf always has (on a fresh runner, perf printed slower ink-look frame times: #166, reverted
   # in #176); the slice plan gives that slice fewer e2e seconds to make room. fail-fast is off so a
   # red slice never hides another's result. [default]
-  # Six slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice.
+  # Six slices since 2026-10-05: with four, #475's green run took 368 to 608 s a slice. The timeout
+  # is 1.5x the mean slice of this layout's first two runs (385 s), rounded up.
   browser:
     name: browser (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
