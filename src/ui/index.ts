@@ -42,10 +42,12 @@ import {
   applyTopPlan,
   bikeZoneBox,
   HUD_SIZE,
+  hudTextScale,
   layoutTop,
   lookAheadBox,
   placedBox,
   readSafe,
+  scaledElement,
   settleLifts,
   type Box,
 } from './hud-layout';
@@ -65,6 +67,7 @@ import { pickStampSpot } from './stamp';
 import { COUNTDOWN_CSS, createCountdownView } from './countdown-view';
 import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
 import { hudStyle } from './placement';
+import { ROOT_FONT_PCT, textScaleOf } from './text-size';
 import {
   applySettingsChange,
   lastSeenPersists,
@@ -81,6 +84,7 @@ import { CHANGELOG_CSS, createChangelogScreen, createWhatsNewCard } from './chan
 import { createRaceTally, createStyleMeter, type StylePop } from './race-feed';
 import { popItem, type TickerItem } from './ticker';
 import { createTickerUi, TICKER_CSS } from './ticker-view';
+import { REDUCE_MOTION_CSS } from './reduce-motion';
 import { HUD_TUNING, hudParam } from './hud-tuning';
 import {
   playingStation,
@@ -213,6 +217,11 @@ export interface GameUi {
   /** The full-screen surface input/ listens on for touches. */
   readonly touchSurface: HTMLElement;
   setLayout(layout: TouchLayout): void;
+  /**
+   * Reduce motion for the interface (M5's a11y-1): the HUD's animations and fades stop while it is on
+   * (the Reduce motion setting, or the phone's own preference). Sets `data-motion` on the root.
+   */
+  setReduceMotion(on: boolean): void;
   notice(text: string): void;
   /**
    * The race-start countdown's number (playtest 4, P4-11): "3", "2", "1" or "GO" in the middle of
@@ -319,36 +328,36 @@ const EDGE_PX = 24;
 export const LOOK_OFFER_MS = 12_000;
 
 const CSS = `
-#ui { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.3 system-ui, sans-serif; color: #fff;
+#ui { position: fixed; inset: 0; pointer-events: none; font: 600 1rem/1.3 system-ui, sans-serif; color: #fff;
   --hl-safe-t: env(safe-area-inset-top, 0px); --hl-safe-r: env(safe-area-inset-right, 0px);
   --hl-safe-b: env(safe-area-inset-bottom, 0px); --hl-safe-l: env(safe-area-inset-left, 0px);
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #ui button, #ui input, #ui label { pointer-events: auto; font: inherit; }
 #ui .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 10px; text-align: center; background: rgb(20 10 40 / 50%); z-index: 2;
+  justify-content: safe center; overflow-y: auto; gap: 10px; text-align: center; background: rgb(20 10 40 / 50%); z-index: 2;
   padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); box-sizing: border-box; }
 #ui .screen[hidden], #ui [hidden] { display: none !important; }
-#ui .title { font-size: 32px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
+#ui .title { font-size: 2rem; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
   background: #111; color: #f2ead8; padding: 2px 14px; transform: rotate(-1.5deg); box-shadow: 4px 4px 0 #e0543a; }
 #ui .big, #ui .small { cursor: pointer; font-family: ui-monospace, 'Courier New', monospace; font-weight: 800;
   color: #111; background: #f2ead8; border: 3px solid #111; box-shadow: 3px 3px 0 #111; }
-#ui .big { font-size: 22px; min-height: 52px; padding: 8px 34px; background: #f5c542; }
-#ui .small { font-size: 15px; min-height: 44px; padding: 6px 16px; }
+#ui .big { font-size: 1.375rem; min-height: 52px; padding: 8px 34px; background: #f5c542; }
+#ui .small { font-size: 0.9375rem; min-height: 44px; padding: 6px 16px; }
 #ui .big:active, #ui .small:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #111; }
 #ui .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-#ui .card { max-width: min(560px, 92vw); font: 500 13px/1.4 ui-monospace, 'Courier New', monospace; background: #000a;
+#ui .card { max-width: min(560px, 92vw); font: 500 0.8125rem/1.4 ui-monospace, 'Courier New', monospace; background: #000a;
   padding: 8px 12px; border: 1px dashed #fff8; text-align: left; box-sizing: border-box; }
 #ui .card b { color: #f5c542; }
-#ui .footer { position: absolute; bottom: 6px; left: 0; right: 0; font: 500 12px ui-monospace, monospace; opacity: 0.8; }
+#ui .footer { position: absolute; bottom: 6px; left: 0; right: 0; font: 500 0.75rem ui-monospace, monospace; opacity: 0.8; }
 #start-screen { pointer-events: auto; cursor: pointer; }
 #region-picker { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: min(560px, 92vw); }
-#region-picker .region-label { font: 800 12px ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
+#region-picker .region-label { font: 800 0.75rem ui-monospace, 'Courier New', monospace; letter-spacing: 0.12em;
   text-transform: uppercase; background: #111; color: #f2ead8; padding: 1px 8px; transform: rotate(1deg); }
 #region-picker .row { gap: 10px; }
-#region-picker .region { font-size: 15px; }
+#region-picker .region { font-size: 0.9375rem; }
 #region-picker .region[aria-checked='true'] { background: #111; color: #f5c542; box-shadow: 3px 3px 0 #e0543a;
   transform: rotate(-1deg); }
-#region-picker .region-blurb { font: italic 500 13px/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
+#region-picker .region-blurb { font: italic 500 0.8125rem/1.3 ui-monospace, 'Courier New', monospace; color: #f2ead8;
   text-shadow: 1px 1px 0 #111; max-width: 100%; }
 /* A short phone held sideways (568x320, 640x360): the menu was taller than the screen, so Settings
    sat below it (playtest 3, wave B's check F1). Short screens get a tighter menu: smaller title,
@@ -363,14 +372,14 @@ const CSS = `
   #ui #menu.with-news { flex-direction: column; gap: 6px; }
   #ui #menu.with-news .footer { display: none; }
   #ui #menu .menu-main { gap: 3px; }
-  #ui #menu .title { font-size: 20px; padding: 1px 12px; }
-  #ui #menu .big { font-size: 20px; min-height: 42px; padding: 4px 28px; }
-  #ui #menu .small { font-size: 13px; min-height: 40px; padding: 2px 12px; }
+  #ui #menu .title { font-size: 1.25rem; padding: 1px 12px; }
+  #ui #menu .big { font-size: 1.25rem; min-height: 42px; padding: 4px 28px; }
+  #ui #menu .small { font-size: 0.8125rem; min-height: 40px; padding: 2px 12px; }
   #ui #menu #region-picker, #ui #menu #route-picker { gap: 2px; }
   #ui #menu #region-picker .row { gap: 6px; }
   #ui #menu #route-picker .route-row { gap: 6px; padding: 2px 4px 3px; }
-  #ui #menu .region-label, #ui #menu .route-label { font-size: 11px; line-height: 13px; }
-  #ui #menu .region-blurb, #ui #menu .route-blurb { font-size: 11px; line-height: 1.2; display: -webkit-box;
+  #ui #menu .region-label, #ui #menu .route-label { font-size: 0.6875rem; line-height: 0.8125rem; }
+  #ui #menu .region-blurb, #ui #menu .route-blurb { font-size: 0.6875rem; line-height: 1.2; display: -webkit-box;
     -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
   #ui #menu #region-picker.route-picked .region-blurb { display: none; }
   #ui #menu #whats-new { width: min(560px, 100%); }
@@ -385,13 +394,13 @@ const CSS = `
 #hud-target .hud-bar > div { background: #e0543a; }
 #hud-target .hud-name { display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
 #hud-pause { position: absolute; top: 8px; right: max(8px, env(safe-area-inset-right)); width: 48px; height: 44px;
-  pointer-events: auto; font: 900 16px ui-monospace, monospace; color: #fff; background: #0008;
+  pointer-events: auto; font: 900 1rem ui-monospace, monospace; color: #fff; background: #0008;
   border: 2px solid #fffa; border-radius: 6px; cursor: pointer; }
 #hud-pause.mirrored { right: auto; left: max(8px, env(safe-area-inset-left)); }
 #touch-surface { position: absolute; inset: 0; touch-action: none; }
 #touch-surface[hidden] { display: none; }
 .touch-button { position: absolute; border: 3px solid #fff; border-radius: 50%; background: #0004;
-  display: flex; align-items: center; justify-content: center; font: 800 14px ui-monospace, monospace;
+  display: flex; align-items: center; justify-content: center; font: 800 0.875rem ui-monospace, monospace;
   pointer-events: none; box-sizing: border-box; flex-direction: column; line-height: 1.1; }
 .touch-hint { font: 700 10px ui-monospace, monospace; opacity: 0.85; }
 .touch-small { font-size: 16px; }
@@ -404,7 +413,8 @@ const CSS = `
 ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
 ${TICKER_CSS}
-#results-tally { font: 800 15px ui-monospace, monospace; }
+${REDUCE_MOTION_CSS}
+#results-tally { font: 800 0.9375rem ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
    The menu (#pause-main) and the two cards (#pause-cards: the legend and the recently-seen list) are
@@ -432,17 +442,17 @@ ${TICKER_CSS}
   /* Playtest 4's wheelie key made the legend 15 rows: one size down here keeps the open legend and
      the first "cut this" row on a 412 px high phone at once (they were 20 px short). [default] */
   #pause-keys .keys-grid { grid-template-rows: none; grid-template-columns: repeat(2, auto); grid-auto-flow: row;
-    font-size: 12px; line-height: 1.3; gap: 1px 14px; }
+    font-size: 0.75rem; line-height: 1.3; gap: 1px 14px; }
 }
 #resume-card { pointer-events: auto; background: rgb(10 5 20 / 85%); }
 #busy { pointer-events: auto; background: rgb(10 5 20 / 85%); z-index: 5; }
 #busy::before { content: ''; width: 36px; height: 36px; border: 5px solid #f2ead8; border-top-color: #f5c542;
   border-radius: 50%; animation: tb-spin 0.9s linear infinite; }
 @keyframes tb-spin { to { transform: rotate(360deg); } }
-#pause-build { font: 500 12px ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
+#pause-build { font: 500 0.75rem ui-monospace, monospace; padding: 10px 14px; opacity: 0.75; pointer-events: auto;
   touch-action: none; }
 #rotate-screen { flex-direction: column; gap: 18px; background: #140a28 !important; color: #f2ead8 !important;
-  font: 900 22px/1.3 system-ui, sans-serif !important; text-transform: uppercase; letter-spacing: 0.04em; }
+  font: 900 1.375rem/1.3 system-ui, sans-serif !important; text-transform: uppercase; letter-spacing: 0.04em; }
 #rotate-screen::before { content: ''; width: 44px; height: 76px; border: 4px solid #f2ead8; border-radius: 8px;
   animation: tb-rotate 2.2s ease-in-out infinite; }
 @keyframes tb-rotate { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
@@ -457,13 +467,13 @@ ${TICKER_CSS}
   left: var(--hl-toast-x, 12px); width: var(--hl-toast-w, max-content); max-width: var(--hl-toast-mw, 92vw);
   transform: translateX(var(--hl-toast-t, 0px)); z-index: 1; display: flex; flex-direction: column; gap: 4px;
   pointer-events: none; padding: 4px 8px; }
-#ui .look-offer-text { font: 700 13px/1.3 system-ui, sans-serif; color: #f2ead8; }
+#ui .look-offer-text { font: 700 0.8125rem/1.3 system-ui, sans-serif; color: #f2ead8; }
 #ui .look-offer .row { justify-content: flex-start; gap: 6px; }
-#ui .look-offer .small { min-height: 40px; padding: 4px 8px; font-size: 13px; pointer-events: auto; }
+#ui .look-offer .small { min-height: 40px; padding: 4px 8px; font-size: 0.8125rem; pointer-events: auto; }
 #ui .look-offer .look-offer-classic { background: #f5c542; }
 #ui[data-top='stacked']:has(> #look-offer:not([hidden])) #hud-ticker { visibility: hidden; }
 #build-stamp.in-race { display: none; }
-#build-stamp { pointer-events: none; font-size: 11px; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
+#build-stamp { pointer-events: none; font-size: 0.6875rem; line-height: 1.2; padding: 2px 6px; box-sizing: border-box;
   max-width: calc(100vw - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
 #build-stamp.at-right { left: auto; right: max(8px, env(safe-area-inset-right)); text-align: right; }
 #build-stamp.yield { display: none; }
@@ -724,6 +734,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const change = (c: SettingsChange) => {
     const next = applySettingsChange(settings, c);
     const mirrorChanged = next.mirror !== settings.mirror;
+    const textChanged = next.textSize !== settings.textSize;
     // A pick in the View or Radio row always applies, even when it equals the saved value: the
     // live choice may have moved without the row (mustFix 1). Both are no-ops when already live.
     const picked = c.kind === 'set' ? c.id : null;
@@ -734,6 +745,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       layout = { ...layout, mirror: next.mirror };
       placeAll();
     }
+    if (textChanged) applyTextSize(true);
     if (viewChanged) applyView();
     if (radioChanged) applyRadio();
     settingsScreen.sync(settings);
@@ -862,8 +874,36 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     w: touchSurface.clientWidth || window.innerWidth,
     h: touchSurface.clientHeight || window.innerHeight,
   });
-  const elementOf = (name: string): LayoutElement | undefined =>
-    layout.elements.find((e) => e.element === name && e.visible);
+  // The Text size setting (ui/text-size.ts): the HUD's text widgets draw `textScale` times as large,
+  // as boxes (the record's own scale), so their bars and padding keep their proportions and every
+  // box the layout settles (hud-layout.ts) is the size the widget paints.
+  let textScale = 1;
+  /**
+   * Sets the factor everything draws with and the page's root size to match: menus, the ticker, the
+   * objective and the heat badge size their type in rem, and the root is a percentage of the
+   * browser's own default size, so a larger browser setting still counts. In a race the HUD's factor
+   * is capped by the screen's height (`hudTextScale`), so a short phone keeps its road ahead clear.
+   */
+  const syncTextScale = (screenH: number) => {
+    const size = textScaleOf(settings.textSize);
+    textScale = current === 'race' ? hudTextScale(size, screenH) : size;
+    const pct = textScale === 1 ? '' : `${Math.round(ROOT_FONT_PCT * textScale)}%`;
+    if (document.documentElement.style.fontSize !== pct) document.documentElement.style.fontSize = pct;
+    if (root.dataset['text'] !== settings.textSize) root.dataset['text'] = settings.textSize;
+  };
+  /** The Text size changed (or the screen did): draws it, and settles the HUD again when asked. */
+  const applyTextSize = (settle: boolean) => {
+    syncTextScale(window.innerHeight);
+    if (!settle) return;
+    placeAll();
+    queueStampCheck();
+  };
+  applyTextSize(false);
+  const TEXT_WIDGETS: readonly string[] = ['position', 'speedometer', 'health-self', 'health-target'];
+  const elementOf = (name: string): LayoutElement | undefined => {
+    const e = layout.elements.find((x) => x.element === name && x.visible);
+    return e && TEXT_WIDGETS.includes(name) ? scaledElement(e, textScale) : e;
+  };
   /** The touch buttons the record shows, each with its box as core settles it (input/ hit-tests these). */
   const touchButtonList = (w: number, h: number): { e: LayoutElement; r: Rect }[] => {
     const placed = placeTouchButtons(layout, w, h);
@@ -881,6 +921,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   let gaugeBlock: GaugeBlockers | null = null;
   const placeAll = () => {
     const { w, h } = screenSize();
+    syncTextScale(h);
     const unit = Math.min(w, h);
     // The touch buttons' boxes first: the text widgets settle off them (ui/hud-layout.ts, rule 6).
     // core settles the wheelie button off the other two (playtest 4); input/ hit-tests the same boxes.
@@ -902,6 +943,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       mirror: layout.mirror,
       position: inTopRow('position', HUD_SIZE.position),
       target: inTopRow('health-target', HUD_SIZE.health),
+      textScale,
     });
     applyTopPlan(root, top, w);
     const bottomTexts = (['speedometer', 'health-self'] as const).flatMap((name) => {
@@ -1736,6 +1778,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
 
   function show(screen: Screen) {
     current = screen;
+    syncTextScale(window.innerHeight);
     for (const [name, els] of Object.entries(screens)) for (const e of els) e.hidden = name !== screen;
     if (paused) closePause();
     stamp.classList.toggle('in-race', screen === 'race');
@@ -1831,6 +1874,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       placeAll();
     },
     offerClassicLook,
+    setReduceMotion(on) {
+      root.dataset['motion'] = on ? 'reduced' : 'full';
+    },
     notice(text) {
       noticeBox.textContent = text;
       noticeBox.hidden = false;

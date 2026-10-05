@@ -134,6 +134,7 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 | A Voices on/off switch beside mute (spoken barks; off keeps the Voices slider's level), on by default with the Voices slider at 80% (maintainer, 2026-10-01: "add a Voices volume and an off switch") | [decided]; the 80% default is [default] |
 | Haptics on/off | [decided] |
 | Takedown slow motion on/off | [decided] |
+| Reduce screen shake, Reduce motion and Text size (Normal, Large, Largest), together on an Access tab (playtest 4 run B, B13; M5's a11y-1; see [Accessibility](#accessibility)) | [decided] for reduce shake; [default] for the rest |
 | Speed units (mph or km/h) | [decided] |
 | Lower overall game speed (for readable fights and enjoying the scenery) | [decided] |
 | Steering: thumb, tilt, or both | [decided for tilt as an option; default for "both"] |
@@ -156,11 +157,15 @@ These four pillars settle design arguments. When two ideas conflict, the one tha
 The maintainer asked for accessibility basics "without being obtrusive or getting in the way". [decided]
 
 - A left-handed mirror that swaps the two thumb zones. [decided]
-- A reduce-screen-shake toggle. [decided]
+- A reduce-screen-shake toggle. [decided] It cuts the camera's trauma shake and the hit jolt, and nothing else.
 - Subtitles for voices. Barks are text bubbles in milestone 1 anyway. [decided]
 - Assist options. [decided] The set: steering assist (off, light, strong), auto-throttle, and the lower-overall-speed setting. [default]
 - Rivals are told apart by shape (helmet, silhouette, jacket pattern) as well as by color, for color-blind players. [default]
 - A text-size setting for menus and bubbles, and a reduce-motion toggle that softens the speed FOV kick and camera roll. [default]
+- **As built, 2026-10-05** `[default]` (playtest 4 run B, B13; M5's a11y-1). Reduce screen shake, Reduce motion and Text size sit together on a new Access tab of the settings, and each applies at once, even mid-race.
+  - **Reduce motion** is the wider switch, and it takes the shake with it. The chase and far cameras keep 30% of their lean roll and speed FOV kick (`camera.motionCalm`; the helmet camera already did), and the drift and wheelie camera moves halve. The picture loses its white hit flash, keeps half of the slow-motion tint and the speed lines, and alternates the cops' light bar once a second instead of four times (the old rate was above the three flashes a second that accessibility guidance asks pages to stay under); the road-event light bar and the flares' glow hold steady. The HUD stops animating (the ticker's slide, the heat badge's flash, the countdown's pop), except the loading ring. The phone's own reduce-motion preference counts as the setting being on.
+  - **Text size** is Normal, Large (1.2 times) or Largest (1.4 times). Menus, the settings, the ticker, the objective, the heat badge and the offers size their type in `rem` and the page's root size follows the setting (as a percentage of the browser's own size, so a larger browser setting still counts). The HUD's speed, position and health boxes grow whole, through the layout record's own scale, so their bars keep their proportions, and the top layout reserves bigger slots ([hud-layout.ts](../src/ui/hud-layout.ts), rule 7). In a race the factor is capped by the screen's height, because a short phone has no room for every slot: none on a 320 px high screen, 1.25 on 360 px, the whole of it from about 390 px (the benchmark phone sideways is 412 px). The touch buttons' words stay as they are, since the buttons are fixed circles, and the career's own screens grow with the page but are not browser-checked at the largest size.
+  - **Shape and colour check.** Where colour alone told two HUD states apart, a second cue was missing in one place: the wheelie gauge's amber, green and red zones (a green and an amber of the same lightness, and a green and a red a deutan viewer mixes up). The bar now has a dark tick on each boundary, the sweet band bracketed wider than the bar, and the loop-out zone hatched. A unit test ([shape-colour.test.ts](../src/ui/shape-colour.test.ts)) simulates protan, deutan and tritan vision and fails if two neighbouring zones could be mistaken and the boundary has no tick. The heat badge (a word per tier, lit pips as filled discs against outlines, a bar's length), the two health bars (a name each, and a lightness apart) and the ticker's chips (a word each) already carried a second cue. The eight rivals' greyscale silhouette check from M3 has no automated marker and was not run here.
 
 ## Combat
 

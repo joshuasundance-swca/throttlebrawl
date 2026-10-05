@@ -67,6 +67,7 @@ import {
   RIDER_SHADOW,
   type ShadowSize,
 } from './shadows';
+import { lightBarPhase } from './calm';
 import { defaultRenderParams, type RenderParams } from './tuning';
 import { WEAPON_PARTS, weaponShapeOf, type WeaponShape } from './weapons';
 
@@ -557,10 +558,11 @@ export class EntityViews {
       const side = typeof ev.data['side'] === 'number' ? Math.sign(ev.data['side']) || 1 : null;
       if ((ev.type === 'hit' || ev.type === 'kick') && ev.target !== undefined) {
         this.wobbles.set(ev.target, { until: this.now + WOBBLE_S, side });
-        this.flashes.set(ev.target, this.now + P.hitFlashS);
+        // Reduce motion: no white wash (the wobble, the sparks, the sound and the haptics still say it).
+        if (!P.reduceMotion) this.flashes.set(ev.target, this.now + P.hitFlashS);
       }
       if (ev.type === 'takedown' && ev.target !== undefined) {
-        this.flashes.set(ev.target, this.now + 2 * P.hitFlashS);
+        if (!P.reduceMotion) this.flashes.set(ev.target, this.now + 2 * P.hitFlashS);
       }
       if (ev.type === 'getUp') this.getUps.set(ev.actor, this.now + P.getUpS);
       if (ev.type === 'fistShake') {
@@ -1269,10 +1271,10 @@ export class EntityViews {
     const boostS = (e as EntitySnapshot & { boostS?: number }).boostS ?? 0;
     view.flame.visible = boostS > 0 && !detached;
     if (view.flame.visible) view.flame.scale.set(1, 1, 0.7 + 0.5 * Math.abs(Math.sin(time * 31)));
-    // The law: a light bar flashing red and blue at 4 Hz.
+    // The law: a light bar flashing red and blue at 4 Hz (1 Hz under reduce motion, calm.ts).
     view.lightBar.visible = scheme.law && !detached;
     if (view.lightBar.visible) {
-      const red = Math.floor(time * 8) % 2 === 0;
+      const red = lightBarPhase(time, this.params.reduceMotion === true) === 0;
       view.lightBar.material = this.look.material('lightbar', { color: red ? LIGHT_RED : LIGHT_BLUE });
     }
     // Real riders: once this rider's models are in, its rig draws it where the boxes were placed
@@ -1285,6 +1287,7 @@ export class EntityViews {
         weapon: view.weapon,
         glint: view.glint,
         flashing,
+        calm: this.params.reduceMotion === true,
         time,
         dt: this.dt,
       }) ?? false;

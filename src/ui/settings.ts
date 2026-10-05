@@ -33,6 +33,8 @@ export type SettingId =
   | 'pullBackBrake'
   | 'haptics'
   | 'reduceShake'
+  | 'reduceMotion'
+  | 'textSize'
   | 'frameRateCap'
   | 'look'
   | 'stylePopups'
@@ -41,7 +43,7 @@ export type SettingId =
   | 'voicesOn'
   | 'showTuningPanel';
 export type SettingValue = string | number | boolean;
-export type SettingsTab = 'sound' | 'race' | 'controls' | 'display';
+export type SettingsTab = 'sound' | 'race' | 'controls' | 'display' | 'access';
 
 export interface SettingDef {
   id: SettingId;
@@ -59,6 +61,9 @@ export const SETTINGS_TABS: readonly { tab: SettingsTab; label: string }[] = [
   { tab: 'race', label: 'Race' },
   { tab: 'controls', label: 'Controls' },
   { tab: 'display', label: 'Display' },
+  // M5's a11y-1: the accessibility options together, with their own tab so the Display tab still fits
+  // a phone held sideways.
+  { tab: 'access', label: 'Access' },
 ];
 
 /** Every M2 setting except the M1 volumes, mute and mirror, which the screen draws itself. */
@@ -194,7 +199,6 @@ export const SETTINGS: readonly SettingDef[] = [
       { value: 'kmh', label: 'km/h' },
     ],
   },
-  { id: 'reduceShake', tab: 'display', label: 'Reduce screen shake', kind: 'toggle' },
   {
     // Divisors of the display's refresh: smooth first, half is the ~30 fps battery saver on a 60 Hz
     // screen (docs/product-spec.md, "Settings").
@@ -237,6 +241,24 @@ export const SETTINGS: readonly SettingDef[] = [
   // Playtest 1c: the style cash chips and the live meter, on by default. ui's own effect.
   { id: 'stylePopups', tab: 'display', label: 'Style pop-ups', kind: 'toggle' },
   { id: 'showTuningPanel', tab: 'display', label: 'Tuning panel in pause menu', kind: 'toggle' },
+  // Access (M5's a11y-1; playtest 4 run B, B13): "accessibility without being obtrusive". Reduce screen
+  // shake is the narrow switch the maintainer decided on. Reduce motion is the wider one: no shake, a
+  // softer lean roll and speed FOV kick, no white hit flash, a slower cops' light bar, no HUD
+  // animation. Text size grows the menus, the ticker and the HUD's text. All three apply at once,
+  // even mid-race.
+  { id: 'reduceShake', tab: 'access', label: 'Reduce screen shake', kind: 'toggle' },
+  { id: 'reduceMotion', tab: 'access', label: 'Reduce motion', kind: 'toggle' },
+  {
+    id: 'textSize',
+    tab: 'access',
+    label: 'Text size',
+    kind: 'choice',
+    options: [
+      { value: 'normal', label: 'Normal' },
+      { value: 'large', label: 'Large' },
+      { value: 'largest', label: 'Largest' },
+    ],
+  },
 ];
 
 const byId = new Map(SETTINGS.map((s) => [s.id, s]));
@@ -249,9 +271,9 @@ export function settingDef(id: SettingId): SettingDef {
 
 /**
  * Settings live without app/ declaring them: units (wired in M1), and the tuning entry and the style
- * pop-ups (ui's own effects).
+ * pop-ups and the text size (ui's own effects).
  */
-export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel', 'stylePopups'];
+export const ALWAYS_LIVE: readonly SettingId[] = ['units', 'showTuningPanel', 'stylePopups', 'textSize'];
 
 /**
  * Settings ui applies itself through a presentation tuning slider that app/ routes to its module

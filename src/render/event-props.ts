@@ -26,6 +26,7 @@ import {
   type Texture,
 } from 'three';
 import type { PropSnapshot, SimSnapshot } from '../sim/api';
+import { propFlicker } from './calm';
 import { mergeBoxes, type BoxPart } from './geometry';
 import { canvasMeasure, fitLine, paintCopy, type CopyFit, type MeasureText } from './boards';
 import type { LookStyle } from './look';
@@ -668,6 +669,8 @@ function panelGeometry(
  */
 export class EventProps {
   readonly root = new Group();
+  /** Reduce motion: the light bar and the flares' glow hold steady (calm.ts). Set each frame by the renderer. */
+  calm = false;
   private readonly meshes = new Map<string, InstancedMesh>();
   private readonly geometries = new Map<string, BufferGeometry>();
   private readonly still: PropBatch;
@@ -754,10 +757,10 @@ export class EventProps {
       this.q2.setFromAxisAngle(this.zAxis, 0.06 * Math.sin(t * 0.7 + p.id));
       this.q.multiply(this.q2);
     } else if (kind === 'lightbar') {
-      // Flashing: the bar swells and dims twice a second.
-      sx = Math.sin(t * 12 + p.id) > 0 ? 1 : 0.55;
+      // Flashing: the bar swells and dims twice a second (steady under reduce motion).
+      sx = propFlicker('lightbar', t, p.id, this.calm);
     } else if (kind === 'flareGlow') {
-      sx = 0.8 + 0.25 * Math.sin(t * 17 + p.id * 3);
+      sx = propFlicker('flareGlow', t, p.id, this.calm);
     } else if (kind === 'person' && p.moving) {
       // Stepping smartly out of the way.
       this.v.y += 0.12 * Math.abs(Math.sin(t * 10 + p.id));

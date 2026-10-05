@@ -15,6 +15,10 @@
 //   reserved while hidden too (rule 5).
 //   Settle: a text widget that overlaps a touch button moves up off its anchored edge until it is
 //   6 px clear (rule 6, `settleLifts`).
+//   Text size (the Text size setting, ui/text-size.ts): every slot above grows with the text. The
+//   caller scales the text widgets it hands in (`scaledElement`) and passes the same factor as
+//   `textScale`, which scales the slots this function reserves itself (rule 7). In a race the factor
+//   is first capped by the screen's height (`hudTextScale`): a short phone has no room for it all.
 //
 // The slow-frames offer (the toast; the strip does not repeat it) has its
 // own reserved slot: in inline mode the near column under the position badge (so it never meets the
@@ -80,10 +84,16 @@ export const TICKER_H = 44;
 export const TOAST_STACK_H = 76;
 /** The same offer in the near column: words, then each button on its own row. */
 export const TOAST_COLUMN_H = 150;
+/**
+ * The part of those two heights that is words (three lines of 13 px type in the column, two in the
+ * strip); the buttons are 40 px tall at every Text size, so only the words grow with it.
+ */
+export const TOAST_COLUMN_WORDS_H = 51;
+export const TOAST_STACK_WORDS_H = 34;
 /** The objective's lines: 12 px type on a 16 px line, with 2 px of padding above and below. */
 export const OBJECTIVE_LINE_H = 16;
-/** Its height for a number of lines. */
-export const objectiveHeight = (lines: number) => lines * OBJECTIVE_LINE_H + 4;
+/** Its height for a number of lines, at a Text size factor (1 when left out). */
+export const objectiveHeight = (lines: number, textScale = 1) => lines * OBJECTIVE_LINE_H * textScale + 4;
 /** Two lines where it has the row (stacked); three in the far column's narrower width (inline). */
 export const OBJECTIVE_LINES: Record<'inline' | 'stacked', number> = { inline: 3, stacked: 2 };
 /** The air between pieces. */
@@ -96,6 +106,27 @@ export const SQUEEZE_MIN_GAP = 150;
 export const TICKER_MAX_W = 560;
 /** The objective's widest slot. */
 export const OBJECTIVE_MAX_W = 420;
+
+/**
+ * A layout element drawn `scale` times as large (the Text size setting): its widgets grow from their
+ * anchor, so `placedBox` and `hudStyle` both see the larger widget. Returns the element when
+ * `scale` is 1 (or not a usable factor).
+ */
+export function scaledElement(el: LayoutElement, scale: number): LayoutElement {
+  return scale > 0 && Number.isFinite(scale) && scale !== 1 ? { ...el, scale: el.scale * scale } : el;
+}
+
+/**
+ * The Text size factor the race's HUD draws with on a screen `h` CSS px tall. A short phone has no
+ * room for every slot at the largest size (the top layout reserves its slots whether shown or not),
+ * so the factor is capped by the height: none at 320 px, 1.25 at 360, 1.4 from about 390 (a
+ * Galaxy A16 held sideways is 412 and takes the whole of it). Menus use the setting's own factor.
+ * [default]
+ */
+export function hudTextScale(size: number, h: number): number {
+  if (!(size > 1) || !Number.isFinite(h)) return 1;
+  return Math.max(1, Math.min(size, 1 + (h - 320) / 160));
+}
 
 export interface Safe {
   top: number;
@@ -115,6 +146,12 @@ export interface TopInput {
   position: Box | null;
   /** The rival's bar as the layout record places it (its slot, shown or not), or null. */
   target: Box | null;
+  /**
+   * The Text size factor, 1 (Normal) when left out: the slots this function reserves itself (the
+   * ticker's, the offer's, the objective's lines, the heat badge, the rival's bar when displaced) grow
+   * by it. `position` and `target` arrive already scaled (`scaledElement`).
+   */
+  textScale?: number;
 }
 
 export type TopMode = 'inline' | 'stacked';
@@ -206,6 +243,13 @@ function widestGap(w: number, items: readonly Box[]): [number, number] {
 /** Settles the top pieces (see the header). Pure: the same input always gives the same plan. */
 export function layoutTop(input: TopInput): TopPlan {
   const { w, h, safe, mirror, position, target } = input;
+  const k =
+    input.textScale !== undefined && input.textScale > 0 && Number.isFinite(input.textScale)
+      ? input.textScale
+      : 1;
+  const tickerH = TICKER_H * k;
+  const toastStackH = TOAST_STACK_H + TOAST_STACK_WORDS_H * (k - 1);
+  const toastColumnH = TOAST_COLUMN_H + TOAST_COLUMN_WORDS_H * (k - 1);
   const top = Math.max(8, safe.top);
   const marginL = Math.max(8, safe.left);
   const marginR = Math.max(8, safe.right);
@@ -217,7 +261,7 @@ export function layoutTop(input: TopInput): TopPlan {
   const inRowA: Box[] = [pause];
   if (position) inRowA.push(position);
   if (target && !displaced) inRowA.push(target);
-  const rowABottom = Math.max(top + TICKER_H, ...inRowA.map((b) => b.bottom));
+  const rowABottom = Math.max(top + tickerH, ...inRowA.map((b) => b.bottom));
   const [gapFrom, gapTo] = widestGap(w, inRowA);
   const gap = gapTo - gapFrom;
 
@@ -225,27 +269,27 @@ export function layoutTop(input: TopInput): TopPlan {
   // ahead, the ticker takes the widest gap even when it is narrow, and wraps to two lines).
   const stackedTop = rowABottom + GAP;
   let mode: TopMode = gap >= INLINE_MIN_GAP ? 'inline' : 'stacked';
-  if (mode === 'stacked' && gap >= SQUEEZE_MIN_GAP && stackedTop + TOAST_STACK_H > look.top) mode = 'inline';
+  if (mode === 'stacked' && gap >= SQUEEZE_MIN_GAP && stackedTop + toastStackH > look.top) mode = 'inline';
   let ticker: Box;
   if (mode === 'inline') {
     const slotW = Math.min(TICKER_MAX_W, gap - 16);
-    ticker = box((gapFrom + gapTo) / 2 - slotW / 2, top, slotW, TICKER_H);
+    ticker = box((gapFrom + gapTo) / 2 - slotW / 2, top, slotW, tickerH);
   } else {
     const slotW = Math.min(TICKER_MAX_W, w - 32);
-    ticker = box((w - slotW) / 2, stackedTop, slotW, TICKER_H);
+    ticker = box((w - slotW) / 2, stackedTop, slotW, tickerH);
   }
 
   const farRight = !mirror;
   const sideOfFar: 'left' | 'right' = farRight ? 'right' : 'left';
   const sideOfNear: 'left' | 'right' = farRight ? 'left' : 'right';
-  const heatW = HUD_SIZE.heat[0];
-  const heatH = HUD_SIZE.heat[1];
-  const targetH = HUD_SIZE.health[1];
-  const targetW = HUD_SIZE.health[0];
+  const heatW = HUD_SIZE.heat[0] * k;
+  const heatH = HUD_SIZE.heat[1] * k;
+  const targetH = HUD_SIZE.health[1] * k;
+  const targetW = HUD_SIZE.health[0] * k;
   let toast: Box;
   let toastCentred = false;
   const objectiveLines = OBJECTIVE_LINES[mode];
-  const objH = objectiveHeight(objectiveLines);
+  const objH = objectiveHeight(objectiveLines, k);
   let objective: Box;
   let heat: Box;
   let moved: Box | null = null;
@@ -255,7 +299,7 @@ export function layoutTop(input: TopInput): TopPlan {
     // The near column (the position badge's side, up to the road ahead): the slow-frames offer.
     const nearLeft = farRight ? (position ? position.left : marginL) : Math.ceil(look.right) + 1;
     const nearRight = farRight ? Math.floor(look.left) - 1 : position ? position.right : w - marginR;
-    toast = box(nearLeft, y0, Math.max(0, nearRight - nearLeft), TOAST_COLUMN_H);
+    toast = box(nearLeft, y0, Math.max(0, nearRight - nearLeft), toastColumnH);
     // The far column (the pause button's side, past the road ahead): the displaced rival's bar,
     // the objective, then the heat badge.
     const colLeft = farRight ? Math.ceil(look.right) + 1 : marginL;
@@ -273,9 +317,9 @@ export function layoutTop(input: TopInput): TopPlan {
     heat = farRight ? box(colRight - hW, y, hW, heatH) : box(colLeft, y, hW, heatH);
   } else {
     // The offer takes the ticker's slot; row C starts under it.
-    toast = box(ticker.left, ticker.top, width(ticker), TOAST_STACK_H);
+    toast = box(ticker.left, ticker.top, width(ticker), toastStackH);
     toastCentred = true;
-    const y0 = stackedTop + TOAST_STACK_H + GAP;
+    const y0 = stackedTop + toastStackH + GAP;
     const farLeft = farRight ? w - marginR - heatW : marginL;
     if (displaced) {
       moved = farRight

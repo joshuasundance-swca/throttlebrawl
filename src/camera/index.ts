@@ -121,6 +121,9 @@ export const CAMERA_TUNING: readonly TuningParamDecl[] = [
   decl('helmetFovDeg', 'Helmet cam: field of view', 70, 50, 95, 1, '°'),
   decl('helmetRollFraction', 'Helmet cam: roll with lean', 0.5, 0, 1, 0.05, ''),
   decl('helmetCalm', 'Helmet cam: calm under reduce-shake', 0.3, 0, 1, 0.05, ''),
+  // M5's a11y-1: the share of the chase and far views' lean roll and speed FOV kick that the
+  // Reduce motion setting leaves. [default] 30 %, the helmet view's own share.
+  decl('motionCalm', 'Chase cams: roll and FOV kick left under reduce-motion', 0.3, 0, 1, 0.05, ''),
 ];
 
 export interface FollowCamera {
@@ -145,6 +148,13 @@ export interface FollowCamera {
    * multiplies `camera.shakeScale`; values outside 0..1 are clamped, and NaN means 1.
    */
   setShakeAmount(amount: number): void;
+  /**
+   * The player's reduce-motion setting, from 1 (full motion) to 0 (reduced): the chase and far
+   * views' lean roll and speed FOV kick shrink to `camera.motionCalm`, and the helmet view and the
+   * drift and wheelie moves calm as they do under reduce-shake. Clamped to 0..1; NaN means 1. It
+   * does not touch the shake and the jolt: app/ sets those through `setShakeAmount` too.
+   */
+  setMotionAmount(amount: number): void;
   /** The chosen base view (`camera.mode`); `mode` says what the last frame showed. */
   readonly view: ViewMode;
   /** Picks the base view. A later `camera.mode` tuning change overrides it. */
@@ -189,6 +199,7 @@ export function createFollowCamera(opts: FollowCameraOptions = {}): FollowCamera
       return next;
     },
     setShakeAmount: (amount) => rig.setShakeAmount(amount),
+    setMotionAmount: (amount) => rig.setMotionAmount(amount),
     update: (t, dt, ctx) => rig.update(t, dt, ctx),
     snap: (t, ctx) => rig.snap(t, ctx),
     onEvents: (events) => rig.onEvents(events),
