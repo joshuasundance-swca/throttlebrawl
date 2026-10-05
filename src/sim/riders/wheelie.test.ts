@@ -1,7 +1,9 @@
 // The wheelie and the hood launch (playtest 3: "I'd love a way to do wheelies and if you wheelie into
-// the hood of a car it should launch you up into a jump doing backflips"; the gesture: double-tap the
-// throttle to pop it, balance it by thumb height). Tests from the spec's acceptance lists (scratch
-// moves.md §3.2 and §3.3, the critic's S2 for parked cars), counted in ticks with quantized inputs.
+// the hood of a car it should launch you up into a jump doing backflips"). Playtest 4 (P4-7,
+// [decided] "Wheelie button"): HOLD the button to lift the front and keep it up, RELEASE to drop it;
+// the throttle stays the throttle; held too long, it loops out. Tests from the spec's acceptance
+// lists (scratch moves.md §3.2 and §3.3, the critic's S2 for parked cars, the playtest 4 brief),
+// counted in ticks with quantized inputs.
 import { describe, expect, it } from 'vitest';
 import { tuningDefaults } from '../../core';
 import { createRoadNetwork, createRouteProgress, fixtureNetwork, type BakedFeature } from '../../road';
@@ -36,9 +38,10 @@ import {
 } from './wheelie';
 
 const G = 9.81;
-/** u = 0.6: the sweet band's middle (θ settles at 0.6 rad). */
+/** A part throttle the riding tests use for speed (the wheelie no longer reads it). */
 const SWEET_U = 153 / 255;
 
+/** The wheelie button held, at a throttle. */
 const wheelieIn = (throttle: number, brake = 0): SimInput => ({
   ...input(throttle, brake),
   flags: InputFlag.wheelie,
@@ -48,6 +51,20 @@ const wheelieIn = (throttle: number, brake = 0): SimInput => ({
 function wheelieState(world: World, id: number) {
   const st = riderState(world);
   return { theta: st.wheelie[id] ?? 0, rate: st.wheelieRate[id] ?? 0 };
+}
+
+/**
+ * A rider who rides the wheelie by the gauge (the hold-and-release rhythm): holds the button while the
+ * front is under `lo`, lets go once it is over `hi`. At rest (front down) it holds, so it pops.
+ */
+function balancer(world: World, id: number, throttle = SWEET_U, lo = 0.5, hi = 0.7): () => SimInput {
+  let held = true;
+  return () => {
+    const theta = riderState(world).wheelie[id] ?? 0;
+    if (theta > hi) held = false;
+    else if (theta < lo) held = true;
+    return held ? wheelieIn(throttle) : input(throttle);
+  };
 }
 
 /** Puts a rider in a wheelie at θ, at rest, as if it had been up a second. */
@@ -61,42 +78,89 @@ function putUp(h: RiderHarness, theta: number): void {
   st.wheelieTick[id] = h.world.tick - 1;
 }
 
-describe('the wheelie: pop and balance (moves §3.2)', () => {
-  it('declares its switch and gain, on by default, and reuses the riders wobble length', () => {
-    expect(WHEELIE_TUNING.map((d) => [d.id, d.default])).toEqual([
-      ['riders.wheelie', 1],
-      ['riders.wheelieGain', 1],
+describe('the wheelie: hold to lift, release to drop (playtest 4, P4-7)', () => {
+  it('declares its switch, gain and hold rise, on by default, and reuses the riders wobble length', () => {
+    expect(WHEELIE_TUNING.map((d) => d.id)).toEqual([
+      'riders.wheelie',
+      'riders.wheelieGain',
+      'riders.wheelieRise',
     ]);
+    expect(WHEELIE_TUNING.find((d) => d.id === 'riders.wheelie')?.default).toBe(1);
     expect(WHEELIE_TUNING.every((d) => d.affectsSim)).toBe(true);
     expect(WHEELIE_WOBBLE_TICKS).toBe(WOBBLE_TICKS);
   });
 
-  it('pops at 2.5 rad/s on the rising edge and settles at 0.6 rad on a 0.6 throttle', () => {
+  it('a held button pops at 2.5 rad/s, lifts the front into the sweet band and keeps it up for a second', () => {
     const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
-    h.step(wheelieIn(SWEET_U));
+    h.step(wheelieIn(1));
     expect(wheelieState(h.world, h.rider.id).rate).toBeCloseTo(2.5, 9);
-    for (let t = 1; t < 120; t++) h.step(wheelieIn(SWEET_U));
+    let sweetAt = -1;
+    for (let t = 1; t < 30 && sweetAt < 0; t++) {
+      h.step(wheelieIn(1));
+      if (wheelieMoves(h.world, h.rider.id).wheelieBand === 'sweet') sweetAt = t;
+    }
+    // Then a whole second more of the same hold: still up, still in the sweet band, every tick.
+    const bands = new Set<string | null>();
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 60; t++) {
+      events.push(...h.step(wheelieIn(1)));
+      bands.add(wheelieMoves(h.world, h.rider.id).wheelieBand);
+    }
     const { theta } = wheelieState(h.world, h.rider.id);
-    console.log(`[examined] θ after 120 ticks at u 0.6: ${theta.toFixed(3)} rad`);
-    expect(Math.abs(theta - 0.6)).toBeLessThan(0.05);
+    console.log(
+      `[examined] sweet band from tick ${sweetAt}; bands over the next 60 held ticks ${[...bands].join(',')}; θ ${theta.toFixed(3)}`,
+    );
+    expect(sweetAt).toBeGreaterThan(0);
+    expect(sweetAt).toBeLessThanOrEqual(20);
+    expect([...bands]).toEqual(['sweet']);
+    expect(events.filter((e) => e.type === 'wheelieEnd' || e.type === 'crash')).toEqual([]);
     // The snapshot's pitch is the bike's real pitch: the ground's plus the front's angle.
     expect(riderState(h.world).pitch[h.rider.id]).toBeCloseTo(theta, 9);
     expect(wheelieOf(h.world, h.rider)).toBeCloseTo(theta, 9);
-    expect(wheelieMoves(h.world, h.rider.id)).toEqual({ wheelieS: 2, wheelieBand: 'sweet' });
   });
 
-  it('full throttle from the pop loops out: a crash with cause wheelie between tick 30 and 45', () => {
+  it('release drops it: let go mid-band and the front comes down cleanly, no wobble, no crash', () => {
+    for (const heldTicks of [30, 60, 90]) {
+      const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
+      for (let t = 0; t < heldTicks; t++) h.step(wheelieIn(1));
+      const events: SimEvent[] = [];
+      let endAt = -1;
+      let peak = wheelieState(h.world, h.rider.id).theta;
+      for (let t = 0; t < 90 && endAt < 0; t++) {
+        const out = h.step(input(1));
+        events.push(...out);
+        peak = Math.max(peak, wheelieState(h.world, h.rider.id).theta);
+        if (out.some((e) => e.type === 'wheelieEnd')) endAt = t;
+      }
+      console.log(
+        `[examined] held ${heldTicks} ticks, released: down ${endAt + 1} ticks later (peak after release ${peak.toFixed(3)})`,
+      );
+      expect(endAt, `held ${heldTicks}`).toBeGreaterThanOrEqual(0);
+      const end = events.find((e) => e.type === 'wheelieEnd');
+      expect(end?.data).toMatchObject({ clean: true, loopOut: false });
+      expect(Number(end?.data['seconds'])).toBeCloseTo((heldTicks + endAt + 1) / 60, 9);
+      expect(events.filter((e) => e.type === 'wobble' || e.type === 'crash')).toEqual([]);
+      expect(wheelieMoves(h.world, h.rider.id)).toEqual({ wheelieS: 0, wheelieBand: null });
+    }
+  });
+
+  it('held too long loops out: through the high band (the gauge warns), then a crash with cause wheelie', () => {
     const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
     let crashAt = -1;
+    let highAt = -1;
     const events: SimEvent[] = [];
-    for (let t = 0; t < 90 && crashAt < 0; t++) {
+    for (let t = 0; t < 60 * 6 && crashAt < 0; t++) {
       const out = h.step(wheelieIn(1));
       events.push(...out);
+      if (highAt < 0 && wheelieMoves(h.world, h.rider.id).wheelieBand === 'high') highAt = t;
       if (out.some((e) => e.type === 'crash')) crashAt = t;
     }
-    console.log(`[examined] loop-out at tick ${crashAt}`);
-    expect(crashAt).toBeGreaterThanOrEqual(30);
-    expect(crashAt).toBeLessThanOrEqual(45);
+    console.log(`[examined] held: high band from tick ${highAt}, loop-out at tick ${crashAt}`);
+    // A one-second hold is always safe; a hold never ends by itself without a loop-out.
+    expect(crashAt).toBeGreaterThan(90);
+    expect(highAt).toBeGreaterThan(60);
+    // The gauge shows the risk for a while before it goes: at least half a second of high band.
+    expect(crashAt - highAt).toBeGreaterThanOrEqual(30);
     const crash = events.find((e) => e.type === 'crash');
     expect(crash?.data).toMatchObject({ cause: 'wheelie', loopOut: true, upMps: 3, sideMps: 0 });
     const end = events.find((e) => e.type === 'wheelieEnd');
@@ -104,24 +168,72 @@ describe('the wheelie: pop and balance (moves §3.2)', () => {
     expect(wheelieState(h.world, h.rider.id).theta).toBe(0);
   });
 
-  it('thumb off after 90 ticks at 0.6: the front comes down cleanly within 70 ticks, no wobble', () => {
+  it('the throttle is independent: the front moves the same at no gas, part gas and full gas', () => {
+    const trace = (throttle: number) => {
+      const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
+      const out: number[] = [];
+      // Held for 80 ticks, let go for 20, held again for 40: the press, the drop and a re-lift.
+      for (let t = 0; t < 140; t++) {
+        const held = t < 80 || t >= 100;
+        h.step(held ? wheelieIn(throttle) : input(throttle));
+        out.push(wheelieState(h.world, h.rider.id).theta);
+      }
+      return { out, speed: h.rider.speed };
+    };
+    const none = trace(0);
+    const part = trace(0.4);
+    const full = trace(1);
+    console.log(
+      `[examined] 140 ticks at throttle 0, 0.4, 1: speeds ${[none, part, full].map((r) => r.speed.toFixed(1)).join(', ')} m/s`,
+    );
+    expect(none.out[0]).toBeGreaterThan(0); // it pops with no gas at all
+    expect(part.out).toEqual(none.out);
+    expect(full.out).toEqual(none.out);
+    // ...and the gas still does its own job while the front is up.
+    expect(full.speed).toBeGreaterThan(part.speed);
+    expect(part.speed).toBeGreaterThan(none.speed);
+  });
+
+  it('the hold-and-release rhythm keeps it up: six seconds by the gauge, no loop-out and no drop', () => {
     const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
-    for (let t = 0; t < 90; t++) h.step(wheelieIn(SWEET_U));
+    const ride = balancer(h.world, h.rider.id, 1);
     const events: SimEvent[] = [];
-    let endAt = -1;
-    for (let t = 0; t < 70 && endAt < 0; t++) {
-      const out = h.step(input(0));
-      events.push(...out);
-      if (out.some((e) => e.type === 'wheelieEnd')) endAt = t;
+    let presses = 0;
+    let was = false;
+    for (let t = 0; t < 360; t++) {
+      const cmd = ride();
+      const held = (cmd.flags & InputFlag.wheelie) !== 0;
+      if (held && !was) presses++;
+      was = held;
+      events.push(...h.step(cmd));
     }
-    console.log(`[examined] front down ${endAt + 1} ticks after the thumb lifted`);
-    expect(endAt).toBeGreaterThanOrEqual(0);
-    const end = events.find((e) => e.type === 'wheelieEnd');
-    expect(end?.data).toMatchObject({ clean: true, loopOut: false });
-    expect(Number(end?.data['seconds'])).toBeCloseTo((90 + endAt + 1) / 60, 9);
-    expect(events.filter((e) => e.type === 'wobble' || e.type === 'crash')).toEqual([]);
-    expect(wheelieState(h.world, h.rider.id).theta).toBe(0);
-    expect(wheelieMoves(h.world, h.rider.id)).toEqual({ wheelieS: 0, wheelieBand: null });
+    console.log(
+      `[examined] 360 ticks by the gauge: ${presses} presses, θ ${wheelieState(h.world, h.rider.id).theta.toFixed(3)}`,
+    );
+    expect(presses).toBeGreaterThan(1);
+    expect(events.filter((e) => e.type === 'wheelieEnd' || e.type === 'crash')).toEqual([]);
+    expect(wheelieMoves(h.world, h.rider.id).wheelieS).toBeCloseTo(6, 9);
+  });
+
+  it('a press while the front is falling lifts it again', () => {
+    const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
+    for (let t = 0; t < 60; t++) h.step(wheelieIn(1));
+    for (let t = 0; t < 15; t++) h.step(input(1));
+    const falling = wheelieState(h.world, h.rider.id);
+    expect(falling.rate).toBeLessThan(0);
+    let low = falling.theta;
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 40; t++) {
+      events.push(...h.step(wheelieIn(1)));
+      low = Math.min(low, wheelieState(h.world, h.rider.id).theta);
+    }
+    const { theta } = wheelieState(h.world, h.rider.id);
+    console.log(
+      `[examined] falling at ${falling.theta.toFixed(3)}, re-pressed: low ${low.toFixed(3)}, 40 ticks later ${theta.toFixed(3)}`,
+    );
+    expect(events.filter((e) => e.type === 'wheelieEnd')).toEqual([]);
+    expect(theta).toBeGreaterThan(low);
+    expect(wheelieMoves(h.world, h.rider.id).wheelieBand).toBe('sweet');
   });
 
   it('slammed down (falling faster than 2.5 rad/s) is a wobble with cause wheelie, and no cash', () => {
@@ -137,14 +249,13 @@ describe('the wheelie: pop and balance (moves §3.2)', () => {
     expect(riderState(h.world).wobble[h.rider.id]).toBeGreaterThan(0);
   });
 
-  it('never pops at 5 m/s, under 0.3 throttle, in the air, for an AI rider, or with the switch off', () => {
+  it('never pops at 5 m/s, in the air, for an AI rider, or with the switch off', () => {
     const popped = (h: RiderHarness, throttle = SWEET_U) => {
       for (let t = 0; t < 10; t++) h.step(wheelieIn(throttle));
       return wheelieState(h.world, h.rider.id).theta > 0;
     };
     expect(popped(riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 }))).toBe(true);
-    expect(popped(riderHarness(testConfig(), { s: 100, d: 1.7, speed: 5 }))).toBe(false);
-    expect(popped(riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 }), 0.25)).toBe(false);
+    expect(popped(riderHarness(testConfig(), { s: 100, d: 1.7, speed: 5 }), 0)).toBe(false);
     const air = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
     air.rider.mode = 'Airborne';
     air.rider.h = 3;
@@ -169,17 +280,29 @@ describe('the wheelie: pop and balance (moves §3.2)', () => {
     expect(wheelieState(pack.world, player.id).theta).toBeGreaterThan(0);
   });
 
-  it('the flag only pops: holding it on after the front is down does not pop again', () => {
-    const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 20 });
-    h.step(wheelieIn(SWEET_U));
+  it('a press held while it cannot pop (too slow) pops once it can, still held', () => {
+    const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 5 });
+    for (let t = 0; t < 10; t++) h.step(wheelieIn(0));
+    expect(wheelieState(h.world, h.rider.id).theta).toBe(0);
+    h.rider.speed = 8;
+    h.step(wheelieIn(0));
+    expect(wheelieState(h.world, h.rider.id).theta).toBeGreaterThan(0);
+  });
+
+  it('one press, one wheelie: brought down by the brake while still held, it stays down until a new press', () => {
+    const h = riderHarness(testConfig(), { s: 100, d: 1.7, speed: 25 });
+    for (let t = 0; t < 30; t++) h.step(wheelieIn(1));
     let ended = false;
-    for (let t = 0; t < 200; t++) {
-      // Flag held, throttle off: the front comes down, and it stays down while the flag stays held.
-      const out = h.step({ ...input(0), flags: InputFlag.wheelie });
+    for (let t = 0; t < 120; t++) {
+      // Still held, with the rear brake on: the front comes down, and stays down while held.
+      const out = h.step(wheelieIn(1, t < 40 ? 0.6 : 0));
       if (out.some((e) => e.type === 'wheelieEnd')) ended = true;
       if (ended) expect(wheelieState(h.world, h.rider.id).theta).toBe(0);
     }
     expect(ended).toBe(true);
+    h.step(input(1));
+    h.step(wheelieIn(1));
+    expect(wheelieState(h.world, h.rider.id).theta).toBeGreaterThan(0);
   });
 
   it('a full brake for 10 ticks at θ 0.8 brings the front under 0.5 (the rear brake)', () => {
@@ -376,11 +499,11 @@ function scene(
   };
 }
 
-/** Pops a wheelie and holds u 0.6 (θ about 0.6) until something launches, lands or crashes. */
+/** Pops a wheelie and rides it by the gauge (θ 0.5 to 0.7) until something launches, lands or crashes. */
 function rideIn(
   sc: ReturnType<typeof scene>,
   ticks: number,
-  cmd: (t: number) => SimInput = () => wheelieIn(SWEET_U),
+  cmd: (t: number) => SimInput = balancer(sc.world, sc.rider.id),
 ) {
   for (let t = 0; t < ticks; t++) {
     const out = sc.step(cmd(t));
@@ -452,25 +575,26 @@ describe('the hood launch (moves §3.3)', () => {
     const config = roadConfig([SEDAN]);
     const sc = scene(config, { s: 100, d: -1.7, speed: 26 }, { type: 0, u: 300, dir: -1, speed: 24.6 });
     let before = 0;
+    const ride = balancer(sc.world, sc.rider.id);
     for (let t = 0; t < 60 * 8; t++) {
       before = sc.world.movers[sc.vid]?.speed ?? 0;
-      const out = sc.step(wheelieIn(SWEET_U));
+      const out = sc.step(ride());
       if (out.some((e) => e.type === 'hoodLaunch')) break;
     }
     expect(sc.world.movers[sc.vid]?.speed).toBeCloseTo(before * 0.6, 1);
   });
 
-  it('too low a front (θ 0.2) or a big truck: the contact is today’s crash', () => {
+  it('too low a front (held under the sweet band) or a big truck: the contact is today’s crash', () => {
     for (const c of [
-      { what: 'θ 0.2', types: [SEDAN], u: 0.475 },
-      { what: 'big truck', types: [BOX_TRUCK], u: SWEET_U },
+      { what: 'θ about 0.1', types: [SEDAN], lo: 0.05, hi: 0.15 },
+      { what: 'big truck', types: [BOX_TRUCK], lo: 0.5, hi: 0.7 },
     ]) {
       const sc = scene(
         roadConfig(c.types),
         { s: 100, d: -1.7, speed: 26 },
         { type: 0, u: 300, dir: -1, speed: 20 },
       );
-      rideIn(sc, 60 * 8, () => wheelieIn(c.u));
+      rideIn(sc, 60 * 8, balancer(sc.world, sc.rider.id, SWEET_U, c.lo, c.hi));
       expect(find(sc.events, 'hoodLaunch'), c.what).toBeUndefined();
       const crash = find(sc.events, 'crash');
       expect(crash?.data, c.what).toMatchObject({ cause: 'traffic', hit: 'frontal' });
@@ -526,9 +650,10 @@ describe('the hood launch (moves §3.3)', () => {
     const config = roadConfig([SEDAN]);
     const sc = scene(config, { s: 100, d: -1.7, speed: 26 }, { type: 0, u: 300, dir: -1, speed: 24.6 });
     let launched = false;
+    const ride = balancer(sc.world, sc.rider.id);
     rideIn(sc, 60 * 10, () => {
       if (find(sc.events, 'hoodLaunch')) launched = true;
-      return launched ? { ...input(SWEET_U), flags: InputFlag.kick } : wheelieIn(SWEET_U);
+      return launched ? { ...input(SWEET_U), flags: InputFlag.kick } : ride();
     });
     expect(launched).toBe(true);
     const land = find(sc.events, 'land');
@@ -560,7 +685,7 @@ describe('a parked car launches too (the critic’s S2: "a car is a car")', () =
   it('a wheelie into a parked pickup head on launches over it and lands past it', () => {
     const config = roadConfig([], [PICKUP]);
     const sc = scene(config, { s: 560, d: 3.4, speed: 20 });
-    rideIn(sc, 60 * 8, () => wheelieIn(0.55));
+    rideIn(sc, 60 * 8);
     const launch = find(sc.events, 'hoodLaunch');
     console.log(`[examined] parked pickup launch: ${JSON.stringify(launch?.data)}`);
     expect(launch?.data).toMatchObject({ part: 'hood', feature: 'deck-pickup-1', object: 'pickup' });
@@ -579,7 +704,7 @@ describe('a parked car launches too (the critic’s S2: "a car is a car")', () =
       params: { solid: true, object: 'stump', heightM: 0.8 },
     };
     const sc = scene(roadConfig([], [stump]), { s: 560, d: 3.4, speed: 20 });
-    rideIn(sc, 60 * 8, () => wheelieIn(0.55));
+    rideIn(sc, 60 * 8);
     expect(find(sc.events, 'hoodLaunch')).toBeUndefined();
     expect(find(sc.events, 'crash')?.data).toMatchObject({ object: 'stump' });
   });
@@ -588,7 +713,8 @@ describe('a parked car launches too (the critic’s S2: "a car is a car")', () =
 describe('wheelie cash', () => {
   it('three seconds and more in the sweet band pay perWheelieSecondCash a second, the rest half', () => {
     const sc = scene(roadConfig([]), { s: 100, d: 1.7, speed: 20 });
-    for (let t = 0; t < 60 * 4; t++) sc.step(wheelieIn(SWEET_U));
+    const ride = balancer(sc.world, sc.rider.id);
+    for (let t = 0; t < 60 * 4; t++) sc.step(ride());
     for (let t = 0; t < 90; t++) sc.step(input(0));
     const end = find(sc.events, 'wheelieEnd');
     const seconds = Number(end?.data['seconds']);

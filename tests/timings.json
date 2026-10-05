@@ -107,7 +107,7 @@
     "src/input/input2.test.ts": 0.1,
     "src/input/keyboard-legend.test.ts": 0,
     "src/input/touch.test.ts": 0,
-    "src/input/wheelie-tap.test.ts": 0.1,
+    "src/input/wheelie-button.test.ts": 0.1,
     "src/platform/platform.test.ts": 0.1,
     "src/render/air-pays.test.ts": 0,
     "src/render/atlas.test.ts": 0.6,
