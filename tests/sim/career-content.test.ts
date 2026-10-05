@@ -49,11 +49,7 @@ function regionRoutes(def: CareerDef): string[] {
  * event, so the rule "every route of the region has an event" waits for these alone. Shrink-only:
  * a listed route that gets an event fails below until it is struck off, and wave C empties it.
  */
-const AWAITING_EVENT = new Set([
-  'region-pnw:osm-bridge-city-run',
-  'region-sf:osm-sf-golden-gate-run',
-  'region-sf:osm-sf-lombard-run',
-]);
+const AWAITING_EVENT = new Set(['region-sf:osm-sf-golden-gate-run', 'region-sf:osm-sf-lombard-run']);
 
 describe('the career maps', () => {
   it("one per region, in chapter order (the regions are the packs', in the menu's order)", () => {

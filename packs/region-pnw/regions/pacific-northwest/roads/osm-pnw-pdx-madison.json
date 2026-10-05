@@ -73,7 +73,29 @@
       "tag": "town"
     }
   ],
-  "features": [],
+  "features": [
+    {
+      "kind": "roadsideZone",
+      "id": "madison-crowd",
+      "s0": 120.0,
+      "s1": 220.0,
+      "d0": -17.0,
+      "d1": -12.0,
+      "params": {
+        "spawns": "pedestrians",
+        "kinds": ["region-pnw:umbrella-commuter", "region-pnw:rain-shell-hiker"]
+      }
+    },
+    {
+      "kind": "billboard",
+      "id": "sign-bridge-lift",
+      "s0": 395.0,
+      "s1": 405.0,
+      "d0": 12.5,
+      "d1": 15.0,
+      "item": "bridge-lift"
+    }
+  ],
   "barriers": [],
   "samples": {
     "encoding": "json-columns",

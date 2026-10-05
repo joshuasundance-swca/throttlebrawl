@@ -65,6 +65,12 @@
       "s1": 679.9392,
       "side": "both",
       "tag": "bridge"
+    },
+    {
+      "s0": 0.0,
+      "s1": 679.9392,
+      "side": "both",
+      "tag": "pdx-deck"
     }
   ],
   "features": [],

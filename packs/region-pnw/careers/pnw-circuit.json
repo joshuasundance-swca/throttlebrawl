@@ -83,7 +83,7 @@
         "road": "pnw-ferry-landing",
         "s": 40
       },
-      "opens": ["pnw-cedar-hollow", "pnw-espresso-row"],
+      "opens": ["pnw-cedar-hollow", "pnw-espresso-row", "osm-i5-samish-summit"],
       "claims": ["pnw-ferry-landing", "pnw-switchback-grade"]
     },
     {
@@ -100,17 +100,27 @@
       "claims": ["pnw-espresso-row", "pnw-trestle"]
     },
     {
-      "id": "tulip-traffic",
-      "event": "pnw-t1-tulip-traffic",
+      "id": "bridge-city",
+      "event": "pnw-t1-bridge-city",
       "length": "standard",
       "tier": "t1",
       "at": {
-        "road": "osm-i5-nulle-run",
-        "s": 300
+        "road": "osm-pnw-pdx-broadway",
+        "s": 170
       },
       "requires": ["ferry-line"],
-      "opens": ["osm-i5-samish-summit"],
-      "claims": ["osm-i5-nulle-run"]
+      "claims": [
+        "osm-pnw-pdx-east-burnside",
+        "osm-pnw-pdx-burnside-bridge",
+        "osm-pnw-pdx-west-burnside",
+        "osm-pnw-pdx-broadway-south",
+        "osm-pnw-pdx-madison",
+        "osm-pnw-pdx-hawthorne-bridge",
+        "osm-pnw-pdx-se-hawthorne",
+        "osm-pnw-pdx-alder",
+        "osm-pnw-pdx-morrison-bridge",
+        "osm-pnw-pdx-grand"
+      ]
     },
     {
       "id": "juniper-grudge",
@@ -134,7 +144,7 @@
         "s": 300
       },
       "opens": ["osm-chuckanut-larrabee"],
-      "claims": ["osm-i5-samish-summit", "osm-i5-lake-samish"]
+      "claims": ["osm-i5-nulle-run", "osm-i5-samish-summit", "osm-i5-lake-samish"]
     },
     {
       "id": "chuckanut",
@@ -183,6 +193,17 @@
       },
       "opens": ["osm-gorge-shepperds-dell"],
       "claims": ["osm-gorge-crown-point-loops", "osm-gorge-latourell"]
+    },
+    {
+      "id": "crown-point",
+      "event": "pnw-t3-crown-point",
+      "length": "standard",
+      "tier": "t3",
+      "at": {
+        "road": "osm-gorge-crown-point-loops",
+        "s": 1500
+      },
+      "claims": ["osm-gorge-crown-point-loops"]
     },
     {
       "id": "sawmill-pursuit",
@@ -311,7 +332,7 @@
     },
     {
       "bike": "supersport-900",
-      "priceCash": 34000,
+      "priceCash": 36000,
       "unlockTier": "t4"
     }
   ],
@@ -472,7 +493,7 @@
   },
   "meta": {
     "status": "live",
-    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.2; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the second chapter (global tiers 5 to 8), every tier names its boss (Juniper Moss, Kevin from Accounting, Deacon Vane, Old Growth) and the field level it asks, with 15 nodes for now: the tier-3 drift event joins with the drift lane's content, so that tier holds two regular races and its boss. Five races are new: Tulip Traffic, \"Reply All, Again\" (Kevin's grudge, the tier-2 boss), Rainout, Fire Watch and Weigh Station Closed. The shop sells the Grand Tourer 1100 (rank 4, tier 2) and the Supersport 900 (rank 5, tier 4) beside the dirt bike for $6,000; the Streetfighter and the Superbike are sold in the other regions' shops. Paints cost $1,500 to $2,500, and Wet Cedar Gloss opens from Season 2. [default] every number.",
+    "notes": "The Fir County Circuit: pacific-northwest's career map (run W-R; interview, 2026-10-02: \"Network map, tiered\" and \"The map\"). Ten events on the region's roads across all its routes and the four event types, three tiers of three (two wins open the next) and the boss in a finale tier. Wins claim roads and open the next ones; secrets are a shortcut, the region's pirate station (its route fraction, as the audio lane places it) and a stash of cash. [default] every number. Playtest 3 (T10.2; the maintainer, 2026-10-03: \"The progression doesn't feel right\"): the circuit is the second chapter (global tiers 5 to 8), every tier names its boss (Juniper Moss, Kevin from Accounting, Deacon Vane, Old Growth) and the field level it asks, with 16 nodes. Five races are new: Bridge City, \"Reply All, Again\" (Kevin's grudge, the tier-2 boss), Rainout, Fire Watch and Weigh Station Closed. Playtest 3 (T10.5, the real-world content): the first tier's third race is Bridge City, downtown Portland at dusk, so the chapter opens in the city (it replaced Tulip Traffic on I-5), and the third tier holds a drift race, Crown Point Loops, whose target is capped by what the drift bot earns there. The shop sells the Grand Tourer 1100 (rank 4, tier 2) and the Supersport 900 (rank 5, tier 4) beside the dirt bike for $6,000; the Streetfighter and the Superbike are sold in the other regions' shops. Paints cost $1,500 to $2,500, and Wet Cedar Gloss opens from Season 2. [default] every number.",
     "provenance": {
       "origin": "agent",
       "author": "agent",

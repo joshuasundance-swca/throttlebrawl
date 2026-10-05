@@ -1,0 +1,31 @@
+{
+  "type": "traffic-type",
+  "id": "pdx-streetcar",
+  "name": "Streetcar",
+  "category": "truck",
+  "tags": ["local", "pnw", "slow"],
+  "lengthM": 20,
+  "widthM": 2.5,
+  "cruiseMps": 9.0,
+  "hazard": "big",
+  "behaviour": {
+    "carFollowing": true,
+    "laneChanges": false,
+    "dives": false
+  },
+  "look": {
+    "procedural": {
+      "preset": "box-truck"
+    },
+    "paintOptions": ["#b8433a", "#2f6f73", "#d8d2c4"]
+  },
+  "meta": {
+    "status": "live",
+    "notes": "A 20 m low-floor streetcar, two sections and a pantograph (render/traffic-figures.ts draws it by its id), at a walking-pace-plus 9 m/s. It holds its lane and never changes lanes, so you pass it on the other one. Big: hitting one crashes you. Playtest 3, T10.5 (the real-world spec's section 6): in no region mix, only in downtown Portland's traffic area (the `pdx-blocks` road tag). The plan wanted it only on the `rail-line` stretch, but the one baked rail road, Grand Avenue, is on the Morrison Bridge choice, which carries no traffic, so a streetcar there would never spawn; the area is the whole downtown for now and the rails are the render lane's to draw.",
+    "provenance": {
+      "origin": "agent",
+      "author": "agent",
+      "createdAt": "2026-10-05"
+    }
+  }
+}

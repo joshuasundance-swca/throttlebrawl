@@ -18,6 +18,8 @@ type Look = (typeof LOOKS)[number];
 interface Handle {
   snapshot(): { tick: number } | null;
   setBot(on: boolean): void;
+  setSeed(seed: number): void;
+  freePlayTimeOfDay(seed: number): string;
   rendererStats(): { drawCalls: number };
   debugFileText(): string;
 }
@@ -32,8 +34,12 @@ function watchErrors(page: Page): string[] {
   return problems;
 }
 
-/** Starts the game with a saved look (none: the default), the bot racing. */
-async function race(page: Page, look?: string) {
+/**
+ * Starts the game with a saved look (none: the default), the bot racing. With `light`, the race runs
+ * on the first seed whose free-play time of day is that one (a region's sky colour, when its time of
+ * day sets one, leans every look's sky toward it, so the skies' own colours read only at a known light).
+ */
+async function race(page: Page, look?: string, light?: string) {
   await page.addInitScript((lk) => {
     (window as TestWindow).__GAME_TEST__ = true;
     if (lk) {
@@ -49,6 +55,15 @@ async function race(page: Page, look?: string) {
   }, look);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  if (light) {
+    const seed = await page.evaluate((want) => {
+      const g = (window as TestWindow).__game;
+      for (let s = 1; s <= 24; s++) if (g?.freePlayTimeOfDay(s) === want) return s;
+      return null;
+    }, light);
+    expect(seed, `a seed in 1 to 24 races at ${light}`).not.toBeNull();
+    await page.evaluate((s) => (window as TestWindow).__game?.setSeed(s!), seed);
+  }
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await page.locator('#menu-race').click();
 }
@@ -125,7 +140,8 @@ test('every look draws a real scene; the ink looks have film grain and switch li
 }) => {
   test.setTimeout(180_000);
   const problems = watchErrors(page);
-  await race(page, 'classic'); // the default is Ink + 60s film since run W-O
+  // The default is Ink + 60s film since run W-O. The skies below are the looks' golden-hour skies.
+  await race(page, 'classic', 'golden-hour');
   await waitTick(page, 150);
   const classic = await frame(page, 'classic');
   expect(classic.variance, 'classic is not blank').toBeGreaterThan(NOT_BLANK_VARIANCE);

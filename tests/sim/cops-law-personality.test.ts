@@ -207,7 +207,9 @@ describe('law with a personality: real races', () => {
   // over seeds 1 to 8 (run W-T): 2 of 8 races met a roadblock before the radio rule; 5 of 8 with it
   // on the tree it was written on, 3 of 8 once main's later systems reshuffled the races. A rate
   // band would move with every such system, so this checks that the radioed-ahead path fires in a
-  // real race (a roadblock cop who was already chasing), on the first seed that shows it.
+  // real race (a roadblock cop who was already chasing), on the first seed that shows it. The search
+  // runs to seed 24, not 8: content that reshuffles the races moves it on (playtest 3 wave C's PNW
+  // content put the first such race at seed 9).
   it('the Pacific Northwest: a cop chasing from out of sight behind is radioed ahead to the roadblock', () => {
     const event = eventOf('pacific-northwest');
     const radioed = (r: Ride) => {
@@ -223,7 +225,7 @@ describe('law with a personality: real races', () => {
     };
     const found = firstSeed(
       'a PNW roadblock cop radioed ahead',
-      seedRange(1, 8),
+      seedRange(1, 24),
       (seed) => ride(event, seed, { 'cops.heatScale': 3 }, 360),
       (r) => radioed(r) > 0,
     );
