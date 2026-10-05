@@ -36,7 +36,29 @@ import {
   targetOf,
   type RaceResult,
 } from './format';
-import { applyTopPlan, HUD_SIZE, layoutTop, placedBox, readSafe, settleLifts, type Box } from './hud-layout';
+import {
+  applyTopPlan,
+  HUD_SIZE,
+  layoutTop,
+  lookAheadBox,
+  placedBox,
+  readSafe,
+  settleLifts,
+  type Box,
+} from './hud-layout';
+import {
+  createDriftMeter,
+  createWheelieGauge,
+  DRIFT_LOST,
+  driftOutcome,
+  gaugeBlockers,
+  gaugeView,
+  meterLine,
+  MOVES_METER_CSS,
+  placeGauge,
+  restBase,
+  type GaugeBlockers,
+} from './moves-meter';
 import { pickStampSpot } from './stamp';
 import { hudStyle } from './placement';
 import {
@@ -327,6 +349,7 @@ ${SETTINGS_CSS}
 ${CHANGELOG_CSS}
 ${RADIO_PANEL_CSS}
 ${TICKER_CSS}
+${MOVES_METER_CSS}
 #results-tally { font: 800 15px ui-monospace, monospace; }
 #pause-screen { background: rgb(10 5 20 / 70%); pointer-events: auto; }
 /* Playtest 1c item 8: on a phone the open keyboard legend pushed the "cut this" list off the screen.
@@ -730,6 +753,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
   pauseButton.addEventListener('click', () => pause());
+  // Playtest 3's wheelie gauge (T6.3): the one new widget, beside the floating stick, only while a
+  // wheelie is up. ui/moves-meter.ts says where it stands (the layout's settle rule) and what it shows.
+  const wheelieGauge = createWheelieGauge();
   const hud = el(
     'div',
     { id: 'hud', hidden: true },
@@ -737,6 +763,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     position,
     selfHealth.root,
     targetHealth.root,
+    wheelieGauge.root,
     pauseButton,
   );
   const hudPieces: Record<string, HTMLElement> = {
@@ -761,6 +788,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const elementOf = (name: string): LayoutElement | undefined =>
     layout.elements.find((e) => e.element === name && e.visible);
 
+  let gaugeBlock: GaugeBlockers | null = null;
   const placeAll = () => {
     const { w, h } = screenSize();
     const unit = Math.min(w, h);
@@ -789,16 +817,28 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       target: inTopRow('health-target', HUD_SIZE.health),
     });
     applyTopPlan(root, top, w);
-    const lifts = settleLifts(
-      (['speedometer', 'health-self'] as const).flatMap((name) => {
-        const e = elementOf(name);
-        const size = name === 'speedometer' ? HUD_SIZE.speed : HUD_SIZE.health;
-        return e && e.anchor.startsWith('bottom')
-          ? [{ name, box: placedBox(e, w, h, layout.mirror, size) }]
-          : [];
-      }),
-      buttonBoxes,
-    );
+    const bottomTexts = (['speedometer', 'health-self'] as const).flatMap((name) => {
+      const e = elementOf(name);
+      const size = name === 'speedometer' ? HUD_SIZE.speed : HUD_SIZE.health;
+      return e && e.anchor.startsWith('bottom')
+        ? [{ name, box: placedBox(e, w, h, layout.mirror, size) }]
+        : [];
+    });
+    const lifts = settleLifts(bottomTexts, buttonBoxes);
+    // The wheelie gauge keeps off everything placed here (T6.3): the top slots, the touch buttons and
+    // the text widgets as lifted.
+    gaugeBlock = gaugeBlockers({
+      plan: top,
+      position: inTopRow('position', HUD_SIZE.position),
+      target: inTopRow('health-target', HUD_SIZE.health),
+      buttons: buttonBoxes,
+      text: bottomTexts.map(({ name, box }) => ({
+        ...box,
+        top: box.top - (lifts[name] ?? 0),
+        bottom: box.bottom - (lifts[name] ?? 0),
+      })),
+    });
+    placeGaugeNow();
     for (const [name, node] of Object.entries(hudPieces)) {
       const e = elementOf(name);
       const hide = !e || (e.touchOnly && !coarse) || (name === 'health-target' && !targetShown);
@@ -883,6 +923,27 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   // The stick ring: drawn where the left thumb lands inside the stick zone, the knob follows it.
   let stickPointer: number | null = null;
   let stickOrigin = { x: 0, y: 0 };
+  // The gauge stands beside the ring while a thumb is down, and at the stick's resting spot otherwise
+  // (a keyboard or gamepad rider's wheelie, and the layout check). Called from placeAll too.
+  function placeGaugeNow() {
+    if (!gaugeBlock) return;
+    const { w, h } = screenSize();
+    const zoneEl = elementOf('touch-stick-zone');
+    const z = zoneEl ? placeElement(zoneEl, w, h, layout.mirror) : null;
+    const zone: Box = z
+      ? { left: z.x, top: z.y, right: z.x + z.w, bottom: z.y + z.h }
+      : { left: 0, top: 0, right: 0.9 * Math.min(w, h), bottom: h };
+    const spot = placeGauge({
+      w,
+      h,
+      base: stickPointer !== null ? stickOrigin : restBase(zone, layout.mirror),
+      mirror: layout.mirror,
+      blockers: gaugeBlock,
+      look: lookAheadBox(w, h),
+      ringPx: STICK_RING_PX,
+    });
+    wheelieGauge.place(spot?.box ?? null);
+  }
   const localPoint = (e: PointerEvent) => {
     const box = touchSurface.getBoundingClientRect();
     return { x: e.clientX - box.left, y: e.clientY - box.top, w: box.width, h: box.height };
@@ -906,6 +967,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     Object.assign(ring.style, { left: `${p.x}px`, top: `${p.y}px` });
     knob.style.transform = '';
     ring.hidden = false;
+    placeGaugeNow();
   });
   touchSurface.addEventListener('pointermove', (e) => {
     if (e.pointerId !== stickPointer) return;
@@ -923,6 +985,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     if (e.pointerId !== stickPointer) return;
     stickPointer = null;
     ring.hidden = true;
+    placeGaugeNow();
   };
   touchSurface.addEventListener('pointerup', stickUp);
   touchSurface.addEventListener('pointercancel', stickUp);
@@ -1217,25 +1280,45 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   });
   installTickerSeam((items, hold) => ticker.replace(items, hold));
   const meter = createStyleMeter();
+  const driftMeter = createDriftMeter();
   const clearTicker = () => {
     meter.reset();
+    driftMeter.reset();
     ticker.clear();
   };
-  /** One frame of the ticker, from the player's run in progress and this frame's pop-ups. */
-  const stepTicker = (run: EntitySnapshot['styleRun'], pops: readonly StylePop[]) => {
+  /** One frame of the ticker, from the player's run in progress, this frame's pop-ups and the moves. */
+  const stepTicker = (
+    run: EntitySnapshot['styleRun'],
+    pops: readonly StylePop[],
+    moves: SimSnapshot['moves'],
+  ) => {
     ticker.setStyleEnabled(settings.stylePopups);
     ticker.setLook(settings.look);
     const step = meter.update(run, hudParam(opts.tuning, 'hud.meterShowAfterS'));
+    const drift = driftMeter.update(moves);
     // The run stopped: if it paid, its pop-up is in this frame's feed (the sim emits the award on
     // the stretch's last tick, the same step whose snapshot first shows no run) and lands on the
-    // meter's line; a run that never paid just goes.
+    // meter's line; a run that never paid just goes. The drift chain ends the same way: it banks
+    // (a `drift` pop in this frame's feed lands on its line) or a wipeout emptied it, which the
+    // strip shows as DRIFT LOST (T6.3, the critic's C7: it "empties visibly on a wipeout").
     const ended = step.ended;
     let landing = !!ended && ended.qualifies && pops.some((p) => p.kind === ended.kind);
-    ticker.meter(step.shown);
+    const outcome = driftOutcome(drift, pops);
+    let driftLanding = outcome === 'banked';
+    if (outcome === 'lost') {
+      ticker.push({ cls: 'style', text: DRIFT_LOST.text, kind: DRIFT_LOST.kind, cash: null });
+    }
+    ticker.meter(meterLine(drift, step.shown));
     const landMs = Math.round(hudParam(opts.tuning, 'hud.meterLandS') * 1000);
     for (const pop of pops) {
-      const lands = landing && pop.kind === ended?.kind;
-      if (lands) landing = false;
+      let lands: boolean;
+      if (pop.kind === 'drift') {
+        lands = driftLanding;
+        driftLanding = false;
+      } else {
+        lands = landing && pop.kind === ended?.kind;
+        if (lands) landing = false;
+      }
       ticker.push(popItem(pop, lands, landMs));
     }
     ticker.update(performance.now(), paused);
@@ -1522,6 +1605,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       heatBadge?.reset();
       placeAll();
     }
+    // The gauge shows only in a race, and only while a wheelie is up (updateRace draws it).
+    if (screen !== 'race') wheelieGauge.update(gaugeView(null, 0));
     if (screen === 'menu') {
       checkNews();
       offerNews();
@@ -1553,7 +1638,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       updateHeat(snapshot.law);
       tallyPlayer = playerId;
       tally.noteSnapshotTally(player?.styleTally);
-      stepTicker(player?.styleRun, tally.takePopups());
+      stepTicker(player?.styleRun, tally.takePopups(), snapshot.moves);
+      wheelieGauge.update(gaugeView(snapshot.moves, player?.wheelie));
       const target = targetOf(snapshot, player);
       const shown = !!target && !!elementOf('health-target');
       if (shown !== targetShown) {

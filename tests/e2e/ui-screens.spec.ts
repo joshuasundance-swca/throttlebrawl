@@ -30,7 +30,9 @@ type TestWindow = Window & { __GAME_TEST__?: boolean; __game?: Handle; __targetP
 /** Every visible element with its own text must sit inside the viewport and not overflow its box. */
 async function expectNoOverflow(page: Page, where: string) {
   const problems = await findOverflow(page);
-  console.log(`${where}: ${problems.examined} text elements checked for overflow`);
+  console.log(
+    `${where}: ${problems.examined} text elements checked for overflow (${problems.scrolledAway} scrolled out of an on-screen scroller)`,
+  );
   expect(problems.examined, `${where}: something was examined`).toBeGreaterThan(0);
   expect(problems.out, `${where}: no text overflows`).toEqual([]);
 }
@@ -41,7 +43,20 @@ function findOverflow(page: Page) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const nodes = document.querySelectorAll<HTMLElement>('#ui *, #build-stamp');
+    const onScreen = (r: DOMRect) =>
+      r.left >= -0.5 && r.top >= -0.5 && r.right <= vw + 0.5 && r.bottom <= vh + 0.5;
+    // The nearest ancestor that scrolls up and down and has more than it shows (the pause screen's
+    // cards scroll on a short phone, playtest 1c item 8; the "recently seen" list fills with signs
+    // since the visibleContent poll, T8.2).
+    const scrollerOf = (e: HTMLElement) => {
+      for (let p = e.parentElement; p; p = p.parentElement) {
+        const y = getComputedStyle(p).overflowY;
+        if ((y === 'auto' || y === 'scroll') && p.scrollHeight > p.clientHeight + 1) return p;
+      }
+      return null;
+    };
     let examined = 0;
+    let scrolledAway = 0;
     for (const e of nodes) {
       if (e.closest('#tuning-panel')) continue; // the tuning lane's panel
       if (!e.checkVisibility()) continue;
@@ -50,15 +65,19 @@ function findOverflow(page: Page) {
       examined++;
       const r = e.getBoundingClientRect();
       const name = `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''} "${(e.textContent ?? '').trim().slice(0, 30)}"`;
-      if (r.left < -0.5 || r.top < -0.5 || r.right > vw + 0.5 || r.bottom > vh + 0.5) {
-        out.push(`${name} leaves the screen: ${JSON.stringify(r)}`);
+      if (!onScreen(r)) {
+        // Text scrolled out of an on-screen scroller, and inside it side to side, is reachable.
+        const s = scrollerOf(e);
+        const sb = s?.getBoundingClientRect();
+        if (sb && onScreen(sb) && r.left >= sb.left - 0.5 && r.right <= sb.right + 0.5) scrolledAway++;
+        else out.push(`${name} leaves the screen: ${JSON.stringify(r)}`);
       }
       if (getComputedStyle(e).display !== 'inline') {
         if (e.scrollWidth > e.clientWidth + 1) out.push(`${name} overflows sideways`);
         if (e.scrollHeight > e.clientHeight + 1) out.push(`${name} overflows downwards`);
       }
     }
-    return { out, examined };
+    return { out, examined, scrolledAway };
   });
 }
 

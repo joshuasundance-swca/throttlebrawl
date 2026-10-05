@@ -1,0 +1,51 @@
+{
+  "type": "road",
+  "id": "c-dt-plaza-in",
+  "name": "Plaza gate",
+  "realName": null,
+  "network": "sf-downtown",
+  "from": "j-sf-downtown-5",
+  "to": "j-sf-downtown-5",
+  "lengthM": 30,
+  "sampleSpacingM": 2,
+  "speedLimitMps": 15.6,
+  "surface": "concrete",
+  "laneSections": [
+    { "s0": 0, "lanes": [{ "id": "S1", "dCenterM": 4, "widthM": 8, "direction": 1, "kind": "shortcut" }] }
+  ],
+  "tags": [{ "s0": 0, "s1": 30, "side": "both", "tag": "plaza-cut" }],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        -2414.9719, -2416.3828, -2417.7935, -2419.2031, -2420.6112, -2422.0171, -2423.4206, -2424.8221,
+        -2426.2219, -2427.6207, -2429.0192, -2430.4176, -2431.8161, -2433.2145, -2434.613, -2436.0115
+      ],
+      "y": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "z": [
+        2351.8948, 2353.3123, 2354.7301, 2356.1488, 2357.5692, 2358.9917, 2360.4164, 2361.8433, 2363.2718,
+        2364.7012, 2366.131, 2367.5608, 2368.9906, 2370.4204, 2371.8502, 2373.28
+      ],
+      "kappa": [
+        0, -0.0001069548, -0.0003379368, -0.0005820877, -0.0007602293, -0.0008248631, -0.0007601708,
+        -0.0005820141, -0.0003379348, -0.0001071545, -5.276459e-7, 0, 0, 0, 0, 0
+      ],
+      "grade": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "bankRad": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  },
+  "provenance": {
+    "origin": "agent",
+    "author": "agent",
+    "createdAt": "2026-10-02",
+    "tool": { "name": "tools/road/bake.mjs", "version": "1.1.0" },
+    "sources": []
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Hand-authored M1 track, compiled from Catmull-Rom control points by tools/road/bake.mjs (source: tools/road/tracks/sf-downtown.ts). Edit the source and re-bake; never edit these samples by hand."
+  }
+}

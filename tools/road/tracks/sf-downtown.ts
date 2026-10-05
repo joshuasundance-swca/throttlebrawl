@@ -18,6 +18,7 @@
 // through a rider.
 //
 // Frame: metres, x east, z south (north is -z). The avenue heads south-west from the bay.
+import type { BakedBarrier, BakedFeature } from '../../../src/road';
 import type { TrackSource } from '../../../src/road/compile';
 
 /** The pack this track bakes into (tools/road/bake.mjs reads it). */
@@ -67,6 +68,80 @@ const sign = (id: string, item: string, s: number, side: -1 | 1) => ({
   d1: side < 0 ? -10.5 : 13,
   item,
 });
+
+// ---- The Plaza Cut (playtest 3, T5.2; the maintainer: "the static one could be used to get to
+// shortcuts") ----
+/**
+ * A truck-only way through the headquarters' plaza: a paved cut-through beside the avenue where the
+ * plaza opens, behind a low `jumpable` wall on the right. Only a bike in the air gets over the wall: a
+ * rider rides up the car carrier parked in the kerb lane, leaves its lip and steers right. The split
+ * zone starts at the lanes' outer edge, so nobody on the ground can pick it, and one who misses the
+ * truck rides on along the avenue. No rival and no cop takes it (`aiTake` 0), it carries no traffic,
+ * and a boost pad waits on it.
+ */
+export const PLAZA_CUT = {
+  /** The end of Campus Way's first piece, where the split connector starts, in that road's s. */
+  splitS: 665,
+  connectorM: 30,
+  /** The avenue's piece beside the cut. */
+  yardM: 200,
+  /**
+   * Where the cut's road starts: its reference line, 9 m right of the avenue's centre line, half a
+   * metre inside the avenue's edge (a junction must lie on the road it leaves), and its one lane,
+   * 8 m wide, starting on that line: d 9 to 17 beside the avenue. (The sim counts a road's band from
+   * its reference line out to its lanes' far edge, so the near edge is the line.) It overlaps the
+   * avenue's outer half metre, which a rider on the ground (centre at most 9, half a bike in from the
+   * edge) never gets half a bike into, so nobody on the ground is handed across, and a rider in the
+   * air out past the edge is.
+   */
+  offsetM: 9,
+  laneM: 8,
+  laneCentreM: 4,
+  truck: {
+    kind: 'rampTruck',
+    id: 'carrier-dt-plaza-cut',
+    s0: 628.5,
+    s1: 650.5,
+    d0: 7.2,
+    d1: 9.2,
+    params: { rampLengthM: 11.5, lipHeightM: 2.8 },
+  } satisfies BakedFeature,
+  /**
+   * From the lip to the end of the road, on the right; 1.2 m, the default wall height. It starts where
+   * the towers' frontage ends and the plaza opens (s 640): beside the towers the sim's edge is theirs.
+   */
+  wall: {
+    s0: 640,
+    s1: 665,
+    side: 'right',
+    kind: 'wall',
+    heightM: 1.2,
+    jumpable: true,
+  } satisfies BakedBarrier,
+  /**
+   * The wall goes on along the avenue beside the cut, over the split connector and the first 125 m
+   * of the next piece (155 m past the split): where the cut lies beside it, a rider on the ground
+   * could otherwise ride out onto the verge (the off-road switch is on) and be handed across.
+   */
+  wallAfter: { s0: 0, s1: 'end', side: 'right', kind: 'wall', heightM: 1.2, jumpable: true } satisfies Omit<
+    BakedBarrier,
+    's1'
+  > & { s1: 'end' },
+  wallAlongM: 125,
+  sign: 'PLAZA ENTRANCE: DELIVERIES ONLY. Founders arrive by ramp.',
+} as const;
+
+/**
+ * The scenery of every piece of Campus Way after the cut's split: towers on the left, and the plaza
+ * that opens at s 640 on the right.
+ */
+const CAMPUS_TAIL_TAGS = [towers('left'), { s0: 0, s1: 'end', side: 'right', tag: 'plaza' }] as const;
+
+/**
+ * The cut's own roads carry a tag no theme reads, so render draws no towers, plaza or scatter of its
+ * own beside them (the avenue's pieces draw the plaza they run through).
+ */
+const PLAZA_CUT_TAGS = [{ s0: 0, s1: 'end', side: 'both', tag: 'plaza-cut' }] as const;
 
 export const SF_DOWNTOWN: TrackSource = {
   network: {
@@ -250,8 +325,11 @@ export const SF_DOWNTOWN: TrackSource = {
       barriers: [],
     },
     {
+      // Campus Way up to the plaza's gate (playtest 3, T5.2): the truck, the wall and the split zone
+      // of the Plaza Cut stand on its last 40 m.
       id: 'sf-dt-campus-way',
       name: 'Campus Way',
+      lengthM: PLAZA_CUT.splitS,
       speedLimitMps: CITY,
       surface: 'asphalt',
       humps: [{ centreM: 300, lengthM: 400, heightM: 2 }],
@@ -265,33 +343,6 @@ export const SF_DOWNTOWN: TrackSource = {
       ],
       features: [
         sign('sign-dt-campus-badge', 'dt-badge-only', 60, 1),
-        {
-          kind: 'billboard',
-          id: 'bb-dt-campus-series-z',
-          s0: 860,
-          s1: 900,
-          d0: 13,
-          d1: 22,
-          item: 'dt-series-z',
-        },
-        {
-          kind: 'billboard',
-          id: 'bb-dt-campus-inevitable',
-          s0: 690,
-          s1: 730,
-          d0: 13,
-          d1: 22,
-          item: 'dt-inevitable',
-        },
-        {
-          kind: 'roadsideZone',
-          id: 'dt-campus-plaza',
-          s0: 745,
-          s1: 845,
-          d0: 10.4,
-          d1: 17.4,
-          params: { spawns: 'pedestrians' },
-        },
         {
           kind: 'boostPad',
           id: 'pad-dt-campus',
@@ -310,8 +361,177 @@ export const SF_DOWNTOWN: TrackSource = {
           d1: 3.5,
           params: { boostMps: 8, holdS: 1.5, slot: 'dt-pad-campus' },
         },
+        sign('sign-dt-plaza-cut', 'dt-plaza-cut', 575, 1),
+        // Playtest 3 (T5.2; the maintainer: "the static one could be used to get to shortcuts"): a car
+        // carrier that is always there (no slot), double-parked in the kerb lane with its deck down. Its
+        // lip is 25 m short of the split zone, so a bike that leaves it and steers right is still in the
+        // air when it reaches the zone, out past the wall.
+        PLAZA_CUT.truck,
+      ],
+      barriers: [PLAZA_CUT.wall],
+    },
+    {
+      id: 'c-dt-plaza-split',
+      name: 'Campus Way',
+      connector: true,
+      lengthM: PLAZA_CUT.connectorM,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: CAMPUS_TAIL_TAGS,
+      features: [],
+      barriers: [PLAZA_CUT.wallAfter],
+    },
+    {
+      // Beside the Plaza Cut: the same avenue, with the main road's own traffic.
+      id: 'sf-dt-campus-yard',
+      name: 'Campus Way',
+      lengthM: PLAZA_CUT.yardM,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: CAMPUS_TAIL_TAGS,
+      features: [
+        // The plaza's board and its walkers stand clear of the cut (its band reaches d 16.5).
+        {
+          kind: 'billboard',
+          id: 'bb-dt-campus-inevitable',
+          s0: 10,
+          s1: 50,
+          d0: 17.5,
+          d1: 26,
+          item: 'dt-inevitable',
+        },
+        {
+          kind: 'roadsideZone',
+          id: 'dt-campus-plaza',
+          s0: 65,
+          s1: 165,
+          d0: 17,
+          d1: 24,
+          params: { spawns: 'pedestrians' },
+        },
+      ],
+      barriers: [{ ...PLAZA_CUT.wallAfter, s1: PLAZA_CUT.wallAlongM }],
+    },
+    {
+      id: 'c-dt-plaza-merge',
+      name: 'Campus Way',
+      connector: true,
+      lengthM: PLAZA_CUT.connectorM,
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: CAMPUS_TAIL_TAGS,
+      features: [],
+      barriers: [],
+    },
+    {
+      // The last of Campus Way, to the headquarters' plaza: the route's finish is on it.
+      id: 'sf-dt-campus-end',
+      name: 'Campus Way',
+      speedLimitMps: CITY,
+      surface: 'asphalt',
+      humps: [],
+      tags: CAMPUS_TAIL_TAGS,
+      features: [
+        {
+          kind: 'billboard',
+          id: 'bb-dt-campus-series-z',
+          s0: 6,
+          s1: 46,
+          d0: 17.5,
+          d1: 26,
+          item: 'dt-series-z',
+        },
       ],
       barriers: [],
+    },
+  ],
+  branches: [
+    {
+      // The Plaza Cut (playtest 3, T5.2): a paved cut-through beside the avenue where the plaza opens,
+      // behind a jumpable wall on the right; only the car carrier's flight reaches it. The zone starts
+      // at the lanes' outer edge, so a rider on the ground can never pick it.
+      leave: {
+        road: 'sf-dt-campus-way',
+        offsetM: PLAZA_CUT.offsetM,
+        lane: 'R2',
+        zone: { lengthM: 25, d0: 9.5, d1: 16.5 },
+      },
+      join: { road: 'sf-dt-campus-end', offsetM: 2, lane: 'R2' },
+      turnsM: [20, 60],
+      // Two points beside the avenue, 9 m right of its centre line, 70 and 155 m past the split: they
+      // hold the cut parallel to the avenue while the sim's hand-over between the two can act (the
+      // first 150 m), so a rider pressing the wall on the ground is never taken across. The cut then
+      // eases back to the avenue's lane for the merge.
+      via: [
+        { x: -2464.03, z: 2402.02, headingDeg: -136.01, turnM: 20 },
+        { x: -2522.83, z: 2463.49, headingDeg: -136.41, turnM: 20 },
+      ],
+      lanes: [
+        {
+          id: 'S1',
+          dCenterM: PLAZA_CUT.laneCentreM,
+          widthM: PLAZA_CUT.laneM,
+          direction: 1,
+          kind: 'shortcut',
+        },
+      ],
+      named: {
+        id: 'sf-dt-plaza-cut',
+        kind: 'alternate',
+        marked: true,
+        sign: PLAZA_CUT.sign,
+        aiTake: 0,
+      },
+      roads: [
+        {
+          id: 'c-dt-plaza-in',
+          name: 'Plaza gate',
+          connector: true,
+          lengthM: PLAZA_CUT.connectorM,
+          speedLimitMps: CITY,
+          surface: 'concrete',
+          humps: [],
+          tags: PLAZA_CUT_TAGS,
+          features: [],
+          barriers: [],
+        },
+        {
+          id: 'sf-dt-plaza-cut',
+          name: 'Plaza Cut',
+          lengthM: PLAZA_CUT.yardM,
+          speedLimitMps: CITY,
+          surface: 'concrete',
+          humps: [],
+          tags: PLAZA_CUT_TAGS,
+          features: [
+            // The reward for the jump, besides a road with no traffic on it.
+            {
+              kind: 'boostPad',
+              id: 'pad-dt-plaza-cut',
+              s0: 80,
+              s1: 86,
+              d0: 2.5,
+              d1: 5.5,
+              params: { boostMps: 8, holdS: 1.5 },
+            },
+          ],
+          barriers: [],
+        },
+        {
+          id: 'c-dt-plaza-out',
+          name: 'Plaza gate',
+          connector: true,
+          speedLimitMps: CITY,
+          surface: 'concrete',
+          humps: [],
+          tags: PLAZA_CUT_TAGS,
+          features: [],
+          barriers: [],
+        },
+      ],
     },
   ],
   routes: [
@@ -319,7 +539,7 @@ export const SF_DOWNTOWN: TrackSource = {
       id: 'sf-downtown-run',
       name: 'Downtown',
       start: { road: 'sf-dt-founders-plaza', s: 40, dir: 1 },
-      finish: { road: 'sf-dt-campus-way', s: -40 },
+      finish: { road: 'sf-dt-campus-end', s: -40 },
       checkpoints: [
         { road: 'sf-dt-inference-ave', s: 400 },
         { road: 'sf-dt-cable-crossing', s: 300 },

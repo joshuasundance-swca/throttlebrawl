@@ -7,12 +7,16 @@ import { describe, expect, it } from 'vitest';
 import { garageView, resultView, teaserView } from '../../src/app/career-flow';
 import {
   AUDIT_MAX_LINE_ITEMS,
+  bikeLadder,
   careerDefs,
   careerOf,
   careerView,
   eventPlan,
+  globalTier,
+  repairBill,
   settleRace,
   startCareer,
+  tierPurse,
 } from '../../src/career';
 import { DEFAULT_PROFILE } from '../../src/save';
 import { REG } from './career-harness';
@@ -234,5 +238,55 @@ describe('the career map screen', () => {
         next: { id: def.regionId, name: def.regionName },
       });
     expect(teaserView(DEFS, report(null))?.next).toBeNull();
+  });
+});
+
+// Playtest 3, the garage screen's numbers ("the garage with the six bikes and how many races each
+// takes to afford", "repairs"): what a race pays now, the ladder's steps and a crash's cost. The
+// rules are read from the career's own functions, not copied dollar figures.
+describe('the garage screen: the ladder, what a race pays and what a crash costs', () => {
+  const start = fresh();
+
+  it('a fresh career is paid by the first tier; Season 2 by its scale', () => {
+    const g = garageView(REG, DEFS, start, 'mph');
+    expect(g.racePay).toBe(tierPurse(1));
+    const s2 = garageView(REG, DEFS, { ...start, season: 2 }, 'mph');
+    expect(s2.racePay).toBeGreaterThan(g.racePay ?? 0);
+    expect((s2.racePay ?? 0) % 50).toBe(0);
+  });
+
+  it('the pay follows the highest open tier in the open regions', () => {
+    const keys = DEFS[0];
+    if (!keys) throw new Error('no career');
+    const last = keys.tiers.length;
+    const climbed = {
+      ...start,
+      regions: {
+        ...start.regions,
+        [keys.regionId]: { ...(start.regions[keys.regionId] as object), tier: last },
+      },
+    } as typeof start;
+    expect(garageView(REG, DEFS, climbed, 'mph').racePay).toBe(tierPurse(globalTier(DEFS, keys, last - 1)));
+  });
+
+  it('every step-up bike is numbered along the ladder, slowest first; the rest are novelty rides', () => {
+    const g = garageView(REG, DEFS, start, 'mph');
+    const ladder = bikeLadder(REG, DEFS);
+    const stepped = g.bikes.filter((b) => b.step !== undefined);
+    expect(stepped.map((b) => b.key)).toEqual(
+      ladder.filter((l) => g.bikes.some((b) => b.key === l.key)).map((l) => l.key),
+    );
+    for (const b of stepped) {
+      expect(b.steps, b.key).toBe(ladder.length);
+      expect(b.step, b.key).toBe(ladder.findIndex((l) => l.key === b.key) + 1);
+    }
+    expect(g.bikes.find((b) => b.current)?.step).toBe(1);
+    expect(g.bikes.some((b) => b.step === undefined)).toBe(true);
+  });
+
+  it("a crash's cost is the repair bill for one wreck on that bike's price", () => {
+    const g = garageView(REG, DEFS, start, 'mph');
+    for (const b of g.bikes) expect(b.repairCash, b.key).toBe(repairBill(1, b.priceCash, Infinity).cash);
+    expect(g.bikes.every((b) => (b.repairCash ?? 0) > 0)).toBe(true);
   });
 });

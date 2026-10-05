@@ -6,6 +6,7 @@
 // free-play race it shares a loop with.
 import {
   backupCode,
+  bikeLadder,
   careerMap,
   careerView,
   clearedNotWon,
@@ -15,19 +16,25 @@ import {
   garageBikes,
   garagePaints,
   gigNeedText,
+  globalTier,
   paperView,
   pauseMap,
   pickAsk,
   posterView,
   progressOf,
   newCareer,
+  regionOpen,
+  repairBill,
   riderTexts,
   rivalTexts,
   rideRefusal,
+  seasonPurseScale,
   seasonRace,
   showOf,
   startCareer,
   suggestedNode,
+  tierPurse,
+  tierReached,
   type AskDef,
   type CareerDef,
   type CareerNode,
@@ -47,6 +54,20 @@ import { MAX_CAREER_BACKUPS, type Profile } from '../save';
 import type { CareerResultView, CareerShowView, GarageView, TeaserView } from '../ui';
 import { formatSpeed, ordinal } from '../ui';
 
+/**
+ * About what one race pays now (playtest 3, the garage: "how many races each takes to afford"):
+ * the purse of the highest tier open in any open region, in the season's scale, to the $50. It is
+ * an estimate by the design's own table, not a promise: a loss pays less, style and the ask add.
+ */
+export function typicalRacePay(defs: readonly CareerDef[], profile: Profile): number {
+  let g = 1;
+  for (const d of defs) {
+    if (!regionOpen(defs, profile, d)) continue;
+    g = Math.max(g, globalTier(defs, d, tierReached(d, progressOf(d, profile.regions)) - 1));
+  }
+  return Math.round((tierPurse(g) * seasonPurseScale(profile.season)) / 50) * 50;
+}
+
 /** The garage rows, speeds in the player's units. */
 export function garageView(
   reg: ContentRegistry,
@@ -55,18 +76,25 @@ export function garageView(
   units: 'mph' | 'kmh',
 ): GarageView {
   const current = profile.bikes.current;
+  const ladder = bikeLadder(reg, defs).map((l) => l.key);
   return {
     cash: profile.cash,
-    bikes: garageBikes(reg, defs, profile).map((b) => ({
-      key: b.key,
-      name: b.name,
-      speed: formatSpeed(b.topSpeedMps, units),
-      priceCash: b.priceCash,
-      state: b.state,
-      current: b.current,
-      secret: b.secret,
-      reason: b.reason,
-    })),
+    racePay: typicalRacePay(defs, profile),
+    bikes: garageBikes(reg, defs, profile).map((b) => {
+      const step = ladder.indexOf(b.key) + 1;
+      return {
+        key: b.key,
+        name: b.name,
+        speed: formatSpeed(b.topSpeedMps, units),
+        priceCash: b.priceCash,
+        state: b.state,
+        current: b.current,
+        secret: b.secret,
+        reason: b.reason,
+        ...(step > 0 ? { step, steps: ladder.length } : {}),
+        repairCash: repairBill(1, b.priceCash, Infinity).cash,
+      };
+    }),
     paints: garagePaints(defs, profile).map((p) => ({ ...p })),
     paint: current ? (profile.bikes.paint[current] ?? null) : null,
     backups: profile.careerBackups.map((b) => ({

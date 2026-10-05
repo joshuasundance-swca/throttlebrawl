@@ -33,6 +33,10 @@ const roads = network.roads.map((id) => read('roads', id) as BakedRoad);
 const route = read('routes', 'sf-downtown-run') as BakedRoute & { name?: string };
 const net = createRoadNetwork({ network, roads });
 const progress = createRouteProgress(net, route);
+// The roads of the route's branches (playtest 3, T5.2: the Plaza Cut): one shortcut lane each, no
+// traffic, no towers of their own. Every other road is the avenue.
+const branchRoads = new Set((route.branches ?? []).flatMap((b) => b.roads));
+const avenue = roads.filter((r) => !branchRoads.has(r.id));
 const region = read('', 'region') as {
   networks: string[];
   signs: { id: string }[];
@@ -76,7 +80,7 @@ describe('tools/road: the baked San Francisco downtown', () => {
     expect(route.name).toBe('Downtown');
     expect(progress.length).toBeGreaterThan(3300);
     expect(progress.length).toBeLessThan(4200);
-    for (const r of roads) {
+    for (const r of avenue) {
       for (const sec of r.laneSections)
         expect(lanesPerDirection(sec.lanes), r.id).toEqual({ forward: 2, oncoming: 2 });
     }
@@ -96,7 +100,7 @@ describe('tools/road: the baked San Francisco downtown', () => {
     // never the bare palm-land default.
     let towers = 0;
     let checked = 0;
-    for (const r of roads) {
+    for (const r of avenue) {
       for (let s = 0; s <= r.lengthM; s += 20) {
         for (const side of ['left', 'right'] as const) {
           const theme = themeAt(r.tags, side, s);
@@ -108,8 +112,8 @@ describe('tools/road: the baked San Francisco downtown', () => {
     }
     console.log(`[examined] ${checked} road stations: ${towers} beside towers`);
     expect(towers / checked).toBeGreaterThan(0.7);
-    const first = roads[0];
-    const last = roads[roads.length - 1];
+    const first = avenue[0];
+    const last = avenue[avenue.length - 1];
     expect(themeAt(first?.tags, 'right', 100)).toBe('plaza');
     expect(themeAt(last?.tags, 'right', (last?.lengthM ?? 0) - 60)).toBe('plaza');
   });
@@ -156,7 +160,8 @@ describe('tools/road: the baked San Francisco downtown', () => {
       ).toBe(true);
     const all = roads.flatMap((r) => r.features ?? []);
     expect(all.filter((f) => f.kind === 'boostPad').length).toBeGreaterThanOrEqual(2);
-    expect(all.filter((f) => f.kind === 'rampTruck').length).toBe(2);
+    // Two spots of the seeded truck on Burn Rate Row, and the Plaza Cut's, always there (T5.2).
+    expect(all.filter((f) => f.kind === 'rampTruck').length).toBe(3);
     expect(all.filter((f) => f.kind === 'copSpawn').length).toBe(1);
   });
 });

@@ -17,8 +17,8 @@
       "boss": "juniper-grudge",
       "field": {
         "paceShare": 0.74,
-        "aggression": 0.85,
-        "signatureGap": 1.3,
+        "aggression": 0.9,
+        "signatureGap": 1.1,
         "health": 0.9,
         "power": 0.9,
         "rivalBike": "step-down"
@@ -49,8 +49,8 @@
       "boss": "deacon-grudge",
       "field": {
         "paceShare": 0.82,
-        "aggression": 1.15,
-        "signatureGap": 0.8,
+        "aggression": 1.1,
+        "signatureGap": 0.9,
         "health": 1.1,
         "power": 1.07,
         "rivalBike": "best"
@@ -65,8 +65,8 @@
       "boss": "big-cut",
       "field": {
         "paceShare": 0.85,
-        "aggression": 1.25,
-        "signatureGap": 0.7,
+        "aggression": 1.2,
+        "signatureGap": 0.85,
         "health": 1.2,
         "power": 1.12,
         "rivalBike": "best"
@@ -306,12 +306,12 @@
     },
     {
       "bike": "grand-tourer-1100",
-      "priceCash": 25500,
+      "priceCash": 31750,
       "unlockTier": "t2"
     },
     {
       "bike": "supersport-900",
-      "priceCash": 31000,
+      "priceCash": 34000,
       "unlockTier": "t4"
     }
   ],
