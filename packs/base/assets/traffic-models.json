@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "notes": "Render-only (playtest 3, T12.2): which Blender vehicle model draws each of this pack's traffic types, in place of the code-made boxes. Never type JSON: the sim does not read it. A type draws at its own lengthM and widthM, in one of its own paintOptions; a type with two models takes one by entity (none has two yet: each model in view is a draw call). A type with no row keeps its box. Models are base-pack asset ids (models/traffic/<name>).",
+  "notes": "Render-only (playtest 3, T12.2): which Blender vehicle model draws each of this pack's traffic types, in place of the code-made boxes. Never type JSON: the sim does not read it. A type draws at its own lengthM and widthM, in one of its own paintOptions; a type with two models takes one by entity (none has two yet: each model in view is a draw call). A type with no row keeps its box. Models are asset ids (models/traffic/<name>), found in any pack: a region's own sit in its pack.",
   "types": {
     "base:sedan-rental": {
       "models": ["models/traffic/sedan"],
@@ -37,6 +37,10 @@
     "base:snowbird-rv": {
       "models": ["models/traffic/snowbird-rv"],
       "paint": ["#f2efe6", "#c9b48a", "#7a9e9f"]
+    },
+    "base:pedicab": {
+      "models": ["models/traffic/pedicab"],
+      "paint": ["#ff8fab", "#7fd1c7", "#f2c14e"]
     }
   }
 }
