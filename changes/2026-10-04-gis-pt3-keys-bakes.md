@@ -18,3 +18,5 @@ For devs:
 - **Shared edits riding along:** the Keys region lists the two networks; the region backdrop's two girder bridges, drawn where the real bridges stand, now show only on keys-m1, Bahia Honda and Key West; `tools/gis/region-routes.test.ts` and `tests/sim/road-setpieces-live.test.ts` list the new routes (the platform trucks have no slot, so T5.2's rule leaves them out of the seeded set pieces: they are always there, as round 3 asked); `src/app/routes.test.ts` checks the rule instead of the Keys' exact route list; `src/render/render.test.ts` asks for rails and pylons on raised bridges only (Duval's land reaches 3 m).
 
 Not phone-verified, and not seen in a browser.
+
+Keeper fix: two pinned lists grew with the new roads. `tools/gis/osm-route.test.ts` counts each baked Keys network's files from its own road list (41 now: 21 before, plus Duval's 4 and the Seven Mile's 16), all still under the one ODbL rule. `tools/road/lane-drops-live.test.ts` lists the three lane drops where the old road's two lanes narrow to a one-lane repair platform (9, 6 and 9 stations, each within the 90 m taper). The career check waits for both routes' wave C events (#476).

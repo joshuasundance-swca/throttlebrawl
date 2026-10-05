@@ -108,14 +108,20 @@ describe('gis: the real Overseas Highway stretch', () => {
         .map((f) => `regions/florida-keys/${dir}/${f}`),
     );
     // This stretch's 1 network, 5 roads and 1 route, and since run W-S Key West's network, its roads
-    // and its route (tools/gis `tbgis network`), all under the one rule.
-    const keyWest = JSON.parse(
-      readFileSync('packs/base/regions/florida-keys/networks/osm-keys-key-west.json', 'utf8'),
-    ) as { roads: string[] };
+    // and its route (tools/gis `tbgis network`), and since playtest 3 (T9.2) Duval Street's and the
+    // Seven Mile's the same way, all under the one rule.
+    const baked = (id: string) =>
+      (
+        JSON.parse(readFileSync(`packs/base/regions/florida-keys/networks/${id}.json`, 'utf8')) as {
+          roads: string[];
+        }
+      ).roads.length + 2;
     expect(
       files.filter((f) => /osm-(keys-bahia-honda|bahia-honda|spanish-harbor|big-pine)/.test(f)),
     ).toHaveLength(7);
-    expect(files.length).toBe(7 + 1 + keyWest.roads.length + 1);
+    expect(files.length).toBe(
+      7 + baked('osm-keys-key-west') + baked('osm-keys-duval') + baked('osm-keys-seven-mile'),
+    );
     for (const f of files) {
       const rule = odbl.find((r) => r.paths.some((p) => glob(p).test(f)));
       expect(rule, `${f} is under an ODbL rule`).toBeDefined();

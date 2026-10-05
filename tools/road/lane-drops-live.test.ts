@@ -64,11 +64,16 @@ describe('lane drops on the live roads (W-R)', () => {
     console.log(`[examined] ${stations} stations; funnels: ${JSON.stringify([...found])}`);
     expect(stations).toBeGreaterThan(5000);
     // Riding back, the freeway narrows twice on its own first 160 m (three lanes to two, then two to
-    // the on-ramp's one). Key West's drops are one each, the funnel's 90 m taper (9 stations).
+    // the on-ramp's one). Key West's drops are one each, the funnel's 90 m taper (9 stations). The
+    // Seven Mile's old road (playtest 3, T9.2) narrows from its two lanes to the one-lane repair
+    // platforms (osm-sm-old-road, osm-sm-old-road-back) at both of them.
     expect([...found.keys()].sort()).toEqual([
       'osm-kw-north-roosevelt dir -1',
       'osm-kw-north-roosevelt dir 1',
       'osm-kw-smathers-beach dir 1',
+      'osm-sm-old-east dir -1',
+      'osm-sm-old-road dir -1',
+      'osm-sm-old-west dir 1',
       'sf-bridge-approach dir -1',
     ]);
     expect(found.get('sf-bridge-approach dir -1')).toBeLessThanOrEqual(18);
@@ -76,6 +81,9 @@ describe('lane drops on the live roads (W-R)', () => {
       'osm-kw-north-roosevelt dir -1',
       'osm-kw-north-roosevelt dir 1',
       'osm-kw-smathers-beach dir 1',
+      'osm-sm-old-east dir -1',
+      'osm-sm-old-road dir -1',
+      'osm-sm-old-west dir 1',
     ])
       expect(found.get(k), k).toBeLessThanOrEqual(10);
   });
