@@ -59,6 +59,8 @@ import {
   type GaugeBlockers,
 } from './moves-meter';
 import { pickStampSpot } from './stamp';
+import { COUNTDOWN_CSS, createCountdownView } from './countdown-view';
+import { careerButtonText, MENU_FIRST_CSS, START_HERE_CLASS } from './menu-first';
 import { hudStyle } from './placement';
 import {
   applySettingsChange,
@@ -173,6 +175,12 @@ export interface UiCallbacks {
   radio?: RadioSource;
   /** The menu's Career button (run W-R). The button is hidden until this is wired. */
   onCareer?: () => void;
+  /**
+   * Whether the career has started on this device (app/'s profile). Until it has, the menu's career
+   * button reads "Start career" and is drawn as the first tap (playtest 4, P4-5: menu first). Asked
+   * each time the menu shows.
+   */
+  careerStarted?: () => boolean;
   /** The career screens' taps (run W-R); app/ builds their views and acts on them. */
   career?: CareerCallbacks;
 }
@@ -191,6 +199,11 @@ export interface GameUi {
   readonly touchSurface: HTMLElement;
   setLayout(layout: TouchLayout): void;
   notice(text: string): void;
+  /**
+   * The race-start countdown's number (playtest 4, P4-11): "3", "2", "1" or "GO" in the middle of
+   * the race screen; null hides it. Any change of screen clears it.
+   */
+  setCountdown(text: string | null): void;
   /**
    * The slow-frames offer (run W-O): app/ calls it when the frames stay slow on an ink look. A
    * non-blocking note at the top of the race offers a one-tap switch to the Classic look, or "No
@@ -516,7 +529,7 @@ function healthWidget(id: string, label: string) {
 
 export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const cb = opts.callbacks;
-  const style = el('style', { textContent: CSS + ROUTE_PICKER_CSS });
+  const style = el('style', { textContent: CSS + ROUTE_PICKER_CSS + COUNTDOWN_CSS + MENU_FIRST_CSS });
   document.head.append(style);
   const root = el('div', { id: 'ui' });
   const stamp = el('div', { id: 'build-stamp', textContent: opts.stampText });
@@ -612,6 +625,14 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     onOpenChangelog: () => show('changelog'),
     onHide: () => menu.classList.remove('with-news'),
   });
+  // The first run's first tap (playtest 4, P4-5): "Start career" until the career has started.
+  const careerButton = button('menu-career', 'big', careerButtonText(false), () => cb.onCareer?.());
+  const syncCareerButton = () => {
+    const started = cb.careerStarted?.() ?? true;
+    careerButton.textContent = careerButtonText(started);
+    careerButton.classList.toggle(START_HERE_CLASS, !started);
+  };
+  syncCareerButton();
   const menu = el(
     'div',
     { id: 'menu', className: 'screen', hidden: true },
@@ -624,7 +645,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       el(
         'div',
         { className: 'row' },
-        ...(cb.onCareer ? [button('menu-career', 'big', 'Career', () => cb.onCareer?.())] : []),
+        ...(cb.onCareer ? [careerButton] : []),
         button('menu-race', 'big', 'Race', () => cb.onRace()),
       ),
       el(
@@ -772,6 +793,8 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       });
     }
   };
+  // The race-start countdown's number (playtest 4, P4-11), drawn in the road-ahead box.
+  const countdownView = createCountdownView();
   const pauseButton = el('button', { id: 'hud-pause', type: 'button', textContent: 'II' });
   pauseButton.setAttribute('aria-label', 'Pause');
   pauseButton.addEventListener('click', () => pause());
@@ -786,6 +809,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     position,
     selfHealth.root,
     targetHealth.root,
+    countdownView.root,
     pauseButton,
   );
   const hudPieces: Record<string, HTMLElement> = {
@@ -1584,6 +1608,9 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
   const STAMP_AVOIDS = 'button, input, select, textarea, label, summary, a, .footer, .setting-label, output';
   const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
   const STAMP_TEXT_SCREENS = [
+    // The menu's words too: the title, the blurbs and the what's-new card (wave C's check: at 568x320
+    // the stamp sat over the card's first line).
+    '#menu:not([hidden]) *',
     '#career:not([hidden]) *',
     '#career-results:not([hidden]) *',
     '#career-teaser:not([hidden]) *',
@@ -1651,6 +1678,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     }
     // A new race (or leaving one) starts the offer over; app/'s watch offers again if it must.
     clearLookOffer();
+    countdownView.set(null);
     if (screen === 'race') {
       targetShown = false;
       tally.reset();
@@ -1662,6 +1690,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
     // The gauge shows only in a race, and only while a wheelie is up (updateRace draws it).
     if (screen !== 'race') wheelieGauge?.update(gaugeView(null, 0));
     if (screen === 'menu') {
+      syncCareerButton();
       checkNews();
       offerNews();
     }
@@ -1733,6 +1762,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       noticeBox.hidden = false;
       setTimeout(() => (noticeBox.hidden = true), 4000);
     },
+    setCountdown: (text) => countdownView.set(text),
     showResumeCard(onChoice) {
       resumeChoice = onChoice;
       resumeCard.hidden = false;

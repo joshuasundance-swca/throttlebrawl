@@ -56,6 +56,7 @@ import {
 } from '../save';
 import { browserControlDevice, controlOptionsOf, liveControlSettings } from './controls';
 import { engineSoundsFor } from './engine-sounds';
+import { createCountdown } from './countdown';
 import { createLookFallback } from './look-fallback';
 import {
   createSim,
@@ -307,13 +308,14 @@ function testSlowFrameMs(): number {
 }
 
 /**
- * The race-first start (docs/content-packs.md, "Career": `firstRun`): a device whose career has not
- * started goes from the start tap straight into the career's first race. Under the test flag only
- * when a spec asks (`window.__raceFirst = true`), so the specs that expect the menu still get it.
+ * The race-start countdown (playtest 4, P4-11): every race holds at the grid for 3, 2, 1, GO. Under
+ * the test flag only when a spec asks (`window.__countdown = true`), so the specs that ride a race
+ * from its first tick still do, and the one that checks the countdown does not wait out three seconds
+ * of every race it starts.
  */
-function raceFirstOn(): boolean {
-  const w = window as Window & { __GAME_TEST__?: boolean; __raceFirst?: unknown };
-  return w.__GAME_TEST__ !== true || w.__raceFirst === true;
+function countdownOn(): boolean {
+  const w = window as Window & { __GAME_TEST__?: boolean; __countdown?: unknown };
+  return w.__GAME_TEST__ !== true || w.__countdown === true;
 }
 
 /** The settings' Frame rate as the loop's divisor. */
@@ -706,6 +708,8 @@ export function createApp(opts: AppOptions): AppHandle {
       onStartTap: () => handle.tap(),
       onRace: () => handle.startRace(),
       onCareer: () => void careerReady.then(() => openCareer()),
+      // Menu first (playtest 4, P4-5): until the career has started the menu says "Start career".
+      careerStarted: () => careerStarted(profile),
       career: {
         onRegion: (id) => openCareer(id),
         onRide: (nodeId) => {
@@ -865,18 +869,34 @@ export function createApp(opts: AppOptions): AppHandle {
 
   const lookWatch = createLookFallback();
   const stepMs: number[] = [];
+  // The race-start countdown: a beat is a second of loop steps; GO stays up for 0.8 s of race.
+  const countdown = createCountdown(Math.round(1 / SIM_DT), Math.round(0.8 / SIM_DT));
+  // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
+  // becomes the saved View, so the settings row shows it and a pick there takes effect; it works
+  // on the grid too.
+  const cycleViewOnPress = () => {
+    if (input.lastActions().cycleCamera) ui.syncLive({ view: VIEW_MODES.indexOf(camera.cycleView()) });
+  };
   const step = () => {
     if (!race) return;
     for (const change of pendingTuning.splice(0)) {
       race.applyParam(change.id, change.value);
       recorder.recordParam(race.tick, change.id, change.value);
     }
+    // The countdown (playtest 4, P4-11): a held step is not a sim step. The sim waits at tick 0 for
+    // everyone, nothing is recorded, and what the player pressed is read and dropped.
+    const grid = countdown.step();
+    if (grid.beat !== null) audio.countdownBeat(grid.beat);
+    if (grid.show !== undefined) ui.setCountdown(grid.show);
+    if (grid.hold) {
+      input.sample(SIM_DT);
+      cycleViewOnPress();
+      return;
+    }
     const tick = race.tick;
     const cmd = input.sample(SIM_DT);
     recorder.record(tick, [cmd]);
-    // The view key (C) or gamepad button: the camera's next view (camera-3). Not a race input. It
-    // becomes the saved View, so the settings row shows it and a pick there takes effect.
-    if (input.lastActions().cycleCamera) ui.syncLive({ view: VIEW_MODES.indexOf(camera.cycleView()) });
+    cycleViewOnPress();
     const t0 = performance.now();
     race.step([cmd]);
     stepMs.push(performance.now() - t0);
@@ -1113,6 +1133,7 @@ export function createApp(opts: AppOptions): AppHandle {
     );
     race = newSim(seed);
     pendingTuning.length = 0;
+    countdown.begin(countdownOn());
     // The full header (the SimConfig as plain data), so a saved debug file replays on its own.
     recorder.beginRace(race, replayKey);
     outcome = createOutcome();
@@ -1486,24 +1507,9 @@ export function createApp(opts: AppOptions): AppHandle {
       if (state !== 'tapToStart') return;
       void runStartTap(() => audio.resume());
       go('tapped');
+      // Menu first (playtest 4, P4-5): the first tap of a new device lands on the menu, where
+      // "Start career" is the obvious next tap; a race starts only from a button.
       ui.show('menu');
-      // Race-first (docs/content-packs.md, "Career"): a career that has not started begins with its
-      // first race, the prompts teaching as they become relevant; the menu is only behind it.
-      if (careerStarted(profile) || !raceFirstOn()) return;
-      const raceFirst = () => {
-        const first = C?.firstRace(defs);
-        if (!C || !first || careerStarted(profile) || state !== 'menu') return;
-        saveProfile(C.startCareer(defs, profile));
-        startCareerRace(first.def, first.node);
-      };
-      if (C) raceFirst();
-      else {
-        ui.setBusy('Loading');
-        void careerReady.then(() => {
-          ui.setBusy(null);
-          raceFirst();
-        });
-      }
     },
     startRace() {
       if (transition(state, 'race') === null || loadingRoads) return;

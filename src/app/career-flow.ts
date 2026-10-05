@@ -2,7 +2,7 @@
 // plus the views it hands ui/ (pure functions of the registry, the career files and the profile, so
 // they test without a DOM). app/index.ts imports this file only with import(), so the career's code
 // stays out of the first-load JavaScript (its budget: tests/perf/budget.json). The flow itself
-// (starting a career race, settling it, the race-first start) is in app/index.ts, beside the
+// (starting a career race, settling it) is in app/index.ts, beside the
 // free-play race it shares a loop with.
 import {
   backupCode,
@@ -365,7 +365,6 @@ export {
   createOnboarding,
   createRaceLog,
   eventPlan,
-  firstRace,
   nodeLength,
   nodeOf,
   paintBike,

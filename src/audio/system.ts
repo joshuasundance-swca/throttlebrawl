@@ -231,6 +231,11 @@ export interface AudioSystem {
   /** Ducks the music for a moment, as for a bark (crashes duck it themselves). */
   duck(): void;
   /**
+   * One beat of the race-start countdown (3, 2 or 1; the sim's raceStart event sounds GO itself):
+   * a short beep on the effects bus, so it follows the Effects level like every cue.
+   */
+  countdownBeat(n: number): void;
+  /**
    * A bark's subtitle showed: speak its line (`<pack>:bark-set/<set>#<line>`). The bubble's
    * `throttlebrawl:bark` event calls this; resolves true when the clip started.
    */
@@ -1274,6 +1279,10 @@ export function createAudio(opts: AudioOptions = {}): AudioSystem {
     duck() {
       const g = live();
       if (g) duckNow(g);
+    },
+    countdownBeat() {
+      const g = live();
+      if (g) playCue(g, 'countBeat', 84, 1);
     },
     say,
   };
