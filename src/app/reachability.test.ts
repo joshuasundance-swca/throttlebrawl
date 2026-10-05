@@ -136,6 +136,7 @@ const ACTION_FIELDS = Object.keys({
   ...emptyActions(),
   kickStraight: false,
   cycleCamera: false,
+  wheelie: false,
 }) as (keyof ActionState)[];
 
 /** The action-state fields a sample changed from the empty state. */

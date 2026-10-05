@@ -12,9 +12,9 @@ export const SIM_DT = 1 / SIM_HZ;
 /**
  * Flag bits of SimInput.flags (16 bits from playtest 3; quantizeInput keeps 0xffff). `grab` is
  * reserved; `lookBack` and `pause` are ignored by the sim. `wheelie` (playtest 3, "a way to do
- * wheelies"; the maintainer's gesture: double-tap the throttle, then balance it by thumb height) is
- * a level flag, held while the double-tap's second press is held; sim/riders/wheelie.ts reads its
- * rising edge to pop the front, and only for a player.
+ * wheelies"; playtest 4's wheelie button) is a level flag, held while the button is held:
+ * sim/riders/wheelie.ts pops the front on a press, lifts it while held and drops it when released,
+ * and only for a player.
  */
 export const InputFlag = {
   attack: 1,

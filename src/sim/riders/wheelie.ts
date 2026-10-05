@@ -1,6 +1,7 @@
 // sim/riders/wheelie.ts: the wheelie and the hood launch (playtest 3: "a way to do wheelies", and
-// "wheelie into the hood of a car... launch you up into a jump doing backflips"; the maintainer's
-// gesture: double-tap the throttle, then balance it by thumb height).
+// "wheelie into the hood of a car... launch you up into a jump doing backflips"). Playtest 4 (P4-7,
+// [decided] "Wheelie button"): HOLD a button to lift the front and keep it up, RELEASE to drop it;
+// the throttle stays the throttle, and the skill is how long you hold before it loops out.
 //
 // The K0a contract's hooks, called from sim/riders and sim/traffic:
 // - `wheelieStep`, each grounded tick after the throttle and brake are read: the steering scale
@@ -14,20 +15,28 @@
 //   critic's S2, "a car is a car"): true means it launched, from above the hazard's top;
 // - `wheelieOf` and `wheelieMoves`, for the snapshot (`EntitySnapshot.wheelie`, `SimSnapshot.moves`).
 //
-// The wheelie (scratch spec moves.md §3.2, [default] every number):
-// - **Pop.** On the rising edge of InputFlag.wheelie, a player riding at 6 m/s or more (× the speed
-//   multiplier) with at least 0.3 throttle, not wobbling, U-turning or drifting, lifts the front at
-//   2.5 rad/s. AI riders never pop.
-// - **Hold.** Once up, the flag no longer matters: the throttle balances it. The front's angle θ
-//   above the slope follows θ̈ = K·(θ*(u) − θ) + λ·(θ − θ_bp) − D·θ̇ − B·brake, θ*(u) =
-//   clamp((u − 0.3)/0.7, 0, 1) × 1.4: the λ term is "past the balance point it wants to keep going",
-//   the brake is the rear brake bringing the nose down. The sweet band (θ 0.35 to 0.85) sits at a
-//   throttle of about 0.52 to 0.68; `riders.wheelieGain` scales K and λ (lower: lazier).
+// The wheelie (scratch spec moves.md §3.2 and the playtest 4 brief, [default] every number):
+// - **Pop.** InputFlag.wheelie is level-held while the button is (input/: the touch button, a key, a
+//   pad button). A press arms the pop; it pops on the first tick of that press a player rides at
+//   6 m/s or more (× the speed multiplier), not wobbling, U-turning or drifting, lifting the front at
+//   2.5 rad/s. Any throttle, none included. One press, one pop: a wheelie that ends while the button
+//   is still held waits for a new press. AI riders never pop.
+// - **Hold and release.** The front's angle θ above the slope follows an aim a:
+//   θ̈ = K·(a − θ) + λ·(θ − θ_bp) − D·θ̇ − B·brake. While held, a climbs at `riders.wheelieRise`
+//   (0.25 rad/s) from where the press found the front (at least WHEELIE_HOLD_AIM, the sweet band's
+//   floor); released, a is 0 and the front comes down. Held still, θ settles at 1.6·a − 0.36, so a
+//   hold carries the front up through the sweet band (θ 0.35 to 0.85), into the high band and over
+//   the top: playtest 3's [decided] "too high loops out" is now "held too long loops out". The λ
+//   term is "past the balance point it wants to keep going"; the brake is the rear brake bringing the
+//   nose down. The throttle plays no part: it is only the throttle. `riders.wheelieGain` scales K and
+//   λ (lower: lazier). The moves audit (playtest 4) measured why the old thumb-height balance failed:
+//   its sweet band was 9.4 px of thumb in mid-stick, and the natural full swipe up looped out 0.6 s
+//   after the pop.
 // - **End.** The front back down (θ ≤ 0.04): clean when it falls slower than 2.5 rad/s, else a wobble
 //   (`cause: 'wheelie'`). Over the top (θ ≥ 1.2): a loop-out, a crash thrown up and back. Also on a
 //   wobble or a hit (dirty), a take-off or a hood launch (clean), under 3 m/s (clean), or a rider
 //   taken off the bike in between (dirty). Every end emits `wheelieEnd`, which sim/race scores.
-// - **While up**, steering has 0.6 of its reach; the throttle is still the throttle.
+// - **While up**, steering has 0.6 of its reach.
 //
 // The hood launch (moves.md §3.3, the critic's S2): in a wheelie with the front at least 0.35 rad up
 // (the front wheel about hood height), meeting end on and not a graze, at 8 m/s closing or more (×
@@ -66,7 +75,10 @@ import { hazardObject, hazardTop } from './features';
 import type { RiderState } from './index';
 import { uturnTurning } from './uturn';
 
-/** The wheelie's tuning: its switch (absent or 0: off) and its balance gain. */
+/** The held aim's climb, rad/s, when `riders.wheelieRise` is absent. */
+export const WHEELIE_RISE_DEFAULT = 0.25;
+
+/** The wheelie's tuning: its switch (absent or 0: off), its balance gain and its hold's climb. */
 export const WHEELIE_TUNING: readonly TuningParamDecl[] = [
   {
     // Playtest 3's wheelie and hood launch: 1 on, 0 off (absent: off, so old recordings ride as
@@ -82,8 +94,8 @@ export const WHEELIE_TUNING: readonly TuningParamDecl[] = [
     affectsSim: true,
   },
   {
-    // Scales the balance's pull toward the throttle's angle and its tip past the balance point
-    // together: lower is a lazier, wider sweet band, higher a twitchier one. [default] 1.
+    // Scales the balance's pull toward the hold's aim and its tip past the balance point together:
+    // lower is a lazier front, higher a twitchier one. [default] 1.
     id: 'riders.wheelieGain',
     group: 'crashes',
     label: 'Wheelie: balance gain',
@@ -94,13 +106,25 @@ export const WHEELIE_TUNING: readonly TuningParamDecl[] = [
     unit: '×',
     affectsSim: true,
   },
+  {
+    // Playtest 4's wheelie button: how fast a held button carries the front up (the aim's climb).
+    // Lower is a longer hold before it loops out, higher a shorter one. [default] 0.25.
+    id: 'riders.wheelieRise',
+    group: 'crashes',
+    label: 'Wheelie: hold lift rate',
+    default: WHEELIE_RISE_DEFAULT,
+    min: 0.1,
+    max: 0.6,
+    step: 0.05,
+    unit: 'rad/s',
+    affectsSim: true,
+  },
 ];
 
 /** The pop's lift, rad/s. */
 export const WHEELIE_POP_RATE = 2.5;
-/** The slowest a wheelie pops, m/s (× the speed multiplier), and the least throttle. */
+/** The slowest a wheelie pops, m/s (× the speed multiplier). */
 export const WHEELIE_MIN_MPS = 6;
-export const WHEELIE_MIN_THROTTLE = 0.3;
 /** Under this speed (× the multiplier) the front settles, m/s. */
 export const WHEELIE_SETTLE_MPS = 3;
 /** The balance: pull K toward the throttle's angle, tip λ past the balance point, damping D. */
@@ -113,8 +137,11 @@ export const WHEELIE_DAMP = 4;
  * of full brake from 0.8 rad only reach 0.64 (computed), short of the spec's own "under 0.5".
  */
 export const WHEELIE_BRAKE = 26;
-/** The throttle's angle at full throttle, radians. */
-export const WHEELIE_TARGET_MAX = 1.4;
+/**
+ * A press aims at least this high, radians: held still there, the front settles at 0.36, the sweet
+ * band's floor. A press on a front already higher aims where the front is, so it holds it there.
+ */
+export const WHEELIE_HOLD_AIM = 0.45;
 /** The front is down at or under this, radians; over the top at or past WHEELIE_LOOP_RAD. */
 export const WHEELIE_DOWN_RAD = 0.04;
 export const WHEELIE_LOOP_RAD = 1.2;
@@ -170,8 +197,12 @@ export interface WheelieState extends SpinState {
   /** World ticks (× timeScale) this wheelie has been up, and of those in the sweet band. */
   wheelieUp: number[];
   wheelieSweet: number[];
-  /** The wheelie flag last tick (1 held), for its rising edge. */
+  /** The wheelie flag last grounded tick (1 held), for its press edge. */
   wheelieFlag: number[];
+  /** 1 while a press waits to pop (pressed, not yet popped, still held). */
+  wheelieArmed: number[];
+  /** The hold's aim, radians: climbing while held, 0 released. */
+  wheelieAim: number[];
   /** The last tick the wheelie was stepped: a gap means the rider was off the bike in between. */
   wheelieTick: number[];
 }
@@ -184,6 +215,8 @@ export function newWheelieState(): WheelieState {
     wheelieUp: [],
     wheelieSweet: [],
     wheelieFlag: [],
+    wheelieArmed: [],
+    wheelieAim: [],
     wheelieTick: [],
   };
 }
@@ -215,12 +248,21 @@ function endWheelie(world: World, st: WheelieState, m: Mover, clean: boolean, lo
   st.wheelieRate[id] = 0;
   st.wheelieUp[id] = 0;
   st.wheelieSweet[id] = 0;
+  st.wheelieAim[id] = 0;
 }
 
 /**
- * One grounded tick of the wheelie: pop on the rising edge of InputFlag.wheelie, balance by the
- * throttle, end on the front coming down, a loop-out, a hit or a slow crawl. `throttle` and `brake`
- * are 0..1, as the riding model reads them.
+ * The aim that holds the front still at θ (the balance's equilibrium, solved for the aim): where a
+ * press on a front already up starts climbing from, so pressing never pulls the front down.
+ */
+function aimHolding(theta: number): number {
+  return (theta * (WHEELIE_K - WHEELIE_TIP) + WHEELIE_TIP * WHEELIE_BALANCE_RAD) / WHEELIE_K;
+}
+
+/**
+ * One grounded tick of the wheelie: pop on a press, lift while held, drop when released, end on the
+ * front coming down, a loop-out, a hit or a slow crawl. `brake` is 0..1, as the riding model reads
+ * it; the throttle plays no part (playtest 4: the throttle stays the throttle).
  */
 export function wheelieStep(
   world: World,
@@ -228,7 +270,6 @@ export function wheelieStep(
   st: RiderState,
   m: Mover,
   input: SimInput,
-  throttle: number,
   brake: number,
   dt: number,
 ): Readonly<WheelieStep> {
@@ -239,8 +280,12 @@ export function wheelieStep(
   const def = config.riders[m.riderIndex];
   if (!def || def.controller.kind !== 'player') return NO_WHEELIE;
   const flag = (input.flags & InputFlag.wheelie) !== 0 ? 1 : 0;
-  const rising = flag === 1 && (st.wheelieFlag[id] ?? 0) === 0;
+  const pressed = flag === 1 && (st.wheelieFlag[id] ?? 0) === 0;
   if ((st.wheelieFlag[id] ?? 0) !== flag) st.wheelieFlag[id] = flag;
+  // A press made with the front down arms the pop until it pops or lifts (a press while the front is
+  // up only lifts it). Written only when it changes, so a rider who never presses carries no state.
+  const armed = theta <= 0 && flag === 1 && (pressed || (st.wheelieArmed[id] ?? 0) === 1) ? 1 : 0;
+  if ((st.wheelieArmed[id] ?? 0) !== armed) st.wheelieArmed[id] = armed;
   const mult = speedMultiplierOf(config);
   const ts = world.timeScale;
 
@@ -261,11 +306,18 @@ export function wheelieStep(
       return NO_WHEELIE;
     }
     const gain = world.params['riders.wheelieGain'] ?? 1;
-    const target =
-      clamp((throttle - WHEELIE_MIN_THROTTLE) / (1 - WHEELIE_MIN_THROTTLE), 0, 1) * WHEELIE_TARGET_MAX;
+    // The hold: a press starts the aim where the front is (at least the sweet band's floor), a held
+    // button climbs it, a released one drops it to 0.
+    let aim = 0;
+    if (flag === 1) {
+      const rise = world.params['riders.wheelieRise'] ?? WHEELIE_RISE_DEFAULT;
+      const from = pressed ? Math.max(WHEELIE_HOLD_AIM, aimHolding(theta)) : (st.wheelieAim[id] ?? 0);
+      aim = Math.max(from, WHEELIE_HOLD_AIM) + rise * dt;
+    }
+    st.wheelieAim[id] = aim;
     let rate = st.wheelieRate[id] ?? 0;
     const accel =
-      gain * (WHEELIE_K * (target - theta) + WHEELIE_TIP * (theta - WHEELIE_BALANCE_RAD)) -
+      gain * (WHEELIE_K * (aim - theta) + WHEELIE_TIP * (theta - WHEELIE_BALANCE_RAD)) -
       WHEELIE_DAMP * rate -
       WHEELIE_BRAKE * brake;
     rate += accel * dt;
@@ -301,18 +353,19 @@ export function wheelieStep(
     return { steerScale: WHEELIE_STEER_SCALE, pitchAdd: theta };
   }
 
-  // The pop.
+  // The pop: the first tick of a press that can.
   if (
-    !rising ||
+    armed !== 1 ||
     m.speed < WHEELIE_MIN_MPS * mult ||
-    throttle < WHEELIE_MIN_THROTTLE ||
     (st.wobble[id] ?? 0) > 0 ||
     uturnTurning(st, id) ||
     driftOf(world, m) !== 0
   )
     return NO_WHEELIE;
+  st.wheelieArmed[id] = 0;
   theta = WHEELIE_POP_RATE * dt;
   st.wheelieRate[id] = WHEELIE_POP_RATE;
+  st.wheelieAim[id] = WHEELIE_HOLD_AIM;
   st.wheelie[id] = theta;
   st.wheelieUp[id] = ts;
   st.wheelieSweet[id] = 0;

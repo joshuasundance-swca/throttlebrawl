@@ -92,6 +92,7 @@ async function expectNoHudOverlap(page: Page, where: string) {
       'hud-pause',
       'touch-attack',
       'touch-brake',
+      'touch-wheelie',
     ];
     const boxes = ids
       .map((id) => document.getElementById(id))

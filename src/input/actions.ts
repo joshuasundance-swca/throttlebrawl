@@ -29,9 +29,9 @@ export interface ActionState {
    */
   cycleCamera?: boolean;
   /**
-   * The wheelie (playtest 3: double-tap the throttle, then balance it by thumb height): level-held
-   * while the double-tap's second press holds. It reaches the sim as InputFlag.wheelie; the throttle
-   * is the balance. Optional, so hand-built action states stay valid.
+   * The wheelie (playtest 4, P4-7: the wheelie button, a held key or pad button): level-held while the
+   * button is. It reaches the sim as InputFlag.wheelie (hold lifts the front, release drops it); the
+   * throttle stays the throttle. Optional, so hand-built action states stay valid.
    */
   wheelie?: boolean;
 }
