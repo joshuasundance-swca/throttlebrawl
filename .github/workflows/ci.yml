@@ -1,5 +1,5 @@
-# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit, sim (five slices) and browser
-# (six slices, the last also running perf) run in parallel, each running its tiers of
+# The gate (docs/engineering.md, "CI on GitHub Actions"). static, unit (two slices), sim (five
+# slices) and browser (six slices, the last also running perf) run in parallel, each running its tiers of
 # `npm run check`; `gate` is the single required status check, and it fails unless every one of
 # them succeeded. Every job is planned to finish inside about 70% of a 10-minute run, and its
 # timeout-minutes is about 1.5 times its expected time, a guard against a hang rather than a budget.
@@ -82,15 +82,20 @@ jobs:
       - name: Types, lint, format, packs, leak scan, size, notes
         run: npm run check -- --tier static
 
-  # The unit tests, one runner. Their slowest file (tools/gis/region-routes.test.ts, about 310 to
-  # 340 s on CI) is the floor of this job; tests/sequencer.ts starts it first from its measured time
-  # (tests/timings.json), so the other files fill the other workers around it. [default]
+  # The unit tests in parallel slices, split by measured CI seconds like the sim batch below. On one
+  # runner they took 435 s (run 37261695645): about 980 s of tests plus each file's setup and
+  # import on three workers. Their slowest file (tools/gis/region-routes.test.ts, about 310 to 340 s)
+  # is the floor, and the plan gives it a slice of its own. [default]
   unit:
-    name: unit
+    name: unit (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -100,8 +105,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Unit tests
-        run: npm run check -- --tier unit
+      - name: Unit tests, one slice
+        run: npm run check -- --tier unit --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
   # The seeded sim batch in parallel slices. The test runner lists the files and
   # scripts/shard-plan.mjs splits them by their measured CI seconds (tests/timings.json): every file
@@ -116,7 +121,7 @@ jobs:
     needs: [plan]
     if: ${{ !cancelled() && (needs.plan.result == 'skipped' || (needs.plan.result == 'success' && needs.plan.outputs.skip != 'true')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 9
     strategy:
       fail-fast: false
       matrix:

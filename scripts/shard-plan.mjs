@@ -1,4 +1,4 @@
-// Duration-balanced slices for CI's sim and browser jobs (docs/engineering.md, "CI on GitHub
+// Duration-balanced slices for CI's unit, sim and browser jobs (docs/engineering.md, "CI on GitHub
 // Actions"). `npm run check -- --tier sim --shard i/n` (and `--tier browser`) asks planSlices which
 // test files slice i runs. The slices are a partition of the files the test runner itself lists:
 // every file lands in exactly one slice, so the slices' test counts add up to the unsharded run's.
@@ -34,6 +34,7 @@ export const TIMINGS_FILE = 'tests/timings.json';
 
 /** Parallel test workers per CI runner, and the order each runner starts its files in. */
 export const TIERS = {
+  unit: { workers: 3, order: 'longest-first' },
   sim: { workers: 3, order: 'longest-first' },
   e2e: { workers: 2, order: 'path' },
 };

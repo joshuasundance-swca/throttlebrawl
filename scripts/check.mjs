@@ -4,7 +4,8 @@
 //   npm run check -- --tier static   one tier (CI runs static, unit, and each sim and browser slice
 //                                    as parallel jobs)
 //   npm run check -- --tier sim --shard 1/2
-//                                    one slice of a tier: the sim batch or the browser tests. The
+//                                    one slice of a tier: the unit tests, the sim batch or the
+//                                    browser tests. The
 //                                    test runner lists the tier's files and scripts/shard-plan.mjs
 //                                    splits them by their measured CI seconds; every file lands in
 //                                    exactly one slice. A step marked everySlice (the build) runs
@@ -103,7 +104,8 @@ const STEPS = [
         : true;
     },
   },
-  { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest },
+  // The unit tests shard like the sim batch (CI's unit slices since 2026-10-05).
+  { tier: 'unit', name: 'unit tests', script: 'test', count: fromVitest, shardable: 'unit' },
   {
     tier: 'sim',
     name: 'sim batch',
@@ -132,9 +134,9 @@ const STEPS = [
  */
 function runnerFiles(kind) {
   const cmd =
-    kind === 'sim'
-      ? ['vitest', 'list', '--project', 'sim', '--filesOnly']
-      : ['playwright', 'test', '--list', '--project=e2e'];
+    kind === 'e2e'
+      ? ['playwright', 'test', '--list', '--project=e2e']
+      : ['vitest', 'list', '--project', kind, '--filesOnly'];
   const res = spawnSync('npx', ['--no-install', ...cmd], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -148,7 +150,7 @@ function runnerFiles(kind) {
     );
     process.exit(1);
   }
-  const re = kind === 'sim' ? /^\[sim\] (\S+)\s*$/gm : /\[e2e\] › (\S+?):\d+:\d+ › /g;
+  const re = kind === 'e2e' ? /\[e2e\] › (\S+?):\d+:\d+ › /g : new RegExp(`^\\[${kind}\\] (\\S+)\\s*$`, 'gm');
   const tests = new Map();
   for (const m of out.matchAll(re)) {
     const f = m[1].replaceAll('\\', '/');
@@ -201,7 +203,7 @@ if (shard !== null) {
     !steps.some((s) => s.shardable) ||
     steps.some((s) => !s.shardable && !s.everySlice && !s.lastSliceOnly)
   ) {
-    console.error('check: --shard needs a --tier whose steps all shard (sim, browser)');
+    console.error('check: --shard needs a --tier whose steps all shard (unit, sim, browser)');
     process.exit(1);
   }
   if (slice.i !== slice.n && steps.some((s) => s.lastSliceOnly)) {
@@ -282,10 +284,10 @@ for (const step of steps) {
   // The runner must have run exactly the slice: every planned file (Vitest), every listed test of
   // them (Playwright), so a filter that matched more or fewer files cannot pass unnoticed.
   if (planned && code === 0) {
-    const ran = step.shardable === 'sim' ? vitestFiles(out) : playwrightRunning(out);
-    const want = step.shardable === 'sim' ? planned.files.length : planned.tests;
-    if (ran !== want)
-      result = `FAIL (ran ${ran}, the slice planned ${want} ${step.shardable === 'sim' ? 'files' : 'tests'})`;
+    const vitest = step.shardable !== 'e2e';
+    const ran = vitest ? vitestFiles(out) : playwrightRunning(out);
+    const want = vitest ? planned.files.length : planned.tests;
+    if (ran !== want) result = `FAIL (ran ${ran}, the slice planned ${want} ${vitest ? 'files' : 'tests'})`;
   }
   if (result !== 'pass') failed = true;
   rows.push([label, result, `${text} (${secs}s)`]);

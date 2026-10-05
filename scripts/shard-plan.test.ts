@@ -16,6 +16,7 @@ import { timedOrder } from '../tests/sequencer';
 import { parseLog } from './timings.mjs';
 
 const timings = readTimings() as {
+  unit?: Record<string, number>;
   sim?: Record<string, number>;
   e2e?: Record<string, number>;
   perf?: number;
@@ -29,7 +30,7 @@ function expectPartition(files: string[], slices: { files: string[] }[]) {
 
 describe('planSlices', () => {
   it('puts every file in exactly one slice, for every slice count, with real and unknown timings', () => {
-    for (const tier of ['sim', 'e2e'] as const) {
+    for (const tier of ['unit', 'sim', 'e2e'] as const) {
       const table = timings[tier] ?? {};
       const files = [
         ...Object.keys(table),
@@ -168,7 +169,7 @@ describe('planSlices', () => {
       'c.test.ts': "import { runSeededRace } from './batch';",
     };
     expect(batchUsers(Object.keys(src), (f: string) => src[f] ?? '')).toEqual(['a.test.ts', 'b.test.ts']);
-    expect(Object.keys(TIERS).sort()).toEqual(['e2e', 'sim']);
+    expect(Object.keys(TIERS).sort()).toEqual(['e2e', 'sim', 'unit']);
   });
 });
 
