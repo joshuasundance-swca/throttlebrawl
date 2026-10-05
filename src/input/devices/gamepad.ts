@@ -11,12 +11,11 @@
 // GamepadMap. Whether a PS4 pad reports `standard` on Android Chrome is (unverified) until the
 // phone check; a pad with another mapping is read with the same indices.
 //
-// The wheelie (playtest 3) is a gesture on R2: pull it past WHEELIE_PULL, let it go under
-// WHEELIE_LET_GO, and pull it past WHEELIE_PULL again within input.wheelieTapMs, and `wheelie` is set
-// until it goes under WHEELIE_LET_GO. The depth of R2 is the balance, as the thumb's height is.
+// The wheelie (playtest 4, P4-7: the touch button's model at parity) is a held button: R3, a click
+// of the right stick under the right thumb, as the touch button is under the right thumb. Hold to lift
+// the front and keep it up, release to drop it; R2 stays the throttle. Playtest 3's double pull of R2
+// is gone.
 import type { ActionState } from '../actions';
-import { inputDefaults, type InputThresholds } from '../tuning';
-import { TapPair, WheelieLatch } from './wheelie-tap';
 
 /** The parts of a Gamepad this device reads (a real Gamepad satisfies it). */
 export interface PadLike {
@@ -38,7 +37,8 @@ export type PadButtonAction =
   | 'kickStraight'
   | 'lookBack'
   | 'skipRunBack'
-  | 'cycleCamera';
+  | 'cycleCamera'
+  | 'wheelie';
 
 export interface GamepadMap {
   /** The stick axis that steers (-1 left .. 1 right). */
@@ -61,6 +61,8 @@ export const PAD = {
   r2: 7,
   share: 8,
   options: 9,
+  l3: 10,
+  r3: 11,
   dpadUp: 12,
   dpadDown: 13,
   dpadLeft: 14,
@@ -84,16 +86,12 @@ export const DEFAULT_PAD_MAP: GamepadMap = {
     skipRunBack: [PAD.cross],
     // The camera's next view: d-pad up, free in the default map [default].
     cycleCamera: [PAD.dpadUp],
+    // Playtest 4's wheelie button: hold R3, free in the default map [default].
+    wheelie: [PAD.r3],
   },
 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-/** R2 counts as pulled from this far, and as let go under this (the hysteresis between). */
-const WHEELIE_PULL = 0.5;
-const WHEELIE_LET_GO = 0.2;
-/** One poll, seconds, when the caller gives no dt: the pad is polled once per 60 Hz sim tick. */
-const POLL_S = 1 / 60;
 
 const PAD_ACTIONS = Object.keys(DEFAULT_PAD_MAP.buttons) as PadButtonAction[];
 const MAX_INDEX = 63;
@@ -138,20 +136,9 @@ export class GamepadState {
   private wasHeld = new Set<PadButtonAction>();
   /** Whether the view button was held at the last poll (its press edge). */
   private viewHeld = false;
-  /** The wheelie's double-pull of R2; `clock` is the polls' own time, seconds. */
-  private readonly taps = new TapPair();
-  private readonly latch = new WheelieLatch();
-  private readonly thresholds: Pick<InputThresholds, 'wheelieTapMs'>;
-  private pulled = false;
-  private clock = 0;
 
-  /** `thresholds` is read live (createInput hands over its own, so the tuning panel moves it). */
-  constructor(
-    map: GamepadMap = DEFAULT_PAD_MAP,
-    thresholds: Pick<InputThresholds, 'wheelieTapMs'> = inputDefaults(),
-  ) {
+  constructor(map: GamepadMap = DEFAULT_PAD_MAP) {
     this.map = map;
-    this.thresholds = thresholds;
   }
 
   /** Replaces the bindings (a remap in the settings). */
@@ -163,21 +150,18 @@ export class GamepadState {
   clear(): void {
     this.wasHeld.clear();
     this.viewHeld = false;
-    this.pulled = false;
-    this.taps.reset();
-    this.latch.release();
   }
 
   /**
    * Writes this poll's gamepad actions into `a`. Every connected pad counts; `deadZone` is the
-   * radial stick dead zone as a fraction of full deflection; `dt` is the seconds since the last poll
-   * (one 60 Hz tick when left out), which times the wheelie's double-pull.
+   * radial stick dead zone as a fraction of full deflection. `_dt`, the seconds since the last poll,
+   * is unused since the wheelie's double pull of R2 went (playtest 4); callers still pass it.
    */
   sample(
     a: ActionState,
     pads: readonly (PadLike | null | undefined)[],
     deadZone: number,
-    dt: number = POLL_S,
+    _dt?: number,
   ): void {
     const live = pads.filter((p): p is PadLike => !!p && p.connected);
     const value = (action: PadButtonAction) => {
@@ -206,21 +190,9 @@ export class GamepadState {
     if (digital !== 0) steer = digital;
     if (steer !== 0) a.steer = clamp(steer, -1, 1);
 
-    const throttle = value('throttle');
-    a.throttle = Math.max(a.throttle, throttle);
+    a.throttle = Math.max(a.throttle, value('throttle'));
     a.brake = Math.max(a.brake, value('brake'));
-
-    // The wheelie: the second pull of R2 within the window of a short first one.
-    this.clock += dt;
-    const window = this.thresholds.wheelieTapMs / 1000;
-    if (!this.pulled && throttle >= WHEELIE_PULL) {
-      this.pulled = true;
-      this.latch.press(this.taps.press(this.clock, window));
-    } else if (this.pulled && throttle < WHEELIE_LET_GO) {
-      this.pulled = false;
-      this.taps.lift(this.clock, window);
-    }
-    if (this.latch.sample(this.pulled, throttle)) a.wheelie = true;
+    if (held('wheelie')) a.wheelie = true;
 
     // Attack is a press edge (any attack button, or the kick); side and kick are level-held.
     const now = new Set<PadButtonAction>();

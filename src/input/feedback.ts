@@ -6,7 +6,7 @@
 // Not naggy: one buzz per sim step at most (the strongest event wins), and a weaker buzz never
 // cuts into a stronger one that is still playing.
 //
-// The wheelie (playtest 3): a 12 ms tick when the double-tap registers (createInput pulses it on the
+// The wheelie (playtest 3; the button since playtest 4): a 12 ms tick when the button is pressed (createInput pulses it on the
 // wheelie flag's rising edge), a 30 ms buzz each time the front swings up into the `high` band (the
 // loop-out warning), and the crash pattern on a loop-out.
 import type { EntityId } from '../core';

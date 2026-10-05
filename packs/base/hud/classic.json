@@ -55,6 +55,15 @@
       "touchOnly": true
     },
     {
+      "element": "touch-wheelie",
+      "visible": true,
+      "anchor": "bottom-right",
+      "offset": [0.34, 0.265],
+      "scale": 0.7,
+      "opacity": 0.7,
+      "touchOnly": true
+    },
+    {
       "element": "touch-stick-zone",
       "visible": true,
       "anchor": "bottom-left",

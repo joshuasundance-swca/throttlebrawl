@@ -509,6 +509,7 @@ function tickerAndMeasure(page: Page, items: TickerItemLike[], opts: MeasureOpts
         'hud-pause',
         'touch-attack',
         'touch-brake',
+        'touch-wheelie',
       ]
         .map((id) => document.getElementById(id))
         .filter((e): e is HTMLElement => !!e && e.checkVisibility())
@@ -1481,7 +1482,7 @@ function measureTuning(page: Page): Promise<TuningMeasured> {
     const panel = document.getElementById('tuning-panel');
     const pieces: { name: string; box: ReturnType<typeof box> }[] = [];
     if (panel?.checkVisibility()) pieces.push({ name: 'tuning-panel', box: box(panel) });
-    for (const id of ['hud-pause', 'touch-attack', 'touch-brake']) {
+    for (const id of ['hud-pause', 'touch-attack', 'touch-brake', 'touch-wheelie']) {
       const e = document.getElementById(id);
       if (e?.checkVisibility()) pieces.push({ name: id, box: box(e) });
     }
@@ -1551,7 +1552,11 @@ for (const [where, width, height, touch, mirror] of [
       const open = await measureTuning(page);
       logPieces(`${where}, panel open`, open.pieces);
       const names = new Set(open.pieces.map((p) => p.name));
-      for (const must of ['tuning-panel', 'hud-pause', ...(touch ? ['touch-attack', 'touch-brake'] : [])])
+      for (const must of [
+        'tuning-panel',
+        'hud-pause',
+        ...(touch ? ['touch-attack', 'touch-brake', 'touch-wheelie'] : []),
+      ])
         expect(names.has(must), `${where}: the check measured ${must}`).toBe(true);
       expect(
         open.controls.map((c) => c.id),

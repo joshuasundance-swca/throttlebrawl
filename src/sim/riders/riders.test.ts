@@ -354,6 +354,7 @@ describe('riders-1: robustness and determinism', () => {
       'riders.uturnRate',
       'riders.wheelie',
       'riders.wheelieGain',
+      'riders.wheelieRise',
       'riders.drift',
       'riders.driftSteerGain',
       'riders.driftDrag',

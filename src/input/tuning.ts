@@ -40,14 +40,6 @@ export interface InputThresholds {
   tiltFullLockDeg: number;
   /** Tilt low-pass time constant, seconds (M2 input-2). */
   tiltSmoothingS: number;
-  /**
-   * The wheelie's double-tap (playtest 3): a tap is a press that lifts within this long, and the
-   * second press must begin within it of that lift, ms. The same on the stick, the throttle keys and
-   * R2.
-   */
-  wheelieTapMs: number;
-  /** The second press must land within this of the first tap's stick base, CSS px (1.5 stick ranges). */
-  wheelieTapPx: number;
 }
 
 const decl = (
@@ -94,10 +86,8 @@ export const INPUT_TUNING: readonly TuningParamDecl[] = [
   decl('tiltDeadZoneDeg', 'Tilt dead zone', 2, 0, 10, 0.5, 'deg'),
   decl('tiltFullLockDeg', 'Tilt full lock', 25, 8, 60, 1, 'deg'),
   decl('tiltSmoothingS', 'Tilt smoothing', 0.1, 0, 0.5, 0.01, 's'),
-  // Playtest 3 (2026-10-03): "DOUBLE-TAP the throttle to pop it, then BALANCE it by thumb height".
-  // [default] starting numbers; the balance's own slider is riders.wheelieGain.
-  decl('wheelieTapMs', 'Wheelie double-tap window', 280, 150, 400, 10, 'ms'),
-  decl('wheelieTapPx', 'Wheelie double-tap radius', 90, 40, 160, 5, 'px'),
+  // Playtest 3's double-tap window and radius (input.wheelieTapMs, input.wheelieTapPx) went with the
+  // double-tap (playtest 4, P4-7: the wheelie button). A saved preset naming them skips them.
 ];
 
 /** The shipped thresholds. */

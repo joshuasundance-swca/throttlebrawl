@@ -164,6 +164,7 @@ function showAndMeasure(page: Page, items: TickerItemLike[]): Promise<Measured> 
       'look-offer',
       'touch-attack',
       'touch-brake',
+      'touch-wheelie',
     ]
       .map((id) => document.getElementById(id))
       .filter((e): e is HTMLElement => !!e && e.checkVisibility())

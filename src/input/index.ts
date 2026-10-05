@@ -1,13 +1,20 @@
 // input: devices -> one action state -> one quantized SimInput per tick (docs/architecture.md,
 // "Input"; docs/milestones/M1.md, "input-1"). Touch (the floating stick, the brake and the attack
-// button with its side drag and swipe-down kick) and the keyboard write into one ActionState; the
-// app samples it once per sim tick. Presses are latched until a tick samples them. The left-handed
-// mirror comes from the layout record.
+// button with its side drag and swipe-down kick, and playtest 4's wheelie button) and the keyboard
+// write into one ActionState; the app samples it once per sim tick. Presses are latched until a tick
+// samples them. The left-handed mirror comes from the layout record.
 // M2 input-2 (docs/milestones/M2.md): the gamepad (polled on every sample), tilt steering as an
 // option (thumb, tilt, or both added together), auto-throttle and pull-back brake as options, and
 // haptics (input/feedback) fed the player's sim events.
 import type { EntityId } from '../core';
-import { placeElement, type MovesSnapshot, type SimEvent, type SimInput, type TouchLayout } from '../sim/api';
+import {
+  placeElement,
+  placeTouchButtons,
+  type MovesSnapshot,
+  type SimEvent,
+  type SimInput,
+  type TouchLayout,
+} from '../sim/api';
 import { emptyActions, toSimInput, type ActionState } from './actions';
 import {
   DEFAULT_PAD_MAP,
@@ -184,10 +191,10 @@ const browserGamepads = (): readonly (PadLike | null)[] => {
 
 export function createInput(opts: InputOptions): InputSystem {
   const thresholds: InputThresholds = inputDefaults();
-  const keyboard = new KeyboardState(opts.keyMap, thresholds);
+  const keyboard = new KeyboardState(opts.keyMap);
   const touch = new TouchState(thresholds);
   const padBase = opts.padMap ?? DEFAULT_PAD_MAP;
-  const gamepad = new GamepadState(padBase, thresholds);
+  const gamepad = new GamepadState(padBase);
   let padBindings: ControlOptions['padBindings'] | null = null;
   const readPads = opts.gamepads ?? browserGamepads;
   const haptics = createHaptics(opts.vibrate === undefined ? {} : { vibrate: opts.vibrate });
@@ -230,16 +237,16 @@ export function createInput(opts: InputOptions): InputSystem {
   }
 
   const zones = (box: { width: number; height: number }): TouchZones => {
-    const rect = (element: string) => {
-      const el = layout.elements.find((e) => e.element === element && e.visible);
-      return el ? placeElement(el, box.width, box.height, layout.mirror) : null;
-    };
+    const el = layout.elements.find((e) => e.element === 'touch-stick-zone' && e.visible);
+    // The buttons as core settles them, the boxes ui/ draws (the wheelie button moves off the others).
+    const buttons = placeTouchButtons(layout, box.width, box.height);
     return {
       width: box.width,
       height: box.height,
-      stick: rect('touch-stick-zone'),
-      brake: rect('touch-brake'),
-      attack: rect('touch-attack'),
+      stick: el ? placeElement(el, box.width, box.height, layout.mirror) : null,
+      brake: buttons.brake,
+      attack: buttons.attack,
+      wheelie: buttons.wheelie,
     };
   };
 
@@ -275,7 +282,7 @@ export function createInput(opts: InputOptions): InputSystem {
   // pointerup, pointercancel and a lost capture are all a release.
   const onPointerUp: Listener = (e) => {
     const p = e as unknown as PointerLike;
-    touch.up(p.pointerId, p.timeStamp);
+    touch.up(p.pointerId);
   };
 
   const pointerEvents: [string, Listener][] = [
@@ -312,12 +319,9 @@ export function createInput(opts: InputOptions): InputSystem {
         gamepad.sample(a, readPads(), thresholds.gamepadDeadZone, dt);
         const tiltSteer = (injectedTilt ?? sensorTilt)?.steer(dt) ?? null;
         if (tiltSteer !== null) a.steer = Math.max(-1, Math.min(1, a.steer + tiltSteer));
-        if (controls.autoThrottle) {
-          // Auto-throttle: full throttle unless braking, so the brake still stops the bike. It leaves
-          // nothing to balance a wheelie with (full gas loops it out), so the gesture is off.
-          a.wheelie = false;
-          if (a.brake === 0) a.throttle = 1;
-        }
+        // Auto-throttle: full throttle unless braking, so the brake still stops the bike. The wheelie
+        // button works under it: since playtest 4 the throttle no longer balances the front.
+        if (controls.autoThrottle && a.brake === 0) a.throttle = 1;
         if (a.wheelie && !wheelieUp) haptics.pulse('wheelieStart');
         wheelieUp = !!a.wheelie;
       }

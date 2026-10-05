@@ -14,6 +14,7 @@ export const HUD_ELEMENTS = [
   'bark-bubble', // the old bark bubble; the ticker (ui/hud-layout.ts) places itself now. Kept so saved layouts naming it stay valid
   'touch-attack',
   'touch-brake',
+  'touch-wheelie', // playtest 4's wheelie button (core's placeTouchButtons settles it)
   'touch-stick-zone',
 ] as const;
 export type HudElementName = (typeof HUD_ELEMENTS)[number];

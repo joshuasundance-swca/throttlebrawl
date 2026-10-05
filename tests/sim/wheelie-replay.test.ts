@@ -6,8 +6,8 @@ import { createSim, InputFlag, quantizeInput, type SimEvent, type SimInput } fro
 
 // The wheelie in a real race (playtest 3; scratch spec moves.md §3.2, test 7): a 1,200-tick course of
 // wheelies, traffic and rivals and all, recorded and replayed from its file, ends on the same state
-// hash and the same events. Counted in ticks; the wheelies are the bot's line with the flag popped
-// every 5 s, the thumb held at 0.6 for 1.5 s, then off for a second.
+// hash and the same events. Counted in ticks; the wheelies are the bot's line with the wheelie button
+// (playtest 4) held for 1.5 s every 5 s, then let go, with the thumb off the gas for a second after.
 
 const SEED = 7;
 const TICKS = 1200;
@@ -35,12 +35,12 @@ function course(): SimInput[] {
     bot.drive(me, race.route, a);
     const phase = t % 300;
     const up = phase >= 150 && phase < 240;
-    // After the hold the thumb comes off for a second, and the front comes down.
+    // After the hold the button and the gas come off for a second, and the front comes down.
     const down = phase >= 240;
     const cmd = quantizeInput({
       ...a,
-      throttle: up ? 0.6 : down ? 0 : a.throttle,
-      flags: up && phase < 160 ? InputFlag.wheelie : 0,
+      throttle: down ? 0 : a.throttle,
+      flags: up ? InputFlag.wheelie : 0,
     });
     out.push(cmd);
     sim.step([cmd]);
