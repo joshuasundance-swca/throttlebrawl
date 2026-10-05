@@ -502,6 +502,11 @@ function fit(parts: readonly BoxPart[], w: number, h: number, l: number): BoxPar
   }));
 }
 
+/** Boxes in metres moved `dz` along the figure (+z: toward its tail). */
+function along(dz: number, parts: readonly BoxPart[]): BoxPart[] {
+  return parts.map((p) => ({ ...p, at: [p.at[0], p.at[1], p.at[2] + dz] }));
+}
+
 /**
  * A thin slab whose TOP surface runs from (z0, y0) to (z1, y1), in metres, on a figure of this
  * width, height and length. A box turns in the unit box before the instance scale stretches it, so
@@ -662,8 +667,11 @@ const PEDICAB: BoxPart[] = fit(
 );
 
 /** An island tram (a generic tourist road train): a tractor and two open carts of sightseers. */
+// Built 13 m long, its tractor's nose at -7.1 and its last cart's tail at 5.9: moved back 0.6 m and
+// fitted to 13, so it fills its type's box end to end (the hitbox audit, playtest 4: it was fitted to
+// 14 m, and drawn 0.5 m short of its sim box's tail).
 const ROAD_TRAIN: BoxPart[] = fit(
-  [
+  along(0.6, [
     // The tractor.
     { size: [1.4, 0.8, 1.3], at: [0, 0.95, -6.45], color: '#2f7d4f' },
     { size: [1.6, 1.0, 1.3], at: [0, 1.5, -5.25], color: '#2f7d4f' },
@@ -692,10 +700,10 @@ const ROAD_TRAIN: BoxPart[] = fit(
     // The hitches between them.
     { size: [0.2, 0.15, 0.7], at: [0, 0.5, -3.9], color: METAL },
     { size: [0.2, 0.15, 0.7], at: [0, 0.5, 1.0], color: METAL },
-  ],
+  ]),
   2.2,
   2.6,
-  14,
+  13,
 );
 
 /** A streetcar: a 20 m low-floor car in two sections, a pantograph on the roof (Portland). */

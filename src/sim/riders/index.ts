@@ -381,8 +381,11 @@ export const LAUNCH_FADE_SHARE = 0.75;
 export const AI_LAUNCH_THROTTLE = 0.9;
 /** m/s² when off the throttle, before air drag. */
 export const COAST_DECEL = 0.6;
-/** How far beside a ramp truck a rider put down inside it steps out, m. */
-const TRUCK_STEP_OUT_M = 0.3;
+/**
+ * How far beside a ramp truck a rider put down inside it steps out, m: clear of its side by the
+ * rider's reach (truckSideContact), so stepping out is not a scrape (it was 0.3, the bike's middle).
+ */
+const TRUCK_STEP_OUT_M = HAZARD_REACH_D_M + 0.05;
 const GRAVITY = 9.81;
 /**
  * 1/s: how fast the bike reaches the steered heading (Arcade). The Free steering style turns the
@@ -919,6 +922,7 @@ function truckContact(
     launch ||
     deckHeight(config, pos.edge, pos.s, pos.d, { moving: decks.next }) - before.deck <= KERB_M
   ) {
+    if (!launch && truckSideContact(world, config, st, m, before, dt, decks)) return;
     st.truckTouch[m.id] = 0;
     return;
   }
@@ -943,6 +947,42 @@ function truckContact(
   // truck, a crash at any speed (the integration skeptic's F2: never stuck against it on the deck).
   const crash = before.deck > KERB_M;
   wallOutcome(world, st, m, { impact: v, v, yawBefore, side: 1, newContact, extra, crash });
+}
+
+/**
+ * A rider on the road beside a ramp truck meets its side with the side of its bike, not its middle
+ * (playtest 4 hitbox audit: the middle rule let the bike ride half a bike's width into the drawn
+ * truck before it scraped). Where the truck stands higher than a kerb within the rider's reach
+ * across (HAZARD_REACH_D_M, as for a solid hazard), the rider is held that far off its side and
+ * scrapes, by truckContact's side rule. The low foot of a ramp is no side. Returns true on contact.
+ */
+function truckSideContact(
+  world: World,
+  config: SimConfig,
+  st: RiderState,
+  m: Mover,
+  before: { edge: number; s: number; d: number; deck: number },
+  dt: number,
+  decks: MovingDecks,
+): boolean {
+  const pos = m.pos;
+  if (before.deck > KERB_M || before.edge !== pos.edge) return false;
+  for (const side of [1, -1] as const) {
+    const d = pos.d + side * HAZARD_REACH_D_M;
+    const truck = rampTruckAt(config, pos.edge, pos.s, d, decks.next);
+    if (!truck) continue;
+    if (deckHeight(config, pos.edge, pos.s, d, { moving: decks.next }) - before.deck <= KERB_M) continue;
+    const v = truckClosingMps(truck, m.speed, pos.dir);
+    const yawBefore = m.yaw;
+    const newContact = st.truckTouch[m.id] !== 1;
+    st.truckTouch[m.id] = 1;
+    const impact = scrapeAlong(config, m, side, dt);
+    pos.d = side > 0 ? truck.d0 - HAZARD_REACH_D_M - 0.01 : truck.d1 + HAZARD_REACH_D_M + 0.01;
+    const extra = { object: 'rampTruck', feature: truck.id };
+    wallOutcome(world, st, m, { impact, v, yawBefore, side, newContact, extra });
+    return true;
+  }
+  return false;
 }
 
 /**
