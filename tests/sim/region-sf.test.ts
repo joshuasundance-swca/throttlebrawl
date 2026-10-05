@@ -6,7 +6,8 @@
 // bot rides the region's race headlessly, with its full field (the two local rivals, two
 // regulars and the local cop), the region's traffic mix (cable cars, startup shuttles, rideshare
 // hatchbacks) and its pedestrians, and finishes in about the planned 2 to 3 minutes, catching air
-// off the crest lips on the way.
+// off the crest lips on the way: every way through the route crosses a crest lip, and every lip
+// the bot rides over at racing speed throws it into the air, whichever shortcuts its seed takes.
 //
 // Harness: the race loads the way the game loads it (docs/content-packs.md, "Region packs at
 // runtime"): every carried pack combined into one registry, region-sf's ids qualified by its own
@@ -17,6 +18,7 @@ import { lookup, registryFromGlob } from '../../src/content';
 import { createBot, moverProblem } from '../../src/dev';
 import { emptyActions, toSimInput } from '../../src/input';
 import { createSim } from '../../src/sim/api';
+import { CREST_SPAN_M } from '../../src/sim/riders';
 
 const REG = registryFromGlob(
   import.meta.glob<unknown>('/packs/*/**/*.json', { eager: true, import: 'default' }),
@@ -26,6 +28,41 @@ const EVENT = 'region-sf:sf-hill-sprint';
 const MAX_TICKS = 60 * 60 * 8;
 /** Seeded races the bot rides (each about 2 to 3 minutes of race, a few seconds to run). */
 const SEEDS = [1, 2, 3, 4, 5, 6];
+/**
+ * The slowest speed at which a crest lip must launch a bike, m/s: the low end of the speeds
+ * tools/road/sf-hills.test.ts proves every lip flies at (20 to 45 m/s).
+ */
+const LIP_MIN_MPS = 20;
+
+type Config = ReturnType<typeof buildSimConfig>;
+
+/** The crest lips (authored `ramp` features) on an edge. */
+const lipsOn = (config: Config, edge: number) => config.road.featuresOf(edge, 'ramp');
+
+/**
+ * Whether some way leads from the route's start to its finish, on its allowed roads in race
+ * direction (a search over the network's links); with `avoidLips`, one that never enters a road
+ * with a crest lip.
+ */
+function wayThrough(config: Config, avoidLips: boolean): boolean {
+  const { road, route } = config;
+  const start = route.start.edge;
+  const blocked = (edge: number) => avoidLips && lipsOn(config, edge).length > 0;
+  if (blocked(start)) return false;
+  const seen = new Set<number>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const edge = queue.shift() ?? start;
+    if (edge === route.finish.edge) return true;
+    const leaving = route.orientation(edge) === -1 ? 'from' : 'to';
+    for (const link of road.nextEdges(edge, leaving)) {
+      if (seen.has(link.edge) || !route.allows(link.edge) || blocked(link.edge)) continue;
+      seen.add(link.edge);
+      queue.push(link.edge);
+    }
+  }
+  return false;
+}
 
 function sfRace(seed: number) {
   const config = buildSimConfig(REG, STREAMS.forEvent(REG, EVENT), { seed, eventId: EVENT });
@@ -39,6 +76,11 @@ function sfRace(seed: number) {
   let problem: string | null = null;
   let offRoute = 0;
   const jumps: string[] = [];
+  /** Where each of the bot's jumps left the road (edge and s). */
+  const jumpSpots: { edge: number; s: number }[] = [];
+  /** Lips the bot rode over in race direction at LIP_MIN_MPS or more: `road lip-id`, edge and span. */
+  const lipsCrossed = new Map<string, { edge: number; s0: number; s1: number }>();
+  let prev: { edge: number; s: number; d: number; speed: number } | null = null;
   const landings: string[] = [];
   const kinds = new Set<string>();
   let busted = false;
@@ -55,7 +97,11 @@ function sfRace(seed: number) {
     for (const e of ev) {
       if (e.type === 'bust' && (e.actor === playerId || e.target === playerId)) busted = true;
       if (e.actor !== playerId || finishTick >= 0) continue;
-      if (e.type === 'jump') jumps.push(roads[snap.entities[playerId]?.road.edge ?? -1] ?? '?');
+      if (e.type === 'jump') {
+        const at = snap.entities[playerId]?.road;
+        jumps.push(roads[at?.edge ?? -1] ?? '?');
+        if (at) jumpSpots.push({ edge: at.edge, s: at.s });
+      }
       if (e.type === 'land') landings.push(String(e.data['quality']));
     }
     for (const e of snap.entities) if (e.kind !== 'rider') kinds.add(e.contentId);
@@ -64,8 +110,27 @@ function sfRace(seed: number) {
     if (me && finishTick < 0) {
       const id = roads[me.road.edge] ?? '?';
       secondsOn.set(id, (secondsOn.get(id) ?? 0) + 1 / 60);
+      // A lip crossed: the bike passed the middle of its span, on its width, heading for the finish.
+      if (prev && prev.edge === me.road.edge && prev.speed >= LIP_MIN_MPS) {
+        const ahead = (me.road.s - prev.s) * route.orientation(me.road.edge) > 0;
+        for (const f of lipsOn(config, me.road.edge)) {
+          const mid = (f.s0 + f.s1) / 2;
+          const over = (prev.s - mid) * (me.road.s - mid) <= 0 && prev.s !== me.road.s;
+          if (ahead && over && prev.d >= f.d0 && prev.d <= f.d1)
+            lipsCrossed.set(`${id} ${f.id}`, { edge: me.road.edge, s0: f.s0, s1: f.s1 });
+        }
+      }
     }
+    prev = me ? { edge: me.road.edge, s: me.road.s, d: me.road.d, speed: me.speed } : null;
   }
+  // A lip launched the bot when one of its jumps left the road on the lip (within the crest rule's
+  // reach of its span either side).
+  const lipsMissed = [...lipsCrossed]
+    .filter(
+      ([, l]) =>
+        !jumpSpots.some((j) => j.edge === l.edge && j.s >= l.s0 - CREST_SPAN_M && j.s <= l.s1 + CREST_SPAN_M),
+    )
+    .map(([k]) => k);
   const byRoad = [...secondsOn].map(([id, t]) => `${id} ${t.toFixed(0)} s`).join(', ');
   return {
     config,
@@ -75,6 +140,8 @@ function sfRace(seed: number) {
     problem,
     offRoute,
     jumps,
+    lipsCrossed: [...lipsCrossed.keys()],
+    lipsMissed,
     landings,
     kinds,
     byRoad,
@@ -133,6 +200,19 @@ describe('region-sf: the San Francisco race', () => {
     expect(weight('region-sf:cable-car') ?? 0).toBe(0);
   });
 
+  it('every way through the route crosses a crest lip (the shortcuts trade lips, never skip them all)', () => {
+    const { config } = sfRace(1);
+    const lipRoads = config.road.edges.filter(
+      (_e, i) => config.route.allows(i) && lipsOn(config, i).length > 0,
+    );
+    process.stdout.write(`[region-sf] roads with crest lips: ${lipRoads.map((e) => e.id).join(', ')}
+`);
+    expect(lipRoads.length).toBeGreaterThan(0);
+    // The search finds the way through when it may use every road, so its "no way" below is real.
+    expect(wayThrough(config, false)).toBe(true);
+    expect(wayThrough(config, true)).toBe(false);
+  });
+
   it('the bot finishes in about 2 to 3 minutes, on the route, and catches air off the crests', () => {
     const runs = SEEDS.map((seed) => ({ seed, res: sfRace(seed) }));
     const lines = runs.map(({ seed, res }) => {
@@ -143,7 +223,8 @@ describe('region-sf: the San Francisco race', () => {
           : `bot ${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')} (${(res.lengthM / s).toFixed(1)} m/s)`;
       return (
         `seed ${seed}: ${(res.lengthM / 1000).toFixed(2)} km, ${time}, ${res.jumps.length} jumps ` +
-        `(${res.jumps.join(', ')}), landings ${res.landings.join('/')}, rivals finished ${res.rivalsFinished}, ` +
+        `(${res.jumps.join(', ')}), lips crossed ${res.lipsCrossed.join(', ') || 'none'}, ` +
+        `lips that did not launch ${res.lipsMissed.join(', ') || 'none'}, landings ${res.landings.join('/')}, rivals finished ${res.rivalsFinished}, ` +
         `by road ${res.byRoad}`
       );
     });
@@ -155,10 +236,13 @@ describe('region-sf: the San Francisco race', () => {
     for (const { seed, res } of runs) {
       expect(res.problem, `seed ${seed}`).toBeNull();
       expect(res.offRoute, `seed ${seed}`).toBe(0);
-      // Three crest lips on the main path (two blocks and the fog climb), whichever way it goes. A
-      // run the cop ends early may stop short of them (seed 3 once the cop waits in the pier lot,
-      // W-O polish run: busted on the cable-car grade after 2 jumps), so this counts finishers.
-      if (res.finishTick > 0) expect(res.jumps.length, `seed ${seed}`).toBeGreaterThanOrEqual(3);
+      // Every crest lip the bot rode over at racing speed threw it into the air, on whichever roads
+      // its seed took (the switchbacks or the stair alley, the fog climb or the park cut), and a
+      // finisher rode over at least one (the route offers one every way through; see below).
+      expect(res.lipsMissed, `seed ${seed}: lips crossed at ${LIP_MIN_MPS}+ m/s that did not launch`).toEqual(
+        [],
+      );
+      if (res.finishTick > 0) expect(res.lipsCrossed.length, `seed ${seed}`).toBeGreaterThan(0);
       // The AI field can race the course: the rivals cross the line.
       expect(res.rivalsFinished, `seed ${seed}`).toBeGreaterThanOrEqual(3);
       // A race the bot does not finish ends the way a race may end: the cop busted it after a crash

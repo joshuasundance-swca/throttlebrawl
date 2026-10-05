@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
-import { registryFromGlob } from '../content';
+import { lookup, registryFromGlob } from '../content';
 import { DEFAULT_PROFILE, MAX_RECEIPTS, type Profile, type Receipt } from '../save';
 import { careerDefs, careerOf, eventPlan, startCareer, type CareerDef } from './index';
 import type { RaceTally } from './race-log';
@@ -41,6 +41,13 @@ const rv: Receipt = {
   n: 1,
 };
 const bust: Receipt = { ...rv, kind: 'bust', rival: null, vehicle: null, road: 'm1-conch-row', s: 100, n: 3 };
+/** The rival's and the vehicle's names, read from their pack files (a rename is not a test edit). */
+const named = (name: string | undefined, id: string | null): string => {
+  if (!name) throw new Error(`${id ?? '?'} has no name`);
+  return name;
+};
+const RIVAL_NAME = named(lookup(REG.riders, rv.rival ?? '').name, rv.rival);
+const VEHICLE_NAME = named(lookup(REG.trafficTypes, rv.vehicle ?? '').name, rv.vehicle);
 
 const tally = (over: Partial<RaceTally> = {}): RaceTally => ({
   finished: true,
@@ -143,7 +150,7 @@ describe('the boards a receipt rewrites', () => {
       }
     }
     const facts = receiptFacts(REG, rv);
-    expect(facts).toMatchObject({ rival: 'Kevin from Accounting', vehicle: 'Snowbird RV', n: 1 });
+    expect(facts).toMatchObject({ rival: RIVAL_NAME, vehicle: VEHICLE_NAME, n: 1 });
     expect(fillReceipt('INCIDENT SITE #{n}.', receiptFacts(REG, bust))).toBe('INCIDENT SITE #3.');
     // A template naming a fact the receipt lacks is never used for it.
     expect(fillReceipt('{VEHICLE} 1.', receiptFacts(REG, bust))).toBeNull();
@@ -160,8 +167,15 @@ describe('the boards a receipt rewrites', () => {
       ['m1-conch-row', 1, 'sign'],
       ['m1-long-bridge', 3, 'billboard'],
     ]);
-    expect(boards[0]?.text).toBe('INCIDENT SITE #3. Please do not reenact.');
-    expect(boards[1]?.text).toMatch(/SNOWBIRD RV/);
+    // Each board's words are one of the Keys career's templates for its kind, filled from the
+    // receipt (read from the pack, so rewording a template is not a test edit).
+    const filled = (r: Receipt) =>
+      receiptTemplates(REG, KEYS)[r.kind === 'bust' ? 'bust' : 'takedown'].map((x) =>
+        fillReceipt(x.text, receiptFacts(REG, r)),
+      );
+    expect(filled(bust)).toContain(boards[0]?.text);
+    expect(filled(rv)).toContain(boards[1]?.text);
+    expect(boards[1]?.text.toUpperCase()).toContain(VEHICLE_NAME.toUpperCase());
     expect(boards[1]?.ref).toMatch(/^base:career\/keys-circuit#receipt-/);
   });
 

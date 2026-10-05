@@ -3,7 +3,9 @@
 //
 // What it proves (docs/milestones/M4.md, career-1 and the M4 exit): the dev bot plays every event
 // of the region and the boss, in the career's own order while its wins open the map (each node
-// once), then the rest in free play; every race is decided by its event's rules; the cash ledger
+// once), then the rest in free play, on at least the bike the career gives at each node's tier;
+// every race is decided by its event's rules within its time limit (its route's length at a share
+// of that bike's top speed, `raceLimitS`, so a long route or a slow bike gets longer); the cash ledger
 // never goes below $0; the grudges a race leaves are the next race's SimConfig.grudges; the history
 // keeps every race. The rules' own path from the first race to the teaser and free play, with
 // every race won, is tests/sim/career-content.test.ts: the dev bot is a fighter, not a racer (it
@@ -12,7 +14,7 @@
 import { expect } from 'vitest';
 import { careerDefs, careerOf, eventPlan, startCareer } from '../../src/career';
 import { DEFAULT_PROFILE } from '../../src/save';
-import { REG, runCareer } from './career-harness';
+import { RACE_LIMIT_SHARE, raceLimitS, REG, runCareer, tierBike } from './career-harness';
 
 export function headlessCareer(region: string): void {
   const defs = careerDefs(REG);
@@ -28,8 +30,20 @@ export function headlessCareer(region: string): void {
   expect(played).toContain(def.nodes.find((n) => n.id === def.boss)?.event);
   run.races.forEach((race, i) => {
     const plan = eventPlan(REG, race.config.event.contentId);
-    // Decided by its rules: won or lost, never still running when the race ended for the player.
-    expect(race.status.state, `${plan.key}`).not.toBe('running');
+    const node = def.nodes.find((n) => n.event === race.config.event.contentId);
+    const bike = race.config.riders.find((r) => r.controller.kind === 'player')?.bike;
+    const limitS = raceLimitS(race.config);
+    const what =
+      `${plan.key} on ${bike?.contentId ?? '?'}: ${(race.ticks / 60).toFixed(0)} s of a ` +
+      `${limitS.toFixed(0)} s limit (${(race.config.route.length / 1000).toFixed(2)} km at ` +
+      `${RACE_LIMIT_SHARE} of ${bike?.topSpeedMps ?? '?'} m/s)`;
+    console.log(what);
+    // Ridden on at least the bike the career gives at the node's tier.
+    const given = node ? tierBike(def, node) : null;
+    if (given) expect(bike?.topSpeedMps ?? 0, what).toBeGreaterThanOrEqual(given.topSpeedMps);
+    // Decided by its rules within its time limit: won or lost, never still running.
+    expect(race.status.state, what).not.toBe('running');
+    expect(race.ticks / 60, what).toBeLessThanOrEqual(limitS);
     expect(race.report.cashAfter).toBeGreaterThanOrEqual(0);
     // The grudges this race left are what the next race starts from.
     const next = run.races[i + 1];
