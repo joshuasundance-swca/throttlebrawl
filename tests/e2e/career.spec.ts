@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { careerPicks, qualifyIn } from './packs-on-disk';
+import { rideFirstCareerRace } from './career-start';
 
-// The career in the browser (run W-R; docs/milestones/M4.md, ui-4: "browser tests walk a new career
-// from the first launch into event 1 without a menu in between (race-first), then through a
-// purchase"). A new device's first tap starts the Keys career's first race with its objective and
-// a learn-by-riding prompt on the screen; quitting lands on the career map (region tabs, the map
+// The career in the browser (run W-R; docs/milestones/M4.md, ui-4; since playtest 4's "Menu first"
+// a new device lands on the menu, not in a race). A new device's first tap shows the menu with
+// "Start career" the obvious tap and no race running; Start career opens the career map, and riding
+// the suggested event starts the Keys career's first race with its objective and a learn-by-riding
+// prompt on the screen; quitting lands on the career map (region tabs, the map
 // drawn from the region's roads, ten event cards in tiers); the garage sells paint and shows the
 // backup code; another region's map draws once its roads are in; nothing overflows at phone size.
 // The second test rides the first race to its results with the dev bot and sees the map claim
@@ -19,9 +21,7 @@ interface Handle {
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __raceFirst?: boolean;
   __game?: Handle;
-  __menuSeen?: boolean;
 };
 
 // What the screens should show is read from the packs on disk, never copied from them (docs/
@@ -88,38 +88,32 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as TestWindow;
     w.__GAME_TEST__ = true;
-    w.__raceFirst = true;
-    w.__menuSeen = false;
-    // Record whether the menu is ever on screen (race-first: it must not be).
-    const watch = () => {
-      const menu = document.getElementById('menu');
-      if (!menu) return false;
-      new MutationObserver(() => {
-        if (!menu.hidden) w.__menuSeen = true;
-      }).observe(menu, { attributes: true, attributeFilter: ['hidden'] });
-      return true;
-    };
-    const poll = setInterval(() => {
-      if (watch()) clearInterval(poll);
-    }, 5);
   });
 });
 
-test('race-first into the first event, then the career map, the garage and the backup code', async ({
+test('menu first, then Start career into the first event, the career map, the garage and the backup code', async ({
   page,
 }) => {
   test.setTimeout(180_000);
   const problems = watchErrors(page);
   await page.goto('./');
   await page.locator('#start-screen').click();
+  // A new device lands on the menu; the career has not started, and no race is running.
+  await expect(page.locator('#menu')).toBeVisible();
+  await expect(page.locator('#menu-career')).toHaveText('Start career');
+  expect(await page.evaluate(() => (window as TestWindow).__game?.state())).toBe('menu');
+  await shot(page, 'menu-first');
+  await page.locator('#menu-career').click();
+  await expect(page.locator('#career')).toBeVisible();
+  await page.locator(`#career-node-${OPENING.id}`).click();
+  await page.locator('#career-ride').click();
   await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
-  expect(await page.evaluate(() => (window as TestWindow).__menuSeen)).toBe(false);
   // The event's objective under the position badge, and the first prompt once the bike sits still.
   // The opening event is a race to the line: its badge asks to finish, or to finish in the top N.
   expect(OPENING_EVENT.kind).toBe('classic-race');
   await expect(page.locator('#hud-objective')).toHaveText(/^(FINISH|TOP \d+)$/);
   await expect(page.locator('#career-prompt')).toContainText('THUMB UP', { timeout: 10_000 });
-  await shot(page, 'race-first');
+  await shot(page, 'first-event');
 
   // The pause screen's network map marks the player (run W-S; interview, 2026-10-02: "map on pause").
   await page.keyboard.press('Escape');
@@ -215,8 +209,7 @@ test('the first event ridden to its results: won, paid, and its roads claimed on
   const problems = watchErrors(page);
   await page.goto('./');
   await page.evaluate(() => (window as TestWindow).__game?.setSeed(3));
-  await page.locator('#start-screen').click();
-  await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+  await rideFirstCareerRace(page);
   await page.evaluate(() => (window as TestWindow).__game?.setBot(true));
   await expect(page.locator('#career-results')).toBeVisible({ timeout: 360_000 });
   // First place is WON; a finish below first clears the opening race (it asks only to finish).

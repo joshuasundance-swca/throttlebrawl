@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { PROMPTS } from '../../src/career/onboarding.ts';
+import { rideFirstCareerRace } from './career-start';
 import { fastForwardDone } from './lockstep';
 
 // Playtest 1c, 2026-09-30 [decided]: "The little pop-ups about near miss etc get in the way of
@@ -140,7 +141,6 @@ interface SimEventLike {
 }
 type TestWindow = Window & {
   __GAME_TEST__?: boolean;
-  __raceFirst?: boolean;
   __game?: {
     setBot(on: boolean): void;
     setSeed(seed: number): void;
@@ -429,14 +429,9 @@ async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean
       localStorage.setItem('mbrawl:settings', JSON.stringify(record));
     });
   }
-  await page.addInitScript(
-    ({ career }) => {
-      (window as TestWindow).__GAME_TEST__ = true;
-      // A new device's first tap goes straight into the career's first race (its objective is up).
-      if (career) (window as TestWindow).__raceFirst = true;
-    },
-    { career: opts.career ?? false },
-  );
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
   await page.goto('./');
   if (opts.career) {
     // The bot rides from the first tick, so every case rides the same race (the moments below come
@@ -446,8 +441,8 @@ async function startRace(page: Page, opts: { mirror?: boolean; classic?: boolean
       g?.setSeed(seed);
       g?.setBot(true);
     }, CAREER_SEED);
-    await page.locator('#start-screen').click();
-    await page.waitForFunction(() => (window as TestWindow).__game?.state() === 'race');
+    // A new device reaches the career's first race the player's way: Start career, then Ride.
+    await rideFirstCareerRace(page);
     await expect(page.locator('#hud-objective')).toBeVisible();
   } else {
     await page.locator('#start-screen').click();

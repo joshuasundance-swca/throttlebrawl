@@ -268,7 +268,8 @@ The detailed task plan is [milestones/M4.md](./milestones/M4.md).
 | Barks with memory (grudge history), at least 5 lines per common trigger per rival | [decided] for memory; [default] for the counts | blueprint, [tone guide](./tone-guide.md#the-bark-system) |
 | Grudges saved with the career, so rivals keep them across play sessions | [decided] (`milestones-career-grudges-persist`, cockpit answer, 2026-09-29) | decision |
 | Learn by riding event 1, with prompts that appear as they become relevant | [decided] | decision |
-| The first run is race-first, and the intro gets iterated on | [default] (the maintainer: "maybe race first" and "we may need to iterate on the intro") | decision |
+| The first run is menu first: the start tap lands on the main menu with "Start career" as the obvious first tap | [decided] (the maintainer, playtest 4, 2026-10-04: "Menu first"; it replaced the earlier race-first `[default]`) | decision |
+| Every race starts with a 3-2-1-GO countdown | [decided] (playtest 4: "Races should have a 3 2 1 go type countdown"); [default] for the timing | decision |
 | The ending: beating the boss plays a next-region teaser, and free play continues | [decided]; [default] that v1 free play means replaying any event | decision |
 | Failure mode: Road Trip as the default, with a `failureMode` seam for the later Classic and Hardcore options (which follow the loop and may slip past M4) | [decided] for Road Trip as the default and the two later options (`product-failure-states`, cockpit answer, 2026-09-29); [default] for their timing | decision, product spec |
 | Saving on the device plus a copyable export code; save migrations and golden fixtures | [decided] for local save plus code; [default] for M4 | decision, [architecture](./architecture.md#save-format) |

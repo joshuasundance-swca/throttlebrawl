@@ -359,6 +359,49 @@ const BRICK_JOINT_M = 0.12;
 const BRICK_JOINT_LIFT_M = 0.012;
 /** Lift of the painted split zone over the main road (under the lane markings at 0.03). */
 const ZONE_LIFT_M = 0.015;
+/**
+ * The split guide's lead-in, painted with chevrons before a guided zone: the riders' own
+ * SPLIT_GUIDE_LEAD_M (sim/riders), which render does not import; road-split.test.ts holds the two
+ * equal. Playtest 4, P4-10. [default]
+ */
+export const ZONE_LEAD_PAINT_M = 90;
+/** Chevron spacing over a zone's lead-in, m (the zone's own are every 10 m). [default] */
+const ZONE_LEAD_CHEVRON_M = 15;
+/**
+ * A rider's centre stops this far inside the lanes' outer edge (the riders' BIKE_HALF_WIDTH_M,
+ * held equal in road-split.test.ts): a zone reaching past that line on its side is guided there.
+ */
+export const ZONE_GUIDE_REACH_M = 0.5;
+/** Narrower than this on the road, a zone is painted as it is (one standing past the edge). */
+const ZONE_MIN_PAINT_M = 0.3;
+
+/** The lanes' outer edges, shoulders included: where the road's paint may go. */
+export function laneEdges(lanes: readonly LaneInfo[]): [number, number] {
+  let lo = 0;
+  let hi = 0;
+  for (const l of lanes) {
+    lo = Math.min(lo, l.dCenterM - l.widthM / 2);
+    hi = Math.max(hi, l.dCenterM + l.widthM / 2);
+  }
+  return [lo, hi];
+}
+
+/**
+ * Whether a split zone runs out to the lanes' edge on its side, so that a rider there is guided
+ * along to the split over its lead-in (sim/riders' splitGuideAt, read the same way).
+ */
+export function guidedZone(
+  road: RoadNetwork,
+  edge: number,
+  z: { s0: number; s1: number; d0: number; d1: number; end: 'from' | 'to' },
+): boolean {
+  const at = z.end === 'to' ? z.s0 : z.s1;
+  const [lo, hi] = laneEdges(road.lanesAt(edge, at));
+  const zLo = Math.min(z.d0, z.d1);
+  const zHi = Math.max(z.d0, z.d1);
+  if (z.d0 + z.d1 >= 0) return zLo <= hi - ZONE_GUIDE_REACH_M && zHi >= hi - ZONE_GUIDE_REACH_M;
+  return zHi >= lo + ZONE_GUIDE_REACH_M && zLo <= lo + ZONE_GUIDE_REACH_M;
+}
 /** Width of a painted line, m. */
 const LINE_M = 0.15;
 /** How far down the shortcut the split zone's inner edge keeps bounding it, m. */
@@ -1075,12 +1118,23 @@ export function buildRoadScene(
       m.breakStrip();
     }
     // The split zone: where a rider must be to take the shortcut, painted in the shortcut's colour,
-    // with its inner edge as a solid line and chevrons pointing the way off.
+    // with its inner edge as a solid line and chevrons pointing the way off. Playtest 4 (P4-10): the
+    // paint stays on the road (a zone that runs out past the lanes' edge, as a rider's reach stops
+    // at it, is painted only up to that edge), and a guided zone's lead-in (the split guide's
+    // ZONE_LEAD_PAINT_M before it, where a rider at that edge already slides along to the split)
+    // carries the chevrons too, so the way off reads before the zone itself.
     for (const z of zonesHere) {
-      const lo = Math.min(z.d0, z.d1);
-      const hi = Math.max(z.d0, z.d1);
-      const inner = Math.abs(z.d0) < Math.abs(z.d1) ? z.d0 : z.d1;
-      const out = inner === lo ? 1 : -1;
+      const zLo = Math.min(z.d0, z.d1);
+      const zHi = Math.max(z.d0, z.d1);
+      /** The zone's band at s, clamped to the lanes' outer edges (unclamped for a zone off the road). */
+      const band = (s: number): [number, number] => {
+        const edges = laneEdges(road.lanesAt(e.index, s));
+        const lo = Math.max(zLo, edges[0]);
+        const hi = Math.min(zHi, edges[1]);
+        return hi - lo >= ZONE_MIN_PAINT_M ? [lo, hi] : [zLo, zHi];
+      };
+      const innerIsLo = Math.abs(z.d0) < Math.abs(z.d1) ? z.d0 === zLo : z.d1 === zLo;
+      const out = innerIsLo ? 1 : -1;
       const s0 = Math.max(0, z.s0);
       const s1 = Math.min(e.length, z.s1);
       if (s1 <= s0) continue;
@@ -1089,22 +1143,34 @@ export function buildRoadScene(
       fill.breakStrip();
       mark.breakStrip();
       for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
+        const [lo, hi] = band(s);
         fill.pair(w(e.index, s, lo, ZONE_LIFT_M), w(e.index, s, hi, ZONE_LIFT_M));
         if (s >= s1) break;
       }
       fill.breakStrip();
       for (let s = s0; ; s = Math.min(s1, s + STEP_M)) {
+        const [lo, hi] = band(s);
+        const inner = innerIsLo ? lo : hi;
         mark.pair(w(e.index, s, inner, 0.03), w(e.index, s, inner + out * LINE_M, 0.03));
         if (s >= s1) break;
       }
       mark.breakStrip();
-      // Chevrons: two bars meeting at a point toward the split.
+      // Chevrons: two bars meeting at a point toward the split, over the zone every 10 m and over a
+      // guided zone's lead-in every 15 m (on this edge).
       const toward = z.end === 'to' ? 1 : -1;
-      const mid = (lo + hi) / 2;
-      const half = (hi - lo) * 0.3;
+      const centres: number[] = [];
       const n = Math.max(1, Math.round((s1 - s0) / 10));
-      for (let k = 0; k < n; k++) {
-        const sc = s0 + ((k + 0.5) * (s1 - s0)) / n;
+      for (let k = 0; k < n; k++) centres.push(s0 + ((k + 0.5) * (s1 - s0)) / n);
+      if (guidedZone(road, e.index, z)) {
+        const a = toward > 0 ? Math.max(0, s0 - ZONE_LEAD_PAINT_M) : s1;
+        const b = toward > 0 ? s0 : Math.min(e.length, s1 + ZONE_LEAD_PAINT_M);
+        const m = Math.floor((b - a) / ZONE_LEAD_CHEVRON_M);
+        for (let k = 0; k < m; k++) centres.push(a + ((k + 0.5) * (b - a)) / m);
+      }
+      for (const sc of centres) {
+        const [lo, hi] = band(sc);
+        const mid = (lo + hi) / 2;
+        const half = (hi - lo) * 0.3;
         const tip = { s: sc + toward * 1.5, d: mid };
         for (const tail of [
           { s: sc - toward * 1.5, d: mid - half },

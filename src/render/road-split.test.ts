@@ -7,7 +7,7 @@ import { InstancedMesh, Matrix4, Mesh, Raycaster, Vector3, type Group, type Obje
 import { describe, expect, it } from 'vitest';
 import { createRoadNetwork, type BakedNetwork, type BakedRoad, type RoadNetwork } from '../road';
 import { createFlatLook } from './look';
-import { buildRoadScene, laneSpans } from './road-mesh';
+import { buildRoadScene, guidedZone, laneEdges, laneSpans, ZONE_LEAD_PAINT_M } from './road-mesh';
 
 const networkFiles = import.meta.glob<BakedNetwork>('../../packs/base/regions/*/networks/*.json', {
   eager: true,
@@ -38,8 +38,8 @@ interface Hit {
 }
 
 /** Everything the road group draws under a world point (only meshes `only` names, if given), top first. */
-function hitsAt(group: Group, x: number, z: number, only?: ReadonlySet<string>): Hit[] {
-  const ray = new Raycaster(new Vector3(x, 100, z), new Vector3(0, -1, 0), 0, 200);
+function hitsAt(group: Group, x: number, z: number, only?: ReadonlySet<string>, fromY = 100): Hit[] {
+  const ray = new Raycaster(new Vector3(x, fromY, z), new Vector3(0, -1, 0), 0, fromY + 100);
   const meshes: Object3D[] = [];
   group.traverse((o) => {
     if (o instanceof Mesh && !(o instanceof InstancedMesh) && (!only || only.has(o.name))) meshes.push(o);
@@ -108,8 +108,18 @@ describe('the shortcut split (playtest 1b)', () => {
         'road-road',
       );
     }
-    const before = road.toWorld(edge, zone.s0 - 20, (zone.d0 + zone.d1) / 2, 0);
-    expect(top(group, before)).not.toMatch(/splitZone|splitMark/);
+    // Before the zone: its lead-in carries chevrons only when the zone is guided (playtest 4, P4-10),
+    // never the fill, and before the lead-in there is no paint at all.
+    const lead = guidedZone(road, edge, zone) ? ZONE_LEAD_PAINT_M : 0;
+    for (let s = Math.max(0, zone.s0 - lead) + 0.5; s < zone.s0 - 0.5; s += 1) {
+      expect(top(group, road.toWorld(edge, s, (zone.d0 + zone.d1) / 2, 0)), `lead-in s ${s}`).not.toBe(
+        'road-splitZone',
+      );
+    }
+    if (zone.s0 - lead - 20 > 0) {
+      const before = road.toWorld(edge, zone.s0 - lead - 20, (zone.d0 + zone.d1) / 2, 0);
+      expect(top(group, before)).not.toMatch(/splitZone|splitMark/);
+    }
   });
 
   it("keeps the zone's inner edge as the line between the main road and the shortcut past the split", () => {
@@ -174,4 +184,84 @@ describe('the shortcut split (playtest 1b)', () => {
     console.log(`[examined] ${spots.length} delineator posts against ${road.edges.length} edges`);
     expect(bad).toBe(0);
   });
+});
+
+// Playtest 4 (P4-10; the feel audit's F10b): the Seven Mile's turn-off zone ran out past the rail, so
+// most of its paint and every chevron lay over the water, and the lead-in where the split guide
+// already carries a rider along was bare. The rule, on every baked network: a zone's fill and
+// chevrons lie on the road (inside the lanes' outer edges, shoulders included), and a guided zone's
+// lead-in carries chevrons. A zone that stands wholly past the edge (a cut over a wall) is painted as
+// it is, so it is not part of this check.
+const allNetworks = import.meta.glob<BakedNetwork>('../../packs/*/regions/*/networks/*.json', {
+  eager: true,
+  import: 'default',
+});
+const allRoads = Object.values(
+  import.meta.glob<BakedRoad>('../../packs/*/regions/*/roads/*.json', { eager: true, import: 'default' }),
+);
+
+describe('the split-zone paint stays on the road (playtest 4)', () => {
+  it('paints no zone fill or chevron past the lanes’ edge, and chevrons over a guided zone’s lead-in', () => {
+    const rows: string[] = [];
+    let outside = 0;
+    const bareLeads: string[] = [];
+    let checked = 0;
+    for (const network of Object.values(allNetworks)) {
+      const roads = allRoads.filter((r) => network.roads.includes(r.id));
+      if (roads.length !== network.roads.length) continue;
+      const road = createRoadNetwork({ network, roads });
+      // The zones that reach past the lanes' edge on their side, with road under them as well; a fork
+      // onto a 'secret' road is never painted (run W-U), so it is not one of them.
+      const secret = (i: number) =>
+        roads.some((r) => r.id === road.edges[i]?.id && (r.tags ?? []).some((t) => t.tag === 'secret'));
+      const zones = road.splitZones().filter((z) => {
+        if (secret(z.toEdge)) return false;
+        const [lo, hi] = laneEdges(road.lanesAt(z.edge, z.s1));
+        const zLo = Math.min(z.d0, z.d1);
+        const zHi = Math.max(z.d0, z.d1);
+        return (zHi > hi + 0.3 && zLo < hi - 0.3) || (zLo < lo - 0.3 && zHi > lo + 0.3);
+      });
+      if (zones.length === 0) continue;
+      const { group } = buildRoadScene(road, createFlatLook(), undefined, { postRoads: () => true });
+      group.updateMatrixWorld(true);
+      const paint = new Set(['road-splitZone', 'road-splitMark']);
+      // From above the road wherever it climbs (the high country stands over 100 m).
+      const paintAt = (p: { x: number; y: number; z: number }) => hitsAt(group, p.x, p.z, paint, p.y + 50);
+      for (const z of zones) {
+        const side = z.d0 + z.d1 >= 0 ? 1 : -1;
+        const lead = guidedZone(road, z.edge, z) ? ZONE_LEAD_PAINT_M : 0;
+        const a = z.end === 'to' ? Math.max(0, z.s0 - lead) : z.s0;
+        const b = z.end === 'to' ? z.s1 : Math.min(road.edges[z.edge]!.length, z.s1 + lead);
+        let leadMarks = 0;
+        let out = 0;
+        for (let s = a + 0.25; s < b - 0.25; s += 0.5) {
+          const [lo, hi] = laneEdges(road.lanesAt(z.edge, s));
+          const edge = side > 0 ? hi : lo;
+          // Just past the edge: no paint of this zone on top (the water, a verge, a rail or another road).
+          const past = paintAt(road.toWorld(z.edge, s, edge + side * 0.2, 0));
+          if (past.length > 0) out++;
+          checked++;
+          const inLead = z.end === 'to' ? s < z.s0 : s > z.s1;
+          if (inLead) {
+            const [dA, dB] = side > 0 ? [Math.min(z.d0, z.d1), edge] : [edge, Math.max(z.d0, z.d1)];
+            for (let d = dA + 0.1; d <= dB - 0.1; d += 0.25) {
+              const hit = paintAt(road.toWorld(z.edge, s, d, 0))[0]?.name;
+              expect(hit, `${road.edges[z.edge]?.id} lead-in s ${s.toFixed(1)}`).not.toBe('road-splitZone');
+              if (hit === 'road-splitMark') leadMarks++;
+            }
+          }
+        }
+        outside += out;
+        rows.push(
+          `${network.id} ${road.edges[z.edge]?.id} s ${z.s0.toFixed(0)}..${z.s1.toFixed(0)} d ${z.d0}..${z.d1}: ${out} points past the edge painted; lead-in ${lead} m, ${leadMarks} chevron hits`,
+        );
+        if (lead > 0 && leadMarks === 0) bareLeads.push(rows[rows.length - 1]!);
+      }
+    }
+    console.log(`[examined] ${checked} points just past the edge:\n  ${rows.join('\n  ')}`);
+    // The Seven Mile's turn-off is one of them, so the check is not empty.
+    expect(rows.some((r) => r.startsWith('osm-keys-seven-mile'))).toBe(true);
+    expect(outside).toBe(0);
+    expect(bareLeads).toEqual([]);
+  }, 120_000);
 });

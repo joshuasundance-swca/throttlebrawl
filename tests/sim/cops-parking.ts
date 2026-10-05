@@ -55,6 +55,7 @@ export function checkParking(eventId: string, length: string, route: string): vo
   const waiting = new Set(cops);
   const where: string[] = [];
   const pulledOut: string[] = [];
+  const spot = new Map<number, { s: number; d: number }>();
   let roadblockAt = -1;
   // The lot cop pulls out after cops.spawnDelayS (20 s on Normal) when the race brings him; since
   // playtest 2 the starting cops patrol up the road instead and pull out as the player arrives,
@@ -71,7 +72,13 @@ export function checkParking(eventId: string, length: string, route: string): vo
     for (const id of [...waiting]) {
       const cop = snap.entities[id];
       if (!cop) throw new Error(`no cop ${id}`);
-      if (cop.speed > 0.5) {
+      // Pulling out starts with a sideways ease off the lot before the speed builds (SF's
+      // burn-rate cop slid 0.8 m toward the road at under 0.5 m/s), so any move off the spot
+      // he waited on last tick is the pull-out, as is the speed.
+      const last = spot.get(id);
+      spot.set(id, { s: cop.road.s, d: cop.road.d });
+      const moved = last !== undefined && Math.hypot(cop.road.s - last.s, cop.road.d - last.d) > 0.005;
+      if (cop.speed > 0.5 || moved) {
         waiting.delete(id); // pulled out
         pulledOut.push(
           `cop ${id} at ${(t / 60).toFixed(1)} s from s ${cop.road.s.toFixed(1)} d ${cop.road.d.toFixed(2)}`,

@@ -9,6 +9,9 @@ import { clamp } from '../core';
 import { InputFlag, type SimInput } from './types';
 
 export { createSim, SIM_TUNING } from './create';
+// The share of health at or under which a bike smokes (and is a little slower): the render draws the
+// smoke from the same number (playtest 4, P4-14).
+export { SMOKE_HEALTH } from './riders/smoke';
 export {
   InputFlag,
   LAW_EVENT_KINDS,

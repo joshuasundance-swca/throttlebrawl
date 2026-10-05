@@ -19,6 +19,8 @@ export const CUE_IDS = [
   'truckHorn',
   'sirenWhoop',
   'go',
+  // The countdown's beep (playtest 4, P4-11): the 3, 2 and 1 before the race's GO.
+  'countBeat',
   'finish',
   'takedown',
   'slowIn',
@@ -150,6 +152,7 @@ const PRIORITY: Readonly<Record<CueId, number>> = {
   truckHorn: 62,
   sirenWhoop: 65,
   go: 85,
+  countBeat: 84,
   finish: 85,
   takedown: 80,
   slowIn: 78,

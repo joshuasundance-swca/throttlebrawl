@@ -116,6 +116,18 @@ describe('combat-2: picking up the pipe', () => {
     expect(pipeCount(h, pid)).toBe(1);
   });
 
+  // A dropped pipe can lie on top of a roadside one (the batch's seed 39, after P4-14 moved the
+  // field): a rider over both picks up one of them and leaves the other on the road.
+  it('a rider over two pickups at once takes only one', () => {
+    const h = makeHarness([{ s: 100, d: 0, speed: 30 }], () => undefined);
+    const a = spawnPickup(h.world, PIPE_ID, { edge: 0, s: 110, d: 0, dir: 1 });
+    const b = spawnPickup(h.world, PIPE_ID, { edge: 0, s: 110, d: 0.2, dir: 1 });
+    h.run(60);
+    expect(grabs(h.events, 'road')).toHaveLength(1);
+    expect(pipeCount(h, a) + pipeCount(h, b)).toBe(2);
+    expect([a, b].filter((pid) => h.world.movers[pid]?.h === STOWED_H)).toHaveLength(1);
+  });
+
   it('a cop does not pick up a roadside weapon', () => {
     const h = makeHarness([{ s: 100, d: 0, speed: 30, role: 'cop' }], () => undefined);
     spawnPickup(h.world, PIPE_ID, { edge: 0, s: 110, d: 0, dir: 1 });
