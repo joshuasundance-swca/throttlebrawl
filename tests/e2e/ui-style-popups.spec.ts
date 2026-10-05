@@ -328,8 +328,7 @@ async function installLayoutProbe(page: Page) {
     };
     w.__THREE_DEVTOOLS__ = hook;
     // The bike, then the rider on it, as boxes in the rider's frame: across, up from the ground,
-    // along (metres; render/air-pays.ts BIKE_SHAPE, kept the same by hand: this is the check's own
-    // measure, fitted to the painted rider in CI's screenshots).
+    // along (metres; this is the check's own measure, fitted to the painted rider in CI's screenshots).
     const SHAPE: { min: [number, number, number]; max: [number, number, number] }[] = [
       { min: [-0.35, 0, -0.95], max: [0.35, 1.05, 0.95] },
       { min: [-0.45, 0.5, -0.45], max: [0.45, 1.75, 0.35] },
