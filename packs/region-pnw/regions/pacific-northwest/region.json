@@ -151,6 +151,34 @@
       "status": "live",
       "note": "Playtest 3, T10.5: Bridge City, at the east bridgehead on East Burnside."
     },
+    {
+      "id": "pdx-roof-sign-words",
+      "text": "STILL RAINING",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 3, T12.6 (the maintainer, round 3: \"Salmon: STILL RAINING\"): the words on the neon roof sign's board, over an invented leaping salmon, in the spot Portland's famous stag sign holds. A text surface, not a board: the game paints it on the model's `pdx_roof_sign_words` panel (docs/content-packs.md, Text surfaces), and cutting it in the game leaves the board blank. Vetoable like any sign."
+    },
+    {
+      "id": "pdx-food-cart-a-name",
+      "text": "THE ONE WITH THE LINE",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 3, T12.6: the name board of the first of Bridge City's three food-cart models (`pdx_food_cart_a_name`); the cart pod on Broadway stands them in turn. An invented business."
+    },
+    {
+      "id": "pdx-food-cart-b-name",
+      "text": "DUMPLINGS, MOSTLY DRY",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 3, T12.6: the name board of the second food-cart model (`pdx_food_cart_b_name`). An invented business."
+    },
+    {
+      "id": "pdx-food-cart-c-name",
+      "text": "SOUP FOR THE DAMP",
+      "tags": ["site", "surface", "new"],
+      "status": "live",
+      "note": "NEW, playtest 3, T12.6: the name board of the third food-cart model (`pdx_food_cart_c_name`). An invented business."
+    },
     { "id": "ferry-wait", "text": "FERRY WAIT HERE: 2 HRS. From any other point: 2 hrs.", "status": "live" },
     { "id": "log-trucks", "text": "LOG TRUCKS ENTERING. Log trucks leaving. Log trucks.", "status": "live" },
     {

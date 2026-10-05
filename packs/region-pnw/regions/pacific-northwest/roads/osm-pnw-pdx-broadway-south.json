@@ -97,6 +97,18 @@
         "spawns": "pedestrians",
         "kinds": ["region-pnw:umbrella-commuter"]
       }
+    },
+    {
+      "kind": "landmark",
+      "id": "square-plaza",
+      "s0": 77.0,
+      "s1": 103.0,
+      "d0": -38.7,
+      "d1": -13.5,
+      "params": {
+        "model": "pdx-landmarks#pdx_plaza",
+        "scale": 0.45
+      }
     }
   ],
   "barriers": [],

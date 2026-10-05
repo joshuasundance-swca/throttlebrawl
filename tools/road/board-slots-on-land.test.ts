@@ -38,6 +38,31 @@ interface Road {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+/**
+ * The ids of the signs a pack's models paint on their text surfaces (playtest 3, T12.6): a node of a GLB
+ * with the extra `text_surface`, its name in kebab case (src/render/models.ts `textSurfaceItemId`).
+ */
+function surfaceSignIds(pack: string): Set<string> {
+  const ids = new Set<string>();
+  const walk = (dir: string) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (entry.name.endsWith('.glb')) {
+        const bytes = readFileSync(file);
+        const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8')) as {
+          nodes?: { name?: string; extras?: { text_surface?: boolean } }[];
+        };
+        for (const n of json.nodes ?? [])
+          if (n.extras?.text_surface === true && n.name) ids.add(n.name.replaceAll('_', '-'));
+      }
+    }
+  };
+  walk(path.join(root, 'packs', pack, 'assets', 'models'));
+  return ids;
+}
+
 /** Every baked road file in every pack, as [pack-relative path, road]. */
 function roads(): [string, Road][] {
   const out: [string, Road][] = [];
@@ -101,14 +126,19 @@ describe('sign and billboard slots stand on land', () => {
         const file = path.join(dir, region, 'region.json');
         if (!existsSync(file)) continue;
         const r = JSON.parse(readFileSync(file, 'utf8')) as {
-          signs?: { id: string; status?: string }[];
-          billboards?: { id: string; status?: string }[];
+          signs?: { id: string; status?: string; tags?: string[] }[];
+          billboards?: { id: string; status?: string; tags?: string[] }[];
         };
-        const live = new Set(
-          [...(r.signs ?? []), ...(r.billboards ?? [])]
-            .filter((i) => (i.status ?? 'live') === 'live')
-            .map((i) => i.id),
+        const liveItems = [...(r.signs ?? []), ...(r.billboards ?? [])].filter(
+          (i) => (i.status ?? 'live') === 'live',
         );
+        // A sign tagged `surface` is the words on a model's blank board, not a board: it needs no road slot,
+        // but it must be the name of a text surface in one of its pack's models, or it is dead text.
+        const painted = surfaceSignIds(pack);
+        const live = new Set(liveItems.filter((i) => !i.tags?.includes('surface')).map((i) => i.id));
+        for (const i of liveItems)
+          if (i.tags?.includes('surface') && !painted.has(i.id))
+            missing.push(`${pack}/${region}: ${i.id} is a surface text no model of its pack paints`);
         const slotted = new Set(
           all
             .filter(([f]) => f.startsWith(`${pack}/${region}/`))

@@ -59,6 +59,7 @@ import type { MissionCounts, MissionLayer } from './mission';
 import type { VergeCounts, VergeLayer } from './verge';
 import type { LandmarkCounts, LandmarkLayer } from './landmarks';
 import type { LandmarkKit, LandmarkKitId } from './models';
+import type { TextSurfaceCounts, TextSurfaceLayer } from './text-surfaces';
 import type { AirboatCounts, AirboatLayer } from './airboats';
 import type { PnwPlacesCounts, PnwPlacesLayer } from './pnw-places';
 import type { Rain } from './rain';
@@ -232,7 +233,10 @@ export interface SceneryStatus {
   roadside: RoadsideCounts | null;
   /** The far backdrop as built (null while it loads, or for a road without one). */
   backdrop: BackdropStats | null;
-  /** San Francisco's downtown (run W-R), or null before its models load or on any other road. */
+  /**
+   * A downtown (San Francisco's, run W-R, or Portland's blocks, playtest 3, T12.6), or null before its
+   * models load or on any other road.
+   */
   downtown: DowntownCounts | null;
   /** San Francisco's Chinatown and North Beach (run W-U), or null while its chunk loads or on any other road. */
   blocks: BlocksCounts | null;
@@ -242,6 +246,11 @@ export interface SceneryStatus {
   verge: VergeCounts | null;
   /** The real landmarks beside or over the road (playtest 3), or null on a road with none or while their kit loads. */
   landmarks?: LandmarkCounts | null;
+  /**
+   * The words painted on models' blank boards (playtest 3, T12.6: the roof sign, the food carts' names), or
+   * null on a road with none or while their chunk loads.
+   */
+  textSurfaces?: TextSurfaceCounts | null;
   /** The staged roadside scenes (run W-T), or null while they load or for a region with none. */
   scenes: ScenesCounts | null;
   /** San Francisco's waterfront (run W-U), or null while its chunk loads or on any other road. */
@@ -357,7 +366,15 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
   let modelsModule: typeof import('./models') | null = null;
   const requested = new Set<ModelKind>();
   let palette: Readonly<Record<string, string>> | undefined;
-  const visibleContent = (): VisibleContent[] => boards.visibleContent(camera);
+  // Playtest 3 (T12.6): the words on models' blank boards (text-surfaces.ts), painted from the region's
+  // signs. They are vetoable like a board, so they join its poll, its picker and its cuts.
+  let textSurfacesModule: typeof import('./text-surfaces') | null = null;
+  let textSurfaces: TextSurfaceLayer | null = null;
+  let roadCatalog: BoardCatalog | undefined;
+  const visibleContent = (): VisibleContent[] => [
+    ...boards.visibleContent(camera),
+    ...(textSurfaces?.visibleContent(camera) ?? []),
+  ];
   let trafficIds: string[] = [];
   let sceneryVisible = 0;
   let lastFrameAt = -1;
@@ -469,20 +486,51 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     downtown?.dispose();
     downtown = null;
     const m = downtownModule;
-    const kit = models.sfDowntown;
-    if (!m || !roadArgs || !kit) return;
+    if (!m || !roadArgs) return;
     const { tags } = networkTags(roadArgs.road, roadArgs.dressing);
-    if (!m.hasDowntown(tags)) return;
-    downtown = new m.DowntownLayer(
-      kit,
-      models.sfRoadside,
-      models.cableCar,
-      look,
-      { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed },
-      // Playtest 3 (T12.4): the towers stack these when they have loaded (else the stretched kit).
-      models.sfTowerModules,
-    );
+    const rs = roadScene;
+    if (m.hasPortland(tags)) {
+      // Playtest 3 (T12.6): downtown Portland's blocks, from CX4's kit and the land the road scene drew.
+      const pdx = models.pdxDowntown;
+      if (!pdx || !rs) return;
+      downtown = new m.DowntownLayer(pdx, undefined, undefined, look, {
+        road: roadArgs.road,
+        dressing: roadArgs.dressing,
+        seed: sceneSeed,
+        portland: { landReach: (e, side, s) => rs.landReach(e, side, s) },
+      });
+    } else {
+      const kit = models.sfDowntown;
+      if (!kit || !m.hasDowntown(tags)) return;
+      downtown = new m.DowntownLayer(
+        kit,
+        models.sfRoadside,
+        models.cableCar,
+        look,
+        { road: roadArgs.road, dressing: roadArgs.dressing, seed: sceneSeed },
+        // Playtest 3 (T12.4): the towers stack these when they have loaded (else the stretched kit).
+        models.sfTowerModules,
+      );
+    }
     scene.add(downtown.group);
+    buildTextSurfaces();
+  };
+  /** Paints the pack signs' words on the blank boards the landmarks and the downtown placed (T12.6). */
+  const buildTextSurfaces = () => {
+    textSurfaces?.dispose();
+    textSurfaces = null;
+    const placed = [...(landmarks?.surfaces() ?? []), ...(downtown?.surfaces() ?? [])];
+    if (placed.length === 0) return;
+    const m = textSurfacesModule;
+    if (!m) {
+      void import('./text-surfaces').then((loaded) => {
+        textSurfacesModule = loaded;
+        buildTextSurfaces();
+      });
+      return;
+    }
+    textSurfaces = new m.TextSurfaceLayer(look, placed, { catalog: roadCatalog, hidden: hiddenRefs });
+    scene.add(textSurfaces.group);
   };
   // Run W-U: San Francisco's waterfront (waterfront.ts), a lazy chunk fetched for a waterfront road.
   // It is rebuilt with the road (a new seed, the palms arriving) and keeps off the staged scenes.
@@ -596,6 +644,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     if (!landmarksModule || !landmarkKits || !roadArgs) return;
     landmarks = new landmarksModule.LandmarkLayer(landmarkKits, look, { road: roadArgs.road, palette });
     scene.add(landmarks.group);
+    buildTextSurfaces();
   };
   const requestLandmarks = (road: RoadNetwork) => {
     landmarks?.dispose();
@@ -708,7 +757,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
           roadsideModule = r;
           buildRoadside();
         });
-      if (report.loaded.includes('sfDowntown') && !downtownModule)
+      if ((report.loaded.includes('sfDowntown') || report.loaded.includes('pdxDowntown')) && !downtownModule)
         void import('./downtown').then((d) => {
           downtownModule = d;
           buildDowntown();
@@ -752,6 +801,13 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
         roadScene.dispose();
       }
       roadScene = null;
+      // The last road's words and landmarks go first: the downtown (built just below) paints its own over
+      // the new road's, and must not find the old road's landmark boards among them.
+      textSurfaces?.dispose();
+      textSurfaces = null;
+      landmarks?.dispose();
+      landmarks = null;
+      roadCatalog = catalog;
       for (const child of [...scene.children]) if (!persistent.has(child)) scene.remove(child);
       look.setupScene(scene, env);
       regionFog = env.palette?.['fog'] !== undefined;
@@ -851,6 +907,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       }
       lastFrameAt = t;
       landmarks?.update(pose.x, pose.z);
+      textSurfaces?.update(pose.x, pose.z);
       // The camera's aim: fences and ferns behind it are left out (main-green-4).
       verge?.update(pose.x, pose.z, curr, dt * (curr?.timeScale ?? 1), pose.lookX, pose.lookZ);
       airboats?.update(curr, t, dt * (curr?.timeScale ?? 1));
@@ -910,7 +967,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
     },
     pickContentAt(clientX, clientY) {
       const ndc = clientToNdc(clientX, clientY, canvas.getBoundingClientRect());
-      return boards.pick(ndc.x, ndc.y, camera);
+      return boards.pick(ndc.x, ndc.y, camera) ?? textSurfaces?.pick(ndc.x, ndc.y, camera) ?? null;
     },
     visibleContent: () => visibleContent(),
     visibleContentRefs: () => visibleContent().map((c) => c.ref),
@@ -919,6 +976,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       boards.hide(list);
       for (const r of list) hiddenRefs.add(r);
       scenes?.hide(list);
+      textSurfaces?.hide(list);
     },
     feelCounts: () => race?.effects.counts() ?? noFeel,
     speedLineCounts: () => race?.speedLines.counts() ?? noLines,
@@ -962,6 +1020,7 @@ export function createRenderer(canvas: HTMLCanvasElement, opts: RendererOptions 
       mission: mission?.counts() ?? null,
       verge: verge?.counts() ?? null,
       landmarks: landmarks?.counts() ?? null,
+      textSurfaces: textSurfaces?.counts() ?? null,
       scenes: scenes?.counts() ?? null,
       waterfront: waterfront?.counts() ?? null,
       airboats: airboats?.counts() ?? null,

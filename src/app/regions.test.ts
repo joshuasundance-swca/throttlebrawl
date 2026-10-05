@@ -164,6 +164,34 @@ describe('app: regions', () => {
     expect(keys.pools?.signs?.some((s) => s.ref.endsWith('#ices-before-road'))).toBe(true);
   });
 
+  it("hands render the words for a model's blank board as vetoable items that no pool carries (playtest 3, T12.6)", () => {
+    // The Portland roof sign's "STILL RAINING" and the food carts' names are text surfaces: render finds each
+    // by its node's name in kebab case, the way a road slot finds a sign by its id, and a cut leaves it blank.
+    const pnw = boardCatalog(ALL, 'region-pnw:pacific-northwest');
+    const ids = [
+      'pdx-roof-sign-words',
+      'pdx-food-cart-a-name',
+      'pdx-food-cart-b-name',
+      'pdx-food-cart-c-name',
+    ];
+    const pooled = new Set([...(pnw.pools?.signs ?? []), ...(pnw.pools?.billboards ?? [])].map((i) => i.ref));
+    for (const id of ids) {
+      expect(pnw.items[id], id).toMatchObject({
+        kind: 'sign',
+        ref: `region-pnw:region/pacific-northwest#${id}`,
+      });
+      expect(
+        pooled.has(pnw.items[id]?.ref ?? ''),
+        `${id} is in no pool: a billboard slot elsewhere cannot show it`,
+      ).toBe(false);
+    }
+    expect(pnw.items['pdx-roof-sign-words']?.text).toBe('STILL RAINING');
+    const cutRef = pnw.items['pdx-roof-sign-words']?.ref ?? '';
+    const cut = boardCatalog(ALL, 'region-pnw:pacific-northwest', new Set([cutRef]));
+    expect(cut.items['pdx-roof-sign-words']).toBeUndefined();
+    expect(cut.items['pdx-food-cart-a-name']).toBeDefined();
+  });
+
   it("hands render each region's landing one-liners as their own pool, never as a road slot's item", () => {
     // Air that pays (the pitch deck's #13): 'TEN OUT OF TEN, SAYS A PELICAN' on a clean landing.
     for (const key of ['base:florida-keys', 'region-pnw:pacific-northwest', 'region-sf:san-francisco']) {

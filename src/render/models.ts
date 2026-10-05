@@ -56,6 +56,9 @@ export const MODEL_ASSETS = {
   duvalKit: 'models/scenery/duval-kit',
   // playtest 3, T12.3: the Seven Mile's bays, repair platforms and gap end (bridge-bays.ts)
   sevenMileKit: 'models/scenery/seven-mile-kit',
+  // Playtest 3 (T12.6, Codex CX4): downtown Portland's street fronts, pink tower modules, food carts and
+  // bike rack, in region-pnw's pack (downtown.ts)
+  pdxDowntown: 'models/scenery/pdx-downtown',
 } as const;
 export type ModelKind = keyof typeof MODEL_ASSETS;
 export const MODEL_KINDS = Object.keys(MODEL_ASSETS) as ModelKind[];
@@ -140,6 +143,21 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
     'midrise_mid',
     'midrise_crown',
   ],
+  // Variants 0 to 2 are the street fronts (a cast-iron front, a brick loft, an office block), 3 to 5 the
+  // pink tower's base, 14 m mid and crown (downtown.ts stacks them), 6 to 8 the three food carts and 9 a
+  // bike rack (tools/blender/props/pdx_downtown.py).
+  pdxDowntown: [
+    'pdx_cast_iron',
+    'pdx_brick_loft',
+    'pdx_office_block',
+    'pdx_pink_tower_base',
+    'pdx_pink_tower_mid',
+    'pdx_pink_tower_crown',
+    'pdx_food_cart_a',
+    'pdx_food_cart_b',
+    'pdx_food_cart_c',
+    'pdx_bike_rack',
+  ],
   keysRoadside: [
     'keys_seagrape',
     'keys_seagrape_tree',
@@ -190,6 +208,7 @@ const ROOTS: Readonly<Record<ModelKind, readonly string[]>> = {
 export const ATLAS_SHEETS: Readonly<Partial<Record<ModelKind, string>>> = {
   duvalKit: 'florida-keys',
   sfTowerModules: 'san-francisco',
+  pdxDowntown: 'pacific-northwest',
 };
 
 /** San Francisco's waterfront tags (run W-U; tools/road/tracks/sf-waterfront.ts). */
@@ -260,6 +279,9 @@ export function modelKindsFor(n: ModelNeeds): ModelKind[] {
       out.add('sfRoadside');
     }
     if (n.tags.has('cable-crossing')) out.add('cableCar');
+    // Playtest 3 (T12.6): downtown Portland's blocks (downtown.ts): its street fronts, pink towers and
+    // food carts, with the Pacific Northwest's atlas.
+    if (n.tags.has('pdx-blocks')) out.add('pdxDowntown');
     // Run W-U: San Francisco's waterfront (waterfront.ts): the Keys' palms along the promenade (the
     // scatter grows no palm off a tropical network, so only that layer stands them), and the city
     // kit's cars, hydrants, scooters and lamps.
@@ -319,9 +341,36 @@ export interface SceneryModel {
    * and the atlas's white tile for every other vertex (atlas.ts).
    */
   tiles?: readonly TileRun[][];
+  /**
+   * Per variant, its text surfaces (a node with the extra `text_surface`: a food cart's name board),
+   * where the game paints a pack sign's words (text-surfaces.ts). The surface's own blank panel is baked
+   * into the variant as well, so a surface whose words are cut shows a blank board.
+   */
+  surfaces?: readonly (readonly TextSurface[])[];
   /** The region atlas its UVs sample, once loaded (atlas.ts `withAtlas`); without it, it draws plain. */
   map?: Texture;
 }
+
+/**
+ * A text surface (tools/blender/README.md, "Text surfaces"): a flat panel facing +Z, a node with the extras
+ * `text_surface`, `width_m` and `height_m`, and a UV map whose (0, 0) is the panel's top-left corner seen
+ * from the front. The game paints the words of the pack sign that matches the surface's node name
+ * (`pdx_roof_sign_words` is painted with the sign `pdx-roof-sign-words`), so the in-game veto can cut
+ * them and no invented word is ever baked into a model.
+ */
+export interface TextSurface {
+  /** The node's name, snake_case. */
+  name: string;
+  widthM: number;
+  heightM: number;
+  /** The panel's triangles in the baked root's frame, three numbers per vertex. */
+  positions: Float32Array;
+  /** The panel's UVs, two per vertex (glTF's convention: v runs down the face). */
+  uvs: Float32Array;
+}
+
+/** A node's name as its pack sign's id: `pdx_roof_sign_words` is the sign `pdx-roof-sign-words`. */
+export const textSurfaceItemId = (name: string): string => name.replace(/_/g, '-');
 
 /** A run of vertices baked from one material role. */
 export interface RoleRun {
@@ -349,16 +398,30 @@ function atlasTileOf(mesh: Object3D): string | null {
   return typeof node === 'string' && node ? node : null;
 }
 
+/** A mesh's text-surface extras (its own, or its node's): the panel's size, or null for any other mesh. */
+function textSurfaceOf(mesh: Object3D): { widthM: number; heightM: number } | null {
+  for (const data of [mesh.userData, mesh.parent?.userData]) {
+    if (data?.['text_surface'] !== true) continue;
+    const widthM = num(data['width_m']);
+    const heightM = num(data['height_m']);
+    if (widthM !== null && heightM !== null && widthM > 0 && heightM > 0) return { widthM, heightM };
+  }
+  return null;
+}
+
 /**
  * Bakes one variant: every mesh under `root`, in the root's frame, flat colours as vertex colours.
  * An atlas surface (playtest 3, T12.1) keeps its UVs; when a variant has any, every other vertex gets
- * the atlas's white tile, so the whole variant draws with the atlas as its map.
+ * the atlas's white tile, so the whole variant draws with the atlas as its map. A text surface
+ * (playtest 3, T12.6) is baked as the blank panel it is, and also listed for the words to be painted
+ * over it (`surfaces`).
  */
 function bakeVariant(root: Object3D): {
   geometry: BufferGeometry;
   doubleSided: boolean;
   roles: RoleRun[];
   tiles: TileRun[];
+  surfaces: TextSurface[];
 } {
   root.updateMatrixWorld(true);
   const toRoot = root.matrixWorld.clone().invert();
@@ -374,6 +437,7 @@ function bakeVariant(root: Object3D): {
   const c = new Color();
   let doubleSided = false;
   const roles: RoleRun[] = [];
+  const surfaces: TextSurface[] = [];
   root.traverse((o) => {
     const mesh = o as Mesh;
     if (!mesh.isMesh) return;
@@ -393,6 +457,20 @@ function bakeVariant(root: Object3D): {
     const uv = g.getAttribute('uv');
     const tile = uv ? atlasTileOf(mesh) : null;
     if (tile) tiles.push({ tile, start, count });
+    const panel = uv ? textSurfaceOf(mesh) : null;
+    if (panel && uv) {
+      const at = new Float32Array(count * 3);
+      const st = new Float32Array(count * 2);
+      for (let i = 0; i < count; i++) {
+        const k = index ? index.getX(i) : i;
+        p.fromBufferAttribute(pos, k)
+          .applyMatrix4(m)
+          .toArray(at, i * 3);
+        st[i * 2] = uv.getX(k);
+        st[i * 2 + 1] = uv.getY(k);
+      }
+      surfaces.push({ name: mesh.name || mesh.parent?.name || '', ...panel, positions: at, uvs: st });
+    }
     for (let i = 0; i < count; i++) {
       const k = index ? index.getX(i) : i;
       p.fromBufferAttribute(pos, k).applyMatrix4(m);
@@ -415,7 +493,7 @@ function bakeVariant(root: Object3D): {
   if (tiles.length) geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  return { geometry, doubleSided, roles, tiles };
+  return { geometry, doubleSided, roles, tiles, surfaces };
 }
 
 /** Sets the normals of `count` triangle-list vertices from `start` to their faces' normals. */
@@ -438,6 +516,7 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
   const variants: BufferGeometry[] = [];
   const roles: RoleRun[][] = [];
   const tiles: TileRun[][] = [];
+  const surfaces: TextSurface[][] = [];
   let doubleSided = false;
   for (const name of ROOTS[kind]) {
     const root = scene.getObjectByName(name);
@@ -450,9 +529,11 @@ export function bakeModel(kind: ModelKind, scene: Object3D): SceneryModel {
     variants.push(trimmed ? belowDeck(v.geometry) : v.geometry);
     roles.push(trimmed ? [] : v.roles);
     tiles.push(trimmed ? [] : v.tiles);
+    surfaces.push(v.surfaces);
     doubleSided ||= v.doubleSided;
   }
   const out: SceneryModel = { kind, variants, doubleSided, roles };
+  if (surfaces.some((s) => s.length)) out.surfaces = surfaces;
   if (tiles.some((t) => t.length)) {
     out.tiles = tiles;
     // Every variant of an atlas model samples the atlas: the plain ones on its white tile.
@@ -595,6 +676,8 @@ export interface LandmarkNode {
   extras: Readonly<Record<string, number>>;
   /** The vertex runs of each material role, so a palette can repaint a role. */
   roles: readonly RoleRun[];
+  /** Its text surfaces (the roof sign's board), for the words to be painted over (text-surfaces.ts). */
+  surfaces: readonly TextSurface[];
 }
 
 export interface LandmarkKit {
@@ -622,7 +705,12 @@ export function bakeLandmarkKit(id: LandmarkKitId, scene: Object3D): LandmarkKit
     if (!root.name || nodes.has(root.name)) continue;
     const v = bakeVariant(root);
     if (v.geometry.getAttribute('position').count === 0) continue;
-    nodes.set(root.name, { geometry: v.geometry, extras: numericExtras(root), roles: v.roles });
+    nodes.set(root.name, {
+      geometry: v.geometry,
+      extras: numericExtras(root),
+      roles: v.roles,
+      surfaces: v.surfaces,
+    });
     doubleSided ||= v.doubleSided;
   }
   return { id, nodes, doubleSided };

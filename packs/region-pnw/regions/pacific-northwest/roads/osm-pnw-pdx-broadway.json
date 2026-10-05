@@ -92,7 +92,8 @@
       "d1": 18.0,
       "params": {
         "spawns": "pedestrians",
-        "kinds": ["region-pnw:pod-diner"]
+        "kinds": ["region-pnw:pod-diner"],
+        "dressing": "food-carts"
       }
     },
     {

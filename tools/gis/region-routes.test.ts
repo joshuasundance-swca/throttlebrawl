@@ -258,8 +258,15 @@ describe.each(PACKS.flatMap((p) => p.networks))('scenery on the real road %s', (
     // scatters nothing: its check is that nothing stands there, while any other network must have
     // spots to check (so a scatter that placed none would not pass for a clean one).
     const OPEN = new Set(['headlands', 'bridge', 'water-open', 'water-shallow', 'fog']);
-    const open = baked(id).roads.every((r) => (r.tags ?? []).every((t) => OPEN.has(t.tag)));
-    if (open) expect(spots, 'open grass hills scatter nothing').toBe(0);
+    // Downtown Portland's blocks (playtest 3, T12.6) scatter nothing either: `pdx-blocks` is a land theme of
+    // its own, and render/downtown.ts stands the street fronts there (src/render/portland-blocks.test.ts
+    // checks them on land). The `town`, `pdx-deck` and `rail-line` tags beside it say nothing more about it.
+    const BLOCKS = new Set([...OPEN, 'pdx-blocks', 'town', 'pdx-deck', 'rail-line']);
+    const tagged = baked(id).roads.flatMap((r) => (r.tags ?? []).map((t) => t.tag));
+    const open =
+      tagged.every((t) => OPEN.has(t)) ||
+      (tagged.includes('pdx-blocks') && tagged.every((t) => BLOCKS.has(t)));
+    if (open) expect(spots, 'open grass hills and city blocks scatter nothing').toBe(0);
     else expect(spots).toBeGreaterThan(0);
     expect(bad.slice(0, 12)).toEqual([]);
     // The far forest stands on drawn ground too (run W-O's skeptic, mustFix 3), on the networks
