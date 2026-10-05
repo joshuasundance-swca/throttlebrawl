@@ -40,6 +40,7 @@ import {
 } from './format';
 import {
   applyTopPlan,
+  bikeZoneBox,
   HUD_SIZE,
   layoutTop,
   lookAheadBox,
@@ -1013,6 +1014,7 @@ export function createUi(host: HTMLElement, opts: UiOptions): GameUi {
       mirror: layout.mirror,
       blockers: gaugeBlock,
       look: lookAheadBox(w, h),
+      bike: bikeZoneBox(w, h),
       ringPx: STICK_RING_PX,
     });
     wheelieGauge?.place(spot?.box ?? null);

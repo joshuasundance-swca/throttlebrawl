@@ -196,12 +196,14 @@ export interface GaugeInput {
   blockers: GaugeBlockers;
   /** The road ahead (hud-layout.ts `lookAheadBox`). */
   look: Box;
+  /** Where the player's bike is drawn (hud-layout.ts `bikeZoneBox`): the top tier keeps off it too. */
+  bike?: Box;
   ringPx?: number;
 }
 
 export interface GaugeSpot {
   box: Box;
-  /** `all`: clear of every piece and the road ahead; `pieces`: of every piece; `hard`: of the buttons and text only. */
+  /** `all`: clear of every piece, the road ahead and the bike's zone; `pieces`: of every piece; `hard`: of the buttons and text only. */
   tier: 'all' | 'pieces' | 'hard';
 }
 
@@ -245,7 +247,8 @@ export function placeGauge(input: GaugeInput): GaugeSpot | null {
             Math.abs(top - nominalTop) + (side === inner ? 0 : OUTER_SIDE_COST) + k * FAR_STEP_COST;
           if (best && cost >= best.cost) continue;
           const box: Box = { left, top, right: left + GAUGE.w, bottom: top + GAUGE.h };
-          if (lookToo && overlap(box, look)) continue;
+          if (lookToo && (overlap(box, look) || (input.bike !== undefined && overlap(box, input.bike))))
+            continue;
           if (against.some((b) => overlap(box, b, GAP))) continue;
           best = { box, cost };
         }
