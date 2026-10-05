@@ -104,6 +104,11 @@
     { "id": "dt-cable-seniority", "text": "CABLE CAR CROSSING. It has seniority.", "status": "live" },
     { "id": "dt-servers", "text": "LOADING ZONE: SERVERS ONLY. Humans unload elsewhere.", "status": "live" },
     { "id": "dt-badge-only", "text": "CAMPUS AHEAD. Badge in to continue.", "status": "live" },
+    {
+      "id": "dt-plaza-cut",
+      "text": "PLAZA ENTRANCE: DELIVERIES ONLY. Founders arrive by ramp.",
+      "status": "live"
+    },
     { "id": "wf-seawall", "text": "SEAWALL BUILT 1913. Upgrade under review since 1914.", "status": "live" },
     { "id": "wf-no-pitching", "text": "NO SWIMMING. No fishing. No pitching.", "status": "live" },
     { "id": "wf-even-piers", "text": "EVEN PIERS ONLY. Odd piers past the clock.", "status": "live" },

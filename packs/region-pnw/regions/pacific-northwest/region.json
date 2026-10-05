@@ -105,6 +105,11 @@
       "status": "live"
     },
     { "id": "slide-area", "text": "SLIDE AREA. Hill may arrive without notice.", "status": "live" },
+    {
+      "id": "mill-cut",
+      "text": "MILL YARD CUT-THROUGH. Authorised vehicles only. Airborne is authorised.",
+      "status": "live"
+    },
     { "id": "trailhead-full", "text": "TRAILHEAD PARKING FULL. It was full at 5 am.", "status": "live" },
     { "id": "ferry-overflow", "text": "FERRY OVERFLOW LOT. Overflow lot overflow 3 mi.", "status": "live" },
     { "id": "elk-schedule", "text": "ELK CROSSING, NEXT 3 MI. Elk sets the schedule.", "status": "live" },

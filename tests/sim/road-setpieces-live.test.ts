@@ -202,7 +202,12 @@ function candidates(config: SimConfig): Candidate[] {
     for (const f of e.features) {
       if (f.kind !== 'boostPad' && f.kind !== 'rampTruck') continue;
       const slot = f.params?.['slot'];
-      out.push({ edge: e.index, edgeId: e.id, f, slot: typeof slot === 'string' ? slot : '' });
+      // A pad or truck in no slot is a fixed piece of its road, there in every race (playtest 3, T5.2:
+      // the static ramp trucks of the Pacific Northwest's Mill Yard Cut and San Francisco's Plaza Cut,
+      // and the pad on each cut). The seed has no say in it, so it is no candidate; the cuts' own
+      // checks ride them (tools/road/truck-shortcuts.test.ts).
+      if (typeof slot !== 'string') continue;
+      out.push({ edge: e.index, edgeId: e.id, f, slot });
     }
   }
   return out;
