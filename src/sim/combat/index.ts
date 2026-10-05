@@ -78,6 +78,16 @@
 //   change: on one main, the knockdown retune alone gave 6, stats in every fight 15, stats in the
 //   player's fights 11; after main moved, the last gave 1. So this rule rests on playtest 1 item 7
 //   and on matching the knockdown scales, not on the batch.
+// - The career's gentle climb (playtest 3, round 3 "Fights: gentle climb", accepted): the field
+//   level's power scale (SimRiderDef.levelPower, from FieldLevel.powerScale: 0.9 at a region's
+//   first tier up to 1.12 at its last in season 1) is kept apart from a rival's own stats.power,
+//   and reaches the player's fights on its own: a rival's hit on the player is times
+//   1 + (levelPower - 1) × combat.levelPowerOnPlayer (1), at most combat.levelPowerMax (1.15, so
+//   season 2's higher levels stay inside "about 10-15% harder"). A region's first tier hits about
+//   10% softer, never harder than before; no level, a level of 1, the player's hits and the cops'
+//   and fights among rivals are untouched. Damage only: the shove and the stagger keep their
+//   numbers. [default] The rival's health scale (FieldLevel.healthScale) makes the "easier or
+//   harder to knock down" half.
 // - Health recovers out of combat (M2 combat-3): after combat.regenDelayS of world time with no
 //   attack started, landed or received, a riding player regains combat.regenPerS points a second,
 //   in whole points, up to the maximum. Rivals and the cop do not recover.
@@ -281,6 +291,28 @@ export const COMBAT_TUNING: readonly TuningParamDecl[] = [
     default: 0,
     min: 0,
     max: 1,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.levelPowerOnPlayer',
+    group: 'combat',
+    label: 'Field level power on you',
+    default: 1,
+    min: 0,
+    max: 2,
+    step: 0.05,
+    unit: '×',
+    affectsSim: true,
+  },
+  {
+    id: 'combat.levelPowerMax',
+    group: 'combat',
+    label: 'Field level power, top',
+    default: 1.15,
+    min: 1,
+    max: 1.5,
     step: 0.05,
     unit: '×',
     affectsSim: true,
@@ -1014,8 +1046,9 @@ function land(
       ? 1 + (statOf(config, a, 'power') - 1) * clamp(world.params['combat.powerOnPlayer'] ?? 0, 0, 1)
       : 1;
   const toughness = byPlayer || hitOnPlayer ? statOf(config, victim, 'toughness') : 1;
+  const climb = hitOnPlayer ? levelClimb(world, config, a) : 1;
   const damage = Math.round(
-    (w.damage * damageScale(world, config, a, victim, w) * copSoft * power) / toughness,
+    (w.damage * damageScale(world, config, a, victim, w) * copSoft * power * climb) / toughness,
   );
   const health = Math.max(0, (riders.health[vid] ?? 0) - damage);
   riders.health[vid] = health;
@@ -1103,6 +1136,20 @@ function land(
 /** A rider's fight stat (stats.toughness or stats.power), 1 when absent, kept to the schema's 0.5–2. */
 function statOf(config: SimConfig, m: Mover, stat: 'toughness' | 'power'): number {
   return clamp(config.riders[m.riderIndex]?.[stat] ?? 1, 0.5, 2);
+}
+
+/**
+ * The career's gentle climb (playtest 3, round 3 "Fights"): a rival's hit on the player times
+ * 1 + (its field level's power scale - 1) × combat.levelPowerOnPlayer, kept at or under
+ * combat.levelPowerMax. A rider with no level (free play, a cop, the player) or a level of 1 is 1,
+ * so those fights and their hash are as they were. Below 1 (a region's first tier) the hit is softer.
+ */
+function levelClimb(world: World, config: SimConfig, a: Mover): number {
+  const level = clamp(config.riders[a.riderIndex]?.levelPower ?? 1, 0.5, 2);
+  if (level === 1) return 1;
+  const gain = clamp(world.params['combat.levelPowerOnPlayer'] ?? 1, 0, 2);
+  const max = clamp(world.params['combat.levelPowerMax'] ?? 1.15, 1, 1.5);
+  return Math.min(1 + (level - 1) * gain, max);
 }
 
 /**

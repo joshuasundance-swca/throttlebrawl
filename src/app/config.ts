@@ -487,10 +487,13 @@ function riderDef(
     massKg: rider.stats?.massKg ?? 80,
     healthMax: Math.round((rider.stats?.healthMax ?? 100) * (level.healthScale ?? 1)),
     toughness: rider.stats?.toughness ?? 1,
-    power:
-      level.powerScale === undefined
-        ? (rider.stats?.power ?? 1)
-        : round3((rider.stats?.power ?? 1) * level.powerScale),
+    power: rider.stats?.power ?? 1,
+    // The field level's power scale rides apart from the rider's own power (playtest 3, gentle
+    // climb): the sim lets it reach the player's fights by combat.levelPowerOnPlayer. Left out at 1,
+    // so a level of 1 builds the race a free-play race builds.
+    ...(level.powerScale !== undefined && round3(level.powerScale) !== 1
+      ? { levelPower: round3(level.powerScale) }
+      : {}),
     // The weapon the rider starts holding (M4 cops-3: a cop's baton or taser, which can be stolen),
     // only when the race carries it: a live rider naming a draft weapon rides bare-handed in a
     // release build, as before.

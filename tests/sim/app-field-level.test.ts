@@ -155,9 +155,20 @@ describe('the field level', () => {
         ai.forEach((r, i) => {
           const file = was[i];
           expect(r.healthMax).toBe(Math.round((file?.healthMax ?? 0) * level.healthScale));
-          expect(r.power).toBe(round3((file?.power ?? 0) * level.powerScale));
+          // The level's power rides apart from the rider's own, and a level of 1 adds nothing.
+          expect(r.power).toBe(file?.power);
+          if (round3(level.powerScale) === 1) expect('levelPower' in r).toBe(false);
+          else expect(r.levelPower).toBe(round3(level.powerScale));
           expect(r.controller).toEqual(file?.controller);
           expect(r.toughness).toBe(file?.toughness);
+        });
+      });
+
+      it('a level whose power scale is 1 builds each rival the way the file has it', () => {
+        const neutral = build(node, { fieldLevel: { ...level, powerScale: 1 } });
+        aiOf(neutral).forEach((r, i) => {
+          expect('levelPower' in r).toBe(false);
+          expect(r.power).toBe(aiOf(base)[i]?.power);
         });
       });
 
