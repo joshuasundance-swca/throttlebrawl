@@ -35,7 +35,7 @@ import {
   type LaneInfo,
   type TuningParamDecl,
 } from '../../core';
-import type { RoadNetwork, RouteShortcut } from '../../road';
+import type { RoadNetwork, RouteBranch, RouteShortcut } from '../../road';
 import { behaviourOf, combatView, pickupWeapon, STOWED_H } from '../combat';
 import { maxYawAt, riderState } from '../riders';
 import { raceState, rubberBandFactor } from '../race';
@@ -53,7 +53,18 @@ import {
   type Reach,
   type Seen,
 } from './sense';
-import { rivalTakeChance, SHORTCUT_APPROACH_M, SHORTCUT_CLEAR_M } from './branches';
+import {
+  keepOff,
+  rivalNeverTakes,
+  rivalTakeChance,
+  SHORTCUT_APPROACH_M,
+  SHORTCUT_CLEAR_M,
+  STRAY_GAIN,
+  STRAY_LATERAL_MPS,
+  STRAY_PAST_EDGE_M,
+  STRAY_RETURN_MPS,
+  wayBack,
+} from './branches';
 import { aggressionScale, signatureGapScale } from './level';
 import {
   BELL_TELL_TICKS,
@@ -637,8 +648,15 @@ function driveRider(
   const id = m.id;
   const tick = world.tick;
   const edge = road.edges[pos.edge];
-  const dLo = (edge?.dMin ?? -5) + 0.7;
-  const dHi = (edge?.dMax ?? 5) - 0.7;
+  // Rivals stay on the highway (wave C, G3; branches.ts): approaching a split onto a branch it would
+  // never take, every line it picks below, a dodge or a fight included, stays out of the zone; and
+  // on such a branch (shoved there) it heads back, or stops, at the end of this function.
+  const never = (b: RouteBranch): boolean => rivalNeverTakes(config, b, prof.riskTaking);
+  const strayOn = config.route.branchAt(pos.edge);
+  const stray = strayOn !== null && never(strayOn);
+  const keep = keepOff(config, pos, (edge?.dMin ?? -5) + 0.7, (edge?.dMax ?? 5) - 0.7, never);
+  const dLo = keep.lo;
+  const dHi = keep.hi;
   const finished = race.finishOrder.includes(id);
   // Once every player is home the fight is over: the rest hurry to the line for the results.
   const playersDone = players.length > 0 && players.every((p) => race.finishOrder.includes(p));
@@ -1095,14 +1113,39 @@ function driveRider(
 
   const drive = throttleFor(config, m, speedTarget);
   // Dial-Up's lag: a dead throttle and no brake while he is frozen.
-  const brake = sig.freeze ? 0 : drive.brake;
+  let brake = sig.freeze ? 0 : drive.brake;
   // Slow off the line (rivals-1): the throttle is capped for the first seconds.
-  const throttle = sig.freeze
+  let throttle = sig.freeze
     ? 0
     : launching && tr.launch < 1
       ? Math.min(drive.throttle, tr.launch)
       : drive.throttle;
-  const steer = steerFor(world, config, m, clamp(dTarget, dLo, dHi), lateralMax, lateralGain);
+  let line = clamp(dTarget, dLo, dHi);
+  if (stray) {
+    // Rivals stay on the highway (G3): on a branch it would never take (shoved there, or remounted
+    // there after a crash), while the branch still overlaps the main road it brakes to a crawl and
+    // rides for that edge, where the road's handover puts it back on the main road; past that point
+    // it stops where it is and never rides the branch on (it cannot turn round). Nothing else
+    // overrides this.
+    const back = wayBack(config, pos);
+    line =
+      back === 0
+        ? pos.d
+        : back > 0
+          ? (edge?.dMax ?? 5) + STRAY_PAST_EDGE_M
+          : (edge?.dMin ?? -5) - STRAY_PAST_EDGE_M;
+    lateralMax = STRAY_LATERAL_MPS;
+    lateralGain = STRAY_GAIN;
+    // A bike turns only as it rolls: on the way back it keeps a crawl, so it gets across.
+    const crawl = back !== 0 && v <= STRAY_RETURN_MPS ? throttleFor(config, m, STRAY_RETURN_MPS) : null;
+    throttle = crawl ? crawl.throttle : 0;
+    brake = crawl ? crawl.brake : 1;
+  } else if (keep.pushed) {
+    // Pushed toward a branch it would never take (a kick, a shove against the rail): back, hard.
+    lateralMax = Math.max(lateralMax, STRAY_LATERAL_MPS);
+    lateralGain = Math.max(lateralGain, STRAY_GAIN);
+  }
+  const steer = steerFor(world, config, m, line, lateralMax, lateralGain);
   return {
     steer: Math.round(steer * 127),
     throttle: Math.round(throttle * 255),

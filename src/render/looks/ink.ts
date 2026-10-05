@@ -146,6 +146,29 @@ function replaceOnce(src: string, anchor: string, withText: string, where: strin
   return src.slice(0, at) + withText + src.slice(at + anchor.length);
 }
 
+/**
+ * The material kinds drawn flat and left out of the brightness ink (G7, the wave B live check). The
+ * film pass inks every sharp brightness step, which outlined each stroke of a board's lettering
+ * (white on green: a smear in kodak, wasteland and brush) and thickened the hit sparks, small
+ * gold chips, into black-rimmed polygons. These kinds carry their own detail, so they say so in the
+ * scene target's alpha channel (0 where they draw; post.ts reads it).
+ */
+export const NO_INK_KINDS: ReadonlySet<MaterialKind> = new Set<MaterialKind>(['board', 'spark']);
+
+/**
+ * Patches a basic (unlit) shader in place so it writes alpha 0 into the scene target, which the
+ * film pass reads as "no brightness ink here". Only an OPAQUE material may carry it: a blended one
+ * would mix the 0 with what is behind it. In the final image alpha is not used, so nothing else shows.
+ */
+export function patchNoInkShader(shader: Pick<ShaderParts, 'fragmentShader'>): void {
+  shader.fragmentShader = replaceOnce(
+    shader.fragmentShader,
+    '#include <opaque_fragment>',
+    '#include <opaque_fragment>\n  gl_FragColor.a = 0.0;',
+    'fragment',
+  );
+}
+
 /** Patches a Lambert shader in place with the ink look for this material's mode. */
 export function patchInkShader(shader: ShaderParts, mode: InkMode, uniforms: InkUniforms): void {
   let v = shader.vertexShader;

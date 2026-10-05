@@ -18,10 +18,14 @@ import { aiState } from './index';
 import {
   BOLD_RISK,
   branchHoldsGap,
+  keepOff,
   lawBarredZone,
   lawMayTake,
   lineOutsideZone,
+  rivalNeverTakes,
   rivalTakeChance,
+  SHORTCUT_CLEAR_M,
+  wayBack,
 } from './branches';
 
 const bike = {
@@ -249,5 +253,99 @@ describe('the law stays on the highway', () => {
     const mid = (z.d0 + z.d1) / 2;
     expect(lineOutsideZone(z, mid) * side).toBeLessThan(inner * side);
     expect(lineOutsideZone(z, inner - side * 3)).toBe(inner - side * 3);
+  });
+});
+
+// Wave C, G3 (T9.2 found the Seven Mile's field could still be pushed onto the old road): the rule
+// holds when a rider is put on a branch it would never take. The fixture's `c-in` overlaps the main
+// road's `c-split` just past the split; `cut` lies well clear of it.
+describe('a rival put on a branch it would never take', () => {
+  /** The world with rival 0 moved onto `edgeId` at s, d 0, rolling; the rest start on the grid. */
+  function placed(opts: Opts, edgeId: string, s: number, speed: number) {
+    const w = world(opts);
+    const m = w.world.movers[0];
+    if (!m) throw new Error('no rival');
+    m.pos = { edge: w.road.edgeIndex(edgeId), s, d: 0, dir: 1 };
+    m.speed = speed;
+    m.yaw = 0;
+    return { ...w, m };
+  }
+  /** Where rival 0 rode over `ticks`: the roads it was on, in order, and its last speed. */
+  function ride(w: ReturnType<typeof placed>, ticks: number) {
+    const roads: string[] = [];
+    for (let t = 0; t < ticks; t++) {
+      w.sim.step([{ steer: 0, throttle: 0, brake: 255, flags: 0 }]);
+      const id = w.road.edges[w.m.pos.edge]?.id ?? '?';
+      if (roads[roads.length - 1] !== id) roads.push(id);
+    }
+    return { roads, speed: w.m.speed };
+  }
+
+  it('the rule: aiTake 0 is never for every rival; a gap with no aiTake is never below the bold line', () => {
+    const zero = world({ aiTake: 0 });
+    const gapped = world({ gap: true });
+    const open = world({ aiTake: 0.5, gap: true });
+    const b = (w: ReturnType<typeof world>) => w.route.branches[0] as RouteBranch;
+    expect(rivalNeverTakes(zero.config, b(zero), 1)).toBe(true);
+    expect(rivalNeverTakes(gapped.config, b(gapped), BOLD_RISK - 0.01)).toBe(true);
+    expect(rivalNeverTakes(gapped.config, b(gapped), BOLD_RISK)).toBe(false);
+    expect(rivalNeverTakes(open.config, b(open), 0)).toBe(false);
+  });
+
+  it('wayBack finds the main road beside the branch just past the split, and nothing once clear of it', () => {
+    const w = world({ aiTake: 0 });
+    const cIn = w.road.edgeIndex('c-in');
+    // The branch leaves to the right (d 2.4 to 4.9 on `a`): the main road is on its left.
+    expect(wayBack(w.config, { edge: cIn, s: 2, d: 0, dir: 1 })).toBe(-1);
+    expect(wayBack(w.config, { edge: w.road.edgeIndex('cut'), s: 60, d: 0, dir: 1 })).toBe(0);
+  });
+
+  it("heads back to the main road at the first legal point: it never rides on into the branch's road", () => {
+    const back = ride(placed({ aiTake: 0, chance: 1 }, 'c-in', 1, 20), 60 * 6);
+    // The control: a branch the rival takes (aiTake 1), from the same spot, is ridden on.
+    const taken = ride(placed({ aiTake: 1, chance: 1 }, 'c-in', 1, 20), 60 * 6);
+    console.log(
+      `[examined] from c-in at 20 m/s: aiTake 0 rode ${back.roads.join(' > ')}; aiTake 1 rode ${taken.roads.join(' > ')}`,
+    );
+    expect(taken.roads).toContain('cut');
+    expect(back.roads).not.toContain('cut');
+    expect(back.roads[back.roads.length - 1]).not.toBe('c-in');
+  });
+
+  it('past the first legal point it stops where it is and never rides the branch on (it cannot turn round)', () => {
+    const w = placed({ aiTake: 0, chance: 1 }, 'cut', 40, 20);
+    const r = ride(w, 60 * 20);
+    console.log(
+      `[examined] from cut s 40 at 20 m/s: rode ${r.roads.join(' > ')}, stopped at s ${w.m.pos.s.toFixed(1)}, ${r.speed.toFixed(2)} m/s`,
+    );
+    expect(r.roads).toEqual(['cut']);
+    expect(r.speed).toBeLessThan(0.5);
+    expect(w.m.pos.s).toBeLessThan(80);
+  });
+});
+
+describe("a rival's line beside a branch it would never take", () => {
+  it("approaching the split, the line's range keeps SHORTCUT_CLEAR_M out of the zone; a shove into it reads as pushed", () => {
+    const w = world({ aiTake: 0 });
+    const z = w.route.shortcuts[0] as NonNullable<(typeof w.route.shortcuts)[0]>;
+    const never = (b: RouteBranch) => rivalNeverTakes(w.config, b, 0.3);
+    const at = (d: number) => keepOff(w.config, { edge: z.edge, s: z.s0 + 5, d, dir: 1 }, -4.3, 4.3, never);
+    expect(at(0).hi).toBeCloseTo(Math.min(z.d0, z.d1) - SHORTCUT_CLEAR_M, 6);
+    expect(at(0).lo).toBe(-4.3);
+    expect(at(0).pushed).toBe(false);
+    expect(at(3).pushed).toBe(true);
+    // A branch the rider may take leaves the range alone.
+    const open = keepOff(w.config, { edge: z.edge, s: z.s0 + 5, d: 3, dir: 1 }, -4.3, 4.3, () => false);
+    expect(open).toEqual({ lo: -4.3, hi: 4.3, guarded: false, pushed: false });
+  });
+
+  it('just past the split, where the branch overlaps the main road, the line keeps off that side', () => {
+    const w = world({ aiTake: 0 });
+    const never = (b: RouteBranch) => rivalNeverTakes(w.config, b, 0.3);
+    const k = keepOff(w.config, { edge: w.road.edgeIndex('c-split'), s: 3, d: 0, dir: 1 }, -4.3, 4.3, never);
+    console.log(`[examined] c-split s 3: line range ${k.lo.toFixed(2)}..${k.hi.toFixed(2)}`);
+    expect(k.guarded).toBe(true);
+    expect(k.hi).toBeLessThan(4.3);
+    expect(k.lo).toBe(-4.3);
   });
 });

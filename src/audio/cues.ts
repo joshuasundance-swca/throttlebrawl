@@ -5,6 +5,7 @@
 // whooshes, the rail clang, the splash, the respawn blip, the style-cash chime, the steal glint, the
 // wobble and the near-miss whoosh, and scales crashes by how hard they hit.
 import type { MovesSnapshot, SimEvent, SimSnapshot } from '../sim/api';
+import { SQUEAL } from './tuning';
 
 export const CUE_IDS = [
   'punch',
@@ -307,14 +308,8 @@ export function weaknessOf(snapshot: SimSnapshot | null | undefined, targetId: n
   return clamp01(1 - t.health / t.healthMax);
 }
 
-/**
- * The drift's tyre squeal, a continuous voice (cue-patches.ts, createSquealVoice): band-passed noise
- * from 1.8 to 3.0 kHz with its level following the slip (moves spec §4.4). `gain` is the peak at
- * full slip, the `audio.squealGain` slider [default]; `fullRad` is the slip that is full (the drift's
- * own cap, 34 degrees) and below `deadRad` a bike is just riding. `loHz`..`hiHz` is the band's
- * centre from a light slip to a full one.
- */
-export const SQUEAL = { gain: 0.22, fullRad: 0.6, deadRad: 0.04, loHz: 1800, hiHz: 3000 } as const;
+// Its numbers live in tuning.ts beside the slider that reads them, off the lazy audio engine.
+export { SQUEAL };
 
 /** How far into the squeal a slip is, 0..1 (symmetric: a left slide sounds as a right one). */
 export function squealAmount(driftRad: number): number {

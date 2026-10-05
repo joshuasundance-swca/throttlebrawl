@@ -12,7 +12,7 @@ import {
   type EngineSoundSpec,
 } from './engine-patch';
 import { fakeContextFactory } from './fake-context';
-import { createAudio } from './index';
+import { createAudio } from './system';
 import { panFor } from './spatial';
 
 // The class-to-voice table is pack data (run W-S): the base pack's `defaults.engineSoundByClass`.

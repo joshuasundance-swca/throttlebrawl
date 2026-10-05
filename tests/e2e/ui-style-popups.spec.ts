@@ -1216,9 +1216,9 @@ async function settleStamp(page: Page) {
 }
 
 /**
- * A tap on a control to get to the next screen. A control that is off the screen (the menu is
- * taller than a 568x320 phone: its Settings row is cut off, a separate defect this check does not
- * fix) is clicked by dispatch instead, and the case says so in the log.
+ * A tap on a control to get to the next screen. A control that is off the screen is clicked by
+ * dispatch instead, and the case says so in the log. (The menu's controls are on the screen at
+ * every size now: the menu fit check below holds them there, so this is for the settings tabs.)
  */
 async function press(page: Page, selector: string, where: string) {
   const target = page.locator(selector);
@@ -1295,6 +1295,95 @@ for (const [where, width, height, finePointer] of [
     });
   });
 }
+
+// ---- The menu fits a short phone (wave B's check, F1) --------------------------------------------
+// The main menu was taller than a 568x320 phone, so its Settings row sat below the screen and the
+// F1 check above had to tap it by dispatch. Every control of the menu, the region chips and the
+// menu's own block must now lie on the screen, with the what's-new card up (a first launch shows it)
+// and after it is dismissed, on the short sizes and the default phone. (The route chips scroll
+// sideways inside their own row by design, so they are not measured here: ui-route-picker.spec.ts
+// holds the picker itself on the screen.)
+
+/** The menu's controls that stick out of the screen, by name. */
+async function menuOffScreen(page: Page) {
+  return page.evaluate(() => {
+    const picks =
+      '#menu-career, #menu-race, #menu-settings, #menu-changelog, #menu-copy-report, #region-picker .region, #menu .menu-main, #menu .title';
+    const off: string[] = [];
+    let examined = 0;
+    for (const e of document.querySelectorAll<HTMLElement>(picks)) {
+      if (!e.checkVisibility()) continue;
+      examined++;
+      const r = e.getBoundingClientRect();
+      if (r.left < -0.5 || r.top < -0.5 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5)
+        off.push(
+          `${e.id || e.className || e.tagName.toLowerCase()} [${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}]`,
+        );
+    }
+    return { off, examined, view: [innerWidth, innerHeight] };
+  });
+}
+
+for (const [where, width, height] of [
+  ['568x320', 568, 320],
+  ['640x360', 640, 360],
+  ['740x360', 740, 360],
+  ['915x412', 915, 412],
+] as const) {
+  test.describe(`menu fit at ${where}`, () => {
+    test.use({ viewport: { width, height } });
+    test('every menu control is on the screen, with the what-is-new card up and after it is dismissed', async ({
+      page,
+    }) => {
+      await page.addInitScript(() => {
+        (window as TestWindow).__GAME_TEST__ = true;
+      });
+      await page.goto('./');
+      await page.locator('#start-screen').click();
+      await expect(page.locator('#menu-race')).toBeVisible();
+      await settleStamp(page);
+      const card = page.locator('#whats-new');
+      const cardUp = await card.isVisible();
+      const first = await menuOffScreen(page);
+      console.log(
+        `${where}: card ${cardUp ? 'up' : 'not shown'}, ${first.examined} menu pieces, off ${JSON.stringify(first.off)}`,
+      );
+      expect(first.examined, `${where}: menu pieces were examined`).toBeGreaterThan(5);
+      expect(first.off, `${where}: menu pieces off the screen (card ${cardUp ? 'up' : 'not shown'})`).toEqual(
+        [],
+      );
+      if (cardUp) {
+        await page.locator('#whats-new-ok').click();
+        await expect(card).toBeHidden();
+        await settleStamp(page);
+        const after = await menuOffScreen(page);
+        console.log(
+          `${where}: card dismissed, ${after.examined} menu pieces, off ${JSON.stringify(after.off)}`,
+        );
+        expect(after.off, `${where}: menu pieces off the screen (card dismissed)`).toEqual([]);
+      }
+      // Settings takes a real tap here, not a dispatch.
+      await page.locator('#menu-settings').click();
+      await expect(page.locator('#settings-back')).toBeVisible();
+    });
+  });
+}
+
+// The check must fire: the same menu on a screen too short for it names what sticks out.
+test('the menu fit check names a control that is off the screen (negative control)', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as TestWindow).__GAME_TEST__ = true;
+  });
+  await page.goto('./');
+  await page.locator('#start-screen').click();
+  await expect(page.locator('#menu-race')).toBeVisible();
+  // The start tap may take the page fullscreen, and a fullscreen window cannot be resized.
+  await page.evaluate(() => (document.fullscreenElement ? document.exitFullscreen() : undefined));
+  await page.setViewportSize({ width: 568, height: 120 });
+  await settleStamp(page);
+  const squeezed = await menuOffScreen(page);
+  expect(squeezed.off.length, 'a 120 px tall screen cannot hold the menu').toBeGreaterThan(0);
+});
 
 // The check must fire: a control planted under the stamp is named while the stamp is forced to
 // show, and the stamp itself steps away from it (to the other corner, or hides) when it is not.

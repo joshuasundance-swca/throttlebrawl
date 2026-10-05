@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadBasePack, registryFromGlob } from '../content';
 import { FakeAudioContext, fakeContextFactory } from './fake-context';
-import { createAudio, RADIO_FIRST_STATION, RADIO_OFF, RADIO_SCORE } from './index';
+import { createAudio, RADIO_FIRST_STATION, RADIO_OFF, RADIO_SCORE } from './system';
 import {
   composeTrack,
   hashString,
@@ -477,7 +477,7 @@ describe('the radio in the mixer', () => {
     audio.setParam('audio.radio', 2);
     for (let t = 0.1; t < 1; t += 0.05) tick(t);
     // Walk from any radio source to the destination; the path must pass the music bus, which is
-    // the bus the music slider drives (index.ts builds music, effects, voices in that order).
+    // the bus the music slider drives (system.ts builds music, effects, voices in that order).
     const busOf = (n: (typeof ctx.nodes)[number]): boolean => {
       const seen = new Set<typeof n>();
       const stack = [n];

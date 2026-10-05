@@ -6,7 +6,7 @@ import { ceilingShape, KNEE } from './ceiling';
 import { CRASH_LAYERS, CUE_PATCHES } from './cue-patches';
 import { crashImpact, cueForEvent } from './cues';
 import { fakeContextFactory, FakeAudioContext, FakeNode } from './fake-context';
-import { AUDIO_TUNING, createAudio } from './index';
+import { AUDIO_TUNING, createAudio } from './system';
 import { LAYER_AT, LOOP_BARS, scoreAt } from './music';
 import { createSlowmoTreatment, OPEN_HZ, SLOWMO_DEFAULTS } from './slowmo';
 
@@ -94,7 +94,7 @@ describe('M2 cues', () => {
     expect(cueForEvent(ev('style', 4, undefined, { kind: 'airtime', points: 20 }), 0)).toBeNull();
     expect(cueForEvent(ev('respawn', 4), 0)).toBeNull();
     expect(cueForEvent(ev('nearMiss', 4, 43), 0)).toBeNull();
-    // A rival's takedown is still heard (quieter with distance, in index.ts).
+    // A rival's takedown is still heard (quieter with distance, in system.ts).
     expect(cueForEvent(ev('takedown', 4, 2), 0)?.cue).toBe('takedown');
   });
 

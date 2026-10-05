@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EntitySnapshot, SimEvent, SimSnapshot } from '../sim/api';
-import { AUDIO_TUNING, busTargets, createAudio, type Volumes } from './index';
+import { AUDIO_TUNING, busTargets, createAudio, type Volumes } from './system';
 import { fakeContextFactory } from './fake-context';
 
 function entity(id: number, over: Partial<EntitySnapshot> = {}): EntitySnapshot {
