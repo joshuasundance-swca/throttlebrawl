@@ -13,7 +13,16 @@ import {
   type GaugeBlockers,
   restBase,
 } from './moves-meter';
-import { HUD_SIZE, layoutTop, lookAheadBox, overlap, placedBox, settleLifts, type Box } from './hud-layout';
+import {
+  bikeZoneBox,
+  HUD_SIZE,
+  layoutTop,
+  lookAheadBox,
+  overlap,
+  placedBox,
+  settleLifts,
+  type Box,
+} from './hud-layout';
 
 // T6.3 (playtest 3, the critic's C7): the drift chain is the ticker's meter line and empties
 // visibly on a wipeout; the wheelie gauge beside the stick is the one new widget, and the layout's
@@ -196,6 +205,7 @@ interface World {
   mirror: boolean;
   blockers: GaugeBlockers;
   look: Box;
+  bike: Box;
   zone: Box;
   buttons: Box[];
   text: Box[];
@@ -233,6 +243,7 @@ function world(w: number, h: number, mirror: boolean): World {
     mirror,
     blockers: gaugeBlockers({ plan, position, target, buttons, text }),
     look: lookAheadBox(w, h),
+    bike: bikeZoneBox(w, h),
     zone: {
       left: zoneRect.x,
       top: zoneRect.y,
@@ -245,7 +256,15 @@ function world(w: number, h: number, mirror: boolean): World {
 }
 
 const place = (wd: World, base: { x: number; y: number }) =>
-  placeGauge({ w: wd.w, h: wd.h, base, mirror: wd.mirror, blockers: wd.blockers, look: wd.look });
+  placeGauge({
+    w: wd.w,
+    h: wd.h,
+    base,
+    mirror: wd.mirror,
+    blockers: wd.blockers,
+    look: wd.look,
+    bike: wd.bike,
+  });
 
 describe('placing the wheelie gauge beside the stick (rule 6, the settle rule)', () => {
   it('at rest (no thumb down), clear of every piece and the road ahead, on every screen, both hands', () => {
@@ -260,6 +279,9 @@ describe('placing the wheelie gauge beside the stick (rule 6, the settle rule)',
         for (const b of wd.blockers.all)
           expect(overlap(spot.box, b), `${where}: overlaps a piece`).toBe(false);
         expect(overlap(spot.box, wd.look), `${where}: in the road ahead`).toBe(false);
+        // Playtest 4 run A: on a phone held upright the gauge stood 11 px under the bike's wheel, and a
+        // kick's leg reached it (the browser check's "hud-wheelie × player-bike", PR 513's race).
+        expect(overlap(spot.box, wd.bike), `${where}: on the player's bike`).toBe(false);
         expect(spot.box.left).toBeGreaterThanOrEqual(0);
         expect(spot.box.top).toBeGreaterThanOrEqual(0);
         expect(spot.box.right).toBeLessThanOrEqual(s.w);

@@ -44,6 +44,25 @@ export interface Box {
  */
 export const LOOK_AHEAD = ROAD_AHEAD;
 
+/**
+ * Where the chase camera draws the player's bike below the road ahead: centred across, `halfW` of the
+ * screen's height to each side (the camera scales the bike with the height), from the road ahead's
+ * bottom to 82 % down. The browser check measured the bike 101 to 107 px wide on a 412 by 915 phone
+ * held upright (0.11 to 0.12 of the height), 151 px with a kick's leg out, to 80 % down (playtest 4
+ * run A), and 86 to 102 px on a 1366 by 768 laptop. The wheelie gauge keeps off it. [default]
+ */
+export const BIKE_ZONE = { halfW: 0.09, top: ROAD_AHEAD.bottom, bottom: 0.82 } as const;
+
+/** BIKE_ZONE on a `w` × `h` screen, CSS px. */
+export function bikeZoneBox(w: number, h: number): Box {
+  return {
+    left: w / 2 - BIKE_ZONE.halfW * h,
+    right: w / 2 + BIKE_ZONE.halfW * h,
+    top: BIKE_ZONE.top * h,
+    bottom: BIKE_ZONE.bottom * h,
+  };
+}
+
 /** Upper bounds of the painted widgets, CSS px (the browser spec measures the real ones). */
 export const HUD_SIZE = {
   /** The position badge ("10th / 12" at 22 px) and the speed readout. */
