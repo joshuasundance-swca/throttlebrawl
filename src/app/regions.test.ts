@@ -129,7 +129,14 @@ describe('app: regions', () => {
     const billboards = pnw.pools?.billboards ?? [];
     expect(signs.length).toBeGreaterThanOrEqual(5);
     expect(billboards.length).toBeGreaterThanOrEqual(2);
-    expect(Object.keys(pnw.items)).toHaveLength(signs.length + billboards.length);
+    // Every pooled board is also a named item; the items no pool carries are the `site` signs (a
+    // junction's own, like Bridge City's MORRISON BRIDGE: KEEP LEFT, below), and they are signs.
+    const pooled = new Set([...signs, ...billboards].map((b) => b.ref));
+    const items = Object.values(pnw.items);
+    expect(items.filter((i) => pooled.has(i.ref))).toHaveLength(pooled.size);
+    expect(items.filter((i) => !pooled.has(i.ref)).every((i) => i.kind === 'sign')).toBe(true);
+    expect(pnw.items['morrison-keep-left']).toMatchObject({ kind: 'sign' });
+    expect(signs.some((s) => s.ref.endsWith('#morrison-keep-left'))).toBe(false);
     expect(pnw.items['bigfoot-crossing']).toMatchObject({
       ref: 'region-pnw:region/pacific-northwest#bigfoot-crossing',
       kind: 'sign',

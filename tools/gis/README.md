@@ -152,6 +152,7 @@ real junction choice.
 | `osm-keys-key-west` (base) | `osm-key-west-run` (Key West), 7.17 km | the Overseas Highway (US 1) over Stock Island and Cow Key Channel, South Roosevelt Boulevard along Smathers Beach, Bertha and Atlantic to Higgs Beach: four lanes, two from Bertha | North Roosevelt Boulevard, right at the Triangle, back down Truman Avenue and White Street to Atlantic: a shortcut, 170 m shorter | 14.8 and 40.4 m (main), 13.2 m (branch) |
 | `osm-pnw-samish` (region-pnw) | `osm-i5-samish-run` (I-5 by Lake Samish), 7.22 km | Interstate 5 southbound over the Chuckanut Mountains: four lanes, a 4 m grass median | Lake Samish's north and east shore roads, off at exit 246, on at the Nulle Road on-ramp: an alternate, 250 m longer | 0.4 and 4.2 m (main), 43.2 m (branch) |
 | `osm-sf-russian-hill` (region-sf) | `osm-sf-hills-run` (Russian Hill), 5.27 km | the stretch bake's path exactly (run W-U): Hyde over Russian Hill and Nob Hill, California, Kearny, Columbus, Union back up the hill, Leavenworth down to the finish; two lanes | Jones Street, right off Union one block before its crest, down the hill's 29% north face and back along Chestnut onto Leavenworth: an alternate, 28 m shorter | 7.9 and 8.4 m (main), 6.5 m (branch) |
+| `osm-pnw-portland` (region-pnw) | `osm-bridge-city-run` (Bridge City), 4.61 km | downtown Portland (playtest 3, T9.4): East Burnside over the Burnside Bridge, West Burnside, south down Broadway past Pioneer Courthouse Square, east on Madison, over the Hawthorne Bridge to SE Hawthorne: two lanes each way | the Morrison Bridge, left off Broadway onto Alder, over the river and down Grand Avenue back onto Hawthorne: an alternate, 142 m shorter | 5.4 and 11.2 m (main), 9.9 m (branch) |
 | `osm-sf-golden-gate` (region-sf, T9.3) | `osm-sf-golden-gate-run` (Golden Gate), 6.04 km | Hawk Hill down Conzelman Road's hairpins to Alexander Avenue, US 101 southbound from Vista Point across the bridge and through the toll plaza (no `routeTags`: the shortest path over the extract is the real line); six lanes and a barrier median on the deck | none (a gap goes only on a branch, and traffic runs the main path) | 28 m at most (a 6 km line pinned only at its ends) |
 | `osm-sf-lombard` (region-sf, T9.3) | `osm-sf-lombard-run` (Lombard Street), 1.83 km | Lombard Street from Polk over the crest at Hyde, down the crooked block (the real eight hairpins: one lane, one way, red brick), on along Lombard to Telegraph Hill Boulevard and up to the circle at Coit Tower | none | 5 m at most |
 
@@ -298,6 +299,49 @@ Peaks stretch from one cached extract to byte-identical files.
 
 Left-side split zones need no new switch. A branch leaves to the left with a negative `offsetM` and
 a zone at negative d; `tests/test_capabilities.py` bakes one.
+
+### Bridge City: downtown Portland (T9.4)
+
+`networks/osm-pnw-portland.json` (`uv run tbgis network networks/osm-pnw-portland.json`) is the first
+bake to use the left-side split and a landmark. It bakes one extract (the 2.5 MB Overpass answer for
+`45.500,-122.690,45.532,-122.640`, every public street class) into 15 roads and the route
+`osm-bridge-city-run` (4.61 km). What it decided, each from a measurement:
+
+- **The line** is `respectOneway: false` (a race closes the streets): East Burnside's one-way
+  carriageways, Broadway southbound and Madison eastbound ride as two-way roads of two lanes each way.
+  The Hawthorne Bridge is three parallel ways in OSM (two one-way carriageways and a two-way one); the
+  line follows the eastbound carriageway and the road is as wide as two lanes each way.
+  `splitBridgeMinM` is 2000 so the 1.1 km Hawthorne deck and its approaches stay one road.
+- **Smoothing** is `headingSigmaM: 14`. At 10 m the grid's 90-degree corners (Broadway into Madison)
+  failed the road lint's `|kappa| * dMax <= 0.5` for four lanes (0.58 to 0.60); at 14 m the tightest
+  radius is 22 m.
+- **Elevation** is `bridgeDeck: "span"`: Portland's decks run between their banks (14 to 21 m above
+  sea level on the 3DEP bare earth), not a few metres over the water. The route climbs 27 m and
+  drops 50 m, 6.3% at the steepest.
+- **The choice** leaves Broadway to the left onto Alder (a left turn, since the loop turns left), crosses
+  the Morrison Bridge and comes back down Grand Avenue onto Hawthorne at the end of its viaduct. The plan
+  kept it only within 15% of the leg it replaces; it is 142 m (6.4%) shorter (2,074 m for 2,216 m,
+  the connectors and junction pieces counted). Its rejoin lands in the main road's right-hand lane (`offsetM: 2`,
+  `lane: "R1"`): the first try landed at d -7 as the left-side test in `tests/test_capabilities.py`
+  does, which puts a rider into the oncoming lane, and `tools/road/branch-rejoins.test.ts` refused it.
+  Its join is moved 20 m east of the real junction (`shiftM: 20`): joined straight, the sweep in `tests/sim/geometry-land.test.ts`
+  found one open land edge at Grand Avenue's end (3.9 m drop, 35 m left of the road), and a 20 m shift
+  closes it. A larger shift breaks the lint's 60 m rule for a junction's road ends.
+- **Dressing:** two boost-pad slots on the main road (Burnside and the Hawthorne deck), a cop lot, the
+  junction sign, and a pedestrian zone beside Pioneer Courthouse Square on Broadway's left. The scenery
+  tags are `pdx-blocks` and `town`; `rail-line` is on Grand Avenue only: of the OSM tram and light-rail
+  ways, the only ones that run along a baked road are the streetcar's on Grand (all 496 m of it lies
+  within 12 m of a rail; no other road has more than 56 m, a street crossing, and the check finds
+  rails where they are: it reads Grand's full length).
+  `pdx-blocks` and `rail-line` draw nothing until the render lane's Portland work (T12.4).
+- **Landmarks:** the two Hawthorne lift towers, `pdx-landmarks#pdx_lift_tower` (`overRoad`), at the
+  ends of OSM's 75 m lift span, on the deck (placement 3.5 and 3.1 m from the real points). **Provisional:**
+  the kit and node names are the asset plan's (assets.md); they draw nothing until CX4 builds the kit,
+  and if CX4 names them otherwise this config is edited and re-baked. The Burnside operator towers,
+  the roof sign and the cart pod are not placed (their kit is not built; the plan's wave C).
+- **Size:** 17 files, 200 KB minified, 56.2 KB gzip. The three bridge roads sample every 4 m.
+  The still scene on the main path draws at most 58 of 120 calls (mean 37) before the Portland
+  facades (T12.4) add theirs.
 
 ## Fetch once, bake offline
 

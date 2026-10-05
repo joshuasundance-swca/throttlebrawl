@@ -1,0 +1,157 @@
+{
+  "type": "road",
+  "id": "osm-pnw-portland-morrison-join",
+  "name": "morrison-join junction",
+  "realName": "Southeast Hawthorne Boulevard",
+  "network": "osm-pnw-portland",
+  "from": "osm-pnw-portland-j7",
+  "to": "osm-pnw-portland-j7",
+  "lengthM": 40.0,
+  "sampleSpacingM": 2.0,
+  "speedLimitMps": 8.9,
+  "surface": "asphalt",
+  "laneSections": [
+    {
+      "s0": 0,
+      "lanes": [
+        {
+          "id": "L0",
+          "dCenterM": -8.75,
+          "widthM": 1.5,
+          "direction": -1,
+          "kind": "shoulder"
+        },
+        {
+          "id": "L2",
+          "dCenterM": -6.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "L1",
+          "dCenterM": -2.0,
+          "widthM": 4.0,
+          "direction": -1,
+          "kind": "drive"
+        },
+        {
+          "id": "R1",
+          "dCenterM": 2.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R2",
+          "dCenterM": 6.0,
+          "widthM": 4.0,
+          "direction": 1,
+          "kind": "drive"
+        },
+        {
+          "id": "R0",
+          "dCenterM": 8.75,
+          "widthM": 1.5,
+          "direction": 1,
+          "kind": "shoulder"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "s0": 0.0,
+      "s1": 40.0,
+      "side": "both",
+      "tag": "pdx-blocks"
+    },
+    {
+      "s0": 0.0,
+      "s1": 40.0,
+      "side": "both",
+      "tag": "town"
+    }
+  ],
+  "features": [],
+  "barriers": [],
+  "samples": {
+    "encoding": "json-columns",
+    "columns": ["x", "y", "z", "kappa", "grade", "bankRad"],
+    "data": {
+      "x": [
+        993.0585, 995.056, 997.0536, 999.0512, 1001.049, 1003.0471, 1005.0453, 1007.0439, 1009.0427,
+        1011.0417, 1013.041, 1015.0404, 1017.04, 1019.0397, 1021.0395, 1023.0394, 1025.0393, 1027.0393,
+        1029.0392, 1031.0392, 1033.0392
+      ],
+      "y": [
+        20.4185, 20.3833, 20.3499, 20.318, 20.2873, 20.2573, 20.2278, 20.1984, 20.1689, 20.1389, 20.1084,
+        20.0772, 20.0451, 20.0123, 19.9786, 19.9441, 19.9089, 19.8728, 19.8361, 19.7988, 19.7609
+      ],
+      "z": [
+        805.4582, 805.5582, 805.6575, 805.7546, 805.8481, 805.9368, 806.0196, 806.0957, 806.1648, 806.2264,
+        806.2807, 806.328, 806.3684, 806.4026, 806.4312, 806.4546, 806.4736, 806.4886, 806.5001, 806.5086,
+        806.5143
+      ],
+      "kappa": [
+        0.00024582, -0.00015907, -0.00054663, -0.000904, -0.0012158, -0.0014704, -0.0016602, -0.0017826,
+        -0.0018394, -0.001836, -0.0017812, -0.0016858, -0.0015615, -0.00142, -0.0012718, -0.0011258,
+        -0.00098895, -0.00086662, -0.00076149, -0.00067481, -0.00060645
+      ],
+      "grade": [
+        -0.017561, -0.017134, -0.016334, -0.015669, -0.015177, -0.014864, -0.01472, -0.014731, -0.014873,
+        -0.015118, -0.01544, -0.015813, -0.016217, -0.016632, -0.017044, -0.017443, -0.017822, -0.018177,
+        -0.018504, -0.018801, -0.018942
+      ],
+      "bankRad": [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "gis-pipeline",
+    "author": "tools/gis",
+    "createdAt": "2026-10-04",
+    "tool": {
+      "name": "tools/gis/src/tbgis/network.py",
+      "version": "0.1.0",
+      "configRef": "tools/gis/networks/osm-pnw-portland.json"
+    },
+    "sources": [
+      {
+        "name": "OpenStreetMap",
+        "spdx": "ODbL-1.0",
+        "attribution": "© OpenStreetMap contributors",
+        "url": "https://www.openstreetmap.org/copyright",
+        "query": "[out:json][timeout:120];\nway[\"highway\"~\"^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|unclassified|living_street)$\"](45.500,-122.690,45.532,-122.640);\nout tags geom;",
+        "retrievedAt": "2026-10-04T22:46:05Z",
+        "sha256": "95e74e6fffdb70bd8a1f9760fd88b72ab6776fe135882321f056ecdc809deea1"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 490 points in 1 request(s) (lon, lat WGS84, sha256 a34e500ccf3e93a4), bilinear (line pdx)",
+        "retrievedAt": "2026-10-04T22:55:31Z",
+        "sha256": "a7dba5dd8ee7e7838a3f46dad3418ec83941862a0e3bd5bcd2d157cf8284c829"
+      },
+      {
+        "name": "USGS 3DEP elevation",
+        "spdx": "LicenseRef-US-Public-Domain",
+        "attribution": "Map services and data available from U.S. Geological Survey, National Geospatial Program.",
+        "url": "https://www.usgs.gov/3d-elevation-program",
+        "query": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples getSamples multipoint, 207 points in 1 request(s) (lon, lat WGS84, sha256 6655e03817a1ff0d), bilinear (line morrison)",
+        "retrievedAt": "2026-10-04T22:55:16Z",
+        "sha256": "e843d7a8e2f65278bc9e410ff059fb4980be66a15078b545c47fad592a1cfc18"
+      }
+    ],
+    "modified": true,
+    "modifications": "2 real Portland street and bridge paths stitched through the OSM graph, heading Gaussian-smoothed, positions re-integrated from heading, then pinned back onto the real junctions (largest drift closed 11.2 m, spread back along each line), resampled at 2 m with curvature from the sampled positions; land elevation from 3DEP low-pass filtered, bridge decks synthesized (3DEP is bare earth); lanes simplified to the configured cross-section; junction connector roads synthesized (a turn, a straight and a turn)"
+  },
+  "meta": {
+    "status": "live",
+    "notes": "Baked by tools/gis from networks/osm-pnw-portland.json: real geometry, gameplay-fied (see provenance.modifications). Regenerate with `tbgis network`; never hand-edit."
+  }
+}
